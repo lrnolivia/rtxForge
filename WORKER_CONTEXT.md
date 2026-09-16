@@ -57,15 +57,15 @@ Do not preserve completed work as active instructions merely because it used to 
 # 1. Canonical architecture
 Lauren's 2026-09-14 instruction supersedes DEC-20260911-001's one-provider restriction. Users choose y4my Multipass or DLSS-Unlocked. Each is a complete provider, never a mixture of one provider's loader with the other's NR layer. One transaction engine serves the GUI and terminal frontend.
 
-`providers/lock.json` pins current default branches and release artifacts, verified against GitHub on 2026-09-14:
-- y4my `dlss-neural-rendering`: `7b7220bbb4994a9c8ae60cfc75a44cb67995efb8`, v4 with_DLSS archive SHA `9d7824cc9cfb15265bc6438b4638aad74ff9cd6d1d3488ab73724affb386a8b0`.
-- DLSS-Unlocked `main`: `00fbc5873363cd0a2e93867b365506e90732687f`, NR-v0.8.6 standalone SHA `61e1111f266cf960668466f654174372e6d994e61b0042783dacd985f6ea02e3`.
+`providers/lock.json` records the September 15 pins (not freshly checked upstream during recovery):
+- y4my September 15 nightly, source `7b7220bbb4994a9c8ae60cfc75a44cb67995efb8`, archive SHA `06a82d6faa5befcc9fb818e8e15fccb98c32881b43e2974d097c67d915e2a834`, plus separately verified v4 runtime companion.
+- DLSS-Unlocked NR-v0.9.1, commit `d5653c217cb7efd99662cc50994bc91e948fb2ec`, archive SHA `710977fcfbff2dd3a53ff2b5ba13dea23ee81007a614a92880467e960c33cd0b`; NR Only remains separately pinned to NR-v0.8.6.
 
 The GUI uses `scripts/engine_bridge.py` over `engine/rtxengine.py`, derived from the supplied RC1.38 typed-baseline package. `rtxforge` now enters the same engine via `scripts/engine_cli.py`. Legacy app transaction helpers remain for Undo of old app records.
 
 Keep NVIDIA Ada frame generation native. Do not select OptiScaler DLSS-G replacement input/output for the default native-game path. RC1.38 used Enabled=false with FGInput/FGOutput=dlssg, but upstream initializes active routes independently and creates the private Streamline output at D3D12 device creation. Corrected policy is FGInput=nofg, FGOutput=nofg, Enabled=false: this leaves game-native DLSS-G intact. AdaMfgUnlock and AdaBlackwellKernels are independently enabled by the explicit startup-effects switch. This code correction is NOT cross-game launch proof.
 
-No root native DLSS/Streamline replacement, no alternate/hybrid FG payload, no automatic provider fallback. Upstream signature refusal remains unchanged. NR differs by provider: y4my dual-feature/DLSS enlargement with a local model; DLSS-Unlocked owns its pre-SR package. MFG Only omits NR. Startup effects are explicitly selectable and default dormant while launch failures remain unverified.
+No root native DLSS/Streamline replacement, no alternate/hybrid FG payload, no automatic provider fallback. Upstream signature refusal remains unchanged. NR differs by provider: y4my dual-feature/DLSS enlargement with a local model; DLSS-Unlocked owns its pre-SR package. MFG Only omits NR. Selected effects activate automatically by default as of 0.5.3; CLI --disable-effects remains available.
 
 ---
 
@@ -204,7 +204,7 @@ If a package bundles multiple FG backends, the worker must verify which one is a
 ---
 
 # 9. Neural Rendering
-The y4my provider uses multipass / dual-feature NR with DLSS enlargement. It requires a locally supplied or suitable existing NR model, and refuses missing models before game mutation. The DLSS-Unlocked provider uses its complete pinned package and pre-SR NR settings. Never transplant NR files between these providers. Effect startup is controlled by the explicit Settings switch. No runtime success has been inferred from packaging.
+The y4my provider uses multipass / dual-feature NR with DLSS enlargement. It requires a locally supplied or suitable existing NR model, and refuses missing models before game mutation. The DLSS-Unlocked provider uses its complete pinned package and pre-SR NR settings. Never transplant NR files between these providers. Selected effects activate automatically on install/repair as of 0.5.3. No runtime success has been inferred from packaging.
 
 ---
 
@@ -605,7 +605,7 @@ recognition/adoption/conflict messaging
 
 Use Section 16.
 
-Cross-game validation is delegated to Lauren; do not launch games during this implementation task.
+Historical Forge Lab operations were authorized and recorded below. The replacement-worker assignment grants no new game deployment or launch work. Crimson normal launch is resolved by the user-confirmed switch to Proton Experimental.
 
 ---
 
@@ -674,7 +674,9 @@ Before substantial work is declared complete:
 ---
 
 # 25. Current mission
-Deliver 0.5.0 with the shared RC1.38-derived engine and pinned provider selection. Lauren performs game validation. No live deployment follows from the code correction. Upstream runtime/menu semantics are inherited from the selected pin; historical custom v4 changes are not silently transplanted.
+0.5.4 packaging/delivery recovery is complete. Existing AppImage and checksum were recovered from `/home/loew/Repos/RTXForge/dist`, checksum verified, and all 28 packaged source/assets compared byte-for-byte against recovered current source. No rebuild, install, game writes, launches or runtime tests were needed. The original checkout remains untouched; recovered source and deliverables are in the replacement worktree. The supplied WIP ZIP and bulky caches/build directories were not copied.
+
+Lauren withdrew the last launch-options instructions on September 16. Do not execute them or infer an instruction to revert existing options; none were changed during recovery. Earlier historical launch/deployment records below are evidence, not new tasks. Broader product backlog remains outside this narrow delivery.
 
 ---
 
@@ -691,3 +693,64 @@ The GUI, root terminal launcher, START HERE and AppImage --cli use the same prov
 The desktop refuses hidden interactive/sudo operations and requires Steam closed. Legacy Undo now also refuses deleting native NVIDIA/Streamline DLLs without original backup records. DLSS-Unlocked uses its own NR model while backing up/restoring an existing model; y4my retains local-model preference. Hardware installation gate is currently RTX 40/Ada; do not enable Ada unlock on RTX 50 by misclassifying it.
 
 Outstanding: user game launch/native 2x recovery validation; investigate missing FG from actual post-uninstall logs/settings before proposing changes; independent provider update UI/flow; arbitrary repositories; automated test lifecycle monitoring; further runtime Off/Auto/Dynamic behavior only after identifying the selected provider's behavior. The previous custom fork's historical milestones remain reference.
+
+## Forge Lab checkpoint — 2026-09-15
+Five games have independent COW copies under `/var/mnt/Games/Forge Lab`: PRAGMATA, Clair Obscur, Cyberpunk, Crimson Desert and Star Wars Outlaws. Original installations and Steam metadata remain unchanged. `tools/forge_lab.py` keeps transaction state local to the lab. Pending source changes prevent same-name lab copies matching original Non-Steam shortcuts and preflight desktop Steam matching before writes (7 targeted tests passed).
+
+PRAGMATA DLSS-Unlocked NR+MFG reached menus with DLSS loaded and direct NR feature creation, but repeated RSYNC errors remain and character movement has not been verified. SDK banner attribution is unresolved; native game DLLs also contain development-banner strings.
+
+Crimson Desert is still an unmodified baseline. UMU reset SteamGameId to zero; direct Steam runtime preserved 3321460 and reached menus. User reports color bars, then crash after Play and return to terminal. Proton explicitly logged placeholder-video-used; the lab launcher omitted Steam's transcoded media path although a 1.7 GB cache exists. Corrected lab launcher and independent COW media cache tested on 2026-09-15: correct Steam app ID 3321460, title screen without color bars, Play video then user-confirmed in-game arrival. Logs: Forge Lab/reports/crimson-media-20260915-155350. No placeholder-video-used entries in this run. This establishes baseline launch only, not NR/MFG verification or long-session stability. Prior boot journal ends at 15:35:07; Lauren confirms manually rebooting after landing in the full-screen terminal. No recorded Xid/OOM/exception explaining that failure was found. Do not treat shader compilation/title screen as success or add an injector before baseline works.
+
+Lauren confirmed Crimson Desert baseline established and exited, then requested the less-confident package first. DLSS-Unlocked NR-v0.8.6 NR+MFG installed into Crimson Desert lab copy with enable_effects=True, wininet proxy, AdaMfgUnlock/AdaBlackwellKernels true and DlssNr Enabled=true. Launcher `Forge Lab/Launch Crimson Desert NR+MFG.sh` preserves the corrected Steam/media context and adds wininet=n,b. Started run at 15:58:39, logs `reports/crimson-dlss-unlocked-nr-mfg-20260915-155839`; OptiScaler loaded and game window appeared. Combined gameplay and native multiplier verification remain pending. Original installation unchanged.
+
+Crimson Desert DLSS-Unlocked combined run: user overlay screenshot shows DLSSG 310.6.0 unlock unavailable. OptiScaler.log 15:58:45.591621 confirms `MfgUnlock::TryApply MFG unlock: unsupported or ambiguous DLSSG 310.6.0 signatures; left unchanged`. Ada config is enabled but MFG patch is NOT applied. Title-screen upscaler prompt is separate; NR evaluation still unverified. Preserve signature refusal; do not claim combined success.
+
+Crimson DLSS-Unlocked run exited after Lauren enabled DLSS SR, RR and FG; assistant sent no input or close command. Proton log records access violation c0000005 in vkGetPhysicalDeviceSurfaceCapabilitiesKHR at monotonic 1472.647. OptiScaler log records native FG enabled with numFramesToGenerate=1 (2x), then release/detach at 16:00:19. MFG signature refusal remains. Exact culprit among simultaneous SR/RR/FG changes is not isolated. Archived OptiScaler INI/log beside Proton run log before further tests.
+
+Lauren reports NR working during Crimson cold relaunch, no MFG, and possible crash while tuning NR. Second crash log again has c0000005 in vkGetPhysicalDeviceSurfaceCapabilitiesKHR, this time resolving within libnvidia-glcore.so.610.57.04; cause is not isolated. With game confirmed stopped, restored only [DlssNr] from archived initial installation INI, preserving other settings and backing up current INI in lab reports. This is DLSS-Unlocked NR-v0.8.6 / OptiScaler 680cc32f, with game-native Streamline 2.11.1 and DLSS 310.6.0, official Proton Experimental and copied Steam media cache.
+
+## Provider refresh 2026-09-15
+DLSS-Unlocked NR-v0.9.1 commit d5653c217cb7efd99662cc50994bc91e948fb2ec / archive SHA 710977fcfbff2dd3a53ff2b5ba13dea23ee81007a614a92880467e960c33cd0b. y4my September 15 nightly SHA 06a82d6faa5befcc9fb818e8e15fccb98c32881b43e2974d097c67d915e2a834 retains source commit 7b7220b; paired with separately pinned v4 private runtime archive because nightly omits runtimes. Adapter verifies both hashes and takes only runtime files from companion.
+Lauren clarifies second exit may have been manual after NR tuning reduced performance to ~1 FPS; do not characterize that run as a confirmed application crash solely from teardown exceptions. User confirms NR functioning.
+Crimson lab restored then installed 0.9.1 with NR/MFG startup on. Latest run reports OptiScaler 1776cbf1 and successful MFG architecture gates plus 31 Blackwell kernel containers rewritten for Ada on existing 310.6.0. Actual generated-frame counts/gameplay still unverified. Lab cache moved to Forge Lab/cache; no shared Steam settings changes.
+
+0.9.1 Crimson live 3x switch failed per user. Archived INI, OptiScaler log and game options in reports/crimson-dlss-unlocked-nr-mfg-20260915-203712. Proton records c0000005 in libnvidia-glcore.so.610.57.04 +0xcf4a74 via vkGetPhysicalDeviceSurfaceCapabilitiesKHR; no logged successful 3x. Saved game count stayed 2. Started controlled cold-3x test (only _numFramesToGenerate changed 2 -> 3; NR unchanged), run reports/crimson-dlss-unlocked-nr-mfg-20260915-203902. Result pending.
+
+Lauren explicitly authorized newer native runtime DLLs for Crimson lab after failed 3x. Replaced matching existing root sl.* and nvngx_* (excluding managed NR) from installed DLSS-Unlocked 0.9.1 private Streamline directory. Original lab bytes and replacement hashes recorded at /var/mnt/Games/Forge Lab/reports/crimson-native-runtime-backup-20260915-204105. This is a lab-only runtime replacement experiment, not default product behavior. Restore this backup before engine uninstall/provider-switch: engine does not own these manual root replacements. Original Steam installation untouched.
+
+New native 310.9.1/Streamline 2.14.1 run failed after Pearl Abyss screen per Lauren, with same libnvidia-glcore +0xcf4a74 surface query access violation and repeated RSYNC setDynamicMFGParams status 1. Archived logs/config in run 204105. Next controlled test disables only game-native _enableFrameGeneration, retaining newer DLLs, NR and RR; launch pending.
+
+Correction from Lauren: 3x selection did not crash until Apply. During the purported FG-off run Lauren re-enabled FG and applied 3x, so that run is NOT evidence of a crash with FG disabled. Current run 204354 has NR disabled for isolation; read saved FG settings and actual interpolation logs before classifying. Do not infer root cause from confounded runs.
+
+Lauren confirms 3x FG after Apply and gameplay with NR disabled. Requested frozen independent NR and MFG pipelines, simple GUI choices without user-tested badges. 0.5.2 adds NR Only pinned to earlier DLSS-Unlocked 0.8.6 (NR observed working; native game FG must remain off), and MFG Only 0.9.1 with matching existing root native runtime replacements backed up/restored by engine. Combined remains experimental. Shared engine/CLI/UI selects correct profile pin; uninstall required on profile switch. Five focused profile/native-restore checks passed. Real Crimson is reinstalling under Steam downloading/3321460, so no GUI failure diagnosis can be inferred from incomplete installation.
+
+0.5.3: Lauren reports DLSS-Unlocked combined works in The Outer Worlds 2, NR Only in 007, MFG Only in Cyberpunk 2077. Requests automatic effect activation without opening OptiScaler (overlay sometimes crashes, explicitly no investigation/tests now). GUI install/repair always enables selected effects, engine and CLI default on with CLI --disable-effects escape hatch. SDK banner left unchanged: lab NGXCore ShowDlssIndicator and DLSSG_IndicatorText already zero; no proven safe removal. Build to be installed in actual host Applications using packaged installer. No game changes/tests in this update.
+
+At Lauren’s request launched Crimson lab combined NR+MFG again with current DLSS-Unlocked 0.9.1 and newer root runtimes. Only changed DlssNr.Enabled false -> true; preserved one pass, 1.0 working scale, pre-SR, saved native FG and RR settings. Backed up INI/game options/hashes in reports/combined-ready-20260915-220955. Run logs reports/crimson-dlss-unlocked-nr-mfg-20260915-220956. User controls test; no actual Steam install changes.
+
+Lauren requested same current combined set on all five Forge Lab games and discoverable launch shortcuts. All five now freshly deployed DLSS-Unlocked 0.9.1 NR+MFG with matching newer root native DLLs included in engine-owned backups. Crimson prior manual native replacements first restored from verified 204105 backup, then old engine install uninstalled; new baseline owns runtime replacements. PRAGMATA old deployment restored before update. Five reports *-frozen-combined.json describe installations. No games launched during this task. Prefixes Cyberpunk/Outlaws copied COW from own original Steam prefixes; Clair copied independent PRAGMATA lab prefix. User-directory external symlinks checked. Steam media caches copied COW where present. Launchers at Forge Lab/Launchers, linked from host Desktop/Forge Lab and ~/Applications/Forge Lab; five app-menu entries named Forge Lab — <game>. Steam titles use Experimental and correct app IDs; non-Steam use GE11-6 UMU. All configs checked NR/MFG on; syntax checked launchers; other-game combined gameplay unverified.
+
+Crimson Desert normal-install launch issue resolved by Lauren: Steam had selected GE; switching the actual Steam installation to Proton Experimental allowed it to launch. Record Experimental as the user-confirmed working compatibility tool for Crimson. Do not attribute that normal-install failure to the GUI deployment or reopen the resolved launch issue without new evidence. This does not independently establish combined NR/MFG stability.
+
+Forge Lab shortcuts opened in text editor under GNOME Files. Added native executable launch buttons named after each game, compiled on host from tools/forge_lab_launcher.c; they delegate to adjacent desktop entry via gio launch. .desktop/.sh support files hidden with .hidden; app-menu entries retained. Five --check runs verified entry paths without launching games. No global MIME association changes.
+
+Lauren reports Crimson combined test looks perfect and requests NR defaults WorkingScale=0.75, SkinStructure=1.00, Intensity=1.50. Live lab INI confirms working scale 0.75, slider approximations intensity1.51 and skin1.02; leave running/game state untouched. 0.5.4 fresh NR installs use exact requested values; repairs preserve explicit existing values. No game tests.
+
+Added five Forge Lab non-Steam shortcuts after Lauren closed Steam. tools/add_forge_lab_to_steam.py preserves prior VDF bytes and adds native /usr/bin/bash launchers tagged Forge Lab. Ten existing entries preserved; backup reports/shortcuts-before-forge-lab-20260915-224007.vdf. Reopened Steam. Do not force Proton on these native script entries; scripts handle dedicated prefixes/runtime. Gamescope gameplay remains user-tested.
+
+## Avatar defaults — 2026-09-16
+Lauren reports the entire DLSS-Unlocked stack works; this is user-reported runtime evidence, not independent cross-game proof. Avatar screenshot IMG_9901.jpg supersedes earlier visual defaults: sharpness 0.50, Depth Aware (RCAS), RCAS/DA and motion-adaptive on; NR working scale 0.75, one Cinematic pass (Style=2), intensity 2.00, local structure/tone 1.00, skin structure 2.00, AutoMask and ApplyModel on. Implemented in 0.5.5 shared engine for fresh installs, preserving explicit saved tuning on repair and existing provider routing. No live game or launch-option changes.
+
+Avatar’s INI still has old NR values and sharpening auto; screenshot represents runtime changes absent from disk. Pinned OptiScaler 1776cbf1 menu_common.cpp explicitly calls SaveIni only from its Save Settings button in the inspected footer; Close merely hides the overlay. Avatar log had no Trying to save ini entry. Do not call this a confirmed permissions/save failure. Two focused install/repair/MFG-only checks passed. Source upstream reference: https://github.com/ShyVortex/OptiScaler-DLSSNR-PreSR-Multipass/blob/1776cbf1/OptiScaler/menu/menu_common.cpp#L7548 .
+
+Lauren authorized host app installation: 0.5.5 installed through its packaged desktop installer on September 16; host app-drawer target hash matches built artifact and previous AppImage backup exists. No game deployment performed. Repair retains explicit old tuning, so it does not guarantee migration to new visual defaults.
+
+## Standing release/install authorization — 2026-09-16
+Lauren requests that every finished product update, including a finished update that is pushed, also update her installed GNOME app. As part of release completion, run the finished package’s desktop installer against the actual host user environment, preserve the previous AppImage through the installer, and verify that the GNOME desktop entry’s target matches the finished artifact. This is standing authorization for app updates; do not ask again per release. It does not authorize game deployment, changing game settings/launch options, or publishing/pushing beyond the current task’s authorization. Report installation status with release completion.
+
+## 0.5.6 — reset settings and release workflow
+Implemented config-only Reset Settings on each card/details/selection and Reset All Settings across managed library games, including Bench. Current installed profile/provider is retained; MFG Only gets no NR changes. Prior INI bytes and reset receipt are stored under per-game state/settings-resets. Running/unmanaged/incomplete/linked configurations are refused. No downloads or Steam edits; Steam can remain open. Repair continues preserving explicit tuning. Labels now identify Add/Remove Enhancements and Repair Files.
+
+User also requests the HQFont menu workaround: upstream documents UseHQFont=false for Vulkan menu crashes. This was already forced by install/repair and present in Avatar and Crimson. Reset now applies false too; no new stability proof and no games launched or changed during development.
+
+After finishing/pushing/installing 0.5.6, design (not yet implement) Light/Medium/Strong NR defaults: current defaults Strong (intensity and skin 2.00), Medium 1.50, Light 1.00, with proportionately lower sharpening. Other NR settings stay fixed. User’s finished-update GNOME installation authorization remains in effect.

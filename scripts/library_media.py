@@ -3,7 +3,7 @@ from pathlib import Path
 import json,urllib.request,urllib.parse,urllib.error,re,time,hashlib,html
 import transactions as t
 from storage import storage
-DEFAULTS={'runtime_provider':'y4my','enable_effects':False,'nr_runtime':'','dark':True,'library_view':'posters','art_scale':80,'cache_days':7,'network_timeout':10,'default_profile':'mfg-only','online_art':True,'steam_metadata':True,'recognize_previous':False,'extra_folders':[]}
+DEFAULTS={'runtime_provider':'y4my','enable_effects':True,'nr_runtime':'','dark':True,'library_view':'posters','art_scale':80,'cache_days':7,'network_timeout':10,'default_profile':'mfg-only','online_art':True,'steam_metadata':True,'recognize_previous':False,'extra_folders':[]}
 
 def settings_path(config):return storage(config)/'desktop/settings.json'
 def load_settings(config):

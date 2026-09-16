@@ -6,29 +6,55 @@
     "branch": "dlss-neural-rendering",
     "branch_commit": "7b7220bbb4994a9c8ae60cfc75a44cb67995efb8",
     "commit": "7b7220bbb4994a9c8ae60cfc75a44cb67995efb8",
-    "tag": "v10.0.0-dev-fork-y4my4my4m-v4",
-    "archive": "OptiScaler_v10.0.0-dev-fork-y4my4my4m-v4_20260905_with_DLSS.7z",
-    "url": "https://github.com/y4my4my4m/OptiScaler_DLSSNR_Multipass_MFG/releases/download/v10.0.0-dev-fork-y4my4my4m-v4/OptiScaler_v10.0.0-dev-fork-y4my4my4m-v4_20260905_with_DLSS.7z",
-    "sha256": "9d7824cc9cfb15265bc6438b4638aad74ff9cd6d1d3488ab73724affb386a8b0",
-    "release_size": 117366545,
-    "asset_id": null,
-    "verified_at": "2026-09-14",
-    "runtime_verified": false
+    "tag": "nightly",
+    "archive": "OptiScaler_v10.0.0-pre1_20260915.7z",
+    "url": "https://github.com/y4my4my4m/OptiScaler_DLSSNR_Multipass_MFG/releases/download/nightly/OptiScaler_v10.0.0-pre1_20260915.7z",
+    "sha256": "06a82d6faa5befcc9fb818e8e15fccb98c32881b43e2974d097c67d915e2a834",
+    "release_size": 56062180,
+    "asset_id": 565345155,
+    "verified_at": "2026-09-15",
+    "runtime_verified": false,
+    "runtime_archive": {
+      "archive": "OptiScaler_v10.0.0-dev-fork-y4my4my4m-v4_20260905_with_DLSS.7z",
+      "url": "https://github.com/y4my4my4m/OptiScaler_DLSSNR_Multipass_MFG/releases/download/v10.0.0-dev-fork-y4my4my4m-v4/OptiScaler_v10.0.0-dev-fork-y4my4my4m-v4_20260905_with_DLSS.7z",
+      "sha256": "9d7824cc9cfb15265bc6438b4638aad74ff9cd6d1d3488ab73724affb386a8b0",
+      "release_size": 117366545,
+      "commit": "7b7220bbb4994a9c8ae60cfc75a44cb67995efb8",
+      "tag": "v10.0.0-dev-fork-y4my4my4m-v4"
+    }
   },
   "dlss-unlocked": {
     "id": "dlss-unlocked",
     "name": "DLSS-Unlocked",
     "repo": "ShyVortex/dlss-unlocked",
     "branch": "main",
-    "branch_commit": "00fbc5873363cd0a2e93867b365506e90732687f",
-    "commit": "00fbc5873363cd0a2e93867b365506e90732687f",
-    "tag": "NR-v0.8.6",
-    "archive": "dlss-unlocked-standalone-NR-v0.8.6.zip",
-    "url": "https://github.com/ShyVortex/dlss-unlocked/releases/download/NR-v0.8.6/dlss-unlocked-standalone-NR-v0.8.6.zip",
-    "sha256": "61e1111f266cf960668466f654174372e6d994e61b0042783dacd985f6ea02e3",
-    "release_size": 463446893,
-    "asset_id": null,
-    "verified_at": "2026-09-14",
-    "runtime_verified": false
+    "branch_commit": "d5653c217cb7efd99662cc50994bc91e948fb2ec",
+    "commit": "d5653c217cb7efd99662cc50994bc91e948fb2ec",
+    "tag": "NR-v0.9.1",
+    "archive": "dlss-unlocked-standalone-NR-v0.9.1.zip",
+    "url": "https://github.com/ShyVortex/dlss-unlocked/releases/download/NR-v0.9.1/dlss-unlocked-standalone-NR-v0.9.1.zip",
+    "sha256": "710977fcfbff2dd3a53ff2b5ba13dea23ee81007a614a92880467e960c33cd0b",
+    "release_size": 468250426,
+    "asset_id": 566659295,
+    "verified_at": "2026-09-15",
+    "runtime_verified": false,
+    "profile_pins": {
+      "nr-only": {
+        "id": "dlss-unlocked",
+        "name": "DLSS-Unlocked",
+        "repo": "ShyVortex/dlss-unlocked",
+        "branch": "main",
+        "branch_commit": "00fbc5873363cd0a2e93867b365506e90732687f",
+        "commit": "00fbc5873363cd0a2e93867b365506e90732687f",
+        "tag": "NR-v0.8.6",
+        "archive": "dlss-unlocked-standalone-NR-v0.8.6.zip",
+        "url": "https://github.com/ShyVortex/dlss-unlocked/releases/download/NR-v0.8.6/dlss-unlocked-standalone-NR-v0.8.6.zip",
+        "sha256": "61e1111f266cf960668466f654174372e6d994e61b0042783dacd985f6ea02e3",
+        "release_size": 463446893,
+        "asset_id": null,
+        "verified_at": "2026-09-14",
+        "runtime_verified": false
+      }
+    }
   }
 }

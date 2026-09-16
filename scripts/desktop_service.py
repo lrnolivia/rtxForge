@@ -46,7 +46,7 @@ class DesktopService:
                     baseline=engine.load_baseline(config.parent)
                     current=(baseline or {}).get('current') or {}
                     if current.get('feature_mode'):
-                        row['profile']='NR + MFG' if current['feature_mode']=='nr-mfg' else 'MFG Only'
+                        row['profile']={'nr-mfg':'NR + MFG','nr-only':'NR Only','mfg-only':'MFG Only'}.get(current['feature_mode'],'Unknown')
                         row['runtime_provider']=current.get('provider_id','y4my')
                         row['effects_enabled']=ini.get('DLSSG',{}).get('AdaMfgUnlock','false').lower()=='true'
                 except (engine.Stop,OSError,ValueError):pass
@@ -72,7 +72,7 @@ class DesktopService:
 
     def prepare(self,rows,mode,operation,adopt=False):
         import ui
-        if operation!='uninstall':
+        if operation in ('install','repair'):
             host=self.hardware()
             if not host['ready']:return {'kind':'batch','operation':operation,'title':operation.title(),'plans':[],'rows':[],'blocked':[{'name':'Hardware check','reason':host['reason']}]}
         return engine_bridge.prepare(self.config,rows,mode,operation,library_media.load_settings(self.config))

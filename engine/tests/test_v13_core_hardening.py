@@ -139,6 +139,104 @@ class CoreHardeningTests(unittest.TestCase):
         self.m.save_json_atomic(self.m.baseline_path(self.target), data)
         return data
 
+    def test_avatar_defaults_reach_install_and_saved_tuning_survives_repair(self):
+        import configparser
+        self.game.dlss = True
+        self.game.dlssg = True
+        meta = {"name": "fixture.7z", "sha256": "4" * 64, "tag": "fixture"}
+        self.m.install_target(self.game, self._sm86_payload(), meta, "ada")
+        ini = self.target / "OptiScaler.ini"
+        cfg = configparser.ConfigParser()
+        cfg.read(ini)
+        self.assertEqual(cfg['Sharpness']['Shader'], 'da')
+        self.assertEqual(cfg['Sharpness']['Sharpness'], '0.50')
+        self.assertEqual(cfg['CAS']['MotionSharpnessEnabled'], 'true')
+        self.assertEqual(cfg['DlssNr']['Style'], '2')
+        self.assertEqual(cfg['DlssNr']['Intensity'], '2.00')
+        self.assertEqual(cfg['DlssNr']['SkinStructure'], '2.00')
+        self.assertEqual(cfg['DlssNr']['WorkingScale'], '0.75')
+        edited = self.m.set_ini_value(ini.read_text(), 'DlssNr', 'Intensity', '1.23')
+        edited = self.m.set_ini_value(edited, 'Sharpness', 'Sharpness', '0.42')
+        ini.write_text(edited)
+        self.m.install_target(self.game, self._sm86_payload(), meta, "ada")
+        cfg.read(ini)
+        self.assertEqual(cfg['DlssNr']['Intensity'], '1.23')
+        self.assertEqual(cfg['Sharpness']['Sharpness'], '0.42')
+
+    def test_avatar_defaults_do_not_enable_nr_in_mfg_only(self):
+        text, values = self.m.apply_visual_defaults('[DlssNr]\nEnabled=false\n', None, 'mfg-only')
+        self.assertNotIn('DlssNr', values)
+        self.assertIn('Enabled=false', text)
+        self.assertIn('Sharpness=0.50', text)
+
+    def test_reset_visual_settings_backs_up_only_config_and_retains_profile(self):
+        self.game.dlss = True
+        self.game.dlssg = True
+        meta = {"name": "fixture.7z", "sha256": "4" * 64, "tag": "fixture"}
+        self.m.install_target(self.game, self._sm86_payload(), meta, "ada")
+        ini = self.target / 'OptiScaler.ini'
+        edited = self.m.set_ini_value(ini.read_text(), 'DlssNr', 'Intensity', '0.2')
+        edited = self.m.set_ini_value(edited, 'Sharpness', 'Sharpness', '0.1')
+        edited = self.m.set_ini_value(edited, 'GameCustom', 'KeepMe', 'yes')
+        edited = self.m.set_ini_value(edited, 'Menu', 'UseHQFont', 'true')
+        ini.write_text(edited)
+        before = {p.relative_to(self.target):p.read_bytes() for p in self.target.rglob('*') if p.is_file()}
+        baseline = self.m.baseline_path(self.target).read_bytes()
+        with patch.object(self.m, '_running_processes_under_root', return_value=[]):
+            preview = self.m.reset_visual_settings(self.game, dry_run=True)
+            self.assertTrue(preview['changed'])
+            self.assertEqual(ini.read_text(), edited)
+            record = self.m.reset_visual_settings(self.game)
+        self.assertEqual(Path(record['backup']).read_text(), edited)
+        self.assertIn('Intensity=2.00', ini.read_text())
+        self.assertIn('Sharpness=0.50', ini.read_text())
+        self.assertIn('KeepMe=yes', ini.read_text())
+        self.assertIn('UseHQFont=false', ini.read_text())
+        self.assertEqual(self.m.baseline_path(self.target).read_bytes(), baseline)
+        for rel, data in before.items():
+            if str(rel) != 'OptiScaler.ini':self.assertEqual((self.target/rel).read_bytes(), data)
+        with patch.object(self.m, '_running_processes_under_root', return_value=[]):
+            self.assertFalse(self.m.reset_visual_settings(self.game)['changed'])
+        self.m.install_target(self.game, self._sm86_payload(), meta, 'ada')
+        self.assertIn('Intensity=2.00', ini.read_text())
+
+    def test_reset_visual_settings_refuses_unmanaged_linked_and_running_games(self):
+        with self.assertRaises(self.m.Stop):self.m.reset_visual_settings(self.game)
+        self.game.dlss = True
+        self.game.dlssg = True
+        meta = {"name": "fixture.7z", "sha256": "4" * 64, "tag": "fixture"}
+        self.m.install_target(self.game, self._sm86_payload(), meta, 'ada')
+        ini = self.target / 'OptiScaler.ini'
+        data = ini.read_bytes()
+        with patch.object(self.m, '_running_processes_under_root', return_value=['123:game']):
+            with self.assertRaises(self.m.Stop):self.m.reset_visual_settings(self.game)
+        self.assertEqual(ini.read_bytes(), data)
+        outside = self.base/'external.ini';outside.write_bytes(data)
+        ini.unlink();ini.symlink_to(outside)
+        with self.assertRaises(self.m.Stop):self.m.reset_visual_settings(self.game)
+        self.assertEqual(outside.read_bytes(), data)
+
+    def test_desktop_reset_skips_download_and_steam_sync_and_keeps_mfg_only(self):
+        sys.path.insert(0, str(SCRIPT.parents[1]/'scripts'))
+        import engine_bridge
+        ini = self.target/'OptiScaler.ini'
+        ini.write_text('[DlssNr]\nEnabled=false\nIntensity=0.1\n[Sharpness]\nSharpness=0.1\n')
+        self._baseline(current={'feature_mode':'mfg-only','provider_id':'dlss-unlocked',
+                                'installed_hashes':{'OptiScaler.ini':self.m.sha256_file(ini)}})
+        row={'name':'Fixture','game':str(self.game.root),'exe':str(self.exe.relative_to(self.game.root))}
+        with patch.object(engine_bridge, 'module', return_value=self.m), \
+             patch.object(engine_bridge, 'game', return_value=self.game), \
+             patch.object(engine_bridge, 'payload', side_effect=AssertionError('Unexpected download')), \
+             patch.object(self.m, '_running_processes_under_root', return_value=[]), \
+             patch.object(self.m, 'steam_running', return_value=True), \
+             patch.object(self.m, 'sync_launch_options_batch', side_effect=AssertionError('Unexpected Steam write')):
+            review=engine_bridge.prepare({},[row],'nr-mfg','reset',{})
+            self.assertFalse(review['blocked'])
+            engine_bridge.execute(review)
+        self.assertIn('Sharpness=0.50',ini.read_text())
+        self.assertIn('Enabled=false',ini.read_text())
+        self.assertIn('Intensity=0.1',ini.read_text())
+
     def test_next_state_retirement_cleans_safe_stale_trash_first(self):
         trash = self.m._state_trash_root()
         trash.mkdir(parents=True)
@@ -866,6 +964,34 @@ class CoreHardeningTests(unittest.TestCase):
         self.assertEqual(model.read_bytes(),payload['nvngx_dlssnr.dll'])
         self.m.restore_target(self.game)
         self.assertEqual(model.read_bytes(),original)
+
+    def test_frozen_mfg_updates_native_runtime_and_restores_original(self):
+        self.game.dlss = self.game.dlssg = True
+        self.m.Y4MY_PROVIDER = {**self.m.Y4MY_PROVIDER, 'id':'dlss-unlocked'}
+        native=self.target/'nvngx_dlssg.dll';native.write_bytes(b'MZ-original-native-fg')
+        payload=self._sm86_payload();payload['OptiScaler/streamline/nvngx_dlssg.dll']=b'MZ-new-native-fg'
+        self.m.install_target(self.game,payload,{'sha256':'a'*64},'ada',feature_mode='mfg-only',enable_effects=True)
+        self.assertEqual(native.read_bytes(),b'MZ-new-native-fg')
+        self.assertFalse((self.target/'nvngx_dlssnr.dll').exists())
+        self.m.restore_target(self.game)
+        self.assertEqual(native.read_bytes(),b'MZ-original-native-fg')
+
+    def test_frozen_nr_only_disables_mfg_unlock(self):
+        self.game.dlss = self.game.dlssg = True
+        self.m.Y4MY_PROVIDER = {**self.m.Y4MY_PROVIDER, 'id':'dlss-unlocked'}
+        result=self.m.install_target(self.game,self._sm86_payload(),{'sha256':'a'*64},'ada',feature_mode='nr-only',enable_effects=True)
+        text=(self.target/'OptiScaler.ini').read_text()
+        self.assertIn('AdaMfgUnlock=false',text)
+        self.assertIn('Enabled=true',text.split('[DlssNr]')[1])
+        self.assertFalse(result['mfg_provider']['enabled'])
+        self.assertTrue(result['nr_profile']['enabled'])
+
+    def test_lab_copy_never_matches_original_shortcut_by_name(self):
+        shortcuts=self.m.parse_shortcuts_spans(make_shortcuts_fixture(self.game))
+        clone=self.base/'Forge Lab'/'Fixture';clone.mkdir(parents=True)
+        game=self.m.Game('','Fixture',clone,'Folder',exe=clone/'game.exe')
+        self.assertIsNone(self.m.match_shortcut_span(game,shortcuts))
+        self.assertIsNotNone(self.m.match_shortcut_span(self.game,shortcuts))
 
     def _sm86_payload(self):
         return {

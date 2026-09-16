@@ -5,7 +5,14 @@ import transactions as t
 
 class Cancelled(Exception):pass
 
+def canonical(path):
+    path=Path(path).absolute()
+    # Bazzite exposes the host home through /home -> /var/home.
+    if path.is_relative_to('/home'):path=Path('/home').resolve()/path.relative_to('/home')
+    return path
+
 def signature(path):
+    path=canonical(path)
     if any(p.is_symlink() for p in (path,*path.parents)):raise t.Refusal('Linked recovery path: '+str(path))
     if not path.exists():return None
     if path.is_file():return t.digest(path)
@@ -13,12 +20,12 @@ def signature(path):
 
 class Session:
     def __init__(self,root):
-        self.root=Path(root)/('cancel-'+uuid.uuid4().hex);self.root.mkdir(parents=True,mode=0o700)
+        self.root=canonical(root)/('cancel-'+uuid.uuid4().hex);self.root.mkdir(parents=True,mode=0o700)
         self.entries=[];self.status='preparing'
     def save(self):
         t.atomic_file(self.root/'session.json',json.dumps({'status':self.status,'entries':self.entries},indent=2).encode(),0o600)
     def capture(self,paths):
-        paths=sorted(set(Path(p).absolute() for p in paths),key=lambda p:len(p.parts))
+        paths=sorted(set(canonical(p) for p in paths),key=lambda p:len(p.parts))
         roots=[]
         for path in paths:
             if any(path==p or path.is_relative_to(p) for p in roots):continue

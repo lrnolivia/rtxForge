@@ -44,6 +44,10 @@ def emit(*args,**kwargs):
         if _active:sys.stdout.write('\r\033[2K');sys.stdout.flush()
         print(*args,**kwargs,flush=True)
 
+def progress(label):
+    if _reporter.get():_reporter.get()({'kind':'progress','label':clean(label)})
+    else:line('Working',label)
+
 def work(label,action,*args,**kwargs):
     """Animate display only; all file operations remain on the calling thread."""
     global _active
@@ -67,15 +71,15 @@ def work(label,action,*args,**kwargs):
         index=0
         while not stop.wait(0.12):
             index=(index+1)%len(frames);draw(frames[index])
-    worker=None;success=False
+    animation_thread=None;success=False
     if animated:
-        _active=True;draw(frames[0]);worker=threading.Thread(target=animate,daemon=True);worker.start()
+        _active=True;draw(frames[0]);animation_thread=threading.Thread(target=animate,daemon=True);animation_thread.start()
     else:emit('  … '+label)
     try:
         result=action(*args,**kwargs);success=True;return result
     finally:
         stop.set()
-        if worker:worker.join()
+        if animation_thread:animation_thread.join()
         with _display_lock:
             if animated:sys.stdout.write('\r\033[2K')
             _active=False

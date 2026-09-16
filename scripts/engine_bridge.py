@@ -74,7 +74,7 @@ def fingerprint(e,g):
     return result
 
 def desktop_mode(e):
-    """Keep interactive/elevated terminal operations out of desktop workers."""
+    """Keep interactive/elevated terminal operations out of desktop operations."""
     def refuse(*args,**kwargs):
         raise e.Stop('This operation needs terminal interaction; use RTXForge --cli to resolve it.')
     e.ask=e.confirm=refuse
@@ -149,7 +149,7 @@ def execute(review):
     with e.mutation_lock():
         for index,item in enumerate(review['plans'],1):
             if cancel is not None and cancel.is_set():break
-            g=item['game'];ui.work(f'{index}/{len(review["plans"])} · {g.name}',lambda:None)
+            g=item['game'];ui.progress(f'{index}/{len(review["plans"])} · {g.name}')
             try:
                 t.need(fingerprint(e,g)==item['fingerprint'],'Game or baseline changed since preview; prepare again')
                 if session:

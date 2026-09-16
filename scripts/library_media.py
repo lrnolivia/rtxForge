@@ -3,7 +3,7 @@ from pathlib import Path
 import json,urllib.request,urllib.parse,urllib.error,re,time,hashlib,html
 import transactions as t
 from storage import storage
-DEFAULTS={'sharpening_strength':'strong','mfg_multiplier':2,'nr_strength':'strong','runtime_provider':'y4my','enable_effects':True,'nr_runtime':'','dark':True,'library_view':'posters','art_scale':80,'cache_days':7,'network_timeout':10,'default_profile':'mfg-only','online_art':True,'steam_metadata':True,'recognize_previous':False,'extra_folders':[]}
+DEFAULTS={'game_accents':{},'sharpening_strength':'strong','mfg_multiplier':2,'nr_strength':'strong','runtime_provider':'y4my','enable_effects':True,'nr_runtime':'','dark':True,'library_view':'posters','art_scale':80,'cache_days':7,'network_timeout':10,'default_profile':'mfg-only','online_art':True,'steam_metadata':True,'recognize_previous':False,'extra_folders':[]}
 
 def settings_path(config):return storage(config)/'desktop/settings.json'
 def load_settings(config):
@@ -40,13 +40,12 @@ def normalized(text):return re.sub(r'[^a-z0-9]','',text.casefold())
 
 class LibraryMedia:
     def __init__(self,config,settings):
-        self.root=storage(config)/'desktop/media';self.settings=settings
+        self.root=storage(config)/'desktop/media';self.settings=settings;self.config=config;self.shortcut_cache={}
 
     def steam_art(self,row):
         """Match the signed-in Steam user's custom grid, then Steam's own cache."""
         from discovery import steam_roots
         appid=str(row.get('appid') or '')
-        if not appid.isdigit():return {}
         result={}
         for root in steam_roots():
             try:login=(root/'config/loginusers.vdf').read_text()
@@ -56,15 +55,31 @@ class LibraryMedia:
                 stamp=re.search(r'"Timestamp"\s*"(\d+)"',body)
                 accounts.append((int(stamp[1]) if stamp else 0,int(uid)-76561197960265728))
             grid=root/'userdata'/str(max(accounts)[1])/'config/grid' if accounts else None
+            if grid and row.get('source')!='Steam':
+                try:
+                    import engine_bridge
+                    if not hasattr(self,'engine'):self.engine=engine_bridge.module(self.config)
+                    shortcuts=grid.parent/'shortcuts.vdf'
+                    if str(shortcuts) not in self.shortcut_cache:self.shortcut_cache[str(shortcuts)]=self.engine.parse_shortcuts_spans(shortcuts.read_bytes())
+                    game=self.engine.Game('',row['name'],Path(row['game']),row.get('source',''),exe=Path(row['game'])/row['exe'])
+                    match=self.engine.match_shortcut_span(game,self.shortcut_cache[str(shortcuts)])
+                    if match:appid=str(self.engine._shortcut_int(match,'appid') & 0xffffffff)
+                except Exception:pass
+            if not appid.isdigit():continue
             for kind,custom,native in [('poster',appid+'p','library_600x900'),('capsule',appid,'header'),('hero',appid+'_hero','library_hero')]:
                 paths=[]
                 if grid:paths.extend(grid/(custom+ext) for ext in ('.png','.jpg','.jpeg','.webp'))
                 cache=root/'appcache/librarycache'
-                for ext in ('.jpg','.png','.webp'):
-                    paths.extend([cache/appid/(native+ext),cache/(appid+'_'+native+ext)])
+                cached=[]
+                for variant in ([native,'library_header'] if kind=='capsule' else [native]):
+                    for ext in ('.jpg','.png','.webp'):
+                        cached.extend([cache/appid/(variant+ext),cache/(appid+'_'+variant+ext)])
+                        cached.extend((cache/appid).glob('*/'+variant+ext))
+                paths.extend(sorted((p for p in cached if p.is_file()),key=lambda p:p.stat().st_mtime,reverse=True))
                 match=next((p for p in paths if p.is_file()),None)
-                if match:result[kind]=str(match)
-        if result:result.update(art_credit='Your Steam library',hero_credit='Your Steam library')
+                if match:
+                    result[kind]=str(match);prefix={'poster':'art','capsule':'capsule','hero':'hero'}[kind]
+                    result[prefix+'_credit']='Your Steam library';result[prefix+'_link']=''
         return result
 
     def enrich(self,row,refresh=False):

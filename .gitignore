@@ -3,3 +3,18 @@ __pycache__/
 dist/
 bundled-loader/
 engine/imported-rc1.38/
+
+# Local development notes
+/WORKER_CONTEXT.md
+/MASTER_CONTEXT.md
+/NOTES.md
+/DEVELOPMENT_HANDOFF.md
+/RTXFORGE_ASTRA_HANDOFF_2026-09-10.md
+/rtxforgenotes.md
+/update.md
+/docs/ENGINE-HANDOFF-STATUS.md
+/docs/deferred/GRAPHICS_RUNTIME_MANAGER_AGENT_HANDOFF.md
+/docs/deferred/README.md
+/.codex/
+/AGENTS.md
+/.local-development/

@@ -2,7 +2,7 @@
 """Build the Bazzite 44 GNOME-targeted AppImage; does not install OS packages."""
 from pathlib import Path
 import hashlib,json,shutil,subprocess,urllib.request
-root=Path(__file__).resolve().parents[1];dist=root/'dist';version='0.5.8'
+root=Path(__file__).resolve().parents[1];dist=root/'dist';version='0.5.9'
 stage=dist/'AppImage-build';stage.mkdir(exist_ok=True)
 app=stage/'RTXForge.AppDir'
 if app.exists():shutil.rmtree(app)

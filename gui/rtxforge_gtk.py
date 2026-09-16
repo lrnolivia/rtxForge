@@ -29,6 +29,7 @@ def artwork_accent(path):
             f'.game-card.{name}:hover {{ border-color: alpha({color},0.65); }} '
             f'.{name} check:checked, .{name} button.suggested-action {{ background: {color}; color: #101010; }} '
             f'.{name} .game-status {{ border-left: 3px solid {color}; background: alpha({color},0.12); }} '
+            f'.{name} scale highlight {{ background: {color}; }} '
             f'.{name} .game-heading, .{name} .eyebrow {{ color: {color}; }} '
             f'.{name} button:focus-visible {{ outline-color: {color}; }}').encode())
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(),provider,Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION+1)
@@ -50,13 +51,12 @@ class HeroPicture(Gtk.Picture):
         return (0,0,-1,-1) if orientation==Gtk.Orientation.HORIZONTAL else (300,300,-1,-1)
 
 CSS=b'''
+.settings-sidebar row { padding-left: 16px; padding-right: 16px; }
+.control-pod { padding: 10px; border-radius: 12px; background: alpha(@window_fg_color,0.035); border: 1px solid alpha(@window_fg_color,0.06); }
+.control-pod scale { padding: 5px 2px; }
+
 .view-action { padding: 5px 8px; margin: 0; min-width: 20px; }
-.profile-toggle { padding: 10px 22px; font-weight: 800; }
-.profile-nr:checked { background: #aa8be0; color: #17121e; }
-.profile-mfg:checked { background: #76b900; color: #12180a; }
-.cover-badge.state-nr { background: #aa8be0; color: #17121e; }
-.cover-badge.state-mfg { background: #76b900; color: #12180a; }
-.cover-badge.state-unavailable { background: #5b5b62; color: white; }
+.profile-toggle { padding: 7px 12px; font-weight: 600; }
 .status-pill { border-radius: 22px; padding: 9px 16px; margin: 8px; background: @card_bg_color; box-shadow: 0 3px 10px alpha(black,0.25); }
 .title-action { min-width: 26px; min-height: 26px; padding: 8px 12px; margin: 3px; }
 .hero-title { font-size: 29px; font-weight: 800; letter-spacing: -0.8px; }
@@ -74,7 +74,7 @@ CSS=b'''
 .card-info { padding: 10px 12px 12px; }
 .card-title { font-weight: 800; font-size: 13px; }
 .card-meta { font-size: 10px; opacity: 0.7; }
-.cover-badge { background: alpha(#111a10,0.90); color: #b5ef50; padding: 5px 8px; border-radius: 8px; font-size: 10px; font-weight: 700; }
+.cover-badge { background: transparent; color: white; text-shadow: 0 1px 3px black; padding: 5px 8px; border-radius: 8px; font-size: 10px; font-weight: 700; }
 .cover-badge.unavailable { color: #ffb3ad; }
 .selection-bar { padding: 12px 20px; background: alpha(@window_fg_color,0.04); }
 .status-strip { padding: 8px 20px; font-size: 12px; }
@@ -85,10 +85,16 @@ CSS=b'''
 .game-status { padding: 16px; border-radius: 14px; background: alpha(@window_fg_color,0.06); }
 .game-caption { font-size: 11px; opacity: 0.65; }
 .panel-body { padding: 18px 24px; }
-.profile-toggle:checked { background: alpha(@window_fg_color,0.13); color: @window_fg_color; }
+.profile-toggle:checked { background: transparent; color: @accent_color; box-shadow: inset 0 -2px @accent_color; }
 .progress-orb { border-radius: 999px; background: alpha(@window_fg_color,0.06); padding: 18px; }
 .progress-title { font-size: 22px; font-weight: 800; }
 '''
+
+def profile_icon(mode):
+    return {'nr-only':'rtx-brush-symbolic','mfg-only':'rtx-windows-symbolic','nr-mfg':'rtx-sparkle-symbolic'}[mode]
+
+def profile_label(mode,text):
+    box=Gtk.Box(spacing=6);box.append(Gtk.Image.new_from_icon_name(profile_icon(mode)));box.append(label(text));return box
 
 def label(text,css=None):
     w=Gtk.Label(label=str(text),xalign=0,wrap=True)
@@ -146,6 +152,7 @@ class Window(Adw.ApplicationWindow):
         linked=Gtk.Box();linked.add_css_class('linked');controls.append(linked)
         self.mfg=Gtk.ToggleButton(label='MFG Only');self.nr=Gtk.ToggleButton(label='NR + MFG');self.nr.set_group(self.mfg);self.nr_only=Gtk.ToggleButton(label='NR Only');self.nr_only.set_group(self.mfg);self.nr_only.set_sensitive(self.settings.get('runtime_provider','y4my')=='dlss-unlocked')
         for toggle,mode in ((self.nr_only,'nr-only'),(self.mfg,'mfg-only'),(self.nr,'nr-mfg')):
+            toggle.set_child(profile_label(mode,{'nr-only':'NR Only','mfg-only':'MFG Only','nr-mfg':'NR + MFG'}[mode]))
             toggle.add_css_class('profile-nr' if mode=='nr-mfg' else 'profile-mfg');toggle.add_css_class('profile-toggle');toggle.connect('toggled',self.profile_changed,mode);linked.append(toggle)
         ({'nr-mfg':self.nr,'nr-only':self.nr_only}.get(self.settings.get('default_profile'),self.mfg)).set_active(True);self.profile_note=label('Game-native frame generation · NR not installed','dim-label');controls.append(self.profile_note)
         viewbar=Gtk.Box(spacing=10);library_title=label('Your games','heading');library_title.set_hexpand(True);viewbar.append(library_title)
@@ -204,21 +211,21 @@ class Window(Adw.ApplicationWindow):
             self.mode=mode
             if hasattr(self,'profile_note'):self.profile_note.set_text({'nr-only':'Neural Rendering · keep in-game frame generation off','nr-mfg':'NR + MFG · combined pipeline','mfg-only':'Native MFG · Neural Rendering off'}[mode])
     def tuning_controls(self,initial):
-        box=Gtk.Box(spacing=20);widgets={}
+        box=Gtk.Box(spacing=8);widgets={}
         for key,title in [('nr_strength','NR Strength'),('sharpening_strength','Sharpening')]:
-            group=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=3,hexpand=True);box.append(group)
+            group=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=3,hexpand=True);group.add_css_class('control-pod');box.append(group)
             heading=label(title,'heading');group.append(heading)
             slider=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,0,len(self.strength_names)-1,1)
-            slider.set_digits(0);slider.set_draw_value(False);slider.set_round_digits(0);slider.set_hexpand(True);slider.set_size_request(165,-1)
+            slider.set_digits(0);slider.set_draw_value(False);slider.set_round_digits(0);slider.set_hexpand(True);slider.set_size_request(125,-1)
             slider.update_property([Gtk.AccessibleProperty.LABEL],[title])
-            for i,name in enumerate(self.strength_names):slider.add_mark(i,Gtk.PositionType.BOTTOM,name.title())
+            slider.set_tooltip_text('Off · Light · Medium · Strong')
             slider.set_value(self.strength_names.index(initial.get(key) or self.settings.get(key,'strong')))
             group.append(slider);detail=label('','dim-label');group.append(detail)
             def update(w,h=heading,d=detail,k=key,t=title):
                 name=self.strength_names[int(round(w.get_value()))];preset=self.strength_presets[name]
                 h.set_text(t+' · '+name.title());d.set_text('Disabled' if name=='off' else 'Intensity / skin '+preset['nr'] if k=='nr_strength' else 'Level '+preset['sharpness'])
             slider.connect('value-changed',update);update(slider);widgets[key]=slider
-        group=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8);box.append(group);group.append(label('MFG Multiplier','heading'))
+        group=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6);group.add_css_class('control-pod');box.append(group);group.append(label('MFG' ,'heading'))
         multiplier=Gtk.DropDown.new_from_strings(['Off']+[str(x)+'×' for x in range(2,7)])
         multiplier.set_selected(self.multiplier_values.index(initial['mfg_multiplier'] if initial.get('mfg_multiplier') is not None else self.settings.get('mfg_multiplier',2)))
         multiplier.update_property([Gtk.AccessibleProperty.LABEL],['MFG Multiplier'])
@@ -280,6 +287,13 @@ class Window(Adw.ApplicationWindow):
         threading.Thread(target=worker,daemon=False).start()
     def finished(self,result,done,error):
         self.busy=False;self.task_kind='';self.spinner.stop();self.progress.set_fraction(0 if error else 1);self.controls()
+        if getattr(self,'operation_cancel',None) is not None and self.operation_cancel.is_set() and (not getattr(self,'operation_executing',False) or (error and 'operation_session.Cancelled' in error[1])):
+            self.operation_cancel=None
+            if self.dialog:self.dialog.force_close()
+            self.dialog=None;self.job_label=None;self.toast('Cancelled · changes undone')
+            previous=getattr(self,'operation_previous',None)
+            if previous:self.details(previous)
+            return
         if error:
             self.log.append(error[1]);self.status.set_text('Stopped · details available in Activity');self.error(error[0])
         else:self.status.set_text('Ready');done(result)
@@ -295,6 +309,28 @@ class Window(Adw.ApplicationWindow):
         body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16);body.add_css_class('panel-body');scroll.set_child(body)
         foot=Gtk.Box(spacing=10,halign=Gtk.Align.END);margins(foot,16);box.append(foot)
         dialog.present(self);return dialog,body,foot
+    def organize_pages(self,body,sections):
+        children=[];child=body.get_first_child()
+        while child:children.append(child);child=child.get_next_sibling()
+        for child in children:body.remove(child)
+        stack=Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE,hexpand=True,vexpand=True)
+        stack.set_vhomogeneous(False)
+        switcher=Gtk.StackSwitcher(stack=stack,halign=Gtk.Align.CENTER)
+        sidebar=Gtk.StackSidebar(stack=stack,width_request=180)
+        sidebar.add_css_class('settings-sidebar')
+        layout=Gtk.Box(spacing=16);layout.append(sidebar);layout.append(stack)
+        body.append(switcher);body.append(layout)
+        for title,items in sections:
+            page=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12)
+            for item in items:page.append(item)
+            stack.add_titled(page,title,title)
+        def responsive(*_):
+            wide=body.get_width()>=740
+            if sidebar.get_visible()!=wide:sidebar.set_visible(wide);switcher.set_visible(not wide)
+            return True
+        body.add_tick_callback(responsive);responsive()
+        return stack
+
     def error(self,message):
         d,b,f=self.open_panel('Could not finish',height=390);b.append(label(str(message)));f.append(button('Close',lambda *_:d.close()))
     def scan(self):
@@ -314,9 +350,14 @@ class Window(Adw.ApplicationWindow):
         d.connect('response',selected);d.show()
     def show_games(self,games,art=True):
         selected={k for k,v in self.cards.items() if v['check'].get_active()}
+        previous={g['game']:g for g in self.games}
         clear(self.flow);self.games=games;self.cards={}
         view=self.settings.get('library_view','posters');self.flow.set_max_children_per_line(1 if view=='list' else 8);self.flow.set_homogeneous(view!='list')
+        media=library_media.LibraryMedia(self.service.config,{**self.settings,'online_art':False})
         for game in games:
+            for key in ('poster','hero','capsule','art_credit','art_link','hero_credit','hero_link','accent_class'):
+                if key in previous.get(game['game'],{}):game.setdefault(key,previous[game['game']][key])
+            if not self.options.demo:game.update(media.enrich(game))
             game['test_record']=game_notes.load(self.service.config,game['game']) if not self.options.demo else game.get('test_record',{'status':'Untested','notes':''})
             self.make_card(game)
             if game['game'] in selected:self.cards[game['game']]['check'].set_active(True)
@@ -337,6 +378,9 @@ class Window(Adw.ApplicationWindow):
         if view=='list':card.prepend(check);fallback.set_visible(False)
         else:overlay.add_overlay(check)
         badge=label('Unavailable' if game.get('blocked') else game.get('profile','Ready') if game.get('installed') else 'Ready','cover-badge');badge.set_halign(Gtk.Align.START);badge.set_valign(Gtk.Align.END);margins(badge,8)
+        badge_mode={'NR Only':'nr-only','MFG Only':'mfg-only','NR + MFG':'nr-mfg'}.get(game.get('profile'))
+        if badge_mode:
+            badge=profile_label(badge_mode,badge.get_text());badge.add_css_class('cover-badge');badge.set_halign(Gtk.Align.START);badge.set_valign(Gtk.Align.END);margins(badge,8)
         badge.add_css_class('state-unavailable' if game.get('blocked') else 'state-nr' if game.get('profile')=='NR + MFG' else 'state-mfg' if game.get('installed') else 'state-ready')
         if view!='list':overlay.add_overlay(badge)
         text=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=5,hexpand=view=='list',valign=Gtk.Align.CENTER);text.add_css_class('card-info');card.append(text)
@@ -379,15 +423,17 @@ class Window(Adw.ApplicationWindow):
         if hasattr(self,'selected_label'):self.selected_label.set_text(f'{count} selected'+(' · across the whole library' if count else ''))
         if hasattr(self,'install_all'):self.controls()
     def fetch_media(self,refresh=False):
-        self.cancel_art.clear();games=list(self.games);settings=dict(self.settings)
+        if getattr(self,'art_loading',False):return
+        self.art_loading=True;self.cancel_art.clear();games=list(self.games);settings=dict(self.settings)
         def load():
             media=library_media.LibraryMedia(self.service.config,settings)
             for index,game in enumerate(games):
                 if self.cancel_art.is_set():break
-                try:data=ui.work(f'Artwork {index+1}/{len(games)} · '+game['name'],media.enrich,game,refresh)
+                try:data=media.enrich(game,refresh)
                 except Exception:continue
                 GLib.idle_add(self.event,{'kind':'art','game':game['game'],'data':data})
-        self.start('Loading SteamGridDB posters and metadata',load,lambda _:None,'art')
+            self.art_loading=False
+        threading.Thread(target=load,daemon=True).start()
     def details(self,game):
         d,b,f=self.open_panel(game['name'],width=820,height=720);b.remove_css_class('panel-body')
         if game.get('accent_class'):d.add_css_class(game['accent_class'])
@@ -466,15 +512,23 @@ class Window(Adw.ApplicationWindow):
         if game.get('art_credit'):credit.append(label(game['art_credit'],'game-caption'))
         if game.get('art_link'):credit.append(Gtk.LinkButton(uri=game['art_link'],label='Poster'))
         if game.get('hero_link'):credit.append(Gtk.LinkButton(uri=game['hero_link'],label='Hero · '+game.get('hero_credit','Artwork source')))
+        items=[];child=b.get_first_child()
+        while child:items.append(child);child=child.get_next_sibling()
+        a=items.index(tuning_group);n=items.index(testing);c=items.index(credits)
+        pages=self.organize_pages(b,[('Overview',[stage]+items[items.index(apply_game)+1:n]),
+            ('Enhancements',items[a:items.index(apply_game)+1]),('Notes',items[n:c]),('Artwork',[credits])])
+        self.detail_pages=pages
         folder=button('Open folder',lambda *_:Gio.AppInfo.launch_default_for_uri(Path(game['game']).as_uri(),None));f.append(folder)
         if game.get('appid') and game.get('source')=='Steam':
             launch=button('Play',lambda *_:Gio.AppInfo.launch_default_for_uri('steam://rungameid/'+str(game['appid']),None));launch.set_sensitive(not self.options.demo);f.append(launch)
+        maintenance=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,column_spacing=8,row_spacing=8,max_children_per_line=2,min_children_per_line=1,homogeneous=True)
+        pages.get_child_by_name('Enhancements').append(maintenance)
         for title,operation in [('Add / Update Enhancements','install'),('Repair Files','repair'),('Remove Enhancements','uninstall'),('Reset Settings','reset')]:
             action=button(title,lambda _,op=operation:self.launch_action(op,targets=[game]))
             if operation=='install':action.add_css_class('suggested-action')
             if operation=='uninstall':action.add_css_class('bulk-remove')
             action.set_sensitive((operation in ('uninstall','reset') and game.get('installed',False)) or (operation in ('install','repair') and not game.get('blocked') and bool(self.hardware_info and self.hardware_info['ready'])))
-            f.append(action)
+            maintenance.insert(action,-1)
     def record_test(self,game,finish=False):
         def done(record):
             game['test_record']=record;self.details(game)
@@ -501,28 +555,34 @@ class Window(Adw.ApplicationWindow):
         title={'install':'Add Enhancements','repair':'Repair Files','uninstall':'Remove Enhancements','reset':'Reset Settings'}[operation]+(' entire library' if entire else ' selected games')
         if applying_strength:title='Apply Settings to Library'
         elif visual_settings is not None:title='Apply Game Settings'
-        d,b,f=self.open_panel(title);d.set_can_close(False)
-        orb=Gtk.Box(halign=Gtk.Align.CENTER);orb.add_css_class('progress-orb');orb.append(Gtk.Image.new_from_icon_name('applications-games-symbolic'));b.append(orb)
-        self.job_label=label(f'Preparing {len(rows)} games','progress-title');b.append(self.job_label)
-        if operation=='reset':b.append(label('Apply the selected sharpening, NR, MFG and menu-font settings. Current settings are backed up. Each game keeps its installed provider and profile. Close running games first.'))
-        else:b.append(label('Your games and saves stay installed. Only identified OptiScaler components are removed.' if operation=='uninstall' else 'Profile: '+{'nr-mfg':'NR + MFG','nr-only':'NR Only','mfg-only':'MFG Only'}[self.mode]+'. Backups are created before file changes.'))
-        if operation in ('install','repair') and self.mode=='nr-only':b.append(label('Keep frame generation OFF in the game for NR Only.','dim-label'))
-        if operation in ('install','repair') and self.mode=='mfg-only' and self.settings.get('runtime_provider')=='dlss-unlocked':b.append(label('Updates existing NVIDIA runtimes; uninstall restores their original files.','dim-label'))
-        if operation in ('install','repair'):b.append(label('Provider: '+self.settings.get('runtime_provider','y4my')+' · '+('effects enabled at startup' if self.settings.get('enable_effects') else 'effects dormant at startup')+'. Close Steam before applying. Uninstall before switching providers.','dim-label'))
-        spin=Gtk.Spinner(spinning=True,halign=Gtk.Align.CENTER,width_request=34,height_request=34);b.append(spin)
+        self.operation_previous=targets[0] if targets and len(targets)==1 else None
+        self.operation_cancel=threading.Event();self.operation_executing=False
+        d,b,f=self.open_panel(title,width=560,height=300);d.set_can_close(False)
+        self.add_cancel(f)
+        self.job_label=label(f'Checking {len(rows)} games…','heading');b.append(self.job_label)
+        b.append(label('Your current files are backed up before changes.','dim-label'))
         pulse=Gtk.ProgressBar();b.append(pulse)
         def animate():
             if self.dialog!=d or not self.busy:return False
             pulse.pulse();return True
         GLib.timeout_add(160,animate)
-        if entire and operation!='reset':b.append(label('One-click action · installs where possible; unavailable games are reported and skipped.' if operation in ('install','repair') else 'One-click action · removes OptiScaler where an install record is available.','dim-label'))
         if self.options.demo:
             preview={'kind':'batch','operation':operation,'title':title,'plans':[],'rows':[{'name':r['name'],'detail':'2 file changes'} for r in rows[:4]],'blocked':[{'name':'Example protected game','reason':'Another graphics tool is installed.'}]}
             self.action_ready(preview,d,b,f,False);return
         mode=self.mode;adopt=self.settings['recognize_previous'];values=self.tuning_values(self.tuning_widgets) if entire and operation=='reset' else visual_settings
         self.start('Preparing '+title.lower(),lambda:self.service.prepare(rows,mode,operation,adopt,visual_settings=values,save_defaults=entire and operation=='reset'),lambda review:self.action_ready(review,d,b,f,entire))
+    def add_cancel(self,footer):
+        def cancel(w):
+            self.operation_cancel.set();w.set_sensitive(False);w.set_label('Undoing…')
+            if self.job_label:self.job_label.set_text('Finishing the current game safely, then undoing changes…')
+            if not self.busy:
+                self.dialog.force_close();self.dialog=None
+                if self.operation_previous:self.details(self.operation_previous)
+        footer.append(button('Cancel',cancel))
+
     def action_ready(self,review,d,b,f,automatic=False):
         self.review=review;clear(b);clear(f);self.job_label=None;d.set_can_close(True)
+        if getattr(self,'operation_cancel',None) is not None:self.add_cancel(f)
         g=Adw.PreferencesGroup(title=f"Ready · {len(review['rows'])}");b.append(g)
         for item in review['rows']:g.add(row(item['name'],item['detail']))
         if review['blocked']:
@@ -534,10 +594,13 @@ class Window(Adw.ApplicationWindow):
         elif automatic:self.execute(review,d,b,f)
     def execute(self,review,d,b,f):
         if self.options.demo:return
-        clear(f);d.set_can_close(False);self.job_label=label('Applying changes…','progress-title');b.prepend(self.job_label)
+        clear(f);clear(b);d.set_can_close(False);self.job_label=label('Applying changes…','heading');b.prepend(self.job_label)
+        if review.get('kind')=='engine':
+            self.operation_executing=True;review['cancel_event']=self.operation_cancel;self.add_cancel(f)
         indicator=Gtk.Spinner(spinning=True,width_request=32,height_request=32,halign=Gtk.Align.CENTER);b.prepend(indicator)
         self.start('Applying changes',lambda:self.service.execute(review),lambda path:self.completed(path,d,b,f))
     def completed(self,path,d,b,f):
+        self.operation_cancel=None
         self.job_label=None;d.set_can_close(True);clear(b);clear(f)
         if self.review and self.review.get('save_defaults'):self.defaults_applied(self.review['save_defaults'])
         b.append(label('Done.','hero-title'));b.append(label('Your changes are complete. Reset Settings keeps a backup of the previous INI. Remove Enhancements restores the original installation files.'))
@@ -546,9 +609,9 @@ class Window(Adw.ApplicationWindow):
     def show_activity(self,*_):
         d,b,f=self.open_panel('Activity');text=Gtk.TextView(editable=False,monospace=True,wrap_mode=Gtk.WrapMode.WORD_CHAR);text.get_buffer().set_text('\n'.join(self.log) or 'No activity yet.');b.append(text);f.append(button('Close',lambda *_:d.close()))
     def show_settings(self,*_):
-        d,b,f=self.open_panel('Settings')
+        d,b,f=self.open_panel('Settings',width=940,height=640)
         if os.environ.get('APPIMAGE'):
-            b.append(label('Desktop app · 0.5.7','heading'))
+            b.append(label('Desktop app · 0.5.8','heading'))
             b.append(button('Install / update this build',self.install_desktop,'forge-primary'))
             b.append(label('Keep this build in your app menu. Repeating this with a new AppImage updates it; your games and backups stay separate.','dim-label'))
         source_group=Adw.PreferencesGroup(title='Graphics provider',description='Exact versions are pinned. Uninstall before changing providers. Updates arrive with new app builds.');b.append(source_group)
@@ -581,12 +644,12 @@ class Window(Adw.ApplicationWindow):
         metadata=Adw.SwitchRow(title='Game metadata',subtitle='Fetch descriptions, developers, genres and release dates from Steam.',active=self.settings['steam_metadata']);appearance.add(metadata)
         install=Adw.PreferencesGroup(title='Installation');b.append(install)
         adopt=Adw.SwitchRow(title='Recognize previous installs',subtitle='Allow updating an identifiable OptiScaler install from another installer.',active=self.settings['recognize_previous']);install.add(adopt)
-        network=Adw.ExpanderRow(title='Advanced artwork settings',subtitle='Cache lifetime and network timeout')
+        network=Adw.ExpanderRow(title='Artwork downloads',subtitle='Existing artwork is kept until you refresh it')
         cache=Gtk.SpinButton.new_with_range(1,30,1);cache.set_value(self.settings.get('cache_days',7));cache.set_valign(Gtk.Align.CENTER)
-        cache_row=row('Refresh cached metadata after (days)');cache_row.add_suffix(cache);network.add_row(cache_row)
+        cache_row=row('Refresh cached metadata after (days)');cache_row.add_suffix(cache);
         timeout=Gtk.SpinButton.new_with_range(5,30,1);timeout.set_value(self.settings.get('network_timeout',10));timeout.set_valign(Gtk.Align.CENTER)
         timeout_row=row('Request timeout (seconds)');timeout_row.add_suffix(timeout);network.add_row(timeout_row)
-        advanced=Adw.PreferencesGroup(title='Advanced');advanced.add(network);b.append(advanced)
+        advanced=Adw.PreferencesGroup(title='Advanced');advanced.add(network);advanced.add(button('Refresh artwork',lambda *_:self.fetch_media(True)));b.append(advanced)
         host=self.hardware_info or {'reason':'Hardware check not finished'}
         system=Adw.PreferencesGroup(title='System compatibility');b.append(system)
         for title,key in [('Graphics card','gpu'),('Driver','driver'),('Video memory','vram'),('Processor','cpu'),('System','architecture')]:
@@ -600,6 +663,12 @@ class Window(Adw.ApplicationWindow):
         maintenance=Adw.PreferencesGroup(title='Undo and removal tools');b.append(maintenance)
         undo=row('Undo previous changes','Restore a recorded install, uninstall or cleanup.');undo.add_suffix(button('Browse',lambda *_:self.show_undo()));maintenance.add(undo)
         old=row('Remove old NR files','Global DLSS5 cleanup with recovery copies.');old.add_suffix(button('Review',lambda *_:self.show_cleanup()));maintenance.add(old)
+        items=[];child=b.get_first_child()
+        while child:items.append(child);child=child.get_next_sibling()
+        def between(first,last):return items[items.index(first):items.index(last)]
+        self.organize_pages(b,[('Graphics',between(source_group,appearance)+[defaults,install]),
+            ('Library',[appearance,view_group,scale.get_prev_sibling(),scale,advanced]),
+            ('System',items[:items.index(source_group)]+[system]),('Recovery',[maintenance])])
         def save(*_):
             self.settings.update({'runtime_provider':provider_choice['value'],'enable_effects':True,'nr_runtime':nr_path.get_text().strip(),'library_view':view_choice['value'],'art_scale':int(scale.get_value()),'cache_days':cache.get_value_as_int(),'network_timeout':timeout.get_value_as_int(),'default_profile':'nr-mfg' if default_nr.get_active() else self.mode if self.mode!='nr-mfg' else 'mfg-only','dark':dark.get_active(),'online_art':art.get_active(),'steam_metadata':metadata.get_active(),'recognize_previous':adopt.get_active()})
             self.nr_only.set_sensitive(provider_choice['value']=='dlss-unlocked')
@@ -607,7 +676,7 @@ class Window(Adw.ApplicationWindow):
             Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.PREFER_DARK if self.settings['dark'] else Adw.ColorScheme.DEFAULT)
             self.view_buttons[self.settings['library_view']].set_active(True)
             if self.options.demo:d.close();self.show_games(self.games,False);return
-            self.start('Saving settings',lambda:library_media.save_settings(self.service.config,self.settings),lambda _:(d.close(),self.show_games(self.games,False),self.fetch_media(True) if self.settings['online_art'] else None))
+            self.start('Saving settings',lambda:library_media.save_settings(self.service.config,self.settings),lambda _:(d.close(),self.show_games(self.games,False),self.fetch_media()))
         f.append(button('Save settings',save,'forge-primary'))
     def install_desktop(self,*_):
         import desktop_install
@@ -659,7 +728,7 @@ class Window(Adw.ApplicationWindow):
         try:
             # Scroll the details content so the settings controls are visible.
             content=self.dialog.get_child();scroll=content.get_first_child().get_next_sibling()
-            scroll.get_vadjustment().set_value(310)
+            self.detail_pages.set_visible_child_name('Enhancements');scroll.get_vadjustment().set_value(0)
             GLib.timeout_add(300,self.smoke_game_settings)
         except Exception:traceback.print_exc();self.get_application().exit_code=1;self.get_application().quit()
         return False

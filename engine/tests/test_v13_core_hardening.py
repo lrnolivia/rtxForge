@@ -237,6 +237,26 @@ class CoreHardeningTests(unittest.TestCase):
         self.assertIn('Enabled=false',ini.read_text())
         self.assertIn('Intensity=0.1',ini.read_text())
 
+    def test_desktop_cancel_restores_ini_and_baseline(self):
+        sys.path.insert(0,str(SCRIPT.parents[1]/'scripts'))
+        import engine_bridge, threading
+        from operation_session import Cancelled
+        ini=self.target/'OptiScaler.ini';ini.write_text('[Sharpness]\nSharpness=0.1\n')
+        self._baseline(current={'feature_mode':'mfg-only','provider_id':'dlss-unlocked','installed_hashes':{'OptiScaler.ini':self.m.sha256_file(ini)}})
+        before=ini.read_bytes();baseline=self.m.baseline_path(self.target).read_bytes()
+        row={'name':'Fixture','game':str(self.game.root),'exe':str(self.exe.relative_to(self.game.root))}
+        cancel=threading.Event();original=self.m.reset_visual_settings
+        def reset(*a,**kw):
+            result=original(*a,**kw)
+            if not kw.get('dry_run'):cancel.set()
+            return result
+        with patch.object(engine_bridge,'module',return_value=self.m),patch.object(engine_bridge,'game',return_value=self.game),patch.object(self.m,'_running_processes_under_root',return_value=[]):
+            review=engine_bridge.prepare({},[row],'mfg-only','reset',{})
+            review['cancel_event']=cancel
+            with patch.object(self.m,'reset_visual_settings',side_effect=reset),self.assertRaises(Cancelled):engine_bridge.execute(review)
+        self.assertEqual(ini.read_bytes(),before)
+        self.assertEqual(self.m.baseline_path(self.target).read_bytes(),baseline)
+
     def test_nr_strength_install_reset_and_repair_use_selected_preset(self):
         self.game.dlss = True
         self.game.dlssg = True

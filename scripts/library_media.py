@@ -42,18 +42,46 @@ class LibraryMedia:
     def __init__(self,config,settings):
         self.root=storage(config)/'desktop/media';self.settings=settings
 
+    def steam_art(self,row):
+        """Match the signed-in Steam user's custom grid, then Steam's own cache."""
+        from discovery import steam_roots
+        appid=str(row.get('appid') or '')
+        if not appid.isdigit():return {}
+        result={}
+        for root in steam_roots():
+            try:login=(root/'config/loginusers.vdf').read_text()
+            except OSError:login=''
+            accounts=[]
+            for uid,body in re.findall(r'"(7656119\d+)"\s*\{([^}]+)\}',login):
+                stamp=re.search(r'"Timestamp"\s*"(\d+)"',body)
+                accounts.append((int(stamp[1]) if stamp else 0,int(uid)-76561197960265728))
+            grid=root/'userdata'/str(max(accounts)[1])/'config/grid' if accounts else None
+            for kind,custom,native in [('poster',appid+'p','library_600x900'),('capsule',appid,'header'),('hero',appid+'_hero','library_hero')]:
+                paths=[]
+                if grid:paths.extend(grid/(custom+ext) for ext in ('.png','.jpg','.jpeg','.webp'))
+                cache=root/'appcache/librarycache'
+                for ext in ('.jpg','.png','.webp'):
+                    paths.extend([cache/appid/(native+ext),cache/(appid+'_'+native+ext)])
+                match=next((p for p in paths if p.is_file()),None)
+                if match:result[kind]=str(match)
+        if result:result.update(art_credit='Your Steam library',hero_credit='Your Steam library')
+        return result
+
     def enrich(self,row,refresh=False):
         ident=hashlib.sha256((str(row.get('appid') or '')+row['name']).encode()).hexdigest()[:24]
-        record=self.root/(ident+'.json');result={};errors=[]
+        record=self.root/(ident+'.json');result={};errors=[];local=self.steam_art(row)
         timeout=max(5,min(30,int(self.settings.get('network_timeout',10))))
         if record.exists():
             try:
                 saved=json.loads(record.read_text());result=saved['data']
-                if not refresh and saved.get('provider')=='sgdb-public-v3' and time.time()-saved['time']<int(self.settings.get('cache_days',7))*86400 and (self.settings.get('library_view')!='capsules' or result.get('capsule')) and (not result.get('poster') or Path(result['poster']).is_file()):return result
+                if not refresh:return {**result,**local}
             except (OSError,ValueError,KeyError):result={}
         appid=str(row.get('appid') or '')
         if not appid.isdigit():appid=''
-        if not self.settings['online_art']:return result
+        if local.get('poster') or not self.settings['online_art']:
+            result.update(local)
+            if local:t.atomic_file(record,json.dumps({'data':result}).encode(),0o600)
+            return result
         if appid and self.settings['steam_metadata']:
             try:
                 response=json_request('https://store.steampowered.com/api/appdetails?'+urllib.parse.urlencode({'appids':appid,'l':'english','filters':'basic,genres,developers,release_date'})).get(appid,{})
@@ -86,7 +114,7 @@ class LibraryMedia:
                 path=self.root/(ident+'.image');t.atomic_file(path,image,0o600)
                 result.update({'poster':str(path),'art_credit':credit,'art_link':link});break
             except Exception:errors.append('Artwork unavailable')
-        if self.settings.get('library_view')=='capsules':
+        if True:
             wide_url=f'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{appid}/header.jpg' if appid else ''
             try:
                 if result.get('sgdb_game_id'):
@@ -114,6 +142,7 @@ class LibraryMedia:
                 path=self.root/(ident+'.hero');t.atomic_file(path,data,0o600)
                 result.update({'hero':str(path),'hero_credit':credit,'hero_link':link});break
             except Exception:pass
+        result.update(local)
         if errors:result['media_note']='; '.join(dict.fromkeys(errors))
         else:result.pop('media_note',None)
         t.atomic_file(record,json.dumps({'time':time.time(),'provider':'sgdb-public-v3','data':result}).encode(),0o600)

@@ -2,6 +2,7 @@
 from pathlib import Path
 import importlib.util,sys,json,hashlib,zipfile,os
 import transactions as t,packages,ui
+from operation_session import Session,Cancelled
 from storage import storage
 ROOT=Path(__file__).resolve().parents[1]
 def providers():return json.loads((ROOT/'providers/lock.json').read_text())
@@ -143,11 +144,25 @@ def execute(review):
     e=review['engine'];results=[]
     # Never kill Steam behind a GUI action, or wait invisibly for terminal prompts.
     if review['operation']!='reset':t.need(not e.steam_running(),'Close Steam before applying changes so launch settings can be saved safely.')
+    cancel=review.get('cancel_event')
+    session=Session(e.STATE_ROOT/'desktop-operations') if cancel is not None else None
     with e.mutation_lock():
         for index,item in enumerate(review['plans'],1):
-            g=item['game'];ui.line(f'{index}/{len(review["plans"])}',g.name)
+            if cancel is not None and cancel.is_set():break
+            g=item['game'];ui.work(f'{index}/{len(review["plans"])} · {g.name}',lambda:None)
             try:
                 t.need(fingerprint(e,g)==item['fingerprint'],'Game or baseline changed since preview; prepare again')
+                if session:
+                    baseline=e.load_baseline(g.target_dir) or {}
+                    names=set(item['preview'].get('files',[]))|set(item['preview'].get('remove',[]))|set(baseline.get('managed_paths',[]))|set(baseline.get('originals',{}))
+                    if review['operation']=='reset':names={p.name for p in g.target_dir.iterdir() if p.name.lower()=='optiscaler.ini'}
+                    else:names.add('OptiScaler')
+                    paths=[g.target_dir/name for name in names]+[e.state_dir_for(g.target_dir)]
+                    if review['operation']!='reset':
+                        paths.extend([e.STATE_ROOT/'steam-config-backups',e._steam_transaction_root()])
+                        account=e.choose_steam_user_config([g],assume_yes=True)
+                        if account:paths.extend(account[k] for k in ('localconfig','shortcuts') if account.get(k))
+                    checkpoint=session.capture(paths)
                 if review['operation']=='reset':
                     record=e.reset_visual_settings(g,nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'])
                 elif review['operation']=='uninstall':
@@ -160,6 +175,15 @@ def execute(review):
                     t.need(synced and all(r.get('status')=='written' for r in synced),'Files installed, but launch settings need attention: '+str(synced or record['launch_options']))
                 results.append({'name':g.name,'status':'complete','record':record})
             except Exception as ex:results.append({'name':g.name,'status':'failed','error':str(ex)})
+            finally:
+                if session and 'checkpoint' in locals():session.seal(checkpoint);del checkpoint
+        if session:
+            if cancel.is_set():
+                t.need(not any(e._running_processes_under_root(p['game'].root.resolve()) for p in review['plans']),'Close running games before recovery. Copies retained at '+str(session.root))
+                if review['operation']!='reset':t.need(not e.steam_running(),'Close Steam before recovery. Copies retained at '+str(session.root))
+                session.rollback()
+                raise Cancelled('Changes undone.')
+            session.complete()
     path=e.STATE_ROOT/('desktop-'+e.now_stamp()+'.json');e.save_json_atomic(path,{'results':results})
     failures=sum(r['status']=='failed' for r in results)
     if failures:raise t.Refusal(f'{failures} game(s) need attention. Completed games retain backups. Report: {path}')

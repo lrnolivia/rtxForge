@@ -7,8 +7,8 @@
 Download the Bazzite x86_64 AppImage from [Releases](https://github.com/lrnolivia/RTXForge/releases), mark it executable and open it. Choose **Install / update app** in Settings to register it in your launcher. Alternatively:
 
 ```sh
-chmod +x RTXForge-0.5.7-Bazzite-x86_64.AppImage
-./RTXForge-0.5.7-Bazzite-x86_64.AppImage --install
+chmod +x RTXForge-0.5.8-Bazzite-x86_64.AppImage
+./RTXForge-0.5.8-Bazzite-x86_64.AppImage --install
 ```
 
 The persistent copy lives in `~/.local/share/rtxforge/application/RTXForge.AppImage`. Repeat with a newer download to update; the previous AppImage is retained. Updating the application does not redeploy games.
@@ -44,14 +44,14 @@ Poster, capsule and list views, artwork-led game details, provider buttons, sele
 From source, run `./rtxforge` or `./START\ HERE.sh`. In the AppImage, use `--cli`. Both use the RC1.38-derived engine in `engine/rtxengine.py` through the same provider adapter as the GUI.
 
 ```sh
-./RTXForge-0.5.7-Bazzite-x86_64.AppImage --cli --help
+./RTXForge-0.5.8-Bazzite-x86_64.AppImage --cli --help
 ```
 
 Additional settings: `--nr-strength off|light|medium|strong`, `--sharpening-strength off|light|medium|strong`, `--mfg-multiplier 0|2|3|4|5|6` (0 is Off).
 
 Provider flags: `--runtime-provider y4my|dlss-unlocked`, `--feature-mode mfg-only|nr-only|nr-mfg`, `--disable-effects`.
 
-Read [WORKER_CONTEXT.md](WORKER_CONTEXT.md) and [NOTES.md](NOTES.md) before development. [Release notes](docs/RELEASE-0.5.7.md) describe validation and outstanding work. Historical custom MFG builds and their tags are preserved, but are not bundled into this release.
+Read [WORKER_CONTEXT.md](WORKER_CONTEXT.md) and [NOTES.md](NOTES.md) before development. [Release notes](docs/RELEASE-0.5.8.md) describe validation and outstanding work. Historical custom MFG builds and their tags are preserved, but are not bundled into this release.
 
 DLSS-Unlocked offers separate **NR Only** (pinned NR-v0.8.6; keep in-game FG off) and **MFG Only** (NR-v0.9.1, NR off, bundled NVIDIA runtime updates) pipelines. MFG Only backs up existing native DLLs and restores them on uninstall. Uninstall before changing pipelines. Combined NR + MFG remains available for experimentation.
 

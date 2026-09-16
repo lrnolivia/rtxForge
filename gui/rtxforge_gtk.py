@@ -114,7 +114,7 @@ class Window(Adw.ApplicationWindow):
         super().__init__(application=application,title='RTXForge',default_width=1160,default_height=820)
         self.options=options;self.service=DesktopService(options.provider)
         self.settings=dict(library_media.DEFAULTS) if options.demo else library_media.load_settings(self.service.config)
-        self.settings.setdefault('dark',True);self.hardware_info={'ready':True,'gpu':'Preview GPU','reason':'Preview mode'} if options.demo else None;self.games=[];self.cards={};self.mode='mfg-only';self.filter='all'
+        self.settings['enable_effects']=True;self.settings.setdefault('dark',True);self.hardware_info={'ready':True,'gpu':'Preview GPU','reason':'Preview mode'} if options.demo else None;self.games=[];self.cards={};self.mode='mfg-only';self.filter='all'
         self.busy=False;self.task_kind='';self.pending=None;self.cancel_art=threading.Event();self.log=[];self.dialog=None;self.review=None;self.action_buttons=[]
         self.connect('close-request',self.close_request)
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.PREFER_DARK if self.settings['dark'] else Adw.ColorScheme.DEFAULT)
@@ -136,10 +136,10 @@ class Window(Adw.ApplicationWindow):
         self.uninstall_all.set_tooltip_text('One click: remove recorded OptiScaler installs across every library, with backups. Your games remain installed.')
         controls=Gtk.Box(spacing=10,halign=Gtk.Align.CENTER);top.append(controls);controls.append(label('Install profile','dim-label'))
         linked=Gtk.Box();linked.add_css_class('linked');controls.append(linked)
-        self.mfg=Gtk.ToggleButton(label='MFG Only');self.nr=Gtk.ToggleButton(label='NR + MFG');self.nr.set_group(self.mfg)
-        for toggle,mode in ((self.nr,'nr-mfg'),(self.mfg,'mfg-only')):
+        self.mfg=Gtk.ToggleButton(label='MFG Only');self.nr=Gtk.ToggleButton(label='NR + MFG');self.nr.set_group(self.mfg);self.nr_only=Gtk.ToggleButton(label='NR Only');self.nr_only.set_group(self.mfg);self.nr_only.set_sensitive(self.settings.get('runtime_provider','y4my')=='dlss-unlocked')
+        for toggle,mode in ((self.nr_only,'nr-only'),(self.mfg,'mfg-only'),(self.nr,'nr-mfg')):
             toggle.add_css_class('profile-nr' if mode=='nr-mfg' else 'profile-mfg');toggle.add_css_class('profile-toggle');toggle.connect('toggled',self.profile_changed,mode);linked.append(toggle)
-        (self.nr if self.settings.get('default_profile')=='nr-mfg' else self.mfg).set_active(True);self.profile_note=label('Game-native frame generation · NR not installed','dim-label');controls.append(self.profile_note)
+        ({'nr-mfg':self.nr,'nr-only':self.nr_only}.get(self.settings.get('default_profile'),self.mfg)).set_active(True);self.profile_note=label('Game-native frame generation · NR not installed','dim-label');controls.append(self.profile_note)
         viewbar=Gtk.Box(spacing=10);library_title=label('Your games','heading');library_title.set_hexpand(True);viewbar.append(library_title)
         viewbox=Gtk.Box();viewbox.add_css_class('linked');viewbar.append(viewbox);self.view_buttons={};first=None
         for title,key in [('Posters','posters'),('Wide capsules','capsules'),('List','list')]:
@@ -194,7 +194,7 @@ class Window(Adw.ApplicationWindow):
     def profile_changed(self,toggle,mode):
         if toggle.get_active():
             self.mode=mode
-            if hasattr(self,'profile_note'):self.profile_note.set_text('NR + native MFG · startup activation in Settings' if mode=='nr-mfg' else 'Game-native frame generation · NR not installed')
+            if hasattr(self,'profile_note'):self.profile_note.set_text({'nr-only':'Neural Rendering · keep in-game frame generation off','nr-mfg':'NR + MFG · combined pipeline','mfg-only':'Native MFG · Neural Rendering off'}[mode])
     def filter_changed(self,toggle,key):
         if toggle.get_active():self.filter=key;self.filter_games()
     def close_request(self,*_):
@@ -435,7 +435,9 @@ class Window(Adw.ApplicationWindow):
         d,b,f=self.open_panel(title);d.set_can_close(False)
         orb=Gtk.Box(halign=Gtk.Align.CENTER);orb.add_css_class('progress-orb');orb.append(Gtk.Image.new_from_icon_name('applications-games-symbolic'));b.append(orb)
         self.job_label=label(f'Preparing {len(rows)} games','progress-title');b.append(self.job_label)
-        b.append(label('Your games and saves stay installed. Only identified OptiScaler components are removed.' if operation=='uninstall' else f"Profile: {'NR + MFG' if self.mode=='nr-mfg' else 'MFG Only'}. Backups are created before file changes."))
+        b.append(label('Your games and saves stay installed. Only identified OptiScaler components are removed.' if operation=='uninstall' else 'Profile: '+{'nr-mfg':'NR + MFG','nr-only':'NR Only','mfg-only':'MFG Only'}[self.mode]+'. Backups are created before file changes.'))
+        if operation!='uninstall' and self.mode=='nr-only':b.append(label('Keep frame generation OFF in the game for NR Only.','dim-label'))
+        if operation!='uninstall' and self.mode=='mfg-only' and self.settings.get('runtime_provider')=='dlss-unlocked':b.append(label('Updates existing NVIDIA runtimes; uninstall restores their original files.','dim-label'))
         if operation!='uninstall':b.append(label('Provider: '+self.settings.get('runtime_provider','y4my')+' · '+('effects enabled at startup' if self.settings.get('enable_effects') else 'effects dormant at startup')+'. Close Steam before applying. Uninstall before switching providers.','dim-label'))
         spin=Gtk.Spinner(spinning=True,halign=Gtk.Align.CENTER,width_request=34,height_request=34);b.append(spin)
         pulse=Gtk.ProgressBar();b.append(pulse)
@@ -475,7 +477,7 @@ class Window(Adw.ApplicationWindow):
     def show_settings(self,*_):
         d,b,f=self.open_panel('Settings')
         if os.environ.get('APPIMAGE'):
-            b.append(label('Desktop app · 0.5.0','heading'))
+            b.append(label('Desktop app · 0.5.4','heading'))
             b.append(button('Install / update this build',self.install_desktop,'forge-primary'))
             b.append(label('Keep this build in your app menu. Repeating this with a new AppImage updates it; your games and backups stay separate.','dim-label'))
         source_group=Adw.PreferencesGroup(title='Graphics provider',description='Exact versions are pinned. Uninstall before changing providers. Updates arrive with new app builds.');b.append(source_group)
@@ -485,9 +487,9 @@ class Window(Adw.ApplicationWindow):
             if first:toggle.set_group(first)
             else:first=toggle
             toggle.set_active(provider_choice['value']==key);toggle.connect('toggled',lambda w,k=key:provider_choice.update(value=k) if w.get_active() else None);providers.append(toggle)
-        provider_row=row('Installer source','Each provider keeps its own runtime and NR configuration.');provider_row.add_suffix(providers);source_group.add(provider_row)
+        provider_row=row('Installer source','DLSS-Unlocked: separate NR Only and MFG Only pipelines. Uninstall before switching.');provider_row.add_suffix(providers);source_group.add(provider_row)
         for pin in __import__('engine_bridge').providers().values():source_group.add(row(pin['name'],pin['tag']+' · '+pin['commit'][:12]))
-        effects=Adw.SwitchRow(title='Enable effects at startup',subtitle='Off installs a dormant setup for launch diagnosis. On enables Ada MFG and NR when selected.',active=self.settings.get('enable_effects',False));source_group.add(effects)
+        source_group.add(row('Effects start enabled','Your selected pipeline activates on the next game launch. No OptiScaler menu required.'))
         nr_path=Adw.EntryRow(title='Local NR DLL for y4my');nr_path.set_text(self.settings.get('nr_runtime',''));source_group.add(nr_path)
         appearance=Adw.PreferencesGroup(title='Library appearance');b.append(appearance)
         view_group=Gtk.Box(spacing=0);view_group.add_css_class('linked');view_choice={'value':self.settings.get('library_view','posters')};first=None
@@ -502,7 +504,7 @@ class Window(Adw.ApplicationWindow):
         scale=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,70,150,10);scale.set_value(self.settings.get('art_scale',100));scale.set_digits(0);scale.set_draw_value(True)
         b.append(label('Artwork size (%)','heading'));b.append(scale)
         defaults=Adw.PreferencesGroup(title='Default install profile');b.append(defaults)
-        default_nr=Adw.SwitchRow(title='Start with NR + MFG',subtitle='Off uses MFG Only. You can change it in the library.',active=self.settings.get('default_profile')=='nr-mfg');defaults.add(default_nr)
+        default_nr=Adw.SwitchRow(title='Start with NR + MFG',subtitle='Off preserves your library profile choice.',active=self.settings.get('default_profile')=='nr-mfg');defaults.add(default_nr)
         dark=Adw.SwitchRow(title='Prefer dark appearance',active=self.settings['dark']);appearance.add(dark)
         art=Adw.SwitchRow(title='SteamGridDB posters',subtitle='Automatic, keyless artwork with Steam fallback and offline caching.',active=self.settings['online_art']);appearance.add(art)
         metadata=Adw.SwitchRow(title='Game metadata',subtitle='Fetch descriptions, developers, genres and release dates from Steam.',active=self.settings['steam_metadata']);appearance.add(metadata)
@@ -528,7 +530,9 @@ class Window(Adw.ApplicationWindow):
         undo=row('Undo previous changes','Restore a recorded install, uninstall or cleanup.');undo.add_suffix(button('Browse',lambda *_:self.show_undo()));maintenance.add(undo)
         old=row('Remove old NR files','Global DLSS5 cleanup with recovery copies.');old.add_suffix(button('Review',lambda *_:self.show_cleanup()));maintenance.add(old)
         def save(*_):
-            self.settings.update({'runtime_provider':provider_choice['value'],'enable_effects':effects.get_active(),'nr_runtime':nr_path.get_text().strip(),'library_view':view_choice['value'],'art_scale':int(scale.get_value()),'cache_days':cache.get_value_as_int(),'network_timeout':timeout.get_value_as_int(),'default_profile':'nr-mfg' if default_nr.get_active() else 'mfg-only','dark':dark.get_active(),'online_art':art.get_active(),'steam_metadata':metadata.get_active(),'recognize_previous':adopt.get_active()})
+            self.settings.update({'runtime_provider':provider_choice['value'],'enable_effects':True,'nr_runtime':nr_path.get_text().strip(),'library_view':view_choice['value'],'art_scale':int(scale.get_value()),'cache_days':cache.get_value_as_int(),'network_timeout':timeout.get_value_as_int(),'default_profile':'nr-mfg' if default_nr.get_active() else self.mode if self.mode!='nr-mfg' else 'mfg-only','dark':dark.get_active(),'online_art':art.get_active(),'steam_metadata':metadata.get_active(),'recognize_previous':adopt.get_active()})
+            self.nr_only.set_sensitive(provider_choice['value']=='dlss-unlocked')
+            if provider_choice['value']!='dlss-unlocked' and self.mode=='nr-only':self.mfg.set_active(True)
             Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.PREFER_DARK if self.settings['dark'] else Adw.ColorScheme.DEFAULT)
             self.view_buttons[self.settings['library_view']].set_active(True)
             if self.options.demo:d.close();self.show_games(self.games,False);return

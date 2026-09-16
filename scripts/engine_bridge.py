@@ -5,10 +5,11 @@ import transactions as t,packages,ui
 from storage import storage
 ROOT=Path(__file__).resolve().parents[1]
 def providers():return json.loads((ROOT/'providers/lock.json').read_text())
-def module(config,provider='y4my'):
+def module(config,provider='y4my',mode=None):
     name='rtxengine_desktop';spec=importlib.util.spec_from_file_location(name,ROOT/'engine/rtxengine.py')
     e=importlib.util.module_from_spec(spec);sys.modules[name]=e;spec.loader.exec_module(e)
     e.Y4MY_PROVIDER=providers()[provider]
+    e.Y4MY_PROVIDER=e.Y4MY_PROVIDER.get('profile_pins',{}).get(mode,e.Y4MY_PROVIDER)
     # Retain terminal edition's namespace so its original backups remain authoritative.
     e.STATE_ROOT=Path(os.environ.get('RTXFORGE_DLSS_UNLOCKED_STATE',str(Path.home()/'.local/state/rtxforge-dlss-unlocked')))
     e.Y4MY_CACHE_DIR=storage(config)/'packages'/e.Y4MY_PROVIDER['sha256']
@@ -19,7 +20,25 @@ def payload(e,config,mode,archive=None):
     p=e.Y4MY_PROVIDER;cache=storage(config,2*1024**3)/'packages'/p['sha256']
     archive=Path(archive) if archive else packages.download(p['url'],cache/p['archive'],expected=p['sha256'],size=p['release_size'])
     t.need(not archive.is_symlink() and t.digest(archive)==p['sha256'],'Provider archive hash mismatch')
-    if p['id']=='y4my':data,meta=getattr(e,'original_archive_loader',e.load_archive_payload)(archive)
+    if p['id']=='y4my':
+        companion=p.get('runtime_archive')
+        required=e.Y4MY_REQUIRED_FILES
+        try:
+            if companion:e.Y4MY_REQUIRED_FILES=required[:3]
+            data,meta=getattr(e,'original_archive_loader',e.load_archive_payload)(archive)
+        finally:e.Y4MY_REQUIRED_FILES=required
+        if companion:
+            runtime=packages.download(companion['url'],cache/companion['archive'],expected=companion['sha256'],size=companion['release_size'])
+            try:
+                e.Y4MY_PROVIDER={**p,**companion}
+                extra,_=getattr(e,'original_archive_loader',e.load_archive_payload)(runtime)
+            finally:e.Y4MY_PROVIDER=p
+            # Same-provider private NVIDIA runtime; never replace the nightly loader.
+            for name,value in extra.items():
+                if name.startswith('OptiScaler/streamline/') or name in ('OptiScaler/nvngx_dlss.dll','OptiScaler/nvngx_dlssd.dll','OptiScaler/nvngx_dlssg.dll'):
+                    data[name]=value
+            meta['runtime_archive']=companion
+
     else:
         names=packages.entries(archive)
         with zipfile.ZipFile(archive) as z:data={n:z.read(n) for n in names}
@@ -74,10 +93,10 @@ def desktop_mode(e):
     e.subprocess=DesktopProcesses()
 
 def prepare(config,rows,mode,operation,settings):
-    e=module(config,settings.get('runtime_provider','y4my'));data={};meta={};nr=None;nrmeta=None
+    e=module(config,settings.get('runtime_provider','y4my'),mode);data={};meta={};nr=None;nrmeta=None
     if operation!='uninstall':
         data,meta=ui.work('Verifying '+e.Y4MY_PROVIDER['name'],payload,e,config,mode)
-        if mode=='nr-mfg' and 'nvngx_dlssnr.dll' not in data:
+        if mode in ('nr-mfg','nr-only') and 'nvngx_dlssnr.dll' not in data:
             # Local-only for y4my; missing per-game model is a per-target refusal.
             nr,nrmeta=e.load_user_nr_runtime(settings.get('nr_runtime') or None,family=None)
     desktop_mode(e)
@@ -97,14 +116,22 @@ def prepare(config,rows,mode,operation,settings):
                 preview={'files':baseline['managed_paths'],'proxy':(baseline.get('current') or {}).get('proxy',''),'launch_options':'Restore only recorded proxy override; preserve NVIDIA capability flags'}
             else:
                 t.need(not row.get('blocked'),row.get('blocked',''))
+                account=e.choose_steam_user_config([g],assume_yes=True)
+                t.need(account is not None,'No Steam launch settings found; add the game to Steam before desktop installation')
+                if not g.appid:
+                    shortcuts=account['shortcuts']
+                    match=e.match_shortcut_span(g,e.parse_shortcuts_spans(shortcuts.read_bytes())) if shortcuts.is_file() else None
+                    t.need(match is not None,'No unique Steam shortcut targets this game directory. Add this copy as a separate Non-Steam game before desktop installation')
+
                 if baseline:
                     old=(baseline.get('current') or {}).get('provider_id','y4my')
+                    t.need((baseline.get('current') or {}).get('feature_mode',mode)==mode,'Uninstall before changing feature profiles so original runtime files are restored')
                     t.need(old==e.Y4MY_PROVIDER['id'],'Uninstall the current provider before switching providers; its original backups must be restored first')
-                preview=e.install_target(g,data,meta,'ada',nr_runtime_payload=nr,nr_runtime_meta=nrmeta,feature_mode=mode,enable_effects=settings.get('enable_effects',False),dry_run=True)
+                preview=e.install_target(g,data,meta,'ada',nr_runtime_payload=nr,nr_runtime_meta=nrmeta,feature_mode=mode,enable_effects=True,dry_run=True)
             ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g)})
         except (e.Stop,t.Refusal,OSError,ValueError) as ex:blocked.append({'name':row['name'],'reason':str(ex)})
     return {'kind':'engine','operation':operation,'title':operation.title(),'rows':[{'name':p['row']['name'],'detail':f"{e.Y4MY_PROVIDER['name']} · {len(p['preview']['files'])} managed files · "+p['preview']['launch_options']} for p in ready],
-            'blocked':blocked,'plans':ready,'engine':e,'payload':data,'meta':meta,'nr':nr,'nrmeta':nrmeta,'mode':mode,'enable_effects':settings.get('enable_effects',False)}
+            'blocked':blocked,'plans':ready,'engine':e,'payload':data,'meta':meta,'nr':nr,'nrmeta':nrmeta,'mode':mode,'enable_effects':True}
 
 def execute(review):
     e=review['engine'];results=[]

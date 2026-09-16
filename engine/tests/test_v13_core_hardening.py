@@ -867,6 +867,34 @@ class CoreHardeningTests(unittest.TestCase):
         self.m.restore_target(self.game)
         self.assertEqual(model.read_bytes(),original)
 
+    def test_frozen_mfg_updates_native_runtime_and_restores_original(self):
+        self.game.dlss = self.game.dlssg = True
+        self.m.Y4MY_PROVIDER = {**self.m.Y4MY_PROVIDER, 'id':'dlss-unlocked'}
+        native=self.target/'nvngx_dlssg.dll';native.write_bytes(b'MZ-original-native-fg')
+        payload=self._sm86_payload();payload['OptiScaler/streamline/nvngx_dlssg.dll']=b'MZ-new-native-fg'
+        self.m.install_target(self.game,payload,{'sha256':'a'*64},'ada',feature_mode='mfg-only',enable_effects=True)
+        self.assertEqual(native.read_bytes(),b'MZ-new-native-fg')
+        self.assertFalse((self.target/'nvngx_dlssnr.dll').exists())
+        self.m.restore_target(self.game)
+        self.assertEqual(native.read_bytes(),b'MZ-original-native-fg')
+
+    def test_frozen_nr_only_disables_mfg_unlock(self):
+        self.game.dlss = self.game.dlssg = True
+        self.m.Y4MY_PROVIDER = {**self.m.Y4MY_PROVIDER, 'id':'dlss-unlocked'}
+        result=self.m.install_target(self.game,self._sm86_payload(),{'sha256':'a'*64},'ada',feature_mode='nr-only',enable_effects=True)
+        text=(self.target/'OptiScaler.ini').read_text()
+        self.assertIn('AdaMfgUnlock=false',text)
+        self.assertIn('Enabled=true',text.split('[DlssNr]')[1])
+        self.assertFalse(result['mfg_provider']['enabled'])
+        self.assertTrue(result['nr_profile']['enabled'])
+
+    def test_lab_copy_never_matches_original_shortcut_by_name(self):
+        shortcuts=self.m.parse_shortcuts_spans(make_shortcuts_fixture(self.game))
+        clone=self.base/'Forge Lab'/'Fixture';clone.mkdir(parents=True)
+        game=self.m.Game('','Fixture',clone,'Folder',exe=clone/'game.exe')
+        self.assertIsNone(self.m.match_shortcut_span(game,shortcuts))
+        self.assertIsNotNone(self.m.match_shortcut_span(self.game,shortcuts))
+
     def _sm86_payload(self):
         return {
             "dxgi.dll": b"optiscaler-proxy-v1",

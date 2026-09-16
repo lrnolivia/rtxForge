@@ -4061,7 +4061,7 @@ def install_target(
     nr_runtime_payload: Optional[bytes] = None,
     nr_runtime_meta: Optional[dict] = None,
     feature_mode: str = "nr-mfg",
-    enable_effects: bool = False,
+    enable_effects: bool = True,
     dry_run: bool = False,
 ) -> dict:
     require(game.eligible, f"Game is not eligible: {game.name} ({game.reason})")
@@ -4087,6 +4087,9 @@ def install_target(
         )
         verify_baseline_integrity(target, existing_baseline, adopt_legacy=not dry_run)
         _verify_optiscaler_tree_refresh_safe(target, existing_baseline)
+    if existing_baseline and Y4MY_PROVIDER.get("id") == "dlss-unlocked":
+        prior_mode = (existing_baseline.get("current") or {}).get("feature_mode")
+        require(prior_mode in (None, feature_mode), "Uninstall before changing DLSS-Unlocked pipelines")
     reshade = detect_reshade(target)
     # Keep y4my's overlay behavior unchanged by default. Its global overlay
     # blocker also disables Steam Input, so RC1 does not infer a per-game route.
@@ -4187,9 +4190,22 @@ def install_target(
     # bootstrap, or an existing game-local copy. Existing game-local bytes win
     # so refresh never replaces them merely
     # because a global runtime was supplied for other games in the batch.
+    # Frozen DLSS-Unlocked MFG recipe: update only existing native runtime files.
+    # create_baseline below backs up every replacement before the first write.
+    require(feature_mode != "nr-only" or Y4MY_PROVIDER.get("id") == "dlss-unlocked",
+            "NR Only is currently available with DLSS-Unlocked")
+    if Y4MY_PROVIDER.get("id") == "dlss-unlocked" and feature_mode == "mfg-only":
+        require((target / "nvngx_dlssg.dll").is_file(), "MFG runtime deployment requires game-native nvngx_dlssg.dll")
+        for rel, content in list(payload.items()):
+            name = PurePosixPath(rel).name
+            if rel.startswith("OptiScaler/streamline/") and (name.startswith("sl.") or name in {"nvngx_dlss.dll", "nvngx_dlssd.dll", "nvngx_dlssg.dll", "nvngx_deepdvc.dll"}):
+                dest = target / name
+                if dest.exists():
+                    require(dest.is_file() and not dest.is_symlink(), f"Linked/non-file native runtime refused: {name}")
+                    payload[name] = content
     selected_nr_meta = None
-    require(feature_mode in {"nr-mfg", "mfg-only"}, "Unknown feature mode")
-    if feature_mode == "nr-mfg":
+    require(feature_mode in {"nr-mfg", "nr-only", "mfg-only"}, "Unknown feature mode")
+    if feature_mode in {"nr-mfg", "nr-only"}:
         embedded_nr_key = next((k for k in payload if k.casefold() == NR_RUNTIME_NAME.casefold()), None)
         embedded_nr_payload = payload.pop(embedded_nr_key) if embedded_nr_key else None
         selected_nr_payload = nr_runtime_payload
@@ -4250,15 +4266,24 @@ def install_target(
 
     # Preserve the game-native DLSS-G path. Ada unlock is independent of OptiFG.
     text = payload[ini_key].decode("utf-8")
-    text = set_ini_value(text, "DLSSG", "AdaMfgUnlock", "true" if enable_effects and family == "ada" else "false")
-    text = set_ini_value(text, "DLSSG", "AdaBlackwellKernels", "true" if enable_effects and family == "ada" else "auto")
+    text = set_ini_value(text, "DLSSG", "AdaMfgUnlock", "true" if enable_effects and family == "ada" and feature_mode != "nr-only" else "false")
+    text = set_ini_value(text, "DLSSG", "AdaBlackwellKernels", "true" if enable_effects and family == "ada" and feature_mode != "nr-only" else "auto")
     text = set_ini_value(text, "DLSSG", "AmpereMfgUnlock", "false")
-    text = set_ini_value(text, "DlssNr", "Enabled", "true" if enable_effects and feature_mode == "nr-mfg" else "false")
+    text = set_ini_value(text, "DlssNr", "Enabled", "true" if enable_effects and feature_mode in {"nr-mfg", "nr-only"} else "false")
     if Y4MY_PROVIDER.get("id") == "dlss-unlocked":
         for key in ("DualFeature", "DualEnlarger", "PreUpscale"):
             text = remove_ini_key(text, "DlssNr", key)
         text = set_ini_value(text, "DlssNr", "RunBeforeSR", "true")
         text = set_ini_value(text, "DlssNr", "DeferredDLSS", "false")
+    nr_tuning = {"WorkingScale": "0.75", "SkinStructure": "1.00", "Intensity": "1.50"}
+    if feature_mode in {"nr-only", "nr-mfg"}:
+        # Defaults for fresh deployments; retain explicit tuning on repair.
+        old_nr = re.search(r"(?ims)^\[DlssNr\][^\n]*\n(.*?)(?=^\[|\Z)", ini_source.decode("utf-8"))
+        for key, default in nr_tuning.items():
+            match = re.search(r"(?im)^\s*" + key + r"\s*=\s*([^;\r\n]+)", old_nr.group(1)) if existing_baseline and old_nr else None
+            value = match.group(1).strip() if match and match.group(1).strip().lower() != "auto" else default
+            nr_tuning[key] = value
+            text = set_ini_value(text, "DlssNr", key, value)
     payload[ini_key] = text.encode("utf-8")
 
     if mfg_proxy:
@@ -4418,7 +4443,7 @@ def install_target(
                     "shared_proxy": chosen_proxy,
                     "menu_key": "Alt+Insert / Insert",
                     "ownership": "integrated",
-                    "enabled": enable_effects,
+                    "enabled": enable_effects and feature_mode != "nr-only",
                     "activation": "startup" if enable_effects else "dormant",
                 }
                 if family == "ada" else None
@@ -4427,13 +4452,16 @@ def install_target(
             "provider_id": Y4MY_PROVIDER.get("id", "y4my"),
             "feature_mode": feature_mode,
             "nr_profile": {
-                "enabled": enable_effects and feature_mode == "nr-mfg",
+                "enabled": enable_effects and feature_mode in {"nr-mfg", "nr-only"},
                 "activation": "startup" if enable_effects else "dormant",
-                "dual_feature": True,
-                "dual_enlarger": "dlss",
+                "dual_feature": Y4MY_PROVIDER.get("id") != "dlss-unlocked",
+                "dual_enlarger": "dlss" if Y4MY_PROVIDER.get("id") != "dlss-unlocked" else None,
+                "run_before_sr": Y4MY_PROVIDER.get("id") == "dlss-unlocked",
                 "pre_upscale": False,
                 "passes": 1,
-                "working_scale": 1.0,
+                "working_scale": float(nr_tuning["WorkingScale"]),
+                "skin_structure": float(nr_tuning["SkinStructure"]),
+                "intensity": float(nr_tuning["Intensity"]),
                 "menu_key": "Alt+Insert / Insert",
             },
             "compatibility_policy": {
@@ -5233,28 +5261,23 @@ def _shortcut_match_score(game: Game, shortcut: ShortcutObjectSpan) -> int:
     appname = _shortcut_string(shortcut, "AppName")
     exe = _unquote_path(_shortcut_string(shortcut, "exe"))
     startdir = _unquote_path(_shortcut_string(shortcut, "StartDir"))
-    score = 0
-
+    # Names and executable basenames are not installation identity: lab copies,
+    # duplicate libraries and renamed games can share both. Require a path in
+    # the selected game tree before scoring display-name preferences.
+    if not exe or not Path(exe).is_absolute():
+        return 0
+    try:
+        candidate=Path(exe).expanduser().resolve(strict=False)
+        root=game.root.resolve(strict=False)
+        if not candidate.is_relative_to(root):
+            return 0
+    except (OSError,ValueError):
+        return 0
+    score=100
+    if game.exe and candidate == game.exe.resolve(strict=False):
+        score+=160
     if appname.casefold().strip() == game.name.casefold().strip():
-        score += 120
-
-    if game.exe:
-        game_exe = str(game.exe.resolve(strict=False)).replace("\\", "/")
-        if exe:
-            try:
-                shortcut_exe = str(Path(exe).expanduser().resolve(strict=False)).replace("\\", "/")
-            except OSError:
-                shortcut_exe = exe
-            if shortcut_exe.casefold() == game_exe.casefold():
-                score += 160
-            elif Path(exe).name.casefold() == game.exe.name.casefold():
-                score += 60
-
-    root_s = str(game.root.resolve(strict=False)).replace("\\", "/").casefold()
-    if exe and root_s in exe.casefold():
-        score += 40
-    if startdir and root_s in startdir.casefold():
-        score += 30
+        score+=120
     return score
 
 def match_shortcut_span(game: Game, shortcuts: list[ShortcutObjectSpan]) -> Optional[ShortcutObjectSpan]:

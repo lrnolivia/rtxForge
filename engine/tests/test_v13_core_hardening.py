@@ -237,6 +237,86 @@ class CoreHardeningTests(unittest.TestCase):
         self.assertIn('Enabled=false',ini.read_text())
         self.assertIn('Intensity=0.1',ini.read_text())
 
+    def test_nr_strength_install_reset_and_repair_use_selected_preset(self):
+        self.game.dlss = True
+        self.game.dlssg = True
+        meta = {"name": "fixture.7z", "sha256": "4" * 64, "tag": "fixture"}
+        self.m.install_target(self.game,self._sm86_payload(),meta,'ada',nr_strength='medium',sharpening_strength='medium')
+        ini = self.target/'OptiScaler.ini'
+        self.assertIn('Intensity=1.50',ini.read_text())
+        self.assertIn('SkinStructure=1.50',ini.read_text())
+        self.assertIn('Sharpness=0.375',ini.read_text())
+        with patch.object(self.m,'_running_processes_under_root',return_value=[]):
+            for preset, nr, sharp in [('light','1.00','0.25'),('strong','2.00','0.50'),('medium','1.50','0.375')]:
+                record=self.m.reset_visual_settings(self.game,nr_strength=preset,sharpening_strength=preset)
+                self.assertEqual(record['nr_strength'],preset)
+                self.assertIn('Intensity='+nr,ini.read_text())
+                self.assertIn('SkinStructure='+nr,ini.read_text())
+                self.assertIn('Sharpness='+sharp,ini.read_text())
+                self.assertIn('LocalTone=1.00',ini.read_text())
+                self.assertIn('WorkingScale=0.75',ini.read_text())
+        ini.write_text(self.m.set_ini_value(ini.read_text(),'DlssNr','Intensity','1.23'))
+        self.m.install_target(self.game,self._sm86_payload(),meta,'ada',nr_strength='light')
+        self.assertIn('Intensity=1.23',ini.read_text())
+        self.assertIn('Sharpness=0.375',ini.read_text())
+        before=ini.read_bytes()
+        with self.assertRaises(self.m.Stop):self.m.reset_visual_settings(self.game,nr_strength='invalid')
+        self.assertEqual(ini.read_bytes(),before)
+
+    def test_visual_controls_off_and_multiplier_mapping_preserve_native_route(self):
+        self.game.dlss = True
+        self.game.dlssg = True
+        meta={'name':'fixture.7z','sha256':'4'*64,'tag':'fixture'}
+        self.m.install_target(self.game,self._sm86_payload(),meta,'ada')
+        ini=self.target/'OptiScaler.ini'
+        import configparser
+        with patch.object(self.m,'_running_processes_under_root',return_value=[]):
+            self.m.reset_visual_settings(self.game,nr_strength='off',sharpening_strength='off',mfg_multiplier=0)
+            cfg=configparser.ConfigParser();cfg.read(ini)
+            self.assertEqual(cfg['DlssNr']['Enabled'],'false')
+            self.assertEqual(cfg['CAS']['Enabled'],'false')
+            self.assertEqual(cfg['CAS']['MotionSharpnessEnabled'],'false')
+            self.assertEqual(cfg['Sharpness']['Sharpness'],'0.00')
+            self.assertEqual(cfg['DLSSG']['OverrideInterpolationCount'],'0')
+            for multiplier in range(2,7):
+                self.m.reset_visual_settings(self.game,nr_strength='light',sharpening_strength='strong',mfg_multiplier=multiplier)
+                cfg.read(ini)
+                self.assertEqual(cfg['DLSSG']['OverrideInterpolationCount'],str(multiplier-1))
+                self.assertEqual(cfg['DlssNr']['Enabled'],'true')
+                self.assertEqual(cfg['DlssNr']['Intensity'],'1.00')
+                self.assertEqual(cfg['Sharpness']['Sharpness'],'0.50')
+                self.assertEqual(cfg['CAS']['Enabled'],'true')
+                self.assertEqual(cfg['FrameGen']['FGInput'],'nofg')
+                self.assertEqual(cfg['FrameGen']['FGOutput'],'nofg')
+            original=ini.read_bytes()
+            with self.assertRaises(self.m.Stop):self.m.reset_visual_settings(self.game,mfg_multiplier=7)
+            self.assertEqual(ini.read_bytes(),original)
+        self.m.install_target(self.game,self._sm86_payload(),meta,'ada',nr_strength='strong',enable_effects=False)
+        cfg.read(ini);self.assertEqual(cfg['DlssNr']['Enabled'],'false')
+
+    def test_nr_only_does_not_write_mfg_override(self):
+        text='[DlssNr]\nEnabled=true\n[DLSSG]\nOverrideInterpolationCount=auto\n'
+        updated,values=self.m.apply_visual_defaults(text,None,'nr-only','medium',6,'off')
+        self.assertNotIn('DLSSG',values)
+        self.assertIn('OverrideInterpolationCount=auto',updated)
+        self.assertIn('Intensity=1.50',updated)
+        self.assertIn('Sharpness=0.00',updated)
+
+    def test_desktop_only_library_apply_saves_global_defaults(self):
+        sys.path.insert(0,str(SCRIPT.parents[1]/'scripts'))
+        import desktop_service
+        service=desktop_service.DesktopService.__new__(desktop_service.DesktopService);service.config={}
+        values={'nr_strength':'light','sharpening_strength':'medium','mfg_multiplier':6}
+        def preview(*args):return {'kind':'engine','operation':'reset','rows':[]}
+        with patch.object(desktop_service.library_media,'load_settings',return_value={}), \
+             patch.object(desktop_service.engine_bridge,'prepare',side_effect=preview), \
+             patch.object(desktop_service.engine_bridge,'execute',return_value='report'), \
+             patch.object(service,'save_visual_defaults') as save:
+            game_review=service.prepare([],'nr-mfg','reset',visual_settings=values)
+            service.execute(game_review);save.assert_not_called()
+            library_review=service.prepare([],'nr-mfg','reset',visual_settings=values,save_defaults=True)
+            service.execute(library_review);save.assert_called_once_with(values)
+
     def test_next_state_retirement_cleans_safe_stale_trash_first(self):
         trash = self.m._state_trash_root()
         trash.mkdir(parents=True)

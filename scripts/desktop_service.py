@@ -42,10 +42,22 @@ class DesktopService:
                  'library':str(library or root.parent),'installed':installed,'mfg_route':mfg_route,
                  'profile':('NR + MFG' if ini.get('DlssNr',{}).get('Enabled','false').lower()=='true' else 'MFG Only') if installed else 'Not installed'}
             if installed:
+                nr_values=ini.get('DlssNr',{});sharp_values=ini.get('Sharpness',{})
+                def equal_number(raw,expected):
+                    try:return abs(float(raw)-float(expected))<0.00001
+                    except (TypeError,ValueError):return False
+                row['nr_strength']=next((key for key,preset in engine.NR_STRENGTH_PRESETS.items() if key!='off' and equal_number(nr_values.get('Intensity'),preset['nr']) and equal_number(nr_values.get('SkinStructure'),preset['nr'])),None)
+                if nr_values.get('Enabled','').lower()=='false':row['nr_strength']='off'
+                row['sharpening_strength']=next((key for key,preset in engine.NR_STRENGTH_PRESETS.items() if equal_number(sharp_values.get('Sharpness'),preset['sharpness'])),None)
+                try:
+                    count=int(ini.get('DLSSG',{}).get('OverrideInterpolationCount','auto'))
+                    row['mfg_multiplier']=0 if count==0 else count+1 if count in range(1,6) else None
+                except ValueError:row['mfg_multiplier']=None
                 try:
                     baseline=engine.load_baseline(config.parent)
                     current=(baseline or {}).get('current') or {}
                     if current.get('feature_mode'):
+                        row['feature_mode']=current['feature_mode']
                         row['profile']={'nr-mfg':'NR + MFG','nr-only':'NR Only','mfg-only':'MFG Only'}.get(current['feature_mode'],'Unknown')
                         row['runtime_provider']=current.get('provider_id','y4my')
                         row['effects_enabled']=ini.get('DLSSG',{}).get('AdaMfgUnlock','false').lower()=='true'
@@ -70,12 +82,24 @@ class DesktopService:
             if row['game'] not in seen:rows.append(row);seen.add(row['game'])
         return sorted(rows,key=lambda r:r['name'].casefold())
 
-    def prepare(self,rows,mode,operation,adopt=False):
+    def prepare(self,rows,mode,operation,adopt=False,visual_settings=None,save_defaults=False):
         import ui
         if operation in ('install','repair'):
             host=self.hardware()
             if not host['ready']:return {'kind':'batch','operation':operation,'title':operation.title(),'plans':[],'rows':[],'blocked':[{'name':'Hardware check','reason':host['reason']}]}
-        return engine_bridge.prepare(self.config,rows,mode,operation,library_media.load_settings(self.config))
+        settings=library_media.load_settings(self.config)
+        if visual_settings is not None:settings.update(visual_settings)
+        review=engine_bridge.prepare(self.config,rows,mode,operation,settings)
+        if save_defaults and operation=='reset':review['save_defaults']={k:settings[k] for k in ('nr_strength','sharpening_strength','mfg_multiplier')}
+        return review
+
+    def save_visual_defaults(self,values):
+        t.need(values.get('nr_strength') in ('off','light','medium','strong'),'Unknown NR strength')
+        t.need(values.get('sharpening_strength') in ('off','light','medium','strong'),'Unknown sharpening strength')
+        t.need(type(values.get('mfg_multiplier')) is int and values['mfg_multiplier'] in (0,2,3,4,5,6),'Invalid MFG multiplier')
+        settings=library_media.load_settings(self.config)
+        settings.update({key:values[key] for key in ('nr_strength','sharpening_strength','mfg_multiplier')})
+        library_media.save_settings(self.config,settings)
 
     def recoveries(self):
         root=storage(self.config);rows=[]
@@ -108,7 +132,10 @@ class DesktopService:
     def execute(self,review):
         # The desktop must pass the exact in-memory review shown to the user.
         kind=review['kind']
-        if kind=='engine':return engine_bridge.execute(review)
+        if kind=='engine':
+            result=engine_bridge.execute(review)
+            if review.get('save_defaults'):self.save_visual_defaults(review['save_defaults'])
+            return result
         if kind=='batch':return str(app.apply_batch(self.config,review['plans']))
         if kind=='cleanup':return str(cleanup.apply(self.config,review['items']))
         if kind=='restore-cleanup':cleanup.restore(self.config,Path(review['path']),True);return review['path']

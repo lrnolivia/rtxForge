@@ -754,3 +754,12 @@ Implemented config-only Reset Settings on each card/details/selection and Reset 
 User also requests the HQFont menu workaround: upstream documents UseHQFont=false for Vulkan menu crashes. This was already forced by install/repair and present in Avatar and Crimson. Reset now applies false too; no new stability proof and no games launched or changed during development.
 
 After finishing/pushing/installing 0.5.6, design (not yet implement) Light/Medium/Strong NR defaults: current defaults Strong (intensity and skin 2.00), Medium 1.50, Light 1.00, with proportionately lower sharpening. Other NR settings stay fixed. User’s finished-update GNOME installation authorization remains in effect.
+
+## 0.5.7 — local development/delivery
+Lauren explicitly deferred GitHub work after command-line push lacked credentials and the connected GitHub integration refused blob creation (403 Resource not accessible by integration). Local 0.5.6 commit is 9a40928; it was built and installed into the actual GNOME app and hash-verified, not pushed. Do not revisit authentication until requested.
+
+0.5.7 implements global and per-game independent NR Strength / Sharpening (Off, Light, Medium, Strong) plus MFG (Off, 2×–6×). NR intensity/skin 1/1.5/2; sharpening .25/.375/.50. Global changed controls switch Reset All Settings to Apply Settings; successful execution persists defaults. Per-game Apply never changes global preferences. Settings are written to managed OptiScaler.ini with backups; no live game deployment performed by the worker. MFG uses OverrideInterpolationCount=multiplier-1 (Off=0), disables forced dynamic override, and retains native nofg input/output. Runtime support determines actual output. NR Only excludes MFG changes, MFG Only excludes NR changes. Default initial requested MFG is 2×. Existing custom tuning survives Repair.
+
+Lauren requested minimal testing and immediate 0.5.7 delivery. Five focused tests and one successful GTK demo check passed; main screen and game panel screenshots inspected. No game launches or runtime tests. Standing instruction remains to install every finished app update into host GNOME and verify its hash.
+
+0.5.7 packaged AppImage and extracted source verified, installed through packaged desktop installer on the host, installed hash matches artifact. Previous AppImage retained. Delivered locally; GitHub deferred.

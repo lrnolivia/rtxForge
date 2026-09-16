@@ -3,11 +3,16 @@ from pathlib import Path
 import json,urllib.request,urllib.parse,urllib.error,re,time,hashlib,html
 import transactions as t
 from storage import storage
-DEFAULTS={'runtime_provider':'y4my','enable_effects':True,'nr_runtime':'','dark':True,'library_view':'posters','art_scale':80,'cache_days':7,'network_timeout':10,'default_profile':'mfg-only','online_art':True,'steam_metadata':True,'recognize_previous':False,'extra_folders':[]}
+DEFAULTS={'sharpening_strength':'strong','mfg_multiplier':2,'nr_strength':'strong','runtime_provider':'y4my','enable_effects':True,'nr_runtime':'','dark':True,'library_view':'posters','art_scale':80,'cache_days':7,'network_timeout':10,'default_profile':'mfg-only','online_art':True,'steam_metadata':True,'recognize_previous':False,'extra_folders':[]}
 
 def settings_path(config):return storage(config)/'desktop/settings.json'
 def load_settings(config):
-    try:return {**DEFAULTS,**json.loads(settings_path(config).read_text())}
+    try:
+        settings={**DEFAULTS,**json.loads(settings_path(config).read_text())}
+        if settings.get('sharpening_strength') not in ('off','light','medium','strong'):settings['sharpening_strength']='strong'
+        if settings.get('nr_strength') not in ('off','light','medium','strong'):settings['nr_strength']='strong'
+        if type(settings.get('mfg_multiplier')) is not int or settings['mfg_multiplier'] not in (0,2,3,4,5,6):settings['mfg_multiplier']=2
+        return settings
     except (OSError,ValueError,t.Refusal):return {**DEFAULTS,'extra_folders':[]}
 def save_settings(config,settings):
     path=settings_path(config);t.atomic_file(path,json.dumps({k:settings[k] for k in DEFAULTS},indent=2).encode(),0o600)

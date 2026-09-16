@@ -2046,10 +2046,33 @@ VISUAL_DEFAULTS = {
 }
 
 
-def apply_visual_defaults(text: str, saved: str | None, feature_mode: str) -> tuple[str, dict]:
+NR_STRENGTH_PRESETS = {
+    "off": {"nr": "2.00", "sharpness": "0.00"},
+    "light": {"nr": "1.00", "sharpness": "0.25"},
+    "medium": {"nr": "1.50", "sharpness": "0.375"},
+    "strong": {"nr": "2.00", "sharpness": "0.50"},
+}
+
+
+def visual_defaults(nr_strength: str = "strong", mfg_multiplier: int = 2, sharpening_strength: str = "strong") -> dict:
+    require(nr_strength in NR_STRENGTH_PRESETS, "Unknown NR strength")
+    require(type(mfg_multiplier) is int and mfg_multiplier in (0, 2, 3, 4, 5, 6), "MFG multiplier must be Off or 2x through 6x")
+    require(sharpening_strength in NR_STRENGTH_PRESETS, "Unknown sharpening strength")
+    preset = NR_STRENGTH_PRESETS[nr_strength]
+    defaults = {section: dict(values) for section, values in VISUAL_DEFAULTS.items()}
+    defaults["DlssNr"].update(Intensity=preset["nr"], SkinStructure=preset["nr"], Enabled="false" if nr_strength == "off" else "true")
+    defaults["Sharpness"]["Sharpness"] = NR_STRENGTH_PRESETS[sharpening_strength]["sharpness"]
+    if sharpening_strength == "off":defaults["CAS"].update(Enabled="false", MotionSharpnessEnabled="false")
+    defaults["DLSSG"] = {"OverrideInterpolationCount": str(max(0, mfg_multiplier - 1)), "OverrideForceDMFG": "false", "FramerateTargetDMFG": "0"}
+    return defaults
+
+
+def apply_visual_defaults(text: str, saved: str | None, feature_mode: str, nr_strength: str = "strong", mfg_multiplier: int = 2, sharpening_strength: str = "strong") -> tuple[str, dict]:
     """Set fresh defaults; preserve explicit saved tuning during managed repair."""
     selected = {}
-    for section, defaults in VISUAL_DEFAULTS.items():
+    for section, defaults in visual_defaults(nr_strength, mfg_multiplier, sharpening_strength).items():
+        if section == "DLSSG" and feature_mode == "nr-only":
+            continue
         if section == "DlssNr" and feature_mode == "mfg-only":
             continue
         span = _section_span(saved, section) if saved is not None else None
@@ -2064,15 +2087,15 @@ def apply_visual_defaults(text: str, saved: str | None, feature_mode: str) -> tu
     return text, selected
 
 
-def reset_visual_settings(game: Game, *, dry_run: bool = False) -> dict:
+def reset_visual_settings(game: Game, *, dry_run: bool = False, nr_strength: str = "strong", mfg_multiplier: int = 2, sharpening_strength: str = "strong") -> dict:
     """Reset managed visual tuning only; never install payloads or edit Steam."""
     if dry_run:
-        return _reset_visual_settings(game, dry_run=True)
+        return _reset_visual_settings(game, dry_run=True, nr_strength=nr_strength, mfg_multiplier=mfg_multiplier, sharpening_strength=sharpening_strength)
     with mutation_lock():
-        return _reset_visual_settings(game)
+        return _reset_visual_settings(game, nr_strength=nr_strength, mfg_multiplier=mfg_multiplier, sharpening_strength=sharpening_strength)
 
 
-def _reset_visual_settings(game: Game, *, dry_run: bool = False) -> dict:
+def _reset_visual_settings(game: Game, *, dry_run: bool = False, nr_strength: str = "strong", mfg_multiplier: int = 2, sharpening_strength: str = "strong") -> dict:
     target = game.target_dir
     baseline = load_baseline(target, readonly=True)
     require(baseline and baseline.get("status") == "active", "No active managed installation; install enhancements first")
@@ -2086,13 +2109,13 @@ def _reset_visual_settings(game: Game, *, dry_run: bool = False) -> dict:
     require(ini.is_file() and not ini.is_symlink(), "Managed OptiScaler.ini is missing or linked; repair first")
     require(not _running_processes_under_root(game.root), "Close this game before resetting its settings")
     original = ini.read_bytes()
-    text, values = apply_visual_defaults(original.decode("utf-8-sig"), None, mode)
+    text, values = apply_visual_defaults(original.decode("utf-8-sig"), None, mode, nr_strength, mfg_multiplier, sharpening_strength)
     updated = text.encode("utf-8")
     record = {"action": "reset-visual-settings", "name": game.name, "feature_mode": mode,
               "provider_id": current.get("provider_id"), "files": [managed[0]],
-              "launch_options": "Sharpening and NR defaults only; installed profile retained",
+              "launch_options": f"NR {nr_strength.title()} · Sharpening {sharpening_strength.title()}" + (f" · MFG {str(mfg_multiplier) + 'x' if mfg_multiplier else 'Off'} requested" if mode != "nr-only" else " · NR Only retained"),
               "before_sha256": sha256_bytes(original), "after_sha256": sha256_bytes(updated),
-              "defaults": values, "changed": original != updated}
+              "nr_strength": nr_strength, "sharpening_strength": sharpening_strength, "mfg_multiplier": mfg_multiplier if mode != "nr-only" else None, "defaults": values, "changed": original != updated}
     if dry_run or original == updated:
         return record
     backup_dir = _validated_state_dir(target) / "settings-resets" / str(time.time_ns())
@@ -4140,8 +4163,12 @@ def install_target(
     nr_runtime_meta: Optional[dict] = None,
     feature_mode: str = "nr-mfg",
     enable_effects: bool = True,
+    nr_strength: str = "strong",
+    mfg_multiplier: int = 2,
+    sharpening_strength: str = "strong",
     dry_run: bool = False,
 ) -> dict:
+    visual_defaults(nr_strength, mfg_multiplier, sharpening_strength)  # Validate before any mutation.
     require(game.eligible, f"Game is not eligible: {game.name} ({game.reason})")
     require(game.target_dir is not None and game.exe is not None, "Missing game target")
     running = _running_processes_under_root(game.root.resolve())
@@ -4354,9 +4381,10 @@ def install_target(
         text = set_ini_value(text, "DlssNr", "RunBeforeSR", "true")
         text = set_ini_value(text, "DlssNr", "DeferredDLSS", "false")
     text, visual_tuning = apply_visual_defaults(
-        text, ini_source.decode("utf-8-sig") if existing_baseline else None, feature_mode,
+        text, ini_source.decode("utf-8-sig") if existing_baseline else None, feature_mode, nr_strength, mfg_multiplier, sharpening_strength,
     )
-    nr_tuning = visual_tuning.get("DlssNr", VISUAL_DEFAULTS["DlssNr"])
+    if not enable_effects:text = set_ini_value(text, "DlssNr", "Enabled", "false")
+    nr_tuning = visual_tuning.get("DlssNr", visual_defaults(nr_strength)["DlssNr"])
     payload[ini_key] = text.encode("utf-8")
 
     if mfg_proxy:
@@ -4525,7 +4553,7 @@ def install_target(
             "provider_id": Y4MY_PROVIDER.get("id", "y4my"),
             "feature_mode": feature_mode,
             "nr_profile": {
-                "enabled": enable_effects and feature_mode in {"nr-mfg", "nr-only"},
+                "enabled": enable_effects and feature_mode in {"nr-mfg", "nr-only"} and nr_tuning.get("Enabled") == "true",
                 "activation": "startup" if enable_effects else "dormant",
                 "dual_feature": Y4MY_PROVIDER.get("id") != "dlss-unlocked",
                 "dual_enlarger": "dlss" if Y4MY_PROVIDER.get("id") != "dlss-unlocked" else None,

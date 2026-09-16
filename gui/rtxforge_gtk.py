@@ -114,6 +114,8 @@ class Window(Adw.ApplicationWindow):
         super().__init__(application=application,title='RTXForge',default_width=1160,default_height=820)
         self.options=options;self.service=DesktopService(options.provider)
         self.settings=dict(library_media.DEFAULTS) if options.demo else library_media.load_settings(self.service.config)
+        self.strength_presets=__import__('engine_bridge').module(self.service.config).NR_STRENGTH_PRESETS
+        self.strength_names=tuple(self.strength_presets);self.multiplier_values=(0,2,3,4,5,6)
         self.settings['enable_effects']=True;self.settings.setdefault('dark',True);self.hardware_info={'ready':True,'gpu':'Preview GPU','reason':'Preview mode'} if options.demo else None;self.games=[];self.cards={};self.mode='mfg-only';self.filter='all'
         self.busy=False;self.task_kind='';self.pending=None;self.cancel_art=threading.Event();self.log=[];self.dialog=None;self.review=None;self.action_buttons=[]
         self.connect('close-request',self.close_request)
@@ -129,10 +131,14 @@ class Window(Adw.ApplicationWindow):
         title.append(label('GEFORCE / BUILT FOR LINUX','eyebrow'));title.append(label('Forge your entire library.','hero-title'))
         self.stats=label('Finding your games…','dim-label');title.append(self.stats)
         self.hardware_label=label('Preview mode · no game writes' if options.demo else 'Checking system hardware…','card-meta');title.append(self.hardware_label)
+        tuning,self.tuning_widgets=self.tuning_controls(self.settings)
+        title.append(tuning);self.strength_slider=self.tuning_widgets['nr_strength']
         bulk=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8,valign=Gtk.Align.CENTER);hero.append(bulk)
         self.install_all=button('Add Enhancements to All',lambda *_:self.launch_action('install',True),'forge-primary');bulk.append(self.install_all)
         self.uninstall_all=button('Remove Enhancements from All',lambda *_:self.launch_action('uninstall',True),'bulk-remove');bulk.append(self.uninstall_all)
-        self.reset_all=button('Reset All Settings',lambda *_:self.launch_action('reset',True));bulk.append(self.reset_all)
+        self.reset_all=button('Reset All Settings',self.apply_library_settings);bulk.append(self.reset_all)
+        for key,widget in self.tuning_widgets.items():widget.connect('notify::selected' if key=='mfg_multiplier' else 'value-changed',self.strength_changed)
+        self.strength_changed()
         self.reset_all.set_tooltip_text('Restore current sharpening, NR and menu-font defaults for managed games. Each configuration is backed up. Close running games first.')
         self.install_all.set_tooltip_text('One click: prepare, back up and install wherever possible across every library. Incompatible games are skipped.')
         self.uninstall_all.set_tooltip_text('One click: remove recorded OptiScaler installs across every library, with backups. Your games remain installed.')
@@ -197,6 +203,41 @@ class Window(Adw.ApplicationWindow):
         if toggle.get_active():
             self.mode=mode
             if hasattr(self,'profile_note'):self.profile_note.set_text({'nr-only':'Neural Rendering · keep in-game frame generation off','nr-mfg':'NR + MFG · combined pipeline','mfg-only':'Native MFG · Neural Rendering off'}[mode])
+    def tuning_controls(self,initial):
+        box=Gtk.Box(spacing=20);widgets={}
+        for key,title in [('nr_strength','NR Strength'),('sharpening_strength','Sharpening')]:
+            group=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=3,hexpand=True);box.append(group)
+            heading=label(title,'heading');group.append(heading)
+            slider=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,0,len(self.strength_names)-1,1)
+            slider.set_digits(0);slider.set_draw_value(False);slider.set_round_digits(0);slider.set_hexpand(True);slider.set_size_request(165,-1)
+            slider.update_property([Gtk.AccessibleProperty.LABEL],[title])
+            for i,name in enumerate(self.strength_names):slider.add_mark(i,Gtk.PositionType.BOTTOM,name.title())
+            slider.set_value(self.strength_names.index(initial.get(key) or self.settings.get(key,'strong')))
+            group.append(slider);detail=label('','dim-label');group.append(detail)
+            def update(w,h=heading,d=detail,k=key,t=title):
+                name=self.strength_names[int(round(w.get_value()))];preset=self.strength_presets[name]
+                h.set_text(t+' · '+name.title());d.set_text('Disabled' if name=='off' else 'Intensity / skin '+preset['nr'] if k=='nr_strength' else 'Level '+preset['sharpness'])
+            slider.connect('value-changed',update);update(slider);widgets[key]=slider
+        group=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8);box.append(group);group.append(label('MFG Multiplier','heading'))
+        multiplier=Gtk.DropDown.new_from_strings(['Off']+[str(x)+'×' for x in range(2,7)])
+        multiplier.set_selected(self.multiplier_values.index(initial['mfg_multiplier'] if initial.get('mfg_multiplier') is not None else self.settings.get('mfg_multiplier',2)))
+        multiplier.update_property([Gtk.AccessibleProperty.LABEL],['MFG Multiplier'])
+        group.append(multiplier);group.append(label('Requested ratio','dim-label'));widgets['mfg_multiplier']=multiplier
+        return box,widgets
+    def tuning_values(self,widgets):
+        return {key:self.multiplier_values[int(w.get_selected())] if key=='mfg_multiplier' else self.strength_names[int(round(w.get_value()))] for key,w in widgets.items()}
+    def chosen_strength(self):return self.tuning_values(self.tuning_widgets)['nr_strength']
+    def defaults_changed(self):return any(self.settings.get(k)!=v for k,v in self.tuning_values(self.tuning_widgets).items())
+    def strength_changed(self,*_):
+        self.reset_all.set_label('Apply Settings' if self.defaults_changed() else 'Reset All Settings')
+        if hasattr(self,'mfg'):self.controls()
+    def defaults_applied(self,values):
+        self.settings.update(values);self.strength_changed()
+    def apply_library_settings(self,*_):
+        if self.games and any(g.get('installed') for g in self.games):self.launch_action('reset',True);return
+        values=self.tuning_values(self.tuning_widgets)
+        if self.options.demo:self.defaults_applied(values);return
+        self.start('Saving defaults',lambda:self.service.save_visual_defaults(values),lambda _:(self.defaults_applied(values),self.toast('Defaults saved for new installs.')))
     def filter_changed(self,toggle,key):
         if toggle.get_active():self.filter=key;self.filter_games()
     def close_request(self,*_):
@@ -210,7 +251,8 @@ class Window(Adw.ApplicationWindow):
         enabled=not self.busy or self.task_kind=='art'
         compatible=bool(self.hardware_info and self.hardware_info['ready'])
         self.install_all.set_sensitive(enabled and bool(self.games) and compatible);self.uninstall_all.set_sensitive(enabled and bool(self.games))
-        self.reset_all.set_sensitive(enabled and any(g.get('installed') for g in self.games))
+        self.reset_all.set_sensitive(enabled and (any(g.get('installed') for g in self.games) or self.defaults_changed()))
+        for widget in self.tuning_widgets.values():widget.set_sensitive(enabled)
         for entry in self.cards.values():entry['reset'].set_sensitive(enabled and entry['data'].get('installed',False))
         for i,b in enumerate(self.action_buttons):b.set_sensitive(enabled and (compatible or i in (2,3)) and any(v['check'].get_active() for v in self.cards.values()))
         for b in (self.refresh,self.add,self.mfg,self.nr,*self.view_buttons.values()):b.set_sensitive(enabled)
@@ -375,6 +417,22 @@ class Window(Adw.ApplicationWindow):
         status=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=5);status.add_css_class('game-status');summary.append(status)
         status.append(label(game.get('profile','Installed') if game.get('installed') else 'Ready to enhance' if not game.get('blocked') else 'Installation unavailable','heading'))
         status.append(label(game.get('blocked') or 'Installed files detected · use Repair Files to verify' if game.get('installed') else game.get('blocked') or 'Install checks run before changes are made.','dim-label'))
+        tuning_group=Adw.PreferencesGroup(title='Game settings',description='Apply only to this game. Close the game first; changes take effect on its next launch.');margins(tuning_group,20);b.append(tuning_group)
+        saved_nr=(game.get('nr_strength') or 'custom').title();saved_sharp=(game.get('sharpening_strength') or 'custom').title()
+        saved_mfg='Off' if game.get('mfg_multiplier')==0 else str(game['mfg_multiplier'])+'×' if game.get('mfg_multiplier') else 'Game-controlled'
+        tuning_group.add(row('Saved in INI','NR '+saved_nr+' · Sharpening '+saved_sharp+' · MFG '+saved_mfg))
+        tuning_box,tuning_widgets=self.tuning_controls(game);margins(tuning_box,20);b.append(tuning_box)
+        mode=game.get('feature_mode') or {'NR Only':'nr-only','MFG Only':'mfg-only'}.get(game.get('profile'),'nr-mfg')
+        installed=game.get('installed',False)
+        for key,widget in tuning_widgets.items():widget.set_sensitive(installed and not (key=='nr_strength' and mode=='mfg-only') and not (key=='mfg_multiplier' and mode=='nr-only'))
+        hint=label('MFG requires frame generation enabled in the game. The runtime determines the supported ratio.','dim-label');margins(hint,20);b.append(hint)
+        apply_game=button('Apply Settings',lambda *_:self.launch_action('reset',targets=[game],visual_settings=self.tuning_values(tuning_widgets)),'suggested-action');apply_game.set_halign(Gtk.Align.START);margins(apply_game,20);b.append(apply_game)
+        def game_tuning_changed(*_):
+            values=self.tuning_values(tuning_widgets)
+            changed=any(values[k]!=game.get(k) for k,w in tuning_widgets.items() if w.get_sensitive())
+            apply_game.set_sensitive(installed and changed)
+        for key,widget in tuning_widgets.items():widget.connect('notify::selected' if key=='mfg_multiplier' else 'value-changed',game_tuning_changed)
+        game_tuning_changed();self.detail_tuning_widgets=tuning_widgets;self.detail_apply_settings=apply_game
         if game.get('description'):
             description=label(game['description']);margins(description,20);b.append(description)
         info=Adw.PreferencesGroup();margins(info,20);b.append(info)
@@ -433,17 +491,20 @@ class Window(Adw.ApplicationWindow):
             record=game.get('test_record',{});item=row(game['name'],record.get('status','Untested')+(' · test in progress' if record.get('active') else ''))
             item.add_suffix(button('Open',lambda _,g=game:self.details(g)));b.append(item)
         export=button('Export support ZIP',lambda *_:self.start('Exporting report',lambda:game_notes.export(self.service.config,self.games),lambda p:(self.toast('Saved '+str(p)),Gio.AppInfo.launch_default_for_uri(p.parent.as_uri(),None))),'forge-primary');export.set_sensitive(not self.options.demo);f.append(export)
-    def launch_action(self,operation,entire=False,targets=None):
+    def launch_action(self,operation,entire=False,targets=None,visual_settings=None):
         if self.busy and self.task_kind!='art':return
         rows=targets if targets is not None else list(self.games) if entire else [e['data'] for e in self.cards.values() if e['check'].get_active()]
         if entire and operation in ('install','repair'):rows=[g for g in rows if g.get('test_record',{}).get('status')!='Bench']
         if operation=='reset':rows=[g for g in rows if g.get('installed')]
         if not rows:self.toast('No eligible games selected.');return
+        applying_strength=operation=='reset' and entire and self.defaults_changed()
         title={'install':'Add Enhancements','repair':'Repair Files','uninstall':'Remove Enhancements','reset':'Reset Settings'}[operation]+(' entire library' if entire else ' selected games')
+        if applying_strength:title='Apply Settings to Library'
+        elif visual_settings is not None:title='Apply Game Settings'
         d,b,f=self.open_panel(title);d.set_can_close(False)
         orb=Gtk.Box(halign=Gtk.Align.CENTER);orb.add_css_class('progress-orb');orb.append(Gtk.Image.new_from_icon_name('applications-games-symbolic'));b.append(orb)
         self.job_label=label(f'Preparing {len(rows)} games','progress-title');b.append(self.job_label)
-        if operation=='reset':b.append(label('Restore this app’s current sharpening, NR and menu-font defaults. Current settings are backed up. Each game keeps its installed provider and profile. Close running games first.'))
+        if operation=='reset':b.append(label('Apply the selected sharpening, NR, MFG and menu-font settings. Current settings are backed up. Each game keeps its installed provider and profile. Close running games first.'))
         else:b.append(label('Your games and saves stay installed. Only identified OptiScaler components are removed.' if operation=='uninstall' else 'Profile: '+{'nr-mfg':'NR + MFG','nr-only':'NR Only','mfg-only':'MFG Only'}[self.mode]+'. Backups are created before file changes.'))
         if operation in ('install','repair') and self.mode=='nr-only':b.append(label('Keep frame generation OFF in the game for NR Only.','dim-label'))
         if operation in ('install','repair') and self.mode=='mfg-only' and self.settings.get('runtime_provider')=='dlss-unlocked':b.append(label('Updates existing NVIDIA runtimes; uninstall restores their original files.','dim-label'))
@@ -458,8 +519,8 @@ class Window(Adw.ApplicationWindow):
         if self.options.demo:
             preview={'kind':'batch','operation':operation,'title':title,'plans':[],'rows':[{'name':r['name'],'detail':'2 file changes'} for r in rows[:4]],'blocked':[{'name':'Example protected game','reason':'Another graphics tool is installed.'}]}
             self.action_ready(preview,d,b,f,False);return
-        mode=self.mode;adopt=self.settings['recognize_previous']
-        self.start('Preparing '+title.lower(),lambda:self.service.prepare(rows,mode,operation,adopt),lambda review:self.action_ready(review,d,b,f,entire))
+        mode=self.mode;adopt=self.settings['recognize_previous'];values=self.tuning_values(self.tuning_widgets) if entire and operation=='reset' else visual_settings
+        self.start('Preparing '+title.lower(),lambda:self.service.prepare(rows,mode,operation,adopt,visual_settings=values,save_defaults=entire and operation=='reset'),lambda review:self.action_ready(review,d,b,f,entire))
     def action_ready(self,review,d,b,f,automatic=False):
         self.review=review;clear(b);clear(f);self.job_label=None;d.set_can_close(True)
         g=Adw.PreferencesGroup(title=f"Ready · {len(review['rows'])}");b.append(g)
@@ -468,7 +529,7 @@ class Window(Adw.ApplicationWindow):
             skipped=Adw.PreferencesGroup(title=f"Skipped · {len(review['blocked'])}");b.append(skipped)
             for item in review['blocked']:skipped.add(row(item['name'],item['reason']))
         if not review['rows']:b.append(label('No file changes can be applied.'));f.append(button('Close',lambda *_:d.close()));return
-        apply=button('Reset Settings' if review.get('operation')=='reset' else 'Remove Enhancements' if review.get('operation')=='uninstall' else 'Apply to Ready Games',lambda *_:self.execute(review,d,b,f),'forge-primary');apply.set_sensitive(not self.options.demo);f.append(apply)
+        apply=button('Apply Settings' if review.get('operation')=='reset' else 'Remove Enhancements' if review.get('operation')=='uninstall' else 'Apply to Ready Games',lambda *_:self.execute(review,d,b,f),'forge-primary');apply.set_sensitive(not self.options.demo);f.append(apply)
         if self.options.demo:b.append(label('Preview mode · all file changes are disabled.','dim-label'))
         elif automatic:self.execute(review,d,b,f)
     def execute(self,review,d,b,f):
@@ -478,6 +539,7 @@ class Window(Adw.ApplicationWindow):
         self.start('Applying changes',lambda:self.service.execute(review),lambda path:self.completed(path,d,b,f))
     def completed(self,path,d,b,f):
         self.job_label=None;d.set_can_close(True);clear(b);clear(f)
+        if self.review and self.review.get('save_defaults'):self.defaults_applied(self.review['save_defaults'])
         b.append(label('Done.','hero-title'));b.append(label('Your changes are complete. Reset Settings keeps a backup of the previous INI. Remove Enhancements restores the original installation files.'))
         record=label(str(path),'dim-label');record.set_selectable(True);b.append(record)
         f.append(button('Back to library',lambda *_:(d.close(),self.scan()),'forge-primary'))
@@ -486,7 +548,7 @@ class Window(Adw.ApplicationWindow):
     def show_settings(self,*_):
         d,b,f=self.open_panel('Settings')
         if os.environ.get('APPIMAGE'):
-            b.append(label('Desktop app · 0.5.6','heading'))
+            b.append(label('Desktop app · 0.5.7','heading'))
             b.append(button('Install / update this build',self.install_desktop,'forge-primary'))
             b.append(label('Keep this build in your app menu. Repeating this with a new AppImage updates it; your games and backups stay separate.','dim-label'))
         source_group=Adw.PreferencesGroup(title='Graphics provider',description='Exact versions are pinned. Uninstall before changing providers. Updates arrive with new app builds.');b.append(source_group)
@@ -567,16 +629,46 @@ class Window(Adw.ApplicationWindow):
         paint=Gtk.WidgetPaintable.new(self);snapshot=Gtk.Snapshot();paint.snapshot(snapshot,self.get_width(),self.get_height());node=snapshot.to_node();rect=Graphene.Rect();rect.init(0,0,self.get_width(),self.get_height());texture=self.get_renderer().render_texture(node,rect);texture.save_to_png(str(ROOT/'dist'/name))
     def smoke_library(self):
         try:
-            self.capture('gnome-library.png');self.search.set_text('Cyberpunk');self.select_all(True);assert all(e['check'].get_active() for e in self.cards.values())
-            self.nr.set_active(True);assert self.mode=='nr-mfg';self.launch_action('uninstall',True);GLib.timeout_add(700,self.smoke_action)
+            assert self.reset_all.get_label()=='Reset All Settings'
+            for key,widget in self.tuning_widgets.items():
+                original=widget.get_selected() if key=='mfg_multiplier' else widget.get_value()
+                if key=='mfg_multiplier':widget.set_selected(0)
+                else:widget.set_value(0)
+                assert self.reset_all.get_label()=='Apply Settings'
+                if key=='mfg_multiplier':widget.set_selected(original)
+                else:widget.set_value(original)
+                assert self.reset_all.get_label()=='Reset All Settings'
+            GLib.timeout_add(250,self.smoke_library_ready)
+        except Exception:traceback.print_exc();self.get_application().exit_code=1;self.get_application().quit()
+        return False
+    def smoke_library_ready(self):
+        try:
+            self.capture('gnome-library.png')
+            self.search.set_text('Cyberpunk');self.select_all(True);assert all(e['check'].get_active() for e in self.cards.values())
+            self.nr.set_active(True);assert self.mode=='nr-mfg'
+            game={**self.games[0],'feature_mode':'nr-mfg','profile':'NR + MFG','nr_strength':'strong','sharpening_strength':'strong','mfg_multiplier':2}
+            self.details(game)
+            assert not self.detail_apply_settings.get_sensitive()
+            self.detail_tuning_widgets['sharpening_strength'].set_value(0)
+            assert self.detail_apply_settings.get_sensitive()
+            assert self.tuning_values(self.tuning_widgets)['sharpening_strength']=='strong'
+            GLib.timeout_add(700,self.smoke_action)
         except Exception:traceback.print_exc();self.get_application().exit_code=1;self.get_application().quit()
         return False
     def smoke_action(self):
-        try:self.capture('gnome-review.png');self.show_settings();GLib.timeout_add(700,self.smoke_settings)
+        try:
+            # Scroll the details content so the settings controls are visible.
+            content=self.dialog.get_child();scroll=content.get_first_child().get_next_sibling()
+            scroll.get_vadjustment().set_value(310)
+            GLib.timeout_add(300,self.smoke_game_settings)
+        except Exception:traceback.print_exc();self.get_application().exit_code=1;self.get_application().quit()
+        return False
+    def smoke_game_settings(self):
+        try:self.capture('gnome-game-settings.png');self.show_settings();GLib.timeout_add(700,self.smoke_settings)
         except Exception:traceback.print_exc();self.get_application().exit_code=1;self.get_application().quit()
         return False
     def smoke_settings(self):
-        try:self.capture('gnome-settings.png');print('PASS: unified cards, Select all across search, profile toggles, floating uninstall and settings; demo writes disabled',flush=True)
+        try:self.capture('gnome-settings.png');print('PASS: global dirty labels, independent per-game controls, selection and Settings; demo writes disabled',flush=True)
         except Exception:traceback.print_exc();self.get_application().exit_code=1
         self.get_application().quit();return False
 

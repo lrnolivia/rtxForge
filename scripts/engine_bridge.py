@@ -99,6 +99,10 @@ def prepare(config,rows,mode,operation,settings):
         if mode in ('nr-mfg','nr-only') and 'nvngx_dlssnr.dll' not in data:
             # Local-only for y4my; missing per-game model is a per-target refusal.
             nr,nrmeta=e.load_user_nr_runtime(settings.get('nr_runtime') or None,family=None)
+    strength=settings.get('nr_strength','strong');multiplier=settings.get('mfg_multiplier',2);sharpening=settings.get('sharpening_strength','strong')
+    t.need(sharpening in e.NR_STRENGTH_PRESETS,'Unknown sharpening strength')
+    t.need(type(multiplier) is int and multiplier in (0,2,3,4,5,6),'MFG multiplier must be Off or 2x through 6x')
+    t.need(strength in e.NR_STRENGTH_PRESETS,'Unknown NR strength; choose Light, Medium or Strong in Settings')
     desktop_mode(e)
     ready=[];blocked=[];seen=[]
     for row in rows:
@@ -110,7 +114,7 @@ def prepare(config,rows,mode,operation,settings):
             if baseline:
                 t.need(not any(v.get('kind') in ('tar_tree','tar_file') for v in baseline.get('originals',{}).values()),'Privileged backup requires terminal restore before desktop management')
             if operation=='reset':
-                preview=e.reset_visual_settings(g,dry_run=True)
+                preview=e.reset_visual_settings(g,dry_run=True,nr_strength=strength,mfg_multiplier=multiplier,sharpening_strength=sharpening)
             elif operation=='uninstall':
                 t.need(baseline,'No terminal-engine baseline; use legacy Undo for an older app install')
                 e.verify_baseline_integrity(g.target_dir,baseline,adopt_legacy=False)
@@ -129,11 +133,11 @@ def prepare(config,rows,mode,operation,settings):
                     old=(baseline.get('current') or {}).get('provider_id','y4my')
                     t.need((baseline.get('current') or {}).get('feature_mode',mode)==mode,'Uninstall before changing feature profiles so original runtime files are restored')
                     t.need(old==e.Y4MY_PROVIDER['id'],'Uninstall the current provider before switching providers; its original backups must be restored first')
-                preview=e.install_target(g,data,meta,'ada',nr_runtime_payload=nr,nr_runtime_meta=nrmeta,feature_mode=mode,enable_effects=True,dry_run=True)
+                preview=e.install_target(g,data,meta,'ada',nr_runtime_payload=nr,nr_runtime_meta=nrmeta,feature_mode=mode,enable_effects=True,nr_strength=strength,mfg_multiplier=multiplier,sharpening_strength=sharpening,dry_run=True)
             ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g)})
         except (e.Stop,t.Refusal,OSError,ValueError) as ex:blocked.append({'name':row['name'],'reason':str(ex)})
     return {'kind':'engine','operation':operation,'title':operation.title(),'rows':[{'name':p['row']['name'],'detail':p['preview']['launch_options'] if operation=='reset' else f"{e.Y4MY_PROVIDER['name']} · {len(p['preview']['files'])} managed files · "+p['preview']['launch_options']} for p in ready],
-            'blocked':blocked,'plans':ready,'engine':e,'payload':data,'meta':meta,'nr':nr,'nrmeta':nrmeta,'mode':mode,'enable_effects':True}
+            'blocked':blocked,'plans':ready,'engine':e,'payload':data,'meta':meta,'nr':nr,'nrmeta':nrmeta,'mode':mode,'enable_effects':True,'nr_strength':strength,'mfg_multiplier':multiplier,'sharpening_strength':sharpening}
 
 def execute(review):
     e=review['engine'];results=[]
@@ -145,13 +149,13 @@ def execute(review):
             try:
                 t.need(fingerprint(e,g)==item['fingerprint'],'Game or baseline changed since preview; prepare again')
                 if review['operation']=='reset':
-                    record=e.reset_visual_settings(g)
+                    record=e.reset_visual_settings(g,nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'])
                 elif review['operation']=='uninstall':
                     e.verify_native_restore(e.load_baseline(g.target_dir))
                     e.restore_launch_options_batch([g],assume_yes=True)
                     record=e.restore_target(g)
                 else:
-                    record=e.install_target(g,review['payload'],review['meta'],'ada',nr_runtime_payload=review['nr'],nr_runtime_meta=review['nrmeta'],feature_mode=review['mode'],enable_effects=review['enable_effects'])
+                    record=e.install_target(g,review['payload'],review['meta'],'ada',nr_runtime_payload=review['nr'],nr_runtime_meta=review['nrmeta'],feature_mode=review['mode'],enable_effects=review['enable_effects'],nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'])
                     synced=e.sync_launch_options_batch([g],assume_yes=True,prompt=False)
                     t.need(synced and all(r.get('status')=='written' for r in synced),'Files installed, but launch settings need attention: '+str(synced or record['launch_options']))
                 results.append({'name':g.name,'status':'complete','record':record})

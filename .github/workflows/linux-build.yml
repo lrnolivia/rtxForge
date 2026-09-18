@@ -50,6 +50,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Trust checkout inside Fedora container
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git rev-parse --show-toplevel
+          git rev-parse HEAD^
+
       - name: Validate Python and engine behavior
         run: |
           set -euo pipefail

@@ -81,6 +81,9 @@ APP_ID = (
     "RTXForge.RedesignLab"
 )
 
+INTERACTIVE_HEIGHT = 42
+NAVIGATION_HEIGHT = 46
+
 APP_ICON = (
     ROOT
     / "gui"
@@ -290,11 +293,16 @@ class RedesignLabWindow(
             )
 
             content.set_margin_top(
-                9
+                11
             )
 
             content.set_margin_bottom(
-                9
+                11
+            )
+
+            row.set_size_request(
+                -1,
+                NAVIGATION_HEIGHT,
             )
 
             icon = Gtk.Image.new_from_icon_name(
@@ -676,6 +684,11 @@ class RedesignLabWindow(
             )
         )
 
+        self.library_add_button.set_size_request(
+            -1,
+            INTERACTIVE_HEIGHT,
+        )
+
         # Phase 1 builds the destination and visual hierarchy.
         # Backend actions are intentionally not wired yet.
         self.library_add_button.set_sensitive(
@@ -705,6 +718,11 @@ class RedesignLabWindow(
 
         self.library_filters = (
             Adw.ToggleGroup()
+        )
+
+        self.library_filters.set_size_request(
+            -1,
+            INTERACTIVE_HEIGHT,
         )
 
         self.library_filters.set_hexpand(
@@ -753,6 +771,11 @@ class RedesignLabWindow(
 
         self.library_views = (
             Adw.ToggleGroup()
+        )
+
+        self.library_views.set_size_request(
+            -1,
+            INTERACTIVE_HEIGHT,
         )
 
         self.library_views.set_can_shrink(
@@ -896,6 +919,11 @@ class RedesignLabWindow(
             restore_button,
             defaults_button,
         ):
+            button.set_size_request(
+                -1,
+                INTERACTIVE_HEIGHT,
+            )
+
             button.set_sensitive(
                 False
             )
@@ -949,6 +977,11 @@ class RedesignLabWindow(
 
         button.set_valign(
             Gtk.Align.CENTER
+        )
+
+        button.set_size_request(
+            -1,
+            INTERACTIVE_HEIGHT,
         )
 
         # Phase 1 establishes the interaction surface only.
@@ -1139,6 +1172,11 @@ class RedesignLabWindow(
 
         self.forge_feature_mode = (
             Adw.ToggleGroup()
+        )
+
+        self.forge_feature_mode.set_size_request(
+            -1,
+            INTERACTIVE_HEIGHT,
         )
 
         self.forge_feature_mode.set_valign(

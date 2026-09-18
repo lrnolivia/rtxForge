@@ -19,7 +19,7 @@ shutil.copyfile(root/'engine/rtxengine.py',payload/'engine/rtxengine.py')
 # Provider archives are verified at preparation; no stale custom loader is bundled.
 shutil.copyfile(root/'packaging/AppRun',app/'AppRun');(app/'AppRun').chmod(0o755)
 icon='io.github.lrnolivia.RTXForge'
-shutil.copyfile(root/f'gui/icons/hicolor/scalable/apps/{icon}.svg',app/f'{icon}.svg')
+shutil.copyfile(root/f'gui/icons/hicolor/512x512/apps/{icon}.png',app/f'{icon}.png')
 (app/f'{icon}.desktop').write_text(f'[Desktop Entry]\nType=Application\nName=RTXForge\nExec=AppRun\nIcon={icon}\nCategories=Game;Utility;\nTerminal=false\n')
 meta=json.loads((root/'packaging/runtime.json').read_text());runtime=dist/'appimage-runtime'
 if not runtime.exists():runtime.write_bytes(urllib.request.urlopen(meta['url']).read())

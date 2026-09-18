@@ -1,0 +1,55 @@
+name: Build rtxForge Linux
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build-appimage:
+    name: Bazzite x86_64 AppImage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout rtxForge
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y squashfs-tools
+
+      - name: Show build version
+        run: |
+          echo "Building rtxForge $(cat VERSION)"
+          git rev-parse --short HEAD
+
+      - name: Build AppImage
+        run: |
+          python3 packaging/build_appimage.py
+
+      - name: Verify AppImage checksum
+        run: |
+          cd dist
+          sha256sum -c *.AppImage.sha256
+
+      - name: Show output
+        run: |
+          ls -lh dist/*.AppImage
+          ls -lh dist/*.AppImage.sha256
+
+      - name: Upload Linux AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: rtxForge-Bazzite-x86_64
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dist/*.AppImage
+            dist/*.AppImage.sha256

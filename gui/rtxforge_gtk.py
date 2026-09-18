@@ -31,8 +31,9 @@ def artwork_accent(path,color=None):
             f'.{name} .game-status {{ border-left: 3px solid {color}; background: alpha({color},0.12); }} '
             f'.{name} toggle-group toggle:checked {{ background: {color}; color: white; }} '
             f'.{name} .game-details {{ color: {color}; }} '
+            f'.{name} progressbar progress {{ background: {color}; transition: background-color 450ms; }} '
             f'.{name} scale highlight {{ background: {color}; }} '
-            f'.{name} .game-heading, .{name} .eyebrow {{ color: {color}; }} '
+            f'.{name} .card-title, .{name} .game-banner-title, .{name} .job-title, .{name} .game-heading, .{name} .eyebrow {{ color: {color}; }} '
             f'.{name} button:focus-visible {{ outline-color: {color}; }}').encode())
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(),provider,Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION+1)
         ACCENT_PROVIDERS[name]=provider
@@ -53,17 +54,23 @@ class HeroPicture(Gtk.Picture):
         return (0,0,-1,-1) if orientation==Gtk.Orientation.HORIZONTAL else (300,300,-1,-1)
 
 CSS=b'''
-.dashboard-fade { background: linear-gradient(to bottom, @window_bg_color, alpha(@window_bg_color,0)); }
+.dashboard-fade { background: linear-gradient(to bottom, @window_bg_color 0%, alpha(@window_bg_color,0.94) 18%, alpha(@window_bg_color,0.64) 46%, alpha(@window_bg_color,0.24) 74%, alpha(@window_bg_color,0) 100%); }
 .settings-navigation { background: alpha(@window_fg_color,0.055); padding: 12px; }
 .settings-navigation row { padding: 0; margin: 2px 0; border-radius: 8px; }
 .settings-navigation row box { padding: 10px 12px; }
 .settings-content { padding: 24px; }
-.floating-tabs { padding: 5px; border-radius: 18px; background: alpha(#151518,0.78); color: white; }
+.floating-tabs toggle { border-radius: 99px; padding: 9px 16px; }
+.floating-tabs { padding: 5px; border-radius: 99px; background: alpha(#151518,0.78); color: white; }
 .floating-tabs.light { background: alpha(white,0.82); color: #202024; }
 .game-banner { background: #252529; }
 .banner-shade { background: linear-gradient(to bottom, alpha(black,0.38), alpha(black,0.02) 38%, alpha(@window_bg_color,0.25) 65%, @window_bg_color 100%); }
-.game-banner-title { color: @window_fg_color; font-size: 30px; font-weight: 500; }
-.progress-content { padding: 22px; color: white; background: linear-gradient(to right, alpha(black,0.82), alpha(black,0.55)); }
+.game-banner-title { color: @window_fg_color; font-size: 34px; font-weight: 500; }
+.progress-content { padding: 24px; color: white; }
+.progress-shade { background: linear-gradient(to right, alpha(black,0.88), alpha(black,0.48)); }
+.art-progress { color: white; }
+.job-title { font-size: 25px; font-weight: 500; }
+.result-success { background: #228844; color: white; border-radius: 99px; padding: 14px; }
+.result-error { background: #b93340; color: white; border-radius: 99px; padding: 14px; }
 .progress-content label { color: white; }
 .color-swatch { min-width: 32px; min-height: 32px; border-radius: 99px; padding: 0; }
 
@@ -72,6 +79,8 @@ CSS=b'''
 .control-pod scale { padding: 5px 2px; }
 
 .view-action { padding: 5px 8px; margin: 0; min-width: 20px; }
+.mode-selector { padding: 4px; border-radius: 12px; }
+.mode-selector toggle { padding: 9px 16px; min-height: 22px; border-radius: 9px; }
 .profile-toggle { padding: 7px 12px; font-weight: 600; }
 .status-pill { border-radius: 22px; padding: 9px 16px; margin: 8px; background: @card_bg_color; box-shadow: 0 3px 10px alpha(black,0.25); }
 .title-action { min-width: 26px; min-height: 26px; padding: 8px 12px; margin: 3px; }
@@ -88,7 +97,7 @@ CSS=b'''
 .poster { border-radius: 11px 11px 0 0; background: #242426; }
 .poster-fallback { color: #a5a5a8; padding: 22px; font-weight: 800; font-size: 19px; }
 .card-info { padding: 10px 12px 12px; }
-.card-title { font-weight: 500; font-size: 15px; letter-spacing: 0; }
+.card-title { font-weight: 500; font-size: 18px; letter-spacing: 0; }
 .card-meta { font-size: 10px; opacity: 0.7; }
 .cover-badge { background: alpha(black,0.65); color: white; text-shadow: 0 1px 3px black; padding: 5px 8px; border-radius: 8px; font-size: 10px; font-weight: 700; }
 .cover-badge.unavailable { color: #ffb3ad; }
@@ -135,7 +144,7 @@ def demo_games():
 
 class Window(Adw.ApplicationWindow):
     def __init__(self,application,options):
-        super().__init__(application=application,title='RTXForge',default_width=1160,default_height=820)
+        super().__init__(application=application,title='rtxForge',default_width=1160,default_height=820)
         self.options=options;self.service=DesktopService(options.provider)
         self.settings=dict(library_media.DEFAULTS) if options.demo else library_media.load_settings(self.service.config)
         self.strength_presets=__import__('engine_bridge').module(self.service.config).NR_STRENGTH_PRESETS
@@ -145,7 +154,7 @@ class Window(Adw.ApplicationWindow):
         self.connect('close-request',self.close_request)
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.PREFER_DARK if self.settings['dark'] else Adw.ColorScheme.DEFAULT)
         self.overlay=Adw.ToastOverlay();self.set_content(self.overlay);outer=Gtk.Box(orientation=Gtk.Orientation.VERTICAL);self.overlay.set_child(outer)
-        header=Adw.HeaderBar();header.set_title_widget(Adw.WindowTitle(title='RTXForge',subtitle='Your whole library. One place.'))
+        header=Adw.HeaderBar();header.set_title_widget(Adw.WindowTitle(title='rtxForge',subtitle='Your whole library. One place. · 0.5.9.4'))
         self.refresh=self.title_button('view-refresh-symbolic','Refresh library',lambda *_:self.scan());header.pack_start(self.refresh)
         self.add=self.title_button('list-add-symbolic','Add game folder',self.choose_folder);header.pack_start(self.add)
         header.pack_end(self.title_button('emblem-system-symbolic','Settings',self.show_settings));header.pack_end(self.title_button('document-open-recent-symbolic','Activity',self.show_activity));outer.append(header)
@@ -157,10 +166,10 @@ class Window(Adw.ApplicationWindow):
         self.hardware_label=label('Preview mode · no game writes' if options.demo else 'Checking system hardware…','card-meta');title.append(self.hardware_label)
         tuning,self.tuning_widgets=self.tuning_controls(self.settings)
         title.append(tuning);self.strength_slider=self.tuning_widgets['nr_strength']
-        bulk=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8,valign=Gtk.Align.CENTER);hero.append(bulk)
-        self.install_all=button('Add Enhancements to All',lambda *_:self.launch_action('install',True),'forge-primary');bulk.append(self.install_all)
-        self.uninstall_all=button('Remove Enhancements from All',lambda *_:self.launch_action('uninstall',True),'bulk-remove');bulk.append(self.uninstall_all)
-        self.reset_all=button('Reset All Settings',self.apply_library_settings);bulk.append(self.reset_all)
+        bulk=Gtk.Box(spacing=6,valign=Gtk.Align.CENTER);header.pack_end(bulk)
+        self.install_all=button('＋ Install All',lambda *_:self.launch_action('install',True),'forge-primary');bulk.append(self.install_all)
+        self.uninstall_all=button('− Remove All',lambda *_:self.launch_action('uninstall',True),'bulk-remove');bulk.append(self.uninstall_all)
+        self.reset_all=button('↺ Reset All',self.apply_library_settings);bulk.append(self.reset_all)
         for key,widget in self.tuning_widgets.items():widget.connect('notify::selected' if key=='mfg_multiplier' else 'value-changed',self.strength_changed)
         self.strength_changed()
         self.reset_all.set_tooltip_text('Restore current sharpening, NR and menu-font defaults for managed games. Each configuration is backed up. Close running games first.')
@@ -171,6 +180,7 @@ class Window(Adw.ApplicationWindow):
         profile_text.append(label('Enhancement Mode','heading'))
         self.profile_note=label('','dim-label');self.profile_note.set_ellipsize(Pango.EllipsizeMode.END);self.profile_note.set_lines(1);self.profile_note.set_max_width_chars(42);profile_text.append(self.profile_note)
         self.profile_group=Adw.ToggleGroup(homogeneous=True,valign=Gtk.Align.CENTER)
+        self.profile_group.add_css_class('mode-selector')
         for mode,title in [('nr-only','NR Only'),('mfg-only','MFG Only'),('nr-mfg','NR + MFG')]:
             toggle=Adw.Toggle(name=mode,label=title,child=profile_label(mode,title));self.profile_group.add(toggle)
             if mode=='nr-only':self.nr_only=toggle;toggle.set_enabled(self.settings.get('runtime_provider','y4my')=='dlss-unlocked')
@@ -194,14 +204,15 @@ class Window(Adw.ApplicationWindow):
             else:previous=b;b.set_active(True)
             b.connect('toggled',self.filter_changed,key);filterbox.append(b)
         filters.append(button('Select all',lambda *_:self.select_all(True)));filters.append(button('Clear',lambda *_:self.select_all(False)))
-        margins(viewbar,18);viewbar.set_margin_top(0);viewbar.set_margin_bottom(14);viewbar.set_margin_top(20);outer.append(viewbar)
+        margins(viewbar,18);viewbar.set_margin_top(0);viewbar.set_margin_bottom(0);viewbar.set_margin_top(20);outer.append(viewbar)
         scroll=Gtk.ScrolledWindow(vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER);library_stage=Gtk.Overlay(vexpand=True);library_stage.set_child(scroll);outer.append(library_stage)
-        edge=Gtk.Box(height_request=20,valign=Gtk.Align.START,can_target=False);edge.add_css_class('dashboard-fade');library_stage.add_overlay(edge)
+        edge=Gtk.Box(height_request=64,valign=Gtk.Align.START,can_target=False);edge.add_css_class('dashboard-fade');edge.set_visible(False);library_stage.add_overlay(edge)
         def collapse_header(adj):
+            edge.set_visible(adj.get_value()>1)
             if adj.get_value()>120 and adj.get_upper()-adj.get_page_size()>300:hero_reveal.set_reveal_child(False)
             elif adj.get_value()<10:hero_reveal.set_reveal_child(True)
         scroll.get_vadjustment().connect('value-changed',collapse_header)
-        self.flow=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,column_spacing=14,row_spacing=16,min_children_per_line=1,max_children_per_line=8,homogeneous=True,valign=Gtk.Align.START);margins(self.flow,18);scroll.set_child(self.flow)
+        self.flow=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,column_spacing=14,row_spacing=16,min_children_per_line=1,max_children_per_line=8,homogeneous=True,valign=Gtk.Align.START);margins(self.flow,18);self.flow.set_margin_top(0);scroll.set_child(self.flow)
         footer=Gtk.Box(spacing=8);footer.add_css_class('selection-bar');outer.append(footer)
         self.selected_label=label('0 selected',css='heading');self.selected_label.set_hexpand(True);footer.append(self.selected_label)
         for name,op,css in [('Add Enhancements','install','forge-primary'),('Repair Files','repair',None),('Remove Enhancements','uninstall','bulk-remove'),('Reset Settings','reset',None)]:
@@ -260,7 +271,7 @@ class Window(Adw.ApplicationWindow):
     def chosen_strength(self):return self.tuning_values(self.tuning_widgets)['nr_strength']
     def defaults_changed(self):return any(self.settings.get(k)!=v for k,v in self.tuning_values(self.tuning_widgets).items())
     def strength_changed(self,*_):
-        self.reset_all.set_label('Apply Settings' if self.defaults_changed() else 'Reset All Settings')
+        self.reset_all.set_label('✓ Apply Settings' if self.defaults_changed() else '↺ Reset All')
         if hasattr(self,'profile_group'):self.controls()
     def defaults_applied(self,values):
         self.settings.update(values);self.strength_changed()
@@ -276,7 +287,7 @@ class Window(Adw.ApplicationWindow):
         if self.busy:self.cancel_art.set()
         return False
     def tick(self):
-        if self.busy:self.progress.pulse();self.elapsed.set_text(f'{int(time.monotonic()-self.started)}s')
+        if self.busy:self.elapsed.set_text(f'{int(time.monotonic()-self.started)}s')
         return True
     def controls(self):
         enabled=not self.busy or self.task_kind=='art'
@@ -289,7 +300,12 @@ class Window(Adw.ApplicationWindow):
         for b in (self.refresh,self.add,self.profile_group,*self.view_buttons.values()):b.set_sensitive(enabled)
     def event(self,event):
         if event['kind']=='progress':
-            self.status.set_text(event['label']);self.update_progress_art(event['label'])
+            self.status.set_text(event['label']);self.update_progress_art(event.get('game',''))
+            if getattr(self,'job_label',None):
+                self.job_caption.set_text(event['label'])
+                if 'fraction' in event:
+                    self.job_bar.set_fraction(event['fraction']);self.progress.set_fraction(event['fraction'])
+                    self.job_counter.set_text(str(event['current'])+' of '+str(event['total'])+' games')
         elif event['kind']=='art':
             card=self.cards.get(event['game'])
             if card:card['data'].update(event['data']);self.paint_card(card)
@@ -297,7 +313,6 @@ class Window(Adw.ApplicationWindow):
                 try:self.detail_banner.set_paintable(Gdk.Texture.new_from_filename(event['data']['hero']))
                 except Exception:pass
         else:self.log.append(event['text']);self.log=self.log[-400:]
-        if self.dialog and hasattr(self,'job_label') and self.job_label:self.job_label.set_text(self.status.get_text())
         return False
     def start(self,title,action,done,kind='work'):
         if self.busy:
@@ -359,6 +374,8 @@ class Window(Adw.ApplicationWindow):
         return stack
 
     def error(self,message):
+        if self.dialog==getattr(self,'progress_dialog',None) and getattr(self,'job_label',None):
+            box=self.progress_shell.get_last_child();self.finish_progress(False,str(message),box.get_last_child());return
         d,b,f=self.open_panel('Could Not Finish',width=580,height=300,show_close=False);b.append(label(str(message)));f.append(button('Close',lambda *_:d.close()))
     def scan(self):
         if self.options.demo:return
@@ -410,12 +427,12 @@ class Window(Adw.ApplicationWindow):
             badge=profile_label(badge_mode,badge.get_text());badge.add_css_class('cover-badge');badge.set_halign(Gtk.Align.START);badge.set_valign(Gtk.Align.END);margins(badge,8)
         badge.add_css_class('state-unavailable' if game.get('blocked') else 'state-nr' if game.get('profile')=='NR + MFG' else 'state-mfg' if game.get('installed') else 'state-ready')
         if view!='list':overlay.add_overlay(badge)
-        text=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=5,hexpand=view=='list',valign=Gtk.Align.CENTER);text.add_css_class('card-info');card.append(text)
-        title=label(game['name'],'card-title');title.set_lines(2);title.set_ellipsize(Pango.EllipsizeMode.END);title.set_max_width_chars(70 if view=='list' else 24 if view=='capsules' else 18);text.append(title)
+        text=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=7,hexpand=view=='list',vexpand=True);text.add_css_class('card-info');card.append(text)
+        title=label(game['name'],'card-title');title.set_lines(2);title.set_ellipsize(Pango.EllipsizeMode.END);title.set_max_width_chars(70 if view=='list' else 24 if view=='capsules' else 18);title.set_size_request(-1,48 if view!='list' else -1);text.append(title)
         meta=label(game.get('source',''),'card-meta');meta.set_lines(1);meta.set_ellipsize(Pango.EllipsizeMode.END);meta.set_max_width_chars(80 if view=='list' else 28 if view=='capsules' else 22);text.append(meta)
         reset=button('Details',lambda *_:self.details(game));reset.add_css_class('game-details')
         reset.set_tooltip_text('Open game details and settings')
-        reset.set_sensitive(True);text.append(reset)
+        reset.set_sensitive(True);spacer=Gtk.Box(vexpand=True);text.append(spacer);text.append(reset)
         self.flow.insert(card,-1);wrapper=card.get_parent()
         entry={'reset':reset,'widget':card,'wrapper':wrapper,'check':check,'picture':pic,'fallback':fallback,'meta':meta,'data':game,'size':(width,height)};self.cards[game['game']]=entry;self.paint_card(entry)
     def paint_card(self,entry):
@@ -520,15 +537,20 @@ class Window(Adw.ApplicationWindow):
             game['test_record']=current;self.toast('Notes saved')
         actions=Gtk.Box(spacing=8);actions.append(button('Save Notes',save_notes,'suggested-action'));active=bool(record.get('active'));test=button('Finish Test' if active else 'Start Test',lambda *_:self.record_test(game,active));test.set_sensitive(not self.options.demo);actions.append(test);notes_page.append(actions)
         appearance=content['Appearance'];appearance.append(label('Accent Color','heading'));swatches=Gtk.Box(spacing=10);appearance.append(swatches)
-        colors=[]
+        colors=[];hues=Counter()
         for path in (game.get('poster'),game.get('capsule')):
             if not path:continue
             try:
-                pix=GdkPixbuf.Pixbuf.new_from_file_at_scale(path,12,12,True);data=pix.get_pixels();stride=pix.get_rowstride();channels=pix.get_n_channels()
-                for y,x in ((3,3),(6,6),(8,4)):
-                    y=min(y,pix.get_height()-1);x=min(x,pix.get_width()-1);off=y*stride+x*channels;color='#%02x%02x%02x'%tuple(data[off:off+3])
-                    if color not in colors:colors.append(color)
+                pix=GdkPixbuf.Pixbuf.new_from_file_at_scale(path,24,24,True);data=pix.get_pixels();stride=pix.get_rowstride();channels=pix.get_n_channels()
+                for y in range(pix.get_height()):
+                    for x in range(pix.get_width()):
+                        off=y*stride+x*channels;h,sat,value=colorsys.rgb_to_hsv(*(c/255 for c in data[off:off+3]))
+                        if sat>.28 and value>.18:hues[int(h*12)]+=sat*value
             except Exception:pass
+        selected=[h for h,_ in hues.most_common(6)]
+        if not selected:selected=[0,2,4,6,8,10]
+        for hue in selected:
+            color='#%02x%02x%02x'%tuple(round(c*255) for c in colorsys.hsv_to_rgb((hue+.5)/12,.76,.94));colors.append(color)
         def set_color(color):
             self.settings.setdefault('game_accents',{})[game['game']]=color
             if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
@@ -582,39 +604,57 @@ class Window(Adw.ApplicationWindow):
         mode=self.mode;adopt=self.settings['recognize_previous'];values=self.tuning_values(self.tuning_widgets) if entire and operation=='reset' else visual_settings
         self.start('Preparing '+title.lower(),lambda:self.service.prepare(rows,mode,operation,adopt,visual_settings=values,save_defaults=entire and operation=='reset'),lambda review:self.action_ready(review,d,b,f,entire))
     def progress_view(self,body,message):
-        clear(body);body.remove_css_class('panel-body')
-        stage=Gtk.Overlay(height_request=180);body.append(stage)
-        self.job_art=Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE,transition_duration=450)
-        self.job_pictures=[Gtk.Picture(content_fit=Gtk.ContentFit.COVER,can_shrink=True) for _ in range(2)]
-        for i,picture in enumerate(self.job_pictures):self.job_art.add_named(picture,str(i))
-        stage.set_child(self.job_art);self.job_picture_index=0;self.job_current_game=None
-        content=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,valign=Gtk.Align.FILL);content.add_css_class('progress-content');stage.add_overlay(content)
-        inner=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,valign=Gtk.Align.CENTER,vexpand=True);content.append(inner)
-        self.job_label=label(message,'title-3');self.job_label.set_max_width_chars(42);inner.append(self.job_label)
-        self.job_caption=label('Preparing your changes…');inner.append(self.job_caption)
-        bar=Gtk.ProgressBar();inner.append(bar)
-        self.update_progress_art('')
-        dialog=self.dialog
-        def animate():
-            if self.dialog!=dialog or not self.job_label:return False
-            bar.pulse();return True
-        GLib.timeout_add(140,animate)
-    def update_progress_art(self,message):
+        clear(body);body.remove_css_class('panel-body');body.add_css_class('progress-content')
+        if getattr(self,'progress_dialog',None)!=self.dialog:
+            box=self.dialog.get_child();box.get_first_child().set_visible(False);self.dialog.set_child(None)
+            self.progress_shell=Gtk.Overlay();self.dialog.set_child(self.progress_shell);self.dialog.add_css_class('art-progress')
+            self.job_art=Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE,transition_duration=500)
+            self.job_pictures=[Gtk.Picture(content_fit=Gtk.ContentFit.COVER,can_shrink=True) for _ in range(2)]
+            for i,picture in enumerate(self.job_pictures):self.job_art.add_named(picture,str(i))
+            self.progress_shell.set_child(self.job_art)
+            shade=Gtk.Box();shade.add_css_class('progress-shade');self.progress_shell.add_overlay(shade)
+            self.progress_shell.add_overlay(box);self.progress_shell.set_measure_overlay(box,True)
+            self.progress_dialog=self.dialog;self.job_picture_index=0;self.job_current_game=None;self.job_accent=None
+        line=Gtk.Box(spacing=20,valign=Gtk.Align.CENTER,vexpand=True);body.append(line)
+        self.job_poster=Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE,transition_duration=400,width_request=70,height_request=105,valign=Gtk.Align.CENTER)
+        self.poster_images=[CoverPicture(content_fit=Gtk.ContentFit.COVER,can_shrink=True) for _ in range(2)]
+        for picture in self.poster_images:picture.cover_width=70;picture.cover_ratio=2/3
+        for i,picture in enumerate(self.poster_images):self.job_poster.add_named(picture,str(i))
+        line.append(self.job_poster)
+        inner=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=9,valign=Gtk.Align.CENTER,hexpand=True);line.append(inner)
+        self.job_counter=label('Preparing…','dim-label');inner.append(self.job_counter)
+        self.job_label=label('','job-title');self.job_label.set_max_width_chars(34);inner.append(self.job_label)
+        self.job_caption=label(message);self.job_caption.set_max_width_chars(42);inner.append(self.job_caption)
+        self.job_bar=Gtk.ProgressBar();inner.append(self.job_bar)
+        self.job_current_game=None;self.update_progress_art('')
+    def update_progress_art(self,name):
         if not getattr(self,'job_label',None) or not hasattr(self,'job_art'):return
         games=getattr(self,'operation_games',[])
-        game=next((g for g in games if g['name'] in message),games[0] if games else None)
+        game=next((g for g in games if g['name']==name),games[0] if games else None)
         if not game or game['game']==getattr(self,'job_current_game',None):return
-        self.job_current_game=game['game'];path=game.get('hero') or game.get('capsule') or game.get('poster')
+        self.job_current_game=game['game'];path=game.get('hero') or game.get('capsule') or game.get('poster');self.job_picture_index=1-self.job_picture_index
         if path:
-            try:
-                self.job_picture_index=1-self.job_picture_index;self.job_pictures[self.job_picture_index].set_paintable(Gdk.Texture.new_from_filename(path));self.job_art.set_visible_child_name(str(self.job_picture_index))
+            try:self.job_pictures[self.job_picture_index].set_paintable(Gdk.Texture.new_from_filename(path));self.job_art.set_visible_child_name(str(self.job_picture_index))
             except Exception:pass
-        self.job_caption.set_text(game['name'])
+        if game.get('poster'):
+            try:self.poster_images[self.job_picture_index].set_paintable(Gdk.Texture.new_from_filename(game['poster']));self.job_poster.set_visible_child_name(str(self.job_picture_index))
+            except Exception:pass
+        if self.job_accent:self.dialog.remove_css_class(self.job_accent)
+        self.job_accent=game.get('accent_class')
+        if self.job_accent:self.dialog.add_css_class(self.job_accent)
+        self.job_label.set_text(game['name'])
+    def finish_progress(self,success,message,footer):
+        self.dialog.set_can_close(True);clear(footer)
+        icon=Gtk.Image.new_from_icon_name('emblem-ok-symbolic' if success else 'action-unavailable-symbolic');icon.set_pixel_size(34);icon.set_valign(Gtk.Align.CENTER);icon.add_css_class('result-success' if success else 'result-error')
+        self.job_poster.add_named(icon,'result');self.job_poster.set_visible_child_name('result')
+        self.job_label.set_text('All Done' if success else 'Error');self.job_counter.set_text('');self.job_caption.set_text(message);self.job_bar.set_visible(False)
+        footer.append(button('Done' if success else 'Close',lambda *_:(self.dialog.close(),self.scan()),'suggested-action' if success else None))
+        self.job_label=None
 
     def add_cancel(self,footer):
         def cancel(w):
             self.operation_cancel.set();w.set_sensitive(False);w.set_label('Undoing…')
-            if self.job_label:self.job_label.set_text('Finishing the current game safely, then undoing changes…')
+            if self.job_label:self.job_caption.set_text('Finishing safely, then undoing changes…')
             if not self.busy:
                 self.dialog.force_close();self.dialog=None
                 if self.operation_previous:self.details(self.operation_previous)
@@ -640,13 +680,10 @@ class Window(Adw.ApplicationWindow):
         self.start('Applying changes',lambda:self.service.execute(review),lambda path:self.completed(path,d,b,f))
     def completed(self,path,d,b,f):
         self.operation_cancel=None
-        self.job_label=None;d.set_can_close(True);clear(b);clear(f)
         if self.review and self.review.get('save_defaults'):self.defaults_applied(self.review['save_defaults'])
-        b.add_css_class('panel-body');b.append(label('All Done','title-2'))
         count=len(self.review.get('rows',[])) if self.review else 0
-        b.append(label(f'{count} game'+('s' if count!=1 else '')+' updated.','dim-label'))
         self.log.append('Saved report: '+str(path))
-        f.append(button('Done',lambda *_:(d.close(),self.scan()),'suggested-action'))
+        self.finish_progress(True,f'{count} game'+('s' if count!=1 else '')+' updated.',f)
     def show_activity(self,*_):
         d,b,f=self.open_panel('Activity');text=Gtk.TextView(editable=False,monospace=True,wrap_mode=Gtk.WrapMode.WORD_CHAR);text.get_buffer().set_text('\n'.join(self.log) or 'No activity yet.');b.append(text);f.append(button('Close',lambda *_:d.close()))
     def show_settings(self,*_):
@@ -655,7 +692,7 @@ class Window(Adw.ApplicationWindow):
         provider_keys=['y4my','dlss-unlocked'];provider=Adw.ComboRow(title='Provider',model=Gtk.StringList.new(['y4my Multipass','DLSS-Unlocked']),selected=provider_keys.index(self.settings.get('runtime_provider','y4my')));graphics.add(provider)
         nr_path=Adw.EntryRow(title='Local NR DLL for y4my');nr_path.set_text(self.settings.get('nr_runtime',''));graphics.add(nr_path)
         defaults=Adw.PreferencesGroup(title='Installation')
-        modes=['mfg-only','nr-mfg','nr-only'];profile=Adw.ComboRow(title='Default Mode',model=Gtk.StringList.new(['MFG Only','NR + MFG','NR Only']),selected=modes.index(self.settings.get('default_profile','mfg-only')));defaults.add(profile)
+        modes=['nr-only','mfg-only','nr-mfg'];profile=Adw.ComboRow(title='Default Mode',model=Gtk.StringList.new(['NR Only','MFG Only','NR + MFG']),selected=modes.index(self.settings.get('default_profile','mfg-only')));defaults.add(profile)
         adopt=Adw.SwitchRow(title='Recognize Existing Enhancements',subtitle='Allow updates to compatible installations from other tools.',active=self.settings['recognize_previous']);defaults.add(adopt)
         appearance=Adw.PreferencesGroup(title='Library Appearance')
         views=['posters','capsules','list'];view=Adw.ComboRow(title='Layout',model=Gtk.StringList.new(['Posters','Wide Capsules','List']),selected=views.index(self.settings.get('library_view','posters')));appearance.add(view)
@@ -671,7 +708,7 @@ class Window(Adw.ApplicationWindow):
         for title,key in [('Graphics Card','gpu'),('Driver','driver'),('Video Memory','vram'),('Processor','cpu'),('Architecture','architecture')]:
             if host.get(key):system.add(row(title,host[key]))
         system.add(row('Compatibility',host.get('reason','Not checked')))
-        app=Adw.PreferencesGroup(title='Application');app.add(row('RTXForge','Version 0.5.9'))
+        app=Adw.PreferencesGroup(title='Application');app.add(row('rtxForge','Version 0.5.9.4'))
         if os.environ.get('APPIMAGE'):
             item=row('Desktop Installation');action=button('Update App Menu',self.install_desktop);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);app.add(item)
         recovery=Adw.PreferencesGroup(title='Recovery')
@@ -691,7 +728,7 @@ class Window(Adw.ApplicationWindow):
         f.append(button('Save Settings',save,'suggested-action'))
     def install_desktop(self,*_):
         import desktop_install
-        self.start('Installing desktop app',desktop_install.install,lambda _:self.toast('RTXForge installed in your app menu. This build is now the default.'))
+        self.start('Installing desktop app',desktop_install.install,lambda _:self.toast('rtxForge installed in your app menu. This build is now the default.'))
     def show_undo(self):
         if self.options.demo:
             d,b,f=self.open_panel('Undo previous changes');b.append(label('Your install and uninstall backups will appear here.'));return
@@ -709,15 +746,15 @@ class Window(Adw.ApplicationWindow):
         paint=Gtk.WidgetPaintable.new(self);snapshot=Gtk.Snapshot();paint.snapshot(snapshot,self.get_width(),self.get_height());node=snapshot.to_node();rect=Graphene.Rect();rect.init(0,0,self.get_width(),self.get_height());texture=self.get_renderer().render_texture(node,rect);texture.save_to_png(str(ROOT/'dist'/name))
     def smoke_library(self):
         try:
-            assert self.reset_all.get_label()=='Reset All Settings'
+            assert self.reset_all.get_label()=='↺ Reset All'
             for key,widget in self.tuning_widgets.items():
                 original=widget.get_selected() if key=='mfg_multiplier' else widget.get_value()
                 if key=='mfg_multiplier':widget.set_selected(0)
                 else:widget.set_value(0)
-                assert self.reset_all.get_label()=='Apply Settings'
+                assert self.reset_all.get_label()=='✓ Apply Settings'
                 if key=='mfg_multiplier':widget.set_selected(original)
                 else:widget.set_value(original)
-                assert self.reset_all.get_label()=='Reset All Settings'
+                assert self.reset_all.get_label()=='↺ Reset All'
             GLib.timeout_add(250,self.smoke_library_ready)
         except Exception:traceback.print_exc();self.get_application().exit_code=1;self.get_application().quit()
         return False
@@ -756,9 +793,14 @@ class Window(Adw.ApplicationWindow):
         except Exception:traceback.print_exc();self.get_application().exit_code=1;self.get_application().quit()
         return False
     def smoke_progress(self):
-        try:self.capture('gnome-progress.png');print('PASS: controls, game tabs, settings navigation, and progress; demo writes disabled',flush=True)
+        try:self.capture('gnome-progress.png');self.finish_progress(True,'3 games updated.',self.progress_shell.get_last_child().get_last_child());GLib.timeout_add(300,self.smoke_complete);return False
         except Exception:traceback.print_exc();self.get_application().exit_code=1
         self.get_application().quit();return False
+    def smoke_complete(self):
+        try:self.capture('gnome-complete.png');print('PASS: controls, tabs, settings, progress and completion; demo writes disabled',flush=True)
+        except Exception:traceback.print_exc();self.get_application().exit_code=1
+        self.get_application().quit();return False
+
 
 class Application(Adw.Application):
     def __init__(self,options):super().__init__(application_id='io.github.lrnolivia.RTXForge',flags=Gio.ApplicationFlags.NON_UNIQUE);self.options=options;self.exit_code=0

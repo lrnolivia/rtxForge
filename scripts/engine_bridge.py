@@ -149,7 +149,9 @@ def execute(review):
     with e.mutation_lock():
         for index,item in enumerate(review['plans'],1):
             if cancel is not None and cancel.is_set():break
-            g=item['game'];ui.progress(f'{index}/{len(review["plans"])} · {g.name}')
+            g=item['game'];total=len(review['plans'])
+            def report(stage,part):ui.progress(stage,game=g.name,current=index,total=total,fraction=(index-1+part)/total)
+            report('Checking game files',0)
             try:
                 t.need(fingerprint(e,g)==item['fingerprint'],'Game or baseline changed since preview; prepare again')
                 if session:
@@ -162,7 +164,9 @@ def execute(review):
                         paths.extend([e.STATE_ROOT/'steam-config-backups',e._steam_transaction_root()])
                         account=e.choose_steam_user_config([g],assume_yes=True)
                         if account:paths.extend(account[k] for k in ('localconfig','shortcuts') if account.get(k))
+                    report('Backing up your current files',0.15)
                     checkpoint=session.capture(paths)
+                report({'reset':'Saving your settings','uninstall':'Restoring original files','install':'Installing enhancements','repair':'Repairing enhancement files'}[review['operation']],0.4)
                 if review['operation']=='reset':
                     record=e.reset_visual_settings(g,nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'])
                 elif review['operation']=='uninstall':
@@ -171,12 +175,14 @@ def execute(review):
                     record=e.restore_target(g)
                 else:
                     record=e.install_target(g,review['payload'],review['meta'],'ada',nr_runtime_payload=review['nr'],nr_runtime_meta=review['nrmeta'],feature_mode=review['mode'],enable_effects=review['enable_effects'],native_mfg_fallback=review.get('native_mfg_fallback',False),nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'])
+                    report('Saving launch settings',0.85)
                     synced=e.sync_launch_options_batch([g],assume_yes=True,prompt=False)
                     t.need(synced and all(r.get('status')=='written' for r in synced),'Files installed, but launch settings need attention: '+str(synced or record['launch_options']))
                 results.append({'name':g.name,'status':'complete','record':record})
             except Exception as ex:results.append({'name':g.name,'status':'failed','error':str(ex)})
             finally:
                 if session and 'checkpoint' in locals():session.seal(checkpoint);del checkpoint
+                report('Finished this game',1)
         if session:
             if cancel.is_set():
                 t.need(not any(e._running_processes_under_root(p['game'].root.resolve()) for p in review['plans']),'Close running games before recovery. Copies retained at '+str(session.root))

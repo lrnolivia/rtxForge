@@ -7,7 +7,7 @@ def style(text,color='green'):
     return '\033['+COLORS[color]+'m'+text+'\033[0m' if sys.stdout.isatty() and not os.environ.get('NO_COLOR') and not _reporter.get() else text
 
 def banner():
-    print('\n'+style('  RTXForge','bold')+'  '+style('GEFORCE TOOLS · BUILT FOR LINUX','green'))
+    print('\n'+style('  rtxForge','bold')+'  '+style('GEFORCE TOOLS · BUILT FOR LINUX','green'))
     print(style('  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━','green'))
     print('  Your library. Your settings. A reversible upgrade.\n')
 def title(s):emit('\n  '+style(s,'cyan'))
@@ -44,8 +44,8 @@ def emit(*args,**kwargs):
         if _active:sys.stdout.write('\r\033[2K');sys.stdout.flush()
         print(*args,**kwargs,flush=True)
 
-def progress(label):
-    if _reporter.get():_reporter.get()({'kind':'progress','label':clean(label)})
+def progress(label,**details):
+    if _reporter.get():_reporter.get()({'kind':'progress','label':clean(label),**details})
     else:line('Working',label)
 
 def work(label,action,*args,**kwargs):

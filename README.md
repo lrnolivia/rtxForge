@@ -82,25 +82,37 @@ Neither mode performs live game-file mutations.
 <!-- RTXFORGE_CLASSIC_UI_STATUS_START -->
 ## Classic UI development status
 
-**Current maintenance release: 0.6.3**
+**Current maintenance release: 0.6.4**
 
-The current GTK/libadwaita interface is in the final stage of its classic-UI refresh. The refreshed dashboard, redesigned Game Details experience, resizable Settings and Game Details windows, compact artwork hero, artwork-credit presentation, and established Progress / Done experience are now the intended classic UI direction.
+The classic GTK/libadwaita interface is now at its final pre-0.7 checkpoint.
 
-### Known issues
+### Completed in 0.6.4
 
-- **Library artwork sizing:** Library Artwork Size currently does not reliably resize the displayed posters or capsules.
-- **Active Process scrollbar:** a scrollbar can still appear when hovering the Active Process / Progress presentation.
-- **Done scrollbar:** the Done presentation can also expose a scrollbar on hover.
+- Library artwork sizing now updates live and reliably across Poster and Wide Capsule views.
+- The Library has an always-visible live artwork-size slider beside the view controls.
+- Poster and Wide Capsule cards use consistent, bounded geometry at every supported size.
+- Poster artwork keeps a fixed portrait frame; Wide Capsule uses dedicated capsule artwork and a fixed wide frame.
+- Cards in the same view normalize to the height required by the tallest card, keeping Details actions aligned.
+- Compact cards may wrap longer titles while shorter titles use the remaining footer space naturally.
+- Game-card Details actions use the artwork-derived accent color.
+- Settings uses the Enhancement Mode-style segmented selector for Poster / Wide Capsule / List.
+- Active Process no longer exposes the generic dialog scrollbar on hover.
+- Done no longer exposes the generic dialog scrollbar on hover.
+- Game Details titles wrap instead of ellipsizing and reduce their font size for longer names.
 
-### Path to 0.7
+The established Progress / Done composition, Game Details redesign, dashboard controls, granular NR / Sharpening controls, and current classic visual direction should be preserved.
 
-The remaining classic-UI work should happen in this order:
+### Remaining work before 0.7
 
-1. Fix Library Artwork Size.
-2. Remove the hover scrollbar from Active Process and Done without changing their established design.
-3. Add the compact sticky Library / Dashboard header for use after the large dashboard controls scroll away.
-4. Ship **0.7**.
-5. Treat the classic UI as effectively frozen after 0.7, apart from bug fixes, maintenance, and explicitly approved changes.
+The **compact sticky Library / Dashboard header** is the next and only planned classic-UI feature before 0.7.
 
-Do not restart or broadly redesign the current UI while completing this work.
+The sticky state should keep only controls and information that remain useful while scrolling the Library. It should be deliberately compact rather than a miniature copy of the full dashboard.
+
+After that:
+
+1. Ship **0.7**.
+2. Treat the classic UI as effectively frozen.
+3. Limit future classic-UI work to bug fixes, compatibility, accessibility, maintenance, and specifically approved changes.
+
+Do not restart or broadly redesign the classic UI.
 <!-- RTXFORGE_CLASSIC_UI_STATUS_END -->

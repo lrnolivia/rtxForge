@@ -279,7 +279,10 @@ def artwork_accent(path,color=None):
             f'.{name} .game-status {{ border-left: 3px solid {color}; background: alpha({color},0.12); }} '
             f'.{name} toggle-group toggle:checked {{ background: {color}; color: {accent_fg}; }} '
             f'.{name} toggle-group toggle:checked label {{ color: {accent_fg}; }} '
-            f'.{name} .game-details {{ color: {color}; }} '
+            f'.{name} .game-details {{ background: {color}; color: {accent_fg}; border-color: transparent; box-shadow: none; }} '
+            f'.{name} .game-details label {{ color: {accent_fg}; font-weight: 700; }} '
+            f'.{name} .game-details:hover {{ background: {color}; color: {accent_fg}; }} '
+            f'.{name} .game-details:hover label {{ color: {accent_fg}; }} '
             f'.{name} .game-detail-nav row:selected {{ background: alpha({color},0.10); }} '
             f'.{name} .game-detail-nav row:selected label, .{name} .game-detail-nav row:selected image {{ color: {color}; }} '
             f'.{name} progressbar progress {{ background: {color}; transition: background-color 450ms; }} '
@@ -347,6 +350,28 @@ class CoverPicture(Gtk.Picture):
         if orientation==Gtk.Orientation.HORIZONTAL:return (self.cover_width,self.cover_width,-1,-1)
         height=__import__('math').ceil((for_size if for_size>0 else self.cover_width)/self.cover_ratio)
         return (height,height,-1,-1)
+
+class FixedLibraryCard(Gtk.Box):
+    fixed_width=1
+    fixed_height=1
+
+    def do_get_request_mode(self):
+        return Gtk.SizeRequestMode.CONSTANT_SIZE
+
+    def do_measure(self,orientation,for_size):
+        size=(
+            max(1,int(self.fixed_width))
+            if orientation==Gtk.Orientation.HORIZONTAL
+            else max(1,int(self.fixed_height))
+        )
+
+        return (
+            size,
+            size,
+            -1,
+            -1,
+        )
+
 
 class HeroPicture(Gtk.Picture):
     # The Game Details hero must crop as the window changes width,
@@ -643,7 +668,54 @@ button.game-detail-close.light:hover {
 .game-banner.hero-light .game-banner-title,
 .game-banner.hero-light .game-detail-meta,
 .game-banner.hero-light .game-detail-summary,
-.game-banner.hero-light .cover-badge {
+.game-banner.hero-light /* Compact, stable Library card labels. */
+.game-card .card-info {
+    padding: 6px 9px 7px;
+}
+
+
+.card-title.art-title-xs {
+    font-size: 11px;
+}
+
+.card-title.art-title-sm {
+    font-size: 12px;
+}
+
+.card-title.art-title-md {
+    font-size: 13px;
+}
+
+.card-title.art-title-lg {
+    font-size: 14px;
+}
+
+.game-card .card-title {
+    font-size: 15px;
+    font-weight: 700;
+    min-height: 0;
+    margin: 0;
+}
+
+.game-card .card-meta {
+    font-size: 9px;
+    min-height: 0;
+    margin: 0;
+    opacity: 0.7;
+}
+
+.game-card .game-details {
+    font-size: 11px;
+    min-height: 28px;
+    padding: 3px 8px;
+}
+
+.game-card .poster-fallback {
+    font-size: 14px;
+    padding: 10px;
+}
+
+.cover-badge {
     text-shadow:
         0 2px 7px alpha(black,0.95),
         0 0 14px alpha(black,0.52);
@@ -663,6 +735,21 @@ button.game-detail-close.light:hover {
     font-size: 42px;
     font-weight: 600;
     letter-spacing: -0.8px;
+}
+
+.game-banner-title.detail-title-md {
+    font-size: 36px;
+    letter-spacing: -0.6px;
+}
+
+.game-banner-title.detail-title-sm {
+    font-size: 32px;
+    letter-spacing: -0.4px;
+}
+
+.game-banner-title.detail-title-xs {
+    font-size: 28px;
+    letter-spacing: -0.2px;
 }
 
 .progress-content {
@@ -959,8 +1046,10 @@ button.done-button.suggested-action:hover {
 .card-info { padding: 10px 12px 12px; }
 .card-title { font-weight: 500; font-size: 18px; letter-spacing: 0; }
 .card-meta { font-size: 10px; opacity: 0.7; }
+
 .cover-badge { background: alpha(black,0.65); color: white; text-shadow: 0 1px 3px black; padding: 5px 8px; border-radius: 8px; font-size: 10px; font-weight: 700; }
 .cover-badge.unavailable { color: #ffb3ad; }
+
 .selection-fade {
     background-color: transparent;
 
@@ -1633,14 +1722,187 @@ class Window(Adw.ApplicationWindow):
 
         # Enhancement Mode sits directly above the tuning controls.
         hero.append(tuning)
-        viewbar=Gtk.Box(spacing=10);library_title=label('Your games','heading');library_title.set_hexpand(True);viewbar.append(library_title)
-        viewbox=Gtk.Box();viewbox.add_css_class('linked');viewbar.append(viewbox);self.view_buttons={};first=None
-        for title,key in [('Posters','posters'),('Wide capsules','capsules'),('List','list')]:
-            toggle=Gtk.ToggleButton(icon_name={'posters':'view-grid-symbolic','capsules':'view-dual-symbolic','list':'view-list-symbolic'}[key]);toggle.set_tooltip_text(title);toggle.update_property([Gtk.AccessibleProperty.LABEL],[title]);toggle.add_css_class('view-action')
-            if first:toggle.set_group(first)
-            else:first=toggle
-            toggle.set_active(self.settings.get('library_view','posters')==key)
-            toggle.connect('toggled',self.view_changed,key);viewbox.append(toggle);self.view_buttons[key]=toggle
+        viewbar=Gtk.Box(
+            spacing=10,
+        )
+
+        library_title=label(
+            'Your games',
+            'heading',
+        )
+        library_title.set_hexpand(
+            True
+        )
+        viewbar.append(
+            library_title
+        )
+
+        # Live artwork size belongs beside the view controls.
+        self._syncing_library_size=False
+        self.library_size_save_source=0
+
+        self.library_size_scale=Gtk.Scale.new_with_range(
+            Gtk.Orientation.HORIZONTAL,
+            50,
+            150,
+            1,
+        )
+
+        self.library_size_scale.set_value(
+            self.settings.get(
+                'art_scale',
+                100,
+            )
+        )
+        self.library_size_scale.set_draw_value(
+            False
+        )
+        self.library_size_scale.set_size_request(
+            120,
+            -1,
+        )
+        self.library_size_scale.set_valign(
+            Gtk.Align.CENTER
+        )
+        self.library_size_scale.set_tooltip_text(
+            'Library artwork size'
+        )
+        self.library_size_scale.update_property(
+            [Gtk.AccessibleProperty.LABEL],
+            ['Library artwork size'],
+        )
+
+        self.library_size_scale.set_sensitive(
+            self.settings.get(
+                'library_view',
+                'posters',
+            )!='list'
+        )
+
+        def live_library_size_changed(
+            widget,
+        ):
+            if self._syncing_library_size:
+                return
+
+            value=int(
+                round(
+                    widget.get_value()
+                )
+            )
+
+            self.resize_library_art(
+                value
+            )
+
+            pending=getattr(
+                self,
+                'library_size_save_source',
+                0,
+            )
+
+            if pending:
+                try:
+                    GLib.source_remove(
+                        pending
+                    )
+                except Exception:
+                    pass
+
+            if self.options.demo:
+                return
+
+            def persist_library_size():
+                self.library_size_save_source=0
+
+                try:
+                    library_media.save_settings(
+                        self.service.config,
+                        self.settings,
+                    )
+                except Exception:
+                    pass
+
+                return False
+
+            self.library_size_save_source=GLib.timeout_add(
+                400,
+                persist_library_size,
+            )
+
+        self.library_size_scale.connect(
+            'value-changed',
+            live_library_size_changed,
+        )
+
+        viewbar.append(
+            self.library_size_scale
+        )
+
+        viewbox=Gtk.Box()
+        viewbox.add_css_class(
+            'linked'
+        )
+        viewbar.append(
+            viewbox
+        )
+
+        self.view_buttons={}
+        first=None
+
+        for title,key in (
+            ('Posters','posters'),
+            ('Wide capsules','capsules'),
+            ('List','list'),
+        ):
+            toggle=Gtk.ToggleButton(
+                icon_name={
+                    'posters':'view-grid-symbolic',
+                    'capsules':'view-dual-symbolic',
+                    'list':'view-list-symbolic',
+                }[key]
+            )
+
+            toggle.set_tooltip_text(
+                title
+            )
+
+            toggle.update_property(
+                [Gtk.AccessibleProperty.LABEL],
+                [title],
+            )
+
+            toggle.add_css_class(
+                'view-action'
+            )
+
+            if first:
+                toggle.set_group(
+                    first
+                )
+            else:
+                first=toggle
+
+            toggle.set_active(
+                self.settings.get(
+                    'library_view',
+                    'posters',
+                )==key
+            )
+
+            toggle.connect(
+                'toggled',
+                self.view_changed,
+                key,
+            )
+
+            viewbox.append(
+                toggle
+            )
+
+            self.view_buttons[
+                key
+            ]=toggle
         filters=Gtk.Box(spacing=8)
         filters.set_margin_top(4)
         top.append(filters)
@@ -1674,7 +1936,10 @@ class Window(Adw.ApplicationWindow):
             if adj.get_value()>120 and adj.get_upper()-adj.get_page_size()>300:hero_reveal.set_reveal_child(False)
             elif adj.get_value()<10:hero_reveal.set_reveal_child(True)
         scroll.get_vadjustment().connect('value-changed',collapse_header)
-        self.flow=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,column_spacing=14,row_spacing=16,min_children_per_line=1,max_children_per_line=12,homogeneous=True,valign=Gtk.Align.START);margins(self.flow,18);self.flow.set_margin_top(0);scroll.set_child(self.flow)
+        self.flow=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,column_spacing=14,row_spacing=16,min_children_per_line=1,max_children_per_line=12,homogeneous=False,valign=Gtk.Align.START);margins(self.flow,18);self.flow.set_margin_top(0);scroll.set_child(self.flow)
+        self.flow.set_hexpand(True)
+        self.flow.set_halign(Gtk.Align.START)
+
         # Decorative bottom fade. It floats over the library instead
         # of reserving a rectangular footer row.
         footer=Gtk.Box(
@@ -1847,11 +2112,43 @@ class Window(Adw.ApplicationWindow):
             self.operation_spinner.set_visible(True);self.operation_spinner.start()
         return False
     def view_changed(self,toggle,key):
-        if not toggle.get_active() or self.settings.get('library_view')==key:return
+        if (
+            not toggle.get_active()
+            or self.settings.get(
+                'library_view'
+            )==key
+        ):
+            return
+
         self.settings['library_view']=key
-        self.show_games(self.games,False)
+
+        if hasattr(
+            self,
+            'library_size_scale',
+        ):
+            self.library_size_scale.set_sensitive(
+                key!='list'
+            )
+
+        self.show_games(
+            self.games,
+            False,
+        )
+
         if not self.options.demo:
-            self.start('Saving library view',lambda:library_media.save_settings(self.service.config,self.settings),lambda _:self.fetch_media() if self.settings['online_art'] else None)
+            self.start(
+                'Saving library view',
+                lambda:library_media.save_settings(
+                    self.service.config,
+                    self.settings,
+                ),
+                lambda _:(
+                    self.fetch_media()
+                    if self.settings['online_art']
+                    else None
+                ),
+            )
+
     def toast(self,text):self.overlay.add_toast(Adw.Toast.new(str(text)))
     def profile_changed(self,group,*_):
         self.mode=group.get_active_name() or 'mfg-only'
@@ -2692,12 +2989,26 @@ class Window(Adw.ApplicationWindow):
             game['test_record']=game_notes.load(self.service.config,game['game']) if not self.options.demo else game.get('test_record',{'status':'Untested','notes':''})
             self.make_card(game)
             if game['game'] in selected:self.cards[game['game']]['check'].set_active(True)
+
+        if view!='list':
+            self.resize_library_art(
+                self.settings.get(
+                    'art_scale',
+                    100,
+                )
+            )
+
         count=sum(g.get('installed',False) for g in games);libs=len(set(g.get('library','') for g in games))
         self.stats.set_text(f'{len(games)} games · {libs} locations · {count} OptiScaler installs detected')
         self.filter_games()
         if art and self.settings['online_art'] and games:self.fetch_media()
-    def resize_library_art(self,value=None):
-        """Resize loaded library artwork in place without rebuilding cards."""
+    def library_card_geometry(
+        self,
+        value=None,
+        view=None,
+    ):
+        """Return one canonical geometry for every card in a view."""
+
         if value is None:
             value=self.settings.get(
                 'art_scale',
@@ -2721,82 +3032,403 @@ class Window(Adw.ApplicationWindow):
             ),
         )
 
-        self.settings['art_scale']=value
+        if view is None:
+            view=self.settings.get(
+                'library_view',
+                'posters',
+            )
+
+        position=(
+            value-50
+        )/100.0
+
+        # Small cards may allow a two-line title.
+        # Every card in the view gets the same footer height;
+        # unused title space becomes flexible space above Details.
+        info_height=(
+            94
+            if value < 75
+            else 84
+        )
+
+        if view=='capsules':
+            # Wide Capsule never gets microscopic.
+            width=int(
+                round(
+                    220
+                    + (
+                        340-220
+                    )*position
+                )
+            )
+            ratio=290/136
+
+        elif view=='posters':
+            # Posters retain a larger visual footprint because
+            # their 2:3 frame is substantially taller.
+            width=int(
+                round(
+                    140
+                    + (
+                        220-140
+                    )*position
+                )
+            )
+            ratio=2/3
+
+        else:
+            width=54
+            ratio=2/3
+            info_height=0
+
+        height=max(
+            1,
+            int(
+                round(
+                    width/ratio
+                )
+            ),
+        )
+
+        total_height=(
+            height
+            + info_height
+            + (
+                4
+                if view!='list'
+                else 0
+            )
+        )
+
+        return (
+            value,
+            width,
+            height,
+            info_height,
+            total_height,
+            ratio,
+        )
+
+
+    def resize_library_art(self,value=None):
+        """Apply identical geometry to every loaded card in the active view."""
 
         view=self.settings.get(
             'library_view',
             'posters',
         )
 
-        # Artwork Size is intentionally irrelevant to List view.
-        # Keep the saved scale so switching back to artwork views uses it.
+        (
+            value,
+            width,
+            height,
+            info_height,
+            total_height,
+            ratio,
+        )=self.library_card_geometry(
+            value,
+            view,
+        )
+
+        self.settings['art_scale']=value
+
+        live_scale=getattr(
+            self,
+            'library_size_scale',
+            None,
+        )
+
+        if live_scale is not None:
+            live_scale.set_sensitive(
+                view!='list'
+            )
+
+            if int(
+                round(
+                    live_scale.get_value()
+                )
+            )!=value:
+                self._syncing_library_size=True
+                live_scale.set_value(
+                    value
+                )
+                self._syncing_library_size=False
+
         if view=='list':
             return
 
-        scale=value/100.0
-
-        if view=='capsules':
-            width=max(
-                1,
-                int(
-                    round(
-                        290*scale
-                    )
-                ),
-            )
-            height=max(
-                1,
-                int(
-                    round(
-                        136*scale
-                    )
-                ),
-            )
+        if value < 75:
+            title_class='art-title-xs'
+        elif value < 100:
+            title_class='art-title-sm'
+        elif value < 125:
+            title_class='art-title-md'
         else:
-            width=max(
-                80,
-                int(
-                    round(
-                        158*scale
-                    )
-                ),
+            title_class='art-title-lg'
+
+        title_classes=(
+            'art-title-xs',
+            'art-title-sm',
+            'art-title-md',
+            'art-title-lg',
+        )
+
+        self.flow.set_homogeneous(
+            True
+        )
+        self.flow.set_column_spacing(
+            14
+        )
+        self.flow.set_row_spacing(
+            18
+        )
+        self.flow.set_halign(
+            Gtk.Align.START
+        )
+
+        for entry in self.cards.values():
+            wrapper=entry.get(
+                'wrapper'
             )
-            height=max(
-                1,
-                int(
-                    round(
-                        width*1.5
-                    )
-                ),
+            card=entry['widget']
+            overlay=entry.get(
+                'overlay'
+            )
+            click=entry.get(
+                'click'
+            )
+            picture=entry['picture']
+            text_box=entry.get(
+                'text'
+            )
+            title=entry.get(
+                'title'
+            )
+            meta=entry.get(
+                'meta'
+            )
+            reset=entry.get(
+                'reset'
+            )
+            badge=entry.get(
+                'badge'
+            )
+            check=entry.get(
+                'check'
             )
 
-        # Resize the existing widgets instead of destroying and
-        # reconstructing every card while the Settings slider moves.
-        #
-        # This preserves selection, loaded textures, accent classes,
-        # artwork state, and card identity while still allowing the
-        # FlowBox to reflow naturally around the new geometry.
-        for entry in self.cards.values():
-            card=entry['widget']
-            picture=entry['picture']
+            # Every FlowBox child reports the same geometry.
+            if wrapper is not None:
+                wrapper.set_size_request(
+                    width+4,
+                    total_height,
+                )
+                wrapper.set_halign(
+                    Gtk.Align.START
+                )
+                wrapper.set_valign(
+                    Gtk.Align.START
+                )
+                wrapper.set_hexpand(
+                    False
+                )
+                wrapper.set_vexpand(
+                    False
+                )
+
+            # The visible card FILLS the wrapper.
+            #
+            # This is the important correction: previously START
+            # alignment let each card fall back to its own natural
+            # width, which is why Avatar stayed huge while others
+            # collapsed.
+            if isinstance(
+                card,
+                FixedLibraryCard,
+            ):
+                card.fixed_width=width+4
+                card.fixed_height=total_height
 
             card.set_size_request(
                 width+4,
-                -1,
+                total_height,
+            )
+            card.set_halign(
+                Gtk.Align.FILL
+            )
+            card.set_valign(
+                Gtk.Align.START
+            )
+            card.set_hexpand(
+                True
+            )
+            card.set_vexpand(
+                False
+            )
+            card.set_overflow(
+                Gtk.Overflow.HIDDEN
             )
 
+            if overlay is not None:
+                overlay.set_size_request(
+                    width,
+                    height,
+                )
+                overlay.set_halign(
+                    Gtk.Align.FILL
+                )
+                overlay.set_hexpand(
+                    True
+                )
+                overlay.set_overflow(
+                    Gtk.Overflow.HIDDEN
+                )
+
+            if click is not None:
+                click.set_size_request(
+                    width,
+                    height,
+                )
+                click.set_halign(
+                    Gtk.Align.FILL
+                )
+                click.set_hexpand(
+                    True
+                )
+
             picture.cover_width=width
-
-            # paint_card() replaces cover_ratio with the actual artwork
-            # ratio once a texture exists. Preserve that. Only fallback
-            # artwork needs the canonical poster/capsule ratio.
-            if picture.get_paintable() is None:
-                picture.cover_ratio=width/height
-
+            picture.cover_ratio=ratio
             picture.set_size_request(
                 width,
                 height,
             )
+            picture.set_halign(
+                Gtk.Align.FILL
+            )
+            picture.set_hexpand(
+                True
+            )
+
+            if text_box is not None:
+                # Measure natural footer height first.
+                # A second pass below gives every card the height
+                # required by the tallest footer.
+                text_box.set_size_request(
+                    -1,
+                    -1,
+                )
+                text_box.set_halign(
+                    Gtk.Align.FILL
+                )
+                text_box.set_hexpand(
+                    True
+                )
+                text_box.set_vexpand(
+                    False
+                )
+                text_box.set_spacing(
+                    1
+                )
+
+            # Text may shrink/ellipsize but can NEVER establish
+            # the card's natural width.
+            if title is not None:
+                for css_class in title_classes:
+                    title.remove_css_class(
+                        css_class
+                    )
+
+                title.add_css_class(
+                    title_class
+                )
+
+                if value < 75:
+                    title.set_wrap(
+                        True
+                    )
+                    title.set_wrap_mode(
+                        Pango.WrapMode.WORD_CHAR
+                    )
+                    title.set_lines(
+                        2
+                    )
+                    title.set_single_line_mode(
+                        False
+                    )
+                else:
+                    title.set_wrap(
+                        False
+                    )
+                    title.set_lines(
+                        1
+                    )
+                    title.set_single_line_mode(
+                        True
+                    )
+
+                title.set_width_chars(
+                    1
+                )
+                title.set_max_width_chars(
+                    1
+                )
+                title.set_ellipsize(
+                    Pango.EllipsizeMode.END
+                )
+                title.set_size_request(
+                    -1,
+                    -1,
+                )
+                title.set_hexpand(
+                    True
+                )
+
+            if meta is not None:
+                meta.set_wrap(
+                    False
+                )
+                meta.set_lines(
+                    1
+                )
+                meta.set_single_line_mode(
+                    True
+                )
+                meta.set_width_chars(
+                    1
+                )
+                meta.set_max_width_chars(
+                    1
+                )
+                meta.set_ellipsize(
+                    Pango.EllipsizeMode.END
+                )
+                meta.set_hexpand(
+                    True
+                )
+
+            if reset is not None:
+                reset.set_size_request(
+                    -1,
+                    28,
+                )
+                reset.set_halign(
+                    Gtk.Align.FILL
+                )
+                reset.set_hexpand(
+                    True
+                )
+
+            if badge is not None:
+                margins(
+                    badge,
+                    7,
+                )
+
+            if check is not None:
+                margins(
+                    check,
+                    7,
+                )
 
             entry['size']=(
                 width,
@@ -2804,53 +3436,438 @@ class Window(Adw.ApplicationWindow):
             )
 
             picture.queue_resize()
+
+            if click is not None:
+                click.queue_resize()
+
+            if overlay is not None:
+                overlay.queue_resize()
+
+            if text_box is not None:
+                text_box.queue_resize()
+
             card.queue_resize()
 
+            if wrapper is not None:
+                wrapper.queue_resize()
+
+        # --------------------------------------------------------
+        # NORMALIZE CARD HEIGHT
+        #
+        # All cards at this artwork size use the footer height of
+        # the tallest card.
+        #
+        # Long titles may wrap at compact sizes, but they cannot
+        # make only their own card taller. Short-title cards simply
+        # receive more expandable space above Details.
+        # --------------------------------------------------------
+
+        tallest_footer=info_height
+
+        for entry in self.cards.values():
+            text_box=entry.get(
+                'text'
+            )
+
+            if text_box is None:
+                continue
+
+            (
+                _minimum,
+                natural,
+                _minimum_baseline,
+                _natural_baseline,
+            )=text_box.measure(
+                Gtk.Orientation.VERTICAL,
+                width,
+            )
+
+            tallest_footer=max(
+                tallest_footer,
+                natural,
+            )
+
+        uniform_height=(
+            height
+            + tallest_footer
+            + 4
+        )
+
+        for entry in self.cards.values():
             wrapper=entry.get(
                 'wrapper'
             )
+            card=entry['widget']
+            text_box=entry.get(
+                'text'
+            )
+
+            if text_box is not None:
+                text_box.set_size_request(
+                    -1,
+                    tallest_footer,
+                )
+
+                text_box.set_vexpand(
+                    False
+                )
+
+                text_box.queue_resize()
+
+            if isinstance(
+                card,
+                FixedLibraryCard,
+            ):
+                card.fixed_width=width+4
+                card.fixed_height=uniform_height
+
+            card.set_size_request(
+                width+4,
+                uniform_height,
+            )
+
+            card.queue_resize()
 
             if wrapper is not None:
+                wrapper.set_size_request(
+                    width+4,
+                    uniform_height,
+                )
+
                 wrapper.queue_resize()
 
         self.flow.queue_resize()
         self.flow.queue_allocate()
 
+
     def make_card(self,game):
-        view=self.settings.get('library_view','posters');scale=max(.5,min(1.5,self.settings.get('art_scale',100)/100))
-        poster_width=max(80,int(round(158*scale)))
-        width,height=(poster_width,int(round(poster_width*1.5))) if view=='posters' else (int(round(290*scale)),int(round(136*scale))) if view=='capsules' else (54,81)
-        card=Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL if view=='list' else Gtk.Orientation.VERTICAL);card.add_css_class('game-card');card.set_size_request(width+4,-1)
-        overlay=Gtk.Overlay(valign=Gtk.Align.START);card.append(overlay)
-        pic=CoverPicture(content_fit=Gtk.ContentFit.CONTAIN,can_shrink=True);pic.add_css_class('poster')
-        pic.cover_width=width;pic.cover_ratio=width/height
-        pic.set_size_request(width,height)
-        click=Gtk.Button(child=pic);click.add_css_class('poster-button');click.connect('clicked',lambda *_:self.details(game));overlay.set_child(click)
-        fallback=label(game['name'],'poster-fallback');fallback.set_halign(Gtk.Align.CENTER);fallback.set_valign(Gtk.Align.CENTER);fallback.set_max_width_chars(13);overlay.add_overlay(fallback)
+        view=self.settings.get(
+            'library_view',
+            'posters',
+        )
+
+        (
+            _art_value,
+            width,
+            height,
+            info_height,
+            total_height,
+            ratio,
+        )=self.library_card_geometry(
+            self.settings.get(
+                'art_scale',
+                100,
+            ),
+            view,
+        )
+
+        if view=='list':
+            card=Gtk.Box(
+                orientation=Gtk.Orientation.HORIZONTAL,
+            )
+        else:
+            card=FixedLibraryCard(
+                orientation=Gtk.Orientation.VERTICAL,
+            )
+            card.fixed_width=width+4
+            card.fixed_height=total_height
+            card.set_overflow(
+                Gtk.Overflow.HIDDEN
+            )
+
+        card.add_css_class('game-card')
+        card.set_size_request(
+            width+4,
+            total_height,
+        )
+
+        if view!='list':
+            card.set_halign(
+                Gtk.Align.FILL
+            )
+            card.set_hexpand(
+                True
+            )
+            card.set_overflow(
+                Gtk.Overflow.HIDDEN
+            )
+
+        overlay=Gtk.Overlay(
+            valign=Gtk.Align.START,
+        )
+        overlay.set_size_request(
+            width,
+            height,
+        )
+        overlay.set_halign(
+            Gtk.Align.FILL
+        )
+        overlay.set_hexpand(
+            True
+        )
+        card.append(
+            overlay
+        )
+
+        pic=CoverPicture(
+            content_fit=Gtk.ContentFit.COVER,
+            can_shrink=True,
+        )
+        pic.add_css_class('poster')
+        pic.cover_width=width
+        pic.cover_ratio=ratio
+        pic.set_size_request(
+            width,
+            height,
+        )
+        pic.set_halign(
+            Gtk.Align.FILL
+        )
+        pic.set_hexpand(
+            True
+        )
+
+        click=Gtk.Button(
+            child=pic
+        )
+        click.add_css_class(
+            'poster-button'
+        )
+        click.set_size_request(
+            width,
+            height,
+        )
+        click.set_halign(
+            Gtk.Align.FILL
+        )
+        click.set_hexpand(
+            True
+        )
+        click.connect(
+            'clicked',
+            lambda *_:self.details(game),
+        )
+
+        overlay.set_child(
+            click
+        )
+        fallback=label(
+            game['name'],
+            'poster-fallback',
+        )
+        fallback.set_halign(
+            Gtk.Align.CENTER
+        )
+        fallback.set_valign(
+            Gtk.Align.CENTER
+        )
+
+        # Missing-art text must never establish the artwork/card size.
+        fallback.set_wrap(
+            False
+        )
+        fallback.set_lines(
+            1
+        )
+        fallback.set_single_line_mode(
+            True
+        )
+        fallback.set_width_chars(
+            1
+        )
+        fallback.set_max_width_chars(
+            1
+        )
+        fallback.set_ellipsize(
+            Pango.EllipsizeMode.END
+        )
+
+        overlay.add_overlay(
+            fallback
+        )
+        overlay.set_measure_overlay(
+            fallback,
+            False,
+        )
         check=Gtk.CheckButton(halign=Gtk.Align.END,valign=Gtk.Align.START);margins(check,10);check.set_tooltip_text('Select '+game['name']);check.connect('toggled',lambda *_:self.selection_changed())
-        if view=='list':card.prepend(check);fallback.set_visible(False)
-        else:overlay.add_overlay(check)
+        if view=='list':
+            card.prepend(
+                check
+            )
+            fallback.set_visible(
+                False
+            )
+        else:
+            overlay.add_overlay(
+                check
+            )
+            overlay.set_measure_overlay(
+                check,
+                False,
+            )
         badge=label('Unavailable' if game.get('blocked') else game.get('profile','Ready') if game.get('installed') else 'Ready','cover-badge');badge.set_halign(Gtk.Align.START);badge.set_valign(Gtk.Align.END);margins(badge,8)
         badge_mode={'NR Only':'nr-only','MFG Only':'mfg-only','NR + MFG':'nr-mfg'}.get(game.get('profile'))
         if badge_mode:
             badge=profile_label(badge_mode,badge.get_text());badge.add_css_class('cover-badge');badge.set_halign(Gtk.Align.START);badge.set_valign(Gtk.Align.END);margins(badge,8)
         badge.add_css_class('state-unavailable' if game.get('blocked') else 'state-nr' if game.get('profile')=='NR + MFG' else 'state-mfg' if game.get('installed') else 'state-ready')
-        if view!='list':overlay.add_overlay(badge)
-        text=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=7,hexpand=view=='list',vexpand=True);text.add_css_class('card-info');card.append(text)
-        title=label(game['name'],'card-title');title.set_lines(2);title.set_ellipsize(Pango.EllipsizeMode.END);title.set_max_width_chars(70 if view=='list' else 24 if view=='capsules' else 18);title.set_size_request(-1,48 if view!='list' else -1);text.append(title)
-        meta=label(game.get('source',''),'card-meta');meta.set_lines(1);meta.set_ellipsize(Pango.EllipsizeMode.END);meta.set_max_width_chars(80 if view=='list' else 28 if view=='capsules' else 22);text.append(meta)
+        if view!='list':
+            overlay.add_overlay(
+                badge
+            )
+            overlay.set_measure_overlay(
+                badge,
+                False,
+            )
+        text=Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=1,
+            hexpand=True,
+            vexpand=False if view!='list' else True,
+            valign=Gtk.Align.START,
+        );text.add_css_class('card-info');card.append(text)
+        title=label(
+            game['name'],
+            'card-title',
+        )
+
+        if _art_value < 75:
+            title.set_wrap(
+                True
+            )
+            title.set_wrap_mode(
+                Pango.WrapMode.WORD_CHAR
+            )
+            title.set_lines(
+                2
+            )
+            title.set_single_line_mode(
+                False
+            )
+        else:
+            title.set_wrap(
+                False
+            )
+            title.set_lines(
+                1
+            )
+            title.set_single_line_mode(
+                True
+            )
+
+        title.set_width_chars(
+            1
+        )
+        title.set_max_width_chars(
+            1
+        )
+        title.set_ellipsize(
+            Pango.EllipsizeMode.END
+        )
+        title.set_size_request(
+            -1,
+            -1,
+        )
+        title.set_hexpand(
+            True
+        )
+
+        text.append(
+            title
+        )
+
+        meta=label(
+            game.get(
+                'source',
+                '',
+            ),
+            'card-meta',
+        )
+
+        meta.set_wrap(
+            False
+        )
+        meta.set_lines(
+            1
+        )
+        meta.set_single_line_mode(
+            True
+        )
+        meta.set_width_chars(
+            1
+        )
+        meta.set_max_width_chars(
+            1
+        )
+        meta.set_ellipsize(
+            Pango.EllipsizeMode.END
+        )
+        meta.set_size_request(
+            -1,
+            13,
+        )
+        meta.set_hexpand(
+            True
+        )
+
+        text.append(
+            meta
+        )
+
         reset=button('Details',lambda *_:self.details(game));reset.add_css_class('game-details')
         reset.set_tooltip_text('Open game details and settings')
-        reset.set_sensitive(True);spacer=Gtk.Box(vexpand=True);text.append(spacer);text.append(reset)
-        self.flow.insert(card,-1);wrapper=card.get_parent()
-        entry={'reset':reset,'widget':card,'wrapper':wrapper,'check':check,'picture':pic,'fallback':fallback,'meta':meta,'data':game,'size':(width,height)};self.cards[game['game']]=entry;self.paint_card(entry)
+        reset.set_sensitive(True);spacer=Gtk.Box(vexpand=True,height_request=7);text.append(spacer);text.append(reset)
+        self.flow.insert(
+            card,
+            -1,
+        )
+        wrapper=card.get_parent()
+
+        if view!='list':
+            wrapper.set_size_request(
+                width+4,
+                total_height,
+            )
+            wrapper.set_halign(
+                Gtk.Align.START
+            )
+            wrapper.set_valign(
+                Gtk.Align.START
+            )
+            wrapper.set_hexpand(
+                False
+            )
+            wrapper.set_vexpand(
+                False
+            )
+        entry={
+            'reset':reset,
+            'widget':card,
+            'wrapper':wrapper,
+            'overlay':overlay,
+            'click':click,
+            'text':text,
+            'title':title,
+            'badge':badge,
+            'check':check,
+            'picture':pic,
+            'fallback':fallback,
+            'meta':meta,
+            'data':game,
+            'size':(width,height),
+        };self.cards[game['game']]=entry;self.paint_card(entry)
     def paint_card(self,entry):
-        game=entry['data'];path=game.get('capsule') if self.settings.get('library_view')=='capsules' else game.get('poster')
+        game=entry['data']
+
+        if self.settings.get('library_view')=='capsules':
+            path=game.get('capsule')
+        else:
+            path=game.get('poster')
         if path:
             try:
                 texture=Gdk.Texture.new_from_filename(path)
-                entry['picture'].cover_ratio=texture.get_width()/texture.get_height();entry['picture'].queue_resize()
-                entry['picture'].set_paintable(texture);entry['fallback'].set_visible(False)
+                entry['picture'].set_paintable(texture)
+                entry['picture'].queue_resize()
+                entry['fallback'].set_visible(False)
                 if game.get('accent_class'):entry['widget'].remove_css_class(game['accent_class'])
                 game['accent_class']=artwork_accent(path,self.settings.get('game_accents',{}).get(game['game']));entry['widget'].add_css_class(game['accent_class'])
             except Exception:entry['fallback'].set_visible(True)
@@ -3239,22 +4256,80 @@ class Window(Adw.ApplicationWindow):
             status
         )
 
+        detail_title_text=str(
+            game['name']
+        ).strip()
+
         detail_title=label(
-            game['name'],
+            detail_title_text,
             'game-banner-title',
         )
+
+        # Game Details titles are never ellipsized.
+        # Longer names wrap naturally and step down in font size.
         detail_title.set_wrap(
-            False
-        )
-        detail_title.set_single_line_mode(
             True
         )
+        detail_title.set_wrap_mode(
+            Pango.WrapMode.WORD_CHAR
+        )
+        detail_title.set_single_line_mode(
+            False
+        )
+        detail_title.set_lines(
+            -1
+        )
         detail_title.set_ellipsize(
-            Pango.EllipsizeMode.END
+            Pango.EllipsizeMode.NONE
+        )
+        detail_title.set_width_chars(
+            1
         )
         detail_title.set_max_width_chars(
-            34
+            42
         )
+        detail_title.set_hexpand(
+            True
+        )
+        detail_title.set_halign(
+            Gtk.Align.FILL
+        )
+
+        title_length=len(
+            detail_title_text
+        )
+
+        longest_word=max(
+            (
+                len(word)
+                for word in detail_title_text.split()
+            ),
+            default=0,
+        )
+
+        if (
+            title_length >= 52
+            or longest_word >= 24
+        ):
+            detail_title.add_css_class(
+                'detail-title-xs'
+            )
+
+        elif (
+            title_length >= 40
+            or longest_word >= 20
+        ):
+            detail_title.add_css_class(
+                'detail-title-sm'
+            )
+
+        elif (
+            title_length >= 28
+            or longest_word >= 16
+        ):
+            detail_title.add_css_class(
+                'detail-title-md'
+            )
 
         heading.append(
             detail_title
@@ -4877,7 +5952,91 @@ class Window(Adw.ApplicationWindow):
         modes=['nr-only','mfg-only','nr-mfg'];profile=safe_combo_row(title='Default Mode',model=Gtk.StringList.new(['NR Only','MFG Only','NR + MFG']),selected=modes.index(self.settings.get('default_profile','mfg-only')));defaults.add(profile)
         adopt=Adw.SwitchRow(title='Recognize Existing Enhancements',subtitle='Allow updates to compatible installations from other tools.',active=self.settings['recognize_previous']);defaults.add(adopt)
         appearance=Adw.PreferencesGroup(title='Library Appearance')
-        views=['posters','capsules','list'];view=safe_combo_row(title='Layout',model=Gtk.StringList.new(['Posters','Wide Capsules','List']),selected=views.index(self.settings.get('library_view','posters')));appearance.add(view)
+        views=[
+            'posters',
+            'capsules',
+            'list',
+        ]
+
+        original_library_view=self.settings.get(
+            'library_view',
+            'posters',
+        )
+
+        pending_library_view={
+            'value':original_library_view,
+        }
+
+        layout_row=row(
+            'Layout',
+            'Preview updates live',
+        )
+
+        layout_selector=Adw.ToggleGroup(
+            homogeneous=True,
+            valign=Gtk.Align.CENTER,
+        )
+        layout_selector.add_css_class(
+            'mode-selector'
+        )
+
+        for key,caption in (
+            ('posters','Poster'),
+            ('capsules','Wide Capsule'),
+            ('list','List'),
+        ):
+            layout_selector.add(
+                Adw.Toggle(
+                    name=key,
+                    label=caption,
+                )
+            )
+
+        layout_selector.set_active_name(
+            original_library_view
+        )
+
+        def preview_library_view(
+            group,
+            *_,
+        ):
+            key=group.get_active_name()
+
+            if not key:
+                return
+
+            if pending_library_view['value']==key:
+                return
+
+            pending_library_view['value']=key
+            self.settings['library_view']=key
+
+            self.show_games(
+                self.games,
+                False,
+            )
+
+            if key!='list':
+                self.resize_library_art(
+                    self.settings.get(
+                        'art_scale',
+                        100,
+                    )
+                )
+
+        layout_selector.connect(
+            'notify::active-name',
+            preview_library_view,
+        )
+
+        layout_row.add_suffix(
+            layout_selector
+        )
+
+        appearance.add(
+            layout_row
+        )
+
         original_art_scale=int(self.settings.get('art_scale',80));settings_saved={'value':False}
         scale=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,50,150,10);scale.set_value(original_art_scale);scale.set_draw_value(True);scale.set_digits(0);scale.set_size_request(170,-1);scale.set_valign(Gtk.Align.CENTER)
         item=row('Artwork Size','Preview updates live');item.add_suffix(scale);appearance.add(item)
@@ -4904,18 +6063,41 @@ class Window(Adw.ApplicationWindow):
             'value-changed',
             preview_art_scale,
         )
-        def restore_art_scale(*_):
+        def restore_library_preview(*_):
             if settings_saved['value']:
                 return
 
-            current=int(
+            current_scale=int(
                 self.settings.get(
                     'art_scale',
                     80,
                 )
             )
 
-            if current!=original_art_scale:
+            current_view=self.settings.get(
+                'library_view',
+                'posters',
+            )
+
+            if current_view!=original_library_view:
+                self.settings['library_view']=(
+                    original_library_view
+                )
+                self.settings['art_scale']=(
+                    original_art_scale
+                )
+
+                self.show_games(
+                    self.games,
+                    False,
+                )
+
+                if original_library_view!='list':
+                    self.resize_library_art(
+                        original_art_scale
+                    )
+
+            elif current_scale!=original_art_scale:
                 self.resize_library_art(
                     original_art_scale
                 )
@@ -4923,7 +6105,7 @@ class Window(Adw.ApplicationWindow):
         d.connect(
             'close-request',
             lambda *_:(
-                restore_art_scale(),
+                restore_library_preview(),
                 False,
             )[1],
         )
@@ -4970,7 +6152,7 @@ class Window(Adw.ApplicationWindow):
             selected_provider=provider_keys[provider.get_selected()];selected_mode=modes[profile.get_selected()]
             if selected_provider=='y4my' and selected_mode=='nr-only':self.toast('NR Only requires DLSS-Unlocked.');return
             settings_saved['value']=True
-            self.settings.update(runtime_provider=selected_provider,nr_runtime=nr_path.get_text().strip(),default_profile=selected_mode,library_view=views[view.get_selected()],art_scale=int(scale.get_value()),dark=dark.get_active(),online_art=art.get_active(),steam_metadata=metadata.get_active(),network_timeout=timeout.get_value_as_int(),recognize_previous=adopt.get_active())
+            self.settings.update(runtime_provider=selected_provider,nr_runtime=nr_path.get_text().strip(),default_profile=selected_mode,library_view=pending_library_view['value'],art_scale=int(scale.get_value()),dark=dark.get_active(),online_art=art.get_active(),steam_metadata=metadata.get_active(),network_timeout=timeout.get_value_as_int(),recognize_previous=adopt.get_active())
             self.nr_only.set_enabled(selected_provider=='dlss-unlocked')
             self.profile_group.set_active_name(selected_mode)
             Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)

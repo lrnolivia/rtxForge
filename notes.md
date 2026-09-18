@@ -1,36 +1,60 @@
+## 2026-09-18 — Classic UI 0.6.4 checkpoint
 
-## 2026-09-18 — GTK UI redesign checkpoint
+### Preserve
 
-Current UI work is intentionally being committed as a checkpoint for another agent to continue.
-
-### Working / preserve
-
-- Local --live-smoke Progress -> Done flow works correctly.
-- Active Progress modal must NEVER contain or expose a scrollbar.
-- Progress modal currently removes the generic Gtk.ScrolledWindow rather than merely hiding its scrollbar.
-- Existing Progress / Done presentation has had substantial prior work. Do not casually replace or redesign it.
+- Current dashboard / Library visual direction.
+- Existing Active Process / Progress presentation.
+- Existing Done presentation.
+- Progress and Done must never expose a generic Gtk.ScrolledWindow scrollbar.
+- Current Game Details redesign and compact hero.
+- Current artwork-derived game accent treatment.
 - NR Strength and Sharpening retain granular decimal controls.
-- Library artwork sizing / responsive work is in progress.
-- Dashboard app icon and bulk-action relocation work is partially implemented.
+- Enhancement Mode-style segmented controls are preferred for small mutually exclusive option sets.
+- Boolean Settings options remain normal switches.
+- Numeric continuous options remain sliders / numeric controls.
 
-### Known UI regressions to fix next
+### Library completed
 
-- Dashboard Install All, Remove All, and Reset All buttons are cramped.
-- Their labels wrap onto multiple lines. They should remain comfortable single-line controls.
-- Moving those controls changed the dashboard layout enough that the lower tuning/options area is cramped toward the left.
-- The lower NR Strength / Sharpening / MFG controls should retain their previous full-width layout instead of being squeezed beside the dashboard actions.
-- The dashboard currently shows the OLD rtxForge icon.
-- Replace it with the current rtxForge artwork/icon.
-- The app artwork should be substantially larger, functioning as a real dashboard/hero illustration similar to the large artwork treatment used by GameBridge Lite rather than a tiny app-menu icon.
-- Preserve the overall GNOME/libadwaita visual language.
-- Do not regress the no-scroll active Progress modal while fixing the dashboard.
+- Artwork Size works live.
+- A live Library artwork-size slider sits beside the view controls.
+- Poster and Wide Capsule geometry is bounded and consistent.
+- Poster and Wide Capsule cards within a view share uniform dimensions.
+- Card height normalizes to the tallest footer so Details buttons remain aligned.
+- Compact card titles may wrap while shorter titles gain elastic space above Details.
+- Poster artwork retains its fixed portrait frame.
+- Wide Capsule uses actual capsule artwork rather than borrowing poster artwork.
+- Artwork overlays, badges, fallback text, and selection controls do not determine card geometry.
+- Details buttons use full artwork-derived accent backgrounds with contrast-aware text.
+- Poster / Wide Capsule / List selection in Settings uses a segmented control and previews live.
 
-### Validation
+### Game Details completed
 
-Run before accepting the next UI revision:
+- Long Game Details titles are never ellipsized.
+- Titles wrap naturally when needed.
+- Longer titles step down through smaller font sizes to remain readable within the hero.
+- Preserve the existing hero, artwork credit, navigation, and close-control behavior.
 
-    python3 -m py_compile gui/rtxforge_gtk.py
-    git diff --check
-    python3 gui/rtxforge_gtk.py --smoke-test
-    python3 gui/rtxforge_gtk.py --live-smoke
+### Progress / Done completed
 
+- Active Process hover scrollbar regression is fixed.
+- Done hover scrollbar regression is fixed.
+- The generic dialog ScrolledWindow is removed when Progress takes over the dialog.
+
+### Next and only planned classic-UI feature
+
+Build the **compact sticky Library / Dashboard header**.
+
+The sticky header should:
+
+- appear once the large dashboard controls scroll away;
+- remain much shorter than the full dashboard;
+- keep only genuinely useful persistent Library controls / context;
+- feel native to the existing GTK/libadwaita design;
+- avoid recreating the entire dashboard in miniature.
+
+### Release path
+
+1. 0.6.4 — completed Library / Game Details polish checkpoint.
+2. Sticky Library / Dashboard header.
+3. 0.7.
+4. Freeze classic UI apart from maintenance and approved fixes.

@@ -517,7 +517,26 @@ class Window(Adw.ApplicationWindow):
         super().__init__(application=application,title='rtxForge',default_width=1160,default_height=820)
         self.options=options;self.service=DesktopService(options.provider)
         self.settings=dict(library_media.DEFAULTS) if options.demo else library_media.load_settings(self.service.config)
-        self.strength_presets=__import__('engine_bridge').module(self.service.config).NR_STRENGTH_PRESETS
+
+        # Demo/smoke modes are deliberately write-disabled and must not
+        # require the real Bazzite Games mount merely to construct the UI.
+        #
+        # Use the same legacy values already owned by library_media rather
+        # than importing the transaction engine, whose initialization
+        # intentionally verifies the configured Btrfs storage mount.
+        if options.demo:
+            self.strength_presets={
+                name:{
+                    'nr':nr,
+                    'sharpness':library_media.LEGACY_SHARPENING_STRENGTH[name],
+                }
+                for name,nr in library_media.LEGACY_NR_STRENGTH.items()
+            }
+        else:
+            self.strength_presets=__import__('engine_bridge').module(
+                self.service.config
+            ).NR_STRENGTH_PRESETS
+
         self.strength_names=tuple(self.strength_presets);self.multiplier_values=(0,2,3,4,5,6)
         self.settings['enable_effects']=True;self.settings.setdefault('dark',True);self.hardware_info={'ready':True,'gpu':'Preview GPU','reason':'Preview mode'} if options.demo else None;self.games=[];self.cards={};self.mode='mfg-only';self.filter='all'
         self.busy=False;self.task_kind='';self.pending=None;self.cancel_art=threading.Event();self.log=[];self.dialog=None;self.review=None;self.action_buttons=[]
@@ -2600,9 +2619,37 @@ class Window(Adw.ApplicationWindow):
 class Application(Adw.Application):
     def __init__(self,options):super().__init__(application_id='io.github.lrnolivia.RTXForge',flags=Gio.ApplicationFlags.NON_UNIQUE);self.options=options;self.exit_code=0
     def do_activate(self):
-        Gtk.IconTheme.get_for_display(Gdk.Display.get_default()).add_search_path(str(ROOT/'gui/icons'));Gtk.Window.set_default_icon_name('io.github.lrnolivia.RTXForge')
-        provider=Gtk.CssProvider();provider.load_from_data(CSS);Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(),provider,Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
-        self.window=Window(self,self.options);self.window.present()
+        try:
+            Gtk.IconTheme.get_for_display(
+                Gdk.Display.get_default()
+            ).add_search_path(
+                str(ROOT/'gui/icons')
+            )
+            Gtk.Window.set_default_icon_name(
+                'io.github.lrnolivia.RTXForge'
+            )
+
+            provider=Gtk.CssProvider()
+            provider.load_from_data(CSS)
+            Gtk.StyleContext.add_provider_for_display(
+                Gdk.Display.get_default(),
+                provider,
+                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+            )
+
+            self.window=Window(
+                self,
+                self.options,
+            )
+            self.window.present()
+
+        except Exception:
+            # In automated smoke mode a startup exception must terminate
+            # the process promptly instead of leaving an empty GTK loop
+            # alive until the CI timeout.
+            traceback.print_exc()
+            self.exit_code=1
+            self.quit()
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--provider',type=Path)

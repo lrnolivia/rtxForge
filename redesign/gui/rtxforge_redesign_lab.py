@@ -221,7 +221,7 @@ class RedesignLabWindow(
             )
 
             image.set_pixel_size(
-                48
+                58
             )
 
             return image
@@ -231,7 +231,7 @@ class RedesignLabWindow(
         )
 
         image.set_pixel_size(
-            42
+            50
         )
 
         return image
@@ -335,7 +335,7 @@ class RedesignLabWindow(
     def _build_branding(self):
         branding = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
-            spacing=9,
+            spacing=10,
         )
 
         branding.set_margin_start(
@@ -354,31 +354,36 @@ class RedesignLabWindow(
             18
         )
 
-        identity = Gtk.Box(
-            orientation=Gtk.Orientation.HORIZONTAL,
-            spacing=12,
-        )
-
-        identity.append(
+        self.sidebar_brand_icon = (
             self._app_icon()
         )
 
-        name = Gtk.Label(
-            label="rtxForge",
-            xalign=0,
-            hexpand=True,
-        )
-
-        name.add_css_class(
-            "title-2"
-        )
-
-        identity.append(
-            name
+        self.sidebar_brand_icon.set_halign(
+            Gtk.Align.START
         )
 
         branding.append(
-            identity
+            self.sidebar_brand_icon
+        )
+
+        self.sidebar_brand_name = (
+            Gtk.Label(
+                label="rtxForge",
+                xalign=0,
+                hexpand=True,
+            )
+        )
+
+        self.sidebar_brand_name.set_halign(
+            Gtk.Align.START
+        )
+
+        self.sidebar_brand_name.add_css_class(
+            "title-2"
+        )
+
+        branding.append(
+            self.sidebar_brand_name
         )
 
         description = Gtk.Label(
@@ -388,6 +393,10 @@ class RedesignLabWindow(
             ),
             xalign=0,
             wrap=True,
+        )
+
+        description.set_halign(
+            Gtk.Align.START
         )
 
         description.add_css_class(
@@ -947,6 +956,139 @@ class RedesignLabWindow(
 
         return row, button
 
+    def _forge_scale_row(
+        self,
+        *,
+        title,
+        subtitle,
+        scale,
+        format_value,
+    ):
+        row = Gtk.ListBoxRow()
+
+        row.set_activatable(
+            False
+        )
+
+        row.set_selectable(
+            False
+        )
+
+        container = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=10,
+        )
+
+        container.set_margin_start(
+            16
+        )
+
+        container.set_margin_end(
+            16
+        )
+
+        container.set_margin_top(
+            14
+        )
+
+        container.set_margin_bottom(
+            14
+        )
+
+        header = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL,
+            spacing=12,
+        )
+
+        title_box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=4,
+            hexpand=True,
+        )
+
+        title_label = Gtk.Label(
+            label=title,
+            xalign=0,
+            hexpand=True,
+        )
+
+        title_label.add_css_class(
+            "heading"
+        )
+
+        subtitle_label = Gtk.Label(
+            label=subtitle,
+            xalign=0,
+            wrap=True,
+            hexpand=True,
+        )
+
+        subtitle_label.add_css_class(
+            "dim-label"
+        )
+
+        title_box.append(
+            title_label
+        )
+
+        title_box.append(
+            subtitle_label
+        )
+
+        value_label = Gtk.Label(
+            xalign=1
+        )
+
+        value_label.add_css_class(
+            "dim-label"
+        )
+
+        def sync_value(_scale):
+            value_label.set_label(
+                format_value(
+                    _scale.get_value()
+                )
+            )
+
+        scale.set_hexpand(
+            True
+        )
+
+        scale.set_draw_value(
+            False
+        )
+
+        scale.connect(
+            "value-changed",
+            sync_value,
+        )
+
+        sync_value(
+            scale
+        )
+
+        header.append(
+            title_box
+        )
+
+        header.append(
+            value_label
+        )
+
+        container.append(
+            header
+        )
+
+        container.append(
+            scale
+        )
+
+        row.set_child(
+            container
+        )
+
+        return row, value_label
+
     def _build_forge_shell(self):
         # Keep native Adwaita preference groups/rows, but do not
         # use Adw.PreferencesPage here: its centered narrow column
@@ -1039,17 +1181,6 @@ class RedesignLabWindow(
             "Tune the default Neural Rendering image."
         )
 
-        strength_row = Adw.ActionRow()
-
-        strength_row.set_title(
-            "Strength"
-        )
-
-        strength_row.set_subtitle(
-            "Adjust how strongly Neural Rendering "
-            "affects the final image."
-        )
-
         self.forge_nr_strength = (
             Gtk.Scale.new_with_range(
                 Gtk.Orientation.HORIZONTAL,
@@ -1064,39 +1195,24 @@ class RedesignLabWindow(
         )
 
         self.forge_nr_strength.set_digits(
-            1
+            2
         )
 
-        self.forge_nr_strength.set_draw_value(
-            True
-        )
-
-        self.forge_nr_strength.set_size_request(
-            230,
-            -1,
-        )
-
-        self.forge_nr_strength.set_valign(
-            Gtk.Align.CENTER
-        )
-
-        strength_row.add_suffix(
-            self.forge_nr_strength
+        (
+            strength_row,
+            self.forge_nr_strength_value,
+        ) = self._forge_scale_row(
+            title="Strength",
+            subtitle=(
+                "Adjust how strongly Neural Rendering "
+                "affects the final image."
+            ),
+            scale=self.forge_nr_strength,
+            format_value=lambda value: f"{value:.2f}",
         )
 
         neural.add(
             strength_row
-        )
-
-        sharpening_row = Adw.ActionRow()
-
-        sharpening_row.set_title(
-            "Sharpening"
-        )
-
-        sharpening_row.set_subtitle(
-            "Fine-tune image sharpness "
-            "after rendering."
         )
 
         self.forge_sharpening = (
@@ -1113,24 +1229,20 @@ class RedesignLabWindow(
         )
 
         self.forge_sharpening.set_digits(
-            1
+            2
         )
 
-        self.forge_sharpening.set_draw_value(
-            True
-        )
-
-        self.forge_sharpening.set_size_request(
-            230,
-            -1,
-        )
-
-        self.forge_sharpening.set_valign(
-            Gtk.Align.CENTER
-        )
-
-        sharpening_row.add_suffix(
-            self.forge_sharpening
+        (
+            sharpening_row,
+            self.forge_sharpening_value,
+        ) = self._forge_scale_row(
+            title="Sharpening",
+            subtitle=(
+                "Fine-tune image sharpness "
+                "after rendering."
+            ),
+            scale=self.forge_sharpening,
+            format_value=lambda value: f"{value:.2f}",
         )
 
         neural.add(
@@ -1811,6 +1923,22 @@ class RedesignLabApplication(
 
             if not hasattr(
                 window,
+                "sidebar_brand_icon",
+            ):
+                raise RuntimeError(
+                    "Sidebar branding icon missing"
+                )
+
+            if (
+                window.sidebar_brand_icon.get_pixel_size()
+                < 56
+            ):
+                raise RuntimeError(
+                    "Sidebar branding icon was not enlarged"
+                )
+
+            if not hasattr(
+                window,
                 "forge_nr_strength",
             ):
                 raise RuntimeError(
@@ -1819,10 +1947,56 @@ class RedesignLabApplication(
 
             if not hasattr(
                 window,
+                "forge_nr_strength_value",
+            ):
+                raise RuntimeError(
+                    "Forge NR strength value label missing"
+                )
+
+            if (
+                window.forge_nr_strength.get_draw_value()
+            ):
+                raise RuntimeError(
+                    "Forge NR strength should use the stacked slider layout"
+                )
+
+            if not hasattr(
+                window,
                 "forge_sharpening",
             ):
                 raise RuntimeError(
                     "Forge sharpening control missing"
+                )
+
+            if not hasattr(
+                window,
+                "forge_sharpening_value",
+            ):
+                raise RuntimeError(
+                    "Forge sharpening value label missing"
+                )
+
+            if (
+                window.forge_sharpening.get_draw_value()
+            ):
+                raise RuntimeError(
+                    "Forge sharpening should use the stacked slider layout"
+                )
+
+            if (
+                window.forge_nr_strength_value.get_label()
+                != "2.00"
+            ):
+                raise RuntimeError(
+                    "Forge NR strength display incorrect"
+                )
+
+            if (
+                window.forge_sharpening_value.get_label()
+                != "1.00"
+            ):
+                raise RuntimeError(
+                    "Forge sharpening display incorrect"
                 )
 
             if not hasattr(

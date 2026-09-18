@@ -1,0 +1,270 @@
+name: Build rtxForge Redesign Beta
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches:
+      - main
+    paths:
+      - redesign/**
+      - .github/workflows/redesign-beta.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rtxforge-redesign-beta
+  cancel-in-progress: true
+
+jobs:
+  build-redesign-beta:
+    name: Bazzite Redesign Beta
+    runs-on: ubuntu-24.04
+
+    container:
+      image: fedora:44
+
+    timeout-minutes: 45
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Install Fedora dependencies
+        run: |
+          set -euo pipefail
+
+          dnf install -y \
+            ca-certificates \
+            git \
+            gh \
+            python3 \
+            python3-gobject \
+            gtk4 \
+            libadwaita \
+            graphene \
+            gdk-pixbuf2 \
+            adwaita-icon-theme \
+            adwaita-sans-fonts \
+            squashfs-tools \
+            xorg-x11-server-Xvfb \
+            dbus-daemon
+
+      - name: Checkout rtxForge
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Trust checkout
+        run: |
+          set -euo pipefail
+
+          git config \
+            --global \
+            --add \
+            safe.directory \
+            "$GITHUB_WORKSPACE"
+
+          git rev-parse HEAD
+
+      - name: Validate redesign source
+        env:
+          GDK_BACKEND: x11
+          GSK_RENDERER: cairo
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          GTK_A11Y: "none"
+          HOME: /tmp/rtxforge-redesign-smoke
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$HOME"
+
+          /usr/bin/python3 \
+            -m py_compile \
+            redesign/gui/rtxforge_redesign_lab.py
+
+          dbus-run-session -- \
+            xvfb-run -a \
+            /usr/bin/python3 \
+            redesign/gui/rtxforge_redesign_lab.py \
+            --smoke-test
+
+      - name: Stage beta-only application tree
+        run: |
+          set -euo pipefail
+
+          cp \
+            redesign/gui/rtxforge_redesign_lab.py \
+            gui/rtxforge_redesign_lab.py
+
+          BASE_VERSION="$(cat VERSION)"
+
+          printf '%s\n' \
+            "${BASE_VERSION}-redesign.${GITHUB_RUN_NUMBER}" \
+            > VERSION
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("packaging/AppRun")
+          source = path.read_text(
+              encoding="utf-8"
+          )
+
+          production = (
+              'exec /usr/bin/python3 -B '
+              '"$root/gui/rtxforge_gtk.py" "$@"'
+          )
+
+          redesign = (
+              'exec /usr/bin/python3 -B '
+              '"$root/gui/rtxforge_redesign_lab.py" "$@"'
+          )
+
+          if source.count(production) != 1:
+              raise SystemExit(
+                  "STOP: production GUI "
+                  "entrypoint not found exactly once"
+              )
+
+          source = source.replace(
+              production,
+              redesign,
+              1,
+          )
+
+          install_old = (
+              'if [ "${1:-}" = --install ]; then\n'
+              '    exec /usr/bin/python3 -B '
+              '"$root/scripts/desktop_install.py"\n'
+              'fi'
+          )
+
+          install_beta = (
+              'if [ "${1:-}" = --install ]; then\n'
+              '    echo "Redesign beta is run-only; '
+              'stable rtxForge was not replaced." >&2\n'
+              '    exit 2\n'
+              'fi'
+          )
+
+          if source.count(install_old) != 1:
+              raise SystemExit(
+                  "STOP: production install block "
+                  "not found exactly once"
+              )
+
+          source = source.replace(
+              install_old,
+              install_beta,
+              1,
+          )
+
+          path.write_text(
+              source,
+              encoding="utf-8",
+          )
+          PY
+
+          echo "Temporary CI-only changes:"
+          git diff -- \
+            VERSION \
+            packaging/AppRun
+
+      - name: Build beta AppImage
+        run: |
+          set -euo pipefail
+
+          python3 \
+            packaging/build_appimage.py
+
+      - name: Prepare beta asset
+        run: |
+          set -euo pipefail
+
+          BUILT="$(
+              find dist \
+                -maxdepth 1 \
+                -type f \
+                -name 'RTXForge-*-Bazzite-x86_64.AppImage' \
+                -print \
+                -quit
+          )"
+
+          test -n "$BUILT"
+          test -f "$BUILT"
+
+          rm -f "${BUILT}.sha256"
+
+          BETA="dist/rtxForge-Redesign-Beta-Bazzite-x86_64.AppImage"
+
+          mv \
+            "$BUILT" \
+            "$BETA"
+
+          chmod +x \
+            "$BETA"
+
+          (
+              cd dist
+
+              sha256sum \
+                rtxForge-Redesign-Beta-Bazzite-x86_64.AppImage \
+                > rtxForge-Redesign-Beta-Bazzite-x86_64.AppImage.sha256
+
+              sha256sum -c \
+                rtxForge-Redesign-Beta-Bazzite-x86_64.AppImage.sha256
+          )
+
+      - name: Upload beta artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rtxForge-Redesign-Beta
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dist/rtxForge-Redesign-Beta-Bazzite-x86_64.AppImage
+            dist/rtxForge-Redesign-Beta-Bazzite-x86_64.AppImage.sha256
+
+      - name: Publish moving beta release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          git tag \
+            -f \
+            redesign-beta \
+            "$GITHUB_SHA"
+
+          git push \
+            -f \
+            origin \
+            refs/tags/redesign-beta
+
+          NOTES="Moving isolated Phase 1 redesign beta from $GITHUB_SHA. This does not replace the stable or continuous application."
+
+          if gh release view \
+              redesign-beta \
+              >/dev/null 2>&1
+          then
+              gh release edit \
+                redesign-beta \
+                --title "rtxForge Redesign Beta" \
+                --prerelease \
+                --notes "$NOTES"
+          else
+              gh release create \
+                redesign-beta \
+                --title "rtxForge Redesign Beta" \
+                --prerelease \
+                --notes "$NOTES"
+          fi
+
+          gh release upload \
+            redesign-beta \
+            dist/rtxForge-Redesign-Beta-Bazzite-x86_64.AppImage \
+            dist/rtxForge-Redesign-Beta-Bazzite-x86_64.AppImage.sha256 \
+            --clobber

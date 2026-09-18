@@ -596,6 +596,327 @@ class RedesignLabWindow(
 
         return placeholder
 
+    def _library_toggle(
+        self,
+        *,
+        name,
+        label=None,
+        icon_name=None,
+        tooltip=None,
+    ):
+        toggle = Adw.Toggle()
+
+        toggle.set_name(
+            name
+        )
+
+        if label is not None:
+            toggle.set_label(
+                label
+            )
+
+        if icon_name is not None:
+            toggle.set_icon_name(
+                icon_name
+            )
+
+        if tooltip is not None:
+            toggle.set_tooltip(
+                tooltip
+            )
+
+        return toggle
+
+    def _build_library_shell(self):
+        library = Gtk.Box(
+            orientation=(
+                Gtk.Orientation.VERTICAL
+            ),
+            spacing=18,
+            hexpand=True,
+            vexpand=True,
+        )
+
+        # Search + page action
+        search_row = Gtk.Box(
+            orientation=(
+                Gtk.Orientation.HORIZONTAL
+            ),
+            spacing=12,
+        )
+
+        self.library_search = (
+            Gtk.SearchEntry()
+        )
+
+        self.library_search.set_placeholder_text(
+            "Search games"
+        )
+
+        self.library_search.set_hexpand(
+            True
+        )
+
+        search_row.append(
+            self.library_search
+        )
+
+        self.library_add_button = (
+            Gtk.Button(
+                label="Add Game"
+            )
+        )
+
+        # Phase 1 builds the destination and visual hierarchy.
+        # Backend actions are intentionally not wired yet.
+        self.library_add_button.set_sensitive(
+            False
+        )
+
+        self.library_add_button.set_tooltip_text(
+            "Game-management wiring follows "
+            "after the Phase 1 shell migration."
+        )
+
+        search_row.append(
+            self.library_add_button
+        )
+
+        library.append(
+            search_row
+        )
+
+        # Filter + presentation controls
+        controls = Gtk.Box(
+            orientation=(
+                Gtk.Orientation.HORIZONTAL
+            ),
+            spacing=12,
+        )
+
+        self.library_filters = (
+            Adw.ToggleGroup()
+        )
+
+        self.library_filters.set_hexpand(
+            True
+        )
+
+        self.library_filters.set_can_shrink(
+            True
+        )
+
+        self.library_filters.add(
+            self._library_toggle(
+                name="all",
+                label="All",
+            )
+        )
+
+        self.library_filters.add(
+            self._library_toggle(
+                name="forged",
+                label="Using rtxForge",
+            )
+        )
+
+        self.library_filters.add(
+            self._library_toggle(
+                name="available",
+                label="Ready to Forge",
+            )
+        )
+
+        self.library_filters.add(
+            self._library_toggle(
+                name="attention",
+                label="Needs Attention",
+            )
+        )
+
+        self.library_filters.set_active_name(
+            "all"
+        )
+
+        controls.append(
+            self.library_filters
+        )
+
+        self.library_views = (
+            Adw.ToggleGroup()
+        )
+
+        self.library_views.set_can_shrink(
+            False
+        )
+
+        self.library_views.add_css_class(
+            "flat"
+        )
+
+        self.library_views.add(
+            self._library_toggle(
+                name="grid",
+                icon_name=(
+                    "view-grid-symbolic"
+                ),
+                tooltip="Grid view",
+            )
+        )
+
+        self.library_views.add(
+            self._library_toggle(
+                name="wide",
+                icon_name=(
+                    "view-continuous-symbolic"
+                ),
+                tooltip="Wide capsule view",
+            )
+        )
+
+        self.library_views.add(
+            self._library_toggle(
+                name="list",
+                icon_name=(
+                    "view-list-symbolic"
+                ),
+                tooltip="List view",
+            )
+        )
+
+        self.library_views.set_active_name(
+            "grid"
+        )
+
+        controls.append(
+            self.library_views
+        )
+
+        library.append(
+            controls
+        )
+
+        # Real content mount for the future library transplant.
+        self.library_content_mount = (
+            Gtk.Box(
+                orientation=(
+                    Gtk.Orientation.VERTICAL
+                ),
+                spacing=12,
+                hexpand=True,
+                vexpand=True,
+            )
+        )
+
+        empty = Adw.StatusPage()
+
+        empty.set_icon_name(
+            "applications-games-symbolic"
+        )
+
+        empty.set_title(
+            "Library surface ready"
+        )
+
+        empty.set_description(
+            "The existing rtxForge game library "
+            "will be connected here next. "
+            "No production library behavior has "
+            "been changed."
+        )
+
+        empty.set_vexpand(
+            True
+        )
+
+        self.library_content_mount.append(
+            empty
+        )
+
+        library.append(
+            self.library_content_mount
+        )
+
+        # Selection actions are contextual.
+        # Nothing selected means no permanent action bar.
+        self.library_selection_revealer = (
+            Gtk.Revealer()
+        )
+
+        self.library_selection_revealer.set_transition_type(
+            Gtk.RevealerTransitionType.SLIDE_UP
+        )
+
+        self.library_selection_revealer.set_reveal_child(
+            False
+        )
+
+        action_bar = Gtk.ActionBar()
+
+        self.library_selection_label = (
+            Gtk.Label(
+                label="0 selected"
+            )
+        )
+
+        action_bar.pack_start(
+            self.library_selection_label
+        )
+
+        forge_button = Gtk.Button(
+            label="Forge"
+        )
+
+        repair_button = Gtk.Button(
+            label="Repair"
+        )
+
+        restore_button = Gtk.Button(
+            label="Restore"
+        )
+
+        defaults_button = Gtk.Button(
+            label="Use Forge Defaults"
+        )
+
+        # These become live only when the existing
+        # operation path is migrated.
+        for button in (
+            forge_button,
+            repair_button,
+            restore_button,
+            defaults_button,
+        ):
+            button.set_sensitive(
+                False
+            )
+
+        action_bar.pack_end(
+            defaults_button
+        )
+
+        action_bar.pack_end(
+            restore_button
+        )
+
+        action_bar.pack_end(
+            repair_button
+        )
+
+        action_bar.pack_end(
+            forge_button
+        )
+
+        self.library_selection_revealer.set_child(
+            action_bar
+        )
+
+        library.append(
+            self.library_selection_revealer
+        )
+
+        return library
+
     def _build_page_surface(
         self,
         page_id,
@@ -698,12 +1019,17 @@ class RedesignLabWindow(
             vexpand=True,
         )
 
-        mount.append(
-            self._page_placeholder(
-                page_id,
-                icon_name,
+        if page_id == "library":
+            mount.append(
+                self._build_library_shell()
             )
-        )
+        else:
+            mount.append(
+                self._page_placeholder(
+                    page_id,
+                    icon_name,
+                )
+            )
 
         content.append(
             mount
@@ -975,6 +1301,73 @@ class RedesignLabApplication(
 
             print(
                 "  migration mounts: ready"
+            )
+
+            if not hasattr(
+                window,
+                "library_search",
+            ):
+                raise RuntimeError(
+                    "Game Library search missing"
+                )
+
+            if (
+                window.library_search.get_placeholder_text()
+                != "Search games"
+            ):
+                raise RuntimeError(
+                    "Game Library search placeholder incorrect"
+                )
+
+            if (
+                window.library_filters.get_n_toggles()
+                != 4
+            ):
+                raise RuntimeError(
+                    "Game Library filter group incomplete"
+                )
+
+            if (
+                window.library_filters.get_active_name()
+                != "all"
+            ):
+                raise RuntimeError(
+                    "Game Library default filter is not All"
+                )
+
+            if (
+                window.library_views.get_n_toggles()
+                != 3
+            ):
+                raise RuntimeError(
+                    "Game Library view group incomplete"
+                )
+
+            if (
+                window.library_views.get_active_name()
+                != "grid"
+            ):
+                raise RuntimeError(
+                    "Game Library default view is not Grid"
+                )
+
+            if (
+                window.library_selection_revealer
+                .get_reveal_child()
+            ):
+                raise RuntimeError(
+                    "Selection bar must be hidden "
+                    "when nothing is selected"
+                )
+
+            print(
+                "  library shell: "
+                "search + filters + views + "
+                "content mount + contextual actions"
+            )
+
+            print(
+                "  library backend: intentionally unwired"
             )
 
             print(

@@ -2470,7 +2470,7 @@ class Window(Adw.ApplicationWindow):
         viewbar.set_margin_top(8)
         viewbar.set_margin_bottom(16)
         library_surface.append(viewbar)
-        scroll=Gtk.ScrolledWindow(vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER);library_stage=Gtk.Overlay(vexpand=True);library_stage.set_child(scroll);library_surface.append(library_stage)
+        scroll=Gtk.ScrolledWindow(vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER);self.library_scroll=scroll;library_stage=Gtk.Overlay(vexpand=True);library_stage.set_child(scroll);library_surface.append(library_stage)
         # Decorative top fade removed. The Library now begins
         # with ordinary physical spacing below its controls.
         def collapse_header(adj):
@@ -2536,6 +2536,13 @@ class Window(Adw.ApplicationWindow):
         self.flow.set_hexpand(True)
         self.flow.set_halign(Gtk.Align.START)
 
+        scroll.connect(
+            'notify::width',
+            self.update_library_spacing,
+        )
+        GLib.idle_add(
+            self.update_library_spacing
+        )
 
         # Decorative bottom fade. It floats over the library instead
         # of reserving a rectangular footer row.
@@ -2682,6 +2689,545 @@ class Window(Adw.ApplicationWindow):
 
     def title_button(self,icon,title,callback):
         b=Gtk.Button(icon_name=icon);b.set_tooltip_text(title);b.update_property([Gtk.AccessibleProperty.LABEL],[title]);b.add_css_class('title-action');b.connect('clicked',callback);return b
+
+    def update_library_spacing(self,*_):
+        """Size gallery templates from available width with a real fixed gap."""
+
+        flow=getattr(
+            self,
+            'flow',
+            None,
+        )
+
+        if flow is None:
+            return False
+
+        view=self.settings.get(
+            'library_view',
+            'posters',
+        )
+
+        entries=[
+            entry
+            for entry in getattr(
+                self,
+                'cards',
+                {},
+            ).values()
+            if entry.get(
+                'wrapper'
+            ) is not None
+        ]
+
+        # --------------------------------------------------------
+        # Clear ALL old fake-spacing state.
+        #
+        # FlowBox column_spacing is now the authoritative horizontal
+        # gap. Child margins are used only for an optional one-pixel
+        # integer remainder below.
+        # --------------------------------------------------------
+
+        for entry in entries:
+            wrapper=entry['wrapper']
+
+            wrapper.set_margin_start(
+                0
+            )
+            wrapper.set_margin_end(
+                0
+            )
+
+        if view=='list':
+            # List View owns its own full-width layout.
+            # Release the explicit gallery-width constraint.
+            flow.set_size_request(
+                -1,
+                -1,
+            )
+
+            flow.set_hexpand(
+                True
+            )
+
+            flow.set_homogeneous(
+                False
+            )
+
+            flow.set_column_spacing(
+                14
+            )
+
+            flow.set_margin_start(
+                18
+            )
+
+            flow.set_margin_end(
+                18
+            )
+
+            flow.set_halign(
+                Gtk.Align.FILL
+            )
+
+            return False
+
+        scroll=getattr(
+            self,
+            'library_scroll',
+            None,
+        )
+
+        if scroll is None:
+            return False
+
+        # --------------------------------------------------------
+        # RESPONSIVE GALLERY CONTRACT
+        #
+        # The FlowBox's parent is the actual viewport when available.
+        # Measure that rather than guessing from individual cards.
+        # --------------------------------------------------------
+
+        viewport=flow.get_parent()
+
+        if viewport is not None:
+            viewport_width=int(
+                viewport.get_width()
+            )
+        else:
+            viewport_width=int(
+                scroll.get_width()
+            )
+
+        if viewport_width<=1:
+            return False
+
+        outer_inset=16
+        gallery_gap=8
+
+        usable_width=max(
+            1,
+            viewport_width
+            - (
+                outer_inset*2
+            ),
+        )
+
+        (
+            _art_value,
+            preferred_art_width,
+            _preferred_art_height,
+            info_height,
+            _preferred_total_height,
+            ratio,
+        )=self.library_card_geometry(
+            self.settings.get(
+                'art_scale',
+                100,
+            ),
+            view,
+        )
+
+        preferred_card_width=(
+            preferred_art_width
+            + 4
+        )
+
+        # --------------------------------------------------------
+        # COLUMN COUNT
+        #
+        # Ask only:
+        #
+        # "How many preferred-size templates fit with an 8px gap?"
+        #
+        # Visible game count does NOT change the grid capacity.
+        # Therefore a short final row stays compact and left aligned.
+        # --------------------------------------------------------
+
+        columns=max(
+            1,
+            min(
+                12,
+                int(
+                    (
+                        usable_width
+                        + gallery_gap
+                    )
+                    // (
+                        preferred_card_width
+                        + gallery_gap
+                    )
+                ),
+            ),
+        )
+
+        # --------------------------------------------------------
+        # TEMPLATE WIDTH
+        #
+        # This is the Power-Apps-style responsive-gallery idea:
+        #
+        # template width =
+        #   (gallery width - total explicit gaps) / columns
+        #
+        # Gap never absorbs the spare room. Cards do.
+        # --------------------------------------------------------
+
+        total_gap_width=(
+            gallery_gap
+            * max(
+                0,
+                columns-1,
+            )
+        )
+
+        width_for_cards=max(
+            columns,
+            usable_width
+            - total_gap_width,
+        )
+
+        card_width=max(
+            1,
+            width_for_cards
+            // columns,
+        )
+
+        # Integer pixels may leave at most columns-1 pixels.
+        #
+        # Keep all cards IDENTICAL in width/height. Distribute those
+        # tiny remainder pixels as +1px on a few inter-card gaps.
+        remainder=max(
+            0,
+            usable_width
+            - (
+                card_width*columns
+                + total_gap_width
+            ),
+        )
+
+        actual_art_width=max(
+            1,
+            card_width-4,
+        )
+
+        actual_art_height=max(
+            1,
+            int(
+                round(
+                    actual_art_width
+                    / ratio
+                )
+            ),
+        )
+
+        # --------------------------------------------------------
+        # FLOWBOX OWNS THE GAP.
+        #
+        # This is the critical correction.
+        # --------------------------------------------------------
+
+        flow.set_homogeneous(
+            False
+        )
+
+        flow.set_min_children_per_line(
+            1
+        )
+
+        flow.set_max_children_per_line(
+            columns
+        )
+
+        flow.set_column_spacing(
+            gallery_gap
+        )
+
+        flow.set_margin_start(
+            outer_inset
+        )
+
+        flow.set_margin_end(
+            outer_inset
+        )
+
+        # Critical responsive-gallery rule:
+        #
+        # usable_width is already the complete width solved by:
+        #
+        #   card widths
+        # + real FlowBox gaps
+        # + integer remainder
+        #
+        # Do NOT FILL again here. FILL causes GtkFlowBox to receive
+        # additional allocation and creates large invisible child-cell
+        # regions around our correctly-sized cards.
+        flow.set_size_request(
+            usable_width,
+            -1,
+        )
+
+        flow.set_hexpand(
+            False
+        )
+
+        flow.set_halign(
+            Gtk.Align.START
+        )
+
+        provisional_height=(
+            actual_art_height
+            + info_height
+            + 4
+        )
+
+        # --------------------------------------------------------
+        # APPLY ONE TEMPLATE SIZE TO EVERY CARD.
+        # --------------------------------------------------------
+
+        for entry in entries:
+            wrapper=entry['wrapper']
+            card=entry['widget']
+            overlay=entry.get(
+                'overlay'
+            )
+            click=entry.get(
+                'click'
+            )
+            picture=entry['picture']
+            text_box=entry.get(
+                'text'
+            )
+
+            wrapper.set_size_request(
+                card_width,
+                provisional_height,
+            )
+
+            wrapper.set_halign(
+                Gtk.Align.START
+            )
+
+            wrapper.set_hexpand(
+                False
+            )
+
+            if isinstance(
+                card,
+                FixedLibraryCard,
+            ):
+                card.fixed_width=(
+                    card_width
+                )
+                card.fixed_height=(
+                    provisional_height
+                )
+
+            card.set_size_request(
+                card_width,
+                provisional_height,
+            )
+
+            card.set_halign(
+                Gtk.Align.FILL
+            )
+
+            card.set_hexpand(
+                True
+            )
+
+            if overlay is not None:
+                overlay.set_size_request(
+                    actual_art_width,
+                    actual_art_height,
+                )
+
+                overlay.set_halign(
+                    Gtk.Align.FILL
+                )
+
+                overlay.set_hexpand(
+                    True
+                )
+
+            if click is not None:
+                click.set_size_request(
+                    actual_art_width,
+                    actual_art_height,
+                )
+
+                click.set_halign(
+                    Gtk.Align.FILL
+                )
+
+                click.set_hexpand(
+                    True
+                )
+
+            picture.cover_width=(
+                actual_art_width
+            )
+
+            picture.cover_ratio=ratio
+
+            picture.set_size_request(
+                actual_art_width,
+                actual_art_height,
+            )
+
+            picture.set_halign(
+                Gtk.Align.FILL
+            )
+
+            picture.set_hexpand(
+                True
+            )
+
+            if text_box is not None:
+                text_box.set_size_request(
+                    -1,
+                    -1,
+                )
+
+                text_box.queue_resize()
+
+            entry['size']=(
+                actual_art_width,
+                actual_art_height,
+            )
+
+        # --------------------------------------------------------
+        # PRESERVE THE EXISTING "TALLEST CARD WINS" RULE.
+        # --------------------------------------------------------
+
+        tallest_footer=info_height
+
+        for entry in entries:
+            text_box=entry.get(
+                'text'
+            )
+
+            if text_box is None:
+                continue
+
+            (
+                _minimum,
+                natural,
+                _minimum_baseline,
+                _natural_baseline,
+            )=text_box.measure(
+                Gtk.Orientation.VERTICAL,
+                actual_art_width,
+            )
+
+            tallest_footer=max(
+                tallest_footer,
+                natural,
+            )
+
+        uniform_height=(
+            actual_art_height
+            + tallest_footer
+            + 4
+        )
+
+        for entry in entries:
+            wrapper=entry['wrapper']
+            card=entry['widget']
+            text_box=entry.get(
+                'text'
+            )
+
+            if text_box is not None:
+                text_box.set_size_request(
+                    -1,
+                    tallest_footer,
+                )
+
+                text_box.set_vexpand(
+                    False
+                )
+
+            if isinstance(
+                card,
+                FixedLibraryCard,
+            ):
+                card.fixed_width=(
+                    card_width
+                )
+
+                card.fixed_height=(
+                    uniform_height
+                )
+
+            card.set_size_request(
+                card_width,
+                uniform_height,
+            )
+
+            wrapper.set_size_request(
+                card_width,
+                uniform_height,
+            )
+
+        # --------------------------------------------------------
+        # INTEGER REMAINDER ONLY
+        #
+        # This is NOT the gap system.
+        #
+        # The real gap is FlowBox column_spacing=8.
+        # These margins can only ever add ONE PIXEL.
+        # --------------------------------------------------------
+
+        visible=[
+            entry
+            for entry in entries
+            if entry['wrapper'].get_visible()
+        ]
+
+        if (
+            columns>1
+            and remainder>0
+        ):
+            for index,entry in enumerate(
+                visible
+            ):
+                column=(
+                    index
+                    % columns
+                )
+
+                if (
+                    column<remainder
+                    and column<columns-1
+                ):
+                    entry['wrapper'].set_margin_end(
+                        1
+                    )
+
+        for entry in entries:
+            entry['picture'].queue_resize()
+
+            overlay=entry.get(
+                'overlay'
+            )
+
+            if overlay is not None:
+                overlay.queue_resize()
+
+            click=entry.get(
+                'click'
+            )
+
+            if click is not None:
+                click.queue_resize()
+
+            entry['widget'].queue_resize()
+            entry['wrapper'].queue_resize()
+
+        flow.queue_resize()
+        flow.queue_allocate()
+
+        return False
+
 
     def hide_operation_status(self,*_):
         if self.operation_hide_source:
@@ -3591,7 +4137,33 @@ class Window(Adw.ApplicationWindow):
         for game in games:
             for key in ('poster','hero','capsule','art_credit','art_link','hero_credit','hero_link','accent_class'):
                 if key in previous.get(game['game'],{}):game.setdefault(key,previous[game['game']][key])
-            if not self.options.demo:game.update(media.enrich(game))
+            if self.options.demo:
+                # Demo stays network-free and write-free, but may use
+                # real artwork already present in the local Steam cache.
+                #
+                # This is especially important for Wide Capsule testing:
+                # poster and capsule remain separate assets.
+                try:
+                    local_art=media.steam_art(
+                        game
+                    )
+
+                    for art_key,art_value in local_art.items():
+                        if (
+                            art_value
+                            and not game.get(
+                                art_key
+                            )
+                        ):
+                            game[art_key]=art_value
+                except Exception:
+                    pass
+            else:
+                game.update(
+                    media.enrich(
+                        game
+                    )
+                )
             game['test_record']=game_notes.load(self.service.config,game['game']) if not self.options.demo else game.get('test_record',{'status':'Untested','notes':''})
             self.make_card(game)
             if game['game'] in selected:self.cards[game['game']]['check'].set_active(True)
@@ -3779,17 +4351,8 @@ class Window(Adw.ApplicationWindow):
             'art-title-lg',
         )
 
-        self.flow.set_homogeneous(
-            True
-        )
-        self.flow.set_column_spacing(
-            14
-        )
         self.flow.set_row_spacing(
             18
-        )
-        self.flow.set_halign(
-            Gtk.Align.START
         )
 
         for entry in self.cards.values():
@@ -4142,6 +4705,8 @@ class Window(Adw.ApplicationWindow):
 
                 wrapper.queue_resize()
 
+        self.update_library_spacing()
+
         self.flow.queue_resize()
         self.flow.queue_allocate()
 
@@ -4487,6 +5052,8 @@ class Window(Adw.ApplicationWindow):
         for e in self.cards.values():
             g=e['data'];visible=text in g['name'].casefold() and (self.filter=='all' or self.filter=='installed' and g.get('installed') or self.filter=='available' and not g.get('blocked'))
             e['wrapper'].set_visible(bool(visible))
+
+        self.update_library_spacing()
         self.selection_changed()
     def select_all(self,active):
         # Select ALL always means the unified library, even when search/filter is active.
@@ -7096,10 +7663,168 @@ class Window(Adw.ApplicationWindow):
     def smoke_library(self):
         try:
             assert self.reset_all.text_label.get_text()=='Reset All'
-            assert self.flow.get_max_children_per_line()==12
+            # Poster / Wide Capsule columns are now responsive.
+            #
+            # The row count is derived from the current viewport and
+            # fixed card geometry instead of remaining hard-coded at 12.
+            (
+                _value,
+                smoke_card_width,
+                _height,
+                _info_height,
+                _total_height,
+                _ratio,
+            )=self.library_card_geometry()
+
+            smoke_card_width+=4
+            smoke_viewport_width=self.library_scroll.get_width()
+            smoke_base_gap=14
+
+            smoke_capacity=max(
+                1,
+                min(
+                    12,
+                    int(
+                        (
+                            smoke_viewport_width
+                            + smoke_base_gap
+                        )
+                        // (
+                            smoke_card_width
+                            + smoke_base_gap
+                        )
+                    ),
+                ),
+            )
+
+            smoke_visible_count=sum(
+                1
+                for entry in self.cards.values()
+                if entry.get('wrapper') is not None
+                and entry['wrapper'].get_visible()
+            )
+
+            expected_columns=max(
+                1,
+                min(
+                    smoke_capacity,
+                    smoke_visible_count
+                    if smoke_visible_count
+                    else 1,
+                ),
+            )
+
+            assert (
+                self.flow.get_max_children_per_line()
+                == expected_columns
+            )
             assert hasattr(self,'dashboard_icon') and hasattr(self,'operation_revealer')
-            # Known 0.6.3 issue: Library artwork resizing remains unresolved.
-            # Track it for the final classic-UI work before 0.7.
+            # Responsive gallery contract:
+            #
+            # - 16px outer inset
+            # - FlowBox owns the real 8px gap
+            # - child margins are never more than a 1px remainder
+            # - full rows exactly consume the usable viewport width
+            self.update_library_spacing()
+
+            assert (
+                self.flow.get_margin_start()
+                == 16
+            )
+
+            assert (
+                self.flow.get_margin_end()
+                == 16
+            )
+
+            assert (
+                self.flow.get_column_spacing()
+                == 8
+            )
+
+            assert not self.flow.get_homogeneous()
+
+            visible=[
+                entry
+                for entry in self.cards.values()
+                if entry.get('wrapper') is not None
+                and entry['wrapper'].get_visible()
+            ]
+
+            columns=(
+                self.flow.get_max_children_per_line()
+            )
+
+            assert columns>=1
+
+            # Fake child-margin spacing is gone. Only an optional
+            # one-pixel integer remainder is permitted.
+            for entry in visible:
+                assert (
+                    entry['wrapper'].get_margin_start()
+                    == 0
+                )
+
+                assert (
+                    entry['wrapper'].get_margin_end()
+                    in (
+                        0,
+                        1,
+                    )
+                )
+
+            first_row=visible[
+                :columns
+            ]
+
+            if (
+                columns>1
+                and len(first_row)==columns
+            ):
+                widths=[
+                    entry['size'][0]+4
+                    for entry in first_row
+                ]
+
+                # Template/card widths are identical.
+                assert len(
+                    set(widths)
+                )==1
+
+                remainder_pixels=sum(
+                    entry['wrapper'].get_margin_end()
+                    for entry in first_row
+                )
+
+                occupied=(
+                    sum(widths)
+                    + (
+                        self.flow.get_column_spacing()
+                        * (
+                            columns-1
+                        )
+                    )
+                    + remainder_pixels
+                )
+
+                viewport=self.flow.get_parent()
+
+                viewport_width=(
+                    viewport.get_width()
+                    if viewport is not None
+                    else self.library_scroll.get_width()
+                )
+
+                usable_width=(
+                    viewport_width
+                    - 32
+                )
+
+                assert (
+                    occupied
+                    == usable_width
+                )
+
             for key,widget in self.tuning_widgets.items():
                 original=widget.get_selected() if key=='mfg_multiplier' else widget.get_value()
                 if key=='mfg_multiplier':widget.set_selected(0)

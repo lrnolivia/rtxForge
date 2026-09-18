@@ -102,11 +102,15 @@ The classic GTK/libadwaita interface has reached its planned 0.7 feature-complet
 - The application hamburger sits directly beside the native window controls.
 - Install actions use the save glyph consistently across the dashboard, sticky header, and selected-game action bar.
 - The Library toolbar retains Search, filters, selection controls, live artwork sizing, and Poster / Wide Capsule / List controls.
+- The Classic Poster and Wide Capsule galleries now use the frozen responsive-grid behavior: a 16px outer Library inset, an explicit 8px GTK FlowBox column gap, and card/template widths derived from the usable viewport width. Card geometry absorbs responsive width changes rather than manufacturing large dynamic child margins.
+- Poster and Wide Capsule retain separate artwork sources. Demo mode may read already-cached local Steam artwork so Wide Capsule behavior can be reviewed without substituting poster images.
 - The decorative Library-top gradient was removed in favor of clean physical spacing.
 - Game Details and Settings open as independent, movable windows. Freshly reopened windows are placed relative to the main application again.
 - Progress / Done intentionally remains the stationary in-app operation presentation rather than becoming a movable utility window.
 
 The established responsive Library layout, card sizing, artwork handling, wrapped titles, artwork-derived accents, granular NR / Sharpening controls, native NVIDIA routing, recovery behavior, and current visual direction should be preserved.
+
+The current Poster / Wide Capsule resize-and-padding behavior is now a frozen Classic UI invariant and a migration target for the redesign. A known follow-up remains: at certain viewport widths and artwork-size selections, the chosen column count can leave a conspicuous unused region at the right edge. Future work may intelligently adjust the effective artwork size around the user's selected size to eliminate that remainder, but must preserve the frozen 16px outer inset, explicit 8px inter-card gap, responsive aspect-ratio behavior, and separate Poster / Wide Capsule artwork paths.
 
 ### Classic UI policy after 0.7
 

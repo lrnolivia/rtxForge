@@ -50,12 +50,14 @@ Native NVIDIA DLSS-G remains authoritative. Ada MFG stays on the native path. Pr
 
 ## Validation
 
-The release commit requires all of the following to pass before staging:
+The original 0.7.0 release commit required:
 
 - Python compilation for the engine, bridge, desktop service, library media, and GTK UI
 - engine hardening tests
 - GTK smoke test
 - Git whitespace validation
+
+For the responsive-gallery maintenance checkpoint documented below, the accepted live visual state was intentionally frozen and committed without rerunning compile, smoke, or UI tests at the user's direction.
 
 ## Classic UI status
 
@@ -74,6 +76,9 @@ The following approved maintenance landed after the original 0.7 classic-UI comp
 - converted Game Details and Settings into movable independent windows while retaining fresh parent-relative placement when reopened;
 - preserved Progress / Done on its existing stationary attached operation-dialog path;
 - expanded write-disabled demo data so the compact sticky titlebar can always be visually exercised without requiring a large real Library.
+- froze the final Classic Poster / Wide Capsule responsive-gallery behavior: 16px outer Library inset, explicit 8px FlowBox inter-card spacing, responsive template/card widths derived from usable viewport width, and separate artwork sources for Poster and Wide Capsule;
+- allowed write-disabled demo mode to reuse local Steam artwork caches so real Wide Capsule assets can be reviewed without network activity or poster substitution;
+- recorded one deliberately deferred Classic Library issue: certain artwork-size/window-width combinations can still leave excessive unused width at the right edge. The future fix should adjust effective artwork sizing/column fit intelligently without changing the now-frozen padding, gap, aspect-ratio, or artwork-source behavior.
 
 These changes do not reopen the classic interface for broad redesign. They are maintenance and usability refinements within the post-0.7 freeze policy.
 <!-- RTXFORGE_070_MAINTENANCE_END -->

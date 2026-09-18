@@ -458,6 +458,8 @@ headerbar,
 .titlebar {
     background: @forge_top_bg;
     background-image: none;
+    border-width: 0;
+    border-style: none;
     border-color: transparent;
     box-shadow: none;
 }
@@ -471,14 +473,14 @@ headerbar,
     background: @forge_lower_bg;
 }
 
-.dashboard-fade { background: linear-gradient(to bottom, @forge_lower_bg 0%, alpha(@forge_lower_bg,0.94) 18%, alpha(@forge_lower_bg,0.64) 46%, alpha(@forge_lower_bg,0.24) 74%, alpha(@forge_lower_bg,0) 100%); }
-
 .library-sticky-header {
     min-height: 34px;
 }
 
 .library-sticky-header.stuck {
-    box-shadow: 0 4px 14px alpha(black,0.10);
+    border-width: 0;
+    border-style: none;
+    box-shadow: none;
 }
 
 .library-sticky-header entry {
@@ -1244,8 +1246,50 @@ def row(title,subtitle=''):
     w=Adw.ActionRow(title=str(title),subtitle=str(subtitle));w.set_use_markup(False);return w
 
 def demo_games():
-    titles=[('Cyberpunk 2077','1091500'),('Hogwarts Legacy','990080'),('PRAGMATA','3357650'),('Star Wars Outlaws','2842040'),('Avatar: Frontiers of Pandora','2840770'),('Forza Horizon 6','')]
-    return [{'name':n,'appid':a,'game':'/preview/'+n,'exe':'Game.exe','source':'Steam' if a else 'Non-Steam','library':'Games drive','blocked':'','installed':i<3,'profile':'MFG Only' if i<3 else 'Not installed'} for i,(n,a) in enumerate(titles)]
+    base=[
+        ('Cyberpunk 2077','1091500'),
+        ('Hogwarts Legacy','990080'),
+        ('PRAGMATA','3357650'),
+        ('Star Wars Outlaws','2842040'),
+        ('Avatar: Frontiers of Pandora','2840770'),
+        ('Forza Horizon 6',''),
+    ]
+
+    games=[]
+
+    # Four complete copies = 24 cards. This is intentionally large
+    # enough for visual smoke testing of the collapsing titlebar,
+    # sticky Library controls, gradient and responsive card layout.
+    for copy_index in range(4):
+        for game_index,(name,appid) in enumerate(base):
+            index=len(games)
+
+            display_name=(
+                name
+                if copy_index==0
+                else f'{name} · Demo {copy_index+1}'
+            )
+
+            games.append(
+                {
+                    'name':display_name,
+                    'appid':appid,
+                    'game':f'/preview/{name}/{copy_index}',
+                    'exe':'Game.exe',
+                    'source':'Steam' if appid else 'Non-Steam',
+                    'library':'Games drive',
+                    'blocked':'',
+                    'installed':index<12,
+                    'profile':(
+                        'MFG Only'
+                        if index<12
+                        else 'Not installed'
+                    ),
+                }
+            )
+
+    return games
+
 
 class ResizablePanelWindow(Adw.Window):
     """Resizable transient panel with the small Adw.Dialog API we use."""
@@ -1260,7 +1304,7 @@ class ResizablePanelWindow(Adw.Window):
         super().__init__(
             application=parent.get_application(),
             transient_for=parent,
-            modal=True,
+            modal=False,
             title=title,
             default_width=width,
             default_height=height,
@@ -1272,6 +1316,23 @@ class ResizablePanelWindow(Adw.Window):
         self._requested_width=width
         self._requested_height=height
 
+        # Keep the parent only for the compositor's initial placement.
+        # Once mapped, detach so this becomes a normal independent
+        # movable window instead of an attached transient panel.
+        self._detach_scheduled=False
+
+        try:
+            self.set_destroy_with_parent(
+                False
+            )
+        except Exception:
+            pass
+
+        self.connect(
+            'map',
+            self._schedule_parent_detach,
+        )
+
         self.set_size_request(
             640,
             480,
@@ -1281,6 +1342,28 @@ class ResizablePanelWindow(Adw.Window):
             'close-request',
             self._on_close_request,
         )
+
+    def _schedule_parent_detach(self,*_):
+        if self._detach_scheduled:
+            return
+
+        self._detach_scheduled=True
+
+        # Waiting until idle gives the compositor one mapped frame with
+        # transient_for intact, which preserves initial centered placement.
+        GLib.idle_add(
+            self._detach_transient_parent
+        )
+
+    def _detach_transient_parent(self):
+        try:
+            self.set_transient_for(
+                None
+            )
+        except Exception:
+            pass
+
+        return False
 
     def _on_close_request(self,*_):
         if not self._can_close:
@@ -1632,17 +1715,13 @@ class Window(Adw.ApplicationWindow):
             )
 
 
-        header.pack_end(
-            main_menu
-        )
-
         outer.append(
             header
         )
         top=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8)
         top.add_css_class('forge-top-surface')
         margins(top,18)
-        top.set_margin_bottom(6)
+        top.set_margin_bottom(12)
         outer.append(top)
         hero=Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
@@ -1742,7 +1821,7 @@ class Window(Adw.ApplicationWindow):
 
         self.install_all=icon_button(
             'Install All',
-            'list-add-symbolic',
+            'document-save-symbolic',
             lambda *_:self.launch_action(
                 'install',
                 True,
@@ -1828,14 +1907,6 @@ class Window(Adw.ApplicationWindow):
         # titlebar space.
         # ------------------------------------------------------------
 
-        sticky_dashboard=Gtk.Box(
-            spacing=10,
-            valign=Gtk.Align.CENTER,
-        )
-        sticky_dashboard.add_css_class(
-            'sticky-dashboard'
-        )
-
         sticky_brand=Gtk.Box(
             spacing=6,
             valign=Gtk.Align.CENTER,
@@ -1869,10 +1940,6 @@ class Window(Adw.ApplicationWindow):
         )
         sticky_brand.append(
             sticky_brand_title
-        )
-
-        sticky_dashboard.append(
-            sticky_brand
         )
 
         # Compact mirror of Enhancement Mode.
@@ -1963,10 +2030,6 @@ class Window(Adw.ApplicationWindow):
                 ),
         )
 
-        sticky_dashboard.append(
-            self.sticky_profile_group
-        )
-
         # Compact mirrors of the three library-wide dashboard actions.
         sticky_actions=Gtk.Box(
             spacing=4,
@@ -1978,7 +2041,7 @@ class Window(Adw.ApplicationWindow):
 
         self.sticky_install_all=icon_button(
             'Install All',
-            'list-add-symbolic',
+            'document-save-symbolic',
             lambda *_:self.launch_action(
                 'install',
                 True,
@@ -2024,10 +2087,6 @@ class Window(Adw.ApplicationWindow):
             self.sticky_reset_all
         )
 
-        sticky_dashboard.append(
-            sticky_actions
-        )
-
         # Mirror sensitivity from the canonical dashboard buttons so
         # this compact presentation never becomes a second source of
         # application state.
@@ -2071,17 +2130,70 @@ class Window(Adw.ApplicationWindow):
                 ),
         )
 
-        self.sticky_dashboard_revealer=Gtk.Revealer(
-            transition_type=Gtk.RevealerTransitionType.CROSSFADE,
-            transition_duration=140,
-            reveal_child=False,
+        def make_sticky_revealer(child):
+            revealer=Gtk.Revealer(
+                transition_type=Gtk.RevealerTransitionType.CROSSFADE,
+                transition_duration=140,
+                reveal_child=False,
+            )
+            revealer.set_child(
+                child
+            )
+            return revealer
+
+        self.sticky_brand_revealer=make_sticky_revealer(
+            sticky_brand
         )
-        self.sticky_dashboard_revealer.set_child(
-            sticky_dashboard
+
+        self.sticky_dashboard_revealer=make_sticky_revealer(
+            self.sticky_profile_group
+        )
+
+        self.sticky_actions_revealer=make_sticky_revealer(
+            sticky_actions
+        )
+
+        def set_sticky_dashboard_visible(visible):
+            for revealer in (
+                self.sticky_brand_revealer,
+                self.sticky_dashboard_revealer,
+                self.sticky_actions_revealer,
+            ):
+                revealer.set_reveal_child(
+                    visible
+                )
+
+        # Let HeaderBar perform the alignment instead of putting all
+        # three groups inside one centered title widget.
+        # Give the compact product identity a little breathing room
+        # from the physical left edge of the window.
+        self.sticky_brand_revealer.set_margin_start(
+            10
+        )
+
+        # The selector remains the title widget, but a right-side margin
+        # biases it slightly left and creates more breathing room before
+        # the bulk action cluster.
+        self.sticky_dashboard_revealer.set_margin_end(
+            48
+        )
+
+        header.pack_start(
+            self.sticky_brand_revealer
         )
 
         header.set_title_widget(
             self.sticky_dashboard_revealer
+        )
+
+        # pack_end() order matters: the first packed item is nearest the
+        # native window controls. Put the hamburger there, then actions.
+        header.pack_end(
+            main_menu
+        )
+
+        header.pack_end(
+            self.sticky_actions_revealer
         )
 
         # Enhancement Mode sits directly above the tuning controls.
@@ -2356,20 +2468,17 @@ class Window(Adw.ApplicationWindow):
         viewbar.set_margin_start(18)
         viewbar.set_margin_end(18)
         viewbar.set_margin_top(8)
-        viewbar.set_margin_bottom(8)
+        viewbar.set_margin_bottom(16)
         library_surface.append(viewbar)
         scroll=Gtk.ScrolledWindow(vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER);library_stage=Gtk.Overlay(vexpand=True);library_stage.set_child(scroll);library_surface.append(library_stage)
-        edge=Gtk.Box(height_request=64,valign=Gtk.Align.START,can_target=False);edge.add_css_class('dashboard-fade');edge.set_visible(False);library_stage.add_overlay(edge)
+        # Decorative top fade removed. The Library now begins
+        # with ordinary physical spacing below its controls.
         def collapse_header(adj):
             value=adj.get_value()
             can_collapse=(
                 adj.get_upper()
                 - adj.get_page_size()
                 > 300
-            )
-
-            edge.set_visible(
-                value>1
             )
 
             if (
@@ -2379,7 +2488,15 @@ class Window(Adw.ApplicationWindow):
                 hero_reveal.set_reveal_child(
                     False
                 )
-                self.sticky_dashboard_revealer.set_reveal_child(
+
+                # Do not leave the old dashboard surface painted behind
+                # the sticky titlebar. This removes the residual hairline
+                # between the HeaderBar and Library surface.
+                top.set_visible(
+                    False
+                )
+
+                set_sticky_dashboard_visible(
                     True
                 )
                 top.set_margin_top(
@@ -2393,17 +2510,23 @@ class Window(Adw.ApplicationWindow):
                 )
 
             elif value<10:
+                # Restore the full dashboard surface before revealing
+                # its contents again.
+                top.set_visible(
+                    True
+                )
+
                 hero_reveal.set_reveal_child(
                     True
                 )
-                self.sticky_dashboard_revealer.set_reveal_child(
+                set_sticky_dashboard_visible(
                     False
                 )
                 top.set_margin_top(
                     18
                 )
                 top.set_margin_bottom(
-                    6
+                    12
                 )
                 viewbar.remove_css_class(
                     'stuck'
@@ -2511,7 +2634,7 @@ class Window(Adw.ApplicationWindow):
             )
 
         footer_action(
-            'list-add-symbolic',
+            'document-save-symbolic',
             'Add Enhancements',
             'install',
             'forge-primary',
@@ -3200,8 +3323,16 @@ class Window(Adw.ApplicationWindow):
         header.set_title_widget(
             page_title
         )
-        main.append(
+        settings_window_handle=Gtk.WindowHandle()
+        settings_window_handle.set_hexpand(
+            True
+        )
+        settings_window_handle.set_child(
             header
+        )
+
+        main.append(
+            settings_window_handle
         )
 
         stack=Gtk.Stack(
@@ -4496,7 +4627,18 @@ class Window(Adw.ApplicationWindow):
             -1,
             DETAIL_HERO_HEIGHT,
         )
-        main.append(banner)
+        detail_window_handle=Gtk.WindowHandle()
+        detail_window_handle.set_hexpand(
+            True
+        )
+        detail_window_handle.set_child(
+            banner
+        )
+
+        main.append(
+            detail_window_handle
+        )
+
         image=HeroPicture(
             content_fit=Gtk.ContentFit.COVER,
             can_shrink=True,

@@ -73,6 +73,12 @@ This opens the real write-disabled operation Progress presentation immediately. 
 
 Use `--live-smoke` while iterating on progress and Done UI.
 
+For interactive Library, card-layout, Game Details, Settings, and sticky-titlebar validation, use:
+
+    python3 gui/rtxforge_gtk.py --demo
+
+Demo mode is write-disabled. Its sample Library is intentionally large enough to scroll so the collapsed sticky titlebar can be reviewed without requiring a large real Steam library.
+
 For automated regression and screenshot validation, use:
 
     python3 gui/rtxforge_gtk.py --smoke-test
@@ -84,24 +90,44 @@ Neither mode performs live game-file mutations.
 
 **Current release: 0.7.0**
 
-The classic GTK/libadwaita interface has reached its planned 0.7 feature-complete state.
+The classic GTK/libadwaita interface has reached its planned 0.7 feature-complete state. Post-0.7 work is limited to specifically approved polish, maintenance, compatibility, accessibility, and bug fixes.
 
-### Completed in 0.7.0
+### Current production UI
 
-- Added the compact sticky Library / Dashboard presentation.
-- The large dashboard remains unchanged while the Library is at the top.
-- After the large dashboard scrolls away, the existing native titlebar reveals a compact rtxForge identity, Enhancement Mode selector, and Install All / Remove All / Reset All actions.
-- The sticky dashboard uses already-reserved titlebar space instead of adding another vertical toolbar row.
-- The Library toolbar remains a single compact row for Search, All / Installed / Available filters, Select all / Clear, live artwork sizing, and Poster / Wide Capsule / List controls.
-- The Library row intentionally has no redundant Library label or icon.
-- The compact Enhancement Mode selector mirrors the canonical dashboard mode instead of maintaining separate state.
-- Compact bulk actions mirror the canonical dashboard actions and sensitivity state.
+- The full dashboard remains visible at the top of the Library.
+- After it scrolls away, the native titlebar becomes the compact persistent dashboard.
+- The rtxForge icon/title is anchored at the left with deliberate edge padding.
+- Enhancement Mode remains near the middle while leaving breathing room for the bulk actions.
+- Install All / Remove All / Reset All remain grouped on the right.
+- The application hamburger sits directly beside the native window controls.
+- Install actions use the save glyph consistently across the dashboard, sticky header, and selected-game action bar.
+- The Library toolbar retains Search, filters, selection controls, live artwork sizing, and Poster / Wide Capsule / List controls.
+- The decorative Library-top gradient was removed in favor of clean physical spacing.
+- Game Details and Settings open as independent, movable windows. Freshly reopened windows are placed relative to the main application again.
+- Progress / Done intentionally remains the stationary in-app operation presentation rather than becoming a movable utility window.
 
-The established Library viewport and card behavior, Progress / Done composition, Game Details windows, dashboard controls, granular NR / Sharpening controls, native NVIDIA routing, and current classic visual direction should be preserved.
+The established responsive Library layout, card sizing, artwork handling, wrapped titles, artwork-derived accents, granular NR / Sharpening controls, native NVIDIA routing, recovery behavior, and current visual direction should be preserved.
 
 ### Classic UI policy after 0.7
 
-The classic interface is now effectively frozen.
+Do not restart or broadly redesign the classic interface.
 
-Future classic-UI changes should be limited to bug fixes, compatibility, accessibility, maintenance, and specifically approved changes. Do not restart or broadly redesign the classic UI.
+Future classic changes should remain narrowly scoped to approved fixes and maintenance while the separate redesign work develops independently.
 <!-- RTXFORGE_CLASSIC_UI_STATUS_END -->
+
+<!-- RTXFORGE_REDESIGN_STATUS_START -->
+## Libadwaita redesign development status
+
+The next-generation Libadwaita redesign is currently a **local-only development effort**. The production/classic 0.7.0 interface remains the stable feature-complete UI.
+
+Current redesign policy:
+
+- redesign source stays isolated under `redesign/`;
+- do not publish redesign betas, tags, or remote `main` changes unless explicitly enabled;
+- the approved shell is Home / Game Library / Forge / Settings with Recovery isolated at the bottom;
+- Forge, Settings, and Recovery presentation shells are built;
+- Home follows the exact approved dashboard mockup and is in responsive visual-polish work;
+- the finished classic Library viewport/card behavior/artwork-size slider, standalone Game Details/Game Settings windows, and Progress presentation are preservation targets.
+
+The existing `.github/workflows/redesign-beta.yml` should be considered parked until the local-only rule is explicitly lifted.
+<!-- RTXFORGE_REDESIGN_STATUS_END -->

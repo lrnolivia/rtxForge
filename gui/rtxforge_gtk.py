@@ -433,7 +433,8 @@ button.done-button.suggested-action:hover {
 .profile-toggle { padding: 7px 12px; font-weight: 600; }
 .dashboard-icon { margin-top: 2px; }
 .dashboard-actions { margin-top: 2px; }
-.dashboard-actions button { min-height: 34px; padding: 7px 12px; }
+.dashboard-actions button { min-height: 40px; padding: 10px 18px; }
+.dashboard-actions button label { font-weight: 600; }
 .operation-bubble {
     border-radius: 15px;
     padding: 9px 10px 9px 12px;
@@ -521,7 +522,7 @@ def button(text,fn,css=None):
 def icon_button(text,icon,fn,css=None):
     content=Gtk.Box(spacing=6)
     content.append(Gtk.Image.new_from_icon_name(icon))
-    text_label=label(text)
+    text_label=label(text);text_label.set_wrap(False);text_label.set_single_line_mode(True)
     content.append(text_label)
     w=Gtk.Button(child=content)
     w.text_label=text_label
@@ -578,14 +579,14 @@ class Window(Adw.ApplicationWindow):
         header.pack_end(self.title_button('emblem-system-symbolic','Settings',self.show_settings));header.pack_end(self.title_button('document-open-recent-symbolic','Activity',self.show_activity));outer.append(header)
         top=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=14);margins(top,18);outer.append(top)
         hero=Gtk.Box(spacing=20);hero.add_css_class('hero');hero_reveal=Gtk.Revealer(transition_type=Gtk.RevealerTransitionType.SLIDE_UP,reveal_child=True,transition_duration=180);hero_reveal.set_child(hero);top.append(hero_reveal)
-        self.dashboard_icon=Gtk.Image.new_from_icon_name('io.github.lrnolivia.RTXForge');self.dashboard_icon.set_pixel_size(52);self.dashboard_icon.set_valign(Gtk.Align.START);self.dashboard_icon.add_css_class('dashboard-icon');hero.append(self.dashboard_icon)
+        self.dashboard_icon=Gtk.Image.new_from_file(str(ROOT/'gui/icons/hicolor/256x256/apps/io.github.lrnolivia.RTXForge.png'));self.dashboard_icon.set_pixel_size(96);self.dashboard_icon.set_valign(Gtk.Align.START);self.dashboard_icon.add_css_class('dashboard-icon');hero.append(self.dashboard_icon)
         title=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=7,hexpand=True);hero.append(title)
         title.append(label('GEFORCE / BUILT FOR LINUX','eyebrow'));title.append(label('Forge your entire library.','hero-title'))
         self.stats=label('Finding your games…','dim-label');title.append(self.stats)
         self.hardware_label=label('Preview mode · no game writes' if options.demo else 'Checking system hardware…','card-meta');title.append(self.hardware_label)
         tuning,self.tuning_widgets=self.tuning_controls(self.settings)
         title.append(tuning);self.strength_slider=self.tuning_widgets['nr_strength']
-        bulk=Gtk.Box(spacing=6,valign=Gtk.Align.START,halign=Gtk.Align.END);bulk.add_css_class('dashboard-actions');hero.append(bulk)
+        bulk=Gtk.Box(spacing=10,valign=Gtk.Align.START,halign=Gtk.Align.END);bulk.add_css_class('dashboard-actions');hero.append(bulk)
         self.install_all=icon_button('Install All','list-add-symbolic',lambda *_:self.launch_action('install',True),'forge-primary');bulk.append(self.install_all)
         self.uninstall_all=icon_button('Remove All','edit-delete-symbolic',lambda *_:self.launch_action('uninstall',True),'bulk-remove');bulk.append(self.uninstall_all)
         self.reset_all=icon_button('Reset All','edit-undo-symbolic',self.apply_library_settings);bulk.append(self.reset_all)

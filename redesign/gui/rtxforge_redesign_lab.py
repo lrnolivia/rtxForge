@@ -464,6 +464,12 @@ class RedesignLabWindow(
             spacing=0,
         )
 
+        # Give the complete sidebar rail a little breathing room
+        # from the far-left edge, including selection highlights.
+        root.set_margin_start(
+            6
+        )
+
         root.append(
             self._build_branding()
         )

@@ -12,7 +12,6 @@ Phase 1:
 - Home
 - Game Library
 - Forge
-- Tools
 - Settings
 - Recovery
 - stock Libadwaita surfaces
@@ -113,13 +112,6 @@ PRIMARY_PAGES = (
         "applications-engineering-symbolic",
         "Forge",
         "RTX defaults and Forge actions will move here.",
-    ),
-    (
-        "tools",
-        "Tools",
-        "applications-utilities-symbolic",
-        "Tools",
-        "Diagnostics and supporting utilities will live here.",
     ),
     (
         "settings",
@@ -567,10 +559,6 @@ class RedesignLabWindow(
             ),
             "forge": (
                 "Global Forge defaults and bulk setup "
-                "will move into this page."
-            ),
-            "tools": (
-                "Diagnostics and supporting utilities "
                 "will move into this page."
             ),
             "settings": (
@@ -1240,7 +1228,7 @@ class RedesignLabApplication(
             print(
                 "  navigation: "
                 "Home / Game Library / Forge / "
-                "Tools / Settings / Recovery"
+                "Settings / Recovery"
             )
 
             expected_pages = {
@@ -1272,7 +1260,6 @@ class RedesignLabApplication(
                 "home",
                 "library",
                 "forge",
-                "tools",
                 "settings",
                 "recovery",
             ):

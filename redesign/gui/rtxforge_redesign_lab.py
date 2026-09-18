@@ -111,7 +111,7 @@ PRIMARY_PAGES = (
         "Forge",
         "applications-engineering-symbolic",
         "Forge",
-        "RTX defaults and Forge actions will move here.",
+        "Choose what rtxForge adds to your games.",
     ),
     (
         "settings",
@@ -905,6 +905,393 @@ class RedesignLabWindow(
 
         return library
 
+    def _forge_action_row(
+        self,
+        *,
+        title,
+        subtitle,
+        button_label="Review…",
+    ):
+        row = Adw.ActionRow()
+
+        row.set_title(
+            title
+        )
+
+        row.set_subtitle(
+            subtitle
+        )
+
+        button = Gtk.Button(
+            label=button_label
+        )
+
+        button.set_valign(
+            Gtk.Align.CENTER
+        )
+
+        # Phase 1 establishes the interaction surface only.
+        # Existing production operations will be connected later.
+        button.set_sensitive(
+            False
+        )
+
+        button.set_tooltip_text(
+            "Operation wiring is intentionally disabled "
+            "in the Phase 1 redesign lab."
+        )
+
+        row.add_suffix(
+            button
+        )
+
+        return row, button
+
+    def _build_forge_shell(self):
+        page = Adw.PreferencesPage()
+
+        self.forge_page = page
+
+        # RTX feature defaults
+        features = Adw.PreferencesGroup()
+
+        features.set_title(
+            "RTX Features"
+        )
+
+        features.set_description(
+            "Choose which RTX features rtxForge "
+            "sets up by default."
+        )
+
+        feature_row = Adw.ActionRow()
+
+        feature_row.set_title(
+            "Feature Mode"
+        )
+
+        feature_row.set_subtitle(
+            "Choose the RTX features added "
+            "when a game is forged."
+        )
+
+        self.forge_feature_mode = (
+            Adw.ToggleGroup()
+        )
+
+        self.forge_feature_mode.set_valign(
+            Gtk.Align.CENTER
+        )
+
+        self.forge_feature_mode.add(
+            self._library_toggle(
+                name="nr",
+                label="Neural Rendering",
+            )
+        )
+
+        self.forge_feature_mode.add(
+            self._library_toggle(
+                name="mfg",
+                label="Multi Frame Generation",
+            )
+        )
+
+        self.forge_feature_mode.add(
+            self._library_toggle(
+                name="both",
+                label="Both",
+            )
+        )
+
+        self.forge_feature_mode.set_active_name(
+            "both"
+        )
+
+        feature_row.add_suffix(
+            self.forge_feature_mode
+        )
+
+        features.add(
+            feature_row
+        )
+
+        page.add(
+            features
+        )
+
+        # Neural Rendering
+        neural = Adw.PreferencesGroup()
+
+        neural.set_title(
+            "Neural Rendering"
+        )
+
+        neural.set_description(
+            "Tune the default Neural Rendering image."
+        )
+
+        strength_row = Adw.ActionRow()
+
+        strength_row.set_title(
+            "Strength"
+        )
+
+        strength_row.set_subtitle(
+            "Adjust how strongly Neural Rendering "
+            "affects the final image."
+        )
+
+        self.forge_nr_strength = (
+            Gtk.Scale.new_with_range(
+                Gtk.Orientation.HORIZONTAL,
+                0.0,
+                2.0,
+                0.1,
+            )
+        )
+
+        self.forge_nr_strength.set_value(
+            2.0
+        )
+
+        self.forge_nr_strength.set_digits(
+            1
+        )
+
+        self.forge_nr_strength.set_draw_value(
+            True
+        )
+
+        self.forge_nr_strength.set_size_request(
+            230,
+            -1,
+        )
+
+        self.forge_nr_strength.set_valign(
+            Gtk.Align.CENTER
+        )
+
+        strength_row.add_suffix(
+            self.forge_nr_strength
+        )
+
+        neural.add(
+            strength_row
+        )
+
+        sharpening_row = Adw.ActionRow()
+
+        sharpening_row.set_title(
+            "Sharpening"
+        )
+
+        sharpening_row.set_subtitle(
+            "Fine-tune image sharpness "
+            "after rendering."
+        )
+
+        self.forge_sharpening = (
+            Gtk.Scale.new_with_range(
+                Gtk.Orientation.HORIZONTAL,
+                0.0,
+                1.0,
+                0.1,
+            )
+        )
+
+        self.forge_sharpening.set_value(
+            1.0
+        )
+
+        self.forge_sharpening.set_digits(
+            1
+        )
+
+        self.forge_sharpening.set_draw_value(
+            True
+        )
+
+        self.forge_sharpening.set_size_request(
+            230,
+            -1,
+        )
+
+        self.forge_sharpening.set_valign(
+            Gtk.Align.CENTER
+        )
+
+        sharpening_row.add_suffix(
+            self.forge_sharpening
+        )
+
+        neural.add(
+            sharpening_row
+        )
+
+        page.add(
+            neural
+        )
+
+        # Multi Frame Generation
+        mfg = Adw.PreferencesGroup()
+
+        mfg.set_title(
+            "Multi Frame Generation"
+        )
+
+        mfg.set_description(
+            "Choose the default MFG target "
+            "for supported games."
+        )
+
+        multiplier_model = Gtk.StringList.new(
+            [
+                "2×",
+                "3×",
+                "4×",
+                "5×",
+                "6×",
+            ]
+        )
+
+        self.forge_mfg_multiplier = (
+            Adw.ComboRow()
+        )
+
+        self.forge_mfg_multiplier.set_title(
+            "Frame Multiplier"
+        )
+
+        self.forge_mfg_multiplier.set_subtitle(
+            "Choose how many displayed frames "
+            "MFG should target."
+        )
+
+        self.forge_mfg_multiplier.set_model(
+            multiplier_model
+        )
+
+        self.forge_mfg_multiplier.set_selected(
+            2
+        )
+
+        mfg.add(
+            self.forge_mfg_multiplier
+        )
+
+        page.add(
+            mfg
+        )
+
+        # Explain global defaults clearly.
+        defaults = Adw.PreferencesGroup()
+
+        defaults.set_title(
+            "Forge Defaults"
+        )
+
+        defaults.set_description(
+            "These settings are used when a game "
+            "is forged for the first time or when "
+            "you restore its Forge defaults."
+        )
+
+        preview_row = Adw.ActionRow()
+
+        preview_row.set_title(
+            "Phase 1 Preview"
+        )
+
+        preview_row.set_subtitle(
+            "Controls on this redesign page are "
+            "not saved yet. Production settings "
+            "remain the source of truth."
+        )
+
+        preview_icon = Gtk.Image.new_from_icon_name(
+            "dialog-information-symbolic"
+        )
+
+        preview_icon.set_valign(
+            Gtk.Align.CENTER
+        )
+
+        preview_row.add_prefix(
+            preview_icon
+        )
+
+        defaults.add(
+            preview_row
+        )
+
+        page.add(
+            defaults
+        )
+
+        # Review-first bulk operations.
+        actions = Adw.PreferencesGroup()
+
+        actions.set_title(
+            "Library Actions"
+        )
+
+        actions.set_description(
+            "Review affected games before "
+            "applying bulk changes."
+        )
+
+        (
+            forge_available_row,
+            self.forge_review_available,
+        ) = self._forge_action_row(
+            title="Forge Available Games",
+            subtitle=(
+                "Set up supported RTX features "
+                "for games that are ready."
+            ),
+        )
+
+        actions.add(
+            forge_available_row
+        )
+
+        (
+            apply_defaults_row,
+            self.forge_review_defaults,
+        ) = self._forge_action_row(
+            title="Apply Forge Defaults",
+            subtitle=(
+                "Update existing games to use "
+                "your current Forge settings."
+            ),
+        )
+
+        actions.add(
+            apply_defaults_row
+        )
+
+        (
+            restore_row,
+            self.forge_review_restore,
+        ) = self._forge_action_row(
+            title="Restore Original Files",
+            subtitle=(
+                "Remove rtxForge files and return "
+                "selected games to their original setup."
+            ),
+        )
+
+        actions.add(
+            restore_row
+        )
+
+        page.add(
+            actions
+        )
+
+        return page
+
     def _build_page_surface(
         self,
         page_id,
@@ -1010,6 +1397,10 @@ class RedesignLabWindow(
         if page_id == "library":
             mount.append(
                 self._build_library_shell()
+            )
+        elif page_id == "forge":
+            mount.append(
+                self._build_forge_shell()
             )
         else:
             mount.append(
@@ -1355,6 +1746,86 @@ class RedesignLabApplication(
 
             print(
                 "  library backend: intentionally unwired"
+            )
+
+            if not hasattr(
+                window,
+                "forge_feature_mode",
+            ):
+                raise RuntimeError(
+                    "Forge feature-mode control missing"
+                )
+
+            if (
+                window.forge_feature_mode.get_n_toggles()
+                != 3
+            ):
+                raise RuntimeError(
+                    "Forge feature mode must have "
+                    "three choices"
+                )
+
+            if (
+                window.forge_feature_mode.get_active_name()
+                != "both"
+            ):
+                raise RuntimeError(
+                    "Forge preview default should "
+                    "show Both"
+                )
+
+            if not hasattr(
+                window,
+                "forge_nr_strength",
+            ):
+                raise RuntimeError(
+                    "Forge NR strength control missing"
+                )
+
+            if not hasattr(
+                window,
+                "forge_sharpening",
+            ):
+                raise RuntimeError(
+                    "Forge sharpening control missing"
+                )
+
+            if not hasattr(
+                window,
+                "forge_mfg_multiplier",
+            ):
+                raise RuntimeError(
+                    "Forge MFG multiplier control missing"
+                )
+
+            if (
+                window.forge_mfg_multiplier.get_selected()
+                != 2
+            ):
+                raise RuntimeError(
+                    "Forge preview MFG selection "
+                    "should be 4x"
+                )
+
+            for review_button in (
+                window.forge_review_available,
+                window.forge_review_defaults,
+                window.forge_review_restore,
+            ):
+                if review_button.get_sensitive():
+                    raise RuntimeError(
+                        "Phase 1 bulk actions must "
+                        "remain unwired"
+                    )
+
+            print(
+                "  forge shell: "
+                "features + NR + MFG + "
+                "defaults + review actions"
+            )
+
+            print(
+                "  forge persistence: intentionally unwired"
             )
 
             print(

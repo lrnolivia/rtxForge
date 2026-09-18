@@ -78,3 +78,29 @@ For automated regression and screenshot validation, use:
     python3 gui/rtxforge_gtk.py --smoke-test
 
 Neither mode performs live game-file mutations.
+
+<!-- RTXFORGE_CLASSIC_UI_STATUS_START -->
+## Classic UI development status
+
+**Current maintenance release: 0.6.3**
+
+The current GTK/libadwaita interface is in the final stage of its classic-UI refresh. The refreshed dashboard, redesigned Game Details experience, resizable Settings and Game Details windows, compact artwork hero, artwork-credit presentation, and established Progress / Done experience are now the intended classic UI direction.
+
+### Known issues
+
+- **Library artwork sizing:** Library Artwork Size currently does not reliably resize the displayed posters or capsules.
+- **Active Process scrollbar:** a scrollbar can still appear when hovering the Active Process / Progress presentation.
+- **Done scrollbar:** the Done presentation can also expose a scrollbar on hover.
+
+### Path to 0.7
+
+The remaining classic-UI work should happen in this order:
+
+1. Fix Library Artwork Size.
+2. Remove the hover scrollbar from Active Process and Done without changing their established design.
+3. Add the compact sticky Library / Dashboard header for use after the large dashboard controls scroll away.
+4. Ship **0.7**.
+5. Treat the classic UI as effectively frozen after 0.7, apart from bug fixes, maintenance, and explicitly approved changes.
+
+Do not restart or broadly redesign the current UI while completing this work.
+<!-- RTXFORGE_CLASSIC_UI_STATUS_END -->

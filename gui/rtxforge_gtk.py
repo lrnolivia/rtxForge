@@ -7,11 +7,210 @@ ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'scripts'))
 APP_VERSION=(ROOT/'VERSION').read_text(encoding='utf-8').strip() if (ROOT/'VERSION').exists() else 'dev'
 import gi
 gi.require_version('Gtk','4.0');gi.require_version('Adw','1')
-from gi.repository import Gtk,Adw,GLib,Gio,Gdk,Graphene,Pango,GdkPixbuf
+from gi.repository import Gtk,Adw,GLib,Gio,Gdk,Graphene,Pango,GdkPixbuf,GObject
 import ui,library_media,os,game_notes
 from desktop_service import DesktopService
 
 ACCENT_PROVIDERS={}
+
+
+def gamescope_session():
+    """Return True for Steam Gaming Mode / gamescope-session."""
+
+    desktop=' '.join(
+        os.environ.get(key,'')
+        for key in (
+            'XDG_CURRENT_DESKTOP',
+            'XDG_SESSION_DESKTOP',
+            'DESKTOP_SESSION',
+        )
+    ).casefold()
+
+    return (
+        'gamescope' in desktop
+        or os.environ.get('SteamGamepadUI','')=='1'
+        or os.environ.get('STEAM_GAMEPADUI','')=='1'
+    )
+
+
+class GameModeChoice(Gtk.Box):
+    """Popup-free replacement for Gtk.DropDown in Gamescope."""
+
+    selected=GObject.Property(
+        type=int,
+        default=0,
+    )
+
+    def __init__(self,strings):
+        super().__init__(
+            spacing=0,
+            valign=Gtk.Align.CENTER,
+        )
+
+        self.items=[
+            str(item)
+            for item in strings
+        ]
+
+        self.add_css_class(
+            'linked'
+        )
+
+        previous=Gtk.Button(
+            icon_name='go-previous-symbolic',
+        )
+        previous.set_tooltip_text(
+            'Previous option'
+        )
+
+        self.value_label=Gtk.Label(
+            xalign=0.5,
+        )
+        self.value_label.set_size_request(
+            72,
+            -1,
+        )
+
+        following=Gtk.Button(
+            icon_name='go-next-symbolic',
+        )
+        following.set_tooltip_text(
+            'Next option'
+        )
+
+        previous.connect(
+            'clicked',
+            lambda *_:self._move(-1),
+        )
+
+        following.connect(
+            'clicked',
+            lambda *_:self._move(1),
+        )
+
+        self.append(previous)
+        self.append(self.value_label)
+        self.append(following)
+
+        self.connect(
+            'notify::selected',
+            lambda *_:self._sync(),
+        )
+
+        self._sync()
+
+    def _sync(self):
+        if not self.items:
+            self.value_label.set_text('')
+            return
+
+        index=max(
+            0,
+            min(
+                len(self.items)-1,
+                int(self.props.selected),
+            ),
+        )
+
+        self.value_label.set_text(
+            self.items[index]
+        )
+
+    def _move(self,delta):
+        if not self.items:
+            return
+
+        self.set_selected(
+            (
+                self.get_selected()+delta
+            ) % len(self.items)
+        )
+
+    def get_selected(self):
+        return int(
+            self.props.selected
+        )
+
+    def set_selected(self,index):
+        if not self.items:
+            index=0
+        else:
+            index=max(
+                0,
+                min(
+                    len(self.items)-1,
+                    int(index),
+                ),
+            )
+
+        if self.props.selected!=index:
+            self.props.selected=index
+        else:
+            self._sync()
+
+
+class GameModeComboRow(Adw.ActionRow):
+    """Popup-free Adw.ComboRow equivalent for Gamescope."""
+
+    def __init__(
+        self,
+        *,
+        title,
+        model,
+        selected=0,
+        **kwargs,
+    ):
+        super().__init__(
+            title=title,
+            **kwargs,
+        )
+
+        strings=[
+            model.get_string(i)
+            for i in range(
+                model.get_n_items()
+            )
+        ]
+
+        self.choice=GameModeChoice(
+            strings
+        )
+        self.choice.set_selected(
+            selected
+        )
+        self.choice.set_valign(
+            Gtk.Align.CENTER
+        )
+
+        self.add_suffix(
+            self.choice
+        )
+
+    def get_selected(self):
+        return self.choice.get_selected()
+
+    def set_selected(self,index):
+        self.choice.set_selected(index)
+
+
+def safe_dropdown(strings):
+    if gamescope_session():
+        return GameModeChoice(strings)
+
+    return Gtk.DropDown.new_from_strings(
+        strings
+    )
+
+
+def safe_combo_row(**kwargs):
+    if gamescope_session():
+        return GameModeComboRow(
+            **kwargs
+        )
+
+    return Adw.ComboRow(
+        **kwargs
+    )
 def artwork_accent(path,color=None):
     pix=GdkPixbuf.Pixbuf.new_from_file_at_scale(path,32,32,True)
     data=pix.get_pixels();stride=pix.get_rowstride();channels=pix.get_n_channels();colors=Counter()
@@ -81,6 +280,8 @@ def artwork_accent(path,color=None):
             f'.{name} toggle-group toggle:checked {{ background: {color}; color: {accent_fg}; }} '
             f'.{name} toggle-group toggle:checked label {{ color: {accent_fg}; }} '
             f'.{name} .game-details {{ color: {color}; }} '
+            f'.{name} .game-detail-nav row:selected {{ background: alpha({color},0.10); }} '
+            f'.{name} .game-detail-nav row:selected label, .{name} .game-detail-nav row:selected image {{ color: {color}; }} '
             f'.{name} progressbar progress {{ background: {color}; transition: background-color 450ms; }} '
             f'.{name} .progress-poster-frame {{ border-color: {color}; }} '
             f'.{name} scale highlight {{ background: {color}; }} '
@@ -148,8 +349,29 @@ class CoverPicture(Gtk.Picture):
         return (height,height,-1,-1)
 
 class HeroPicture(Gtk.Picture):
+    # The Game Details hero must crop as the window changes width,
+    # not grow vertically with the artwork's aspect ratio.
+    hero_height=200
+
+    def do_get_request_mode(self):
+        return Gtk.SizeRequestMode.CONSTANT_SIZE
+
     def do_measure(self,orientation,for_size):
-        return (0,0,-1,-1) if orientation==Gtk.Orientation.HORIZONTAL else (300,300,-1,-1)
+        if orientation==Gtk.Orientation.HORIZONTAL:
+            return (0,0,-1,-1)
+
+        height=max(
+            1,
+            int(self.hero_height),
+        )
+
+        return (
+            height,
+            height,
+            -1,
+            -1,
+        )
+
 
 class BlurredTexture(Gtk.Widget):
     """Render a frozen Gdk.Texture through GTK/GSK blur."""
@@ -188,15 +410,89 @@ class BlurredTexture(Gtk.Widget):
         snapshot.pop()
 
 CSS=b'''
-.dashboard-fade { background: linear-gradient(to bottom, @window_bg_color 0%, alpha(@window_bg_color,0.94) 18%, alpha(@window_bg_color,0.64) 46%, alpha(@window_bg_color,0.24) 74%, alpha(@window_bg_color,0) 100%); }
-.settings-navigation { background: alpha(@window_fg_color,0.055); padding: 12px; }
-.settings-navigation row { padding: 0; margin: 2px 0; border-radius: 8px; }
-.settings-navigation row box { padding: 10px 12px; }
-.settings-content { padding: 24px; }
+/*
+ * Use libadwaita's native Nautilus-style surface hierarchy.
+ *
+ * view:
+ *   light #ffffff
+ *   dark  #1d1d20
+ *
+ * sidebar:
+ *   light #ebebed
+ *   dark  #2e2e32
+ *
+ * Panels use the native foreground color translucently so they retain
+ * clear separation in both appearances without introducing another
+ * custom gray family.
+ */
+@define-color forge_top_bg @view_bg_color;
+@define-color forge_lower_bg @sidebar_bg_color;
+@define-color forge_panel_bg alpha(@window_fg_color,0.12);
 
-.settings-footer-sidebar {
-    background: alpha(@window_fg_color,0.055);
-    min-width: 200px;
+headerbar,
+.titlebar {
+    background: @forge_top_bg;
+    background-image: none;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.forge-window-surface,
+.forge-top-surface {
+    background: @forge_top_bg;
+}
+
+.forge-library-surface {
+    background: @forge_lower_bg;
+}
+
+.dashboard-fade { background: linear-gradient(to bottom, @forge_lower_bg 0%, alpha(@forge_lower_bg,0.94) 18%, alpha(@forge_lower_bg,0.64) 46%, alpha(@forge_lower_bg,0.24) 74%, alpha(@forge_lower_bg,0) 100%); }
+.settings-sidebar-surface {
+    background: @sidebar_bg_color;
+    min-width: 236px;
+}
+
+.settings-sidebar-header {
+    padding: 24px 20px 12px;
+}
+
+.settings-navigation {
+    background: transparent;
+    padding: 8px 12px 20px;
+}
+
+.settings-navigation row {
+    padding: 0;
+    margin: 2px 0;
+    border-radius: 10px;
+}
+
+.settings-navigation row box {
+    padding: 11px 12px;
+}
+
+.settings-navigation row:selected {
+    background: transparent;
+    background-image: none;
+    box-shadow: none;
+}
+
+.settings-navigation row:selected label {
+    font-weight: 700;
+}
+
+.settings-main-surface {
+    background: @view_bg_color;
+}
+
+.settings-content {
+    padding: 28px 32px 30px;
+}
+
+.settings-footer {
+    padding: 14px 18px;
+    background: @view_bg_color;
+    border-top: 1px solid alpha(@window_fg_color,0.10);
 }
 .floating-tabs toggle {
     border-radius: 99px;
@@ -240,14 +536,126 @@ button.game-detail-close.light:hover {
 
 .game-banner { background: #252529; }
 
+.game-detail-root {
+    background: @window_bg_color;
+}
+
+.game-detail-sidebar {
+    min-width: 210px;
+    background: @sidebar_bg_color;
+    padding: 18px 10px 14px;
+}
+
+.game-detail-sidebar-header {
+    padding: 4px 10px 14px;
+}
+
+.game-detail-nav {
+    background: transparent;
+}
+
+.game-detail-nav row {
+    margin: 2px 0;
+    padding: 0;
+    border-radius: 10px;
+    border-left: 3px solid transparent;
+}
+
+.game-detail-nav row box {
+    padding: 10px 11px 10px 9px;
+}
+
+.game-detail-nav row:selected {
+    background: alpha(@window_fg_color,0.055);
+    background-image: none;
+    border: none;
+    box-shadow: none;
+}
+
+.game-detail-nav row:selected label {
+    font-weight: 700;
+}
+
+.game-detail-main {
+    background: @window_bg_color;
+}
+
+.game-detail-meta {
+    color: alpha(white,0.84);
+    font-size: 13px;
+    text-shadow: 0 1px 5px alpha(black,0.90);
+}
+
+/* Compact artwork credit cards. */
+.art-credit-pods {
+    margin-top: 4px;
+}
+
+.art-credit-pod {
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: alpha(@window_fg_color,0.075);
+}
+
+.art-credit-pod .heading {
+    font-size: 13px;
+}
+
+.art-credit-pod .dim-label {
+    font-size: 11px;
+}
+
+.art-credit-pod button {
+    margin-top: 4px;
+}
+
+.game-detail-summary {
+    color: alpha(white,0.78);
+    font-size: 12px;
+    text-shadow: 0 1px 5px alpha(black,0.92);
+}
+
+.detail-footer {
+    padding: 11px 16px;
+    background: @window_bg_color;
+    border-top: 1px solid alpha(@window_fg_color,0.10);
+}
+
+.detail-footer-actions {
+    min-height: 32px;
+}
+
 .banner-shade {
     background: linear-gradient(
         to bottom,
-        alpha(black,0.38),
-        alpha(black,0.02) 38%,
-        alpha(@window_bg_color,0.25) 65%,
+        alpha(black,0.28) 0%,
+        alpha(black,0.12) 28%,
+        alpha(@window_bg_color,0.26) 52%,
+        alpha(@window_bg_color,0.72) 76%,
         @window_bg_color 100%
     );
+}
+
+/*
+ * Hero typography separation.
+ * Apply the treatment to title, metadata, summary and status badge text.
+ */
+.game-banner.hero-light .game-banner-title,
+.game-banner.hero-light .game-detail-meta,
+.game-banner.hero-light .game-detail-summary,
+.game-banner.hero-light .cover-badge {
+    text-shadow:
+        0 2px 7px alpha(black,0.95),
+        0 0 14px alpha(black,0.52);
+}
+
+.game-banner.hero-dark .game-banner-title,
+.game-banner.hero-dark .game-detail-meta,
+.game-banner.hero-dark .game-detail-summary,
+.game-banner.hero-dark .cover-badge {
+    text-shadow:
+        0 2px 7px alpha(black,0.82),
+        0 0 10px alpha(white,0.10);
 }
 
 .game-banner-title {
@@ -257,15 +665,6 @@ button.game-detail-close.light:hover {
     letter-spacing: -0.8px;
 }
 
-/* Light art behind the title: strong soft dark separation. */
-.game-banner.hero-light .game-banner-title {
-    text-shadow: 0 3px 10px alpha(black,0.92);
-}
-
-/* Dark art: restrained soft glow instead of a heavy shadow. */
-.game-banner.hero-dark .game-banner-title {
-    text-shadow: 0 0 12px alpha(white,0.24);
-}
 .progress-content {
     /* More breathing room against the modal's outer edges. */
     padding: 30px 34px 26px;
@@ -424,20 +823,67 @@ button.done-button.suggested-action:hover {
 .color-swatch { min-width: 32px; min-height: 32px; border-radius: 99px; padding: 0; }
 
 .settings-sidebar row { padding-left: 16px; padding-right: 16px; }
-.control-pod { padding: 10px; border-radius: 12px; background: alpha(@window_fg_color,0.035); border: 1px solid alpha(@window_fg_color,0.06); }
+.control-pod {
+    padding: 10px;
+    border-radius: 12px;
+    background: @forge_panel_bg;
+    border: 1px solid transparent;
+}
 .control-pod scale { padding: 5px 2px; }
 
 .view-action { padding: 5px 8px; margin: 0; min-width: 20px; }
-.mode-selector { padding: 4px; border-radius: 12px; }
-.mode-selector toggle { padding: 6px 13px; min-height: 20px; border-radius: 9px; }
+.mode-selector {
+    padding: 4px;
+    border-radius: 12px;
+    background: mix(@view_bg_color,@forge_panel_bg,0.72);
+}
+
+.mode-selector toggle {
+    padding: 6px 13px;
+    min-height: 20px;
+    border-radius: 9px;
+    background: transparent;
+    border-color: transparent;
+}
+
+.mode-selector toggle:hover {
+    background: alpha(@window_fg_color,0.06);
+}
+
+.mode-selector toggle:checked {
+    background: alpha(@window_fg_color,0.12);
+}
 .profile-toggle { padding: 7px 12px; font-weight: 600; }
-.dashboard-icon { margin: 2px 12px 0 2px; }
+.dashboard-icon { margin: 0 6px 0 0; }
 .dashboard-actions { margin: 0; }
 .dashboard-actions button { min-height: 34px; padding: 7px 12px; }
 .dashboard-actions button label { font-weight: 600; }
 .dashboard-tuning .control-pod { padding: 7px 9px; }
 .dashboard-tuning .control-pod scale { padding: 2px; }
-.mode-bar { padding: 6px 10px; }
+
+/* rtxForge dashboard tuning typography */
+.dashboard-tuning .control-pod {
+    padding: 12px 14px;
+}
+
+.dashboard-tuning .heading {
+    font-size: 13px;
+}
+
+.dashboard-tuning .dim-label {
+    font-size: 11px;
+}
+
+.dashboard-tuning spinbutton,
+.dashboard-tuning dropdown {
+    font-size: 12px;
+}
+.mode-bar {
+    padding: 8px 12px;
+
+    /* Halfway between the base view and the normal tuning panels. */
+    background: mix(@view_bg_color,@forge_panel_bg,0.50);
+}
 .mode-bar .mode-description {
     font-size: 10px;
 }
@@ -460,9 +906,26 @@ button.done-button.suggested-action:hover {
     border-radius: 999px;
 }
 .title-action { min-width: 26px; min-height: 26px; padding: 8px 12px; margin: 3px; }
+
+.hamburger-glyph {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.hamburger-line {
+    min-width: 16px;
+    min-height: 2px;
+    border-radius: 99px;
+    background: @window_fg_color;
+}
 .hero-title { font-size: 25px; font-weight: 800; letter-spacing: -0.6px; }
 .eyebrow { color: #76b900; font-weight: 800; font-size: 9px; letter-spacing: 1.7px; }
-.hero { background: alpha(@window_fg_color,0.045); border: 1px solid alpha(@window_fg_color,0.06); border-radius: 18px; padding: 10px 14px; }
+.hero {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    padding: 10px 0;
+}
 .forge-primary {
     background: #76b900;
     color: #173000;
@@ -484,7 +947,11 @@ button.done-button.suggested-action:hover {
 }
 .bulk-remove { color: #ff928c; padding: 10px 16px; }
 .pill { border-radius: 99px; padding: 5px 10px; background: alpha(@window_fg_color,0.07); font-size: 11px; }
-.game-card { border-radius: 14px; background: @card_bg_color; border: 2px solid alpha(@window_fg_color,0.06); }
+.game-card {
+    border-radius: 14px;
+    background: @forge_panel_bg;
+    border: 2px solid transparent;
+}
 .game-card.selected { border-color: #76b900; box-shadow: 0 2px 12px alpha(#76b900,0.22); }
 .poster-button { padding: 0; border: 0; border-radius: 11px 11px 0 0; }
 .poster { border-radius: 11px 11px 0 0; background: #242426; }
@@ -494,7 +961,51 @@ button.done-button.suggested-action:hover {
 .card-meta { font-size: 10px; opacity: 0.7; }
 .cover-badge { background: alpha(black,0.65); color: white; text-shadow: 0 1px 3px black; padding: 5px 8px; border-radius: 8px; font-size: 10px; font-weight: 700; }
 .cover-badge.unavailable { color: #ffb3ad; }
-.selection-bar { padding: 12px 20px; background: alpha(@window_fg_color,0.04); }
+.selection-fade {
+    background-color: transparent;
+
+    background-image: linear-gradient(
+        to top,
+        alpha(@sidebar_bg_color,0.98) 0%,
+        alpha(@sidebar_bg_color,0.92) 24%,
+        alpha(@sidebar_bg_color,0.70) 48%,
+        alpha(@sidebar_bg_color,0.38) 70%,
+        alpha(@sidebar_bg_color,0.14) 86%,
+        transparent 100%
+    );
+}
+
+.selection-controls {
+    padding: 0 14px 10px;
+}
+
+.selection-count-pill {
+    padding: 5px 9px;
+    border-radius: 999px;
+
+    background: alpha(@view_bg_color,0.92);
+    border: 1px solid alpha(@window_fg_color,0.10);
+    box-shadow: 0 1px 3px alpha(black,0.20);
+}
+
+
+.selection-count {
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.selection-action {
+    min-width: 30px;
+    min-height: 30px;
+    padding: 3px;
+    border-radius: 8px;
+}
+
+.selection-action image {
+    min-width: 16px;
+    min-height: 16px;
+}
+
 .status-strip { padding: 8px 20px; font-size: 12px; }
 .game-hero { padding: 0 18px 12px; }
 .hero-fade { background: linear-gradient(to bottom, alpha(@window_bg_color,0.05) 0%, alpha(@window_bg_color,0.35) 40%, @window_bg_color 100%); }
@@ -549,6 +1060,122 @@ def demo_games():
     titles=[('Cyberpunk 2077','1091500'),('Hogwarts Legacy','990080'),('PRAGMATA','3357650'),('Star Wars Outlaws','2842040'),('Avatar: Frontiers of Pandora','2840770'),('Forza Horizon 6','')]
     return [{'name':n,'appid':a,'game':'/preview/'+n,'exe':'Game.exe','source':'Steam' if a else 'Non-Steam','library':'Games drive','blocked':'','installed':i<3,'profile':'MFG Only' if i<3 else 'Not installed'} for i,(n,a) in enumerate(titles)]
 
+class ResizablePanelWindow(Adw.Window):
+    """Resizable transient panel with the small Adw.Dialog API we use."""
+
+    def __init__(
+        self,
+        parent,
+        title,
+        width,
+        height,
+    ):
+        super().__init__(
+            application=parent.get_application(),
+            transient_for=parent,
+            modal=True,
+            title=title,
+            default_width=width,
+            default_height=height,
+            resizable=True,
+        )
+
+        self._panel_parent=parent
+        self._can_close=True
+        self._requested_width=width
+        self._requested_height=height
+
+        self.set_size_request(
+            640,
+            480,
+        )
+
+        self.connect(
+            'close-request',
+            self._on_close_request,
+        )
+
+    def _on_close_request(self,*_):
+        if not self._can_close:
+            return True
+
+        if getattr(
+            self._panel_parent,
+            'dialog',
+            None,
+        ) is self:
+            self._panel_parent.dialog=None
+
+        return False
+
+    # Compatibility with Adw.Dialog callers.
+    def set_child(self,child):
+        self.set_content(child)
+
+    def get_child(self):
+        return self.get_content()
+
+    def force_close(self):
+        # This is intentionally stronger than Gtk.Window.close().
+        # The custom panel X must always dismiss this transient window.
+        self._can_close=True
+
+        parent=getattr(
+            self,
+            '_panel_parent',
+            None,
+        )
+
+        if (
+            parent is not None
+            and getattr(
+                parent,
+                'dialog',
+                None,
+            ) is self
+        ):
+            parent.dialog=None
+
+        try:
+            self.set_modal(False)
+        except Exception:
+            pass
+
+        self.destroy()
+
+    def set_can_close(self,value):
+        self._can_close=bool(value)
+
+    def get_can_close(self):
+        return self._can_close
+
+    def set_content_width(self,width):
+        self._requested_width=int(width)
+        self.set_default_size(
+            self._requested_width,
+            self._requested_height,
+        )
+
+    def set_content_height(self,height):
+        self._requested_height=int(height)
+        self.set_default_size(
+            self._requested_width,
+            self._requested_height,
+        )
+
+    def get_content_width(self):
+        return max(
+            1,
+            self.get_width(),
+        )
+
+    def get_content_height(self):
+        return max(
+            1,
+            self.get_height(),
+        )
+
+
 class Window(Adw.ApplicationWindow):
     def __init__(self,application,options):
         super().__init__(application=application,title='rtxForge',default_width=1160,default_height=820)
@@ -578,15 +1205,257 @@ class Window(Adw.ApplicationWindow):
         self.settings['enable_effects']=True;self.settings.setdefault('dark',True);self.hardware_info={'ready':True,'gpu':'Preview GPU','reason':'Preview mode'} if options.demo else None;self.games=[];self.cards={};self.mode='mfg-only';self.filter='all'
         self.busy=False;self.task_kind='';self.pending=None;self.cancel_art=threading.Event();self.log=[];self.dialog=None;self.review=None;self.action_buttons=[]
         self.connect('close-request',self.close_request)
-        Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.PREFER_DARK if self.settings['dark'] else Adw.ColorScheme.DEFAULT)
+        Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)
         self.overlay=Adw.ToastOverlay();self.set_content(self.overlay)
         stage=Gtk.Overlay();self.overlay.set_child(stage)
-        outer=Gtk.Box(orientation=Gtk.Orientation.VERTICAL);stage.set_child(outer)
-        header=Adw.HeaderBar();header.set_title_widget(Adw.WindowTitle(title='rtxForge',subtitle=f'Your whole library. One place. · {APP_VERSION}'))
-        self.refresh=self.title_button('view-refresh-symbolic','Refresh library',lambda *_:self.scan());header.pack_start(self.refresh)
-        self.add=self.title_button('list-add-symbolic','Add game folder',self.choose_folder);header.pack_start(self.add)
-        header.pack_end(self.title_button('emblem-system-symbolic','Settings',self.show_settings));header.pack_end(self.title_button('document-open-recent-symbolic','Activity',self.show_activity));outer.append(header)
-        top=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8);margins(top,12);outer.append(top)
+        outer=Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        outer.add_css_class('forge-window-surface')
+        stage.set_child(outer)
+        header=Adw.HeaderBar()
+
+        # Keep the native headerbar/window controls, but leave the
+        # center visually empty. The product identity lives in the hero.
+        header.set_title_widget(
+            Gtk.Box()
+        )
+
+        # Native GNOME-style application menu.
+        #
+        # Refresh and Add Folder retain their previous busy-state
+        # sensitivity through stored Gio.SimpleAction objects.
+        self.refresh_action=Gio.SimpleAction.new(
+            'refresh-library',
+            None,
+        )
+        self.refresh_action.connect(
+            'activate',
+            lambda *_:self.scan(),
+        )
+        self.add_action(
+            self.refresh_action
+        )
+
+        self.add_folder_action=Gio.SimpleAction.new(
+            'add-game-folder',
+            None,
+        )
+        self.add_folder_action.connect(
+            'activate',
+            lambda *_:self.choose_folder(),
+        )
+        self.add_action(
+            self.add_folder_action
+        )
+
+        activity_action=Gio.SimpleAction.new(
+            'activity',
+            None,
+        )
+        activity_action.connect(
+            'activate',
+            lambda *_:self.show_activity(),
+        )
+        self.add_action(
+            activity_action
+        )
+
+        settings_action=Gio.SimpleAction.new(
+            'settings',
+            None,
+        )
+        settings_action.connect(
+            'activate',
+            lambda *_:self.show_settings(),
+        )
+        self.add_action(
+            settings_action
+        )
+
+        menu=Gio.Menu()
+
+        library_menu=Gio.Menu()
+        library_menu.append(
+            'Refresh Library',
+            'win.refresh-library',
+        )
+        library_menu.append(
+            'Add Game Folder…',
+            'win.add-game-folder',
+        )
+        menu.append_section(
+            None,
+            library_menu,
+        )
+
+        app_menu=Gio.Menu()
+        app_menu.append(
+            'Activity',
+            'win.activity',
+        )
+        app_menu.append(
+            'Settings',
+            'win.settings',
+        )
+        menu.append_section(
+            None,
+            app_menu,
+        )
+
+        menu_glyph=Gtk.Label(
+            label='☰',
+        )
+        menu_glyph.add_css_class(
+            'hamburger-glyph'
+        )
+
+        main_menu=Gtk.MenuButton()
+        main_menu.set_child(
+            menu_glyph
+        )
+        main_menu.add_css_class(
+            'flat'
+        )
+        main_menu.set_tooltip_text(
+            'Main Menu'
+        )
+        main_menu.update_property(
+            [Gtk.AccessibleProperty.LABEL],
+            ['Main Menu'],
+        )
+        main_menu.set_menu_model(
+            menu
+        )
+        if gamescope_session():
+            # Gtk.MenuButton/GMenu uses a GtkPopover. Gamescope has
+            # compositor/input problems with popup surfaces, so keep
+            # this menu inside the existing application surface.
+            main_menu.set_menu_model(
+                None
+            )
+
+            def show_gamemode_menu(*_):
+                menu_dialog=Adw.Dialog(
+                    title='Menu',
+                    content_width=340,
+                    content_height=300,
+                )
+
+                try:
+                    menu_dialog.set_presentation_mode(
+                        Adw.DialogPresentationMode.FLOATING
+                    )
+                except Exception:
+                    pass
+
+                shell=Gtk.Box(
+                    orientation=Gtk.Orientation.VERTICAL,
+                    spacing=6,
+                )
+                margins(
+                    shell,
+                    14,
+                )
+
+                def menu_button(
+                    title,
+                    icon_name,
+                    callback,
+                ):
+                    content=Gtk.Box(
+                        spacing=10,
+                    )
+                    content.append(
+                        Gtk.Image.new_from_icon_name(
+                            icon_name
+                        )
+                    )
+                    content.append(
+                        label(title)
+                    )
+
+                    control=Gtk.Button(
+                        child=content,
+                    )
+
+                    def activate(*_):
+                        menu_dialog.close()
+                        GLib.idle_add(
+                            lambda:(
+                                callback(),
+                                False,
+                            )[1]
+                        )
+
+                    control.connect(
+                        'clicked',
+                        activate,
+                    )
+
+                    return control
+
+                shell.append(
+                    menu_button(
+                        'Refresh Library',
+                        'view-refresh-symbolic',
+                        self.scan,
+                    )
+                )
+
+                shell.append(
+                    menu_button(
+                        'Add Game Folder',
+                        'list-add-symbolic',
+                        self.choose_folder,
+                    )
+                )
+
+                shell.append(
+                    menu_button(
+                        'Activity',
+                        'document-open-recent-symbolic',
+                        self.show_activity,
+                    )
+                )
+
+                shell.append(
+                    menu_button(
+                        'Settings',
+                        'emblem-system-symbolic',
+                        self.show_settings,
+                    )
+                )
+
+                menu_dialog.set_child(
+                    shell
+                )
+                menu_dialog.present(
+                    self
+                )
+
+            click=Gtk.GestureClick()
+            click.set_propagation_phase(
+                Gtk.PropagationPhase.CAPTURE
+            )
+            click.connect(
+                'released',
+                lambda *_:show_gamemode_menu(),
+            )
+            main_menu.add_controller(
+                click
+            )
+
+
+        header.pack_end(
+            main_menu
+        )
+
+        outer.append(
+            header
+        )
+        top=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8)
+        top.add_css_class('forge-top-surface')
+        margins(top,18)
+        outer.append(top)
         hero=Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
             spacing=8,
@@ -602,10 +1471,11 @@ class Window(Adw.ApplicationWindow):
         top.append(hero_reveal)
 
         hero_top=Gtk.Box(
-            spacing=14,
+            spacing=8,
             hexpand=True,
-            valign=Gtk.Align.START,
+            valign=Gtk.Align.CENTER,
         )
+        hero_top.set_vexpand(False)
         hero.append(hero_top)
 
         dashboard_art_path=(
@@ -621,19 +1491,21 @@ class Window(Adw.ApplicationWindow):
         self.dashboard_icon=Gtk.Image.new_from_file(
             str(dashboard_art_path)
         )
-        self.dashboard_icon.set_pixel_size(80)
-        self.dashboard_icon.set_valign(Gtk.Align.START)
+        self.dashboard_icon.set_pixel_size(128)
+        self.dashboard_icon.set_valign(Gtk.Align.CENTER)
         self.dashboard_icon.set_halign(Gtk.Align.START)
         self.dashboard_icon.add_css_class(
             'dashboard-icon'
         )
         hero_top.append(self.dashboard_icon)
 
+        # Keep the hero copy compact and let GTK center the complete
+        # text block naturally against the cropped dashboard artwork.
         title=Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
-            spacing=3,
+            spacing=2,
             hexpand=True,
-            valign=Gtk.Align.START,
+            valign=Gtk.Align.CENTER,
         )
         hero_top.append(title)
 
@@ -646,7 +1518,7 @@ class Window(Adw.ApplicationWindow):
 
         title.append(
             label(
-                'Forge your entire library.',
+                'rtxForge',
                 'hero-title',
             )
         )
@@ -655,7 +1527,10 @@ class Window(Adw.ApplicationWindow):
             'Finding your games…',
             'dim-label',
         )
-        title.append(self.stats)
+        self.stats.set_margin_top(3)
+        title.append(
+            self.stats
+        )
 
         self.hardware_label=label(
             'Preview mode · no game writes'
@@ -663,7 +1538,9 @@ class Window(Adw.ApplicationWindow):
             else 'Checking system hardware…',
             'card-meta',
         )
-        title.append(self.hardware_label)
+        title.append(
+            self.hardware_label
+        )
 
         bulk=Gtk.Box(
             spacing=8,
@@ -709,9 +1586,8 @@ class Window(Adw.ApplicationWindow):
         )
         tuning.set_hexpand(True)
         tuning.set_halign(Gtk.Align.FILL)
-        tuning.set_margin_top(8)
+        tuning.set_margin_top(4)
         tuning.add_css_class('dashboard-tuning')
-        hero.append(tuning)
 
         self.strength_slider=(
             self.tuning_widgets['nr_strength']
@@ -725,20 +1601,24 @@ class Window(Adw.ApplicationWindow):
             halign=Gtk.Align.START,
             valign=Gtk.Align.END,
         )
-        self.operation_revealer.set_margin_start(18);self.operation_revealer.set_margin_bottom(18)
+        self.operation_revealer.set_margin_start(18);self.operation_revealer.set_margin_bottom(74)
         operation=Gtk.Box(spacing=9,valign=Gtk.Align.CENTER);operation.add_css_class('operation-bubble');self.operation_revealer.set_child(operation)
         self.operation_spinner=Gtk.Spinner();operation.append(self.operation_spinner)
         self.operation_icon=Gtk.Image.new_from_icon_name('emblem-ok-symbolic');self.operation_icon.add_css_class('operation-complete');self.operation_icon.set_visible(False);operation.append(self.operation_icon)
         self.operation_status=label('');self.operation_status.set_max_width_chars(54);self.operation_status.set_ellipsize(Pango.EllipsizeMode.END);operation.append(self.operation_status)
         self.operation_elapsed=label('','dim-label');operation.append(self.operation_elapsed)
         self.operation_dismiss=Gtk.Button(icon_name='window-close-symbolic');self.operation_dismiss.add_css_class('operation-dismiss');self.operation_dismiss.set_tooltip_text('Dismiss');self.operation_dismiss.set_visible(False);self.operation_dismiss.connect('clicked',lambda *_:self.hide_operation_status());operation.append(self.operation_dismiss)
-        stage.add_overlay(self.operation_revealer)
         for key,widget in self.tuning_widgets.items():widget.connect('notify::selected' if key=='mfg_multiplier' else 'value-changed',self.strength_changed)
         self.strength_changed()
         self.reset_all.set_tooltip_text('Restore current sharpening, NR and menu-font defaults for managed games. Each configuration is backed up. Close running games first.')
         self.install_all.set_tooltip_text('One click: prepare, back up and install wherever possible across every library. Incompatible games are skipped.')
         self.uninstall_all.set_tooltip_text('One click: remove recorded OptiScaler installs across every library, with backups. Your games remain installed.')
-        controls=Gtk.Box(spacing=14);controls.add_css_class('control-pod');controls.add_css_class('mode-bar');top.append(controls)
+        controls=Gtk.Box(spacing=14)
+        controls.add_css_class('control-pod')
+        controls.add_css_class('mode-bar')
+        controls.set_margin_top(4)
+
+        hero.append(controls)
         profile_text=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=1,hexpand=True,valign=Gtk.Align.CENTER);controls.append(profile_text)
         profile_text.append(label('Enhancement Mode','heading'))
         self.profile_note=label('','dim-label');self.profile_note.add_css_class('mode-description');self.profile_note.set_ellipsize(Pango.EllipsizeMode.END);self.profile_note.set_lines(1);self.profile_note.set_max_width_chars(42);profile_text.append(self.profile_note)
@@ -750,6 +1630,9 @@ class Window(Adw.ApplicationWindow):
         controls.append(self.profile_group)
         self.profile_group.connect('notify::active-name',self.profile_changed)
         self.profile_group.set_active_name(self.settings.get('default_profile','mfg-only'));self.profile_changed(self.profile_group)
+
+        # Enhancement Mode sits directly above the tuning controls.
+        hero.append(tuning)
         viewbar=Gtk.Box(spacing=10);library_title=label('Your games','heading');library_title.set_hexpand(True);viewbar.append(library_title)
         viewbox=Gtk.Box();viewbox.add_css_class('linked');viewbar.append(viewbox);self.view_buttons={};first=None
         for title,key in [('Posters','posters'),('Wide capsules','capsules'),('List','list')]:
@@ -758,7 +1641,9 @@ class Window(Adw.ApplicationWindow):
             else:first=toggle
             toggle.set_active(self.settings.get('library_view','posters')==key)
             toggle.connect('toggled',self.view_changed,key);viewbox.append(toggle);self.view_buttons[key]=toggle
-        filters=Gtk.Box(spacing=8);top.append(filters)
+        filters=Gtk.Box(spacing=8)
+        filters.set_margin_top(4)
+        top.append(filters)
         self.search=Gtk.SearchEntry(placeholder_text='Search your entire library',hexpand=True);self.search.connect('search-changed',lambda *_:self.filter_games());filters.append(self.search)
         filterbox=Gtk.Box();filterbox.add_css_class('linked');filters.append(filterbox);previous=None
         for name,key in [('All','all'),('Installed','installed'),('Available','available')]:
@@ -767,8 +1652,22 @@ class Window(Adw.ApplicationWindow):
             else:previous=b;b.set_active(True)
             b.connect('toggled',self.filter_changed,key);filterbox.append(b)
         filters.append(button('Select all',lambda *_:self.select_all(True)));filters.append(button('Clear',lambda *_:self.select_all(False)))
-        margins(viewbar,12);viewbar.set_margin_top(0);viewbar.set_margin_bottom(0);viewbar.set_margin_top(8);outer.append(viewbar)
-        scroll=Gtk.ScrolledWindow(vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER);library_stage=Gtk.Overlay(vexpand=True);library_stage.set_child(scroll);outer.append(library_stage)
+
+        library_surface=Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=0,
+            hexpand=True,
+            vexpand=True,
+        )
+        library_surface.add_css_class('forge-library-surface')
+        outer.append(library_surface)
+
+        viewbar.set_margin_start(18)
+        viewbar.set_margin_end(18)
+        viewbar.set_margin_top(16)
+        viewbar.set_margin_bottom(8)
+        library_surface.append(viewbar)
+        scroll=Gtk.ScrolledWindow(vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER);library_stage=Gtk.Overlay(vexpand=True);library_stage.set_child(scroll);library_surface.append(library_stage)
         edge=Gtk.Box(height_request=64,valign=Gtk.Align.START,can_target=False);edge.add_css_class('dashboard-fade');edge.set_visible(False);library_stage.add_overlay(edge)
         def collapse_header(adj):
             edge.set_visible(adj.get_value()>1)
@@ -776,10 +1675,135 @@ class Window(Adw.ApplicationWindow):
             elif adj.get_value()<10:hero_reveal.set_reveal_child(True)
         scroll.get_vadjustment().connect('value-changed',collapse_header)
         self.flow=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,column_spacing=14,row_spacing=16,min_children_per_line=1,max_children_per_line=12,homogeneous=True,valign=Gtk.Align.START);margins(self.flow,18);self.flow.set_margin_top(0);scroll.set_child(self.flow)
-        footer=Gtk.Box(spacing=8);footer.add_css_class('selection-bar');outer.append(footer)
-        self.selected_label=label('0 selected',css='heading');self.selected_label.set_hexpand(True);footer.append(self.selected_label)
-        for name,op,css in [('Add Enhancements','install','forge-primary'),('Repair Files','repair',None),('Remove Enhancements','uninstall','bulk-remove'),('Reset Settings','reset',None)]:
-            b=button(name,lambda _,action=op:self.launch_action(action),css);footer.append(b);self.action_buttons.append(b)
+        # Decorative bottom fade. It floats over the library instead
+        # of reserving a rectangular footer row.
+        footer=Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            height_request=92,
+            hexpand=True,
+            valign=Gtk.Align.END,
+        )
+        footer.add_css_class(
+            'selection-fade'
+        )
+
+        library_stage.add_overlay(
+            footer
+        )
+
+        # Flexible empty region lets the gray disappear upward before
+        # reaching the actual controls.
+        footer.append(
+            Gtk.Box(
+                vexpand=True,
+            )
+        )
+
+        footer_controls=Gtk.Box(
+            spacing=4,
+            hexpand=True,
+            valign=Gtk.Align.END,
+        )
+        footer_controls.add_css_class(
+            'selection-controls'
+        )
+        footer.append(
+            footer_controls
+        )
+
+        # Selected-count text gets its own readable floating pill.
+        selection_pill=Gtk.Box(
+            valign=Gtk.Align.CENTER,
+        )
+        selection_pill.add_css_class(
+            'selection-count-pill'
+        )
+
+        self.selected_label=label(
+            '0 selected',
+            css='selection-count',
+        )
+        selection_pill.append(
+            self.selected_label
+        )
+
+        footer_controls.append(
+            selection_pill
+        )
+
+        # Push the action cluster to the far right.
+        footer_controls.append(
+            Gtk.Box(
+                hexpand=True,
+            )
+        )
+
+        def footer_action(icon_name,tooltip,operation,css=None):
+            action=Gtk.Button(
+                icon_name=icon_name,
+                valign=Gtk.Align.CENTER,
+            )
+            action.add_css_class(
+                'selection-action'
+            )
+
+            if css:
+                action.add_css_class(
+                    css
+                )
+
+            action.set_tooltip_text(
+                tooltip
+            )
+            action.update_property(
+                [Gtk.AccessibleProperty.LABEL],
+                [tooltip],
+            )
+            action.connect(
+                'clicked',
+                lambda *_:self.launch_action(operation),
+            )
+
+            footer_controls.append(
+                action
+            )
+            self.action_buttons.append(
+                action
+            )
+
+        footer_action(
+            'list-add-symbolic',
+            'Add Enhancements',
+            'install',
+            'forge-primary',
+        )
+
+        footer_action(
+            'view-refresh-symbolic',
+            'Repair Files',
+            'repair',
+        )
+
+        footer_action(
+            'edit-undo-symbolic',
+            'Reset Settings',
+            'reset',
+        )
+
+        footer_action(
+            'edit-delete-symbolic',
+            'Remove Enhancements',
+            'uninstall',
+            'bulk-remove',
+        )
+
+        # Add the floating operation/status layer only after every normal
+        # dashboard widget has been constructed. GtkOverlay paints this
+        # final overlay above the library and selection footer.
+        stage.add_overlay(
+            self.operation_revealer
+        )
+
         GLib.timeout_add(180,self.tick)
         if options.demo:
             games=demo_games()
@@ -919,9 +1943,9 @@ class Window(Adw.ApplicationWindow):
             )
 
             slider.set_tooltip_text(
-                '0.0 – 2.0 · 0.1 increments'
+                '0.0 - 2.0 · 0.1 increments'
                 if key=='nr_strength'
-                else '0.0 – 1.0 · 0.1 increments'
+                else '0.0 - 1.0 · 0.1 increments'
             )
 
             # Existing code changes slider sensitivity. Keep the numeric
@@ -967,7 +1991,7 @@ class Window(Adw.ApplicationWindow):
         pod.append(group)
         group.append(label('MFG','heading'))
 
-        multiplier=Gtk.DropDown.new_from_strings(
+        multiplier=safe_dropdown(
             ['Off']+[str(x)+'×' for x in range(2,7)]
         )
         multiplier.set_selected(
@@ -1026,7 +2050,20 @@ class Window(Adw.ApplicationWindow):
         for widget in self.tuning_widgets.values():widget.set_sensitive(enabled)
         for entry in self.cards.values():entry['reset'].set_sensitive(enabled)
         for i,b in enumerate(self.action_buttons):b.set_sensitive(enabled and (compatible or i in (2,3)) and any(v['check'].get_active() for v in self.cards.values()))
-        for b in (self.refresh,self.add,self.profile_group,*self.view_buttons.values()):b.set_sensitive(enabled)
+        self.refresh_action.set_enabled(
+            enabled
+        )
+        self.add_folder_action.set_enabled(
+            enabled
+        )
+
+        for b in (
+            self.profile_group,
+            *self.view_buttons.values(),
+        ):
+            b.set_sensitive(
+                enabled
+            )
     def event(self,event):
         if event['kind']=='progress':
             self.show_operation_status(event['label']);self.update_progress_art(event.get('game',''))
@@ -1090,44 +2127,428 @@ class Window(Adw.ApplicationWindow):
 
         return self.get_renderer().render_texture(node,rect)
 
-    def open_panel(self,title,width=730,height=620,show_close=True):
-        if self.dialog:self.dialog.force_close()
-        dialog=Adw.Dialog(title=title,content_width=width,content_height=height);self.dialog=dialog;self.job_label=None
-        box=Gtk.Box(orientation=Gtk.Orientation.VERTICAL);dialog.set_child(box)
-        header=Adw.HeaderBar();header.set_show_end_title_buttons(show_close);header.set_show_start_title_buttons(False);header.set_title_widget(Adw.WindowTitle(title=title));box.append(header)
-        scroll=Gtk.ScrolledWindow(vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER);box.append(scroll)
-        body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16);body.add_css_class('panel-body');scroll.set_child(body)
-        foot=Gtk.Box(spacing=10,halign=Gtk.Align.END);margins(foot,16);box.append(foot)
-        dialog.present(self);return dialog,body,foot
+    def enable_dialog_resize(
+        self,
+        dialog,
+        min_width=640,
+        min_height=480,
+    ):
+        """Allow pointer resizing from the dialog's bottom-right edge."""
+
+        try:
+            dialog.set_presentation_mode(
+                Adw.DialogPresentationMode.FLOATING
+            )
+        except Exception:
+            pass
+
+        EDGE=24
+
+        state={
+            'active':False,
+            'width':0,
+            'height':0,
+        }
+
+        def near_corner(x,y):
+            return (
+                x>=max(
+                    0,
+                    dialog.get_width()-EDGE,
+                )
+                and
+                y>=max(
+                    0,
+                    dialog.get_height()-EDGE,
+                )
+            )
+
+        motion=Gtk.EventControllerMotion()
+
+        def motion_cb(_controller,x,y):
+            try:
+                dialog.set_cursor_from_name(
+                    'se-resize'
+                    if near_corner(x,y)
+                    else 'default'
+                )
+            except Exception:
+                pass
+
+        motion.connect(
+            'motion',
+            motion_cb,
+        )
+
+        dialog.add_controller(
+            motion
+        )
+
+        drag=Gtk.GestureDrag()
+
+        def drag_begin(_gesture,x,y):
+            state['active']=near_corner(
+                x,
+                y,
+            )
+
+            if not state['active']:
+                return
+
+            state['width']=max(
+                min_width,
+                dialog.get_content_width(),
+            )
+
+            state['height']=max(
+                min_height,
+                dialog.get_content_height(),
+            )
+
+        def drag_update(_gesture,dx,dy):
+            if not state['active']:
+                return
+
+            max_width=max(
+                min_width,
+                self.get_width()-24,
+            )
+
+            max_height=max(
+                min_height,
+                self.get_height()-24,
+            )
+
+            width=max(
+                min_width,
+                min(
+                    max_width,
+                    round(
+                        state['width']+dx
+                    ),
+                ),
+            )
+
+            height=max(
+                min_height,
+                min(
+                    max_height,
+                    round(
+                        state['height']+dy
+                    ),
+                ),
+            )
+
+            dialog.set_content_width(
+                width
+            )
+            dialog.set_content_height(
+                height
+            )
+
+        def drag_end(*_):
+            state['active']=False
+
+        drag.connect(
+            'drag-begin',
+            drag_begin,
+        )
+        drag.connect(
+            'drag-update',
+            drag_update,
+        )
+        drag.connect(
+            'drag-end',
+            drag_end,
+        )
+
+        dialog.add_controller(
+            drag
+        )
+
+
+    def open_panel(
+        self,
+        title,
+        width=730,
+        height=620,
+        show_close=True,
+        resizable=False,
+    ):
+        if self.dialog:
+            self.dialog.force_close()
+
+        if resizable:
+            dialog=ResizablePanelWindow(
+                self,
+                title,
+                width,
+                height,
+            )
+        else:
+            dialog=Adw.Dialog(
+                title=title,
+                content_width=width,
+                content_height=height,
+            )
+
+        self.dialog=dialog
+        self.job_label=None
+
+        box=Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+        )
+        dialog.set_child(box)
+
+        header=Adw.HeaderBar()
+        header.set_show_end_title_buttons(
+            show_close
+        )
+        header.set_show_start_title_buttons(
+            False
+        )
+        header.set_title_widget(
+            Adw.WindowTitle(
+                title=title
+            )
+        )
+        box.append(header)
+
+        scroll=Gtk.ScrolledWindow(
+            vexpand=True,
+            hscrollbar_policy=Gtk.PolicyType.NEVER,
+        )
+        box.append(scroll)
+
+        body=Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=16,
+        )
+        body.add_css_class(
+            'panel-body'
+        )
+        scroll.set_child(body)
+
+        foot=Gtk.Box(
+            spacing=10,
+            halign=Gtk.Align.END,
+        )
+        margins(
+            foot,
+            16,
+        )
+        box.append(foot)
+
+        if resizable:
+            dialog.present()
+        else:
+            dialog.present(self)
+
+        return dialog,body,foot
+
     def organize_pages(self,body,sections):
-        clear(body);body.remove_css_class('panel-body');body.set_vexpand(True)
-        stack=Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE,hexpand=True,vexpand=True)
-        nav=Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE,width_request=200,valign=Gtk.Align.FILL)
-        nav.add_css_class('settings-navigation')
-        nav.set_vexpand(True)
-        icons={'Graphics':'video-display-symbolic','Library':'applications-games-symbolic','System':'computer-symbolic','Recovery':'document-revert-symbolic'}
-        layout=Gtk.Box(
+        dialog=self.dialog
+        shell=dialog.get_child()
+
+        # open_panel() initially creates:
+        #
+        #   header
+        #   scroll -> body
+        #   footer
+        #
+        # Settings replaces that generic dialog composition with a
+        # GNOME Settings-style split layout whose sidebar owns the full
+        # left edge from top to bottom.
+        old_header=shell.get_first_child()
+        old_scroll=old_header.get_next_sibling()
+        footer=old_scroll.get_next_sibling()
+
+        old_scroll.set_child(None)
+        shell.remove(footer)
+        dialog.set_child(None)
+
+        root=Gtk.Box(
             hexpand=True,
             vexpand=True,
         )
-        layout.append(nav)
-        layout.append(stack)
-        body.append(layout)
-        switcher=Adw.ToggleGroup(homogeneous=True);body.prepend(switcher)
+
+        sidebar=Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            width_request=236,
+            vexpand=True,
+        )
+        sidebar.add_css_class(
+            'settings-sidebar-surface'
+        )
+
+        sidebar_header=Gtk.Box()
+        sidebar_header.add_css_class(
+            'settings-sidebar-header'
+        )
+
+        sidebar_title=label(
+            'Settings',
+            'title-2',
+        )
+        sidebar_header.append(
+            sidebar_title
+        )
+        sidebar.append(
+            sidebar_header
+        )
+
+        nav=Gtk.ListBox(
+            selection_mode=Gtk.SelectionMode.SINGLE,
+            valign=Gtk.Align.FILL,
+            vexpand=True,
+        )
+        nav.add_css_class(
+            'settings-navigation'
+        )
+        sidebar.append(
+            nav
+        )
+
+        main=Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            hexpand=True,
+            vexpand=True,
+        )
+        main.add_css_class(
+            'settings-main-surface'
+        )
+
+        page_title=Adw.WindowTitle(
+            title=sections[0][0] if sections else 'Settings',
+        )
+
+        header=Adw.HeaderBar()
+        header.set_show_start_title_buttons(False)
+        header.set_show_end_title_buttons(True)
+        header.set_title_widget(
+            page_title
+        )
+        main.append(
+            header
+        )
+
+        stack=Gtk.Stack(
+            transition_type=Gtk.StackTransitionType.CROSSFADE,
+            hexpand=True,
+            vexpand=True,
+        )
+        main.append(
+            stack
+        )
+
+        # Reuse the existing footer object so show_settings() can append
+        # Save Settings normally after this layout has been created.
+        footer.add_css_class(
+            'settings-footer'
+        )
+        main.append(
+            footer
+        )
+
+        root.append(
+            sidebar
+        )
+        root.append(
+            main
+        )
+
+        dialog.set_child(
+            root
+        )
+
+        icons={
+            'Graphics':'video-display-symbolic',
+            'Library':'applications-games-symbolic',
+            'System':'computer-symbolic',
+            'Recovery':'document-revert-symbolic',
+        }
+
         for title,items in sections:
-            page=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=20);page.add_css_class('settings-content')
-            for item in items:page.append(item)
-            scroll=Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,vexpand=True);scroll.set_child(page);stack.add_titled(scroll,title,title)
-            item=Gtk.ListBoxRow();line=Gtk.Box(spacing=12,valign=Gtk.Align.CENTER);line.append(Gtk.Image.new_from_icon_name(icons.get(title,'preferences-system-symbolic')));line.append(label(title));item.set_child(line);item.page_name=title;nav.append(item)
-            switcher.add(Adw.Toggle(name=title,label=title))
-        nav.connect('row-selected',lambda _,r:stack.set_visible_child_name(r.page_name) if r else None)
-        switcher.connect('notify::active-name',lambda w,*_:stack.set_visible_child_name(w.get_active_name()))
-        nav.select_row(nav.get_row_at_index(0))
-        def responsive(*_):
-            wide=body.get_width()>=740
-            nav.set_visible(wide);switcher.set_visible(not wide)
-            return True
-        body.add_tick_callback(responsive)
+            page=Gtk.Box(
+                orientation=Gtk.Orientation.VERTICAL,
+                spacing=20,
+            )
+            page.add_css_class(
+                'settings-content'
+            )
+
+            for item in items:
+                page.append(
+                    item
+                )
+
+            scroll=Gtk.ScrolledWindow(
+                hscrollbar_policy=Gtk.PolicyType.NEVER,
+                vexpand=True,
+            )
+            scroll.set_child(
+                page
+            )
+
+            stack.add_titled(
+                scroll,
+                title,
+                title,
+            )
+
+            nav_row=Gtk.ListBoxRow()
+
+            line=Gtk.Box(
+                spacing=12,
+                valign=Gtk.Align.CENTER,
+            )
+
+            line.append(
+                Gtk.Image.new_from_icon_name(
+                    icons.get(
+                        title,
+                        'preferences-system-symbolic',
+                    )
+                )
+            )
+
+            line.append(
+                label(title)
+            )
+
+            nav_row.set_child(
+                line
+            )
+            nav_row.page_name=title
+
+            nav.append(
+                nav_row
+            )
+
+        def selected(_nav,row):
+            if row is None:
+                return
+
+            stack.set_visible_child_name(
+                row.page_name
+            )
+
+            page_title.set_title(
+                row.page_name
+            )
+
+        nav.connect(
+            'row-selected',
+            selected,
+        )
+
+        first=nav.get_row_at_index(0)
+
+        if first is not None:
+            nav.select_row(
+                first
+            )
+
         return stack
 
     def error(self,message):
@@ -1140,6 +2561,115 @@ class Window(Adw.ApplicationWindow):
     def scanned(self,result):
         self.hardware_info=result['hardware'];self.hardware_label.set_text(self.hardware_info['gpu']+' · '+('Hardware check passed' if self.hardware_info['ready'] else 'Install unavailable — see Settings'));self.show_games(result['games'])
     def choose_folder(self,*_):
+        if gamescope_session():
+            dialog=Adw.Dialog(
+                title='Add Game Folder',
+                content_width=520,
+                content_height=190,
+            )
+
+            try:
+                dialog.set_presentation_mode(
+                    Adw.DialogPresentationMode.FLOATING
+                )
+            except Exception:
+                pass
+
+            shell=Gtk.Box(
+                orientation=Gtk.Orientation.VERTICAL,
+                spacing=14,
+            )
+            margins(
+                shell,
+                18,
+            )
+
+            shell.append(
+                label(
+                    'Enter the full path to the folder containing your games.',
+                    'dim-label',
+                )
+            )
+
+            path_entry=Gtk.Entry(
+                placeholder_text='/var/mnt/Games',
+            )
+            path_entry.set_hexpand(
+                True
+            )
+            shell.append(
+                path_entry
+            )
+
+            actions=Gtk.Box(
+                spacing=8,
+                halign=Gtk.Align.END,
+            )
+
+            actions.append(
+                button(
+                    'Cancel',
+                    lambda *_:dialog.close(),
+                )
+            )
+
+            def add_path(*_):
+                path=path_entry.get_text().strip()
+
+                if not path:
+                    return
+
+                folder=Path(path).expanduser()
+
+                if not folder.is_dir():
+                    self.toast(
+                        'That folder does not exist.'
+                    )
+                    return
+
+                value=str(
+                    folder.resolve()
+                )
+
+                if value not in self.settings['extra_folders']:
+                    self.settings['extra_folders'].append(
+                        value
+                    )
+
+                dialog.close()
+
+                if self.options.demo:
+                    return
+
+                self.start(
+                    'Saving game folder',
+                    lambda:library_media.save_settings(
+                        self.service.config,
+                        self.settings,
+                    ),
+                    lambda _:self.scan(),
+                )
+
+            actions.append(
+                button(
+                    'Add Folder',
+                    add_path,
+                    'suggested-action',
+                )
+            )
+
+            shell.append(
+                actions
+            )
+
+            dialog.set_child(
+                shell
+            )
+            dialog.present(
+                self
+            )
+            return
+
         d=Gtk.FileChooserNative(title='Add a game folder',transient_for=self,action=Gtk.FileChooserAction.SELECT_FOLDER,accept_label='Add game')
         def selected(dialog,response):
             if response==Gtk.ResponseType.ACCEPT:
@@ -1166,6 +2696,114 @@ class Window(Adw.ApplicationWindow):
         self.stats.set_text(f'{len(games)} games · {libs} locations · {count} OptiScaler installs detected')
         self.filter_games()
         if art and self.settings['online_art'] and games:self.fetch_media()
+    def resize_library_art(self,value=None):
+        """Resize the loaded library cards without rescanning games."""
+
+        if value is None:
+            value=self.settings.get(
+                'art_scale',
+                100,
+            )
+
+        try:
+            value=int(
+                round(
+                    float(value)
+                )
+            )
+        except (TypeError,ValueError):
+            value=100
+
+        value=max(
+            50,
+            min(
+                150,
+                value,
+            ),
+        )
+
+        self.settings['art_scale']=value
+
+        pending=getattr(
+            self,
+            'art_resize_source',
+            0,
+        )
+
+        if pending:
+            try:
+                GLib.source_remove(
+                    pending
+                )
+            except Exception:
+                pass
+
+            self.art_resize_source=0
+
+        def apply_resize():
+            self.art_resize_source=0
+
+            games=list(
+                self.games
+            )
+
+            selected={
+                key
+                for key,entry in self.cards.items()
+                if entry['check'].get_active()
+            }
+
+            # Throw away only the widgets.
+            # Keep the already-loaded game dictionaries and artwork.
+            clear(
+                self.flow
+            )
+            self.cards={}
+
+            view=self.settings.get(
+                'library_view',
+                'posters',
+            )
+
+            self.flow.set_max_children_per_line(
+                1
+                if view=='list'
+                else 12
+            )
+            self.flow.set_min_children_per_line(
+                1
+            )
+            self.flow.set_homogeneous(
+                view!='list'
+            )
+
+            self.games=games
+
+            for game in games:
+                self.make_card(
+                    game
+                )
+
+                if game['game'] in selected:
+                    self.cards[
+                        game['game']
+                    ]['check'].set_active(
+                        True
+                    )
+
+            self.filter_games()
+
+            self.flow.queue_resize()
+            self.flow.queue_allocate()
+
+            return False
+
+        # Short debounce keeps slider dragging responsive.
+        self.art_resize_source=GLib.timeout_add(
+            60,
+            apply_resize,
+        )
+
     def make_card(self,game):
         view=self.settings.get('library_view','posters');scale=max(.5,min(1.5,self.settings.get('art_scale',100)/100))
         poster_width=max(80,int(round(158*scale)))
@@ -1174,6 +2812,7 @@ class Window(Adw.ApplicationWindow):
         overlay=Gtk.Overlay(valign=Gtk.Align.START);card.append(overlay)
         pic=CoverPicture(content_fit=Gtk.ContentFit.CONTAIN,can_shrink=True);pic.add_css_class('poster')
         pic.cover_width=width;pic.cover_ratio=width/height
+        pic.set_size_request(width,height)
         click=Gtk.Button(child=pic);click.add_css_class('poster-button');click.connect('clicked',lambda *_:self.details(game));overlay.set_child(click)
         fallback=label(game['name'],'poster-fallback');fallback.set_halign(Gtk.Align.CENTER);fallback.set_valign(Gtk.Align.CENTER);fallback.set_max_width_chars(13);overlay.add_overlay(fallback)
         check=Gtk.CheckButton(halign=Gtk.Align.END,valign=Gtk.Align.START);margins(check,10);check.set_tooltip_text('Select '+game['name']);check.connect('toggled',lambda *_:self.selection_changed())
@@ -1242,66 +2881,238 @@ class Window(Adw.ApplicationWindow):
             finally:GLib.idle_add(finished_art)
         threading.Thread(target=load,daemon=True).start()
     def details(self,game):
-        d,b,f=self.open_panel(game['name'],width=860,height=620)
+        d,b,f=self.open_panel(
+            game['name'],
+            width=920,
+            height=700,
+            resizable=True,
+        )
         self.detail_resize_source=0
-        b.remove_css_class('panel-body')
-        b.set_spacing(0)
 
-        # Game Details uses the artwork itself as the top of the dialog.
-        # Keep the regular Adw.HeaderBar in the widget hierarchy for
-        # compatibility with existing smoke/navigation code, but remove
-        # it visually and reclaim its layout space.
+        # Replace the generic dialog shell with a Settings-style
+        # full-height sidebar and a cinematic main pane.
         detail_shell=d.get_child()
         detail_header=detail_shell.get_first_child()
-        detail_header.set_visible(False)
+        old_scroll=detail_header.get_next_sibling()
+        detail_footer=old_scroll.get_next_sibling()
+
+        old_scroll.set_child(None)
+        detail_shell.remove(detail_footer)
+        d.set_child(None)
+
+        detail_root=Gtk.Box(
+            hexpand=True,
+            vexpand=True,
+        )
+        detail_root.add_css_class(
+            'game-detail-root'
+        )
+
+        sidebar=Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            width_request=210,
+            vexpand=True,
+        )
+        sidebar.add_css_class(
+            'game-detail-sidebar'
+        )
+
+        sidebar_header=Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=2,
+        )
+        sidebar_header.add_css_class(
+            'game-detail-sidebar-header'
+        )
+        sidebar_header.append(
+            label(
+                'Game Details',
+                'title-2',
+            )
+        )
+
+        sidebar.append(
+            sidebar_header
+        )
+
+        nav=Gtk.ListBox(
+            selection_mode=Gtk.SelectionMode.SINGLE,
+            valign=Gtk.Align.START,
+        )
+        nav.add_css_class(
+            'game-detail-nav'
+        )
+        sidebar.append(
+            nav
+        )
+
+        main=Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            hexpand=True,
+            vexpand=True,
+        )
+        main.add_css_class(
+            'game-detail-main'
+        )
+
+        detail_root.append(
+            sidebar
+        )
+        detail_root.append(
+            main
+        )
+
+        d.set_child(
+            detail_root
+        )
+
+        f=detail_footer
+        f.add_css_class(
+            'detail-footer'
+        )
 
         if game.get('accent_class'):
             d.add_css_class(game['accent_class'])
 
-        banner=Gtk.Overlay()
+        DETAIL_HERO_HEIGHT=200
+
+        banner=Gtk.Overlay(
+            height_request=DETAIL_HERO_HEIGHT,
+            vexpand=False,
+        )
         banner.add_css_class('game-banner')
-        b.append(banner)
-        image=Gtk.Picture(content_fit=Gtk.ContentFit.COVER,can_shrink=True,height_request=360)
+        banner.set_vexpand(False)
+        banner.set_valign(Gtk.Align.START)
+        banner.set_overflow(Gtk.Overflow.HIDDEN)
+        banner.set_size_request(
+            -1,
+            DETAIL_HERO_HEIGHT,
+        )
+        banner.set_size_request(
+            -1,
+            DETAIL_HERO_HEIGHT,
+        )
+        main.append(banner)
+        image=HeroPicture(
+            content_fit=Gtk.ContentFit.COVER,
+            can_shrink=True,
+            height_request=DETAIL_HERO_HEIGHT,
+        )
+        image.hero_height=DETAIL_HERO_HEIGHT
+        image.set_vexpand(False)
+        image.set_valign(Gtk.Align.START)
+        image.set_size_request(
+            -1,
+            DETAIL_HERO_HEIGHT,
+        )
+        image.set_vexpand(
+            False
+        )
         if game.get('hero'):
             try:image.set_paintable(Gdk.Texture.new_from_filename(game['hero']))
             except Exception:pass
         banner.set_child(image);shade=Gtk.Box();shade.add_css_class('banner-shade');banner.add_overlay(shade)
         self.detail_game=game['game'];self.detail_dialog=d;self.detail_banner=image
-        tabs=Adw.ToggleGroup(
-            homogeneous=True,
-            halign=Gtk.Align.CENTER,
-            valign=Gtk.Align.CENTER,
-        )
-        tabs.add_css_class('floating-tabs')
 
-        # Keep the tabs geometrically centered while the close button
-        # occupies the far-right end of the exact same row.
-        detail_controls=Gtk.CenterBox(
-            hexpand=True,
-            valign=Gtk.Align.START,
-        )
-        margins(detail_controls,16)
+        def detail_closed(*_):
+            if getattr(self,'detail_dialog',None) is d:
+                self.detail_dialog=None
+                self.detail_game=None
 
-        detail_controls.set_center_widget(tabs)
+            if getattr(self,'dialog',None) is d:
+                self.dialog=None
 
+        if isinstance(d,ResizablePanelWindow):
+            d.connect(
+                'destroy',
+                detail_closed,
+            )
+        else:
+            d.connect(
+                'closed',
+                detail_closed,
+            )
         close=Gtk.Button(
             icon_name='window-close-symbolic',
             valign=Gtk.Align.CENTER,
             halign=Gtk.Align.END,
         )
-        close.add_css_class('game-detail-close')
-        close.set_tooltip_text('Close')
+        close.add_css_class(
+            'game-detail-close'
+        )
+        close.set_tooltip_text(
+            'Close'
+        )
+
+        close_state={
+            'done':False,
+        }
+
+        def close_game_details(*_):
+            if close_state['done']:
+                return
+
+            close_state['done']=True
+
+            if getattr(
+                self,
+                'dialog',
+                None,
+            ) is d:
+                self.dialog=None
+
+            if getattr(
+                self,
+                'detail_dialog',
+                None,
+            ) is d:
+                self.detail_dialog=None
+                self.detail_game=None
+
+            try:
+                d.force_close()
+            except Exception:
+                try:
+                    d.destroy()
+                except Exception:
+                    pass
         close.update_property(
             [Gtk.AccessibleProperty.LABEL],
             ['Close game details'],
         )
+
         close.connect(
             'clicked',
-            lambda *_:d.close(),
+            close_game_details,
         )
 
-        detail_controls.set_end_widget(close)
-        banner.add_overlay(detail_controls)
+        close_gesture=Gtk.GestureClick()
+        close_gesture.set_button(
+            1
+        )
+        close_gesture.set_propagation_phase(
+            Gtk.PropagationPhase.CAPTURE
+        )
+        close_gesture.connect(
+            'pressed',
+            close_game_details,
+        )
+        close.add_controller(
+            close_gesture
+        )
+
+        close_holder=Gtk.Box(
+            halign=Gtk.Align.END,
+            valign=Gtk.Align.START,
+        )
+        margins(
+            close_holder,
+            16,
+        )
+        close_holder.append(
+            close
+        )
+
 
         hero_light=False
 
@@ -1317,42 +3128,355 @@ class Window(Adw.ApplicationWindow):
         )
 
         if hero_light:
-            tabs.add_css_class('light')
             close.add_css_class('light')
-        heading=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=5,valign=Gtk.Align.END);margins(heading,24);heading.append(label(game['name'],'game-banner-title'));banner.add_overlay(heading)
-        mode_name=game.get('profile') if game.get('installed') else 'Ready to Enhance'
-        status=label(mode_name or 'Ready to Enhance','cover-badge');status.set_halign(Gtk.Align.START);heading.append(status)
-        pages=Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE,transition_duration=220,hexpand=True);pages.set_vhomogeneous(False);b.append(pages)
+        # Poster + game identity stay grouped at the lower-left.
+        identity=Gtk.Box(
+            spacing=14,
+            valign=Gtk.Align.START,
+            halign=Gtk.Align.FILL,
+            hexpand=True,
+        )
+        identity.set_margin_start(20)
+        identity.set_margin_end(20)
+
+        # Match the top of the poster to the visual top of the
+        # Game Details sidebar heading.
+        identity.set_margin_top(22)
+        identity.set_margin_bottom(0)
+
+        detail_poster_source=(
+            game.get('poster')
+            or game.get('capsule')
+            or game.get('hero')
+        )
+
+        if detail_poster_source:
+            DETAIL_POSTER_WIDTH=104
+            DETAIL_POSTER_HEIGHT=156
+            DETAIL_POSTER_FRAME_WIDTH=110
+            DETAIL_POSTER_FRAME_HEIGHT=162
+
+            detail_poster=CoverPicture(
+                content_fit=Gtk.ContentFit.COVER,
+                can_shrink=True,
+            )
+            detail_poster.cover_width=DETAIL_POSTER_WIDTH
+            detail_poster.cover_ratio=2/3
+            detail_poster.set_size_request(
+                DETAIL_POSTER_WIDTH,
+                DETAIL_POSTER_HEIGHT,
+            )
+            detail_poster.add_css_class(
+                'progress-poster'
+            )
+            detail_poster.set_overflow(
+                Gtk.Overflow.HIDDEN
+            )
+
+            try:
+                detail_poster.set_paintable(
+                    Gdk.Texture.new_from_filename(
+                        str(detail_poster_source)
+                    )
+                )
+            except Exception:
+                pass
+
+            detail_poster_frame=Gtk.Frame(
+                width_request=DETAIL_POSTER_FRAME_WIDTH,
+                height_request=DETAIL_POSTER_FRAME_HEIGHT,
+                halign=Gtk.Align.START,
+                valign=Gtk.Align.END,
+            )
+            detail_poster_frame.add_css_class(
+                'progress-poster-frame'
+            )
+            detail_poster_frame.set_overflow(
+                Gtk.Overflow.VISIBLE
+            )
+            detail_poster_frame.set_child(
+                detail_poster
+            )
+
+            identity.append(
+                detail_poster_frame
+            )
+
+        heading=Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=4,
+            valign=Gtk.Align.END,
+            hexpand=True,
+        )
+
+        # Enhancement/status tag ABOVE the game name.
+        mode_name=(
+            game.get('profile')
+            if game.get('installed')
+            else 'Ready to Enhance'
+        )
+
+        status=label(
+            mode_name or 'Ready to Enhance',
+            'cover-badge',
+        )
+        status.set_halign(
+            Gtk.Align.START
+        )
+        heading.append(
+            status
+        )
+
+        detail_title=label(
+            game['name'],
+            'game-banner-title',
+        )
+        detail_title.set_wrap(
+            False
+        )
+        detail_title.set_single_line_mode(
+            True
+        )
+        detail_title.set_ellipsize(
+            Pango.EllipsizeMode.END
+        )
+        detail_title.set_max_width_chars(
+            34
+        )
+
+        heading.append(
+            detail_title
+        )
+
+        meta_parts=[
+            str(value)
+            for value in (
+                game.get('developers'),
+                game.get('release'),
+                game.get('source'),
+            )
+            if value
+        ]
+
+        if meta_parts:
+            meta=label(
+                ' · '.join(meta_parts),
+                'game-detail-meta',
+            )
+            meta.set_max_width_chars(
+                44
+            )
+            meta.set_ellipsize(
+                Pango.EllipsizeMode.END
+            )
+            heading.append(
+                meta
+            )
+
+        if game.get('description'):
+            summary=label(
+                game['description'],
+                'game-detail-summary',
+            )
+            summary.set_lines(
+                2
+            )
+            summary.set_max_width_chars(
+                54
+            )
+            summary.set_ellipsize(
+                Pango.EllipsizeMode.END
+            )
+            heading.append(
+                summary
+            )
+
+        identity.append(
+            heading
+        )
+
+        banner.add_overlay(
+            identity
+        )
+
+
+        # Add close control last so no hero overlay can intercept it.
+        banner.add_overlay(
+            close_holder
+        )
+        pages=Gtk.Stack(
+            transition_type=Gtk.StackTransitionType.CROSSFADE,
+            transition_duration=220,
+            hexpand=True,
+        )
+        pages.set_vhomogeneous(
+            False
+        )
+
+        detail_content_scroll=Gtk.ScrolledWindow(
+            hscrollbar_policy=Gtk.PolicyType.NEVER,
+            vscrollbar_policy=Gtk.PolicyType.NEVER,
+            hexpand=True,
+            vexpand=True,
+        )
+        detail_content_scroll.set_child(
+            pages
+        )
+
+        main.append(
+            detail_content_scroll
+        )
+
         content={}
-        for name in ('Overview','Enhancements','Notes','Appearance'):
-            page=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16);margins(page,24);page.set_vexpand(False);content[name]=page;pages.add_titled(page,name,name);tabs.add(Adw.Toggle(name=name,label=name))
-        tabs.connect('notify::active-name',lambda w,*_:pages.set_visible_child_name(w.get_active_name()))
-        pages.connect('notify::visible-child-name',lambda w,*_:tabs.set_active_name(w.get_visible_child_name()))
-        detail_scroll=detail_header.get_next_sibling()
+
+        # One stable Settings-style footer. Only its actions change.
+        clear(f)
+
+        f.set_halign(
+            Gtk.Align.FILL
+        )
+        f.set_margin_top(0)
+        f.set_margin_bottom(0)
+        f.set_margin_start(0)
+        f.set_margin_end(0)
+
+        detail_action_stack=Gtk.Stack(
+            hexpand=True,
+            transition_type=Gtk.StackTransitionType.CROSSFADE,
+            transition_duration=120,
+        )
+
+        detail_action_rows={}
+
+        for action_page in (
+            'Overview',
+            'Enhancements',
+            'Notes',
+            'Appearance',
+        ):
+            action_row=Gtk.Box(
+                spacing=7,
+                hexpand=True,
+                halign=Gtk.Align.END,
+                valign=Gtk.Align.CENTER,
+            )
+
+            action_row.add_css_class(
+                'detail-footer-actions'
+            )
+
+            detail_action_rows[action_page]=action_row
+
+            detail_action_stack.add_named(
+                action_row,
+                action_page,
+            )
+
+        f.append(
+            detail_action_stack
+        )
+
+        detail_icons={
+            'Overview':'dialog-information-symbolic',
+            'Enhancements':'applications-system-symbolic',
+            'Notes':'document-edit-symbolic',
+            'Appearance':'applications-graphics-symbolic',
+        }
+
+        for name in (
+            'Overview',
+            'Enhancements',
+            'Notes',
+            'Appearance',
+        ):
+            page=Gtk.Box(
+                orientation=Gtk.Orientation.VERTICAL,
+                spacing=12,
+            )
+            margins(
+                page,
+                18,
+            )
+            page.set_vexpand(
+                False
+            )
+
+            content[name]=page
+
+            pages.add_titled(
+                page,
+                name,
+                name,
+            )
+
+            nav_row=Gtk.ListBoxRow()
+            nav_row.page_name=name
+
+            nav_line=Gtk.Box(
+                spacing=11,
+                valign=Gtk.Align.CENTER,
+            )
+            nav_line.append(
+                Gtk.Image.new_from_icon_name(
+                    detail_icons[name]
+                )
+            )
+            nav_line.append(
+                label(name)
+            )
+
+            nav_row.set_child(
+                nav_line
+            )
+            nav.append(
+                nav_row
+            )
+
+        def detail_nav_selected(_nav,row):
+            if row is None:
+                return
+
+            pages.set_visible_child_name(
+                row.page_name
+            )
+
+            detail_action_stack.set_visible_child_name(
+                row.page_name
+            )
+
+        nav.connect(
+            'row-selected',
+            detail_nav_selected,
+        )
+
+        first_detail_row=nav.get_row_at_index(
+            0
+        )
+
+        if first_detail_row is not None:
+            nav.select_row(
+                first_detail_row
+            )
+
+        # Footer belongs to the cinematic/main side, not the sidebar.
+        main.append(
+            f
+        )
+
+        detail_scroll=detail_content_scroll
+        self.detail_scroll=detail_content_scroll
+        detail_scroll.set_policy(
+            Gtk.PolicyType.NEVER,
+            Gtk.PolicyType.AUTOMATIC,
+        )
+
         def fit_detail_page(*_):
-            page=content.get(pages.get_visible_child_name())
-            if not page:return False
-            width=pages.get_width()
-            if width<=1:
-                GLib.timeout_add(16,fit_detail_page)
-                return False
-            _,page_natural,_,_=page.measure(Gtk.Orientation.VERTICAL,width)
-            _,footer_natural,_,_=f.measure(Gtk.Orientation.VERTICAL,max(1,d.get_content_width()))
-            hero_preferred=360
-            hero_minimum=230
-            available=max(520,self.get_height()-48)
-            preferred=hero_preferred+page_natural+footer_natural
-            shrink=min(hero_preferred-hero_minimum,max(0,preferred-available))
-            hero_height=hero_preferred-shrink
-            image.set_height_request(hero_height)
-            target=min(preferred-shrink,available)
-            detail_scroll.set_vscrollbar_policy(Gtk.PolicyType.AUTOMATIC if preferred-shrink>available else Gtk.PolicyType.NEVER)
-            self.animate_dialog_height(d,target)
+            # Sidebar navigation must not reshape the dialog or hero.
             return False
-        pages.connect('notify::visible-child-name',fit_detail_page)
-        self.detail_pages=pages;self.detail_fit_page=fit_detail_page
+
+        self.detail_pages=pages
+        self.detail_fit_page=fit_detail_page
         overview=content['Overview']
-        if game.get('description'):overview.append(label(game['description']))
         info=Adw.PreferencesGroup(title='Game Information');overview.append(info)
         for title,value in [('Library',game.get('library')),('Location',game['game']),('Compatibility',game.get('blocked') or 'Available'),('Developer',game.get('developers')),('Release',game.get('release'))]:
             if value:info.add(row(title,value))
@@ -1360,24 +3484,146 @@ class Window(Adw.ApplicationWindow):
         tuning,widgets=self.tuning_controls(game);enhancements.append(tuning)
         mode=game.get('feature_mode') or {'NR Only':'nr-only','MFG Only':'mfg-only'}.get(game.get('profile'),'nr-mfg')
         for key,w in widgets.items():w.set_sensitive(installed and not (key=='nr_strength' and mode=='mfg-only') and not (key=='mfg_multiplier' and mode=='nr-only'))
-        apply=button('Apply Settings',lambda *_:self.launch_action('reset',targets=[game],visual_settings=self.tuning_values(widgets)),'suggested-action');apply.set_halign(Gtk.Align.END);enhancements.append(apply)
+        apply=button(
+            'Apply Settings',
+            lambda *_:self.launch_action(
+                'reset',
+                targets=[game],
+                visual_settings=self.tuning_values(widgets),
+            ),
+            'suggested-action',
+        )
+        apply.set_valign(
+            Gtk.Align.CENTER
+        )
+        detail_action_rows['Enhancements'].append(
+            apply
+        )
         def changed(*_):apply.set_sensitive(installed and any(v!=game.get(k) for k,v in self.tuning_values(widgets).items() if widgets[k].get_sensitive()))
         for key,w in widgets.items():w.connect('notify::selected' if key=='mfg_multiplier' else 'value-changed',changed)
         changed();self.detail_tuning_widgets=widgets;self.detail_apply_settings=apply
-        maintenance=Adw.PreferencesGroup(title='Installation');enhancements.append(maintenance)
-        for title,subtitle,op in [('Install Enhancements','Add or update the selected enhancement mode.','install'),('Repair Files','Replace damaged enhancement files.','repair'),('Reset Settings','Apply your library defaults to this game.','reset'),('Remove Enhancements','Restore the original files.','uninstall')]:
-            item=row(title,subtitle);action=button('Install' if op=='install' else 'Repair' if op=='repair' else 'Reset' if op=='reset' else 'Remove',lambda _,o=op:self.launch_action(o,targets=[game]));action.set_valign(Gtk.Align.CENTER)
-            action.set_sensitive(installed if op in ('reset','uninstall') else not game.get('blocked') and bool(self.hardware_info and self.hardware_info['ready']))
-            if op=='uninstall':action.add_css_class('destructive-action')
-            item.add_suffix(action);maintenance.add(item)
-        notes_page=content['Notes'];record=game.get('test_record',{'status':'Untested','notes':''});choice=Gtk.DropDown.new_from_strings(list(game_notes.STATES));choice.set_selected(list(game_notes.STATES).index(record.get('status','Untested')));choice.set_valign(Gtk.Align.CENTER)
+        maintenance=Adw.PreferencesGroup(
+            title='Installation'
+        )
+        enhancements.append(
+            maintenance
+        )
+
+        for title,subtitle,op in [
+            (
+                'Install Enhancements',
+                'Add or update the selected enhancement mode.',
+                'install',
+            ),
+            (
+                'Repair Files',
+                'Replace damaged enhancement files.',
+                'repair',
+            ),
+            (
+                'Reset Settings',
+                'Apply your library defaults to this game.',
+                'reset',
+            ),
+            (
+                'Remove Enhancements',
+                'Restore the original files.',
+                'uninstall',
+            ),
+        ]:
+            maintenance.add(
+                row(
+                    title,
+                    subtitle,
+                )
+            )
+
+            action=button(
+                'Install'
+                if op=='install'
+                else 'Repair'
+                if op=='repair'
+                else 'Reset'
+                if op=='reset'
+                else 'Remove',
+                lambda _,o=op:self.launch_action(
+                    o,
+                    targets=[game],
+                ),
+            )
+
+            action.set_valign(
+                Gtk.Align.CENTER
+            )
+
+            action.set_sensitive(
+                installed
+                if op in (
+                    'reset',
+                    'uninstall',
+                )
+                else (
+                    not game.get('blocked')
+                    and bool(
+                        self.hardware_info
+                        and self.hardware_info['ready']
+                    )
+                )
+            )
+
+            if op=='uninstall':
+                action.add_css_class(
+                    'destructive-action'
+                )
+
+            detail_action_rows['Enhancements'].append(
+                action
+            )
+        notes_page=content['Notes'];record=game.get('test_record',{'status':'Untested','notes':''});choice=safe_dropdown(list(game_notes.STATES));choice.set_selected(list(game_notes.STATES).index(record.get('status','Untested')));choice.set_valign(Gtk.Align.CENTER)
         group=Adw.PreferencesGroup(title='Your Notes');notes_page.append(group);item=row('Test Result','Bench excludes this game from bulk installation and repair.');item.add_suffix(choice);group.add(item)
-        notes=Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR,height_request=100);notes.get_buffer().set_text(record.get('notes',''));notes_page.append(notes)
+        notes=Gtk.TextView(
+            wrap_mode=Gtk.WrapMode.WORD_CHAR,
+            height_request=82,
+        )
+        notes.get_buffer().set_text(
+            record.get('notes','')
+        )
+        notes_page.append(
+            notes
+        )
         def save_notes(*_):
             buf=notes.get_buffer();current=dict(record);current.update(status=list(game_notes.STATES)[choice.get_selected()],notes=buf.get_text(buf.get_start_iter(),buf.get_end_iter(),True))
             if not self.options.demo:game_notes.save(self.service.config,game['game'],current)
             game['test_record']=current;self.toast('Notes saved')
-        actions=Gtk.Box(spacing=8);actions.append(button('Save Notes',save_notes,'suggested-action'));active=bool(record.get('active'));test=button('Finish Test' if active else 'Start Test',lambda *_:self.record_test(game,active));test.set_sensitive(not self.options.demo);actions.append(test);notes_page.append(actions)
+        save_notes_button=button(
+            'Save Notes',
+            save_notes,
+            'suggested-action',
+        )
+        detail_action_rows['Notes'].append(
+            save_notes_button
+        )
+
+        active=bool(
+            record.get('active')
+        )
+
+        test=button(
+            'Finish Test'
+            if active
+            else 'Start Test',
+            lambda *_:self.record_test(
+                game,
+                active,
+            ),
+        )
+        test.set_sensitive(
+            not self.options.demo
+        )
+
+        detail_action_rows['Notes'].append(
+            test
+        )
         appearance=content['Appearance']
 
         accent_group=Adw.PreferencesGroup(
@@ -1615,17 +3861,141 @@ class Window(Adw.ApplicationWindow):
             'Pick from Poster…',
             pick_accent_from_poster,
         )
-        pick_button.set_valign(Gtk.Align.CENTER)
-        accent_row.add_suffix(pick_button)
+        pick_button.set_valign(
+            Gtk.Align.CENTER
+        )
+        detail_action_rows['Appearance'].append(
+            pick_button
+        )
 
-        credits=Adw.PreferencesGroup(title='Artwork Credits');appearance.append(credits)
-        for title,key in [('Poster','art_credit'),('Wide Capsule','capsule_credit'),('Hero','hero_credit')]:credits.add(row(title,game.get(key) or 'Source information unavailable'))
-        for title,key in [('Poster Source','art_link'),('Hero Source','hero_link')]:
-            if game.get(key):appearance.append(Gtk.LinkButton(uri=game[key],label=title,halign=Gtk.Align.START))
-        f.append(button('Open Folder',lambda *_:Gio.AppInfo.launch_default_for_uri(Path(game['game']).as_uri(),None)))
-        if game.get('appid') and game.get('source')=='Steam':
-            play=button('Play',lambda *_:Gio.AppInfo.launch_default_for_uri('steam://rungameid/'+str(game['appid']),None),'suggested-action');play.set_sensitive(not self.options.demo);f.append(play)
-        GLib.idle_add(fit_detail_page)
+        artwork_title=label(
+            'Artwork Credits',
+            'heading',
+        )
+        appearance.append(
+            artwork_title
+        )
+
+        credits=Gtk.Box(
+            spacing=10,
+            homogeneous=True,
+            hexpand=True,
+        )
+        credits.add_css_class(
+            'art-credit-pods'
+        )
+        appearance.append(
+            credits
+        )
+
+        credit_specs=(
+            (
+                'Poster',
+                'art_credit',
+                'art_link',
+            ),
+            (
+                'Wide Capsule',
+                'capsule_credit',
+                None,
+            ),
+            (
+                'Hero',
+                'hero_credit',
+                'hero_link',
+            ),
+        )
+
+        for credit_title,credit_key,link_key in credit_specs:
+            pod=Gtk.Box(
+                orientation=Gtk.Orientation.VERTICAL,
+                spacing=5,
+                hexpand=True,
+            )
+            pod.add_css_class(
+                'art-credit-pod'
+            )
+
+            pod.append(
+                label(
+                    credit_title,
+                    'heading',
+                )
+            )
+
+            credit_text=label(
+                game.get(credit_key)
+                or 'Source information unavailable',
+                'dim-label',
+            )
+            credit_text.set_wrap(
+                True
+            )
+            credit_text.set_lines(
+                2
+            )
+            credit_text.set_ellipsize(
+                Pango.EllipsizeMode.END
+            )
+            pod.append(
+                credit_text
+            )
+
+            if (
+                link_key
+                and game.get(link_key)
+            ):
+                source_uri=game[link_key]
+
+                source_button=button(
+                    'View Source',
+                    lambda *_,
+                    uri=source_uri:
+                        Gio.AppInfo.launch_default_for_uri(
+                            uri,
+                            None,
+                        ),
+                )
+                source_button.set_halign(
+                    Gtk.Align.START
+                )
+
+                pod.append(
+                    source_button
+                )
+
+            credits.append(
+                pod
+            )
+        open_folder=button(
+            'Open Folder',
+            lambda *_:Gio.AppInfo.launch_default_for_uri(
+                Path(game['game']).as_uri(),
+                None,
+            ),
+        )
+        detail_action_rows['Overview'].append(
+            open_folder
+        )
+
+        if (
+            game.get('appid')
+            and game.get('source')=='Steam'
+        ):
+            play=button(
+                'Play',
+                lambda *_:Gio.AppInfo.launch_default_for_uri(
+                    'steam://rungameid/'+str(game['appid']),
+                    None,
+                ),
+                'suggested-action',
+            )
+            play.set_sensitive(
+                not self.options.demo
+            )
+            detail_action_rows['Overview'].append(
+                play
+            )
     def record_test(self,game,finish=False):
         def done(record):
             game['test_record']=record;self.details(game)
@@ -2450,30 +4820,69 @@ class Window(Adw.ApplicationWindow):
     def show_activity(self,*_):
         d,b,f=self.open_panel('Activity');text=Gtk.TextView(editable=False,monospace=True,wrap_mode=Gtk.WrapMode.WORD_CHAR);text.get_buffer().set_text('\n'.join(self.log) or 'No activity yet.');b.append(text);f.append(button('Close',lambda *_:d.close()))
     def show_settings(self,*_):
-        d,b,f=self.open_panel('Settings',width=940,height=660)
+        d,b,f=self.open_panel(
+            'Settings',
+            width=940,
+            height=660,
+            resizable=True,
+        )
         graphics=Adw.PreferencesGroup(title='Graphics Provider',description='Remove installed enhancements before switching providers.')
-        provider_keys=['y4my','dlss-unlocked'];provider=Adw.ComboRow(title='Provider',model=Gtk.StringList.new(['y4my Multipass','DLSS-Unlocked']),selected=provider_keys.index(self.settings.get('runtime_provider','y4my')));graphics.add(provider)
+        provider_keys=['y4my','dlss-unlocked'];provider=safe_combo_row(title='Provider',model=Gtk.StringList.new(['y4my Multipass','DLSS-Unlocked']),selected=provider_keys.index(self.settings.get('runtime_provider','y4my')));graphics.add(provider)
         nr_path=Adw.EntryRow(title='Local NR DLL for y4my');nr_path.set_text(self.settings.get('nr_runtime',''));graphics.add(nr_path)
         defaults=Adw.PreferencesGroup(title='Installation')
-        modes=['nr-only','mfg-only','nr-mfg'];profile=Adw.ComboRow(title='Default Mode',model=Gtk.StringList.new(['NR Only','MFG Only','NR + MFG']),selected=modes.index(self.settings.get('default_profile','mfg-only')));defaults.add(profile)
+        modes=['nr-only','mfg-only','nr-mfg'];profile=safe_combo_row(title='Default Mode',model=Gtk.StringList.new(['NR Only','MFG Only','NR + MFG']),selected=modes.index(self.settings.get('default_profile','mfg-only')));defaults.add(profile)
         adopt=Adw.SwitchRow(title='Recognize Existing Enhancements',subtitle='Allow updates to compatible installations from other tools.',active=self.settings['recognize_previous']);defaults.add(adopt)
         appearance=Adw.PreferencesGroup(title='Library Appearance')
-        views=['posters','capsules','list'];view=Adw.ComboRow(title='Layout',model=Gtk.StringList.new(['Posters','Wide Capsules','List']),selected=views.index(self.settings.get('library_view','posters')));appearance.add(view)
+        views=['posters','capsules','list'];view=safe_combo_row(title='Layout',model=Gtk.StringList.new(['Posters','Wide Capsules','List']),selected=views.index(self.settings.get('library_view','posters')));appearance.add(view)
         original_art_scale=int(self.settings.get('art_scale',80));settings_saved={'value':False}
         scale=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,50,150,10);scale.set_value(original_art_scale);scale.set_draw_value(True);scale.set_digits(0);scale.set_size_request(170,-1);scale.set_valign(Gtk.Align.CENTER)
         item=row('Artwork Size','Preview updates live');item.add_suffix(scale);appearance.add(item)
         def preview_art_scale(widget):
-            value=int(widget.get_value())
-            if int(self.settings.get('art_scale',80))==value:return
-            self.settings['art_scale']=value
-            self.show_games(self.games,False)
-        scale.connect('value-changed',preview_art_scale)
+            value=int(
+                round(
+                    widget.get_value()
+                )
+            )
+
+            if int(
+                self.settings.get(
+                    'art_scale',
+                    80,
+                )
+            )==value:
+                return
+
+            self.resize_library_art(
+                value
+            )
+
+        scale.connect(
+            'value-changed',
+            preview_art_scale,
+        )
         def restore_art_scale(*_):
-            if settings_saved['value']:return
-            if int(self.settings.get('art_scale',80))!=original_art_scale:
-                self.settings['art_scale']=original_art_scale
-                self.show_games(self.games,False)
-        d.connect('closed',restore_art_scale)
+            if settings_saved['value']:
+                return
+
+            current=int(
+                self.settings.get(
+                    'art_scale',
+                    80,
+                )
+            )
+
+            if current!=original_art_scale:
+                self.resize_library_art(
+                    original_art_scale
+                )
+
+        d.connect(
+            'close-request',
+            lambda *_:(
+                restore_art_scale(),
+                False,
+            )[1],
+        )
         dark=Adw.SwitchRow(title='Dark Appearance',active=self.settings['dark']);appearance.add(dark)
         artwork=Adw.PreferencesGroup(title='Artwork',description='Your Steam poster, capsule, and hero images take priority.')
         art=Adw.SwitchRow(title='Download Missing Artwork',subtitle='Use SteamGridDB and Steam when local images are unavailable.',active=self.settings['online_art']);artwork.add(art)
@@ -2520,7 +4929,7 @@ class Window(Adw.ApplicationWindow):
             self.settings.update(runtime_provider=selected_provider,nr_runtime=nr_path.get_text().strip(),default_profile=selected_mode,library_view=views[view.get_selected()],art_scale=int(scale.get_value()),dark=dark.get_active(),online_art=art.get_active(),steam_metadata=metadata.get_active(),network_timeout=timeout.get_value_as_int(),recognize_previous=adopt.get_active())
             self.nr_only.set_enabled(selected_provider=='dlss-unlocked')
             self.profile_group.set_active_name(selected_mode)
-            Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.PREFER_DARK if self.settings['dark'] else Adw.ColorScheme.DEFAULT)
+            Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)
             self.view_buttons[self.settings['library_view']].set_active(True)
             if self.options.demo:d.close();self.show_games(self.games,False);return
             self.start('Saving settings',lambda:library_media.save_settings(self.service.config,self.settings),lambda _:(d.close(),self.show_games(self.games,False),self.fetch_media()))
@@ -2530,52 +4939,24 @@ class Window(Adw.ApplicationWindow):
             'suggested-action',
         )
 
-        # Replace the ordinary right-aligned dialog footer with a
-        # two-column footer that continues the sidebar all the way down.
+        # Settings now has a true full-height sidebar, so the footer
+        # belongs entirely to the right content pane.
         f.set_halign(Gtk.Align.FILL)
-        f.set_spacing(0)
+        f.set_spacing(10)
 
         f.set_margin_top(0)
         f.set_margin_bottom(0)
         f.set_margin_start(0)
         f.set_margin_end(0)
 
-        settings_footer=Gtk.Box(
+        footer_spacer=Gtk.Box(
             hexpand=True,
         )
-
-        sidebar_tail=Gtk.Box(
-            width_request=200,
-        )
-        sidebar_tail.add_css_class(
-            'settings-footer-sidebar'
-        )
-
-        settings_footer.append(
-            sidebar_tail
-        )
-
-        footer_actions=Gtk.Box(
-            hexpand=True,
-            halign=Gtk.Align.END,
-            valign=Gtk.Align.CENTER,
-        )
-
-        footer_actions.set_margin_top(16)
-        footer_actions.set_margin_bottom(16)
-        footer_actions.set_margin_start(16)
-        footer_actions.set_margin_end(16)
-
-        footer_actions.append(
-            save_button
-        )
-
-        settings_footer.append(
-            footer_actions
-        )
-
         f.append(
-            settings_footer
+            footer_spacer
+        )
+        f.append(
+            save_button
         )
     def check_app_update(self,*_):
         import app_update
@@ -2792,7 +5173,61 @@ class Window(Adw.ApplicationWindow):
         d,b,f=self.open_panel('Remove old NR files');b.append(label('Checking global cleanup candidates…'))
         self.start('Scanning old NR files',self.service.review_cleanup,lambda review:self.action_ready(review,d,b,f))
     def capture(self,name):
-        paint=Gtk.WidgetPaintable.new(self);snapshot=Gtk.Snapshot();paint.snapshot(snapshot,self.get_width(),self.get_height());node=snapshot.to_node();rect=Graphene.Rect();rect.init(0,0,self.get_width(),self.get_height());texture=self.get_renderer().render_texture(node,rect);texture.save_to_png(str(ROOT/'dist'/name))
+        widget=self
+
+        if (
+            name in (
+                'gnome-game-settings.png',
+                'gnome-settings.png',
+            )
+            and isinstance(
+                self.dialog,
+                ResizablePanelWindow,
+            )
+        ):
+            widget=self.dialog
+
+        paint=Gtk.WidgetPaintable.new(
+            widget
+        )
+        snapshot=Gtk.Snapshot()
+
+        width=max(
+            1,
+            widget.get_width(),
+        )
+        height=max(
+            1,
+            widget.get_height(),
+        )
+
+        paint.snapshot(
+            snapshot,
+            width,
+            height,
+        )
+
+        node=snapshot.to_node()
+
+        rect=Graphene.Rect()
+        rect.init(
+            0,
+            0,
+            width,
+            height,
+        )
+
+        texture=widget.get_renderer().render_texture(
+            node,
+            rect,
+        )
+
+        texture.save_to_png(
+            str(
+                ROOT/'dist'/name
+            )
+        )
+
     def live_smoke_startup(self):
         """Open the real write-disabled Progress -> Done path."""
         try:
@@ -2821,9 +5256,9 @@ class Window(Adw.ApplicationWindow):
             assert self.flow.get_max_children_per_line()==12
             assert hasattr(self,'dashboard_icon') and hasattr(self,'operation_revealer')
             original_scale=self.settings.get('art_scale',80)
-            self.settings['art_scale']=50;self.show_games(self.games,False)
+            self.resize_library_art(50)
             assert next(iter(self.cards.values()))['size'][0]==max(80,round(158*.5))
-            self.settings['art_scale']=original_scale;self.show_games(self.games,False)
+            self.resize_library_art(original_scale)
             for key,widget in self.tuning_widgets.items():
                 original=widget.get_selected() if key=='mfg_multiplier' else widget.get_value()
                 if key=='mfg_multiplier':widget.set_selected(0)
@@ -2852,9 +5287,18 @@ class Window(Adw.ApplicationWindow):
         return False
     def smoke_action(self):
         try:
-            # Scroll the details content so the settings controls are visible.
-            content=self.dialog.get_child();scroll=content.get_first_child().get_next_sibling()
-            self.detail_pages.set_visible_child_name('Enhancements');scroll.get_vadjustment().set_value(0)
+            # Switch directly to the Enhancements page.
+            self.detail_pages.set_visible_child_name(
+                'Enhancements'
+            )
+
+            if hasattr(
+                self,
+                'detail_scroll',
+            ):
+                self.detail_scroll.get_vadjustment().set_value(
+                    0
+                )
             GLib.timeout_add(300,self.smoke_game_settings)
         except Exception:traceback.print_exc();self.get_application().exit_code=1;self.get_application().quit()
         return False

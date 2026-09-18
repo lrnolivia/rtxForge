@@ -116,18 +116,25 @@ Future classic changes should remain narrowly scoped to approved fixes and maint
 <!-- RTXFORGE_CLASSIC_UI_STATUS_END -->
 
 <!-- RTXFORGE_REDESIGN_STATUS_START -->
-## Libadwaita redesign development status
+## Libadwaita redesign status
 
-The next-generation Libadwaita redesign is currently a **local-only development effort**. The production/classic 0.7.0 interface remains the stable feature-complete UI.
+The next-generation Libadwaita redesign is under active development in `redesign/`.
 
-Current redesign policy:
+GitHub `main` is the shared source of truth for approved redesign checkpoints. The redesign
+beta workflow is manual-only; normal source pushes do not automatically publish beta builds.
 
-- redesign source stays isolated under `redesign/`;
-- do not publish redesign betas, tags, or remote `main` changes unless explicitly enabled;
-- the approved shell is Home / Game Library / Forge / Settings with Recovery isolated at the bottom;
-- Forge, Settings, and Recovery presentation shells are built;
-- Home follows the exact approved dashboard mockup and is in responsive visual-polish work;
-- the finished classic Library viewport/card behavior/artwork-size slider, standalone Game Details/Game Settings windows, and Progress presentation are preservation targets.
+Current status:
 
-The existing `.github/workflows/redesign-beta.yml` should be considered parked until the local-only rule is explicitly lifted.
+- approved/locked application shell;
+- Forge presentation shell built;
+- Settings presentation shell built and visually approved;
+- Recovery presentation shell built and visually approved;
+- Home follows the exact approved cinematic dashboard mockup and is in responsive visual
+  polish;
+- the finished classic Library viewport/card behavior/artwork-size slider, standalone
+  Game Details/Game Settings windows, and Progress presentation are migration preservation
+  targets.
+
+See [Redesign Current Status](docs/redesign/CURRENT-STATUS.md) and
+[Fresh Chat Continuation](docs/redesign/FRESH-CHAT-CONTINUATION.md).
 <!-- RTXFORGE_REDESIGN_STATUS_END -->

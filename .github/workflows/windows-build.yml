@@ -1,10 +1,10 @@
-name: RTXForge loader
+name: Legacy RTXForge loader R&D
+
+# Historical custom-loader workbench.
+# This is not part of the production Linux/AppImage pipeline.
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - '.github/workflows/windows-build.yml'
-      - 'build/patch_panel.py' 
+
 permissions:
   contents: read
 jobs:

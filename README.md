@@ -7,8 +7,9 @@
 Download the Bazzite x86_64 AppImage from [Releases](https://github.com/lrnolivia/RTXForge/releases), mark it executable and open it. Choose **Install / update app** in Settings to register it in your launcher. Alternatively:
 
 ```sh
-chmod +x RTXForge-0.6.0-Bazzite-x86_64.AppImage
-./RTXForge-0.6.0-Bazzite-x86_64.AppImage --install
+APPIMAGE="$(ls -1t RTXForge-*-Bazzite-x86_64.AppImage | head -n1)"
+chmod +x "$APPIMAGE"
+"$APPIMAGE" --install
 ```
 
 The persistent copy lives in `~/.local/share/rtxforge/application/RTXForge.AppImage`. After an updater-enabled build is installed, **Check for Updates** in Settings can download and verify a newer published AppImage, atomically replace the installed copy, and preserve the previous build. Updating the application does not redeploy games.
@@ -44,14 +45,15 @@ Poster, capsule and list views, artwork-led game details, provider buttons, sele
 From source, run `./rtxforge` or `./START\ HERE.sh`. In the AppImage, use `--cli`. Both use the RC1.38-derived engine in `engine/rtxengine.py` through the same provider adapter as the GUI.
 
 ```sh
-./RTXForge-0.6.0-Bazzite-x86_64.AppImage --cli --help
+APPIMAGE="$(ls -1t RTXForge-*-Bazzite-x86_64.AppImage | head -n1)"
+"$APPIMAGE" --cli --help
 ```
 
 Additional settings: `--nr-strength off|light|medium|strong`, `--sharpening-strength off|light|medium|strong`, `--mfg-multiplier 0|2|3|4|5|6` (0 is Off).
 
 Provider flags: `--runtime-provider y4my|dlss-unlocked`, `--feature-mode mfg-only|nr-only|nr-mfg`, `--disable-effects`.
 
-[Release notes](docs/RELEASE-0.6.1.md) describe the 0.6.1 desktop UI refinements and validation changes. Historical custom MFG builds and their tags are preserved, but are not bundled into this release.
+[Release notes](docs/RELEASE-0.6.2.md) describe the 0.6.2 validation, release-publishing and live-smoke improvements. Historical custom MFG builds and their tags are preserved, but are not bundled into this release.
 
 DLSS-Unlocked offers separate **NR Only** (pinned NR-v0.8.6; keep in-game FG off) and **MFG Only** (NR-v0.9.1, NR off, bundled NVIDIA runtime updates) pipelines. MFG Only backs up existing native DLLs and restores them on uninstall. Uninstall before changing pipelines. Combined NR + MFG remains available for experimentation.
 
@@ -63,7 +65,7 @@ For hands-on desktop UI validation without touching live game files, run:
 
     python3 gui/rtxforge_gtk.py --live-smoke
 
-This launches the demo/write-disabled application while exposing the real interactive operation progress and completion states.
+This opens the real write-disabled operation Progress presentation immediately. Click the poster or progress bar to advance through the fake game operations and into the real Done presentation.
 
 Use `--live-smoke` while iterating on progress and Done UI.
 

@@ -599,7 +599,10 @@ class Window(Adw.ApplicationWindow):
             self.show_games(games,False)
             for key in list(self.cards)[:3]:self.cards[key]['check'].set_active(True)
         else:self.scan()
-        if options.smoke_test:GLib.timeout_add(800,self.smoke_library)
+        if options.smoke_test:
+            GLib.timeout_add(800,self.smoke_library)
+        elif options.live_smoke:
+            GLib.timeout_add(800,self.live_smoke_startup)
 
     def title_button(self,icon,title,callback):
         b=Gtk.Button(icon_name=icon);b.set_tooltip_text(title);b.update_property([Gtk.AccessibleProperty.LABEL],[title]);b.add_css_class('title-action');b.connect('clicked',callback);return b
@@ -2510,6 +2513,28 @@ class Window(Adw.ApplicationWindow):
         self.start('Scanning old NR files',self.service.review_cleanup,lambda review:self.action_ready(review,d,b,f))
     def capture(self,name):
         paint=Gtk.WidgetPaintable.new(self);snapshot=Gtk.Snapshot();paint.snapshot(snapshot,self.get_width(),self.get_height());node=snapshot.to_node();rect=Graphene.Rect();rect.init(0,0,self.get_width(),self.get_height());texture=self.get_renderer().render_texture(node,rect);texture.save_to_png(str(ROOT/'dist'/name))
+    def live_smoke_startup(self):
+        """Open the real write-disabled Progress -> Done path."""
+        try:
+            rows=list(self.games[:3])
+
+            if not rows:
+                raise RuntimeError(
+                    'Live Smoke has no demo games available.'
+                )
+
+            self.launch_action(
+                'install',
+                targets=rows,
+            )
+
+        except Exception:
+            traceback.print_exc()
+            self.get_application().exit_code=1
+            self.get_application().quit()
+
+        return False
+
     def smoke_library(self):
         try:
             assert self.reset_all.get_label()=='↺ Reset All'

@@ -431,7 +431,24 @@ button.done-button.suggested-action:hover {
 .mode-selector { padding: 4px; border-radius: 12px; }
 .mode-selector toggle { padding: 9px 16px; min-height: 22px; border-radius: 9px; }
 .profile-toggle { padding: 7px 12px; font-weight: 600; }
-.status-pill { border-radius: 22px; padding: 9px 16px; margin: 8px; background: @card_bg_color; box-shadow: 0 3px 10px alpha(black,0.25); }
+.dashboard-icon { margin-top: 2px; }
+.dashboard-actions { margin-top: 2px; }
+.dashboard-actions button { min-height: 34px; padding: 7px 12px; }
+.operation-bubble {
+    border-radius: 15px;
+    padding: 9px 10px 9px 12px;
+    background: alpha(@card_bg_color,0.97);
+    border: 1px solid alpha(@window_fg_color,0.10);
+    box-shadow: 0 5px 18px alpha(black,0.32);
+}
+.operation-bubble .operation-complete { color: #2fbf61; }
+.operation-bubble .operation-error { color: #ff7b72; }
+.operation-dismiss {
+    min-width: 28px;
+    min-height: 28px;
+    padding: 0;
+    border-radius: 999px;
+}
 .title-action { min-width: 26px; min-height: 26px; padding: 8px 12px; margin: 3px; }
 .hero-title { font-size: 29px; font-weight: 800; letter-spacing: -0.8px; }
 .eyebrow { color: #76b900; font-weight: 800; font-size: 10px; letter-spacing: 2px; }
@@ -501,6 +518,16 @@ def button(text,fn,css=None):
     w=Gtk.Button(label=text);w.connect('clicked',fn)
     if css:w.add_css_class(css)
     return w
+def icon_button(text,icon,fn,css=None):
+    content=Gtk.Box(spacing=6)
+    content.append(Gtk.Image.new_from_icon_name(icon))
+    text_label=label(text)
+    content.append(text_label)
+    w=Gtk.Button(child=content)
+    w.text_label=text_label
+    w.connect('clicked',fn)
+    if css:w.add_css_class(css)
+    return w
 def margins(w,n=16):
     for edge in ('start','end','top','bottom'):getattr(w,'set_margin_'+edge)(n)
 def clear(box):
@@ -542,23 +569,43 @@ class Window(Adw.ApplicationWindow):
         self.busy=False;self.task_kind='';self.pending=None;self.cancel_art=threading.Event();self.log=[];self.dialog=None;self.review=None;self.action_buttons=[]
         self.connect('close-request',self.close_request)
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.PREFER_DARK if self.settings['dark'] else Adw.ColorScheme.DEFAULT)
-        self.overlay=Adw.ToastOverlay();self.set_content(self.overlay);outer=Gtk.Box(orientation=Gtk.Orientation.VERTICAL);self.overlay.set_child(outer)
+        self.overlay=Adw.ToastOverlay();self.set_content(self.overlay)
+        stage=Gtk.Overlay();self.overlay.set_child(stage)
+        outer=Gtk.Box(orientation=Gtk.Orientation.VERTICAL);stage.set_child(outer)
         header=Adw.HeaderBar();header.set_title_widget(Adw.WindowTitle(title='rtxForge',subtitle=f'Your whole library. One place. · {APP_VERSION}'))
         self.refresh=self.title_button('view-refresh-symbolic','Refresh library',lambda *_:self.scan());header.pack_start(self.refresh)
         self.add=self.title_button('list-add-symbolic','Add game folder',self.choose_folder);header.pack_start(self.add)
         header.pack_end(self.title_button('emblem-system-symbolic','Settings',self.show_settings));header.pack_end(self.title_button('document-open-recent-symbolic','Activity',self.show_activity));outer.append(header)
         top=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=14);margins(top,18);outer.append(top)
         hero=Gtk.Box(spacing=20);hero.add_css_class('hero');hero_reveal=Gtk.Revealer(transition_type=Gtk.RevealerTransitionType.SLIDE_UP,reveal_child=True,transition_duration=180);hero_reveal.set_child(hero);top.append(hero_reveal)
+        self.dashboard_icon=Gtk.Image.new_from_icon_name('io.github.lrnolivia.RTXForge');self.dashboard_icon.set_pixel_size(52);self.dashboard_icon.set_valign(Gtk.Align.START);self.dashboard_icon.add_css_class('dashboard-icon');hero.append(self.dashboard_icon)
         title=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=7,hexpand=True);hero.append(title)
         title.append(label('GEFORCE / BUILT FOR LINUX','eyebrow'));title.append(label('Forge your entire library.','hero-title'))
         self.stats=label('Finding your games…','dim-label');title.append(self.stats)
         self.hardware_label=label('Preview mode · no game writes' if options.demo else 'Checking system hardware…','card-meta');title.append(self.hardware_label)
         tuning,self.tuning_widgets=self.tuning_controls(self.settings)
         title.append(tuning);self.strength_slider=self.tuning_widgets['nr_strength']
-        bulk=Gtk.Box(spacing=6,valign=Gtk.Align.CENTER);header.pack_end(bulk)
-        self.install_all=button('＋ Install All',lambda *_:self.launch_action('install',True),'forge-primary');bulk.append(self.install_all)
-        self.uninstall_all=button('− Remove All',lambda *_:self.launch_action('uninstall',True),'bulk-remove');bulk.append(self.uninstall_all)
-        self.reset_all=button('↺ Reset All',self.apply_library_settings);bulk.append(self.reset_all)
+        bulk=Gtk.Box(spacing=6,valign=Gtk.Align.START,halign=Gtk.Align.END);bulk.add_css_class('dashboard-actions');hero.append(bulk)
+        self.install_all=icon_button('Install All','list-add-symbolic',lambda *_:self.launch_action('install',True),'forge-primary');bulk.append(self.install_all)
+        self.uninstall_all=icon_button('Remove All','edit-delete-symbolic',lambda *_:self.launch_action('uninstall',True),'bulk-remove');bulk.append(self.uninstall_all)
+        self.reset_all=icon_button('Reset All','edit-undo-symbolic',self.apply_library_settings);bulk.append(self.reset_all)
+
+        self.operation_hide_source=0
+        self.operation_revealer=Gtk.Revealer(
+            transition_type=Gtk.RevealerTransitionType.SLIDE_UP,
+            transition_duration=160,
+            reveal_child=False,
+            halign=Gtk.Align.START,
+            valign=Gtk.Align.END,
+        )
+        self.operation_revealer.set_margin_start(18);self.operation_revealer.set_margin_bottom(18)
+        operation=Gtk.Box(spacing=9,valign=Gtk.Align.CENTER);operation.add_css_class('operation-bubble');self.operation_revealer.set_child(operation)
+        self.operation_spinner=Gtk.Spinner();operation.append(self.operation_spinner)
+        self.operation_icon=Gtk.Image.new_from_icon_name('emblem-ok-symbolic');self.operation_icon.add_css_class('operation-complete');self.operation_icon.set_visible(False);operation.append(self.operation_icon)
+        self.operation_status=label('');self.operation_status.set_max_width_chars(54);self.operation_status.set_ellipsize(Pango.EllipsizeMode.END);operation.append(self.operation_status)
+        self.operation_elapsed=label('','dim-label');operation.append(self.operation_elapsed)
+        self.operation_dismiss=Gtk.Button(icon_name='window-close-symbolic');self.operation_dismiss.add_css_class('operation-dismiss');self.operation_dismiss.set_tooltip_text('Dismiss');self.operation_dismiss.set_visible(False);self.operation_dismiss.connect('clicked',lambda *_:self.hide_operation_status());operation.append(self.operation_dismiss)
+        stage.add_overlay(self.operation_revealer)
         for key,widget in self.tuning_widgets.items():widget.connect('notify::selected' if key=='mfg_multiplier' else 'value-changed',self.strength_changed)
         self.strength_changed()
         self.reset_all.set_tooltip_text('Restore current sharpening, NR and menu-font defaults for managed games. Each configuration is backed up. Close running games first.')
@@ -601,14 +648,11 @@ class Window(Adw.ApplicationWindow):
             if adj.get_value()>120 and adj.get_upper()-adj.get_page_size()>300:hero_reveal.set_reveal_child(False)
             elif adj.get_value()<10:hero_reveal.set_reveal_child(True)
         scroll.get_vadjustment().connect('value-changed',collapse_header)
-        self.flow=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,column_spacing=14,row_spacing=16,min_children_per_line=1,max_children_per_line=8,homogeneous=True,valign=Gtk.Align.START);margins(self.flow,18);self.flow.set_margin_top(0);scroll.set_child(self.flow)
+        self.flow=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,column_spacing=14,row_spacing=16,min_children_per_line=1,max_children_per_line=12,homogeneous=True,valign=Gtk.Align.START);margins(self.flow,18);self.flow.set_margin_top(0);scroll.set_child(self.flow)
         footer=Gtk.Box(spacing=8);footer.add_css_class('selection-bar');outer.append(footer)
         self.selected_label=label('0 selected',css='heading');self.selected_label.set_hexpand(True);footer.append(self.selected_label)
         for name,op,css in [('Add Enhancements','install','forge-primary'),('Repair Files','repair',None),('Remove Enhancements','uninstall','bulk-remove'),('Reset Settings','reset',None)]:
             b=button(name,lambda _,action=op:self.launch_action(action),css);footer.append(b);self.action_buttons.append(b)
-        statusbox=Gtk.Box(spacing=10,halign=Gtk.Align.CENTER);statusbox.add_css_class('status-pill');outer.append(statusbox)
-        self.spinner=Gtk.Spinner();statusbox.append(self.spinner);self.status=label('Ready');self.status.set_max_width_chars(48);self.status.set_ellipsize(Pango.EllipsizeMode.END);statusbox.append(self.status)
-        self.elapsed=label('','dim-label');statusbox.append(self.elapsed);self.progress=Gtk.ProgressBar(width_request=130,valign=Gtk.Align.CENTER);statusbox.append(self.progress)
         GLib.timeout_add(180,self.tick)
         if options.demo:
             games=demo_games()
@@ -625,6 +669,32 @@ class Window(Adw.ApplicationWindow):
 
     def title_button(self,icon,title,callback):
         b=Gtk.Button(icon_name=icon);b.set_tooltip_text(title);b.update_property([Gtk.AccessibleProperty.LABEL],[title]);b.add_css_class('title-action');b.connect('clicked',callback);return b
+    def hide_operation_status(self,*_):
+        if self.operation_hide_source:
+            try:GLib.source_remove(self.operation_hide_source)
+            except Exception:pass
+            self.operation_hide_source=0
+        self.operation_spinner.stop();self.operation_revealer.set_reveal_child(False)
+        return False
+    def show_operation_status(self,text,complete=False,icon='emblem-ok-symbolic'):
+        if self.operation_hide_source:
+            try:GLib.source_remove(self.operation_hide_source)
+            except Exception:pass
+            self.operation_hide_source=0
+        self.operation_status.set_text(str(text))
+        self.operation_revealer.set_reveal_child(True)
+        if complete:
+            self.operation_spinner.stop();self.operation_spinner.set_visible(False)
+            self.operation_icon.set_from_icon_name(icon);self.operation_icon.set_visible(True)
+            self.operation_icon.remove_css_class('operation-error')
+            if icon=='dialog-warning-symbolic':self.operation_icon.add_css_class('operation-error')
+            self.operation_elapsed.set_text('')
+            self.operation_dismiss.set_visible(True)
+            self.operation_hide_source=GLib.timeout_add(4000,self.hide_operation_status)
+        else:
+            self.operation_icon.set_visible(False);self.operation_dismiss.set_visible(False)
+            self.operation_spinner.set_visible(True);self.operation_spinner.start()
+        return False
     def view_changed(self,toggle,key):
         if not toggle.get_active() or self.settings.get('library_view')==key:return
         self.settings['library_view']=key
@@ -803,7 +873,7 @@ class Window(Adw.ApplicationWindow):
     def chosen_strength(self):return self.tuning_values(self.tuning_widgets)['nr_strength']
     def defaults_changed(self):return any(self.settings.get(k)!=v for k,v in self.tuning_values(self.tuning_widgets).items())
     def strength_changed(self,*_):
-        self.reset_all.set_label('✓ Apply Settings' if self.defaults_changed() else '↺ Reset All')
+        self.reset_all.text_label.set_text('Apply Settings' if self.defaults_changed() else 'Reset All')
         if hasattr(self,'profile_group'):self.controls()
     def defaults_applied(self,values):
         self.settings.update(values);self.strength_changed()
@@ -819,7 +889,7 @@ class Window(Adw.ApplicationWindow):
         if self.busy:self.cancel_art.set()
         return False
     def tick(self):
-        if self.busy:self.elapsed.set_text(f'{int(time.monotonic()-self.started)}s')
+        if self.busy:self.operation_elapsed.set_text(f'{int(time.monotonic()-self.started)}s')
         return True
     def controls(self):
         enabled=not self.busy or self.task_kind=='art'
@@ -832,11 +902,11 @@ class Window(Adw.ApplicationWindow):
         for b in (self.refresh,self.add,self.profile_group,*self.view_buttons.values()):b.set_sensitive(enabled)
     def event(self,event):
         if event['kind']=='progress':
-            self.status.set_text(event['label']);self.update_progress_art(event.get('game',''))
+            self.show_operation_status(event['label']);self.update_progress_art(event.get('game',''))
             if getattr(self,'job_label',None):
                 self.job_caption.set_text(event['label'])
                 if 'fraction' in event:
-                    self.job_bar.set_fraction(event['fraction']);self.progress.set_fraction(event['fraction'])
+                    self.job_bar.set_fraction(event['fraction'])
                     self.job_counter.set_text(str(event['current'])+' of '+str(event['total'])+' games')
         elif event['kind']=='art':
             card=self.cards.get(event['game'])
@@ -848,9 +918,9 @@ class Window(Adw.ApplicationWindow):
         return False
     def start(self,title,action,done,kind='work'):
         if self.busy:
-            if self.task_kind=='art':self.pending=(title,action,done,kind);self.cancel_art.set();self.status.set_text('Finishing current artwork request…')
+            if self.task_kind=='art':self.pending=(title,action,done,kind);self.cancel_art.set();self.show_operation_status('Finishing current artwork request…')
             return
-        self.busy=True;self.task_kind=kind;self.started=time.monotonic();self.spinner.start();self.status.set_text(title);self.progress.set_fraction(0);self.controls()
+        self.busy=True;self.task_kind=kind;self.started=time.monotonic();self.operation_elapsed.set_text('');self.show_operation_status(title);self.controls()
         def run_task():
             try:
                 with ui.report_to(lambda e:GLib.idle_add(self.event,e)):result=action()
@@ -858,17 +928,18 @@ class Window(Adw.ApplicationWindow):
             else:GLib.idle_add(self.finished,result,done,None)
         threading.Thread(target=run_task,daemon=False).start()
     def finished(self,result,done,error):
-        self.busy=False;self.task_kind='';self.spinner.stop();self.progress.set_fraction(0 if error else 1);self.controls()
+        self.busy=False;self.task_kind='';self.controls()
         if getattr(self,'operation_cancel',None) is not None and self.operation_cancel.is_set() and (not getattr(self,'operation_executing',False) or (error and 'operation_session.Cancelled' in error[1])):
             self.operation_cancel=None
             if self.dialog:self.dialog.force_close()
-            self.dialog=None;self.job_label=None;self.toast('Cancelled · changes undone')
+            self.dialog=None;self.job_label=None;self.show_operation_status('Cancelled · changes undone',True,'process-stop-symbolic')
             previous=getattr(self,'operation_previous',None)
             if previous:self.details(previous)
             return
         if error:
-            self.log.append(error[1]);self.status.set_text('Stopped · details available in Activity');self.error(error[0])
-        else:self.status.set_text('Ready');done(result)
+            self.log.append(error[1]);self.show_operation_status('Stopped · details available in Activity',True,'dialog-warning-symbolic');self.error(error[0])
+        else:
+            done(result);self.show_operation_status('Completed',True)
         if self.pending:
             task=self.pending;self.pending=None;self.start(*task)
         return False
@@ -955,7 +1026,7 @@ class Window(Adw.ApplicationWindow):
         selected={k for k,v in self.cards.items() if v['check'].get_active()}
         previous={g['game']:g for g in self.games}
         clear(self.flow);self.games=games;self.cards={}
-        view=self.settings.get('library_view','posters');self.flow.set_max_children_per_line(1 if view=='list' else 8);self.flow.set_homogeneous(view!='list')
+        view=self.settings.get('library_view','posters');self.flow.set_max_children_per_line(1 if view=='list' else 12);self.flow.set_min_children_per_line(1);self.flow.set_homogeneous(view!='list')
         media=library_media.LibraryMedia(self.service.config,{**self.settings,'online_art':False})
         for game in games:
             for key in ('poster','hero','capsule','art_credit','art_link','hero_credit','hero_link','accent_class'):
@@ -966,11 +1037,12 @@ class Window(Adw.ApplicationWindow):
             if game['game'] in selected:self.cards[game['game']]['check'].set_active(True)
         count=sum(g.get('installed',False) for g in games);libs=len(set(g.get('library','') for g in games))
         self.stats.set_text(f'{len(games)} games · {libs} locations · {count} OptiScaler installs detected')
-        self.filter_games();self.status.set_text('Your entire library is ready')
+        self.filter_games()
         if art and self.settings['online_art'] and games:self.fetch_media()
     def make_card(self,game):
-        view=self.settings.get('library_view','posters');scale=self.settings.get('art_scale',100)/100
-        width,height=(max(150,int(158*scale)),int(max(150,int(158*scale))*1.5)) if view=='posters' else (int(290*scale),int(136*scale)) if view=='capsules' else (54,81)
+        view=self.settings.get('library_view','posters');scale=max(.7,min(1.5,self.settings.get('art_scale',100)/100))
+        poster_width=max(110,int(round(158*scale)))
+        width,height=(poster_width,int(round(poster_width*1.5))) if view=='posters' else (int(round(290*scale)),int(round(136*scale))) if view=='capsules' else (54,81)
         card=Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL if view=='list' else Gtk.Orientation.VERTICAL);card.add_css_class('game-card');card.set_size_request(width+4,-1)
         overlay=Gtk.Overlay(valign=Gtk.Align.START);card.append(overlay)
         pic=CoverPicture(content_fit=Gtk.ContentFit.CONTAIN,can_shrink=True);pic.add_css_class('poster')
@@ -1043,7 +1115,8 @@ class Window(Adw.ApplicationWindow):
             finally:GLib.idle_add(finished_art)
         threading.Thread(target=load,daemon=True).start()
     def details(self,game):
-        d,b,f=self.open_panel(game['name'],width=860,height=700)
+        d,b,f=self.open_panel(game['name'],width=860,height=620)
+        self.detail_resize_source=0
         b.remove_css_class('panel-body')
         b.set_spacing(0)
 
@@ -1125,10 +1198,32 @@ class Window(Adw.ApplicationWindow):
         pages=Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE,transition_duration=220,hexpand=True);pages.set_vhomogeneous(False);b.append(pages)
         content={}
         for name in ('Overview','Enhancements','Notes','Appearance'):
-            page=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16);margins(page,24);content[name]=page;pages.add_titled(page,name,name);tabs.add(Adw.Toggle(name=name,label=name))
+            page=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16);margins(page,24);page.set_vexpand(False);content[name]=page;pages.add_titled(page,name,name);tabs.add(Adw.Toggle(name=name,label=name))
         tabs.connect('notify::active-name',lambda w,*_:pages.set_visible_child_name(w.get_active_name()))
         pages.connect('notify::visible-child-name',lambda w,*_:tabs.set_active_name(w.get_visible_child_name()))
-        self.detail_pages=pages
+        detail_scroll=detail_header.get_next_sibling()
+        def fit_detail_page(*_):
+            page=content.get(pages.get_visible_child_name())
+            if not page:return False
+            width=pages.get_width()
+            if width<=1:
+                GLib.timeout_add(16,fit_detail_page)
+                return False
+            _,page_natural,_,_=page.measure(Gtk.Orientation.VERTICAL,width)
+            _,footer_natural,_,_=f.measure(Gtk.Orientation.VERTICAL,max(1,d.get_content_width()))
+            hero_preferred=360
+            hero_minimum=230
+            available=max(520,self.get_height()-48)
+            preferred=hero_preferred+page_natural+footer_natural
+            shrink=min(hero_preferred-hero_minimum,max(0,preferred-available))
+            hero_height=hero_preferred-shrink
+            image.set_height_request(hero_height)
+            target=min(preferred-shrink,available)
+            detail_scroll.set_vscrollbar_policy(Gtk.PolicyType.AUTOMATIC if preferred-shrink>available else Gtk.PolicyType.NEVER)
+            self.animate_dialog_height(d,target)
+            return False
+        pages.connect('notify::visible-child-name',fit_detail_page)
+        self.detail_pages=pages;self.detail_fit_page=fit_detail_page
         overview=content['Overview']
         if game.get('description'):overview.append(label(game['description']))
         info=Adw.PreferencesGroup(title='Game Information');overview.append(info)
@@ -1403,6 +1498,7 @@ class Window(Adw.ApplicationWindow):
         f.append(button('Open Folder',lambda *_:Gio.AppInfo.launch_default_for_uri(Path(game['game']).as_uri(),None)))
         if game.get('appid') and game.get('source')=='Steam':
             play=button('Play',lambda *_:Gio.AppInfo.launch_default_for_uri('steam://rungameid/'+str(game['appid']),None),'suggested-action');play.set_sensitive(not self.options.demo);f.append(play)
+        GLib.idle_add(fit_detail_page)
     def record_test(self,game,finish=False):
         def done(record):
             game['test_record']=record;self.details(game)
@@ -1923,6 +2019,30 @@ class Window(Adw.ApplicationWindow):
 
         GLib.timeout_add(16,tick)
 
+    def animate_dialog_height(self,dialog,target,duration=240):
+        if dialog is None or self.dialog is not dialog:return
+        source=getattr(self,'detail_resize_source',0)
+        if source:
+            try:GLib.source_remove(source)
+            except Exception:pass
+            self.detail_resize_source=0
+        try:start=int(dialog.get_content_height())
+        except Exception:start=int(target)
+        target=max(1,int(target))
+        if start==target:
+            dialog.set_content_height(target);return
+        started=time.monotonic()
+        def tick():
+            if self.dialog is not dialog:
+                self.detail_resize_source=0
+                return False
+            t=min(1.0,(time.monotonic()-started)*1000.0/max(1,duration))
+            eased=1.0-(1.0-t)**3
+            dialog.set_content_height(round(start+(target-start)*eased))
+            if t>=1.0:self.detail_resize_source=0
+            return t<1.0
+        self.detail_resize_source=GLib.timeout_add(16,tick)
+
 
     def finish_progress(self,success,message,footer):
         self.dialog.set_can_close(True)
@@ -2212,8 +2332,21 @@ class Window(Adw.ApplicationWindow):
         adopt=Adw.SwitchRow(title='Recognize Existing Enhancements',subtitle='Allow updates to compatible installations from other tools.',active=self.settings['recognize_previous']);defaults.add(adopt)
         appearance=Adw.PreferencesGroup(title='Library Appearance')
         views=['posters','capsules','list'];view=Adw.ComboRow(title='Layout',model=Gtk.StringList.new(['Posters','Wide Capsules','List']),selected=views.index(self.settings.get('library_view','posters')));appearance.add(view)
-        scale=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,70,150,10);scale.set_value(self.settings.get('art_scale',80));scale.set_draw_value(True);scale.set_digits(0);scale.set_size_request(170,-1);scale.set_valign(Gtk.Align.CENTER)
-        item=row('Artwork Size');item.add_suffix(scale);appearance.add(item)
+        original_art_scale=int(self.settings.get('art_scale',80));settings_saved={'value':False}
+        scale=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,70,150,10);scale.set_value(original_art_scale);scale.set_draw_value(True);scale.set_digits(0);scale.set_size_request(170,-1);scale.set_valign(Gtk.Align.CENTER)
+        item=row('Artwork Size','Preview updates live');item.add_suffix(scale);appearance.add(item)
+        def preview_art_scale(widget):
+            value=int(widget.get_value())
+            if int(self.settings.get('art_scale',80))==value:return
+            self.settings['art_scale']=value
+            self.show_games(self.games,False)
+        scale.connect('value-changed',preview_art_scale)
+        def restore_art_scale(*_):
+            if settings_saved['value']:return
+            if int(self.settings.get('art_scale',80))!=original_art_scale:
+                self.settings['art_scale']=original_art_scale
+                self.show_games(self.games,False)
+        d.connect('closed',restore_art_scale)
         dark=Adw.SwitchRow(title='Dark Appearance',active=self.settings['dark']);appearance.add(dark)
         artwork=Adw.PreferencesGroup(title='Artwork',description='Your Steam poster, capsule, and hero images take priority.')
         art=Adw.SwitchRow(title='Download Missing Artwork',subtitle='Use SteamGridDB and Steam when local images are unavailable.',active=self.settings['online_art']);artwork.add(art)
@@ -2256,6 +2389,7 @@ class Window(Adw.ApplicationWindow):
         def save(*_):
             selected_provider=provider_keys[provider.get_selected()];selected_mode=modes[profile.get_selected()]
             if selected_provider=='y4my' and selected_mode=='nr-only':self.toast('NR Only requires DLSS-Unlocked.');return
+            settings_saved['value']=True
             self.settings.update(runtime_provider=selected_provider,nr_runtime=nr_path.get_text().strip(),default_profile=selected_mode,library_view=views[view.get_selected()],art_scale=int(scale.get_value()),dark=dark.get_active(),online_art=art.get_active(),steam_metadata=metadata.get_active(),network_timeout=timeout.get_value_as_int(),recognize_previous=adopt.get_active())
             self.nr_only.set_enabled(selected_provider=='dlss-unlocked')
             self.profile_group.set_active_name(selected_mode)
@@ -2556,15 +2690,21 @@ class Window(Adw.ApplicationWindow):
 
     def smoke_library(self):
         try:
-            assert self.reset_all.get_label()=='↺ Reset All'
+            assert self.reset_all.text_label.get_text()=='Reset All'
+            assert self.flow.get_max_children_per_line()==12
+            assert hasattr(self,'dashboard_icon') and hasattr(self,'operation_revealer')
+            original_scale=self.settings.get('art_scale',80)
+            self.settings['art_scale']=70;self.show_games(self.games,False)
+            assert next(iter(self.cards.values()))['size'][0]==max(110,round(158*.7))
+            self.settings['art_scale']=original_scale;self.show_games(self.games,False)
             for key,widget in self.tuning_widgets.items():
                 original=widget.get_selected() if key=='mfg_multiplier' else widget.get_value()
                 if key=='mfg_multiplier':widget.set_selected(0)
                 else:widget.set_value(0)
-                assert self.reset_all.get_label()=='✓ Apply Settings'
+                assert self.reset_all.text_label.get_text()=='Apply Settings'
                 if key=='mfg_multiplier':widget.set_selected(original)
                 else:widget.set_value(original)
-                assert self.reset_all.get_label()=='↺ Reset All'
+                assert self.reset_all.text_label.get_text()=='Reset All'
             GLib.timeout_add(250,self.smoke_library_ready)
         except Exception:traceback.print_exc();self.get_application().exit_code=1;self.get_application().quit()
         return False
@@ -2576,6 +2716,7 @@ class Window(Adw.ApplicationWindow):
             game={**self.games[0],'feature_mode':'nr-mfg','profile':'NR + MFG','nr_strength':2.0,'sharpening_strength':0.5,'mfg_multiplier':2}
             self.details(game)
             assert not self.detail_apply_settings.get_sensitive()
+            assert hasattr(self,'detail_fit_page')
             self.detail_tuning_widgets['sharpening_strength'].set_value(0)
             assert self.detail_apply_settings.get_sensitive()
             assert self.tuning_values(self.tuning_widgets)['sharpening_strength']==0.5

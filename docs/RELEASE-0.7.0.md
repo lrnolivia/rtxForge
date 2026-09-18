@@ -30,8 +30,6 @@ The Library toolbar remains one compact persistent row containing:
 - live artwork-size control
 - Poster / Wide Capsule / List controls
 
-Library rows also dynamically balance horizontal edge padding. rtxForge calculates how many complete fixed-width cards fit at the current window width and artwork size, then distributes the unused space across both sides. Card dimensions and inter-card spacing remain unchanged, while List view retains its normal edge padding.
-
 The redundant Library icon and Library text were intentionally removed. The full dashboard identifies the application before scrolling, and the compact titlebar takes over that identity after scrolling.
 
 ## Preserved 0.6.x work

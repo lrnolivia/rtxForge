@@ -93,7 +93,6 @@ The classic GTK/libadwaita interface has reached its planned 0.7 feature-complet
 - After the large dashboard scrolls away, the existing native titlebar reveals a compact rtxForge identity, Enhancement Mode selector, and Install All / Remove All / Reset All actions.
 - The sticky dashboard uses already-reserved titlebar space instead of adding another vertical toolbar row.
 - The Library toolbar remains a single compact row for Search, All / Installed / Available filters, Select all / Clear, live artwork sizing, and Poster / Wide Capsule / List controls.
-- Library card rows dynamically balance their left and right edge padding for the current window width, artwork size, and active card view, preventing unused width from collecting as a large gap on the right.
 - The Library row intentionally has no redundant Library label or icon.
 - The compact Enhancement Mode selector mirrors the canonical dashboard mode instead of maintaining separate state.
 - Compact bulk actions mirror the canonical dashboard actions and sensitivity state.

@@ -2358,7 +2358,7 @@ class Window(Adw.ApplicationWindow):
         viewbar.set_margin_top(8)
         viewbar.set_margin_bottom(8)
         library_surface.append(viewbar)
-        scroll=Gtk.ScrolledWindow(vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER);self.library_scroll=scroll;library_stage=Gtk.Overlay(vexpand=True);library_stage.set_child(scroll);library_surface.append(library_stage)
+        scroll=Gtk.ScrolledWindow(vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER);library_stage=Gtk.Overlay(vexpand=True);library_stage.set_child(scroll);library_surface.append(library_stage)
         edge=Gtk.Box(height_request=64,valign=Gtk.Align.START,can_target=False);edge.add_css_class('dashboard-fade');edge.set_visible(False);library_stage.add_overlay(edge)
         def collapse_header(adj):
             value=adj.get_value()
@@ -2413,13 +2413,6 @@ class Window(Adw.ApplicationWindow):
         self.flow.set_hexpand(True)
         self.flow.set_halign(Gtk.Align.START)
 
-        scroll.connect(
-            'notify::width',
-            self.update_library_padding,
-        )
-        GLib.idle_add(
-            self.update_library_padding
-        )
 
         # Decorative bottom fade. It floats over the library instead
         # of reserving a rectangular footer row.
@@ -2566,120 +2559,6 @@ class Window(Adw.ApplicationWindow):
 
     def title_button(self,icon,title,callback):
         b=Gtk.Button(icon_name=icon);b.set_tooltip_text(title);b.update_property([Gtk.AccessibleProperty.LABEL],[title]);b.add_css_class('title-action');b.connect('clicked',callback);return b
-
-    def update_library_padding(self,*_):
-        """Balance unused Library width across both horizontal edges."""
-
-        if not hasattr(
-            self,
-            'flow',
-        ):
-            return False
-
-        base_padding=18
-
-        view=self.settings.get(
-            'library_view',
-            'posters',
-        )
-
-        if view=='list':
-            self.flow.set_margin_start(
-                base_padding
-            )
-            self.flow.set_margin_end(
-                base_padding
-            )
-            return False
-
-        scroll=getattr(
-            self,
-            'library_scroll',
-            None,
-        )
-
-        if scroll is None:
-            return False
-
-        viewport_width=scroll.get_width()
-
-        if viewport_width <= 1:
-            return False
-
-        (
-            _,
-            card_width,
-            _,
-            _,
-            _,
-            _,
-        )=self.library_card_geometry(
-            self.settings.get(
-                'art_scale',
-                100,
-            ),
-            view,
-        )
-
-        # FlowBox wrapper adds 4px to canonical card width.
-        card_width+=4
-
-        gap=max(
-            0,
-            self.flow.get_column_spacing(),
-        )
-
-        usable=max(
-            card_width,
-            viewport_width-(base_padding*2),
-        )
-
-        columns=max(
-            1,
-            min(
-                12,
-                int(
-                    (
-                        usable+gap
-                    )
-                    // (
-                        card_width+gap
-                    )
-                ),
-            ),
-        )
-
-        occupied=(
-            columns*card_width
-            + max(
-                0,
-                columns-1,
-            )*gap
-        )
-
-        leftover=max(
-            0,
-            viewport_width-occupied,
-        )
-
-        start=max(
-            base_padding,
-            leftover//2,
-        )
-
-        end=max(
-            base_padding,
-            leftover-start,
-        )
-
-        self.flow.set_margin_start(
-            start
-        )
-        self.flow.set_margin_end(
-            end
-        )
-
-        return False
 
     def hide_operation_status(self,*_):
         if self.operation_hide_source:
@@ -3749,8 +3628,6 @@ class Window(Adw.ApplicationWindow):
                     value
                 )
                 self._syncing_library_size=False
-
-        self.update_library_padding()
 
         if view=='list':
             return

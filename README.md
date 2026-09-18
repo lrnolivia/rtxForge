@@ -51,8 +51,24 @@ Additional settings: `--nr-strength off|light|medium|strong`, `--sharpening-stre
 
 Provider flags: `--runtime-provider y4my|dlss-unlocked`, `--feature-mode mfg-only|nr-only|nr-mfg`, `--disable-effects`.
 
-[Release notes](docs/RELEASE-0.6.0.md) describe the 0.6.0 tuning, interface, validation, and compatibility changes. Historical custom MFG builds and their tags are preserved, but are not bundled into this release.
+[Release notes](docs/RELEASE-0.6.1.md) describe the 0.6.1 desktop UI refinements and validation changes. Historical custom MFG builds and their tags are preserved, but are not bundled into this release.
 
 DLSS-Unlocked offers separate **NR Only** (pinned NR-v0.8.6; keep in-game FG off) and **MFG Only** (NR-v0.9.1, NR off, bundled NVIDIA runtime updates) pipelines. MFG Only backs up existing native DLLs and restores them on uninstall. Uninstall before changing pipelines. Combined NR + MFG remains available for experimentation.
 
 Selected effects are enabled automatically when installed or repaired. Choose DLSS and the FG multiplier in the game settings; opening the OptiScaler overlay is unnecessary. CLI diagnosis may use `--disable-effects`.
+
+## Interactive live smoke
+
+For hands-on desktop UI validation without touching live game files, run:
+
+    python3 gui/rtxforge_gtk.py --live-smoke
+
+This launches the demo/write-disabled application while exposing the real interactive operation progress and completion states.
+
+Use `--live-smoke` while iterating on progress and Done UI.
+
+For automated regression and screenshot validation, use:
+
+    python3 gui/rtxforge_gtk.py --smoke-test
+
+Neither mode performs live game-file mutations.

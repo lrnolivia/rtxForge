@@ -23,14 +23,63 @@ def artwork_accent(path,color=None):
             if s>.25 and .2<v<.98:colors[int(h*24)]+=s*v
     hue=(colors.most_common(1)[0][0]+.5)/24 if colors else .23
     rgb=tuple(round(v*255) for v in colorsys.hsv_to_rgb(hue,.62,.90))
-    color=color or '#%02x%02x%02x'%rgb;name='art-'+color[1:]
+    color=color or '#%02x%02x%02x'%rgb
+
+    # Pick a readable foreground for artwork-derived accent controls.
+    #
+    # Bright/vibrant game colors such as Cyberpunk yellow should not
+    # use white text. For those, derive a much darker version of the
+    # SAME hue so the control still feels tied to the game's artwork.
+    #
+    # Dark accents keep white text.
+    try:
+        raw=color.lstrip('#')
+        cr=int(raw[0:2],16)/255
+        cg=int(raw[2:4],16)/255
+        cb=int(raw[4:6],16)/255
+
+        luminance=(
+            0.2126*cr +
+            0.7152*cg +
+            0.0722*cb
+        )
+
+        if luminance >= 0.48:
+            fh,fs,fv=colorsys.rgb_to_hsv(
+                cr,
+                cg,
+                cb,
+            )
+
+            # Same hue, richer saturation, substantially darker value.
+            fr,fg,fb=colorsys.hsv_to_rgb(
+                fh,
+                max(0.55,min(1.0,fs*1.05)),
+                0.20,
+            )
+
+            accent_fg='#%02x%02x%02x'%(
+                round(fr*255),
+                round(fg*255),
+                round(fb*255),
+            )
+        else:
+            accent_fg='#ffffff'
+
+    except Exception:
+        accent_fg='#ffffff'
+
+    name='art-'+color[1:]
     if name not in ACCENT_PROVIDERS:
         provider=Gtk.CssProvider()
         provider.load_from_data((f'.game-card.{name}.selected {{ border-color: {color}; box-shadow: 0 2px 12px alpha({color},0.28); }} '
             f'.game-card.{name}:hover {{ border-color: alpha({color},0.65); }} '
-            f'.{name} check:checked, .{name} button.suggested-action {{ background: {color}; color: white; }} '
+            f'.{name} check:checked {{ background: {color}; }} '
+            f'.{name} button.suggested-action {{ background: {color}; color: {accent_fg}; }} '
+            f'.{name} button.suggested-action label {{ color: {accent_fg}; }} '
             f'.{name} .game-status {{ border-left: 3px solid {color}; background: alpha({color},0.12); }} '
-            f'.{name} toggle-group toggle:checked {{ background: {color}; color: white; }} '
+            f'.{name} toggle-group toggle:checked {{ background: {color}; color: {accent_fg}; }} '
+            f'.{name} toggle-group toggle:checked label {{ color: {accent_fg}; }} '
             f'.{name} .game-details {{ color: {color}; }} '
             f'.{name} progressbar progress {{ background: {color}; transition: background-color 450ms; }} '
             f'.{name} .progress-poster-frame {{ border-color: {color}; }} '
@@ -40,6 +89,53 @@ def artwork_accent(path,color=None):
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(),provider,Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION+1)
         ACCENT_PROVIDERS[name]=provider
     return name
+
+
+def hero_title_background_is_light(path):
+    """Estimate brightness beneath the lower-left game title area."""
+    try:
+        pix=GdkPixbuf.Pixbuf.new_from_file_at_scale(
+            str(path),
+            32,
+            18,
+            False,
+        )
+
+        data=pix.get_pixels()
+        stride=pix.get_rowstride()
+        channels=pix.get_n_channels()
+
+        # Lower-left region, roughly where the game title lives.
+        x0=0
+        x1=max(1,int(pix.get_width()*0.48))
+        y0=max(0,int(pix.get_height()*0.55))
+        y1=pix.get_height()
+
+        total=0.0
+        count=0
+
+        for y in range(y0,y1):
+            for x in range(x0,x1):
+                off=y*stride+x*channels
+
+                r=data[off]
+                g=data[off+1]
+                b=data[off+2]
+
+                # Perceived luminance rather than raw RGB average.
+                total += (
+                    0.2126*r +
+                    0.7152*g +
+                    0.0722*b
+                )
+
+                count += 1
+
+        return bool(count and total/count >= 150)
+
+    except Exception:
+        return False
+
 
 class CoverPicture(Gtk.Picture):
     # Ask the layout for height at the actual allocated width, not the original minimum.
@@ -97,6 +193,11 @@ CSS=b'''
 .settings-navigation row { padding: 0; margin: 2px 0; border-radius: 8px; }
 .settings-navigation row box { padding: 10px 12px; }
 .settings-content { padding: 24px; }
+
+.settings-footer-sidebar {
+    background: alpha(@window_fg_color,0.055);
+    min-width: 200px;
+}
 .floating-tabs toggle {
     border-radius: 99px;
     padding: 7px 14px;
@@ -106,7 +207,7 @@ CSS=b'''
 .floating-tabs {
     padding: 4px;
     border-radius: 99px;
-    background: alpha(#151518,0.78);
+    background: alpha(#151518,0.82);
     color: white;
 }
 
@@ -114,9 +215,57 @@ CSS=b'''
     background: alpha(white,0.82);
     color: #202024;
 }
+
+button.game-detail-close {
+    min-width: 36px;
+    min-height: 36px;
+    padding: 0;
+    border-radius: 999px;
+    background: alpha(#151518,0.82);
+    color: white;
+}
+
+button.game-detail-close.light {
+    background: alpha(white,0.82);
+    color: #202024;
+}
+
+button.game-detail-close:hover {
+    background: alpha(#151518,0.88);
+}
+
+button.game-detail-close.light:hover {
+    background: alpha(white,0.90);
+}
+
 .game-banner { background: #252529; }
-.banner-shade { background: linear-gradient(to bottom, alpha(black,0.38), alpha(black,0.02) 38%, alpha(@window_bg_color,0.25) 65%, @window_bg_color 100%); }
-.game-banner-title { color: @window_fg_color; font-size: 34px; font-weight: 500; }
+
+.banner-shade {
+    background: linear-gradient(
+        to bottom,
+        alpha(black,0.38),
+        alpha(black,0.02) 38%,
+        alpha(@window_bg_color,0.25) 65%,
+        @window_bg_color 100%
+    );
+}
+
+.game-banner-title {
+    color: @window_fg_color;
+    font-size: 42px;
+    font-weight: 600;
+    letter-spacing: -0.8px;
+}
+
+/* Light art behind the title: strong soft dark separation. */
+.game-banner.hero-light .game-banner-title {
+    text-shadow: 0 3px 10px alpha(black,0.92);
+}
+
+/* Dark art: restrained soft glow instead of a heavy shadow. */
+.game-banner.hero-dark .game-banner-title {
+    text-shadow: 0 0 12px alpha(white,0.24);
+}
 .progress-content {
     /* More breathing room against the modal's outer edges. */
     padding: 30px 34px 26px;
@@ -162,20 +311,24 @@ CSS=b'''
 }
 
 .progress-poster-frame {
-    border-radius: 18px;
+    border-radius: 20px;
 
     /*
      * Neutral fallback only.
-     * artwork_accent() overrides this with the game's accent.
+     * artwork_accent() overrides the border color per game.
+     *
+     * Keep the frame itself outside the clipping surface so the
+     * rounded accent edge stays clean instead of being cut off.
      */
-    border: 0.6px solid alpha(white,0.18);
+    border: 1px solid alpha(white,0.18);
 
     background: alpha(black,0.16);
-    padding: 0;
+    padding: 2px;
 }
 
 .progress-poster {
-    border-radius: 17px;
+    border-radius: 16px;
+    background: black;
 }
 
 .job-title {
@@ -188,8 +341,8 @@ CSS=b'''
 }
 
 .result-success-circle {
-    min-width: 52px;
-    min-height: 52px;
+    min-width: 56px;
+    min-height: 56px;
     border-radius: 999px;
     background: #2fbf61;
     color: white;
@@ -212,7 +365,7 @@ CSS=b'''
 button.done-button,
 button.done-button.suggested-action {
     background: #2fbf61;
-    color: white;
+    color: #073b1b;
 
     border-radius: 11px;
 
@@ -222,7 +375,8 @@ button.done-button.suggested-action {
 
 button.done-button label,
 button.done-button.suggested-action label {
-    color: white;
+    color: #073b1b;
+    font-weight: 600;
 }
 
 button.done-button:hover,
@@ -237,6 +391,20 @@ button.done-button.suggested-action:hover {
 .progress-footer button {
     min-height: 34px;
     padding: 7px 14px;
+}
+
+.progress-inline-cancel {
+    min-height: 30px;
+    padding: 5px 14px;
+
+    background: alpha(#303238,0.96);
+    color: white;
+
+    border: 1px solid alpha(white,0.10);
+}
+
+.progress-inline-cancel:hover {
+    background: alpha(#3b3d43,1.0);
 }
 
 .art-progress progressbar trough {
@@ -268,8 +436,25 @@ button.done-button.suggested-action:hover {
 .hero-title { font-size: 29px; font-weight: 800; letter-spacing: -0.8px; }
 .eyebrow { color: #76b900; font-weight: 800; font-size: 10px; letter-spacing: 2px; }
 .hero { background: alpha(@window_fg_color,0.045); border: 1px solid alpha(@window_fg_color,0.06); border-radius: 18px; padding: 20px 24px; }
-.forge-primary { background: #76b900; color: white; font-weight: 500; padding: 10px 18px; }
-.forge-primary:hover { background: #b5ef50; }
+.forge-primary {
+    background: #76b900;
+    color: #173000;
+    font-weight: 600;
+    padding: 10px 18px;
+}
+
+.forge-primary label {
+    color: #173000;
+}
+
+.forge-primary:hover {
+    background: #8fd000;
+    color: #102600;
+}
+
+.forge-primary:hover label {
+    color: #102600;
+}
 .bulk-remove { color: #ff928c; padding: 10px 16px; }
 .pill { border-radius: 99px; padding: 5px 10px; background: alpha(@window_fg_color,0.07); font-size: 11px; }
 .game-card { border-radius: 14px; background: @card_bg_color; border: 2px solid alpha(@window_fg_color,0.06); }
@@ -295,7 +480,11 @@ button.done-button.suggested-action:hover {
 .progress-orb { border-radius: 999px; background: alpha(@window_fg_color,0.06); padding: 18px; }
 .progress-title { font-size: 22px; font-weight: 600; }
 button, button label, toggle-group toggle { font-weight: 500; }
-button.suggested-action, button.suggested-action label { color: white; font-weight: 500; }
+button.suggested-action,
+button.suggested-action label {
+    color: @accent_fg_color;
+    font-weight: 500;
+}
 '''
 
 def profile_icon(mode):
@@ -695,8 +884,15 @@ class Window(Adw.ApplicationWindow):
         stack=Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE,hexpand=True,vexpand=True)
         nav=Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE,width_request=200,valign=Gtk.Align.FILL)
         nav.add_css_class('settings-navigation')
+        nav.set_vexpand(True)
         icons={'Graphics':'video-display-symbolic','Library':'applications-games-symbolic','System':'computer-symbolic','Recovery':'document-revert-symbolic'}
-        layout=Gtk.Box(vexpand=True);layout.append(nav);layout.append(stack);body.append(layout)
+        layout=Gtk.Box(
+            hexpand=True,
+            vexpand=True,
+        )
+        layout.append(nav)
+        layout.append(stack)
+        body.append(layout)
         switcher=Adw.ToggleGroup(homogeneous=True);body.prepend(switcher)
         for title,items in sections:
             page=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=20);page.add_css_class('settings-content')
@@ -825,21 +1021,82 @@ class Window(Adw.ApplicationWindow):
             finally:GLib.idle_add(finished_art)
         threading.Thread(target=load,daemon=True).start()
     def details(self,game):
-        d,b,f=self.open_panel(game['name'],width=860,height=700);b.remove_css_class('panel-body');b.set_spacing(0)
-        if game.get('accent_class'):d.add_css_class(game['accent_class'])
-        banner=Gtk.Overlay();banner.add_css_class('game-banner');b.append(banner)
+        d,b,f=self.open_panel(game['name'],width=860,height=700)
+        b.remove_css_class('panel-body')
+        b.set_spacing(0)
+
+        # Game Details uses the artwork itself as the top of the dialog.
+        # Keep the regular Adw.HeaderBar in the widget hierarchy for
+        # compatibility with existing smoke/navigation code, but remove
+        # it visually and reclaim its layout space.
+        detail_shell=d.get_child()
+        detail_header=detail_shell.get_first_child()
+        detail_header.set_visible(False)
+
+        if game.get('accent_class'):
+            d.add_css_class(game['accent_class'])
+
+        banner=Gtk.Overlay()
+        banner.add_css_class('game-banner')
+        b.append(banner)
         image=Gtk.Picture(content_fit=Gtk.ContentFit.COVER,can_shrink=True,height_request=360)
         if game.get('hero'):
             try:image.set_paintable(Gdk.Texture.new_from_filename(game['hero']))
             except Exception:pass
         banner.set_child(image);shade=Gtk.Box();shade.add_css_class('banner-shade');banner.add_overlay(shade)
         self.detail_game=game['game'];self.detail_dialog=d;self.detail_banner=image
-        tabs=Adw.ToggleGroup(homogeneous=True,halign=Gtk.Align.CENTER,valign=Gtk.Align.START);tabs.add_css_class('floating-tabs');margins(tabs,16);banner.add_overlay(tabs)
+        tabs=Adw.ToggleGroup(
+            homogeneous=True,
+            halign=Gtk.Align.CENTER,
+            valign=Gtk.Align.CENTER,
+        )
+        tabs.add_css_class('floating-tabs')
+
+        # Keep the tabs geometrically centered while the close button
+        # occupies the far-right end of the exact same row.
+        detail_controls=Gtk.CenterBox(
+            hexpand=True,
+            valign=Gtk.Align.START,
+        )
+        margins(detail_controls,16)
+
+        detail_controls.set_center_widget(tabs)
+
+        close=Gtk.Button(
+            icon_name='window-close-symbolic',
+            valign=Gtk.Align.CENTER,
+            halign=Gtk.Align.END,
+        )
+        close.add_css_class('game-detail-close')
+        close.set_tooltip_text('Close')
+        close.update_property(
+            [Gtk.AccessibleProperty.LABEL],
+            ['Close game details'],
+        )
+        close.connect(
+            'clicked',
+            lambda *_:d.close(),
+        )
+
+        detail_controls.set_end_widget(close)
+        banner.add_overlay(detail_controls)
+
+        hero_light=False
+
         if game.get('hero'):
-            try:
-                sample=GdkPixbuf.Pixbuf.new_from_file_at_scale(game['hero'],1,1,False).get_pixels()
-                if sum(sample[:3])/3>150:tabs.add_css_class('light')
-            except Exception:pass
+            hero_light=hero_title_background_is_light(
+                game['hero']
+            )
+
+        banner.add_css_class(
+            'hero-light'
+            if hero_light
+            else 'hero-dark'
+        )
+
+        if hero_light:
+            tabs.add_css_class('light')
+            close.add_css_class('light')
         heading=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=5,valign=Gtk.Align.END);margins(heading,24);heading.append(label(game['name'],'game-banner-title'));banner.add_overlay(heading)
         mode_name=game.get('profile') if game.get('installed') else 'Ready to Enhance'
         status=label(mode_name or 'Ready to Enhance','cover-badge');status.set_halign(Gtk.Align.START);heading.append(status)
@@ -877,29 +1134,246 @@ class Window(Adw.ApplicationWindow):
             if not self.options.demo:game_notes.save(self.service.config,game['game'],current)
             game['test_record']=current;self.toast('Notes saved')
         actions=Gtk.Box(spacing=8);actions.append(button('Save Notes',save_notes,'suggested-action'));active=bool(record.get('active'));test=button('Finish Test' if active else 'Start Test',lambda *_:self.record_test(game,active));test.set_sensitive(not self.options.demo);actions.append(test);notes_page.append(actions)
-        appearance=content['Appearance'];appearance.append(label('Accent Color','heading'));swatches=Gtk.Box(spacing=10);appearance.append(swatches)
-        colors=[];hues=Counter()
-        for path in (game.get('poster'),game.get('capsule')):
-            if not path:continue
-            try:
-                pix=GdkPixbuf.Pixbuf.new_from_file_at_scale(path,24,24,True);data=pix.get_pixels();stride=pix.get_rowstride();channels=pix.get_n_channels()
-                for y in range(pix.get_height()):
-                    for x in range(pix.get_width()):
-                        off=y*stride+x*channels;h,sat,value=colorsys.rgb_to_hsv(*(c/255 for c in data[off:off+3]))
-                        if sat>.28 and value>.18:hues[int(h*12)]+=sat*value
-            except Exception:pass
-        selected=[h for h,_ in hues.most_common(6)]
-        if not selected:selected=[0,2,4,6,8,10]
-        for hue in selected:
-            color='#%02x%02x%02x'%tuple(round(c*255) for c in colorsys.hsv_to_rgb((hue+.5)/12,.76,.94));colors.append(color)
+        appearance=content['Appearance']
+
+        accent_group=Adw.PreferencesGroup(
+            title='Accent Color',
+            description='Pick any color directly from this game’s poster.',
+        )
+        appearance.append(accent_group)
+
+        current_accent=(
+            self.settings
+            .get('game_accents',{})
+            .get(game['game'])
+        )
+
+        accent_row=row(
+            'Game Accent',
+            (
+                'Custom · '+current_accent.upper()
+                if current_accent
+                else 'Artwork-derived'
+            ),
+        )
+
+        accent_group.add(accent_row)
+
         def set_color(color):
-            self.settings.setdefault('game_accents',{})[game['game']]=color
-            if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
+            self.settings.setdefault(
+                'game_accents',
+                {},
+            )[game['game']]=color
+
+            if not self.options.demo:
+                library_media.save_settings(
+                    self.service.config,
+                    self.settings,
+                )
+
             old=game.get('accent_class')
-            if old:d.remove_css_class(old)
-            game['accent_class']=artwork_accent(game.get('poster') or game['capsule'],color);d.add_css_class(game['accent_class']);self.paint_card(self.cards[game['game']])
-        for color in colors:
-            swatch=button('',lambda _,c=color:set_color(c),'color-swatch');swatch.set_tooltip_text(color);provider=Gtk.CssProvider();provider.load_from_data(('button { background: '+color+'; }').encode());swatch.get_style_context().add_provider(provider,Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION+2);swatches.append(swatch)
+
+            if old:
+                d.remove_css_class(old)
+
+                entry=self.cards.get(
+                    game['game']
+                )
+
+                if entry:
+                    entry['widget'].remove_css_class(
+                        old
+                    )
+
+            source=(
+                game.get('poster')
+                or game.get('capsule')
+                or game.get('hero')
+            )
+
+            if not source:
+                self.toast(
+                    'No artwork is available for this game.'
+                )
+                return
+
+            game['accent_class']=artwork_accent(
+                source,
+                color,
+            )
+
+            d.add_css_class(
+                game['accent_class']
+            )
+
+            accent_row.set_subtitle(
+                'Custom · '+color.upper()
+            )
+
+            entry=self.cards.get(
+                game['game']
+            )
+
+            if entry:
+                self.paint_card(entry)
+
+        def pick_accent_from_poster(*_):
+            source=(
+                game.get('poster')
+                or game.get('capsule')
+                or game.get('hero')
+            )
+
+            if not source:
+                self.toast(
+                    'No poster artwork is available.'
+                )
+                return
+
+            try:
+                pix=GdkPixbuf.Pixbuf.new_from_file(
+                    str(source)
+                )
+                texture=Gdk.Texture.new_from_filename(
+                    str(source)
+                )
+            except Exception as ex:
+                self.toast(
+                    'Could not open this game’s artwork.'
+                )
+                self.log.append(str(ex))
+                return
+
+            sw=max(1,pix.get_width())
+            sh=max(1,pix.get_height())
+
+            # Large enough to pick accurately without turning this into
+            # another full-screen artwork viewer.
+            max_w=380
+            max_h=560
+
+            scale=min(
+                max_w/sw,
+                max_h/sh,
+            )
+
+            display_w=max(
+                220,
+                round(sw*scale),
+            )
+            display_h=max(
+                300,
+                round(sh*scale),
+            )
+
+            picker=Adw.Dialog(
+                title='Pick Accent Color',
+                content_width=display_w+48,
+                content_height=display_h+118,
+            )
+
+            shell=Gtk.Box(
+                orientation=Gtk.Orientation.VERTICAL,
+                spacing=12,
+            )
+            margins(shell,18)
+            picker.set_child(shell)
+
+            instructions=label(
+                'Click anywhere on the poster to use that pixel as the game accent.',
+                'dim-label',
+            )
+            instructions.set_halign(
+                Gtk.Align.CENTER
+            )
+            instructions.set_xalign(0.5)
+            shell.append(instructions)
+
+            poster=Gtk.Picture(
+                paintable=texture,
+                content_fit=Gtk.ContentFit.FILL,
+                can_shrink=True,
+                width_request=display_w,
+                height_request=display_h,
+            )
+
+            poster.set_halign(
+                Gtk.Align.CENTER
+            )
+            poster.set_valign(
+                Gtk.Align.CENTER
+            )
+
+            try:
+                poster.set_cursor_from_name(
+                    'crosshair'
+                )
+            except Exception:
+                pass
+
+            shell.append(poster)
+
+            gesture=Gtk.GestureClick()
+
+            def picked(_gesture,_press,x,y):
+                width=max(
+                    1,
+                    poster.get_width(),
+                )
+                height=max(
+                    1,
+                    poster.get_height(),
+                )
+
+                px=min(
+                    sw-1,
+                    max(
+                        0,
+                        int(x/width*sw),
+                    ),
+                )
+
+                py=min(
+                    sh-1,
+                    max(
+                        0,
+                        int(y/height*sh),
+                    ),
+                )
+
+                channels=pix.get_n_channels()
+                stride=pix.get_rowstride()
+                data=pix.get_pixels()
+
+                off=py*stride+px*channels
+
+                r=int(data[off])
+                g=int(data[off+1])
+                b=int(data[off+2])
+
+                color=f'#{r:02x}{g:02x}{b:02x}'
+
+                set_color(color)
+                picker.close()
+
+            gesture.connect(
+                'released',
+                picked,
+            )
+
+            poster.add_controller(
+                gesture
+            )
+
+            picker.present(self)
+
+        pick_button=button(
+            'Pick from Poster…',
+            pick_accent_from_poster,
+        )
+        pick_button.set_valign(Gtk.Align.CENTER)
+        accent_row.add_suffix(pick_button)
+
         credits=Adw.PreferencesGroup(title='Artwork Credits');appearance.append(credits)
         for title,key in [('Poster','art_credit'),('Wide Capsule','capsule_credit'),('Hero','hero_credit')]:credits.add(row(title,game.get(key) or 'Source information unavailable'))
         for title,key in [('Poster Source','art_link'),('Hero Source','hero_link')]:
@@ -942,14 +1416,114 @@ class Window(Adw.ApplicationWindow):
 
         self.operation_cancel=threading.Event();self.operation_executing=False
         d,b,f=self.open_panel(title,width=580,height=310,show_close=False);d.set_can_close(False)
-        self.add_cancel(f)
+
         self.operation_games=rows
         self.progress_view(b,f'Checking {len(rows)} games…')
+        self.add_cancel(f)
+
+        if self.options.live_smoke:
+            self.live_smoke_begin(f)
+            return
+
         if self.options.demo:
             preview={'kind':'batch','operation':operation,'title':title,'plans':[],'rows':[{'name':r['name'],'detail':'2 file changes'} for r in rows[:4]],'blocked':[{'name':'Example protected game','reason':'Another graphics tool is installed.'}]}
             self.action_ready(preview,d,b,f,False);return
         mode=self.mode;adopt=self.settings['recognize_previous'];values=self.tuning_values(self.tuning_widgets) if entire and operation=='reset' else visual_settings
         self.start('Preparing '+title.lower(),lambda:self.service.prepare(rows,mode,operation,adopt,visual_settings=values,save_defaults=entire and operation=='reset'),lambda review:self.action_ready(review,d,b,f,entire))
+    def live_smoke_begin(self,footer):
+        """Interactive, write-disabled preview of Progress -> Done."""
+        self.live_smoke_footer=footer
+        self.live_smoke_rows=list(
+            getattr(self,'operation_games',[])
+        )
+        self.live_smoke_index=0
+
+        if not self.live_smoke_rows:
+            return
+
+        targets=[]
+
+        poster_target=(
+            getattr(self,'job_poster_frame',None)
+            or getattr(self,'job_poster',None)
+        )
+
+        if poster_target is not None:
+            targets.append(poster_target)
+
+        if getattr(self,'job_bar',None) is not None:
+            targets.append(self.job_bar)
+
+        for target in targets:
+            target.set_tooltip_text(
+                'Live Smoke · click to advance preview'
+            )
+
+            gesture=Gtk.GestureClick()
+
+            gesture.connect(
+                'released',
+                lambda *_:self.live_smoke_next(),
+            )
+
+            target.add_controller(gesture)
+
+        # Populate the first visual state immediately.
+        self.live_smoke_next()
+
+    def live_smoke_next(self):
+        """Advance one fake operation step; final click shows Done."""
+        rows=getattr(
+            self,
+            'live_smoke_rows',
+            [],
+        )
+
+        if not rows:
+            return
+
+        index=getattr(
+            self,
+            'live_smoke_index',
+            0,
+        )
+
+        # One click after the final game transitions to Done.
+        if index>=len(rows):
+            self.operation_cancel=None
+
+            self.finish_progress(
+                True,
+                f"{len(rows)} game"
+                f"{'s' if len(rows)!=1 else ''} updated.",
+                self.live_smoke_footer,
+            )
+
+            return
+
+        game=rows[index]
+
+        self.update_progress_art(
+            game['name']
+        )
+
+        if getattr(self,'job_counter',None):
+            self.job_counter.set_text(
+                f"{index+1} / {len(rows)}"
+            )
+
+        if getattr(self,'job_caption',None):
+            self.job_caption.set_text(
+                'Applying preview changes…'
+            )
+
+        if getattr(self,'job_bar',None):
+            self.job_bar.set_fraction(
+                (index+1)/(len(rows)+1)
+            )
+
+        self.live_smoke_index=index+1
+
     def progress_view(self,body,message):
         clear(body)
 
@@ -964,16 +1538,33 @@ class Window(Adw.ApplicationWindow):
         body.set_margin_start(0)
         body.set_margin_end(0)
 
-        # Give the 175x263 poster real room instead of squeezing it
-        # into the original 580x310 operation dialog.
+        # Compact operation poster.
+        # Compact 140x210 operation poster.
+        POSTER_WIDTH=140
+        POSTER_HEIGHT=210
+
+        # Allowance for the poster frame/padding.
+        POSTER_FRAME_WIDTH=146
+        POSTER_FRAME_HEIGHT=216
+
+        # The active-operation modal follows the poster's height instead
+        # of using an unrelated fixed height.
+        #
+        # progress-content currently contributes:
+        #   30px top padding
+        #   26px bottom padding
+        PANEL_VERTICAL_PADDING=56
+
         self.dialog.set_content_width(640)
-        self.dialog.set_content_height(398)
+        self.dialog.set_content_height(
+            POSTER_FRAME_HEIGHT + PANEL_VERTICAL_PADDING
+        )
 
         if getattr(self,'progress_dialog',None)!=self.dialog:
             box=self.dialog.get_child()
 
-            # Hide operation title bar while the cinematic
-            # progress/result presentation is active.
+            # Cinematic operation/result presentation replaces the
+            # normal dialog header while active.
             box.get_first_child().set_visible(False)
 
             self.dialog.set_child(None)
@@ -1019,34 +1610,39 @@ class Window(Adw.ApplicationWindow):
             self.job_current_game=None
             self.job_accent=None
 
-        # This box consumes all available body height so its actual
-        # content group can sit exactly in the vertical middle.
         center=Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
             valign=Gtk.Align.FILL,
             vexpand=True,
         )
+
         body.append(center)
 
         line=Gtk.Box(
-            spacing=20,
+            spacing=22,
             halign=Gtk.Align.FILL,
             valign=Gtk.Align.CENTER,
             vexpand=True,
         )
+
         center.append(line)
 
-        # 2.5x original 70x105 poster.
+        # ----------------------------------------------------
+        # POSTER
+        # ----------------------------------------------------
+
         self.job_poster=Gtk.Stack(
             transition_type=Gtk.StackTransitionType.CROSSFADE,
             transition_duration=400,
-            width_request=175,
-            height_request=263,
+            width_request=POSTER_WIDTH,
+            height_request=POSTER_HEIGHT,
             halign=Gtk.Align.CENTER,
             valign=Gtk.Align.CENTER,
         )
 
         self.job_poster.add_css_class('progress-poster')
+
+        # THIS is the clipping surface for the image.
         self.job_poster.set_overflow(Gtk.Overflow.HIDDEN)
 
         self.poster_images=[
@@ -1058,16 +1654,15 @@ class Window(Adw.ApplicationWindow):
         ]
 
         for picture in self.poster_images:
-            picture.cover_width=175
+            picture.cover_width=POSTER_WIDTH
             picture.cover_ratio=2/3
 
         for i,picture in enumerate(self.poster_images):
             self.job_poster.add_named(picture,str(i))
 
-        # Tiny frame allowance prevents GTK clipping the poster edge.
         self.job_poster_frame=Gtk.Frame(
-            width_request=177,
-            height_request=265,
+            width_request=POSTER_FRAME_WIDTH,
+            height_request=POSTER_FRAME_HEIGHT,
             halign=Gtk.Align.CENTER,
             valign=Gtk.Align.CENTER,
         )
@@ -1076,8 +1671,9 @@ class Window(Adw.ApplicationWindow):
             'progress-poster-frame'
         )
 
+        # Important: do NOT clip the outer accent frame.
         self.job_poster_frame.set_overflow(
-            Gtk.Overflow.HIDDEN
+            Gtk.Overflow.VISIBLE
         )
 
         self.job_poster_frame.set_child(
@@ -1086,15 +1682,59 @@ class Window(Adw.ApplicationWindow):
 
         line.append(self.job_poster_frame)
 
+        # ----------------------------------------------------
+        # RIGHT COLUMN
+        #
+        # Exactly the same height as the poster frame.
+        # Center content stays centered; Cancel occupies the end slot.
+        # ----------------------------------------------------
+
+        # The entire right-side coordinate space is exactly as tall
+        # as the poster frame. Nothing here centers against the modal.
+        right=Gtk.Overlay(
+            hexpand=True,
+            height_request=POSTER_FRAME_HEIGHT,
+            valign=Gtk.Align.CENTER,
+        )
+
+        right.set_size_request(
+            -1,
+            POSTER_FRAME_HEIGHT,
+        )
+
+        right.set_vexpand(False)
+
+        line.append(right)
+
+        # Full-poster-height slot. The actual information cluster is
+        # centered inside THIS, not inside the dialog.
+        # Dedicated poster-height centering plane.
+        #
+        # This is intentionally independent of the modal's own height.
+        # The visible status/progress cluster is geometrically centered
+        # against the poster frame itself.
+        center_slot=Gtk.CenterBox(
+            orientation=Gtk.Orientation.VERTICAL,
+            hexpand=True,
+            height_request=POSTER_FRAME_HEIGHT,
+            valign=Gtk.Align.CENTER,
+        )
+
+        center_slot.set_vexpand(False)
+
+        right.set_child(center_slot)
+
         inner=Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
-            spacing=8,
+            spacing=5,
             halign=Gtk.Align.FILL,
             valign=Gtk.Align.CENTER,
             hexpand=True,
         )
 
-        line.append(inner)
+        center_slot.set_center_widget(
+            inner
+        )
 
         self.job_counter=label(
             'Preparing…',
@@ -1117,22 +1757,37 @@ class Window(Adw.ApplicationWindow):
         self.job_bar.set_hexpand(True)
         inner.append(self.job_bar)
 
+        # Cancel now lives INSIDE the same vertical envelope as the poster.
+        # Its bottom edge therefore aligns with the poster frame.
+        self.progress_cancel_box=Gtk.Box(
+            halign=Gtk.Align.END,
+            valign=Gtk.Align.END,
+        )
+
+        # Cancel occupies the same poster-height space, but because it is
+        # an overlay it NEVER participates in the centered content's
+        # measurement or positioning.
+        right.add_overlay(
+            self.progress_cancel_box
+        )
+
+        right.set_measure_overlay(
+            self.progress_cancel_box,
+            False,
+        )
+
+        # The old footer is not part of the active-operation composition.
         footer=self.progress_panel.get_last_child()
-
-        footer.add_css_class('progress-footer')
-        footer.set_spacing(6)
-
-        # Enough space that the button doesn't look stuck to the edge,
-        # without returning to the giant empty footer.
-        footer.set_margin_top(2)
-        footer.set_margin_bottom(20)
-        footer.set_margin_start(28)
-        footer.set_margin_end(28)
+        clear(footer)
+        footer.set_visible(False)
 
         self.progress_body=body
         self.progress_footer=footer
 
         self.job_current_game=None
+
+        # Recreate Cancel in its new inline location.
+        self.add_cancel(footer)
 
         self.update_progress_art('')
 
@@ -1205,18 +1860,55 @@ class Window(Adw.ApplicationWindow):
 
         self.job_label.set_text(game['name'])
 
+    def animate_dialog_width(self,target,duration=280):
+        """Smoothly resize the active Adw.Dialog horizontally."""
+
+        dialog=self.dialog
+
+        if dialog is None:
+            return
+
+        try:
+            start=int(dialog.get_content_width())
+        except Exception:
+            start=640
+
+        target=int(target)
+
+        if start==target:
+            dialog.set_content_width(target)
+            return
+
+        started=time.monotonic()
+
+        def tick():
+            if self.dialog is not dialog:
+                return False
+
+            elapsed=(time.monotonic()-started)*1000.0
+            t=min(1.0,elapsed/max(1,duration))
+
+            # Cubic ease-out: quick initial motion with a soft landing.
+            eased=1.0-(1.0-t)**3
+
+            width=round(
+                start+(target-start)*eased
+            )
+
+            dialog.set_content_width(width)
+
+            return t<1.0
+
+        GLib.timeout_add(16,tick)
+
+
     def finish_progress(self,success,message,footer):
         self.dialog.set_can_close(True)
 
         clear(footer)
+        footer.set_visible(False)
 
-        footer.add_css_class('progress-footer')
-        footer.set_spacing(6)
-
-        footer.set_margin_top(10)
-        footer.set_margin_bottom(20)
-        footer.set_margin_start(28)
-        footer.set_margin_end(28)
+        self.progress_cancel_box=None
 
         body=getattr(
             self,
@@ -1233,23 +1925,26 @@ class Window(Adw.ApplicationWindow):
             body.set_margin_top(0)
             body.set_margin_bottom(0)
 
-        # Balanced result modal — smaller than progress, but not cramped.
-        self.dialog.set_content_width(640)
-        self.dialog.set_content_height(340)
+        # Success becomes exactly 50% of the 640px operation width.
+        # Error remains wider so diagnostic copy still has room.
+        if success:
+            self.animate_dialog_width(
+                320,
+                duration=280,
+            )
+            self.dialog.set_content_height(320)
+        else:
+            self.animate_dialog_width(
+                520,
+                duration=220,
+            )
+            self.dialog.set_content_height(340)
 
         if hasattr(self,'progress_panel'):
             self.progress_panel.add_css_class('done')
 
         # ----------------------------------------------------
         # RESULT BACKDROP
-        # ----------------------------------------------------
-        # Never show the game hero once work has completed.
-        #
-        # Success:
-        #   frozen library -> GSK blur -> dark translucent wash
-        #
-        # Failure:
-        #   simple dark backdrop
         # ----------------------------------------------------
 
         if success:
@@ -1294,7 +1989,7 @@ class Window(Adw.ApplicationWindow):
             )
 
         # ----------------------------------------------------
-        # TRUE CENTERED RESULT CONTENT
+        # CENTERED RESULT
         # ----------------------------------------------------
 
         center=Gtk.Box(
@@ -1317,11 +2012,10 @@ class Window(Adw.ApplicationWindow):
 
         center.append(result)
 
-        # Fixed-size wrapper means the green background can NEVER
-        # stretch into the wide pill seen in the smoke test.
-        badge=Gtk.Box(
-            width_request=52,
-            height_request=52,
+        # Gtk.CenterBox gives the check an actual geometric center.
+        badge=Gtk.CenterBox(
+            width_request=56,
+            height_request=56,
             halign=Gtk.Align.CENTER,
             valign=Gtk.Align.CENTER,
         )
@@ -1333,16 +2027,14 @@ class Window(Adw.ApplicationWindow):
         )
 
         icon=Gtk.Image.new_from_icon_name(
-            'emblem-ok-symbolic'
+            'object-select-symbolic'
             if success
             else 'action-unavailable-symbolic'
         )
 
         icon.set_pixel_size(28)
-        icon.set_halign(Gtk.Align.CENTER)
-        icon.set_valign(Gtk.Align.CENTER)
 
-        badge.append(icon)
+        badge.set_center_widget(icon)
         result.append(badge)
 
         title=label(
@@ -1366,6 +2058,7 @@ class Window(Adw.ApplicationWindow):
 
         caption.set_halign(Gtk.Align.CENTER)
         caption.set_xalign(0.5)
+        caption.set_justify(Gtk.Justification.CENTER)
 
         result.append(caption)
 
@@ -1382,18 +2075,39 @@ class Window(Adw.ApplicationWindow):
             else None,
         )
 
-        footer.append(done)
+        done.set_halign(Gtk.Align.CENTER)
+        done.set_margin_top(12)
+
+        # Button is part of the centered result composition,
+        # not a right-aligned dialog footer.
+        result.append(done)
 
         self.job_label=None
 
-    def add_cancel(self,footer):
-        footer.add_css_class('progress-footer')
-        footer.set_spacing(6)
 
-        footer.set_margin_top(2)
-        footer.set_margin_bottom(20)
-        footer.set_margin_start(28)
-        footer.set_margin_end(28)
+    def add_cancel(self,footer):
+        target=getattr(
+            self,
+            'progress_cancel_box',
+            None,
+        )
+
+        if target is None:
+            footer.set_visible(True)
+            footer.add_css_class('progress-footer')
+            footer.set_spacing(6)
+
+            footer.set_margin_top(2)
+            footer.set_margin_bottom(20)
+            footer.set_margin_start(28)
+            footer.set_margin_end(28)
+
+            target=footer
+
+        # progress_view() and execute() can both request Cancel.
+        # Never create two buttons in the same target.
+        if target.get_first_child() is not None:
+            return
 
         def cancel(w):
             self.operation_cancel.set()
@@ -1415,16 +2129,34 @@ class Window(Adw.ApplicationWindow):
                         self.operation_previous
                     )
 
-        footer.append(
-            button(
-                'Cancel',
-                cancel,
+        cancel_button=button(
+            'Cancel',
+            cancel,
+        )
+
+        if target is not footer:
+            cancel_button.add_css_class(
+                'progress-inline-cancel'
             )
+
+        target.append(
+            cancel_button
         )
 
     def action_ready(self,review,d,b,f,automatic=False):
-        self.review=review;clear(b);clear(f);b.add_css_class('panel-body');self.job_label=None;d.set_can_close(True)
-        if getattr(self,'operation_cancel',None) is not None:self.add_cancel(f)
+        self.review=review
+        clear(b)
+        clear(f)
+
+        self.progress_cancel_box=None
+        f.set_visible(True)
+
+        b.add_css_class('panel-body')
+        self.job_label=None
+        d.set_can_close(True)
+
+        if getattr(self,'operation_cancel',None) is not None:
+            self.add_cancel(f)
         g=Adw.PreferencesGroup(title=f"Ready · {len(review['rows'])}");b.append(g)
         for item in review['rows']:g.add(row(item['name'],item['detail']))
         if review['blocked']:
@@ -1509,7 +2241,59 @@ class Window(Adw.ApplicationWindow):
             self.view_buttons[self.settings['library_view']].set_active(True)
             if self.options.demo:d.close();self.show_games(self.games,False);return
             self.start('Saving settings',lambda:library_media.save_settings(self.service.config,self.settings),lambda _:(d.close(),self.show_games(self.games,False),self.fetch_media()))
-        f.append(button('Save Settings',save,'suggested-action'))
+        save_button=button(
+            'Save Settings',
+            save,
+            'suggested-action',
+        )
+
+        # Replace the ordinary right-aligned dialog footer with a
+        # two-column footer that continues the sidebar all the way down.
+        f.set_halign(Gtk.Align.FILL)
+        f.set_spacing(0)
+
+        f.set_margin_top(0)
+        f.set_margin_bottom(0)
+        f.set_margin_start(0)
+        f.set_margin_end(0)
+
+        settings_footer=Gtk.Box(
+            hexpand=True,
+        )
+
+        sidebar_tail=Gtk.Box(
+            width_request=200,
+        )
+        sidebar_tail.add_css_class(
+            'settings-footer-sidebar'
+        )
+
+        settings_footer.append(
+            sidebar_tail
+        )
+
+        footer_actions=Gtk.Box(
+            hexpand=True,
+            halign=Gtk.Align.END,
+            valign=Gtk.Align.CENTER,
+        )
+
+        footer_actions.set_margin_top(16)
+        footer_actions.set_margin_bottom(16)
+        footer_actions.set_margin_start(16)
+        footer_actions.set_margin_end(16)
+
+        footer_actions.append(
+            save_button
+        )
+
+        settings_footer.append(
+            footer_actions
+        )
+
+        f.append(
+            settings_footer
+        )
     def check_app_update(self,*_):
         import app_update
         self.start(
@@ -1795,7 +2579,29 @@ class Application(Adw.Application):
         provider=Gtk.CssProvider();provider.load_from_data(CSS);Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(),provider,Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.window=Window(self,self.options);self.window.present()
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--provider',type=Path);parser.add_argument('--demo',action='store_true');parser.add_argument('--smoke-test',action='store_true');options=parser.parse_args()
-    if options.smoke_test:options.demo=True
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--provider',type=Path)
+    parser.add_argument(
+        '--demo',
+        action='store_true',
+        help='Interactive write-disabled demo mode.',
+    )
+    parser.add_argument(
+        '--smoke-test',
+        action='store_true',
+        help='Automated screenshot and regression smoke test.',
+    )
+    parser.add_argument(
+        '--live-smoke',
+        action='store_true',
+        help=(
+            'Interactive write-disabled UI smoke test with '
+            'manual Progress and Done states.'
+        ),
+    )
+    options=parser.parse_args()
+
+    if options.smoke_test or options.live_smoke:
+        options.demo=True
     app=Application(options);result=app.run([sys.argv[0]]);return app.exit_code or result
 if __name__=='__main__':sys.exit(main())

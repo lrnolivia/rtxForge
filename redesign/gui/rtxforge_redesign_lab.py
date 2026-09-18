@@ -72,6 +72,7 @@ from gi.repository import (
     Gio,
     GLib,
     Gtk,
+    Pango,
 )
 
 
@@ -221,7 +222,7 @@ class RedesignLabWindow(
             )
 
             image.set_pixel_size(
-                58
+                67
             )
 
             return image
@@ -231,7 +232,7 @@ class RedesignLabWindow(
         )
 
         image.set_pixel_size(
-            50
+            58
         )
 
         return image
@@ -380,6 +381,17 @@ class RedesignLabWindow(
 
         self.sidebar_brand_name.add_css_class(
             "title-2"
+        )
+
+        brand_title_attrs = Pango.AttrList()
+        brand_title_attrs.insert(
+            Pango.attr_scale_new(
+                1.15
+            )
+        )
+
+        self.sidebar_brand_name.set_attributes(
+            brand_title_attrs
         )
 
         branding.append(

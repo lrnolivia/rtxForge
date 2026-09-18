@@ -1,0 +1,169 @@
+diff --git a/gui/rtxforge_gtk.py b/gui/rtxforge_gtk.py
+index 950dd42..0000000 100644
+--- a/gui/rtxforge_gtk.py
++++ b/gui/rtxforge_gtk.py
+@@ -430,6 +430,28 @@ CSS=b'''
+ .view-action { padding: 5px 8px; margin: 0; min-width: 20px; }
+ .mode-selector { padding: 4px; border-radius: 12px; }
+ .mode-selector toggle { padding: 9px 16px; min-height: 22px; border-radius: 9px; }
++.dashboard-header {
++    padding: 18px 22px;
++    border-radius: 18px;
++    background: alpha(@window_fg_color,0.045);
++    border: 1px solid alpha(@window_fg_color,0.06);
++}
++.dashboard-heading { padding: 0; }
++.dashboard-icon {
++    min-width: 42px;
++    min-height: 42px;
++    padding: 7px;
++    border-radius: 12px;
++    background: alpha(#76b900,0.16);
++}
++.dashboard-actions { padding: 0; }
++.dashboard-actions button { min-height: 32px; padding: 7px 12px; }
++.dashboard-actions button label { font-weight: 600; }
++.toast-status { margin: 0 0 14px 18px; }
++.toast-status label { font-weight: 500; }
++.game-details-page { padding: 24px; }
++.game-details-page > * { transition: opacity 180ms ease, margin 180ms ease; }
+ .profile-toggle { padding: 7px 12px; font-weight: 600; }
+ .status-pill { border-radius: 22px; padding: 9px 16px; margin: 8px; background: @card_bg_color; box-shadow: 0 3px 10px alpha(black,0.25); }
+@@ -524,7 +546,7 @@ class Window(Adw.ApplicationWindow):
+         self.overlay=Adw.ToastOverlay();self.set_content(self.overlay);outer=Gtk.Box(orientation=Gtk.Orientation.VERTICAL);self.overlay.set_child(outer)
+         header=Adw.HeaderBar();header.set_title_widget(Adw.WindowTitle(title='rtxForge',subtitle=f'Your whole library. One place. · {APP_VERSION}'))
+         self.refresh=self.title_button('view-refresh-symbolic','Refresh library',lambda *_:self.scan());header.pack_start(self.refresh)
+         self.add=self.title_button('list-add-symbolic','Add game folder',self.choose_folder);header.pack_start(self.add)
+         header.pack_end(self.title_button('emblem-system-symbolic','Settings',self.show_settings));header.pack_end(self.title_button('document-open-recent-symbolic','Activity',self.show_activity))
+-        top=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=14);margins(top,18);outer.append(top)
++        outer.append(header)
++        top=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=14);margins(top,18);outer.append(top)
+         hero=Gtk.Box(spacing=20);hero.add_css_class('hero');hero_reveal=Gtk.Revealer(transition_type=Gtk.RevealerTransitionType.SLIDE_UP,reveal_child=True,transition_duration=180);hero_reveal.set_child(hero);top.append(hero_reveal)
+-        title=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=7,hexpand=True);hero.append(title)
+-        title.append(label('GEFORCE / BUILT FOR LINUX','eyebrow'));title.append(label('Forge your entire library.','hero-title'))
++        heading=Gtk.Box(spacing=12,hexpand=True,halign=Gtk.Align.FILL);heading.add_css_class('dashboard-heading');hero.append(heading)
++        app_icon=Gtk.Image.new_from_icon_name('io.github.lrnolivia.RTXForge');app_icon.set_pixel_size(42);app_icon.add_css_class('dashboard-icon');heading.append(app_icon)
++        title=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=7,hexpand=True);heading.append(title)
++        title.append(label('GEFORCE / BUILT FOR LINUX','eyebrow'));title.append(label('Forge your entire library.','hero-title'))
+         self.stats=label('Finding your games…','dim-label');title.append(self.stats)
+         self.hardware_label=label('Preview mode · no game writes' if options.demo else 'Checking system hardware…','card-meta');title.append(self.hardware_label)
+         tuning,self.tuning_widgets=self.tuning_controls(self.settings)
+         title.append(tuning);self.strength_slider=self.tuning_widgets['nr_strength']
+-        bulk=Gtk.Box(spacing=6,valign=Gtk.Align.CENTER);header.pack_end(bulk)
+-        self.install_all=button('＋ Install All',lambda *_:self.launch_action('install',True),'forge-primary');bulk.append(self.install_all)
+-        self.uninstall_all=button('− Remove All',lambda *_:self.launch_action('uninstall',True),'bulk-remove');bulk.append(self.uninstall_all)
+-        self.reset_all=button('↺ Reset All',self.apply_library_settings);bulk.append(self.reset_all)
++        bulk=Gtk.Box(spacing=6,valign=Gtk.Align.START,halign=Gtk.Align.END);bulk.add_css_class('dashboard-actions');hero.append(bulk)
++        self.install_all=button('Install All',lambda *_:self.launch_action('install',True),'forge-primary');bulk.append(self.install_all)
++        self.uninstall_all=button('Remove All',lambda *_:self.launch_action('uninstall',True),'bulk-remove');bulk.append(self.uninstall_all)
++        self.reset_all=button('Reset All',self.apply_library_settings);bulk.append(self.reset_all)
+@@ -576,11 +598,13 @@ class Window(Adw.ApplicationWindow):
+         filters.append(button('Select all',lambda *_:self.select_all(True)));filters.append(button('Clear',lambda *_:self.select_all(False)))
+         margins(viewbar,18);viewbar.set_margin_top(0);viewbar.set_margin_bottom(0);viewbar.set_margin_top(20);outer.append(viewbar)
+         scroll=Gtk.ScrolledWindow(vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER);library_stage=Gtk.Overlay(vexpand=True);library_stage.set_child(scroll);outer.append(library_stage)
+@@ -584,12 +608,12 @@ class Window(Adw.ApplicationWindow):
+         scroll.get_vadjustment().connect('value-changed',collapse_header)
+-        self.flow=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,column_spacing=14,row_spacing=16,min_children_per_line=1,max_children_per_line=8,homogeneous=True,valign=Gtk.Align.START);margins(self.flow,18);scroll.set_child(self.flow)
++        self.flow=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,column_spacing=14,row_spacing=16,min_children_per_line=1,max_children_per_line=8,homogeneous=True,valign=Gtk.Align.START);margins(self.flow,18);scroll.set_child(self.flow);self.flow.connect('notify::width',lambda *_:self.update_flow_columns())
+         footer=Gtk.Box(spacing=8);footer.add_css_class('selection-bar');outer.append(footer)
+@@ -587,9 +611,6 @@ class Window(Adw.ApplicationWindow):
+         for name,op,css in [('Add Enhancements','install','forge-primary'),('Repair Files','repair',None),('Remove Enhancements','uninstall','bulk-remove'),('Reset Settings','reset',None)]:
+             b=button(name,lambda _,action=op:self.launch_action(action),css);footer.append(b);self.action_buttons.append(b)
+-        statusbox=Gtk.Box(spacing=10,halign=Gtk.Align.CENTER);statusbox.add_css_class('status-pill');outer.append(statusbox)
+-        self.spinner=Gtk.Spinner();statusbox.append(self.spinner);self.status=label('Ready');self.status.set_max_width_chars(48);self.status.set_ellipsize(Pango.EllipsizeMode.END);statusbox.append(self.status)
+-        self.elapsed=label('','dim-label');statusbox.append(self.elapsed);self.progress=Gtk.ProgressBar(width_request=130,valign=Gtk.Align.CENTER);statusbox.append(self.progress)
++        self.spinner=Gtk.Spinner();self.status=label('');self.elapsed=label('','dim-label');self.progress=Gtk.ProgressBar(width_request=130,valign=Gtk.Align.CENTER)
++        self.status.set_visible(False);self.progress.set_visible(False);self.elapsed.set_visible(False)
++        self._status_toast=None
+         GLib.timeout_add(180,self.tick)
+@@ -604,6 +625,20 @@ class Window(Adw.ApplicationWindow):
+     def title_button(self,icon,title,callback):
+         b=Gtk.Button(icon_name=icon);b.set_tooltip_text(title);b.update_property([Gtk.AccessibleProperty.LABEL],[title]);b.add_css_class('title-action');b.connect('clicked',callback);return b
++    def update_flow_columns(self):
++        if not hasattr(self,'flow') or self.settings.get('library_view')=='list':return
++        width=max(1,self.flow.get_width()-36)
++        scale=max(.7,min(1.5,float(self.settings.get('art_scale',100))/100))
++        card_width=(158 if self.settings.get('library_view')=='posters' else 290)*scale
++        columns=max(1,min(12,int((width+14)/(card_width+14))))
++        self.flow.set_min_children_per_line(columns)
++        self.flow.set_max_children_per_line(columns)
++        self.flow.set_homogeneous(True)
++    def status_toast(self,text,complete=False):
++        if self._status_toast:
++            try:self._status_toast.dismiss()
++            except Exception:pass
++        toast=Adw.Toast.new(str(text));toast.set_timeout(0 if not complete else 4);toast.set_button_label('×' if complete else '')
++        if complete:
++            try:toast.connect('button-clicked',lambda *_:toast.dismiss())
++            except Exception:pass
++        self._status_toast=toast;self.overlay.add_toast(toast)
+     def view_changed(self,toggle,key):
+@@ -611,7 +646,7 @@ class Window(Adw.ApplicationWindow):
+-    def toast(self,text):self.overlay.add_toast(Adw.Toast.new(str(text)))
++    def toast(self,text):self.status_toast(text,True)
+@@ -799,7 +834,7 @@ class Window(Adw.ApplicationWindow):
+-        if self.busy:self.elapsed.set_text(f'{int(time.monotonic()-self.started)}s')
++        if self.busy:self.elapsed.set_text(f'{int(time.monotonic()-self.started)}s')
+@@ -811,8 +846,8 @@ class Window(Adw.ApplicationWindow):
+         if event['kind']=='progress':
+-            self.status.set_text(event['label']);self.update_progress_art(event.get('game',''))
++            self.status_toast(event['label']);self.status.set_text(event['label']);self.update_progress_art(event.get('game',''))
+@@ -827,7 +862,7 @@ class Window(Adw.ApplicationWindow):
+-            if self.task_kind=='art':self.pending=(title,action,done,kind);self.cancel_art.set();self.status.set_text('Finishing current artwork request…')
++            if self.task_kind=='art':self.pending=(title,action,done,kind);self.cancel_art.set();self.status_toast('Finishing current artwork request…')
+             return
+-        self.busy=True;self.task_kind=kind;self.started=time.monotonic();self.spinner.start();self.status.set_text(title);self.progress.set_fraction(0);self.controls()
++        self.busy=True;self.task_kind=kind;self.started=time.monotonic();self.spinner.start();self.status_toast(title);self.status.set_text(title);self.progress.set_fraction(0);self.controls()
+@@ -839,7 +874,7 @@ class Window(Adw.ApplicationWindow):
+-        else:self.status.set_text('Ready');done(result)
++        else:self.status_toast('Completed',True);self.status.set_text('Ready');done(result)
+@@ -932,7 +967,7 @@ class Window(Adw.ApplicationWindow):
+-        view=self.settings.get('library_view','posters');self.flow.set_max_children_per_line(1 if view=='list' else 8);self.flow.set_homogeneous(view!='list')
++        view=self.settings.get('library_view','posters');self.flow.set_max_children_per_line(1 if view=='list' else 8);self.flow.set_homogeneous(view!='list')
+@@ -945,7 +980,7 @@ class Window(Adw.ApplicationWindow):
+-        self.filter_games();self.status.set_text('Your entire library is ready')
++        self.filter_games();self.update_flow_columns()
+@@ -1023,7 +1058,7 @@ class Window(Adw.ApplicationWindow):
+-        d,b,f=self.open_panel(game['name'],width=860,height=700)
++        d,b,f=self.open_panel(game['name'],width=860,height=620)
+@@ -1103,10 +1138,17 @@ class Window(Adw.ApplicationWindow):
+-        pages=Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE,transition_duration=220,hexpand=True);pages.set_vhomogeneous(False);b.append(pages)
++        pages=Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE,transition_duration=220,hexpand=True);pages.set_vhomogeneous(False);b.append(pages)
+         content={}
+         for name in ('Overview','Enhancements','Notes','Appearance'):
+-            page=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16);margins(page,24);content[name]=page;pages.add_titled(page,name,name);tabs.add(Adw.Toggle(name=name,label=name))
++            page=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16);margins(page,24);page.add_css_class('game-details-page');page.set_vexpand(False);content[name]=page;pages.add_titled(page,name,name);tabs.add(Adw.Toggle(name=name,label=name))
+         tabs.connect('notify::active-name',lambda w,*_:pages.set_visible_child_name(w.get_active_name()))
+         pages.connect('notify::visible-child-name',lambda w,*_:tabs.set_active_name(w.get_visible_child_name()))
++        def fit_detail_page(*_):
++            page=content.get(pages.get_visible_child_name())
++            if not page:return
++            def measure():
++                minimum,natural,_,_=page.measure(Gtk.Orientation.VERTICAL,-1)
++                target=max(520,min(820,natural+410))
++                self.animate_dialog_height(d,target)
++                return False
++            GLib.idle_add(measure)
++        pages.connect('notify::visible-child-name',fit_detail_page)
+@@ -1863,6 +1905,31 @@ class Window(Adw.ApplicationWindow):
+     def animate_dialog_width(self,target,duration=280):
+@@
+         GLib.timeout_add(16,tick)
++
++    def animate_dialog_height(self,target,duration=240):
++        dialog=self.dialog
++        if dialog is None:return
++        try:start=int(dialog.get_content_height())
++        except Exception:start=620
++        target=int(target)
++        if start==target:
++            dialog.set_content_height(target);return
++        started=time.monotonic()
++        def tick():
++            if self.dialog is not dialog:return False
++            t=min(1.0,(time.monotonic()-started)*1000.0/max(1,duration))
++            eased=1.0-(1.0-t)**3
++            dialog.set_content_height(round(start+(target-start)*eased))
++            return t<1.0
++        GLib.timeout_add(16,tick)
+*** End Patch

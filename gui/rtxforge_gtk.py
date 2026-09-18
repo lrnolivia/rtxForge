@@ -35,6 +35,7 @@ def artwork_accent(path,color=None):
             f'.{name} progressbar progress {{ background: {color}; transition: background-color 450ms; }} '
             f'.{name} scale highlight {{ background: {color}; }} '
             f'.{name} .card-title, .{name} .game-banner-title, .{name} .job-title, .{name} .game-heading, .{name} .eyebrow {{ color: {color}; }} '
+            f'.{name} .progress-poster-frame, .{name} .progress-panel {{ border-color: alpha({color},0.95); }} '
             f'.{name} button:focus-visible {{ outline-color: {color}; }}').encode())
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(),provider,Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION+1)
         ACCENT_PROVIDERS[name]=provider
@@ -66,11 +67,57 @@ CSS=b'''
 .game-banner { background: #252529; }
 .banner-shade { background: linear-gradient(to bottom, alpha(black,0.38), alpha(black,0.02) 38%, alpha(@window_bg_color,0.25) 65%, @window_bg_color 100%); }
 .game-banner-title { color: @window_fg_color; font-size: 34px; font-weight: 500; }
-.progress-content { padding: 24px; color: white; }
-.progress-shade { background: linear-gradient(to right, alpha(black,0.88), alpha(black,0.48)); }
+.progress-content { padding: 16px 18px 10px; color: white; }
+.progress-shade { background: linear-gradient(to right, alpha(#06080c,0.88), alpha(#06080c,0.40)); }
 .art-progress { color: white; }
-.job-title { font-size: 25px; font-weight: 500; }
-.result-success { background: #228844; color: white; border-radius: 99px; padding: 14px; }
+.progress-panel {
+    border-radius: 24px;
+    border: 2px solid alpha(white,0.08);
+    background: alpha(#0c1016,0.56);
+}
+.progress-panel.done {
+    background: alpha(#09110c,0.70);
+}
+.progress-poster-frame {
+    border-radius: 22px;
+    border: 2px solid alpha(white,0.08);
+    background: alpha(black,0.20);
+    padding: 0;
+}
+.progress-poster,
+.progress-poster image,
+.progress-poster picture,
+.progress-poster stack {
+    border-radius: 20px;
+}
+.progress-footer {
+    margin-top: 8px;
+    margin-bottom: 6px;
+    min-height: 0;
+}
+.progress-footer button {
+    min-height: 36px;
+    padding: 8px 16px;
+    border-radius: 12px;
+}
+.art-progress progressbar trough {
+    min-height: 10px;
+    border-radius: 99px;
+}
+.art-progress progressbar progress {
+    min-height: 10px;
+    border-radius: 99px;
+}
+.job-title { font-size: 28px; font-weight: 600; }
+.done-title { color: #2fbf61; }
+.done-button {
+    background: #2fbf61;
+    color: white;
+}
+.done-button:hover {
+    background: #34c86a;
+}
+.result-success { background: #2fbf61; color: white; border-radius: 99px; padding: 14px; }
 .result-error { background: #b93340; color: white; border-radius: 99px; padding: 14px; }
 .progress-content label { color: white; }
 .color-swatch { min-width: 32px; min-height: 32px; border-radius: 99px; padding: 0; }
@@ -606,28 +653,33 @@ class Window(Adw.ApplicationWindow):
         self.start('Preparing '+title.lower(),lambda:self.service.prepare(rows,mode,operation,adopt,visual_settings=values,save_defaults=entire and operation=='reset'),lambda review:self.action_ready(review,d,b,f,entire))
     def progress_view(self,body,message):
         clear(body);body.remove_css_class('panel-body');body.add_css_class('progress-content')
+        body.set_margin_top(0);body.set_margin_bottom(0);body.set_margin_start(0);body.set_margin_end(0)
         if getattr(self,'progress_dialog',None)!=self.dialog:
             box=self.dialog.get_child();box.get_first_child().set_visible(False);self.dialog.set_child(None)
-            self.progress_shell=Gtk.Overlay();self.dialog.set_child(self.progress_shell);self.dialog.add_css_class('art-progress')
+            self.progress_shell=Gtk.Overlay();self.dialog.set_child(self.progress_shell);self.dialog.add_css_class('art-progress');self.dialog.add_css_class('progress-dialog')
             self.job_art=Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE,transition_duration=500)
             self.job_pictures=[Gtk.Picture(content_fit=Gtk.ContentFit.COVER,can_shrink=True) for _ in range(2)]
             for i,picture in enumerate(self.job_pictures):self.job_art.add_named(picture,str(i))
             self.progress_shell.set_child(self.job_art)
             shade=Gtk.Box();shade.add_css_class('progress-shade');self.progress_shell.add_overlay(shade)
+            box.add_css_class('progress-panel')
             self.progress_shell.add_overlay(box);self.progress_shell.set_measure_overlay(box,True)
-            self.progress_dialog=self.dialog;self.job_picture_index=0;self.job_current_game=None;self.job_accent=None
-        line=Gtk.Box(spacing=20,valign=Gtk.Align.CENTER,vexpand=True);body.append(line)
-        self.job_poster=Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE,transition_duration=400,width_request=70,height_request=105,valign=Gtk.Align.CENTER)
+            self.progress_dialog=self.dialog;self.progress_panel=box;self.job_picture_index=0;self.job_current_game=None;self.job_accent=None
+        line=Gtk.Box(spacing=14,valign=Gtk.Align.CENTER,vexpand=True);body.append(line)
+        self.job_poster=Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE,transition_duration=400,width_request=176,height_request=264,valign=Gtk.Align.CENTER)
+        self.job_poster.add_css_class('progress-poster')
         self.poster_images=[CoverPicture(content_fit=Gtk.ContentFit.COVER,can_shrink=True) for _ in range(2)]
-        for picture in self.poster_images:picture.cover_width=70;picture.cover_ratio=2/3
+        for picture in self.poster_images:picture.cover_width=176;picture.cover_ratio=2/3
         for i,picture in enumerate(self.poster_images):self.job_poster.add_named(picture,str(i))
-        line.append(self.job_poster)
-        inner=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=9,valign=Gtk.Align.CENTER,hexpand=True);line.append(inner)
+        self.job_poster_frame=Gtk.Frame();self.job_poster_frame.add_css_class('progress-poster-frame');self.job_poster_frame.set_child(self.job_poster);line.append(self.job_poster_frame)
+        inner=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6,valign=Gtk.Align.CENTER,hexpand=True);line.append(inner)
         self.job_counter=label('Preparing…','dim-label');inner.append(self.job_counter)
-        self.job_label=label('','job-title');self.job_label.set_max_width_chars(34);inner.append(self.job_label)
-        self.job_caption=label(message);self.job_caption.set_max_width_chars(42);inner.append(self.job_caption)
-        self.job_bar=Gtk.ProgressBar();inner.append(self.job_bar)
+        self.job_label=label('','job-title');self.job_label.set_max_width_chars(28);inner.append(self.job_label)
+        self.job_caption=label(message);self.job_caption.set_max_width_chars(40);inner.append(self.job_caption)
+        self.job_bar=Gtk.ProgressBar();self.job_bar.set_hexpand(True);inner.append(self.job_bar)
+        footer=self.progress_panel.get_last_child();footer.add_css_class('progress-footer');footer.set_spacing(6);footer.set_margin_top(8);footer.set_margin_bottom(6)
         self.job_current_game=None;self.update_progress_art('')
+
     def update_progress_art(self,name):
         if not getattr(self,'job_label',None) or not hasattr(self,'job_art'):return
         games=getattr(self,'operation_games',[])
@@ -640,16 +692,29 @@ class Window(Adw.ApplicationWindow):
         if game.get('poster'):
             try:self.poster_images[self.job_picture_index].set_paintable(Gdk.Texture.new_from_filename(game['poster']));self.job_poster.set_visible_child_name(str(self.job_picture_index))
             except Exception:pass
-        if self.job_accent:self.dialog.remove_css_class(self.job_accent)
+        if self.job_accent:
+            for target in (self.dialog,getattr(self,'progress_panel',None),getattr(self,'job_poster_frame',None)):
+                if target is not None:target.remove_css_class(self.job_accent)
         self.job_accent=game.get('accent_class')
-        if self.job_accent:self.dialog.add_css_class(self.job_accent)
+        if self.job_accent:
+            for target in (self.dialog,getattr(self,'progress_panel',None),getattr(self,'job_poster_frame',None)):
+                if target is not None:target.add_css_class(self.job_accent)
+        self.job_label.remove_css_class('done-title')
         self.job_label.set_text(game['name'])
+
     def finish_progress(self,success,message,footer):
-        self.dialog.set_can_close(True);clear(footer)
-        icon=Gtk.Image.new_from_icon_name('emblem-ok-symbolic' if success else 'action-unavailable-symbolic');icon.set_pixel_size(34);icon.set_valign(Gtk.Align.CENTER);icon.add_css_class('result-success' if success else 'result-error')
+        self.dialog.set_can_close(True);clear(footer);footer.add_css_class('progress-footer');footer.set_spacing(6);footer.set_margin_top(8);footer.set_margin_bottom(6)
+        if hasattr(self,'progress_panel'):
+            if success:self.progress_panel.add_css_class('done')
+            else:self.progress_panel.remove_css_class('done')
+        icon=Gtk.Image.new_from_icon_name('emblem-ok-symbolic' if success else 'action-unavailable-symbolic');icon.set_pixel_size(40);icon.set_valign(Gtk.Align.CENTER);icon.add_css_class('result-success' if success else 'result-error')
         self.job_poster.add_named(icon,'result');self.job_poster.set_visible_child_name('result')
+        if success:self.job_label.add_css_class('done-title')
+        else:self.job_label.remove_css_class('done-title')
         self.job_label.set_text('All Done' if success else 'Error');self.job_counter.set_text('');self.job_caption.set_text(message);self.job_bar.set_visible(False)
-        footer.append(button('Done' if success else 'Close',lambda *_:(self.dialog.close(),self.scan()),'suggested-action' if success else None))
+        done=button('Done' if success else 'Close',lambda *_:(self.dialog.close(),self.scan()),'suggested-action' if success else None)
+        if success:done.add_css_class('done-button')
+        footer.append(done)
         self.job_label=None
 
     def add_cancel(self,footer):

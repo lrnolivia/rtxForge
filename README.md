@@ -7,11 +7,11 @@
 Download the Bazzite x86_64 AppImage from [Releases](https://github.com/lrnolivia/RTXForge/releases), mark it executable and open it. Choose **Install / update app** in Settings to register it in your launcher. Alternatively:
 
 ```sh
-chmod +x RTXForge-0.5.9-Bazzite-x86_64.AppImage
-./RTXForge-0.5.9-Bazzite-x86_64.AppImage --install
+chmod +x RTXForge-0.6.0-Bazzite-x86_64.AppImage
+./RTXForge-0.6.0-Bazzite-x86_64.AppImage --install
 ```
 
-The persistent copy lives in `~/.local/share/rtxforge/application/RTXForge.AppImage`. Repeat with a newer download to update; the previous AppImage is retained. Updating the application does not redeploy games.
+The persistent copy lives in `~/.local/share/rtxforge/application/RTXForge.AppImage`. After an updater-enabled build is installed, **Check for Updates** in Settings can download and verify a newer published AppImage, atomically replace the installed copy, and preserve the previous build. Updating the application does not redeploy games.
 
 ## Providers and installation
 
@@ -27,7 +27,7 @@ The engine leaves game-native DLSS-G in control: OptiScaler replacement input/ou
 
 **Reset Settings** on a game card (or in its details) restores current sharpening, NR, MFG and menu-font defaults. **Reset All Settings** applies them to managed games across the library, including Bench games. Unmanaged and running games are skipped with a reason. The game keeps its installed provider/profile; no DLLs, saves or Steam launch options are changed. Each changed INI is backed up under that game’s engine state in `settings-resets/`, with its path in the operation report.
 
-The main screen and each game panel expose **NR Strength**, **Sharpening**, and **MFG Multiplier**. NR and sharpening independently offer Off / Light / Medium / Strong. NR intensity and skin structure use 1.00 / 1.50 / 2.00; sharpening uses 0.25 / 0.375 / 0.50. Other visual settings retain 75% working scale, one Cinematic pass, local structure/tone 1.00 and auto skin mask. Strong remains the initial visual default.
+The main screen and each game panel expose **NR Strength**, **Sharpening**, and **MFG Multiplier**. NR Strength is adjustable from **0.0–2.0** in 0.1 increments and controls both NR intensity and skin structure. Sharpening is adjustable from **0.0–1.0** in 0.1 increments. Both controls can be dragged or entered numerically, and `0.0` disables the corresponding effect. Existing Off / Light / Medium / Strong desktop settings migrate to equivalent numeric values. Other visual settings retain 75% working scale, one Cinematic pass, local structure/tone 1.00 and auto skin mask. The initial defaults remain NR 2.0 and sharpening 0.5.
 
 MFG offers Off and 2×–6×. The requested ratio is written as `[DLSSG] OverrideInterpolationCount` (0 for Off, otherwise multiplier minus one), preserving native DLSS-G routing. Actual output depends on the game/runtime; FG must be enabled in the game. NR-only installations do not receive MFG changes; MFG-only installations do not receive NR changes.
 
@@ -44,14 +44,14 @@ Poster, capsule and list views, artwork-led game details, provider buttons, sele
 From source, run `./rtxforge` or `./START\ HERE.sh`. In the AppImage, use `--cli`. Both use the RC1.38-derived engine in `engine/rtxengine.py` through the same provider adapter as the GUI.
 
 ```sh
-./RTXForge-0.5.9-Bazzite-x86_64.AppImage --cli --help
+./RTXForge-0.6.0-Bazzite-x86_64.AppImage --cli --help
 ```
 
 Additional settings: `--nr-strength off|light|medium|strong`, `--sharpening-strength off|light|medium|strong`, `--mfg-multiplier 0|2|3|4|5|6` (0 is Off).
 
 Provider flags: `--runtime-provider y4my|dlss-unlocked`, `--feature-mode mfg-only|nr-only|nr-mfg`, `--disable-effects`.
 
-[Release notes](docs/RELEASE-0.5.9.md) describe validation and outstanding work. Historical custom MFG builds and their tags are preserved, but are not bundled into this release.
+[Release notes](docs/RELEASE-0.6.0.md) describe the 0.6.0 tuning, interface, validation, and compatibility changes. Historical custom MFG builds and their tags are preserved, but are not bundled into this release.
 
 DLSS-Unlocked offers separate **NR Only** (pinned NR-v0.8.6; keep in-game FG off) and **MFG Only** (NR-v0.9.1, NR off, bundled NVIDIA runtime updates) pipelines. MFG Only backs up existing native DLLs and restores them on uninstall. Uninstall before changing pipelines. Combined NR + MFG remains available for experimentation.
 

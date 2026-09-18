@@ -1,16 +1,49 @@
 """Optional library artwork/metadata. Never participates in an installation decision."""
 from pathlib import Path
-import json,urllib.request,urllib.parse,urllib.error,re,time,hashlib,html
+import json,urllib.request,urllib.parse,urllib.error,re,time,hashlib,html,math
 import transactions as t
 from storage import storage
-DEFAULTS={'game_accents':{},'sharpening_strength':'strong','mfg_multiplier':2,'nr_strength':'strong','runtime_provider':'y4my','enable_effects':True,'nr_runtime':'','dark':True,'library_view':'posters','art_scale':80,'cache_days':7,'network_timeout':10,'default_profile':'mfg-only','online_art':True,'steam_metadata':True,'recognize_previous':False,'extra_folders':[]}
+DEFAULTS={'game_accents':{},'sharpening_strength':0.5,'mfg_multiplier':2,'nr_strength':2.0,'runtime_provider':'y4my','enable_effects':True,'nr_runtime':'','dark':True,'library_view':'posters','art_scale':80,'cache_days':7,'network_timeout':10,'default_profile':'mfg-only','online_art':True,'steam_metadata':True,'recognize_previous':False,'extra_folders':[]}
+
+LEGACY_NR_STRENGTH={
+    'off':0.0,
+    'light':1.0,
+    'medium':1.5,
+    'strong':2.0,
+}
+
+LEGACY_SHARPENING_STRENGTH={
+    'off':0.0,
+    'light':0.3,
+    'medium':0.4,
+    'strong':0.5,
+}
+
+def normalize_strength(value,kind):
+    legacy=LEGACY_NR_STRENGTH if kind=='nr' else LEGACY_SHARPENING_STRENGTH
+    default=2.0 if kind=='nr' else 0.5
+    upper=2.0 if kind=='nr' else 1.0
+
+    if isinstance(value,str):
+        value=legacy.get(value,default)
+
+    if isinstance(value,bool):
+        return default
+
+    try:number=float(value)
+    except (TypeError,ValueError):return default
+
+    if not math.isfinite(number) or not 0.0<=number<=upper:
+        return default
+
+    return round(number,1)
 
 def settings_path(config):return storage(config)/'desktop/settings.json'
 def load_settings(config):
     try:
         settings={**DEFAULTS,**json.loads(settings_path(config).read_text())}
-        if settings.get('sharpening_strength') not in ('off','light','medium','strong'):settings['sharpening_strength']='strong'
-        if settings.get('nr_strength') not in ('off','light','medium','strong'):settings['nr_strength']='strong'
+        settings['nr_strength']=normalize_strength(settings.get('nr_strength'),'nr')
+        settings['sharpening_strength']=normalize_strength(settings.get('sharpening_strength'),'sharpness')
         if type(settings.get('mfg_multiplier')) is not int or settings['mfg_multiplier'] not in (0,2,3,4,5,6):settings['mfg_multiplier']=2
         return settings
     except (OSError,ValueError,t.Refusal):return {**DEFAULTS,'extra_folders':[]}

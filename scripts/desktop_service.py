@@ -43,12 +43,25 @@ class DesktopService:
                  'profile':('NR + MFG' if ini.get('DlssNr',{}).get('Enabled','false').lower()=='true' else 'MFG Only') if installed else 'Not installed'}
             if installed:
                 nr_values=ini.get('DlssNr',{});sharp_values=ini.get('Sharpness',{})
-                def equal_number(raw,expected):
-                    try:return abs(float(raw)-float(expected))<0.00001
-                    except (TypeError,ValueError):return False
-                row['nr_strength']=next((key for key,preset in engine.NR_STRENGTH_PRESETS.items() if key!='off' and equal_number(nr_values.get('Intensity'),preset['nr']) and equal_number(nr_values.get('SkinStructure'),preset['nr'])),None)
-                if nr_values.get('Enabled','').lower()=='false':row['nr_strength']='off'
-                row['sharpening_strength']=next((key for key,preset in engine.NR_STRENGTH_PRESETS.items() if equal_number(sharp_values.get('Sharpness'),preset['sharpness'])),None)
+
+                try:
+                    intensity=float(nr_values.get('Intensity',''))
+                    skin=float(nr_values.get('SkinStructure',''))
+                    row['nr_strength']=(
+                        0.0
+                        if nr_values.get('Enabled','').lower()=='false'
+                        else round(intensity,1)
+                        if 0.0<=intensity<=2.0 and abs(intensity-skin)<0.00001
+                        else None
+                    )
+                except (TypeError,ValueError):
+                    row['nr_strength']=None
+
+                try:
+                    sharp=float(sharp_values.get('Sharpness',''))
+                    row['sharpening_strength']=round(sharp,1) if 0.0<=sharp<=1.0 else None
+                except (TypeError,ValueError):
+                    row['sharpening_strength']=None
                 try:
                     count=int(ini.get('DLSSG',{}).get('OverrideInterpolationCount','auto'))
                     row['mfg_multiplier']=0 if count==0 else count+1 if count in range(1,6) else None
@@ -94,11 +107,29 @@ class DesktopService:
         return review
 
     def save_visual_defaults(self,values):
-        t.need(values.get('nr_strength') in ('off','light','medium','strong'),'Unknown NR strength')
-        t.need(values.get('sharpening_strength') in ('off','light','medium','strong'),'Unknown sharpening strength')
-        t.need(type(values.get('mfg_multiplier')) is int and values['mfg_multiplier'] in (0,2,3,4,5,6),'Invalid MFG multiplier')
+        nr=values.get('nr_strength')
+        sharp=values.get('sharpening_strength')
+
+        t.need(
+            type(nr) in (int,float) and not isinstance(nr,bool) and 0.0<=float(nr)<=2.0,
+            'NR strength must be between 0.0 and 2.0',
+        )
+        t.need(
+            type(sharp) in (int,float) and not isinstance(sharp,bool) and 0.0<=float(sharp)<=1.0,
+            'Sharpening strength must be between 0.0 and 1.0',
+        )
+        t.need(
+            type(values.get('mfg_multiplier')) is int and
+            values['mfg_multiplier'] in (0,2,3,4,5,6),
+            'Invalid MFG multiplier',
+        )
+
         settings=library_media.load_settings(self.config)
-        settings.update({key:values[key] for key in ('nr_strength','sharpening_strength','mfg_multiplier')})
+        settings.update(
+            nr_strength=round(float(nr),1),
+            sharpening_strength=round(float(sharp),1),
+            mfg_multiplier=values['mfg_multiplier'],
+        )
         library_media.save_settings(self.config,settings)
 
     def recoveries(self):

@@ -33,9 +33,9 @@ def artwork_accent(path,color=None):
             f'.{name} toggle-group toggle:checked {{ background: {color}; color: white; }} '
             f'.{name} .game-details {{ color: {color}; }} '
             f'.{name} progressbar progress {{ background: {color}; transition: background-color 450ms; }} '
+            f'.{name} .progress-poster-frame {{ border-color: {color}; }} '
             f'.{name} scale highlight {{ background: {color}; }} '
             f'.{name} .card-title, .{name} .game-banner-title, .{name} .job-title, .{name} .game-heading, .{name} .eyebrow {{ color: {color}; }} '
-            f'.{name} .progress-poster-frame, .{name} .progress-panel {{ border-color: alpha({color},0.95); }} '
             f'.{name} button:focus-visible {{ outline-color: {color}; }}').encode())
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(),provider,Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION+1)
         ACCENT_PROVIDERS[name]=provider
@@ -55,71 +55,204 @@ class HeroPicture(Gtk.Picture):
     def do_measure(self,orientation,for_size):
         return (0,0,-1,-1) if orientation==Gtk.Orientation.HORIZONTAL else (300,300,-1,-1)
 
+class BlurredTexture(Gtk.Widget):
+    """Render a frozen Gdk.Texture through GTK/GSK blur."""
+    def __init__(self,texture=None,radius=22.0):
+        super().__init__(hexpand=True,vexpand=True)
+        self.texture=texture
+        self.radius=radius
+
+    def set_texture(self,texture):
+        self.texture=texture
+        self.queue_draw()
+
+    def do_snapshot(self,snapshot):
+        texture=self.texture
+        if texture is None:
+            return
+
+        width=max(1,self.get_width())
+        height=max(1,self.get_height())
+
+        tw=max(1,texture.get_width())
+        th=max(1,texture.get_height())
+
+        # Cover the available area while maintaining aspect ratio.
+        scale=max(width/tw,height/th)
+        draw_w=tw*scale
+        draw_h=th*scale
+        x=(width-draw_w)/2
+        y=(height-draw_h)/2
+
+        rect=Graphene.Rect()
+        rect.init(x,y,draw_w,draw_h)
+
+        snapshot.push_blur(self.radius)
+        snapshot.append_texture(texture,rect)
+        snapshot.pop()
+
 CSS=b'''
 .dashboard-fade { background: linear-gradient(to bottom, @window_bg_color 0%, alpha(@window_bg_color,0.94) 18%, alpha(@window_bg_color,0.64) 46%, alpha(@window_bg_color,0.24) 74%, alpha(@window_bg_color,0) 100%); }
 .settings-navigation { background: alpha(@window_fg_color,0.055); padding: 12px; }
 .settings-navigation row { padding: 0; margin: 2px 0; border-radius: 8px; }
 .settings-navigation row box { padding: 10px 12px; }
 .settings-content { padding: 24px; }
-.floating-tabs toggle { border-radius: 99px; padding: 9px 16px; }
-.floating-tabs { padding: 5px; border-radius: 99px; background: alpha(#151518,0.78); color: white; }
-.floating-tabs.light { background: alpha(white,0.82); color: #202024; }
+.floating-tabs toggle {
+    border-radius: 99px;
+    padding: 7px 14px;
+    min-height: 20px;
+}
+
+.floating-tabs {
+    padding: 4px;
+    border-radius: 99px;
+    background: alpha(#151518,0.78);
+    color: white;
+}
+
+.floating-tabs.light {
+    background: alpha(white,0.82);
+    color: #202024;
+}
 .game-banner { background: #252529; }
 .banner-shade { background: linear-gradient(to bottom, alpha(black,0.38), alpha(black,0.02) 38%, alpha(@window_bg_color,0.25) 65%, @window_bg_color 100%); }
 .game-banner-title { color: @window_fg_color; font-size: 34px; font-weight: 500; }
-.progress-content { padding: 16px 18px 10px; color: white; }
-.progress-shade { background: linear-gradient(to right, alpha(#06080c,0.88), alpha(#06080c,0.40)); }
-.art-progress { color: white; }
-.progress-panel {
-    border-radius: 24px;
-    border: 2px solid alpha(white,0.08);
-    background: alpha(#0c1016,0.56);
-}
-.progress-panel.done {
-    background: alpha(#09110c,0.70);
-}
-.progress-poster-frame {
-    border-radius: 22px;
-    border: 2px solid alpha(white,0.08);
-    background: alpha(black,0.20);
-    padding: 0;
-}
-.progress-poster,
-.progress-poster image,
-.progress-poster picture,
-.progress-poster stack {
-    border-radius: 20px;
-}
-.progress-footer {
-    margin-top: 8px;
-    margin-bottom: 6px;
-    min-height: 0;
-}
-.progress-footer button {
-    min-height: 36px;
-    padding: 8px 16px;
-    border-radius: 12px;
-}
-.art-progress progressbar trough {
-    min-height: 10px;
-    border-radius: 99px;
-}
-.art-progress progressbar progress {
-    min-height: 10px;
-    border-radius: 99px;
-}
-.job-title { font-size: 28px; font-weight: 600; }
-.done-title { color: #2fbf61; }
-.done-button {
-    background: #2fbf61;
+.progress-content {
+    /* More breathing room against the modal's outer edges. */
+    padding: 30px 34px 26px;
     color: white;
 }
-.done-button:hover {
-    background: #34c86a;
+
+.progress-shade {
+    background:
+        linear-gradient(
+            to right,
+            alpha(black,0.88),
+            alpha(black,0.48)
+        );
 }
-.result-success { background: #2fbf61; color: white; border-radius: 99px; padding: 14px; }
-.result-error { background: #b93340; color: white; border-radius: 99px; padding: 14px; }
-.progress-content label { color: white; }
+
+.done-shade {
+    background: alpha(#030507,0.60);
+}
+
+.done-fallback {
+    background: #080a0d;
+}
+
+.art-progress {
+    color: white;
+}
+
+/*
+ * White translucent hairlines.
+ * Previous patch used 2px; these are 70% thinner.
+ */
+.progress-panel {
+    border-radius: 22px;
+
+    /* 70% thinner than the old 2px treatment. */
+    border: 0.6px solid alpha(black,0.60);
+
+    background: alpha(#0a0d12,0.54);
+}
+
+.progress-panel.done {
+    background: alpha(#070a0c,0.32);
+}
+
+.progress-poster-frame {
+    border-radius: 18px;
+
+    /*
+     * Neutral fallback only.
+     * artwork_accent() overrides this with the game's accent.
+     */
+    border: 0.6px solid alpha(white,0.18);
+
+    background: alpha(black,0.16);
+    padding: 0;
+}
+
+.progress-poster {
+    border-radius: 17px;
+}
+
+.job-title {
+    font-size: 28px;
+    font-weight: 600;
+}
+
+.result-success {
+    color: white;
+}
+
+.result-success-circle {
+    min-width: 52px;
+    min-height: 52px;
+    border-radius: 999px;
+    background: #2fbf61;
+    color: white;
+    padding: 0;
+}
+
+.result-error {
+    background: #b93340;
+    color: white;
+    border-radius: 99px;
+    padding: 14px;
+}
+
+.done-title {
+    color: #2fbf61;
+    font-size: 28px;
+    font-weight: 600;
+}
+
+button.done-button,
+button.done-button.suggested-action {
+    background: #2fbf61;
+    color: white;
+
+    border-radius: 11px;
+
+    min-height: 36px;
+    padding: 8px 20px;
+}
+
+button.done-button label,
+button.done-button.suggested-action label {
+    color: white;
+}
+
+button.done-button:hover,
+button.done-button.suggested-action:hover {
+    background: #35c96a;
+}
+
+.progress-footer {
+    min-height: 0;
+}
+
+.progress-footer button {
+    min-height: 34px;
+    padding: 7px 14px;
+}
+
+.art-progress progressbar trough {
+    min-height: 9px;
+    border-radius: 99px;
+}
+
+.art-progress progressbar progress {
+    min-height: 9px;
+    border-radius: 99px;
+}
+
+.progress-content label {
+    color: white;
+}
+
 .color-swatch { min-width: 32px; min-height: 32px; border-radius: 99px; padding: 0; }
 
 .settings-sidebar row { padding-left: 16px; padding-right: 16px; }
@@ -292,30 +425,170 @@ class Window(Adw.ApplicationWindow):
         self.mode=group.get_active_name() or 'mfg-only'
         self.profile_note.set_text({'nr-only':'Neural Rendering','nr-mfg':'Neural Rendering and frame generation','mfg-only':'Native frame generation'}[self.mode])
     def tuning_controls(self,initial):
-        box=Gtk.Box(spacing=8);widgets={}
-        for key,title in [('nr_strength','NR Strength'),('sharpening_strength','Sharpening')]:
-            pod=Gtk.Box(hexpand=True);pod.add_css_class('control-pod');box.append(pod)
-            group=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=3,hexpand=True,valign=Gtk.Align.CENTER);pod.append(group)
-            heading=label(title,'heading');group.append(heading)
-            slider=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,0,len(self.strength_names)-1,1)
-            slider.set_digits(0);slider.set_draw_value(False);slider.set_round_digits(0);slider.set_hexpand(True);slider.set_size_request(125,-1)
-            slider.update_property([Gtk.AccessibleProperty.LABEL],[title])
-            slider.set_tooltip_text('Off · Light · Medium · Strong')
-            slider.set_value(self.strength_names.index(initial.get(key) or self.settings.get(key,'strong')))
-            group.append(slider);detail=label('','dim-label');group.append(detail)
-            def update(w,h=heading,d=detail,k=key,t=title):
-                name=self.strength_names[int(round(w.get_value()))];preset=self.strength_presets[name]
-                h.set_text(t+' · '+name.title());d.set_text('Disabled' if name=='off' else 'Intensity / skin '+preset['nr'] if k=='nr_strength' else 'Level '+preset['sharpness'])
-            slider.connect('value-changed',update);update(slider);widgets[key]=slider
-        pod=Gtk.Box();pod.add_css_class('control-pod');box.append(pod)
-        group=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6,valign=Gtk.Align.CENTER);pod.append(group);group.append(label('MFG','heading'))
-        multiplier=Gtk.DropDown.new_from_strings(['Off']+[str(x)+'×' for x in range(2,7)])
-        multiplier.set_selected(self.multiplier_values.index(initial['mfg_multiplier'] if initial.get('mfg_multiplier') is not None else self.settings.get('mfg_multiplier',2)))
-        multiplier.update_property([Gtk.AccessibleProperty.LABEL],['MFG Multiplier'])
-        group.append(multiplier);group.append(label('Requested ratio','dim-label'));widgets['mfg_multiplier']=multiplier
+        box=Gtk.Box(spacing=8)
+        widgets={}
+
+        for key,title,upper in [
+            ('nr_strength','NR Strength',2.0),
+            ('sharpening_strength','Sharpening',1.0),
+        ]:
+            pod=Gtk.Box(hexpand=True)
+            pod.add_css_class('control-pod')
+            box.append(pod)
+
+            group=Gtk.Box(
+                orientation=Gtk.Orientation.VERTICAL,
+                spacing=3,
+                hexpand=True,
+                valign=Gtk.Align.CENTER,
+            )
+            pod.append(group)
+
+            raw=initial.get(key)
+            if raw is None:
+                raw=self.settings.get(
+                    key,
+                    2.0 if key=='nr_strength' else 0.5,
+                )
+
+            # Backward-compatible display for old preset-shaped rows.
+            if isinstance(raw,str):
+                if raw=='off':
+                    value=0.0
+                else:
+                    preset=self.strength_presets.get(raw,{})
+                    field='nr' if key=='nr_strength' else 'sharpness'
+                    try:value=float(preset[field])
+                    except (KeyError,TypeError,ValueError):
+                        value=2.0 if key=='nr_strength' else 0.5
+            else:
+                try:value=float(raw)
+                except (TypeError,ValueError):
+                    value=2.0 if key=='nr_strength' else 0.5
+
+            value=max(0.0,min(upper,round(value,1)))
+
+            adjustment=Gtk.Adjustment(
+                value=value,
+                lower=0.0,
+                upper=upper,
+                step_increment=0.1,
+                page_increment=0.1,
+            )
+
+            header=Gtk.Box(spacing=8)
+            heading=label(title,'heading')
+            heading.set_hexpand(True)
+            header.append(heading)
+
+            spin=Gtk.SpinButton.new(
+                adjustment,
+                0.1,
+                1,
+            )
+            spin.set_numeric(True)
+            spin.set_width_chars(4)
+            spin.set_valign(Gtk.Align.CENTER)
+            spin.update_property(
+                [Gtk.AccessibleProperty.LABEL],
+                [title+' exact value'],
+            )
+            header.append(spin)
+
+            group.append(header)
+
+            slider=Gtk.Scale(
+                orientation=Gtk.Orientation.HORIZONTAL,
+                adjustment=adjustment,
+            )
+            slider.set_digits(1)
+            slider.set_draw_value(False)
+            slider.set_hexpand(True)
+            slider.set_size_request(125,-1)
+            slider.update_property(
+                [Gtk.AccessibleProperty.LABEL],
+                [title],
+            )
+
+            slider.set_tooltip_text(
+                '0.0 – 2.0 · 0.1 increments'
+                if key=='nr_strength'
+                else '0.0 – 1.0 · 0.1 increments'
+            )
+
+            # Existing code changes slider sensitivity. Keep the numeric
+            # entry synchronized with that state too.
+            slider.connect(
+                'notify::sensitive',
+                lambda w,*_,sp=spin:
+                    sp.set_sensitive(w.get_sensitive()),
+            )
+
+            group.append(slider)
+
+            detail=label('','dim-label')
+            group.append(detail)
+
+            def update(w,d=detail,k=key):
+                number=round(w.get_value(),1)
+                if number==0.0:
+                    d.set_text('Disabled')
+                elif k=='nr_strength':
+                    d.set_text(
+                        f'Intensity / skin · {number:.1f}'
+                    )
+                else:
+                    d.set_text(
+                        f'Sharpness · {number:.1f}'
+                    )
+
+            slider.connect('value-changed',update)
+            update(slider)
+
+            widgets[key]=slider
+
+        pod=Gtk.Box()
+        pod.add_css_class('control-pod')
+        box.append(pod)
+
+        group=Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=6,
+            valign=Gtk.Align.CENTER,
+        )
+        pod.append(group)
+        group.append(label('MFG','heading'))
+
+        multiplier=Gtk.DropDown.new_from_strings(
+            ['Off']+[str(x)+'×' for x in range(2,7)]
+        )
+        multiplier.set_selected(
+            self.multiplier_values.index(
+                initial['mfg_multiplier']
+                if initial.get('mfg_multiplier') is not None
+                else self.settings.get('mfg_multiplier',2)
+            )
+        )
+        multiplier.update_property(
+            [Gtk.AccessibleProperty.LABEL],
+            ['MFG Multiplier'],
+        )
+
+        group.append(multiplier)
+        group.append(label('Requested ratio','dim-label'))
+        widgets['mfg_multiplier']=multiplier
+
         return box,widgets
+
     def tuning_values(self,widgets):
-        return {key:self.multiplier_values[int(w.get_selected())] if key=='mfg_multiplier' else self.strength_names[int(round(w.get_value()))] for key,w in widgets.items()}
+        return {
+            key:
+                self.multiplier_values[int(w.get_selected())]
+                if key=='mfg_multiplier'
+                else round(float(w.get_value()),1)
+            for key,w in widgets.items()
+        }
+
     def chosen_strength(self):return self.tuning_values(self.tuning_widgets)['nr_strength']
     def defaults_changed(self):return any(self.settings.get(k)!=v for k,v in self.tuning_values(self.tuning_widgets).items())
     def strength_changed(self,*_):
@@ -388,6 +661,26 @@ class Window(Adw.ApplicationWindow):
         if self.pending:
             task=self.pending;self.pending=None;self.start(*task)
         return False
+    def snapshot_library_texture(self):
+        """Freeze the main library content for result-screen blur."""
+        widget=self.overlay
+
+        width=max(1,widget.get_width())
+        height=max(1,widget.get_height())
+
+        paint=Gtk.WidgetPaintable.new(widget)
+        snapshot=Gtk.Snapshot()
+        paint.snapshot(snapshot,width,height)
+
+        node=snapshot.to_node()
+        if node is None:
+            return None
+
+        rect=Graphene.Rect()
+        rect.init(0,0,width,height)
+
+        return self.get_renderer().render_texture(node,rect)
+
     def open_panel(self,title,width=730,height=620,show_close=True):
         if self.dialog:self.dialog.force_close()
         dialog=Adw.Dialog(title=title,content_width=width,content_height=height);self.dialog=dialog;self.job_label=None
@@ -641,6 +934,12 @@ class Window(Adw.ApplicationWindow):
         if applying_strength:title='Apply Settings to Library'
         elif visual_settings is not None:title='Apply Game Settings'
         self.operation_previous=targets[0] if targets and len(targets)==1 else None
+
+        # Freeze the underlying library before the modal appears.
+        # The Done screen uses this rather than the current game's hero art.
+        try:self.done_backdrop=self.snapshot_library_texture()
+        except Exception:self.done_backdrop=None
+
         self.operation_cancel=threading.Event();self.operation_executing=False
         d,b,f=self.open_panel(title,width=580,height=310,show_close=False);d.set_can_close(False)
         self.add_cancel(f)
@@ -652,79 +951,476 @@ class Window(Adw.ApplicationWindow):
         mode=self.mode;adopt=self.settings['recognize_previous'];values=self.tuning_values(self.tuning_widgets) if entire and operation=='reset' else visual_settings
         self.start('Preparing '+title.lower(),lambda:self.service.prepare(rows,mode,operation,adopt,visual_settings=values,save_defaults=entire and operation=='reset'),lambda review:self.action_ready(review,d,b,f,entire))
     def progress_view(self,body,message):
-        clear(body);body.remove_css_class('panel-body');body.add_css_class('progress-content')
-        body.set_margin_top(0);body.set_margin_bottom(0);body.set_margin_start(0);body.set_margin_end(0)
+        clear(body)
+
+        body.remove_css_class('panel-body')
+        body.add_css_class('progress-content')
+
+        body.set_vexpand(True)
+        body.set_valign(Gtk.Align.FILL)
+
+        body.set_margin_top(0)
+        body.set_margin_bottom(0)
+        body.set_margin_start(0)
+        body.set_margin_end(0)
+
+        # Give the 175x263 poster real room instead of squeezing it
+        # into the original 580x310 operation dialog.
+        self.dialog.set_content_width(640)
+        self.dialog.set_content_height(398)
+
         if getattr(self,'progress_dialog',None)!=self.dialog:
-            box=self.dialog.get_child();box.get_first_child().set_visible(False);self.dialog.set_child(None)
-            self.progress_shell=Gtk.Overlay();self.dialog.set_child(self.progress_shell);self.dialog.add_css_class('art-progress');self.dialog.add_css_class('progress-dialog')
-            self.job_art=Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE,transition_duration=500)
-            self.job_pictures=[Gtk.Picture(content_fit=Gtk.ContentFit.COVER,can_shrink=True) for _ in range(2)]
-            for i,picture in enumerate(self.job_pictures):self.job_art.add_named(picture,str(i))
+            box=self.dialog.get_child()
+
+            # Hide operation title bar while the cinematic
+            # progress/result presentation is active.
+            box.get_first_child().set_visible(False)
+
+            self.dialog.set_child(None)
+
+            self.progress_shell=Gtk.Overlay()
+            self.dialog.set_child(self.progress_shell)
+
+            self.dialog.add_css_class('art-progress')
+
+            # ACTIVE operation only: current game's hero backdrop.
+            self.job_art=Gtk.Stack(
+                transition_type=Gtk.StackTransitionType.CROSSFADE,
+                transition_duration=500,
+            )
+
+            self.job_pictures=[
+                Gtk.Picture(
+                    content_fit=Gtk.ContentFit.COVER,
+                    can_shrink=True,
+                )
+                for _ in range(2)
+            ]
+
+            for i,picture in enumerate(self.job_pictures):
+                self.job_art.add_named(picture,str(i))
+
             self.progress_shell.set_child(self.job_art)
-            shade=Gtk.Box();shade.add_css_class('progress-shade');self.progress_shell.add_overlay(shade)
+
+            self.progress_shade=Gtk.Box()
+            self.progress_shade.add_css_class('progress-shade')
+            self.progress_shell.add_overlay(self.progress_shade)
+
             box.add_css_class('progress-panel')
-            self.progress_shell.add_overlay(box);self.progress_shell.set_measure_overlay(box,True)
-            self.progress_dialog=self.dialog;self.progress_panel=box;self.job_picture_index=0;self.job_current_game=None;self.job_accent=None
-        line=Gtk.Box(spacing=14,valign=Gtk.Align.CENTER,vexpand=True);body.append(line)
-        self.job_poster=Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE,transition_duration=400,width_request=176,height_request=264,valign=Gtk.Align.CENTER)
+            box.set_overflow(Gtk.Overflow.HIDDEN)
+
+            self.progress_shell.add_overlay(box)
+            self.progress_shell.set_measure_overlay(box,True)
+
+            self.progress_dialog=self.dialog
+            self.progress_panel=box
+
+            self.job_picture_index=0
+            self.job_current_game=None
+            self.job_accent=None
+
+        # This box consumes all available body height so its actual
+        # content group can sit exactly in the vertical middle.
+        center=Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            valign=Gtk.Align.FILL,
+            vexpand=True,
+        )
+        body.append(center)
+
+        line=Gtk.Box(
+            spacing=20,
+            halign=Gtk.Align.FILL,
+            valign=Gtk.Align.CENTER,
+            vexpand=True,
+        )
+        center.append(line)
+
+        # 2.5x original 70x105 poster.
+        self.job_poster=Gtk.Stack(
+            transition_type=Gtk.StackTransitionType.CROSSFADE,
+            transition_duration=400,
+            width_request=175,
+            height_request=263,
+            halign=Gtk.Align.CENTER,
+            valign=Gtk.Align.CENTER,
+        )
+
         self.job_poster.add_css_class('progress-poster')
-        self.poster_images=[CoverPicture(content_fit=Gtk.ContentFit.COVER,can_shrink=True) for _ in range(2)]
-        for picture in self.poster_images:picture.cover_width=176;picture.cover_ratio=2/3
-        for i,picture in enumerate(self.poster_images):self.job_poster.add_named(picture,str(i))
-        self.job_poster_frame=Gtk.Frame();self.job_poster_frame.add_css_class('progress-poster-frame');self.job_poster_frame.set_child(self.job_poster);line.append(self.job_poster_frame)
-        inner=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6,valign=Gtk.Align.CENTER,hexpand=True);line.append(inner)
-        self.job_counter=label('Preparing…','dim-label');inner.append(self.job_counter)
-        self.job_label=label('','job-title');self.job_label.set_max_width_chars(28);inner.append(self.job_label)
-        self.job_caption=label(message);self.job_caption.set_max_width_chars(40);inner.append(self.job_caption)
-        self.job_bar=Gtk.ProgressBar();self.job_bar.set_hexpand(True);inner.append(self.job_bar)
-        footer=self.progress_panel.get_last_child();footer.add_css_class('progress-footer');footer.set_spacing(6);footer.set_margin_top(8);footer.set_margin_bottom(6)
-        self.job_current_game=None;self.update_progress_art('')
+        self.job_poster.set_overflow(Gtk.Overflow.HIDDEN)
+
+        self.poster_images=[
+            CoverPicture(
+                content_fit=Gtk.ContentFit.COVER,
+                can_shrink=True,
+            )
+            for _ in range(2)
+        ]
+
+        for picture in self.poster_images:
+            picture.cover_width=175
+            picture.cover_ratio=2/3
+
+        for i,picture in enumerate(self.poster_images):
+            self.job_poster.add_named(picture,str(i))
+
+        # Tiny frame allowance prevents GTK clipping the poster edge.
+        self.job_poster_frame=Gtk.Frame(
+            width_request=177,
+            height_request=265,
+            halign=Gtk.Align.CENTER,
+            valign=Gtk.Align.CENTER,
+        )
+
+        self.job_poster_frame.add_css_class(
+            'progress-poster-frame'
+        )
+
+        self.job_poster_frame.set_overflow(
+            Gtk.Overflow.HIDDEN
+        )
+
+        self.job_poster_frame.set_child(
+            self.job_poster
+        )
+
+        line.append(self.job_poster_frame)
+
+        inner=Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=8,
+            halign=Gtk.Align.FILL,
+            valign=Gtk.Align.CENTER,
+            hexpand=True,
+        )
+
+        line.append(inner)
+
+        self.job_counter=label(
+            'Preparing…',
+            'dim-label',
+        )
+        inner.append(self.job_counter)
+
+        self.job_label=label(
+            '',
+            'job-title',
+        )
+        self.job_label.set_max_width_chars(28)
+        inner.append(self.job_label)
+
+        self.job_caption=label(message)
+        self.job_caption.set_max_width_chars(38)
+        inner.append(self.job_caption)
+
+        self.job_bar=Gtk.ProgressBar()
+        self.job_bar.set_hexpand(True)
+        inner.append(self.job_bar)
+
+        footer=self.progress_panel.get_last_child()
+
+        footer.add_css_class('progress-footer')
+        footer.set_spacing(6)
+
+        # Enough space that the button doesn't look stuck to the edge,
+        # without returning to the giant empty footer.
+        footer.set_margin_top(2)
+        footer.set_margin_bottom(20)
+        footer.set_margin_start(28)
+        footer.set_margin_end(28)
+
+        self.progress_body=body
+        self.progress_footer=footer
+
+        self.job_current_game=None
+
+        self.update_progress_art('')
 
     def update_progress_art(self,name):
-        if not getattr(self,'job_label',None) or not hasattr(self,'job_art'):return
+        if not getattr(self,'job_label',None) or not hasattr(self,'job_art'):
+            return
+
         games=getattr(self,'operation_games',[])
-        game=next((g for g in games if g['name']==name),games[0] if games else None)
-        if not game or game['game']==getattr(self,'job_current_game',None):return
-        self.job_current_game=game['game'];path=game.get('hero') or game.get('capsule') or game.get('poster');self.job_picture_index=1-self.job_picture_index
-        if path:
-            try:self.job_pictures[self.job_picture_index].set_paintable(Gdk.Texture.new_from_filename(path));self.job_art.set_visible_child_name(str(self.job_picture_index))
-            except Exception:pass
+
+        game=next(
+            (g for g in games if g['name']==name),
+            games[0] if games else None,
+        )
+
+        if not game or game['game']==getattr(
+            self,
+            'job_current_game',
+            None,
+        ):
+            return
+
+        self.job_current_game=game['game']
+        self.job_picture_index=1-self.job_picture_index
+
+        hero=(
+            game.get('hero')
+            or game.get('capsule')
+            or game.get('poster')
+        )
+
+        if hero:
+            try:
+                self.job_pictures[
+                    self.job_picture_index
+                ].set_paintable(
+                    Gdk.Texture.new_from_filename(hero)
+                )
+
+                self.job_art.set_visible_child_name(
+                    str(self.job_picture_index)
+                )
+            except Exception:
+                pass
+
         if game.get('poster'):
-            try:self.poster_images[self.job_picture_index].set_paintable(Gdk.Texture.new_from_filename(game['poster']));self.job_poster.set_visible_child_name(str(self.job_picture_index))
-            except Exception:pass
+            try:
+                self.poster_images[
+                    self.job_picture_index
+                ].set_paintable(
+                    Gdk.Texture.new_from_filename(
+                        game['poster']
+                    )
+                )
+
+                self.job_poster.set_visible_child_name(
+                    str(self.job_picture_index)
+                )
+            except Exception:
+                pass
+
+        # Accent still drives title/progress treatment.
+        # It no longer touches either border.
         if self.job_accent:
-            for target in (self.dialog,getattr(self,'progress_panel',None),getattr(self,'job_poster_frame',None)):
-                if target is not None:target.remove_css_class(self.job_accent)
+            self.dialog.remove_css_class(self.job_accent)
+
         self.job_accent=game.get('accent_class')
+
         if self.job_accent:
-            for target in (self.dialog,getattr(self,'progress_panel',None),getattr(self,'job_poster_frame',None)):
-                if target is not None:target.add_css_class(self.job_accent)
-        self.job_label.remove_css_class('done-title')
+            self.dialog.add_css_class(self.job_accent)
+
         self.job_label.set_text(game['name'])
 
     def finish_progress(self,success,message,footer):
-        self.dialog.set_can_close(True);clear(footer);footer.add_css_class('progress-footer');footer.set_spacing(6);footer.set_margin_top(8);footer.set_margin_bottom(6)
+        self.dialog.set_can_close(True)
+
+        clear(footer)
+
+        footer.add_css_class('progress-footer')
+        footer.set_spacing(6)
+
+        footer.set_margin_top(10)
+        footer.set_margin_bottom(20)
+        footer.set_margin_start(28)
+        footer.set_margin_end(28)
+
+        body=getattr(
+            self,
+            'progress_body',
+            None,
+        )
+
+        if body is not None:
+            clear(body)
+
+            body.set_vexpand(True)
+            body.set_valign(Gtk.Align.FILL)
+
+            body.set_margin_top(0)
+            body.set_margin_bottom(0)
+
+        # Balanced result modal — smaller than progress, but not cramped.
+        self.dialog.set_content_width(640)
+        self.dialog.set_content_height(340)
+
         if hasattr(self,'progress_panel'):
-            if success:self.progress_panel.add_css_class('done')
-            else:self.progress_panel.remove_css_class('done')
-        icon=Gtk.Image.new_from_icon_name('emblem-ok-symbolic' if success else 'action-unavailable-symbolic');icon.set_pixel_size(40);icon.set_valign(Gtk.Align.CENTER);icon.add_css_class('result-success' if success else 'result-error')
-        self.job_poster.add_named(icon,'result');self.job_poster.set_visible_child_name('result')
-        if success:self.job_label.add_css_class('done-title')
-        else:self.job_label.remove_css_class('done-title')
-        self.job_label.set_text('All Done' if success else 'Error');self.job_counter.set_text('');self.job_caption.set_text(message);self.job_bar.set_visible(False)
-        done=button('Done' if success else 'Close',lambda *_:(self.dialog.close(),self.scan()),'suggested-action' if success else None)
-        if success:done.add_css_class('done-button')
+            self.progress_panel.add_css_class('done')
+
+        # ----------------------------------------------------
+        # RESULT BACKDROP
+        # ----------------------------------------------------
+        # Never show the game hero once work has completed.
+        #
+        # Success:
+        #   frozen library -> GSK blur -> dark translucent wash
+        #
+        # Failure:
+        #   simple dark backdrop
+        # ----------------------------------------------------
+
+        if success:
+            texture=getattr(
+                self,
+                'done_backdrop',
+                None,
+            )
+
+            if texture is not None:
+                backdrop=BlurredTexture(
+                    texture,
+                    radius=24.0,
+                )
+            else:
+                backdrop=Gtk.Box()
+                backdrop.add_css_class(
+                    'done-fallback'
+                )
+
+            self.progress_shell.set_child(
+                backdrop
+            )
+
+        else:
+            backdrop=Gtk.Box()
+            backdrop.add_css_class(
+                'done-fallback'
+            )
+
+            self.progress_shell.set_child(
+                backdrop
+            )
+
+        if hasattr(self,'progress_shade'):
+            self.progress_shade.remove_css_class(
+                'progress-shade'
+            )
+
+            self.progress_shade.add_css_class(
+                'done-shade'
+            )
+
+        # ----------------------------------------------------
+        # TRUE CENTERED RESULT CONTENT
+        # ----------------------------------------------------
+
+        center=Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            halign=Gtk.Align.FILL,
+            valign=Gtk.Align.FILL,
+            vexpand=True,
+        )
+
+        if body is not None:
+            body.append(center)
+
+        result=Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=10,
+            halign=Gtk.Align.CENTER,
+            valign=Gtk.Align.CENTER,
+            vexpand=True,
+        )
+
+        center.append(result)
+
+        # Fixed-size wrapper means the green background can NEVER
+        # stretch into the wide pill seen in the smoke test.
+        badge=Gtk.Box(
+            width_request=52,
+            height_request=52,
+            halign=Gtk.Align.CENTER,
+            valign=Gtk.Align.CENTER,
+        )
+
+        badge.add_css_class(
+            'result-success-circle'
+            if success
+            else 'result-error'
+        )
+
+        icon=Gtk.Image.new_from_icon_name(
+            'emblem-ok-symbolic'
+            if success
+            else 'action-unavailable-symbolic'
+        )
+
+        icon.set_pixel_size(28)
+        icon.set_halign(Gtk.Align.CENTER)
+        icon.set_valign(Gtk.Align.CENTER)
+
+        badge.append(icon)
+        result.append(badge)
+
+        title=label(
+            'All Done'
+            if success
+            else 'Error',
+            'done-title'
+            if success
+            else 'job-title',
+        )
+
+        title.set_halign(Gtk.Align.CENTER)
+        title.set_xalign(0.5)
+
+        result.append(title)
+
+        caption=label(
+            message,
+            'dim-label',
+        )
+
+        caption.set_halign(Gtk.Align.CENTER)
+        caption.set_xalign(0.5)
+
+        result.append(caption)
+
+        done=button(
+            'Done'
+            if success
+            else 'Close',
+            lambda *_:(
+                self.dialog.close(),
+                self.scan(),
+            ),
+            'done-button'
+            if success
+            else None,
+        )
+
         footer.append(done)
+
         self.job_label=None
 
     def add_cancel(self,footer):
+        footer.add_css_class('progress-footer')
+        footer.set_spacing(6)
+
+        footer.set_margin_top(2)
+        footer.set_margin_bottom(20)
+        footer.set_margin_start(28)
+        footer.set_margin_end(28)
+
         def cancel(w):
-            self.operation_cancel.set();w.set_sensitive(False);w.set_label('Undoing…')
-            if self.job_label:self.job_caption.set_text('Finishing safely, then undoing changes…')
+            self.operation_cancel.set()
+
+            w.set_sensitive(False)
+            w.set_label('Undoing…')
+
+            if self.job_label:
+                self.job_caption.set_text(
+                    'Finishing safely, then undoing changes…'
+                )
+
             if not self.busy:
-                self.dialog.force_close();self.dialog=None
-                if self.operation_previous:self.details(self.operation_previous)
-        footer.append(button('Cancel',cancel))
+                self.dialog.force_close()
+                self.dialog=None
+
+                if self.operation_previous:
+                    self.details(
+                        self.operation_previous
+                    )
+
+        footer.append(
+            button(
+                'Cancel',
+                cancel,
+            )
+        )
 
     def action_ready(self,review,d,b,f,automatic=False):
         self.review=review;clear(b);clear(f);b.add_css_class('panel-body');self.job_label=None;d.set_can_close(True)
@@ -1049,12 +1745,12 @@ class Window(Adw.ApplicationWindow):
             self.capture('gnome-library.png')
             self.search.set_text('Cyberpunk');self.select_all(True);assert all(e['check'].get_active() for e in self.cards.values())
             self.profile_group.set_active_name('nr-mfg');assert self.mode=='nr-mfg'
-            game={**self.games[0],'feature_mode':'nr-mfg','profile':'NR + MFG','nr_strength':'strong','sharpening_strength':'strong','mfg_multiplier':2}
+            game={**self.games[0],'feature_mode':'nr-mfg','profile':'NR + MFG','nr_strength':2.0,'sharpening_strength':0.5,'mfg_multiplier':2}
             self.details(game)
             assert not self.detail_apply_settings.get_sensitive()
             self.detail_tuning_widgets['sharpening_strength'].set_value(0)
             assert self.detail_apply_settings.get_sensitive()
-            assert self.tuning_values(self.tuning_widgets)['sharpening_strength']=='strong'
+            assert self.tuning_values(self.tuning_widgets)['sharpening_strength']==0.5
             GLib.timeout_add(700,self.smoke_action)
         except Exception:traceback.print_exc();self.get_application().exit_code=1;self.get_application().quit()
         return False
@@ -1073,6 +1769,10 @@ class Window(Adw.ApplicationWindow):
     def smoke_settings(self):
         try:
             self.capture('gnome-settings.png')
+
+            try:self.done_backdrop=self.snapshot_library_texture()
+            except Exception:self.done_backdrop=None
+
             d,b,f=self.open_panel('Apply Settings',width=580,height=310,show_close=False)
             self.operation_games=self.games;self.operation_cancel=threading.Event();self.add_cancel(f);self.progress_view(b,'Applying Settings')
             GLib.timeout_add(500,self.smoke_progress)

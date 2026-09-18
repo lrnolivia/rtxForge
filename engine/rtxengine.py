@@ -2059,16 +2059,97 @@ NR_STRENGTH_PRESETS = {
 }
 
 
-def visual_defaults(nr_strength: str = "strong", mfg_multiplier: int = 2, sharpening_strength: str = "strong") -> dict:
-    require(nr_strength in NR_STRENGTH_PRESETS, "Unknown NR strength")
-    require(type(mfg_multiplier) is int and mfg_multiplier in (0, 2, 3, 4, 5, 6), "MFG multiplier must be Off or 2x through 6x")
-    require(sharpening_strength in NR_STRENGTH_PRESETS, "Unknown sharpening strength")
-    preset = NR_STRENGTH_PRESETS[nr_strength]
-    defaults = {section: dict(values) for section, values in VISUAL_DEFAULTS.items()}
-    defaults["DlssNr"].update(Intensity=preset["nr"], SkinStructure=preset["nr"], Enabled="false" if nr_strength == "off" else "true")
-    defaults["Sharpness"]["Sharpness"] = NR_STRENGTH_PRESETS[sharpening_strength]["sharpness"]
-    if sharpening_strength == "off":defaults["CAS"].update(Enabled="false", MotionSharpnessEnabled="false")
-    defaults["DLSSG"] = {"OverrideInterpolationCount": str(max(0, mfg_multiplier - 1)), "OverrideForceDMFG": "false", "FramerateTargetDMFG": "0"}
+def visual_strength_value(value, kind: str) -> float:
+    """Normalize legacy presets or granular numeric visual strength."""
+    require(kind in {"nr", "sharpness"}, "Unknown visual strength kind")
+
+    if isinstance(value, str):
+        require(value in NR_STRENGTH_PRESETS, f"Unknown {kind} strength")
+        if value == "off":
+            return 0.0
+        return float(NR_STRENGTH_PRESETS[value][kind])
+
+    require(
+        type(value) in (int, float) and not isinstance(value, bool),
+        f"{kind} strength must be numeric",
+    )
+
+    number = float(value)
+    require(__import__("math").isfinite(number), f"{kind} strength must be finite")
+
+    upper = 2.0 if kind == "nr" else 1.0
+    require(
+        0.0 <= number <= upper,
+        f"{kind} strength must be between 0.0 and {upper:.1f}",
+    )
+
+    return round(number, 1)
+
+
+def visual_strength_text(value, kind: str) -> str:
+    # Preserve exact historical preset values for compatibility/tests.
+    if isinstance(value, str):
+        require(value in NR_STRENGTH_PRESETS, f"Unknown {kind} strength")
+        return NR_STRENGTH_PRESETS[value][kind]
+
+    # Keep the historical OptiScaler.ini formatting stable while
+    # still accepting one-decimal granular values from the desktop UI.
+    return f"{visual_strength_value(value, kind):.2f}"
+
+
+def visual_strength_off(value, kind: str) -> bool:
+    if isinstance(value, str):
+        return value == "off"
+    return visual_strength_value(value, kind) == 0.0
+
+
+def visual_strength_label(value, kind: str) -> str:
+    if isinstance(value, str) and value in NR_STRENGTH_PRESETS:
+        return value.title()
+    return f"{visual_strength_value(value, kind):.1f}"
+
+
+def visual_defaults(
+    nr_strength="strong",
+    mfg_multiplier: int = 2,
+    sharpening_strength="strong",
+) -> dict:
+    nr_value = visual_strength_text(nr_strength, "nr")
+    sharp_value = visual_strength_text(sharpening_strength, "sharpness")
+
+    require(
+        type(mfg_multiplier) is int and
+        mfg_multiplier in (0, 2, 3, 4, 5, 6),
+        "MFG multiplier must be Off or 2x through 6x",
+    )
+
+    defaults = {
+        section: dict(values)
+        for section, values in VISUAL_DEFAULTS.items()
+    }
+
+    defaults["DlssNr"].update(
+        Intensity=nr_value,
+        SkinStructure=nr_value,
+        Enabled="false"
+        if visual_strength_off(nr_strength, "nr")
+        else "true",
+    )
+
+    defaults["Sharpness"]["Sharpness"] = sharp_value
+
+    if visual_strength_off(sharpening_strength, "sharpness"):
+        defaults["CAS"].update(
+            Enabled="false",
+            MotionSharpnessEnabled="false",
+        )
+
+    defaults["DLSSG"] = {
+        "OverrideInterpolationCount": str(max(0, mfg_multiplier - 1)),
+        "OverrideForceDMFG": "false",
+        "FramerateTargetDMFG": "0",
+    }
+
     return defaults
 
 
@@ -2118,7 +2199,7 @@ def _reset_visual_settings(game: Game, *, dry_run: bool = False, nr_strength: st
     updated = text.encode("utf-8")
     record = {"action": "reset-visual-settings", "name": game.name, "feature_mode": mode,
               "provider_id": current.get("provider_id"), "files": [managed[0]],
-              "launch_options": f"NR {nr_strength.title()} · Sharpening {sharpening_strength.title()}" + (f" · MFG {str(mfg_multiplier) + 'x' if mfg_multiplier else 'Off'} requested" if mode != "nr-only" else " · NR Only retained"),
+              "launch_options": f"NR {visual_strength_label(nr_strength, 'nr')} · Sharpening {visual_strength_label(sharpening_strength, 'sharpness')}" + (f" · MFG {str(mfg_multiplier) + 'x' if mfg_multiplier else 'Off'} requested" if mode != "nr-only" else " · NR Only retained"),
               "before_sha256": sha256_bytes(original), "after_sha256": sha256_bytes(updated),
               "nr_strength": nr_strength, "sharpening_strength": sharpening_strength, "mfg_multiplier": mfg_multiplier if mode != "nr-only" else None, "defaults": values, "changed": original != updated}
     if dry_run or original == updated:

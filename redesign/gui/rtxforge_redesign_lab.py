@@ -174,6 +174,13 @@ class RedesignLabWindow(
         self.row_lists = {}
         self.navigation_lists = []
 
+        # Stable Phase 1 content attachment points.
+        #
+        # Later phases can migrate existing feature widgets into
+        # these mounts without rebuilding the application shell.
+        self.page_mounts = {}
+        self.page_surfaces = {}
+
         self.split_view = (
             Adw.NavigationSplitView()
         )
@@ -533,10 +540,198 @@ class RedesignLabWindow(
             sidebar_page
         )
 
+    def _page_placeholder(
+        self,
+        page_id,
+        icon_name,
+    ):
+        placeholder = Adw.StatusPage()
+
+        placeholder.set_icon_name(
+            icon_name
+        )
+
+        placeholder.set_title(
+            "Ready for migration"
+        )
+
+        descriptions = {
+            "home": (
+                "The final dashboard will be built here "
+                "after the application shell is complete."
+            ),
+            "library": (
+                "The existing game library UI will be "
+                "transplanted into this page without "
+                "changing library backend behavior."
+            ),
+            "forge": (
+                "Global Forge defaults and bulk setup "
+                "will move into this page."
+            ),
+            "tools": (
+                "Diagnostics and supporting utilities "
+                "will move into this page."
+            ),
+            "settings": (
+                "Existing application settings will "
+                "move into native Libadwaita groups here."
+            ),
+            "recovery": (
+                "Repair and restoration workflows will "
+                "move into this dedicated page."
+            ),
+        }
+
+        placeholder.set_description(
+            descriptions.get(
+                page_id,
+                "This page is ready for feature migration.",
+            )
+        )
+
+        placeholder.set_vexpand(
+            True
+        )
+
+        return placeholder
+
+    def _build_page_surface(
+        self,
+        page_id,
+        title,
+        icon_name,
+        description,
+    ):
+        scroll = Gtk.ScrolledWindow()
+
+        scroll.set_policy(
+            Gtk.PolicyType.NEVER,
+            Gtk.PolicyType.AUTOMATIC,
+        )
+
+        scroll.set_hexpand(
+            True
+        )
+
+        scroll.set_vexpand(
+            True
+        )
+
+        clamp = Adw.Clamp()
+
+        clamp.set_maximum_size(
+            1120
+        )
+
+        clamp.set_tightening_threshold(
+            760
+        )
+
+        content = Gtk.Box(
+            orientation=(
+                Gtk.Orientation.VERTICAL
+            ),
+            spacing=24,
+        )
+
+        content.set_margin_start(
+            32
+        )
+
+        content.set_margin_end(
+            32
+        )
+
+        content.set_margin_top(
+            30
+        )
+
+        content.set_margin_bottom(
+            32
+        )
+
+        page_header = Gtk.Box(
+            orientation=(
+                Gtk.Orientation.VERTICAL
+            ),
+            spacing=6,
+        )
+
+        title_label = Gtk.Label(
+            label=title,
+            xalign=0,
+        )
+
+        title_label.add_css_class(
+            "title-1"
+        )
+
+        description_label = Gtk.Label(
+            label=description,
+            xalign=0,
+            wrap=True,
+        )
+
+        description_label.add_css_class(
+            "dim-label"
+        )
+
+        page_header.append(
+            title_label
+        )
+
+        page_header.append(
+            description_label
+        )
+
+        content.append(
+            page_header
+        )
+
+        mount = Gtk.Box(
+            orientation=(
+                Gtk.Orientation.VERTICAL
+            ),
+            spacing=18,
+            hexpand=True,
+            vexpand=True,
+        )
+
+        mount.append(
+            self._page_placeholder(
+                page_id,
+                icon_name,
+            )
+        )
+
+        content.append(
+            mount
+        )
+
+        clamp.set_child(
+            content
+        )
+
+        scroll.set_child(
+            clamp
+        )
+
+        self.page_mounts[
+            page_id
+        ] = mount
+
+        self.page_surfaces[
+            page_id
+        ] = scroll
+
+        return scroll
+
     def _build_content(self):
         toolbar = Adw.ToolbarView()
 
-        # Flat is Libadwaita's intended treatment for split/sidebar apps.
+        # The application titlebar is intentionally quiet.
+        # Page identity belongs to the page content itself.
         toolbar.set_top_bar_style(
             Adw.ToolbarStyle.FLAT
         )
@@ -573,27 +768,22 @@ class RedesignLabWindow(
 
         for (
             page_id,
-            _title,
+            title,
             icon_name,
-            heading,
+            _heading,
             description,
         ) in PAGES:
-            page = Adw.StatusPage()
-
-            page.set_icon_name(
-                icon_name
-            )
-
-            page.set_title(
-                heading
-            )
-
-            page.set_description(
-                description
+            surface = (
+                self._build_page_surface(
+                    page_id,
+                    title,
+                    icon_name,
+                    description,
+                )
             )
 
             self.stack.add_named(
-                page,
+                surface,
                 page_id,
             )
 
@@ -725,6 +915,66 @@ class RedesignLabApplication(
                 "  navigation: "
                 "Home / Game Library / Forge / "
                 "Tools / Settings / Recovery"
+            )
+
+            expected_pages = {
+                page[0]
+                for page in PAGES
+            }
+
+            actual_mounts = set(
+                window.page_mounts
+            )
+
+            actual_surfaces = set(
+                window.page_surfaces
+            )
+
+            if actual_mounts != expected_pages:
+                raise RuntimeError(
+                    "Phase 1 page mounts incomplete: "
+                    f"{sorted(actual_mounts)}"
+                )
+
+            if actual_surfaces != expected_pages:
+                raise RuntimeError(
+                    "Phase 1 page surfaces incomplete: "
+                    f"{sorted(actual_surfaces)}"
+                )
+
+            for page_id in (
+                "home",
+                "library",
+                "forge",
+                "tools",
+                "settings",
+                "recovery",
+            ):
+                window._select_page(
+                    page_id
+                )
+
+                if (
+                    window.stack.get_visible_child_name()
+                    != page_id
+                ):
+                    raise RuntimeError(
+                        f"Navigation failed for {page_id}"
+                    )
+
+            window._select_page(
+                "home"
+            )
+
+            print(
+                "  page surfaces: "
+                + " / ".join(
+                    sorted(actual_surfaces)
+                )
+            )
+
+            print(
+                "  migration mounts: ready"
             )
 
             print(

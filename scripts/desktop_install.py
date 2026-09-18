@@ -17,11 +17,10 @@ def install():
             os.replace(stage,target)
         finally:stage.unlink(missing_ok=True)
     assets=Path(__file__).resolve().parents[1]/'gui/icons/hicolor'
-    for size in ('scalable','64x64','128x128','256x256'):
-        suffix='svg' if size=='scalable' else 'png'
-        icon=data/f'icons/hicolor/{size}/apps/io.github.lrnolivia.RTXForge.{suffix}'
+    for size in ('64x64','128x128','256x256','512x512'):
+        icon=data/f'icons/hicolor/{size}/apps/io.github.lrnolivia.RTXForge.png'
         icon.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(assets/f'{size}/apps/{icon.name}',icon)
-    icon=data/'icons/hicolor/256x256/apps/io.github.lrnolivia.RTXForge.png'
+    icon=data/'icons/hicolor/512x512/apps/io.github.lrnolivia.RTXForge.png'
     apps=data/'applications';apps.mkdir(parents=True,exist_ok=True)
     # Desktop Exec quoting is distinct from shell quoting; percent signs are field codes.
     quoted=str(target).replace('\\','\\\\').replace('"','\\"').replace('`','\\`').replace('$','\\$').replace('%','%%')

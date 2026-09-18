@@ -83,6 +83,8 @@ APP_ID = (
 
 INTERACTIVE_HEIGHT = 42
 NAVIGATION_HEIGHT = 46
+SELECTABLE_GAP = 3
+CONTROL_CLUSTER_SPACING = 18
 
 APP_ICON = (
     ROOT
@@ -303,6 +305,14 @@ class RedesignLabWindow(
             row.set_size_request(
                 -1,
                 NAVIGATION_HEIGHT,
+            )
+
+            row.set_margin_top(
+                SELECTABLE_GAP,
+            )
+
+            row.set_margin_bottom(
+                SELECTABLE_GAP,
             )
 
             icon = Gtk.Image.new_from_icon_name(
@@ -659,7 +669,7 @@ class RedesignLabWindow(
             orientation=(
                 Gtk.Orientation.HORIZONTAL
             ),
-            spacing=12,
+            spacing=CONTROL_CLUSTER_SPACING,
         )
 
         self.library_search = (
@@ -713,7 +723,7 @@ class RedesignLabWindow(
             orientation=(
                 Gtk.Orientation.HORIZONTAL
             ),
-            spacing=12,
+            spacing=CONTROL_CLUSTER_SPACING,
         )
 
         self.library_filters = (
@@ -723,6 +733,14 @@ class RedesignLabWindow(
         self.library_filters.set_size_request(
             -1,
             INTERACTIVE_HEIGHT,
+        )
+
+        self.library_filters.set_margin_top(
+            SELECTABLE_GAP,
+        )
+
+        self.library_filters.set_margin_bottom(
+            SELECTABLE_GAP,
         )
 
         self.library_filters.set_hexpand(
@@ -776,6 +794,14 @@ class RedesignLabWindow(
         self.library_views.set_size_request(
             -1,
             INTERACTIVE_HEIGHT,
+        )
+
+        self.library_views.set_margin_top(
+            SELECTABLE_GAP,
+        )
+
+        self.library_views.set_margin_bottom(
+            SELECTABLE_GAP,
         )
 
         self.library_views.set_can_shrink(
@@ -922,6 +948,14 @@ class RedesignLabWindow(
             button.set_size_request(
                 -1,
                 INTERACTIVE_HEIGHT,
+            )
+
+            button.set_margin_start(
+                SELECTABLE_GAP,
+            )
+
+            button.set_margin_end(
+                SELECTABLE_GAP,
             )
 
             button.set_sensitive(
@@ -1177,6 +1211,14 @@ class RedesignLabWindow(
         self.forge_feature_mode.set_size_request(
             -1,
             INTERACTIVE_HEIGHT,
+        )
+
+        self.forge_feature_mode.set_margin_top(
+            SELECTABLE_GAP,
+        )
+
+        self.forge_feature_mode.set_margin_bottom(
+            SELECTABLE_GAP,
         )
 
         self.forge_feature_mode.set_valign(

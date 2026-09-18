@@ -23,7 +23,36 @@ Do not move backend behavior into this laboratory.
 from pathlib import Path
 import sys
 
-ROOT = Path(__file__).resolve().parents[2]
+
+def find_runtime_root():
+    """
+    Locate the rtxForge application root in both supported layouts.
+
+    Source lab:
+        rtxForge/redesign/gui/rtxforge_redesign_lab.py
+
+    Beta AppImage staging:
+        rtxForge/gui/rtxforge_redesign_lab.py
+    """
+
+    source = Path(__file__).resolve()
+
+    candidates = (
+        source.parents[2],
+        source.parents[1],
+    )
+
+    for candidate in candidates:
+        if (
+            (candidate / "VERSION").exists()
+            and (candidate / "gui").exists()
+        ):
+            return candidate
+
+    return source.parents[1]
+
+
+ROOT = find_runtime_root()
 
 APP_VERSION = (
     (ROOT / "VERSION").read_text(
@@ -32,6 +61,7 @@ APP_VERSION = (
     if (ROOT / "VERSION").exists()
     else "dev"
 )
+
 
 import gi
 
@@ -51,8 +81,18 @@ APP_ID = (
     "RTXForge.RedesignLab"
 )
 
+APP_ICON = (
+    ROOT
+    / "gui"
+    / "icons"
+    / "hicolor"
+    / "64x64"
+    / "apps"
+    / "io.github.lrnolivia.RTXForge.png"
+)
 
-PAGES = (
+
+PRIMARY_PAGES = (
     (
         "home",
         "Home",
@@ -88,6 +128,9 @@ PAGES = (
         "Settings",
         "Application preferences will live here.",
     ),
+)
+
+SECONDARY_PAGES = (
     (
         "recovery",
         "Recovery",
@@ -97,11 +140,16 @@ PAGES = (
     ),
 )
 
+PAGES = PRIMARY_PAGES + SECONDARY_PAGES
+
 
 class RedesignLabWindow(
     Adw.ApplicationWindow
 ):
-    def __init__(self, application):
+    def __init__(
+        self,
+        application,
+    ):
         super().__init__(
             application=application
         )
@@ -116,13 +164,15 @@ class RedesignLabWindow(
         )
 
         # Phase 1 is desktop-first.
-        # Keep the navigation sidebar permanently visible.
+        # Keep the primary navigation visible.
         self.set_size_request(
             900,
             620,
         )
 
         self.page_rows = {}
+        self.row_lists = {}
+        self.navigation_lists = []
 
         self.split_view = (
             Adw.NavigationSplitView()
@@ -151,53 +201,67 @@ class RedesignLabWindow(
             self.split_view
         )
 
-        self.sidebar.select_row(
-            self.page_rows["home"]
+        home_row = self.page_rows[
+            "home"
+        ]
+
+        self.row_lists[
+            "home"
+        ].select_row(
+            home_row
         )
 
         self._select_page(
             "home"
         )
 
-    def _build_sidebar(self):
-        toolbar = Adw.ToolbarView()
-        header = Adw.HeaderBar()
+    def _app_icon(self):
+        if APP_ICON.exists():
+            image = Gtk.Image.new_from_file(
+                str(APP_ICON)
+            )
 
-        brand = Adw.WindowTitle(
-            title="rtxForge",
-            subtitle="Redesign Lab",
+            image.set_pixel_size(
+                48
+            )
+
+            return image
+
+        image = Gtk.Image.new_from_icon_name(
+            "applications-games-symbolic"
         )
 
-        header.set_title_widget(
-            brand
+        image.set_pixel_size(
+            42
         )
 
-        toolbar.add_top_bar(
-            header
-        )
+        return image
 
-        root = Gtk.Box(
-            orientation=Gtk.Orientation.VERTICAL,
-            spacing=0,
-        )
-
-        self.sidebar = Gtk.ListBox(
+    def _navigation_list(
+        self,
+        pages,
+    ):
+        navigation = Gtk.ListBox(
             selection_mode=(
                 Gtk.SelectionMode.SINGLE
             ),
         )
 
-        self.sidebar.set_activate_on_single_click(
+        navigation.set_activate_on_single_click(
             True
         )
 
-        self.sidebar.add_css_class(
+        navigation.add_css_class(
             "navigation-sidebar"
         )
 
-        self.sidebar.connect(
+        navigation.connect(
             "row-selected",
             self._on_sidebar_selected,
+        )
+
+        self.navigation_lists.append(
+            navigation
         )
 
         for (
@@ -206,7 +270,7 @@ class RedesignLabWindow(
             icon_name,
             _heading,
             _description,
-        ) in PAGES:
+        ) in pages:
             row = Gtk.ListBoxRow()
             row.page_id = page_id
 
@@ -217,10 +281,21 @@ class RedesignLabWindow(
                 spacing=12,
             )
 
-            content.set_margin_start(12)
-            content.set_margin_end(12)
-            content.set_margin_top(9)
-            content.set_margin_bottom(9)
+            content.set_margin_start(
+                12
+            )
+
+            content.set_margin_end(
+                12
+            )
+
+            content.set_margin_top(
+                9
+            )
+
+            content.set_margin_bottom(
+                9
+            )
 
             icon = Gtk.Image.new_from_icon_name(
                 icon_name
@@ -232,21 +307,140 @@ class RedesignLabWindow(
                 hexpand=True,
             )
 
-            content.append(icon)
-            content.append(label)
+            content.append(
+                icon
+            )
 
-            row.set_child(content)
+            content.append(
+                label
+            )
 
-            self.sidebar.append(row)
+            row.set_child(
+                content
+            )
+
+            navigation.append(
+                row
+            )
 
             self.page_rows[
                 page_id
             ] = row
 
-        root.append(
-            self.sidebar
+            self.row_lists[
+                page_id
+            ] = navigation
+
+        return navigation
+
+    def _build_branding(self):
+        branding = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=9,
         )
 
+        branding.set_margin_start(
+            18
+        )
+
+        branding.set_margin_end(
+            18
+        )
+
+        branding.set_margin_top(
+            16
+        )
+
+        branding.set_margin_bottom(
+            18
+        )
+
+        identity = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL,
+            spacing=12,
+        )
+
+        identity.append(
+            self._app_icon()
+        )
+
+        name = Gtk.Label(
+            label="rtxForge",
+            xalign=0,
+            hexpand=True,
+        )
+
+        name.add_css_class(
+            "title-2"
+        )
+
+        identity.append(
+            name
+        )
+
+        branding.append(
+            identity
+        )
+
+        description = Gtk.Label(
+            label=(
+                "Bring newer RTX features "
+                "to your games."
+            ),
+            xalign=0,
+            wrap=True,
+        )
+
+        description.add_css_class(
+            "dim-label"
+        )
+
+        branding.append(
+            description
+        )
+
+        return branding
+
+    def _build_sidebar(self):
+        toolbar = Adw.ToolbarView()
+
+        # Explicitly use the native flat sidebar/header treatment.
+        toolbar.set_top_bar_style(
+            Adw.ToolbarStyle.FLAT
+        )
+
+        header = Adw.HeaderBar()
+
+        # App identity belongs in the sidebar body rather than
+        # becoming duplicated titlebar decoration.
+        header.set_show_title(
+            False
+        )
+
+        toolbar.add_top_bar(
+            header
+        )
+
+        root = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=0,
+        )
+
+        root.append(
+            self._build_branding()
+        )
+
+        self.primary_navigation = (
+            self._navigation_list(
+                PRIMARY_PAGES
+            )
+        )
+
+        root.append(
+            self.primary_navigation
+        )
+
+        # Push recovery/status navigation to the lower group.
         root.append(
             Gtk.Box(
                 orientation=(
@@ -254,6 +448,42 @@ class RedesignLabWindow(
                 ),
                 vexpand=True,
             )
+        )
+
+        separator = Gtk.Separator(
+            orientation=(
+                Gtk.Orientation.HORIZONTAL
+            )
+        )
+
+        separator.set_margin_start(
+            14
+        )
+
+        separator.set_margin_end(
+            14
+        )
+
+        separator.set_margin_top(
+            8
+        )
+
+        separator.set_margin_bottom(
+            8
+        )
+
+        root.append(
+            separator
+        )
+
+        self.secondary_navigation = (
+            self._navigation_list(
+                SECONDARY_PAGES
+            )
+        )
+
+        root.append(
+            self.secondary_navigation
         )
 
         version = Gtk.Label(
@@ -268,10 +498,21 @@ class RedesignLabWindow(
             "dim-label"
         )
 
-        version.set_margin_start(18)
-        version.set_margin_end(18)
-        version.set_margin_top(12)
-        version.set_margin_bottom(18)
+        version.set_margin_start(
+            18
+        )
+
+        version.set_margin_end(
+            18
+        )
+
+        version.set_margin_top(
+            12
+        )
+
+        version.set_margin_bottom(
+            18
+        )
 
         root.append(
             version
@@ -294,17 +535,23 @@ class RedesignLabWindow(
 
     def _build_content(self):
         toolbar = Adw.ToolbarView()
+
+        # Flat is Libadwaita's intended treatment for split/sidebar apps.
+        toolbar.set_top_bar_style(
+            Adw.ToolbarStyle.FLAT
+        )
+
         header = Adw.HeaderBar()
 
-        self.content_title = (
+        self.app_title = (
             Adw.WindowTitle(
-                title="Home",
-                subtitle="Phase 1",
+                title="rtxForge",
+                subtitle="",
             )
         )
 
         header.set_title_widget(
-            self.content_title
+            self.app_title
         )
 
         toolbar.add_top_bar(
@@ -367,11 +614,18 @@ class RedesignLabWindow(
 
     def _on_sidebar_selected(
         self,
-        _listbox,
+        source_list,
         row,
     ):
         if row is None:
             return
+
+        # Only one of the two navigation groups may appear active.
+        for navigation in self.navigation_lists:
+            if navigation is source_list:
+                continue
+
+            navigation.unselect_all()
 
         page_id = getattr(
             row,
@@ -410,14 +664,6 @@ class RedesignLabWindow(
 
         self.stack.set_visible_child_name(
             page_id
-        )
-
-        self.content_title.set_title(
-            title
-        )
-
-        self.content_title.set_subtitle(
-            "Phase 1"
         )
 
         self.content_page.set_title(
@@ -459,9 +705,30 @@ class RedesignLabApplication(
 
         if self.smoke_test:
             print(
-                "rtxForge redesign lab smoke: "
-                "ApplicationWindow + ToolbarView + "
-                "NavigationSplitView + six pages OK"
+                "rtxForge redesign lab smoke:"
+            )
+
+            print(
+                f"  runtime root: {ROOT}"
+            )
+
+            print(
+                f"  version: {APP_VERSION}"
+            )
+
+            print(
+                "  shell: ApplicationWindow + "
+                "ToolbarView + NavigationSplitView"
+            )
+
+            print(
+                "  navigation: "
+                "Home / Game Library / Forge / "
+                "Tools / Settings / Recovery"
+            )
+
+            print(
+                "  production backend: untouched"
             )
 
             GLib.idle_add(

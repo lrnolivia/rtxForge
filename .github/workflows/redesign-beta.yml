@@ -173,6 +173,28 @@ jobs:
             VERSION \
             packaging/AppRun
 
+      - name: Validate staged beta entrypoint
+        env:
+          GDK_BACKEND: x11
+          GSK_RENDERER: cairo
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          GTK_A11Y: "none"
+          HOME: /tmp/rtxforge-redesign-staged-smoke
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$HOME"
+
+          /usr/bin/python3 \
+            -m py_compile \
+            gui/rtxforge_redesign_lab.py
+
+          dbus-run-session -- \
+            xvfb-run -a \
+            /usr/bin/python3 \
+            gui/rtxforge_redesign_lab.py \
+            --smoke-test
+
       - name: Build beta AppImage
         run: |
           set -euo pipefail

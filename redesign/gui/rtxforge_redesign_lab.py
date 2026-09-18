@@ -124,7 +124,7 @@ PRIMARY_PAGES = (
         "Settings",
         "emblem-system-symbolic",
         "Settings",
-        "Application preferences will live here.",
+        "Configure how rtxForge behaves.",
     ),
 )
 
@@ -1510,6 +1510,429 @@ class RedesignLabWindow(
 
         return page
 
+    def _settings_switch_row(
+        self,
+        *,
+        title,
+        subtitle,
+        active,
+    ):
+        row = Adw.ActionRow()
+
+        row.set_title(
+            title
+        )
+
+        row.set_subtitle(
+            subtitle
+        )
+
+        row.set_size_request(
+            -1,
+            62,
+        )
+
+        switch = Gtk.Switch(
+            active=active,
+        )
+
+        switch.set_valign(
+            Gtk.Align.CENTER
+        )
+
+        row.add_suffix(
+            switch
+        )
+
+        return row, switch
+
+    def _settings_button_row(
+        self,
+        *,
+        title,
+        subtitle,
+        button_label,
+    ):
+        row = Adw.ActionRow()
+
+        row.set_title(
+            title
+        )
+
+        row.set_subtitle(
+            subtitle
+        )
+
+        row.set_size_request(
+            -1,
+            62,
+        )
+
+        button = Gtk.Button(
+            label=button_label
+        )
+
+        button.set_valign(
+            Gtk.Align.CENTER
+        )
+
+        button.set_size_request(
+            -1,
+            INTERACTIVE_HEIGHT,
+        )
+
+        # Phase 1 lays out the destination only.
+        button.set_sensitive(
+            False
+        )
+
+        button.set_tooltip_text(
+            "This action will be connected when "
+            "existing Settings behavior is migrated."
+        )
+
+        row.add_suffix(
+            button
+        )
+
+        return row, button
+
+    def _build_settings_shell(self):
+        # Like Forge and Library, Settings uses the complete
+        # content canvas instead of a narrow PreferencesPage.
+        page = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=24,
+            hexpand=True,
+            vexpand=False,
+        )
+
+        self.settings_page = page
+
+        # ----------------------------------------------------
+        # Library appearance
+        # ----------------------------------------------------
+
+        appearance = Adw.PreferencesGroup()
+
+        appearance.set_title(
+            "Library Appearance"
+        )
+
+        appearance.set_description(
+            "Choose how your game library is presented."
+        )
+
+        layout_row = Adw.ActionRow()
+
+        layout_row.set_title(
+            "Layout"
+        )
+
+        layout_row.set_subtitle(
+            "Choose the default Library presentation."
+        )
+
+        layout_row.set_size_request(
+            -1,
+            62,
+        )
+
+        self.settings_library_layout = (
+            Adw.ToggleGroup()
+        )
+
+        self.settings_library_layout.set_size_request(
+            -1,
+            INTERACTIVE_HEIGHT,
+        )
+
+        self.settings_library_layout.set_margin_top(
+            SELECTABLE_GAP,
+        )
+
+        self.settings_library_layout.set_margin_bottom(
+            SELECTABLE_GAP,
+        )
+
+        self.settings_library_layout.add(
+            self._library_toggle(
+                name="posters",
+                label="Poster",
+            )
+        )
+
+        self.settings_library_layout.add(
+            self._library_toggle(
+                name="capsules",
+                label="Wide Capsule",
+            )
+        )
+
+        self.settings_library_layout.add(
+            self._library_toggle(
+                name="list",
+                label="List",
+            )
+        )
+
+        self.settings_library_layout.set_active_name(
+            "posters"
+        )
+
+        layout_row.add_suffix(
+            self.settings_library_layout
+        )
+
+        appearance.add(
+            layout_row
+        )
+
+        (
+            dark_row,
+            self.settings_dark_interface,
+        ) = self._settings_switch_row(
+            title="Dark Interface",
+            subtitle=(
+                "Use rtxForge's dark application appearance."
+            ),
+            active=True,
+        )
+
+        appearance.add(
+            dark_row
+        )
+
+        page.append(
+            appearance
+        )
+
+        # ----------------------------------------------------
+        # Library metadata / discovery
+        # ----------------------------------------------------
+
+        metadata = Adw.PreferencesGroup()
+
+        metadata.set_title(
+            "Library & Metadata"
+        )
+
+        metadata.set_description(
+            "Control artwork, metadata, and game discovery."
+        )
+
+        (
+            artwork_row,
+            self.settings_online_artwork,
+        ) = self._settings_switch_row(
+            title="Online Artwork",
+            subtitle=(
+                "Allow rtxForge to retrieve game artwork."
+            ),
+            active=True,
+        )
+
+        metadata.add(
+            artwork_row
+        )
+
+        (
+            steam_row,
+            self.settings_steam_metadata,
+        ) = self._settings_switch_row(
+            title="Steam Metadata",
+            subtitle=(
+                "Use Steam information when matching games."
+            ),
+            active=True,
+        )
+
+        metadata.add(
+            steam_row
+        )
+
+        (
+            recognize_row,
+            self.settings_recognize_previous,
+        ) = self._settings_switch_row(
+            title="Recognize Existing rtxForge Installs",
+            subtitle=(
+                "Detect games that were configured "
+                "by an earlier rtxForge installation."
+            ),
+            active=True,
+        )
+
+        metadata.add(
+            recognize_row
+        )
+
+        page.append(
+            metadata
+        )
+
+        # ----------------------------------------------------
+        # Runtime / network configuration
+        # ----------------------------------------------------
+
+        runtime = Adw.PreferencesGroup()
+
+        runtime.set_title(
+            "Runtime"
+        )
+
+        runtime.set_description(
+            "Configure the supporting runtime used by rtxForge."
+        )
+
+        (
+            provider_row,
+            self.settings_runtime_provider,
+        ) = self._settings_button_row(
+            title="Runtime Provider",
+            subtitle=(
+                "Choose the runtime provider used for "
+                "rtxForge operations."
+            ),
+            button_label="Configure…",
+        )
+
+        runtime.add(
+            provider_row
+        )
+
+        (
+            nr_runtime_row,
+            self.settings_nr_runtime,
+        ) = self._settings_button_row(
+            title="Neural Rendering Runtime",
+            subtitle=(
+                "Choose the Neural Rendering runtime path."
+            ),
+            button_label="Choose…",
+        )
+
+        runtime.add(
+            nr_runtime_row
+        )
+
+        (
+            timeout_row,
+            self.settings_network_timeout,
+        ) = self._settings_button_row(
+            title="Network Timeout",
+            subtitle=(
+                "Control how long network operations "
+                "wait before timing out."
+            ),
+            button_label="Adjust…",
+        )
+
+        runtime.add(
+            timeout_row
+        )
+
+        page.append(
+            runtime
+        )
+
+        # ----------------------------------------------------
+        # Diagnostics replaces the old redundant Tools idea.
+        # ----------------------------------------------------
+
+        diagnostics = Adw.PreferencesGroup()
+
+        diagnostics.set_title(
+            "Diagnostics"
+        )
+
+        diagnostics.set_description(
+            "Inspect information useful for troubleshooting."
+        )
+
+        (
+            system_row,
+            self.settings_system_information,
+        ) = self._settings_button_row(
+            title="System Information",
+            subtitle=(
+                "Review graphics, runtime, and "
+                "application environment details."
+            ),
+            button_label="View…",
+        )
+
+        diagnostics.add(
+            system_row
+        )
+
+        (
+            logs_row,
+            self.settings_application_logs,
+        ) = self._settings_button_row(
+            title="Application Logs",
+            subtitle=(
+                "Open logs generated by rtxForge operations."
+            ),
+            button_label="Open…",
+        )
+
+        diagnostics.add(
+            logs_row
+        )
+
+        page.append(
+            diagnostics
+        )
+
+        # ----------------------------------------------------
+        # Explicit preview notice.
+        # ----------------------------------------------------
+
+        preview = Adw.PreferencesGroup()
+
+        preview.set_title(
+            "Phase 1 Preview"
+        )
+
+        preview_row = Adw.ActionRow()
+
+        preview_row.set_title(
+            "Settings are not saved yet"
+        )
+
+        preview_row.set_subtitle(
+            "This page is validating the new interface. "
+            "Production settings remain the source of truth."
+        )
+
+        preview_row.set_size_request(
+            -1,
+            62,
+        )
+
+        preview_icon = Gtk.Image.new_from_icon_name(
+            "dialog-information-symbolic"
+        )
+
+        preview_icon.set_valign(
+            Gtk.Align.CENTER
+        )
+
+        preview_row.add_prefix(
+            preview_icon
+        )
+
+        preview.add(
+            preview_row
+        )
+
+        page.append(
+            preview
+        )
+
+        return page
+
     def _build_page_surface(
         self,
         page_id,
@@ -1619,6 +2042,10 @@ class RedesignLabWindow(
         elif page_id == "forge":
             mount.append(
                 self._build_forge_shell()
+            )
+        elif page_id == "settings":
+            mount.append(
+                self._build_settings_shell()
             )
         else:
             mount.append(
@@ -2133,6 +2560,71 @@ class RedesignLabApplication(
 
             print(
                 "  forge persistence: intentionally unwired"
+            )
+
+            if not isinstance(
+                window.settings_page,
+                Gtk.Box,
+            ):
+                raise RuntimeError(
+                    "Settings must use the full-width "
+                    "page container"
+                )
+
+            if not window.settings_page.get_hexpand():
+                raise RuntimeError(
+                    "Settings page must expand horizontally"
+                )
+
+            if (
+                window.settings_library_layout.get_n_toggles()
+                != 3
+            ):
+                raise RuntimeError(
+                    "Settings Library Layout is incomplete"
+                )
+
+            if (
+                window.settings_library_layout.get_active_name()
+                != "posters"
+            ):
+                raise RuntimeError(
+                    "Settings Library Layout preview "
+                    "must default to Poster"
+                )
+
+            for switch in (
+                window.settings_dark_interface,
+                window.settings_online_artwork,
+                window.settings_steam_metadata,
+                window.settings_recognize_previous,
+            ):
+                if not switch.get_active():
+                    raise RuntimeError(
+                        "Settings preview switches "
+                        "should begin enabled"
+                    )
+
+            for button in (
+                window.settings_runtime_provider,
+                window.settings_nr_runtime,
+                window.settings_network_timeout,
+                window.settings_system_information,
+                window.settings_application_logs,
+            ):
+                if button.get_sensitive():
+                    raise RuntimeError(
+                        "Phase 1 Settings actions must "
+                        "remain unwired"
+                    )
+
+            print(
+                "  settings shell: "
+                "appearance + metadata + runtime + diagnostics"
+            )
+
+            print(
+                "  settings persistence: intentionally unwired"
             )
 
             print(

@@ -429,12 +429,21 @@ button.done-button.suggested-action:hover {
 
 .view-action { padding: 5px 8px; margin: 0; min-width: 20px; }
 .mode-selector { padding: 4px; border-radius: 12px; }
-.mode-selector toggle { padding: 9px 16px; min-height: 22px; border-radius: 9px; }
+.mode-selector toggle { padding: 6px 13px; min-height: 20px; border-radius: 9px; }
 .profile-toggle { padding: 7px 12px; font-weight: 600; }
-.dashboard-icon { margin-top: 2px; }
-.dashboard-actions { margin-top: 2px; }
-.dashboard-actions button { min-height: 40px; padding: 10px 18px; }
+.dashboard-icon { margin: 2px 12px 0 2px; }
+.dashboard-actions { margin: 0; }
+.dashboard-actions button { min-height: 34px; padding: 7px 12px; }
 .dashboard-actions button label { font-weight: 600; }
+.dashboard-tuning .control-pod { padding: 7px 9px; }
+.dashboard-tuning .control-pod scale { padding: 2px; }
+.mode-bar { padding: 6px 10px; }
+.mode-bar .mode-description {
+    font-size: 10px;
+}
+.mode-bar toggle label {
+    font-size: 11px;
+}
 .operation-bubble {
     border-radius: 15px;
     padding: 9px 10px 9px 12px;
@@ -451,9 +460,9 @@ button.done-button.suggested-action:hover {
     border-radius: 999px;
 }
 .title-action { min-width: 26px; min-height: 26px; padding: 8px 12px; margin: 3px; }
-.hero-title { font-size: 29px; font-weight: 800; letter-spacing: -0.8px; }
-.eyebrow { color: #76b900; font-weight: 800; font-size: 10px; letter-spacing: 2px; }
-.hero { background: alpha(@window_fg_color,0.045); border: 1px solid alpha(@window_fg_color,0.06); border-radius: 18px; padding: 20px 24px; }
+.hero-title { font-size: 25px; font-weight: 800; letter-spacing: -0.6px; }
+.eyebrow { color: #76b900; font-weight: 800; font-size: 9px; letter-spacing: 1.7px; }
+.hero { background: alpha(@window_fg_color,0.045); border: 1px solid alpha(@window_fg_color,0.06); border-radius: 18px; padding: 10px 14px; }
 .forge-primary {
     background: #76b900;
     color: #173000;
@@ -577,19 +586,136 @@ class Window(Adw.ApplicationWindow):
         self.refresh=self.title_button('view-refresh-symbolic','Refresh library',lambda *_:self.scan());header.pack_start(self.refresh)
         self.add=self.title_button('list-add-symbolic','Add game folder',self.choose_folder);header.pack_start(self.add)
         header.pack_end(self.title_button('emblem-system-symbolic','Settings',self.show_settings));header.pack_end(self.title_button('document-open-recent-symbolic','Activity',self.show_activity));outer.append(header)
-        top=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=14);margins(top,18);outer.append(top)
-        hero=Gtk.Box(spacing=20);hero.add_css_class('hero');hero_reveal=Gtk.Revealer(transition_type=Gtk.RevealerTransitionType.SLIDE_UP,reveal_child=True,transition_duration=180);hero_reveal.set_child(hero);top.append(hero_reveal)
-        self.dashboard_icon=Gtk.Image.new_from_file(str(ROOT/'gui/icons/hicolor/256x256/apps/io.github.lrnolivia.RTXForge.png'));self.dashboard_icon.set_pixel_size(96);self.dashboard_icon.set_valign(Gtk.Align.START);self.dashboard_icon.add_css_class('dashboard-icon');hero.append(self.dashboard_icon)
-        title=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=7,hexpand=True);hero.append(title)
-        title.append(label('GEFORCE / BUILT FOR LINUX','eyebrow'));title.append(label('Forge your entire library.','hero-title'))
-        self.stats=label('Finding your games…','dim-label');title.append(self.stats)
-        self.hardware_label=label('Preview mode · no game writes' if options.demo else 'Checking system hardware…','card-meta');title.append(self.hardware_label)
-        tuning,self.tuning_widgets=self.tuning_controls(self.settings)
-        title.append(tuning);self.strength_slider=self.tuning_widgets['nr_strength']
-        bulk=Gtk.Box(spacing=10,valign=Gtk.Align.START,halign=Gtk.Align.END);bulk.add_css_class('dashboard-actions');hero.append(bulk)
-        self.install_all=icon_button('Install All','list-add-symbolic',lambda *_:self.launch_action('install',True),'forge-primary');bulk.append(self.install_all)
-        self.uninstall_all=icon_button('Remove All','edit-delete-symbolic',lambda *_:self.launch_action('uninstall',True),'bulk-remove');bulk.append(self.uninstall_all)
-        self.reset_all=icon_button('Reset All','edit-undo-symbolic',self.apply_library_settings);bulk.append(self.reset_all)
+        top=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8);margins(top,12);outer.append(top)
+        hero=Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=8,
+        )
+        hero.add_css_class('hero')
+
+        hero_reveal=Gtk.Revealer(
+            transition_type=Gtk.RevealerTransitionType.SLIDE_UP,
+            reveal_child=True,
+            transition_duration=180,
+        )
+        hero_reveal.set_child(hero)
+        top.append(hero_reveal)
+
+        hero_top=Gtk.Box(
+            spacing=14,
+            hexpand=True,
+            valign=Gtk.Align.START,
+        )
+        hero.append(hero_top)
+
+        dashboard_art_path=(
+            ROOT
+            / 'gui'
+            / 'icons'
+            / 'hicolor'
+            / '512x512'
+            / 'apps'
+            / 'io.github.lrnolivia.RTXForge.png'
+        )
+
+        self.dashboard_icon=Gtk.Image.new_from_file(
+            str(dashboard_art_path)
+        )
+        self.dashboard_icon.set_pixel_size(80)
+        self.dashboard_icon.set_valign(Gtk.Align.START)
+        self.dashboard_icon.set_halign(Gtk.Align.START)
+        self.dashboard_icon.add_css_class(
+            'dashboard-icon'
+        )
+        hero_top.append(self.dashboard_icon)
+
+        title=Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=3,
+            hexpand=True,
+            valign=Gtk.Align.START,
+        )
+        hero_top.append(title)
+
+        title.append(
+            label(
+                'GEFORCE / BUILT FOR LINUX',
+                'eyebrow',
+            )
+        )
+
+        title.append(
+            label(
+                'Forge your entire library.',
+                'hero-title',
+            )
+        )
+
+        self.stats=label(
+            'Finding your games…',
+            'dim-label',
+        )
+        title.append(self.stats)
+
+        self.hardware_label=label(
+            'Preview mode · no game writes'
+            if options.demo
+            else 'Checking system hardware…',
+            'card-meta',
+        )
+        title.append(self.hardware_label)
+
+        bulk=Gtk.Box(
+            spacing=8,
+            valign=Gtk.Align.START,
+            halign=Gtk.Align.END,
+        )
+        bulk.add_css_class(
+            'dashboard-actions'
+        )
+        hero_top.append(bulk)
+
+        self.install_all=icon_button(
+            'Install All',
+            'list-add-symbolic',
+            lambda *_:self.launch_action(
+                'install',
+                True,
+            ),
+            'forge-primary',
+        )
+        bulk.append(self.install_all)
+
+        self.uninstall_all=icon_button(
+            'Remove All',
+            'edit-delete-symbolic',
+            lambda *_:self.launch_action(
+                'uninstall',
+                True,
+            ),
+            'bulk-remove',
+        )
+        bulk.append(self.uninstall_all)
+
+        self.reset_all=icon_button(
+            'Reset All',
+            'edit-undo-symbolic',
+            self.apply_library_settings,
+        )
+        bulk.append(self.reset_all)
+
+        tuning,self.tuning_widgets=self.tuning_controls(
+            self.settings
+        )
+        tuning.set_hexpand(True)
+        tuning.set_halign(Gtk.Align.FILL)
+        tuning.set_margin_top(8)
+        tuning.add_css_class('dashboard-tuning')
+        hero.append(tuning)
+
+        self.strength_slider=(
+            self.tuning_widgets['nr_strength']
+        )
 
         self.operation_hide_source=0
         self.operation_revealer=Gtk.Revealer(
@@ -612,10 +738,10 @@ class Window(Adw.ApplicationWindow):
         self.reset_all.set_tooltip_text('Restore current sharpening, NR and menu-font defaults for managed games. Each configuration is backed up. Close running games first.')
         self.install_all.set_tooltip_text('One click: prepare, back up and install wherever possible across every library. Incompatible games are skipped.')
         self.uninstall_all.set_tooltip_text('One click: remove recorded OptiScaler installs across every library, with backups. Your games remain installed.')
-        controls=Gtk.Box(spacing=18);controls.add_css_class('control-pod');top.append(controls)
-        profile_text=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=3,hexpand=True,valign=Gtk.Align.CENTER);controls.append(profile_text)
+        controls=Gtk.Box(spacing=14);controls.add_css_class('control-pod');controls.add_css_class('mode-bar');top.append(controls)
+        profile_text=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=1,hexpand=True,valign=Gtk.Align.CENTER);controls.append(profile_text)
         profile_text.append(label('Enhancement Mode','heading'))
-        self.profile_note=label('','dim-label');self.profile_note.set_ellipsize(Pango.EllipsizeMode.END);self.profile_note.set_lines(1);self.profile_note.set_max_width_chars(42);profile_text.append(self.profile_note)
+        self.profile_note=label('','dim-label');self.profile_note.add_css_class('mode-description');self.profile_note.set_ellipsize(Pango.EllipsizeMode.END);self.profile_note.set_lines(1);self.profile_note.set_max_width_chars(42);profile_text.append(self.profile_note)
         self.profile_group=Adw.ToggleGroup(homogeneous=True,valign=Gtk.Align.CENTER)
         self.profile_group.add_css_class('mode-selector')
         for mode,title in [('nr-only','NR Only'),('mfg-only','MFG Only'),('nr-mfg','NR + MFG')]:
@@ -641,7 +767,7 @@ class Window(Adw.ApplicationWindow):
             else:previous=b;b.set_active(True)
             b.connect('toggled',self.filter_changed,key);filterbox.append(b)
         filters.append(button('Select all',lambda *_:self.select_all(True)));filters.append(button('Clear',lambda *_:self.select_all(False)))
-        margins(viewbar,18);viewbar.set_margin_top(0);viewbar.set_margin_bottom(0);viewbar.set_margin_top(20);outer.append(viewbar)
+        margins(viewbar,12);viewbar.set_margin_top(0);viewbar.set_margin_bottom(0);viewbar.set_margin_top(8);outer.append(viewbar)
         scroll=Gtk.ScrolledWindow(vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER);library_stage=Gtk.Overlay(vexpand=True);library_stage.set_child(scroll);outer.append(library_stage)
         edge=Gtk.Box(height_request=64,valign=Gtk.Align.START,can_target=False);edge.add_css_class('dashboard-fade');edge.set_visible(False);library_stage.add_overlay(edge)
         def collapse_header(adj):
@@ -1041,8 +1167,8 @@ class Window(Adw.ApplicationWindow):
         self.filter_games()
         if art and self.settings['online_art'] and games:self.fetch_media()
     def make_card(self,game):
-        view=self.settings.get('library_view','posters');scale=max(.7,min(1.5,self.settings.get('art_scale',100)/100))
-        poster_width=max(110,int(round(158*scale)))
+        view=self.settings.get('library_view','posters');scale=max(.5,min(1.5,self.settings.get('art_scale',100)/100))
+        poster_width=max(80,int(round(158*scale)))
         width,height=(poster_width,int(round(poster_width*1.5))) if view=='posters' else (int(round(290*scale)),int(round(136*scale))) if view=='capsules' else (54,81)
         card=Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL if view=='list' else Gtk.Orientation.VERTICAL);card.add_css_class('game-card');card.set_size_request(width+4,-1)
         overlay=Gtk.Overlay(valign=Gtk.Align.START);card.append(overlay)
@@ -2334,7 +2460,7 @@ class Window(Adw.ApplicationWindow):
         appearance=Adw.PreferencesGroup(title='Library Appearance')
         views=['posters','capsules','list'];view=Adw.ComboRow(title='Layout',model=Gtk.StringList.new(['Posters','Wide Capsules','List']),selected=views.index(self.settings.get('library_view','posters')));appearance.add(view)
         original_art_scale=int(self.settings.get('art_scale',80));settings_saved={'value':False}
-        scale=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,70,150,10);scale.set_value(original_art_scale);scale.set_draw_value(True);scale.set_digits(0);scale.set_size_request(170,-1);scale.set_valign(Gtk.Align.CENTER)
+        scale=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,50,150,10);scale.set_value(original_art_scale);scale.set_draw_value(True);scale.set_digits(0);scale.set_size_request(170,-1);scale.set_valign(Gtk.Align.CENTER)
         item=row('Artwork Size','Preview updates live');item.add_suffix(scale);appearance.add(item)
         def preview_art_scale(widget):
             value=int(widget.get_value())
@@ -2695,8 +2821,8 @@ class Window(Adw.ApplicationWindow):
             assert self.flow.get_max_children_per_line()==12
             assert hasattr(self,'dashboard_icon') and hasattr(self,'operation_revealer')
             original_scale=self.settings.get('art_scale',80)
-            self.settings['art_scale']=70;self.show_games(self.games,False)
-            assert next(iter(self.cards.values()))['size'][0]==max(110,round(158*.7))
+            self.settings['art_scale']=50;self.show_games(self.games,False)
+            assert next(iter(self.cards.values()))['size'][0]==max(80,round(158*.5))
             self.settings['art_scale']=original_scale;self.show_games(self.games,False)
             for key,widget in self.tuning_widgets.items():
                 original=widget.get_selected() if key=='mfg_multiplier' else widget.get_value()

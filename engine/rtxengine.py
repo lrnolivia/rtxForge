@@ -2042,6 +2042,11 @@ VISUAL_DEFAULTS = {
         "WorkingScale": "0.75", "Passes": "1", "Style": "2",
         "Intensity": "2.00", "LocalStructure": "1.00", "LocalTone": "1.00",
         "SkinStructure": "2.00", "AutoMask": "true", "ApplyModel": "true",
+        # DLSS-Unlocked NR tuning that should survive managed repair/update.
+        "TransferStrength": "1.00", "ColourStrength": "1.00",
+        "SkinProtection": "auto", "SkinToneEnabled": "auto", "SkinDetail": "auto",
+        "SkinColour": "auto", "EnvironmentDetail": "auto", "EnvironmentColour": "auto",
+        "FinishedPicture": "auto",
     },
 }
 
@@ -4162,7 +4167,8 @@ def install_target(
     nr_runtime_payload: Optional[bytes] = None,
     nr_runtime_meta: Optional[dict] = None,
     feature_mode: str = "nr-mfg",
-    enable_effects: bool = True,
+    enable_effects: bool = False,
+    native_mfg_fallback: bool = False,
     nr_strength: str = "strong",
     mfg_multiplier: int = 2,
     sharpening_strength: str = "strong",
@@ -4299,7 +4305,10 @@ def install_target(
     # create_baseline below backs up every replacement before the first write.
     require(feature_mode != "nr-only" or Y4MY_PROVIDER.get("id") == "dlss-unlocked",
             "NR Only is currently available with DLSS-Unlocked")
-    if Y4MY_PROVIDER.get("id") == "dlss-unlocked" and feature_mode == "mfg-only":
+    if Y4MY_PROVIDER.get("id") == "dlss-unlocked" and feature_mode == "mfg-only" and native_mfg_fallback:
+        # Explicit, opt-in fallback only. The normal route leaves the game's
+        # native NVIDIA Streamline/DLSS-G runtime in control and keeps the
+        # provider's OptiScaler/streamline runtime private.
         require((target / "nvngx_dlssg.dll").is_file(), "MFG runtime deployment requires game-native nvngx_dlssg.dll")
         for rel, content in list(payload.items()):
             name = PurePosixPath(rel).name
@@ -4371,19 +4380,38 @@ def install_target(
 
     # Preserve the game-native DLSS-G path. Ada unlock is independent of OptiFG.
     text = payload[ini_key].decode("utf-8")
-    text = set_ini_value(text, "DLSSG", "AdaMfgUnlock", "true" if enable_effects and family == "ada" and feature_mode != "nr-only" else "false")
-    text = set_ini_value(text, "DLSSG", "AdaBlackwellKernels", "true" if enable_effects and family == "ada" and feature_mode != "nr-only" else "auto")
+    is_dlss_unlocked = Y4MY_PROVIDER.get("id") == "dlss-unlocked"
+    ada_active = enable_effects and family == "ada" and feature_mode != "nr-only"
+    text = set_ini_value(text, "DLSSG", "AdaMfgUnlock", "true" if ada_active else "false")
+    text = set_ini_value(
+        text, "DLSSG", "AdaBlackwellKernels",
+        "false" if is_dlss_unlocked else ("true" if ada_active else "auto"),
+    )
     text = set_ini_value(text, "DLSSG", "AmpereMfgUnlock", "false")
-    text = set_ini_value(text, "DlssNr", "Enabled", "true" if enable_effects and feature_mode in {"nr-mfg", "nr-only"} else "false")
-    if Y4MY_PROVIDER.get("id") == "dlss-unlocked":
+    if is_dlss_unlocked and family == "ada":
+        # Default DLSS-Unlocked route: the game owns native NVIDIA
+        # Streamline/DLSS-G; OptiScaler applies only the Ada capability unlock.
+        text = set_ini_value(text, "FrameGen", "External", "false")
+        text = set_ini_value(text, "FrameGen", "Enabled", "auto")
+        text = set_ini_value(text, "FrameGen", "FGInput", "auto")
+        text = set_ini_value(text, "FrameGen", "FGOutput", "auto")
+        text = set_ini_value(text, "FrameGen", "FGNvngxReplacement", "auto")
+        text = set_ini_value(text, "Menu", "OverlayMenu", "false")
+        text = set_ini_value(text, "Menu", "ShortcutKey", "-1")
+    if is_dlss_unlocked:
         for key in ("DualFeature", "DualEnlarger", "PreUpscale"):
             text = remove_ini_key(text, "DlssNr", key)
         text = set_ini_value(text, "DlssNr", "RunBeforeSR", "true")
         text = set_ini_value(text, "DlssNr", "DeferredDLSS", "false")
+        if feature_mode in {"nr-mfg", "nr-only"}:
+            text = set_ini_value(text, "DlssNr", "ToggleKey", "0x79")
     text, visual_tuning = apply_visual_defaults(
         text, ini_source.decode("utf-8-sig") if existing_baseline else None, feature_mode, nr_strength, mfg_multiplier, sharpening_strength,
     )
-    if not enable_effects:text = set_ini_value(text, "DlssNr", "Enabled", "false")
+    # 0.5.8 already maps the UI multiplier to OverrideInterpolationCount.
+    # DLSS-Unlocked NR still starts dormant and is toggled independently with F10.
+    if not enable_effects or is_dlss_unlocked:
+        text = set_ini_value(text, "DlssNr", "Enabled", "false")
     nr_tuning = visual_tuning.get("DlssNr", visual_defaults(nr_strength)["DlssNr"])
     payload[ini_key] = text.encode("utf-8")
 
@@ -4545,7 +4573,7 @@ def install_target(
                     "menu_key": "Alt+Insert / Insert",
                     "ownership": "integrated",
                     "enabled": enable_effects and feature_mode != "nr-only",
-                    "activation": "startup" if enable_effects else "dormant",
+                    "activation": "startup" if enable_effects else "manual-after-launch",
                 }
                 if family == "ada" else None
             ),
@@ -4553,8 +4581,8 @@ def install_target(
             "provider_id": Y4MY_PROVIDER.get("id", "y4my"),
             "feature_mode": feature_mode,
             "nr_profile": {
-                "enabled": enable_effects and feature_mode in {"nr-mfg", "nr-only"} and nr_tuning.get("Enabled") == "true",
-                "activation": "startup" if enable_effects else "dormant",
+                "enabled": False if is_dlss_unlocked else (enable_effects and feature_mode in {"nr-mfg", "nr-only"} and nr_tuning.get("Enabled") == "true"),
+                "activation": "toggle-key-f10" if (is_dlss_unlocked and feature_mode in {"nr-mfg", "nr-only"}) else ("startup" if enable_effects else "manual-after-launch"),
                 "dual_feature": Y4MY_PROVIDER.get("id") != "dlss-unlocked",
                 "dual_enlarger": "dlss" if Y4MY_PROVIDER.get("id") != "dlss-unlocked" else None,
                 "run_before_sr": Y4MY_PROVIDER.get("id") == "dlss-unlocked",
@@ -4563,7 +4591,7 @@ def install_target(
                 "working_scale": float(nr_tuning["WorkingScale"]),
                 "skin_structure": float(nr_tuning["SkinStructure"]),
                 "intensity": float(nr_tuning["Intensity"]),
-                "menu_key": "Alt+Insert / Insert",
+                "menu_key": "F10 (NR toggle) / overlay menu disabled" if is_dlss_unlocked else "Alt+Insert / Insert",
             },
             "compatibility_policy": {
                 "proxy_imports": sorted(pe_imported_dlls(game.exe)),
@@ -4573,7 +4601,9 @@ def install_target(
                 "dxgi_spoofing": False,
                 "vulkan_spoofing": False,
                 "upscaler_route": "auto-first-launch",
-                "mfg_route": "native-ada-y4my-v4-armed" if family == "ada" else "disabled-sm86",
+                "mfg_route": ("native-game-dlssg-ada-unlock" if is_dlss_unlocked else "native-ada-y4my-v4-armed") if family == "ada" else "disabled-sm86",
+                "native_mfg_fallback": bool(native_mfg_fallback) if is_dlss_unlocked else False,
+                "mfg_multiplier": mfg_multiplier if feature_mode != "nr-only" else None,
                 "prior_runtime_status": prior_runtime_evidence.get("status") if existing_baseline else None,
                 "preserved_proven_proxy": bool(prior_runtime_evidence.get("mfg_applied")),
             },

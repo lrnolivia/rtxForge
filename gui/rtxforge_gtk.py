@@ -4,6 +4,7 @@ from pathlib import Path
 import sys,threading,time,traceback,argparse,datetime,colorsys
 from collections import Counter
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'scripts'))
+APP_VERSION=(ROOT/'VERSION').read_text(encoding='utf-8').strip() if (ROOT/'VERSION').exists() else 'dev'
 import gi
 gi.require_version('Gtk','4.0');gi.require_version('Adw','1')
 from gi.repository import Gtk,Adw,GLib,Gio,Gdk,Graphene,Pango,GdkPixbuf
@@ -154,7 +155,7 @@ class Window(Adw.ApplicationWindow):
         self.connect('close-request',self.close_request)
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.PREFER_DARK if self.settings['dark'] else Adw.ColorScheme.DEFAULT)
         self.overlay=Adw.ToastOverlay();self.set_content(self.overlay);outer=Gtk.Box(orientation=Gtk.Orientation.VERTICAL);self.overlay.set_child(outer)
-        header=Adw.HeaderBar();header.set_title_widget(Adw.WindowTitle(title='rtxForge',subtitle='Your whole library. One place. · 0.5.9.4'))
+        header=Adw.HeaderBar();header.set_title_widget(Adw.WindowTitle(title='rtxForge',subtitle=f'Your whole library. One place. · {APP_VERSION}'))
         self.refresh=self.title_button('view-refresh-symbolic','Refresh library',lambda *_:self.scan());header.pack_start(self.refresh)
         self.add=self.title_button('list-add-symbolic','Add game folder',self.choose_folder);header.pack_start(self.add)
         header.pack_end(self.title_button('emblem-system-symbolic','Settings',self.show_settings));header.pack_end(self.title_button('document-open-recent-symbolic','Activity',self.show_activity));outer.append(header)
@@ -708,9 +709,31 @@ class Window(Adw.ApplicationWindow):
         for title,key in [('Graphics Card','gpu'),('Driver','driver'),('Video Memory','vram'),('Processor','cpu'),('Architecture','architecture')]:
             if host.get(key):system.add(row(title,host[key]))
         system.add(row('Compatibility',host.get('reason','Not checked')))
-        app=Adw.PreferencesGroup(title='Application');app.add(row('rtxForge','Version 0.5.9.4'))
+        app=Adw.PreferencesGroup(title='Application');app.add(row('rtxForge',f'Version {APP_VERSION}'))
         if os.environ.get('APPIMAGE'):
-            item=row('Desktop Installation');action=button('Update App Menu',self.install_desktop);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);app.add(item)
+            item=row(
+                'Application Update',
+                'Download, verify, and install the newest rtxForge build.'
+            )
+            action=button(
+                'Check for Updates',
+                self.check_app_update
+            )
+            action.set_valign(Gtk.Align.CENTER)
+            item.add_suffix(action)
+            app.add(item)
+
+            item=row(
+                'Desktop Installation',
+                'Re-register this AppImage in the application menu.'
+            )
+            action=button(
+                'Reinstall App Menu',
+                self.install_desktop
+            )
+            action.set_valign(Gtk.Align.CENTER)
+            item.add_suffix(action)
+            app.add(item)
         recovery=Adw.PreferencesGroup(title='Recovery')
         for title,subtitle,caption,fn in [('Previous Changes','Browse available recovery records.','Browse',lambda *_:self.show_undo()),('Old NR Files','Review legacy files before removal.','Review',lambda *_:self.show_cleanup()),('Library Reports','View test notes and export a support report.','Open',self.show_reports)]:
             item=row(title,subtitle);action=button(caption,fn);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);recovery.add(item)
@@ -726,9 +749,207 @@ class Window(Adw.ApplicationWindow):
             if self.options.demo:d.close();self.show_games(self.games,False);return
             self.start('Saving settings',lambda:library_media.save_settings(self.service.config,self.settings),lambda _:(d.close(),self.show_games(self.games,False),self.fetch_media()))
         f.append(button('Save Settings',save,'suggested-action'))
+    def check_app_update(self,*_):
+        import app_update
+        self.start(
+            'Checking for application updates',
+            app_update.check,
+            self.update_checked,
+        )
+
+    def update_checked(self,info):
+        if not info['available']:
+            self.toast(
+                f"rtxForge {APP_VERSION} is up to date."
+            )
+            return
+
+        d,b,f=self.open_panel(
+            'rtxForge Update',
+            width=620,
+            height=390,
+        )
+
+        group=Adw.PreferencesGroup(
+            title=f"rtxForge {info['version']}",
+            description='A newer application build is ready.'
+        )
+        b.append(group)
+
+        group.add(
+            row(
+                'Installed',
+                f"{info['current_version']} · "
+                f"{info['current_commit'][:8]}"
+            )
+        )
+        group.add(
+            row(
+                'Available',
+                f"{info['version']} · "
+                f"{info['commit'][:8]}"
+            )
+        )
+
+        size=float(info['size'])
+        units=['B','KB','MB','GB']
+        index=0
+        while size>=1024 and index<len(units)-1:
+            size/=1024
+            index+=1
+
+        group.add(
+            row(
+                'Download',
+                f"{size:.1f} {units[index]} · SHA256 verified"
+            )
+        )
+
+        f.append(
+            button(
+                'Later',
+                lambda *_:d.close()
+            )
+        )
+        f.append(
+            button(
+                'Install Update',
+                lambda *_:self.install_app_update(
+                    info,d,b,f
+                ),
+                'suggested-action',
+            )
+        )
+
+    def install_app_update(self,info,d,b,f):
+        import app_update
+
+        clear(b)
+        clear(f)
+
+        d.set_can_close(False)
+
+        content=Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=14,
+            valign=Gtk.Align.CENTER,
+            vexpand=True,
+        )
+        content.add_css_class('panel-body')
+        b.append(content)
+
+        content.append(
+            label(
+                f"Updating to rtxForge {info['version']}",
+                'title-2',
+            )
+        )
+
+        caption=label(
+            'Downloading application…',
+            'dim-label',
+        )
+        content.append(caption)
+
+        bar=Gtk.ProgressBar(
+            width_request=360,
+        )
+        content.append(bar)
+
+        def progress(fraction,received,total):
+            GLib.idle_add(
+                bar.set_fraction,
+                fraction,
+            )
+
+            mb_received=received/(1024*1024)
+            mb_total=total/(1024*1024)
+
+            GLib.idle_add(
+                caption.set_text,
+                f"Downloading · "
+                f"{mb_received:.1f} / {mb_total:.1f} MB",
+            )
+
+        self.start(
+            'Downloading and verifying application update',
+            lambda:app_update.install(
+                info,
+                progress=progress,
+            ),
+            lambda target:self.app_update_installed(
+                info,target,d,b,f
+            ),
+        )
+
+    def app_update_installed(self,info,target,d,b,f):
+        import app_update
+
+        d.set_can_close(True)
+        clear(b)
+        clear(f)
+
+        box=Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=14,
+            valign=Gtk.Align.CENTER,
+            vexpand=True,
+        )
+        box.add_css_class('panel-body')
+        b.append(box)
+
+        icon=Gtk.Image.new_from_icon_name(
+            'emblem-ok-symbolic'
+        )
+        icon.set_pixel_size(40)
+        icon.add_css_class('result-success')
+        box.append(icon)
+
+        box.append(
+            label(
+                f"rtxForge {info['version']} installed",
+                'title-2',
+            )
+        )
+
+        box.append(
+            label(
+                'The verified AppImage replaced the installed '
+                'copy. Your previous build was preserved.',
+                'dim-label',
+            )
+        )
+
+        f.append(
+            button(
+                'Later',
+                lambda *_:d.close()
+            )
+        )
+
+        def restart(*_):
+            app_update.restart()
+            self.get_application().quit()
+
+        f.append(
+            button(
+                'Restart Now',
+                restart,
+                'suggested-action',
+            )
+        )
+
     def install_desktop(self,*_):
         import desktop_install
-        self.start('Installing desktop app',desktop_install.install,lambda _:self.toast('rtxForge installed in your app menu. This build is now the default.'))
+        self.start(
+            'Installing desktop app',
+            desktop_install.install,
+            lambda _:self.toast(
+                'rtxForge installed in your app menu. '
+                'This build is now the default.'
+            ),
+        )
+
     def show_undo(self):
         if self.options.demo:
             d,b,f=self.open_panel('Undo previous changes');b.append(label('Your install and uninstall backups will appear here.'));return

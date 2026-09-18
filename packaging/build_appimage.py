@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build the Bazzite 44 GNOME-targeted AppImage; does not install OS packages."""
 from pathlib import Path
-import hashlib,json,shutil,subprocess,urllib.request
+import hashlib,json,os,shutil,subprocess,urllib.request
 root=Path(__file__).resolve().parents[1]
 dist=root/'dist'
 version=(root/'VERSION').read_text(encoding='utf-8').strip()
@@ -11,6 +11,27 @@ stage=dist/'AppImage-build';stage.mkdir(parents=True, exist_ok=True)
 app=stage/'RTXForge.AppDir'
 if app.exists():shutil.rmtree(app)
 app.mkdir();payload=app/'usr/share/rtxforge';payload.mkdir(parents=True)
+
+shutil.copyfile(root/'VERSION',payload/'VERSION')
+
+build_sha=os.environ.get('GITHUB_SHA','').strip()
+if not build_sha:
+    try:
+        build_sha=subprocess.check_output(
+            ['git','rev-parse','HEAD'],
+            cwd=root,
+            text=True,
+        ).strip()
+    except Exception:
+        build_sha='unknown'
+
+(payload/'BUILD_INFO.json').write_text(
+    json.dumps(
+        {'version':version,'commit':build_sha},
+        sort_keys=True,
+    )+'\\n'
+)
+
 for name in ['gui','scripts','providers']:
  shutil.copytree(root/name,payload/name,ignore=shutil.ignore_patterns('__pycache__'))
 for name in ['provider.json','README.md']:shutil.copyfile(root/name,payload/name)

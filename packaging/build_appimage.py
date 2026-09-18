@@ -7,7 +7,7 @@ dist=root/'dist'
 version=(root/'VERSION').read_text(encoding='utf-8').strip()
 if not version:
     raise RuntimeError('VERSION is empty')
-stage=dist/'AppImage-build';stage.mkdir(exist_ok=True)
+stage=dist/'AppImage-build';stage.mkdir(parents=True, exist_ok=True)
 app=stage/'RTXForge.AppDir'
 if app.exists():shutil.rmtree(app)
 app.mkdir();payload=app/'usr/share/rtxforge';payload.mkdir(parents=True)

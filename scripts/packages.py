@@ -5,7 +5,6 @@ import ui
 import pipeline
 from storage import storage
 P=pathlib.Path
-POLICY='RTXForge.NrPanel.v1'
 def download(url,path,expected=None,blob=None,size=None):
     if path.exists():
         datahash=t.digest(path)
@@ -133,23 +132,4 @@ def prepare(c,mode,readonly=False):
             sources[name]=(dest,expected)
     else:
         sources.pop('nvngx.dll_dlssnr.dll',None)
-    custom=root/'loader/rtxforge-loader.json'
-    bundled=P(__file__).resolve().parents[1]/'bundled-loader/rtxforge-loader.json'
-    # The release-pinned build takes precedence over an older imported loader.
-    if bundled.exists():
-        custom=bundled
-        t.need(t.read_json(custom)['sha256']==c.get('bundled_loader_sha256'),'Bundled loader is not the pinned RTXForge build')
-    if custom.exists():
-        meta=t.read_json(custom);dll=custom.parent/'OptiScaler.dll';t.need(meta['policy']==POLICY and meta['upstream_commit']==c['commit'] and t.digest(dll)==meta['sha256'],'Custom loader identity mismatch');
-        t.need(meta['sha256']==c['bundled_loader_sha256'],'Loader is not the release-pinned build');
-        if c.get('runtime_fork'):t.need(meta.get('fork_commit')==c['runtime_fork']['commit'] and set(c['runtime_fork']['capabilities']).issubset(meta.get('capabilities',[])),'Loader capability metadata mismatch')
-        sources['OptiScaler.dll']=(dll,meta['sha256'])
-    # Imported builds enforce NrPanel; stock builds keep the inactive panel.
     return pipeline.compose(sources,mode,c)
-
-def import_loader(c,folder):
-    root=storage(c,100*1024**2);meta=t.read_json(folder/'rtxforge-loader.json');dll=t.safe(folder/'OptiScaler.dll')
-    t.need(meta['policy']==POLICY and meta['upstream_commit']==c['commit'],'Incompatible loader build metadata')
-    t.need(t.digest(dll)==meta['sha256'] and POLICY.encode() in dll.read_bytes(),'Loader hash/policy marker mismatch')
-    out=root/'loader';t.need(not out.exists(),'Loader already imported; retain it and select a new versioned state root for a new build')
-    out.mkdir(parents=True);shutil.copyfile(dll,out/'OptiScaler.dll');t.save_new(out/'rtxforge-loader.json',meta);return out

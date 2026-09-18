@@ -109,18 +109,19 @@ def confirm(args,token):
     return ui.prompt(action+'? [y/N]').lower() in ('y','yes')
 
 def parser():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('command',nargs='?',choices=['install','repair','uninstall','rollback','prepare','import-loader','scan','preview-ui','cleanup','restore-cleanup'],default=None)
-    p.add_argument('--targets',type=P,help='JSON array: game, exe, mode; optional manifest/record/proxy/api');p.add_argument('--provider',type=P);p.add_argument('--mode',choices=list(profiles.MODES));p.add_argument('--library');p.add_argument('--nonsteam',action='append',default=[]);p.add_argument('--adopt-existing',action='store_true');p.add_argument('--dry-run',action='store_true');p.add_argument('--apply',action='store_true');p.add_argument('--confirm');p.add_argument('--details',action='store_true');p.add_argument('--batch',type=P);p.add_argument('--loader',type=P);p.add_argument('--roots',type=P,action='append',default=[]);p.add_argument('--cleanup-record',type=P);return p
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('command',nargs='?',choices=['install','repair','uninstall','rollback','prepare','scan','preview-ui','cleanup','restore-cleanup'],default=None)
+    p.add_argument('--targets',type=P,help='JSON array: game, exe, mode; optional manifest/record/proxy/api');p.add_argument('--provider',type=P);p.add_argument('--mode',choices=list(profiles.MODES));p.add_argument('--library');p.add_argument('--nonsteam',action='append',default=[]);p.add_argument('--adopt-existing',action='store_true');p.add_argument('--dry-run',action='store_true');p.add_argument('--apply',action='store_true');p.add_argument('--confirm');p.add_argument('--details',action='store_true');p.add_argument('--batch',type=P);p.add_argument('--roots',type=P,action='append',default=[]);p.add_argument('--cleanup-record',type=P);return p
 
 def run(args):
     c=load_provider(args.provider);root=storage(c)
     if args.command=='cleanup':
-        roots=args.roots or [P(c['storage']['mount'])]
+        roots=args.roots or discovery.candidate_libraries()
+        t.need(roots,'No game libraries found; pass --roots explicitly.')
         ui.title('Advanced · global DLSS5 cleanup')
         ui.line('Scan roots',', '.join(str(p) for p in roots))
         items=ui.work('Scanning cleanup candidates',cleanup.discover,roots,c)
         for row in items:ui.line(row['kind'],row['path'])
-        ui.line('Recovery policy','Every candidate is copied and verified before removal; Ada-Lab/recovery state is excluded.')
+        ui.line('Recovery policy','Every candidate is copied and verified before removal; rtxForge state/recovery data is excluded.')
         ui.line('Candidates',str(len(items)))
         if items and not args.dry_run and confirm(args,'CLEANUP'):ui.line('Recovery record',ui.work('Backing up and cleaning selected files',cleanup.apply,c,items))
         return
@@ -131,7 +132,6 @@ def run(args):
         return
     if args.command=='preview-ui':
         ui.table([('A','Example Game','NR + MFG'),('B','Another Game','MFG Only')]);return
-    if args.command=='import-loader':t.need(args.loader,'Supply --loader folder with DLL and build manifest');ui.line('Imported',packages.import_loader(c,args.loader.resolve()));return
     if args.command=='rollback':return rollback(args,c)
     mode=args.mode or (None if args.targets else choose_mode())
     if args.command=='prepare':t.need(not args.dry_run,'Prepare is an explicit cache-writing action');ui.work('Preparing and verifying payload',packages.prepare,c,mode or 'nr-mfg');ui.line('Ready','Pinned payload verified');return

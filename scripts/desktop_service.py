@@ -156,7 +156,9 @@ class DesktopService:
         return {'kind':row['kind'],'path':str(path),'title':'Restore recorded changes','rows':details,'blocked':[]}
 
     def review_cleanup(self):
-        items=cleanup.discover([Path(self.config['storage']['mount'])],self.config)
+        roots=self.libraries()
+        t.need(roots,'No Steam libraries were found for cleanup.')
+        items=cleanup.discover(roots,self.config)
         return {'kind':'cleanup','title':'Global DLSS5 cleanup','items':items,'blocked':[],
                 'rows':[{'name':Path(r['path']).name,'detail':r['path']} for r in items]}
 

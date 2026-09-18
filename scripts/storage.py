@@ -1,22 +1,42 @@
-import json,pathlib,sys,re,shutil,subprocess
+import os,pathlib,shutil,sys
 import transactions as e
 P=pathlib.Path
-def storage(c, required=0):
-    s = c['storage']
-    mount = e.safe(s['mount'])
-    root = e.safe(s['root'])
-    e.need(root.is_relative_to(mount / 'Ada-Lab') and root != mount / 'Ada-Lab', 'State must be below verified Games/Ada-Lab')
-    e.need(sys.platform == 'linux', 'Windows: preview/configuration reuse supported; Bazzite storage adapter required for mutation')
-    r = json.loads(subprocess.check_output(['findmnt', '--json', '--target', str(mount), '--output', 'TARGET,FSTYPE,UUID'], text=True))['filesystems']
-    r = [row for row in r if row['fstype'] != 'autofs']
-    e.need(len(r) == 1 and r[0]['target'] == str(mount) and (r[0]['fstype'] == 'btrfs') and (r[0]['uuid'] == s['uuid']), 'Games mount/UUID mismatch; no storage fallback')
-    for line in P('/proc/self/mountinfo').read_text().splitlines():
-        raw = line.split()[4]
-        mp = P(re.sub('\\\\([0-7]{3})', lambda m: chr(int(m[1], 8)), raw))
-        e.need(not mp.is_relative_to(mount / 'Ada-Lab'), 'Nested mount under Ada-Lab refused')
-    parent = root
+
+STATE_MARKERS=('desktop','packages','transactions','cleanup','batches','verification')
+
+def _portable_root():
+    raw=os.environ.get('XDG_STATE_HOME','').strip()
+    base=P(raw).expanduser() if raw else P.home()/'.local/state'
+    e.need(base.is_absolute(),'XDG_STATE_HOME must be an absolute path')
+    return base/'rtxforge'
+
+def _looks_like_existing_state(path):
+    path=P(path)
+    return path.is_dir() and any((path/name).exists() for name in STATE_MARKERS)
+
+def storage(c,required=0):
+    e.need(sys.platform=='linux','Windows: preview/configuration reuse supported; Linux storage adapter required for mutation')
+    s=c.get('storage') or {}
+    override=os.environ.get('RTXFORGE_STATE_ROOT','').strip()
+    configured=str(s.get('root') or '').strip()
+    legacy=str(s.get('legacy_root') or '').strip()
+
+    if override:
+        root=e.safe(P(override).expanduser())
+    elif configured:
+        root=e.safe(P(configured).expanduser())
+    elif legacy and _looks_like_existing_state(legacy):
+        root=e.safe(P(legacy))
+    else:
+        root=e.safe(_portable_root())
+
+    e.need(root not in (P('/'),P.home()),'Refusing unsafe rtxForge state root')
+    parent=root
     while not parent.exists():
-        parent = parent.parent
-    e.need(parent.stat().st_dev == mount.stat().st_dev, 'Wrong state device')
-    e.need(shutil.disk_usage(mount).free >= s['reserve_bytes'] + required, 'Insufficient Games space; reserve preserved')
+        parent=parent.parent
+    e.need(parent.is_dir(),'State parent is not a directory')
+
+    reserve=int(s.get('reserve_bytes',2*1024**3))
+    e.need(reserve>=0 and required>=0,'Invalid storage reservation')
+    e.need(shutil.disk_usage(parent).free>=reserve+required,'Insufficient free space for rtxForge state and recovery data')
     return root

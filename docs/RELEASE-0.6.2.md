@@ -16,16 +16,11 @@ The poster or progress bar advances the fake operation through the real Progress
 
 No live game files are modified in this mode.
 
-## Continuous and versioned releases
+## Continuous development publishing
 
-The Linux build workflow now maintains two release purposes:
+The Linux build workflow maintains `continuous` as the moving verified updater channel for successful `main` builds. It is intentionally a prerelease development channel so installed development builds can update directly from GitHub while work continues.
 
-- `continuous` remains the moving verified updater channel for successful `main` builds.
-- `vX.Y.Z` is created once as a permanent GitHub Release when that version first reaches a successful build.
-
-Existing permanent releases are left unchanged.
-
-Versioned releases include the versioned AppImage and its SHA-256 file and use the matching release note.
+Numbered public Releases are not created automatically from ordinary `main` pushes. They can be published intentionally when a stable release is ready.
 
 ## CI validation
 
@@ -39,11 +34,9 @@ AppImage publication is now gated by additional validation before the build is p
 
 The GTK smoke runs headlessly in GitHub Actions.
 
-## Legacy loader workflow
+## Legacy loader R&D
 
-The historical Windows/custom-loader workflow remains available for explicit manual R&D but no longer runs automatically from ordinary source changes.
-
-It is not part of the production Linux/AppImage pipeline.
+The historical Windows/custom-loader builder and its acceptance metadata have been removed from the public production repository. That experimental path is not required by the current Linux/AppImage pipeline.
 
 ## README maintenance
 
@@ -72,7 +65,7 @@ Before release preparation:
 - 210 core-hardening tests passed
 - automated GTK smoke passed
 - all expected GTK smoke screenshots were produced
-- both GitHub Actions workflow files parsed successfully as YAML
+- the production GitHub Actions workflow parsed successfully as YAML
 - no workflow tab characters were present
 - `git diff --check` passed
 

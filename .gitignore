@@ -18,3 +18,5 @@ engine/imported-rc1.38/
 /.codex/
 /AGENTS.md
 /.local-development/
+/build-private/
+/docs/private/

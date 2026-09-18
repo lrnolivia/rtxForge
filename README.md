@@ -4,7 +4,7 @@
 
 ## Install and update
 
-Download the Bazzite x86_64 AppImage from [Releases](https://github.com/lrnolivia/RTXForge/releases), mark it executable and open it. Choose **Install / update app** in Settings to register it in your launcher. Alternatively:
+The GitHub **continuous** prerelease is the moving development build used for live updates from `main`; it is not a numbered stable release. Download the Bazzite x86_64 AppImage from [Releases](https://github.com/lrnolivia/RTXForge/releases), mark it executable and open it. Choose **Install / update app** in Settings to register it in your launcher. Alternatively:
 
 ```sh
 APPIMAGE="$(ls -1t RTXForge-*-Bazzite-x86_64.AppImage | head -n1)"
@@ -12,7 +12,11 @@ chmod +x "$APPIMAGE"
 "$APPIMAGE" --install
 ```
 
-The persistent copy lives in `~/.local/share/rtxforge/application/RTXForge.AppImage`. After an updater-enabled build is installed, **Check for Updates** in Settings can download and verify a newer published AppImage, atomically replace the installed copy, and preserve the previous build. Updating the application does not redeploy games.
+The persistent copy lives in `~/.local/share/rtxforge/application/RTXForge.AppImage`. After an updater-enabled build is installed, **Check for Updates** in Settings can download and verify a newer continuous AppImage, atomically replace the installed copy, and preserve the previous build. Updating the application does not redeploy games.
+
+Runtime state and recovery data default to `$XDG_STATE_HOME/rtxforge` (normally `~/.local/state/rtxforge`). Existing installations that already contain rtxForge state under `/var/mnt/Games/Ada-Lab/RTXForge` continue using it automatically. Set `RTXFORGE_STATE_ROOT=/absolute/path` to choose another state location.
+
+Package preparation requires `7z` or `7zz` on the host; on Bazzite, Homebrew `sevenzip` is a suitable option.
 
 ## Providers and installation
 
@@ -53,7 +57,7 @@ Additional settings: `--nr-strength off|light|medium|strong`, `--sharpening-stre
 
 Provider flags: `--runtime-provider y4my|dlss-unlocked`, `--feature-mode mfg-only|nr-only|nr-mfg`, `--disable-effects`.
 
-[Release notes](docs/RELEASE-0.6.2.md) describe the 0.6.2 validation, release-publishing and live-smoke improvements. Historical custom MFG builds and their tags are preserved, but are not bundled into this release.
+[Release notes](docs/RELEASE-0.6.2.md) describe the 0.6.2 validation, continuous development publishing and live-smoke improvements. Historical custom MFG builds are not part of the production AppImage path.
 
 DLSS-Unlocked offers separate **NR Only** (pinned NR-v0.8.6; keep in-game FG off) and **MFG Only** (NR-v0.9.1, NR off, bundled NVIDIA runtime updates) pipelines. MFG Only backs up existing native DLLs and restores them on uninstall. Uninstall before changing pipelines. Combined NR + MFG remains available for experimentation.
 

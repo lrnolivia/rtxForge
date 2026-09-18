@@ -9,10 +9,8 @@
   "sha256": "9d7824cc9cfb15265bc6438b4638aad74ff9cd6d1d3488ab73724affb386a8b0",
   "expected_nr_size": 165840496,
   "storage": {
-    "mount": "/var/mnt/Games",
-    "uuid": "c0d758ff-5f5f-4668-8520-5941c557f9e9",
-    "root": "/var/mnt/Games/Ada-Lab/RTXForge",
-    "reserve_bytes": 107374182400
+    "legacy_root": "/var/mnt/Games/Ada-Lab/RTXForge",
+    "reserve_bytes": 2147483648
   },
   "name": "RTXForge",
   "headless": [],
@@ -30,7 +28,6 @@
     },
     "strategy": "dlss-unlocked-proton-v1"
   },
-  "bundled_loader_sha256": "95580ebc7d2f562d6d99cd798587f757a51cd7bd52e24b0895c42414c3a3c2e8",
   "pipeline": "streamline-native-dlssg-nr-separate-v2",
   "mfg": {
     "default_input": "dlssg",
@@ -38,13 +35,5 @@
     "default_nvngx_replacement": "none",
     "route_id": "native-streamline-dlssg-ada-v5",
     "policy": "Native Streamline input and real NVIDIA DLSS-G output only; no Enabler dependency."
-  },
-  "runtime_fork": {
-    "repo": "lrnolivia/RTXForge-MFG",
-    "commit": "deca7b7a8f1953de3cf6fe2731ede440b3ddaadf",
-    "build": "https://github.com/lrnolivia/RTXForge-MFG/actions/runs/34455052784",
-    "capabilities": [
-      "RTXForge.NativeMfgMenu.v3e"
-    ]
   }
 }

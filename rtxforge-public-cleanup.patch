@@ -1,0 +1,558 @@
+diff --git a/.github/workflows/linux-build.yml b/.github/workflows/linux-build.yml
+index e332e46..95f7d9d 100644
+--- a/.github/workflows/linux-build.yml
++++ b/.github/workflows/linux-build.yml
+@@ -57,6 +57,9 @@ jobs:
+           /usr/bin/python3 -m unittest \
+             engine.tests.test_v13_core_hardening
+ 
++          /usr/bin/python3 tests/test_batches.py
++          /usr/bin/python3 tests/test_cleanup.py
++
+           git diff --check HEAD^ HEAD
+ 
+       - name: Validate GTK desktop smoke
+@@ -176,12 +179,12 @@ jobs:
+             gh release edit continuous \
+               --title "rtxForge Continuous" \
+               --prerelease \
+-              --notes "Automatic verified AppImage build from main: $GITHUB_SHA"
++              --notes "Verified development AppImage from main: $GITHUB_SHA. This moving prerelease is the rtxForge continuous update channel, not a numbered stable release."
+           else
+             gh release create continuous \
+               --title "rtxForge Continuous" \
+               --prerelease \
+-              --notes "Automatic verified AppImage build from main: $GITHUB_SHA"
++              --notes "Verified development AppImage from main: $GITHUB_SHA. This moving prerelease is the rtxForge continuous update channel, not a numbered stable release."
+           fi
+ 
+           gh release upload continuous \
+@@ -189,34 +192,3 @@ jobs:
+             dist/rtxForge-Bazzite-x86_64.AppImage.sha256 \
+             dist/rtxforge-update.json \
+             --clobber
+-
+-      - name: Publish versioned release if missing
+-        if: github.ref == 'refs/heads/main'
+-        env:
+-          GH_TOKEN: ${{ github.token }}
+-        shell: bash
+-        run: |
+-          set -euo pipefail
+-
+-          VERSION="$(cat VERSION)"
+-          TAG="v${VERSION}"
+-
+-          VERSIONED="dist/RTXForge-${VERSION}-Bazzite-x86_64.AppImage"
+-          CHECKSUM="${VERSIONED}.sha256"
+-          NOTES="docs/RELEASE-${VERSION}.md"
+-
+-          test -s "$VERSIONED"
+-          test -s "$CHECKSUM"
+-          test -s "$NOTES"
+-
+-          if gh release view "$TAG" >/dev/null 2>&1; then
+-            echo "$TAG already exists; leaving permanent release unchanged."
+-            exit 0
+-          fi
+-
+-          gh release create "$TAG" \
+-            "$VERSIONED" \
+-            "$CHECKSUM" \
+-            --target "$GITHUB_SHA" \
+-            --title "rtxForge ${VERSION}" \
+-            --notes-file "$NOTES"
+diff --git a/.github/workflows/windows-build.yml b/.github/workflows/windows-build.yml
+deleted file mode 100644
+index e4322e9..0000000
+--- a/.github/workflows/windows-build.yml
++++ /dev/null
+@@ -1,42 +0,0 @@
+-name: Legacy RTXForge loader R&D
+-
+-# Historical custom-loader workbench.
+-# This is not part of the production Linux/AppImage pipeline.
+-on:
+-  workflow_dispatch:
+-
+-permissions:
+-  contents: read
+-jobs:
+-  build:
+-    runs-on: windows-2022
+-    timeout-minutes: 60
+-    steps:
+-      - uses: actions/checkout@v4
+-        with:
+-          path: rtxforge
+-      - uses: actions/checkout@v4
+-        with:
+-          repository: y4my4my4m/OptiScaler_DLSSNR_Multipass_MFG
+-          ref: 7b7220bbb4994a9c8ae60cfc75a44cb67995efb8
+-          submodules: recursive
+-          path: upstream
+-      - uses: microsoft/setup-msbuild@v2
+-      - name: Apply bounded menu patch
+-        run: python rtxforge/build/patch_panel.py upstream
+-      - name: Build unsigned x64 loader sequentially
+-        working-directory: upstream
+-        run: msbuild OptiScaler.sln /m:1 /p:Configuration=Release /p:Platform=x64 /p:MultiProcessorCompilation=false /verbosity:minimal
+-      - name: Record identity
+-        shell: pwsh
+-        run: |
+-          $dll = 'upstream/x64/Release/a/OptiScaler.dll'
+-          $hash = (Get-FileHash $dll -Algorithm SHA256).Hash.ToLower()
+-          @{ schema=1; policy='RTXForge.NrPanel.v1'; upstream_commit='7b7220bbb4994a9c8ae60cfc75a44cb67995efb8'; sha256=$hash } | ConvertTo-Json | Set-Content upstream/x64/Release/a/rtxforge-loader.json
+-      - uses: actions/upload-artifact@v4
+-        with:
+-          name: rtxforge-loader
+-          if-no-files-found: error
+-          path: |
+-            upstream/x64/Release/a/OptiScaler.dll
+-            upstream/x64/Release/a/rtxforge-loader.json
+diff --git a/.gitignore b/.gitignore
+index 1264c2d..8fe4072 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -18,3 +18,5 @@ engine/imported-rc1.38/
+ /.codex/
+ /AGENTS.md
+ /.local-development/
++/build-private/
++/docs/private/
+diff --git a/README.md b/README.md
+index 59965f2..e44411b 100644
+--- a/README.md
++++ b/README.md
+@@ -4,7 +4,7 @@
+ 
+ ## Install and update
+ 
+-Download the Bazzite x86_64 AppImage from [Releases](https://github.com/lrnolivia/RTXForge/releases), mark it executable and open it. Choose **Install / update app** in Settings to register it in your launcher. Alternatively:
++The GitHub **continuous** prerelease is the moving development build used for live updates from `main`; it is not a numbered stable release. Download the Bazzite x86_64 AppImage from [Releases](https://github.com/lrnolivia/RTXForge/releases), mark it executable and open it. Choose **Install / update app** in Settings to register it in your launcher. Alternatively:
+ 
+ ```sh
+ APPIMAGE="$(ls -1t RTXForge-*-Bazzite-x86_64.AppImage | head -n1)"
+@@ -12,7 +12,11 @@ chmod +x "$APPIMAGE"
+ "$APPIMAGE" --install
+ ```
+ 
+-The persistent copy lives in `~/.local/share/rtxforge/application/RTXForge.AppImage`. After an updater-enabled build is installed, **Check for Updates** in Settings can download and verify a newer published AppImage, atomically replace the installed copy, and preserve the previous build. Updating the application does not redeploy games.
++The persistent copy lives in `~/.local/share/rtxforge/application/RTXForge.AppImage`. After an updater-enabled build is installed, **Check for Updates** in Settings can download and verify a newer continuous AppImage, atomically replace the installed copy, and preserve the previous build. Updating the application does not redeploy games.
++
++Runtime state and recovery data default to `$XDG_STATE_HOME/rtxforge` (normally `~/.local/state/rtxforge`). Existing installations that already contain rtxForge state under `/var/mnt/Games/Ada-Lab/RTXForge` continue using it automatically. Set `RTXFORGE_STATE_ROOT=/absolute/path` to choose another state location.
++
++Package preparation requires `7z` or `7zz` on the host; on Bazzite, Homebrew `sevenzip` is a suitable option.
+ 
+ ## Providers and installation
+ 
+@@ -53,7 +57,7 @@ Additional settings: `--nr-strength off|light|medium|strong`, `--sharpening-stre
+ 
+ Provider flags: `--runtime-provider y4my|dlss-unlocked`, `--feature-mode mfg-only|nr-only|nr-mfg`, `--disable-effects`.
+ 
+-[Release notes](docs/RELEASE-0.6.2.md) describe the 0.6.2 validation, release-publishing and live-smoke improvements. Historical custom MFG builds and their tags are preserved, but are not bundled into this release.
++[Release notes](docs/RELEASE-0.6.2.md) describe the 0.6.2 validation, continuous development publishing and live-smoke improvements. Historical custom MFG builds are not part of the production AppImage path.
+ 
+ DLSS-Unlocked offers separate **NR Only** (pinned NR-v0.8.6; keep in-game FG off) and **MFG Only** (NR-v0.9.1, NR off, bundled NVIDIA runtime updates) pipelines. MFG Only backs up existing native DLLs and restores them on uninstall. Uninstall before changing pipelines. Combined NR + MFG remains available for experimentation.
+ 
+diff --git a/build/accept_runtime.py b/build/accept_runtime.py
+deleted file mode 100644
+index ea5b3a2..0000000
+--- a/build/accept_runtime.py
++++ /dev/null
+@@ -1,16 +0,0 @@
+-"""Accept one explicitly downloaded, compiled Proton runtime artifact for packaging."""
+-from pathlib import Path
+-import argparse,hashlib,json,shutil
+-p=argparse.ArgumentParser();p.add_argument('artifact',type=Path);p.add_argument('--fork-commit',required=True);p.add_argument('--run-url',required=True);a=p.parse_args()
+-root=Path(__file__).resolve().parents[1];meta=json.loads((a.artifact/'rtxforge-loader.json').read_text(encoding='utf-8-sig'));dll=a.artifact/'OptiScaler.dll';data=dll.read_bytes();c=json.loads((root/'provider.json').read_text())
+-assert data[:2]==b'MZ' and meta['sha256']==hashlib.sha256(data).hexdigest()
+-assert meta['upstream_commit']==c['commit'] and meta['fork_commit']==a.fork_commit
+-assert meta['policy']=='RTXForge.NrPanel.v1' and 'RTXForge.NativeMfgMenu.v4' in meta['capabilities']
+-assert b'RTXForge.NativeMfgMenu.v4' in data and b'RTXForge.NrPanel.v1' in data
+-for out in (root/'dist/panel-loader',root/'bundled-loader'):
+-    out.mkdir(parents=True,exist_ok=True)
+-    shutil.copyfile(dll,out/'OptiScaler.dll');(out/'rtxforge-loader.json').write_text(json.dumps(meta,indent=2)+'\n')
+-c['bundled_loader_sha256']=meta['sha256'];c['runtime_fork']={'repo':'lrnolivia/RTXForge-MFG','commit':a.fork_commit,'build':a.run_url,'capabilities':meta['capabilities']}
+-(root/'provider.json').write_text(json.dumps(c,indent=2)+'\n')
+-(root/'docs/proton-runtime-build.json').write_text(json.dumps({**meta,'run':a.run_url,'runtime_verified':False},indent=2)+'\n')
+-print('Pinned compiled Proton runtime: '+meta['sha256'])
+diff --git a/build/patch_panel.py b/build/patch_panel.py
+deleted file mode 100644
+index 79f2054..0000000
+--- a/build/patch_panel.py
++++ /dev/null
+@@ -1,17 +0,0 @@
+-"""Apply RTXForge's startup-only NR panel policy to the exact audited upstream source."""
+-import hashlib,pathlib,sys
+-p=pathlib.Path(sys.argv[1])/'OptiScaler/menu/menu_common.cpp'
+-s=p.read_text(encoding='utf-8-sig')
+-old='        DlssNr::RenderMenu(ctx.config, ctx.menuResScale);'
+-assert s.count(old)==1,'Upstream menu changed: review before applying'
+-new='''        // RTXForge route policy is fixed at startup, independent of the NR effect toggle.
+-        static const bool rtxforgeNrPanel = [&]() {
+-            const auto ini = std::filesystem::path(ctx.config->MainDllPath.value()) / L"OptiScaler.ini";
+-            const bool enabled = GetPrivateProfileIntW(L"RTXForge", L"NrPanel", 1, ini.c_str()) != 0;
+-            LOG_INFO("RTXForge.NrPanel.v1: {}", enabled);
+-            return enabled;
+-        }();
+-        if (rtxforgeNrPanel)
+-            DlssNr::RenderMenu(ctx.config, ctx.menuResScale);'''
+-p.write_text(s.replace(old,new),encoding='utf-8')
+-print('Applied startup-only [RTXForge] NrPanel policy; stock configurations default visible.')
+diff --git a/docs/AUDIT.md b/docs/AUDIT.md
+index 5c20b57..e61ff35 100644
+--- a/docs/AUDIT.md
++++ b/docs/AUDIT.md
+@@ -31,11 +31,11 @@ Local reports:
+ 
+ ## Remaining limits
+ 
+-The stock NR panel is visible in MFG Only. Linux storage defaults are machine-specific configuration. The installer does not set launch options automatically or establish game compatibility from successful file deployment. A batch is recoverable per target, not an all-games atomic transaction. Stale operation locks require inspection of recovery state before manual removal.
++The stock NR panel is visible in MFG Only. Application state is portable by default, with optional explicit state-root override. The installer does not set launch options automatically or establish game compatibility from successful file deployment. A batch is recoverable per target, not an all-games atomic transaction. Stale operation locks require inspection of recovery state before manual removal.
+ 
+-## Panel build activated
++## Historical panel build
+ 
+-At the user’s subsequent request, `.github/workflows/windows-build.yml` now builds the bounded patch on Windows 2022 from the same pinned upstream commit. The historical deferred status above describes the initial release. The patch reads `[RTXForge] NrPanel` once when the panel would first render; subsequent in-game NR effect toggles do not change panel visibility. Missing settings preserve upstream visibility. Import verifies build policy, upstream commit, SHA-256 and the embedded policy marker. Runtime panel behavior still requires game verification.
++An earlier private/custom-loader experiment built a bounded NR-panel patch against the pinned upstream commit. That builder and its acceptance metadata are no longer part of the public production repository; this section is retained only as historical audit context. Runtime panel behavior was never promoted to production evidence.
+ 
+ ## Repair crash correction
+ 
+@@ -47,7 +47,7 @@ The user's 0.1.1 report exposed overbroad conflict checks: RenoDX attribution te
+ 
+ A read-only repair preflight against all 19 exact targets in the report completed: 18 ready, Forza Horizon 6 blocked by its third-party winmm.dll. No game files were written. A focused regression verified preservation of attribution text, native dependency subdirectories and identified Microsoft dbghelp.dll, while an unknown winmm.dll still blocks.
+ 
+-GitHub Windows build 34320885964 succeeded. The artifact archive hash, x64 PE identity, embedded policy marker and DLL hash were verified; see panel-build.json. The loader was imported into RTXForge's prepared cache and bundled with 0.1.2. No installed game received it automatically.
++A historical GitHub Windows build succeeded and its artifact identity was verified at the time. The associated builder metadata has since been removed from the public production repository. No installed game received it automatically.
+ 
+ ## 0.1.3 interaction update
+ 
+diff --git a/docs/DESKTOP.md b/docs/DESKTOP.md
+index 48906d3..ce553f6 100644
+--- a/docs/DESKTOP.md
++++ b/docs/DESKTOP.md
+@@ -1,9 +1,11 @@
+ # Desktop integration
+ 
+-The GTK4/libadwaita UI is in `gui/rtxforge_gtk.py`. Library discovery remains toolkit-independent. `scripts/engine_bridge.py` adapts the imported transaction engine for both selected providers. Install, repair and uninstall prepare explicit previews; application occurs only after the action is confirmed.
++The GTK4/libadwaita UI is in `gui/rtxforge_gtk.py`. Library discovery remains toolkit-independent. `scripts/engine_bridge.py` adapts the imported transaction engine for the selected provider. Install, repair and uninstall prepare explicit previews; application occurs only after the action is confirmed.
+ 
+ Steam must be closed before applying. Desktop operations refuse interactive/elevated terminal operations instead of waiting invisibly. Failures are recorded per game; completed targets keep their recovery baselines.
+ 
+-Settings selects provider and startup activation. NR + MFG and MFG Only remain the only installation profiles. Test status, notes and manually bounded log capture live outside games in the configured report storage. Bench suppresses bulk install/repair; explicit selection remains available.
++Settings exposes MFG Only, NR + MFG, and DLSS-Unlocked NR Only. Test status, notes and manually bounded log capture live outside games in the configured report storage. Bench suppresses bulk install/repair; explicit selection remains available.
++
++Application state defaults to the user's XDG state directory and may be overridden with `RTXFORGE_STATE_ROOT`. Existing legacy state under `/var/mnt/Games/Ada-Lab/RTXForge` is reused when it contains recognizable rtxForge state, preserving prior recovery records without making that Games-drive layout a requirement for other systems.
+ 
+ Older desktop Undo remains a compatibility path for prior installation records. The native-FG safeguards described in the 0.5.0 release apply to the new engine; they cannot reconstruct missing originals from older uninstalls.
+diff --git a/docs/PROVENANCE.md b/docs/PROVENANCE.md
+index 1728005..f1de044 100644
+--- a/docs/PROVENANCE.md
++++ b/docs/PROVENANCE.md
+@@ -1,7 +1,7 @@
+ # Provenance
+ 
+-Current provider sources, exact release URLs, branch commits and archive hashes are recorded in `providers/lock.json` (checked 2026-09-14). y4my is pinned to v4 / 7b7220bbb499; DLSS-Unlocked to NR-v0.8.6 / 00fbc5873363. Neither is marked runtime-verified.
++Current provider sources, exact release URLs, branch commits and archive hashes are recorded in `providers/lock.json` (checked 2026-09-18). y4my uses the pinned `nightly` archive at commit `7b7220bbb499` plus its separately hash-pinned v4 runtime companion. DLSS-Unlocked uses NR-v0.9.1 for the current general package, while the NR Only profile is deliberately pinned to NR-v0.8.6 / `00fbc5873363`. Provider records remain marked `runtime_verified: false` unless game/runtime behavior has been explicitly established.
+ 
+ The transaction engine derives from the user-supplied RC1.38 archive. Original source/archive hashes and adaptation location are in `engine/SOURCE.json`. The AppImage packages this source and the desktop adapter; provider DLLs are downloaded and verified separately. Upstream license files are retained with provider payloads.
+ 
+-`provider.json` also retains legacy desktop compatibility and storage fields. Its historical runtime/NR fields do not select the 0.5.0 installation payload; `providers/lock.json` does. Historical custom runtime tags, logs and release documents remain historical evidence.
++`provider.json` retains the legacy provider fields needed by the older terminal composition path and a migration hint for existing local rtxForge state. Current desktop provider selection and package identity come from `providers/lock.json`. Historical custom-loader build machinery is not part of the public production workflow.
+diff --git a/docs/RELEASE-0.6.2.md b/docs/RELEASE-0.6.2.md
+index 6f562a8..db7709a 100644
+--- a/docs/RELEASE-0.6.2.md
++++ b/docs/RELEASE-0.6.2.md
+@@ -16,16 +16,11 @@ The poster or progress bar advances the fake operation through the real Progress
+ 
+ No live game files are modified in this mode.
+ 
+-## Continuous and versioned releases
++## Continuous development publishing
+ 
+-The Linux build workflow now maintains two release purposes:
++The Linux build workflow maintains `continuous` as the moving verified updater channel for successful `main` builds. It is intentionally a prerelease development channel so installed development builds can update directly from GitHub while work continues.
+ 
+-- `continuous` remains the moving verified updater channel for successful `main` builds.
+-- `vX.Y.Z` is created once as a permanent GitHub Release when that version first reaches a successful build.
+-
+-Existing permanent releases are left unchanged.
+-
+-Versioned releases include the versioned AppImage and its SHA-256 file and use the matching release note.
++Numbered public Releases are not created automatically from ordinary `main` pushes. They can be published intentionally when a stable release is ready.
+ 
+ ## CI validation
+ 
+@@ -39,11 +34,9 @@ AppImage publication is now gated by additional validation before the build is p
+ 
+ The GTK smoke runs headlessly in GitHub Actions.
+ 
+-## Legacy loader workflow
+-
+-The historical Windows/custom-loader workflow remains available for explicit manual R&D but no longer runs automatically from ordinary source changes.
++## Legacy loader R&D
+ 
+-It is not part of the production Linux/AppImage pipeline.
++The historical Windows/custom-loader builder and its acceptance metadata have been removed from the public production repository. That experimental path is not required by the current Linux/AppImage pipeline.
+ 
+ ## README maintenance
+ 
+@@ -72,7 +65,7 @@ Before release preparation:
+ - 210 core-hardening tests passed
+ - automated GTK smoke passed
+ - all expected GTK smoke screenshots were produced
+-- both GitHub Actions workflow files parsed successfully as YAML
++- the production GitHub Actions workflow parsed successfully as YAML
+ - no workflow tab characters were present
+ - `git diff --check` passed
+ 
+diff --git a/docs/panel-build.json b/docs/panel-build.json
+deleted file mode 100644
+index a299cf7..0000000
+--- a/docs/panel-build.json
++++ /dev/null
+@@ -1,11 +0,0 @@
+-{
+-  "upstream_commit": "7b7220bbb4994a9c8ae60cfc75a44cb67995efb8",
+-  "sha256": "cb46df91759b8edae6ac4df0af990132a2b256f70c55ed54f36ba27dc89152e8",
+-  "policy": "RTXForge.NrPanel.v1",
+-  "schema": 1,
+-  "workflow_run": "https://github.com/lrnolivia/RTXForge/actions/runs/34320885964",
+-  "artifact_sha256": "0f7039adefbd3b822859fa71ef6ac57113b73632f4fb616c6d565e154baf2244",
+-  "x64_pe_verified": true,
+-  "policy_marker_verified": true,
+-  "runtime_verified": false
+-}
+diff --git a/docs/proton-runtime-build.json b/docs/proton-runtime-build.json
+deleted file mode 100644
+index b943000..0000000
+--- a/docs/proton-runtime-build.json
++++ /dev/null
+@@ -1,12 +0,0 @@
+-{
+-  "schema": 1,
+-  "fork_commit": "deca7b7a8f1953de3cf6fe2731ede440b3ddaadf",
+-  "upstream_commit": "7b7220bbb4994a9c8ae60cfc75a44cb67995efb8",
+-  "sha256": "95580ebc7d2f562d6d99cd798587f757a51cd7bd52e24b0895c42414c3a3c2e8",
+-  "capabilities": [
+-    "RTXForge.NativeMfgMenu.v3e"
+-  ],
+-  "policy": "RTXForge.NrPanel.v1",
+-  "run": "https://github.com/lrnolivia/RTXForge-MFG/actions/runs/34455052784",
+-  "runtime_verified": false
+-}
+diff --git a/provider.json b/provider.json
+index 0790b0e..53f3f24 100644
+--- a/provider.json
++++ b/provider.json
+@@ -9,10 +9,8 @@
+   "sha256": "9d7824cc9cfb15265bc6438b4638aad74ff9cd6d1d3488ab73724affb386a8b0",
+   "expected_nr_size": 165840496,
+   "storage": {
+-    "mount": "/var/mnt/Games",
+-    "uuid": "c0d758ff-5f5f-4668-8520-5941c557f9e9",
+-    "root": "/var/mnt/Games/Ada-Lab/RTXForge",
+-    "reserve_bytes": 107374182400
++    "legacy_root": "/var/mnt/Games/Ada-Lab/RTXForge",
++    "reserve_bytes": 2147483648
+   },
+   "name": "RTXForge",
+   "headless": [],
+@@ -30,7 +28,6 @@
+     },
+     "strategy": "dlss-unlocked-proton-v1"
+   },
+-  "bundled_loader_sha256": "95580ebc7d2f562d6d99cd798587f757a51cd7bd52e24b0895c42414c3a3c2e8",
+   "pipeline": "streamline-native-dlssg-nr-separate-v2",
+   "mfg": {
+     "default_input": "dlssg",
+@@ -38,13 +35,5 @@
+     "default_nvngx_replacement": "none",
+     "route_id": "native-streamline-dlssg-ada-v5",
+     "policy": "Native Streamline input and real NVIDIA DLSS-G output only; no Enabler dependency."
+-  },
+-  "runtime_fork": {
+-    "repo": "lrnolivia/RTXForge-MFG",
+-    "commit": "deca7b7a8f1953de3cf6fe2731ede440b3ddaadf",
+-    "build": "https://github.com/lrnolivia/RTXForge-MFG/actions/runs/34455052784",
+-    "capabilities": [
+-      "RTXForge.NativeMfgMenu.v3e"
+-    ]
+   }
+ }
+diff --git a/scripts/cleanup.py b/scripts/cleanup.py
+index ff7745b..09ae450 100644
+--- a/scripts/cleanup.py
++++ b/scripts/cleanup.py
+@@ -14,15 +14,15 @@ def snapshot(path):
+     return {'kind':'directory','files':{r:t.digest(path/r) for r in files.values()},'modes':{r:stat.S_IMODE((path/r).stat().st_mode) for r in files.values()},'dirs':dirs}
+ 
+ def discover(roots,c):
+-    state=storage(c);lab=P(c['storage']['mount'])/'Ada-Lab';candidates=[];seen=[]
++    state=storage(c);candidates=[];seen=[]
+     for raw in roots:
+         root=t.safe(raw);t.need(root.is_dir() and root!=P('/'),'Choose an actual library/mount root, not /')
+         if any(root.is_relative_to(p) for p in seen):continue
+         seen.append(root)
+         for base,dirs,names in os.walk(root,followlinks=False):
+             folder=P(base)
+-            dirs[:]=[n for n in dirs if not (folder/n).is_symlink() and not (folder/n).is_relative_to(lab) and not (folder/n).is_relative_to(state)]
+-            if folder.is_relative_to(lab) or folder.is_relative_to(state):dirs[:]=[];continue
++            dirs[:]=[n for n in dirs if not (folder/n).is_symlink() and not (folder/n).is_relative_to(state)]
++            if folder.is_relative_to(state):dirs[:]=[];continue
+             for name in list(dirs):
+                 if name.lower()=='_dlss5_backup':candidates.append(folder/name);dirs.remove(name)
+             for name in names:
+diff --git a/scripts/desktop_service.py b/scripts/desktop_service.py
+index f17a1f5..350f18f 100644
+--- a/scripts/desktop_service.py
++++ b/scripts/desktop_service.py
+@@ -156,7 +156,9 @@ class DesktopService:
+         return {'kind':row['kind'],'path':str(path),'title':'Restore recorded changes','rows':details,'blocked':[]}
+ 
+     def review_cleanup(self):
+-        items=cleanup.discover([Path(self.config['storage']['mount'])],self.config)
++        roots=self.libraries()
++        t.need(roots,'No Steam libraries were found for cleanup.')
++        items=cleanup.discover(roots,self.config)
+         return {'kind':'cleanup','title':'Global DLSS5 cleanup','items':items,'blocked':[],
+                 'rows':[{'name':Path(r['path']).name,'detail':r['path']} for r in items]}
+ 
+diff --git a/scripts/packages.py b/scripts/packages.py
+index 1498807..48a162c 100644
+--- a/scripts/packages.py
++++ b/scripts/packages.py
+@@ -5,7 +5,6 @@ import ui
+ import pipeline
+ from storage import storage
+ P=pathlib.Path
+-POLICY='RTXForge.NrPanel.v1'
+ def download(url,path,expected=None,blob=None,size=None):
+     if path.exists():
+         datahash=t.digest(path)
+@@ -133,23 +132,4 @@ def prepare(c,mode,readonly=False):
+             sources[name]=(dest,expected)
+     else:
+         sources.pop('nvngx.dll_dlssnr.dll',None)
+-    custom=root/'loader/rtxforge-loader.json'
+-    bundled=P(__file__).resolve().parents[1]/'bundled-loader/rtxforge-loader.json'
+-    # The release-pinned build takes precedence over an older imported loader.
+-    if bundled.exists():
+-        custom=bundled
+-        t.need(t.read_json(custom)['sha256']==c.get('bundled_loader_sha256'),'Bundled loader is not the pinned RTXForge build')
+-    if custom.exists():
+-        meta=t.read_json(custom);dll=custom.parent/'OptiScaler.dll';t.need(meta['policy']==POLICY and meta['upstream_commit']==c['commit'] and t.digest(dll)==meta['sha256'],'Custom loader identity mismatch');
+-        t.need(meta['sha256']==c['bundled_loader_sha256'],'Loader is not the release-pinned build');
+-        if c.get('runtime_fork'):t.need(meta.get('fork_commit')==c['runtime_fork']['commit'] and set(c['runtime_fork']['capabilities']).issubset(meta.get('capabilities',[])),'Loader capability metadata mismatch')
+-        sources['OptiScaler.dll']=(dll,meta['sha256'])
+-    # Imported builds enforce NrPanel; stock builds keep the inactive panel.
+     return pipeline.compose(sources,mode,c)
+-
+-def import_loader(c,folder):
+-    root=storage(c,100*1024**2);meta=t.read_json(folder/'rtxforge-loader.json');dll=t.safe(folder/'OptiScaler.dll')
+-    t.need(meta['policy']==POLICY and meta['upstream_commit']==c['commit'],'Incompatible loader build metadata')
+-    t.need(t.digest(dll)==meta['sha256'] and POLICY.encode() in dll.read_bytes(),'Loader hash/policy marker mismatch')
+-    out=root/'loader';t.need(not out.exists(),'Loader already imported; retain it and select a new versioned state root for a new build')
+-    out.mkdir(parents=True);shutil.copyfile(dll,out/'OptiScaler.dll');t.save_new(out/'rtxforge-loader.json',meta);return out
+diff --git a/scripts/rtxforge.py b/scripts/rtxforge.py
+index 547c833..8a4ce8b 100644
+--- a/scripts/rtxforge.py
++++ b/scripts/rtxforge.py
+@@ -109,18 +109,19 @@ def confirm(args,token):
+     return ui.prompt(action+'? [y/N]').lower() in ('y','yes')
+ 
+ def parser():
+-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('command',nargs='?',choices=['install','repair','uninstall','rollback','prepare','import-loader','scan','preview-ui','cleanup','restore-cleanup'],default=None)
+-    p.add_argument('--targets',type=P,help='JSON array: game, exe, mode; optional manifest/record/proxy/api');p.add_argument('--provider',type=P);p.add_argument('--mode',choices=list(profiles.MODES));p.add_argument('--library');p.add_argument('--nonsteam',action='append',default=[]);p.add_argument('--adopt-existing',action='store_true');p.add_argument('--dry-run',action='store_true');p.add_argument('--apply',action='store_true');p.add_argument('--confirm');p.add_argument('--details',action='store_true');p.add_argument('--batch',type=P);p.add_argument('--loader',type=P);p.add_argument('--roots',type=P,action='append',default=[]);p.add_argument('--cleanup-record',type=P);return p
++    p=argparse.ArgumentParser(description=__doc__);p.add_argument('command',nargs='?',choices=['install','repair','uninstall','rollback','prepare','scan','preview-ui','cleanup','restore-cleanup'],default=None)
++    p.add_argument('--targets',type=P,help='JSON array: game, exe, mode; optional manifest/record/proxy/api');p.add_argument('--provider',type=P);p.add_argument('--mode',choices=list(profiles.MODES));p.add_argument('--library');p.add_argument('--nonsteam',action='append',default=[]);p.add_argument('--adopt-existing',action='store_true');p.add_argument('--dry-run',action='store_true');p.add_argument('--apply',action='store_true');p.add_argument('--confirm');p.add_argument('--details',action='store_true');p.add_argument('--batch',type=P);p.add_argument('--roots',type=P,action='append',default=[]);p.add_argument('--cleanup-record',type=P);return p
+ 
+ def run(args):
+     c=load_provider(args.provider);root=storage(c)
+     if args.command=='cleanup':
+-        roots=args.roots or [P(c['storage']['mount'])]
++        roots=args.roots or discovery.candidate_libraries()
++        t.need(roots,'No game libraries found; pass --roots explicitly.')
+         ui.title('Advanced · global DLSS5 cleanup')
+         ui.line('Scan roots',', '.join(str(p) for p in roots))
+         items=ui.work('Scanning cleanup candidates',cleanup.discover,roots,c)
+         for row in items:ui.line(row['kind'],row['path'])
+-        ui.line('Recovery policy','Every candidate is copied and verified before removal; Ada-Lab/recovery state is excluded.')
++        ui.line('Recovery policy','Every candidate is copied and verified before removal; rtxForge state/recovery data is excluded.')
+         ui.line('Candidates',str(len(items)))
+         if items and not args.dry_run and confirm(args,'CLEANUP'):ui.line('Recovery record',ui.work('Backing up and cleaning selected files',cleanup.apply,c,items))
+         return
+@@ -131,7 +132,6 @@ def run(args):
+         return
+     if args.command=='preview-ui':
+         ui.table([('A','Example Game','NR + MFG'),('B','Another Game','MFG Only')]);return
+-    if args.command=='import-loader':t.need(args.loader,'Supply --loader folder with DLL and build manifest');ui.line('Imported',packages.import_loader(c,args.loader.resolve()));return
+     if args.command=='rollback':return rollback(args,c)
+     mode=args.mode or (None if args.targets else choose_mode())
+     if args.command=='prepare':t.need(not args.dry_run,'Prepare is an explicit cache-writing action');ui.work('Preparing and verifying payload',packages.prepare,c,mode or 'nr-mfg');ui.line('Ready','Pinned payload verified');return
+diff --git a/scripts/storage.py b/scripts/storage.py
+index 7b34a56..a7da735 100644
+--- a/scripts/storage.py
++++ b/scripts/storage.py
+@@ -1,22 +1,42 @@
+-import json,pathlib,sys,re,shutil,subprocess
++import os,pathlib,shutil,sys
+ import transactions as e
+ P=pathlib.Path
+-def storage(c, required=0):
+-    s = c['storage']
+-    mount = e.safe(s['mount'])
+-    root = e.safe(s['root'])
+-    e.need(root.is_relative_to(mount / 'Ada-Lab') and root != mount / 'Ada-Lab', 'State must be below verified Games/Ada-Lab')
+-    e.need(sys.platform == 'linux', 'Windows: preview/configuration reuse supported; Bazzite storage adapter required for mutation')
+-    r = json.loads(subprocess.check_output(['findmnt', '--json', '--target', str(mount), '--output', 'TARGET,FSTYPE,UUID'], text=True))['filesystems']
+-    r = [row for row in r if row['fstype'] != 'autofs']
+-    e.need(len(r) == 1 and r[0]['target'] == str(mount) and (r[0]['fstype'] == 'btrfs') and (r[0]['uuid'] == s['uuid']), 'Games mount/UUID mismatch; no storage fallback')
+-    for line in P('/proc/self/mountinfo').read_text().splitlines():
+-        raw = line.split()[4]
+-        mp = P(re.sub('\\\\([0-7]{3})', lambda m: chr(int(m[1], 8)), raw))
+-        e.need(not mp.is_relative_to(mount / 'Ada-Lab'), 'Nested mount under Ada-Lab refused')
+-    parent = root
++
++STATE_MARKERS=('desktop','packages','transactions','cleanup','batches','verification')
++
++def _portable_root():
++    raw=os.environ.get('XDG_STATE_HOME','').strip()
++    base=P(raw).expanduser() if raw else P.home()/'.local/state'
++    e.need(base.is_absolute(),'XDG_STATE_HOME must be an absolute path')
++    return base/'rtxforge'
++
++def _looks_like_existing_state(path):
++    path=P(path)
++    return path.is_dir() and any((path/name).exists() for name in STATE_MARKERS)
++
++def storage(c,required=0):
++    e.need(sys.platform=='linux','Windows: preview/configuration reuse supported; Linux storage adapter required for mutation')
++    s=c.get('storage') or {}
++    override=os.environ.get('RTXFORGE_STATE_ROOT','').strip()
++    configured=str(s.get('root') or '').strip()
++    legacy=str(s.get('legacy_root') or '').strip()
++
++    if override:
++        root=e.safe(P(override).expanduser())
++    elif configured:
++        root=e.safe(P(configured).expanduser())
++    elif legacy and _looks_like_existing_state(legacy):
++        root=e.safe(P(legacy))
++    else:
++        root=e.safe(_portable_root())
++
++    e.need(root not in (P('/'),P.home()),'Refusing unsafe rtxForge state root')
++    parent=root
+     while not parent.exists():
+-        parent = parent.parent
+-    e.need(parent.stat().st_dev == mount.stat().st_dev, 'Wrong state device')
+-    e.need(shutil.disk_usage(mount).free >= s['reserve_bytes'] + required, 'Insufficient Games space; reserve preserved')
++        parent=parent.parent
++    e.need(parent.is_dir(),'State parent is not a directory')
++
++    reserve=int(s.get('reserve_bytes',2*1024**3))
++    e.need(reserve>=0 and required>=0,'Invalid storage reservation')
++    e.need(shutil.disk_usage(parent).free>=reserve+required,'Insufficient free space for rtxForge state and recovery data')
+     return root

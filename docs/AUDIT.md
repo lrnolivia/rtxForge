@@ -31,11 +31,11 @@ Local reports:
 
 ## Remaining limits
 
-The stock NR panel is visible in MFG Only. Linux storage defaults are machine-specific configuration. The installer does not set launch options automatically or establish game compatibility from successful file deployment. A batch is recoverable per target, not an all-games atomic transaction. Stale operation locks require inspection of recovery state before manual removal.
+The stock NR panel is visible in MFG Only. Application state is portable by default, with optional explicit state-root override. The installer does not set launch options automatically or establish game compatibility from successful file deployment. A batch is recoverable per target, not an all-games atomic transaction. Stale operation locks require inspection of recovery state before manual removal.
 
-## Panel build activated
+## Historical panel build
 
-At the user’s subsequent request, `.github/workflows/windows-build.yml` now builds the bounded patch on Windows 2022 from the same pinned upstream commit. The historical deferred status above describes the initial release. The patch reads `[RTXForge] NrPanel` once when the panel would first render; subsequent in-game NR effect toggles do not change panel visibility. Missing settings preserve upstream visibility. Import verifies build policy, upstream commit, SHA-256 and the embedded policy marker. Runtime panel behavior still requires game verification.
+An earlier private/custom-loader experiment built a bounded NR-panel patch against the pinned upstream commit. That builder and its acceptance metadata are no longer part of the public production repository; this section is retained only as historical audit context. Runtime panel behavior was never promoted to production evidence.
 
 ## Repair crash correction
 
@@ -47,7 +47,7 @@ The user's 0.1.1 report exposed overbroad conflict checks: RenoDX attribution te
 
 A read-only repair preflight against all 19 exact targets in the report completed: 18 ready, Forza Horizon 6 blocked by its third-party winmm.dll. No game files were written. A focused regression verified preservation of attribution text, native dependency subdirectories and identified Microsoft dbghelp.dll, while an unknown winmm.dll still blocks.
 
-GitHub Windows build 34320885964 succeeded. The artifact archive hash, x64 PE identity, embedded policy marker and DLL hash were verified; see panel-build.json. The loader was imported into RTXForge's prepared cache and bundled with 0.1.2. No installed game received it automatically.
+A historical GitHub Windows build succeeded and its artifact identity was verified at the time. The associated builder metadata has since been removed from the public production repository. No installed game received it automatically.
 
 ## 0.1.3 interaction update
 

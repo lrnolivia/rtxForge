@@ -14,15 +14,15 @@ def snapshot(path):
     return {'kind':'directory','files':{r:t.digest(path/r) for r in files.values()},'modes':{r:stat.S_IMODE((path/r).stat().st_mode) for r in files.values()},'dirs':dirs}
 
 def discover(roots,c):
-    state=storage(c);lab=P(c['storage']['mount'])/'Ada-Lab';candidates=[];seen=[]
+    state=storage(c);candidates=[];seen=[]
     for raw in roots:
         root=t.safe(raw);t.need(root.is_dir() and root!=P('/'),'Choose an actual library/mount root, not /')
         if any(root.is_relative_to(p) for p in seen):continue
         seen.append(root)
         for base,dirs,names in os.walk(root,followlinks=False):
             folder=P(base)
-            dirs[:]=[n for n in dirs if not (folder/n).is_symlink() and not (folder/n).is_relative_to(lab) and not (folder/n).is_relative_to(state)]
-            if folder.is_relative_to(lab) or folder.is_relative_to(state):dirs[:]=[];continue
+            dirs[:]=[n for n in dirs if not (folder/n).is_symlink() and not (folder/n).is_relative_to(state)]
+            if folder.is_relative_to(state):dirs[:]=[];continue
             for name in list(dirs):
                 if name.lower()=='_dlss5_backup':candidates.append(folder/name);dirs.remove(name)
             for name in names:

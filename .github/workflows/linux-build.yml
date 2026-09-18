@@ -57,6 +57,9 @@ jobs:
           /usr/bin/python3 -m unittest \
             engine.tests.test_v13_core_hardening
 
+          /usr/bin/python3 tests/test_batches.py
+          /usr/bin/python3 tests/test_cleanup.py
+
           git diff --check HEAD^ HEAD
 
       - name: Validate GTK desktop smoke
@@ -176,12 +179,12 @@ jobs:
             gh release edit continuous \
               --title "rtxForge Continuous" \
               --prerelease \
-              --notes "Automatic verified AppImage build from main: $GITHUB_SHA"
+              --notes "Verified development AppImage from main: $GITHUB_SHA. This moving prerelease is the rtxForge continuous update channel, not a numbered stable release."
           else
             gh release create continuous \
               --title "rtxForge Continuous" \
               --prerelease \
-              --notes "Automatic verified AppImage build from main: $GITHUB_SHA"
+              --notes "Verified development AppImage from main: $GITHUB_SHA. This moving prerelease is the rtxForge continuous update channel, not a numbered stable release."
           fi
 
           gh release upload continuous \
@@ -189,34 +192,3 @@ jobs:
             dist/rtxForge-Bazzite-x86_64.AppImage.sha256 \
             dist/rtxforge-update.json \
             --clobber
-
-      - name: Publish versioned release if missing
-        if: github.ref == 'refs/heads/main'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          VERSION="$(cat VERSION)"
-          TAG="v${VERSION}"
-
-          VERSIONED="dist/RTXForge-${VERSION}-Bazzite-x86_64.AppImage"
-          CHECKSUM="${VERSIONED}.sha256"
-          NOTES="docs/RELEASE-${VERSION}.md"
-
-          test -s "$VERSIONED"
-          test -s "$CHECKSUM"
-          test -s "$NOTES"
-
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "$TAG already exists; leaving permanent release unchanged."
-            exit 0
-          fi
-
-          gh release create "$TAG" \
-            "$VERSIONED" \
-            "$CHECKSUM" \
-            --target "$GITHUB_SHA" \
-            --title "rtxForge ${VERSION}" \
-            --notes-file "$NOTES"

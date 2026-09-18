@@ -57,7 +57,7 @@ Additional settings: `--nr-strength off|light|medium|strong`, `--sharpening-stre
 
 Provider flags: `--runtime-provider y4my|dlss-unlocked`, `--feature-mode mfg-only|nr-only|nr-mfg`, `--disable-effects`.
 
-[Release notes](docs/RELEASE-0.6.2.md) describe the 0.6.2 validation, continuous development publishing and live-smoke improvements. Historical custom MFG builds are not part of the production AppImage path.
+[Release notes](docs/RELEASE-0.7.0.md) describe the completed classic Library/dashboard UI, validation, and post-0.7 maintenance policy. Historical custom MFG builds are not part of the production AppImage path.
 
 DLSS-Unlocked offers separate **NR Only** (pinned NR-v0.8.6; keep in-game FG off) and **MFG Only** (NR-v0.9.1, NR off, bundled NVIDIA runtime updates) pipelines. MFG Only backs up existing native DLLs and restores them on uninstall. Uninstall before changing pipelines. Combined NR + MFG remains available for experimentation.
 
@@ -82,37 +82,27 @@ Neither mode performs live game-file mutations.
 <!-- RTXFORGE_CLASSIC_UI_STATUS_START -->
 ## Classic UI development status
 
-**Current maintenance release: 0.6.4**
+**Current release: 0.7.0**
 
-The classic GTK/libadwaita interface is now at its final pre-0.7 checkpoint.
+The classic GTK/libadwaita interface has reached its planned 0.7 feature-complete state.
 
-### Completed in 0.6.4
+### Completed in 0.7.0
 
-- Library artwork sizing now updates live and reliably across Poster and Wide Capsule views.
-- The Library has an always-visible live artwork-size slider beside the view controls.
-- Poster and Wide Capsule cards use consistent, bounded geometry at every supported size.
-- Poster artwork keeps a fixed portrait frame; Wide Capsule uses dedicated capsule artwork and a fixed wide frame.
-- Cards in the same view normalize to the height required by the tallest card, keeping Details actions aligned.
-- Compact cards may wrap longer titles while shorter titles use the remaining footer space naturally.
-- Game-card Details actions use the artwork-derived accent color.
-- Settings uses the Enhancement Mode-style segmented selector for Poster / Wide Capsule / List.
-- Active Process no longer exposes the generic dialog scrollbar on hover.
-- Done no longer exposes the generic dialog scrollbar on hover.
-- Game Details titles wrap instead of ellipsizing and reduce their font size for longer names.
+- Added the compact sticky Library / Dashboard presentation.
+- The large dashboard remains unchanged while the Library is at the top.
+- After the large dashboard scrolls away, the existing native titlebar reveals a compact rtxForge identity, Enhancement Mode selector, and Install All / Remove All / Reset All actions.
+- The sticky dashboard uses already-reserved titlebar space instead of adding another vertical toolbar row.
+- The Library toolbar remains a single compact row for Search, All / Installed / Available filters, Select all / Clear, live artwork sizing, and Poster / Wide Capsule / List controls.
+- Library card rows dynamically balance their left and right edge padding for the current window width, artwork size, and active card view, preventing unused width from collecting as a large gap on the right.
+- The Library row intentionally has no redundant Library label or icon.
+- The compact Enhancement Mode selector mirrors the canonical dashboard mode instead of maintaining separate state.
+- Compact bulk actions mirror the canonical dashboard actions and sensitivity state.
 
-The established Progress / Done composition, Game Details redesign, dashboard controls, granular NR / Sharpening controls, and current classic visual direction should be preserved.
+The established Library viewport and card behavior, Progress / Done composition, Game Details windows, dashboard controls, granular NR / Sharpening controls, native NVIDIA routing, and current classic visual direction should be preserved.
 
-### Remaining work before 0.7
+### Classic UI policy after 0.7
 
-The **compact sticky Library / Dashboard header** is the next and only planned classic-UI feature before 0.7.
+The classic interface is now effectively frozen.
 
-The sticky state should keep only controls and information that remain useful while scrolling the Library. It should be deliberately compact rather than a miniature copy of the full dashboard.
-
-After that:
-
-1. Ship **0.7**.
-2. Treat the classic UI as effectively frozen.
-3. Limit future classic-UI work to bug fixes, compatibility, accessibility, maintenance, and specifically approved changes.
-
-Do not restart or broadly redesign the classic UI.
+Future classic-UI changes should be limited to bug fixes, compatibility, accessibility, maintenance, and specifically approved changes. Do not restart or broadly redesign the classic UI.
 <!-- RTXFORGE_CLASSIC_UI_STATUS_END -->

@@ -472,6 +472,104 @@ headerbar,
 }
 
 .dashboard-fade { background: linear-gradient(to bottom, @forge_lower_bg 0%, alpha(@forge_lower_bg,0.94) 18%, alpha(@forge_lower_bg,0.64) 46%, alpha(@forge_lower_bg,0.24) 74%, alpha(@forge_lower_bg,0) 100%); }
+
+.library-sticky-header {
+    min-height: 34px;
+}
+
+.library-sticky-header.stuck {
+    box-shadow: 0 4px 14px alpha(black,0.10);
+}
+
+.library-sticky-header entry {
+    min-height: 32px;
+}
+
+.library-sticky-header button,
+.library-sticky-header toggle {
+    min-height: 30px;
+    padding: 4px 8px;
+}
+
+.library-sticky-header .view-action {
+    min-width: 28px;
+    padding: 4px 7px;
+}
+
+.library-sticky-header scale {
+    padding: 0 2px;
+}
+
+/*
+ * Compact dashboard state.
+ *
+ * This lives inside the native titlebar that already exists, so the
+ * sticky state gains useful dashboard controls without adding another
+ * vertical row.
+ */
+.sticky-dashboard {
+    padding: 0;
+}
+
+.sticky-dashboard-brand {
+    margin-right: 2px;
+}
+
+.sticky-dashboard-app-icon {
+    margin-right: 1px;
+}
+
+.sticky-dashboard-title {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: -0.2px;
+}
+
+.sticky-mode-selector {
+    padding: 2px;
+    border-radius: 9px;
+    background: alpha(@window_fg_color,0.07);
+}
+
+.sticky-mode-selector toggle {
+    min-height: 24px;
+    padding: 3px 8px;
+    border-radius: 7px;
+    background: transparent;
+    border-color: transparent;
+}
+
+.sticky-mode-selector toggle:hover {
+    background: alpha(@window_fg_color,0.06);
+}
+
+.sticky-mode-selector toggle:checked {
+    background: alpha(@window_fg_color,0.12);
+}
+
+.sticky-mode-selector toggle label {
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.sticky-dashboard-actions {
+    margin-left: 1px;
+}
+
+.sticky-dashboard-actions button {
+    min-height: 28px;
+    padding: 4px 8px;
+}
+
+.sticky-dashboard-actions button label {
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.sticky-dashboard-actions .forge-primary {
+    padding: 4px 9px;
+}
+
 .settings-sidebar-surface {
     background: @sidebar_bg_color;
     min-width: 236px;
@@ -1544,6 +1642,7 @@ class Window(Adw.ApplicationWindow):
         top=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8)
         top.add_css_class('forge-top-surface')
         margins(top,18)
+        top.set_margin_bottom(6)
         outer.append(top)
         hero=Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
@@ -1720,21 +1819,292 @@ class Window(Adw.ApplicationWindow):
         self.profile_group.connect('notify::active-name',self.profile_changed)
         self.profile_group.set_active_name(self.settings.get('default_profile','mfg-only'));self.profile_changed(self.profile_group)
 
+        # ------------------------------------------------------------
+        # Compact sticky dashboard.
+        #
+        # The existing native HeaderBar is intentionally empty while
+        # the full dashboard is on screen. Once that dashboard scrolls
+        # away, this compact version occupies the same already-reserved
+        # titlebar space.
+        # ------------------------------------------------------------
+
+        sticky_dashboard=Gtk.Box(
+            spacing=10,
+            valign=Gtk.Align.CENTER,
+        )
+        sticky_dashboard.add_css_class(
+            'sticky-dashboard'
+        )
+
+        sticky_brand=Gtk.Box(
+            spacing=6,
+            valign=Gtk.Align.CENTER,
+        )
+        sticky_brand.add_css_class(
+            'sticky-dashboard-brand'
+        )
+
+        sticky_brand_icon=Gtk.Image.new_from_file(
+            str(dashboard_art_path)
+        )
+        sticky_brand_icon.set_pixel_size(
+            22
+        )
+        sticky_brand_icon.add_css_class(
+            'sticky-dashboard-app-icon'
+        )
+        sticky_brand.append(
+            sticky_brand_icon
+        )
+
+        sticky_brand_title=label(
+            'rtxForge',
+            'sticky-dashboard-title',
+        )
+        sticky_brand_title.set_wrap(
+            False
+        )
+        sticky_brand_title.set_single_line_mode(
+            True
+        )
+        sticky_brand.append(
+            sticky_brand_title
+        )
+
+        sticky_dashboard.append(
+            sticky_brand
+        )
+
+        # Compact mirror of Enhancement Mode.
+        self.sticky_profile_group=Adw.ToggleGroup(
+            homogeneous=True,
+            valign=Gtk.Align.CENTER,
+        )
+        self.sticky_profile_group.add_css_class(
+            'sticky-mode-selector'
+        )
+
+        for mode,title_text in [
+            ('nr-only','NR Only'),
+            ('mfg-only','MFG Only'),
+            ('nr-mfg','NR + MFG'),
+        ]:
+            compact_toggle=Adw.Toggle(
+                name=mode,
+                label=title_text,
+            )
+
+            if mode=='nr-only':
+                compact_toggle.set_enabled(
+                    self.settings.get(
+                        'runtime_provider',
+                        'y4my',
+                    )=='dlss-unlocked'
+                )
+
+            self.sticky_profile_group.add(
+                compact_toggle
+            )
+
+        self.sticky_profile_group.set_active_name(
+            self.profile_group.get_active_name()
+            or 'mfg-only'
+        )
+
+        def sticky_profile_changed(
+            group,
+            *_,
+        ):
+            active=group.get_active_name()
+
+            if (
+                active
+                and self.profile_group.get_active_name()!=active
+            ):
+                self.profile_group.set_active_name(
+                    active
+                )
+
+        def primary_profile_changed(
+            group,
+            *_,
+        ):
+            active=group.get_active_name()
+
+            if (
+                active
+                and self.sticky_profile_group.get_active_name()!=active
+            ):
+                self.sticky_profile_group.set_active_name(
+                    active
+                )
+
+        self.sticky_profile_group.connect(
+            'notify::active-name',
+            sticky_profile_changed,
+        )
+
+        self.profile_group.connect(
+            'notify::active-name',
+            primary_profile_changed,
+        )
+
+        # The compact selector follows the busy/disabled state of the
+        # canonical dashboard selector.
+        self.sticky_profile_group.set_sensitive(
+            self.profile_group.get_sensitive()
+        )
+
+        self.profile_group.connect(
+            'notify::sensitive',
+            lambda source,*_:
+                self.sticky_profile_group.set_sensitive(
+                    source.get_sensitive()
+                ),
+        )
+
+        sticky_dashboard.append(
+            self.sticky_profile_group
+        )
+
+        # Compact mirrors of the three library-wide dashboard actions.
+        sticky_actions=Gtk.Box(
+            spacing=4,
+            valign=Gtk.Align.CENTER,
+        )
+        sticky_actions.add_css_class(
+            'sticky-dashboard-actions'
+        )
+
+        self.sticky_install_all=icon_button(
+            'Install All',
+            'list-add-symbolic',
+            lambda *_:self.launch_action(
+                'install',
+                True,
+            ),
+            'forge-primary',
+        )
+
+        self.sticky_remove_all=icon_button(
+            'Remove All',
+            'edit-delete-symbolic',
+            lambda *_:self.launch_action(
+                'uninstall',
+                True,
+            ),
+            'bulk-remove',
+        )
+
+        self.sticky_reset_all=icon_button(
+            'Reset All',
+            'edit-undo-symbolic',
+            self.apply_library_settings,
+        )
+
+        self.sticky_install_all.set_tooltip_text(
+            'Install enhancements across the Library'
+        )
+
+        self.sticky_remove_all.set_tooltip_text(
+            'Remove managed enhancements across the Library'
+        )
+
+        self.sticky_reset_all.set_tooltip_text(
+            'Reset managed settings across the Library'
+        )
+
+        sticky_actions.append(
+            self.sticky_install_all
+        )
+        sticky_actions.append(
+            self.sticky_remove_all
+        )
+        sticky_actions.append(
+            self.sticky_reset_all
+        )
+
+        sticky_dashboard.append(
+            sticky_actions
+        )
+
+        # Mirror sensitivity from the canonical dashboard buttons so
+        # this compact presentation never becomes a second source of
+        # application state.
+        for primary,compact in [
+            (
+                self.install_all,
+                self.sticky_install_all,
+            ),
+            (
+                self.uninstall_all,
+                self.sticky_remove_all,
+            ),
+            (
+                self.reset_all,
+                self.sticky_reset_all,
+            ),
+        ]:
+            compact.set_sensitive(
+                primary.get_sensitive()
+            )
+
+            primary.connect(
+                'notify::sensitive',
+                lambda source,*args,target=compact:
+                    target.set_sensitive(
+                        source.get_sensitive()
+                    ),
+            )
+
+        # Reset All can become Apply Settings when dashboard defaults
+        # have changed. Keep the compact button's wording synchronized.
+        self.sticky_reset_all.text_label.set_text(
+            self.reset_all.text_label.get_text()
+        )
+
+        self.reset_all.text_label.connect(
+            'notify::label',
+            lambda source,*_:
+                self.sticky_reset_all.text_label.set_text(
+                    source.get_text()
+                ),
+        )
+
+        self.sticky_dashboard_revealer=Gtk.Revealer(
+            transition_type=Gtk.RevealerTransitionType.CROSSFADE,
+            transition_duration=140,
+            reveal_child=False,
+        )
+        self.sticky_dashboard_revealer.set_child(
+            sticky_dashboard
+        )
+
+        header.set_title_widget(
+            self.sticky_dashboard_revealer
+        )
+
         # Enhancement Mode sits directly above the tuning controls.
         hero.append(tuning)
         viewbar=Gtk.Box(
-            spacing=10,
+            spacing=8,
+            valign=Gtk.Align.CENTER,
+        )
+        viewbar.add_css_class(
+            'library-sticky-header'
         )
 
-        library_title=label(
-            'Your games',
-            'heading',
-        )
-        library_title.set_hexpand(
-            True
+        # Search/filter/selection controls begin the Library toolbar
+        # directly. The expanded dashboard already identifies the app at
+        # the top of the Library, while the compact titlebar provides the
+        # rtxForge identity after that dashboard scrolls away.
+        library_tools=Gtk.Box(
+            spacing=8,
+            hexpand=True,
+            valign=Gtk.Align.CENTER,
         )
         viewbar.append(
-            library_title
+            library_tools
         )
 
         # Live artwork size belongs beside the view controls.
@@ -1758,7 +2128,7 @@ class Window(Adw.ApplicationWindow):
             False
         )
         self.library_size_scale.set_size_request(
-            120,
+            108,
             -1,
         )
         self.library_size_scale.set_valign(
@@ -1903,17 +2273,76 @@ class Window(Adw.ApplicationWindow):
             self.view_buttons[
                 key
             ]=toggle
-        filters=Gtk.Box(spacing=8)
-        filters.set_margin_top(4)
-        top.append(filters)
-        self.search=Gtk.SearchEntry(placeholder_text='Search your entire library',hexpand=True);self.search.connect('search-changed',lambda *_:self.filter_games());filters.append(self.search)
-        filterbox=Gtk.Box();filterbox.add_css_class('linked');filters.append(filterbox);previous=None
-        for name,key in [('All','all'),('Installed','installed'),('Available','available')]:
-            b=Gtk.ToggleButton(label=name)
-            if previous:b.set_group(previous)
-            else:previous=b;b.set_active(True)
-            b.connect('toggled',self.filter_changed,key);filterbox.append(b)
-        filters.append(button('Select all',lambda *_:self.select_all(True)));filters.append(button('Clear',lambda *_:self.select_all(False)))
+        self.search=Gtk.SearchEntry(
+            placeholder_text='Search library',
+            hexpand=True,
+        )
+        self.search.connect(
+            'search-changed',
+            lambda *_:self.filter_games(),
+        )
+        library_tools.append(
+            self.search
+        )
+
+        filterbox=Gtk.Box()
+        filterbox.add_css_class(
+            'linked'
+        )
+        library_tools.append(
+            filterbox
+        )
+
+        previous=None
+        for name,key in [
+            ('All','all'),
+            ('Installed','installed'),
+            ('Available','available'),
+        ]:
+            b=Gtk.ToggleButton(
+                label=name
+            )
+
+            if previous:
+                b.set_group(
+                    previous
+                )
+            else:
+                previous=b
+                b.set_active(
+                    True
+                )
+
+            b.connect(
+                'toggled',
+                self.filter_changed,
+                key,
+            )
+            filterbox.append(
+                b
+            )
+
+        select_all=button(
+            'Select all',
+            lambda *_:self.select_all(True),
+        )
+        select_all.add_css_class(
+            'flat'
+        )
+        library_tools.append(
+            select_all
+        )
+
+        clear_selection=button(
+            'Clear',
+            lambda *_:self.select_all(False),
+        )
+        clear_selection.add_css_class(
+            'flat'
+        )
+        library_tools.append(
+            clear_selection
+        )
 
         library_surface=Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
@@ -1926,19 +2355,71 @@ class Window(Adw.ApplicationWindow):
 
         viewbar.set_margin_start(18)
         viewbar.set_margin_end(18)
-        viewbar.set_margin_top(16)
+        viewbar.set_margin_top(8)
         viewbar.set_margin_bottom(8)
         library_surface.append(viewbar)
-        scroll=Gtk.ScrolledWindow(vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER);library_stage=Gtk.Overlay(vexpand=True);library_stage.set_child(scroll);library_surface.append(library_stage)
+        scroll=Gtk.ScrolledWindow(vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER);self.library_scroll=scroll;library_stage=Gtk.Overlay(vexpand=True);library_stage.set_child(scroll);library_surface.append(library_stage)
         edge=Gtk.Box(height_request=64,valign=Gtk.Align.START,can_target=False);edge.add_css_class('dashboard-fade');edge.set_visible(False);library_stage.add_overlay(edge)
         def collapse_header(adj):
-            edge.set_visible(adj.get_value()>1)
-            if adj.get_value()>120 and adj.get_upper()-adj.get_page_size()>300:hero_reveal.set_reveal_child(False)
-            elif adj.get_value()<10:hero_reveal.set_reveal_child(True)
+            value=adj.get_value()
+            can_collapse=(
+                adj.get_upper()
+                - adj.get_page_size()
+                > 300
+            )
+
+            edge.set_visible(
+                value>1
+            )
+
+            if (
+                value>120
+                and can_collapse
+            ):
+                hero_reveal.set_reveal_child(
+                    False
+                )
+                self.sticky_dashboard_revealer.set_reveal_child(
+                    True
+                )
+                top.set_margin_top(
+                    0
+                )
+                top.set_margin_bottom(
+                    0
+                )
+                viewbar.add_css_class(
+                    'stuck'
+                )
+
+            elif value<10:
+                hero_reveal.set_reveal_child(
+                    True
+                )
+                self.sticky_dashboard_revealer.set_reveal_child(
+                    False
+                )
+                top.set_margin_top(
+                    18
+                )
+                top.set_margin_bottom(
+                    6
+                )
+                viewbar.remove_css_class(
+                    'stuck'
+                )
         scroll.get_vadjustment().connect('value-changed',collapse_header)
         self.flow=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,column_spacing=14,row_spacing=16,min_children_per_line=1,max_children_per_line=12,homogeneous=False,valign=Gtk.Align.START);margins(self.flow,18);self.flow.set_margin_top(0);scroll.set_child(self.flow)
         self.flow.set_hexpand(True)
         self.flow.set_halign(Gtk.Align.START)
+
+        scroll.connect(
+            'notify::width',
+            self.update_library_padding,
+        )
+        GLib.idle_add(
+            self.update_library_padding
+        )
 
         # Decorative bottom fade. It floats over the library instead
         # of reserving a rectangular footer row.
@@ -2085,6 +2566,121 @@ class Window(Adw.ApplicationWindow):
 
     def title_button(self,icon,title,callback):
         b=Gtk.Button(icon_name=icon);b.set_tooltip_text(title);b.update_property([Gtk.AccessibleProperty.LABEL],[title]);b.add_css_class('title-action');b.connect('clicked',callback);return b
+
+    def update_library_padding(self,*_):
+        """Balance unused Library width across both horizontal edges."""
+
+        if not hasattr(
+            self,
+            'flow',
+        ):
+            return False
+
+        base_padding=18
+
+        view=self.settings.get(
+            'library_view',
+            'posters',
+        )
+
+        if view=='list':
+            self.flow.set_margin_start(
+                base_padding
+            )
+            self.flow.set_margin_end(
+                base_padding
+            )
+            return False
+
+        scroll=getattr(
+            self,
+            'library_scroll',
+            None,
+        )
+
+        if scroll is None:
+            return False
+
+        viewport_width=scroll.get_width()
+
+        if viewport_width <= 1:
+            return False
+
+        (
+            _,
+            card_width,
+            _,
+            _,
+            _,
+            _,
+        )=self.library_card_geometry(
+            self.settings.get(
+                'art_scale',
+                100,
+            ),
+            view,
+        )
+
+        # FlowBox wrapper adds 4px to canonical card width.
+        card_width+=4
+
+        gap=max(
+            0,
+            self.flow.get_column_spacing(),
+        )
+
+        usable=max(
+            card_width,
+            viewport_width-(base_padding*2),
+        )
+
+        columns=max(
+            1,
+            min(
+                12,
+                int(
+                    (
+                        usable+gap
+                    )
+                    // (
+                        card_width+gap
+                    )
+                ),
+            ),
+        )
+
+        occupied=(
+            columns*card_width
+            + max(
+                0,
+                columns-1,
+            )*gap
+        )
+
+        leftover=max(
+            0,
+            viewport_width-occupied,
+        )
+
+        start=max(
+            base_padding,
+            leftover//2,
+        )
+
+        end=max(
+            base_padding,
+            leftover-start,
+        )
+
+        self.flow.set_margin_start(
+            start
+        )
+        self.flow.set_margin_end(
+            end
+        )
+
+        return False
+
     def hide_operation_status(self,*_):
         if self.operation_hide_source:
             try:GLib.source_remove(self.operation_hide_source)
@@ -3153,6 +3749,8 @@ class Window(Adw.ApplicationWindow):
                     value
                 )
                 self._syncing_library_size=False
+
+        self.update_library_padding()
 
         if view=='list':
             return

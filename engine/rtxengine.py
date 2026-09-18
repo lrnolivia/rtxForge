@@ -4062,6 +4062,8 @@ def install_target(
     nr_runtime_meta: Optional[dict] = None,
     feature_mode: str = "nr-mfg",
     enable_effects: bool = True,
+    native_mfg_fallback: bool = False,
+    native_mfg_multiplier: str = "auto",
     dry_run: bool = False,
 ) -> dict:
     require(game.eligible, f"Game is not eligible: {game.name} ({game.reason})")
@@ -4194,7 +4196,11 @@ def install_target(
     # create_baseline below backs up every replacement before the first write.
     require(feature_mode != "nr-only" or Y4MY_PROVIDER.get("id") == "dlss-unlocked",
             "NR Only is currently available with DLSS-Unlocked")
-    if Y4MY_PROVIDER.get("id") == "dlss-unlocked" and feature_mode == "mfg-only":
+    if Y4MY_PROVIDER.get("id") == "dlss-unlocked" and feature_mode == "mfg-only" and native_mfg_fallback:
+        # Explicit, opt-in fallback only (never the default mfg-only route): the
+        # game-owned native Streamline path is preferred. This promotes
+        # DLSS-Unlocked's private OptiScaler/streamline/ runtime into the game
+        # root and must be requested and recorded, never silent.
         require((target / "nvngx_dlssg.dll").is_file(), "MFG runtime deployment requires game-native nvngx_dlssg.dll")
         for rel, content in list(payload.items()):
             name = PurePosixPath(rel).name
@@ -4266,16 +4272,58 @@ def install_target(
 
     # Preserve the game-native DLSS-G path. Ada unlock is independent of OptiFG.
     text = payload[ini_key].decode("utf-8")
-    text = set_ini_value(text, "DLSSG", "AdaMfgUnlock", "true" if enable_effects and family == "ada" and feature_mode != "nr-only" else "false")
-    text = set_ini_value(text, "DLSSG", "AdaBlackwellKernels", "true" if enable_effects and family == "ada" and feature_mode != "nr-only" else "auto")
+    is_dlss_unlocked = Y4MY_PROVIDER.get("id") == "dlss-unlocked"
+    ada_active = enable_effects and family == "ada" and feature_mode != "nr-only"
+    text = set_ini_value(text, "DLSSG", "AdaMfgUnlock", "true" if ada_active else "false")
+    text = set_ini_value(
+        text, "DLSSG", "AdaBlackwellKernels",
+        # DLSS-Unlocked's own Ada configuration keeps this false as the safe
+        # baseline; the Blackwell kernel retarget path is experimental and not
+        # required for the architecture-gate unlock.
+        "false" if is_dlss_unlocked else ("true" if ada_active else "auto"),
+    )
     text = set_ini_value(text, "DLSSG", "AmpereMfgUnlock", "false")
-    text = set_ini_value(text, "DlssNr", "Enabled", "true" if enable_effects and feature_mode in {"nr-mfg", "nr-only"} else "false")
-    if Y4MY_PROVIDER.get("id") == "dlss-unlocked":
+    if is_dlss_unlocked and family == "ada":
+        # DLSS-Unlocked's documented Ada route: the game owns native
+        # Streamline/DLSS-G by default and OptiScaler only applies the Ada
+        # capability unlock. Do not force OptiScaler-owned FrameGen routing
+        # on top of that -- leave it at the package's own auto defaults.
+        text = set_ini_value(text, "FrameGen", "External", "false")
+        text = set_ini_value(text, "FrameGen", "Enabled", "auto")
+        text = set_ini_value(text, "FrameGen", "FGInput", "auto")
+        text = set_ini_value(text, "FrameGen", "FGOutput", "auto")
+        text = set_ini_value(text, "FrameGen", "FGNvngxReplacement", "auto")
+        # Disable the unstable overlay menu hotkey without touching the NR
+        # toggle, which is handled separately via DlssNr.ToggleKey below.
+        text = set_ini_value(text, "Menu", "OverlayMenu", "false")
+        text = set_ini_value(text, "Menu", "ShortcutKey", "-1")
+        if native_mfg_multiplier not in (None, "auto"):
+            require(str(native_mfg_multiplier) in {"2", "3", "4", "5", "6"}, "Unsupported native_mfg_multiplier")
+            text = set_ini_value(text, "DLSSG", "OverrideInterpolationCount", str(int(native_mfg_multiplier) - 1))
+    nr_selected = feature_mode in {"nr-mfg", "nr-only"}
+    text = set_ini_value(
+        text, "DlssNr", "Enabled",
+        # DLSS-Unlocked's NR always starts off; F10 (DlssNr.ToggleKey, set
+        # below) is the documented way to turn it on in-session. This is
+        # independent of enable_effects, which only gates whether the
+        # capability is provisioned at all, not its boot-time state.
+        "false" if is_dlss_unlocked else ("true" if enable_effects and nr_selected else "false"),
+    )
+    if is_dlss_unlocked:
         for key in ("DualFeature", "DualEnlarger", "PreUpscale"):
             text = remove_ini_key(text, "DlssNr", key)
         text = set_ini_value(text, "DlssNr", "RunBeforeSR", "true")
         text = set_ini_value(text, "DlssNr", "DeferredDLSS", "false")
-    nr_tuning = {"WorkingScale": "0.75", "SkinStructure": "1.00", "Intensity": "1.50"}
+        if feature_mode in {"nr-mfg", "nr-only"}:
+            # F10, independent of the OptiScaler overlay menu hotkey above.
+            text = set_ini_value(text, "DlssNr", "ToggleKey", "0x79")
+    nr_tuning = {
+        "WorkingScale": "0.75", "SkinStructure": "1.00", "Intensity": "1.50",
+        "TransferStrength": "1.00", "ColourStrength": "1.00",
+        "SkinProtection": "auto", "SkinToneEnabled": "auto", "SkinDetail": "auto",
+        "SkinColour": "auto", "EnvironmentDetail": "auto", "EnvironmentColour": "auto",
+        "FinishedPicture": "auto",
+    }
     if feature_mode in {"nr-only", "nr-mfg"}:
         # Defaults for fresh deployments; retain explicit tuning on repair.
         old_nr = re.search(r"(?ims)^\[DlssNr\][^\n]*\n(.*?)(?=^\[|\Z)", ini_source.decode("utf-8"))
@@ -4452,8 +4500,8 @@ def install_target(
             "provider_id": Y4MY_PROVIDER.get("id", "y4my"),
             "feature_mode": feature_mode,
             "nr_profile": {
-                "enabled": enable_effects and feature_mode in {"nr-mfg", "nr-only"},
-                "activation": "startup" if enable_effects else "dormant",
+                "enabled": False if is_dlss_unlocked else (enable_effects and feature_mode in {"nr-mfg", "nr-only"}),
+                "activation": "toggle-key-f10" if (is_dlss_unlocked and feature_mode in {"nr-mfg", "nr-only"}) else ("startup" if enable_effects else "dormant"),
                 "dual_feature": Y4MY_PROVIDER.get("id") != "dlss-unlocked",
                 "dual_enlarger": "dlss" if Y4MY_PROVIDER.get("id") != "dlss-unlocked" else None,
                 "run_before_sr": Y4MY_PROVIDER.get("id") == "dlss-unlocked",
@@ -4462,7 +4510,7 @@ def install_target(
                 "working_scale": float(nr_tuning["WorkingScale"]),
                 "skin_structure": float(nr_tuning["SkinStructure"]),
                 "intensity": float(nr_tuning["Intensity"]),
-                "menu_key": "Alt+Insert / Insert",
+                "menu_key": "F10 (NR toggle) / overlay menu disabled" if is_dlss_unlocked else "Alt+Insert / Insert",
             },
             "compatibility_policy": {
                 "proxy_imports": sorted(pe_imported_dlls(game.exe)),

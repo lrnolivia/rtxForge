@@ -42,7 +42,7 @@ def payload(e,config,mode,archive=None):
     else:
         names=packages.entries(archive)
         with zipfile.ZipFile(archive) as z:data={n:z.read(n) for n in names}
-        t.need('dxgi.dll' in data and 'OptiScaler.ini' in data and 'OptiScaler/streamline/sl.interposer.dll' in data,'Unsupported DLSS-Unlocked package layout')
+        t.need('dxgi.dll' in data and 'OptiScaler.ini' in data and 'OptiScaler/streamline/sl.interposer.dll' in data and 'OptiScaler/streamline/sl.dlss_g.dll' in data,'Unsupported DLSS-Unlocked package layout')
         t.need(hashlib.sha256(archive.read_bytes()).hexdigest()==p['sha256'],'Provider changed during extraction')
         meta={**p,'name':p['archive'],'path':str(archive),'provider':p['name']}
     # Alternate frame-generation backends are not installed or silently enabled.
@@ -127,11 +127,12 @@ def prepare(config,rows,mode,operation,settings):
                     old=(baseline.get('current') or {}).get('provider_id','y4my')
                     t.need((baseline.get('current') or {}).get('feature_mode',mode)==mode,'Uninstall before changing feature profiles so original runtime files are restored')
                     t.need(old==e.Y4MY_PROVIDER['id'],'Uninstall the current provider before switching providers; its original backups must be restored first')
-                preview=e.install_target(g,data,meta,'ada',nr_runtime_payload=nr,nr_runtime_meta=nrmeta,feature_mode=mode,enable_effects=True,dry_run=True)
+                preview=e.install_target(g,data,meta,'ada',nr_runtime_payload=nr,nr_runtime_meta=nrmeta,feature_mode=mode,enable_effects=True,native_mfg_fallback=bool(settings.get('native_mfg_fallback',False)),native_mfg_multiplier=settings.get('native_mfg_multiplier','auto'),dry_run=True)
             ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g)})
         except (e.Stop,t.Refusal,OSError,ValueError) as ex:blocked.append({'name':row['name'],'reason':str(ex)})
     return {'kind':'engine','operation':operation,'title':operation.title(),'rows':[{'name':p['row']['name'],'detail':f"{e.Y4MY_PROVIDER['name']} · {len(p['preview']['files'])} managed files · "+p['preview']['launch_options']} for p in ready],
-            'blocked':blocked,'plans':ready,'engine':e,'payload':data,'meta':meta,'nr':nr,'nrmeta':nrmeta,'mode':mode,'enable_effects':True}
+            'blocked':blocked,'plans':ready,'engine':e,'payload':data,'meta':meta,'nr':nr,'nrmeta':nrmeta,'mode':mode,'enable_effects':True,
+            'native_mfg_fallback':bool(settings.get('native_mfg_fallback',False)),'native_mfg_multiplier':settings.get('native_mfg_multiplier','auto')}
 
 def execute(review):
     e=review['engine'];results=[]
@@ -147,7 +148,7 @@ def execute(review):
                     e.restore_launch_options_batch([g],assume_yes=True)
                     record=e.restore_target(g)
                 else:
-                    record=e.install_target(g,review['payload'],review['meta'],'ada',nr_runtime_payload=review['nr'],nr_runtime_meta=review['nrmeta'],feature_mode=review['mode'],enable_effects=review['enable_effects'])
+                    record=e.install_target(g,review['payload'],review['meta'],'ada',nr_runtime_payload=review['nr'],nr_runtime_meta=review['nrmeta'],feature_mode=review['mode'],enable_effects=review['enable_effects'],native_mfg_fallback=review.get('native_mfg_fallback',False),native_mfg_multiplier=review.get('native_mfg_multiplier','auto'))
                     synced=e.sync_launch_options_batch([g],assume_yes=True,prompt=False)
                     t.need(synced and all(r.get('status')=='written' for r in synced),'Files installed, but launch settings need attention: '+str(synced or record['launch_options']))
                 results.append({'name':g.name,'status':'complete','record':record})

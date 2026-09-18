@@ -872,11 +872,49 @@ class CoreHardeningTests(unittest.TestCase):
         self.m.Y4MY_PROVIDER = {**self.m.Y4MY_PROVIDER, 'id':'dlss-unlocked'}
         native=self.target/'nvngx_dlssg.dll';native.write_bytes(b'MZ-original-native-fg')
         payload=self._sm86_payload();payload['OptiScaler/streamline/nvngx_dlssg.dll']=b'MZ-new-native-fg'
-        self.m.install_target(self.game,payload,{'sha256':'a'*64},'ada',feature_mode='mfg-only',enable_effects=True)
+        self.m.install_target(self.game,payload,{'sha256':'a'*64},'ada',feature_mode='mfg-only',enable_effects=True,native_mfg_fallback=True)
         self.assertEqual(native.read_bytes(),b'MZ-new-native-fg')
         self.assertFalse((self.target/'nvngx_dlssnr.dll').exists())
         self.m.restore_target(self.game)
         self.assertEqual(native.read_bytes(),b'MZ-original-native-fg')
+
+    def test_dlss_unlocked_default_mfg_only_does_not_promote_root_runtime(self):
+        self.game.dlss = self.game.dlssg = True
+        self.m.Y4MY_PROVIDER = {**self.m.Y4MY_PROVIDER, 'id':'dlss-unlocked'}
+        native=self.target/'nvngx_dlssg.dll';native.write_bytes(b'MZ-original-native-fg')
+        payload=self._sm86_payload();payload['OptiScaler/streamline/nvngx_dlssg.dll']=b'MZ-new-native-fg'
+        # native_mfg_fallback defaults to False: the private Streamline runtime
+        # must stay private and never get promoted into the game root.
+        self.m.install_target(self.game,payload,{'sha256':'a'*64},'ada',feature_mode='mfg-only',enable_effects=True)
+        self.assertEqual(native.read_bytes(),b'MZ-original-native-fg')
+
+    def test_dlss_unlocked_ada_leaves_game_owned_routing_auto(self):
+        self.game.dlss = self.game.dlssg = True
+        self.m.Y4MY_PROVIDER = {**self.m.Y4MY_PROVIDER, 'id':'dlss-unlocked'}
+        self.m.install_target(self.game,self._sm86_payload(),{'sha256':'a'*64},'ada',feature_mode='mfg-only',enable_effects=True)
+        text=(self.target/'OptiScaler.ini').read_text()
+        self.assertIn('External=false',text)
+        self.assertIn('Enabled=auto',text.split('[FrameGen]')[1])
+        self.assertIn('FGInput=auto',text);self.assertIn('FGOutput=auto',text)
+        self.assertIn('AdaMfgUnlock=true',text);self.assertIn('AdaBlackwellKernels=false',text)
+        self.assertIn('ShortcutKey=-1',text);self.assertIn('OverlayMenu=false',text)
+
+    def test_dlss_unlocked_nr_toggle_key_is_f10(self):
+        self.game.dlss = self.game.dlssg = True
+        self.m.Y4MY_PROVIDER = {**self.m.Y4MY_PROVIDER, 'id':'dlss-unlocked'}
+        model=self.target/'nvngx_dlssnr.dll';model.write_bytes(b'MZ'+b'O'*128)
+        self.m.install_target(self.game,self._sm86_payload(),{'sha256':'a'*64},'ada',feature_mode='nr-mfg',enable_effects=True)
+        text=(self.target/'OptiScaler.ini').read_text()
+        self.assertIn('ToggleKey=0x79',text.split('[DlssNr]')[1])
+        self.assertIn('Enabled=false',text.split('[DlssNr]')[1])
+
+    def test_dlss_unlocked_forced_multiplier_sets_override_only(self):
+        self.game.dlss = self.game.dlssg = True
+        self.m.Y4MY_PROVIDER = {**self.m.Y4MY_PROVIDER, 'id':'dlss-unlocked'}
+        self.m.install_target(self.game,self._sm86_payload(),{'sha256':'a'*64},'ada',feature_mode='mfg-only',enable_effects=True,native_mfg_multiplier='4')
+        text=(self.target/'OptiScaler.ini').read_text()
+        self.assertIn('OverrideInterpolationCount=3',text)
+        self.assertIn('InterpolationCount=auto',text)
 
     def test_frozen_nr_only_disables_mfg_unlock(self):
         self.game.dlss = self.game.dlssg = True
@@ -884,9 +922,10 @@ class CoreHardeningTests(unittest.TestCase):
         result=self.m.install_target(self.game,self._sm86_payload(),{'sha256':'a'*64},'ada',feature_mode='nr-only',enable_effects=True)
         text=(self.target/'OptiScaler.ini').read_text()
         self.assertIn('AdaMfgUnlock=false',text)
-        self.assertIn('Enabled=true',text.split('[DlssNr]')[1])
+        # NR always starts off for DLSS-Unlocked; F10 is the in-session toggle.
+        self.assertIn('Enabled=false',text.split('[DlssNr]')[1])
         self.assertFalse(result['mfg_provider']['enabled'])
-        self.assertTrue(result['nr_profile']['enabled'])
+        self.assertFalse(result['nr_profile']['enabled'])
 
     def test_lab_copy_never_matches_original_shortcut_by_name(self):
         shortcuts=self.m.parse_shortcuts_spans(make_shortcuts_fixture(self.game))

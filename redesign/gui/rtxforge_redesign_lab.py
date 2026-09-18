@@ -948,7 +948,15 @@ class RedesignLabWindow(
         return row, button
 
     def _build_forge_shell(self):
-        page = Adw.PreferencesPage()
+        # Keep native Adwaita preference groups/rows, but do not
+        # use Adw.PreferencesPage here: its centered narrow column
+        # fights the expansive gaming-app layout used by Library.
+        page = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=24,
+            hexpand=True,
+            vexpand=False,
+        )
 
         self.forge_page = page
 
@@ -1016,7 +1024,7 @@ class RedesignLabWindow(
             feature_row
         )
 
-        page.add(
+        page.append(
             features
         )
 
@@ -1129,7 +1137,7 @@ class RedesignLabWindow(
             sharpening_row
         )
 
-        page.add(
+        page.append(
             neural
         )
 
@@ -1180,7 +1188,7 @@ class RedesignLabWindow(
             self.forge_mfg_multiplier
         )
 
-        page.add(
+        page.append(
             mfg
         )
 
@@ -1225,7 +1233,7 @@ class RedesignLabWindow(
             preview_row
         )
 
-        page.add(
+        page.append(
             defaults
         )
 
@@ -1286,7 +1294,7 @@ class RedesignLabWindow(
             restore_row
         )
 
-        page.add(
+        page.append(
             actions
         )
 
@@ -1746,6 +1754,33 @@ class RedesignLabApplication(
 
             print(
                 "  library backend: intentionally unwired"
+            )
+
+            if not isinstance(
+                window.forge_page,
+                Gtk.Box,
+            ):
+                raise RuntimeError(
+                    "Forge must use the full-width "
+                    "page container"
+                )
+
+            if isinstance(
+                window.forge_page,
+                Adw.PreferencesPage,
+            ):
+                raise RuntimeError(
+                    "Forge must not use the narrow "
+                    "Adw.PreferencesPage wrapper"
+                )
+
+            if not window.forge_page.get_hexpand():
+                raise RuntimeError(
+                    "Forge page must expand horizontally"
+                )
+
+            print(
+                "  forge layout: full-width native groups"
             )
 
             if not hasattr(

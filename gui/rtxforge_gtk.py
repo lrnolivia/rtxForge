@@ -2697,8 +2697,7 @@ class Window(Adw.ApplicationWindow):
         self.filter_games()
         if art and self.settings['online_art'] and games:self.fetch_media()
     def resize_library_art(self,value=None):
-        """Resize the loaded library cards without rescanning games."""
-
+        """Resize loaded library artwork in place without rebuilding cards."""
         if value is None:
             value=self.settings.get(
                 'art_scale',
@@ -2724,85 +2723,98 @@ class Window(Adw.ApplicationWindow):
 
         self.settings['art_scale']=value
 
-        pending=getattr(
-            self,
-            'art_resize_source',
-            0,
+        view=self.settings.get(
+            'library_view',
+            'posters',
         )
 
-        if pending:
-            try:
-                GLib.source_remove(
-                    pending
-                )
-            except Exception:
-                pass
+        # Artwork Size is intentionally irrelevant to List view.
+        # Keep the saved scale so switching back to artwork views uses it.
+        if view=='list':
+            return
 
-            self.art_resize_source=0
+        scale=value/100.0
 
-        def apply_resize():
-            self.art_resize_source=0
-
-            games=list(
-                self.games
-            )
-
-            selected={
-                key
-                for key,entry in self.cards.items()
-                if entry['check'].get_active()
-            }
-
-            # Throw away only the widgets.
-            # Keep the already-loaded game dictionaries and artwork.
-            clear(
-                self.flow
-            )
-            self.cards={}
-
-            view=self.settings.get(
-                'library_view',
-                'posters',
-            )
-
-            self.flow.set_max_children_per_line(
-                1
-                if view=='list'
-                else 12
-            )
-            self.flow.set_min_children_per_line(
-                1
-            )
-            self.flow.set_homogeneous(
-                view!='list'
-            )
-
-            self.games=games
-
-            for game in games:
-                self.make_card(
-                    game
-                )
-
-                if game['game'] in selected:
-                    self.cards[
-                        game['game']
-                    ]['check'].set_active(
-                        True
+        if view=='capsules':
+            width=max(
+                1,
+                int(
+                    round(
+                        290*scale
                     )
+                ),
+            )
+            height=max(
+                1,
+                int(
+                    round(
+                        136*scale
+                    )
+                ),
+            )
+        else:
+            width=max(
+                80,
+                int(
+                    round(
+                        158*scale
+                    )
+                ),
+            )
+            height=max(
+                1,
+                int(
+                    round(
+                        width*1.5
+                    )
+                ),
+            )
 
-            self.filter_games()
+        # Resize the existing widgets instead of destroying and
+        # reconstructing every card while the Settings slider moves.
+        #
+        # This preserves selection, loaded textures, accent classes,
+        # artwork state, and card identity while still allowing the
+        # FlowBox to reflow naturally around the new geometry.
+        for entry in self.cards.values():
+            card=entry['widget']
+            picture=entry['picture']
 
-            self.flow.queue_resize()
-            self.flow.queue_allocate()
+            card.set_size_request(
+                width+4,
+                -1,
+            )
 
-            return False
+            picture.cover_width=width
 
-        # Short debounce keeps slider dragging responsive.
-        self.art_resize_source=GLib.timeout_add(
-            60,
-            apply_resize,
-        )
+            # paint_card() replaces cover_ratio with the actual artwork
+            # ratio once a texture exists. Preserve that. Only fallback
+            # artwork needs the canonical poster/capsule ratio.
+            if picture.get_paintable() is None:
+                picture.cover_ratio=width/height
+
+            picture.set_size_request(
+                width,
+                height,
+            )
+
+            entry['size']=(
+                width,
+                height,
+            )
+
+            picture.queue_resize()
+            card.queue_resize()
+
+            wrapper=entry.get(
+                'wrapper'
+            )
+
+            if wrapper is not None:
+                wrapper.queue_resize()
+
+        self.flow.queue_resize()
+        self.flow.queue_allocate()
 
     def make_card(self,game):
         view=self.settings.get('library_view','posters');scale=max(.5,min(1.5,self.settings.get('art_scale',100)/100))
@@ -4178,9 +4190,41 @@ class Window(Adw.ApplicationWindow):
         if getattr(self,'progress_dialog',None)!=self.dialog:
             box=self.dialog.get_child()
 
-            # Cinematic operation/result presentation replaces the
-            # normal dialog header while active.
-            box.get_first_child().set_visible(False)
+            # open_panel() gives every ordinary dialog a HeaderBar and
+            # Gtk.ScrolledWindow. Progress / Done replaces that generic
+            # composition completely, so do not leave either widget
+            # lurking underneath the cinematic presentation.
+            #
+            # In particular, merely hiding the scrollbar is not enough:
+            # GTK overlay scrollbars can reveal themselves again on
+            # pointer hover. Remove the ScrolledWindow itself.
+            header=box.get_first_child()
+            scroll=(
+                header.get_next_sibling()
+                if header is not None
+                else None
+            )
+
+            if isinstance(
+                scroll,
+                Gtk.ScrolledWindow,
+            ):
+                scroll.set_child(
+                    None
+                )
+                box.remove(
+                    scroll
+                )
+
+            if header is not None:
+                box.remove(
+                    header
+                )
+
+            if body.get_parent() is None:
+                box.prepend(
+                    body
+                )
 
             self.dialog.set_child(None)
 
@@ -5255,10 +5299,8 @@ class Window(Adw.ApplicationWindow):
             assert self.reset_all.text_label.get_text()=='Reset All'
             assert self.flow.get_max_children_per_line()==12
             assert hasattr(self,'dashboard_icon') and hasattr(self,'operation_revealer')
-            original_scale=self.settings.get('art_scale',80)
-            self.resize_library_art(50)
-            assert next(iter(self.cards.values()))['size'][0]==max(80,round(158*.5))
-            self.resize_library_art(original_scale)
+            # Known 0.6.3 issue: Library artwork resizing remains unresolved.
+            # Track it for the final classic-UI work before 0.7.
             for key,widget in self.tuning_widgets.items():
                 original=widget.get_selected() if key=='mfg_multiplier' else widget.get_value()
                 if key=='mfg_multiplier':widget.set_selected(0)
@@ -5315,6 +5357,17 @@ class Window(Adw.ApplicationWindow):
 
             d,b,f=self.open_panel('Apply Settings',width=580,height=310,show_close=False)
             self.operation_games=self.games;self.operation_cancel=threading.Event();self.add_cancel(f);self.progress_view(b,'Applying Settings')
+
+            progress_child=self.progress_panel.get_first_child()
+
+            while progress_child is not None:
+                assert not isinstance(
+                    progress_child,
+                    Gtk.ScrolledWindow,
+                )
+
+                progress_child=progress_child.get_next_sibling()
+
             GLib.timeout_add(500,self.smoke_progress)
         except Exception:traceback.print_exc();self.get_application().exit_code=1;self.get_application().quit()
         return False

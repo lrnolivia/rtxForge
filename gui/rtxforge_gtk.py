@@ -320,17 +320,17 @@ def artwork_accent(path,color=None):
         dr,dg,db=colorsys.hsv_to_rgb(
             fh,
             max(
-                0.62,
+                0.78,
                 min(
                     1.0,
-                    fs*1.08,
+                    fs*1.12,
                 ),
             ),
             max(
-                0.08,
+                0.20,
                 min(
-                    0.24,
-                    fv*0.32,
+                    0.34,
+                    fv*0.42,
                 ),
             ),
         )
@@ -353,12 +353,40 @@ def artwork_accent(path,color=None):
         provider.load_from_data((
             # Poster / Wide Capsule selection border.
             f'.game-card.{name}.selected {{ '
+            f'background: {color}; '
             f'border-color: {color}; '
             f'box-shadow: 0 2px 12px alpha({color},0.28); '
             f'}} '
 
+            f'.game-card.{name}.selected .gallery-artwork-frame {{ '
+            f'background: {color}; '
+            f'border-color: transparent; '
+            f'box-shadow: inset 0 0 0 3.5px {color}; '
+            f'}} '
+
+            f'.game-card.{name}.selected .library-meta-pill {{ '
+            f'background: alpha({accent_dark},0.94); '
+            f'border-color: transparent; '
+            f'box-shadow: none; '
+            f'color: white; '
+            f'}} '
+
+            f'.game-card.{name}.selected .library-pill-text, '
+            f'.game-card.{name}.selected .library-pill-icon {{ '
+            f'color: white; '
+            f'}} '
+
             f'.game-card.{name}:hover {{ '
-            f'border-color: alpha({color},0.65); '
+            f'border-color: transparent; '
+            f'box-shadow: none; '
+            f'}} '
+
+            f'.game-card.{name}:hover .gallery-artwork-frame {{ '
+            f'background: {color}; '
+            f'border-color: transparent; '
+            f'box-shadow: '
+            f'inset 0 0 0 3.5px {color}, '
+            f'0 0 9px alpha({color},0.34); '
             f'}} '
 
             # Gtk.ColumnView: accent stays inside the Game and
@@ -396,7 +424,7 @@ def artwork_accent(path,color=None):
             # Poster / Wide Capsule Details button is neutral at rest;
             # it becomes accent-filled only while the card is selected.
             f'.game-card.{name}.selected .game-details {{ '
-            f'background: {color}; '
+            f'background: alpha(white,0.44); '
             f'color: {accent_dark}; '
             f'border-color: transparent; '
             f'box-shadow: none; '
@@ -405,6 +433,21 @@ def artwork_accent(path,color=None):
             f'.game-card.{name}.selected .game-details label {{ '
             f'color: {accent_dark}; '
             f'font-weight: 700; '
+            f'}} '
+
+            f'.game-card.{name}:hover .card-title {{ '
+            f'color: {color}; '
+            f'}} '
+
+            f'.game-card.{name}.selected .card-title, '
+            f'.game-card.{name}.selected:hover .card-title {{ '
+            f'color: {accent_dark}; '
+            f'}} '
+
+            f'.library-column-game.{name}:hover .library-column-title, '
+            f'columnview.library-column-view row:hover '
+            f'.library-column-game.{name} .library-column-title {{ '
+            f'color: {color}; '
             f'}} '
 
             # Game Detail window keeps its accent semantics.
@@ -447,8 +490,9 @@ def artwork_accent(path,color=None):
             f'background: {color}; '
             f'}} '
 
-            # Titles remain artwork-accent colored in every Library view.
-            f'.{name} .card-title, '
+            # Detail/progress identity remains accent colored.
+            # Library titles are neutral until hover; selected gallery
+            # cards use the darker same-hue foreground above.
             f'.{name} .game-banner-title, '
             f'.{name} .job-title, '
             f'.{name} .eyebrow {{ '
@@ -538,13 +582,17 @@ LIST_ART_HEIGHT=45
 LIST_ART_FRAME_WIDTH=100
 LIST_ART_FRAME_HEIGHT=49
 
-LIBRARY_PILL_WIDTH=52
-LIBRARY_PILL_HEIGHT=16
-LIBRARY_PILL_ICON_SIZE=8
-LIBRARY_PILL_TEXT_SIZE=7
-LIBRARY_PILL_HPAD=4
-LIBRARY_PILL_VPAD=1
-LIBRARY_PILL_GAP=2
+LIBRARY_PILL_WIDTH=78
+LIBRARY_PILL_HEIGHT=24
+LIBRARY_PILL_ICON_SIZE=11
+LIBRARY_PILL_HPAD_START=9
+LIBRARY_PILL_HPAD_END=8
+LIBRARY_PILL_VPAD=3
+LIBRARY_PILL_GAP=4
+LIBRARY_LIST_STATUS_WIDTH=108
+LIBRARY_BOTTOM_CLEARANCE=96
+LIBRARY_STEAM_ICON=ROOT/'gui/icons/rtxforge-steam.svg'
+LIBRARY_GHOST_TEXTURE=ROOT/'gui/icons/rtxforge-transparent-capsule.png'
 
 
 def _library_icon_name(*candidates):
@@ -570,6 +618,30 @@ def _library_icon_name(*candidates):
     return candidates[-1]
 
 
+def library_display_test_status(game):
+    if (
+        not game.get('installed')
+        or game.get('blocked')
+    ):
+        return 'N/A'
+
+    status=str(
+        game.get(
+            'test_record',
+            {},
+        ).get(
+            'status',
+            'Untested',
+        )
+    ).strip()
+
+    # Bench is not a meaningful Library-facing status.
+    if status.casefold()=='bench':
+        return 'N/A'
+
+    return status
+
+
 class LibraryPill(Gtk.Box):
     """One exact source/test pill geometry everywhere."""
 
@@ -587,6 +659,8 @@ class LibraryPill(Gtk.Box):
         )
 
         self.kind=kind
+        self._fixed_width=LIBRARY_PILL_WIDTH
+
         self.add_css_class(
             'library-meta-pill'
         )
@@ -599,10 +673,10 @@ class LibraryPill(Gtk.Box):
         )
 
         content.set_margin_start(
-            LIBRARY_PILL_HPAD
+            LIBRARY_PILL_HPAD_START
         )
         content.set_margin_end(
-            LIBRARY_PILL_HPAD
+            LIBRARY_PILL_HPAD_END
         )
         content.set_margin_top(
             LIBRARY_PILL_VPAD
@@ -629,7 +703,7 @@ class LibraryPill(Gtk.Box):
             label='',
             xalign=0.0,
             single_line_mode=True,
-            ellipsize=Pango.EllipsizeMode.END,
+            ellipsize=Pango.EllipsizeMode.NONE,
         )
         self._label.set_halign(
             Gtk.Align.START
@@ -664,7 +738,7 @@ class LibraryPill(Gtk.Box):
         for_size,
     ):
         size=(
-            LIBRARY_PILL_WIDTH
+            self._fixed_width
             if orientation==Gtk.Orientation.HORIZONTAL
             else LIBRARY_PILL_HEIGHT
         )
@@ -676,12 +750,44 @@ class LibraryPill(Gtk.Box):
             -1,
         )
 
+    def set_fixed_width(self,width):
+        self._fixed_width=max(
+            1,
+            int(width),
+        )
+
+        self.queue_resize()
+
+
     def _update_icon(self,text):
         value=str(
             text or ''
         ).strip().casefold()
 
         if self.kind=='source':
+            if (
+                value=='steam'
+                and LIBRARY_STEAM_ICON.exists()
+            ):
+                try:
+                    pixbuf=GdkPixbuf.Pixbuf.new_from_file_at_scale(
+                        str(LIBRARY_STEAM_ICON),
+                        LIBRARY_PILL_ICON_SIZE,
+                        LIBRARY_PILL_ICON_SIZE,
+                        True,
+                    )
+
+                    self._icon.set_from_paintable(
+                        Gdk.Texture.new_for_pixbuf(
+                            pixbuf
+                        )
+                    )
+
+                    return
+
+                except Exception:
+                    pass
+
             if value=='steam':
                 icon=_library_icon_name(
                     'steam-symbolic',
@@ -695,33 +801,113 @@ class LibraryPill(Gtk.Box):
                 )
 
         else:
-            if value=='untested':
+            if value=='working':
                 icon=_library_icon_name(
-                    'dialog-warning-symbolic',
-                    'emblem-important-symbolic',
+                    'emblem-ok-symbolic',
+                    'object-select-symbolic',
                 )
-            else:
+
+            elif value=='untested':
                 icon=_library_icon_name(
                     'applications-science-symbolic',
                     'science-symbolic',
-                    'emblem-ok-symbolic',
+                    'applications-games-symbolic',
+                )
+
+            elif value in (
+                'problem',
+                'issue',
+            ):
+                icon=_library_icon_name(
+                    'alarm-symbolic',
+                    'dialog-error-symbolic',
+                    'dialog-warning-symbolic',
+                )
+
+            elif value in (
+                'bench',
+                'n/a',
+            ):
+                icon=_library_icon_name(
+                    'list-remove-symbolic',
+                    'window-minimize-symbolic',
+                )
+
+            else:
+                icon=_library_icon_name(
+                    'list-remove-symbolic',
+                    'window-minimize-symbolic',
                 )
 
         self._icon.set_from_icon_name(
             icon
         )
 
+
     def set_text(self,text):
-        text=str(
+        raw=str(
             text or ''
         )
 
-        self._label.set_text(
-            text
-        )
+        value=raw.strip().casefold()
 
         self._update_icon(
-            text
+            raw
+        )
+
+        if self.kind=='source':
+            display={
+                'steam':'STEAM',
+                'non-steam':'OTHER',
+                'non steam':'OTHER',
+                'nonsteam':'OTHER',
+            }.get(
+                value,
+                raw.upper(),
+            )
+
+        else:
+            display={
+                'working':'WORKS',
+                'untested':'UNTESTED',
+                'problem':'ISSUE',
+                'issue':'ISSUE',
+                'bench':'N/A',
+                'n/a':'N/A',
+            }.get(
+                value,
+                raw.upper(),
+            )
+
+            for css_class in (
+                'pill-working',
+                'pill-untested',
+                'pill-issue',
+                'pill-bench',
+                'pill-na',
+            ):
+                self.remove_css_class(
+                    css_class
+                )
+
+            state_class={
+                'working':'pill-working',
+                'untested':'pill-untested',
+                'problem':'pill-issue',
+                'issue':'pill-issue',
+                'bench':'pill-na',
+                'n/a':'pill-na',
+            }.get(
+                value
+            )
+
+            if state_class:
+                self.add_css_class(
+                    state_class
+                )
+
+        self._label.set_text(
+            display
         )
 
     def set_label(self,text):
@@ -750,8 +936,10 @@ class LibraryPill(Gtk.Box):
         )
 
     def set_ellipsize(self,value):
+        # Library pills use deliberately short display labels.
+        # Never sacrifice them to ellipsis.
         self._label.set_ellipsize(
-            value
+            Pango.EllipsizeMode.NONE
         )
 
     def set_xalign(self,value):
@@ -769,11 +957,155 @@ class LibraryPill(Gtk.Box):
         return
 
 
-class FixedListArtFrame(Gtk.Box):
-    """Every List row reserves the exact same art frame."""
+class ListArtwork(Gtk.Overlay):
+    """Single authoritative List artwork widget."""
+
+    def __init__(self):
+        super().__init__(
+            width_request=LIST_ART_FRAME_WIDTH,
+            height_request=LIST_ART_FRAME_HEIGHT,
+        )
+
+        self.add_css_class(
+            'library-column-art'
+        )
+        self.add_css_class(
+            'list-artwork'
+        )
+
+        self.set_size_request(
+            LIST_ART_FRAME_WIDTH,
+            LIST_ART_FRAME_HEIGHT,
+        )
+        self.set_halign(
+            Gtk.Align.CENTER
+        )
+        self.set_valign(
+            Gtk.Align.CENTER
+        )
+        self.set_hexpand(
+            False
+        )
+        self.set_vexpand(
+            False
+        )
+        self.set_overflow(
+            Gtk.Overflow.HIDDEN
+        )
+
+        self.picture=Gtk.Picture(
+            content_fit=Gtk.ContentFit.COVER,
+            can_shrink=True,
+        )
+        self.picture.add_css_class(
+            'list-artwork-picture'
+        )
+        self.picture.set_size_request(
+            LIST_ART_WIDTH,
+            LIST_ART_HEIGHT,
+        )
+        self.picture.set_halign(
+            Gtk.Align.CENTER
+        )
+        self.picture.set_valign(
+            Gtk.Align.CENTER
+        )
+        self.picture.set_hexpand(
+            False
+        )
+        self.picture.set_vexpand(
+            False
+        )
+        self.picture.set_overflow(
+            Gtk.Overflow.HIDDEN
+        )
+
+        self.button=Gtk.Button(
+            child=self.picture
+        )
+        self.button.add_css_class(
+            'flat'
+        )
+        self.button.add_css_class(
+            'list-artwork-button'
+        )
+        self.button.set_has_frame(
+            False
+        )
+        self.button.set_size_request(
+            LIST_ART_WIDTH,
+            LIST_ART_HEIGHT,
+        )
+        self.button.set_halign(
+            Gtk.Align.CENTER
+        )
+        self.button.set_valign(
+            Gtk.Align.CENTER
+        )
+        self.button.set_hexpand(
+            False
+        )
+        self.button.set_vexpand(
+            False
+        )
+        self.button.set_overflow(
+            Gtk.Overflow.HIDDEN
+        )
+
+        self.set_child(
+            self.button
+        )
+
+        self.fallback=Gtk.CenterBox(
+            width_request=LIST_ART_WIDTH,
+            height_request=LIST_ART_HEIGHT,
+            hexpand=False,
+            vexpand=False,
+        )
+        self.fallback.add_css_class(
+            'list-artwork-fallback'
+        )
+        self.fallback.set_size_request(
+            LIST_ART_WIDTH,
+            LIST_ART_HEIGHT,
+        )
+        self.fallback.set_halign(
+            Gtk.Align.CENTER
+        )
+        self.fallback.set_valign(
+            Gtk.Align.CENTER
+        )
+
+        self.ghost_icon=Gtk.Image.new_from_icon_name(
+            'applications-games-symbolic'
+        )
+        self.ghost_icon.set_pixel_size(
+            18
+        )
+        self.ghost_icon.add_css_class(
+            'library-ghost-icon'
+        )
+
+        self.fallback.set_center_widget(
+            self.ghost_icon
+        )
+
+        self.add_overlay(
+            self.fallback
+        )
+        self.set_measure_overlay(
+            self.fallback,
+            False,
+        )
+
+        self.set_artwork(
+            None
+        )
+
 
     def do_get_request_mode(self):
         return Gtk.SizeRequestMode.CONSTANT_SIZE
+
 
     def do_measure(
         self,
@@ -792,6 +1124,49 @@ class FixedListArtFrame(Gtk.Box):
             -1,
             -1,
         )
+
+
+    def set_artwork(self,path):
+        missing=True
+        texture=None
+
+        if path:
+            try:
+                texture=Gdk.Texture.new_from_filename(
+                    str(path)
+                )
+                missing=False
+            except Exception:
+                texture=None
+
+        if texture is None:
+            try:
+                texture=Gdk.Texture.new_from_filename(
+                    str(
+                        LIBRARY_GHOST_TEXTURE
+                    )
+                )
+            except Exception:
+                texture=None
+
+        self.picture.set_paintable(
+            texture
+        )
+
+        self.fallback.set_visible(
+            missing
+        )
+
+
+    def set_selected(self,selected):
+        if selected:
+            self.add_css_class(
+                'selected-art'
+            )
+        else:
+            self.remove_css_class(
+                'selected-art'
+            )
 
 
 class FixedLibraryCard(Gtk.Box):
@@ -899,6 +1274,7 @@ CSS=b'''
 @define-color forge_library_card_a mix(@forge_lower_bg,@window_fg_color,0.08);
 @define-color forge_library_card_b mix(@forge_lower_bg,@window_fg_color,0.13);
 @define-color forge_library_card_hover mix(@forge_lower_bg,black,0.18);
+@define-color forge_library_list_hover mix(@forge_lower_bg,@window_fg_color,0.18);
 
 headerbar,
 .titlebar {
@@ -1327,7 +1703,7 @@ button.game-detail-close.light:hover {
 }
 
 .library-list-status-dot {
-    font-size: 13px;
+    font-size: 11px;
 }
 
 .library-list-status-dot.installed {
@@ -1350,7 +1726,7 @@ button.game-detail-close.light:hover {
     border: 1px solid alpha(@window_fg_color,0.07);
 
     font-size: 10px;
-    font-weight: 700;
+    font-weight: 500;
 }
 
 .library-list-chip.active {
@@ -1425,7 +1801,7 @@ columnview.library-column-view header button:active {
 /* Equal physical padding at both List edges. */
 columnview.library-column-view listview {
     background: transparent;
-    padding: 3px 10px 14px;
+    padding: 3px 10px 96px;
 }
 
 columnview.library-column-view listview row {
@@ -1446,7 +1822,7 @@ columnview.library-column-view listview row:nth-child(even) {
 
 columnview.library-column-view listview row:hover,
 columnview.library-column-view listview row:nth-child(even):hover {
-    background: @forge_library_card_hover;
+    background: @forge_library_list_hover;
 }
 
 
@@ -1487,7 +1863,20 @@ columnview.library-column-view listview row:nth-child(even):hover {
     margin: 0;
 
     border-radius: 8px;
-    background: alpha(@window_fg_color,0.06);
+    background: transparent;
+}
+
+.library-column-art.missing-art {
+    background: transparent;
+}
+
+.library-column-art.missing-art .poster-button {
+    background: alpha(@window_fg_color,0.10);
+    border-radius: 8px;
+}
+
+.library-column-art.missing-art .library-list-ghost-art {
+    background: transparent;
 }
 
 .library-list-ghost-art .library-ghost-icon {
@@ -1516,8 +1905,49 @@ columnview.library-column-view listview row:nth-child(even):hover {
 }
 
 .library-column-title {
+    color: @window_fg_color;
     font-size: 12px;
     font-weight: 700;
+}
+
+
+/* RTXFORGE_FULL_LIST_GHOST_V2 */
+
+.library-column-art.missing-art {
+    background: transparent;
+}
+
+.library-column-art.missing-art .library-column-art-overlay,
+.library-column-art.missing-art .poster-button {
+    background: alpha(@window_fg_color,0.10);
+    border-radius: 10px;
+}
+
+.library-column-art.missing-art .library-list-ghost-art {
+    background: transparent;
+}
+
+
+/* RTXFORGE_GHOST_ART_EXACT_NORMAL_SIZE */
+
+.library-column-art.missing-art {
+    background: transparent;
+}
+
+.library-column-art.missing-art .library-column-art-overlay,
+.library-column-art.missing-art .poster-button {
+    min-width: 96px;
+    min-height: 45px;
+
+    background: alpha(@window_fg_color,0.10);
+    border-radius: 8px;
+}
+
+.library-column-art.missing-art .library-list-ghost-art {
+    min-width: 96px;
+    min-height: 45px;
+
+    background: transparent;
 }
 
 
@@ -1528,7 +1958,7 @@ columnview.library-column-view listview row:nth-child(even):hover {
  */
 
 .library-meta-row {
-    min-height: 16px;
+    min-height: 24px;
 }
 
 .game-card .library-meta-row {
@@ -1542,26 +1972,29 @@ columnview.library-column-view listview row:nth-child(even):hover {
     padding: 0;
     margin: 0;
 
-    border: 1px solid alpha(@window_fg_color,0.13);
+    border: none;
+    border-width: 0;
+    border-color: transparent;
     border-radius: 999px;
+    box-shadow: none;
 
-    font-size: 7px;
+    font-size: 9px;
     font-weight: 700;
-    letter-spacing: 0.35px;
+    letter-spacing: 0.42px;
 }
 
 .library-pill-icon {
-    min-width: 8px;
-    min-height: 8px;
+    min-width: 11px;
+    min-height: 11px;
 
-    color: #a9a9b0;
+    color: #bdbdc4;
     opacity: 1;
 }
 
 .library-pill-text {
-    font-size: 7px;
+    font-size: 9px;
     font-weight: 700;
-    letter-spacing: 0.15px;
+    letter-spacing: 0.42px;
 }
 
 .library-source-pill .library-pill-icon {
@@ -1578,33 +2011,113 @@ columnview.library-column-view listview row:nth-child(even):hover {
 
 /* STEAM / NON-STEAM */
 .library-source-pill {
-    background: #303035;
-    border-color: #47474d;
-    color: #9999a1;
+    background: @view_bg_color;
+    border: none;
+    border-color: transparent;
+    box-shadow: none;
+    color: #d0d0d6;
 }
 
 
 /* UNTESTED */
 .library-test-pill.test-untested {
-    background: #c8c8cc;
-    border-color: #d6d6d9;
-    color: #66666e;
+    background: #d2d2d6;
+    border: none;
+    border-color: transparent;
+    box-shadow: none;
+    color: #4a4a50;
 }
 
 
 /* Tested/result */
 .library-test-pill.test-tested {
-    background: #414146;
-    border-color: #56565c;
-    color: #d5d5d9;
+    background: @view_bg_color;
+    border: none;
+    border-color: transparent;
+    box-shadow: none;
+    color: #d8d8dd;
+}
+
+.library-test-pill.pill-working {
+    background: mix(@view_bg_color,#76b900,0.18);
+    color: #a8db4e;
+}
+
+.library-test-pill.pill-issue {
+    background: mix(@view_bg_color,@error_color,0.20);
+    color: #ffaaa5;
+}
+
+.library-test-pill.pill-bench {
+    background: mix(@view_bg_color,@window_fg_color,0.10);
+    color: #d0d0d5;
 }
 
 
 /* Before first bind, visually match UNTESTED. */
 .library-test-pill:not(.test-untested):not(.test-tested) {
-    background: #c8c8cc;
-    border-color: #d6d6d9;
-    color: #66666e;
+    background: #d2d2d6;
+    border: none;
+    border-color: transparent;
+    box-shadow: none;
+    color: #4a4a50;
+}
+
+
+
+/* Pill glyphs belong to the state, not to a generic icon palette. */
+.library-source-pill .library-pill-icon {
+    color: #d0d0d6;
+}
+
+.library-test-pill.test-untested .library-pill-icon {
+    color: #4a4a50;
+}
+
+.library-test-pill.test-tested.pill-working .library-pill-icon {
+    color: #a8db4e;
+}
+
+.library-test-pill.test-tested.pill-issue .library-pill-icon {
+    color: #ffaaa5;
+}
+
+.library-test-pill.test-tested.pill-bench .library-pill-icon {
+    color: #d0d0d5;
+}
+
+/* RTXFORGE_TEST_STATE_COLORS_V2 */
+
+.library-test-pill.test-untested {
+    background: mix(@view_bg_color,#f5a623,0.28);
+    border: none;
+    border-color: transparent;
+    box-shadow: none;
+    color: #ffb74f;
+}
+
+.library-test-pill.test-untested .library-pill-icon {
+    color: #ffb74f;
+}
+
+.library-test-pill.pill-na {
+    background: mix(@view_bg_color,@window_fg_color,0.10);
+    border: none;
+    border-color: transparent;
+    box-shadow: none;
+    color: #c7c7cc;
+}
+
+.library-test-pill.pill-na .library-pill-icon {
+    color: #c7c7cc;
+}
+
+.library-test-pill.test-tested.pill-working .library-pill-icon {
+    color: #a8db4e;
+}
+
+.library-test-pill.test-tested.pill-issue .library-pill-icon {
+    color: #ffaaa5;
 }
 
 
@@ -1615,7 +2128,14 @@ columnview.library-column-view listview row:nth-child(even):hover {
 
 .library-status-line {
     min-width: 108px;
-    min-height: 16px;
+    min-height: 24px;
+}
+
+.library-status-primary {
+    background: transparent;
+    border: none;
+    border-radius: 999px;
+    box-shadow: none;
 }
 
 
@@ -1634,6 +2154,10 @@ columnview.library-column-view listview row:nth-child(even):hover {
 .library-column-actions button image {
     color: inherit;
 }
+
+
+
+
 
 .library-column-actions button:hover {
     background: #c8c8ca;
@@ -1969,10 +2493,12 @@ button.done-button.suggested-action:hover {
     background: @forge_library_card_b;
 }
 
-.game-card.library-stripe-a:hover,
-.game-card.library-stripe-b:hover,
-.game-card:hover {
-    background: @forge_library_card_hover;
+.game-card.library-stripe-a:hover {
+    background: @forge_library_card_a;
+}
+
+.game-card.library-stripe-b:hover {
+    background: @forge_library_card_b;
 }
 .game-card.selected { border-color: #76b900; box-shadow: 0 2px 12px alpha(#76b900,0.22); }
 
@@ -1988,9 +2514,64 @@ button.done-button.suggested-action:hover {
 
 .poster-button { padding: 0; border: 0; border-radius: 11px 11px 0 0; }
 .poster { border-radius: 11px 11px 0 0; background: #242426; }
+
+/* Poster / Wide Capsule artwork is an inset rounded surface.
+ * Transparent corners expose the card's own label-area background,
+ * including the artwork accent while selected.
+ */
+.game-card .poster-button {
+    padding: 0;
+    border: 0;
+    border-width: 0;
+    border-radius: 14px;
+    background: transparent;
+    box-shadow: none;
+}
+
+.game-card .poster {
+    border-radius: 14px;
+    background: transparent;
+}
+
+
+/* Poster / Wide Capsule artwork inset.
+ * The frame itself owns both the 3.5px stroke and the corner-fill
+ * color, so antialiased rounded corners cannot expose dark gaps.
+ */
+.game-card .gallery-artwork-frame {
+    border: 3.5px solid @forge_library_card_a;
+    border-radius: 14px;
+
+    background: @forge_library_card_a;
+    box-shadow: none;
+}
+
+.game-card.library-stripe-a .gallery-artwork-frame {
+    border-color: @forge_library_card_a;
+    background: @forge_library_card_a;
+}
+
+.game-card.library-stripe-b .gallery-artwork-frame {
+    border-color: @forge_library_card_b;
+    background: @forge_library_card_b;
+}
+
+/* 14px outer radius - 3.5px inset = 10.5px inner artwork radius. */
+.game-card .gallery-artwork-frame .poster-button,
+.game-card .gallery-artwork-frame .poster {
+    border-radius: 10.5px;
+    background: transparent;
+}
+
+
 .poster-fallback { color: #a5a5a8; padding: 22px; font-weight: 800; font-size: 19px; }
 .card-info { padding: 10px 12px 12px; }
-.card-title { font-weight: 500; font-size: 18px; letter-spacing: 0; }
+.card-title {
+    color: @window_fg_color;
+    font-weight: 500;
+    font-size: 18px;
+    letter-spacing: 0;
+}
 .card-meta { font-size: 10px; opacity: 0.7; }
 
 .cover-badge { background: alpha(black,0.65); color: white; text-shadow: 0 1px 3px black; padding: 5px 8px; border-radius: 8px; font-size: 10px; font-weight: 700; }
@@ -2011,11 +2592,14 @@ button.done-button.suggested-action:hover {
 }
 
 .selection-controls {
-    padding: 0 14px 10px;
+    padding: 0 17px 15px;
 }
 
 .selection-count-pill {
-    padding: 5px 9px;
+    min-width: 72px;
+    min-height: 34px;
+
+    padding: 6px 12px;
     border-radius: 999px;
 
     background: alpha(@view_bg_color,0.92);
@@ -2030,9 +2614,9 @@ button.done-button.suggested-action:hover {
 }
 
 .selection-action {
-    min-width: 30px;
-    min-height: 30px;
-    padding: 3px;
+    min-width: 34px;
+    min-height: 34px;
+    padding: 5px;
     border-radius: 8px;
 }
 
@@ -2048,6 +2632,326 @@ button.suggested-action label {
     color: @accent_fg_color;
     font-weight: 500;
 }
+
+/* RTXFORGE_DENSITY_GHOST_FINAL */
+
+/* A little more air in the application titlebar. */
+headerbar,
+.titlebar {
+    padding-top: 4px;
+    padding-bottom: 4px;
+}
+
+
+/* ----------------------------------------------------------
+ * Library toolbar: dense, but not cramped.
+ * Internal spacing stays inside the 8/12px system.
+ * ---------------------------------------------------------- */
+
+.library-sticky-header {
+    min-height: 42px;
+}
+
+.library-sticky-header entry {
+    min-height: 36px;
+}
+
+.library-sticky-header button,
+.library-sticky-header toggle {
+    min-height: 34px;
+    padding: 5px 10px;
+}
+
+
+/* Column header gets matching vertical room. */
+columnview.library-column-view header {
+    min-height: 34px;
+}
+
+columnview.library-column-view header button {
+    min-height: 32px;
+    padding-top: 3px;
+    padding-bottom: 3px;
+}
+
+
+/* ----------------------------------------------------------
+ * List rows
+ * ---------------------------------------------------------- */
+
+/* Exact 10% reduction from the previous 12px title. */
+.library-column-title {
+    font-size: 10.8px;
+    margin-bottom: 4px;
+}
+
+/* 4px margin above + below adjacent rows = 8px row gap. */
+columnview.library-column-view listview row {
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+
+
+/* ----------------------------------------------------------
+ * Missing List artwork
+ *
+ * Same 96x45 surface as EVERY normal artwork widget.
+ * No 100x49 ghost child. The 100x49 outer frame remains shared.
+ * ---------------------------------------------------------- */
+
+.library-list-ghost-art {
+    min-width: 96px;
+    min-height: 45px;
+
+    background: alpha(@window_fg_color,0.10);
+    border-radius: 8px;
+}
+
+
+/* ----------------------------------------------------------
+ * Bottom floating controls
+ * ---------------------------------------------------------- */
+
+.selection-count-pill {
+    min-width: 0;
+    min-height: 26px;
+
+    padding: 4px 12px;
+}
+
+.selection-count {
+    margin: 0;
+    padding: 0;
+}
+
+
+/* ----------------------------------------------------------
+ * FlowBox wrapper itself must NEVER paint a hover rectangle.
+ * Only the artwork accent ring is the gallery hover affordance.
+ * ---------------------------------------------------------- */
+
+flowbox.library-flow flowboxchild,
+flowbox.library-flow flowboxchild:hover,
+flowbox.library-flow flowboxchild:active,
+flowbox.library-flow flowboxchild:selected,
+flowbox.library-flow flowboxchild:focus {
+    background: transparent;
+    background-image: none;
+    border-color: transparent;
+    box-shadow: none;
+    outline: none;
+}
+
+
+/* Do not brighten the whole Poster/Wide card on hover. */
+.game-card.library-stripe-a:hover {
+    background: @forge_library_card_a;
+}
+
+.game-card.library-stripe-b:hover {
+    background: @forge_library_card_b;
+}
+
+
+/* ----------------------------------------------------------
+ * Poster / Wide artwork frame
+ *
+ * Artwork occupies the FULL container.
+ * The 3.5px ring is an INSET shadow painted over the artwork,
+ * so it consumes zero layout space and cannot expose dark gaps.
+ * ---------------------------------------------------------- */
+
+.game-card .gallery-artwork-frame {
+    border: none;
+    border-radius: 14px;
+
+    background: @forge_library_card_a;
+
+    box-shadow:
+        inset 0 0 0 3.5px @forge_library_card_a;
+}
+
+.game-card.library-stripe-a .gallery-artwork-frame {
+    background: @forge_library_card_a;
+
+    box-shadow:
+        inset 0 0 0 3.5px @forge_library_card_a;
+}
+
+.game-card.library-stripe-b .gallery-artwork-frame {
+    background: @forge_library_card_b;
+
+    box-shadow:
+        inset 0 0 0 3.5px @forge_library_card_b;
+}
+
+/* Image/button use the SAME outer radius.
+ * The inset stroke paints above them rather than shrinking them.
+ */
+.game-card .gallery-artwork-frame .poster-button,
+.game-card .gallery-artwork-frame .poster {
+    border-radius: 14px;
+    background: transparent;
+    margin: 0;
+}
+
+
+/* RTXFORGE_DENSITY_GHOST_FINAL_END */
+
+/* RTXFORGE_CLASSIC_LOCK_IN */
+
+
+/* ----------------------------------------------------------
+ * Native titlebar: slightly less cramped.
+ * ---------------------------------------------------------- */
+
+headerbar,
+.titlebar {
+    padding-top: 6px;
+    padding-bottom: 6px;
+}
+
+
+/* ----------------------------------------------------------
+ * Full hero spacing.
+ *
+ * The hero already lives inside the same 18px horizontal page gutter.
+ * Make its internal panel/action rhythm 12px and let button horizontal
+ * padding match the control-pod horizontal padding.
+ * ---------------------------------------------------------- */
+
+.dashboard-actions button {
+    padding-left: 14px;
+    padding-right: 14px;
+}
+
+.dashboard-tuning {
+    margin-top: 6px;
+}
+
+
+/* ----------------------------------------------------------
+ * Search / ColumnView breathing room.
+ * ---------------------------------------------------------- */
+
+.library-sticky-header {
+    min-height: 42px;
+}
+
+
+/* ----------------------------------------------------------
+ * ONE List artwork implementation.
+ *
+ * Outer allocation: 100x49.
+ * Visible image:    96x45.
+ *
+ * These values are identical for EVERY row.
+ * ---------------------------------------------------------- */
+
+.list-artwork {
+    min-width: 100px;
+    min-height: 49px;
+
+    padding: 0;
+    margin: 0;
+
+    background: transparent;
+
+    border: 2px solid transparent;
+    border-radius: 10px;
+
+    box-shadow: none;
+}
+
+.list-artwork-button {
+    min-width: 96px;
+    min-height: 45px;
+
+    padding: 0;
+    margin: 0;
+
+    background: transparent;
+
+    border: none;
+    border-radius: 8px;
+
+    box-shadow: none;
+}
+
+.list-artwork-picture {
+    min-width: 96px;
+    min-height: 45px;
+
+    padding: 0;
+    margin: 0;
+
+    border-radius: 8px;
+
+    background: transparent;
+}
+
+.list-artwork-fallback {
+    min-width: 96px;
+    min-height: 45px;
+
+    padding: 0;
+    margin: 0;
+
+    border-radius: 8px;
+
+    background: alpha(@window_fg_color,0.10);
+}
+
+
+/* ----------------------------------------------------------
+ * List text rhythm.
+ * ---------------------------------------------------------- */
+
+.library-column-title {
+    font-size: 10.8px;
+    font-weight: 700;
+}
+
+/* Two neighboring rows create an 8px visual gap total. */
+columnview.library-column-view listview row {
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+
+
+/* ----------------------------------------------------------
+ * Action buttons.
+ *
+ * No unavailable-specific width/min-width/padding exists.
+ * All three states share the same primary button.
+ * ---------------------------------------------------------- */
+
+.library-column-actions > button:first-child {
+    min-width: 88px;
+}
+
+
+/* ----------------------------------------------------------
+ * Gallery FlowBox wrapper never paints its own hover card.
+ * ---------------------------------------------------------- */
+
+flowbox.library-flow flowboxchild,
+flowbox.library-flow flowboxchild:hover,
+flowbox.library-flow flowboxchild:active,
+flowbox.library-flow flowboxchild:selected,
+flowbox.library-flow flowboxchild:focus {
+    background: transparent;
+    background-image: none;
+
+    border-color: transparent;
+
+    box-shadow: none;
+    outline: none;
+}
+
+
+/* RTXFORGE_CLASSIC_LOCK_IN_END */
+
 '''
 
 def profile_icon(mode):
@@ -2125,6 +3029,179 @@ def demo_games():
             )
 
     return games
+
+
+def library_state_smoke_games(games):
+    """Build an exhaustive, write-disabled Library visual state matrix."""
+
+    state_matrix=(
+        {
+            'suffix':'INSTALLED · REPAIR',
+            'installed':True,
+            'blocked':'',
+            'profile':'NR + MFG',
+            'feature_mode':'nr-mfg',
+            'nr_strength':2.0,
+            'sharpening_strength':0.5,
+            'mfg_multiplier':4,
+            'test_status':'Working',
+        },
+        {
+            'suffix':'AVAILABLE · APPLY',
+            'installed':False,
+            'blocked':'',
+            'profile':'Not installed',
+            'feature_mode':'',
+            'nr_strength':None,
+            'sharpening_strength':None,
+            'mfg_multiplier':None,
+            'test_status':'Untested',
+        },
+        {
+            'suffix':'NOT INSTALLED · BLOCKED',
+            'installed':False,
+            'blocked':(
+                'State-smoke fixture: this game cannot currently '
+                'receive enhancements.'
+            ),
+            'profile':'Not installed',
+            'feature_mode':'',
+            'nr_strength':None,
+            'sharpening_strength':None,
+            'mfg_multiplier':None,
+            'test_status':'Problem',
+        },
+        {
+            'suffix':'NEEDS REPAIR · BLOCKED',
+            'installed':True,
+            'blocked':(
+                'State-smoke fixture: managed files changed and '
+                'require attention.'
+            ),
+            'profile':'MFG Only',
+            'feature_mode':'mfg-only',
+            'nr_strength':0.0,
+            'sharpening_strength':0.1,
+            'mfg_multiplier':4,
+            'test_status':'Bench',
+        },
+    )
+
+    # demo_games() already supplies four copies of every base title.
+    # Group those copies together so each game's four states appear
+    # directly beside/under one another rather than in four distant sets.
+    grouped={}
+
+    for game in games:
+        base_name=str(
+            game.get(
+                'name',
+                'Demo Game',
+            )
+        ).split(
+            ' · Demo ',
+            1,
+        )[0]
+
+        grouped.setdefault(
+            base_name,
+            [],
+        ).append(game)
+
+    result=[]
+
+    for base_name,copies in grouped.items():
+        for state_index,state in enumerate(state_matrix):
+            template=(
+                copies[state_index]
+                if state_index < len(copies)
+                else copies[0]
+            )
+
+            game=dict(template)
+
+            game['name']=(
+                base_name
+                +' · '
+                +state['suffix']
+            )
+
+            # Keep every row identity unique even if future demo data
+            # supplies fewer than four physical copies.
+            game['game']=(
+                str(
+                    template.get(
+                        'game',
+                        '/preview/'+base_name,
+                    )
+                )
+                +f'/state-{state_index}'
+            )
+
+            game['installed']=state[
+                'installed'
+            ]
+
+            game['blocked']=state[
+                'blocked'
+            ]
+
+            game['profile']=state[
+                'profile'
+            ]
+
+            game['feature_mode']=state[
+                'feature_mode'
+            ]
+
+            game['nr_strength']=state[
+                'nr_strength'
+            ]
+
+            game['sharpening_strength']=state[
+                'sharpening_strength'
+            ]
+
+            game['mfg_multiplier']=state[
+                'mfg_multiplier'
+            ]
+
+            game['test_record']={
+                'status':state[
+                    'test_status'
+                ],
+                'notes':'',
+                'sessions':[],
+            }
+
+            result.append(
+                game
+            )
+
+    # RTXFORGE_SMOKE_INSTALLED_STATUS_CYCLE
+    # Exercise the three meaningful installed test states while keeping
+    # Available / Not Installed fixtures available for N/A validation.
+    installed_index=0
+
+    for game in result:
+        if (
+            game.get('installed')
+            and not game.get('blocked')
+        ):
+            game.setdefault(
+                'test_record',
+                {},
+            )['status']=(
+                'Working',
+                'Untested',
+                'Problem',
+            )[
+                installed_index % 3
+            ]
+
+            installed_index+=1
+
+    return result
 
 
 class ResizablePanelWindow(Adw.Window):
@@ -2645,7 +3722,7 @@ class Window(Adw.ApplicationWindow):
         top.append(hero_reveal)
 
         hero_top=Gtk.Box(
-            spacing=8,
+            spacing=12,
             hexpand=True,
             valign=Gtk.Align.CENTER,
         )
@@ -2678,7 +3755,7 @@ class Window(Adw.ApplicationWindow):
         # bulk-action buttons flush with the last line of hero metadata
         # instead of floating at the top of the hero.
         hero_copy_actions=Gtk.Box(
-            spacing=8,
+            spacing=12,
             hexpand=True,
             valign=Gtk.Align.CENTER,
         )
@@ -2730,7 +3807,7 @@ class Window(Adw.ApplicationWindow):
         )
 
         bulk=Gtk.Box(
-            spacing=8,
+            spacing=12,
             valign=Gtk.Align.END,
             halign=Gtk.Align.END,
         )
@@ -3130,7 +4207,7 @@ class Window(Adw.ApplicationWindow):
 
         # Balanced light-side inset at the dark/light seam.
         viewbar.set_margin_top(
-            12
+            16
         )
 
         # Run after the first real GTK allocation so the lighter panel's
@@ -3423,7 +4500,7 @@ class Window(Adw.ApplicationWindow):
                     0
                 )
                 top.set_margin_bottom(
-                    12
+                    16
                 )
                 viewbar.add_css_class(
                     'stuck'
@@ -3446,7 +4523,7 @@ class Window(Adw.ApplicationWindow):
                     18
                 )
                 top.set_margin_bottom(
-                    12
+                    16
                 )
                 viewbar.remove_css_class(
                     'stuck'
@@ -3459,7 +4536,10 @@ class Window(Adw.ApplicationWindow):
             'value-changed',
             collapse_header,
         )
-        self.flow=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,column_spacing=14,row_spacing=16,min_children_per_line=1,max_children_per_line=12,homogeneous=False,valign=Gtk.Align.START);margins(self.flow,18);self.flow.set_margin_top(0);scroll.set_child(self.flow)
+        self.flow=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,column_spacing=14,row_spacing=16,min_children_per_line=1,max_children_per_line=12,homogeneous=False,valign=Gtk.Align.START);margins(self.flow,18);self.flow.set_margin_top(0);self.flow.set_margin_bottom(LIBRARY_BOTTOM_CLEARANCE);scroll.set_child(self.flow)
+        self.flow.add_css_class(
+            'library-flow'
+        )
         self.flow.set_hexpand(True)
         self.flow.set_halign(Gtk.Align.START)
 
@@ -3524,7 +4604,7 @@ class Window(Adw.ApplicationWindow):
 
         # Selected-count text gets its own readable floating pill.
         selection_pill=Gtk.Box(
-            valign=Gtk.Align.CENTER,
+            valign=Gtk.Align.END,
         )
         selection_pill.add_css_class(
             'selection-count-pill'
@@ -3533,6 +4613,15 @@ class Window(Adw.ApplicationWindow):
         self.selected_label=label(
             '0 selected',
             css='selection-count',
+        )
+        self.selected_label.set_wrap(
+            False
+        )
+        self.selected_label.set_single_line_mode(
+            True
+        )
+        self.selected_label.set_ellipsize(
+            Pango.EllipsizeMode.NONE
         )
         selection_pill.append(
             self.selected_label
@@ -3552,7 +4641,7 @@ class Window(Adw.ApplicationWindow):
         def footer_action(icon_name,tooltip,operation,css=None):
             action=Gtk.Button(
                 icon_name=icon_name,
-                valign=Gtk.Align.CENTER,
+                valign=Gtk.Align.END,
             )
             action.add_css_class(
                 'selection-action'
@@ -3618,12 +4707,43 @@ class Window(Adw.ApplicationWindow):
         GLib.timeout_add(180,self.tick)
         if options.demo:
             games=demo_games()
+
             for game in games:
                 path=ROOT/'dist/demo-media'/((game['appid'] or 'forza')+'.json')
-                if path.exists():game.update(__import__('json').loads(path.read_text()))
-            self.show_games(games,False)
-            for key in list(self.cards)[:3]:self.cards[key]['check'].set_active(True)
-        else:self.scan()
+
+                if path.exists():
+                    game.update(
+                        __import__('json').loads(
+                            path.read_text()
+                        )
+                    )
+
+            if options.library_state_smoke:
+                games=library_state_smoke_games(
+                    games
+                )
+
+                self.settings[
+                    'library_view'
+                ]='list'
+
+            self.show_games(
+                games,
+                False,
+            )
+
+            if options.library_state_smoke:
+                GLib.timeout_add(
+                    700,
+                    self.library_state_smoke_ready,
+                )
+            else:
+                for key in list(self.cards)[:3]:
+                    self.cards[key]['check'].set_active(
+                        True
+                    )
+        else:
+            self.scan()
         if options.resize_smoke:
             GLib.timeout_add(
                 900,
@@ -4090,7 +5210,7 @@ class Window(Adw.ApplicationWindow):
             preferred_gap=8
         else:
             slot_count=6
-            preferred_gap=6
+            preferred_gap=8
 
         visible_entries=[
             entry
@@ -4133,7 +5253,8 @@ class Window(Adw.ApplicationWindow):
             view,
         )
 
-        # Fixed slot count is now a hard layout property.
+        # Every Poster/Wide slot has exactly the same allocation.
+        # Card dimensions remain dynamically calculated from the viewport.
         flow.set_homogeneous(
             False
         )
@@ -5559,12 +6680,10 @@ class Window(Adw.ApplicationWindow):
             False
         )
 
-
         check=Gtk.CheckButton(
             valign=Gtk.Align.CENTER,
             halign=Gtk.Align.CENTER,
         )
-
         check.set_margin_start(
             0
         )
@@ -5572,180 +6691,17 @@ class Window(Adw.ApplicationWindow):
             0
         )
 
-        art_frame=FixedListArtFrame(
-            width_request=LIST_ART_FRAME_WIDTH,
-            height_request=LIST_ART_FRAME_HEIGHT,
-            valign=Gtk.Align.CENTER,
-        )
-        art_frame.set_size_request(
-            LIST_ART_FRAME_WIDTH,
-            LIST_ART_FRAME_HEIGHT,
-        )
-        art_frame.add_css_class(
-            'library-column-art'
-        )
-        art_frame.set_halign(
-            Gtk.Align.CENTER
-        )
-        art_frame.set_valign(
-            Gtk.Align.CENTER
-        )
-        art_frame.set_hexpand(
-            False
-        )
-        art_frame.set_vexpand(
-            False
-        )
-        art_frame.set_overflow(
-            Gtk.Overflow.HIDDEN
-        )
-
-        overlay=Gtk.Overlay(
-            width_request=LIST_ART_WIDTH,
-            height_request=LIST_ART_HEIGHT,
-        )
-        overlay.set_size_request(
-            LIST_ART_WIDTH,
-            LIST_ART_HEIGHT,
-        )
-        overlay.add_css_class(
-            'library-column-art-overlay'
-        )
-        overlay.set_halign(
-            Gtk.Align.CENTER
-        )
-        overlay.set_valign(
-            Gtk.Align.CENTER
-        )
-        overlay.set_hexpand(
-            False
-        )
-        overlay.set_vexpand(
-            False
-        )
-        overlay.set_overflow(
-            Gtk.Overflow.HIDDEN
-        )
-
-        art_frame.append(
-            overlay
-        )
-
-        picture=Gtk.Picture(
-            content_fit=Gtk.ContentFit.COVER,
-            can_shrink=True,
-        )
-        picture.add_css_class(
-            'library-column-picture'
-        )
-        picture.set_size_request(
-            LIST_ART_WIDTH,
-            LIST_ART_HEIGHT,
-        )
-        picture.set_halign(
-            Gtk.Align.CENTER
-        )
-        picture.set_valign(
-            Gtk.Align.CENTER
-        )
-        picture.set_hexpand(
-            False
-        )
-        picture.set_vexpand(
-            False
-        )
-        picture.set_overflow(
-            Gtk.Overflow.HIDDEN
-        )
-
-        art_button=Gtk.Button(
-            child=picture
-        )
-        art_button.add_css_class(
-            'poster-button'
-        )
-        art_button.add_css_class(
-            'flat'
-        )
-        art_button.set_has_frame(
-            False
-        )
-        art_button.set_overflow(
-            Gtk.Overflow.HIDDEN
-        )
-        art_button.set_size_request(
-            LIST_ART_WIDTH,
-            LIST_ART_HEIGHT,
-        )
-        art_button.set_halign(
-            Gtk.Align.CENTER
-        )
-        art_button.set_valign(
-            Gtk.Align.CENTER
-        )
-        art_button.set_hexpand(
-            False
-        )
-        art_button.set_vexpand(
-            False
-        )
-
-        overlay.set_child(
-            art_button
-        )
-
-        fallback=Gtk.CenterBox(
-            width_request=LIST_ART_WIDTH,
-            height_request=LIST_ART_HEIGHT,
-            hexpand=False,
-            vexpand=False,
-        )
-        fallback.add_css_class(
-            'library-list-ghost-art'
-        )
-        fallback.set_size_request(
-            LIST_ART_WIDTH,
-            LIST_ART_HEIGHT,
-        )
-        fallback.set_halign(
-            Gtk.Align.CENTER
-        )
-        fallback.set_valign(
-            Gtk.Align.CENTER
-        )
-
-        ghost_icon=Gtk.Image.new_from_icon_name(
-            'applications-games-symbolic'
-        )
-        ghost_icon.set_pixel_size(
-            18
-        )
-        ghost_icon.add_css_class(
-            'library-ghost-icon'
-        )
-
-        fallback.set_center_widget(
-            ghost_icon
-        )
-
-        overlay.add_overlay(
-            fallback
-        )
-        overlay.set_measure_overlay(
-            fallback,
-            False,
-        )
+        artwork=ListArtwork()
 
         text=Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
-            spacing=2,
+            spacing=4,
             hexpand=True,
             valign=Gtk.Align.CENTER,
         )
         text.set_vexpand(
             False
         )
-
 
         title=label(
             '',
@@ -5760,7 +6716,6 @@ class Window(Adw.ApplicationWindow):
         title.set_wrap_mode(
             Pango.WrapMode.WORD_CHAR
         )
-        # One line normally, two lines maximum, then ellipsis.
         title.set_lines(
             2
         )
@@ -5807,7 +6762,6 @@ class Window(Adw.ApplicationWindow):
         meta.set_hexpand(
             False
         )
-
         meta.set_halign(
             Gtk.Align.START
         )
@@ -5826,16 +6780,14 @@ class Window(Adw.ApplicationWindow):
             check
         )
         root.append(
-            art_frame
+            artwork
         )
         root.append(
             text
         )
 
         root._check=check
-        root._art_frame=art_frame
-        root._picture=picture
-        root._fallback=fallback
+        root._artwork=artwork
         root._title=title
         root._meta=meta
         root._game=None
@@ -5859,7 +6811,7 @@ class Window(Adw.ApplicationWindow):
             root,
         )
 
-        art_button.connect(
+        artwork.button.connect(
             'clicked',
             self._column_art_clicked,
             root,
@@ -5912,32 +6864,9 @@ class Window(Adw.ApplicationWindow):
             or game.get('poster')
         )
 
-        if path:
-            try:
-                root._picture.set_paintable(
-                    Gdk.Texture.new_from_filename(
-                        path
-                    )
-                )
-
-                root._fallback.set_visible(
-                    False
-                )
-
-            except Exception:
-                root._picture.set_paintable(
-                    None
-                )
-                root._fallback.set_visible(
-                    True
-                )
-        else:
-            root._picture.set_paintable(
-                None
-            )
-            root._fallback.set_visible(
-                True
-            )
+        root._artwork.set_artwork(
+            path
+        )
 
         self._column_apply_accent(
             root,
@@ -5958,14 +6887,9 @@ class Window(Adw.ApplicationWindow):
         finally:
             root._binding=False
 
-        if selected:
-            root._art_frame.add_css_class(
-                'selected-art'
-            )
-        else:
-            root._art_frame.remove_css_class(
-                'selected-art'
-            )
+        root._artwork.set_selected(
+            selected
+        )
 
 
     def _column_name_bind(
@@ -6191,7 +7115,7 @@ class Window(Adw.ApplicationWindow):
         )
 
         primary=Gtk.Box(
-            spacing=6,
+            spacing=LIBRARY_PILL_GAP,
             valign=Gtk.Align.CENTER,
             halign=Gtk.Align.START,
             hexpand=False,
@@ -6199,19 +7123,35 @@ class Window(Adw.ApplicationWindow):
         primary.add_css_class(
             'library-status-line'
         )
+        primary.add_css_class(
+            'library-status-primary'
+        )
         primary.set_size_request(
-            108,
-            -1,
+            LIBRARY_LIST_STATUS_WIDTH,
+            LIBRARY_PILL_HEIGHT,
         )
 
         dot=label(
             '●',
             'library-list-status-dot',
         )
+        dot.set_size_request(
+            LIBRARY_PILL_ICON_SIZE,
+            -1,
+        )
+        dot.set_margin_start(
+            LIBRARY_PILL_HPAD_START
+        )
+        dot.set_xalign(
+            0.5
+        )
 
         state=label(
             '',
             'library-list-status-text',
+        )
+        state.set_margin_end(
+            LIBRARY_PILL_HPAD_END
         )
 
         primary.append(
@@ -6252,6 +7192,14 @@ class Window(Adw.ApplicationWindow):
             9
         )
 
+        test.set_fixed_width(
+            LIBRARY_LIST_STATUS_WIDTH
+        )
+        test.set_size_request(
+            LIBRARY_LIST_STATUS_WIDTH,
+            LIBRARY_PILL_HEIGHT,
+        )
+
         root.append(
             primary
         )
@@ -6286,7 +7234,7 @@ class Window(Adw.ApplicationWindow):
             )
 
         if game.get('blocked'):
-            text='Unavailable'
+            text='Not Installed'
             css='unavailable'
         elif game.get('installed'):
             text='Installed'
@@ -6303,14 +7251,8 @@ class Window(Adw.ApplicationWindow):
             text
         )
 
-        test_status=str(
-            game.get(
-                'test_record',
-                {},
-            ).get(
-                'status',
-                'Untested',
-            )
+        test_status=library_display_test_status(
+            game
         )
 
         root._test.set_text(
@@ -6389,33 +7331,44 @@ class Window(Adw.ApplicationWindow):
         root=list_item.get_child()
         game=list_item.get_item().game
 
-        root._nr.set_text(
-            'NR '
-            +str(
-                game.get(
-                    'nr_strength'
-                )
-                if game.get(
-                    'nr_strength'
-                )
-                is not None
-                else '—'
+        nr_value=(
+            game.get(
+                'nr_strength'
             )
+            if game.get(
+                'nr_strength'
+            )
+            is not None
+            else '—'
         )
 
-        root._mfg.set_text(
-            'MFG '
-            +str(
-                game.get(
-                    'mfg_multiplier'
-                )
-                if game.get(
-                    'mfg_multiplier'
-                )
-                is not None
-                else '—'
+        mfg_value=(
+            game.get(
+                'mfg_multiplier'
             )
-            +'×'
+            if game.get(
+                'mfg_multiplier'
+            )
+            is not None
+            else '—'
+        )
+
+        root._nr.set_markup(
+            '<span weight="800">NR</span> '
+            '<span weight="500">'
+            +GLib.markup_escape_text(
+                str(nr_value)
+            )
+            +'</span>'
+        )
+
+        root._mfg.set_markup(
+            '<span weight="800">MFG</span> '
+            '<span weight="500">'
+            +GLib.markup_escape_text(
+                str(mfg_value)
+            )
+            +'×</span>'
         )
 
         root._nr.remove_css_class(
@@ -6473,13 +7426,18 @@ class Window(Adw.ApplicationWindow):
             False
         )
 
-
         primary=Gtk.Button(
             label='Apply'
         )
         primary.set_size_request(
             88,
             -1,
+        )
+        primary.set_halign(
+            Gtk.Align.START
+        )
+        primary.set_hexpand(
+            False
         )
 
         more=Gtk.Button(
@@ -6488,6 +7446,12 @@ class Window(Adw.ApplicationWindow):
         more.set_size_request(
             36,
             -1,
+        )
+        more.set_halign(
+            Gtk.Align.START
+        )
+        more.set_hexpand(
+            False
         )
         more.set_tooltip_text(
             'Open game details'
@@ -6533,16 +7497,54 @@ class Window(Adw.ApplicationWindow):
             'game'
         ]
 
-        if game.get('blocked'):
-            title='Unavailable'
-        elif game.get('installed'):
-            title='Repair'
-        else:
-            title='Apply'
-
-        root._primary.set_label(
-            title
+        blocked=bool(
+            game.get(
+                'blocked'
+            )
         )
+
+        # Geometry NEVER changes between Apply / Repair / unavailable.
+        root._primary.set_size_request(
+            88,
+            -1,
+        )
+        root._primary.set_halign(
+            Gtk.Align.START
+        )
+        root._primary.set_hexpand(
+            False
+        )
+
+        if blocked:
+            child=Gtk.Image.new_from_icon_name(
+                'action-unavailable-symbolic'
+            )
+            child.set_pixel_size(
+                16
+            )
+
+            root._primary.set_child(
+                child
+            )
+            root._primary.set_tooltip_text(
+                'Not Installed'
+            )
+
+        else:
+            child=Gtk.Label(
+                label=(
+                    'Repair'
+                    if game.get('installed')
+                    else 'Apply'
+                )
+            )
+
+            root._primary.set_child(
+                child
+            )
+            root._primary.set_tooltip_text(
+                None
+            )
 
         enabled=(
             not self.busy
@@ -6559,11 +7561,7 @@ class Window(Adw.ApplicationWindow):
         root._primary.set_sensitive(
             enabled
             and compatible
-            and not bool(
-                game.get(
-                    'blocked'
-                )
-            )
+            and not blocked
         )
 
         root._more.set_sensitive(
@@ -6739,14 +7737,9 @@ class Window(Adw.ApplicationWindow):
             finally:
                 root._binding=False
 
-            if selected:
-                root._art_frame.add_css_class(
-                    'selected-art'
-                )
-            else:
-                root._art_frame.remove_css_class(
-                    'selected-art'
-                )
+            root._artwork.set_selected(
+                selected
+            )
 
         for game_id,root in list(
             self.list_action_cells.items()
@@ -6850,7 +7843,7 @@ class Window(Adw.ApplicationWindow):
         self.mode=group.get_active_name() or 'mfg-only'
         self.profile_note.set_text({'nr-only':'Neural Rendering','nr-mfg':'Neural Rendering and frame generation','mfg-only':'Native frame generation'}[self.mode])
     def tuning_controls(self,initial):
-        box=Gtk.Box(spacing=8)
+        box=Gtk.Box(spacing=12)
         widgets={}
 
         for key,title,upper in [
@@ -8533,6 +9526,12 @@ class Window(Adw.ApplicationWindow):
         overlay=Gtk.Overlay(
             valign=Gtk.Align.START,
         )
+        overlay.add_css_class(
+            'gallery-artwork-frame'
+        )
+        overlay.set_overflow(
+            Gtk.Overflow.HIDDEN
+        )
         overlay.set_size_request(
             width,
             height,
@@ -8580,6 +9579,12 @@ class Window(Adw.ApplicationWindow):
         )
         click.set_hexpand(
             True
+        )
+        click.set_overflow(
+            Gtk.Overflow.HIDDEN
+        )
+        pic.set_overflow(
+            Gtk.Overflow.HIDDEN
         )
         click.connect(
             'clicked',
@@ -8643,7 +9648,7 @@ class Window(Adw.ApplicationWindow):
                 check,
                 False,
             )
-        badge=label('Unavailable' if game.get('blocked') else game.get('profile','Ready') if game.get('installed') else 'Ready','cover-badge');badge.set_halign(Gtk.Align.START);badge.set_valign(Gtk.Align.END);margins(badge,8)
+        badge=label('Not Installed' if game.get('blocked') else game.get('profile','Ready') if game.get('installed') else 'Ready','cover-badge');badge.set_halign(Gtk.Align.START);badge.set_valign(Gtk.Align.END);margins(badge,8)
         badge_mode={'NR Only':'nr-only','MFG Only':'mfg-only','NR + MFG':'nr-mfg'}.get(game.get('profile'))
         if badge_mode:
             badge=profile_label(badge_mode,badge.get_text());badge.add_css_class('cover-badge');badge.set_halign(Gtk.Align.START);badge.set_valign(Gtk.Align.END);margins(badge,8)
@@ -8886,14 +9891,8 @@ class Window(Adw.ApplicationWindow):
         )
 
         if test_meta is not None:
-            test_status=str(
-                game.get(
-                    'test_record',
-                    {},
-                ).get(
-                    'status',
-                    'Untested',
-                )
+            test_status=library_display_test_status(
+                game
             )
 
             test_meta.set_text(
@@ -12439,6 +13438,41 @@ class Window(Adw.ApplicationWindow):
         return False
 
 
+    def library_state_smoke_ready(self):
+        print(
+            '',
+            flush=True,
+        )
+        print(
+            'LIBRARY STATE SMOKE READY',
+            flush=True,
+        )
+        print(
+            '  Each title has: Installed / Available / '
+            'Blocked / Installed+Blocked',
+            flush=True,
+        )
+        print(
+            '  Report pills exercise: WORKING / UNTESTED / '
+            'PROBLEM / BENCH',
+            flush=True,
+        )
+        print(
+            '  This mode is write-disabled.',
+            flush=True,
+        )
+        print(
+            '',
+            flush=True,
+        )
+
+        self.toast(
+            'Library state smoke · write-disabled'
+        )
+
+        return False
+
+
     def live_smoke_startup(self):
         """Open the real write-disabled Progress -> Done path."""
         try:
@@ -12894,12 +13928,21 @@ def main():
             'manual Progress and Done states.'
         ),
     )
+    parser.add_argument(
+        '--library-state-smoke',
+        action='store_true',
+        help=(
+            'Interactive write-disabled Library matrix showing '
+            'every status/action state.'
+        ),
+    )
     options=parser.parse_args()
 
     if (
         options.resize_smoke
         or options.smoke_test
         or options.live_smoke
+        or options.library_state_smoke
     ):
         options.demo=True
     app=Application(options);result=app.run([sys.argv[0]]);return app.exit_code or result

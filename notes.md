@@ -527,3 +527,40 @@ Continue auditing `gui/rtxforge_gtk.py` for stale, duplicate, overly broad, or c
 When possible, consolidate the active selector instead of adding another late override.
 
 Treat the current visual layout as the baseline. Do not alter unrelated Library layout, resizing behavior, card geometry, or the redesign lab while doing CSS cleanup unless explicitly requested.
+
+---
+
+## 2026-09-19 — IMPORTANT ASTRA CORRECTION: golden responsive Library
+
+The late-night Classic UI work regressed the previously correct Poster/Wide grid and live resize behavior.
+
+This regression was introduced during the later visual/card/List-artwork iteration and should NOT become the new baseline.
+
+Primary golden reference:
+
+d442c7ad2e17814096093f045555382c34f184b8
+Finalize responsive classic library
+
+Earlier useful reference:
+
+665feb03a13ecc57351efe9fec3dde9768026938
+Freeze responsive classic library layout
+
+Astra should compare the current gui/rtxforge_gtk.py directly against d442c7ad and recover the known-good responsive mechanics rather than inventing another sizing algorithm.
+
+Preserve newer approved styling while restoring:
+- fixed 7 Poster slots
+- fixed 6 Wide Capsule slots
+- live viewport/page_size sizing
+- reversible maximize/restore
+- identical sibling width and height
+- tallest-card normalization
+- correct ghost-slot geometry
+- EXTERNAL horizontal ScrolledWindow behavior
+- proper right-edge safety
+
+Do not wholesale revert the current UI to the golden commit. Transplant/restore the responsive layout behavior only.
+
+Canonical expanded handoff:
+
+docs/redesign/ASTRA-CLASSIC-UI-HANDOFF-2026-09-19.md

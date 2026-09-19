@@ -154,3 +154,19 @@ python3 redesign/gui/rtxforge_redesign_lab.py
 
 When a visual increment is approved, commit it with a focused message and push normally to
 `origin main`.
+
+---
+
+## 2026-09-19 — Golden Classic responsive-layout warning
+
+Before continuing Classic Library work, read:
+
+docs/redesign/ASTRA-CLASSIC-UI-HANDOFF-2026-09-19.md
+
+The late UI iteration regressed the previously correct Poster/Wide responsive grid.
+
+Use commit d442c7ad ("Finalize responsive classic library") as the primary golden implementation reference for grid/resize mechanics.
+
+Do not wholesale revert newer UI styling.
+
+Restore the proven responsive layout behavior from the golden commit while preserving newer approved visual changes.

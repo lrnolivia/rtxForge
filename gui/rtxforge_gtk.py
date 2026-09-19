@@ -361,29 +361,6 @@ def artwork_accent(path,color=None):
             f'border-color: alpha({color},0.65); '
             f'}} '
 
-            # List row itself NEVER receives the accent border.
-            f'.game-card.library-list-row.{name}.selected {{ '
-            f'border-color: transparent; '
-            f'box-shadow: none; '
-            f'}} '
-
-            f'.game-card.library-list-row.{name}:hover {{ '
-            f'border-color: transparent; '
-            f'box-shadow: none; '
-            f'}} '
-
-            # List accent border lives ONLY on artwork.
-            f'.game-card.library-list-row.{name}.selected '
-            f'.library-list-thumb {{ '
-            f'border-color: {color}; '
-            f'box-shadow: 0 2px 10px alpha({color},0.28); '
-            f'}} '
-
-            f'.game-card.library-list-row.{name}:hover '
-            f'.library-list-thumb {{ '
-            f'border-color: alpha({color},0.68); '
-            f'}} '
-
             # Gtk.ColumnView: accent stays inside the Game and
             # Actions cells. The row itself never gets an accent border.
             f'.library-column-game.{name} '
@@ -430,28 +407,7 @@ def artwork_accent(path,color=None):
             f'font-weight: 700; '
             f'}} '
 
-            # Same rule for List action buttons.
-            f'.game-card.library-list-row.{name}.selected '
-            f'.library-list-actions button {{ '
-            f'background: {color}; '
-            f'color: {accent_dark}; '
-            f'border-color: transparent; '
-            f'box-shadow: none; '
-            f'}} '
-
-            f'.game-card.library-list-row.{name}.selected '
-            f'.library-list-actions button label, '
-            f'.game-card.library-list-row.{name}.selected '
-            f'.library-list-actions button image {{ '
-            f'color: {accent_dark}; '
-            f'}} '
-
             # Game Detail window keeps its accent semantics.
-            f'.{name} .game-status {{ '
-            f'border-left: 3px solid {color}; '
-            f'background: alpha({color},0.12); '
-            f'}} '
-
             f'.{name} toggle-group toggle:checked {{ '
             f'background: {color}; '
             f'color: {accent_fg}; '
@@ -495,7 +451,6 @@ def artwork_accent(path,color=None):
             f'.{name} .card-title, '
             f'.{name} .game-banner-title, '
             f'.{name} .job-title, '
-            f'.{name} .game-heading, '
             f'.{name} .eyebrow {{ '
             f'color: {color}; '
             f'}} '
@@ -1011,9 +966,6 @@ spinbutton.tuning-number-input text {
  * sticky state gains useful dashboard controls without adding another
  * vertical row.
  */
-.sticky-dashboard {
-    padding: 0;
-}
 
 .sticky-dashboard-brand {
     margin-right: 2px;
@@ -1121,23 +1073,8 @@ spinbutton.tuning-number-input text {
     background: @view_bg_color;
     border-top: 1px solid alpha(@window_fg_color,0.10);
 }
-.floating-tabs toggle {
-    border-radius: 99px;
-    padding: 7px 14px;
-    min-height: 20px;
-}
 
-.floating-tabs {
-    padding: 4px;
-    border-radius: 99px;
-    background: alpha(#151518,0.82);
-    color: white;
-}
 
-.floating-tabs.light {
-    background: alpha(white,0.82);
-    color: #202024;
-}
 
 button.game-detail-close {
     min-width: 36px;
@@ -1310,6 +1247,25 @@ button.game-detail-close.light:hover {
     font-size: 11px;
     min-height: 28px;
     padding: 3px 8px;
+
+    background: alpha(@window_fg_color,0.12);
+    color: @window_fg_color;
+    border-color: alpha(@window_fg_color,0.08);
+    box-shadow: none;
+}
+
+.game-card .game-details label {
+    color: inherit;
+}
+
+.game-card .game-details:hover {
+    background: #c8c8ca;
+    color: #202024;
+    border-color: transparent;
+}
+
+.game-card .game-details:hover label {
+    color: #202024;
 }
 
 
@@ -1358,66 +1314,8 @@ button.game-detail-close.light:hover {
     padding: 3px 8px;
 }
 
-/* Legacy Library List helpers.
- *
- * Consolidated from the original List rules + RTXFORGE_LIST_COMPACT_V3.
- * Keep one source of truth for each selector.
- *
- * Gtk.ColumnView still reuses several library-list-* utility classes,
- * so these are intentionally retained rather than wholesale deleted.
- */
+/* Gtk.ColumnView utility classes still used by the current List view. */
 
-.library-list-header {
-    margin: 0 16px 6px;
-    padding: 0 10px 6px;
-}
-
-.library-list-header-label {
-    font-size: 11px;
-    font-weight: 700;
-    opacity: 0.68;
-}
-
-.library-list-row {
-    min-height: 0;
-    padding: 5px 10px;
-}
-
-.library-list-row.selected {
-    border-color: transparent;
-    box-shadow: none;
-}
-
-.library-list-game {
-    padding: 0;
-}
-
-.library-list-thumb {
-    margin: 0;
-    border: 2px solid transparent;
-    border-radius: 10px;
-}
-
-.library-list-row.selected .library-list-thumb {
-    border-color: #76b900;
-    box-shadow: 0 2px 10px alpha(#76b900,0.22);
-}
-
-.library-list-row:hover {
-    border-color: transparent;
-}
-
-.library-list-row .poster-button,
-.library-list-row .poster {
-    border-radius: 8px;
-}
-
-.library-list-title {
-    font-size: 13px;
-    font-weight: 700;
-}
-
-.library-list-meta,
 .library-list-location {
     font-size: 10px;
     opacity: 0.72;
@@ -1426,10 +1324,6 @@ button.game-detail-close.light:hover {
 .library-list-status-text {
     font-size: 11px;
     font-weight: 600;
-}
-
-.library-list-actions {
-    padding: 0;
 }
 
 .library-list-status-dot {
@@ -1465,46 +1359,6 @@ button.game-detail-close.light:hover {
     border-color: alpha(#76b900,0.28);
 }
 
-.library-list-actions button {
-    min-height: 30px;
-}
-
-
-/* Library card actions are neutral until selected. */
-.game-card .game-details,
-.game-card.library-list-row .library-list-actions button {
-    background: alpha(@window_fg_color,0.12);
-    color: @window_fg_color;
-    border-color: alpha(@window_fg_color,0.08);
-    box-shadow: none;
-}
-
-.game-card .game-details label,
-.game-card.library-list-row .library-list-actions button label,
-.game-card.library-list-row .library-list-actions button image {
-    color: inherit;
-}
-
-.game-card .game-details:hover,
-.game-card.library-list-row .library-list-actions button:hover {
-    background: #c8c8ca;
-    color: #202024;
-    border-color: transparent;
-}
-
-.game-card .game-details:hover label,
-.game-card.library-list-row .library-list-actions button:hover label,
-.game-card.library-list-row .library-list-actions button:hover image {
-    color: #202024;
-}
-
-
-/* Legacy List row never owns accent selection. */
-.game-card.library-list-row.selected,
-.game-card.library-list-row:hover {
-    border-color: transparent;
-    box-shadow: none;
-}
 
 /* ==========================================================
  * STRUCTURED GTK COLUMN VIEW
@@ -1798,12 +1652,6 @@ columnview.library-column-view listview row:nth-child(even):hover {
     padding: 10px;
 }
 
-.cover-badge {
-    text-shadow:
-        0 2px 7px alpha(black,0.95),
-        0 0 14px alpha(black,0.52);
-}
-
 .game-banner.hero-dark .game-banner-title,
 .game-banner.hero-dark .game-detail-meta,
 .game-banner.hero-dark .game-detail-summary,
@@ -1990,9 +1838,7 @@ button.done-button.suggested-action:hover {
     color: white;
 }
 
-.color-swatch { min-width: 32px; min-height: 32px; border-radius: 99px; padding: 0; }
 
-.settings-sidebar row { padding-left: 16px; padding-right: 16px; }
 .control-pod {
     padding: 10px;
     border-radius: 12px;
@@ -2023,12 +1869,10 @@ button.done-button.suggested-action:hover {
 .mode-selector toggle:checked {
     background: alpha(@window_fg_color,0.12);
 }
-.profile-toggle { padding: 7px 12px; font-weight: 600; }
 .dashboard-icon { margin: 0 6px 0 0; }
 .dashboard-actions { margin: 0; }
 .dashboard-actions button { min-height: 34px; padding: 7px 12px; }
 .dashboard-actions button label { font-weight: 600; }
-.dashboard-tuning .control-pod { padding: 7px 9px; }
 .dashboard-tuning .control-pod scale { padding: 2px; }
 
 /* rtxForge dashboard tuning typography */
@@ -2082,12 +1926,6 @@ button.done-button.suggested-action:hover {
     font-weight: 600;
 }
 
-.hamburger-line {
-    min-width: 16px;
-    min-height: 2px;
-    border-radius: 99px;
-    background: @window_fg_color;
-}
 .hero-title { font-size: 25px; font-weight: 800; letter-spacing: -0.6px; }
 .eyebrow { color: #76b900; font-weight: 800; font-size: 9px; letter-spacing: 1.7px; }
 .hero {
@@ -2203,17 +2041,7 @@ button.done-button.suggested-action:hover {
     min-height: 16px;
 }
 
-.status-strip { padding: 8px 20px; font-size: 12px; }
-.game-hero { padding: 0 18px 12px; }
-.hero-fade { background: linear-gradient(to bottom, alpha(@window_bg_color,0.05) 0%, alpha(@window_bg_color,0.35) 40%, @window_bg_color 100%); }
-.profile-poster { border: 3px solid @window_bg_color; border-radius: 10px; box-shadow: 0 8px 24px alpha(black,0.4); }
-.game-heading { font-size: 27px; font-weight: 800; }
-.game-status { padding: 16px; border-radius: 14px; background: alpha(@window_fg_color,0.06); }
-.game-caption { font-size: 11px; opacity: 0.65; }
 .panel-body { padding: 18px 24px; }
-.profile-toggle:checked { background: transparent; color: @accent_color; box-shadow: inset 0 -2px @accent_color; }
-.progress-orb { border-radius: 999px; background: alpha(@window_fg_color,0.06); padding: 18px; }
-.progress-title { font-size: 22px; font-weight: 600; }
 button, button label, toggle-group toggle { font-weight: 500; }
 button.suggested-action,
 button.suggested-action label {

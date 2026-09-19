@@ -79,7 +79,14 @@ For interactive Library, card-layout, Game Details, Settings, and sticky-titleba
 
 Demo mode is write-disabled. Its sample Library is intentionally large enough to scroll so the collapsed sticky titlebar can be reviewed without requiring a large real Steam library.
 
-For automated regression and screenshot validation, use:
+For focused responsive-Library regression and screenshot validation, use:
+
+    python3 gui/rtxforge_gtk.py --resize-smoke
+
+This captures Poster and Wide Capsule at normal, maximized, and restored window
+sizes while asserting their fixed 7 / 6 slot counts and reversible card sizing.
+
+For the broader automated regression and screenshot validation, use:
 
     python3 gui/rtxforge_gtk.py --smoke-test
 
@@ -90,62 +97,72 @@ Neither mode performs live game-file mutations.
 
 **Current release: 0.7.0 plus approved post-release maintenance on `main`.**
 
-The classic GTK/libadwaita application remains the production UI. Broad redesign
-work belongs under `redesign/`; the classic interface should receive only
-explicitly approved production changes, fixes and maintenance.
+The classic GTK/libadwaita application remains the production UI. Broad
+redesign work belongs under `redesign/`; classic changes should remain explicit
+production fixes and maintenance.
 
-### Current production Library work
+### Current production Library
 
-The latest classic Library checkpoint preserves the established rtxForge
-appearance and behavior while tightening gallery geometry and building the new
-List structure.
+Poster and Wide Capsule now use a deterministic responsive-scale layout rather
+than variable column fitting or a user artwork-size control.
 
-Poster / Wide Capsule currently preserve:
+Current gallery contract:
 
-- separate artwork sources and aspect-ratio behavior;
-- the user's artwork-size setting;
-- stable card geometry;
-- a 16px outer Library inset;
-- edge-oriented responsive row behavior;
-- write-disabled automated/demo validation.
+- **Poster is always exactly 7 visual slots per row**;
+- **Wide Capsule is always exactly 6 visual slots per row**;
+- cards grow and shrink automatically with the current Library viewport;
+- changing window size, maximizing, restoring, and shrinking all update card
+  geometry live without requiring a view switch;
+- gallery content no longer ratchets the application into a larger minimum
+  window width;
+- incomplete final rows are padded with inert ghost slots so the visual grid
+  keeps its full geometry;
+- Poster and Wide Capsule continue using their separate artwork sources and
+  aspect ratios;
+- the right edge includes an explicit paint/clip safety allowance so the final
+  slot remains inside the visible viewport;
+- GTK overlay scrolling remains enabled without a permanent scrollbar gutter.
 
-Viewport calculation now uses the ScrolledWindow horizontal adjustment page size
-after allocation so a layout-consuming vertical scrollbar is already reflected
-in the available width. Automated smoke uses the same width authority.
+The live resize path uses the horizontal ScrolledWindow adjustment `page_size`
+as its viewport authority. The Library ScrolledWindow uses the `EXTERNAL`
+horizontal policy so dynamically enlarged child requests do not become a new
+application-window minimum.
 
-List view is being structurally rebuilt around:
+Gallery title behavior is responsive:
+
+- the existing full-size title is the maximum;
+- compact cards step the title from **15px → 14px → 13px → 12px**;
+- titles wrap to at most **3 lines**;
+- ellipsis is used only after the third line is exhausted;
+- Details buttons become modestly smaller with compact cards;
+- the existing tallest-card normalization keeps sibling card heights aligned.
+
+Additional Library polish:
+
+- All / Installed / Available have expanded horizontal padding;
+- NR Strength and Sharpening numeric fields have additional internal left
+  padding;
+- manual artwork-size controls were removed from both the Library toolbar and
+  Settings.
+
+List view remains structured as:
 
 `Game | Location | Status | Enhancements | Actions`
 
-The current implementation includes game artwork/identity, source and relative
-location, installation and test status, NR/MFG enhancement state, and per-game
-actions while retaining the existing classic rtxForge styling and behavior.
+with existing selection, provider state, install/repair actions, Game Details,
+write safety, and classic visual styling preserved.
 
-### Approved next classic Library experiment
+### Validation
 
-The next worker should replace variable gallery column selection with a
-deterministic responsive-slot model:
+The responsive gallery has a dedicated write-disabled resize smoke that captures
+six states:
 
-- **Poster: exactly 7 slots per row**, minimum artwork width **72px**;
-- **Wide Capsule: exactly 6 slots per row**, minimum artwork width **88px**;
-- **16px outer inset** on both sides;
-- **612px minimum Library viewport width**;
-- card/art sizes scale upward as the window grows, but column counts remain
-  fixed;
-- remaining width is distributed evenly as inter-slot spacing;
-- incomplete rows are filled with inert grey ghost cards so every visual row
-  retains its full slot geometry.
+- Poster normal / maximized / restored;
+- Wide Capsule normal / maximized / restored.
 
-At the 612px minimum viewport, seven minimum Poster slots yield 8px gaps. Six
-minimum Wide Capsule slots fit with approximately 5.6px gaps, so capsule spacing
-may compress below 8px rather than shrinking artwork below 88px.
-
-Ghost cards are layout-only placeholders: approximately 50% neutral-grey
-surfaces with a centered game icon in normal label grey. They are not games,
-cannot be selected or activated, and must never participate in operations or
-counts.
-
-See `notes.md` for the detailed classic Library worker handoff.
+The accepted resize run verified that card widths grow and return to their
+original values while slot counts remain fixed at 7 / 6. Final visual polish was
+also reviewed in write-disabled `--demo` mode.
 
 ### Classic UI policy after 0.7
 
@@ -171,7 +188,7 @@ Current status:
 - Recovery presentation shell built and visually approved;
 - Home follows the exact approved cinematic dashboard mockup and is in responsive visual
   polish;
-- the finished classic Library viewport/card behavior/artwork-size slider, standalone
+- the finished classic Library viewport/card behavior/automatic artwork scaling, standalone
   Game Details/Game Settings windows, and Progress presentation are migration preservation
   targets.
 

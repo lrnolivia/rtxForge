@@ -498,6 +498,17 @@ headerbar,
     padding: 4px 7px;
 }
 
+
+.library-sticky-header .library-filter-group button {
+    padding: 4px 16px;
+}
+
+spinbutton.tuning-number-input text {
+    padding-left: 10px;
+    padding-right: 4px;
+}
+
+
 .library-sticky-header scale {
     padding: 0 2px;
 }
@@ -805,6 +816,52 @@ button.game-detail-close.light:hover {
 }
 
 .game-card .game-details {
+    font-size: 11px;
+    min-height: 28px;
+    padding: 3px 8px;
+}
+
+
+/* RTXFORGE_CARD_SCALE_V4
+ *
+ * Current/full card typography is the maximum.
+ * Compact cards step down only a few pixels.
+ */
+.game-card .card-title.art-title-xs {
+    font-size: 12px;
+}
+
+.game-card .card-title.art-title-sm {
+    font-size: 13px;
+}
+
+.game-card .card-title.art-title-md {
+    font-size: 14px;
+}
+
+.game-card .card-title.art-title-lg {
+    font-size: 15px;
+}
+
+.game-card.art-card-xs .game-details {
+    font-size: 9px;
+    min-height: 22px;
+    padding: 1px 5px;
+}
+
+.game-card.art-card-sm .game-details {
+    font-size: 10px;
+    min-height: 24px;
+    padding: 2px 6px;
+}
+
+.game-card.art-card-md .game-details {
+    font-size: 10px;
+    min-height: 26px;
+    padding: 2px 7px;
+}
+
+.game-card.art-card-lg .game-details {
     font-size: 11px;
     min-height: 28px;
     padding: 3px 8px;
@@ -1225,6 +1282,17 @@ button.done-button.suggested-action:hover {
     border: 2px solid transparent;
 }
 .game-card.selected { border-color: #76b900; box-shadow: 0 2px 12px alpha(#76b900,0.22); }
+
+.library-ghost-card {
+    border-radius: 14px;
+    background: alpha(@window_fg_color,0.06);
+    border: 2px solid transparent;
+}
+
+.library-ghost-icon {
+    color: alpha(@window_fg_color,0.66);
+}
+
 .poster-button { padding: 0; border: 0; border-radius: 11px 11px 0 0; }
 .poster { border-radius: 11px 11px 0 0; background: #242426; }
 .poster-fallback { color: #a5a5a8; padding: 22px; font-weight: 800; font-size: 19px; }
@@ -2304,107 +2372,9 @@ class Window(Adw.ApplicationWindow):
             library_tools
         )
 
-        # Live artwork size belongs beside the view controls.
-        self._syncing_library_size=False
-        self.library_size_save_source=0
-
-        self.library_size_scale=Gtk.Scale.new_with_range(
-            Gtk.Orientation.HORIZONTAL,
-            50,
-            150,
-            1,
-        )
-
-        self.library_size_scale.set_value(
-            self.settings.get(
-                'art_scale',
-                100,
-            )
-        )
-        self.library_size_scale.set_draw_value(
-            False
-        )
-        self.library_size_scale.set_size_request(
-            108,
-            -1,
-        )
-        self.library_size_scale.set_valign(
-            Gtk.Align.CENTER
-        )
-        self.library_size_scale.set_tooltip_text(
-            'Library artwork size'
-        )
-        self.library_size_scale.update_property(
-            [Gtk.AccessibleProperty.LABEL],
-            ['Library artwork size'],
-        )
-
-        self.library_size_scale.set_sensitive(
-            self.settings.get(
-                'library_view',
-                'posters',
-            )!='list'
-        )
-
-        def live_library_size_changed(
-            widget,
-        ):
-            if self._syncing_library_size:
-                return
-
-            value=int(
-                round(
-                    widget.get_value()
-                )
-            )
-
-            self.resize_library_art(
-                value
-            )
-
-            pending=getattr(
-                self,
-                'library_size_save_source',
-                0,
-            )
-
-            if pending:
-                try:
-                    GLib.source_remove(
-                        pending
-                    )
-                except Exception:
-                    pass
-
-            if self.options.demo:
-                return
-
-            def persist_library_size():
-                self.library_size_save_source=0
-
-                try:
-                    library_media.save_settings(
-                        self.service.config,
-                        self.settings,
-                    )
-                except Exception:
-                    pass
-
-                return False
-
-            self.library_size_save_source=GLib.timeout_add(
-                400,
-                persist_library_size,
-            )
-
-        self.library_size_scale.connect(
-            'value-changed',
-            live_library_size_changed,
-        )
-
-        viewbar.append(
-            self.library_size_scale
-        )
+        # Gallery artwork geometry is automatic and follows the
+        # current Library viewport. There is intentionally no
+        # manual artwork-size control.
 
         viewbox=Gtk.Box()
         viewbox.add_css_class(
@@ -2485,6 +2455,9 @@ class Window(Adw.ApplicationWindow):
         filterbox=Gtk.Box()
         filterbox.add_css_class(
             'linked'
+        )
+        filterbox.add_css_class(
+            'library-filter-group'
         )
         library_tools.append(
             filterbox
@@ -2607,7 +2580,51 @@ class Window(Adw.ApplicationWindow):
             self.library_list_header
         )
 
-        scroll=Gtk.ScrolledWindow(vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER);self.library_scroll=scroll;library_stage=Gtk.Overlay(vexpand=True);library_stage.set_child(scroll);library_surface.append(library_stage)
+        scroll=Gtk.ScrolledWindow(
+            vexpand=True,
+
+            # This Library is horizontally responsive but never exposes
+            # a horizontal scrollbar.
+            #
+            # NEVER is wrong for that contract: GTK lets the child
+            # determine the ScrolledWindow's horizontal size, so a large
+            # fixed-slot gallery can become the application's new minimum.
+            #
+            # EXTERNAL keeps the scrollbar hidden without making current
+            # gallery content dictate the viewport/window width.
+            hscrollbar_policy=Gtk.PolicyType.EXTERNAL,
+        )
+        self.library_scroll=scroll
+
+        # Keep GTK's native overlay scrollbar. The responsive gallery
+        # reserves a small internal lane for it instead of creating a
+        # permanent visible scrollbar gutter.
+        scroll.set_overlay_scrolling(
+            True
+        )
+
+        # The gallery deliberately recalculates card geometry from the
+        # visible viewport. Its current child requests must therefore
+        # never become the minimum width of the application itself.
+        #
+        # This is what allows a window enlarged at 4K/maximized size to
+        # shrink again before the next responsive layout pass.
+        scroll.set_propagate_natural_width(
+            False
+        )
+        scroll.set_min_content_width(
+            1
+        )
+
+        library_stage=Gtk.Overlay(
+            vexpand=True
+        )
+        library_stage.set_child(
+            scroll
+        )
+        library_surface.append(
+            library_stage
+        )
         # Decorative top fade removed. The Library now begins
         # with ordinary physical spacing below its controls.
         def collapse_header(adj):
@@ -2673,10 +2690,25 @@ class Window(Adw.ApplicationWindow):
         self.flow.set_hexpand(True)
         self.flow.set_halign(Gtk.Align.START)
 
-        scroll.connect(
-            'notify::width',
-            self.update_library_spacing,
+        self._library_viewport_width=0
+        self._library_resize_source=0
+
+        scroll.get_hadjustment().connect(
+            'notify::page-size',
+            self._library_viewport_changed,
         )
+
+        # Overlay scrollbar presence is driven by vertical content.
+        # Re-solve the gallery when that content extent changes.
+        scroll.get_vadjustment().connect(
+            'notify::upper',
+            self._library_vertical_extent_changed,
+        )
+        scroll.get_vadjustment().connect(
+            'notify::page-size',
+            self._library_vertical_extent_changed,
+        )
+
         GLib.idle_add(
             self.update_library_spacing
         )
@@ -2819,16 +2851,248 @@ class Window(Adw.ApplicationWindow):
             self.show_games(games,False)
             for key in list(self.cards)[:3]:self.cards[key]['check'].set_active(True)
         else:self.scan()
-        if options.smoke_test:
-            GLib.timeout_add(800,self.smoke_library)
+        if options.resize_smoke:
+            GLib.timeout_add(
+                900,
+                self.resize_smoke_startup,
+            )
+        elif options.smoke_test:
+            GLib.timeout_add(
+                800,
+                self.smoke_library,
+            )
         elif options.live_smoke:
-            GLib.timeout_add(800,self.live_smoke_startup)
+            GLib.timeout_add(
+                800,
+                self.live_smoke_startup,
+            )
 
     def title_button(self,icon,title,callback):
         b=Gtk.Button(icon_name=icon);b.set_tooltip_text(title);b.update_property([Gtk.AccessibleProperty.LABEL],[title]);b.add_css_class('title-action');b.connect('clicked',callback);return b
 
+    def _clear_library_ghost_slots(self):
+        flow=getattr(
+            self,
+            'flow',
+            None,
+        )
+
+        ghosts=list(
+            getattr(
+                self,
+                'ghost_slots',
+                [],
+            )
+        )
+
+        if flow is not None:
+            for entry in ghosts:
+                wrapper=entry.get(
+                    'wrapper'
+                )
+
+                if (
+                    wrapper is not None
+                    and wrapper.get_parent() is flow
+                ):
+                    flow.remove(
+                        wrapper
+                    )
+
+        self.ghost_slots=[]
+
+
+    def _sync_library_ghost_slots(
+        self,
+        slot_count,
+        visible_count,
+        view,
+    ):
+        """Keep the final gallery row structurally full without fake games."""
+
+        if (
+            view=='list'
+            or slot_count<=0
+            or visible_count<=0
+        ):
+            desired=0
+        else:
+            desired=(
+                slot_count
+                - (
+                    visible_count
+                    % slot_count
+                )
+            ) % slot_count
+
+        current=list(
+            getattr(
+                self,
+                'ghost_slots',
+                [],
+            )
+        )
+
+        reusable=(
+            len(current)==desired
+            and all(
+                entry.get(
+                    'view'
+                )==view
+                and entry.get(
+                    'wrapper'
+                ) is not None
+                and entry[
+                    'wrapper'
+                ].get_parent() is self.flow
+                for entry in current
+            )
+        )
+
+        if reusable:
+            return current
+
+        self._clear_library_ghost_slots()
+
+        for _index in range(
+            desired
+        ):
+            ghost=FixedLibraryCard(
+                orientation=Gtk.Orientation.VERTICAL,
+            )
+
+            ghost.add_css_class(
+                'library-ghost-card'
+            )
+            ghost.set_sensitive(
+                False
+            )
+            ghost.set_overflow(
+                Gtk.Overflow.HIDDEN
+            )
+
+            center=Gtk.CenterBox()
+            center.set_hexpand(
+                True
+            )
+            center.set_vexpand(
+                True
+            )
+
+            icon=Gtk.Image.new_from_icon_name(
+                'applications-games-symbolic'
+            )
+            icon.set_pixel_size(
+                22
+            )
+            icon.add_css_class(
+                'library-ghost-icon'
+            )
+
+            center.set_center_widget(
+                icon
+            )
+            ghost.append(
+                center
+            )
+
+            self.flow.insert(
+                ghost,
+                -1,
+            )
+
+            wrapper=ghost.get_parent()
+            wrapper.set_halign(
+                Gtk.Align.START
+            )
+            wrapper.set_valign(
+                Gtk.Align.START
+            )
+            wrapper.set_hexpand(
+                False
+            )
+            wrapper.set_vexpand(
+                False
+            )
+
+            self.ghost_slots.append(
+                {
+                    'view':view,
+                    'widget':ghost,
+                    'wrapper':wrapper,
+                }
+            )
+
+        return list(
+            self.ghost_slots
+        )
+
+
+    def _library_viewport_changed(
+        self,
+        adjustment,
+        *_,
+    ):
+        """Schedule gallery geometry when the visible viewport changes."""
+
+        width=int(
+            round(
+                adjustment.get_page_size()
+            )
+        )
+
+        if width<=1:
+            return
+
+        if width==getattr(
+            self,
+            '_library_viewport_width',
+            0,
+        ):
+            return
+
+        self._library_viewport_width=width
+
+        # Coalesce resize bursts. The eventual layout reads page_size
+        # again, so it always solves against the newest allocation.
+        if getattr(
+            self,
+            '_library_resize_source',
+            0,
+        ):
+            return
+
+        self._library_resize_source=GLib.idle_add(
+            self._apply_library_viewport_resize
+        )
+
+    def _apply_library_viewport_resize(self):
+        self._library_resize_source=0
+
+        self.update_library_spacing()
+
+        return False
+
+    def _library_vertical_extent_changed(
+        self,
+        *_,
+    ):
+        """Re-solve gallery width when overlay scrollbar state changes."""
+
+        if getattr(
+            self,
+            '_library_resize_source',
+            0,
+        ):
+            return
+
+        self._library_resize_source=GLib.idle_add(
+            self._apply_library_viewport_resize
+        )
+
+
     def update_library_spacing(self,*_):
-        """Size gallery templates from available width with a real fixed gap."""
+        """Lay out deterministic 7-Poster / 6-Wide gallery slots."""
 
         flow=getattr(
             self,
@@ -2856,17 +3120,11 @@ class Window(Adw.ApplicationWindow):
             ) is not None
         ]
 
-        # --------------------------------------------------------
-        # Clear ALL old fake-spacing state.
-        #
-        # FlowBox column_spacing is now the authoritative horizontal
-        # gap. Child margins are used only for an optional one-pixel
-        # integer remainder below.
-        # --------------------------------------------------------
-
+        # Always clear old per-row remainder corrections first.
         for entry in entries:
-            wrapper=entry['wrapper']
-
+            wrapper=entry[
+                'wrapper'
+            ]
             wrapper.set_margin_start(
                 0
             )
@@ -2874,8 +3132,13 @@ class Window(Adw.ApplicationWindow):
                 0
             )
 
+        # --------------------------------------------------------
+        # LIST VIEW
+        # --------------------------------------------------------
+
         if view=='list':
-            # List rows are one-per-line and own the full Library width.
+            self._clear_library_ghost_slots()
+
             flow.set_size_request(
                 -1,
                 -1,
@@ -2909,7 +3172,10 @@ class Window(Adw.ApplicationWindow):
             )
 
             for entry in entries:
-                wrapper=entry['wrapper']
+                wrapper=entry[
+                    'wrapper'
+                ]
+
                 wrapper.set_size_request(
                     -1,
                     72,
@@ -2921,14 +3187,20 @@ class Window(Adw.ApplicationWindow):
                     True
                 )
 
-                entry['widget'].set_size_request(
+                entry[
+                    'widget'
+                ].set_size_request(
                     -1,
                     72,
                 )
-                entry['widget'].set_halign(
+                entry[
+                    'widget'
+                ].set_halign(
                     Gtk.Align.FILL
                 )
-                entry['widget'].set_hexpand(
+                entry[
+                    'widget'
+                ].set_hexpand(
                     True
                 )
 
@@ -2944,34 +3216,28 @@ class Window(Adw.ApplicationWindow):
             return False
 
         # --------------------------------------------------------
-        # RESPONSIVE GALLERY CONTRACT
-        #
-        # The ScrolledWindow allocation is the authoritative visible width.
-        # Do not measure the FlowBox parent after artwork-size changes.
-        # It can still report the previous shrunken content width.
-        # Feeding that width back into spacing strands the right edge.
+        # REAL VIEWPORT AUTHORITY
         # --------------------------------------------------------
 
-        # GtkAdjustment.page_size is the actual horizontally visible
-        # viewport. Unlike ScrolledWindow.get_width(), it already excludes
-        # any layout-consuming vertical scrollbar and does not depend on
-        # whether that scrollbar has received its final widget allocation.
         hadj=scroll.get_hadjustment()
+
         viewport_width=(
-            int(round(hadj.get_page_size()))
+            int(
+                round(
+                    hadj.get_page_size()
+                )
+            )
             if hadj is not None
             else 0
         )
 
-        # Before the first allocation page_size can still be zero. Keep a
-        # defensive fallback for startup only; once allocated, page_size is
-        # the single authority used by both layout and smoke validation.
         if viewport_width<=1:
             viewport_width=int(
                 scroll.get_width()
             )
 
             vscroll=scroll.get_vscrollbar()
+
             if (
                 vscroll is not None
                 and vscroll.get_visible()
@@ -2979,208 +3245,262 @@ class Window(Adw.ApplicationWindow):
             ):
                 viewport_width=max(
                     1,
-                    viewport_width-vscroll.get_width(),
+                    viewport_width
+                    - vscroll.get_width(),
                 )
-
-        # Keep width measurement independent from FlowBox's own request.
-        # The fixed 16px outer insets are removed from this true viewport.
-        # Poster and Wide Capsule therefore share the same edge contract.
 
         if viewport_width<=1:
             return False
 
-        outer_inset=16
-        gallery_gap=8
+        OUTER_INSET=16
+        OVERLAY_SCROLLBAR_GUARD=12
+
+        # Small permanent paint/clip allowance at the physical right
+        # edge. Unlike the scrollbar guard, this does not depend on
+        # scrollbar allocation timing.
+        RIGHT_EDGE_SAFETY=32
+
+        # The horizontal adjustment remains the authoritative viewport.
+        #
+        # GTK's native vertical scrollbar overlays that viewport instead
+        # of consuming its width. Reserve only its overlay lane inside the
+        # gallery calculation so the final card ends before the scrollbar,
+        # while preserving a visible 16px right inset.
+        vadj=scroll.get_vadjustment()
+
+        has_vertical_scroll=(
+            vadj is not None
+            and (
+                vadj.get_upper()
+                - vadj.get_page_size()
+            ) > 1
+        )
+
+        vscroll=scroll.get_vscrollbar()
+
+        measured_scrollbar_width=(
+            int(
+                vscroll.get_width()
+            )
+            if (
+                vscroll is not None
+                and vscroll.get_width()>0
+            )
+            else 0
+        )
+
+        scrollbar_guard=(
+            max(
+                OVERLAY_SCROLLBAR_GUARD,
+                measured_scrollbar_width,
+            )
+            if has_vertical_scroll
+            else 0
+        )
 
         usable_width=max(
             1,
             viewport_width
             - (
-                outer_inset*2
-            ),
+                OUTER_INSET*2
+            )
+            - scrollbar_guard
+            - RIGHT_EDGE_SAFETY,
         )
+
+        # --------------------------------------------------------
+        # FIXED SLOT CONTRACT
+        # --------------------------------------------------------
+
+        if view=='posters':
+            slot_count=7
+            preferred_gap=8
+        else:
+            slot_count=6
+            preferred_gap=6
+
+        visible_entries=[
+            entry
+            for entry in entries
+            if entry[
+                'wrapper'
+            ].get_visible()
+        ]
+
+        visible_count=len(
+            visible_entries
+        )
+
+        ghosts=self._sync_library_ghost_slots(
+            slot_count,
+            visible_count,
+            view,
+        )
+
+        # Fixed slot count is now a hard layout property.
+        flow.set_homogeneous(
+            False
+        )
+        flow.set_min_children_per_line(
+            slot_count
+        )
+        flow.set_max_children_per_line(
+            slot_count
+        )
+        flow.set_row_spacing(
+            16
+        )
+        flow.set_margin_start(
+            OUTER_INSET
+        )
+        flow.set_margin_end(
+            OUTER_INSET
+            + scrollbar_guard
+            + RIGHT_EDGE_SAFETY
+        )
+        flow.set_hexpand(
+            False
+        )
+        flow.set_halign(
+            Gtk.Align.START
+        )
+
+        # --------------------------------------------------------
+        # VIEWPORT-SCALED CARD SIZE
+        # --------------------------------------------------------
 
         (
             _art_value,
-            preferred_art_width,
-            preferred_art_height,
+            _preferred_art_width,
+            _preferred_art_height,
             info_height,
             _preferred_total_height,
             ratio,
         )=self.library_card_geometry(
-            self.settings.get(
-                'art_scale',
-                100,
-            ),
+            100,
             view,
         )
 
-        preferred_card_width=(
-            preferred_art_width
-            + 4
-        )
+        # Fixed slot count is authoritative. Cards simply consume the
+        # available viewport width evenly.
+        #
+        # Prefer the normal visual gap when there is room. At unusually
+        # narrow widths the gap compresses before the slot count changes.
+        minimum_workable_card=24
 
-        visible_count=max(
-            1,
-            sum(
-                1
-                for entry in entries
-                if entry['wrapper'].get_visible()
-            ),
-        )
-
-        # Capacity is still based on the user's selected artwork size.
-        # Only currently visible games participate in the active row.
-        capacity=max(
-            1,
-            min(
-                12,
-                int(
-                    (
-                        usable_width
-                        + gallery_gap
+        if slot_count>1:
+            maximum_gap_that_fits=max(
+                0,
+                (
+                    usable_width
+                    - (
+                        minimum_workable_card
+                        * slot_count
                     )
-                    // (
-                        preferred_card_width
-                        + gallery_gap
-                    )
+                )
+                // (
+                    slot_count-1
                 ),
-            ),
-        )
-
-        columns=max(
-            1,
-            min(
-                capacity,
-                visible_count,
-            ),
-        )
-
-        # Artwork size is authoritative. Spare viewport width belongs to
-        # inter-card spacing, not to the card template itself.
-        card_width=preferred_card_width
-        actual_art_width=preferred_art_width
-        actual_art_height=preferred_art_height
-
-        if columns>1:
-            spare_width=max(
-                0,
-                usable_width
-                - card_width*columns,
             )
-            dynamic_gap=max(
-                gallery_gap,
-                spare_width
-                // (columns-1),
+
+            base_gap=min(
+                preferred_gap,
+                maximum_gap_that_fits,
             )
-            remainder=max(
-                0,
+        else:
+            base_gap=0
+
+        card_width=max(
+            5,
+            (
                 usable_width
                 - (
-                    card_width*columns
-                    + dynamic_gap*(columns-1)
-                ),
+                    base_gap
+                    * (
+                        slot_count-1
+                    )
+                )
+            )
+            // slot_count,
+        )
+
+        actual_art_width=max(
+            1,
+            card_width-4,
+        )
+
+        actual_art_height=max(
+            1,
+            int(
+                round(
+                    actual_art_width
+                    / ratio
+                )
+            ),
+        )
+
+        # The row always spans exactly between the two 16px insets.
+        spare_width=max(
+            0,
+            usable_width
+            - (
+                card_width
+                * slot_count
+            ),
+        )
+
+        if slot_count>1:
+            dynamic_gap=(
+                spare_width
+                // (
+                    slot_count-1
+                )
+            )
+
+            remainder=(
+                spare_width
+                - (
+                    dynamic_gap
+                    * (
+                        slot_count-1
+                    )
+                )
             )
         else:
             dynamic_gap=0
             remainder=0
 
-        # --------------------------------------------------------
-        # FLOWBOX OWNS THE GAP.
-        #
-        # This is the critical correction.
-        # --------------------------------------------------------
-
-        flow.set_homogeneous(
-            False
-        )
-
-        flow.set_min_children_per_line(
-            1
-        )
-
-        flow.set_max_children_per_line(
-            columns
-        )
-
         flow.set_column_spacing(
             dynamic_gap
         )
 
-        # List view uses a tighter vertical rhythm. Restore the classic
-        # gallery row gap explicitly when returning to artwork views.
-        flow.set_row_spacing(
-            16
+        # Compact physical cards must retain the wrapped-title behavior
+        # regardless of the saved slider value.
+        compact_titles=(
+            actual_art_width
+            < 112
         )
 
-        flow.set_margin_start(
-            outer_inset
-        )
+        if compact_titles:
+            info_height=max(
+                info_height,
+                94,
+            )
 
-        flow.set_margin_end(
-            outer_inset
-        )
+        if actual_art_width < 92:
+            title_class='art-title-xs'
+        elif actual_art_width < 120:
+            title_class='art-title-sm'
+        elif actual_art_width < 152:
+            title_class='art-title-md'
+        else:
+            title_class='art-title-lg'
 
-        # Critical responsive-gallery rule:
-        #
-        # usable_width is already the complete width solved by:
-        #
-        #   card widths
-        # + real FlowBox gaps
-        # + integer remainder
-        #
-        # Do NOT FILL again here. FILL causes GtkFlowBox to receive
-        # additional allocation and creates large invisible child-cell
-        # regions around our correctly-sized cards.
-
-        # GtkFlowBox was created hexpand=True and List view deliberately
-        # restores FILL. Neither state belongs to the fixed-geometry gallery:
-        # expansion can allocate invisible width beyond the solved gallery
-        # request and recreate the apparent right-side gutter.
-        flow.set_hexpand(
-            False
-        )
-        flow.set_halign(
-            Gtk.Align.START
-        )
-
-        # Integer division can leave up to columns-2 pixels after the
-        # fixed artwork widths and uniform FlowBox gap are solved. Put
-        # those pixels into individual inter-card gaps, never into cards
-        # or the 16px outer inset. This makes every complete row land on
-        # the same right edge without changing the selected artwork size.
-        visible_entries=[
-            entry
-            for entry in entries
-            if entry['wrapper'].get_visible()
-        ]
-
-        # Artwork-size and window changes can change the integer remainder.
-        # Clear the previous pass first so a former +1px correction never
-        # survives as cumulative left padding on a later, larger layout.
-        for entry in visible_entries:
-            entry['wrapper'].set_margin_start(0)
-
-        if columns>1 and remainder:
-            for index,entry in enumerate(visible_entries):
-                position=index % columns
-
-                if 1 <= position <= remainder:
-                    entry['wrapper'].set_margin_start(
-                        1
-                    )
-
-        flow.set_size_request(
-            usable_width,
-            -1,
-        )
-
-        flow.set_hexpand(
-            False
-        )
-
-        flow.set_halign(
-            Gtk.Align.START
+        title_classes=(
+            'art-title-xs',
+            'art-title-sm',
+            'art-title-md',
+            'art-title-lg',
         )
 
         provisional_height=(
@@ -3190,33 +3510,46 @@ class Window(Adw.ApplicationWindow):
         )
 
         # --------------------------------------------------------
-        # APPLY ONE TEMPLATE SIZE TO EVERY CARD.
+        # APPLY ONE REAL-CARD TEMPLATE
         # --------------------------------------------------------
 
         for entry in entries:
-            wrapper=entry['wrapper']
-            card=entry['widget']
+            wrapper=entry[
+                'wrapper'
+            ]
+            card=entry[
+                'widget'
+            ]
             overlay=entry.get(
                 'overlay'
             )
             click=entry.get(
                 'click'
             )
-            picture=entry['picture']
+            picture=entry[
+                'picture'
+            ]
             text_box=entry.get(
                 'text'
+            )
+            title=entry.get(
+                'title'
             )
 
             wrapper.set_size_request(
                 card_width,
                 provisional_height,
             )
-
             wrapper.set_halign(
                 Gtk.Align.START
             )
-
+            wrapper.set_valign(
+                Gtk.Align.START
+            )
             wrapper.set_hexpand(
+                False
+            )
+            wrapper.set_vexpand(
                 False
             )
 
@@ -3235,13 +3568,17 @@ class Window(Adw.ApplicationWindow):
                 card_width,
                 provisional_height,
             )
-
             card.set_halign(
                 Gtk.Align.FILL
             )
-
+            card.set_valign(
+                Gtk.Align.START
+            )
             card.set_hexpand(
                 True
+            )
+            card.set_vexpand(
+                False
             )
 
             if overlay is not None:
@@ -3249,11 +3586,9 @@ class Window(Adw.ApplicationWindow):
                     actual_art_width,
                     actual_art_height,
                 )
-
                 overlay.set_halign(
                     Gtk.Align.FILL
                 )
-
                 overlay.set_hexpand(
                     True
                 )
@@ -3263,11 +3598,9 @@ class Window(Adw.ApplicationWindow):
                     actual_art_width,
                     actual_art_height,
                 )
-
                 click.set_halign(
                     Gtk.Align.FILL
                 )
-
                 click.set_hexpand(
                     True
                 )
@@ -3275,37 +3608,111 @@ class Window(Adw.ApplicationWindow):
             picture.cover_width=(
                 actual_art_width
             )
-
             picture.cover_ratio=ratio
-
             picture.set_size_request(
                 actual_art_width,
                 actual_art_height,
             )
-
             picture.set_halign(
                 Gtk.Align.FILL
             )
-
             picture.set_hexpand(
                 True
             )
+
+            card_for_scale=entry.get(
+                'widget'
+            )
+
+            card_scale_class={
+                'art-title-xs':'art-card-xs',
+                'art-title-sm':'art-card-sm',
+                'art-title-md':'art-card-md',
+                'art-title-lg':'art-card-lg',
+            }.get(
+                title_class,
+                'art-card-lg',
+            )
+
+            if card_for_scale is not None:
+                for css_class in (
+                    'art-card-xs',
+                    'art-card-sm',
+                    'art-card-md',
+                    'art-card-lg',
+                ):
+                    card_for_scale.remove_css_class(
+                        css_class
+                    )
+
+                card_for_scale.add_css_class(
+                    card_scale_class
+                )
+
+            if title is not None:
+                for css_class in title_classes:
+                    title.remove_css_class(
+                        css_class
+                    )
+
+                title.add_css_class(
+                    title_class
+                )
+
+                # Maximum three lines. Font size already scales down with
+                # card width through art-title-xs/sm/md/lg.
+                title.set_wrap(
+                    True
+                )
+                title.set_wrap_mode(
+                    Pango.WrapMode.WORD_CHAR
+                )
+                title.set_lines(
+                    3
+                )
+                title.set_single_line_mode(
+                    False
+                )
+                title.set_width_chars(
+                    1
+                )
+                title.set_max_width_chars(
+                    1
+                )
+                title.set_ellipsize(
+                    Pango.EllipsizeMode.END
+                )
+                title.set_size_request(
+                    -1,
+                    -1,
+                )
+                title.set_hexpand(
+                    True
+                )
+                title.queue_resize()
 
             if text_box is not None:
                 text_box.set_size_request(
                     -1,
                     -1,
                 )
-
+                text_box.set_halign(
+                    Gtk.Align.FILL
+                )
+                text_box.set_hexpand(
+                    True
+                )
                 text_box.queue_resize()
 
-            entry['size']=(
+            entry[
+                'size'
+            ]=(
                 actual_art_width,
                 actual_art_height,
             )
 
         # --------------------------------------------------------
-        # PRESERVE THE EXISTING "TALLEST CARD WINS" RULE.
+        # PRESERVE "TALLEST CARD WINS"
         # --------------------------------------------------------
 
         tallest_footer=info_height
@@ -3340,8 +3747,12 @@ class Window(Adw.ApplicationWindow):
         )
 
         for entry in entries:
-            wrapper=entry['wrapper']
-            card=entry['widget']
+            wrapper=entry[
+                'wrapper'
+            ]
+            card=entry[
+                'widget'
+            ]
             text_box=entry.get(
                 'text'
             )
@@ -3351,7 +3762,6 @@ class Window(Adw.ApplicationWindow):
                     -1,
                     tallest_footer,
                 )
-
                 text_box.set_vexpand(
                     False
                 )
@@ -3363,7 +3773,6 @@ class Window(Adw.ApplicationWindow):
                 card.fixed_width=(
                     card_width
                 )
-
                 card.fixed_height=(
                     uniform_height
                 )
@@ -3378,60 +3787,150 @@ class Window(Adw.ApplicationWindow):
                 uniform_height,
             )
 
+        # Ghosts occupy exactly the same complete card slot.
+        for ghost in ghosts:
+            wrapper=ghost[
+                'wrapper'
+            ]
+            card=ghost[
+                'widget'
+            ]
+
+            wrapper.set_margin_start(
+                0
+            )
+            wrapper.set_margin_end(
+                0
+            )
+            wrapper.set_size_request(
+                card_width,
+                uniform_height,
+            )
+            wrapper.set_halign(
+                Gtk.Align.START
+            )
+            wrapper.set_valign(
+                Gtk.Align.START
+            )
+            wrapper.set_hexpand(
+                False
+            )
+            wrapper.set_vexpand(
+                False
+            )
+
+            card.fixed_width=(
+                card_width
+            )
+            card.fixed_height=(
+                uniform_height
+            )
+            card.set_size_request(
+                card_width,
+                uniform_height,
+            )
+            card.set_halign(
+                Gtk.Align.FILL
+            )
+            card.set_hexpand(
+                True
+            )
+
         # --------------------------------------------------------
-        # INTEGER REMAINDER ONLY
+        # INTEGER REMAINDER
         #
-        # This is NOT the gap system.
-        #
-        # The real gap is FlowBox column_spacing=8.
-        # These margins can only ever add ONE PIXEL.
+        # FlowBox owns the uniform gap. At most slot_count-2 pixels
+        # remain after integer division. Add those one at a time to
+        # inter-card gaps, repeating identically on every row.
         # --------------------------------------------------------
 
-        visible=[
-            entry
-            for entry in entries
-            if entry['wrapper'].get_visible()
-        ]
+        layout_entries=(
+            visible_entries
+            + ghosts
+        )
 
-        if (
-            columns>1
-            and remainder>0
+        for index,entry in enumerate(
+            layout_entries
         ):
-            for index,entry in enumerate(
-                visible
-            ):
-                column=(
-                    index
-                    % columns
+            position=(
+                index
+                % slot_count
+            )
+
+            entry[
+                'wrapper'
+            ].set_margin_start(
+                1
+                if (
+                    1 <= position <= remainder
+                )
+                else 0
+            )
+            entry[
+                'wrapper'
+            ].set_margin_end(
+                0
+            )
+
+        # Hidden real cards must never retain a correction from an older
+        # visible/filter state.
+        for entry in entries:
+            if not entry[
+                'wrapper'
+            ].get_visible():
+                entry[
+                    'wrapper'
+                ].set_margin_start(
+                    0
+                )
+                entry[
+                    'wrapper'
+                ].set_margin_end(
+                    0
                 )
 
-                if (
-                    column<remainder
-                    and column<columns-1
-                ):
-                    entry['wrapper'].set_margin_end(
-                        1
-                    )
+        flow.set_size_request(
+            usable_width,
+            -1,
+        )
+        flow.set_hexpand(
+            False
+        )
+        flow.set_halign(
+            Gtk.Align.START
+        )
 
         for entry in entries:
-            entry['picture'].queue_resize()
+            entry[
+                'picture'
+            ].queue_resize()
 
             overlay=entry.get(
                 'overlay'
             )
-
             if overlay is not None:
                 overlay.queue_resize()
 
             click=entry.get(
                 'click'
             )
-
             if click is not None:
                 click.queue_resize()
 
-            entry['widget'].queue_resize()
-            entry['wrapper'].queue_resize()
+            entry[
+                'widget'
+            ].queue_resize()
+            entry[
+                'wrapper'
+            ].queue_resize()
+
+        for ghost in ghosts:
+            ghost[
+                'widget'
+            ].queue_resize()
+            ghost[
+                'wrapper'
+            ].queue_resize()
 
         flow.queue_resize()
         flow.queue_allocate()
@@ -3475,14 +3974,6 @@ class Window(Adw.ApplicationWindow):
             return
 
         self.settings['library_view']=key
-
-        if hasattr(
-            self,
-            'library_size_scale',
-        ):
-            self.library_size_scale.set_sensitive(
-                key!='list'
-            )
 
         self.show_games(
             self.games,
@@ -3570,6 +4061,9 @@ class Window(Adw.ApplicationWindow):
                 1,
             )
             spin.set_numeric(True)
+            spin.add_css_class(
+                'tuning-number-input'
+            )
             spin.set_width_chars(4)
             spin.set_valign(Gtk.Align.CENTER)
             spin.update_property(
@@ -4355,7 +4849,10 @@ class Window(Adw.ApplicationWindow):
     def show_games(self,games,art=True):
         selected={k for k,v in self.cards.items() if v['check'].get_active()}
         previous={g['game']:g for g in self.games}
-        clear(self.flow);self.games=games;self.cards={}
+        clear(self.flow)
+        self.ghost_slots=[]
+        self.games=games
+        self.cards={}
         view=self.settings.get('library_view','posters');self.flow.set_max_children_per_line(1 if view=='list' else 12);self.flow.set_min_children_per_line(1);self.flow.set_homogeneous(view!='list')
 
         if hasattr(
@@ -4543,28 +5040,6 @@ class Window(Adw.ApplicationWindow):
 
         self.settings['art_scale']=value
 
-        live_scale=getattr(
-            self,
-            'library_size_scale',
-            None,
-        )
-
-        if live_scale is not None:
-            live_scale.set_sensitive(
-                view!='list'
-            )
-
-            if int(
-                round(
-                    live_scale.get_value()
-                )
-            )!=value:
-                self._syncing_library_size=True
-                live_scale.set_value(
-                    value
-                )
-                self._syncing_library_size=False
-
         if view=='list':
             return
 
@@ -4744,30 +5219,18 @@ class Window(Adw.ApplicationWindow):
                     title_class
                 )
 
-                if value < 75:
-                    title.set_wrap(
-                        True
-                    )
-                    title.set_wrap_mode(
-                        Pango.WrapMode.WORD_CHAR
-                    )
-                    title.set_lines(
-                        2
-                    )
-                    title.set_single_line_mode(
-                        False
-                    )
-                else:
-                    title.set_wrap(
-                        False
-                    )
-                    title.set_lines(
-                        1
-                    )
-                    title.set_single_line_mode(
-                        True
-                    )
-
+                title.set_wrap(
+                    True
+                )
+                title.set_wrap_mode(
+                    Pango.WrapMode.WORD_CHAR
+                )
+                title.set_lines(
+                    3
+                )
+                title.set_single_line_mode(
+                    False
+                )
                 title.set_width_chars(
                     1
                 )
@@ -4784,6 +5247,7 @@ class Window(Adw.ApplicationWindow):
                 title.set_hexpand(
                     True
                 )
+                title.queue_resize()
 
             if meta is not None:
                 meta.set_wrap(
@@ -5623,30 +6087,19 @@ class Window(Adw.ApplicationWindow):
             'card-title',
         )
 
-        if _art_value < 75:
-            title.set_wrap(
-                True
-            )
-            title.set_wrap_mode(
-                Pango.WrapMode.WORD_CHAR
-            )
-            title.set_lines(
-                2
-            )
-            title.set_single_line_mode(
-                False
-            )
-        else:
-            title.set_wrap(
-                False
-            )
-            title.set_lines(
-                1
-            )
-            title.set_single_line_mode(
-                True
-            )
-
+        # Initial gallery state mirrors the live responsive contract.
+        title.set_wrap(
+            True
+        )
+        title.set_wrap_mode(
+            Pango.WrapMode.WORD_CHAR
+        )
+        title.set_lines(
+            3
+        )
+        title.set_single_line_mode(
+            False
+        )
         title.set_width_chars(
             1
         )
@@ -7943,42 +8396,11 @@ class Window(Adw.ApplicationWindow):
             layout_row
         )
 
-        original_art_scale=int(self.settings.get('art_scale',80));settings_saved={'value':False}
-        scale=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,50,150,10);scale.set_value(original_art_scale);scale.set_draw_value(True);scale.set_digits(0);scale.set_size_request(170,-1);scale.set_valign(Gtk.Align.CENTER)
-        item=row('Artwork Size','Preview updates live');item.add_suffix(scale);appearance.add(item)
-        def preview_art_scale(widget):
-            value=int(
-                round(
-                    widget.get_value()
-                )
-            )
+        settings_saved={'value':False}
 
-            if int(
-                self.settings.get(
-                    'art_scale',
-                    80,
-                )
-            )==value:
-                return
-
-            self.resize_library_art(
-                value
-            )
-
-        scale.connect(
-            'value-changed',
-            preview_art_scale,
-        )
         def restore_library_preview(*_):
             if settings_saved['value']:
                 return
-
-            current_scale=int(
-                self.settings.get(
-                    'art_scale',
-                    80,
-                )
-            )
 
             current_view=self.settings.get(
                 'library_view',
@@ -7989,23 +8411,10 @@ class Window(Adw.ApplicationWindow):
                 self.settings['library_view']=(
                     original_library_view
                 )
-                self.settings['art_scale']=(
-                    original_art_scale
-                )
 
                 self.show_games(
                     self.games,
                     False,
-                )
-
-                if original_library_view!='list':
-                    self.resize_library_art(
-                        original_art_scale
-                    )
-
-            elif current_scale!=original_art_scale:
-                self.resize_library_art(
-                    original_art_scale
                 )
 
         d.connect(
@@ -8015,6 +8424,7 @@ class Window(Adw.ApplicationWindow):
                 False,
             )[1],
         )
+
         dark=Adw.SwitchRow(title='Dark Appearance',active=self.settings['dark']);appearance.add(dark)
         artwork=Adw.PreferencesGroup(title='Artwork',description='Your Steam poster, capsule, and hero images take priority.')
         art=Adw.SwitchRow(title='Download Missing Artwork',subtitle='Use SteamGridDB and Steam when local images are unavailable.',active=self.settings['online_art']);artwork.add(art)
@@ -8058,7 +8468,7 @@ class Window(Adw.ApplicationWindow):
             selected_provider=provider_keys[provider.get_selected()];selected_mode=modes[profile.get_selected()]
             if selected_provider=='y4my' and selected_mode=='nr-only':self.toast('NR Only requires DLSS-Unlocked.');return
             settings_saved['value']=True
-            self.settings.update(runtime_provider=selected_provider,nr_runtime=nr_path.get_text().strip(),default_profile=selected_mode,library_view=pending_library_view['value'],art_scale=int(scale.get_value()),dark=dark.get_active(),online_art=art.get_active(),steam_metadata=metadata.get_active(),network_timeout=timeout.get_value_as_int(),recognize_previous=adopt.get_active())
+            self.settings.update(runtime_provider=selected_provider,nr_runtime=nr_path.get_text().strip(),default_profile=selected_mode,library_view=pending_library_view['value'],dark=dark.get_active(),online_art=art.get_active(),steam_metadata=metadata.get_active(),network_timeout=timeout.get_value_as_int(),recognize_previous=adopt.get_active())
             self.nr_only.set_enabled(selected_provider=='dlss-unlocked')
             self.profile_group.set_active_name(selected_mode)
             Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)
@@ -8305,6 +8715,8 @@ class Window(Adw.ApplicationWindow):
         d,b,f=self.open_panel('Remove old NR files');b.append(label('Checking global cleanup candidates…'))
         self.start('Scanning old NR files',self.service.review_cleanup,lambda review:self.action_ready(review,d,b,f))
     def capture(self,name):
+        """Capture a rendered GTK widget without assuming a node exists."""
+
         widget=self
 
         if (
@@ -8319,27 +8731,60 @@ class Window(Adw.ApplicationWindow):
         ):
             widget=self.dialog
 
-        paint=Gtk.WidgetPaintable.new(
-            widget
-        )
-        snapshot=Gtk.Snapshot()
-
         width=max(
             1,
             widget.get_width(),
         )
+
         height=max(
             1,
             widget.get_height(),
         )
 
-        paint.snapshot(
+        if (
+            not widget.get_mapped()
+            or width<=1
+            or height<=1
+        ):
+            return None
+
+        # WidgetPaintable is GTK4's observation mechanism for widget
+        # contents. Freeze its current image before building our snapshot;
+        # this is considerably safer than assuming the live paintable has
+        # already emitted render nodes during the current frame.
+        paint=Gtk.WidgetPaintable.new(
+            widget
+        )
+
+        image=paint.get_current_image()
+
+        if image is None:
+            return None
+
+        snapshot=Gtk.Snapshot()
+
+        image.snapshot(
             snapshot,
-            width,
-            height,
+            float(width),
+            float(height),
         )
 
         node=snapshot.to_node()
+
+        # GTK explicitly allows a snapshot to contain no render node.
+        # Treat that as "frame not ready" rather than a fatal TypeError.
+        if node is None:
+            return None
+
+        native=widget.get_native()
+
+        if native is None:
+            return None
+
+        renderer=native.get_renderer()
+
+        if renderer is None:
+            return None
 
         rect=Graphene.Rect()
         rect.init(
@@ -8349,16 +8794,580 @@ class Window(Adw.ApplicationWindow):
             height,
         )
 
-        texture=widget.get_renderer().render_texture(
+        texture=renderer.render_texture(
             node,
             rect,
         )
 
+        output=ROOT/'dist'/name
+
+        output.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
         texture.save_to_png(
-            str(
-                ROOT/'dist'/name
+            str(output)
+        )
+
+        return output
+
+
+    def capture_when_ready(
+        self,
+        name,
+        continuation,
+        attempt=0,
+    ):
+        """Retry screenshot capture across frames instead of crashing."""
+
+        try:
+            output=self.capture(
+                name
+            )
+
+            if output is not None:
+                print(
+                    f'SCREENSHOT: {output}',
+                    flush=True,
+                )
+
+                GLib.timeout_add(
+                    180,
+                    continuation,
+                )
+
+                return False
+
+            if attempt>=30:
+                raise RuntimeError(
+                    'GTK did not produce a renderable screenshot '
+                    f'after 30 attempts: {name}'
+                )
+
+            self.queue_draw()
+
+            GLib.timeout_add(
+                120,
+                lambda:self.capture_when_ready(
+                    name,
+                    continuation,
+                    attempt+1,
+                ),
+            )
+
+        except Exception:
+            traceback.print_exc()
+            self.get_application().exit_code=1
+            self.get_application().quit()
+
+        return False
+
+
+    def resize_smoke_startup(self):
+        """Visual regression test for live fixed-slot Library resizing."""
+
+        try:
+            self._resize_smoke_results={}
+            self._resize_smoke_target_width=1160
+            self._resize_smoke_target_height=820
+
+            output_dir=ROOT/'dist'/'resize-smoke'
+            output_dir.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+
+            # Do not let stale screenshots masquerade as a successful run.
+            for old in output_dir.glob(
+                '*.png'
+            ):
+                old.unlink()
+
+            print(
+                'RESIZE-SMOKE: starting six-state visual test',
+                flush=True,
+            )
+
+            self.unmaximize()
+
+            self.set_default_size(
+                self._resize_smoke_target_width,
+                self._resize_smoke_target_height,
+            )
+
+            self.view_buttons[
+                'posters'
+            ].set_active(
+                True
+            )
+
+            self.update_library_spacing()
+
+            GLib.timeout_add(
+                900,
+                self._resize_smoke_poster_normal,
+            )
+
+        except Exception:
+            traceback.print_exc()
+            self.get_application().exit_code=1
+            self.get_application().quit()
+
+        return False
+
+
+    def _resize_smoke_state(
+        self,
+        label,
+        expected_slots,
+        continuation,
+    ):
+        """Validate geometry and capture the current allocation."""
+
+        self.update_library_spacing()
+
+        window_width=self.get_width()
+        window_height=self.get_height()
+
+        hadj=self.library_scroll.get_hadjustment()
+
+        viewport_width=(
+            int(
+                round(
+                    hadj.get_page_size()
+                )
+            )
+            if hadj is not None
+            else 0
+        )
+
+        min_slots=(
+            self.flow.get_min_children_per_line()
+        )
+
+        max_slots=(
+            self.flow.get_max_children_per_line()
+        )
+
+        if min_slots!=expected_slots:
+            raise AssertionError(
+                f'{label}: min slots {min_slots}, '
+                f'expected {expected_slots}'
+            )
+
+        if max_slots!=expected_slots:
+            raise AssertionError(
+                f'{label}: max slots {max_slots}, '
+                f'expected {expected_slots}'
+            )
+
+        visible=[
+            entry
+            for entry in self.cards.values()
+            if (
+                entry.get(
+                    'wrapper'
+                ) is not None
+                and entry[
+                    'wrapper'
+                ].get_visible()
+            )
+        ]
+
+        if not visible:
+            raise AssertionError(
+                f'{label}: no visible Library cards'
+            )
+
+        card_width=visible[
+            0
+        ][
+            'widget'
+        ].get_size_request()[0]
+
+        self._resize_smoke_results[
+            label
+        ]={
+            'window_width':window_width,
+            'window_height':window_height,
+            'viewport_width':viewport_width,
+            'card_width':card_width,
+            'slots':max_slots,
+        }
+
+        print(
+            (
+                f'RESIZE-SMOKE: {label}: '
+                f'window={window_width}x{window_height}, '
+                f'viewport={viewport_width}, '
+                f'slots={max_slots}, '
+                f'card={card_width}px'
+            ),
+            flush=True,
+        )
+
+        filename=(
+            f'resize-smoke/'
+            f'{label}-'
+            f'w{window_width}-'
+            f'viewport{viewport_width}-'
+            f'card{card_width}.png'
+        )
+
+        self.capture_when_ready(
+            filename,
+            continuation,
+        )
+
+        return False
+
+
+    # --------------------------------------------------------
+    # POSTER:
+    # normal -> maximize -> restored
+    # --------------------------------------------------------
+
+    def _resize_smoke_poster_normal(self):
+        try:
+            return self._resize_smoke_state(
+                '01-poster-normal',
+                7,
+                self._resize_smoke_poster_maximize,
+            )
+        except Exception:
+            traceback.print_exc()
+            self.get_application().exit_code=1
+            self.get_application().quit()
+
+        return False
+
+
+    def _resize_smoke_poster_maximize(self):
+        normal=self._resize_smoke_results.get(
+            '01-poster-normal',
+            {},
+        )
+
+        normal_width=int(
+            normal.get(
+                'window_width',
+                0,
             )
         )
+
+        sanity_limit=(
+            self._resize_smoke_target_width
+            + 500
+        )
+
+        if normal_width>sanity_limit:
+            print(
+                (
+                    'FAIL-SAFE: initial Library window is already '
+                    f'{normal_width}px wide; expected roughly '
+                    f'{self._resize_smoke_target_width}px. '
+                    'Keeping the first screenshot and refusing to '
+                    'maximize a known-bad layout.'
+                ),
+                flush=True,
+            )
+
+            self.get_application().exit_code=1
+            self.get_application().quit()
+
+            return False
+
+        self.maximize()
+
+        GLib.timeout_add(
+            1100,
+            self._resize_smoke_poster_maximized,
+        )
+
+        return False
+
+
+    def _resize_smoke_poster_maximized(self):
+        try:
+            return self._resize_smoke_state(
+                '02-poster-maximized',
+                7,
+                self._resize_smoke_poster_restore,
+            )
+        except Exception:
+            traceback.print_exc()
+            self.get_application().exit_code=1
+            self.get_application().quit()
+
+        return False
+
+
+    def _resize_smoke_poster_restore(self):
+        self.unmaximize()
+
+        self.set_default_size(
+            self._resize_smoke_target_width,
+            self._resize_smoke_target_height,
+        )
+
+        GLib.timeout_add(
+            1100,
+            self._resize_smoke_poster_restored,
+        )
+
+        return False
+
+
+    def _resize_smoke_poster_restored(self):
+        try:
+            current=self.get_width()
+
+            maximized=self._resize_smoke_results[
+                '02-poster-maximized'
+            ][
+                'window_width'
+            ]
+
+            if (
+                maximized-current
+                < 32
+            ):
+                raise AssertionError(
+                    'Poster window failed to shrink after maximize: '
+                    f'max={maximized}px restored={current}px'
+                )
+
+            return self._resize_smoke_state(
+                '03-poster-restored',
+                7,
+                self._resize_smoke_capsule_normal,
+            )
+
+        except Exception:
+            traceback.print_exc()
+            self.get_application().exit_code=1
+            self.get_application().quit()
+
+        return False
+
+
+    # --------------------------------------------------------
+    # WIDE CAPSULE:
+    # normal -> maximize -> restored
+    # --------------------------------------------------------
+
+    def _resize_smoke_capsule_normal(self):
+        try:
+            self.view_buttons[
+                'capsules'
+            ].set_active(
+                True
+            )
+
+            self.update_library_spacing()
+
+            GLib.timeout_add(
+                700,
+                self._resize_smoke_capsule_normal_capture,
+            )
+
+        except Exception:
+            traceback.print_exc()
+            self.get_application().exit_code=1
+            self.get_application().quit()
+
+        return False
+
+
+    def _resize_smoke_capsule_normal_capture(self):
+        try:
+            return self._resize_smoke_state(
+                '04-capsule-normal',
+                6,
+                self._resize_smoke_capsule_maximize,
+            )
+        except Exception:
+            traceback.print_exc()
+            self.get_application().exit_code=1
+            self.get_application().quit()
+
+        return False
+
+
+    def _resize_smoke_capsule_maximize(self):
+        self.maximize()
+
+        GLib.timeout_add(
+            1100,
+            self._resize_smoke_capsule_maximized,
+        )
+
+        return False
+
+
+    def _resize_smoke_capsule_maximized(self):
+        try:
+            return self._resize_smoke_state(
+                '05-capsule-maximized',
+                6,
+                self._resize_smoke_capsule_restore,
+            )
+        except Exception:
+            traceback.print_exc()
+            self.get_application().exit_code=1
+            self.get_application().quit()
+
+        return False
+
+
+    def _resize_smoke_capsule_restore(self):
+        self.unmaximize()
+
+        self.set_default_size(
+            self._resize_smoke_target_width,
+            self._resize_smoke_target_height,
+        )
+
+        GLib.timeout_add(
+            1100,
+            self._resize_smoke_capsule_restored,
+        )
+
+        return False
+
+
+    def _resize_smoke_capsule_restored(self):
+        try:
+            current=self.get_width()
+
+            maximized=self._resize_smoke_results[
+                '05-capsule-maximized'
+            ][
+                'window_width'
+            ]
+
+            if (
+                maximized-current
+                < 32
+            ):
+                raise AssertionError(
+                    'Wide Capsule window failed to shrink after maximize: '
+                    f'max={maximized}px restored={current}px'
+                )
+
+            return self._resize_smoke_state(
+                '06-capsule-restored',
+                6,
+                self._resize_smoke_complete,
+            )
+
+        except Exception:
+            traceback.print_exc()
+            self.get_application().exit_code=1
+            self.get_application().quit()
+
+        return False
+
+
+    def _resize_smoke_complete(self):
+        try:
+            results=self._resize_smoke_results
+
+            # In addition to window shrinkability, prove the actual cards
+            # responded in both directions.
+            for prefix in (
+                'poster',
+                'capsule',
+            ):
+                normal=results[
+                    (
+                        '01-poster-normal'
+                        if prefix=='poster'
+                        else '04-capsule-normal'
+                    )
+                ]
+
+                maximum=results[
+                    (
+                        '02-poster-maximized'
+                        if prefix=='poster'
+                        else '05-capsule-maximized'
+                    )
+                ]
+
+                restored=results[
+                    (
+                        '03-poster-restored'
+                        if prefix=='poster'
+                        else '06-capsule-restored'
+                    )
+                ]
+
+                if (
+                    maximum[
+                        'card_width'
+                    ]
+                    <= normal[
+                        'card_width'
+                    ]
+                ):
+                    raise AssertionError(
+                        f'{prefix}: cards did not grow when maximized'
+                    )
+
+                if (
+                    restored[
+                        'card_width'
+                    ]
+                    >= maximum[
+                        'card_width'
+                    ]
+                ):
+                    raise AssertionError(
+                        f'{prefix}: cards did not shrink after restore'
+                    )
+
+            print(
+                '',
+                flush=True,
+            )
+
+            print(
+                'PASS: live resize expanded and contracted both galleries.',
+                flush=True,
+            )
+
+            print(
+                'SCREENSHOTS: dist/resize-smoke/',
+                flush=True,
+            )
+
+            print(
+                '',
+                flush=True,
+            )
+
+            for key,value in results.items():
+                print(
+                    (
+                        f'  {key}: '
+                        f'window={value["window_width"]}, '
+                        f'viewport={value["viewport_width"]}, '
+                        f'card={value["card_width"]}, '
+                        f'slots={value["slots"]}'
+                    ),
+                    flush=True,
+                )
+
+        except Exception:
+            traceback.print_exc()
+            self.get_application().exit_code=1
+
+        self.get_application().quit()
+
+        return False
+
 
     def live_smoke_startup(self):
         """Open the real write-disabled Progress -> Done path."""
@@ -8384,218 +9393,306 @@ class Window(Adw.ApplicationWindow):
 
     def smoke_library(self):
         try:
-            assert self.reset_all.text_label.get_text()=='Reset All'
-            # Poster / Wide Capsule columns are now responsive.
-            #
-            # The row count is derived from the current viewport and
-            # fixed card geometry instead of remaining hard-coded at 12.
-            (
-                _value,
-                smoke_card_width,
-                _height,
-                _info_height,
-                _total_height,
-                _ratio,
-            )=self.library_card_geometry()
-
-            smoke_card_width+=4
-            smoke_hadj=self.library_scroll.get_hadjustment()
-            smoke_viewport_width=(
-                int(round(smoke_hadj.get_page_size()))
-                if smoke_hadj is not None
-                else 0
-            )
-            if smoke_viewport_width<=1:
-                smoke_viewport_width=self.library_scroll.get_width()
-                smoke_vscroll=self.library_scroll.get_vscrollbar()
-                if (
-                    smoke_vscroll is not None
-                    and smoke_vscroll.get_visible()
-                    and smoke_vscroll.get_width()>0
-                ):
-                    smoke_viewport_width=max(
-                        1,
-                        smoke_viewport_width-smoke_vscroll.get_width(),
-                    )
-            smoke_base_gap=8
-            smoke_usable_width=max(
-                1,
-                smoke_viewport_width-32,
+            assert (
+                self.reset_all.text_label.get_text()
+                == 'Reset All'
             )
 
-            smoke_capacity=max(
-                1,
-                min(
-                    12,
+            assert hasattr(
+                self,
+                'dashboard_icon',
+            )
+
+            assert hasattr(
+                self,
+                'operation_revealer',
+            )
+
+            # Manual Library artwork sizing has been removed.
+            assert not hasattr(
+                self,
+                'library_size_scale',
+            )
+
+            def viewport_width():
+                hadj=self.library_scroll.get_hadjustment()
+
+                width=(
                     int(
-                        (
-                            smoke_usable_width
-                            + smoke_base_gap
+                        round(
+                            hadj.get_page_size()
                         )
-                        // (
-                            smoke_card_width
-                            + smoke_base_gap
-                        )
-                    ),
-                ),
-            )
-
-            smoke_visible_count=sum(
-                1
-                for entry in self.cards.values()
-                if entry.get('wrapper') is not None
-                and entry['wrapper'].get_visible()
-            )
-
-            expected_columns=max(
-                1,
-                min(
-                    smoke_capacity,
-                    smoke_visible_count
-                    if smoke_visible_count
-                    else 1,
-                ),
-            )
-
-            assert (
-                self.flow.get_max_children_per_line()
-                == expected_columns
-            )
-            assert hasattr(self,'dashboard_icon') and hasattr(self,'operation_revealer')
-            # Responsive gallery contract:
-            #
-            # - 16px outer inset
-            # - FlowBox owns the real 8px gap
-            # - child margins are never more than a 1px remainder
-            # - full rows exactly consume the usable viewport width
-            self.update_library_spacing()
-
-            assert (
-                self.flow.get_margin_start()
-                == 16
-            )
-
-            assert (
-                self.flow.get_margin_end()
-                == 16
-            )
-
-            assert (
-                self.flow.get_column_spacing()
-                >= 8
-            )
-
-            assert (
-                self.flow.get_row_spacing()
-                == 16
-            )
-
-            assert (
-                self.flow.get_size_request()[0]
-                == smoke_usable_width
-            )
-
-            assert not self.flow.get_hexpand()
-
-            assert (
-                self.flow.get_halign()
-                == Gtk.Align.START
-            )
-
-            assert not self.flow.get_homogeneous()
-
-            visible=[
-                entry
-                for entry in self.cards.values()
-                if entry.get('wrapper') is not None
-                and entry['wrapper'].get_visible()
-            ]
-
-            columns=(
-                self.flow.get_max_children_per_line()
-            )
-
-            assert columns>=1
-
-            # Fake child-margin spacing is gone. Only an optional
-            # one-pixel integer remainder is permitted.
-            for entry in visible:
-                assert (
-                    entry['wrapper'].get_margin_start()
-                    == 0
-                )
-
-                assert (
-                    entry['wrapper'].get_margin_end()
-                    in (
-                        0,
-                        1,
                     )
+                    if hadj is not None
+                    else 0
                 )
 
-            first_row=visible[
-                :columns
-            ]
+                if width<=1:
+                    width=self.library_scroll.get_width()
 
-            if (
-                columns>1
-                and len(first_row)==columns
+                    vscroll=self.library_scroll.get_vscrollbar()
+
+                    if (
+                        vscroll is not None
+                        and vscroll.get_visible()
+                        and vscroll.get_width()>0
+                    ):
+                        width=max(
+                            1,
+                            width-vscroll.get_width(),
+                        )
+
+                return width
+
+            def assert_gallery_contract(
+                view,
+                slots,
             ):
-                widths=[
-                    entry['size'][0]+4
-                    for entry in first_row
+                assert (
+                    self.settings.get(
+                        'library_view'
+                    )
+                    == view
+                )
+
+                self.update_library_spacing()
+
+                assert (
+                    self.flow.get_min_children_per_line()
+                    == slots
+                )
+
+                assert (
+                    self.flow.get_max_children_per_line()
+                    == slots
+                )
+
+                assert (
+                    self.flow.get_margin_start()
+                    == 16
+                )
+
+                assert (
+                    self.flow.get_margin_end()
+                    >= 16
+                )
+
+                assert (
+                    self.flow.get_column_spacing()
+                    >= 0
+                )
+
+                assert (
+                    self.flow.get_row_spacing()
+                    == 16
+                )
+
+                assert not self.flow.get_hexpand()
+
+                assert (
+                    self.flow.get_halign()
+                    == Gtk.Align.START
+                )
+
+                visible=[
+                    entry
+                    for entry in self.cards.values()
+                    if (
+                        entry.get(
+                            'wrapper'
+                        ) is not None
+                        and entry[
+                            'wrapper'
+                        ].get_visible()
+                    )
                 ]
 
-                # Template/card widths are identical.
-                assert len(
-                    set(widths)
-                )==1
-
-                remainder_pixels=sum(
-                    entry['wrapper'].get_margin_end()
-                    for entry in first_row
-                )
-
-                occupied=(
-                    sum(widths)
-                    + (
-                        self.flow.get_column_spacing()
-                        * (
-                            columns-1
+                expected_ghosts=(
+                    (
+                        slots
+                        - (
+                            len(visible)
+                            % slots
                         )
                     )
-                    + remainder_pixels
+                    % slots
+                    if visible
+                    else 0
                 )
 
-                viewport=self.flow.get_parent()
-
-                viewport_width=(
-                    viewport.get_width()
-                    if viewport is not None
-                    else self.library_scroll.get_width()
-                )
-
-                usable_width=(
-                    viewport_width
-                    - 32
+                ghosts=list(
+                    getattr(
+                        self,
+                        'ghost_slots',
+                        [],
+                    )
                 )
 
                 assert (
-                    occupied
-                    == usable_width
+                    len(ghosts)
+                    == expected_ghosts
                 )
 
+                for ghost in ghosts:
+                    assert 'data' not in ghost
+                    assert 'check' not in ghost
+                    assert 'click' not in ghost
+
+                layout_entries=(
+                    visible
+                    + ghosts
+                )
+
+                if layout_entries:
+                    assert (
+                        len(layout_entries)
+                        % slots
+                        == 0
+                    )
+
+                    widths=[
+                        entry[
+                            'widget'
+                        ].get_size_request()[0]
+                        for entry in layout_entries
+                    ]
+
+                    assert len(set(widths))==1
+
+                    first_row=layout_entries[
+                        :slots
+                    ]
+
+                    card_width=widths[0]
+
+                    occupied=(
+                        card_width
+                        * slots
+                        + (
+                            self.flow.get_column_spacing()
+                            * (
+                                slots-1
+                            )
+                        )
+                        + sum(
+                            entry[
+                                'wrapper'
+                            ].get_margin_start()
+                            for entry in first_row
+                        )
+                    )
+
+                    flow_width=(
+                        self.flow.get_size_request()[0]
+                    )
+
+                    assert (
+                        occupied
+                        == flow_width
+                    )
+
+                    assert (
+                        flow_width
+                        <= max(
+                            1,
+                            viewport_width()-32,
+                        )
+                    )
+
+            # Poster is permanently seven visual slots.
+            self.settings[
+                'library_view'
+            ]='posters'
+
+            self.show_games(
+                list(
+                    self.games
+                ),
+                False,
+            )
+
+            assert_gallery_contract(
+                'posters',
+                7,
+            )
+
+            # Wide Capsule is permanently six visual slots.
+            self.settings[
+                'library_view'
+            ]='capsules'
+
+            self.show_games(
+                list(
+                    self.games
+                ),
+                False,
+            )
+
+            assert_gallery_contract(
+                'capsules',
+                6,
+            )
+
+            # Return screenshot smoke to Poster.
+            self.settings[
+                'library_view'
+            ]='posters'
+
+            self.show_games(
+                list(
+                    self.games
+                ),
+                False,
+            )
+
+            assert_gallery_contract(
+                'posters',
+                7,
+            )
+
             for key,widget in self.tuning_widgets.items():
-                original=widget.get_selected() if key=='mfg_multiplier' else widget.get_value()
-                if key=='mfg_multiplier':widget.set_selected(0)
-                else:widget.set_value(0)
-                assert self.reset_all.text_label.get_text()=='Apply Settings'
-                if key=='mfg_multiplier':widget.set_selected(original)
-                else:widget.set_value(original)
-                assert self.reset_all.text_label.get_text()=='Reset All'
-            GLib.timeout_add(250,self.smoke_library_ready)
-        except Exception:traceback.print_exc();self.get_application().exit_code=1;self.get_application().quit()
+                original=(
+                    widget.get_selected()
+                    if key=='mfg_multiplier'
+                    else widget.get_value()
+                )
+
+                if key=='mfg_multiplier':
+                    widget.set_selected(0)
+                else:
+                    widget.set_value(0)
+
+                assert (
+                    self.reset_all.text_label.get_text()
+                    == 'Apply Settings'
+                )
+
+                if key=='mfg_multiplier':
+                    widget.set_selected(
+                        original
+                    )
+                else:
+                    widget.set_value(
+                        original
+                    )
+
+                assert (
+                    self.reset_all.text_label.get_text()
+                    == 'Reset All'
+                )
+
+            GLib.timeout_add(
+                250,
+                self.smoke_library_ready,
+            )
+
+        except Exception:
+            traceback.print_exc()
+            self.get_application().exit_code=1
+            self.get_application().quit()
+
         return False
+
     def smoke_library_ready(self):
         try:
             self.capture('gnome-library.png')
@@ -8708,6 +9805,13 @@ def main():
         help='Interactive write-disabled demo mode.',
     )
     parser.add_argument(
+        '--resize-smoke',
+        action='store_true',
+        help=(
+            'Automated six-screenshot Library resize regression test.'
+        ),
+    )
+    parser.add_argument(
         '--smoke-test',
         action='store_true',
         help='Automated screenshot and regression smoke test.',
@@ -8722,7 +9826,11 @@ def main():
     )
     options=parser.parse_args()
 
-    if options.smoke_test or options.live_smoke:
+    if (
+        options.resize_smoke
+        or options.smoke_test
+        or options.live_smoke
+    ):
         options.demo=True
     app=Application(options);result=app.run([sys.argv[0]]);return app.exit_code or result
 if __name__=='__main__':sys.exit(main())

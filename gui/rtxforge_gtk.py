@@ -212,48 +212,98 @@ def safe_combo_row(**kwargs):
         **kwargs
     )
 def artwork_accent(path,color=None):
-    pix=GdkPixbuf.Pixbuf.new_from_file_at_scale(path,32,32,True)
-    data=pix.get_pixels();stride=pix.get_rowstride();channels=pix.get_n_channels();colors=Counter()
+    pix=GdkPixbuf.Pixbuf.new_from_file_at_scale(
+        path,
+        32,
+        32,
+        True,
+    )
+
+    data=pix.get_pixels()
+    stride=pix.get_rowstride()
+    channels=pix.get_n_channels()
+    colors=Counter()
+
     for y in range(pix.get_height()):
         for x in range(pix.get_width()):
             off=y*stride+x*channels
-            if channels==4 and data[off+3]<128:continue
-            rgb=tuple(data[off+k]/255 for k in range(3));h,s,v=colorsys.rgb_to_hsv(*rgb)
-            if s>.25 and .2<v<.98:colors[int(h*24)]+=s*v
-    hue=(colors.most_common(1)[0][0]+.5)/24 if colors else .23
-    rgb=tuple(round(v*255) for v in colorsys.hsv_to_rgb(hue,.62,.90))
-    color=color or '#%02x%02x%02x'%rgb
 
-    # Pick a readable foreground for artwork-derived accent controls.
-    #
-    # Bright/vibrant game colors such as Cyberpunk yellow should not
-    # use white text. For those, derive a much darker version of the
-    # SAME hue so the control still feels tied to the game's artwork.
-    #
-    # Dark accents keep white text.
+            if (
+                channels==4
+                and data[off+3]<128
+            ):
+                continue
+
+            rgb=tuple(
+                data[off+k]/255
+                for k in range(3)
+            )
+
+            h,s,v=colorsys.rgb_to_hsv(
+                *rgb
+            )
+
+            if (
+                s>.25
+                and .2<v<.98
+            ):
+                colors[
+                    int(h*24)
+                ]+=s*v
+
+    hue=(
+        (
+            colors.most_common(1)[0][0]
+            + .5
+        )
+        /24
+        if colors
+        else .23
+    )
+
+    rgb=tuple(
+        round(v*255)
+        for v in colorsys.hsv_to_rgb(
+            hue,
+            .62,
+            .90,
+        )
+    )
+
+    color=(
+        color
+        or '#%02x%02x%02x'%rgb
+    )
+
     try:
         raw=color.lstrip('#')
+
         cr=int(raw[0:2],16)/255
         cg=int(raw[2:4],16)/255
         cb=int(raw[4:6],16)/255
 
-        luminance=(
-            0.2126*cr +
-            0.7152*cg +
-            0.0722*cb
+        fh,fs,fv=colorsys.rgb_to_hsv(
+            cr,
+            cg,
+            cb,
         )
 
-        if luminance >= 0.48:
-            fh,fs,fv=colorsys.rgb_to_hsv(
-                cr,
-                cg,
-                cb,
-            )
+        luminance=(
+            0.2126*cr
+            + 0.7152*cg
+            + 0.0722*cb
+        )
 
-            # Same hue, richer saturation, substantially darker value.
+        if luminance>=0.48:
             fr,fg,fb=colorsys.hsv_to_rgb(
                 fh,
-                max(0.55,min(1.0,fs*1.05)),
+                max(
+                    0.55,
+                    min(
+                        1.0,
+                        fs*1.05,
+                    ),
+                ),
                 0.20,
             )
 
@@ -265,33 +315,206 @@ def artwork_accent(path,color=None):
         else:
             accent_fg='#ffffff'
 
+        # Selected card controls/checkmarks always use a darker version
+        # of the SAME game hue, never plain white.
+        dr,dg,db=colorsys.hsv_to_rgb(
+            fh,
+            max(
+                0.62,
+                min(
+                    1.0,
+                    fs*1.08,
+                ),
+            ),
+            max(
+                0.08,
+                min(
+                    0.24,
+                    fv*0.32,
+                ),
+            ),
+        )
+
+        accent_dark='#%02x%02x%02x'%(
+            round(dr*255),
+            round(dg*255),
+            round(db*255),
+        )
+
     except Exception:
         accent_fg='#ffffff'
+        accent_dark='#18181b'
 
     name='art-'+color[1:]
+
     if name not in ACCENT_PROVIDERS:
         provider=Gtk.CssProvider()
-        provider.load_from_data((f'.game-card.{name}.selected {{ border-color: {color}; box-shadow: 0 2px 12px alpha({color},0.28); }} '
-            f'.game-card.{name}:hover {{ border-color: alpha({color},0.65); }} '
-            f'.{name} check:checked {{ background: {color}; }} '
-            f'.{name} button.suggested-action {{ background: {color}; color: {accent_fg}; }} '
-            f'.{name} button.suggested-action label {{ color: {accent_fg}; }} '
-            f'.{name} .game-status {{ border-left: 3px solid {color}; background: alpha({color},0.12); }} '
-            f'.{name} toggle-group toggle:checked {{ background: {color}; color: {accent_fg}; }} '
-            f'.{name} toggle-group toggle:checked label {{ color: {accent_fg}; }} '
-            f'.{name} .game-details {{ background: {color}; color: {accent_fg}; border-color: transparent; box-shadow: none; }} '
-            f'.{name} .game-details label {{ color: {accent_fg}; font-weight: 700; }} '
-            f'.{name} .game-details:hover {{ background: {color}; color: {accent_fg}; }} '
-            f'.{name} .game-details:hover label {{ color: {accent_fg}; }} '
-            f'.{name} .game-detail-nav row:selected {{ background: alpha({color},0.10); }} '
-            f'.{name} .game-detail-nav row:selected label, .{name} .game-detail-nav row:selected image {{ color: {color}; }} '
-            f'.{name} progressbar progress {{ background: {color}; transition: background-color 450ms; }} '
-            f'.{name} .progress-poster-frame {{ border-color: {color}; }} '
-            f'.{name} scale highlight {{ background: {color}; }} '
-            f'.{name} .card-title, .{name} .game-banner-title, .{name} .job-title, .{name} .game-heading, .{name} .eyebrow {{ color: {color}; }} '
-            f'.{name} button:focus-visible {{ outline-color: {color}; }}').encode())
-        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(),provider,Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION+1)
-        ACCENT_PROVIDERS[name]=provider
+
+        provider.load_from_data((
+            # Poster / Wide Capsule selection border.
+            f'.game-card.{name}.selected {{ '
+            f'border-color: {color}; '
+            f'box-shadow: 0 2px 12px alpha({color},0.28); '
+            f'}} '
+
+            f'.game-card.{name}:hover {{ '
+            f'border-color: alpha({color},0.65); '
+            f'}} '
+
+            # List row itself NEVER receives the accent border.
+            f'.game-card.library-list-row.{name}.selected {{ '
+            f'border-color: transparent; '
+            f'box-shadow: none; '
+            f'}} '
+
+            f'.game-card.library-list-row.{name}:hover {{ '
+            f'border-color: transparent; '
+            f'box-shadow: none; '
+            f'}} '
+
+            # List accent border lives ONLY on artwork.
+            f'.game-card.library-list-row.{name}.selected '
+            f'.library-list-thumb {{ '
+            f'border-color: {color}; '
+            f'box-shadow: 0 2px 10px alpha({color},0.28); '
+            f'}} '
+
+            f'.game-card.library-list-row.{name}:hover '
+            f'.library-list-thumb {{ '
+            f'border-color: alpha({color},0.68); '
+            f'}} '
+
+            # Gtk.ColumnView: accent stays inside the Game and
+            # Actions cells. The row itself never gets an accent border.
+            f'.library-column-game.{name} '
+            f'.library-column-art.selected-art {{ '
+            f'border-color: {color}; '
+            f'box-shadow: 0 2px 10px alpha({color},0.28); '
+            f'}} '
+
+            f'.library-column-game.{name}:hover '
+            f'.library-column-art {{ '
+            f'border-color: alpha({color},0.68); '
+            f'}} '
+
+            f'.library-column-actions.{name}.selected-actions button {{ '
+            f'background: {color}; '
+            f'color: {accent_dark}; '
+            f'border-color: transparent; '
+            f'box-shadow: none; '
+            f'}} '
+
+            f'.library-column-actions.{name}.selected-actions button label, '
+            f'.library-column-actions.{name}.selected-actions button image {{ '
+            f'color: {accent_dark}; '
+            f'}} '
+
+            # Checked indicators use accent background + dark same-hue glyph.
+            f'.{name} check:checked {{ '
+            f'background: {color}; '
+            f'color: {accent_dark}; '
+            f'border-color: {color}; '
+            f'}} '
+
+            # Poster / Wide Capsule Details button is neutral at rest;
+            # it becomes accent-filled only while the card is selected.
+            f'.game-card.{name}.selected .game-details {{ '
+            f'background: {color}; '
+            f'color: {accent_dark}; '
+            f'border-color: transparent; '
+            f'box-shadow: none; '
+            f'}} '
+
+            f'.game-card.{name}.selected .game-details label {{ '
+            f'color: {accent_dark}; '
+            f'font-weight: 700; '
+            f'}} '
+
+            # Same rule for List action buttons.
+            f'.game-card.library-list-row.{name}.selected '
+            f'.library-list-actions button {{ '
+            f'background: {color}; '
+            f'color: {accent_dark}; '
+            f'border-color: transparent; '
+            f'box-shadow: none; '
+            f'}} '
+
+            f'.game-card.library-list-row.{name}.selected '
+            f'.library-list-actions button label, '
+            f'.game-card.library-list-row.{name}.selected '
+            f'.library-list-actions button image {{ '
+            f'color: {accent_dark}; '
+            f'}} '
+
+            # Game Detail window keeps its accent semantics.
+            f'.{name} .game-status {{ '
+            f'border-left: 3px solid {color}; '
+            f'background: alpha({color},0.12); '
+            f'}} '
+
+            f'.{name} toggle-group toggle:checked {{ '
+            f'background: {color}; '
+            f'color: {accent_fg}; '
+            f'}} '
+
+            f'.{name} toggle-group toggle:checked label {{ '
+            f'color: {accent_fg}; '
+            f'}} '
+
+            f'.{name} .game-detail-main button.suggested-action {{ '
+            f'background: {color}; '
+            f'color: {accent_fg}; '
+            f'}} '
+
+            f'.{name} .game-detail-main button.suggested-action label {{ '
+            f'color: {accent_fg}; '
+            f'}} '
+
+            f'.{name} .game-detail-nav row:selected {{ '
+            f'background: alpha({color},0.10); '
+            f'}} '
+
+            f'.{name} .game-detail-nav row:selected label, '
+            f'.{name} .game-detail-nav row:selected image {{ '
+            f'color: {color}; '
+            f'}} '
+
+            f'.{name} progressbar progress {{ '
+            f'background: {color}; '
+            f'}} '
+
+            f'.{name} .progress-poster-frame {{ '
+            f'border-color: {color}; '
+            f'}} '
+
+            f'.{name} scale highlight {{ '
+            f'background: {color}; '
+            f'}} '
+
+            # Titles remain artwork-accent colored in every Library view.
+            f'.{name} .card-title, '
+            f'.{name} .game-banner-title, '
+            f'.{name} .job-title, '
+            f'.{name} .game-heading, '
+            f'.{name} .eyebrow {{ '
+            f'color: {color}; '
+            f'}} '
+
+            f'.{name} button:focus-visible {{ '
+            f'outline-color: {color}; '
+            f'}}'
+        ).encode())
+
+        Gtk.StyleContext.add_provider_for_display(
+            Gdk.Display.get_default(),
+            provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION+1,
+        )
+
+        ACCENT_PROVIDERS[
+            name
+        ]=provider
+
     return name
 
 
@@ -880,16 +1103,34 @@ button.game-detail-close.light:hover {
 }
 
 .library-list-row {
-    min-height: 72px;
+    min-height: 58px;
+}
+
+/* Selection belongs to the game artwork in List view, not the whole row. */
+.library-list-row.selected {
+    border-color: transparent;
+    box-shadow: none;
 }
 
 .library-list-game {
-    padding: 5px 8px;
+    padding: 3px 8px;
 }
 
 .library-list-thumb {
-    margin-top: 5px;
-    margin-bottom: 5px;
+    margin-top: 3px;
+    margin-bottom: 3px;
+
+    border: 2px solid transparent;
+    border-radius: 10px;
+}
+
+.library-list-row.selected .library-list-thumb {
+    border-color: #76b900;
+    box-shadow: 0 2px 10px alpha(#76b900,0.22);
+}
+
+.library-list-row:hover {
+    border-color: transparent;
 }
 
 .library-list-row .poster-button,
@@ -949,8 +1190,320 @@ button.game-detail-close.light:hover {
 }
 
 .library-list-actions button {
-    min-height: 34px;
+    min-height: 30px;
 }
+
+/* Library card actions are neutral until selected. */
+.game-card .game-details,
+.game-card.library-list-row .library-list-actions button {
+    background: alpha(@window_fg_color,0.12);
+    color: @window_fg_color;
+    border-color: alpha(@window_fg_color,0.08);
+    box-shadow: none;
+}
+
+.game-card .game-details label,
+.game-card.library-list-row .library-list-actions button label,
+.game-card.library-list-row .library-list-actions button image {
+    color: inherit;
+}
+
+.game-card .game-details:hover,
+.game-card.library-list-row .library-list-actions button:hover {
+    background: #c8c8ca;
+    color: #202024;
+    border-color: transparent;
+}
+
+.game-card .game-details:hover label,
+.game-card.library-list-row .library-list-actions button:hover label,
+.game-card.library-list-row .library-list-actions button:hover image {
+    color: #202024;
+}
+
+/* List row never owns accent selection. */
+.game-card.library-list-row.selected,
+.game-card.library-list-row:hover {
+    border-color: transparent;
+    box-shadow: none;
+}
+
+/* RTXFORGE_LIST_COMPACT_V3
+ *
+ * The row owns all outer padding. Interior game identity uses a simple
+ * 10px rhythm: checkbox -> artwork -> title.
+ */
+.library-list-row {
+    min-height: 0;
+    padding: 5px 10px;
+}
+
+.library-list-game {
+    padding: 0;
+}
+
+.library-list-thumb {
+    margin: 0;
+    border: 2px solid transparent;
+    border-radius: 10px;
+}
+
+.library-list-title {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.library-list-meta,
+.library-list-location {
+    font-size: 10px;
+}
+
+.library-list-status-text {
+    font-size: 11px;
+}
+
+.library-list-chip {
+    padding: 3px 6px;
+    font-size: 10px;
+}
+
+.library-list-actions {
+    padding: 0;
+}
+
+.library-list-actions button {
+    min-height: 30px;
+}
+
+/* Match row content edges exactly so header columns line up below it. */
+.library-list-header {
+    padding: 0 10px 6px;
+}
+
+
+/* ==========================================================
+ * STRUCTURED GTK COLUMN VIEW
+ * RTXFORGE_COLUMNVIEW_SURGICAL_FIX_V2
+ * ========================================================== */
+
+columnview.library-column-view {
+    background: transparent;
+}
+
+
+/* Thin, readable, interactive controller. */
+columnview.library-column-view header {
+    min-height: 29px;
+
+    background: alpha(@window_fg_color,0.025);
+    border-bottom: 1px solid alpha(@window_fg_color,0.11);
+    box-shadow: none;
+}
+
+columnview.library-column-view header button {
+    min-height: 27px;
+
+    margin: 0;
+    padding: 1px 8px;
+
+    border-width: 0;
+    border-radius: 4px;
+
+    background: transparent;
+    box-shadow: none;
+
+    color: @window_fg_color;
+
+    font-size: 13px;
+    font-weight: 700;
+    opacity: 1;
+}
+
+columnview.library-column-view header button label {
+    margin: 0;
+    padding: 0;
+
+    color: @window_fg_color;
+
+    font-size: 13px;
+    font-weight: 700;
+    opacity: 1;
+}
+
+columnview.library-column-view header button image {
+    opacity: 0.82;
+}
+
+columnview.library-column-view header button:hover {
+    background: alpha(@window_fg_color,0.085);
+}
+
+columnview.library-column-view header button:active {
+    background: alpha(@window_fg_color,0.13);
+}
+
+
+/* Equal physical padding at both List edges. */
+columnview.library-column-view listview {
+    background: transparent;
+    padding: 3px 10px 14px;
+}
+
+columnview.library-column-view listview row {
+    min-height: 0;
+
+    margin: 2px 0;
+    padding: 0;
+
+    border: 2px solid transparent;
+    border-radius: 12px;
+
+    background: @forge_panel_bg;
+}
+
+columnview.library-column-view listview row:hover {
+    background: alpha(@window_fg_color,0.10);
+}
+
+
+/* Same horizontal inset as the controller. */
+.library-column-cell {
+    min-height: 0;
+    padding: 0 8px;
+}
+
+.library-column-game,
+.library-column-actions {
+    padding-left: 8px;
+    padding-right: 8px;
+}
+
+
+/* 96x45 wide artwork with clipping at every layer. */
+.library-column-art {
+    min-width: 100px;
+    min-height: 49px;
+
+    border: 2px solid transparent;
+    border-radius: 10px;
+}
+
+.library-column-art-overlay {
+    border-radius: 8px;
+}
+
+.library-column-art .poster-button {
+    padding: 0;
+    margin: 0;
+
+    border-width: 0;
+    border-radius: 8px;
+
+    background: transparent;
+    box-shadow: none;
+}
+
+.library-column-picture,
+.library-column-art .poster {
+    border-radius: 8px;
+}
+
+.library-column-title {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+
+/* RTXFORGE_LIBRARY_META_PILLS */
+
+.library-meta-row {
+    min-height: 16px;
+}
+
+.library-meta-pill {
+    min-height: 14px;
+
+    padding: 1px 5px;
+
+    border: 1px solid alpha(@window_fg_color,0.13);
+    border-radius: 999px;
+
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.35px;
+}
+
+
+/* STEAM / NON-STEAM */
+.library-source-pill {
+    background: #303035;
+    border-color: #47474d;
+    color: #9999a1;
+}
+
+
+/* UNTESTED */
+.library-test-pill.test-untested {
+    background: #c8c8cc;
+    border-color: #d6d6d9;
+    color: #66666e;
+}
+
+
+/* Tested/result */
+.library-test-pill.test-tested {
+    background: #414146;
+    border-color: #56565c;
+    color: #d5d5d9;
+}
+
+
+/* Before first bind, visually match UNTESTED. */
+.library-test-pill:not(.test-untested):not(.test-tested) {
+    background: #c8c8cc;
+    border-color: #d6d6d9;
+    color: #66666e;
+}
+
+
+/* Dot/status and test pill use the same protected width. */
+.library-status-stack,
+.library-status-line {
+    min-width: 108px;
+}
+
+.library-status-line {
+    min-height: 16px;
+}
+
+
+/* Neutral actions. */
+.library-column-actions button {
+    min-height: 30px;
+
+    background: alpha(@window_fg_color,0.12);
+    color: @window_fg_color;
+
+    border-color: alpha(@window_fg_color,0.08);
+    box-shadow: none;
+}
+
+.library-column-actions button label,
+.library-column-actions button image {
+    color: inherit;
+}
+
+.library-column-actions button:hover {
+    background: #c8c8ca;
+    color: #202024;
+    border-color: transparent;
+}
+
+.library-column-actions button:hover label,
+.library-column-actions button:hover image {
+    color: #202024;
+}
+
 
 .game-card .poster-fallback {
     font-size: 14px;
@@ -1599,6 +2152,75 @@ class ResizablePanelWindow(Adw.Window):
         )
 
 
+
+class LibraryGameItem(GObject.Object):
+    """ColumnView model wrapper around one mutable game dictionary."""
+
+    name=GObject.Property(
+        type=str,
+        default='',
+    )
+
+    location=GObject.Property(
+        type=str,
+        default='',
+    )
+
+    status=GObject.Property(
+        type=str,
+        default='',
+    )
+
+    enhancements=GObject.Property(
+        type=str,
+        default='',
+    )
+
+    def __init__(self,game):
+        super().__init__()
+
+        self.game=game
+
+        self.name=str(
+            game.get(
+                'name',
+                '',
+            )
+        ).casefold()
+
+        self.location=(
+            str(
+                game.get(
+                    'source',
+                    '',
+                )
+            )
+            +' '
+            +str(
+                game.get(
+                    'game',
+                    '',
+                )
+            )
+        ).casefold()
+
+        if game.get('blocked'):
+            status='2 unavailable'
+        elif game.get('installed'):
+            status='0 installed'
+        else:
+            status='1 available'
+
+        self.status=status
+
+        self.enhancements=str(
+            game.get(
+                'profile',
+                '',
+            )
+        ).casefold()
+
+
 class Window(Adw.ApplicationWindow):
     def __init__(self,application,options):
         super().__init__(application=application,title='rtxForge',default_width=1160,default_height=820)
@@ -1625,7 +2247,7 @@ class Window(Adw.ApplicationWindow):
             ).NR_STRENGTH_PRESETS
 
         self.strength_names=tuple(self.strength_presets);self.multiplier_values=(0,2,3,4,5,6)
-        self.settings['enable_effects']=True;self.settings.setdefault('dark',True);self.hardware_info={'ready':True,'gpu':'Preview GPU','reason':'Preview mode'} if options.demo else None;self.games=[];self.cards={};self.mode='mfg-only';self.filter='all'
+        self.settings['enable_effects']=True;self.settings.setdefault('dark',True);self.hardware_info={'ready':True,'gpu':'Preview GPU','reason':'Preview mode'} if options.demo else None;self.games=[];self.cards={};self.selected_game_ids=set();self.mode='mfg-only';self.filter='all'
         self.busy=False;self.task_kind='';self.pending=None;self.cancel_art=threading.Event();self.log=[];self.dialog=None;self.review=None;self.action_buttons=[]
         self.connect('close-request',self.close_request)
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)
@@ -1874,6 +2496,8 @@ class Window(Adw.ApplicationWindow):
         top=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8)
         top.add_css_class('forge-top-surface')
         margins(top,18)
+        # The Library side owns the shared seam spacing. Do not stack
+        # another explicit gap beneath the dark dashboard.
         top.set_margin_bottom(12)
         outer.append(top)
         hero=Gtk.Box(
@@ -1919,15 +2543,28 @@ class Window(Adw.ApplicationWindow):
         )
         hero_top.append(self.dashboard_icon)
 
-        # Keep the hero copy compact and let GTK center the complete
-        # text block naturally against the cropped dashboard artwork.
+        # Keep the copy/actions assembly centered against the logo, but
+        # bottom-align its two children to one another. This puts the
+        # bulk-action buttons flush with the last line of hero metadata
+        # instead of floating at the top of the hero.
+        hero_copy_actions=Gtk.Box(
+            spacing=8,
+            hexpand=True,
+            valign=Gtk.Align.CENTER,
+        )
+        hero_top.append(
+            hero_copy_actions
+        )
+
         title=Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
             spacing=2,
             hexpand=True,
-            valign=Gtk.Align.CENTER,
+            valign=Gtk.Align.END,
         )
-        hero_top.append(title)
+        hero_copy_actions.append(
+            title
+        )
 
         title.append(
             label(
@@ -1964,13 +2601,15 @@ class Window(Adw.ApplicationWindow):
 
         bulk=Gtk.Box(
             spacing=8,
-            valign=Gtk.Align.START,
+            valign=Gtk.Align.END,
             halign=Gtk.Align.END,
         )
         bulk.add_css_class(
             'dashboard-actions'
         )
-        hero_top.append(bulk)
+        hero_copy_actions.append(
+            bulk
+        )
 
         self.install_all=icon_button(
             'Install All',
@@ -2359,6 +2998,15 @@ class Window(Adw.ApplicationWindow):
             'library-sticky-header'
         )
 
+        # Balanced light-side inset at the dark/light seam.
+        viewbar.set_margin_top(
+            12
+        )
+
+        # Run after the first real GTK allocation so the lighter panel's
+        # top gap exactly mirrors the actual visible dark-panel bottom gap.
+
+
         # Search/filter/selection controls begin the Library toolbar
         # directly. The expanded dashboard already identifies the app at
         # the top of the Library, while the compact titlebar provides the
@@ -2525,60 +3173,14 @@ class Window(Adw.ApplicationWindow):
 
         viewbar.set_margin_start(18)
         viewbar.set_margin_end(18)
-        viewbar.set_margin_top(8)
+        # Balance the two-tone panel seam:
+        # dark dashboard bottom = 12px
+        # light Library top     = 12px
         viewbar.set_margin_bottom(16)
         library_surface.append(viewbar)
 
-        # Dedicated List-view column header. It stays outside the scroller so
-        # the information hierarchy remains stable while the rows move.
-        self.library_list_header=Gtk.Grid(
-            column_spacing=12,
-            hexpand=True,
-        )
-        self.library_list_header.add_css_class(
-            'library-list-header'
-        )
-
-        for column,(title,width,expand) in enumerate((
-            ('Game',320,False),
-            ('Location',180,True),
-            ('Status',115,False),
-            ('Enhancements',145,False),
-            ('Actions',160,False),
-        )):
-            header_label=label(
-                title,
-                'library-list-header-label',
-            )
-            header_label.set_halign(
-                Gtk.Align.END
-                if title=='Actions'
-                else Gtk.Align.START
-            )
-            header_label.set_size_request(
-                width,
-                -1,
-            )
-            header_label.set_hexpand(
-                expand
-            )
-            self.library_list_header.attach(
-                header_label,
-                column,
-                0,
-                1,
-                1,
-            )
-
-        self.library_list_header.set_visible(
-            self.settings.get(
-                'library_view',
-                'posters',
-            )=='list'
-        )
-        library_surface.append(
-            self.library_list_header
-        )
+        # List mode uses a real Gtk.ColumnView. Its built-in
+        # headers own sorting, resizing and column drag/reordering.
 
         scroll=Gtk.ScrolledWindow(
             vexpand=True,
@@ -2616,11 +3218,45 @@ class Window(Adw.ApplicationWindow):
             1
         )
 
+        self.column_view=self._build_library_column_view()
+
+        self.column_scroll=Gtk.ScrolledWindow(
+            vexpand=True,
+            hscrollbar_policy=Gtk.PolicyType.AUTOMATIC,
+            vscrollbar_policy=Gtk.PolicyType.AUTOMATIC,
+        )
+        self.column_scroll.set_overlay_scrolling(
+            True
+        )
+        self.column_scroll.set_hexpand(
+            True
+        )
+        self.column_scroll.set_halign(
+            Gtk.Align.FILL
+        )
+        self.column_scroll.set_child(
+            self.column_view
+        )
+
+        self.library_stack=Gtk.Stack(
+            hexpand=True,
+            vexpand=True,
+            transition_type=Gtk.StackTransitionType.NONE,
+        )
+        self.library_stack.add_named(
+            scroll,
+            'gallery',
+        )
+        self.library_stack.add_named(
+            self.column_scroll,
+            'list',
+        )
+
         library_stage=Gtk.Overlay(
             vexpand=True
         )
         library_stage.set_child(
-            scroll
+            self.library_stack
         )
         library_surface.append(
             library_stage
@@ -2657,7 +3293,7 @@ class Window(Adw.ApplicationWindow):
                     0
                 )
                 top.set_margin_bottom(
-                    0
+                    12
                 )
                 viewbar.add_css_class(
                     'stuck'
@@ -2685,7 +3321,14 @@ class Window(Adw.ApplicationWindow):
                 viewbar.remove_css_class(
                     'stuck'
                 )
-        scroll.get_vadjustment().connect('value-changed',collapse_header)
+        scroll.get_vadjustment().connect(
+            'value-changed',
+            collapse_header,
+        )
+        self.column_scroll.get_vadjustment().connect(
+            'value-changed',
+            collapse_header,
+        )
         self.flow=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,column_spacing=14,row_spacing=16,min_children_per_line=1,max_children_per_line=12,homogeneous=False,valign=Gtk.Align.START);margins(self.flow,18);self.flow.set_margin_top(0);scroll.set_child(self.flow)
         self.flow.set_hexpand(True)
         self.flow.set_halign(Gtk.Align.START)
@@ -3964,6 +4607,1890 @@ class Window(Adw.ApplicationWindow):
             self.operation_icon.set_visible(False);self.operation_dismiss.set_visible(False)
             self.operation_spinner.set_visible(True);self.operation_spinner.start()
         return False
+    # ========================================================
+    # GTK COLUMN VIEW — STRUCTURED LIST MODE
+    # ========================================================
+
+    def _column_factory(
+        self,
+        setup,
+        bind,
+        unbind=None,
+    ):
+        factory=Gtk.SignalListItemFactory()
+
+        factory.connect(
+            'setup',
+            setup,
+        )
+
+        factory.connect(
+            'bind',
+            bind,
+        )
+
+        if unbind is not None:
+            factory.connect(
+                'unbind',
+                unbind,
+            )
+
+        return factory
+
+
+    def _column_sorter(self,property_name):
+        expression=Gtk.PropertyExpression.new(
+            LibraryGameItem,
+            None,
+            property_name,
+        )
+
+        return Gtk.StringSorter.new(
+            expression
+        )
+
+
+    def _build_library_column_view(self):
+        self.list_name_cells={}
+        self.list_action_cells={}
+
+        self.list_store=Gio.ListStore.new(
+            LibraryGameItem
+        )
+
+        self.list_filter=Gtk.CustomFilter.new(
+            self._column_filter_match
+        )
+
+        self.list_filter_model=Gtk.FilterListModel.new(
+            self.list_store,
+            self.list_filter,
+        )
+
+        view=Gtk.ColumnView(
+            hexpand=True,
+            vexpand=True,
+        )
+
+        view.add_css_class(
+            'library-column-view'
+        )
+        view.set_halign(
+            Gtk.Align.FILL
+        )
+
+
+        view.set_show_column_separators(
+            False
+        )
+
+        view.set_show_row_separators(
+            False
+        )
+
+        view.set_single_click_activate(
+            False
+        )
+
+        # GTK exposes reordering at the whole-view level. We enable it,
+        # then enforce Game/Name at index zero after any drag operation.
+        view.set_reorderable(
+            True
+        )
+
+        name_factory=self._column_factory(
+            self._column_name_setup,
+            self._column_name_bind,
+            self._column_name_unbind,
+        )
+
+        location_factory=self._column_factory(
+            self._column_location_setup,
+            self._column_location_bind,
+        )
+
+        status_factory=self._column_factory(
+            self._column_status_setup,
+            self._column_status_bind,
+        )
+
+        enhancements_factory=self._column_factory(
+            self._column_enhancements_setup,
+            self._column_enhancements_bind,
+        )
+
+        actions_factory=self._column_factory(
+            self._column_actions_setup,
+            self._column_actions_bind,
+            self._column_actions_unbind,
+        )
+
+        specs=(
+            # Game owns spare viewport width.
+            # Game and Location may be resized.
+            # Utility columns use natural content width.
+            (
+                'Game',
+                'name',
+                name_factory,
+                -1,
+                True,
+                True,
+            ),
+            (
+                'Location',
+                'location',
+                location_factory,
+                180,
+                True,
+                False,
+            ),
+            (
+                'Status',
+                'status',
+                status_factory,
+                -1,
+                False,
+                False,
+            ),
+            (
+                'Enhancements',
+                'enhancements',
+                enhancements_factory,
+                -1,
+                False,
+                False,
+            ),
+            (
+                'Actions',
+                None,
+                actions_factory,
+                -1,
+                False,
+                False,
+            ),
+        )
+
+        self.list_columns={}
+
+        for (
+            title,
+            sort_property,
+            factory,
+            width,
+            resizable,
+            expand,
+        ) in specs:
+            column=Gtk.ColumnViewColumn.new(
+                title,
+                factory,
+            )
+
+            column.set_fixed_width(
+                width
+            )
+
+            column.set_resizable(
+                resizable
+            )
+
+            # Game retains its explicit user-controlled width.
+            # Fixed right-side columns keep their base width but may
+            # absorb spare viewport space instead of bunching left.
+            column.set_expand(
+                expand
+            )
+
+            try:
+                column.set_id(
+                    title.casefold()
+                )
+            except Exception:
+                pass
+
+            if sort_property is not None:
+                column.set_sorter(
+                    self._column_sorter(
+                        sort_property
+                    )
+                )
+
+            view.append_column(
+                column
+            )
+
+            self.list_columns[
+                title
+            ]=column
+
+        self.list_name_column=self.list_columns[
+            'Game'
+        ]
+
+        self.list_name_column.connect(
+            'notify::fixed-width',
+            self._column_name_width_changed,
+        )
+
+        self.list_location_column=self.list_columns[
+            'Location'
+        ]
+
+        self.list_location_column.connect(
+            'notify::fixed-width',
+            self._column_location_width_changed,
+        )
+
+        self._column_width_guard=False
+        self._column_location_width_guard=False
+        self._column_order_guard=False
+        self._column_height_refresh_source=0
+
+        columns_model=view.get_columns()
+
+        columns_model.connect(
+            'items-changed',
+            self._column_order_changed,
+        )
+
+        self.list_sort_model=Gtk.SortListModel.new(
+            self.list_filter_model,
+            view.get_sorter(),
+        )
+
+        self.list_selection_model=Gtk.NoSelection.new(
+            self.list_sort_model
+        )
+
+        view.set_model(
+            self.list_selection_model
+        )
+
+        view.connect(
+            'activate',
+            self._column_activate,
+        )
+
+        return view
+
+
+    def _column_name_width_changed(
+        self,
+        column,
+        *_,
+    ):
+        if getattr(
+            self,
+            '_column_width_guard',
+            False,
+        ):
+            return
+
+        width=column.get_fixed_width()
+
+        if width<0:
+            return
+
+        # This is the ONLY resizable column.
+        #
+        # Wide enough for checkbox + capsule + useful text,
+        # but never allowed to dominate the complete table.
+        clamped=max(
+            340,
+            min(
+                560,
+                width,
+            ),
+        )
+
+        if clamped==width:
+            self._column_schedule_height_refresh()
+            return
+
+        self._column_width_guard=True
+
+        try:
+            column.set_fixed_width(
+                clamped
+            )
+        finally:
+            self._column_width_guard=False
+
+        self._column_schedule_height_refresh()
+
+
+    def _column_location_width_changed(
+        self,
+        column,
+        *_,
+    ):
+        if getattr(
+            self,
+            '_column_location_width_guard',
+            False,
+        ):
+            return
+
+        width=column.get_fixed_width()
+
+        if width<0:
+            return
+
+        width=max(
+            160,
+            min(
+                360,
+                width,
+            ),
+        )
+
+        if width==column.get_fixed_width():
+            return
+
+        self._column_location_width_guard=True
+
+        try:
+            column.set_fixed_width(
+                width
+            )
+        finally:
+            self._column_location_width_guard=False
+
+
+    def _column_schedule_height_refresh(self):
+        if getattr(
+            self,
+            '_column_height_refresh_source',
+            0,
+        ):
+            return
+
+        self._column_height_refresh_source=GLib.idle_add(
+            self._column_refresh_name_heights
+        )
+
+
+    def _column_refresh_name_heights(self):
+        self._column_height_refresh_source=0
+
+        for root in list(
+            self.list_name_cells.values()
+        ):
+            if getattr(
+                root,
+                '_game',
+                None,
+            ) is not None:
+                self._column_update_name_height(
+                    root
+                )
+
+        return False
+
+
+    def _column_update_name_height(
+        self,
+        root,
+    ):
+        """List rows use only compact or wrapped geometry."""
+
+        game=getattr(
+            root,
+            '_game',
+            None,
+        )
+
+        if game is None:
+            return
+
+        width=root.get_width()
+
+        if width<=0:
+            width=self.list_name_column.get_fixed_width()
+
+        if width<=0:
+            width=460
+
+        width=max(
+            340,
+            width,
+        )
+
+        # checkbox + spacing + 100px artwork + title spacing
+        title_width=max(
+            118,
+            width-166,
+        )
+
+        name=str(
+            game.get(
+                'name',
+                '',
+            )
+        )
+
+        layout=root._title.create_pango_layout(
+            name
+        )
+
+        layout.set_width(
+            -1
+        )
+
+        (
+            natural_width,
+            _natural_height,
+        )=layout.get_pixel_size()
+
+        wraps=(
+            natural_width
+            > title_width
+        )
+
+        root._title.set_wrap(
+            True
+        )
+
+        root._title.set_wrap_mode(
+            Pango.WrapMode.WORD_CHAR
+        )
+
+        root._title.set_lines(
+            2
+        )
+
+        root._title.set_single_line_mode(
+            False
+        )
+
+        root._title.set_ellipsize(
+            Pango.EllipsizeMode.END
+        )
+
+        # Never advertise a microscopic one-character natural width.
+        root._title.set_width_chars(
+            12
+        )
+
+        root._title.set_max_width_chars(
+            22
+        )
+
+        root._title.set_vexpand(
+            False
+        )
+
+        root._title.set_valign(
+            Gtk.Align.CENTER
+        )
+
+        root._title.set_size_request(
+            -1,
+            34 if wraps else 18,
+        )
+
+        root.set_vexpand(
+            False
+        )
+
+        root.set_valign(
+            Gtk.Align.CENTER
+        )
+
+        # Exactly two row geometries.
+        root.set_size_request(
+            -1,
+            78 if wraps else 52,
+        )
+
+        root.queue_resize()
+
+
+
+    def _column_order_changed(
+        self,
+        *_,
+    ):
+        if getattr(
+            self,
+            '_column_order_guard',
+            False,
+        ):
+            return
+
+        model=self.column_view.get_columns()
+
+        name_index=None
+
+        for index in range(
+            model.get_n_items()
+        ):
+            if (
+                model.get_item(index)
+                is self.list_name_column
+            ):
+                name_index=index
+                break
+
+        if (
+            name_index is None
+            or name_index==0
+        ):
+            return
+
+        # Right-side columns may move among themselves.
+        # Game/Name is permanently pinned at the left edge.
+        self._column_order_guard=True
+
+        try:
+            self.column_view.remove_column(
+                self.list_name_column
+            )
+
+            self.column_view.insert_column(
+                0,
+                self.list_name_column,
+            )
+        finally:
+            self._column_order_guard=False
+
+
+    def _column_filter_match(
+        self,
+        item,
+        *_,
+    ):
+        game=item.game
+
+        query=(
+            self.search.get_text().casefold()
+            if hasattr(
+                self,
+                'search'
+            )
+            else ''
+        )
+
+        if (
+            query
+            and query
+            not in str(
+                game.get(
+                    'name',
+                    '',
+                )
+            ).casefold()
+        ):
+            return False
+
+        if self.filter=='installed':
+            return bool(
+                game.get(
+                    'installed'
+                )
+            )
+
+        if self.filter=='available':
+            return not bool(
+                game.get(
+                    'blocked'
+                )
+            )
+
+        return True
+
+
+    def _column_reload_store(self):
+        while self.list_store.get_n_items():
+            self.list_store.remove(
+                self.list_store.get_n_items()-1
+            )
+
+        for game in self.games:
+            self.list_store.append(
+                LibraryGameItem(
+                    game
+                )
+            )
+
+        self.list_filter.changed(
+            Gtk.FilterChange.DIFFERENT
+        )
+
+
+    def _ensure_game_accent(self,game):
+        accent=game.get(
+            'accent_class'
+        )
+
+        if accent:
+            return accent
+
+        path=(
+            game.get('capsule')
+            or game.get('poster')
+            or game.get('hero')
+        )
+
+        if not path:
+            return None
+
+        try:
+            accent=artwork_accent(
+                path,
+                self.settings.get(
+                    'game_accents',
+                    {},
+                ).get(
+                    game['game']
+                ),
+            )
+
+            game[
+                'accent_class'
+            ]=accent
+
+            return accent
+
+        except Exception:
+            return None
+
+
+    def _column_remove_accent(
+        self,
+        widget,
+    ):
+        old=getattr(
+            widget,
+            '_accent_class',
+            None,
+        )
+
+        if old:
+            widget.remove_css_class(
+                old
+            )
+
+        widget._accent_class=None
+
+
+    def _column_apply_accent(
+        self,
+        widget,
+        game,
+    ):
+        self._column_remove_accent(
+            widget
+        )
+
+        accent=self._ensure_game_accent(
+            game
+        )
+
+        if accent:
+            widget.add_css_class(
+                accent
+            )
+
+            widget._accent_class=accent
+
+
+    # ---------------- GAME / NAME ----------------
+
+    def _column_name_setup(
+        self,
+        _factory,
+        list_item,
+    ):
+        root=Gtk.Box(
+            spacing=10,
+            valign=Gtk.Align.CENTER,
+            hexpand=True,
+        )
+        root.add_css_class(
+            'library-column-cell'
+        )
+        root.add_css_class(
+            'library-column-game'
+        )
+        root.set_size_request(
+            340,
+            -1,
+        )
+        root.set_vexpand(
+            False
+        )
+
+
+        check=Gtk.CheckButton(
+            valign=Gtk.Align.CENTER,
+            halign=Gtk.Align.CENTER,
+        )
+
+        check.set_margin_start(
+            0
+        )
+        check.set_margin_end(
+            0
+        )
+
+        art_frame=Gtk.Box(
+            width_request=100,
+            height_request=49,
+            valign=Gtk.Align.CENTER,
+        )
+        art_frame.add_css_class(
+            'library-column-art'
+        )
+        art_frame.set_halign(
+            Gtk.Align.CENTER
+        )
+        art_frame.set_valign(
+            Gtk.Align.CENTER
+        )
+        art_frame.set_overflow(
+            Gtk.Overflow.HIDDEN
+        )
+
+        overlay=Gtk.Overlay(
+            width_request=96,
+            height_request=45,
+        )
+        overlay.add_css_class(
+            'library-column-art-overlay'
+        )
+        overlay.set_halign(
+            Gtk.Align.CENTER
+        )
+        overlay.set_valign(
+            Gtk.Align.CENTER
+        )
+        overlay.set_overflow(
+            Gtk.Overflow.HIDDEN
+        )
+
+        art_frame.append(
+            overlay
+        )
+
+        picture=CoverPicture(
+            content_fit=Gtk.ContentFit.COVER,
+            can_shrink=True,
+        )
+        picture.add_css_class(
+            'library-column-picture'
+        )
+        picture.cover_width=96
+        picture.cover_ratio=290/136
+        picture.set_size_request(
+            96,
+            45,
+        )
+        picture.set_overflow(
+            Gtk.Overflow.HIDDEN
+        )
+
+        art_button=Gtk.Button(
+            child=picture
+        )
+        art_button.add_css_class(
+            'poster-button'
+        )
+        art_button.add_css_class(
+            'flat'
+        )
+        art_button.set_has_frame(
+            False
+        )
+        art_button.set_overflow(
+            Gtk.Overflow.HIDDEN
+        )
+        art_button.set_size_request(
+            96,
+            45,
+        )
+
+        overlay.set_child(
+            art_button
+        )
+
+        fallback=label(
+            '…',
+            'poster-fallback',
+        )
+        fallback.set_halign(
+            Gtk.Align.CENTER
+        )
+        fallback.set_valign(
+            Gtk.Align.CENTER
+        )
+
+        overlay.add_overlay(
+            fallback
+        )
+        overlay.set_measure_overlay(
+            fallback,
+            False,
+        )
+
+        text=Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=2,
+            hexpand=True,
+            valign=Gtk.Align.CENTER,
+        )
+        text.set_vexpand(
+            False
+        )
+
+
+        title=label(
+            '',
+            'card-title',
+        )
+        title.add_css_class(
+            'library-column-title'
+        )
+        title.set_wrap(
+            True
+        )
+        title.set_wrap_mode(
+            Pango.WrapMode.WORD_CHAR
+        )
+        # One line normally, two lines maximum, then ellipsis.
+        title.set_lines(
+            2
+        )
+        title.set_single_line_mode(
+            False
+        )
+        title.set_ellipsize(
+            Pango.EllipsizeMode.END
+        )
+        title.set_width_chars(
+            12
+        )
+        title.set_max_width_chars(
+            22
+        )
+        title.set_hexpand(
+            True
+        )
+
+        meta=label(
+            '',
+            'library-meta-pill',
+        )
+        meta.add_css_class(
+            'library-source-pill'
+        )
+        meta.set_wrap(
+            False
+        )
+        meta.set_lines(
+            1
+        )
+        meta.set_single_line_mode(
+            True
+        )
+        meta.set_ellipsize(
+            Pango.EllipsizeMode.NONE
+        )
+        meta.set_width_chars(
+            -1
+        )
+        meta.set_max_width_chars(
+            -1
+        )
+        meta.set_hexpand(
+            False
+        )
+
+        meta.set_halign(
+            Gtk.Align.START
+        )
+        meta.set_xalign(
+            0.5
+        )
+
+        text.append(
+            title
+        )
+        text.append(
+            meta
+        )
+
+        root.append(
+            check
+        )
+        root.append(
+            art_frame
+        )
+        root.append(
+            text
+        )
+
+        root._check=check
+        root._art_frame=art_frame
+        root._picture=picture
+        root._fallback=fallback
+        root._title=title
+        root._meta=meta
+        root._game=None
+        root._game_id=None
+        root._binding=False
+        root._accent_class=None
+
+        root.connect(
+            'notify::width',
+            lambda *_:self._column_schedule_height_refresh(),
+        )
+
+        check.connect(
+            'toggled',
+            self._column_check_toggled,
+            root,
+        )
+
+        art_button.connect(
+            'clicked',
+            self._column_art_clicked,
+            root,
+        )
+
+        list_item.set_child(
+            root
+        )
+
+
+    def _column_bind_name_root(
+        self,
+        root,
+        game,
+    ):
+        root._game=game
+        root._game_id=game[
+            'game'
+        ]
+
+        root._title.set_text(
+            game.get(
+                'name',
+                '',
+            )
+        )
+
+        root._meta.set_text(
+            str(
+                game.get(
+                    'source',
+                    '',
+                )
+            ).upper()
+        )
+
+        self._column_update_name_height(
+            root
+        )
+
+        root._check.set_tooltip_text(
+            'Select '+game.get(
+                'name',
+                '',
+            )
+        )
+
+        path=(
+            game.get('capsule')
+            or game.get('poster')
+        )
+
+        if path:
+            try:
+                root._picture.set_paintable(
+                    Gdk.Texture.new_from_filename(
+                        path
+                    )
+                )
+
+                root._fallback.set_visible(
+                    False
+                )
+
+            except Exception:
+                root._picture.set_paintable(
+                    None
+                )
+                root._fallback.set_visible(
+                    True
+                )
+        else:
+            root._picture.set_paintable(
+                None
+            )
+            root._fallback.set_visible(
+                True
+            )
+
+        self._column_apply_accent(
+            root,
+            game,
+        )
+
+        selected=(
+            game['game']
+            in self.selected_game_ids
+        )
+
+        root._binding=True
+
+        try:
+            root._check.set_active(
+                selected
+            )
+        finally:
+            root._binding=False
+
+        if selected:
+            root._art_frame.add_css_class(
+                'selected-art'
+            )
+        else:
+            root._art_frame.remove_css_class(
+                'selected-art'
+            )
+
+
+    def _column_name_bind(
+        self,
+        _factory,
+        list_item,
+    ):
+        root=list_item.get_child()
+        item=list_item.get_item()
+
+        old_id=getattr(
+            root,
+            '_game_id',
+            None,
+        )
+
+        if (
+            old_id
+            and self.list_name_cells.get(
+                old_id
+            )
+            is root
+        ):
+            self.list_name_cells.pop(
+                old_id,
+                None,
+            )
+
+        game=item.game
+
+        self._column_bind_name_root(
+            root,
+            game,
+        )
+
+        self.list_name_cells[
+            game['game']
+        ]=root
+
+
+    def _column_name_unbind(
+        self,
+        _factory,
+        list_item,
+    ):
+        root=list_item.get_child()
+
+        game_id=getattr(
+            root,
+            '_game_id',
+            None,
+        )
+
+        if (
+            game_id
+            and self.list_name_cells.get(
+                game_id
+            )
+            is root
+        ):
+            self.list_name_cells.pop(
+                game_id,
+                None,
+            )
+
+        self._column_remove_accent(
+            root
+        )
+
+        root._game=None
+        root._game_id=None
+
+
+    def _column_check_toggled(
+        self,
+        check,
+        root,
+    ):
+        if root._binding:
+            return
+
+        game_id=root._game_id
+
+        if not game_id:
+            return
+
+        if check.get_active():
+            self.selected_game_ids.add(
+                game_id
+            )
+        else:
+            self.selected_game_ids.discard(
+                game_id
+            )
+
+        self._column_sync_selection_widgets()
+        self._update_selection_summary()
+
+
+    def _column_art_clicked(
+        self,
+        _button,
+        root,
+    ):
+        if root._game is not None:
+            self.details(
+                root._game
+            )
+
+
+    # ---------------- LOCATION ----------------
+
+    def _column_location_setup(
+        self,
+        _factory,
+        list_item,
+    ):
+        root=Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=1,
+            valign=Gtk.Align.CENTER,
+        )
+        root.add_css_class(
+            'library-column-cell'
+        )
+        root.set_size_request(
+            160,
+            -1,
+        )
+        root.set_vexpand(
+            False
+        )
+
+
+        source=label(
+            '',
+            'library-column-primary',
+        )
+
+        path=label(
+            '',
+            'library-list-location',
+        )
+        path.set_single_line_mode(
+            True
+        )
+        path.set_ellipsize(
+            Pango.EllipsizeMode.END
+        )
+        path.set_width_chars(
+            1
+        )
+        path.set_max_width_chars(
+            1
+        )
+
+        root.append(
+            source
+        )
+        root.append(
+            path
+        )
+
+        root._source=source
+        root._path=path
+
+        list_item.set_child(
+            root
+        )
+
+
+    def _column_location_bind(
+        self,
+        _factory,
+        list_item,
+    ):
+        root=list_item.get_child()
+        game=list_item.get_item().game
+
+        root._source.set_text(
+            game.get(
+                'source',
+                '',
+            )
+        )
+
+        root._path.set_text(
+            game.get(
+                'game',
+                '',
+            )
+        )
+
+
+    # ---------------- STATUS ----------------
+
+    def _column_status_setup(
+        self,
+        _factory,
+        list_item,
+    ):
+        root=Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=3,
+            valign=Gtk.Align.CENTER,
+            halign=Gtk.Align.START,
+        )
+        root.add_css_class(
+            'library-column-cell'
+        )
+        root.add_css_class(
+            'library-status-stack'
+        )
+        root.set_size_request(
+            -1,
+            -1,
+        )
+        root.set_vexpand(
+            False
+        )
+
+        primary=Gtk.Box(
+            spacing=6,
+            valign=Gtk.Align.CENTER,
+            halign=Gtk.Align.FILL,
+            hexpand=False,
+        )
+        primary.add_css_class(
+            'library-status-line'
+        )
+        primary.set_size_request(
+            108,
+            -1,
+        )
+
+        dot=label(
+            '●',
+            'library-list-status-dot',
+        )
+
+        state=label(
+            '',
+            'library-list-status-text',
+        )
+
+        primary.append(
+            dot
+        )
+        primary.append(
+            state
+        )
+
+        test=label(
+            '',
+            'library-meta-pill',
+        )
+        test.add_css_class(
+            'library-test-pill'
+        )
+        test.set_size_request(
+            108,
+            -1,
+        )
+        test.set_halign(
+            Gtk.Align.FILL
+        )
+        test.set_xalign(
+            0.5
+        )
+
+        root.append(
+            primary
+        )
+        root.append(
+            test
+        )
+
+        root._dot=dot
+        root._state=state
+        root._test=test
+
+        list_item.set_child(
+            root
+        )
+
+
+    def _column_status_bind(
+        self,
+        _factory,
+        list_item,
+    ):
+        root=list_item.get_child()
+        game=list_item.get_item().game
+
+        for css_class in (
+            'installed',
+            'available',
+            'unavailable',
+        ):
+            root._dot.remove_css_class(
+                css_class
+            )
+
+        if game.get('blocked'):
+            text='Unavailable'
+            css='unavailable'
+        elif game.get('installed'):
+            text='Installed'
+            css='installed'
+        else:
+            text='Available'
+            css='available'
+
+        root._dot.add_css_class(
+            css
+        )
+
+        root._state.set_text(
+            text
+        )
+
+        test_status=str(
+            game.get(
+                'test_record',
+                {},
+            ).get(
+                'status',
+                'Untested',
+            )
+        )
+
+        root._test.set_text(
+            test_status.upper()
+        )
+
+        for css_class in (
+            'test-untested',
+            'test-tested',
+        ):
+            root._test.remove_css_class(
+                css_class
+            )
+
+        root._test.add_css_class(
+            'test-untested'
+            if test_status.casefold()=='untested'
+            else 'test-tested'
+        )
+
+
+    # ---------------- ENHANCEMENTS ----------------
+
+    def _column_enhancements_setup(
+        self,
+        _factory,
+        list_item,
+    ):
+        root=Gtk.Box(
+            spacing=6,
+            valign=Gtk.Align.CENTER,
+        )
+        root.add_css_class(
+            'library-column-cell'
+        )
+        root.set_size_request(
+            -1,
+            -1,
+        )
+        root.set_vexpand(
+            False
+        )
+
+
+        nr=label(
+            '',
+            'library-list-chip',
+        )
+
+        mfg=label(
+            '',
+            'library-list-chip',
+        )
+
+        root.append(
+            nr
+        )
+        root.append(
+            mfg
+        )
+
+        root._nr=nr
+        root._mfg=mfg
+
+        list_item.set_child(
+            root
+        )
+
+
+    def _column_enhancements_bind(
+        self,
+        _factory,
+        list_item,
+    ):
+        root=list_item.get_child()
+        game=list_item.get_item().game
+
+        root._nr.set_text(
+            'NR '
+            +str(
+                game.get(
+                    'nr_strength'
+                )
+                if game.get(
+                    'nr_strength'
+                )
+                is not None
+                else '—'
+            )
+        )
+
+        root._mfg.set_text(
+            'MFG '
+            +str(
+                game.get(
+                    'mfg_multiplier'
+                )
+                if game.get(
+                    'mfg_multiplier'
+                )
+                is not None
+                else '—'
+            )
+            +'×'
+        )
+
+        root._nr.remove_css_class(
+            'active'
+        )
+        root._mfg.remove_css_class(
+            'active'
+        )
+
+        profile=game.get(
+            'profile',
+            '',
+        )
+
+        if profile in (
+            'NR Only',
+            'NR + MFG',
+        ):
+            root._nr.add_css_class(
+                'active'
+            )
+
+        if profile in (
+            'MFG Only',
+            'NR + MFG',
+        ):
+            root._mfg.add_css_class(
+                'active'
+            )
+
+
+    # ---------------- ACTIONS ----------------
+
+    def _column_actions_setup(
+        self,
+        _factory,
+        list_item,
+    ):
+        root=Gtk.Box(
+            spacing=6,
+            halign=Gtk.Align.END,
+            valign=Gtk.Align.CENTER,
+        )
+        root.add_css_class(
+            'library-column-cell'
+        )
+        root.add_css_class(
+            'library-column-actions'
+        )
+        root.set_size_request(
+            -1,
+            -1,
+        )
+        root.set_vexpand(
+            False
+        )
+
+
+        primary=Gtk.Button(
+            label='Apply'
+        )
+        primary.set_size_request(
+            88,
+            -1,
+        )
+
+        more=Gtk.Button(
+            icon_name='view-more-symbolic',
+        )
+        more.set_size_request(
+            36,
+            -1,
+        )
+        more.set_tooltip_text(
+            'Open game details'
+        )
+
+        root.append(
+            primary
+        )
+        root.append(
+            more
+        )
+
+        root._primary=primary
+        root._more=more
+        root._game=None
+        root._game_id=None
+        root._accent_class=None
+
+        primary.connect(
+            'clicked',
+            self._column_primary_clicked,
+            root,
+        )
+
+        more.connect(
+            'clicked',
+            self._column_more_clicked,
+            root,
+        )
+
+        list_item.set_child(
+            root
+        )
+
+
+    def _column_bind_actions_root(
+        self,
+        root,
+        game,
+    ):
+        root._game=game
+        root._game_id=game[
+            'game'
+        ]
+
+        if game.get('blocked'):
+            title='Unavailable'
+        elif game.get('installed'):
+            title='Repair'
+        else:
+            title='Apply'
+
+        root._primary.set_label(
+            title
+        )
+
+        enabled=(
+            not self.busy
+            or self.task_kind=='art'
+        )
+
+        compatible=bool(
+            self.hardware_info
+            and self.hardware_info[
+                'ready'
+            ]
+        )
+
+        root._primary.set_sensitive(
+            enabled
+            and compatible
+            and not bool(
+                game.get(
+                    'blocked'
+                )
+            )
+        )
+
+        root._more.set_sensitive(
+            enabled
+        )
+
+        self._column_apply_accent(
+            root,
+            game,
+        )
+
+        if (
+            game['game']
+            in self.selected_game_ids
+        ):
+            root.add_css_class(
+                'selected-actions'
+            )
+        else:
+            root.remove_css_class(
+                'selected-actions'
+            )
+
+
+    def _column_actions_bind(
+        self,
+        _factory,
+        list_item,
+    ):
+        root=list_item.get_child()
+
+        old_id=getattr(
+            root,
+            '_game_id',
+            None,
+        )
+
+        if (
+            old_id
+            and self.list_action_cells.get(
+                old_id
+            )
+            is root
+        ):
+            self.list_action_cells.pop(
+                old_id,
+                None,
+            )
+
+        game=list_item.get_item().game
+
+        self._column_bind_actions_root(
+            root,
+            game,
+        )
+
+        self.list_action_cells[
+            game['game']
+        ]=root
+
+
+    def _column_actions_unbind(
+        self,
+        _factory,
+        list_item,
+    ):
+        root=list_item.get_child()
+
+        game_id=getattr(
+            root,
+            '_game_id',
+            None,
+        )
+
+        if (
+            game_id
+            and self.list_action_cells.get(
+                game_id
+            )
+            is root
+        ):
+            self.list_action_cells.pop(
+                game_id,
+                None,
+            )
+
+        self._column_remove_accent(
+            root
+        )
+
+        root._game=None
+        root._game_id=None
+
+
+    def _column_primary_clicked(
+        self,
+        _button,
+        root,
+    ):
+        game=root._game
+
+        if (
+            game is None
+            or game.get(
+                'blocked'
+            )
+        ):
+            return
+
+        operation=(
+            'repair'
+            if game.get(
+                'installed'
+            )
+            else 'install'
+        )
+
+        self.launch_action(
+            operation,
+            targets=[
+                game
+            ],
+        )
+
+
+    def _column_more_clicked(
+        self,
+        _button,
+        root,
+    ):
+        if root._game is not None:
+            self.details(
+                root._game
+            )
+
+
+    def _column_activate(
+        self,
+        _view,
+        position,
+    ):
+        item=self.list_selection_model.get_item(
+            position
+        )
+
+        if item is not None:
+            self.details(
+                item.game
+            )
+
+
+    # ---------------- SHARED SELECTION ----------------
+
+    def _column_sync_selection_widgets(self):
+        for game_id,root in list(
+            self.list_name_cells.items()
+        ):
+            selected=(
+                game_id
+                in self.selected_game_ids
+            )
+
+            root._binding=True
+
+            try:
+                if (
+                    root._check.get_active()
+                    != selected
+                ):
+                    root._check.set_active(
+                        selected
+                    )
+            finally:
+                root._binding=False
+
+            if selected:
+                root._art_frame.add_css_class(
+                    'selected-art'
+                )
+            else:
+                root._art_frame.remove_css_class(
+                    'selected-art'
+                )
+
+        for game_id,root in list(
+            self.list_action_cells.items()
+        ):
+            if (
+                game_id
+                in self.selected_game_ids
+            ):
+                root.add_css_class(
+                    'selected-actions'
+                )
+            else:
+                root.remove_css_class(
+                    'selected-actions'
+                )
+
+
+    def _update_selection_summary(self):
+        count=len(
+            self.selected_game_ids
+        )
+
+        if hasattr(
+            self,
+            'selected_label'
+        ):
+            self.selected_label.set_text(
+                f'{count} selected'
+                +(
+                    ' · across the whole library'
+                    if count
+                    else ''
+                )
+            )
+
+        if hasattr(
+            self,
+            'install_all'
+        ):
+            self.controls()
+
+
+    def _column_refresh_game(self,game):
+        game_id=game.get(
+            'game'
+        )
+
+        root=self.list_name_cells.get(
+            game_id
+        )
+
+        if root is not None:
+            self._column_bind_name_root(
+                root,
+                game,
+            )
+
+        action_root=self.list_action_cells.get(
+            game_id
+        )
+
+        if action_root is not None:
+            self._column_bind_actions_root(
+                action_root,
+                game,
+            )
+
+
     def view_changed(self,toggle,key):
         if (
             not toggle.get_active()
@@ -4208,7 +6735,54 @@ class Window(Adw.ApplicationWindow):
                         'blocked'
                     )
                 )
-        for i,b in enumerate(self.action_buttons):b.set_sensitive(enabled and (compatible or i in (2,3)) and any(v['check'].get_active() for v in self.cards.values()))
+        for root in list(
+            getattr(
+                self,
+                'list_action_cells',
+                {},
+            ).values()
+        ):
+            game=getattr(
+                root,
+                '_game',
+                None,
+            )
+
+            if game is None:
+                continue
+
+            root._primary.set_sensitive(
+                enabled
+                and compatible
+                and not bool(
+                    game.get(
+                        'blocked'
+                    )
+                )
+            )
+
+            root._more.set_sensitive(
+                enabled
+            )
+
+        selected_any=bool(
+            self.selected_game_ids
+        )
+
+        for i,b in enumerate(
+            self.action_buttons
+        ):
+            b.set_sensitive(
+                enabled
+                and (
+                    compatible
+                    or i in (
+                        2,
+                        3,
+                    )
+                )
+                and selected_any
+            )
         self.refresh_action.set_enabled(
             enabled
         )
@@ -4232,8 +6806,52 @@ class Window(Adw.ApplicationWindow):
                     self.job_bar.set_fraction(event['fraction'])
                     self.job_counter.set_text(str(event['current'])+' of '+str(event['total'])+' games')
         elif event['kind']=='art':
-            card=self.cards.get(event['game'])
-            if card:card['data'].update(event['data']);self.paint_card(card)
+            game=next(
+                (
+                    candidate
+                    for candidate in self.games
+                    if candidate.get(
+                        'game'
+                    )==event[
+                        'game'
+                    ]
+                ),
+                None,
+            )
+
+            if game is not None:
+                game.update(
+                    event[
+                        'data'
+                    ]
+                )
+
+            card=self.cards.get(
+                event['game']
+            )
+
+            if card:
+                card[
+                    'data'
+                ].update(
+                    event[
+                        'data'
+                    ]
+                )
+                self.paint_card(
+                    card
+                )
+
+            if (
+                game is not None
+                and self.settings.get(
+                    'library_view',
+                    'posters',
+                )=='list'
+            ):
+                self._column_refresh_game(
+                    game
+                )
             if getattr(self,'detail_game',None)==event['game'] and self.dialog==getattr(self,'detail_dialog',None) and event['data'].get('hero'):
                 try:self.detail_banner.set_paintable(Gdk.Texture.new_from_filename(event['data']['hero']))
                 except Exception:pass
@@ -4847,32 +7465,97 @@ class Window(Adw.ApplicationWindow):
             dialog.destroy()
         d.connect('response',selected);d.show()
     def show_games(self,games,art=True):
-        selected={k for k,v in self.cards.items() if v['check'].get_active()}
-        previous={g['game']:g for g in self.games}
-        clear(self.flow)
+        # Capture gallery checkbox state before replacing widgets.
+        for game_id,entry in self.cards.items():
+            check=entry.get(
+                'check'
+            )
+
+            if (
+                check is not None
+                and check.get_active()
+            ):
+                self.selected_game_ids.add(
+                    game_id
+                )
+
+        previous={
+            g['game']:g
+            for g in self.games
+        }
+
+        clear(
+            self.flow
+        )
+
         self.ghost_slots=[]
         self.games=games
         self.cards={}
-        view=self.settings.get('library_view','posters');self.flow.set_max_children_per_line(1 if view=='list' else 12);self.flow.set_min_children_per_line(1);self.flow.set_homogeneous(view!='list')
 
-        if hasattr(
-            self,
-            'library_list_header',
-        ):
-            self.library_list_header.set_visible(
-                view=='list'
-            )
+        valid_ids={
+            g['game']
+            for g in games
+        }
 
-        media=library_media.LibraryMedia(self.service.config,{**self.settings,'online_art':False})
+        self.selected_game_ids.intersection_update(
+            valid_ids
+        )
+
+        view=self.settings.get(
+            'library_view',
+            'posters',
+        )
+
+        self.library_stack.set_visible_child_name(
+            'list'
+            if view=='list'
+            else 'gallery'
+        )
+
+        self.flow.set_max_children_per_line(
+            12
+        )
+        self.flow.set_min_children_per_line(
+            1
+        )
+        self.flow.set_homogeneous(
+            True
+        )
+
+        media=library_media.LibraryMedia(
+            self.service.config,
+            {
+                **self.settings,
+                'online_art':False,
+            },
+        )
+
         for game in games:
-            for key in ('poster','hero','capsule','art_credit','art_link','hero_credit','hero_link','accent_class'):
-                if key in previous.get(game['game'],{}):game.setdefault(key,previous[game['game']][key])
+            for key in (
+                'poster',
+                'hero',
+                'capsule',
+                'art_credit',
+                'art_link',
+                'hero_credit',
+                'hero_link',
+                'accent_class',
+            ):
+                if (
+                    key
+                    in previous.get(
+                        game['game'],
+                        {},
+                    )
+                ):
+                    game.setdefault(
+                        key,
+                        previous[
+                            game['game']
+                        ][key],
+                    )
+
             if self.options.demo:
-                # Demo stays network-free and write-free, but may use
-                # real artwork already present in the local Steam cache.
-                #
-                # This is especially important for Wide Capsule testing:
-                # poster and capsule remain separate assets.
                 try:
                     local_art=media.steam_art(
                         game
@@ -4885,20 +7568,59 @@ class Window(Adw.ApplicationWindow):
                                 art_key
                             )
                         ):
-                            game[art_key]=art_value
+                            game[
+                                art_key
+                            ]=art_value
                 except Exception:
                     pass
+
             else:
                 game.update(
                     media.enrich(
                         game
                     )
                 )
-            game['test_record']=game_notes.load(self.service.config,game['game']) if not self.options.demo else game.get('test_record',{'status':'Untested','notes':''})
-            self.make_card(game)
-            if game['game'] in selected:self.cards[game['game']]['check'].set_active(True)
 
-        if view!='list':
+            game[
+                'test_record'
+            ]=(
+                game_notes.load(
+                    self.service.config,
+                    game['game'],
+                )
+                if not self.options.demo
+                else game.get(
+                    'test_record',
+                    {
+                        'status':'Untested',
+                        'notes':'',
+                    },
+                )
+            )
+
+        if view=='list':
+            self._column_reload_store()
+
+        else:
+            for game in games:
+                self.make_card(
+                    game
+                )
+
+                entry=self.cards[
+                    game['game']
+                ]
+
+                if (
+                    game['game']
+                    in self.selected_game_ids
+                ):
+                    entry[
+                        'check'
+                    ].set_active(
+                        True
+                    )
+
             self.resize_library_art(
                 self.settings.get(
                     'art_scale',
@@ -4906,10 +7628,42 @@ class Window(Adw.ApplicationWindow):
                 )
             )
 
-        count=sum(g.get('installed',False) for g in games);libs=len(set(g.get('library','') for g in games))
-        self.stats.set_text(f'{len(games)} games · {libs} locations · {count} OptiScaler installs detected')
+        count=sum(
+            g.get(
+                'installed',
+                False,
+            )
+            for g in games
+        )
+
+        libs=len(
+            set(
+                g.get(
+                    'library',
+                    '',
+                )
+                for g in games
+            )
+        )
+
+        self.stats.set_text(
+            f'{len(games)} games · '
+            f'{libs} locations · '
+            f'{count} OptiScaler installs detected'
+        )
+
         self.filter_games()
-        if art and self.settings['online_art'] and games:self.fetch_media()
+
+        if (
+            art
+            and self.settings[
+                'online_art'
+            ]
+            and games
+        ):
+            self.fetch_media()
+
+
     def library_card_geometry(
         self,
         value=None,
@@ -5259,15 +8013,9 @@ class Window(Adw.ApplicationWindow):
                 meta.set_single_line_mode(
                     True
                 )
-                meta.set_width_chars(
-                    1
-                )
-                meta.set_max_width_chars(
-                    1
-                )
-                meta.set_ellipsize(
-                    Pango.EllipsizeMode.END
-                )
+                meta.set_width_chars(-1)
+                meta.set_max_width_chars(-1)
+                meta.set_ellipsize(Pango.EllipsizeMode.NONE)
                 meta.set_hexpand(
                     True
                 )
@@ -5429,499 +8177,8 @@ class Window(Adw.ApplicationWindow):
             view,
         )
 
-        if view=='list':
-            row=Gtk.Grid(
-                column_spacing=12,
-                row_spacing=0,
-                hexpand=True,
-            )
-            row.add_css_class(
-                'game-card'
-            )
-            row.add_css_class(
-                'library-list-row'
-            )
-            row.set_size_request(
-                -1,
-                72,
-            )
-
-            game_cell=Gtk.Box(
-                spacing=10,
-                hexpand=False,
-            )
-            game_cell.add_css_class(
-                'library-list-game'
-            )
-            game_cell.set_size_request(
-                320,
-                -1,
-            )
-
-            thumb_width=52
-            thumb_height=58
-
-            overlay=Gtk.Overlay(
-                width_request=thumb_width,
-                height_request=thumb_height,
-                valign=Gtk.Align.CENTER,
-            )
-            overlay.add_css_class(
-                'library-list-thumb'
-            )
-
-            pic=CoverPicture(
-                content_fit=Gtk.ContentFit.COVER,
-                can_shrink=True,
-            )
-            pic.add_css_class(
-                'poster'
-            )
-            pic.cover_width=thumb_width
-            pic.cover_ratio=(
-                thumb_width/thumb_height
-            )
-            pic.set_size_request(
-                thumb_width,
-                thumb_height,
-            )
-
-            click=Gtk.Button(
-                child=pic
-            )
-            click.add_css_class(
-                'poster-button'
-            )
-            click.set_size_request(
-                thumb_width,
-                thumb_height,
-            )
-            click.connect(
-                'clicked',
-                lambda *_:self.details(game),
-            )
-            overlay.set_child(
-                click
-            )
-
-            fallback=label(
-                game['name'],
-                'poster-fallback',
-            )
-            fallback.set_halign(
-                Gtk.Align.CENTER
-            )
-            fallback.set_valign(
-                Gtk.Align.CENTER
-            )
-            fallback.set_ellipsize(
-                Pango.EllipsizeMode.END
-            )
-            fallback.set_width_chars(
-                1
-            )
-            fallback.set_max_width_chars(
-                1
-            )
-            overlay.add_overlay(
-                fallback
-            )
-            overlay.set_measure_overlay(
-                fallback,
-                False,
-            )
-
-            check=Gtk.CheckButton(
-                halign=Gtk.Align.END,
-                valign=Gtk.Align.START,
-            )
-            margins(
-                check,
-                4,
-            )
-            check.set_tooltip_text(
-                'Select '+game['name']
-            )
-            check.connect(
-                'toggled',
-                lambda *_:self.selection_changed(),
-            )
-            overlay.add_overlay(
-                check
-            )
-            overlay.set_measure_overlay(
-                check,
-                False,
-            )
-
-            game_text=Gtk.Box(
-                orientation=Gtk.Orientation.VERTICAL,
-                spacing=2,
-                hexpand=True,
-                valign=Gtk.Align.CENTER,
-            )
-
-            title=label(
-                game['name'],
-                'card-title',
-            )
-            title.add_css_class(
-                'library-list-title'
-            )
-            title.set_single_line_mode(
-                True
-            )
-            title.set_ellipsize(
-                Pango.EllipsizeMode.END
-            )
-            title.set_width_chars(
-                1
-            )
-            title.set_max_width_chars(
-                1
-            )
-            title.set_hexpand(
-                True
-            )
-            game_text.append(
-                title
-            )
-
-            test_status=game.get(
-                'test_record',
-                {},
-            ).get(
-                'status',
-                'Untested',
-            )
-            meta=label(
-                str(game.get('appid') or 'Detected game'),
-                'card-meta',
-            )
-            meta.add_css_class(
-                'library-list-meta'
-            )
-            meta.set_single_line_mode(
-                True
-            )
-            meta.set_ellipsize(
-                Pango.EllipsizeMode.END
-            )
-            game_text.append(
-                meta
-            )
-
-            game_cell.append(
-                overlay
-            )
-            game_cell.append(
-                game_text
-            )
-            row.attach(
-                game_cell,
-                0,
-                0,
-                1,
-                1,
-            )
-
-            game_path=game.get(
-                'game',
-                '',
-            )
-            library_path=game.get(
-                'library',
-                '',
-            )
-            location_text=game_path
-            if game_path and library_path:
-                try:
-                    location_text=str(
-                        Path(game_path).relative_to(
-                            Path(library_path)
-                        )
-                    )
-                except ValueError:
-                    pass
-
-            location_cell=Gtk.Box(
-                orientation=Gtk.Orientation.VERTICAL,
-                spacing=2,
-                width_request=180,
-                hexpand=True,
-                valign=Gtk.Align.CENTER,
-            )
-            location_source=label(
-                game.get('source','Unknown'),
-                'library-list-status-text',
-            )
-            location_source.set_halign(
-                Gtk.Align.START
-            )
-            location=label(
-                location_text,
-                'library-list-location',
-            )
-            location.set_tooltip_text(
-                game_path
-            )
-            location.set_halign(
-                Gtk.Align.START
-            )
-            location.set_hexpand(
-                True
-            )
-            location.set_single_line_mode(
-                True
-            )
-            location.set_ellipsize(
-                Pango.EllipsizeMode.MIDDLE
-            )
-            location_cell.append(
-                location_source
-            )
-            location_cell.append(
-                location
-            )
-            row.attach(
-                location_cell,
-                1,
-                0,
-                1,
-                1,
-            )
-
-            if game.get(
-                'blocked'
-            ):
-                status_text='Unavailable'
-                status_class='unavailable'
-            elif game.get(
-                'installed'
-            ):
-                status_text='Installed'
-                status_class='installed'
-            else:
-                status_text='Available'
-                status_class='available'
-
-            status_box=Gtk.Box(
-                orientation=Gtk.Orientation.VERTICAL,
-                spacing=2,
-                width_request=115,
-                valign=Gtk.Align.CENTER,
-            )
-            status_primary=Gtk.Box(
-                spacing=8,
-            )
-            status_dot=label(
-                '●',
-                'library-list-status-dot',
-            )
-            status_dot.add_css_class(
-                status_class
-            )
-            status_primary.append(
-                status_dot
-            )
-            status_label=label(
-                status_text,
-                'library-list-status-text',
-            )
-            status_primary.append(
-                status_label
-            )
-            status_box.append(
-                status_primary
-            )
-            test_label=label(
-                test_status,
-                'library-list-location',
-            )
-            test_label.set_halign(
-                Gtk.Align.START
-            )
-            status_box.append(
-                test_label
-            )
-            row.attach(
-                status_box,
-                2,
-                0,
-                1,
-                1,
-            )
-
-            enhancements=Gtk.Box(
-                spacing=8,
-                width_request=145,
-                valign=Gtk.Align.CENTER,
-            )
-            nr_chip=label(
-                f"NR {game.get('nr_strength') if game.get('nr_strength') is not None else '—'}",
-                'library-list-chip',
-            )
-            mfg_chip=label(
-                f"MFG {game.get('mfg_multiplier') if game.get('mfg_multiplier') is not None else '—'}×",
-                'library-list-chip',
-            )
-
-            profile=game.get(
-                'profile',
-                '',
-            )
-
-            if profile in (
-                'NR Only',
-                'NR + MFG',
-            ):
-                nr_chip.add_css_class(
-                    'active'
-                )
-
-            if profile in (
-                'MFG Only',
-                'NR + MFG',
-            ):
-                mfg_chip.add_css_class(
-                    'active'
-                )
-
-            enhancements.append(
-                nr_chip
-            )
-            enhancements.append(
-                mfg_chip
-            )
-            row.attach(
-                enhancements,
-                3,
-                0,
-                1,
-                1,
-            )
-
-            actions=Gtk.Box(
-                spacing=8,
-                width_request=160,
-                halign=Gtk.Align.END,
-                valign=Gtk.Align.CENTER,
-            )
-            actions.add_css_class(
-                'library-list-actions'
-            )
-
-            if game.get(
-                'blocked'
-            ):
-                operation='install'
-                action_title='Unavailable'
-                action_css=None
-            elif game.get(
-                'installed'
-            ):
-                operation='repair'
-                action_title='Repair'
-                action_css=None
-            else:
-                operation='install'
-                action_title='Apply'
-                action_css='suggested-action'
-
-            primary=button(
-                action_title,
-                lambda *_:self.launch_action(
-                    operation,
-                    targets=[game],
-                ),
-                action_css,
-            )
-            primary.set_size_request(
-                100,
-                -1,
-            )
-            primary.set_hexpand(
-                True
-            )
-            primary.set_sensitive(
-                not bool(
-                    game.get(
-                        'blocked'
-                    )
-                )
-            )
-
-            more=Gtk.Button(
-                icon_name='view-more-symbolic',
-            )
-            more.add_css_class(
-                'flat'
-            )
-            more.set_tooltip_text(
-                'Open game details'
-            )
-            more.connect(
-                'clicked',
-                lambda *_:self.details(game),
-            )
-            more.set_size_request(
-                42,
-                -1,
-            )
-
-            actions.append(
-                primary
-            )
-            actions.append(
-                more
-            )
-            row.attach(
-                actions,
-                4,
-                0,
-                1,
-                1,
-            )
-
-            self.flow.insert(
-                row,
-                -1,
-            )
-            wrapper=row.get_parent()
-            wrapper.set_halign(
-                Gtk.Align.FILL
-            )
-            wrapper.set_hexpand(
-                True
-            )
-
-            entry={
-                'reset':more,
-                'primary':primary,
-                'widget':row,
-                'wrapper':wrapper,
-                'overlay':overlay,
-                'click':click,
-                'text':game_text,
-                'title':title,
-                'badge':status_box,
-                'check':check,
-                'picture':pic,
-                'fallback':fallback,
-                'meta':meta,
-                'data':game,
-                'size':(
-                    thumb_width,
-                    thumb_height,
-                ),
-            }
-            self.cards[
-                game['game']
-            ]=entry
-            self.paint_card(
-                entry
-            )
-            return
+        # List mode is rendered by Gtk.ColumnView and never reaches
+        # this FlowBox card builder.
 
         card=FixedLibraryCard(
             orientation=Gtk.Orientation.VERTICAL,
@@ -6121,14 +8378,22 @@ class Window(Adw.ApplicationWindow):
             title
         )
 
-        meta=label(
-            game.get(
-                'source',
-                '',
-            ),
-            'card-meta',
+        meta_row=Gtk.Box(
+            spacing=4,
+            halign=Gtk.Align.START,
+            valign=Gtk.Align.CENTER,
+        )
+        meta_row.add_css_class(
+            'library-meta-row'
         )
 
+        meta=label(
+            '',
+            'library-meta-pill',
+        )
+        meta.add_css_class(
+            'library-source-pill'
+        )
         meta.set_wrap(
             False
         )
@@ -6138,25 +8403,71 @@ class Window(Adw.ApplicationWindow):
         meta.set_single_line_mode(
             True
         )
+        meta.set_ellipsize(
+            Pango.EllipsizeMode.NONE
+        )
         meta.set_width_chars(
-            1
+            -1
         )
         meta.set_max_width_chars(
-            1
-        )
-        meta.set_ellipsize(
-            Pango.EllipsizeMode.END
-        )
-        meta.set_size_request(
-            -1,
-            13,
+            -1
         )
         meta.set_hexpand(
+            False
+        )
+
+        meta.set_halign(
+            Gtk.Align.START
+        )
+        meta.set_xalign(
+            0.5
+        )
+
+        test_meta=label(
+            '',
+            'library-meta-pill',
+        )
+        test_meta.add_css_class(
+            'library-test-pill'
+        )
+        test_meta.set_wrap(
+            False
+        )
+        test_meta.set_lines(
+            1
+        )
+        test_meta.set_single_line_mode(
             True
+        )
+        test_meta.set_ellipsize(
+            Pango.EllipsizeMode.NONE
+        )
+        test_meta.set_width_chars(
+            -1
+        )
+        test_meta.set_max_width_chars(
+            -1
+        )
+        test_meta.set_hexpand(
+            False
+        )
+
+        test_meta.set_halign(
+            Gtk.Align.START
+        )
+        test_meta.set_xalign(
+            0.5
+        )
+
+        meta_row.append(
+            meta
+        )
+        meta_row.append(
+            test_meta
         )
 
         text.append(
-            meta
+            meta_row
         )
 
         reset=button('Details',lambda *_:self.details(game));reset.add_css_class('game-details')
@@ -6198,16 +8509,32 @@ class Window(Adw.ApplicationWindow):
             'picture':pic,
             'fallback':fallback,
             'meta':meta,
+            'test_meta':test_meta,
+            'meta_row':meta_row,
             'data':game,
             'size':(width,height),
         };self.cards[game['game']]=entry;self.paint_card(entry)
     def paint_card(self,entry):
         game=entry['data']
 
-        if self.settings.get('library_view')=='capsules':
-            path=game.get('capsule')
+        view=self.settings.get(
+            'library_view',
+            'posters',
+        )
+
+        if view in (
+            'capsules',
+            'list',
+        ):
+            path=(
+                game.get('capsule')
+                or game.get('poster')
+            )
         else:
-            path=game.get('poster')
+            path=(
+                game.get('poster')
+                or game.get('capsule')
+            )
         if path:
             try:
                 texture=Gdk.Texture.new_from_filename(path)
@@ -6219,27 +8546,183 @@ class Window(Adw.ApplicationWindow):
             except Exception:entry['fallback'].set_visible(True)
         else:
             entry['picture'].set_paintable(None);entry['fallback'].set_visible(True)
-        entry['meta'].set_text(game.get('source','')+' · '+game.get('test_record',{}).get('status','Untested'))
+        entry['meta'].set_text(
+            str(
+                game.get(
+                    'source',
+                    '',
+                )
+            ).upper()
+        )
+
+        test_meta=entry.get(
+            'test_meta'
+        )
+
+        if test_meta is not None:
+            test_status=str(
+                game.get(
+                    'test_record',
+                    {},
+                ).get(
+                    'status',
+                    'Untested',
+                )
+            )
+
+            test_meta.set_text(
+                test_status.upper()
+            )
+
+            for css_class in (
+                'test-untested',
+                'test-tested',
+            ):
+                test_meta.remove_css_class(
+                    css_class
+                )
+
+            test_meta.add_css_class(
+                'test-untested'
+                if test_status.casefold()=='untested'
+                else 'test-tested'
+            )
         entry['widget'].set_tooltip_text(game['name']+'\n'+(game.get('art_credit') or 'Artwork pending'))
     def filter_games(self):
-        if not hasattr(self,'search'):return
+        if not hasattr(
+            self,
+            'search'
+        ):
+            return
+
+        if self.settings.get(
+            'library_view',
+            'posters',
+        )=='list':
+            self.list_filter.changed(
+                Gtk.FilterChange.DIFFERENT
+            )
+            self._column_sync_selection_widgets()
+            self._update_selection_summary()
+            return
+
         text=self.search.get_text().casefold()
-        for e in self.cards.values():
-            g=e['data'];visible=text in g['name'].casefold() and (self.filter=='all' or self.filter=='installed' and g.get('installed') or self.filter=='available' and not g.get('blocked'))
-            e['wrapper'].set_visible(bool(visible))
+
+        for entry in self.cards.values():
+            game=entry['data']
+
+            visible=(
+                text
+                in game[
+                    'name'
+                ].casefold()
+                and (
+                    self.filter=='all'
+                    or (
+                        self.filter=='installed'
+                        and game.get(
+                            'installed'
+                        )
+                    )
+                    or (
+                        self.filter=='available'
+                        and not game.get(
+                            'blocked'
+                        )
+                    )
+                )
+            )
+
+            entry[
+                'wrapper'
+            ].set_visible(
+                bool(
+                    visible
+                )
+            )
 
         self.update_library_spacing()
         self.selection_changed()
+
+
     def select_all(self,active):
-        # Select ALL always means the unified library, even when search/filter is active.
-        for e in self.cards.values():e['check'].set_active(active)
-    def selection_changed(self):
-        count=0
-        for e in self.cards.values():
-            if e['check'].get_active():count+=1;e['widget'].add_css_class('selected')
-            else:e['widget'].remove_css_class('selected')
-        if hasattr(self,'selected_label'):self.selected_label.set_text(f'{count} selected'+(' · across the whole library' if count else ''))
-        if hasattr(self,'install_all'):self.controls()
+        # Select All continues to mean the complete unified Library,
+        # regardless of filtering, sorting or current view.
+        if active:
+            self.selected_game_ids={
+                game['game']
+                for game in self.games
+            }
+        else:
+            self.selected_game_ids.clear()
+
+        self._selection_syncing=True
+
+        try:
+            for game_id,entry in self.cards.items():
+                check=entry.get(
+                    'check'
+                )
+
+                if check is not None:
+                    check.set_active(
+                        game_id
+                        in self.selected_game_ids
+                    )
+        finally:
+            self._selection_syncing=False
+
+        self._column_sync_selection_widgets()
+        self._update_selection_summary()
+
+
+    def selection_changed(self,*_):
+        if getattr(
+            self,
+            '_selection_syncing',
+            False,
+        ):
+            return
+
+        if self.settings.get(
+            'library_view',
+            'posters',
+        )!='list':
+            self.selected_game_ids={
+                game_id
+                for game_id,entry in self.cards.items()
+                if (
+                    entry.get(
+                        'check'
+                    )
+                    is not None
+                    and entry[
+                        'check'
+                    ].get_active()
+                )
+            }
+
+            for game_id,entry in self.cards.items():
+                if (
+                    game_id
+                    in self.selected_game_ids
+                ):
+                    entry[
+                        'widget'
+                    ].add_css_class(
+                        'selected'
+                    )
+                else:
+                    entry[
+                        'widget'
+                    ].remove_css_class(
+                        'selected'
+                    )
+
+        self._column_sync_selection_widgets()
+        self._update_selection_summary()
+
+
     def fetch_media(self,refresh=False):
         if getattr(self,'art_loading',False):self.art_pending=True;return
         self.art_loading=True;self.cancel_art.clear();games=list(self.games);settings=dict(self.settings)
@@ -7153,6 +9636,14 @@ class Window(Adw.ApplicationWindow):
             if entry:
                 self.paint_card(entry)
 
+            if hasattr(
+                self,
+                '_column_refresh_game'
+            ):
+                self._column_refresh_game(
+                    game
+                )
+
         def pick_accent_from_poster(*_):
             source=(
                 game.get('poster')
@@ -7170,21 +9661,35 @@ class Window(Adw.ApplicationWindow):
                 pix=GdkPixbuf.Pixbuf.new_from_file(
                     str(source)
                 )
+
                 texture=Gdk.Texture.new_from_filename(
                     str(source)
                 )
+
             except Exception as ex:
                 self.toast(
                     'Could not open this game’s artwork.'
                 )
-                self.log.append(str(ex))
+                self.log.append(
+                    str(ex)
+                )
                 return
+
+            old_picker=getattr(
+                self,
+                'accent_picker_window',
+                None,
+            )
+
+            if old_picker is not None:
+                try:
+                    old_picker.close()
+                except Exception:
+                    pass
 
             sw=max(1,pix.get_width())
             sh=max(1,pix.get_height())
 
-            # Large enough to pick accurately without turning this into
-            # another full-screen artwork viewer.
             max_w=380
             max_h=560
 
@@ -7197,33 +9702,142 @@ class Window(Adw.ApplicationWindow):
                 220,
                 round(sw*scale),
             )
+
             display_h=max(
                 300,
                 round(sh*scale),
             )
 
-            picker=Adw.Dialog(
+            # Real top-level modal window owned by Game Details.
+            # It stays above Game Details and is movable by its HeaderBar.
+            picker=Adw.Window(
+                application=self.get_application(),
+                transient_for=d,
+                modal=True,
                 title='Pick Accent Color',
-                content_width=display_w+48,
-                content_height=display_h+118,
+                default_width=display_w+52,
+                default_height=display_h+190,
+                resizable=False,
+            )
+
+            picker.set_destroy_with_parent(
+                True
+            )
+
+            self.accent_picker_window=picker
+
+            root=Gtk.Box(
+                orientation=Gtk.Orientation.VERTICAL,
+            )
+
+            picker.set_content(
+                root
+            )
+
+            header=Adw.HeaderBar()
+
+            header.set_title_widget(
+                Adw.WindowTitle(
+                    title='Pick Accent Color',
+                )
+            )
+
+            root.append(
+                header
             )
 
             shell=Gtk.Box(
                 orientation=Gtk.Orientation.VERTICAL,
                 spacing=12,
             )
-            margins(shell,18)
-            picker.set_child(shell)
+
+            margins(
+                shell,
+                18,
+            )
+
+            root.append(
+                shell
+            )
 
             instructions=label(
-                'Click anywhere on the poster to use that pixel as the game accent.',
+                'Choose a pixel to preview it as this game’s accent.',
                 'dim-label',
             )
+
             instructions.set_halign(
                 Gtk.Align.CENTER
             )
-            instructions.set_xalign(0.5)
-            shell.append(instructions)
+
+            instructions.set_xalign(
+                0.5
+            )
+
+            shell.append(
+                instructions
+            )
+
+            current_class=str(
+                game.get(
+                    'accent_class',
+                    '',
+                )
+            )
+
+            initial_color=current_accent
+
+            if (
+                not initial_color
+                and current_class.startswith('art-')
+                and len(current_class)==10
+            ):
+                initial_color=(
+                    '#'
+                    + current_class[4:]
+                )
+
+            if not initial_color:
+                initial_color='#76b900'
+
+            pending={
+                'color':initial_color,
+            }
+
+            preview_label=label(
+                initial_color.upper(),
+                'dim-label',
+            )
+
+            preview_label.set_halign(
+                Gtk.Align.CENTER
+            )
+
+            preview_label.set_xalign(
+                0.5
+            )
+
+            frame=Gtk.Box(
+                halign=Gtk.Align.CENTER,
+                valign=Gtk.Align.CENTER,
+            )
+
+            frame.add_css_class(
+                'accent-picker-art-frame'
+            )
+
+            clip=Gtk.Box()
+
+            clip.add_css_class(
+                'accent-picker-art-clip'
+            )
+
+            clip.set_overflow(
+                Gtk.Overflow.HIDDEN
+            )
+
+            frame.append(
+                clip
+            )
 
             poster=Gtk.Picture(
                 paintable=texture,
@@ -7236,8 +9850,13 @@ class Window(Adw.ApplicationWindow):
             poster.set_halign(
                 Gtk.Align.CENTER
             )
+
             poster.set_valign(
                 Gtk.Align.CENTER
+            )
+
+            clip.append(
+                poster
             )
 
             try:
@@ -7247,15 +9866,56 @@ class Window(Adw.ApplicationWindow):
             except Exception:
                 pass
 
-            shell.append(poster)
+            shell.append(
+                frame
+            )
+
+            shell.append(
+                preview_label
+            )
+
+            preview_provider=Gtk.CssProvider()
+
+            Gtk.StyleContext.add_provider_for_display(
+                Gdk.Display.get_default(),
+                preview_provider,
+                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION+2,
+            )
+
+            def show_preview(color):
+                pending[
+                    'color'
+                ]=color
+
+                preview_label.set_text(
+                    color.upper()
+                )
+
+                preview_provider.load_from_data(
+                    (
+                        '.accent-picker-art-frame { '
+                        f'border-color: {color}; '
+                        '}'
+                    ).encode()
+                )
+
+            show_preview(
+                initial_color
+            )
 
             gesture=Gtk.GestureClick()
 
-            def picked(_gesture,_press,x,y):
+            def picked(
+                _gesture,
+                _press,
+                x,
+                y,
+            ):
                 width=max(
                     1,
                     poster.get_width(),
                 )
+
                 height=max(
                     1,
                     poster.get_height(),
@@ -7281,16 +9941,18 @@ class Window(Adw.ApplicationWindow):
                 stride=pix.get_rowstride()
                 data=pix.get_pixels()
 
-                off=py*stride+px*channels
+                off=(
+                    py*stride
+                    + px*channels
+                )
 
                 r=int(data[off])
                 g=int(data[off+1])
                 b=int(data[off+2])
 
-                color=f'#{r:02x}{g:02x}{b:02x}'
-
-                set_color(color)
-                picker.close()
+                show_preview(
+                    f'#{r:02x}{g:02x}{b:02x}'
+                )
 
             gesture.connect(
                 'released',
@@ -7301,7 +9963,71 @@ class Window(Adw.ApplicationWindow):
                 gesture
             )
 
-            picker.present(self)
+            actions=Gtk.Box(
+                spacing=8,
+                halign=Gtk.Align.END,
+            )
+
+            actions.add_css_class(
+                'accent-picker-actions'
+            )
+
+            shell.append(
+                actions
+            )
+
+            cancel=button(
+                'Cancel',
+                lambda *_:picker.close(),
+            )
+
+            def commit_accent(*_):
+                set_color(
+                    pending['color']
+                )
+                picker.close()
+
+            done=button(
+                'Done',
+                commit_accent,
+                'suggested-action',
+            )
+
+            actions.append(
+                cancel
+            )
+
+            actions.append(
+                done
+            )
+
+            def picker_closed(*_):
+                if (
+                    getattr(
+                        self,
+                        'accent_picker_window',
+                        None,
+                    )
+                    is picker
+                ):
+                    self.accent_picker_window=None
+
+                try:
+                    Gtk.StyleContext.remove_provider_for_display(
+                        Gdk.Display.get_default(),
+                        preview_provider,
+                    )
+                except Exception:
+                    pass
+
+                return False
+
+            picker.connect(
+                'close-request',
+                picker_closed,
+            )
+
+            picker.present()
 
         pick_button=button(
             'Pick from Poster…',
@@ -7460,7 +10186,24 @@ class Window(Adw.ApplicationWindow):
         export=button('Export support ZIP',lambda *_:self.start('Exporting report',lambda:game_notes.export(self.service.config,self.games),lambda p:(self.toast('Saved '+str(p)),Gio.AppInfo.launch_default_for_uri(p.parent.as_uri(),None))),'forge-primary');export.set_sensitive(not self.options.demo);f.append(export)
     def launch_action(self,operation,entire=False,targets=None,visual_settings=None):
         if self.busy and self.task_kind!='art':return
-        rows=targets if targets is not None else list(self.games) if entire else [e['data'] for e in self.cards.values() if e['check'].get_active()]
+        rows=(
+            targets
+            if targets is not None
+            else (
+                list(
+                    self.games
+                )
+                if entire
+                else [
+                    game
+                    for game in self.games
+                    if game.get(
+                        'game'
+                    )
+                    in self.selected_game_ids
+                ]
+            )
+        )
         if entire and operation in ('install','repair'):rows=[g for g in rows if g.get('test_record',{}).get('status')!='Bench']
         if operation=='reset':rows=[g for g in rows if g.get('installed')]
         if not rows:self.toast('No eligible games selected.');return

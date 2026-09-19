@@ -1,141 +1,364 @@
 # rtxForge development notes
 
 <!-- RTXFORGE_CLASSIC_LIBRARY_HANDOFF_START -->
-## 2026-09-18 — Classic Library production handoff
+## 2026-09-19 — Classic Library / ColumnView handoff
 
-This section describes the current **classic / production** Library in
-`gui/rtxforge_gtk.py`.
+This section is the current handoff for the **classic / production**
+Library implemented in:
 
-Do not continue this work in `redesign/`. The redesign remains a separate
-project.
+`gui/rtxforge_gtk.py`
 
-### Final responsive gallery contract
+Do **not** move this work into `redesign/`.
 
-The previously planned fixed-slot gallery is now implemented.
+The redesign remains separate and currently has unrelated local work that must
+not be staged as part of classic maintenance.
+
+### Current state
+
+The classic Library has gone through a substantial responsive-layout and List
+view pass.
+
+The result is materially improved and usable, but the List should **not** be
+treated as visually final yet.
+
+The next agent should continue polishing the existing implementation rather
+than replacing it.
+
+---
+
+### Completed responsive gallery contract
 
 Poster:
 
 - exactly **7 visual slots per row**;
-- card width follows the live Library viewport;
-- Poster artwork source and aspect ratio remain independent from Wide Capsule.
+- card sizing follows the live Library viewport;
+- Poster uses the correct Poster artwork source/aspect ratio.
 
 Wide Capsule:
 
 - exactly **6 visual slots per row**;
-- card width follows the live Library viewport;
-- Wide Capsule continues using its proper capsule artwork source and aspect
-  ratio.
+- card sizing follows the live Library viewport;
+- Wide Capsule uses the correct capsule artwork source/aspect ratio.
 
 Shared behavior:
 
-- there is no user-facing artwork-size slider anymore;
-- window size is the sizing control: gallery cards grow and shrink
-  automatically;
-- widening, maximizing, restoring, and shrinking the window update card
-  geometry live;
-- card count per row never changes merely because additional cards could fit;
-- no enlarged gallery state is allowed to become a new application-window
-  minimum;
-- horizontal viewport authority is the ScrolledWindow adjustment `page_size`;
-- the Library uses `Gtk.PolicyType.EXTERNAL` horizontally so child minimum
-  requests do not ratchet the containing window wider;
-- incomplete rows receive inert ghost slots rather than changing row geometry;
-- real cards and ghost slots share the same slot dimensions;
-- ghost slots remain layout-only and never participate in selection, counts,
-  filters, provider state, actions, or persistence.
+- no manual artwork-size control;
+- window width is the gallery sizing control;
+- cards resize live while widening, shrinking, maximizing, and restoring;
+- the slot count does not change simply because another card could fit;
+- incomplete rows use inert ghost slots;
+- ghost slots are layout-only;
+- horizontal authority comes from the ScrolledWindow adjustment `page_size`;
+- horizontal policy remains `Gtk.PolicyType.EXTERNAL`;
+- `RIGHT_EDGE_SAFETY=32` remains intentional;
+- overlay scrollbar behavior remains intentional.
 
-### Right-edge handling
+These are completed production invariants.
 
-GTK overlay scrolling remains enabled.
+Do not return to variable card counts or a manual artwork-size slider without
+an explicit request.
 
-The gallery reserves its scrollbar/paint allowance internally and includes a
-small explicit far-right clip safety allowance. This avoids the visually
-separate permanent scrollbar gutter that was rejected during testing while
-keeping the final card inside the visible Library edge.
+---
 
-Do not revert the horizontal policy to `NEVER`: that caused large gallery child
-requests to propagate into the top-level minimum width and made the window
-impossible to shrink after resizing at a large width.
+### Gallery title behavior
 
-### Responsive card text
+Poster / Wide Capsule titles:
 
-Poster / Wide Capsule title typography now scales with actual card width.
+- responsive typography;
+- maximum 3 lines;
+- ellipsize only after line 3;
+- tallest-card normalization keeps rows aligned.
 
-Current title scale:
+Current responsive title scale remains approximately:
 
-- large: **15px**
-- medium: **14px**
-- small: **13px**
-- extra-small: **12px**
+- 15px
+- 14px
+- 13px
+- 12px
 
-Game titles:
+Do not regress this while working on List.
 
-- wrap normally;
-- use at most **3 lines**;
-- ellipsize only after the third line;
-- never expand the natural width of the card.
+---
 
-Details buttons also become modestly more compact as card width decreases.
+### Hero / Library header work
 
-The existing tallest-card normalization remains authoritative: after text is
-laid out, every card uses the footer height of the tallest card so rows stay
-visually aligned.
+The classic hero was compacted without replacing its structure.
 
-### Library toolbar polish
+Bulk actions:
 
-- All / Installed / Available use more generous horizontal padding.
-- NR Strength and Sharpening numeric fields have additional left-side text
-  padding.
-- the obsolete manual artwork-size controls were removed from the Library
-  toolbar and Settings.
+- Install All
+- Remove All
+- Reset All
 
-### List view
+sit at the bottom of the hero text area, aligned with the metadata/content
+rather than consuming a separate oversized region.
 
-List remains structured as:
+The sticky-header behavior remains part of the classic implementation.
+
+Do not redesign the hero as part of List cleanup unless specifically asked.
+
+---
+
+### Structured List view
+
+List is now a real `Gtk.ColumnView`.
+
+Current logical columns:
 
 `Game | Location | Status | Enhancements | Actions`
 
-Preserve:
+This replaced the previous hand-built List row/header arrangement.
 
-- artwork and game identity;
-- source/library location and useful path context;
-- install/availability and test state;
-- NR/MFG state;
-- Apply / Repair where applicable;
+The implementation includes:
+
+- `LibraryGameItem`
+- `Gtk.ListStore`
+- filtering/sorting models
+- ColumnView factories
+- List selection synchronization
+- row activation into Game Details
+- artwork-based selection accent
+- action-button state styling
+
+### Column contract
+
+Game:
+
+- remains the first column;
+- owns spare horizontal viewport width;
+- user-resizable;
+- should never collapse to a useless width;
+- contains checkbox, 96x45 artwork, title, and source pill.
+
+Location:
+
+- user-resizable;
+- intended clamp is approximately **160–360px**;
+- remains a single-line path/location field;
+- may ellipsize rather than wrap vertically.
+
+Status:
+
+- natural protected width;
+- not intended to absorb spare viewport width.
+
+Enhancements:
+
+- natural protected width;
+- not intended to absorb spare viewport width.
+
+Actions:
+
+- natural protected width;
+- remains right-aligned;
+- should visually hug the far-right side of the List.
+
+Columns to the right of Game may be reordered.
+
+Game itself must remain first.
+
+---
+
+### List row-height contract
+
+A major bug allowed wrapped titles to make rows absurdly tall.
+
+The current implementation intentionally uses only **two row geometries**:
+
+- normal title row: **52px content geometry**
+- wrapped two-line title row: **78px content geometry**
+
+Wrapped rows are therefore approximately 1.5x the normal row.
+
+Game titles:
+
+- may use up to 2 lines;
+- use `WORD_CHAR` wrapping;
+- ellipsize after the second line;
+- should not create arbitrary row heights.
+
+The current implementation also protects the title from collapsing to a
+one-character natural width.
+
+Do not reintroduce unconstrained title wrapping.
+
+---
+
+### List alignment
+
+The following were already judged correct before this handoff and should be
+preserved:
+
+- vertical centering;
+- column alignment.
+
+Do not disturb those while refining horizontal spacing.
+
+---
+
+### Column controller/header
+
+The old ColumnView controller/header was visually too thick and heavy.
+
+It has been reduced to a compact native sortable/reorderable header with:
+
+- roughly 29px header height;
+- roughly 27px control height;
+- 13px bold labels;
+- subtle background/border treatment;
+- hover and active feedback.
+
+Further visual refinement is allowed, but keep it compact and obviously
+interactive.
+
+---
+
+### List artwork
+
+List artwork remains **96x45 Wide Capsule artwork**.
+
+Current implementation adds clipping/rounding at multiple layers:
+
+- outer artwork frame;
+- overlay;
+- artwork button;
+- picture.
+
+This was specifically added because square corners were leaking through the
+rounded treatment.
+
+The artwork itself should remain compact; do not convert List back to Poster
+art.
+
+Selection accent belongs around the artwork, not around the entire row.
+
+---
+
+### Metadata pills
+
+Game identity uses compact metadata pills.
+
+Source pill:
+
+- STEAM / NON-STEAM;
+- dark grey surface;
+- medium-grey text;
+- must never display as `...`.
+
+Test state:
+
+- UNTESTED uses the lighter treatment;
+- actual tested/result states use the inverse darker treatment;
+- List test state belongs under Status rather than being duplicated inside
+  Game.
+
+Gallery metadata sizing was also normalized so source/test pills do not become
+ellipsis-only labels when cards shrink.
+
+---
+
+### Accent styling
+
+Preserve the current accent semantics:
+
+- selected List artwork gets the accent outline;
+- card/game titles may use the configured accent;
+- checked selection controls use the accent;
+- selected actions may use the accent;
+- normal action buttons remain neutral grey.
+
+The accent picker remains an `Adw.Window` with live preview and explicit
+Cancel / Done behavior.
+
+Do not replace it while doing List cleanup.
+
+---
+
+### Dark / light panel seam
+
+The Library has a dark upper surface and lighter Library surface.
+
+The earlier runtime geometry experiment using
+`balance_library_panel_seam()` was removed.
+
+Current direction is explicit static spacing:
+
+- dark-side bottom spacing: approximately 12px;
+- light-side Library top spacing: approximately 12px.
+
+There should be only one canonical `viewbar.set_margin_top(...)` assignment
+after normalization.
+
+This is closer than the previous state but should still be visually inspected
+by the next agent. The user has **not** declared the List/seam visually final.
+
+Do not restore runtime `compute_bounds()`-style seam measurement.
+
+---
+
+### What is still open
+
+The current state is a handoff baseline, not a declaration that List is
+finished.
+
+The next agent should visually inspect and refine:
+
+- horizontal distribution across the full List width;
+- Game/Location resize behavior at narrow and wide window sizes;
+- Actions staying cleanly at the far-right edge;
+- exact List outer padding;
+- exact controller/header visual weight;
+- final dark/light seam balance;
+- any remaining artwork corner artifacts;
+- normal-vs-wrapped row visual rhythm.
+
+Work **from the current ColumnView implementation**.
+
+Do not throw it away and restart.
+
+---
+
+### Protected classic behavior
+
+While continuing this work, do not casually modify:
+
+- Progress modal;
+- Done modal;
 - Game Details;
-- selection and write safety;
-- right-anchored Actions;
-- existing classic styling.
+- Game Settings;
+- provider/write-safety logic;
+- fixed 7 Poster / 6 Wide Capsule responsive gallery;
+- gallery ghost-slot behavior;
+- current selection/filter behavior;
+- existing NR/MFG functionality.
 
-### Validation
+Progress/Done in particular have significant finished work behind them and are
+not part of this List polish task.
 
-A dedicated `--resize-smoke` path captures six write-disabled states:
+---
 
-1. Poster normal
-2. Poster maximized
-3. Poster restored
-4. Wide Capsule normal
-5. Wide Capsule maximized
-6. Wide Capsule restored
+### Repository hygiene for the next agent
 
-The accepted run verified:
+The local worktree at handoff may still contain unrelated dirty work under:
 
-- Poster: 7 slots throughout;
-- Wide Capsule: 6 slots throughout;
-- card widths increase on maximize and return on restore;
-- the top-level window returns to its original width rather than becoming
-  trapped by enlarged card minimum requests.
+`redesign/`
 
-The final title, right-edge, filter-padding, and numeric-input polish was then
-reviewed in the real write-disabled `--demo` UI.
+It may also contain temporary `rtxforge-*.patch` files from iterative classic
+development.
 
-### Important preservation rule
+Those are **not** part of the production commit unless explicitly requested.
 
-The fixed 7 / 6 responsive gallery is now a **completed production invariant**,
-not future work.
+When committing classic maintenance, stage exact paths instead of using:
 
-Do not return to variable column-count fitting or a manual artwork-size control
-without an explicit new user request.
+`git add -A`
+
+or
+
+`git add .`
+
+GitHub `main` remains the shared source of truth once approved work is pushed.
+
+Do not force-push.
 <!-- RTXFORGE_CLASSIC_LIBRARY_HANDOFF_END -->
 
 

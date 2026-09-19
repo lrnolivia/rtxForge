@@ -499,3 +499,31 @@ Do not start another broad redesign.
 Do not paper over conflicts with increasingly specific CSS.
 
 Find the competing rules first.
+
+## 2026-09-19 — Classic UI CSS dedupe
+
+A focused cleanup was completed in `gui/rtxforge_gtk.py` after auditing the classic GTK/libadwaita stylesheet for duplicate and competing rules.
+
+### Completed
+
+- Removed obsolete / duplicate legacy List-view CSS that was competing with the current `Gtk.ColumnView` implementation.
+- Consolidated duplicate Library pill styling.
+- Separated Library status styling that had been unnecessarily coupled.
+- Preserved the current Poster, Wide Capsule, and List layouts.
+- Preserved current alternating Library surfaces and hover behavior.
+- Preserved the current responsive Library sizing behavior.
+- No redesign-lab changes were part of this cleanup.
+
+### Validation
+
+The resulting classic UI was manually checked with the live smoke and no visible regression was observed.
+
+Per user direction, no additional automated tests, smoke tests, unit tests, or syntax-test suite were run before this commit.
+
+### Next worker
+
+Continue auditing `gui/rtxforge_gtk.py` for stale, duplicate, overly broad, or competing CSS selectors.
+
+When possible, consolidate the active selector instead of adding another late override.
+
+Treat the current visual layout as the baseline. Do not alter unrelated Library layout, resizing behavior, card geometry, or the redesign lab while doing CSS cleanup unless explicitly requested.

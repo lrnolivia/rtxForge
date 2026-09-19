@@ -1358,10 +1358,18 @@ button.game-detail-close.light:hover {
     padding: 3px 8px;
 }
 
-/* Classic Library List view keeps the app's existing surfaces/colors while
- * using a compact table-like information hierarchy. */
+/* Legacy Library List helpers.
+ *
+ * Consolidated from the original List rules + RTXFORGE_LIST_COMPACT_V3.
+ * Keep one source of truth for each selector.
+ *
+ * Gtk.ColumnView still reuses several library-list-* utility classes,
+ * so these are intentionally retained rather than wholesale deleted.
+ */
+
 .library-list-header {
     margin: 0 16px 6px;
+    padding: 0 10px 6px;
 }
 
 .library-list-header-label {
@@ -1371,23 +1379,21 @@ button.game-detail-close.light:hover {
 }
 
 .library-list-row {
-    min-height: 58px;
+    min-height: 0;
+    padding: 5px 10px;
 }
 
-/* Selection belongs to the game artwork in List view, not the whole row. */
 .library-list-row.selected {
     border-color: transparent;
     box-shadow: none;
 }
 
 .library-list-game {
-    padding: 3px 8px;
+    padding: 0;
 }
 
 .library-list-thumb {
-    margin-top: 3px;
-    margin-bottom: 3px;
-
+    margin: 0;
     border: 2px solid transparent;
     border-radius: 10px;
 }
@@ -1413,17 +1419,17 @@ button.game-detail-close.light:hover {
 
 .library-list-meta,
 .library-list-location {
-    font-size: 11px;
+    font-size: 10px;
     opacity: 0.72;
 }
 
 .library-list-status-text {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
 }
 
 .library-list-actions {
-    padding-right: 2px;
+    padding: 0;
 }
 
 .library-list-status-dot {
@@ -1443,11 +1449,13 @@ button.game-detail-close.light:hover {
 }
 
 .library-list-chip {
-    padding: 4px 8px;
+    padding: 3px 6px;
     border-radius: 7px;
+
     background: alpha(@window_fg_color,0.08);
     border: 1px solid alpha(@window_fg_color,0.07);
-    font-size: 11px;
+
+    font-size: 10px;
     font-weight: 700;
 }
 
@@ -1460,6 +1468,7 @@ button.game-detail-close.light:hover {
 .library-list-actions button {
     min-height: 30px;
 }
+
 
 /* Library card actions are neutral until selected. */
 .game-card .game-details,
@@ -1489,65 +1498,13 @@ button.game-detail-close.light:hover {
     color: #202024;
 }
 
-/* List row never owns accent selection. */
+
+/* Legacy List row never owns accent selection. */
 .game-card.library-list-row.selected,
 .game-card.library-list-row:hover {
     border-color: transparent;
     box-shadow: none;
 }
-
-/* RTXFORGE_LIST_COMPACT_V3
- *
- * The row owns all outer padding. Interior game identity uses a simple
- * 10px rhythm: checkbox -> artwork -> title.
- */
-.library-list-row {
-    min-height: 0;
-    padding: 5px 10px;
-}
-
-.library-list-game {
-    padding: 0;
-}
-
-.library-list-thumb {
-    margin: 0;
-    border: 2px solid transparent;
-    border-radius: 10px;
-}
-
-.library-list-title {
-    font-size: 13px;
-    font-weight: 700;
-}
-
-.library-list-meta,
-.library-list-location {
-    font-size: 10px;
-}
-
-.library-list-status-text {
-    font-size: 11px;
-}
-
-.library-list-chip {
-    padding: 3px 6px;
-    font-size: 10px;
-}
-
-.library-list-actions {
-    padding: 0;
-}
-
-.library-list-actions button {
-    min-height: 30px;
-}
-
-/* Match row content edges exactly so header columns line up below it. */
-.library-list-header {
-    padding: 0 10px 6px;
-}
-
 
 /* ==========================================================
  * STRUCTURED GTK COLUMN VIEW
@@ -1710,7 +1667,11 @@ columnview.library-column-view listview row:nth-child(even):hover {
 }
 
 
-/* RTXFORGE_LIBRARY_META_PILLS */
+/* RTXFORGE_LIBRARY_META_PILLS
+ *
+ * One canonical definition.
+ * Geometry is owned by LibraryPill; CSS owns visual treatment.
+ */
 
 .library-meta-row {
     min-height: 16px;
@@ -1722,29 +1683,17 @@ columnview.library-column-view listview row:nth-child(even):hover {
 
 .library-meta-pill {
     min-width: 0;
-    min-height: 14px;
-
-    padding: 1px 5px;
-
-    border: 1px solid alpha(@window_fg_color,0.13);
-    border-radius: 999px;
-
-    font-size: 8px;
-    font-weight: 700;
-    letter-spacing: 0.35px;
-}
-
-
-/* FINAL FROZEN LIBRARY PILL GEOMETRY */
-
-.library-meta-pill {
-    min-width: 0;
     min-height: 0;
 
     padding: 0;
     margin: 0;
 
+    border: 1px solid alpha(@window_fg_color,0.13);
+    border-radius: 999px;
+
     font-size: 7px;
+    font-weight: 700;
+    letter-spacing: 0.35px;
 }
 
 .library-pill-icon {
@@ -1772,7 +1721,6 @@ columnview.library-column-view listview row:nth-child(even):hover {
 .library-test-pill.test-tested .library-pill-icon {
     color: #76b900;
 }
-
 
 /* STEAM / NON-STEAM */
 .library-source-pill {
@@ -1807,12 +1755,12 @@ columnview.library-column-view listview row:nth-child(even):hover {
 
 
 /* Dot/status and test pill use the same protected width. */
-.library-status-stack,
-.library-status-line {
+.library-status-stack {
     min-width: 108px;
 }
 
 .library-status-line {
+    min-width: 108px;
     min-height: 16px;
 }
 

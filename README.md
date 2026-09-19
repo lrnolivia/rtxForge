@@ -88,35 +88,71 @@ Neither mode performs live game-file mutations.
 <!-- RTXFORGE_CLASSIC_UI_STATUS_START -->
 ## Classic UI development status
 
-**Current release: 0.7.0**
+**Current release: 0.7.0 plus approved post-release maintenance on `main`.**
 
-The classic GTK/libadwaita interface has reached its planned 0.7 feature-complete state. Post-0.7 work is limited to specifically approved polish, maintenance, compatibility, accessibility, and bug fixes.
+The classic GTK/libadwaita application remains the production UI. Broad redesign
+work belongs under `redesign/`; the classic interface should receive only
+explicitly approved production changes, fixes and maintenance.
 
-### Current production UI
+### Current production Library work
 
-- The full dashboard remains visible at the top of the Library.
-- After it scrolls away, the native titlebar becomes the compact persistent dashboard.
-- The rtxForge icon/title is anchored at the left with deliberate edge padding.
-- Enhancement Mode remains near the middle while leaving breathing room for the bulk actions.
-- Install All / Remove All / Reset All remain grouped on the right.
-- The application hamburger sits directly beside the native window controls.
-- Install actions use the save glyph consistently across the dashboard, sticky header, and selected-game action bar.
-- The Library toolbar retains Search, filters, selection controls, live artwork sizing, and Poster / Wide Capsule / List controls.
-- The Classic Poster and Wide Capsule galleries now use the frozen responsive-grid behavior: a 16px outer Library inset, an explicit 8px GTK FlowBox column gap, and card/template widths derived from the usable viewport width. Card geometry absorbs responsive width changes rather than manufacturing large dynamic child margins.
-- Poster and Wide Capsule retain separate artwork sources. Demo mode may read already-cached local Steam artwork so Wide Capsule behavior can be reviewed without substituting poster images.
-- The decorative Library-top gradient was removed in favor of clean physical spacing.
-- Game Details and Settings open as independent, movable windows. Freshly reopened windows are placed relative to the main application again.
-- Progress / Done intentionally remains the stationary in-app operation presentation rather than becoming a movable utility window.
+The latest classic Library checkpoint preserves the established rtxForge
+appearance and behavior while tightening gallery geometry and building the new
+List structure.
 
-The established responsive Library layout, card sizing, artwork handling, wrapped titles, artwork-derived accents, granular NR / Sharpening controls, native NVIDIA routing, recovery behavior, and current visual direction should be preserved.
+Poster / Wide Capsule currently preserve:
 
-The current Poster / Wide Capsule resize-and-padding behavior is now a frozen Classic UI invariant and a migration target for the redesign. A known follow-up remains: at certain viewport widths and artwork-size selections, the chosen column count can leave a conspicuous unused region at the right edge. Future work may intelligently adjust the effective artwork size around the user's selected size to eliminate that remainder, but must preserve the frozen 16px outer inset, explicit 8px inter-card gap, responsive aspect-ratio behavior, and separate Poster / Wide Capsule artwork paths.
+- separate artwork sources and aspect-ratio behavior;
+- the user's artwork-size setting;
+- stable card geometry;
+- a 16px outer Library inset;
+- edge-oriented responsive row behavior;
+- write-disabled automated/demo validation.
+
+Viewport calculation now uses the ScrolledWindow horizontal adjustment page size
+after allocation so a layout-consuming vertical scrollbar is already reflected
+in the available width. Automated smoke uses the same width authority.
+
+List view is being structurally rebuilt around:
+
+`Game | Location | Status | Enhancements | Actions`
+
+The current implementation includes game artwork/identity, source and relative
+location, installation and test status, NR/MFG enhancement state, and per-game
+actions while retaining the existing classic rtxForge styling and behavior.
+
+### Approved next classic Library experiment
+
+The next worker should replace variable gallery column selection with a
+deterministic responsive-slot model:
+
+- **Poster: exactly 7 slots per row**, minimum artwork width **72px**;
+- **Wide Capsule: exactly 6 slots per row**, minimum artwork width **88px**;
+- **16px outer inset** on both sides;
+- **612px minimum Library viewport width**;
+- card/art sizes scale upward as the window grows, but column counts remain
+  fixed;
+- remaining width is distributed evenly as inter-slot spacing;
+- incomplete rows are filled with inert grey ghost cards so every visual row
+  retains its full slot geometry.
+
+At the 612px minimum viewport, seven minimum Poster slots yield 8px gaps. Six
+minimum Wide Capsule slots fit with approximately 5.6px gaps, so capsule spacing
+may compress below 8px rather than shrinking artwork below 88px.
+
+Ghost cards are layout-only placeholders: approximately 50% neutral-grey
+surfaces with a centered game icon in normal label grey. They are not games,
+cannot be selected or activated, and must never participate in operations or
+counts.
+
+See `notes.md` for the detailed classic Library worker handoff.
 
 ### Classic UI policy after 0.7
 
 Do not restart or broadly redesign the classic interface.
 
-Future classic changes should remain narrowly scoped to approved fixes and maintenance while the separate redesign work develops independently.
+Do not touch `redesign/` while performing classic Library work unless the user
+explicitly requests it.
 <!-- RTXFORGE_CLASSIC_UI_STATUS_END -->
 
 <!-- RTXFORGE_REDESIGN_STATUS_START -->

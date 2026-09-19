@@ -810,6 +810,91 @@ button.game-detail-close.light:hover {
     padding: 3px 8px;
 }
 
+/* Classic Library List view keeps the app's existing surfaces/colors while
+ * using a compact table-like information hierarchy. */
+.library-list-header {
+    margin: 0 16px 6px;
+}
+
+.library-list-header-label {
+    font-size: 11px;
+    font-weight: 700;
+    opacity: 0.68;
+}
+
+.library-list-row {
+    min-height: 72px;
+}
+
+.library-list-game {
+    padding: 5px 8px;
+}
+
+.library-list-thumb {
+    margin-top: 5px;
+    margin-bottom: 5px;
+}
+
+.library-list-row .poster-button,
+.library-list-row .poster {
+    border-radius: 8px;
+}
+
+.library-list-title {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.library-list-meta,
+.library-list-location {
+    font-size: 11px;
+    opacity: 0.72;
+}
+
+.library-list-status-text {
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.library-list-actions {
+    padding-right: 2px;
+}
+
+.library-list-status-dot {
+    font-size: 13px;
+}
+
+.library-list-status-dot.installed {
+    color: #76b900;
+}
+
+.library-list-status-dot.available {
+    color: #f6c344;
+}
+
+.library-list-status-dot.unavailable {
+    color: @error_color;
+}
+
+.library-list-chip {
+    padding: 4px 8px;
+    border-radius: 7px;
+    background: alpha(@window_fg_color,0.08);
+    border: 1px solid alpha(@window_fg_color,0.07);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.library-list-chip.active {
+    color: #8fd400;
+    background: alpha(#76b900,0.14);
+    border-color: alpha(#76b900,0.28);
+}
+
+.library-list-actions button {
+    min-height: 34px;
+}
+
 .game-card .poster-fallback {
     font-size: 14px;
     padding: 10px;
@@ -2470,6 +2555,58 @@ class Window(Adw.ApplicationWindow):
         viewbar.set_margin_top(8)
         viewbar.set_margin_bottom(16)
         library_surface.append(viewbar)
+
+        # Dedicated List-view column header. It stays outside the scroller so
+        # the information hierarchy remains stable while the rows move.
+        self.library_list_header=Gtk.Grid(
+            column_spacing=12,
+            hexpand=True,
+        )
+        self.library_list_header.add_css_class(
+            'library-list-header'
+        )
+
+        for column,(title,width,expand) in enumerate((
+            ('Game',320,False),
+            ('Location',180,True),
+            ('Status',115,False),
+            ('Enhancements',145,False),
+            ('Actions',160,False),
+        )):
+            header_label=label(
+                title,
+                'library-list-header-label',
+            )
+            header_label.set_halign(
+                Gtk.Align.END
+                if title=='Actions'
+                else Gtk.Align.START
+            )
+            header_label.set_size_request(
+                width,
+                -1,
+            )
+            header_label.set_hexpand(
+                expand
+            )
+            self.library_list_header.attach(
+                header_label,
+                column,
+                0,
+                1,
+                1,
+            )
+
+        self.library_list_header.set_visible(
+            self.settings.get(
+                'library_view',
+                'posters',
+            )=='list'
+        )
+        library_surface.append(
+            self.library_list_header
+        )
+
         scroll=Gtk.ScrolledWindow(vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER);self.library_scroll=scroll;library_stage=Gtk.Overlay(vexpand=True);library_stage.set_child(scroll);library_surface.append(library_stage)
         # Decorative top fade removed. The Library now begins
         # with ordinary physical spacing below its controls.
@@ -2738,36 +2875,62 @@ class Window(Adw.ApplicationWindow):
             )
 
         if view=='list':
-            # List View owns its own full-width layout.
-            # Release the explicit gallery-width constraint.
+            # List rows are one-per-line and own the full Library width.
             flow.set_size_request(
                 -1,
                 -1,
             )
-
             flow.set_hexpand(
                 True
             )
-
             flow.set_homogeneous(
                 False
             )
-
+            flow.set_min_children_per_line(
+                1
+            )
+            flow.set_max_children_per_line(
+                1
+            )
             flow.set_column_spacing(
-                14
+                0
             )
-
+            flow.set_row_spacing(
+                6
+            )
             flow.set_margin_start(
-                18
+                16
             )
-
             flow.set_margin_end(
-                18
+                16
             )
-
             flow.set_halign(
                 Gtk.Align.FILL
             )
+
+            for entry in entries:
+                wrapper=entry['wrapper']
+                wrapper.set_size_request(
+                    -1,
+                    72,
+                )
+                wrapper.set_halign(
+                    Gtk.Align.FILL
+                )
+                wrapper.set_hexpand(
+                    True
+                )
+
+                entry['widget'].set_size_request(
+                    -1,
+                    72,
+                )
+                entry['widget'].set_halign(
+                    Gtk.Align.FILL
+                )
+                entry['widget'].set_hexpand(
+                    True
+                )
 
             return False
 
@@ -2783,20 +2946,45 @@ class Window(Adw.ApplicationWindow):
         # --------------------------------------------------------
         # RESPONSIVE GALLERY CONTRACT
         #
-        # The FlowBox's parent is the actual viewport when available.
-        # Measure that rather than guessing from individual cards.
+        # The ScrolledWindow allocation is the authoritative visible width.
+        # Do not measure the FlowBox parent after artwork-size changes.
+        # It can still report the previous shrunken content width.
+        # Feeding that width back into spacing strands the right edge.
         # --------------------------------------------------------
 
-        viewport=flow.get_parent()
+        # GtkAdjustment.page_size is the actual horizontally visible
+        # viewport. Unlike ScrolledWindow.get_width(), it already excludes
+        # any layout-consuming vertical scrollbar and does not depend on
+        # whether that scrollbar has received its final widget allocation.
+        hadj=scroll.get_hadjustment()
+        viewport_width=(
+            int(round(hadj.get_page_size()))
+            if hadj is not None
+            else 0
+        )
 
-        if viewport is not None:
-            viewport_width=int(
-                viewport.get_width()
-            )
-        else:
+        # Before the first allocation page_size can still be zero. Keep a
+        # defensive fallback for startup only; once allocated, page_size is
+        # the single authority used by both layout and smoke validation.
+        if viewport_width<=1:
             viewport_width=int(
                 scroll.get_width()
             )
+
+            vscroll=scroll.get_vscrollbar()
+            if (
+                vscroll is not None
+                and vscroll.get_visible()
+                and vscroll.get_width()>0
+            ):
+                viewport_width=max(
+                    1,
+                    viewport_width-vscroll.get_width(),
+                )
+
+        # Keep width measurement independent from FlowBox's own request.
+        # The fixed 16px outer insets are removed from this true viewport.
+        # Poster and Wide Capsule therefore share the same edge contract.
 
         if viewport_width<=1:
             return False
@@ -2815,7 +3003,7 @@ class Window(Adw.ApplicationWindow):
         (
             _art_value,
             preferred_art_width,
-            _preferred_art_height,
+            preferred_art_height,
             info_height,
             _preferred_total_height,
             ratio,
@@ -2832,18 +3020,18 @@ class Window(Adw.ApplicationWindow):
             + 4
         )
 
-        # --------------------------------------------------------
-        # COLUMN COUNT
-        #
-        # Ask only:
-        #
-        # "How many preferred-size templates fit with an 8px gap?"
-        #
-        # Visible game count does NOT change the grid capacity.
-        # Therefore a short final row stays compact and left aligned.
-        # --------------------------------------------------------
+        visible_count=max(
+            1,
+            sum(
+                1
+                for entry in entries
+                if entry['wrapper'].get_visible()
+            ),
+        )
 
-        columns=max(
+        # Capacity is still based on the user's selected artwork size.
+        # Only currently visible games participate in the active row.
+        capacity=max(
             1,
             min(
                 12,
@@ -2860,64 +3048,42 @@ class Window(Adw.ApplicationWindow):
             ),
         )
 
-        # --------------------------------------------------------
-        # TEMPLATE WIDTH
-        #
-        # This is the Power-Apps-style responsive-gallery idea:
-        #
-        # template width =
-        #   (gallery width - total explicit gaps) / columns
-        #
-        # Gap never absorbs the spare room. Cards do.
-        # --------------------------------------------------------
+        columns=max(
+            1,
+            min(
+                capacity,
+                visible_count,
+            ),
+        )
 
-        total_gap_width=(
-            gallery_gap
-            * max(
+        # Artwork size is authoritative. Spare viewport width belongs to
+        # inter-card spacing, not to the card template itself.
+        card_width=preferred_card_width
+        actual_art_width=preferred_art_width
+        actual_art_height=preferred_art_height
+
+        if columns>1:
+            spare_width=max(
                 0,
-                columns-1,
+                usable_width
+                - card_width*columns,
             )
-        )
-
-        width_for_cards=max(
-            columns,
-            usable_width
-            - total_gap_width,
-        )
-
-        card_width=max(
-            1,
-            width_for_cards
-            // columns,
-        )
-
-        # Integer pixels may leave at most columns-1 pixels.
-        #
-        # Keep all cards IDENTICAL in width/height. Distribute those
-        # tiny remainder pixels as +1px on a few inter-card gaps.
-        remainder=max(
-            0,
-            usable_width
-            - (
-                card_width*columns
-                + total_gap_width
-            ),
-        )
-
-        actual_art_width=max(
-            1,
-            card_width-4,
-        )
-
-        actual_art_height=max(
-            1,
-            int(
-                round(
-                    actual_art_width
-                    / ratio
-                )
-            ),
-        )
+            dynamic_gap=max(
+                gallery_gap,
+                spare_width
+                // (columns-1),
+            )
+            remainder=max(
+                0,
+                usable_width
+                - (
+                    card_width*columns
+                    + dynamic_gap*(columns-1)
+                ),
+            )
+        else:
+            dynamic_gap=0
+            remainder=0
 
         # --------------------------------------------------------
         # FLOWBOX OWNS THE GAP.
@@ -2938,7 +3104,13 @@ class Window(Adw.ApplicationWindow):
         )
 
         flow.set_column_spacing(
-            gallery_gap
+            dynamic_gap
+        )
+
+        # List view uses a tighter vertical rhythm. Restore the classic
+        # gallery row gap explicitly when returning to artwork views.
+        flow.set_row_spacing(
+            16
         )
 
         flow.set_margin_start(
@@ -2960,6 +3132,44 @@ class Window(Adw.ApplicationWindow):
         # Do NOT FILL again here. FILL causes GtkFlowBox to receive
         # additional allocation and creates large invisible child-cell
         # regions around our correctly-sized cards.
+
+        # GtkFlowBox was created hexpand=True and List view deliberately
+        # restores FILL. Neither state belongs to the fixed-geometry gallery:
+        # expansion can allocate invisible width beyond the solved gallery
+        # request and recreate the apparent right-side gutter.
+        flow.set_hexpand(
+            False
+        )
+        flow.set_halign(
+            Gtk.Align.START
+        )
+
+        # Integer division can leave up to columns-2 pixels after the
+        # fixed artwork widths and uniform FlowBox gap are solved. Put
+        # those pixels into individual inter-card gaps, never into cards
+        # or the 16px outer inset. This makes every complete row land on
+        # the same right edge without changing the selected artwork size.
+        visible_entries=[
+            entry
+            for entry in entries
+            if entry['wrapper'].get_visible()
+        ]
+
+        # Artwork-size and window changes can change the integer remainder.
+        # Clear the previous pass first so a former +1px correction never
+        # survives as cumulative left padding on a later, larger layout.
+        for entry in visible_entries:
+            entry['wrapper'].set_margin_start(0)
+
+        if columns>1 and remainder:
+            for index,entry in enumerate(visible_entries):
+                position=index % columns
+
+                if 1 <= position <= remainder:
+                    entry['wrapper'].set_margin_start(
+                        1
+                    )
+
         flow.set_size_request(
             usable_width,
             -1,
@@ -3489,7 +3699,21 @@ class Window(Adw.ApplicationWindow):
         self.install_all.set_sensitive(enabled and bool(self.games) and compatible);self.uninstall_all.set_sensitive(enabled and bool(self.games))
         self.reset_all.set_sensitive(enabled and (any(g.get('installed') for g in self.games) or self.defaults_changed()))
         for widget in self.tuning_widgets.values():widget.set_sensitive(enabled)
-        for entry in self.cards.values():entry['reset'].set_sensitive(enabled)
+        for entry in self.cards.values():
+            entry['reset'].set_sensitive(enabled)
+
+            primary=entry.get(
+                'primary'
+            )
+
+            if primary is not None:
+                primary.set_sensitive(
+                    enabled
+                    and compatible
+                    and not entry['data'].get(
+                        'blocked'
+                    )
+                )
         for i,b in enumerate(self.action_buttons):b.set_sensitive(enabled and (compatible or i in (2,3)) and any(v['check'].get_active() for v in self.cards.values()))
         self.refresh_action.set_enabled(
             enabled
@@ -4133,6 +4357,15 @@ class Window(Adw.ApplicationWindow):
         previous={g['game']:g for g in self.games}
         clear(self.flow);self.games=games;self.cards={}
         view=self.settings.get('library_view','posters');self.flow.set_max_children_per_line(1 if view=='list' else 12);self.flow.set_min_children_per_line(1);self.flow.set_homogeneous(view!='list')
+
+        if hasattr(
+            self,
+            'library_list_header',
+        ):
+            self.library_list_header.set_visible(
+                view=='list'
+            )
+
         media=library_media.LibraryMedia(self.service.config,{**self.settings,'online_art':False})
         for game in games:
             for key in ('poster','hero','capsule','art_credit','art_link','hero_credit','hero_link','accent_class'):
@@ -4733,18 +4966,507 @@ class Window(Adw.ApplicationWindow):
         )
 
         if view=='list':
-            card=Gtk.Box(
-                orientation=Gtk.Orientation.HORIZONTAL,
+            row=Gtk.Grid(
+                column_spacing=12,
+                row_spacing=0,
+                hexpand=True,
             )
-        else:
-            card=FixedLibraryCard(
+            row.add_css_class(
+                'game-card'
+            )
+            row.add_css_class(
+                'library-list-row'
+            )
+            row.set_size_request(
+                -1,
+                72,
+            )
+
+            game_cell=Gtk.Box(
+                spacing=10,
+                hexpand=False,
+            )
+            game_cell.add_css_class(
+                'library-list-game'
+            )
+            game_cell.set_size_request(
+                320,
+                -1,
+            )
+
+            thumb_width=52
+            thumb_height=58
+
+            overlay=Gtk.Overlay(
+                width_request=thumb_width,
+                height_request=thumb_height,
+                valign=Gtk.Align.CENTER,
+            )
+            overlay.add_css_class(
+                'library-list-thumb'
+            )
+
+            pic=CoverPicture(
+                content_fit=Gtk.ContentFit.COVER,
+                can_shrink=True,
+            )
+            pic.add_css_class(
+                'poster'
+            )
+            pic.cover_width=thumb_width
+            pic.cover_ratio=(
+                thumb_width/thumb_height
+            )
+            pic.set_size_request(
+                thumb_width,
+                thumb_height,
+            )
+
+            click=Gtk.Button(
+                child=pic
+            )
+            click.add_css_class(
+                'poster-button'
+            )
+            click.set_size_request(
+                thumb_width,
+                thumb_height,
+            )
+            click.connect(
+                'clicked',
+                lambda *_:self.details(game),
+            )
+            overlay.set_child(
+                click
+            )
+
+            fallback=label(
+                game['name'],
+                'poster-fallback',
+            )
+            fallback.set_halign(
+                Gtk.Align.CENTER
+            )
+            fallback.set_valign(
+                Gtk.Align.CENTER
+            )
+            fallback.set_ellipsize(
+                Pango.EllipsizeMode.END
+            )
+            fallback.set_width_chars(
+                1
+            )
+            fallback.set_max_width_chars(
+                1
+            )
+            overlay.add_overlay(
+                fallback
+            )
+            overlay.set_measure_overlay(
+                fallback,
+                False,
+            )
+
+            check=Gtk.CheckButton(
+                halign=Gtk.Align.END,
+                valign=Gtk.Align.START,
+            )
+            margins(
+                check,
+                4,
+            )
+            check.set_tooltip_text(
+                'Select '+game['name']
+            )
+            check.connect(
+                'toggled',
+                lambda *_:self.selection_changed(),
+            )
+            overlay.add_overlay(
+                check
+            )
+            overlay.set_measure_overlay(
+                check,
+                False,
+            )
+
+            game_text=Gtk.Box(
                 orientation=Gtk.Orientation.VERTICAL,
+                spacing=2,
+                hexpand=True,
+                valign=Gtk.Align.CENTER,
             )
-            card.fixed_width=width+4
-            card.fixed_height=total_height
-            card.set_overflow(
-                Gtk.Overflow.HIDDEN
+
+            title=label(
+                game['name'],
+                'card-title',
             )
+            title.add_css_class(
+                'library-list-title'
+            )
+            title.set_single_line_mode(
+                True
+            )
+            title.set_ellipsize(
+                Pango.EllipsizeMode.END
+            )
+            title.set_width_chars(
+                1
+            )
+            title.set_max_width_chars(
+                1
+            )
+            title.set_hexpand(
+                True
+            )
+            game_text.append(
+                title
+            )
+
+            test_status=game.get(
+                'test_record',
+                {},
+            ).get(
+                'status',
+                'Untested',
+            )
+            meta=label(
+                str(game.get('appid') or 'Detected game'),
+                'card-meta',
+            )
+            meta.add_css_class(
+                'library-list-meta'
+            )
+            meta.set_single_line_mode(
+                True
+            )
+            meta.set_ellipsize(
+                Pango.EllipsizeMode.END
+            )
+            game_text.append(
+                meta
+            )
+
+            game_cell.append(
+                overlay
+            )
+            game_cell.append(
+                game_text
+            )
+            row.attach(
+                game_cell,
+                0,
+                0,
+                1,
+                1,
+            )
+
+            game_path=game.get(
+                'game',
+                '',
+            )
+            library_path=game.get(
+                'library',
+                '',
+            )
+            location_text=game_path
+            if game_path and library_path:
+                try:
+                    location_text=str(
+                        Path(game_path).relative_to(
+                            Path(library_path)
+                        )
+                    )
+                except ValueError:
+                    pass
+
+            location_cell=Gtk.Box(
+                orientation=Gtk.Orientation.VERTICAL,
+                spacing=2,
+                width_request=180,
+                hexpand=True,
+                valign=Gtk.Align.CENTER,
+            )
+            location_source=label(
+                game.get('source','Unknown'),
+                'library-list-status-text',
+            )
+            location_source.set_halign(
+                Gtk.Align.START
+            )
+            location=label(
+                location_text,
+                'library-list-location',
+            )
+            location.set_tooltip_text(
+                game_path
+            )
+            location.set_halign(
+                Gtk.Align.START
+            )
+            location.set_hexpand(
+                True
+            )
+            location.set_single_line_mode(
+                True
+            )
+            location.set_ellipsize(
+                Pango.EllipsizeMode.MIDDLE
+            )
+            location_cell.append(
+                location_source
+            )
+            location_cell.append(
+                location
+            )
+            row.attach(
+                location_cell,
+                1,
+                0,
+                1,
+                1,
+            )
+
+            if game.get(
+                'blocked'
+            ):
+                status_text='Unavailable'
+                status_class='unavailable'
+            elif game.get(
+                'installed'
+            ):
+                status_text='Installed'
+                status_class='installed'
+            else:
+                status_text='Available'
+                status_class='available'
+
+            status_box=Gtk.Box(
+                orientation=Gtk.Orientation.VERTICAL,
+                spacing=2,
+                width_request=115,
+                valign=Gtk.Align.CENTER,
+            )
+            status_primary=Gtk.Box(
+                spacing=8,
+            )
+            status_dot=label(
+                '●',
+                'library-list-status-dot',
+            )
+            status_dot.add_css_class(
+                status_class
+            )
+            status_primary.append(
+                status_dot
+            )
+            status_label=label(
+                status_text,
+                'library-list-status-text',
+            )
+            status_primary.append(
+                status_label
+            )
+            status_box.append(
+                status_primary
+            )
+            test_label=label(
+                test_status,
+                'library-list-location',
+            )
+            test_label.set_halign(
+                Gtk.Align.START
+            )
+            status_box.append(
+                test_label
+            )
+            row.attach(
+                status_box,
+                2,
+                0,
+                1,
+                1,
+            )
+
+            enhancements=Gtk.Box(
+                spacing=8,
+                width_request=145,
+                valign=Gtk.Align.CENTER,
+            )
+            nr_chip=label(
+                f"NR {game.get('nr_strength') if game.get('nr_strength') is not None else '—'}",
+                'library-list-chip',
+            )
+            mfg_chip=label(
+                f"MFG {game.get('mfg_multiplier') if game.get('mfg_multiplier') is not None else '—'}×",
+                'library-list-chip',
+            )
+
+            profile=game.get(
+                'profile',
+                '',
+            )
+
+            if profile in (
+                'NR Only',
+                'NR + MFG',
+            ):
+                nr_chip.add_css_class(
+                    'active'
+                )
+
+            if profile in (
+                'MFG Only',
+                'NR + MFG',
+            ):
+                mfg_chip.add_css_class(
+                    'active'
+                )
+
+            enhancements.append(
+                nr_chip
+            )
+            enhancements.append(
+                mfg_chip
+            )
+            row.attach(
+                enhancements,
+                3,
+                0,
+                1,
+                1,
+            )
+
+            actions=Gtk.Box(
+                spacing=8,
+                width_request=160,
+                halign=Gtk.Align.END,
+                valign=Gtk.Align.CENTER,
+            )
+            actions.add_css_class(
+                'library-list-actions'
+            )
+
+            if game.get(
+                'blocked'
+            ):
+                operation='install'
+                action_title='Unavailable'
+                action_css=None
+            elif game.get(
+                'installed'
+            ):
+                operation='repair'
+                action_title='Repair'
+                action_css=None
+            else:
+                operation='install'
+                action_title='Apply'
+                action_css='suggested-action'
+
+            primary=button(
+                action_title,
+                lambda *_:self.launch_action(
+                    operation,
+                    targets=[game],
+                ),
+                action_css,
+            )
+            primary.set_size_request(
+                100,
+                -1,
+            )
+            primary.set_hexpand(
+                True
+            )
+            primary.set_sensitive(
+                not bool(
+                    game.get(
+                        'blocked'
+                    )
+                )
+            )
+
+            more=Gtk.Button(
+                icon_name='view-more-symbolic',
+            )
+            more.add_css_class(
+                'flat'
+            )
+            more.set_tooltip_text(
+                'Open game details'
+            )
+            more.connect(
+                'clicked',
+                lambda *_:self.details(game),
+            )
+            more.set_size_request(
+                42,
+                -1,
+            )
+
+            actions.append(
+                primary
+            )
+            actions.append(
+                more
+            )
+            row.attach(
+                actions,
+                4,
+                0,
+                1,
+                1,
+            )
+
+            self.flow.insert(
+                row,
+                -1,
+            )
+            wrapper=row.get_parent()
+            wrapper.set_halign(
+                Gtk.Align.FILL
+            )
+            wrapper.set_hexpand(
+                True
+            )
+
+            entry={
+                'reset':more,
+                'primary':primary,
+                'widget':row,
+                'wrapper':wrapper,
+                'overlay':overlay,
+                'click':click,
+                'text':game_text,
+                'title':title,
+                'badge':status_box,
+                'check':check,
+                'picture':pic,
+                'fallback':fallback,
+                'meta':meta,
+                'data':game,
+                'size':(
+                    thumb_width,
+                    thumb_height,
+                ),
+            }
+            self.cards[
+                game['game']
+            ]=entry
+            self.paint_card(
+                entry
+            )
+            return
+
+        card=FixedLibraryCard(
+            orientation=Gtk.Orientation.VERTICAL,
+        )
+        card.fixed_width=width+4
+        card.fixed_height=total_height
+        card.set_overflow(
+            Gtk.Overflow.HIDDEN
+        )
 
         card.add_css_class('game-card')
         card.set_size_request(
@@ -7677,8 +8399,29 @@ class Window(Adw.ApplicationWindow):
             )=self.library_card_geometry()
 
             smoke_card_width+=4
-            smoke_viewport_width=self.library_scroll.get_width()
-            smoke_base_gap=14
+            smoke_hadj=self.library_scroll.get_hadjustment()
+            smoke_viewport_width=(
+                int(round(smoke_hadj.get_page_size()))
+                if smoke_hadj is not None
+                else 0
+            )
+            if smoke_viewport_width<=1:
+                smoke_viewport_width=self.library_scroll.get_width()
+                smoke_vscroll=self.library_scroll.get_vscrollbar()
+                if (
+                    smoke_vscroll is not None
+                    and smoke_vscroll.get_visible()
+                    and smoke_vscroll.get_width()>0
+                ):
+                    smoke_viewport_width=max(
+                        1,
+                        smoke_viewport_width-smoke_vscroll.get_width(),
+                    )
+            smoke_base_gap=8
+            smoke_usable_width=max(
+                1,
+                smoke_viewport_width-32,
+            )
 
             smoke_capacity=max(
                 1,
@@ -7686,7 +8429,7 @@ class Window(Adw.ApplicationWindow):
                     12,
                     int(
                         (
-                            smoke_viewport_width
+                            smoke_usable_width
                             + smoke_base_gap
                         )
                         // (
@@ -7739,7 +8482,24 @@ class Window(Adw.ApplicationWindow):
 
             assert (
                 self.flow.get_column_spacing()
-                == 8
+                >= 8
+            )
+
+            assert (
+                self.flow.get_row_spacing()
+                == 16
+            )
+
+            assert (
+                self.flow.get_size_request()[0]
+                == smoke_usable_width
+            )
+
+            assert not self.flow.get_hexpand()
+
+            assert (
+                self.flow.get_halign()
+                == Gtk.Align.START
             )
 
             assert not self.flow.get_homogeneous()

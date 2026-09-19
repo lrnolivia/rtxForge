@@ -71,6 +71,7 @@ from gi.repository import (
     Adw,
     Gio,
     GLib,
+    Gdk,
     Gtk,
     Pango,
 )
@@ -103,7 +104,7 @@ PRIMARY_PAGES = (
         "Home",
         "go-home-symbolic",
         "Home",
-        "The new rtxForge application shell begins here.",
+        "Your RTX library, enhancements, and recovery tools.",
     ),
     (
         "library",
@@ -134,7 +135,7 @@ SECONDARY_PAGES = (
         "Recovery",
         "document-revert-symbolic",
         "Recovery",
-        "Repair and restoration workflows will live here.",
+        "Review, repair, and reverse rtxForge changes.",
     ),
 )
 
@@ -164,8 +165,8 @@ class RedesignLabWindow(
         # Phase 1 is desktop-first.
         # Keep the primary navigation visible.
         self.set_size_request(
-            900,
-            620,
+            720,
+            560,
         )
 
         self.page_rows = {}
@@ -659,6 +660,1819 @@ class RedesignLabWindow(
             )
 
         return toggle
+
+    def _ensure_home_css(self):
+        if getattr(
+            self,
+            "_home_css_ready",
+            False,
+        ):
+            return
+
+        provider = Gtk.CssProvider()
+
+        provider.load_from_data(
+            b"""
+.home-hero {
+    border-radius: 14px;
+    background: #151719;
+}
+
+.home-hero-shade {
+    background:
+        linear-gradient(
+            to right,
+            rgba(12,14,15,0.98) 0%,
+            rgba(12,14,15,0.90) 30%,
+            rgba(12,14,15,0.40) 62%,
+            rgba(12,14,15,0.08) 100%
+        );
+}
+
+.home-hero-title {
+    font-size: 34px;
+    font-weight: 800;
+    line-height: 0.98;
+}
+
+.home-hero-copy {
+    font-size: 16px;
+}
+
+button.home-primary {
+    background: #66e85f;
+    color: #0d1b0c;
+    border-radius: 9px;
+    font-weight: 700;
+    min-height: 44px;
+    padding: 0 20px;
+}
+
+button.home-primary:hover {
+    background: #76f06f;
+}
+
+button.home-secondary {
+    border-radius: 9px;
+    min-height: 44px;
+    padding: 0 20px;
+}
+
+.home-stat-card,
+.home-bottom-card {
+    background: alpha(@window_fg_color,0.075);
+    border-radius: 13px;
+}
+
+.home-stat-number {
+    font-size: 25px;
+    font-weight: 700;
+}
+
+.home-stat-icon {
+    min-width: 46px;
+    min-height: 46px;
+    border-radius: 999px;
+    background: alpha(@window_fg_color,0.09);
+}
+
+.home-stat-ready {
+    color: #62d96b;
+}
+
+.home-stat-warning {
+    color: #ff6b22;
+}
+
+.home-recent-section {
+    background: alpha(@window_fg_color,0.045);
+    border-radius: 14px;
+}
+
+.home-recent-card {
+    background: alpha(@window_fg_color,0.055);
+    border-radius: 10px;
+}
+
+.home-art-frame {
+    border-radius: 9px;
+    background: alpha(@window_fg_color,0.07);
+}
+
+.home-art-fallback {
+    background:
+        linear-gradient(
+            135deg,
+            alpha(@window_fg_color,0.16),
+            alpha(@window_fg_color,0.04)
+        );
+}
+
+.home-status-good {
+    color: #61e86b;
+}
+
+.home-status-ready {
+    color: #cbd5e1;
+}
+
+.home-status-warning {
+    color: #ff6b22;
+}
+
+.home-system-check {
+    background: #62df68;
+    color: #102612;
+    border-radius: 999px;
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 21px;
+    font-weight: 800;
+}
+
+button.home-quick-action {
+    background: alpha(@window_fg_color,0.055);
+    border-radius: 10px;
+    min-height: 68px;
+}
+
+button.home-quick-action:hover {
+    background: alpha(@window_fg_color,0.09);
+}
+"""
+        )
+
+        Gtk.StyleContext.add_provider_for_display(
+            Gdk.Display.get_default(),
+            provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+        )
+
+        self._home_css_provider = provider
+        self._home_css_ready = True
+
+    def _navigate_from_home(
+        self,
+        page_id,
+    ):
+        row = self.page_rows.get(
+            page_id
+        )
+
+        navigation = self.row_lists.get(
+            page_id
+        )
+
+        if (
+            row is not None
+            and navigation is not None
+        ):
+            navigation.select_row(
+                row
+            )
+            return
+
+        self._select_page(
+            page_id
+        )
+
+    def _home_local_art(
+        self,
+        name,
+        appid,
+        kind,
+    ):
+        """
+        Reuse the production Steam artwork lookup READ-ONLY.
+
+        This does not download, modify, refresh, or cache anything.
+        """
+        if not appid:
+            return None
+
+        try:
+            scripts = ROOT / "scripts"
+
+            if str(scripts) not in sys.path:
+                sys.path.insert(
+                    0,
+                    str(scripts),
+                )
+
+            import library_media
+
+            media = (
+                library_media.LibraryMedia.__new__(
+                    library_media.LibraryMedia
+                )
+            )
+
+            media.config = None
+            media.settings = {}
+            media.shortcut_cache = {}
+
+            result = media.steam_art(
+                {
+                    "name": name,
+                    "appid": str(appid),
+                    "source": "Steam",
+                    "game": f"/preview/{name}",
+                    "exe": "Game.exe",
+                }
+            )
+
+            candidate = result.get(
+                kind
+            )
+
+            if (
+                candidate
+                and Path(candidate).is_file()
+            ):
+                return candidate
+
+        except Exception:
+            pass
+
+        # Home preview fallback only.
+        #
+        # Prefer local Steam artwork above. When the requested
+        # artwork is not present locally, use the official Steam
+        # CDN so the mockup does not collapse into blank panels.
+        if (
+            appid
+            and str(appid).isdigit()
+            and kind in {
+                "hero",
+                "capsule",
+            }
+        ):
+            try:
+                import urllib.request
+
+                asset_name = {
+                    "hero": "library_hero.jpg",
+                    "capsule": "header.jpg",
+                }[kind]
+
+                cache_root = Path(
+                    "/tmp/rtxforge-redesign-home-art"
+                )
+
+                cache_root.mkdir(
+                    parents=True,
+                    exist_ok=True,
+                )
+
+                cached = (
+                    cache_root
+                    / f"{appid}-{asset_name}"
+                )
+
+                if not cached.is_file():
+                    url = (
+                        "https://cdn.cloudflare.steamstatic.com/"
+                        f"steam/apps/{appid}/{asset_name}"
+                    )
+
+                    request = urllib.request.Request(
+                        url,
+                        headers={
+                            "User-Agent": (
+                                "rtxForge-Redesign/Phase1"
+                            ),
+                        },
+                    )
+
+                    with urllib.request.urlopen(
+                        request,
+                        timeout=6,
+                    ) as response:
+                        payload = response.read(
+                            6 * 1024 * 1024 + 1
+                        )
+
+                    if (
+                        payload
+                        and len(payload)
+                        <= 6 * 1024 * 1024
+                    ):
+                        cached.write_bytes(
+                            payload
+                        )
+
+                if cached.is_file():
+                    return str(
+                        cached
+                    )
+
+            except Exception:
+                pass
+
+        return None
+
+    def _home_art_widget(
+        self,
+        *,
+        name,
+        appid,
+        kind,
+    ):
+        path = self._home_local_art(
+            name,
+            appid,
+            kind,
+        )
+
+        frame = Gtk.Box(
+            hexpand=True,
+            vexpand=True,
+        )
+
+        frame.add_css_class(
+            "home-art-frame"
+        )
+
+        frame.set_overflow(
+            Gtk.Overflow.HIDDEN
+        )
+
+        if path:
+            picture = Gtk.Picture.new_for_filename(
+                path
+            )
+
+            picture.set_content_fit(
+                Gtk.ContentFit.COVER
+            )
+
+            picture.set_can_shrink(
+                True
+            )
+
+            picture.set_hexpand(
+                True
+            )
+
+            picture.set_vexpand(
+                True
+            )
+
+            frame.append(
+                picture
+            )
+
+            return frame
+
+        fallback = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            valign=Gtk.Align.CENTER,
+            halign=Gtk.Align.FILL,
+            hexpand=True,
+            vexpand=True,
+        )
+
+        fallback.add_css_class(
+            "home-art-fallback"
+        )
+
+        title = Gtk.Label(
+            label=name,
+            wrap=True,
+            justify=Gtk.Justification.CENTER,
+        )
+
+        title.add_css_class(
+            "heading"
+        )
+
+        title.set_margin_start(
+            12
+        )
+
+        title.set_margin_end(
+            12
+        )
+
+        fallback.append(
+            title
+        )
+
+        frame.append(
+            fallback
+        )
+
+        return frame
+
+    def _home_stat_card(
+        self,
+        *,
+        icon_name,
+        value,
+        caption,
+        css_class=None,
+        arrow=False,
+    ):
+        card = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL,
+            spacing=14,
+            hexpand=True,
+        )
+
+        card.add_css_class(
+            "home-stat-card"
+        )
+
+        card.set_size_request(
+            185,
+            -1,
+        )
+
+        card.set_margin_start(
+            0
+        )
+
+        content = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL,
+            spacing=14,
+            hexpand=True,
+        )
+
+        content.set_margin_start(
+            18
+        )
+
+        content.set_margin_end(
+            18
+        )
+
+        content.set_margin_top(
+            16
+        )
+
+        content.set_margin_bottom(
+            16
+        )
+
+        icon_shell = Gtk.Box(
+            halign=Gtk.Align.START,
+            valign=Gtk.Align.CENTER,
+            hexpand=False,
+            vexpand=False,
+        )
+
+        icon_shell.set_size_request(
+            44,
+            44,
+        )
+
+        icon_shell.set_halign(
+            Gtk.Align.CENTER
+        )
+
+        icon_shell.set_valign(
+            Gtk.Align.CENTER
+        )
+
+        icon_shell.add_css_class(
+            "home-stat-icon"
+        )
+
+        icon = Gtk.Image.new_from_icon_name(
+            icon_name
+        )
+
+        icon.set_pixel_size(
+            20
+        )
+
+        icon.set_halign(
+            Gtk.Align.CENTER
+        )
+
+        icon.set_valign(
+            Gtk.Align.CENTER
+        )
+
+        icon.set_margin_start(
+            0
+        )
+
+        icon.set_margin_end(
+            0
+        )
+
+        icon.set_margin_top(
+            0
+        )
+
+        icon.set_margin_bottom(
+            0
+        )
+
+        if css_class:
+            icon.add_css_class(
+                css_class
+            )
+
+        icon_shell.append(
+            icon
+        )
+
+        labels = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=1,
+            hexpand=True,
+            valign=Gtk.Align.CENTER,
+        )
+
+        number = Gtk.Label(
+            label=str(value),
+            xalign=0,
+        )
+
+        number.add_css_class(
+            "home-stat-number"
+        )
+
+        label = Gtk.Label(
+            label=caption,
+            xalign=0,
+        )
+
+        label.add_css_class(
+            "dim-label"
+        )
+
+        labels.append(
+            number
+        )
+
+        labels.append(
+            label
+        )
+
+        content.append(
+            icon_shell
+        )
+
+        content.append(
+            labels
+        )
+
+        if arrow:
+            next_icon = Gtk.Image.new_from_icon_name(
+                "go-next-symbolic"
+            )
+
+            next_icon.set_valign(
+                Gtk.Align.CENTER
+            )
+
+            content.append(
+                next_icon
+            )
+
+        card.append(
+            content
+        )
+
+        return card
+
+    def _home_recent_card(
+        self,
+        *,
+        name,
+        appid,
+        status,
+        status_class,
+    ):
+        card = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=8,
+            hexpand=True,
+        )
+
+        card.add_css_class(
+            "home-recent-card"
+        )
+
+        card.set_size_request(
+            -1,
+            158,
+        )
+
+        card.set_overflow(
+            Gtk.Overflow.HIDDEN
+        )
+
+        art = self._home_art_widget(
+            name=name,
+            appid=appid,
+            kind="capsule",
+        )
+
+        art_ratio = Gtk.AspectFrame()
+
+        art_ratio.set_hexpand(
+            True
+        )
+
+        art_ratio.set_halign(
+            Gtk.Align.FILL
+        )
+
+        art_ratio.set_size_request(
+            185,
+            104,
+        )
+
+        art_ratio.set_hexpand(
+            False
+        )
+
+        art_ratio.set_ratio(
+            16 / 9
+        )
+
+        art_ratio.set_obey_child(
+            False
+        )
+
+        art_ratio.set_child(
+            art
+        )
+
+        card.append(
+            art_ratio
+        )
+
+        body = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=5,
+        )
+
+        body.set_margin_start(
+            10
+        )
+
+        body.set_margin_end(
+            8
+        )
+
+        body.set_margin_bottom(
+            10
+        )
+
+        title = Gtk.Label(
+            label=name,
+            xalign=0,
+            ellipsize=Pango.EllipsizeMode.END,
+        )
+
+        title.add_css_class(
+            "heading"
+        )
+
+        body.append(
+            title
+        )
+
+        status_row = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL,
+            spacing=6,
+        )
+
+        dot = Gtk.Label(
+            label="●"
+        )
+
+        dot.add_css_class(
+            status_class
+        )
+
+        status_label = Gtk.Label(
+            label=status,
+            xalign=0,
+            hexpand=True,
+        )
+
+        status_label.add_css_class(
+            "dim-label"
+        )
+
+        menu = Gtk.Image.new_from_icon_name(
+            "view-more-symbolic"
+        )
+
+        status_row.append(
+            dot
+        )
+
+        status_row.append(
+            status_label
+        )
+
+        status_row.append(
+            menu
+        )
+
+        body.append(
+            status_row
+        )
+
+        card.append(
+            body
+        )
+
+        return card
+
+    def _home_quick_action(
+        self,
+        *,
+        icon_name,
+        title,
+        subtitle,
+        page_id,
+    ):
+        button = Gtk.Button()
+
+        button.add_css_class(
+            "home-quick-action"
+        )
+
+        button.set_hexpand(
+            True
+        )
+
+        content = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL,
+            spacing=12,
+        )
+
+        content.set_margin_start(
+            14
+        )
+
+        content.set_margin_end(
+            14
+        )
+
+        content.set_margin_top(
+            10
+        )
+
+        content.set_margin_bottom(
+            10
+        )
+
+        icon = Gtk.Image.new_from_icon_name(
+            icon_name
+        )
+
+        icon.set_pixel_size(
+            22
+        )
+
+        icon.set_size_request(
+            34,
+            34,
+        )
+
+        icon.set_halign(
+            Gtk.Align.CENTER
+        )
+
+        icon.set_valign(
+            Gtk.Align.CENTER
+        )
+
+        labels = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=2,
+            hexpand=True,
+        )
+
+        title_label = Gtk.Label(
+            label=title,
+            xalign=0,
+        )
+
+        title_label.add_css_class(
+            "heading"
+        )
+
+        subtitle_label = Gtk.Label(
+            label=subtitle,
+            xalign=0,
+        )
+
+        subtitle_label.add_css_class(
+            "dim-label"
+        )
+
+        labels.append(
+            title_label
+        )
+
+        labels.append(
+            subtitle_label
+        )
+
+        content.append(
+            icon
+        )
+
+        content.append(
+            labels
+        )
+
+        button.set_child(
+            content
+        )
+
+        button.connect(
+            "clicked",
+            lambda *_: self._navigate_from_home(
+                page_id
+            ),
+        )
+
+        return button
+
+    def _build_home_shell(self):
+        self._ensure_home_css()
+
+        page = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=18,
+            hexpand=True,
+            vexpand=False,
+        )
+
+        self.home_page = page
+
+        # ====================================================
+        # HERO
+        # ====================================================
+
+        hero_frame = Gtk.Box(
+            hexpand=True,
+        )
+
+        hero_frame.add_css_class(
+            "home-hero"
+        )
+
+        hero_frame.set_overflow(
+            Gtk.Overflow.HIDDEN
+        )
+
+        hero_frame.set_size_request(
+            -1,
+            245,
+        )
+
+        hero = Gtk.Overlay(
+            hexpand=True,
+            vexpand=True,
+        )
+
+        unity_hero = self._home_local_art(
+            "Assassin's Creed Unity",
+            "289650",
+            "hero",
+        )
+
+        if unity_hero:
+            picture = Gtk.Picture.new_for_filename(
+                unity_hero
+            )
+
+            picture.set_content_fit(
+                Gtk.ContentFit.COVER
+            )
+
+            picture.set_halign(
+                Gtk.Align.FILL
+            )
+
+            picture.set_valign(
+                Gtk.Align.FILL
+            )
+
+            picture.set_hexpand(
+                True
+            )
+
+            picture.set_vexpand(
+                True
+            )
+
+            hero.set_child(
+                picture
+            )
+
+        else:
+            fallback = Gtk.Box(
+                hexpand=True,
+                vexpand=True,
+            )
+
+            fallback.add_css_class(
+                "home-art-fallback"
+            )
+
+            hero.set_child(
+                fallback
+            )
+
+        shade = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL,
+            hexpand=True,
+            vexpand=True,
+        )
+
+        shade.add_css_class(
+            "home-hero-shade"
+        )
+
+        copy = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=14,
+            valign=Gtk.Align.CENTER,
+        )
+
+        copy.set_hexpand(
+            True
+        )
+
+        copy.set_margin_start(
+            38
+        )
+
+        title = Gtk.Label(
+            xalign=0,
+            wrap=True,
+            use_markup=True,
+        )
+
+        title.set_markup(
+            'Bring newer '
+            '<span foreground="#66e85f">RTX</span> '
+            'features\nto your games.'
+        )
+
+        title.add_css_class(
+            "home-hero-title"
+        )
+
+        title.set_max_width_chars(
+            34
+        )
+
+        title.set_wrap_mode(
+            Pango.WrapMode.WORD_CHAR
+        )
+
+        description = Gtk.Label(
+            label=(
+                "rtxForge handles the setup, keeps your "
+                "original files safe,\nand lets you manage "
+                "everything in one place."
+            ),
+            xalign=0,
+        )
+
+        description.add_css_class(
+            "home-hero-copy"
+        )
+
+        description.set_max_width_chars(
+            58
+        )
+
+        actions = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL,
+            spacing=12,
+        )
+
+        self.home_review_library = Gtk.Button(
+            label="Review Library  →"
+        )
+
+        self.home_review_library.add_css_class(
+            "home-primary"
+        )
+
+        self.home_review_library.connect(
+            "clicked",
+            lambda *_: self._navigate_from_home(
+                "library"
+            ),
+        )
+
+        self.home_forge_available = Gtk.Button(
+            label="Forge Available Games"
+        )
+
+        self.home_forge_available.add_css_class(
+            "home-secondary"
+        )
+
+        self.home_forge_available.connect(
+            "clicked",
+            lambda *_: self._navigate_from_home(
+                "forge"
+            ),
+        )
+
+        actions.append(
+            self.home_review_library
+        )
+
+        actions.append(
+            self.home_forge_available
+        )
+
+        copy.append(
+            title
+        )
+
+        copy.append(
+            description
+        )
+
+        copy.append(
+            actions
+        )
+
+        shade.append(
+            copy
+        )
+
+        shade.append(
+            Gtk.Box(
+                hexpand=True
+            )
+        )
+
+        unity_logo = Gtk.Label(
+            use_markup=True,
+            justify=Gtk.Justification.CENTER,
+            valign=Gtk.Align.CENTER,
+            halign=Gtk.Align.END,
+        )
+
+        unity_logo.set_markup(
+            '<span size="17000">ASSASSIN’S</span>\n'
+            '<span size="10500">CREED</span>\n'
+            '<span foreground="#e31f2b" size="21000">UNITY</span>'
+        )
+
+        unity_logo.set_margin_end(
+            38
+        )
+
+        hero.add_overlay(
+            shade
+        )
+
+        hero.add_overlay(
+            unity_logo
+        )
+
+        hero.set_measure_overlay(
+            unity_logo,
+            False,
+        )
+
+        self.home_unity_logo = (
+            unity_logo
+        )
+
+        dots = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL,
+            spacing=8,
+            halign=Gtk.Align.END,
+            valign=Gtk.Align.END,
+        )
+
+        dots.set_margin_end(
+            28
+        )
+
+        dots.set_margin_bottom(
+            16
+        )
+
+        for index in range(4):
+            dot = Gtk.Label(
+                label="●"
+            )
+
+            if index:
+                dot.add_css_class(
+                    "dim-label"
+                )
+
+            dots.append(
+                dot
+            )
+
+        hero.add_overlay(
+            dots
+        )
+
+        hero_frame.append(
+            hero
+        )
+
+        page.append(
+            hero_frame
+        )
+
+        # ====================================================
+        # STATS
+        # ====================================================
+
+        stats = Gtk.Grid(
+            column_spacing=14,
+            row_spacing=14,
+            column_homogeneous=True,
+            hexpand=True,
+        )
+
+        self.home_stats_grid = stats
+        self.home_stat_cards = []
+
+        stat_specs = (
+            (
+                "applications-games-symbolic",
+                "42",
+                "Games in Library",
+                None,
+                False,
+            ),
+            (
+                "emblem-ok-symbolic",
+                "38",
+                "Ready to Forge",
+                "home-stat-ready",
+                False,
+            ),
+            (
+                "emblem-system-symbolic",
+                "3",
+                "Using rtxForge",
+                None,
+                False,
+            ),
+            (
+                "dialog-warning-symbolic",
+                "1",
+                "Needs Attention",
+                "home-stat-warning",
+                True,
+            ),
+        )
+
+        for index, spec in enumerate(
+            stat_specs
+        ):
+            stat_card = self._home_stat_card(
+                icon_name=spec[0],
+                value=spec[1],
+                caption=spec[2],
+                css_class=spec[3],
+                arrow=spec[4],
+            )
+
+            self.home_stat_cards.append(
+                stat_card
+            )
+
+            stats.attach(
+                stat_card,
+                index,
+                0,
+                1,
+                1,
+            )
+
+        page.append(
+            stats
+        )
+
+        # ====================================================
+        # RECENT GAMES
+        # ====================================================
+
+        recent_shell = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=12,
+        )
+
+        recent_shell.add_css_class(
+            "home-recent-section"
+        )
+
+        recent_shell.set_margin_top(
+            0
+        )
+
+        recent_header = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL,
+            spacing=12,
+        )
+
+        recent_header.set_margin_start(
+            16
+        )
+
+        recent_header.set_margin_end(
+            16
+        )
+
+        recent_header.set_margin_top(
+            14
+        )
+
+        recent_title = Gtk.Label(
+            label="Recent Games",
+            xalign=0,
+            hexpand=True,
+        )
+
+        recent_title.add_css_class(
+            "title-3"
+        )
+
+        view_all = Gtk.Button(
+            label="View All"
+        )
+
+        view_all.connect(
+            "clicked",
+            lambda *_: self._navigate_from_home(
+                "library"
+            ),
+        )
+
+        recent_header.append(
+            recent_title
+        )
+
+        recent_header.append(
+            view_all
+        )
+
+        recent_shell.append(
+            recent_header
+        )
+
+        recent_scroller = Gtk.ScrolledWindow()
+
+        recent_scroller.set_policy(
+            Gtk.PolicyType.AUTOMATIC,
+            Gtk.PolicyType.NEVER,
+        )
+
+        recent_scroller.set_propagate_natural_height(
+            True
+        )
+
+        recent_scroller.set_hexpand(
+            True
+        )
+
+        recent_grid = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL,
+            spacing=12,
+        )
+
+        recent_grid.set_margin_start(
+            0
+        )
+
+        recent_grid.set_margin_end(
+            0
+        )
+
+        self.home_recent_row = recent_grid
+
+        recent_grid.set_margin_start(
+            16
+        )
+
+        recent_grid.set_margin_end(
+            16
+        )
+
+        recent_grid.set_margin_bottom(
+            16
+        )
+
+        recent_games = (
+            (
+                "Cyberpunk 2077",
+                "1091500",
+                "Using rtxForge",
+                "home-status-good",
+            ),
+            (
+                "Alan Wake II",
+                "",
+                "Ready to Forge",
+                "home-status-ready",
+            ),
+            (
+                "Starfield",
+                "1716740",
+                "Using rtxForge",
+                "home-status-good",
+            ),
+            (
+                "Hogwarts Legacy",
+                "990080",
+                "Ready to Forge",
+                "home-status-ready",
+            ),
+            (
+                "Forza Horizon 5",
+                "1551360",
+                "Ready to Forge",
+                "home-status-ready",
+            ),
+            (
+                "The Witcher 3",
+                "292030",
+                "Needs Attention",
+                "home-status-warning",
+            ),
+        )
+
+        for index, (
+            name,
+            appid,
+            status,
+            status_class,
+        ) in enumerate(recent_games):
+            recent_card = self._home_recent_card(
+                name=name,
+                appid=appid,
+                status=status,
+                status_class=status_class,
+            )
+
+            recent_card.set_size_request(
+                185,
+                158,
+            )
+
+            recent_card.set_hexpand(
+                False
+            )
+
+            recent_grid.append(
+                recent_card
+            )
+
+        recent_scroller.set_child(
+            recent_grid
+        )
+
+        recent_shell.append(
+            recent_scroller
+        )
+
+        page.append(
+            recent_shell
+        )
+
+        # ====================================================
+        # SYSTEM STATUS + QUICK ACTIONS
+        # ====================================================
+
+        bottom = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL,
+            spacing=16,
+            hexpand=True,
+        )
+
+        self.home_bottom = (
+            bottom
+        )
+
+        # System Status
+        status_card = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=12,
+            hexpand=True,
+        )
+
+        status_card.add_css_class(
+            "home-bottom-card"
+        )
+
+        status_card.set_size_request(
+            285,
+            -1,
+        )
+
+        status_card.set_hexpand(
+            False
+        )
+
+        status_card.set_halign(
+            Gtk.Align.FILL
+        )
+
+        status_card.set_size_request(
+            -1,
+            142,
+        )
+
+        status_card.set_margin_top(
+            0
+        )
+
+        status_content = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=12,
+        )
+
+        status_content.set_margin_start(
+            18
+        )
+
+        status_content.set_margin_end(
+            18
+        )
+
+        status_content.set_margin_top(
+            16
+        )
+
+        status_content.set_margin_bottom(
+            16
+        )
+
+        status_title = Gtk.Label(
+            label="System Status",
+            xalign=0,
+        )
+
+        status_title.add_css_class(
+            "title-3"
+        )
+
+        state = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL,
+            spacing=14,
+        )
+
+        check_shell = Gtk.Box(
+            valign=Gtk.Align.CENTER,
+            halign=Gtk.Align.CENTER,
+            hexpand=False,
+            vexpand=False,
+        )
+
+        check_shell.set_size_request(
+            44,
+            44,
+        )
+
+        check_shell.add_css_class(
+            "home-system-check"
+        )
+
+        check = Gtk.Label(
+            label="✓",
+            halign=Gtk.Align.CENTER,
+            valign=Gtk.Align.CENTER,
+        )
+
+        check_shell.append(
+            check
+        )
+
+        state_labels = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=3,
+            valign=Gtk.Align.CENTER,
+        )
+
+        good = Gtk.Label(
+            label="Everything looks good.",
+            xalign=0,
+        )
+
+        good.add_css_class(
+            "heading"
+        )
+
+        ready = Gtk.Label(
+            label=(
+                "rtxForge is ready and your "
+                "library is up to date."
+            ),
+            xalign=0,
+            wrap=True,
+        )
+
+        ready.add_css_class(
+            "dim-label"
+        )
+
+        state_labels.append(
+            good
+        )
+
+        state_labels.append(
+            ready
+        )
+
+        state.append(
+            check_shell
+        )
+
+        state.append(
+            state_labels
+        )
+
+        status_content.append(
+            status_title
+        )
+
+        status_content.append(
+            state
+        )
+
+        status_card.append(
+            status_content
+        )
+
+        bottom.append(
+            status_card
+        )
+
+        # Quick Actions
+        quick_card = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=12,
+            hexpand=True,
+        )
+
+        quick_card.add_css_class(
+            "home-bottom-card"
+        )
+
+        quick_card.set_hexpand(
+            True
+        )
+
+        quick_card.set_size_request(
+            -1,
+            142,
+        )
+
+        quick_content = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=12,
+        )
+
+        quick_content.set_margin_start(
+            18
+        )
+
+        quick_content.set_margin_end(
+            18
+        )
+
+        quick_content.set_margin_top(
+            16
+        )
+
+        quick_content.set_margin_bottom(
+            16
+        )
+
+        quick_title = Gtk.Label(
+            label="Quick Actions",
+            xalign=0,
+        )
+
+        quick_title.add_css_class(
+            "title-3"
+        )
+
+        quick_row = Gtk.Grid(
+            column_spacing=12,
+            row_spacing=12,
+            column_homogeneous=True,
+            hexpand=True,
+        )
+
+        self.home_quick_grid = quick_row
+
+        self.home_actions = {
+            "library": self._home_quick_action(
+                icon_name="media-playback-start-symbolic",
+                title="Review Library",
+                subtitle="Check for supported games",
+                page_id="library",
+            ),
+            "forge": self._home_quick_action(
+                icon_name="applications-engineering-symbolic",
+                title="Forge Available",
+                subtitle="Set up RTX features",
+                page_id="forge",
+            ),
+            "recovery": self._home_quick_action(
+                icon_name="document-revert-symbolic",
+                title="Restore a Game",
+                subtitle="Revert to original files",
+                page_id="recovery",
+            ),
+        }
+
+        quick_row.attach(
+            self.home_actions["library"],
+            0,
+            0,
+            1,
+            1,
+        )
+
+        quick_row.attach(
+            self.home_actions["forge"],
+            1,
+            0,
+            1,
+            1,
+        )
+
+        quick_row.attach(
+            self.home_actions["recovery"],
+            2,
+            0,
+            1,
+            1,
+        )
+
+        quick_content.append(
+            quick_title
+        )
+
+        quick_content.append(
+            quick_row
+        )
+
+        quick_card.append(
+            quick_content
+        )
+
+        bottom.append(
+            quick_card
+        )
+
+        page.append(
+            bottom
+        )
+
+        self.home_hero_frame = (
+            hero_frame
+        )
+
+        self.home_compact_breakpoint = (
+            Adw.Breakpoint.new(
+                Adw.BreakpointCondition.parse(
+                    "max-width: 920sp"
+                )
+            )
+        )
+
+        def apply_home_compact(*_args):
+            self.home_unity_logo.set_visible(
+                False
+            )
+
+            self.home_bottom.set_orientation(
+                Gtk.Orientation.VERTICAL
+            )
+
+            self.home_hero_frame.set_size_request(
+                -1,
+                215,
+            )
+
+            for child in self.home_stat_cards:
+                self.home_stats_grid.remove(
+                    child
+                )
+
+            for index, child in enumerate(
+                self.home_stat_cards
+            ):
+                self.home_stats_grid.attach(
+                    child,
+                    index % 2,
+                    index // 2,
+                    1,
+                    1,
+                )
+
+            quick_items = (
+                self.home_actions["library"],
+                self.home_actions["forge"],
+                self.home_actions["recovery"],
+            )
+
+            for child in quick_items:
+                self.home_quick_grid.remove(
+                    child
+                )
+
+            for index, child in enumerate(
+                quick_items
+            ):
+                self.home_quick_grid.attach(
+                    child,
+                    0,
+                    index,
+                    1,
+                    1,
+                )
+
+        def unapply_home_compact(*_args):
+            self.home_unity_logo.set_visible(
+                True
+            )
+
+            self.home_bottom.set_orientation(
+                Gtk.Orientation.HORIZONTAL
+            )
+
+            self.home_hero_frame.set_size_request(
+                -1,
+                245,
+            )
+
+            for child in self.home_stat_cards:
+                self.home_stats_grid.remove(
+                    child
+                )
+
+            for index, child in enumerate(
+                self.home_stat_cards
+            ):
+                self.home_stats_grid.attach(
+                    child,
+                    index,
+                    0,
+                    1,
+                    1,
+                )
+
+            quick_items = (
+                self.home_actions["library"],
+                self.home_actions["forge"],
+                self.home_actions["recovery"],
+            )
+
+            for child in quick_items:
+                self.home_quick_grid.remove(
+                    child
+                )
+
+            for index, child in enumerate(
+                quick_items
+            ):
+                self.home_quick_grid.attach(
+                    child,
+                    index,
+                    0,
+                    1,
+                    1,
+                )
+
+        self.home_compact_breakpoint.connect(
+            "apply",
+            apply_home_compact,
+        )
+
+        self.home_compact_breakpoint.connect(
+            "unapply",
+            unapply_home_compact,
+        )
+
+        self.add_breakpoint(
+            self.home_compact_breakpoint
+        )
+
+        return page
 
     def _build_library_shell(self):
         library = Gtk.Box(
@@ -1714,7 +3528,7 @@ class RedesignLabWindow(
         metadata = Adw.PreferencesGroup()
 
         metadata.set_title(
-            "Library & Metadata"
+            "Library &amp; Metadata"
         )
 
         metadata.set_description(
@@ -1933,6 +3747,221 @@ class RedesignLabWindow(
 
         return page
 
+    def _build_recovery_shell(self):
+        # Recovery follows the same approved full-width language
+        # as Settings and Forge. Nothing is destructive in Phase 1.
+        page = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=24,
+            hexpand=True,
+            vexpand=False,
+        )
+
+        self.recovery_page = page
+
+        # ----------------------------------------------------
+        # Safety / review-first behavior
+        # ----------------------------------------------------
+
+        safety = Adw.PreferencesGroup()
+
+        safety.set_title(
+            "Recovery Safety"
+        )
+
+        safety.set_description(
+            "Recovery actions are reviewed before "
+            "anything is changed."
+        )
+
+        safety_row = Adw.ActionRow()
+
+        safety_row.set_title(
+            "Review First"
+        )
+
+        safety_row.set_subtitle(
+            "rtxForge will show affected files and games "
+            "before a recovery action is applied."
+        )
+
+        safety_row.set_size_request(
+            -1,
+            62,
+        )
+
+        safety_icon = Gtk.Image.new_from_icon_name(
+            "security-high-symbolic"
+        )
+
+        safety_icon.set_valign(
+            Gtk.Align.CENTER
+        )
+
+        safety_row.add_prefix(
+            safety_icon
+        )
+
+        safety.add(
+            safety_row
+        )
+
+        page.append(
+            safety
+        )
+
+        # ----------------------------------------------------
+        # Previous changes
+        # ----------------------------------------------------
+
+        history = Adw.PreferencesGroup()
+
+        history.set_title(
+            "Previous Changes"
+        )
+
+        history.set_description(
+            "Review recorded rtxForge operations "
+            "and available recovery points."
+        )
+
+        (
+            history_row,
+            self.recovery_previous_changes,
+        ) = self._settings_button_row(
+            title="Recovery Records",
+            subtitle=(
+                "Browse install, removal, and repair "
+                "records created by rtxForge."
+            ),
+            button_label="Browse…",
+        )
+
+        history.add(
+            history_row
+        )
+
+        page.append(
+            history
+        )
+
+        # ----------------------------------------------------
+        # Cleanup
+        # ----------------------------------------------------
+
+        cleanup = Adw.PreferencesGroup()
+
+        cleanup.set_title(
+            "Cleanup"
+        )
+
+        cleanup.set_description(
+            "Inspect legacy files before removing them."
+        )
+
+        (
+            old_nr_row,
+            self.recovery_old_nr_files,
+        ) = self._settings_button_row(
+            title="Old NR Files",
+            subtitle=(
+                "Review legacy Neural Rendering files "
+                "that may no longer be needed."
+            ),
+            button_label="Review…",
+        )
+
+        cleanup.add(
+            old_nr_row
+        )
+
+        page.append(
+            cleanup
+        )
+
+        # ----------------------------------------------------
+        # Reports
+        # ----------------------------------------------------
+
+        reports = Adw.PreferencesGroup()
+
+        reports.set_title(
+            "Reports &amp; Support"
+        )
+
+        reports.set_description(
+            "Open diagnostic information useful "
+            "for troubleshooting and support."
+        )
+
+        (
+            reports_row,
+            self.recovery_library_reports,
+        ) = self._settings_button_row(
+            title="Library Reports",
+            subtitle=(
+                "View test notes and export information "
+                "about your rtxForge library."
+            ),
+            button_label="Open…",
+        )
+
+        reports.add(
+            reports_row
+        )
+
+        page.append(
+            reports
+        )
+
+        # ----------------------------------------------------
+        # Preview status
+        # ----------------------------------------------------
+
+        preview = Adw.PreferencesGroup()
+
+        preview.set_title(
+            "Phase 1 Preview"
+        )
+
+        preview_row = Adw.ActionRow()
+
+        preview_row.set_title(
+            "Recovery actions are not connected yet"
+        )
+
+        preview_row.set_subtitle(
+            "The existing production recovery system "
+            "remains unchanged and is still the source of truth."
+        )
+
+        preview_row.set_size_request(
+            -1,
+            62,
+        )
+
+        preview_icon = Gtk.Image.new_from_icon_name(
+            "dialog-information-symbolic"
+        )
+
+        preview_icon.set_valign(
+            Gtk.Align.CENTER
+        )
+
+        preview_row.add_prefix(
+            preview_icon
+        )
+
+        preview.add(
+            preview_row
+        )
+
+        page.append(
+            preview
+        )
+
+        return page
+
     def _build_page_surface(
         self,
         page_id,
@@ -2022,9 +4051,10 @@ class RedesignLabWindow(
             description_label
         )
 
-        content.append(
-            page_header
-        )
+        if page_id != "home":
+            content.append(
+                page_header
+            )
 
         mount = Gtk.Box(
             orientation=(
@@ -2035,7 +4065,11 @@ class RedesignLabWindow(
             vexpand=True,
         )
 
-        if page_id == "library":
+        if page_id == "home":
+            mount.append(
+                self._build_home_shell()
+            )
+        elif page_id == "library":
             mount.append(
                 self._build_library_shell()
             )
@@ -2046,6 +4080,10 @@ class RedesignLabWindow(
         elif page_id == "settings":
             mount.append(
                 self._build_settings_shell()
+            )
+        elif page_id == "recovery":
+            mount.append(
+                self._build_recovery_shell()
             )
         else:
             mount.append(
@@ -2324,6 +4362,61 @@ class RedesignLabApplication(
 
             print(
                 "  migration mounts: ready"
+            )
+
+            if not isinstance(
+                window.home_page,
+                Gtk.Box,
+            ):
+                raise RuntimeError(
+                    "Home must use the full-width "
+                    "page container"
+                )
+
+            if not window.home_page.get_hexpand():
+                raise RuntimeError(
+                    "Home page must expand horizontally"
+                )
+
+            if set(
+                window.home_actions
+            ) != {
+                "library",
+                "forge",
+                "recovery",
+            }:
+                raise RuntimeError(
+                    "Home quick actions are incomplete"
+                )
+
+            if not hasattr(
+                window,
+                "home_review_library",
+            ):
+                raise RuntimeError(
+                    "Home hero primary action missing"
+                )
+
+            if not hasattr(
+                window,
+                "home_forge_available",
+            ):
+                raise RuntimeError(
+                    "Home hero Forge action missing"
+                )
+
+            print(
+                "  home shell: "
+                "cinematic hero + stats + recent games + "
+                "system status + quick actions"
+            )
+
+            print(
+                "  home artwork: local Steam cache only"
+            )
+
+            print(
+                "  home actions: internal navigation only"
             )
 
             if not hasattr(
@@ -2625,6 +4718,44 @@ class RedesignLabApplication(
 
             print(
                 "  settings persistence: intentionally unwired"
+            )
+
+            if not isinstance(
+                window.recovery_page,
+                Gtk.Box,
+            ):
+                raise RuntimeError(
+                    "Recovery must use the full-width "
+                    "page container"
+                )
+
+            if not window.recovery_page.get_hexpand():
+                raise RuntimeError(
+                    "Recovery page must expand horizontally"
+                )
+
+            for button in (
+                window.recovery_previous_changes,
+                window.recovery_old_nr_files,
+                window.recovery_library_reports,
+            ):
+                if button.get_sensitive():
+                    raise RuntimeError(
+                        "Phase 1 Recovery actions must "
+                        "remain unwired"
+                    )
+
+            print(
+                "  recovery shell: "
+                "safety + history + cleanup + reports"
+            )
+
+            print(
+                "  recovery actions: intentionally unwired"
+            )
+
+            print(
+                "  protected classic surfaces: untouched"
             )
 
             print(

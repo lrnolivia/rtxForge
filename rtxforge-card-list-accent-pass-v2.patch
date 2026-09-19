@@ -1,0 +1,992 @@
+--- a/gui/rtxforge_gtk.py
++++ b/gui/rtxforge_gtk.py
+@@ -212,48 +212,98 @@
+         **kwargs
+     )
+ def artwork_accent(path,color=None):
+-    pix=GdkPixbuf.Pixbuf.new_from_file_at_scale(path,32,32,True)
+-    data=pix.get_pixels();stride=pix.get_rowstride();channels=pix.get_n_channels();colors=Counter()
++    pix=GdkPixbuf.Pixbuf.new_from_file_at_scale(
++        path,
++        32,
++        32,
++        True,
++    )
++
++    data=pix.get_pixels()
++    stride=pix.get_rowstride()
++    channels=pix.get_n_channels()
++    colors=Counter()
++
+     for y in range(pix.get_height()):
+         for x in range(pix.get_width()):
+             off=y*stride+x*channels
+-            if channels==4 and data[off+3]<128:continue
+-            rgb=tuple(data[off+k]/255 for k in range(3));h,s,v=colorsys.rgb_to_hsv(*rgb)
+-            if s>.25 and .2<v<.98:colors[int(h*24)]+=s*v
+-    hue=(colors.most_common(1)[0][0]+.5)/24 if colors else .23
+-    rgb=tuple(round(v*255) for v in colorsys.hsv_to_rgb(hue,.62,.90))
+-    color=color or '#%02x%02x%02x'%rgb
+-
+-    # Pick a readable foreground for artwork-derived accent controls.
+-    #
+-    # Bright/vibrant game colors such as Cyberpunk yellow should not
+-    # use white text. For those, derive a much darker version of the
+-    # SAME hue so the control still feels tied to the game's artwork.
+-    #
+-    # Dark accents keep white text.
++
++            if (
++                channels==4
++                and data[off+3]<128
++            ):
++                continue
++
++            rgb=tuple(
++                data[off+k]/255
++                for k in range(3)
++            )
++
++            h,s,v=colorsys.rgb_to_hsv(
++                *rgb
++            )
++
++            if (
++                s>.25
++                and .2<v<.98
++            ):
++                colors[
++                    int(h*24)
++                ]+=s*v
++
++    hue=(
++        (
++            colors.most_common(1)[0][0]
++            + .5
++        )
++        /24
++        if colors
++        else .23
++    )
++
++    rgb=tuple(
++        round(v*255)
++        for v in colorsys.hsv_to_rgb(
++            hue,
++            .62,
++            .90,
++        )
++    )
++
++    color=(
++        color
++        or '#%02x%02x%02x'%rgb
++    )
++
+     try:
+         raw=color.lstrip('#')
++
+         cr=int(raw[0:2],16)/255
+         cg=int(raw[2:4],16)/255
+         cb=int(raw[4:6],16)/255
+ 
++        fh,fs,fv=colorsys.rgb_to_hsv(
++            cr,
++            cg,
++            cb,
++        )
++
+         luminance=(
+-            0.2126*cr +
+-            0.7152*cg +
+-            0.0722*cb
+-        )
+-
+-        if luminance >= 0.48:
+-            fh,fs,fv=colorsys.rgb_to_hsv(
+-                cr,
+-                cg,
+-                cb,
+-            )
+-
+-            # Same hue, richer saturation, substantially darker value.
++            0.2126*cr
++            + 0.7152*cg
++            + 0.0722*cb
++        )
++
++        if luminance>=0.48:
+             fr,fg,fb=colorsys.hsv_to_rgb(
+                 fh,
+-                max(0.55,min(1.0,fs*1.05)),
++                max(
++                    0.55,
++                    min(
++                        1.0,
++                        fs*1.05,
++                    ),
++                ),
+                 0.20,
+             )
+ 
+@@ -265,37 +315,181 @@
+         else:
+             accent_fg='#ffffff'
+ 
++        # Selected card controls/checkmarks always use a darker version
++        # of the SAME game hue, never plain white.
++        dr,dg,db=colorsys.hsv_to_rgb(
++            fh,
++            max(
++                0.62,
++                min(
++                    1.0,
++                    fs*1.08,
++                ),
++            ),
++            max(
++                0.08,
++                min(
++                    0.24,
++                    fv*0.32,
++                ),
++            ),
++        )
++
++        accent_dark='#%02x%02x%02x'%(
++            round(dr*255),
++            round(dg*255),
++            round(db*255),
++        )
++
+     except Exception:
+         accent_fg='#ffffff'
++        accent_dark='#18181b'
+ 
+     name='art-'+color[1:]
++
+     if name not in ACCENT_PROVIDERS:
+         provider=Gtk.CssProvider()
+-        provider.load_from_data((f'.game-card.{name}.selected {{ border-color: {color}; box-shadow: 0 2px 12px alpha({color},0.28); }} '
+-            f'.game-card.{name}:hover {{ border-color: alpha({color},0.65); }} '
+-            f'.library-list-row.{name}.selected {{ border-color: transparent; box-shadow: none; }} '
+-            f'.library-list-row.{name}:hover {{ border-color: transparent; box-shadow: none; }} '
+-            f'.library-list-row.{name}.selected .library-list-thumb {{ border-color: {color}; box-shadow: 0 2px 10px alpha({color},0.28); }} '
+-            f'.library-list-row.{name}:hover .library-list-thumb {{ border-color: alpha({color},0.65); }} '
+-            f'.{name} check:checked {{ background: {color}; }} '
+-            f'.{name} button.suggested-action {{ background: {color}; color: {accent_fg}; }} '
+-            f'.{name} button.suggested-action label {{ color: {accent_fg}; }} '
+-            f'.{name} .game-status {{ border-left: 3px solid {color}; background: alpha({color},0.12); }} '
+-            f'.{name} toggle-group toggle:checked {{ background: {color}; color: {accent_fg}; }} '
+-            f'.{name} toggle-group toggle:checked label {{ color: {accent_fg}; }} '
+-            f'.{name} .game-details {{ background: {color}; color: {accent_fg}; border-color: transparent; box-shadow: none; }} '
+-            f'.{name} .game-details label {{ color: {accent_fg}; font-weight: 700; }} '
+-            f'.{name} .game-details:hover {{ background: {color}; color: {accent_fg}; }} '
+-            f'.{name} .game-details:hover label {{ color: {accent_fg}; }} '
+-            f'.{name} .game-detail-nav row:selected {{ background: alpha({color},0.10); }} '
+-            f'.{name} .game-detail-nav row:selected label, .{name} .game-detail-nav row:selected image {{ color: {color}; }} '
+-            f'.{name} progressbar progress {{ background: {color}; transition: background-color 450ms; }} '
+-            f'.{name} .progress-poster-frame {{ border-color: {color}; }} '
+-            f'.{name} scale highlight {{ background: {color}; }} '
+-            f'.{name} .card-title, .{name} .game-banner-title, .{name} .job-title, .{name} .game-heading, .{name} .eyebrow {{ color: {color}; }} '
+-            f'.{name} button:focus-visible {{ outline-color: {color}; }}').encode())
+-        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(),provider,Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION+1)
+-        ACCENT_PROVIDERS[name]=provider
++
++        provider.load_from_data((
++            # Poster / Wide Capsule selection border.
++            f'.game-card.{name}.selected {{ '
++            f'border-color: {color}; '
++            f'box-shadow: 0 2px 12px alpha({color},0.28); '
++            f'}} '
++
++            f'.game-card.{name}:hover {{ '
++            f'border-color: alpha({color},0.65); '
++            f'}} '
++
++            # List row itself NEVER receives the accent border.
++            f'.game-card.library-list-row.{name}.selected {{ '
++            f'border-color: transparent; '
++            f'box-shadow: none; '
++            f'}} '
++
++            f'.game-card.library-list-row.{name}:hover {{ '
++            f'border-color: transparent; '
++            f'box-shadow: none; '
++            f'}} '
++
++            # List accent border lives ONLY on artwork.
++            f'.game-card.library-list-row.{name}.selected '
++            f'.library-list-thumb {{ '
++            f'border-color: {color}; '
++            f'box-shadow: 0 2px 10px alpha({color},0.28); '
++            f'}} '
++
++            f'.game-card.library-list-row.{name}:hover '
++            f'.library-list-thumb {{ '
++            f'border-color: alpha({color},0.68); '
++            f'}} '
++
++            # Checked indicators use accent background + dark same-hue glyph.
++            f'.{name} check:checked {{ '
++            f'background: {color}; '
++            f'color: {accent_dark}; '
++            f'border-color: {color}; '
++            f'}} '
++
++            # Poster / Wide Capsule Details button is neutral at rest;
++            # it becomes accent-filled only while the card is selected.
++            f'.game-card.{name}.selected .game-details {{ '
++            f'background: {color}; '
++            f'color: {accent_dark}; '
++            f'border-color: transparent; '
++            f'box-shadow: none; '
++            f'}} '
++
++            f'.game-card.{name}.selected .game-details label {{ '
++            f'color: {accent_dark}; '
++            f'font-weight: 700; '
++            f'}} '
++
++            # Same rule for List action buttons.
++            f'.game-card.library-list-row.{name}.selected '
++            f'.library-list-actions button {{ '
++            f'background: {color}; '
++            f'color: {accent_dark}; '
++            f'border-color: transparent; '
++            f'box-shadow: none; '
++            f'}} '
++
++            f'.game-card.library-list-row.{name}.selected '
++            f'.library-list-actions button label, '
++            f'.game-card.library-list-row.{name}.selected '
++            f'.library-list-actions button image {{ '
++            f'color: {accent_dark}; '
++            f'}} '
++
++            # Game Detail window keeps its accent semantics.
++            f'.{name} .game-status {{ '
++            f'border-left: 3px solid {color}; '
++            f'background: alpha({color},0.12); '
++            f'}} '
++
++            f'.{name} toggle-group toggle:checked {{ '
++            f'background: {color}; '
++            f'color: {accent_fg}; '
++            f'}} '
++
++            f'.{name} toggle-group toggle:checked label {{ '
++            f'color: {accent_fg}; '
++            f'}} '
++
++            f'.{name} .game-detail-main button.suggested-action {{ '
++            f'background: {color}; '
++            f'color: {accent_fg}; '
++            f'}} '
++
++            f'.{name} .game-detail-main button.suggested-action label {{ '
++            f'color: {accent_fg}; '
++            f'}} '
++
++            f'.{name} .game-detail-nav row:selected {{ '
++            f'background: alpha({color},0.10); '
++            f'}} '
++
++            f'.{name} .game-detail-nav row:selected label, '
++            f'.{name} .game-detail-nav row:selected image {{ '
++            f'color: {color}; '
++            f'}} '
++
++            f'.{name} progressbar progress {{ '
++            f'background: {color}; '
++            f'}} '
++
++            f'.{name} .progress-poster-frame {{ '
++            f'border-color: {color}; '
++            f'}} '
++
++            f'.{name} scale highlight {{ '
++            f'background: {color}; '
++            f'}} '
++
++            # Titles remain artwork-accent colored in every Library view.
++            f'.{name} .card-title, '
++            f'.{name} .game-banner-title, '
++            f'.{name} .job-title, '
++            f'.{name} .game-heading, '
++            f'.{name} .eyebrow {{ '
++            f'color: {color}; '
++            f'}} '
++
++            f'.{name} button:focus-visible {{ '
++            f'outline-color: {color}; '
++            f'}}'
++        ).encode())
++
++        Gtk.StyleContext.add_provider_for_display(
++            Gdk.Display.get_default(),
++            provider,
++            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION+1,
++        )
++
++        ACCENT_PROVIDERS[
++            name
++        ]=provider
++
+     return name
+ 
+ 
+@@ -971,7 +1165,100 @@
+ }
+ 
+ .library-list-actions button {
+-    min-height: 34px;
++    min-height: 30px;
++}
++
++/* Library card actions are neutral until selected. */
++.game-card .game-details,
++.game-card.library-list-row .library-list-actions button {
++    background: alpha(@window_fg_color,0.12);
++    color: @window_fg_color;
++    border-color: alpha(@window_fg_color,0.08);
++    box-shadow: none;
++}
++
++.game-card .game-details label,
++.game-card.library-list-row .library-list-actions button label,
++.game-card.library-list-row .library-list-actions button image {
++    color: inherit;
++}
++
++.game-card .game-details:hover,
++.game-card.library-list-row .library-list-actions button:hover {
++    background: #c8c8ca;
++    color: #202024;
++    border-color: transparent;
++}
++
++.game-card .game-details:hover label,
++.game-card.library-list-row .library-list-actions button:hover label,
++.game-card.library-list-row .library-list-actions button:hover image {
++    color: #202024;
++}
++
++/* List row never owns accent selection. */
++.game-card.library-list-row.selected,
++.game-card.library-list-row:hover {
++    border-color: transparent;
++    box-shadow: none;
++}
++
++/* RTXFORGE_LIST_COMPACT_V2 */
++.library-list-row {
++    min-height: 58px;
++}
++
++.library-list-game {
++    padding: 3px 4px;
++}
++
++.library-list-title {
++    font-size: 13px;
++    font-weight: 700;
++}
++
++.library-list-meta,
++.library-list-location {
++    font-size: 10px;
++}
++
++.library-list-status-text {
++    font-size: 11px;
++}
++
++.library-list-chip {
++    padding: 3px 6px;
++    font-size: 10px;
++}
++
++.library-list-actions {
++    padding-right: 2px;
++}
++
++.library-list-thumb {
++    border: 2px solid transparent;
++    border-radius: 10px;
++}
++
++
++.accent-picker-art-frame {
++    padding: 3px;
++    border: 3px solid alpha(@window_fg_color,0.22);
++    border-radius: 20px;
++    background: alpha(black,0.18);
++}
++
++.accent-picker-art-clip {
++    border-radius: 16px;
++    background: black;
++}
++
++.accent-picker-actions {
++    padding-top: 2px;
++}
++
++.accent-picker-actions button {
++    min-width: 86px;
+ }
+ 
+ .game-card .poster-fallback {
+@@ -2569,7 +2856,7 @@
+         # Dedicated List-view column header. It stays outside the scroller so
+         # the information hierarchy remains stable while the rows move.
+         self.library_list_header=Gtk.Grid(
+-            column_spacing=12,
++            column_spacing=10,
+             hexpand=True,
+         )
+         self.library_list_header.add_css_class(
+@@ -2577,11 +2864,11 @@
+         )
+ 
+         for column,(title,width,expand) in enumerate((
+-            ('Game',320,False),
+-            ('Location',180,True),
+-            ('Status',115,False),
+-            ('Enhancements',145,False),
+-            ('Actions',160,False),
++            ('Game',360,True),
++            ('Location',150,False),
++            ('Status',105,False),
++            ('Enhancements',120,False),
++            ('Actions',130,False),
+         )):
+             header_label=label(
+                 title,
+@@ -5468,7 +5755,7 @@
+ 
+         if view=='list':
+             row=Gtk.Grid(
+-                column_spacing=12,
++                column_spacing=10,
+                 row_spacing=0,
+                 hexpand=True,
+             )
+@@ -5484,14 +5771,15 @@
+             )
+ 
+             game_cell=Gtk.Box(
+-                spacing=10,
+-                hexpand=False,
++                spacing=0,
++                hexpand=True,
++                valign=Gtk.Align.CENTER,
+             )
+             game_cell.add_css_class(
+                 'library-list-game'
+             )
+             game_cell.set_size_request(
+-                320,
++                360,
+                 -1,
+             )
+ 
+@@ -5572,12 +5860,14 @@
+             )
+ 
+             check=Gtk.CheckButton(
+-                halign=Gtk.Align.END,
+-                valign=Gtk.Align.START,
+-            )
+-            margins(
+-                check,
+-                4,
++                halign=Gtk.Align.CENTER,
++                valign=Gtk.Align.CENTER,
++            )
++            check.set_margin_start(
++                6
++            )
++            check.set_margin_end(
++                6
+             )
+             check.set_tooltip_text(
+                 'Select '+game['name']
+@@ -5585,13 +5875,6 @@
+             check.connect(
+                 'toggled',
+                 lambda *_:self.selection_changed(),
+-            )
+-            overlay.add_overlay(
+-                check
+-            )
+-            overlay.set_measure_overlay(
+-                check,
+-                False,
+             )
+ 
+             game_text=Gtk.Box(
+@@ -5600,6 +5883,9 @@
+                 hexpand=True,
+                 valign=Gtk.Align.CENTER,
+             )
++            game_text.set_margin_start(
++                10
++            )
+ 
+             title=label(
+                 game['name'],
+@@ -5608,11 +5894,20 @@
+             title.add_css_class(
+                 'library-list-title'
+             )
++            title.set_wrap(
++                True
++            )
++            title.set_wrap_mode(
++                Pango.WrapMode.WORD_CHAR
++            )
++            title.set_lines(
++                -1
++            )
+             title.set_single_line_mode(
+-                True
++                False
+             )
+             title.set_ellipsize(
+-                Pango.EllipsizeMode.END
++                Pango.EllipsizeMode.NONE
+             )
+             title.set_width_chars(
+                 1
+@@ -5651,6 +5946,9 @@
+                 meta
+             )
+ 
++            game_cell.append(
++                check
++            )
+             game_cell.append(
+                 overlay
+             )
+@@ -5687,8 +5985,8 @@
+             location_cell=Gtk.Box(
+                 orientation=Gtk.Orientation.VERTICAL,
+                 spacing=2,
+-                width_request=180,
+-                hexpand=True,
++                width_request=150,
++                hexpand=False,
+                 valign=Gtk.Align.CENTER,
+             )
+             location_source=label(
+@@ -5748,7 +6046,7 @@
+             status_box=Gtk.Box(
+                 orientation=Gtk.Orientation.VERTICAL,
+                 spacing=2,
+-                width_request=115,
++                width_request=105,
+                 valign=Gtk.Align.CENTER,
+             )
+             status_primary=Gtk.Box(
+@@ -5793,8 +6091,8 @@
+             )
+ 
+             enhancements=Gtk.Box(
+-                spacing=8,
+-                width_request=145,
++                spacing=6,
++                width_request=120,
+                 valign=Gtk.Align.CENTER,
+             )
+             nr_chip=label(
+@@ -5842,8 +6140,8 @@
+             )
+ 
+             actions=Gtk.Box(
+-                spacing=8,
+-                width_request=160,
++                spacing=6,
++                width_request=130,
+                 halign=Gtk.Align.END,
+                 valign=Gtk.Align.CENTER,
+             )
+@@ -5877,7 +6175,7 @@
+                 action_css,
+             )
+             primary.set_size_request(
+-                100,
++                88,
+                 -1,
+             )
+             primary.set_hexpand(
+@@ -5905,7 +6203,7 @@
+                 lambda *_:self.details(game),
+             )
+             more.set_size_request(
+-                42,
++                36,
+                 -1,
+             )
+ 
+@@ -7224,21 +7522,35 @@
+                 pix=GdkPixbuf.Pixbuf.new_from_file(
+                     str(source)
+                 )
++
+                 texture=Gdk.Texture.new_from_filename(
+                     str(source)
+                 )
++
+             except Exception as ex:
+                 self.toast(
+                     'Could not open this game’s artwork.'
+                 )
+-                self.log.append(str(ex))
++                self.log.append(
++                    str(ex)
++                )
+                 return
++
++            old_picker=getattr(
++                self,
++                'accent_picker_window',
++                None,
++            )
++
++            if old_picker is not None:
++                try:
++                    old_picker.close()
++                except Exception:
++                    pass
+ 
+             sw=max(1,pix.get_width())
+             sh=max(1,pix.get_height())
+ 
+-            # Large enough to pick accurately without turning this into
+-            # another full-screen artwork viewer.
+             max_w=380
+             max_h=560
+ 
+@@ -7251,33 +7563,142 @@
+                 220,
+                 round(sw*scale),
+             )
++
+             display_h=max(
+                 300,
+                 round(sh*scale),
+             )
+ 
+-            picker=Adw.Dialog(
++            # Real top-level modal window owned by Game Details.
++            # It stays above Game Details and is movable by its HeaderBar.
++            picker=Adw.Window(
++                application=self.get_application(),
++                transient_for=d,
++                modal=True,
+                 title='Pick Accent Color',
+-                content_width=display_w+48,
+-                content_height=display_h+118,
++                default_width=display_w+52,
++                default_height=display_h+190,
++                resizable=False,
++            )
++
++            picker.set_destroy_with_parent(
++                True
++            )
++
++            self.accent_picker_window=picker
++
++            root=Gtk.Box(
++                orientation=Gtk.Orientation.VERTICAL,
++            )
++
++            picker.set_content(
++                root
++            )
++
++            header=Adw.HeaderBar()
++
++            header.set_title_widget(
++                Adw.WindowTitle(
++                    title='Pick Accent Color',
++                )
++            )
++
++            root.append(
++                header
+             )
+ 
+             shell=Gtk.Box(
+                 orientation=Gtk.Orientation.VERTICAL,
+                 spacing=12,
+             )
+-            margins(shell,18)
+-            picker.set_child(shell)
++
++            margins(
++                shell,
++                18,
++            )
++
++            root.append(
++                shell
++            )
+ 
+             instructions=label(
+-                'Click anywhere on the poster to use that pixel as the game accent.',
++                'Choose a pixel to preview it as this game’s accent.',
+                 'dim-label',
+             )
++
+             instructions.set_halign(
+                 Gtk.Align.CENTER
+             )
+-            instructions.set_xalign(0.5)
+-            shell.append(instructions)
++
++            instructions.set_xalign(
++                0.5
++            )
++
++            shell.append(
++                instructions
++            )
++
++            current_class=str(
++                game.get(
++                    'accent_class',
++                    '',
++                )
++            )
++
++            initial_color=current_accent
++
++            if (
++                not initial_color
++                and current_class.startswith('art-')
++                and len(current_class)==10
++            ):
++                initial_color=(
++                    '#'
++                    + current_class[4:]
++                )
++
++            if not initial_color:
++                initial_color='#76b900'
++
++            pending={
++                'color':initial_color,
++            }
++
++            preview_label=label(
++                initial_color.upper(),
++                'dim-label',
++            )
++
++            preview_label.set_halign(
++                Gtk.Align.CENTER
++            )
++
++            preview_label.set_xalign(
++                0.5
++            )
++
++            frame=Gtk.Box(
++                halign=Gtk.Align.CENTER,
++                valign=Gtk.Align.CENTER,
++            )
++
++            frame.add_css_class(
++                'accent-picker-art-frame'
++            )
++
++            clip=Gtk.Box()
++
++            clip.add_css_class(
++                'accent-picker-art-clip'
++            )
++
++            clip.set_overflow(
++                Gtk.Overflow.HIDDEN
++            )
++
++            frame.append(
++                clip
++            )
+ 
+             poster=Gtk.Picture(
+                 paintable=texture,
+@@ -7290,8 +7711,13 @@
+             poster.set_halign(
+                 Gtk.Align.CENTER
+             )
++
+             poster.set_valign(
+                 Gtk.Align.CENTER
++            )
++
++            clip.append(
++                poster
+             )
+ 
+             try:
+@@ -7301,15 +7727,56 @@
+             except Exception:
+                 pass
+ 
+-            shell.append(poster)
++            shell.append(
++                frame
++            )
++
++            shell.append(
++                preview_label
++            )
++
++            preview_provider=Gtk.CssProvider()
++
++            Gtk.StyleContext.add_provider_for_display(
++                Gdk.Display.get_default(),
++                preview_provider,
++                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION+2,
++            )
++
++            def show_preview(color):
++                pending[
++                    'color'
++                ]=color
++
++                preview_label.set_text(
++                    color.upper()
++                )
++
++                preview_provider.load_from_data(
++                    (
++                        '.accent-picker-art-frame { '
++                        f'border-color: {color}; '
++                        '}'
++                    ).encode()
++                )
++
++            show_preview(
++                initial_color
++            )
+ 
+             gesture=Gtk.GestureClick()
+ 
+-            def picked(_gesture,_press,x,y):
++            def picked(
++                _gesture,
++                _press,
++                x,
++                y,
++            ):
+                 width=max(
+                     1,
+                     poster.get_width(),
+                 )
++
+                 height=max(
+                     1,
+                     poster.get_height(),
+@@ -7335,16 +7802,18 @@
+                 stride=pix.get_rowstride()
+                 data=pix.get_pixels()
+ 
+-                off=py*stride+px*channels
++                off=(
++                    py*stride
++                    + px*channels
++                )
+ 
+                 r=int(data[off])
+                 g=int(data[off+1])
+                 b=int(data[off+2])
+ 
+-                color=f'#{r:02x}{g:02x}{b:02x}'
+-
+-                set_color(color)
+-                picker.close()
++                show_preview(
++                    f'#{r:02x}{g:02x}{b:02x}'
++                )
+ 
+             gesture.connect(
+                 'released',
+@@ -7355,7 +7824,71 @@
+                 gesture
+             )
+ 
+-            picker.present(self)
++            actions=Gtk.Box(
++                spacing=8,
++                halign=Gtk.Align.END,
++            )
++
++            actions.add_css_class(
++                'accent-picker-actions'
++            )
++
++            shell.append(
++                actions
++            )
++
++            cancel=button(
++                'Cancel',
++                lambda *_:picker.close(),
++            )
++
++            def commit_accent(*_):
++                set_color(
++                    pending['color']
++                )
++                picker.close()
++
++            done=button(
++                'Done',
++                commit_accent,
++                'suggested-action',
++            )
++
++            actions.append(
++                cancel
++            )
++
++            actions.append(
++                done
++            )
++
++            def picker_closed(*_):
++                if (
++                    getattr(
++                        self,
++                        'accent_picker_window',
++                        None,
++                    )
++                    is picker
++                ):
++                    self.accent_picker_window=None
++
++                try:
++                    Gtk.StyleContext.remove_provider_for_display(
++                        Gdk.Display.get_default(),
++                        preview_provider,
++                    )
++                except Exception:
++                    pass
++
++                return False
++
++            picker.connect(
++                'close-request',
++                picker_closed,
++            )
++
++            picker.present()
+ 
+         pick_button=button(
+             'Pick from Poster…',

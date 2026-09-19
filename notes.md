@@ -420,3 +420,82 @@ Redesign beta workflow is manual-only and should not auto-publish on source push
 ### Next
 
 Finish Home visual polish, then build migration plumbing for the finished Library viewport.
+
+---
+
+## CSS / STYLE AUDIT HANDOFF — 2026-09-19 01:39 EDT
+
+### Current state
+
+The current rtxForge build was intentionally committed and pushed **AS-IS WITHOUT TESTING**.
+
+Do not assume the current UI has been regression-tested after the latest Library/game-card/layout work.
+
+### NEXT WORKER — FIRST PRIORITY
+
+Before doing more visual tweaking, perform a dedicated audit for **duplicate, overlapping, stale, and competing CSS/style rules**.
+
+The goal is to determine whether multiple styling systems are fighting each other and causing changes to appear inconsistent, unexpectedly subtle, impossible to override cleanly, or dependent on widget state/order.
+
+Audit especially:
+
+- duplicate CSS selectors
+- selectors defined more than once with different values
+- competing rules with different specificity
+- old CSS left behind after UI redesign iterations
+- CSS providers being installed more than once
+- multiple providers with overlapping selectors
+- runtime-generated CSS blocks
+- repeated `add_css_class()` / `remove_css_class()` behavior
+- widgets carrying several classes that affect the same property
+- inline/widget-level sizing fighting CSS sizing
+- hardcoded margins/padding/min-width/max-width fighting responsive code
+- style rules duplicated between classic UI and redesign/lab code
+- hover/selected/active rules overriding base rules unexpectedly
+- broad selectors affecting Library widgets unintentionally
+- obsolete selectors that no longer correspond to the intended widget hierarchy
+
+### Areas requiring special attention
+
+The recent trouble has centered heavily around the **Library and game cards**, including:
+
+- Poster view
+- Wide Capsule view
+- List view
+- artwork sizing
+- dynamic spacing/padding
+- card/title/badge spacing
+- equal-height card behavior
+- responsive resizing
+- badges
+- hover surfaces
+- alternating row/card surfaces
+- GTK/libadwaita stock surface behavior
+
+There have been several rapid iterations in this area. Assume there may now be **multiple generations of styling code coexisting**.
+
+### Audit strategy
+
+First inventory what exists. Do **not** immediately solve visual problems by adding another override.
+
+Trace each visible Library component back to:
+
+1. widget creation
+2. CSS classes attached to it
+3. every selector matching those classes
+4. every CSS provider capable of supplying those selectors
+5. Python-side size/margin/alignment constraints affecting the same property
+
+Where duplicate or competing rules exist, identify which rule is canonical and which ones are legacy before deleting or consolidating anything.
+
+The desired end state is a **single understandable source of truth** for each major Library visual behavior.
+
+### Important
+
+Preserve current functionality while auditing.
+
+Do not start another broad redesign.
+
+Do not paper over conflicts with increasingly specific CSS.
+
+Find the competing rules first.

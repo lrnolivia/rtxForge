@@ -1,0 +1,448 @@
+--- a/gui/rtxforge_gtk.py
++++ b/gui/rtxforge_gtk.py
+@@ -1283,38 +1283,59 @@
+ 
+ /* ==========================================================
+  * STRUCTURED GTK COLUMN VIEW
++ * RTXFORGE_COLUMNVIEW_POLISH_V2
+  * ========================================================== */
+ 
+ columnview.library-column-view {
+     background: transparent;
+ }
+ 
++/* Quiet, slim sorting/reorder surface. */
+ columnview.library-column-view header {
+-    background: @forge_panel_bg;
+-    border-bottom: 1px solid alpha(@window_fg_color,0.10);
++    min-height: 26px;
++    background: transparent;
++    border-bottom: 1px solid alpha(@window_fg_color,0.09);
++    box-shadow: none;
+ }
+ 
+ columnview.library-column-view header button {
+-    min-height: 34px;
+-    padding: 5px 8px;
+-    font-size: 11px;
+-    font-weight: 700;
++    min-height: 24px;
++    margin: 1px 2px 2px;
++    padding: 2px 6px;
++
++    border-width: 0;
++    border-radius: 6px;
+     background: transparent;
++    box-shadow: none;
++
++    font-size: 10px;
++    font-weight: 600;
++    opacity: 0.68;
+ }
+ 
+ columnview.library-column-view header button:hover {
+     background: alpha(@window_fg_color,0.08);
+-}
+-
++    opacity: 1;
++}
++
++columnview.library-column-view header button:active {
++    background: alpha(@window_fg_color,0.12);
++}
++
++/* Full-width list surface. */
+ columnview.library-column-view listview {
+     background: transparent;
+-    padding: 5px 10px 14px;
+-}
+-
++    padding: 4px 10px 14px;
++}
++
++/* Height is dictated ONLY by the Game cell:
++ * 60px or 90px.
++ */
+ columnview.library-column-view listview row {
+-    min-height: 58px;
+-    margin: 5px 0;
++    min-height: 0;
++    margin: 4px 0;
+     padding: 0;
++
+     border: 2px solid transparent;
+     border-radius: 12px;
+     background: @forge_panel_bg;
+@@ -1325,8 +1346,8 @@
+ }
+ 
+ .library-column-cell {
+-    min-height: 48px;
+-    padding: 4px 7px;
++    min-height: 0;
++    padding: 0 7px;
+ }
+ 
+ .library-column-game {
+@@ -1339,14 +1360,26 @@
+     padding-right: 10px;
+ }
+ 
++/* Capsule frame owns clipping + accent border. */
+ .library-column-art {
+     min-width: 100px;
+     min-height: 49px;
++
+     border: 2px solid transparent;
+     border-radius: 10px;
+ }
+ 
+-.library-column-art .poster-button,
++.library-column-art .poster-button {
++    padding: 0;
++    margin: 0;
++
++    border-width: 0;
++    border-radius: 8px;
++
++    background: transparent;
++    box-shadow: none;
++}
++
+ .library-column-art .poster {
+     border-radius: 8px;
+ }
+@@ -1356,11 +1389,12 @@
+     font-weight: 700;
+ }
+ 
+-/* ColumnView actions follow the same neutral-at-rest card policy. */
+ .library-column-actions button {
+     min-height: 30px;
++
+     background: alpha(@window_fg_color,0.12);
+     color: @window_fg_color;
++
+     border-color: alpha(@window_fg_color,0.08);
+     box-shadow: none;
+ }
+@@ -2372,7 +2406,9 @@
+         top=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8)
+         top.add_css_class('forge-top-surface')
+         margins(top,18)
+-        top.set_margin_bottom(12)
++        # The Library side owns the shared seam spacing. Do not stack
++        # another explicit gap beneath the dark dashboard.
++        top.set_margin_bottom(0)
+         outer.append(top)
+         hero=Gtk.Box(
+             orientation=Gtk.Orientation.VERTICAL,
+@@ -3176,7 +3212,7 @@
+                     18
+                 )
+                 top.set_margin_bottom(
+-                    12
++                    0
+                 )
+                 viewbar.remove_css_class(
+                     'stuck'
+@@ -4582,12 +4618,14 @@
+         )
+ 
+         specs=(
++            # title, sorter, factory, base width, resizable, expand
+             (
+                 'Game',
+                 'name',
+                 name_factory,
+                 460,
+                 True,
++                False,
+             ),
+             (
+                 'Location',
+@@ -4595,6 +4633,7 @@
+                 location_factory,
+                 185,
+                 False,
++                True,
+             ),
+             (
+                 'Status',
+@@ -4602,6 +4641,7 @@
+                 status_factory,
+                 125,
+                 False,
++                True,
+             ),
+             (
+                 'Enhancements',
+@@ -4609,13 +4649,15 @@
+                 enhancements_factory,
+                 145,
+                 False,
++                True,
+             ),
+             (
+                 'Actions',
+                 None,
+                 actions_factory,
+-                145,
++                165,
+                 False,
++                True,
+             ),
+         )
+ 
+@@ -4627,6 +4669,7 @@
+             factory,
+             width,
+             resizable,
++            expand,
+         ) in specs:
+             column=Gtk.ColumnViewColumn.new(
+                 title,
+@@ -4641,8 +4684,11 @@
+                 resizable
+             )
+ 
++            # Game retains its explicit user-controlled width.
++            # Fixed right-side columns keep their base width but may
++            # absorb spare viewport space instead of bunching left.
+             column.set_expand(
+-                False
++                expand
+             )
+ 
+             try:
+@@ -4678,6 +4724,7 @@
+ 
+         self._column_width_guard=False
+         self._column_order_guard=False
++        self._column_height_refresh_source=0
+ 
+         columns_model=view.get_columns()
+ 
+@@ -4737,6 +4784,7 @@
+         )
+ 
+         if clamped==width:
++            self._column_schedule_height_refresh()
+             return
+ 
+         self._column_width_guard=True
+@@ -4747,6 +4795,131 @@
+             )
+         finally:
+             self._column_width_guard=False
++
++        self._column_schedule_height_refresh()
++
++
++    def _column_schedule_height_refresh(self):
++        if getattr(
++            self,
++            '_column_height_refresh_source',
++            0,
++        ):
++            return
++
++        self._column_height_refresh_source=GLib.idle_add(
++            self._column_refresh_name_heights
++        )
++
++
++    def _column_refresh_name_heights(self):
++        self._column_height_refresh_source=0
++
++        for root in list(
++            self.list_name_cells.values()
++        ):
++            if getattr(
++                root,
++                '_game',
++                None,
++            ) is not None:
++                self._column_update_name_height(
++                    root
++                )
++
++        return False
++
++
++    def _column_update_name_height(
++        self,
++        root,
++    ):
++        """ColumnView rows have exactly two possible heights."""
++
++        game=getattr(
++            root,
++            '_game',
++            None,
++        )
++
++        if game is None:
++            return
++
++        width=self.list_name_column.get_fixed_width()
++
++        if width<=0:
++            width=460
++
++        width=max(
++            340,
++            min(
++                560,
++                width,
++            ),
++        )
++
++        # Approximate usable title width after:
++        # checkbox + gaps + 100px capsule + internal padding.
++        title_width=max(
++            118,
++            width-166,
++        )
++
++        name=str(
++            game.get(
++                'name',
++                '',
++            )
++        )
++
++        layout=root._title.create_pango_layout(
++            name
++        )
++
++        # Measure as a single unwrapped line first.
++        layout.set_width(
++            -1
++        )
++
++        (
++            natural_width,
++            _natural_height,
++        )=layout.get_pixel_size()
++
++        wraps=(
++            natural_width
++            > title_width
++        )
++
++        # Never more than two lines.
++        root._title.set_wrap(
++            True
++        )
++        root._title.set_wrap_mode(
++            Pango.WrapMode.WORD_CHAR
++        )
++        root._title.set_lines(
++            2
++        )
++        root._title.set_single_line_mode(
++            False
++        )
++        root._title.set_ellipsize(
++            Pango.EllipsizeMode.END
++        )
++
++        # Exactly two possible row heights:
++        #
++        #   60px normal
++        #   90px wrapped (1.5x)
++        #
++        # No title can ever make the table taller than this.
++        root.set_size_request(
++            -1,
++            90 if wraps else 60,
++        )
++
++        root.queue_resize()
+ 
+ 
+     def _column_order_changed(
+@@ -4976,10 +5149,28 @@
+         art_frame.add_css_class(
+             'library-column-art'
+         )
++        art_frame.set_halign(
++            Gtk.Align.CENTER
++        )
++        art_frame.set_valign(
++            Gtk.Align.CENTER
++        )
++        art_frame.set_overflow(
++            Gtk.Overflow.HIDDEN
++        )
+ 
+         overlay=Gtk.Overlay(
+             width_request=96,
+             height_request=45,
++        )
++        overlay.set_halign(
++            Gtk.Align.CENTER
++        )
++        overlay.set_valign(
++            Gtk.Align.CENTER
++        )
++        overlay.set_overflow(
++            Gtk.Overflow.HIDDEN
+         )
+ 
+         art_frame.append(
+@@ -4996,12 +5187,24 @@
+             96,
+             45,
+         )
++        picture.set_overflow(
++            Gtk.Overflow.HIDDEN
++        )
+ 
+         art_button=Gtk.Button(
+             child=picture
+         )
+         art_button.add_css_class(
+             'poster-button'
++        )
++        art_button.add_css_class(
++            'flat'
++        )
++        art_button.set_has_frame(
++            False
++        )
++        art_button.set_overflow(
++            Gtk.Overflow.HIDDEN
+         )
+         art_button.set_size_request(
+             96,
+@@ -5051,14 +5254,15 @@
+         title.set_wrap_mode(
+             Pango.WrapMode.WORD_CHAR
+         )
++        # One line normally, two lines maximum, then ellipsis.
+         title.set_lines(
+-            -1
++            2
+         )
+         title.set_single_line_mode(
+             False
+         )
+         title.set_ellipsize(
+-            Pango.EllipsizeMode.NONE
++            Pango.EllipsizeMode.END
+         )
+         title.set_width_chars(
+             1
+@@ -5164,6 +5368,10 @@
+                     'Untested',
+                 )
+             )
++        )
++
++        self._column_update_name_height(
++            root
+         )
+ 
+         root._check.set_tooltip_text(

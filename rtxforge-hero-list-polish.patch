@@ -1,0 +1,155 @@
+--- a/gui/rtxforge_gtk.py
++++ b/gui/rtxforge_gtk.py
+@@ -273,6 +273,10 @@
+         provider=Gtk.CssProvider()
+         provider.load_from_data((f'.game-card.{name}.selected {{ border-color: {color}; box-shadow: 0 2px 12px alpha({color},0.28); }} '
+             f'.game-card.{name}:hover {{ border-color: alpha({color},0.65); }} '
++            f'.library-list-row.{name}.selected {{ border-color: transparent; box-shadow: none; }} '
++            f'.library-list-row.{name}:hover {{ border-color: transparent; box-shadow: none; }} '
++            f'.library-list-row.{name}.selected .library-list-thumb {{ border-color: {color}; box-shadow: 0 2px 10px alpha({color},0.28); }} '
++            f'.library-list-row.{name}:hover .library-list-thumb {{ border-color: alpha({color},0.65); }} '
+             f'.{name} check:checked {{ background: {color}; }} '
+             f'.{name} button.suggested-action {{ background: {color}; color: {accent_fg}; }} '
+             f'.{name} button.suggested-action label {{ color: {accent_fg}; }} '
+@@ -880,16 +884,34 @@
+ }
+ 
+ .library-list-row {
+-    min-height: 72px;
++    min-height: 58px;
++}
++
++/* Selection belongs to the game artwork in List view, not the whole row. */
++.library-list-row.selected {
++    border-color: transparent;
++    box-shadow: none;
+ }
+ 
+ .library-list-game {
+-    padding: 5px 8px;
++    padding: 3px 8px;
+ }
+ 
+ .library-list-thumb {
+-    margin-top: 5px;
+-    margin-bottom: 5px;
++    margin-top: 3px;
++    margin-bottom: 3px;
++
++    border: 2px solid transparent;
++    border-radius: 10px;
++}
++
++.library-list-row.selected .library-list-thumb {
++    border-color: #76b900;
++    box-shadow: 0 2px 10px alpha(#76b900,0.22);
++}
++
++.library-list-row:hover {
++    border-color: transparent;
+ }
+ 
+ .library-list-row .poster-button,
+@@ -1919,15 +1941,28 @@
+         )
+         hero_top.append(self.dashboard_icon)
+ 
+-        # Keep the hero copy compact and let GTK center the complete
+-        # text block naturally against the cropped dashboard artwork.
++        # Keep the copy/actions assembly centered against the logo, but
++        # bottom-align its two children to one another. This puts the
++        # bulk-action buttons flush with the last line of hero metadata
++        # instead of floating at the top of the hero.
++        hero_copy_actions=Gtk.Box(
++            spacing=8,
++            hexpand=True,
++            valign=Gtk.Align.CENTER,
++        )
++        hero_top.append(
++            hero_copy_actions
++        )
++
+         title=Gtk.Box(
+             orientation=Gtk.Orientation.VERTICAL,
+             spacing=2,
+             hexpand=True,
+-            valign=Gtk.Align.CENTER,
+-        )
+-        hero_top.append(title)
++            valign=Gtk.Align.END,
++        )
++        hero_copy_actions.append(
++            title
++        )
+ 
+         title.append(
+             label(
+@@ -1964,13 +1999,15 @@
+ 
+         bulk=Gtk.Box(
+             spacing=8,
+-            valign=Gtk.Align.START,
++            valign=Gtk.Align.END,
+             halign=Gtk.Align.END,
+         )
+         bulk.add_css_class(
+             'dashboard-actions'
+         )
+-        hero_top.append(bulk)
++        hero_copy_actions.append(
++            bulk
++        )
+ 
+         self.install_all=icon_button(
+             'Install All',
+@@ -5443,7 +5480,7 @@
+             )
+             row.set_size_request(
+                 -1,
+-                72,
++                58,
+             )
+ 
+             game_cell=Gtk.Box(
+@@ -5458,8 +5495,11 @@
+                 -1,
+             )
+ 
+-            thumb_width=52
+-            thumb_height=58
++            # List uses the same horizontal artwork family as
++            # Wide Capsule rather than squeezing poster art into a
++            # narrow/tall thumbnail.
++            thumb_width=96
++            thumb_height=45
+ 
+             overlay=Gtk.Overlay(
+                 width_request=thumb_width,
+@@ -6204,10 +6244,24 @@
+     def paint_card(self,entry):
+         game=entry['data']
+ 
+-        if self.settings.get('library_view')=='capsules':
+-            path=game.get('capsule')
++        view=self.settings.get(
++            'library_view',
++            'posters',
++        )
++
++        if view in (
++            'capsules',
++            'list',
++        ):
++            path=(
++                game.get('capsule')
++                or game.get('poster')
++            )
+         else:
+-            path=game.get('poster')
++            path=(
++                game.get('poster')
++                or game.get('capsule')
++            )
+         if path:
+             try:
+                 texture=Gdk.Texture.new_from_filename(path)

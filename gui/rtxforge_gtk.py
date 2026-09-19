@@ -574,6 +574,271 @@ class CoverPicture(Gtk.Picture):
         height=__import__('math').ceil((for_size if for_size>0 else self.cover_width)/self.cover_ratio)
         return (height,height,-1,-1)
 
+# Final frozen Library geometry.
+#
+# Every List row uses exactly the same art allocation.
+# Every source/test pill uses exactly the same geometry.
+LIST_ART_WIDTH=96
+LIST_ART_HEIGHT=45
+LIST_ART_FRAME_WIDTH=100
+LIST_ART_FRAME_HEIGHT=49
+
+LIBRARY_PILL_WIDTH=52
+LIBRARY_PILL_HEIGHT=16
+LIBRARY_PILL_ICON_SIZE=8
+LIBRARY_PILL_TEXT_SIZE=7
+LIBRARY_PILL_HPAD=4
+LIBRARY_PILL_VPAD=1
+LIBRARY_PILL_GAP=2
+
+
+def _library_icon_name(*candidates):
+    display=Gdk.Display.get_default()
+
+    if display is not None:
+        try:
+            theme=Gtk.IconTheme.get_for_display(
+                display
+            )
+
+            for candidate in candidates:
+                if (
+                    candidate
+                    and theme.has_icon(
+                        candidate
+                    )
+                ):
+                    return candidate
+        except Exception:
+            pass
+
+    return candidates[-1]
+
+
+class LibraryPill(Gtk.Box):
+    """One exact source/test pill geometry everywhere."""
+
+    def __init__(
+        self,
+        kind='source',
+    ):
+        super().__init__(
+            orientation=Gtk.Orientation.HORIZONTAL,
+            spacing=0,
+            halign=Gtk.Align.START,
+            valign=Gtk.Align.CENTER,
+            hexpand=False,
+            vexpand=False,
+        )
+
+        self.kind=kind
+        self.add_css_class(
+            'library-meta-pill'
+        )
+
+        content=Gtk.Box(
+            spacing=LIBRARY_PILL_GAP,
+            halign=Gtk.Align.START,
+            valign=Gtk.Align.CENTER,
+            hexpand=True,
+        )
+
+        content.set_margin_start(
+            LIBRARY_PILL_HPAD
+        )
+        content.set_margin_end(
+            LIBRARY_PILL_HPAD
+        )
+        content.set_margin_top(
+            LIBRARY_PILL_VPAD
+        )
+        content.set_margin_bottom(
+            LIBRARY_PILL_VPAD
+        )
+
+        self._icon=Gtk.Image()
+        self._icon.set_pixel_size(
+            LIBRARY_PILL_ICON_SIZE
+        )
+        self._icon.set_halign(
+            Gtk.Align.START
+        )
+        self._icon.set_valign(
+            Gtk.Align.CENTER
+        )
+        self._icon.add_css_class(
+            'library-pill-icon'
+        )
+
+        self._label=Gtk.Label(
+            label='',
+            xalign=0.0,
+            single_line_mode=True,
+            ellipsize=Pango.EllipsizeMode.END,
+        )
+        self._label.set_halign(
+            Gtk.Align.START
+        )
+        self._label.set_valign(
+            Gtk.Align.CENTER
+        )
+        self._label.set_hexpand(
+            True
+        )
+        self._label.add_css_class(
+            'library-pill-text'
+        )
+
+        content.append(
+            self._icon
+        )
+        content.append(
+            self._label
+        )
+
+        self.append(
+            content
+        )
+
+    def do_get_request_mode(self):
+        return Gtk.SizeRequestMode.CONSTANT_SIZE
+
+    def do_measure(
+        self,
+        orientation,
+        for_size,
+    ):
+        size=(
+            LIBRARY_PILL_WIDTH
+            if orientation==Gtk.Orientation.HORIZONTAL
+            else LIBRARY_PILL_HEIGHT
+        )
+
+        return (
+            size,
+            size,
+            -1,
+            -1,
+        )
+
+    def _update_icon(self,text):
+        value=str(
+            text or ''
+        ).strip().casefold()
+
+        if self.kind=='source':
+            if value=='steam':
+                icon=_library_icon_name(
+                    'steam-symbolic',
+                    'com.valvesoftware.Steam-symbolic',
+                    'applications-games-symbolic',
+                )
+            else:
+                icon=_library_icon_name(
+                    'input-gaming-symbolic',
+                    'applications-games-symbolic',
+                )
+
+        else:
+            if value=='untested':
+                icon=_library_icon_name(
+                    'dialog-warning-symbolic',
+                    'emblem-important-symbolic',
+                )
+            else:
+                icon=_library_icon_name(
+                    'applications-science-symbolic',
+                    'science-symbolic',
+                    'emblem-ok-symbolic',
+                )
+
+        self._icon.set_from_icon_name(
+            icon
+        )
+
+    def set_text(self,text):
+        text=str(
+            text or ''
+        )
+
+        self._label.set_text(
+            text
+        )
+
+        self._update_icon(
+            text
+        )
+
+    def set_label(self,text):
+        self.set_text(
+            text
+        )
+
+    def get_text(self):
+        return self._label.get_text()
+
+    # Compatibility with the Gtk.Label configuration currently used
+    # by the frozen Library code. Geometry remains owned HERE.
+    def set_wrap(self,value):
+        self._label.set_wrap(
+            bool(value)
+        )
+
+    def set_lines(self,value):
+        self._label.set_lines(
+            int(value)
+        )
+
+    def set_single_line_mode(self,value):
+        self._label.set_single_line_mode(
+            bool(value)
+        )
+
+    def set_ellipsize(self,value):
+        self._label.set_ellipsize(
+            value
+        )
+
+    def set_xalign(self,value):
+        # Pills are intentionally always left aligned.
+        self._label.set_xalign(
+            0.0
+        )
+
+    def set_width_chars(self,value):
+        # Fixed outer measurement owns width.
+        return
+
+    def set_max_width_chars(self,value):
+        # Fixed outer measurement owns width.
+        return
+
+
+class FixedListArtFrame(Gtk.Box):
+    """Every List row reserves the exact same art frame."""
+
+    def do_get_request_mode(self):
+        return Gtk.SizeRequestMode.CONSTANT_SIZE
+
+    def do_measure(
+        self,
+        orientation,
+        for_size,
+    ):
+        size=(
+            LIST_ART_FRAME_WIDTH
+            if orientation==Gtk.Orientation.HORIZONTAL
+            else LIST_ART_FRAME_HEIGHT
+        )
+
+        return (
+            size,
+            size,
+            -1,
+            -1,
+        )
+
+
 class FixedLibraryCard(Gtk.Box):
     fixed_width=1
     fixed_height=1
@@ -676,6 +941,9 @@ CSS=b'''
 @define-color forge_top_bg @view_bg_color;
 @define-color forge_lower_bg @sidebar_bg_color;
 @define-color forge_panel_bg alpha(@window_fg_color,0.12);
+@define-color forge_library_card_a mix(@forge_lower_bg,@window_fg_color,0.08);
+@define-color forge_library_card_b mix(@forge_lower_bg,@window_fg_color,0.13);
+@define-color forge_library_card_hover mix(@forge_lower_bg,black,0.18);
 
 headerbar,
 .titlebar {
@@ -1304,7 +1572,7 @@ columnview.library-column-view header button {
     min-height: 27px;
 
     margin: 0;
-    padding: 1px 8px;
+    padding: 1px 8px 1px 18px;
 
     border-width: 0;
     border-radius: 4px;
@@ -1358,24 +1626,33 @@ columnview.library-column-view listview row {
     border: 2px solid transparent;
     border-radius: 12px;
 
-    background: @forge_panel_bg;
+    background: @forge_library_card_a;
 }
 
-columnview.library-column-view listview row:hover {
-    background: alpha(@window_fg_color,0.10);
+columnview.library-column-view listview row:nth-child(even) {
+    background: @forge_library_card_b;
+}
+
+columnview.library-column-view listview row:hover,
+columnview.library-column-view listview row:nth-child(even):hover {
+    background: @forge_library_card_hover;
 }
 
 
 /* Same horizontal inset as the controller. */
 .library-column-cell {
     min-height: 0;
-    padding: 0 8px;
+    padding: 0;
 }
 
-.library-column-game,
-.library-column-actions {
+.library-column-game {
     padding-left: 8px;
     padding-right: 8px;
+}
+
+.library-column-actions {
+    padding-left: 0;
+    padding-right: 18px;
 }
 
 
@@ -1392,6 +1669,20 @@ columnview.library-column-view listview row:hover {
     border-radius: 8px;
 }
 
+.library-list-ghost-art {
+    min-width: 96px;
+    min-height: 45px;
+    padding: 0;
+    margin: 0;
+
+    border-radius: 8px;
+    background: alpha(@window_fg_color,0.06);
+}
+
+.library-list-ghost-art .library-ghost-icon {
+    color: alpha(@window_fg_color,0.66);
+}
+
 .library-column-art .poster-button {
     padding: 0;
     margin: 0;
@@ -1403,13 +1694,18 @@ columnview.library-column-view listview row:hover {
     box-shadow: none;
 }
 
-.library-column-picture,
+.library-column-picture {
+    min-width: 96px;
+    min-height: 45px;
+    border-radius: 8px;
+}
+
 .library-column-art .poster {
     border-radius: 8px;
 }
 
 .library-column-title {
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 700;
 }
 
@@ -1420,7 +1716,12 @@ columnview.library-column-view listview row:hover {
     min-height: 16px;
 }
 
+.game-card .library-meta-row {
+    margin-top: 6px;
+}
+
 .library-meta-pill {
+    min-width: 0;
     min-height: 14px;
 
     padding: 1px 5px;
@@ -1431,6 +1732,45 @@ columnview.library-column-view listview row:hover {
     font-size: 8px;
     font-weight: 700;
     letter-spacing: 0.35px;
+}
+
+
+/* FINAL FROZEN LIBRARY PILL GEOMETRY */
+
+.library-meta-pill {
+    min-width: 0;
+    min-height: 0;
+
+    padding: 0;
+    margin: 0;
+
+    font-size: 7px;
+}
+
+.library-pill-icon {
+    min-width: 8px;
+    min-height: 8px;
+
+    color: #a9a9b0;
+    opacity: 1;
+}
+
+.library-pill-text {
+    font-size: 7px;
+    font-weight: 700;
+    letter-spacing: 0.15px;
+}
+
+.library-source-pill .library-pill-icon {
+    color: #a9a9b0;
+}
+
+.library-test-pill.test-untested .library-pill-icon {
+    color: #a9a9b0;
+}
+
+.library-test-pill.test-tested .library-pill-icon {
+    color: #76b900;
 }
 
 
@@ -1831,8 +2171,22 @@ button.done-button.suggested-action:hover {
 .pill { border-radius: 99px; padding: 5px 10px; background: alpha(@window_fg_color,0.07); font-size: 11px; }
 .game-card {
     border-radius: 14px;
-    background: @forge_panel_bg;
+    background: @forge_library_card_a;
     border: 2px solid transparent;
+}
+
+.game-card.library-stripe-a {
+    background: @forge_library_card_a;
+}
+
+.game-card.library-stripe-b {
+    background: @forge_library_card_b;
+}
+
+.game-card.library-stripe-a:hover,
+.game-card.library-stripe-b:hover,
+.game-card:hover {
+    background: @forge_library_card_hover;
 }
 .game-card.selected { border-color: #76b900; box-shadow: 0 2px 12px alpha(#76b900,0.22); }
 
@@ -3970,6 +4324,29 @@ class Window(Adw.ApplicationWindow):
             ].get_visible()
         ]
 
+        for entry in entries:
+            entry[
+                'widget'
+            ].remove_css_class(
+                'library-stripe-a'
+            )
+            entry[
+                'widget'
+            ].remove_css_class(
+                'library-stripe-b'
+            )
+
+        for index,entry in enumerate(
+            visible_entries
+        ):
+            entry[
+                'widget'
+            ].add_css_class(
+                'library-stripe-a'
+                if index%2==0
+                else 'library-stripe-b'
+            )
+
         visible_count=len(
             visible_entries
         )
@@ -4749,7 +5126,7 @@ class Window(Adw.ApplicationWindow):
                 'Status',
                 'status',
                 status_factory,
-                -1,
+                124,
                 False,
                 False,
             ),
@@ -4757,7 +5134,7 @@ class Window(Adw.ApplicationWindow):
                 'Enhancements',
                 'enhancements',
                 enhancements_factory,
-                -1,
+                132,
                 False,
                 False,
             ),
@@ -4765,7 +5142,7 @@ class Window(Adw.ApplicationWindow):
                 'Actions',
                 None,
                 actions_factory,
-                -1,
+                170,
                 False,
                 False,
             ),
@@ -4845,6 +5222,7 @@ class Window(Adw.ApplicationWindow):
         self._column_location_width_guard=False
         self._column_order_guard=False
         self._column_height_refresh_source=0
+        self._column_rows_tall=False
 
         columns_model=view.get_columns()
 
@@ -4973,61 +5351,110 @@ class Window(Adw.ApplicationWindow):
     def _column_refresh_name_heights(self):
         self._column_height_refresh_source=0
 
-        for root in list(
-            self.list_name_cells.values()
-        ):
+        roots=[
+            root
+            for root in list(
+                self.list_name_cells.values()
+            )
             if getattr(
                 root,
                 '_game',
                 None,
-            ) is not None:
-                self._column_update_name_height(
+            ) is not None
+        ]
+
+        if not roots:
+            self._column_rows_tall=False
+            return False
+
+        sample=roots[0]
+
+        any_wrap=False
+
+        model=getattr(
+            self,
+            'list_sort_model',
+            None,
+        )
+
+        if model is not None:
+            for position in range(
+                model.get_n_items()
+            ):
+                item=model.get_item(
+                    position
+                )
+
+                if item is None:
+                    continue
+
+                if self._column_name_wraps(
+                    sample,
+                    str(
+                        item.game.get(
+                            'name',
+                            '',
+                        )
+                    ),
+                ):
+                    any_wrap=True
+                    break
+        else:
+            any_wrap=any(
+                self._column_name_wraps(
                     root
                 )
+                for root in roots
+            )
+
+        self._column_rows_tall=any_wrap
+
+        row_height=(
+            66
+            if any_wrap
+            else 56
+        )
+
+        for root in roots:
+            self._column_update_name_height(
+                root,
+                row_height=row_height,
+            )
 
         return False
 
 
-    def _column_update_name_height(
+    def _column_name_wraps(
         self,
         root,
+        name=None,
     ):
-        """List rows use only compact or wrapped geometry."""
-
         game=getattr(
             root,
             '_game',
             None,
         )
 
-        if game is None:
-            return
+        if (
+            game is None
+            and name is None
+        ):
+            return False
 
-        width=root.get_width()
-
-        if width<=0:
-            width=self.list_name_column.get_fixed_width()
-
-        if width<=0:
-            width=460
-
-        width=max(
-            340,
-            width,
-        )
-
-        # checkbox + spacing + 100px artwork + title spacing
-        title_width=max(
-            118,
-            width-166,
-        )
-
-        name=str(
-            game.get(
-                'name',
-                '',
+        if name is None:
+            name=str(
+                game.get(
+                    'name',
+                    '',
+                )
             )
-        )
+
+        title_width=root._title.get_width()
+
+        # No real title allocation yet. Wait for the existing
+        # notify::width callback instead of guessing.
+        if title_width<=1:
+            return False
 
         layout=root._title.create_pango_layout(
             name
@@ -5042,9 +5469,33 @@ class Window(Adw.ApplicationWindow):
             _natural_height,
         )=layout.get_pixel_size()
 
-        wraps=(
+        return (
             natural_width
-            > title_width
+            > max(
+                1,
+                title_width,
+            )
+        )
+
+
+    def _column_update_name_height(
+        self,
+        root,
+        row_height=None,
+    ):
+        """Use one compact List height unless a title truly wraps."""
+
+        game=getattr(
+            root,
+            '_game',
+            None,
+        )
+
+        if game is None:
+            return
+
+        wraps=self._column_name_wraps(
+            root
         )
 
         root._title.set_wrap(
@@ -5067,13 +5518,12 @@ class Window(Adw.ApplicationWindow):
             Pango.EllipsizeMode.END
         )
 
-        # Never advertise a microscopic one-character natural width.
         root._title.set_width_chars(
-            12
+            8
         )
 
         root._title.set_max_width_chars(
-            22
+            20
         )
 
         root._title.set_vexpand(
@@ -5086,7 +5536,7 @@ class Window(Adw.ApplicationWindow):
 
         root._title.set_size_request(
             -1,
-            34 if wraps else 18,
+            30 if wraps else 17,
         )
 
         root.set_vexpand(
@@ -5097,14 +5547,26 @@ class Window(Adw.ApplicationWindow):
             Gtk.Align.CENTER
         )
 
-        # Exactly two row geometries.
+        if row_height is None:
+            row_height=(
+                66
+                if (
+                    getattr(
+                        self,
+                        '_column_rows_tall',
+                        False,
+                    )
+                    or wraps
+                )
+                else 56
+            )
+
         root.set_size_request(
             -1,
-            78 if wraps else 52,
+            row_height,
         )
 
         root.queue_resize()
-
 
 
     def _column_order_changed(
@@ -5334,10 +5796,14 @@ class Window(Adw.ApplicationWindow):
             0
         )
 
-        art_frame=Gtk.Box(
-            width_request=100,
-            height_request=49,
+        art_frame=FixedListArtFrame(
+            width_request=LIST_ART_FRAME_WIDTH,
+            height_request=LIST_ART_FRAME_HEIGHT,
             valign=Gtk.Align.CENTER,
+        )
+        art_frame.set_size_request(
+            LIST_ART_FRAME_WIDTH,
+            LIST_ART_FRAME_HEIGHT,
         )
         art_frame.add_css_class(
             'library-column-art'
@@ -5348,13 +5814,23 @@ class Window(Adw.ApplicationWindow):
         art_frame.set_valign(
             Gtk.Align.CENTER
         )
+        art_frame.set_hexpand(
+            False
+        )
+        art_frame.set_vexpand(
+            False
+        )
         art_frame.set_overflow(
             Gtk.Overflow.HIDDEN
         )
 
         overlay=Gtk.Overlay(
-            width_request=96,
-            height_request=45,
+            width_request=LIST_ART_WIDTH,
+            height_request=LIST_ART_HEIGHT,
+        )
+        overlay.set_size_request(
+            LIST_ART_WIDTH,
+            LIST_ART_HEIGHT,
         )
         overlay.add_css_class(
             'library-column-art-overlay'
@@ -5365,6 +5841,12 @@ class Window(Adw.ApplicationWindow):
         overlay.set_valign(
             Gtk.Align.CENTER
         )
+        overlay.set_hexpand(
+            False
+        )
+        overlay.set_vexpand(
+            False
+        )
         overlay.set_overflow(
             Gtk.Overflow.HIDDEN
         )
@@ -5373,18 +5855,28 @@ class Window(Adw.ApplicationWindow):
             overlay
         )
 
-        picture=CoverPicture(
+        picture=Gtk.Picture(
             content_fit=Gtk.ContentFit.COVER,
             can_shrink=True,
         )
         picture.add_css_class(
             'library-column-picture'
         )
-        picture.cover_width=96
-        picture.cover_ratio=290/136
         picture.set_size_request(
-            96,
-            45,
+            LIST_ART_WIDTH,
+            LIST_ART_HEIGHT,
+        )
+        picture.set_halign(
+            Gtk.Align.CENTER
+        )
+        picture.set_valign(
+            Gtk.Align.CENTER
+        )
+        picture.set_hexpand(
+            False
+        )
+        picture.set_vexpand(
+            False
         )
         picture.set_overflow(
             Gtk.Overflow.HIDDEN
@@ -5406,23 +5898,58 @@ class Window(Adw.ApplicationWindow):
             Gtk.Overflow.HIDDEN
         )
         art_button.set_size_request(
-            96,
-            45,
+            LIST_ART_WIDTH,
+            LIST_ART_HEIGHT,
+        )
+        art_button.set_halign(
+            Gtk.Align.CENTER
+        )
+        art_button.set_valign(
+            Gtk.Align.CENTER
+        )
+        art_button.set_hexpand(
+            False
+        )
+        art_button.set_vexpand(
+            False
         )
 
         overlay.set_child(
             art_button
         )
 
-        fallback=label(
-            '…',
-            'poster-fallback',
+        fallback=Gtk.CenterBox(
+            width_request=LIST_ART_WIDTH,
+            height_request=LIST_ART_HEIGHT,
+            hexpand=False,
+            vexpand=False,
+        )
+        fallback.add_css_class(
+            'library-list-ghost-art'
+        )
+        fallback.set_size_request(
+            LIST_ART_WIDTH,
+            LIST_ART_HEIGHT,
         )
         fallback.set_halign(
             Gtk.Align.CENTER
         )
         fallback.set_valign(
             Gtk.Align.CENTER
+        )
+
+        ghost_icon=Gtk.Image.new_from_icon_name(
+            'applications-games-symbolic'
+        )
+        ghost_icon.set_pixel_size(
+            18
+        )
+        ghost_icon.add_css_class(
+            'library-ghost-icon'
+        )
+
+        fallback.set_center_widget(
+            ghost_icon
         )
 
         overlay.add_overlay(
@@ -5468,18 +5995,17 @@ class Window(Adw.ApplicationWindow):
             Pango.EllipsizeMode.END
         )
         title.set_width_chars(
-            12
+            8
         )
         title.set_max_width_chars(
-            22
+            20
         )
         title.set_hexpand(
             True
         )
 
-        meta=label(
-            '',
-            'library-meta-pill',
+        meta=LibraryPill(
+            kind='source',
         )
         meta.add_css_class(
             'library-source-pill'
@@ -5497,10 +6023,10 @@ class Window(Adw.ApplicationWindow):
             Pango.EllipsizeMode.NONE
         )
         meta.set_width_chars(
-            -1
+            9
         )
         meta.set_max_width_chars(
-            -1
+            9
         )
         meta.set_hexpand(
             False
@@ -5542,6 +6068,11 @@ class Window(Adw.ApplicationWindow):
         root._accent_class=None
 
         root.connect(
+            'notify::width',
+            lambda *_:self._column_schedule_height_refresh(),
+        )
+
+        title.connect(
             'notify::width',
             lambda *_:self._column_schedule_height_refresh(),
         )
@@ -5698,6 +6229,8 @@ class Window(Adw.ApplicationWindow):
             game['game']
         ]=root
 
+        self._column_schedule_height_refresh()
+
 
     def _column_name_unbind(
         self,
@@ -5780,6 +6313,7 @@ class Window(Adw.ApplicationWindow):
             orientation=Gtk.Orientation.VERTICAL,
             spacing=1,
             valign=Gtk.Align.CENTER,
+            halign=Gtk.Align.START,
         )
         root.add_css_class(
             'library-column-cell'
@@ -5883,7 +6417,7 @@ class Window(Adw.ApplicationWindow):
         primary=Gtk.Box(
             spacing=6,
             valign=Gtk.Align.CENTER,
-            halign=Gtk.Align.FILL,
+            halign=Gtk.Align.START,
             hexpand=False,
         )
         primary.add_css_class(
@@ -5911,22 +6445,35 @@ class Window(Adw.ApplicationWindow):
             state
         )
 
-        test=label(
-            '',
-            'library-meta-pill',
+        test=LibraryPill(
+            kind='status',
         )
         test.add_css_class(
             'library-test-pill'
         )
-        test.set_size_request(
-            108,
-            -1,
-        )
         test.set_halign(
-            Gtk.Align.FILL
+            Gtk.Align.START
         )
         test.set_xalign(
             0.5
+        )
+        test.set_wrap(
+            False
+        )
+        test.set_lines(
+            1
+        )
+        test.set_single_line_mode(
+            True
+        )
+        test.set_ellipsize(
+            Pango.EllipsizeMode.NONE
+        )
+        test.set_width_chars(
+            9
+        )
+        test.set_max_width_chars(
+            9
         )
 
         root.append(
@@ -6019,6 +6566,7 @@ class Window(Adw.ApplicationWindow):
         root=Gtk.Box(
             spacing=6,
             valign=Gtk.Align.CENTER,
+            halign=Gtk.Align.START,
         )
         root.add_css_class(
             'library-column-cell'
@@ -6132,7 +6680,7 @@ class Window(Adw.ApplicationWindow):
     ):
         root=Gtk.Box(
             spacing=6,
-            halign=Gtk.Align.END,
+            halign=Gtk.Align.START,
             valign=Gtk.Align.CENTER,
         )
         root.add_css_class(
@@ -8013,9 +8561,9 @@ class Window(Adw.ApplicationWindow):
                 meta.set_single_line_mode(
                     True
                 )
-                meta.set_width_chars(-1)
-                meta.set_max_width_chars(-1)
-                meta.set_ellipsize(Pango.EllipsizeMode.NONE)
+                meta.set_width_chars(1)
+                meta.set_max_width_chars(1)
+                meta.set_ellipsize(Pango.EllipsizeMode.END)
                 meta.set_hexpand(
                     True
                 )
@@ -8380,16 +8928,19 @@ class Window(Adw.ApplicationWindow):
 
         meta_row=Gtk.Box(
             spacing=4,
-            halign=Gtk.Align.START,
+            halign=Gtk.Align.FILL,
             valign=Gtk.Align.CENTER,
+            hexpand=True,
+        )
+        meta_row.set_homogeneous(
+            True
         )
         meta_row.add_css_class(
             'library-meta-row'
         )
 
-        meta=label(
-            '',
-            'library-meta-pill',
+        meta=LibraryPill(
+            kind='source',
         )
         meta.add_css_class(
             'library-source-pill'
@@ -8404,28 +8955,27 @@ class Window(Adw.ApplicationWindow):
             True
         )
         meta.set_ellipsize(
-            Pango.EllipsizeMode.NONE
+            Pango.EllipsizeMode.END
         )
         meta.set_width_chars(
-            -1
+            1
         )
         meta.set_max_width_chars(
-            -1
+            1
         )
         meta.set_hexpand(
             False
         )
 
         meta.set_halign(
-            Gtk.Align.START
+            Gtk.Align.FILL
         )
         meta.set_xalign(
             0.5
         )
 
-        test_meta=label(
-            '',
-            'library-meta-pill',
+        test_meta=LibraryPill(
+            kind='status',
         )
         test_meta.add_css_class(
             'library-test-pill'
@@ -8440,20 +8990,20 @@ class Window(Adw.ApplicationWindow):
             True
         )
         test_meta.set_ellipsize(
-            Pango.EllipsizeMode.NONE
+            Pango.EllipsizeMode.END
         )
         test_meta.set_width_chars(
-            -1
+            1
         )
         test_meta.set_max_width_chars(
-            -1
+            1
         )
         test_meta.set_hexpand(
             False
         )
 
         test_meta.set_halign(
-            Gtk.Align.START
+            Gtk.Align.FILL
         )
         test_meta.set_xalign(
             0.5
@@ -8602,6 +9152,7 @@ class Window(Adw.ApplicationWindow):
             self.list_filter.changed(
                 Gtk.FilterChange.DIFFERENT
             )
+            self._column_schedule_height_refresh()
             self._column_sync_selection_widgets()
             self._update_selection_summary()
             return

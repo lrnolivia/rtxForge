@@ -1,0 +1,641 @@
+--- a/gui/rtxforge_gtk.py
++++ b/gui/rtxforge_gtk.py
+@@ -1283,57 +1283,59 @@
+ 
+ /* ==========================================================
+  * STRUCTURED GTK COLUMN VIEW
+- * RTXFORGE_COLUMNVIEW_POLISH_V2
++ * RTXFORGE_COLUMNVIEW_FINISH
+  * ========================================================== */
+ 
+ columnview.library-column-view {
+     background: transparent;
+ }
+ 
+-/* Quiet, slim sorting/reorder surface. */
++/* Compact, but now actually readable. The same 8px horizontal inset
++ * is used by the cell content below.
++ */
+ columnview.library-column-view header {
+-    min-height: 26px;
+-    background: transparent;
+-    border-bottom: 1px solid alpha(@window_fg_color,0.09);
++    min-height: 30px;
++
++    background: alpha(@window_fg_color,0.035);
++    border-bottom: 1px solid alpha(@window_fg_color,0.13);
+     box-shadow: none;
+ }
+ 
+ columnview.library-column-view header button {
+-    min-height: 24px;
+-    margin: 1px 2px 2px;
+-    padding: 2px 6px;
++    min-height: 28px;
++    margin: 0;
++    padding: 2px 8px;
+ 
+     border-width: 0;
+-    border-radius: 6px;
++    border-radius: 5px;
+     background: transparent;
+     box-shadow: none;
+ 
+-    font-size: 10px;
+-    font-weight: 600;
+-    opacity: 0.68;
++    color: @window_fg_color;
++    font-size: 12px;
++    font-weight: 700;
++    opacity: 0.90;
+ }
+ 
+ columnview.library-column-view header button:hover {
+-    background: alpha(@window_fg_color,0.08);
++    background: alpha(@window_fg_color,0.09);
+     opacity: 1;
+ }
+ 
+ columnview.library-column-view header button:active {
+-    background: alpha(@window_fg_color,0.12);
++    background: alpha(@window_fg_color,0.14);
+ }
+ 
+ /* Full-width list surface. */
+ columnview.library-column-view listview {
+     background: transparent;
+-    padding: 4px 10px 14px;
+-}
+-
+-/* Height is dictated ONLY by the Game cell:
+- * 60px or 90px.
+- */
++    padding: 3px 10px 14px;
++}
++
++/* Row content has only TWO possible heights: 52 / 78. */
+ columnview.library-column-view listview row {
+     min-height: 0;
+-    margin: 4px 0;
++    margin: 3px 0;
+     padding: 0;
+ 
+     border: 2px solid transparent;
+@@ -1345,22 +1347,19 @@
+     background: alpha(@window_fg_color,0.10);
+ }
+ 
++/* Exactly match column-header horizontal inset. */
+ .library-column-cell {
+     min-height: 0;
+-    padding: 0 7px;
+-}
+-
+-.library-column-game {
+-    padding-left: 10px;
++    padding: 0 8px;
++}
++
++.library-column-game,
++.library-column-actions {
++    padding-left: 8px;
+     padding-right: 8px;
+ }
+ 
+-.library-column-actions {
+-    padding-left: 6px;
+-    padding-right: 10px;
+-}
+-
+-/* Capsule frame owns clipping + accent border. */
++/* Capsule frame owns the clipping and accent outline. */
+ .library-column-art {
+     min-width: 100px;
+     min-height: 49px;
+@@ -1389,6 +1388,48 @@
+     font-weight: 700;
+ }
+ 
++/* RTXFORGE_LIBRARY_META_PILLS
++ *
++ * Small-cap-style metadata is deliberately rendered as small uppercase
++ * labels rather than depending on font-specific small-caps support.
++ */
++.library-meta-row {
++    min-height: 17px;
++}
++
++.library-meta-pill {
++    min-height: 15px;
++    padding: 1px 5px;
++
++    border: 1px solid alpha(@window_fg_color,0.11);
++    border-radius: 999px;
++
++    background: alpha(@window_fg_color,0.075);
++    color: alpha(@window_fg_color,0.76);
++
++    font-size: 9px;
++    font-weight: 700;
++    letter-spacing: 0.5px;
++}
++
++.library-source-pill {
++    background: alpha(@window_fg_color,0.065);
++}
++
++.library-test-pill {
++    background: alpha(@window_fg_color,0.095);
++}
++
++.library-status-stack {
++    min-width: 108px;
++}
++
++.library-status-line {
++    min-width: 108px;
++    min-height: 16px;
++}
++
++/* ColumnView actions follow the same neutral-at-rest policy. */
+ .library-column-actions button {
+     min-height: 30px;
+ 
+@@ -2908,6 +2949,48 @@
+             'library-sticky-header'
+         )
+ 
++        def balance_library_panel_seam():
++            try:
++                ok,bounds=tuning.compute_bounds(
++                    top
++                )
++
++                if not ok:
++                    return False
++
++                dark_gap=max(
++                    0,
++                    round(
++                        top.get_height()
++                        - (
++                            bounds.get_y()
++                            + bounds.get_height()
++                        )
++                    ),
++                )
++
++                viewbar.set_margin_top(
++                    dark_gap
++                )
++
++            except Exception:
++                # Safe fallback if the compositor has not allocated the
++                # widgets yet. The timeout below will normally run after
++                # allocation.
++                viewbar.set_margin_top(
++                    12
++                )
++
++            return False
++
++        # Run after the first real GTK allocation so the lighter panel's
++        # top gap exactly mirrors the actual visible dark-panel bottom gap.
++        GLib.timeout_add(
++            250,
++            balance_library_panel_seam,
++        )
++
++
+         # Search/filter/selection controls begin the Library toolbar
+         # directly. The expanded dashboard already identifies the app at
+         # the top of the Library, while the compact titlebar provides the
+@@ -3077,7 +3160,7 @@
+         # Balance the two-tone panel seam:
+         # dark dashboard bottom = 12px
+         # light Library top     = 12px
+-        viewbar.set_margin_top(12)
++        viewbar.set_margin_top(0)
+         viewbar.set_margin_bottom(16)
+         library_surface.append(viewbar)
+ 
+@@ -3129,6 +3212,12 @@
+         )
+         self.column_scroll.set_overlay_scrolling(
+             True
++        )
++        self.column_scroll.set_hexpand(
++            True
++        )
++        self.column_scroll.set_halign(
++            Gtk.Align.FILL
+         )
+         self.column_scroll.set_child(
+             self.column_view
+@@ -4571,6 +4660,10 @@
+         view.add_css_class(
+             'library-column-view'
+         )
++        view.set_halign(
++            Gtk.Align.FILL
++        )
++
+ 
+         view.set_show_column_separators(
+             False
+@@ -4618,7 +4711,11 @@
+         )
+ 
+         specs=(
+-            # title, sorter, factory, base width, resizable, expand
++            # title, sorter, factory, fixed width, resizable, expand
++            #
++            # -1 deliberately restores GTK's automatic width for every
++            # non-Game column. Their cell factories provide protected
++            # minimum widths and expand=True shares spare viewport room.
+             (
+                 'Game',
+                 'name',
+@@ -4631,7 +4728,7 @@
+                 'Location',
+                 'location',
+                 location_factory,
+-                185,
++                -1,
+                 False,
+                 True,
+             ),
+@@ -4639,7 +4736,7 @@
+                 'Status',
+                 'status',
+                 status_factory,
+-                125,
++                -1,
+                 False,
+                 True,
+             ),
+@@ -4647,7 +4744,7 @@
+                 'Enhancements',
+                 'enhancements',
+                 enhancements_factory,
+-                145,
++                -1,
+                 False,
+                 True,
+             ),
+@@ -4655,7 +4752,7 @@
+                 'Actions',
+                 None,
+                 actions_factory,
+-                165,
++                -1,
+                 False,
+                 True,
+             ),
+@@ -4910,13 +5007,14 @@
+ 
+         # Exactly two possible row heights:
+         #
+-        #   60px normal
+-        #   90px wrapped (1.5x)
++        #   52px normal
++        #   78px wrapped (exactly 1.5x)
+         #
+-        # No title can ever make the table taller than this.
++        # These are intentionally compact and no title can ever grow
++        # the table beyond the wrapped height.
+         root.set_size_request(
+             -1,
+-            90 if wraps else 60,
++            78 if wraps else 52,
+         )
+ 
+         root.queue_resize()
+@@ -5128,6 +5226,10 @@
+         root.add_css_class(
+             'library-column-game'
+         )
++        root.set_vexpand(
++            False
++        )
++
+ 
+         check=Gtk.CheckButton(
+             valign=Gtk.Align.CENTER,
+@@ -5276,19 +5378,16 @@
+ 
+         meta=label(
+             '',
+-            'library-list-meta',
+-        )
+-        meta.set_single_line_mode(
+-            True
+-        )
+-        meta.set_ellipsize(
+-            Pango.EllipsizeMode.END
+-        )
+-        meta.set_width_chars(
+-            1
+-        )
+-        meta.set_max_width_chars(
+-            1
++            'library-meta-pill',
++        )
++        meta.add_css_class(
++            'library-source-pill'
++        )
++        meta.set_halign(
++            Gtk.Align.START
++        )
++        meta.set_xalign(
++            0.5
+         )
+ 
+         text.append(
+@@ -5354,20 +5453,12 @@
+         )
+ 
+         root._meta.set_text(
+-            (
++            str(
+                 game.get(
+                     'source',
+                     '',
+                 )
+-                +' · '
+-                +game.get(
+-                    'test_record',
+-                    {},
+-                ).get(
+-                    'status',
+-                    'Untested',
+-                )
+-            )
++            ).upper()
+         )
+ 
+         self._column_update_name_height(
+@@ -5565,6 +5656,14 @@
+         root.add_css_class(
+             'library-column-cell'
+         )
++        root.set_size_request(
++            180,
++            -1,
++        )
++        root.set_vexpand(
++            False
++        )
++
+ 
+         source=label(
+             '',
+@@ -5635,16 +5734,36 @@
+     ):
+         root=Gtk.Box(
+             orientation=Gtk.Orientation.VERTICAL,
+-            spacing=1,
++            spacing=3,
+             valign=Gtk.Align.CENTER,
++            halign=Gtk.Align.START,
+         )
+         root.add_css_class(
+             'library-column-cell'
++        )
++        root.add_css_class(
++            'library-status-stack'
++        )
++        root.set_size_request(
++            132,
++            -1,
++        )
++        root.set_vexpand(
++            False
+         )
+ 
+         primary=Gtk.Box(
+             spacing=6,
+             valign=Gtk.Align.CENTER,
++            halign=Gtk.Align.FILL,
++            hexpand=False,
++        )
++        primary.add_css_class(
++            'library-status-line'
++        )
++        primary.set_size_request(
++            108,
++            -1,
+         )
+ 
+         dot=label(
+@@ -5666,7 +5785,20 @@
+ 
+         test=label(
+             '',
+-            'library-list-meta',
++            'library-meta-pill',
++        )
++        test.add_css_class(
++            'library-test-pill'
++        )
++        test.set_size_request(
++            108,
++            -1,
++        )
++        test.set_halign(
++            Gtk.Align.FILL
++        )
++        test.set_xalign(
++            0.5
+         )
+ 
+         root.append(
+@@ -5721,13 +5853,15 @@
+         )
+ 
+         root._test.set_text(
+-            game.get(
+-                'test_record',
+-                {},
+-            ).get(
+-                'status',
+-                'Untested',
+-            )
++            str(
++                game.get(
++                    'test_record',
++                    {},
++                ).get(
++                    'status',
++                    'Untested',
++                )
++            ).upper()
+         )
+ 
+ 
+@@ -5745,6 +5879,14 @@
+         root.add_css_class(
+             'library-column-cell'
+         )
++        root.set_size_request(
++            145,
++            -1,
++        )
++        root.set_vexpand(
++            False
++        )
++
+ 
+         nr=label(
+             '',
+@@ -5846,7 +5988,7 @@
+     ):
+         root=Gtk.Box(
+             spacing=6,
+-            halign=Gtk.Align.END,
++            halign=Gtk.Align.START,
+             valign=Gtk.Align.CENTER,
+         )
+         root.add_css_class(
+@@ -5855,6 +5997,14 @@
+         root.add_css_class(
+             'library-column-actions'
+         )
++        root.set_size_request(
++            165,
++            -1,
++        )
++        root.set_vexpand(
++            False
++        )
++
+ 
+         primary=Gtk.Button(
+             label='Apply'
+@@ -8090,42 +8240,52 @@
+             title
+         )
+ 
++        meta_row=Gtk.Box(
++            spacing=4,
++            halign=Gtk.Align.START,
++            valign=Gtk.Align.CENTER,
++        )
++        meta_row.add_css_class(
++            'library-meta-row'
++        )
++
+         meta=label(
+-            game.get(
+-                'source',
+-                '',
+-            ),
+-            'card-meta',
+-        )
+-
+-        meta.set_wrap(
+-            False
+-        )
+-        meta.set_lines(
+-            1
+-        )
+-        meta.set_single_line_mode(
+-            True
+-        )
+-        meta.set_width_chars(
+-            1
+-        )
+-        meta.set_max_width_chars(
+-            1
+-        )
+-        meta.set_ellipsize(
+-            Pango.EllipsizeMode.END
+-        )
+-        meta.set_size_request(
+-            -1,
+-            13,
+-        )
+-        meta.set_hexpand(
+-            True
++            '',
++            'library-meta-pill',
++        )
++        meta.add_css_class(
++            'library-source-pill'
++        )
++        meta.set_halign(
++            Gtk.Align.START
++        )
++        meta.set_xalign(
++            0.5
++        )
++
++        test_meta=label(
++            '',
++            'library-meta-pill',
++        )
++        test_meta.add_css_class(
++            'library-test-pill'
++        )
++        test_meta.set_halign(
++            Gtk.Align.START
++        )
++        test_meta.set_xalign(
++            0.5
++        )
++
++        meta_row.append(
++            meta
++        )
++        meta_row.append(
++            test_meta
+         )
+ 
+         text.append(
+-            meta
++            meta_row
+         )
+ 
+         reset=button('Details',lambda *_:self.details(game));reset.add_css_class('game-details')
+@@ -8167,6 +8327,8 @@
+             'picture':pic,
+             'fallback':fallback,
+             'meta':meta,
++            'test_meta':test_meta,
++            'meta_row':meta_row,
+             'data':game,
+             'size':(width,height),
+         };self.cards[game['game']]=entry;self.paint_card(entry)
+@@ -8202,7 +8364,31 @@
+             except Exception:entry['fallback'].set_visible(True)
+         else:
+             entry['picture'].set_paintable(None);entry['fallback'].set_visible(True)
+-        entry['meta'].set_text(game.get('source','')+' · '+game.get('test_record',{}).get('status','Untested'))
++        entry['meta'].set_text(
++            str(
++                game.get(
++                    'source',
++                    '',
++                )
++            ).upper()
++        )
++
++        test_meta=entry.get(
++            'test_meta'
++        )
++
++        if test_meta is not None:
++            test_meta.set_text(
++                str(
++                    game.get(
++                        'test_record',
++                        {},
++                    ).get(
++                        'status',
++                        'Untested',
++                    )
++                ).upper()
++            )
+         entry['widget'].set_tooltip_text(game['name']+'\n'+(game.get('art_credit') or 'Artwork pending'))
+     def filter_games(self):
+         if not hasattr(

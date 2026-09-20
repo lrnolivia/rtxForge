@@ -9507,20 +9507,36 @@ class Window(Adw.ApplicationWindow):
             if value
         ]
 
+        metadata_line=Gtk.Box(spacing=8,halign=Gtk.Align.FILL)
+        heading.append(metadata_line)
         if meta_parts:
             meta=label(
                 ' · '.join(meta_parts),
                 'game-detail-meta',
             )
-            meta.set_max_width_chars(
-                44
-            )
+            meta.set_max_width_chars(32)
+            meta.set_width_chars(1)
+            meta.set_wrap(False)
+            meta.set_single_line_mode(True)
+            meta.set_tooltip_text(' · '.join(meta_parts))
             meta.set_ellipsize(
                 Pango.EllipsizeMode.END
             )
-            heading.append(
-                meta
-            )
+            metadata_line.append(meta)
+
+        source_badge=LibraryPill(kind='source')
+        source_badge.add_css_class('library-source-pill')
+        source_badge.set_fixed_width(108)
+        source_badge.set_text('STEAM' if game.get('source')=='Steam' else 'NON-STEAM')
+        test_badge=LibraryPill(kind='status')
+        test_badge.add_css_class('library-test-pill')
+        test_badge.set_fixed_width(108)
+        test_status=library_display_test_status(game)
+        test_badge.set_text(test_status.upper())
+        test_badge.add_css_class('test-untested' if test_status.casefold()=='untested' else 'test-tested')
+        metadata_line.append(source_badge)
+        metadata_line.append(test_badge)
+
 
         if game.get('description'):
             summary=label(
@@ -9539,22 +9555,6 @@ class Window(Adw.ApplicationWindow):
             heading.append(
                 summary
             )
-
-        hero_badges=Gtk.Box(spacing=8,halign=Gtk.Align.START)
-        hero_badges.set_margin_top(4)
-        source_badge=LibraryPill(kind='source')
-        source_badge.add_css_class('library-source-pill')
-        source_badge.set_fixed_width(108)
-        source_badge.set_text('STEAM' if game.get('source')=='Steam' else 'NON-STEAM')
-        test_badge=LibraryPill(kind='status')
-        test_badge.add_css_class('library-test-pill')
-        test_badge.set_fixed_width(108)
-        test_status=library_display_test_status(game)
-        test_badge.set_text(test_status.upper())
-        test_badge.add_css_class('test-untested' if test_status.casefold()=='untested' else 'test-tested')
-        hero_badges.append(source_badge)
-        hero_badges.append(test_badge)
-        heading.append(hero_badges)
 
         identity.append(
             heading

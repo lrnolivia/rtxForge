@@ -573,3 +573,11 @@ docs/redesign/ASTRA-CLASSIC-UI-HANDOFF-2026-09-19.md
 - Shared List action padding/width rules no longer add a second minimum width. Balanced initial hero seam at 16px and made toast background opaque native dark.
 - Enhanced --resize-smoke to check allocated sibling dimensions, real/ghost slot widths and final-slot bounds, not just requested sizes. All six normal/maximized/restored states passed (Poster 148/311/148; Capsule 174/364/174). Focused write-disabled List inspection verified matching artwork dimensions; no game files changed.
 - VERSION remains 0.7.0. Next: consolidate stale Classic styling before updater work. Redesign untouched.
+
+## 2026-09-19 — Classic style consolidation
+
+- Consolidated repeated selector definitions without changing the final palette: header/toolbar, List row/title, pills, selection controls and gallery artwork frames. Removed obsolete pre-ListArtwork ghost/picture rules and superseded title scales.
+- Removed the old FlowBox List branch and the duplicate 380-line art-scale resize pass. Initial cards and resizing now use the same golden viewport solver; retained button and artwork-control geometry.
+- Audited CSS providers: one base provider; artwork providers cached by color; temporary picker provider removed on close. No provider duplication fix needed.
+- Six-state allocated-geometry smoke passed after consolidation. Focused List demo verified real/missing artwork 96x45 and identical Repair/Apply/unavailable button content allocation (72x30 plus shared padding), with actions inside the viewport. GTK stylesheet parser and minimum-width warnings absent in the final List run; the host emits an unrelated Intel Vulkan-device warning before successfully rendering.
+- Classic checkpoint is local only; no publishing or game deployment.

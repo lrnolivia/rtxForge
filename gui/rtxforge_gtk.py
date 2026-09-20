@@ -1278,15 +1278,6 @@ CSS=b'''
 @define-color forge_library_card_hover mix(@forge_lower_bg,black,0.18);
 @define-color forge_library_list_hover mix(@forge_lower_bg,@window_fg_color,0.18);
 
-headerbar,
-.titlebar {
-    background: @forge_top_bg;
-    background-image: none;
-    border-width: 0;
-    border-style: none;
-    border-color: transparent;
-    box-shadow: none;
-}
 
 .forge-window-surface,
 .forge-top-surface {
@@ -1297,9 +1288,6 @@ headerbar,
     background: @forge_lower_bg;
 }
 
-.library-sticky-header {
-    min-height: 34px;
-}
 
 .library-sticky-header.stuck {
     border-width: 0;
@@ -1307,15 +1295,6 @@ headerbar,
     box-shadow: none;
 }
 
-.library-sticky-header entry {
-    min-height: 32px;
-}
-
-.library-sticky-header button,
-.library-sticky-header toggle {
-    min-height: 30px;
-    padding: 4px 8px;
-}
 
 .library-sticky-header .view-action {
     min-width: 28px;
@@ -1451,7 +1430,6 @@ spinbutton.tuning-number-input text {
     background: @view_bg_color;
     border-top: 1px solid alpha(@window_fg_color,0.10);
 }
-
 
 
 button.game-detail-close {
@@ -1594,22 +1572,6 @@ button.game-detail-close.light:hover {
 }
 
 
-.card-title.art-title-xs {
-    font-size: 11px;
-}
-
-.card-title.art-title-sm {
-    font-size: 12px;
-}
-
-.card-title.art-title-md {
-    font-size: 13px;
-}
-
-.card-title.art-title-lg {
-    font-size: 14px;
-}
-
 .game-card .card-title {
     font-size: 15px;
     font-weight: 700;
@@ -1650,11 +1612,6 @@ button.game-detail-close.light:hover {
 }
 
 
-/* RTXFORGE_CARD_SCALE_V4
- *
- * Current/full card typography is the maximum.
- * Compact cards step down only a few pixels.
- */
 .game-card .card-title.art-title-xs {
     font-size: 12px;
 }
@@ -1752,32 +1709,7 @@ columnview.library-column-view {
 
 
 /* Thin, readable, interactive controller. */
-columnview.library-column-view header {
-    min-height: 29px;
 
-    background: alpha(@window_fg_color,0.025);
-    border-bottom: 1px solid alpha(@window_fg_color,0.11);
-    box-shadow: none;
-}
-
-columnview.library-column-view header button {
-    min-height: 27px;
-
-    margin: 0;
-    padding: 1px 8px 1px 18px;
-
-    border-width: 0;
-    border-radius: 4px;
-
-    background: transparent;
-    box-shadow: none;
-
-    color: @window_fg_color;
-
-    font-size: 13px;
-    font-weight: 700;
-    opacity: 1;
-}
 
 columnview.library-column-view header button label {
     margin: 0;
@@ -1809,17 +1741,6 @@ columnview.library-column-view listview {
     padding: 3px 10px 96px;
 }
 
-columnview.library-column-view listview row {
-    min-height: 0;
-
-    margin: 2px 0;
-    padding: 0;
-
-    border: 2px solid transparent;
-    border-radius: 12px;
-
-    background: @forge_library_card_a;
-}
 
 columnview.library-column-view listview row:nth-child(even) {
     background: @forge_library_card_b;
@@ -1849,118 +1770,8 @@ columnview.library-column-view listview row:nth-child(even):hover {
 
 
 /* 96x45 wide artwork with clipping at every layer. */
-.library-column-art {
-    min-width: 96px;
-    min-height: 45px;
-
-    border: 2px solid transparent;
-    border-radius: 10px;
-}
-
-.library-column-art-overlay {
-    border-radius: 8px;
-}
-
-.library-list-ghost-art {
-    min-width: 96px;
-    min-height: 45px;
-    padding: 0;
-    margin: 0;
-
-    border-radius: 8px;
-    background: transparent;
-}
-
-.library-column-art.missing-art {
-    background: transparent;
-}
-
-.library-column-art.missing-art .poster-button {
-    background: alpha(@window_fg_color,0.10);
-    border-radius: 8px;
-}
-
-.library-column-art.missing-art .library-list-ghost-art {
-    background: transparent;
-}
-
-.library-list-ghost-art .library-ghost-icon {
-    color: alpha(@window_fg_color,0.66);
-}
-
-.library-column-art .poster-button {
-    padding: 0;
-    margin: 0;
-
-    border-width: 0;
-    border-radius: 8px;
-
-    background: transparent;
-    box-shadow: none;
-}
-
-.library-column-picture {
-    min-width: 96px;
-    min-height: 45px;
-    border-radius: 8px;
-}
-
-.library-column-art .poster {
-    border-radius: 8px;
-}
-
-.library-column-title {
-    color: @window_fg_color;
-    font-size: 12px;
-    font-weight: 700;
-}
 
 
-/* RTXFORGE_FULL_LIST_GHOST_V2 */
-
-.library-column-art.missing-art {
-    background: transparent;
-}
-
-.library-column-art.missing-art .library-column-art-overlay,
-.library-column-art.missing-art .poster-button {
-    background: alpha(@window_fg_color,0.10);
-    border-radius: 10px;
-}
-
-.library-column-art.missing-art .library-list-ghost-art {
-    background: transparent;
-}
-
-
-/* RTXFORGE_GHOST_ART_EXACT_NORMAL_SIZE */
-
-.library-column-art.missing-art {
-    background: transparent;
-}
-
-.library-column-art.missing-art .library-column-art-overlay,
-.library-column-art.missing-art .poster-button {
-    min-width: 96px;
-    min-height: 45px;
-
-    background: alpha(@window_fg_color,0.10);
-    border-radius: 8px;
-}
-
-.library-column-art.missing-art .library-list-ghost-art {
-    min-width: 96px;
-    min-height: 45px;
-
-    background: transparent;
-}
-
-
-/* RTXFORGE_LIBRARY_META_PILLS
- *
- * One canonical definition.
- * Geometry is owned by LibraryPill; CSS owns visual treatment.
- */
 
 .library-meta-row {
     min-height: 24px;
@@ -2002,13 +1813,6 @@ columnview.library-column-view listview row:nth-child(even):hover {
     letter-spacing: 0.42px;
 }
 
-.library-source-pill .library-pill-icon {
-    color: #a9a9b0;
-}
-
-.library-test-pill.test-untested .library-pill-icon {
-    color: #a9a9b0;
-}
 
 .library-test-pill.test-tested .library-pill-icon {
     color: #76b900;
@@ -2025,13 +1829,6 @@ columnview.library-column-view listview row:nth-child(even):hover {
 
 
 /* UNTESTED */
-.library-test-pill.test-untested {
-    background: #d2d2d6;
-    border: none;
-    border-color: transparent;
-    box-shadow: none;
-    color: #4a4a50;
-}
 
 
 /* Tested/result */
@@ -2069,29 +1866,16 @@ columnview.library-column-view listview row:nth-child(even):hover {
 }
 
 
-
 /* Pill glyphs belong to the state, not to a generic icon palette. */
 .library-source-pill .library-pill-icon {
     color: #d0d0d6;
 }
 
-.library-test-pill.test-untested .library-pill-icon {
-    color: #4a4a50;
-}
-
-.library-test-pill.test-tested.pill-working .library-pill-icon {
-    color: #a8db4e;
-}
-
-.library-test-pill.test-tested.pill-issue .library-pill-icon {
-    color: #ffaaa5;
-}
 
 .library-test-pill.test-tested.pill-bench .library-pill-icon {
     color: #d0d0d5;
 }
 
-/* RTXFORGE_TEST_STATE_COLORS_V2 */
 
 .library-test-pill.test-untested {
     background: mix(@view_bg_color,#f5a623,0.28);
@@ -2161,9 +1945,6 @@ columnview.library-column-view listview row:nth-child(even):hover {
 .library-column-actions button image {
     color: inherit;
 }
-
-
-
 
 
 .library-column-actions button:hover {
@@ -2402,7 +2183,7 @@ button.done-button.suggested-action:hover {
 }
 .dashboard-icon { margin: 0 6px 0 0; }
 .dashboard-actions { margin: 0; }
-.dashboard-actions button { min-height: 34px; padding: 7px 12px; }
+
 .dashboard-actions button label { font-weight: 600; }
 .dashboard-tuning .control-pod scale { padding: 2px; }
 
@@ -2500,13 +2281,7 @@ button.done-button.suggested-action:hover {
     background: @forge_library_card_b;
 }
 
-.game-card.library-stripe-a:hover {
-    background: @forge_library_card_a;
-}
 
-.game-card.library-stripe-b:hover {
-    background: @forge_library_card_b;
-}
 .game-card.selected { border-color: #76b900; box-shadow: 0 2px 12px alpha(#76b900,0.22); }
 
 .library-ghost-card {
@@ -2545,30 +2320,9 @@ button.done-button.suggested-action:hover {
  * The frame itself owns both the 3.5px stroke and the corner-fill
  * color, so antialiased rounded corners cannot expose dark gaps.
  */
-.game-card .gallery-artwork-frame {
-    border: 3.5px solid @forge_library_card_a;
-    border-radius: 14px;
 
-    background: @forge_library_card_a;
-    box-shadow: none;
-}
-
-.game-card.library-stripe-a .gallery-artwork-frame {
-    border-color: @forge_library_card_a;
-    background: @forge_library_card_a;
-}
-
-.game-card.library-stripe-b .gallery-artwork-frame {
-    border-color: @forge_library_card_b;
-    background: @forge_library_card_b;
-}
 
 /* 14px outer radius - 3.5px inset = 10.5px inner artwork radius. */
-.game-card .gallery-artwork-frame .poster-button,
-.game-card .gallery-artwork-frame .poster {
-    border-radius: 10.5px;
-    background: transparent;
-}
 
 
 .poster-fallback { color: #a5a5a8; padding: 22px; font-weight: 800; font-size: 19px; }
@@ -2602,23 +2356,6 @@ button.done-button.suggested-action:hover {
     padding: 0 17px 15px;
 }
 
-.selection-count-pill {
-    min-width: 72px;
-    min-height: 34px;
-
-    padding: 6px 12px;
-    border-radius: 999px;
-
-    background: alpha(@view_bg_color,0.92);
-    border: 1px solid alpha(@window_fg_color,0.10);
-    box-shadow: 0 1px 3px alpha(black,0.20);
-}
-
-
-.selection-count {
-    font-size: 11px;
-    font-weight: 600;
-}
 
 .selection-action {
     min-width: 34px;
@@ -2646,14 +2383,8 @@ button.suggested-action label {
     font-weight: 500;
 }
 
-/* RTXFORGE_DENSITY_GHOST_FINAL */
 
 /* A little more air in the application titlebar. */
-headerbar,
-.titlebar {
-    padding-top: 4px;
-    padding-bottom: 4px;
-}
 
 
 /* ----------------------------------------------------------
@@ -2661,16 +2392,12 @@ headerbar,
  * Internal spacing stays inside the 8/12px system.
  * ---------------------------------------------------------- */
 
-.library-sticky-header {
-    min-height: 42px;
-}
 
 .library-sticky-header entry {
     min-height: 36px;
 }
 
-.library-sticky-header button,
-.library-sticky-header toggle {
+.library-sticky-header button, .library-sticky-header toggle {
     min-height: 34px;
     padding: 5px 10px;
 }
@@ -2678,10 +2405,23 @@ headerbar,
 
 /* Column header gets matching vertical room. */
 columnview.library-column-view header {
+    background: alpha(@window_fg_color,0.025);
+    border-bottom: 1px solid alpha(@window_fg_color,0.11);
+    box-shadow: none;
     min-height: 34px;
 }
 
 columnview.library-column-view header button {
+    margin: 0;
+    padding: 1px 8px 1px 18px;
+    border-width: 0;
+    border-radius: 4px;
+    background: transparent;
+    box-shadow: none;
+    color: @window_fg_color;
+    font-size: 13px;
+    font-weight: 700;
+    opacity: 1;
     min-height: 32px;
     padding-top: 3px;
     padding-bottom: 3px;
@@ -2693,16 +2433,9 @@ columnview.library-column-view header button {
  * ---------------------------------------------------------- */
 
 /* Exact 10% reduction from the previous 12px title. */
-.library-column-title {
-    font-size: 10.8px;
-    margin-bottom: 4px;
-}
+
 
 /* 4px margin above + below adjacent rows = 8px row gap. */
-columnview.library-column-view listview row {
-    margin-top: 4px;
-    margin-bottom: 4px;
-}
 
 
 /* ----------------------------------------------------------
@@ -2712,27 +2445,24 @@ columnview.library-column-view listview row {
  * No 100x49 ghost child. The 100x49 outer frame remains shared.
  * ---------------------------------------------------------- */
 
-.library-list-ghost-art {
-    min-width: 96px;
-    min-height: 45px;
-
-    background: alpha(@window_fg_color,0.10);
-    border-radius: 8px;
-}
-
 
 /* ----------------------------------------------------------
  * Bottom floating controls
  * ---------------------------------------------------------- */
 
 .selection-count-pill {
+    border-radius: 999px;
+    background: alpha(@view_bg_color,0.92);
+    border: 1px solid alpha(@window_fg_color,0.10);
+    box-shadow: 0 1px 3px alpha(black,0.20);
     min-width: 0;
     min-height: 26px;
-
     padding: 4px 12px;
 }
 
 .selection-count {
+    font-size: 11px;
+    font-weight: 600;
     margin: 0;
     padding: 0;
 }
@@ -2742,18 +2472,6 @@ columnview.library-column-view listview row {
  * FlowBox wrapper itself must NEVER paint a hover rectangle.
  * Only the artwork accent ring is the gallery hover affordance.
  * ---------------------------------------------------------- */
-
-flowbox.library-flow flowboxchild,
-flowbox.library-flow flowboxchild:hover,
-flowbox.library-flow flowboxchild:active,
-flowbox.library-flow flowboxchild:selected,
-flowbox.library-flow flowboxchild:focus {
-    background: transparent;
-    background-image: none;
-    border-color: transparent;
-    box-shadow: none;
-    outline: none;
-}
 
 
 /* Do not brighten the whole Poster/Wide card on hover. */
@@ -2777,49 +2495,43 @@ flowbox.library-flow flowboxchild:focus {
 .game-card .gallery-artwork-frame {
     border: none;
     border-radius: 14px;
-
     background: @forge_library_card_a;
-
-    box-shadow:
-        inset 0 0 0 3.5px @forge_library_card_a;
+    box-shadow: inset 0 0 0 3.5px @forge_library_card_a;
 }
 
 .game-card.library-stripe-a .gallery-artwork-frame {
+    border-color: @forge_library_card_a;
     background: @forge_library_card_a;
-
-    box-shadow:
-        inset 0 0 0 3.5px @forge_library_card_a;
+    box-shadow: inset 0 0 0 3.5px @forge_library_card_a;
 }
 
 .game-card.library-stripe-b .gallery-artwork-frame {
+    border-color: @forge_library_card_b;
     background: @forge_library_card_b;
-
-    box-shadow:
-        inset 0 0 0 3.5px @forge_library_card_b;
+    box-shadow: inset 0 0 0 3.5px @forge_library_card_b;
 }
 
 /* Image/button use the SAME outer radius.
  * The inset stroke paints above them rather than shrinking them.
  */
-.game-card .gallery-artwork-frame .poster-button,
-.game-card .gallery-artwork-frame .poster {
+.game-card .gallery-artwork-frame .poster-button, .game-card .gallery-artwork-frame .poster {
     border-radius: 14px;
     background: transparent;
     margin: 0;
 }
 
 
-/* RTXFORGE_DENSITY_GHOST_FINAL_END */
-
-/* RTXFORGE_CLASSIC_LOCK_IN */
-
-
 /* ----------------------------------------------------------
  * Native titlebar: slightly less cramped.
  * ---------------------------------------------------------- */
 
-headerbar,
-.titlebar {
+headerbar, .titlebar {
+    background: @forge_top_bg;
+    background-image: none;
+    border-width: 0;
+    border-style: none;
+    border-color: transparent;
+    box-shadow: none;
     padding-top: 6px;
     padding-bottom: 6px;
 }
@@ -2834,6 +2546,8 @@ headerbar,
  * ---------------------------------------------------------- */
 
 .dashboard-actions button {
+    min-height: 34px;
+    padding: 7px 12px;
     padding-left: 14px;
     padding-right: 14px;
 }
@@ -2921,12 +2635,20 @@ headerbar,
  * ---------------------------------------------------------- */
 
 .library-column-title {
+    color: @window_fg_color;
+    margin-bottom: 4px;
     font-size: 10.8px;
     font-weight: 700;
 }
 
 /* Two neighboring rows create an 8px visual gap total. */
 columnview.library-column-view listview row {
+    min-height: 0;
+    margin: 2px 0;
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: 12px;
+    background: @forge_library_card_a;
     margin-top: 4px;
     margin-bottom: 4px;
 }
@@ -2946,22 +2668,14 @@ columnview.library-column-view listview row {
  * Gallery FlowBox wrapper never paints its own hover card.
  * ---------------------------------------------------------- */
 
-flowbox.library-flow flowboxchild,
-flowbox.library-flow flowboxchild:hover,
-flowbox.library-flow flowboxchild:active,
-flowbox.library-flow flowboxchild:selected,
-flowbox.library-flow flowboxchild:focus {
+flowbox.library-flow flowboxchild, flowbox.library-flow flowboxchild:hover, flowbox.library-flow flowboxchild:active, flowbox.library-flow flowboxchild:selected, flowbox.library-flow flowboxchild:focus {
     background: transparent;
     background-image: none;
-
     border-color: transparent;
-
     box-shadow: none;
     outline: none;
 }
 
-
-/* RTXFORGE_CLASSIC_LOCK_IN_END */
 
 '''
 
@@ -5038,72 +4752,6 @@ class Window(Adw.ApplicationWindow):
 
         if view=='list':
             self._clear_library_ghost_slots()
-
-            flow.set_size_request(
-                -1,
-                -1,
-            )
-            flow.set_hexpand(
-                True
-            )
-            flow.set_homogeneous(
-                False
-            )
-            flow.set_min_children_per_line(
-                1
-            )
-            flow.set_max_children_per_line(
-                1
-            )
-            flow.set_column_spacing(
-                0
-            )
-            flow.set_row_spacing(
-                6
-            )
-            flow.set_margin_start(
-                16
-            )
-            flow.set_margin_end(
-                16
-            )
-            flow.set_halign(
-                Gtk.Align.FILL
-            )
-
-            for entry in entries:
-                wrapper=entry[
-                    'wrapper'
-                ]
-
-                wrapper.set_size_request(
-                    -1,
-                    72,
-                )
-                wrapper.set_halign(
-                    Gtk.Align.FILL
-                )
-                wrapper.set_hexpand(
-                    True
-                )
-
-                entry[
-                    'widget'
-                ].set_size_request(
-                    -1,
-                    72,
-                )
-                entry[
-                    'widget'
-                ].set_halign(
-                    Gtk.Align.FILL
-                )
-                entry[
-                    'widget'
-                ].set_hexpand(
-                    True
-                )
-
             return False
 
         scroll=getattr(
@@ -9111,387 +8759,8 @@ class Window(Adw.ApplicationWindow):
 
 
     def resize_library_art(self,value=None):
-        """Apply identical geometry to every loaded card in the active view."""
-
-        view=self.settings.get(
-            'library_view',
-            'posters',
-        )
-
-        (
-            value,
-            width,
-            height,
-            info_height,
-            total_height,
-            ratio,
-        )=self.library_card_geometry(
-            value,
-            view,
-        )
-
-        self.settings['art_scale']=value
-
-        if view=='list':
-            return
-
-        if value < 75:
-            title_class='art-title-xs'
-        elif value < 100:
-            title_class='art-title-sm'
-        elif value < 125:
-            title_class='art-title-md'
-        else:
-            title_class='art-title-lg'
-
-        title_classes=(
-            'art-title-xs',
-            'art-title-sm',
-            'art-title-md',
-            'art-title-lg',
-        )
-
-        self.flow.set_row_spacing(
-            18
-        )
-
-        for entry in self.cards.values():
-            wrapper=entry.get(
-                'wrapper'
-            )
-            card=entry['widget']
-            overlay=entry.get(
-                'overlay'
-            )
-            click=entry.get(
-                'click'
-            )
-            picture=entry['picture']
-            text_box=entry.get(
-                'text'
-            )
-            title=entry.get(
-                'title'
-            )
-            meta=entry.get(
-                'meta'
-            )
-            reset=entry.get(
-                'reset'
-            )
-            badge=entry.get(
-                'badge'
-            )
-            check=entry.get(
-                'check'
-            )
-
-            # Every FlowBox child reports the same geometry.
-            if wrapper is not None:
-                wrapper.set_size_request(
-                    width+4,
-                    total_height,
-                )
-                wrapper.set_halign(
-                    Gtk.Align.START
-                )
-                wrapper.set_valign(
-                    Gtk.Align.START
-                )
-                wrapper.set_hexpand(
-                    False
-                )
-                wrapper.set_vexpand(
-                    False
-                )
-
-            # The visible card FILLS the wrapper.
-            #
-            # This is the important correction: previously START
-            # alignment let each card fall back to its own natural
-            # width, which is why Avatar stayed huge while others
-            # collapsed.
-            if isinstance(
-                card,
-                FixedLibraryCard,
-            ):
-                card.fixed_width=width+4
-                card.fixed_height=total_height
-
-            card.set_size_request(
-                width+4,
-                total_height,
-            )
-            card.set_halign(
-                Gtk.Align.FILL
-            )
-            card.set_valign(
-                Gtk.Align.START
-            )
-            card.set_hexpand(
-                True
-            )
-            card.set_vexpand(
-                False
-            )
-            card.set_overflow(
-                Gtk.Overflow.HIDDEN
-            )
-
-            if overlay is not None:
-                overlay.set_size_request(
-                    width,
-                    height,
-                )
-                overlay.set_halign(
-                    Gtk.Align.FILL
-                )
-                overlay.set_hexpand(
-                    True
-                )
-                overlay.set_overflow(
-                    Gtk.Overflow.HIDDEN
-                )
-
-            if click is not None:
-                click.set_size_request(
-                    width,
-                    height,
-                )
-                click.set_halign(
-                    Gtk.Align.FILL
-                )
-                click.set_hexpand(
-                    True
-                )
-
-            picture.cover_width=width
-            picture.cover_ratio=ratio
-            picture.set_size_request(
-                width,
-                height,
-            )
-            picture.set_halign(
-                Gtk.Align.FILL
-            )
-            picture.set_hexpand(
-                True
-            )
-
-            if text_box is not None:
-                # Measure natural footer height first.
-                # A second pass below gives every card the height
-                # required by the tallest footer.
-                text_box.set_size_request(
-                    -1,
-                    -1,
-                )
-                text_box.set_halign(
-                    Gtk.Align.FILL
-                )
-                text_box.set_hexpand(
-                    True
-                )
-                text_box.set_vexpand(
-                    False
-                )
-                text_box.set_spacing(
-                    1
-                )
-
-            # Text may shrink/ellipsize but can NEVER establish
-            # the card's natural width.
-            if title is not None:
-                for css_class in title_classes:
-                    title.remove_css_class(
-                        css_class
-                    )
-
-                title.add_css_class(
-                    title_class
-                )
-
-                title.set_wrap(
-                    True
-                )
-                title.set_wrap_mode(
-                    Pango.WrapMode.WORD_CHAR
-                )
-                title.set_lines(
-                    3
-                )
-                title.set_single_line_mode(
-                    False
-                )
-                title.set_width_chars(
-                    1
-                )
-                title.set_max_width_chars(
-                    1
-                )
-                title.set_ellipsize(
-                    Pango.EllipsizeMode.END
-                )
-                title.set_size_request(
-                    -1,
-                    -1,
-                )
-                title.set_hexpand(
-                    True
-                )
-                title.queue_resize()
-
-            if meta is not None:
-                meta.set_wrap(
-                    False
-                )
-                meta.set_lines(
-                    1
-                )
-                meta.set_single_line_mode(
-                    True
-                )
-                meta.set_width_chars(1)
-                meta.set_max_width_chars(1)
-                meta.set_ellipsize(Pango.EllipsizeMode.END)
-                meta.set_hexpand(
-                    True
-                )
-
-            if reset is not None:
-                reset.set_size_request(
-                    -1,
-                    28,
-                )
-                reset.set_halign(
-                    Gtk.Align.FILL
-                )
-                reset.set_hexpand(
-                    True
-                )
-
-            if badge is not None:
-                margins(
-                    badge,
-                    7,
-                )
-
-            if check is not None:
-                margins(
-                    check,
-                    7,
-                )
-
-            entry['size']=(
-                width,
-                height,
-            )
-
-            picture.queue_resize()
-
-            if click is not None:
-                click.queue_resize()
-
-            if overlay is not None:
-                overlay.queue_resize()
-
-            if text_box is not None:
-                text_box.queue_resize()
-
-            card.queue_resize()
-
-            if wrapper is not None:
-                wrapper.queue_resize()
-
-        # --------------------------------------------------------
-        # NORMALIZE CARD HEIGHT
-        #
-        # All cards at this artwork size use the footer height of
-        # the tallest card.
-        #
-        # Long titles may wrap at compact sizes, but they cannot
-        # make only their own card taller. Short-title cards simply
-        # receive more expandable space above Details.
-        # --------------------------------------------------------
-
-        tallest_footer=info_height
-
-        for entry in self.cards.values():
-            text_box=entry.get(
-                'text'
-            )
-
-            if text_box is None:
-                continue
-
-            (
-                _minimum,
-                natural,
-                _minimum_baseline,
-                _natural_baseline,
-            )=text_box.measure(
-                Gtk.Orientation.VERTICAL,
-                width,
-            )
-
-            tallest_footer=max(
-                tallest_footer,
-                natural,
-            )
-
-        uniform_height=(
-            height
-            + tallest_footer
-            + 4
-        )
-
-        for entry in self.cards.values():
-            wrapper=entry.get(
-                'wrapper'
-            )
-            card=entry['widget']
-            text_box=entry.get(
-                'text'
-            )
-
-            if text_box is not None:
-                text_box.set_size_request(
-                    -1,
-                    tallest_footer,
-                )
-
-                text_box.set_vexpand(
-                    False
-                )
-
-                text_box.queue_resize()
-
-            if isinstance(
-                card,
-                FixedLibraryCard,
-            ):
-                card.fixed_width=width+4
-                card.fixed_height=uniform_height
-
-            card.set_size_request(
-                width+4,
-                uniform_height,
-            )
-
-            card.queue_resize()
-
-            if wrapper is not None:
-                wrapper.set_size_request(
-                    width+4,
-                    uniform_height,
-                )
-
-                wrapper.queue_resize()
-
+        """Use the viewport solver for initial cards and subsequent resizes."""
         self.update_library_spacing()
-
-        self.flow.queue_resize()
-        self.flow.queue_allocate()
 
 
     def make_card(self,game):
@@ -9653,7 +8922,7 @@ class Window(Adw.ApplicationWindow):
             fallback,
             False,
         )
-        check=Gtk.CheckButton(halign=Gtk.Align.END,valign=Gtk.Align.START);margins(check,10);check.set_tooltip_text('Select '+game['name']);check.connect('toggled',lambda *_:self.selection_changed())
+        check=Gtk.CheckButton(halign=Gtk.Align.END,valign=Gtk.Align.START);margins(check,7);check.set_tooltip_text('Select '+game['name']);check.connect('toggled',lambda *_:self.selection_changed())
         if view=='list':
             card.prepend(
                 check
@@ -9669,10 +8938,10 @@ class Window(Adw.ApplicationWindow):
                 check,
                 False,
             )
-        badge=label('Not Installed' if game.get('blocked') else game.get('profile','Ready') if game.get('installed') else 'Ready','cover-badge');badge.set_halign(Gtk.Align.START);badge.set_valign(Gtk.Align.END);margins(badge,8)
+        badge=label('Not Installed' if game.get('blocked') else game.get('profile','Ready') if game.get('installed') else 'Ready','cover-badge');badge.set_halign(Gtk.Align.START);badge.set_valign(Gtk.Align.END);margins(badge,7)
         badge_mode={'NR Only':'nr-only','MFG Only':'mfg-only','NR + MFG':'nr-mfg'}.get(game.get('profile'))
         if badge_mode:
-            badge=profile_label(badge_mode,badge.get_text());badge.add_css_class('cover-badge');badge.set_halign(Gtk.Align.START);badge.set_valign(Gtk.Align.END);margins(badge,8)
+            badge=profile_label(badge_mode,badge.get_text());badge.add_css_class('cover-badge');badge.set_halign(Gtk.Align.START);badge.set_valign(Gtk.Align.END);margins(badge,7)
         badge.add_css_class('state-unavailable' if game.get('blocked') else 'state-nr' if game.get('profile')=='NR + MFG' else 'state-mfg' if game.get('installed') else 'state-ready')
         if view!='list':
             overlay.add_overlay(
@@ -9823,7 +9092,7 @@ class Window(Adw.ApplicationWindow):
             meta_row
         )
 
-        reset=button('Details',lambda *_:self.details(game));reset.add_css_class('game-details')
+        reset=button('Details',lambda *_:self.details(game));reset.add_css_class('game-details');reset.set_size_request(-1,28)
         reset.set_tooltip_text('Open game details and settings')
         reset.set_sensitive(True);spacer=Gtk.Box(vexpand=True,height_request=7);text.append(spacer);text.append(reset)
         self.flow.insert(

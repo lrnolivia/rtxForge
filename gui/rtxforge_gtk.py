@@ -9503,7 +9503,6 @@ class Window(Adw.ApplicationWindow):
             for value in (
                 game.get('developers'),
                 game.get('release'),
-                game.get('source'),
             )
             if value
         ]
@@ -9540,6 +9539,22 @@ class Window(Adw.ApplicationWindow):
             heading.append(
                 summary
             )
+
+        hero_badges=Gtk.Box(spacing=8,halign=Gtk.Align.START)
+        hero_badges.set_margin_top(4)
+        source_badge=LibraryPill(kind='source')
+        source_badge.add_css_class('library-source-pill')
+        source_badge.set_fixed_width(108)
+        source_badge.set_text('STEAM' if game.get('source')=='Steam' else 'NON-STEAM')
+        test_badge=LibraryPill(kind='status')
+        test_badge.add_css_class('library-test-pill')
+        test_badge.set_fixed_width(108)
+        test_status=library_display_test_status(game)
+        test_badge.set_text(test_status.upper())
+        test_badge.add_css_class('test-untested' if test_status.casefold()=='untested' else 'test-tested')
+        hero_badges.append(source_badge)
+        hero_badges.append(test_badge)
+        heading.append(hero_badges)
 
         identity.append(
             heading

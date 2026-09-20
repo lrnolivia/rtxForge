@@ -993,10 +993,12 @@ class ListArtwork(Gtk.Overlay):
             Gtk.Overflow.HIDDEN
         )
 
-        self.picture=Gtk.Picture(
+        self.picture=CoverPicture(
             content_fit=Gtk.ContentFit.COVER,
             can_shrink=True,
         )
+        self.picture.cover_width=LIST_ART_WIDTH
+        self.picture.cover_ratio=LIST_ART_WIDTH/LIST_ART_HEIGHT
         self.picture.add_css_class(
             'list-artwork-picture'
         )
@@ -1582,10 +1584,13 @@ button.game-detail-close.light:hover {
  */
 .game-banner.hero-light .game-banner-title,
 .game-banner.hero-light .game-detail-meta,
-.game-banner.hero-light .game-detail-summary,
-.game-banner.hero-light /* Compact, stable Library card labels. */
-.game-card .card-info {
+.game-banner.hero-light .game-detail-summary {
     padding: 6px 9px 7px;
+}
+
+/* Compact, stable Library card labels. */
+.game-card .card-info {
+    padding: 8px;
 }
 
 
@@ -1845,8 +1850,8 @@ columnview.library-column-view listview row:nth-child(even):hover {
 
 /* 96x45 wide artwork with clipping at every layer. */
 .library-column-art {
-    min-width: 100px;
-    min-height: 49px;
+    min-width: 96px;
+    min-height: 45px;
 
     border: 2px solid transparent;
     border-radius: 10px;
@@ -2141,7 +2146,9 @@ columnview.library-column-view listview row:nth-child(even):hover {
 
 /* Neutral actions. */
 .library-column-actions button {
+    min-width: 0;
     min-height: 30px;
+    padding: 4px 8px;
 
     background: alpha(@window_fg_color,0.12);
     color: @window_fg_color;
@@ -2625,6 +2632,12 @@ button.done-button.suggested-action:hover {
     min-height: 16px;
 }
 
+.forge-toasts toast {
+    background: @view_bg_color;
+    background-image: none;
+    color: @window_fg_color;
+}
+
 .panel-body { padding: 18px 24px; }
 button, button label, toggle-group toggle { font-weight: 500; }
 button.suggested-action,
@@ -2849,8 +2862,8 @@ headerbar,
  * ---------------------------------------------------------- */
 
 .list-artwork {
-    min-width: 100px;
-    min-height: 49px;
+    min-width: 96px;
+    min-height: 45px;
 
     padding: 0;
     margin: 0;
@@ -2926,9 +2939,7 @@ columnview.library-column-view listview row {
  * All three states share the same primary button.
  * ---------------------------------------------------------- */
 
-.library-column-actions > button:first-child {
-    min-width: 88px;
-}
+/* Width requests on the shared buttons include their padding and border. */
 
 
 /* ----------------------------------------------------------
@@ -3458,7 +3469,7 @@ class Window(Adw.ApplicationWindow):
         self.busy=False;self.task_kind='';self.pending=None;self.cancel_art=threading.Event();self.log=[];self.dialog=None;self.review=None;self.action_buttons=[]
         self.connect('close-request',self.close_request)
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)
-        self.overlay=Adw.ToastOverlay();self.set_content(self.overlay)
+        self.overlay=Adw.ToastOverlay();self.overlay.add_css_class('forge-toasts');self.set_content(self.overlay)
         stage=Gtk.Overlay();self.overlay.set_child(stage)
         outer=Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         outer.add_css_class('forge-window-surface')
@@ -3705,7 +3716,7 @@ class Window(Adw.ApplicationWindow):
         margins(top,18)
         # The Library side owns the shared seam spacing. Do not stack
         # another explicit gap beneath the dark dashboard.
-        top.set_margin_bottom(12)
+        top.set_margin_bottom(16)
         outer.append(top)
         hero=Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
@@ -4210,10 +4221,6 @@ class Window(Adw.ApplicationWindow):
             16
         )
 
-        # Run after the first real GTK allocation so the lighter panel's
-        # top gap exactly mirrors the actual visible dark-panel bottom gap.
-
-
         # Search/filter/selection controls begin the Library toolbar
         # directly. The expanded dashboard already identifies the app at
         # the top of the Library, while the compact titlebar provides the
@@ -4381,8 +4388,8 @@ class Window(Adw.ApplicationWindow):
         viewbar.set_margin_start(18)
         viewbar.set_margin_end(18)
         # Balance the two-tone panel seam:
-        # dark dashboard bottom = 12px
-        # light Library top     = 12px
+        # dark dashboard bottom = 16px
+        # light Library top     = 16px
         viewbar.set_margin_bottom(16)
         library_surface.append(viewbar)
 
@@ -5607,6 +5614,20 @@ class Window(Adw.ApplicationWindow):
                     True
                 )
                 title.queue_resize()
+
+            # Preserve full pill labels without letting their combined minimum
+            # width overrule the golden viewport/slot geometry.
+            meta_row=entry.get('meta_row')
+            if meta_row is not None:
+                pills=(entry['meta'], entry['test_meta'])
+                pill_width=max(pill.measure(Gtk.Orientation.HORIZONTAL, -1)[0]
+                               for pill in pills)
+                stacked=actual_art_width-16 < pill_width*2+4
+                meta_row.set_orientation(Gtk.Orientation.VERTICAL if stacked
+                                         else Gtk.Orientation.HORIZONTAL)
+                meta_row.set_homogeneous(not stacked)
+                for pill in pills:
+                    pill.set_halign(Gtk.Align.START if stacked else Gtk.Align.FILL)
 
             if text_box is not None:
                 text_box.set_size_request(
@@ -9708,13 +9729,14 @@ class Window(Adw.ApplicationWindow):
         )
 
         meta_row=Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
             spacing=4,
             halign=Gtk.Align.FILL,
             valign=Gtk.Align.CENTER,
             hexpand=True,
         )
         meta_row.set_homogeneous(
-            True
+            False
         )
         meta_row.add_css_class(
             'library-meta-row'
@@ -13054,6 +13076,21 @@ class Window(Adw.ApplicationWindow):
         ][
             'widget'
         ].get_size_request()[0]
+
+        dimensions={(entry['widget'].get_width(), entry['widget'].get_height())
+                    for entry in visible}
+        if len(dimensions)!=1:
+            raise AssertionError(f'{label}: unequal allocated cards: {dimensions}')
+        # get_width excludes CSS borders; wrapper allocation includes them.
+        for entry in visible + list(getattr(self, 'ghost_slots', [])):
+            allocated=entry['wrapper'].get_width()
+            if allocated != card_width:
+                raise AssertionError(
+                    f'{label}: allocated slot {allocated}px != requested {card_width}px')
+        last=visible[min(expected_slots,len(visible))-1]['wrapper']
+        ok,bounds=last.compute_bounds(self.library_scroll)
+        if not ok or bounds.get_x()+bounds.get_width()>viewport_width-16:
+            raise AssertionError(f'{label}: final slot exceeds the viewport inset')
 
         self._resize_smoke_results[
             label

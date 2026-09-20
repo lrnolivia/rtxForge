@@ -564,3 +564,12 @@ Do not wholesale revert the current UI to the golden commit. Transplant/restore 
 Canonical expanded handoff:
 
 docs/redesign/ASTRA-CLASSIC-UI-HANDOFF-2026-09-19.md
+
+## 2026-09-19 — Classic geometry repair (Astra)
+
+- Compared the live gallery solver with d442c7ad: the golden viewport/7/6-slot algorithm was already present. The regression came from child minimum widths, especially two full metadata pills plus footer padding.
+- Compact footers now stack the approved pills; wide footers retain the horizontal arrangement. Corrected the malformed card-info selector and kept 8px internal padding.
+- ListArtwork now uses explicit-ratio CoverPicture measurement: real Steam, non-Steam and missing artwork all allocate 96x45 inside the same border. Existing selection callers already used the new API.
+- Shared List action padding/width rules no longer add a second minimum width. Balanced initial hero seam at 16px and made toast background opaque native dark.
+- Enhanced --resize-smoke to check allocated sibling dimensions, real/ghost slot widths and final-slot bounds, not just requested sizes. All six normal/maximized/restored states passed (Poster 148/311/148; Capsule 174/364/174). Focused write-disabled List inspection verified matching artwork dimensions; no game files changed.
+- VERSION remains 0.7.0. Next: consolidate stale Classic styling before updater work. Redesign untouched.

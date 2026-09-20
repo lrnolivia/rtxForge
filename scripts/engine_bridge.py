@@ -165,7 +165,7 @@ def execute(review):
                         if account:paths.extend(account[k] for k in ('localconfig','shortcuts') if account.get(k))
                     report('Backing up your current files',0.15)
                     checkpoint=session.capture(paths)
-                report({'reset':'Saving your settings','uninstall':'Restoring original files','install':'Installing enhancements','repair':'Repairing enhancement files'}[review['operation']],0.4)
+                report({'reset':'Saving your settings','uninstall':'Restoring original files','install':'Installing features','repair':'Repairing feature files'}[review['operation']],0.4)
                 if review['operation']=='reset':
                     record=e.reset_visual_settings(g,nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'])
                 elif review['operation']=='uninstall':
@@ -182,6 +182,8 @@ def execute(review):
             finally:
                 if session and 'checkpoint' in locals():session.seal(checkpoint);del checkpoint
                 report('Finished this game',1)
+        if review.get('on_finalizing'):
+            review['on_finalizing']()
         if session:
             if cancel.is_set():
                 t.need(not any(e._running_processes_under_root(p['game'].root.resolve()) for p in review['plans']),'Close running games before recovery. Copies retained at '+str(session.root))

@@ -581,3 +581,14 @@ docs/redesign/ASTRA-CLASSIC-UI-HANDOFF-2026-09-19.md
 - Audited CSS providers: one base provider; artwork providers cached by color; temporary picker provider removed on close. No provider duplication fix needed.
 - Six-state allocated-geometry smoke passed after consolidation. Focused List demo verified real/missing artwork 96x45 and identical Repair/Apply/unavailable button content allocation (72x30 plus shared padding), with actions inside the viewport. GTK stylesheet parser and minimum-width warnings absent in the final List run; the host emits an unrelated Intel Vulkan-device warning before successfully rendering.
 - Classic checkpoint is local only; no publishing or game deployment.
+
+## 2026-09-20 — User-directed Classic UI checkpoint
+
+- Features replaces Enhancements. Install Features / Restore Original Files target the selection when present. Repair Feature Files is only in Game Details; Reset/Apply Presets sit beside tuning. Presets are collapsed by default, with a small neutral first-launch blinking light and an optional installation edit step.
+- Equal 16px cell gaps, neutral gray surfaces, NVIDIA green system accents, bottom-anchored card pills, visible Select all/Clear buttons, centered opaque activity bubble, and no bottom action overlay or legacy bottom clearance.
+- Card size icon opens a 3–9 preferred-column selector. Automatic resizing favors odd counts and prevents cramped cards. Both galleries fill exactly between equal 16px side insets at every tested width. Even preference six verified.
+- List row artwork uses fixed geometry, restoring stable scrolling. Columns resize; Game has a 420px minimum and larger single-line text. Header aligns with artwork. Steam SVG remains vector rendered and source/status pill heights match.
+- Game Details hero is taller; poster and left-aligned text are anchored to its bottom with 16px inset. Title uses a soft zero-offset glow. Developer/date remain plain text beside Steam/Non-Steam and testing-status pills, above description. Presets are on Features. Appearance has a color swatch and Edit.
+- Compact Done is 500×180, with large check far left, left-aligned content and Done far right on solid neutral gray. Collapsed Presets and dashboard top spacing are reduced.
+- Verified: exact-edge six-state resize check, 760px galleries, six-column preference/popover, List resize/scroll-to-top with 64px rows, full write-disabled UI smoke, focused Game Details/Presets checks, two cancellation-boundary tests, syntax and diff checks. No real game files changed.
+- User requested this UI checkpoint be pushed before further DLSS work. Draft native DLSS management remains in the separate local work; it will receive a dedicated Game Details tab next. Provider stack pins/redesign untouched; VERSION stays 0.7.0.

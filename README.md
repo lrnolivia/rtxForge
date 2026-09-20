@@ -38,7 +38,9 @@ MFG offers Off and 2×–6×. The requested ratio is written as `[DLSSG] Overrid
 
 Changing a main-screen control turns **Reset All Settings** into **Apply Settings**. Applying writes the selected settings to ready managed games and saves them as app defaults; per-game Apply writes only that game's INI. Each game panel reads saved values from its INI, labeling unmatched tuning Custom or Game-controlled. Settings take effect on the next game launch. `UseHQFont=false` remains the upstream Vulkan menu-font workaround; stability is not guaranteed.
 
-**Repair Files** preserves saved tuning. Use **Reset Settings** to replace it with current defaults. **Add Enhancements** and **Remove Enhancements** manage the graphics package, not the game installation.
+**Repair Feature Files** in Game Details restores missing or damaged feature files while preserving presets. **Reset Presets** lives beside the preset controls and applies your library defaults. **Install Features** and **Restore Original Files** manage the graphics additions to a game.
+
+Presets start collapsed. Installation offers an optional preset adjustment before continuing. Native **DLSS File Management** runs automatically during feature installation, with per-game update/restore controls in Game Details and a default-on switch in Settings. See [DLSS File Management](docs/DLSS-FILE-MANAGEMENT.md) for supported files and backup behavior.
 
 ## Library and reports
 
@@ -84,7 +86,7 @@ For focused responsive-Library regression and screenshot validation, use:
     python3 gui/rtxforge_gtk.py --resize-smoke
 
 This captures Poster and Wide Capsule at normal, maximized, and restored window
-sizes while asserting their fixed 7 / 6 slot counts and reversible card sizing.
+sizes while asserting adaptive 3–9 column counts, equal side insets, and reversible sizing.
 
 For the broader automated regression and screenshot validation, use:
 
@@ -103,66 +105,34 @@ production fixes and maintenance.
 
 ### Current production Library
 
-Poster and Wide Capsule now use a deterministic responsive-scale layout rather
-than variable column fitting or a user artwork-size control.
+The **Card size** icon opens a Games per row selector with preferences from 3 to 9,
+including even values. The gallery reduces columns when cards would become too
+small and adds columns in very wide windows. Automatic changes favor odd counts.
+Poster and Wide Capsule fill the viewport between equal 16px side insets, with
+live resizing and equal sibling heights. Pills stay directly above Details.
+Incomplete rows retain inert placeholders to keep the grid aligned.
 
-Current gallery contract:
+List view uses resizable columns:
 
-- **Poster is always exactly 7 visual slots per row**;
-- **Wide Capsule is always exactly 6 visual slots per row**;
-- cards grow and shrink automatically with the current Library viewport;
-- changing window size, maximizing, restoring, and shrinking all update card
-  geometry live without requiring a view switch;
-- gallery content no longer ratchets the application into a larger minimum
-  window width;
-- incomplete final rows are padded with inert ghost slots so the visual grid
-  keeps its full geometry;
-- Poster and Wide Capsule continue using their separate artwork sources and
-  aspect ratios;
-- the right edge includes an explicit paint/clip safety allowance so the final
-  slot remains inside the visible viewport;
-- GTK overlay scrolling remains enabled without a permanent scrollbar gutter.
+`Game | Location | Status | Features | Actions`
 
-The live resize path uses the horizontal ScrolledWindow adjustment `page_size`
-as its viewport authority. The Library ScrolledWindow uses the `EXTERNAL`
-horizontal policy so dynamically enlarged child requests do not become a new
-application-window minimum.
+Game has a minimum width and single-line titles. Fixed thumbnail and row geometry
+keeps scrolling stable. File repair is available in Game Details → Features;
+preset reset is beside the preset controls. The top actions target selected games
+when a selection exists. Select all and Clear are visible buttons above the grid.
 
-Gallery title behavior is responsive:
-
-- the existing full-size title is the maximum;
-- compact cards step the title from **15px → 14px → 13px → 12px**;
-- titles wrap to at most **3 lines**;
-- ellipsis is used only after the third line is exhausted;
-- Details buttons become modestly smaller with compact cards;
-- the existing tallest-card normalization keeps sibling card heights aligned.
-
-Additional Library polish:
-
-- All / Installed / Available have expanded horizontal padding;
-- NR Strength and Sharpening numeric fields have additional internal left
-  padding;
-- manual artwork-size controls were removed from both the Library toolbar and
-  Settings.
-
-List view remains structured as:
-
-`Game | Location | Status | Enhancements | Actions`
-
-with existing selection, provider state, install/repair actions, Game Details,
-write safety, and classic visual styling preserved.
+Presets start collapsed with a short first-launch cue. The collapsed row is compact;
+expanded content uses consistent 16px spacing. Game Details has a taller hero and
+an accent swatch with Edit. Progress and the compact Done dialog share left-aligned
+content; Done has a solid neutral background. Neutral grays and NVIDIA green replace
+system accent colors while intentional game-artwork accents remain available.
 
 ### Validation
 
-The responsive gallery has a dedicated write-disabled resize smoke that captures
-six states:
-
-- Poster normal / maximized / restored;
-- Wide Capsule normal / maximized / restored.
-
-The accepted resize run verified that card widths grow and return to their
-original values while slot counts remain fixed at 7 / 6. Final visual polish was
-also reviewed in write-disabled `--demo` mode.
+Write-disabled GTK checks cover normal/maximized/restored gallery allocations,
+760px windows, List scrolling and column resizing, Game Details navigation,
+preset controls, Settings, Progress and Done. Native DLSS lifecycle tests use
+disposable game fixtures, including automatic older-version selection and recovery.
 
 ### Classic UI policy after 0.7
 

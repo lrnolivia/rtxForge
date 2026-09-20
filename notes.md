@@ -581,3 +581,30 @@ docs/redesign/ASTRA-CLASSIC-UI-HANDOFF-2026-09-19.md
 - Audited CSS providers: one base provider; artwork providers cached by color; temporary picker provider removed on close. No provider duplication fix needed.
 - Six-state allocated-geometry smoke passed after consolidation. Focused List demo verified real/missing artwork 96x45 and identical Repair/Apply/unavailable button content allocation (72x30 plus shared padding), with actions inside the viewport. GTK stylesheet parser and minimum-width warnings absent in the final List run; the host emits an unrelated Intel Vulkan-device warning before successfully rendering.
 - Classic checkpoint is local only; no publishing or game deployment.
+
+## 2026-09-20 — Active user-directed Classic expansion (supersedes fixed-slot freeze)
+
+Latest user request explicitly replaces the fixed 7/6 contract and previous protected Progress/Done restrictions:
+- Equal 16px cell gaps/insets throughout dashboard, Details and Settings; neutral gray/contrast sweep, NVIDIA green instead of system accent (preserve intentional artwork accents).
+- Tuning is Presets, collapsed by default with one-time subtle attention animation; installation presents optional preset edits and Continue in its modal.
+- DLSS File Management belongs in Game Details/appropriate Settings, routine handling automatic during install without extra review questions. Native updater backend currently uncommitted and tested; its standalone review UI must be integrated/reworked.
+- Taller Details hero; prevent hidden page content; accent color swatch plus Edit.
+- Gallery pills bottom anchored next to Details. Preferred 3–9 games per row (odd preferred, even allowed), adapt count down/up at cramped/oversized widths; preserve live reversible resizing and equal actual cards.
+- Fix List scroll jump/slot-machine effect and column resizing. Game resizable with useful nonwrapping minimum, header text aligned to artwork; larger titles; matching pill thickness; crisp scalable Steam SVG.
+- Center opaque operation bubble; remove bottom fade/right actions. Top actions act on selection when nonempty. Clearly styled/selectable Select All/Clear placement.
+- Done matches Progress: left content, big check far left, Done far right, native dark background, no blur.
+- Repair only in Details, with clear file-repair explanation; Reset Presets only near preset controls.
+- FINAL terminology choice: **Features**, replacing Enhancements. Use Install Features / Restore Original Files / Repair Feature Files / Reset Presets.
+- Finish this UI work before resuming DLSS-Unlocked stack updates. No live game writes have been performed.
+
+## 2026-09-20 — Features / Presets / DLSS File Management completed
+
+- User refinement implemented: compact collapsed Presets row, galleries fill exactly between equal 16px side margins (removed the obsolete right-edge reserve), Card size icon opens a Games per row popover, and Done is now 500×180 with the approved layout.
+- Features is the user-facing terminology throughout the classic UI and engine progress. Reset/Apply Presets live beside tuning; file repair lives in Game Details → Features. Sidebar/content/footer selection is synchronized, including direct page changes.
+- Responsive preferred density 3–9, automatic odd-count adaptation, bottom-anchored metadata and fixed List row/art geometry. Game column resizes with a 420px minimum; Game header aligns with artwork. Native Steam SVG stays vector-rendered.
+- Native DLSS File Management uses immutable catalog verification and existing hash-guarded transactions. Default-on automatic management follows successful feature installation, only updates older known versions, excludes provider-owned/private files, and preserves verified originals. Per-game Update/Restore controls live in Details; Settings can disable automatic management.
+- Cancellation is closed on the GTK thread before the engine's final undo decision; late cancellation at that boundary still rolls back. DLSS network failures are logged without misreporting successful feature installation.
+- Verified: 9 disposable native-DLSS lifecycle/guard tests, 2 cancellation-boundary tests, syntax/diff checks, full write-disabled GUI smoke, six exact-edge resize allocations, 760px Poster/Wide allocations, List resize/scroll-to-top at fixed 64px row height, and visual review of Appearance, Features Presets, optional install Presets, and compact Done.
+- No installed game files changed during development or verification. VERSION remains 0.7.0; DLSS-Unlocked stack pins and redesign remain unchanged.
+
+- Follow-up spacing refinement: removed dashboard top inset/padding (including the scroll-to-top reset), removed legacy library bottom clearance, tightened the gap before cards/rows, and replaced the green Presets pulse with a tiny neutral blinking dot. Per explicit user correction, Game Details poster/text are bottom-aligned with a 16px lower inset; all text stays left-aligned. Title separation is a soft zero-offset glow rather than a directional drop shadow. Card-size popover mapping and an even preference of six columns verified.

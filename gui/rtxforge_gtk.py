@@ -583,14 +583,14 @@ LIST_ART_FRAME_WIDTH=100
 LIST_ART_FRAME_HEIGHT=49
 
 LIBRARY_PILL_WIDTH=78
-LIBRARY_PILL_HEIGHT=24
-LIBRARY_PILL_ICON_SIZE=11
+LIBRARY_PILL_HEIGHT=20
+LIBRARY_PILL_ICON_SIZE=13
 LIBRARY_PILL_HPAD_START=9
 LIBRARY_PILL_HPAD_END=8
-LIBRARY_PILL_VPAD=3
+LIBRARY_PILL_VPAD=4
 LIBRARY_PILL_GAP=4
 LIBRARY_LIST_STATUS_WIDTH=108
-LIBRARY_BOTTOM_CLEARANCE=96
+LIBRARY_BOTTOM_CLEARANCE=0
 LIBRARY_STEAM_ICON=ROOT/'gui/icons/rtxforge-steam.svg'
 LIBRARY_GHOST_TEXTURE=ROOT/'gui/icons/rtxforge-transparent-capsule.png'
 
@@ -770,18 +770,7 @@ class LibraryPill(Gtk.Box):
                 and LIBRARY_STEAM_ICON.exists()
             ):
                 try:
-                    pixbuf=GdkPixbuf.Pixbuf.new_from_file_at_scale(
-                        str(LIBRARY_STEAM_ICON),
-                        LIBRARY_PILL_ICON_SIZE,
-                        LIBRARY_PILL_ICON_SIZE,
-                        True,
-                    )
-
-                    self._icon.set_from_paintable(
-                        Gdk.Texture.new_for_pixbuf(
-                            pixbuf
-                        )
-                    )
+                    self._icon.set_from_gicon(Gio.FileIcon.new(Gio.File.new_for_path(str(LIBRARY_STEAM_ICON))))
 
                     return
 
@@ -957,6 +946,16 @@ class LibraryPill(Gtk.Box):
         return
 
 
+class ListArtworkPicture(Gtk.Picture):
+    """List thumbnails have constant geometry, independent of column allocation."""
+    def do_get_request_mode(self):
+        return Gtk.SizeRequestMode.CONSTANT_SIZE
+
+    def do_measure(self,orientation,for_size):
+        size=LIST_ART_WIDTH if orientation==Gtk.Orientation.HORIZONTAL else LIST_ART_HEIGHT
+        return size,size,-1,-1
+
+
 class ListArtwork(Gtk.Overlay):
     """Single authoritative List artwork widget."""
 
@@ -993,12 +992,10 @@ class ListArtwork(Gtk.Overlay):
             Gtk.Overflow.HIDDEN
         )
 
-        self.picture=CoverPicture(
+        self.picture=ListArtworkPicture(
             content_fit=Gtk.ContentFit.COVER,
             can_shrink=True,
         )
-        self.picture.cover_width=LIST_ART_WIDTH
-        self.picture.cover_ratio=LIST_ART_WIDTH/LIST_ART_HEIGHT
         self.picture.add_css_class(
             'list-artwork-picture'
         )
@@ -1196,7 +1193,7 @@ class FixedLibraryCard(Gtk.Box):
 class HeroPicture(Gtk.Picture):
     # The Game Details hero must crop as the window changes width,
     # not grow vertically with the artwork's aspect ratio.
-    hero_height=200
+    hero_height=280
 
     def do_get_request_mode(self):
         return Gtk.SizeRequestMode.CONSTANT_SIZE
@@ -1255,16 +1252,32 @@ class BlurredTexture(Gtk.Widget):
         snapshot.pop()
 
 CSS=b'''
+@define-color accent_bg_color #76b900;
+@define-color accent_color #95cf38;
+@define-color accent_fg_color #102000;
+@define-color window_bg_color #242424;
+@define-color window_fg_color #f2f2f2;
+@define-color view_bg_color #1e1e1e;
+@define-color view_fg_color #f2f2f2;
+@define-color sidebar_bg_color #2d2d2d;
+@define-color sidebar_fg_color #f2f2f2;
+@define-color card_bg_color #383838;
+@define-color card_fg_color #f2f2f2;
+@define-color dialog_bg_color #242424;
+@define-color popover_bg_color #303030;
+.dim-label { opacity: 0.78; }
+.operation-complete { color: #76b900; }
+
 /*
  * Use libadwaita's native Nautilus-style surface hierarchy.
  *
  * view:
  *   light #ffffff
- *   dark  #1d1d20
+ *   dark  #1e1e1e
  *
  * sidebar:
- *   light #ebebed
- *   dark  #2e2e32
+ *   light #ececec
+ *   dark  #2f2f2f
  *
  * Panels use the native foreground color translucently so they retain
  * clear separation in both appearances without introducing another
@@ -1422,7 +1435,7 @@ spinbutton.tuning-number-input text {
 }
 
 .settings-content {
-    padding: 28px 32px 30px;
+    padding: 16px;
 }
 
 .settings-footer {
@@ -1437,24 +1450,24 @@ button.game-detail-close {
     min-height: 36px;
     padding: 0;
     border-radius: 999px;
-    background: alpha(#151518,0.82);
+    background: alpha(#161616,0.82);
     color: white;
 }
 
 button.game-detail-close.light {
     background: alpha(white,0.82);
-    color: #202024;
+    color: #212121;
 }
 
 button.game-detail-close:hover {
-    background: alpha(#151518,0.88);
+    background: alpha(#161616,0.88);
 }
 
 button.game-detail-close.light:hover {
     background: alpha(white,0.90);
 }
 
-.game-banner { background: #252529; }
+.game-banner { background: #262626; }
 
 .game-detail-root {
     background: @window_bg_color;
@@ -1512,7 +1525,7 @@ button.game-detail-close.light:hover {
 }
 
 .art-credit-pod {
-    padding: 12px 14px;
+    padding: 16px;
     border-radius: 12px;
     background: alpha(@window_fg_color,0.075);
 }
@@ -1602,13 +1615,13 @@ button.game-detail-close.light:hover {
 }
 
 .game-card .game-details:hover {
-    background: #c8c8ca;
-    color: #202024;
+    background: #c9c9c9;
+    color: #212121;
     border-color: transparent;
 }
 
 .game-card .game-details:hover label {
-    color: #202024;
+    color: #212121;
 }
 
 
@@ -1738,7 +1751,7 @@ columnview.library-column-view header button:active {
 /* Equal physical padding at both List edges. */
 columnview.library-column-view listview {
     background: transparent;
-    padding: 3px 10px 96px;
+    padding: 0 16px;
 }
 
 
@@ -1803,7 +1816,7 @@ columnview.library-column-view listview row:nth-child(even):hover {
     min-width: 11px;
     min-height: 11px;
 
-    color: #bdbdc4;
+    color: #bfbfbf;
     opacity: 1;
 }
 
@@ -1824,7 +1837,7 @@ columnview.library-column-view listview row:nth-child(even):hover {
     border: none;
     border-color: transparent;
     box-shadow: none;
-    color: #d0d0d6;
+    color: #d2d2d2;
 }
 
 
@@ -1837,7 +1850,7 @@ columnview.library-column-view listview row:nth-child(even):hover {
     border: none;
     border-color: transparent;
     box-shadow: none;
-    color: #d8d8dd;
+    color: #dadada;
 }
 
 .library-test-pill.pill-working {
@@ -1852,28 +1865,28 @@ columnview.library-column-view listview row:nth-child(even):hover {
 
 .library-test-pill.pill-bench {
     background: mix(@view_bg_color,@window_fg_color,0.10);
-    color: #d0d0d5;
+    color: #d2d2d2;
 }
 
 
 /* Before first bind, visually match UNTESTED. */
 .library-test-pill:not(.test-untested):not(.test-tested) {
-    background: #d2d2d6;
+    background: #d3d3d3;
     border: none;
     border-color: transparent;
     box-shadow: none;
-    color: #4a4a50;
+    color: #4c4c4c;
 }
 
 
 /* Pill glyphs belong to the state, not to a generic icon palette. */
 .library-source-pill .library-pill-icon {
-    color: #d0d0d6;
+    color: #d2d2d2;
 }
 
 
 .library-test-pill.test-tested.pill-bench .library-pill-icon {
-    color: #d0d0d5;
+    color: #d2d2d2;
 }
 
 
@@ -1894,11 +1907,11 @@ columnview.library-column-view listview row:nth-child(even):hover {
     border: none;
     border-color: transparent;
     box-shadow: none;
-    color: #c7c7cc;
+    color: #c9c9c9;
 }
 
 .library-test-pill.pill-na .library-pill-icon {
-    color: #c7c7cc;
+    color: #c9c9c9;
 }
 
 .library-test-pill.test-tested.pill-working .library-pill-icon {
@@ -1948,14 +1961,14 @@ columnview.library-column-view listview row:nth-child(even):hover {
 
 
 .library-column-actions button:hover {
-    background: #c8c8ca;
-    color: #202024;
+    background: #c9c9c9;
+    color: #212121;
     border-color: transparent;
 }
 
 .library-column-actions button:hover label,
 .library-column-actions button:hover image {
-    color: #202024;
+    color: #212121;
 }
 
 
@@ -1964,7 +1977,6 @@ columnview.library-column-view listview row:nth-child(even):hover {
     padding: 10px;
 }
 
-.game-banner.hero-dark .game-banner-title,
 .game-banner.hero-dark .game-detail-meta,
 .game-banner.hero-dark .game-detail-summary,
 .game-banner.hero-dark .cover-badge {
@@ -1978,6 +1990,7 @@ columnview.library-column-view listview row:nth-child(even):hover {
     font-size: 42px;
     font-weight: 600;
     letter-spacing: -0.8px;
+    text-shadow: 0 0 8px alpha(black,0.78), 0 0 20px alpha(black,0.42);
 }
 
 .game-banner-title.detail-title-md {
@@ -2011,11 +2024,11 @@ columnview.library-column-view listview row:nth-child(even):hover {
 }
 
 .done-shade {
-    background: alpha(#030507,0.60);
+    background: alpha(#050505,0.60);
 }
 
 .done-fallback {
-    background: #080a0d;
+    background: @window_bg_color;
 }
 
 .art-progress {
@@ -2032,12 +2045,13 @@ columnview.library-column-view listview row:nth-child(even):hover {
     /* 70% thinner than the old 2px treatment. */
     border: 0.6px solid alpha(black,0.60);
 
-    background: alpha(#0a0d12,0.54);
+    background: alpha(#0e0e0e,0.54);
 }
 
 .progress-panel.done {
-    background: alpha(#070a0c,0.32);
+    background: @window_bg_color;
 }
+.progress-panel.done .progress-content { padding: 20px 24px; }
 
 .progress-poster-frame {
     border-radius: 20px;
@@ -2126,14 +2140,14 @@ button.done-button.suggested-action:hover {
     min-height: 30px;
     padding: 5px 14px;
 
-    background: alpha(#303238,0.96);
+    background: alpha(#333333,0.96);
     color: white;
 
     border: 1px solid alpha(white,0.10);
 }
 
 .progress-inline-cancel:hover {
-    background: alpha(#3b3d43,1.0);
+    background: alpha(#3e3e3e,1.0);
 }
 
 .art-progress progressbar trough {
@@ -2152,7 +2166,7 @@ button.done-button.suggested-action:hover {
 
 
 .control-pod {
-    padding: 10px;
+    padding: 16px;
     border-radius: 12px;
     background: @forge_panel_bg;
     border: 1px solid transparent;
@@ -2189,7 +2203,7 @@ button.done-button.suggested-action:hover {
 
 /* rtxForge dashboard tuning typography */
 .dashboard-tuning .control-pod {
-    padding: 12px 14px;
+    padding: 16px;
 }
 
 .dashboard-tuning .heading {
@@ -2205,7 +2219,7 @@ button.done-button.suggested-action:hover {
     font-size: 12px;
 }
 .mode-bar {
-    padding: 8px 12px;
+    padding: 16px;
 
     /* Halfway between the base view and the normal tuning panels. */
     background: mix(@view_bg_color,@forge_panel_bg,0.50);
@@ -2219,7 +2233,7 @@ button.done-button.suggested-action:hover {
 .operation-bubble {
     border-radius: 15px;
     padding: 9px 10px 9px 12px;
-    background: alpha(@card_bg_color,0.97);
+    background: @view_bg_color;
     border: 1px solid alpha(@window_fg_color,0.10);
     box-shadow: 0 5px 18px alpha(black,0.32);
 }
@@ -2244,7 +2258,7 @@ button.done-button.suggested-action:hover {
     background: transparent;
     border: 0;
     border-radius: 0;
-    padding: 10px 0;
+    padding: 0;
 }
 .forge-primary {
     background: #76b900;
@@ -2295,7 +2309,7 @@ button.done-button.suggested-action:hover {
 }
 
 .poster-button { padding: 0; border: 0; border-radius: 11px 11px 0 0; }
-.poster { border-radius: 11px 11px 0 0; background: #242426; }
+.poster { border-radius: 11px 11px 0 0; background: #252525; }
 
 /* Poster / Wide Capsule artwork is an inset rounded surface.
  * Transparent corners expose the card's own label-area background,
@@ -2325,7 +2339,7 @@ button.done-button.suggested-action:hover {
 /* 14px outer radius - 3.5px inset = 10.5px inner artwork radius. */
 
 
-.poster-fallback { color: #a5a5a8; padding: 22px; font-weight: 800; font-size: 19px; }
+.poster-fallback { color: #a6a6a6; padding: 22px; font-weight: 800; font-size: 19px; }
 .card-info { padding: 10px 12px 12px; }
 .card-title {
     color: @window_fg_color;
@@ -2338,19 +2352,7 @@ button.done-button.suggested-action:hover {
 .cover-badge { background: alpha(black,0.65); color: white; text-shadow: 0 1px 3px black; padding: 5px 8px; border-radius: 8px; font-size: 10px; font-weight: 700; }
 .cover-badge.unavailable { color: #ffb3ad; }
 
-.selection-fade {
-    background-color: transparent;
 
-    background-image: linear-gradient(
-        to top,
-        alpha(@sidebar_bg_color,0.98) 0%,
-        alpha(@sidebar_bg_color,0.92) 24%,
-        alpha(@sidebar_bg_color,0.70) 48%,
-        alpha(@sidebar_bg_color,0.38) 70%,
-        alpha(@sidebar_bg_color,0.14) 86%,
-        transparent 100%
-    );
-}
 
 .selection-controls {
     padding: 0 17px 15px;
@@ -2553,7 +2555,7 @@ headerbar, .titlebar {
 }
 
 .dashboard-tuning {
-    margin-top: 6px;
+    margin-top: 0;
 }
 
 
@@ -2637,7 +2639,7 @@ headerbar, .titlebar {
 .library-column-title {
     color: @window_fg_color;
     margin-bottom: 4px;
-    font-size: 10.8px;
+    font-size: 13px;
     font-weight: 700;
 }
 
@@ -2669,6 +2671,8 @@ columnview.library-column-view listview row {
  * ---------------------------------------------------------- */
 
 flowbox.library-flow flowboxchild, flowbox.library-flow flowboxchild:hover, flowbox.library-flow flowboxchild:active, flowbox.library-flow flowboxchild:selected, flowbox.library-flow flowboxchild:focus {
+    padding: 0;
+    border-width: 0;
     background: transparent;
     background-image: none;
     border-color: transparent;
@@ -2677,6 +2681,20 @@ flowbox.library-flow flowboxchild, flowbox.library-flow flowboxchild:hover, flow
 }
 
 
+
+columnview.library-column-view header button:first-child { padding-left: 68px; }
+.presets-header { padding: 2px 0; border-radius: 6px; }
+.presets-hint-light {
+    min-width: 5px;
+    min-height: 5px;
+    border-radius: 99px;
+    background: #c9c9c9;
+    animation: presets-blink 1.3s step-end 3;
+}
+@keyframes presets-blink {
+    0%, 40% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+}
 '''
 
 def profile_icon(mode):
@@ -2787,7 +2805,7 @@ def library_state_smoke_games(games):
             'installed':False,
             'blocked':(
                 'State-smoke fixture: this game cannot currently '
-                'receive enhancements.'
+                'receive features.'
             ),
             'profile':'Not installed',
             'feature_mode':'',
@@ -3103,7 +3121,7 @@ class LibraryGameItem(GObject.Object):
         default='',
     )
 
-    enhancements=GObject.Property(
+    features=GObject.Property(
         type=str,
         default='',
     )
@@ -3145,7 +3163,7 @@ class LibraryGameItem(GObject.Object):
 
         self.status=status
 
-        self.enhancements=str(
+        self.features=str(
             game.get(
                 'profile',
                 '',
@@ -3427,14 +3445,15 @@ class Window(Adw.ApplicationWindow):
         )
         top=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8)
         top.add_css_class('forge-top-surface')
-        margins(top,18)
+        margins(top,16)
+        top.set_margin_top(0)
         # The Library side owns the shared seam spacing. Do not stack
         # another explicit gap beneath the dark dashboard.
-        top.set_margin_bottom(16)
+        top.set_margin_bottom(8)
         outer.append(top)
         hero=Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
-            spacing=8,
+            spacing=16,
         )
         hero.add_css_class('hero')
 
@@ -3544,40 +3563,40 @@ class Window(Adw.ApplicationWindow):
         )
 
         self.install_all=icon_button(
-            'Install All',
+            'Install Features',
             'document-save-symbolic',
             lambda *_:self.launch_action(
                 'install',
-                True,
+                not bool(self.selected_game_ids),
             ),
             'forge-primary',
         )
         bulk.append(self.install_all)
 
         self.uninstall_all=icon_button(
-            'Remove All',
-            'edit-delete-symbolic',
+            'Restore Original Files',
+            'document-revert-symbolic',
             lambda *_:self.launch_action(
                 'uninstall',
-                True,
+                not bool(self.selected_game_ids),
             ),
             'bulk-remove',
         )
         bulk.append(self.uninstall_all)
 
         self.reset_all=icon_button(
-            'Reset All',
+            'Reset Presets',
             'edit-undo-symbolic',
             self.apply_library_settings,
         )
-        bulk.append(self.reset_all)
+        # Reset belongs to Presets, not the file actions.
 
         tuning,self.tuning_widgets=self.tuning_controls(
             self.settings
         )
         tuning.set_hexpand(True)
         tuning.set_halign(Gtk.Align.FILL)
-        tuning.set_margin_top(4)
+        tuning.set_margin_top(0)
         tuning.add_css_class('dashboard-tuning')
 
         self.strength_slider=(
@@ -3589,10 +3608,10 @@ class Window(Adw.ApplicationWindow):
             transition_type=Gtk.RevealerTransitionType.SLIDE_UP,
             transition_duration=160,
             reveal_child=False,
-            halign=Gtk.Align.START,
+            halign=Gtk.Align.CENTER,
             valign=Gtk.Align.END,
         )
-        self.operation_revealer.set_margin_start(18);self.operation_revealer.set_margin_bottom(74)
+        self.operation_revealer.set_margin_bottom(16)
         operation=Gtk.Box(spacing=9,valign=Gtk.Align.CENTER);operation.add_css_class('operation-bubble');self.operation_revealer.set_child(operation)
         self.operation_spinner=Gtk.Spinner();operation.append(self.operation_spinner)
         self.operation_icon=Gtk.Image.new_from_icon_name('emblem-ok-symbolic');self.operation_icon.add_css_class('operation-complete');self.operation_icon.set_visible(False);operation.append(self.operation_icon)
@@ -3607,11 +3626,11 @@ class Window(Adw.ApplicationWindow):
         controls=Gtk.Box(spacing=14)
         controls.add_css_class('control-pod')
         controls.add_css_class('mode-bar')
-        controls.set_margin_top(4)
+        controls.set_margin_top(0)
 
         hero.append(controls)
         profile_text=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=1,hexpand=True,valign=Gtk.Align.CENTER);controls.append(profile_text)
-        profile_text.append(label('Enhancement Mode','heading'))
+        profile_text.append(label('Feature Mode','heading'))
         self.profile_note=label('','dim-label');self.profile_note.add_css_class('mode-description');self.profile_note.set_ellipsize(Pango.EllipsizeMode.END);self.profile_note.set_lines(1);self.profile_note.set_max_width_chars(42);profile_text.append(self.profile_note)
         self.profile_group=Adw.ToggleGroup(homogeneous=True,valign=Gtk.Align.CENTER)
         self.profile_group.add_css_class('mode-selector')
@@ -3666,7 +3685,7 @@ class Window(Adw.ApplicationWindow):
             sticky_brand_title
         )
 
-        # Compact mirror of Enhancement Mode.
+        # Compact mirror of Feature Mode.
         self.sticky_profile_group=Adw.ToggleGroup(
             homogeneous=True,
             valign=Gtk.Align.CENTER,
@@ -3764,37 +3783,37 @@ class Window(Adw.ApplicationWindow):
         )
 
         self.sticky_install_all=icon_button(
-            'Install All',
+            'Install Features',
             'document-save-symbolic',
             lambda *_:self.launch_action(
                 'install',
-                True,
+                not bool(self.selected_game_ids),
             ),
             'forge-primary',
         )
 
         self.sticky_remove_all=icon_button(
-            'Remove All',
-            'edit-delete-symbolic',
+            'Restore Original Files',
+            'document-revert-symbolic',
             lambda *_:self.launch_action(
                 'uninstall',
-                True,
+                not bool(self.selected_game_ids),
             ),
             'bulk-remove',
         )
 
         self.sticky_reset_all=icon_button(
-            'Reset All',
+            'Reset Presets',
             'edit-undo-symbolic',
             self.apply_library_settings,
         )
 
         self.sticky_install_all.set_tooltip_text(
-            'Install enhancements across the Library'
+            'Install features across the Library'
         )
 
         self.sticky_remove_all.set_tooltip_text(
-            'Remove managed enhancements across the Library'
+            'Restore original files for the selected games or Library'
         )
 
         self.sticky_reset_all.set_tooltip_text(
@@ -3807,9 +3826,7 @@ class Window(Adw.ApplicationWindow):
         sticky_actions.append(
             self.sticky_remove_all
         )
-        sticky_actions.append(
-            self.sticky_reset_all
-        )
+
 
         # Mirror sensitivity from the canonical dashboard buttons so
         # this compact presentation never becomes a second source of
@@ -3920,8 +3937,30 @@ class Window(Adw.ApplicationWindow):
             self.sticky_actions_revealer
         )
 
-        # Enhancement Mode sits directly above the tuning controls.
-        hero.append(tuning)
+        # Feature Mode sits directly above the tuning controls.
+        self.presets_expander=Gtk.Expander(label='Presets', expanded=False)
+        self.presets_expander.add_css_class('presets-header')
+        preset_label=Gtk.Box(spacing=8,valign=Gtk.Align.CENTER)
+        preset_label.append(label('Presets'))
+        preset_light=Gtk.Box(valign=Gtk.Align.CENTER,visible=False)
+        preset_light.add_css_class('presets-hint-light')
+        preset_label.append(preset_light)
+        self.presets_expander.set_label_widget(preset_label)
+        preset_body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
+        preset_body.set_margin_top(16)
+        preset_body.append(tuning)
+        self.reset_all.set_halign(Gtk.Align.END)
+        preset_body.append(self.reset_all)
+        self.presets_expander.set_child(preset_body)
+        self.presets_expander.connect('notify::expanded',lambda widget,*_:top.set_margin_bottom(16 if widget.get_expanded() else 8))
+        hero.append(self.presets_expander)
+        if not self.settings.get('presets_hint_seen',False):
+            preset_light.set_visible(True)
+            GLib.timeout_add(4000,lambda:(preset_light.set_visible(False),False)[1])
+            self.settings['presets_hint_seen']=True
+            if not self.options.demo:
+                library_media.save_settings(self.service.config,self.settings)
+
         viewbar=Gtk.Box(
             spacing=8,
             valign=Gtk.Align.CENTER,
@@ -4099,8 +4138,8 @@ class Window(Adw.ApplicationWindow):
         library_surface.add_css_class('forge-library-surface')
         outer.append(library_surface)
 
-        viewbar.set_margin_start(18)
-        viewbar.set_margin_end(18)
+        viewbar.set_margin_start(16)
+        viewbar.set_margin_end(16)
         # Balance the two-tone panel seam:
         # dark dashboard bottom = 16px
         # light Library top     = 16px
@@ -4126,9 +4165,7 @@ class Window(Adw.ApplicationWindow):
         )
         self.library_scroll=scroll
 
-        # Keep GTK's native overlay scrollbar. The responsive gallery
-        # reserves a small internal lane for it instead of creating a
-        # permanent visible scrollbar gutter.
+        # Native overlay scrolling does not reserve a separate gutter.
         scroll.set_overlay_scrolling(
             True
         )
@@ -4220,9 +4257,7 @@ class Window(Adw.ApplicationWindow):
                 top.set_margin_top(
                     0
                 )
-                top.set_margin_bottom(
-                    16
-                )
+                top.set_margin_bottom(16 if self.presets_expander.get_expanded() else 8)
                 viewbar.add_css_class(
                     'stuck'
                 )
@@ -4240,12 +4275,8 @@ class Window(Adw.ApplicationWindow):
                 set_sticky_dashboard_visible(
                     False
                 )
-                top.set_margin_top(
-                    18
-                )
-                top.set_margin_bottom(
-                    16
-                )
+                top.set_margin_top(0)
+                top.set_margin_bottom(16 if self.presets_expander.get_expanded() else 8)
                 viewbar.remove_css_class(
                     'stuck'
                 )
@@ -4253,10 +4284,7 @@ class Window(Adw.ApplicationWindow):
             'value-changed',
             collapse_header,
         )
-        self.column_scroll.get_vadjustment().connect(
-            'value-changed',
-            collapse_header,
-        )
+
         self.flow=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,column_spacing=14,row_spacing=16,min_children_per_line=1,max_children_per_line=12,homogeneous=False,valign=Gtk.Align.START);margins(self.flow,18);self.flow.set_margin_top(0);self.flow.set_margin_bottom(LIBRARY_BOTTOM_CLEARANCE);scroll.set_child(self.flow)
         self.flow.add_css_class(
             'library-flow'
@@ -4287,136 +4315,38 @@ class Window(Adw.ApplicationWindow):
             self.update_library_spacing
         )
 
-        # Decorative bottom fade. It floats over the library instead
-        # of reserving a rectangular footer row.
-        footer=Gtk.Box(
-            orientation=Gtk.Orientation.VERTICAL,
-            height_request=92,
-            hexpand=True,
-            valign=Gtk.Align.END,
-        )
-        footer.add_css_class(
-            'selection-fade'
-        )
+        self.selected_label=label('0 selected', 'selection-count')
+        self.selected_label.set_wrap(False)
+        self.selected_label.set_hexpand(True)
+        selection_tools=Gtk.Box(spacing=12)
+        margins(selection_tools,16)
+        selection_tools.set_margin_top(0)
+        selection_tools.set_margin_bottom(8)
+        selection_tools.append(self.selected_label)
+        for widget in (select_all, clear_selection):
+            library_tools.remove(widget)
+            widget.remove_css_class('flat')
+            selection_tools.append(widget)
+        self.columns_control=Gtk.SpinButton.new_with_range(3,9,1)
+        self.columns_control.set_value(self.settings.get('library_columns',7))
+        self.columns_control.set_tooltip_text('Preferred games per row; adapts when cards become too small or large')
+        size_content=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12)
+        margins(size_content,16)
+        size_content.append(label('Games per row','heading'))
+        size_content.append(self.columns_control)
+        hint=label('Adapts to the window to keep cards readable.','dim-label')
+        hint.set_max_width_chars(28)
+        size_content.append(hint)
+        size_popover=Gtk.Popover()
+        size_popover.set_child(size_content)
+        self.size_button=Gtk.MenuButton(icon_name='view-fullscreen-symbolic')
+        self.size_button.set_tooltip_text('Card size')
+        self.size_button.update_property([Gtk.AccessibleProperty.LABEL],['Card size'])
+        self.size_button.set_popover(size_popover)
+        selection_tools.append(self.size_button)
+        self.columns_control.connect('value-changed', self.library_columns_changed)
+        library_surface.insert_child_after(selection_tools,viewbar)
 
-        library_stage.add_overlay(
-            footer
-        )
-
-        # Flexible empty region lets the gray disappear upward before
-        # reaching the actual controls.
-        footer.append(
-            Gtk.Box(
-                vexpand=True,
-            )
-        )
-
-        footer_controls=Gtk.Box(
-            spacing=4,
-            hexpand=True,
-            valign=Gtk.Align.END,
-        )
-        footer_controls.add_css_class(
-            'selection-controls'
-        )
-        footer.append(
-            footer_controls
-        )
-
-        # Selected-count text gets its own readable floating pill.
-        selection_pill=Gtk.Box(
-            valign=Gtk.Align.END,
-        )
-        selection_pill.add_css_class(
-            'selection-count-pill'
-        )
-
-        self.selected_label=label(
-            '0 selected',
-            css='selection-count',
-        )
-        self.selected_label.set_wrap(
-            False
-        )
-        self.selected_label.set_single_line_mode(
-            True
-        )
-        self.selected_label.set_ellipsize(
-            Pango.EllipsizeMode.NONE
-        )
-        selection_pill.append(
-            self.selected_label
-        )
-
-        footer_controls.append(
-            selection_pill
-        )
-
-        # Push the action cluster to the far right.
-        footer_controls.append(
-            Gtk.Box(
-                hexpand=True,
-            )
-        )
-
-        def footer_action(icon_name,tooltip,operation,css=None):
-            action=Gtk.Button(
-                icon_name=icon_name,
-                valign=Gtk.Align.END,
-            )
-            action.add_css_class(
-                'selection-action'
-            )
-
-            if css:
-                action.add_css_class(
-                    css
-                )
-
-            action.set_tooltip_text(
-                tooltip
-            )
-            action.update_property(
-                [Gtk.AccessibleProperty.LABEL],
-                [tooltip],
-            )
-            action.connect(
-                'clicked',
-                lambda *_:self.launch_action(operation),
-            )
-
-            footer_controls.append(
-                action
-            )
-            self.action_buttons.append(
-                action
-            )
-
-        footer_action(
-            'document-save-symbolic',
-            'Add Enhancements',
-            'install',
-            'forge-primary',
-        )
-
-        footer_action(
-            'view-refresh-symbolic',
-            'Repair Files',
-            'repair',
-        )
-
-        footer_action(
-            'edit-undo-symbolic',
-            'Reset Settings',
-            'reset',
-        )
-
-        footer_action(
-            'edit-delete-symbolic',
-            'Remove Enhancements',
-            'uninstall',
-            'bulk-remove',
-        )
 
         # Add the floating operation/status layer only after every normal
         # dashboard widget has been constructed. GtkOverlay paints this
@@ -4706,7 +4636,7 @@ class Window(Adw.ApplicationWindow):
 
 
     def update_library_spacing(self,*_):
-        """Lay out deterministic 7-Poster / 6-Wide gallery slots."""
+        """Fit the preferred 3–9 columns to a readable live viewport."""
 
         flow=getattr(
             self,
@@ -4800,72 +4730,26 @@ class Window(Adw.ApplicationWindow):
         if viewport_width<=1:
             return False
 
+        # The adjustment is the full content viewport. Overlay scrollbars do
+        # not consume layout width; reserve equal insets on both sides only.
         OUTER_INSET=16
-        OVERLAY_SCROLLBAR_GUARD=12
+        usable_width=max(1,viewport_width-OUTER_INSET*2)
 
-        # Small permanent paint/clip allowance at the physical right
-        # edge. Unlike the scrollbar guard, this does not depend on
-        # scrollbar allocation timing.
-        RIGHT_EDGE_SAFETY=32
-
-        # The horizontal adjustment remains the authoritative viewport.
-        #
-        # GTK's native vertical scrollbar overlays that viewport instead
-        # of consuming its width. Reserve only its overlay lane inside the
-        # gallery calculation so the final card ends before the scrollbar,
-        # while preserving a visible 16px right inset.
-        vadj=scroll.get_vadjustment()
-
-        has_vertical_scroll=(
-            vadj is not None
-            and (
-                vadj.get_upper()
-                - vadj.get_page_size()
-            ) > 1
-        )
-
-        vscroll=scroll.get_vscrollbar()
-
-        measured_scrollbar_width=(
-            int(
-                vscroll.get_width()
-            )
-            if (
-                vscroll is not None
-                and vscroll.get_width()>0
-            )
-            else 0
-        )
-
-        scrollbar_guard=(
-            max(
-                OVERLAY_SCROLLBAR_GUARD,
-                measured_scrollbar_width,
-            )
-            if has_vertical_scroll
-            else 0
-        )
-
-        usable_width=max(
-            1,
-            viewport_width
-            - (
-                OUTER_INSET*2
-            )
-            - scrollbar_guard
-            - RIGHT_EDGE_SAFETY,
-        )
-
-        # --------------------------------------------------------
-        # FIXED SLOT CONTRACT
-        # --------------------------------------------------------
-
-        if view=='posters':
-            slot_count=7
-            preferred_gap=8
-        else:
-            slot_count=6
-            preferred_gap=8
+        # Preferred density adapts only when cards become cramped or oversized.
+        preferred=max(3,min(9,int(self.settings.get('library_columns',7))))
+        preferred_gap=16
+        minimum_width=180 if view=='posters' else 220
+        maximum_width=300 if view=='posters' else 380
+        slot_count=preferred
+        while slot_count>3 and (usable_width-preferred_gap*(slot_count-1))/slot_count<minimum_width:
+            slot_count-=1
+        while slot_count<9 and (usable_width-preferred_gap*(slot_count-1))/slot_count>maximum_width:
+            slot_count+=1
+        if slot_count!=preferred and slot_count%2==0:
+            if slot_count>preferred and slot_count<9:
+                slot_count+=1
+            elif slot_count>3:
+                slot_count-=1
 
         visible_entries=[
             entry
@@ -4927,8 +4811,6 @@ class Window(Adw.ApplicationWindow):
         )
         flow.set_margin_end(
             OUTER_INSET
-            + scrollbar_guard
-            + RIGHT_EDGE_SAFETY
         )
         flow.set_hexpand(
             False
@@ -5657,9 +5539,9 @@ class Window(Adw.ApplicationWindow):
             self._column_status_bind,
         )
 
-        enhancements_factory=self._column_factory(
-            self._column_enhancements_setup,
-            self._column_enhancements_bind,
+        features_factory=self._column_factory(
+            self._column_features_setup,
+            self._column_features_bind,
         )
 
         actions_factory=self._column_factory(
@@ -5697,9 +5579,9 @@ class Window(Adw.ApplicationWindow):
                 False,
             ),
             (
-                'Enhancements',
-                'enhancements',
-                enhancements_factory,
+                'Features',
+                'features',
+                features_factory,
                 132,
                 False,
                 False,
@@ -5818,49 +5700,12 @@ class Window(Adw.ApplicationWindow):
         return view
 
 
-    def _column_name_width_changed(
-        self,
-        column,
-        *_,
-    ):
-        if getattr(
-            self,
-            '_column_width_guard',
-            False,
-        ):
-            return
-
+    def _column_name_width_changed(self,column,*_):
         width=column.get_fixed_width()
-
-        if width<0:
-            return
-
-        # This is the ONLY resizable column.
-        #
-        # Wide enough for checkbox + capsule + useful text,
-        # but never allowed to dominate the complete table.
-        clamped=max(
-            340,
-            min(
-                560,
-                width,
-            ),
-        )
-
-        if clamped==width:
-            self._column_schedule_height_refresh()
-            return
-
-        self._column_width_guard=True
-
-        try:
-            column.set_fixed_width(
-                clamped
-            )
-        finally:
-            self._column_width_guard=False
-
-        self._column_schedule_height_refresh()
+        if 0<=width<420:
+            column.set_fixed_width(420)
+        if width>=0:
+            column.set_expand(False)
 
 
     def _column_location_width_changed(
@@ -5916,77 +5761,8 @@ class Window(Adw.ApplicationWindow):
 
     def _column_refresh_name_heights(self):
         self._column_height_refresh_source=0
-
-        roots=[
-            root
-            for root in list(
-                self.list_name_cells.values()
-            )
-            if getattr(
-                root,
-                '_game',
-                None,
-            ) is not None
-        ]
-
-        if not roots:
-            self._column_rows_tall=False
-            return False
-
-        sample=roots[0]
-
-        any_wrap=False
-
-        model=getattr(
-            self,
-            'list_sort_model',
-            None,
-        )
-
-        if model is not None:
-            for position in range(
-                model.get_n_items()
-            ):
-                item=model.get_item(
-                    position
-                )
-
-                if item is None:
-                    continue
-
-                if self._column_name_wraps(
-                    sample,
-                    str(
-                        item.game.get(
-                            'name',
-                            '',
-                        )
-                    ),
-                ):
-                    any_wrap=True
-                    break
-        else:
-            any_wrap=any(
-                self._column_name_wraps(
-                    root
-                )
-                for root in roots
-            )
-
-        self._column_rows_tall=any_wrap
-
-        row_height=(
-            66
-            if any_wrap
-            else 56
-        )
-
-        for root in roots:
-            self._column_update_name_height(
-                root,
-                row_height=row_height,
-            )
-
+        for root in list(self.list_name_cells.values()):
+            self._column_update_name_height(root)
         return False
 
 
@@ -6044,95 +5820,14 @@ class Window(Adw.ApplicationWindow):
         )
 
 
-    def _column_update_name_height(
-        self,
-        root,
-        row_height=None,
-    ):
-        """Use one compact List height unless a title truly wraps."""
-
-        game=getattr(
-            root,
-            '_game',
-            None,
-        )
-
-        if game is None:
-            return
-
-        wraps=self._column_name_wraps(
-            root
-        )
-
-        root._title.set_wrap(
-            True
-        )
-
-        root._title.set_wrap_mode(
-            Pango.WrapMode.WORD_CHAR
-        )
-
-        root._title.set_lines(
-            2
-        )
-
-        root._title.set_single_line_mode(
-            False
-        )
-
-        root._title.set_ellipsize(
-            Pango.EllipsizeMode.END
-        )
-
-        root._title.set_width_chars(
-            8
-        )
-
-        root._title.set_max_width_chars(
-            20
-        )
-
-        root._title.set_vexpand(
-            False
-        )
-
-        root._title.set_valign(
-            Gtk.Align.CENTER
-        )
-
-        root._title.set_size_request(
-            -1,
-            30 if wraps else 17,
-        )
-
-        root.set_vexpand(
-            False
-        )
-
-        root.set_valign(
-            Gtk.Align.CENTER
-        )
-
-        if row_height is None:
-            row_height=(
-                66
-                if (
-                    getattr(
-                        self,
-                        '_column_rows_tall',
-                        False,
-                    )
-                    or wraps
-                )
-                else 56
-            )
-
-        root.set_size_request(
-            -1,
-            row_height,
-        )
-
-        root.queue_resize()
+    def _column_update_name_height(self,root,row_height=None):
+        root._title.set_wrap(False)
+        root._title.set_single_line_mode(True)
+        root._title.set_ellipsize(Pango.EllipsizeMode.END)
+        root._title.set_width_chars(18)
+        root._title.set_max_width_chars(40)
+        root._title.set_size_request(-1,-1)
+        root.set_size_request(420,64)
 
 
     def _column_order_changed(
@@ -6866,7 +6561,7 @@ class Window(Adw.ApplicationWindow):
         )
         test.set_size_request(
             LIBRARY_LIST_STATUS_WIDTH,
-            LIBRARY_PILL_HEIGHT,
+            -1,
         )
 
         root.append(
@@ -6943,9 +6638,9 @@ class Window(Adw.ApplicationWindow):
         )
 
 
-    # ---------------- ENHANCEMENTS ----------------
+    # ---------------- FEATURES ----------------
 
-    def _column_enhancements_setup(
+    def _column_features_setup(
         self,
         _factory,
         list_item,
@@ -6992,7 +6687,7 @@ class Window(Adw.ApplicationWindow):
         )
 
 
-    def _column_enhancements_bind(
+    def _column_features_bind(
         self,
         _factory,
         list_item,
@@ -7096,7 +6791,7 @@ class Window(Adw.ApplicationWindow):
         )
 
         primary=Gtk.Button(
-            label='Apply'
+            label='Install'
         )
         primary.set_size_request(
             88,
@@ -7172,7 +6867,7 @@ class Window(Adw.ApplicationWindow):
             )
         )
 
-        # Geometry NEVER changes between Apply / Repair / unavailable.
+        # Geometry stays constant between Install / Details / unavailable.
         root._primary.set_size_request(
             88,
             -1,
@@ -7202,9 +6897,9 @@ class Window(Adw.ApplicationWindow):
         else:
             child=Gtk.Label(
                 label=(
-                    'Repair'
+                    'Details'
                     if game.get('installed')
-                    else 'Apply'
+                    else 'Install'
                 )
             )
 
@@ -7340,21 +7035,10 @@ class Window(Adw.ApplicationWindow):
         ):
             return
 
-        operation=(
-            'repair'
-            if game.get(
-                'installed'
-            )
-            else 'install'
-        )
-
-        self.launch_action(
-            operation,
-            targets=[
-                game
-            ],
-        )
-
+        if game.get('installed'):
+            self.details(game)
+            return
+        self.launch_action('install', targets=[game])
 
     def _column_more_clicked(
         self,
@@ -7426,10 +7110,25 @@ class Window(Adw.ApplicationWindow):
                 )
 
 
+    def library_columns_changed(self,widget):
+        self.settings['library_columns']=widget.get_value_as_int()
+        if not self.options.demo:
+            library_media.save_settings(self.service.config,self.settings)
+        self.update_library_spacing()
+
     def _update_selection_summary(self):
         count=len(
             self.selected_game_ids
         )
+        if hasattr(self,'reset_all') and not self.defaults_changed():
+            self.reset_all.text_label.set_text('Reset Selected Presets' if count else 'Reset Presets')
+        for name in ('install_all','sticky_install_all'):
+            widget=getattr(self,name,None)
+            if widget:widget.text_label.set_text('Install Selected' if count else 'Install Features')
+        for name in ('uninstall_all','sticky_remove_all'):
+            widget=getattr(self,name,None)
+            if widget:widget.text_label.set_text('Restore Selected' if count else 'Restore Original Files')
+
 
         if hasattr(
             self,
@@ -7507,12 +7206,21 @@ class Window(Adw.ApplicationWindow):
                 ),
             )
 
+    def manage_dlss_files(self,game,restore=False):
+        if self.options.demo:
+            self.toast('Preview mode · game writes disabled')
+            return
+        import runtime_updates
+        work=(lambda:runtime_updates.restore_game(self.service.config,game['game'])) if restore else (lambda:runtime_updates.manage(self.service.config,[game]))
+        self.start('DLSS File Management',work,lambda result:self.toast(
+            'Original DLSS files restored' if restore else f"DLSS files checked · {result['updated_games']} game updated"))
+
     def toast(self,text):self.overlay.add_toast(Adw.Toast.new(str(text)))
     def profile_changed(self,group,*_):
         self.mode=group.get_active_name() or 'mfg-only'
         self.profile_note.set_text({'nr-only':'Neural Rendering','nr-mfg':'Neural Rendering and frame generation','mfg-only':'Native frame generation'}[self.mode])
     def tuning_controls(self,initial):
-        box=Gtk.Box(spacing=12)
+        box=Gtk.Box(spacing=16)
         widgets={}
 
         for key,title,upper in [
@@ -7565,6 +7273,7 @@ class Window(Adw.ApplicationWindow):
 
             header=Gtk.Box(spacing=8)
             heading=label(title,'heading')
+            heading.set_wrap(False)
             heading.set_hexpand(True)
             header.append(heading)
 
@@ -7682,12 +7391,12 @@ class Window(Adw.ApplicationWindow):
     def chosen_strength(self):return self.tuning_values(self.tuning_widgets)['nr_strength']
     def defaults_changed(self):return any(self.settings.get(k)!=v for k,v in self.tuning_values(self.tuning_widgets).items())
     def strength_changed(self,*_):
-        self.reset_all.text_label.set_text('Apply Settings' if self.defaults_changed() else 'Reset All')
+        self.reset_all.text_label.set_text('Apply Presets' if self.defaults_changed() else 'Reset Presets')
         if hasattr(self,'profile_group'):self.controls()
     def defaults_applied(self,values):
         self.settings.update(values);self.strength_changed()
     def apply_library_settings(self,*_):
-        if self.games and any(g.get('installed') for g in self.games):self.launch_action('reset',True);return
+        if self.games and any(g.get('installed') for g in self.games):self.launch_action('reset',not bool(self.selected_game_ids),visual_settings=self.tuning_values(self.tuning_widgets));return
         values=self.tuning_values(self.tuning_widgets)
         if self.options.demo:self.defaults_applied(values);return
         self.start('Saving defaults',lambda:self.service.save_visual_defaults(values),lambda _:(self.defaults_applied(values),self.toast('Defaults saved for new installs.')))
@@ -8242,7 +7951,7 @@ class Window(Adw.ApplicationWindow):
         for title,items in sections:
             page=Gtk.Box(
                 orientation=Gtk.Orientation.VERTICAL,
-                spacing=20,
+                spacing=16,
             )
             page.add_css_class(
                 'settings-content'
@@ -9088,13 +8797,14 @@ class Window(Adw.ApplicationWindow):
             test_meta
         )
 
+        text.append(Gtk.Box(vexpand=True))
         text.append(
             meta_row
         )
 
         reset=button('Details',lambda *_:self.details(game));reset.add_css_class('game-details');reset.set_size_request(-1,28)
         reset.set_tooltip_text('Open game details and settings')
-        reset.set_sensitive(True);spacer=Gtk.Box(vexpand=True,height_request=7);text.append(spacer);text.append(reset)
+        reset.set_sensitive(True);spacer=Gtk.Box(vexpand=False,height_request=8);text.append(spacer);text.append(reset)
         self.flow.insert(
             card,
             -1,
@@ -9451,7 +9161,7 @@ class Window(Adw.ApplicationWindow):
         if game.get('accent_class'):
             d.add_css_class(game['accent_class'])
 
-        DETAIL_HERO_HEIGHT=200
+        DETAIL_HERO_HEIGHT=280
 
         banner=Gtk.Overlay(
             height_request=DETAIL_HERO_HEIGHT,
@@ -9461,10 +9171,6 @@ class Window(Adw.ApplicationWindow):
         banner.set_vexpand(False)
         banner.set_valign(Gtk.Align.START)
         banner.set_overflow(Gtk.Overflow.HIDDEN)
-        banner.set_size_request(
-            -1,
-            DETAIL_HERO_HEIGHT,
-        )
         banner.set_size_request(
             -1,
             DETAIL_HERO_HEIGHT,
@@ -9617,20 +9323,18 @@ class Window(Adw.ApplicationWindow):
 
         if hero_light:
             close.add_css_class('light')
-        # Poster + game identity stay grouped at the lower-left.
+        # Anchor the poster and left-aligned text to the hero’s lower edge.
         identity=Gtk.Box(
-            spacing=14,
-            valign=Gtk.Align.START,
+            spacing=16,
+            valign=Gtk.Align.END,
             halign=Gtk.Align.FILL,
             hexpand=True,
         )
         identity.set_margin_start(20)
         identity.set_margin_end(20)
 
-        # Match the top of the poster to the visual top of the
-        # Game Details sidebar heading.
-        identity.set_margin_top(22)
-        identity.set_margin_bottom(0)
+        identity.set_margin_top(16)
+        identity.set_margin_bottom(16)
 
         detail_poster_source=(
             game.get('poster')
@@ -9697,15 +9401,15 @@ class Window(Adw.ApplicationWindow):
             hexpand=True,
         )
 
-        # Enhancement/status tag ABOVE the game name.
+        # Feature/status tag ABOVE the game name.
         mode_name=(
             game.get('profile')
             if game.get('installed')
-            else 'Ready to Enhance'
+            else 'Ready for Features'
         )
 
         status=label(
-            mode_name or 'Ready to Enhance',
+            mode_name or 'Ready for Features',
             'cover-badge',
         )
         status.set_halign(
@@ -9896,7 +9600,7 @@ class Window(Adw.ApplicationWindow):
 
         for action_page in (
             'Overview',
-            'Enhancements',
+            'Features',
             'Notes',
             'Appearance',
         ):
@@ -9924,24 +9628,24 @@ class Window(Adw.ApplicationWindow):
 
         detail_icons={
             'Overview':'dialog-information-symbolic',
-            'Enhancements':'applications-system-symbolic',
+            'Features':'applications-system-symbolic',
             'Notes':'document-edit-symbolic',
             'Appearance':'applications-graphics-symbolic',
         }
 
         for name in (
             'Overview',
-            'Enhancements',
+            'Features',
             'Notes',
             'Appearance',
         ):
             page=Gtk.Box(
                 orientation=Gtk.Orientation.VERTICAL,
-                spacing=12,
+                spacing=16,
             )
             margins(
                 page,
-                18,
+                16,
             )
             page.set_vexpand(
                 False
@@ -9995,6 +9699,18 @@ class Window(Adw.ApplicationWindow):
             detail_nav_selected,
         )
 
+        self.detail_nav=nav
+        def sync_detail_page(*_):
+            name=pages.get_visible_child_name()
+            for index in range(4):
+                candidate=nav.get_row_at_index(index)
+                if candidate.page_name==name and nav.get_selected_row() is not candidate:
+                    nav.select_row(candidate)
+                    break
+            detail_action_stack.set_visible_child_name(name)
+            detail_content_scroll.get_vadjustment().set_value(0)
+        pages.connect('notify::visible-child-name',sync_detail_page)
+
         first_detail_row=nav.get_row_at_index(
             0
         )
@@ -10026,12 +9742,23 @@ class Window(Adw.ApplicationWindow):
         info=Adw.PreferencesGroup(title='Game Information');overview.append(info)
         for title,value in [('Library',game.get('library')),('Location',game['game']),('Compatibility',game.get('blocked') or 'Available'),('Developer',game.get('developers')),('Release',game.get('release'))]:
             if value:info.add(row(title,value))
-        enhancements=content['Enhancements'];installed=game.get('installed',False)
-        tuning,widgets=self.tuning_controls(game);enhancements.append(tuning)
+        features=content['Features'];installed=game.get('installed',False)
+        tuning,widgets=self.tuning_controls(game)
+        presets=Gtk.Expander(label='Presets',expanded=False)
+        presets.add_css_class('presets-header')
+        presets_body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
+        presets_body.set_margin_top(16)
+        presets.set_child(presets_body)
+        features.append(presets)
+        presets_body.append(label('Tuning values for this game. Reset Presets applies your library defaults without replacing files.','dim-label'))
+        presets_body.append(tuning)
+        preset_reset=button('Reset Presets',lambda *_:self.launch_action('reset',targets=[game]))
+        preset_reset.set_halign(Gtk.Align.END)
+        presets_body.append(preset_reset)
         mode=game.get('feature_mode') or {'NR Only':'nr-only','MFG Only':'mfg-only'}.get(game.get('profile'),'nr-mfg')
         for key,w in widgets.items():w.set_sensitive(installed and not (key=='nr_strength' and mode=='mfg-only') and not (key=='mfg_multiplier' and mode=='nr-only'))
         apply=button(
-            'Apply Settings',
+            'Apply Presets',
             lambda *_:self.launch_action(
                 'reset',
                 targets=[game],
@@ -10042,47 +9769,36 @@ class Window(Adw.ApplicationWindow):
         apply.set_valign(
             Gtk.Align.CENTER
         )
-        detail_action_rows['Enhancements'].append(
-            apply
-        )
+        presets_body.append(apply)
         def changed(*_):apply.set_sensitive(installed and any(v!=game.get(k) for k,v in self.tuning_values(widgets).items() if widgets[k].get_sensitive()))
         for key,w in widgets.items():w.connect('notify::selected' if key=='mfg_multiplier' else 'value-changed',changed)
         changed();self.detail_tuning_widgets=widgets;self.detail_apply_settings=apply
         maintenance=Adw.PreferencesGroup(
             title='Installation'
         )
-        enhancements.append(
+        features.append(
             maintenance
         )
 
         for title,subtitle,op in [
             (
-                'Install Enhancements',
-                'Add or update the selected enhancement mode.',
+                'Install Features',
+                'Add or update the selected feature mode.',
                 'install',
             ),
             (
-                'Repair Files',
-                'Replace damaged enhancement files.',
+                'Repair Feature Files',
+                'Replace missing or damaged feature files while preserving your presets.',
                 'repair',
             ),
             (
-                'Reset Settings',
-                'Apply your library defaults to this game.',
-                'reset',
-            ),
-            (
-                'Remove Enhancements',
+                'Restore Original Files',
                 'Restore the original files.',
                 'uninstall',
             ),
         ]:
-            maintenance.add(
-                row(
-                    title,
-                    subtitle,
-                )
-            )
+            maintenance_row=row(title,subtitle)
+            maintenance.add(maintenance_row)
 
             action=button(
                 'Install'
@@ -10091,7 +9807,7 @@ class Window(Adw.ApplicationWindow):
                 if op=='repair'
                 else 'Reset'
                 if op=='reset'
-                else 'Remove',
+                else 'Restore',
                 lambda _,o=op:self.launch_action(
                     o,
                     targets=[game],
@@ -10122,9 +9838,20 @@ class Window(Adw.ApplicationWindow):
                     'destructive-action'
                 )
 
-            detail_action_rows['Enhancements'].append(
-                action
-            )
+            maintenance_row.add_suffix(action)
+        files=Adw.PreferencesGroup(title='DLSS File Management',description='Native Super Resolution, Ray Reconstruction and Frame Generation files are managed automatically when installing features. Provider-owned files stay with their stack.')
+        overview.append(files)
+        for title,subtitle,caption,restore in (
+            ('Native DLSS files','Check and update older supported files with automatic backups.','Update Files',False),
+            ('Previous DLSS files','Restore the last backed-up native files for this game.','Restore Files',True),
+        ):
+            item=row(title,subtitle)
+            action=button(caption,lambda _,restore=restore:self.manage_dlss_files(game,restore))
+            action.set_valign(Gtk.Align.CENTER)
+            action.set_sensitive(not self.options.demo)
+            item.add_suffix(action)
+            files.add(item)
+
         notes_page=content['Notes'];record=game.get('test_record',{'status':'Untested','notes':''});choice=safe_dropdown(list(game_notes.STATES));choice.set_selected(list(game_notes.STATES).index(record.get('status','Untested')));choice.set_valign(Gtk.Align.CENTER)
         group=Adw.PreferencesGroup(title='Your Notes');notes_page.append(group);item=row('Test Result','Bench excludes this game from bulk installation and repair.');item.add_suffix(choice);group.add(item)
         notes=Gtk.TextView(
@@ -10193,6 +9920,16 @@ class Window(Adw.ApplicationWindow):
             ),
         )
 
+        swatch=Gtk.DrawingArea(width_request=32,height_request=32,valign=Gtk.Align.CENTER)
+        def draw_swatch(_area,cr,width,height):
+            color=self.settings.get('game_accents',{}).get(game['game']) or ('#'+game.get('accent_class','art-76b900').removeprefix('art-'))
+            rgba=Gdk.RGBA()
+            if not rgba.parse(color):rgba.parse('#76b900')
+            cr.set_source_rgba(rgba.red,rgba.green,rgba.blue,1)
+            cr.arc(width/2,height/2,min(width,height)/2-2,0,6.283185)
+            cr.fill()
+        swatch.set_draw_func(draw_swatch)
+        accent_row.add_suffix(swatch)
         accent_group.add(accent_row)
 
         def set_color(color):
@@ -10245,6 +9982,7 @@ class Window(Adw.ApplicationWindow):
             accent_row.set_subtitle(
                 'Custom · '+color.upper()
             )
+            swatch.queue_draw()
 
             entry=self.cards.get(
                 game['game']
@@ -10647,15 +10385,13 @@ class Window(Adw.ApplicationWindow):
             picker.present()
 
         pick_button=button(
-            'Pick from Poster…',
+            'Edit',
             pick_accent_from_poster,
         )
         pick_button.set_valign(
             Gtk.Align.CENTER
         )
-        detail_action_rows['Appearance'].append(
-            pick_button
-        )
+        accent_row.add_suffix(pick_button)
 
         artwork_title=label(
             'Artwork Credits',
@@ -10666,7 +10402,7 @@ class Window(Adw.ApplicationWindow):
         )
 
         credits=Gtk.Box(
-            spacing=10,
+            spacing=16,
             homogeneous=True,
             hexpand=True,
         )
@@ -10801,7 +10537,7 @@ class Window(Adw.ApplicationWindow):
             record=game.get('test_record',{});item=row(game['name'],record.get('status','Untested')+(' · test in progress' if record.get('active') else ''))
             item.add_suffix(button('Open',lambda _,g=game:self.details(g)));b.append(item)
         export=button('Export support ZIP',lambda *_:self.start('Exporting report',lambda:game_notes.export(self.service.config,self.games),lambda p:(self.toast('Saved '+str(p)),Gio.AppInfo.launch_default_for_uri(p.parent.as_uri(),None))),'forge-primary');export.set_sensitive(not self.options.demo);f.append(export)
-    def launch_action(self,operation,entire=False,targets=None,visual_settings=None):
+    def launch_action(self,operation,entire=False,targets=None,visual_settings=None,_presets_confirmed=False):
         if self.busy and self.task_kind!='art':return
         rows=(
             targets
@@ -10824,16 +10560,21 @@ class Window(Adw.ApplicationWindow):
         if entire and operation in ('install','repair'):rows=[g for g in rows if g.get('test_record',{}).get('status')!='Bench']
         if operation=='reset':rows=[g for g in rows if g.get('installed')]
         if not rows:self.toast('No eligible games selected.');return
+        if operation=='install' and not _presets_confirmed:
+            d,b,f=self.open_panel('Install Features',width=760,height=340)
+            b.append(label('Presets','title-2'))
+            b.append(label('Adjust your presets, or continue with the current values.'))
+            tuning,widgets=self.tuning_controls(visual_settings if visual_settings is not None else rows[0] if len(rows)==1 else self.tuning_values(self.tuning_widgets))
+            b.append(tuning)
+            f.append(button('Cancel',lambda *_:d.close()))
+            f.append(button('Continue',lambda *_:self.launch_action(
+                operation,entire,targets,self.tuning_values(widgets),True),'suggested-action'))
+            return
         applying_strength=operation=='reset' and entire and self.defaults_changed()
-        title={'install':'Install Enhancements','repair':'Repair Files','uninstall':'Remove Enhancements','reset':'Reset Settings'}[operation]
+        title={'install':'Install Features','repair':'Repair Feature Files','uninstall':'Restore Original Files','reset':'Reset Presets'}[operation]
         if applying_strength:title='Apply Settings to Library'
-        elif visual_settings is not None:title='Apply Game Settings'
+        elif operation=='reset' and visual_settings is not None:title='Apply Presets'
         self.operation_previous=targets[0] if targets and len(targets)==1 else None
-
-        # Freeze the underlying library before the modal appears.
-        # The Done screen uses this rather than the current game's hero art.
-        try:self.done_backdrop=self.snapshot_library_texture()
-        except Exception:self.done_backdrop=None
 
         self.operation_cancel=threading.Event();self.operation_executing=False
         d,b,f=self.open_panel(title,width=580,height=310,show_close=False);d.set_can_close(False)
@@ -11381,184 +11122,31 @@ class Window(Adw.ApplicationWindow):
 
     def finish_progress(self,success,message,footer):
         self.dialog.set_can_close(True)
-
         clear(footer)
         footer.set_visible(False)
-
         self.progress_cancel_box=None
-
-        body=getattr(
-            self,
-            'progress_body',
-            None,
-        )
-
-        if body is not None:
-            clear(body)
-
-            body.set_vexpand(True)
-            body.set_valign(Gtk.Align.FILL)
-
-            body.set_margin_top(0)
-            body.set_margin_bottom(0)
-
-        # Success becomes exactly 50% of the 640px operation width.
-        # Error remains wider so diagnostic copy still has room.
-        if success:
-            self.animate_dialog_width(
-                320,
-                duration=280,
-            )
-            self.dialog.set_content_height(320)
-        else:
-            self.animate_dialog_width(
-                520,
-                duration=220,
-            )
-            self.dialog.set_content_height(340)
-
-        if hasattr(self,'progress_panel'):
-            self.progress_panel.add_css_class('done')
-
-        # ----------------------------------------------------
-        # RESULT BACKDROP
-        # ----------------------------------------------------
-
-        if success:
-            texture=getattr(
-                self,
-                'done_backdrop',
-                None,
-            )
-
-            if texture is not None:
-                backdrop=BlurredTexture(
-                    texture,
-                    radius=24.0,
-                )
-            else:
-                backdrop=Gtk.Box()
-                backdrop.add_css_class(
-                    'done-fallback'
-                )
-
-            self.progress_shell.set_child(
-                backdrop
-            )
-
-        else:
-            backdrop=Gtk.Box()
-            backdrop.add_css_class(
-                'done-fallback'
-            )
-
-            self.progress_shell.set_child(
-                backdrop
-            )
-
-        if hasattr(self,'progress_shade'):
-            self.progress_shade.remove_css_class(
-                'progress-shade'
-            )
-
-            self.progress_shade.add_css_class(
-                'done-shade'
-            )
-
-        # ----------------------------------------------------
-        # CENTERED RESULT
-        # ----------------------------------------------------
-
-        center=Gtk.Box(
-            orientation=Gtk.Orientation.VERTICAL,
-            halign=Gtk.Align.FILL,
-            valign=Gtk.Align.FILL,
-            vexpand=True,
-        )
-
-        if body is not None:
-            body.append(center)
-
-        result=Gtk.Box(
-            orientation=Gtk.Orientation.VERTICAL,
-            spacing=10,
-            halign=Gtk.Align.CENTER,
-            valign=Gtk.Align.CENTER,
-            vexpand=True,
-        )
-
-        center.append(result)
-
-        # Gtk.CenterBox gives the check an actual geometric center.
-        badge=Gtk.CenterBox(
-            width_request=56,
-            height_request=56,
-            halign=Gtk.Align.CENTER,
-            valign=Gtk.Align.CENTER,
-        )
-
-        badge.add_css_class(
-            'result-success-circle'
-            if success
-            else 'result-error'
-        )
-
-        icon=Gtk.Image.new_from_icon_name(
-            'object-select-symbolic'
-            if success
-            else 'action-unavailable-symbolic'
-        )
-
-        icon.set_pixel_size(28)
-
-        badge.set_center_widget(icon)
-        result.append(badge)
-
-        title=label(
-            'All Done'
-            if success
-            else 'Error',
-            'done-title'
-            if success
-            else 'job-title',
-        )
-
-        title.set_halign(Gtk.Align.CENTER)
-        title.set_xalign(0.5)
-
-        result.append(title)
-
-        caption=label(
-            message,
-            'dim-label',
-        )
-
-        caption.set_halign(Gtk.Align.CENTER)
-        caption.set_xalign(0.5)
-        caption.set_justify(Gtk.Justification.CENTER)
-
-        result.append(caption)
-
-        done=button(
-            'Done'
-            if success
-            else 'Close',
-            lambda *_:(
-                self.dialog.close(),
-                self.scan(),
-            ),
-            'done-button'
-            if success
-            else None,
-        )
-
-        done.set_halign(Gtk.Align.CENTER)
-        done.set_margin_top(12)
-
-        # Button is part of the centered result composition,
-        # not a right-aligned dialog footer.
-        result.append(done)
-
+        body=self.progress_body
+        clear(body)
+        backdrop=Gtk.Box()
+        backdrop.add_css_class('done-fallback')
+        self.progress_shell.set_child(backdrop)
+        self.progress_shade.set_visible(False)
+        self.progress_panel.add_css_class('done')
+        line=Gtk.Box(spacing=24,valign=Gtk.Align.CENTER,vexpand=True)
+        body.append(line)
+        icon=Gtk.Image.new_from_icon_name('emblem-ok-symbolic' if success else 'dialog-warning-symbolic')
+        icon.set_pixel_size(80)
+        icon.add_css_class('operation-complete' if success else 'error')
+        line.append(icon)
+        text=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True,valign=Gtk.Align.CENTER)
+        text.append(label('Done' if success else 'Could not finish','title-1'))
+        text.append(label(message))
+        line.append(text)
+        done=button('Done',lambda *_:(self.dialog.close(),self.scan()),'suggested-action')
+        done.set_valign(Gtk.Align.END)
+        line.append(done)
+        self.dialog.set_content_width(500)
+        self.dialog.set_content_height(180)
         self.job_label=None
 
 
@@ -11640,7 +11228,7 @@ class Window(Adw.ApplicationWindow):
             skipped=Adw.PreferencesGroup(title=f"Skipped · {len(review['blocked'])}");b.append(skipped)
             for item in review['blocked']:skipped.add(row(item['name'],item['reason']))
         if not review['rows']:b.append(label('No file changes can be applied.'));f.append(button('Close',lambda *_:d.close()));return
-        apply=button('Apply Settings' if review.get('operation')=='reset' else 'Remove Enhancements' if review.get('operation')=='uninstall' else 'Apply to Ready Games',lambda *_:self.execute(review,d,b,f),'forge-primary');apply.set_sensitive(not self.options.demo);f.append(apply)
+        apply=button('Apply Settings' if review.get('operation')=='reset' else 'Restore Original Files' if review.get('operation')=='uninstall' else 'Apply to Ready Games',lambda *_:self.execute(review,d,b,f),'forge-primary');apply.set_sensitive(not self.options.demo);f.append(apply)
         if self.options.demo:b.append(label('Preview mode · all file changes are disabled.','dim-label'))
         elif automatic:self.execute(review,d,b,f)
     def execute(self,review,d,b,f):
@@ -11648,7 +11236,40 @@ class Window(Adw.ApplicationWindow):
         clear(f);d.set_can_close(False);self.progress_view(b,'Applying changes…')
         if review.get('kind')=='engine':
             self.operation_executing=True;review['cancel_event']=self.operation_cancel;self.add_cancel(f)
-        self.start('Applying changes',lambda:self.service.execute(review),lambda path:self.completed(path,d,b,f))
+            # Close the cancellation window on the GTK thread before the engine's
+            # final cancellation check. A late click must never promise an undo
+            # after the feature transaction has already committed.
+            def finalizing():
+                ready=threading.Event()
+                def finish_ui():
+                    try:
+                        target=self.progress_cancel_box
+                        if target is not None:
+                            target.set_sensitive(False)
+                        if not self.operation_cancel.is_set() and self.job_label:
+                            self.job_caption.set_text('Finishing file management…')
+                    finally:
+                        ready.set()
+                    return False
+                GLib.idle_add(finish_ui)
+                ready.wait()
+            review['on_finalizing']=finalizing
+        def apply_with_files():
+            path=self.service.execute(review)
+            if review.get('operation')=='install' and self.settings.get('manage_dlss_files',True) and not self.operation_cancel.is_set():
+                try:
+                    import runtime_updates
+                    successful={str(plan['game'].root) for plan in review.get('plans',[]) if hasattr(plan.get('game'),'root')}
+                    games=[game for game in self.operation_games if game['game'] in successful]
+                    result=runtime_updates.manage(self.service.config,games) if games else {'updated_games':0,'skipped':[]}
+                    ui.line('DLSS File Management',f"{result['updated_games']} games updated")
+                    for reason in result['skipped']:ui.line('DLSS skipped',reason)
+                except Exception as exc:
+                    # Feature installation succeeded; a failed optional network/file
+                    # update must not masquerade as a failed feature installation.
+                    ui.line('DLSS File Management',f'No further file updates: {exc}')
+            return path
+        self.start('Applying changes',apply_with_files,lambda path:self.completed(path,d,b,f))
     def completed(self,path,d,b,f):
         self.operation_cancel=None
         if self.review and self.review.get('save_defaults'):self.defaults_applied(self.review['save_defaults'])
@@ -11664,12 +11285,14 @@ class Window(Adw.ApplicationWindow):
             height=660,
             resizable=True,
         )
-        graphics=Adw.PreferencesGroup(title='Graphics Provider',description='Remove installed enhancements before switching providers.')
+        graphics=Adw.PreferencesGroup(title='Graphics Provider',description='Restore original files before switching providers.')
         provider_keys=['y4my','dlss-unlocked'];provider=safe_combo_row(title='Provider',model=Gtk.StringList.new(['y4my Multipass','DLSS-Unlocked']),selected=provider_keys.index(self.settings.get('runtime_provider','y4my')));graphics.add(provider)
         nr_path=Adw.EntryRow(title='Local NR DLL for y4my');nr_path.set_text(self.settings.get('nr_runtime',''));graphics.add(nr_path)
         defaults=Adw.PreferencesGroup(title='Installation')
+        manage_files=Adw.SwitchRow(title='DLSS File Management',subtitle='Automatically update older native DLSS files when installing features. Keep verified original backups.',active=self.settings.get('manage_dlss_files',True))
+        defaults.add(manage_files)
         modes=['nr-only','mfg-only','nr-mfg'];profile=safe_combo_row(title='Default Mode',model=Gtk.StringList.new(['NR Only','MFG Only','NR + MFG']),selected=modes.index(self.settings.get('default_profile','mfg-only')));defaults.add(profile)
-        adopt=Adw.SwitchRow(title='Recognize Existing Enhancements',subtitle='Allow updates to compatible installations from other tools.',active=self.settings['recognize_previous']);defaults.add(adopt)
+        adopt=Adw.SwitchRow(title='Recognize Existing Features',subtitle='Allow updates to compatible installations from other tools.',active=self.settings['recognize_previous']);defaults.add(adopt)
         appearance=Adw.PreferencesGroup(title='Library Appearance')
         views=[
             'posters',
@@ -11828,7 +11451,7 @@ class Window(Adw.ApplicationWindow):
             selected_provider=provider_keys[provider.get_selected()];selected_mode=modes[profile.get_selected()]
             if selected_provider=='y4my' and selected_mode=='nr-only':self.toast('NR Only requires DLSS-Unlocked.');return
             settings_saved['value']=True
-            self.settings.update(runtime_provider=selected_provider,nr_runtime=nr_path.get_text().strip(),default_profile=selected_mode,library_view=pending_library_view['value'],dark=dark.get_active(),online_art=art.get_active(),steam_metadata=metadata.get_active(),network_timeout=timeout.get_value_as_int(),recognize_previous=adopt.get_active())
+            self.settings.update(manage_dlss_files=manage_files.get_active(),runtime_provider=selected_provider,nr_runtime=nr_path.get_text().strip(),default_profile=selected_mode,library_view=pending_library_view['value'],dark=dark.get_active(),online_art=art.get_active(),steam_metadata=metadata.get_active(),network_timeout=timeout.get_value_as_int(),recognize_previous=adopt.get_active())
             self.nr_only.set_enabled(selected_provider=='dlss-unlocked')
             self.profile_group.set_active_name(selected_mode)
             Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)
@@ -12225,7 +11848,7 @@ class Window(Adw.ApplicationWindow):
 
 
     def resize_smoke_startup(self):
-        """Visual regression test for live fixed-slot Library resizing."""
+        """Visual regression test for adaptive Library resizing."""
 
         try:
             self._resize_smoke_results={}
@@ -12310,7 +11933,8 @@ class Window(Adw.ApplicationWindow):
             self.flow.get_max_children_per_line()
         )
 
-        if min_slots!=expected_slots:
+        expected_slots=max_slots
+        if not 3<=min_slots<=9:
             raise AssertionError(
                 f'{label}: min slots {min_slots}, '
                 f'expected {expected_slots}'
@@ -12358,8 +11982,8 @@ class Window(Adw.ApplicationWindow):
                     f'{label}: allocated slot {allocated}px != requested {card_width}px')
         last=visible[min(expected_slots,len(visible))-1]['wrapper']
         ok,bounds=last.compute_bounds(self.library_scroll)
-        if not ok or bounds.get_x()+bounds.get_width()>viewport_width-16:
-            raise AssertionError(f'{label}: final slot exceeds the viewport inset')
+        if not ok or abs(bounds.get_x()+bounds.get_width()-(viewport_width-16))>1:
+            raise AssertionError(f'{label}: final slot does not meet the viewport inset: slots={max_slots}, viewport={viewport_width}, x={bounds.get_x()}, width={bounds.get_width()}')
 
         self._resize_smoke_results[
             label
@@ -12679,29 +12303,10 @@ class Window(Adw.ApplicationWindow):
                     )
                 ]
 
-                if (
-                    maximum[
-                        'card_width'
-                    ]
-                    <= normal[
-                        'card_width'
-                    ]
-                ):
-                    raise AssertionError(
-                        f'{prefix}: cards did not grow when maximized'
-                    )
-
-                if (
-                    restored[
-                        'card_width'
-                    ]
-                    >= maximum[
-                        'card_width'
-                    ]
-                ):
-                    raise AssertionError(
-                        f'{prefix}: cards did not shrink after restore'
-                    )
+                if maximum['slots']<normal['slots']:
+                    raise AssertionError(f'{prefix}: density decreased in a wider viewport')
+                if (restored['slots'],restored['card_width']) != (normal['slots'],normal['card_width']):
+                    raise AssertionError(f'{prefix}: restored geometry differs from normal')
 
             print(
                 '',
@@ -12805,7 +12410,7 @@ class Window(Adw.ApplicationWindow):
         try:
             assert (
                 self.reset_all.text_label.get_text()
-                == 'Reset All'
+                in ('Reset Presets','Reset Selected Presets')
             )
 
             assert hasattr(
@@ -12858,6 +12463,7 @@ class Window(Adw.ApplicationWindow):
                 view,
                 slots,
             ):
+                slots=self.flow.get_max_children_per_line()
                 assert (
                     self.settings.get(
                         'library_view'
@@ -13074,7 +12680,7 @@ class Window(Adw.ApplicationWindow):
 
                 assert (
                     self.reset_all.text_label.get_text()
-                    == 'Apply Settings'
+                    == 'Apply Presets'
                 )
 
                 if key=='mfg_multiplier':
@@ -13088,7 +12694,7 @@ class Window(Adw.ApplicationWindow):
 
                 assert (
                     self.reset_all.text_label.get_text()
-                    == 'Reset All'
+                    in ('Reset Presets','Reset Selected Presets')
                 )
 
             GLib.timeout_add(
@@ -13120,9 +12726,9 @@ class Window(Adw.ApplicationWindow):
         return False
     def smoke_action(self):
         try:
-            # Switch directly to the Enhancements page.
+            # Switch directly to the Features page.
             self.detail_pages.set_visible_child_name(
-                'Enhancements'
+                'Features'
             )
 
             if hasattr(

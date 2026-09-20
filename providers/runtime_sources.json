@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "repository": "Recol/DLSS-Updater-DLLs",
+  "ref": "main",
+  "manifest": "manifest.json",
+  "directory": "dlls"
+}

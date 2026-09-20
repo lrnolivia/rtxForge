@@ -3,7 +3,7 @@ from pathlib import Path
 import json,urllib.request,urllib.parse,urllib.error,re,time,hashlib,html,math
 import transactions as t
 from storage import storage
-DEFAULTS={'game_accents':{},'sharpening_strength':0.5,'mfg_multiplier':2,'nr_strength':2.0,'runtime_provider':'y4my','enable_effects':True,'nr_runtime':'','dark':True,'library_view':'posters','art_scale':80,'cache_days':7,'network_timeout':10,'default_profile':'mfg-only','online_art':True,'steam_metadata':True,'recognize_previous':False,'extra_folders':[]}
+DEFAULTS={'library_columns':7,'presets_hint_seen':False,'manage_dlss_files':True,'game_accents':{},'sharpening_strength':0.5,'mfg_multiplier':2,'nr_strength':2.0,'runtime_provider':'y4my','enable_effects':True,'nr_runtime':'','dark':True,'library_view':'posters','art_scale':80,'cache_days':7,'network_timeout':10,'default_profile':'mfg-only','online_art':True,'steam_metadata':True,'recognize_previous':False,'extra_folders':[]}
 
 LEGACY_NR_STRENGTH={
     'off':0.0,
@@ -42,6 +42,7 @@ def settings_path(config):return storage(config)/'desktop/settings.json'
 def load_settings(config):
     try:
         settings={**DEFAULTS,**json.loads(settings_path(config).read_text())}
+        settings['library_columns']=max(3,min(9,int(settings.get('library_columns',7))))
         settings['nr_strength']=normalize_strength(settings.get('nr_strength'),'nr')
         settings['sharpening_strength']=normalize_strength(settings.get('sharpening_strength'),'sharpness')
         if type(settings.get('mfg_multiplier')) is not int or settings['mfg_multiplier'] not in (0,2,3,4,5,6):settings['mfg_multiplier']=2

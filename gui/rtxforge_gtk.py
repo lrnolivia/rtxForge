@@ -11391,7 +11391,7 @@ class Window(Adw.ApplicationWindow):
         defaults.add(manage_files)
         modes=['nr-only','mfg-only','nr-mfg'];profile=safe_combo_row(title='Default Mode',model=Gtk.StringList.new(['NR Only','MFG Only','NR + MFG']),selected=modes.index(self.settings.get('default_profile','mfg-only')));defaults.add(profile)
         adopt=Adw.SwitchRow(title='Recognize Existing Features',subtitle='Allow updates to compatible installations from other tools.',active=self.settings['recognize_previous']);defaults.add(adopt)
-        appearance=Adw.PreferencesGroup(title='Library Appearance')
+        appearance=Adw.PreferencesGroup(title='Appearance')
         views=[
             'posters',
             'capsules',
@@ -11506,7 +11506,23 @@ class Window(Adw.ApplicationWindow):
             )[1],
         )
 
-        dark=Adw.SwitchRow(title='Dark Appearance',active=self.settings['dark']);appearance.add(dark)
+        theme_row=row('Color Theme','Choose Light or Dark. Changes apply and save immediately.')
+        theme_selector=Adw.ToggleGroup(valign=Gtk.Align.CENTER)
+        for key,caption in [('light','Light'),('dark','Dark')]:
+            theme_selector.add(Adw.Toggle(name=key,label=caption))
+        theme_selector.set_active_name('dark' if self.settings['dark'] else 'light')
+        def change_theme(group,*_):
+            dark=group.get_active_name()=='dark'
+            self.settings['dark']=dark
+            Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if dark else Adw.ColorScheme.FORCE_LIGHT)
+            apply_neutral_palette()
+            if not self.options.demo:
+                saved=library_media.load_settings(self.service.config)
+                saved['dark']=dark
+                library_media.save_settings(self.service.config,saved)
+        theme_selector.connect('notify::active-name',change_theme)
+        theme_row.add_suffix(theme_selector)
+        appearance.add(theme_row)
         artwork=Adw.PreferencesGroup(title='Artwork',description='Your Steam poster, capsule, and hero images take priority.')
         art=Adw.SwitchRow(title='Download Missing Artwork',subtitle='Use SteamGridDB and Steam when local images are unavailable.',active=self.settings['online_art']);artwork.add(art)
         metadata=Adw.SwitchRow(title='Download Game Information',subtitle='Descriptions, developers, and release dates from Steam.',active=self.settings['steam_metadata']);artwork.add(metadata)
@@ -11549,7 +11565,7 @@ class Window(Adw.ApplicationWindow):
             selected_provider=provider_keys[provider.get_selected()];selected_mode=modes[profile.get_selected()]
             if selected_provider=='y4my' and selected_mode=='nr-only':self.toast('NR Only requires DLSS-Unlocked.');return
             settings_saved['value']=True
-            self.settings.update(manage_dlss_files=manage_files.get_active(),runtime_provider=selected_provider,nr_runtime=nr_path.get_text().strip(),default_profile=selected_mode,library_view=pending_library_view['value'],dark=dark.get_active(),online_art=art.get_active(),steam_metadata=metadata.get_active(),network_timeout=timeout.get_value_as_int(),recognize_previous=adopt.get_active())
+            self.settings.update(manage_dlss_files=manage_files.get_active(),runtime_provider=selected_provider,nr_runtime=nr_path.get_text().strip(),default_profile=selected_mode,library_view=pending_library_view['value'],dark=theme_selector.get_active_name()=='dark',online_art=art.get_active(),steam_metadata=metadata.get_active(),network_timeout=timeout.get_value_as_int(),recognize_previous=adopt.get_active())
             self.nr_only.set_enabled(selected_provider=='dlss-unlocked')
             self.profile_group.set_active_name(selected_mode)
             Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)
@@ -12807,9 +12823,19 @@ class Window(Adw.ApplicationWindow):
 
         return False
 
+    def smoke_capture_ready(self,name,continuation):
+        if getattr(self,'_smoke_captured',None)==name:
+            self._smoke_captured=None
+            return True
+        def resume():
+            self._smoke_captured=name
+            return continuation()
+        self.capture_when_ready(name,resume)
+        return False
+
     def smoke_library_ready(self):
         try:
-            self.capture('gnome-library.png')
+            if not self.smoke_capture_ready('gnome-library.png',self.smoke_library_ready):return False
             self.search.set_text('Cyberpunk');self.select_all(True);assert all(e['check'].get_active() for e in self.cards.values())
             self.profile_group.set_active_name('nr-mfg');assert self.mode=='nr-mfg'
             game={**self.games[0],'feature_mode':'nr-mfg','profile':'NR + MFG','nr_strength':2.0,'sharpening_strength':0.5,'mfg_multiplier':2}
@@ -12840,12 +12866,14 @@ class Window(Adw.ApplicationWindow):
         except Exception:traceback.print_exc();self.get_application().exit_code=1;self.get_application().quit()
         return False
     def smoke_game_settings(self):
-        try:self.capture('gnome-game-settings.png');self.show_settings();GLib.timeout_add(700,self.smoke_settings)
+        try:
+            if not self.smoke_capture_ready('gnome-game-settings.png',self.smoke_game_settings):return False
+            self.show_settings();GLib.timeout_add(700,self.smoke_settings)
         except Exception:traceback.print_exc();self.get_application().exit_code=1;self.get_application().quit()
         return False
     def smoke_settings(self):
         try:
-            self.capture('gnome-settings.png')
+            if not self.smoke_capture_ready('gnome-settings.png',self.smoke_settings):return False
 
             try:self.done_backdrop=self.snapshot_library_texture()
             except Exception:self.done_backdrop=None
@@ -12867,11 +12895,15 @@ class Window(Adw.ApplicationWindow):
         except Exception:traceback.print_exc();self.get_application().exit_code=1;self.get_application().quit()
         return False
     def smoke_progress(self):
-        try:self.capture('gnome-progress.png');self.finish_progress(True,'3 games updated.',self.progress_shell.get_last_child().get_last_child());GLib.timeout_add(300,self.smoke_complete);return False
+        try:
+            if not self.smoke_capture_ready('gnome-progress.png',self.smoke_progress):return False
+            self.finish_progress(True,'3 games updated.',self.progress_shell.get_last_child().get_last_child());GLib.timeout_add(300,self.smoke_complete);return False
         except Exception:traceback.print_exc();self.get_application().exit_code=1
         self.get_application().quit();return False
     def smoke_complete(self):
-        try:self.capture('gnome-complete.png');print('PASS: controls, tabs, settings, progress and completion; demo writes disabled',flush=True)
+        try:
+            if not self.smoke_capture_ready('gnome-complete.png',self.smoke_complete):return False
+            print('PASS: controls, tabs, settings, progress and completion; demo writes disabled',flush=True)
         except Exception:traceback.print_exc();self.get_application().exit_code=1
         self.get_application().quit();return False
 

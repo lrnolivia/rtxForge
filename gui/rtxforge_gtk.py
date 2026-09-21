@@ -43,7 +43,15 @@ def apply_neutral_palette():
     theme_css=''.join(f'@define-color {name} {palette[value]};' for name,value in names.items())
     theme_css+='list.boxed-list, list.content, list.boxed-list-separate > row, .card { box-shadow: 0 0 0 1px alpha(black,0.03), 0 1px 3px 1px alpha(black,0.07), 0 2px 6px 2px alpha(black,0.03); }'
     if THEME_MODE=='night':
-        theme_css+='@define-color forge_library_card_a #171717; @define-color forge_library_card_b #1b1b1b; @define-color forge_panel_bg #171717;'
+        theme_css+='@define-color forge_top_bg #000000; @define-color forge_lower_bg #181818; @define-color forge_library_card_a #222222; @define-color forge_library_card_b #262626; @define-color forge_panel_bg #171717;'
+        theme_css+='''
+        .bulk-remove { background: #352828; color: #ffaaa3; border: 1px solid alpha(#ffaaa3,0.18); }
+        .bulk-remove:hover { background: #473030; }
+        .library-selection-tools button, button.view-action, .control-pod button,
+        .game-card:not(.selected) .game-details { background: #303030; border: 1px solid alpha(white,0.10); color: @window_fg_color; }
+        .library-selection-tools button:hover, button.view-action:hover, .control-pod button:hover,
+        .game-card:not(.selected) .game-details:hover { background: #3b3b3b; }
+        '''
     elif Adw.StyleManager.get_default().get_dark():
         theme_css+='@define-color forge_library_card_a mix(@sidebar_bg_color,@window_fg_color,0.05); @define-color forge_library_card_b mix(@sidebar_bg_color,@window_fg_color,0.075); @define-color forge_panel_bg alpha(@window_fg_color,0.08); @define-color forge_library_list_hover mix(@sidebar_bg_color,@window_fg_color,0.10);'
     else:
@@ -4412,6 +4420,7 @@ class Window(Adw.ApplicationWindow):
         self.selected_label.set_wrap(False)
         self.selected_label.set_hexpand(True)
         selection_tools=Gtk.Box(spacing=12)
+        selection_tools.add_css_class('library-selection-tools')
         margins(selection_tools,16)
         selection_tools.set_margin_top(0)
         selection_tools.set_margin_bottom(0)

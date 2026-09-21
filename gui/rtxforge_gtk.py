@@ -3655,7 +3655,7 @@ class Window(Adw.ApplicationWindow):
 
         hero.append(controls)
         profile_text=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=1,hexpand=True,valign=Gtk.Align.CENTER);controls.append(profile_text)
-        profile_text.append(label('Feature Mode','heading'))
+        profile_text.append(label('Feature','heading'))
         self.profile_note=label('','dim-label');self.profile_note.add_css_class('mode-description');self.profile_note.set_ellipsize(Pango.EllipsizeMode.END);self.profile_note.set_lines(1);self.profile_note.set_max_width_chars(42);profile_text.append(self.profile_note)
         self.profile_group=Adw.ToggleGroup(homogeneous=True,valign=Gtk.Align.CENTER)
         self.profile_group.add_css_class('mode-selector')
@@ -3710,7 +3710,7 @@ class Window(Adw.ApplicationWindow):
             sticky_brand_title
         )
 
-        # Compact mirror of Feature Mode.
+        # Compact mirror of Feature.
         self.sticky_profile_group=Adw.ToggleGroup(
             homogeneous=True,
             valign=Gtk.Align.CENTER,
@@ -3962,7 +3962,7 @@ class Window(Adw.ApplicationWindow):
             self.sticky_actions_revealer
         )
 
-        # Feature Mode sits directly above the tuning controls.
+        # Feature sits directly above the tuning controls.
         self.presets_expander=Gtk.Expander(label='Presets', expanded=False)
         self.presets_expander.add_css_class('presets-header')
         preset_label=Gtk.Box(spacing=8,valign=Gtk.Align.CENTER)

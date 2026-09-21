@@ -1669,7 +1669,7 @@ button.game-detail-close.light:hover {
     font-size: 16px;
     font-weight: 700;
     min-height: 0;
-    margin: 8px;
+    margin: 16px;
 }
 
 .game-card .card-meta {
@@ -8943,10 +8943,10 @@ class Window(Adw.ApplicationWindow):
             test_meta
         )
 
-        footer=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4,vexpand=True)
+        footer=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8,vexpand=False)
         footer.add_css_class('card-footer')
         footer.append(meta_row)
-        footer.append(Gtk.Box(vexpand=True,height_request=0))
+        text.append(Gtk.Box(vexpand=True))
         text.append(footer)
 
         reset=button('Details',lambda *_:self.details(game));reset.add_css_class('game-details');reset.set_size_request(-1,28)

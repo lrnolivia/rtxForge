@@ -641,3 +641,4 @@ Latest user request explicitly replaces the fixed 7/6 contract and previous prot
 - Dark-mode follow-up retains stock neutral surface colors, reduces panel/card tint differences, neutralizes the last blue-grey fallback and headerbar colors, and makes progress surfaces theme-aware.
 - Gallery refinements: matching 8px title/footer insets, subtle darker footer around pills and Details, no flexible gap before pills. View changes suppress transient header collapse while their scroll layout settles.
 - Verified complete dark/light desktop smoke, live Light/Dark/Night transitions, responsive narrow layouts, reusable view widgets, contextual menus and five contrast tests. Native light floating-dialog shadows are also halved.
+- Card balance follow-up: compact footer now keeps pills 8px above Details with no expanding internal gap; spare row height stays in the title area, with 16px title margins on all sides.

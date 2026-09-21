@@ -628,3 +628,4 @@ Latest user request explicitly replaces the fixed 7/6 contract and previous prot
 - Fixed CoverPicture measurement to avoid extreme GTK height probes during resize. Focused resize, compact-card and dark/light hero checks passed.
 - Fixed packaged BUILD_INFO.json newline so GitHub updates can identify the installed commit; CI now verifies metadata and native DLSS/contrast tests.
 - Testing/History explicitly deferred until UI, DLSS Files and publication are complete.
+- Follow-up: move gallery top/bottom padding outside the scrolling content so the toolbar gap cannot scroll away; retain 16px fixed library boundaries. Narrow screenshot verified.

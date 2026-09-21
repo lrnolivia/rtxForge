@@ -1781,7 +1781,7 @@ columnview.library-column-view header button:active {
 /* Equal physical padding at both List edges. */
 columnview.library-column-view listview {
     background: transparent;
-    padding: 16px;
+    padding: 16px 16px 0;
 }
 
 
@@ -4253,6 +4253,8 @@ class Window(Adw.ApplicationWindow):
         library_stage=Gtk.Overlay(
             vexpand=True
         )
+        library_stage.set_margin_top(16)
+        library_stage.set_margin_bottom(LIBRARY_BOTTOM_CLEARANCE)
         library_stage.set_child(
             self.library_stack
         )
@@ -4318,7 +4320,7 @@ class Window(Adw.ApplicationWindow):
             collapse_header,
         )
 
-        self.flow=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,column_spacing=14,row_spacing=16,min_children_per_line=1,max_children_per_line=12,homogeneous=False,valign=Gtk.Align.START);margins(self.flow,18);self.flow.set_margin_top(16);self.flow.set_margin_bottom(LIBRARY_BOTTOM_CLEARANCE);scroll.set_child(self.flow)
+        self.flow=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,column_spacing=14,row_spacing=16,min_children_per_line=1,max_children_per_line=12,homogeneous=False,valign=Gtk.Align.START);margins(self.flow,18);self.flow.set_margin_top(0);self.flow.set_margin_bottom(0);scroll.set_child(self.flow)
         self.flow.add_css_class(
             'library-flow'
         )

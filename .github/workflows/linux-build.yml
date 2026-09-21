@@ -67,10 +67,16 @@ jobs:
             scripts/library_media.py \
             scripts/app_update.py \
             scripts/desktop_install.py \
+            scripts/runtime_updates.py \
+            scripts/ui_colors.py \
             gui/rtxforge_gtk.py
 
           /usr/bin/python3 -m unittest \
             engine.tests.test_v13_core_hardening
+
+          /usr/bin/python3 -m unittest discover -s tests -p test_runtime_updates.py
+          /usr/bin/python3 -m unittest discover -s tests -p test_ui_colors.py
+          /usr/bin/python3 -m unittest discover -s tests -p test_operation_finalization.py
 
           /usr/bin/python3 tests/test_batches.py
           /usr/bin/python3 tests/test_cleanup.py
@@ -127,6 +133,12 @@ jobs:
       - name: Build AppImage
         run: |
           python3 packaging/build_appimage.py
+          python3 - <<'PYBUILD'
+          import json, os
+          from pathlib import Path
+          info=json.loads(Path('dist/AppImage-build/RTXForge.AppDir/usr/share/rtxforge/BUILD_INFO.json').read_text())
+          assert info['commit']==os.environ['GITHUB_SHA']
+          PYBUILD
 
       - name: Verify versioned AppImage
         run: |

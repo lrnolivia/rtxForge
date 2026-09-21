@@ -132,7 +132,7 @@ def _owned(engine, root, path):
     return False
 
 
-def inspect(config, games, snapshot):
+def inspect(config, games, snapshot=None):
     engine = engine_bridge.module(config)
     rows = []
     for game in games:
@@ -148,21 +148,21 @@ def inspect(config, games, snapshot):
                 path = Path(raw)
                 name = path.name.casefold()
                 rel = path.relative_to(root)
-                if name not in snapshot['entries'] or _private(rel):
+                if name not in (snapshot['entries'] if snapshot else COMPONENTS) or _private(rel):
                     continue
                 t.safe(path)
                 if _owned(engine, root, path):
                     continue
                 current = version(path)
-                target = snapshot['entries'][name]
+                target = snapshot['entries'][name] if snapshot else None
                 # Automatic management leaves unknown, same and newer builds untouched.
-                state = 'Update available'
-                if current == target['version']:
+                state = 'Update available' if target else 'Installed'
+                if target and current == target['version']:
                     state = 'Same version'
-                elif current and tuple(map(int,current.split('.'))) > tuple(map(int,target['version'].split('.'))):
+                elif target and current and tuple(map(int,current.split('.'))) > tuple(map(int,target['version'].split('.'))):
                     state = 'Newer installed'
                 row['files'].append({'path': rel.as_posix(), 'component': name,
-                                     'current': current or 'Unknown', 'target': target['version'],
+                                     'current': current or 'Unknown', 'target': target['version'] if target else None,
                                      'before': t.digest(path), 'status': state})
         except Exception as exc:
             row['blocked'] = str(exc)
@@ -238,7 +238,7 @@ def apply(config, plans):
                     t.rollback_transaction(state, True)
                 except Exception as recovery:
                     raise t.Refusal(f'{exc}. Recovery retained at {state}: {recovery}') from exc
-            raise t.Refusal(f'{exc}. {len(completed)} earlier games completed; use DLSS File Management in Game Details to restore them.') from exc
+            raise t.Refusal(f'{exc}. {len(completed)} earlier games completed; use DLSS Files in Game Details to restore them.') from exc
         completed.append(str(state))
     return completed
 
@@ -285,8 +285,12 @@ def manage(config, games):
     return {'updated_games': len(records), 'records': records, 'skipped': skipped}
 
 
-def restore_game(config, game):
-    records = [record for record in recoveries(config)
+def game_recoveries(config, game):
+    return [record for record in recoveries(config)
                if t.read_json(Path(record['path'])/'transaction.json')['plan']['game'] == str(Path(game).resolve())]
+
+
+def restore_game(config, game):
+    records = game_recoveries(config, game)
     t.need(records, 'No DLSS file backups for this game')
     return restore(config, records[0]['path'], True)

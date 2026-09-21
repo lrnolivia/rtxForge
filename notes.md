@@ -611,3 +611,20 @@ Latest user request explicitly replaces the fixed 7/6 contract and previous prot
 - Added source (Steam/Non-Steam) and testing status pills beside the developer/date on one Game Details metadata line, above the description, reusing the library pill style. Removed source from the developer/date line to avoid duplication. User asked to push the UI checkpoint before further DLSS work; draft file-management integration will be kept out of that push and receive a separate Game Details tab in the follow-up.
 
 - UI-only checkpoint db39769 built separately and submitted to origin/main before resuming DLSS work. Main retains the unpublished DLSS draft on top of that checkpoint; merge preserves both histories without rewriting shared commits.
+
+## 2026-09-20 — DLSS Files and final UI follow-up
+
+- UI-only checkpoint db39769 was pushed to origin/main and installed before resuming native DLSS integration. The user then explicitly requested a push of the full UI including the DLSS Files tab.
+- Final name is **DLSS Files**, on its own Game Details tab. Offline inventory shows independent native DLSS versions, update only selects older known versions, and latest verified backups enable Restore Files. Automatic management remains default-on during successful feature installation. Settings can disable it.
+- Full native GUI lifecycle verified on disposable fixture files: inventory → update → refreshed version and recovery discovery → restore. Ten backend lifecycle/guard/inventory tests and two cancellation-boundary tests pass. Full write-disabled UI smoke passes; no installed games were mutated.
+- User corrections: restore equal 16px padding on all four sides of the library content in all views; remove only the old large bottom-toolbar reserve. Main Presets has separate Reset/Apply buttons at the right of its heading using an unmeasured overlay, adding no action row or hero height. Game Details Reset and Apply share a row.
+- Launcher/Dock distortion traced to a 1254×989 bitmap mislabeled as a 512×512 icon. Added a self-contained square SVG wrapper with aspect-preserving image placement. Desktop registration and AppImage packaging now use the scalable icon; the dashboard retains its wide artwork. Native SVG decoding verified at 256×256.
+- Provider stack pins remain unchanged. This work delivers native DLSS file management, not a DLSS-Unlocked release upgrade.
+
+## 2026-09-21 — Contrast and final polish
+
+- Theme-aware seamless hero gradient ends at the exact panel color in both themes; metadata follows theme foreground. Accent text lightness adjusts for readability while decoration retains the original hue. Reduced title glow and consistent bottom alignment/reserved description space.
+- Source badges use a softer translucent neutral fill, with hue-matched fill and readable text on selected cards. Steam uses a small symbolic vector; Other uses a controller. Horizontal card pills never stack. Shared 16px titles, whole-card hover borders, Poster carousel and card-size icons.
+- Fixed CoverPicture measurement to avoid extreme GTK height probes during resize. Focused resize, compact-card and dark/light hero checks passed.
+- Fixed packaged BUILD_INFO.json newline so GitHub updates can identify the installed commit; CI now verifies metadata and native DLSS/contrast tests.
+- Testing/History explicitly deferred until UI, DLSS Files and publication are complete.

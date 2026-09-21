@@ -1,8 +1,8 @@
-# DLSS File Management
+# DLSS Files
 
 Older native DLSS files are updated automatically during feature installation.
-The default-on **DLSS File Management** switch is in Settings → Graphics →
-Installation. Game Details → Overview provides **Update Files** and
+The default-on **DLSS Files** switch is in Settings → Graphics →
+Installation. Game Details → DLSS Files shows current native files and provides **Update Files** and
 **Restore Files** for an individual game, with no separate selection wizard.
 
 Restore uses the most recent verified backup for that game. It refuses files

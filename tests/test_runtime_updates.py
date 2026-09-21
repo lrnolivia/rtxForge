@@ -128,6 +128,15 @@ class RuntimeUpdatesTest(unittest.TestCase):
         with self.assertRaisesRegex(t.Refusal, 'Input drift'):
             runtime.apply(self.config, plans)
 
+    def test_offline_inventory_is_read_only(self):
+        with patch.object(runtime, 'catalog', side_effect=AssertionError('Unexpected network lookup')):
+            found = runtime.inspect(self.config, self.games)[0]
+        self.assertEqual(found['files'][0]['current'], '1.0.0.0')
+        self.assertIsNone(found['files'][0]['target'])
+        self.assertEqual(found['files'][0]['status'], 'Installed')
+        self.assertEqual(self.dll.read_bytes(), pe(1))
+        self.assertFalse(runtime.game_recoveries(self.config, self.game))
+
     def test_automatic_management_only_updates_older_known_versions(self):
         with patch.object(runtime, 'catalog', return_value=self.snapshot):
             for contents in (pe(2), pe(3), pe(1)[:128]):

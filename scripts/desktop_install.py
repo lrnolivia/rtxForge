@@ -45,15 +45,11 @@ def register(target=None):
 
     assets = Path(__file__).resolve().parents[1] / 'gui/icons/hicolor'
 
-    for size in ('64x64', '128x128', '256x256', '512x512'):
-        icon = data / f'icons/hicolor/{size}/apps/{APP_ID}.png'
-        icon.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(
-            assets / f'{size}/apps/{APP_ID}.png',
-            icon,
-        )
-
-    icon = data / f'icons/hicolor/512x512/apps/{APP_ID}.png'
+    # The launcher needs a square canvas, not the wide dashboard artwork.
+    # The scalable asset preserves the embedded artwork's aspect ratio.
+    icon = data / f'icons/hicolor/scalable/apps/{APP_ID}.svg'
+    icon.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(assets / f'scalable/apps/{APP_ID}.svg', icon)
 
     apps = data / 'applications'
     apps.mkdir(parents=True, exist_ok=True)

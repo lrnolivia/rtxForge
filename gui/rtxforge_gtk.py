@@ -8,10 +8,40 @@ APP_VERSION=(ROOT/'VERSION').read_text(encoding='utf-8').strip() if (ROOT/'VERSI
 import gi
 gi.require_version('Gtk','4.0');gi.require_version('Adw','1')
 from gi.repository import Gtk,Adw,GLib,Gio,Gdk,Graphene,Pango,GdkPixbuf,GObject
-import ui,library_media,os,game_notes
+import ui,library_media,os,game_notes,ui_colors
 from desktop_service import DesktopService
 
 ACCENT_PROVIDERS={}
+ACCENT_SOURCES={}
+NEUTRAL_PROVIDER=None
+
+
+def neutral_palette():
+    dark=Adw.StyleManager.get_default().get_dark()
+    return dict(window='#242424' if dark else '#f5f5f5',
+                view='#1e1e1e' if dark else '#fafafa',
+                sidebar='#2d2d2d' if dark else '#ebebeb',
+                card='#383838' if dark else '#ffffff',
+                fg='#f2f2f2' if dark else '#222222',
+                popover='#303030' if dark else '#ffffff')
+
+
+def apply_neutral_palette():
+    global NEUTRAL_PROVIDER
+    if NEUTRAL_PROVIDER is None:
+        NEUTRAL_PROVIDER=Gtk.CssProvider()
+        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(),NEUTRAL_PROVIDER,Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION+2)
+    palette=neutral_palette()
+    names={'window_bg_color':'window','view_bg_color':'view','sidebar_bg_color':'sidebar',
+           'card_bg_color':'card','dialog_bg_color':'window','popover_bg_color':'popover',
+           'window_fg_color':'fg','view_fg_color':'fg','sidebar_fg_color':'fg','card_fg_color':'fg'}
+    NEUTRAL_PROVIDER.load_from_data(''.join(f'@define-color {name} {palette[value]};' for name,value in names.items()).encode())
+    sources=list(ACCENT_SOURCES.values())
+    for provider in ACCENT_PROVIDERS.values():
+        Gtk.StyleContext.remove_provider_for_display(Gdk.Display.get_default(),provider)
+    ACCENT_PROVIDERS.clear()
+    for path,color in sources:artwork_accent(path,color)
+
 
 
 def gamescope_session():
@@ -345,8 +375,22 @@ def artwork_accent(path,color=None):
         accent_fg='#ffffff'
         accent_dark='#18181b'
 
+    palette=neutral_palette()
+    card_backgrounds=[ui_colors.mix(palette['fg'],palette['sidebar'],weight) for weight in (0.08,0.13,0.18)]
+    card_backgrounds.append(ui_colors.mix('#000000',palette['sidebar'],0.18))
+    text_accent=ui_colors.readable(color,card_backgrounds)
+    nav_accent=ui_colors.readable(color,ui_colors.mix(color,palette['sidebar'],0.10))
+    accent_shadow=accent_dark
+    accent_fg=ui_colors.readable(accent_fg,color)
+    accent_dark=ui_colors.readable(accent_dark,color)
+    button_fg=ui_colors.readable(accent_dark,ui_colors.mix('#ffffff',color,0.44))
+    source_bg=ui_colors.mix('#ffffff',color,0.26)
+    source_fg=ui_colors.readable(accent_shadow,source_bg)
+    hero_accent=ui_colors.readable(color,palette['window'])
+
     name='art-'+color[1:]
 
+    ACCENT_SOURCES[name]=(path,color)
     if name not in ACCENT_PROVIDERS:
         provider=Gtk.CssProvider()
 
@@ -358,35 +402,25 @@ def artwork_accent(path,color=None):
             f'box-shadow: 0 2px 12px alpha({color},0.28); '
             f'}} '
 
-            f'.game-card.{name}.selected .gallery-artwork-frame {{ '
-            f'background: {color}; '
-            f'border-color: transparent; '
-            f'box-shadow: inset 0 0 0 3.5px {color}; '
-            f'}} '
+            f'.game-card.{name}.selected .library-source-pill {{ background: {source_bg}; color: {source_fg}; }} '
+            f'.game-card.{name}.selected .library-source-pill .library-pill-icon, '
+            f'.game-card.{name}.selected .library-source-pill .library-pill-text {{ color: {source_fg}; }} '
 
-            f'.game-card.{name}.selected .library-meta-pill {{ '
-            f'background: alpha({accent_dark},0.94); '
+            f'.game-card.{name}.selected .library-test-pill {{ '
+            f'background: alpha({accent_shadow},0.94); '
             f'border-color: transparent; '
             f'box-shadow: none; '
             f'color: white; '
             f'}} '
 
-            f'.game-card.{name}.selected .library-pill-text, '
-            f'.game-card.{name}.selected .library-pill-icon {{ '
+            f'.game-card.{name}.selected .library-test-pill .library-pill-text, '
+            f'.game-card.{name}.selected .library-test-pill .library-pill-icon {{ '
             f'color: white; '
             f'}} '
 
             f'.game-card.{name}:hover {{ '
-            f'border-color: transparent; '
-            f'box-shadow: none; '
-            f'}} '
-
-            f'.game-card.{name}:hover .gallery-artwork-frame {{ '
-            f'background: {color}; '
-            f'border-color: transparent; '
-            f'box-shadow: '
-            f'inset 0 0 0 3.5px {color}, '
-            f'0 0 9px alpha({color},0.34); '
+            f'border-color: {color}; '
+            f'box-shadow: 0 0 10px alpha({color},0.28); '
             f'}} '
 
             # Gtk.ColumnView: accent stays inside the Game and
@@ -425,18 +459,18 @@ def artwork_accent(path,color=None):
             # it becomes accent-filled only while the card is selected.
             f'.game-card.{name}.selected .game-details {{ '
             f'background: alpha(white,0.44); '
-            f'color: {accent_dark}; '
+            f'color: {button_fg}; '
             f'border-color: transparent; '
             f'box-shadow: none; '
             f'}} '
 
             f'.game-card.{name}.selected .game-details label {{ '
-            f'color: {accent_dark}; '
+            f'color: {button_fg}; '
             f'font-weight: 700; '
             f'}} '
 
             f'.game-card.{name}:hover .card-title {{ '
-            f'color: {color}; '
+            f'color: {text_accent}; '
             f'}} '
 
             f'.game-card.{name}.selected .card-title, '
@@ -447,7 +481,7 @@ def artwork_accent(path,color=None):
             f'.library-column-game.{name}:hover .library-column-title, '
             f'columnview.library-column-view row:hover '
             f'.library-column-game.{name} .library-column-title {{ '
-            f'color: {color}; '
+            f'color: {text_accent}; '
             f'}} '
 
             # Game Detail window keeps its accent semantics.
@@ -475,7 +509,7 @@ def artwork_accent(path,color=None):
 
             f'.{name} .game-detail-nav row:selected label, '
             f'.{name} .game-detail-nav row:selected image {{ '
-            f'color: {color}; '
+            f'color: {nav_accent}; '
             f'}} '
 
             f'.{name} progressbar progress {{ '
@@ -493,7 +527,8 @@ def artwork_accent(path,color=None):
             # Detail/progress identity remains accent colored.
             # Library titles are neutral until hover; selected gallery
             # cards use the darker same-hue foreground above.
-            f'.{name} .game-banner-title, '
+            f'.{name} .game-banner-title {{ color: {hero_accent}; }} '
+
             f'.{name} .job-title, '
             f'.{name} .eyebrow {{ '
             f'color: {color}; '
@@ -564,13 +599,13 @@ def hero_title_background_is_light(path):
 
 
 class CoverPicture(Gtk.Picture):
-    # Ask the layout for height at the actual allocated width, not the original minimum.
+    # The gallery solver owns width; ignore unbounded GTK measurement probes.
     cover_width=158
     cover_ratio=2/3
-    def do_get_request_mode(self):return Gtk.SizeRequestMode.HEIGHT_FOR_WIDTH
+    def do_get_request_mode(self):return Gtk.SizeRequestMode.CONSTANT_SIZE
     def do_measure(self, orientation, for_size):
         if orientation==Gtk.Orientation.HORIZONTAL:return (self.cover_width,self.cover_width,-1,-1)
-        height=__import__('math').ceil((for_size if for_size>0 else self.cover_width)/self.cover_ratio)
+        height=__import__('math').ceil(self.cover_width/self.cover_ratio)
         return (height,height,-1,-1)
 
 # Final frozen Library geometry.
@@ -590,7 +625,7 @@ LIBRARY_PILL_HPAD_END=8
 LIBRARY_PILL_VPAD=4
 LIBRARY_PILL_GAP=4
 LIBRARY_LIST_STATUS_WIDTH=108
-LIBRARY_BOTTOM_CLEARANCE=0
+LIBRARY_BOTTOM_CLEARANCE=16
 LIBRARY_STEAM_ICON=ROOT/'gui/icons/rtxforge-steam.svg'
 LIBRARY_GHOST_TEXTURE=ROOT/'gui/icons/rtxforge-transparent-capsule.png'
 
@@ -770,7 +805,8 @@ class LibraryPill(Gtk.Box):
                 and LIBRARY_STEAM_ICON.exists()
             ):
                 try:
-                    self._icon.set_from_gicon(Gio.FileIcon.new(Gio.File.new_for_path(str(LIBRARY_STEAM_ICON))))
+                    self._icon.set_pixel_size(11)
+                    self._icon.set_from_icon_name('rtx-steam-symbolic')
 
                     return
 
@@ -785,7 +821,7 @@ class LibraryPill(Gtk.Box):
                 )
             else:
                 icon=_library_icon_name(
-                    'input-gaming-symbolic',
+                    'rtx-controller-symbolic',
                     'applications-games-symbolic',
                 )
 
@@ -1514,9 +1550,9 @@ button.game-detail-close.light:hover {
 }
 
 .game-detail-meta {
-    color: alpha(white,0.84);
+    color: alpha(@window_fg_color,0.84);
     font-size: 13px;
-    text-shadow: 0 1px 5px alpha(black,0.90);
+    text-shadow: none;
 }
 
 /* Compact artwork credit cards. */
@@ -1543,9 +1579,9 @@ button.game-detail-close.light:hover {
 }
 
 .game-detail-summary {
-    color: alpha(white,0.78);
+    color: alpha(@window_fg_color,0.84);
     font-size: 12px;
-    text-shadow: 0 1px 5px alpha(black,0.92);
+    text-shadow: none;
 }
 
 .detail-footer {
@@ -1561,10 +1597,10 @@ button.game-detail-close.light:hover {
 .banner-shade {
     background: linear-gradient(
         to bottom,
-        alpha(black,0.28) 0%,
-        alpha(black,0.12) 28%,
-        alpha(@window_bg_color,0.26) 52%,
-        alpha(@window_bg_color,0.72) 76%,
+        alpha(@window_bg_color,0.08) 0%,
+        alpha(@window_bg_color,0.30) 28%,
+        alpha(@window_bg_color,0.72) 52%,
+        alpha(@window_bg_color,0.94) 76%,
         @window_bg_color 100%
     );
 }
@@ -1573,12 +1609,6 @@ button.game-detail-close.light:hover {
  * Hero typography separation.
  * Apply the treatment to title, metadata, summary and status badge text.
  */
-.game-banner.hero-light .game-banner-title,
-.game-banner.hero-light .game-detail-meta,
-.game-banner.hero-light .game-detail-summary {
-    padding: 6px 9px 7px;
-}
-
 /* Compact, stable Library card labels. */
 .game-card .card-info {
     padding: 8px;
@@ -1586,10 +1616,10 @@ button.game-detail-close.light:hover {
 
 
 .game-card .card-title {
-    font-size: 15px;
+    font-size: 16px;
     font-weight: 700;
     min-height: 0;
-    margin: 0;
+    margin: 4px 0 0;
 }
 
 .game-card .card-meta {
@@ -1626,19 +1656,19 @@ button.game-detail-close.light:hover {
 
 
 .game-card .card-title.art-title-xs {
-    font-size: 12px;
+    font-size: 16px;
 }
 
 .game-card .card-title.art-title-sm {
-    font-size: 13px;
+    font-size: 16px;
 }
 
 .game-card .card-title.art-title-md {
-    font-size: 14px;
+    font-size: 16px;
 }
 
 .game-card .card-title.art-title-lg {
-    font-size: 15px;
+    font-size: 16px;
 }
 
 .game-card.art-card-xs .game-details {
@@ -1751,7 +1781,7 @@ columnview.library-column-view header button:active {
 /* Equal physical padding at both List edges. */
 columnview.library-column-view listview {
     background: transparent;
-    padding: 0 16px;
+    padding: 16px;
 }
 
 
@@ -1833,11 +1863,11 @@ columnview.library-column-view listview row:nth-child(even):hover {
 
 /* STEAM / NON-STEAM */
 .library-source-pill {
-    background: @view_bg_color;
+    background: alpha(#c5c5c5,0.55);
     border: none;
     border-color: transparent;
     box-shadow: none;
-    color: #d2d2d2;
+    color: #242424;
 }
 
 
@@ -1881,7 +1911,7 @@ columnview.library-column-view listview row:nth-child(even):hover {
 
 /* Pill glyphs belong to the state, not to a generic icon palette. */
 .library-source-pill .library-pill-icon {
-    color: #d2d2d2;
+    color: #242424;
 }
 
 
@@ -1977,20 +2007,13 @@ columnview.library-column-view listview row:nth-child(even):hover {
     padding: 10px;
 }
 
-.game-banner.hero-dark .game-detail-meta,
-.game-banner.hero-dark .game-detail-summary,
-.game-banner.hero-dark .cover-badge {
-    text-shadow:
-        0 2px 7px alpha(black,0.82),
-        0 0 10px alpha(white,0.10);
-}
 
 .game-banner-title {
     color: @window_fg_color;
     font-size: 42px;
     font-weight: 600;
     letter-spacing: -0.8px;
-    text-shadow: 0 0 8px alpha(black,0.78), 0 0 20px alpha(black,0.42);
+    text-shadow: 0 0 8px alpha(black,0.39), 0 0 20px alpha(black,0.21);
 }
 
 .game-banner-title.detail-title-md {
@@ -2639,7 +2662,7 @@ headerbar, .titlebar {
 .library-column-title {
     color: @window_fg_color;
     margin-bottom: 4px;
-    font-size: 13px;
+    font-size: 16px;
     font-weight: 700;
 }
 
@@ -3201,6 +3224,7 @@ class Window(Adw.ApplicationWindow):
         self.busy=False;self.task_kind='';self.pending=None;self.cancel_art=threading.Event();self.log=[];self.dialog=None;self.review=None;self.action_buttons=[]
         self.connect('close-request',self.close_request)
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)
+        apply_neutral_palette()
         self.overlay=Adw.ToastOverlay();self.overlay.add_css_class('forge-toasts');self.set_content(self.overlay)
         stage=Gtk.Overlay();self.overlay.set_child(stage)
         outer=Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -3587,8 +3611,9 @@ class Window(Adw.ApplicationWindow):
         self.reset_all=icon_button(
             'Reset Presets',
             'edit-undo-symbolic',
-            self.apply_library_settings,
+            self.reset_library_settings,
         )
+        self.apply_presets=icon_button('Apply Presets','emblem-ok-symbolic',self.apply_library_settings,'suggested-action')
         # Reset belongs to Presets, not the file actions.
 
         tuning,self.tuning_widgets=self.tuning_controls(
@@ -3950,10 +3975,18 @@ class Window(Adw.ApplicationWindow):
         preset_body.set_margin_top(16)
         preset_body.append(tuning)
         self.reset_all.set_halign(Gtk.Align.END)
-        preset_body.append(self.reset_all)
+        self.reset_all.set_valign(Gtk.Align.START)
+        self.preset_actions=Gtk.Box(spacing=8,halign=Gtk.Align.END,valign=Gtk.Align.START,visible=False)
+        self.preset_actions.append(self.reset_all)
+        self.preset_actions.append(self.apply_presets)
         self.presets_expander.set_child(preset_body)
         self.presets_expander.connect('notify::expanded',lambda widget,*_:top.set_margin_bottom(16 if widget.get_expanded() else 8))
-        hero.append(self.presets_expander)
+        preset_section=Gtk.Overlay()
+        preset_section.set_child(self.presets_expander)
+        preset_section.add_overlay(self.preset_actions)
+        preset_section.set_measure_overlay(self.preset_actions,False)
+        self.presets_expander.connect('notify::expanded',lambda widget,*_:self.preset_actions.set_visible(widget.get_expanded()))
+        hero.append(preset_section)
         if not self.settings.get('presets_hint_seen',False):
             preset_light.set_visible(True)
             GLib.timeout_add(4000,lambda:(preset_light.set_visible(False),False)[1])
@@ -4009,8 +4042,8 @@ class Window(Adw.ApplicationWindow):
         ):
             toggle=Gtk.ToggleButton(
                 icon_name={
-                    'posters':'view-grid-symbolic',
-                    'capsules':'view-dual-symbolic',
+                    'posters':'rtx-posters-symbolic',
+                    'capsules':'view-grid-symbolic',
                     'list':'view-list-symbolic',
                 }[key]
             )
@@ -4285,7 +4318,7 @@ class Window(Adw.ApplicationWindow):
             collapse_header,
         )
 
-        self.flow=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,column_spacing=14,row_spacing=16,min_children_per_line=1,max_children_per_line=12,homogeneous=False,valign=Gtk.Align.START);margins(self.flow,18);self.flow.set_margin_top(0);self.flow.set_margin_bottom(LIBRARY_BOTTOM_CLEARANCE);scroll.set_child(self.flow)
+        self.flow=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,column_spacing=14,row_spacing=16,min_children_per_line=1,max_children_per_line=12,homogeneous=False,valign=Gtk.Align.START);margins(self.flow,18);self.flow.set_margin_top(16);self.flow.set_margin_bottom(LIBRARY_BOTTOM_CLEARANCE);scroll.set_child(self.flow)
         self.flow.add_css_class(
             'library-flow'
         )
@@ -4321,7 +4354,7 @@ class Window(Adw.ApplicationWindow):
         selection_tools=Gtk.Box(spacing=12)
         margins(selection_tools,16)
         selection_tools.set_margin_top(0)
-        selection_tools.set_margin_bottom(8)
+        selection_tools.set_margin_bottom(0)
         selection_tools.append(self.selected_label)
         for widget in (select_all, clear_selection):
             library_tools.remove(widget)
@@ -4339,7 +4372,7 @@ class Window(Adw.ApplicationWindow):
         size_content.append(hint)
         size_popover=Gtk.Popover()
         size_popover.set_child(size_content)
-        self.size_button=Gtk.MenuButton(icon_name='view-fullscreen-symbolic')
+        self.size_button=Gtk.MenuButton(icon_name='rtx-card-size-symbolic')
         self.size_button.set_tooltip_text('Card size')
         self.size_button.update_property([Gtk.AccessibleProperty.LABEL],['Card size'])
         self.size_button.set_popover(size_popover)
@@ -4738,7 +4771,7 @@ class Window(Adw.ApplicationWindow):
         # Preferred density adapts only when cards become cramped or oversized.
         preferred=max(3,min(9,int(self.settings.get('library_columns',7))))
         preferred_gap=16
-        minimum_width=180 if view=='posters' else 220
+        minimum_width=200 if view=='posters' else 220
         maximum_width=300 if view=='posters' else 380
         slot_count=preferred
         while slot_count>3 and (usable_width-preferred_gap*(slot_count-1))/slot_count<minimum_width:
@@ -5145,19 +5178,11 @@ class Window(Adw.ApplicationWindow):
                 )
                 title.queue_resize()
 
-            # Preserve full pill labels without letting their combined minimum
-            # width overrule the golden viewport/slot geometry.
             meta_row=entry.get('meta_row')
             if meta_row is not None:
-                pills=(entry['meta'], entry['test_meta'])
-                pill_width=max(pill.measure(Gtk.Orientation.HORIZONTAL, -1)[0]
-                               for pill in pills)
-                stacked=actual_art_width-16 < pill_width*2+4
-                meta_row.set_orientation(Gtk.Orientation.VERTICAL if stacked
-                                         else Gtk.Orientation.HORIZONTAL)
-                meta_row.set_homogeneous(not stacked)
-                for pill in pills:
-                    pill.set_halign(Gtk.Align.START if stacked else Gtk.Align.FILL)
+                meta_row.set_orientation(Gtk.Orientation.HORIZONTAL)
+                meta_row.set_homogeneous(True)
+                for pill in (entry['meta'],entry['test_meta']):pill.set_halign(Gtk.Align.FILL)
 
             if text_box is not None:
                 text_box.set_size_request(
@@ -7212,8 +7237,17 @@ class Window(Adw.ApplicationWindow):
             return
         import runtime_updates
         work=(lambda:runtime_updates.restore_game(self.service.config,game['game'])) if restore else (lambda:runtime_updates.manage(self.service.config,[game]))
-        self.start('DLSS File Management',work,lambda result:self.toast(
-            'Original DLSS files restored' if restore else f"DLSS files checked · {result['updated_games']} game updated"))
+        def finished(result):
+            if restore:
+                self.toast('Original DLSS files restored')
+            elif result['skipped']:
+                self.toast(result['skipped'][0])
+            else:
+                self.toast('DLSS files updated' if result['updated_games'] else 'No DLSS updates needed')
+            if self.detail_game==game['game'] and self.dialog is self.detail_dialog:
+                self.details(game)
+                self.detail_pages.set_visible_child_name('DLSS Files')
+        self.start('DLSS Files',work,finished)
 
     def toast(self,text):self.overlay.add_toast(Adw.Toast.new(str(text)))
     def profile_changed(self,group,*_):
@@ -7391,10 +7425,16 @@ class Window(Adw.ApplicationWindow):
     def chosen_strength(self):return self.tuning_values(self.tuning_widgets)['nr_strength']
     def defaults_changed(self):return any(self.settings.get(k)!=v for k,v in self.tuning_values(self.tuning_widgets).items())
     def strength_changed(self,*_):
-        self.reset_all.text_label.set_text('Apply Presets' if self.defaults_changed() else 'Reset Presets')
+        self.reset_all.text_label.set_text('Reset Selected Presets' if self.selected_game_ids else 'Reset Presets')
         if hasattr(self,'profile_group'):self.controls()
     def defaults_applied(self,values):
         self.settings.update(values);self.strength_changed()
+    def reset_library_settings(self,*_):
+        for key,widget in self.tuning_widgets.items():
+            value=self.settings[key]
+            if key=='mfg_multiplier':widget.set_selected(self.multiplier_values.index(value))
+            else:widget.set_value(value)
+        self.apply_library_settings()
     def apply_library_settings(self,*_):
         if self.games and any(g.get('installed') for g in self.games):self.launch_action('reset',not bool(self.selected_game_ids),visual_settings=self.tuning_values(self.tuning_widgets));return
         values=self.tuning_values(self.tuning_widgets)
@@ -7414,6 +7454,7 @@ class Window(Adw.ApplicationWindow):
         compatible=bool(self.hardware_info and self.hardware_info['ready'])
         self.install_all.set_sensitive(enabled and bool(self.games) and compatible);self.uninstall_all.set_sensitive(enabled and bool(self.games))
         self.reset_all.set_sensitive(enabled and (any(g.get('installed') for g in self.games) or self.defaults_changed()))
+        self.apply_presets.set_sensitive(enabled and (any(g.get('installed') for g in self.games) or self.defaults_changed()))
         for widget in self.tuning_widgets.values():widget.set_sensitive(enabled)
         for entry in self.cards.values():
             entry['reset'].set_sensitive(enabled)
@@ -8707,7 +8748,7 @@ class Window(Adw.ApplicationWindow):
         )
 
         meta_row=Gtk.Box(
-            orientation=Gtk.Orientation.VERTICAL,
+            orientation=Gtk.Orientation.HORIZONTAL,
             spacing=4,
             halign=Gtk.Align.FILL,
             valign=Gtk.Align.CENTER,
@@ -9330,8 +9371,8 @@ class Window(Adw.ApplicationWindow):
             halign=Gtk.Align.FILL,
             hexpand=True,
         )
-        identity.set_margin_start(20)
-        identity.set_margin_end(20)
+        identity.set_margin_start(16)
+        identity.set_margin_end(16)
 
         identity.set_margin_top(16)
         identity.set_margin_bottom(16)
@@ -9538,23 +9579,12 @@ class Window(Adw.ApplicationWindow):
         metadata_line.append(test_badge)
 
 
-        if game.get('description'):
-            summary=label(
-                game['description'],
-                'game-detail-summary',
-            )
-            summary.set_lines(
-                2
-            )
-            summary.set_max_width_chars(
-                54
-            )
-            summary.set_ellipsize(
-                Pango.EllipsizeMode.END
-            )
-            heading.append(
-                summary
-            )
+        summary=label(game.get('description') or '', 'game-detail-summary')
+        summary.set_lines(2)
+        summary.set_max_width_chars(54)
+        summary.set_ellipsize(Pango.EllipsizeMode.END)
+        summary.set_size_request(-1,34)
+        heading.append(summary)
 
         identity.append(
             heading
@@ -9616,6 +9646,7 @@ class Window(Adw.ApplicationWindow):
         for action_page in (
             'Overview',
             'Features',
+            'DLSS Files',
             'Notes',
             'Appearance',
         ):
@@ -9644,6 +9675,7 @@ class Window(Adw.ApplicationWindow):
         detail_icons={
             'Overview':'dialog-information-symbolic',
             'Features':'applications-system-symbolic',
+            'DLSS Files':'folder-symbolic',
             'Notes':'document-edit-symbolic',
             'Appearance':'applications-graphics-symbolic',
         }
@@ -9651,6 +9683,7 @@ class Window(Adw.ApplicationWindow):
         for name in (
             'Overview',
             'Features',
+            'DLSS Files',
             'Notes',
             'Appearance',
         ):
@@ -9717,7 +9750,7 @@ class Window(Adw.ApplicationWindow):
         self.detail_nav=nav
         def sync_detail_page(*_):
             name=pages.get_visible_child_name()
-            for index in range(4):
+            for index in range(5):
                 candidate=nav.get_row_at_index(index)
                 if candidate.page_name==name and nav.get_selected_row() is not candidate:
                     nav.select_row(candidate)
@@ -9769,7 +9802,8 @@ class Window(Adw.ApplicationWindow):
         presets_body.append(tuning)
         preset_reset=button('Reset Presets',lambda *_:self.launch_action('reset',targets=[game]))
         preset_reset.set_halign(Gtk.Align.END)
-        presets_body.append(preset_reset)
+        preset_actions=Gtk.Box(spacing=8,halign=Gtk.Align.END)
+        preset_actions.append(preset_reset)
         mode=game.get('feature_mode') or {'NR Only':'nr-only','MFG Only':'mfg-only'}.get(game.get('profile'),'nr-mfg')
         for key,w in widgets.items():w.set_sensitive(installed and not (key=='nr_strength' and mode=='mfg-only') and not (key=='mfg_multiplier' and mode=='nr-only'))
         apply=button(
@@ -9784,7 +9818,8 @@ class Window(Adw.ApplicationWindow):
         apply.set_valign(
             Gtk.Align.CENTER
         )
-        presets_body.append(apply)
+        preset_actions.append(apply)
+        presets_body.append(preset_actions)
         def changed(*_):apply.set_sensitive(installed and any(v!=game.get(k) for k,v in self.tuning_values(widgets).items() if widgets[k].get_sensitive()))
         for key,w in widgets.items():w.connect('notify::selected' if key=='mfg_multiplier' else 'value-changed',changed)
         changed();self.detail_tuning_widgets=widgets;self.detail_apply_settings=apply
@@ -9854,18 +9889,64 @@ class Window(Adw.ApplicationWindow):
                 )
 
             maintenance_row.add_suffix(action)
-        files=Adw.PreferencesGroup(title='DLSS File Management',description='Native Super Resolution, Ray Reconstruction and Frame Generation files are managed automatically when installing features. Provider-owned files stay with their stack.')
-        overview.append(files)
+        file_page=content['DLSS Files']
+        automatic=self.settings.get('manage_dlss_files',True)
+        file_page.append(label(
+            'Older native DLSS files are updated automatically when installing features.'
+            if automatic else 'Automatic file management is off in Settings. You can still update this game here.',
+            'dim-label'))
+        inventory=Adw.PreferencesGroup(title='Native DLSS Files',description='Provider-owned and private runtime files are managed with their feature stack.')
+        inventory_status=row('Checking files…','No files are changed by opening this tab.')
+        inventory.add(inventory_status)
+        file_page.append(inventory)
+        files=Adw.PreferencesGroup(title='File Management')
+        file_page.append(files)
+        file_buttons={}
         for title,subtitle,caption,restore in (
-            ('Native DLSS files','Check and update older supported files with automatic backups.','Update Files',False),
-            ('Previous DLSS files','Restore the last backed-up native files for this game.','Restore Files',True),
+            ('Update native files','Update older supported files with verified original backups.','Update Files',False),
+            ('Restore original files','Restore the latest native DLSS backup for this game.','Restore Files',True),
         ):
             item=row(title,subtitle)
             action=button(caption,lambda _,restore=restore:self.manage_dlss_files(game,restore))
             action.set_valign(Gtk.Align.CENTER)
-            action.set_sensitive(not self.options.demo)
+            action.set_sensitive(False)
             item.add_suffix(action)
             files.add(item)
+            file_buttons[restore]=action
+        loaded={'value':False}
+        def show_inventory(result):
+            if self.detail_dialog is not d:return
+            import runtime_updates
+            found,backups=result
+            inventory.remove(inventory_status)
+            if found['blocked']:
+                inventory.add(row('File management unavailable',found['blocked']))
+            elif not found['files']:
+                inventory.add(row('No independent native DLSS files','This game has no supported native files outside its managed feature stack.'))
+            for item in found['files']:
+                inventory.add(row(runtime_updates.COMPONENTS[item['component']],item['path']+' · '+item['current']))
+            file_buttons[False].set_sensitive(bool(found['files']) and not found['blocked'])
+            file_buttons[True].set_sensitive(bool(backups))
+            if backups:
+                files.add(row('Latest backup',backups[0]['date']))
+        def load_inventory(*_):
+            if self.detail_dialog is not d:return False
+            if pages.get_visible_child_name()!='DLSS Files' or loaded['value']:return False
+            if self.options.demo:
+                inventory_status.set_title('Preview mode')
+                inventory_status.set_subtitle('File versions appear here for your installed games. Game writes are disabled.')
+                loaded['value']=True
+                return False
+            if self.busy:
+                GLib.timeout_add(200,load_inventory)
+                return False
+            import runtime_updates
+            loaded['value']=True
+            self.start('Checking native DLSS files',lambda:(
+                runtime_updates.inspect(self.service.config,[game])[0],
+                runtime_updates.game_recoveries(self.service.config,game['game'])),show_inventory)
+            return False
+        pages.connect('notify::visible-child-name',load_inventory)
 
         notes_page=content['Notes'];record=game.get('test_record',{'status':'Untested','notes':''});choice=safe_dropdown(list(game_notes.STATES));choice.set_selected(list(game_notes.STATES).index(record.get('status','Untested')));choice.set_valign(Gtk.Align.CENTER)
         group=Adw.PreferencesGroup(title='Your Notes');notes_page.append(group);item=row('Test Result','Bench excludes this game from bulk installation and repair.');item.add_suffix(choice);group.add(item)
@@ -11277,12 +11358,12 @@ class Window(Adw.ApplicationWindow):
                     successful={str(plan['game'].root) for plan in review.get('plans',[]) if hasattr(plan.get('game'),'root')}
                     games=[game for game in self.operation_games if game['game'] in successful]
                     result=runtime_updates.manage(self.service.config,games) if games else {'updated_games':0,'skipped':[]}
-                    ui.line('DLSS File Management',f"{result['updated_games']} games updated")
+                    ui.line('DLSS Files',f"{result['updated_games']} games updated")
                     for reason in result['skipped']:ui.line('DLSS skipped',reason)
                 except Exception as exc:
                     # Feature installation succeeded; a failed optional network/file
                     # update must not masquerade as a failed feature installation.
-                    ui.line('DLSS File Management',f'No further file updates: {exc}')
+                    ui.line('DLSS Files',f'No further file updates: {exc}')
             return path
         self.start('Applying changes',apply_with_files,lambda path:self.completed(path,d,b,f))
     def completed(self,path,d,b,f):
@@ -11304,7 +11385,7 @@ class Window(Adw.ApplicationWindow):
         provider_keys=['y4my','dlss-unlocked'];provider=safe_combo_row(title='Provider',model=Gtk.StringList.new(['y4my Multipass','DLSS-Unlocked']),selected=provider_keys.index(self.settings.get('runtime_provider','y4my')));graphics.add(provider)
         nr_path=Adw.EntryRow(title='Local NR DLL for y4my');nr_path.set_text(self.settings.get('nr_runtime',''));graphics.add(nr_path)
         defaults=Adw.PreferencesGroup(title='Installation')
-        manage_files=Adw.SwitchRow(title='DLSS File Management',subtitle='Automatically update older native DLSS files when installing features. Keep verified original backups.',active=self.settings.get('manage_dlss_files',True))
+        manage_files=Adw.SwitchRow(title='DLSS Files',subtitle='Automatically update older native DLSS files when installing features. Keep verified original backups.',active=self.settings.get('manage_dlss_files',True))
         defaults.add(manage_files)
         modes=['nr-only','mfg-only','nr-mfg'];profile=safe_combo_row(title='Default Mode',model=Gtk.StringList.new(['NR Only','MFG Only','NR + MFG']),selected=modes.index(self.settings.get('default_profile','mfg-only')));defaults.add(profile)
         adopt=Adw.SwitchRow(title='Recognize Existing Features',subtitle='Allow updates to compatible installations from other tools.',active=self.settings['recognize_previous']);defaults.add(adopt)
@@ -11470,6 +11551,7 @@ class Window(Adw.ApplicationWindow):
             self.nr_only.set_enabled(selected_provider=='dlss-unlocked')
             self.profile_group.set_active_name(selected_mode)
             Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)
+            apply_neutral_palette()
             self.view_buttons[self.settings['library_view']].set_active(True)
             if self.options.demo:d.close();self.show_games(self.games,False);return
             self.start('Saving settings',lambda:library_media.save_settings(self.service.config,self.settings),lambda _:(d.close(),self.show_games(self.games,False),self.fetch_media()))
@@ -12694,8 +12776,7 @@ class Window(Adw.ApplicationWindow):
                     widget.set_value(0)
 
                 assert (
-                    self.reset_all.text_label.get_text()
-                    == 'Apply Presets'
+                    self.apply_presets.get_sensitive()
                 )
 
                 if key=='mfg_multiplier':

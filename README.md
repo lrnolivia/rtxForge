@@ -40,7 +40,7 @@ Changing a main-screen control turns **Reset All Settings** into **Apply Setting
 
 **Repair Feature Files** in Game Details restores missing or damaged feature files while preserving presets. **Reset Presets** lives beside the preset controls and applies your library defaults. **Install Features** and **Restore Original Files** manage the graphics additions to a game.
 
-Presets start collapsed. Installation offers an optional preset adjustment before continuing. Native **DLSS File Management** runs automatically during feature installation, with per-game update/restore controls in Game Details and a default-on switch in Settings. See [DLSS File Management](docs/DLSS-FILE-MANAGEMENT.md) for supported files and backup behavior.
+Presets start collapsed. Installation offers an optional preset adjustment before continuing. Native **DLSS Files** runs automatically during feature installation, with per-game update/restore controls in Game Details and a default-on switch in Settings. See [DLSS Files](docs/DLSS-FILES.md) for supported files and backup behavior.
 
 ## Library and reports
 

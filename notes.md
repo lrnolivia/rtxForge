@@ -644,3 +644,4 @@ Latest user request explicitly replaces the fixed 7/6 contract and previous prot
 - Card balance follow-up: compact footer now keeps pills 8px above Details with no expanding internal gap; spare row height stays in the title area, with 16px title margins on all sides.
 - Night main-window correction: explicit black upper pane and #181818 library pane restore visible two-tone separation; library cards remain deep neutral greys. Other themes and Game Details surfaces unchanged.
 - Night button follow-up: Restore gets an explicit muted-red surface; library selection, size, tuning and unselected Details buttons get visible neutral surfaces and quiet borders.
+- Light card polish: soft neutral card shadow, reduced footer tint (9% → 2.5%) and quieter Details fill; Untested uses neutral grey with readable amber text instead of a beige fill.

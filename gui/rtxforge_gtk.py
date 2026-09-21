@@ -62,11 +62,15 @@ def apply_neutral_palette():
         @define-color forge_library_list_hover #e2e2e2;
         @define-color forge_panel_bg #e9e9e9;
         @define-color accent_color #437500;
+        .game-card { box-shadow: 0 1px 3px alpha(black,0.06), 0 0 8px alpha(black,0.035); }
+        .game-card .card-footer { background: alpha(black,0.025); }
+        .game-card:not(.selected) .game-details { background: alpha(black,0.055); }
+        .game-card:not(.selected) .game-details:hover { background: alpha(black,0.085); }
         .game-banner .game-banner-title { color: #252525; text-shadow: none; }
         .game-detail-meta, .game-detail-summary { color: #414141; text-shadow: none; }
-        .library-test-pill.test-untested { background: #eee1c7; color: #765000; }
+        .library-test-pill.test-untested { background: #e6e6e6; color: #795000; }
         .library-test-pill.test-untested .library-pill-text,
-        .library-test-pill.test-untested .library-pill-icon { color: #765000; }
+        .library-test-pill.test-untested .library-pill-icon { color: #795000; }
         .library-test-pill.test-tested, .library-test-pill.pill-working { background: #dce9cf; color: #315b15; }
         .library-test-pill.test-tested .library-pill-text,
         .library-test-pill.test-tested .library-pill-icon { color: inherit; }

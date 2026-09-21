@@ -3,7 +3,7 @@ from pathlib import Path
 import json,urllib.request,urllib.parse,urllib.error,re,time,hashlib,html,math
 import transactions as t
 from storage import storage
-DEFAULTS={'library_columns':7,'presets_hint_seen':False,'manage_dlss_files':True,'game_accents':{},'sharpening_strength':0.5,'mfg_multiplier':2,'nr_strength':2.0,'runtime_provider':'y4my','enable_effects':True,'nr_runtime':'','dark':True,'library_view':'posters','art_scale':80,'cache_days':7,'network_timeout':10,'default_profile':'mfg-only','online_art':True,'steam_metadata':True,'recognize_previous':False,'extra_folders':[]}
+DEFAULTS={'theme':None,'library_columns':7,'presets_hint_seen':False,'manage_dlss_files':True,'game_accents':{},'sharpening_strength':0.5,'mfg_multiplier':2,'nr_strength':2.0,'runtime_provider':'y4my','enable_effects':True,'nr_runtime':'','dark':True,'library_view':'posters','art_scale':80,'cache_days':7,'network_timeout':10,'default_profile':'mfg-only','online_art':True,'steam_metadata':True,'recognize_previous':False,'extra_folders':[]}
 
 LEGACY_NR_STRENGTH={
     'off':0.0,

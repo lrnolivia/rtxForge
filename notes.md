@@ -629,3 +629,15 @@ Latest user request explicitly replaces the fixed 7/6 contract and previous prot
 - Fixed packaged BUILD_INFO.json newline so GitHub updates can identify the installed commit; CI now verifies metadata and native DLSS/contrast tests.
 - Testing/History explicitly deferred until UI, DLSS Files and publication are complete.
 - Follow-up: move gallery top/bottom padding outside the scrolling content so the toolbar gap cannot scroll away; retain 16px fixed library boundaries. Narrow screenshot verified.
+
+## 2026-09-21 — Theme and library follow-up
+
+- Preset Reset/Apply actions now live in a measured heading row, with 16px below; removed the overlapping unmeasured overlay. Shortened both labels in main and Game Details.
+- Fixed List action containment by moving horizontal padding around the ColumnView viewport rather than inside its list; action column measures natural button widths and keeps a 16px right inset.
+- View switches reuse gallery widgets and save without an operation toast or artwork fetch. Added contextual menus across gallery and List cells; more button uses the same actions.
+- Card count remains a preference, with broader comfortable width bounds (Poster 200–420, Wide 220–520) and no forced odd-number jump. An experimental strict override was rejected before publication; narrow cards remain protected. Diagonal size arrows restored.
+- Added persistent Light/Dark/Night selection. Light has softer neutral surfaces, charcoal shadow-free hero titles, readable semantic colors, and 50% native card shadow opacity. Night uses black/deep neutral surfaces. Dark hero accent adjusts value before saturation, preserving rich hues. Artwork-only accent borders have a 3px surround; neutral card titles avoid pastel substitutions. Hero surface matches the fade endpoint.
+- Removed redundant DLSS Files introductory line. Testing/History remains parked.
+- Dark-mode follow-up retains stock neutral surface colors, reduces panel/card tint differences, neutralizes the last blue-grey fallback and headerbar colors, and makes progress surfaces theme-aware.
+- Gallery refinements: matching 8px title/footer insets, subtle darker footer around pills and Details, no flexible gap before pills. View changes suppress transient header collapse while their scroll layout settles.
+- Verified complete dark/light desktop smoke, live Light/Dark/Night transitions, responsive narrow layouts, reusable view widgets, contextual menus and five contrast tests. Native light floating-dialog shadows are also halved.

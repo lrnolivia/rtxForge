@@ -45,3 +45,13 @@ def readable(color,backgrounds,minimum=4.5):
         choices.append((abs(endpoint-lightness)*high,candidate))
     if choices:return min(choices)[1]
     return max(('#000000','#ffffff'),key=lambda c:min(contrast(c,b) for b in backgrounds))
+
+
+def vibrant_readable(color, background, minimum=3.0):
+    """Prefer lifting value over washing out saturation for large accent text."""
+    if contrast(color,background)>=minimum:return color
+    h,s,v=colorsys.rgb_to_hsv(*rgb(color))
+    for step in range(1,101):
+        candidate=hex_color(colorsys.hsv_to_rgb(h,s,v+(1-v)*step/100))
+        if contrast(candidate,background)>=minimum:return candidate
+    return readable(color,background,minimum)

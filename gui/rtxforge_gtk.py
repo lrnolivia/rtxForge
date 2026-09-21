@@ -14,10 +14,13 @@ from desktop_service import DesktopService
 ACCENT_PROVIDERS={}
 ACCENT_SOURCES={}
 NEUTRAL_PROVIDER=None
+THEME_MODE='dark'
 
 
 def neutral_palette():
     dark=Adw.StyleManager.get_default().get_dark()
+    if dark and THEME_MODE=='night':
+        return dict(window='#080808',view='#000000',sidebar='#101010',card='#171717',fg='#e7e7e7',popover='#181818')
     return dict(window='#242424' if dark else '#f5f5f5',
                 view='#1e1e1e' if dark else '#fafafa',
                 sidebar='#2d2d2d' if dark else '#ebebeb',
@@ -34,8 +37,51 @@ def apply_neutral_palette():
     palette=neutral_palette()
     names={'window_bg_color':'window','view_bg_color':'view','sidebar_bg_color':'sidebar',
            'card_bg_color':'card','dialog_bg_color':'window','popover_bg_color':'popover',
-           'window_fg_color':'fg','view_fg_color':'fg','sidebar_fg_color':'fg','card_fg_color':'fg'}
-    NEUTRAL_PROVIDER.load_from_data(''.join(f'@define-color {name} {palette[value]};' for name,value in names.items()).encode())
+           'window_fg_color':'fg','view_fg_color':'fg','sidebar_fg_color':'fg','card_fg_color':'fg','dialog_fg_color':'fg','popover_fg_color':'fg',
+           'headerbar_bg_color':'window','headerbar_fg_color':'fg','headerbar_backdrop_color':'window',
+           'secondary_sidebar_bg_color':'sidebar','secondary_sidebar_fg_color':'fg'}
+    theme_css=''.join(f'@define-color {name} {palette[value]};' for name,value in names.items())
+    theme_css+='list.boxed-list, list.content, list.boxed-list-separate > row, .card { box-shadow: 0 0 0 1px alpha(black,0.03), 0 1px 3px 1px alpha(black,0.07), 0 2px 6px 2px alpha(black,0.03); }'
+    if THEME_MODE=='night':
+        theme_css+='@define-color forge_library_card_a #171717; @define-color forge_library_card_b #1b1b1b; @define-color forge_panel_bg #171717;'
+    elif Adw.StyleManager.get_default().get_dark():
+        theme_css+='@define-color forge_library_card_a mix(@sidebar_bg_color,@window_fg_color,0.05); @define-color forge_library_card_b mix(@sidebar_bg_color,@window_fg_color,0.075); @define-color forge_panel_bg alpha(@window_fg_color,0.08); @define-color forge_library_list_hover mix(@sidebar_bg_color,@window_fg_color,0.10);'
+    else:
+        theme_css+="""
+        @define-color forge_library_card_a #eeeeee;
+        @define-color forge_library_card_b #e9e9e9;
+        @define-color forge_library_card_hover #e2e2e2;
+        @define-color forge_library_list_hover #e2e2e2;
+        @define-color forge_panel_bg #e9e9e9;
+        @define-color accent_color #437500;
+        .game-banner .game-banner-title { color: #252525; text-shadow: none; }
+        .game-detail-meta, .game-detail-summary { color: #414141; text-shadow: none; }
+        .library-test-pill.test-untested { background: #eee1c7; color: #765000; }
+        .library-test-pill.test-untested .library-pill-text,
+        .library-test-pill.test-untested .library-pill-icon { color: #765000; }
+        .library-test-pill.test-tested, .library-test-pill.pill-working { background: #dce9cf; color: #315b15; }
+        .library-test-pill.test-tested .library-pill-text,
+        .library-test-pill.test-tested .library-pill-icon { color: inherit; }
+        .library-test-pill.pill-issue { background: #f1d8d5; color: #922d25; }
+        .library-test-pill.pill-na { background: #dddddd; color: #4a4a4a; }
+        .library-test-pill.pill-na .library-pill-icon, .library-test-pill.pill-na .library-pill-text { color: inherit; }
+        list.boxed-list, list.content, list.boxed-list-separate > row, .card {
+            box-shadow: 0 0 0 1px alpha(black,0.015), 0 1px 3px 1px alpha(black,0.035), 0 2px 6px 2px alpha(black,0.015);
+        }
+        floating-sheet > sheet { box-shadow: 0 0 14px 2px alpha(black,0.015), 0 0 5px 2px alpha(black,0.05), 0 0 0 1px alpha(black,0.025); }
+        .operation-bubble { box-shadow: 0 5px 18px alpha(black,0.16); }
+        .selection-count-pill { box-shadow: 0 1px 3px alpha(black,0.10); }
+        .bulk-remove { color: #9b3028; }
+        .library-list-chip.active, .library-list-status-dot.installed { color: #437500; }
+        .operation-complete, .operation-bubble .operation-complete { color: #376b18; }
+        .operation-bubble .operation-error { color: #a02d25; }
+        .eyebrow { color: #437500; }
+        .game-banner-title { text-shadow: none; }
+        .done-title { color: #376b18; }
+        .job-title { color: @window_fg_color; }
+        .library-column-actions button:hover { background: #d4d4d4; color: #222222; }
+        """
+    NEUTRAL_PROVIDER.load_from_data(theme_css.encode())
     sources=list(ACCENT_SOURCES.values())
     for provider in ACCENT_PROVIDERS.values():
         Gtk.StyleContext.remove_provider_for_display(Gdk.Display.get_default(),provider)
@@ -373,12 +419,9 @@ def artwork_accent(path,color=None):
 
     except Exception:
         accent_fg='#ffffff'
-        accent_dark='#18181b'
+        accent_dark='#181818'
 
     palette=neutral_palette()
-    card_backgrounds=[ui_colors.mix(palette['fg'],palette['sidebar'],weight) for weight in (0.08,0.13,0.18)]
-    card_backgrounds.append(ui_colors.mix('#000000',palette['sidebar'],0.18))
-    text_accent=ui_colors.readable(color,card_backgrounds)
     nav_accent=ui_colors.readable(color,ui_colors.mix(color,palette['sidebar'],0.10))
     accent_shadow=accent_dark
     accent_fg=ui_colors.readable(accent_fg,color)
@@ -386,7 +429,7 @@ def artwork_accent(path,color=None):
     button_fg=ui_colors.readable(accent_dark,ui_colors.mix('#ffffff',color,0.44))
     source_bg=ui_colors.mix('#ffffff',color,0.26)
     source_fg=ui_colors.readable(accent_shadow,source_bg)
-    hero_accent=ui_colors.readable(color,palette['window'])
+    hero_accent=ui_colors.vibrant_readable(color,palette['window'],3.0)
 
     name='art-'+color[1:]
 
@@ -398,8 +441,8 @@ def artwork_accent(path,color=None):
             # Poster / Wide Capsule selection border.
             f'.game-card.{name}.selected {{ '
             f'background: {color}; '
-            f'border-color: {color}; '
-            f'box-shadow: 0 2px 12px alpha({color},0.28); '
+            f'border-color: transparent; '
+            f'box-shadow: none; '
             f'}} '
 
             f'.game-card.{name}.selected .library-source-pill {{ background: {source_bg}; color: {source_fg}; }} '
@@ -418,9 +461,9 @@ def artwork_accent(path,color=None):
             f'color: white; '
             f'}} '
 
-            f'.game-card.{name}:hover {{ '
-            f'border-color: {color}; '
-            f'box-shadow: 0 0 10px alpha({color},0.28); '
+            f'.game-card.{name}:hover .gallery-artwork-frame, '
+            f'.game-card.{name}.selected .gallery-artwork-frame {{ '
+            f'box-shadow: inset 0 0 0 3px {color}; '
             f'}} '
 
             # Gtk.ColumnView: accent stays inside the Game and
@@ -470,7 +513,7 @@ def artwork_accent(path,color=None):
             f'}} '
 
             f'.game-card.{name}:hover .card-title {{ '
-            f'color: {text_accent}; '
+            f'color: @window_fg_color; '
             f'}} '
 
             f'.game-card.{name}.selected .card-title, '
@@ -481,7 +524,7 @@ def artwork_accent(path,color=None):
             f'.library-column-game.{name}:hover .library-column-title, '
             f'columnview.library-column-view row:hover '
             f'.library-column-game.{name} .library-column-title {{ '
-            f'color: {text_accent}; '
+            f'color: @window_fg_color; '
             f'}} '
 
             # Game Detail window keeps its accent semantics.
@@ -760,6 +803,7 @@ class LibraryPill(Gtk.Box):
             self._label
         )
 
+        self._content=content
         self.append(
             content
         )
@@ -1492,7 +1536,7 @@ button.game-detail-close {
 
 button.game-detail-close.light {
     background: alpha(white,0.82);
-    color: #212121;
+    color: @window_fg_color;
 }
 
 button.game-detail-close:hover {
@@ -1503,7 +1547,7 @@ button.game-detail-close.light:hover {
     background: alpha(white,0.90);
 }
 
-.game-banner { background: #262626; }
+.game-banner { background: @window_bg_color; }
 
 .game-detail-root {
     background: @window_bg_color;
@@ -1611,15 +1655,21 @@ button.game-detail-close.light:hover {
  */
 /* Compact, stable Library card labels. */
 .game-card .card-info {
-    padding: 8px;
+    padding: 0;
 }
+.game-card .card-footer {
+    padding: 8px;
+    background: alpha(black,0.09);
+    border-radius: 0 0 12px 12px;
+}
+.game-card .card-footer .library-meta-row { margin-top: 0; }
 
 
 .game-card .card-title {
     font-size: 16px;
     font-weight: 700;
     min-height: 0;
-    margin: 4px 0 0;
+    margin: 8px;
 }
 
 .game-card .card-meta {
@@ -1645,13 +1695,13 @@ button.game-detail-close.light:hover {
 }
 
 .game-card .game-details:hover {
-    background: #c9c9c9;
-    color: #212121;
+    background: alpha(@window_fg_color,0.16);
+    color: @window_fg_color;
     border-color: transparent;
 }
 
 .game-card .game-details:hover label {
-    color: #212121;
+    color: @window_fg_color;
 }
 
 
@@ -1781,7 +1831,7 @@ columnview.library-column-view header button:active {
 /* Equal physical padding at both List edges. */
 columnview.library-column-view listview {
     background: transparent;
-    padding: 16px 16px 0;
+    padding: 16px 0 0;
 }
 
 
@@ -1808,7 +1858,7 @@ columnview.library-column-view listview row:nth-child(even):hover {
 
 .library-column-actions {
     padding-left: 0;
-    padding-right: 18px;
+    padding-right: 0;
 }
 
 
@@ -1991,14 +2041,14 @@ columnview.library-column-view listview row:nth-child(even):hover {
 
 
 .library-column-actions button:hover {
-    background: #c9c9c9;
-    color: #212121;
+    background: alpha(@window_fg_color,0.16);
+    color: @window_fg_color;
     border-color: transparent;
 }
 
 .library-column-actions button:hover label,
 .library-column-actions button:hover image {
-    color: #212121;
+    color: @window_fg_color;
 }
 
 
@@ -2034,15 +2084,15 @@ columnview.library-column-view listview row:nth-child(even):hover {
 .progress-content {
     /* More breathing room against the modal's outer edges. */
     padding: 30px 34px 26px;
-    color: white;
+    color: @window_fg_color;
 }
 
 .progress-shade {
     background:
         linear-gradient(
             to right,
-            alpha(black,0.88),
-            alpha(black,0.48)
+            alpha(@window_bg_color,0.96),
+            alpha(@window_bg_color,0.88)
         );
 }
 
@@ -2068,7 +2118,7 @@ columnview.library-column-view listview row:nth-child(even):hover {
     /* 70% thinner than the old 2px treatment. */
     border: 0.6px solid alpha(black,0.60);
 
-    background: alpha(#0e0e0e,0.54);
+    background: @window_bg_color;
 }
 
 .progress-panel.done {
@@ -2163,14 +2213,14 @@ button.done-button.suggested-action:hover {
     min-height: 30px;
     padding: 5px 14px;
 
-    background: alpha(#333333,0.96);
-    color: white;
+    background: alpha(@window_fg_color,0.08);
+    color: @window_fg_color;
 
     border: 1px solid alpha(white,0.10);
 }
 
 .progress-inline-cancel:hover {
-    background: alpha(#3e3e3e,1.0);
+    background: alpha(@window_fg_color,0.12);
 }
 
 .art-progress progressbar trough {
@@ -2184,7 +2234,7 @@ button.done-button.suggested-action:hover {
 }
 
 .progress-content label {
-    color: white;
+    color: @window_fg_color;
 }
 
 
@@ -2319,7 +2369,7 @@ button.done-button.suggested-action:hover {
 }
 
 
-.game-card.selected { border-color: #76b900; box-shadow: 0 2px 12px alpha(#76b900,0.22); }
+.game-card.selected { border-color: transparent; box-shadow: none; }
 
 .library-ghost-card {
     border-radius: 14px;
@@ -2705,7 +2755,7 @@ flowbox.library-flow flowboxchild, flowbox.library-flow flowboxchild:hover, flow
 
 
 
-columnview.library-column-view header button:first-child { padding-left: 68px; }
+columnview.library-column-view header button:first-child { padding-left: 52px; }
 .presets-header { padding: 2px 0; border-radius: 6px; }
 .presets-hint-light {
     min-width: 5px;
@@ -3224,6 +3274,10 @@ class Window(Adw.ApplicationWindow):
         self.busy=False;self.task_kind='';self.pending=None;self.cancel_art=threading.Event();self.log=[];self.dialog=None;self.review=None;self.action_buttons=[]
         self.connect('close-request',self.close_request)
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)
+        global THEME_MODE
+        THEME_MODE=(self.settings.get('theme') or ('dark' if self.settings['dark'] else 'light'))
+        self.settings['dark']=THEME_MODE!='light'
+        Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)
         apply_neutral_palette()
         self.overlay=Adw.ToastOverlay();self.overlay.add_css_class('forge-toasts');self.set_content(self.overlay)
         stage=Gtk.Overlay();self.overlay.set_child(stage)
@@ -3609,11 +3663,11 @@ class Window(Adw.ApplicationWindow):
         bulk.append(self.uninstall_all)
 
         self.reset_all=icon_button(
-            'Reset Presets',
+            'Reset',
             'edit-undo-symbolic',
             self.reset_library_settings,
         )
-        self.apply_presets=icon_button('Apply Presets','emblem-ok-symbolic',self.apply_library_settings,'suggested-action')
+        self.apply_presets=icon_button('Apply','emblem-ok-symbolic',self.apply_library_settings,'suggested-action')
         # Reset belongs to Presets, not the file actions.
 
         tuning,self.tuning_widgets=self.tuning_controls(
@@ -3828,7 +3882,7 @@ class Window(Adw.ApplicationWindow):
         )
 
         self.sticky_reset_all=icon_button(
-            'Reset Presets',
+            'Reset',
             'edit-undo-symbolic',
             self.apply_library_settings,
         )
@@ -3970,6 +4024,8 @@ class Window(Adw.ApplicationWindow):
         preset_light=Gtk.Box(valign=Gtk.Align.CENTER,visible=False)
         preset_light.add_css_class('presets-hint-light')
         preset_label.append(preset_light)
+        preset_label.set_hexpand(True)
+        preset_label.append(Gtk.Box(hexpand=True))
         self.presets_expander.set_label_widget(preset_label)
         preset_body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
         preset_body.set_margin_top(16)
@@ -3981,10 +4037,8 @@ class Window(Adw.ApplicationWindow):
         self.preset_actions.append(self.apply_presets)
         self.presets_expander.set_child(preset_body)
         self.presets_expander.connect('notify::expanded',lambda widget,*_:top.set_margin_bottom(16 if widget.get_expanded() else 8))
-        preset_section=Gtk.Overlay()
-        preset_section.set_child(self.presets_expander)
-        preset_section.add_overlay(self.preset_actions)
-        preset_section.set_measure_overlay(self.preset_actions,False)
+        preset_label.append(self.preset_actions)
+        preset_section=self.presets_expander
         self.presets_expander.connect('notify::expanded',lambda widget,*_:self.preset_actions.set_visible(widget.get_expanded()))
         hero.append(preset_section)
         if not self.settings.get('presets_hint_seen',False):
@@ -4223,6 +4277,8 @@ class Window(Adw.ApplicationWindow):
             hscrollbar_policy=Gtk.PolicyType.AUTOMATIC,
             vscrollbar_policy=Gtk.PolicyType.AUTOMATIC,
         )
+        self.column_scroll.set_margin_start(16)
+        self.column_scroll.set_margin_end(16)
         self.column_scroll.set_overlay_scrolling(
             True
         )
@@ -4264,6 +4320,7 @@ class Window(Adw.ApplicationWindow):
         # Decorative top fade removed. The Library now begins
         # with ordinary physical spacing below its controls.
         def collapse_header(adj):
+            if getattr(self,'_switching_library_view',False):return
             value=adj.get_value()
             can_collapse=(
                 adj.get_upper()
@@ -4315,6 +4372,7 @@ class Window(Adw.ApplicationWindow):
                 viewbar.remove_css_class(
                     'stuck'
                 )
+        self._collapse_library_header=collapse_header
         scroll.get_vadjustment().connect(
             'value-changed',
             collapse_header,
@@ -4364,12 +4422,12 @@ class Window(Adw.ApplicationWindow):
             selection_tools.append(widget)
         self.columns_control=Gtk.SpinButton.new_with_range(3,9,1)
         self.columns_control.set_value(self.settings.get('library_columns',7))
-        self.columns_control.set_tooltip_text('Preferred games per row; adapts when cards become too small or large')
+        self.columns_control.set_tooltip_text('Preferred games per row; adjusts only to keep cards readable or avoid oversized cards')
         size_content=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12)
         margins(size_content,16)
         size_content.append(label('Games per row','heading'))
         size_content.append(self.columns_control)
-        hint=label('Adapts to the window to keep cards readable.','dim-label')
+        hint=label('Keeps your preferred count while cards fit comfortably. Adjusts only at narrow or very wide sizes.','dim-label')
         hint.set_max_width_chars(28)
         size_content.append(hint)
         size_popover=Gtk.Popover()
@@ -4774,18 +4832,12 @@ class Window(Adw.ApplicationWindow):
         preferred=max(3,min(9,int(self.settings.get('library_columns',7))))
         preferred_gap=16
         minimum_width=200 if view=='posters' else 220
-        maximum_width=300 if view=='posters' else 380
+        maximum_width=420 if view=='posters' else 520
         slot_count=preferred
         while slot_count>3 and (usable_width-preferred_gap*(slot_count-1))/slot_count<minimum_width:
             slot_count-=1
         while slot_count<9 and (usable_width-preferred_gap*(slot_count-1))/slot_count>maximum_width:
             slot_count+=1
-        if slot_count!=preferred and slot_count%2==0:
-            if slot_count>preferred and slot_count<9:
-                slot_count+=1
-            elif slot_count>3:
-                slot_count-=1
-
         visible_entries=[
             entry
             for entry in entries
@@ -4915,7 +4967,7 @@ class Window(Adw.ApplicationWindow):
 
         actual_art_width=max(
             1,
-            card_width-4,
+            card_width-10,
         )
 
         actual_art_height=max(
@@ -4995,7 +5047,7 @@ class Window(Adw.ApplicationWindow):
         provisional_height=(
             actual_art_height
             + info_height
-            + 4
+            + 7
         )
 
         # --------------------------------------------------------
@@ -5184,7 +5236,14 @@ class Window(Adw.ApplicationWindow):
             if meta_row is not None:
                 meta_row.set_orientation(Gtk.Orientation.HORIZONTAL)
                 meta_row.set_homogeneous(True)
-                for pill in (entry['meta'],entry['test_meta']):pill.set_halign(Gtk.Align.FILL)
+                for pill in (entry['meta'],entry['test_meta']):
+                    pill.set_halign(Gtk.Align.FILL)
+                    pill_width=max(16,(card_width-28)//2)
+                    pill.set_fixed_width(pill_width)
+                    pill._label.set_visible(pill_width>=76)
+                    pill.set_tooltip_text(pill._label.get_text())
+                    pill._content.set_margin_start(2 if pill_width<30 else 6 if pill_width<76 else 9)
+                    pill._content.set_margin_end(2 if pill_width<30 else 6 if pill_width<76 else 8)
 
             if text_box is not None:
                 text_box.set_size_request(
@@ -5227,7 +5286,7 @@ class Window(Adw.ApplicationWindow):
                 _natural_baseline,
             )=text_box.measure(
                 Gtk.Orientation.VERTICAL,
-                actual_art_width,
+                card_width-4,
             )
 
             tallest_footer=max(
@@ -5238,7 +5297,7 @@ class Window(Adw.ApplicationWindow):
         uniform_height=(
             actual_art_height
             + tallest_footer
-            + 4
+            + 7
         )
 
         for entry in entries:
@@ -5617,7 +5676,7 @@ class Window(Adw.ApplicationWindow):
                 'Actions',
                 None,
                 actions_factory,
-                170,
+                -1,
                 False,
                 False,
             ),
@@ -6208,6 +6267,7 @@ class Window(Adw.ApplicationWindow):
             root,
         )
 
+        self.attach_game_context(root,lambda: list_item.get_item().game if list_item.get_item() is not None else None)
         list_item.set_child(
             root
         )
@@ -6450,6 +6510,7 @@ class Window(Adw.ApplicationWindow):
         root._source=source
         root._path=path
 
+        self.attach_game_context(root,lambda: list_item.get_item().game if list_item.get_item() is not None else None)
         list_item.set_child(
             root
         )
@@ -6602,6 +6663,7 @@ class Window(Adw.ApplicationWindow):
         root._state=state
         root._test=test
 
+        self.attach_game_context(root,lambda: list_item.get_item().game if list_item.get_item() is not None else None)
         list_item.set_child(
             root
         )
@@ -6709,6 +6771,7 @@ class Window(Adw.ApplicationWindow):
         root._nr=nr
         root._mfg=mfg
 
+        self.attach_game_context(root,lambda: list_item.get_item().game if list_item.get_item() is not None else None)
         list_item.set_child(
             root
         )
@@ -6845,7 +6908,7 @@ class Window(Adw.ApplicationWindow):
             False
         )
         more.set_tooltip_text(
-            'Open game details'
+            'Game actions'
         )
 
         root.append(
@@ -6855,6 +6918,8 @@ class Window(Adw.ApplicationWindow):
             more
         )
 
+        root.set_margin_start(8)
+        root.set_margin_end(16)
         root._primary=primary
         root._more=more
         root._game=None
@@ -6873,6 +6938,7 @@ class Window(Adw.ApplicationWindow):
             root,
         )
 
+        self.attach_game_context(root,lambda: list_item.get_item().game if list_item.get_item() is not None else None)
         list_item.set_child(
             root
         )
@@ -7067,15 +7133,43 @@ class Window(Adw.ApplicationWindow):
             return
         self.launch_action('install', targets=[game])
 
-    def _column_more_clicked(
-        self,
-        _button,
-        root,
-    ):
+    def attach_game_context(self,widget,get_game):
+        gesture=Gtk.GestureClick(button=3)
+        def pressed(controller,_count,x,y):
+            game=get_game()
+            if game is not None:
+                controller.set_state(Gtk.EventSequenceState.CLAIMED)
+                self.game_context_menu(widget,game,x,y)
+        gesture.connect('pressed',pressed)
+        widget.add_controller(gesture)
+
+    def game_context_menu(self,widget,game,x=None,y=None):
+        pop=Gtk.Popover()
+        pop.set_parent(widget)
+        if x is not None:
+            rect=Gdk.Rectangle();rect.x=int(x);rect.y=int(y);rect.width=1;rect.height=1
+            pop.set_pointing_to(rect)
+        content=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4)
+        margins(content,6)
+        def add(caption,callback,enabled=True):
+            action=button(caption,lambda *_:(pop.popdown(),callback()))
+            action.add_css_class('flat');action.set_sensitive(enabled)
+            content.append(action)
+        add('Game Details',lambda:self.details(game))
+        def files():
+            self.details(game);self.detail_pages.set_visible_child_name('DLSS Files')
+        add('DLSS Files',files)
+        add('Install Features',lambda:self.launch_action('install',targets=[game]),not game.get('blocked') and not self.busy)
+        add('Restore Original Files',lambda:self.launch_action('uninstall',targets=[game]),bool(game.get('installed')) and not self.busy)
+        add('Open Folder',lambda:Gio.AppInfo.launch_default_for_uri(Path(game['game']).as_uri(),None),not self.options.demo)
+        pop.set_child(content)
+        pop.connect('closed',lambda *_:GLib.idle_add(lambda:(pop.unparent(),False)[1]))
+        pop.popup()
+        return pop
+
+    def _column_more_clicked(self,button,root):
         if root._game is not None:
-            self.details(
-                root._game
-            )
+            self.game_context_menu(button,root._game)
 
 
     def _column_activate(
@@ -7148,7 +7242,7 @@ class Window(Adw.ApplicationWindow):
             self.selected_game_ids
         )
         if hasattr(self,'reset_all') and not self.defaults_changed():
-            self.reset_all.text_label.set_text('Reset Selected Presets' if count else 'Reset Presets')
+            self.reset_all.text_label.set_text('Reset')
         for name in ('install_all','sticky_install_all'):
             widget=getattr(self,name,None)
             if widget:widget.text_label.set_text('Install Selected' if count else 'Install Features')
@@ -7212,26 +7306,32 @@ class Window(Adw.ApplicationWindow):
         ):
             return
 
+        self._switching_library_view=True
+        self.library_scroll.get_vadjustment().set_value(0)
+        self.column_scroll.get_vadjustment().set_value(0)
         self.settings['library_view']=key
 
-        self.show_games(
-            self.games,
-            False,
-        )
+        if key=='list':
+            self._column_reload_store()
+            self.library_stack.set_visible_child_name('list')
+        elif self.cards:
+            for entry in self.cards.values():self.paint_card(entry)
+            self.library_stack.set_visible_child_name('gallery')
+            self.update_library_spacing()
+            self.filter_games()
+        else:
+            self.show_games(self.games,False)
+
+        def settle_view():
+            self.library_scroll.get_vadjustment().set_value(0)
+            self.column_scroll.get_vadjustment().set_value(0)
+            self._switching_library_view=False
+            self._collapse_library_header(self.library_scroll.get_vadjustment())
+            return False
+        GLib.idle_add(settle_view)
 
         if not self.options.demo:
-            self.start(
-                'Saving library view',
-                lambda:library_media.save_settings(
-                    self.service.config,
-                    self.settings,
-                ),
-                lambda _:(
-                    self.fetch_media()
-                    if self.settings['online_art']
-                    else None
-                ),
-            )
+            library_media.save_settings(self.service.config,self.settings)
 
     def manage_dlss_files(self,game,restore=False):
         if self.options.demo:
@@ -7427,7 +7527,7 @@ class Window(Adw.ApplicationWindow):
     def chosen_strength(self):return self.tuning_values(self.tuning_widgets)['nr_strength']
     def defaults_changed(self):return any(self.settings.get(k)!=v for k,v in self.tuning_values(self.tuning_widgets).items())
     def strength_changed(self,*_):
-        self.reset_all.text_label.set_text('Reset Selected Presets' if self.selected_game_ids else 'Reset Presets')
+        self.reset_all.text_label.set_text('Reset')
         if hasattr(self,'profile_group'):self.controls()
     def defaults_applied(self,values):
         self.settings.update(values);self.strength_changed()
@@ -8571,6 +8671,9 @@ class Window(Adw.ApplicationWindow):
         overlay.add_css_class(
             'gallery-artwork-frame'
         )
+        overlay.set_margin_start(3)
+        overlay.set_margin_end(3)
+        overlay.set_margin_top(3)
         overlay.set_overflow(
             Gtk.Overflow.HIDDEN
         )
@@ -8840,14 +8943,15 @@ class Window(Adw.ApplicationWindow):
             test_meta
         )
 
-        text.append(Gtk.Box(vexpand=True))
-        text.append(
-            meta_row
-        )
+        footer=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4,vexpand=True)
+        footer.add_css_class('card-footer')
+        footer.append(meta_row)
+        footer.append(Gtk.Box(vexpand=True,height_request=0))
+        text.append(footer)
 
         reset=button('Details',lambda *_:self.details(game));reset.add_css_class('game-details');reset.set_size_request(-1,28)
         reset.set_tooltip_text('Open game details and settings')
-        reset.set_sensitive(True);spacer=Gtk.Box(vexpand=False,height_request=8);text.append(spacer);text.append(reset)
+        reset.set_sensitive(True);footer.append(reset)
         self.flow.insert(
             card,
             -1,
@@ -8889,6 +8993,7 @@ class Window(Adw.ApplicationWindow):
             'data':game,
             'size':(width,height),
         };self.cards[game['game']]=entry;self.paint_card(entry)
+        self.attach_game_context(card,lambda:entry['data'])
     def paint_card(self,entry):
         game=entry['data']
 
@@ -9802,14 +9907,14 @@ class Window(Adw.ApplicationWindow):
         features.append(presets)
         presets_body.append(label('Tuning values for this game. Reset Presets applies your library defaults without replacing files.','dim-label'))
         presets_body.append(tuning)
-        preset_reset=button('Reset Presets',lambda *_:self.launch_action('reset',targets=[game]))
+        preset_reset=button('Reset',lambda *_:self.launch_action('reset',targets=[game]))
         preset_reset.set_halign(Gtk.Align.END)
         preset_actions=Gtk.Box(spacing=8,halign=Gtk.Align.END)
         preset_actions.append(preset_reset)
         mode=game.get('feature_mode') or {'NR Only':'nr-only','MFG Only':'mfg-only'}.get(game.get('profile'),'nr-mfg')
         for key,w in widgets.items():w.set_sensitive(installed and not (key=='nr_strength' and mode=='mfg-only') and not (key=='mfg_multiplier' and mode=='nr-only'))
         apply=button(
-            'Apply Presets',
+            'Apply',
             lambda *_:self.launch_action(
                 'reset',
                 targets=[game],
@@ -9892,11 +9997,6 @@ class Window(Adw.ApplicationWindow):
 
             maintenance_row.add_suffix(action)
         file_page=content['DLSS Files']
-        automatic=self.settings.get('manage_dlss_files',True)
-        file_page.append(label(
-            'Older native DLSS files are updated automatically when installing features.'
-            if automatic else 'Automatic file management is off in Settings. You can still update this game here.',
-            'dim-label'))
         inventory=Adw.PreferencesGroup(title='Native DLSS Files',description='Provider-owned and private runtime files are managed with their feature stack.')
         inventory_status=row('Checking files…','No files are changed by opening this tab.')
         inventory.add(inventory_status)
@@ -11506,19 +11606,23 @@ class Window(Adw.ApplicationWindow):
             )[1],
         )
 
-        theme_row=row('Color Theme','Choose Light or Dark. Changes apply and save immediately.')
+        theme_row=row('Color Theme','Light, Dark, or OLED Night. Applies and saves immediately.')
         theme_selector=Adw.ToggleGroup(valign=Gtk.Align.CENTER)
-        for key,caption in [('light','Light'),('dark','Dark')]:
+        for key,caption in [('light','Light'),('dark','Dark'),('night','Night')]:
             theme_selector.add(Adw.Toggle(name=key,label=caption))
-        theme_selector.set_active_name('dark' if self.settings['dark'] else 'light')
+        theme_selector.set_active_name((self.settings.get('theme') or ('dark' if self.settings['dark'] else 'light')))
         def change_theme(group,*_):
-            dark=group.get_active_name()=='dark'
+            global THEME_MODE
+            THEME_MODE=group.get_active_name()
+            self.settings['theme']=THEME_MODE
+            dark=THEME_MODE!='light'
             self.settings['dark']=dark
             Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if dark else Adw.ColorScheme.FORCE_LIGHT)
             apply_neutral_palette()
             if not self.options.demo:
                 saved=library_media.load_settings(self.service.config)
                 saved['dark']=dark
+                saved['theme']=THEME_MODE
                 library_media.save_settings(self.service.config,saved)
         theme_selector.connect('notify::active-name',change_theme)
         theme_row.add_suffix(theme_selector)
@@ -11565,7 +11669,7 @@ class Window(Adw.ApplicationWindow):
             selected_provider=provider_keys[provider.get_selected()];selected_mode=modes[profile.get_selected()]
             if selected_provider=='y4my' and selected_mode=='nr-only':self.toast('NR Only requires DLSS-Unlocked.');return
             settings_saved['value']=True
-            self.settings.update(manage_dlss_files=manage_files.get_active(),runtime_provider=selected_provider,nr_runtime=nr_path.get_text().strip(),default_profile=selected_mode,library_view=pending_library_view['value'],dark=theme_selector.get_active_name()=='dark',online_art=art.get_active(),steam_metadata=metadata.get_active(),network_timeout=timeout.get_value_as_int(),recognize_previous=adopt.get_active())
+            self.settings.update(manage_dlss_files=manage_files.get_active(),runtime_provider=selected_provider,nr_runtime=nr_path.get_text().strip(),default_profile=selected_mode,library_view=pending_library_view['value'],dark=theme_selector.get_active_name()!='light',online_art=art.get_active(),steam_metadata=metadata.get_active(),network_timeout=timeout.get_value_as_int(),recognize_previous=adopt.get_active())
             self.nr_only.set_enabled(selected_provider=='dlss-unlocked')
             self.profile_group.set_active_name(selected_mode)
             Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)
@@ -12525,7 +12629,7 @@ class Window(Adw.ApplicationWindow):
         try:
             assert (
                 self.reset_all.text_label.get_text()
-                in ('Reset Presets','Reset Selected Presets')
+                == 'Reset'
             )
 
             assert hasattr(
@@ -12808,7 +12912,7 @@ class Window(Adw.ApplicationWindow):
 
                 assert (
                     self.reset_all.text_label.get_text()
-                    in ('Reset Presets','Reset Selected Presets')
+                    == 'Reset'
                 )
 
             GLib.timeout_add(

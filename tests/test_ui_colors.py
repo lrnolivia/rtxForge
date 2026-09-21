@@ -1,7 +1,8 @@
 from pathlib import Path
 import sys,unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from ui_colors import readable,contrast,mix
+from ui_colors import readable,contrast,mix,vibrant_readable,rgb
+import colorsys
 
 class ContrastTest(unittest.TestCase):
     def test_standard_reference(self):
@@ -15,6 +16,12 @@ class ContrastTest(unittest.TestCase):
                 adjusted=readable(color,backgrounds)
                 for bg in backgrounds:
                     self.assertGreaterEqual(contrast(adjusted,bg),4.5,(color,adjusted,bg))
+    def test_large_red_title_stays_saturated(self):
+        for background in ('#242424','#080808'):
+            result=vibrant_readable('#822222',background)
+            self.assertGreaterEqual(contrast(result,background),3.0)
+            self.assertAlmostEqual(colorsys.rgb_to_hsv(*rgb(result))[1],colorsys.rgb_to_hsv(*rgb('#822222'))[1],delta=.01)
+
     def test_sidebar_composite(self):
         for color in ('#822222','#ec1629','#56b2e0'):
             for bg in ('#2d2d2d','#ebebeb'):

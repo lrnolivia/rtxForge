@@ -3655,7 +3655,7 @@ class Window(Adw.ApplicationWindow):
 
         hero.append(controls)
         profile_text=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=1,hexpand=True,valign=Gtk.Align.CENTER);controls.append(profile_text)
-        profile_text.append(label('Feature','heading'))
+        profile_text.append(label('Features','heading'))
         self.profile_note=label('','dim-label');self.profile_note.add_css_class('mode-description');self.profile_note.set_ellipsize(Pango.EllipsizeMode.END);self.profile_note.set_lines(1);self.profile_note.set_max_width_chars(42);profile_text.append(self.profile_note)
         self.profile_group=Adw.ToggleGroup(homogeneous=True,valign=Gtk.Align.CENTER)
         self.profile_group.add_css_class('mode-selector')

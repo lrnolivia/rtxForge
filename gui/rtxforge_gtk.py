@@ -1681,7 +1681,7 @@ button.game-detail-close.light:hover {
     font-size: 16px;
     font-weight: 700;
     min-height: 0;
-    margin: 16px;
+    margin: 12px 16px;
 }
 
 .game-card .card-meta {
@@ -5213,17 +5213,13 @@ class Window(Adw.ApplicationWindow):
                     title_class
                 )
 
-                # Maximum three lines. Font size already scales down with
-                # card width through art-title-xs/sm/md/lg.
-                title.set_wrap(
-                    True
-                )
-                title.set_wrap_mode(
-                    Pango.WrapMode.WORD_CHAR
-                )
-                title.set_lines(
-                    3
-                )
+                # Keep title space compact even when one name is unusually long.
+                title.set_wrap(True)
+                title.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
+                title.set_lines(2)
+                title.set_vexpand(True)
+                title.set_valign(Gtk.Align.FILL)
+                title.set_yalign(0.5)
                 title.set_single_line_mode(
                     False
                 )
@@ -5284,7 +5280,7 @@ class Window(Adw.ApplicationWindow):
 
         tallest_footer=info_height
 
-        for entry in entries:
+        for entry in visible_entries:
             text_box=entry.get(
                 'text'
             )
@@ -8831,16 +8827,14 @@ class Window(Adw.ApplicationWindow):
             'card-title',
         )
 
-        # Initial gallery state mirrors the live responsive contract.
-        title.set_wrap(
-            True
-        )
-        title.set_wrap_mode(
-            Pango.WrapMode.WORD_CHAR
-        )
-        title.set_lines(
-            3
-        )
+        # Center text vertically within the shared title area, never horizontally.
+        title.set_wrap(True)
+        title.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
+        title.set_lines(2)
+        title.set_vexpand(True)
+        title.set_valign(Gtk.Align.FILL)
+        title.set_yalign(0.5)
+        title.set_tooltip_text(game['name'])
         title.set_single_line_mode(
             False
         )
@@ -8959,7 +8953,6 @@ class Window(Adw.ApplicationWindow):
         footer=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8,vexpand=False)
         footer.add_css_class('card-footer')
         footer.append(meta_row)
-        text.append(Gtk.Box(vexpand=True))
         text.append(footer)
 
         reset=button('Details',lambda *_:self.details(game));reset.add_css_class('game-details');reset.set_size_request(-1,28)

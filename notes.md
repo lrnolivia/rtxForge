@@ -645,3 +645,4 @@ Latest user request explicitly replaces the fixed 7/6 contract and previous prot
 - Night main-window correction: explicit black upper pane and #181818 library pane restore visible two-tone separation; library cards remain deep neutral greys. Other themes and Game Details surfaces unchanged.
 - Night button follow-up: Restore gets an explicit muted-red surface; library selection, size, tuning and unselected Details buttons get visible neutral surfaces and quiet borders.
 - Light card polish: soft neutral card shadow, reduced footer tint (9% → 2.5%) and quieter Details fill; Untested uses neutral grey with readable amber text instead of a beige fill.
+- Compact title area: limit gallery titles to two lines, exclude filtered-out cards from height measurement, and let the title itself fill/vertically center within spare title space. Use 12px vertical / 16px horizontal title padding and left alignment; footer remains anchored.

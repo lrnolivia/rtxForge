@@ -462,6 +462,13 @@ def artwork_accent(path,color=None):
         provider=Gtk.CssProvider()
 
         provider.load_from_data((
+            f'columnview row.{name}.game-selected {{ background: {color}; color: {accent_dark}; }} '
+            f'columnview row.{name}.game-selected label, columnview row.{name}.game-selected .library-pill-icon {{ color: {accent_dark}; }} '
+            f'columnview row.{name}.game-selected .library-source-pill {{ background: {source_bg}; }} '
+            f'columnview row.{name}.game-selected .library-test-pill, columnview row.{name}.game-selected .library-list-chip {{ background: alpha(black,0.16); color: {accent_dark}; border-color: transparent; }} '
+            f'columnview row.{name}.game-selected .library-list-status-dot.installed {{ color: #76b900; }} '
+            f'columnview row.{name}.game-selected .library-list-status-dot.available {{ color: #ff928c; }} '
+            f'columnview row.{name} check:checked {{ background: alpha(white,0.72); color: {ui_colors.readable(color,ui_colors.mix("#ffffff",color,0.72))}; border-color: transparent; }} '
             # Poster / Wide Capsule selection border.
             f'.game-card.{name}.selected {{ '
             f'background: {color}; '
@@ -3736,6 +3743,9 @@ class Window(Adw.ApplicationWindow):
             'bulk-remove',
         )
         bulk.append(self.uninstall_all)
+        update_dlss=button('Update DLSS',self.update_library_dlss,'flat')
+        update_dlss.set_tooltip_text('Update older DLSS files across the library')
+        bulk.append(update_dlss)
 
 
         self.reset_all=icon_button(
@@ -3792,10 +3802,6 @@ class Window(Adw.ApplicationWindow):
         for mode,title in [('nr-only','NR Only'),('mfg-only','MFG Only'),('nr-mfg','NR + MFG')]:
             toggle=Adw.Toggle(name=mode,label=title,child=profile_label(mode,title));self.profile_group.add(toggle)
             if mode=='nr-only':self.nr_only=toggle;toggle.set_enabled(self.settings.get('runtime_provider','y4my')=='dlss-unlocked')
-        dlss_button=button('Update DLSS',self.update_library_dlss)
-        dlss_button.set_valign(Gtk.Align.CENTER)
-        dlss_button.set_margin_end(8)
-        controls.append(dlss_button)
         controls.append(self.profile_group)
         self.profile_group.connect('notify::active-name',self.profile_changed)
         self.profile_group.set_active_name(self.settings.get('default_profile','mfg-only'));self.profile_changed(self.profile_group)
@@ -10149,8 +10155,14 @@ class Window(Adw.ApplicationWindow):
             action=button(caption,lambda _,restore=restore:self.manage_dlss_files(game,restore))
             action.set_valign(Gtk.Align.CENTER)
             action.set_sensitive(False)
-            item.add_suffix(action)
-            files.add(item)
+            if restore:
+                item.add_suffix(action)
+                files.add(item)
+            else:
+                action.set_label('Update All')
+                action.set_tooltip_text('Update all older DLSS files for this game')
+                action.add_css_class('suggested-action')
+                detail_action_rows['DLSS Files'].append(action)
             file_buttons[restore]=action
         replace_row=row('Replace with verified copies','Also checks same-version files. Identical files are skipped; changed files are backed up.')
         replace_button=button('Replace Files',lambda *_:self.manage_dlss_files(game,replace_same=True))

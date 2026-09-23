@@ -659,3 +659,5 @@ Latest user request explicitly replaces the fixed 7/6 contract and previous prot
 - Artwork rim follow-up: artwork buttons snapshot only their image child, eliminating native button decoration beneath the dedicated ring. Pointer and keyboard button behavior retained; focus uses the shared artwork ring. Desktop smoke passed.
 
 - Artwork bleed correction: clip the image to an inset rounded rectangle (3px inset, 11px inner radius), and use an opaque neutral border. The frame band no longer contains image pixels. GTK desktop smoke passed.
+
+- Restored accent-filled selected List rows at user request; hover remains artwork-only. Moved bulk Update DLSS from Features to a quiet flat main action beside Install/Restore. Per-game DLSS Files now exposes Update All in the bottom-right footer instead of a duplicate inline Update Files action. Desktop and selection checks passed.

@@ -2347,14 +2347,14 @@ button.done-button.suggested-action:hover {
 
 .dashboard-actions button label { font-weight: 600; }
 button.dlss-outline {
-    background: transparent;
+    background: alpha(@window_fg_color,0.14);
     background-image: none;
-    border: 1px solid alpha(@window_fg_color,0.46);
+    border: 1px solid alpha(@window_fg_color,0.22);
     box-shadow: none;
     color: @window_fg_color;
 }
-button.dlss-outline:hover { background: alpha(@window_fg_color,0.05); }
-button.dlss-outline:active { background: alpha(@window_fg_color,0.09); }
+button.dlss-outline:hover { background: alpha(@window_fg_color,0.20); }
+button.dlss-outline:active { background: alpha(@window_fg_color,0.25); }
 .dashboard-tuning .control-pod scale { padding: 2px; }
 
 /* rtxForge dashboard tuning typography */

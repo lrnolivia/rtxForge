@@ -2342,6 +2342,15 @@ button.done-button.suggested-action:hover {
 .dashboard-actions { margin: 0; }
 
 .dashboard-actions button label { font-weight: 600; }
+button.dlss-outline {
+    background: transparent;
+    background-image: none;
+    border: 1px solid alpha(@window_fg_color,0.22);
+    box-shadow: none;
+    color: @window_fg_color;
+}
+button.dlss-outline:hover { background: alpha(@window_fg_color,0.05); }
+button.dlss-outline:active { background: alpha(@window_fg_color,0.09); }
 .dashboard-tuning .control-pod scale { padding: 2px; }
 
 /* rtxForge dashboard tuning typography */
@@ -3743,7 +3752,7 @@ class Window(Adw.ApplicationWindow):
             'bulk-remove',
         )
         bulk.append(self.uninstall_all)
-        update_dlss=button('Update DLSS',self.update_library_dlss,'flat')
+        update_dlss=button('Update DLSS',self.update_library_dlss,'dlss-outline')
         update_dlss.set_tooltip_text('Update older DLSS files across the library')
         bulk.append(update_dlss)
 

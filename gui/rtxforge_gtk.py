@@ -57,6 +57,7 @@ def apply_neutral_palette():
         theme_css+='@define-color forge_library_card_a mix(@sidebar_bg_color,@window_fg_color,0.05); @define-color forge_library_card_b mix(@sidebar_bg_color,@window_fg_color,0.075); @define-color forge_panel_bg alpha(@window_fg_color,0.08); @define-color forge_library_list_hover mix(@sidebar_bg_color,@window_fg_color,0.10);'
     else:
         theme_css+="""
+        @define-color forge_lower_bg #d8d8d8;
         @define-color forge_library_card_a #eeeeee;
         @define-color forge_library_card_b #e9e9e9;
         @define-color forge_library_card_hover #e2e2e2;
@@ -449,6 +450,7 @@ def artwork_accent(path,color=None):
     accent_fg=ui_colors.readable(accent_fg,color)
     accent_dark=ui_colors.readable(accent_dark,color)
     button_fg=ui_colors.readable(accent_dark,ui_colors.mix('#ffffff',color,0.44))
+    selected_title=ui_colors.mix('#ffffff',color,0.88) if sum(int(accent_dark[i:i+2],16) for i in (1,3,5))>600 else accent_dark
     source_bg=ui_colors.mix('#ffffff',color,0.26)
     source_fg=ui_colors.readable(accent_shadow,source_bg)
     hero_accent=ui_colors.vibrant_readable(color,palette['window'],3.0)
@@ -460,14 +462,6 @@ def artwork_accent(path,color=None):
         provider=Gtk.CssProvider()
 
         provider.load_from_data((
-            f'columnview row.{name}.game-selected {{ background: {color}; color: {accent_dark}; }} '
-            f'columnview row.{name}:hover {{ box-shadow: inset 0 0 0 2px {color}; }} '
-            f'columnview row.{name}.game-selected .library-pill, columnview row.{name}.game-selected .library-source-pill, columnview row.{name}.game-selected .library-test-pill, columnview row.{name}.game-selected .library-list-chip {{ background: alpha(black,0.16); color: {accent_dark}; border-color: transparent; }} '
-            f'columnview row.{name}.game-selected .library-source-pill {{ background: {source_bg}; }} '
-            f'columnview row.{name}.game-selected label, columnview row.{name}.game-selected .library-pill-icon {{ color: {accent_dark}; }} '
-            f'columnview row.{name}.game-selected .library-list-status-dot.installed {{ color: #76b900; }} '
-            f'columnview row.{name}.game-selected .library-list-status-dot.available {{ color: #ff928c; }} '
-            f'columnview row.{name} check:checked {{ background: alpha(white,0.72); color: {ui_colors.readable(color,ui_colors.mix("#ffffff",color,0.72))}; border-color: transparent; }} '
             # Poster / Wide Capsule selection border.
             f'.game-card.{name}.selected {{ '
             f'background: {color}; '
@@ -493,7 +487,7 @@ def artwork_accent(path,color=None):
 
             f'.game-card.{name}:hover .gallery-artwork-ring, '
             f'.game-card.{name}.selected .gallery-artwork-ring {{ '
-            f'box-shadow: inset 0 0 0 3px {color}; '
+            f'border-color: {color}; '
             f'}} '
 
             # Gtk.ColumnView: accent stays inside the Game and
@@ -501,7 +495,7 @@ def artwork_accent(path,color=None):
             f'.library-column-game.{name} '
             f'.library-column-art.selected-art {{ '
             f'border-color: {color}; '
-            f'box-shadow: 0 2px 10px alpha({color},0.28); '
+            f'box-shadow: none; '
             f'}} '
 
             f'.library-column-game.{name}:hover '
@@ -530,6 +524,7 @@ def artwork_accent(path,color=None):
 
             # Poster / Wide Capsule Details button is neutral at rest;
             # it becomes accent-filled only while the card is selected.
+            f'.game-card.{name}.selected .gallery-artwork-frame {{ background: alpha(white,0.44); }} '
             f'.game-card.{name}.selected .game-details {{ '
             f'background: alpha(white,0.44); '
             f'color: {button_fg}; '
@@ -543,18 +538,18 @@ def artwork_accent(path,color=None):
             f'}} '
 
             f'.game-card.{name}:hover .card-title {{ '
-            f'color: @window_fg_color; '
+            f'color: {ui_colors.readable(ui_colors.mix("#ffffff",color,0.78),palette["card"])}; '
             f'}} '
 
             f'.game-card.{name}.selected .card-title, '
             f'.game-card.{name}.selected:hover .card-title {{ '
-            f'color: {accent_dark}; '
+            f'color: {selected_title}; '
             f'}} '
 
             f'.library-column-game.{name}:hover .library-column-title, '
             f'columnview.library-column-view row:hover '
             f'.library-column-game.{name} .library-column-title {{ '
-            f'color: @window_fg_color; '
+            f'color: {ui_colors.readable(color,palette["card"])}; '
             f'}} '
 
             # Game Detail window keeps its accent semantics.
@@ -2290,7 +2285,7 @@ button.done-button.suggested-action:hover {
 
 
 .control-pod {
-    padding: 16px;
+    padding: 16px 24px;
     border-radius: 12px;
     background: @forge_panel_bg;
     border: 1px solid transparent;
@@ -2327,7 +2322,7 @@ button.done-button.suggested-action:hover {
 
 /* rtxForge dashboard tuning typography */
 .dashboard-tuning .control-pod {
-    padding: 16px;
+    padding: 16px 24px;
 }
 
 .dashboard-tuning .heading {
@@ -2614,19 +2609,20 @@ columnview.library-column-view header button {
  * Poster / Wide artwork frame
  *
  * Artwork occupies the FULL container.
- * The 3.5px ring is an INSET shadow painted over the artwork,
- * so it consumes zero layout space and cannot expose dark gaps.
+ * A plain 3px stroke is painted by a non-interactive overlay above the image.
  * ---------------------------------------------------------- */
 
 .game-card .gallery-artwork-ring {
     border-radius: 14px;
+    border: 3px solid alpha(@window_fg_color,0.12);
+    box-shadow: none;
     background: transparent;
 }
 
 .game-card .gallery-artwork-frame {
     border: none;
     border-radius: 14px;
-    background: transparent;
+    background: alpha(@window_fg_color,0.16);
     box-shadow: none;
 }
 
@@ -2830,7 +2826,11 @@ def profile_icon(mode):
     return {'nr-only':'rtx-brush-symbolic','mfg-only':'rtx-windows-symbolic','nr-mfg':'rtx-sparkle-symbolic'}[mode]
 
 def profile_label(mode,text):
-    box=Gtk.Box(spacing=6);box.append(Gtk.Image.new_from_icon_name(profile_icon(mode)));box.append(label(text));return box
+    box=Gtk.Box(spacing=6)
+    box.append(Gtk.Image.new_from_icon_name(profile_icon(mode)))
+    caption=label(text);caption.set_wrap(False);caption.set_single_line_mode(True)
+    box.append(caption)
+    return box
 
 def label(text,css=None):
     w=Gtk.Label(label=str(text),xalign=0,wrap=True)
@@ -3766,18 +3766,17 @@ class Window(Adw.ApplicationWindow):
 
         hero.append(controls)
         profile_text=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=1,hexpand=True,valign=Gtk.Align.CENTER);controls.append(profile_text)
-        feature_heading=Gtk.Box(spacing=12)
-        feature_heading.append(label('Features','heading'))
-        dlss_button=button('Update DLSS',self.update_library_dlss)
-        dlss_button.set_valign(Gtk.Align.CENTER)
-        feature_heading.append(dlss_button)
-        profile_text.append(feature_heading)
+        profile_text.append(label('Features','heading'))
         self.profile_note=label('','dim-label');self.profile_note.add_css_class('mode-description');self.profile_note.set_ellipsize(Pango.EllipsizeMode.END);self.profile_note.set_lines(1);self.profile_note.set_max_width_chars(42);profile_text.append(self.profile_note)
         self.profile_group=Adw.ToggleGroup(homogeneous=True,valign=Gtk.Align.CENTER)
         self.profile_group.add_css_class('mode-selector')
         for mode,title in [('nr-only','NR Only'),('mfg-only','MFG Only'),('nr-mfg','NR + MFG')]:
             toggle=Adw.Toggle(name=mode,label=title,child=profile_label(mode,title));self.profile_group.add(toggle)
             if mode=='nr-only':self.nr_only=toggle;toggle.set_enabled(self.settings.get('runtime_provider','y4my')=='dlss-unlocked')
+        dlss_button=button('Update DLSS',self.update_library_dlss)
+        dlss_button.set_valign(Gtk.Align.CENTER)
+        dlss_button.set_margin_end(8)
+        controls.append(dlss_button)
         controls.append(self.profile_group)
         self.profile_group.connect('notify::active-name',self.profile_changed)
         self.profile_group.set_active_name(self.settings.get('default_profile','mfg-only'));self.profile_changed(self.profile_group)
@@ -11741,7 +11740,7 @@ class Window(Adw.ApplicationWindow):
             )[1],
         )
 
-        theme_row=row('Color Theme','Changes are saved immediately.')
+        theme_row=row('App Theme','Changes only rtxForge. Saved immediately.')
         theme_selector=Adw.ToggleGroup(valign=Gtk.Align.CENTER)
         for key,caption in [('light','Light'),('dark','Dark'),('night','Night')]:
             theme_selector.add(Adw.Toggle(name=key,label=caption))

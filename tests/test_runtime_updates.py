@@ -53,6 +53,22 @@ class RuntimeUpdatesTest(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
+    def test_same_version_replacement_is_explicit_and_hash_guarded(self):
+        self.dll.write_bytes(pe(2) + b'different build')
+        with patch.object(runtime, 'catalog', return_value=self.snapshot):
+            self.assertEqual(runtime.manage(self.config, self.games)['updated_games'], 0)
+            self.assertEqual(runtime.manage(self.config, self.games, replace_same=True)['updated_games'], 1)
+            self.assertEqual(self.dll.read_bytes(), pe(2))
+            self.assertEqual(runtime.manage(self.config, self.games, replace_same=True)['updated_games'], 0)
+
+    def test_backup_is_evidence_not_shipping_proof(self):
+        self.assertEqual(runtime.backup_comparison(self.dll), 'Shipping version unknown')
+        backup = self.dll.with_suffix('.dlsss')
+        backup.write_bytes(pe(1))
+        self.assertEqual(runtime.backup_comparison(self.dll), 'Matches updater backup · 1.0.0.0')
+        self.dll.write_bytes(pe(2))
+        self.assertEqual(runtime.backup_comparison(self.dll), 'Differs from updater backup · 1.0.0.0')
+
     def plans(self):
         rows = runtime.inspect(self.config, self.games, self.snapshot)
         return runtime.prepare(self.config, self.snapshot, rows)

@@ -132,6 +132,20 @@ def _owned(engine, root, path):
     return False
 
 
+def backup_comparison(path):
+    """DLSS Updater/Swapper sidecars are prior files, not a shipping manifest."""
+    backup = path.with_suffix('.dlsss')
+    if not backup.is_file() or backup.is_symlink():
+        return 'Shipping version unknown'
+    try:
+        t.safe(backup)
+        previous = version(backup) or 'Unknown version'
+        matches = t.digest(path) == t.digest(backup)
+        return ('Matches' if matches else 'Differs from') + ' updater backup · ' + previous
+    except (OSError, ValueError, RuntimeError):
+        return 'Shipping version unknown'
+
+
 def inspect(config, games, snapshot=None):
     engine = engine_bridge.module(config)
     rows = []
@@ -163,7 +177,8 @@ def inspect(config, games, snapshot=None):
                     state = 'Newer installed'
                 row['files'].append({'path': rel.as_posix(), 'component': name,
                                      'current': current or 'Unknown', 'target': target['version'] if target else None,
-                                     'before': t.digest(path), 'status': state})
+                                     'before': t.digest(path), 'status': state,
+                                     'provenance': backup_comparison(path)})
         except Exception as exc:
             row['blocked'] = str(exc)
         rows.append(row)
@@ -267,7 +282,7 @@ def restore(config, state, apply=False):
     return t.rollback_transaction(state, apply)
 
 
-def manage(config, games):
+def manage(config, games, replace_same=False):
     """Routine install-time management: update older known native versions only."""
     snapshot = catalog(config)
     selected = []
@@ -277,7 +292,9 @@ def manage(config, games):
             skipped.append(row['name']+': '+row['blocked'])
             continue
         row['files'] = [item for item in row['files']
-                        if item['status'] == 'Update available' and item['current'] != 'Unknown']
+                        if (item['status'] == 'Update available' or
+                            (replace_same and item['status'] == 'Same version'))
+                        and item['current'] != 'Unknown']
         if row['files']:
             selected.append(row)
     plans = prepare(config, snapshot, selected)

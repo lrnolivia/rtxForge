@@ -42,6 +42,7 @@ def apply_neutral_palette():
            'secondary_sidebar_bg_color':'sidebar','secondary_sidebar_fg_color':'fg'}
     theme_css=''.join(f'@define-color {name} {palette[value]};' for name,value in names.items())
     theme_css+='list.boxed-list, list.content, list.boxed-list-separate > row, .card { box-shadow: 0 0 0 1px alpha(black,0.03), 0 1px 3px 1px alpha(black,0.07), 0 2px 6px 2px alpha(black,0.03); }'
+    theme_css+='\n    button.bulk-remove { border: 1px solid alpha(currentColor,0.18); }\n    .library-selection-tools button, button.view-action, \n    button.game-details, .library-column-actions button,\n    .progress-inline-cancel {\n        border: 1px solid alpha(@window_fg_color,0.035);\n    }\n    '
     if THEME_MODE=='night':
         theme_css+='@define-color forge_top_bg #000000; @define-color forge_lower_bg #181818; @define-color forge_library_card_a #222222; @define-color forge_library_card_b #262626; @define-color forge_panel_bg #171717;'
         theme_css+='''
@@ -66,7 +67,7 @@ def apply_neutral_palette():
         .game-card .card-footer { background: alpha(black,0.025); }
         .game-card:not(.selected) .game-details { background: alpha(black,0.055); }
         .game-card:not(.selected) .game-details:hover { background: alpha(black,0.085); }
-        .game-banner .game-banner-title { color: #252525; text-shadow: none; }
+        .game-banner .game-banner-title { text-shadow: none; }
         .game-detail-meta, .game-detail-summary { color: #414141; text-shadow: none; }
         .library-test-pill.test-untested { background: #e6e6e6; color: #795000; }
         .library-test-pill.test-untested .library-pill-text,
@@ -93,6 +94,15 @@ def apply_neutral_palette():
         .job-title { color: @window_fg_color; }
         .library-column-actions button:hover { background: #d4d4d4; color: #222222; }
         """
+    theme_css+='''
+    .linked button, spinbutton button, .control-pod spinbutton button { border-color: transparent; box-shadow: none; }
+    button.view-action:checked { background: alpha(@window_fg_color,0.24); color: @window_fg_color; }
+    .game-notes { border-radius: 12px; padding: 14px; background: @view_bg_color; border: 1px solid alpha(@window_fg_color,0.15); }
+    .game-notes text { background: transparent; color: @window_fg_color; }
+    .library-status-primary { background: alpha(black,0.16); padding: 0; border-radius: 99px; }
+    '''
+    if not Adw.StyleManager.get_default().get_dark():
+        theme_css+='button.forge-primary, button.suggested-action { background: #deebc9; color: #345b00; } button.forge-primary label { color: #345b00; }'
     NEUTRAL_PROVIDER.load_from_data(theme_css.encode())
     sources=list(ACCENT_SOURCES.values())
     for provider in ACCENT_PROVIDERS.values():
@@ -450,6 +460,14 @@ def artwork_accent(path,color=None):
         provider=Gtk.CssProvider()
 
         provider.load_from_data((
+            f'columnview row.{name}.game-selected {{ background: {color}; color: {accent_dark}; }} '
+            f'columnview row.{name}:hover {{ box-shadow: inset 0 0 0 2px {color}; }} '
+            f'columnview row.{name}.game-selected .library-pill, columnview row.{name}.game-selected .library-source-pill, columnview row.{name}.game-selected .library-test-pill, columnview row.{name}.game-selected .library-list-chip {{ background: alpha(black,0.16); color: {accent_dark}; border-color: transparent; }} '
+            f'columnview row.{name}.game-selected .library-source-pill {{ background: {source_bg}; }} '
+            f'columnview row.{name}.game-selected label, columnview row.{name}.game-selected .library-pill-icon {{ color: {accent_dark}; }} '
+            f'columnview row.{name}.game-selected .library-list-status-dot.installed {{ color: #76b900; }} '
+            f'columnview row.{name}.game-selected .library-list-status-dot.available {{ color: #ff928c; }} '
+            f'columnview row.{name} check:checked {{ background: alpha(white,0.72); color: {ui_colors.readable(color,ui_colors.mix("#ffffff",color,0.72))}; border-color: transparent; }} '
             # Poster / Wide Capsule selection border.
             f'.game-card.{name}.selected {{ '
             f'background: {color}; '
@@ -473,8 +491,8 @@ def artwork_accent(path,color=None):
             f'color: white; '
             f'}} '
 
-            f'.game-card.{name}:hover .gallery-artwork-frame, '
-            f'.game-card.{name}.selected .gallery-artwork-frame {{ '
+            f'.game-card.{name}:hover .gallery-artwork-ring, '
+            f'.game-card.{name}.selected .gallery-artwork-ring {{ '
             f'box-shadow: inset 0 0 0 3px {color}; '
             f'}} '
 
@@ -1282,7 +1300,30 @@ class FixedLibraryCard(Gtk.Box):
         )
 
 
+class SoftBackdropPicture(Gtk.Picture):
+    def do_snapshot(self,snapshot):
+        snapshot.push_blur(5.0)
+        Gtk.Picture.do_snapshot(self,snapshot)
+        snapshot.pop()
+        grain=Gdk.RGBA();grain.parse('rgba(255,255,255,0.025)')
+        width=self.get_width();height=self.get_height()
+        for index in range(400):
+            x=(index*73+19)%max(1,width);y=(index*137+11)%max(1,height)
+            snapshot.append_color(grain,Graphene.Rect().init(x,y,1,1))
+
 class HeroPicture(Gtk.Picture):
+    def do_snapshot(self,snapshot):
+        Gtk.Picture.do_snapshot(self,snapshot)
+        height=self.get_height();width=self.get_width()
+        for band in range(16):
+            fraction=(band+1)/16
+            rect=Graphene.Rect().init(0,height*(0.35+0.65*band/16),width,height*0.65/16+0.5)
+            snapshot.push_clip(rect)
+            snapshot.push_opacity(fraction*0.85)
+            snapshot.push_blur(fraction*8)
+            Gtk.Picture.do_snapshot(self,snapshot)
+            snapshot.pop();snapshot.pop();snapshot.pop()
+
     # The Game Details hero must crop as the window changes width,
     # not grow vertically with the artwork's aspect ratio.
     hero_height=280
@@ -2022,7 +2063,7 @@ columnview.library-column-view listview row:nth-child(even):hover {
 
 .library-status-line {
     min-width: 108px;
-    min-height: 24px;
+    min-height: 20px;
 }
 
 .library-status-primary {
@@ -2103,8 +2144,8 @@ columnview.library-column-view listview row:nth-child(even):hover {
     background:
         linear-gradient(
             to right,
-            alpha(@window_bg_color,0.96),
-            alpha(@window_bg_color,0.88)
+            alpha(@window_bg_color,0.90),
+            alpha(@window_bg_color,0.80)
         );
 }
 
@@ -2125,12 +2166,9 @@ columnview.library-column-view listview row:nth-child(even):hover {
  * Previous patch used 2px; these are 70% thinner.
  */
 .progress-panel {
-    border-radius: 22px;
-
-    /* 70% thinner than the old 2px treatment. */
-    border: 0.6px solid alpha(black,0.60);
-
-    background: @window_bg_color;
+    border-radius: 0;
+    border: none;
+    background: transparent;
 }
 
 .progress-panel.done {
@@ -2139,7 +2177,7 @@ columnview.library-column-view listview row:nth-child(even):hover {
 .progress-panel.done .progress-content { padding: 20px 24px; }
 
 .progress-poster-frame {
-    border-radius: 20px;
+    border-radius: 14px;
 
     /*
      * Neutral fallback only.
@@ -2148,15 +2186,16 @@ columnview.library-column-view listview row:nth-child(even):hover {
      * Keep the frame itself outside the clipping surface so the
      * rounded accent edge stays clean instead of being cut off.
      */
-    border: 1px solid alpha(white,0.18);
-
-    background: alpha(black,0.16);
-    padding: 2px;
+    box-shadow: none;
+    outline: none;
+    border: 3px solid alpha(white,0.18);
+    background: transparent;
+    padding: 0;
 }
 
 .progress-poster {
-    border-radius: 16px;
-    background: black;
+    border-radius: 11px;
+    background: transparent;
 }
 
 .job-title {
@@ -2579,23 +2618,28 @@ columnview.library-column-view header button {
  * so it consumes zero layout space and cannot expose dark gaps.
  * ---------------------------------------------------------- */
 
+.game-card .gallery-artwork-ring {
+    border-radius: 14px;
+    background: transparent;
+}
+
 .game-card .gallery-artwork-frame {
     border: none;
     border-radius: 14px;
-    background: @forge_library_card_a;
-    box-shadow: inset 0 0 0 3.5px @forge_library_card_a;
+    background: transparent;
+    box-shadow: none;
 }
 
 .game-card.library-stripe-a .gallery-artwork-frame {
     border-color: @forge_library_card_a;
-    background: @forge_library_card_a;
-    box-shadow: inset 0 0 0 3.5px @forge_library_card_a;
+    background: transparent;
+    box-shadow: none;
 }
 
 .game-card.library-stripe-b .gallery-artwork-frame {
     border-color: @forge_library_card_b;
-    background: @forge_library_card_b;
-    box-shadow: inset 0 0 0 3.5px @forge_library_card_b;
+    background: transparent;
+    box-shadow: none;
 }
 
 /* Image/button use the SAME outer radius.
@@ -3258,7 +3302,7 @@ class LibraryGameItem(GObject.Object):
 
 class Window(Adw.ApplicationWindow):
     def __init__(self,application,options):
-        super().__init__(application=application,title='rtxForge',default_width=1160,default_height=820)
+        super().__init__(application=application,title='rtxForge',default_width=1280,default_height=820)
         self.options=options;self.service=DesktopService(options.provider)
         self.settings=dict(library_media.DEFAULTS) if options.demo else library_media.load_settings(self.service.config)
 
@@ -3674,6 +3718,7 @@ class Window(Adw.ApplicationWindow):
         )
         bulk.append(self.uninstall_all)
 
+
         self.reset_all=icon_button(
             'Reset',
             'edit-undo-symbolic',
@@ -3711,7 +3756,7 @@ class Window(Adw.ApplicationWindow):
         self.operation_dismiss=Gtk.Button(icon_name='window-close-symbolic');self.operation_dismiss.add_css_class('operation-dismiss');self.operation_dismiss.set_tooltip_text('Dismiss');self.operation_dismiss.set_visible(False);self.operation_dismiss.connect('clicked',lambda *_:self.hide_operation_status());operation.append(self.operation_dismiss)
         for key,widget in self.tuning_widgets.items():widget.connect('notify::selected' if key=='mfg_multiplier' else 'value-changed',self.strength_changed)
         self.strength_changed()
-        self.reset_all.set_tooltip_text('Restore current sharpening, NR and menu-font defaults for managed games. Each configuration is backed up. Close running games first.')
+        self.reset_all.set_tooltip_text('Reset presets to the library defaults.')
         self.install_all.set_tooltip_text('One click: prepare, back up and install wherever possible across every library. Incompatible games are skipped.')
         self.uninstall_all.set_tooltip_text('One click: remove recorded OptiScaler installs across every library, with backups. Your games remain installed.')
         controls=Gtk.Box(spacing=14)
@@ -3721,7 +3766,12 @@ class Window(Adw.ApplicationWindow):
 
         hero.append(controls)
         profile_text=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=1,hexpand=True,valign=Gtk.Align.CENTER);controls.append(profile_text)
-        profile_text.append(label('Features','heading'))
+        feature_heading=Gtk.Box(spacing=12)
+        feature_heading.append(label('Features','heading'))
+        dlss_button=button('Update DLSS',self.update_library_dlss)
+        dlss_button.set_valign(Gtk.Align.CENTER)
+        feature_heading.append(dlss_button)
+        profile_text.append(feature_heading)
         self.profile_note=label('','dim-label');self.profile_note.add_css_class('mode-description');self.profile_note.set_ellipsize(Pango.EllipsizeMode.END);self.profile_note.set_lines(1);self.profile_note.set_max_width_chars(42);profile_text.append(self.profile_note)
         self.profile_group=Adw.ToggleGroup(homogeneous=True,valign=Gtk.Align.CENTER)
         self.profile_group.add_css_class('mode-selector')
@@ -3866,7 +3916,7 @@ class Window(Adw.ApplicationWindow):
 
         # Compact mirrors of the three library-wide dashboard actions.
         sticky_actions=Gtk.Box(
-            spacing=4,
+            spacing=12,
             valign=Gtk.Align.CENTER,
         )
         sticky_actions.add_css_class(
@@ -5278,6 +5328,21 @@ class Window(Adw.ApplicationWindow):
         # PRESERVE "TALLEST CARD WINS"
         # --------------------------------------------------------
 
+        for offset in range(0,len(visible_entries),slot_count):
+            group=visible_entries[offset:offset+slot_count]
+            measured=[]
+            for entry in group:
+                title=entry.get('title')
+                if title is None:continue
+                title.set_attributes(None)
+                layout=title.create_pango_layout(title.get_text())
+                layout.set_width(-1)
+                measured.append((title,layout.get_pixel_size()[0]))
+            available=max(1,card_width-36)
+            if any(width>available for _,width in measured):
+                for title,width in measured:
+                    if width*1.15<=available:
+                        attrs=Pango.AttrList();attrs.insert(Pango.attr_scale_new(1.15));title.set_attributes(attrs)
         tallest_footer=info_height
 
         for entry in visible_entries:
@@ -5548,6 +5613,7 @@ class Window(Adw.ApplicationWindow):
             'bind',
             bind,
         )
+        factory.connect('bind',lambda *_:GLib.idle_add(lambda:(self._column_sync_selection_widgets(),False)[1]))
 
         if unbind is not None:
             factory.connect(
@@ -5661,7 +5727,7 @@ class Window(Adw.ApplicationWindow):
                 'Location',
                 'location',
                 location_factory,
-                180,
+                240,
                 True,
                 False,
             ),
@@ -5711,7 +5777,7 @@ class Window(Adw.ApplicationWindow):
             )
 
             column.set_resizable(
-                resizable
+                False
             )
 
             # Game retains its explicit user-controlled width.
@@ -5799,8 +5865,8 @@ class Window(Adw.ApplicationWindow):
         width=column.get_fixed_width()
         if 0<=width<420:
             column.set_fixed_width(420)
-        if width>=0:
-            column.set_expand(False)
+        # Keep spare viewport space filled while individual columns resize.
+        column.set_expand(True)
 
 
     def _column_location_width_changed(
@@ -5820,13 +5886,7 @@ class Window(Adw.ApplicationWindow):
         if width<0:
             return
 
-        width=max(
-            160,
-            min(
-                360,
-                width,
-            ),
-        )
+        width=max(160,width)
 
         if width==column.get_fixed_width():
             return
@@ -6473,7 +6533,8 @@ class Window(Adw.ApplicationWindow):
             orientation=Gtk.Orientation.VERTICAL,
             spacing=1,
             valign=Gtk.Align.CENTER,
-            halign=Gtk.Align.START,
+            halign=Gtk.Align.FILL,
+            hexpand=True,
         )
         root.add_css_class(
             'library-column-cell'
@@ -6497,18 +6558,20 @@ class Window(Adw.ApplicationWindow):
             'library-list-location',
         )
         path.set_single_line_mode(
-            True
+            False
         )
         path.set_ellipsize(
-            Pango.EllipsizeMode.END
+            Pango.EllipsizeMode.NONE
         )
         path.set_width_chars(
             1
         )
         path.set_max_width_chars(
-            1
+            -1
         )
 
+        path.set_wrap(True)
+        path.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
         root.append(
             source
         )
@@ -7198,6 +7261,17 @@ class Window(Adw.ApplicationWindow):
 
     # ---------------- SHARED SELECTION ----------------
 
+    def _style_column_row(self,root,selected):
+        widget=root.get_parent()
+        while widget is not None and widget.get_css_name()!='row':
+            widget=widget.get_parent()
+        if widget is None:return
+        for name in widget.get_css_classes():
+            if name.startswith('art-'):widget.remove_css_class(name)
+        for name in root.get_css_classes():
+            if name.startswith('art-'):widget.add_css_class(name)
+        (widget.add_css_class if selected else widget.remove_css_class)('game-selected')
+
     def _column_sync_selection_widgets(self):
         for game_id,root in list(
             self.list_name_cells.items()
@@ -7207,6 +7281,7 @@ class Window(Adw.ApplicationWindow):
                 in self.selected_game_ids
             )
 
+            self._style_column_row(root,selected)
             root._binding=True
 
             try:
@@ -7342,12 +7417,33 @@ class Window(Adw.ApplicationWindow):
         if not self.options.demo:
             library_media.save_settings(self.service.config,self.settings)
 
-    def manage_dlss_files(self,game,restore=False):
+    def update_library_dlss(self,*_):
+        if self.busy:return
+        if self.options.demo:
+            self.toast('Preview mode · no files changed');return
+        import runtime_updates
+        games=list(self.games)
+        d,b,f=self.open_panel('Update DLSS',width=640,height=280,show_close=False)
+        self.operation_games=games
+        self.operation_cancel=threading.Event()
+        self.progress_view(b,'Checking DLSS files…')
+        clear(self.progress_cancel_box)
+        self.progress_cancel_box=None
+        d.set_can_close(False)
+        def work():return runtime_updates.manage(self.service.config,games)
+        def finished(result):
+            message=str(result['updated_games'])+' games updated.'
+            if result['skipped']:message+=' '+str(len(result['skipped']))+' games skipped; see Activity.'
+            self.log.extend(result['skipped'])
+            self.finish_progress(True,message,f)
+        self.start('Update DLSS',work,finished)
+
+    def manage_dlss_files(self,game,restore=False,replace_same=False):
         if self.options.demo:
             self.toast('Preview mode · game writes disabled')
             return
         import runtime_updates
-        work=(lambda:runtime_updates.restore_game(self.service.config,game['game'])) if restore else (lambda:runtime_updates.manage(self.service.config,[game]))
+        work=(lambda:runtime_updates.restore_game(self.service.config,game['game'])) if restore else (lambda:runtime_updates.manage(self.service.config,[game],replace_same=replace_same))
         def finished(result):
             if restore:
                 self.toast('Original DLSS files restored')
@@ -8748,6 +8844,11 @@ class Window(Adw.ApplicationWindow):
         overlay.set_child(
             click
         )
+        # Paint the ring AFTER the picture; parent CSS shadows sit beneath children.
+        ring=Gtk.Box(can_target=False, hexpand=True, vexpand=True)
+        ring.add_css_class('gallery-artwork-ring')
+        overlay.add_overlay(ring)
+        overlay.set_measure_overlay(ring,False)
         fallback=label(
             game['name'],
             'poster-fallback',
@@ -9153,6 +9254,9 @@ class Window(Adw.ApplicationWindow):
         finally:
             self._selection_syncing=False
 
+        for game_id,entry in self.cards.items():
+            method=entry['widget'].add_css_class if game_id in self.selected_game_ids else entry['widget'].remove_css_class
+            method('selected')
         self._column_sync_selection_widgets()
         self._update_selection_summary()
 
@@ -9693,6 +9797,7 @@ class Window(Adw.ApplicationWindow):
 
 
         summary=label(game.get('description') or '', 'game-detail-summary')
+        summary.set_tooltip_text(game.get('description') or '')
         summary.set_lines(2)
         summary.set_max_width_chars(54)
         summary.set_ellipsize(Pango.EllipsizeMode.END)
@@ -9911,7 +10016,7 @@ class Window(Adw.ApplicationWindow):
         presets_body.set_margin_top(16)
         presets.set_child(presets_body)
         features.append(presets)
-        presets_body.append(label('Tuning values for this game. Reset Presets applies your library defaults without replacing files.','dim-label'))
+        presets_body.append(label('Tuning values for this game. Reset restores your library presets. Apply saves them for this game.','dim-label'))
         presets_body.append(tuning)
         preset_reset=button('Reset',lambda *_:self.launch_action('reset',targets=[game]))
         preset_reset.set_halign(Gtk.Align.END)
@@ -10002,8 +10107,16 @@ class Window(Adw.ApplicationWindow):
                 )
 
             maintenance_row.add_suffix(action)
+        if game.get('description'):
+            description_group=Adw.PreferencesGroup(title='About the Game')
+            description=label(game['description'])
+            description.set_wrap(True)
+            description.set_ellipsize(Pango.EllipsizeMode.NONE)
+            description.set_selectable(True)
+            description_group.add(description)
+            content['Overview'].prepend(description_group)
         file_page=content['DLSS Files']
-        inventory=Adw.PreferencesGroup(title='Native DLSS Files',description='Provider-owned and private runtime files are managed with their feature stack.')
+        inventory=Adw.PreferencesGroup(title='Installed DLSS Files',description='Updater backups are previous copies, not proof of the version currently shipped by the game.')
         inventory_status=row('Checking files…','No files are changed by opening this tab.')
         inventory.add(inventory_status)
         file_page.append(inventory)
@@ -10011,8 +10124,8 @@ class Window(Adw.ApplicationWindow):
         file_page.append(files)
         file_buttons={}
         for title,subtitle,caption,restore in (
-            ('Update native files','Update older supported files with verified original backups.','Update Files',False),
-            ('Restore original files','Restore the latest native DLSS backup for this game.','Restore Files',True),
+            ('Update files','Update older supported files, keeping backups.','Update Files',False),
+            ('Restore original files','Restore the latest DLSS backup for this game.','Restore Files',True),
         ):
             item=row(title,subtitle)
             action=button(caption,lambda _,restore=restore:self.manage_dlss_files(game,restore))
@@ -10021,6 +10134,12 @@ class Window(Adw.ApplicationWindow):
             item.add_suffix(action)
             files.add(item)
             file_buttons[restore]=action
+        replace_row=row('Replace with verified copies','Also checks same-version files. Identical files are skipped; changed files are backed up.')
+        replace_button=button('Replace Files',lambda *_:self.manage_dlss_files(game,replace_same=True))
+        replace_button.set_valign(Gtk.Align.CENTER)
+        replace_button.set_sensitive(False)
+        replace_row.add_suffix(replace_button)
+        files.add(replace_row)
         loaded={'value':False}
         def show_inventory(result):
             if self.detail_dialog is not d:return
@@ -10030,10 +10149,11 @@ class Window(Adw.ApplicationWindow):
             if found['blocked']:
                 inventory.add(row('File management unavailable',found['blocked']))
             elif not found['files']:
-                inventory.add(row('No independent native DLSS files','This game has no supported native files outside its managed feature stack.'))
+                inventory.add(row('No supported DLSS files','No separate DLSS files were found outside the installed feature stack.'))
             for item in found['files']:
-                inventory.add(row(runtime_updates.COMPONENTS[item['component']],item['path']+' · '+item['current']))
+                inventory.add(row(runtime_updates.COMPONENTS[item['component']],item['path']+' · '+item['current']+' · '+item['provenance']))
             file_buttons[False].set_sensitive(bool(found['files']) and not found['blocked'])
+            replace_button.set_sensitive(bool(found['files']) and not found['blocked'])
             file_buttons[True].set_sensitive(bool(backups))
             if backups:
                 files.add(row('Latest backup',backups[0]['date']))
@@ -10062,6 +10182,7 @@ class Window(Adw.ApplicationWindow):
             wrap_mode=Gtk.WrapMode.WORD_CHAR,
             height_request=82,
         )
+        notes.add_css_class('game-notes')
         notes.get_buffer().set_text(
             record.get('notes','')
         )
@@ -10766,8 +10887,9 @@ class Window(Adw.ApplicationWindow):
         if not rows:self.toast('No eligible games selected.');return
         if operation=='install' and not _presets_confirmed:
             d,b,f=self.open_panel('Install Features',width=760,height=340)
-            b.append(label('Presets','title-2'))
-            b.append(label('Adjust your presets, or continue with the current values.'))
+            d.get_child().get_first_child().set_visible(False)
+            b.append(label('Install Features','title-2'))
+            b.append(label('Adjust your presets or continue. You can change these settings later in OptiScaler.'))
             tuning,widgets=self.tuning_controls(visual_settings if visual_settings is not None else rows[0] if len(rows)==1 else self.tuning_values(self.tuning_widgets))
             b.append(tuning)
             f.append(button('Cancel',lambda *_:d.close()))
@@ -10968,6 +11090,7 @@ class Window(Adw.ApplicationWindow):
             self.dialog.set_child(None)
 
             self.progress_shell=Gtk.Overlay()
+            self.progress_shell.set_overflow(Gtk.Overflow.HIDDEN)
             self.dialog.set_child(self.progress_shell)
 
             self.dialog.add_css_class('art-progress')
@@ -10979,7 +11102,7 @@ class Window(Adw.ApplicationWindow):
             )
 
             self.job_pictures=[
-                Gtk.Picture(
+                SoftBackdropPicture(
                     content_fit=Gtk.ContentFit.COVER,
                     can_shrink=True,
                 )
@@ -10989,6 +11112,7 @@ class Window(Adw.ApplicationWindow):
             for i,picture in enumerate(self.job_pictures):
                 self.job_art.add_named(picture,str(i))
 
+            self.job_art.set_visible(False)
             self.progress_shell.set_child(self.job_art)
 
             self.progress_shade=Gtk.Box()
@@ -11216,7 +11340,8 @@ class Window(Adw.ApplicationWindow):
             or game.get('poster')
         )
 
-        if hero:
+        self.job_art.set_visible(bool(hero and game.get('poster')))
+        if hero and game.get('poster'):
             try:
                 self.job_pictures[
                     self.job_picture_index
@@ -11329,13 +11454,11 @@ class Window(Adw.ApplicationWindow):
         clear(footer)
         footer.set_visible(False)
         self.progress_cancel_box=None
-        body=self.progress_body
-        clear(body)
-        backdrop=Gtk.Box()
-        backdrop.add_css_class('done-fallback')
-        self.progress_shell.set_child(backdrop)
-        self.progress_shade.set_visible(False)
-        self.progress_panel.add_css_class('done')
+        # Replace the entire progress layout so no poster-sized overlay survives.
+        body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        body.add_css_class('progress-content')
+        body.add_css_class('done-fallback')
+        self.dialog.set_child(body)
         line=Gtk.Box(spacing=24,valign=Gtk.Align.CENTER,vexpand=True)
         body.append(line)
         icon=Gtk.Image.new_from_icon_name('emblem-ok-symbolic' if success else 'dialog-warning-symbolic')
@@ -11344,13 +11467,16 @@ class Window(Adw.ApplicationWindow):
         line.append(icon)
         text=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True,valign=Gtk.Align.CENTER)
         text.append(label('Done' if success else 'Could not finish','title-1'))
-        text.append(label(message))
+        message_label=label(message)
+        message_label.set_wrap(True)
+        message_label.set_max_width_chars(44)
+        text.append(message_label)
         line.append(text)
         done=button('Done',lambda *_:(self.dialog.close(),self.scan()),'suggested-action')
         done.set_valign(Gtk.Align.END)
         line.append(done)
         self.dialog.set_content_width(500)
-        self.dialog.set_content_height(180)
+        self.dialog.set_content_height(-1)
         self.job_label=None
 
 
@@ -11420,6 +11546,9 @@ class Window(Adw.ApplicationWindow):
         self.progress_cancel_box=None
         f.set_visible(True)
 
+        if d is getattr(self,'progress_dialog',None):
+            d,b,f=self.open_panel(review.get('title','Review Changes'),width=640,height=420,show_close=False)
+        b.remove_css_class('progress-content')
         b.add_css_class('panel-body')
         self.job_label=None
         d.set_can_close(True)
@@ -11493,7 +11622,7 @@ class Window(Adw.ApplicationWindow):
         provider_keys=['y4my','dlss-unlocked'];provider=safe_combo_row(title='Provider',model=Gtk.StringList.new(['y4my Multipass','DLSS-Unlocked']),selected=provider_keys.index(self.settings.get('runtime_provider','y4my')));graphics.add(provider)
         nr_path=Adw.EntryRow(title='Local NR DLL for y4my');nr_path.set_text(self.settings.get('nr_runtime',''));graphics.add(nr_path)
         defaults=Adw.PreferencesGroup(title='Installation')
-        manage_files=Adw.SwitchRow(title='DLSS Files',subtitle='Automatically update older native DLSS files when installing features. Keep verified original backups.',active=self.settings.get('manage_dlss_files',True))
+        manage_files=Adw.SwitchRow(title='DLSS Files',subtitle='Update older DLSS files when installing features. Backups are kept for restoration.',active=self.settings.get('manage_dlss_files',True))
         defaults.add(manage_files)
         modes=['nr-only','mfg-only','nr-mfg'];profile=safe_combo_row(title='Default Mode',model=Gtk.StringList.new(['NR Only','MFG Only','NR + MFG']),selected=modes.index(self.settings.get('default_profile','mfg-only')));defaults.add(profile)
         adopt=Adw.SwitchRow(title='Recognize Existing Features',subtitle='Allow updates to compatible installations from other tools.',active=self.settings['recognize_previous']);defaults.add(adopt)
@@ -11612,7 +11741,7 @@ class Window(Adw.ApplicationWindow):
             )[1],
         )
 
-        theme_row=row('Color Theme','Light, Dark, or OLED Night. Applies and saves immediately.')
+        theme_row=row('Color Theme','Changes are saved immediately.')
         theme_selector=Adw.ToggleGroup(valign=Gtk.Align.CENTER)
         for key,caption in [('light','Light'),('dark','Dark'),('night','Night')]:
             theme_selector.add(Adw.Toggle(name=key,label=caption))

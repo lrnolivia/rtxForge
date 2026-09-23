@@ -54,3 +54,7 @@ A real FG download passed source-content, size and PE-version verification
 (SHA-256 `ff6e90eb78b827927dff5b4ecc6b1c870c2e9bca29ed9f48c7d348cc9e170b82`).
 Lifecycle/guard/failure tests use disposable folders; no installed games were
 updated to validate the tool.
+
+Installed files are not assumed to be the versions shipped by the game. When a DLSS Updater/Swapper `.dlsss` sidecar exists, inventory compares it by hash and shows its version. This is a previous backup, not an authoritative current depot baseline. Without such evidence the shipping version is unknown.
+
+**Replace Files** also checks same-version DLLs against the verified catalog download. Identical bytes are skipped; replacements use the existing backup and rollback transaction. Automatic updates still only select older known versions. The library-wide **Update DLSS** button uses that conservative update policy.

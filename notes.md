@@ -655,3 +655,5 @@ Latest user request explicitly replaces the fixed 7/6 contract and previous prot
 
 - Features bar correction: single-line labels; Update DLSS aligned on the right before the selector. Removed row-wide List accent fill/ring, retaining artwork accents and readable colored hover titles. Gallery titles use bright tinted highlights instead of white where a light foreground is needed.
 - Replaced the artwork inset shadow with a plain 3px stroke, matched its neutral color to Details controls, widened preset horizontal padding to 24px and darkened Light's library pane. Confirmed theme switching uses only the app's Adw StyleManager, with no GNOME settings writes; renamed setting App Theme.
+
+- Artwork rim follow-up: artwork buttons snapshot only their image child, eliminating native button decoration beneath the dedicated ring. Pointer and keyboard button behavior retained; focus uses the shared artwork ring. Desktop smoke passed.

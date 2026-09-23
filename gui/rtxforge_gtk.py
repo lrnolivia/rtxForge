@@ -486,6 +486,7 @@ def artwork_accent(path,color=None):
             f'}} '
 
             f'.game-card.{name}:hover .gallery-artwork-ring, '
+            f'.game-card.{name}:focus-within .gallery-artwork-ring, '
             f'.game-card.{name}.selected .gallery-artwork-ring {{ '
             f'border-color: {color}; '
             f'}} '
@@ -664,6 +665,14 @@ def hero_title_background_is_light(path):
 
     except Exception:
         return False
+
+
+class ArtworkButton(Gtk.Button):
+    """Keep button input/accessibility without painting a second artwork frame."""
+    def do_snapshot(self,snapshot):
+        child=self.get_child()
+        if child is not None:
+            self.snapshot_child(child,snapshot)
 
 
 class CoverPicture(Gtk.Picture):
@@ -2435,6 +2444,8 @@ button.done-button.suggested-action:hover {
  * including the artwork accent while selected.
  */
 .game-card .poster-button {
+    outline: none;
+    background-image: none;
     padding: 0;
     border: 0;
     border-width: 0;
@@ -8813,7 +8824,7 @@ class Window(Adw.ApplicationWindow):
             True
         )
 
-        click=Gtk.Button(
+        click=ArtworkButton(
             child=pic
         )
         click.add_css_class(

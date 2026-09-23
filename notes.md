@@ -657,3 +657,5 @@ Latest user request explicitly replaces the fixed 7/6 contract and previous prot
 - Replaced the artwork inset shadow with a plain 3px stroke, matched its neutral color to Details controls, widened preset horizontal padding to 24px and darkened Light's library pane. Confirmed theme switching uses only the app's Adw StyleManager, with no GNOME settings writes; renamed setting App Theme.
 
 - Artwork rim follow-up: artwork buttons snapshot only their image child, eliminating native button decoration beneath the dedicated ring. Pointer and keyboard button behavior retained; focus uses the shared artwork ring. Desktop smoke passed.
+
+- Artwork bleed correction: clip the image to an inset rounded rectangle (3px inset, 11px inner radius), and use an opaque neutral border. The frame band no longer contains image pixels. GTK desktop smoke passed.

@@ -7,7 +7,7 @@ ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'scripts'))
 APP_VERSION=(ROOT/'VERSION').read_text(encoding='utf-8').strip() if (ROOT/'VERSION').exists() else 'dev'
 import gi
 gi.require_version('Gtk','4.0');gi.require_version('Adw','1')
-from gi.repository import Gtk,Adw,GLib,Gio,Gdk,Graphene,Pango,GdkPixbuf,GObject
+from gi.repository import Gtk,Adw,GLib,Gio,Gdk,Gsk,Graphene,Pango,GdkPixbuf,GObject
 import ui,library_media,os,game_notes,ui_colors
 from desktop_service import DesktopService
 
@@ -672,7 +672,15 @@ class ArtworkButton(Gtk.Button):
     def do_snapshot(self,snapshot):
         child=self.get_child()
         if child is not None:
+            # The image must never occupy the frame's three-pixel band.
+            # CSS borders alone paint over an already rounded image and leave
+            # its antialiased edge visible through the surrounding surface.
+            bounds=Graphene.Rect().init(3,3,max(0,self.get_width()-6),max(0,self.get_height()-6))
+            clip=Gsk.RoundedRect()
+            clip.init_from_rect(bounds,11.0)
+            snapshot.push_rounded_clip(clip)
             self.snapshot_child(child,snapshot)
+            snapshot.pop()
 
 
 class CoverPicture(Gtk.Picture):
@@ -2619,13 +2627,13 @@ columnview.library-column-view header button {
 /* ----------------------------------------------------------
  * Poster / Wide artwork frame
  *
- * Artwork occupies the FULL container.
- * A plain 3px stroke is painted by a non-interactive overlay above the image.
+ * The picture is clipped inside the 3px frame band, with an 11px inner radius.
+ * The opaque border cannot blend with image pixels beneath it.
  * ---------------------------------------------------------- */
 
 .game-card .gallery-artwork-ring {
     border-radius: 14px;
-    border: 3px solid alpha(@window_fg_color,0.12);
+    border: 3px solid mix(@forge_library_card_a,@window_fg_color,0.12);
     box-shadow: none;
     background: transparent;
 }

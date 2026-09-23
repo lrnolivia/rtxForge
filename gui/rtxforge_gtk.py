@@ -554,10 +554,14 @@ def artwork_accent(path,color=None):
             f'color: {selected_title}; '
             f'}} '
 
-            f'.library-column-game.{name}:hover .library-column-title, '
-            f'columnview.library-column-view row:hover '
+            f'columnview.library-column-view row:not(.game-selected):hover '
             f'.library-column-game.{name} .library-column-title {{ '
             f'color: {ui_colors.readable(color,palette["card"])}; '
+            f'}} '
+
+            f'columnview.library-column-view row.{name}.game-selected .library-column-title, '
+            f'columnview.library-column-view row.{name}.game-selected:hover .library-column-game.{name} .library-column-title {{ '
+            f'color: {accent_dark}; '
             f'}} '
 
             # Game Detail window keeps its accent semantics.
@@ -10140,14 +10144,6 @@ class Window(Adw.ApplicationWindow):
                 )
 
             maintenance_row.add_suffix(action)
-        if game.get('description'):
-            description_group=Adw.PreferencesGroup(title='About the Game')
-            description=label(game['description'])
-            description.set_wrap(True)
-            description.set_ellipsize(Pango.EllipsizeMode.NONE)
-            description.set_selectable(True)
-            description_group.add(description)
-            content['Overview'].prepend(description_group)
         file_page=content['DLSS Files']
         inventory=Adw.PreferencesGroup(title='Installed DLSS Files',description='Updater backups are previous copies, not proof of the version currently shipped by the game.')
         inventory_status=row('Checking files…','No files are changed by opening this tab.')

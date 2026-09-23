@@ -2349,7 +2349,7 @@ button.done-button.suggested-action:hover {
 button.dlss-outline {
     background: transparent;
     background-image: none;
-    border: 1px solid alpha(@window_fg_color,0.22);
+    border: 1px solid alpha(@window_fg_color,0.46);
     box-shadow: none;
     color: @window_fg_color;
 }
@@ -3757,6 +3757,7 @@ class Window(Adw.ApplicationWindow):
         )
         bulk.append(self.uninstall_all)
         update_dlss=button('Update DLSS',self.update_library_dlss,'dlss-outline')
+        self.update_dlss_button=update_dlss
         update_dlss.set_tooltip_text('Update older DLSS files across the library')
         bulk.append(update_dlss)
 
@@ -4006,10 +4007,15 @@ class Window(Adw.ApplicationWindow):
         )
 
 
+        self.sticky_update_dlss=button('Update DLSS',self.update_library_dlss,'dlss-outline')
+        self.sticky_update_dlss.set_tooltip_text('Update older DLSS files across the library')
+        sticky_actions.append(self.sticky_update_dlss)
+
         # Mirror sensitivity from the canonical dashboard buttons so
         # this compact presentation never becomes a second source of
         # application state.
         for primary,compact in [
+            (self.update_dlss_button,self.sticky_update_dlss),
             (
                 self.install_all,
                 self.sticky_install_all,
@@ -7772,6 +7778,7 @@ class Window(Adw.ApplicationWindow):
 
         for b in (
             self.profile_group,
+            self.update_dlss_button,
             *self.view_buttons.values(),
         ):
             b.set_sensitive(

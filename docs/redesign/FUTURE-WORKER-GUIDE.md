@@ -1,5 +1,7 @@
 # rtxForge Future Worker Guide
 
+> Universal process authority: read `lrnolivia/loew-runner@main/LOEW_CHAT_BIBLE.md` and `contracts/manifest.json` first. This file is a repository-specific overlay and must not fork the universal operating contract.
+
 ## Current workflow
 
 The repository is normally:

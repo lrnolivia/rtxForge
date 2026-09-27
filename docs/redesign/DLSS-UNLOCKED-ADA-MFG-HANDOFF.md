@@ -1,5 +1,7 @@
 # rtxForge — DLSS-Unlocked / Ada MFG Backend Boundary
 
+> Universal process authority: read `lrnolivia/loew-runner@main/LOEW_CHAT_BIBLE.md` and `contracts/manifest.json` first. This file is a repository-specific overlay and must not fork the universal operating contract.
+
 This is a concise redesign-era backend handoff.
 
 UI redesign work must preserve the production graphics architecture.

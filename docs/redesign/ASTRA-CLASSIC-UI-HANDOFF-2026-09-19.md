@@ -1,5 +1,7 @@
 # rtxForge Classic UI — Astra Handoff — 2026-09-19
 
+> Universal process authority: read `lrnolivia/loew-runner@main/LOEW_CHAT_BIBLE.md` and `contracts/manifest.json` first. This file is a repository-specific overlay and must not fork the universal operating contract.
+
 ## Read this first
 
 The Classic GTK/libadwaita UI is extremely close to the intended final design, but tonight's late Library work introduced regressions.

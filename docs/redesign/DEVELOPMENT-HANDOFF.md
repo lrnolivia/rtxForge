@@ -1,5 +1,7 @@
 # DEVELOPMENT HANDOFF — rtxForge Libadwaita Redesign
 
+> Universal process authority: read `lrnolivia/loew-runner@main/LOEW_CHAT_BIBLE.md` and `contracts/manifest.json` first. This file is a repository-specific overlay and must not fork the universal operating contract.
+
 Updated: 2026-09-18
 
 ## Executive state

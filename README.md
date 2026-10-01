@@ -4,6 +4,11 @@
 
 ## Install and update
 
+For the complete Bazzite / RTX 4070 setup package, see
+[Installation](docs/INSTALLATION.md). Its verified installer prepares the
+selected runtime, preserves existing preferences and never modifies games.
+Fresh package installations select DLSS-Unlocked / MFG Only.
+
 The GitHub **continuous** prerelease is the moving development build used for live updates from `main`; it is not a numbered stable release. Download the Bazzite x86_64 AppImage from [Releases](https://github.com/lrnolivia/RTXForge/releases), mark it executable and open it. Choose **Install / update app** in Settings to register it in your launcher. Alternatively:
 
 ```sh
@@ -16,7 +21,8 @@ The persistent copy lives in `~/.local/share/rtxforge/application/RTXForge.AppIm
 
 Runtime state and recovery data default to `$XDG_STATE_HOME/rtxforge` (normally `~/.local/state/rtxforge`). Existing installations that already contain rtxForge state under `/var/mnt/Games/Ada-Lab/RTXForge` continue using it automatically. Set `RTXFORGE_STATE_ROOT=/absolute/path` to choose another state location.
 
-Package preparation requires `7z` or `7zz` on the host; on Bazzite, Homebrew `sevenzip` is a suitable option.
+DLSS-Unlocked ZIP preparation uses Python and needs no separate extractor.
+y4my extraction uses system libarchive, with `7z` / `7zz` / `bsdtar` fallbacks.
 
 ## Providers and installation
 
@@ -24,7 +30,7 @@ Settings offers **y4my Multipass** and **DLSS-Unlocked**, with complete, separat
 
 Choose **MFG Only**, **NR Only** (DLSS-Unlocked), or **NR + MFG**, select games, and review the floating action panel. Close Steam before applying so its launch settings can be saved safely. Uninstall the current provider before changing providers. Original terminal-edition baselines are reused; older desktop installations retain the legacy Undo path.
 
-Selected effects activate automatically on install or repair. y4my needs a suitable local NR DLL (Settings, an existing game copy, or a locally discovered model); DLSS-Unlocked supplies its own NR package. MFG Only omits NR DLLs; stock upstream builds may still show their NR menu.
+MFG activates on install or repair when selected. DLSS-Unlocked NR starts off and is toggled with F10; y4my uses the selected startup effects. y4my needs a suitable local NR DLL (Settings, an existing game copy, or a locally discovered model); DLSS-Unlocked supplies its own NR package. MFG Only omits NR DLLs; stock upstream builds may still show their NR menu.
 
 The engine leaves game-native DLSS-G in control: OptiScaler replacement input/output are `nofg`, with Ada unlock controlled separately. This corrects RC1.38's supposedly dormant `dlssg` output, which could initialize private Streamline at device creation even with FrameGen disabled. It is a source-level correction, not proof that every reported game crash is resolved.
 
@@ -63,7 +69,7 @@ Provider flags: `--runtime-provider y4my|dlss-unlocked`, `--feature-mode mfg-onl
 
 DLSS-Unlocked offers separate **NR Only** (pinned NR-v0.8.6; keep in-game FG off) and **MFG Only** (NR-v0.9.1, NR off, bundled NVIDIA runtime updates) pipelines. MFG Only backs up existing native DLLs and restores them on uninstall. Uninstall before changing pipelines. Combined NR + MFG remains available for experimentation.
 
-Selected effects are enabled automatically when installed or repaired. Choose DLSS and the FG multiplier in the game settings; opening the OptiScaler overlay is unnecessary. CLI diagnosis may use `--disable-effects`.
+Choose DLSS and the FG multiplier in the game settings; opening the OptiScaler overlay is unnecessary. DLSS-Unlocked NR starts off and F10 toggles it independently. CLI diagnosis may use `--disable-effects`.
 
 ## Interactive live smoke
 

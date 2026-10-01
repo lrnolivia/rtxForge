@@ -1,6 +1,10 @@
 #!/bin/sh
 set -eu
 root="${APPDIR:?}/usr/share/rtxforge"
+if [ "${1:-}" = --setup ]; then
+    shift
+    exec /usr/bin/python3 -B "$root/scripts/setup.py" "$@"
+fi
 if [ "${1:-}" = --install ]; then
     exec /usr/bin/python3 -B "$root/scripts/desktop_install.py"
 fi

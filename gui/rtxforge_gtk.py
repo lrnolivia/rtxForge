@@ -3634,7 +3634,9 @@ class Window(Adw.ApplicationWindow):
         # The Library side owns the shared seam spacing. Do not stack
         # another explicit gap beneath the dark dashboard.
         top.set_margin_bottom(8)
-        outer.append(top)
+        self.header_revealer=Gtk.Revealer(transition_type=Gtk.RevealerTransitionType.SLIDE_DOWN,transition_duration=220,reveal_child=True)
+        self.header_revealer.set_child(top)
+        outer.append(self.header_revealer)
         hero=Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
             spacing=16,
@@ -4455,7 +4457,7 @@ class Window(Adw.ApplicationWindow):
                 # Do not leave the old dashboard surface painted behind
                 # the sticky titlebar. This removes the residual hairline
                 # between the HeaderBar and Library surface.
-                top.set_visible(
+                self.header_revealer.set_reveal_child(
                     False
                 )
 
@@ -4473,7 +4475,7 @@ class Window(Adw.ApplicationWindow):
             elif value<10:
                 # Restore the full dashboard surface before revealing
                 # its contents again.
-                top.set_visible(
+                self.header_revealer.set_reveal_child(
                     True
                 )
 

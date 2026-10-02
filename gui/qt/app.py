@@ -67,8 +67,16 @@ class Controller(QObject):
         if value in ('all','installed','available'):self._filter=value;self.changed.emit()
     @Slot(str,str)
     def setPreference(self,key,value):
+        if self._busy:return
         if key=='default_profile' and value in ('mfg-only','nr-only','nr-mfg'):
             self.session.preferences(default_profile=value);self.changed.emit()
+    @Slot()
+    def cancelOperation(self):self.session.cancel()
+    @Slot(bool)
+    def selectAll(self,active):
+        if self._busy:return
+        for game in self.games:self.session.select(game['game'],active)
+        self._review={};self.changed.emit()
     @Slot(str,bool)
     def useCustom(self,values,trusted):
         try:parsed=json.loads(values)
@@ -85,6 +93,7 @@ class Controller(QObject):
         self.session.preferences(ui_mode=value);self.changed.emit()
     @Slot(str)
     def setStart(self,value):
+        if self._busy:return
         if value not in ('home','library') or self._busy:return
         self.session.preferences(start_page=value);self.changed.emit()
     @Slot(int,result=int)

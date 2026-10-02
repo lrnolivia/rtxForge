@@ -1067,6 +1067,38 @@ class CoreHardeningTests(unittest.TestCase):
         self.assertIn("FGInput=nofg",text);self.assertIn("FGOutput=nofg",text)
         self.assertFalse((self.target/"nvngx_dlssnr.dll").exists())
 
+    def test_reviewed_custom_zip_uses_existing_backup_and_restore_engine(self):
+        scripts = Path(__file__).resolve().parents[2] / 'scripts'
+        if str(scripts) not in sys.path:sys.path.insert(0,str(scripts))
+        import package_catalog
+        self.game.dlss = self.game.dlssg = True
+        archive=self.base/'custom.zip'
+        with zipfile.ZipFile(archive,'w') as z:
+            for name,data in self._sm86_payload().items():
+                if name.endswith('.dll') and not data.startswith(b'MZ'):data=b'MZ'+data
+                z.writestr(name,data)
+            z.writestr('install.sh','touch /must-not-run')
+        inspection=package_catalog.inspect_archive(archive)
+        record=package_catalog.custom_record(inspection,{'OverrideInterpolationCount':'2'},trusted=True)
+        payload,meta=package_catalog.load_custom_payload(record)
+        self.assertNotIn('install.sh',payload)
+        self.m.Y4MY_PROVIDER=record
+        native=self.target/'nvngx_dlssg.dll';native.write_bytes(b'MZ-original-native')
+        save=self.target/'save.dat';save.write_bytes(b'precious save')
+        self.m.install_target(self.game,payload,meta,'ada',feature_mode='mfg-only',enable_effects=True,mfg_multiplier=3,dry_run=True)
+        self.assertFalse((self.target/'OptiScaler.ini').exists())
+        self.assertEqual(native.read_bytes(),b'MZ-original-native')
+        self.m.install_target(self.game,payload,meta,'ada',feature_mode='mfg-only',enable_effects=True,mfg_multiplier=3)
+        baseline=self.m.load_baseline(self.target)
+        self.assertEqual(baseline['current']['provider_id'],record['id'])
+        text=(self.target/'OptiScaler.ini').read_text()
+        self.assertIn('FGInput=auto',text);self.assertIn('OverrideInterpolationCount=2',text)
+        self.assertEqual(native.read_bytes(),b'MZ-original-native')
+        self.m.restore_target(self.game)
+        self.assertFalse((self.target/'OptiScaler.ini').exists())
+        self.assertEqual(save.read_bytes(),b'precious save')
+        self.assertEqual(native.read_bytes(),b'MZ-original-native')
+
     def test_dlss_unlocked_keeps_its_model_and_restores_existing_model(self):
         self.game.dlss = self.game.dlssg = True
         self.m.Y4MY_PROVIDER = {**self.m.Y4MY_PROVIDER, 'id':'dlss-unlocked'}

@@ -197,8 +197,8 @@ def load_custom_payload(record):
     prefix = inspection['prefix']
     native = {'nvngx_dlss.dll', 'nvngx_dlssd.dll', 'nvngx_dlssg.dll', 'nvapi64.dll'}
     forbidden = {'dlss-enabler-headless.dll', 'dlssg_to_fsr3_amd_is_better.dll'}
-    root_allowed = {'dxgi.dll', 'optiscaler.ini', 'nvngx_dlssnr.dll', 'nvngx.dll_dlssnr.dll'}
-    canonical = {'dxgi.dll':'dxgi.dll', 'optiscaler.ini':'OptiScaler.ini',
+    root_allowed = {'dxgi.dll', 'optiscaler.dll', 'optiscaler.ini', 'nvngx_dlssnr.dll', 'nvngx.dll_dlssnr.dll'}
+    canonical = {'dxgi.dll':'dxgi.dll', 'optiscaler.dll':'OptiScaler.dll', 'optiscaler.ini':'OptiScaler.ini',
                  'optiscaler':'OptiScaler'}
     with zipfile.ZipFile(record['path']) as archive:
         for entry in inspection['files']:
@@ -213,6 +213,8 @@ def load_custom_payload(record):
             if '/' not in rel and (leaf in native or leaf.startswith('sl.')):
                 raise PackageError('Package replaces native game runtimes at the root; this adapter refuses that layout.')
             allowed = low in root_allowed or (low.startswith('optiscaler/') and low.endswith(('.dll', '.ini', '.json')))
+            if not allowed and low.endswith(('.dll','.asi','.addon32','.addon64')):
+                raise PackageError('Unrecognized plugin file needs a deployment adapter: '+rel)
             if not allowed:
                 continue  # Scripts, executables and other files are never deployed.
             content = archive.read(source)

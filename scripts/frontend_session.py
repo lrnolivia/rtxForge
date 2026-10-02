@@ -11,7 +11,7 @@ class FrontendSession:
         self.demo=demo;self.service=DesktopService()
         self.settings=dict(library_media.DEFAULTS) if demo else library_media.load_settings(self.service.config)
         self.games=[];self.selected=set();self.review=None;self.revision=0
-        self.lock=threading.RLock()
+        self.lock=threading.RLock();self.cancel_event=threading.Event()
 
     def invalidate(self):
         self.revision+=1;self.review=None
@@ -50,7 +50,11 @@ class FrontendSession:
             if self.review is None or revision!=self.revision:raise ValueError('Selection or settings changed. Review again.')
             review=self.review;self.review=None
             if not review.get('plans'):raise ValueError('No compatible changes to apply.')
+            self.cancel_event.clear();review['cancel_event']=self.cancel_event
             return self.service.execute(review)
+
+    def cancel(self):
+        self.cancel_event.set()
 
 
 def library_columns(width,preferred=7,view='posters'):

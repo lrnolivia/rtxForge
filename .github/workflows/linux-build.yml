@@ -35,6 +35,7 @@ jobs:
             gh \
             python3 \
             python3-gobject \
+            gobject-introspection \
             gtk4 \
             libadwaita \
             graphene \
@@ -77,6 +78,8 @@ jobs:
           /usr/bin/python3 -m unittest discover -s tests -p test_runtime_updates.py
           /usr/bin/python3 -m unittest discover -s tests -p test_ui_colors.py
           /usr/bin/python3 -m unittest discover -s tests -p test_operation_finalization.py
+          /usr/bin/python3 -m unittest discover -s tests -p test_setup.py
+          /usr/bin/python3 -m unittest discover -s tests -p test_package_download.py
 
           /usr/bin/python3 tests/test_batches.py
           /usr/bin/python3 tests/test_cleanup.py
@@ -145,6 +148,9 @@ jobs:
           cd dist
           sha256sum -c RTXForge-*.AppImage.sha256
 
+      - name: Build verified Bazzite setup bundle
+        run: python3 packaging/build_bundle.py
+
       - name: Create updater assets
         run: |
           VERSION="$(cat VERSION)"
@@ -208,6 +214,8 @@ jobs:
             dist/rtxForge-Bazzite-x86_64.AppImage
             dist/rtxForge-Bazzite-x86_64.AppImage.sha256
             dist/rtxforge-update.json
+            dist/rtxForge-Bazzite-RTX4070-*.tar.gz
+            dist/rtxForge-Bazzite-RTX4070-*.tar.gz.sha256
 
       - name: Publish continuous updater release
         if: github.ref == 'refs/heads/main'

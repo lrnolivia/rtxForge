@@ -28,33 +28,15 @@
     "name": "DLSS-Unlocked",
     "repo": "ShyVortex/dlss-unlocked",
     "branch": "main",
-    "branch_commit": "d5653c217cb7efd99662cc50994bc91e948fb2ec",
-    "commit": "d5653c217cb7efd99662cc50994bc91e948fb2ec",
-    "tag": "NR-v0.9.1",
-    "archive": "dlss-unlocked-standalone-NR-v0.9.1.zip",
-    "url": "https://github.com/ShyVortex/dlss-unlocked/releases/download/NR-v0.9.1/dlss-unlocked-standalone-NR-v0.9.1.zip",
-    "sha256": "710977fcfbff2dd3a53ff2b5ba13dea23ee81007a614a92880467e960c33cd0b",
-    "release_size": 468250426,
-    "asset_id": 566659295,
-    "verified_at": "2026-09-15",
-    "runtime_verified": false,
-    "profile_pins": {
-      "nr-only": {
-        "id": "dlss-unlocked",
-        "name": "DLSS-Unlocked",
-        "repo": "ShyVortex/dlss-unlocked",
-        "branch": "main",
-        "branch_commit": "00fbc5873363cd0a2e93867b365506e90732687f",
-        "commit": "00fbc5873363cd0a2e93867b365506e90732687f",
-        "tag": "NR-v0.8.6",
-        "archive": "dlss-unlocked-standalone-NR-v0.8.6.zip",
-        "url": "https://github.com/ShyVortex/dlss-unlocked/releases/download/NR-v0.8.6/dlss-unlocked-standalone-NR-v0.8.6.zip",
-        "sha256": "61e1111f266cf960668466f654174372e6d994e61b0042783dacd985f6ea02e3",
-        "release_size": 463446893,
-        "asset_id": null,
-        "verified_at": "2026-09-14",
-        "runtime_verified": false
-      }
-    }
+    "branch_commit": "0798222ff1852574d8987a6fab12955174776371",
+    "commit": "0798222ff1852574d8987a6fab12955174776371",
+    "tag": "NR-v0.9.33",
+    "archive": "dlss-unlocked-standalone-NR-v0.9.33.zip",
+    "url": "https://github.com/ShyVortex/dlss-unlocked/releases/download/NR-v0.9.33/dlss-unlocked-standalone-NR-v0.9.33.zip",
+    "sha256": "e2dad29ebfca2dcf9094fafb25692ec2cee1e822dcaad6949051971fe58cfc7e",
+    "release_size": 468770778,
+    "asset_id": 603409091,
+    "verified_at": "2026-10-02",
+    "runtime_verified": false
   }
 }

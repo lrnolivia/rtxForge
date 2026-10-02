@@ -1,26 +1,49 @@
 """Pinned v3 runtime sourcing. Archives are never executed and payloads remain on Games."""
-import pathlib,json,hashlib,urllib.request,urllib.parse,subprocess,shutil,zipfile,os
+import pathlib,json,hashlib,urllib.request,urllib.parse,subprocess,shutil,zipfile,os,tempfile
 import transactions as t
 import ui
 import pipeline
 from storage import storage
 P=pathlib.Path
 def download(url,path,expected=None,blob=None,size=None):
-    if path.exists():
-        datahash=t.digest(path)
-        if expected:t.need(datahash==expected,'Cached download drift: '+str(path))
+    path=P(path)
+    t.safe(path)
+    def validate(candidate):
+        if expected:t.need(t.digest(candidate)==expected,'Downloaded SHA256 mismatch: '+str(candidate))
+        if size is not None:t.need(candidate.stat().st_size==size,'Downloaded size mismatch')
         if blob:
-            h=hashlib.sha1(b'blob '+str(path.stat().st_size).encode()+b'\0');h.update(path.read_bytes());t.need(h.hexdigest()==blob,'Cached Git blob mismatch')
+            h=hashlib.sha1(b'blob '+str(candidate.stat().st_size).encode()+b'\0')
+            with candidate.open('rb') as f:
+                for chunk in iter(lambda:f.read(1024*1024),b''):h.update(chunk)
+            t.need(h.hexdigest()==blob,'Downloaded Git blob mismatch')
+    if path.exists():
+        validate(path)
         return path
-    part=path.with_suffix(path.suffix+'.part');t.need(not part.exists(),'Incomplete download retained: '+str(part))
     path.parent.mkdir(parents=True,exist_ok=True)
+    # Each attempt owns its temporary file. Failed/old .part files cannot block
+    # every subsequent install, and a partial archive is never published.
+    fd,name=tempfile.mkstemp(prefix='.'+path.name+'-',suffix='.part',dir=path.parent)
+    part=P(name)
     ui.line('Downloading',path.name)
-    with urllib.request.urlopen(url,timeout=120) as src,part.open('xb') as out:shutil.copyfileobj(src,out)
-    if expected:t.need(t.digest(part)==expected,'Downloaded SHA256 mismatch')
-    if size:t.need(part.stat().st_size==size,'Downloaded size mismatch')
-    if blob:
-        h=hashlib.sha1(b'blob '+str(part.stat().st_size).encode()+b'\0');h.update(part.read_bytes());t.need(h.hexdigest()==blob,'Downloaded Git blob mismatch')
-    part.rename(path);return path
+    try:
+        with os.fdopen(fd,'wb') as out:
+            with urllib.request.urlopen(url,timeout=120) as src:
+                total=0
+                while True:
+                    chunk=src.read(1024*1024)
+                    if not chunk:break
+                    total+=len(chunk)
+                    if size is not None:t.need(total<=size,'Download exceeds pinned size')
+                    out.write(chunk)
+            out.flush();os.fsync(out.fileno())
+        validate(part)
+        # Never overwrite a concurrently published or externally changed cache.
+        try:os.link(part,path)
+        except FileExistsError:
+            t.safe(path);validate(path)
+        return path
+    finally:
+        part.unlink(missing_ok=True)
 
 def entries(archive):
     if archive.suffix.lower()=='.zip':

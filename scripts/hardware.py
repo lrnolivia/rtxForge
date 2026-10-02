@@ -19,5 +19,6 @@ def detect():
         if not supported:info['reason']='This native NVIDIA package targets GeForce RTX 40-series GPUs. This GPU is not validated.';return info
     except (OSError,subprocess.SubprocessError,IndexError):
         info['reason']='Cannot verify an NVIDIA GPU and working NVIDIA driver. Install/repair is unavailable; uninstall remains available.';return info
-    if not (shutil.which('7zz') or shutil.which('7z')):info['reason']='7-Zip is required to prepare OptiScaler packages.';return info
+    # Extraction is provider-specific. DLSS-Unlocked uses Python's ZIP reader;
+    # the y4my engine can use libarchive even without a 7-Zip executable.
     info['ready']=True;info['reason']='Basic hardware and dependencies passed. Per-game compatibility still requires verification.';return info

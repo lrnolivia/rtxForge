@@ -314,6 +314,18 @@ class CoreHardeningTests(unittest.TestCase):
         self.m.install_target(self.game,self._sm86_payload(),meta,'ada',nr_strength='strong',enable_effects=False)
         cfg.read(ini);self.assertEqual(cfg['DlssNr']['Enabled'],'false')
 
+    def test_auto_multiplier_preserves_native_selection_and_saved_override(self):
+        text='[DLSSG]\nOverrideInterpolationCount=auto\n'
+        updated,values=self.m.apply_visual_defaults(text,None,'mfg-only')
+        self.assertEqual(values['DLSSG']['OverrideInterpolationCount'],'auto')
+        self.assertIn('OverrideInterpolationCount=auto',updated)
+        saved='[DLSSG]\nOverrideInterpolationCount=3\n'
+        updated,values=self.m.apply_visual_defaults(text,saved,'mfg-only')
+        self.assertEqual(values['DLSSG']['OverrideInterpolationCount'],'3')
+        updated,values=self.m.apply_visual_defaults(text,text,'mfg-only',mfg_multiplier=2)
+        self.assertEqual(values['DLSSG']['OverrideInterpolationCount'],'auto')
+        with self.assertRaises(self.m.Stop):self.m.visual_defaults(mfg_multiplier=True)
+
     def test_nr_only_does_not_write_mfg_override(self):
         text='[DlssNr]\nEnabled=true\n[DLSSG]\nOverrideInterpolationCount=auto\n'
         updated,values=self.m.apply_visual_defaults(text,None,'nr-only','medium',6,'off')
@@ -1092,8 +1104,21 @@ class CoreHardeningTests(unittest.TestCase):
         self.assertIn('External=false',text)
         self.assertIn('Enabled=auto',text.split('[FrameGen]')[1])
         self.assertIn('FGInput=auto',text);self.assertIn('FGOutput=auto',text)
-        self.assertIn('AdaMfgUnlock=true',text);self.assertIn('AdaBlackwellKernels=false',text)
+        self.assertIn('AdaMfgUnlock=true',text);self.assertIn('AdaBlackwellKernels=true',text)
         self.assertIn('ShortcutKey=-1',text);self.assertIn('OverlayMenu=false',text)
+        self.assertIn('OverrideInterpolationCount=auto',text)
+
+    def test_dlss_unlocked_repair_preserves_recorded_game_ratio(self):
+        self.game.dlss = self.game.dlssg = True
+        self.m.Y4MY_PROVIDER = {**self.m.Y4MY_PROVIDER, 'id':'dlss-unlocked'}
+        payload=self._sm86_payload()
+        self.m.install_target(self.game,payload,{'sha256':'a'*64},'ada',feature_mode='mfg-only',enable_effects=True,mfg_multiplier=4)
+        self.m.install_target(self.game,payload,{'sha256':'a'*64},'ada',feature_mode='mfg-only',enable_effects=True)
+        self.assertIn('OverrideInterpolationCount=3',(self.target/'OptiScaler.ini').read_text())
+        with patch.object(self.m,'_running_processes_under_root',return_value=[]):
+            self.m.reset_visual_settings(self.game,mfg_multiplier='auto')
+        self.m.install_target(self.game,payload,{'sha256':'a'*64},'ada',feature_mode='mfg-only',enable_effects=True,mfg_multiplier=2)
+        self.assertIn('OverrideInterpolationCount=auto',(self.target/'OptiScaler.ini').read_text())
 
     def test_dlss_unlocked_nr_toggle_key_is_f10(self):
         self.game.dlss = self.game.dlssg = True

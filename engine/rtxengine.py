@@ -2111,16 +2111,16 @@ def visual_strength_label(value, kind: str) -> str:
 
 def visual_defaults(
     nr_strength="strong",
-    mfg_multiplier: int = 2,
+    mfg_multiplier: int | str = "auto",
     sharpening_strength="strong",
 ) -> dict:
     nr_value = visual_strength_text(nr_strength, "nr")
     sharp_value = visual_strength_text(sharpening_strength, "sharpness")
 
     require(
-        type(mfg_multiplier) is int and
-        mfg_multiplier in (0, 2, 3, 4, 5, 6),
-        "MFG multiplier must be Off or 2x through 6x",
+        mfg_multiplier == "auto" or (type(mfg_multiplier) is int and
+        mfg_multiplier in (0, 2, 3, 4, 5, 6)),
+        "MFG multiplier must be In game, Off or 2x through 6x",
     )
 
     defaults = {
@@ -2145,7 +2145,7 @@ def visual_defaults(
         )
 
     defaults["DLSSG"] = {
-        "OverrideInterpolationCount": str(max(0, mfg_multiplier - 1)),
+        "OverrideInterpolationCount": "auto" if mfg_multiplier == "auto" else str(max(0, mfg_multiplier - 1)),
         "OverrideForceDMFG": "false",
         "FramerateTargetDMFG": "0",
     }
@@ -2153,7 +2153,7 @@ def visual_defaults(
     return defaults
 
 
-def apply_visual_defaults(text: str, saved: str | None, feature_mode: str, nr_strength: str = "strong", mfg_multiplier: int = 2, sharpening_strength: str = "strong") -> tuple[str, dict]:
+def apply_visual_defaults(text: str, saved: str | None, feature_mode: str, nr_strength: str = "strong", mfg_multiplier: int | str = "auto", sharpening_strength: str = "strong") -> tuple[str, dict]:
     """Set fresh defaults; preserve explicit saved tuning during managed repair."""
     selected = {}
     for section, defaults in visual_defaults(nr_strength, mfg_multiplier, sharpening_strength).items():
@@ -2167,13 +2167,14 @@ def apply_visual_defaults(text: str, saved: str | None, feature_mode: str, nr_st
         for key, default in defaults.items():
             match = re.search(rf"(?im)^[ \t]*{re.escape(key)}[ \t]*=[ \t]*([^;\r\n]+)", block)
             value = match.group(1).strip() if match else ""
-            value = default if not value or value.casefold() == "auto" else value
+            saved_game_ratio = section == "DLSSG" and key == "OverrideInterpolationCount"
+            value = default if not value or (value.casefold() == "auto" and not saved_game_ratio) else value
             selected[section][key] = value
             text = set_ini_value(text, section, key, value)
     return text, selected
 
 
-def reset_visual_settings(game: Game, *, dry_run: bool = False, nr_strength: str = "strong", mfg_multiplier: int = 2, sharpening_strength: str = "strong") -> dict:
+def reset_visual_settings(game: Game, *, dry_run: bool = False, nr_strength: str = "strong", mfg_multiplier: int | str = "auto", sharpening_strength: str = "strong") -> dict:
     """Reset managed visual tuning only; never install payloads or edit Steam."""
     if dry_run:
         return _reset_visual_settings(game, dry_run=True, nr_strength=nr_strength, mfg_multiplier=mfg_multiplier, sharpening_strength=sharpening_strength)
@@ -2181,7 +2182,7 @@ def reset_visual_settings(game: Game, *, dry_run: bool = False, nr_strength: str
         return _reset_visual_settings(game, nr_strength=nr_strength, mfg_multiplier=mfg_multiplier, sharpening_strength=sharpening_strength)
 
 
-def _reset_visual_settings(game: Game, *, dry_run: bool = False, nr_strength: str = "strong", mfg_multiplier: int = 2, sharpening_strength: str = "strong") -> dict:
+def _reset_visual_settings(game: Game, *, dry_run: bool = False, nr_strength: str = "strong", mfg_multiplier: int | str = "auto", sharpening_strength: str = "strong") -> dict:
     target = game.target_dir
     baseline = load_baseline(target, readonly=True)
     require(baseline and baseline.get("status") == "active", "No active managed installation; install enhancements first")
@@ -2199,7 +2200,7 @@ def _reset_visual_settings(game: Game, *, dry_run: bool = False, nr_strength: st
     updated = text.encode("utf-8")
     record = {"action": "reset-visual-settings", "name": game.name, "feature_mode": mode,
               "provider_id": current.get("provider_id"), "files": [managed[0]],
-              "launch_options": f"NR {visual_strength_label(nr_strength, 'nr')} · Sharpening {visual_strength_label(sharpening_strength, 'sharpness')}" + (f" · MFG {str(mfg_multiplier) + 'x' if mfg_multiplier else 'Off'} requested" if mode != "nr-only" else " · NR Only retained"),
+              "launch_options": f"NR {visual_strength_label(nr_strength, 'nr')} · Sharpening {visual_strength_label(sharpening_strength, 'sharpness')}" + (f" · MFG {'In game' if mfg_multiplier == 'auto' else str(mfg_multiplier) + 'x' if mfg_multiplier else 'Off'} requested" if mode != "nr-only" else " · NR Only retained"),
               "before_sha256": sha256_bytes(original), "after_sha256": sha256_bytes(updated),
               "nr_strength": nr_strength, "sharpening_strength": sharpening_strength, "mfg_multiplier": mfg_multiplier if mode != "nr-only" else None, "defaults": values, "changed": original != updated}
     if dry_run or original == updated:
@@ -4251,7 +4252,7 @@ def install_target(
     enable_effects: bool = False,
     native_mfg_fallback: bool = False,
     nr_strength: str = "strong",
-    mfg_multiplier: int = 2,
+    mfg_multiplier: int | str = "auto",
     sharpening_strength: str = "strong",
     dry_run: bool = False,
 ) -> dict:
@@ -4437,8 +4438,11 @@ def install_target(
 
     ini_key = next(k for k in payload if k.casefold() == "optiscaler.ini")
     ini_source = payload[ini_key]
+    saved_ini = None
     if existing_baseline:
         live_ini = target / ini_key
+        if live_ini.is_file() and not live_ini.is_symlink():
+            saved_ini = live_ini.read_bytes()
         current_hash = ((existing_baseline.get("current") or {}).get("installed_hashes") or {}).get(ini_key)
         if current_hash is None:
             # Path casing may differ between archive revisions; state keys are
@@ -4466,7 +4470,7 @@ def install_target(
     text = set_ini_value(text, "DLSSG", "AdaMfgUnlock", "true" if ada_active else "false")
     text = set_ini_value(
         text, "DLSSG", "AdaBlackwellKernels",
-        "false" if is_dlss_unlocked else ("true" if ada_active else "auto"),
+        "true" if ada_active else "false" if is_dlss_unlocked else "auto",
     )
     text = set_ini_value(text, "DLSSG", "AmpereMfgUnlock", "false")
     if is_dlss_unlocked and family == "ada":
@@ -4487,9 +4491,9 @@ def install_target(
         if feature_mode in {"nr-mfg", "nr-only"}:
             text = set_ini_value(text, "DlssNr", "ToggleKey", "0x79")
     text, visual_tuning = apply_visual_defaults(
-        text, ini_source.decode("utf-8-sig") if existing_baseline else None, feature_mode, nr_strength, mfg_multiplier, sharpening_strength,
+        text, saved_ini.decode("utf-8-sig") if saved_ini is not None else None, feature_mode, nr_strength, mfg_multiplier, sharpening_strength,
     )
-    # 0.5.8 already maps the UI multiplier to OverrideInterpolationCount.
+    # Explicit ratios override the game; auto leaves the native game selection in control.
     # DLSS-Unlocked NR still starts dormant and is toggled independently with F10.
     if not enable_effects or is_dlss_unlocked:
         text = set_ini_value(text, "DlssNr", "Enabled", "false")

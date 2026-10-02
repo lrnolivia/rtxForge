@@ -17,6 +17,7 @@ def show_packages(owner, fixture=None):
     header=Adw.HeaderBar();toolbar.add_top_bar(header)
     back=Gtk.Button(icon_name='go-previous-symbolic',tooltip_text='Back to packages',visible=False)
     header.pack_start(back)
+    footer=Gtk.Box(spacing=16,visible=False);margins(footer,16);toolbar.add_bottom_bar(footer)
     scroll = Gtk.ScrolledWindow(vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER)
     box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24)
     margins(box)
@@ -71,12 +72,13 @@ def show_packages(owner, fixture=None):
         instructions = Adw.ExpanderRow(title='Package instructions', subtitle='Read-only reference; commands are never executed')
         for item in result['instructions'][:8]:
             row = Adw.ActionRow(title=item['path'])
-            row.set_subtitle(item['text'][:4000]);row.set_subtitle_lines(0);instructions.add_row(row)
+            row.set_use_markup(False);row.set_subtitle(item['text'][:4000]);row.set_subtitle_lines(0);instructions.add_row(row)
         instruction_group = Adw.PreferencesGroup();instruction_group.add(instructions);detail.append(instruction_group)
         trust = Gtk.CheckButton(label='I trust the source of this package')
-        detail.append(trust)
+        while footer.get_first_child():footer.remove(footer.get_first_child())
+        trust.set_hexpand(True);footer.append(trust);footer.set_visible(True)
         apply = Gtk.Button(label='Use reviewed package', sensitive=False, halign=Gtk.Align.END)
-        apply.add_css_class('suggested-action');detail.append(apply)
+        apply.add_css_class('suggested-action');footer.append(apply)
         trust.connect('toggled', lambda *_:apply.set_sensitive(trust.get_active() and result['family']=='dlss-unlocked'))
         def reviewed(*_):
             try:
@@ -94,6 +96,7 @@ def show_packages(owner, fixture=None):
         return False
 
     def catalog_again(*_):
+        footer.set_visible(False)
         detail.set_visible(False);recommended.set_visible(True);custom.set_visible(True);intro.set_visible(True)
         title.set_text('Choose your graphics package');back.set_visible(False)
         status.set_text('Choose a package to review. No game files have changed.')

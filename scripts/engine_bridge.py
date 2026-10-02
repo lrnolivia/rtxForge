@@ -100,7 +100,7 @@ def prepare(config,rows,mode,operation,settings):
         if mode in ('nr-mfg','nr-only') and 'nvngx_dlssnr.dll' not in data:
             # Local-only for y4my; missing per-game model is a per-target refusal.
             nr,nrmeta=e.load_user_nr_runtime(settings.get('nr_runtime') or None,family=None)
-    strength=settings.get('nr_strength',2.0);multiplier=settings.get('mfg_multiplier',2);sharpening=settings.get('sharpening_strength',0.5)
+    strength=settings.get('nr_strength',2.0);multiplier=settings.get('mfg_multiplier','auto');sharpening=settings.get('sharpening_strength',0.5)
     # Validate granular values before any target mutation.
     e.visual_defaults(strength,multiplier,sharpening)
     desktop_mode(e)

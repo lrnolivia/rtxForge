@@ -13,6 +13,8 @@ def margins(widget, value=24):
 def show_packages(owner, fixture=None):
     dialog = Adw.Dialog(title='Packages', content_width=720, content_height=680)
     owner.packages_dialog = dialog
+    alive={'value':True}
+    dialog.connect('closed',lambda *_:alive.update(value=False))
     toolbar = Adw.ToolbarView()
     header=Adw.HeaderBar();toolbar.add_top_bar(header)
     back=Gtk.Button(icon_name='go-previous-symbolic',tooltip_text='Back to packages',visible=False)
@@ -44,6 +46,7 @@ def show_packages(owner, fixture=None):
             status.set_text(str(ex))
 
     def render_catalog(host):
+        if not alive['value']:return False
         status.set_text('Preview system · NVIDIA RTX 4070 · no game writes' if owner.options.demo else host.get('gpu','System') + ' · ' + host.get('reason',''))
         for item in packages.catalog(host):
             row = Adw.ActionRow(title=item['name'], subtitle=item['version'] + ' · ' + item['summary'])
@@ -55,6 +58,7 @@ def show_packages(owner, fixture=None):
         return False
 
     def render_inspection(result):
+        if not alive['value']:return False
         recommended.set_visible(False);custom.set_visible(False);intro.set_visible(False)
         title.set_text('Review your package');back.set_visible(True)
         while detail.get_first_child():detail.remove(detail.get_first_child())
@@ -81,16 +85,25 @@ def show_packages(owner, fixture=None):
         apply.add_css_class('suggested-action');footer.append(apply)
         trust.connect('toggled', lambda *_:apply.set_sensitive(trust.get_active() and result['family']=='dlss-unlocked'))
         def reviewed(*_):
-            try:
-                values={key:entry.get_text().strip() for key,entry in fields.items()}
-                record=packages.custom_record(result, values, trusted=trust.get_active())
+            values={key:entry.get_text().strip() for key,entry in fields.items()}
+            trusted=trust.get_active();apply.set_sensitive(False)
+            status.set_text('Verifying the reviewed package…')
+            def verified(record):
+                if not alive['value']:return False
                 parsed=record['parameters'];count=parsed.get('OverrideInterpolationCount','auto')
                 settings={'custom_package':record,
                           'nr_strength':parsed.get('Intensity',2.0),
                           'sharpening_strength':parsed.get('Sharpness',0.5),
                           'mfg_multiplier':'auto' if count=='auto' else 0 if count=='0' else int(count)+1}
                 select('custom',settings)
-            except Exception as ex:status.set_text(str(ex))
+                return False
+            def failed(message):
+                if alive['value']:status.set_text(message);apply.set_sensitive(trust.get_active())
+                return False
+            def verify():
+                try:GLib.idle_add(verified,packages.custom_record(result,values,trusted=trusted))
+                except Exception as ex:GLib.idle_add(failed,str(ex))
+            threading.Thread(target=verify,daemon=True).start()
         apply.connect('clicked',reviewed)
         status.set_text('Inspection complete. No game files have changed.')
         return False

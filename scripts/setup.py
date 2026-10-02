@@ -13,6 +13,7 @@ import engine_bridge
 import hardware
 import library_media
 import packages
+import package_catalog
 import rtxforge
 import transactions as t
 from storage import storage
@@ -34,7 +35,10 @@ def selected_settings(config, mode=None):
         settings.update(runtime_provider='dlss-unlocked', default_profile=mode)
     provider = settings['runtime_provider']
     profile = settings['default_profile']
-    t.need(provider in engine_bridge.providers(), 'Unknown saved provider; choose an explicit --profile.')
+    t.need(provider in engine_bridge.providers() or provider=='custom', 'Unknown saved provider; choose an explicit --profile.')
+    if provider=='custom':
+        custom=settings.get('custom_package') or {}
+        t.need(custom.get('trusted') is True and custom.get('family')=='dlss-unlocked','Review the custom package in the app before setup.')
     t.need(profile in MODES, 'Unknown saved profile; choose an explicit --profile.')
     t.need(provider != 'y4my' or profile != 'nr-only', 'NR-only requires DLSS-Unlocked.')
     return settings, not path.exists() or mode is not None
@@ -48,7 +52,7 @@ def host_report(config):
         release = platform.freedesktop_os_release()
     except OSError:
         release = {}
-    add('Bazzite GNOME host', release.get('ID') == 'bazzite', release.get('PRETTY_NAME', 'Unknown OS'))
+    add('Linux host', sys.platform=='linux', release.get('PRETTY_NAME', 'Unknown Linux distribution'))
     add('64-bit Linux', sys.platform == 'linux' and platform.machine() == 'x86_64', platform.machine())
     gpu = hardware.detect()
     add('NVIDIA RTX 40-series driver', gpu['ready'], f"{gpu['gpu']} · {gpu['driver']} · {gpu['reason']}")
@@ -77,7 +81,9 @@ def host_report(config):
 def prepare_runtime(config, settings):
     provider = settings['runtime_provider']
     mode = settings['default_profile']
-    engine = engine_bridge.module(config, provider, mode)
+    custom=settings.get('custom_package') if provider=='custom' else None
+    engine = engine_bridge.module(config, custom['family'] if custom else provider, mode)
+    if custom:engine.Y4MY_PROVIDER=dict(custom)
     payload, meta = engine_bridge.payload(engine, config, mode)
     if mode in ('nr-only', 'nr-mfg'):
         t.need('nvngx_dlssnr.dll' in payload,

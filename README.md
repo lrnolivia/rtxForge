@@ -171,3 +171,33 @@ Current status:
 See [Redesign Current Status](docs/redesign/CURRENT-STATUS.md) and
 [Fresh Chat Continuation](docs/redesign/FRESH-CHAT-CONTINUATION.md).
 <!-- RTXFORGE_REDESIGN_STATUS_END -->
+
+
+## Shared package and interface preview
+
+The `rtxforge/shared-package-ui-20261002` review branch retains Classic and adds
+an opt-in New navigation layout around the **same GTK Library widget**. The
+application menu switches layouts; New Home offers an Open to Library/Home
+preference. Classic remains the default. Compact Header is opt-in and retains
+search, selection and action controls.
+
+Packages uses the existing pinned DLSS-Unlocked/y4my catalog and hardware gate.
+Custom ZIP inspection is static: archive paths, links, duplicate names, size,
+configuration and instructions are checked without running archive code. A
+recognized DLSS-Unlocked layout can be explicitly trusted and pinned to its hash;
+its deployment uses the existing preview, ownership, backup and recovery engine.
+Unknown layouts stay inspection-only. Instructions are reference text, never
+shell commands. NR rendering and custom-package game compatibility are not
+inferred from successful parsing.
+
+The Qt/Kirigami frontend under `gui/qt/` uses the same toolkit-free service and
+package parser. It is a native port under parity review, not a separate engine
+or a stable replacement. Source preview: `python3 gui/qt/app.py --demo`.
+GTK preview: `python3 gui/rtxforge_gtk.py --demo --ui-mode new`.
+
+GTK can run under GNOME, Plasma or Hyprland with its native dependencies; the Qt
+frontend targets Plasma and can be reused on Hyprland. Distribution names do not
+select different engines. Setup now checks actual Linux, toolkit, storage, Steam
+and GPU capabilities rather than requiring Bazzite by name. The bundled runtime
+still requires its supported NVIDIA RTX 40-series hardware. This does not claim
+Steam Deck GPU support, NR rendering, HDR, or Gamescope/controller parity.

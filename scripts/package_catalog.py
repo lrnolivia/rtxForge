@@ -36,6 +36,7 @@ def digest(path):
 def relative(name):
     p = PurePosixPath(name)
     if (not name or p.is_absolute() or '\\' in name or ':' in name
+            or any(ord(c)<32 or ord(c)==127 for c in name)
             or any(x in ('', '.', '..') or x.endswith((' ', '.'))
                    or re.match(r'(?i)^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)', x)
                    for x in name.split('/'))):
@@ -93,6 +94,8 @@ def inspect_archive(path):
                 raise PackageError('Archive links and special files are not supported.')
             if member.flag_bits & 1:
                 raise PackageError('Encrypted archives cannot be reviewed.')
+            if member.file_size > 16*1024**2 and member.file_size/max(1,member.compress_size)>300:
+                raise PackageError('Unusually high archive compression ratio; package refused.')
             total += member.file_size
             if total > MAX_EXPANDED or member.file_size > MAX_ARCHIVE:
                 raise PackageError('Expanded package exceeds the safety limit.')

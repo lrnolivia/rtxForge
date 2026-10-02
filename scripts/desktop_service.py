@@ -63,8 +63,9 @@ class DesktopService:
                 except (TypeError,ValueError):
                     row['sharpening_strength']=None
                 try:
-                    count=int(ini.get('DLSSG',{}).get('OverrideInterpolationCount','auto'))
-                    row['mfg_multiplier']=0 if count==0 else count+1 if count in range(1,6) else None
+                    raw=ini.get('DLSSG',{}).get('OverrideInterpolationCount','auto')
+                    count=int(raw) if raw.lower() != 'auto' else None
+                    row['mfg_multiplier']='auto' if count is None else 0 if count==0 else count+1 if count in range(1,6) else None
                 except ValueError:row['mfg_multiplier']=None
                 try:
                     baseline=engine.load_baseline(config.parent)
@@ -119,8 +120,8 @@ class DesktopService:
             'Sharpening strength must be between 0.0 and 1.0',
         )
         t.need(
-            type(values.get('mfg_multiplier')) is int and
-            values['mfg_multiplier'] in (0,2,3,4,5,6),
+            values.get('mfg_multiplier') == 'auto' or (type(values.get('mfg_multiplier')) is int and
+            values['mfg_multiplier'] in (0,2,3,4,5,6)),
             'Invalid MFG multiplier',
         )
 

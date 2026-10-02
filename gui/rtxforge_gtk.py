@@ -3364,7 +3364,7 @@ class Window(Adw.ApplicationWindow):
                 self.service.config
             ).NR_STRENGTH_PRESETS
 
-        self.strength_names=tuple(self.strength_presets);self.multiplier_values=(0,2,3,4,5,6)
+        self.strength_names=tuple(self.strength_presets);self.multiplier_values=('auto',0,2,3,4,5,6)
         self.settings['enable_effects']=True;self.settings.setdefault('dark',True);self.hardware_info={'ready':True,'gpu':'Preview GPU','reason':'Preview mode'} if options.demo else None;self.games=[];self.cards={};self.selected_game_ids=set();self.mode='mfg-only';self.filter='all'
         self.busy=False;self.task_kind='';self.pending=None;self.cancel_art=threading.Event();self.log=[];self.dialog=None;self.review=None;self.action_buttons=[]
         self.connect('close-request',self.close_request)
@@ -6935,9 +6935,9 @@ class Window(Adw.ApplicationWindow):
             '<span weight="800">MFG</span> '
             '<span weight="500">'
             +GLib.markup_escape_text(
-                str(mfg_value)
+                'In game' if mfg_value == 'auto' else 'Off' if mfg_value == 0 else str(mfg_value) + ('×' if isinstance(mfg_value,int) else '')
             )
-            +'×</span>'
+            +'</span>'
         )
 
         root._nr.remove_css_class(
@@ -7643,13 +7643,13 @@ class Window(Adw.ApplicationWindow):
         group.append(label('MFG','heading'))
 
         multiplier=safe_dropdown(
-            ['Off']+[str(x)+'×' for x in range(2,7)]
+            ['In game','Off']+[str(x)+'×' for x in range(2,7)]
         )
         multiplier.set_selected(
             self.multiplier_values.index(
                 initial['mfg_multiplier']
                 if initial.get('mfg_multiplier') is not None
-                else self.settings.get('mfg_multiplier',2)
+                else self.settings.get('mfg_multiplier','auto')
             )
         )
         multiplier.update_property(
@@ -13070,7 +13070,7 @@ class Window(Adw.ApplicationWindow):
                 )
 
                 if key=='mfg_multiplier':
-                    widget.set_selected(0)
+                    widget.set_selected(1 if original == 0 else 0)
                 else:
                     widget.set_value(0)
 

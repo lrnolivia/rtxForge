@@ -14,7 +14,9 @@ def show_packages(owner, fixture=None):
     dialog = Adw.Dialog(title='Packages', content_width=720, content_height=680)
     owner.packages_dialog = dialog
     toolbar = Adw.ToolbarView()
-    toolbar.add_top_bar(Adw.HeaderBar())
+    header=Adw.HeaderBar();toolbar.add_top_bar(header)
+    back=Gtk.Button(icon_name='go-previous-symbolic',tooltip_text='Back to packages',visible=False)
+    header.pack_start(back)
     scroll = Gtk.ScrolledWindow(vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER)
     box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24)
     margins(box)
@@ -52,6 +54,8 @@ def show_packages(owner, fixture=None):
         return False
 
     def render_inspection(result):
+        recommended.set_visible(False);custom.set_visible(False);intro.set_visible(False)
+        title.set_text('Review your package');back.set_visible(True)
         while detail.get_first_child():detail.remove(detail.get_first_child())
         group = Adw.PreferencesGroup(title=result['name'], description=result['confidence'])
         family = Adw.ActionRow(title='Detected format', subtitle=result['family'] if result['family']!='unknown' else 'Unrecognized · inspection only')
@@ -89,7 +93,14 @@ def show_packages(owner, fixture=None):
         status.set_text('Inspection complete. No game files have changed.')
         return False
 
+    def catalog_again(*_):
+        detail.set_visible(False);recommended.set_visible(True);custom.set_visible(True);intro.set_visible(True)
+        title.set_text('Choose your graphics package');back.set_visible(False)
+        status.set_text('Choose a package to review. No game files have changed.')
+    back.connect('clicked',catalog_again)
+
     def inspect(path):
+        detail.set_visible(True)
         status.set_text('Reading package files and configuration…');pick.set_sensitive(False)
         def work():
             try:

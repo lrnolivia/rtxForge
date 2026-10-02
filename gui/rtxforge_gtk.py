@@ -4648,6 +4648,7 @@ class Window(Adw.ApplicationWindow):
     def set_ui_mode(self,mode,persist=True):
         if mode not in ('classic','new'):mode='classic'
         if self.busy and persist:self.toast('Finish the current operation before switching interfaces.');return
+        width,height=self.get_default_size()
         if self._new_stack is not None:
             self._new_stack.remove(self._canonical_library)
             self._new_stack=None
@@ -4656,6 +4657,7 @@ class Window(Adw.ApplicationWindow):
             self._new_shell,self._new_stack=new_shell(self,self._canonical_library)
             self.set_content(self._new_shell)
         else:self.set_content(self._canonical_library);self._new_shell=None
+        self.set_default_size(max(width,980),max(height,720))
         self.settings['ui_mode']=mode
         if persist and not self.options.demo:library_media.save_settings(self.service.config,self.settings)
         GLib.idle_add(self.update_library_spacing)

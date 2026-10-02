@@ -19,7 +19,7 @@ def capture(name):
 def new_mode():
     app.window.set_ui_mode('new',persist=False)
     assert app.window._new_stack.get_child_by_name('library') is app.window._canonical_library
-steps=[lambda:capture('classic-library.png'),lambda:app.window.toggle_compact_header(),lambda:capture('classic-compact.png'),lambda:app.window.show_packages(),lambda:capture('classic-packages.png'),lambda:app.window.packages_dialog.close(),new_mode,lambda:capture('new-library.png'),lambda:app.window._new_stack.set_visible_child_name('home'),lambda:capture('new-home.png'),lambda:classic.show_packages(app.window,fixture),lambda:capture('new-custom-package.png'),lambda:app.window.packages_dialog.close(),lambda:app.window.set_ui_mode('classic',persist=False),lambda:capture('classic-restored.png')]
+steps=[lambda:app.window.set_default_size(1280,820),lambda:capture('classic-library.png'),lambda:app.window.toggle_compact_header(),lambda:capture('classic-compact.png'),lambda:app.window.show_packages(),lambda:capture('classic-packages.png'),lambda:app.window.packages_dialog.close(),new_mode,lambda:capture('new-library.png'),lambda:app.window._new_stack.set_visible_child_name('home'),lambda:capture('new-home.png'),lambda:classic.show_packages(app.window,fixture),lambda:capture('new-custom-package.png'),lambda:app.window.packages_dialog.close(),lambda:app.window.set_ui_mode('classic',persist=False),lambda:capture('classic-restored.png')]
 def run_step():
     try:
         if steps:

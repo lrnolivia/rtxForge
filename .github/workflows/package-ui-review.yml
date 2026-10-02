@@ -27,7 +27,7 @@ jobs:
           HOME: /tmp/rtxforge-review-home
         run: |
           mkdir -p "$HOME" dist
-          dbus-run-session -- xvfb-run -a python3 tests/ui_package_review.py
+          dbus-run-session -- xvfb-run -a -s '-screen 0 1920x1080x24' python3 tests/ui_package_review.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:

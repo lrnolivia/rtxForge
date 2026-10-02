@@ -3382,6 +3382,7 @@ class Window(Adw.ApplicationWindow):
         outer.add_css_class('forge-window-surface')
         stage.set_child(outer)
         header=Adw.HeaderBar()
+        self.library_header=header
 
         # Keep the native headerbar/window controls, but leave the
         # center visually empty. The product identity lives in the hero.
@@ -3843,7 +3844,7 @@ class Window(Adw.ApplicationWindow):
         # ------------------------------------------------------------
 
         sticky_brand=Gtk.Box(
-            spacing=6,
+            spacing=12,
             valign=Gtk.Align.CENTER,
         )
         sticky_brand.add_css_class(
@@ -3853,9 +3854,8 @@ class Window(Adw.ApplicationWindow):
         sticky_brand_icon=Gtk.Image.new_from_file(
             str(dashboard_art_path)
         )
-        sticky_brand_icon.set_pixel_size(
-            22
-        )
+        self.sticky_brand_icon=sticky_brand_icon
+        sticky_brand_icon.set_pixel_size(40)
         sticky_brand_icon.add_css_class(
             'sticky-dashboard-app-icon'
         )
@@ -4092,6 +4092,7 @@ class Window(Adw.ApplicationWindow):
         )
 
         def set_sticky_dashboard_visible(visible):
+            self.library_header.set_size_request(-1,76 if visible and self.settings.get("ui_mode","classic")=="classic" else -1)
             for revealer in (
                 self.sticky_brand_revealer,
                 self.sticky_dashboard_revealer,
@@ -4661,6 +4662,8 @@ class Window(Adw.ApplicationWindow):
         else:self.set_content(self._canonical_library);self._new_shell=None
         self.set_default_size(width if width>1 else 1280,height if height>1 else 820)
         self.settings['ui_mode']=mode
+        self.sticky_brand_icon.set_visible(mode=='classic')
+        self.library_header.set_size_request(-1,76 if mode=='classic' and self.sticky_dashboard_revealer.get_reveal_child() else -1)
         if persist and not self.options.demo:library_media.save_settings(self.service.config,self.settings)
         GLib.idle_add(self.update_library_spacing)
 

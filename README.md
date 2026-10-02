@@ -67,7 +67,7 @@ Provider flags: `--runtime-provider y4my|dlss-unlocked`, `--feature-mode mfg-onl
 
 [Release notes](docs/RELEASE-0.7.0.md) describe the completed classic Library/dashboard UI, validation, and post-0.7 maintenance policy. Historical custom MFG builds are not part of the production AppImage path.
 
-DLSS-Unlocked offers separate **NR Only** (pinned NR-v0.8.6; keep in-game FG off) and **MFG Only** (NR-v0.9.1, NR off, bundled NVIDIA runtime updates) pipelines. MFG Only backs up existing native DLLs and restores them on uninstall. Uninstall before changing pipelines. Combined NR + MFG remains available for experimentation.
+DLSS-Unlocked uses the complete verified **NR-v0.9.33** package for **NR Only**, **MFG Only**, and **NR + MFG**. MFG Only omits NR components; NR Only keeps the Ada unlock off. The native game controls frame generation by default (**In game** multiplier); explicit Off and 2×–6× overrides remain available. Managed files are backed up for restoration; game-native DLLs remain in place by default. Uninstall before changing pipelines. Combined NR + MFG remains available for experimentation.
 
 Choose DLSS and the FG multiplier in the game settings; opening the OptiScaler overlay is unnecessary. DLSS-Unlocked NR starts off and F10 toggles it independently. CLI diagnosis may use `--disable-effects`.
 

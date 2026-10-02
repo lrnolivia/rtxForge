@@ -85,3 +85,47 @@ jobs:
           name: rtxforge-kde-review
           path: dist/
           retention-days: 7
+
+  wayland-review:
+    runs-on: ubuntu-24.04
+    container: fedora:44
+    timeout-minutes: 20
+    steps:
+      - run: dnf install -y git python3 python3-gobject gtk4 libadwaita graphene gdk-pixbuf2 adwaita-icon-theme adwaita-sans-fonts python3-pyside6 kf6-kirigami kf6-qqc2-desktop-style qt6-qtdeclarative qt6-qtsvg qt6-qtwayland breeze-icon-theme weston dbus-daemon
+      - uses: actions/checkout@v4
+      - name: Exercise both toolkits on a real headless Wayland compositor
+        env:
+          GDK_BACKEND: wayland
+          GSK_RENDERER: cairo
+          QT_QPA_PLATFORM: wayland
+          QT_QUICK_BACKEND: software
+          GTK_A11Y: none
+          HOME: /tmp/rtxforge-wayland-home
+          XDG_RUNTIME_DIR: /tmp/rtxforge-wayland-runtime
+          WAYLAND_DISPLAY: wayland-review
+        run: |
+          mkdir -p "$HOME" "$XDG_RUNTIME_DIR" dist
+          chmod 700 "$XDG_RUNTIME_DIR"
+          dbus-run-session bash -c '
+            set -e
+            weston -B headless --renderer=pixman --socket="$WAYLAND_DISPLAY" --width=1920 --height=1080 --idle-time=0 --no-config > dist/weston.log 2>&1 &
+            weston_pid=$!
+            trap "kill $weston_pid 2>/dev/null || true" EXIT
+            for n in $(seq 1 30); do
+              test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" && break
+              kill -0 "$weston_pid" || { cat dist/weston.log; exit 1; }
+              sleep 1
+            done
+            test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+            python3 tests/ui_package_review.py
+            python3 gui/qt/app.py --smoke-test
+          '
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rtxforge-wayland-review
+          path: |
+            dist/*.png
+            dist/*.json
+            dist/weston.log
+          retention-days: 7

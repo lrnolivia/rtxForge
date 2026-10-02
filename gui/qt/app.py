@@ -66,6 +66,8 @@ class Controller(QObject):
     def details(self):return self._details
     @Property(str,notify=changed)
     def layout(self):return self.session.settings.get('library_view','posters')
+    @Property(str,constant=True)
+    def brandIcon(self):return QUrl.fromLocalFile(str(ROOT/'gui/icons/hicolor/256x256/apps/io.github.lrnolivia.RTXForge.png')).toString()
     @Property(str,notify=changed)
     def profile(self):return self.session.settings.get('default_profile','mfg-only')
     @Property(int,notify=changed)

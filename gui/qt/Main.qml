@@ -18,7 +18,7 @@ Kirigami.ApplicationWindow {
         visible: forge.mode === "new"
         drawerOpen: forge.mode === "new"
         modal: forge.mode !== "new"; handleVisible: false; width: forge.mode === "new" ? 230 : 0
-        title: "rtxForge"; titleIcon: "applications-games"
+        title: "rtxForge"; titleIcon: forge.brandIcon
         actions: [
             Kirigami.Action { text: "Home"; icon.name: "go-home"; onTriggered: window.page = "home" },
             Kirigami.Action { text: "Game Library"; icon.name: "view-grid"; onTriggered: window.page = "library" },

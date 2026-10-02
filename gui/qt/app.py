@@ -3,7 +3,7 @@
 from pathlib import Path
 import os,sys,json,threading
 ROOT=Path(__file__).resolve().parents[2];sys.path.insert(0,str(ROOT/'scripts'))
-from PySide6.QtCore import QObject,Property,Signal,Slot,QUrl,QTimer
+from PySide6.QtCore import QObject,Property,Signal,Slot,QUrl,QTimer,Qt
 from PySide6.QtGui import QGuiApplication,QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
@@ -113,7 +113,12 @@ class Controller(QObject):
 def main():
     demo='--demo' in sys.argv or '--smoke-test' in sys.argv
     os.environ.setdefault('QT_QUICK_CONTROLS_STYLE','org.kde.desktop')
-    app=QGuiApplication(sys.argv);app.setApplicationName('rtxForge');app.setDesktopFileName('io.github.lrnolivia.RTXForge')
+    if '--smoke-test' in sys.argv:
+        from demo_assets import prepare
+        prepare(ROOT)
+    app=QGuiApplication(sys.argv)
+    app.styleHints().setColorScheme(Qt.ColorScheme.Dark)
+    app.setApplicationName('rtxForge');app.setDesktopFileName('io.github.lrnolivia.RTXForge')
     app.setWindowIcon(QIcon(str(ROOT/'gui/icons/hicolor/256x256/apps/io.github.lrnolivia.RTXForge.png')))
     engine=QQmlApplicationEngine();controller=Controller(demo)
     engine.rootContext().setContextProperty('forge',controller)

@@ -13,8 +13,10 @@ Kirigami.ApplicationWindow {
     property bool packageTrusted: false
     pageStack.initialPage: mainPage
     globalDrawer: Kirigami.GlobalDrawer {
+        objectName: "navigationDrawer"
         visible: forge.mode === "new"
-        modal: false; handleVisible: false; width: 230
+        drawerOpen: forge.mode === "new"
+        modal: forge.mode !== "new"; handleVisible: false; width: forge.mode === "new" ? 230 : 0
         title: "rtxForge"; titleIcon: "applications-games"
         actions: [
             Kirigami.Action { text: "Home"; icon.name: "go-home"; onTriggered: window.page = "home" },
@@ -80,9 +82,11 @@ Kirigami.ApplicationWindow {
                     }
                 }
                 QQC2.ScrollView {
+                    id: packageScroll
+                    contentWidth: availableWidth
                     visible: window.page === "packages"; Layout.fillWidth: true; Layout.fillHeight: true
                     ColumnLayout {
-                        width: parent.width; spacing: 16
+                        width: packageScroll.availableWidth; spacing: 16
                         Kirigami.Heading { text: "Choose your graphics package" }
                         Repeater {
                             model: forge.packages
@@ -105,7 +109,8 @@ Kirigami.ApplicationWindow {
                                 required property var modelData
                                 Layout.fillWidth: true
                                 QQC2.Label { text: modelData.label; Layout.fillWidth: true }
-                                QQC2.TextField { text: modelData.value; onTextChanged: { window.customValues[modelData.key]=text } }
+                                QQC2.TextField { visible: modelData.key !== "OverrideInterpolationCount"; text: modelData.value; onTextChanged: { window.customValues[modelData.key]=text } }
+                                QQC2.ComboBox { visible: modelData.key === "OverrideInterpolationCount"; model: ["Auto","Off","2×","3×","4×","5×","6×"]; currentIndex: ["auto","0","1","2","3","4","5"].indexOf(modelData.value); onActivated: window.customValues[modelData.key]=["auto","0","1","2","3","4","5"][currentIndex] }
                             }
                         }
                         QQC2.Label { visible: !!forge.inspection.name; text: "Instructions are reference material only. Nothing in the archive is executed."; wrapMode: Text.Wrap; Layout.fillWidth: true }

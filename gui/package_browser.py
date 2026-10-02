@@ -68,8 +68,16 @@ def show_packages(owner, fixture=None):
         group.add(Adw.ActionRow(title='Package contents', subtitle=f"{len(result['files'])} files · {result['expanded_bytes']/1024**2:.1f} MiB expanded"))
         fields = {}
         for parameter in result['parameters']:
-            entry = Adw.EntryRow(title=parameter['label'] + ' · ' + parameter['origin'])
-            entry.set_text(str(parameter['value']));group.add(entry);fields[parameter['key']]=entry
+            if parameter['key']=='OverrideInterpolationCount':
+                counts=['auto','0','1','2','3','4','5']
+                raw=str(parameter['value'])
+                choice=Adw.ComboRow(title='MFG multiplier',model=Gtk.StringList.new(['Auto','Off','2×','3×','4×','5×','6×']))
+                choice.set_selected(counts.index(raw) if raw in counts else Gtk.INVALID_LIST_POSITION)
+                group.add(choice)
+                fields[parameter['key']]=lambda choice=choice,raw=raw:counts[choice.get_selected()] if choice.get_selected()<len(counts) else raw
+            else:
+                entry = Adw.EntryRow(title=parameter['label'] + ' · ' + parameter['origin'])
+                entry.set_text(str(parameter['value']));group.add(entry);fields[parameter['key']]=entry.get_text
         detail.append(group)
         warnings = Gtk.Label(label='\n'.join(result['warnings']), xalign=0, wrap=True, selectable=True)
         warnings.add_css_class('dim-label');detail.append(warnings)
@@ -85,7 +93,7 @@ def show_packages(owner, fixture=None):
         apply.add_css_class('suggested-action');footer.append(apply)
         trust.connect('toggled', lambda *_:apply.set_sensitive(trust.get_active() and result['family']=='dlss-unlocked'))
         def reviewed(*_):
-            values={key:entry.get_text().strip() for key,entry in fields.items()}
+            values={key:read().strip() for key,read in fields.items()}
             trusted=trust.get_active();apply.set_sensitive(False)
             status.set_text('Verifying the reviewed package…')
             def verified(record):

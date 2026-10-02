@@ -10,6 +10,8 @@ gi.require_version('Gtk','4.0');gi.require_version('Adw','1')
 from gi.repository import Gtk,Adw,GLib,Gio,Gdk,Gsk,Graphene,Pango,GdkPixbuf,GObject
 import ui,library_media,os,game_notes,ui_colors
 from desktop_service import DesktopService
+from package_browser import show_packages
+from native_shell import new_shell
 
 ACCENT_PROVIDERS={}
 ACCENT_SOURCES={}
@@ -3439,6 +3441,8 @@ class Window(Adw.ApplicationWindow):
             settings_action
         )
 
+        for action_name,callback in [('packages',self.show_packages),('classic-ui',lambda *_:self.set_ui_mode('classic')),('new-ui',lambda *_:self.set_ui_mode('new')),('compact-header',self.toggle_compact_header)]:
+            action=Gio.SimpleAction.new(action_name,None);action.connect('activate',callback);self.add_action(action)
         menu=Gio.Menu()
 
         library_menu=Gio.Menu()
@@ -3456,6 +3460,10 @@ class Window(Adw.ApplicationWindow):
         )
 
         app_menu=Gio.Menu()
+        app_menu.append('Packages…','win.packages')
+        app_menu.append('Use Classic UI','win.classic-ui')
+        app_menu.append('Use New UI','win.new-ui')
+        app_menu.append('Toggle Compact Header','win.compact-header')
         app_menu.append(
             'Activity',
             'win.activity',
@@ -3576,6 +3584,9 @@ class Window(Adw.ApplicationWindow):
                         self.choose_folder,
                     )
                 )
+
+                for title,icon,callback in [('Packages','package-x-generic-symbolic',self.show_packages),('Switch interface','view-dual-symbolic',lambda *_:self.set_ui_mode('new' if self.settings.get('ui_mode')=='classic' else 'classic'))]:
+                    shell.append(menu_button(title,icon,callback))
 
                 shell.append(
                     menu_button(
@@ -3815,7 +3826,7 @@ class Window(Adw.ApplicationWindow):
         self.profile_group.add_css_class('mode-selector')
         for mode,title in [('nr-only','NR Only'),('mfg-only','MFG Only'),('nr-mfg','NR + MFG')]:
             toggle=Adw.Toggle(name=mode,label=title,child=profile_label(mode,title));self.profile_group.add(toggle)
-            if mode=='nr-only':self.nr_only=toggle;toggle.set_enabled(self.settings.get('runtime_provider','y4my')=='dlss-unlocked')
+            if mode=='nr-only':self.nr_only=toggle;toggle.set_enabled(self.settings.get('runtime_provider','y4my') in ('dlss-unlocked','custom'))
         controls.append(self.profile_group)
         self.profile_group.connect('notify::active-name',self.profile_changed)
         self.profile_group.set_active_name(self.settings.get('default_profile','mfg-only'));self.profile_changed(self.profile_group)
@@ -4434,8 +4445,8 @@ class Window(Adw.ApplicationWindow):
             )
 
             if (
-                value>120
-                and can_collapse
+                self.settings.get('compact_header',False) or (value>120
+                and can_collapse)
             ):
                 hero_reveal.set_reveal_child(
                     False
@@ -4478,6 +4489,7 @@ class Window(Adw.ApplicationWindow):
                     'stuck'
                 )
         self._collapse_library_header=collapse_header
+        self._library_scroll_adjustment=scroll.get_vadjustment()
         scroll.get_vadjustment().connect(
             'value-changed',
             collapse_header,
@@ -4609,6 +4621,49 @@ class Window(Adw.ApplicationWindow):
                 800,
                 self.live_smoke_startup,
             )
+
+        self._canonical_library=self.overlay
+        self._new_shell=None;self._new_stack=None
+        initial=getattr(options,'ui_mode',None) or self.settings.get('ui_mode','classic')
+        self.set_ui_mode(initial,persist=False)
+        if self.settings.get('compact_header'):GLib.idle_add(self._collapse_library_header,self._library_scroll_adjustment)
+
+    def show_packages(self,*_):
+        return show_packages(self)
+
+    def select_package(self,provider,values):
+        if self.busy:raise ValueError('Wait for the current operation to finish.')
+        self.settings.update(values);self.settings['runtime_provider']=provider
+        self.nr_only.set_enabled(provider in ('dlss-unlocked','custom'))
+        def ready(*_):
+            if self.selected_game_ids:self.launch_action('install',visual_settings=dict(self.settings))
+            else:self.toast('Package selected. Select games, then choose Install Features.')
+        if self.options.demo:ready()
+        else:self.start('Saving package choice',lambda:library_media.save_settings(self.service.config,self.settings),ready)
+
+    def set_start_page(self,page):
+        self.settings['start_page']=page
+        if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
+
+    def set_ui_mode(self,mode,persist=True):
+        if mode not in ('classic','new'):mode='classic'
+        if self.busy and persist:self.toast('Finish the current operation before switching interfaces.');return
+        if self._new_stack is not None:
+            self._new_stack.remove(self._canonical_library)
+            self._new_stack=None
+        self.set_content(None)
+        if mode=='new':
+            self._new_shell,self._new_stack=new_shell(self,self._canonical_library)
+            self.set_content(self._new_shell)
+        else:self.set_content(self._canonical_library);self._new_shell=None
+        self.settings['ui_mode']=mode
+        if persist and not self.options.demo:library_media.save_settings(self.service.config,self.settings)
+        GLib.idle_add(self.update_library_spacing)
+
+    def toggle_compact_header(self,*_):
+        self.settings['compact_header']=not self.settings.get('compact_header',False)
+        self._collapse_library_header(self._library_scroll_adjustment)
+        if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
 
     def title_button(self,icon,title,callback):
         b=Gtk.Button(icon_name=icon);b.set_tooltip_text(title);b.update_property([Gtk.AccessibleProperty.LABEL],[title]);b.add_css_class('title-action');b.connect('clicked',callback);return b
@@ -11661,7 +11716,7 @@ class Window(Adw.ApplicationWindow):
             resizable=True,
         )
         graphics=Adw.PreferencesGroup(title='Graphics Provider',description='Restore original files before switching providers.')
-        provider_keys=['y4my','dlss-unlocked'];provider=safe_combo_row(title='Provider',model=Gtk.StringList.new(['y4my Multipass','DLSS-Unlocked']),selected=provider_keys.index(self.settings.get('runtime_provider','y4my')));graphics.add(provider)
+        provider_keys=['y4my','dlss-unlocked','custom'];provider=safe_combo_row(title='Provider',model=Gtk.StringList.new(['y4my Multipass','DLSS-Unlocked','Custom package']),selected=provider_keys.index(self.settings.get('runtime_provider','y4my')));graphics.add(provider)
         nr_path=Adw.EntryRow(title='Local NR DLL for y4my');nr_path.set_text(self.settings.get('nr_runtime',''));graphics.add(nr_path)
         defaults=Adw.PreferencesGroup(title='Installation')
         manage_files=Adw.SwitchRow(title='DLSS Files',subtitle='Update older DLSS files when installing features. Backups are kept for restoration.',active=self.settings.get('manage_dlss_files',True))
@@ -11847,7 +11902,7 @@ class Window(Adw.ApplicationWindow):
             if selected_provider=='y4my' and selected_mode=='nr-only':self.toast('NR Only requires DLSS-Unlocked.');return
             settings_saved['value']=True
             self.settings.update(manage_dlss_files=manage_files.get_active(),runtime_provider=selected_provider,nr_runtime=nr_path.get_text().strip(),default_profile=selected_mode,library_view=pending_library_view['value'],dark=theme_selector.get_active_name()!='light',online_art=art.get_active(),steam_metadata=metadata.get_active(),network_timeout=timeout.get_value_as_int(),recognize_previous=adopt.get_active())
-            self.nr_only.set_enabled(selected_provider=='dlss-unlocked')
+            self.nr_only.set_enabled(selected_provider in ('dlss-unlocked','custom'))
             self.profile_group.set_active_name(selected_mode)
             Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)
             apply_neutral_palette()
@@ -13226,6 +13281,7 @@ class Application(Adw.Application):
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--provider',type=Path)
+    parser.add_argument('--ui-mode',choices=['classic','new'],default=None)
     parser.add_argument(
         '--demo',
         action='store_true',

@@ -1,7 +1,7 @@
 """Serialized desktop adapter for the RC1.38-derived transaction engine."""
 from pathlib import Path
 import importlib.util,sys,json,hashlib,zipfile,os
-import transactions as t,packages,ui
+import transactions as t,packages,ui,package_catalog
 from operation_session import Session,Cancelled
 from storage import storage
 ROOT=Path(__file__).resolve().parents[1]
@@ -18,7 +18,13 @@ def module(config,provider='y4my',mode=None):
     return e
 
 def payload(e,config,mode,archive=None):
-    p=e.Y4MY_PROVIDER;cache=storage(config,2*1024**3)/'packages'/p['sha256']
+    p=e.Y4MY_PROVIDER
+    if p.get('custom'):
+        data,meta=package_catalog.load_custom_payload(p)
+        if mode=='mfg-only':
+            data={n:v for n,v in data.items() if Path(n).name.lower() not in {'nvngx_dlssnr.dll','nvngx.dll_dlssnr.dll','sl.dlss_nr.dll'}}
+        return data,meta
+    cache=storage(config,2*1024**3)/'packages'/p['sha256']
     archive=Path(archive) if archive else packages.download(p['url'],cache/p['archive'],expected=p['sha256'],size=p['release_size'])
     t.need(not archive.is_symlink() and t.digest(archive)==p['sha256'],'Provider archive hash mismatch')
     if p['id']=='y4my':
@@ -94,7 +100,14 @@ def desktop_mode(e):
     e.subprocess=DesktopProcesses()
 
 def prepare(config,rows,mode,operation,settings):
-    e=module(config,settings.get('runtime_provider','y4my'),mode);data={};meta={};nr=None;nrmeta=None
+    selected=settings.get('runtime_provider','y4my')
+    custom=settings.get('custom_package') if selected=='custom' else None
+    t.need(selected!='custom' or isinstance(custom,dict),'Choose and review a custom package first.')
+    e=module(config,custom['family'] if custom else selected,mode);data={};meta={};nr=None;nrmeta=None
+    if custom:
+        # Unique package identity keeps switching providers behind existing restore checks.
+        package_catalog.validate_parameters(custom.get('parameters',{}))
+        e.Y4MY_PROVIDER=dict(custom)
     if operation in ('install','repair'):
         data,meta=ui.work('Verifying '+e.Y4MY_PROVIDER['name'],payload,e,config,mode)
         if mode in ('nr-mfg','nr-only') and 'nvngx_dlssnr.dll' not in data:

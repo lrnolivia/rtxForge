@@ -8,11 +8,12 @@ from gi.repository import Adw, Gtk
 def new_shell(owner, library):
     split=Adw.NavigationSplitView()
     split.set_min_sidebar_width(220);split.set_max_sidebar_width(260)
-    sidebar=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12)
-    for side in ('top','bottom','start','end'):getattr(sidebar,'set_margin_'+side)(18)
-    sidebar.append(Gtk.Image(icon_name='io.github.lrnolivia.RTXForge',pixel_size=56,halign=Gtk.Align.START))
-    brand=Gtk.Label(label='rtxForge',xalign=0);brand.add_css_class('title-1');sidebar.append(brand)
-    switch=Gtk.Button(label='Switch to Classic');switch.connect('clicked',lambda *_:owner.set_ui_mode('classic'));sidebar.append(switch)
+    sidebar=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=28)
+    for side in ('top','bottom','start','end'):getattr(sidebar,'set_margin_'+side)(24)
+    sidebar.set_margin_top(32)
+    identity=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12)
+    identity.append(Gtk.Image(icon_name='io.github.lrnolivia.RTXForge',pixel_size=56,halign=Gtk.Align.START))
+    brand=Gtk.Label(label='rtxForge',xalign=0);brand.add_css_class('title-1');identity.append(brand);sidebar.append(identity)
     nav=Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE);nav.add_css_class('navigation-sidebar');sidebar.append(nav)
     stack=Gtk.Stack(hexpand=True,vexpand=True,transition_type=Gtk.StackTransitionType.CROSSFADE,transition_duration=160)
     stack.add_named(library,'library')
@@ -35,8 +36,9 @@ def new_shell(owner, library):
     toolbar=Adw.ToolbarView();toolbar.add_top_bar(Adw.HeaderBar());toolbar.set_content(scroll);stack.add_named(toolbar,'home')
     rows={}
     for key,title,icon in [('home','Home','go-home-symbolic'),('library','Game Library','view-grid-symbolic'),('forge','Forge','applications-engineering-symbolic'),('settings','Settings','emblem-system-symbolic'),('recovery','Recovery','document-revert-symbolic')]:
-        row=Gtk.ListBoxRow();row.page=key;content=Gtk.Box(spacing=12)
+        row=Gtk.ListBoxRow();row.page=key;row.set_margin_bottom(6);content=Gtk.Box(spacing=14)
         for side in ('top','bottom','start','end'):getattr(content,'set_margin_'+side)(12)
+        content.set_margin_top(16);content.set_margin_bottom(16)
         content.append(Gtk.Image(icon_name=icon));content.append(Gtk.Label(label=title,xalign=0));row.set_child(content);nav.append(row);rows[key]=row
     def navigate(page):
         nav.select_row(rows[page])

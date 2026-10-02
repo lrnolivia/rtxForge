@@ -1,5 +1,5 @@
 """Write-disabled screenshots for both layouts and package inspection."""
-import argparse, json, os, sys, tempfile, traceback, zipfile
+import argparse, json, os, sys, tempfile, traceback, zipfile, urllib.request
 from pathlib import Path
 os.environ['GSETTINGS_BACKEND']='memory'
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'gui'))
@@ -11,6 +11,17 @@ report=[]
 fixture=ROOT/'dist/package-review-fixture.zip';fixture.parent.mkdir(exist_ok=True)
 with zipfile.ZipFile(fixture,'w') as z:
     for name,data in {'dxgi.dll':b'MZ demo only','OptiScaler.ini':b'[DLSSG]\nOverrideInterpolationCount=2\n[DlssNr]\nIntensity=1.5\n[Sharpness]\nSharpness=0.4','OptiScaler/streamline/sl.interposer.dll':b'MZ demo only','OptiScaler/streamline/sl.dlss_g.dll':b'MZ demo only','README.md':b'Place the files beside the game executable. Review your Proton configuration. No scripts run during inspection.'}.items():z.writestr(name,data)
+# Use the application's existing public Steam artwork source for visual QA.
+# These are demo fixtures only; no library or user settings are touched.
+media=ROOT/'dist/demo-media';media.mkdir(parents=True,exist_ok=True)
+for appid in ('1091500','990080','3357650','2842040','2840770'):
+    try:
+        url=f'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{appid}/library_600x900.jpg'
+        with urllib.request.urlopen(url,timeout=10) as response:data=response.read(8*1024**2)
+        if not data.startswith((b'\xff\xd8',b'\x89PNG')):continue
+        image=media/(appid+'.jpg');image.write_bytes(data)
+        (media/(appid+'.json')).write_text(json.dumps({'poster':str(image),'art_credit':'Steam'}))
+    except Exception as ex:print('Demo artwork unavailable:',appid,type(ex).__name__)
 steps=[]
 def capture(name):
     path=app.window.capture(name)

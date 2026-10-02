@@ -6,7 +6,7 @@ import org.kde.kirigami as Kirigami
 
 Kirigami.ApplicationWindow {
     id: window
-    width: 1280; height: 820; minimumWidth: 800; minimumHeight: 580
+    width: 1280; height: 820; minimumWidth: 760; minimumHeight: 580
     visible: true; title: "rtxForge"
     property string page: forge.startPage
     property var customValues: ({})

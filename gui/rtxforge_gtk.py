@@ -4659,7 +4659,7 @@ class Window(Adw.ApplicationWindow):
             self._new_shell,self._new_stack=new_shell(self,self._canonical_library)
             self.set_content(self._new_shell)
         else:self.set_content(self._canonical_library);self._new_shell=None
-        self.set_default_size(max(width,980),max(height,720))
+        self.set_default_size(width if width>1 else 1280,height if height>1 else 820)
         self.settings['ui_mode']=mode
         if persist and not self.options.demo:library_media.save_settings(self.service.config,self.settings)
         GLib.idle_add(self.update_library_spacing)

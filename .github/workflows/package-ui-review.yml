@@ -39,6 +39,18 @@ jobs:
           for name in ['gui/package_browser.py','gui/native_shell.py','gui/qt/Main.qml','scripts/package_catalog.py','scripts/desktop_frontend.py']:
               assert (Path('dist/AppImage-build/RTXForge.AppDir/usr/share/rtxforge')/name).is_file(),name
           PYBUILD
+      - name: Verify packaged GTK entrypoint and protected flows
+        env:
+          GDK_BACKEND: x11
+          GSK_RENDERER: cairo
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          GTK_A11Y: none
+          HOME: /tmp/rtxforge-packaged-review
+        run: |
+          mkdir -p "$HOME"
+          export APPDIR="$PWD/dist/AppImage-build/RTXForge.AppDir"
+          "$APPDIR/AppRun" --frontend-doctor
+          xvfb-run -a -s '-screen 0 1920x1080x24' dbus-run-session "$APPDIR/AppRun" --demo --smoke-test
       - uses: actions/upload-artifact@v4
         if: always()
         with:

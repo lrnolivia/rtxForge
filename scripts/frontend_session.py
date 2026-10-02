@@ -25,8 +25,9 @@ class FrontendSession:
     def preferences(self,**values):
         with self.lock:
             if set(values)-set(library_media.DEFAULTS):raise ValueError('Unknown preference.')
-            self.settings.update(values);self.invalidate()
-            if not self.demo:library_media.save_settings(self.service.config,self.settings)
+            candidate={**self.settings,**values}
+            if not self.demo:library_media.save_settings(self.service.config,candidate)
+            self.settings=candidate;self.invalidate()
 
     def scan(self):
         with self.lock:
@@ -34,14 +35,22 @@ class FrontendSession:
             self.selected.intersection_update(g['game'] for g in self.games);self.invalidate()
             return self.games
 
-    def prepare(self,operation='install'):
+    def prepare(self,operation='install',targets=None,visual_settings=None):
         with self.lock:
-            rows=[g for g in self.games if g['game'] in self.selected]
+            keys=self.selected if targets is None else set(targets)
+            if not keys <= {g['game'] for g in self.games}:raise ValueError('Game selection changed; refresh the library.')
+            rows=[g for g in self.games if g['game'] in keys]
             if not rows:raise ValueError('Select games first.')
             if self.demo:
                 self.review={'kind':'demo','rows':[{'name':g['name'],'detail':'Write-disabled preview'} for g in rows],'blocked':[]}
             else:
-                self.review=self.service.prepare(rows,self.settings.get('default_profile','mfg-only'),operation,visual_settings=self.settings)
+                settings=dict(self.settings)
+                if visual_settings:
+                    allowed={'nr_strength','mfg_multiplier','sharpening_strength'}
+                    if set(visual_settings)-allowed:raise ValueError('Unsupported per-game setting.')
+                    settings.update(visual_settings)
+                self.review=self.service.prepare(rows,self.settings.get('default_profile','mfg-only'),operation,visual_settings=settings)
+            self.cancel_event.clear()
             return {'revision':self.revision,'rows':self.review['rows'],'blocked':self.review.get('blocked',[]),'demo':self.demo}
 
     def apply(self,revision):
@@ -50,7 +59,7 @@ class FrontendSession:
             if self.review is None or revision!=self.revision:raise ValueError('Selection or settings changed. Review again.')
             review=self.review;self.review=None
             if not review.get('plans'):raise ValueError('No compatible changes to apply.')
-            self.cancel_event.clear();review['cancel_event']=self.cancel_event
+            review['cancel_event']=self.cancel_event
             return self.service.execute(review)
 
     def cancel(self):

@@ -69,7 +69,7 @@ Kirigami.ApplicationWindow {
                         QQC2.Button { text: "Select all"; enabled: !forge.busy; onClicked: forge.selectAll(true) }
                         QQC2.Button { text: "Clear"; enabled: !forge.busy; onClicked: forge.selectAll(false) }
                         Item { Layout.fillWidth: true }
-                        QQC2.ComboBox { model: ["MFG Only", "NR Only", "NR + MFG"]; onActivated: forge.setPreference("default_profile",["mfg-only","nr-only","nr-mfg"][currentIndex]) }
+                        QQC2.ComboBox { model: ["MFG Only", "NR Only", "NR + MFG"]; currentIndex: ["mfg-only","nr-only","nr-mfg"].indexOf(forge.profile); onActivated: forge.setPreference("default_profile",["mfg-only","nr-only","nr-mfg"][currentIndex]) }
                     }
                     RowLayout {
                         QQC2.ComboBox { model: ["Poster", "Wide Capsule", "List"]; currentIndex: ["posters","capsules","list"].indexOf(forge.layout); onActivated: forge.setLayout(["posters","capsules","list"][currentIndex]) }
@@ -116,7 +116,7 @@ Kirigami.ApplicationWindow {
                     QQC2.Label { text: "Open to" }
                     QQC2.ComboBox { model: ["Game Library","Home"]; currentIndex: forge.startPage === "home" ? 1 : 0; onActivated: forge.setStart(currentIndex ? "home" : "library") }
                     QQC2.Label { text: "Default graphics profile" }
-                    QQC2.ComboBox { model: ["MFG Only","NR Only","NR + MFG"]; onActivated: forge.setPreference("default_profile",["mfg-only","nr-only","nr-mfg"][currentIndex]) }
+                    QQC2.ComboBox { model: ["MFG Only","NR Only","NR + MFG"]; currentIndex: ["mfg-only","nr-only","nr-mfg"].indexOf(forge.profile); onActivated: forge.setPreference("default_profile",["mfg-only","nr-only","nr-mfg"][currentIndex]) }
                     QQC2.Button { text: "Manage graphics packages"; onClicked: {window.page="packages";forge.catalog()} }
                     Item { Layout.fillHeight: true }
                 }

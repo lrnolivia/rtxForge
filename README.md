@@ -201,3 +201,10 @@ select different engines. Setup now checks actual Linux, toolkit, storage, Steam
 and GPU capabilities rather than requiring Bazzite by name. The bundled runtime
 still requires its supported NVIDIA RTX 40-series hardware. This does not claim
 Steam Deck GPU support, NR rendering, HDR, or Gamescope/controller parity.
+
+
+One review AppImage carries both frontend sources. The existing GTK frontend
+remains the default; `--frontend qt` explicitly starts the Kirigami preview when
+PySide6/Kirigami are installed. `--frontend-doctor` reports available Python
+bindings and session information without changing system settings. Toolkit
+dependencies are not silently installed and no desktop environment is replaced.

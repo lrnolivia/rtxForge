@@ -66,6 +66,8 @@ class Controller(QObject):
     def details(self):return self._details
     @Property(str,notify=changed)
     def layout(self):return self.session.settings.get('library_view','posters')
+    @Property(str,notify=changed)
+    def profile(self):return self.session.settings.get('default_profile','mfg-only')
     @Property(int,notify=changed)
     def density(self):return self.session.settings.get('library_columns',7)
     @Property(bool,notify=changed)

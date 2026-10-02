@@ -2,6 +2,11 @@ name: Build rtxForge Linux
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_preview:
+        description: Publish this reviewed branch to the continuous preview updater
+        type: boolean
+        default: false
 
   push:
     branches:
@@ -218,11 +223,23 @@ jobs:
             dist/rtxForge-Bazzite-RTX4070-*.tar.gz.sha256
 
       - name: Publish continuous updater release
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.publish_preview && github.ref == 'refs/heads/rtxforge/shared-package-ui-20261002')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+
+          # Keep the previously installed preview downloadable before replacing it.
+          if gh release view continuous >/dev/null 2>&1; then
+            mkdir -p /tmp/rtxforge-rollback
+            gh release download continuous --dir /tmp/rtxforge-rollback
+            OLD_SHA="$(python3 -c 'import json; print(json.load(open("/tmp/rtxforge-rollback/rtxforge-update.json"))["commit"])')"
+            BACKUP="preview-backup-${OLD_SHA:0:12}"
+            if ! gh release view "$BACKUP" >/dev/null 2>&1; then
+              gh release create "$BACKUP" --target "$OLD_SHA" --prerelease --title "rtxForge previous preview" --notes "Rollback snapshot before preview update. Source: $OLD_SHA."
+              gh release upload "$BACKUP" /tmp/rtxforge-rollback/*
+            fi
+          fi
 
           git tag -f continuous "$GITHUB_SHA"
           git push -f origin refs/tags/continuous
@@ -231,12 +248,12 @@ jobs:
             gh release edit continuous \
               --title "rtxForge Continuous" \
               --prerelease \
-              --notes "Verified development AppImage from main: $GITHUB_SHA. This moving prerelease is the rtxForge continuous update channel, not a numbered stable release."
+              --notes "Verified development preview AppImage: $GITHUB_SHA. This moving prerelease is the rtxForge continuous update channel, not a numbered stable release."
           else
             gh release create continuous \
               --title "rtxForge Continuous" \
               --prerelease \
-              --notes "Verified development AppImage from main: $GITHUB_SHA. This moving prerelease is the rtxForge continuous update channel, not a numbered stable release."
+              --notes "Verified development preview AppImage: $GITHUB_SHA. This moving prerelease is the rtxForge continuous update channel, not a numbered stable release."
           fi
 
           gh release upload continuous \

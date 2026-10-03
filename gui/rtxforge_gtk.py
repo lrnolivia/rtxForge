@@ -2164,17 +2164,12 @@ columnview.library-column-view listview row:nth-child(even):hover {
 
 .progress-content {
     /* More breathing room against the modal's outer edges. */
-    padding: 30px 34px 26px;
+    padding: 24px;
     color: @window_fg_color;
 }
 
 .progress-shade {
-    background:
-        linear-gradient(
-            to right,
-            alpha(@window_bg_color,0.90),
-            alpha(@window_bg_color,0.80)
-        );
+    background: @window_bg_color;
 }
 
 .done-shade {
@@ -2196,7 +2191,7 @@ columnview.library-column-view listview row:nth-child(even):hover {
 .progress-panel {
     border-radius: 0;
     border: none;
-    background: transparent;
+    background: @window_bg_color;
 }
 
 .progress-panel.done {
@@ -2540,7 +2535,9 @@ button.dlss-outline:active { background: alpha(@window_fg_color,0.25); }
     color: @window_fg_color;
 }
 
-.panel-body { padding: 18px 24px; }
+.panel-body { padding: 24px; }
+floating-sheet > sheet { box-shadow: 0 16px 52px 8px alpha(black,0.38), 0 5px 18px alpha(black,0.24); }
+.review-summary { padding: 0 0 8px; }
 button, button label, toggle-group toggle { font-weight: 500; }
 button.suggested-action,
 button.suggested-action label {
@@ -6950,6 +6947,11 @@ class Window(Adw.ApplicationWindow):
             'library-list-chip',
         )
 
+        for chip in (nr,mfg):
+            chip.set_wrap(False);chip.set_single_line_mode(True)
+            chip.set_ellipsize(Pango.EllipsizeMode.NONE)
+            chip.set_valign(Gtk.Align.CENTER)
+
         root.append(
             nr
         )
@@ -8173,7 +8175,7 @@ class Window(Adw.ApplicationWindow):
         )
         margins(
             foot,
-            16,
+            24,
         )
         box.append(foot)
 
@@ -10154,9 +10156,12 @@ class Window(Adw.ApplicationWindow):
         apply.set_valign(
             Gtk.Align.CENTER
         )
+        unknown_presets=[key for key in widgets if game.get(key) is None and widgets[key].get_sensitive()]
+        if installed and unknown_presets:
+            presets_body.append(label('Custom or unreadable preset values found. Reset explicitly to library defaults before editing; existing values are preserved.','dim-label'))
         preset_actions.append(apply)
         presets_body.append(preset_actions)
-        def changed(*_):apply.set_sensitive(installed and any(v!=game.get(k) for k,v in self.tuning_values(widgets).items() if widgets[k].get_sensitive()))
+        def changed(*_):apply.set_sensitive(installed and not unknown_presets and any(v!=game.get(k) for k,v in self.tuning_values(widgets).items() if widgets[k].get_sensitive()))
         for key,w in widgets.items():w.connect('notify::selected' if key=='mfg_multiplier' else 'value-changed',changed)
         changed();self.detail_tuning_widgets=widgets;self.detail_apply_settings=apply
         maintenance=Adw.PreferencesGroup(
@@ -11157,7 +11162,7 @@ class Window(Adw.ApplicationWindow):
         # progress-content currently contributes:
         #   30px top padding
         #   26px bottom padding
-        PANEL_VERTICAL_PADDING=56
+        PANEL_VERTICAL_PADDING=48
 
         self.dialog.set_content_width(640)
         self.dialog.set_content_height(
@@ -11450,26 +11455,8 @@ class Window(Adw.ApplicationWindow):
         self.job_current_game=game['game']
         self.job_picture_index=1-self.job_picture_index
 
-        hero=(
-            game.get('hero')
-            or game.get('capsule')
-            or game.get('poster')
-        )
-
-        self.job_art.set_visible(bool(hero and game.get('poster')))
-        if hero and game.get('poster'):
-            try:
-                self.job_pictures[
-                    self.job_picture_index
-                ].set_paintable(
-                    Gdk.Texture.new_from_filename(hero)
-                )
-
-                self.job_art.set_visible_child_name(
-                    str(self.job_picture_index)
-                )
-            except Exception:
-                pass
+        # Progress keeps a solid neutral surface; only the compact poster changes.
+        self.job_art.set_visible(False)
 
         if game.get('poster'):
             try:
@@ -11588,7 +11575,9 @@ class Window(Adw.ApplicationWindow):
         message_label.set_max_width_chars(44)
         text.append(message_label)
         line.append(text)
-        done=button('Done',lambda *_:(self.dialog.close(),self.scan()),'suggested-action')
+        completion_dialog=self.dialog
+        completion_dialog.connect('closed',lambda *_:self.scan())
+        done=button('Done',lambda *_:completion_dialog.close(),'suggested-action')
         done.set_valign(Gtk.Align.END)
         line.append(done)
         self.dialog.set_content_width(500)
@@ -11671,13 +11660,38 @@ class Window(Adw.ApplicationWindow):
 
         if getattr(self,'operation_cancel',None) is not None:
             self.add_cancel(f)
-        g=Adw.PreferencesGroup(title=f"Ready · {len(review['rows'])}");b.append(g)
-        for item in review['rows']:g.add(row(item['name'],item['detail']))
+        count=len(review['rows'])
+        summary=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6)
+        summary.add_css_class('review-summary')
+        summary.append(label(f"{count} game{'s' if count!=1 else ''} ready",'title-2'))
+        operation=review.get('operation','install')
+        action_label={'install':'Install','repair':'Repair','uninstall':'Restore','reset':'Apply presets'}.get(operation,'Apply')
+        details=[action_label]
+        if operation in ('install','repair','reset'):
+            provider=self.settings.get('runtime_provider','dlss-unlocked')
+            details.append({'dlss-unlocked':'DLSS-Unlocked','y4my':'y4my','custom':'Custom package'}.get(provider,provider))
+            mfg=review.get('mfg_multiplier')
+            if mfg is not None:details.append('MFG '+('In game' if mfg=='auto' else 'Off' if mfg==0 else str(mfg)+'×'))
+        summary.append(label(' · '.join(details),'dim-label'))
+        b.append(summary)
+        g=Adw.PreferencesGroup();b.append(g)
+        for item in review['rows']:
+            entry=Adw.ExpanderRow(title=item['name'],subtitle='Ready to '+action_label.lower())
+            entry.set_use_markup(False)
+            game=next((game for game in getattr(self,'operation_games',[]) if game['name']==item['name']),None)
+            if game and game.get('poster') and Path(game['poster']).is_file():
+                art=Gtk.Picture.new_for_filename(game['poster']);art.set_content_fit(Gtk.ContentFit.COVER)
+                art.set_size_request(40,56);art.set_can_shrink(True);art.set_valign(Gtk.Align.CENTER)
+                entry.add_prefix(art)
+            else:entry.add_prefix(Gtk.Image(icon_name='applications-games-symbolic',pixel_size=28))
+            info=Adw.ActionRow(title='Planned changes',subtitle=str(item.get('detail','')))
+            info.set_use_markup(False);entry.add_row(info);g.add(entry)
         if review['blocked']:
-            skipped=Adw.PreferencesGroup(title=f"Skipped · {len(review['blocked'])}");b.append(skipped)
-            for item in review['blocked']:skipped.add(row(item['name'],item['reason']))
+            skipped=Adw.PreferencesGroup(title=f"Needs attention · {len(review['blocked'])}");b.append(skipped)
+            for item in review['blocked']:
+                warning=row(item['name'],item['reason']);warning.add_prefix(Gtk.Image(icon_name='dialog-warning-symbolic'));skipped.add(warning)
         if not review['rows']:b.append(label('No file changes can be applied.'));f.append(button('Close',lambda *_:d.close()));return
-        apply=button('Apply Settings' if review.get('operation')=='reset' else 'Restore Original Files' if review.get('operation')=='uninstall' else 'Apply to Ready Games',lambda *_:self.execute(review,d,b,f),'forge-primary');apply.set_sensitive(not self.options.demo);f.append(apply)
+        apply=button('Apply Settings' if review.get('operation')=='reset' else 'Restore Original Files' if review.get('operation')=='uninstall' else 'Install' if review.get('operation')=='install' else 'Repair',lambda *_:self.execute(review,d,b,f),'forge-primary');apply.set_sensitive(not self.options.demo);f.append(apply)
         if self.options.demo:b.append(label('Preview mode · all file changes are disabled.','dim-label'))
         elif automatic:self.execute(review,d,b,f)
     def execute(self,review,d,b,f):

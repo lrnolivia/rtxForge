@@ -1458,6 +1458,9 @@ CSS=b'''
 .forge-library-surface {
     background: @forge_lower_bg;
 }
+.library-bottom-fade {
+    background-image: linear-gradient(to bottom, alpha(black,0), alpha(black,0.10));
+}
 
 
 .library-sticky-header.stuck {
@@ -3382,7 +3385,6 @@ class Window(Adw.ApplicationWindow):
         outer.add_css_class('forge-window-surface')
         stage.set_child(outer)
         header=Adw.HeaderBar()
-        self.library_header=header
 
         # Keep the native headerbar/window controls, but leave the
         # center visually empty. The product identity lives in the hero.
@@ -3462,8 +3464,6 @@ class Window(Adw.ApplicationWindow):
 
         app_menu=Gio.Menu()
         app_menu.append('Packages…','win.packages')
-        app_menu.append('Use Classic UI','win.classic-ui')
-        app_menu.append('Use New UI','win.new-ui')
         app_menu.append('Toggle Compact Header','win.compact-header')
         app_menu.append(
             'Activity',
@@ -3586,7 +3586,7 @@ class Window(Adw.ApplicationWindow):
                     )
                 )
 
-                for title,icon,callback in [('Packages','package-x-generic-symbolic',self.show_packages),('Switch interface','view-dual-symbolic',lambda *_:self.set_ui_mode('new' if self.settings.get('ui_mode')=='classic' else 'classic'))]:
+                for title,icon,callback in [('Packages','package-x-generic-symbolic',self.show_packages)]:
                     shell.append(menu_button(title,icon,callback))
 
                 shell.append(
@@ -3844,9 +3844,11 @@ class Window(Adw.ApplicationWindow):
         # ------------------------------------------------------------
 
         sticky_brand=Gtk.Box(
-            spacing=12,
+            spacing=6,
             valign=Gtk.Align.CENTER,
         )
+        sticky_brand.set_valign(Gtk.Align.END)
+        sticky_brand.set_margin_bottom(8)
         sticky_brand.add_css_class(
             'sticky-dashboard-brand'
         )
@@ -3854,8 +3856,9 @@ class Window(Adw.ApplicationWindow):
         sticky_brand_icon=Gtk.Image.new_from_file(
             str(dashboard_art_path)
         )
-        self.sticky_brand_icon=sticky_brand_icon
-        sticky_brand_icon.set_pixel_size(40)
+        sticky_brand_icon.set_pixel_size(
+            22
+        )
         sticky_brand_icon.add_css_class(
             'sticky-dashboard-app-icon'
         )
@@ -3867,6 +3870,8 @@ class Window(Adw.ApplicationWindow):
             'rtxForge',
             'sticky-dashboard-title',
         )
+        sticky_brand_title.set_valign(Gtk.Align.END)
+        sticky_brand_title.set_margin_bottom(4)
         sticky_brand_title.set_wrap(
             False
         )
@@ -4092,7 +4097,6 @@ class Window(Adw.ApplicationWindow):
         )
 
         def set_sticky_dashboard_visible(visible):
-            self.library_header.set_size_request(-1,76 if visible and self.settings.get("ui_mode","classic")=="classic" else -1)
             for revealer in (
                 self.sticky_brand_revealer,
                 self.sticky_dashboard_revealer,
@@ -4335,6 +4339,11 @@ class Window(Adw.ApplicationWindow):
             clear_selection
         )
 
+        controls_surface=Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        controls_surface.add_css_class('forge-top-surface')
+        controls_surface.set_margin_bottom(0)
+        outer.append(controls_surface)
+
         library_surface=Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
             spacing=0,
@@ -4350,7 +4359,7 @@ class Window(Adw.ApplicationWindow):
         # dark dashboard bottom = 16px
         # light Library top     = 16px
         viewbar.set_margin_bottom(16)
-        library_surface.append(viewbar)
+        controls_surface.append(viewbar)
 
         # List mode uses a real Gtk.ColumnView. Its built-in
         # headers own sorting, resizing and column drag/reordering.
@@ -4429,13 +4438,17 @@ class Window(Adw.ApplicationWindow):
             vexpand=True
         )
         library_stage.set_margin_top(16)
-        library_stage.set_margin_bottom(LIBRARY_BOTTOM_CLEARANCE)
+        library_stage.set_margin_bottom(0)
         library_stage.set_child(
             self.library_stack
         )
         library_surface.append(
             library_stage
         )
+        bottom_gutter=Gtk.Box(height_request=LIBRARY_BOTTOM_CLEARANCE)
+        bottom_gutter.add_css_class('library-bottom-fade')
+        bottom_gutter.set_can_target(False)
+        library_surface.append(bottom_gutter)
         # Decorative top fade removed. The Library now begins
         # with ordinary physical spacing below its controls.
         def collapse_header(adj):
@@ -4559,7 +4572,8 @@ class Window(Adw.ApplicationWindow):
         self.size_button.set_popover(size_popover)
         selection_tools.append(self.size_button)
         self.columns_control.connect('value-changed', self.library_columns_changed)
-        library_surface.insert_child_after(selection_tools,viewbar)
+        selection_tools.set_margin_bottom(16)
+        controls_surface.append(selection_tools)
 
 
         # Add the floating operation/status layer only after every normal
@@ -4627,7 +4641,7 @@ class Window(Adw.ApplicationWindow):
 
         self._canonical_library=self.overlay
         self._new_shell=None;self._new_stack=None
-        initial=getattr(options,'ui_mode',None) or self.settings.get('ui_mode','classic')
+        initial=(getattr(options,'ui_mode',None) or 'classic') if options.demo else 'classic'
         self.set_ui_mode(initial,persist=False)
         if self.settings.get('compact_header'):GLib.idle_add(self._collapse_library_header,self._library_scroll_adjustment)
 
@@ -4662,8 +4676,6 @@ class Window(Adw.ApplicationWindow):
         else:self.set_content(self._canonical_library);self._new_shell=None
         self.set_default_size(width if width>1 else 1280,height if height>1 else 820)
         self.settings['ui_mode']=mode
-        self.sticky_brand_icon.set_visible(mode=='classic')
-        self.library_header.set_size_request(-1,76 if mode=='classic' and self.sticky_dashboard_revealer.get_reveal_child() else -1)
         if persist and not self.options.demo:library_media.save_settings(self.service.config,self.settings)
         GLib.idle_add(self.update_library_spacing)
 

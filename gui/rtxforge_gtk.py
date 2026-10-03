@@ -1484,7 +1484,10 @@ CSS=b'''
     background: @forge_lower_bg;
 }
 .library-bottom-fade {
-    background-image: linear-gradient(to bottom, alpha(black,0), alpha(black,0.10));
+    background-image: linear-gradient(to bottom, alpha(@forge_lower_bg,0), @forge_lower_bg);
+}
+.settings-bottom-fade {
+    background-image: linear-gradient(to bottom, alpha(@view_bg_color,0), @view_bg_color);
 }
 
 
@@ -1545,7 +1548,7 @@ spinbutton.tuning-number-input text {
 
 .sticky-mode-selector toggle {
     min-height: 24px;
-    padding: 3px 8px;
+    padding: 6px 14px;
     border-radius: 7px;
     background: transparent;
     border-color: transparent;
@@ -1607,7 +1610,7 @@ spinbutton.tuning-number-input text {
 }
 
 .settings-navigation row:selected {
-    background: transparent;
+    background: alpha(@window_fg_color,0.07);
     background-image: none;
     box-shadow: none;
 }
@@ -1621,13 +1624,15 @@ spinbutton.tuning-number-input text {
 }
 
 .settings-content {
-    padding: 16px;
+    padding: 24px 24px 28px;
 }
+.settings-content row { min-height: 56px; }
+.settings-navigation row:selected image { color: @accent_color; }
 
 .settings-footer {
     padding: 14px 18px;
     background: @view_bg_color;
-    border-top: 1px solid alpha(@window_fg_color,0.10);
+    border-top: none;
 }
 
 
@@ -1642,7 +1647,7 @@ button.game-detail-close {
 
 button.game-detail-close.light {
     background: alpha(white,0.82);
-    color: @window_fg_color;
+    color: #161616;
 }
 
 button.game-detail-close:hover {
@@ -2353,8 +2358,8 @@ button.done-button.suggested-action:hover {
 }
 
 .mode-selector toggle {
-    padding: 6px 13px;
-    min-height: 20px;
+    padding: 8px 18px;
+    min-height: 24px;
     border-radius: 9px;
     background: transparent;
     border-color: transparent;
@@ -2918,6 +2923,20 @@ def icon_button(text,icon,fn,css=None):
     return w
 def margins(w,n=16):
     for edge in ('start','end','top','bottom'):getattr(w,'set_margin_'+edge)(n)
+def scroll_bottom_fade(scroll,css='settings-bottom-fade'):
+    overlay=Gtk.Overlay(child=scroll)
+    fade=Gtk.Box(height_request=40,valign=Gtk.Align.END,hexpand=True,can_target=False)
+    fade.add_css_class(css)
+    overlay.add_overlay(fade)
+    def update(adj,*_):
+        remaining=max(0,adj.get_upper()-adj.get_page_size()-adj.get_value())
+        fade.set_opacity(min(1,remaining/40))
+    adj=scroll.get_vadjustment()
+    adj.connect('changed',update);adj.connect('value-changed',update)
+    update(adj)
+    overlay.bottom_fade=fade
+    return overlay
+
 def clear(box):
     while box.get_first_child():box.remove(box.get_first_child())
 def row(title,subtitle=''):
@@ -3160,10 +3179,14 @@ class PresentationDialog(Adw.Dialog):
         if child is None:
             self._scaled_child=None
             return
-        host=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8)
         couch=getattr(self.owner,'couch',None)
         in_couch=couch and self.owner.input_stack.get_visible_child_name()=='couch'
-        nav=couch.panel_navigation(self) if in_couch else None
+        if not in_couch:
+            super().set_child(child)
+            self._scaled_child=None
+            return
+        host=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8)
+        nav=couch.panel_navigation(self)
         if nav and couch.navigation_position!='bottom':host.append(nav)
         host.append(child)
         if nav and couch.navigation_position=='bottom':host.append(nav)
@@ -3270,8 +3293,8 @@ class ResizablePanelWindow(Adw.Window):
         old=getattr(self,'_scaled_child',None)
         if old:old.release()
         self._raw_child=child
-        self._scaled_child=ScaledContent(child,getattr(self._panel_parent,'presentation_scale',1.0)) if child else None
-        self.set_content(self._scaled_child)
+        self._scaled_child=None
+        self.set_content(child)
 
     def get_child(self):
         return getattr(self,'_raw_child',None)
@@ -3407,13 +3430,6 @@ class LibraryGameItem(GObject.Object):
 
 
 class Window(Adw.ApplicationWindow):
-    def set_content(self, child):
-        old=getattr(self,'scaled_content',None)
-        super().set_content(None)
-        if old:old.release()
-        self.scaled_content=ScaledContent(child,getattr(self,'presentation_scale',1.0)) if child else None
-        super().set_content(self.scaled_content)
-
     def apply_display_preferences(self):
         surface=self.get_surface()
         monitor=self.get_display().get_monitor_at_surface(surface) if surface else None
@@ -3422,20 +3438,29 @@ class Window(Adw.ApplicationWindow):
             system_scale=monitor.get_scale_factor()
             width,height=geometry.width*system_scale,geometry.height*system_scale
         else:width,height,system_scale=1280,820,1
-        factor=content_scale(self.settings.get('ui_scale','auto'),width,height,system_scale)
+        in_couch=hasattr(self,'input_stack') and self.input_stack.get_visible_child_name()=='couch'
+        factor=content_scale(self.settings.get('ui_scale','auto'),width,height,system_scale) if in_couch else 1.0
         self.presentation_scale=factor
-        if self.scaled_content:self.scaled_content.set_factor(factor)
+        if getattr(self,'couch_content',None):self.couch_content.set_factor(factor)
         dialog=getattr(self,'dialog',None)
         if getattr(dialog,'_scaled_child',None):dialog._scaled_child.set_factor(factor)
         if hasattr(self,'couch'):
             self.couch.resize(round(self.get_width()/factor),round(self.get_height()/factor))
             self.couch.apply_navigation_preferences()
 
+    def set_big_picture_ui(self,enabled):
+        global COUCH_MODE
+        self.settings['big_picture_ui']=bool(enabled)
+        COUCH_MODE=self.settings.get('input_mode','auto') if enabled else 'desktop'
+        if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
+        if not enabled:GLib.idle_add(lambda:(self.set_input_surface(False),False)[1])
+
     def set_display_preference(self,key,value):
         self.settings[key]=value
         if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
         self.apply_display_preferences()
-        if hasattr(self,'couch'):self.couch.render(self.couch.current)
+        if hasattr(self,'couch') and self.input_stack.get_visible_child_name()=='couch':
+            GLib.idle_add(lambda:(self.couch.render(self.couch.current),False)[1])
 
 
     def game_status_label(self,game):
@@ -3446,7 +3471,7 @@ class Window(Adw.ApplicationWindow):
         self.options=options;self.service=DesktopService(options.provider)
         self.settings=dict(library_media.DEFAULTS) if options.demo else library_media.load_settings(self.service.config)
         global COUCH_MODE
-        COUCH_MODE=self.settings.get('input_mode','auto')
+        COUCH_MODE=self.settings.get('input_mode','auto') if self.settings.get('big_picture_ui',True) else 'desktop'
 
         # Demo/smoke modes are deliberately write-disabled and must not
         # require the real Bazzite Games mount merely to construct the UI.
@@ -4405,10 +4430,21 @@ class Window(Adw.ApplicationWindow):
         library_surface.append(
             library_stage
         )
-        bottom_gutter=Gtk.Box(height_request=LIBRARY_BOTTOM_CLEARANCE)
+        bottom_gutter=Gtk.Box(height_request=40,valign=Gtk.Align.END,hexpand=True)
         bottom_gutter.add_css_class('library-bottom-fade')
         bottom_gutter.set_can_target(False)
-        library_surface.append(bottom_gutter)
+        library_stage.add_overlay(bottom_gutter)
+        self.library_bottom_fade=bottom_gutter
+        def update_library_fade(*_):
+            active=self.column_scroll if self.library_stack.get_visible_child_name()=='list' else self.library_scroll
+            adj=active.get_vadjustment()
+            remaining=max(0,adj.get_upper()-adj.get_page_size()-adj.get_value())
+            bottom_gutter.set_opacity(min(1,remaining/40))
+        for viewport in (self.library_scroll,self.column_scroll):
+            viewport.get_vadjustment().connect('changed',update_library_fade)
+            viewport.get_vadjustment().connect('value-changed',update_library_fade)
+        self.library_stack.connect('notify::visible-child-name',update_library_fade)
+        update_library_fade()
         self.controller_hud=Gtk.Label(label='',visible=False,margin_top=6,margin_bottom=8)
         self.controller_hud.add_css_class('dim-label')
         library_surface.append(self.controller_hud)
@@ -4609,7 +4645,9 @@ class Window(Adw.ApplicationWindow):
         classic_child=self.overlay.get_child();self.overlay.set_child(None)
         self.input_stack=Gtk.Stack(hhomogeneous=False,vhomogeneous=False)
         self.input_stack.add_named(classic_child,'desktop')
-        self.couch=CouchShell(self);self.input_stack.add_named(self.couch,'couch')
+        self.couch=CouchShell(self)
+        self.couch_content=ScaledContent(self.couch)
+        self.input_stack.add_named(self.couch_content,'couch')
         self.overlay.set_child(self.input_stack)
         self.last_controller_input=0.0;self._pointer_origin=None
         self.set_input_surface(gamescope_session())
@@ -4637,8 +4675,10 @@ class Window(Adw.ApplicationWindow):
 
     def set_input_surface(self,couch):
         if not hasattr(self,'input_stack'):return
+        couch=couch and self.settings.get('big_picture_ui',True)
         self._pointer_origin=None
         self.input_stack.set_visible_child_name('couch' if couch else 'desktop')
+        self.apply_display_preferences()
         self.controller_hud.set_visible(False)
         if couch:self.couch.refresh()
         self.add_css_class('controller-active') if couch else self.remove_css_class('controller-active')
@@ -4665,6 +4705,11 @@ class Window(Adw.ApplicationWindow):
         for action in actions:
             dialog=active_panel or self.get_visible_dialog()
             if not dialog:
+                if not self.settings.get('big_picture_ui',True):
+                    direction={'up':Gtk.DirectionType.UP,'down':Gtk.DirectionType.DOWN,'left':Gtk.DirectionType.LEFT,'right':Gtk.DirectionType.RIGHT,'previous':Gtk.DirectionType.TAB_BACKWARD,'next':Gtk.DirectionType.TAB_FORWARD}.get(action)
+                    if direction is not None:self.child_focus(direction)
+                    elif action=='accept' and self.get_focus():self.get_focus().activate()
+                    continue
                 if self.input_stack.get_visible_child_name()!='couch':self.set_input_surface(True)
                 self.couch.navigate(action)
                 continue
@@ -4695,13 +4740,27 @@ class Window(Adw.ApplicationWindow):
                 item.add_suffix(button('Restore',lambda _,r=record:self.review_extra_restore(r)))
                 body.append(item)
 
+    def add_game_art_prefix(self,entry,game):
+        if game and game.get('poster') and Path(game['poster']).is_file():
+            art=Gtk.Picture.new_for_filename(game['poster'])
+            art.set_content_fit(Gtk.ContentFit.COVER)
+            art.set_size_request(40,56)
+            art.set_can_shrink(True)
+            art.set_valign(Gtk.Align.CENTER)
+        else:
+            art=Gtk.Image(icon_name='applications-games-symbolic',pixel_size=28)
+        entry.add_prefix(art)
+
     def show_extras(self,*_):
         d,b,f=self.open_panel('Extras')
         b.append(label('Manage standalone tools and NR diagnostics for each game.','dim-label'))
+        group=Adw.PreferencesGroup()
+        b.append(group)
         for game in self.games:
             item=row(game['name'],game.get('profile',''))
+            self.add_game_art_prefix(item,game)
             item.add_suffix(button('Tools',lambda _,g=game:(self.details(g),self.detail_pages.set_visible_child_name('Tools'))))
-            b.append(item)
+            group.add(item)
 
     def show_diagnostics(self,game):
         import runtime_diagnostics,json
@@ -8444,6 +8503,8 @@ class Window(Adw.ApplicationWindow):
         icons={
             'Graphics':'video-display-symbolic',
             'Library':'applications-games-symbolic',
+            'Gaming Mode':'input-gaming-symbolic',
+            'Appearance':'applications-graphics-symbolic',
             'System':'computer-symbolic',
             'Recovery':'document-revert-symbolic',
         }
@@ -8451,7 +8512,7 @@ class Window(Adw.ApplicationWindow):
         for title,items in sections:
             page=Gtk.Box(
                 orientation=Gtk.Orientation.VERTICAL,
-                spacing=16,
+                spacing=28,
             )
             page.add_css_class(
                 'settings-content'
@@ -8466,12 +8527,11 @@ class Window(Adw.ApplicationWindow):
                 hscrollbar_policy=Gtk.PolicyType.NEVER,
                 vexpand=True,
             )
-            scroll.set_child(
-                page
-            )
+            clamp=Adw.Clamp(child=page,maximum_size=800,tightening_threshold=600)
+            scroll.set_child(clamp)
 
             stack.add_titled(
-                scroll,
+                scroll_bottom_fade(scroll),
                 title,
                 title,
             )
@@ -11843,11 +11903,7 @@ class Window(Adw.ApplicationWindow):
             entry=Adw.ExpanderRow(title=item['name'],subtitle='Ready to '+action_label.lower())
             entry.set_use_markup(False)
             game=next((game for game in getattr(self,'operation_games',[]) if game['name']==item['name']),None)
-            if game and game.get('poster') and Path(game['poster']).is_file():
-                art=Gtk.Picture.new_for_filename(game['poster']);art.set_content_fit(Gtk.ContentFit.COVER)
-                art.set_size_request(40,56);art.set_can_shrink(True);art.set_valign(Gtk.Align.CENTER)
-                entry.add_prefix(art)
-            else:entry.add_prefix(Gtk.Image(icon_name='applications-games-symbolic',pixel_size=28))
+            self.add_game_art_prefix(entry,game)
             info=Adw.ActionRow(title='Planned changes',subtitle=str(item.get('detail','')))
             info.set_use_markup(False);entry.add_row(info);g.add(entry)
         if review['blocked']:
@@ -11920,19 +11976,11 @@ class Window(Adw.ApplicationWindow):
         defaults.add(manage_files)
         modes=['nr-only','mfg-only','nr-mfg'];profile=safe_combo_row(title='Default Mode',model=Gtk.StringList.new(['NR Only','MFG Only','NR + MFG']),selected=modes.index(self.settings.get('default_profile','mfg-only')));defaults.add(profile)
         adopt=Adw.SwitchRow(title='Recognize Existing Features',subtitle='Allow updates to compatible installations from other tools.',active=self.settings['recognize_previous']);defaults.add(adopt)
-        appearance=Adw.PreferencesGroup(title='Appearance',description='Theme, window shape and library layout.')
+        appearance=Adw.PreferencesGroup(title='Theme',description='Choose the look of rtxForge.')
+        window_style=Adw.PreferencesGroup(title='Window',description='Shape and spacing for the desktop interface.')
+        library_layout=Adw.PreferencesGroup(title='Library Layout',description='Choose how your desktop game collection is displayed.')
         compact=Adw.SwitchRow(title='Compact Header',subtitle='Keep more room for your games.',active=self.settings.get('compact_header',False))
         compact.connect('notify::active',lambda widget,*_: self.toggle_compact_header() if widget.get_active()!=self.settings.get('compact_header',False) else None)
-        appearance.add(compact)
-        for key,title,keys,captions in [
-            ('ui_scale','UI Scale',list(SCALES),['Automatic (150% at 4K)','100%','125%','150%','175%','200%']),
-            ('dashboard_view','Dashboard Artwork',['capsules','posters'],['Wide Capsule','Poster']),
-            ('dashboard_row_count','Games Across Shelf',list(range(3,9)),[str(n) for n in range(3,9)]),
-            ('navigation_position','Game Mode Navigation',['top','bottom'],['Top','Bottom']),
-            ('controller_hints','Controller Hints',['always','auto'],['Always visible','Hide when idle'])]:
-            choice=safe_combo_row(title=title,model=Gtk.StringList.new(captions),selected=keys.index(self.settings.get(key,library_media.DEFAULTS[key])))
-            choice.connect('notify::selected',lambda widget,*_,key=key,keys=keys:self.set_display_preference(key,keys[widget.get_selected()]))
-            appearance.add(choice)
         views=[
             'posters',
             'capsules',
@@ -12014,23 +12062,38 @@ class Window(Adw.ApplicationWindow):
             layout_selector
         )
 
-        appearance.add(
+        library_layout.add(
             layout_row
         )
 
-        controls=Adw.PreferencesGroup(title='Input',description='SDL handles mapped controllers; Steam Input may expose a virtual Xbox controller. Keyboard and mouse remain available.')
+        controls=Adw.PreferencesGroup(title='Interface',description='Choose the experience for Gaming Mode.')
+        dashboard_options=Adw.PreferencesGroup(title='Dashboard',description='Artwork and browsing in Big Picture UI.')
+        controller_options=Adw.PreferencesGroup(title='Controller',description='Button labels and navigation prompts.')
+        big_picture=Adw.SwitchRow(title='Big Picture UI',subtitle='Use the game menu interface for Gaming Mode and controller input.',active=self.settings.get('big_picture_ui',True))
+        big_picture.connect('notify::active',lambda widget,*_:self.set_big_picture_ui(widget.get_active()))
+        controls.add(big_picture)
         for key,title,keys,captions in [
-            ('input_mode','Startup Interface',['auto','desktop','couch'],['Automatic','Desktop','Couch']),
+            ('input_mode','Startup Interface',['auto','desktop','couch'],['Automatic','Desktop','Big Picture']),
             ('controller_glyphs','Controller Labels',['auto','xbox','playstation','nintendo','generic'],['Automatic','Xbox','PlayStation','Nintendo','Generic'])]:
             choice=safe_combo_row(title=title,model=Gtk.StringList.new(captions),selected=keys.index(self.settings.get(key,'auto')))
             def change_input(widget,*_,key=key,keys=keys):
                 global COUCH_MODE
                 self.settings[key]=keys[widget.get_selected()]
-                COUCH_MODE=self.settings.get('input_mode','auto')
+                COUCH_MODE=self.settings.get('input_mode','auto') if self.settings.get('big_picture_ui',True) else 'desktop'
                 if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
                 if key=='input_mode':self.toast('Input mode saved. Restart to rebuild all menu controls.')
-            choice.connect('notify::selected',change_input);controls.add(choice)
-        controls.add(row('Controller Navigation','D-pad / stick: focus · South: activate · East: back · North: library · Start: menu · View/Select: settings · Bumpers: tab'))
+            choice.connect('notify::selected',change_input);(controller_options if key=='controller_glyphs' else controls).add(choice)
+        for key,title,keys,captions in [
+            ('ui_scale','UI Scale',list(SCALES),['Automatic (150% at 4K)','100%','125%','150%','175%','200%']),
+            ('dashboard_view','Dashboard Artwork',['capsules','posters'],['Wide Capsule','Poster']),
+            ('dashboard_row_count','Games Across Shelf',list(range(3,9)),[str(n) for n in range(3,9)]),
+            ('navigation_position','Navigation Position',['top','bottom'],['Top','Bottom']),
+            ('controller_hints','Controller Hints',['always','auto'],['Always visible','Hide when idle'])]:
+            choice=safe_combo_row(title=title,model=Gtk.StringList.new(captions),selected=keys.index(self.settings.get(key,library_media.DEFAULTS[key])))
+            choice.connect('notify::selected',lambda widget,*_,key=key,keys=keys:self.set_display_preference(key,keys[widget.get_selected()]))
+            target=dashboard_options if key in ('dashboard_view','dashboard_row_count') else controller_options if key=='controller_hints' else controls
+            target.add(choice)
+        controller_options.add(row('Controller Navigation','D-pad / stick: focus · South: activate · East: back · North: library · Start: menu · View/Select: settings · Bumpers: tab'))
         settings_saved={'value':False}
 
         def restore_library_preview(*_):
@@ -12068,7 +12131,7 @@ class Window(Adw.ApplicationWindow):
             apply_corner_style(value)
             self.queue_draw()
             if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
-        corners.connect('notify::selected',change_corners);appearance.add(corners)
+        corners.connect('notify::selected',change_corners);window_style.add(corners);window_style.add(compact)
 
         theme_row=row('App Theme','Changes only rtxForge. Saved immediately.')
         theme_selector=Adw.ToggleGroup(valign=Gtk.Align.CENTER)
@@ -12128,7 +12191,7 @@ class Window(Adw.ApplicationWindow):
         recovery=Adw.PreferencesGroup(title='Recovery')
         for title,subtitle,caption,fn in [('Previous Changes','Browse available recovery records.','Browse',lambda *_:self.show_undo()),('Old NR Files','Review legacy files before removal.','Review',lambda *_:self.show_cleanup()),('Library Reports','View test notes and export a support report.','Open',self.show_reports)]:
             item=row(title,subtitle);action=button(caption,fn);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);recovery.add(item)
-        self.organize_pages(b,[('Graphics',[graphics,defaults]),('Appearance',[appearance]),('Library',[artwork]),('Controller',[controls]),('System',[system,app]),('Recovery',[recovery])])
+        self.organize_pages(b,[('Graphics',[graphics,defaults]),('Appearance',[appearance,window_style,library_layout]),('Library',[artwork]),('Gaming Mode',[controls,dashboard_options,controller_options]),('System',[system,app]),('Recovery',[recovery])])
         def save(*_):
             selected_provider=provider_keys[provider.get_selected()];selected_mode=modes[profile.get_selected()]
             if selected_provider=='y4my' and selected_mode=='nr-only':self.toast('NR Only requires DLSS-Unlocked.');return

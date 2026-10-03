@@ -841,6 +841,7 @@ class CouchShell(Gtk.Overlay):
                 self.entry(package['name'], lambda key=package['id']: self.select_package(key), value='Selected' if self.owner.settings['runtime_provider'] == package['id'] else '', enabled=package['available'])
             self.hint.set_text('Choose a package for the next install. Restore an existing provider before switching.')
         elif self.page == 'settings':
+            self.entry('Big Picture UI',lambda:self.owner.set_big_picture_ui(False),value='Enabled')
             glyphs = ['auto', 'xbox', 'playstation', 'nintendo', 'generic']
             self.entry('Button labels', value=self.owner.settings.get('controller_glyphs', 'auto').title(), adjust=lambda d: self.setting('controller_glyphs', d, glyphs))
             self.entry('Library layout', value={'posters': 'Posters', 'capsules': 'Wide', 'list': 'List'}[self.library_view], adjust=lambda d: self.set_library_view(VIEWS[(VIEWS.index(self.library_view) + d) % len(VIEWS)]))

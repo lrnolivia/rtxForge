@@ -23,6 +23,12 @@ def capture(name):
     captured.append(name)
 
 
+def compact_presets_fit():
+    couch = app.window.couch
+    adjustment = couch.panel_scroll.get_vadjustment()
+    assert adjustment.get_upper() <= adjustment.get_page_size() + 1, 'Both preset scope actions must fit the compact viewport'
+
+
 def setup():
     window = app.window
     window.settings['controller_glyphs'] = 'xbox'
@@ -355,6 +361,7 @@ steps = [
     lambda: app.window.couch.open('dashboard'),
     lambda: capture('couch-dashboard-800.png'),
     lambda: app.window.couch.open('presets'),
+    compact_presets_fit,
     lambda: capture('couch-presets-800.png'),
     lambda: app.window.couch.open('dlss'),
     lambda: capture('couch-dlss-800.png'),

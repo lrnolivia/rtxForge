@@ -17,7 +17,7 @@ CSS = b'''
 .couch-game-summary { font-size: 16px; color: #c5c7cc; }
 .couch-badges { font-size: 12px; color: #c5c7cc; }
 .couch-tab.focused { outline: 2px solid #fafafa; outline-offset: 2px; }
-.couch-library-action { background: #f1f1f2; color: #202124; }
+.couch-shell .couch-library-action { background: #f1f1f2; color: #202124; }
 .couch-shade {
   background-image: linear-gradient(0deg, #101113 0%, #101113 22%, rgba(16,17,19,0.72) 43%, rgba(16,17,19,0.12) 76%, rgba(16,17,19,0.58) 100%),
                     linear-gradient(90deg, rgba(16,17,19,0.78), rgba(16,17,19,0.10) 75%);
@@ -74,7 +74,7 @@ CSS = b'''
 .couch-shell.compact .couch-tab { padding: 8px 16px; font-size: 14px; }
 .couch-shell.compact .couch-detail { font-size: 16px; }
 .couch-shell.compact .couch-action { padding: 14px 20px; font-size: 17px; }
-.couch-shell.compact .couch-options row { padding: 14px 20px; }
+.couch-shell.compact .couch-options row { padding: 9px 20px; margin-bottom: 8px; }
 .couch-shell.compact .couch-options row label { font-size: 18px; }
 .couch-shell.compact .couch-panel-heading { font-size: 30px; }
 .couch-shell.compact .couch-view { padding: 9px 12px; font-size: 14px; }
@@ -733,7 +733,7 @@ class CouchShell(Gtk.Overlay):
                 eligible = self.preset_targets()
                 self.entry(f'Apply to all configured games ({len(eligible)})', lambda: self.apply_presets(self.preset_targets()), enabled=bool(eligible))
                 self.entry('Select games to apply', self.select_preset_games, enabled=bool(eligible))
-                self.hint.set_text('Choose all configured games or select your own. No game is selected automatically.')
+                self.hint.set_text('Apply to all configured games, or choose your games.')
         elif self.page == 'dlss':
             self.entry('Update all', lambda: self.owner.update_dlss_games(self.owner.games), enabled=bool(self.owner.games))
             self.entry('Select games to update', self.select_dlss_games, enabled=bool(self.owner.games))

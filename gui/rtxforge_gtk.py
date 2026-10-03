@@ -11743,7 +11743,7 @@ class Window(Adw.ApplicationWindow):
         f.set_visible(True)
 
         if d is getattr(self,'progress_dialog',None):
-            d,b,f=self.open_panel(review.get('title','Review Changes'),width=640,height=min(660,300+72*len(review['rows'])),show_close=False)
+            d,b,f=self.open_panel(review.get('title','Review Changes'),width=640,height=min(720,330+80*len(review['rows'])+90*len(review['blocked'])),show_close=False)
         b.remove_css_class('progress-content')
         b.add_css_class('panel-body')
         self.job_label=None

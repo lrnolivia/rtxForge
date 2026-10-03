@@ -7586,13 +7586,13 @@ class Window(Adw.ApplicationWindow):
         if not self.options.demo:
             library_media.save_settings(self.service.config,self.settings)
 
-    def update_library_dlss(self,*_):
+    def update_library_dlss(self,*_,games=None):
         if self.busy:return
         if self.options.demo:
             self.toast('Preview mode · no files changed');return
         import runtime_updates
-        games=list(self.games)
-        d,b,f=self.open_panel('Update DLSS',width=640,height=280,show_close=False)
+        games=list(self.games if games is None else games)
+        d,b,f=self.open_panel('Update DLSS Files',width=640,height=280,show_close=False)
         self.operation_games=games
         self.operation_cancel=threading.Event()
         self.progress_view(b,'Checking DLSS files…')
@@ -7605,7 +7605,26 @@ class Window(Adw.ApplicationWindow):
             if result['skipped']:message+=' '+str(len(result['skipped']))+' games skipped; see Activity.'
             self.log.extend(result['skipped'])
             self.finish_progress(True,message,f)
-        self.start('Update DLSS',work,finished)
+        self.start('Update DLSS Files',work,finished)
+
+    def update_dlss_games(self,games):
+        targets=list({game['game']:game for game in games}.values())
+        if not targets:
+            self.toast('No games selected.');return
+        d,b,f=self.open_panel('Update DLSS Files',width=620,height=440)
+        b.append(label(f'Update DLSS files in {len(targets)} games?','title-2'))
+        b.append(label('Only older supported native DLSS files are updated. Protected files are skipped and previous copies are backed up.'))
+        for game in targets:
+            b.append(label(game['name']))
+        f.append(button('Cancel',lambda *_:d.close()))
+        def update(*_):
+            if self.options.demo:return
+            d.close()
+            self.update_library_dlss(games=targets)
+        apply=button('Update DLSS Files',update,'suggested-action')
+        apply.set_sensitive(not self.options.demo)
+        f.append(apply)
+        if self.options.demo:b.append(label('Preview mode · game writes disabled.','dim-label'))
 
     def manage_dlss_files(self,game,restore=False,replace_same=False):
         if self.options.demo:

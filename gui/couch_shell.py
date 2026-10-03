@@ -70,9 +70,11 @@ CSS = b'''
 .couch-shell.compact .couch-panel-heading { font-size: 30px; }
 .couch-shell.compact .couch-view { padding: 9px 12px; font-size: 14px; }
 .couch-shell.compact .couch-list-title { font-size: 18px; }
+.couch-selection { background: #101113; border-radius: 8px; padding: 5px; }
+.couch-shell .couch-settings { padding: 10px; min-width: 24px; min-height: 24px; }
 '''
 
-PAGES = ('dashboard', 'library', 'presets', 'settings')
+PAGES = ('dashboard', 'library', 'presets', 'dlss')
 VIEWS = ('posters', 'capsules', 'list')
 
 
@@ -145,6 +147,7 @@ class CouchShell(Gtk.Overlay):
         self.entries = []
         self.controls = []
         self.pending = {}
+        self.dlss_selection = None
         self.selection = {}
         self.current = 0
         self.art_path = None
@@ -180,7 +183,7 @@ class CouchShell(Gtk.Overlay):
         tabs = Gtk.Box()
         tabs.add_css_class('couch-tabs')
         self.tabs = []
-        for title, page in [('Dashboard', 'dashboard'), ('Library', 'library'), ('Presets', 'presets'), ('Settings', 'settings')]:
+        for title, page in [('Dashboard', 'dashboard'), ('Library', 'library'), ('Presets', 'presets'), ('DLSS Files', 'dlss')]:
             button = Gtk.Button(label=title)
             button.add_css_class('couch-tab')
             button.connect('clicked', lambda _, p=page: self.open(p))
@@ -188,7 +191,16 @@ class CouchShell(Gtk.Overlay):
             self.tabs.append(button)
         top.set_center_widget(tabs)
         self.context = label('Preview' if owner.options.demo else 'Game Mode', 'couch-context')
-        top.set_end_widget(self.context)
+        utilities = Gtk.Box(spacing=10, valign=Gtk.Align.CENTER)
+        utilities.append(self.context)
+        self.settings_button = Gtk.Button(icon_name='emblem-system-symbolic', tooltip_text='Settings')
+        self.settings_button.update_property([Gtk.AccessibleProperty.LABEL], ['Settings'])
+        self.settings_button.add_css_class('couch-tab')
+        self.settings_button.add_css_class('couch-settings')
+        self.settings_button.connect('clicked', lambda _: self.open('settings'))
+        utilities.append(self.settings_button)
+        self.tabs.append(self.settings_button)
+        top.set_end_widget(utilities)
         main.append(top)
 
         self.body = Gtk.Stack(vexpand=True, hhomogeneous=False, vhomogeneous=False)
@@ -235,7 +247,8 @@ class CouchShell(Gtk.Overlay):
         library_header = Gtk.Box(spacing=24)
         library_header.add_css_class('couch-library-header')
         library_title = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, hexpand=True)
-        library_title.append(label('Library', 'couch-panel-heading'))
+        self.library_heading = label('Library', 'couch-panel-heading')
+        library_title.append(self.library_heading)
         self.library_count = label('', 'couch-library-count')
         library_title.append(self.library_count)
         library_header.append(library_title)
@@ -249,6 +262,11 @@ class CouchShell(Gtk.Overlay):
             self.view_buttons.append(button)
             switch.append(button)
         library_header.append(switch)
+        self.library_action = Gtk.Button(label='Install to all')
+        self.library_action.add_css_class('couch-view')
+        self.library_action.connect('clicked', lambda _: self.library_primary_action())
+        self.view_buttons.append(self.library_action)
+        library_header.append(self.library_action)
         library_page.append(library_header)
         self.grid = Gtk.Grid(column_spacing=18, row_spacing=20, column_homogeneous=True, hexpand=True, valign=Gtk.Align.START)
         self.grid.add_css_class('couch-library-grid')
@@ -299,8 +317,8 @@ class CouchShell(Gtk.Overlay):
         if family == 'auto':
             family = self.owner.controller.family
         keys = controller_input.GLYPHS.get(family, controller_input.GLYPHS['generic'])
-        caption = 'Open' if self.page in ('dashboard', 'library') else 'Select'
-        spec = (family, keys[0], keys[1], keys[2], self.page, caption)
+        caption = 'Select' if self.dlss_selection is not None else 'Open' if self.page in ('dashboard', 'library') else 'Select'
+        spec = (family, keys[0], keys[1], keys[2], self.page, caption, self.dlss_selection is not None)
         if spec == getattr(self, 'prompt_spec', None):
             return
         self.prompt_spec = spec
@@ -354,6 +372,7 @@ class CouchShell(Gtk.Overlay):
         tab_background = ui_colors.mix(color, '#1c1d20', 0.22)
         tab_foreground = ui_colors.readable(color, tab_background)
         self.accent_provider.load_from_data(f'''
+          .couch-shell .couch-selection check:checked {{ background: {color}; color: {foreground}; border-color: {color}; }}
           .couch-shell .couch-tile.focused .couch-cover {{ outline-color: {ring}; }}
           .couch-shell .couch-action.focused,
           .couch-shell .couch-options:not(.nav-focused) row:selected,
@@ -381,14 +400,16 @@ class CouchShell(Gtk.Overlay):
                 self.open('library')
             return
         if action in ('previous', 'next'):
+            if self.tab_index == len(PAGES):
+                self.tab_index = -1 if action == 'next' else 0
             self.tab_index = (self.tab_index + (1 if action == 'next' else -1)) % len(PAGES)
             self.open(PAGES[self.tab_index])
             return
         if self.zone == 'nav':
             if action in ('left', 'right'):
-                self.tab_index = (self.tab_index + (1 if action == 'right' else -1)) % len(PAGES)
+                self.tab_index = (self.tab_index + (1 if action == 'right' else -1)) % (len(PAGES) + 1)
             elif action == 'accept':
-                self.open(PAGES[self.tab_index])
+                self.open('settings' if self.tab_index == len(PAGES) else PAGES[self.tab_index])
             elif action == 'down':
                 self.zone = 'views' if self.page == 'library' else 'content'
                 if self.zone == 'content':
@@ -397,9 +418,12 @@ class CouchShell(Gtk.Overlay):
             return
         if self.zone == 'views':
             if action in ('left', 'right'):
-                self.view_index = (self.view_index + (1 if action == 'right' else -1)) % len(VIEWS)
+                self.view_index = (self.view_index + (1 if action == 'right' else -1)) % len(self.view_buttons)
             elif action == 'accept':
-                self.set_library_view(VIEWS[self.view_index])
+                if self.view_index == len(VIEWS):
+                    self.library_primary_action()
+                else:
+                    self.set_library_view(VIEWS[self.view_index])
             elif action == 'down':
                 self.zone = 'content'
                 self.focus(self.current)
@@ -422,7 +446,7 @@ class CouchShell(Gtk.Overlay):
                 self.activate(self.current)
             return
         horizontal = self.page in ('dashboard', 'game')
-        if action == 'up' and (horizontal or self.current == 0):
+        if action == 'up' and (horizontal or not any(entry['enabled'] for entry in self.entries[:self.current])):
             self.zone = 'nav'
             self.update_tabs()
             return
@@ -443,7 +467,7 @@ class CouchShell(Gtk.Overlay):
                 self.render(self.current)
 
     def update_tabs(self):
-        active = PAGES.index(self.page) if self.page in PAGES else PAGES.index(self.game_origin)
+        active = len(PAGES) if self.page == 'settings' else PAGES.index(self.page) if self.page in PAGES else PAGES.index(self.game_origin)
         for i, button in enumerate(self.tabs):
             button.add_css_class('active') if i == active else button.remove_css_class('active')
             button.add_css_class('focused') if self.zone == 'nav' and i == self.tab_index else button.remove_css_class('focused')
@@ -451,7 +475,7 @@ class CouchShell(Gtk.Overlay):
         for i, button in enumerate(self.controls):
             button.add_css_class('focused') if self.zone == 'content' and i == self.current else button.remove_css_class('focused')
         for i, button in enumerate(self.view_buttons):
-            button.add_css_class('active') if VIEWS[i] == self.library_view else button.remove_css_class('active')
+            button.add_css_class('active') if i < len(VIEWS) and VIEWS[i] == self.library_view else button.remove_css_class('active')
             button.add_css_class('focused') if self.zone == 'views' and i == self.view_index else button.remove_css_class('focused')
 
     def selected(self, _, row):
@@ -530,6 +554,8 @@ class CouchShell(Gtk.Overlay):
             entry['action']()
 
     def open(self, page):
+        if page != 'library':
+            self.dlss_selection = None
         if page in ('game', 'features', 'tools') and self.game is None:
             page = 'dashboard'
         if page == 'library':
@@ -541,10 +567,13 @@ class CouchShell(Gtk.Overlay):
             self.pending = {key: self.game.get(key) if self.game.get(key) is not None else self.owner.settings[key] for key in ('nr_strength', 'sharpening_strength', 'mfg_multiplier')}
         self.page = page
         self.zone = 'content'
-        self.tab_index = PAGES.index(page) if page in PAGES else PAGES.index(self.game_origin)
+        self.tab_index = len(PAGES) if page == 'settings' else PAGES.index(page) if page in PAGES else PAGES.index(self.game_origin)
         self.render()
 
     def back(self):
+        if self.page == 'library' and self.dlss_selection is not None:
+            self.open('dlss')
+            return
         if self.zone in ('nav', 'views'):
             self.zone = 'content'
             self.update_tabs()
@@ -554,6 +583,8 @@ class CouchShell(Gtk.Overlay):
             self.open('dashboard')
         elif self.page == 'presets':
             self.open(self.preset_origin)
+        elif self.page == 'features_all':
+            self.open('library')
         elif self.page in ('features', 'tools'):
             self.open('game')
         elif self.page == 'game':
@@ -563,7 +594,34 @@ class CouchShell(Gtk.Overlay):
 
     def install(self, mode):
         self.owner.profile_group.set_active_name(mode)
-        self.owner.launch_action('install', targets=[self.game], visual_settings=dict(self.owner.settings), _presets_confirmed=True)
+        targets = [g for g in self.owner.games if g.get('test_record', {}).get('status') != 'Bench'] if self.page == 'features_all' else [self.game]
+        self.owner.launch_action('install', targets=targets, visual_settings=dict(self.owner.settings), _presets_confirmed=True)
+
+    def select_dlss_games(self):
+        self.dlss_selection = set()
+        self.open('library')
+
+    def toggle_dlss_game(self, game):
+        if game.get('blocked'):
+            return
+        key = game['game']
+        self.dlss_selection.symmetric_difference_update({key})
+        self.render(self.current)
+
+    def library_primary_action(self):
+        if not self.library_action.get_sensitive():
+            return
+        if self.dlss_selection is not None:
+            self.owner.update_dlss_games([g for g in self.owner.games if g['game'] in self.dlss_selection])
+        else:
+            self.game_origin = 'library'
+            self.open('features_all')
+
+    def selection_marker(self, game):
+        marker = Gtk.CheckButton(active=game.get('game') in self.dlss_selection, can_focus=False, can_target=False)
+        marker.add_css_class('couch-selection')
+        marker.set_tooltip_text('Selected' if marker.get_active() else 'Not selected')
+        return marker
 
     def adjust(self, key, direction):
         choices = [0, 2, 3, 4, 5, 6, 'auto'] if key == 'mfg_multiplier' else [round(i / 10, 1) for i in range(21 if key == 'nr_strength' else 11)]
@@ -584,7 +642,7 @@ class CouchShell(Gtk.Overlay):
         self.hint.set_text('')
         if self.page in ('dashboard', 'library'):
             for game in self.owner.games:
-                self.entry(game['name'], lambda g=game: self.open_game(g), game=game)
+                self.entry(game['name'], lambda g=game: self.toggle_dlss_game(g) if self.dlss_selection is not None else self.open_game(g), game=game, enabled=self.dlss_selection is None or not game.get('blocked'))
             if not self.entries:
                 self.entry('Refresh library', self.owner.scan)
                 self.detail.set_text('Add a game folder in Classic to get started.')
@@ -594,7 +652,7 @@ class CouchShell(Gtk.Overlay):
             self.entry('Presets', lambda: self.open('presets'), enabled=game.get('installed', False), hint='Adjust graphics features for this game. Your other games stay as they are.')
             self.entry('Tools', lambda: self.open('tools'), hint='Diagnose Neural Rendering, update DLSS, or restore original files.')
             self.entry('Play', lambda: Gio.AppInfo.launch_default_for_uri('steam://rungameid/' + str(game['appid']), None), enabled=game.get('source') == 'Steam' and str(game.get('appid', '')).isdigit() and not self.owner.options.demo, hint='Launch this game in Steam.')
-        elif self.page == 'features':
+        elif self.page in ('features', 'features_all'):
             self.entry('Neural Rendering + MFG', lambda: self.install('nr-mfg'))
             self.entry('Frame generation only', lambda: self.install('mfg-only'))
             self.entry('Neural Rendering only', lambda: self.install('nr-only'), enabled=self.owner.settings.get('runtime_provider') in ('dlss-unlocked', 'custom'))
@@ -611,6 +669,10 @@ class CouchShell(Gtk.Overlay):
                 self.entry(title, value=value, adjust=lambda delta, key=key: self.adjust(key, delta), enabled=not (key == 'nr_strength' and mode == 'mfg-only') and not (key == 'mfg_multiplier' and mode == 'nr-only'))
             self.entry('Apply to this game', lambda: self.owner.launch_action('reset', targets=[self.game], visual_settings=dict(self.pending)), enabled=self.game.get('installed', False))
             self.hint.set_text('Adjust with left and right. A strength of zero turns Neural Rendering off.' if self.game.get('installed') else 'Configure this game first to apply graphics presets.')
+        elif self.page == 'dlss':
+            self.entry('Update all', lambda: self.owner.update_dlss_games(self.owner.games), enabled=bool(self.owner.games))
+            self.entry('Select games to update', self.select_dlss_games, enabled=bool(self.owner.games))
+            self.hint.set_text('Keep native DLSS files up to date across your library. Previous files are backed up.' if self.owner.games else 'Add games to your Library to update their DLSS files.')
         elif self.page == 'tools':
             self.entry('Diagnose Neural Rendering', lambda: self.owner.show_diagnostics(self.game))
             self.entry('Update DLSS files', lambda: self.owner.manage_dlss_files(self.game), enabled=not self.owner.options.demo)
@@ -666,6 +728,13 @@ class CouchShell(Gtk.Overlay):
         # Use the same resolved custom/SteamGridDB/Steam assets as Classic.
         path = (game.get('poster') or game.get('capsule')) if poster else (game.get('capsule') or game.get('poster') or game.get('hero'))
         button.artwork = self.artwork_widget(path, entry['title'], width, height)
+        if self.dlss_selection is not None:
+            marker = self.selection_marker(game)
+            marker.set_halign(Gtk.Align.END)
+            marker.set_valign(Gtk.Align.START)
+            marker.set_margin_top(8)
+            marker.set_margin_end(8)
+            button.artwork.add_overlay(marker)
         column.append(button.artwork)
         name = label(entry['title'], 'couch-tile-title')
         name.set_ellipsize(Pango.EllipsizeMode.END)
@@ -679,6 +748,8 @@ class CouchShell(Gtk.Overlay):
         button = Gtk.Button()
         button.add_css_class('couch-list-row')
         content = Gtk.Box(spacing=20)
+        if self.dlss_selection is not None:
+            content.append(self.selection_marker(game))
         path = game.get('capsule') or game.get('poster') or game.get('hero')
         button.artwork = self.artwork_widget(path, '', 96, 54, 'couch-list-art')
         content.append(button.artwork)
@@ -729,9 +800,15 @@ class CouchShell(Gtk.Overlay):
         self.game_actions.set_visible(self.page == 'game')
         self.count.set_text('Refreshing…' if self.owner.busy else str(len(self.owner.games)) + ' games')
         installed = sum(bool(game.get('installed')) for game in self.owner.games)
-        self.library_count.set_text(f'{len(self.owner.games)} games  ·  {installed} configured')
-        self.heading.set_text({'dashboard': 'Dashboard', 'library': 'Library', 'game': 'Game settings', 'menu': 'Menu', 'features': 'Configure', 'presets': 'Graphics presets', 'tools': 'Tools', 'settings': 'Settings', 'packages': 'Packages'}[self.page])
-        self.panel_detail.set_text(self.game['name'] if self.game and self.page in ('features', 'presets', 'tools') else {'packages': 'Your graphics toolkit', 'settings': 'Make yourself at home', 'menu': 'rtxForge'}.get(self.page, ''))
+        selecting = self.dlss_selection is not None
+        if selecting:
+            self.dlss_selection.intersection_update(g['game'] for g in self.owner.games if not g.get('blocked'))
+        self.library_heading.set_text('Select games' if selecting else 'Library')
+        self.library_count.set_text(f'{len(self.dlss_selection)} selected  ·  DLSS Files' if selecting else f'{len(self.owner.games)} games  ·  {installed} configured')
+        self.library_action.set_label(f'Update selected ({len(self.dlss_selection)})' if selecting else 'Install to all')
+        self.library_action.set_sensitive(bool(self.dlss_selection) if selecting else bool(self.owner.games))
+        self.heading.set_text({'dashboard': 'Dashboard', 'library': 'Library', 'game': 'Game settings', 'menu': 'Menu', 'features': 'Configure', 'features_all': 'Install to all', 'presets': 'Graphics presets', 'dlss': 'DLSS Files', 'tools': 'Tools', 'settings': 'Settings', 'packages': 'Packages'}[self.page])
+        self.panel_detail.set_text(self.game['name'] if self.game and self.page in ('features', 'presets', 'tools') else {'packages': 'Your graphics toolkit', 'dlss': 'Keep your games current', 'features_all': f'{len(self.owner.games)} games in your library', 'settings': 'Make yourself at home', 'menu': 'rtxForge'}.get(self.page, ''))
         clear(self.shelf)
         clear(self.actions)
         clear(self.menu)

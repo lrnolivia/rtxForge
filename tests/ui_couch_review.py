@@ -95,9 +95,109 @@ def scroll_and_tabs():
     couch.navigate('next')
     assert couch.page == 'presets'
     couch.navigate('next')
-    assert couch.page == 'settings'
+    assert couch.page == 'dlss'
+    assert couch.game is app.window.games[0]
+    assert [entry['title'] for entry in couch.entries] == ['Update all', 'Select games to update']
+    couch.navigate('up')
+    couch.navigate('up')
+    couch.navigate('right')
+    assert couch.tab_index == 4
+    couch.navigate('accept')
+    assert couch.page == 'settings' and couch.settings_button.has_css_class('active')
     couch.navigate('back')
     assert couch.page == 'dashboard'
+
+
+def batch_flows():
+    window = app.window
+    couch = window.couch
+    calls = []
+    update = window.update_dlss_games
+    install = window.launch_action
+    window.update_dlss_games = lambda games: calls.append(('dlss', [g['game'] for g in games]))
+    window.launch_action = lambda operation, **kwargs: calls.append((operation, kwargs))
+    try:
+        couch.open('dlss')
+        couch.focus(0)
+        couch.navigate('accept')
+        assert calls[-1] == ('dlss', [g['game'] for g in window.games])
+        couch.focus(1)
+        couch.navigate('accept')
+        assert couch.page == 'library' and couch.dlss_selection == set()
+        assert not couch.library_action.get_sensitive()
+        couch.set_library_view('posters')
+        couch.focus(0)
+        couch.navigate('accept')
+        couch.navigate('right')
+        couch.navigate('accept')
+        chosen = {g['game'] for g in window.games[:2]}
+        assert couch.dlss_selection == chosen
+        couch.set_library_view('list')
+        assert couch.dlss_selection == chosen
+        couch.focus(0)
+        couch.navigate('up')
+        couch.navigate('right')  # List -> Update selected.
+        assert couch.view_index == 3
+        couch.navigate('accept')
+        assert set(calls[-1][1]) == chosen
+        couch.navigate('back')
+        assert couch.page == 'dlss' and couch.dlss_selection is None
+        couch.open('library')
+        couch.focus(0)
+        couch.navigate('up')
+        couch.navigate('right')
+        couch.navigate('accept')
+        assert couch.page == 'features_all'
+        couch.focus(0)
+        couch.navigate('accept')
+        assert calls[-1][0] == 'install'
+        assert calls[-1][1]['targets'] == [g for g in window.games if g.get('test_record', {}).get('status') != 'Bench']
+        assert not calls[-1][1].get('entire')  # Always retain installation review.
+        couch.navigate('back')
+        assert couch.page == 'library'
+        game = window.games[0]
+        previous = game.get('feature_mode')
+        game['feature_mode'] = 'mfg-only'
+        couch.focus(0)
+        couch.open('presets')
+        assert couch.current == 1  # NR row is unavailable in MFG-only mode.
+        couch.navigate('up')
+        assert couch.zone == 'nav'
+        game['feature_mode'] = previous
+    finally:
+        window.update_dlss_games = update
+        window.launch_action = install
+
+
+def selection_preview():
+    couch = app.window.couch
+    couch.select_dlss_games()
+    couch.set_library_view('posters')
+    couch.focus(0)
+    couch.navigate('accept')
+    couch.navigate('right')
+    couch.navigate('accept')
+
+
+def batch_review():
+    couch = app.window.couch
+    couch.library_primary_action()
+    assert app.window.dialog is not None
+    def descendants(widget):
+        yield widget
+        child = widget.get_first_child()
+        while child:
+            yield from descendants(child)
+            child = child.get_next_sibling()
+    update = next(w for w in descendants(app.window.dialog) if isinstance(w, ui.Gtk.Button) and w.get_label() == 'Update DLSS Files')
+    assert not update.get_sensitive()
+    update.emit('clicked')  # Handler also refuses programmatic preview activation.
+    assert not app.window.busy or app.window.task_kind == 'art'
+
+
+def close_review():
+    app.window.dialog.close()
+
 
 
 def input_and_appearance():
@@ -160,6 +260,17 @@ steps = [
     lambda: capture('couch-game-1280.png'),
     lambda: app.window.couch.open('presets'),
     lambda: capture('couch-presets-1280.png'),
+    lambda: app.window.couch.open('dlss'),
+    lambda: capture('couch-dlss-1280.png'),
+    lambda: app.window.couch.open('settings'),
+    lambda: capture('couch-settings-1280.png'),
+    batch_flows,
+    selection_preview,
+    lambda: capture('couch-dlss-select-1280.png'),
+    batch_review,
+    lambda: capture('couch-dlss-review-1280.png'),
+    close_review,
+    lambda: app.window.couch.back(),
     lambda: view('posters'),
     lambda: capture('couch-library-posters-1280.png'),
     grid_navigation,
@@ -184,6 +295,11 @@ steps = [
     lambda: capture('couch-dashboard-800.png'),
     lambda: app.window.couch.open('presets'),
     lambda: capture('couch-presets-800.png'),
+    lambda: app.window.couch.open('dlss'),
+    lambda: capture('couch-dlss-800.png'),
+    selection_preview,
+    lambda: capture('couch-dlss-select-800.png'),
+    lambda: app.window.couch.back(),
     input_and_appearance,
 ]
 
@@ -194,7 +310,7 @@ def step():
             steps.pop(0)()
             GLib.timeout_add(550, step)
         else:
-            (ROOT / 'dist/ui-couch-review.json').write_text(json.dumps({'game_writes': False, 'screenshots': captured, 'checked': ['grid navigation', 'list navigation', 'return selection', 'view cycling', 'Classic shared preference', 'last-row scrolling', 'page tabs', 'shared accent and artwork', 'input switching', 'empty library']}, indent=2))
+            (ROOT / 'dist/ui-couch-review.json').write_text(json.dumps({'game_writes': False, 'screenshots': captured, 'checked': ['grid navigation', 'list navigation', 'return selection', 'view cycling', 'Classic shared preference', 'last-row scrolling', 'page tabs and settings gear', 'batch DLSS target selection', 'install-to-all review routing', 'disabled first-row navigation', 'shared accent and artwork', 'input switching', 'empty library']}, indent=2))
             app.quit()
     except Exception:
         traceback.print_exc()

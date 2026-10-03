@@ -67,7 +67,7 @@ class Controller(QObject):
     @Property(str,notify=changed)
     def layout(self):return self.session.settings.get('library_view','posters')
     @Property(str,constant=True)
-    def brandIcon(self):return QUrl.fromLocalFile(str(ROOT/'gui/icons/hicolor/256x256/apps/io.github.lrnolivia.RTXForge.png')).toString()
+    def brandIcon(self):return QUrl.fromLocalFile(str(ROOT/'gui/icons/rtxforge-artwork.svg')).toString()
     @Property(str,notify=changed)
     def profile(self):return self.session.settings.get('default_profile','mfg-only')
     @Property(int,notify=changed)
@@ -180,7 +180,7 @@ def main():
     app=QGuiApplication(sys.argv)
     app.styleHints().setColorScheme(Qt.ColorScheme.Dark)
     app.setApplicationName('rtxForge');app.setDesktopFileName('io.github.lrnolivia.RTXForge')
-    app.setWindowIcon(QIcon(str(ROOT/'gui/icons/hicolor/256x256/apps/io.github.lrnolivia.RTXForge.png')))
+    app.setWindowIcon(QIcon(str(ROOT/'gui/icons/hicolor/scalable/apps/io.github.lrnolivia.RTXForge.svg')))
     engine=QQmlApplicationEngine();controller=Controller(demo)
     if controller.session.settings.get('dark',True):
         palette=app.palette()

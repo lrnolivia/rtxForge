@@ -3676,10 +3676,7 @@ class Window(Adw.ApplicationWindow):
             ROOT
             / 'gui'
             / 'icons'
-            / 'hicolor'
-            / '512x512'
-            / 'apps'
-            / 'io.github.lrnolivia.RTXForge.png'
+            / 'rtxforge-artwork.svg'
         )
 
         self.dashboard_icon=Gtk.Image.new_from_file(

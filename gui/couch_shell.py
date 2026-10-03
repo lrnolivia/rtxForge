@@ -72,7 +72,7 @@ CSS = b'''
 .couch-shell.compact .couch-list-title { font-size: 18px; }
 '''
 
-PAGES = ('dashboard', 'library', 'packages', 'settings')
+PAGES = ('dashboard', 'library', 'presets', 'settings')
 VIEWS = ('posters', 'capsules', 'list')
 
 
@@ -136,6 +136,7 @@ class CouchShell(Gtk.Overlay):
         self.owner = owner
         self.page = 'dashboard'
         self.game_origin = 'dashboard'
+        self.preset_origin = 'dashboard'
         self.library_view = owner.settings.get('library_view', 'posters')
         self.view_index = VIEWS.index(self.library_view)
         self.layout_width = 1280
@@ -179,7 +180,7 @@ class CouchShell(Gtk.Overlay):
         tabs = Gtk.Box()
         tabs.add_css_class('couch-tabs')
         self.tabs = []
-        for title, page in [('Dashboard', 'dashboard'), ('Library', 'library'), ('Packages', 'packages'), ('Settings', 'settings')]:
+        for title, page in [('Dashboard', 'dashboard'), ('Library', 'library'), ('Presets', 'presets'), ('Settings', 'settings')]:
             button = Gtk.Button(label=title)
             button.add_css_class('couch-tab')
             button.connect('clicked', lambda _, p=page: self.open(p))
@@ -529,12 +530,14 @@ class CouchShell(Gtk.Overlay):
             entry['action']()
 
     def open(self, page):
-        if page in ('game', 'presets', 'features', 'tools') and self.game is None:
+        if page in ('game', 'features', 'tools') and self.game is None:
             page = 'dashboard'
         if page == 'library':
             self.library_view = self.owner.settings.get('library_view', 'posters')
             self.view_index = VIEWS.index(self.library_view)
-        if page == 'presets':
+        if page == 'presets' and self.page != 'presets':
+            self.preset_origin = self.page if self.page in ('dashboard', 'library', 'game') else self.game_origin
+        if page == 'presets' and self.game:
             self.pending = {key: self.game.get(key) if self.game.get(key) is not None else self.owner.settings[key] for key in ('nr_strength', 'sharpening_strength', 'mfg_multiplier')}
         self.page = page
         self.zone = 'content'
@@ -549,7 +552,9 @@ class CouchShell(Gtk.Overlay):
             self.open('menu')
         elif self.page == 'library':
             self.open('dashboard')
-        elif self.page in ('presets', 'features', 'tools'):
+        elif self.page == 'presets':
+            self.open(self.preset_origin)
+        elif self.page in ('features', 'tools'):
             self.open('game')
         elif self.page == 'game':
             self.open(self.game_origin)
@@ -595,13 +600,17 @@ class CouchShell(Gtk.Overlay):
             self.entry('Neural Rendering only', lambda: self.install('nr-only'), enabled=self.owner.settings.get('runtime_provider') in ('dlss-unlocked', 'custom'))
             self.hint.set_text('Review every file change before installing. Your current presets are used.')
         elif self.page == 'presets':
+            if not self.game:
+                self.entry('Choose a game', lambda: self.open('library'))
+                self.hint.set_text('Select a game in Library to adjust its graphics presets.')
+                return
             mode = self.game.get('feature_mode') or {'MFG Only': 'mfg-only', 'NR Only': 'nr-only'}.get(self.game.get('profile'), 'nr-mfg')
             for key, title in [('nr_strength', 'Neural Rendering'), ('mfg_multiplier', 'Frame generation'), ('sharpening_strength', 'Sharpening')]:
                 raw = self.pending[key]
                 value = 'In game' if raw == 'auto' else 'Off' if raw == 0 else str(raw) + ('×' if key == 'mfg_multiplier' else '')
                 self.entry(title, value=value, adjust=lambda delta, key=key: self.adjust(key, delta), enabled=not (key == 'nr_strength' and mode == 'mfg-only') and not (key == 'mfg_multiplier' and mode == 'nr-only'))
-            self.entry('Apply to this game', lambda: self.owner.launch_action('reset', targets=[self.game], visual_settings=dict(self.pending)))
-            self.hint.set_text('Adjust with left and right. A strength of zero turns Neural Rendering off.')
+            self.entry('Apply to this game', lambda: self.owner.launch_action('reset', targets=[self.game], visual_settings=dict(self.pending)), enabled=self.game.get('installed', False))
+            self.hint.set_text('Adjust with left and right. A strength of zero turns Neural Rendering off.' if self.game.get('installed') else 'Configure this game first to apply graphics presets.')
         elif self.page == 'tools':
             self.entry('Diagnose Neural Rendering', lambda: self.owner.show_diagnostics(self.game))
             self.entry('Update DLSS files', lambda: self.owner.manage_dlss_files(self.game), enabled=not self.owner.options.demo)
@@ -611,6 +620,7 @@ class CouchShell(Gtk.Overlay):
         elif self.page == 'menu':
             self.entry('Dashboard', lambda: self.open('dashboard'))
             self.entry('Library', lambda: self.open('library'))
+            self.entry('Packages', lambda: self.open('packages'))
             self.entry('Refresh library', self.owner.scan)
             self.entry('Desktop controls', lambda: self.owner.set_input_surface(False))
             self.entry('Quit rtxForge', self.owner.close)

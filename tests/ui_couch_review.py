@@ -87,7 +87,13 @@ def scroll_and_tabs():
     assert couch.zone == 'nav'
     couch.navigate('right')
     couch.navigate('accept')
-    assert couch.page == 'packages'
+    assert couch.page == 'presets'
+    assert couch.tabs[2].has_css_class('active')
+    assert couch.game is app.window.games[0]
+    couch.navigate('back')
+    assert couch.page == 'library'
+    couch.navigate('next')
+    assert couch.page == 'presets'
     couch.navigate('next')
     assert couch.page == 'settings'
     couch.navigate('back')
@@ -131,8 +137,20 @@ def input_and_appearance():
     couch.refresh()
     assert couch.game is None and couch.art.get_paintable() is None and couch.title.get_text() == 'Your library'
     assert couch.accent_color == '#76b900'
+    couch.open('presets')
+    assert couch.page == 'presets' and couch.entries[0]['title'] == 'Choose a game'
     window.games = games
+    couch.open('library')
     couch.refresh()
+    game = couch.game
+    installed = game.get('installed')
+    game['installed'] = False
+    couch.open('presets')
+    assert not couch.entries[-1]['enabled']
+    game['installed'] = installed
+    couch.open('menu')
+    next(entry for entry in couch.entries if entry['title'] == 'Packages')['action']()
+    assert couch.page == 'packages'
 
 
 steps = [

@@ -62,12 +62,18 @@ def grid_navigation():
     couch.navigate('back')
     assert couch.page == 'library' and couch.current == selected and couch.game is game
     couch.navigate('search')
-    assert couch.library_view == 'capsules' and couch.game is game
+    assert couch.page == 'library' and couch.game is game
+    couch.navigate('settings')
+    assert couch.page == 'settings'
+    next(entry for entry in couch.entries if entry['title'] == 'Library layout')['adjust'](1)
+    assert couch.library_view == 'capsules'
+    couch.navigate('back')
+    assert couch.page == 'library'
+    couch.set_library_view('list')
     couch.focus(0)
     couch.navigate('up')
     assert couch.zone == 'views'
-    couch.navigate('right')
-    couch.navigate('accept')
+    assert len(couch.view_buttons) == 1
     assert couch.library_view == 'list'
     couch.navigate('down')
     couch.navigate('down')
@@ -105,7 +111,7 @@ def scroll_and_tabs():
     couch.navigate('accept')
     assert couch.page == 'settings' and couch.settings_button.has_css_class('active')
     couch.navigate('back')
-    assert couch.page == 'dashboard'
+    assert couch.page == 'dlss'
 
 
 def batch_flows():
@@ -137,7 +143,7 @@ def batch_flows():
         couch.focus(0)
         couch.navigate('up')
         couch.navigate('right')  # List -> Update selected.
-        assert couch.view_index == 3
+        assert couch.view_index == 0
         couch.navigate('accept')
         assert set(calls[-1][1]) == chosen
         couch.navigate('back')
@@ -159,7 +165,7 @@ def batch_flows():
         previous = game.get('feature_mode')
         game['feature_mode'] = 'mfg-only'
         couch.focus(0)
-        couch.open('presets')
+        couch.open('game_presets')
         assert couch.current == 1  # NR row is unavailable in MFG-only mode.
         couch.navigate('up')
         assert couch.zone == 'nav'
@@ -167,6 +173,57 @@ def batch_flows():
     finally:
         window.update_dlss_games = update
         window.launch_action = install
+
+
+def global_and_game_presets():
+    window = app.window
+    couch = window.couch
+    calls = []
+    original = window.launch_action
+    window.launch_action = lambda operation, **kwargs: calls.append((operation, kwargs))
+    try:
+        couch.open('presets')
+        assert couch.panel_detail.get_text() == 'Across your configured games'
+        expected = couch.preset_targets()
+        couch.entries[-2]['action']()
+        assert calls[-1][0] == 'reset' and calls[-1][1]['targets'] == expected
+        assert not calls[-1][1].get('entire')
+        couch.pending['sharpening_strength'] = .4
+        couch.entries[-1]['action']()
+        assert couch.page == 'library' and couch.dlss_selection == set()
+        assert not couch.library_action.get_sensitive()
+        eligible = next(i for i, entry in enumerate(couch.entries) if entry['enabled'])
+        couch.focus(eligible)
+        couch.navigate('accept')
+        selected = window.games[eligible]
+        assert couch.dlss_selection == {selected['game']}
+        couch.library_primary_action()
+        assert calls[-1][1]['targets'] == [selected]
+        assert calls[-1][1]['visual_settings']['sharpening_strength'] == .4
+        couch.navigate('back')
+        assert couch.page == 'presets' and couch.pending['sharpening_strength'] == .4
+        couch.open('library')
+        couch.open_game(selected)
+        next(entry for entry in couch.entries if entry['title'] == 'Presets')['action']()
+        assert couch.page == 'game_presets'
+        assert couch.tabs[1].has_css_class('active') and not couch.tabs[2].has_css_class('active')
+        assert couch.panel_detail.get_text() == selected['name']
+        couch.navigate('back')
+        assert couch.page == 'game'
+        couch.navigate('menu')
+        assert couch.page == 'menu'
+        couch.navigate('back')
+        assert couch.page == 'game'
+        couch.navigate('settings')
+        assert couch.page == 'settings' and any(e['title'] == 'Exit app' for e in couch.entries)
+        couch.navigate('back')
+        assert couch.page == 'game'
+        couch.open('dashboard')
+        couch.navigate('back')
+        assert couch.page == 'dashboard'
+        assert couch.library_link.get_visible()
+    finally:
+        window.launch_action = original
 
 
 def selection_preview():
@@ -238,14 +295,14 @@ def input_and_appearance():
     assert couch.game is None and couch.art.get_paintable() is None and couch.title.get_text() == 'Your library'
     assert couch.accent_color == '#76b900'
     couch.open('presets')
-    assert couch.page == 'presets' and couch.entries[0]['title'] == 'Choose a game'
+    assert couch.page == 'presets' and not couch.entries[-1]['enabled'] and not couch.entries[-2]['enabled']
     window.games = games
     couch.open('library')
     couch.refresh()
     game = couch.game
     installed = game.get('installed')
     game['installed'] = False
-    couch.open('presets')
+    couch.open('game_presets')
     assert not couch.entries[-1]['enabled']
     game['installed'] = installed
     couch.open('menu')
@@ -258,6 +315,9 @@ steps = [
     lambda: capture('couch-dashboard-1280.png'),
     lambda: app.window.couch.navigate('accept'),
     lambda: capture('couch-game-1280.png'),
+    lambda: app.window.launch_action('install', targets=[app.window.couch.game], _presets_confirmed=True),
+    lambda: capture('couch-install-review-1280.png'),
+    close_review,
     lambda: app.window.couch.open('presets'),
     lambda: capture('couch-presets-1280.png'),
     lambda: app.window.couch.open('dlss'),
@@ -265,6 +325,7 @@ steps = [
     lambda: app.window.couch.open('settings'),
     lambda: capture('couch-settings-1280.png'),
     batch_flows,
+    global_and_game_presets,
     selection_preview,
     lambda: capture('couch-dlss-select-1280.png'),
     batch_review,

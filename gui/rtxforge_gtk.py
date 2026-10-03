@@ -2902,7 +2902,7 @@ def label(text,css=None):
     if css:w.add_css_class(css)
     return w
 def button(text,fn,css=None):
-    w=Gtk.Button(label=text);w.connect('clicked',fn)
+    w=Gtk.Button(label=text, valign=Gtk.Align.CENTER);w.connect('clicked',fn)
     if css:w.add_css_class(css)
     return w
 def icon_button(text,icon,fn,css=None):
@@ -2910,7 +2910,7 @@ def icon_button(text,icon,fn,css=None):
     content.append(Gtk.Image.new_from_icon_name(icon))
     text_label=label(text);text_label.set_wrap(False);text_label.set_single_line_mode(True)
     content.append(text_label)
-    w=Gtk.Button(child=content)
+    w=Gtk.Button(child=content, valign=Gtk.Align.CENTER)
     w.text_label=text_label
     w.connect('clicked',fn)
     if css:w.add_css_class(css)
@@ -3369,6 +3369,9 @@ class LibraryGameItem(GObject.Object):
 
 
 class Window(Adw.ApplicationWindow):
+    def game_status_label(self,game):
+        return library_display_test_status(game)
+
     def __init__(self,application,options):
         super().__init__(application=application,title='rtxForge',default_width=1280,default_height=820)
         self.options=options;self.service=DesktopService(options.provider)
@@ -3473,48 +3476,20 @@ class Window(Adw.ApplicationWindow):
 
         for action_name,callback in [('extras',self.show_extras),('reports',self.show_reports),('packages',self.show_packages),('classic-ui',lambda *_:self.set_ui_mode('classic')),('new-ui',lambda *_:self.set_ui_mode('new')),('compact-header',self.toggle_compact_header)]:
             action=Gio.SimpleAction.new(action_name,None);action.connect('activate',callback);self.add_action(action)
-        menu=Gio.Menu()
-
-        library_menu=Gio.Menu()
-        library_menu.append(
-            'Refresh Library',
-            'win.refresh-library',
-        )
-        library_menu.append(
-            'Add Game Folder…',
-            'win.add-game-folder',
-        )
-        menu.append_section(
-            None,
-            library_menu,
-        )
-
-        app_menu=Gio.Menu()
-        app_menu.append('Packages…','win.packages')
-        app_menu.append('Extras…','win.extras')
-        app_menu.append('Troubleshooting & Reports…','win.reports')
-        app_menu.append('Toggle Compact Header','win.compact-header')
-        app_menu.append(
-            'Activity',
-            'win.activity',
-        )
-        app_menu.append(
-            'Settings',
-            'win.settings',
-        )
-        menu.append_section(
-            None,
-            app_menu,
-        )
-
-        menu_glyph=Gtk.Label(
-            label='☰',
-        )
+        menu_actions=[
+            ('Refresh Library','view-refresh-symbolic','win.refresh-library'),
+            ('Add Game Folder…','folder-new-symbolic','win.add-game-folder'),
+            ('Packages…','package-x-generic-symbolic','win.packages'),
+            ('Extras…','applications-utilities-symbolic','win.extras'),
+            ('Activity','view-list-symbolic','win.activity'),
+            ('Settings','emblem-system-symbolic','win.settings'),
+        ]
+        menu_glyph=Gtk.Image.new_from_icon_name('open-menu-symbolic')
         menu_glyph.add_css_class(
             'hamburger-glyph'
         )
 
-        main_menu=Gtk.MenuButton()
+        main_menu=Gtk.MenuButton(valign=Gtk.Align.CENTER)
         main_menu.set_child(
             menu_glyph
         )
@@ -3528,9 +3503,15 @@ class Window(Adw.ApplicationWindow):
             [Gtk.AccessibleProperty.LABEL],
             ['Main Menu'],
         )
-        main_menu.set_menu_model(
-            menu
-        )
+        menu_body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=2)
+        margins(menu_body,8)
+        menu_popover=Gtk.Popover(child=menu_body)
+        for caption,icon,action_name in menu_actions:
+            entry=icon_button(caption,icon,lambda *_:menu_popover.popdown(),'flat')
+            entry.set_halign(Gtk.Align.FILL)
+            entry.set_action_name(action_name)
+            menu_body.append(entry)
+        main_menu.set_popover(menu_popover)
         self.main_menu=main_menu
         if gamescope_session():
             main_menu=button('☰',self.show_controller_menu,'flat')
@@ -4562,6 +4543,9 @@ class Window(Adw.ApplicationWindow):
         self.overlay.set_child(self.input_stack)
         self.last_controller_input=0.0;self._pointer_origin=None
         self.set_input_surface(gamescope_session())
+        if gamescope_session() and not options.demo:
+            self.set_resizable(True)
+            self.fullscreen()
         keys=Gtk.EventControllerKey();keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         keys.connect('key-pressed',self.keyboard_input);self.add_controller(keys)
         pointer=Gtk.GestureClick();pointer.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
@@ -4576,10 +4560,10 @@ class Window(Adw.ApplicationWindow):
     def show_controller_menu(self,*_):
         if self.busy and self.task_kind!='art':return
         d,b,f=self.open_panel('Menu',width=380,height=420)
-        for title,fn in [('Refresh Library',self.scan),('Add Game Folder',self.choose_folder),('Packages',self.show_packages),('Extras',self.show_extras),('Troubleshooting & Reports',self.show_reports),('Settings',self.show_settings)]:
+        for title,icon,fn in [('Refresh Library','view-refresh-symbolic',self.scan),('Add Game Folder','folder-new-symbolic',self.choose_folder),('Packages','package-x-generic-symbolic',self.show_packages),('Extras','applications-utilities-symbolic',self.show_extras),('Settings','emblem-system-symbolic',self.show_settings)]:
             def invoke(*_,fn=fn):
                 d.close();GLib.idle_add(lambda:(fn(),False)[1])
-            b.append(button(title,invoke))
+            b.append(icon_button(title,icon,invoke))
 
     def set_input_surface(self,couch):
         if not hasattr(self,'input_stack'):return
@@ -4603,7 +4587,7 @@ class Window(Adw.ApplicationWindow):
     def poll_controller(self):
         actions=self.controller.poll()
         if not hasattr(self,'couch'):return True
-        self.couch.resize(self.get_width());self.couch.update_prompts()
+        self.couch.resize(self.get_width(),self.get_height());self.couch.update_prompts()
         panel=self.dialog if isinstance(self.dialog,ResizablePanelWindow) and self.dialog.get_mapped() else None
         active_panel=panel if panel and panel.is_active() else None
         if not self.is_active() and not active_panel:return True
@@ -11863,7 +11847,10 @@ class Window(Adw.ApplicationWindow):
         defaults.add(manage_files)
         modes=['nr-only','mfg-only','nr-mfg'];profile=safe_combo_row(title='Default Mode',model=Gtk.StringList.new(['NR Only','MFG Only','NR + MFG']),selected=modes.index(self.settings.get('default_profile','mfg-only')));defaults.add(profile)
         adopt=Adw.SwitchRow(title='Recognize Existing Features',subtitle='Allow updates to compatible installations from other tools.',active=self.settings['recognize_previous']);defaults.add(adopt)
-        appearance=Adw.PreferencesGroup(title='Appearance')
+        appearance=Adw.PreferencesGroup(title='Appearance',description='Theme, window shape and library layout.')
+        compact=Adw.SwitchRow(title='Compact Header',subtitle='Keep more room for your games.',active=self.settings.get('compact_header',False))
+        compact.connect('notify::active',lambda widget,*_: self.toggle_compact_header() if widget.get_active()!=self.settings.get('compact_header',False) else None)
+        appearance.add(compact)
         views=[
             'posters',
             'capsules',
@@ -11961,7 +11948,7 @@ class Window(Adw.ApplicationWindow):
                 if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
                 if key=='input_mode':self.toast('Input mode saved. Restart to rebuild all menu controls.')
             choice.connect('notify::selected',change_input);controls.add(choice)
-        appearance.add(row('Controller Navigation','D-pad / stick: focus · South: activate · East: back · North: library · Start: menu · Bumpers: tab'))
+        controls.add(row('Controller Navigation','D-pad / stick: focus · South: activate · East: back · North: library · Start: menu · View/Select: settings · Bumpers: tab'))
         settings_saved={'value':False}
 
         def restore_library_preview(*_):
@@ -12059,7 +12046,7 @@ class Window(Adw.ApplicationWindow):
         recovery=Adw.PreferencesGroup(title='Recovery')
         for title,subtitle,caption,fn in [('Previous Changes','Browse available recovery records.','Browse',lambda *_:self.show_undo()),('Old NR Files','Review legacy files before removal.','Review',lambda *_:self.show_cleanup()),('Library Reports','View test notes and export a support report.','Open',self.show_reports)]:
             item=row(title,subtitle);action=button(caption,fn);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);recovery.add(item)
-        self.organize_pages(b,[('Graphics',[graphics,defaults]),('Library',[appearance,controls,artwork]),('System',[system,app]),('Recovery',[recovery])])
+        self.organize_pages(b,[('Graphics',[graphics,defaults]),('Appearance',[appearance]),('Library',[artwork]),('Controller',[controls]),('System',[system,app]),('Recovery',[recovery])])
         def save(*_):
             selected_provider=provider_keys[provider.get_selected()];selected_mode=modes[profile.get_selected()]
             if selected_provider=='y4my' and selected_mode=='nr-only':self.toast('NR Only requires DLSS-Unlocked.');return

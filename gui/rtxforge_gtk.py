@@ -680,6 +680,20 @@ def hero_title_background_is_light(path):
         return False
 
 
+CORNER_STYLE='system'
+CORNER_PROVIDER=None
+
+def apply_corner_style(value):
+    global CORNER_STYLE,CORNER_PROVIDER
+    CORNER_STYLE=value if value in ('system','rounded','square') else 'system'
+    if CORNER_PROVIDER is None:
+        CORNER_PROVIDER=Gtk.CssProvider()
+        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(),CORNER_PROVIDER,Gtk.STYLE_PROVIDER_PRIORITY_USER)
+    css='* { border-radius: 0; }' if CORNER_STYLE=='square' else ''
+    if CORNER_STYLE=='rounded':css='window.background { border-radius: 12px; }'
+    CORNER_PROVIDER.load_from_data(css.encode())
+
+
 class ArtworkButton(Gtk.Button):
     """Keep button input/accessibility without painting a second artwork frame."""
     def do_snapshot(self,snapshot):
@@ -690,7 +704,7 @@ class ArtworkButton(Gtk.Button):
             # its antialiased edge visible through the surrounding surface.
             bounds=Graphene.Rect().init(3,3,max(0,self.get_width()-6),max(0,self.get_height()-6))
             clip=Gsk.RoundedRect()
-            clip.init_from_rect(bounds,11.0)
+            clip.init_from_rect(bounds,0.0 if CORNER_STYLE=="square" else 11.0)
             snapshot.push_rounded_clip(clip)
             self.snapshot_child(child,snapshot)
             snapshot.pop()
@@ -3376,6 +3390,7 @@ class Window(Adw.ApplicationWindow):
         self.settings['dark']=THEME_MODE!='light'
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)
         apply_neutral_palette()
+        apply_corner_style(self.settings.get('corner_style','system'))
         self.overlay=Adw.ToastOverlay();self.overlay.add_css_class('forge-toasts');self.set_content(self.overlay)
         stage=Gtk.Overlay();self.overlay.set_child(stage)
         outer=Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -3844,7 +3859,8 @@ class Window(Adw.ApplicationWindow):
             spacing=6,
             valign=Gtk.Align.CENTER,
         )
-        sticky_brand.set_valign(Gtk.Align.END)
+        sticky_brand.set_valign(Gtk.Align.FILL)
+        sticky_brand.set_size_request(-1,56)
         sticky_brand.set_margin_bottom(8)
         sticky_brand.add_css_class(
             'sticky-dashboard-brand'
@@ -11652,7 +11668,7 @@ class Window(Adw.ApplicationWindow):
         f.set_visible(True)
 
         if d is getattr(self,'progress_dialog',None):
-            d,b,f=self.open_panel(review.get('title','Review Changes'),width=640,height=420,show_close=False)
+            d,b,f=self.open_panel(review.get('title','Review Changes'),width=640,height=min(660,300+72*len(review['rows'])),show_close=False)
         b.remove_css_class('progress-content')
         b.add_css_class('panel-body')
         self.job_label=None
@@ -11687,7 +11703,7 @@ class Window(Adw.ApplicationWindow):
             info=Adw.ActionRow(title='Planned changes',subtitle=str(item.get('detail','')))
             info.set_use_markup(False);entry.add_row(info);g.add(entry)
         if review['blocked']:
-            skipped=Adw.PreferencesGroup(title=f"Needs attention · {len(review['blocked'])}");b.append(skipped)
+            skipped=Adw.PreferencesGroup(title=f"Needs attention · {len(review['blocked'])}");b.insert_child_after(skipped,summary)
             for item in review['blocked']:
                 warning=row(item['name'],item['reason']);warning.add_prefix(Gtk.Image(icon_name='dialog-warning-symbolic'));skipped.add(warning)
         if not review['rows']:b.append(label('No file changes can be applied.'));f.append(button('Close',lambda *_:d.close()));return
@@ -11870,6 +11886,16 @@ class Window(Adw.ApplicationWindow):
                 False,
             )[1],
         )
+
+        corner_keys=['system','rounded','square']
+        corners=Adw.ComboRow(title='Corners',subtitle='System uses native window decoration. Square also flattens custom cards and controls.',model=Gtk.StringList.new(['System','Rounded','Square']),selected=corner_keys.index(self.settings.get('corner_style','system')))
+        def change_corners(widget,*_):
+            value=corner_keys[widget.get_selected()]
+            self.settings['corner_style']=value
+            apply_corner_style(value)
+            self.queue_draw()
+            if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
+        corners.connect('notify::selected',change_corners);appearance.add(corners)
 
         theme_row=row('App Theme','Changes only rtxForge. Saved immediately.')
         theme_selector=Adw.ToggleGroup(valign=Gtk.Align.CENTER)

@@ -16,7 +16,7 @@ jobs:
       - name: Validate package engine and syntax
         run: |
           python3 -m compileall -q scripts gui engine
-          python3 -m pytest tests/test_app_completion.py tests/test_controller_native.py tests/test_desktop_service.py tests/test_runtime_updates.py tests/test_per_game_presets.py tests/test_package_catalog.py tests/test_package_download.py tests/test_package_cache.py tests/test_frontend_session.py tests/test_setup.py tests/test_operation_finalization.py tests/test_ui_colors.py -q
+          python3 -m pytest tests/test_app_completion.py tests/test_controller_native.py tests/test_desktop_service.py tests/test_runtime_updates.py tests/test_per_game_presets.py tests/test_package_catalog.py tests/test_package_download.py tests/test_package_cache.py tests/test_frontend_session.py tests/test_setup.py tests/test_operation_finalization.py tests/test_ui_colors.py tests/test_ui_scaling.py -q
           python3 -m unittest engine.tests.test_v13_core_hardening
       - name: Capture both real native layouts without game writes
         env:
@@ -30,6 +30,7 @@ jobs:
           dbus-run-session -- xvfb-run -a -s '-screen 0 1920x1080x24' python3 tests/ui_package_review.py
           dbus-run-session -- xvfb-run -a -s '-screen 0 1920x1080x24' python3 tests/ui_app_completion.py
           dbus-run-session -- xvfb-run -a -s '-screen 0 1920x1080x24' python3 tests/ui_couch_review.py
+          dbus-run-session -- xvfb-run -a -s '-screen 0 3840x2160x24' python3 tests/ui_layout_scaling.py
       - name: Build isolated review AppImage
         run: |
           python3 packaging/build_appimage.py
@@ -38,7 +39,7 @@ jobs:
           from pathlib import Path
           data=json.loads(Path('dist/AppImage-build/RTXForge.AppDir/usr/share/rtxforge/BUILD_INFO.json').read_text())
           assert data['commit']==os.environ['GITHUB_SHA']
-          for name in ['gui/package_browser.py','gui/native_shell.py','gui/couch_shell.py','gui/qt/Main.qml','scripts/package_catalog.py','scripts/desktop_frontend.py','scripts/controller_input.py','scripts/extra_tools.py','scripts/runtime_diagnostics.py']:
+          for name in ['gui/package_browser.py','gui/native_shell.py','gui/couch_shell.py','gui/ui_scaling.py','gui/qt/Main.qml','scripts/package_catalog.py','scripts/desktop_frontend.py','scripts/controller_input.py','scripts/extra_tools.py','scripts/runtime_diagnostics.py']:
               assert (Path('dist/AppImage-build/RTXForge.AppDir/usr/share/rtxforge')/name).is_file(),name
           PYBUILD
       - name: Verify packaged GTK entrypoint and protected flows

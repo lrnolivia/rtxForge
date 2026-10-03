@@ -7968,6 +7968,8 @@ class Window(Adw.ApplicationWindow):
                 self._column_refresh_game(
                     game
                 )
+            if game is not None and hasattr(self,'couch'):
+                self.couch.artwork_updated(game)
             if getattr(self,'detail_game',None)==event['game'] and self.dialog==getattr(self,'detail_dialog',None) and event['data'].get('hero'):
                 try:self.detail_banner.set_paintable(Gdk.Texture.new_from_filename(event['data']['hero']))
                 except Exception:pass

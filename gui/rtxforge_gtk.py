@@ -3853,12 +3853,10 @@ class Window(Adw.ApplicationWindow):
         # ------------------------------------------------------------
 
         sticky_brand=Gtk.Box(
-            spacing=6,
+            spacing=8,
             valign=Gtk.Align.CENTER,
         )
-        sticky_brand.set_valign(Gtk.Align.FILL)
-        sticky_brand.set_size_request(-1,56)
-        sticky_brand.set_margin_bottom(8)
+        sticky_brand.set_size_request(-1,64)
         sticky_brand.add_css_class(
             'sticky-dashboard-brand'
         )
@@ -3867,8 +3865,9 @@ class Window(Adw.ApplicationWindow):
             str(dashboard_art_path)
         )
         sticky_brand_icon.set_pixel_size(
-            22
+            40
         )
+        sticky_brand_icon.set_valign(Gtk.Align.CENTER)
         sticky_brand_icon.add_css_class(
             'sticky-dashboard-app-icon'
         )
@@ -3880,8 +3879,7 @@ class Window(Adw.ApplicationWindow):
             'rtxForge',
             'sticky-dashboard-title',
         )
-        sticky_brand_title.set_valign(Gtk.Align.END)
-        sticky_brand_title.set_margin_bottom(4)
+        sticky_brand_title.set_valign(Gtk.Align.CENTER)
         sticky_brand_title.set_wrap(
             False
         )

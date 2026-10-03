@@ -11,6 +11,9 @@ import ui_colors
 CSS = b'''
 .couch-prompt-button { background: transparent; border: 0; padding: 6px 2px; color: #c5c7cc; }
 .couch-prompt-button:hover { background: #292b30; }
+.couch-prompts { transition: opacity 180ms ease-out; }
+.couch-shell.bottom-navigation .couch-prompts { font-size: 12px; }
+.couch-shell.bottom-navigation .couch-prompt-button { padding: 2px; }
 
 .couch-shell { background: #101113; color: #fafafa; }
 .couch-game-meta { font-size: 15px; color: #c5c7cc; }
@@ -185,10 +188,14 @@ class CouchShell(Gtk.Overlay):
         shade.set_can_target(False)
         self.add_overlay(shade)
         main = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=22)
+        self.main = main
+        self.hint_timer = 0
+        self.navigation_position = None
         main.add_css_class('couch-content')
         self.add_overlay(main)
 
         top = Gtk.CenterBox()
+        self.top = top
         brand = Gtk.Box(spacing=10, valign=Gtk.Align.CENTER)
         icon = Gtk.Image.new_from_file(str(Path(__file__).parent / 'icons/rtxforge-artwork.svg'))
         icon.set_pixel_size(30)
@@ -197,6 +204,7 @@ class CouchShell(Gtk.Overlay):
         top.set_start_widget(brand)
         tabs = Gtk.Box()
         tabs.add_css_class('couch-tabs')
+        self.tab_bar = tabs
         self.tabs = []
         for title, page in [('Dashboard', 'dashboard'), ('Library', 'library'), ('Presets', 'presets'), ('DLSS Files', 'dlss')]:
             button = Gtk.Button(label=title)
@@ -252,6 +260,11 @@ class CouchShell(Gtk.Overlay):
         self.library_link.add_css_class('couch-view')
         self.library_link.connect('clicked', lambda _: self.open('library'))
         heading.append(self.library_link)
+        for icon,action in [('pan-start-symbolic','left'),('pan-end-symbolic','right')]:
+            control=Gtk.Button(icon_name=icon,tooltip_text='Previous game' if action=='left' else 'Next game')
+            control.add_css_class('couch-view')
+            control.connect('clicked',lambda _,action=action:self.navigate(action))
+            heading.append(control)
         self.library.append(heading)
         self.shelf = Gtk.Box(spacing=12)
         self.shelf_scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.AUTOMATIC, vscrollbar_policy=Gtk.PolicyType.NEVER)
@@ -319,7 +332,10 @@ class CouchShell(Gtk.Overlay):
         panel.append(self.hint)
         self.body.add_named(panel, 'panel')
 
+        self.bottom_nav = Gtk.Box(halign=Gtk.Align.CENTER)
+        main.append(self.bottom_nav)
         footer = Gtk.Box()
+        self.footer = footer
         self.prompts = Gtk.Box(spacing=22)
         self.prompts.add_css_class('couch-prompts')
         footer.append(self.prompts)
@@ -329,7 +345,61 @@ class CouchShell(Gtk.Overlay):
         self.footer_note.set_halign(Gtk.Align.END)
         footer.append(self.footer_note)
         main.append(footer)
+        self.apply_navigation_preferences()
         self.render()
+
+    def panel_navigation(self,dialog):
+        nav=Gtk.Box(spacing=4,halign=Gtk.Align.CENTER)
+        nav.add_css_class('couch-tabs')
+        nav.add_css_class('couch-shell')
+        for page,title in [('dashboard','Dashboard'),('library','Library'),('presets','Presets'),('dlss','DLSS Files'),('settings','Settings')]:
+            control=Gtk.Button(icon_name='emblem-system-symbolic',tooltip_text='Settings') if page=='settings' else Gtk.Button(label=title)
+            control.add_css_class('couch-tab')
+            if self.page==page:control.add_css_class('active')
+            control.set_sensitive(not self.owner.busy or self.owner.task_kind=='art')
+            def go(*_,page=page):
+                if not dialog.get_can_close():return
+                dialog.close()
+                self.open(page)
+            control.connect('clicked',go)
+            nav.append(control)
+        return nav
+
+    def apply_navigation_preferences(self):
+        position=self.owner.settings.get('navigation_position','top')
+        if position != self.navigation_position:
+            if self.navigation_position == 'bottom':self.bottom_nav.remove(self.tab_bar)
+            else:self.top.set_center_widget(None)
+            if position == 'bottom':self.bottom_nav.append(self.tab_bar)
+            else:self.top.set_center_widget(self.tab_bar)
+            self.navigation_position=position
+            self.bottom_nav.set_visible(position=='bottom')
+            self.add_css_class('bottom-navigation') if position=='bottom' else self.remove_css_class('bottom-navigation')
+            self.footer_note.set_visible(position!='bottom')
+            self.prompts.set_hexpand(position=='bottom')
+            self.prompts.set_halign(Gtk.Align.CENTER if position=='bottom' else Gtk.Align.START)
+            self.wake_hints()
+        auto=position=='bottom' or self.owner.settings.get('controller_hints','always')=='auto'
+        if auto != getattr(self,'hints_auto',None):
+            self.hints_auto=auto
+            self.wake_hints()
+
+    def wake_hints(self):
+        if self.hint_timer:GLib.source_remove(self.hint_timer)
+        self.prompts.set_opacity(1)
+        self.prompts.set_can_target(True)
+        self.hint_timer=0
+        if getattr(self,'hints_auto',False):self.hint_timer=GLib.timeout_add(3500,self.hide_hints)
+
+    def hide_hints(self):
+        if self.prompts.get_focus_child():
+            self.hint_timer=GLib.timeout_add(3500,self.hide_hints)
+            return False
+        self.hint_timer=0
+        # Preserve the navigation's allocation while hints fade away.
+        self.prompts.set_opacity(0)
+        self.prompts.set_can_target(False)
+        return False
 
     def update_prompts(self):
         family = self.owner.settings.get('controller_glyphs', 'auto')
@@ -411,6 +481,7 @@ class CouchShell(Gtk.Overlay):
         self.entries.append(dict(title=title, action=action, value=value, adjust=adjust, enabled=enabled, game=game, hint=hint))
 
     def navigate(self, action):
+        self.wake_hints()
         if action == 'back':
             self.back()
             return
@@ -434,8 +505,8 @@ class CouchShell(Gtk.Overlay):
                 self.tab_index = (self.tab_index + (1 if action == 'right' else -1)) % (len(PAGES) + 1)
             elif action == 'accept':
                 self.open('settings' if self.tab_index == len(PAGES) else PAGES[self.tab_index])
-            elif action == 'down':
-                self.zone = 'views' if self.page == 'library' else 'content'
+            elif action == ('up' if self.navigation_position=='bottom' else 'down'):
+                self.zone = 'views' if self.page == 'library' and self.navigation_position!='bottom' else 'content'
                 if self.zone == 'content':
                     self.focus(self.current)
             self.update_tabs()
@@ -448,8 +519,12 @@ class CouchShell(Gtk.Overlay):
             elif action == 'down':
                 self.zone = 'content'
                 self.focus(self.current)
-            elif action == 'up':
+            elif action == 'up' and self.navigation_position!='bottom':
                 self.zone = 'nav'
+            self.update_tabs()
+            return
+        if self.navigation_position=='bottom' and action=='down' and (self.page in ('dashboard','game') or self.current >= len(self.entries)-(self.columns if self.page=='library' else 1)):
+            self.zone='nav'
             self.update_tabs()
             return
         if self.page == 'library':
@@ -467,7 +542,7 @@ class CouchShell(Gtk.Overlay):
                 self.activate(self.current)
             return
         horizontal = self.page in ('dashboard', 'game')
-        if action == 'up' and (horizontal or not any(entry['enabled'] for entry in self.entries[:self.current])):
+        if self.navigation_position!='bottom' and action == 'up' and (horizontal or not any(entry['enabled'] for entry in self.entries[:self.current])):
             self.zone = 'nav'
             self.update_tabs()
             return
@@ -519,7 +594,7 @@ class CouchShell(Gtk.Overlay):
                 GLib.idle_add(self.reveal_selection)
             self.action_hint.set_text(entry.get('hint', ''))
             if self.page == 'dashboard':
-                self.count.set_text(f'{self.current + 1} of {len(self.entries)}  ·  browse left / right')
+                self.count.set_text(f'{self.current + 1} of {len(self.entries)} · {self.owner.settings.get("dashboard_row_count",5)} across · browse left / right')
         else:
             row = self.menu.get_row_at_index(self.current)
             self.menu.select_row(row)
@@ -697,6 +772,7 @@ class CouchShell(Gtk.Overlay):
         self.owner.settings[key] = choices[(index + direction) % len(choices)]
         if not self.owner.options.demo:
             library_media.save_settings(self.owner.service.config, self.owner.settings)
+        self.owner.apply_display_preferences()
         self.update_prompts()
 
     def build_entries(self):
@@ -749,6 +825,14 @@ class CouchShell(Gtk.Overlay):
             self.entry('Library', lambda: self.open('library'))
             self.entry('Packages', lambda: self.open('packages'))
             self.entry('Refresh library', self.owner.scan)
+            for key,title,choices,captions in [
+                ('ui_scale','UI scale',['auto',100,125,150,175,200],['Automatic','100%','125%','150%','175%','200%']),
+                ('dashboard_view','Dashboard artwork',['capsules','posters'],['Wide','Poster']),
+                ('dashboard_row_count','Games across shelf',list(range(3,9)),[str(n) for n in range(3,9)]),
+                ('navigation_position','Navigation',['top','bottom'],['Top','Bottom']),
+                ('controller_hints','Controller hints',['always','auto'],['Always visible','Hide when idle'])]:
+                value=self.owner.settings.get(key,library_media.DEFAULTS[key])
+                self.entry(title,value=captions[choices.index(value)],adjust=lambda d,key=key,choices=choices:self.setting(key,d,choices))
             self.entry('Desktop controls', lambda: self.owner.set_input_surface(False))
             self.entry('Quit rtxForge', self.owner.close)
         elif self.page == 'packages':
@@ -760,6 +844,14 @@ class CouchShell(Gtk.Overlay):
             glyphs = ['auto', 'xbox', 'playstation', 'nintendo', 'generic']
             self.entry('Button labels', value=self.owner.settings.get('controller_glyphs', 'auto').title(), adjust=lambda d: self.setting('controller_glyphs', d, glyphs))
             self.entry('Library layout', value={'posters': 'Posters', 'capsules': 'Wide', 'list': 'List'}[self.library_view], adjust=lambda d: self.set_library_view(VIEWS[(VIEWS.index(self.library_view) + d) % len(VIEWS)]))
+            for key,title,choices,captions in [
+                ('ui_scale','UI scale',['auto',100,125,150,175,200],['Automatic','100%','125%','150%','175%','200%']),
+                ('dashboard_view','Dashboard artwork',['capsules','posters'],['Wide','Poster']),
+                ('dashboard_row_count','Games across shelf',list(range(3,9)),[str(n) for n in range(3,9)]),
+                ('navigation_position','Navigation',['top','bottom'],['Top','Bottom']),
+                ('controller_hints','Controller hints',['always','auto'],['Always visible','Hide when idle'])]:
+                value=self.owner.settings.get(key,library_media.DEFAULTS[key])
+                self.entry(title,value=captions[choices.index(value)],adjust=lambda d,key=key,choices=choices:self.setting(key,d,choices))
             self.entry('Desktop controls', lambda: self.owner.set_input_surface(False))
             self.entry('Exit app', self.owner.close)
             self.hint.set_text('Use a keyboard or mouse to switch to Classic. Controller input brings you back here.')
@@ -852,7 +944,7 @@ class CouchShell(Gtk.Overlay):
         for index, entry in enumerate(self.entries):
             if (entry.get('game') or {}).get('game') != game['game']:
                 continue
-            path = (game.get('poster') or game.get('capsule')) if self.page == 'library' and self.library_view == 'posters' else (game.get('capsule') or game.get('poster') or game.get('hero'))
+            path = (game.get('poster') or game.get('capsule')) if (self.page == 'library' and self.library_view == 'posters') or (self.page == 'dashboard' and self.owner.settings.get('dashboard_view')=='posters') else (game.get('capsule') or game.get('poster') or game.get('hero'))
             if not path:
                 continue
             cover = self.controls[index].artwork
@@ -873,7 +965,7 @@ class CouchShell(Gtk.Overlay):
         self.game_actions.set_visible(self.page == 'game')
         self.game_metadata.set_visible(self.page == 'game')
         self.game_summary.set_visible(self.page == 'game' and bool(self.game_summary.get_text()))
-        self.count.set_text('Refreshing…' if self.owner.busy else str(len(self.owner.games)) + ' games')
+        self.count.set_text('Refreshing…' if self.owner.busy else f"{len(self.owner.games)} games · {self.owner.settings.get('dashboard_row_count',5)} across")
         installed = sum(bool(game.get('installed')) for game in self.owner.games)
         selecting = self.dlss_selection is not None
         if selecting:
@@ -892,7 +984,14 @@ class CouchShell(Gtk.Overlay):
         self.columns, width, height = self.grid_dimensions()
         for i, entry in enumerate(self.entries):
             if self.page == 'dashboard':
-                button = self.game_tile(entry, 206, 116)
+                count=self.owner.settings.get('dashboard_row_count',5)
+                available=self.shelf_scroll.get_width() or self.layout_width-(60 if self.compact else 92)
+                shelf_width=max(80,round((available-12*(count-1))/count)-16)
+                poster=self.owner.settings.get('dashboard_view','capsules')=='posters'
+                ratio=self.owner.library_card_geometry(view='posters' if poster else 'capsules')[5]
+                shelf_height=round(shelf_width/ratio)
+                self.shelf_scroll.set_min_content_height(shelf_height+80)
+                button = self.game_tile(entry, shelf_width, shelf_height, poster)
                 self.shelf.append(button)
                 self.controls.append(button)
                 button.connect('clicked', lambda _, n=i: self.activate(n))
@@ -961,6 +1060,7 @@ class CouchShell(Gtk.Overlay):
                 self.art.set_paintable(None)
                 self.title.set_text('Your library')
                 self.detail.set_text('Add games to begin.')
+        self.apply_navigation_preferences()
         self.render()
 
     def resize(self, width, height=None):
@@ -976,7 +1076,7 @@ class CouchShell(Gtk.Overlay):
         if compact != self.compact or width_changed or height_changed:
             self.compact = compact
             self.add_css_class('compact') if compact else self.remove_css_class('compact')
-            scale = max(.82, min(1.8, width / 1280))
+            scale = max(.82, min(1.0, width / 1280))
             self.panel.set_size_request(min(width - 60, round(660 * scale)), -1)
             self.panel_scroll.set_max_content_height(max(180, height - round(330 * scale)))
             self.scale_provider.load_from_data(f'''
@@ -987,5 +1087,5 @@ class CouchShell(Gtk.Overlay):
               .couch-shell .couch-tab {{ font-size: {round(16 * scale)}px; padding: {round(10 * scale)}px {round(18 * scale)}px; }}
             '''.encode())
             self.context.set_visible(self.owner.options.demo or not compact)
-        if width_changed and self.page == 'library':
+        if width_changed and self.page in ('library','dashboard'):
             self.render(self.current)

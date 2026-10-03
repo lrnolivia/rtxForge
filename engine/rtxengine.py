@@ -4254,6 +4254,7 @@ def install_target(
     nr_strength: str = "strong",
     mfg_multiplier: int | str = "auto",
     sharpening_strength: str = "strong",
+    preserve_visual_settings: bool = True,
     dry_run: bool = False,
 ) -> dict:
     visual_defaults(nr_strength, mfg_multiplier, sharpening_strength)  # Validate before any mutation.
@@ -4280,7 +4281,7 @@ def install_target(
         )
         verify_baseline_integrity(target, existing_baseline, adopt_legacy=not dry_run)
         _verify_optiscaler_tree_refresh_safe(target, existing_baseline)
-    if existing_baseline and Y4MY_PROVIDER.get("id") == "dlss-unlocked":
+    if existing_baseline and Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) == "dlss-unlocked":
         prior_mode = (existing_baseline.get("current") or {}).get("feature_mode")
         require(prior_mode in (None, feature_mode), "Uninstall before changing DLSS-Unlocked pipelines")
     reshade = detect_reshade(target)
@@ -4385,9 +4386,9 @@ def install_target(
     # because a global runtime was supplied for other games in the batch.
     # Frozen DLSS-Unlocked MFG recipe: update only existing native runtime files.
     # create_baseline below backs up every replacement before the first write.
-    require(feature_mode != "nr-only" or Y4MY_PROVIDER.get("id") == "dlss-unlocked",
+    require(feature_mode != "nr-only" or Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) == "dlss-unlocked",
             "NR Only is currently available with DLSS-Unlocked")
-    if Y4MY_PROVIDER.get("id") == "dlss-unlocked" and feature_mode == "mfg-only" and native_mfg_fallback:
+    if Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) == "dlss-unlocked" and feature_mode == "mfg-only" and native_mfg_fallback:
         # Explicit, opt-in fallback only. The normal route leaves the game's
         # native NVIDIA Streamline/DLSS-G runtime in control and keeps the
         # provider's OptiScaler/streamline runtime private.
@@ -4415,7 +4416,7 @@ def install_target(
                 "ownership": "caller-supplied NVIDIA runtime",
             }
         live_nr = target / NR_RUNTIME_NAME
-        if live_nr.is_file() and not live_nr.is_symlink() and Y4MY_PROVIDER.get("id") != "dlss-unlocked":
+        if live_nr.is_file() and not live_nr.is_symlink() and Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) != "dlss-unlocked":
             live_bytes = live_nr.read_bytes()
             require(len(live_bytes) > NR_RUNTIME_MIN_BYTES and live_bytes[:2] == b"MZ", f"Existing {NR_RUNTIME_NAME} is invalid")
             selected_nr_payload = live_bytes
@@ -4465,7 +4466,7 @@ def install_target(
 
     # Preserve the game-native DLSS-G path. Ada unlock is independent of OptiFG.
     text = payload[ini_key].decode("utf-8")
-    is_dlss_unlocked = Y4MY_PROVIDER.get("id") == "dlss-unlocked"
+    is_dlss_unlocked = Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) == "dlss-unlocked"
     ada_active = enable_effects and family == "ada" and feature_mode != "nr-only"
     text = set_ini_value(text, "DLSSG", "AdaMfgUnlock", "true" if ada_active else "false")
     text = set_ini_value(
@@ -4493,6 +4494,24 @@ def install_target(
     text, visual_tuning = apply_visual_defaults(
         text, saved_ini.decode("utf-8-sig") if saved_ini is not None else None, feature_mode, nr_strength, mfg_multiplier, sharpening_strength,
     )
+    if not preserve_visual_settings:
+        # An explicit Install preset form changes only the three exposed controls.
+        # Preserve unrelated overlay/custom tuning; Repair never enters this path.
+        requested = visual_defaults(nr_strength, mfg_multiplier, sharpening_strength)
+        keys = {"DlssNr": ("Intensity", "SkinStructure", "Enabled"),
+                "Sharpness": ("Sharpness",),
+                "CAS": ("Enabled", "MotionSharpnessEnabled"),
+                "DLSSG": ("OverrideInterpolationCount", "OverrideForceDMFG", "FramerateTargetDMFG")}
+        for section, names in keys.items():
+            if section == "DlssNr" and feature_mode == "mfg-only":
+                continue
+            if section == "DLSSG" and feature_mode == "nr-only":
+                continue
+            for key in names:
+                if key in requested.get(section, {}):
+                    value = requested[section][key]
+                    text = set_ini_value(text, section, key, value)
+                    visual_tuning.setdefault(section, {})[key] = value
     # Explicit ratios override the game; auto leaves the native game selection in control.
     # DLSS-Unlocked NR still starts dormant and is toggled independently with F10.
     if not enable_effects or is_dlss_unlocked:
@@ -4668,9 +4687,9 @@ def install_target(
             "nr_profile": {
                 "enabled": False if is_dlss_unlocked else (enable_effects and feature_mode in {"nr-mfg", "nr-only"} and nr_tuning.get("Enabled") == "true"),
                 "activation": "toggle-key-f10" if (is_dlss_unlocked and feature_mode in {"nr-mfg", "nr-only"}) else ("startup" if enable_effects else "manual-after-launch"),
-                "dual_feature": Y4MY_PROVIDER.get("id") != "dlss-unlocked",
-                "dual_enlarger": "dlss" if Y4MY_PROVIDER.get("id") != "dlss-unlocked" else None,
-                "run_before_sr": Y4MY_PROVIDER.get("id") == "dlss-unlocked",
+                "dual_feature": Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) != "dlss-unlocked",
+                "dual_enlarger": "dlss" if Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) != "dlss-unlocked" else None,
+                "run_before_sr": Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) == "dlss-unlocked",
                 "pre_upscale": False,
                 "passes": 1,
                 "working_scale": float(nr_tuning["WorkingScale"]),

@@ -3,7 +3,7 @@ from pathlib import Path
 import json,urllib.request,urllib.parse,urllib.error,re,time,hashlib,html,math
 import transactions as t
 from storage import storage
-DEFAULTS={'theme':None,'library_columns':7,'presets_hint_seen':False,'manage_dlss_files':True,'game_accents':{},'sharpening_strength':0.5,'mfg_multiplier':'auto','nr_strength':2.0,'runtime_provider':'y4my','enable_effects':True,'nr_runtime':'','dark':True,'library_view':'posters','art_scale':80,'cache_days':7,'network_timeout':10,'default_profile':'mfg-only','online_art':True,'steam_metadata':True,'recognize_previous':False,'extra_folders':[]}
+DEFAULTS={'input_mode':'auto','controller_glyphs':'auto','corner_style':'system','ui_mode':'classic','start_page':'library','compact_header':False,'custom_package':None,'theme':None,'library_columns':7,'presets_hint_seen':False,'manage_dlss_files':True,'game_accents':{},'sharpening_strength':0.5,'mfg_multiplier':'auto','nr_strength':2.0,'runtime_provider':'y4my','enable_effects':True,'nr_runtime':'','dark':True,'library_view':'posters','art_scale':80,'cache_days':7,'network_timeout':10,'default_profile':'mfg-only','online_art':True,'steam_metadata':True,'recognize_previous':False,'extra_folders':[]}
 
 LEGACY_NR_STRENGTH={
     'off':0.0,
@@ -46,6 +46,8 @@ def load_settings(config):
         settings['nr_strength']=normalize_strength(settings.get('nr_strength'),'nr')
         settings['sharpening_strength']=normalize_strength(settings.get('sharpening_strength'),'sharpness')
         if settings.get('mfg_multiplier') != 'auto' and (type(settings.get('mfg_multiplier')) is not int or settings['mfg_multiplier'] not in (0,2,3,4,5,6)):settings['mfg_multiplier']='auto'
+        for key,choices in {'input_mode':('auto','desktop','couch'),'controller_glyphs':('auto','xbox','playstation','nintendo','generic'),'corner_style':('system','rounded','square'),'library_view':('posters','capsules','list')}.items():
+            if settings.get(key) not in choices:settings[key]=DEFAULTS[key]
         return settings
     except (OSError,ValueError,t.Refusal):return {**DEFAULTS,'extra_folders':[]}
 def save_settings(config,settings):
@@ -123,20 +125,28 @@ class LibraryMedia:
         if record.exists():
             try:
                 saved=json.loads(record.read_text());result=saved['data']
-                if not refresh:return {**result,**local}
+                if not refresh and time.time()-saved.get('time',0)<max(1,int(self.settings.get('cache_days',7)))*86400:return {**result,**local}
             except (OSError,ValueError,KeyError):result={}
         appid=str(row.get('appid') or '')
         if not appid.isdigit():appid=''
-        if local.get('poster') or not self.settings['online_art']:
-            result.update(local)
-            if local:t.atomic_file(record,json.dumps({'data':result}).encode(),0o600)
-            return result
+        if not appid and self.settings['steam_metadata']:
+            # Enrichment identity is separate from the installed game's launcher ID.
+            try:
+                matches=json_request('https://store.steampowered.com/api/storesearch?'+urllib.parse.urlencode({'term':row['name'],'l':'english','cc':'us'}),timeout=timeout).get('items',[])
+                exact=[m for m in matches if normalized(m.get('name',''))==normalized(row['name']) and str(m.get('id','')).isdigit()]
+                if len(exact)==1:
+                    appid=str(exact[0]['id']);result['metadata_appid']=appid
+            except Exception:errors.append('Title metadata lookup unavailable')
         if appid and self.settings['steam_metadata']:
             try:
                 response=json_request('https://store.steampowered.com/api/appdetails?'+urllib.parse.urlencode({'appids':appid,'l':'english','filters':'basic,genres,developers,release_date'})).get(appid,{})
                 if response.get('success'):
-                    data=response['data'];result.update({'description':html.unescape(re.sub('<[^>]+>','',data.get('short_description',''))),'developers':', '.join(data.get('developers',[])),'genres':', '.join(g['description'] for g in data.get('genres',[])[:3]),'release':data.get('release_date',{}).get('date',''),'metadata_source':'Steam','capsule_url':data.get('header_image','')})
+                    data=response['data'];result.update({'description':html.unescape(re.sub('<[^>]+>','',data.get('short_description',''))),'developers':', '.join(data.get('developers',[])),'genres':', '.join(g['description'] for g in data.get('genres',[])[:3]),'release':data.get('release_date',{}).get('date',''),'metadata_source':'Steam (exact title match)' if result.get('metadata_appid') else 'Steam','capsule_url':data.get('header_image','')})
             except Exception:errors.append('Steam metadata unavailable')
+        if not self.settings['online_art']:
+            result.update(local)
+            t.atomic_file(record,json.dumps({'time':time.time(),'data':result}).encode(),0o600)
+            return result
         image_url='';credit='';link=''
         try:
             base='https://www.steamgriddb.com/api/public/'

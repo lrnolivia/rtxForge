@@ -24,13 +24,25 @@ Runtime state and recovery data default to `$XDG_STATE_HOME/rtxforge` (normally 
 DLSS-Unlocked ZIP preparation uses Python and needs no separate extractor.
 y4my extraction uses system libarchive, with `7z` / `7zz` / `bsdtar` fallbacks.
 
+## Input, tools and diagnostics
+
+Settings → Library → Input offers Automatic, Desktop and Couch startup modes, plus automatic or explicit Xbox, PlayStation, Nintendo and generic controller labels. Restart after changing the startup mode to rebuild every control. SDL2 (including sdl2-compat) provides mapped gamepad input when available: D-pad/stick moves focus, the south button activates, east goes back, north opens Library (or cycles its views), Start opens the menu and bumpers switch Dashboard / Library / Presets / DLSS Files. Presets adjusts the selected game. DLSS Files offers Update all or a Library selection flow for chosen games, with confirmation before updates. Library also offers Install to all through the existing feature review. Settings is a controller-reachable gear at the top right; package selection is available from the controller menu. Move up from the first Library row to its view controls, then up again to page navigation. Input is handled only while an rtxForge window is active. Steam Input can present a virtual Xbox pad; it is not a universal XInput/DInput API. Keyboard and mouse remain usable when no mapped controller or SDL library is available.
+
+Light and Dark use native Adwaita surface colors; Night is the deeper custom palette. Resizing and page transitions follow the system reduced-motion preference. Couch mode opens on a cinematic Dashboard. Its separate Library has poster, wide-capsule and list layouts, with directional grid navigation, automatic focus scrolling and retained selection when changing views or returning from a game. It shares Classic's artwork, aspect ratios, layout preference, artwork-derived accents and saved custom color choices; focused controls and selections carry that same game accent, with contrast-aware text. Controller input activates this interface; keyboard or mouse use returns to Classic controls. Protected operation reviews and progress stay inside the application surface.
+
+Game Details → Tools and the library-wide Extras menu manage extracted x64 ReShade DLLs and `.addon64` add-ons, including RenoDX. Choose a local file, inspect its hash and destination, then explicitly trust it. ReShade is installed as `dxgi.dll` for DirectX 10–12; an occupied proxy is refused. A matching ReShade loader must exist before an add-on is installed. Proton may require `dxgi=n,b` added to the game's existing DLL overrides; the app does not overwrite launch options for this action. Each tool has a separate, hash-guarded Restore action. Shader packs, presets, Vulkan-layer installation and Windows setup executables are not imported by this adapter. Get ReShade from [its official site](https://reshade.me/).
+
+**Diagnose NR** reads saved settings, adjacent runtime hashes, and a bounded OptiScaler log. It distinguishes model creation, NR GPU timing, warnings and logs older than the current INI. Generic NGX callbacks for SR/RR do not count as NR execution. GPU timing alone does not establish the visible result. The current deployment adapters remain targeted at RTX 40; RTX 20/30/50 are clearly marked unvalidated rather than inheriting a false compatibility claim.
+
+Games without a Steam ID can receive information through a unique exact title match. This metadata identity never changes the game's launcher ID. Local artwork takes priority and does not prevent game information from loading; both downloads can be disabled independently.
+
 ## Providers and installation
 
-Settings offers **y4my Multipass** and **DLSS-Unlocked**, with complete, separately pinned packages. See [providers/lock.json](providers/lock.json) for exact commits, release URLs and SHA-256 values. Packages are downloaded and verified when preparing an action. Arbitrary repositories and independent provider updates are future work.
+Settings offers **y4my Multipass** and **DLSS-Unlocked**, with complete, separately pinned packages. See [providers/lock.json](providers/lock.json) for exact commits, release URLs and SHA-256 values. Packages are downloaded and verified when preparing an action. The Packages menu also links alternative community projects with their compatibility limits. A custom ZIP is inspected without executing its scripts; recognized DLSS-Unlocked layouts can be reviewed, parameterized and trusted by exact hash. Edited instructions are saved as review notes and never executed. Other layouts remain inspection-only.
 
 Choose **MFG Only**, **NR Only** (DLSS-Unlocked), or **NR + MFG**, select games, and review the floating action panel. Close Steam before applying so its launch settings can be saved safely. Uninstall the current provider before changing providers. Original terminal-edition baselines are reused; older desktop installations retain the legacy Undo path.
 
-MFG activates on install or repair when selected. DLSS-Unlocked NR starts off and is toggled with F10; y4my uses the selected startup effects. y4my needs a suitable local NR DLL (Settings, an existing game copy, or a locally discovered model); DLSS-Unlocked supplies its own NR package. MFG Only omits NR DLLs; stock upstream builds may still show their NR menu.
+MFG activates on install or repair when selected. NR strength 0 disables NR. Explicit install presets and per-game Apply set its saved state; repair preserves existing tuning. DLSS-Unlocked binds its runtime NR toggle to F10; delivery depends on the game's active input/overlay handler and is not established by a saved binding. A selected NR package alone does not prove the effect is enabled or working. y4my needs a suitable local NR DLL (Settings, an existing game copy, or a locally discovered model); DLSS-Unlocked supplies its own NR package. MFG Only omits NR DLLs; stock upstream builds may still show their NR menu.
 
 The engine leaves game-native DLSS-G in control: OptiScaler replacement input/output are `nofg`, with Ada unlock controlled separately. This corrects RC1.38's supposedly dormant `dlssg` output, which could initialize private Streamline at device creation even with FrameGen disabled. It is a source-level correction, not proof that every reported game crash is resolved.
 
@@ -50,7 +62,7 @@ Presets start collapsed. Installation offers an optional preset adjustment befor
 
 ## Library and reports
 
-Poster, capsule and list views, artwork-led game details, provider buttons, selection and library actions remain available. Each game has notes and **Untested / Working / Problem / Bench** status. Bench excludes a game from bulk install/repair. Start and finish test records manually; the app records installed proxy hashes and copies bounded adjacent diagnostic logs. Support ZIPs stay local until you share them. A test record is not automatic evidence of runtime success.
+Poster, capsule and list views, artwork-led game details, provider buttons, selection and library actions remain available. Each game has notes and **Untested / Working / Problem / Bench** status. Bench excludes a game from bulk install/repair. Start and finish test records manually; the app records installed proxy hashes and copies bounded adjacent diagnostic logs. Support ZIPs stay local until you share them. Logs and notes are opt-in; the app redacts common secrets and local paths, shows the exact export text, and saves only that approved preview. Review it before sharing because automatic redaction cannot identify every private value. A test record is not automatic evidence of runtime success.
 
 ## Terminal and development
 
@@ -171,3 +183,40 @@ Current status:
 See [Redesign Current Status](docs/redesign/CURRENT-STATUS.md) and
 [Fresh Chat Continuation](docs/redesign/FRESH-CHAT-CONTINUATION.md).
 <!-- RTXFORGE_REDESIGN_STATUS_END -->
+
+
+## Shared package and interface preview
+
+The `rtxforge/shared-package-ui-20261002` review branch retains Classic and adds
+an opt-in New navigation layout around the **same GTK Library widget**. The
+application menu switches layouts; New Home offers an Open to Library/Home
+preference. Classic remains the default. Compact Header is opt-in and retains
+search, selection and action controls.
+
+Packages uses the existing pinned DLSS-Unlocked/y4my catalog and hardware gate.
+Custom ZIP inspection is static: archive paths, links, duplicate names, size,
+configuration and instructions are checked without running archive code. A
+recognized DLSS-Unlocked layout can be explicitly trusted and pinned to its hash;
+its deployment uses the existing preview, ownership, backup and recovery engine.
+Unknown layouts stay inspection-only. Instructions are reference text, never
+shell commands. NR rendering and custom-package game compatibility are not
+inferred from successful parsing.
+
+The Qt/Kirigami frontend under `gui/qt/` uses the same toolkit-free service and
+package parser. It is a native port under parity review, not a separate engine
+or a stable replacement. Source preview: `python3 gui/qt/app.py --demo`.
+GTK preview: `python3 gui/rtxforge_gtk.py --demo --ui-mode new`.
+
+GTK can run under GNOME, Plasma or Hyprland with its native dependencies; the Qt
+frontend targets Plasma and can be reused on Hyprland. Distribution names do not
+select different engines. Setup now checks actual Linux, toolkit, storage, Steam
+and GPU capabilities rather than requiring Bazzite by name. The bundled runtime
+still requires its supported NVIDIA RTX 40-series hardware. This does not claim
+Steam Deck GPU support, NR rendering, HDR, or Gamescope/controller parity.
+
+
+One review AppImage carries both frontend sources. The existing GTK frontend
+remains the default; `--frontend qt` explicitly starts the Kirigami preview when
+PySide6/Kirigami are installed. `--frontend-doctor` reports available Python
+bindings and session information without changing system settings. Toolkit
+dependencies are not silently installed and no desktop environment is replaced.

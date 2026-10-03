@@ -41,16 +41,50 @@ def finish(config,game):
     session['observation']='User test record; captured logs may include earlier runs. No automatic runtime success inference.'
     record.setdefault('sessions',[]).append(session);record.pop('active',None);save(config,game['game'],record);return record
 
-def export(config,games):
-    out=root(config)/('rtxForge-report-'+datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S%f')+'.zip');out.parent.mkdir(parents=True,exist_ok=True)
-    records=[]
+def redact(text):
+    """Best-effort redaction; the exact export is still previewed before consent."""
+    import re
+    text=re.sub(r'(?i)(authorization\s*[:=]\s*)(?:bearer\s+)?[^\s,;]+',r'\1[REDACTED]',text)
+    text=re.sub(r'(?i)((?:access[_-]?token|api[_-]?key|password|secret)\s*[\"\']?\s*[:=]\s*[\"\']?)[^\s,;\"\']+',r'\1[REDACTED]',text)
+    text=re.sub(r'(?i)https?://[^\s\"<>]+',lambda m:m[0].split('?')[0].split('#')[0],text)
+    text=re.sub(r'(?<![\w:])/(?:home|var/home|run|mnt|var/mnt|media|tmp)/[^\n\r\"<>]*','[LOCAL PATH]',text)
+    text=re.sub(r'(?i)\b[A-Z]:[\\/][^\n\r\"<>]*','[WINDOWS PATH]',text)
+    text=re.sub(r'\b7656119\d{10}\b','[STEAM ID]',text)
+    text=re.sub(r'\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b','[EMAIL]',text)
+    return text
+
+
+def preview(config,games,include_logs=False,include_notes=False):
+    import runtime_diagnostics
+    records=[];files={}
+    for index,game in enumerate(games):
+        record=load(config,game['game'])
+        item={'name':game['name'],'status':record.get('status','Untested'),
+              'diagnostics':runtime_diagnostics.inspect(game)}
+        if include_notes:item['notes']=redact(str(record.get('notes','')))
+        records.append(item)
+        if include_logs:
+            # One latest captured session per game, bounded regular files only.
+            for value in (record.get('sessions') or [{}])[-1].get('logs',[]):
+                p=Path(value)
+                if p.is_symlink() or not p.resolve().is_relative_to((root(config)/'logs').resolve()):continue
+                try:data,_=runtime_diagnostics.read_regular(p,512*1024,tail=True)
+                except (OSError,ValueError):continue
+                files[f'logs/{index}/{p.name}']=redact(data.decode('utf-8',errors='replace'))
+    files['library.json']=redact(json.dumps(records,indent=2))
+    files['README.txt']='rtxForge support export. Paths and common secrets are redacted on a best-effort basis. Runtime diagnostics do not establish visual correctness. Nothing was uploaded.\n'
+    return files
+
+
+def export_preview(config,files):
+    """Write exactly the preview the user approved, without re-reading game files."""
+    out=root(config)/('rtxForge-report-'+datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S%f')+'.zip')
+    out.parent.mkdir(parents=True,exist_ok=True)
     with zipfile.ZipFile(out,'x',compression=zipfile.ZIP_DEFLATED) as z:
-        for game in games:
-            record=load(config,game['game']);records.append({'name':game['name'],'game':game['game'],**record})
-            for session in record.get('sessions',[]):
-                for value in session.get('logs',[]):
-                    p=Path(value)
-                    if p.is_file() and not p.is_symlink() and p.resolve().is_relative_to(root(config).resolve()/'logs'):
-                        z.write(p,str(p.relative_to(root(config))))
-        z.writestr('library.json',json.dumps(records,indent=2));z.writestr('package.json',json.dumps(config,indent=2))
+        for name,data in files.items():
+            t.relative(name);z.writestr(name,data)
     out.chmod(0o600);return out
+
+
+def export(config,games):
+    return export_preview(config,preview(config,games))

@@ -36,6 +36,12 @@ def show_packages(owner, fixture=None):
     choose = Adw.ActionRow(title='Add custom package', subtitle='Detect the layout and review suggested settings')
     pick = Gtk.Button(icon_name='document-open-symbolic', valign=Gtk.Align.CENTER)
     pick.set_tooltip_text('Choose package archive'); choose.add_suffix(pick); choose.set_activatable_widget(pick);custom.add(choose);box.append(custom)
+    community=Adw.PreferencesGroup(title='Other community projects',description='Source discovery only. RTX 20/30/50 and additional layouts remain unvalidated by this app; the current deployment route targets RTX 40.')
+    for source in packages.community_sources():
+        item=Adw.ActionRow(title=source['name'],subtitle=source['note'])
+        link=Gtk.LinkButton(uri=source['url'],label='View source',valign=Gtk.Align.CENTER)
+        item.add_suffix(link);community.add(item)
+    box.append(community)
     detail = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16);box.append(detail)
 
     def select(record, settings=None):
@@ -59,7 +65,7 @@ def show_packages(owner, fixture=None):
 
     def render_inspection(result):
         if not alive['value']:return False
-        recommended.set_visible(False);custom.set_visible(False);intro.set_visible(False)
+        recommended.set_visible(False);custom.set_visible(False);community.set_visible(False);intro.set_visible(False)
         title.set_text('Review your package');back.set_visible(True)
         while detail.get_first_child():detail.remove(detail.get_first_child())
         group = Adw.PreferencesGroup(title=result['name'], description=result['confidence'])
@@ -71,7 +77,7 @@ def show_packages(owner, fixture=None):
             if parameter['key']=='OverrideInterpolationCount':
                 counts=['auto','0','1','2','3','4','5']
                 raw=str(parameter['value'])
-                choice=Adw.ComboRow(title='MFG multiplier',model=Gtk.StringList.new(['Auto','Off','2×','3×','4×','5×','6×']))
+                choice=__import__('rtxforge_gtk').safe_combo_row(title='MFG multiplier',model=Gtk.StringList.new(['Auto','Off','2×','3×','4×','5×','6×']))
                 choice.set_selected(counts.index(raw) if raw in counts else Gtk.INVALID_LIST_POSITION)
                 group.add(choice)
                 fields[parameter['key']]=lambda choice=choice,raw=raw:counts[choice.get_selected()] if choice.get_selected()<len(counts) else raw
@@ -81,11 +87,16 @@ def show_packages(owner, fixture=None):
         detail.append(group)
         warnings = Gtk.Label(label='\n'.join(result['warnings']), xalign=0, wrap=True, selectable=True)
         warnings.add_css_class('dim-label');detail.append(warnings)
-        instructions = Adw.ExpanderRow(title='Package instructions', subtitle='Read-only reference; commands are never executed')
+        instructions = Adw.ExpanderRow(title='Original package instructions', subtitle='Commands are never executed')
         for item in result['instructions'][:8]:
             row = Adw.ActionRow(title=item['path'])
             row.set_use_markup(False);row.set_subtitle(item['text'][:4000]);row.set_subtitle_lines(0);instructions.add_row(row)
         instruction_group = Adw.PreferencesGroup();instruction_group.add(instructions);detail.append(instruction_group)
+        detail.append(Gtk.Label(label='Your editable instructions / review notes (never executed)',xalign=0,wrap=True))
+        notes=Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR,height_request=120)
+        notes.get_buffer().set_text('\n\n'.join(item['text'][:4000] for item in result['instructions'][:8]))
+        notes_scroll=Gtk.ScrolledWindow(min_content_height=120,hscrollbar_policy=Gtk.PolicyType.NEVER)
+        notes_scroll.set_child(notes);detail.append(notes_scroll)
         trust = Gtk.CheckButton(label='I trust the source of this package')
         while footer.get_first_child():footer.remove(footer.get_first_child())
         trust.set_hexpand(True);footer.append(trust);footer.set_visible(True)
@@ -95,6 +106,7 @@ def show_packages(owner, fixture=None):
         def reviewed(*_):
             values={key:read().strip() for key,read in fields.items()}
             trusted=trust.get_active();apply.set_sensitive(False)
+            buffer=notes.get_buffer();review_notes=buffer.get_text(buffer.get_start_iter(),buffer.get_end_iter(),True)
             status.set_text('Verifying the reviewed package…')
             def verified(record):
                 if not alive['value']:return False
@@ -109,7 +121,7 @@ def show_packages(owner, fixture=None):
                 if alive['value']:status.set_text(message);apply.set_sensitive(trust.get_active())
                 return False
             def verify():
-                try:GLib.idle_add(verified,packages.custom_record(result,values,trusted=trusted))
+                try:GLib.idle_add(verified,packages.custom_record(result,values,trusted=trusted,review_notes=review_notes))
                 except Exception as ex:GLib.idle_add(failed,str(ex))
             threading.Thread(target=verify,daemon=True).start()
         apply.connect('clicked',reviewed)
@@ -118,7 +130,7 @@ def show_packages(owner, fixture=None):
 
     def catalog_again(*_):
         footer.set_visible(False)
-        detail.set_visible(False);recommended.set_visible(True);custom.set_visible(True);intro.set_visible(True)
+        detail.set_visible(False);recommended.set_visible(True);custom.set_visible(True);community.set_visible(True);intro.set_visible(True)
         title.set_text('Choose your graphics package');back.set_visible(False)
         status.set_text('Choose a package to review. No game files have changed.')
     back.connect('clicked',catalog_again)

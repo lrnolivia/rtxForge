@@ -43,6 +43,7 @@ class DesktopService:
                  'profile':('NR + MFG' if ini.get('DlssNr',{}).get('Enabled','false').lower()=='true' else 'MFG Only') if installed else 'Not installed'}
             if installed:
                 nr_values=ini.get('DlssNr',{});sharp_values=ini.get('Sharpness',{})
+                row['nr_enabled']=nr_values.get('Enabled','false').split(';',1)[0].strip().lower()=='true'
 
                 try:
                     intensity=float(nr_values.get('Intensity','').split(';',1)[0].strip())

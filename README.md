@@ -24,13 +24,25 @@ Runtime state and recovery data default to `$XDG_STATE_HOME/rtxforge` (normally 
 DLSS-Unlocked ZIP preparation uses Python and needs no separate extractor.
 y4my extraction uses system libarchive, with `7z` / `7zz` / `bsdtar` fallbacks.
 
+## Input, tools and diagnostics
+
+Settings → Library → Input offers Automatic, Desktop and Couch startup modes, plus automatic or explicit Xbox, PlayStation, Nintendo and generic controller labels. Restart after changing the startup mode to rebuild every control. SDL2 (including sdl2-compat) provides mapped gamepad input when available: D-pad/stick moves focus, the south button activates, east goes back, north opens the library, Start opens the menu and bumpers switch Library / Packages / Settings. Move up to focus the top navigation. Input is handled only while an rtxForge window is active. Steam Input can present a virtual Xbox pad; it is not a universal XInput/DInput API. Keyboard and mouse remain usable when no mapped controller or SDL library is available.
+
+Light and Dark use native Adwaita surface colors; Night is the deeper custom palette. Resizing and page transitions follow the system reduced-motion preference. Couch mode uses a landscape game shelf, white focus ring, quiet navigation, and left/right preset adjustment. Controller input activates this view; keyboard or mouse use returns to Classic controls. Protected operation reviews and progress stay inside the application surface.
+
+Game Details → Tools and the library-wide Extras menu manage extracted x64 ReShade DLLs and `.addon64` add-ons, including RenoDX. Choose a local file, inspect its hash and destination, then explicitly trust it. ReShade is installed as `dxgi.dll` for DirectX 10–12; an occupied proxy is refused. A matching ReShade loader must exist before an add-on is installed. Proton may require `dxgi=n,b` added to the game's existing DLL overrides; the app does not overwrite launch options for this action. Each tool has a separate, hash-guarded Restore action. Shader packs, presets, Vulkan-layer installation and Windows setup executables are not imported by this adapter. Get ReShade from [its official site](https://reshade.me/).
+
+**Diagnose NR** reads saved settings, adjacent runtime hashes, and a bounded OptiScaler log. It distinguishes model creation, NR GPU timing, warnings and logs older than the current INI. Generic NGX callbacks for SR/RR do not count as NR execution. GPU timing alone does not establish the visible result. The current deployment adapters remain targeted at RTX 40; RTX 20/30/50 are clearly marked unvalidated rather than inheriting a false compatibility claim.
+
+Games without a Steam ID can receive information through a unique exact title match. This metadata identity never changes the game's launcher ID. Local artwork takes priority and does not prevent game information from loading; both downloads can be disabled independently.
+
 ## Providers and installation
 
-Settings offers **y4my Multipass** and **DLSS-Unlocked**, with complete, separately pinned packages. See [providers/lock.json](providers/lock.json) for exact commits, release URLs and SHA-256 values. Packages are downloaded and verified when preparing an action. Arbitrary repositories and independent provider updates are future work.
+Settings offers **y4my Multipass** and **DLSS-Unlocked**, with complete, separately pinned packages. See [providers/lock.json](providers/lock.json) for exact commits, release URLs and SHA-256 values. Packages are downloaded and verified when preparing an action. The Packages menu also links alternative community projects with their compatibility limits. A custom ZIP is inspected without executing its scripts; recognized DLSS-Unlocked layouts can be reviewed, parameterized and trusted by exact hash. Edited instructions are saved as review notes and never executed. Other layouts remain inspection-only.
 
 Choose **MFG Only**, **NR Only** (DLSS-Unlocked), or **NR + MFG**, select games, and review the floating action panel. Close Steam before applying so its launch settings can be saved safely. Uninstall the current provider before changing providers. Original terminal-edition baselines are reused; older desktop installations retain the legacy Undo path.
 
-MFG activates on install or repair when selected. DLSS-Unlocked NR starts off and is toggled with F10; y4my uses the selected startup effects. y4my needs a suitable local NR DLL (Settings, an existing game copy, or a locally discovered model); DLSS-Unlocked supplies its own NR package. MFG Only omits NR DLLs; stock upstream builds may still show their NR menu.
+MFG activates on install or repair when selected. NR strength 0 disables NR. Explicit install presets and per-game Apply set its saved state; repair preserves existing tuning. DLSS-Unlocked binds its runtime NR toggle to F10; delivery depends on the game's active input/overlay handler and is not established by a saved binding. A selected NR package alone does not prove the effect is enabled or working. y4my needs a suitable local NR DLL (Settings, an existing game copy, or a locally discovered model); DLSS-Unlocked supplies its own NR package. MFG Only omits NR DLLs; stock upstream builds may still show their NR menu.
 
 The engine leaves game-native DLSS-G in control: OptiScaler replacement input/output are `nofg`, with Ada unlock controlled separately. This corrects RC1.38's supposedly dormant `dlssg` output, which could initialize private Streamline at device creation even with FrameGen disabled. It is a source-level correction, not proof that every reported game crash is resolved.
 
@@ -50,7 +62,7 @@ Presets start collapsed. Installation offers an optional preset adjustment befor
 
 ## Library and reports
 
-Poster, capsule and list views, artwork-led game details, provider buttons, selection and library actions remain available. Each game has notes and **Untested / Working / Problem / Bench** status. Bench excludes a game from bulk install/repair. Start and finish test records manually; the app records installed proxy hashes and copies bounded adjacent diagnostic logs. Support ZIPs stay local until you share them. A test record is not automatic evidence of runtime success.
+Poster, capsule and list views, artwork-led game details, provider buttons, selection and library actions remain available. Each game has notes and **Untested / Working / Problem / Bench** status. Bench excludes a game from bulk install/repair. Start and finish test records manually; the app records installed proxy hashes and copies bounded adjacent diagnostic logs. Support ZIPs stay local until you share them. Logs and notes are opt-in; the app redacts common secrets and local paths, shows the exact export text, and saves only that approved preview. Review it before sharing because automatic redaction cannot identify every private value. A test record is not automatic evidence of runtime success.
 
 ## Terminal and development
 

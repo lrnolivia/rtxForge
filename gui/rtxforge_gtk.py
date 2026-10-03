@@ -17,12 +17,15 @@ ACCENT_PROVIDERS={}
 ACCENT_SOURCES={}
 NEUTRAL_PROVIDER=None
 THEME_MODE='dark'
+NATIVE_PALETTE={}
+COUCH_MODE='auto'
 
 
 def neutral_palette():
     dark=Adw.StyleManager.get_default().get_dark()
     if dark and THEME_MODE=='night':
         return dict(window='#080808',view='#000000',sidebar='#101010',card='#171717',fg='#e7e7e7',popover='#181818')
+    if NATIVE_PALETTE:return dict(NATIVE_PALETTE)
     return dict(window='#242424' if dark else '#f5f5f5',
                 view='#1e1e1e' if dark else '#fafafa',
                 sidebar='#2d2d2d' if dark else '#ebebeb',
@@ -36,13 +39,24 @@ def apply_neutral_palette():
     if NEUTRAL_PROVIDER is None:
         NEUTRAL_PROVIDER=Gtk.CssProvider()
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(),NEUTRAL_PROVIDER,Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION+2)
+    # Remove our previous Night definitions before reading native Adwaita roles.
+    NEUTRAL_PROVIDER.load_from_data(b'')
+    probe=Gtk.Label().get_style_context()
+    for role in ('window','view','sidebar','card','popover'):
+        found,color=probe.lookup_color(role+'_bg_color')
+        if found:
+            background=NATIVE_PALETTE.get('window','#242424')
+            channels=(color.red,color.green,color.blue)
+            NATIVE_PALETTE[role]='#'+''.join(f'{round(c*255*color.alpha+int(background[1+i*2:3+i*2],16)*(1-color.alpha)):02x}' for i,c in enumerate(channels))
+    found,color=probe.lookup_color('window_fg_color')
+    if found:NATIVE_PALETTE['fg']='#'+''.join(f'{round(c*255):02x}' for c in (color.red,color.green,color.blue))
     palette=neutral_palette()
     names={'window_bg_color':'window','view_bg_color':'view','sidebar_bg_color':'sidebar',
            'card_bg_color':'card','dialog_bg_color':'window','popover_bg_color':'popover',
            'window_fg_color':'fg','view_fg_color':'fg','sidebar_fg_color':'fg','card_fg_color':'fg','dialog_fg_color':'fg','popover_fg_color':'fg',
            'headerbar_bg_color':'window','headerbar_fg_color':'fg','headerbar_backdrop_color':'window',
            'secondary_sidebar_bg_color':'sidebar','secondary_sidebar_fg_color':'fg'}
-    theme_css=''.join(f'@define-color {name} {palette[value]};' for name,value in names.items())
+    theme_css=''.join(f'@define-color {name} {palette[value]};' for name,value in names.items()) if THEME_MODE=='night' else ''
     theme_css+='list.boxed-list, list.content, list.boxed-list-separate > row, .card { box-shadow: 0 0 0 1px alpha(black,0.03), 0 1px 3px 1px alpha(black,0.07), 0 2px 6px 2px alpha(black,0.03); }'
     theme_css+='\n    button.bulk-remove { border: 1px solid alpha(currentColor,0.18); }\n    .library-selection-tools button, button.view-action, \n    button.game-details, .library-column-actions button,\n    .progress-inline-cancel {\n        border: 1px solid alpha(@window_fg_color,0.035);\n    }\n    '
     if THEME_MODE=='night':
@@ -59,12 +73,12 @@ def apply_neutral_palette():
         theme_css+='@define-color forge_library_card_a mix(@sidebar_bg_color,@window_fg_color,0.05); @define-color forge_library_card_b mix(@sidebar_bg_color,@window_fg_color,0.075); @define-color forge_panel_bg alpha(@window_fg_color,0.08); @define-color forge_library_list_hover mix(@sidebar_bg_color,@window_fg_color,0.10);'
     else:
         theme_css+="""
-        @define-color forge_lower_bg #d8d8d8;
-        @define-color forge_library_card_a #eeeeee;
-        @define-color forge_library_card_b #e9e9e9;
+        @define-color forge_lower_bg @sidebar_bg_color;
+        @define-color forge_library_card_a @card_bg_color;
+        @define-color forge_library_card_b mix(@card_bg_color,@sidebar_bg_color,0.2);
         @define-color forge_library_card_hover #e2e2e2;
         @define-color forge_library_list_hover #e2e2e2;
-        @define-color forge_panel_bg #e9e9e9;
+        @define-color forge_panel_bg @card_bg_color;
         @define-color accent_color #437500;
         .game-card { box-shadow: 0 1px 3px alpha(black,0.06), 0 0 8px alpha(black,0.035); }
         .game-card .card-footer { background: alpha(black,0.025); }
@@ -118,6 +132,7 @@ def apply_neutral_palette():
 def gamescope_session():
     """Return True for Steam Gaming Mode / gamescope-session."""
 
+    if COUCH_MODE!='auto':return COUCH_MODE=='couch'
     desktop=' '.join(
         os.environ.get(key,'')
         for key in (
@@ -253,6 +268,8 @@ class GameModeChoice(Gtk.Box):
 class GameModeComboRow(Adw.ActionRow):
     """Popup-free Adw.ComboRow equivalent for Gamescope."""
 
+    selected=GObject.Property(type=int,default=0)
+
     def __init__(
         self,
         *,
@@ -286,6 +303,9 @@ class GameModeComboRow(Adw.ActionRow):
         self.add_suffix(
             self.choice
         )
+        self.props.selected=self.choice.get_selected()
+        self.choice.connect('notify::selected',lambda *_:setattr(self.props,'selected',self.choice.get_selected()))
+        self.connect('notify::selected',lambda *_:self.choice.set_selected(self.props.selected))
 
     def get_selected(self):
         return self.choice.get_selected()
@@ -1427,16 +1447,6 @@ CSS=b'''
 @define-color accent_bg_color #76b900;
 @define-color accent_color #95cf38;
 @define-color accent_fg_color #102000;
-@define-color window_bg_color #242424;
-@define-color window_fg_color #f2f2f2;
-@define-color view_bg_color #1e1e1e;
-@define-color view_fg_color #f2f2f2;
-@define-color sidebar_bg_color #2d2d2d;
-@define-color sidebar_fg_color #f2f2f2;
-@define-color card_bg_color #383838;
-@define-color card_fg_color #f2f2f2;
-@define-color dialog_bg_color #242424;
-@define-color popover_bg_color #303030;
 .dim-label { opacity: 0.78; }
 .operation-complete { color: #76b900; }
 
@@ -3151,6 +3161,9 @@ class ResizablePanelWindow(Adw.Window):
             resizable=True,
         )
 
+        keys=Gtk.EventControllerKey()
+        keys.connect('key-pressed',lambda _,key,*args:(self.close(),True)[1] if key==Gdk.KEY_Escape and self._can_close else False)
+        self.add_controller(keys)
         self._panel_parent=parent
         self._can_close=True
         self._requested_width=width
@@ -3360,6 +3373,8 @@ class Window(Adw.ApplicationWindow):
         super().__init__(application=application,title='rtxForge',default_width=1280,default_height=820)
         self.options=options;self.service=DesktopService(options.provider)
         self.settings=dict(library_media.DEFAULTS) if options.demo else library_media.load_settings(self.service.config)
+        global COUCH_MODE
+        COUCH_MODE=self.settings.get('input_mode','auto')
 
         # Demo/smoke modes are deliberately write-disabled and must not
         # require the real Bazzite Games mount merely to construct the UI.
@@ -3456,7 +3471,7 @@ class Window(Adw.ApplicationWindow):
             settings_action
         )
 
-        for action_name,callback in [('packages',self.show_packages),('classic-ui',lambda *_:self.set_ui_mode('classic')),('new-ui',lambda *_:self.set_ui_mode('new')),('compact-header',self.toggle_compact_header)]:
+        for action_name,callback in [('extras',self.show_extras),('reports',self.show_reports),('packages',self.show_packages),('classic-ui',lambda *_:self.set_ui_mode('classic')),('new-ui',lambda *_:self.set_ui_mode('new')),('compact-header',self.toggle_compact_header)]:
             action=Gio.SimpleAction.new(action_name,None);action.connect('activate',callback);self.add_action(action)
         menu=Gio.Menu()
 
@@ -3476,6 +3491,8 @@ class Window(Adw.ApplicationWindow):
 
         app_menu=Gio.Menu()
         app_menu.append('Packages…','win.packages')
+        app_menu.append('Extras…','win.extras')
+        app_menu.append('Troubleshooting & Reports…','win.reports')
         app_menu.append('Toggle Compact Header','win.compact-header')
         app_menu.append(
             'Activity',
@@ -3514,127 +3531,11 @@ class Window(Adw.ApplicationWindow):
         main_menu.set_menu_model(
             menu
         )
+        self.main_menu=main_menu
         if gamescope_session():
-            # Gtk.MenuButton/GMenu uses a GtkPopover. Gamescope has
-            # compositor/input problems with popup surfaces, so keep
-            # this menu inside the existing application surface.
-            main_menu.set_menu_model(
-                None
-            )
-
-            def show_gamemode_menu(*_):
-                menu_dialog=Adw.Dialog(
-                    title='Menu',
-                    content_width=340,
-                    content_height=300,
-                )
-
-                try:
-                    menu_dialog.set_presentation_mode(
-                        Adw.DialogPresentationMode.FLOATING
-                    )
-                except Exception:
-                    pass
-
-                shell=Gtk.Box(
-                    orientation=Gtk.Orientation.VERTICAL,
-                    spacing=6,
-                )
-                margins(
-                    shell,
-                    14,
-                )
-
-                def menu_button(
-                    title,
-                    icon_name,
-                    callback,
-                ):
-                    content=Gtk.Box(
-                        spacing=10,
-                    )
-                    content.append(
-                        Gtk.Image.new_from_icon_name(
-                            icon_name
-                        )
-                    )
-                    content.append(
-                        label(title)
-                    )
-
-                    control=Gtk.Button(
-                        child=content,
-                    )
-
-                    def activate(*_):
-                        menu_dialog.close()
-                        GLib.idle_add(
-                            lambda:(
-                                callback(),
-                                False,
-                            )[1]
-                        )
-
-                    control.connect(
-                        'clicked',
-                        activate,
-                    )
-
-                    return control
-
-                shell.append(
-                    menu_button(
-                        'Refresh Library',
-                        'view-refresh-symbolic',
-                        self.scan,
-                    )
-                )
-
-                shell.append(
-                    menu_button(
-                        'Add Game Folder',
-                        'list-add-symbolic',
-                        self.choose_folder,
-                    )
-                )
-
-                for title,icon,callback in [('Packages','package-x-generic-symbolic',self.show_packages)]:
-                    shell.append(menu_button(title,icon,callback))
-
-                shell.append(
-                    menu_button(
-                        'Activity',
-                        'document-open-recent-symbolic',
-                        self.show_activity,
-                    )
-                )
-
-                shell.append(
-                    menu_button(
-                        'Settings',
-                        'emblem-system-symbolic',
-                        self.show_settings,
-                    )
-                )
-
-                menu_dialog.set_child(
-                    shell
-                )
-                menu_dialog.present(
-                    self
-                )
-
-            click=Gtk.GestureClick()
-            click.set_propagation_phase(
-                Gtk.PropagationPhase.CAPTURE
-            )
-            click.connect(
-                'released',
-                lambda *_:show_gamemode_menu(),
-            )
-            main_menu.add_controller(
-                click
-            )
+            main_menu=button('☰',self.show_controller_menu,'flat')
+            main_menu.set_tooltip_text('Main Menu')
+            self.main_menu=main_menu
 
 
         outer.append(
@@ -4457,6 +4358,9 @@ class Window(Adw.ApplicationWindow):
         bottom_gutter.add_css_class('library-bottom-fade')
         bottom_gutter.set_can_target(False)
         library_surface.append(bottom_gutter)
+        self.controller_hud=Gtk.Label(label='',visible=False,margin_top=6,margin_bottom=8)
+        self.controller_hud.add_css_class('dim-label')
+        library_surface.append(self.controller_hud)
         # Decorative top fade removed. The Library now begins
         # with ordinary physical spacing below its controls.
         def collapse_header(adj):
@@ -4647,11 +4551,146 @@ class Window(Adw.ApplicationWindow):
                 self.live_smoke_startup,
             )
 
+        import controller_input
+        self.controller=controller_input.Controller()
+        self.controller_source=GLib.timeout_add(40,self.poll_controller)
+        from couch_shell import CouchShell
+        classic_child=self.overlay.get_child();self.overlay.set_child(None)
+        self.input_stack=Gtk.Stack(hhomogeneous=False,vhomogeneous=False)
+        self.input_stack.add_named(classic_child,'desktop')
+        self.couch=CouchShell(self);self.input_stack.add_named(self.couch,'couch')
+        self.overlay.set_child(self.input_stack)
+        self.last_controller_input=0.0;self._pointer_origin=None
+        self.set_input_surface(gamescope_session())
+        keys=Gtk.EventControllerKey();keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        keys.connect('key-pressed',self.keyboard_input);self.add_controller(keys)
+        pointer=Gtk.GestureClick();pointer.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        pointer.connect('pressed',lambda *_:self.set_input_surface(False));self.add_controller(pointer)
+        motion=Gtk.EventControllerMotion();motion.connect('motion',self.pointer_input);self.add_controller(motion)
         self._canonical_library=self.overlay
         self._new_shell=None;self._new_stack=None
         initial=(getattr(options,'ui_mode',None) or 'classic') if options.demo else 'classic'
         self.set_ui_mode(initial,persist=False)
         if self.settings.get('compact_header'):GLib.idle_add(self._collapse_library_header,self._library_scroll_adjustment)
+
+    def show_controller_menu(self,*_):
+        if self.busy and self.task_kind!='art':return
+        d,b,f=self.open_panel('Menu',width=380,height=420)
+        for title,fn in [('Refresh Library',self.scan),('Add Game Folder',self.choose_folder),('Packages',self.show_packages),('Extras',self.show_extras),('Troubleshooting & Reports',self.show_reports),('Settings',self.show_settings)]:
+            def invoke(*_,fn=fn):
+                d.close();GLib.idle_add(lambda:(fn(),False)[1])
+            b.append(button(title,invoke))
+
+    def set_input_surface(self,couch):
+        if not hasattr(self,'input_stack'):return
+        self._pointer_origin=None
+        self.input_stack.set_visible_child_name('couch' if couch else 'desktop')
+        self.controller_hud.set_visible(False)
+        if couch:self.couch.refresh()
+        self.add_css_class('controller-active') if couch else self.remove_css_class('controller-active')
+
+    def keyboard_input(self,*_):
+        if time.monotonic()-self.last_controller_input>0.4:self.set_input_surface(False)
+        return False
+
+    def pointer_input(self,_,x,y):
+        if not self.is_active() or time.monotonic()-self.last_controller_input<=1.2:
+            self._pointer_origin=None;return
+        if self._pointer_origin is None:self._pointer_origin=(x,y);return
+        origin=self._pointer_origin
+        if abs(x-origin[0])+abs(y-origin[1])>24:self.set_input_surface(False)
+
+    def poll_controller(self):
+        actions=self.controller.poll()
+        if not hasattr(self,'couch'):return True
+        self.couch.resize(self.get_width());self.couch.update_prompts()
+        panel=self.dialog if isinstance(self.dialog,ResizablePanelWindow) and self.dialog.get_mapped() else None
+        active_panel=panel if panel and panel.is_active() else None
+        if not self.is_active() and not active_panel:return True
+        if actions:self.last_controller_input=time.monotonic();self._pointer_origin=None
+        for action in actions:
+            dialog=active_panel or self.get_visible_dialog()
+            if not dialog:
+                if self.input_stack.get_visible_child_name()!='couch':self.set_input_surface(True)
+                self.couch.navigate(action)
+                continue
+            if action in ('up','down','left','right','previous','next'):
+                direction={'up':Gtk.DirectionType.UP,'down':Gtk.DirectionType.DOWN,'left':Gtk.DirectionType.LEFT,'right':Gtk.DirectionType.RIGHT,'previous':Gtk.DirectionType.TAB_BACKWARD,'next':Gtk.DirectionType.TAB_FORWARD}[action]
+                dialog.child_focus(direction)
+            elif action=='accept':
+                focus=dialog.get_focus()
+                while focus and focus is not dialog:
+                    if focus.activate():break
+                    focus=focus.get_parent()
+            elif action=='back' and dialog.get_can_close():dialog.close()
+        return True
+
+    def populate_tools(self,body,game):
+        body.append(label('Tools','title-2'))
+        body.append(label('Standalone tools are reviewed separately from feature packages. Existing proxy DLLs are preserved.','dim-label'))
+        body.append(button('Diagnose NR',lambda *_:self.show_diagnostics(game)))
+        for kind,title in [('reshade','Install ReShade DLL…'),('addon','Install ReShade Add-on…')]:
+            control=button(title,lambda _,kind=kind:self.choose_extra(game,kind))
+            control.set_sensitive(not self.options.demo);body.append(control)
+        body.append(button('ReShade Downloads',lambda *_:Gio.AppInfo.launch_default_for_uri('https://reshade.me/',None)))
+        body.append(label('Use an extracted x64 ReShade DLL or .addon64 file from a source you trust. Shader packs and presets remain yours to manage. DirectX 10–12 installs use dxgi.dll; Proton may require dxgi=n,b in the existing DLL overrides.','dim-label'))
+        if not self.options.demo:
+            import extra_tools
+            for record in extra_tools.recoveries(self.service.config,game):
+                item=row(extra_tools.KINDS[record['kind']],record['date'])
+                item.add_suffix(button('Restore',lambda _,r=record:self.review_extra_restore(r)))
+                body.append(item)
+
+    def show_extras(self,*_):
+        d,b,f=self.open_panel('Extras')
+        b.append(label('Manage standalone tools and NR diagnostics for each game.','dim-label'))
+        for game in self.games:
+            item=row(game['name'],game.get('profile',''))
+            item.add_suffix(button('Tools',lambda _,g=game:(self.details(g),self.detail_pages.set_visible_child_name('Tools'))))
+            b.append(item)
+
+    def show_diagnostics(self,game):
+        import runtime_diagnostics,json
+        def ready(report):
+            d,b,f=self.open_panel(game['name']+' · NR Diagnosis')
+            for observation in report['observations']:b.append(label(observation))
+            b.append(label('Visible result: '+report['visual_result'],'heading'))
+            view=Gtk.TextView(editable=False,monospace=True,wrap_mode=Gtk.WrapMode.WORD_CHAR)
+            view.get_buffer().set_text(json.dumps(report,indent=2))
+            scroller=Gtk.ScrolledWindow(min_content_height=240,vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER)
+            scroller.set_child(view);b.append(scroller)
+            f.append(button('Refresh',lambda *_:self.show_diagnostics(game)))
+        if self.options.demo:
+            ready({'observations':['Demo: diagnosis reads the selected game’s settings, exact runtime hashes, and bounded log tail.'],'visual_result':'Not tested'})
+        else:self.start('Reading NR evidence',lambda:runtime_diagnostics.inspect(game),ready)
+
+    def choose_extra(self,game,kind):
+        import extra_tools
+        chooser=Gtk.FileDialog(title='Choose x64 ReShade DLL' if kind=='reshade' else 'Choose .addon64 file')
+        def chosen(dialog,result):
+            try:path=dialog.open_finish(result).get_path()
+            except GLib.Error:return
+            if not path:return
+            self.start('Preparing tool review',lambda:extra_tools.prepare(self.service.config,game,path,kind),self.review_extra)
+        chooser.open(self,None,chosen)
+
+    def review_extra(self,plan):
+        import extra_tools
+        d,b,f=self.open_panel('Review '+extra_tools.KINDS[plan['kind']])
+        b.append(label(plan['name'],'title-2'))
+        for change in plan['changes']:
+            b.append(row('Add',change['path']))
+            b.append(row('SHA-256',change['after']))
+        b.append(label('This native code will run inside the game. The hash identifies the selected file; it does not establish its publisher or safety.','dim-label'))
+        trust=Gtk.CheckButton(label='I trust the source of this exact file');b.append(trust)
+        apply=button('Install Tool',lambda *_:self.start('Installing tool',lambda:extra_tools.apply(self.service.config,plan),lambda _:(self.toast('Tool installed. Recovery is available in Tools.'),d.close())),'suggested-action')
+        apply.set_sensitive(False);trust.connect('toggled',lambda *_:apply.set_sensitive(trust.get_active()));f.append(apply)
+
+    def review_extra_restore(self,record):
+        import extra_tools
+        d,b,f=self.open_panel('Restore Tool',width=500,height=260)
+        b.append(label('Remove the exact installed tool from '+record['name']+'. Changed files will be refused; game saves and other tools are preserved.'))
+        f.append(button('Restore',lambda *_:self.start('Restoring tool',lambda:extra_tools.restore(self.service.config,record['path']),lambda _:(self.toast('Tool restored.'),d.close())),'suggested-action'))
 
     def show_packages(self,*_):
         return show_packages(self)
@@ -7782,6 +7821,9 @@ class Window(Adw.ApplicationWindow):
     def close_request(self,*_):
         if self.busy and self.task_kind!='art':self.toast('Please wait for the current file operation to finish.');return True
         if self.busy:self.cancel_art.set()
+        if getattr(self,'controller_source',0):
+            GLib.source_remove(self.controller_source);self.controller_source=0
+            self.controller.close()
         return False
     def tick(self):
         if self.busy:self.operation_elapsed.set_text(f'{int(time.monotonic()-self.started)}s')
@@ -8129,6 +8171,7 @@ class Window(Adw.ApplicationWindow):
         if self.dialog:
             self.dialog.force_close()
 
+        resizable=resizable and not gamescope_session() and not (hasattr(self,'input_stack') and self.input_stack.get_visible_child_name()=='couch')
         if resizable:
             dialog=ResizablePanelWindow(
                 self,
@@ -8564,6 +8607,7 @@ class Window(Adw.ApplicationWindow):
 
         self.ghost_slots=[]
         self.games=games
+        if hasattr(self,'couch'):GLib.idle_add(lambda:(self.couch.refresh(),False)[1])
         self.cards={}
 
         valid_ids={
@@ -9996,6 +10040,7 @@ class Window(Adw.ApplicationWindow):
             'Overview',
             'Features',
             'DLSS Files',
+            'Tools',
             'Notes',
             'Appearance',
         ):
@@ -10025,6 +10070,7 @@ class Window(Adw.ApplicationWindow):
             'Overview':'dialog-information-symbolic',
             'Features':'applications-system-symbolic',
             'DLSS Files':'folder-symbolic',
+            'Tools':'applications-utilities-symbolic',
             'Notes':'document-edit-symbolic',
             'Appearance':'applications-graphics-symbolic',
         }
@@ -10033,6 +10079,7 @@ class Window(Adw.ApplicationWindow):
             'Overview',
             'Features',
             'DLSS Files',
+            'Tools',
             'Notes',
             'Appearance',
         ):
@@ -10099,7 +10146,7 @@ class Window(Adw.ApplicationWindow):
         self.detail_nav=nav
         def sync_detail_page(*_):
             name=pages.get_visible_child_name()
-            for index in range(5):
+            for index in range(len(content)):
                 candidate=nav.get_row_at_index(index)
                 if candidate.page_name==name and nav.get_selected_row() is not candidate:
                     nav.select_row(candidate)
@@ -10135,11 +10182,14 @@ class Window(Adw.ApplicationWindow):
 
         self.detail_pages=pages
         self.detail_fit_page=fit_detail_page
+        self.populate_tools(content['Tools'],game)
         overview=content['Overview']
         info=Adw.PreferencesGroup(title='Game Information');overview.append(info)
-        for title,value in [('Library',game.get('library')),('Location',game['game']),('Compatibility',game.get('blocked') or 'Available'),('Developer',game.get('developers')),('Release',game.get('release'))]:
+        for title,value in [('Library',game.get('library')),('Location',game['game']),('Compatibility',game.get('blocked') or 'Available'),('Metadata Source',game.get('metadata_source')),('Developer',game.get('developers')),('Release',game.get('release'))]:
             if value:info.add(row(title,value))
         features=content['Features'];installed=game.get('installed',False)
+        if installed:
+            features.append(label('Saved NR: '+('enabled' if game.get('nr_enabled') else 'disabled')+' · runtime and visual results require diagnosis.','dim-label'))
         tuning,widgets=self.tuning_controls(game)
         presets=Gtk.Expander(label='Presets',expanded=False)
         presets.add_css_class('presets-header')
@@ -10989,11 +11039,29 @@ class Window(Adw.ApplicationWindow):
         d,b,f=self.open_panel('Library status & reports')
         totals=Counter(g.get('test_record',{}).get('status','Untested') for g in self.games)
         b.append(label(' · '.join(f'{totals[state]} {state.lower()}' for state in game_notes.STATES),'heading'))
-        b.append(label('Export includes your notes, game paths, package identity and captured logs. Review the ZIP before sharing. Nothing is uploaded.','dim-label'))
+        b.append(label('Diagnostics separate saved settings from captured runtime evidence. Nothing is uploaded.','dim-label'))
         for game in self.games:
             record=game.get('test_record',{});item=row(game['name'],record.get('status','Untested')+(' · test in progress' if record.get('active') else ''))
-            item.add_suffix(button('Open',lambda _,g=game:self.details(g)));b.append(item)
-        export=button('Export support ZIP',lambda *_:self.start('Exporting report',lambda:game_notes.export(self.service.config,self.games),lambda p:(self.toast('Saved '+str(p)),Gio.AppInfo.launch_default_for_uri(p.parent.as_uri(),None))),'forge-primary');export.set_sensitive(not self.options.demo);f.append(export)
+            item.add_suffix(button('Diagnose',lambda _,g=game:self.show_diagnostics(g)));b.append(item)
+        logs=Gtk.CheckButton(label='Include redacted logs from the latest captured test',active=False)
+        notes=Gtk.CheckButton(label='Include my notes',active=False)
+        b.append(logs);b.append(notes)
+        export=button('Preview Support Report',lambda *_:self.start('Preparing redacted preview',lambda:game_notes.preview(self.service.config,self.games,logs.get_active(),notes.get_active()),self.preview_report),'forge-primary')
+        export.set_sensitive(not self.options.demo);f.append(export)
+
+    def preview_report(self,files):
+        d,b,f=self.open_panel('Review Support Report')
+        b.append(label('Review the exact text below. Redaction is best effort. Export saves this preview locally; nothing is submitted.','dim-label'))
+        for name,text in files.items():
+            b.append(label(name,'heading'))
+            view=Gtk.TextView(editable=False,monospace=True,wrap_mode=Gtk.WrapMode.WORD_CHAR)
+            view.get_buffer().set_text(text)
+            scroller=Gtk.ScrolledWindow(min_content_height=240,vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER)
+            scroller.set_child(view);b.append(scroller)
+        export=button('Export This Preview',lambda *_:self.start('Exporting report',lambda:game_notes.export_preview(self.service.config,files),lambda p:self.toast('Saved '+str(p))),'suggested-action')
+        export.set_sensitive(not self.options.demo);f.append(export)
+        f.append(button('Open Issue Form',lambda *_:Gio.AppInfo.launch_default_for_uri('https://github.com/lrnolivia/rtxForge/issues/new',None)))
+
     def launch_action(self,operation,entire=False,targets=None,visual_settings=None,_presets_confirmed=False):
         if self.busy and self.task_kind!='art':return
         rows=(
@@ -11512,7 +11580,7 @@ class Window(Adw.ApplicationWindow):
 
         target=int(target)
 
-        if start==target:
+        if start==target or not Gtk.Settings.get_default().get_property('gtk-enable-animations'):
             dialog.set_content_width(target)
             return
 
@@ -11522,6 +11590,9 @@ class Window(Adw.ApplicationWindow):
             if self.dialog is not dialog:
                 return False
 
+            if not Gtk.Settings.get_default().get_property('gtk-enable-animations'):
+                dialog.set_content_width(target)
+                return False
             elapsed=(time.monotonic()-started)*1000.0
             t=min(1.0,elapsed/max(1,duration))
 
@@ -11548,11 +11619,15 @@ class Window(Adw.ApplicationWindow):
         try:start=int(dialog.get_content_height())
         except Exception:start=int(target)
         target=max(1,int(target))
-        if start==target:
+        if start==target or not Gtk.Settings.get_default().get_property('gtk-enable-animations'):
             dialog.set_content_height(target);return
         started=time.monotonic()
         def tick():
             if self.dialog is not dialog:
+                self.detail_resize_source=0
+                return False
+            if not Gtk.Settings.get_default().get_property('gtk-enable-animations'):
+                dialog.set_content_height(target)
                 self.detail_resize_source=0
                 return False
             t=min(1.0,(time.monotonic()-started)*1000.0/max(1,duration))
@@ -11853,6 +11928,19 @@ class Window(Adw.ApplicationWindow):
             layout_row
         )
 
+        controls=Adw.PreferencesGroup(title='Input',description='SDL handles mapped controllers; Steam Input may expose a virtual Xbox controller. Keyboard and mouse remain available.')
+        for key,title,keys,captions in [
+            ('input_mode','Startup Interface',['auto','desktop','couch'],['Automatic','Desktop','Couch']),
+            ('controller_glyphs','Controller Labels',['auto','xbox','playstation','nintendo','generic'],['Automatic','Xbox','PlayStation','Nintendo','Generic'])]:
+            choice=safe_combo_row(title=title,model=Gtk.StringList.new(captions),selected=keys.index(self.settings.get(key,'auto')))
+            def change_input(widget,*_,key=key,keys=keys):
+                global COUCH_MODE
+                self.settings[key]=keys[widget.get_selected()]
+                COUCH_MODE=self.settings.get('input_mode','auto')
+                if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
+                if key=='input_mode':self.toast('Input mode saved. Restart to rebuild all menu controls.')
+            choice.connect('notify::selected',change_input);controls.add(choice)
+        appearance.add(row('Controller Navigation','D-pad / stick: focus · South: activate · East: back · North: library · Start: menu · Bumpers: tab'))
         settings_saved={'value':False}
 
         def restore_library_preview(*_):
@@ -11875,7 +11963,7 @@ class Window(Adw.ApplicationWindow):
                 )
 
         d.connect(
-            'close-request',
+            'close-request' if isinstance(d,ResizablePanelWindow) else 'closed',
             lambda *_:(
                 restore_library_preview(),
                 False,
@@ -11950,7 +12038,7 @@ class Window(Adw.ApplicationWindow):
         recovery=Adw.PreferencesGroup(title='Recovery')
         for title,subtitle,caption,fn in [('Previous Changes','Browse available recovery records.','Browse',lambda *_:self.show_undo()),('Old NR Files','Review legacy files before removal.','Review',lambda *_:self.show_cleanup()),('Library Reports','View test notes and export a support report.','Open',self.show_reports)]:
             item=row(title,subtitle);action=button(caption,fn);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);recovery.add(item)
-        self.organize_pages(b,[('Graphics',[graphics,defaults]),('Library',[appearance,artwork]),('System',[system,app]),('Recovery',[recovery])])
+        self.organize_pages(b,[('Graphics',[graphics,defaults]),('Library',[appearance,controls,artwork]),('System',[system,app]),('Recovery',[recovery])])
         def save(*_):
             selected_provider=provider_keys[provider.get_selected()];selected_mode=modes[profile.get_selected()]
             if selected_provider=='y4my' and selected_mode=='nr-only':self.toast('NR Only requires DLSS-Unlocked.');return
@@ -12207,16 +12295,7 @@ class Window(Adw.ApplicationWindow):
 
         widget=self
 
-        if (
-            name in (
-                'gnome-game-settings.png',
-                'gnome-settings.png',
-            )
-            and isinstance(
-                self.dialog,
-                ResizablePanelWindow,
-            )
-        ):
+        if isinstance(self.dialog,ResizablePanelWindow) and self.dialog.get_mapped():
             widget=self.dialog
 
         width=max(

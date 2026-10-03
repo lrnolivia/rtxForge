@@ -167,7 +167,7 @@ def validate_parameters(values):
     return result
 
 
-def custom_record(inspection, values, trusted=False):
+def custom_record(inspection, values, trusted=False, review_notes=""):
     """Bind an explicit review to immutable local bytes, never to README commands."""
     if not trusted:
         raise PackageError('Confirm that you trust the package source before preparing deployment.')
@@ -176,12 +176,14 @@ def custom_record(inspection, values, trusted=False):
         raise PackageError('Package changed since review; inspect it again.')
     if fresh['family'] != 'dlss-unlocked':
         raise PackageError('This layout has no verified deployment adapter yet. Nothing will be installed.')
+    if not isinstance(review_notes,str) or len(review_notes.encode('utf-8'))>MAX_TEXT:
+        raise PackageError('Review notes exceed the 128 KiB limit.')
     parameters = validate_parameters(values)
     return {'id': 'custom-' + fresh['sha256'][:16], 'family': fresh['family'],
             'name': fresh['name'], 'archive': fresh['name'], 'path': fresh['path'],
             'sha256': fresh['sha256'], 'release_size': fresh['archive_bytes'],
             'tag': 'custom', 'commit': fresh['sha256'], 'asset_id': 0,
-            'parameters': parameters, 'trusted': True, 'custom': True}
+            'parameters': parameters, 'review_notes':review_notes, 'trusted': True, 'custom': True}
 
 
 def load_custom_payload(record):
@@ -230,3 +232,13 @@ def load_custom_payload(record):
     if digest(record['path']) != record['sha256']:
         raise PackageError('Package changed during preparation.')
     return data, {**record, 'provider':record['name'], 'instruction_policy':'read-only'}
+
+
+def community_sources():
+    """Discovery links, explicitly separate from tested deployment adapters."""
+    return [
+        {'name':'wilsjo2 · NR Pre-SR Multipass','url':'https://github.com/wilsjo2/OptiScaler-DLSSNR-PreSR-Multipass',
+         'note':'Experimental NR for RTX 20–50. Upstream support is not rtxForge runtime validation; custom-layout review required.'},
+        {'name':'Dagherbou · OptiScaler DLSSNR','url':'https://github.com/Dagherbou/OptiScaler_DLSSNR',
+         'note':'Alternative NR branch. Proton behavior depends on the exact build; no deployment adapter is claimed.'},
+    ]

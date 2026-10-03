@@ -3547,9 +3547,9 @@ class Window(Adw.ApplicationWindow):
             action=Gio.SimpleAction.new(action_name,None);action.connect('activate',callback);self.add_action(action)
         menu_actions=[
             ('Refresh Library','view-refresh-symbolic','win.refresh-library'),
-            ('Add Game Folder…','folder-new-symbolic','win.add-game-folder'),
-            ('Packages…','package-x-generic-symbolic','win.packages'),
-            ('Extras…','applications-utilities-symbolic','win.extras'),
+            ('Add Game Folder','folder-new-symbolic','win.add-game-folder'),
+            ('Packages','package-x-generic-symbolic','win.packages'),
+            ('Extras','applications-utilities-symbolic','win.extras'),
             ('Activity','view-list-symbolic','win.activity'),
             ('Settings','emblem-system-symbolic','win.settings'),
         ]
@@ -3577,6 +3577,7 @@ class Window(Adw.ApplicationWindow):
         menu_popover=Gtk.Popover(child=menu_body)
         for caption,icon,action_name in menu_actions:
             entry=icon_button(caption,icon,lambda *_:menu_popover.popdown(),'flat')
+            entry.get_child().set_spacing(16)
             entry.set_halign(Gtk.Align.FILL)
             entry.set_action_name(action_name)
             menu_body.append(entry)

@@ -45,12 +45,10 @@ class DesktopService:
                 nr_values=ini.get('DlssNr',{});sharp_values=ini.get('Sharpness',{})
 
                 try:
-                    intensity=float(nr_values.get('Intensity',''))
-                    skin=float(nr_values.get('SkinStructure',''))
+                    intensity=float(nr_values.get('Intensity','').split(';',1)[0].strip())
+                    skin=float(nr_values.get('SkinStructure','').split(';',1)[0].strip())
                     row['nr_strength']=(
-                        0.0
-                        if nr_values.get('Enabled','').lower()=='false'
-                        else round(intensity,1)
+                        round(intensity,1)
                         if 0.0<=intensity<=2.0 and abs(intensity-skin)<0.00001
                         else None
                     )
@@ -58,12 +56,12 @@ class DesktopService:
                     row['nr_strength']=None
 
                 try:
-                    sharp=float(sharp_values.get('Sharpness',''))
+                    sharp=float(sharp_values.get('Sharpness','').split(';',1)[0].strip())
                     row['sharpening_strength']=round(sharp,1) if 0.0<=sharp<=1.0 else None
                 except (TypeError,ValueError):
                     row['sharpening_strength']=None
                 try:
-                    raw=ini.get('DLSSG',{}).get('OverrideInterpolationCount','auto')
+                    raw=ini.get('DLSSG',{}).get('OverrideInterpolationCount','auto').split(';',1)[0].strip()
                     count=int(raw) if raw.lower() != 'auto' else None
                     row['mfg_multiplier']='auto' if count is None else 0 if count==0 else count+1 if count in range(1,6) else None
                 except ValueError:row['mfg_multiplier']=None
@@ -103,6 +101,7 @@ class DesktopService:
             if not host['ready']:return {'kind':'batch','operation':operation,'title':operation.title(),'plans':[],'rows':[],'blocked':[{'name':'Hardware check','reason':host['reason']}]}
         settings=library_media.load_settings(self.config)
         if visual_settings is not None:settings.update(visual_settings)
+        settings['apply_requested_presets']=operation=='install' and visual_settings is not None
         review=engine_bridge.prepare(self.config,rows,mode,operation,settings)
         if save_defaults and operation=='reset':review['save_defaults']={k:settings[k] for k in ('nr_strength','sharpening_strength','mfg_multiplier')}
         return review

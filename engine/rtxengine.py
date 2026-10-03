@@ -4254,6 +4254,7 @@ def install_target(
     nr_strength: str = "strong",
     mfg_multiplier: int | str = "auto",
     sharpening_strength: str = "strong",
+    preserve_visual_settings: bool = True,
     dry_run: bool = False,
 ) -> dict:
     visual_defaults(nr_strength, mfg_multiplier, sharpening_strength)  # Validate before any mutation.
@@ -4493,6 +4494,24 @@ def install_target(
     text, visual_tuning = apply_visual_defaults(
         text, saved_ini.decode("utf-8-sig") if saved_ini is not None else None, feature_mode, nr_strength, mfg_multiplier, sharpening_strength,
     )
+    if not preserve_visual_settings:
+        # An explicit Install preset form changes only the three exposed controls.
+        # Preserve unrelated overlay/custom tuning; Repair never enters this path.
+        requested = visual_defaults(nr_strength, mfg_multiplier, sharpening_strength)
+        keys = {"DlssNr": ("Intensity", "SkinStructure", "Enabled"),
+                "Sharpness": ("Sharpness",),
+                "CAS": ("Enabled", "MotionSharpnessEnabled"),
+                "DLSSG": ("OverrideInterpolationCount", "OverrideForceDMFG", "FramerateTargetDMFG")}
+        for section, names in keys.items():
+            if section == "DlssNr" and feature_mode == "mfg-only":
+                continue
+            if section == "DLSSG" and feature_mode == "nr-only":
+                continue
+            for key in names:
+                if key in requested.get(section, {}):
+                    value = requested[section][key]
+                    text = set_ini_value(text, section, key, value)
+                    visual_tuning.setdefault(section, {})[key] = value
     # Explicit ratios override the game; auto leaves the native game selection in control.
     # DLSS-Unlocked NR still starts dormant and is toggled independently with F10.
     if not enable_effects or is_dlss_unlocked:

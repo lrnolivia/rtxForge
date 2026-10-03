@@ -12,6 +12,7 @@ import ui,library_media,os,game_notes,ui_colors
 from desktop_service import DesktopService
 from package_browser import show_packages
 from native_shell import new_shell
+from ui_scaling import ScaledContent, content_scale, SCALES
 
 ACCENT_PROVIDERS={}
 ACCENT_SOURCES={}
@@ -3141,6 +3142,38 @@ def library_state_smoke_games(games):
     return result
 
 
+class PresentationDialog(Adw.Dialog):
+    """Keep game-mode navigation and native zoom when a panel replaces its body."""
+    def __init__(self,owner,**kwargs):
+        self.owner=owner
+        self._scaled_child=None
+        self._raw_child=None
+        factor=getattr(owner,'presentation_scale',1.0)
+        for key in ('content_width','content_height'):
+            if kwargs.get(key,0)>0:kwargs[key]=round(kwargs[key]*factor)
+        super().__init__(**kwargs)
+
+    def set_child(self,child):
+        super().set_child(None)
+        if self._scaled_child:self._scaled_child.release()
+        self._raw_child=child
+        if child is None:
+            self._scaled_child=None
+            return
+        host=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8)
+        couch=getattr(self.owner,'couch',None)
+        in_couch=couch and self.owner.input_stack.get_visible_child_name()=='couch'
+        nav=couch.panel_navigation(self) if in_couch else None
+        if nav and couch.navigation_position!='bottom':host.append(nav)
+        host.append(child)
+        if nav and couch.navigation_position=='bottom':host.append(nav)
+        self._scaled_child=ScaledContent(host,getattr(self.owner,'presentation_scale',1.0))
+        super().set_child(self._scaled_child)
+
+    def get_child(self):
+        return self._raw_child
+
+
 class ResizablePanelWindow(Adw.Window):
     """Resizable transient panel with the small Adw.Dialog API we use."""
 
@@ -3156,8 +3189,8 @@ class ResizablePanelWindow(Adw.Window):
             transient_for=parent,
             modal=False,
             title=title,
-            default_width=width,
-            default_height=height,
+            default_width=round(width*getattr(parent,'presentation_scale',1.0)),
+            default_height=round(height*getattr(parent,'presentation_scale',1.0)),
             resizable=True,
         )
 
@@ -3233,10 +3266,15 @@ class ResizablePanelWindow(Adw.Window):
 
     # Compatibility with Adw.Dialog callers.
     def set_child(self,child):
-        self.set_content(child)
+        self.set_content(None)
+        old=getattr(self,'_scaled_child',None)
+        if old:old.release()
+        self._raw_child=child
+        self._scaled_child=ScaledContent(child,getattr(self._panel_parent,'presentation_scale',1.0)) if child else None
+        self.set_content(self._scaled_child)
 
     def get_child(self):
-        return self.get_content()
+        return getattr(self,'_raw_child',None)
 
     def force_close(self):
         # This is intentionally stronger than Gtk.Window.close().
@@ -3369,6 +3407,37 @@ class LibraryGameItem(GObject.Object):
 
 
 class Window(Adw.ApplicationWindow):
+    def set_content(self, child):
+        old=getattr(self,'scaled_content',None)
+        super().set_content(None)
+        if old:old.release()
+        self.scaled_content=ScaledContent(child,getattr(self,'presentation_scale',1.0)) if child else None
+        super().set_content(self.scaled_content)
+
+    def apply_display_preferences(self):
+        surface=self.get_surface()
+        monitor=self.get_display().get_monitor_at_surface(surface) if surface else None
+        if monitor:
+            geometry=monitor.get_geometry()
+            system_scale=monitor.get_scale_factor()
+            width,height=geometry.width*system_scale,geometry.height*system_scale
+        else:width,height,system_scale=1280,820,1
+        factor=content_scale(self.settings.get('ui_scale','auto'),width,height,system_scale)
+        self.presentation_scale=factor
+        if self.scaled_content:self.scaled_content.set_factor(factor)
+        dialog=getattr(self,'dialog',None)
+        if getattr(dialog,'_scaled_child',None):dialog._scaled_child.set_factor(factor)
+        if hasattr(self,'couch'):
+            self.couch.resize(round(self.get_width()/factor),round(self.get_height()/factor))
+            self.couch.apply_navigation_preferences()
+
+    def set_display_preference(self,key,value):
+        self.settings[key]=value
+        if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
+        self.apply_display_preferences()
+        if hasattr(self,'couch'):self.couch.render(self.couch.current)
+
+
     def game_status_label(self,game):
         return library_display_test_status(game)
 
@@ -4587,7 +4656,7 @@ class Window(Adw.ApplicationWindow):
     def poll_controller(self):
         actions=self.controller.poll()
         if not hasattr(self,'couch'):return True
-        self.couch.resize(self.get_width(),self.get_height());self.couch.update_prompts()
+        self.apply_display_preferences();self.couch.update_prompts()
         panel=self.dialog if isinstance(self.dialog,ResizablePanelWindow) and self.dialog.get_mapped() else None
         active_panel=panel if panel and panel.is_active() else None
         if not self.is_active() and not active_panel:return True
@@ -7824,6 +7893,8 @@ class Window(Adw.ApplicationWindow):
     def close_request(self,*_):
         if self.busy and self.task_kind!='art':self.toast('Please wait for the current file operation to finish.');return True
         if self.busy:self.cancel_art.set()
+        if getattr(getattr(self,'couch',None),'hint_timer',0):
+            GLib.source_remove(self.couch.hint_timer);self.couch.hint_timer=0
         if getattr(self,'controller_source',0):
             GLib.source_remove(self.controller_source);self.controller_source=0
             self.controller.close()
@@ -8185,7 +8256,8 @@ class Window(Adw.ApplicationWindow):
                 height,
             )
         else:
-            dialog=Adw.Dialog(
+            dialog=PresentationDialog(
+                self,
                 title=title,
                 content_width=width,
                 content_height=height,
@@ -11851,6 +11923,15 @@ class Window(Adw.ApplicationWindow):
         compact=Adw.SwitchRow(title='Compact Header',subtitle='Keep more room for your games.',active=self.settings.get('compact_header',False))
         compact.connect('notify::active',lambda widget,*_: self.toggle_compact_header() if widget.get_active()!=self.settings.get('compact_header',False) else None)
         appearance.add(compact)
+        for key,title,keys,captions in [
+            ('ui_scale','UI Scale',list(SCALES),['Automatic (150% at 4K)','100%','125%','150%','175%','200%']),
+            ('dashboard_view','Dashboard Artwork',['capsules','posters'],['Wide Capsule','Poster']),
+            ('dashboard_row_count','Games Across Shelf',list(range(3,9)),[str(n) for n in range(3,9)]),
+            ('navigation_position','Game Mode Navigation',['top','bottom'],['Top','Bottom']),
+            ('controller_hints','Controller Hints',['always','auto'],['Always visible','Hide when idle'])]:
+            choice=safe_combo_row(title=title,model=Gtk.StringList.new(captions),selected=keys.index(self.settings.get(key,library_media.DEFAULTS[key])))
+            choice.connect('notify::selected',lambda widget,*_,key=key,keys=keys:self.set_display_preference(key,keys[widget.get_selected()]))
+            appearance.add(choice)
         views=[
             'posters',
             'capsules',

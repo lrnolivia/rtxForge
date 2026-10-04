@@ -79,7 +79,7 @@ def grid_navigation():
     couch.focus(0)
     couch.navigate('up')
     assert couch.zone == 'views'
-    assert len(couch.view_buttons) == 1
+    assert len(couch.view_buttons) == 2  # Primary action plus consolidated Filter & View.
     assert couch.library_view == 'list'
     couch.navigate('down')
     couch.navigate('down')
@@ -115,7 +115,7 @@ def scroll_and_tabs():
     couch.navigate('right')
     assert couch.tab_index == 4
     couch.navigate('accept')
-    assert couch.page == 'settings' and couch.settings_button.has_css_class('active')
+    assert couch.page == 'menu' and not couch.settings_button.get_visible()
     couch.navigate('back')
     assert couch.page == 'dlss'
 
@@ -148,7 +148,13 @@ def batch_flows():
         assert couch.dlss_selection == chosen
         couch.focus(0)
         couch.navigate('up')
-        couch.navigate('right')  # List -> Update selected.
+        assert couch.view_index == 0
+        couch.navigate('right')  # Consolidated Filter & View.
+        assert couch.view_index == 1
+        couch.navigate('accept')
+        assert couch.page == 'library_filters' and couch.dlss_selection == chosen
+        couch.navigate('back')
+        couch.focus(0);couch.navigate('up')
         assert couch.view_index == 0
         couch.navigate('accept')
         assert set(calls[-1][1]) == chosen
@@ -157,7 +163,7 @@ def batch_flows():
         couch.open('library')
         couch.focus(0)
         couch.navigate('up')
-        couch.navigate('right')
+        assert couch.view_index == 0
         couch.navigate('accept')
         assert couch.page == 'features_all'
         couch.focus(0)
@@ -227,7 +233,7 @@ def global_and_game_presets():
         couch.open('dashboard')
         couch.navigate('back')
         assert couch.page == 'dashboard'
-        assert couch.library_link.get_visible()
+        assert not couch.library_link.get_visible()  # Library remains in the main navigation.
     finally:
         window.launch_action = original
 
@@ -267,6 +273,7 @@ def input_and_appearance():
     window = app.window
     couch = window.couch
     game = couch.game
+    couch.open_game(game)
     assert couch.art_path == (game.get('hero') or game.get('capsule'))
     original_hero=game.get('hero')
     alternate=window.games[1].get('hero')

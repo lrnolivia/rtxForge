@@ -585,7 +585,7 @@ class CouchShell(Gtk.Overlay):
                 self.zone = 'nav'
             self.update_tabs()
             return
-        if self.page in ('game','tools') and self.controls:
+        if self.page == 'game' and self.controls:
             first_y=self.controls[0].get_parent().get_allocation().y
             columns=sum(control.get_parent().get_allocation().y==first_y for control in self.controls)
             columns=max(1,columns)
@@ -757,7 +757,7 @@ class CouchShell(Gtk.Overlay):
         returning_to_presets = page == 'presets' and self.page == 'library' and self.dlss_selection is not None and self.selection_kind == 'presets'
         if page in ('menu', 'settings') and self.page not in ('menu', 'settings'):
             self.utility_origin = self.page
-        if page != 'library':
+        if page not in ('library','library_filters'):
             self.dlss_selection = None
         if page in ('game', 'features', 'tools', 'game_presets') and self.game is None:
             page = 'dashboard'
@@ -878,10 +878,7 @@ class CouchShell(Gtk.Overlay):
         elif self.page == 'game':
             game = self.game
             self.entry('Play', lambda:self.owner.play_game(game), enabled=not self.owner.options.demo, hint='Launch using this game’s configured launcher.')
-            if game.get('blocked'):self.entry('Game Details',lambda:self.owner.details(game),hint='View this game’s compatibility information.')
-            self.entry('Configure', lambda: self.open('features'), enabled=not game.get('blocked'), hint='Choose Neural Rendering and frame generation for this game.')
-            self.entry('Change artwork',lambda:self.owner.show_game_artwork(game),enabled=not self.owner.options.demo)
-            self.entry('Sync artwork to Steam',lambda:self.owner.sync_steam_artwork(game=game),enabled=not self.owner.options.demo)
+            self.entry('Game Details' if game.get('blocked') else 'Configure', lambda:self.owner.details(game) if game.get('blocked') else self.open('features'), hint='View compatibility details.' if game.get('blocked') else 'Choose Neural Rendering and frame generation for this game.')
             self.entry('Presets', lambda: self.open('game_presets'), enabled=game.get('installed', False), hint='Adjust graphics features for this game. Your other games stay as they are.')
             self.entry('Tools', lambda: self.open('tools'), hint='Diagnose Neural Rendering, update DLSS, or restore original files.')
         elif self.page in ('features', 'features_all'):
@@ -915,6 +912,8 @@ class CouchShell(Gtk.Overlay):
             self.entry('Select games to update', self.select_dlss_games, enabled=bool(self.owner.games))
             self.hint.set_text('Keep native DLSS files up to date across your library. Previous files are backed up.' if self.owner.games else 'Add games to your Library to update their DLSS files.')
         elif self.page == 'tools':
+            self.entry('Change artwork',lambda:self.owner.show_game_artwork(self.game),enabled=not self.owner.options.demo)
+            self.entry('Sync artwork to Steam',lambda:self.owner.sync_steam_artwork(game=self.game),enabled=not self.owner.options.demo)
             self.entry('Diagnose Neural Rendering', lambda: self.owner.show_diagnostics(self.game))
             self.entry('Update DLSS files', lambda: self.owner.manage_dlss_files(self.game), enabled=not self.owner.options.demo)
             self.entry('Restore DLSS files', lambda: self.owner.manage_dlss_files(self.game, restore=True), enabled=not self.owner.options.demo)
@@ -1065,12 +1064,12 @@ class CouchShell(Gtk.Overlay):
 
     def render(self, index=None):
         self.build_entries()
-        is_feature = self.page in ('dashboard', 'game', 'tools')
+        is_feature = self.page in ('dashboard', 'game')
         self.body.set_visible_child_name('feature' if is_feature else 'library' if self.page == 'library' else 'panel')
         self.remove_css_class('panel-open') if is_feature else self.add_css_class('panel-open')
         self.add_css_class('library-open') if self.page == 'library' else self.remove_css_class('library-open')
         self.library.set_visible(self.page == 'dashboard')
-        self.game_actions.set_visible(self.page in ('game','tools'))
+        self.game_actions.set_visible(self.page=='game')
         self.settings_button.set_visible(self.page in ('game','features','tools','game_presets'))
         if self.game and self.page in ('game','features','tools','game_presets'):self.set_background(self.game.get('hero') or self.game.get('capsule'),animate=False)
         elif self.art_path is None:self.cycle_ambient()
@@ -1116,7 +1115,7 @@ class CouchShell(Gtk.Overlay):
                 self.grid.attach(button, i % self.columns, i // self.columns, 1, 1)
                 self.controls.append(button)
                 button.connect('clicked', lambda _, n=i: self.activate(n))
-            elif self.page in ('game','tools'):
+            elif self.page == 'game':
                 button = self.owner.make_action_button(entry['title'],lambda _, n=i:self.activate(n))
                 button.set_size_request(180,80);button.text_label.set_wrap(True)
                 button.add_css_class('couch-action')

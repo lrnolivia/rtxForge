@@ -5309,20 +5309,33 @@ class Window(Adw.ApplicationWindow):
 
     def choose_game_artwork(self,game,role):
         import artwork_overrides
+        if getattr(self,'_artwork_file_chooser',None) is not None:return
+        # Desktop Game Details is a separate movable window, not the library.
+        panel=getattr(self,'dialog',None)
+        parent=panel if isinstance(panel,Gtk.Window) and panel.get_visible() else self
         chooser=Gtk.FileDialog(title='Choose '+role+' artwork')
+        chooser.set_modal(True)
+        self._artwork_file_chooser=chooser
         formats=Gtk.FileFilter();formats.set_name('Images (PNG, JPEG, WebP)')
         for mime in ('image/png','image/jpeg','image/webp'):formats.add_mime_type(mime)
         filters=Gio.ListStore.new(Gtk.FileFilter);filters.append(formats);chooser.set_filters(filters)
         def chosen(dialog,result):
+            if getattr(self,'_artwork_file_chooser',None) is dialog:
+                self._artwork_file_chooser=None
             try:path=dialog.open_finish(result).get_path()
-            except GLib.Error:return
+            except GLib.Error:
+                if parent.get_visible():parent.present()
+                return
             if not path:return
             try:
                 with open(path,'rb') as stream:data=stream.read(artwork_overrides.MAX_BYTES+1)
                 artwork_overrides.store(self.service.config,self.settings,game,role,data)
             except Exception as error:self.error(str(error));return
             self.sync_steam_artwork(game=game,refresh=True)
-        chooser.open(self,None,chosen)
+        try:chooser.open(parent,None,chosen)
+        except Exception as error:
+            self._artwork_file_chooser=None
+            self.error(str(error))
 
     def reset_game_artwork(self,game,role):
         import artwork_overrides

@@ -3,7 +3,6 @@ import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import QtQuick.Dialogs
 import org.kde.kirigami as Kirigami
-import org.kde.kirigami.primitives as Primitives
 
 Kirigami.ApplicationWindow {
     id: window
@@ -128,9 +127,12 @@ Kirigami.ApplicationWindow {
                                 spacing: 7
                                 Item {
                                     Layout.fillWidth: true; Layout.fillHeight: true
-                                    Primitives.ShadowedImage {
-                                        anchors.fill: parent; radius: 12; asynchronous: true; fillMode: Image.PreserveAspectCrop; shadow.size: 0
-                                        source: forge.layout === "capsules" ? (gameCard.modelData.capsule || gameCard.modelData.poster || "") : (gameCard.modelData.poster || "")
+                                    Rectangle {
+                                        anchors.fill: parent; radius: 12
+                                        Image {
+                                            anchors.fill: parent; anchors.margins: 4; asynchronous: false; fillMode: Image.PreserveAspectCrop
+                                            source: forge.layout === "capsules" ? (gameCard.modelData.capsule || gameCard.modelData.poster || "") : (gameCard.modelData.poster || "")
+                                        }
                                         color: Kirigami.Theme.alternateBackgroundColor
                                         border.width: gameCard.modelData.selected || gameCard.activeFocus ? 3 : 0
                                         border.color: gameCard.activeFocus ? Kirigami.Theme.focusColor : (gameCard.modelData.accent || window.brandAccent)
@@ -157,7 +159,7 @@ Kirigami.ApplicationWindow {
                             contentItem: RowLayout {
                                 spacing: 14
                                 QQC2.CheckBox { checked: modelData.selected; Accessible.name: "Select " + modelData.name; onClicked: forge.select(modelData.game,checked) }
-                                Primitives.ShadowedImage { source: modelData.capsule || modelData.poster || ""; fillMode: Image.PreserveAspectCrop; radius: Kirigami.Units.cornerRadius; shadow.size: 0; Layout.preferredWidth: 100; Layout.preferredHeight: 52 }
+                                Image { source: modelData.capsule || modelData.poster || ""; fillMode: Image.PreserveAspectCrop; Layout.preferredWidth: 100; Layout.preferredHeight: 52 }
                                 QQC2.Label { text: modelData.name; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight }
                                 QQC2.Label { text: modelData.installed ? (modelData.profile || "Configured") : "Available"; font: Kirigami.Theme.smallFont }
                                 QQC2.ToolButton { text: "Game details"; icon.name: "arrow-right"; display: QQC2.AbstractButton.IconOnly; onClicked: forge.showDetails(modelData.game) }

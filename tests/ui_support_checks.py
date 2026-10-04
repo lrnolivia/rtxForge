@@ -65,6 +65,12 @@ def checking():
     assert state['counter'].get_text()=='2 of 3 checked'
     assert abs(state['bar'].get_fraction()-2/3)<0.01
     assert state['game'].get_text()==w.games[1]['name']
+    assert state['art'].has_css_class('review-bezel')
+    assert state['card'].has_css_class(w._ensure_game_accent(w.games[1]))
+    scroll=w.dialog.get_child().get_first_child().get_next_sibling()
+    adj=scroll.get_vadjustment()
+    assert adj.get_upper()<=adj.get_page_size()+1, (adj.get_upper(),adj.get_page_size())
+    assert scroll.get_policy()[1]==Gtk.PolicyType.NEVER
     assert w.capture('review-check-counter.png')
     w.action_ready({'operation':'install','rows':[{'name':g['name'],'detail':'Fixture changes'} for g in w.games[1:]],'blocked':[]},w.dialog,w.dialog.get_child().get_first_child().get_next_sibling().get_child().get_child(),w.dialog.get_child().get_last_child())
     assert w.review_check_state is None

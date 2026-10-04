@@ -1516,11 +1516,13 @@ CSS=b'''
 .forge-library-surface {
     background: @forge_lower_bg;
 }
+.library-bottom-fade, .settings-bottom-fade { border: none; box-shadow: none; }
+scrolledwindow undershoot, scrolledwindow overshoot { background: none; border: none; box-shadow: none; }
 .library-bottom-fade {
-    background-image: linear-gradient(to bottom, alpha(@forge_lower_bg,0), @forge_lower_bg);
+    background-image: linear-gradient(to bottom, alpha(@forge_lower_bg,0), @forge_lower_bg 90%, @forge_lower_bg);
 }
 .settings-bottom-fade {
-    background-image: linear-gradient(to bottom, alpha(@view_bg_color,0), @view_bg_color);
+    background-image: linear-gradient(to bottom, alpha(@window_bg_color,0), @window_bg_color 90%, @window_bg_color);
 }
 
 
@@ -2599,6 +2601,8 @@ button.dlss-outline:active { background: alpha(@window_fg_color,0.25); }
 }
 
 .panel-body { padding: 24px; }
+.panel-body.review-check-body { padding: 16px 24px; }
+.modal-panel .panel-shell, .modal-panel headerbar { background: @window_bg_color; background-image: none; }
 floating-sheet > sheet { box-shadow: 0 16px 52px 8px alpha(black,0.38), 0 5px 18px alpha(black,0.24); }
 .review-summary { padding: 0 0 8px; }
 button, button label, toggle-group toggle { font-weight: 500; }
@@ -2876,13 +2880,13 @@ headerbar, .titlebar {
 /* Joined Adwaita rows: only the collection boundary is rounded. */
 columnview.library-column-view listview row {
     min-height: 0; margin: 0; padding: 0;
-    border: 0; border-bottom: 1.5px solid @forge_lower_bg;
+    border: 0; border-bottom: 1px solid @forge_lower_bg;
     border-radius: 0; background: @forge_library_card_a;
 }
 columnview.library-column-view listview row.joined-first { border-top-left-radius: 12px; border-top-right-radius: 12px; }
 columnview.library-column-view listview row.joined-last { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; border-bottom: 0; }
 list.review-list { border-radius: 12px; background: @forge_library_card_a; }
-list.review-list > row { box-shadow: none; background-image: none; margin: 0; border-radius: 0; border-bottom: 1.5px solid @forge_lower_bg; }
+list.review-list > row { box-shadow: none; background-image: none; margin: 0; border-radius: 0; border-bottom: 1px solid @forge_lower_bg; }
 list.review-list > row:first-child { border-top-left-radius: 12px; border-top-right-radius: 12px; }
 list.review-list > row:last-child { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; border-bottom: 0; }
 .review-bezel { border: 2px solid alpha(@window_fg_color,0.15); border-radius: 8px; margin: 10px 0; }
@@ -4900,12 +4904,15 @@ class Window(Adw.ApplicationWindow):
         popover.set_child(notice);popover.popup()
 
     def review_check_view(self,dialog,body,games):
+        body.add_css_class('review-check-body');body.set_spacing(10)
         body.append(label('Preparing your review','title-2'))
         body.append(label('Checking compatibility and the changes each game needs.','dim-label'))
-        card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
+        card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8)
         card.add_css_class('card');margins(card,2)
-        line=Gtk.Box(spacing=16);margins(line,16)
-        art=ListArtwork();line.append(art)
+        line=Gtk.Box(spacing=12);margins(line,12)
+        line.set_margin_bottom(4)
+        art=ListArtwork();art.add_css_class('review-bezel');art.set_margin_top(0);art.set_margin_bottom(0);line.append(art)
+        card.add_css_class('review-game')
         text=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4,hexpand=True,valign=Gtk.Align.CENTER)
         current=label('Getting files ready','heading');stage=label('Checking the feature package','dim-label')
         text.append(current);text.append(stage);line.append(text)
@@ -4916,8 +4923,27 @@ class Window(Adw.ApplicationWindow):
         bar=Gtk.ProgressBar();bar.set_margin_start(16);bar.set_margin_end(16);bar.set_margin_bottom(16)
         card.append(bar);body.append(card)
         body.append(label('Your files will only change after you review and confirm.','dim-label'))
-        state={'dialog':dialog,'art':art,'game':current,'stage':stage,'counter':counter,'bar':bar,'total':len(games),'determinate':False,'sequence':0}
+        state={'dialog':dialog,'art':art,'game':current,'stage':stage,'counter':counter,'bar':bar,'total':len(games),'determinate':False,'sequence':0,'card':card,'accent':None}
         self.review_check_state=state
+        scroll=body.get_parent()
+        while scroll and not isinstance(scroll,Gtk.ScrolledWindow):scroll=scroll.get_parent()
+        if scroll:
+            scroll.set_policy(Gtk.PolicyType.NEVER,Gtk.PolicyType.NEVER)
+            scroll.set_vexpand(False)
+            scroll.get_vadjustment().set_value(0)
+            def fit():
+                if self.review_check_state is not state:return False
+                width=max(320,dialog.get_content_width()-48)
+                natural=body.measure(Gtk.Orientation.VERTICAL,width)[1]
+                scroll.set_max_content_height(-1);scroll.set_min_content_height(natural)
+                scroll.set_propagate_natural_height(True)
+                shell=dialog.get_child();chrome=0;child=shell.get_first_child()
+                while child:
+                    if child is not scroll:chrome+=child.measure(Gtk.Orientation.VERTICAL,width)[1]
+                    child=child.get_next_sibling()
+                dialog.set_content_height(natural+chrome)
+                return False
+            GLib.timeout_add(50,fit)
         def pulse():
             if getattr(self,'review_check_state',None) is not state or self.dialog is not dialog:return False
             if not state['determinate']:bar.pulse()
@@ -4933,6 +4959,9 @@ class Window(Adw.ApplicationWindow):
         game=next((g for g in self.operation_games if g['name']==event.get('game')),None)
         if game:
             state['game'].set_text(game['name']);state['art'].set_artwork(capsule_art_path(game))
+            if state['accent']:state['card'].remove_css_class(state['accent'])
+            state['accent']=self._ensure_game_accent(game)
+            if state['accent']:state['card'].add_css_class(state['accent'])
         state['sequence']+=1;sequence=state['sequence']
         start=state['bar'].get_fraction();target=checked/max(1,total);began=time.monotonic()
         settings=Gtk.Settings.get_default()
@@ -8620,12 +8649,14 @@ class Window(Adw.ApplicationWindow):
             )
 
         self.dialog=dialog
+        dialog.add_css_class('modal-panel')
         self.job_label=None
 
         box=Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
         )
         dialog.set_child(box)
+        box.add_css_class('panel-shell')
 
         header=Adw.HeaderBar()
         header.set_show_end_title_buttons(
@@ -12186,6 +12217,12 @@ class Window(Adw.ApplicationWindow):
 
     def action_ready(self,review,d,b,f):
         self.review_check_state=None
+        b.remove_css_class('review-check-body');b.set_spacing(16)
+        scroll=b.get_parent()
+        while scroll and not isinstance(scroll,Gtk.ScrolledWindow):scroll=scroll.get_parent()
+        if scroll:
+            scroll.set_policy(Gtk.PolicyType.NEVER,Gtk.PolicyType.AUTOMATIC)
+            scroll.set_min_content_height(0);scroll.set_vexpand(True)
         self.review=review
         clear(b)
         clear(f)

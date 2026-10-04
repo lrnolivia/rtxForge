@@ -61,7 +61,61 @@ def couch():
     ui.COUCH_MODE='couch';app.window.input_stack.set_visible_child_name('couch')
     Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK);open_browser()
 
-steps=[open_browser,lambda:capture('steamgrid-desktop-results.png'),preview,verify_preview,filter_results,verify_filter,couch,lambda:capture('steamgrid-couch-results.png'),lambda:app.window.dialog.close()]
+
+# Mock only the native chooser boundary; exercise real GTK panel ownership.
+picker_calls=[]
+class FixtureFileDialog:
+    def __init__(self,**kwargs):self.modal=False
+    def set_modal(self,value):self.modal=value
+    def set_filters(self,filters):pass
+    def open(self,parent,cancellable,callback):
+        self.parent=parent;self.callback=callback;picker_calls.append(self)
+    def open_finish(self,result):raise GLib.Error('User dismissed the file chooser')
+
+def details_for_picker():
+    global game
+    game=app.window.games[0];app.window.details(game)
+
+def verify_picker_parent():
+    original=ui.Gtk.FileDialog
+    try:
+        ui.Gtk.FileDialog=FixtureFileDialog
+        parent=app.window.dialog
+        assert isinstance(parent,ui.ResizablePanelWindow)
+        assert parent.get_visible()
+        app.window.choose_game_artwork(game,'poster')
+        chooser=picker_calls[-1]
+        assert chooser.parent is parent and chooser.modal
+        count=len(picker_calls)
+        app.window.choose_game_artwork(game,'hero')
+        assert len(picker_calls)==count,'Duplicate native modals'
+        chooser.callback(chooser,None)
+        assert app.window._artwork_file_chooser is None
+        assert app.window.dialog is parent and parent.get_visible()
+        app.window.choose_game_artwork(game,'hero')
+        assert len(picker_calls)==count+1,'Cancel did not restore chooser action'
+        picker_calls[-1].callback(picker_calls[-1],None)
+        parent.close()
+    finally:ui.Gtk.FileDialog=original
+
+def embedded_for_picker():
+    app.window.open_panel('Embedded artwork',width=600,height=400)
+
+def verify_embedded_picker_parent():
+    original=ui.Gtk.FileDialog
+    try:
+        ui.Gtk.FileDialog=FixtureFileDialog
+        panel=app.window.dialog
+        assert not isinstance(panel,Gtk.Window)
+        app.window.choose_game_artwork(game,'poster')
+        chooser=picker_calls[-1]
+        assert chooser.parent is app.window and chooser.modal
+        chooser.callback(chooser,None)
+        assert app.window._artwork_file_chooser is None
+        panel.close()
+    finally:ui.Gtk.FileDialog=original
+
+steps=[details_for_picker,verify_picker_parent,embedded_for_picker,verify_embedded_picker_parent,open_browser,lambda:capture('steamgrid-desktop-results.png'),preview,verify_preview,filter_results,verify_filter,couch,lambda:capture('steamgrid-couch-results.png'),lambda:app.window.dialog.close()]
 preview_deadline=None
 def advance():
     global preview_deadline

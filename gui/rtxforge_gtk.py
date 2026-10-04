@@ -22,6 +22,32 @@ NATIVE_PALETTE={}
 COUCH_MODE='auto'
 
 
+BRAND_IMAGES=weakref.WeakSet()
+BRAND_THEME_CONNECTED=False
+BRAND_TEXTURES={}
+
+
+def refresh_brand_icons(*_):
+    name='io.github.lrnolivia.RTXForge'
+    if not Adw.StyleManager.get_default().get_dark():name+='-light'
+    path=ROOT/'gui/icons/hicolor/scalable/apps'/f'{name}.svg'
+    if name not in BRAND_TEXTURES:BRAND_TEXTURES[name]=Gdk.Texture.new_from_filename(str(path))
+    for image in list(BRAND_IMAGES):image.set_from_paintable(BRAND_TEXTURES[name])
+    Gtk.Window.set_default_icon_name(name)
+
+
+def make_brand_icon(size):
+    """Use approved matching assets and follow the effective native appearance."""
+    global BRAND_THEME_CONNECTED
+    if not BRAND_THEME_CONNECTED:
+        Adw.StyleManager.get_default().connect('notify::dark',refresh_brand_icons)
+        BRAND_THEME_CONNECTED=True
+    image=Gtk.Image(pixel_size=size)
+    BRAND_IMAGES.add(image)
+    refresh_brand_icons()
+    return image
+
+
 def neutral_palette():
     dark=Adw.StyleManager.get_default().get_dark()
     if dark and THEME_MODE=='night':
@@ -503,6 +529,7 @@ def artwork_accent(path,color=None,muted=False):
 
         provider.load_from_data((
             f'.review-game.{name} .review-bezel {{ border-color: {color}; }} '
+            f'.artwork-editor.{name} .artwork-preview {{ border-color: {color}; }} '
             f'.review-game.{name} .review-badge {{ color: {ui_colors.readable(color,palette["card"])}; background: {ui_colors.mix(color,palette["card"],0.10)}; }} '
             f'columnview row.{name}.game-selected {{ background: {color}; color: {accent_dark}; }} '
             f'columnview row.{name}.game-selected label, columnview row.{name}.game-selected .library-pill-icon {{ color: {accent_dark}; }} '
@@ -2908,6 +2935,8 @@ list.review-list { border-radius: 12px; background: @forge_library_card_a; }
 list.review-list > row { box-shadow: none; background-image: none; margin: 0; border-radius: 0; border-bottom: 1px solid @forge_lower_bg; }
 list.review-list > row:first-child { border-top-left-radius: 12px; border-top-right-radius: 12px; }
 list.review-list > row:last-child { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; border-bottom: 0; }
+.artwork-editor { padding: 16px; border: 0; border-radius: 12px; background: @card_bg_color; }
+.artwork-preview { border: 2px solid alpha(@window_fg_color,0.15); border-radius: 8px; }
 .review-bezel { border: 2px solid alpha(@window_fg_color,0.15); border-radius: 8px; margin: 10px 0; }
 .unsupported-notice, .unsupported-notice > row { background: mix(@window_bg_color, @error_bg_color, 0.48); box-shadow: none; }
 .unsupported-caution, .unsupported-badge { color: #e5b54a; }
@@ -3790,17 +3819,7 @@ class Window(Adw.ApplicationWindow):
         hero_top.set_vexpand(False)
         hero.append(hero_top)
 
-        dashboard_art_path=(
-            ROOT
-            / 'gui'
-            / 'icons'
-            / 'rtxforge-artwork.svg'
-        )
-
-        self.dashboard_icon=Gtk.Image.new_from_file(
-            str(dashboard_art_path)
-        )
-        self.dashboard_icon.set_pixel_size(128)
+        self.dashboard_icon=make_brand_icon(128)
         self.dashboard_icon.set_valign(Gtk.Align.CENTER)
         self.dashboard_icon.set_halign(Gtk.Align.START)
         self.dashboard_icon.add_css_class(
@@ -3979,12 +3998,7 @@ class Window(Adw.ApplicationWindow):
             'sticky-dashboard-brand'
         )
 
-        sticky_brand_icon=Gtk.Image.new_from_file(
-            str(dashboard_art_path)
-        )
-        sticky_brand_icon.set_pixel_size(
-            40
-        )
+        self.sticky_brand_icon=sticky_brand_icon=make_brand_icon(40)
         sticky_brand_icon.set_valign(Gtk.Align.CENTER)
         sticky_brand_icon.add_css_class(
             'sticky-dashboard-app-icon'
@@ -5127,6 +5141,8 @@ class Window(Adw.ApplicationWindow):
             art=Gtk.Image(icon_name='applications-games-symbolic',pixel_size=28)
         entry.add_prefix(art)
 
+    make_brand_icon=staticmethod(make_brand_icon)
+
     def artwork_preferences(self,game):
         """UI-only artwork editor; selection and persistence are intentionally unwired."""
         group=Adw.PreferencesGroup(
@@ -5134,40 +5150,41 @@ class Window(Adw.ApplicationWindow):
             description='Poster, wide capsule and hero images are kept separate. Artwork selection is coming soon.',
         )
         group.artwork_controls={}
-        listing=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
-        listing.add_css_class('boxed-list')
-        group.add(listing)
-        widths=Gtk.SizeGroup(mode=Gtk.SizeGroupMode.HORIZONTAL)
-        group.action_widths=widths
+        accent_path=game.get('capsule') or game.get('poster') or game.get('hero')
+        try:
+            editor_accent=artwork_accent(accent_path,self.settings.get('game_accents',{}).get(game['game'])) if accent_path else None
+        except Exception:editor_accent=None
+        cards=Gtk.Box(spacing=16,homogeneous=True)
+        group.add(cards)
         for role,title,hint,width,height in (
-            ('poster','Poster','Portrait · 600 × 900',48,72),
-            ('capsule','Wide Capsule','Landscape · 920 × 430',96,45),
-            ('hero','Hero','Banner · 1920 × 620',96,31),
+            ('poster','Poster','600 × 900',72,108),
+            ('capsule','Wide Capsule','920 × 430',132,62),
+            ('hero','Hero','1920 × 620',156,50),
         ):
             path=poster_art_path(game) if role=='poster' else capsule_art_path(game) if role=='capsule' else game.get('hero')
-            item=Gtk.Box(spacing=16)
-            margins(item,12)
-            holder=Gtk.Box(width_request=100,valign=Gtk.Align.CENTER)
+            item=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True)
+            item.add_css_class('artwork-editor')
+            if editor_accent:item.add_css_class(editor_accent)
+            heading=label(title,'heading');heading.set_halign(Gtk.Align.CENTER)
+            item.append(heading)
+            canvas=Gtk.CenterBox(height_request=120)
             frame=Gtk.Frame(valign=Gtk.Align.CENTER,halign=Gtk.Align.CENTER)
-            holder.set_halign(Gtk.Align.START)
-            frame.add_css_class('review-bezel')
-            frame.add_css_class(self._ensure_game_accent(game))
+            frame.add_css_class('artwork-preview')
+            frame.set_overflow(Gtk.Overflow.HIDDEN)
             preview=FixedArtworkPicture(width,height)
             if path and Path(path).is_file():
                 try:preview.set_paintable(Gdk.Texture.new_from_filename(str(path)))
                 except Exception:pass
             if preview.get_paintable() is None:
-                placeholder=Gtk.Box(width_request=width,height_request=height,halign=Gtk.Align.CENTER,valign=Gtk.Align.CENTER)
-                placeholder.append(Gtk.Image(icon_name='applications-games-symbolic',pixel_size=20,halign=Gtk.Align.CENTER,hexpand=True))
+                placeholder=Gtk.CenterBox(width_request=width,height_request=height)
+                placeholder.set_center_widget(Gtk.Image(icon_name='applications-games-symbolic',pixel_size=24))
                 frame.set_child(placeholder)
             else:frame.set_child(preview)
-            holder.append(frame)
-            item.append(holder)
-            content=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8,hexpand=True,valign=Gtk.Align.CENTER)
-            content.append(label(title))
-            content.append(label(hint,'dim-label'))
-            item.append(content)
-            actions=Gtk.Box(spacing=6,valign=Gtk.Align.CENTER)
+            canvas.set_center_widget(frame)
+            item.append(canvas)
+            dimensions=label(hint,'dim-label');dimensions.set_halign(Gtk.Align.CENTER)
+            item.append(dimensions)
+            actions=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8)
             controls={}
             for key,text,icon in (
                 ('choose','Choose Image','image-x-generic-symbolic'),
@@ -5177,11 +5194,10 @@ class Window(Adw.ApplicationWindow):
                 control=icon_button(text,icon,lambda *_:None)
                 control.set_sensitive(False)
                 control.set_tooltip_text('Artwork selection is coming soon.')
-                widths.add_widget(control)
                 actions.append(control);controls[key]=control
-            content.append(actions)
-            listing.append(item)
-            group.artwork_controls[role]={'row':item,'preview':preview,**controls}
+            item.append(actions)
+            cards.append(item)
+            group.artwork_controls[role]={'row':item,'preview':preview,'canvas':canvas,**controls}
         return group
 
     def show_extras(self,*_):

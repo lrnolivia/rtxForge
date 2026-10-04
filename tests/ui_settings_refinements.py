@@ -8,6 +8,12 @@ import rtxforge_gtk as ui
 from gi.repository import GLib,Gtk,Adw
 options=argparse.Namespace(provider=None,demo=True,resize_smoke=False,smoke_test=False,live_smoke=False,library_state_smoke=False,ui_mode='classic')
 app=ui.Application(options)
+def assert_brand(light):
+    suffix='-light' if light else ''
+    expected=ui.Gdk.Texture.new_from_filename(str(ROOT/'gui/icons/hicolor/scalable/apps'/f'io.github.lrnolivia.RTXForge{suffix}.svg')).save_to_png_bytes().get_data()
+    assert len(ui.BRAND_IMAGES)>=3
+    assert all(image.get_paintable().save_to_png_bytes().get_data()==expected for image in ui.BRAND_IMAGES)
+
 def children(widget):
     yield widget
     child=widget.get_first_child()
@@ -35,6 +41,7 @@ def theme():
     w.text_probe=ui.button('Continue',lambda *_:None,'suggested-action')
     w.dialog.get_child().append(w.text_probe)
 def appearance():
+    assert_brand(True)
     w=app.window
     text=next(x for x in children(w.text_probe) if isinstance(x,Gtk.Label))
     color=text.get_style_context().get_color()
@@ -63,7 +70,10 @@ def gaming():
     scroll=w.settings_stack.get_visible_child().get_child()
     adj=scroll.get_vadjustment();adj.set_value(adj.get_upper()-adj.get_page_size())
     assert w.settings_stack.get_visible_child().bottom_fade.get_opacity()==0
+    w.theme_control.set_active_name('night')
+    assert_brand(False)
     w.theme_control.set_active_name('dark')
+    assert_brand(False)
     w.set_big_picture_ui(False);w.set_input_surface(True)
     assert w.input_stack.get_visible_child_name()=='desktop'
     w.set_big_picture_ui(True)
@@ -92,7 +102,12 @@ def game_mode():
     assert w.presentation_scale==1
     adj=w.library_scroll.get_vadjustment();adj.set_value(adj.get_upper()-adj.get_page_size())
     assert w.library_bottom_fade.get_opacity()==0
-steps=[start,theme,appearance,choice_sizes,gaming,extras_open,extras,details_open,details_check,game_mode]
+def system_theme():
+    Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.DEFAULT)
+def system_brand():
+    assert_brand(not Adw.StyleManager.get_default().get_dark())
+
+steps=[start,theme,appearance,choice_sizes,gaming,extras_open,extras,details_open,details_check,game_mode,system_theme,system_brand]
 def step():
     try:
         if steps:steps.pop(0)();GLib.timeout_add(800,step)

@@ -200,8 +200,7 @@ class CouchShell(Gtk.Overlay):
         top = Gtk.CenterBox()
         self.top = top
         brand = Gtk.Box(spacing=10, valign=Gtk.Align.CENTER)
-        icon = Gtk.Image.new_from_file(str(Path(__file__).parent / 'icons/rtxforge-artwork.svg'))
-        icon.set_pixel_size(30)
+        self.brand_icon = icon = owner.make_brand_icon(30)
         brand.append(icon)
         brand.append(label('rtxForge', 'couch-brand'))
         top.set_start_widget(brand)

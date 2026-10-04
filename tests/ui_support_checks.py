@@ -67,8 +67,14 @@ def artwork():
     assert set(group.artwork_controls)=={'poster','capsule','hero'}
     for controls in group.artwork_controls.values():
         assert all(not controls[key].get_sensitive() for key in ('choose','search','reset'))
+    w.dialog.set_default_size(1100,900)
     w.detail_pages.set_visible_child_name('Appearance')
 def artwork_capture():
+    group=app.window.detail_pages.get_child_by_name('Appearance').get_first_child()
+    controls=list(group.artwork_controls.values())
+    areas=[c['preview'].get_width()*c['preview'].get_height() for c in controls]
+    assert min(areas)>0 and max(areas)/min(areas)<1.15, areas
+    assert max(c['row'].get_width() for c in controls)-min(c['row'].get_width() for c in controls)<=1
     assert app.window.capture('custom-artwork-appearance.png')
     app.window.detail_pages.set_visible_child_name('Overview')
 def details():

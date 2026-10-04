@@ -103,8 +103,14 @@ class Controller(QObject):
     def prepareGame(self,key,operation):
         if operation not in ('install','repair','uninstall'):return
         self.run(lambda:('review',self.session.prepare(operation,targets=[key])))
+    @Property(bool,constant=True)
+    def demo(self):return self.session.demo
+    @Property(str,notify=changed)
+    def filter(self):return self._filter
+    @Property(int,notify=changed)
+    def configuredCount(self):return sum(bool(g.get('installed')) for g in self.session.games)
     @Property('QVariantList',notify=changed)
-    def games(self):return [{**g,'selected':g['game'] in self.session.selected} for g in self.session.games if self._query in g['name'].casefold() and (self._filter=='all' or (self._filter=='installed' and bool(g.get('installed'))) or (self._filter=='available' and not g.get('blocked')))]
+    def games(self):return [{**g,'selected':g['game'] in self.session.selected,'accent':self.session.settings.get('game_accents',{}).get(g['game'],'#76b900')} for g in self.session.games if self._query in g['name'].casefold() and (self._filter=='all' or (self._filter=='installed' and bool(g.get('installed'))) or (self._filter=='available' and not g.get('blocked')))]
     @Property('QVariantList',notify=changed)
     def packages(self):return self._catalog
     @Property('QVariantMap',notify=changed)
@@ -276,6 +282,15 @@ def main():
     engine=QQmlApplicationEngine();controller=Controller(demo)
     # KDE owns control colors and neutral surfaces; never copy Adwaita grays here.
     QFontDatabase.addApplicationFont(str(ROOT/'gui/fonts/BakbakOne-Regular.ttf'))
+    def update_launcher_theme(*_):
+        import desktop_install
+        dark=app.palette().window().color().lightnessF()<0.5
+        name='io.github.lrnolivia.RTXForge'+('' if dark else '-light')
+        app.setWindowIcon(QIcon(str(ROOT/'gui/icons/hicolor/scalable/apps'/(name+'.svg'))))
+        if not demo:
+            try:desktop_install.refresh_launcher_icon(dark)
+            except (OSError,ValueError,RuntimeError):pass
+    app.paletteChanged.connect(update_launcher_theme);update_launcher_theme()
     engine.rootContext().setContextProperty('forge',controller)
     engine.load(QUrl.fromLocalFile(str(Path(__file__).with_name('Main.qml'))))
     if not engine.rootObjects():return 1
@@ -291,7 +306,10 @@ def main():
                lambda:controller.setLayout('list'),lambda:capture('kde-list.png'),
                lambda:window.setProperty('page','settings'),lambda:capture('kde-settings.png'),
                lambda:window.setProperty('page','recovery'),lambda:capture('kde-recovery.png'),
-               lambda:window.setProperty('page','packages'),lambda:capture('kde-packages.png')]
+               lambda:window.setProperty('page','packages'),lambda:capture('kde-packages.png'),
+               lambda:window.setProperty('page','library'),lambda:controller.setMode('classic'),
+               lambda:window.resize(800,600),lambda:controller.setLayout('posters'),lambda:capture('kde-classic-800.png'),
+               lambda:controller.setLayout('list'),lambda:capture('kde-list-800.png')]
         def advance():
             try:
                 if steps:

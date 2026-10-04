@@ -3,10 +3,12 @@ import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import QtQuick.Dialogs
 import org.kde.kirigami as Kirigami
+import org.kde.kirigami.primitives as Primitives
 
 Kirigami.ApplicationWindow {
     id: window
     property string artworkRole: "poster"
+    readonly property color brandAccent: "#76b900"
     width: 1280; height: 820; minimumWidth: 760; minimumHeight: 580
     visible: true; title: "rtxForge"
     property string page: forge.startPage
@@ -58,56 +60,111 @@ Kirigami.ApplicationWindow {
                     Item { Layout.fillHeight: true }
                 }
                 ColumnLayout {
-                    visible: window.page === "library"; Layout.fillWidth: true; Layout.fillHeight: true
+                    visible: window.page === "library"; Layout.fillWidth: true; Layout.fillHeight: true; spacing: 18
                     RowLayout {
-                        Kirigami.SearchField { id: search; Layout.fillWidth: true; placeholderText: "Search library"; onTextChanged: forge.setQuery(text) }
-                        QQC2.ComboBox { model: ["All", "Installed", "Available"]; onActivated: forge.setFilter(["all","installed","available"][currentIndex]) }
-                        QQC2.Button { text: "Review Install"; enabled: forge.selectedCount > 0 && !forge.busy; onClicked: forge.prepare("install") }
-                        QQC2.Button { text: "Review Restore"; enabled: forge.selectedCount > 0 && !forge.busy; onClicked: forge.prepare("uninstall") }
+                        Layout.fillWidth: true; spacing: 18
+                        Image { source: forge.brandIcon; fillMode: Image.PreserveAspectFit; Layout.preferredWidth: 96; Layout.preferredHeight: 96 }
+                        ColumnLayout {
+                            Layout.fillWidth: true; spacing: 4
+                            QQC2.Label { text: "rtxForge"; font.family: "Bakbak One"; font.pixelSize: 32; color: Kirigami.Theme.textColor }
+                            QQC2.Label { text: forge.games.length + " games · " + forge.configuredCount + " configured"; color: Kirigami.Theme.textColor; opacity: 0.8 }
+                            QQC2.Label { visible: forge.demo; text: "Preview mode · no game writes"; font: Kirigami.Theme.smallFont; color: Kirigami.Theme.textColor; opacity: 0.7 }
+                        }
+                        QQC2.Button { text: "Install selected"; icon.name: "download"; enabled: forge.selectedCount > 0 && !forge.busy; palette.button: window.brandAccent; palette.buttonText: "#111111"; onClicked: forge.prepare("install") }
+                        QQC2.Button { text: "Restore selected"; icon.name: "edit-undo"; enabled: forge.selectedCount > 0 && !forge.busy; onClicked: forge.prepare("uninstall") }
+                    }
+                    QQC2.Pane {
+                        Layout.fillWidth: true; padding: 16
+                        background: Rectangle { radius: Kirigami.Units.cornerRadius; color: Kirigami.Theme.alternateBackgroundColor }
+                        contentItem: RowLayout {
+                            ColumnLayout {
+                                Layout.fillWidth: true; spacing: 2
+                                QQC2.Label { text: "Features"; font.bold: true }
+                                QQC2.Label { text: "Native NVIDIA frame generation and Neural Rendering"; font: Kirigami.Theme.smallFont; color: Kirigami.Theme.textColor; opacity: 0.75; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                            }
+                            Repeater {
+                                model: [{key:"nr-only",caption:"NR only"},{key:"mfg-only",caption:"MFG only"},{key:"nr-mfg",caption:"NR + MFG"}]
+                                QQC2.Button { required property var modelData; text: modelData.caption; checkable: true; checked: forge.profile === modelData.key; enabled: !forge.busy; onClicked: forge.setPreference("default_profile",modelData.key) }
+                            }
+                        }
                     }
                     RowLayout {
-                        QQC2.Label { text: forge.selectedCount + " selected" }
-                        QQC2.Button { text: "Select all"; enabled: !forge.busy; onClicked: forge.selectAll(true) }
-                        QQC2.Button { text: "Clear"; enabled: !forge.busy; onClicked: forge.selectAll(false) }
+                        Layout.fillWidth: true; spacing: 8
+                        Kirigami.SearchField { Layout.fillWidth: true; placeholderText: "Search library"; onTextChanged: forge.setQuery(text) }
+                        Repeater {
+                            model: [{key:"available",caption:"Available"},{key:"installed",caption:"Installed"},{key:"all",caption:"All"}]
+                            QQC2.ToolButton { required property var modelData; text: modelData.caption; checkable: true; checked: forge.filter === modelData.key; onClicked: forge.setFilter(modelData.key) }
+                        }
+                        Kirigami.Separator { Layout.preferredHeight: 24 }
+                        Repeater {
+                            model: [{key:"posters",caption:"Posters",icon:"view-list-icons"},{key:"capsules",caption:"Wide capsules",icon:"view-preview"},{key:"list",caption:"List",icon:"view-list-details"}]
+                            QQC2.ToolButton { required property var modelData; text: modelData.caption; icon.name: modelData.icon; display: QQC2.AbstractButton.IconOnly; checkable: true; checked: forge.layout === modelData.key; QQC2.ToolTip.text: text; QQC2.ToolTip.visible: hovered; onClicked: forge.setLayout(modelData.key) }
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        QQC2.Label { text: forge.selectedCount + " selected"; font: Kirigami.Theme.smallFont }
                         Item { Layout.fillWidth: true }
-                        QQC2.ComboBox { model: ["MFG Only", "NR Only", "NR + MFG"]; currentIndex: ["mfg-only","nr-only","nr-mfg"].indexOf(forge.profile); onActivated: forge.setPreference("default_profile",["mfg-only","nr-only","nr-mfg"][currentIndex]) }
-                    }
-                    RowLayout {
-                        QQC2.ComboBox { model: ["Poster", "Wide Capsule", "List"]; currentIndex: ["posters","capsules","list"].indexOf(forge.layout); onActivated: forge.setLayout(["posters","capsules","list"][currentIndex]) }
-                        QQC2.Label { text: "Games per row" }
+                        QQC2.Label { text: "Games across"; font: Kirigami.Theme.smallFont }
                         QQC2.SpinBox { from: 3; to: 9; value: forge.density; onValueModified: forge.setDensity(value) }
+                        QQC2.Button { text: "Select all"; icon.name: "edit-select-all"; enabled: !forge.busy; onClicked: forge.selectAll(true) }
+                        QQC2.Button { text: "Clear"; enabled: forge.selectedCount > 0 && !forge.busy; onClicked: forge.selectAll(false) }
                     }
                     GridView {
                         id: grid; visible: forge.layout !== "list"; Layout.fillWidth: true; Layout.fillHeight: true; clip: true
                         property int columns: forge.columns(width)
-                        cellWidth: width / columns; cellHeight: (cellWidth - 16) * (forge.layout === "capsules" ? 0.47 : 1.5) + 130
+                        cellWidth: width / columns; cellHeight: (cellWidth - 16) * (forge.layout === "capsules" ? 0.47 : 1.5) + 64
                         model: forge.games
-                        delegate: QQC2.Frame {
-                            required property var modelData
-                            x: 8; width: grid.cellWidth - 16; height: grid.cellHeight - 16
-                            ColumnLayout {
-                                anchors.fill: parent; spacing: 8
-                                Image { source: forge.layout === "capsules" ? (modelData.capsule || modelData.poster || "") : (modelData.poster || ""); fillMode: Image.PreserveAspectCrop; Layout.fillWidth: true; Layout.fillHeight: true; clip: true }
-                                QQC2.CheckBox { text: modelData.name; checked: modelData.selected; Layout.fillWidth: true; onClicked: forge.select(modelData.game,checked) }
-                                QQC2.Label { text: modelData.installed ? "Using rtxForge" : "Available to review"; elide: Text.ElideRight; Layout.fillWidth: true }
-                                QQC2.Button { text: "Details"; Layout.fillWidth: true; onClicked: forge.showDetails(modelData.game) }
+                        QQC2.ScrollBar.vertical: QQC2.ScrollBar {}
+                        delegate: QQC2.ItemDelegate {
+                            id: gameCard; required property var modelData
+                            x: 8; width: grid.cellWidth - 16; height: grid.cellHeight - 16; padding: 0
+                            hoverEnabled: true; Accessible.name: modelData.name
+                            onClicked: forge.select(modelData.game,!modelData.selected)
+                            onDoubleClicked: forge.showDetails(modelData.game)
+                            Keys.onReturnPressed: forge.showDetails(modelData.game)
+                            background: Item {}
+                            contentItem: ColumnLayout {
+                                spacing: 7
+                                Item {
+                                    Layout.fillWidth: true; Layout.fillHeight: true
+                                    Primitives.ShadowedImage {
+                                        anchors.fill: parent; radius: 12; asynchronous: true; fillMode: Image.PreserveAspectCrop; shadow.size: 0
+                                        source: forge.layout === "capsules" ? (gameCard.modelData.capsule || gameCard.modelData.poster || "") : (gameCard.modelData.poster || "")
+                                        color: Kirigami.Theme.alternateBackgroundColor
+                                        border.width: gameCard.modelData.selected || gameCard.activeFocus ? 3 : 0
+                                        border.color: gameCard.activeFocus ? Kirigami.Theme.focusColor : (gameCard.modelData.accent || window.brandAccent)
+                                    }
+                                    QQC2.CheckBox { anchors.top: parent.top; anchors.right: parent.right; anchors.margins: 8; visible: checked || gameCard.hovered || gameCard.activeFocus; checked: gameCard.modelData.selected; enabled: !forge.busy; Accessible.name: "Select " + gameCard.modelData.name; onClicked: forge.select(gameCard.modelData.game,checked) }
+                                }
+                                RowLayout {
+                                    Layout.fillWidth: true; spacing: 4
+                                    QQC2.Label { text: gameCard.modelData.name; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
+                                    QQC2.ToolButton { text: "Game details"; icon.name: "configure"; display: QQC2.AbstractButton.IconOnly; QQC2.ToolTip.text: text; QQC2.ToolTip.visible: hovered; onClicked: forge.showDetails(gameCard.modelData.game) }
+                                }
+                                QQC2.Label { text: gameCard.modelData.installed ? (gameCard.modelData.profile || "Configured") : "Available"; font: Kirigami.Theme.smallFont; color: Kirigami.Theme.textColor; opacity: 0.7; elide: Text.ElideRight; Layout.fillWidth: true }
                             }
                         }
                     }
                     ListView {
                         visible: forge.layout === "list"; Layout.fillWidth: true; Layout.fillHeight: true; clip: true
-                        model: forge.games
+                        model: forge.games; spacing: 1
+                        QQC2.ScrollBar.vertical: QQC2.ScrollBar {}
                         delegate: QQC2.ItemDelegate {
                             required property var modelData
-                            width: ListView.view.width; height: 72
+                            width: ListView.view.width; height: 78; highlighted: modelData.selected
+                            onClicked: forge.showDetails(modelData.game)
                             contentItem: RowLayout {
-                                QQC2.CheckBox { checked: modelData.selected; onClicked: forge.select(modelData.game,checked) }
-                                QQC2.Label { text: modelData.name; Layout.fillWidth: true; elide: Text.ElideRight }
-                                QQC2.Label { text: modelData.installed ? "Using rtxForge" : "Available" }
-                                QQC2.Button { text: "Details"; onClicked: forge.showDetails(modelData.game) }
+                                spacing: 14
+                                QQC2.CheckBox { checked: modelData.selected; Accessible.name: "Select " + modelData.name; onClicked: forge.select(modelData.game,checked) }
+                                Primitives.ShadowedImage { source: modelData.capsule || modelData.poster || ""; fillMode: Image.PreserveAspectCrop; radius: Kirigami.Units.cornerRadius; shadow.size: 0; Layout.preferredWidth: 100; Layout.preferredHeight: 52 }
+                                QQC2.Label { text: modelData.name; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight }
+                                QQC2.Label { text: modelData.installed ? (modelData.profile || "Configured") : "Available"; font: Kirigami.Theme.smallFont }
+                                QQC2.ToolButton { text: "Game details"; icon.name: "arrow-right"; display: QQC2.AbstractButton.IconOnly; onClicked: forge.showDetails(modelData.game) }
                             }
                         }
                     }
+                    QQC2.Label { visible: forge.games.length === 0; text: "No games match your filters."; Layout.alignment: Qt.AlignHCenter; Layout.fillHeight: true; verticalAlignment: Text.AlignVCenter }
                 }
                 ColumnLayout {
                     visible: window.page === "settings"; Layout.fillWidth: true; Layout.fillHeight: true
@@ -173,9 +230,9 @@ Kirigami.ApplicationWindow {
         }
     }
 
-    QQC2.ApplicationWindow {
-        id: gameDetails; objectName: "gameDetailsWindow"; width: 860; height: 600; visible: !!forge.details.game; title: forge.details.name || "Game Details"
-        onClosing: forge.closeDetails()
+    QQC2.Dialog {
+        id: gameDetails; parent: QQC2.Overlay.overlay; anchors.centerIn: parent; modal: true; objectName: "gameDetailsWindow"; width: Math.min(860,window.width-48); height: Math.min(660,window.height-48); visible: !!forge.details.game; title: forge.details.name || "Game Details"
+        onClosed: forge.closeDetails()
         ColumnLayout {
             anchors.fill: parent; anchors.margins: 24; spacing: 16
             Kirigami.Heading { text: forge.details.name || "Game Details" }

@@ -13,9 +13,10 @@ import package_catalog,library_media
 class Controller(QObject):
     changed=Signal();finished=Signal(object);failed=Signal(str);artReady=Signal(object)
     def __init__(self,demo=False):
-        super().__init__();self.session=FrontendSession(demo);self._busy=False;self._message='';self._package={};self._review={};self._catalog=[];self._query='';self._filter='available';self._details={};self._executing=False;self._art_generation=0
+        super().__init__();self.session=FrontendSession(demo);self._busy=False;self._message='';self._package={};self._review={};self._catalog=[];self._query='';self._filter='available';self._details={};self._executing=False;self._art_generation=0;self._steam_profiles=[]
         self.finished.connect(self.done);self.failed.connect(self.error);self.artReady.connect(self.art_done)
         if demo:
+            self._steam_profiles=[{'root':'/preview/Steam','userid':'42','label':'Preview Steam account · 42'}]
             for name,appid in [('Cyberpunk 2077','1091500'),('Hogwarts Legacy','990080'),('Star Wars Outlaws','2842040'),('Avatar: Frontiers of Pandora','2840770')]:
                 poster=ROOT/'dist/demo-media'/f'{appid}.jpg'
                 self.session.games.append({'name':name,'game':'/preview/'+appid,'appid':appid,'installed':False,'poster':poster.as_uri() if poster.exists() else ''})
@@ -41,6 +42,9 @@ class Controller(QObject):
             self.session.preferences(runtime_provider='custom',custom_package=value,nr_strength=values.get('Intensity',2.0),sharpening_strength=values.get('Sharpness',0.5),mfg_multiplier='auto' if count=='auto' else 0 if count=='0' else int(count)+1)
             self._message='Custom package selected. Review installation for your selected games.'
         elif kind=='apply':self._message='Operation finished. Review the recorded result.';self._review={}
+        elif kind=='steam-profiles':
+            self._steam_profiles=[{**p,'label':'Steam account '+p['userid']+' · '+p['root']} for p in value]
+            self._message='Choose the account whose Steam artwork should change.' if value else 'No Steam profiles found. Open Steam once, then refresh.'
         elif kind=='steam-artwork':
             for key in value['success']:self.session.settings.setdefault('steam_artwork_pending',{}).pop(key,None)
             library_media.save_settings(self.session.service.config,self.session.settings)
@@ -161,6 +165,28 @@ class Controller(QObject):
             value=row.get(role)
             if isinstance(value,str) and value.startswith('file:'):row[role]=QUrl(value).toLocalFile()
         return row
+    @Property('QVariantList',notify=changed)
+    def steamProfiles(self):return self._steam_profiles
+    @Property(int,notify=changed)
+    def steamProfileIndex(self):
+        selected=self.session.settings.get('steam_artwork_profile')
+        if not selected:return 0
+        return next((i+1 for i,p in enumerate(self._steam_profiles) if p['root']==selected.get('root') and p['userid']==str(selected.get('userid'))),-1)
+    @Slot()
+    def refreshSteamProfiles(self):
+        if self.session.demo:self.changed.emit();return
+        import steam_artwork
+        self.run(lambda:('steam-profiles',steam_artwork.profiles(self.session.service.config)))
+    @Slot(int)
+    def setSteamProfile(self,index):
+        if self._busy:return
+        if not 0<=index<=len(self._steam_profiles):self.error('Refresh the Steam account list and choose again.');return
+        selected=None if index==0 else {key:self._steam_profiles[index-1][key] for key in ('root','userid')}
+        try:self.session.preferences(steam_artwork_profile=selected)
+        except Exception as ex:self.error(str(ex));return
+        self._message='Steam artwork account selected.' if selected else 'Steam account selection is automatic only when unambiguous.'
+        self.changed.emit()
+
     @Slot(str)
     def playGame(self,key):
         if self.session.demo:return
@@ -191,7 +217,8 @@ class Controller(QObject):
         if self._busy:return
         if self.session.demo:return
         import artwork_overrides,steam_artwork
-        game=self.game_row(key);path=QUrl(url).toLocalFile()
+        try:game=self.game_row(key);path=QUrl(url).toLocalFile()
+        except Exception as ex:self.error(str(ex));return
         def work():
             source=Path(path)
             if source.stat().st_size>artwork_overrides.MAX_BYTES:raise ValueError('Choose an image smaller than 20 MB.')
@@ -217,7 +244,8 @@ class Controller(QObject):
         if self._busy:return
         if self.session.demo:return
         import artwork_overrides,steam_artwork
-        game=self.game_row(key)
+        try:game=self.game_row(key)
+        except Exception as ex:self.error(str(ex));return
         def work():
             artwork_overrides.reset(self.session.service.config,self.session.settings,game,role)
             error=''
@@ -300,7 +328,12 @@ def main():
         def capture(name):
             if not window.grabWindow().save(str(out/name)):raise RuntimeError('Capture failed: '+name)
             report.append(name)
-        steps=[lambda:controller.setMode('classic'),lambda:capture('kde-classic.png'),
+        def review_profiles():
+            controller.setSteamProfile(1)
+            assert controller.steamProfileIndex==1 and controller.session.settings['steam_artwork_profile']['userid']=='42'
+            controller.setSteamProfile(0)
+            assert controller.steamProfileIndex==0 and controller.session.settings['steam_artwork_profile'] is None
+        steps=[review_profiles,lambda:controller.setMode('classic'),lambda:capture('kde-classic.png'),
                lambda:controller.setMode('new'),lambda:capture('kde-new.png'),
                lambda:controller.setLayout('capsules'),lambda:capture('kde-wide.png'),
                lambda:controller.setLayout('list'),lambda:capture('kde-list.png'),

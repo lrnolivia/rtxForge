@@ -7,10 +7,13 @@ import org.kde.kirigami as Kirigami
 Kirigami.ApplicationWindow {
     id: window
     property string artworkRole: "poster"
+    property string artworkGame: ""
+    property string chosenArtworkRole: "poster"
     readonly property color brandAccent: "#76b900"
     width: 1280; height: 820; minimumWidth: 760; minimumHeight: 580
     visible: true; title: "rtxForge"
     property string page: forge.startPage
+    onPageChanged: { if (page === "settings") forge.refreshSteamProfiles() }
     property var customValues: ({})
     property bool packageTrusted: false
     onClosing: function(close) { if(forge.executing) {close.accepted=false; busyClose.open()} }
@@ -177,6 +180,13 @@ Kirigami.ApplicationWindow {
                     QQC2.ComboBox { model: ["Game Library","Home"]; currentIndex: forge.startPage === "home" ? 1 : 0; onActivated: forge.setStart(currentIndex ? "home" : "library") }
                     QQC2.Label { text: "Default graphics profile" }
                     QQC2.ComboBox { model: ["MFG Only","NR Only","NR + MFG"]; currentIndex: ["mfg-only","nr-only","nr-mfg"].indexOf(forge.profile); onActivated: forge.setPreference("default_profile",["mfg-only","nr-only","nr-mfg"][currentIndex]) }
+                    QQC2.Label { text: "Steam artwork account" }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        QQC2.ComboBox { Layout.fillWidth: true; model: ["Automatic when unambiguous"].concat(forge.steamProfiles.map(function(p) { return p.label })); currentIndex: forge.steamProfileIndex; displayText: currentIndex < 0 ? "Selected account unavailable — refresh" : currentText; enabled: !forge.busy; onActivated: forge.setSteamProfile(currentIndex) }
+                        QQC2.ToolButton { text: "Refresh Steam accounts"; icon.name: "view-refresh"; display: QQC2.AbstractButton.IconOnly; enabled: !forge.busy; onClicked: forge.refreshSteamProfiles(); QQC2.ToolTip.text: text; QQC2.ToolTip.visible: hovered }
+                    }
+                    QQC2.Label { text: "Only this local account's artwork is updated. Existing backups are retained."; wrapMode: Text.Wrap; Layout.fillWidth: true }
                     QQC2.Button { text: "Sync artwork to Steam"; enabled: !forge.busy; onClicked: forge.syncArtwork("") }
                     QQC2.Button { text: "Add rtxForge to Steam"; enabled: !forge.busy; onClicked: forge.addToSteam() }
                     QQC2.Button { text: "Manage graphics packages"; onClicked: {window.page="packages";forge.catalog()} }
@@ -250,13 +260,13 @@ Kirigami.ApplicationWindow {
             RowLayout {
                 QQC2.Button { text: "Sync artwork to Steam"; enabled: !forge.busy; onClicked: forge.syncArtwork(forge.details.game) }
                 QQC2.ComboBox { id: artRole; model: ["Poster", "Wide capsule", "Hero"]; onActivated: window.artworkRole=["poster","capsule","hero"][currentIndex] }
-                QQC2.Button { text: "Choose image…"; enabled: !forge.busy; onClicked: artworkChooser.open() }
+                QQC2.Button { text: "Choose image…"; enabled: !forge.busy; onClicked: { window.artworkGame=forge.details.game; window.chosenArtworkRole=window.artworkRole; artworkChooser.open() } }
                 QQC2.Button { text: "Reset artwork"; enabled: !forge.busy; onClicked: forge.resetArtwork(forge.details.game,window.artworkRole) }
             }
             Item { Layout.fillHeight: true }
         }
     }
-    FileDialog { id: artworkChooser; title: "Choose game artwork"; nameFilters: ["Images (*.png *.jpg *.jpeg)"]; onAccepted: forge.chooseArtwork(forge.details.game,window.artworkRole,selectedFile.toString()) }
+    FileDialog { id: artworkChooser; title: "Choose game artwork"; nameFilters: ["Images (*.png *.jpg *.jpeg)"]; onAccepted: forge.chooseArtwork(window.artworkGame,window.chosenArtworkRole,selectedFile.toString()) }
     QQC2.Dialog {
         id: busyClose; title: "Operation in progress"; modal: true; anchors.centerIn: parent; standardButtons: QQC2.Dialog.Ok
         contentItem: QQC2.Label { text: "Wait for completion, or choose Cancel and restore before closing."; wrapMode: Text.Wrap }

@@ -82,6 +82,7 @@ jobs:
 
           /usr/bin/python3 -m unittest discover -s tests -p test_runtime_updates.py
           /usr/bin/python3 -m unittest discover -s tests -p test_ui_colors.py
+          /usr/bin/python3 -m unittest discover -s tests -p test_app_update.py
           /usr/bin/python3 -m unittest discover -s tests -p test_operation_finalization.py
           /usr/bin/python3 -m unittest discover -s tests -p test_setup.py
           /usr/bin/python3 -m unittest discover -s tests -p test_package_download.py

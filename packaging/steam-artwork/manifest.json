@@ -1,0 +1,32 @@
+{
+  "direction": "Hardware study \u2014 fine 35mm grain and soft vignette",
+  "artwork": {
+    "rtxforge-steam-portrait.png": [
+      600,
+      900
+    ],
+    "rtxforge-steam-wide.png": [
+      920,
+      430
+    ],
+    "rtxforge-steam-hero.png": [
+      3840,
+      1240
+    ],
+    "rtxforge-logo-white.png": [
+      1280,
+      400
+    ],
+    "rtxforge-logo-dark.png": [
+      1280,
+      400
+    ]
+  },
+  "hero": "Background only, no embedded icon, lettering, or logo. White transparent logo supplied independently with a soft shadow and uncut transparent padding.",
+  "typography": {
+    "wordmark": "Bakbak One",
+    "tagline": "Inter 450"
+  },
+  "background": "AI-generated conceptual unbranded cooling hardware, 1536\u00d71024 source. Embedded and upscaled for hero export; not true 4K detail.",
+  "sources": "SVG files contain outlined exact lettering, original vector icon and embedded raster plate. Original fonts and licenses included."
+}

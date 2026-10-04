@@ -3,6 +3,7 @@ from pathlib import Path
 import threading
 from gi.repository import Adw, Gtk, Gio, GLib
 import package_catalog as packages
+import user_messages
 
 
 def margins(widget, value=24):
@@ -49,17 +50,17 @@ def show_packages(owner, fixture=None):
             owner.select_package(record, settings or {})
             dialog.close()
         except Exception as ex:
-            status.set_text(str(ex))
+            status.set_text(user_messages.friendly_error(ex));status.set_tooltip_text(str(ex))
 
     def render_catalog(host):
         if not alive['value']:return False
         status.set_text('Preview system · NVIDIA RTX 4070 · no game writes' if owner.options.demo else host.get('gpu','System') + ' · ' + host.get('reason',''))
         for item in packages.catalog(host):
             row = Adw.ActionRow(title=item['name'], subtitle=item['version'] + ' · ' + item['summary'])
-            button = Gtk.Button(label='Use package', valign=Gtk.Align.CENTER, sensitive=item['available'])
-            button.set_tooltip_text(item['reason'])
+            button = owner.make_action_button('Use package',lambda _, key=item['id']:select(key))
+            button.set_sensitive(item['available'])
+            button.set_tooltip_text(user_messages.friendly_error(item['reason']) if not item['available'] else item['reason'])
             if item['recommended']:button.add_css_class('suggested-action')
-            button.connect('clicked', lambda _, key=item['id']:select(key))
             row.add_suffix(button);recommended.add(row)
         return False
 
@@ -68,10 +69,9 @@ def show_packages(owner, fixture=None):
         recommended.set_visible(False);custom.set_visible(False);community.set_visible(False);intro.set_visible(False)
         title.set_text('Review your package');back.set_visible(True)
         while detail.get_first_child():detail.remove(detail.get_first_child())
-        group = Adw.PreferencesGroup(title=result['name'], description=result['confidence'])
-        family = Adw.ActionRow(title='Detected format', subtitle=result['family'] if result['family']!='unknown' else 'Unrecognized · inspection only')
-        group.add(family)
-        group.add(Adw.ActionRow(title='Package contents', subtitle=f"{len(result['files'])} files · {result['expanded_bytes']/1024**2:.1f} MiB expanded"))
+        summary=owner.review_list();detail.append(summary)
+        summary.append(owner.review_entry(result['name'],result['confidence'],badge='Package',details='Detected format: '+result['family']+'\n'+f"{len(result['files'])} files · {result['expanded_bytes']/1024**2:.1f} MiB expanded",icon='package-x-generic-symbolic'))
+        group = Adw.PreferencesGroup(title='Package Settings')
         fields = {}
         for parameter in result['parameters']:
             if parameter['key']=='OverrideInterpolationCount':
@@ -87,11 +87,9 @@ def show_packages(owner, fixture=None):
         detail.append(group)
         warnings = Gtk.Label(label='\n'.join(result['warnings']), xalign=0, wrap=True, selectable=True)
         warnings.add_css_class('dim-label');detail.append(warnings)
-        instructions = Adw.ExpanderRow(title='Original package instructions', subtitle='Commands are never executed')
+        instructions=owner.review_list();detail.append(instructions)
         for item in result['instructions'][:8]:
-            row = Adw.ActionRow(title=item['path'])
-            row.set_use_markup(False);row.set_subtitle(item['text'][:4000]);row.set_subtitle_lines(0);instructions.add_row(row)
-        instruction_group = Adw.PreferencesGroup();instruction_group.add(instructions);detail.append(instruction_group)
+            instructions.append(owner.review_entry(item['path'],'Original instructions · commands are never executed',badge='Read only',details=item['text'][:4000]))
         detail.append(Gtk.Label(label='Your editable instructions / review notes (never executed)',xalign=0,wrap=True))
         notes=Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR,height_request=120)
         notes.get_buffer().set_text('\n\n'.join(item['text'][:4000] for item in result['instructions'][:8]))
@@ -100,7 +98,8 @@ def show_packages(owner, fixture=None):
         trust = Gtk.CheckButton(label='I trust the source of this package')
         while footer.get_first_child():footer.remove(footer.get_first_child())
         trust.set_hexpand(True);footer.append(trust);footer.set_visible(True)
-        apply = Gtk.Button(label='Use reviewed package', sensitive=False, halign=Gtk.Align.END)
+        apply = owner.make_action_button('Use reviewed package',lambda *_:None)
+        apply.set_sensitive(False);apply.set_halign(Gtk.Align.END)
         apply.add_css_class('suggested-action');footer.append(apply)
         trust.connect('toggled', lambda *_:apply.set_sensitive(trust.get_active() and result['family']=='dlss-unlocked'))
         def reviewed(*_):
@@ -118,7 +117,7 @@ def show_packages(owner, fixture=None):
                 select('custom',settings)
                 return False
             def failed(message):
-                if alive['value']:status.set_text(message);apply.set_sensitive(trust.get_active())
+                if alive['value']:status.set_text(user_messages.friendly_error(message));status.set_tooltip_text(str(message));apply.set_sensitive(trust.get_active())
                 return False
             def verify():
                 try:GLib.idle_add(verified,packages.custom_record(result,values,trusted=trusted,review_notes=review_notes))
@@ -143,7 +142,8 @@ def show_packages(owner, fixture=None):
                 result=packages.inspect_archive(path)
                 GLib.idle_add(render_inspection,result)
             except Exception as ex:
-                GLib.idle_add(status.set_text,str(ex))
+                GLib.idle_add(status.set_text,user_messages.friendly_error(ex))
+                GLib.idle_add(status.set_tooltip_text,str(ex))
             finally:GLib.idle_add(pick.set_sensitive,True)
         threading.Thread(target=work,daemon=True).start()
 

@@ -27,7 +27,7 @@ def new_shell(owner, library):
         ('Packages','Choose a supported runtime or inspect a custom package.','Choose',owner.show_packages),
         ('Previous Changes','Review recorded changes and restore original files.','Review',owner.show_undo)]:
         row=Adw.ActionRow(title=title,subtitle=subtitle)
-        button=Gtk.Button(label=caption,valign=Gtk.Align.CENTER);button.connect('clicked',callback);row.add_suffix(button);actions.add(row)
+        button=owner.make_action_button(caption,callback);row.add_suffix(button);actions.add(row)
     home.append(actions)
     startup=Adw.PreferencesGroup(title='Make it yours')
     choice=Adw.ComboRow(title='Open to',model=Gtk.StringList.new(['Game Library','Home']),selected=1 if owner.settings.get('start_page')=='home' else 0)

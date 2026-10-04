@@ -8,7 +8,7 @@ APP_VERSION=(ROOT/'VERSION').read_text(encoding='utf-8').strip() if (ROOT/'VERSI
 import gi
 gi.require_version('Gtk','4.0');gi.require_version('Adw','1')
 from gi.repository import Gtk,Adw,GLib,Gio,Gdk,Gsk,Graphene,Pango,GdkPixbuf,GObject
-import ui,library_media,os,game_notes,ui_colors
+import ui,library_media,os,game_notes,ui_colors,user_messages,weakref,game_launch
 from desktop_service import DesktopService
 from package_browser import show_packages
 from native_shell import new_shell
@@ -20,6 +20,53 @@ NEUTRAL_PROVIDER=None
 THEME_MODE='dark'
 NATIVE_PALETTE={}
 COUCH_MODE='auto'
+
+
+def register_brand_font():
+    # Register only for this process; do not install into the user's font folders.
+    import ctypes,ctypes.util
+    font=ROOT/'gui/fonts/BakbakOne-Regular.ttf'
+    if not font.is_file():return False
+    try:
+        library=ctypes.CDLL(ctypes.util.find_library('fontconfig') or 'libfontconfig.so.1')
+        library.FcConfigGetCurrent.restype=ctypes.c_void_p
+        library.FcConfigAppFontAddFile.argtypes=[ctypes.c_void_p,ctypes.c_char_p]
+        library.FcConfigAppFontAddFile.restype=ctypes.c_int
+        return bool(library.FcConfigAppFontAddFile(library.FcConfigGetCurrent(),str(font).encode()))
+    except (OSError,AttributeError):return False
+
+register_brand_font()
+
+BRAND_IMAGES=weakref.WeakSet()
+BRAND_THEME_CONNECTED=False
+BRAND_TEXTURES={}
+
+
+def refresh_brand_icons(*_):
+    name='io.github.lrnolivia.RTXForge'
+    if not Adw.StyleManager.get_default().get_dark():name+='-light'
+    path=ROOT/'gui/icons/rtxforge-mark.svg'
+    if 'plain' not in BRAND_TEXTURES:BRAND_TEXTURES['plain']=Gdk.Texture.new_from_filename(str(path))
+    for image in list(BRAND_IMAGES):image.set_from_paintable(BRAND_TEXTURES['plain'])
+    Gtk.Window.set_default_icon_name(name)
+    try:
+        import desktop_install
+        desktop_install.refresh_launcher_icon(Adw.StyleManager.get_default().get_dark())
+    except (OSError,ValueError,RuntimeError):
+        # A read-only/unregistered development environment has no shell icon to update.
+        pass
+
+
+def make_brand_icon(size):
+    """Use approved matching assets and follow the effective native appearance."""
+    global BRAND_THEME_CONNECTED
+    if not BRAND_THEME_CONNECTED:
+        Adw.StyleManager.get_default().connect('notify::dark',refresh_brand_icons)
+        BRAND_THEME_CONNECTED=True
+    image=Gtk.Image(pixel_size=size)
+    BRAND_IMAGES.add(image)
+    refresh_brand_icons()
+    return image
 
 
 def neutral_palette():
@@ -58,6 +105,7 @@ def apply_neutral_palette():
            'headerbar_bg_color':'window','headerbar_fg_color':'fg','headerbar_backdrop_color':'window',
            'secondary_sidebar_bg_color':'sidebar','secondary_sidebar_fg_color':'fg'}
     theme_css=''.join(f'@define-color {name} {palette[value]};' for name,value in names.items()) if THEME_MODE=='night' else ''
+    if THEME_MODE!='night':theme_css+='columnview.library-column-view header { background: mix(@sidebar_bg_color,black,0.12); }'
     theme_css+='list.boxed-list, list.content, list.boxed-list-separate > row, .card { box-shadow: 0 0 0 1px alpha(black,0.03), 0 1px 3px 1px alpha(black,0.07), 0 2px 6px 2px alpha(black,0.03); }'
     theme_css+='\n    button.bulk-remove { border: 1px solid alpha(currentColor,0.18); }\n    .library-selection-tools button, button.view-action, \n    button.game-details, .library-column-actions button,\n    .progress-inline-cancel {\n        border: 1px solid alpha(@window_fg_color,0.035);\n    }\n    '
     if THEME_MODE=='night':
@@ -120,7 +168,7 @@ def apply_neutral_palette():
     .library-status-primary { background: alpha(black,0.16); padding: 0; border-radius: 99px; }
     '''
     if not Adw.StyleManager.get_default().get_dark():
-        theme_css+='button.forge-primary, button.suggested-action { background: #deebc9; color: #345b00; } button.forge-primary label { color: #345b00; }'
+        theme_css+='button.forge-primary, button.suggested-action { background: #deebc9; color: #345b00; } button.forge-primary label, button.suggested-action label, button.forge-primary image, button.suggested-action image { color: #345b00; }'
     NEUTRAL_PROVIDER.load_from_data(theme_css.encode())
     sources=list(ACCENT_SOURCES.values())
     for provider in ACCENT_PROVIDERS.values():
@@ -315,6 +363,11 @@ class GameModeComboRow(Adw.ActionRow):
         self.choice.set_selected(index)
 
 
+def caution_image(size):
+    # Safety warnings are bundled, independent of icon themes and optional action glyphs.
+    pix=GdkPixbuf.Pixbuf.new_from_file_at_scale(str(Path(__file__).parent/'icons'/'rtxforge-caution.svg'),size,size,True)
+    return Gtk.Image(paintable=Gdk.Texture.new_for_pixbuf(pix),pixel_size=size)
+
 def safe_dropdown(strings):
     if gamescope_session():
         return GameModeChoice(strings)
@@ -333,7 +386,7 @@ def safe_combo_row(**kwargs):
     return Adw.ComboRow(
         **kwargs
     )
-def artwork_accent(path,color=None):
+def artwork_accent(path,color=None,muted=False):
     pix=GdkPixbuf.Pixbuf.new_from_file_at_scale(
         path,
         32,
@@ -397,6 +450,11 @@ def artwork_accent(path,color=None):
         or '#%02x%02x%02x'%rgb
     )
 
+    if muted:
+        rgb=[int(color[i:i+2],16)/255 for i in (1,3,5)]
+        h,s,v=colorsys.rgb_to_hsv(*rgb)
+        color='#%02x%02x%02x'%tuple(round(c*255) for c in colorsys.hsv_to_rgb(h,s*0.1,v))
+
     try:
         raw=color.lstrip('#')
 
@@ -457,6 +515,12 @@ def artwork_accent(path,color=None):
             ),
         )
 
+        if fs < 0.08:
+            # Achromatic accents have no meaningful hue: keep contrast neutral.
+            fr=fg=fb=0.20
+            accent_fg='#333333' if luminance>=0.48 else '#ffffff'
+            dr=dg=db=min(0.34,max(0.20,fv*0.42))
+
         accent_dark='#%02x%02x%02x'%(
             round(dr*255),
             round(dg*255),
@@ -485,6 +549,9 @@ def artwork_accent(path,color=None):
         provider=Gtk.CssProvider()
 
         provider.load_from_data((
+            f'.review-game.{name} .review-bezel {{ border-color: {color}; }} '
+            f'.artwork-editor.{name} .artwork-preview {{ border-color: {color}; }} '
+            f'.review-game.{name} .review-badge {{ color: {ui_colors.readable(color,palette["card"])}; background: {ui_colors.mix(color,palette["card"],0.10)}; }} '
             f'columnview row.{name}.game-selected {{ background: {color}; color: {accent_dark}; }} '
             f'columnview row.{name}.game-selected label, columnview row.{name}.game-selected .library-pill-icon {{ color: {accent_dark}; }} '
             f'columnview row.{name}.game-selected .library-source-pill {{ background: {source_bg}; }} '
@@ -710,7 +777,7 @@ def apply_corner_style(value):
     if CORNER_PROVIDER is None:
         CORNER_PROVIDER=Gtk.CssProvider()
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(),CORNER_PROVIDER,Gtk.STYLE_PROVIDER_PRIORITY_USER)
-    css='* { border-radius: 0; }' if CORNER_STYLE=='square' else ''
+    css='* { border-radius: 0; border-top-left-radius: 0; border-top-right-radius: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; } window, dialog { --window-radius: 0px; --dialog-radius: 0px; }' if CORNER_STYLE=='square' else ''
     if CORNER_STYLE=='rounded':css='window.background { border-radius: 12px; }'
     CORNER_PROVIDER.load_from_data(css.encode())
 
@@ -962,7 +1029,7 @@ class LibraryPill(Gtk.Box):
         else:
             if value=='working':
                 icon=_library_icon_name(
-                    'emblem-ok-symbolic',
+                    'object-select-symbolic',
                     'object-select-symbolic',
                 )
 
@@ -1115,6 +1182,37 @@ class LibraryPill(Gtk.Box):
         # Fixed outer measurement owns width.
         return
 
+
+def poster_art_path(game):
+    """Never crop a hero or capsule into a poster slot."""
+    path=game.get('poster')
+    if not path or not Path(path).is_file():return None
+    if path in (game.get('hero'),game.get('capsule')):return None
+    try:
+        _,width,height=GdkPixbuf.Pixbuf.get_file_info(str(path))
+        if not height or not 0.45<=width/height<=0.85:return None
+    except Exception:return None
+    return path
+
+def capsule_art_path(game):
+    """A capsule slot accepts only capsule artwork, never another art role."""
+    path=game.get('capsule')
+    if not path or not Path(path).is_file():return None
+    if path in (game.get('hero'),game.get('poster')):return None
+    try:
+        _,width,height=GdkPixbuf.Pixbuf.get_file_info(str(path))
+        if not height or not 1.6<=width/height<=2.6:return None
+    except Exception:return None
+    return path
+
+class FixedArtworkPicture(Gtk.Picture):
+    def __init__(self,width,height):
+        self.art_width=width;self.art_height=height
+        super().__init__(content_fit=Gtk.ContentFit.COVER,can_shrink=True)
+    def do_get_request_mode(self):return Gtk.SizeRequestMode.CONSTANT_SIZE
+    def do_measure(self,orientation,for_size):
+        size=self.art_width if orientation==Gtk.Orientation.HORIZONTAL else self.art_height
+        return size,size,-1,-1
 
 class ListArtworkPicture(Gtk.Picture):
     """List thumbnails have constant geometry, independent of column allocation."""
@@ -1483,8 +1581,13 @@ CSS=b'''
 .forge-library-surface {
     background: @forge_lower_bg;
 }
+.library-bottom-fade, .settings-bottom-fade { border: none; box-shadow: none; }
+scrolledwindow undershoot, scrolledwindow overshoot { background: none; border: none; box-shadow: none; }
 .library-bottom-fade {
-    background-image: linear-gradient(to bottom, alpha(black,0), alpha(black,0.10));
+    background-image: linear-gradient(to bottom, alpha(@forge_lower_bg,0), @forge_lower_bg 90%, @forge_lower_bg);
+}
+.settings-bottom-fade {
+    background-image: linear-gradient(to bottom, alpha(@window_bg_color,0), @window_bg_color 90%, @window_bg_color);
 }
 
 
@@ -1532,6 +1635,7 @@ spinbutton.tuning-number-input text {
 }
 
 .sticky-dashboard-title {
+    font-family: "Bakbak One";
     font-size: 14px;
     font-weight: 700;
     letter-spacing: -0.2px;
@@ -1545,7 +1649,7 @@ spinbutton.tuning-number-input text {
 
 .sticky-mode-selector toggle {
     min-height: 24px;
-    padding: 3px 8px;
+    padding: 6px 14px;
     border-radius: 7px;
     background: transparent;
     border-color: transparent;
@@ -1607,7 +1711,7 @@ spinbutton.tuning-number-input text {
 }
 
 .settings-navigation row:selected {
-    background: transparent;
+    background: alpha(@window_fg_color,0.07);
     background-image: none;
     box-shadow: none;
 }
@@ -1617,17 +1721,21 @@ spinbutton.tuning-number-input text {
 }
 
 .settings-main-surface {
-    background: @view_bg_color;
+    background: @window_bg_color;
 }
 
 .settings-content {
-    padding: 16px;
+    padding: 24px 24px 28px;
 }
+.settings-content row { min-height: 56px; }
+.settings-content popover row, dropdown popover row { min-height: 32px; padding: 4px 10px; margin: 0; }
+.settings-content popover row > box, dropdown popover row > box { min-height: 0; padding: 0; margin: 0; }
+.settings-navigation row:selected image { color: @accent_color; }
 
 .settings-footer {
     padding: 14px 18px;
-    background: @view_bg_color;
-    border-top: 1px solid alpha(@window_fg_color,0.10);
+    background: @window_bg_color;
+    border-top: none;
 }
 
 
@@ -1642,7 +1750,7 @@ button.game-detail-close {
 
 button.game-detail-close.light {
     background: alpha(white,0.82);
-    color: @window_fg_color;
+    color: #161616;
 }
 
 button.game-detail-close:hover {
@@ -2353,8 +2461,8 @@ button.done-button.suggested-action:hover {
 }
 
 .mode-selector toggle {
-    padding: 6px 13px;
-    min-height: 20px;
+    padding: 8px 18px;
+    min-height: 24px;
     border-radius: 9px;
     background: transparent;
     border-color: transparent;
@@ -2433,7 +2541,7 @@ button.dlss-outline:active { background: alpha(@window_fg_color,0.25); }
     font-weight: 600;
 }
 
-.hero-title { font-size: 25px; font-weight: 800; letter-spacing: -0.6px; }
+.hero-title { font-family: "Bakbak One"; font-size: 30px; font-weight: 400; letter-spacing: -0.6px; }
 .eyebrow { color: #76b900; font-weight: 800; font-size: 9px; letter-spacing: 1.7px; }
 .hero {
     background: transparent;
@@ -2561,6 +2669,8 @@ button.dlss-outline:active { background: alpha(@window_fg_color,0.25); }
 }
 
 .panel-body { padding: 24px; }
+.panel-body.review-check-body { padding: 16px 24px; }
+.modal-panel .panel-shell, .modal-panel headerbar { background: @window_bg_color; background-image: none; }
 floating-sheet > sheet { box-shadow: 0 16px 52px 8px alpha(black,0.38), 0 5px 18px alpha(black,0.24); }
 .review-summary { padding: 0 0 8px; }
 button, button label, toggle-group toggle { font-weight: 500; }
@@ -2592,6 +2702,7 @@ button.suggested-action label {
 
 /* Column header gets matching vertical room. */
 columnview.library-column-view header {
+    border-radius: 12px;
     background: alpha(@window_fg_color,0.025);
     border-bottom: 1px solid alpha(@window_fg_color,0.11);
     box-shadow: none;
@@ -2834,17 +2945,27 @@ headerbar, .titlebar {
     font-weight: 700;
 }
 
-/* Two neighboring rows create an 8px visual gap total. */
+/* Joined Adwaita rows: only the collection boundary is rounded. */
 columnview.library-column-view listview row {
-    min-height: 0;
-    margin: 2px 0;
-    padding: 0;
-    border: 2px solid transparent;
-    border-radius: 12px;
-    background: @forge_library_card_a;
-    margin-top: 4px;
-    margin-bottom: 4px;
+    min-height: 0; margin: 0; padding: 0;
+    border: 0; border-bottom: 1px solid @forge_lower_bg;
+    border-radius: 0; background: @forge_library_card_a;
 }
+columnview.library-column-view listview row.joined-first { border-top-left-radius: 12px; border-top-right-radius: 12px; }
+columnview.library-column-view listview row.joined-last { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; border-bottom: 0; }
+list.review-list { border-radius: 12px; background: @forge_library_card_a; }
+list.review-list > row { box-shadow: none; background-image: none; margin: 0; border-radius: 0; border-bottom: 1px solid @forge_lower_bg; }
+list.review-list > row:first-child { border-top-left-radius: 12px; border-top-right-radius: 12px; }
+list.review-list > row:last-child { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; border-bottom: 0; }
+.artwork-editor { padding: 16px; border: 0; border-radius: 12px; background: @card_bg_color; }
+.artwork-preview { border: 2px solid alpha(@window_fg_color,0.15); border-radius: 8px; }
+.review-bezel { border: 2px solid alpha(@window_fg_color,0.15); border-radius: 8px; margin: 10px 0; }
+.unsupported-notice, .unsupported-notice > row { background: mix(@window_bg_color, @error_bg_color, 0.48); box-shadow: none; }
+.unsupported-caution, .unsupported-badge { color: #e5b54a; }
+.support-info { color: #e5b54a; min-width: 28px; min-height: 28px; padding: 0; border-radius: 50%; background: alpha(@window_bg_color,0.9); }
+.review-badge { font-size: 11px; font-weight: 700; border-radius: 6px; padding: 4px 8px; background: alpha(@window_fg_color,0.08); }
+.review-game .title { font-weight: 700; }
+
 
 
 /* ----------------------------------------------------------
@@ -2902,22 +3023,110 @@ def label(text,css=None):
     w=Gtk.Label(label=str(text),xalign=0,wrap=True)
     if css:w.add_css_class(css)
     return w
-def button(text,fn,css=None):
-    w=Gtk.Button(label=text, valign=Gtk.Align.CENTER);w.connect('clicked',fn)
-    if css:w.add_css_class(css)
-    return w
+BUTTON_IMAGES=weakref.WeakSet()
+BUTTON_GLYPHS=True
+
+def set_button_glyphs(active):
+    global BUTTON_GLYPHS
+    BUTTON_GLYPHS=bool(active)
+    for image in tuple(BUTTON_IMAGES):image.set_visible(BUTTON_GLYPHS)
+
+def action_icon(text):
+    text=text.lower()
+    for words,icon in (
+        (('diagnos','check','verify'),'system-search-symbolic'),
+        (('restore','undo','recovery'),'edit-undo-symbolic'),
+        (('install','apply','save'),'document-save-symbolic'),
+        (('download','update'),'folder-download-symbolic'),
+        (('refresh','retry'),'view-refresh-symbolic'),
+        (('details',),'help-about-symbolic'),
+        (('folder','browse','open'),'folder-open-symbolic'),
+        (('cancel','close'),'window-close-symbolic'),
+        (('continue','next'),'go-next-symbolic'),
+        (('done','select','confirm'),'object-select-symbolic'),
+        (('clear','remove','delete'),'edit-clear-symbolic'),
+        (('settings','preset','configure'),'emblem-system-symbolic'),
+        (('play',),'media-playback-start-symbolic'),
+        (('tools',),'applications-utilities-symbolic'),
+        (('report','activity','log','copy'),'text-x-generic-symbolic'),
+        (('back','previous'),'go-previous-symbolic'),
+    ):
+        if any(word in text for word in words):return icon
+    return 'go-next-symbolic'
+
+class ActionButton(Gtk.Button):
+    """Keep the Button label API while displaying an optional action icon."""
+    def __init__(self,text,icon):
+        super().__init__(valign=Gtk.Align.CENTER)
+        content=Gtk.Box(spacing=10,halign=Gtk.Align.CENTER,valign=Gtk.Align.CENTER)
+        if icon:
+            theme=Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
+            image=Gtk.Image.new_from_icon_name(icon if theme.has_icon(icon) else 'go-next-symbolic')
+            image.set_pixel_size(14)
+            image.set_visible(BUTTON_GLYPHS);BUTTON_IMAGES.add(image)
+            content.append(image)
+        self.text_label=label(text);self.text_label.set_wrap(False)
+        content.append(self.text_label);self.set_child(content)
+        self.update_property([Gtk.AccessibleProperty.LABEL],[text])
+        self.connect('map',self._share_row_width)
+    def _share_row_width(self,*_):
+        ancestor=self.get_parent()
+        while ancestor and not isinstance(ancestor,Adw.ActionRow):ancestor=ancestor.get_parent()
+        if ancestor is None:return
+        group=ancestor.get_parent()
+        if group is None:return
+        size_group=getattr(group,'_action_widths',None)
+        if size_group is None:
+            size_group=Gtk.SizeGroup(mode=Gtk.SizeGroupMode.HORIZONTAL)
+            group._action_widths=size_group
+        size_group.add_widget(self)
+    def get_label(self):return self.text_label.get_text()
+    def set_label(self,text):
+        self.text_label.set_text(text)
+        self.update_property([Gtk.AccessibleProperty.LABEL],[text])
+
+def button(text,fn,css=None):return icon_button(text,None if text.strip().lower()=='done' else action_icon(text),fn,css)
 def icon_button(text,icon,fn,css=None):
-    content=Gtk.Box(spacing=6)
-    content.append(Gtk.Image.new_from_icon_name(icon))
-    text_label=label(text);text_label.set_wrap(False);text_label.set_single_line_mode(True)
-    content.append(text_label)
-    w=Gtk.Button(child=content, valign=Gtk.Align.CENTER)
-    w.text_label=text_label
-    w.connect('clicked',fn)
+    w=ActionButton(text,icon);w.connect('clicked',fn)
     if css:w.add_css_class(css)
     return w
+
+def action_tiles(actions):
+    tiles=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,homogeneous=True,
+        min_children_per_line=4,max_children_per_line=4,row_spacing=12,column_spacing=12)
+    for control in actions:
+        control.set_hexpand(True);control.set_size_request(180,96)
+        content=control.get_child();content.set_orientation(Gtk.Orientation.VERTICAL)
+        content.set_halign(Gtk.Align.FILL)
+        if hasattr(control,'text_label'):
+            control.text_label.set_wrap(True);control.text_label.set_xalign(.5)
+            control.text_label.set_justify(Gtk.Justification.CENTER)
+        tiles.insert(control,-1)
+    responsive=Adw.BreakpointBin(child=tiles,width_request=380,height_request=108)
+    breakpoint=Adw.Breakpoint.new(Adw.BreakpointCondition.parse('max-width: 790px'))
+    breakpoint.add_setter(tiles,'min-children-per-line',2)
+    breakpoint.add_setter(tiles,'max-children-per-line',2)
+    breakpoint.add_setter(responsive,'height-request',228)
+    responsive.add_breakpoint(breakpoint)
+    return responsive
+
 def margins(w,n=16):
     for edge in ('start','end','top','bottom'):getattr(w,'set_margin_'+edge)(n)
+def scroll_bottom_fade(scroll,css='settings-bottom-fade'):
+    overlay=Gtk.Overlay(child=scroll)
+    fade=Gtk.Box(height_request=28,valign=Gtk.Align.END,hexpand=True,can_target=False)
+    fade.add_css_class(css)
+    overlay.add_overlay(fade)
+    def update(adj,*_):
+        remaining=max(0,adj.get_upper()-adj.get_page_size()-adj.get_value())
+        fade.set_opacity(1 if remaining>0.5 else 0)
+        fade.set_size_request(-1,max(1,min(28,__import__('math').ceil(remaining))))
+    adj=scroll.get_vadjustment()
+    adj.connect('changed',update);adj.connect('value-changed',update)
+    update(adj)
+    overlay.bottom_fade=fade
+    return overlay
+
 def clear(box):
     while box.get_first_child():box.remove(box.get_first_child())
 def row(title,subtitle=''):
@@ -3160,10 +3369,14 @@ class PresentationDialog(Adw.Dialog):
         if child is None:
             self._scaled_child=None
             return
-        host=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8)
         couch=getattr(self.owner,'couch',None)
         in_couch=couch and self.owner.input_stack.get_visible_child_name()=='couch'
-        nav=couch.panel_navigation(self) if in_couch else None
+        if not in_couch:
+            super().set_child(child)
+            self._scaled_child=None
+            return
+        host=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8)
+        nav=couch.panel_navigation(self)
         if nav and couch.navigation_position!='bottom':host.append(nav)
         host.append(child)
         if nav and couch.navigation_position=='bottom':host.append(nav)
@@ -3270,8 +3483,8 @@ class ResizablePanelWindow(Adw.Window):
         old=getattr(self,'_scaled_child',None)
         if old:old.release()
         self._raw_child=child
-        self._scaled_child=ScaledContent(child,getattr(self._panel_parent,'presentation_scale',1.0)) if child else None
-        self.set_content(self._scaled_child)
+        self._scaled_child=None
+        self.set_content(child)
 
     def get_child(self):
         return getattr(self,'_raw_child',None)
@@ -3407,13 +3620,6 @@ class LibraryGameItem(GObject.Object):
 
 
 class Window(Adw.ApplicationWindow):
-    def set_content(self, child):
-        old=getattr(self,'scaled_content',None)
-        super().set_content(None)
-        if old:old.release()
-        self.scaled_content=ScaledContent(child,getattr(self,'presentation_scale',1.0)) if child else None
-        super().set_content(self.scaled_content)
-
     def apply_display_preferences(self):
         surface=self.get_surface()
         monitor=self.get_display().get_monitor_at_surface(surface) if surface else None
@@ -3422,20 +3628,29 @@ class Window(Adw.ApplicationWindow):
             system_scale=monitor.get_scale_factor()
             width,height=geometry.width*system_scale,geometry.height*system_scale
         else:width,height,system_scale=1280,820,1
-        factor=content_scale(self.settings.get('ui_scale','auto'),width,height,system_scale)
+        in_couch=hasattr(self,'input_stack') and self.input_stack.get_visible_child_name()=='couch'
+        factor=content_scale(self.settings.get('ui_scale','auto'),width,height,system_scale) if in_couch else 1.0
         self.presentation_scale=factor
-        if self.scaled_content:self.scaled_content.set_factor(factor)
+        if getattr(self,'couch_content',None):self.couch_content.set_factor(factor)
         dialog=getattr(self,'dialog',None)
         if getattr(dialog,'_scaled_child',None):dialog._scaled_child.set_factor(factor)
         if hasattr(self,'couch'):
             self.couch.resize(round(self.get_width()/factor),round(self.get_height()/factor))
             self.couch.apply_navigation_preferences()
 
+    def set_big_picture_ui(self,enabled):
+        global COUCH_MODE
+        self.settings['big_picture_ui']=bool(enabled)
+        COUCH_MODE=self.settings.get('input_mode','auto') if enabled else 'desktop'
+        if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
+        if not enabled:GLib.idle_add(lambda:(self.set_input_surface(False),False)[1])
+
     def set_display_preference(self,key,value):
         self.settings[key]=value
         if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
         self.apply_display_preferences()
-        if hasattr(self,'couch'):self.couch.render(self.couch.current)
+        if hasattr(self,'couch') and self.input_stack.get_visible_child_name()=='couch':
+            GLib.idle_add(lambda:(self.couch.render(self.couch.current),False)[1])
 
 
     def game_status_label(self,game):
@@ -3445,8 +3660,9 @@ class Window(Adw.ApplicationWindow):
         super().__init__(application=application,title='rtxForge',default_width=1280,default_height=820)
         self.options=options;self.service=DesktopService(options.provider)
         self.settings=dict(library_media.DEFAULTS) if options.demo else library_media.load_settings(self.service.config)
+        set_button_glyphs(self.settings.get('button_glyphs',True))
         global COUCH_MODE
-        COUCH_MODE=self.settings.get('input_mode','auto')
+        COUCH_MODE=self.settings.get('input_mode','auto') if self.settings.get('big_picture_ui',True) else 'desktop'
 
         # Demo/smoke modes are deliberately write-disabled and must not
         # require the real Bazzite Games mount merely to construct the UI.
@@ -3468,7 +3684,7 @@ class Window(Adw.ApplicationWindow):
             ).NR_STRENGTH_PRESETS
 
         self.strength_names=tuple(self.strength_presets);self.multiplier_values=('auto',0,2,3,4,5,6)
-        self.settings['enable_effects']=True;self.settings.setdefault('dark',True);self.hardware_info={'ready':True,'gpu':'Preview GPU','reason':'Preview mode'} if options.demo else None;self.games=[];self.cards={};self.selected_game_ids=set();self.mode='mfg-only';self.filter='all'
+        self.settings['enable_effects']=True;self.settings.setdefault('dark',True);self.hardware_info={'ready':True,'gpu':'Preview GPU','reason':'Preview mode'} if options.demo else None;self.games=[];self.cards={};self.selected_game_ids=set();self.mode='mfg-only';self.filter='available'
         self.busy=False;self.task_kind='';self.pending=None;self.cancel_art=threading.Event();self.log=[];self.dialog=None;self.review=None;self.action_buttons=[]
         self.connect('close-request',self.close_request)
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)
@@ -3547,9 +3763,9 @@ class Window(Adw.ApplicationWindow):
             action=Gio.SimpleAction.new(action_name,None);action.connect('activate',callback);self.add_action(action)
         menu_actions=[
             ('Refresh Library','view-refresh-symbolic','win.refresh-library'),
-            ('Add Game Folder…','folder-new-symbolic','win.add-game-folder'),
-            ('Packages…','package-x-generic-symbolic','win.packages'),
-            ('Extras…','applications-utilities-symbolic','win.extras'),
+            ('Add Game Folder','folder-new-symbolic','win.add-game-folder'),
+            ('Packages','package-x-generic-symbolic','win.packages'),
+            ('Extras','applications-utilities-symbolic','win.extras'),
             ('Activity','view-list-symbolic','win.activity'),
             ('Settings','emblem-system-symbolic','win.settings'),
         ]
@@ -3577,9 +3793,15 @@ class Window(Adw.ApplicationWindow):
         menu_popover=Gtk.Popover(child=menu_body)
         for caption,icon,action_name in menu_actions:
             entry=icon_button(caption,icon,lambda *_:menu_popover.popdown(),'flat')
+            entry.get_child().set_spacing(16)
+            entry.get_child().set_halign(Gtk.Align.START)
+            entry.get_child().get_first_child().set_size_request(24,-1)
             entry.set_halign(Gtk.Align.FILL)
             entry.set_action_name(action_name)
             menu_body.append(entry)
+        menu_body.append(icon_button('Add rtxForge to Steam','list-add-symbolic',lambda *_:(menu_popover.popdown(),self.add_rtxforge_to_steam()),'flat'))
+        menu_body.append(icon_button('Sync artwork to Steam','view-refresh-symbolic',lambda *_:(menu_popover.popdown(),self.sync_steam_artwork()),'flat'))
+        menu_body.append(icon_button('Steam artwork profile','avatar-default-symbolic',lambda *_:(menu_popover.popdown(),self.choose_steam_artwork_profile()),'flat'))
         main_menu.set_popover(menu_popover)
         self.main_menu=main_menu
         if gamescope_session():
@@ -3623,17 +3845,7 @@ class Window(Adw.ApplicationWindow):
         hero_top.set_vexpand(False)
         hero.append(hero_top)
 
-        dashboard_art_path=(
-            ROOT
-            / 'gui'
-            / 'icons'
-            / 'rtxforge-artwork.svg'
-        )
-
-        self.dashboard_icon=Gtk.Image.new_from_file(
-            str(dashboard_art_path)
-        )
-        self.dashboard_icon.set_pixel_size(128)
+        self.dashboard_icon=make_brand_icon(128)
         self.dashboard_icon.set_valign(Gtk.Align.CENTER)
         self.dashboard_icon.set_halign(Gtk.Align.START)
         self.dashboard_icon.add_css_class(
@@ -3730,7 +3942,7 @@ class Window(Adw.ApplicationWindow):
             'bulk-remove',
         )
         bulk.append(self.uninstall_all)
-        update_dlss=button('Update DLSS',self.update_library_dlss,'dlss-outline')
+        update_dlss=button('Update DLSS',lambda *_:self.update_dlss_games(list(self.games)),'dlss-outline')
         self.update_dlss_button=update_dlss
         update_dlss.set_tooltip_text('Update older DLSS files across the library')
         bulk.append(update_dlss)
@@ -3741,7 +3953,7 @@ class Window(Adw.ApplicationWindow):
             'edit-undo-symbolic',
             self.reset_library_settings,
         )
-        self.apply_presets=icon_button('Apply','emblem-ok-symbolic',self.apply_library_settings,'suggested-action')
+        self.apply_presets=icon_button('Apply','object-select-symbolic',self.apply_library_settings,'suggested-action')
         # Reset belongs to Presets, not the file actions.
 
         tuning,self.tuning_widgets=self.tuning_controls(
@@ -3767,15 +3979,15 @@ class Window(Adw.ApplicationWindow):
         self.operation_revealer.set_margin_bottom(16)
         operation=Gtk.Box(spacing=9,valign=Gtk.Align.CENTER);operation.add_css_class('operation-bubble');self.operation_revealer.set_child(operation)
         self.operation_spinner=Gtk.Spinner();operation.append(self.operation_spinner)
-        self.operation_icon=Gtk.Image.new_from_icon_name('emblem-ok-symbolic');self.operation_icon.add_css_class('operation-complete');self.operation_icon.set_visible(False);operation.append(self.operation_icon)
+        self.operation_icon=Gtk.Image.new_from_icon_name('object-select-symbolic');self.operation_icon.add_css_class('operation-complete');self.operation_icon.set_visible(False);operation.append(self.operation_icon)
         self.operation_status=label('');self.operation_status.set_max_width_chars(54);self.operation_status.set_ellipsize(Pango.EllipsizeMode.END);operation.append(self.operation_status)
         self.operation_elapsed=label('','dim-label');operation.append(self.operation_elapsed)
         self.operation_dismiss=Gtk.Button(icon_name='window-close-symbolic');self.operation_dismiss.add_css_class('operation-dismiss');self.operation_dismiss.set_tooltip_text('Dismiss');self.operation_dismiss.set_visible(False);self.operation_dismiss.connect('clicked',lambda *_:self.hide_operation_status());operation.append(self.operation_dismiss)
         for key,widget in self.tuning_widgets.items():widget.connect('notify::selected' if key=='mfg_multiplier' else 'value-changed',self.strength_changed)
         self.strength_changed()
         self.reset_all.set_tooltip_text('Reset presets to the library defaults.')
-        self.install_all.set_tooltip_text('One click: prepare, back up and install wherever possible across every library. Incompatible games are skipped.')
-        self.uninstall_all.set_tooltip_text('One click: remove recorded OptiScaler installs across every library, with backups. Your games remain installed.')
+        self.install_all.set_tooltip_text('Review feature installation across every library before applying changes. Incompatible games are skipped.')
+        self.uninstall_all.set_tooltip_text('Review restoration of recorded feature installs across every library. Your games remain installed.')
         controls=Gtk.Box(spacing=14)
         controls.add_css_class('control-pod')
         controls.add_css_class('mode-bar')
@@ -3812,12 +4024,7 @@ class Window(Adw.ApplicationWindow):
             'sticky-dashboard-brand'
         )
 
-        sticky_brand_icon=Gtk.Image.new_from_file(
-            str(dashboard_art_path)
-        )
-        sticky_brand_icon.set_pixel_size(
-            40
-        )
+        self.sticky_brand_icon=sticky_brand_icon=make_brand_icon(48)
         sticky_brand_icon.set_valign(Gtk.Align.CENTER)
         sticky_brand_icon.add_css_class(
             'sticky-dashboard-app-icon'
@@ -3984,7 +4191,7 @@ class Window(Adw.ApplicationWindow):
         )
 
 
-        self.sticky_update_dlss=button('Update DLSS',self.update_library_dlss,'dlss-outline')
+        self.sticky_update_dlss=button('Update DLSS',lambda *_:self.update_dlss_games(list(self.games)),'dlss-outline')
         self.sticky_update_dlss.set_tooltip_text('Update older DLSS files across the library')
         sticky_actions.append(self.sticky_update_dlss)
 
@@ -4248,10 +4455,11 @@ class Window(Adw.ApplicationWindow):
         )
 
         previous=None
+        self.filter_buttons={}
         for name,key in [
-            ('All','all'),
-            ('Installed','installed'),
             ('Available','available'),
+            ('Installed','installed'),
+            ('All','all'),
         ]:
             b=Gtk.ToggleButton(
                 label=name
@@ -4272,6 +4480,7 @@ class Window(Adw.ApplicationWindow):
                 self.filter_changed,
                 key,
             )
+            self.filter_buttons[key]=b
             filterbox.append(
                 b
             )
@@ -4397,17 +4606,29 @@ class Window(Adw.ApplicationWindow):
             vexpand=True
         )
         library_stage.set_margin_top(16)
-        library_stage.set_margin_bottom(0)
+        library_stage.set_margin_bottom(16)
         library_stage.set_child(
             self.library_stack
         )
         library_surface.append(
             library_stage
         )
-        bottom_gutter=Gtk.Box(height_request=LIBRARY_BOTTOM_CLEARANCE)
+        bottom_gutter=Gtk.Box(height_request=28,valign=Gtk.Align.END,hexpand=True)
         bottom_gutter.add_css_class('library-bottom-fade')
         bottom_gutter.set_can_target(False)
-        library_surface.append(bottom_gutter)
+        library_stage.add_overlay(bottom_gutter)
+        self.library_bottom_fade=bottom_gutter
+        def update_library_fade(*_):
+            active=self.column_scroll if self.library_stack.get_visible_child_name()=='list' else self.library_scroll
+            adj=active.get_vadjustment()
+            remaining=max(0,adj.get_upper()-adj.get_page_size()-adj.get_value())
+            bottom_gutter.set_opacity(1 if remaining>0.5 else 0)
+            bottom_gutter.set_size_request(-1,max(1,min(28,__import__('math').ceil(remaining))))
+        for viewport in (self.library_scroll,self.column_scroll):
+            viewport.get_vadjustment().connect('changed',update_library_fade)
+            viewport.get_vadjustment().connect('value-changed',update_library_fade)
+        self.library_stack.connect('notify::visible-child-name',update_library_fade)
+        update_library_fade()
         self.controller_hud=Gtk.Label(label='',visible=False,margin_top=6,margin_bottom=8)
         self.controller_hud.add_css_class('dim-label')
         library_surface.append(self.controller_hud)
@@ -4608,7 +4829,9 @@ class Window(Adw.ApplicationWindow):
         classic_child=self.overlay.get_child();self.overlay.set_child(None)
         self.input_stack=Gtk.Stack(hhomogeneous=False,vhomogeneous=False)
         self.input_stack.add_named(classic_child,'desktop')
-        self.couch=CouchShell(self);self.input_stack.add_named(self.couch,'couch')
+        self.couch=CouchShell(self)
+        self.couch_content=ScaledContent(self.couch)
+        self.input_stack.add_named(self.couch_content,'couch')
         self.overlay.set_child(self.input_stack)
         self.last_controller_input=0.0;self._pointer_origin=None
         self.set_input_surface(gamescope_session())
@@ -4629,15 +4852,17 @@ class Window(Adw.ApplicationWindow):
     def show_controller_menu(self,*_):
         if self.busy and self.task_kind!='art':return
         d,b,f=self.open_panel('Menu',width=380,height=420)
-        for title,icon,fn in [('Refresh Library','view-refresh-symbolic',self.scan),('Add Game Folder','folder-new-symbolic',self.choose_folder),('Packages','package-x-generic-symbolic',self.show_packages),('Extras','applications-utilities-symbolic',self.show_extras),('Settings','emblem-system-symbolic',self.show_settings)]:
+        for title,icon,fn in [('Refresh Library','view-refresh-symbolic',self.scan),('Add Game Folder','folder-new-symbolic',self.choose_folder),('Packages','package-x-generic-symbolic',self.show_packages),('Extras','applications-utilities-symbolic',self.show_extras),('Add rtxForge to Steam','list-add-symbolic',self.add_rtxforge_to_steam),('Sync artwork to Steam','view-refresh-symbolic',self.sync_steam_artwork),('Steam artwork profile','avatar-default-symbolic',self.choose_steam_artwork_profile),('Settings','emblem-system-symbolic',self.show_settings)]:
             def invoke(*_,fn=fn):
                 d.close();GLib.idle_add(lambda:(fn(),False)[1])
             b.append(icon_button(title,icon,invoke))
 
     def set_input_surface(self,couch):
         if not hasattr(self,'input_stack'):return
+        couch=couch and self.settings.get('big_picture_ui',True)
         self._pointer_origin=None
         self.input_stack.set_visible_child_name('couch' if couch else 'desktop')
+        self.apply_display_preferences()
         self.controller_hud.set_visible(False)
         if couch:self.couch.refresh()
         self.add_css_class('controller-active') if couch else self.remove_css_class('controller-active')
@@ -4664,6 +4889,11 @@ class Window(Adw.ApplicationWindow):
         for action in actions:
             dialog=active_panel or self.get_visible_dialog()
             if not dialog:
+                if not self.settings.get('big_picture_ui',True):
+                    direction={'up':Gtk.DirectionType.UP,'down':Gtk.DirectionType.DOWN,'left':Gtk.DirectionType.LEFT,'right':Gtk.DirectionType.RIGHT,'previous':Gtk.DirectionType.TAB_BACKWARD,'next':Gtk.DirectionType.TAB_FORWARD}.get(action)
+                    if direction is not None:self.child_focus(direction)
+                    elif action=='accept' and self.get_focus():self.get_focus().activate()
+                    continue
                 if self.input_stack.get_visible_child_name()!='couch':self.set_input_surface(True)
                 self.couch.navigate(action)
                 continue
@@ -4678,14 +4908,151 @@ class Window(Adw.ApplicationWindow):
             elif action=='back' and dialog.get_can_close():dialog.close()
         return True
 
+    def make_action_button(self,text,callback):return button(text,callback)
+    def poster_art_path(self,game):return poster_art_path(game)
+    def capsule_art_path(self,game):return capsule_art_path(game)
+    def wide_art_path(self,game):return capsule_art_path(game) or str(LIBRARY_GHOST_TEXTURE)
+    def make_art_picture(self,width,height):return FixedArtworkPicture(width,height)
+
+    def support_reason(self,game):
+        reason=str(game.get('blocked',''))
+        return {'No Windows executable found':'This game does not have a Windows launch file that rtxForge can use.',
+                'Anti-cheat detected':'This game uses anti-cheat software. rtxForge does not install graphics tools into anti-cheat protected games.',
+                'No native DLSS-G detected':'This game does not include the native NVIDIA frame-generation files required by the tools rtxForge currently supports.'}.get(reason,user_messages.friendly_error(reason))
+
+    def decorate_support_artwork(self,artwork,picture,game,path):
+        unsupported=bool(game.get('blocked'))
+        picture.set_opacity(0.45 if unsupported else 1.0)
+        picture.support_desaturated=unsupported
+        if unsupported and path and Path(path).is_file():
+            cache=getattr(self,'_muted_art_cache',{})
+            key=(path,Path(path).stat().st_mtime_ns)
+            if key not in cache:
+                try:
+                    pix=GdkPixbuf.Pixbuf.new_from_file_at_scale(path,1400,1400,True)
+                    muted=pix.copy();pix.saturate_and_pixelate(muted,0.1,False)
+                    cache[key]=Gdk.Texture.new_for_pixbuf(muted)
+                except (GLib.Error,OSError):cache[key]=None
+                self._muted_art_cache=cache
+            if cache[key]:picture.set_paintable(cache[key])
+        info=getattr(artwork,'support_info',None)
+        if info is None:
+            info=Gtk.Button(child=caution_image(14),halign=Gtk.Align.START,valign=Gtk.Align.START)
+            info.add_css_class('support-info');info.set_margin_top(10);info.set_margin_start(10)
+            info.connect('clicked',lambda *_:self.show_support_help(info))
+            artwork.add_overlay(info);artwork.set_measure_overlay(info,False)
+            artwork.support_info=info
+        info._support_game=game
+        info.set_visible(unsupported)
+        if unsupported:
+            reason=self.support_reason(game)
+            info.set_tooltip_text('Not supported · '+reason)
+            info.update_property([Gtk.AccessibleProperty.LABEL,Gtk.AccessibleProperty.DESCRIPTION],['Why this game is not supported',reason])
+
+    def unsupported_notice(self,game):
+        listing=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        listing.add_css_class('boxed-list');listing.add_css_class('unsupported-notice')
+        content=Gtk.Box(spacing=12)
+        margins(content,16)
+        icon=caution_image(24);icon.set_valign(Gtk.Align.START)
+        icon.set_margin_top(2);icon.add_css_class('unsupported-caution')
+        content.append(icon)
+        explanation=label(self.support_reason(game))
+        explanation.set_wrap(True);explanation.set_xalign(0)
+        explanation.set_hexpand(True);explanation.set_valign(Gtk.Align.START)
+        content.append(explanation)
+        listing.append(content)
+        return listing
+
+    def show_support_help(self,control):
+        popover=getattr(control,'support_popover',None)
+        if popover is None:
+            popover=Gtk.Popover(autohide=True)
+            popover.set_parent(control);control.support_popover=popover
+        notice=self.unsupported_notice(control._support_game)
+        notice.set_size_request(320,-1)
+        popover.set_child(notice);popover.popup()
+
+    def review_check_view(self,dialog,body,games):
+        body.add_css_class('review-check-body');body.set_spacing(10)
+        body.append(label('Preparing your review','title-2'))
+        body.append(label('Checking compatibility and the changes each game needs.','dim-label'))
+        card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8)
+        card.add_css_class('card');margins(card,2)
+        line=Gtk.Box(spacing=12);margins(line,12)
+        line.set_margin_bottom(4)
+        art=ListArtwork();art.add_css_class('review-bezel');art.set_margin_top(0);art.set_margin_bottom(0);line.append(art)
+        card.add_css_class('review-game')
+        text=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4,hexpand=True,valign=Gtk.Align.CENTER)
+        current=label('Getting files ready','heading');stage=label('Checking the feature package','dim-label')
+        text.append(current);text.append(stage);line.append(text)
+        spinner=Gtk.Spinner(spinning=True,width_request=24,height_request=24);line.append(spinner)
+        card.append(line)
+        counter=label(f'0 of {len(games)} checked','dim-label');counter.set_margin_start(16);counter.set_margin_end(16)
+        card.append(counter)
+        bar=Gtk.ProgressBar();bar.set_margin_start(16);bar.set_margin_end(16);bar.set_margin_bottom(16)
+        card.append(bar);body.append(card)
+        body.append(label('Your files will only change after you review and confirm.','dim-label'))
+        state={'dialog':dialog,'art':art,'game':current,'stage':stage,'counter':counter,'bar':bar,'total':len(games),'determinate':False,'sequence':0,'card':card,'accent':None}
+        self.review_check_state=state
+        scroll=body.get_parent()
+        while scroll and not isinstance(scroll,Gtk.ScrolledWindow):scroll=scroll.get_parent()
+        if scroll:
+            scroll.set_policy(Gtk.PolicyType.NEVER,Gtk.PolicyType.NEVER)
+            scroll.set_vexpand(False)
+            scroll.get_vadjustment().set_value(0)
+            def fit():
+                if self.review_check_state is not state:return False
+                width=max(320,dialog.get_content_width()-48)
+                natural=body.measure(Gtk.Orientation.VERTICAL,width)[1]
+                scroll.set_max_content_height(-1);scroll.set_min_content_height(natural)
+                scroll.set_propagate_natural_height(True)
+                shell=dialog.get_child();chrome=0;child=shell.get_first_child()
+                while child:
+                    if child is not scroll:chrome+=child.measure(Gtk.Orientation.VERTICAL,width)[1]
+                    child=child.get_next_sibling()
+                dialog.set_content_height(natural+chrome)
+                return False
+            GLib.timeout_add(50,fit)
+        def pulse():
+            if getattr(self,'review_check_state',None) is not state or self.dialog is not dialog:return False
+            if not state['determinate']:bar.pulse()
+            return True
+        GLib.timeout_add(100,pulse)
+
+    def review_check_event(self,event,state):
+        state['stage'].set_text(user_messages.friendly_status(event['label']))
+        if event.get('phase')!='review-check':return
+        state['determinate']=True
+        checked=event['checked'];total=event['total']
+        state['counter'].set_text(f'{checked} of {total} checked')
+        game=next((g for g in self.operation_games if g['name']==event.get('game')),None)
+        if game:
+            state['game'].set_text(game['name']);state['art'].set_artwork(capsule_art_path(game))
+            if state['accent']:state['card'].remove_css_class(state['accent'])
+            state['accent']=self._ensure_game_accent(game)
+            if state['accent']:state['card'].add_css_class(state['accent'])
+        state['sequence']+=1;sequence=state['sequence']
+        start=state['bar'].get_fraction();target=checked/max(1,total);began=time.monotonic()
+        settings=Gtk.Settings.get_default()
+        if not settings or not settings.get_property('gtk-enable-animations'):
+            state['bar'].set_fraction(target);return
+        def animate():
+            if getattr(self,'review_check_state',None) is not state or state['sequence']!=sequence:return False
+            t=min(1,(time.monotonic()-began)/0.18)
+            state['bar'].set_fraction(start+(target-start)*(1-(1-t)**3))
+            return t<1
+        self.add_tick_callback(lambda _widget,_clock:animate())
+
     def populate_tools(self,body,game):
         body.append(label('Tools','title-2'))
-        body.append(label('Standalone tools are reviewed separately from feature packages. Existing proxy DLLs are preserved.','dim-label'))
-        body.append(button('Diagnose NR',lambda *_:self.show_diagnostics(game)))
-        for kind,title in [('reshade','Install ReShade DLL…'),('addon','Install ReShade Add-on…')]:
+        body.append(label('Check NR or add ReShade to this game. Existing graphics files are kept safe.','dim-label'))
+        actions=[button('Diagnose NR',lambda *_:self.show_diagnostics(game))]
+        for kind,title in [('reshade','Install ReShade'),('addon','Install Add-on')]:
             control=button(title,lambda _,kind=kind:self.choose_extra(game,kind))
-            control.set_sensitive(not self.options.demo);body.append(control)
-        body.append(button('ReShade Downloads',lambda *_:Gio.AppInfo.launch_default_for_uri('https://reshade.me/',None)))
+            control.set_sensitive(not self.options.demo);actions.append(control)
+        actions.append(button('ReShade Downloads',lambda *_:Gio.AppInfo.launch_default_for_uri('https://reshade.me/',None)))
+        body.append(action_tiles(actions))
         body.append(label('Use an extracted x64 ReShade DLL or .addon64 file from a source you trust. Shader packs and presets remain yours to manage. DirectX 10–12 installs use dxgi.dll; Proton may require dxgi=n,b in the existing DLL overrides.','dim-label'))
         if not self.options.demo:
             import extra_tools
@@ -4694,13 +5061,434 @@ class Window(Adw.ApplicationWindow):
                 item.add_suffix(button('Restore',lambda _,r=record:self.review_extra_restore(r)))
                 body.append(item)
 
+    def review_list(self):
+        listing=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        listing.add_css_class('boxed-list');listing.add_css_class('review-list')
+        GLib.timeout_add(80,self.size_review_panel,listing)
+        return listing
+
+    def size_review_panel(self,listing):
+        # Measure the finished panel, keeping at most five complete rows visible.
+        scroll=listing.get_parent()
+        while scroll and not isinstance(scroll,Gtk.ScrolledWindow):scroll=scroll.get_parent()
+        if scroll is None:return False
+        body=scroll.get_child()
+        if isinstance(body,Gtk.Viewport):body=body.get_child()
+        dialog=self.dialog
+        if dialog is None or not hasattr(dialog,'set_content_height'):return False
+        container=scroll.get_parent()
+        if isinstance(container,Gtk.Overlay):container=container.get_parent()
+        if container is not dialog.get_child():return False
+        shell=container
+        footer=shell.get_last_child()
+        footer.set_margin_top(28)
+        footer.remove_css_class('progress-footer')
+        if scroll.get_parent() is shell:
+            shell.remove(scroll)
+            shell.insert_child_after(scroll_bottom_fade(scroll),shell.get_first_child())
+        width=max(320,body.get_width() or dialog.get_content_width()-48)
+        natural=body.measure(Gtk.Orientation.VERTICAL,width)[1]
+        rows=[]
+        def collect(widget):
+            if widget.has_css_class('review-list'):
+                entry=widget.get_first_child()
+                while entry:
+                    rows.append(entry);entry=entry.get_next_sibling()
+                return
+            child=widget.get_first_child()
+            while child:collect(child);child=child.get_next_sibling()
+        collect(body)
+        heights=[row.measure(Gtk.Orientation.VERTICAL,width)[1] for row in rows]
+        visible=natural
+        if len(rows)>5:
+            ok,bounds=rows[4].compute_bounds(scroll)
+            visible=round(bounds.get_y()+bounds.get_height()+scroll.get_vadjustment().get_value()) if ok else natural-sum(heights[5:])
+        scroll_container=scroll.get_parent()
+        chrome=0;child=shell.get_first_child()
+        while child:
+            if child is not scroll_container:chrome+=child.measure(Gtk.Orientation.VERTICAL,width)[1]
+            child=child.get_next_sibling()
+        available=max(320,self.get_height()-48-chrome)
+        if visible>available:
+            boundaries=[]
+            for row in rows[:5]:
+                ok,bounds=row.compute_bounds(scroll)
+                if ok:
+                    end=round(bounds.get_y()+bounds.get_height()+scroll.get_vadjustment().get_value())
+                    if end<=available:boundaries.append(end)
+            visible=max(boundaries) if boundaries else available
+        scroll.set_max_content_height(-1)
+        scroll.set_min_content_height(visible)
+        scroll.set_max_content_height(visible)
+        scroll.set_propagate_natural_height(True)
+        dialog.set_content_height(visible+chrome)
+        return False
+
+    def review_entry(self,title,subtitle='',game=None,badge=None,details=None,icon='text-x-generic-symbolic'):
+        entry=(Adw.ExpanderRow if details is not None else Adw.ActionRow)(title=str(title),subtitle=str(subtitle))
+        entry.set_use_markup(False);entry.set_subtitle_lines(0)
+        entry.add_css_class('review-game')
+        if details is not None:
+            def resized(*_):
+                listing=entry.get_parent()
+                if isinstance(listing,Gtk.ListBox):GLib.timeout_add(80,self.size_review_panel,listing)
+            entry.connect('notify::expanded',resized)
+        if game:
+            accent=self._ensure_game_accent(game)
+            if accent:entry.add_css_class(accent)
+        path=capsule_art_path(game) if game else None
+        if game:
+            # Reuse the actual Library artwork and its approved ghost layer.
+            bezel=ListArtwork();bezel.set_artwork(path)
+            bezel.picture.set_content_fit(Gtk.ContentFit.CONTAIN)
+            bezel.button.set_can_target(False);bezel.button.set_focusable(False)
+        else:
+            bezel=Gtk.Frame(width_request=100,height_request=49,valign=Gtk.Align.CENTER)
+            bezel.set_child(Gtk.Image(icon_name=icon,pixel_size=28))
+        bezel.add_css_class('review-bezel');bezel.set_overflow(Gtk.Overflow.HIDDEN)
+        entry.add_prefix(bezel)
+        if badge:
+            pill=label(badge,'review-badge');pill.set_valign(Gtk.Align.CENTER);entry.add_suffix(pill)
+        if details is not None:
+            if isinstance(details,Gtk.Widget):entry.add_row(details)
+            else:
+                text=label(str(details));text.set_selectable(True);margins(text,14);entry.add_row(text)
+        return entry
+
+    def review_game(self,name,game_id=None):
+        return next((g for g in self.games if (game_id and g['game']==game_id) or g['name']==name),None)
+
+    def add_game_art_prefix(self,entry,game):
+        if game and poster_art_path(game):
+            art=Gtk.Picture.new_for_filename(poster_art_path(game))
+            art.set_content_fit(Gtk.ContentFit.COVER)
+            art.set_size_request(40,56)
+            art.set_can_shrink(True)
+            art.set_valign(Gtk.Align.CENTER)
+        else:
+            art=Gtk.Image(icon_name='applications-games-symbolic',pixel_size=28)
+        entry.add_prefix(art)
+
+    make_brand_icon=staticmethod(make_brand_icon)
+
+    def artwork_preferences(self,game):
+        """Role-specific local artwork with explicit, reversible selection."""
+        group=Adw.PreferencesGroup(
+            title='Custom Artwork',
+            description='Artwork changes also sync to your local Steam library. Reset restores your original Steam artwork.',
+        )
+        group.add(button('Sync artwork to Steam',lambda *_:self.sync_steam_artwork(game=game)))
+        group.artwork_controls={}
+        accent_path=game.get('capsule') or game.get('poster') or game.get('hero')
+        try:
+            editor_accent=artwork_accent(accent_path,self.settings.get('game_accents',{}).get(game['game'])) if accent_path else None
+        except Exception:editor_accent=None
+        cards=Gtk.Box(spacing=16,homogeneous=True)
+        group.add(cards)
+        for role,title,hint,width,height in (
+            ('poster','Poster','600 × 900',72,108),
+            ('capsule','Wide Capsule','920 × 430',132,62),
+            ('hero','Hero','1920 × 620',156,50),
+        ):
+            path=poster_art_path(game) if role=='poster' else capsule_art_path(game) if role=='capsule' else game.get('hero')
+            item=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True)
+            item.add_css_class('artwork-editor')
+            if editor_accent:item.add_css_class(editor_accent)
+            heading=label(title,'heading');heading.set_halign(Gtk.Align.CENTER)
+            item.append(heading)
+            canvas=Gtk.CenterBox(height_request=120)
+            frame=Gtk.Frame(valign=Gtk.Align.CENTER,halign=Gtk.Align.CENTER)
+            frame.add_css_class('artwork-preview')
+            frame.set_overflow(Gtk.Overflow.HIDDEN)
+            preview=FixedArtworkPicture(width,height)
+            if path and Path(path).is_file():
+                try:preview.set_paintable(Gdk.Texture.new_from_filename(str(path)))
+                except Exception:pass
+            if preview.get_paintable() is None:
+                placeholder=Gtk.CenterBox(width_request=width,height_request=height)
+                placeholder.set_center_widget(Gtk.Image(icon_name='applications-games-symbolic',pixel_size=24))
+                frame.set_child(placeholder)
+            else:frame.set_child(preview)
+            canvas.set_center_widget(frame)
+            item.append(canvas)
+            dimensions=label(hint,'dim-label');dimensions.set_halign(Gtk.Align.CENTER)
+            item.append(dimensions)
+            actions=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8)
+            controls={}
+            for key,text,icon in (
+                ('choose','Choose Image','image-x-generic-symbolic'),
+                ('search','Browse artwork','system-search-symbolic'),
+                ('reset','Reset','edit-undo-symbolic'),
+            ):
+                callbacks={'choose':self.choose_game_artwork,'search':self.search_game_artwork,'reset':self.reset_game_artwork}
+                control=icon_button(text,icon,lambda *_,r=role,fn=callbacks[key]:fn(game,r))
+                control.set_sensitive(not self.options.demo)
+                control.set_tooltip_text('Preview mode' if self.options.demo else text)
+                actions.append(control);controls[key]=control
+            item.append(actions)
+            cards.append(item)
+            group.artwork_controls[role]={'row':item,'preview':preview,'canvas':canvas,**controls}
+        return group
+
+    def add_rtxforge_to_steam(self,*_):
+        if self.options.demo:self.toast('Steam integration is disabled in preview mode.');return
+        d,b,f=self.open_panel('Add rtxForge to Steam',width=600,height=420)
+        b.append(label('Add this installation as a non-Steam app and apply the bundled poster, wide capsule, hero and logo. No SteamGridDB key is needed.','dim-label'))
+        b.append(label('Close Steam before creating a new shortcut. Existing shortcuts are preserved, and their artwork can be refreshed while Steam is open. Backups are retained.','dim-label'))
+        def install(*_):
+            import steam_self_install
+            d.close()
+            def ready(result):
+                if result['errors']:self.error('The Steam shortcut is available, but some artwork still needs syncing: '+ '; '.join(result['errors']))
+                else:self.toast('rtxForge and its artwork are ready in Steam. Restart Steam to refresh its library.')
+            self.start('Adding rtxForge to Steam',lambda:steam_self_install.install(self.service.config,self.settings),ready)
+        f.append(button('Choose Steam profile',lambda *_:(d.close(),self.choose_steam_artwork_profile())))
+        f.append(button('Add & apply artwork',install,'suggested-action'))
+
+    def show_game_artwork(self,game):
+        d,b,f=self.open_panel('Artwork · '+game.get('name','Game'),width=800,height=600)
+        b.append(self.artwork_preferences(game))
+
+    def choose_steam_artwork_profile(self,*_):
+        import steam_artwork
+        try:accounts=steam_artwork.profiles(self.service.config)
+        except Exception as error:self.error(str(error));return
+        d,b,f=self.open_panel('Steam artwork profile',width=580,height=420)
+        b.append(label('Choose the local Steam account whose artwork rtxForge should update.','dim-label'))
+        if not accounts:b.append(label('No Steam profile found. Open Steam once, then try again.'))
+        for account in accounts:
+            def choose(*_,account=account):
+                self.settings['steam_artwork_profile']={'root':account['root'],'userid':account['userid']}
+                library_media.save_settings(self.service.config,self.settings)
+                d.close();self.toast('Steam artwork profile selected')
+            b.append(button('Steam account '+account['userid']+' · '+account['root'],choose))
+
+    def sync_steam_artwork(self,*_,game=None,refresh=False):
+        import steam_artwork,copy
+        if self.options.demo:self.toast('Steam artwork sync is disabled in preview mode.');return
+        if self.busy and self.task_kind!='art':return
+        settings=copy.deepcopy(self.settings)
+        if game and refresh:
+            import artwork_overrides
+            game.update(artwork_overrides.apply(settings,game,game))
+        targets=[game] if game else [g for g in self.games if settings.get('game_artwork',{}).get(g['game']) or settings.get('steam_artwork_pending',{}).get(g['game']) or any(g.get(role) for role in steam_artwork.SUFFIX)]
+        if not targets:self.toast('No custom artwork to sync yet.');return
+        def work():
+            result={'images':0,'success':[],'errors':[]}
+            for item in targets:
+                try:
+                    pending=settings.get('steam_artwork_pending',{}).get(item['game'],{})
+                    changes=steam_artwork.sync_game(self.service.config,settings,item,reset_roles=[role for role,value in pending.items() if value=='reset'],include_displayed=not refresh)
+                    result['images']+=sum(bool(change.get('changed')) for change in changes)
+                    result['success'].append(item['game'])
+                except Exception as error:result['errors'].append(item.get('name','Game')+': '+str(error))
+            return result
+        def ready(result):
+            for key in result['success']:self.settings.setdefault('steam_artwork_pending',{}).pop(key,None)
+            library_media.save_settings(self.service.config,self.settings)
+            if result['errors']:
+                d,b,f=self.open_panel('Artwork saved locally',width=650,height=460)
+                b.append(label(str(result['images'])+' Steam images updated. Some artwork still needs syncing.','dim-label'))
+                for error in result['errors']:b.append(label(error,'dim-label'))
+                f.append(button('Choose Steam profile',lambda *_:(d.close(),self.choose_steam_artwork_profile())))
+            else:self.toast('Artwork synced to Steam. Restart Steam if its cached images have not refreshed.')
+            if refresh and not result['errors']:self.refresh_game_artwork(game)
+            elif refresh:
+                if getattr(self,'couch',None):self.couch.artwork_updated(game)
+                self.show_games(self.games,art=False)
+        self.start('Syncing artwork to Steam',work,ready)
+
+    def refresh_game_artwork(self,game):
+        def ready(result):
+            game.update(result)
+            self._ensure_game_accent(game)
+            if getattr(self,'couch',None):self.couch.artwork_updated(game)
+            self.show_games(self.games,art=False)
+            self.details(game)
+        self.start('Updating artwork',lambda:library_media.LibraryMedia(self.service.config,self.settings).enrich(game),ready)
+
+    def choose_game_artwork(self,game,role):
+        import artwork_overrides
+        chooser=Gtk.FileDialog(title='Choose '+role+' artwork')
+        formats=Gtk.FileFilter();formats.set_name('Images (PNG, JPEG, WebP)')
+        for mime in ('image/png','image/jpeg','image/webp'):formats.add_mime_type(mime)
+        filters=Gio.ListStore.new(Gtk.FileFilter);filters.append(formats);chooser.set_filters(filters)
+        def chosen(dialog,result):
+            try:path=dialog.open_finish(result).get_path()
+            except GLib.Error:return
+            if not path:return
+            try:
+                with open(path,'rb') as stream:data=stream.read(artwork_overrides.MAX_BYTES+1)
+                artwork_overrides.store(self.service.config,self.settings,game,role,data)
+            except Exception as error:self.error(str(error));return
+            self.sync_steam_artwork(game=game,refresh=True)
+        chooser.open(self,None,chosen)
+
+    def reset_game_artwork(self,game,role):
+        import artwork_overrides
+        try:artwork_overrides.reset(self.service.config,self.settings,game,role)
+        except Exception as error:self.error(str(error));return
+        game.pop(role,None)
+        self.sync_steam_artwork(game=game,refresh=True)
+
+    def search_game_artwork(self,game,role):
+        import steamgrid_client
+        if not steamgrid_client.configured():
+            self.error('SteamGridDB API setup is not configured yet. Choose Image works now; SteamGridDB browsing will be available after setup.')
+            return
+        self.open_steamgrid_search(game,role)
+
+    def open_steamgrid_search(self,game,role):
+        import steamgrid_client,artwork_overrides
+        from concurrent.futures import ThreadPoolExecutor
+        client=steamgrid_client.Client()
+        title={'poster':'Posters','capsule':'Wide capsules','hero':'Heroes','logo':'Logos'}[role]
+        dialog,body,footer=self.open_panel(title+' for '+game['name'],width=800,height=700)
+        state={'generation':0,'match':None,'page':0,'assets':[],'picked':None,'closed':False,'loading':False}
+        pool=ThreadPoolExecutor(max_workers=4,thread_name_prefix='artwork-preview')
+        def close(*_):
+            state['closed']=True;state['generation']+=1;pool.shutdown(wait=False,cancel_futures=True)
+        dialog.connect('closed',close)
+        def current(token):return not state['closed'] and self.dialog is dialog and state['generation']==token
+        status=label('Community artwork from SteamGridDB · static images','dim-label');status.set_wrap(True)
+        stack=Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE,vexpand=True)
+        browse=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12)
+        searchline=Gtk.Box(spacing=8)
+        query=Gtk.SearchEntry(placeholder_text='Search for a different game',hexpand=True);query.set_text(game['name'])
+        searchline.append(query);search_button=button('Search',lambda *_:search());searchline.append(search_button);browse.append(searchline)
+        filters=Gtk.Box(spacing=8)
+        def choice(title,values):
+            box=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4,hexpand=True);box.append(label(title,'caption'))
+            control=Gtk.DropDown.new_from_strings(['All '+title.lower()]+[v.replace('_',' ').replace('material','Minimal').replace('image/','').replace('x',' × ') for v in values])
+            control.set_hexpand(True);box.append(control);filters.append(box)
+            return control,values
+        style=choice('Styles',steamgrid_client.STYLES[role]);size=choice('Sizes',steamgrid_client.DIMENSIONS[role]);mime=choice('Formats',steamgrid_client.MIMES)
+        browse.append(filters)
+        humor=Gtk.CheckButton(label='Include humorous artwork');browse.append(humor)
+        listing=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=10)
+        grid=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,min_children_per_line=2,max_children_per_line=4,column_spacing=12,row_spacing=12,homogeneous=True)
+        results=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=10);results.append(listing);results.append(grid)
+        scroll=Gtk.ScrolledWindow(vexpand=True,min_content_height=220,hscrollbar_policy=Gtk.PolicyType.NEVER);scroll.set_child(results);browse.append(scroll)
+        preview=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12)
+        picture=Gtk.Picture(content_fit=Gtk.ContentFit.CONTAIN,can_shrink=True,vexpand=True,height_request=310)
+        credit=label('','dim-label');credit.set_wrap(True);preview.append(picture);preview.append(credit)
+        stack.add_named(browse,'browse');stack.add_named(preview,'preview');body.append(status);body.append(stack)
+        back=button('Back to results',lambda *_:back_to_results());back.set_visible(False)
+        more=button('Load more',lambda *_:load_artwork(True));more.set_visible(False)
+        apply=button('Use artwork',lambda *_:save(),'suggested-action');apply.set_visible(False)
+        footer.append(back);footer.append(more);footer.append(apply)
+        def choice_value(pair):
+            control,values=pair;index=control.get_selected();return values[index-1] if 0<index<=len(values) else ''
+        def request(work,done,token):
+            if not current(token):return
+            def execute():
+                try:result=work();error=None
+                except Exception as ex:result=None;error=str(ex)
+                def deliver():
+                    if not current(token):return False
+                    state['loading']=False;search_button.set_sensitive(True)
+                    if error:status.set_text(error);more.set_sensitive(True)
+                    else:
+                        try:done(result)
+                        except Exception as ex:status.set_text(str(ex))
+                    return False
+                GLib.idle_add(deliver)
+            pool.submit(execute)
+        def clear_results():
+            clear(listing)
+            while grid.get_first_child():grid.remove(grid.get_first_child())
+        def back_to_results():
+            state['generation']+=1;state['picked']=None;stack.set_visible_child_name('browse');back.set_visible(False);apply.set_visible(False);more.set_visible(bool(state['assets']))
+            status.set_text(title+' · choose an image to preview and apply')
+        def select_asset(asset):
+            state['generation']+=1;token=state['generation'];status.set_text('Loading full-size preview…');state['picked']=None;more.set_visible(False);apply.set_sensitive(False)
+            def ready(data):
+                artwork_overrides.dimensions(data)
+                picture.set_paintable(Gdk.Texture.new_from_bytes(GLib.Bytes.new(data)))
+                state['picked']=(asset,data);credit.set_text(str(asset.get('width','?'))+' × '+str(asset.get('height','?'))+' · '+str((asset.get('author') or {}).get('name','Community artist')))
+                stack.set_visible_child_name('preview');back.set_visible(True);apply.set_visible(True);apply.set_sensitive(True);status.set_text('Apply this '+role+' to rtxForge and your selected Steam library.');apply.grab_focus()
+            request(lambda:client.download(asset),ready,token)
+        def thumbnail(asset,pic,token):
+            try:
+                data=client.thumbnail(asset);loader=GdkPixbuf.PixbufLoader.new();invalid=[]
+                def prepared(loader,w,h):
+                    if w*h>40_000_000:invalid.append(True)
+                    loader.set_size(192,288 if role=='poster' else 100)
+                loader.connect('size-prepared',prepared);loader.write(data);loader.close();pixbuf=loader.get_pixbuf()
+                if invalid or pixbuf is None:return
+                def paint():
+                    if not state['closed'] and self.dialog is dialog and asset in state['assets']:pic.set_paintable(Gdk.Texture.new_for_pixbuf(pixbuf))
+                    return False
+                GLib.idle_add(paint)
+            except Exception:pass
+        def render_assets(assets,append,token,page):
+            state['page']=page
+            if not append:clear_results();state['assets']=[]
+            seen={x.get('id') for x in state['assets']}
+            for asset in assets:
+                if not isinstance(asset,dict) or not asset.get('url') or asset.get('id') in seen:continue
+                state['assets'].append(asset);seen.add(asset.get('id'))
+                card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6)
+                pic=FixedArtworkPicture(144,216 if role=='poster' else 82);card.append(pic)
+                author=label(str((asset.get('author') or {}).get('name','Community artist')),'caption');author.set_ellipsize(Pango.EllipsizeMode.END);card.append(author)
+                control=Gtk.Button();control.set_child(card);control.add_css_class('artwork-preview');control.set_tooltip_text(str(asset.get('width','?'))+' × '+str(asset.get('height','?'))+' · '+author.get_text());control.connect('clicked',lambda _,a=asset:select_asset(a));grid.append(control)
+                pool.submit(thumbnail,asset,pic,token)
+            status.set_text(str(len(state['assets']))+' '+title.lower()+' · '+state['match']['name'] if state['assets'] else 'No artwork matches these filters. Try another style or size.')
+            more.set_visible(bool(assets) and state['page']<100);more.set_sensitive(True)
+        def load_artwork(append=False):
+            if not state['match']:return
+            state['generation']+=1;token=state['generation'];page=state['page']+1 if append else 0
+            if not append:clear_results();state['assets']=[];more.set_visible(False)
+            status.set_text('Finding '+title.lower()+'…');more.set_sensitive(False);stack.set_visible_child_name('browse');back.set_visible(False);apply.set_visible(False)
+            args={'page':page,'style':choice_value(style),'dimensions':choice_value(size),'mime':choice_value(mime),'humor':humor.get_active()};match=state['match']['id']
+            request(lambda:client.artwork(match,role,**args),lambda assets:render_assets(assets,append,token,page),token)
+        def choose_match(match):state['match']=match;load_artwork()
+        def games_ready(matches):
+            clear_results();state['assets']=[];state['match']=None;more.set_visible(False)
+            exact=[m for m in matches if str(m.get('name','')).casefold()==query.get_text().strip().casefold()]
+            if len(exact)==1:choose_match(exact[0]);return
+            status.set_text('Choose the matching game.' if matches else 'No matching games. Try another title or upload an image.')
+            for match in matches:listing.append(button(str(match.get('name','Unknown game')),lambda *_,m=match:choose_match(m)))
+        def search():
+            state['generation']+=1;token=state['generation'];term=query.get_text().strip();search_button.set_sensitive(False);status.set_text('Searching games…')
+            request(lambda:client.search(term),games_ready,token)
+        def save():
+            if not state['picked']:return
+            asset,data=state['picked']
+            try:artwork_overrides.store(self.service.config,self.settings,game,role,data,credit='SteamGridDB · '+str((asset.get('author') or {}).get('name','Community artist')))
+            except Exception as ex:status.set_text(str(ex));return
+            dialog.close();self.sync_steam_artwork(game=game,refresh=True)
+        query.connect('activate',lambda *_:search())
+        for control,_ in (style,size,mime):control.connect('notify::selected',lambda *_:load_artwork())
+        humor.connect('toggled',lambda *_:load_artwork())
+        self._steamgrid_review={'dialog':dialog,'stack':stack,'grid':grid,'state':state,'status':status,'select':select_asset,'back':back_to_results,'search':search,'style':style[0],'more':more}
+        search()
+
+    def preview_steamgrid_artwork(self,asset,selected):
+        import steamgrid_client
+        # Keep the browser dialog open; preview is a child window.
+        def ready(data):
+            try:
+                raw=GLib.Bytes.new(data);texture=Gdk.Texture.new_from_bytes(raw)
+            except Exception as error:self.error(str(error));return
+            preview=Gtk.Window(title='Artwork preview',transient_for=self,modal=True,default_width=640,default_height=480)
+            body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12);margins(body,16)
+            picture=Gtk.Picture.new_for_paintable(texture);picture.set_content_fit(Gtk.ContentFit.CONTAIN);picture.set_vexpand(True);body.append(picture)
+            body.append(button('Use Artwork',lambda *_:(preview.close(),selected(asset,data)),'suggested-action'))
+            body.append(button('Cancel',lambda *_:preview.close()))
+            preview.set_child(body);preview.present()
+        self.start('Loading artwork preview',lambda:steamgrid_client.Client.download(asset),ready)
+
     def show_extras(self,*_):
         d,b,f=self.open_panel('Extras')
         b.append(label('Manage standalone tools and NR diagnostics for each game.','dim-label'))
+        group=Adw.PreferencesGroup()
+        b.append(group)
         for game in self.games:
             item=row(game['name'],game.get('profile',''))
+            self.add_game_art_prefix(item,game)
             item.add_suffix(button('Tools',lambda _,g=game:(self.details(g),self.detail_pages.set_visible_child_name('Tools'))))
-            b.append(item)
+            group.add(item)
 
     def show_diagnostics(self,game):
         import runtime_diagnostics,json
@@ -4730,10 +5518,9 @@ class Window(Adw.ApplicationWindow):
     def review_extra(self,plan):
         import extra_tools
         d,b,f=self.open_panel('Review '+extra_tools.KINDS[plan['kind']])
-        b.append(label(plan['name'],'title-2'))
-        for change in plan['changes']:
-            b.append(row('Add',change['path']))
-            b.append(row('SHA-256',change['after']))
+        listing=self.review_list();b.append(listing)
+        changes='\n'.join('Add '+change['path']+'\nSHA-256: '+change['after'] for change in plan['changes'])
+        listing.append(self.review_entry(plan['name'],'Add '+extra_tools.KINDS[plan['kind']],self.review_game(plan['name'],plan.get('game')),'Install',changes))
         b.append(label('This native code will run inside the game. The hash identifies the selected file; it does not establish its publisher or safety.','dim-label'))
         trust=Gtk.CheckButton(label='I trust the source of this exact file');b.append(trust)
         apply=button('Install Tool',lambda *_:self.start('Installing tool',lambda:extra_tools.apply(self.service.config,plan),lambda _:(self.toast('Tool installed. Recovery is available in Tools.'),d.close())),'suggested-action')
@@ -4742,7 +5529,8 @@ class Window(Adw.ApplicationWindow):
     def review_extra_restore(self,record):
         import extra_tools
         d,b,f=self.open_panel('Restore Tool',width=500,height=260)
-        b.append(label('Remove the exact installed tool from '+record['name']+'. Changed files will be refused; game saves and other tools are preserved.'))
+        listing=self.review_list();b.append(listing)
+        listing.append(self.review_entry(record['name'],'Restore this tool’s original files',self.review_game(record['name'],record.get('game')),'Restore','Changed files will be refused. Game saves and other tools are preserved.'))
         f.append(button('Restore',lambda *_:self.start('Restoring tool',lambda:extra_tools.restore(self.service.config,record['path']),lambda _:(self.toast('Tool restored.'),d.close())),'suggested-action'))
 
     def show_packages(self,*_):
@@ -5790,12 +6578,12 @@ class Window(Adw.ApplicationWindow):
             self.operation_hide_source=0
         self.operation_spinner.stop();self.operation_revealer.set_reveal_child(False)
         return False
-    def show_operation_status(self,text,complete=False,icon='emblem-ok-symbolic'):
+    def show_operation_status(self,text,complete=False,icon='object-select-symbolic'):
         if self.operation_hide_source:
             try:GLib.source_remove(self.operation_hide_source)
             except Exception:pass
             self.operation_hide_source=0
-        self.operation_status.set_text(str(text))
+        self.operation_status.set_text(user_messages.friendly_status(text))
         self.operation_revealer.set_reveal_child(True)
         if complete:
             self.operation_spinner.stop();self.operation_spinner.set_visible(False)
@@ -6062,6 +6850,7 @@ class Window(Adw.ApplicationWindow):
             view.get_sorter(),
         )
 
+        self.list_sort_model.connect('items-changed',lambda *_:GLib.idle_add(self._column_sync_selection_widgets))
         self.list_selection_model=Gtk.NoSelection.new(
             self.list_sort_model
         )
@@ -6318,7 +7107,7 @@ class Window(Adw.ApplicationWindow):
             'accent_class'
         )
 
-        if accent:
+        if accent and game.get('_accent_blocked')==bool(game.get('blocked')):
             return accent
 
         path=(
@@ -6339,7 +7128,9 @@ class Window(Adw.ApplicationWindow):
                 ).get(
                     game['game']
                 ),
+                muted=bool(game.get('blocked')),
             )
+            game['_accent_blocked']=bool(game.get('blocked'))
 
             game[
                 'accent_class'
@@ -6596,14 +7387,11 @@ class Window(Adw.ApplicationWindow):
             )
         )
 
-        path=(
-            game.get('capsule')
-            or game.get('poster')
-        )
+        path=capsule_art_path(game)
 
-        root._artwork.set_artwork(
-            path
-        )
+        root._artwork.set_artwork(path)
+        root._check.set_sensitive(not bool(game.get('blocked')))
+        self.decorate_support_artwork(root._artwork,root._artwork.picture,game,path)
 
         self._column_apply_accent(
             root,
@@ -6715,6 +7503,9 @@ class Window(Adw.ApplicationWindow):
         if not game_id:
             return
 
+        if check.get_active() and root._game and root._game.get('blocked'):
+            root._binding=True;check.set_active(False);root._binding=False
+            return
         if check.get_active():
             self.selected_game_ids.add(
                 game_id
@@ -6976,7 +7767,7 @@ class Window(Adw.ApplicationWindow):
             )
 
         if game.get('blocked'):
-            text='Not Installed'
+            text='Unsupported'
             css='unavailable'
         elif game.get('installed'):
             text='Installed'
@@ -7266,36 +8057,14 @@ class Window(Adw.ApplicationWindow):
             False
         )
 
-        if blocked:
-            child=Gtk.Image.new_from_icon_name(
-                'action-unavailable-symbolic'
-            )
-            child.set_pixel_size(
-                16
-            )
-
-            root._primary.set_child(
-                child
-            )
-            root._primary.set_tooltip_text(
-                'Not Installed'
-            )
-
-        else:
-            child=Gtk.Label(
-                label=(
-                    'Details'
-                    if game.get('installed')
-                    else 'Install'
-                )
-            )
-
-            root._primary.set_child(
-                child
-            )
-            root._primary.set_tooltip_text(
-                None
-            )
+        caption='Details' if blocked or game.get('installed') else 'Install'
+        content=Gtk.Box(spacing=10,halign=Gtk.Align.CENTER,valign=Gtk.Align.CENTER)
+        image=Gtk.Image.new_from_icon_name(action_icon(caption))
+        image.set_visible(BUTTON_GLYPHS);BUTTON_IMAGES.add(image)
+        content.append(image);content.append(label(caption))
+        root._primary.set_child(content)
+        root._primary.set_tooltip_text(None)
+        root._primary.set_size_request(108,-1)
 
         enabled=(
             not self.busy
@@ -7310,9 +8079,7 @@ class Window(Adw.ApplicationWindow):
         )
 
         root._primary.set_sensitive(
-            enabled
-            and compatible
-            and not blocked
+            enabled and (blocked or game.get('installed') or compatible)
         )
 
         root._more.set_sensitive(
@@ -7414,15 +8181,8 @@ class Window(Adw.ApplicationWindow):
     ):
         game=root._game
 
-        if (
-            game is None
-            or game.get(
-                'blocked'
-            )
-        ):
-            return
-
-        if game.get('installed'):
+        if game is None:return
+        if game.get('blocked') or game.get('installed'):
             self.details(game)
             return
         self.launch_action('install', targets=[game])
@@ -7448,6 +8208,7 @@ class Window(Adw.ApplicationWindow):
         def add(caption,callback,enabled=True):
             action=button(caption,lambda *_:(pop.popdown(),callback()))
             action.add_css_class('flat');action.set_sensitive(enabled)
+            action.get_child().set_halign(Gtk.Align.START)
             content.append(action)
         add('Game Details',lambda:self.details(game))
         def files():
@@ -7493,6 +8254,11 @@ class Window(Adw.ApplicationWindow):
         for name in root.get_css_classes():
             if name.startswith('art-'):widget.add_css_class(name)
         (widget.add_css_class if selected else widget.remove_css_class)('game-selected')
+        count=self.list_sort_model.get_n_items()
+        game_id=getattr(root,'_game_id',None)
+        for css,index in (('joined-first',0),('joined-last',count-1)):
+            edge=count>0 and game_id==self.list_sort_model.get_item(index).game['game']
+            (widget.add_css_class if edge else widget.remove_css_class)(css)
 
     def _column_sync_selection_widgets(self):
         for game_id,root in list(
@@ -7661,14 +8427,14 @@ class Window(Adw.ApplicationWindow):
         self.start('Update DLSS Files',work,finished)
 
     def update_dlss_games(self,games):
-        targets=list({game['game']:game for game in games}.values())
+        targets=list({game['game']:game for game in games if not game.get('blocked')}.values())
         if not targets:
             self.toast('No games selected.');return
         d,b,f=self.open_panel('Update DLSS Files',width=620,height=440)
         b.append(label(f'Update DLSS files in {len(targets)} games?','title-2'))
         b.append(label('Only older supported native DLSS files are updated. Protected files are skipped and previous copies are backed up.'))
-        for game in targets:
-            b.append(label(game['name']))
+        listing=self.review_list();b.append(listing)
+        for game in targets:listing.append(self.review_entry(game['name'],'Check for newer DLSS files',game,'DLSS Files'))
         f.append(button('Cancel',lambda *_:d.close()))
         def update(*_):
             if self.options.demo:return
@@ -7941,13 +8707,7 @@ class Window(Adw.ApplicationWindow):
                 continue
 
             root._primary.set_sensitive(
-                enabled
-                and compatible
-                and not bool(
-                    game.get(
-                        'blocked'
-                    )
-                )
+                enabled and (game.get('blocked') or game.get('installed') or compatible)
             )
 
             root._more.set_sensitive(
@@ -7989,9 +8749,14 @@ class Window(Adw.ApplicationWindow):
             )
     def event(self,event):
         if event['kind']=='progress':
+            state=getattr(self,'review_check_state',None)
+            if state and self.dialog is state['dialog']:
+                self.review_check_event(event,state)
+                self.show_operation_status(event['label'])
+                return False
             self.show_operation_status(event['label']);self.update_progress_art(event.get('game',''))
             if getattr(self,'job_label',None):
-                self.job_caption.set_text(event['label'])
+                self.job_caption.set_text(user_messages.friendly_status(event['label']))
                 if 'fraction' in event:
                     self.job_bar.set_fraction(event['fraction'])
                     self.job_counter.set_text(str(event['current'])+' of '+str(event['total'])+' games')
@@ -8264,12 +9029,14 @@ class Window(Adw.ApplicationWindow):
             )
 
         self.dialog=dialog
+        dialog.add_css_class('modal-panel')
         self.job_label=None
 
         box=Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
         )
         dialog.set_child(box)
+        box.add_css_class('panel-shell')
 
         header=Adw.HeaderBar()
         header.set_show_end_title_buttons(
@@ -8443,6 +9210,8 @@ class Window(Adw.ApplicationWindow):
         icons={
             'Graphics':'video-display-symbolic',
             'Library':'applications-games-symbolic',
+            'Gaming Mode':'input-gaming-symbolic',
+            'Appearance':'applications-graphics-symbolic',
             'System':'computer-symbolic',
             'Recovery':'document-revert-symbolic',
         }
@@ -8450,7 +9219,7 @@ class Window(Adw.ApplicationWindow):
         for title,items in sections:
             page=Gtk.Box(
                 orientation=Gtk.Orientation.VERTICAL,
-                spacing=16,
+                spacing=28,
             )
             page.add_css_class(
                 'settings-content'
@@ -8465,12 +9234,11 @@ class Window(Adw.ApplicationWindow):
                 hscrollbar_policy=Gtk.PolicyType.NEVER,
                 vexpand=True,
             )
-            scroll.set_child(
-                page
-            )
+            clamp=Adw.Clamp(child=page,maximum_size=800,tightening_threshold=600)
+            scroll.set_child(clamp)
 
             stack.add_titled(
-                scroll,
+                scroll_bottom_fade(scroll),
                 title,
                 title,
             )
@@ -8530,10 +9298,20 @@ class Window(Adw.ApplicationWindow):
 
         return stack
 
+    def technical_details(self,message):
+        group=Adw.PreferencesGroup()
+        detail=Adw.ExpanderRow(title='Technical details')
+        raw=label(str(message));raw.set_selectable(True);margins(raw,12)
+        detail.add_row(raw);group.add(detail)
+        return group
+
     def error(self,message):
         if self.dialog==getattr(self,'progress_dialog',None) and getattr(self,'job_label',None):
             box=self.progress_shell.get_last_child();self.finish_progress(False,str(message),box.get_last_child());return
-        d,b,f=self.open_panel('Could Not Finish',width=580,height=300,show_close=False);b.append(label(str(message)));f.append(button('Close',lambda *_:d.close()))
+        d,b,f=self.open_panel('Could Not Finish',width=580,height=360,show_close=False)
+        b.append(label(user_messages.friendly_error(message)))
+        b.append(self.technical_details(message))
+        f.append(button('Close',lambda *_:d.close()))
     def scan(self):
         if self.options.demo:return
         extra=list(self.settings['extra_folders']);self.start('Checking hardware and scanning libraries',lambda:{'hardware':self.service.hardware(),'games':self.service.scan_all(extra)},self.scanned)
@@ -9155,7 +9933,7 @@ class Window(Adw.ApplicationWindow):
                 check,
                 False,
             )
-        badge=label('Not Installed' if game.get('blocked') else game.get('profile','Ready') if game.get('installed') else 'Ready','cover-badge');badge.set_halign(Gtk.Align.START);badge.set_valign(Gtk.Align.END);margins(badge,7)
+        badge=label('Unsupported' if game.get('blocked') else game.get('profile','Ready') if game.get('installed') else 'Ready','cover-badge');badge.set_halign(Gtk.Align.START);badge.set_valign(Gtk.Align.END);margins(badge,7)
         badge_mode={'NR Only':'nr-only','MFG Only':'mfg-only','NR + MFG':'nr-mfg'}.get(game.get('profile'))
         if badge_mode:
             badge=profile_label(badge_mode,badge.get_text());badge.add_css_class('cover-badge');badge.set_halign(Gtk.Align.START);badge.set_valign(Gtk.Align.END);margins(badge,7)
@@ -9355,6 +10133,7 @@ class Window(Adw.ApplicationWindow):
         self.attach_game_context(card,lambda:entry['data'])
     def paint_card(self,entry):
         game=entry['data']
+        entry['check'].set_sensitive(not bool(game.get('blocked')))
 
         view=self.settings.get(
             'library_view',
@@ -9365,15 +10144,9 @@ class Window(Adw.ApplicationWindow):
             'capsules',
             'list',
         ):
-            path=(
-                game.get('capsule')
-                or game.get('poster')
-            )
+            path=self.wide_art_path(game)
         else:
-            path=(
-                game.get('poster')
-                or game.get('capsule')
-            )
+            path=poster_art_path(game)
         if path:
             try:
                 texture=Gdk.Texture.new_from_filename(path)
@@ -9381,10 +10154,12 @@ class Window(Adw.ApplicationWindow):
                 entry['picture'].queue_resize()
                 entry['fallback'].set_visible(False)
                 if game.get('accent_class'):entry['widget'].remove_css_class(game['accent_class'])
-                game['accent_class']=artwork_accent(path,self.settings.get('game_accents',{}).get(game['game']));entry['widget'].add_css_class(game['accent_class'])
+                accent_path=capsule_art_path(game) or game.get('poster') or game.get('hero') or path
+                game['accent_class']=artwork_accent(accent_path,self.settings.get('game_accents',{}).get(game['game']),muted=bool(game.get('blocked')));entry['widget'].add_css_class(game['accent_class'])
             except Exception:entry['fallback'].set_visible(True)
         else:
             entry['picture'].set_paintable(None);entry['fallback'].set_visible(True)
+        self.decorate_support_artwork(entry['overlay'],entry['picture'],game,path)
         entry['meta'].set_text(
             str(
                 game.get(
@@ -9485,7 +10260,7 @@ class Window(Adw.ApplicationWindow):
         if active:
             self.selected_game_ids={
                 game['game']
-                for game in self.games
+                for game in self.games if not game.get('blocked')
             }
         else:
             self.selected_game_ids.clear()
@@ -9533,6 +10308,7 @@ class Window(Adw.ApplicationWindow):
                         'check'
                     )
                     is not None
+                    and not entry['data'].get('blocked')
                     and entry[
                         'check'
                     ].get_active()
@@ -9846,11 +10622,7 @@ class Window(Adw.ApplicationWindow):
         identity.set_margin_top(16)
         identity.set_margin_bottom(16)
 
-        detail_poster_source=(
-            game.get('poster')
-            or game.get('capsule')
-            or game.get('hero')
-        )
+        detail_poster_source=poster_art_path(game)
 
         if detail_poster_source:
             DETAIL_POSTER_WIDTH=104
@@ -9913,8 +10685,8 @@ class Window(Adw.ApplicationWindow):
 
         # Feature/status tag ABOVE the game name.
         mode_name=(
-            game.get('profile')
-            if game.get('installed')
+            'Unsupported' if game.get('blocked') else
+            game.get('profile') if game.get('installed')
             else 'Ready for Features'
         )
 
@@ -9922,6 +10694,7 @@ class Window(Adw.ApplicationWindow):
             mode_name or 'Ready for Features',
             'cover-badge',
         )
+        if game.get('blocked'):status.add_css_class('unsupported-badge')
         status.set_halign(
             Gtk.Align.START
         )
@@ -10261,8 +11034,9 @@ class Window(Adw.ApplicationWindow):
         self.detail_fit_page=fit_detail_page
         self.populate_tools(content['Tools'],game)
         overview=content['Overview']
+        if game.get('blocked'):overview.append(self.unsupported_notice(game))
         info=Adw.PreferencesGroup(title='Game Information');overview.append(info)
-        for title,value in [('Library',game.get('library')),('Location',game['game']),('Compatibility',game.get('blocked') or 'Available'),('Metadata Source',game.get('metadata_source')),('Developer',game.get('developers')),('Release',game.get('release'))]:
+        for title,value in [('Library',game.get('library')),('Location',game['game']),('Compatibility',None if game.get('blocked') else 'Supported'),('Metadata Source',game.get('metadata_source')),('Developer',game.get('developers')),('Release',game.get('release'))]:
             if value:info.add(row(title,value))
         features=content['Features'];installed=game.get('installed',False)
         if installed:
@@ -10406,7 +11180,8 @@ class Window(Adw.ApplicationWindow):
             found,backups=result
             inventory.remove(inventory_status)
             if found['blocked']:
-                inventory.add(row('File management unavailable',found['blocked']))
+                inventory.add(row('File management unavailable',user_messages.friendly_error(found['blocked'])))
+                inventory.add(self.technical_details(found['blocked']))
             elif not found['files']:
                 inventory.add(row('No supported DLSS files','No separate DLSS files were found outside the installed feature stack.'))
             for item in found['files']:
@@ -10482,6 +11257,7 @@ class Window(Adw.ApplicationWindow):
             test
         )
         appearance=content['Appearance']
+        appearance.append(self.artwork_preferences(game))
 
         accent_group=Adw.PreferencesGroup(
             title='Accent Color',
@@ -11087,24 +11863,16 @@ class Window(Adw.ApplicationWindow):
             open_folder
         )
 
-        if (
-            game.get('appid')
-            and game.get('source')=='Steam'
-        ):
-            play=button(
-                'Play',
-                lambda *_:Gio.AppInfo.launch_default_for_uri(
-                    'steam://rungameid/'+str(game['appid']),
-                    None,
-                ),
-                'suggested-action',
-            )
-            play.set_sensitive(
-                not self.options.demo
-            )
-            detail_action_rows['Overview'].append(
-                play
-            )
+        play=button('Play', lambda *_:self.play_game(game), 'suggested-action')
+        play.set_sensitive(not self.options.demo)
+        detail_action_rows['Overview'].prepend(play)
+
+    def play_game(self,game):
+        if self.options.demo:return
+        self.start('Preparing game launch',
+                   lambda:game_launch.resolve(self.service.config,game),
+                   lambda uri:Gio.AppInfo.launch_default_for_uri(uri,None))
+
     def record_test(self,game,finish=False):
         def done(record):
             game['test_record']=record;self.details(game)
@@ -11129,12 +11897,12 @@ class Window(Adw.ApplicationWindow):
     def preview_report(self,files):
         d,b,f=self.open_panel('Review Support Report')
         b.append(label('Review the exact text below. Redaction is best effort. Export saves this preview locally; nothing is submitted.','dim-label'))
+        listing=self.review_list();b.append(listing)
         for name,text in files.items():
-            b.append(label(name,'heading'))
             view=Gtk.TextView(editable=False,monospace=True,wrap_mode=Gtk.WrapMode.WORD_CHAR)
             view.get_buffer().set_text(text)
             scroller=Gtk.ScrolledWindow(min_content_height=240,vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER)
-            scroller.set_child(view);b.append(scroller)
+            scroller.set_child(view);listing.append(self.review_entry(name,'Review the exact report contents',badge='Report',details=scroller))
         export=button('Export This Preview',lambda *_:self.start('Exporting report',lambda:game_notes.export_preview(self.service.config,files),lambda p:self.toast('Saved '+str(p))),'suggested-action')
         export.set_sensitive(not self.options.demo);f.append(export)
         f.append(button('Open Issue Form',lambda *_:Gio.AppInfo.launch_default_for_uri('https://github.com/lrnolivia/rtxForge/issues/new',None)))
@@ -11159,6 +11927,7 @@ class Window(Adw.ApplicationWindow):
                 ]
             )
         )
+        rows=[g for g in rows if not g.get('blocked')]
         if entire and operation in ('install','repair'):rows=[g for g in rows if g.get('test_record',{}).get('status')!='Bench']
         if operation=='reset':rows=[g for g in rows if g.get('installed')]
         if not rows:self.toast('No eligible games selected.');return
@@ -11180,21 +11949,25 @@ class Window(Adw.ApplicationWindow):
         self.operation_previous=targets[0] if targets and len(targets)==1 else None
 
         self.operation_cancel=threading.Event();self.operation_executing=False
-        d,b,f=self.open_panel(title,width=580,height=310,show_close=False);d.set_can_close(False)
-
         self.operation_games=rows
-        self.progress_view(b,f'Checking {len(rows)} games…')
+        review_title={'install':'Review Installation','repair':'Review Repair','uninstall':'Review Restoration','reset':'Review Presets'}[operation]
+        d,b,f=self.open_panel(review_title,width=640,height=360,show_close=False)
+        d.set_can_close(False)
+        self.job_label=None
+        self.progress_cancel_box=None
+        self.review_check_view(d,b,rows)
         self.add_cancel(f)
 
         if self.options.live_smoke:
+            self.progress_view(b,f'Checking {len(rows)} games…')
             self.live_smoke_begin(f)
             return
 
         if self.options.demo:
             preview={'kind':'batch','operation':operation,'title':title,'plans':[],'rows':[{'name':r['name'],'detail':'2 file changes'} for r in rows[:4]],'blocked':[{'name':'Example protected game','reason':'Another graphics tool is installed.'}]}
-            self.action_ready(preview,d,b,f,False);return
+            self.action_ready(preview,d,b,f);return
         mode=self.mode;adopt=self.settings['recognize_previous'];values=self.tuning_values(self.tuning_widgets) if entire and operation=='reset' else visual_settings
-        self.start('Preparing '+title.lower(),lambda:self.service.prepare(rows,mode,operation,adopt,visual_settings=values,save_defaults=entire and operation=='reset'),lambda review:self.action_ready(review,d,b,f,entire))
+        self.start('Preparing '+title.lower(),lambda:self.service.prepare(rows,mode,operation,adopt,visual_settings=values,save_defaults=entire and operation=='reset'),lambda review:self.action_ready(review,d,b,f))
     def live_smoke_begin(self,footer):
         """Interactive, write-disabled preview of Progress -> Done."""
         self.live_smoke_footer=footer
@@ -11614,13 +12387,13 @@ class Window(Adw.ApplicationWindow):
         # Progress keeps a solid neutral surface; only the compact poster changes.
         self.job_art.set_visible(False)
 
-        if game.get('poster'):
+        if poster_art_path(game):
             try:
                 self.poster_images[
                     self.job_picture_index
                 ].set_paintable(
                     Gdk.Texture.new_from_filename(
-                        game['poster']
+                        poster_art_path(game)
                     )
                 )
 
@@ -11629,6 +12402,10 @@ class Window(Adw.ApplicationWindow):
                 )
             except Exception:
                 pass
+
+        else:
+            self.poster_images[self.job_picture_index].set_paintable(None)
+            self.job_poster.set_visible_child_name(str(self.job_picture_index))
 
         # Accent still drives title/progress treatment.
         # It no longer touches either border.
@@ -11684,13 +12461,13 @@ class Window(Adw.ApplicationWindow):
 
             return t<1.0
 
-        GLib.timeout_add(16,tick)
+        self.add_tick_callback(lambda _widget,_clock:tick())
 
     def animate_dialog_height(self,dialog,target,duration=240):
         if dialog is None or self.dialog is not dialog:return
         source=getattr(self,'detail_resize_source',0)
         if source:
-            try:GLib.source_remove(source)
+            try:self.remove_tick_callback(source)
             except Exception:pass
             self.detail_resize_source=0
         try:start=int(dialog.get_content_height())
@@ -11712,10 +12489,11 @@ class Window(Adw.ApplicationWindow):
             dialog.set_content_height(round(start+(target-start)*eased))
             if t>=1.0:self.detail_resize_source=0
             return t<1.0
-        self.detail_resize_source=GLib.timeout_add(16,tick)
+        self.detail_resize_source=self.add_tick_callback(lambda _widget,_clock:tick())
 
 
     def finish_progress(self,success,message,footer):
+        self.dialog,_,footer=self.open_panel('Done' if success else 'Could not finish',width=500,height=-1,show_close=False)
         self.dialog.set_can_close(True)
         clear(footer)
         footer.set_visible(False)
@@ -11727,16 +12505,17 @@ class Window(Adw.ApplicationWindow):
         self.dialog.set_child(body)
         line=Gtk.Box(spacing=24,valign=Gtk.Align.CENTER,vexpand=True)
         body.append(line)
-        icon=Gtk.Image.new_from_icon_name('emblem-ok-symbolic' if success else 'dialog-warning-symbolic')
+        icon=Gtk.Image.new_from_icon_name('object-select-symbolic' if success else 'dialog-warning-symbolic')
         icon.set_pixel_size(80)
         icon.add_css_class('operation-complete' if success else 'error')
         line.append(icon)
         text=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True,valign=Gtk.Align.CENTER)
         text.append(label('Done' if success else 'Could not finish','title-1'))
-        message_label=label(message)
+        message_label=label(message if success else user_messages.friendly_error(message))
         message_label.set_wrap(True)
         message_label.set_max_width_chars(44)
         text.append(message_label)
+        if not success:text.append(self.technical_details(message))
         line.append(text)
         completion_dialog=self.dialog
         completion_dialog.connect('closed',lambda *_:self.scan())
@@ -11806,7 +12585,14 @@ class Window(Adw.ApplicationWindow):
             cancel_button
         )
 
-    def action_ready(self,review,d,b,f,automatic=False):
+    def action_ready(self,review,d,b,f):
+        self.review_check_state=None
+        b.remove_css_class('review-check-body');b.set_spacing(16)
+        scroll=b.get_parent()
+        while scroll and not isinstance(scroll,Gtk.ScrolledWindow):scroll=scroll.get_parent()
+        if scroll:
+            scroll.set_policy(Gtk.PolicyType.NEVER,Gtk.PolicyType.AUTOMATIC)
+            scroll.set_min_content_height(0);scroll.set_vexpand(True)
         self.review=review
         clear(b)
         clear(f)
@@ -11826,7 +12612,7 @@ class Window(Adw.ApplicationWindow):
         count=len(review['rows'])
         summary=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6)
         summary.add_css_class('review-summary')
-        summary.append(label(f"{count} game{'s' if count!=1 else ''} ready",'title-2'))
+        summary.append(label(f"{count} game{'s' if count!=1 else ''} ready" if count else 'Nothing ready yet','title-2'))
         operation=review.get('operation','install')
         action_label={'install':'Install','repair':'Repair','uninstall':'Restore','reset':'Apply presets'}.get(operation,'Apply')
         details=[action_label]
@@ -11837,28 +12623,28 @@ class Window(Adw.ApplicationWindow):
             if mfg is not None:details.append('MFG '+('In game' if mfg=='auto' else 'Off' if mfg==0 else str(mfg)+'×'))
         summary.append(label(' · '.join(details),'dim-label'))
         b.append(summary)
-        g=Adw.PreferencesGroup();b.append(g)
+        g=self.review_list();b.append(g)
         for item in review['rows']:
-            entry=Adw.ExpanderRow(title=item['name'],subtitle='Ready to '+action_label.lower())
-            entry.set_use_markup(False)
-            game=next((game for game in getattr(self,'operation_games',[]) if game['name']==item['name']),None)
-            if game and game.get('poster') and Path(game['poster']).is_file():
-                art=Gtk.Picture.new_for_filename(game['poster']);art.set_content_fit(Gtk.ContentFit.COVER)
-                art.set_size_request(40,56);art.set_can_shrink(True);art.set_valign(Gtk.Align.CENTER)
-                entry.add_prefix(art)
-            else:entry.add_prefix(Gtk.Image(icon_name='applications-games-symbolic',pixel_size=28))
-            info=Adw.ActionRow(title='Planned changes',subtitle=str(item.get('detail','')))
-            info.set_use_markup(False);entry.add_row(info);g.add(entry)
+            game=self.review_game(item['name'])
+            entry=self.review_entry(item['name'],'Ready to '+action_label.lower(),game,'Ready',user_messages.friendly_status(item.get('detail','')))
+            g.append(entry)
         if review['blocked']:
-            skipped=Adw.PreferencesGroup(title=f"Needs attention · {len(review['blocked'])}");b.insert_child_after(skipped,summary)
+            b.append(label(f"Needs attention · {len(review['blocked'])}",'heading'))
+            skipped=self.review_list();b.append(skipped)
             for item in review['blocked']:
-                warning=row(item['name'],item['reason']);warning.add_prefix(Gtk.Image(icon_name='dialog-warning-symbolic'));skipped.add(warning)
-        if not review['rows']:b.append(label('No file changes can be applied.'));f.append(button('Close',lambda *_:d.close()));return
+                skipped.append(self.review_entry(item['name'],user_messages.friendly_error(item['reason']),self.review_game(item['name']),'Skipped','Technical details\n'+str(item['reason']),icon='dialog-warning-symbolic'))
+            if any('baseline' in str(item['reason']).lower() for item in review['blocked']):
+                f.append(button('Previous Changes',lambda *_:(d.close(),self.show_undo())))
+        if not review['rows']:
+            b.append(label('There are no games ready for this change. Check the messages above for your next step.'))
+            clear(f);f.append(button('Close',lambda *_:d.close()))
+            if any('baseline' in str(item['reason']).lower() for item in review['blocked']):f.append(button('Previous Changes',lambda *_:(d.close(),self.show_undo())))
+            return
         apply=button('Apply Settings' if review.get('operation')=='reset' else 'Restore Original Files' if review.get('operation')=='uninstall' else 'Install' if review.get('operation')=='install' else 'Repair',lambda *_:self.execute(review,d,b,f),'forge-primary');apply.set_sensitive(not self.options.demo);f.append(apply)
         if self.options.demo:b.append(label('Preview mode · all file changes are disabled.','dim-label'))
-        elif automatic:self.execute(review,d,b,f)
     def execute(self,review,d,b,f):
         if self.options.demo:return
+        d,b,f=self.open_panel('Applying changes',width=640,height=264,show_close=False)
         clear(f);d.set_can_close(False);self.progress_view(b,'Applying changes…')
         if review.get('kind')=='engine':
             self.operation_executing=True;review['cancel_event']=self.operation_cancel;self.add_cancel(f)
@@ -11919,19 +12705,11 @@ class Window(Adw.ApplicationWindow):
         defaults.add(manage_files)
         modes=['nr-only','mfg-only','nr-mfg'];profile=safe_combo_row(title='Default Mode',model=Gtk.StringList.new(['NR Only','MFG Only','NR + MFG']),selected=modes.index(self.settings.get('default_profile','mfg-only')));defaults.add(profile)
         adopt=Adw.SwitchRow(title='Recognize Existing Features',subtitle='Allow updates to compatible installations from other tools.',active=self.settings['recognize_previous']);defaults.add(adopt)
-        appearance=Adw.PreferencesGroup(title='Appearance',description='Theme, window shape and library layout.')
+        appearance=Adw.PreferencesGroup(title='Theme',description='Choose the look of rtxForge.')
+        window_style=Adw.PreferencesGroup(title='Window',description='Shape and spacing for the desktop interface.')
+        library_layout=Adw.PreferencesGroup(title='Library Layout',description='Choose how your desktop game collection is displayed.')
         compact=Adw.SwitchRow(title='Compact Header',subtitle='Keep more room for your games.',active=self.settings.get('compact_header',False))
         compact.connect('notify::active',lambda widget,*_: self.toggle_compact_header() if widget.get_active()!=self.settings.get('compact_header',False) else None)
-        appearance.add(compact)
-        for key,title,keys,captions in [
-            ('ui_scale','UI Scale',list(SCALES),['Automatic (150% at 4K)','100%','125%','150%','175%','200%']),
-            ('dashboard_view','Dashboard Artwork',['capsules','posters'],['Wide Capsule','Poster']),
-            ('dashboard_row_count','Games Across Shelf',list(range(3,9)),[str(n) for n in range(3,9)]),
-            ('navigation_position','Game Mode Navigation',['top','bottom'],['Top','Bottom']),
-            ('controller_hints','Controller Hints',['always','auto'],['Always visible','Hide when idle'])]:
-            choice=safe_combo_row(title=title,model=Gtk.StringList.new(captions),selected=keys.index(self.settings.get(key,library_media.DEFAULTS[key])))
-            choice.connect('notify::selected',lambda widget,*_,key=key,keys=keys:self.set_display_preference(key,keys[widget.get_selected()]))
-            appearance.add(choice)
         views=[
             'posters',
             'capsules',
@@ -12013,23 +12791,38 @@ class Window(Adw.ApplicationWindow):
             layout_selector
         )
 
-        appearance.add(
+        library_layout.add(
             layout_row
         )
 
-        controls=Adw.PreferencesGroup(title='Input',description='SDL handles mapped controllers; Steam Input may expose a virtual Xbox controller. Keyboard and mouse remain available.')
+        controls=Adw.PreferencesGroup(title='Interface',description='Choose the experience for Gaming Mode.')
+        dashboard_options=Adw.PreferencesGroup(title='Dashboard',description='Artwork and browsing in Big Picture UI.')
+        controller_options=Adw.PreferencesGroup(title='Controller',description='Button labels and navigation prompts.')
+        big_picture=Adw.SwitchRow(title='Big Picture UI',subtitle='Use the game menu interface for Gaming Mode and controller input.',active=self.settings.get('big_picture_ui',True))
+        big_picture.connect('notify::active',lambda widget,*_:self.set_big_picture_ui(widget.get_active()))
+        controls.add(big_picture)
         for key,title,keys,captions in [
-            ('input_mode','Startup Interface',['auto','desktop','couch'],['Automatic','Desktop','Couch']),
+            ('input_mode','Startup Interface',['auto','desktop','couch'],['Automatic','Desktop','Big Picture']),
             ('controller_glyphs','Controller Labels',['auto','xbox','playstation','nintendo','generic'],['Automatic','Xbox','PlayStation','Nintendo','Generic'])]:
             choice=safe_combo_row(title=title,model=Gtk.StringList.new(captions),selected=keys.index(self.settings.get(key,'auto')))
             def change_input(widget,*_,key=key,keys=keys):
                 global COUCH_MODE
                 self.settings[key]=keys[widget.get_selected()]
-                COUCH_MODE=self.settings.get('input_mode','auto')
+                COUCH_MODE=self.settings.get('input_mode','auto') if self.settings.get('big_picture_ui',True) else 'desktop'
                 if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
                 if key=='input_mode':self.toast('Input mode saved. Restart to rebuild all menu controls.')
-            choice.connect('notify::selected',change_input);controls.add(choice)
-        controls.add(row('Controller Navigation','D-pad / stick: focus · South: activate · East: back · North: library · Start: menu · View/Select: settings · Bumpers: tab'))
+            choice.connect('notify::selected',change_input);(controller_options if key=='controller_glyphs' else controls).add(choice)
+        for key,title,keys,captions in [
+            ('ui_scale','UI Scale',list(SCALES),['Automatic (150% at 4K)','100%','125%','150%','175%','200%']),
+            ('dashboard_view','Dashboard Artwork',['capsules','posters'],['Wide Capsule','Poster']),
+            ('dashboard_row_count','Games Across Shelf',list(range(3,9)),[str(n) for n in range(3,9)]),
+            ('navigation_position','Navigation Position',['top','bottom'],['Top','Bottom']),
+            ('controller_hints','Controller Hints',['always','auto'],['Always visible','Hide when idle'])]:
+            choice=safe_combo_row(title=title,model=Gtk.StringList.new(captions),selected=keys.index(self.settings.get(key,library_media.DEFAULTS[key])))
+            choice.connect('notify::selected',lambda widget,*_,key=key,keys=keys:self.set_display_preference(key,keys[widget.get_selected()]))
+            target=dashboard_options if key in ('dashboard_view','dashboard_row_count') else controller_options if key=='controller_hints' else controls
+            target.add(choice)
+        controller_options.add(row('Controller Navigation','D-pad / stick: focus · South: activate · East: back · North: library · Start: menu · View/Select: settings · Bumpers: tab'))
         settings_saved={'value':False}
 
         def restore_library_preview(*_):
@@ -12067,7 +12860,7 @@ class Window(Adw.ApplicationWindow):
             apply_corner_style(value)
             self.queue_draw()
             if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
-        corners.connect('notify::selected',change_corners);appearance.add(corners)
+        corners.connect('notify::selected',change_corners);window_style.add(corners);window_style.add(compact)
 
         theme_row=row('App Theme','Changes only rtxForge. Saved immediately.')
         theme_selector=Adw.ToggleGroup(valign=Gtk.Align.CENTER)
@@ -12090,6 +12883,14 @@ class Window(Adw.ApplicationWindow):
         theme_selector.connect('notify::active-name',change_theme)
         theme_row.add_suffix(theme_selector)
         appearance.add(theme_row)
+        glyphs=Adw.SwitchRow(title='Button Icons',subtitle='Show action icons beside button labels.',active=self.settings.get('button_glyphs',True))
+        def change_glyphs(widget,*_):
+            value=widget.get_active();self.settings['button_glyphs']=value;set_button_glyphs(value)
+            if not self.options.demo:
+                saved=library_media.load_settings(self.service.config);saved['button_glyphs']=value
+                library_media.save_settings(self.service.config,saved)
+            if hasattr(self,'couch'):self.couch.apply_navigation_preferences()
+        glyphs.connect('notify::active',change_glyphs);appearance.add(glyphs)
         artwork=Adw.PreferencesGroup(title='Artwork',description='Your Steam poster, capsule, and hero images take priority.')
         art=Adw.SwitchRow(title='Download Missing Artwork',subtitle='Use SteamGridDB and Steam when local images are unavailable.',active=self.settings['online_art']);artwork.add(art)
         metadata=Adw.SwitchRow(title='Download Game Information',subtitle='Descriptions, developers, and release dates from Steam.',active=self.settings['steam_metadata']);artwork.add(metadata)
@@ -12127,7 +12928,7 @@ class Window(Adw.ApplicationWindow):
         recovery=Adw.PreferencesGroup(title='Recovery')
         for title,subtitle,caption,fn in [('Previous Changes','Browse available recovery records.','Browse',lambda *_:self.show_undo()),('Old NR Files','Review legacy files before removal.','Review',lambda *_:self.show_cleanup()),('Library Reports','View test notes and export a support report.','Open',self.show_reports)]:
             item=row(title,subtitle);action=button(caption,fn);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);recovery.add(item)
-        self.organize_pages(b,[('Graphics',[graphics,defaults]),('Appearance',[appearance]),('Library',[artwork]),('Controller',[controls]),('System',[system,app]),('Recovery',[recovery])])
+        self.organize_pages(b,[('Graphics',[graphics,defaults]),('Appearance',[appearance,window_style,library_layout]),('Library',[artwork]),('Gaming Mode',[controls,dashboard_options,controller_options]),('System',[system,app]),('Recovery',[recovery])])
         def save(*_):
             selected_provider=provider_keys[provider.get_selected()];selected_mode=modes[profile.get_selected()]
             if selected_provider=='y4my' and selected_mode=='nr-only':self.toast('NR Only requires DLSS-Unlocked.');return
@@ -12315,7 +13116,7 @@ class Window(Adw.ApplicationWindow):
         b.append(box)
 
         icon=Gtk.Image.new_from_icon_name(
-            'emblem-ok-symbolic'
+            'object-select-symbolic'
         )
         icon.set_pixel_size(40)
         icon.add_css_class('result-success')
@@ -12371,9 +13172,9 @@ class Window(Adw.ApplicationWindow):
             d,b,f=self.open_panel('Undo previous changes');b.append(label('Your install and uninstall backups will appear here.'));return
         self.start('Finding previous changes',self.service.recoveries,self.undo_loaded)
     def undo_loaded(self,records):
-        d,b,f=self.open_panel('Undo previous changes');g=Adw.PreferencesGroup(title='Recorded changes');b.append(g)
+        d,b,f=self.open_panel('Undo previous changes');g=self.review_list();b.append(g)
         for record in records:
-            item=row(record['name'],record['detail']);item.add_suffix(button('Review',lambda _,r=record:self.start('Checking restore',lambda:self.service.review_recovery(r),lambda review:self.action_ready(review,d,b,f))));g.add(item)
+            item=self.review_entry(record['name'],record['detail'],self.review_game(record['name'],record.get('game')),'Backup');item.add_suffix(button('Review',lambda _,r=record:self.start('Checking restore',lambda:self.service.review_recovery(r),lambda review:self.action_ready(review,d,b,f))));g.append(item)
         if not records:b.append(label('No recorded changes yet.'))
     def show_cleanup(self):
         if self.options.demo:return
@@ -13136,7 +13937,6 @@ class Window(Adw.ApplicationWindow):
                 view,
                 slots,
             ):
-                slots=self.flow.get_max_children_per_line()
                 assert (
                     self.settings.get(
                         'library_view'
@@ -13144,7 +13944,14 @@ class Window(Adw.ApplicationWindow):
                     == view
                 )
 
+                # This smoke helper switches views synchronously. Let GTK allocate
+                # the new gallery before asserting its responsive geometry.
+                settle=GLib.MainLoop()
+                GLib.timeout_add(120,lambda:(settle.quit(),False)[1])
+                settle.run()
+                assert viewport_width()>1, 'Smoke gallery was not allocated'
                 self.update_library_spacing()
+                slots=self.flow.get_max_children_per_line()
 
                 assert (
                     self.flow.get_min_children_per_line()

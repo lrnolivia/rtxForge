@@ -60,10 +60,13 @@ class PresetScopeTests(unittest.TestCase):
         shell.library_action=SimpleNamespace(get_sensitive=lambda:True)
         shell.render=lambda *args:shell.build_entries()
         shell.update_tabs=lambda:None
+        shell.accent_targets=[]
+        shell.apply_accent=lambda game:shell.accent_targets.append(game)
         return shell
 
     def test_global_scope_never_implicitly_targets_selected_game(self):
         shell=self.shell();shell.open('presets')
+        self.assertIsNone(shell.accent_targets[-1])
         shell.entries[-2]['action']()
         self.assertEqual([g['game'] for g in shell.calls[-1][1]['targets']],['a','b'])
         self.assertNotIn('entire',shell.calls[-1][1])
@@ -80,5 +83,6 @@ class PresetScopeTests(unittest.TestCase):
 
     def test_per_game_scope_and_dashboard_back(self):
         shell=self.shell();shell.open('game_presets');shell.entries[-1]['action']()
+        self.assertIs(shell.accent_targets[-1],shell.game)
         self.assertEqual([g['game'] for g in shell.calls[-1][1]['targets']],['a'])
         shell.page='dashboard';shell.back();self.assertEqual(shell.page,'dashboard')

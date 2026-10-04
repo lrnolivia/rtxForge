@@ -12,7 +12,10 @@ Kirigami.ApplicationWindow {
     readonly property color brandAccent: "#76b900"
     width: 1280; height: 820; minimumWidth: 760; minimumHeight: 580
     visible: true; title: "rtxForge"
-    property string page: forge.startPage
+    // Startup preference initializes navigation once; general model refreshes
+    // must never send an open Settings/Recovery view back to the library.
+    property string page: "library"
+    Component.onCompleted: page = forge.startPage
     onPageChanged: { if (page === "settings") forge.refreshSteamProfiles() }
     property var customValues: ({})
     property bool packageTrusted: false

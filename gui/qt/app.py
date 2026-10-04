@@ -340,7 +340,8 @@ def main():
             assert 'breeze' in app.style().objectName().casefold(), 'Native Breeze style was not loaded'
         window=engine.rootObjects()[0];out=ROOT/'dist';out.mkdir(exist_ok=True)
         report=[]
-        def capture(name):
+        def capture(name, expected_page='library'):
+            assert window.property('page') == expected_page, 'Wrong page for '+name+': '+str(window.property('page'))
             if not window.grabWindow().save(str(out/name)):raise RuntimeError('Capture failed: '+name)
             report.append(name)
         def review_profiles():
@@ -352,9 +353,9 @@ def main():
                lambda:controller.setMode('new'),lambda:capture('kde-new.png'),
                lambda:controller.setLayout('capsules'),lambda:capture('kde-wide.png'),
                lambda:controller.setLayout('list'),lambda:capture('kde-list.png'),
-               lambda:window.setProperty('page','settings'),lambda:capture('kde-settings.png'),
-               lambda:window.setProperty('page','recovery'),lambda:capture('kde-recovery.png'),
-               lambda:window.setProperty('page','packages'),lambda:capture('kde-packages.png'),
+               lambda:window.setProperty('page','settings'),lambda:capture('kde-settings.png', 'settings'),
+               lambda:window.setProperty('page','recovery'),lambda:capture('kde-recovery.png', 'recovery'),
+               lambda:window.setProperty('page','packages'),lambda:capture('kde-packages.png', 'packages'),
                lambda:window.setProperty('page','library'),lambda:controller.setMode('classic'),
                lambda:window.resize(800,600),lambda:controller.setLayout('posters'),lambda:capture('kde-classic-800.png'),
                lambda:controller.setLayout('list'),lambda:capture('kde-list-800.png')]

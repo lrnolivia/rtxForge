@@ -311,7 +311,10 @@ def main():
         prepare(ROOT)
     # qqc2-desktop-style derives native controls from the application QStyle.
     app=QApplication(sys.argv)
-    if smoke:print('QT_BOOTSTRAP: application style='+app.style().objectName(),flush=True)
+    # QWidget's Breeze style is not a QML module called 'Breeze'. Select the
+    # actual qqc2 desktop module explicitly before constructing the QML engine.
+    QQuickStyle.setStyle(os.environ.get('QT_QUICK_CONTROLS_STYLE','org.kde.desktop'))
+    if smoke:print('QT_BOOTSTRAP: application style='+app.style().objectName()+'; quick style='+QQuickStyle.name(),flush=True)
     app.setApplicationName('rtxForge');app.setDesktopFileName('io.github.lrnolivia.RTXForge')
     app.setWindowIcon(QIcon(str(ROOT/'gui/icons/hicolor/scalable/apps/io.github.lrnolivia.RTXForge.svg')))
     engine=QQmlApplicationEngine();controller=Controller(demo)

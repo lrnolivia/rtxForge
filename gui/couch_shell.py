@@ -927,6 +927,7 @@ class CouchShell(Gtk.Overlay):
             self.entry('Add rtxForge to Steam',self.owner.add_rtxforge_to_steam,enabled=not self.owner.options.demo)
             self.entry('Sync artwork to Steam',self.owner.sync_steam_artwork,enabled=not self.owner.options.demo)
             self.entry('Steam artwork profile',self.owner.choose_steam_artwork_profile,enabled=not self.owner.options.demo)
+            self.entry('Connect SteamGridDB',self.owner.show_steamgrid_connection,enabled=not self.owner.options.demo)
             for key,title,choices,captions in [
                 ('ui_scale','UI scale',['auto',100,125,150,175,200],['Automatic','100%','125%','150%','175%','200%']),
                 ('dashboard_view','Dashboard artwork',['capsules','posters'],['Wide','Poster']),

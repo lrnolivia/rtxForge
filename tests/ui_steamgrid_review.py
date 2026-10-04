@@ -115,7 +115,19 @@ def verify_embedded_picker_parent():
         panel.close()
     finally:ui.Gtk.FileDialog=original
 
-steps=[details_for_picker,verify_picker_parent,embedded_for_picker,verify_embedded_picker_parent,open_browser,lambda:capture('steamgrid-desktop-results.png'),preview,verify_preview,filter_results,verify_filter,couch,lambda:capture('steamgrid-couch-results.png'),lambda:app.window.dialog.close()]
+def connection_preview():
+    app.window.show_steamgrid_connection()
+    view=app.window._steamgrid_connection_review
+    assert isinstance(view['entry'],Gtk.PasswordEntry)
+    assert not view['connect'].get_sensitive()
+    assert 'Preview only' in view['status'].get_text()
+    assert view['entry'].get_text()==''
+    path=app.window.capture('steamgrid-connect-preview.png')
+    assert path and path.is_file()
+    view['dialog'].close()
+    assert view['state']['closed']
+
+steps=[connection_preview,details_for_picker,verify_picker_parent,embedded_for_picker,verify_embedded_picker_parent,open_browser,lambda:capture('steamgrid-desktop-results.png'),preview,verify_preview,filter_results,verify_filter,couch,lambda:capture('steamgrid-couch-results.png'),lambda:app.window.dialog.close()]
 preview_deadline=None
 def advance():
     global preview_deadline

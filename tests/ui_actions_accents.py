@@ -28,6 +28,10 @@ def wide():
     w=app.window;t=w.tile_box
     positions=[x.get_allocation().y for x in children(t) if isinstance(x,Gtk.FlowBoxChild)]
     assert len(positions)==4 and len(set(positions))==1,positions
+    for item in children(t):
+        if isinstance(item,ui.ActionButton):
+            ok,bounds=item.get_child().compute_bounds(item);assert ok
+            assert abs(bounds.get_y()+bounds.get_height()/2-item.get_height()/2)<3,(bounds.get_y(),bounds.get_height(),item.get_height())
     assert w.capture('actions-tools-wide.png')
     w.dialog.set_content_width(460)
 def narrow():
@@ -41,6 +45,8 @@ def narrow():
     created=ui.button('Install',lambda *_:None)
     assert not next(x for x in children(created) if isinstance(x,Gtk.Image)).get_visible()
     created.set_label('Done');assert created.get_label()=='Done'
+    done=ui.button('Done',lambda *_:None)
+    assert not any(isinstance(x,Gtk.Image) for x in children(done))
     glyphs.set_active(True);assert all(x.get_visible() for x in ui.BUTTON_IMAGES)
     w.dialog.close();w.set_input_surface(True);w.couch.open_game(w.games[0]);w.couch.open('tools')
 def couch():

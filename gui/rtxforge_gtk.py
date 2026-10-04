@@ -2947,11 +2947,12 @@ class ActionButton(Gtk.Button):
     """Keep the Button label API while displaying an optional action icon."""
     def __init__(self,text,icon):
         super().__init__(valign=Gtk.Align.CENTER)
-        content=Gtk.Box(spacing=10,halign=Gtk.Align.CENTER)
-        theme=Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
-        image=Gtk.Image.new_from_icon_name(icon if theme.has_icon(icon) else 'go-next-symbolic')
-        image.set_visible(BUTTON_GLYPHS);BUTTON_IMAGES.add(image)
-        content.append(image)
+        content=Gtk.Box(spacing=10,halign=Gtk.Align.CENTER,valign=Gtk.Align.CENTER)
+        if icon:
+            theme=Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
+            image=Gtk.Image.new_from_icon_name(icon if theme.has_icon(icon) else 'go-next-symbolic')
+            image.set_visible(BUTTON_GLYPHS);BUTTON_IMAGES.add(image)
+            content.append(image)
         self.text_label=label(text);self.text_label.set_wrap(False)
         content.append(self.text_label);self.set_child(content)
         self.update_property([Gtk.AccessibleProperty.LABEL],[text])
@@ -2960,7 +2961,7 @@ class ActionButton(Gtk.Button):
         self.text_label.set_text(text)
         self.update_property([Gtk.AccessibleProperty.LABEL],[text])
 
-def button(text,fn,css=None):return icon_button(text,action_icon(text),fn,css)
+def button(text,fn,css=None):return icon_button(text,None if text.strip().lower()=='done' else action_icon(text),fn,css)
 def icon_button(text,icon,fn,css=None):
     w=ActionButton(text,icon);w.connect('clicked',fn)
     if css:w.add_css_class(css)
@@ -2975,6 +2976,7 @@ def action_tiles(actions):
         content.set_halign(Gtk.Align.FILL)
         if hasattr(control,'text_label'):
             control.text_label.set_wrap(True);control.text_label.set_xalign(.5)
+            control.text_label.set_justify(Gtk.Justification.CENTER)
         tiles.insert(control,-1)
     responsive=Adw.BreakpointBin(child=tiles,width_request=380,height_request=108)
     breakpoint=Adw.Breakpoint.new(Adw.BreakpointCondition.parse('max-width: 790px'))

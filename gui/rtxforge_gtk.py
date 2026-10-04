@@ -3606,7 +3606,7 @@ class Window(Adw.ApplicationWindow):
             ).NR_STRENGTH_PRESETS
 
         self.strength_names=tuple(self.strength_presets);self.multiplier_values=('auto',0,2,3,4,5,6)
-        self.settings['enable_effects']=True;self.settings.setdefault('dark',True);self.hardware_info={'ready':True,'gpu':'Preview GPU','reason':'Preview mode'} if options.demo else None;self.games=[];self.cards={};self.selected_game_ids=set();self.mode='mfg-only';self.filter='all'
+        self.settings['enable_effects']=True;self.settings.setdefault('dark',True);self.hardware_info={'ready':True,'gpu':'Preview GPU','reason':'Preview mode'} if options.demo else None;self.games=[];self.cards={};self.selected_game_ids=set();self.mode='mfg-only';self.filter='available'
         self.busy=False;self.task_kind='';self.pending=None;self.cancel_art=threading.Event();self.log=[];self.dialog=None;self.review=None;self.action_buttons=[]
         self.connect('close-request',self.close_request)
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)
@@ -4390,9 +4390,9 @@ class Window(Adw.ApplicationWindow):
 
         previous=None
         for name,key in [
-            ('All','all'),
-            ('Installed','installed'),
             ('Available','available'),
+            ('Installed','installed'),
+            ('All','all'),
         ]:
             b=Gtk.ToggleButton(
                 label=name

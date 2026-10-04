@@ -13412,7 +13412,6 @@ class Window(Adw.ApplicationWindow):
                 view,
                 slots,
             ):
-                slots=self.flow.get_max_children_per_line()
                 assert (
                     self.settings.get(
                         'library_view'
@@ -13421,6 +13420,7 @@ class Window(Adw.ApplicationWindow):
                 )
 
                 self.update_library_spacing()
+                slots=self.flow.get_max_children_per_line()
 
                 assert (
                     self.flow.get_min_children_per_line()

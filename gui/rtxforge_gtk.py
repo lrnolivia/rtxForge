@@ -58,6 +58,7 @@ def apply_neutral_palette():
            'headerbar_bg_color':'window','headerbar_fg_color':'fg','headerbar_backdrop_color':'window',
            'secondary_sidebar_bg_color':'sidebar','secondary_sidebar_fg_color':'fg'}
     theme_css=''.join(f'@define-color {name} {palette[value]};' for name,value in names.items()) if THEME_MODE=='night' else ''
+    if THEME_MODE!='night':theme_css+='columnview.library-column-view header { background: mix(@sidebar_bg_color,black,0.12); }'
     theme_css+='list.boxed-list, list.content, list.boxed-list-separate > row, .card { box-shadow: 0 0 0 1px alpha(black,0.03), 0 1px 3px 1px alpha(black,0.07), 0 2px 6px 2px alpha(black,0.03); }'
     theme_css+='\n    button.bulk-remove { border: 1px solid alpha(currentColor,0.18); }\n    .library-selection-tools button, button.view-action, \n    button.game-details, .library-column-actions button,\n    .progress-inline-cancel {\n        border: 1px solid alpha(@window_fg_color,0.035);\n    }\n    '
     if THEME_MODE=='night':
@@ -120,7 +121,7 @@ def apply_neutral_palette():
     .library-status-primary { background: alpha(black,0.16); padding: 0; border-radius: 99px; }
     '''
     if not Adw.StyleManager.get_default().get_dark():
-        theme_css+='button.forge-primary, button.suggested-action { background: #deebc9; color: #345b00; } button.forge-primary label { color: #345b00; }'
+        theme_css+='button.forge-primary, button.suggested-action { background: #deebc9; color: #345b00; } button.forge-primary label, button.suggested-action label, button.forge-primary image, button.suggested-action image { color: #345b00; }'
     NEUTRAL_PROVIDER.load_from_data(theme_css.encode())
     sources=list(ACCENT_SOURCES.values())
     for provider in ACCENT_PROVIDERS.values():
@@ -1662,6 +1663,8 @@ spinbutton.tuning-number-input text {
     padding: 24px 24px 28px;
 }
 .settings-content row { min-height: 56px; }
+.settings-content popover row, dropdown popover row { min-height: 32px; padding: 4px 10px; margin: 0; }
+.settings-content popover row > box, dropdown popover row > box { min-height: 0; padding: 0; margin: 0; }
 .settings-navigation row:selected image { color: @accent_color; }
 
 .settings-footer {
@@ -2890,6 +2893,7 @@ list.review-list > row { box-shadow: none; background-image: none; margin: 0; bo
 list.review-list > row:first-child { border-top-left-radius: 12px; border-top-right-radius: 12px; }
 list.review-list > row:last-child { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; border-bottom: 0; }
 .review-bezel { border: 2px solid alpha(@window_fg_color,0.15); border-radius: 8px; margin: 10px 0; }
+.unsupported-notice, .unsupported-notice > row { background: mix(@window_bg_color, @error_bg_color, 0.28); box-shadow: none; }
 .unsupported-caution, .unsupported-badge { color: #e5b54a; }
 .support-info { color: #e5b54a; min-width: 20px; min-height: 20px; padding: 2px; border-radius: 50%; background: alpha(@window_bg_color,0.9); }
 .review-badge { font-size: 11px; font-weight: 700; border-radius: 6px; padding: 4px 8px; background: alpha(@window_fg_color,0.08); }
@@ -3047,7 +3051,8 @@ def scroll_bottom_fade(scroll,css='settings-bottom-fade'):
     overlay.add_overlay(fade)
     def update(adj,*_):
         remaining=max(0,adj.get_upper()-adj.get_page_size()-adj.get_value())
-        fade.set_opacity(min(1,remaining/28))
+        fade.set_opacity(1 if remaining>0.5 else 0)
+        fade.set_size_request(-1,max(1,min(28,__import__('math').ceil(remaining))))
     adj=scroll.get_vadjustment()
     adj.connect('changed',update);adj.connect('value-changed',update)
     update(adj)
@@ -4559,7 +4564,8 @@ class Window(Adw.ApplicationWindow):
             active=self.column_scroll if self.library_stack.get_visible_child_name()=='list' else self.library_scroll
             adj=active.get_vadjustment()
             remaining=max(0,adj.get_upper()-adj.get_page_size()-adj.get_value())
-            bottom_gutter.set_opacity(min(1,remaining/28))
+            bottom_gutter.set_opacity(1 if remaining>0.5 else 0)
+            bottom_gutter.set_size_request(-1,max(1,min(28,__import__('math').ceil(remaining))))
         for viewport in (self.library_scroll,self.column_scroll):
             viewport.get_vadjustment().connect('changed',update_library_fade)
             viewport.get_vadjustment().connect('value-changed',update_library_fade)
@@ -4887,11 +4893,16 @@ class Window(Adw.ApplicationWindow):
     def unsupported_notice(self,game):
         listing=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
         listing.add_css_class('boxed-list');listing.add_css_class('unsupported-notice')
-        entry=Adw.ActionRow(title='<b>Unsupported:</b> '+GLib.markup_escape_text(self.support_reason(game)),use_markup=True)
-        entry.set_title_lines(0)
-        icon=Gtk.Image(icon_name='dialog-warning-symbolic',pixel_size=24)
-        icon.add_css_class('unsupported-caution');entry.add_prefix(icon)
-        listing.append(entry)
+        content=Gtk.Box(spacing=12)
+        margins(content,16)
+        icon=Gtk.Image(icon_name='dialog-warning-symbolic',pixel_size=24,valign=Gtk.Align.START)
+        icon.set_margin_top(2);icon.add_css_class('unsupported-caution')
+        content.append(icon)
+        explanation=label(self.support_reason(game))
+        explanation.set_wrap(True);explanation.set_xalign(0)
+        explanation.set_hexpand(True);explanation.set_valign(Gtk.Align.START)
+        content.append(explanation)
+        listing.append(content)
         return listing
 
     def show_support_help(self,control):

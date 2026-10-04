@@ -40,7 +40,8 @@ def caution():
     w=app.window;control=w.cards[w.games[0]['game']]['overlay'].support_info
     assert control.get_icon_name()=='dialog-warning-symbolic'
     assert control.support_popover.get_visible()
-    assert any(isinstance(x,Adw.ActionRow) and x.get_title().startswith('<b>Unsupported:</b>') for x in children(control.support_popover))
+    assert any(isinstance(x,Gtk.Label) and x.get_text()==w.support_reason(control._support_game) for x in children(control.support_popover))
+    assert not any(isinstance(x,Gtk.Label) and x.get_text().startswith('Unsupported:') for x in children(control.support_popover))
     control.support_popover.popdown();w.details(w.games[0])
 def details():
     w=app.window
@@ -86,6 +87,13 @@ def compact_progress():
     assert w.fixture_footer.get_margin_top()==28
     overlay=w.fixture_review.get_child().get_first_child().get_next_sibling()
     assert isinstance(overlay,Gtk.Overlay) and overlay.bottom_fade.get_height()==28
+    adj=overlay.get_child().get_vadjustment()
+    end=adj.get_upper()-adj.get_page_size()
+    adj.set_value(end-5)
+    assert overlay.bottom_fade.get_opacity()==1
+    adj.set_value(end)
+    assert overlay.bottom_fade.get_opacity()==0
+    adj.set_value(0)
     w.options.demo=False
     w.start=lambda *args:None  # Exercise the real transition without executing files.
     w.operation_cancel=__import__('threading').Event()

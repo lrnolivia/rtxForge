@@ -32,12 +32,31 @@ def start():
     w.theme_control=next(x for x in widgets if isinstance(x,Adw.ToggleGroup) and x.get_active_name() in ('dark','light','night'))
 def theme():
     w=app.window;w.theme_control.set_active_name('light')
+    w.text_probe=ui.button('Continue',lambda *_:None,'suggested-action')
+    w.dialog.get_child().append(w.text_probe)
 def appearance():
     w=app.window
-    assert w.capture('settings-refined-appearance.png')
+    text=next(x for x in children(w.text_probe) if isinstance(x,Gtk.Label))
+    color=text.get_style_context().get_color()
+    assert max(color.red,color.green,color.blue)<0.5
+    w.dialog.get_child().remove(w.text_probe)
+    choices=next(x for x in children(w.dialog.get_child()) if isinstance(x,Adw.ComboRow) and x.get_title()=='Corners')
+    choices.emit('activated');w.corner_choice=choices
+    next(x for x in children(choices) if isinstance(x,Gtk.Popover)).popup()
+
+def choice_sizes():
+    w=app.window
+    popup=next(x for x in children(w.corner_choice) if isinstance(x,Gtk.Popover))
+    rows=[x for x in children(popup) if x.get_css_name()=='row' and x.get_mapped()]
+    assert len(rows)==3, [(x.get_css_name(),x.get_height()) for x in children(popup)]
+    heights=[x.get_height() for x in rows]
+    assert max(heights)-min(heights)<=1 and max(heights)<=44, heights
+    assert w.capture('settings-uniform-choice.png')
+    popup.popdown()
     rows=list(children(w.dialog.get_child()))
     target=next(x for x in rows if isinstance(x,Gtk.ListBoxRow) and getattr(x,'page_name',None)=='Gaming Mode')
     target.get_parent().select_row(target)
+
 def gaming():
     w=app.window
     assert w.capture('settings-refined-gaming-mode.png')
@@ -73,7 +92,7 @@ def game_mode():
     assert w.presentation_scale==1
     adj=w.library_scroll.get_vadjustment();adj.set_value(adj.get_upper()-adj.get_page_size())
     assert w.library_bottom_fade.get_opacity()==0
-steps=[start,theme,appearance,gaming,extras_open,extras,details_open,details_check,game_mode]
+steps=[start,theme,appearance,choice_sizes,gaming,extras_open,extras,details_open,details_check,game_mode]
 def step():
     try:
         if steps:steps.pop(0)();GLib.timeout_add(800,step)

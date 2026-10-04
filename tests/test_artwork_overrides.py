@@ -54,6 +54,8 @@ class SteamGridFilterTests(unittest.TestCase):
             path=request.call_args.args[0];query=parse_qs(urlparse(path).query)
             self.assertTrue(path.startswith('heroes/game/12?'))
             self.assertEqual(query['page'],['2']);self.assertEqual(query['styles'],['blurred'])
+            client.artwork(12,'poster');poster=parse_qs(urlparse(request.call_args.args[0]).query)
+            self.assertEqual(poster['dimensions'],['600x900,342x482,660x930'])
             self.assertEqual(query['nsfw'],['false']);self.assertEqual(query['types'],['static'])
             self.assertEqual(query['humor'],['any'])
             client.artwork(12,'logo',style='white');self.assertTrue(request.call_args.args[0].startswith('logos/game/12?'))

@@ -5380,6 +5380,7 @@ class Window(Adw.ApplicationWindow):
         def choice_value(pair):
             control,values=pair;index=control.get_selected();return values[index-1] if 0<index<=len(values) else ''
         def request(work,done,token):
+            if not current(token):return
             def execute():
                 try:result=work();error=None
                 except Exception as ex:result=None;error=str(ex)
@@ -5420,7 +5421,8 @@ class Window(Adw.ApplicationWindow):
                     return False
                 GLib.idle_add(paint)
             except Exception:pass
-        def render_assets(assets,append,token):
+        def render_assets(assets,append,token,page):
+            state['page']=page
             if not append:clear_results();state['assets']=[]
             seen={x.get('id') for x in state['assets']}
             for asset in assets:
@@ -5435,10 +5437,11 @@ class Window(Adw.ApplicationWindow):
             more.set_visible(bool(assets) and state['page']<100);more.set_sensitive(True)
         def load_artwork(append=False):
             if not state['match']:return
-            state['generation']+=1;token=state['generation'];state['page']=state['page']+1 if append else 0
+            state['generation']+=1;token=state['generation'];page=state['page']+1 if append else 0
+            if not append:clear_results();state['assets']=[];more.set_visible(False)
             status.set_text('Finding '+title.lower()+'…');more.set_sensitive(False);stack.set_visible_child_name('browse');back.set_visible(False);apply.set_visible(False)
-            args={'page':state['page'],'style':choice_value(style),'dimensions':choice_value(size),'mime':choice_value(mime),'humor':humor.get_active()};match=state['match']['id']
-            request(lambda:client.artwork(match,role,**args),lambda assets:render_assets(assets,append,token),token)
+            args={'page':page,'style':choice_value(style),'dimensions':choice_value(size),'mime':choice_value(mime),'humor':humor.get_active()};match=state['match']['id']
+            request(lambda:client.artwork(match,role,**args),lambda assets:render_assets(assets,append,token,page),token)
         def choose_match(match):state['match']=match;load_artwork()
         def games_ready(matches):
             clear_results();state['assets']=[];state['match']=None;more.set_visible(False)

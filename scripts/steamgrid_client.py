@@ -60,7 +60,7 @@ class Client:
         query={'types':'static','nsfw':'false','humor':'any' if humor else 'false','epilepsy':'false','page':str(page)}
         if style:query['styles']=style
         if dimensions:query['dimensions']=dimensions
-        elif role=='poster':query['dimensions']='600x900'
+        elif role=='poster':query['dimensions']=','.join(DIMENSIONS['poster'])
         elif role=='capsule':query['dimensions']='920x430,460x215'
         if mime:query['mimes']=mime
         result=self._json(f'{endpoint}/game/{game_id}?'+urllib.parse.urlencode(query))

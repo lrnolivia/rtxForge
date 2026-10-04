@@ -723,7 +723,7 @@ def apply_corner_style(value):
     if CORNER_PROVIDER is None:
         CORNER_PROVIDER=Gtk.CssProvider()
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(),CORNER_PROVIDER,Gtk.STYLE_PROVIDER_PRIORITY_USER)
-    css='* { border-radius: 0; }' if CORNER_STYLE=='square' else ''
+    css='* { border-radius: 0; border-top-left-radius: 0; border-top-right-radius: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; } window, dialog { --window-radius: 0px; --dialog-radius: 0px; }' if CORNER_STYLE=='square' else ''
     if CORNER_STYLE=='rounded':css='window.background { border-radius: 12px; }'
     CORNER_PROVIDER.load_from_data(css.encode())
 
@@ -2876,17 +2876,18 @@ headerbar, .titlebar {
 /* Joined Adwaita rows: only the collection boundary is rounded. */
 columnview.library-column-view listview row {
     min-height: 0; margin: 0; padding: 0;
-    border: 0; border-bottom: 1px solid alpha(@window_fg_color,0.07);
+    border: 0; border-bottom: 1.5px solid @forge_lower_bg;
     border-radius: 0; background: @forge_library_card_a;
 }
 columnview.library-column-view listview row.joined-first { border-top-left-radius: 12px; border-top-right-radius: 12px; }
 columnview.library-column-view listview row.joined-last { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; border-bottom: 0; }
 list.review-list { border-radius: 12px; background: @forge_library_card_a; }
-list.review-list > row { margin: 0; border-radius: 0; border-bottom: 1px solid alpha(@window_fg_color,0.07); }
+list.review-list > row { box-shadow: none; background-image: none; margin: 0; border-radius: 0; border-bottom: 1.5px solid @forge_lower_bg; }
 list.review-list > row:first-child { border-top-left-radius: 12px; border-top-right-radius: 12px; }
 list.review-list > row:last-child { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; border-bottom: 0; }
 .review-bezel { border: 2px solid alpha(@window_fg_color,0.15); border-radius: 8px; margin: 10px 0; }
-.support-info { min-width: 20px; min-height: 20px; padding: 2px; border-radius: 50%; background: alpha(@window_bg_color,0.9); }
+.unsupported-caution, .unsupported-badge { color: #e5b54a; }
+.support-info { color: #e5b54a; min-width: 20px; min-height: 20px; padding: 2px; border-radius: 50%; background: alpha(@window_bg_color,0.9); }
 .review-badge { font-size: 11px; font-weight: 700; border-radius: 6px; padding: 4px 8px; background: alpha(@window_fg_color,0.08); }
 .review-game .title { font-weight: 700; }
 
@@ -3037,12 +3038,12 @@ def margins(w,n=16):
     for edge in ('start','end','top','bottom'):getattr(w,'set_margin_'+edge)(n)
 def scroll_bottom_fade(scroll,css='settings-bottom-fade'):
     overlay=Gtk.Overlay(child=scroll)
-    fade=Gtk.Box(height_request=40,valign=Gtk.Align.END,hexpand=True,can_target=False)
+    fade=Gtk.Box(height_request=28,valign=Gtk.Align.END,hexpand=True,can_target=False)
     fade.add_css_class(css)
     overlay.add_overlay(fade)
     def update(adj,*_):
         remaining=max(0,adj.get_upper()-adj.get_page_size()-adj.get_value())
-        fade.set_opacity(min(1,remaining/40))
+        fade.set_opacity(min(1,remaining/28))
     adj=scroll.get_vadjustment()
     adj.connect('changed',update);adj.connect('value-changed',update)
     update(adj)
@@ -4545,7 +4546,7 @@ class Window(Adw.ApplicationWindow):
         library_surface.append(
             library_stage
         )
-        bottom_gutter=Gtk.Box(height_request=40,valign=Gtk.Align.END,hexpand=True)
+        bottom_gutter=Gtk.Box(height_request=28,valign=Gtk.Align.END,hexpand=True)
         bottom_gutter.add_css_class('library-bottom-fade')
         bottom_gutter.set_can_target(False)
         library_stage.add_overlay(bottom_gutter)
@@ -4554,7 +4555,7 @@ class Window(Adw.ApplicationWindow):
             active=self.column_scroll if self.library_stack.get_visible_child_name()=='list' else self.library_scroll
             adj=active.get_vadjustment()
             remaining=max(0,adj.get_upper()-adj.get_page_size()-adj.get_value())
-            bottom_gutter.set_opacity(min(1,remaining/40))
+            bottom_gutter.set_opacity(min(1,remaining/28))
         for viewport in (self.library_scroll,self.column_scroll):
             viewport.get_vadjustment().connect('changed',update_library_fade)
             viewport.get_vadjustment().connect('value-changed',update_library_fade)
@@ -4867,16 +4868,82 @@ class Window(Adw.ApplicationWindow):
             if cache[key]:picture.set_paintable(cache[key])
         info=getattr(artwork,'support_info',None)
         if info is None:
-            info=Gtk.Button(icon_name='help-about-symbolic',halign=Gtk.Align.START,valign=Gtk.Align.START)
+            info=Gtk.Button(icon_name='dialog-warning-symbolic',halign=Gtk.Align.START,valign=Gtk.Align.START)
             info.add_css_class('support-info');info.set_margin_top(4);info.set_margin_start(4)
-            info.connect('clicked',lambda *_:info.trigger_tooltip_query())
+            info.connect('clicked',lambda *_:self.show_support_help(info))
             artwork.add_overlay(info);artwork.set_measure_overlay(info,False)
             artwork.support_info=info
+        info._support_game=game
         info.set_visible(unsupported)
         if unsupported:
             reason=self.support_reason(game)
             info.set_tooltip_text('Not supported · '+reason)
             info.update_property([Gtk.AccessibleProperty.LABEL,Gtk.AccessibleProperty.DESCRIPTION],['Why this game is not supported',reason])
+
+    def unsupported_notice(self,game):
+        listing=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        listing.add_css_class('boxed-list');listing.add_css_class('unsupported-notice')
+        entry=Adw.ActionRow(title='<b>Unsupported:</b> '+GLib.markup_escape_text(self.support_reason(game)),use_markup=True)
+        entry.set_title_lines(0)
+        icon=Gtk.Image(icon_name='dialog-warning-symbolic',pixel_size=24)
+        icon.add_css_class('unsupported-caution');entry.add_prefix(icon)
+        listing.append(entry)
+        return listing
+
+    def show_support_help(self,control):
+        popover=getattr(control,'support_popover',None)
+        if popover is None:
+            popover=Gtk.Popover(autohide=True)
+            popover.set_parent(control);control.support_popover=popover
+        notice=self.unsupported_notice(control._support_game)
+        notice.set_size_request(320,-1)
+        popover.set_child(notice);popover.popup()
+
+    def review_check_view(self,dialog,body,games):
+        body.append(label('Preparing your review','title-2'))
+        body.append(label('Checking compatibility and the changes each game needs.','dim-label'))
+        card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
+        card.add_css_class('card');margins(card,2)
+        line=Gtk.Box(spacing=16);margins(line,16)
+        art=ListArtwork();line.append(art)
+        text=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4,hexpand=True,valign=Gtk.Align.CENTER)
+        current=label('Getting files ready','heading');stage=label('Checking the feature package','dim-label')
+        text.append(current);text.append(stage);line.append(text)
+        spinner=Gtk.Spinner(spinning=True,width_request=24,height_request=24);line.append(spinner)
+        card.append(line)
+        counter=label(f'0 of {len(games)} checked','dim-label');counter.set_margin_start(16);counter.set_margin_end(16)
+        card.append(counter)
+        bar=Gtk.ProgressBar();bar.set_margin_start(16);bar.set_margin_end(16);bar.set_margin_bottom(16)
+        card.append(bar);body.append(card)
+        body.append(label('Your files will only change after you review and confirm.','dim-label'))
+        state={'dialog':dialog,'art':art,'game':current,'stage':stage,'counter':counter,'bar':bar,'total':len(games),'determinate':False,'sequence':0}
+        self.review_check_state=state
+        def pulse():
+            if getattr(self,'review_check_state',None) is not state or self.dialog is not dialog:return False
+            if not state['determinate']:bar.pulse()
+            return True
+        GLib.timeout_add(100,pulse)
+
+    def review_check_event(self,event,state):
+        state['stage'].set_text(user_messages.friendly_status(event['label']))
+        if event.get('phase')!='review-check':return
+        state['determinate']=True
+        checked=event['checked'];total=event['total']
+        state['counter'].set_text(f'{checked} of {total} checked')
+        game=next((g for g in self.operation_games if g['name']==event.get('game')),None)
+        if game:
+            state['game'].set_text(game['name']);state['art'].set_artwork(capsule_art_path(game))
+        state['sequence']+=1;sequence=state['sequence']
+        start=state['bar'].get_fraction();target=checked/max(1,total);began=time.monotonic()
+        settings=Gtk.Settings.get_default()
+        if not settings or not settings.get_property('gtk-enable-animations'):
+            state['bar'].set_fraction(target);return
+        def animate():
+            if getattr(self,'review_check_state',None) is not state or state['sequence']!=sequence:return False
+            t=min(1,(time.monotonic()-began)/0.18)
+            state['bar'].set_fraction(start+(target-start)*(1-(1-t)**3))
+            return t<1
+        GLib.timeout_add(16,animate)
 
     def populate_tools(self,body,game):
         body.append(label('Tools','title-2'))
@@ -4910,7 +4977,16 @@ class Window(Adw.ApplicationWindow):
         if isinstance(body,Gtk.Viewport):body=body.get_child()
         dialog=self.dialog
         if dialog is None or not hasattr(dialog,'set_content_height'):return False
-        if scroll.get_parent() is not dialog.get_child():return False
+        container=scroll.get_parent()
+        if isinstance(container,Gtk.Overlay):container=container.get_parent()
+        if container is not dialog.get_child():return False
+        shell=container
+        footer=shell.get_last_child()
+        footer.set_margin_top(28)
+        footer.remove_css_class('progress-footer')
+        if scroll.get_parent() is shell:
+            shell.remove(scroll)
+            shell.insert_child_after(scroll_bottom_fade(scroll),shell.get_first_child())
         width=max(320,body.get_width() or dialog.get_content_width()-48)
         natural=body.measure(Gtk.Orientation.VERTICAL,width)[1]
         rows=[]
@@ -4928,10 +5004,10 @@ class Window(Adw.ApplicationWindow):
         if len(rows)>5:
             ok,bounds=rows[4].compute_bounds(scroll)
             visible=round(bounds.get_y()+bounds.get_height()+scroll.get_vadjustment().get_value()) if ok else natural-sum(heights[5:])
-        shell=scroll.get_parent()
+        scroll_container=scroll.get_parent()
         chrome=0;child=shell.get_first_child()
         while child:
-            if child is not scroll:chrome+=child.measure(Gtk.Orientation.VERTICAL,width)[1]
+            if child is not scroll_container:chrome+=child.measure(Gtk.Orientation.VERTICAL,width)[1]
             child=child.get_next_sibling()
         available=max(320,self.get_height()-48-chrome)
         if visible>available:
@@ -8264,6 +8340,11 @@ class Window(Adw.ApplicationWindow):
             )
     def event(self,event):
         if event['kind']=='progress':
+            state=getattr(self,'review_check_state',None)
+            if state and self.dialog is state['dialog']:
+                self.review_check_event(event,state)
+                self.show_operation_status(event['label'])
+                return False
             self.show_operation_status(event['label']);self.update_progress_art(event.get('game',''))
             if getattr(self,'job_label',None):
                 self.job_caption.set_text(user_messages.friendly_status(event['label']))
@@ -10200,8 +10281,8 @@ class Window(Adw.ApplicationWindow):
 
         # Feature/status tag ABOVE the game name.
         mode_name=(
-            game.get('profile')
-            if game.get('installed')
+            'Unsupported' if game.get('blocked') else
+            game.get('profile') if game.get('installed')
             else 'Ready for Features'
         )
 
@@ -10209,6 +10290,7 @@ class Window(Adw.ApplicationWindow):
             mode_name or 'Ready for Features',
             'cover-badge',
         )
+        if game.get('blocked'):status.add_css_class('unsupported-badge')
         status.set_halign(
             Gtk.Align.START
         )
@@ -10548,10 +10630,10 @@ class Window(Adw.ApplicationWindow):
         self.detail_fit_page=fit_detail_page
         self.populate_tools(content['Tools'],game)
         overview=content['Overview']
+        if game.get('blocked'):overview.append(self.unsupported_notice(game))
         info=Adw.PreferencesGroup(title='Game Information');overview.append(info)
-        for title,value in [('Library',game.get('library')),('Location',game['game']),('Compatibility',self.support_reason(game) if game.get('blocked') else 'Supported'),('Metadata Source',game.get('metadata_source')),('Developer',game.get('developers')),('Release',game.get('release'))]:
+        for title,value in [('Library',game.get('library')),('Location',game['game']),('Compatibility',None if game.get('blocked') else 'Supported'),('Metadata Source',game.get('metadata_source')),('Developer',game.get('developers')),('Release',game.get('release'))]:
             if value:info.add(row(title,value))
-        if game.get('blocked'):overview.append(self.technical_details(game['blocked']))
         features=content['Features'];installed=game.get('installed',False)
         if installed:
             features.append(label('Saved NR: '+('enabled' if game.get('nr_enabled') else 'disabled')+' · runtime and visual results require diagnosis.','dim-label'))
@@ -11476,8 +11558,7 @@ class Window(Adw.ApplicationWindow):
         d.set_can_close(False)
         self.job_label=None
         self.progress_cancel_box=None
-        b.append(label(f'Checking {len(rows)} games for this change…','title-2'))
-        b.append(label('Your files will only change after you review and confirm.','dim-label'))
+        self.review_check_view(d,b,rows)
         self.add_cancel(f)
 
         if self.options.live_smoke:
@@ -12011,6 +12092,7 @@ class Window(Adw.ApplicationWindow):
 
 
     def finish_progress(self,success,message,footer):
+        self.dialog,_,footer=self.open_panel('Done' if success else 'Could not finish',width=500,height=-1,show_close=False)
         self.dialog.set_can_close(True)
         clear(footer)
         footer.set_visible(False)
@@ -12103,6 +12185,7 @@ class Window(Adw.ApplicationWindow):
         )
 
     def action_ready(self,review,d,b,f):
+        self.review_check_state=None
         self.review=review
         clear(b)
         clear(f)
@@ -12154,6 +12237,7 @@ class Window(Adw.ApplicationWindow):
         if self.options.demo:b.append(label('Preview mode · all file changes are disabled.','dim-label'))
     def execute(self,review,d,b,f):
         if self.options.demo:return
+        d,b,f=self.open_panel('Applying changes',width=640,height=264,show_close=False)
         clear(f);d.set_can_close(False);self.progress_view(b,'Applying changes…')
         if review.get('kind')=='engine':
             self.operation_executing=True;review['cancel_event']=self.operation_cancel;self.add_cancel(f)

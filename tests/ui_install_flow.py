@@ -17,7 +17,7 @@ def capture(name):
     assert app.window.capture(name)
 def start():
     w=app.window;w.scan=lambda *args:None;w.set_default_size(1440,960)
-    w.settings['runtime_provider']='dlss-unlocked';w.games=w.games[:5]
+    w.filter='all';w.settings['runtime_provider']='dlss-unlocked';w.games=w.games[:5]
     for g in w.games[:4]:g['blocked']='';g['test_record']={'status':'Untested'}
     w.games[4]['blocked']='No native DLSS-G detected';w.selected_game_ids.clear();w.show_games(w.games,False)
     w.select_all(True)
@@ -48,7 +48,7 @@ def review_capture():
     w=app.window
     apply=next(x for x in children(w.dialog.get_child()) if isinstance(x,Gtk.Button) and x.get_label()=='Install')
     apply.emit('clicked');assert len(w.calls)==1
-    d,b,f=w.calls[0][1:]
+    d,b,f=w.open_panel('Applying changes',width=640,height=264,show_close=False)
     w.progress_view(b,'Installing features…');w.add_cancel(f)
     w.update_progress_art(w.games[0]['name']);w.job_counter.set_text('1 / 3');w.job_bar.set_fraction(.35)
     w.flow_footer=f

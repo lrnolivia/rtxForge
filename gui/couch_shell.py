@@ -51,7 +51,7 @@ CSS = b'''
 .couch-view-switch { background: #202226; border-radius: 16px; padding: 4px; }
 .couch-view { background: transparent; color: #c9cbd1; box-shadow: none; border: none; border-radius: 12px; padding: 10px 16px; font-size: 15px; font-weight: 550; }
 .couch-view.active { background: #37393f; color: #fafafa; }
-.couch-list-row { background: #1b1d21; border: none; box-shadow: none; border-radius: 0; padding: 10px 18px; border-bottom: 1px solid rgba(255,255,255,0.07); color: #fafafa; }
+.couch-list-row { background: #1b1d21; border: none; box-shadow: none; border-radius: 0; padding: 10px 18px; border-bottom: 1.5px solid #101113; color: #fafafa; }
 .couch-list-row.joined-first { border-top-left-radius: 12px; border-top-right-radius: 12px; }
 .couch-list-row.joined-last { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; border-bottom: 0; }
 .couch-list-row:focus { outline: none; }

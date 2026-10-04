@@ -438,7 +438,7 @@ class CouchShell(Gtk.Overlay):
         self.apply_accent(game)
         self.title.set_text(game['name'])
         if game.get('blocked'):
-            status = user_messages.friendly_error(game['blocked'])
+            status = 'Unsupported'
         elif game.get('installed'):
             status = game.get('profile', 'Features installed') + ' installed'
             if game.get('nr_enabled') is not None:
@@ -812,6 +812,7 @@ class CouchShell(Gtk.Overlay):
                 self.detail.set_text('Add a game folder in Classic to get started.')
         elif self.page == 'game':
             game = self.game
+            if game.get('blocked'):self.entry('Game Details',lambda:self.owner.details(game),hint='View this game’s compatibility information.')
             self.entry('Configure', lambda: self.open('features'), enabled=not game.get('blocked'), hint='Choose Neural Rendering and frame generation for this game.')
             self.entry('Presets', lambda: self.open('game_presets'), enabled=game.get('installed', False), hint='Adjust graphics features for this game. Your other games stay as they are.')
             self.entry('Tools', lambda: self.open('tools'), hint='Diagnose Neural Rendering, update DLSS, or restore original files.')

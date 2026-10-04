@@ -1,5 +1,5 @@
 """Native GTK verification of new app surfaces; game writes disabled."""
-import argparse,json,os,sys,traceback
+import argparse,json,os,sys,traceback,time
 from pathlib import Path
 os.environ['GSETTINGS_BACKEND']='memory'
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'gui'))
@@ -23,8 +23,12 @@ def theme(mode):
     app.window.settings['theme']=mode
 
 
+class FrameNotReady(Exception):pass
+
 def capture(name):
-    assert app.window.capture(name).is_file();results.append(name)
+    path=app.window.capture(name)
+    if path is None:raise FrameNotReady(name)
+    assert path.is_file();results.append(name)
 
 
 def reduced_motion():
@@ -44,9 +48,17 @@ def couch():
 
 steps=[lambda:theme('light'),lambda:capture('completion-light.png'),lambda:theme('night'),lambda:capture('completion-night.png'),lambda:theme('dark'),lambda:app.window.show_settings(),lambda:capture('completion-settings.png'),reduced_motion,lambda:app.window.dialog.close(),lambda:app.window.details(app.window.games[0]),lambda:app.window.detail_pages.set_visible_child_name('Tools'),lambda:capture('completion-tools.png'),lambda:app.window.show_diagnostics(app.window.games[0]),lambda:capture('completion-diagnostics.png'),lambda:app.window.show_reports(),lambda:capture('completion-reports.png'),lambda:app.window.preview_report({'library.json':'{"name":"Demo", "visual_result":"Not established"}'}),lambda:capture('completion-report-preview.png'),lambda:app.window.show_controller_menu(),lambda:capture('completion-controller-menu.png'),couch,lambda:capture('completion-couch-settings.png'),lambda:app.window.details(app.window.games[0]),lambda:app.window.detail_pages.set_visible_child_name('Tools'),lambda:capture('completion-couch-tools.png'),lambda:app.window.dialog.close(),lambda:app.window.toggle_compact_header(),lambda:capture('completion-couch-library.png')]
 
+capture_deadline=None
 def step():
+    global capture_deadline
     try:
-        if steps:steps.pop(0)();GLib.timeout_add(400,step)
+        if steps:
+            try:steps[0]()
+            except FrameNotReady:
+                if capture_deadline is None:capture_deadline=time.monotonic()+5
+                if time.monotonic()>=capture_deadline:raise AssertionError('Native frame did not become capturable within five seconds')
+                GLib.timeout_add(100,step);return False
+            steps.pop(0);capture_deadline=None;GLib.timeout_add(400,step)
         else:
             (ROOT/'dist/ui-app-completion.json').write_text(json.dumps({'game_writes':False,'screenshots':results,'native_roles':native},indent=2));app.quit()
     except Exception:traceback.print_exc();app.exit_code=1;app.quit()

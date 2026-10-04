@@ -43,9 +43,12 @@ def _json(url):
 
 def _version_key(value):
     text = str(value).strip().lstrip('v')
-    if not re.fullmatch(r'\d+(?:\.\d+)*', text):
+    match = re.fullmatch(r'(\d+(?:\.\d+)*)(?:-rc\.(\d+))?', text)
+    if not match:
         raise ValueError(f'Invalid application version: {value}')
-    return tuple(int(part) for part in text.split('.'))
+    core = tuple(int(part) for part in match[1].split('.'))
+    core += (0,) * max(0, 3 - len(core))
+    return core, (0, int(match[2])) if match[2] is not None else (1, 0)
 
 
 def current_build():

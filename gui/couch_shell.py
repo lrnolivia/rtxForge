@@ -464,7 +464,7 @@ class CouchShell(Gtk.Overlay):
         color = '#76b900'
         if game:
             shared = self.owner._ensure_game_accent(game) or 'art-76b900'
-            color = self.owner.settings.get('game_accents', {}).get(game['game']) or '#' + shared.removeprefix('art-')
+            color = '#' + shared.removeprefix('art-') if game.get('blocked') else self.owner.settings.get('game_accents', {}).get(game['game']) or '#' + shared.removeprefix('art-')
         if not isinstance(color, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', color):
             color = '#76b900'
         if color == self.accent_color:
@@ -922,6 +922,7 @@ class CouchShell(Gtk.Overlay):
             marker.set_margin_top(8)
             marker.set_margin_end(8)
             button.artwork.add_overlay(marker)
+        self.owner.decorate_support_artwork(button.artwork,button.artwork.picture,game,path)
         column.append(button.artwork)
         name = label(entry['title'], 'couch-tile-title')
         name.set_ellipsize(Pango.EllipsizeMode.END)
@@ -945,6 +946,7 @@ class CouchShell(Gtk.Overlay):
             content.append(self.selection_marker(game))
         path = self.owner.wide_art_path(game)
         button.artwork = self.artwork_widget(path, '', 96, 54, 'couch-list-art')
+        self.owner.decorate_support_artwork(button.artwork,button.artwork.picture,game,path)
         content.append(button.artwork)
         names = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, valign=Gtk.Align.CENTER, hexpand=True)
         title = label(entry['title'], 'couch-list-title')
@@ -956,7 +958,7 @@ class CouchShell(Gtk.Overlay):
             profile = label(game.get('profile', 'Not installed'), 'couch-list-status')
             profile.set_width_chars(16)
             content.append(profile)
-        status = label('Unavailable' if game.get('blocked') else 'Installed' if game.get('installed') else 'Available', 'couch-list-status')
+        status = label('Unsupported' if game.get('blocked') else 'Installed' if game.get('installed') else 'Available', 'couch-list-status')
         status.set_width_chars(10)
         status.set_xalign(1)
         content.append(status)
@@ -978,6 +980,7 @@ class CouchShell(Gtk.Overlay):
             cover = self.controls[index].artwork
             try:
                 cover.picture.set_filename(path)
+                self.owner.decorate_support_artwork(cover,cover.picture,game,path)
                 if cover.placeholder:
                     cover.placeholder.set_visible(False)
             except (GLib.Error, OSError):

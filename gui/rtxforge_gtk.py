@@ -333,7 +333,7 @@ def safe_combo_row(**kwargs):
     return Adw.ComboRow(
         **kwargs
     )
-def artwork_accent(path,color=None):
+def artwork_accent(path,color=None,muted=False):
     pix=GdkPixbuf.Pixbuf.new_from_file_at_scale(
         path,
         32,
@@ -396,6 +396,11 @@ def artwork_accent(path,color=None):
         color
         or '#%02x%02x%02x'%rgb
     )
+
+    if muted:
+        rgb=[int(color[i:i+2],16)/255 for i in (1,3,5)]
+        h,s,v=colorsys.rgb_to_hsv(*rgb)
+        color='#%02x%02x%02x'%tuple(round(c*255) for c in colorsys.hsv_to_rgb(h,s*0.1,v))
 
     try:
         raw=color.lstrip('#')
@@ -2625,6 +2630,7 @@ button.suggested-action label {
 
 /* Column header gets matching vertical room. */
 columnview.library-column-view header {
+    border-radius: 12px;
     background: alpha(@window_fg_color,0.025);
     border-bottom: 1px solid alpha(@window_fg_color,0.11);
     box-shadow: none;
@@ -2880,6 +2886,7 @@ list.review-list > row { margin: 0; border-radius: 0; border-bottom: 1px solid a
 list.review-list > row:first-child { border-top-left-radius: 12px; border-top-right-radius: 12px; }
 list.review-list > row:last-child { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; border-bottom: 0; }
 .review-bezel { border: 2px solid alpha(@window_fg_color,0.15); border-radius: 8px; margin: 10px 0; }
+.support-info { min-width: 20px; min-height: 20px; padding: 2px; border-radius: 50%; background: alpha(@window_bg_color,0.9); }
 .review-badge { font-size: 11px; font-weight: 700; border-radius: 6px; padding: 4px 8px; background: alpha(@window_fg_color,0.08); }
 .review-game .title { font-weight: 700; }
 
@@ -2956,7 +2963,8 @@ def action_icon(text):
         (('install','apply','save'),'document-save-symbolic'),
         (('download','update'),'folder-download-symbolic'),
         (('refresh','retry'),'view-refresh-symbolic'),
-        (('folder','browse','open','details'),'folder-open-symbolic'),
+        (('details',),'help-about-symbolic'),
+        (('folder','browse','open'),'folder-open-symbolic'),
         (('cancel','close'),'window-close-symbolic'),
         (('continue','next'),'go-next-symbolic'),
         (('done','select','confirm'),'object-select-symbolic'),
@@ -2983,6 +2991,18 @@ class ActionButton(Gtk.Button):
         self.text_label=label(text);self.text_label.set_wrap(False)
         content.append(self.text_label);self.set_child(content)
         self.update_property([Gtk.AccessibleProperty.LABEL],[text])
+        self.connect('map',self._share_row_width)
+    def _share_row_width(self,*_):
+        ancestor=self.get_parent()
+        while ancestor and not isinstance(ancestor,Adw.ActionRow):ancestor=ancestor.get_parent()
+        if ancestor is None:return
+        group=ancestor.get_parent()
+        if group is None:return
+        size_group=getattr(group,'_action_widths',None)
+        if size_group is None:
+            size_group=Gtk.SizeGroup(mode=Gtk.SizeGroupMode.HORIZONTAL)
+            group._action_widths=size_group
+        size_group.add_widget(self)
     def get_label(self):return self.text_label.get_text()
     def set_label(self,text):
         self.text_label.set_text(text)
@@ -3696,6 +3716,8 @@ class Window(Adw.ApplicationWindow):
         for caption,icon,action_name in menu_actions:
             entry=icon_button(caption,icon,lambda *_:menu_popover.popdown(),'flat')
             entry.get_child().set_spacing(16)
+            entry.get_child().set_halign(Gtk.Align.START)
+            entry.get_child().get_first_child().set_size_request(24,-1)
             entry.set_halign(Gtk.Align.FILL)
             entry.set_action_name(action_name)
             menu_body.append(entry)
@@ -3849,7 +3871,7 @@ class Window(Adw.ApplicationWindow):
             'bulk-remove',
         )
         bulk.append(self.uninstall_all)
-        update_dlss=button('Update DLSS',self.update_library_dlss,'dlss-outline')
+        update_dlss=button('Update DLSS',lambda *_:self.update_dlss_games(list(self.games)),'dlss-outline')
         self.update_dlss_button=update_dlss
         update_dlss.set_tooltip_text('Update older DLSS files across the library')
         bulk.append(update_dlss)
@@ -4103,7 +4125,7 @@ class Window(Adw.ApplicationWindow):
         )
 
 
-        self.sticky_update_dlss=button('Update DLSS',self.update_library_dlss,'dlss-outline')
+        self.sticky_update_dlss=button('Update DLSS',lambda *_:self.update_dlss_games(list(self.games)),'dlss-outline')
         self.sticky_update_dlss.set_tooltip_text('Update older DLSS files across the library')
         sticky_actions.append(self.sticky_update_dlss)
 
@@ -4516,7 +4538,7 @@ class Window(Adw.ApplicationWindow):
             vexpand=True
         )
         library_stage.set_margin_top(16)
-        library_stage.set_margin_bottom(0)
+        library_stage.set_margin_bottom(16)
         library_stage.set_child(
             self.library_stack
         )
@@ -4821,6 +4843,40 @@ class Window(Adw.ApplicationWindow):
     def capsule_art_path(self,game):return capsule_art_path(game)
     def wide_art_path(self,game):return capsule_art_path(game) or str(LIBRARY_GHOST_TEXTURE)
     def make_art_picture(self,width,height):return FixedArtworkPicture(width,height)
+
+    def support_reason(self,game):
+        reason=str(game.get('blocked',''))
+        return {'No Windows executable found':'This game does not have a Windows launch file that rtxForge can use.',
+                'Anti-cheat detected':'This game uses anti-cheat software. rtxForge does not install graphics tools into anti-cheat protected games.',
+                'No native DLSS-G detected':'This game does not include the native NVIDIA frame-generation files required by the tools rtxForge currently supports.'}.get(reason,user_messages.friendly_error(reason))
+
+    def decorate_support_artwork(self,artwork,picture,game,path):
+        unsupported=bool(game.get('blocked'))
+        picture.set_opacity(0.45 if unsupported else 1.0)
+        picture.support_desaturated=unsupported
+        if unsupported and path and Path(path).is_file():
+            cache=getattr(self,'_muted_art_cache',{})
+            key=(path,Path(path).stat().st_mtime_ns)
+            if key not in cache:
+                try:
+                    pix=GdkPixbuf.Pixbuf.new_from_file_at_scale(path,1400,1400,True)
+                    muted=pix.copy();pix.saturate_and_pixelate(muted,0.1,False)
+                    cache[key]=Gdk.Texture.new_for_pixbuf(muted)
+                except (GLib.Error,OSError):cache[key]=None
+                self._muted_art_cache=cache
+            if cache[key]:picture.set_paintable(cache[key])
+        info=getattr(artwork,'support_info',None)
+        if info is None:
+            info=Gtk.Button(icon_name='help-about-symbolic',halign=Gtk.Align.START,valign=Gtk.Align.START)
+            info.add_css_class('support-info');info.set_margin_top(4);info.set_margin_start(4)
+            info.connect('clicked',lambda *_:info.trigger_tooltip_query())
+            artwork.add_overlay(info);artwork.set_measure_overlay(info,False)
+            artwork.support_info=info
+        info.set_visible(unsupported)
+        if unsupported:
+            reason=self.support_reason(game)
+            info.set_tooltip_text('Not supported · '+reason)
+            info.update_property([Gtk.AccessibleProperty.LABEL,Gtk.AccessibleProperty.DESCRIPTION],['Why this game is not supported',reason])
 
     def populate_tools(self,body,game):
         body.append(label('Tools','title-2'))
@@ -6566,7 +6622,7 @@ class Window(Adw.ApplicationWindow):
             'accent_class'
         )
 
-        if accent:
+        if accent and game.get('_accent_blocked')==bool(game.get('blocked')):
             return accent
 
         path=(
@@ -6587,7 +6643,9 @@ class Window(Adw.ApplicationWindow):
                 ).get(
                     game['game']
                 ),
+                muted=bool(game.get('blocked')),
             )
+            game['_accent_blocked']=bool(game.get('blocked'))
 
             game[
                 'accent_class'
@@ -6846,9 +6904,9 @@ class Window(Adw.ApplicationWindow):
 
         path=capsule_art_path(game)
 
-        root._artwork.set_artwork(
-            path
-        )
+        root._artwork.set_artwork(path)
+        root._check.set_sensitive(not bool(game.get('blocked')))
+        self.decorate_support_artwork(root._artwork,root._artwork.picture,game,path)
 
         self._column_apply_accent(
             root,
@@ -6960,6 +7018,9 @@ class Window(Adw.ApplicationWindow):
         if not game_id:
             return
 
+        if check.get_active() and root._game and root._game.get('blocked'):
+            root._binding=True;check.set_active(False);root._binding=False
+            return
         if check.get_active():
             self.selected_game_ids.add(
                 game_id
@@ -7221,7 +7282,7 @@ class Window(Adw.ApplicationWindow):
             )
 
         if game.get('blocked'):
-            text='Not Installed'
+            text='Unsupported'
             css='unavailable'
         elif game.get('installed'):
             text='Installed'
@@ -7511,36 +7572,14 @@ class Window(Adw.ApplicationWindow):
             False
         )
 
-        if blocked:
-            child=Gtk.Image.new_from_icon_name(
-                'action-unavailable-symbolic'
-            )
-            child.set_pixel_size(
-                16
-            )
-
-            root._primary.set_child(
-                child
-            )
-            root._primary.set_tooltip_text(
-                'Not Installed'
-            )
-
-        else:
-            child=Gtk.Label(
-                label=(
-                    'Details'
-                    if game.get('installed')
-                    else 'Install'
-                )
-            )
-
-            root._primary.set_child(
-                child
-            )
-            root._primary.set_tooltip_text(
-                None
-            )
+        caption='Details' if blocked or game.get('installed') else 'Install'
+        content=Gtk.Box(spacing=10,halign=Gtk.Align.CENTER,valign=Gtk.Align.CENTER)
+        image=Gtk.Image.new_from_icon_name(action_icon(caption))
+        image.set_visible(BUTTON_GLYPHS);BUTTON_IMAGES.add(image)
+        content.append(image);content.append(label(caption))
+        root._primary.set_child(content)
+        root._primary.set_tooltip_text(None)
+        root._primary.set_size_request(108,-1)
 
         enabled=(
             not self.busy
@@ -7555,9 +7594,7 @@ class Window(Adw.ApplicationWindow):
         )
 
         root._primary.set_sensitive(
-            enabled
-            and compatible
-            and not blocked
+            enabled and (blocked or game.get('installed') or compatible)
         )
 
         root._more.set_sensitive(
@@ -7659,15 +7696,8 @@ class Window(Adw.ApplicationWindow):
     ):
         game=root._game
 
-        if (
-            game is None
-            or game.get(
-                'blocked'
-            )
-        ):
-            return
-
-        if game.get('installed'):
+        if game is None:return
+        if game.get('blocked') or game.get('installed'):
             self.details(game)
             return
         self.launch_action('install', targets=[game])
@@ -7693,6 +7723,7 @@ class Window(Adw.ApplicationWindow):
         def add(caption,callback,enabled=True):
             action=button(caption,lambda *_:(pop.popdown(),callback()))
             action.add_css_class('flat');action.set_sensitive(enabled)
+            action.get_child().set_halign(Gtk.Align.START)
             content.append(action)
         add('Game Details',lambda:self.details(game))
         def files():
@@ -7911,7 +7942,7 @@ class Window(Adw.ApplicationWindow):
         self.start('Update DLSS Files',work,finished)
 
     def update_dlss_games(self,games):
-        targets=list({game['game']:game for game in games}.values())
+        targets=list({game['game']:game for game in games if not game.get('blocked')}.values())
         if not targets:
             self.toast('No games selected.');return
         d,b,f=self.open_panel('Update DLSS Files',width=620,height=440)
@@ -8191,13 +8222,7 @@ class Window(Adw.ApplicationWindow):
                 continue
 
             root._primary.set_sensitive(
-                enabled
-                and compatible
-                and not bool(
-                    game.get(
-                        'blocked'
-                    )
-                )
+                enabled and (game.get('blocked') or game.get('installed') or compatible)
             )
 
             root._more.set_sensitive(
@@ -9416,7 +9441,7 @@ class Window(Adw.ApplicationWindow):
                 check,
                 False,
             )
-        badge=label('Not Installed' if game.get('blocked') else game.get('profile','Ready') if game.get('installed') else 'Ready','cover-badge');badge.set_halign(Gtk.Align.START);badge.set_valign(Gtk.Align.END);margins(badge,7)
+        badge=label('Unsupported' if game.get('blocked') else game.get('profile','Ready') if game.get('installed') else 'Ready','cover-badge');badge.set_halign(Gtk.Align.START);badge.set_valign(Gtk.Align.END);margins(badge,7)
         badge_mode={'NR Only':'nr-only','MFG Only':'mfg-only','NR + MFG':'nr-mfg'}.get(game.get('profile'))
         if badge_mode:
             badge=profile_label(badge_mode,badge.get_text());badge.add_css_class('cover-badge');badge.set_halign(Gtk.Align.START);badge.set_valign(Gtk.Align.END);margins(badge,7)
@@ -9616,6 +9641,7 @@ class Window(Adw.ApplicationWindow):
         self.attach_game_context(card,lambda:entry['data'])
     def paint_card(self,entry):
         game=entry['data']
+        entry['check'].set_sensitive(not bool(game.get('blocked')))
 
         view=self.settings.get(
             'library_view',
@@ -9640,10 +9666,11 @@ class Window(Adw.ApplicationWindow):
                 entry['fallback'].set_visible(False)
                 if game.get('accent_class'):entry['widget'].remove_css_class(game['accent_class'])
                 accent_path=capsule_art_path(game) or game.get('poster') or game.get('hero') or path
-                game['accent_class']=artwork_accent(accent_path,self.settings.get('game_accents',{}).get(game['game']));entry['widget'].add_css_class(game['accent_class'])
+                game['accent_class']=artwork_accent(accent_path,self.settings.get('game_accents',{}).get(game['game']),muted=bool(game.get('blocked')));entry['widget'].add_css_class(game['accent_class'])
             except Exception:entry['fallback'].set_visible(True)
         else:
             entry['picture'].set_paintable(None);entry['fallback'].set_visible(True)
+        self.decorate_support_artwork(entry['overlay'],entry['picture'],game,path)
         entry['meta'].set_text(
             str(
                 game.get(
@@ -9744,7 +9771,7 @@ class Window(Adw.ApplicationWindow):
         if active:
             self.selected_game_ids={
                 game['game']
-                for game in self.games
+                for game in self.games if not game.get('blocked')
             }
         else:
             self.selected_game_ids.clear()
@@ -9792,6 +9819,7 @@ class Window(Adw.ApplicationWindow):
                         'check'
                     )
                     is not None
+                    and not entry['data'].get('blocked')
                     and entry[
                         'check'
                     ].get_active()
@@ -10521,7 +10549,7 @@ class Window(Adw.ApplicationWindow):
         self.populate_tools(content['Tools'],game)
         overview=content['Overview']
         info=Adw.PreferencesGroup(title='Game Information');overview.append(info)
-        for title,value in [('Library',game.get('library')),('Location',game['game']),('Compatibility',user_messages.friendly_error(game['blocked']) if game.get('blocked') else 'Available'),('Metadata Source',game.get('metadata_source')),('Developer',game.get('developers')),('Release',game.get('release'))]:
+        for title,value in [('Library',game.get('library')),('Location',game['game']),('Compatibility',self.support_reason(game) if game.get('blocked') else 'Supported'),('Metadata Source',game.get('metadata_source')),('Developer',game.get('developers')),('Release',game.get('release'))]:
             if value:info.add(row(title,value))
         if game.get('blocked'):overview.append(self.technical_details(game['blocked']))
         features=content['Features'];installed=game.get('installed',False)
@@ -11420,6 +11448,7 @@ class Window(Adw.ApplicationWindow):
                 ]
             )
         )
+        rows=[g for g in rows if not g.get('blocked')]
         if entire and operation in ('install','repair'):rows=[g for g in rows if g.get('test_record',{}).get('status')!='Bench']
         if operation=='reset':rows=[g for g in rows if g.get('installed')]
         if not rows:self.toast('No eligible games selected.');return
@@ -11441,13 +11470,18 @@ class Window(Adw.ApplicationWindow):
         self.operation_previous=targets[0] if targets and len(targets)==1 else None
 
         self.operation_cancel=threading.Event();self.operation_executing=False
-        d,b,f=self.open_panel(title,width=580,height=310,show_close=False);d.set_can_close(False)
-
         self.operation_games=rows
-        self.progress_view(b,f'Checking {len(rows)} games…')
+        review_title={'install':'Review Installation','repair':'Review Repair','uninstall':'Review Restoration','reset':'Review Presets'}[operation]
+        d,b,f=self.open_panel(review_title,width=640,height=360,show_close=False)
+        d.set_can_close(False)
+        self.job_label=None
+        self.progress_cancel_box=None
+        b.append(label(f'Checking {len(rows)} games for this change…','title-2'))
+        b.append(label('Your files will only change after you review and confirm.','dim-label'))
         self.add_cancel(f)
 
         if self.options.live_smoke:
+            self.progress_view(b,f'Checking {len(rows)} games…')
             self.live_smoke_begin(f)
             return
 

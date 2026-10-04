@@ -1655,7 +1655,7 @@ spinbutton.tuning-number-input text {
 }
 
 .settings-main-surface {
-    background: @view_bg_color;
+    background: @window_bg_color;
 }
 
 .settings-content {
@@ -1666,7 +1666,7 @@ spinbutton.tuning-number-input text {
 
 .settings-footer {
     padding: 14px 18px;
-    background: @view_bg_color;
+    background: @window_bg_color;
     border-top: none;
 }
 

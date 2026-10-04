@@ -13657,6 +13657,12 @@ class Window(Adw.ApplicationWindow):
                     == view
                 )
 
+                # This smoke helper switches views synchronously. Let GTK allocate
+                # the new gallery before asserting its responsive geometry.
+                settle=GLib.MainLoop()
+                GLib.timeout_add(120,lambda:(settle.quit(),False)[1])
+                settle.run()
+                assert viewport_width()>1, 'Smoke gallery was not allocated'
                 self.update_library_spacing()
                 slots=self.flow.get_max_children_per_line()
 

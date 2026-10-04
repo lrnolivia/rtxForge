@@ -491,6 +491,8 @@ def artwork_accent(path,color=None):
         provider=Gtk.CssProvider()
 
         provider.load_from_data((
+            f'.review-game.{name} .review-bezel {{ border-color: {color}; }} '
+            f'.review-game.{name} .review-badge {{ color: {ui_colors.readable(color,palette["card"])}; background: {ui_colors.mix(color,palette["card"],0.10)}; }} '
             f'columnview row.{name}.game-selected {{ background: {color}; color: {accent_dark}; }} '
             f'columnview row.{name}.game-selected label, columnview row.{name}.game-selected .library-pill-icon {{ color: {accent_dark}; }} '
             f'columnview row.{name}.game-selected .library-source-pill {{ background: {source_bg}; }} '
@@ -1121,6 +1123,26 @@ class LibraryPill(Gtk.Box):
         # Fixed outer measurement owns width.
         return
 
+
+def capsule_art_path(game):
+    """A capsule slot accepts only capsule artwork, never another art role."""
+    path=game.get('capsule')
+    if not path or not Path(path).is_file():return None
+    if path in (game.get('hero'),game.get('poster')):return None
+    try:
+        _,width,height=GdkPixbuf.Pixbuf.get_file_info(str(path))
+        if not height or not 1.6<=width/height<=2.6:return None
+    except Exception:return None
+    return path
+
+class FixedArtworkPicture(Gtk.Picture):
+    def __init__(self,width,height):
+        self.art_width=width;self.art_height=height
+        super().__init__(content_fit=Gtk.ContentFit.COVER,can_shrink=True)
+    def do_get_request_mode(self):return Gtk.SizeRequestMode.CONSTANT_SIZE
+    def do_measure(self,orientation,for_size):
+        size=self.art_width if orientation==Gtk.Orientation.HORIZONTAL else self.art_height
+        return size,size,-1,-1
 
 class ListArtworkPicture(Gtk.Picture):
     """List thumbnails have constant geometry, independent of column allocation."""
@@ -2845,17 +2867,22 @@ headerbar, .titlebar {
     font-weight: 700;
 }
 
-/* Two neighboring rows create an 8px visual gap total. */
+/* Joined Adwaita rows: only the collection boundary is rounded. */
 columnview.library-column-view listview row {
-    min-height: 0;
-    margin: 2px 0;
-    padding: 0;
-    border: 2px solid transparent;
-    border-radius: 12px;
-    background: @forge_library_card_a;
-    margin-top: 4px;
-    margin-bottom: 4px;
+    min-height: 0; margin: 0; padding: 0;
+    border: 0; border-bottom: 1px solid alpha(@window_fg_color,0.07);
+    border-radius: 0; background: @forge_library_card_a;
 }
+columnview.library-column-view listview row.joined-first { border-top-left-radius: 12px; border-top-right-radius: 12px; }
+columnview.library-column-view listview row.joined-last { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; border-bottom: 0; }
+list.review-list { border-radius: 12px; background: @forge_library_card_a; }
+list.review-list > row { margin: 0; border-radius: 0; border-bottom: 1px solid alpha(@window_fg_color,0.07); }
+list.review-list > row:first-child { border-top-left-radius: 12px; border-top-right-radius: 12px; }
+list.review-list > row:last-child { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; border-bottom: 0; }
+.review-bezel { border: 2px solid alpha(@window_fg_color,0.15); border-radius: 8px; margin: 10px 0; }
+.review-badge { font-size: 11px; font-weight: 700; border-radius: 6px; padding: 4px 8px; background: alpha(@window_fg_color,0.08); }
+.review-game .title { font-weight: 700; }
+
 
 
 /* ----------------------------------------------------------
@@ -4791,6 +4818,9 @@ class Window(Adw.ApplicationWindow):
         return True
 
     def make_action_button(self,text,callback):return button(text,callback)
+    def capsule_art_path(self,game):return capsule_art_path(game)
+    def wide_art_path(self,game):return capsule_art_path(game) or str(LIBRARY_GHOST_TEXTURE)
+    def make_art_picture(self,width,height):return FixedArtworkPicture(width,height)
 
     def populate_tools(self,body,game):
         body.append(label('Tools','title-2'))
@@ -4808,6 +4838,94 @@ class Window(Adw.ApplicationWindow):
                 item=row(extra_tools.KINDS[record['kind']],record['date'])
                 item.add_suffix(button('Restore',lambda _,r=record:self.review_extra_restore(r)))
                 body.append(item)
+
+    def review_list(self):
+        listing=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        listing.add_css_class('boxed-list');listing.add_css_class('review-list')
+        GLib.timeout_add(80,self.size_review_panel,listing)
+        return listing
+
+    def size_review_panel(self,listing):
+        # Measure the finished panel, keeping at most five complete rows visible.
+        scroll=listing.get_parent()
+        while scroll and not isinstance(scroll,Gtk.ScrolledWindow):scroll=scroll.get_parent()
+        if scroll is None:return False
+        body=scroll.get_child()
+        if isinstance(body,Gtk.Viewport):body=body.get_child()
+        dialog=self.dialog
+        if dialog is None or not hasattr(dialog,'set_content_height'):return False
+        if scroll.get_parent() is not dialog.get_child():return False
+        width=max(320,body.get_width() or dialog.get_content_width()-48)
+        natural=body.measure(Gtk.Orientation.VERTICAL,width)[1]
+        rows=[]
+        def collect(widget):
+            if widget.has_css_class('review-list'):
+                entry=widget.get_first_child()
+                while entry:
+                    rows.append(entry);entry=entry.get_next_sibling()
+                return
+            child=widget.get_first_child()
+            while child:collect(child);child=child.get_next_sibling()
+        collect(body)
+        heights=[row.measure(Gtk.Orientation.VERTICAL,width)[1] for row in rows]
+        visible=natural
+        if len(rows)>5:
+            ok,bounds=rows[4].compute_bounds(scroll)
+            visible=round(bounds.get_y()+bounds.get_height()+scroll.get_vadjustment().get_value()) if ok else natural-sum(heights[5:])
+        shell=scroll.get_parent()
+        chrome=0;child=shell.get_first_child()
+        while child:
+            if child is not scroll:chrome+=child.measure(Gtk.Orientation.VERTICAL,width)[1]
+            child=child.get_next_sibling()
+        available=max(320,self.get_height()-48-chrome)
+        if visible>available:
+            boundaries=[]
+            for row in rows[:5]:
+                ok,bounds=row.compute_bounds(scroll)
+                if ok:
+                    end=round(bounds.get_y()+bounds.get_height()+scroll.get_vadjustment().get_value())
+                    if end<=available:boundaries.append(end)
+            visible=max(boundaries) if boundaries else available
+        scroll.set_max_content_height(-1)
+        scroll.set_min_content_height(visible)
+        scroll.set_max_content_height(visible)
+        scroll.set_propagate_natural_height(True)
+        dialog.set_content_height(visible+chrome)
+        return False
+
+    def review_entry(self,title,subtitle='',game=None,badge=None,details=None,icon='text-x-generic-symbolic'):
+        entry=(Adw.ExpanderRow if details is not None else Adw.ActionRow)(title=str(title),subtitle=str(subtitle))
+        entry.set_use_markup(False);entry.set_subtitle_lines(0)
+        entry.add_css_class('review-game')
+        if details is not None:
+            def resized(*_):
+                listing=entry.get_parent()
+                if isinstance(listing,Gtk.ListBox):GLib.timeout_add(80,self.size_review_panel,listing)
+            entry.connect('notify::expanded',resized)
+        if game:
+            accent=self._ensure_game_accent(game)
+            if accent:entry.add_css_class(accent)
+        path=capsule_art_path(game) if game else None
+        if game:
+            # Reuse the actual Library artwork and its approved ghost layer.
+            bezel=ListArtwork();bezel.set_artwork(path)
+            bezel.picture.set_content_fit(Gtk.ContentFit.CONTAIN)
+            bezel.button.set_can_target(False);bezel.button.set_focusable(False)
+        else:
+            bezel=Gtk.Frame(width_request=100,height_request=49,valign=Gtk.Align.CENTER)
+            bezel.set_child(Gtk.Image(icon_name=icon,pixel_size=28))
+        bezel.add_css_class('review-bezel');bezel.set_overflow(Gtk.Overflow.HIDDEN)
+        entry.add_prefix(bezel)
+        if badge:
+            pill=label(badge,'review-badge');pill.set_valign(Gtk.Align.CENTER);entry.add_suffix(pill)
+        if details is not None:
+            if isinstance(details,Gtk.Widget):entry.add_row(details)
+            else:
+                text=label(str(details));text.set_selectable(True);margins(text,14);entry.add_row(text)
+        return entry
+
+    def review_game(self,name,game_id=None):
+        return next((g for g in self.games if (game_id and g['game']==game_id) or g['name']==name),None)
 
     def add_game_art_prefix(self,entry,game):
         if game and game.get('poster') and Path(game['poster']).is_file():
@@ -4859,10 +4977,9 @@ class Window(Adw.ApplicationWindow):
     def review_extra(self,plan):
         import extra_tools
         d,b,f=self.open_panel('Review '+extra_tools.KINDS[plan['kind']])
-        b.append(label(plan['name'],'title-2'))
-        for change in plan['changes']:
-            b.append(row('Add',change['path']))
-            b.append(row('SHA-256',change['after']))
+        listing=self.review_list();b.append(listing)
+        changes='\n'.join('Add '+change['path']+'\nSHA-256: '+change['after'] for change in plan['changes'])
+        listing.append(self.review_entry(plan['name'],'Add '+extra_tools.KINDS[plan['kind']],self.review_game(plan['name'],plan.get('game')),'Install',changes))
         b.append(label('This native code will run inside the game. The hash identifies the selected file; it does not establish its publisher or safety.','dim-label'))
         trust=Gtk.CheckButton(label='I trust the source of this exact file');b.append(trust)
         apply=button('Install Tool',lambda *_:self.start('Installing tool',lambda:extra_tools.apply(self.service.config,plan),lambda _:(self.toast('Tool installed. Recovery is available in Tools.'),d.close())),'suggested-action')
@@ -4871,7 +4988,8 @@ class Window(Adw.ApplicationWindow):
     def review_extra_restore(self,record):
         import extra_tools
         d,b,f=self.open_panel('Restore Tool',width=500,height=260)
-        b.append(label('Remove the exact installed tool from '+record['name']+'. Changed files will be refused; game saves and other tools are preserved.'))
+        listing=self.review_list();b.append(listing)
+        listing.append(self.review_entry(record['name'],'Restore this tool’s original files',self.review_game(record['name'],record.get('game')),'Restore','Changed files will be refused. Game saves and other tools are preserved.'))
         f.append(button('Restore',lambda *_:self.start('Restoring tool',lambda:extra_tools.restore(self.service.config,record['path']),lambda _:(self.toast('Tool restored.'),d.close())),'suggested-action'))
 
     def show_packages(self,*_):
@@ -6191,6 +6309,7 @@ class Window(Adw.ApplicationWindow):
             view.get_sorter(),
         )
 
+        self.list_sort_model.connect('items-changed',lambda *_:GLib.idle_add(self._column_sync_selection_widgets))
         self.list_selection_model=Gtk.NoSelection.new(
             self.list_sort_model
         )
@@ -6725,10 +6844,7 @@ class Window(Adw.ApplicationWindow):
             )
         )
 
-        path=(
-            game.get('capsule')
-            or game.get('poster')
-        )
+        path=capsule_art_path(game)
 
         root._artwork.set_artwork(
             path
@@ -7622,6 +7738,11 @@ class Window(Adw.ApplicationWindow):
         for name in root.get_css_classes():
             if name.startswith('art-'):widget.add_css_class(name)
         (widget.add_css_class if selected else widget.remove_css_class)('game-selected')
+        count=self.list_sort_model.get_n_items()
+        game_id=getattr(root,'_game_id',None)
+        for css,index in (('joined-first',0),('joined-last',count-1)):
+            edge=count>0 and game_id==self.list_sort_model.get_item(index).game['game']
+            (widget.add_css_class if edge else widget.remove_css_class)(css)
 
     def _column_sync_selection_widgets(self):
         for game_id,root in list(
@@ -7796,8 +7917,8 @@ class Window(Adw.ApplicationWindow):
         d,b,f=self.open_panel('Update DLSS Files',width=620,height=440)
         b.append(label(f'Update DLSS files in {len(targets)} games?','title-2'))
         b.append(label('Only older supported native DLSS files are updated. Protected files are skipped and previous copies are backed up.'))
-        for game in targets:
-            b.append(label(game['name']))
+        listing=self.review_list();b.append(listing)
+        for game in targets:listing.append(self.review_entry(game['name'],'Check for newer DLSS files',game,'DLSS Files'))
         f.append(button('Cancel',lambda *_:d.close()))
         def update(*_):
             if self.options.demo:return
@@ -9505,10 +9626,7 @@ class Window(Adw.ApplicationWindow):
             'capsules',
             'list',
         ):
-            path=(
-                game.get('capsule')
-                or game.get('poster')
-            )
+            path=self.wide_art_path(game)
         else:
             path=(
                 game.get('poster')
@@ -9521,7 +9639,8 @@ class Window(Adw.ApplicationWindow):
                 entry['picture'].queue_resize()
                 entry['fallback'].set_visible(False)
                 if game.get('accent_class'):entry['widget'].remove_css_class(game['accent_class'])
-                game['accent_class']=artwork_accent(path,self.settings.get('game_accents',{}).get(game['game']));entry['widget'].add_css_class(game['accent_class'])
+                accent_path=capsule_art_path(game) or game.get('poster') or game.get('hero') or path
+                game['accent_class']=artwork_accent(accent_path,self.settings.get('game_accents',{}).get(game['game']));entry['widget'].add_css_class(game['accent_class'])
             except Exception:entry['fallback'].set_visible(True)
         else:
             entry['picture'].set_paintable(None);entry['fallback'].set_visible(True)
@@ -11271,12 +11390,12 @@ class Window(Adw.ApplicationWindow):
     def preview_report(self,files):
         d,b,f=self.open_panel('Review Support Report')
         b.append(label('Review the exact text below. Redaction is best effort. Export saves this preview locally; nothing is submitted.','dim-label'))
+        listing=self.review_list();b.append(listing)
         for name,text in files.items():
-            b.append(label(name,'heading'))
             view=Gtk.TextView(editable=False,monospace=True,wrap_mode=Gtk.WrapMode.WORD_CHAR)
             view.get_buffer().set_text(text)
             scroller=Gtk.ScrolledWindow(min_content_height=240,vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER)
-            scroller.set_child(view);b.append(scroller)
+            scroller.set_child(view);listing.append(self.review_entry(name,'Review the exact report contents',badge='Report',details=scroller))
         export=button('Export This Preview',lambda *_:self.start('Exporting report',lambda:game_notes.export_preview(self.service.config,files),lambda p:self.toast('Saved '+str(p))),'suggested-action')
         export.set_sensitive(not self.options.demo);f.append(export)
         f.append(button('Open Issue Form',lambda *_:Gio.AppInfo.launch_default_for_uri('https://github.com/lrnolivia/rtxForge/issues/new',None)))
@@ -11980,21 +12099,16 @@ class Window(Adw.ApplicationWindow):
             if mfg is not None:details.append('MFG '+('In game' if mfg=='auto' else 'Off' if mfg==0 else str(mfg)+'×'))
         summary.append(label(' · '.join(details),'dim-label'))
         b.append(summary)
-        g=Adw.PreferencesGroup();b.append(g)
+        g=self.review_list();b.append(g)
         for item in review['rows']:
-            entry=Adw.ExpanderRow(title=item['name'],subtitle='Ready to '+action_label.lower())
-            entry.set_use_markup(False)
-            game=next((game for game in getattr(self,'operation_games',[]) if game['name']==item['name']),None)
-            self.add_game_art_prefix(entry,game)
-            info=Adw.ActionRow(title='Planned changes',subtitle=user_messages.friendly_status(item.get('detail','')))
-            info.set_use_markup(False);entry.add_row(info);g.add(entry)
+            game=self.review_game(item['name'])
+            entry=self.review_entry(item['name'],'Ready to '+action_label.lower(),game,'Ready',user_messages.friendly_status(item.get('detail','')))
+            g.append(entry)
         if review['blocked']:
-            skipped=Adw.PreferencesGroup(title=f"Needs attention · {len(review['blocked'])}");b.insert_child_after(skipped,summary)
+            b.append(label(f"Needs attention · {len(review['blocked'])}",'heading'))
+            skipped=self.review_list();b.append(skipped)
             for item in review['blocked']:
-                warning=Adw.ExpanderRow(title=item['name'],subtitle=user_messages.friendly_error(item['reason']))
-                warning.set_use_markup(False);warning.add_prefix(Gtk.Image(icon_name='dialog-warning-symbolic'))
-                detail=label('Technical details\n'+str(item['reason']));detail.set_selectable(True);margins(detail,12)
-                warning.add_row(detail);skipped.add(warning)
+                skipped.append(self.review_entry(item['name'],user_messages.friendly_error(item['reason']),self.review_game(item['name']),'Skipped','Technical details\n'+str(item['reason']),icon='dialog-warning-symbolic'))
             if any('baseline' in str(item['reason']).lower() for item in review['blocked']):
                 f.append(button('Previous Changes',lambda *_:(d.close(),self.show_undo())))
         if not review['rows']:
@@ -12533,9 +12647,9 @@ class Window(Adw.ApplicationWindow):
             d,b,f=self.open_panel('Undo previous changes');b.append(label('Your install and uninstall backups will appear here.'));return
         self.start('Finding previous changes',self.service.recoveries,self.undo_loaded)
     def undo_loaded(self,records):
-        d,b,f=self.open_panel('Undo previous changes');g=Adw.PreferencesGroup(title='Recorded changes');b.append(g)
+        d,b,f=self.open_panel('Undo previous changes');g=self.review_list();b.append(g)
         for record in records:
-            item=row(record['name'],record['detail']);item.add_suffix(button('Review',lambda _,r=record:self.start('Checking restore',lambda:self.service.review_recovery(r),lambda review:self.action_ready(review,d,b,f))));g.add(item)
+            item=self.review_entry(record['name'],record['detail'],self.review_game(record['name'],record.get('game')),'Backup');item.add_suffix(button('Review',lambda _,r=record:self.start('Checking restore',lambda:self.service.review_recovery(r),lambda review:self.action_ready(review,d,b,f))));g.append(item)
         if not records:b.append(label('No recorded changes yet.'))
     def show_cleanup(self):
         if self.options.demo:return

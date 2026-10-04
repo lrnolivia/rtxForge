@@ -51,7 +51,9 @@ CSS = b'''
 .couch-view-switch { background: #202226; border-radius: 16px; padding: 4px; }
 .couch-view { background: transparent; color: #c9cbd1; box-shadow: none; border: none; border-radius: 12px; padding: 10px 16px; font-size: 15px; font-weight: 550; }
 .couch-view.active { background: #37393f; color: #fafafa; }
-.couch-list-row { background: transparent; border: none; box-shadow: none; border-radius: 16px; padding: 14px 18px; color: #fafafa; }
+.couch-list-row { background: #1b1d21; border: none; box-shadow: none; border-radius: 0; padding: 10px 18px; border-bottom: 1px solid rgba(255,255,255,0.07); color: #fafafa; }
+.couch-list-row.joined-first { border-top-left-radius: 12px; border-top-right-radius: 12px; }
+.couch-list-row.joined-last { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; border-bottom: 0; }
 .couch-list-row:focus { outline: none; }
 .couch-list-row.focused { background: #27292d; outline: 2px solid #fafafa; outline-offset: -2px; }
 .couch-list-title { font-size: 20px; font-weight: 600; }
@@ -886,7 +888,7 @@ class CouchShell(Gtk.Overlay):
         cover.add_css_class(style)
         cover.set_overflow(Gtk.Overflow.HIDDEN)
         cover.set_size_request(width, height)
-        picture = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, can_shrink=True)
+        picture = self.owner.make_art_picture(width,height)
         cover.picture = picture
         cover.placeholder = None
         if path:
@@ -894,9 +896,10 @@ class CouchShell(Gtk.Overlay):
                 picture.set_filename(path)
             except (GLib.Error, OSError):
                 path = None
-        if not path:
-            placeholder = label(title, 'couch-tile-title', wrap=True)
-            placeholder.set_max_width_chars(18)
+        if not path or path==self.owner.wide_art_path({}):
+            placeholder = Gtk.Image.new_from_icon_name('applications-games-symbolic') if path else label(title, 'couch-tile-title', wrap=True)
+            if isinstance(placeholder,Gtk.Label):placeholder.set_max_width_chars(18)
+            else:placeholder.set_pixel_size(18);placeholder.add_css_class('library-ghost-icon')
             placeholder.set_halign(Gtk.Align.CENTER)
             placeholder.set_valign(Gtk.Align.CENTER)
             cover.add_overlay(placeholder)
@@ -910,7 +913,7 @@ class CouchShell(Gtk.Overlay):
         button.add_css_class('couch-tile')
         column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         # Use the same resolved custom/SteamGridDB/Steam assets as Classic.
-        path = (game.get('poster') or game.get('capsule')) if poster else (game.get('capsule') or game.get('poster') or game.get('hero'))
+        path = (game.get('poster') or game.get('capsule')) if poster else self.owner.wide_art_path(game)
         button.artwork = self.artwork_widget(path, entry['title'], width, height)
         if self.dlss_selection is not None:
             marker = self.selection_marker(game)
@@ -940,7 +943,7 @@ class CouchShell(Gtk.Overlay):
         content = Gtk.Box(spacing=20)
         if self.dlss_selection is not None:
             content.append(self.selection_marker(game))
-        path = game.get('capsule') or game.get('poster') or game.get('hero')
+        path = self.owner.wide_art_path(game)
         button.artwork = self.artwork_widget(path, '', 96, 54, 'couch-list-art')
         content.append(button.artwork)
         names = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, valign=Gtk.Align.CENTER, hexpand=True)
@@ -969,7 +972,7 @@ class CouchShell(Gtk.Overlay):
         for index, entry in enumerate(self.entries):
             if (entry.get('game') or {}).get('game') != game['game']:
                 continue
-            path = (game.get('poster') or game.get('capsule')) if (self.page == 'library' and self.library_view == 'posters') or (self.page == 'dashboard' and self.owner.settings.get('dashboard_view')=='posters') else (game.get('capsule') or game.get('poster') or game.get('hero'))
+            path = (game.get('poster') or game.get('capsule')) if (self.page == 'library' and self.library_view == 'posters') or (self.page == 'dashboard' and self.owner.settings.get('dashboard_view')=='posters') else self.owner.wide_art_path(game)
             if not path:
                 continue
             cover = self.controls[index].artwork
@@ -1006,6 +1009,7 @@ class CouchShell(Gtk.Overlay):
         clear(self.menu)
         clear(self.grid)
         self.controls = []
+        self.grid.set_row_spacing(0 if self.library_view=='list' else 20)
         self.columns, width, height = self.grid_dimensions()
         for i, entry in enumerate(self.entries):
             if self.page == 'dashboard':
@@ -1023,6 +1027,9 @@ class CouchShell(Gtk.Overlay):
             elif self.page == 'library':
                 button = self.game_list_row(entry) if self.library_view == 'list' else self.game_tile(entry, width, height, self.library_view == 'posters')
                 button.set_hexpand(True)
+                if self.library_view=='list':
+                    if i==0:button.add_css_class('joined-first')
+                    if i==len(self.entries)-1:button.add_css_class('joined-last')
                 self.grid.attach(button, i % self.columns, i // self.columns, 1, 1)
                 self.controls.append(button)
                 button.connect('clicked', lambda _, n=i: self.activate(n))

@@ -3,7 +3,7 @@
 from pathlib import Path
 import os,sys,json,threading
 ROOT=Path(__file__).resolve().parents[2];sys.path.insert(0,str(ROOT/'scripts'))
-from PySide6.QtCore import QObject,Property,Signal,Slot,QUrl,QTimer,Qt,QBuffer,QIODevice
+from PySide6.QtCore import QObject,Property,Signal,Slot,QUrl,QTimer,Qt,QBuffer,QIODevice,qInstallMessageHandler
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QIcon,QFontDatabase,QDesktopServices,QImage,QImageReader
 from PySide6.QtQml import QQmlApplicationEngine
@@ -300,16 +300,22 @@ class Controller(QObject):
         self.session.preferences(runtime_provider=key);self._message='Package selected. Select games and review installation.';self.changed.emit()
 
 def main():
-    demo='--demo' in sys.argv or '--smoke-test' in sys.argv
+    smoke='--smoke-test' in sys.argv
+    demo='--demo' in sys.argv or smoke
+    if smoke:
+        qInstallMessageHandler(lambda kind,context,message:print('QT_DIAGNOSTIC:',message,file=sys.stderr,flush=True))
+        print('QT_BOOTSTRAP: starting native application',flush=True)
     os.environ.setdefault('QT_QUICK_CONTROLS_STYLE','org.kde.desktop')
     if '--smoke-test' in sys.argv:
         from demo_assets import prepare
         prepare(ROOT)
     # qqc2-desktop-style derives native controls from the application QStyle.
     app=QApplication(sys.argv)
+    if smoke:print('QT_BOOTSTRAP: application style='+app.style().objectName(),flush=True)
     app.setApplicationName('rtxForge');app.setDesktopFileName('io.github.lrnolivia.RTXForge')
     app.setWindowIcon(QIcon(str(ROOT/'gui/icons/hicolor/scalable/apps/io.github.lrnolivia.RTXForge.svg')))
     engine=QQmlApplicationEngine();controller=Controller(demo)
+    if smoke:engine.warnings.connect(lambda errors:print('QML_WARNINGS:',[error.toString() for error in errors],file=sys.stderr,flush=True))
     # KDE owns control colors and neutral surfaces; never copy Adwaita grays here.
     QFontDatabase.addApplicationFont(str(ROOT/'gui/fonts/BakbakOne-Regular.ttf'))
     def update_launcher_theme(*_):
@@ -323,7 +329,9 @@ def main():
     app.paletteChanged.connect(update_launcher_theme);update_launcher_theme()
     engine.rootContext().setContextProperty('forge',controller)
     engine.load(QUrl.fromLocalFile(str(Path(__file__).with_name('Main.qml'))))
-    if not engine.rootObjects():return 1
+    if not engine.rootObjects():
+        print('QT_BOOTSTRAP: Main.qml produced no root window',file=sys.stderr,flush=True);return 1
+    if smoke:print('QT_BOOTSTRAP: root window loaded',flush=True)
     if '--smoke-test' in sys.argv:
         if os.environ.get('QT_STYLE_OVERRIDE','').casefold()=='breeze':
             assert 'breeze' in app.style().objectName().casefold(), 'Native Breeze style was not loaded'

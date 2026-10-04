@@ -71,11 +71,12 @@ jobs:
     container: fedora:44
     timeout-minutes: 20
     steps:
-      - run: dnf install -y git python3 python3-pyside6 kf6-kirigami kf6-qqc2-desktop-style qt6-qtdeclarative qt6-qtsvg breeze-icon-theme xorg-x11-server-Xvfb dbus-daemon
+      - run: dnf install -y git python3 python3-pyside6 kf6-kirigami kf6-qqc2-desktop-style plasma-breeze-qt6 qt6-qtdeclarative qt6-qtsvg breeze-icon-theme xorg-x11-server-Xvfb dbus-daemon
       - uses: actions/checkout@v4
       - name: Native Qt layouts share one service
         env:
           QT_QUICK_BACKEND: software
+          QT_STYLE_OVERRIDE: Breeze
           HOME: /tmp/rtxforge-qt-home
         run: |
           mkdir -p "$HOME" dist
@@ -95,7 +96,7 @@ jobs:
     container: fedora:44
     timeout-minutes: 20
     steps:
-      - run: dnf install -y git python3 python3-gobject gtk4 libadwaita graphene gdk-pixbuf2 adwaita-icon-theme adwaita-sans-fonts python3-pyside6 kf6-kirigami kf6-qqc2-desktop-style qt6-qtdeclarative qt6-qtsvg qt6-qtwayland breeze-icon-theme weston dbus-daemon
+      - run: dnf install -y git python3 python3-gobject gtk4 libadwaita graphene gdk-pixbuf2 adwaita-icon-theme adwaita-sans-fonts python3-pyside6 kf6-kirigami kf6-qqc2-desktop-style plasma-breeze-qt6 qt6-qtdeclarative qt6-qtsvg qt6-qtwayland breeze-icon-theme weston dbus-daemon
       - uses: actions/checkout@v4
       - name: Exercise both toolkits on a real headless Wayland compositor
         env:
@@ -103,6 +104,7 @@ jobs:
           GSK_RENDERER: cairo
           QT_QPA_PLATFORM: wayland
           QT_QUICK_BACKEND: software
+          QT_STYLE_OVERRIDE: Breeze
           GTK_A11Y: none
           HOME: /tmp/rtxforge-wayland-home
           XDG_RUNTIME_DIR: /tmp/rtxforge-wayland-runtime

@@ -4,7 +4,8 @@ from pathlib import Path
 import os,sys,json,threading
 ROOT=Path(__file__).resolve().parents[2];sys.path.insert(0,str(ROOT/'scripts'))
 from PySide6.QtCore import QObject,Property,Signal,Slot,QUrl,QTimer,Qt,QBuffer,QIODevice
-from PySide6.QtGui import QGuiApplication,QIcon,QFontDatabase,QDesktopServices,QImage,QImageReader
+from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QIcon,QFontDatabase,QDesktopServices,QImage,QImageReader
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 from frontend_session import FrontendSession,library_columns
@@ -304,7 +305,8 @@ def main():
     if '--smoke-test' in sys.argv:
         from demo_assets import prepare
         prepare(ROOT)
-    app=QGuiApplication(sys.argv)
+    # qqc2-desktop-style derives native controls from the application QStyle.
+    app=QApplication(sys.argv)
     app.setApplicationName('rtxForge');app.setDesktopFileName('io.github.lrnolivia.RTXForge')
     app.setWindowIcon(QIcon(str(ROOT/'gui/icons/hicolor/scalable/apps/io.github.lrnolivia.RTXForge.svg')))
     engine=QQmlApplicationEngine();controller=Controller(demo)
@@ -323,6 +325,8 @@ def main():
     engine.load(QUrl.fromLocalFile(str(Path(__file__).with_name('Main.qml'))))
     if not engine.rootObjects():return 1
     if '--smoke-test' in sys.argv:
+        if os.environ.get('QT_STYLE_OVERRIDE','').casefold()=='breeze':
+            assert 'breeze' in app.style().objectName().casefold(), 'Native Breeze style was not loaded'
         window=engine.rootObjects()[0];out=ROOT/'dist';out.mkdir(exist_ok=True)
         report=[]
         def capture(name):
@@ -348,7 +352,7 @@ def main():
                 if steps:
                     steps.pop(0)();QTimer.singleShot(700,advance)
                 else:
-                    (out/'kde-review.json').write_text(json.dumps({'game_writes':False,'captures':report}))
+                    (out/'kde-review.json').write_text(json.dumps({'game_writes':False,'captures':report,'widget_style':app.style().objectName()}))
                     app.quit()
             except Exception as ex:
                 print('Qt review failed:',ex,file=sys.stderr);app.exit(1)

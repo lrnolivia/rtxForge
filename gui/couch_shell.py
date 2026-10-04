@@ -2,10 +2,11 @@
 from pathlib import Path
 import re
 import time
-from gi.repository import Gtk, Gdk, GLib, Gio, Pango
+from gi.repository import Gtk, Adw, Gdk, GLib, Gio, Pango
 import controller_input
 import library_media
 import ui_colors
+import user_messages
 
 
 CSS = b'''
@@ -273,8 +274,14 @@ class CouchShell(Gtk.Overlay):
         self.library.append(self.shelf_scroll)
         feature.append(self.library)
         self.game_actions = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
-        self.actions = Gtk.Box(spacing=12)
-        self.game_actions.append(self.actions)
+        self.actions = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,homogeneous=True,min_children_per_line=4,max_children_per_line=4,row_spacing=12,column_spacing=12)
+        self.action_tiles=Adw.BreakpointBin(child=self.actions,width_request=400,height_request=108)
+        breakpoint=Adw.Breakpoint.new(Adw.BreakpointCondition.parse('max-width: 1000px'))
+        breakpoint.add_setter(self.actions,'min-children-per-line',2)
+        breakpoint.add_setter(self.actions,'max-children-per-line',2)
+        breakpoint.add_setter(self.action_tiles,'height-request',228)
+        self.action_tiles.add_breakpoint(breakpoint)
+        self.game_actions.append(self.action_tiles)
         self.action_hint = label('', 'couch-caption', wrap=True)
         self.action_hint.set_max_width_chars(70)
         self.action_hint.set_size_request(-1, 50)
@@ -293,10 +300,9 @@ class CouchShell(Gtk.Overlay):
         library_title.append(self.library_count)
         library_header.append(library_title)
         self.view_buttons = []
-        self.library_action = Gtk.Button(label='Install to all')
+        self.library_action = self.owner.make_action_button('Install to all',lambda _:self.library_primary_action())
         self.library_action.add_css_class('couch-action')
         self.library_action.add_css_class('couch-library-action')
-        self.library_action.connect('clicked', lambda _: self.library_primary_action())
         self.view_buttons.append(self.library_action)
         library_header.append(self.library_action)
         library_page.append(library_header)
@@ -430,7 +436,7 @@ class CouchShell(Gtk.Overlay):
         self.apply_accent(game)
         self.title.set_text(game['name'])
         if game.get('blocked'):
-            status = game['blocked']
+            status = user_messages.friendly_error(game['blocked'])
         elif game.get('installed'):
             status = game.get('profile', 'Features installed') + ' installed'
             if game.get('nr_enabled') is not None:
@@ -523,6 +529,24 @@ class CouchShell(Gtk.Overlay):
                 self.zone = 'nav'
             self.update_tabs()
             return
+        if self.page in ('game','tools') and self.controls:
+            first_y=self.controls[0].get_parent().get_allocation().y
+            columns=sum(control.get_parent().get_allocation().y==first_y for control in self.controls)
+            columns=max(1,columns)
+            if action=='up' and self.current<columns:
+                if self.navigation_position!='bottom':self.zone='nav';self.update_tabs()
+            elif action=='down' and self.current+columns>=len(self.controls):
+                if self.navigation_position=='bottom':self.zone='nav';self.update_tabs()
+            elif action in ('left','right','up','down'):
+                if action=='left' and self.current%columns==0:return
+                if action=='right' and (self.current%columns==columns-1 or self.current==len(self.controls)-1):return
+                delta={'left':-1,'right':1,'up':-columns,'down':columns}[action]
+                target=self.current+delta
+                while 0<=target<len(self.entries) and not self.entries[target]['enabled']:
+                    target+=1 if delta>0 else -1
+                if 0<=target<len(self.entries):self.focus(target)
+            elif action=='accept':self.activate(self.current)
+            return
         if self.navigation_position=='bottom' and action=='down' and (self.page in ('dashboard','game') or self.current >= len(self.entries)-(self.columns if self.page=='library' else 1)):
             self.zone='nav'
             self.update_tabs()
@@ -592,7 +616,7 @@ class CouchShell(Gtk.Overlay):
             button.grab_focus()
             if self.page in ('dashboard', 'library'):
                 GLib.idle_add(self.reveal_selection)
-            self.action_hint.set_text(entry.get('hint', ''))
+            self.action_hint.set_text(entry.get('hint') or self.hint.get_text())
             if self.page == 'dashboard':
                 self.count.set_text(f'{self.current + 1} of {len(self.entries)} · {self.owner.settings.get("dashboard_row_count",5)} across · browse left / right')
         else:
@@ -958,12 +982,12 @@ class CouchShell(Gtk.Overlay):
 
     def render(self, index=None):
         self.build_entries()
-        is_feature = self.page in ('dashboard', 'game')
+        is_feature = self.page in ('dashboard', 'game', 'tools')
         self.body.set_visible_child_name('feature' if is_feature else 'library' if self.page == 'library' else 'panel')
         self.remove_css_class('panel-open') if is_feature else self.add_css_class('panel-open')
         self.add_css_class('library-open') if self.page == 'library' else self.remove_css_class('library-open')
         self.library.set_visible(self.page == 'dashboard')
-        self.game_actions.set_visible(self.page == 'game')
+        self.game_actions.set_visible(self.page in ('game','tools'))
         self.game_metadata.set_visible(self.page == 'game')
         self.game_summary.set_visible(self.page == 'game' and bool(self.game_summary.get_text()))
         self.count.set_text('Refreshing…' if self.owner.busy else f"{len(self.owner.games)} games · {self.owner.settings.get('dashboard_row_count',5)} across")
@@ -1002,12 +1026,12 @@ class CouchShell(Gtk.Overlay):
                 self.grid.attach(button, i % self.columns, i // self.columns, 1, 1)
                 self.controls.append(button)
                 button.connect('clicked', lambda _, n=i: self.activate(n))
-            elif self.page == 'game':
-                button = Gtk.Button(label=entry['title'])
+            elif self.page in ('game','tools'):
+                button = self.owner.make_action_button(entry['title'],lambda _, n=i:self.activate(n))
+                button.set_size_request(180,80);button.text_label.set_wrap(True)
                 button.add_css_class('couch-action')
                 button.set_sensitive(entry['enabled'])
-                button.connect('clicked', lambda _, n=i: self.activate(n))
-                self.actions.append(button)
+                self.actions.insert(button,-1)
                 self.controls.append(button)
             else:
                 row = Gtk.ListBoxRow()

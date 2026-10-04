@@ -3,6 +3,7 @@ from pathlib import Path
 import threading
 from gi.repository import Adw, Gtk, Gio, GLib
 import package_catalog as packages
+import user_messages
 
 
 def margins(widget, value=24):
@@ -49,17 +50,17 @@ def show_packages(owner, fixture=None):
             owner.select_package(record, settings or {})
             dialog.close()
         except Exception as ex:
-            status.set_text(str(ex))
+            status.set_text(user_messages.friendly_error(ex));status.set_tooltip_text(str(ex))
 
     def render_catalog(host):
         if not alive['value']:return False
         status.set_text('Preview system · NVIDIA RTX 4070 · no game writes' if owner.options.demo else host.get('gpu','System') + ' · ' + host.get('reason',''))
         for item in packages.catalog(host):
             row = Adw.ActionRow(title=item['name'], subtitle=item['version'] + ' · ' + item['summary'])
-            button = Gtk.Button(label='Use package', valign=Gtk.Align.CENTER, sensitive=item['available'])
-            button.set_tooltip_text(item['reason'])
+            button = owner.make_action_button('Use package',lambda _, key=item['id']:select(key))
+            button.set_sensitive(item['available'])
+            button.set_tooltip_text(user_messages.friendly_error(item['reason']) if not item['available'] else item['reason'])
             if item['recommended']:button.add_css_class('suggested-action')
-            button.connect('clicked', lambda _, key=item['id']:select(key))
             row.add_suffix(button);recommended.add(row)
         return False
 
@@ -100,7 +101,8 @@ def show_packages(owner, fixture=None):
         trust = Gtk.CheckButton(label='I trust the source of this package')
         while footer.get_first_child():footer.remove(footer.get_first_child())
         trust.set_hexpand(True);footer.append(trust);footer.set_visible(True)
-        apply = Gtk.Button(label='Use reviewed package', sensitive=False, halign=Gtk.Align.END)
+        apply = owner.make_action_button('Use reviewed package',lambda *_:None)
+        apply.set_sensitive(False);apply.set_halign(Gtk.Align.END)
         apply.add_css_class('suggested-action');footer.append(apply)
         trust.connect('toggled', lambda *_:apply.set_sensitive(trust.get_active() and result['family']=='dlss-unlocked'))
         def reviewed(*_):
@@ -118,7 +120,7 @@ def show_packages(owner, fixture=None):
                 select('custom',settings)
                 return False
             def failed(message):
-                if alive['value']:status.set_text(message);apply.set_sensitive(trust.get_active())
+                if alive['value']:status.set_text(user_messages.friendly_error(message));status.set_tooltip_text(str(message));apply.set_sensitive(trust.get_active())
                 return False
             def verify():
                 try:GLib.idle_add(verified,packages.custom_record(result,values,trusted=trusted,review_notes=review_notes))
@@ -143,7 +145,8 @@ def show_packages(owner, fixture=None):
                 result=packages.inspect_archive(path)
                 GLib.idle_add(render_inspection,result)
             except Exception as ex:
-                GLib.idle_add(status.set_text,str(ex))
+                GLib.idle_add(status.set_text,user_messages.friendly_error(ex))
+                GLib.idle_add(status.set_tooltip_text,str(ex))
             finally:GLib.idle_add(pick.set_sensitive,True)
         threading.Thread(target=work,daemon=True).start()
 

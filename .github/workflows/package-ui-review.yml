@@ -16,7 +16,7 @@ jobs:
       - name: Validate package engine and syntax
         run: |
           python3 -m compileall -q scripts gui engine
-          python3 -m pytest tests/test_app_completion.py tests/test_controller_native.py tests/test_desktop_service.py tests/test_runtime_updates.py tests/test_per_game_presets.py tests/test_package_catalog.py tests/test_package_download.py tests/test_package_cache.py tests/test_frontend_session.py tests/test_setup.py tests/test_operation_finalization.py tests/test_ui_colors.py tests/test_ui_scaling.py -q
+          python3 -m pytest tests/test_steam_artwork.py tests/test_steam_self_install.py tests/test_artwork_overrides.py tests/test_game_launch.py tests/test_app_completion.py tests/test_controller_native.py tests/test_desktop_service.py tests/test_runtime_updates.py tests/test_per_game_presets.py tests/test_package_catalog.py tests/test_package_download.py tests/test_package_cache.py tests/test_frontend_session.py tests/test_setup.py tests/test_operation_finalization.py tests/test_ui_colors.py tests/test_ui_scaling.py -q
           python3 -m unittest engine.tests.test_v13_core_hardening
       - name: Capture both real native layouts without game writes
         env:

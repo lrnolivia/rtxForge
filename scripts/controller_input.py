@@ -5,12 +5,14 @@ import time
 
 GLYPHS={
     'xbox':('A','B','Y','Menu'),
+    'steam':('A','B','Y','Menu'),
     'playstation':('×','○','△','Options'),
     'nintendo':('B','A','X','+'),
     'generic':('South','East','North','Start'),
 }
 
-def family(kind):
+def family(kind, name=''):
+    if 'steam' in str(name).casefold():return 'steam'
     return 'playstation' if kind in (3,4,7) else 'nintendo' if kind in (5,11,12,13) else 'xbox' if kind in (1,2) else 'generic'
 
 class Edges:
@@ -42,6 +44,7 @@ class Controller:
                 'SDL_GameControllerClose':([C.c_void_p],None),
                 'SDL_GameControllerGetAttached':([C.c_void_p],C.c_int),
                 'SDL_GameControllerGetType':([C.c_void_p],C.c_int),
+                'SDL_GameControllerName':([C.c_void_p],C.c_char_p),
                 'SDL_GameControllerGetButton':([C.c_void_p,C.c_int],C.c_uint8),
                 'SDL_GameControllerGetAxis':([C.c_void_p,C.c_int],C.c_int16),
                 'SDL_GameControllerUpdate':([],None),
@@ -67,7 +70,9 @@ class Controller:
                 if self.sdl.SDL_IsGameController(index):
                     self.handle=self.sdl.SDL_GameControllerOpen(index)
                     if self.handle:break
-            if self.handle:self.family=family(self.sdl.SDL_GameControllerGetType(self.handle))
+            if self.handle:
+                name=self.sdl.SDL_GameControllerName(self.handle) or b''
+                self.family=family(self.sdl.SDL_GameControllerGetType(self.handle),name.decode('utf-8',errors='replace'))
         if not self.handle:return []
         mapping={0:'accept',1:'back',3:'search',4:'settings',6:'menu',9:'previous',10:'next',11:'up',12:'down',13:'left',14:'right'}
         pressed={action for index,action in mapping.items() if self.sdl.SDL_GameControllerGetButton(self.handle,index)}

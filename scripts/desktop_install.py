@@ -156,3 +156,43 @@ def install():
 
 if __name__ == '__main__':
     print(install())
+
+
+def refresh_launcher_icon(dark):
+    """Follow effective app appearance in an already registered user launcher.
+
+    Keep the desktop ID/WMClass stable so the dock groups the same app. Changing
+    the Icon path, rather than only a window icon, invalidates shell metadata.
+    Never create a launcher just because a development checkout was opened.
+    """
+    import re
+    import transactions as t
+    data = data_root()
+    desktop = t.safe(data / 'applications' / f'{APP_ID}.desktop')
+    if not desktop.is_file():
+        return False
+    before = desktop.read_text()
+    if f'StartupWMClass={APP_ID}' not in before:
+        return False
+    name = APP_ID if dark else APP_ID + '-light'
+    source = Path(__file__).resolve().parents[1] / 'gui/icons/hicolor/scalable/apps' / (name + '.svg')
+    if not source.is_file():
+        return False
+    destination = t.safe(data / 'icons/hicolor/scalable/apps' / (name + '.svg'))
+    payload = source.read_bytes()
+    if not destination.exists() or destination.read_bytes() != payload:
+        t.atomic_file(destination, payload, 0o644)
+    match = re.search(r'(?ms)^\[Desktop Entry\]\n(.*?)(?=^\[|\Z)', before)
+    if not match:
+        return False
+    section = match.group(1)
+    new_section, count = re.subn(r'^Icon=.*$', 'Icon=' + str(destination), section, count=1, flags=re.M)
+    if not count:
+        return False
+    after = before[:match.start(1)] + new_section + before[match.end(1):]
+    if after == before:
+        return False
+    if desktop.read_text() != before:
+        raise RuntimeError('Launcher changed while applying its theme; retry the appearance change.')
+    t.atomic_file(desktop, after.encode(), 0o644)
+    return True

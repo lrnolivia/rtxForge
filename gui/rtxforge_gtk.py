@@ -8,7 +8,7 @@ APP_VERSION=(ROOT/'VERSION').read_text(encoding='utf-8').strip() if (ROOT/'VERSI
 import gi
 gi.require_version('Gtk','4.0');gi.require_version('Adw','1')
 from gi.repository import Gtk,Adw,GLib,Gio,Gdk,Gsk,Graphene,Pango,GdkPixbuf,GObject
-import ui,library_media,os,game_notes,ui_colors,user_messages,weakref
+import ui,library_media,os,game_notes,ui_colors,user_messages,weakref,game_launch
 from desktop_service import DesktopService
 from package_browser import show_packages
 from native_shell import new_shell
@@ -22,6 +22,21 @@ NATIVE_PALETTE={}
 COUCH_MODE='auto'
 
 
+def register_brand_font():
+    # Register only for this process; do not install into the user's font folders.
+    import ctypes,ctypes.util
+    font=ROOT/'gui/fonts/BakbakOne-Regular.ttf'
+    if not font.is_file():return False
+    try:
+        library=ctypes.CDLL(ctypes.util.find_library('fontconfig') or 'libfontconfig.so.1')
+        library.FcConfigGetCurrent.restype=ctypes.c_void_p
+        library.FcConfigAppFontAddFile.argtypes=[ctypes.c_void_p,ctypes.c_char_p]
+        library.FcConfigAppFontAddFile.restype=ctypes.c_int
+        return bool(library.FcConfigAppFontAddFile(library.FcConfigGetCurrent(),str(font).encode()))
+    except (OSError,AttributeError):return False
+
+register_brand_font()
+
 BRAND_IMAGES=weakref.WeakSet()
 BRAND_THEME_CONNECTED=False
 BRAND_TEXTURES={}
@@ -30,10 +45,16 @@ BRAND_TEXTURES={}
 def refresh_brand_icons(*_):
     name='io.github.lrnolivia.RTXForge'
     if not Adw.StyleManager.get_default().get_dark():name+='-light'
-    path=ROOT/'gui/icons/hicolor/scalable/apps'/f'{name}.svg'
-    if name not in BRAND_TEXTURES:BRAND_TEXTURES[name]=Gdk.Texture.new_from_filename(str(path))
-    for image in list(BRAND_IMAGES):image.set_from_paintable(BRAND_TEXTURES[name])
+    path=ROOT/'gui/icons/rtxforge-mark.svg'
+    if 'plain' not in BRAND_TEXTURES:BRAND_TEXTURES['plain']=Gdk.Texture.new_from_filename(str(path))
+    for image in list(BRAND_IMAGES):image.set_from_paintable(BRAND_TEXTURES['plain'])
     Gtk.Window.set_default_icon_name(name)
+    try:
+        import desktop_install
+        desktop_install.refresh_launcher_icon(Adw.StyleManager.get_default().get_dark())
+    except (OSError,ValueError,RuntimeError):
+        # A read-only/unregistered development environment has no shell icon to update.
+        pass
 
 
 def make_brand_icon(size):
@@ -1614,6 +1635,7 @@ spinbutton.tuning-number-input text {
 }
 
 .sticky-dashboard-title {
+    font-family: "Bakbak One";
     font-size: 14px;
     font-weight: 700;
     letter-spacing: -0.2px;
@@ -2519,7 +2541,7 @@ button.dlss-outline:active { background: alpha(@window_fg_color,0.25); }
     font-weight: 600;
 }
 
-.hero-title { font-size: 25px; font-weight: 800; letter-spacing: -0.6px; }
+.hero-title { font-family: "Bakbak One"; font-size: 30px; font-weight: 400; letter-spacing: -0.6px; }
 .eyebrow { color: #76b900; font-weight: 800; font-size: 9px; letter-spacing: 1.7px; }
 .hero {
     background: transparent;
@@ -3040,6 +3062,7 @@ class ActionButton(Gtk.Button):
         if icon:
             theme=Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
             image=Gtk.Image.new_from_icon_name(icon if theme.has_icon(icon) else 'go-next-symbolic')
+            image.set_pixel_size(14)
             image.set_visible(BUTTON_GLYPHS);BUTTON_IMAGES.add(image)
             content.append(image)
         self.text_label=label(text);self.text_label.set_wrap(False)
@@ -3776,6 +3799,9 @@ class Window(Adw.ApplicationWindow):
             entry.set_halign(Gtk.Align.FILL)
             entry.set_action_name(action_name)
             menu_body.append(entry)
+        menu_body.append(icon_button('Add rtxForge to Steam','list-add-symbolic',lambda *_:(menu_popover.popdown(),self.add_rtxforge_to_steam()),'flat'))
+        menu_body.append(icon_button('Sync artwork to Steam','view-refresh-symbolic',lambda *_:(menu_popover.popdown(),self.sync_steam_artwork()),'flat'))
+        menu_body.append(icon_button('Steam artwork profile','avatar-default-symbolic',lambda *_:(menu_popover.popdown(),self.choose_steam_artwork_profile()),'flat'))
         main_menu.set_popover(menu_popover)
         self.main_menu=main_menu
         if gamescope_session():
@@ -3998,7 +4024,7 @@ class Window(Adw.ApplicationWindow):
             'sticky-dashboard-brand'
         )
 
-        self.sticky_brand_icon=sticky_brand_icon=make_brand_icon(40)
+        self.sticky_brand_icon=sticky_brand_icon=make_brand_icon(48)
         sticky_brand_icon.set_valign(Gtk.Align.CENTER)
         sticky_brand_icon.add_css_class(
             'sticky-dashboard-app-icon'
@@ -4429,6 +4455,7 @@ class Window(Adw.ApplicationWindow):
         )
 
         previous=None
+        self.filter_buttons={}
         for name,key in [
             ('Available','available'),
             ('Installed','installed'),
@@ -4453,6 +4480,7 @@ class Window(Adw.ApplicationWindow):
                 self.filter_changed,
                 key,
             )
+            self.filter_buttons[key]=b
             filterbox.append(
                 b
             )
@@ -4824,7 +4852,7 @@ class Window(Adw.ApplicationWindow):
     def show_controller_menu(self,*_):
         if self.busy and self.task_kind!='art':return
         d,b,f=self.open_panel('Menu',width=380,height=420)
-        for title,icon,fn in [('Refresh Library','view-refresh-symbolic',self.scan),('Add Game Folder','folder-new-symbolic',self.choose_folder),('Packages','package-x-generic-symbolic',self.show_packages),('Extras','applications-utilities-symbolic',self.show_extras),('Settings','emblem-system-symbolic',self.show_settings)]:
+        for title,icon,fn in [('Refresh Library','view-refresh-symbolic',self.scan),('Add Game Folder','folder-new-symbolic',self.choose_folder),('Packages','package-x-generic-symbolic',self.show_packages),('Extras','applications-utilities-symbolic',self.show_extras),('Add rtxForge to Steam','list-add-symbolic',self.add_rtxforge_to_steam),('Sync artwork to Steam','view-refresh-symbolic',self.sync_steam_artwork),('Steam artwork profile','avatar-default-symbolic',self.choose_steam_artwork_profile),('Settings','emblem-system-symbolic',self.show_settings)]:
             def invoke(*_,fn=fn):
                 d.close();GLib.idle_add(lambda:(fn(),False)[1])
             b.append(icon_button(title,icon,invoke))
@@ -5014,7 +5042,7 @@ class Window(Adw.ApplicationWindow):
             t=min(1,(time.monotonic()-began)/0.18)
             state['bar'].set_fraction(start+(target-start)*(1-(1-t)**3))
             return t<1
-        GLib.timeout_add(16,animate)
+        self.add_tick_callback(lambda _widget,_clock:animate())
 
     def populate_tools(self,body,game):
         body.append(label('Tools','title-2'))
@@ -5144,11 +5172,12 @@ class Window(Adw.ApplicationWindow):
     make_brand_icon=staticmethod(make_brand_icon)
 
     def artwork_preferences(self,game):
-        """UI-only artwork editor; selection and persistence are intentionally unwired."""
+        """Role-specific local artwork with explicit, reversible selection."""
         group=Adw.PreferencesGroup(
             title='Custom Artwork',
-            description='Poster, wide capsule and hero images are kept separate. Artwork selection is coming soon.',
+            description='Artwork changes also sync to your local Steam library. Reset restores your original Steam artwork.',
         )
+        group.add(button('Sync artwork to Steam',lambda *_:self.sync_steam_artwork(game=game)))
         group.artwork_controls={}
         accent_path=game.get('capsule') or game.get('poster') or game.get('hero')
         try:
@@ -5191,14 +5220,177 @@ class Window(Adw.ApplicationWindow):
                 ('search','SteamGridDB','system-search-symbolic'),
                 ('reset','Reset','edit-undo-symbolic'),
             ):
-                control=icon_button(text,icon,lambda *_:None)
-                control.set_sensitive(False)
-                control.set_tooltip_text('Artwork selection is coming soon.')
+                callbacks={'choose':self.choose_game_artwork,'search':self.search_game_artwork,'reset':self.reset_game_artwork}
+                control=icon_button(text,icon,lambda *_,r=role,fn=callbacks[key]:fn(game,r))
+                control.set_sensitive(not self.options.demo)
+                control.set_tooltip_text('Preview mode' if self.options.demo else text)
                 actions.append(control);controls[key]=control
             item.append(actions)
             cards.append(item)
             group.artwork_controls[role]={'row':item,'preview':preview,'canvas':canvas,**controls}
         return group
+
+    def add_rtxforge_to_steam(self,*_):
+        if self.options.demo:self.toast('Steam integration is disabled in preview mode.');return
+        d,b,f=self.open_panel('Add rtxForge to Steam',width=600,height=420)
+        b.append(label('Add this installation as a non-Steam app and apply the bundled poster, wide capsule, hero and logo. No SteamGridDB key is needed.','dim-label'))
+        b.append(label('Close Steam before creating a new shortcut. Existing shortcuts are preserved, and their artwork can be refreshed while Steam is open. Backups are retained.','dim-label'))
+        def install(*_):
+            import steam_self_install
+            d.close()
+            def ready(result):
+                if result['errors']:self.error('The Steam shortcut is available, but some artwork still needs syncing: '+ '; '.join(result['errors']))
+                else:self.toast('rtxForge and its artwork are ready in Steam. Restart Steam to refresh its library.')
+            self.start('Adding rtxForge to Steam',lambda:steam_self_install.install(self.service.config,self.settings),ready)
+        f.append(button('Choose Steam profile',lambda *_:(d.close(),self.choose_steam_artwork_profile())))
+        f.append(button('Add & apply artwork',install,'suggested-action'))
+
+    def show_game_artwork(self,game):
+        d,b,f=self.open_panel('Artwork · '+game.get('name','Game'),width=800,height=600)
+        b.append(self.artwork_preferences(game))
+
+    def choose_steam_artwork_profile(self,*_):
+        import steam_artwork
+        try:accounts=steam_artwork.profiles(self.service.config)
+        except Exception as error:self.error(str(error));return
+        d,b,f=self.open_panel('Steam artwork profile',width=580,height=420)
+        b.append(label('Choose the local Steam account whose artwork rtxForge should update.','dim-label'))
+        if not accounts:b.append(label('No Steam profile found. Open Steam once, then try again.'))
+        for account in accounts:
+            def choose(*_,account=account):
+                self.settings['steam_artwork_profile']={'root':account['root'],'userid':account['userid']}
+                library_media.save_settings(self.service.config,self.settings)
+                d.close();self.toast('Steam artwork profile selected')
+            b.append(button('Steam account '+account['userid']+' · '+account['root'],choose))
+
+    def sync_steam_artwork(self,*_,game=None,refresh=False):
+        import steam_artwork,copy
+        if self.options.demo:self.toast('Steam artwork sync is disabled in preview mode.');return
+        if self.busy and self.task_kind!='art':return
+        settings=copy.deepcopy(self.settings)
+        if game and refresh:
+            import artwork_overrides
+            game.update(artwork_overrides.apply(settings,game,game))
+        targets=[game] if game else [g for g in self.games if settings.get('game_artwork',{}).get(g['game']) or settings.get('steam_artwork_pending',{}).get(g['game']) or any(g.get(role) for role in steam_artwork.SUFFIX)]
+        if not targets:self.toast('No custom artwork to sync yet.');return
+        def work():
+            result={'images':0,'success':[],'errors':[]}
+            for item in targets:
+                try:
+                    pending=settings.get('steam_artwork_pending',{}).get(item['game'],{})
+                    changes=steam_artwork.sync_game(self.service.config,settings,item,reset_roles=[role for role,value in pending.items() if value=='reset'],include_displayed=not refresh)
+                    result['images']+=sum(bool(change.get('changed')) for change in changes)
+                    result['success'].append(item['game'])
+                except Exception as error:result['errors'].append(item.get('name','Game')+': '+str(error))
+            return result
+        def ready(result):
+            for key in result['success']:self.settings.setdefault('steam_artwork_pending',{}).pop(key,None)
+            library_media.save_settings(self.service.config,self.settings)
+            if result['errors']:
+                d,b,f=self.open_panel('Artwork saved locally',width=650,height=460)
+                b.append(label(str(result['images'])+' Steam images updated. Some artwork still needs syncing.','dim-label'))
+                for error in result['errors']:b.append(label(error,'dim-label'))
+                f.append(button('Choose Steam profile',lambda *_:(d.close(),self.choose_steam_artwork_profile())))
+            else:self.toast('Artwork synced to Steam. Restart Steam if its cached images have not refreshed.')
+            if refresh and not result['errors']:self.refresh_game_artwork(game)
+            elif refresh:
+                if getattr(self,'couch',None):self.couch.artwork_updated(game)
+                self.show_games(self.games,art=False)
+        self.start('Syncing artwork to Steam',work,ready)
+
+    def refresh_game_artwork(self,game):
+        def ready(result):
+            game.update(result)
+            self._ensure_game_accent(game)
+            if getattr(self,'couch',None):self.couch.artwork_updated(game)
+            self.show_games(self.games,art=False)
+            self.details(game)
+        self.start('Updating artwork',lambda:library_media.LibraryMedia(self.service.config,self.settings).enrich(game),ready)
+
+    def choose_game_artwork(self,game,role):
+        import artwork_overrides
+        chooser=Gtk.FileDialog(title='Choose '+role+' artwork')
+        formats=Gtk.FileFilter();formats.set_name('Images (PNG, JPEG, WebP)')
+        for mime in ('image/png','image/jpeg','image/webp'):formats.add_mime_type(mime)
+        filters=Gio.ListStore.new(Gtk.FileFilter);filters.append(formats);chooser.set_filters(filters)
+        def chosen(dialog,result):
+            try:path=dialog.open_finish(result).get_path()
+            except GLib.Error:return
+            if not path:return
+            try:
+                with open(path,'rb') as stream:data=stream.read(artwork_overrides.MAX_BYTES+1)
+                artwork_overrides.store(self.service.config,self.settings,game,role,data)
+            except Exception as error:self.error(str(error));return
+            self.sync_steam_artwork(game=game,refresh=True)
+        chooser.open(self,None,chosen)
+
+    def reset_game_artwork(self,game,role):
+        import artwork_overrides
+        try:artwork_overrides.reset(self.service.config,self.settings,game,role)
+        except Exception as error:self.error(str(error));return
+        game.pop(role,None)
+        self.sync_steam_artwork(game=game,refresh=True)
+
+    def search_game_artwork(self,game,role):
+        import steamgrid_client
+        if not steamgrid_client.configured():
+            self.error('SteamGridDB API setup is not configured yet. Choose Image works now; SteamGridDB browsing will be available after setup.')
+            return
+        self.open_steamgrid_search(game,role)
+
+    def open_steamgrid_search(self,game,role):
+        import steamgrid_client,artwork_overrides
+        client=steamgrid_client.Client()
+        dialog,body,footer=self.open_panel('SteamGridDB · '+role,width=700,height=600)
+        query=Gtk.SearchEntry(placeholder_text='Search games');query.set_text(game['name']);body.append(query)
+        status=label('Search for a game, then choose artwork.','dim-label');body.append(status)
+        listing=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8)
+        scroll=Gtk.ScrolledWindow(vexpand=True,min_content_height=260);scroll.set_child(listing);body.append(scroll)
+        def current():return self.dialog is dialog
+        def picked(asset,data):
+            def save(data):
+                if not current():return
+                try:
+                    credit='SteamGridDB · '+str((asset.get('author') or {}).get('name','Community artwork'))
+                    artwork_overrides.store(self.service.config,self.settings,game,role,data,credit=credit)
+                except Exception as error:self.error(str(error));return
+                dialog.close();self.sync_steam_artwork(game=game,refresh=True)
+            save(data)
+        def artwork_ready(assets):
+            if not current():return
+            clear(listing);status.set_text('Choose artwork to apply.' if assets else 'No matching artwork found. Try another game or Choose Image.')
+            for asset in assets:
+                author=str((asset.get('author') or {}).get('name','Community artwork'))
+                line=Gtk.Box(spacing=12)
+                description=label(str(asset.get('width','?'))+' × '+str(asset.get('height','?'))+' · '+author);description.set_hexpand(True)
+                line.append(description)
+                line.append(button('Preview',lambda *_,a=asset:self.preview_steamgrid_artwork(a,picked)))
+                listing.append(line)
+        def games_ready(games):
+            if not current():return
+            clear(listing);status.set_text('Select the matching game.' if games else 'No matching games found.')
+            for match in games:
+                listing.append(button(str(match.get('name','Unknown game')),lambda *_,m=match:self.start('Finding artwork',lambda:client.artwork(m['id'],role),artwork_ready)))
+        def search(*_):
+            if self.busy:return
+            self.start('Searching SteamGridDB',lambda:client.search(query.get_text()),games_ready)
+        query.connect('activate',search)
+        footer.append(button('Search',search,'suggested-action'))
+
+    def preview_steamgrid_artwork(self,asset,selected):
+        import steamgrid_client
+        # Keep the browser dialog open; preview is a child window.
+        def ready(data):
+            try:
+                raw=GLib.Bytes.new(data);texture=Gdk.Texture.new_from_bytes(raw)
+            except Exception as error:self.error(str(error));return
+            preview=Gtk.Window(title='Artwork preview',transient_for=self,modal=True,default_width=640,default_height=480)
+            body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12);margins(body,16)
+            picture=Gtk.Picture.new_for_paintable(texture);picture.set_content_fit(Gtk.ContentFit.CONTAIN);picture.set_vexpand(True);body.append(picture)
+            body.append(button('Use Artwork',lambda *_:(preview.close(),selected(asset,data)),'suggested-action'))
+            body.append(button('Cancel',lambda *_:preview.close()))
+            preview.set_child(body);preview.present()
+        self.start('Loading artwork preview',lambda:steamgrid_client.Client.download(asset),ready)
 
     def show_extras(self,*_):
         d,b,f=self.open_panel('Extras')
@@ -11584,24 +11776,16 @@ class Window(Adw.ApplicationWindow):
             open_folder
         )
 
-        if (
-            game.get('appid')
-            and game.get('source')=='Steam'
-        ):
-            play=button(
-                'Play',
-                lambda *_:Gio.AppInfo.launch_default_for_uri(
-                    'steam://rungameid/'+str(game['appid']),
-                    None,
-                ),
-                'suggested-action',
-            )
-            play.set_sensitive(
-                not self.options.demo
-            )
-            detail_action_rows['Overview'].append(
-                play
-            )
+        play=button('Play', lambda *_:self.play_game(game), 'suggested-action')
+        play.set_sensitive(not self.options.demo)
+        detail_action_rows['Overview'].prepend(play)
+
+    def play_game(self,game):
+        if self.options.demo:return
+        self.start('Preparing game launch',
+                   lambda:game_launch.resolve(self.service.config,game),
+                   lambda uri:Gio.AppInfo.launch_default_for_uri(uri,None))
+
     def record_test(self,game,finish=False):
         def done(record):
             game['test_record']=record;self.details(game)
@@ -12190,13 +12374,13 @@ class Window(Adw.ApplicationWindow):
 
             return t<1.0
 
-        GLib.timeout_add(16,tick)
+        self.add_tick_callback(lambda _widget,_clock:tick())
 
     def animate_dialog_height(self,dialog,target,duration=240):
         if dialog is None or self.dialog is not dialog:return
         source=getattr(self,'detail_resize_source',0)
         if source:
-            try:GLib.source_remove(source)
+            try:self.remove_tick_callback(source)
             except Exception:pass
             self.detail_resize_source=0
         try:start=int(dialog.get_content_height())
@@ -12218,7 +12402,7 @@ class Window(Adw.ApplicationWindow):
             dialog.set_content_height(round(start+(target-start)*eased))
             if t>=1.0:self.detail_resize_source=0
             return t<1.0
-        self.detail_resize_source=GLib.timeout_add(16,tick)
+        self.detail_resize_source=self.add_tick_callback(lambda _widget,_clock:tick())
 
 
     def finish_progress(self,success,message,footer):

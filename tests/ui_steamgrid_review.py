@@ -1,5 +1,5 @@
 """Exercise the artwork modal using local fixtures, never API credentials or game writes."""
-import argparse,json,os,sys,traceback
+import argparse,json,os,sys,traceback,time
 from pathlib import Path
 os.environ['GSETTINGS_BACKEND']='memory'
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'gui'))
@@ -26,10 +26,19 @@ def open_browser():
     global game
     game=app.window.games[0];app.window.open_steamgrid_search(game,'poster')
 
+class PreviewNotReady(Exception):pass
+
 def capture(name):
     view=app.window._steamgrid_review
     assert len(view['state']['assets'])==4,view['status'].get_text()
-    assert app.window.capture(name).is_file();captures.append(name)
+    child=view['grid'].get_first_child()
+    while child:
+        picture=child.get_child().get_child().get_first_child()
+        if picture.get_paintable() is None:raise PreviewNotReady(name)
+        child=child.get_next_sibling()
+    path=app.window.capture(name)
+    if path is None:raise PreviewNotReady(name)
+    assert path.is_file();captures.append(name)
 
 def preview():
     view=app.window._steamgrid_review
@@ -53,9 +62,17 @@ def couch():
     Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK);open_browser()
 
 steps=[open_browser,lambda:capture('steamgrid-desktop-results.png'),preview,verify_preview,filter_results,verify_filter,couch,lambda:capture('steamgrid-couch-results.png'),lambda:app.window.dialog.close()]
+preview_deadline=None
 def advance():
+    global preview_deadline
     try:
-        if steps:steps.pop(0)();GLib.timeout_add(1000,advance)
+        if steps:
+            try:steps[0]()
+            except PreviewNotReady:
+                if preview_deadline is None:preview_deadline=time.monotonic()+5
+                if time.monotonic()>=preview_deadline:raise AssertionError('Thumbnails did not become visible: '+repr(app.window._steamgrid_review['state']))
+                GLib.timeout_add(100,advance);return False
+            steps.pop(0);preview_deadline=None;GLib.timeout_add(1000,advance)
         else:
             (ROOT/'dist/steamgrid-review.json').write_text(json.dumps({'fixture_only':True,'game_writes':False,'api_calls':False,'captures':captures,'calls':calls},indent=2));app.quit()
     except Exception:traceback.print_exc();app.exit_code=1;app.quit()

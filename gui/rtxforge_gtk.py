@@ -316,6 +316,11 @@ class GameModeComboRow(Adw.ActionRow):
         self.choice.set_selected(index)
 
 
+def caution_image(size):
+    # Safety warnings are bundled, independent of icon themes and optional action glyphs.
+    pix=GdkPixbuf.Pixbuf.new_from_file_at_scale(str(Path(__file__).parent/'icons'/'rtxforge-caution.svg'),size,size,True)
+    return Gtk.Image(paintable=Gdk.Texture.new_for_pixbuf(pix),pixel_size=size)
+
 def safe_dropdown(strings):
     if gamescope_session():
         return GameModeChoice(strings)
@@ -1129,6 +1134,17 @@ class LibraryPill(Gtk.Box):
         # Fixed outer measurement owns width.
         return
 
+
+def poster_art_path(game):
+    """Never crop a hero or capsule into a poster slot."""
+    path=game.get('poster')
+    if not path or not Path(path).is_file():return None
+    if path in (game.get('hero'),game.get('capsule')):return None
+    try:
+        _,width,height=GdkPixbuf.Pixbuf.get_file_info(str(path))
+        if not height or not 0.45<=width/height<=0.85:return None
+    except Exception:return None
+    return path
 
 def capsule_art_path(game):
     """A capsule slot accepts only capsule artwork, never another art role."""
@@ -2893,9 +2909,9 @@ list.review-list > row { box-shadow: none; background-image: none; margin: 0; bo
 list.review-list > row:first-child { border-top-left-radius: 12px; border-top-right-radius: 12px; }
 list.review-list > row:last-child { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; border-bottom: 0; }
 .review-bezel { border: 2px solid alpha(@window_fg_color,0.15); border-radius: 8px; margin: 10px 0; }
-.unsupported-notice, .unsupported-notice > row { background: mix(@window_bg_color, @error_bg_color, 0.28); box-shadow: none; }
+.unsupported-notice, .unsupported-notice > row { background: mix(@window_bg_color, @error_bg_color, 0.48); box-shadow: none; }
 .unsupported-caution, .unsupported-badge { color: #e5b54a; }
-.support-info { color: #e5b54a; min-width: 20px; min-height: 20px; padding: 2px; border-radius: 50%; background: alpha(@window_bg_color,0.9); }
+.support-info { color: #e5b54a; min-width: 28px; min-height: 28px; padding: 0; border-radius: 50%; background: alpha(@window_bg_color,0.9); }
 .review-badge { font-size: 11px; font-weight: 700; border-radius: 6px; padding: 4px 8px; background: alpha(@window_fg_color,0.08); }
 .review-game .title { font-weight: 700; }
 
@@ -4851,6 +4867,7 @@ class Window(Adw.ApplicationWindow):
         return True
 
     def make_action_button(self,text,callback):return button(text,callback)
+    def poster_art_path(self,game):return poster_art_path(game)
     def capsule_art_path(self,game):return capsule_art_path(game)
     def wide_art_path(self,game):return capsule_art_path(game) or str(LIBRARY_GHOST_TEXTURE)
     def make_art_picture(self,width,height):return FixedArtworkPicture(width,height)
@@ -4878,8 +4895,8 @@ class Window(Adw.ApplicationWindow):
             if cache[key]:picture.set_paintable(cache[key])
         info=getattr(artwork,'support_info',None)
         if info is None:
-            info=Gtk.Button(icon_name='dialog-warning-symbolic',halign=Gtk.Align.START,valign=Gtk.Align.START)
-            info.add_css_class('support-info');info.set_margin_top(4);info.set_margin_start(4)
+            info=Gtk.Button(child=caution_image(14),halign=Gtk.Align.START,valign=Gtk.Align.START)
+            info.add_css_class('support-info');info.set_margin_top(10);info.set_margin_start(10)
             info.connect('clicked',lambda *_:self.show_support_help(info))
             artwork.add_overlay(info);artwork.set_measure_overlay(info,False)
             artwork.support_info=info
@@ -4895,7 +4912,7 @@ class Window(Adw.ApplicationWindow):
         listing.add_css_class('boxed-list');listing.add_css_class('unsupported-notice')
         content=Gtk.Box(spacing=12)
         margins(content,16)
-        icon=Gtk.Image(icon_name='dialog-warning-symbolic',pixel_size=24,valign=Gtk.Align.START)
+        icon=caution_image(24);icon.set_valign(Gtk.Align.START)
         icon.set_margin_top(2);icon.add_css_class('unsupported-caution')
         content.append(icon)
         explanation=label(self.support_reason(game))
@@ -5100,8 +5117,8 @@ class Window(Adw.ApplicationWindow):
         return next((g for g in self.games if (game_id and g['game']==game_id) or g['name']==name),None)
 
     def add_game_art_prefix(self,entry,game):
-        if game and game.get('poster') and Path(game['poster']).is_file():
-            art=Gtk.Picture.new_for_filename(game['poster'])
+        if game and poster_art_path(game):
+            art=Gtk.Picture.new_for_filename(poster_art_path(game))
             art.set_content_fit(Gtk.ContentFit.COVER)
             art.set_size_request(40,56)
             art.set_can_shrink(True)
@@ -5109,6 +5126,63 @@ class Window(Adw.ApplicationWindow):
         else:
             art=Gtk.Image(icon_name='applications-games-symbolic',pixel_size=28)
         entry.add_prefix(art)
+
+    def artwork_preferences(self,game):
+        """UI-only artwork editor; selection and persistence are intentionally unwired."""
+        group=Adw.PreferencesGroup(
+            title='Custom Artwork',
+            description='Poster, wide capsule and hero images are kept separate. Artwork selection is coming soon.',
+        )
+        group.artwork_controls={}
+        listing=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        listing.add_css_class('boxed-list')
+        group.add(listing)
+        widths=Gtk.SizeGroup(mode=Gtk.SizeGroupMode.HORIZONTAL)
+        group.action_widths=widths
+        for role,title,hint,width,height in (
+            ('poster','Poster','Portrait · 600 × 900',48,72),
+            ('capsule','Wide Capsule','Landscape · 920 × 430',96,45),
+            ('hero','Hero','Banner · 1920 × 620',96,31),
+        ):
+            path=poster_art_path(game) if role=='poster' else capsule_art_path(game) if role=='capsule' else game.get('hero')
+            item=Gtk.Box(spacing=16)
+            margins(item,12)
+            holder=Gtk.Box(width_request=100,valign=Gtk.Align.CENTER)
+            frame=Gtk.Frame(valign=Gtk.Align.CENTER,halign=Gtk.Align.CENTER)
+            holder.set_halign(Gtk.Align.START)
+            frame.add_css_class('review-bezel')
+            frame.add_css_class(self._ensure_game_accent(game))
+            preview=FixedArtworkPicture(width,height)
+            if path and Path(path).is_file():
+                try:preview.set_paintable(Gdk.Texture.new_from_filename(str(path)))
+                except Exception:pass
+            if preview.get_paintable() is None:
+                placeholder=Gtk.Box(width_request=width,height_request=height,halign=Gtk.Align.CENTER,valign=Gtk.Align.CENTER)
+                placeholder.append(Gtk.Image(icon_name='applications-games-symbolic',pixel_size=20,halign=Gtk.Align.CENTER,hexpand=True))
+                frame.set_child(placeholder)
+            else:frame.set_child(preview)
+            holder.append(frame)
+            item.append(holder)
+            content=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8,hexpand=True,valign=Gtk.Align.CENTER)
+            content.append(label(title))
+            content.append(label(hint,'dim-label'))
+            item.append(content)
+            actions=Gtk.Box(spacing=6,valign=Gtk.Align.CENTER)
+            controls={}
+            for key,text,icon in (
+                ('choose','Choose Image','image-x-generic-symbolic'),
+                ('search','SteamGridDB','system-search-symbolic'),
+                ('reset','Reset','edit-undo-symbolic'),
+            ):
+                control=icon_button(text,icon,lambda *_:None)
+                control.set_sensitive(False)
+                control.set_tooltip_text('Artwork selection is coming soon.')
+                widths.add_widget(control)
+                actions.append(control);controls[key]=control
+            content.append(actions)
+            listing.append(item)
+            group.artwork_controls[role]={'row':item,'preview':preview,**controls}
+        return group
 
     def show_extras(self,*_):
         d,b,f=self.open_panel('Extras')
@@ -9777,10 +9851,7 @@ class Window(Adw.ApplicationWindow):
         ):
             path=self.wide_art_path(game)
         else:
-            path=(
-                game.get('poster')
-                or game.get('capsule')
-            )
+            path=poster_art_path(game)
         if path:
             try:
                 texture=Gdk.Texture.new_from_filename(path)
@@ -10256,11 +10327,7 @@ class Window(Adw.ApplicationWindow):
         identity.set_margin_top(16)
         identity.set_margin_bottom(16)
 
-        detail_poster_source=(
-            game.get('poster')
-            or game.get('capsule')
-            or game.get('hero')
-        )
+        detail_poster_source=poster_art_path(game)
 
         if detail_poster_source:
             DETAIL_POSTER_WIDTH=104
@@ -10895,6 +10962,7 @@ class Window(Adw.ApplicationWindow):
             test
         )
         appearance=content['Appearance']
+        appearance.append(self.artwork_preferences(game))
 
         accent_group=Adw.PreferencesGroup(
             title='Accent Color',
@@ -12032,13 +12100,13 @@ class Window(Adw.ApplicationWindow):
         # Progress keeps a solid neutral surface; only the compact poster changes.
         self.job_art.set_visible(False)
 
-        if game.get('poster'):
+        if poster_art_path(game):
             try:
                 self.poster_images[
                     self.job_picture_index
                 ].set_paintable(
                     Gdk.Texture.new_from_filename(
-                        game['poster']
+                        poster_art_path(game)
                     )
                 )
 
@@ -12047,6 +12115,10 @@ class Window(Adw.ApplicationWindow):
                 )
             except Exception:
                 pass
+
+        else:
+            self.poster_images[self.job_picture_index].set_paintable(None)
+            self.job_poster.set_visible_child_name(str(self.job_picture_index))
 
         # Accent still drives title/progress treatment.
         # It no longer touches either border.

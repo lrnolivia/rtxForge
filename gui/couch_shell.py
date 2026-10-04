@@ -914,7 +914,7 @@ class CouchShell(Gtk.Overlay):
         button.add_css_class('couch-tile')
         column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         # Use the same resolved custom/SteamGridDB/Steam assets as Classic.
-        path = (game.get('poster') or game.get('capsule')) if poster else self.owner.wide_art_path(game)
+        path = self.owner.poster_art_path(game) if poster else self.owner.wide_art_path(game)
         button.artwork = self.artwork_widget(path, entry['title'], width, height)
         if self.dlss_selection is not None:
             marker = self.selection_marker(game)
@@ -975,7 +975,7 @@ class CouchShell(Gtk.Overlay):
         for index, entry in enumerate(self.entries):
             if (entry.get('game') or {}).get('game') != game['game']:
                 continue
-            path = (game.get('poster') or game.get('capsule')) if (self.page == 'library' and self.library_view == 'posters') or (self.page == 'dashboard' and self.owner.settings.get('dashboard_view')=='posters') else self.owner.wide_art_path(game)
+            path = self.owner.poster_art_path(game) if (self.page == 'library' and self.library_view == 'posters') or (self.page == 'dashboard' and self.owner.settings.get('dashboard_view')=='posters') else self.owner.wide_art_path(game)
             if not path:
                 continue
             cover = self.controls[index].artwork

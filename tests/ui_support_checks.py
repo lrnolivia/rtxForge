@@ -38,11 +38,39 @@ def start():
     w.cards[w.games[0]['game']]['overlay'].support_info.emit('clicked')
 def caution():
     w=app.window;control=w.cards[w.games[0]['game']]['overlay'].support_info
-    assert control.get_icon_name()=='dialog-warning-symbolic'
+    assert control.get_child().get_paintable() is not None
+    ui.set_button_glyphs(False)
+    assert control.get_child().get_visible()
+    ui.set_button_glyphs(True)
+    assert control.get_child().get_pixel_size()==14
+    assert control.get_margin_top()==10 and control.get_margin_start()==10
     assert control.support_popover.get_visible()
     assert any(isinstance(x,Gtk.Label) and x.get_text()==w.support_reason(control._support_game) for x in children(control.support_popover))
     assert not any(isinstance(x,Gtk.Label) and x.get_text().startswith('Unsupported:') for x in children(control.support_popover))
     control.support_popover.popdown();w.details(w.games[0])
+def artwork():
+    w=app.window
+    import tempfile
+    from gi.repository import GdkPixbuf
+    with tempfile.TemporaryDirectory() as directory:
+        for name,width,height in [('poster',600,900),('hero',1920,620),('capsule',920,430)]:
+            pix=GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB,False,8,width,height)
+            pix.fill(0x447799ff);pix.savev(str(Path(directory)/(name+'.png')),'png',[],[])
+        paths={key:str(Path(directory)/(key+'.png')) for key in ('poster','hero','capsule')}
+        assert ui.poster_art_path(paths)==paths['poster']
+        assert ui.poster_art_path({**paths,'poster':paths['hero']}) is None
+        assert ui.poster_art_path({**paths,'poster':paths['capsule']}) is None
+        assert ui.poster_art_path({'poster':paths['hero']}) is None
+    page=w.detail_pages.get_child_by_name('Appearance')
+    group=page.get_first_child()
+    assert group.get_title()=='Custom Artwork'
+    assert set(group.artwork_controls)=={'poster','capsule','hero'}
+    for controls in group.artwork_controls.values():
+        assert all(not controls[key].get_sensitive() for key in ('choose','search','reset'))
+    w.detail_pages.set_visible_child_name('Appearance')
+def artwork_capture():
+    assert app.window.capture('custom-artwork-appearance.png')
+    app.window.detail_pages.set_visible_child_name('Overview')
 def details():
     w=app.window
     badges=[x for x in children(w.dialog.get_child()) if isinstance(x,Gtk.Label) and x.has_css_class('cover-badge')]
@@ -50,6 +78,8 @@ def details():
     assert all(x.get_text()!='Ready for Features' for x in badges)
     overview=w.detail_pages.get_child_by_name('Overview')
     assert overview.get_first_child().has_css_class('unsupported-notice')
+    notice=overview.get_first_child()
+    assert any(isinstance(x,Gtk.Image) and x.get_paintable() is not None for x in children(notice))
     assert not any(isinstance(x,Adw.ExpanderRow) and x.get_title()=='Technical details' for x in children(overview))
     assert w.capture('unsupported-top-notice.png')
     d,b,f=w.open_panel('Review Installation',width=640,height=390)
@@ -116,7 +146,7 @@ def compact_done():
     ui.apply_corner_style('rounded')
 def round_done():
     assert app.window.capture('compact-rounded-done.png')
-steps=[start,caution,details,package,checking,large_review,compact_progress,square_progress,compact_done,round_done]
+steps=[start,caution,artwork,artwork_capture,details,package,checking,large_review,compact_progress,square_progress,compact_done,round_done]
 def step():
     try:
         if steps:steps.pop(0)();GLib.timeout_add(1100,step)

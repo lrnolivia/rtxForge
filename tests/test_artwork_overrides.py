@@ -44,3 +44,26 @@ class ArtworkTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'not configured'):Client()
 
 if __name__=='__main__':unittest.main()
+
+class SteamGridFilterTests(unittest.TestCase):
+    def test_filters_and_pagination_are_role_scoped(self):
+        from urllib.parse import urlparse,parse_qs
+        client=Client('fixture-not-a-real-key')
+        with patch.object(client,'_json',return_value=[]) as request:
+            client.artwork(12,'hero',page=2,style='blurred',dimensions='3840x1240',mime='image/png',humor=True)
+            path=request.call_args.args[0];query=parse_qs(urlparse(path).query)
+            self.assertTrue(path.startswith('heroes/game/12?'))
+            self.assertEqual(query['page'],['2']);self.assertEqual(query['styles'],['blurred'])
+            self.assertEqual(query['nsfw'],['false']);self.assertEqual(query['types'],['static'])
+            self.assertEqual(query['humor'],['any'])
+            client.artwork(12,'logo',style='white');self.assertTrue(request.call_args.args[0].startswith('logos/game/12?'))
+    def test_unknown_filters_are_rejected_before_network(self):
+        client=Client('fixture-not-a-real-key')
+        with patch.object(client,'_json') as request:
+            for options in ({'style':'<script>'},{'dimensions':'600x900'},{'page':-1},{'page':True},{'mime':'text/html'},{'humor':'true'}):
+                with self.subTest(options=options),self.assertRaises(ValueError):client.artwork(1,'hero',**options)
+            request.assert_not_called()
+    def test_thumbnail_has_no_auth_and_is_bounded(self):
+        with patch('library_media.request',return_value=b'preview') as request:
+            self.assertEqual(Client.thumbnail({'thumb':'https://cdn2.steamgriddb.com/preview.png','url':'https://cdn2.steamgriddb.com/full.png'}),b'preview')
+            request.assert_called_once_with('https://cdn2.steamgriddb.com/preview.png',limit=2*1024*1024)

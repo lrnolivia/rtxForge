@@ -5217,7 +5217,7 @@ class Window(Adw.ApplicationWindow):
             controls={}
             for key,text,icon in (
                 ('choose','Choose Image','image-x-generic-symbolic'),
-                ('search','SteamGridDB','system-search-symbolic'),
+                ('search','Browse artwork','system-search-symbolic'),
                 ('reset','Reset','edit-undo-symbolic'),
             ):
                 callbacks={'choose':self.choose_game_artwork,'search':self.search_game_artwork,'reset':self.reset_game_artwork}
@@ -5340,42 +5340,126 @@ class Window(Adw.ApplicationWindow):
 
     def open_steamgrid_search(self,game,role):
         import steamgrid_client,artwork_overrides
+        from concurrent.futures import ThreadPoolExecutor
         client=steamgrid_client.Client()
-        dialog,body,footer=self.open_panel('SteamGridDB · '+role,width=700,height=600)
-        query=Gtk.SearchEntry(placeholder_text='Search games');query.set_text(game['name']);body.append(query)
-        status=label('Search for a game, then choose artwork.','dim-label');body.append(status)
-        listing=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8)
-        scroll=Gtk.ScrolledWindow(vexpand=True,min_content_height=260);scroll.set_child(listing);body.append(scroll)
-        def current():return self.dialog is dialog
-        def picked(asset,data):
-            def save(data):
-                if not current():return
-                try:
-                    credit='SteamGridDB · '+str((asset.get('author') or {}).get('name','Community artwork'))
-                    artwork_overrides.store(self.service.config,self.settings,game,role,data,credit=credit)
-                except Exception as error:self.error(str(error));return
-                dialog.close();self.sync_steam_artwork(game=game,refresh=True)
-            save(data)
-        def artwork_ready(assets):
-            if not current():return
-            clear(listing);status.set_text('Choose artwork to apply.' if assets else 'No matching artwork found. Try another game or Choose Image.')
+        title={'poster':'Posters','capsule':'Wide capsules','hero':'Heroes','logo':'Logos'}[role]
+        dialog,body,footer=self.open_panel(title+' for '+game['name'],width=800,height=700)
+        state={'generation':0,'match':None,'page':0,'assets':[],'picked':None,'closed':False,'loading':False}
+        pool=ThreadPoolExecutor(max_workers=4,thread_name_prefix='artwork-preview')
+        def close(*_):
+            state['closed']=True;state['generation']+=1;pool.shutdown(wait=False,cancel_futures=True)
+        dialog.connect('closed',close)
+        def current(token):return not state['closed'] and self.dialog is dialog and state['generation']==token
+        status=label('Community artwork from SteamGridDB · static images','dim-label');status.set_wrap(True)
+        stack=Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE,vexpand=True)
+        browse=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12)
+        searchline=Gtk.Box(spacing=8)
+        query=Gtk.SearchEntry(placeholder_text='Search for a different game',hexpand=True);query.set_text(game['name'])
+        searchline.append(query);search_button=button('Search',lambda *_:search());searchline.append(search_button);browse.append(searchline)
+        filters=Gtk.Box(spacing=8)
+        def choice(title,values):
+            box=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4,hexpand=True);box.append(label(title,'caption'))
+            control=Gtk.DropDown.new_from_strings(['All '+title.lower()]+[v.replace('_',' ').replace('material','Minimal').replace('image/','').replace('x',' × ') for v in values])
+            control.set_hexpand(True);box.append(control);filters.append(box)
+            return control,values
+        style=choice('Styles',steamgrid_client.STYLES[role]);size=choice('Sizes',steamgrid_client.DIMENSIONS[role]);mime=choice('Formats',steamgrid_client.MIMES)
+        browse.append(filters)
+        humor=Gtk.CheckButton(label='Include humorous artwork');browse.append(humor)
+        listing=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=10)
+        grid=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,min_children_per_line=2,max_children_per_line=4,column_spacing=12,row_spacing=12,homogeneous=True)
+        results=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=10);results.append(listing);results.append(grid)
+        scroll=Gtk.ScrolledWindow(vexpand=True,min_content_height=220,hscrollbar_policy=Gtk.PolicyType.NEVER);scroll.set_child(results);browse.append(scroll)
+        preview=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12)
+        picture=Gtk.Picture(content_fit=Gtk.ContentFit.CONTAIN,can_shrink=True,vexpand=True,height_request=310)
+        credit=label('','dim-label');credit.set_wrap(True);preview.append(picture);preview.append(credit)
+        stack.add_named(browse,'browse');stack.add_named(preview,'preview');body.append(status);body.append(stack)
+        back=button('Back to results',lambda *_:back_to_results());back.set_visible(False)
+        more=button('Load more',lambda *_:load_artwork(True));more.set_visible(False)
+        apply=button('Use artwork',lambda *_:save(),'suggested-action');apply.set_visible(False)
+        footer.append(back);footer.append(more);footer.append(apply)
+        def choice_value(pair):
+            control,values=pair;index=control.get_selected();return values[index-1] if 0<index<=len(values) else ''
+        def request(work,done,token):
+            def execute():
+                try:result=work();error=None
+                except Exception as ex:result=None;error=str(ex)
+                def deliver():
+                    if not current(token):return False
+                    state['loading']=False;search_button.set_sensitive(True)
+                    if error:status.set_text(error);more.set_sensitive(True)
+                    else:
+                        try:done(result)
+                        except Exception as ex:status.set_text(str(ex))
+                    return False
+                GLib.idle_add(deliver)
+            pool.submit(execute)
+        def clear_results():
+            clear(listing)
+            while grid.get_first_child():grid.remove(grid.get_first_child())
+        def back_to_results():
+            state['generation']+=1;state['picked']=None;stack.set_visible_child_name('browse');back.set_visible(False);apply.set_visible(False);more.set_visible(bool(state['assets']))
+            status.set_text(title+' · choose an image to preview and apply')
+        def select_asset(asset):
+            state['generation']+=1;token=state['generation'];status.set_text('Loading full-size preview…');state['picked']=None;more.set_visible(False);apply.set_sensitive(False)
+            def ready(data):
+                artwork_overrides.dimensions(data)
+                picture.set_paintable(Gdk.Texture.new_from_bytes(GLib.Bytes.new(data)))
+                state['picked']=(asset,data);credit.set_text(str(asset.get('width','?'))+' × '+str(asset.get('height','?'))+' · '+str((asset.get('author') or {}).get('name','Community artist')))
+                stack.set_visible_child_name('preview');back.set_visible(True);apply.set_visible(True);apply.set_sensitive(True);status.set_text('Apply this '+role+' to rtxForge and your selected Steam library.');apply.grab_focus()
+            request(lambda:client.download(asset),ready,token)
+        def thumbnail(asset,pic,token):
+            try:
+                data=client.thumbnail(asset);loader=GdkPixbuf.PixbufLoader.new();invalid=[]
+                def prepared(loader,w,h):
+                    if w*h>40_000_000:invalid.append(True)
+                    loader.set_size(192,288 if role=='poster' else 100)
+                loader.connect('size-prepared',prepared);loader.write(data);loader.close();pixbuf=loader.get_pixbuf()
+                if invalid or pixbuf is None:return
+                def paint():
+                    if not state['closed'] and self.dialog is dialog and asset in state['assets']:pic.set_paintable(Gdk.Texture.new_for_pixbuf(pixbuf))
+                    return False
+                GLib.idle_add(paint)
+            except Exception:pass
+        def render_assets(assets,append,token):
+            if not append:clear_results();state['assets']=[]
+            seen={x.get('id') for x in state['assets']}
             for asset in assets:
-                author=str((asset.get('author') or {}).get('name','Community artwork'))
-                line=Gtk.Box(spacing=12)
-                description=label(str(asset.get('width','?'))+' × '+str(asset.get('height','?'))+' · '+author);description.set_hexpand(True)
-                line.append(description)
-                line.append(button('Preview',lambda *_,a=asset:self.preview_steamgrid_artwork(a,picked)))
-                listing.append(line)
-        def games_ready(games):
-            if not current():return
-            clear(listing);status.set_text('Select the matching game.' if games else 'No matching games found.')
-            for match in games:
-                listing.append(button(str(match.get('name','Unknown game')),lambda *_,m=match:self.start('Finding artwork',lambda:client.artwork(m['id'],role),artwork_ready)))
-        def search(*_):
-            if self.busy:return
-            self.start('Searching SteamGridDB',lambda:client.search(query.get_text()),games_ready)
-        query.connect('activate',search)
-        footer.append(button('Search',search,'suggested-action'))
+                if not isinstance(asset,dict) or not asset.get('url') or asset.get('id') in seen:continue
+                state['assets'].append(asset);seen.add(asset.get('id'))
+                card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6)
+                pic=FixedArtworkPicture(144,216 if role=='poster' else 82);card.append(pic)
+                author=label(str((asset.get('author') or {}).get('name','Community artist')),'caption');author.set_ellipsize(Pango.EllipsizeMode.END);card.append(author)
+                control=Gtk.Button();control.set_child(card);control.add_css_class('artwork-preview');control.set_tooltip_text(str(asset.get('width','?'))+' × '+str(asset.get('height','?'))+' · '+author.get_text());control.connect('clicked',lambda _,a=asset:select_asset(a));grid.append(control)
+                pool.submit(thumbnail,asset,pic,token)
+            status.set_text(str(len(state['assets']))+' '+title.lower()+' · '+state['match']['name'] if state['assets'] else 'No artwork matches these filters. Try another style or size.')
+            more.set_visible(bool(assets) and state['page']<100);more.set_sensitive(True)
+        def load_artwork(append=False):
+            if not state['match']:return
+            state['generation']+=1;token=state['generation'];state['page']=state['page']+1 if append else 0
+            status.set_text('Finding '+title.lower()+'…');more.set_sensitive(False);stack.set_visible_child_name('browse');back.set_visible(False);apply.set_visible(False)
+            args={'page':state['page'],'style':choice_value(style),'dimensions':choice_value(size),'mime':choice_value(mime),'humor':humor.get_active()};match=state['match']['id']
+            request(lambda:client.artwork(match,role,**args),lambda assets:render_assets(assets,append,token),token)
+        def choose_match(match):state['match']=match;load_artwork()
+        def games_ready(matches):
+            clear_results();state['assets']=[];state['match']=None;more.set_visible(False)
+            exact=[m for m in matches if str(m.get('name','')).casefold()==query.get_text().strip().casefold()]
+            if len(exact)==1:choose_match(exact[0]);return
+            status.set_text('Choose the matching game.' if matches else 'No matching games. Try another title or upload an image.')
+            for match in matches:listing.append(button(str(match.get('name','Unknown game')),lambda *_,m=match:choose_match(m)))
+        def search():
+            state['generation']+=1;token=state['generation'];term=query.get_text().strip();search_button.set_sensitive(False);status.set_text('Searching games…')
+            request(lambda:client.search(term),games_ready,token)
+        def save():
+            if not state['picked']:return
+            asset,data=state['picked']
+            try:artwork_overrides.store(self.service.config,self.settings,game,role,data,credit='SteamGridDB · '+str((asset.get('author') or {}).get('name','Community artist')))
+            except Exception as ex:status.set_text(str(ex));return
+            dialog.close();self.sync_steam_artwork(game=game,refresh=True)
+        query.connect('activate',lambda *_:search())
+        for control,_ in (style,size,mime):control.connect('notify::selected',lambda *_:load_artwork())
+        humor.connect('toggled',lambda *_:load_artwork())
+        self._steamgrid_review={'dialog':dialog,'stack':stack,'grid':grid,'state':state,'status':status,'select':select_asset,'back':back_to_results,'search':search,'style':style[0],'more':more}
+        search()
 
     def preview_steamgrid_artwork(self,asset,selected):
         import steamgrid_client

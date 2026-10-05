@@ -141,7 +141,13 @@ def advance():
             steps.pop(0);preview_deadline=None;GLib.timeout_add(1000,advance)
         else:
             (ROOT/'dist/steamgrid-review.json').write_text(json.dumps({'fixture_only':True,'game_writes':False,'api_calls':False,'captures':captures,'calls':calls},indent=2));app.quit()
-    except Exception:traceback.print_exc();app.exit_code=1;app.quit()
+    except Exception:
+        detail=traceback.format_exc()
+        traceback.print_exc()
+        if os.environ.get('GITHUB_ACTIONS'):
+            safe=detail.replace('%','%25').replace('\r','%0D').replace('\n','%0A')
+            print('::error title=SteamGridDB UI review::'+safe,flush=True)
+        app.exit_code=1;app.quit()
     return False
 GLib.timeout_add(1800,advance)
 result=app.run([sys.argv[0]]);raise SystemExit(app.exit_code or result)

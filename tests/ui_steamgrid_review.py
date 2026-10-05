@@ -115,19 +115,23 @@ def verify_embedded_picker_parent():
         panel.close()
     finally:ui.Gtk.FileDialog=original
 
-def connection_preview():
+def connection_open():
     app.window.show_steamgrid_connection()
+
+def connection_preview():
     view=app.window._steamgrid_connection_review
     assert isinstance(view['entry'],Gtk.PasswordEntry)
     assert not view['connect'].get_sensitive()
     assert 'Preview only' in view['status'].get_text()
     assert view['entry'].get_text()==''
     path=app.window.capture('steamgrid-connect-preview.png')
-    assert path and path.is_file()
+    if path is None:raise PreviewNotReady('SteamGridDB connection panel')
+    assert path.is_file()
+    captures.append('steamgrid-connect-preview.png')
     view['dialog'].close()
     assert view['state']['closed']
 
-steps=[connection_preview,details_for_picker,verify_picker_parent,embedded_for_picker,verify_embedded_picker_parent,open_browser,lambda:capture('steamgrid-desktop-results.png'),preview,verify_preview,filter_results,verify_filter,couch,lambda:capture('steamgrid-couch-results.png'),lambda:app.window.dialog.close()]
+steps=[connection_open,connection_preview,details_for_picker,verify_picker_parent,embedded_for_picker,verify_embedded_picker_parent,open_browser,lambda:capture('steamgrid-desktop-results.png'),preview,verify_preview,filter_results,verify_filter,couch,lambda:capture('steamgrid-couch-results.png'),lambda:app.window.dialog.close()]
 preview_deadline=None
 def advance():
     global preview_deadline
@@ -136,7 +140,7 @@ def advance():
             try:steps[0]()
             except PreviewNotReady:
                 if preview_deadline is None:preview_deadline=time.monotonic()+5
-                if time.monotonic()>=preview_deadline:raise AssertionError('Thumbnails did not become visible: '+repr(app.window._steamgrid_review['state']))
+                if time.monotonic()>=preview_deadline:raise AssertionError('Native review surface did not become ready at step '+str(steps[0]))
                 GLib.timeout_add(100,advance);return False
             steps.pop(0);preview_deadline=None;GLib.timeout_add(1000,advance)
         else:

@@ -40,7 +40,7 @@ class ArtworkTests(unittest.TestCase):
             client.artwork(1,'poster');self.assertIn('dimensions=600x900',request.call_args.args[0])
             client.artwork(1,'hero');self.assertTrue(request.call_args.args[0].startswith('heroes/game/1?'))
             with self.assertRaises(ValueError):client.artwork('../x','poster')
-        with patch.dict('os.environ',{'STEAMGRIDDB_API_KEY':''}):
+        with patch('steamgrid_client.steamgrid_credentials.load_key',return_value=''):
             with self.assertRaisesRegex(ValueError,'not configured'):Client()
 
 if __name__=='__main__':unittest.main()

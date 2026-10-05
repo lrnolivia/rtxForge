@@ -115,7 +115,23 @@ def verify_embedded_picker_parent():
         panel.close()
     finally:ui.Gtk.FileDialog=original
 
-steps=[details_for_picker,verify_picker_parent,embedded_for_picker,verify_embedded_picker_parent,open_browser,lambda:capture('steamgrid-desktop-results.png'),preview,verify_preview,filter_results,verify_filter,couch,lambda:capture('steamgrid-couch-results.png'),lambda:app.window.dialog.close()]
+def connection_open():
+    app.window.show_steamgrid_connection()
+
+def connection_preview():
+    view=app.window._steamgrid_connection_review
+    assert isinstance(view['entry'],Gtk.PasswordEntry)
+    assert not view['connect'].get_sensitive()
+    assert 'Preview only' in view['status'].get_text()
+    assert view['entry'].get_text()==''
+    path=app.window.capture('steamgrid-connect-preview.png')
+    if path is None:raise PreviewNotReady('SteamGridDB connection panel')
+    assert path.is_file()
+    captures.append('steamgrid-connect-preview.png')
+    view['dialog'].close()
+    assert view['state']['closed']
+
+steps=[connection_open,connection_preview,details_for_picker,verify_picker_parent,embedded_for_picker,verify_embedded_picker_parent,open_browser,lambda:capture('steamgrid-desktop-results.png'),preview,verify_preview,filter_results,verify_filter,couch,lambda:capture('steamgrid-couch-results.png'),lambda:app.window.dialog.close()]
 preview_deadline=None
 def advance():
     global preview_deadline
@@ -124,12 +140,18 @@ def advance():
             try:steps[0]()
             except PreviewNotReady:
                 if preview_deadline is None:preview_deadline=time.monotonic()+5
-                if time.monotonic()>=preview_deadline:raise AssertionError('Thumbnails did not become visible: '+repr(app.window._steamgrid_review['state']))
+                if time.monotonic()>=preview_deadline:raise AssertionError('Native review surface did not become ready at step '+str(steps[0]))
                 GLib.timeout_add(100,advance);return False
             steps.pop(0);preview_deadline=None;GLib.timeout_add(1000,advance)
         else:
             (ROOT/'dist/steamgrid-review.json').write_text(json.dumps({'fixture_only':True,'game_writes':False,'api_calls':False,'captures':captures,'calls':calls},indent=2));app.quit()
-    except Exception:traceback.print_exc();app.exit_code=1;app.quit()
+    except Exception:
+        detail=traceback.format_exc()
+        traceback.print_exc()
+        if os.environ.get('GITHUB_ACTIONS'):
+            safe=detail.replace('%','%25').replace('\r','%0D').replace('\n','%0A')
+            print('::error title=SteamGridDB UI review::'+safe,flush=True)
+        app.exit_code=1;app.quit()
     return False
 GLib.timeout_add(1800,advance)
 result=app.run([sys.argv[0]]);raise SystemExit(app.exit_code or result)

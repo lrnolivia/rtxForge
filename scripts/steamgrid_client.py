@@ -5,6 +5,7 @@ import urllib.request
 import urllib.parse
 import urllib.error
 import library_media
+import steamgrid_credentials
 
 BASE='https://www.steamgriddb.com/api/v2/'
 # Provider filter vocabulary verified against SteamGridDB's Decky plugin constants.
@@ -24,8 +25,12 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 class Client:
     def __init__(self,key=None):
-        self._key=key if key is not None else os.environ.get('STEAMGRIDDB_API_KEY','').strip()
+        self._key=key if key is not None else steamgrid_credentials.load_key()
         if not self._key:raise ValueError('SteamGridDB API setup is not configured yet.')
+
+    def validate(self):
+        self._json('search/autocomplete/Portal')
+        return True
 
     def _json(self,path):
         request=urllib.request.Request(BASE+path,headers={'Authorization':'Bearer '+self._key,'User-Agent':'rtxForge/1.0'})

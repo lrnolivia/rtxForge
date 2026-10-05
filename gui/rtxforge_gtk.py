@@ -3802,6 +3802,7 @@ class Window(Adw.ApplicationWindow):
         menu_body.append(icon_button('Add rtxForge to Steam','list-add-symbolic',lambda *_:(menu_popover.popdown(),self.add_rtxforge_to_steam()),'flat'))
         menu_body.append(icon_button('Sync artwork to Steam','view-refresh-symbolic',lambda *_:(menu_popover.popdown(),self.sync_steam_artwork()),'flat'))
         menu_body.append(icon_button('Steam artwork profile','avatar-default-symbolic',lambda *_:(menu_popover.popdown(),self.choose_steam_artwork_profile()),'flat'))
+        menu_body.append(icon_button('Connect SteamGridDB','network-server-symbolic',lambda *_:(menu_popover.popdown(),self.show_steamgrid_connection()),'flat'))
         main_menu.set_popover(menu_popover)
         self.main_menu=main_menu
         if gamescope_session():
@@ -5344,17 +5345,101 @@ class Window(Adw.ApplicationWindow):
         game.pop(role,None)
         self.sync_steam_artwork(game=game,refresh=True)
 
+    def show_steamgrid_connection(self,*_,on_connected=None):
+        import steamgrid_client,steamgrid_credentials
+        dialog,body,footer=self.open_panel('Connect SteamGridDB',width=560,height=430)
+        body.append(label('Choose artwork from SteamGridDB in Desktop or Game Mode. Connect once with your own API key.','dim-label'))
+        body.append(button('Get my key',lambda *_:Gio.AppInfo.launch_default_for_uri('https://www.steamgriddb.com/profile/preferences/api',None)))
+        entry=Gtk.PasswordEntry(show_peek_icon=True,hexpand=True)
+        entry.set_property('placeholder-text','Paste your SteamGridDB API key')
+        entry.update_property([Gtk.AccessibleProperty.LABEL],['SteamGridDB API key'])
+        entry.set_tooltip_text('Stored only in your system password wallet')
+        body.append(entry)
+        status=label('Checking your saved connection…','dim-label');status.set_wrap(True);body.append(status)
+        body.append(label('Your key is saved in the system password wallet, never in app settings or your game files.','dim-label'))
+        state={'closed':False,'busy':False,'saved':False,'generation':0,'token':None}
+        connect=button('Connect',lambda *_:connect_key(),'suggested-action')
+        disconnect=button('Disconnect',lambda *_:disconnect_key())
+        footer.append(disconnect);footer.append(connect)
+        def controls():
+            connect.set_sensitive(not state['busy'] and not self.options.demo)
+            disconnect.set_sensitive(not state['busy'] and state['saved'] and not self.options.demo)
+            entry.set_sensitive(not state['busy'])
+        def close(*_):
+            state['closed']=True;state['generation']+=1;entry.set_text('')
+            if state['token']:state['token'].cancel()
+        dialog.connect('closed',close)
+        def run(work,ready):
+            if state['busy']:return
+            state['busy']=True;state['generation']+=1
+            generation=state['generation'];token=Gio.Cancellable();state['token']=token;controls()
+            def finish(value,error):
+                if state['closed'] or generation!=state['generation']:return False
+                state['busy']=False;state['token']=None
+                if error:status.set_text(error)
+                else:ready(value)
+                controls();return False
+            def worker():
+                try:value=work(token);error=None
+                except (steamgrid_credentials.CredentialError,ValueError) as problem:
+                    value=None;error=str(problem)
+                except Exception:
+                    value=None;error='Could not connect. Check your internet connection and system password wallet, then try again.'
+                GLib.idle_add(finish,value,error)
+            threading.Thread(target=worker,daemon=True).start()
+        def connect_key():
+            try:key=steamgrid_credentials.normalize_key(entry.get_text())
+            except ValueError as error:status.set_text(str(error));return
+            status.set_text('Checking key and saving securely…')
+            def work(token):
+                client=steamgrid_client.Client(key);client.validate()
+                if token.is_cancelled():raise steamgrid_credentials.CredentialError('Connection cancelled.')
+                steamgrid_credentials.save_key(key,cancel=token)
+                return client
+            def ready(client):
+                entry.set_text('');state['saved']=True
+                status.set_text('Connected. Desktop and Game Mode share this connection.')
+                connect.set_label('Replace key')
+                if on_connected:
+                    dialog.close();on_connected(client)
+            run(work,ready)
+        def disconnect_key():
+            status.set_text('Removing saved connection…')
+            def ready(external):
+                state['saved']=False;entry.set_text('');connect.set_label('Connect')
+                status.set_text('Saved key removed. An external environment key is still configured.' if external else 'Disconnected. Your downloaded artwork stays in place.')
+            run(lambda token:steamgrid_credentials.clear_key(cancel=token),ready)
+        def loaded(key):
+            state['saved']=bool(key);connect.set_label('Replace key' if key else 'Connect')
+            status.set_text('Connected. Desktop and Game Mode share this connection.' if key else 'Get your key, paste it above, then choose Connect.')
+            if not key:entry.grab_focus()
+        self._steamgrid_connection_review={'dialog':dialog,'entry':entry,'status':status,'connect':connect,'disconnect':disconnect,'state':state}
+        if self.options.demo:
+            status.set_text('Preview only. No credentials are read or saved.');controls()
+        else:run(lambda token:steamgrid_credentials.load_key(cancel=token),loaded)
+
     def search_game_artwork(self,game,role):
         import steamgrid_client
-        if not steamgrid_client.configured():
-            self.error('SteamGridDB API setup is not configured yet. Choose Image works now; SteamGridDB browsing will be available after setup.')
+        if self.options.demo:
+            self.open_steamgrid_search(game,role)
             return
-        self.open_steamgrid_search(game,role)
+        if getattr(self,'_steamgrid_loading',False):return
+        self._steamgrid_loading=True
+        def ready(client):
+            self._steamgrid_loading=False
+            if client:self.open_steamgrid_search(game,role,client=client)
+            else:self.show_steamgrid_connection(on_connected=lambda client:self.open_steamgrid_search(game,role,client=client))
+            return False
+        def work():
+            try:client=steamgrid_client.Client()
+            except Exception:client=None
+            GLib.idle_add(ready,client)
+        threading.Thread(target=work,daemon=True).start()
 
-    def open_steamgrid_search(self,game,role):
+    def open_steamgrid_search(self,game,role,client=None):
         import steamgrid_client,artwork_overrides
         from concurrent.futures import ThreadPoolExecutor
-        client=steamgrid_client.Client()
+        client=client or steamgrid_client.Client()
         title={'poster':'Posters','capsule':'Wide capsules','hero':'Heroes','logo':'Logos'}[role]
         dialog,body,footer=self.open_panel(title+' for '+game['name'],width=800,height=700)
         state={'generation':0,'match':None,'page':0,'assets':[],'picked':None,'closed':False,'loading':False}

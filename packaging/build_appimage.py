@@ -2,6 +2,33 @@
 """Build the Bazzite 44 GNOME-targeted AppImage; does not install OS packages."""
 from pathlib import Path
 import hashlib,json,os,shutil,subprocess,urllib.request
+
+def bundle_steam_artwork(source_root, payload_root):
+    """Keep the installer's four artwork roles and their licensed source assets."""
+    artwork = source_root / 'packaging' / 'steam-artwork'
+    exports = artwork / 'exports'
+    required = ('rtxforge-steam-portrait', 'rtxforge-steam-wide',
+                'rtxforge-steam-hero', 'rtxforge-logo-white')
+    selected = []
+    for stem in required:
+        candidates = [exports / (stem + suffix) for suffix in ('.png', '.svg')]
+        existing = [p for p in candidates if p.is_file()]
+        if not existing:
+            raise RuntimeError('Missing bundled Steam artwork: ' + stem)
+        for path in existing:
+            if path.stat().st_size == 0:
+                raise RuntimeError('Empty bundled Steam artwork: ' + path.name)
+        selected.extend(existing)
+    destination = payload_root / 'packaging' / 'steam-artwork'
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(artwork, destination, dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns('__pycache__'))
+    for source in selected:
+        copied = destination / source.relative_to(artwork)
+        if not copied.is_file() or copied.read_bytes() != source.read_bytes():
+            raise RuntimeError('Steam artwork copy verification failed: ' + source.name)
+    return destination
+
 root=Path(__file__).resolve().parents[1]
 dist=root/'dist'
 version=(root/'VERSION').read_text(encoding='utf-8').strip()
@@ -37,6 +64,7 @@ for name in ['gui','scripts','providers']:
 for name in ['provider.json','README.md']:shutil.copyfile(root/name,payload/name)
 (payload/'engine').mkdir()
 shutil.copyfile(root/'engine/rtxengine.py',payload/'engine/rtxengine.py')
+bundle_steam_artwork(root, payload)
 # Provider archives are verified at preparation; no stale custom loader is bundled.
 shutil.copyfile(root/'packaging/AppRun',app/'AppRun');(app/'AppRun').chmod(0o755)
 icon='io.github.lrnolivia.RTXForge'

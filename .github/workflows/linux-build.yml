@@ -87,6 +87,8 @@ jobs:
           /usr/bin/python3 -m unittest discover -s tests -p test_setup.py
           /usr/bin/python3 -m unittest discover -s tests -p test_package_download.py
 
+          /usr/bin/python3 -m unittest discover -s tests -p test_release_backup.py
+
           /usr/bin/python3 tests/test_batches.py
           /usr/bin/python3 tests/test_cleanup.py
 
@@ -230,32 +232,30 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Keep the previously installed preview downloadable before replacing it.
-          if gh release view continuous >/dev/null 2>&1; then
-            mkdir -p /tmp/rtxforge-rollback
-            gh release download continuous --dir /tmp/rtxforge-rollback
-            OLD_SHA="$(python3 -c 'import json; print(json.load(open("/tmp/rtxforge-rollback/rtxforge-update.json"))["commit"])')"
-            BACKUP="preview-backup-${OLD_SHA:0:12}"
-            if ! gh release view "$BACKUP" >/dev/null 2>&1; then
-              gh release create "$BACKUP" --target "$OLD_SHA" --prerelease --title "rtxForge previous preview" --notes "Rollback snapshot before preview update. Source: $OLD_SHA."
-              gh release upload "$BACKUP" /tmp/rtxforge-rollback/*
+          # Keep rollback bytes in the existing channel; do not create historical refs.
+          # This uses the existing contents permission and does not widen token access.
+          gh release view continuous --json assets > /tmp/rtxforge-release-assets.json
+          mkdir -p /tmp/rtxforge-current /tmp/rtxforge-backup /tmp/rtxforge-existing
+          gh release download continuous --dir /tmp/rtxforge-current
+          python3 scripts/prepare_release_backup.py /tmp/rtxforge-current /tmp/rtxforge-backup
+          for FILE in /tmp/rtxforge-backup/*; do
+            NAME="$(basename "$FILE")"
+            if python3 -c 'import json,sys; sys.exit(0 if any(a["name"]==sys.argv[1] for a in json.load(open("/tmp/rtxforge-release-assets.json"))["assets"]) else 1)' "$NAME"; then
+              gh release download continuous --pattern "$NAME" --dir /tmp/rtxforge-existing
+              cmp "$FILE" "/tmp/rtxforge-existing/$NAME"
+            else
+              gh release upload continuous "$FILE"
             fi
-          fi
+          done
 
+          CURRENT_TAG="$(git rev-parse refs/tags/continuous)"
           git tag -f continuous "$GITHUB_SHA"
-          git push -f origin refs/tags/continuous
+          git push --force-with-lease="refs/tags/continuous:$CURRENT_TAG" origin refs/tags/continuous
 
-          if gh release view continuous >/dev/null 2>&1; then
-            gh release edit continuous \
-              --title "rtxForge Continuous" \
-              --prerelease \
-              --notes "Verified development preview AppImage: $GITHUB_SHA. This moving prerelease is the rtxForge continuous update channel, not a numbered stable release."
-          else
-            gh release create continuous \
-              --title "rtxForge Continuous" \
-              --prerelease \
-              --notes "Verified development preview AppImage: $GITHUB_SHA. This moving prerelease is the rtxForge continuous update channel, not a numbered stable release."
-          fi
+          gh release edit continuous \
+            --title "rtxForge Continuous" \
+            --prerelease \
+            --notes "Verified development preview AppImage: $GITHUB_SHA. This moving prerelease is the rtxForge continuous update channel, not a numbered stable release. Verified previous updater files are retained as .previous assets."
 
           gh release upload continuous \
             dist/rtxForge-Bazzite-x86_64.AppImage \

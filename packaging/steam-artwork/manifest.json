@@ -22,11 +22,19 @@
       400
     ]
   },
-  "hero": "Background only, no embedded icon, lettering, or logo. White transparent logo supplied independently with a soft shadow and uncut transparent padding.",
+  "hero": "User-revised background-only hero, preserved byte-for-byte. Separate transparent logo with stronger padded shadow.",
   "typography": {
     "wordmark": "Bakbak One",
     "tagline": "Inter 450"
   },
   "background": "AI-generated conceptual unbranded cooling hardware, 1536\u00d71024 source. Embedded and upscaled for hero export; not true 4K detail.",
-  "sources": "SVG files contain outlined exact lettering, original vector icon and embedded raster plate. Original fonts and licenses included."
+  "sources": "SVG files contain outlined exact lettering, original vector icon and embedded raster plate. Original fonts and licenses included.",
+  "hero_source": {
+    "filename": "assets/rtxhero.png",
+    "sha256": "11da57c4084d6575a74c7d3a67e5b9f7a0decea96b6d99bc6c9121bbb701aa29",
+    "size": [
+      3840,
+      1240
+    ]
+  }
 }

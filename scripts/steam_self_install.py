@@ -66,7 +66,7 @@ def bundled_image(path):
     return bytes(data)
 
 
-def _prepare(config,settings,*,engine=None,entry=None,art_root=None,load_image=bundled_image):
+def _shortcut_plan(config,settings,*,engine=None,entry=None):
     e=engine or engine_bridge.module(config);entry=Path(entry or executable()).resolve()
     accounts=steam_artwork.profiles(config,engine=e)
     selected=settings.get('steam_artwork_profile')
@@ -80,6 +80,42 @@ def _prepare(config,settings,*,engine=None,entry=None,art_root=None,load_image=b
     if folder!=expected or not folder.is_dir():raise ValueError('Steam account path could not be verified.')
     shortcut=t.safe(folder/'shortcuts.vdf');before=shortcut.read_bytes() if shortcut.exists() else None
     if before is not None and len(before)>16*1024*1024:raise ValueError('Steam shortcuts file exceeds the safe update bound.')
+    objects=e.parse_shortcuts_spans(before) if before is not None else []
+    matches=[obj for obj in objects if (value:=e._shortcut_string(obj,'exe').strip().strip('"')) and Path(value).is_absolute() and Path(value).resolve()==entry]
+    if len(matches)>1:raise ValueError('More than one Steam shortcut points to this installation. Keep one before continuing.')
+    identity={'entry':str(entry),'config':str(folder),'shortcut':t.sha(before) if before is not None else None}
+    return {'engine':e,'entry':entry,'folder':folder,'shortcut':shortcut,'before':before,'objects':objects,'match':matches[0] if matches else None,'identity':identity}
+
+
+def shortcut_status(config,settings,**kwargs):
+    """Inspect only the selected profile's shortcut, without loading artwork."""
+    plan=_shortcut_plan(config,settings,**kwargs)
+    return {'added':plan['match'] is not None,'identity':plan['identity']}
+
+
+def remove(config,settings,*,reviewed,**kwargs):
+    plan=_shortcut_plan(config,settings,**kwargs)
+    if reviewed.get('identity')!=plan['identity']:raise ValueError('Steam shortcuts changed since your review. Review the removal again.')
+    if plan['engine'].steam_running():raise ValueError('Close Steam completely before removing rtxForge from its library.')
+    obj=plan['match']
+    if obj is None:raise ValueError('This rtxForge installation is no longer in Steam.')
+    before=plan['before'];shortcut=plan['shortcut']
+    # Object spans start after the binary type and key; remove that header too.
+    after=before[:obj.start-len(obj.key.encode())-2]+before[obj.end:]
+    if len(plan['engine'].parse_shortcuts_spans(after))!=len(plan['objects'])-1:raise ValueError('Steam shortcut validation failed. Nothing was changed.')
+    backup=t.safe(storage(config,32*1024*1024)/'desktop/steam-shortcuts'/uuid.uuid4().hex);backup.mkdir(parents=True)
+    t.atomic_file(backup/'shortcuts.vdf',before,0o600)
+    t.atomic_file(backup/'record.json',(json.dumps({'path':str(shortcut),'operation':'remove','before_sha256':t.sha(before),'after_sha256':t.sha(after)},indent=2)+'\n').encode(),0o600)
+    if shortcut.read_bytes()!=before:raise ValueError('Steam shortcuts changed during preparation. Nothing was removed.')
+    if plan['engine'].steam_running():raise ValueError('Steam opened during preparation. Close it and try again.')
+    t.atomic_file(shortcut,after,0o600)
+    if shortcut.read_bytes()!=after:raise ValueError('Steam shortcut readback failed; your backup was kept.')
+    return {'backup':str(backup)}
+
+
+def _prepare(config,settings,*,engine=None,entry=None,art_root=None,load_image=bundled_image):
+    plan=_shortcut_plan(config,settings,engine=engine,entry=entry)
+    e=plan['engine'];entry=plan['entry'];folder=plan['folder'];shortcut=plan['shortcut'];before=plan['before']
     icon=ROOT/'gui/icons/hicolor/scalable/apps/io.github.lrnolivia.RTXForge.svg'
     if not icon.is_file():raise ValueError('The bundled rtxForge icon is missing. Reinstall the app before adding it to Steam.')
     after,appid,created=append_shortcut(before,entry,engine=e,icon=str(icon))
@@ -98,7 +134,7 @@ def _prepare(config,settings,*,engine=None,entry=None,art_root=None,load_image=b
     identity={'icon':t.digest(icon),'entry':str(entry),'config':str(folder),'appid':appid,'shortcut':t.sha(before) if before is not None else None,
               'images':{role:t.sha(data) for role,data in images.items()},'slots':slots}
     return {'engine':e,'folder':folder,'shortcut':shortcut,'before':before,'after':after,'images':images,
-            'summary':{'identity':identity,'created':created,'profile':str(account['userid']),'roles':roles}}
+            'summary':{'identity':identity,'created':created,'profile':folder.parent.name,'roles':roles}}
 
 
 def review(config,settings,**kwargs):

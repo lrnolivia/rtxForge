@@ -779,6 +779,8 @@ def apply_corner_style(value):
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(),CORNER_PROVIDER,Gtk.STYLE_PROVIDER_PRIORITY_USER)
     css='* { border-radius: 0; border-top-left-radius: 0; border-top-right-radius: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; } window, dialog { --window-radius: 0px; --dialog-radius: 0px; }' if CORNER_STYLE=='square' else ''
     if CORNER_STYLE=='rounded':css='window.background { border-radius: 12px; }'
+    # Game Mode navigation remains a pill, including with square cards.
+    css+=' .couch-tabs, .couch-tabs .couch-tab { border-radius: 999px; border-top-left-radius: 999px; border-top-right-radius: 999px; border-bottom-left-radius: 999px; border-bottom-right-radius: 999px; }'
     CORNER_PROVIDER.load_from_data(css.encode())
 
 
@@ -3371,6 +3373,9 @@ class PresentationDialog(Adw.Dialog):
             return
         couch=getattr(self.owner,'couch',None)
         in_couch=couch and self.owner.input_stack.get_visible_child_name()=='couch'
+        self.add_css_class('couch-dialog') if in_couch else self.remove_css_class('couch-dialog')
+        game_controls=in_couch and couch.game and couch.page in ('game','features','tools','game_presets')
+        self.add_css_class('couch-game-controls') if game_controls else self.remove_css_class('couch-game-controls')
         if not in_couch:
             super().set_child(child)
             self._scaled_child=None
@@ -3641,9 +3646,10 @@ class Window(Adw.ApplicationWindow):
     def set_big_picture_ui(self,enabled):
         global COUCH_MODE
         self.settings['big_picture_ui']=bool(enabled)
-        COUCH_MODE=self.settings.get('input_mode','auto') if enabled else 'desktop'
+        self.settings['input_mode']='couch' if enabled else 'desktop'
+        COUCH_MODE=self.settings['input_mode']
         if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
-        if not enabled:GLib.idle_add(lambda:(self.set_input_surface(False),False)[1])
+        GLib.idle_add(lambda:(self.set_input_surface(bool(enabled)),False)[1])
 
     def set_display_preference(self,key,value):
         self.settings[key]=value
@@ -3759,7 +3765,7 @@ class Window(Adw.ApplicationWindow):
             settings_action
         )
 
-        for action_name,callback in [('extras',self.show_extras),('reports',self.show_reports),('packages',self.show_packages),('classic-ui',lambda *_:self.set_ui_mode('classic')),('new-ui',lambda *_:self.set_ui_mode('new')),('compact-header',self.toggle_compact_header)]:
+        for action_name,callback in [('about',self.show_about),('extras',self.show_extras),('reports',self.show_reports),('packages',self.show_packages),('classic-ui',lambda *_:self.set_ui_mode('classic')),('new-ui',lambda *_:self.set_ui_mode('new')),('compact-header',self.toggle_compact_header)]:
             action=Gio.SimpleAction.new(action_name,None);action.connect('activate',callback);self.add_action(action)
         menu_actions=[
             ('Refresh Library','view-refresh-symbolic','win.refresh-library'),
@@ -3788,25 +3794,19 @@ class Window(Adw.ApplicationWindow):
             [Gtk.AccessibleProperty.LABEL],
             ['Main Menu'],
         )
-        menu_body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=2)
-        margins(menu_body,8)
-        menu_popover=Gtk.Popover(child=menu_body)
+        menu_model=Gio.Menu()
+        main_section=Gio.Menu()
         for caption,icon,action_name in menu_actions:
-            entry=icon_button(caption,icon,lambda *_:menu_popover.popdown(),'flat')
-            entry.get_child().set_spacing(16)
-            entry.get_child().set_halign(Gtk.Align.START)
-            entry.get_child().get_first_child().set_size_request(24,-1)
-            entry.set_halign(Gtk.Align.FILL)
-            entry.set_action_name(action_name)
-            menu_body.append(entry)
-        menu_body.append(icon_button('Add rtxForge to Steam','list-add-symbolic',lambda *_:(menu_popover.popdown(),self.add_rtxforge_to_steam()),'flat'))
-        menu_body.append(icon_button('Sync artwork to Steam','view-refresh-symbolic',lambda *_:(menu_popover.popdown(),self.sync_steam_artwork()),'flat'))
-        menu_body.append(icon_button('Steam artwork profile','avatar-default-symbolic',lambda *_:(menu_popover.popdown(),self.choose_steam_artwork_profile()),'flat'))
-        menu_body.append(icon_button('Connect SteamGridDB','network-server-symbolic',lambda *_:(menu_popover.popdown(),self.show_steamgrid_connection()),'flat'))
-        entry=menu_body.get_first_child()
-        while entry:
-            entry.get_child().set_halign(Gtk.Align.START)
-            entry=entry.get_next_sibling()
+            item=Gio.MenuItem.new(caption,action_name)
+            item.set_icon(Gio.ThemedIcon.new(icon))
+            main_section.append_item(item)
+        menu_model.append_section(None,main_section)
+        about_section=Gio.Menu()
+        about_item=Gio.MenuItem.new('About','win.about')
+        about_item.set_icon(Gio.ThemedIcon.new('help-about-symbolic'))
+        about_section.append_item(about_item)
+        menu_model.append_section(None,about_section)
+        menu_popover=Gtk.PopoverMenu.new_from_model(menu_model)
         main_menu.set_popover(menu_popover)
         self.main_menu=main_menu
         if gamescope_session():
@@ -4838,6 +4838,7 @@ class Window(Adw.ApplicationWindow):
         self.couch_content=ScaledContent(self.couch)
         self.input_stack.add_named(self.couch_content,'couch')
         self.overlay.set_child(self.input_stack)
+        self.input_kind='keyboard'
         self.last_controller_input=0.0;self._pointer_origin=None
         self.set_input_surface(gamescope_session())
         if gamescope_session() and not options.demo:
@@ -4846,18 +4847,27 @@ class Window(Adw.ApplicationWindow):
         keys=Gtk.EventControllerKey();keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         keys.connect('key-pressed',self.keyboard_input);self.add_controller(keys)
         pointer=Gtk.GestureClick();pointer.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
-        pointer.connect('pressed',lambda *_:self.set_input_surface(False));self.add_controller(pointer)
-        motion=Gtk.EventControllerMotion();motion.connect('motion',self.pointer_input);self.add_controller(motion)
+        pointer.connect('pressed',lambda *_:self.set_input_kind('keyboard'));self.add_controller(pointer)
         self._canonical_library=self.overlay
         self._new_shell=None;self._new_stack=None
         initial=(getattr(options,'ui_mode',None) or 'classic') if options.demo else 'classic'
         self.set_ui_mode(initial,persist=False)
         if self.settings.get('compact_header'):GLib.idle_add(self._collapse_library_header,self._library_scroll_adjustment)
 
+    def show_about(self,*_):
+        d,b,f=self.open_panel('About rtxForge',width=420,height=280)
+        b.set_spacing(8)
+        b.append(label('rtxForge','title-1'))
+        b.append(label('Version '+APP_VERSION,'dim-label'))
+        b.append(label('new tricks for old cards','title-4'))
+        b.append(label('GeForce graphics tools for Linux.','dim-label'))
+        f.append(button('GitHub',lambda *_:Gio.AppInfo.launch_default_for_uri('https://github.com/lrnolivia/rtxForge',None)))
+        f.append(button('Close',lambda *_:d.close()))
+
     def show_controller_menu(self,*_):
         if self.busy and self.task_kind!='art':return
         d,b,f=self.open_panel('Menu',width=380,height=420)
-        for title,icon,fn in [('Refresh Library','view-refresh-symbolic',self.scan),('Add Game Folder','folder-new-symbolic',self.choose_folder),('Packages','package-x-generic-symbolic',self.show_packages),('Extras','applications-utilities-symbolic',self.show_extras),('Add rtxForge to Steam','list-add-symbolic',self.add_rtxforge_to_steam),('Sync artwork to Steam','view-refresh-symbolic',self.sync_steam_artwork),('Steam artwork profile','avatar-default-symbolic',self.choose_steam_artwork_profile),('Settings','emblem-system-symbolic',self.show_settings)]:
+        for title,icon,fn in [('Refresh Library','view-refresh-symbolic',self.scan),('Add Game Folder','folder-new-symbolic',self.choose_folder),('Packages','package-x-generic-symbolic',self.show_packages),('Extras','applications-utilities-symbolic',self.show_extras),('Settings','emblem-system-symbolic',self.show_settings)]:
             def invoke(*_,fn=fn):
                 d.close();GLib.idle_add(lambda:(fn(),False)[1])
             b.append(icon_button(title,icon,invoke))
@@ -4872,16 +4882,37 @@ class Window(Adw.ApplicationWindow):
         if couch:self.couch.refresh()
         self.add_css_class('controller-active') if couch else self.remove_css_class('controller-active')
 
-    def keyboard_input(self,*_):
-        if time.monotonic()-self.last_controller_input>0.4:self.set_input_surface(False)
-        return False
+    def set_input_kind(self,kind):
+        if getattr(self,'input_kind',None)==kind:return
+        self.input_kind=kind
+        if hasattr(self,'couch'):self.couch.update_prompts()
 
-    def pointer_input(self,_,x,y):
-        if not self.is_active() or time.monotonic()-self.last_controller_input<=1.2:
-            self._pointer_origin=None;return
-        if self._pointer_origin is None:self._pointer_origin=(x,y);return
-        origin=self._pointer_origin
-        if abs(x-origin[0])+abs(y-origin[1])>24:self.set_input_surface(False)
+    def keyboard_input(self,_controller=None,keyval=None,_keycode=None,state=0):
+        # Device changes affect prompts, never the selected interface.
+        self.set_input_kind('keyboard')
+        if keyval is None or self.input_stack.get_visible_child_name()!='couch':return False
+        dialog=self.get_visible_dialog()
+        if dialog:
+            if keyval==Gdk.KEY_Escape:
+                if dialog.get_can_close():dialog.close()
+                return True
+            return False
+        focus=self.get_focus()
+        editing=isinstance(focus,(Gtk.Entry,Gtk.Text,Gtk.TextView,Gtk.SpinButton))
+        if keyval==Gdk.KEY_Escape:self.couch.navigate('back');return True
+        if editing:return False
+        control=bool(state&Gdk.ModifierType.CONTROL_MASK)
+        if control and keyval in (Gdk.KEY_comma,Gdk.KEY_l,Gdk.KEY_L,Gdk.KEY_1,Gdk.KEY_2,Gdk.KEY_3):
+            target={Gdk.KEY_comma:'settings',Gdk.KEY_l:'library',Gdk.KEY_L:'library',Gdk.KEY_1:'library',Gdk.KEY_2:'presets',Gdk.KEY_3:'dlss'}[keyval]
+            self.couch.open(target);return True
+        if keyval==Gdk.KEY_F10:self.couch.open('menu');return True
+        if isinstance(focus,(Gtk.Scale,Gtk.DropDown)):return False
+        if keyval in (Gdk.KEY_Return,Gdk.KEY_KP_Enter) and isinstance(focus,Gtk.Button):
+            # Tab and mouse focus must activate that native control, including Settings.
+            focus.emit('clicked');return True
+        actions={Gdk.KEY_Up:'up',Gdk.KEY_Down:'down',Gdk.KEY_Left:'left',Gdk.KEY_Right:'right',Gdk.KEY_Return:'accept',Gdk.KEY_KP_Enter:'accept',Gdk.KEY_BackSpace:'back'}
+        if keyval in actions:self.couch.navigate(actions[keyval]);return True
+        return False
 
     def poll_controller(self):
         actions=self.controller.poll()
@@ -4890,7 +4921,9 @@ class Window(Adw.ApplicationWindow):
         panel=self.dialog if isinstance(self.dialog,ResizablePanelWindow) and self.dialog.get_mapped() else None
         active_panel=panel if panel and panel.is_active() else None
         if not self.is_active() and not active_panel:return True
-        if actions:self.last_controller_input=time.monotonic();self._pointer_origin=None
+        if actions:
+            self.last_controller_input=time.monotonic();self._pointer_origin=None
+            self.set_input_kind('controller')
         for action in actions:
             dialog=active_panel or self.get_visible_dialog()
             if not dialog:
@@ -5235,6 +5268,38 @@ class Window(Adw.ApplicationWindow):
             group.artwork_controls[role]={'row':item,'preview':preview,'canvas':canvas,**controls}
         return group
 
+    def steam_shortcut_added(self):
+        if self.options.demo:return False
+        import steam_self_install
+        try:return steam_self_install.shortcut_status(self.service.config,self.settings)['added']
+        except Exception:return False
+
+    def toggle_rtxforge_in_steam(self,*_):
+        if self.options.demo:self.toast('Steam integration is disabled in preview mode.');return
+        import steam_self_install,copy
+        settings=copy.deepcopy(self.settings)
+        try:status=steam_self_install.shortcut_status(self.service.config,settings)
+        except Exception as error:self.error(str(error));return
+        if not status['added']:self.add_rtxforge_to_steam();return
+        d,b,f=self.open_panel('Remove rtxForge from Steam',width=560,height=240)
+        b.append(label('Remove this app’s shortcut from Steam?','title-2'))
+        b.append(label('Close Steam first. Your games, saved artwork and installed rtxForge app will be kept.','dim-label'))
+        def remove(*_):
+            d.close()
+            def ready(result):
+                self.toast('rtxForge was removed from Steam. Your saved artwork was kept.')
+                self.refresh_steam_shortcut_action()
+            self.start('Removing rtxForge from Steam',lambda:steam_self_install.remove(self.service.config,settings,reviewed=status),ready)
+        f.append(button('Cancel',lambda *_:d.close()))
+        f.append(button('Remove from Steam',remove,'destructive-action'))
+
+    def refresh_steam_shortcut_action(self):
+        added=self.steam_shortcut_added()
+        if getattr(self,'steam_shortcut_row',None):
+            self.steam_shortcut_row.set_title('rtxForge is in Steam' if added else 'Add rtxForge to Steam')
+            self.steam_shortcut_button.set_label('Remove from Steam' if added else 'Add to Steam')
+        if self.couch.page=='settings':self.couch.render()
+
     def add_rtxforge_to_steam(self,*_):
         if self.options.demo:self.toast('Steam integration is disabled in preview mode.');return
         import steam_self_install,copy
@@ -5258,6 +5323,7 @@ class Window(Adw.ApplicationWindow):
         def install(*_):
             d.close()
             def ready(result):
+                self.refresh_steam_shortcut_action()
                 if result['errors']:self.error('The Steam shortcut is available, but some artwork still needs syncing: '+ '; '.join(result['errors']))
                 elif result.get('preserved'):self.toast('rtxForge is in Steam. Your existing custom artwork was kept.')
                 else:self.toast('rtxForge and its artwork are ready in Steam. Restart Steam to refresh its library.')
@@ -12888,7 +12954,9 @@ class Window(Adw.ApplicationWindow):
                 return
 
             pending_library_view['value']=key
-            self.settings['library_view']=key
+            control=self.view_buttons[key]
+            control.set_active(True)
+            self.view_changed(control,key)
 
             self.show_games(
                 self.games,
@@ -12916,14 +12984,19 @@ class Window(Adw.ApplicationWindow):
             layout_row
         )
 
+        steam_launcher=Adw.PreferencesGroup(title='Steam Library')
+        added=self.steam_shortcut_added()
+        steam_shortcut=row('rtxForge is in Steam' if added else 'Add rtxForge to Steam','Manage this app’s shortcut in your selected Steam profile.')
+        steam_action=button('Remove from Steam' if added else 'Add to Steam',self.toggle_rtxforge_in_steam)
+        steam_action.set_sensitive(not self.options.demo);steam_action.set_valign(Gtk.Align.CENTER)
+        steam_shortcut.add_suffix(steam_action);steam_launcher.add(steam_shortcut)
+        self.steam_shortcut_row=steam_shortcut;self.steam_shortcut_button=steam_action
         controls=Adw.PreferencesGroup(title='Interface',description='Choose the experience for Gaming Mode.')
-        dashboard_options=Adw.PreferencesGroup(title='Dashboard',description='Artwork and browsing in Big Picture UI.')
         controller_options=Adw.PreferencesGroup(title='Controller',description='Button labels and navigation prompts.')
-        big_picture=Adw.SwitchRow(title='Big Picture UI',subtitle='Use the game menu interface for Gaming Mode and controller input.',active=self.settings.get('big_picture_ui',True))
-        big_picture.connect('notify::active',lambda widget,*_:self.set_big_picture_ui(widget.get_active()))
+        big_picture=safe_combo_row(title='Interface',subtitle='Choose Desktop or Big Picture UI. Keyboard, mouse and controller input keep your choice.',model=Gtk.StringList.new(['Desktop','Big Picture UI']),selected=1 if self.input_stack.get_visible_child_name()=='couch' else 0)
+        big_picture.connect('notify::selected',lambda widget,*_:self.set_big_picture_ui(widget.get_selected()==1))
         controls.add(big_picture)
         for key,title,keys,captions in [
-            ('input_mode','Startup Interface',['auto','desktop','couch'],['Automatic','Desktop','Big Picture']),
             ('controller_glyphs','Controller Labels',['auto','xbox','playstation','nintendo','generic'],['Automatic','Xbox','PlayStation','Nintendo','Generic'])]:
             choice=safe_combo_row(title=title,model=Gtk.StringList.new(captions),selected=keys.index(self.settings.get(key,'auto')))
             def change_input(widget,*_,key=key,keys=keys):
@@ -12935,13 +13008,11 @@ class Window(Adw.ApplicationWindow):
             choice.connect('notify::selected',change_input);(controller_options if key=='controller_glyphs' else controls).add(choice)
         for key,title,keys,captions in [
             ('ui_scale','UI Scale',list(SCALES),['Automatic (150% at 4K)','100%','125%','150%','175%','200%']),
-            ('dashboard_view','Dashboard Artwork',['capsules','posters'],['Wide Capsule','Poster']),
-            ('dashboard_row_count','Games Across Shelf',list(range(3,9)),[str(n) for n in range(3,9)]),
             ('navigation_position','Navigation Position',['top','bottom'],['Top','Bottom']),
             ('controller_hints','Controller Hints',['always','auto'],['Always visible','Hide when idle'])]:
             choice=safe_combo_row(title=title,model=Gtk.StringList.new(captions),selected=keys.index(self.settings.get(key,library_media.DEFAULTS[key])))
             choice.connect('notify::selected',lambda widget,*_,key=key,keys=keys:self.set_display_preference(key,keys[widget.get_selected()]))
-            target=dashboard_options if key in ('dashboard_view','dashboard_row_count') else controller_options if key=='controller_hints' else controls
+            target=controller_options if key=='controller_hints' else controls
             target.add(choice)
         controller_options.add(row('Controller Navigation','D-pad / stick: focus · South: activate · East: back · North: library · Start: menu · View/Select: settings · Bumpers: tab'))
         settings_saved={'value':False}
@@ -12956,9 +13027,9 @@ class Window(Adw.ApplicationWindow):
             )
 
             if current_view!=original_library_view:
-                self.settings['library_view']=(
-                    original_library_view
-                )
+                control=self.view_buttons[original_library_view]
+                control.set_active(True)
+                self.view_changed(control,original_library_view)
 
                 self.show_games(
                     self.games,
@@ -13017,11 +13088,18 @@ class Window(Adw.ApplicationWindow):
         metadata=Adw.SwitchRow(title='Download Game Information',subtitle='Descriptions, developers, and release dates from Steam.',active=self.settings['steam_metadata']);artwork.add(metadata)
         refresh=row('Refresh Artwork','Cached images remain available offline.');refresh_button=button('Refresh',lambda *_:self.fetch_media(True));refresh_button.set_valign(Gtk.Align.CENTER);refresh.add_suffix(refresh_button);artwork.add(refresh)
         timeout=Gtk.SpinButton.new_with_range(5,30,1);timeout.set_value(self.settings.get('network_timeout',10));timeout.set_valign(Gtk.Align.CENTER);item=row('Download Timeout','Seconds per request');item.add_suffix(timeout);artwork.add(item)
+        steam_artwork=Adw.PreferencesGroup(title='Steam Artwork',description='Choose the Steam account and manage artwork for your game library.')
+        for title,subtitle,caption,fn in [
+            ('Steam Artwork Profile','Choose which local Steam account receives artwork.','Choose',self.choose_steam_artwork_profile),
+            ('Sync Artwork to Steam','Review and sync artwork for your library.','Sync',self.sync_steam_artwork),
+            ('SteamGridDB','Connect your account to browse custom artwork.','Connect',self.show_steamgrid_connection)]:
+            item=row(title,subtitle);action=button(caption,fn);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);steam_artwork.add(item)
         system=Adw.PreferencesGroup(title='System');host=self.hardware_info or {}
         for title,key in [('Graphics Card','gpu'),('Driver','driver'),('Video Memory','vram'),('Processor','cpu'),('Architecture','architecture')]:
             if host.get(key):system.add(row(title,host[key]))
         system.add(row('Compatibility',host.get('reason','Not checked')))
         app=Adw.PreferencesGroup(title='Application');app.add(row('rtxForge',f'Version {APP_VERSION}'))
+
         if os.environ.get('APPIMAGE'):
             item=row(
                 'Application Update',
@@ -13049,7 +13127,7 @@ class Window(Adw.ApplicationWindow):
         recovery=Adw.PreferencesGroup(title='Recovery')
         for title,subtitle,caption,fn in [('Previous Changes','Browse available recovery records.','Browse',lambda *_:self.show_undo()),('Old NR Files','Review legacy files before removal.','Review',lambda *_:self.show_cleanup()),('Library Reports','View test notes and export a support report.','Open',self.show_reports)]:
             item=row(title,subtitle);action=button(caption,fn);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);recovery.add(item)
-        self.organize_pages(b,[('Graphics',[graphics,defaults]),('Appearance',[appearance,window_style,library_layout]),('Library',[artwork]),('Gaming Mode',[controls,dashboard_options,controller_options]),('System',[system,app]),('Recovery',[recovery])])
+        self.organize_pages(b,[('Graphics',[graphics,defaults]),('Appearance',[appearance,window_style,library_layout]),('Library',[artwork,steam_artwork]),('Gaming Mode',[steam_launcher,controls,controller_options]),('System',[system,app]),('Recovery',[recovery])])
         def save(*_):
             selected_provider=provider_keys[provider.get_selected()];selected_mode=modes[profile.get_selected()]
             if selected_provider=='y4my' and selected_mode=='nr-only':self.toast('NR Only requires DLSS-Unlocked.');return

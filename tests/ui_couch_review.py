@@ -25,8 +25,8 @@ def capture(name):
 
 def compact_presets_fit():
     couch = app.window.couch
-    adjustment = couch.panel_scroll.get_vadjustment()
-    assert adjustment.get_upper() <= adjustment.get_page_size() + 1, 'Both preset scope actions must fit the compact viewport'
+    adjustment = couch.workspace_scroll.get_vadjustment()
+    assert couch.workspace_footer.get_visible() and couch.workspace_footer.get_height()>0, 'Preset actions must remain outside the scrolling controls'
 
 
 def setup():
@@ -55,7 +55,18 @@ def glyphs(family):
 
 
 def grid_navigation():
-    couch = app.window.couch
+    window=app.window
+    # Guarantee overflow independently of missing network artwork and which
+    # demo games the Available filter excludes.
+    original=list(window.games)
+    for batch in range(3):
+        for game in original:
+            fixture=dict(game)
+            fixture['game']=f"{game['game']}-scroll-{batch}"
+            fixture['blocked']=''
+            window.games.append(fixture)
+    couch = window.couch
+    couch.open('library')
     couch.focus(0)
     couch.navigate('right')
     assert couch.current == 1
@@ -71,6 +82,7 @@ def grid_navigation():
     assert couch.page == 'library' and couch.game is game
     couch.navigate('settings')
     assert couch.page == 'settings'
+    couch.set_section('Library')
     next(entry for entry in couch.entries if entry['title'] == 'Library layout')['adjust'](1)
     assert couch.library_view == 'capsules'
     couch.navigate('back')
@@ -84,7 +96,6 @@ def grid_navigation():
     couch.navigate('down')
     couch.navigate('down')
     assert couch.current == 1
-    couch.focus(len(couch.entries) - 1)
 
 
 def scroll_and_tabs():
@@ -100,7 +111,7 @@ def scroll_and_tabs():
     couch.navigate('right')
     couch.navigate('accept')
     assert couch.page == 'presets'
-    assert couch.tabs[2].has_css_class('active')
+    assert couch.tabs[1].has_css_class('active')
     assert couch.game is app.window.games[0]
     couch.navigate('back')
     assert couch.page == 'library'
@@ -113,9 +124,9 @@ def scroll_and_tabs():
     couch.navigate('up')
     couch.navigate('up')
     couch.navigate('right')
-    assert couch.tab_index == 4
+    assert couch.tab_index == 3
     couch.navigate('accept')
-    assert couch.page == 'menu' and not couch.settings_button.get_visible()
+    assert couch.page == 'settings' and couch.settings_button.get_visible()
     couch.navigate('back')
     assert couch.page == 'dlss'
 
@@ -218,7 +229,7 @@ def global_and_game_presets():
         couch.open_game(selected)
         next(entry for entry in couch.entries if entry['title'] == 'Presets')['action']()
         assert couch.page == 'game_presets'
-        assert couch.tabs[1].has_css_class('active') and not couch.tabs[2].has_css_class('active')
+        assert couch.tabs[0].has_css_class('active') and not couch.tabs[1].has_css_class('active')
         assert couch.panel_detail.get_text() == selected['name']
         couch.navigate('back')
         assert couch.page == 'game'
@@ -227,12 +238,14 @@ def global_and_game_presets():
         couch.navigate('back')
         assert couch.page == 'game'
         couch.navigate('settings')
-        assert couch.page == 'settings' and any(e['title'] == 'Exit app' for e in couch.entries)
+        assert couch.page == 'settings' and couch.settings_button.get_visible()
+        couch.set_section('System')
+        assert any(e['title']=='Exit app' for e in couch.entries)
         couch.navigate('back')
         assert couch.page == 'game'
-        couch.open('dashboard')
+        couch.open('library')
         couch.navigate('back')
-        assert couch.page == 'dashboard'
+        assert couch.page == 'library'
         assert not couch.library_link.get_visible()  # Library remains in the main navigation.
     finally:
         window.launch_action = original
@@ -288,20 +301,10 @@ def input_and_appearance():
     assert couch.accent_color == '#aabbcc'
     del window.settings['game_accents'][game['game']]
     couch.set_game(game)
-    active = window.is_active
-    window.is_active = lambda: True
-    try:
-        window.set_input_surface(True)
-        for x in (0, 5, 10, 15, 20, 25, 30):
-            window.pointer_input(None, x, 0)
-        assert window.input_stack.get_visible_child_name() == 'desktop'
-        window.set_input_surface(True)
-    finally:
-        window.is_active = active
-    window.keyboard_input()
-    assert window.input_stack.get_visible_child_name() == 'desktop'
     window.set_input_surface(True)
+    window.keyboard_input()
     assert window.input_stack.get_visible_child_name() == 'couch'
+    assert not hasattr(window,'pointer_input'), 'Pointer motion must not auto-switch the interface'
     games = window.games
     window.games = []
     couch.refresh()
@@ -325,7 +328,7 @@ def input_and_appearance():
 
 steps = [
     setup,
-    lambda: capture('couch-dashboard-1280.png'),
+    lambda: capture('couch-library-initial-1280.png'),
     lambda: app.window.couch.navigate('accept'),
     lambda: capture('couch-game-1280.png'),
     lambda: app.window.launch_action('install', targets=[app.window.couch.game], _presets_confirmed=True),
@@ -348,6 +351,7 @@ steps = [
     lambda: view('posters'),
     lambda: capture('couch-library-posters-1280.png'),
     grid_navigation,
+    lambda: app.window.couch.focus(len(app.window.couch.entries) - 1),
     scroll_and_tabs,
     lambda: view('capsules'),
     lambda: capture('couch-library-wide-1280.png'),
@@ -365,8 +369,8 @@ steps = [
     lambda: capture('couch-library-wide-800.png'),
     lambda: view('list'),
     lambda: capture('couch-library-list-800.png'),
-    lambda: app.window.couch.open('dashboard'),
-    lambda: capture('couch-dashboard-800.png'),
+    lambda: app.window.couch.open('library'),
+    lambda: capture('couch-library-final-800.png'),
     lambda: app.window.couch.open('presets'),
     compact_presets_fit,
     lambda: capture('couch-presets-800.png'),

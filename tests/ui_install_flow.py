@@ -96,9 +96,11 @@ def widths_check():
     capture('install-flow-07-action-widths.png')
     app.window.dialog.close();app.window.main_menu.popup()
 def menu_check():
-    entries=[x for x in children(app.window.main_menu.get_popover()) if isinstance(x,ui.ActionButton)]
-    assert {entry.get_label() for entry in entries}=={'Refresh Library','Add Game Folder','Packages','Extras','Activity','Settings','Add rtxForge to Steam','Sync artwork to Steam','Steam artwork profile','Connect SteamGridDB'}
-    assert all(x.get_child().get_halign()==Gtk.Align.START for x in entries)
+    popover=app.window.main_menu.get_popover()
+    assert isinstance(popover,Gtk.PopoverMenu)
+    captions={item.get_text() for item in children(popover) if isinstance(item,Gtk.Label)}
+    assert {'Refresh Library','Add Game Folder','Packages','Extras','Activity','Settings','About'} <= captions
+    assert not {'Add rtxForge to Steam','Sync artwork to Steam','Steam artwork profile','Connect SteamGridDB'} & captions
     app.window.main_menu.popup()
 def menu_capture():
     capture('install-flow-08-left-menu.png')

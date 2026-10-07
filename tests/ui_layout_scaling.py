@@ -62,6 +62,9 @@ def settings():
         c.set_section(section)
         assert titles <= {e['title'] for e in c.entries},section
     c.set_section('System')
+
+def settings_capture():
+    w=app.window
     assert w.capture('layout-4k-settings-bottom.png')
     w.show_settings()
 
@@ -89,7 +92,7 @@ def compact():
     assert c.prompts.get_opacity()==1
     assert w.capture('layout-compact-top.png')
 
-steps=[start,native_scale,poster,poster_capture,bottom,bottom_capture,settings,panel,compact]
+steps=[start,native_scale,poster,poster_capture,bottom,bottom_capture,settings,settings_capture,panel,compact]
 def step():
     try:
         if steps:steps.pop(0)();GLib.timeout_add(1800,step)

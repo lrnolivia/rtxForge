@@ -1,0 +1,32 @@
+name: Import verified publication artwork
+on:
+  push:
+    branches: [rtxforge/shared-package-ui-20261002]
+    paths: [.github/workflows/import-publication-artwork.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/rtxforge/shared-package-ui-20261002'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Import exact approved artwork and remove helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 https://backend.composio.dev/api/v3/sl/ZsyvWRzSEU -o packaging/steam-artwork/assets/rtxhero.png
+          curl --fail --location --retry 3 https://backend.composio.dev/api/v3/sl/pUn8v5SiS4 -o packaging/steam-artwork/exports/rtxforge-steam-hero.svg
+          test "$(git hash-object packaging/steam-artwork/assets/rtxhero.png)" = "77be5ca5a5c94d1d283f29ff7c2d1f6cb41ed6f0"
+          test "$(git hash-object packaging/steam-artwork/exports/rtxforge-steam-hero.svg)" = "e50322ab5b3dd818c0efc0afc7ee47adf1e44b4e"
+          cp packaging/steam-artwork/assets/rtxhero.png packaging/steam-artwork/exports/rtxforge-steam-hero.png
+          rm .github/workflows/import-publication-artwork.yml
+          git add packaging/steam-artwork/assets/rtxhero.png packaging/steam-artwork/exports/rtxforge-steam-hero.png packaging/steam-artwork/exports/rtxforge-steam-hero.svg .github/workflows/import-publication-artwork.yml
+          test "$(git write-tree)" = d039a7cf362a4ff49474cf3fe934f92ba054e154
+          git config user.name "Lauren Olivia"
+          git config user.email "lrnoliv@gmail.com"
+          git commit -m "Complete verified approved artwork import"
+          git push origin HEAD:rtxforge/shared-package-ui-20261002

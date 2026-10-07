@@ -1,5 +1,5 @@
 from pathlib import Path
-import base64, xml.etree.ElementTree as ET, subprocess, json, zipfile
+import base64, xml.etree.ElementTree as ET, subprocess, json, zipfile, shutil, hashlib
 from fontTools.ttLib import TTFont
 from fontTools.pens.svgPathPen import SVGPathPen
 from fontTools.pens.transformPen import TransformPen
@@ -30,18 +30,19 @@ def asset(name,x,y,w,h):
  return f'<image x="{x}" y="{y}" width="{w}" height="{h}" href="{data}"/>'
 def photo(x,y,w,h):return f'<image id="cooling-study" x="{x}" y="{y}" width="{w}" height="{h}" href="{PHOTO}"/>'
 def svg(w,h,b,title):return f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="{w}" height="{h}" viewBox="0 0 {w} {h}"><title>{title}</title><desc>rtxForge Steam library artwork. Static image. Bakbak One wordmark; Inter tagline. Original approved icon.</desc>{b}</svg>'
-def save(name,w,h,b,folder=OUT):
+def save(name,w,h,b,folder=OUT,png_source=None):
  p=folder/(name+'.svg');p.write_text(svg(w,h,b,name))
- subprocess.run(['inkscape',str(p),'--export-filename='+str(folder/(name+'.png'))],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+ if png_source:shutil.copyfile(png_source,folder/(name+'.png'))
+ else:subprocess.run(['inkscape',str(p),'--export-filename='+str(folder/(name+'.png'))],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
  return b
 
 # Separate transparent PNGs with white or dark lettering and a soft offset shadow.
 # Extra transparent padding allows the blur to decay before the image boundary.
 def shadowed_logo(ink,sub,opacity):
- shadow=f'<defs><filter id="logo-shadow" x="-20%" y="-50%" width="140%" height="220%"><feGaussianBlur in="SourceAlpha" stdDeviation="5"/><feOffset dx="0" dy="6"/><feComponentTransfer><feFuncA type="linear" slope="{opacity}"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>'
+ shadow=f'<defs><filter id="logo-shadow" x="-20%" y="-50%" width="140%" height="220%"><feGaussianBlur in="SourceAlpha" stdDeviation="7"/><feOffset dx="0" dy="7"/><feComponentTransfer><feFuncA type="linear" slope="{opacity}"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>'
  return shadow+f'<g transform="translate(48 44) scale({1184/912})"><g filter="url(#logo-shadow)">{lockup(ink,sub)}</g></g>'
-save('rtxforge-logo-white',1280,400,shadowed_logo('#ffffff','#ffffff',.38))
-save('rtxforge-logo-dark',1280,400,shadowed_logo('#242925','#48534b',.20))
+save('rtxforge-logo-white',1280,400,shadowed_logo('#ffffff','#ffffff',.72))
+save('rtxforge-logo-dark',1280,400,shadowed_logo('#242925','#48534b',.40))
 
 # Portrait uses a taller image-window. Cooling curves occupy the top two thirds;
 # the lower brand group has its own clear floor. No logo plate or surrounding tile.
@@ -61,10 +62,10 @@ wide+=f'<g transform="translate(37 137) scale(.56)">{LOGO}</g>'
 wide=save('rtxforge-steam-wide',920,430,wide)
 
 # Hero is intentionally background-only. Logo placement belongs to Steam.
-hero='<defs><linearGradient id="hero-left-fade"><stop stop-color="#080b0a"/><stop offset="1" stop-color="#080b0a" stop-opacity="0"/></linearGradient></defs><rect width="3840" height="1240" fill="#080b0a"/>'
-hero+=photo(640,-175,3200,2133.3333)
-hero+='<rect x="640" width="950" height="1240" fill="url(#hero-left-fade)"/>'
-hero=save('rtxforge-steam-hero',3840,1240,hero)
+hero_source=ROOT/'assets/rtxhero.png'
+hero_data='data:image/png;base64,'+base64.b64encode(hero_source.read_bytes()).decode()
+hero=f'<image width="3840" height="1240" href="{hero_data}"/>'
+hero=save('rtxforge-steam-hero',3840,1240,hero,png_source=hero_source)
 
 # Review board: actual asset proportions, precise gallery-like framing, no mock UI.
 B='<rect width="1880" height="1820" fill="#eeeDE8"/>'
@@ -88,6 +89,8 @@ B+=text('Hero image only · Steam places the logo separately',60,1755,19,'#1c211
 save('rtxforge-hardware-film-review',1880,1820,B,ROOT)
 
 manifest={'direction':'Hardware study — fine 35mm grain and soft vignette','artwork':{'rtxforge-steam-portrait.png':[600,900],'rtxforge-steam-wide.png':[920,430],'rtxforge-steam-hero.png':[3840,1240],'rtxforge-logo-white.png':[1280,400],'rtxforge-logo-dark.png':[1280,400]},'hero':'Background only, no embedded icon, lettering, or logo. White transparent logo supplied independently with a soft shadow and uncut transparent padding.','typography':{'wordmark':'Bakbak One','tagline':'Inter 450'},'background':'AI-generated conceptual unbranded cooling hardware, 1536×1024 source. Embedded and upscaled for hero export; not true 4K detail.','sources':'SVG files contain outlined exact lettering, original vector icon and embedded raster plate. Original fonts and licenses included.'}
+manifest['hero']='User-revised background-only hero, preserved byte-for-byte. Separate transparent logo with stronger padded shadow.'
+manifest['hero_source']={'filename':'assets/rtxhero.png','sha256':hashlib.sha256(hero_source.read_bytes()).hexdigest(),'size':[3840,1240]}
 (ROOT/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 (ROOT/'README.txt').write_text('rtxForge — Hardware study / 35mm edition\n\nSteam artwork review, not installed.\n\nexports/: production PNG and editable outlined SVG pairs.\nPortrait 600×900. Wide 920×430. Hero 3840×1240. White and dark logos 1280×400, transparent with padded soft drop shadow.\nHero contains only background art. The review board shows the hero image-only. The white logo is shown separately on a checkerboard transparency indicator; the checkerboard is not present in the actual PNG.\n\nApproved icon preserved as vector. Bakbak One appears only in rtxForge. Tagline is Inter (450).\nBackground is AI-generated illustrative hardware, not an exact commercial graphics card. The 1536×1024 image source is embedded in the SVG and upscaled for the hero; raster source is not native 4K.\n\nRun: /usr/bin/python3 build.py (fontTools, Inkscape required).\nFine 35mm grain and a soft vignette are applied only to the image plate. All vector artwork stays crisp. Approved crops and layout transforms are unchanged. Original approved edition remains one directory above for rollback. Original assets unchanged. Files were not deployed or installed.\n')
 with zipfile.ZipFile(ROOT/'rtxforge-steam-hardware-film.zip','w',zipfile.ZIP_DEFLATED) as z:

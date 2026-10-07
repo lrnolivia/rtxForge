@@ -17,6 +17,13 @@ CSS = b'''
 .couch-shell.bottom-navigation .couch-prompt-button { padding: 2px; }
 
 .couch-shell { background: #101113; color: #fafafa; }
+.couch-shell, .couch-dialog {
+  --accent-bg-color: #76b900;
+  --accent-fg-color: #151c07;
+  --accent-color: #9bd438;
+}
+.couch-shell scale highlight, .couch-dialog scale highlight { background: #76b900; }
+.couch-shell scale slider:focus-visible, .couch-dialog scale slider:focus-visible { outline-color: #76b900; }
 .couch-game-meta { font-size: 15px; color: #c5c7cc; }
 .couch-game-summary { font-size: 16px; color: #c5c7cc; }
 .couch-badges { font-size: 12px; color: #c5c7cc; }
@@ -35,7 +42,7 @@ CSS = b'''
 .couch-context { font-size: 14px; font-weight: 500; color: #c2c4c8; background: #101113; border-radius: 16px; padding: 6px 10px; }
 .couch-tabs { border-radius: 30px; background: #1c1d20; padding: 4px; }
 .couch-shell button, .couch-shell row { background-image: none; box-shadow: none; }
-.couch-tab { background: transparent; box-shadow: none; border: none; border-radius: 26px; padding: 10px 22px; color: #d8d9dc; font-size: 16px; font-weight: 600; }
+.couch-tab { background: transparent; box-shadow: none; border: none; border-radius: 26px; padding: 6px 18px; min-height: 24px; color: #d8d9dc; font-size: 16px; font-weight: 600; }
 .couch-tab.active { background: rgba(245,245,250,0.16); color: white; }
 .couch-tab.focused { background: #fafafa; color: #191a1d; }
 .couch-title { font-size: 52px; font-weight: 750; letter-spacing: -1.5px; }
@@ -45,6 +52,7 @@ CSS = b'''
 .couch-tile { background: transparent; border: none; box-shadow: none; padding: 8px; border-radius: 30px; }
 .couch-tile:focus { outline: none; }
 .couch-cover { border-radius: 22px; background: #27292d; }
+.couch-game-poster { border: 2px solid #76b900; border-radius: 14px; background: #27292d; }
 .couch-tile.focused .couch-cover { outline: 3px solid #fafafa; outline-offset: 4px; }
 .couch-tile-title { font-size: 16px; font-weight: 550; color: #c8c9cc; }
 .couch-tile.focused .couch-tile-title { color: white; }
@@ -79,7 +87,7 @@ CSS = b'''
 .couch-prompts { font-size: 14px; color: #b5b8bf; }
 .couch-shell.compact .couch-content { padding: 22px 30px 18px; }
 .couch-shell.compact .couch-title { font-size: 38px; letter-spacing: -0.8px; }
-.couch-shell.compact .couch-tab { padding: 8px 16px; font-size: 14px; }
+.couch-shell.compact .couch-tab { padding: 5px 14px; font-size: 14px; }
 .couch-shell.compact .couch-detail { font-size: 16px; }
 .couch-shell.compact .couch-action { padding: 14px 20px; font-size: 17px; }
 .couch-shell.compact .couch-options row { padding: 9px 20px; margin-bottom: 8px; }
@@ -89,9 +97,41 @@ CSS = b'''
 .couch-shell.compact .couch-list-title { font-size: 18px; }
 .couch-selection { background: #101113; border-radius: 8px; padding: 5px; }
 .couch-shell .couch-settings { padding: 10px; min-width: 24px; min-height: 24px; }
+.couch-workspace { padding: 18px 0 12px; }
+.couch-sidebar-item { background: transparent; border: 0; box-shadow: none; padding: 14px 18px; border-radius: 12px; color: #d8d9dc; font-size: 18px; }
+.couch-sidebar-item.active { background: #303237; color: white; }
+.couch-sidebar-item:hover { background: #27292d; }
+.couch-sidebar-item:focus-visible { outline: 2px solid #76b900; outline-offset: -2px; }
+.couch-adjustment { background: #222428; border-radius: 14px; padding: 24px; }
+.couch-adjustment-value { font-size: 28px; font-weight: 700; color: #fafafa; }
+.couch-setting-control { background: #222428; border-radius: 12px; padding: 18px 20px; color: #f4f4f6; }
+.couch-setting-control button { background: #36383e; border-radius: 8px; }
+.couch-workspace-action { background: #303237; color: #fafafa; border: 0; box-shadow: none; padding: 10px 18px; min-height: 28px; border-radius: 12px; font-size: 16px; }
+.couch-workspace-action:hover { background: #3c3f45; }
+.couch-workspace-action, .couch-action, .couch-sidebar-item,
+.couch-setting-control button, .couch-dialog button { border-radius: 999px; }
+.couch-workspace-action.suggested-action { background: #76b900; color: #151c07; }
+.couch-shell .couch-workspace-action.suggested-action label,
+.couch-shell .couch-workspace-action.suggested-action image { color: #151c07; }
+.couch-workspace-action:checked { background: #465b24; box-shadow: inset 0 -3px #9bd438; }
+.couch-workspace-action.destructive-action { background: #4b2328; color: #ffc1c6; }
+.couch-workspace .focused { outline: 2px solid #76b900; outline-offset: -2px; }
+.couch-workspace button.focused, .couch-workspace button:focus-visible,
+.couch-dialog button:focus-visible { outline: 1px solid rgba(220,224,232,0.20); outline-offset: -1px; }
+.couch-workspace button.suggested-action.focused,
+.couch-workspace button.suggested-action:focus-visible,
+.couch-dialog button.suggested-action:focus-visible { outline-color: rgba(21,28,7,0.22); }
+.couch-workspace button.destructive-action.focused,
+.couch-workspace button.destructive-action:focus-visible,
+.couch-dialog button.destructive-action:focus-visible { outline-color: rgba(255,128,144,0.22); }
+.couch-workspace-action:disabled { opacity: 1; background: #25272b; color: #9599a2; }
+.couch-shell .couch-workspace-action:disabled label,
+.couch-shell .couch-workspace-action:disabled image { color: #9599a2; }
+.couch-keycap { background: #303237; color: #fafafa; border-radius: 5px; padding: 3px 7px; font-size: 13px; font-weight: 650; }
+
 '''
 
-PAGES = ('dashboard', 'library', 'presets', 'dlss')
+PAGES = ('library', 'presets', 'dlss')
 VIEWS = ('posters', 'capsules', 'list')
 
 
@@ -172,7 +212,9 @@ class CouchShell(Gtk.Overlay):
         self.pending = {}
         self.dlss_selection = None
         self.selection_kind = 'dlss'
-        self.utility_origin = 'dashboard'
+        self.utility_origin = 'library'
+        self.settings_section='Gaming Mode'
+        self.tools_section='Graphics'
         self.scroll_tick = 0
         self.selection = {}
         self.current = 0
@@ -186,6 +228,9 @@ class CouchShell(Gtk.Overlay):
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), self.provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 4)
         self.accent_provider = Gtk.CssProvider()
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), self.accent_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 5)
+        self.artwork_border_provider=Gtk.CssProvider()
+        self.artwork_border_colors={}
+        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(),self.artwork_border_provider,Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION+7)
         self.scale_provider = Gtk.CssProvider()
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), self.scale_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 6)
         self.layout_height = 820
@@ -222,11 +267,11 @@ class CouchShell(Gtk.Overlay):
         self.brand_button.add_css_class('flat')
         self.brand_button.connect('clicked',lambda _:self.open('menu'))
         top.set_start_widget(self.brand_button)
-        tabs = Gtk.Box()
+        tabs = Gtk.Box(valign=Gtk.Align.CENTER)
         tabs.add_css_class('couch-tabs')
         self.tab_bar = tabs
         self.tabs = []
-        for title, page in [('Dashboard', 'dashboard'), ('Library', 'library'), ('Presets', 'presets'), ('DLSS Files', 'dlss')]:
+        for title, page in [('Library', 'library'), ('Presets', 'presets'), ('DLSS Files', 'dlss')]:
             button = Gtk.Button(label=title)
             button.add_css_class('couch-tab')
             button.connect('clicked', lambda _, p=page: self.open(p))
@@ -238,11 +283,11 @@ class CouchShell(Gtk.Overlay):
         if not owner.options.demo:GLib.timeout_add(2400,lambda:(self.context.set_visible(False),False)[1])
         utilities = Gtk.Box(spacing=10, valign=Gtk.Align.CENTER)
         utilities.append(self.context)
-        self.settings_button = Gtk.Button(icon_name='emblem-system-symbolic', tooltip_text='Game options')
-        self.settings_button.update_property([Gtk.AccessibleProperty.LABEL], ['Game options'])
+        self.settings_button = Gtk.Button(icon_name='emblem-system-symbolic', tooltip_text='Settings')
+        self.settings_button.update_property([Gtk.AccessibleProperty.LABEL], ['Settings'])
         self.settings_button.add_css_class('couch-tab')
         self.settings_button.add_css_class('couch-settings')
-        self.settings_button.connect('clicked', lambda _:self.open('tools') if self.page in ('game','features','tools','game_presets') else None)
+        self.settings_button.connect('clicked', lambda _:self.open('settings'))
         utilities.append(self.settings_button)
         self.tabs.append(self.brand_button)
         top.set_end_widget(utilities)
@@ -253,7 +298,10 @@ class CouchShell(Gtk.Overlay):
         self.body.set_transition_duration(180)
         main.append(self.body)
         feature = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
-        hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, vexpand=True, valign=Gtk.Align.END)
+        game_header=Gtk.Box(spacing=24,vexpand=True,valign=Gtk.Align.END)
+        self.poster_slot=Gtk.Box(valign=Gtk.Align.CENTER)
+        game_header.append(self.poster_slot)
+        hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, hexpand=True, valign=Gtk.Align.CENTER)
         hero.set_margin_bottom(8)
         self.title = label('Your library', 'couch-title', wrap=True)
         self.title.set_max_width_chars(32)
@@ -270,7 +318,8 @@ class CouchShell(Gtk.Overlay):
         self.game_summary.set_lines(2)
         self.game_summary.set_ellipsize(Pango.EllipsizeMode.END)
         hero.append(self.game_summary)
-        feature.append(hero)
+        game_header.append(hero)
+        feature.append(game_header)
         self.library = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         heading = Gtk.Box()
         heading.append(label('Your games', 'couch-section'))
@@ -332,10 +381,9 @@ class CouchShell(Gtk.Overlay):
         self.library_action.add_css_class('couch-action')
         self.library_action.add_css_class('couch-library-action')
         self.view_buttons.append(self.library_action)
-        action_rows=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8)
-        primary_actions=Gtk.Box(spacing=8);secondary_actions=Gtk.Box(spacing=8)
-        action_rows.append(primary_actions);action_rows.append(secondary_actions)
-        library_header.append(action_rows)
+        primary_actions=Gtk.Box(spacing=8,valign=Gtk.Align.CENTER)
+        self.library_controls=primary_actions
+        library_header.append(primary_actions)
         primary_actions.append(self.library_action)
         self.filter_button=self.owner.make_action_button('Filter',lambda _:self.open('library_filters'))
         self.filter_button.add_css_class('couch-action');self.view_buttons.append(self.filter_button)
@@ -346,7 +394,7 @@ class CouchShell(Gtk.Overlay):
         for control in (self.library_action,self.filter_button,self.library_restore,self.library_update):widths.add_widget(control)
         self.action_widths=widths
         for control in (self.library_restore,self.library_update):
-            control.add_css_class('couch-action');self.view_buttons.append(control);secondary_actions.append(control)
+            control.add_css_class('couch-action');self.view_buttons.append(control);primary_actions.append(control)
         library_page.append(library_header)
         self.grid = Gtk.Grid(column_spacing=18, row_spacing=20, column_homogeneous=True, hexpand=True, valign=Gtk.Align.START)
         self.grid.add_css_class('couch-library-grid')
@@ -380,10 +428,29 @@ class CouchShell(Gtk.Overlay):
         self.hint.set_max_width_chars(64)
         panel.append(self.hint)
         self.body.add_named(panel, 'panel')
+        self.workspace=Gtk.Box(spacing=32,vexpand=True)
+        self.workspace.add_css_class('couch-workspace')
+        self.section_nav=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8,valign=Gtk.Align.START)
+        self.section_nav.set_size_request(180,-1)
+        self.workspace.append(self.section_nav)
+        main_panel=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=24,hexpand=True)
+        self.workspace.append(main_panel)
+        self.workspace_heading=label('','couch-panel-heading')
+        self.workspace_detail=label('','couch-caption',wrap=True)
+        main_panel.append(self.workspace_heading);main_panel.append(self.workspace_detail)
+        self.workspace_content=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=24)
+        self.workspace_scroll=Gtk.ScrolledWindow(hexpand=True,vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER)
+        self.workspace_scroll.set_child(self.workspace_content);main_panel.append(self.workspace_scroll)
+        self.workspace_footer=Gtk.Box(spacing=12,homogeneous=True,halign=Gtk.Align.START)
+        main_panel.append(self.workspace_footer)
+        self.workspace_hint=label('','couch-caption',wrap=True)
+        main_panel.append(self.workspace_hint)
+        self.body.add_named(self.workspace,'workspace')
+
 
         self.bottom_nav = Gtk.Box(halign=Gtk.Align.CENTER)
         main.append(self.bottom_nav)
-        footer = Gtk.Box()
+        footer = Gtk.Box(spacing=24)
         self.footer = footer
         self.prompts = Gtk.Box(spacing=22)
         self.prompts.add_css_class('couch-prompts')
@@ -398,10 +465,10 @@ class CouchShell(Gtk.Overlay):
         self.render()
 
     def panel_navigation(self,dialog):
-        nav=Gtk.Box(spacing=4,halign=Gtk.Align.CENTER)
+        nav=Gtk.Box(spacing=4,halign=Gtk.Align.CENTER,valign=Gtk.Align.CENTER)
         nav.add_css_class('couch-tabs')
         nav.add_css_class('couch-shell')
-        for page,title in [('dashboard','Dashboard'),('library','Library'),('presets','Presets'),('dlss','DLSS Files'),('settings','Settings')]:
+        for page,title in [('library','Library'),('presets','Presets'),('dlss','DLSS Files'),('settings','Settings')]:
             control=Gtk.Button(icon_name='emblem-system-symbolic',tooltip_text='Game options') if page=='settings' else Gtk.Button(label=title)
             control.add_css_class('couch-tab')
             if self.page==page:control.add_css_class('active')
@@ -424,7 +491,7 @@ class CouchShell(Gtk.Overlay):
             self.navigation_position=position
             self.bottom_nav.set_visible(position=='bottom')
             self.add_css_class('bottom-navigation') if position=='bottom' else self.remove_css_class('bottom-navigation')
-            self.footer_note.set_visible(position!='bottom')
+            self.footer_note.set_visible(position!='bottom' and self.layout_width>=1050)
             self.prompts.set_hexpand(position=='bottom')
             self.prompts.set_halign(Gtk.Align.CENTER if position=='bottom' else Gtk.Align.START)
             self.wake_hints()
@@ -451,11 +518,13 @@ class CouchShell(Gtk.Overlay):
         return False
 
     def update_prompts(self):
+        keyboard=getattr(self.owner,'input_kind','keyboard')!='controller'
         family = self.owner.settings.get('controller_glyphs', 'auto')
         if family == 'auto':
             family = self.owner.controller.family
         keys = controller_input.GLYPHS.get(family, controller_input.GLYPHS['generic'])
         caption = 'Select' if self.dlss_selection is not None else 'Open' if self.page in ('dashboard', 'library') else 'Select'
+        if keyboard:keys=['Enter','Esc','Ctrl+L'];family='keyboard'
         spec = (family, keys[0], keys[1], keys[2], self.page, caption, self.dlss_selection is not None)
         if spec == getattr(self, 'prompt_spec', None):
             return
@@ -465,18 +534,27 @@ class CouchShell(Gtk.Overlay):
         prompts.append((keys[2], 'Library'))
         for key, text in prompts:
             pair = Gtk.Box(spacing=7, valign=Gtk.Align.CENTER)
-            pair.append(ControllerGlyph(family, key))
+            if keyboard:
+                cap=label(key);cap.add_css_class('couch-keycap');pair.append(cap)
+                if key=='Enter':pair.prepend(Gtk.Image.new_from_icon_name('input-mouse-symbolic'))
+            else:pair.append(ControllerGlyph(family, key))
             pair.append(label(text))
             control = Gtk.Button(child=pair)
             control.add_css_class('couch-prompt-button')
             action = 'accept' if key == keys[0] else 'back' if key == keys[1] else 'search'
             control.connect('clicked', lambda _, action=action: self.navigate(action))
             self.prompts.append(control)
-        self.footer_note.set_text('Left / right to adjust' if self.page in ('presets', 'game_presets', 'settings') else 'Bumpers switch pages')
+        self.footer_note.set_text(('Arrows navigate · Tab moves focus · Ctrl+, Settings' if keyboard else 'Bumpers switch pages'))
 
     def set_game(self, game):
         self.game = game
         self.apply_accent(game if self.page in ('game','features','tools','game_presets') else None)
+        clear(self.poster_slot)
+        path=self.owner.poster_art_path(game)
+        self.game_poster=self.artwork_widget(path,'',140,210,'couch-game-poster')
+        self.decorate_game_accent(self.game_poster,game)
+        self.owner.decorate_support_artwork(self.game_poster,self.game_poster.picture,game,path)
+        self.poster_slot.append(self.game_poster)
         self.title.set_text(game['name'])
         if game.get('blocked'):
             status = 'Unsupported'
@@ -526,6 +604,25 @@ class CouchShell(Gtk.Overlay):
         self.shelf_arrows['left'].set_visible(adjustment.get_value()>adjustment.get_lower()+1)
         self.shelf_arrows['right'].set_visible(adjustment.get_value()+adjustment.get_page_size()<adjustment.get_upper()-1)
 
+    def decorate_game_accent(self,widget,game):
+        """Use the shared game palette only for artwork borders and focus rings."""
+        for name in widget.get_css_classes():
+            if name.startswith('art-'):widget.remove_css_class(name)
+        shared=self.owner._ensure_game_accent(game) or 'art-76b900'
+        color='#'+shared.removeprefix('art-')
+        if not game.get('blocked'):color=self.owner.settings.get('game_accents',{}).get(game.get('game')) or color
+        if not isinstance(color,str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',color):color='#76b900'
+        name='art-'+color[1:].lower();widget.add_css_class(name)
+        if name in self.artwork_border_colors:return
+        self.artwork_border_colors[name]=color
+        rules=[]
+        for key,value in self.artwork_border_colors.items():
+            ring=ui_colors.vibrant_readable(value,'#101113',3.0)
+            rules.append(f'.couch-shell .couch-tile.{key}.focused .couch-cover {{ outline-color: {ring}; }} '
+                         f'.couch-shell .couch-list-row.{key}.focused {{ outline-color: {ring}; }} '
+                         f'.couch-shell .couch-game-poster.{key} {{ border-color: {value}; }}')
+        self.artwork_border_provider.load_from_data(' '.join(rules).encode())
+
     def apply_accent(self, game):
         # Consume Classic's resolver and saved override; never create another
         # artwork palette or preference store for the controller interface.
@@ -543,6 +640,11 @@ class CouchShell(Gtk.Overlay):
         tab_background = ui_colors.mix(color, '#1c1d20', 0.22)
         tab_foreground = ui_colors.readable(color, tab_background)
         self.accent_provider.load_from_data(f'''
+          .couch-shell, .couch-dialog.couch-game-controls {{
+            --accent-bg-color: {color}; --accent-fg-color: {foreground}; --accent-color: {ring};
+          }}
+          .couch-shell scale highlight, .couch-dialog.couch-game-controls scale highlight {{ background: {color}; }}
+          .couch-shell scale slider:focus-visible, .couch-dialog.couch-game-controls scale slider:focus-visible {{ outline-color: {color}; }}
           .couch-shell .couch-selection check:checked {{ background: {color}; color: {foreground}; border-color: {color}; }}
           .couch-shell .couch-tile.focused .couch-cover {{ outline-color: {ring}; }}
           .couch-shell .couch-action.couch-primary,
@@ -576,11 +678,20 @@ class CouchShell(Gtk.Overlay):
             self.tab_index = (self.tab_index + (1 if action == 'next' else -1)) % len(PAGES)
             self.open(PAGES[self.tab_index])
             return
+        if self.zone=='sidebar':
+            if action in ('up','down'):
+                self.sidebar_index=(self.sidebar_index+(1 if action=='down' else -1))%len(self.sidebar_buttons)
+                self.sidebar_buttons[self.sidebar_index].grab_focus()
+            elif action=='accept':self.sidebar_buttons[self.sidebar_index].emit('clicked')
+            elif action=='right':self.zone='content';self.focus(self.current)
+            return
+        if self.body.get_visible_child_name()=='workspace' and action=='left' and self.sidebar_buttons and self.entries and not self.entries[self.current].get('adjust'):
+            self.zone='sidebar';self.sidebar_index=0;self.sidebar_buttons[0].grab_focus();return
         if self.zone == 'nav':
             if action in ('left', 'right'):
                 self.tab_index = (self.tab_index + (1 if action == 'right' else -1)) % (len(PAGES) + 1)
             elif action == 'accept':
-                self.open('menu' if self.tab_index == len(PAGES) else PAGES[self.tab_index])
+                self.open('settings' if self.tab_index == len(PAGES) else PAGES[self.tab_index])
             elif action == ('up' if self.navigation_position=='bottom' else 'down'):
                 self.zone = 'views' if self.page == 'library' and self.navigation_position!='bottom' else 'content'
                 if self.zone == 'content':
@@ -751,7 +862,11 @@ class CouchShell(Gtk.Overlay):
         self.library_view = view
         self.view_index = 0
         # Trigger Classic's normal preference/render path as well.
-        self.owner.view_buttons[view].set_active(True)
+        control = self.owner.view_buttons[view]
+        control.set_active(True)
+        # Settings previews can leave the hidden desktop toggle active while
+        # the saved layout changed. Run the normal path even without a signal.
+        self.owner.view_changed(control, view)
         self.render(self.current)
 
     def grid_dimensions(self):
@@ -773,13 +888,14 @@ class CouchShell(Gtk.Overlay):
             entry['action']()
 
     def open(self, page):
+        if page == 'dashboard':page = 'library'
         returning_to_presets = page == 'presets' and self.page == 'library' and self.dlss_selection is not None and self.selection_kind == 'presets'
         if page in ('menu', 'settings') and self.page not in ('menu', 'settings'):
             self.utility_origin = self.page
         if page not in ('library','library_filters'):
             self.dlss_selection = None
         if page in ('game', 'features', 'tools', 'game_presets') and self.game is None:
-            page = 'dashboard'
+            page = 'library'
         if page == 'library':
             self.library_view = self.owner.settings.get('library_view', 'posters')
             self.view_index = 0
@@ -804,7 +920,7 @@ class CouchShell(Gtk.Overlay):
         elif self.page == 'dashboard':
             return
         elif self.page == 'library':
-            self.open('dashboard')
+            return
         elif self.page == 'presets':
             self.open(self.preset_origin)
         elif self.page in ('features_all','library_filters'):
@@ -816,7 +932,7 @@ class CouchShell(Gtk.Overlay):
         elif self.page in ('menu', 'settings'):
             self.open(self.utility_origin)
         else:
-            self.open('dashboard')
+            self.open('library')
 
     def install(self, mode):
         self.owner.profile_group.set_active_name(mode)
@@ -934,13 +1050,13 @@ class CouchShell(Gtk.Overlay):
                 self.hint.set_text('Apply to all configured games, or choose your games.')
         elif self.page=='library_filters':
             selected=getattr(self.owner,'filter','available')
-            for key,title in [('available','Available'),('all','All'),('installed','Installed')]:
+            for key,title in [('available','Available'),('installed','Installed'),('all','All')]:
                 self.entry(title,lambda key=key:self.set_library_filter(key),value='Selected' if key==selected else '')
-            for key,title in [('posters','Card'),('list','List'),('capsules','Wide')]:
+            for key,title in [('posters','Posters'),('capsules','Wide'),('list','List')]:
                 self.entry(title,lambda key=key:(self.set_library_view(key),self.open('library')),value='Selected' if self.library_view==key else '')
         elif self.page == 'dlss':
-            self.entry('Update all', lambda: self.owner.update_dlss_games(self.owner.games), enabled=bool(self.owner.games))
-            self.entry('Select games to update', self.select_dlss_games, enabled=bool(self.owner.games))
+            self.entry('Update all', lambda: self.owner.update_dlss_games(self.operation_targets()), enabled=bool(self.operation_targets()))
+            self.entry('Select games to update', self.select_dlss_games, enabled=bool(self.operation_targets()))
             self.hint.set_text('Keep native DLSS files up to date across your library. Previous files are backed up.' if self.owner.games else 'Add games to your Library to update their DLSS files.')
         elif self.page == 'tools':
             self.entry('Change artwork',lambda:self.owner.show_game_artwork(self.game),enabled=not self.owner.options.demo)
@@ -950,24 +1066,14 @@ class CouchShell(Gtk.Overlay):
             self.entry('Restore DLSS files', lambda: self.owner.manage_dlss_files(self.game, restore=True), enabled=not self.owner.options.demo)
             self.entry('Restore original game files', lambda: self.owner.launch_action('uninstall', targets=[self.game]), enabled=self.game.get('installed', False))
             self.hint.set_text('ReShade and add-on imports are available in Classic with keyboard and mouse.')
+            buckets={'Graphics':['Diagnose Neural Rendering','Update DLSS files'],'Artwork':['Change artwork','Sync artwork to Steam'],'Recovery':['Restore DLSS files','Restore original game files']}
+            self.entries=[entry for entry in self.entries if entry['title'] in buckets[self.tools_section]]
         elif self.page == 'menu':
-            self.entry('Dashboard', lambda: self.open('dashboard'))
             self.entry('Library', lambda: self.open('library'))
             self.entry('Packages', lambda: self.open('packages'))
             self.entry('Refresh library', self.owner.scan)
-            self.entry('Add rtxForge to Steam',self.owner.add_rtxforge_to_steam,enabled=not self.owner.options.demo)
-            self.entry('Sync artwork to Steam',self.owner.sync_steam_artwork,enabled=not self.owner.options.demo)
-            self.entry('Steam artwork profile',self.owner.choose_steam_artwork_profile,enabled=not self.owner.options.demo)
-            self.entry('Connect SteamGridDB',self.owner.show_steamgrid_connection,enabled=not self.owner.options.demo)
-            for key,title,choices,captions in [
-                ('ui_scale','UI scale',['auto',100,125,150,175,200],['Automatic','100%','125%','150%','175%','200%']),
-                ('dashboard_view','Dashboard artwork',['capsules','posters'],['Wide','Poster']),
-                ('dashboard_row_count','Games across shelf',list(range(3,9)),[str(n) for n in range(3,9)]),
-                ('navigation_position','Navigation',['top','bottom'],['Top','Bottom']),
-                ('controller_hints','Controller hints',['always','auto'],['Always visible','Hide when idle'])]:
-                value=self.owner.settings.get(key,library_media.DEFAULTS[key])
-                self.entry(title,value=captions[choices.index(value)],adjust=lambda d,key=key,choices=choices:self.setting(key,d,choices))
-            self.entry('Desktop controls', lambda: self.owner.set_input_surface(False))
+            self.entry('Settings', lambda: self.open('settings'))
+            self.entry('Desktop UI', lambda: self.owner.set_big_picture_ui(False))
             self.entry('Quit rtxForge', self.owner.close)
         elif self.page == 'packages':
             import package_catalog
@@ -975,21 +1081,166 @@ class CouchShell(Gtk.Overlay):
                 self.entry(package['name'], lambda key=package['id']: self.select_package(key), value='Selected' if self.owner.settings['runtime_provider'] == package['id'] else '', enabled=package['available'])
             self.hint.set_text('Choose a package for the next install. Restore an existing provider before switching.')
         elif self.page == 'settings':
-            self.entry('Big Picture UI',lambda:self.owner.set_big_picture_ui(False),value='Enabled')
+            self.entry('Remove from Steam' if self.owner.steam_shortcut_added() else 'Add rtxForge to Steam',self.owner.toggle_rtxforge_in_steam,enabled=not self.owner.options.demo)
+            self.entry('Sync artwork to Steam',self.owner.sync_steam_artwork,enabled=not self.owner.options.demo)
+            self.entry('Steam artwork profile',self.owner.choose_steam_artwork_profile,enabled=not self.owner.options.demo)
+            self.entry('Connect SteamGridDB',self.owner.show_steamgrid_connection,enabled=not self.owner.options.demo)
+            self.entry('Interface',lambda:self.owner.set_big_picture_ui(False),value='Big Picture UI',adjust=lambda d:self.owner.set_big_picture_ui(False))
+            for key,title,choices in [('theme','Theme',['light','dark','night']),('corner_style','Corners',['system','rounded','square']),('button_glyphs','Button glyphs',[True,False])]:
+                self.entry(title,value=str(self.owner.settings.get(key,choices[0])).title(),adjust=lambda d,key=key,choices=choices:self.appearance_setting(key,d,choices))
             glyphs = ['auto', 'xbox', 'playstation', 'nintendo', 'generic']
             self.entry('Button labels', value=self.owner.settings.get('controller_glyphs', 'auto').title(), adjust=lambda d: self.setting('controller_glyphs', d, glyphs))
             self.entry('Library layout', value={'posters': 'Posters', 'capsules': 'Wide', 'list': 'List'}[self.library_view], adjust=lambda d: self.set_library_view(VIEWS[(VIEWS.index(self.library_view) + d) % len(VIEWS)]))
             for key,title,choices,captions in [
                 ('ui_scale','UI scale',['auto',100,125,150,175,200],['Automatic','100%','125%','150%','175%','200%']),
-                ('dashboard_view','Dashboard artwork',['capsules','posters'],['Wide','Poster']),
-                ('dashboard_row_count','Games across shelf',list(range(3,9)),[str(n) for n in range(3,9)]),
                 ('navigation_position','Navigation',['top','bottom'],['Top','Bottom']),
                 ('controller_hints','Controller hints',['always','auto'],['Always visible','Hide when idle'])]:
                 value=self.owner.settings.get(key,library_media.DEFAULTS[key])
                 self.entry(title,value=captions[choices.index(value)],adjust=lambda d,key=key,choices=choices:self.setting(key,d,choices))
-            self.entry('Desktop controls', lambda: self.owner.set_input_surface(False))
             self.entry('Exit app', self.owner.close)
-            self.hint.set_text('Use a keyboard or mouse to switch to Classic. Controller input brings you back here.')
+            self.hint.set_text('Choose Desktop or Big Picture UI in Settings. Input devices keep your chosen interface.')
+            buckets={'Gaming Mode':['Add rtxForge to Steam','Remove from Steam','Interface'],
+                     'Appearance':['Theme','Corners','Button glyphs'],
+                     'Library':['Sync artwork to Steam','Steam artwork profile','Connect SteamGridDB','Library layout'],
+                     'Controller':['Button labels','Controller hints'],
+                     'System':['UI scale','Navigation','Exit app']}
+            self.entries=[entry for entry in self.entries if entry['title'] in buckets[self.settings_section]]
+
+
+    def appearance_setting(self,key,direction,choices):
+        self.setting(key,direction,choices)
+        from rtxforge_gtk import apply_corner_style,set_button_glyphs,apply_neutral_palette
+        if key=='corner_style':apply_corner_style(self.owner.settings[key])
+        elif key=='button_glyphs':set_button_glyphs(self.owner.settings[key])
+        elif key=='theme':
+            import rtxforge_gtk as ui
+            theme=self.owner.settings[key];self.owner.settings['dark']=theme!='light';ui.THEME_MODE=theme
+            Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_LIGHT if theme=='light' else Adw.ColorScheme.FORCE_DARK)
+            apply_neutral_palette()
+            if not self.owner.options.demo:library_media.save_settings(self.owner.service.config,self.owner.settings)
+
+    def set_section(self,title):
+        if self.page=='settings':self.settings_section=title
+        else:self.tools_section=title
+        self.zone='content';self.render(0)
+
+    def render_workspace(self):
+        clear(self.workspace_content);clear(self.workspace_footer);clear(self.section_nav)
+        self.controls=[];self.sidebar_buttons=[]
+        side=self.page in ('settings','tools')
+        self.workspace_footer.set_orientation(Gtk.Orientation.VERTICAL if side and self.layout_width<1050 else Gtk.Orientation.HORIZONTAL)
+        self.section_nav.set_visible(side)
+        sections=['Gaming Mode','Appearance','Library','Controller','System'] if self.page=='settings' else ['Graphics','Artwork','Recovery']
+        selected=self.settings_section if self.page=='settings' else self.tools_section
+        if side:
+            self.section_nav.append(label('Settings' if self.page=='settings' else 'Game tools','couch-section'))
+            for title in sections:
+                control=Gtk.Button(label=title,halign=Gtk.Align.FILL)
+                control.add_css_class('couch-sidebar-item')
+                if title==selected:control.add_css_class('active')
+                control.connect('clicked',lambda _,title=title:self.set_section(title))
+                self.section_nav.append(control);self.sidebar_buttons.append(control)
+        titles={'presets':'Library presets','game_presets':'Game presets','dlss':'DLSS Files','library_filters':'Filter & View','features':'Install features','features_all':'Install features','menu':'rtxForge','packages':'Packages'}
+        self.workspace_heading.set_text(selected if side else titles.get(self.page,self.heading.get_text()))
+        self.workspace_detail.set_text(self.game['name'] if self.page in ('tools','game_presets','features') and self.game else self.panel_detail.get_text())
+        self.workspace_hint.set_text(self.hint.get_text())
+        descriptions={'Gaming Mode':'Use rtxForge from Steam, or switch between Desktop and Big Picture UI.',
+                      'Appearance':'Choose your app theme, corners and button icons.',
+                      'Library':'Manage the library layout and artwork sources.',
+                      'Controller':'Customize controller labels and navigation hints.',
+                      'System':'Adjust display scaling and navigation placement.',
+                      'Graphics':'Check Neural Rendering or review a DLSS file update for this game.',
+                      'Artwork':'Choose separate poster, wide capsule and hero artwork for this game.',
+                      'Recovery':'Restore backed-up files. Every change opens a review before you confirm.'}
+        if side:self.workspace_detail.set_text(descriptions[selected])
+
+        options=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12)
+        self.workspace_content.append(options)
+        preset_grid=Gtk.Grid(column_spacing=24,row_spacing=24,column_homogeneous=True)
+        self.preset_grid=preset_grid
+        self.preset_controls=[]
+        if self.page in ('presets','game_presets'):options.append(preset_grid)
+        if self.page=='dlss':
+            eligible=self.operation_targets()
+            self.workspace_detail.set_text(f'{len(eligible)} supported games · Backups kept before updating')
+            options.append(label('Games to check','couch-section'))
+            games=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,homogeneous=True,min_children_per_line=1,max_children_per_line=3,column_spacing=20,row_spacing=16)
+            for game in eligible:
+                line=Gtk.Box(spacing=12)
+                art=self.artwork_widget(self.owner.wide_art_path(game),'',112,52,'couch-list-art')
+                self.decorate_game_accent(art,game)
+                line.append(art);name=label(game['name'],wrap=True);name.set_max_width_chars(24);line.append(name);games.insert(line,-1)
+            options.append(games)
+            if not eligible:options.append(label('Add a supported game to your Library to update its DLSS files.','couch-caption',wrap=True))
+        filter_groups=[]
+        if self.page=='library_filters':
+            for title in ('Show games','Artwork layout'):
+                options.append(label(title,'couch-section'))
+                group=Gtk.Box(spacing=8,homogeneous=True);options.append(group);filter_groups.append(group)
+        if self.page=='tools' and self.game:
+            identity=Gtk.Box(spacing=24,valign=Gtk.Align.START)
+            poster=self.artwork_widget(self.owner.poster_art_path(self.game),'',120,180,'couch-game-poster')
+            self.decorate_game_accent(poster,self.game);identity.append(poster)
+            text=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,valign=Gtk.Align.CENTER)
+            text.append(label(self.game['name'],'couch-section'))
+            description=label(descriptions[selected],'couch-caption',wrap=True);description.set_max_width_chars(55);text.append(description)
+            identity.append(text);options.append(identity)
+        for i,entry in enumerate(self.entries):
+            action=entry['action'] is not None and entry['adjust'] is None
+            primary=self.page in ('presets','game_presets','dlss') and action
+            primary=primary or self.page in ('settings','menu','tools') and (entry['title'].startswith(('Add rtxForge','Remove from Steam','Exit','Quit','Restore','Update','Sync','Change artwork','Connect','Diagnose')))
+            if self.page=='library_filters':
+                control=Gtk.ToggleButton(label=entry['title'],active=entry['value']=='Selected')
+                control.add_css_class('couch-workspace-action')
+                control.connect('clicked',lambda _,i=i:self.activate(i))
+                filter_groups[0 if i<3 else 1].append(control)
+            elif self.page in ('presets','game_presets') and i<3:
+                control=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16,focusable=True)
+                control.add_css_class('couch-adjustment')
+                control.append(label(entry['title'],'couch-section'))
+                value=label(str(entry['value']),'couch-adjustment-value');control.append(value)
+                key=['nr_strength','mfg_multiplier','sharpening_strength'][i]
+                if key=='mfg_multiplier':
+                    choices=[0,2,3,4,5,6,'auto'];captions=['Off','2×','3×','4×','5×','6×','In game']
+                    selector=Gtk.DropDown(model=Gtk.StringList.new(captions),selected=choices.index(self.pending[key]) if self.pending[key] in choices else 0)
+                    selector.connect('notify::selected',lambda widget,*_,key=key,choices=choices,value=value:(self.pending.__setitem__(key,choices[widget.get_selected()]),value.set_text(captions[widget.get_selected()])))
+                    control.append(selector)
+                else:
+                    scale=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,0,2 if key=='nr_strength' else 1,.1)
+                    scale.set_draw_value(False);scale.set_value(float(self.pending[key]))
+                    scale.connect('value-changed',lambda widget,key=key,value=value:(self.pending.__setitem__(key,round(widget.get_value(),1)),value.set_text(f'{widget.get_value():.1f}')))
+                    control.append(scale)
+                control.append(label('Adjust before applying.','couch-caption'))
+                preset_columns=3 if self.layout_width>=1100 else 1
+                preset_grid.attach(control,i%preset_columns,i//preset_columns,1,1)
+                self.preset_controls.append(control)
+            elif entry['adjust']:
+                control=Gtk.Box(spacing=16,focusable=True)
+                control.add_css_class('couch-setting-control')
+                name=label(entry['title']);name.set_hexpand(True);control.append(name)
+                decrease=Gtk.Button(icon_name='pan-start-symbolic',tooltip_text='Previous '+entry['title'])
+                increase=Gtk.Button(icon_name='pan-end-symbolic',tooltip_text='Next '+entry['title'])
+                for button,direction in [(decrease,-1),(increase,1)]:
+                    button.connect('clicked',lambda _,direction=direction,i=i:(self.entries[i]['adjust'](direction),self.render(i)))
+                control.append(decrease);control.append(label(str(entry['value']),'couch-value'));control.append(increase)
+                options.append(control)
+            else:
+                title=entry['title']
+                if self.page in ('presets','game_presets') and primary:
+                    title=re.sub(r'Apply to all configured games','Apply to all',title)
+                    if title=='Select games to apply':title='Choose games'
+                control=self.owner.make_action_button(title,lambda _,i=i:self.activate(i))
+                control.add_css_class('couch-workspace-action')
+                control.text_label.set_wrap(True);control.text_label.set_max_width_chars(28)
+                if primary:
+                    self.workspace_footer.append(control)
+                    if entry['title'].startswith(('Apply','Update all','Add rtxForge')):control.add_css_class('suggested-action')
+                    if entry['title'].startswith(('Restore','Remove','Exit','Quit')):control.add_css_class('destructive-action')
+                else:options.append(control)
+            control.set_sensitive(entry['enabled']);self.controls.append(control)
+            focus=Gtk.EventControllerFocus()
+            focus.connect('enter',lambda _,i=i:(setattr(self,'current',i),setattr(self,'zone','content'),self.update_tabs()))
+            control.add_controller(focus)
 
     def artwork_widget(self, path, title, width, height, style='couch-cover'):
         cover = Gtk.Overlay()
@@ -1019,6 +1270,7 @@ class CouchShell(Gtk.Overlay):
         game = entry.get('game') or {}
         button = Gtk.Button()
         button.add_css_class('couch-tile')
+        self.decorate_game_accent(button,game)
         column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         # Use the same resolved custom/SteamGridDB/Steam assets as Classic.
         path = self.owner.poster_art_path(game) if poster else self.owner.wide_art_path(game)
@@ -1049,6 +1301,7 @@ class CouchShell(Gtk.Overlay):
         game = entry.get('game') or {}
         button = Gtk.Button()
         button.add_css_class('couch-list-row')
+        self.decorate_game_accent(button,game)
         content = Gtk.Box(spacing=20)
         if self.dlss_selection is not None:
             content.append(self.selection_marker(game))
@@ -1085,6 +1338,7 @@ class CouchShell(Gtk.Overlay):
             path = self.owner.poster_art_path(game) if (self.page == 'library' and self.library_view == 'posters') or (self.page == 'dashboard' and self.owner.settings.get('dashboard_view')=='posters') else self.owner.wide_art_path(game)
             if not path:
                 continue
+            self.decorate_game_accent(self.controls[index],game)
             cover = self.controls[index].artwork
             try:
                 cover.picture.set_filename(path)
@@ -1097,14 +1351,15 @@ class CouchShell(Gtk.Overlay):
     def render(self, index=None):
         self.build_entries()
         is_feature = self.page in ('dashboard', 'game')
-        self.body.set_visible_child_name('feature' if is_feature else 'library' if self.page == 'library' else 'panel')
+        self.body.set_visible_child_name('feature' if is_feature else 'library' if self.page == 'library' else 'workspace')
         self.remove_css_class('panel-open') if is_feature else self.add_css_class('panel-open')
         self.add_css_class('library-open') if self.page == 'library' else self.remove_css_class('library-open')
         self.library.set_visible(self.page == 'dashboard')
         self.game_actions.set_visible(self.page=='game')
-        self.settings_button.set_visible(self.page in ('game','features','tools','game_presets'))
+        self.settings_button.set_visible(True)
         if self.game and self.page in ('game','features','tools','game_presets'):self.set_background(self.game.get('hero') or self.game.get('capsule'),animate=False)
         elif self.art_path is None:self.cycle_ambient()
+        self.poster_slot.set_visible(self.page=='game')
         self.game_metadata.set_visible(self.page == 'game')
         self.game_summary.set_visible(self.page == 'game' and bool(self.game_summary.get_text()))
         self.count.set_text('Refreshing…' if self.owner.busy else f"{len(self.owner.games)} games · {self.owner.settings.get('dashboard_row_count',5)} across")
@@ -1129,6 +1384,7 @@ class CouchShell(Gtk.Overlay):
         self.controls = []
         self.grid.set_row_spacing(0 if self.library_view=='list' else 20)
         self.columns, width, height = self.grid_dimensions()
+        if not is_feature and self.page!='library':self.render_workspace()
         for i, entry in enumerate(self.entries):
             if self.page == 'dashboard':
                 count=self.owner.settings.get('dashboard_row_count',5)
@@ -1145,6 +1401,7 @@ class CouchShell(Gtk.Overlay):
             elif self.page == 'library':
                 button = self.game_list_row(entry) if self.library_view == 'list' else self.game_tile(entry, width, height, self.library_view == 'posters')
                 button.set_hexpand(True)
+                button.set_halign(Gtk.Align.FILL if self.library_view=='list' else Gtk.Align.START)
                 if self.library_view=='list':
                     if i==0:button.add_css_class('joined-first')
                     if i==len(self.entries)-1:button.add_css_class('joined-last')
@@ -1159,7 +1416,7 @@ class CouchShell(Gtk.Overlay):
                 button.set_sensitive(entry['enabled'])
                 self.actions.insert(button,-1)
                 self.controls.append(button)
-            else:
+            elif self.page=='legacy_panel':
                 row = Gtk.ListBoxRow()
                 row.set_sensitive(entry['enabled'])
                 line = Gtk.Box(spacing=16)
@@ -1218,6 +1475,7 @@ class CouchShell(Gtk.Overlay):
         if width < 400:
             return
         height = height or self.layout_height
+        preset_reflow=(width>=1100)!=(self.layout_width>=1100)
         height_changed = abs(height - self.layout_height) > 12
         self.layout_height = height
         width_changed = abs(width - self.layout_width) > 12
@@ -1228,6 +1486,8 @@ class CouchShell(Gtk.Overlay):
             self.compact = compact
             self.add_css_class('compact') if compact else self.remove_css_class('compact')
             self.update_branding()
+            self.footer_note.set_visible(self.navigation_position!='bottom' and width>=1050)
+            self.workspace_footer.set_orientation(Gtk.Orientation.VERTICAL if self.page in ('settings','tools') and compact else Gtk.Orientation.HORIZONTAL)
             scale = max(.82, min(1.0, width / 1280))
             self.panel.set_size_request(min(width - 60, round(660 * scale)), -1)
             self.panel_scroll.set_max_content_height(max(180, height - round(330 * scale)))
@@ -1236,8 +1496,17 @@ class CouchShell(Gtk.Overlay):
               .couch-shell .couch-title {{ font-size: {round(48 * scale)}px; }}
               .couch-shell .couch-panel-heading {{ font-size: {round(34 * scale)}px; }}
               .couch-shell .couch-options row label {{ font-size: {round(22 * scale)}px; }}
-              .couch-shell .couch-tab {{ font-size: {round(18 * scale)}px; padding: {round(10 * scale)}px {round(18 * scale)}px; }}
+              .couch-shell .couch-tab {{ font-size: {round(16 * scale)}px; padding: {round(6 * scale)}px {round(18 * scale)}px; }}
             '''.encode())
             self.context.set_visible(self.owner.options.demo or time.monotonic()-self.badge_started<2.4)
         if width_changed and self.page in ('library','dashboard'):
             self.render(self.current)
+        elif preset_reflow and self.page in ('presets','game_presets'):
+            focus=self.owner.get_focus()
+            adjustment=self.workspace_scroll.get_vadjustment()
+            position=adjustment.get_value()
+            columns=3 if width>=1100 else 1
+            for control in self.preset_controls:self.preset_grid.remove(control)
+            for i,control in enumerate(self.preset_controls):self.preset_grid.attach(control,i%columns,i//columns,1,1)
+            if focus:focus.grab_focus()
+            GLib.idle_add(lambda:(adjustment.set_value(position),False)[1])

@@ -90,6 +90,31 @@ class SelfInstallTests(unittest.TestCase):
     s.review(self.config,self.settings,engine=self.engine,entry=self.entry,load_image=lambda p:PNG)
   self.assertFalse((self.root/'state').exists());self.assertFalse((self.folder/'shortcuts.vdf').exists())
 
+ def test_remove_only_own_shortcut_preserves_other_entries_and_art(self):
+  other,_,_=s.append_shortcut(None,self.root/'other',engine=self.engine,name='rtxForge')
+  raw,_,_=s.append_shortcut(other,self.entry,engine=self.engine)
+  path=self.folder/'shortcuts.vdf';path.write_bytes(raw)
+  grid=self.folder/'grid';grid.mkdir();art=grid/'personal.png';art.write_bytes(PNG)
+  kwargs={'engine':self.engine,'entry':self.entry}
+  status=s.shortcut_status(self.config,self.settings,**kwargs);self.assertTrue(status['added'])
+  result=s.remove(self.config,self.settings,reviewed=status,**kwargs)
+  self.assertEqual(path.read_bytes(),other);self.assertEqual(art.read_bytes(),PNG)
+  self.assertEqual((Path(result['backup'])/'shortcuts.vdf').read_bytes(),raw)
+  self.assertFalse(s.shortcut_status(self.config,self.settings,**kwargs)['added'])
+
+ def test_remove_refuses_running_steam_and_stale_review(self):
+  raw,_,_=s.append_shortcut(None,self.entry,engine=self.engine)
+  path=self.folder/'shortcuts.vdf';path.write_bytes(raw)
+  kwargs={'engine':self.engine,'entry':self.entry}
+  status=s.shortcut_status(self.config,self.settings,**kwargs)
+  self.engine.steam_running=lambda:True
+  with self.assertRaisesRegex(ValueError,'Close Steam'):s.remove(self.config,self.settings,reviewed=status,**kwargs)
+  self.assertEqual(path.read_bytes(),raw);self.assertFalse((self.root/'state').exists())
+  self.engine.steam_running=lambda:False
+  changed,_,_=s.append_shortcut(raw,self.root/'other',engine=self.engine);path.write_bytes(changed)
+  with self.assertRaisesRegex(ValueError,'since your review'):s.remove(self.config,self.settings,reviewed=status,**kwargs)
+  self.assertEqual(path.read_bytes(),changed);self.assertFalse((self.root/'state').exists())
+
  def test_launcher_flip_only_changes_managed_launcher_icon(self):
   with patch.dict(os.environ,{'XDG_DATA_HOME':str(self.root/'data')}):
    self.assertFalse(desktop_install.refresh_launcher_icon(False))

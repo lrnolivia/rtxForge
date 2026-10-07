@@ -37,7 +37,7 @@ def setup():
     window.games[0]['feature_mode'] = 'nr-mfg'
     window.games[0]['profile'] = 'NR + MFG'
     window.set_input_surface(True)
-    assert window.couch.page == 'dashboard'
+    assert window.couch.page == 'library'
 
 
 def view(name):
@@ -79,7 +79,7 @@ def grid_navigation():
     couch.focus(0)
     couch.navigate('up')
     assert couch.zone == 'views'
-    assert len(couch.view_buttons) == 2  # Primary action plus consolidated Filter & View.
+    assert len(couch.view_buttons) == 4  # Install, Filter, independent Restore and Update.
     assert couch.library_view == 'list'
     couch.navigate('down')
     couch.navigate('down')

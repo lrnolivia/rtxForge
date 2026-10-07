@@ -54,7 +54,7 @@ class Controller(QObject):
             self._message='Artwork saved. '+ ('Steam sync pending: '+value['error'] if value.get('error') else 'Steam artwork updated.')
             QTimer.singleShot(0,self.load_artwork)
         elif kind=='steam-self':
-            self._message='rtxForge is in Steam. '+('; '.join(value['errors']) if value['errors'] else 'Its bundled artwork is applied; restart Steam to refresh.')
+            self._message='rtxForge is in Steam. '+('; '.join(value['errors']) if value['errors'] else 'Your existing custom artwork was kept.' if value.get('preserved') else 'Its bundled artwork is applied; restart Steam to refresh.')
         self._busy=False;self._executing=False;self.changed.emit()
     @Slot(str)
     def error(self,text):self._busy=False;self._executing=False;self._message=text;self.changed.emit()

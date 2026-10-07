@@ -43,6 +43,53 @@ class SelfInstallTests(unittest.TestCase):
   path=self.folder/'shortcuts.vdf';path.write_bytes(b'broken')
   with self.assertRaises(Exception):s.install(self.config,self.settings,engine=self.engine,entry=self.entry,load_image=lambda p:PNG)
   self.assertEqual(path.read_bytes(),b'broken')
+ def existing_custom_slot(self):
+  raw,appid,_=s.append_shortcut(None,self.entry,engine=self.engine)
+  (self.folder/'shortcuts.vdf').write_bytes(raw)
+  grid=self.folder/'grid';grid.mkdir()
+  path=grid/(str(appid)+'p.jpg');path.write_bytes(b'personal artwork')
+  return raw,path
+ def test_review_is_read_only_and_unreviewed_call_preserves_custom_art(self):
+  raw,path=self.existing_custom_slot()
+  review=s.review(self.config,self.settings,engine=self.engine,entry=self.entry,load_image=lambda p:PNG)
+  self.assertFalse((self.root/'state').exists())
+  self.assertEqual(review['roles'][0]['status'],'replace')
+  self.assertEqual(path.read_bytes(),b'personal artwork')
+  result=s.install(self.config,self.settings,engine=self.engine,entry=self.entry,load_image=lambda p:PNG)
+  self.assertEqual(result['preserved'],['poster']);self.assertEqual(path.read_bytes(),b'personal artwork')
+  self.assertEqual((self.folder/'shortcuts.vdf').read_bytes(),raw)
+ def test_reviewed_replacement_and_later_reset_keep_original(self):
+  _,path=self.existing_custom_slot()
+  review=s.review(self.config,self.settings,engine=self.engine,entry=self.entry,load_image=lambda p:PNG)
+  result=s.install(self.config,self.settings,reviewed=review,engine=self.engine,entry=self.entry,load_image=lambda p:PNG)
+  self.assertEqual(result['errors'],[]);self.assertEqual(result['preserved'],[])
+  self.assertFalse(path.exists())
+  import steam_artwork
+  steam_artwork.write_slot(self.config,self.folder/'grid',str(result['appid']),'poster',reset=True)
+  self.assertEqual(path.read_bytes(),b'personal artwork')
+ def test_stale_review_refuses_before_any_writes(self):
+  raw,path=self.existing_custom_slot()
+  review=s.review(self.config,self.settings,engine=self.engine,entry=self.entry,load_image=lambda p:PNG)
+  path.write_bytes(b'newer custom artwork')
+  with self.assertRaisesRegex(ValueError,'since your review'):
+   s.install(self.config,self.settings,reviewed=review,engine=self.engine,entry=self.entry,load_image=lambda p:PNG)
+  self.assertFalse((self.root/'state').exists());self.assertEqual(path.read_bytes(),b'newer custom artwork')
+  self.assertEqual((self.folder/'shortcuts.vdf').read_bytes(),raw)
+ def test_slot_guard_refuses_a_change_after_preparation(self):
+  _,path=self.existing_custom_slot()
+  import steam_artwork
+  fingerprint=steam_artwork.slot_hashes(path.parent,path.stem[:-1],'poster')
+  path.write_bytes(b'newer custom artwork')
+  with self.assertRaisesRegex(ValueError,'since your review'):
+   steam_artwork.write_slot(self.config,path.parent,path.stem[:-1],'poster',PNG,expected_before=fingerprint)
+  self.assertEqual(path.read_bytes(),b'newer custom artwork')
+
+ def test_missing_shortcut_icon_refuses_before_any_writes(self):
+  with patch.object(s,'ROOT',self.root/'missing-package'):
+   with self.assertRaisesRegex(ValueError,'icon is missing'):
+    s.review(self.config,self.settings,engine=self.engine,entry=self.entry,load_image=lambda p:PNG)
+  self.assertFalse((self.root/'state').exists());self.assertFalse((self.folder/'shortcuts.vdf').exists())
+
  def test_launcher_flip_only_changes_managed_launcher_icon(self):
   with patch.dict(os.environ,{'XDG_DATA_HOME':str(self.root/'data')}):
    self.assertFalse(desktop_install.refresh_launcher_icon(False))

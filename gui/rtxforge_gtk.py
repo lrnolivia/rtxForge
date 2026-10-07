@@ -3803,6 +3803,10 @@ class Window(Adw.ApplicationWindow):
         menu_body.append(icon_button('Sync artwork to Steam','view-refresh-symbolic',lambda *_:(menu_popover.popdown(),self.sync_steam_artwork()),'flat'))
         menu_body.append(icon_button('Steam artwork profile','avatar-default-symbolic',lambda *_:(menu_popover.popdown(),self.choose_steam_artwork_profile()),'flat'))
         menu_body.append(icon_button('Connect SteamGridDB','network-server-symbolic',lambda *_:(menu_popover.popdown(),self.show_steamgrid_connection()),'flat'))
+        entry=menu_body.get_first_child()
+        while entry:
+            entry.get_child().set_halign(Gtk.Align.START)
+            entry=entry.get_next_sibling()
         main_menu.set_popover(menu_popover)
         self.main_menu=main_menu
         if gamescope_session():
@@ -5233,18 +5237,34 @@ class Window(Adw.ApplicationWindow):
 
     def add_rtxforge_to_steam(self,*_):
         if self.options.demo:self.toast('Steam integration is disabled in preview mode.');return
-        d,b,f=self.open_panel('Add rtxForge to Steam',width=600,height=420)
-        b.append(label('Add this installation as a non-Steam app and apply the bundled poster, wide capsule, hero and logo. No SteamGridDB key is needed.','dim-label'))
-        b.append(label('Close Steam before creating a new shortcut. Existing shortcuts are preserved, and their artwork can be refreshed while Steam is open. Backups are retained.','dim-label'))
+        import steam_self_install,copy
+        settings=copy.deepcopy(self.settings)
+        self.start('Checking rtxForge in Steam',lambda:steam_self_install.review(self.service.config,settings),
+                   lambda review:self.review_rtxforge_steam(review,settings))
+
+    def review_rtxforge_steam(self,review,settings):
+        import steam_self_install
+        d,b,f=self.open_panel('Review rtxForge in Steam',width=680,height=420)
+        b.append(label('Refresh rtxForge artwork' if not review['created'] else 'Add rtxForge to Steam','title-2'))
+        b.append(label('Steam account '+review['profile']+' · No SteamGridDB key is needed.','dim-label'))
+        b.append(label('Only this app’s shortcut artwork will change. Replaced images are backed up. Restart Steam afterward to refresh its library.','dim-label'))
+        listing=self.review_list();b.append(listing)
+        titles={'poster':'Poster','capsule':'Wide capsule','hero':'Hero background','logo':'Transparent logo'}
+        messages={'add':'Add the bundled artwork.','replace':'Replace existing custom artwork. Your current image will be backed up.','unchanged':'The bundled artwork is already in place.'}
+        badges={'add':'New','replace':'Replace','unchanged':'Unchanged'}
+        art={'game':'rtxforge:self','name':'rtxForge','capsule':str(ROOT/'packaging/steam-artwork/exports/rtxforge-steam-wide.png')}
+        for slot in review['roles']:
+            listing.append(self.review_entry(titles[slot['role']],messages[slot['status']],game=art,badge=badges[slot['status']]))
         def install(*_):
-            import steam_self_install
             d.close()
             def ready(result):
                 if result['errors']:self.error('The Steam shortcut is available, but some artwork still needs syncing: '+ '; '.join(result['errors']))
+                elif result.get('preserved'):self.toast('rtxForge is in Steam. Your existing custom artwork was kept.')
                 else:self.toast('rtxForge and its artwork are ready in Steam. Restart Steam to refresh its library.')
-            self.start('Adding rtxForge to Steam',lambda:steam_self_install.install(self.service.config,self.settings),ready)
+            self.start('Adding rtxForge to Steam',lambda:steam_self_install.install(self.service.config,settings,reviewed=review),ready)
         f.append(button('Choose Steam profile',lambda *_:(d.close(),self.choose_steam_artwork_profile())))
-        f.append(button('Add & apply artwork',install,'suggested-action'))
+        f.append(button('Cancel',lambda *_:d.close()))
+        f.append(button('Add & apply artwork' if review['created'] else 'Apply artwork',install,'suggested-action'))
 
     def show_game_artwork(self,game):
         d,b,f=self.open_panel('Artwork · '+game.get('name','Game'),width=800,height=600)
@@ -8935,7 +8955,10 @@ class Window(Adw.ApplicationWindow):
         if error:
             self.log.append(error[1]);self.show_operation_status('Stopped · details available in Activity',True,'dialog-warning-symbolic');self.error(error[0])
         else:
-            done(result);self.show_operation_status('Completed',True)
+            try:done(result)
+            except Exception as ex:
+                self.log.append(traceback.format_exc());self.show_operation_status('Stopped · details available in Activity',True,'dialog-warning-symbolic');self.error(str(ex))
+            else:self.show_operation_status('Completed',True)
         if self.pending:
             task=self.pending;self.pending=None;self.start(*task)
         return False
@@ -11968,8 +11991,8 @@ class Window(Adw.ApplicationWindow):
     def play_game(self,game):
         if self.options.demo:return
         self.start('Preparing game launch',
-                   lambda:game_launch.resolve(self.service.config,game),
-                   lambda uri:Gio.AppInfo.launch_default_for_uri(uri,None))
+                   lambda:game_launch.prepare_launch(self.service.config,game),
+                   lambda request:game_launch.dispatch_launch(self.service.config,request,lambda uri:Gio.AppInfo.launch_default_for_uri(uri,None)))
 
     def record_test(self,game,finish=False):
         def done(record):

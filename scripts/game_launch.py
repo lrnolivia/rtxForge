@@ -41,3 +41,49 @@ def resolve(config, row, *, engine=None):
     if match is None:
         raise ValueError('No unique Steam shortcut matches this installation. Check the shortcut’s executable path, then try Play again.')
     return steam_uri(e._shortcut_int(match, 'appid'), shortcut=True)
+
+
+def record_launch(config, event):
+    """Keep bounded local diagnostics; never record credentials or launch flags."""
+    import datetime,json,os
+    import transactions
+    from storage import storage
+    folder=transactions.safe(storage(config)/'desktop'/'launch-logs')
+    folder.mkdir(parents=True,exist_ok=True,mode=0o700)
+    path=transactions.safe(folder/'requests.jsonl')
+    if path.exists() and path.stat().st_size>=1024*1024:
+        previous=transactions.safe(folder/'requests.previous.jsonl')
+        os.replace(path,previous)
+    payload={'at':datetime.datetime.now(datetime.timezone.utc).isoformat(),**event}
+    fd=os.open(path,os.O_WRONLY|os.O_APPEND|os.O_CREAT|os.O_NOFOLLOW,0o600)
+    with os.fdopen(fd,'a',encoding='utf-8') as output:
+        output.write(json.dumps(payload,ensure_ascii=False)+'\n')
+
+
+def _report(config,event,recorder):
+    try:(recorder or record_launch)(config,event)
+    except Exception:
+        import ui
+        ui.emit('Could not save launch diagnostics; the launch request will continue.')
+
+
+def prepare_launch(config,row,*,engine=None,recorder=None):
+    import uuid
+    context={'request_id':uuid.uuid4().hex,'game':row.get('name',''),'source':row.get('source',''),'installation':row.get('game','')}
+    _report(config,{**context,'phase':'resolving'},recorder)
+    try:uri=resolve(config,row,engine=engine)
+    except Exception as error:
+        _report(config,{**context,'phase':'resolution-failed','error':str(error)[:1024]},recorder)
+        raise
+    _report(config,{**context,'phase':'resolved','uri':uri},recorder)
+    return {'uri':uri,'context':context}
+
+
+def dispatch_launch(config,request,dispatch,*,recorder=None):
+    """Record URI handoff, without claiming Steam started the game successfully."""
+    context={**request['context'],'uri':request['uri']}
+    try:dispatch(request['uri'])
+    except Exception as error:
+        _report(config,{**context,'phase':'dispatch-failed','error':str(error)[:1024]},recorder)
+        raise
+    _report(config,{**context,'phase':'submitted'},recorder)

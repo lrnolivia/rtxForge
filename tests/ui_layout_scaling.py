@@ -16,6 +16,8 @@ def start():
     w.settings['controller_glyphs']='xbox'
     w.set_default_size(3840,2160)
     w.set_input_surface(True)
+    assert w.couch.page=='library'
+    w.couch.open('dashboard')  # These checks exercise the retained Dashboard shelf.
     if os.environ.get('RTXFORGE_QA_FULLSCREEN'):w.fullscreen()
     w.apply_display_preferences()
 

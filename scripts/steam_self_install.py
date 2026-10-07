@@ -66,7 +66,7 @@ def bundled_image(path):
     return bytes(data)
 
 
-def install(config,settings,*,engine=None,entry=None,art_root=None,load_image=bundled_image):
+def _prepare(config,settings,*,engine=None,entry=None,art_root=None,load_image=bundled_image):
     e=engine or engine_bridge.module(config);entry=Path(entry or executable()).resolve()
     accounts=steam_artwork.profiles(config,engine=e)
     selected=settings.get('steam_artwork_profile')
@@ -81,6 +81,7 @@ def install(config,settings,*,engine=None,entry=None,art_root=None,load_image=bu
     shortcut=t.safe(folder/'shortcuts.vdf');before=shortcut.read_bytes() if shortcut.exists() else None
     if before is not None and len(before)>16*1024*1024:raise ValueError('Steam shortcuts file exceeds the safe update bound.')
     icon=ROOT/'gui/icons/hicolor/scalable/apps/io.github.lrnolivia.RTXForge.svg'
+    if not icon.is_file():raise ValueError('The bundled rtxForge icon is missing. Reinstall the app before adding it to Steam.')
     after,appid,created=append_shortcut(before,entry,engine=e,icon=str(icon))
     if created and e.steam_running():
         raise ValueError('Close Steam completely, then use Add rtxForge to Steam from Desktop Mode. Existing game artwork can still sync while Steam is open.')
@@ -88,6 +89,31 @@ def install(config,settings,*,engine=None,entry=None,art_root=None,load_image=bu
     names={'poster':'rtxforge-steam-portrait.png','capsule':'rtxforge-steam-wide.png','hero':'rtxforge-steam-hero.png','logo':'rtxforge-logo-white.png'}
     images={role:load_image(base/name) for role,name in names.items()}
     for data in images.values():steam_artwork.image_extension(data)
+    slots={role:steam_artwork.slot_hashes(folder/'grid',str(appid),role) for role in images}
+    roles=[]
+    for role,data in images.items():
+        desired={str(appid)+steam_artwork.SUFFIX[role]+steam_artwork.image_extension(data):t.sha(data)}
+        status='unchanged' if slots[role]==desired else 'replace' if slots[role] else 'add'
+        roles.append({'role':role,'status':status,'files':list(slots[role])})
+    identity={'icon':t.digest(icon),'entry':str(entry),'config':str(folder),'appid':appid,'shortcut':t.sha(before) if before is not None else None,
+              'images':{role:t.sha(data) for role,data in images.items()},'slots':slots}
+    return {'engine':e,'folder':folder,'shortcut':shortcut,'before':before,'after':after,'images':images,
+            'summary':{'identity':identity,'created':created,'profile':str(account['userid']),'roles':roles}}
+
+
+def review(config,settings,**kwargs):
+    """Inspect the shortcut and every artwork slot without writing any state."""
+    return _prepare(config,settings,**kwargs)['summary']
+
+
+def install(config,settings,*,reviewed=None,**kwargs):
+    plan=_prepare(config,settings,**kwargs)
+    summary=plan['summary']
+    if reviewed is not None and reviewed.get('identity')!=summary['identity']:
+        raise ValueError('Steam artwork or the shortcut changed since your review. Nothing was changed; review it again.')
+    e=plan['engine'];folder=plan['folder'];shortcut=plan['shortcut']
+    before=plan['before'];after=plan['after'];images=plan['images']
+    appid=summary['identity']['appid'];created=summary['created']
     backup=t.safe(storage(config,32*1024*1024)/'desktop/steam-shortcuts'/uuid.uuid4().hex);backup.mkdir(parents=True)
     if before is not None:t.atomic_file(backup/'shortcuts.vdf',before,0o600)
     record={'path':str(shortcut),'existed':before is not None,'before_sha256':hashlib.sha256(before).hexdigest() if before is not None else None,'after_sha256':hashlib.sha256(after).hexdigest(),'appid':appid,'created':created}
@@ -97,8 +123,11 @@ def install(config,settings,*,engine=None,entry=None,art_root=None,load_image=bu
         if e.steam_running():raise ValueError('Steam started during preparation; no shortcut was written.')
         t.atomic_file(shortcut,after,0o600)
         if shortcut.read_bytes()!=after:raise ValueError('Steam shortcut readback failed; backup retained.')
-    results=[];errors=[]
+    results=[];errors=[];preserved=[]
     for role,data in images.items():
-        try:results.append(steam_artwork.write_slot(config,folder/'grid',str(appid),role,data))
+        slot=next(item for item in summary['roles'] if item['role']==role)
+        if reviewed is None and slot['status']=='replace':
+            preserved.append(role);continue
+        try:results.append(steam_artwork.write_slot(config,folder/'grid',str(appid),role,data,expected_before=summary['identity']['slots'][role]))
         except Exception as error:errors.append(role+': '+str(error))
-    return {'created':created,'appid':appid,'artwork':results,'errors':errors,'backup':str(backup),'restart_required':created or bool(results)}
+    return {'created':created,'appid':appid,'artwork':results,'errors':errors,'preserved':preserved,'backup':str(backup),'restart_required':created or bool(results)}

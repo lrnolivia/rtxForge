@@ -36,6 +36,41 @@ class LaunchTests(unittest.TestCase):
             row['exe']='../outside.exe'
             with self.assertRaisesRegex(ValueError,'executable'):game_launch.resolve({},row,engine=engine)
 
+    def test_diagnostics_distinguish_resolution_submission_and_failure(self):
+        events=[]
+        record=lambda _,event:events.append(event)
+        row={'source':'Steam','appid':'123','name':'Fixture','game':'/fixture','launch_options':'SECRET'}
+        request=game_launch.prepare_launch({},row,recorder=record)
+        game_launch.dispatch_launch({},request,lambda uri:None,recorder=record)
+        self.assertEqual([e['phase'] for e in events],['resolving','resolved','submitted'])
+        self.assertEqual(len({e['request_id'] for e in events}),1)
+        self.assertNotIn('SECRET',str(events))
+        def fail(uri):raise RuntimeError('URI handler unavailable')
+        with self.assertRaises(RuntimeError):game_launch.dispatch_launch({},request,fail,recorder=record)
+        self.assertEqual(events[-1]['phase'],'dispatch-failed')
+        with self.assertRaises(ValueError):game_launch.prepare_launch({},dict(row,appid=None),recorder=record)
+        self.assertEqual(events[-1]['phase'],'resolution-failed')
+
+    def test_optional_diagnostic_failure_does_not_block_launch(self):
+        def fail(*args):raise RuntimeError('State directory unavailable')
+        request=game_launch.prepare_launch({}, {'source':'Steam','appid':'123'},recorder=fail)
+        dispatch=Mock()
+        game_launch.dispatch_launch({},request,dispatch,recorder=fail)
+        dispatch.assert_called_once_with('steam://rungameid/123')
+
+    def test_bounded_private_diagnostic_file(self):
+        import json
+        with TemporaryDirectory() as directory:
+            config={'storage':{'root':directory,'reserve_bytes':0}}
+            game_launch.record_launch(config,{'phase':'submitted'})
+            path=Path(directory)/'desktop/launch-logs/requests.jsonl'
+            self.assertEqual(json.loads(path.read_text())['phase'],'submitted')
+            self.assertEqual(path.stat().st_mode & 0o777,0o600)
+            path.write_text('x'*1024*1024)
+            game_launch.record_launch(config,{'phase':'resolved'})
+            self.assertEqual(json.loads(path.read_text())['phase'],'resolved')
+            self.assertEqual(path.with_name('requests.previous.jsonl').stat().st_size,1024*1024)
+
     def test_steam_controller_name_and_existing_families(self):
         self.assertEqual(family(0,'Steam Controller'),'steam')
         self.assertEqual(family(0,'Steam Virtual Gamepad'),'steam')

@@ -94,6 +94,13 @@ def _snapshot(grid, stem):
     return result
 
 
+def slot_hashes(grid, appid, role):
+    """Read-only fingerprint of all existing image formats for one slot."""
+    if role not in SUFFIX or not str(appid).isdigit() or not 0 < int(appid) < 2**32:
+        raise ValueError('Invalid Steam artwork target.')
+    return _hashes(_snapshot(t.safe(Path(grid)), str(appid) + SUFFIX[role]))
+
+
 def _hashes(files):
     return {name: hashlib.sha256(data).hexdigest() for name, data in files.items()}
 
@@ -132,7 +139,7 @@ def _recover_prepared(state, grid, appid, role):
         _json(state/'last-write.json',{**record,'after':before})
 
 
-def write_slot(config, grid, appid, role, data=None, *, reset=False):
+def write_slot(config, grid, appid, role, data=None, *, reset=False, expected_before=None):
     """Apply a slot or restore its original pre-rtxForge baseline.
 
     Original and per-operation backups are retained. A reset refuses to destroy
@@ -154,6 +161,8 @@ def write_slot(config, grid, appid, role, data=None, *, reset=False):
         _recover_prepared(state, grid, appid, role)
         stem = str(appid) + SUFFIX[role]
         before = _snapshot(grid, stem)
+        if expected_before is not None and _hashes(before) != expected_before:
+            raise ValueError('Steam artwork changed since your review. Your newer artwork was preserved; review it again.')
         baseline_path = state / 'baseline.json'
         if not baseline_path.exists():
             if reset:

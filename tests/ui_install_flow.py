@@ -97,7 +97,7 @@ def widths_check():
     app.window.dialog.close();app.window.main_menu.popup()
 def menu_check():
     entries=[x for x in children(app.window.main_menu.get_popover()) if isinstance(x,ui.ActionButton)]
-    assert len(entries)==6
+    assert {entry.get_label() for entry in entries}=={'Refresh Library','Add Game Folder','Packages','Extras','Activity','Settings','Add rtxForge to Steam','Sync artwork to Steam','Steam artwork profile','Connect SteamGridDB'}
     assert all(x.get_child().get_halign()==Gtk.Align.START for x in entries)
     app.window.main_menu.popup()
 def menu_capture():

@@ -56,7 +56,12 @@ def bottom_capture():
 def settings():
     w=app.window;c=w.couch
     assert c.tab_bar.get_parent() is c.bottom_nav
-    assert {'UI scale','Library layout','Navigation','Controller hints'} <= {e['title'] for e in c.entries}
+    expected={'Gaming Mode':{'Interface'},'System':{'UI scale','Navigation'},
+              'Library':{'Library layout'},'Controller':{'Controller hints'}}
+    for section,titles in expected.items():
+        c.set_section(section)
+        assert titles <= {e['title'] for e in c.entries},section
+    c.set_section('System')
     assert w.capture('layout-4k-settings-bottom.png')
     w.show_settings()
 

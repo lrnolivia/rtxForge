@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import traceback
+import time
 from pathlib import Path
 
 os.environ['GSETTINGS_BACKEND'] = 'memory'
@@ -18,8 +19,27 @@ app = ui.Application(options)
 captured = []
 
 
+class FrameNotReady(RuntimeError):
+    pass
+
+
+pending_capture = None
+
+
 def capture(name):
-    assert app.window.capture(name).is_file()
+    global pending_capture
+    image = app.window.capture(name)
+    if image is None:
+        if pending_capture is None:
+            pending_capture = (name, time.monotonic())
+        if pending_capture[0] != name:
+            raise AssertionError('Capture changed while waiting for a frame')
+        if time.monotonic() - pending_capture[1] >= 5:
+            raise AssertionError(f'GTK frame not ready after 5s: {name}; mapped={app.window.get_mapped()}, size={app.window.get_width()}x{app.window.get_height()}')
+        app.window.queue_draw()
+        raise FrameNotReady(name)
+    assert image.is_file(), f'Capture did not create an image: {name}'
+    pending_capture = None
     captured.append(name)
 
 
@@ -386,11 +406,14 @@ steps = [
 def step():
     try:
         if steps:
-            steps.pop(0)()
+            steps[0]()
+            steps.pop(0)
             GLib.timeout_add(550, step)
         else:
             (ROOT / 'dist/ui-couch-review.json').write_text(json.dumps({'game_writes': False, 'screenshots': captured, 'checked': ['grid navigation', 'list navigation', 'return selection', 'view cycling', 'Classic shared preference', 'last-row scrolling', 'page tabs and settings gear', 'batch DLSS target selection', 'install-to-all review routing', 'disabled first-row navigation', 'shared accent and artwork', 'input switching', 'empty library']}, indent=2))
             app.quit()
+    except FrameNotReady:
+        GLib.timeout_add(100, step)
     except Exception:
         traceback.print_exc()
         app.exit_code = 1

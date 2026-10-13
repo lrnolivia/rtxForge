@@ -210,15 +210,16 @@ public sealed partial class GameModeView : UserControl
             var active = page == key || (key == "library" && page == "details");
             var tab = ui.Button(label, () => Open(key), active ? GmKind.Active : GmKind.Transparent, 1, radius: 32,
                 padding: new Thickness(t.Px(26), t.Px(8), t.Px(26), t.Px(8)), minHeight: 54);
+            GmUi.Capsule(tab);
             Key(tab, "tab-" + key);
             tabButtons.Add(tab);
             line.Children.Add(tab);
         }
-        return new Border
+        return GmUi.Capsule(new Border
         {
             Background = GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(40)), Padding = new Thickness(t.Px(8)),
             Child = line, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
-        };
+        });
     }
 
     readonly StackPanel hintsPanel = new() { Orientation = Orientation.Horizontal };
@@ -363,7 +364,7 @@ public sealed partial class GameModeView : UserControl
         SetInput("keyboard");
         var ctrl = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
             .HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down);
-        if (FocusManager.GetFocusedElement(XamlRoot) is TextBox && e.Key != VirtualKey.Escape) return;
+        if (FocusManager.GetFocusedElement(XamlRoot) is TextBox or PasswordBox && e.Key != VirtualKey.Escape) return;
         switch (e.Key)
         {
             case VirtualKey.Escape or VirtualKey.Back or VirtualKey.GamepadB: Back(); e.Handled = true; break;
@@ -394,6 +395,9 @@ public sealed partial class GameModeView : UserControl
                 break;
             case TextBox box:
                 box.Focus(FocusState.Keyboard);
+                break;
+            case PasswordBox secret:
+                secret.Focus(FocusState.Keyboard);
                 break;
         }
     }
@@ -502,7 +506,7 @@ public sealed partial class GameModeView : UserControl
         var rows = new List<UIElement>
         {
             ui.RowButton("Library", null, () => { CloseModal(); Open("library"); }),
-            ui.RowButton("Packages", null, () => Toast("Packages arrive with the provider channel update.")),
+            ui.RowButton("Packages", null, () => _ = ShowPackagesAsync()),
             ui.RowButton("Refresh library", null, () => { CloseModal(); _ = RefreshAsync(); }, glyph: ""),
             ui.RowButton("Desktop UI", null, () => { CloseModal(); ExitRequested?.Invoke(); }),
             ui.RowButton("Exit App", null, ConfirmExit, danger: true),

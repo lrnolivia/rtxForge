@@ -200,8 +200,7 @@ public sealed partial class GameModeView
         [
             Choice("Library layout", null, ["posters", "capsules", "list"], ["Posters", "Wide Capsule", "List"],
                 () => shell.Settings.LibraryView, v => shell.Settings.LibraryView = v),
-            ui.RowButton("Connect SteamGridDB", null, () => Toast("Connect SteamGridDB in Desktop UI with a keyboard.")),
-            ui.RowButton("Steam artwork profile", null, () => Toast("Choose the Steam artwork profile in Desktop UI.")),
+            .. LibraryArtworkRows(),
         ]),
         "Controller" => ("Keep button labels and hints consistent with your controller.",
         [
@@ -212,12 +211,13 @@ public sealed partial class GameModeView
                 () => shell.Settings.ControllerHints, v => shell.Settings.ControllerHints = v),
         ]),
         "Keyboard" => ("Every keyboard shortcut in Gaming Mode.", GuideRows("keyboard")),
-        "System" => ("Adjust display scaling and navigation placement.",
+        "System" => ("Display scaling, navigation, recovery and updates.",
         [
             Choice("UI scale", "Automatic follows the window size (150% at 4K).", ["auto", "100", "125", "150", "175", "200"],
                 ["Automatic", "100%", "125%", "150%", "175%", "200%"], () => shell.Settings.UiScaleKey,
                 v => { shell.Settings.UiScaleKey = v; DispatcherQueue.TryEnqueue(ApplySettings); }),
             Choice("Navigation", null, ["top", "bottom"], ["Top", "Bottom"], () => shell.Settings.NavigationPosition, v => shell.Settings.NavigationPosition = v),
+            .. RecoveryRows(),
         ]),
         _ => ("Open rtxForge from your existing gaming environment.",
         [

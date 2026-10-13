@@ -40,6 +40,7 @@ os.environ.setdefault("RTXFORGE_STATE_ROOT", str(STATE))
 os.environ.setdefault("RTXFORGE_DLSS_UNLOCKED_STATE", str(LOCAL / "engine-state"))
 os.environ["NO_COLOR"] = "1"
 sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(1, str(Path(__file__).resolve().parent))  # win_features (-I leaves out the script's folder)
 
 # Replies own stdout; anything the engine prints goes to stderr instead.
 _out = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", newline="\n", write_through=True)
@@ -107,6 +108,9 @@ import discovery  # noqa: E402
 
 
 def windows_steam_roots() -> list[Path]:
+    # Development and tests: an explicit list of Steam folders replaces discovery entirely.
+    if os.environ.get("RTXFORGE_STEAM_ROOTS"):
+        return [Path(p) for p in os.environ["RTXFORGE_STEAM_ROOTS"].split(os.pathsep) if p and Path(p).is_dir()]
     found: list[Path] = []
     try:
         import winreg
@@ -346,6 +350,8 @@ def scan(params):
             row["art"] = media.steam_art(row)
         except Exception:  # artwork is optional; never fail the scan for it
             traceback.print_exc()
+    # Your chosen artwork over Steam's, and each game's saved notes (Linux details()).
+    win_features.decorate(rows)
     return sorted(rows, key=lambda r: r["name"].casefold())
 
 
@@ -445,6 +451,12 @@ METHODS = {"hello": hello, "hardware": lambda _p: service.hardware(), "scan": sc
            "execute": execute, "cancel": cancel, "save_defaults": save_defaults, "update_dlss": update_dlss,
            "steam_status": steam_status, "steam_review": steam_review, "steam_install": steam_install,
            "steam_remove": steam_remove}
+
+# Artwork, SteamGridDB, recovery, reports, notes, extras, packages, diagnosis,
+# DLSS restore and updates: windows/engine-host/win_features.py.
+import win_features  # noqa: E402
+
+METHODS.update(win_features.install(service, lambda: engine_bridge.module(service.config).steam_config_engine()))
 
 
 def handle(request: dict) -> None:

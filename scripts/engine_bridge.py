@@ -4,6 +4,7 @@ import importlib.util,sys,json,hashlib,zipfile,os
 import transactions as t,packages,ui,package_catalog
 from operation_session import Session,Cancelled
 from storage import storage
+from launch_settings import IntentStore,OfflineSteamBackend
 ROOT=Path(__file__).resolve().parents[1]
 def providers():return json.loads((ROOT/'providers/lock.json').read_text())
 def module(config,provider='y4my',mode=None):
@@ -156,8 +157,11 @@ def prepare(config,rows,mode,operation,settings):
 
 def execute(review):
     e=review['engine'];results=[]
-    # Never kill Steam behind a GUI action, or wait invisibly for terminal prompts.
-    if review['operation']!='reset':t.need(not e.steam_running(),'Close Steam before applying changes so launch settings can be saved safely.')
+    # Steam metadata is a separate transaction. Steam may remain open for the
+    # reviewed game-file phase; running-game and ownership guards still apply.
+    store=IntentStore(e) if review['operation']!='reset' else None
+    backend=review.get('launch_backend') or OfflineSteamBackend(e)
+    launch_work=[]
     cancel=review.get('cancel_event')
     session=Session(e.STATE_ROOT/'desktop-operations') if cancel is not None else None
     with e.mutation_lock():
@@ -166,6 +170,7 @@ def execute(review):
             g=item['game'];total=len(review['plans'])
             def report(stage,part):ui.progress(stage,game=g.name,current=index,total=total,fraction=(index-1+part)/total)
             report('Checking game files',0)
+            intent=None
             try:
                 t.need(fingerprint(e,g)==item['fingerprint'],'Game or baseline changed since preview; prepare again')
                 if session:
@@ -174,26 +179,32 @@ def execute(review):
                     if review['operation']=='reset':names={p.name for p in g.target_dir.iterdir() if p.name.lower()=='optiscaler.ini'}
                     else:names.add('OptiScaler')
                     paths=[g.target_dir/name for name in names]+[e.state_dir_for(g.target_dir)]
-                    if review['operation']!='reset':
-                        paths.extend([e.STATE_ROOT/'steam-config-backups',e._steam_transaction_root()])
-                        account=e.choose_steam_user_config([g],assume_yes=True)
-                        if account:paths.extend(account[k] for k in ('localconfig','shortcuts') if account.get(k))
+                    if store:paths.append(store.path(g))
                     report('Backing up your current files',0.15)
                     checkpoint=session.capture(paths)
+                if store:
+                    baseline=e.load_baseline(g.target_dir) or {}
+                    required=item['preview'].get('launch_options') or (baseline.get('current') or {}).get('launch_options')
+                    intent=store.prepare(g,review['operation'],required,baseline)
+                    intent=store.save(g,backend.bind_intent(intent,g))
                 report({'reset':'Saving your settings','uninstall':'Restoring original files','install':'Installing features','repair':'Repairing feature files'}[review['operation']],0.4)
                 if review['operation']=='reset':
                     record=e.reset_visual_settings(g,nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'])
                 elif review['operation']=='uninstall':
                     e.verify_native_restore(e.load_baseline(g.target_dir))
-                    e.restore_launch_options_batch([g],assume_yes=True)
                     record=e.restore_target(g)
                 else:
                     record=e.install_target(g,review['payload'],review['meta'],'ada',nr_runtime_payload=review['nr'],nr_runtime_meta=review['nrmeta'],feature_mode=review['mode'],enable_effects=review['enable_effects'],native_mfg_fallback=review.get('native_mfg_fallback',False),nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'],preserve_visual_settings=not review.get('apply_requested_presets',False))
-                    report('Saving launch settings',0.85)
-                    synced=e.sync_launch_options_batch([g],assume_yes=True,prompt=False)
-                    t.need(synced and all(r.get('status')=='written' for r in synced),'Files installed, but launch settings need attention: '+str(synced or record['launch_options']))
-                results.append({'name':g.name,'status':'complete','record':record})
-            except Exception as ex:results.append({'name':g.name,'status':'failed','error':str(ex)})
+                row={'name':g.name,'game_root':str(g.root),'target':str(g.target_dir),'status':'complete','record':record,'files':'restored' if review['operation']=='uninstall' else 'applied'}
+                if store:
+                    intent=store.files_applied(g,intent,None if review['operation']=='uninstall' else e.load_baseline(g.target_dir))
+                    row.update(launch_status='pending',launch_intent=intent['id'],launch_options=intent['required'])
+                    launch_work.append((g,intent,row))
+                results.append(row)
+            except Exception as ex:
+                if store and 'intent' in locals() and intent:
+                    store.outcome(g,intent,{'status':'files-failed','error':str(ex)})
+                results.append({'name':g.name,'status':'failed','error':str(ex)})
             finally:
                 if session and 'checkpoint' in locals():session.seal(checkpoint);del checkpoint
                 report('Finished this game',1)
@@ -202,10 +213,24 @@ def execute(review):
         if session:
             if cancel.is_set():
                 t.need(not any(e._running_processes_under_root(p['game'].root.resolve()) for p in review['plans']),'Close running games before recovery. Copies retained at '+str(session.root))
-                if review['operation']!='reset':t.need(not e.steam_running(),'Close Steam before recovery. Copies retained at '+str(session.root))
                 session.rollback()
                 raise Cancelled('Changes undone.')
             session.complete()
+        # The UI cancellation window and game-file rollback have now committed.
+        # Neither cancellation nor game recovery can restore Steam VDF bytes.
+        for g,intent,row in launch_work:
+            cached=backend.cached_result(intent,g)
+            if cached:
+                intent=store.outcome(g,intent,cached)
+            elif backend.capabilities.available and (not e.steam_running() or backend.capabilities.live_setter):
+                intent=store.outcome(g,intent,backend.apply(intent,g))
+            row['launch_status']=intent['state']
+            row['launch_verification']=intent.get('verification')
+            row['launch_error']=intent.get('error')
+            if intent['state']=='configured':
+                row['detail']='Files installed; existing saved launch setup reused without metadata writes.'
+            elif intent['state']!='verified':
+                row['detail']='Original files restored; launch-option cleanup pending.' if review['operation']=='uninstall' else 'Files installed; launch setup pending.'
     path=e.STATE_ROOT/('desktop-'+e.now_stamp()+'.json');e.save_json_atomic(path,{'results':results})
     failures=sum(r['status']=='failed' for r in results)
     if failures:raise t.Refusal(f'{failures} game(s) need attention. Completed games retain backups. Report: {path}')

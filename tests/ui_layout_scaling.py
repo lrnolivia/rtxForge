@@ -16,6 +16,7 @@ def start():
     w.settings['controller_glyphs']='xbox'
     w.set_default_size(3840,2160)
     w.set_input_surface(True)
+    w.set_input_kind('controller');w.couch.navigate('right');w.couch.navigate('left')
     assert w.couch.page=='library'
     w.couch.set_library_view('capsules')
     if os.environ.get('RTXFORGE_QA_FULLSCREEN'):w.fullscreen()
@@ -25,6 +26,8 @@ def native_scale():
     w=app.window;c=w.couch
     if os.environ.get('RTXFORGE_QA_FULLSCREEN'):assert w.is_fullscreen()
     assert w.presentation_scale==1.5
+    assert w.presentation_reference_scale==1.5
+    assert abs(c.couch_unit-46/1.5)<.1
     assert c.get_width()==round(w.get_width()/1.5)
     assert c.layout_width==c.get_width()
     assert w.capture('layout-4k-wide-top.png')
@@ -32,6 +35,8 @@ def native_scale():
 
 def poster():
     w=app.window;c=w.couch
+    font=c.controls[0].title_label.get_pango_context().get_font_description().get_size()/ui.Pango.SCALE
+    assert abs(font-.93*c.couch_unit)<1
     assert c.controls[0].artwork.picture.get_file().get_path()==c.entries[0]['game']['poster']
     c.focus(0);c.navigate('right');assert c.current==1
 
@@ -72,9 +77,14 @@ def panel():
     w=app.window
     assert isinstance(w.dialog,ui.PresentationDialog)
     assert w.dialog._scaled_child.factor==1.5
+    assert w.dialog.get_content_width()>=1980
+    assert w.dialog.has_css_class('couch-dialog')
     assert w.dialog._scaled_child.child.get_last_child().has_css_class('couch-tabs')
-    assert w.capture('layout-4k-settings-panel.png')
     nav=w.dialog._scaled_child.child.get_last_child()
+    children=[];child=nav.get_first_child()
+    while child:children.append(child);child=child.get_next_sibling()
+    assert [child.get_label() for child in children]==['Library','Presets','Settings']
+    assert w.capture('layout-4k-settings-panel.png')
     nav.get_first_child().emit('clicked')
     assert w.couch.page=='library'
     w.couch.open('library')

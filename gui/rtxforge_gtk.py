@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Native GNOME poster library. All engine work is serialized off the GTK thread."""
 from pathlib import Path
-import sys,threading,time,traceback,argparse,datetime,colorsys
+import sys,threading,time,traceback,argparse,datetime,colorsys,json
 from collections import Counter
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'scripts'))
 APP_VERSION=(ROOT/'VERSION').read_text(encoding='utf-8').strip() if (ROOT/'VERSION').exists() else 'dev'
@@ -3360,6 +3360,15 @@ class PresentationDialog(Adw.Dialog):
         self._scaled_child=None
         self._raw_child=None
         factor=getattr(owner,'presentation_scale',1.0)
+        couch=getattr(owner,'couch',None)
+        if couch and owner.input_stack.get_visible_child_name()=='couch':
+            system_scale=owner.get_scale_factor()
+            physical_width=couch.layout_width*factor*system_scale
+            reference=getattr(owner,'presentation_reference_scale',factor)*system_scale
+            target=(1980 if physical_width>=3000 else 950 if physical_width<=1500 else 1100)/reference
+            kwargs['content_width']=min(max(kwargs.get('content_width',730),target),max(400,couch.layout_width-80))
+            self.couch_preferred_width=round(kwargs['content_width']*factor)
+            kwargs['content_height']=min(max(kwargs.get('content_height',620),680),max(380,couch.layout_height-100))
         for key in ('content_width','content_height'):
             if kwargs.get(key,0)>0:kwargs[key]=round(kwargs[key]*factor)
         super().__init__(**kwargs)
@@ -3374,6 +3383,9 @@ class PresentationDialog(Adw.Dialog):
         couch=getattr(self.owner,'couch',None)
         in_couch=couch and self.owner.input_stack.get_visible_child_name()=='couch'
         self.add_css_class('couch-dialog') if in_couch else self.remove_css_class('couch-dialog')
+        if in_couch:
+            for theme in ('light','dark','night'):self.remove_css_class(theme)
+            self.add_css_class(owner_theme if (owner_theme:=self.owner.settings.get('gaming_mode_theme','night')) in ('light','dark','night') else 'night')
         game_controls=in_couch and couch.game and couch.page in ('game','features','tools','game_presets')
         self.add_css_class('couch-game-controls') if game_controls else self.remove_css_class('couch-game-controls')
         if not in_couch:
@@ -3387,6 +3399,11 @@ class PresentationDialog(Adw.Dialog):
         if nav and couch.navigation_position=='bottom':host.append(nav)
         self._scaled_child=ScaledContent(host,getattr(self.owner,'presentation_scale',1.0))
         super().set_child(self._scaled_child)
+
+    def set_content_width(self,width):
+        if self.has_css_class('couch-dialog'):
+            width=max(width,getattr(self,'couch_preferred_width',width))
+        super().set_content_width(width)
 
     def get_child(self):
         return self._raw_child
@@ -3636,6 +3653,7 @@ class Window(Adw.ApplicationWindow):
         in_couch=hasattr(self,'input_stack') and self.input_stack.get_visible_child_name()=='couch'
         factor=content_scale(self.settings.get('ui_scale','auto'),width,height,system_scale) if in_couch else 1.0
         self.presentation_scale=factor
+        self.presentation_reference_scale=content_scale('auto',width,height,system_scale)
         if getattr(self,'couch_content',None):self.couch_content.set_factor(factor)
         dialog=getattr(self,'dialog',None)
         if getattr(dialog,'_scaled_child',None):dialog._scaled_child.set_factor(factor)
@@ -4872,11 +4890,19 @@ class Window(Adw.ApplicationWindow):
                 d.close();GLib.idle_add(lambda:(fn(),False)[1])
             b.append(icon_button(title,icon,invoke))
 
+    def apply_input_theme(self):
+        global THEME_MODE
+        in_couch=self.input_stack.get_visible_child_name()=='couch'
+        THEME_MODE=self.settings.get('gaming_mode_theme','night') if in_couch else self.settings.get('theme','dark')
+        Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_LIGHT if THEME_MODE=='light' else Adw.ColorScheme.FORCE_DARK)
+        apply_neutral_palette()
+
     def set_input_surface(self,couch):
         if not hasattr(self,'input_stack'):return
         couch=couch and self.settings.get('big_picture_ui',True)
         self._pointer_origin=None
         self.input_stack.set_visible_child_name('couch' if couch else 'desktop')
+        self.apply_input_theme()
         self.apply_display_preferences()
         self.controller_hud.set_visible(False)
         if couch:self.couch.refresh()
@@ -4903,7 +4929,7 @@ class Window(Adw.ApplicationWindow):
         if editing:return False
         control=bool(state&Gdk.ModifierType.CONTROL_MASK)
         if control and keyval in (Gdk.KEY_comma,Gdk.KEY_l,Gdk.KEY_L,Gdk.KEY_1,Gdk.KEY_2,Gdk.KEY_3):
-            target={Gdk.KEY_comma:'settings',Gdk.KEY_l:'library',Gdk.KEY_L:'library',Gdk.KEY_1:'library',Gdk.KEY_2:'presets',Gdk.KEY_3:'dlss'}[keyval]
+            target={Gdk.KEY_comma:'settings',Gdk.KEY_l:'library',Gdk.KEY_L:'library',Gdk.KEY_1:'library',Gdk.KEY_2:'presets',Gdk.KEY_3:'settings'}[keyval]
             self.couch.open(target);return True
         if keyval==Gdk.KEY_F10:self.couch.open('menu');return True
         if isinstance(focus,(Gtk.Scale,Gtk.DropDown)):return False
@@ -4912,6 +4938,29 @@ class Window(Adw.ApplicationWindow):
             focus.emit('clicked');return True
         actions={Gdk.KEY_Up:'up',Gdk.KEY_Down:'down',Gdk.KEY_Left:'left',Gdk.KEY_Right:'right',Gdk.KEY_Return:'accept',Gdk.KEY_KP_Enter:'accept',Gdk.KEY_BackSpace:'back'}
         if keyval in actions:self.couch.navigate(actions[keyval]);return True
+        return False
+
+    def adjust_modal_controller_value(self,dialog,action):
+        """Adjust the focused tuning control before attempting focus traversal."""
+        if action not in ('left','right'):return False
+        focus=dialog.get_focus()
+        delta=-1 if action=='left' else 1
+        # Spin buttons and dropdowns can focus an internal child widget.
+        while focus and focus is not dialog:
+            if isinstance(focus,(Gtk.Scale,Gtk.SpinButton)):
+                if not focus.get_sensitive():return False
+                adjustment=focus.get_adjustment()
+                value=focus.get_value()+delta*adjustment.get_step_increment()
+                focus.set_value(max(adjustment.get_lower(),min(value,adjustment.get_upper())))
+                return True
+            if isinstance(focus,Gtk.DropDown):
+                if not focus.get_sensitive():return False
+                model=focus.get_model();count=model.get_n_items() if model else 0
+                if count:
+                    selected=focus.get_selected()
+                    focus.set_selected((selected+delta)%count if 0<=selected<count else (0 if delta>0 else count-1))
+                return True
+            focus=focus.get_parent()
         return False
 
     def poll_controller(self):
@@ -4936,6 +4985,7 @@ class Window(Adw.ApplicationWindow):
                 self.couch.navigate(action)
                 continue
             if action in ('up','down','left','right','previous','next'):
+                if self.adjust_modal_controller_value(dialog,action):continue
                 direction={'up':Gtk.DirectionType.UP,'down':Gtk.DirectionType.DOWN,'left':Gtk.DirectionType.LEFT,'right':Gtk.DirectionType.RIGHT,'previous':Gtk.DirectionType.TAB_BACKWARD,'next':Gtk.DirectionType.TAB_FORWARD}[action]
                 dialog.child_focus(direction)
             elif action=='accept':
@@ -8653,6 +8703,9 @@ class Window(Adw.ApplicationWindow):
         self.profile_note.set_text({'nr-only':'Neural Rendering','nr-mfg':'Neural Rendering and frame generation','mfg-only':'Native frame generation'}[self.mode])
     def tuning_controls(self,initial):
         box=Gtk.Box(spacing=16)
+        if hasattr(self,'input_stack') and self.input_stack.get_visible_child_name()=='couch':
+            box.set_orientation(Gtk.Orientation.VERTICAL)
+            box.add_css_class('couch-tuning-controls')
         widgets={}
 
         for key,title,upper in [
@@ -8993,7 +9046,10 @@ class Window(Adw.ApplicationWindow):
                 )
             if game is not None and hasattr(self,'couch'):
                 self.couch.artwork_updated(game)
-            if getattr(self,'detail_game',None)==event['game'] and self.dialog==getattr(self,'detail_dialog',None) and event['data'].get('hero'):
+            detail=getattr(self,'detail_dialog',None)
+            couch=getattr(self,'couch',None)
+            embedded=bool(couch and couch.page=='game' and couch.details_panel is detail)
+            if detail is not None and getattr(self,'detail_game',None)==event['game'] and (self.dialog is detail or embedded) and event['data'].get('hero'):
                 try:self.detail_banner.set_paintable(Gdk.Texture.new_from_filename(event['data']['hero']))
                 except Exception:pass
         else:self.log.append(event['text']);self.log=self.log[-400:]
@@ -9002,6 +9058,7 @@ class Window(Adw.ApplicationWindow):
         if self.busy:
             if self.task_kind=='art':self.pending=(title,action,done,kind);self.cancel_art.set();self.show_operation_status('Finishing current artwork request…')
             return
+        self.last_launch_pending_count=0
         self.busy=True;self.task_kind=kind;self.started=time.monotonic();self.operation_elapsed.set_text('');self.show_operation_status(title);self.controls()
         def run_task():
             try:
@@ -9019,12 +9076,15 @@ class Window(Adw.ApplicationWindow):
             if previous:self.details(previous)
             return
         if error:
+            if getattr(self,'library_loading',False):
+                self.library_loading=False;self.library_error=user_messages.friendly_error(error[0])
+                if hasattr(self,'couch'):self.couch.render()
             self.log.append(error[1]);self.show_operation_status('Stopped · details available in Activity',True,'dialog-warning-symbolic');self.error(error[0])
         else:
             try:done(result)
             except Exception as ex:
                 self.log.append(traceback.format_exc());self.show_operation_status('Stopped · details available in Activity',True,'dialog-warning-symbolic');self.error(str(ex))
-            else:self.show_operation_status('Completed',True)
+            else:self.show_operation_status(f'Files updated · {self.last_launch_pending_count} launch setup pending' if self.last_launch_pending_count else 'Completed',True)
         if self.pending:
             task=self.pending;self.pending=None;self.start(*task)
         return False
@@ -9500,9 +9560,12 @@ class Window(Adw.ApplicationWindow):
         b.append(self.technical_details(message))
         f.append(button('Close',lambda *_:d.close()))
     def scan(self):
-        if self.options.demo:return
+        if self.options.demo or self.busy:return
+        self.library_loading=True;self.library_error=None
         extra=list(self.settings['extra_folders']);self.start('Checking hardware and scanning libraries',lambda:{'hardware':self.service.hardware(),'games':self.service.scan_all(extra)},self.scanned)
+        if hasattr(self,'couch'):self.couch.render()
     def scanned(self,result):
+        self.library_loading=False;self.library_error=None
         self.hardware_info=result['hardware'];self.hardware_label.set_text(self.hardware_info['gpu']+' · '+('Hardware check passed' if self.hardware_info['ready'] else 'Install unavailable — see Settings'));self.show_games(result['games'])
     def choose_folder(self,*_):
         if gamescope_session():
@@ -10540,13 +10603,11 @@ class Window(Adw.ApplicationWindow):
                     GLib.idle_add(self.event,{'kind':'art','game':game['game'],'data':data})
             finally:GLib.idle_add(finished_art)
         threading.Thread(target=load,daemon=True).start()
-    def details(self,game):
-        d,b,f=self.open_panel(
-            game['name'],
-            width=920,
-            height=700,
-            resizable=True,
-        )
+    def details(self,game,couch_embed=None):
+        if couch_embed is not None:
+            d,b,f=couch_embed.details_container()
+        else:
+            d,b,f=self.open_panel(game['name'],width=920,height=700,resizable=True)
         self.detail_resize_source=0
 
         # Replace the generic dialog shell with a Settings-style
@@ -10634,7 +10695,7 @@ class Window(Adw.ApplicationWindow):
         if game.get('accent_class'):
             d.add_css_class(game['accent_class'])
 
-        DETAIL_HERO_HEIGHT=280
+        DETAIL_HERO_HEIGHT=(240 if couch_embed.layout_height<800 else 280 if couch_embed.layout_width<=1500 else 320) if couch_embed is not None else 280
 
         banner=Gtk.Overlay(
             height_request=DETAIL_HERO_HEIGHT,
@@ -10716,6 +10777,8 @@ class Window(Adw.ApplicationWindow):
         }
 
         def close_game_details(*_):
+            if couch_embed is not None:
+                couch_embed.open('library');return
             if close_state['done']:
                 return
 
@@ -10752,6 +10815,12 @@ class Window(Adw.ApplicationWindow):
             'clicked',
             close_game_details,
         )
+        if couch_embed is not None:
+            back_content=Gtk.Box(spacing=10)
+            back_content.append(Gtk.Image.new_from_icon_name('go-previous-symbolic'))
+            back_content.append(label('Back to Library'))
+            close.set_child(back_content)
+            close.set_tooltip_text('Back to Library')
 
         close_gesture=Gtk.GestureClick()
         close_gesture.set_button(
@@ -10794,7 +10863,7 @@ class Window(Adw.ApplicationWindow):
             else 'hero-dark'
         )
 
-        if hero_light:
+        if hero_light and couch_embed is None:
             close.add_css_class('light')
         # Anchor the poster and left-aligned text to the hero’s lower edge.
         identity=Gtk.Box(
@@ -10808,7 +10877,15 @@ class Window(Adw.ApplicationWindow):
 
         identity.set_margin_top(16)
         identity.set_margin_bottom(16)
+        if couch_embed is not None:
+            identity.set_margin_top(76 if DETAIL_HERO_HEIGHT>=280 else 66)
+            identity.set_margin_bottom(20 if DETAIL_HERO_HEIGHT>=280 else 18)
+            identity.set_margin_start(36 if couch_embed.layout_width<=1500 else 56)
+            identity.set_margin_end(36 if couch_embed.layout_width<=1500 else 56)
+            close_holder.set_margin_start(identity.get_margin_start())
+            close_holder.set_margin_top(14)
 
+        detail_poster=None;detail_poster_frame=None
         detail_poster_source=poster_art_path(game)
 
         if detail_poster_source:
@@ -10816,6 +10893,11 @@ class Window(Adw.ApplicationWindow):
             DETAIL_POSTER_HEIGHT=156
             DETAIL_POSTER_FRAME_WIDTH=110
             DETAIL_POSTER_FRAME_HEIGHT=162
+            if couch_embed is not None and DETAIL_HERO_HEIGHT>=280:
+                DETAIL_POSTER_WIDTH=123 if DETAIL_HERO_HEIGHT==280 else 140
+                DETAIL_POSTER_HEIGHT=184 if DETAIL_HERO_HEIGHT==280 else 210
+                DETAIL_POSTER_FRAME_WIDTH=DETAIL_POSTER_WIDTH
+                DETAIL_POSTER_FRAME_HEIGHT=DETAIL_POSTER_HEIGHT
 
             detail_poster=CoverPicture(
                 content_fit=Gtk.ContentFit.COVER,
@@ -11014,7 +11096,16 @@ class Window(Adw.ApplicationWindow):
         summary.set_max_width_chars(54)
         summary.set_ellipsize(Pango.EllipsizeMode.END)
         summary.set_size_request(-1,34)
-        heading.append(summary)
+        if couch_embed is None:
+            heading.append(summary)
+        else:
+            provider_names={'y4my':'y4my Multipass','dlss-unlocked':'DLSS-Unlocked','custom':'Custom package'}
+            provider=game.get('runtime_provider') or self.settings.get('runtime_provider','')
+            parts=[game.get('source') or game.get('library') or 'Game folder','Configured' if game.get('installed') else 'Not installed']
+            if game.get('installed'):parts.append(provider_names.get(provider,provider))
+            setup_meta=label(' · '.join(str(part) for part in parts if part),'game-detail-meta')
+            setup_meta.set_wrap(True);heading.append(setup_meta)
+            self.detail_setup_metadata=setup_meta
 
         identity.append(
             heading
@@ -11044,6 +11135,7 @@ class Window(Adw.ApplicationWindow):
             hexpand=True,
             vexpand=True,
         )
+        detail_content_scroll.set_focusable(True)
         detail_content_scroll.set_child(
             pages
         )
@@ -11133,6 +11225,7 @@ class Window(Adw.ApplicationWindow):
             )
 
             content[name]=page
+            if couch_embed is not None:page.append(label(name,'title-2'))
 
             pages.add_titled(
                 page,
@@ -11223,8 +11316,24 @@ class Window(Adw.ApplicationWindow):
         overview=content['Overview']
         if game.get('blocked'):overview.append(self.unsupported_notice(game))
         info=Adw.PreferencesGroup(title='Game Information');overview.append(info)
-        for title,value in [('Library',game.get('library')),('Location',game['game']),('Compatibility',None if game.get('blocked') else 'Supported'),('Metadata Source',game.get('metadata_source')),('Developer',game.get('developers')),('Release',game.get('release'))]:
-            if value:info.add(row(title,value))
+        if couch_embed is not None:
+            info.add_css_class('couch-information');self.detail_information=info
+        information=[(title,value) for title,value in [('Library',game.get('library')),('Location',game['game']),('Compatibility',None if game.get('blocked') else 'Supported'),('Metadata Source',game.get('metadata_source')),('Developer',game.get('developers')),('Release',game.get('release'))] if value]
+        for index,(title,value) in enumerate(information):
+            if value:
+                if couch_embed is None:
+                    info.add(row(title,value))
+                else:
+                    item=Gtk.Box(spacing=28,hexpand=True)
+                    item.add_css_class('couch-information-row')
+                    if index==0:item.add_css_class('first')
+                    if index==len(information)-1:item.add_css_class('last')
+                    key=label(title);key.set_size_request(180,-1)
+                    value_label=label(str(value),'couch-information-value')
+                    value_label.set_wrap(True);value_label.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
+                    value_label.set_width_chars(1);value_label.set_hexpand(True);value_label.set_xalign(1)
+                    value_label.set_tooltip_text(str(value))
+                    item.append(key);item.append(value_label);info.add(item)
         features=content['Features'];installed=game.get('installed',False)
         if installed:
             features.append(label('Saved NR: '+('enabled' if game.get('nr_enabled') else 'disabled')+' · runtime and visual results require diagnosis.','dim-label'))
@@ -11413,7 +11522,8 @@ class Window(Adw.ApplicationWindow):
         def save_notes(*_):
             buf=notes.get_buffer();current=dict(record);current.update(status=list(game_notes.STATES)[choice.get_selected()],notes=buf.get_text(buf.get_start_iter(),buf.get_end_iter(),True))
             if not self.options.demo:game_notes.save(self.service.config,game['game'],current)
-            game['test_record']=current;self.toast('Notes saved')
+            game['test_record']=current;record.update(current)
+            self.toast('Preview notes only; not saved.' if self.options.demo else 'Notes saved')
         save_notes_button=button(
             'Save Notes',
             save_notes,
@@ -12050,9 +12160,74 @@ class Window(Adw.ApplicationWindow):
             open_folder
         )
 
-        play=button('Play', lambda *_:self.play_game(game), 'suggested-action')
-        play.set_sensitive(not self.options.demo)
-        detail_action_rows['Overview'].prepend(play)
+        if couch_embed is None:
+            play=button('Play', lambda *_:self.play_game(game), 'suggested-action')
+            play.set_sensitive(not self.options.demo)
+            detail_action_rows['Overview'].prepend(play)
+        else:
+            # Reuse the actual six-section controls/services, arranged under a
+            # full-width native hero. No modal-within-launcher replacement.
+            main.remove(detail_window_handle)
+            detail_root.remove(sidebar);detail_root.remove(main)
+            detail_root.set_orientation(Gtk.Orientation.VERTICAL)
+            detail_root.append(detail_window_handle)
+            body=Gtk.Box(spacing=32,hexpand=True,vexpand=True)
+            body.add_css_class('game-detail-body')
+            side_scroll=Gtk.ScrolledWindow(vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER,vscrollbar_policy=Gtk.PolicyType.AUTOMATIC,width_request=220)
+            side_scroll.set_child(sidebar)
+            body.append(side_scroll);body.append(main);detail_root.append(body)
+            close_holder.set_halign(Gtk.Align.START)
+            def fit_couch_hero():
+                factor=getattr(self,'presentation_scale',1.0)
+                system_scale=self.get_scale_factor()
+                width=couch_embed.layout_width*factor*system_scale;height=couch_embed.layout_height*factor*system_scale
+                factor=getattr(self,'presentation_reference_scale',factor)*system_scale
+                short=height<=800 and width<2000
+                large=width>=3000
+                hero=(570 if large else 240 if short else 280 if width<=1500 else 320)/factor
+                pw=(254 if large else 104 if short else 123 if width<=1500 else 140)/factor
+                ph=(380 if large else 156 if short else 184 if width<=1500 else 210)/factor
+                edge=(104 if large else 24 if width<=1050 else 36 if width<=1500 else 56)/factor
+                top=(144 if large else 66 if short else 76 if width<=1500 else 82)/factor
+                bottom=(46 if large else 18 if short else 20 if width<=1500 else 26)/factor
+                banner.set_size_request(-1,round(hero));image.set_size_request(-1,round(hero));image.hero_height=round(hero)
+                identity.set_margin_top(round(top));identity.set_margin_bottom(round(bottom))
+                identity.set_margin_start(round(edge));identity.set_margin_end(round(edge))
+                close_holder.set_margin_start(round(edge));close_holder.set_margin_top(round((30 if large else 12 if short else 14 if width<=1500 else 18)/factor))
+                if detail_poster is not None:
+                    detail_poster.cover_width=max(1,round(pw)-6);detail_poster.set_size_request(max(1,round(pw)-6),max(1,round(ph)-6))
+                    detail_poster_frame.set_size_request(round(pw),round(ph))
+                side_width=round((564 if large else 184 if width<=1050 else 246 if width<=1500 else 254)/factor)
+                sidebar.set_size_request(side_width,-1);side_scroll.set_size_request(side_width,-1)
+            self.detail_fit_hero=fit_couch_hero;fit_couch_hero()
+            initial_tuning=dict(self.tuning_values(widgets))
+            def notes_value():
+                buf=notes.get_buffer()
+                return {'notes':buf.get_text(buf.get_start_iter(),buf.get_end_iter(),True),'status':list(game_notes.STATES)[choice.get_selected()]}
+            def detail_dirty():
+                return any(v!=initial_tuning[k] for k,v in self.tuning_values(widgets).items() if widgets[k].get_sensitive()) or notes_value()!={'notes':record.get('notes',''),'status':record.get('status','Untested')}
+            def detail_discard():
+                for key,w in widgets.items():
+                    if key=='mfg_multiplier':
+                        values=self.multiplier_values;w.set_selected(values.index(initial_tuning[key]))
+                    else:w.set_value(float(initial_tuning[key]))
+                notes.get_buffer().set_text(record.get('notes',''))
+                choice.set_selected(list(game_notes.STATES).index(record.get('status','Untested')))
+            self.detail_dirty=detail_dirty;self.detail_discard=detail_discard
+            def accept_presets():
+                values=self.tuning_values(widgets);initial_tuning.update(values)
+                game.update({k:v for k,v in values.items() if widgets[k].get_sensitive()})
+                changed()
+            self.detail_accept_presets=accept_presets
+            pending_group=Adw.PreferencesGroup(title='Launch Setup')
+            features.append(pending_group)
+            setup=row('Steam launch settings','Existing saved setup is reused when it matches. Finish any pending setup before testing this game.')
+            pending_group.add(setup)
+            setup_button=button('Finish Launch Setup',lambda *_:self.show_launch_setup(game))
+            setup_button.set_sensitive(not self.options.demo);setup_button.set_valign(Gtk.Align.CENTER);setup.add_suffix(setup_button)
+            close.update_property([Gtk.AccessibleProperty.LABEL],['Back to Library'])
+            self.detail_back_button=close
+            GLib.idle_add(lambda:(close.grab_focus(),False)[1])
 
     def play_game(self,game):
         if self.options.demo:return
@@ -12120,11 +12295,15 @@ class Window(Adw.ApplicationWindow):
         if not rows:self.toast('No eligible games selected.');return
         if operation=='install' and not _presets_confirmed:
             d,b,f=self.open_panel('Install Features',width=760,height=340)
-            d.get_child().get_first_child().set_visible(False)
-            b.append(label('Install Features','title-2'))
+            in_couch=hasattr(self,'input_stack') and self.input_stack.get_visible_child_name()=='couch'
+            if not in_couch:
+                d.get_child().get_first_child().set_visible(False)
+                b.append(label('Install Features','title-2'))
             b.append(label('Adjust your presets or continue. You can change these settings later in OptiScaler.'))
             tuning,widgets=self.tuning_controls(visual_settings if visual_settings is not None else rows[0] if len(rows)==1 else self.tuning_values(self.tuning_widgets))
             b.append(tuning)
+            if in_couch:
+                for key,widget in widgets.items():widget.set_sensitive(not (key=='nr_strength' and self.mode=='mfg-only') and not (key=='mfg_multiplier' and self.mode=='nr-only'))
             f.append(button('Cancel',lambda *_:d.close()))
             f.append(button('Continue',lambda *_:self.launch_action(
                 operation,entire,targets,self.tuning_values(widgets),True),'suggested-action'))
@@ -12874,7 +13053,45 @@ class Window(Adw.ApplicationWindow):
         if self.review and self.review.get('save_defaults'):self.defaults_applied(self.review['save_defaults'])
         count=len(self.review.get('rows',[])) if self.review else 0
         self.log.append('Saved report: '+str(path))
-        self.finish_progress(True,f'{count} game'+('s' if count!=1 else '')+' updated.',f)
+        pending=[];results=[]
+        try:
+            report=json.loads(Path(path).read_text())
+            results=report.get('results',[])
+            if self.review and self.review.get('operation')=='reset' and results and all(r.get('status')=='complete' for r in results) and hasattr(self,'couch'):
+                if self.couch.page in ('presets','game_presets'):self.couch.pending_origin=dict(self.couch.pending)
+                elif self.couch.page=='game' and any(r.get('game_root')==self.couch.game['game'] for r in results):getattr(self,'detail_accept_presets',lambda:None)()
+            pending=[r for r in report.get('results',[]) if r.get('status')=='complete' and r.get('launch_status') and r['launch_status'] not in ('verified','configured')]
+        except (OSError,ValueError,TypeError):pass
+        self.last_launch_pending_count=len(pending)
+        message=f'{count} game'+('s' if count!=1 else '')+' files updated.'
+        configured=sum(r.get('launch_status')=='configured' for r in results)
+        if configured:message+=f' {configured} existing launch setup reused.'
+        if pending:message+=f' {len(pending)} launch setup pending.'
+        self.finish_progress(True,message,f)
+        for item in pending:
+            game=next((g for g in self.games if g.get('game')==item.get('game_root')),None)
+            if game:f.append(button('Launch Setup · '+game['name'],lambda *_,game=game:self.show_launch_setup(game)))
+
+    def show_launch_setup(self,game):
+        if self.options.demo:return
+        import engine_bridge
+        from launch_settings import IntentStore,finish_pending
+        try:
+            engine=engine_bridge.module(self.service.config)
+            target=engine_bridge.game(engine,game)
+            intent=IntentStore(engine).load(target)
+        except Exception as exc:self.error(str(exc));return
+        d,b,f=self.open_panel('Launch Setup',width=730,height=500)
+        b.append(label(game['name'],'title-2'))
+        if not intent:
+            b.append(label('No pending launch task is recorded.','dim-label'));f.append(button('Close',lambda *_:d.close()));return
+        b.append(label('Launch settings verified.' if intent['state']=='verified' else 'Saved launch setup matches; live client state is unverified.' if intent['state']=='configured' else 'Original files restored; launch-option cleanup pending.' if intent['operation']=='uninstall' else 'Files installed; launch setup pending.'))
+        b.append(label('Automatic Steam setup is not available in this build. Existing saved setup can be reused; new or changed setup must finish before testing.','dim-label'))
+        if intent.get('error'):b.append(label(user_messages.friendly_error(intent['error']),'dim-label'))
+        if intent.get('verification'):b.append(label(intent['verification'],'dim-label'))
+        retry=button('Retry Offline Setup',lambda *_:(d.close(),self.start('Finishing launch setup',lambda:finish_pending(engine,target,intent['id']),lambda _:self.show_launch_setup(game))))
+        retry.set_sensitive(intent['state']=='pending' and not engine.steam_running())
+        f.append(button('Close',lambda *_:d.close()));f.append(retry)
     def show_activity(self,*_):
         d,b,f=self.open_panel('Activity');text=Gtk.TextView(editable=False,monospace=True,wrap_mode=Gtk.WrapMode.WORD_CHAR);text.get_buffer().set_text('\n'.join(self.log) or 'No activity yet.');b.append(text);f.append(button('Close',lambda *_:d.close()))
     def show_settings(self,*_):

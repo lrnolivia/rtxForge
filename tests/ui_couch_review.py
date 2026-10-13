@@ -17,17 +17,72 @@ prepare(ROOT)
 options = argparse.Namespace(provider=None, demo=True, resize_smoke=False, smoke_test=False, live_smoke=False, library_state_smoke=False, ui_mode='classic')
 app = ui.Application(options)
 captured = []
+desktop_view = None
 
 
 class FrameNotReady(RuntimeError):
     pass
 
 
+class SettledStep:
+    """Keep action state across native dialog mapping/closing frames."""
+    def __init__(self,factory):self.factory=factory;self.iterator=None;self.started=None
+    def __call__(self):
+        if self.iterator is None:self.iterator=self.factory();self.started=time.monotonic()
+        if time.monotonic()-self.started>30:
+            self.iterator.close()
+            raise AssertionError('Native dialog did not settle: '+self.factory.__name__)
+        try:next(self.iterator)
+        except StopIteration:return
+        raise FrameNotReady(self.factory.__name__)
+
+
 pending_capture = None
+
+
+def descendants(widget):
+    yield widget
+    child=widget.get_first_child()
+    while child:
+        yield from descendants(child)
+        child=child.get_next_sibling()
+
+
+def dialog_button(dialog,title):
+    return next(widget for widget in descendants(dialog) if isinstance(widget,ui.Gtk.Button) and (widget.get_label()==title or getattr(widget,'text_label',None) and widget.text_label.get_text()==title))
+
+
+def embedded_details():
+    window=app.window;couch=window.couch
+    assert couch.page=='game' and couch.body.get_visible_child_name()=='details'
+    assert window.get_visible_dialog() is None, 'Details must be embedded rather than modal'
+    assert [window.detail_nav.get_row_at_index(i).page_name for i in range(6)]==['Overview','Features','DLSS Files','Tools','Notes','Appearance']
+    assert window.detail_nav.get_row_at_index(6) is None
+    back=window.detail_back_button
+    assert isinstance(back.get_child(),ui.Gtk.Box)
+    assert back.get_child().get_first_child().get_icon_name()=='go-previous-symbolic'
+    assert 'Configured' in window.detail_setup_metadata.get_text() if couch.game.get('installed') else 'Not installed' in window.detail_setup_metadata.get_text()
+    rows=[widget for widget in descendants(window.detail_information) if widget.has_css_class('couch-information-row')]
+    assert len(rows)>=3
+    assert all(isinstance(item.get_first_child(),ui.Gtk.Label) and item.get_last_child().get_xalign()==1 for item in rows)
 
 
 def capture(name):
     global pending_capture
+    if name=='couch-game-1280.png':
+        window=app.window
+        back=window.detail_back_button
+        back_ok,back_bounds=back.compute_bounds(window)
+        posters=[widget for widget in descendants(window.couch.details_panel) if widget.has_css_class('progress-poster-frame')]
+        assert back_ok and posters
+        poster_ok,poster_bounds=posters[0].compute_bounds(window)
+        if not (poster_ok and back_bounds.get_y()+back_bounds.get_height()<poster_bounds.get_y()):window.capture('couch-hero-overlap-debug.png')
+        assert poster_ok and back_bounds.get_y()+back_bounds.get_height()<poster_bounds.get_y(), f'Back must clear the poster: back={back_bounds.get_y()}+{back_bounds.get_height()}, poster={poster_bounds.get_y()}'
+    if name=='couch-library-posters-1280.png':
+        couch=app.window.couch
+        assert all(control.title_label.get_wrap() and control.title_label.get_lines()==2 for control in couch.controls)
+        placeholders=[control.artwork.placeholder for control in couch.controls if control.artwork.placeholder]
+        assert all(isinstance(widget,ui.Gtk.Image) for widget in placeholders), 'Missing artwork contains a controller icon, never a duplicate title'
     image = app.window.capture(name)
     if image is None:
         if pending_capture is None:
@@ -50,13 +105,19 @@ def compact_presets_fit():
 
 
 def setup():
+    global desktop_view
     window = app.window
+    desktop_view=window.settings['library_view']
     window.settings['controller_glyphs'] = 'xbox'
     window.settings['runtime_provider'] = 'dlss-unlocked'
+    window.nr_only.set_enabled(True)  # Match the existing package-selection capability binding.
     window.games.sort(key=lambda game: not bool(game.get('capsule')))
     window.games[0]['feature_mode'] = 'nr-mfg'
     window.games[0]['profile'] = 'NR + MFG'
+    window.profile_group.set_active_name('nr-mfg')
     window.set_input_surface(True)
+    window.set_input_kind('controller')
+    window.couch.navigate('right');window.couch.navigate('left')
     assert window.couch.page == 'library'
 
 
@@ -65,8 +126,9 @@ def view(name):
     couch.open('library')
     couch.set_library_view(name)
     couch.focus(0)
-    assert app.window.settings['library_view'] == name
-    assert app.window.view_buttons[name].get_active()
+    assert app.window.settings['gaming_mode_view'] == name
+    assert couch.layout_controls[name].get_active()
+    assert app.window.settings['library_view'] == desktop_view
 
 
 def glyphs(family):
@@ -111,7 +173,9 @@ def grid_navigation():
     couch.focus(0)
     couch.navigate('up')
     assert couch.zone == 'views'
-    assert len(couch.view_buttons) == 4  # Install, Filter, independent Restore and Update.
+    assert len(couch.view_buttons)==11  # Three feature modes, three operations, Filter, three views and selection.
+    assert couch.library_focus_rows==[[*couch.feature_controls.values(),couch.library_action,couch.library_restore,couch.library_update],[couch.filter_button,*couch.layout_controls.values(),couch.select_button]]
+    assert set(couch.layout_controls)=={'posters','capsules','list'}
     assert couch.library_view == 'list'
     couch.navigate('down')
     couch.navigate('down')
@@ -122,10 +186,14 @@ def scroll_and_tabs():
     couch = app.window.couch
     adjustment = couch.grid_scroll.get_vadjustment()
     assert adjustment.get_value() > 0
-    allocation = couch.controls[couch.current].get_allocation()
+    control=couch.controls[couch.current]
+    allocation = getattr(control,'library_row',control).get_allocation()
     assert allocation.y + allocation.height <= adjustment.get_value() + adjustment.get_page_size() + 2
     couch.focus(0)
     couch.navigate('up')
+    assert couch.zone=='views' and couch.view_buttons[couch.view_index] is couch.filter_button
+    couch.navigate('up')
+    assert couch.zone=='views' and couch.view_buttons[couch.view_index] in couch.feature_controls.values()
     couch.navigate('up')
     assert couch.zone == 'nav'
     couch.navigate('right')
@@ -138,17 +206,16 @@ def scroll_and_tabs():
     couch.navigate('next')
     assert couch.page == 'presets'
     couch.navigate('next')
-    assert couch.page == 'dlss'
+    assert couch.page == 'settings'
     assert couch.game is app.window.games[0]
+    assert [control.get_label() for control in couch.tabs[:3]]==['Library','Presets','Settings']
+    assert len(couch.tabs)==4 and couch.tabs[3] is couch.brand_button
+    assert couch.tabs[2].has_css_class('active')
+    couch.navigate('next')
+    assert couch.page=='library'
+    couch.open('dlss')  # DLSS management remains available outside the three top tabs.
     assert [entry['title'] for entry in couch.entries] == ['Update all', 'Select games to update']
-    couch.navigate('up')
-    couch.navigate('up')
-    couch.navigate('right')
-    assert couch.tab_index == 3
-    couch.navigate('accept')
-    assert couch.page == 'settings' and couch.settings_button.get_visible()
-    couch.navigate('back')
-    assert couch.page == 'dlss'
+    couch.navigate('back');assert couch.page=='library'
 
 
 def batch_flows():
@@ -179,32 +246,58 @@ def batch_flows():
         assert couch.dlss_selection == chosen
         couch.focus(0)
         couch.navigate('up')
-        assert couch.view_index == 0
-        couch.navigate('right')  # Consolidated Filter & View.
-        assert couch.view_index == 1
+        filter_index=couch.view_buttons.index(couch.filter_button)
+        assert couch.view_index==filter_index
         couch.navigate('accept')
-        assert couch.page == 'library_filters' and couch.dlss_selection == chosen
-        couch.navigate('back')
-        couch.focus(0);couch.navigate('up')
-        assert couch.view_index == 0
+        dialog=window.get_visible_dialog()
+        assert dialog is not None and couch.page=='library' and couch.dlss_selection==chosen
+        yield
+        assert dialog.couch_footer.get_parent() is dialog.get_child() and dialog.couch_footer.get_height()>0
+        controls=[];control=dialog.couch_footer.get_first_child()
+        while control:controls.append(control.text_label.get_text());control=control.get_next_sibling()
+        assert controls==['Reset','Back','Apply'], 'Filter actions remain in a fixed footer'
+        previous_filter=window.filter
+        dialog_button(dialog,'Installed').emit('clicked')
+        assert window.filter==previous_filter, 'Filter remains staged until Apply'
+        dialog_button(dialog,'Back').emit('clicked')
+        yield
+        while dialog.get_mapped():yield
+        assert window.filter==previous_filter and couch.dlss_selection==chosen
+        assert couch.zone=='views' and couch.view_index==filter_index, 'Filter Back preserves the invoking control and controller zone'
+        couch.library_action.grab_focus()
+        yield
         couch.navigate('accept')
-        assert set(calls[-1][1]) == chosen
+        assert set(calls[-1][1])==chosen
         couch.navigate('back')
-        assert couch.page == 'dlss' and couch.dlss_selection is None
+        assert couch.page=='library' and couch.dlss_selection is None
         couch.open('library')
-        couch.focus(0)
-        couch.navigate('up')
-        assert couch.view_index == 0
+        # D-pad follows each visible row; Up from Filter reaches Features.
+        couch.focus(0);couch.navigate('up');couch.navigate('up')
+        assert couch.view_buttons[couch.view_index] is next(control for control in couch.feature_controls.values() if control.get_sensitive())
+        couch.feature_controls['mfg-only'].grab_focus();yield
         couch.navigate('accept')
-        assert couch.page == 'features_all'
-        couch.focus(0)
+        assert window.profile_group.get_active_name()=='mfg-only'
+        assert couch.feature_controls['mfg-only'].get_active()
         couch.navigate('accept')
-        assert calls[-1][0] == 'install'
-        assert calls[-1][1]['targets'] == [g for g in window.games if g.get('test_record', {}).get('status') != 'Bench']
-        assert not calls[-1][1].get('entire')  # Always retain installation review.
-        couch.navigate('back')
-        assert couch.page == 'library'
+        assert couch.feature_controls['mfg-only'].get_active(), 'Reactivating the chosen mode must keep it selected'
+        couch.navigate('right');couch.navigate('accept')
+        assert window.profile_group.get_active_name()=='nr-mfg'
+        couch.navigate('right');couch.navigate('accept')
+        assert couch.page=='library', 'Install stays in Library and invokes optional tuning'
+        assert calls[-1][0]=='install'
+        assert calls[-1][1]['targets']==[g for g in window.games if g.get('test_record',{}).get('status')!='Bench']
+        assert not calls[-1][1].get('entire') and not calls[-1][1].get('_presets_confirmed')
+        assert couch.filter_summary.get_text()=='Show: '+window.filter.title()
         game = window.games[0]
+        status=game.setdefault('test_record',{}).get('status','Untested')
+        game['test_record']['status']='Bench'
+        try:
+            couch.selection_kind='install';couch.dlss_selection={game['game']}
+            couch.render();couch.library_primary_action()
+            assert calls[-1][1]['targets']==[game], 'Explicit Bench selection remains a deliberate install target'
+        finally:
+            game['test_record']['status']=status
+            couch.back()
         previous = game.get('feature_mode')
         game['feature_mode'] = 'mfg-only'
         couch.focus(0)
@@ -238,7 +331,7 @@ def global_and_game_presets():
         eligible = next(i for i, entry in enumerate(couch.entries) if entry['enabled'])
         couch.focus(eligible)
         couch.navigate('accept')
-        selected = window.games[eligible]
+        selected = couch.entries[eligible]['game']
         assert couch.dlss_selection == {selected['game']}
         couch.library_primary_action()
         assert calls[-1][1]['targets'] == [selected]
@@ -246,21 +339,64 @@ def global_and_game_presets():
         couch.navigate('back')
         assert couch.page == 'presets' and couch.pending['sharpening_strength'] == .4
         couch.open('library')
+        dialog=window.get_visible_dialog()
+        assert isinstance(dialog,ui.Adw.AlertDialog), 'Leaving changed presets needs the discard guard'
+        yield
+        dialog_button(dialog,'Discard').emit('clicked')
+        yield
+        while dialog.get_mapped():yield
+        assert couch.page=='library'
+        # Supply readable fixture presets, then exercise the actual embedded
+        # Features controls rather than relying only on the legacy scope page.
+        for key in ('nr_strength','sharpening_strength','mfg_multiplier'):
+            if selected.get(key) is None:selected[key]=window.settings[key]
         couch.open_game(selected)
-        next(entry for entry in couch.entries if entry['title'] == 'Presets')['action']()
+        yield
+        embedded_details()
+        window.detail_nav.select_row(window.detail_nav.get_row_at_index(1))
+        assert window.detail_pages.get_visible_child_name()=='Features'
+        expander=next(widget for widget in descendants(window.detail_pages) if isinstance(widget,ui.Gtk.Expander) and widget.get_label()=='Presets')
+        assert not expander.get_expanded();expander.set_expanded(True)
+        sharp=window.detail_tuning_widgets['sharpening_strength'];original_sharp=sharp.get_value()
+        edited_sharp=round(original_sharp-.1 if original_sharp>0 else .1,1)
+        sharp.set_value(edited_sharp)
+        assert window.detail_dirty() and window.detail_apply_settings.get_sensitive()
+        window.detail_apply_settings.emit('clicked')
+        assert calls[-1][0]=='reset' and calls[-1][1]['targets']==[selected]
+        assert calls[-1][1]['visual_settings']['sharpening_strength']==edited_sharp
+        couch.open('library');dialog=window.get_visible_dialog()
+        assert isinstance(dialog,ui.Adw.AlertDialog)
+        yield
+        dialog_button(dialog,'Stay').emit('clicked')
+        yield
+        while dialog.get_mapped():yield
+        assert couch.page=='game' and window.detail_dirty() and sharp.get_value()==edited_sharp
+        couch.open('library');dialog=window.get_visible_dialog()
+        yield
+        dialog_button(dialog,'Discard').emit('clicked')
+        yield
+        while dialog.get_mapped():yield
+        assert couch.page=='library' and abs(sharp.get_value()-original_sharp)<.00001
+        couch.open_game(selected)
+        couch.open('game_presets')
         assert couch.page == 'game_presets'
         assert couch.tabs[0].has_css_class('active') and not couch.tabs[1].has_css_class('active')
         assert couch.panel_detail.get_text() == selected['name']
         couch.navigate('back')
         assert couch.page == 'game'
         couch.navigate('menu')
-        assert couch.page == 'menu'
-        couch.navigate('back')
+        dialog=window.get_visible_dialog()
+        assert dialog is not None and couch.page=='game'
+        yield
+        assert dialog_button(dialog,'Exit App').get_sensitive()
+        dialog_button(dialog,'Back').emit('clicked')
+        yield
+        while dialog.get_mapped():yield
         assert couch.page == 'game'
         couch.navigate('settings')
-        assert couch.page == 'settings' and couch.settings_button.get_visible()
+        assert couch.page == 'settings' and couch.tabs[2].has_css_class('active')
         couch.set_section('System')
-        assert any(e['title']=='Exit app' for e in couch.entries)
+        assert {'UI scale','Navigation'} <= {e['title'] for e in couch.entries}
         couch.navigate('back')
         assert couch.page == 'game'
         couch.open('library')
@@ -301,18 +437,75 @@ def close_review():
     app.window.dialog.close()
 
 
+def modal_value_routing():
+    window=app.window;dialog=window.dialog
+    assert dialog.get_title()=='Install Features'
+    assert dialog.get_child().get_first_child().get_visible(), 'Install title stays above the scroller'
+    assert any(widget.has_css_class('couch-tuning-controls') for widget in descendants(dialog))
+    assert dialog.has_css_class('couch-dialog')
+    scales=[widget for widget in descendants(dialog) if isinstance(widget,ui.Gtk.Scale)]
+    spins=[widget for widget in descendants(dialog) if isinstance(widget,ui.Gtk.SpinButton)]
+    dropdowns=[widget for widget in descendants(dialog) if isinstance(widget,ui.Gtk.DropDown)]
+    assert len(scales)==2 and len(spins)==2 and len(dropdowns)==1
+    for widget in scales+spins:
+        original=widget.get_value();adjustment=widget.get_adjustment()
+        direction='left' if original>adjustment.get_lower() else 'right'
+        widget.grab_focus()
+        assert window.adjust_modal_controller_value(dialog,direction)
+        expected=original+adjustment.get_step_increment()*(-1 if direction=='left' else 1)
+        assert abs(widget.get_value()-expected)<.00001
+        widget.set_value(original)
+    dropdown=dropdowns[0];original=dropdown.get_selected();dropdown.grab_focus()
+    assert window.adjust_modal_controller_value(dialog,'right')
+    assert dropdown.get_selected()==(original+1)%dropdown.get_model().get_n_items()
+    dropdown.set_selected(original)
+
+
+
+def loading_navigation():
+    window=app.window;couch=window.couch
+    previous_busy,previous_kind=window.busy,window.task_kind
+    try:
+        window.busy=True;window.task_kind='scan';couch.sync_library_modes()
+        for control in (couch.library_action,couch.library_restore,couch.library_update):control.set_sensitive(False)
+        couch.zone='nav';couch.navigate('down')
+        assert couch.zone=='views' and couch.view_buttons[couch.view_index] is couch.filter_button
+    finally:
+        window.busy=previous_busy;window.task_kind=previous_kind;couch.render(couch.current);couch.focus(0)
+
+
+def parity_viewport(theme='night'):
+    window=app.window;couch=window.couch
+    window.settings['gaming_mode_theme']=theme
+    window.apply_input_theme();couch.apply_theme()
+    window.set_input_kind('controller')
+    couch.open('library');couch.set_library_view('posters');couch.focus(0)
+    couch.navigate('right');couch.navigate('left')
+
+
+def light_contrast():
+    couch=app.window.couch
+    import ui_colors
+    for control in [*couch.tabs[:3],couch.filter_button,couch.select_button,*couch.layout_controls.values(),*couch.feature_controls.values()]:
+        if not control.get_sensitive():continue
+        color=control.get_style_context().get_color()
+        value='#'+''.join(f'{round(component*255):02x}' for component in (color.red,color.green,color.blue))
+        assert ui_colors.contrast(value,'#fafafa')>=4.5, f'Light controls must be readable: {value}'
+
 
 def input_and_appearance():
     window = app.window
     couch = window.couch
     game = couch.game
     couch.open_game(game)
-    assert couch.art_path == (game.get('hero') or game.get('capsule'))
+    embedded_details()
+    original_paintable=window.detail_banner.get_paintable()
+    assert original_paintable is not None if game.get('hero') else True
     original_hero=game.get('hero')
     alternate=window.games[1].get('hero')
     if original_hero and alternate:
         window.event({'kind':'art','game':game['game'],'data':{'hero':alternate}})
-        assert couch.art_path==alternate
+        assert window.detail_banner.get_paintable() is not original_paintable
         window.event({'kind':'art','game':game['game'],'data':{'hero':original_hero}})
     shared = '#' + window._ensure_game_accent(game).removeprefix('art-')
     assert couch.accent_color == shared
@@ -341,8 +534,7 @@ def input_and_appearance():
     couch.open('game_presets')
     assert not couch.entries[-1]['enabled']
     game['installed'] = installed
-    couch.open('menu')
-    next(entry for entry in couch.entries if entry['title'] == 'Packages')['action']()
+    couch.open('packages')
     assert couch.page == 'packages'
 
 
@@ -354,14 +546,18 @@ steps = [
     lambda: app.window.launch_action('install', targets=[app.window.couch.game], _presets_confirmed=True),
     lambda: capture('couch-install-review-1280.png'),
     close_review,
+    lambda: app.window.launch_action('install',targets=[app.window.couch.game]),
+    modal_value_routing,
+    lambda: capture('couch-install-presets-1280.png'),
+    close_review,
     lambda: app.window.couch.open('presets'),
     lambda: capture('couch-presets-1280.png'),
     lambda: app.window.couch.open('dlss'),
     lambda: capture('couch-dlss-1280.png'),
     lambda: app.window.couch.open('settings'),
     lambda: capture('couch-settings-1280.png'),
-    batch_flows,
-    global_and_game_presets,
+    SettledStep(batch_flows),
+    SettledStep(global_and_game_presets),
     selection_preview,
     lambda: capture('couch-dlss-select-1280.png'),
     batch_review,
@@ -400,6 +596,32 @@ steps = [
     lambda: capture('couch-dlss-select-800.png'),
     lambda: app.window.couch.back(),
     input_and_appearance,
+    lambda: app.window.set_default_size(1920,1080),
+    parity_viewport,
+    loading_navigation,
+    lambda: capture('couch-parity-night-library-1920.png'),
+    lambda: app.window.couch.open('library_filters'),
+    lambda: capture('couch-parity-night-filter-1920.png'),
+    lambda: app.window.get_visible_dialog().close(),
+    lambda: app.window.couch.open('menu'),
+    lambda: capture('couch-parity-night-menu-1920.png'),
+    lambda: app.window.get_visible_dialog().close(),
+    lambda: app.window.couch.focus(0),
+    lambda: app.window.couch.navigate('accept'),
+    embedded_details,
+    lambda: capture('couch-parity-night-details-1920.png'),
+    lambda: app.window.launch_action('install',targets=[app.window.couch.game]),
+    modal_value_routing,
+    lambda: capture('couch-parity-night-tuning-1920.png'),
+    close_review,
+    lambda: parity_viewport('light'),
+    lambda: glyphs('playstation'),
+    light_contrast,
+    lambda: capture('couch-parity-light-library-1920.png'),
+    lambda: glyphs('xbox'),
+    lambda: parity_viewport('dark'),
+    lambda: capture('couch-parity-dark-library-1920.png'),
+    lambda: parity_viewport('night'),
 ]
 
 
@@ -410,7 +632,7 @@ def step():
             steps.pop(0)
             GLib.timeout_add(550, step)
         else:
-            (ROOT / 'dist/ui-couch-review.json').write_text(json.dumps({'game_writes': False, 'screenshots': captured, 'checked': ['grid navigation', 'list navigation', 'return selection', 'view cycling', 'Classic shared preference', 'last-row scrolling', 'page tabs and settings gear', 'batch DLSS target selection', 'install-to-all review routing', 'disabled first-row navigation', 'shared accent and artwork', 'input switching', 'empty library']}, indent=2))
+            (ROOT / 'dist/ui-couch-review.json').write_text(json.dumps({'game_writes': False, 'screenshots': captured, 'checked': ['grid navigation', 'list navigation', 'return selection', 'view cycling', 'independent desktop/Game Mode preference', 'last-row scrolling', 'three page tabs', 'embedded six-section Details', 'staged native filter', 'native menu/exit', 'dirty preset discard', 'batch DLSS target selection', 'install-to-all review routing', 'disabled first-row navigation', 'shared accent and artwork', 'input switching', 'empty library', 'inline feature selector reactivation', 'two-row toolbar navigation', 'explicit Bench selection', 'hero Back clearance', 'two-line titles and neutral artwork placeholders', 'fixed filter footer', 'Light control contrast', 'Night/Light/Dark controller captures']}, indent=2))
             app.quit()
     except FrameNotReady:
         GLib.timeout_add(100, step)

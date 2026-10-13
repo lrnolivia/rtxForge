@@ -43,12 +43,12 @@ public sealed partial class GameModeView
             titles.Children.Add(ui.P(selecting ? $"{selectedIds.Count} selected · {FilterLabel(shell.Settings.LibraryFilter)}"
                 : $"{shell.Games.Count} games · {configured} configured"));
         heading.Children.Add(titles);
-        var provider = new Border
+        var provider = GmUi.Capsule(new Border
         {
             Background = GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(24)), VerticalAlignment = VerticalAlignment.Center,
             Padding = new Thickness(t.Px(20), t.Px(t.Compact ? 7 : 10), t.Px(20), t.Px(t.Compact ? 7 : 10)),
             Child = ui.IconLabel("", ProviderName()).With(p => { foreach (var c in p.Children) if (c is TextBlock tb) tb.FontSize = t.Em(0.85); }),
-        };
+        });
         Grid.SetColumn(provider, 1);
         heading.Children.Add(provider);
         main.Children.Add(heading);
@@ -105,11 +105,12 @@ public sealed partial class GameModeView
             var on = shell.Settings.LibraryView == key;
             var view = ui.Button(on ? Glyph("", label) : label, () => SetLibraryView(key), on ? GmKind.Card : GmKind.Transparent, 0.8,
                 radius: 8, padding: new Thickness(t.Px(16), t.Px(10), t.Px(16), t.Px(10)), minHeight: t.Compact ? 40 : 48);
+            GmUi.Capsule(view);
             ui.Focusable(view, -6);
             Key(view, "view-" + key);
             views.Children.Add(view);
         }
-        var viewSurface = new Border { Background = GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(12)), Padding = new Thickness(t.Px(4)), Child = views };
+        var viewSurface = GmUi.Capsule(new Border { Background = GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(12)), Padding = new Thickness(t.Px(4)), Child = views });
         Grid.SetColumn(viewSurface, 1);
         subbar.Children.Add(viewSurface);
         var selection = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(4), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
@@ -422,13 +423,13 @@ public sealed partial class GameModeView
         Grid.SetColumn(names, 1);
         grid.Children.Add(names);
 
-        var feature = new Border
+        var feature = GmUi.Capsule(new Border
         {
             Background = GmTheme.B(t.Card), BorderBrush = GmTheme.B(t.Line), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(t.Px(18)),
-            Padding = new Thickness(t.Px(12), t.Px(8), t.Px(12), t.Px(8)), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center,
-            Child = ui.Text(game.Installed ? game.Profile ?? "Configured" : "Not configured", 0.76, t.Fg, new global::Windows.UI.Text.FontWeight(650)),
+            Padding = new Thickness(t.Px(18), t.Px(12), t.Px(18), t.Px(12)), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center,
+            Child = ui.Text(game.Installed ? game.Profile ?? "Configured" : "Not configured", 0.76, t.Fg, new global::Windows.UI.Text.FontWeight(650)).With(x => x.TextLineBounds = TextLineBounds.Tight),
             Tag = "chip",
-        };
+        });
         Grid.SetColumn(feature, 2);
         grid.Children.Add(feature);
 
@@ -441,13 +442,15 @@ public sealed partial class GameModeView
         Grid.SetColumn(state, 3);
         grid.Children.Add(state);
 
-        var details = new Border
+        // Same height and padding as the feature chip beside it.
+        var details = GmUi.Capsule(new Border
         {
-            Background = GmTheme.B(t.Card), CornerRadius = new CornerRadius(t.Px(32)), Padding = new Thickness(t.Px(18), t.Px(12), t.Px(18), t.Px(12)),
+            Background = GmTheme.B(t.Card), BorderBrush = GmTheme.B(t.Card), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(t.Px(32)), Padding = new Thickness(t.Px(18), t.Px(12), t.Px(18), t.Px(12)),
             HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
-            Child = ui.Text(selecting ? "Select" : "Details", 0.78, t.Fg, FontWeights.SemiBold),
+            Child = ui.Text(selecting ? "Select" : "Details", 0.76, t.Fg, FontWeights.SemiBold).With(x => x.TextLineBounds = TextLineBounds.Tight),
             Tag = "chip",
-        };
+        });
         Grid.SetColumn(details, 4);
         grid.Children.Add(details);
 

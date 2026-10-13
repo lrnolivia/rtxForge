@@ -24,6 +24,62 @@ public interface IForgeService
     Task<SteamShortcutReview> SteamReviewAsync();
     Task<SteamShortcutResult> SteamAddAsync(SteamShortcutReview review);
     Task SteamRemoveAsync(SteamShortcutStatus status);
+
+    // Every other write is an EngineReview: shown as-is, then run once by token.
+    Task<EngineResult> RunReviewAsync(EngineReview review, IProgress<PrepareProgress>? progress = null);
+    void DiscardReview(EngineReview review);
+
+    // Library artwork and metadata (LibraryMedia.enrich; Settings › Refresh artwork).
+    Task<IReadOnlyList<GameMedia>> LoadMediaAsync(IReadOnlyList<Game> games, bool refresh, IProgress<PrepareProgress>? progress = null);
+
+    // Steam artwork (steam_artwork, artwork_overrides): the account, your images, reviewed sync.
+    Task<IReadOnlyList<SteamArtworkProfile>> SteamArtworkProfilesAsync();
+    Task SelectSteamArtworkProfileAsync(SteamArtworkProfile profile);
+    /// <summary>Stores an image in rtxForge for one role (poster, capsule, hero, logo); Steam changes only after a sync review.</summary>
+    Task StoreArtworkAsync(Game game, string role, string path, string? credit = null);
+    Task ResetArtworkAsync(Game game, string role);
+    /// <summary>single: exactly these games (after Choose / Browse / Reset); otherwise the library's games with artwork to sync.</summary>
+    Task<EngineReview> ReviewArtworkSyncAsync(IReadOnlyList<Game> games, bool single);
+
+    // SteamGridDB (steamgrid_client): the key lives in Windows Credential Manager.
+    Task<SteamGridStatus> SteamGridStatusAsync();
+    Task SteamGridConnectAsync(string key);
+    /// <summary>Removes the saved key; true when an environment key is still configured.</summary>
+    Task<bool> SteamGridDisconnectAsync();
+    Task<IReadOnlyList<SteamGridGame>> SteamGridSearchAsync(string term);
+    Task<IReadOnlyList<SteamGridAsset>> SteamGridArtworkAsync(long gameId, string role, int page, string style, string dimensions, string mime, bool humor);
+    /// <summary>Downloads the full-size image to rtxForge's preview cache; returns its path.</summary>
+    Task<string> SteamGridDownloadAsync(SteamGridAsset asset);
+
+    // Recovery (desktop_service): previous changes and old NR files.
+    Task<IReadOnlyList<RecoveryRecord>> RecoveriesAsync();
+    Task<EngineReview> ReviewRecoveryAsync(RecoveryRecord record);
+    Task<EngineReview> ReviewCleanupAsync();
+
+    // Notes, test records and support reports (game_notes).
+    Task SaveNotesAsync(Game game, string status, string notes);
+    Task StartTestAsync(Game game);
+    Task FinishTestAsync(Game game);
+    Task<EngineReview> PreviewReportAsync(IReadOnlyList<Game> games, bool logs, bool notes);
+
+    // Tools: NR diagnosis (runtime_diagnostics) and ReShade / add-ons (extra_tools).
+    Task<NrDiagnosis> DiagnoseAsync(Game game);
+    Task<IReadOnlyList<ExtraRecord>> ExtraRecordsAsync(Game game);
+    /// <summary>kind: reshade or addon.</summary>
+    Task<EngineReview> ReviewExtraAsync(Game game, string path, string kind);
+    Task<EngineReview> ReviewExtraRestoreAsync(ExtraRecord record);
+
+    // DLSS files (runtime_updates): inventory and restoring the latest update's backups.
+    Task<DlssInventory> DlssInventoryAsync(Game game);
+    Task<EngineReview> ReviewDlssRestoreAsync(Game game);
+
+    // Packages (package_catalog).
+    Task<PackageCatalog> PackagesAsync();
+    Task<PackageInspection> InspectPackageAsync(string path);
+    Task<PackageChoice> UseCustomPackageAsync(PackageInspection inspection, IReadOnlyDictionary<string, string> values, bool trusted, string notes);
+
+    // Application updates: GitHub releases windows-v<VERSION>.
+    Task<EngineReview> CheckForUpdateAsync();
 }
 
 /// <summary>
@@ -148,6 +204,66 @@ public sealed class PreviewForgeService : IForgeService
         Task.FromException<SteamShortcutResult>(new InvalidOperationException("Steam integration is disabled in preview mode."));
     public Task SteamRemoveAsync(SteamShortcutStatus status) =>
         Task.FromException(new InvalidOperationException("Steam integration is disabled in preview mode."));
+
+    // Preview: every write and engine read below is disabled, as rtxforge_gtk.py --demo.
+    static Task<T> Disabled<T>(string feature) =>
+        Task.FromException<T>(new InvalidOperationException($"{feature} is disabled in preview mode."));
+    static Task Disabled(string feature) =>
+        Task.FromException(new InvalidOperationException($"{feature} is disabled in preview mode."));
+
+    public Task<EngineResult> RunReviewAsync(EngineReview review, IProgress<PrepareProgress>? progress = null) => Disabled<EngineResult>("Changing files");
+    public void DiscardReview(EngineReview review) { }
+    public Task<IReadOnlyList<GameMedia>> LoadMediaAsync(IReadOnlyList<Game> games, bool refresh, IProgress<PrepareProgress>? progress = null) =>
+        Task.FromResult<IReadOnlyList<GameMedia>>([]);
+    public Task<IReadOnlyList<SteamArtworkProfile>> SteamArtworkProfilesAsync() => Disabled<IReadOnlyList<SteamArtworkProfile>>("Steam artwork");
+    public Task SelectSteamArtworkProfileAsync(SteamArtworkProfile profile) => Disabled("Steam artwork");
+    public Task StoreArtworkAsync(Game game, string role, string path, string? credit = null) => Disabled("Custom artwork");
+    public Task ResetArtworkAsync(Game game, string role) => Disabled("Custom artwork");
+    public Task<EngineReview> ReviewArtworkSyncAsync(IReadOnlyList<Game> games, bool single) => Disabled<EngineReview>("Steam artwork sync");
+    public Task<SteamGridStatus> SteamGridStatusAsync() => Task.FromResult(new SteamGridStatus(false, "Preview only. No credentials are read or saved.",
+        new Dictionary<string, string[]>(), new Dictionary<string, string[]>(), []));
+    public Task SteamGridConnectAsync(string key) => Disabled("SteamGridDB");
+    public Task<bool> SteamGridDisconnectAsync() => Disabled<bool>("SteamGridDB");
+    public Task<IReadOnlyList<SteamGridGame>> SteamGridSearchAsync(string term) => Disabled<IReadOnlyList<SteamGridGame>>("SteamGridDB");
+    public Task<IReadOnlyList<SteamGridAsset>> SteamGridArtworkAsync(long gameId, string role, int page, string style, string dimensions, string mime, bool humor) =>
+        Disabled<IReadOnlyList<SteamGridAsset>>("SteamGridDB");
+    public Task<string> SteamGridDownloadAsync(SteamGridAsset asset) => Disabled<string>("SteamGridDB");
+    public Task<IReadOnlyList<RecoveryRecord>> RecoveriesAsync() => Task.FromResult<IReadOnlyList<RecoveryRecord>>([]);
+    public Task<EngineReview> ReviewRecoveryAsync(RecoveryRecord record) => Disabled<EngineReview>("Restoring changes");
+    public Task<EngineReview> ReviewCleanupAsync() => Disabled<EngineReview>("Old NR file cleanup");
+
+    public Task SaveNotesAsync(Game game, string status, string notes)
+    {
+        game.TestStatus = status;
+        game.Notes = notes;
+        return Task.CompletedTask;
+    }
+
+    public Task StartTestAsync(Game game) => Disabled("Test records");
+    public Task FinishTestAsync(Game game) => Disabled("Test records");
+    public Task<EngineReview> PreviewReportAsync(IReadOnlyList<Game> games, bool logs, bool notes) => Disabled<EngineReview>("Support reports");
+
+    public Task<NrDiagnosis> DiagnoseAsync(Game game) => Task.FromResult(new NrDiagnosis(
+        ["Preview: diagnosis reads the selected game’s settings, exact runtime hashes, and bounded log tail."], "Not tested", ""));
+
+    public Task<IReadOnlyList<ExtraRecord>> ExtraRecordsAsync(Game game) => Task.FromResult<IReadOnlyList<ExtraRecord>>([]);
+    public Task<EngineReview> ReviewExtraAsync(Game game, string path, string kind) => Disabled<EngineReview>("Installing tools");
+    public Task<EngineReview> ReviewExtraRestoreAsync(ExtraRecord record) => Disabled<EngineReview>("Restoring tools");
+    public Task<DlssInventory> DlssInventoryAsync(Game game) =>
+        Task.FromResult(new DlssInventory([], "Preview mode · file versions appear here for your installed games.", null));
+    public Task<EngineReview> ReviewDlssRestoreAsync(Game game) => Disabled<EngineReview>("Restoring DLSS files");
+
+    public Task<PackageCatalog> PackagesAsync() => Task.FromResult(new PackageCatalog("Preview system · NVIDIA RTX 4070 · no game writes",
+    [
+        new("dlss-unlocked", "DLSS-Unlocked", "Preview", "Native MFG path; NR needs per-game verification", true, "Ready to review for your system", true, "https://github.com/ShyVortex/dlss-unlocked"),
+        new("y4my", "y4my Multipass", "nightly", "Alternative OptiScaler package; a local NR model may be needed", true, "Ready to review for your system", false,
+            "https://github.com/y4my4my4m/OptiScaler_DLSSNR_Multipass_MFG"),
+    ], [], null));
+
+    public Task<PackageInspection> InspectPackageAsync(string path) => Disabled<PackageInspection>("Custom packages");
+    public Task<PackageChoice> UseCustomPackageAsync(PackageInspection inspection, IReadOnlyDictionary<string, string> values, bool trusted, string notes) =>
+        Disabled<PackageChoice>("Custom packages");
+    public Task<EngineReview> CheckForUpdateAsync() => Disabled<EngineReview>("Checking for updates");
 
     static string StepCaption(string operation) => operation switch
     {

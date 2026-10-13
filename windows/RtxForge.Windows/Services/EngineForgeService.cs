@@ -15,7 +15,7 @@ namespace RtxForge.Windows.Services;
 /// lives in the host and is executed by token, exactly as the Linux desktop
 /// executes the in-memory review it showed.
 /// </summary>
-public sealed class EngineForgeService : IForgeService, IDisposable
+public sealed partial class EngineForgeService : IForgeService, IDisposable
 {
     readonly Process process;
     readonly ConcurrentDictionary<int, Request> pending = new();
@@ -217,8 +217,22 @@ public sealed class EngineForgeService : IForgeService, IDisposable
             PosterPath = Art("poster") ?? art.Poster(appid),
             CapsulePath = Art("capsule") ?? art.Capsule(appid),
             HeroPath = Art("hero") ?? art.Hero(appid),
+            ArtCredits = Credits(row["art"] as JsonObject),
+            Notes = row["test_record"]?["notes"]?.ToString() ?? "",
+            TestStatus = row["test_record"]?["status"]?.ToString() ?? "Untested",
+            TestActive = row["test_record"]?["active"] is JsonObject,
             EngineRow = row,
         };
+    }
+
+    /// <summary>LibraryMedia credit keys (art_credit, capsule_credit, hero_credit) by role.</summary>
+    static Dictionary<string, string> Credits(JsonObject? art)
+    {
+        var credits = new Dictionary<string, string>();
+        if (art is null) return credits;
+        foreach (var (role, key) in new[] { ("poster", "art_credit"), ("capsule", "capsule_credit"), ("hero", "hero_credit") })
+            if (art[key]?.ToString() is { Length: > 0 } credit) credits[role] = credit;
+        return credits;
     }
 
     public async Task<OperationReview> PrepareAsync(string operation, IReadOnlyList<Game> targets, Tuning tuning, string mode,

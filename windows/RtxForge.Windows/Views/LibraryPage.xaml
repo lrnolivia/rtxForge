@@ -1,0 +1,338 @@
+<Page
+    x:Class="RtxForge.Windows.Views.LibraryPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    NavigationCacheMode="Required"
+    SizeChanged="OnPageSizeChanged">
+
+    <!--
+        Library page: the Linux main window body.
+          hero (.forge-top-surface)  brand · title · stats · bulk actions
+          Features mode bar          NR Only / MFG Only / NR + MFG
+          Presets                    NR Strength · Sharpening · MFG
+          Library                    filter · search · view · size · select all / clear · refresh · add folder
+                                     Posters / Wide capsules (rows filled edge to edge)
+                                     List (Gtk.ColumnView: Game · Location · Status · Features · Actions)
+        Cards open the game page on click; right-click opens the context menu.
+    -->
+    <Page.Resources>
+        <!-- Cards draw their own accent hover ring; the container's hover/press fill stays clear. -->
+        <SolidColorBrush x:Key="ItemContainerPointerOverBackground" Color="Transparent" />
+        <SolidColorBrush x:Key="ItemContainerPressedBackground" Color="Transparent" />
+        <SolidColorBrush x:Key="ItemContainerPointerOverBorderBrush" Color="Transparent" />
+        <SolidColorBrush x:Key="ItemContainerPressedBorderBrush" Color="Transparent" />
+
+        <!--
+            Card (.game-card): the 2px ring is always reserved so hover never
+            resizes the art; it turns accent on hover/selection. A selected card
+            fills with the accent (Linux .game-card.{art}.selected).
+        -->
+        <DataTemplate x:Key="PosterTemplate">
+            <ItemContainer AutomationProperties.Name="{Binding Name}" CornerRadius="{StaticResource ForgeCardCornerRadius}">
+                <Grid Tag="card" Style="{StaticResource ForgeGameCardGridStyle}" BorderThickness="2" BorderBrush="{Binding CardRing}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="68" />
+                    </Grid.RowDefinitions>
+                    <Border Grid.RowSpan="2" Background="{Binding CardFill}" />
+                    <Grid Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="10,10,0,0">
+                        <TextBlock Text="{Binding Name}" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" Margin="12" FontSize="14" FontWeight="SemiBold" />
+                        <Image Source="{Binding Poster}" Stretch="UniformToFill" Visibility="{Binding PosterVisibility}" />
+                        <Border Tag="check" Style="{StaticResource ForgeCheckStyle}" Visibility="{Binding SelectVisibility}"
+                                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" Background="{Binding CheckFill}" BorderBrush="{Binding CheckBorder}"
+                                ToolTipService.ToolTip="Select">
+                            <FontIcon Glyph="&#xE73E;" FontSize="13" Foreground="{Binding CheckGlyph}" Visibility="{Binding CheckVisibility}" />
+                        </Border>
+                    </Grid>
+                    <StackPanel Grid.Row="1" Padding="12,10,12,12" Spacing="6">
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Foreground="{Binding CardTitle}" />
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Border Style="{StaticResource ForgePillStyle}" Background="{Binding CardStatusPillFill}">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <FontIcon Glyph="{Binding StatusGlyph}" FontSize="10" Foreground="{Binding CardStatusPillText}" />
+                                    <TextBlock Text="{Binding Status}" FontSize="9" FontWeight="Bold" CharacterSpacing="42" VerticalAlignment="Center" Foreground="{Binding CardStatusPillText}" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource ForgePillStyle}" Background="{Binding CardTestPillFill}" Visibility="{Binding TestedVisibility}"
+                                    ToolTipService.ToolTip="Tested" AutomationProperties.Name="Tested">
+                                <FontIcon Glyph="&#xE930;" FontSize="10" Foreground="{Binding CardTestPillIcon}" />
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </ItemContainer>
+        </DataTemplate>
+
+        <!-- Wide capsules -->
+        <DataTemplate x:Key="CapsuleTemplate">
+            <ItemContainer AutomationProperties.Name="{Binding Name}" CornerRadius="{StaticResource ForgeCardCornerRadius}">
+                <Grid Tag="card" Style="{StaticResource ForgeGameCardGridStyle}" BorderThickness="2" BorderBrush="{Binding CardRing}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="68" />
+                    </Grid.RowDefinitions>
+                    <Border Grid.RowSpan="2" Background="{Binding CardFill}" />
+                    <Grid Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="10,10,0,0">
+                        <TextBlock Text="{Binding Name}" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" Margin="12" FontSize="14" FontWeight="SemiBold" />
+                        <Image Source="{Binding Capsule}" Stretch="UniformToFill" Visibility="{Binding CapsuleVisibility}" />
+                        <Border Tag="check" Style="{StaticResource ForgeCheckStyle}" Visibility="{Binding SelectVisibility}"
+                                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" Background="{Binding CheckFill}" BorderBrush="{Binding CheckBorder}"
+                                ToolTipService.ToolTip="Select">
+                            <FontIcon Glyph="&#xE73E;" FontSize="13" Foreground="{Binding CheckGlyph}" Visibility="{Binding CheckVisibility}" />
+                        </Border>
+                    </Grid>
+                    <StackPanel Grid.Row="1" Padding="12,10,12,12" Spacing="6">
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Foreground="{Binding CardTitle}" />
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Border Style="{StaticResource ForgePillStyle}" Background="{Binding CardStatusPillFill}">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <FontIcon Glyph="{Binding StatusGlyph}" FontSize="10" Foreground="{Binding CardStatusPillText}" />
+                                    <TextBlock Text="{Binding Status}" FontSize="9" FontWeight="Bold" CharacterSpacing="42" VerticalAlignment="Center" Foreground="{Binding CardStatusPillText}" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource ForgePillStyle}" Background="{Binding CardTestPillFill}" Visibility="{Binding TestedVisibility}"
+                                    ToolTipService.ToolTip="Tested" AutomationProperties.Name="Tested">
+                                <FontIcon Glyph="&#xE930;" FontSize="10" Foreground="{Binding CardTestPillIcon}" />
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </ItemContainer>
+        </DataTemplate>
+
+        <!-- List: Gtk.ColumnView row; a selected row fills with the accent. Column widths match ListHeader. -->
+        <DataTemplate x:Key="ListTemplate">
+            <ItemContainer AutomationProperties.Name="{Binding Name}" CornerRadius="{Binding RowCorner}">
+                <Grid Tag="row" MinHeight="64" Padding="12,8,12,8" ColumnSpacing="16" CornerRadius="{Binding RowCorner}" Background="{Binding RowFill}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" MinWidth="280" />
+                        <ColumnDefinition Width="{Binding LocationWidth}" />
+                        <ColumnDefinition Width="124" />
+                        <ColumnDefinition Width="{Binding FeaturesWidth}" />
+                        <ColumnDefinition Width="140" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Game: check + capsule thumbnail + name + meta -->
+                    <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <Border Tag="check" Style="{StaticResource ForgeCheckStyle}" Opacity="{Binding RowCheckOpacity}"
+                                VerticalAlignment="Center" Width="20" Height="20" Background="{Binding RowCheckFill}" BorderBrush="{Binding RowCheckBorder}"
+                                ToolTipService.ToolTip="Select">
+                            <FontIcon Glyph="&#xE73E;" FontSize="12" Foreground="{Binding RowCheckGlyph}" Visibility="{Binding CheckVisibility}" />
+                        </Border>
+                        <Border Width="98" Height="46" CornerRadius="{StaticResource ForgeArtCornerRadius}" Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                BorderThickness="2" BorderBrush="{Binding RowArtRing}">
+                            <Border CornerRadius="6" Background="{Binding CapsuleBrush}" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center" Spacing="1">
+                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Foreground="{Binding RowTitle}" />
+                            <TextBlock Text="{Binding Meta}" FontSize="12" Foreground="{Binding RowSubtext}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Location: source + path -->
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                        <TextBlock Text="{Binding Library}" TextTrimming="CharacterEllipsis" Foreground="{Binding RowText}" />
+                        <TextBlock Text="{Binding Location}" FontSize="12" Foreground="{Binding RowSubtext}" TextTrimming="CharacterEllipsis"
+                                   ToolTipService.ToolTip="{Binding Location}" />
+                    </StackPanel>
+
+                    <!-- Status: dot + text, test pill -->
+                    <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="4">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Ellipse Width="8" Height="8" Fill="{Binding StatusDot}" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" Foreground="{Binding RowText}" />
+                        </StackPanel>
+                        <Border Style="{StaticResource ForgePillStyle}" Background="{Binding RowChipFill}" HorizontalAlignment="Left" Visibility="{Binding TestedVisibility}">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <FontIcon Glyph="&#xE930;" FontSize="10" Foreground="{ThemeResource ForgePillTestedBrush}" />
+                                <TextBlock Text="TESTED" FontSize="9" FontWeight="Bold" CharacterSpacing="42" VerticalAlignment="Center" Foreground="{Binding RowText}" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Features: NR / MFG chips -->
+                    <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <Border Style="{StaticResource ForgePillStyle}" Background="{Binding RowChipFill}"><TextBlock Text="{Binding NrChip}" FontSize="11" Foreground="{Binding RowText}" /></Border>
+                        <Border Style="{StaticResource ForgePillStyle}" Background="{Binding RowChipFill}"><TextBlock Text="{Binding MfgChip}" FontSize="11" Foreground="{Binding RowText}" /></Border>
+                    </StackPanel>
+
+                    <!-- Actions (.library-column-actions; accent-filled while the row is selected) -->
+                    <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" HorizontalAlignment="Right">
+                        <Button Content="{Binding PrimaryLabel}" Command="{Binding PrimaryCommand}" IsEnabled="{Binding PrimaryEnabled}" MinWidth="80" Height="36"
+                                Background="{Binding RowActionFill}" Foreground="{Binding RowActionText}" />
+                        <Button Command="{Binding MoreCommand}" Width="36" Height="36" Padding="0" CommandParameter="{Binding RelativeSource={RelativeSource Self}}"
+                                Background="{Binding RowActionFill}" Foreground="{Binding RowActionText}"
+                                AutomationProperties.Name="More options" ToolTipService.ToolTip="More options">
+                            <FontIcon Glyph="&#xE712;" FontSize="14" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </ItemContainer>
+        </DataTemplate>
+        <UniformGridLayout x:Key="GridLayout" MinItemWidth="180" MinItemHeight="350" MinColumnSpacing="16" MinRowSpacing="16" ItemsStretch="None" />
+        <StackLayout x:Key="ListLayout" Spacing="1.5" />
+    </Page.Resources>
+
+    <ScrollViewer HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel x:Name="Body" Padding="36,12,36,48" Spacing="16">
+
+            <!-- Hero -->
+            <Grid x:Name="Hero" ColumnSpacing="16" RowSpacing="12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Image Source="ms-appx:///Assets/rtxforge-mark.svg" Width="112" Height="112" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Bottom">
+                    <TextBlock Text="GEFORCE / BUILT FOR WINDOWS" Style="{StaticResource ForgeEyebrowTextStyle}" />
+                    <TextBlock Text="rtxForge" Style="{StaticResource ForgeHeroTitleTextStyle}" />
+                    <TextBlock x:Name="StatsText" Text="Finding your games…" Style="{StaticResource ForgeDimTextStyle}" Margin="0,3,0,0" />
+                    <TextBlock x:Name="HardwareText" Text="Checking system hardware…" Style="{StaticResource ForgeCaptionDimTextStyle}" />
+                </StackPanel>
+                <StackPanel x:Name="HeroActions" Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Bottom">
+                    <Button x:Name="InstallButton" Style="{StaticResource AccentButtonStyle}" Click="OnInstallFeatures"
+                            ToolTipService.ToolTip="Review feature installation across every library before applying changes. Incompatible games are skipped.">
+                        <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE896;" FontSize="14" /><TextBlock x:Name="InstallText" Text="Install Features" /></StackPanel>
+                    </Button>
+                    <Button x:Name="RestoreButton" Click="OnRestoreOriginal"
+                            ToolTipService.ToolTip="Review restoration of recorded feature installs across every library. Your games remain installed.">
+                        <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE7A7;" FontSize="14" Foreground="{ThemeResource ForgeRemoveBrush}" /><TextBlock Text="Restore Original Files" /></StackPanel>
+                    </Button>
+                    <Button Click="OnUpdateDlss" ToolTipService.ToolTip="Update older DLSS files across the library">
+                        <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE777;" FontSize="14" /><TextBlock Text="Update DLSS" /></StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <!-- Features (.mode-bar) -->
+            <Border Style="{StaticResource ForgeControlPodStyle}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon Glyph="&#xE9E9;" FontSize="20" VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
+                        <TextBlock Text="Features" />
+                        <TextBlock x:Name="ProfileNote" Style="{StaticResource ForgeCaptionDimTextStyle}" TextTrimming="CharacterEllipsis" MaxLines="1" />
+                    </StackPanel>
+                    <Border Grid.Column="2" Style="{StaticResource ForgeSegmentGroupStyle}">
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton x:Name="ModeNrOnly" GroupName="Profile" Tag="nr-only" Content="NR Only" Style="{StaticResource ForgeSegmentStyle}" Checked="OnProfileChecked" MinWidth="104" />
+                            <RadioButton x:Name="ModeMfgOnly" GroupName="Profile" Tag="mfg-only" Content="MFG Only" Style="{StaticResource ForgeSegmentStyle}" Checked="OnProfileChecked" MinWidth="104" />
+                            <RadioButton x:Name="ModeNrMfg" GroupName="Profile" Tag="nr-mfg" Content="NR + MFG" Style="{StaticResource ForgeSegmentStyle}" Checked="OnProfileChecked" MinWidth="104" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- Presets (Gtk.Expander) -->
+            <Expander x:Name="PresetsExpander" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" IsExpanded="False">
+                <Expander.Header>
+                    <Grid ColumnSpacing="16" Padding="0,12,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Glyph="&#xE9F5;" FontSize="20" VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
+                            <TextBlock Text="Presets" />
+                            <TextBlock Text="NR Strength, Sharpening and MFG for new installs" Style="{StaticResource ForgeCaptionDimTextStyle}" />
+                        </StackPanel>
+                        <StackPanel x:Name="PresetActions" Grid.Column="2" Orientation="Horizontal" Spacing="8" Visibility="Collapsed">
+                            <Button Content="Reset" Click="OnResetPresets" ToolTipService.ToolTip="Discard preset changes." />
+                            <Button Content="Apply" Style="{StaticResource AccentButtonStyle}" Click="OnApplyPresets" />
+                        </StackPanel>
+                    </Grid>
+                </Expander.Header>
+                <ContentPresenter x:Name="TuningHost" />
+            </Expander>
+
+            <!-- Library header -->
+            <Grid x:Name="LibraryHeader" ColumnSpacing="12" RowSpacing="8" Margin="0,16,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Library" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <!-- .library-filter-group -->
+                <Border Grid.Column="1" Style="{StaticResource ForgeSegmentGroupStyle}" Margin="12,0,0,0">
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton x:Name="FilterAvailable" GroupName="Filter" Tag="available" Content="Available" Style="{StaticResource ForgeCompactSegmentStyle}" Checked="OnFilterChecked" />
+                        <RadioButton x:Name="FilterInstalled" GroupName="Filter" Tag="installed" Content="Installed" Style="{StaticResource ForgeCompactSegmentStyle}" Checked="OnFilterChecked" />
+                        <RadioButton x:Name="FilterAll" GroupName="Filter" Tag="all" Content="All" Style="{StaticResource ForgeCompactSegmentStyle}" Checked="OnFilterChecked" />
+                    </StackPanel>
+                </Border>
+                <!-- library_tools Gtk.SearchEntry -->
+                <AutoSuggestBox x:Name="SearchBox" Grid.Column="2" MaxWidth="360" HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                                PlaceholderText="Search library" QueryIcon="Find" TextChanged="OnSearchChanged"
+                                AutomationProperties.Name="Search library" />
+                <!-- .view-action -->
+                <Border x:Name="ViewGroup" Grid.Column="3" Style="{StaticResource ForgeSegmentGroupStyle}">
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton x:Name="ViewPosters" GroupName="View" Tag="posters" Style="{StaticResource ForgeCompactSegmentStyle}" Checked="OnViewChecked"
+                                     ToolTipService.ToolTip="Posters" AutomationProperties.Name="Posters"><FontIcon Glyph="&#xE8A9;" FontSize="14" /></RadioButton>
+                        <RadioButton x:Name="ViewCapsules" GroupName="View" Tag="capsules" Style="{StaticResource ForgeCompactSegmentStyle}" Checked="OnViewChecked"
+                                     ToolTipService.ToolTip="Wide capsules" AutomationProperties.Name="Wide capsules"><FontIcon Glyph="&#xF0E2;" FontSize="14" /></RadioButton>
+                        <RadioButton x:Name="ViewList" GroupName="View" Tag="list" Style="{StaticResource ForgeCompactSegmentStyle}" Checked="OnViewChecked"
+                                     ToolTipService.ToolTip="List" AutomationProperties.Name="List"><FontIcon Glyph="&#xE8FD;" FontSize="14" /></RadioButton>
+                    </StackPanel>
+                </Border>
+                <Slider x:Name="ArtScale" Grid.Column="4" Width="120" Minimum="85" Maximum="150" StepFrequency="5" VerticalAlignment="Center"
+                        ValueChanged="OnArtScaleChanged" AutomationProperties.Name="Artwork size" ToolTipService.ToolTip="Artwork size" />
+                <CommandBar x:Name="LibraryCommands" Grid.Column="5" DefaultLabelPosition="Right" Background="Transparent" IsOpen="False" VerticalAlignment="Center">
+                    <!-- Linux library-selection-tools: Select all, which becomes Clear while anything is selected -->
+                    <AppBarButton x:Name="SelectAllButton" Label="Select all" Click="OnSelectAll" ToolTipService.ToolTip="Select every game in this view">
+                        <AppBarButton.Icon><FontIcon x:Name="SelectAllIcon" Glyph="&#xE8B3;" /></AppBarButton.Icon>
+                    </AppBarButton>
+                    <AppBarButton Label="Refresh" Click="OnRefreshLibrary" ToolTipService.ToolTip="Refresh Library">
+                        <AppBarButton.Icon><FontIcon Glyph="&#xE72C;" /></AppBarButton.Icon>
+                    </AppBarButton>
+                    <AppBarButton Label="Add folder" Click="OnAddGameFolder" ToolTipService.ToolTip="Add Game Folder">
+                        <AppBarButton.Icon><FontIcon Glyph="&#xE8F4;" /></AppBarButton.Icon>
+                    </AppBarButton>
+                </CommandBar>
+            </Grid>
+
+            <!-- List column header (Gtk.ColumnView header) -->
+            <Grid x:Name="ListHeader" Padding="12,0,12,0" ColumnSpacing="16" Visibility="Collapsed" Margin="0,0,0,-8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="280" />
+                    <ColumnDefinition x:Name="HeaderLocation" Width="240" />
+                    <ColumnDefinition Width="124" />
+                    <ColumnDefinition x:Name="HeaderFeatures" Width="150" />
+                    <ColumnDefinition Width="140" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Game" Style="{StaticResource ForgeCaptionDimTextStyle}" />
+                <TextBlock x:Name="HeaderLocationText" Grid.Column="1" Text="Location" Style="{StaticResource ForgeCaptionDimTextStyle}" />
+                <TextBlock Grid.Column="2" Text="Status" Style="{StaticResource ForgeCaptionDimTextStyle}" />
+                <TextBlock x:Name="HeaderFeaturesText" Grid.Column="3" Text="Features" Style="{StaticResource ForgeCaptionDimTextStyle}" />
+                <TextBlock Grid.Column="4" Text="Actions" Style="{StaticResource ForgeCaptionDimTextStyle}" HorizontalAlignment="Right" />
+            </Grid>
+
+            <ItemsView x:Name="Library" SelectionMode="None" IsItemInvokedEnabled="True"
+                       ItemInvoked="OnItemInvoked" PointerMoved="OnLibraryPointerMoved" PointerExited="OnLibraryPointerExited"
+                       RightTapped="OnLibraryRightTapped" SizeChanged="OnLibrarySizeChanged" />
+
+            <TextBlock x:Name="EmptyText" Visibility="Collapsed" HorizontalAlignment="Center" Margin="0,48,0,0"
+                       Style="{StaticResource ForgeDimTextStyle}" Text="No games match this view." />
+        </StackPanel>
+    </ScrollViewer>
+</Page>

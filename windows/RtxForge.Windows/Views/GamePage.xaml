@@ -1,0 +1,95 @@
+<Page
+    x:Class="RtxForge.Windows.Views.GamePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:RtxForge.Windows.Controls"
+    SizeChanged="OnPageSizeChanged">
+
+    <!--
+        Game page: the Linux game-details dialog as a navigated Windows page.
+          banner (.game-banner)   full-bleed hero art · shade · title · meta · actions
+          SelectorBar             Overview · Features · DLSS Files · Tools · Notes · Appearance
+          content                 left-aligned under the title
+        Back returns to the library through the NavigationView back button.
+    -->
+    <ScrollViewer x:Name="ContentScroll" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Padding="0,0,0,48">
+
+            <!-- .game-banner: edge to edge -->
+            <Grid x:Name="HeroBanner" Height="360">
+                <!-- .banner-shade: the art itself fades out, so it blends into any theme's background -->
+                <controls:FadedImage x:Name="HeroImage" />
+                <!-- identity: poster · status badge · title · meta, anchored to the hero's lower edge -->
+                <Grid x:Name="Identity" VerticalAlignment="Bottom" Padding="36,0,36,24" ColumnSpacing="20" RowSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid x:Name="PosterFrame" Width="104" Height="156" VerticalAlignment="Bottom"
+                          CornerRadius="{StaticResource ForgeCardCornerRadius}" Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                        <Image x:Name="PosterImage" Stretch="UniformToFill" />
+                    </Grid>
+                    <StackPanel x:Name="HeroText" Grid.Column="1" Spacing="4" VerticalAlignment="Bottom">
+                        <!-- .cover-badge -->
+                        <Border Style="{StaticResource ForgePillStyle}" HorizontalAlignment="Left" Padding="8,3,8,3">
+                            <TextBlock x:Name="StatusBadge" FontSize="11" FontWeight="SemiBold" />
+                        </Border>
+                        <TextBlock x:Name="TitleText" FontFamily="{StaticResource ForgeHeroFontFamily}" FontSize="{StaticResource ForgeBannerTitleFontSize}"
+                                   TextWrapping="WrapWholeWords" MaxLines="2" LineHeight="46" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                        <!-- metadata line: developer · release, source badge, test badge -->
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock x:Name="MetaText" Style="{StaticResource ForgeDimTextStyle}" FontSize="13" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                            <Border Style="{StaticResource ForgePillStyle}" VerticalAlignment="Center">
+                                <TextBlock x:Name="SourceBadge" FontSize="9" FontWeight="Bold" CharacterSpacing="42" />
+                            </Border>
+                            <Border x:Name="TestBadge" Style="{StaticResource ForgePillStyle}" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <FontIcon x:Name="TestBadgeIcon" FontSize="10" />
+                                    <TextBlock x:Name="TestBadgeText" FontSize="9" FontWeight="Bold" CharacterSpacing="42" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                        <!-- .game-detail-summary: two lines -->
+                        <TextBlock x:Name="SummaryText" Style="{StaticResource ForgeDimTextStyle}" FontSize="12" MaxLines="2"
+                                   TextTrimming="CharacterEllipsis" MaxWidth="520" HorizontalAlignment="Left" />
+                    </StackPanel>
+                    <StackPanel x:Name="HeroActions" Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Bottom">
+                        <Button x:Name="InstallButton" Style="{StaticResource AccentButtonStyle}" Click="OnInstall">
+                            <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE896;" FontSize="14" /><TextBlock Text="Install Features" /></StackPanel>
+                        </Button>
+                        <Button x:Name="RestoreButton" Click="OnRestore">
+                            <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE7A7;" FontSize="14" Foreground="{ThemeResource ForgeRemoveBrush}" /><TextBlock Text="Restore Original Files" /></StackPanel>
+                        </Button>
+                        <Button x:Name="MoreButton" AutomationProperties.Name="More options" ToolTipService.ToolTip="More options">
+                            <FontIcon Glyph="&#xE712;" FontSize="14" />
+                            <Button.Flyout>
+                                <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                    <MenuFlyoutItem x:Name="UpdateDlssItem" Text="Update DLSS" Click="OnUpdateDlss"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE777;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
+                                    <MenuFlyoutItem x:Name="OpenFolderItem" Text="Open Folder" Click="OnOpenFolder"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE838;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
+                                </MenuFlyout>
+                            </Button.Flyout>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+
+            <SelectorBar x:Name="Sections" Margin="28,8,36,0" SelectionChanged="OnSectionChanged">
+                <SelectorBarItem Text="Overview" Tag="Overview" />
+                <SelectorBarItem Text="Presets" Tag="Presets" />
+                <SelectorBarItem Text="DLSS Files" Tag="DLSS Files" />
+                <SelectorBarItem Text="Tools" Tag="Tools" />
+                <SelectorBarItem Text="Appearance" Tag="Appearance" />
+                <SelectorBarItem Text="Notes" Tag="Notes" />
+            </SelectorBar>
+
+            <!-- Content lines up with the title's left edge and grows with the window -->
+            <StackPanel x:Name="PageHost" Padding="36,0,36,0" />
+        </StackPanel>
+    </ScrollViewer>
+</Page>

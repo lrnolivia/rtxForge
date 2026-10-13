@@ -77,3 +77,9 @@ If you want to undo a change, use **Restore Original Files** for game features o
 ## Third-party notices
 
 Runtime packages retain their upstream terms. Bundled font notices are preserved for [Bakbak One](gui/fonts/OFL-BakbakOne.txt) and [Inter](packaging/steam-artwork/source/OFL-Inter.txt).
+
+## License and code signing
+
+rtxForge is released under the [MIT License](LICENSE). Free code signing for the
+Windows builds is provided by [SignPath.io](https://about.signpath.io), certificate by
+[SignPath Foundation](https://signpath.org); see the [code signing policy](CODE_SIGNING.md).

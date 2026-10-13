@@ -1,0 +1,262 @@
+name: Build rtxForge Windows
+
+on:
+  workflow_dispatch:
+    inputs:
+      draft_release:
+        description: Attach the installers to a DRAFT GitHub release (nothing is published until a maintainer publishes the draft)
+        type: boolean
+        default: false
+  push:
+    branches:
+      - main
+    paths:
+      - windows/**
+      - engine/**
+      - scripts/**
+      - providers/**
+      - provider.json
+      - gui/fonts/**
+      - gui/icons/**
+      - VERSION
+      - .github/workflows/windows-build.yml
+  pull_request:
+    paths:
+      - windows/**
+      - engine/**
+      - scripts/**
+      - providers/**
+      - provider.json
+      - gui/fonts/**
+      - gui/icons/**
+      - VERSION
+      - .github/workflows/windows-build.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rtxforge-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: WinUI 3 ${{ matrix.platform }}
+    runs-on: windows-2025
+    # Signed release runs wait for the SignPath approval (up to an hour per request).
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: x64
+            rid: win-x64
+            arch: x64
+          - platform: ARM64
+            rid: win-arm64
+            arch: arm64
+
+    # actions: read lets SignPath fetch the unsigned artifacts it is asked to sign.
+    permissions:
+      contents: read
+      actions: read
+
+    env:
+      PROJECT: windows/RtxForge.Windows/RtxForge.Windows.csproj
+      DOTNET_NOLOGO: "1"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      # Release runs (manual, draft_release) are signed through SignPath once it is
+      # configured (see windows/README.md); every other run stays unsigned.
+      SIGN: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' && github.event_name == 'workflow_dispatch' && inputs.draft_release }}
+
+    steps:
+      - name: Checkout rtxForge
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore $env:PROJECT -r ${{ matrix.rid }} -p:Platform=${{ matrix.platform }}
+
+      - name: Build
+        run: dotnet build $env:PROJECT -c Release -r ${{ matrix.rid }} -p:Platform=${{ matrix.platform }} --no-restore
+
+      # Publish also bundles the engine and a private Python (windows/build/Bundle-Engine.ps1).
+      - name: Publish self-contained app
+        run: |
+          $log = dotnet publish $env:PROJECT -c Release -r ${{ matrix.rid }} -p:Platform=${{ matrix.platform }} -p:SelfContained=true -o out/rtxForge-windows-${{ matrix.arch }} 2>&1
+          $code = $LASTEXITCODE
+          $log
+          if ($code) {
+            # Annotations are readable without signing in to the job log.
+            $log | Select-Object -Last 25 | ForEach-Object { "::error title=publish::$_" }
+            exit $code
+          }
+
+      # ARM64 Python cannot run on the x64 runner; its bundle is checked for files by Build-Installer.ps1.
+      - name: Smoke-test the bundled engine
+        if: matrix.platform == 'x64'
+        run: |
+          $app = 'out/rtxForge-windows-x64'
+          $env:RTXFORGE_ROOT = (Resolve-Path "$app/engine").Path
+          $reply = '{"id":1,"method":"hello"}' | & "$app/python/python.exe" -I -B -u "$app/engine/windows/engine-host/rtxforge_win_host.py"
+          $reply
+          if (-not ($reply | Select-String '"id": 1, "result"')) { throw 'Bundled engine host did not answer' }
+
+      # Only rtxForge's own binaries: the Windows App SDK and Python files are already signed by their publishers.
+      - name: Upload the app for signing
+        id: unsigned-app
+        if: env.SIGN == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-app-${{ matrix.arch }}
+          retention-days: 1
+          path: |
+            out/rtxForge-windows-${{ matrix.arch }}/rtxForge.exe
+            out/rtxForge-windows-${{ matrix.arch }}/rtxForge.dll
+
+      # SignPath waits for a maintainer to approve the request before it signs.
+      - name: Sign the app (SignPath)
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'rtxForge' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+          artifact-configuration-slug: windows-app
+          github-artifact-id: ${{ steps.unsigned-app.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: out/signed-app-${{ matrix.arch }}
+
+      - name: Use the signed app
+        if: env.SIGN == 'true'
+        run: Copy-Item out/signed-app-${{ matrix.arch }}/* out/rtxForge-windows-${{ matrix.arch }}/ -Force
+
+      - name: Build installer
+        run: ./windows/build/Build-Installer.ps1 -RuntimeIdentifier ${{ matrix.rid }} -PublishDir out/rtxForge-windows-${{ matrix.arch }} -Output out/installer
+
+      - name: Upload the installer for signing
+        id: unsigned-installer
+        if: env.SIGN == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-installer-${{ matrix.arch }}
+          retention-days: 1
+          path: out/installer/rtxForge-Setup-*.exe
+
+      - name: Sign the installer (SignPath)
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'rtxForge' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+          artifact-configuration-slug: windows-installer
+          github-artifact-id: ${{ steps.unsigned-installer.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: out/signed-installer
+
+      - name: Use the signed installer
+        if: env.SIGN == 'true'
+        run: Copy-Item out/signed-installer/*.exe out/installer/ -Force
+
+      # Signing changes the bytes: checksums are written after it.
+      - name: Write checksums
+        run: |
+          Get-ChildItem out/installer -Filter 'rtxForge-Setup-*.exe' | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)" | Set-Content -Encoding ascii "$($_.FullName).sha256"
+            if ($env:SIGN -eq 'true') {
+              $signature = Get-AuthenticodeSignature $_.FullName
+              if ($signature.Status -ne 'Valid') { throw "$($_.Name) signature: $($signature.Status)" }
+            }
+          }
+
+      # Install silently into a temp folder, start the installed engine, then uninstall.
+      - name: Smoke-test the installer
+        if: matrix.platform == 'x64'
+        run: |
+          $setup = Get-ChildItem out/installer -Filter 'rtxForge-Setup-*.exe' | Select-Object -First 1
+          $dir = Join-Path $env:RUNNER_TEMP 'rtxForge-install'
+          $p = Start-Process $setup.FullName -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/CURRENTUSER', '/NORESTART', "/DIR=`"$dir`"" -Wait -PassThru
+          if ($p.ExitCode) { throw "Setup exited $($p.ExitCode)" }
+          $env:RTXFORGE_ROOT = "$dir\engine"
+          $reply = '{"id":1,"method":"hello"}' | & "$dir\python\python.exe" -I -B -u "$dir\engine\windows\engine-host\rtxforge_win_host.py"
+          if (-not ($reply | Select-String '"id": 1, "result"')) { throw 'Installed engine host did not answer' }
+          $p = Start-Process "$dir\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
+          if ($p.ExitCode) { throw "Uninstall exited $($p.ExitCode)" }
+          Start-Sleep 3
+          if (Test-Path "$dir\rtxForge.exe") { throw 'Uninstall left the app behind' }
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: rtxForge-Setup-windows-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            out/installer/rtxForge-Setup-*.exe
+            out/installer/rtxForge-Setup-*.exe.sha256
+
+      - name: Upload portable app
+        if: matrix.platform == 'x64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rtxForge-windows-x64
+          path: out/rtxForge-windows-x64
+          retention-days: 14
+
+  # Opt-in only: a maintainer runs the workflow with draft_release. The release
+  # stays a draft (invisible to users) until it is reviewed and published by hand.
+  draft-release:
+    name: Draft release
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.draft_release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout rtxForge
+        uses: actions/checkout@v4
+
+      - name: Download installers
+        uses: actions/download-artifact@v4
+        with:
+          pattern: rtxForge-Setup-windows-*
+          merge-multiple: true
+          path: installers
+
+      - name: Create or update the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SIGNED: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          TAG="windows-v$VERSION"
+          if [ "$SIGNED" = "true" ]; then
+            SIGNING="Signed by SignPath Foundation (free code signing for open source, see CODE_SIGNING.md); until the certificate builds reputation, Windows SmartScreen may still ask you to confirm (More info > Run anyway)."
+          else
+            SIGNING="This build is not code-signed, so Windows SmartScreen may ask you to confirm (More info > Run anyway)."
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" != "true" ]; then
+              echo "$TAG is already published; refusing to change it." >&2
+              exit 1
+            fi
+            gh release upload "$TAG" installers/* --clobber
+          else
+            gh release create "$TAG" installers/* \
+              --draft \
+              --prerelease \
+              --target "$GITHUB_SHA" \
+              --title "rtxForge for Windows $VERSION" \
+              --notes "rtxForge for Windows $VERSION ($GITHUB_SHA). Download rtxForge-Setup-$VERSION-x64.exe (or -arm64 for Windows on Arm). Python and the rtxForge engine are bundled; nothing else to install. $SIGNING SHA-256 checksums are attached."
+          fi

@@ -1,0 +1,23 @@
+<Page
+    x:Class="RtxForge.Windows.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    SizeChanged="OnPageSizeChanged">
+
+    <!--
+        Settings as a Windows settings page: section tabs (SelectorBar) over
+        settings cards, reached from the NavigationView Settings item. Changes
+        apply immediately; there is no Save button. Same sections as Linux
+        (Graphics, Appearance, Library, Gaming Mode, System, Recovery) plus About.
+    -->
+    <ScrollViewer HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+        <!-- Left-aligned and full width with responsive margins, like the other pages. -->
+        <StackPanel x:Name="Body" Padding="36,12,36,48">
+            <TextBlock Text="Settings" Style="{StaticResource ForgePageTitleTextStyle}" Margin="0,0,0,4" />
+            <!-- Linux settings pages as section tabs (same control as Game Details). -->
+            <SelectorBar x:Name="Sections" Margin="-8,0,0,0" SelectionChanged="OnSectionChanged" />
+            <InfoBar x:Name="Notice" IsOpen="False" Severity="Warning" IsClosable="True" Margin="0,8,0,0" />
+            <StackPanel x:Name="PageHost" />
+        </StackPanel>
+    </ScrollViewer>
+</Page>

@@ -26,7 +26,8 @@ class SelfInstallTests(unittest.TestCase):
   self.assertEqual(len(self.engine.parse_shortcuts_spans(result)),2)
  def test_closed_steam_adds_all_four_art_roles_without_key(self):
   result=s.install(self.config,self.settings,engine=self.engine,entry=self.entry,load_image=lambda p:PNG)
-  self.assertTrue(result['created']);self.assertEqual(result['errors'],[]);self.assertEqual(len(result['artwork']),4)
+  # Four artwork slots plus the centered logo position.
+  self.assertTrue(result['created']);self.assertEqual(result['errors'],[]);self.assertEqual(len(result['artwork']),5)
   original=(self.folder/'shortcuts.vdf').read_bytes()
   self.engine.steam_running=lambda:True
   second=s.install(self.config,self.settings,engine=self.engine,entry=self.entry,load_image=lambda p:PNG)
@@ -83,6 +84,24 @@ class SelfInstallTests(unittest.TestCase):
   with self.assertRaisesRegex(ValueError,'since your review'):
    steam_artwork.write_slot(self.config,path.parent,path.stem[:-1],'poster',PNG,expected_before=fingerprint)
   self.assertEqual(path.read_bytes(),b'newer custom artwork')
+
+ def test_logo_is_centered_and_sized_by_aspect(self):
+  png=lambda w,h:b'\x89PNG\r\n\x1a\n\0\0\0\rIHDR'+w.to_bytes(4,'big')+h.to_bytes(4,'big')
+  position=s.logo_position(png(1280,400),png(3840,1240))['logoPosition']
+  self.assertEqual(position['pinnedPosition'],'CenterCenter');self.assertEqual(position['nHeightPct'],55.0)
+  self.assertAlmostEqual(position['nWidthPct'],55*3.2/(3840/1240),places=3)
+  wide=s.logo_position(png(4000,400),png(3840,1240))['logoPosition']
+  self.assertEqual(wide['nWidthPct'],70.0);self.assertLess(wide['nHeightPct'],55.0)
+ def test_install_centers_the_logo_once_and_keeps_a_user_position(self):
+  result=s.install(self.config,self.settings,engine=self.engine,entry=self.entry,load_image=lambda p:PNG)
+  path=self.folder/'grid'/(str(result['appid'])+'.json')
+  import json
+  self.assertEqual(json.loads(path.read_text())['logoPosition']['pinnedPosition'],'CenterCenter')
+  path.write_text('{"nVersion":1,"logoPosition":{"pinnedPosition":"BottomLeft","nWidthPct":40,"nHeightPct":40}}')
+  review=s.review(self.config,self.settings,engine=self.engine,entry=self.entry,load_image=lambda p:PNG)
+  self.assertEqual(review['logo_position'],'kept')
+  s.install(self.config,self.settings,reviewed=review,engine=self.engine,entry=self.entry,load_image=lambda p:PNG)
+  self.assertIn('BottomLeft',path.read_text())
 
  def test_missing_shortcut_icon_refuses_before_any_writes(self):
   with patch.object(s,'ROOT',self.root/'missing-package'):

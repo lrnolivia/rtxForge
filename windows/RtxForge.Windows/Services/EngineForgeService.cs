@@ -282,7 +282,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         var games = review.Ready.Select(r => r.Game).ToList();
         if (review.Token == "update-dlss")
         {
-            if (games.Count > 0) progress.Report(new OperationStep(0, games.Count, games[0], "Updating DLSS filesâ€¦", 0.1));
+            if (games.Count > 0) progress.Report(new OperationStep(0, games.Count, games[0], "Updating DLSS files…", 0.1));
             var rows = new JsonArray(games.Where(g => g.EngineRow is not null).Select(g => (JsonNode)g.EngineRow!.DeepClone()).ToArray());
             var result = await CallAsync("update_dlss", new JsonObject { ["rows"] = rows }, cancel: cancel);
             return result?["updated_games"]?.GetValue<int>() ?? 0;

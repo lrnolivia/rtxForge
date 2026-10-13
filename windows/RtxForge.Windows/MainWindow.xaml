@@ -24,13 +24,63 @@
         </Grid.RowDefinitions>
 
         <!-- Title bar -->
-        <Grid x:Name="AppTitleBar">
-            <StackPanel Orientation="Horizontal" Spacing="12" Margin="16,0,0,0" VerticalAlignment="Center">
-                <Image Source="ms-appx:///Assets/rtxforge-icon.png" Width="18" Height="18" />
-                <TextBlock Text="rtxForge" FontSize="12" VerticalAlignment="Center" />
-                <Border x:Name="PreviewBadge" Style="{StaticResource ForgePillStyle}" VerticalAlignment="Center" Visibility="Collapsed">
+        <Grid x:Name="AppTitleBar" ColumnSpacing="16" SizeChanged="OnCompactBarSizeChanged">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <!-- Brand (Linux sticky-dashboard-brand): the logo mark and the Bakbak One wordmark, the same on every page. -->
+            <StackPanel x:Name="CompactBrand" Orientation="Horizontal" Spacing="8" Margin="12,0,0,0" VerticalAlignment="Center">
+                <Image Source="ms-appx:///Assets/rtxforge-mark.svg" Width="40" Height="40" VerticalAlignment="Center" />
+                <TextBlock Text="rtxForge" FontFamily="{StaticResource ForgeHeroFontFamily}" FontSize="16" FontWeight="Bold" CharacterSpacing="-14"
+                           VerticalAlignment="Center" />
+                <Border x:Name="PreviewBadge" Style="{StaticResource ForgePillStyle}" VerticalAlignment="Center" Margin="4,0,0,0" Visibility="Collapsed">
                     <TextBlock Text="Preview" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </Border>
+            </StackPanel>
+
+            <!--
+                Compact dashboard (Linux sticky_dashboard_revealer / sticky_actions_revealer): shown while
+                the Library dashboard is collapsed (compact header, or the library scrolled). Mirrors the
+                Library page's Features selector and library-wide actions; the page stays the owner.
+            -->
+            <Border x:Name="CompactModes" Grid.Column="1" Style="{StaticResource ForgeSegmentGroupStyle}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Visibility="Collapsed" SizeChanged="OnCompactBarSizeChanged">
+                <StackPanel Orientation="Horizontal">
+                    <RadioButton x:Name="CompactNrOnly" GroupName="CompactProfile" Tag="nr-only" Content="NR Only" Style="{StaticResource ForgeCompactSegmentStyle}" Checked="OnCompactModeChecked" MinWidth="88" />
+                    <RadioButton x:Name="CompactMfgOnly" GroupName="CompactProfile" Tag="mfg-only" Content="MFG Only" Style="{StaticResource ForgeCompactSegmentStyle}" Checked="OnCompactModeChecked" MinWidth="88" />
+                    <RadioButton x:Name="CompactNrMfg" GroupName="CompactProfile" Tag="nr-mfg" Content="NR + MFG" Style="{StaticResource ForgeCompactSegmentStyle}" Checked="OnCompactModeChecked" MinWidth="88" />
+                </StackPanel>
+            </Border>
+            <!-- Presets mode (Presets › Select games to apply presets): the saved presets and how to apply them. -->
+            <TextBlock x:Name="CompactPresetsSummary" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"
+                       Style="{StaticResource ForgeDimTextStyle}" TextTrimming="CharacterEllipsis" />
+            <StackPanel x:Name="CompactPresetActions" Grid.Column="2" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" VerticalAlignment="Center"
+                        Visibility="Collapsed" SizeChanged="OnCompactBarSizeChanged">
+                <Button x:Name="CompactApplySelected" Style="{StaticResource AccentButtonStyle}" Click="OnCompactApplySelected" Padding="10,4,10,4" IsEnabled="False"
+                        ToolTipService.ToolTip="Review the presets for the checked games">
+                    <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE73E;" FontSize="13" /><TextBlock x:Name="CompactApplyText" Text="Apply to selected" /></StackPanel>
+                </Button>
+                <Button Click="OnCompactEditPresets" Padding="10,4,10,4" ToolTipService.ToolTip="Back to the Presets page">
+                    <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE70F;" FontSize="13" /><TextBlock Text="Edit Presets" /></StackPanel>
+                </Button>
+                <Button Click="OnCompactPresetsDone" Padding="10,4,10,4" ToolTipService.ToolTip="Leave presets mode">
+                    <TextBlock Text="Done" />
+                </Button>
+            </StackPanel>
+            <StackPanel x:Name="CompactActions" Grid.Column="2" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" VerticalAlignment="Center"
+                        Visibility="Collapsed" SizeChanged="OnCompactBarSizeChanged">
+                <Button Style="{StaticResource AccentButtonStyle}" Click="OnCompactInstall" Padding="10,4,10,4"
+                        ToolTipService.ToolTip="Install features across the Library">
+                    <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE896;" FontSize="13" /><TextBlock x:Name="CompactInstallText" Text="Install Features" /></StackPanel>
+                </Button>
+                <Button Click="OnCompactRestore" Padding="10,4,10,4" ToolTipService.ToolTip="Restore original files for the selected games or Library">
+                    <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE7A7;" FontSize="13" Foreground="{ThemeResource ForgeRemoveBrush}" /><TextBlock Text="Restore Original Files" /></StackPanel>
+                </Button>
+                <Button Click="OnCompactUpdateDlss" Padding="10,4,10,4" ToolTipService.ToolTip="Update older DLSS files across the library">
+                    <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE777;" FontSize="13" /><TextBlock Text="Update DLSS" /></StackPanel>
+                </Button>
             </StackPanel>
         </Grid>
 
@@ -40,6 +90,7 @@
                         SelectionChanged="OnNavSelectionChanged" ItemInvoked="OnNavItemInvoked" BackRequested="OnNavBackRequested">
             <NavigationView.MenuItems>
                 <NavigationViewItem Content="Library" Tag="Library"><NavigationViewItem.Icon><FontIcon Glyph="&#xE7FC;" /></NavigationViewItem.Icon></NavigationViewItem>
+                <NavigationViewItem Content="Presets" Tag="Presets"><NavigationViewItem.Icon><FontIcon Glyph="&#xE9F5;" /></NavigationViewItem.Icon></NavigationViewItem>
                 <NavigationViewItem Content="Packages" Tag="Packages"><NavigationViewItem.Icon><FontIcon Glyph="&#xE7B8;" /></NavigationViewItem.Icon></NavigationViewItem>
                 <NavigationViewItem Content="Extras" Tag="Extras"><NavigationViewItem.Icon><FontIcon Glyph="&#xE90F;" /></NavigationViewItem.Icon></NavigationViewItem>
             </NavigationView.MenuItems>

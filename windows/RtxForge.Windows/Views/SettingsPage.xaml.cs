@@ -29,8 +29,7 @@ public sealed partial class SettingsPage : Page
 
     void OnPageSizeChanged(object sender, SizeChangedEventArgs e)
     {
-        var side = Math.Round(Math.Clamp(e.NewSize.Width * 0.03, 16, 56));
-        Body.Padding = new Thickness(side, 12, side, 48);
+        Body.Padding = PageMargins.For(e.NewSize.Width);
     }
 
     void OnSectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
@@ -56,22 +55,22 @@ public sealed partial class SettingsPage : Page
         // ----- Graphics -----
         var graphics = new PreferencesGroup(null, "Restore original files before switching providers.");
         var (row, provider) = Prefs.ComboRow("Provider", "Package that supplies NR and MFG.",
-            ["y4my Multipass", "DLSS-Unlocked", "Custom package"], Math.Max(0, Array.IndexOf(ProviderKeys, Settings.RuntimeProvider)), "\uE7F4");
+            ["y4my Multipass", "DLSS-Unlocked", "Custom package"], Math.Max(0, Array.IndexOf(ProviderKeys, Settings.RuntimeProvider)), "");
         graphics.Add(row);
         (row, var nrPath) = Prefs.EntryRow("Local NR DLL for y4my", "Optional nvngx_dlssnr.dll used with the y4my provider.",
-            Settings.NrRuntime, @"C:\path\to\nvngx_dlssnr.dll", "\uE8E5");
+            Settings.NrRuntime, @"C:\path\to\nvngx_dlssnr.dll", "");
         nrPath.LostFocus += (_, _) => { Settings.NrRuntime = nrPath.Text.Trim(); Save(); };
         graphics.Add(row);
 
         (row, var manageFiles) = Prefs.SwitchRow("DLSS Files", "Update older DLSS files when installing features. Backups are kept for restoration.",
-            Settings.ManageDlssFiles, "\uE8B7");
+            Settings.ManageDlssFiles, "");
         manageFiles.Toggled += (_, _) => { Settings.ManageDlssFiles = manageFiles.IsOn; Save(); };
         graphics.Add(row);
         (row, var profile) = Prefs.ComboRow("Default Mode", "Features selected when rtxForge starts.",
-            ["NR Only", "MFG Only", "NR + MFG"], Math.Max(0, Array.IndexOf(Modes, Settings.DefaultProfile)), "\uE9E9");
+            ["NR Only", "MFG Only", "NR + MFG"], Math.Max(0, Array.IndexOf(Modes, Settings.DefaultProfile)), "");
         graphics.Add(row);
         (row, var adopt) = Prefs.SwitchRow("Recognize Existing Features", "Allow updates to compatible installations from other tools.",
-            Settings.RecognizePrevious, "\uE930");
+            Settings.RecognizePrevious, "");
         adopt.Toggled += (_, _) => { Settings.RecognizePrevious = adopt.IsOn; Save(); };
         graphics.Add(row);
 
@@ -98,26 +97,26 @@ public sealed partial class SettingsPage : Page
         // ----- Appearance -----
         var appearance = new PreferencesGroup(null);
         (row, var theme) = Prefs.ComboRow("App theme", "Changes only rtxForge.", ThemeController.Captions,
-            Math.Max(0, Array.IndexOf(ThemeController.Keys, Settings.Theme)), "\uE790");
+            Math.Max(0, Array.IndexOf(ThemeController.Keys, Settings.Theme)), "");
         theme.SelectionChanged += (_, _) => { Settings.Theme = ThemeController.Keys[theme.SelectedIndex]; Save(); };
         appearance.Add(row);
         (row, var layout) = Prefs.ComboRow("Library layout", "Choose how your game collection is displayed.",
-            ["Poster", "Wide Capsule", "List"], Math.Max(0, Array.IndexOf(Views, Settings.LibraryView)), "\uE8A9");
+            ["Poster", "Wide Capsule", "List"], Math.Max(0, Array.IndexOf(Views, Settings.LibraryView)), "");
         layout.SelectionChanged += (_, _) => { Settings.LibraryView = Views[layout.SelectedIndex]; Save(); };
         appearance.Add(row);
-        (row, var compact) = Prefs.SwitchRow("Compact header", "Hide the rtxForge banner to keep more room for your games.",
-            Settings.CompactHeader, "\uE73F");
+        (row, var compact) = Prefs.SwitchRow("Compact header", "Keep more room for your games.",
+            Settings.CompactHeader, "");
         compact.Toggled += (_, _) => { Settings.CompactHeader = compact.IsOn; Save(); };
         appearance.Add(row);
 
         // ----- Library -----
         var library = new PreferencesGroup(null, "Your Steam poster, capsule, and hero images take priority.");
         (row, var onlineArt) = Prefs.SwitchRow("Download missing artwork", "Use SteamGridDB and Steam when local images are unavailable.",
-            Settings.OnlineArt, "\uEB9F");
+            Settings.OnlineArt, "");
         onlineArt.Toggled += (_, _) => { Settings.OnlineArt = onlineArt.IsOn; Save(); };
         library.Add(row);
         (row, var metadata) = Prefs.SwitchRow("Download game information", "Descriptions, developers, and release dates from Steam.",
-            Settings.SteamMetadata, "\uE946");
+            Settings.SteamMetadata, "");
         metadata.Toggled += (_, _) => { Settings.SteamMetadata = metadata.IsOn; Save(); };
         library.Add(row);
         var timeout = new NumberBox
@@ -126,16 +125,15 @@ public sealed partial class SettingsPage : Page
             SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Inline,
         };
         timeout.ValueChanged += (_, e) => { if (!double.IsNaN(e.NewValue)) { Settings.NetworkTimeout = (int)e.NewValue; Save(); } };
-        library.Add(Prefs.Row("Download timeout", "Seconds per request", timeout, "\uE916"));
-        foreach (var (title, subtitle, caption, glyph) in new[]
+        library.Add(Prefs.Row("Download timeout", "Seconds per request", timeout, ""));
+        foreach (var (title, subtitle, caption, glyph, action) in new (string, string, string, string, Func<Task>)[]
         {
-            ("Refresh artwork", "Cached images remain available offline.", "Refresh", "\uE72C"),
-            ("Steam artwork profile", "Choose which local Steam account receives artwork.", "Choose", "\uE77B"),
-            ("Sync artwork to Steam", "Review and sync artwork for your library.", "Sync", "\uE895"),
-            ("SteamGridDB", "Connect your account to browse custom artwork.", "Connect", "\uE71B"),
+            ("Refresh artwork", "Cached images remain available offline.", "Refresh", "", () => shell.RefreshArtworkAsync(true)),
+            ("Steam artwork profile", "Choose which local Steam account receives artwork.", "Choose", "", shell.ChooseSteamArtworkProfileAsync),
+            ("Sync artwork to Steam", "Review and sync artwork for your library.", "Sync", "", shell.SyncLibraryArtworkAsync),
+            ("SteamGridDB", "Connect your account to browse custom artwork.", "Connect", "", async () => await shell.ConnectSteamGridAsync()),
         })
-            library.Add(Prefs.Row(title, subtitle, Prefs.ActionButton(caption, (_, _) =>
-                shell.ShowToast($"{title} arrives with the Windows engine bridge.")), glyph));
+            library.Add(Prefs.Row(title, subtitle, Prefs.ActionButton(caption, async (_, _) => await action()), glyph));
 
         // ----- Gaming Mode (Linux: Steam Library · Interface · Controller) -----
         var gamingMode = new PreferencesGroup(null, "Use rtxForge from Steam, or switch between Desktop and Big Picture UI.");
@@ -197,28 +195,27 @@ public sealed partial class SettingsPage : Page
         if (shell.Hardware is { } hardware)
             foreach (var (title, value, glyph) in new[]
             {
-                ("Graphics card", hardware.Gpu, "\uE7F4"), ("Driver", hardware.Driver, "\uE90F"), ("Video memory", hardware.Vram, "\uE964"),
-                ("Processor", hardware.Cpu, "\uE950"), ("Architecture", hardware.Architecture, "\uE9D9"),
+                ("Graphics card", hardware.Gpu, ""), ("Driver", hardware.Driver, ""), ("Video memory", hardware.Vram, ""),
+                ("Processor", hardware.Cpu, ""), ("Architecture", hardware.Architecture, ""),
             })
                 if (!string.IsNullOrEmpty(value)) system.Add(Prefs.Row(title, value, glyph: glyph));
-        system.Add(Prefs.Row("Compatibility", shell.Hardware?.Reason ?? "Not checked", glyph: "\uE73E"));
+        system.Add(Prefs.Row("Compatibility", shell.Hardware?.Reason ?? "Not checked", glyph: ""));
 
         // ----- Recovery -----
         var recovery = new PreferencesGroup(null);
-        foreach (var (title, subtitle, caption, glyph) in new[]
+        foreach (var (title, subtitle, caption, glyph, action) in new (string, string, string, string, Func<Task>)[]
         {
-            ("Previous changes", "Browse available recovery records.", "Browse", "\uE81C"),
-            ("Old NR files", "Review legacy files before removal.", "Review", "\uE74D"),
-            ("Library reports", "View test notes and export a support report.", "Open", "\uE9F9"),
+            ("Previous changes", "Browse available recovery records.", "Browse", "", shell.ShowPreviousChangesAsync),
+            ("Old NR files", "Review legacy files before removal.", "Review", "", shell.ReviewOldNrFilesAsync),
+            ("Library reports", "View test notes and export a support report.", "Open", "", shell.ShowReportsAsync),
         })
-            recovery.Add(Prefs.Row(title, subtitle, Prefs.ActionButton(caption, (_, _) =>
-                shell.ShowToast($"{title} arrives with the Windows engine bridge.")), glyph));
+            recovery.Add(Prefs.Row(title, subtitle, Prefs.ActionButton(caption, async (_, _) => await action()), glyph));
 
         // ----- About (Linux: Application group + About dialog) -----
         var about = new PreferencesGroup(null);
-        about.Add(Prefs.Row("rtxForge", $"Version {MainWindow.AppVersion} · Built for Windows with WinUI 3", glyph: "\uE946"));
+        about.Add(Prefs.Row("rtxForge", $"Version {MainWindow.AppVersion} · Built for Windows with WinUI 3", glyph: ""));
         about.Add(Prefs.Row("Updates", "Download, verify, and install the newest rtxForge build.",
-            Prefs.ActionButton("Check for updates", (_, _) => shell.ShowToast("Windows updates arrive with the first packaged build.")), "\uE895"));
+            Prefs.ActionButton("Check for updates", async (_, _) => await shell.CheckForUpdatesAsync()), ""));
 
         // Linux organize_pages(): one page per section. Windows shows them as SelectorBar tabs.
         sections["Graphics"] = [graphics];

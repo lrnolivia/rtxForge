@@ -169,8 +169,10 @@ public sealed class GameItem : INotifyPropertyChanged
     public string MfgChip { get; }
 
     // Actions column
-    public string PrimaryLabel => Game.Installed ? "Restore" : "Install";
-    public bool PrimaryEnabled => !Game.Blocked;
+    /// <summary>Library in presets mode (Presets › Select games): the row action applies presets.</summary>
+    public bool PresetMode { get; init; }
+    public string PrimaryLabel => PresetMode ? "Apply" : Game.Installed ? "Restore" : "Install";
+    public bool PrimaryEnabled => PresetMode ? Game.Installed && !Game.Blocked : !Game.Blocked;
     public ICommand PrimaryCommand { get; }
     public ICommand MoreCommand { get; }
 

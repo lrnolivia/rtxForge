@@ -11,6 +11,8 @@ public sealed partial class ActivityPage : Page
         InitializeComponent();
     }
 
+    void OnSizeChanged(object sender, SizeChangedEventArgs e) => Body.Padding = Controls.PageMargins.For(e.NewSize.Width, bottom: 36);
+
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);

@@ -4,7 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- Activity (Linux: Activity panel from the main menu) -->
-    <Grid Padding="36,12,36,36" RowSpacing="16">
+    <Grid x:Name="Body" Padding="36,12,36,36" RowSpacing="16" SizeChanged="OnSizeChanged">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />

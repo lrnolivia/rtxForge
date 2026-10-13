@@ -160,7 +160,12 @@ public sealed partial class GamePage : Page
                 var update = Prefs.ActionButton("Update", (_, _) => _ = shell.LaunchAction("update-dlss", [g]));
                 update.IsEnabled = !g.Blocked && !shell.Busy;
                 manage.Add(Prefs.Row("Update DLSS", "Update older DLSS files. Backups are kept for restoration.", update, ""));
+                var restoreDlss = Prefs.ActionButton("Restore", async (_, _) => await shell.RestoreDlssFilesAsync(g));
+                restoreDlss.IsEnabled = false;
+                var backupRow = Prefs.Row("Restore original DLSS files", "Checking for backups…", restoreDlss, "");
+                manage.Add(backupRow);
                 PageHost.Children.Add(manage);
+                _ = FillDlssInventoryAsync(g, files, backupRow, restoreDlss);
                 break;
 
             case "Tools":
@@ -176,13 +181,41 @@ public sealed partial class GamePage : Page
                     shell.ShowToast("Location copied.");
                 }), ""));
                 PageHost.Children.Add(tools);
+                // populate_tools: NR diagnosis and ReShade / add-ons, each reviewed before it touches the game.
+                var extras = new PreferencesGroup("Graphics Tools", "Check NR or add ReShade to this game. Existing graphics files are kept safe.");
+                extras.Add(Prefs.Row("Diagnose NR", "Read the saved NR settings, runtime hashes and log evidence.",
+                    Prefs.ActionButton("Diagnose", async (_, _) => await shell.DiagnoseAsync(g)), ""));
+                foreach (var (kind, title, subtitle) in new[]
+                {
+                    ("reshade", "Install ReShade", "Choose an extracted x64 ReShade DLL. DirectX 10–12 games load it as dxgi.dll."),
+                    ("addon", "Install Add-on", "Choose an .addon64 file (including RenoDX). Install ReShade first."),
+                })
+                {
+                    var install = Prefs.ActionButton("Choose", async (_, _) => await shell.InstallExtraAsync(g, kind));
+                    install.IsEnabled = !shell.Service.IsPreview && !g.Blocked && !shell.Busy;
+                    extras.Add(Prefs.Row(title, subtitle, install, ""));
+                }
+                extras.Add(Prefs.Row("ReShade Downloads", "Get ReShade from its official site.",
+                    Prefs.ActionButton("Open", (_, _) => MainWindow.OpenUri("https://reshade.me/")), ""));
+                PageHost.Children.Add(extras);
+                PageHost.Children.Add(Prefs.Label("Use an extracted x64 ReShade DLL or .addon64 file from a source you trust. Shader packs and presets remain yours to manage.", "ForgeCaptionDimTextStyle"));
+                _ = FillExtraRecordsAsync(g);
                 break;
 
             case "Notes":
                 var notes = new PreferencesGroup("Your Notes", "Kept with this game in rtxForge. Included in support reports when you choose.");
+                string[] states = ["Untested", "Working", "Problem", "Bench"];
+                var (statusRow, status) = Prefs.ComboRow("Test Result", "Bench excludes this game from bulk installation and repair.", states,
+                    Math.Max(0, Array.IndexOf(states, g.TestStatus)), "");
+                notes.Add(statusRow);
                 var text = new TextBox { Text = g.Notes, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 180, PlaceholderText = "What worked, what didn't, settings you used" };
-                text.LostFocus += (_, _) => g.Notes = text.Text;
                 notes.Add(text);
+                var noteActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
+                var test = Prefs.ActionButton(g.TestActive ? "Finish Test" : "Start Test", async (_, _) => await shell.RecordTestAsync(g));
+                test.IsEnabled = !shell.Service.IsPreview;
+                noteActions.Children.Add(test);
+                noteActions.Children.Add(Prefs.ActionButton("Save Notes", async (_, _) => await shell.SaveNotesAsync(g, states[Math.Max(0, status.SelectedIndex)], text.Text), accent: true));
+                notes.Add(noteActions);
                 PageHost.Children.Add(notes);
                 break;
 
@@ -190,6 +223,39 @@ public sealed partial class GamePage : Page
                 BuildAppearance(g);
                 break;
         }
+    }
+
+    /// <summary>DLSS Files: the native files found outside the feature stack, and the latest updater backup.</summary>
+    async Task FillDlssInventoryAsync(Game g, PreferencesGroup files, Border backupRow, Button restore)
+    {
+        DlssInventory inventory;
+        try { inventory = await shell.Service.DlssInventoryAsync(g); }
+        catch (InvalidOperationException error) { SetSubtitle(backupRow, error.Message); return; }
+        if (g != game || section != "DLSS Files") return;
+        if (inventory.Blocked.Length > 0) files.Add(Prefs.Row("File management unavailable", inventory.Blocked, glyph: ""));
+        foreach (var file in inventory.Files)
+            files.Add(Prefs.Row(file.Title, $"{file.Path} · {file.Current} · {file.Provenance}", glyph: ""));
+        SetSubtitle(backupRow, inventory.LatestBackup is { } date ? "Latest backup " + date : "No DLSS file backups for this game.");
+        restore.IsEnabled = inventory.LatestBackup is not null && !shell.Busy;
+    }
+
+    async Task FillExtraRecordsAsync(Game g)
+    {
+        IReadOnlyList<ExtraRecord> records;
+        try { records = await shell.Service.ExtraRecordsAsync(g); }
+        catch (InvalidOperationException) { return; }
+        if (g != game || section != "Tools" || records.Count == 0) return;
+        var group = new PreferencesGroup("Installed Tools", "Restore puts the game's original files back.");
+        foreach (var record in records)
+            group.Add(Prefs.Row(record.Title, record.Date, Prefs.ActionButton("Restore", async (_, _) => { await shell.RestoreExtraAsync(record); Build("Tools"); }), ""));
+        PageHost.Children.Add(group);
+    }
+
+    static void SetSubtitle(Border row, string text)
+    {
+        if ((row.Child as Grid)?.Children.OfType<StackPanel>().FirstOrDefault() is not { } lines) return;
+        if (lines.Children.Count > 1 && lines.Children[1] is TextBlock subtitle) subtitle.Text = text;
+        else lines.Children.Add(Prefs.Label(text, "ForgeCaptionDimTextStyle"));
     }
 
     // ---------- Hero identity (meta line, source/test badges, summary) ----------
@@ -223,7 +289,7 @@ public sealed partial class GamePage : Page
     void ApplyLayout(double width)
     {
         if (width <= 0 || game is null) return;
-        var side = Math.Round(Math.Clamp(width * 0.035, 16, 64));
+        var side = PageMargins.Side(width);
         HeroBanner.Height = Math.Round(Math.Clamp(width * 0.30, 240, 560));
         var posterHeight = Math.Round(Math.Clamp(HeroBanner.Height * 0.48, 120, 260));
         PosterFrame.Height = posterHeight;
@@ -258,7 +324,8 @@ public sealed partial class GamePage : Page
         var preview = shell.Service.IsPreview;
 
         // Custom Artwork: role editors with accent-framed previews.
-        var sync = Prefs.ActionButton("Sync artwork to Steam", (_, _) => shell.ShowToast("Steam artwork sync arrives with the Windows engine bridge."), glyph: "");
+        var sync = Prefs.ActionButton("Sync artwork to Steam", async (_, _) => await shell.SyncGameArtworkAsync(g), glyph: "");
+        sync.IsEnabled = !preview;
         var custom = new PreferencesGroup("Custom Artwork",
             "Artwork changes also sync to your local Steam library. Reset restores your original Steam artwork.", sync);
         var editors = new Grid { ColumnSpacing = 16, RowSpacing = 24 };
@@ -294,7 +361,13 @@ public sealed partial class GamePage : Page
             item.Children.Add(dims);
             foreach (var (caption, glyph) in new[] { ("Choose Image", ""), ("Browse artwork", ""), ("Reset", "") })
             {
-                var action = Prefs.ActionButton(caption, (_, _) => { }, glyph: glyph);
+                var role = title switch { "Poster" => "poster", "Hero" => "hero", _ => "capsule" };
+                var action = Prefs.ActionButton(caption, async (_, _) =>
+                {
+                    if (caption == "Choose Image") await shell.ChooseArtworkAsync(g, role);
+                    else if (caption == "Browse artwork") await shell.BrowseArtworkAsync(g, role);
+                    else await shell.ResetArtworkAsync(g, role);
+                }, glyph: glyph);
                 action.HorizontalAlignment = HorizontalAlignment.Stretch;
                 action.IsEnabled = !preview;
                 ToolTipService.SetToolTip(action, preview ? "Preview mode" : caption);
@@ -323,8 +396,10 @@ public sealed partial class GamePage : Page
             pods.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             var pod = new StackPanel { Spacing = 5 };
             pod.Children.Add(Prefs.Label(title, "ForgeHeadingTextStyle"));
+            var creditRole = title switch { "Poster" => "poster", "Hero" => "hero", _ => "capsule" };
             var hasArt = (title switch { "Poster" => g.PosterPath, "Hero" => g.HeroPath, _ => g.CapsulePath }) is not null;
-            pod.Children.Add(Prefs.Label(hasArt && g.MetadataSource is { } s ? s : "Source information unavailable", "ForgeCaptionDimTextStyle"));
+            var source = g.ArtCredits.GetValueOrDefault(creditRole) ?? (hasArt ? g.MetadataSource : null);
+            pod.Children.Add(Prefs.Label(source ?? "Source information unavailable", "ForgeCaptionDimTextStyle"));
             var card = new Border { Style = Prefs.GetStyle("ForgeControlPodStyle"), Padding = new Thickness(16), Child = pod };
             Grid.SetColumn(card, index);
             pods.Children.Add(card);

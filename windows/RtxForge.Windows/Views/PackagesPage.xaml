@@ -1,0 +1,6 @@
+<Page
+    x:Class="RtxForge.Windows.Views.PackagesPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Built in code (PackagesPage.cs), like the Linux panels it mirrors. -->
+</Page>

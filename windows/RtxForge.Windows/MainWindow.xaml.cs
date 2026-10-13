@@ -48,6 +48,7 @@ public sealed partial class MainWindow : Window
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
+        SizeCaptionButtons();
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "rtxforge.ico"));
         SizeLikeABrowser();
         RootGrid.ActualThemeChanged += (_, _) => ThemeController.Apply(this, RootGrid, Settings.Theme);
@@ -107,6 +108,8 @@ public sealed partial class MainWindow : Window
     {
         Games = await Service.ScanAsync();
         GamesChanged?.Invoke();
+        // Linux fetch_media: cached artwork and store details, downloaded when missing.
+        _ = RefreshArtworkAsync(false);
     }
 
     // ---------- Navigation ----------
@@ -124,11 +127,13 @@ public sealed partial class MainWindow : Window
         {
             "Settings" => typeof(SettingsPage),
             "Activity" => typeof(ActivityPage),
-            "Packages" or "Extras" => typeof(PlaceholderPage),
+            "Presets" => typeof(PresetsPage),
+            "Packages" => typeof(PackagesPage),
+            "Extras" => typeof(ExtrasPage),
             "Game" => typeof(GamePage),
             _ => typeof(LibraryPage),
         };
-        if (page == ContentFrame.SourcePageType && parameter is null && page != typeof(PlaceholderPage)) return;
+        if (page == ContentFrame.SourcePageType && parameter is null) return;
         ContentFrame.Navigate(page, parameter ?? tag);
     }
 
@@ -144,7 +149,9 @@ public sealed partial class MainWindow : Window
         Nav.IsBackEnabled = ContentFrame.CanGoBack;
         var tag = e.SourcePageType == typeof(SettingsPage) ? "Settings"
             : e.SourcePageType == typeof(ActivityPage) ? "Activity"
-            : e.SourcePageType == typeof(PlaceholderPage) ? e.Parameter as string ?? "Packages"
+            : e.SourcePageType == typeof(PresetsPage) ? "Presets"
+            : e.SourcePageType == typeof(PackagesPage) ? "Packages"
+            : e.SourcePageType == typeof(ExtrasPage) ? "Extras"
             : "Library";
         syncingNav = true;
         Nav.SelectedItem = tag == "Settings"
@@ -231,12 +238,18 @@ public sealed partial class MainWindow : Window
     void OnToastClosed(InfoBar sender, InfoBarClosedEventArgs args) => ToastHost.Visibility = Visibility.Collapsed;
 
     /// <summary>A ContentDialog themed to match the window.</summary>
-    public ContentDialog NewDialog() => new()
+    public ContentDialog NewDialog()
     {
-        XamlRoot = RootGrid.XamlRoot,
-        Style = (Style)Application.Current.Resources["DefaultContentDialogStyle"],
-        RequestedTheme = RootGrid.ActualTheme,
-    };
+        var dialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Style = (Style)Application.Current.Resources["DefaultContentDialogStyle"],
+            RequestedTheme = RootGrid.ActualTheme,
+        };
+        // WinUI caps dialogs at 548 px, narrower than rtxForge's review lists: their row actions were cut off.
+        dialog.Resources["ContentDialogMaxWidth"] = 760.0;
+        return dialog;
+    }
 
     public static string AppVersion
     {

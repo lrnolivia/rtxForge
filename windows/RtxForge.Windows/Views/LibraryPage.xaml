@@ -9,7 +9,7 @@
         Library page: the Linux main window body.
           hero (.forge-top-surface)  brand · title · stats · bulk actions
           Features mode bar          NR Only / MFG Only / NR + MFG
-          Presets                    NR Strength · Sharpening · MFG
+          (Presets: their own page; Presets › Select games opens this page in presets mode)
           Library                    filter · search · view · size · select all / clear · refresh · add folder
                                      Posters / Wide capsules (rows filled edge to edge)
                                      List (Gtk.ColumnView: Game · Location · Status · Features · Actions)
@@ -175,8 +175,19 @@
         <StackLayout x:Key="ListLayout" Spacing="1.5" />
     </Page.Resources>
 
-    <ScrollViewer HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel x:Name="Body" Padding="36,12,36,48" Spacing="16">
+    <Grid x:Name="PageRoot">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!--
+            Dashboard (Linux header_revealer: hero, Features; Presets have their own page). It collapses in
+            compact mode and while the library is scrolled; the titlebar then shows the
+            compact dashboard (brand, mode selector, library actions).
+        -->
+        <StackPanel x:Name="Dashboard" Padding="36,12,36,0" Spacing="16">
 
             <!-- Hero -->
             <Grid x:Name="Hero" ColumnSpacing="16" RowSpacing="12">
@@ -234,31 +245,11 @@
                 </Grid>
             </Border>
 
-            <!-- Presets (Gtk.Expander) -->
-            <Expander x:Name="PresetsExpander" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" IsExpanded="False">
-                <Expander.Header>
-                    <Grid ColumnSpacing="16" Padding="0,12,0,12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <FontIcon Glyph="&#xE9F5;" FontSize="20" VerticalAlignment="Center" />
-                        <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
-                            <TextBlock Text="Presets" />
-                            <TextBlock Text="NR Strength, Sharpening and MFG for new installs" Style="{StaticResource ForgeCaptionDimTextStyle}" />
-                        </StackPanel>
-                        <StackPanel x:Name="PresetActions" Grid.Column="2" Orientation="Horizontal" Spacing="8" Visibility="Collapsed">
-                            <Button Content="Reset" Click="OnResetPresets" ToolTipService.ToolTip="Discard preset changes." />
-                            <Button Content="Apply" Style="{StaticResource AccentButtonStyle}" Click="OnApplyPresets" />
-                        </StackPanel>
-                    </Grid>
-                </Expander.Header>
-                <ContentPresenter x:Name="TuningHost" />
-            </Expander>
+        </StackPanel>
 
-            <!-- Library header -->
-            <Grid x:Name="LibraryHeader" ColumnSpacing="12" RowSpacing="8" Margin="0,16,0,0">
+        <!-- Library toolbar (.library-sticky-header): stays in place while the games scroll. -->
+        <StackPanel x:Name="Toolbar" Grid.Row="1" Padding="36,32,36,0" Spacing="16">
+            <Grid x:Name="LibraryHeader" ColumnSpacing="12" RowSpacing="8">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
@@ -326,7 +317,11 @@
                 <TextBlock x:Name="HeaderFeaturesText" Grid.Column="3" Text="Features" Style="{StaticResource ForgeCaptionDimTextStyle}" />
                 <TextBlock Grid.Column="4" Text="Actions" Style="{StaticResource ForgeCaptionDimTextStyle}" HorizontalAlignment="Right" />
             </Grid>
+        </StackPanel>
 
+        <ScrollViewer x:Name="LibraryScroll" Grid.Row="2" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
+                      ViewChanged="OnLibraryScrolled">
+        <StackPanel x:Name="Body" Padding="36,16,36,48" Spacing="16">
             <ItemsView x:Name="Library" SelectionMode="None" IsItemInvokedEnabled="True"
                        ItemInvoked="OnItemInvoked" PointerMoved="OnLibraryPointerMoved" PointerExited="OnLibraryPointerExited"
                        RightTapped="OnLibraryRightTapped" SizeChanged="OnLibrarySizeChanged" />
@@ -334,5 +329,6 @@
             <TextBlock x:Name="EmptyText" Visibility="Collapsed" HorizontalAlignment="Center" Margin="0,48,0,0"
                        Style="{StaticResource ForgeDimTextStyle}" Text="No games match this view." />
         </StackPanel>
-    </ScrollViewer>
+        </ScrollViewer>
+    </Grid>
 </Page>

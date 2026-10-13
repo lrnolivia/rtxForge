@@ -16,6 +16,9 @@ public sealed partial class GameModeView
     string detailsSection = "Overview";
     string? libraryFocusKey;
     bool presetsExpanded;
+    /// <summary>Unsaved Test Result choice on the Notes section (Choice re-renders the page).</summary>
+    string? notesStatus;
+    string? notesDraft;
     static readonly string[] Sections = ["Overview", "Features", "DLSS Files", "Tools", "Appearance", "Notes"];
 
     void OpenDetails(Game game)
@@ -24,6 +27,9 @@ public sealed partial class GameModeView
         detailsGame = game;
         detailsSection = "Overview";
         presetsExpanded = false;
+        notesStatus = null;
+        notesDraft = null;
+
         page = "details";
         Render();
     }
@@ -244,11 +250,15 @@ public sealed partial class GameModeView
                     ui.PreferenceRow("Installed DLSS version", null, ui.Text(g.DlssVersion ?? "Checked during update", 0.85, t.Muted)),
                 ]));
                 SectionTitle(content, "File Management");
+                var restoreDlss = ui.RowButton("Restore original DLSS files", null, () => _ = RestoreDlssAsync(g), danger: true, enabled: !g.Blocked);
                 content.Children.Add(ui.Group(
                 [
                     ui.RowButton("Update DLSS files", null, () => _ = RunOperationAsync("update-dlss", [g]), enabled: !g.Blocked),
-                    ui.RowButton("Restore original DLSS files", null, () => Toast("Restoring DLSS backups is available in Desktop UI."), danger: true),
+                    restoreDlss,
                 ]));
+                var inventory = new StackPanel { Spacing = t.Px(16) };
+                content.Children.Add(inventory);
+                _ = FillDlssInventoryAsync(g, inventory, restoreDlss);
                 break;
 
             case "Tools":
@@ -261,10 +271,10 @@ public sealed partial class GameModeView
                 var index = 0;
                 foreach (var (glyph, label, enabled, action) in new (string, string, bool, Action)[]
                 {
-                    ("", "Diagnose NR", g.Installed, () => Toast("NR diagnosis arrives with the provider channel update.")),
-                    ("", "Install ReShade", false, () => { }),
-                    ("", "Install Add-on", false, () => { }),
-                    ("", "ReShade Downloads", false, () => { }),
+                    ("", "Diagnose NR", g.Installed, () => _ = DiagnoseAsync(g)),
+                    ("", "Install ReShade", !shell.Service.IsPreview && !g.Blocked, () => _ = InstallExtraAsync(g, "reshade")),
+                    ("", "Install Add-on", !shell.Service.IsPreview && !g.Blocked, () => _ = InstallExtraAsync(g, "addon")),
+                    ("", "ReShade Downloads", true, () => MainWindow.OpenUri("https://reshade.me/")),
                 })
                 {
                     var tile = new StackPanel { Spacing = t.Px(10), HorizontalAlignment = HorizontalAlignment.Center };
@@ -278,28 +288,38 @@ public sealed partial class GameModeView
                     index++;
                 }
                 content.Children.Add(tools);
-                content.Children.Add(ui.P("ReShade and add-on imports use Desktop UI with keyboard and mouse.", 0.83));
+                content.Children.Add(ui.P("Use an extracted x64 ReShade DLL or .addon64 file from a source you trust. Each install is reviewed first and can be restored.", 0.83));
+                var installed = new StackPanel { Spacing = t.Px(16) };
+                content.Children.Add(installed);
+                _ = FillExtraRecordsAsync(g, installed);
                 break;
 
             case "Notes":
                 SectionTitle(content, "Notes", "Kept with this game in rtxForge.");
                 var notes = new TextBox
                 {
-                    Text = g.Notes, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = t.Px(160),
+                    Text = notesDraft ?? g.Notes, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = t.Px(160),
                     FontSize = t.Em(0.9), PlaceholderText = "What worked, what didn't, settings you used",
                     Background = GmTheme.B(t.Panel), Foreground = GmTheme.B(t.Fg), BorderBrush = GmTheme.B(t.Line),
                     CornerRadius = new CornerRadius(t.Px(12)), Padding = new Thickness(t.Px(20)),
                 };
+                notes.TextChanged += (_, _) => notesDraft = notes.Text;
                 ui.Focusable(notes);
                 Key(notes, "notes");
                 content.Children.Add(notes);
+                // game_notes: the test result and notes are saved with this game (shared with Desktop UI).
+                notesStatus ??= g.TestStatus;
                 content.Children.Add(ui.Group(
                 [
-                    ui.PreferenceRow("Test Result", "Bench excludes this game from bulk installation and repair.", ui.Text(g.Tested ? "Tested" : "Untested", 0.85, t.Muted)),
+                    Choice("Test Result", "Bench excludes this game from bulk installation and repair.", ["Untested", "Working", "Problem", "Bench"],
+                        ["Untested", "Working", "Problem", "Bench"], () => notesStatus ?? g.TestStatus, v => notesStatus = v),
                 ]));
                 content.Children.Add(ui.P("Controller text entry uses the Windows touch keyboard or Steam's keyboard.", 0.83));
-                content.Children.Add(ui.Button("Save Notes", () => { g.Notes = notes.Text; Toast("Notes saved."); }, GmKind.Primary, 0.85)
-                    .With(b => b.HorizontalAlignment = HorizontalAlignment.Left));
+                var noteActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(16) };
+                noteActions.Children.Add(ui.Button("Save Notes", () => _ = SaveNotesAsync(g, notesStatus ?? g.TestStatus, notes.Text), GmKind.Primary, 0.85).With(b => Key(b, "notes-save")));
+                noteActions.Children.Add(ui.Button(g.TestActive ? "Finish Test" : "Start Test", () => _ = RecordTestAsync(g), GmKind.Card, 0.85,
+                    enabled: !shell.Service.IsPreview).With(b => Key(b, "notes-test")));
+                content.Children.Add(noteActions);
                 break;
 
             case "Appearance":
@@ -318,7 +338,7 @@ public sealed partial class GameModeView
                     shell.Settings.Save();
                     shell.NotifyGamesChanged();
                 }, GmKind.Card, 0.85, enabled: current is not null).With(b => b.HorizontalAlignment = HorizontalAlignment.Left));
-                SectionTitle(content, "Custom Artwork", "Choose poster, wide capsule and hero images in Desktop UI. Your Steam artwork is used by default.");
+                CustomArtworkSection(g, content);
                 break;
 
             default:

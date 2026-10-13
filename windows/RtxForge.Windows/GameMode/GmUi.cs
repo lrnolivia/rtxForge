@@ -86,14 +86,23 @@ public sealed class GmUi(GmTheme t)
         return button;
     }
 
-    static object Label(string text, GmKind kind) => new TextBlock { Text = text, TextTrimming = TextTrimming.CharacterEllipsis };
+    /// <summary>
+    /// A pill label centered on its letters: the line box is trimmed to cap height and baseline,
+    /// so text sits in the optical middle of the pill instead of riding low on the descender space.
+    /// </summary>
+    public static TextBlock PillText(string text) => new()
+    {
+        Text = text, TextTrimming = TextTrimming.CharacterEllipsis, TextLineBounds = TextLineBounds.Tight, VerticalAlignment = VerticalAlignment.Center,
+    };
+
+    static object Label(string text, GmKind kind) => PillText(text);
 
     /// <summary>Content with a leading icon (button glyphs preference).</summary>
     public StackPanel IconLabel(string glyph, string text, double gap = 12)
     {
         var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(gap) };
-        line.Children.Add(new FontIcon { Glyph = glyph, FontSize = t.Em(0.9) });
-        line.Children.Add(new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center });
+        line.Children.Add(new FontIcon { Glyph = glyph, FontSize = t.Em(0.9), VerticalAlignment = VerticalAlignment.Center });
+        line.Children.Add(PillText(text));
         return line;
     }
 
@@ -172,18 +181,14 @@ public sealed class GmUi(GmTheme t)
     public Border Badge(string text, Color background, Color foreground, double em = 0.62, string? glyph = null)
     {
         var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(6) };
-        if (glyph is not null) line.Children.Add(new FontIcon { Glyph = glyph, FontSize = t.Em(em), Foreground = GmTheme.B(foreground) });
-        line.Children.Add(new TextBlock
-        {
-            Text = text, FontSize = t.Em(em), FontWeight = new FontWeight(650), Foreground = GmTheme.B(foreground),
-            VerticalAlignment = VerticalAlignment.Center,
-        });
-        return new Border
+        if (glyph is not null) line.Children.Add(new FontIcon { Glyph = glyph, FontSize = t.Em(em), Foreground = GmTheme.B(foreground), VerticalAlignment = VerticalAlignment.Center });
+        line.Children.Add(PillText(text).With(x => { x.FontSize = t.Em(em); x.FontWeight = new FontWeight(650); x.Foreground = GmTheme.B(foreground); }));
+        return Capsule(new Border
         {
             Background = GmTheme.B(background), CornerRadius = new CornerRadius(t.Px(18)),
-            Padding = new Thickness(t.Px(10), t.Px(4), t.Px(10), t.Px(4)), Child = line,
+            Padding = new Thickness(t.Px(12), t.Px(7), t.Px(12), t.Px(7)), Child = line,
             VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Left,
-        };
+        });
     }
 
     /// <summary>.rf-group: a rounded panel of rows separated by --line.</summary>
@@ -300,16 +305,32 @@ public sealed class GmUi(GmTheme t)
         foreach (var (key, label, enabled) in items)
         {
             var on = key == selected;
-            var button = Button(label, () => pick(key), GmKind.Transparent, em, enabled, radius: 8,
-                padding: new Thickness(t.Px(22), t.Px(10), t.Px(22), t.Px(10)), minHeight: t.Compact ? 40 : 54);
+            var button = Capsule(Button(label, () => pick(key), GmKind.Transparent, em, enabled, radius: 8,
+                padding: new Thickness(t.Px(22), t.Px(10), t.Px(22), t.Px(10)), minHeight: t.Compact ? 40 : 54));
             if (on) { button.Background = GmTheme.B(t.SegmentSelected); button.Foreground = GmTheme.B(t.ActiveFg); }
             Focusable(button, -6);
             line.Children.Add(button);
         }
-        return new Border { Background = GmTheme.B(t.Card), CornerRadius = new CornerRadius(t.Px(12)), Padding = new Thickness(t.Px(4)), Child = line };
+        return Capsule(new Border { Background = GmTheme.B(t.Card), CornerRadius = new CornerRadius(t.Px(12)), Padding = new Thickness(t.Px(4)), Child = line });
     }
 
     public static Border Spacer(double height) => new() { Height = height };
+
+    /// <summary>
+    /// A true pill (.rf-badge, .rf-segments): corners always half the element's height, so the
+    /// ends stay round at every UI scale instead of a fixed radius turning into a rounded rectangle.
+    /// </summary>
+    public static T Capsule<T>(T element) where T : FrameworkElement
+    {
+        void Round(double height)
+        {
+            var radius = new CornerRadius(Math.Max(0, height / 2));
+            if (element is Border border) border.CornerRadius = radius;
+            else if (element is Control control) control.CornerRadius = radius;
+        }
+        element.SizeChanged += (_, e) => Round(e.NewSize.Height);
+        return element;
+    }
 }
 
 /// <summary>A focus target Left/Right adjusts instead of moving focus.</summary>

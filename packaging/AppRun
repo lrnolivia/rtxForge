@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+root="${APPDIR:?}/usr/share/rtxforge"
+if [ "${1:-}" = --setup ]; then
+    shift
+    exec /usr/bin/python3 -B "$root/scripts/setup.py" "$@"
+fi
+if [ "${1:-}" = --install ]; then
+    exec /usr/bin/python3 -B "$root/scripts/desktop_install.py"
+fi
+if [ "${1:-}" = --cli ]; then
+    shift
+    exec /usr/bin/python3 -B "$root/scripts/engine_cli.py" "$@"
+fi
+exec /usr/bin/python3 -B "$root/scripts/desktop_frontend.py" "$@"

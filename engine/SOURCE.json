@@ -1,0 +1,6 @@
+{
+  "archive": "rtxEngine-Terminal-Edition-v13-Handoff-188-RC1.38-TYPED-BASELINE-SCHEMA.zip",
+  "sha256": "22b84eac2e013446b2cb50022a2cfb292f31a1677685e74e86f30ffcf76492b5",
+  "source_sha256": "5de5dc8c99640bae252a84cc0cad9361412d94e08003073811cb55780b8984ec",
+  "adaptation": "rtxengine.py; original snapshots retained locally under imported-rc1.38; tests migrated from the supplied source"
+}

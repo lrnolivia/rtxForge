@@ -1,0 +1,41 @@
+name: Commit attribution
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+  push:
+    branches: ['**']
+    tags: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  attribution:
+    name: Commit attribution
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Read policy from the trusted base
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.sha }}
+          path: policy
+          persist-credentials: false
+      - name: Read proposed commits
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check identities, messages and proposed squash text
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -n "$BASE_SHA" ]; then
+            python3 policy/scripts/check_attribution.py --repo source --head HEAD --base "$BASE_SHA" --event "$GITHUB_EVENT_PATH"
+          else
+            python3 policy/scripts/check_attribution.py --repo source --head HEAD --event "$GITHUB_EVENT_PATH"
+          fi

@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "config_schema": "rtxforge-v4-streamline-native-v1",
+  "repo": "y4my4my4m/OptiScaler_DLSSNR_Multipass_MFG",
+  "tag": "v10.0.0-dev-fork-y4my4my4m-v4",
+  "commit": "7b7220bbb4994a9c8ae60cfc75a44cb67995efb8",
+  "asset": "OptiScaler_v10.0.0-dev-fork-y4my4my4m-v4_20260905_with_DLSS.7z",
+  "url": "https://github.com/y4my4my4m/OptiScaler_DLSSNR_Multipass_MFG/releases/download/v10.0.0-dev-fork-y4my4my4m-v4/OptiScaler_v10.0.0-dev-fork-y4my4my4m-v4_20260905_with_DLSS.7z",
+  "sha256": "9d7824cc9cfb15265bc6438b4638aad74ff9cd6d1d3488ab73724affb386a8b0",
+  "expected_nr_size": 165840496,
+  "storage": {
+    "legacy_root": "/var/mnt/Games/Ada-Lab/RTXForge",
+    "reserve_bytes": 2147483648
+  },
+  "name": "RTXForge",
+  "headless": [],
+  "nr": {
+    "repo": "ShyVortex/dlss-unlocked",
+    "tag": "v0.3.0",
+    "asset": "dlss-unlocked-standalone-v0.3.0.zip",
+    "sha256": "adf6b2cdcb0b57f3d04fae095135615c9c9f8c6fc8b2bdeccf01cf62672c5183",
+    "runtime_sha256": "e67dee209320cdafe0e93e45675d7aa34323a53acc57a72b2e40a181581c989a",
+    "components": {
+      "nvngx.dll_dlssnr.dll": "17cf51d25d142d0be15fcac945cc928c37849a1cb61011cb9c742d72df86647c",
+      "nvngx_dlssnr.dll": "e67dee209320cdafe0e93e45675d7aa34323a53acc57a72b2e40a181581c989a",
+      "OptiScaler/streamline/nvngx_dlssnr.dll": "e16bcf15e16e13f527491cdf7845b2fe6521a738d8f7c9c721866a8496e1fc8e",
+      "OptiScaler/streamline/sl.dlss_nr.dll": "9f6672e5e0170dc118a3188d21bda187e1fc1aa3502895b21ab846d23165c11d"
+    },
+    "strategy": "dlss-unlocked-proton-v1"
+  },
+  "pipeline": "streamline-native-dlssg-nr-separate-v2",
+  "mfg": {
+    "default_input": "dlssg",
+    "default_output": "dlssg",
+    "default_nvngx_replacement": "none",
+    "route_id": "native-streamline-dlssg-ada-v5",
+    "policy": "Native Streamline input and real NVIDIA DLSS-G output only; no Enabler dependency."
+  }
+}

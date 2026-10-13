@@ -1,0 +1,264 @@
+name: Build rtxForge Linux
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_preview:
+        description: Publish this reviewed branch to the continuous preview updater
+        type: boolean
+        default: false
+
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rtxforge-linux-main
+  cancel-in-progress: true
+
+jobs:
+  build-appimage:
+    name: Bazzite x86_64 AppImage
+    runs-on: ubuntu-24.04
+    container:
+      image: fedora:44
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Install Fedora 44 build and validation dependencies
+        run: |
+          set -euo pipefail
+          dnf install -y \
+            ca-certificates \
+            git \
+            gh \
+            python3 \
+            python3-gobject \
+            gobject-introspection \
+            gtk4 \
+            libadwaita \
+            graphene \
+            gdk-pixbuf2 \
+            adwaita-icon-theme \
+            adwaita-sans-fonts \
+            squashfs-tools \
+            xorg-x11-server-Xvfb \
+            dbus-daemon
+
+      - name: Checkout rtxForge
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Trust checkout inside Fedora container
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git rev-parse --show-toplevel
+          git rev-parse HEAD
+
+      - name: Validate Python and engine behavior
+        run: |
+          set -euo pipefail
+
+          /usr/bin/python3 -m py_compile \
+            engine/rtxengine.py \
+            scripts/engine_bridge.py \
+            scripts/desktop_service.py \
+            scripts/library_media.py \
+            scripts/app_update.py \
+            scripts/desktop_install.py \
+            scripts/runtime_updates.py \
+            scripts/ui_colors.py \
+            gui/rtxforge_gtk.py
+
+          /usr/bin/python3 -m unittest \
+            engine.tests.test_v13_core_hardening
+
+          /usr/bin/python3 -m unittest discover -s tests -p test_runtime_updates.py
+          /usr/bin/python3 -m unittest discover -s tests -p test_ui_colors.py
+          /usr/bin/python3 -m unittest discover -s tests -p test_app_update.py
+          /usr/bin/python3 -m unittest discover -s tests -p test_operation_finalization.py
+          /usr/bin/python3 -m unittest discover -s tests -p test_setup.py
+          /usr/bin/python3 -m unittest discover -s tests -p test_package_download.py
+
+          /usr/bin/python3 -m unittest discover -s tests -p test_release_backup.py
+
+          /usr/bin/python3 tests/test_batches.py
+          /usr/bin/python3 tests/test_cleanup.py
+
+          git show --format= --check HEAD
+
+      - name: Validate GTK desktop smoke
+        env:
+          GDK_BACKEND: x11
+          GSK_RENDERER: cairo
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          GTK_A11Y: "none"
+          HOME: /tmp/rtxforge-smoke-home
+        run: |
+          set -euo pipefail
+
+          cat /etc/fedora-release
+          mkdir -p "$HOME" dist
+
+          /usr/bin/python3 - <<'PY'
+          import gi
+          gi.require_version('Adw', '1')
+          from gi.repository import Adw
+
+          version = (
+              Adw.get_major_version(),
+              Adw.get_minor_version(),
+              Adw.get_micro_version(),
+          )
+          print('libadwaita:', '.'.join(map(str, version)))
+          assert hasattr(Adw, 'ToggleGroup'), 'Fedora 44 must provide Adw.ToggleGroup'
+          PY
+
+          dbus-run-session -- \
+            xvfb-run -a \
+            /usr/bin/python3 gui/rtxforge_gtk.py --smoke-test
+
+          for image in \
+            gnome-library.png \
+            gnome-game-settings.png \
+            gnome-settings.png \
+            gnome-progress.png \
+            gnome-complete.png
+          do
+            test -s "dist/$image"
+          done
+
+      - name: Show build identity
+        run: |
+          cat /etc/fedora-release
+          echo "Building rtxForge $(cat VERSION)"
+          git rev-parse HEAD
+
+      - name: Build AppImage
+        run: |
+          python3 packaging/build_appimage.py
+          python3 - <<'PYBUILD'
+          import json, os
+          from pathlib import Path
+          info=json.loads(Path('dist/AppImage-build/RTXForge.AppDir/usr/share/rtxforge/BUILD_INFO.json').read_text())
+          assert info['commit']==os.environ['GITHUB_SHA']
+          PYBUILD
+
+      - name: Verify versioned AppImage
+        run: |
+          cd dist
+          sha256sum -c RTXForge-*.AppImage.sha256
+
+      - name: Build verified Bazzite setup bundle
+        run: python3 packaging/build_bundle.py
+
+      - name: Create updater assets
+        run: |
+          VERSION="$(cat VERSION)"
+          VERSIONED="dist/RTXForge-${VERSION}-Bazzite-x86_64.AppImage"
+          UPDATE="dist/rtxForge-Bazzite-x86_64.AppImage"
+
+          test -f "$VERSIONED"
+
+          cp "$VERSIONED" "$UPDATE"
+          chmod +x "$UPDATE"
+
+          SHA="$(sha256sum "$UPDATE" | awk '{print $1}')"
+          SIZE="$(stat -c '%s' "$UPDATE")"
+
+          printf '%s  %s\n' \
+            "$SHA" \
+            "$(basename "$UPDATE")" \
+            > "${UPDATE}.sha256"
+
+          python3 - "$VERSION" "$SHA" "$SIZE" <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          version, sha256, size = sys.argv[1:]
+
+          manifest = {
+              'channel': 'continuous',
+              'version': version,
+              'commit': os.environ['GITHUB_SHA'],
+              'appimage': 'rtxForge-Bazzite-x86_64.AppImage',
+              'sha256': sha256,
+              'size': int(size),
+          }
+
+          Path('dist/rtxforge-update.json').write_text(
+              json.dumps(
+                  manifest,
+                  indent=2,
+                  sort_keys=True,
+              ) + '\n'
+          )
+          PY
+
+      - name: Verify updater AppImage
+        run: |
+          cd dist
+          sha256sum -c rtxForge-Bazzite-x86_64.AppImage.sha256
+          cat rtxforge-update.json
+
+      - name: Upload Actions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rtxForge-Bazzite-x86_64
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dist/RTXForge-*.AppImage
+            dist/RTXForge-*.AppImage.sha256
+            dist/rtxForge-Bazzite-x86_64.AppImage
+            dist/rtxForge-Bazzite-x86_64.AppImage.sha256
+            dist/rtxforge-update.json
+            dist/rtxForge-Bazzite-RTX4070-*.tar.gz
+            dist/rtxForge-Bazzite-RTX4070-*.tar.gz.sha256
+
+      - name: Publish continuous updater release
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_preview && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/rtxforge/shared-package-ui-20261002')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # Keep rollback bytes in the existing channel; do not create historical refs.
+          # This uses the existing contents permission and does not widen token access.
+          gh release view continuous --json assets > /tmp/rtxforge-release-assets.json
+          mkdir -p /tmp/rtxforge-current /tmp/rtxforge-backup /tmp/rtxforge-existing
+          gh release download continuous --dir /tmp/rtxforge-current
+          python3 scripts/prepare_release_backup.py /tmp/rtxforge-current /tmp/rtxforge-backup
+          for FILE in /tmp/rtxforge-backup/*; do
+            NAME="$(basename "$FILE")"
+            if python3 -c 'import json,sys; sys.exit(0 if any(a["name"]==sys.argv[1] for a in json.load(open("/tmp/rtxforge-release-assets.json"))["assets"]) else 1)' "$NAME"; then
+              gh release download continuous --pattern "$NAME" --dir /tmp/rtxforge-existing
+              cmp "$FILE" "/tmp/rtxforge-existing/$NAME"
+            else
+              gh release upload continuous "$FILE"
+            fi
+          done
+
+          CURRENT_TAG="$(git rev-parse refs/tags/continuous)"
+          git tag -f continuous "$GITHUB_SHA"
+          git push --force-with-lease="refs/tags/continuous:$CURRENT_TAG" origin refs/tags/continuous
+
+          gh release edit continuous \
+            --title "rtxForge Continuous" \
+            --prerelease \
+            --notes "Verified development preview AppImage: $GITHUB_SHA. This moving prerelease is the rtxForge continuous update channel, not a numbered stable release. Verified previous updater files are retained as .previous assets."
+
+          gh release upload continuous \
+            dist/rtxForge-Bazzite-x86_64.AppImage \
+            dist/rtxForge-Bazzite-x86_64.AppImage.sha256 \
+            dist/rtxforge-update.json \
+            --clobber

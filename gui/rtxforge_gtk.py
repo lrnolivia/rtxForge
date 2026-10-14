@@ -13657,7 +13657,7 @@ class Window(Adw.ApplicationWindow):
     def action_ready(self,review,*_legacy):
         """Stage 3: the review, in the operation's dialog."""
         self.review=review
-        operation=review.get('operation') or {'rollback':'recovery','restore-cleanup':'recovery','cleanup':'cleanup'}.get(review.get('kind'),'install')
+        operation=review.get('operation') or {'rollback':'recovery','restore-cleanup':'recovery','operation':'recovery','cleanup':'cleanup'}.get(review.get('kind'),'install')
         review.setdefault('operation',operation)
         flow=getattr(self,'operation_flow',None)
         if flow is None or flow.closed or flow.operation!=operation:
@@ -13668,7 +13668,7 @@ class Window(Adw.ApplicationWindow):
         """Stage 4: progress, then Done or Could not finish."""
         if self.options.demo:return
         flow=self.operation_flow
-        if review.get('kind') in ('rollback','restore-cleanup','cleanup'):flow.show_working(flow.progress_verb+'…')
+        if review.get('kind') in ('rollback','restore-cleanup','operation','cleanup'):flow.show_working(flow.progress_verb+'…')
         else:flow.show_progress(len(review.get('rows',[])) or len(self.operation_games))
         flow.rescan=True
         if review.get('kind')=='engine':

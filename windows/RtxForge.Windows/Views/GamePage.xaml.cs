@@ -331,13 +331,12 @@ public sealed partial class GamePage : Page
         PageHost.Padding = new Thickness(side, 0, side, 0);
 
         var nowNarrow = width < 980;
-        // Everything bottom-aligns with the poster. Wide: text and actions span
-        // both rows beside it. Narrow: actions drop into the second row.
-        Grid.SetRowSpan(PosterFrame, 2);
-        Grid.SetRowSpan(HeroText, nowNarrow ? 1 : 2);
-        Grid.SetRowSpan(HeroActions, nowNarrow ? 1 : 2);
-        Grid.SetRow(HeroActions, nowNarrow ? 1 : 0);
-        Grid.SetColumn(HeroActions, nowNarrow ? 1 : 2);
+        // Everything bottom-aligns with the poster; the title always spans the
+        // full width. Wide: actions sit beside the meta/summary row. Narrow:
+        // actions drop into their own row under it.
+        Grid.SetRow(HeroActions, nowNarrow ? 2 : 1);
+        Grid.SetColumn(HeroActions, nowNarrow ? 0 : 1);
+        HeroActions.Margin = new Thickness(0, nowNarrow ? 12 : 0, 0, 0);
         HeroActions.HorizontalAlignment = nowNarrow ? HorizontalAlignment.Left : HorizontalAlignment.Right;
         if (nowNarrow != narrow)
         {

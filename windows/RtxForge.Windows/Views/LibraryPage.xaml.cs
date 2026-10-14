@@ -192,7 +192,7 @@ public sealed partial class LibraryPage : Page
     {
         const double gap = 16, footer = 68, border = 4;
         var capsules = Settings.LibraryView == "capsules";
-        var preferred = (capsules ? 300 : 180) * Settings.ArtScale / 100.0;
+        var preferred = (capsules ? 300 : 212) * Settings.ArtScale / 100.0;
         var available = Library.ActualWidth;
         if (available <= 0) available = Math.Max(preferred, ActualWidth - 72);
         var columns = Math.Max(1, (int)Math.Floor((available + gap) / (preferred + gap)));

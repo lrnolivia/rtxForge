@@ -119,10 +119,10 @@ def apply_neutral_palette():
         .game-card:not(.selected) .game-details:hover { background: #3b3b3b; }
         '''
     elif Adw.StyleManager.get_default().get_dark():
-        theme_css+='@define-color forge_library_card_a mix(@sidebar_bg_color,@window_fg_color,0.05); @define-color forge_library_card_b mix(@sidebar_bg_color,@window_fg_color,0.075); @define-color forge_panel_bg alpha(@window_fg_color,0.08); @define-color forge_library_list_hover mix(@sidebar_bg_color,@window_fg_color,0.10);'
+        theme_css+='@define-color forge_library_card_a mix(@window_bg_color,@window_fg_color,0.06); @define-color forge_library_card_b mix(@window_bg_color,@window_fg_color,0.09); @define-color forge_panel_bg alpha(@window_fg_color,0.08); @define-color forge_library_list_hover mix(@window_bg_color,@window_fg_color,0.12);'
     else:
         theme_css+="""
-        @define-color forge_lower_bg @sidebar_bg_color;
+        @define-color forge_lower_bg @window_bg_color;
         @define-color forge_library_card_a @card_bg_color;
         @define-color forge_library_card_b mix(@card_bg_color,@sidebar_bg_color,0.2);
         @define-color forge_library_card_hover #e2e2e2;
@@ -1538,7 +1538,7 @@ CSS=b'''
  * custom gray family.
  */
 @define-color forge_top_bg @view_bg_color;
-@define-color forge_lower_bg @sidebar_bg_color;
+@define-color forge_lower_bg @window_bg_color;
 @define-color forge_panel_bg alpha(@window_fg_color,0.12);
 @define-color forge_library_card_a mix(@forge_lower_bg,@window_fg_color,0.08);
 @define-color forge_library_card_b mix(@forge_lower_bg,@window_fg_color,0.13);
@@ -2247,8 +2247,9 @@ columnview.library-column-view listview row:nth-child(even):hover {
 
 .game-banner-title {
     color: @window_fg_color;
+    font-family: "Bakbak One";
     font-size: 42px;
-    font-weight: 600;
+    font-weight: 400;
     letter-spacing: -0.8px;
     text-shadow: 0 0 8px alpha(black,0.39), 0 0 20px alpha(black,0.21);
 }
@@ -2819,9 +2820,22 @@ headerbar, .titlebar {
     padding-bottom: 6px;
 }
 
-/* The sidebar keeps libadwaita's own sidebar surface. */
-.sidebar-pane headerbar {
+/* Main window sidebar: the Settings sidebar, with one native 1px edge. */
+.forge-split > .sidebar-pane {
+    background: @sidebar_bg_color;
+}
+.forge-split > .sidebar-pane .settings-sidebar-surface {
+    min-width: 0;
     background: transparent;
+}
+.forge-sidebar-brand {
+    padding: 18px 12px 12px 22px;
+}
+.forge-brand-title {
+    font-family: "Bakbak One";
+    font-size: 22px;
+    font-weight: 400;
+    letter-spacing: -0.4px;
 }
 
 
@@ -4718,7 +4732,7 @@ class Window(Adw.ApplicationWindow):
 
         # Balanced light-side inset at the dark/light seam.
         viewbar.set_margin_top(
-            16
+            8
         )
 
         library_title=label('Library','heading')
@@ -4881,7 +4895,7 @@ class Window(Adw.ApplicationWindow):
         # Balance the two-tone panel seam:
         # dark dashboard bottom = 16px
         # light Library top     = 16px
-        viewbar.set_margin_bottom(16)
+        viewbar.set_margin_bottom(8)
         controls_surface.append(viewbar)
 
         # List mode uses a real Gtk.ColumnView. Its built-in
@@ -5084,23 +5098,19 @@ class Window(Adw.ApplicationWindow):
 
         # Kept for summaries elsewhere; the count lives in "Install Selected (N)".
         self.selected_label=label('0 selected', 'selection-count')
-        self.columns_control=Gtk.SpinButton.new_with_range(3,9,1)
-        self.columns_control.set_value(self.settings.get('library_columns',7))
-        self.columns_control.set_tooltip_text('Preferred games per row; adjusts only to keep cards readable or avoid oversized cards')
-        size_content=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12)
-        margins(size_content,16)
-        size_content.append(label('Games per row','heading'))
-        size_content.append(self.columns_control)
-        hint=label('Keeps your preferred count while cards fit comfortably. Adjusts only at narrow or very wide sizes.','dim-label')
-        hint.set_max_width_chars(28)
-        size_content.append(hint)
-        size_popover=Gtk.Popover()
-        size_popover.set_child(size_content)
-        self.size_button=Gtk.MenuButton(icon_name='rtx-card-size-symbolic',valign=Gtk.Align.CENTER)
-        self.size_button.set_tooltip_text('Card size')
-        self.size_button.update_property([Gtk.AccessibleProperty.LABEL],['Card size'])
-        self.size_button.set_popover(size_popover)
-        self.columns_control.connect('value-changed', self.library_columns_changed)
+        # Artwork size, as on Windows: the window width decides how many
+        # posters or capsules fit at this size.
+        self.art_scale=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,85,150,5)
+        self.art_scale.set_draw_value(False)
+        self.art_scale.set_size_request(120,-1)
+        self.art_scale.set_valign(Gtk.Align.CENTER)
+        self.art_scale.set_value(self.library_art_scale())
+        self.art_scale.set_tooltip_text('Artwork size')
+        self.art_scale.update_property([Gtk.AccessibleProperty.LABEL],['Artwork size'])
+        self.art_scale.add_css_class('library-art-scale')
+        self.art_scale.connect('value-changed',self.art_scale_changed)
+        self.art_scale.set_sensitive(self.settings.get('library_view','posters')!='list')
+        self.size_button=self.art_scale
         for widget in (self.size_button,self.select_toggle,refresh,add_folder):
             viewbar.append(widget)
 
@@ -5205,31 +5215,43 @@ class Window(Adw.ApplicationWindow):
     )
 
     def build_sidebar(self,menu):
-        """GNOME-style sidebar: the app title and primary menu, then the pages."""
-        view=Adw.ToolbarView()
-        head=Adw.HeaderBar()
-        head.set_title_widget(Adw.WindowTitle(title='rtxForge'))
-        head.pack_end(menu)
-        view.add_top_bar(head)
+        """The same sidebar as Settings and Game Details: brand, then the pages."""
+        sidebar=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,vexpand=True)
+        sidebar.add_css_class('settings-sidebar-surface')
+        sidebar.add_css_class('forge-main-sidebar')
+        # Brand: the logo mark (no platter) and the wordmark font, left aligned.
+        header=Gtk.Box(spacing=10)
+        header.add_css_class('settings-sidebar-header')
+        header.add_css_class('forge-sidebar-brand')
+        mark=make_brand_icon(30)
+        mark.set_valign(Gtk.Align.CENTER)
+        header.append(mark)
+        title=label('rtxForge','forge-brand-title')
+        title.set_wrap(False);title.set_valign(Gtk.Align.CENTER);title.set_hexpand(True)
+        header.append(title)
+        menu.set_valign(Gtk.Align.CENTER)
+        menu.add_css_class('flat')
+        header.append(menu)
+        handle=Gtk.WindowHandle()
+        handle.set_child(header)
+        sidebar.append(handle)
 
-        self.nav_list=Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
-        self.nav_list.add_css_class('navigation-sidebar')
+        self.nav_list=Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE,vexpand=True,valign=Gtk.Align.FILL)
+        self.nav_list.add_css_class('settings-navigation')
         self.nav_rows={}
-        for key,title,icon in self.PAGES:
+        for key,title_text,icon in self.PAGES:
             row=Gtk.ListBoxRow()
             row.page=key
             content=Gtk.Box(spacing=12)
             content.append(Gtk.Image(icon_name=icon))
-            content.append(Gtk.Label(label=title,xalign=0,hexpand=True))
+            content.append(Gtk.Label(label=title_text,xalign=0,hexpand=True))
             row.set_child(content)
             self.nav_list.append(row)
             self.nav_rows[key]=row
         self.nav_list.select_row(self.nav_rows['library'])
         self.nav_list.connect('row-selected',lambda _list,row:row is not None and self.show_page(row.page))
-        scroll=Gtk.ScrolledWindow(vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER)
-        scroll.set_child(self.nav_list)
-        view.set_content(scroll)
-        return view
+        sidebar.append(self.nav_list)
+        return sidebar
 
     def _header_density(self,*_):
         width=self.get_width() or self.get_default_size()[0]
@@ -6650,16 +6672,12 @@ class Window(Adw.ApplicationWindow):
         self.apply_page_margins(OUTER_INSET)
         usable_width=max(1,viewport_width-OUTER_INSET*2)
 
-        # Preferred density adapts only when cards become cramped or oversized.
-        preferred=max(3,min(9,int(self.settings.get('library_columns',7))))
+        # As many columns as fit at the slider's size; the solver below then
+        # widens them so the row ends flush with the edge (Windows
+        # ApplyGridMetrics: 180 px posters / 300 px capsules at 100%).
         preferred_gap=16
-        minimum_width=200 if view=='posters' else 220
-        maximum_width=420 if view=='posters' else 520
-        slot_count=preferred
-        while slot_count>3 and (usable_width-preferred_gap*(slot_count-1))/slot_count<minimum_width:
-            slot_count-=1
-        while slot_count<9 and (usable_width-preferred_gap*(slot_count-1))/slot_count>maximum_width:
-            slot_count+=1
+        preferred_width=(300 if view=='capsules' else 180)*self.library_art_scale()/100
+        slot_count=max(1,int((usable_width+preferred_gap)//(preferred_width+preferred_gap)))
         visible_entries=[
             entry
             for entry in entries
@@ -9103,6 +9121,26 @@ class Window(Adw.ApplicationWindow):
                 )
 
 
+    def library_art_scale(self):
+        """Artwork size in percent (85–150), 100 until the person changes it."""
+        if not self.settings.get('art_scale_chosen'):return 100
+        try:value=int(self.settings.get('art_scale',100))
+        except (TypeError,ValueError):value=100
+        return max(85,min(150,value))
+
+    def art_scale_changed(self,scale):
+        value=int(round(scale.get_value()/5)*5)
+        if value==self.library_art_scale() and self.settings.get('art_scale_chosen'):return
+        self.settings['art_scale']=value;self.settings['art_scale_chosen']=True
+        self.update_library_spacing()
+        if not self.options.demo:
+            if getattr(self,'_art_scale_save',0):GLib.source_remove(self._art_scale_save)
+            def save():
+                self._art_scale_save=0
+                library_media.save_settings(self.service.config,self.settings)
+                return False
+            self._art_scale_save=GLib.timeout_add(400,save)
+
     def library_columns_changed(self,widget):
         self.settings['library_columns']=widget.get_value_as_int()
         if not self.options.demo:
@@ -9191,6 +9229,8 @@ class Window(Adw.ApplicationWindow):
         self.library_scroll.get_vadjustment().set_value(0)
         self.column_scroll.get_vadjustment().set_value(0)
         self.settings['library_view']=key
+        # Artwork size applies to posters and capsules, not the list.
+        if hasattr(self,'art_scale'):self.art_scale.set_sensitive(key!='list')
 
         if key=='list':
             self._column_reload_store()

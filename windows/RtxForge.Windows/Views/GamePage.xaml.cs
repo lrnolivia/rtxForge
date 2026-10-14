@@ -90,6 +90,16 @@ public sealed partial class GamePage : Page
             : "Ready for Features";
         // Installed with rtxForge on Linux: Set Up for Windows adapts that install instead of reinstalling it.
         InstallText.Text = game.InstallLabel;
+        // Metadata pill beside STEAM / TESTED: which rtxForge installed the features.
+        var os = game.Installed && game.InstalledOn is "linux" or "windows" ? game.InstalledOn : null;
+        OsBadge.Visibility = os is null ? Visibility.Collapsed : Visibility.Visible;
+        if (os is not null)
+        {
+            OsBadgeIcon.Data = OsMark.Data(os);
+            OsBadgeText.Text = CrossOs.Name(os).ToUpperInvariant();
+            ToolTipService.SetToolTip(OsBadge, OsMark.Tooltip(os));
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(OsBadge, OsMark.Tooltip(os));
+        }
         InstallButton.IsEnabled = !game.Blocked && !shell.Busy;
         RestoreButton.IsEnabled = game.Installed && !shell.Busy;
         UpdateDlssItem.IsEnabled = !game.Blocked;

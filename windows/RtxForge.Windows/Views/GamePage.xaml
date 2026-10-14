@@ -48,6 +48,15 @@
                             <Border Style="{StaticResource ForgePillStyle}" VerticalAlignment="Center">
                                 <TextBlock x:Name="SourceBadge" FontSize="9" FontWeight="Bold" CharacterSpacing="42" />
                             </Border>
+                            <!-- which rtxForge installed the features: Linux or Windows mark + name -->
+                            <Border x:Name="OsBadge" Style="{StaticResource ForgePillStyle}" VerticalAlignment="Center" Visibility="Collapsed">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <Viewbox Width="10" Height="10" VerticalAlignment="Center">
+                                        <PathIcon x:Name="OsBadgeIcon" Width="16" Height="16" />
+                                    </Viewbox>
+                                    <TextBlock x:Name="OsBadgeText" FontSize="9" FontWeight="Bold" CharacterSpacing="42" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
                             <Border x:Name="TestBadge" Style="{StaticResource ForgePillStyle}" VerticalAlignment="Center">
                                 <StackPanel Orientation="Horizontal" Spacing="4">
                                     <FontIcon x:Name="TestBadgeIcon" FontSize="10" />

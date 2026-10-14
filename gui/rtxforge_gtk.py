@@ -15001,14 +15001,15 @@ class Window(Adw.ApplicationWindow):
                     == slots
                 )
 
+                # Pages keep one centered column: 3% side margins, at least 16 px.
                 assert (
                     self.flow.get_margin_start()
-                    == 16
+                    >= 16
                 )
 
                 assert (
                     self.flow.get_margin_end()
-                    >= 16
+                    == self.flow.get_margin_start()
                 )
 
                 assert (
@@ -15239,7 +15240,11 @@ class Window(Adw.ApplicationWindow):
     def smoke_library_ready(self):
         try:
             if not self.smoke_capture_ready('gnome-library.png',self.smoke_library_ready):return False
-            self.search.set_text('Cyberpunk');self.select_all(True);assert all(e['check'].get_active() for e in self.cards.values())
+            self.search.set_text('Cyberpunk');self.select_all(True)
+            # Select all takes the supported games the search shows, and only those.
+            chosen=[g for g in self.games if g['game'] in self.selected_game_ids]
+            assert chosen and all('cyberpunk' in g['name'].casefold() and not g.get('blocked') for g in chosen)
+            assert all(self.cards[g['game']]['check'].get_active() for g in chosen if g['game'] in self.cards)
             self.profile_group.set_active_name('nr-mfg');assert self.mode=='nr-mfg'
             game={**self.games[0],'feature_mode':'nr-mfg','profile':'NR + MFG','nr_strength':2.0,'sharpening_strength':0.5,'mfg_multiplier':2}
             self.details(game)

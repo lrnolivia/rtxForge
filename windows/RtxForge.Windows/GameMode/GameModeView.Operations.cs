@@ -98,6 +98,13 @@ public sealed partial class GameModeView
         var group = new List<UIElement>();
         foreach (var (game, detail) in review.Ready) group.Add(ReviewRow(game, game.Name, detail, true));
         if (group.Count > 0) list.Children.Add(ui.Group(group, t.Card));
+        foreach (var warning in review.Warnings)
+        {
+            var note = new StackPanel { Spacing = t.Px(6), Margin = new Thickness(0, t.Px(18), 0, 0) };
+            note.Children.Add(ui.Text("Warning · " + warning.Name, 0.82, t.Danger, FontWeights.SemiBold));
+            note.Children.Add(ui.Text(warning.Reason, 0.74, t.Fg, wrap: true));
+            list.Children.Add(note);
+        }
         if (review.Blocked.Count > 0)
         {
             list.Children.Add(ui.Text($"Skipped · {review.Blocked.Count}", 0.88, weight: FontWeights.SemiBold).With(x => x.Margin = new Thickness(0, t.Px(26), 0, t.Px(14))));

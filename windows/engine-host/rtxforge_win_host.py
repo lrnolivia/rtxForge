@@ -377,7 +377,25 @@ def prepare(params):
         review["cancel_event"] = threading.Event()
     token = uuid.uuid4().hex
     reviews[token] = review
-    return {"token": token, "title": review.get("title"), "rows": review.get("rows", []), "blocked": review.get("blocked", [])}
+    return {"token": token, "title": review.get("title"), "rows": review.get("rows", []), "blocked": review.get("blocked", []),
+            "warnings": _override_warnings(review)}
+
+
+def _override_warnings(review) -> list[dict]:
+    """NVIDIA App DLSS Override vs the reviewed provider's Streamline: warning rows, never blocks."""
+    if review.get("operation") not in ("install", "repair") or not review.get("payload"):
+        return []
+    provider = review["engine"].Y4MY_PROVIDER.get("name") or "the provider"
+    warnings = []
+    for plan in review.get("plans", []):
+        try:
+            found = win_features.streamline_override(plan["row"], provider=provider, payload=review["payload"])
+        except Exception:  # a heads-up only; never fail the review for it
+            traceback.print_exc()
+            continue
+        if found.get("warning"):
+            warnings.append({"name": plan["row"]["name"], "reason": found["warning"]})
+    return warnings
 
 
 def execute(params):

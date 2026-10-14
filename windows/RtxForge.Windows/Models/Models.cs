@@ -75,7 +75,12 @@ public sealed record ReviewBlock(Game? Game, string Name, string Reason);
 /// The engine's prepared review (engine_bridge.prepare). Execution runs this
 /// exact review by token, so only what the user saw is written.
 /// </summary>
-public sealed record OperationReview(string Operation, string Token, IReadOnlyList<(Game Game, string Detail)> Ready, IReadOnlyList<ReviewBlock> Blocked);
+public sealed record OperationReview(string Operation, string Token, IReadOnlyList<(Game Game, string Detail)> Ready, IReadOnlyList<ReviewBlock> Blocked,
+    IReadOnlyList<ReviewBlock>? Warnings = null)
+{
+    /// <summary>Heads-ups for ready games (e.g. NVIDIA App's DLSS Override); they never block the install.</summary>
+    public IReadOnlyList<ReviewBlock> Warnings { get; init; } = Warnings ?? [];
+}
 
 /// <summary>Whether this rtxForge installation is in Steam; Token carries the checked state into Remove.</summary>
 public sealed record SteamShortcutStatus(bool Added, string Token);
@@ -125,8 +130,11 @@ public sealed record RecoveryRecord(string Kind, string Path, string Name, strin
 /// <summary>extra_tools.recoveries: an installed ReShade or add-on that can be restored.</summary>
 public sealed record ExtraRecord(string Path, string Name, string Kind, string Title, string Date);
 
-/// <summary>runtime_diagnostics.inspect: observations, the visible-result statement and the full report.</summary>
-public sealed record NrDiagnosis(IReadOnlyList<string> Observations, string VisualResult, string Report);
+/// <summary>runtime_diagnostics.inspect: warnings (NVIDIA App DLSS Override), observations, the visible-result statement and the full report.</summary>
+public sealed record NrDiagnosis(IReadOnlyList<string> Observations, string VisualResult, string Report, IReadOnlyList<string>? Warnings = null)
+{
+    public IReadOnlyList<string> Warnings { get; init; } = Warnings ?? [];
+}
 
 public sealed record DlssFile(string Title, string Path, string Current, string Provenance);
 

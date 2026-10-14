@@ -148,7 +148,7 @@ public sealed partial class EngineForgeService
     {
         var report = await CallAsync("diagnose", new JsonObject { ["row"] = Row(game) });
         return new NrDiagnosis(Strings(report?["observations"]), S(report, "visual_result") ?? "Not established",
-            report?.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }) ?? "");
+            report?.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }) ?? "", Strings(report?["warnings"]));
     }
 
     public async Task<IReadOnlyList<ExtraRecord>> ExtraRecordsAsync(Game game) =>

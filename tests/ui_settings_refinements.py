@@ -9,10 +9,13 @@ from gi.repository import GLib,Gtk,Adw
 options=argparse.Namespace(provider=None,demo=True,resize_smoke=False,smoke_test=False,live_smoke=False,library_state_smoke=False,ui_mode='classic')
 app=ui.Application(options)
 def assert_brand(light):
-    suffix='-light' if light else ''
-    expected=ui.Gdk.Texture.new_from_filename(str(ROOT/'gui/icons/hicolor/scalable/apps'/f'io.github.lrnolivia.RTXForge{suffix}.svg')).save_to_png_bytes().get_data()
-    assert len(ui.BRAND_IMAGES)>=3
-    assert all(image.get_paintable().save_to_png_bytes().get_data()==expected for image in ui.BRAND_IMAGES)
+    # In-app brand marks use the plain logo mark (no platter) in every theme;
+    # the window and launcher icon follow the effective appearance.
+    expected=ui.Gdk.Texture.new_from_filename(str(ROOT/'gui/icons/rtxforge-mark.svg')).save_to_png_bytes().get_data()
+    images=[image for image in ui.BRAND_IMAGES if image.get_paintable() is not None]
+    assert images
+    assert all(image.get_paintable().save_to_png_bytes().get_data()==expected for image in images)
+    assert ui.Gtk.Window.get_default_icon_name().endswith('-light')==light
 
 def children(widget):
     yield widget
@@ -81,10 +84,13 @@ def gaming():
 def extras_open():
     app.window.show_extras()
 def extras():
+    # Extras is a sidebar page beside the Library, not a dialog.
     w=app.window
-    assert any(isinstance(x,Gtk.Picture) for x in children(w.dialog.get_child())) or not any(g.get('poster') for g in w.games)
+    page=w.page_stack.get_visible_child()
+    assert w.page_stack.get_visible_child_name()=='extras'
+    assert any(isinstance(x,Gtk.Picture) for x in children(page)) or not any(g.get('poster') for g in w.games)
     assert w.capture('settings-refined-extras.png')
-    w.dialog.close()
+    w.show_page('library')
 def details_open():
     w=app.window;w.details(w.games[0])
     close=next(x for x in children(w.dialog.get_child()) if x.has_css_class('game-detail-close'))

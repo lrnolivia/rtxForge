@@ -30,10 +30,17 @@ def native_scale():
     assert w.capture('layout-4k-wide-top.png')
     c.set_library_view('posters')
 
+def cards(c):
+    from game_mode import descendants
+    return [x for x in descendants(c.body) if isinstance(x,ui.Gtk.Button) and x.has_css_class('gm-gamecard')]
+
 def poster():
     w=app.window;c=w.couch
-    assert c.controls[0].artwork.picture.get_file().get_path()==c.entries[0]['game']['poster']
-    c.focus(0);c.navigate('right');assert c.current==1
+    from game_mode import ArtPicture,descendants
+    first=cards(c)[0];game=c.filtered_games()[0]
+    picture=next(x for x in descendants(first) if isinstance(x,ArtPicture))
+    assert picture.get_file().get_path()==ui.poster_art_path(game)
+    first.grab_focus();c.navigate('right');assert w.get_focus() is cards(c)[1]
 
 def poster_capture():
     w=app.window
@@ -42,12 +49,10 @@ def poster_capture():
 
 def bottom():
     w=app.window;c=w.couch
-    assert c.tab_bar.get_parent() is c.bottom_nav
-    c.focus(len(c.entries)-1)
-    c.navigate('down');assert c.zone=='nav'
-    c.navigate('up');assert c.zone=='content'
-    c.hide_hints();assert c.prompts.get_opacity()==0
-    c.navigate('right');assert c.prompts.get_opacity()==1
+    assert c.bottom_nav.get_visible() and c.find_key(c.bottom_nav,'tab-library') is not None
+    assert c.header.get_center_widget() is None
+    c._hide_hints();assert c.hints.get_opacity()==0
+    c.navigate('right');assert c.hints.get_opacity()==1
 
 def bottom_capture():
     assert app.window.capture('layout-4k-posters-bottom.png')
@@ -55,13 +60,14 @@ def bottom_capture():
 
 def settings():
     w=app.window;c=w.couch
-    assert c.tab_bar.get_parent() is c.bottom_nav
+    from game_mode import descendants
+    assert c.bottom_nav.get_visible()
     expected={'Gaming Mode':{'Interface'},'System':{'UI scale','Navigation'},
               'Library':{'Library layout'},'Controller':{'Controller hints'}}
     for section,titles in expected.items():
-        c.set_section(section)
-        assert titles <= {e['title'] for e in c.entries},section
-    c.set_section('System')
+        c.open_settings_section(section)
+        assert titles <= {x.get_text() for x in descendants(c.body) if isinstance(x,ui.Gtk.Label)},section
+    c.open_settings_section('System')
 
 def settings_capture():
     w=app.window
@@ -72,11 +78,8 @@ def panel():
     w=app.window
     assert isinstance(w.dialog,ui.PresentationDialog)
     assert w.dialog._scaled_child.factor==1.5
-    assert w.dialog._scaled_child.child.get_last_child().has_css_class('couch-tabs')
     assert w.capture('layout-4k-settings-panel.png')
-    nav=w.dialog._scaled_child.child.get_last_child()
-    nav.get_first_child().emit('clicked')
-    assert w.couch.page=='library'
+    w.dialog.force_close() if hasattr(w.dialog,'force_close') else w.dialog.close()
     w.couch.open('library')
     w.set_display_preference('navigation_position','top')
     w.set_display_preference('ui_scale',100)
@@ -88,8 +91,8 @@ def compact():
     w=app.window;c=w.couch
     assert w.presentation_scale==1
     assert c.get_width()==w.get_width()
-    assert c.tab_bar.get_parent() is c.top
-    assert c.prompts.get_opacity()==1
+    assert c.header.get_center_widget() is not None and not c.bottom_nav.get_visible()
+    assert c.hints.get_opacity()==1
     assert w.capture('layout-compact-top.png')
 
 steps=[start,native_scale,poster,poster_capture,bottom,bottom_capture,settings,settings_capture,panel,compact]

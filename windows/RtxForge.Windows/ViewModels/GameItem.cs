@@ -160,6 +160,13 @@ public sealed class GameItem : INotifyPropertyChanged
     public Brush StatusDot => Game.Blocked ? UnsupportedDot : Game.Installed ? InstalledDot : AvailableDot;
     public Visibility TestedVisibility => Game.Tested ? Visibility.Visible : Visibility.Collapsed;
 
+    // Cross-OS installs: a 10 px OS mark inside the INSTALLED pill (Linux rtx-os-*-symbolic).
+    Geometry? osMark;
+    bool HasOsMark => Game.Installed && Game.InstalledOn is "linux" or "windows";
+    public Geometry? OsMark => HasOsMark ? osMark ??= Controls.OsMark.Data(Game.InstalledOn) : null;
+    public Visibility OsMarkVisibility => HasOsMark ? Visibility.Visible : Visibility.Collapsed;
+    public string? OsMarkTooltip => HasOsMark ? Controls.OsMark.Tooltip(Game.InstalledOn) : null;
+
     // Responsive list columns
     public GridLength LocationWidth { get; }
     public GridLength FeaturesWidth { get; }

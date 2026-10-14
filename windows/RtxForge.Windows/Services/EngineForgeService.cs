@@ -210,6 +210,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             MetadataSource = appid is null ? null : "Steam",
             AppId = appid,
             Profile = S("profile"),
+            InstalledOn = S("installed_on") is "linux" or "windows" ? S("installed_on") : null,
             NrStrength = D("nr_strength"),
             SharpeningStrength = D("sharpening_strength"),
             MfgMultiplier = multiplier,

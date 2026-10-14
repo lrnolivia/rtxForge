@@ -247,7 +247,22 @@ def adapt_engine(e):
     e.restore_launch_options_batch = lambda games, assume_yes=False, **kw: []
     e._running_processes_under_root = _running_under
     e._archive_payload_cli = lambda archive: _extract_with_windows_tar(e, archive)
+    e._fsync_file = lambda path: _fsync_file(e, path)
+    # A game that fails part-way is put back by engine_bridge.execute (undo_game), as on Linux.
     return e
+
+
+def _fsync_file(e, path: Path) -> None:
+    """Windows flushes through a writable handle only (os.fsync on a read-only one is EBADF)."""
+    e.require(path.is_file() and not path.is_symlink(), f"Cannot fsync unsafe file: {path}")
+    try:
+        fd = os.open(path, os.O_RDWR | os.O_BINARY)
+    except PermissionError:
+        return  # read-only files were written and closed already; nothing is pending
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 def _steam_config_engine(e):

@@ -2,7 +2,8 @@
 from pathlib import Path
 import rtxforge as app
 import discovery,planning,packages,profiles,cleanup,transactions as t
-import re,datetime,hardware,engine_bridge,library_media
+import re,datetime,hardware,engine_bridge,library_media,cross_os,proton_prefix
+from types import SimpleNamespace
 from storage import storage
 
 class DesktopService:
@@ -82,6 +83,17 @@ class DesktopService:
                         match=re.search(r'"'+key+r'"\s+"(\d+)"',text)
                         if match:row[out]=int(match[1])
                 except OSError:pass
+            # Which rtxForge installed these features (shared record in the game folder).
+            target=Path(g.exe).parent if g.exe else root
+            record=cross_os.read(target)
+            row['installed_on']=record['os'] if record else (cross_os.THIS_OS if installed else None)
+            if record and record['os']!=cross_os.THIS_OS:
+                # Set Up (adapt) takes the other OS's install over instead of reinstalling it.
+                try:local=engine.load_baseline(target)
+                except (engine.Stop,OSError,ValueError):local=None
+                row['adaptable']=bool(cross_os.adoptable(target,cross_os.THIS_OS,(local or {}).get('cross_os_revision')))
+            if record and record['os']=='windows' and cross_os.THIS_OS=='linux':
+                row['linux_ready']=bool(proton_prefix.load_record(engine_bridge.prefix_state(engine,SimpleNamespace(target_dir=target))))
             rows.append(row)
         return sorted(rows,key=lambda r:r['name'].casefold())
 

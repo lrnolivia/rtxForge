@@ -294,7 +294,7 @@ public sealed partial class LibraryPage : Page
         Add("Game Details", "", () => shell.OpenGame(game));
         Add("DLSS Files", "", () => shell.OpenGame(game, "DLSS Files"));
         menu.Items.Add(new MenuFlyoutSeparator());
-        Add("Install Features", "", () => _ = shell.LaunchAction("install", [game]), !game.Blocked && !shell.Busy);
+        Add(game.InstallLabel, "", () => _ = shell.LaunchAction("install", [game]), !game.Blocked && !shell.Busy);
         Add("Restore Original Files", "", () => _ = shell.LaunchAction("uninstall", [game]), game.Installed && !shell.Busy);
         menu.Items.Add(new MenuFlyoutSeparator());
         Add("Open Folder", "", () => Process.Start(new ProcessStartInfo("explorer.exe", $"\"{game.Location}\"") { UseShellExecute = true }),

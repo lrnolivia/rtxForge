@@ -96,6 +96,13 @@ public sealed partial class GameModeView
         var badges = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(8) };
         var sourceBadge = ui.Badge(g.Library, t.Card, t.Fg, 0.62 * 1.2, g.Library == "Steam" ? "" : null);
         badges.Children.Add(sourceBadge);
+        // Which rtxForge installed it (Linux game_mode: "Installed on Linux" with the rtx-os mark).
+        if (g.Installed && g.InstalledOn is "linux" or "windows")
+        {
+            var osBadge = ui.Badge("Installed on " + CrossOs.Name(g.InstalledOn), t.Card, t.Fg, 0.62 * 1.2);
+            ((StackPanel)osBadge.Child).Children.Insert(0, OsMark.Create(g.InstalledOn, t.Em(0.62 * 1.2), GmTheme.B(t.Fg)));
+            badges.Children.Add(osBadge);
+        }
         badges.Children.Add(ui.Badge(g.Tested ? "Tested" : "Untested", GmTheme.Hex("#573d18"), GmTheme.Hex("#ffe8a2"), 0.62 * 1.2, g.Tested ? "" : ""));
         text.Children.Add(badges);
         text.Children.Add(ui.Text(string.Join(" · ", new[] { g.Library, g.Installed ? "Configured" : g.Blocked ? "Unsupported" : "Available", ProviderName() }), 0.78, t.Fg));
@@ -104,7 +111,7 @@ public sealed partial class GameModeView
         // The desktop Game Details hero actions, in the same order.
         identity.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12), VerticalAlignment = VerticalAlignment.Bottom };
-        var install = ui.Button(Glyph("", g.Installed ? "Repair Features" : "Install Features"), () => _ = RunOperationAsync("install", [g]),
+        var install = ui.Button(Glyph("", g.InstalledOnLinux ? g.InstallLabel : g.Installed ? "Repair Features" : "Install Features"), () => _ = RunOperationAsync("install", [g]),
             GmKind.Primary, 0.82, enabled: !g.Blocked, minHeight: t.Compact ? 46 : 54);
         Key(install, "hero-install");
         actions.Children.Add(install);
@@ -202,7 +209,9 @@ public sealed partial class GameModeView
         switch (detailsSection)
         {
             case "Features":
-                SectionTitle(content, "Features", g.Installed
+                SectionTitle(content, "Features", g.InstalledOnLinux
+                    ? $"Saved: {g.Profile ?? "Configured"}. Installed with rtxForge on Linux; it already loads on Windows. Set Up for Windows hands it to rtxForge here to repair, retune or restore."
+                    : g.Installed
                     ? $"Saved: {g.Profile ?? "Configured"}. The rendered effect still needs an in-game check."
                     : g.Blocked ? g.BlockedReason ?? "This game is not supported." : "Not installed. Review every file change before installing.");
                 var expander = ui.Button(new Grid().With(row =>
@@ -237,7 +246,7 @@ public sealed partial class GameModeView
                 SectionTitle(content, "Installation");
                 content.Children.Add(ui.Group(
                 [
-                    ui.RowButton("Install Features", null, () => _ = RunOperationAsync("install", [g]), enabled: !g.Blocked),
+                    ui.RowButton(g.InstallLabel, null, () => _ = RunOperationAsync("install", [g]), enabled: !g.Blocked),
                     ui.RowButton("Repair Feature Files", null, () => _ = RunOperationAsync("install", [g]), enabled: g.Installed && !g.Blocked),
                     ui.RowButton("Restore Original Files", null, () => _ = RunOperationAsync("uninstall", [g]), danger: true, enabled: g.Installed),
                 ]));

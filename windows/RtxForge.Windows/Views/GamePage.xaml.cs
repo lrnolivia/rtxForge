@@ -85,8 +85,11 @@ public sealed partial class GamePage : Page
     void Refresh()
     {
         StatusBadge.Text = game.Blocked ? "Unsupported"
+            : game.InstalledOnLinux ? "Installed on Linux"
             : game.Installed ? shell.Mode switch { "nr-only" => "NR Only", "nr-mfg" => "NR + MFG", _ => "MFG Only" }
             : "Ready for Features";
+        // Installed with rtxForge on Linux: Set Up for Windows adapts that install instead of reinstalling it.
+        InstallText.Text = game.InstallLabel;
         InstallButton.IsEnabled = !game.Blocked && !shell.Busy;
         RestoreButton.IsEnabled = game.Installed && !shell.Busy;
         UpdateDlssItem.IsEnabled = !game.Blocked;
@@ -120,6 +123,14 @@ public sealed partial class GamePage : Page
                         IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Warning, Margin = new Thickness(0, 24, 0, 0),
                         Title = "rtxForge will not modify this game", Message = g.BlockedReason ?? "",
                     });
+                else if (g.InstalledOnLinux)
+                    PageHost.Children.Add(new InfoBar
+                    {
+                        IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Informational, Margin = new Thickness(0, 24, 0, 0),
+                        Title = "Installed on Linux",
+                        Message = "These features were installed with rtxForge on Linux and already load on Windows. "
+                            + "Set Up for Windows hands them to rtxForge here, so you can repair, retune or restore them from Windows.",
+                    });
                 var info = new PreferencesGroup("Game Information");
                 foreach (var (title, value, glyph) in new (string, string?, string)[]
                 {
@@ -128,6 +139,14 @@ public sealed partial class GamePage : Page
                     ("Developer", g.Developer, ""), ("Release", g.Release, ""),
                 })
                     if (!string.IsNullOrEmpty(value)) info.Add(Prefs.Row(title, value, glyph: glyph));
+                if (g.Installed && g.InstalledOn is "linux" or "windows")
+                {
+                    // The OS mark sits where the other rows have their glyph.
+                    var installedWith = Prefs.Row("Installed with", "rtxForge on " + CrossOs.Name(g.InstalledOn));
+                    ((Grid)installedWith.Child).Children.Insert(0,
+                        OsMark.Create(g.InstalledOn, 20, (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"]));
+                    info.Add(installedWith);
+                }
                 PageHost.Children.Add(info);
                 break;
 

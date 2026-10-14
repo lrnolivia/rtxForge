@@ -89,6 +89,7 @@ public sealed partial class LibraryPage : Page
         base.OnNavigatedFrom(e);
         onScreen = false;
         shell.ShowCompactDashboard(false);
+        shell.ShowBrand(true);
         // Presets mode belongs to this page; Edit Presets or any other page ends it.
         if (e.SourcePageType != typeof(LibraryPage)) shell.EndPresetSelection();
     }
@@ -115,6 +116,8 @@ public sealed partial class LibraryPage : Page
         Toolbar.Padding = new Thickness(Toolbar.Padding.Left, collapsed ? 12 : 32, Toolbar.Padding.Right, 0);
         shell.SyncCompactDashboard(shell.Mode, ModeNrOnly.IsEnabled, InstallText.Text);
         shell.ShowCompactDashboard(collapsed && onScreen);
+        // The full hero carries the mark and wordmark, so the titlebar brand waits until it collapses.
+        shell.ShowBrand(collapsed || !onScreen);
     }
 
     void OnSearchChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args) =>

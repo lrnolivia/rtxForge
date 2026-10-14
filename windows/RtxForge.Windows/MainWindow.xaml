@@ -30,8 +30,15 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <!-- Brand (Linux sticky-dashboard-brand): the logo mark and the Bakbak One wordmark, the same on every page. -->
+            <!--
+                Brand (Linux sticky-dashboard-brand): the logo mark and the Bakbak One wordmark.
+                Absent while the Library's full dashboard hero carries the brand; it slides into
+                place when the hero collapses or another page opens (ShowBrand).
+            -->
             <StackPanel x:Name="CompactBrand" Orientation="Horizontal" Spacing="8" Margin="12,0,0,0" VerticalAlignment="Center">
+                <StackPanel.RenderTransform>
+                    <TranslateTransform x:Name="BrandShift" />
+                </StackPanel.RenderTransform>
                 <Image Source="ms-appx:///Assets/rtxforge-mark.svg" Width="40" Height="40" VerticalAlignment="Center" />
                 <TextBlock Text="rtxForge" FontFamily="{StaticResource ForgeHeroFontFamily}" FontSize="16" FontWeight="Bold" CharacterSpacing="-14"
                            VerticalAlignment="Center" />

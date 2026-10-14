@@ -12314,7 +12314,7 @@ class Window(Adw.ApplicationWindow):
                 modal=True,
                 title='Pick Accent Color',
                 default_width=display_w+52,
-                default_height=display_h+190,
+                default_height=display_h+300,
                 resizable=False,
             )
 
@@ -12453,9 +12453,76 @@ class Window(Adw.ApplicationWindow):
                 Gtk.Align.CENTER
             )
 
+            # The poster sits under a loupe that magnifies the pixels around
+            # the pointer, so a single pixel can be picked precisely.
+            stage=Gtk.Overlay()
+            stage.set_child(poster)
             clip.append(
-                poster
+                stage
             )
+            LOUPE_PIXELS=11
+            LOUPE_CELL=9
+            loupe=Gtk.DrawingArea(
+                width_request=LOUPE_PIXELS*LOUPE_CELL,
+                height_request=LOUPE_PIXELS*LOUPE_CELL,
+                halign=Gtk.Align.START,
+                valign=Gtk.Align.START,
+                can_target=False,
+                visible=False,
+            )
+            loupe.add_css_class('accent-loupe')
+            stage.add_overlay(loupe)
+            stage.set_measure_overlay(loupe,False)
+            pointer={'x':0,'y':0}
+
+            def source_pixel(x,y):
+                width=max(1,poster.get_width());height=max(1,poster.get_height())
+                return (min(sw-1,max(0,int(x/width*sw))),min(sh-1,max(0,int(y/height*sh))))
+
+            def pixel_color(px,py):
+                channels=pix.get_n_channels();stride=pix.get_rowstride();data=pix.get_pixels()
+                off=py*stride+px*channels
+                return int(data[off]),int(data[off+1]),int(data[off+2])
+
+            def draw_loupe(_area,cr,width,height):
+                cx,cy=source_pixel(pointer['x'],pointer['y'])
+                half=LOUPE_PIXELS//2
+                cr.arc(width/2,height/2,width/2-1,0,6.283185)
+                cr.clip()
+                for row in range(LOUPE_PIXELS):
+                    for column in range(LOUPE_PIXELS):
+                        px=min(sw-1,max(0,cx+column-half));py=min(sh-1,max(0,cy+row-half))
+                        r,g,b=pixel_color(px,py)
+                        cr.set_source_rgb(r/255,g/255,b/255)
+                        cr.rectangle(column*LOUPE_CELL,row*LOUPE_CELL,LOUPE_CELL,LOUPE_CELL)
+                        cr.fill()
+                # The picked pixel, outlined in both light and dark.
+                cr.set_line_width(2)
+                cr.set_source_rgba(0,0,0,0.75)
+                cr.rectangle(half*LOUPE_CELL,half*LOUPE_CELL,LOUPE_CELL,LOUPE_CELL);cr.stroke()
+                cr.set_line_width(1)
+                cr.set_source_rgba(1,1,1,0.95)
+                cr.rectangle(half*LOUPE_CELL+1.5,half*LOUPE_CELL+1.5,LOUPE_CELL-3,LOUPE_CELL-3);cr.stroke()
+                cr.reset_clip()
+                cr.set_line_width(2)
+                cr.set_source_rgba(1,1,1,0.9)
+                cr.arc(width/2,height/2,width/2-1,0,6.283185);cr.stroke()
+            loupe.set_draw_func(draw_loupe)
+
+            motion=Gtk.EventControllerMotion()
+            def moved(_motion,x,y):
+                pointer.update(x=x,y=y)
+                size=LOUPE_PIXELS*LOUPE_CELL
+                # Keep the loupe beside the pointer and inside the poster.
+                left=x+18 if x+18+size<=poster.get_width() else x-18-size
+                top=y+18 if y+18+size<=poster.get_height() else y-18-size
+                loupe.set_margin_start(max(0,int(left)));loupe.set_margin_top(max(0,int(top)))
+                loupe.set_visible(True);loupe.queue_draw()
+                r,g,b=pixel_color(*source_pixel(x,y))
+                preview_label.set_text(f'#{r:02x}{g:02x}{b:02x}'.upper()+' · click to use')
+            motion.connect('motion',moved)
+            motion.connect('leave',lambda *_:(loupe.set_visible(False),preview_label.set_text(pending['color'].upper())))
+            poster.add_controller(motion)
 
             try:
                 poster.set_cursor_from_name(
@@ -12519,35 +12586,7 @@ class Window(Adw.ApplicationWindow):
                     poster.get_height(),
                 )
 
-                px=min(
-                    sw-1,
-                    max(
-                        0,
-                        int(x/width*sw),
-                    ),
-                )
-
-                py=min(
-                    sh-1,
-                    max(
-                        0,
-                        int(y/height*sh),
-                    ),
-                )
-
-                channels=pix.get_n_channels()
-                stride=pix.get_rowstride()
-                data=pix.get_pixels()
-
-                off=(
-                    py*stride
-                    + px*channels
-                )
-
-                r=int(data[off])
-                g=int(data[off+1])
-                b=int(data[off+2])
-
+                r,g,b=pixel_color(*source_pixel(x,y))
                 show_preview(
                     f'#{r:02x}{g:02x}{b:02x}'
                 )
@@ -12561,23 +12600,34 @@ class Window(Adw.ApplicationWindow):
                 gesture
             )
 
-            actions=Gtk.Box(
-                spacing=8,
-                halign=Gtk.Align.END,
-            )
+            # Suggestions from the artwork, most characteristic first.
+            try:suggestions=ui_colors.accent_suggestions(artwork_pixels(source))
+            except Exception:suggestions=[]
+            if suggestions:
+                shell.append(label('Suggestions','heading'))
+                swatches=Gtk.Box(spacing=12,halign=Gtk.Align.CENTER)
+                swatches.add_css_class('accent-suggestions')
+                for name,color in suggestions:
+                    choice=Gtk.Button(tooltip_text=name+' · '+color.upper())
+                    choice.add_css_class('flat')
+                    choice.update_property([Gtk.AccessibleProperty.LABEL],[name+' accent'])
+                    stack=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4)
+                    dot=Gtk.DrawingArea(width_request=28,height_request=28,halign=Gtk.Align.CENTER)
+                    def draw_dot(_area,cr,width,height,color=color):
+                        rgba=Gdk.RGBA();rgba.parse(color)
+                        cr.set_source_rgba(rgba.red,rgba.green,rgba.blue,1)
+                        cr.arc(width/2,height/2,min(width,height)/2-1,0,6.283185);cr.fill()
+                    dot.set_draw_func(draw_dot)
+                    stack.append(dot)
+                    caption=label(name,'caption');caption.set_halign(Gtk.Align.CENTER)
+                    stack.append(caption)
+                    choice.set_child(stack)
+                    choice.connect('clicked',lambda _b,color=color:show_preview(color))
+                    swatches.append(choice)
+                shell.append(swatches)
 
-            actions.add_css_class(
-                'accent-picker-actions'
-            )
-
-            shell.append(
-                actions
-            )
-
-            cancel=button(
-                'Cancel',
-                lambda *_:picker.close(),
-            )
+            cancel=Gtk.Button(label='Cancel')
+            cancel.connect('clicked',lambda *_:picker.close())
 
             def commit_accent(*_):
                 set_color(
@@ -12585,19 +12635,15 @@ class Window(Adw.ApplicationWindow):
                 )
                 picker.close()
 
-            done=button(
-                'Done',
-                commit_accent,
-                'suggested-action',
-            )
+            done=Gtk.Button(label='Done')
+            done.add_css_class('suggested-action')
+            done.connect('clicked',commit_accent)
 
-            actions.append(
-                cancel
-            )
-
-            actions.append(
-                done
-            )
+            # GNOME dialog layout: Cancel at the start of the header bar,
+            # the confirming action at the end.
+            header.set_show_end_title_buttons(False)
+            header.pack_start(cancel)
+            header.pack_end(done)
 
             def picker_closed(*_):
                 if (

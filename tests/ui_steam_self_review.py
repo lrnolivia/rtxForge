@@ -24,7 +24,10 @@ def check():
     import steam_self_install
     with patch.object(steam_self_install,'install',side_effect=lambda *args,**kwargs:calls.append(kwargs)):
         w.start=lambda title,action,done:action()
-        next(x for x in children(w.dialog.get_child()) if isinstance(x,Gtk.Button) and x.get_label()=='Apply artwork').emit('clicked')
+        # Preview mode refuses reviewed writes; step out of it for the intercepted apply.
+        w.options.demo=False
+        next(x for x in children(w.dialog.get_child()) if isinstance(x,Gtk.Button) and x.get_label()=='Apply Artwork').emit('clicked')
+        w.options.demo=True
     assert len(calls)==1 and calls[0]['reviewed']==review
     w.set_input_surface(True);open_review()
 def couch():

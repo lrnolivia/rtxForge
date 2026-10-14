@@ -3580,6 +3580,14 @@ OPERATION_WORDS={
     'uninstall':('Review Restoration','Restore','Restoring'),
     'reset':('Review Presets','Apply Presets','Applying'),
     'update-dlss':('Review DLSS Update','Update','Updating'),
+    'restore-dlss':('Review DLSS Restoration','Restore','Restoring'),
+    'recovery':('Review Restoration','Restore','Restoring'),
+    'cleanup':('Review Cleanup','Remove','Removing'),
+    'tool':('Review Tool Installation','Install','Installing'),
+    'tool-restore':('Review Tool Restoration','Restore','Restoring'),
+    'artwork':('Review Artwork Sync','Sync','Syncing'),
+    'steam-shortcut':('Review rtxForge in Steam','Apply','Applying'),
+    'report':('Review Support Report','Export','Exporting'),
 }
 
 
@@ -3818,7 +3826,7 @@ class OperationFlow:
         if self.step.show('Checking',game,max(0,event.get('checked',0)-1),total,user_messages.friendly_status(event.get('label','')),event.get('checked',0)/max(1,total)):
             self._set_accent(game)
 
-    def show_review(self,review,on_confirm,details=None,enabled=True):
+    def show_review(self,review,on_confirm,details=None,enabled=True,trust=None,note=None,extra=None):
         """N games ready, Needs attention · N, then the verb."""
         self.review=review
         self.on_confirm=on_confirm
@@ -3836,9 +3844,13 @@ class OperationFlow:
             listing=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
             listing.add_css_class('boxed-list');listing.add_css_class('review-list')
             for item in review['rows']:
-                game=owner.review_game(item['name'],item.get('game'))
+                game=item.get('art') or owner.review_game(item['name'],item.get('game'))
                 detail=user_messages.friendly_status(item.get('detail',''))
-                listing.append(owner.review_entry(item['name'],'Ready to '+self.verb.lower(),game,'Ready',detail or None))
+                if 'badge' in item:
+                    # Rows that are not per-game changes (artwork roles) state their own status.
+                    listing.append(owner.review_entry(item['name'],detail,game,item['badge']))
+                else:
+                    listing.append(owner.review_entry(item['name'],'Ready to '+self.verb.lower(),game,'Ready',detail or None))
             body.append(self._rows_scroll(listing))
         blocked=review.get('blocked',[])
         if blocked:
@@ -3854,15 +3866,40 @@ class OperationFlow:
                 body.append(previous)
         if not count:
             body.append(label('There are no games ready for this change. Check the messages above for your next step.','dim-label'))
-        note=label('Preview mode · all file changes are disabled.' if owner.options.demo else 'Your files will only change after you review and confirm.','dim-label')
-        note.add_css_class('caption')
-        body.append(note)
+        if extra is not None:body.append(extra)
+        if note:
+            hint=label(note,'dim-label');body.append(hint)
+        trusted=Gtk.CheckButton(label=trust) if trust else None
+        if trusted is not None:body.append(trusted)
+        footer=label('Preview mode · all file changes are disabled.' if owner.options.demo else 'Your files will only change after you review and confirm.','dim-label')
+        footer.add_css_class('caption')
+        body.append(footer)
         scroll=Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,vexpand=True)
         scroll.set_child(body)
         self.primary.set_label(self.verb)
-        self.primary.set_sensitive(bool(count) and enabled)
+        ready=bool(count) and enabled
+        self.primary.set_sensitive(ready and trusted is None)
+        # Where the engine asks for trust, the action waits for the checkbox.
+        if trusted is not None:trusted.connect('toggled',lambda box:self.primary.set_sensitive(ready and box.get_active()))
         self.cancel_button.set_label('Cancel' if count else 'Close')
         self._page('review',scroll)
+
+    def show_working(self,text,cancellable=False):
+        """Checking or working without per-game steps (tools, recovery, reports)."""
+        if self.stage=='review':self.dialog.set_can_close(False)
+        body=self._body()
+        body.set_valign(Gtk.Align.CENTER)
+        line=Gtk.Box(spacing=16,halign=Gtk.Align.CENTER)
+        line.append(Adw.Spinner(width_request=32,height_request=32))
+        self.working_label=label(text)
+        self.working_label.set_valign(Gtk.Align.CENTER)
+        line.append(self.working_label)
+        body.append(line)
+        body.set_margin_top(36);body.set_margin_bottom(36)
+        self.primary.set_visible(self.stage in (None,'checking'))
+        self.primary.set_sensitive(False)
+        self.cancel_button.set_visible(cancellable)
+        self._page('working',body)
 
     def show_progress(self,total):
         self.dialog.set_can_close(False)
@@ -5866,28 +5903,25 @@ class Window(Adw.ApplicationWindow):
 
     def review_rtxforge_steam(self,review,settings):
         import steam_self_install
-        d,b,f=self.open_panel('Review rtxForge in Steam',width=680,height=420)
-        b.append(label('Refresh rtxForge artwork' if not review['created'] else 'Add rtxForge to Steam','title-2'))
-        b.append(label('Steam account '+review['profile']+' · No SteamGridDB key is needed.','dim-label'))
-        b.append(label('Only this app’s shortcut artwork will change. Replaced images are backed up. Restart Steam afterward to refresh its library.','dim-label'))
-        listing=self.review_list();b.append(listing)
         titles={'poster':'Poster','capsule':'Wide capsule','hero':'Hero background','logo':'Transparent logo'}
         messages={'add':'Add the bundled artwork.','replace':'Replace existing custom artwork. Your current image will be backed up.','unchanged':'The bundled artwork is already in place.'}
         badges={'add':'New','replace':'Replace','unchanged':'Unchanged'}
         art={'game':'rtxforge:self','name':'rtxForge','capsule':str(ROOT/'packaging/steam-artwork/exports/rtxforge-steam-wide.png')}
-        for slot in review['roles']:
-            listing.append(self.review_entry(titles[slot['role']],messages[slot['status']],game=art,badge=badges[slot['status']]))
-        def install(*_):
-            d.close()
-            def ready(result):
-                self.refresh_steam_shortcut_action()
-                if result['errors']:self.error('The Steam shortcut is available, but some artwork still needs syncing: '+ '; '.join(result['errors']))
-                elif result.get('preserved'):self.toast('rtxForge is in Steam. Your existing custom artwork was kept.')
-                else:self.toast('rtxForge and its artwork are ready in Steam. Restart Steam to refresh its library.')
-            self.start('Adding rtxForge to Steam',lambda:steam_self_install.install(self.service.config,settings,reviewed=review),ready)
-        f.append(button('Choose Steam profile',lambda *_:(d.close(),self.choose_steam_artwork_profile())))
-        f.append(button('Cancel',lambda *_:d.close()))
-        f.append(button('Add & apply artwork' if review['created'] else 'Apply artwork',install,'suggested-action'))
+        rows=[{'name':titles[slot['role']],'detail':messages[slot['status']],'badge':badges[slot['status']],'art':art} for slot in review['roles']]
+        def run(_review):
+            return steam_self_install.install(self.service.config,settings,reviewed=review)
+        def done(result):
+            self.refresh_steam_shortcut_action()
+            if result['errors']:raise RuntimeError('The Steam shortcut is available, but some artwork still needs syncing: '+'; '.join(result['errors']))
+            if result.get('preserved'):return 'rtxForge is in Steam. Your existing custom artwork was kept.'
+            return 'rtxForge and its artwork are ready in Steam. Restart Steam to refresh its library.'
+        profile=Gtk.Button(label='Choose Steam Profile',halign=Gtk.Align.START)
+        profile.connect('clicked',lambda *_:(self.dialog.force_close() if self.dialog else None,self.choose_steam_artwork_profile()))
+        flow=self.review_write('steam-shortcut',{'operation':'steam-shortcut','rows':rows,'blocked':[]},run=run,
+            details=['Add rtxForge to Steam' if review['created'] else 'Refresh rtxForge artwork','Steam account '+review['profile']],
+            note='Only this app’s shortcut artwork will change. Replaced images are backed up. Restart Steam afterward to refresh its library.',
+            done=done,extra=profile)
+        if flow is not None:flow.primary.set_label('Add & Apply Artwork' if review['created'] else 'Apply Artwork')
 
     def show_game_artwork(self,game):
         d,b,f=self.open_panel('Artwork · '+game.get('name','Game'),width=800,height=600)
@@ -5940,6 +5974,16 @@ class Window(Adw.ApplicationWindow):
             elif refresh:
                 if getattr(self,'couch',None):self.couch.artwork_updated(game)
                 self.show_games(self.games,art=False)
+        if game is None:
+            # Library-wide sync is reviewed first, like every other write.
+            def reviewed_done(result):
+                for key in result['success']:self.settings.setdefault('steam_artwork_pending',{}).pop(key,None)
+                library_media.save_settings(self.service.config,self.settings)
+                if result['errors']:raise RuntimeError(str(result['images'])+' Steam images updated. Some artwork still needs syncing: '+'; '.join(result['errors']))
+                return str(result['images'])+' Steam images updated. Restart Steam if its cached images have not refreshed.'
+            review={'operation':'artwork','rows':[{'name':item['name'],'game':item['game'],'detail':'Send your chosen artwork to Steam'} for item in targets],'blocked':[]}
+            self.review_write('artwork',review,run=lambda _review:work(),details=['Sync','Replaced Steam images are backed up'],done=reviewed_done)
+            return
         self.start('Syncing artwork to Steam',work,ready)
 
     def refresh_game_artwork(self,game):
@@ -6250,21 +6294,22 @@ class Window(Adw.ApplicationWindow):
 
     def review_extra(self,plan):
         import extra_tools
-        d,b,f=self.open_panel('Review '+extra_tools.KINDS[plan['kind']])
-        listing=self.review_list();b.append(listing)
         changes='\n'.join('Add '+change['path']+'\nSHA-256: '+change['after'] for change in plan['changes'])
-        listing.append(self.review_entry(plan['name'],'Add '+extra_tools.KINDS[plan['kind']],self.review_game(plan['name'],plan.get('game')),'Install',changes))
-        b.append(label('This native code will run inside the game. The hash identifies the selected file; it does not establish its publisher or safety.','dim-label'))
-        trust=Gtk.CheckButton(label='I trust the source of this exact file');b.append(trust)
-        apply=button('Install Tool',lambda *_:self.start('Installing tool',lambda:extra_tools.apply(self.service.config,plan),lambda _:(self.toast('Tool installed. Recovery is available in Tools.'),d.close())),'suggested-action')
-        apply.set_sensitive(False);trust.connect('toggled',lambda *_:apply.set_sensitive(trust.get_active()));f.append(apply)
+        review={'operation':'tool','rows':[{'name':plan['name'],'game':plan.get('game'),'detail':changes}],'blocked':[]}
+        self.review_write('tool',review,
+            run=lambda _review:extra_tools.apply(self.service.config,plan),
+            details=['Install','Add '+extra_tools.KINDS[plan['kind']]],
+            note='This native code will run inside the game. The hash identifies the selected file; it does not establish its publisher or safety.',
+            trust='I trust the source of this exact file',
+            done=lambda _:'Tool installed. Recovery is available in Tools.')
 
     def review_extra_restore(self,record):
         import extra_tools
-        d,b,f=self.open_panel('Restore Tool',width=500,height=260)
-        listing=self.review_list();b.append(listing)
-        listing.append(self.review_entry(record['name'],'Restore this tool’s original files',self.review_game(record['name'],record.get('game')),'Restore','Changed files will be refused. Game saves and other tools are preserved.'))
-        f.append(button('Restore',lambda *_:self.start('Restoring tool',lambda:extra_tools.restore(self.service.config,record['path']),lambda _:(self.toast('Tool restored.'),d.close())),'suggested-action'))
+        review={'operation':'tool-restore','rows':[{'name':record['name'],'game':record.get('game'),'detail':'Changed files will be refused. Game saves and other tools are preserved.'}],'blocked':[]}
+        self.review_write('tool-restore',review,
+            run=lambda _review:extra_tools.restore(self.service.config,record['path']),
+            details=['Restore','This tool’s original files'],
+            done=lambda _:'Tool restored.')
 
     def show_packages(self,*_):
         return show_packages(self)
@@ -9228,7 +9273,14 @@ class Window(Adw.ApplicationWindow):
             self.start('Update DLSS Files',lambda:runtime_updates.manage(self.service.config,targets),finished)
         flow.show_review(review,run,details,enabled=not self.options.demo)
 
-    def manage_dlss_files(self,game,restore=False,replace_same=False):
+    def manage_dlss_files(self,game,restore=False,replace_same=False,_reviewed=False):
+        if restore and not _reviewed:
+            review={'operation':'restore-dlss','rows':[{'name':game['name'],'game':game['game'],'detail':'Put back the DLSS files this game shipped with. rtxForge’s backups are used.'}],'blocked':[]}
+            def run(_review):
+                import runtime_updates
+                return runtime_updates.restore_game(self.service.config,game['game'])
+            self.review_write('restore-dlss',review,run=run,details=['Restore','Original DLSS files'],done=lambda _:'Original DLSS files restored.')
+            return
         if self.options.demo:
             self.toast('Preview mode · game writes disabled')
             return
@@ -10107,7 +10159,7 @@ class Window(Adw.ApplicationWindow):
 
     def error(self,message):
         flow=getattr(self,'operation_flow',None)
-        if flow is not None and not flow.closed and flow.stage in ('checking','progress'):
+        if flow is not None and not flow.closed and flow.stage in ('checking','progress','working'):
             self.finish_progress(False,str(message));return
         if self.dialog==getattr(self,'progress_dialog',None) and getattr(self,'job_label',None):
             box=self.progress_shell.get_last_child();self.finish_progress(False,str(message),box.get_last_child());return
@@ -12742,17 +12794,32 @@ class Window(Adw.ApplicationWindow):
         export.set_sensitive(not self.options.demo);f.append(export)
 
     def preview_report(self,files):
-        d,b,f=self.open_panel('Review Support Report')
-        b.append(label('Review the exact text below. Redaction is best effort. Export saves this preview locally; nothing is submitted.','dim-label'))
-        listing=self.review_list();b.append(listing)
+        """The exact redacted text, reviewed before it is saved locally."""
+        flow=OperationFlow(self,'report',[])
+        body=flow._body()
+        body.append(label('Review the exact text below. Redaction is best effort. Export saves this preview locally; nothing is submitted.','dim-label'))
+        listing=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        listing.add_css_class('boxed-list');listing.add_css_class('review-list')
         for name,text in files.items():
             view=Gtk.TextView(editable=False,monospace=True,wrap_mode=Gtk.WrapMode.WORD_CHAR)
             view.get_buffer().set_text(text)
             scroller=Gtk.ScrolledWindow(min_content_height=240,vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER)
             scroller.set_child(view);listing.append(self.review_entry(name,'Review the exact report contents',badge='Report',details=scroller))
-        export=button('Export This Preview',lambda *_:self.start('Exporting report',lambda:game_notes.export_preview(self.service.config,files),lambda p:self.toast('Saved '+str(p))),'suggested-action')
-        export.set_sensitive(not self.options.demo);f.append(export)
-        f.append(button('Open Issue Form',lambda *_:Gio.AppInfo.launch_default_for_uri('https://github.com/lrnolivia/rtxForge/issues/new',None)))
+        body.append(listing)
+        issue=Gtk.Button(label='Open Issue Form',halign=Gtk.Align.START)
+        issue.connect('clicked',lambda *_:Gio.AppInfo.launch_default_for_uri('https://github.com/lrnolivia/rtxForge/issues/new',None))
+        body.append(issue)
+        scroll=Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,vexpand=True)
+        scroll.set_child(body)
+        def export(_review):
+            flow.show_working('Exporting…')
+            self.start('Exporting report',lambda:game_notes.export_preview(self.service.config,files),lambda path:self.finish_progress(True,'Saved '+str(path)))
+        flow.review={'operation':'report','rows':[{'name':name} for name in files],'blocked':[]}
+        flow.on_confirm=export
+        flow._title(flow.review_title)
+        flow.primary.set_label('Export')
+        flow.primary.set_sensitive(not self.options.demo)
+        flow._page('review',scroll,width=760)
 
     def launch_action(self,operation,entire=False,targets=None,visual_settings=None,_presets_confirmed=False,_flow=None):
         if self.busy and self.task_kind!='art':return
@@ -13395,6 +13462,31 @@ class Window(Adw.ApplicationWindow):
             cancel_button
         )
 
+    def review_write(self,operation,review=None,run=None,prepare=None,details=None,trust=None,note=None,done=None,extra=None):
+        """Checking → Review → Working → Done for every other reviewed write.
+
+        prepare() builds the review off the main thread (Checking); run(review)
+        performs exactly what was shown and returns the Done message.
+        """
+        if self.busy and self.task_kind!='art':return None
+        flow=OperationFlow(self,operation,[])
+        def show(result):
+            if flow.closed:return
+            flow.show_review(result,confirm,details,enabled=not self.options.demo,trust=trust,note=note,extra=extra)
+        def confirm(result):
+            if self.options.demo:return
+            flow.show_working(flow.progress_verb+'…')
+            def finished(value):
+                message=done(value) if done else value
+                if not flow.closed:self.finish_progress(True,str(message))
+            self.start(flow.progress_verb,lambda:run(result),finished)
+        if prepare is not None:
+            flow.show_working('Checking…',cancellable=True)
+            self.start('Checking',prepare,show)
+        else:
+            show(review)
+        return flow
+
     def review_details(self,review):
         """The "Install · DLSS-Unlocked · MFG 4×" line under the review summary."""
         operation=review.get('operation','install')
@@ -13409,16 +13501,19 @@ class Window(Adw.ApplicationWindow):
     def action_ready(self,review,*_legacy):
         """Stage 3: the review, in the operation's dialog."""
         self.review=review
+        operation=review.get('operation') or {'rollback':'recovery','restore-cleanup':'recovery','cleanup':'cleanup'}.get(review.get('kind'),'install')
+        review.setdefault('operation',operation)
         flow=getattr(self,'operation_flow',None)
-        if flow is None or flow.closed:
-            flow=OperationFlow(self,review.get('operation','install'),getattr(self,'operation_games',[]) or self.games)
+        if flow is None or flow.closed or flow.operation!=operation:
+            flow=OperationFlow(self,operation,getattr(self,'operation_games',[]) or self.games)
         flow.show_review(review,self.execute,self.review_details(review),enabled=not self.options.demo)
 
     def execute(self,review,*_legacy):
         """Stage 4: progress, then Done or Could not finish."""
         if self.options.demo:return
         flow=self.operation_flow
-        flow.show_progress(len(review.get('rows',[])) or len(self.operation_games))
+        if review.get('kind') in ('rollback','restore-cleanup','cleanup'):flow.show_working(flow.progress_verb+'…')
+        else:flow.show_progress(len(review.get('rows',[])) or len(self.operation_games))
         flow.rescan=True
         if review.get('kind')=='engine':
             self.operation_executing=True;review['cancel_event']=self.operation_cancel
@@ -13956,12 +14051,18 @@ class Window(Adw.ApplicationWindow):
     def undo_loaded(self,records):
         d,b,f=self.open_panel('Undo previous changes');g=self.review_list();b.append(g)
         for record in records:
-            item=self.review_entry(record['name'],record['detail'],self.review_game(record['name'],record.get('game')),'Backup');item.add_suffix(button('Review',lambda _,r=record:self.start('Checking restore',lambda:self.service.review_recovery(r),lambda review:self.action_ready(review,d,b,f))));g.append(item)
+            item=self.review_entry(record['name'],record['detail'],self.review_game(record['name'],record.get('game')),'Backup');item.add_suffix(button('Review',lambda _,r=record:self.review_recovery(r)));g.append(item)
         if not records:b.append(label('No recorded changes yet.'))
+    def review_recovery(self,record):
+        flow=OperationFlow(self,'recovery',[])
+        flow.show_working('Checking the recorded changes…',cancellable=True)
+        self.start('Checking restore',lambda:self.service.review_recovery(record),lambda review:None if flow.closed else self.action_ready(review))
+
     def show_cleanup(self):
         if self.options.demo:return
-        d,b,f=self.open_panel('Remove old NR files');b.append(label('Checking global cleanup candidates…'))
-        self.start('Scanning old NR files',self.service.review_cleanup,lambda review:self.action_ready(review,d,b,f))
+        flow=OperationFlow(self,'cleanup',[])
+        flow.show_working('Checking global cleanup candidates…',cancellable=True)
+        self.start('Scanning old NR files',self.service.review_cleanup,lambda review:None if flow.closed else self.action_ready(review))
     def capture(self,name):
         """Capture a rendered GTK widget without assuming a node exists."""
 

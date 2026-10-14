@@ -175,6 +175,35 @@ class _without_baseline:
         self.e.load_baseline=lambda path,*a,**kw:None if str(path)==target else load(path,*a,**kw)
     def __exit__(self,*exc):self.e.load_baseline=self.original
 
+def operations_root():
+    """Where desktop operation sessions live (the engine's STATE_ROOT, see module())."""
+    return Path(os.environ.get('RTXFORGE_DLSS_UNLOCKED_STATE',str(Path.home()/'.local/state/rtxforge-dlss-unlocked')))/'desktop-operations'
+
+def installed_package(baseline):
+    """What a baseline has actually installed (its 'current' record), or None.
+
+    An install cut off before its first success has no current record: there is
+    nothing installed to switch away from, and installing again finishes it.
+    """
+    current=(baseline or {}).get('current')
+    return current if isinstance(current,dict) and current else None
+
+def interrupted_install(baseline):
+    """A first install that stopped partway (crash, forced shutdown, stalled drive)."""
+    return bool(baseline) and not installed_package(baseline) and bool(baseline.get('pending_install')) and baseline.get('status') in ('applying','interrupted')
+
+def check_switch(e,current,mode):
+    """Refuse switching mode or package over an installed one; its originals must be restored first."""
+    if not current:return
+    t.need(current.get('feature_mode',mode)==mode,'Uninstall before changing feature profiles so original runtime files are restored')
+    t.need(current.get('provider_id','y4my')==e.Y4MY_PROVIDER['id'],'Uninstall the current provider before switching providers; its original backups must be restored first')
+
+STEAM_OWNED=('localconfig.vdf','shortcuts.vdf','user.reg')
+
+def steam_owned(path):
+    """Files Steam or Wine own and may have rewritten since: recovery reports them instead of rewriting."""
+    return Path(path).name.lower() in STEAM_OWNED
+
 def adopt_plan(e,g,row,record,operation,mode):
     """Review entry for adapting the other OS's install of this game to this OS."""
     other=OS_NAMES[record['os']];here=OS_NAMES[cross_os.THIS_OS]
@@ -186,8 +215,7 @@ def adopt_plan(e,g,row,record,operation,mode):
     view={'steam_launch':mine['steam_launch']} if isinstance(mine.get('steam_launch'),dict) else None
     prefix=None;steam_route=False
     if operation in ('install','repair'):
-        t.need(current.get('feature_mode',mode)==mode,'Uninstall before changing feature profiles so original runtime files are restored')
-        t.need(current.get('provider_id','y4my')==e.Y4MY_PROVIDER['id'],'Uninstall the current provider before switching providers; its original backups must be restored first')
+        check_switch(e,current or None,mode)
         if cross_os.THIS_OS=='linux':
             prefix=steam_open_route(e,g,operation,view)
             if not prefix:
@@ -296,12 +324,11 @@ def prepare(config,rows,mode,operation,settings):
                     match=e.match_shortcut_span(g,e.parse_shortcuts_spans(shortcuts.read_bytes())) if shortcuts.is_file() else None
                     t.need(match is not None,'No unique Steam shortcut targets this game directory. Add this copy as a separate Non-Steam game before desktop installation')
 
-                if baseline:
-                    old=(baseline.get('current') or {}).get('provider_id','y4my')
-                    t.need((baseline.get('current') or {}).get('feature_mode',mode)==mode,'Uninstall before changing feature profiles so original runtime files are restored')
-                    t.need(old==e.Y4MY_PROVIDER['id'],'Uninstall the current provider before switching providers; its original backups must be restored first')
+                check_switch(e,installed_package(baseline),mode)
                 with _without_baseline(e,g) if retired else contextlib.nullcontext():
                     preview=e.install_target(g,data,meta,'ada',nr_runtime_payload=nr,nr_runtime_meta=nrmeta,feature_mode=mode,enable_effects=True,native_mfg_fallback=bool(settings.get('native_mfg_fallback',False)),nr_strength=strength,mfg_multiplier=multiplier,sharpening_strength=sharpening,preserve_visual_settings=not settings.get("apply_requested_presets",False),dry_run=True)
+                if interrupted_install(baseline):
+                    preview=dict(preview,launch_options='Finishes an install that was interrupted · '+preview['launch_options'])
             if prefix:preview=dict(preview,launch_options="Proton setting saved in this game's prefix · Steam can stay open")
             # Which Steam-side state this game touches: its prefix, Steam's launch settings, or neither.
             steam_route=operation in ('install','repair') and not prefix or operation=='uninstall' and bool(baseline and isinstance(baseline.get('steam_launch'),dict))
@@ -386,7 +413,7 @@ def execute(review):
                         for registry in {item.get('prefix') and str(Path(item['prefix'])/'user.reg'),prefix_record and prefix_record.get('registry')}:
                             if registry:paths.append(Path(registry))
                     report('Backing up your current files',0.15)
-                    checkpoint=session.capture(paths)
+                    checkpoint=session.capture(paths,label=g.name)
                 if item.get('adopt'):
                     report('Adapting the install for '+OS_NAMES[cross_os.THIS_OS],0.3)
                     adopt(e,g,item['adopt'])

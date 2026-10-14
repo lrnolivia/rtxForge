@@ -5,6 +5,8 @@ os.environ['GSETTINGS_BACKEND']='memory'
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'gui'))
 import rtxforge_gtk as ui
 from game_mode import GameModeFlow,descendants
+from demo_assets import prepare
+prepare(ROOT)
 from gi.repository import GLib,Gdk,Gtk
 app=ui.Application(argparse.Namespace(provider=None,demo=True,resize_smoke=False,smoke_test=False,live_smoke=False,library_state_smoke=False,ui_mode='classic'))
 images=[]
@@ -34,7 +36,9 @@ def menu():
  c.navigate('back');assert not c.modals and c.page_box.get_sensitive()
 def details():
  w=app.window;c=w.couch
- game=next((g for g in c.filtered_games() if g.get('poster') and g.get('installed')),None) or next(g for g in c.filtered_games() if g.get('poster'))
+ # Demo artwork can be missing (offline CI): any installed game will do.
+ games=c.filtered_games()
+ game=next((g for g in games if g.get('poster') and g.get('installed')),None) or next((g for g in games if g.get('installed')),None) or games[0]
  c.open_details(game);assert c.page=='details' and c.details_game is game
  assert game['name'] in labels(c.body)
 def section(name):

@@ -36,8 +36,10 @@ public sealed class Game
     public string? Profile { get; init; }
     /// <summary>Which rtxForge installed the features: "windows", "linux" (shared .rtxforge-install.json), or null.</summary>
     public string? InstalledOn { get; set; }
-    /// <summary>Installed with rtxForge on Linux: Windows loads it natively; its originals are backed up on Linux.</summary>
+    /// <summary>Installed with rtxForge on Linux: Windows loads it natively; Set Up for Windows adapts it here.</summary>
     public bool InstalledOnLinux => Installed && InstalledOn == "linux";
+    /// <summary>The library's install action: Set Up for Windows adapts a Linux install instead of reinstalling it.</summary>
+    public string InstallLabel => InstalledOnLinux ? "Set Up for Windows" : "Install Features";
     /// <summary>The engine's scan row, passed back unchanged for review and execution.</summary>
     public System.Text.Json.Nodes.JsonObject? EngineRow { get; init; }
 
@@ -47,15 +49,9 @@ public sealed class Game
     public string? MfgMultiplier { get; set; }
 }
 
-/// <summary>
-/// Cross-OS installs (scripts/cross_os.py). The engine refuses Install and Restore for a
-/// Linux install with these reasons (engine_bridge.prepare); the UI shows them up front.
-/// </summary>
+/// <summary>Cross-OS installs (scripts/cross_os.py): whichever OS runs the game adapts the install.</summary>
 public static class CrossOs
 {
-    public const string InstallReason = "Installed with rtxForge on Linux. It already loads on Windows; nothing to change here.";
-    public const string RestoreReason = "Installed with rtxForge on Linux. Restore its original files in rtxForge on Linux, where they are backed up.";
-
     public static string Name(string? os) => os switch { "linux" => "Linux", "windows" => "Windows", _ => "" };
 }
 

@@ -285,21 +285,17 @@ public sealed partial class LibraryPage : Page
     MenuFlyout GameMenu(Game game)
     {
         var menu = new MenuFlyout();
-        void Add(string caption, string glyph, Action run, bool enabled = true, string? reason = null)
+        void Add(string caption, string glyph, Action run, bool enabled = true)
         {
             var item = new MenuFlyoutItem { Text = caption, IsEnabled = enabled, Icon = new FontIcon { Glyph = glyph } };
-            if (reason is not null) ToolTipService.SetToolTip(item, reason);
             item.Click += (_, _) => run();
             menu.Items.Add(item);
         }
         Add("Game Details", "", () => shell.OpenGame(game));
         Add("DLSS Files", "", () => shell.OpenGame(game, "DLSS Files"));
         menu.Items.Add(new MenuFlyoutSeparator());
-        // A Linux install stays clickable: the action explains why there is nothing to do here.
-        Add("Install Features", "", () => _ = shell.LaunchAction("install", [game]), !game.Blocked && !shell.Busy,
-            game.InstalledOnLinux ? CrossOs.InstallReason : null);
-        Add("Restore Original Files", "", () => _ = shell.LaunchAction("uninstall", [game]), game.Installed && !shell.Busy,
-            game.InstalledOnLinux ? CrossOs.RestoreReason : null);
+        Add(game.InstallLabel, "", () => _ = shell.LaunchAction("install", [game]), !game.Blocked && !shell.Busy);
+        Add("Restore Original Files", "", () => _ = shell.LaunchAction("uninstall", [game]), game.Installed && !shell.Busy);
         menu.Items.Add(new MenuFlyoutSeparator());
         Add("Open Folder", "", () => Process.Start(new ProcessStartInfo("explorer.exe", $"\"{game.Location}\"") { UseShellExecute = true }),
             !shell.Service.IsPreview && Directory.Exists(game.Location));

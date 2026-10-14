@@ -175,22 +175,6 @@ public sealed partial class MainWindow : Window
             _ => Games.Where(g => !g.Blocked).ToList(),
         };
         if (targets.Count == 0) { ShowToast("No eligible games selected."); return; }
-        // Installed with rtxForge on Linux: explain up front instead of a review with nothing to do.
-        // Mixed selections go on to the review, where the engine lists these under Needs attention.
-        if (operation is "install" or "uninstall" && targets.All(g => g.InstalledOnLinux))
-        {
-            var dialog = NewDialog();
-            dialog.Title = "Installed on Linux";
-            dialog.Content = new TextBlock
-            {
-                Text = operation == "uninstall" ? CrossOs.RestoreReason : CrossOs.InstallReason,
-                TextWrapping = TextWrapping.WrapWholeWords,
-            };
-            dialog.CloseButtonText = "OK";
-            dialog.DefaultButton = ContentDialogButton.Close;
-            await dialog.ShowAsync();
-            return;
-        }
 
         if (operation == "install" && values is null)
         {

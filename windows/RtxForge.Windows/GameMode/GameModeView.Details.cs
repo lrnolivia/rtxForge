@@ -111,11 +111,10 @@ public sealed partial class GameModeView
         // The desktop Game Details hero actions, in the same order.
         identity.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12), VerticalAlignment = VerticalAlignment.Bottom };
-        var install = ui.Button(Glyph("", g.Installed ? "Repair Features" : "Install Features"), () => _ = RunOperationAsync("install", [g]),
+        var install = ui.Button(Glyph("", g.InstalledOnLinux ? g.InstallLabel : g.Installed ? "Repair Features" : "Install Features"), () => _ = RunOperationAsync("install", [g]),
             GmKind.Primary, 0.82, enabled: !g.Blocked, minHeight: t.Compact ? 46 : 54);
         Key(install, "hero-install");
-        // Installed with rtxForge on Linux: it already loads here, so there is nothing to install.
-        if (!g.InstalledOnLinux) actions.Children.Add(install);
+        actions.Children.Add(install);
         var restore = ui.Button(Glyph("", "Restore Original Files"), () => _ = RunOperationAsync("uninstall", [g]),
             GmKind.Danger, 0.82, enabled: g.Installed, minHeight: t.Compact ? 46 : 54);
         Key(restore, "hero-restore");
@@ -211,7 +210,7 @@ public sealed partial class GameModeView
         {
             case "Features":
                 SectionTitle(content, "Features", g.InstalledOnLinux
-                    ? $"Saved: {g.Profile ?? "Configured"}. Installed with rtxForge on Linux; it already loads on Windows. Restore its original files in rtxForge on Linux, where they are backed up."
+                    ? $"Saved: {g.Profile ?? "Configured"}. Installed with rtxForge on Linux; it already loads on Windows. Set Up for Windows hands it to rtxForge here to repair, retune or restore."
                     : g.Installed
                     ? $"Saved: {g.Profile ?? "Configured"}. The rendered effect still needs an in-game check."
                     : g.Blocked ? g.BlockedReason ?? "This game is not supported." : "Not installed. Review every file change before installing.");
@@ -247,7 +246,7 @@ public sealed partial class GameModeView
                 SectionTitle(content, "Installation");
                 content.Children.Add(ui.Group(
                 [
-                    ui.RowButton("Install Features", null, () => _ = RunOperationAsync("install", [g]), enabled: !g.Blocked),
+                    ui.RowButton(g.InstallLabel, null, () => _ = RunOperationAsync("install", [g]), enabled: !g.Blocked),
                     ui.RowButton("Repair Feature Files", null, () => _ = RunOperationAsync("install", [g]), enabled: g.Installed && !g.Blocked),
                     ui.RowButton("Restore Original Files", null, () => _ = RunOperationAsync("uninstall", [g]), danger: true, enabled: g.Installed),
                 ]));

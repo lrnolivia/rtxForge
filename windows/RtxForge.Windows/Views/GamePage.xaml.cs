@@ -88,11 +88,10 @@ public sealed partial class GamePage : Page
             : game.InstalledOnLinux ? "Installed on Linux"
             : game.Installed ? shell.Mode switch { "nr-only" => "NR Only", "nr-mfg" => "NR + MFG", _ => "MFG Only" }
             : "Ready for Features";
-        // Installed with rtxForge on Linux: nothing to install here; Restore explains where it happens.
-        InstallButton.Visibility = game.InstalledOnLinux ? Visibility.Collapsed : Visibility.Visible;
+        // Installed with rtxForge on Linux: Set Up for Windows adapts that install instead of reinstalling it.
+        InstallText.Text = game.InstallLabel;
         InstallButton.IsEnabled = !game.Blocked && !shell.Busy;
         RestoreButton.IsEnabled = game.Installed && !shell.Busy;
-        ToolTipService.SetToolTip(RestoreButton, game.InstalledOnLinux ? CrossOs.RestoreReason : null);
         UpdateDlssItem.IsEnabled = !game.Blocked;
         OpenFolderItem.IsEnabled = !shell.Service.IsPreview && Directory.Exists(game.Location);
         Build(section);
@@ -130,7 +129,7 @@ public sealed partial class GamePage : Page
                         IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Informational, Margin = new Thickness(0, 24, 0, 0),
                         Title = "Installed on Linux",
                         Message = "These features were installed with rtxForge on Linux and already load on Windows. "
-                            + "Restore their original files in rtxForge on Linux, where they are backed up.",
+                            + "Set Up for Windows hands them to rtxForge here, so you can repair, retune or restore them from Windows.",
                     });
                 var info = new PreferencesGroup("Game Information");
                 foreach (var (title, value, glyph) in new (string, string?, string)[]

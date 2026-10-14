@@ -143,13 +143,13 @@ public sealed class PreviewForgeService : IForgeService
     {
         progress?.Report(new PrepareProgress("Checking game files", targets.FirstOrDefault()?.Name, 0, targets.Count));
         await Task.Delay(400, cancel);
-        // As engine_bridge.prepare: a Linux install is never reinstalled or restored here.
-        bool CrossOsBlocked(Game g) => g.InstalledOnLinux && operation is "install" or "uninstall";
-        var ready = targets.Where(g => !g.Blocked && !CrossOsBlocked(g) && (operation is not ("uninstall" or "reset") || g.Installed))
-            .Select(g => (g, $"Ready to {Verb(operation)}")).ToList();
-        var blocked = targets.Where(g => g.Blocked).Select(g => new ReviewBlock(g, g.Name, g.BlockedReason ?? "Not supported"))
-            .Concat(targets.Where(g => !g.Blocked && CrossOsBlocked(g))
-                .Select(g => new ReviewBlock(g, g.Name, operation == "uninstall" ? CrossOs.RestoreReason : CrossOs.InstallReason))).ToList();
+        // As engine_bridge.adopt_plan: a Linux install is adapted for Windows, not reinstalled.
+        var ready = targets.Where(g => !g.Blocked && (operation is not ("uninstall" or "reset") || g.Installed))
+            .Select(g => (g, g.InstalledOnLinux
+                ? operation == "uninstall" ? "Installed with rtxForge on Linux · restores the original files it backed up"
+                : "Installed with rtxForge on Linux · adapts it for Windows: it already loads here, so no game files change"
+                : $"Ready to {Verb(operation)}")).ToList();
+        var blocked = targets.Where(g => g.Blocked).Select(g => new ReviewBlock(g, g.Name, g.BlockedReason ?? "Not supported")).ToList();
         var token = operation + ":" + Guid.NewGuid().ToString("N");
         reviewed[token] = tuning;
         return new OperationReview(operation, token, ready, blocked);
@@ -172,6 +172,8 @@ public sealed class PreviewForgeService : IForgeService
             cancel.ThrowIfCancellationRequested();
             progress.Report(new OperationStep(index, eligible.Count, game, StepCaption(operation)));
             await Task.Delay(900, cancel);
+            // Presets on a Linux install adapt it for Windows first (engine_bridge.adopt).
+            if (operation is "reset" or "apply" && game.InstalledOnLinux) game.InstalledOn = "windows";
             switch (operation)
             {
                 case "install":

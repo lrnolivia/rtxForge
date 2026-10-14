@@ -9064,8 +9064,8 @@ class Window(Adw.ApplicationWindow):
             self.launch_action('install',targets=[game])
 
     def needs_linux_setup(self,game):
-        """Installed with rtxForge on Windows, not yet set up to run under Proton."""
-        return game.get('installed_on')=='windows' and not game.get('linux_ready')
+        """Installed with rtxForge on Windows, not yet set up (adapted) to run under Proton."""
+        return game.get('installed_on')=='windows' and bool(game.get('adaptable') or not game.get('linux_ready'))
 
     def list_primary_caption(self,game):
         if getattr(self,'preset_selecting',False):return 'Apply'
@@ -9104,12 +9104,13 @@ class Window(Adw.ApplicationWindow):
         def files():
             self.details(game);self.detail_pages.set_visible_child_name('DLSS Files')
         add('DLSS Files',files)
-        if game.get('installed_on')=='windows':
-            # Installed with rtxForge on Windows: Linux only adds or removes its Proton setting.
+        if game.get('installed_on')=='windows' and not game.get('adaptable'):
+            # Older Windows record without shared state: Linux only adds or removes its Proton setting.
             if self.needs_linux_setup(game):add('Set Up for Linux',lambda:self.launch_action('install',targets=[game]),not self.busy)
             else:add('Remove Linux Setup',lambda:self.launch_action('uninstall',targets=[game]),not self.busy)
         else:
-            add('Install Features',lambda:self.launch_action('install',targets=[game]),not game.get('blocked') and not self.busy)
+            # A Windows install with shared state is adapted for Linux (Set Up) or restored right here.
+            add('Set Up for Linux' if self.needs_linux_setup(game) else 'Install Features',lambda:self.launch_action('install',targets=[game]),not game.get('blocked') and not self.busy)
             add('Restore Original Files',lambda:self.launch_action('uninstall',targets=[game]),bool(game.get('installed')) and not self.busy)
         add('Open Folder',lambda:Gio.AppInfo.launch_default_for_uri(Path(game['game']).as_uri(),None),not self.options.demo)
         pop.set_child(content)

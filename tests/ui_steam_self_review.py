@@ -32,7 +32,11 @@ def check():
     w.set_input_surface(True);open_review()
 def couch():
     assert app.window.capture('steam-self-review-couch.png')
-    assert len([x for x in children(app.window.dialog.get_child()) if x.has_css_class('review-game')])==4
+    # Game Mode draws the same review as its own dialog.
+    flow=app.window.operation_flow
+    assert type(flow).__name__=='GameModeFlow' and flow.stage=='review'
+    assert len([x for x in children(flow.modal['dialog']) if x.has_css_class('gm-review-row')])==4
+    assert flow.primary.get_label()=='Apply Artwork'
 steps=[open_review,check,couch]
 def step():
     try:

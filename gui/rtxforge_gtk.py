@@ -3,6 +3,7 @@
 from pathlib import Path
 import sys,threading,time,traceback,argparse,datetime,colorsys
 from collections import Counter
+from types import SimpleNamespace
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'scripts'))
 APP_VERSION=(ROOT/'VERSION').read_text(encoding='utf-8').strip() if (ROOT/'VERSION').exists() else 'dev'
 import gi
@@ -5208,11 +5209,12 @@ class Window(Adw.ApplicationWindow):
         import controller_input
         self.controller=controller_input.Controller()
         self.controller_source=GLib.timeout_add(40,self.poll_controller)
-        from couch_shell import CouchShell
+        from game_mode import GameMode
         classic_child=self.overlay.get_child();self.overlay.set_child(None)
         self.input_stack=Gtk.Stack(hhomogeneous=False,vhomogeneous=False)
         self.input_stack.add_named(classic_child,'desktop')
-        self.couch=CouchShell(self)
+        self.couch=GameMode(self,SimpleNamespace(make_brand_icon=make_brand_icon,poster_art_path=poster_art_path,capsule_art_path=capsule_art_path,
+                                                 accent_source=accent_source,artwork_pixels=artwork_pixels,app_version=APP_VERSION))
         self.couch_content=ScaledContent(self.couch)
         self.input_stack.add_named(self.couch_content,'couch')
         self.overlay.set_child(self.input_stack)
@@ -5540,7 +5542,8 @@ class Window(Adw.ApplicationWindow):
         if keyval in (Gdk.KEY_Return,Gdk.KEY_KP_Enter) and isinstance(focus,Gtk.Button):
             # Tab and mouse focus must activate that native control, including Settings.
             focus.emit('clicked');return True
-        actions={Gdk.KEY_Up:'up',Gdk.KEY_Down:'down',Gdk.KEY_Left:'left',Gdk.KEY_Right:'right',Gdk.KEY_Return:'accept',Gdk.KEY_KP_Enter:'accept',Gdk.KEY_BackSpace:'back'}
+        actions={Gdk.KEY_Up:'up',Gdk.KEY_Down:'down',Gdk.KEY_Left:'left',Gdk.KEY_Right:'right',Gdk.KEY_Return:'accept',Gdk.KEY_KP_Enter:'accept',Gdk.KEY_BackSpace:'back',
+                 Gdk.KEY_x:'select',Gdk.KEY_X:'select',Gdk.KEY_Page_Up:'previous',Gdk.KEY_Page_Down:'next'}
         if keyval in actions:self.couch.navigate(actions[keyval]);return True
         return False
 
@@ -9345,7 +9348,7 @@ class Window(Adw.ApplicationWindow):
             self.toast('No games selected.');return
         self.operation_games=targets
         self.operation_cancel=None
-        flow=OperationFlow(self,'update-dlss',targets)
+        flow=self.new_operation_flow('update-dlss',targets)
         review={'operation':'update-dlss','rows':[{'name':game['name'],'game':game['game'],'detail':'Check for newer DLSS files'} for game in targets],'blocked':[]}
         details=['Update','Only older supported native DLSS files are updated','Previous copies are backed up']
         def run(_review):
@@ -12963,6 +12966,14 @@ class Window(Adw.ApplicationWindow):
         flow.primary.set_sensitive(not self.options.demo)
         flow._page('review',scroll,width=760)
 
+    def new_operation_flow(self,operation,games,title=None):
+        """The operation dialog for the visible interface: Game Mode draws its own."""
+        if getattr(self,'input_stack',None) is not None and self.input_stack.get_visible_child_name()=='couch':
+            from game_mode import GameModeFlow
+            words=OPERATION_WORDS.get(operation,OPERATION_WORDS['reset'])
+            return GameModeFlow(self.couch,self,operation,games,(title or words[0],words[1],words[2]))
+        return OperationFlow(self,operation,games,title)
+
     def launch_action(self,operation,entire=False,targets=None,visual_settings=None,_presets_confirmed=False,_flow=None):
         if self.busy and self.task_kind!='art':return
         rows=(
@@ -12991,7 +13002,7 @@ class Window(Adw.ApplicationWindow):
         if operation=='install' and rows and all(self.needs_linux_setup(g) for g in rows):_presets_confirmed=True
         if operation=='install' and not _presets_confirmed:
             # Stage 1 (install only): presets, in the same dialog as the rest.
-            flow=OperationFlow(self,operation,rows)
+            flow=self.new_operation_flow(operation,rows)
             tuning,widgets=self.tuning_controls(visual_settings if visual_settings is not None else rows[0] if len(rows)==1 else self.tuning_values(self.tuning_widgets))
             flow.show_presets(tuning,lambda:self.launch_action(operation,entire,targets,self.tuning_values(widgets),True,_flow=flow))
             return
@@ -13003,7 +13014,7 @@ class Window(Adw.ApplicationWindow):
 
         self.operation_cancel=threading.Event();self.operation_executing=False
         self.operation_games=rows
-        flow=_flow if _flow is not None and not _flow.closed else OperationFlow(self,operation,rows)
+        flow=_flow if _flow is not None and not _flow.closed else self.new_operation_flow(operation,rows)
         flow.games=rows
         flow.show_checking()
 
@@ -13543,7 +13554,7 @@ class Window(Adw.ApplicationWindow):
         """Stage 5: Done, Could not finish or Cancelled."""
         flow=getattr(self,'operation_flow',None)
         if flow is None or flow.closed:
-            flow=OperationFlow(self,getattr(self,'review',None) and self.review.get('operation') or 'install',getattr(self,'operation_games',[]))
+            flow=self.new_operation_flow(getattr(self,'review',None) and self.review.get('operation') or 'install',getattr(self,'operation_games',[]))
         friendly=message if success else user_messages.friendly_error(message)
         flow.show_done(success,friendly,title,technical=None if success or title else message)
         self.job_label=None
@@ -13613,7 +13624,7 @@ class Window(Adw.ApplicationWindow):
         performs exactly what was shown and returns the Done message.
         """
         if self.busy and self.task_kind!='art':return None
-        flow=OperationFlow(self,operation,[])
+        flow=self.new_operation_flow(operation,[])
         def show(result):
             if flow.closed:return
             flow.show_review(result,confirm,details,enabled=not self.options.demo,trust=trust,note=note,extra=extra)
@@ -13649,7 +13660,7 @@ class Window(Adw.ApplicationWindow):
         review.setdefault('operation',operation)
         flow=getattr(self,'operation_flow',None)
         if flow is None or flow.closed or flow.operation!=operation:
-            flow=OperationFlow(self,operation,getattr(self,'operation_games',[]) or self.games)
+            flow=self.new_operation_flow(operation,getattr(self,'operation_games',[]) or self.games)
         flow.show_review(review,self.execute,self.review_details(review),enabled=not self.options.demo)
 
     def execute(self,review,*_legacy):
@@ -14198,13 +14209,13 @@ class Window(Adw.ApplicationWindow):
             item=self.review_entry(record['name'],record['detail'],self.review_game(record['name'],record.get('game')),'Backup');item.add_suffix(button('Review',lambda _,r=record:self.review_recovery(r)));g.append(item)
         if not records:b.append(label('No recorded changes yet.'))
     def review_recovery(self,record):
-        flow=OperationFlow(self,'recovery',[])
+        flow=self.new_operation_flow('recovery',[])
         flow.show_working('Checking the recorded changes…',cancellable=True)
         self.start('Checking restore',lambda:self.service.review_recovery(record),lambda review:None if flow.closed else self.action_ready(review))
 
     def show_cleanup(self):
         if self.options.demo:return
-        flow=OperationFlow(self,'cleanup',[])
+        flow=self.new_operation_flow('cleanup',[])
         flow.show_working('Checking global cleanup candidates…',cancellable=True)
         self.start('Scanning old NR files',self.service.review_cleanup,lambda review:None if flow.closed else self.action_ready(review))
     def capture(self,name):

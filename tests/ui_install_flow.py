@@ -128,13 +128,14 @@ def square():
     w.set_input_surface(True);w.couch.open('library');w.couch.set_library_view('list')
 def couch_support():
     w=app.window
-    art=w.couch.controls[4].artwork
-    assert art.picture.support_desaturated and art.picture.get_opacity()<0.5
-    assert art.support_info.get_visible()
-    w.couch.dlss_selection=set();w.couch.toggle_dlss_game(w.games[4])
-    assert w.couch.dlss_selection==set()
+    # Game Mode: an unsupported game can't be selected for a bulk operation.
+    c=w.couch;w.settings['library_filter']='all';c.set_library_view('posters');c.start_selecting()
+    card=c.find_key(c.body,'game-'+w.games[4]['game'])
+    assert w.games[4].get('blocked') and card is not None and not card.get_sensitive()
+    c.activate_game(w.games[4]);assert w.games[4]['game'] not in c.selected
+def couch_capture():
     capture('install-flow-11-unsupported-couch.png')
-steps=[start,presets,review,review_capture,progress,done,restore,blocked,dlss_header,dlss_review,widths,widths_check,menu_check,menu_capture,rounded,square,couch_support]
+steps=[start,presets,review,review_capture,progress,done,restore,blocked,dlss_header,dlss_review,widths,widths_check,menu_check,menu_capture,rounded,square,couch_support,couch_capture]
 def step():
     try:
         if steps:steps.pop(0)();GLib.timeout_add(1100,step)

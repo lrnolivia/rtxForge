@@ -74,7 +74,7 @@ class Controller:
                 name=self.sdl.SDL_GameControllerName(self.handle) or b''
                 self.family=family(self.sdl.SDL_GameControllerGetType(self.handle),name.decode('utf-8',errors='replace'))
         if not self.handle:return []
-        mapping={0:'accept',1:'back',3:'search',4:'settings',6:'menu',9:'previous',10:'next',11:'up',12:'down',13:'left',14:'right'}
+        mapping={0:'accept',1:'back',2:'select',3:'search',4:'settings',6:'menu',9:'previous',10:'next',11:'up',12:'down',13:'left',14:'right'}
         pressed={action for index,action in mapping.items() if self.sdl.SDL_GameControllerGetButton(self.handle,index)}
         for axis,negative,positive in ((0,'left','right'),(1,'up','down')):
             value=self.sdl.SDL_GameControllerGetAxis(self.handle,axis)

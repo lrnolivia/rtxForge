@@ -4212,6 +4212,7 @@ class Window(Adw.ApplicationWindow):
         self.page_stack.add_named(library_page,'library')
         top=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8)
         top.add_css_class('forge-top-surface')
+        self.dashboard_top=top
         margins(top,16)
         top.set_margin_top(0)
         # The Library side owns the shared seam spacing. Do not stack
@@ -4912,6 +4913,7 @@ class Window(Adw.ApplicationWindow):
 
         viewbar.set_margin_start(16)
         viewbar.set_margin_end(16)
+        self.library_viewbar=viewbar
         # Balance the two-tone panel seam:
         # dark dashboard bottom = 16px
         # light Library top     = 16px
@@ -6672,7 +6674,8 @@ class Window(Adw.ApplicationWindow):
 
         # The adjustment is the full content viewport. Overlay scrollbars do
         # not consume layout width; reserve equal insets on both sides only.
-        OUTER_INSET=16
+        OUTER_INSET=self.page_side_margin(viewport_width)
+        self.apply_page_margins(OUTER_INSET)
         usable_width=max(1,viewport_width-OUTER_INSET*2)
 
         # Preferred density adapts only when cards become cramped or oversized.
@@ -7647,6 +7650,8 @@ class Window(Adw.ApplicationWindow):
 
 
     def _column_density_changed(self,*_):
+        stage=self.library_stack.get_width()
+        if stage>1:self.apply_page_margins(self.page_side_margin(stage))
         width=self.column_scroll.get_hadjustment().get_page_size()
         if width<=1:return
         for title,minimum in (('Location',1060),('Features',860)):
@@ -10599,6 +10604,17 @@ class Window(Adw.ApplicationWindow):
             ratio,
         )
 
+
+    def page_side_margin(self,width):
+        """One centered column: 3% side margins (16–56 px), at most 1600 px wide."""
+        side=max(16,min(56,round(width*0.03)))
+        if width-side*2>1600:side=(width-1600)//2
+        return side
+
+    def apply_page_margins(self,side):
+        for widget in (getattr(self,'library_viewbar',None),getattr(self,'dashboard_top',None),getattr(self,'column_scroll',None)):
+            if widget is not None and widget.get_margin_start()!=side:
+                widget.set_margin_start(side);widget.set_margin_end(side)
 
     def resize_library_art(self,value=None):
         """Use the viewport solver for initial cards and subsequent resizes."""

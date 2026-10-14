@@ -34,7 +34,8 @@
                         <RowDefinition Height="*" />
                         <RowDefinition Height="68" />
                     </Grid.RowDefinitions>
-                    <Border Grid.RowSpan="2" Background="{Binding CardFill}" />
+                    <!-- Inside the 2px ring, so 10 = the art's top corners; square corners would poke past the ring. -->
+                    <Border Grid.RowSpan="2" Background="{Binding CardFill}" CornerRadius="10" />
                     <Grid Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="10,10,0,0">
                         <TextBlock Text="{Binding Name}" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center"
                                    VerticalAlignment="Center" Margin="12" FontSize="14" FontWeight="SemiBold" />
@@ -78,7 +79,7 @@
                         <RowDefinition Height="*" />
                         <RowDefinition Height="68" />
                     </Grid.RowDefinitions>
-                    <Border Grid.RowSpan="2" Background="{Binding CardFill}" />
+                    <Border Grid.RowSpan="2" Background="{Binding CardFill}" CornerRadius="10" />
                     <Grid Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="10,10,0,0">
                         <TextBlock Text="{Binding Name}" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center"
                                    VerticalAlignment="Center" Margin="12" FontSize="14" FontWeight="SemiBold" />
@@ -187,7 +188,7 @@
                 </Grid>
             </ItemContainer>
         </DataTemplate>
-        <UniformGridLayout x:Key="GridLayout" MinItemWidth="180" MinItemHeight="350" MinColumnSpacing="16" MinRowSpacing="16" ItemsStretch="None" />
+        <UniformGridLayout x:Key="GridLayout" MinItemWidth="212" MinItemHeight="380" MinColumnSpacing="16" MinRowSpacing="16" ItemsStretch="None" />
         <StackLayout x:Key="ListLayout" Spacing="1.5" />
     </Page.Resources>
 

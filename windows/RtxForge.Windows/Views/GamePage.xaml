@@ -20,71 +20,85 @@
                 <!-- .banner-shade: the art itself fades out, so it blends into any theme's background -->
                 <controls:FadedImage x:Name="HeroImage" />
                 <!-- identity: poster · status badge · title · meta, anchored to the hero's lower edge -->
-                <Grid x:Name="Identity" VerticalAlignment="Bottom" Padding="36,0,36,24" ColumnSpacing="20" RowSpacing="12">
+                <Grid x:Name="Identity" VerticalAlignment="Bottom" Padding="36,0,36,24" ColumnSpacing="20">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
                     <Grid x:Name="PosterFrame" Width="104" Height="156" VerticalAlignment="Bottom"
                           CornerRadius="{StaticResource ForgeCardCornerRadius}" Background="{ThemeResource ControlFillColorSecondaryBrush}"
                           BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
                         <Image x:Name="PosterImage" Stretch="UniformToFill" />
                     </Grid>
-                    <StackPanel x:Name="HeroText" Grid.Column="1" Spacing="4" VerticalAlignment="Bottom">
-                        <!-- .cover-badge -->
-                        <Border Style="{StaticResource ForgePillStyle}" HorizontalAlignment="Left" Padding="8,3,8,3">
-                            <TextBlock x:Name="StatusBadge" FontSize="11" FontWeight="SemiBold" />
-                        </Border>
-                        <TextBlock x:Name="TitleText" FontFamily="{StaticResource ForgeHeroFontFamily}" FontSize="{StaticResource ForgeBannerTitleFontSize}"
-                                   TextWrapping="WrapWholeWords" MaxLines="2" LineHeight="46" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                        <!-- metadata line: developer · release, source badge, test badge -->
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock x:Name="MetaText" Style="{StaticResource ForgeDimTextStyle}" FontSize="13" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                            <Border Style="{StaticResource ForgePillStyle}" VerticalAlignment="Center">
-                                <TextBlock x:Name="SourceBadge" FontSize="9" FontWeight="Bold" CharacterSpacing="42" />
+                    <!--
+                        Rows: badge + title · meta + summary · (narrow only) actions.
+                        The title spans over the actions' column (they sit below it),
+                        so it only wraps when it really runs out of room. Its own grid,
+                        so the taller poster never stretches these rows apart.
+                    -->
+                    <Grid x:Name="HeroBody" Grid.Column="1" VerticalAlignment="Bottom" ColumnSpacing="20">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <StackPanel x:Name="HeroHead" Grid.ColumnSpan="2" Spacing="4" Margin="0,0,0,4">
+                            <!-- .cover-badge -->
+                            <Border Style="{StaticResource ForgePillStyle}" HorizontalAlignment="Left" Padding="8,3,8,3">
+                                <TextBlock x:Name="StatusBadge" FontSize="11" FontWeight="SemiBold" />
                             </Border>
-                            <!-- which rtxForge installed the features: Linux or Windows mark + name -->
-                            <Border x:Name="OsBadge" Style="{StaticResource ForgePillStyle}" VerticalAlignment="Center" Visibility="Collapsed">
-                                <StackPanel Orientation="Horizontal" Spacing="4">
-                                    <Viewbox Width="10" Height="10" VerticalAlignment="Center">
-                                        <PathIcon x:Name="OsBadgeIcon" Width="16" Height="16" />
-                                    </Viewbox>
-                                    <TextBlock x:Name="OsBadgeText" FontSize="9" FontWeight="Bold" CharacterSpacing="42" VerticalAlignment="Center" />
-                                </StackPanel>
-                            </Border>
-                            <Border x:Name="TestBadge" Style="{StaticResource ForgePillStyle}" VerticalAlignment="Center">
-                                <StackPanel Orientation="Horizontal" Spacing="4">
-                                    <FontIcon x:Name="TestBadgeIcon" FontSize="10" />
-                                    <TextBlock x:Name="TestBadgeText" FontSize="9" FontWeight="Bold" CharacterSpacing="42" />
-                                </StackPanel>
-                            </Border>
+                            <TextBlock x:Name="TitleText" FontFamily="{StaticResource ForgeHeroFontFamily}" FontSize="{StaticResource ForgeBannerTitleFontSize}"
+                                       TextWrapping="WrapWholeWords" MaxLines="2" LineHeight="46" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                         </StackPanel>
-                        <!-- .game-detail-summary: two lines -->
-                        <TextBlock x:Name="SummaryText" Style="{StaticResource ForgeDimTextStyle}" FontSize="12" MaxLines="2"
-                                   TextTrimming="CharacterEllipsis" MaxWidth="520" HorizontalAlignment="Left" />
-                    </StackPanel>
-                    <StackPanel x:Name="HeroActions" Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Bottom">
-                        <Button x:Name="InstallButton" Style="{StaticResource AccentButtonStyle}" Click="OnInstall">
-                            <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE896;" FontSize="14" /><TextBlock x:Name="InstallText" Text="Install Features" /></StackPanel>
-                        </Button>
-                        <Button x:Name="RestoreButton" Click="OnRestore">
-                            <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE7A7;" FontSize="14" Foreground="{ThemeResource ForgeRemoveBrush}" /><TextBlock Text="Restore Original Files" /></StackPanel>
-                        </Button>
-                        <Button x:Name="MoreButton" AutomationProperties.Name="More options" ToolTipService.ToolTip="More options">
-                            <FontIcon Glyph="&#xE712;" FontSize="14" />
-                            <Button.Flyout>
-                                <MenuFlyout Placement="BottomEdgeAlignedRight">
-                                    <MenuFlyoutItem x:Name="UpdateDlssItem" Text="Update DLSS" Click="OnUpdateDlss"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE777;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
-                                    <MenuFlyoutItem x:Name="OpenFolderItem" Text="Open Folder" Click="OnOpenFolder"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE838;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
-                                </MenuFlyout>
-                            </Button.Flyout>
-                        </Button>
-                    </StackPanel>
+                        <StackPanel x:Name="HeroText" Grid.Row="1" Spacing="4" VerticalAlignment="Bottom">
+                            <!-- metadata line: developer · release, source badge, test badge -->
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock x:Name="MetaText" Style="{StaticResource ForgeDimTextStyle}" FontSize="13" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                <Border Style="{StaticResource ForgePillStyle}" VerticalAlignment="Center">
+                                    <TextBlock x:Name="SourceBadge" FontSize="9" FontWeight="Bold" CharacterSpacing="42" />
+                                </Border>
+                                <!-- which rtxForge installed the features: Linux or Windows mark + name -->
+                                <Border x:Name="OsBadge" Style="{StaticResource ForgePillStyle}" VerticalAlignment="Center" Visibility="Collapsed">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <Viewbox Width="10" Height="10" VerticalAlignment="Center">
+                                            <PathIcon x:Name="OsBadgeIcon" Width="16" Height="16" />
+                                        </Viewbox>
+                                        <TextBlock x:Name="OsBadgeText" FontSize="9" FontWeight="Bold" CharacterSpacing="42" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+                                <Border x:Name="TestBadge" Style="{StaticResource ForgePillStyle}" VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <FontIcon x:Name="TestBadgeIcon" FontSize="10" />
+                                        <TextBlock x:Name="TestBadgeText" FontSize="9" FontWeight="Bold" CharacterSpacing="42" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                            <!-- .game-detail-summary: two lines -->
+                            <TextBlock x:Name="SummaryText" Style="{StaticResource ForgeDimTextStyle}" FontSize="12" MaxLines="2"
+                                       TextTrimming="CharacterEllipsis" MaxWidth="520" HorizontalAlignment="Left" />
+                        </StackPanel>
+                        <StackPanel x:Name="HeroActions" Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Bottom">
+                            <Button x:Name="InstallButton" Style="{StaticResource AccentButtonStyle}" Click="OnInstall">
+                                <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE896;" FontSize="14" /><TextBlock x:Name="InstallText" Text="Install Features" /></StackPanel>
+                            </Button>
+                            <Button x:Name="RestoreButton" Click="OnRestore">
+                                <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE7A7;" FontSize="14" Foreground="{ThemeResource ForgeRemoveBrush}" /><TextBlock Text="Restore Original Files" /></StackPanel>
+                            </Button>
+                            <Button x:Name="MoreButton" AutomationProperties.Name="More options" ToolTipService.ToolTip="More options">
+                                <FontIcon Glyph="&#xE712;" FontSize="14" />
+                                <Button.Flyout>
+                                    <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                        <MenuFlyoutItem x:Name="UpdateDlssItem" Text="Update DLSS" Click="OnUpdateDlss"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE777;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
+                                        <MenuFlyoutItem x:Name="OpenFolderItem" Text="Open Folder" Click="OnOpenFolder"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE838;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
+                                    </MenuFlyout>
+                                </Button.Flyout>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
                 </Grid>
             </Grid>
 

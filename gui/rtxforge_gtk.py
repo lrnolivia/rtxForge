@@ -386,69 +386,34 @@ def safe_combo_row(**kwargs):
     return Adw.ComboRow(
         **kwargs
     )
+def accent_source(game):
+    """The artwork an accent is read from; the Windows build uses the same order."""
+    return game.get('poster') or game.get('capsule') or game.get('hero')
+
+
+def artwork_pixels(path,size=64):
+    """RGBA samples of artwork scaled to size × size."""
+    pix=GdkPixbuf.Pixbuf.new_from_file_at_scale(path,size,size,False)
+    if not pix.get_has_alpha():pix=pix.add_alpha(False,0,0,0)
+    data=pix.get_pixels();stride=pix.get_rowstride()
+    return [tuple(data[y*stride+x*4:y*stride+x*4+4]) for y in range(pix.get_height()) for x in range(pix.get_width())]
+
+
+SIGNATURES={}
+
+
+def artwork_signature(path):
+    """Cached signature accent of an artwork file (None for greyscale art)."""
+    try:key=(str(path),os.stat(path).st_mtime_ns)
+    except OSError:key=(str(path),None)
+    if key not in SIGNATURES:SIGNATURES[key]=ui_colors.signature_color(artwork_pixels(path))
+    return SIGNATURES[key]
+
+
 def artwork_accent(path,color=None,muted=False):
-    pix=GdkPixbuf.Pixbuf.new_from_file_at_scale(
-        path,
-        32,
-        32,
-        True,
-    )
-
-    data=pix.get_pixels()
-    stride=pix.get_rowstride()
-    channels=pix.get_n_channels()
-    colors=Counter()
-
-    for y in range(pix.get_height()):
-        for x in range(pix.get_width()):
-            off=y*stride+x*channels
-
-            if (
-                channels==4
-                and data[off+3]<128
-            ):
-                continue
-
-            rgb=tuple(
-                data[off+k]/255
-                for k in range(3)
-            )
-
-            h,s,v=colorsys.rgb_to_hsv(
-                *rgb
-            )
-
-            if (
-                s>.25
-                and .2<v<.98
-            ):
-                colors[
-                    int(h*24)
-                ]+=s*v
-
-    hue=(
-        (
-            colors.most_common(1)[0][0]
-            + .5
-        )
-        /24
-        if colors
-        else .23
-    )
-
-    rgb=tuple(
-        round(v*255)
-        for v in colorsys.hsv_to_rgb(
-            hue,
-            .62,
-            .90,
-        )
-    )
-
-    color=(
-        color
-        or '#%02x%02x%02x'%rgb
-    )
+    # A custom accent always wins; otherwise the artwork's signature color,
+    # chosen perceptually (OKLab), or a light neutral for greyscale art.
+    color=color or artwork_signature(path) or ui_colors.NO_ARTWORK
 
     if muted:
         rgb=[int(color[i:i+2],16)/255 for i in (1,3,5)]
@@ -4727,15 +4692,14 @@ class Window(Adw.ApplicationWindow):
         )
         self.split.set_sidebar(self.build_sidebar(main_menu))
         # Narrower windows: header actions become icon buttons (their
-        # tooltips keep the full names), then the sidebar folds away.
-        compact_actions=Adw.Breakpoint.new(Adw.BreakpointCondition.parse('max-width: 1400sp'))
-        for widget in (self.sticky_install_all,self.sticky_remove_all,self.sticky_update_dlss):
-            compact_actions.add_setter(widget.text_label,'visible',False)
-        self.add_breakpoint(compact_actions)
+        # tooltips keep the full names), then the sidebar folds away. The
+        # labels follow the width directly: a breakpoint would also close
+        # any open popover each time it applies.
+        self.connect('notify::default-width',self._header_density)
+        self._header_density()
+        GLib.idle_add(self._header_density)
         narrow=Adw.Breakpoint.new(Adw.BreakpointCondition.parse('max-width: 860sp'))
         narrow.add_setter(self.split,'collapsed',True)
-        for widget in (self.sticky_install_all,self.sticky_remove_all,self.sticky_update_dlss):
-            narrow.add_setter(widget.text_label,'visible',False)
         self.add_breakpoint(narrow)
 
         # Presets is its own page (sidebar), not part of the dashboard.
@@ -5266,6 +5230,14 @@ class Window(Adw.ApplicationWindow):
         scroll.set_child(self.nav_list)
         view.set_content(scroll)
         return view
+
+    def _header_density(self,*_):
+        width=self.get_width() or self.get_default_size()[0]
+        scale=Gtk.Settings.get_default().get_property('gtk-xft-dpi')/(96*1024) if Gtk.Settings.get_default() else 1
+        labels=width>=1400*max(1.0,scale)
+        for widget in (self.sticky_install_all,self.sticky_remove_all,self.sticky_update_dlss):
+            if widget.text_label.get_visible()!=labels:widget.text_label.set_visible(labels)
+        return False
 
     def current_page(self):
         stack=getattr(self,'page_stack',None)
@@ -5813,7 +5785,7 @@ class Window(Adw.ApplicationWindow):
         )
         group.add(button('Sync artwork to Steam',lambda *_:self.sync_steam_artwork(game=game)))
         group.artwork_controls={}
-        accent_path=game.get('capsule') or game.get('poster') or game.get('hero')
+        accent_path=accent_source(game)
         try:
             editor_accent=artwork_accent(accent_path,self.settings.get('game_accents',{}).get(game['game'])) if accent_path else None
         except Exception:editor_accent=None
@@ -7910,11 +7882,7 @@ class Window(Adw.ApplicationWindow):
         if accent and game.get('_accent_blocked')==bool(game.get('blocked')):
             return accent
 
-        path=(
-            game.get('capsule')
-            or game.get('poster')
-            or game.get('hero')
-        )
+        path=accent_source(game)
 
         if not path:
             return None
@@ -11023,7 +10991,7 @@ class Window(Adw.ApplicationWindow):
                 entry['picture'].queue_resize()
                 entry['fallback'].set_visible(False)
                 if game.get('accent_class'):entry['widget'].remove_css_class(game['accent_class'])
-                accent_path=capsule_art_path(game) or game.get('poster') or game.get('hero') or path
+                accent_path=accent_source(game) or path
                 game['accent_class']=artwork_accent(accent_path,self.settings.get('game_accents',{}).get(game['game']),muted=bool(game.get('blocked')));entry['widget'].add_css_class(game['accent_class'])
             except Exception:entry['fallback'].set_visible(True)
         else:

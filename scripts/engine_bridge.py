@@ -1,6 +1,6 @@
 """Serialized desktop adapter for the RC1.38-derived transaction engine."""
 from pathlib import Path
-import importlib.util,sys,json,hashlib,zipfile,os
+import importlib.util,sys,json,hashlib,zipfile,os,contextlib
 import transactions as t,packages,ui,package_catalog,proton_prefix,cross_os
 from operation_session import Session,Cancelled
 from storage import storage
@@ -121,9 +121,123 @@ def steam_open_route(e,g,operation,baseline):
     return None
 
 def windows_install(e,g,baseline):
-    """An intact install made by rtxForge on the other OS in this game folder (no local baseline)."""
+    """An intact schema-1 install (no shared state) made by rtxForge on the other OS, with no local baseline."""
     if baseline:return None
-    return cross_os.other_install(g.target_dir,cross_os.THIS_OS)
+    record=cross_os.other_install(g.target_dir,cross_os.THIS_OS)
+    return None if record and record.get('shared_state') else record
+
+OS_NAMES={'linux':'Linux','windows':'Windows'}
+
+def shared_baseline(g):
+    """The other OS's shared baseline as written (placeholders, not this OS's paths)."""
+    return json.loads((cross_os.shared_state(g.target_dir)/'baseline.json').read_text(encoding='utf-8'))
+
+def retire(e,g):
+    """Move this OS's state for a game aside (kept, never deleted) so adopted or fresh state can replace it."""
+    state=e.state_dir_for(g.target_dir)
+    if state.exists():
+        retired=e.STATE_ROOT/'cross-os-retired'/(e.target_key(g.target_dir)+'-'+e.now_stamp())
+        retired.parent.mkdir(parents=True,exist_ok=True)
+        os.replace(state,retired)
+
+def adopt(e,g,record):
+    """Take over the other OS's install of this game: its baseline and original-file backups become ours."""
+    target=g.target_dir;state=e.state_dir_for(target)
+    retire(e,g)
+    baseline=cross_os.import_state(target,state,record['revision'])
+    mine=(baseline.get('cross_os_extras') or {}).get(cross_os.THIS_OS) or {}
+    baseline.pop('steam_launch',None)
+    if mine.get('steam_launch'):baseline['steam_launch']=mine['steam_launch']
+    current=baseline.get('current')
+    if current:
+        # Launch options are per OS: Proton overrides on Linux, nothing on Windows.
+        same=mine.get('launch_options') and mine.get('proxy')==current.get('proxy')
+        current['launch_options']=mine['launch_options'] if same else e.build_launch_options(current.get('proxy',''),current.get('reshade') or {'detected':False})
+    baseline['cross_os_revision']=record['revision']
+    e.verify_baseline_integrity(target,baseline,adopt_legacy=False)
+    e.save_json_atomic(e.baseline_path(target),baseline)
+    return baseline
+
+def restored_elsewhere(e,g,baseline):
+    """This OS's shared install was restored by the other OS: no record and none of its files remain as installed."""
+    if not baseline or not baseline.get('cross_os_revision') or cross_os.read(g.target_dir):return False
+    hashes=(baseline.get('current') or {}).get('installed_hashes') or {}
+    def kept(rel):
+        path=g.target_dir/rel
+        return path.is_file() and not path.is_symlink() and e.sha256_file(path)==hashes[rel]
+    return bool(hashes) and not any(kept(rel) for rel in hashes)
+
+class _without_baseline:
+    """Plan a fresh install over state that is about to be retired."""
+    def __init__(self,e,g):self.e,self.g=e,g
+    def __enter__(self):
+        load=self.original=self.e.load_baseline;target=str(self.g.target_dir)
+        self.e.load_baseline=lambda path,*a,**kw:None if str(path)==target else load(path,*a,**kw)
+    def __exit__(self,*exc):self.e.load_baseline=self.original
+
+def operations_root():
+    """Where desktop operation sessions live (the engine's STATE_ROOT, see module())."""
+    return Path(os.environ.get('RTXFORGE_DLSS_UNLOCKED_STATE',str(Path.home()/'.local/state/rtxforge-dlss-unlocked')))/'desktop-operations'
+
+def installed_package(baseline):
+    """What a baseline has actually installed (its 'current' record), or None.
+
+    An install cut off before its first success has no current record: there is
+    nothing installed to switch away from, and installing again finishes it.
+    """
+    current=(baseline or {}).get('current')
+    return current if isinstance(current,dict) and current else None
+
+def interrupted_install(baseline):
+    """A first install that stopped partway (crash, forced shutdown, stalled drive)."""
+    return bool(baseline) and not installed_package(baseline) and bool(baseline.get('pending_install')) and baseline.get('status') in ('applying','interrupted')
+
+def check_switch(e,current,mode):
+    """Refuse switching mode or package over an installed one; its originals must be restored first."""
+    if not current:return
+    t.need(current.get('feature_mode',mode)==mode,'Uninstall before changing feature profiles so original runtime files are restored')
+    t.need(current.get('provider_id','y4my')==e.Y4MY_PROVIDER['id'],'Uninstall the current provider before switching providers; its original backups must be restored first')
+
+STEAM_OWNED=('localconfig.vdf','shortcuts.vdf','user.reg')
+
+def steam_owned(path):
+    """Files Steam or Wine own and may have rewritten since: recovery reports them instead of rewriting."""
+    return Path(path).name.lower() in STEAM_OWNED
+
+def adopt_plan(e,g,row,record,operation,mode):
+    """Review entry for adapting the other OS's install of this game to this OS."""
+    other=OS_NAMES[record['os']];here=OS_NAMES[cross_os.THIS_OS]
+    data=shared_baseline(g)
+    current=data.get('current') or {}
+    managed=[p for p in data.get('managed_paths') or [] if isinstance(p,str)]
+    mine=(data.get('cross_os_extras') or {}).get(cross_os.THIS_OS) or {}
+    # What this OS saved in Steam the last time it owned the install, if anything.
+    view={'steam_launch':mine['steam_launch']} if isinstance(mine.get('steam_launch'),dict) else None
+    prefix=None;steam_route=False
+    if operation in ('install','repair'):
+        check_switch(e,current or None,mode)
+        if cross_os.THIS_OS=='linux':
+            prefix=steam_open_route(e,g,operation,view)
+            if not prefix:
+                account=e.choose_steam_user_config([g],assume_yes=True)
+                t.need(account is not None,'No Steam launch settings found; add the game to Steam before desktop installation')
+                if not g.appid:
+                    shortcuts=account['shortcuts']
+                    match=e.match_shortcut_span(g,e.parse_shortcuts_spans(shortcuts.read_bytes())) if shortcuts.is_file() else None
+                    t.need(match is not None,'No unique Steam shortcut targets this game directory. Add this copy as a separate Non-Steam game before desktop installation')
+                steam_route=True
+            detail='adds the Proton setting'+(" in this game's prefix · Steam can stay open" if prefix else '')
+        else:
+            detail='it already loads here, so no game files change'
+        preview={'files':[],'launch_options':f'Installed with rtxForge on {other} · adapts it for {here}: {detail}'}
+    elif operation=='uninstall':
+        steam_open_route(e,g,operation,view)
+        steam_route=bool(view)
+        preview={'files':managed,'launch_options':f'Installed with rtxForge on {other} · restores the original files it backed up'}
+    else:
+        preview={'files':[],'launch_options':f'Installed with rtxForge on {other} · adapts it for {here}, then saves your presets'}
+    return {'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g),'prefix':str(prefix) if prefix else None,
+            'steam_route':steam_route,'adopt':record,'paths':managed}
 
 def proton_setup(e,g,record):
     """Prefix and DLL names that make a Windows install load under Proton."""
@@ -162,6 +276,21 @@ def prepare(config,rows,mode,operation,settings):
             baseline=e.load_baseline(g.target_dir)
             if baseline:
                 t.need(not any(v.get('kind') in ('tar_tree','tar_file') for v in baseline.get('originals',{}).values()),'Privileged backup requires terminal restore before desktop management')
+            # Installed (or last changed) with rtxForge on the other OS: adapt it for this one.
+            shared=cross_os.adoptable(g.target_dir,cross_os.THIS_OS,(baseline or {}).get('cross_os_revision')) if operation in ('install','repair','uninstall','reset') else None
+            if shared:
+                ready.append(adopt_plan(e,g,row,shared,operation,mode))
+                ui.progress('Game checked',phase='review-check',game=row['name'],checked=index,total=len(rows))
+                continue
+            retired=restored_elsewhere(e,g,baseline)
+            if retired and operation=='uninstall':
+                other=OS_NAMES[cross_os.OTHER_OS]
+                prefix=steam_open_route(e,g,operation,baseline)
+                preview={'files':[],'launch_options':f'Original files were already restored with rtxForge on {other} · clears what is left here'}
+                ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g),'prefix':None,'steam_route':isinstance(baseline.get('steam_launch'),dict),'retire_only':True})
+                ui.progress('Game checked',phase='review-check',game=row['name'],checked=index,total=len(rows))
+                continue
+            if retired:baseline=None
             windows=windows_install(e,g,baseline) if operation in ('install','repair','uninstall') else None
             if windows and cross_os.THIS_OS=='windows':
                 # Installed with rtxForge on Linux: Windows loads it natively, so there is nothing to add.
@@ -195,31 +324,48 @@ def prepare(config,rows,mode,operation,settings):
                     match=e.match_shortcut_span(g,e.parse_shortcuts_spans(shortcuts.read_bytes())) if shortcuts.is_file() else None
                     t.need(match is not None,'No unique Steam shortcut targets this game directory. Add this copy as a separate Non-Steam game before desktop installation')
 
-                if baseline:
-                    old=(baseline.get('current') or {}).get('provider_id','y4my')
-                    t.need((baseline.get('current') or {}).get('feature_mode',mode)==mode,'Uninstall before changing feature profiles so original runtime files are restored')
-                    t.need(old==e.Y4MY_PROVIDER['id'],'Uninstall the current provider before switching providers; its original backups must be restored first')
-                preview=e.install_target(g,data,meta,'ada',nr_runtime_payload=nr,nr_runtime_meta=nrmeta,feature_mode=mode,enable_effects=True,native_mfg_fallback=bool(settings.get('native_mfg_fallback',False)),nr_strength=strength,mfg_multiplier=multiplier,sharpening_strength=sharpening,preserve_visual_settings=not settings.get("apply_requested_presets",False),dry_run=True)
+                check_switch(e,installed_package(baseline),mode)
+                with _without_baseline(e,g) if retired else contextlib.nullcontext():
+                    preview=e.install_target(g,data,meta,'ada',nr_runtime_payload=nr,nr_runtime_meta=nrmeta,feature_mode=mode,enable_effects=True,native_mfg_fallback=bool(settings.get('native_mfg_fallback',False)),nr_strength=strength,mfg_multiplier=multiplier,sharpening_strength=sharpening,preserve_visual_settings=not settings.get("apply_requested_presets",False),dry_run=True)
+                if interrupted_install(baseline):
+                    preview=dict(preview,launch_options='Finishes an install that was interrupted · '+preview['launch_options'])
             if prefix:preview=dict(preview,launch_options="Proton setting saved in this game's prefix · Steam can stay open")
             # Which Steam-side state this game touches: its prefix, Steam's launch settings, or neither.
             steam_route=operation in ('install','repair') and not prefix or operation=='uninstall' and bool(baseline and isinstance(baseline.get('steam_launch'),dict))
-            ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g),'prefix':str(prefix) if prefix else None,'steam_route':steam_route})
+            ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g),'prefix':str(prefix) if prefix else None,'steam_route':steam_route,'retire':retired})
         except (e.Stop,t.Refusal,OSError,ValueError) as ex:blocked.append({'name':row['name'],'reason':str(ex)})
         ui.progress('Game checked',phase='review-check',game=row['name'],checked=index,total=len(rows))
     return {'kind':'engine','operation':operation,'title':operation.title(),'rows':[{'name':p['row']['name'],'detail':p['preview']['launch_options'] if operation=='reset' else f"{e.Y4MY_PROVIDER['name']} · {len(p['preview']['files'])} managed files · "+p['preview']['launch_options']} for p in ready],
             'blocked':blocked,'plans':ready,'engine':e,'payload':data,'meta':meta,'nr':nr,'nrmeta':nrmeta,'mode':mode,'enable_effects':True,'native_mfg_fallback':bool(settings.get('native_mfg_fallback',False)),'nr_strength':strength,'mfg_multiplier':multiplier,'sharpening_strength':sharpening,'apply_requested_presets':bool(settings.get('apply_requested_presets',False))}
 
-def write_install_record(e,g,review):
-    """Tell rtxForge on the other OS what this install is, so it can recognise it."""
+def share_install(e,g,review):
+    """Tell rtxForge on the other OS what this install is, and share its state so that OS can adapt it."""
     try:
-        baseline=e.load_baseline(g.target_dir) or {}
+        target=g.target_dir
+        baseline=e.load_baseline(target) or {}
         current=baseline.get('current') or {}
         launch=e._launch_record_for_game(g) or {}
-        cross_os.write(g.target_dir,cross_os.THIS_OS,baseline.get('managed_paths',[]),dict(getattr(e,'Y4MY_PROVIDER',{}) or {}),review.get('mode',''),
-            current.get('proxy',''),proton_prefix.override_names(launch.get('required','')),app_version=getattr(e,'APP_VERSION',''))
+        revision=cross_os.new_revision()
+        portable=baseline.get('status')=='active' and not baseline.get('pending_install') and \
+            not any(v.get('kind') in ('tar_tree','tar_file') for v in baseline.get('originals',{}).values())
+        if portable:
+            extras=dict(baseline.get('cross_os_extras') or {})
+            extras[cross_os.THIS_OS]={'steam_launch':baseline.get('steam_launch'),'launch_options':current.get('launch_options'),'proxy':current.get('proxy')}
+            cross_os.export_state(target,e.state_dir_for(target),baseline,revision,extras)
+            baseline['cross_os_extras']=extras;baseline['cross_os_revision']=revision
+            e.save_json_atomic(e.baseline_path(target),baseline)
+        cross_os.write(target,cross_os.THIS_OS,baseline.get('managed_paths',[]),dict(getattr(e,'Y4MY_PROVIDER',{}) or {}),
+            current.get('feature_mode') or review.get('mode',''),current.get('proxy',''),proton_prefix.override_names(launch.get('required','')),
+            app_version=getattr(e,'APP_VERSION',''),revision=revision,shared_state=portable)
     except Exception as error:
-        # The install itself succeeded; Windows will just not recognise it.
+        # The change itself succeeded; the other OS will just not be able to adapt it.
         ui.line('Install record',f'Not written: {error}')
+
+def release_install(g,baseline):
+    """After a restore, drop the record and shared state this OS owns (or adopted)."""
+    record=cross_os.read(g.target_dir)
+    if record and (record['os']==cross_os.THIS_OS or record.get('revision')==(baseline or {}).get('cross_os_revision')):
+        cross_os.remove(g.target_dir,record['os'])
 
 def undo_game(e,session,checkpoint,result):
     """Put a failed game back exactly as it was before this run touched it."""
@@ -254,10 +400,10 @@ def execute(review):
                 t.need(fingerprint(e,g)==item['fingerprint'],'Game or baseline changed since preview; prepare again')
                 if session:
                     baseline=e.load_baseline(g.target_dir) or {}
-                    names=set(item['preview'].get('files',[]))|set(item['preview'].get('remove',[]))|set(baseline.get('managed_paths',[]))|set(baseline.get('originals',{}))
+                    names=set(item['preview'].get('files',[]))|set(item['preview'].get('remove',[]))|set(baseline.get('managed_paths',[]))|set(baseline.get('originals',{}))|set(item.get('paths',[]))
                     if review['operation']=='reset':names={p.name for p in g.target_dir.iterdir() if p.name.lower()=='optiscaler.ini'}
                     else:names.add('OptiScaler')
-                    paths=[g.target_dir/name for name in names]+[e.state_dir_for(g.target_dir),g.target_dir/cross_os.MARKER]
+                    paths=[g.target_dir/name for name in names]+[e.state_dir_for(g.target_dir),g.target_dir/cross_os.MARKER,g.target_dir/cross_os.SHARED]
                     if review['operation']!='reset':
                         paths.extend([e.STATE_ROOT/'steam-config-backups',e._steam_transaction_root(),prefix_state(e,g)])
                         account=e.choose_steam_user_config([g],assume_yes=True)
@@ -267,9 +413,31 @@ def execute(review):
                         for registry in {item.get('prefix') and str(Path(item['prefix'])/'user.reg'),prefix_record and prefix_record.get('registry')}:
                             if registry:paths.append(Path(registry))
                     report('Backing up your current files',0.15)
-                    checkpoint=session.capture(paths)
+                    checkpoint=session.capture(paths,label=g.name)
+                if item.get('adopt'):
+                    report('Adapting the install for '+OS_NAMES[cross_os.THIS_OS],0.3)
+                    adopt(e,g,item['adopt'])
+                elif item.get('retire'):
+                    retire(e,g)
                 report({'reset':'Saving your settings','uninstall':'Restoring original files','install':'Installing features','repair':'Repairing feature files'}[review['operation']],0.4)
-                if item.get('linux_setup'):
+                if item.get('retire_only'):
+                    # Restored on the other OS: only this OS's own launch setting is left to undo.
+                    proton_prefix.restore(prefix_state(e,g))
+                    e.restore_launch_options_batch([g],assume_yes=True)
+                    retire(e,g)
+                    record={'retired':True}
+                elif item.get('adopt') and review['operation'] in ('install','repair'):
+                    report('Saving launch settings',0.85)
+                    if item.get('prefix'):
+                        names=proton_prefix.override_names((e._launch_record_for_game(g) or {}).get('required',''))
+                        t.need(names,'No Proton setting was planned for this game; close Steam and install again')
+                        proton_prefix.apply(Path(item['prefix']),names,prefix_state(e,g))
+                    elif cross_os.THIS_OS=='linux':
+                        synced=e.sync_launch_options_batch([g],assume_yes=True,prompt=False)
+                        t.need(synced and all(r.get('status')=='written' for r in synced),'The launch settings could not be saved, so launch settings need attention: '+str(synced))
+                    share_install(e,g,review)
+                    record={'adopted':item['adopt']['os']}
+                elif item.get('linux_setup'):
                     report('Saving the Proton setting',0.6)
                     proton_prefix.apply(Path(item['prefix']),item['linux_setup'],prefix_state(e,g))
                     record={'linux_setup':item['linux_setup']}
@@ -278,12 +446,15 @@ def execute(review):
                     record=proton_prefix.restore(prefix_state(e,g))
                 elif review['operation']=='reset':
                     record=e.reset_visual_settings(g,nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'])
+                    # OptiScaler.ini changed: share it again so the other OS still trusts the install.
+                    share_install(e,g,review)
                 elif review['operation']=='uninstall':
-                    e.verify_native_restore(e.load_baseline(g.target_dir))
+                    owned=e.load_baseline(g.target_dir)
+                    e.verify_native_restore(owned)
                     proton_prefix.restore(prefix_state(e,g))
                     e.restore_launch_options_batch([g],assume_yes=True)
                     record=e.restore_target(g)
-                    cross_os.remove(g.target_dir,cross_os.THIS_OS)
+                    release_install(g,owned)
                 else:
                     record=e.install_target(g,review['payload'],review['meta'],'ada',nr_runtime_payload=review['nr'],nr_runtime_meta=review['nrmeta'],feature_mode=review['mode'],enable_effects=review['enable_effects'],native_mfg_fallback=review.get('native_mfg_fallback',False),nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'],preserve_visual_settings=not review.get('apply_requested_presets',False))
                     report('Saving launch settings',0.85)
@@ -295,7 +466,7 @@ def execute(review):
                     else:
                         synced=e.sync_launch_options_batch([g],assume_yes=True,prompt=False)
                         t.need(synced and all(r.get('status')=='written' for r in synced),'The launch settings could not be saved, so launch settings need attention: '+str(synced or record['launch_options']))
-                    write_install_record(e,g,review)
+                    share_install(e,g,review)
                 results.append({'name':g.name,'status':'complete','record':record})
             except Exception as ex:
                 results.append({'name':g.name,'status':'failed','error':str(ex)})

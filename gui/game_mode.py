@@ -1366,7 +1366,11 @@ class GameMode(Gtk.Overlay):
         section = self.section
         if section == 'Features':
             setup = owner.needs_linux_setup(g)
-            if g.get('installed_on') == 'windows':
+            legacy = g.get('installed_on') == 'windows' and not g.get('adaptable')
+            if g.get('installed_on') == 'windows' and g.get('adaptable'):
+                description = ('Installed with rtxForge on Windows. Set Up for Linux hands it to rtxForge here and adds the Proton setting; '
+                               'the game files stay as Windows installed them. Restore Original Files works from here too.')
+            elif legacy:
                 description = ('Installed with rtxForge on Windows. Set Up for Linux adds only the Proton setting; the game files stay as Windows installed them.'
                                if setup else 'Installed with rtxForge on Windows and set up for Linux. Restore its original files in rtxForge on Windows.')
             elif g.get('installed'):
@@ -1395,7 +1399,7 @@ class GameMode(Gtk.Overlay):
             content.append(self.group([
                 self.row_button('Set Up for Linux' if setup else 'Install Features', action=lambda: self.run_operation('install', [g]), enabled=not g.get('blocked')),
                 self.row_button('Repair Feature Files', action=lambda: self.run_operation('install', [g]), enabled=bool(g.get('installed') and not g.get('blocked') and not setup)),
-                self.row_button('Remove Linux Setup' if g.get('installed_on') == 'windows' else 'Restore Original Files',
+                self.row_button('Remove Linux Setup' if legacy else 'Restore Original Files',
                                 action=lambda: self.run_operation('uninstall', [g]), danger=True, enabled=bool(g.get('installed'))),
             ]))
         elif section == 'DLSS Files':

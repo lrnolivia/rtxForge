@@ -66,6 +66,28 @@ def bundled_image(path):
     return bytes(data)
 
 
+def _png_size(data):
+    if data[:8]!=b'\x89PNG\r\n\x1a\n' or len(data)<24 or data[12:16]!=b'IHDR':return None
+    width,height=struct.unpack('>II',data[16:24])
+    return (width,height) if width and height else None
+
+
+def logo_position(logo,hero,*,height=55.0,max_width=70.0):
+    """Steam's grid/<appid>.json: the logo centered on the hero, sized by aspect.
+
+    Steam stores the logo box as a percentage of the hero's width and height
+    (pinnedPosition CenterCenter is what its own "center" choice writes).
+    """
+    logo_w,logo_h=_png_size(logo) or (1280,400)
+    hero_w,hero_h=_png_size(hero) or (3840,1240)
+    width=height*(logo_w/logo_h)/(hero_w/hero_h)
+    if width>max_width:height,width=height*max_width/width,max_width
+    return {'nVersion':1,'logoPosition':{'pinnedPosition':'CenterCenter','nWidthPct':round(width,4),'nHeightPct':round(height,4)}}
+
+
+def _position_bytes(position):return json.dumps(position,separators=(',',':')).encode()
+
+
 def _shortcut_plan(config,settings,*,engine=None,entry=None):
     e=engine or engine_bridge.module(config);entry=Path(entry or executable()).resolve()
     accounts=steam_artwork.profiles(config,engine=e)
@@ -131,10 +153,18 @@ def _prepare(config,settings,*,engine=None,entry=None,art_root=None,load_image=b
         desired={str(appid)+steam_artwork.SUFFIX[role]+steam_artwork.image_extension(data):t.sha(data)}
         status='unchanged' if slots[role]==desired else 'replace' if slots[role] else 'add'
         roles.append({'role':role,'status':status,'files':list(slots[role])})
+    # Center the logo on the hero. Only added when Steam has no position yet: one
+    # the user set in Steam (or an earlier rtxForge write) is always kept.
+    position=_position_bytes(logo_position(images['logo'],images['hero']))
+    position_path=t.safe(folder/'grid'/(str(appid)+'.json'))
+    current=position_path.read_bytes() if position_path.is_file() else None
+    if current is not None and len(current)>64*1024:raise ValueError('Steam logo position file exceeds the safe size.')
     identity={'icon':t.digest(icon),'entry':str(entry),'config':str(folder),'appid':appid,'shortcut':t.sha(before) if before is not None else None,
               'images':{role:t.sha(data) for role,data in images.items()},'slots':slots}
     return {'engine':e,'folder':folder,'shortcut':shortcut,'before':before,'after':after,'images':images,
-            'summary':{'identity':identity,'created':created,'profile':folder.parent.name,'roles':roles}}
+            'position':position,'position_path':position_path,
+            'summary':{'identity':identity,'created':created,'profile':folder.parent.name,'roles':roles,
+                       'logo_position':'add' if current is None else 'kept'}}
 
 
 def review(config,settings,**kwargs):
@@ -166,4 +196,14 @@ def install(config,settings,*,reviewed=None,**kwargs):
             preserved.append(role);continue
         try:results.append(steam_artwork.write_slot(config,folder/'grid',str(appid),role,data,expected_before=summary['identity']['slots'][role]))
         except Exception as error:errors.append(role+': '+str(error))
+    if summary['logo_position']=='add':
+        path=plan['position_path']
+        try:
+            # Steam may have saved a position since the review: never overwrite it.
+            if not path.exists():
+                path.parent.mkdir(exist_ok=True)
+                t.atomic_file(path,plan['position'],0o600)
+                if path.read_bytes()!=plan['position']:raise ValueError('readback failed')
+                results.append({'changed':True,'role':'logo position','grid':str(path.parent)})
+        except Exception as error:errors.append('logo position: '+str(error))
     return {'created':created,'appid':appid,'artwork':results,'errors':errors,'preserved':preserved,'backup':str(backup),'restart_required':created or bool(results)}

@@ -2,7 +2,7 @@
 from pathlib import Path
 import rtxforge as app
 import discovery,planning,packages,profiles,cleanup,transactions as t
-import re,datetime,hardware,engine_bridge,library_media,cross_os,proton_prefix
+import re,datetime,hardware,engine_bridge,library_media,cross_os,proton_prefix,operation_session
 from types import SimpleNamespace
 from storage import storage
 
@@ -87,6 +87,11 @@ class DesktopService:
             target=Path(g.exe).parent if g.exe else root
             record=cross_os.read(target)
             row['installed_on']=record['os'] if record else (cross_os.THIS_OS if installed else None)
+            if record and record['os']!=cross_os.THIS_OS:
+                # Set Up (adapt) takes the other OS's install over instead of reinstalling it.
+                try:local=engine.load_baseline(target)
+                except (engine.Stop,OSError,ValueError):local=None
+                row['adaptable']=bool(cross_os.adoptable(target,cross_os.THIS_OS,(local or {}).get('cross_os_revision')))
             if record and record['os']=='windows' and cross_os.THIS_OS=='linux':
                 row['linux_ready']=bool(proton_prefix.load_record(engine_bridge.prefix_state(engine,SimpleNamespace(target_dir=target))))
             rows.append(row)
@@ -148,9 +153,16 @@ class DesktopService:
         for path in sorted((root/'cleanup').glob('*/cleanup.json'),reverse=True):
             doc=t.read_json(path)
             if doc['status'] in ('complete','removing','interrupted'):rows.append({'kind':'restore-cleanup','path':str(path),'name':'Cleanup '+path.parent.name,'detail':doc['status']})
+        # Install/restore runs a crash or forced shutdown left open.
+        for session in operation_session.unfinished(engine_bridge.operations_root()):
+            checkpoint=session.interrupted()
+            name=('Interrupted: '+checkpoint['label']) if checkpoint and checkpoint.get('label') else 'Interrupted operation'
+            detail=('Stopped during '+(checkpoint.get('label') or 'a game')) if checkpoint else 'Older record: which game was in progress is unknown'
+            rows.append({'kind':'operation','path':str(session.root),'name':name,'detail':detail})
         return rows
 
     def review_recovery(self,row):
+        if row['kind']=='operation':return self.review_operation(row)
         root=storage(self.config);path=t.safe(row['path']);details=[]
         if row['kind']=='rollback':
             t.need(path.is_relative_to(root/'batches'),'Invalid batch record')
@@ -162,6 +174,25 @@ class DesktopService:
                 view=t.rollback_transaction(state);details.append({'name':Path(view['game']).name,'detail':str(len(view['files']))+' files to restore'})
         else:details=[{'name':'Cleanup recovery','detail':str(cleanup.restore(self.config,path))+' files to restore'}]
         return {'kind':row['kind'],'path':str(path),'title':'Restore recorded changes','rows':details,'blocked':[]}
+
+    def _operation(self,path):
+        root=operation_session.canonical(engine_bridge.operations_root())
+        session=operation_session.Session.load(t.safe(path))
+        t.need(session.root.parent==root and session.root.name.startswith('cancel-'),'Invalid operation record')
+        t.need(str(session.root) not in operation_session.LIVE and session.status in operation_session.UNFINISHED,'This operation is not interrupted')
+        return session
+
+    def review_operation(self,row):
+        """Put back only the game that was in progress; games that finished keep their changes."""
+        session=self._operation(row['path']);plan=session.recovery_plan(engine_bridge.steam_owned);details=[]
+        if plan['checkpoint'] is None:
+            details.append({'name':'Close this record','detail':'It predates per-game checkpoints, so rtxForge cannot tell which game was in progress. Nothing is restored; its copies are kept.'})
+            return {'kind':'operation','path':str(session.root),'title':'Close interrupted operation','rows':details,'blocked':[],'close_only':True}
+        label=plan['checkpoint'].get('label') or 'The interrupted game'
+        details.append({'name':label,'detail':(str(len(plan['restore']))+' item(s) put back as they were before this run' if plan['restore'] else 'Nothing was changed; the record is closed')})
+        for entry in plan['leave']:details.append({'name':Path(entry['path']).name,'detail':'Left as it is (Steam or Wine own it)'})
+        if plan['completed']:details.append({'name':str(plan['completed'])+' finished game(s)','detail':'Keep their changes'})
+        return {'kind':'operation','path':str(session.root),'title':'Recover interrupted operation','rows':details,'blocked':[]}
 
     def review_cleanup(self):
         roots=self.libraries()
@@ -180,6 +211,11 @@ class DesktopService:
         if kind=='batch':return str(app.apply_batch(self.config,review['plans']))
         if kind=='cleanup':return str(cleanup.apply(self.config,review['items']))
         if kind=='restore-cleanup':cleanup.restore(self.config,Path(review['path']),True);return review['path']
+        if kind=='operation':
+            session=self._operation(review['path'])
+            if review.get('close_only'):session.close('closed')
+            else:session.recover(engine_bridge.steam_owned)
+            return str(session.root)
         t.need(kind=='rollback','Unknown action')
         args=app.parser().parse_args(['rollback','--batch',review['path'],'--apply','--confirm','ROLLBACK'])
         app.rollback(args,self.config);return review['path']

@@ -291,7 +291,8 @@ def batch_review():
         while child:
             yield from descendants(child)
             child = child.get_next_sibling()
-    update = next(w for w in descendants(app.window.dialog) if isinstance(w, ui.Gtk.Button) and w.get_label() == 'Update DLSS Files')
+    # Review DLSS Update: the verb sits at the end of the dialog's header bar.
+    update = next(w for w in descendants(app.window.dialog) if isinstance(w, ui.Gtk.Button) and w.get_label() == 'Update')
     assert not update.get_sensitive()
     update.emit('clicked')  # Handler also refuses programmatic preview activation.
     assert not app.window.busy or app.window.task_kind == 'art'

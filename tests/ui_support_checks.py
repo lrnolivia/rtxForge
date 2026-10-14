@@ -88,65 +88,58 @@ def details():
     assert any(isinstance(x,Gtk.Image) and x.get_paintable() is not None for x in children(notice))
     assert not any(isinstance(x,Adw.ExpanderRow) and x.get_title()=='Technical details' for x in children(overview))
     assert w.capture('unsupported-top-notice.png')
-    d,b,f=w.open_panel('Review Installation',width=640,height=390)
-    w.operation_games=w.games;w.review_check_view(d,b,w.games)
-    f.append(ui.button('Cancel',lambda *_:None))
+    # One dialog moves through Checking → Review → Progress → Done.
+    w.operation_games=w.games;w.operation_cancel=__import__('threading').Event()
+    flow=ui.OperationFlow(w,'install',w.games);flow.show_checking()
     w.event({'kind':'progress','label':'Verifying feature package'})
 def package():
-    w=app.window;state=w.review_check_state
-    assert state['counter'].get_text()=='0 of 3 checked' and not state['determinate']
+    w=app.window;flow=w.operation_flow
+    assert flow.stage=='checking' and flow.step.counter.get_text()=='Preparing…' and not flow.step.determinate
+    assert flow.step.phase.get_text()=='Verifying feature package…',flow.step.phase.get_text()
+    assert not flow.primary.get_sensitive() and flow.primary.get_label()=='Install'
     assert w.capture('review-check-package.png')
     w.event({'kind':'progress','phase':'review-check','label':'Game checked','game':w.games[1]['name'],'checked':2,'total':3})
 def checking():
-    w=app.window;state=w.review_check_state
-    assert state['counter'].get_text()=='2 of 3 checked'
-    assert abs(state['bar'].get_fraction()-2/3)<0.01
-    assert state['game'].get_text()==w.games[1]['name']
-    assert state['art'].has_css_class('review-bezel')
-    assert state['card'].has_css_class(w._ensure_game_accent(w.games[1]))
-    scroll=w.dialog.get_child().get_first_child().get_next_sibling()
-    adj=scroll.get_vadjustment()
-    assert adj.get_upper()<=adj.get_page_size()+1, (adj.get_upper(),adj.get_page_size())
-    assert scroll.get_policy()[1]==Gtk.PolicyType.NEVER
+    w=app.window;flow=w.operation_flow
+    assert flow.step.counter.get_text()=='Checking 2 of 3',flow.step.counter.get_text()
+    assert abs(flow.step.bar.get_fraction()-2/3)<0.01
+    assert flow.step.title.get_text()==w.games[1]['name']
+    assert flow.step.frame.has_css_class('progress-poster-frame')
+    assert flow.dialog.has_css_class(w._ensure_game_accent(w.games[1]))
     assert w.capture('review-check-counter.png')
-    w.action_ready({'operation':'install','rows':[{'name':g['name'],'detail':'Fixture changes'} for g in w.games[1:]],'blocked':[]},w.dialog,w.dialog.get_child().get_first_child().get_next_sibling().get_child().get_child(),w.dialog.get_child().get_last_child())
-    assert w.review_check_state is None
+    dialog=flow.dialog
+    w.action_ready({'operation':'install','rows':[{'name':g['name'],'detail':'Fixture changes'} for g in w.games[1:]],'blocked':[]})
+    assert w.operation_flow is flow and flow.dialog is dialog and flow.stage=='review'
 def large_review():
     w=app.window
-    d,b,f=w.open_panel('Review Installation',width=640,height=720)
     w.operation_games=w.games
-    w.action_ready({'operation':'install','rows':[{'name':w.games[i%3]['name'],'detail':'Fixture changes'} for i in range(20)],'blocked':[]},d,b,f)
-    w.fixture_review=d
-    w.fixture_footer=f
+    w.action_ready({'operation':'install','rows':[{'name':w.games[i%3]['name'],'detail':'Fixture changes'} for i in range(20)],'blocked':[]})
 def compact_progress():
-    w=app.window
-    assert w.fixture_footer.get_margin_top()==28
-    overlay=w.fixture_review.get_child().get_first_child().get_next_sibling()
-    assert isinstance(overlay,Gtk.Overlay) and overlay.bottom_fade.get_height()==28
-    adj=overlay.get_child().get_vadjustment()
-    end=adj.get_upper()-adj.get_page_size()
-    adj.set_value(end-5)
-    assert overlay.bottom_fade.get_opacity()==1
-    adj.set_value(end)
-    assert overlay.bottom_fade.get_opacity()==0
-    adj.set_value(0)
+    w=app.window;flow=w.operation_flow
+    listing=next(x for x in children(flow.dialog.get_child()) if x.has_css_class('review-list'))
+    scroll=listing.get_parent()
+    if isinstance(scroll,Gtk.Viewport):scroll=scroll.get_parent()
+    rows=[x for x in children(listing) if isinstance(x,Adw.ActionRow)]
+    fifth=rows[4].compute_bounds(scroll)[1];sixth=rows[5].compute_bounds(scroll)[1]
+    assert fifth.get_y()+fifth.get_height()<=scroll.get_height()+1
+    assert sixth.get_y()>=scroll.get_height()-1
     w.options.demo=False
     w.start=lambda *args:None  # Exercise the real transition without executing files.
     w.operation_cancel=__import__('threading').Event()
-    w.execute({'kind':'engine'},w.fixture_review,None,w.fixture_footer)
+    w.execute({'kind':'engine','rows':[{'name':g['name']} for g in w.games]})
     w.options.demo=True
-    d=w.dialog;f=w.fixture_footer
-    w.job_caption.set_text('Backing up your current files')
-    w.update_progress_art(w.games[1]['name'])
-    w.compact_footer=f
+    assert flow.stage=='progress' and flow.cancel_button.get_sensitive()
+    w.event({'kind':'progress','label':'Backing up your current files','game':w.games[1]['name'],'current':2,'total':3,'fraction':0.5})
+    assert flow.step.counter.get_text()=='Installing 2 of 3',flow.step.counter.get_text()
     ui.apply_corner_style('square')
 def square_progress():
     w=app.window
     assert w.dialog.get_child().get_height()<400, w.dialog.get_child().get_height()
     assert w.capture('compact-square-progress.png')
-    w.finish_progress(True,'20 games updated. Fixture only; no game files changed.',w.compact_footer)
+    w.finish_progress(True,'20 games updated. Fixture only; no game files changed.')
 def compact_done():
     w=app.window
+    assert w.operation_flow.stage=='done' and w.operation_flow.primary.get_label()=='Done'
     assert w.dialog.get_child().get_height()<300, w.dialog.get_child().get_height()
     assert w.capture('compact-square-done.png')
     ui.apply_corner_style('rounded')

@@ -704,6 +704,12 @@ def artwork_accent(path,color=None,muted=False):
             f'color: {color}; '
             f'}} '
 
+            # The operation dialog's primary button follows the current game.
+            f'.operation-flow.{name} headerbar button.suggested-action {{ '
+            f'background: {color}; '
+            f'color: {accent_fg}; '
+            f'}} '
+
             f'.{name} button:focus-visible {{ '
             f'outline-color: {color}; '
             f'}}'
@@ -2361,6 +2367,17 @@ columnview.library-column-view listview row:nth-child(even):hover {
     font-weight: 600;
 }
 
+/* Operation dialog: one step layout for checking and progress. */
+.operation-step .progress-poster-frame {
+    border-width: 2px;
+    border-radius: 12px;
+}
+.operation-step .job-title {
+    font-size: 20px;
+}
+.operation-done .icon { color: @success_color; }
+.operation-failed .icon { color: @warning_color; }
+
 .result-success {
     color: white;
 }
@@ -3556,6 +3573,347 @@ class ResizablePanelWindow(Adw.Window):
 
 
 
+OPERATION_WORDS={
+    # operation: (review title, action verb, progress verb)
+    'install':('Review Installation','Install','Installing'),
+    'repair':('Review Repair','Repair','Repairing'),
+    'uninstall':('Review Restoration','Restore','Restoring'),
+    'reset':('Review Presets','Apply Presets','Applying'),
+    'update-dlss':('Review DLSS Update','Update','Updating'),
+}
+
+
+class OperationStep(Gtk.Box):
+    """One layout for every per-game step (checking and progress).
+
+    Accent-stroked poster on the left; on the right the "Installing 3 of 20"
+    counter, the game in its accent, the current phase and the progress bar.
+    """
+    POSTER=(96,144)
+
+    def __init__(self):
+        super().__init__(spacing=24,valign=Gtk.Align.CENTER)
+        self.add_css_class('operation-step')
+        self.frame=Gtk.Frame(valign=Gtk.Align.CENTER)
+        self.frame.add_css_class('progress-poster-frame')
+        self.frame.set_overflow(Gtk.Overflow.HIDDEN)
+        self.poster=CoverPicture(content_fit=Gtk.ContentFit.COVER,can_shrink=True)
+        self.poster.cover_width,self.poster.cover_ratio=self.POSTER[0],2/3
+        self.poster.set_size_request(*self.POSTER)
+        self.frame.set_child(self.poster)
+        self.append(self.frame)
+        text=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4,hexpand=True,valign=Gtk.Align.CENTER)
+        self.counter=label('Preparing…','dim-label')
+        self.counter.add_css_class('caption')
+        self.title=label('','job-title')
+        self.title.add_css_class('title-3')
+        self.title.set_wrap(False);self.title.set_ellipsize(Pango.EllipsizeMode.END)
+        self.phase=label('','dim-label')
+        self.phase.set_wrap(False);self.phase.set_ellipsize(Pango.EllipsizeMode.END)
+        self.bar=Gtk.ProgressBar(margin_top=8)
+        for widget in (self.counter,self.title,self.phase,self.bar):text.append(widget)
+        self.append(text)
+        self.game=None
+        self.determinate=False
+        GLib.timeout_add(100,self._pulse)
+
+    def _pulse(self):
+        if self.get_root() is None and self.game is not None:return False
+        if not self.determinate:self.bar.pulse()
+        return True
+
+    def show(self,verb,game,index,total,phase,fraction=None):
+        """A step; without a total the bar stays indeterminate."""
+        self.counter.set_text(f'{verb} {min(index+1,total)} of {total}' if total else 'Preparing…')
+        if phase:self.phase.set_text(str(phase).rstrip('.…')+'…')
+        if total:
+            self.determinate=True
+            self.bar.set_fraction(max(0.0,min(1.0,fraction if fraction is not None else index/total)))
+        else:
+            self.determinate=False
+        if game is not None and game is not self.game:
+            self.game=game
+            self.title.set_text(game['name'])
+            path=poster_art_path(game) or capsule_art_path(game)
+            try:self.poster.set_paintable(Gdk.Texture.new_from_filename(path) if path else None)
+            except Exception:self.poster.set_paintable(None)
+            return True
+        return False
+
+    def complete(self):
+        self.determinate=True;self.bar.set_fraction(1.0)
+
+
+class OperationFlow:
+    """Presets → Checking → Review → Progress → Done in one dialog.
+
+    The dialog never closes between stages. Cancel sits at the start of its
+    header bar and the action verb at the end, as in other GNOME dialogs.
+    Nothing is written until the review is confirmed.
+    """
+
+    def __init__(self,owner,operation,games,title=None):
+        self.owner=owner
+        self.operation=operation
+        self.games=list(games)
+        words=OPERATION_WORDS.get(operation,OPERATION_WORDS['reset'])
+        self.review_title=title or words[0]
+        self.verb,self.progress_verb=words[1],words[2]
+        self.stage=None
+        self.review=None
+        self.on_confirm=None
+        self.accent=None
+        self.dialog=PresentationDialog(owner,title=self.review_title,content_width=640)
+        self.dialog.add_css_class('modal-panel')
+        self.dialog.add_css_class('operation-flow')
+        self.dialog.connect('closed',self._closed)
+        self.dialog.connect('close-attempt',lambda *_:self.cancel())
+        toolbar=Adw.ToolbarView()
+        self.header=Adw.HeaderBar(show_start_title_buttons=False,show_end_title_buttons=False)
+        self.header.set_title_widget(Adw.WindowTitle(title=self.review_title))
+        self.cancel_button=Gtk.Button(label='Cancel')
+        self.cancel_button.connect('clicked',lambda *_:self.cancel())
+        self.primary=Gtk.Button(label=self.verb,sensitive=False)
+        self.primary.add_css_class('suggested-action')
+        self.primary.connect('clicked',lambda *_:self._primary_clicked())
+        self.header.pack_start(self.cancel_button)
+        self.header.pack_end(self.primary)
+        toolbar.add_top_bar(self.header)
+        self.toolbar=toolbar
+        self.content=None
+        self.dialog.set_child(toolbar)
+        self.closed=False
+        # One modal at a time, as open_panel() does.
+        if owner.dialog is not None:owner.dialog.force_close()
+        owner.operation_flow=self
+        owner.dialog=self.dialog
+        self.dialog.present(owner)
+
+    # ---------- helpers ----------
+
+    def _page(self,name,child,width=640):
+        self.content=child
+        self.toolbar.set_content(child)
+        self.dialog.set_content_width(width)
+        self.stage=name
+        self._fit(child,width)
+        GLib.idle_add(self._fit,child,width)
+
+    def _fit(self,child,width):
+        """Size the dialog to the current stage, within the window."""
+        if self.closed or self.content is not child:return False
+        header=self.header.measure(Gtk.Orientation.VERTICAL,width)[1]
+        content=child.measure(Gtk.Orientation.VERTICAL,width)[1]
+        if isinstance(child,Gtk.ScrolledWindow) and child.get_child() is not None:
+            content=child.get_child().measure(Gtk.Orientation.VERTICAL,width)[1]
+        limit=max(320,self.owner.get_height()-96)
+        self.dialog.set_content_height(min(limit,header+content))
+        return False
+
+    def _rows_scroll(self,listing,visible=5):
+        """At most five complete rows show; the rest scroll."""
+        scroll=Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,propagate_natural_height=True)
+        scroll.set_child(listing)
+        def cap(*_):
+            rows=[];row=listing.get_first_child()
+            while row:rows.append(row);row=row.get_next_sibling()
+            last=rows[min(visible,len(rows))-1] if rows else None
+            ok,bounds=last.compute_bounds(listing) if last is not None and last.get_height()>0 else (False,None)
+            if ok:
+                # The fifth row's lower edge, including the list's own border.
+                height=round(bounds.get_y()+bounds.get_height())+(1 if len(rows)<=visible else 0)
+            else:
+                width=max(320,listing.get_width() or 560)
+                height=sum(r.measure(Gtk.Orientation.VERTICAL,width)[1] for r in rows[:visible])+2
+            if scroll.get_max_content_height()==height:return False
+            scroll.set_max_content_height(height)
+            if self.content is not None:self._fit(self.content,self.dialog.get_content_width())
+            return False
+        cap()
+        GLib.idle_add(cap)
+        GLib.timeout_add(120,cap)
+        for row in [listing.get_row_at_index(i) for i in range(visible)]:
+            if isinstance(row,Adw.ExpanderRow):row.connect('notify::expanded',lambda *_:GLib.idle_add(cap))
+        return scroll
+
+    def _title(self,text):
+        self.dialog.set_title(text)
+        self.header.get_title_widget().set_title(text)
+
+    def _body(self):
+        body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
+        margins(body,24)
+        return body
+
+    def _set_accent(self,game):
+        accent=self.owner._ensure_game_accent(game) if game else None
+        if accent==self.accent:return
+        if self.accent:self.dialog.remove_css_class(self.accent)
+        self.accent=accent
+        if accent:self.dialog.add_css_class(accent)
+
+    def _primary_clicked(self):
+        if self.stage=='presets' and self.on_continue:self.on_continue()
+        elif self.stage=='review' and self.on_confirm:self.on_confirm(self.review)
+        elif self.stage=='done':self.dialog.force_close()
+
+    def _closed(self,*_):
+        self.closed=True
+        if self.stage=='checking' and getattr(self.owner,'operation_cancel',None) is not None:
+            self.owner.operation_cancel.set()
+        if self.accent:self.dialog.remove_css_class(self.accent)
+        if getattr(self.owner,'operation_flow',None) is self:self.owner.operation_flow=None
+        if self.owner.dialog is self.dialog:self.owner.dialog=None
+        if self.stage=='done' and getattr(self,'rescan',False):self.owner.scan()
+
+    def cancel(self):
+        owner=self.owner
+        if self.stage=='progress':
+            cancel=getattr(owner,'operation_cancel',None)
+            if cancel is not None and self.cancel_button.get_sensitive():
+                cancel.set()
+                self.cancel_button.set_label('Cancelling…')
+                self.cancel_button.set_sensitive(False)
+                self.step.phase.set_text('Finishing safely, then undoing changes…')
+            return
+        if self.stage=='checking' and getattr(owner,'operation_cancel',None) is not None:
+            owner.operation_cancel.set()
+        self.dialog.force_close()
+
+    # ---------- stages ----------
+
+    def show_presets(self,tuning,on_continue):
+        """Install only: tune presets, then Cancel or Continue."""
+        self.on_continue=on_continue
+        self._title('Install Features')
+        body=self._body()
+        body.append(label('Adjust your presets or continue. You can change these settings later in OptiScaler.','dim-label'))
+        body.append(tuning)
+        self.primary.set_label('Continue')
+        self.primary.set_sensitive(True)
+        self._page('presets',body,width=820)
+
+    def show_checking(self):
+        """The engine prepares every target; nothing is written yet."""
+        self._title(self.review_title)
+        body=self._body()
+        self.step=OperationStep()
+        self.step.show('Checking',self.games[0] if self.games else None,0,0,'Checking game files')
+        self._set_accent(self.step.game)
+        body.append(self.step)
+        note=label('Your files will only change after you review and confirm.','dim-label')
+        note.add_css_class('caption')
+        body.append(note)
+        self.primary.set_label(self.verb)
+        self.primary.set_sensitive(False)
+        self.cancel_button.set_visible(True)
+        self._page('checking',body)
+
+    def checking_event(self,event):
+        if event.get('phase')!='review-check':
+            if event.get('label'):self.step.phase.set_text(user_messages.friendly_status(event['label']).rstrip('.…')+'…')
+            return
+        game=next((g for g in self.games if g['name']==event.get('game')),None)
+        total=event.get('total') or len(self.games)
+        if self.step.show('Checking',game,max(0,event.get('checked',0)-1),total,user_messages.friendly_status(event.get('label','')),event.get('checked',0)/max(1,total)):
+            self._set_accent(game)
+
+    def show_review(self,review,on_confirm,details=None,enabled=True):
+        """N games ready, Needs attention · N, then the verb."""
+        self.review=review
+        self.on_confirm=on_confirm
+        owner=self.owner
+        self._title(review.get('title') if review.get('title','').startswith('Review') else self.review_title)
+        self._set_accent(None)
+        body=self._body()
+        count=len(review.get('rows',[]))
+        summary=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4)
+        summary.append(label(f"{count} game{'s' if count!=1 else ''} ready" if count else 'Nothing ready yet','title-2'))
+        line=' · '.join(details or [self.verb])
+        summary.append(label(line,'dim-label'))
+        body.append(summary)
+        if review.get('rows'):
+            listing=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+            listing.add_css_class('boxed-list');listing.add_css_class('review-list')
+            for item in review['rows']:
+                game=owner.review_game(item['name'],item.get('game'))
+                detail=user_messages.friendly_status(item.get('detail',''))
+                listing.append(owner.review_entry(item['name'],'Ready to '+self.verb.lower(),game,'Ready',detail or None))
+            body.append(self._rows_scroll(listing))
+        blocked=review.get('blocked',[])
+        if blocked:
+            body.append(label(f'Needs attention · {len(blocked)}','heading'))
+            skipped=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+            skipped.add_css_class('boxed-list');skipped.add_css_class('review-list')
+            for item in blocked:
+                skipped.append(owner.review_entry(item['name'],user_messages.friendly_error(item['reason']),owner.review_game(item['name']),'Skipped','Technical details\n'+str(item['reason']),icon='dialog-warning-symbolic'))
+            body.append(skipped)
+            if any('baseline' in str(item['reason']).lower() for item in blocked):
+                previous=Gtk.Button(label='Previous Changes',halign=Gtk.Align.START)
+                previous.connect('clicked',lambda *_:(self.dialog.force_close(),owner.show_undo()))
+                body.append(previous)
+        if not count:
+            body.append(label('There are no games ready for this change. Check the messages above for your next step.','dim-label'))
+        note=label('Preview mode · all file changes are disabled.' if owner.options.demo else 'Your files will only change after you review and confirm.','dim-label')
+        note.add_css_class('caption')
+        body.append(note)
+        scroll=Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,vexpand=True)
+        scroll.set_child(body)
+        self.primary.set_label(self.verb)
+        self.primary.set_sensitive(bool(count) and enabled)
+        self.cancel_button.set_label('Cancel' if count else 'Close')
+        self._page('review',scroll)
+
+    def show_progress(self,total):
+        self.dialog.set_can_close(False)
+        self._title(self.review_title.replace('Review ','',1))
+        body=self._body()
+        self.step=OperationStep()
+        first=next((g for g in self.games if any(r['name']==g['name'] for r in (self.review or {}).get('rows',[]))),self.games[0] if self.games else None)
+        self.step.show(self.progress_verb,first,0,total,'Starting')
+        self._set_accent(first)
+        body.append(self.step)
+        self.total=total
+        self.primary.set_visible(False)
+        self.cancel_button.set_label('Cancel')
+        self.cancel_button.set_sensitive(True)
+        self._page('progress',body)
+
+    def progress_event(self,event):
+        game=next((g for g in self.games if g['name']==event.get('game')),None)
+        total=event.get('total') or self.total
+        index=max(0,int(event.get('current',1))-1) if 'current' in event else self.games.index(game) if game in self.games else 0
+        if self.step.show(self.progress_verb,game,index,total,user_messages.friendly_status(event.get('label','')),event.get('fraction')):
+            self._set_accent(game)
+
+    def finalizing(self):
+        """The engine is committing; a late Cancel can no longer undo."""
+        self.cancel_button.set_sensitive(False)
+        if not getattr(self.owner,'operation_cancel',None) or not self.owner.operation_cancel.is_set():
+            self.step.phase.set_text('Finishing file management…')
+
+    def show_done(self,success,message,title=None,technical=None):
+        if getattr(self,'step',None) is not None and self.stage=='progress' and success:self.step.complete()
+        self.dialog.set_can_close(True)
+        self._set_accent(None)
+        heading=title or ('Done' if success else 'Could not finish')
+        # The status page carries the heading; the header bar stays plain.
+        self._title('')
+        page=Adw.StatusPage(
+            icon_name='object-select-symbolic' if success else 'dialog-warning-symbolic',
+            title=heading,
+            description=str(message),
+        )
+        page.add_css_class('compact')
+        page.add_css_class('operation-done' if success else 'operation-failed')
+        if technical:page.set_child(self.owner.technical_details(technical))
+        self.cancel_button.set_visible(False)
+        self.primary.set_visible(True)
+        self.primary.set_label('Done')
+        self.primary.set_sensitive(True)
+        self._page('done',page,width=520)
+
+
 class LibraryGameItem(GObject.Object):
     """ColumnView model wrapper around one mutable game dictionary."""
 
@@ -4330,8 +4688,16 @@ class Window(Adw.ApplicationWindow):
             self.preset_bar_revealer
         )
         self.split.set_sidebar(self.build_sidebar(main_menu))
+        # Narrower windows: header actions become icon buttons (their
+        # tooltips keep the full names), then the sidebar folds away.
+        compact_actions=Adw.Breakpoint.new(Adw.BreakpointCondition.parse('max-width: 1400sp'))
+        for widget in (self.sticky_install_all,self.sticky_remove_all,self.sticky_update_dlss):
+            compact_actions.add_setter(widget.text_label,'visible',False)
+        self.add_breakpoint(compact_actions)
         narrow=Adw.Breakpoint.new(Adw.BreakpointCondition.parse('max-width: 860sp'))
         narrow.add_setter(self.split,'collapsed',True)
+        for widget in (self.sticky_install_all,self.sticky_remove_all,self.sticky_update_dlss):
+            narrow.add_setter(widget.text_label,'visible',False)
         self.add_breakpoint(narrow)
 
         # Presets is its own page (sidebar), not part of the dashboard.
@@ -8737,6 +9103,10 @@ class Window(Adw.ApplicationWindow):
         for name in ('uninstall_all','sticky_remove_all'):
             widget=getattr(self,name,None)
             if widget:widget.set_label(f'Restore Selected ({count})' if count else 'Restore Original Files')
+        # Icon-only at narrow widths: the tooltip names the action and its scope.
+        if hasattr(self,'sticky_install_all'):
+            self.sticky_install_all.set_tooltip_text(self.sticky_install_all.get_label()+(' · selected games' if count else ' · whole library'))
+            self.sticky_remove_all.set_tooltip_text(self.sticky_remove_all.get_label()+(' · selected games' if count else ' · whole library'))
         toggle=getattr(self,'select_toggle',None)
         if toggle:
             toggle.set_label('Clear' if count else 'Select all')
@@ -8827,25 +9197,7 @@ class Window(Adw.ApplicationWindow):
             library_media.save_settings(self.service.config,self.settings)
 
     def update_library_dlss(self,*_,games=None):
-        if self.busy:return
-        if self.options.demo:
-            self.toast('Preview mode · no files changed');return
-        import runtime_updates
-        games=list(self.games if games is None else games)
-        d,b,f=self.open_panel('Update DLSS Files',width=640,height=280,show_close=False)
-        self.operation_games=games
-        self.operation_cancel=threading.Event()
-        self.progress_view(b,'Checking DLSS files…')
-        clear(self.progress_cancel_box)
-        self.progress_cancel_box=None
-        d.set_can_close(False)
-        def work():return runtime_updates.manage(self.service.config,games)
-        def finished(result):
-            message=str(result['updated_games'])+' games updated.'
-            if result['skipped']:message+=' '+str(len(result['skipped']))+' games skipped; see Activity.'
-            self.log.extend(result['skipped'])
-            self.finish_progress(True,message,f)
-        self.start('Update DLSS Files',work,finished)
+        self.update_dlss_games(list(self.games if games is None else games))
 
     def selected_or_library(self):
         """Library-wide actions act on the selection when there is one."""
@@ -8853,23 +9205,28 @@ class Window(Adw.ApplicationWindow):
         return selected or list(self.games)
 
     def update_dlss_games(self,games):
+        """Review DLSS Update → Updating → Done, in one dialog."""
+        if self.busy and self.task_kind!='art':return
         targets=list({game['game']:game for game in games if not game.get('blocked')}.values())
         if not targets:
             self.toast('No games selected.');return
-        d,b,f=self.open_panel('Update DLSS Files',width=620,height=440)
-        b.append(label(f'Update DLSS files in {len(targets)} games?','title-2'))
-        b.append(label('Only older supported native DLSS files are updated. Protected files are skipped and previous copies are backed up.'))
-        listing=self.review_list();b.append(listing)
-        for game in targets:listing.append(self.review_entry(game['name'],'Check for newer DLSS files',game,'DLSS Files'))
-        f.append(button('Cancel',lambda *_:d.close()))
-        def update(*_):
+        self.operation_games=targets
+        self.operation_cancel=None
+        flow=OperationFlow(self,'update-dlss',targets)
+        review={'operation':'update-dlss','rows':[{'name':game['name'],'game':game['game'],'detail':'Check for newer DLSS files'} for game in targets],'blocked':[]}
+        details=['Update','Only older supported native DLSS files are updated','Previous copies are backed up']
+        def run(_review):
             if self.options.demo:return
-            d.close()
-            self.update_library_dlss(games=targets)
-        apply=button('Update DLSS Files',update,'suggested-action')
-        apply.set_sensitive(not self.options.demo)
-        f.append(apply)
-        if self.options.demo:b.append(label('Preview mode · game writes disabled.','dim-label'))
+            import runtime_updates
+            flow.show_progress(len(targets));flow.rescan=True
+            flow.cancel_button.set_sensitive(False)
+            def finished(result):
+                message=str(result['updated_games'])+' games updated.'
+                if result['skipped']:message+=' '+str(len(result['skipped']))+' games skipped; see Activity.'
+                self.log.extend(result['skipped'])
+                self.finish_progress(True,message)
+            self.start('Update DLSS Files',lambda:runtime_updates.manage(self.service.config,targets),finished)
+        flow.show_review(review,run,details,enabled=not self.options.demo)
 
     def manage_dlss_files(self,game,restore=False,replace_same=False):
         if self.options.demo:
@@ -9175,6 +9532,11 @@ class Window(Adw.ApplicationWindow):
             )
     def event(self,event):
         if event['kind']=='progress':
+            flow=getattr(self,'operation_flow',None)
+            if flow is not None and not flow.closed and flow.stage in ('checking','progress'):
+                (flow.checking_event if flow.stage=='checking' else flow.progress_event)(event)
+                self.show_operation_status(event['label'])
+                return False
             state=getattr(self,'review_check_state',None)
             if state and self.dialog is state['dialog']:
                 self.review_check_event(event,state)
@@ -9245,16 +9607,25 @@ class Window(Adw.ApplicationWindow):
             if self.task_kind=='art':self.pending=(title,action,done,kind);self.cancel_art.set();self.show_operation_status('Finishing current artwork request…')
             return
         self.busy=True;self.task_kind=kind;self.started=time.monotonic();self.operation_elapsed.set_text('');self.show_operation_status(title);self.controls()
+        # Results arrive at default priority: a running animation (spinner,
+        # pulsing bar) must never hold back progress or completion.
+        def deliver(callback,*args):
+            GLib.idle_add(callback,*args,priority=GLib.PRIORITY_DEFAULT)
         def run_task():
             try:
-                with ui.report_to(lambda e:GLib.idle_add(self.event,e)):result=action()
-            except Exception as ex:GLib.idle_add(self.finished,None,done,(str(ex),traceback.format_exc()))
-            else:GLib.idle_add(self.finished,result,done,None)
+                with ui.report_to(lambda e:deliver(self.event,e)):result=action()
+            except Exception as ex:deliver(self.finished,None,done,(str(ex),traceback.format_exc()))
+            else:deliver(self.finished,result,done,None)
         threading.Thread(target=run_task,daemon=False).start()
     def finished(self,result,done,error):
         self.busy=False;self.task_kind='';self.controls()
         if getattr(self,'operation_cancel',None) is not None and self.operation_cancel.is_set() and (not getattr(self,'operation_executing',False) or (error and 'operation_session.Cancelled' in error[1])):
             self.operation_cancel=None
+            flow=getattr(self,'operation_flow',None)
+            if flow is not None and not flow.closed and flow.stage=='progress':
+                self.show_operation_status('Cancelled · changes undone',True,'process-stop-symbolic')
+                self.finish_progress(False,'Changes to the games in progress were undone.',title='Cancelled')
+                return
             if self.dialog:self.dialog.force_close()
             self.dialog=None;self.job_label=None;self.show_operation_status('Cancelled · changes undone',True,'process-stop-symbolic')
             previous=getattr(self,'operation_previous',None)
@@ -9735,6 +10106,9 @@ class Window(Adw.ApplicationWindow):
         return group
 
     def error(self,message):
+        flow=getattr(self,'operation_flow',None)
+        if flow is not None and not flow.closed and flow.stage in ('checking','progress'):
+            self.finish_progress(False,str(message));return
         if self.dialog==getattr(self,'progress_dialog',None) and getattr(self,'job_label',None):
             box=self.progress_shell.get_last_child();self.finish_progress(False,str(message),box.get_last_child());return
         d,b,f=self.open_panel('Could Not Finish',width=580,height=360,show_close=False)
@@ -12380,7 +12754,7 @@ class Window(Adw.ApplicationWindow):
         export.set_sensitive(not self.options.demo);f.append(export)
         f.append(button('Open Issue Form',lambda *_:Gio.AppInfo.launch_default_for_uri('https://github.com/lrnolivia/rtxForge/issues/new',None)))
 
-    def launch_action(self,operation,entire=False,targets=None,visual_settings=None,_presets_confirmed=False):
+    def launch_action(self,operation,entire=False,targets=None,visual_settings=None,_presets_confirmed=False,_flow=None):
         if self.busy and self.task_kind!='art':return
         rows=(
             targets
@@ -12405,15 +12779,10 @@ class Window(Adw.ApplicationWindow):
         if operation=='reset':rows=[g for g in rows if g.get('installed')]
         if not rows:self.toast('No eligible games selected.');return
         if operation=='install' and not _presets_confirmed:
-            d,b,f=self.open_panel('Install Features',width=760,height=340)
-            d.get_child().get_first_child().set_visible(False)
-            b.append(label('Install Features','title-2'))
-            b.append(label('Adjust your presets or continue. You can change these settings later in OptiScaler.'))
+            # Stage 1 (install only): presets, in the same dialog as the rest.
+            flow=OperationFlow(self,operation,rows)
             tuning,widgets=self.tuning_controls(visual_settings if visual_settings is not None else rows[0] if len(rows)==1 else self.tuning_values(self.tuning_widgets))
-            b.append(tuning)
-            f.append(button('Cancel',lambda *_:d.close()))
-            f.append(button('Continue',lambda *_:self.launch_action(
-                operation,entire,targets,self.tuning_values(widgets),True),'suggested-action'))
+            flow.show_presets(tuning,lambda:self.launch_action(operation,entire,targets,self.tuning_values(widgets),True,_flow=flow))
             return
         applying_strength=operation=='reset' and entire and self.defaults_changed()
         title={'install':'Install Features','repair':'Repair Feature Files','uninstall':'Restore Original Files','reset':'Reset Presets'}[operation]
@@ -12423,24 +12792,18 @@ class Window(Adw.ApplicationWindow):
 
         self.operation_cancel=threading.Event();self.operation_executing=False
         self.operation_games=rows
-        review_title={'install':'Review Installation','repair':'Review Repair','uninstall':'Review Restoration','reset':'Review Presets'}[operation]
-        d,b,f=self.open_panel(review_title,width=640,height=360,show_close=False)
-        d.set_can_close(False)
-        self.job_label=None
-        self.progress_cancel_box=None
-        self.review_check_view(d,b,rows)
-        self.add_cancel(f)
-
-        if self.options.live_smoke:
-            self.progress_view(b,f'Checking {len(rows)} games…')
-            self.live_smoke_begin(f)
-            return
+        flow=_flow if _flow is not None and not _flow.closed else OperationFlow(self,operation,rows)
+        flow.games=rows
+        flow.show_checking()
 
         if self.options.demo:
             preview={'kind':'batch','operation':operation,'title':title,'plans':[],'rows':[{'name':r['name'],'detail':'2 file changes'} for r in rows[:4]],'blocked':[{'name':'Example protected game','reason':'Another graphics tool is installed.'}]}
-            self.action_ready(preview,d,b,f);return
+            if getattr(self,'flow_hold_checking',False):
+                self.flow_release_checking=lambda:self.action_ready(preview)
+                return
+            self.action_ready(preview);return
         mode=self.mode;adopt=self.settings['recognize_previous'];values=self.tuning_values(self.tuning_widgets) if entire and operation=='reset' else visual_settings
-        self.start('Preparing '+title.lower(),lambda:self.service.prepare(rows,mode,operation,adopt,visual_settings=values,save_defaults=entire and operation=='reset'),lambda review:self.action_ready(review,d,b,f))
+        self.start('Preparing '+title.lower(),lambda:self.service.prepare(rows,mode,operation,adopt,visual_settings=values,save_defaults=entire and operation=='reset'),self.action_ready)
     def live_smoke_begin(self,footer):
         """Interactive, write-disabled preview of Progress -> Done."""
         self.live_smoke_footer=footer
@@ -12965,40 +13328,14 @@ class Window(Adw.ApplicationWindow):
         self.detail_resize_source=self.add_tick_callback(lambda _widget,_clock:tick())
 
 
-    def finish_progress(self,success,message,footer):
-        self.dialog,_,footer=self.open_panel('Done' if success else 'Could not finish',width=500,height=-1,show_close=False)
-        self.dialog.set_can_close(True)
-        clear(footer)
-        footer.set_visible(False)
-        self.progress_cancel_box=None
-        # Replace the entire progress layout so no poster-sized overlay survives.
-        body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        body.add_css_class('progress-content')
-        body.add_css_class('done-fallback')
-        self.dialog.set_child(body)
-        line=Gtk.Box(spacing=24,valign=Gtk.Align.CENTER,vexpand=True)
-        body.append(line)
-        icon=Gtk.Image.new_from_icon_name('object-select-symbolic' if success else 'dialog-warning-symbolic')
-        icon.set_pixel_size(80)
-        icon.add_css_class('operation-complete' if success else 'error')
-        line.append(icon)
-        text=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True,valign=Gtk.Align.CENTER)
-        text.append(label('Done' if success else 'Could not finish','title-1'))
-        message_label=label(message if success else user_messages.friendly_error(message))
-        message_label.set_wrap(True)
-        message_label.set_max_width_chars(44)
-        text.append(message_label)
-        if not success:text.append(self.technical_details(message))
-        line.append(text)
-        completion_dialog=self.dialog
-        completion_dialog.connect('closed',lambda *_:self.scan())
-        done=button('Done',lambda *_:completion_dialog.close(),'suggested-action')
-        done.set_valign(Gtk.Align.END)
-        line.append(done)
-        self.dialog.set_content_width(500)
-        self.dialog.set_content_height(-1)
+    def finish_progress(self,success,message,footer=None,title=None):
+        """Stage 5: Done, Could not finish or Cancelled."""
+        flow=getattr(self,'operation_flow',None)
+        if flow is None or flow.closed:
+            flow=OperationFlow(self,getattr(self,'review',None) and self.review.get('operation') or 'install',getattr(self,'operation_games',[]))
+        friendly=message if success else user_messages.friendly_error(message)
+        flow.show_done(success,friendly,title,technical=None if success or title else message)
         self.job_label=None
-
 
     def add_cancel(self,footer):
         target=getattr(
@@ -13058,83 +13395,41 @@ class Window(Adw.ApplicationWindow):
             cancel_button
         )
 
-    def action_ready(self,review,d,b,f):
-        self.review_check_state=None
-        b.remove_css_class('review-check-body');b.set_spacing(16)
-        scroll=b.get_parent()
-        while scroll and not isinstance(scroll,Gtk.ScrolledWindow):scroll=scroll.get_parent()
-        if scroll:
-            scroll.set_policy(Gtk.PolicyType.NEVER,Gtk.PolicyType.AUTOMATIC)
-            scroll.set_min_content_height(0);scroll.set_vexpand(True)
-        self.review=review
-        clear(b)
-        clear(f)
-
-        self.progress_cancel_box=None
-        f.set_visible(True)
-
-        if d is getattr(self,'progress_dialog',None):
-            d,b,f=self.open_panel(review.get('title','Review Changes'),width=640,height=min(720,330+80*len(review['rows'])+90*len(review['blocked'])),show_close=False)
-        b.remove_css_class('progress-content')
-        b.add_css_class('panel-body')
-        self.job_label=None
-        d.set_can_close(True)
-
-        if getattr(self,'operation_cancel',None) is not None:
-            self.add_cancel(f)
-        count=len(review['rows'])
-        summary=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6)
-        summary.add_css_class('review-summary')
-        summary.append(label(f"{count} game{'s' if count!=1 else ''} ready" if count else 'Nothing ready yet','title-2'))
+    def review_details(self,review):
+        """The "Install · DLSS-Unlocked · MFG 4×" line under the review summary."""
         operation=review.get('operation','install')
-        action_label={'install':'Install','repair':'Repair','uninstall':'Restore','reset':'Apply presets'}.get(operation,'Apply')
-        details=[action_label]
+        details=[OPERATION_WORDS.get(operation,OPERATION_WORDS['reset'])[1]]
         if operation in ('install','repair','reset'):
             provider=self.settings.get('runtime_provider','dlss-unlocked')
             details.append({'dlss-unlocked':'DLSS-Unlocked','y4my':'y4my','custom':'Custom package'}.get(provider,provider))
             mfg=review.get('mfg_multiplier')
             if mfg is not None:details.append('MFG '+('In game' if mfg=='auto' else 'Off' if mfg==0 else str(mfg)+'×'))
-        summary.append(label(' · '.join(details),'dim-label'))
-        b.append(summary)
-        g=self.review_list();b.append(g)
-        for item in review['rows']:
-            game=self.review_game(item['name'])
-            entry=self.review_entry(item['name'],'Ready to '+action_label.lower(),game,'Ready',user_messages.friendly_status(item.get('detail','')))
-            g.append(entry)
-        if review['blocked']:
-            b.append(label(f"Needs attention · {len(review['blocked'])}",'heading'))
-            skipped=self.review_list();b.append(skipped)
-            for item in review['blocked']:
-                skipped.append(self.review_entry(item['name'],user_messages.friendly_error(item['reason']),self.review_game(item['name']),'Skipped','Technical details\n'+str(item['reason']),icon='dialog-warning-symbolic'))
-            if any('baseline' in str(item['reason']).lower() for item in review['blocked']):
-                f.append(button('Previous Changes',lambda *_:(d.close(),self.show_undo())))
-        if not review['rows']:
-            b.append(label('There are no games ready for this change. Check the messages above for your next step.'))
-            clear(f);f.append(button('Close',lambda *_:d.close()))
-            if any('baseline' in str(item['reason']).lower() for item in review['blocked']):f.append(button('Previous Changes',lambda *_:(d.close(),self.show_undo())))
-            return
-        apply=button('Apply Settings' if review.get('operation')=='reset' else 'Restore Original Files' if review.get('operation')=='uninstall' else 'Install' if review.get('operation')=='install' else 'Repair',lambda *_:self.execute(review,d,b,f),'forge-primary');apply.set_sensitive(not self.options.demo);f.append(apply)
-        if self.options.demo:b.append(label('Preview mode · all file changes are disabled.','dim-label'))
-    def execute(self,review,d,b,f):
+        return details
+
+    def action_ready(self,review,*_legacy):
+        """Stage 3: the review, in the operation's dialog."""
+        self.review=review
+        flow=getattr(self,'operation_flow',None)
+        if flow is None or flow.closed:
+            flow=OperationFlow(self,review.get('operation','install'),getattr(self,'operation_games',[]) or self.games)
+        flow.show_review(review,self.execute,self.review_details(review),enabled=not self.options.demo)
+
+    def execute(self,review,*_legacy):
+        """Stage 4: progress, then Done or Could not finish."""
         if self.options.demo:return
-        d,b,f=self.open_panel('Applying changes',width=640,height=264,show_close=False)
-        clear(f);d.set_can_close(False);self.progress_view(b,'Applying changes…')
+        flow=self.operation_flow
+        flow.show_progress(len(review.get('rows',[])) or len(self.operation_games))
+        flow.rescan=True
         if review.get('kind')=='engine':
-            self.operation_executing=True;review['cancel_event']=self.operation_cancel;self.add_cancel(f)
+            self.operation_executing=True;review['cancel_event']=self.operation_cancel
             # Close the cancellation window on the GTK thread before the engine's
             # final cancellation check. A late click must never promise an undo
             # after the feature transaction has already committed.
             def finalizing():
                 ready=threading.Event()
                 def finish_ui():
-                    try:
-                        target=self.progress_cancel_box
-                        if target is not None:
-                            target.set_sensitive(False)
-                        if not self.operation_cancel.is_set() and self.job_label:
-                            self.job_caption.set_text('Finishing file management…')
-                    finally:
-                        ready.set()
+                    try:flow.finalizing()
+                    finally:ready.set()
                     return False
                 GLib.idle_add(finish_ui)
                 ready.wait()
@@ -13154,13 +13449,15 @@ class Window(Adw.ApplicationWindow):
                     # update must not masquerade as a failed feature installation.
                     ui.line('DLSS Files',f'No further file updates: {exc}')
             return path
-        self.start('Applying changes',apply_with_files,lambda path:self.completed(path,d,b,f))
-    def completed(self,path,d,b,f):
+        self.start('Applying changes',apply_with_files,self.completed)
+
+    def completed(self,path,*_legacy):
         self.operation_cancel=None
         if self.review and self.review.get('save_defaults'):self.defaults_applied(self.review['save_defaults'])
         count=len(self.review.get('rows',[])) if self.review else 0
         self.log.append('Saved report: '+str(path))
-        self.finish_progress(True,f'{count} game'+('s' if count!=1 else '')+' updated.',f)
+        self.finish_progress(True,f'{count} game'+('s' if count!=1 else '')+' updated.')
+
     def show_activity(self,*_):
         d,b,f=self.open_panel('Activity');text=Gtk.TextView(editable=False,monospace=True,wrap_mode=Gtk.WrapMode.WORD_CHAR);text.get_buffer().set_text('\n'.join(self.log) or 'No activity yet.');b.append(text);f.append(button('Close',lambda *_:d.close()))
     def show_settings(self,*_):

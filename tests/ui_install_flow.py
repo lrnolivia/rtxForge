@@ -48,14 +48,17 @@ def review_capture():
     w=app.window
     apply=next(x for x in children(w.dialog.get_child()) if isinstance(x,Gtk.Button) and x.get_label()=='Install')
     apply.emit('clicked');assert len(w.calls)==1
-    d,b,f=w.open_panel('Applying changes',width=640,height=264,show_close=False)
-    w.progress_view(b,'Installing features…');w.add_cancel(f)
-    w.update_progress_art(w.games[0]['name']);w.job_counter.set_text('1 / 3');w.job_bar.set_fraction(.35)
-    w.flow_footer=f
+    # The same dialog moves on to Progress.
+    flow=w.operation_flow;dialog=flow.dialog
+    flow.show_progress(3)
+    flow.progress_event({'label':'Installing feature files','game':w.games[0]['name'],'current':1,'total':3,'fraction':.35})
+    assert w.dialog is dialog and flow.step.counter.get_text()=='Installing 1 of 3'
 
 def progress():
     capture('install-flow-03-progress.png')
-    app.window.finish_progress(True,'3 games updated. Preview only; no game files were changed.',app.window.flow_footer)
+    app.window.finish_progress(True,'3 games updated. Preview only; no game files were changed.')
+    assert app.window.operation_flow.stage=='done'
+
 def done():
     capture('install-flow-04-done.png')
     w=app.window;w.calls.clear();w.options.demo=False
@@ -79,7 +82,7 @@ def dlss_header():
     w.update_dlss_button.emit('clicked')
 def dlss_review():
     w=app.window
-    assert w.dialog.get_title()=='Update DLSS Files'
+    assert w.dialog.get_title()=='Review DLSS Update'
     assert len([x for x in children(w.dialog.get_child()) if x.has_css_class('review-game')])==4
     assert not w.calls
     capture('install-flow-06-header-dlss-review.png')
@@ -99,7 +102,10 @@ def menu_check():
     popover=app.window.main_menu.get_popover()
     assert isinstance(popover,Gtk.PopoverMenu)
     captions={item.get_text() for item in children(popover) if isinstance(item,Gtk.Label)}
-    assert {'Refresh Library','Add Game Folder','Packages','Extras','Activity','Settings','About'} <= captions
+    # Pages live in the sidebar; the primary menu keeps the rest.
+    assert {'Refresh Library','Add Game Folder','Game Mode','Preferences','Activity','About rtxForge'} <= captions
+    assert not {'Packages','Extras'} & captions
+    assert [row.page for row in app.window.nav_rows.values()]==['library','presets','packages','extras']
     assert not {'Add rtxForge to Steam','Sync artwork to Steam','Steam artwork profile','Connect SteamGridDB'} & captions
     app.window.main_menu.popup()
 def menu_capture():
@@ -112,7 +118,8 @@ def rounded():
     assert not root._check.get_sensitive()
     assert root._artwork.picture.support_desaturated
     assert root._artwork.support_info.get_visible()
-    assert w.list_action_cells[w.games[4]['game']]._primary.get_sensitive()
+    # Unsupported games have no Install / Restore action.
+    assert not w.list_action_cells[w.games[4]['game']]._primary.get_sensitive()
     assert w.library_stack.get_parent().get_margin_bottom()==16
     capture('install-flow-09-rounded-list.png')
     ui.apply_corner_style('square')

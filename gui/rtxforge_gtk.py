@@ -2538,11 +2538,6 @@ button.dlss-outline:active { background: alpha(@window_fg_color,0.25); }
 }
 .title-action { min-width: 26px; min-height: 26px; padding: 8px 12px; margin: 3px; }
 
-.hamburger-glyph {
-    font-size: 18px;
-    font-weight: 600;
-}
-
 .hero-title { font-family: "Bakbak One"; font-size: 30px; font-weight: 400; letter-spacing: -0.6px; }
 .eyebrow { color: #76b900; font-weight: 800; font-size: 9px; letter-spacing: 1.7px; }
 .hero {
@@ -3784,18 +3779,8 @@ class Window(Adw.ApplicationWindow):
             ('Add Game Folder','folder-new-symbolic','win.add-game-folder'),
             ('Game Mode','input-gaming-symbolic','win.game-mode'),
         ]
-        menu_glyph=Gtk.Image.new_from_icon_name('open-menu-symbolic')
-        menu_glyph.add_css_class(
-            'hamburger-glyph'
-        )
-
-        main_menu=Gtk.MenuButton(valign=Gtk.Align.CENTER)
-        main_menu.set_child(
-            menu_glyph
-        )
-        main_menu.add_css_class(
-            'flat'
-        )
+        # Standard primary menu: open-menu icon, F10 opens it.
+        main_menu=Gtk.MenuButton(icon_name='open-menu-symbolic',primary=True,valign=Gtk.Align.CENTER)
         main_menu.set_tooltip_text(
             'Main Menu'
         )

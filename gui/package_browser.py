@@ -16,15 +16,27 @@ def show_packages(owner, fixture=None):
     owner.packages_dialog = dialog
     alive={'value':True}
     dialog.connect('closed',lambda *_:alive.update(value=False))
+    dialog.set_child(build_packages(owner, fixture, dialog.close, alive, header=True))
+    dialog.present(owner)
+    return dialog
+
+
+def build_packages(owner, fixture=None, on_selected=None, alive=None, header=False):
+    """The package view, as the Packages page or inside the Packages dialog."""
+    alive = alive if alive is not None else {'value':True}
     toolbar = Adw.ToolbarView()
-    header=Adw.HeaderBar();toolbar.add_top_bar(header)
     back=Gtk.Button(icon_name='go-previous-symbolic',tooltip_text='Back to packages',visible=False)
-    header.pack_start(back)
+    if header:
+        bar=Adw.HeaderBar();toolbar.add_top_bar(bar)
+        bar.pack_start(back)
     footer=Gtk.Box(spacing=16,visible=False);margins(footer,16);toolbar.add_bottom_bar(footer)
     scroll = Gtk.ScrolledWindow(vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER)
+    clamp = Adw.Clamp(maximum_size=760, tightening_threshold=560)
     box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24)
     margins(box)
-    scroll.set_child(box); toolbar.set_content(scroll); dialog.set_child(toolbar)
+    clamp.set_child(box); scroll.set_child(clamp); toolbar.set_content(scroll)
+    if not header:
+        back.set_halign(Gtk.Align.START); back.add_css_class('flat'); box.append(back)
     title = Gtk.Label(label='Choose your graphics package', xalign=0)
     title.add_css_class('title-1'); box.append(title)
     intro = Gtk.Label(label='Use a supported package or inspect your own. Every game change is reviewed before it is applied.', xalign=0, wrap=True)
@@ -48,7 +60,7 @@ def show_packages(owner, fixture=None):
     def select(record, settings=None):
         try:
             owner.select_package(record, settings or {})
-            dialog.close()
+            if on_selected:on_selected()
         except Exception as ex:
             status.set_text(user_messages.friendly_error(ex));status.set_tooltip_text(str(ex))
 
@@ -158,7 +170,6 @@ def show_packages(owner, fixture=None):
             except GLib.Error:pass
         chooser.open(owner,None,chosen)
     pick.connect('clicked',open_file)
-    dialog.present(owner)
     if owner.options.demo:
         render_catalog({'system':'Linux','architecture':'x86_64','ready':True,'gpu':'Preview RTX 4070'})
     else:
@@ -168,4 +179,4 @@ def show_packages(owner, fixture=None):
             GLib.idle_add(render_catalog,host)
         threading.Thread(target=check_host,daemon=True).start()
     if fixture:inspect(fixture)
-    return dialog
+    return toolbar

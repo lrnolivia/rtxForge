@@ -24,12 +24,19 @@ def check():
     import steam_self_install
     with patch.object(steam_self_install,'install',side_effect=lambda *args,**kwargs:calls.append(kwargs)):
         w.start=lambda title,action,done:action()
-        next(x for x in children(w.dialog.get_child()) if isinstance(x,Gtk.Button) and x.get_label()=='Apply artwork').emit('clicked')
+        # Preview mode refuses reviewed writes; step out of it for the intercepted apply.
+        w.options.demo=False
+        next(x for x in children(w.dialog.get_child()) if isinstance(x,Gtk.Button) and x.get_label()=='Apply Artwork').emit('clicked')
+        w.options.demo=True
     assert len(calls)==1 and calls[0]['reviewed']==review
     w.set_input_surface(True);open_review()
 def couch():
     assert app.window.capture('steam-self-review-couch.png')
-    assert len([x for x in children(app.window.dialog.get_child()) if x.has_css_class('review-game')])==4
+    # Game Mode draws the same review as its own dialog.
+    flow=app.window.operation_flow
+    assert type(flow).__name__=='GameModeFlow' and flow.stage=='review'
+    assert len([x for x in children(flow.modal['dialog']) if x.has_css_class('gm-review-row')])==4
+    assert flow.primary.get_label()=='Apply Artwork'
 steps=[open_review,check,couch]
 def step():
     try:

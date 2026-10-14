@@ -120,10 +120,11 @@ def diagnosis():
     w.dialog.close();w.set_input_surface(True);w.couch.open('library');w.couch.set_library_view('list')
 def couch():
     w=app.window;c=w.couch
-    assert c.grid.get_row_spacing()==0
-    assert c.controls[0].has_css_class('joined-first') and c.controls[-1].has_css_class('joined-last')
-    assert not c.controls[1].has_css_class('joined-first') and not c.controls[1].has_css_class('joined-last')
-    c.focus(0);c.navigate('down');assert c.current==1
+    from game_mode import descendants
+    rows=[x for x in descendants(c.body) if isinstance(x,ui.Gtk.Button) and x.has_css_class('gm-listrow')]
+    assert len(rows)>2 and rows[0].has_css_class('first') and rows[-1].has_css_class('last')
+    assert not rows[1].has_css_class('first') and not rows[1].has_css_class('last')
+    rows[0].grab_focus();c.navigate('down');assert w.get_focus() is rows[1]
 def couch_capture():
     assert app.window.capture('joined-couch-list.png')
 steps=[start,library,sorted_edges,check_sorted,review,capture_review,dlss,five,six,tool,report,diagnosis,couch,couch_capture]

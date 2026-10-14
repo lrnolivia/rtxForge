@@ -41,9 +41,12 @@ class Session:
     def seal(self,start):
         for entry in self.entries[start:]:entry['after']=signature(Path(entry['path']))
         self.save()
-    def rollback(self):
-        self.status='rolling-back';self.save()
-        for entry in reversed(self.entries):
+    def changed(self,start):
+        """Paths this game's checkpoint saw change."""
+        return [Path(e['path']) for e in self.entries[start:] if e['after']!=e['before']]
+    def _restore(self,entries):
+        for entry in reversed(entries):
+            if entry['after']==entry['before']:continue
             path=Path(entry['path'])
             if signature(path)!=entry['after']:raise t.Refusal('A file changed outside this operation. Recovery retained at '+str(self.root))
             if entry['before'] is not None and signature(Path(entry['backup']))!=entry['before']:raise t.Refusal('Recovery copy changed: '+entry['backup'])
@@ -53,6 +56,14 @@ class Session:
                 path.parent.mkdir(parents=True,exist_ok=True)
                 subprocess.run(['cp','-a','--reflink=auto','--',entry['backup'],str(path)],check=True)
             if signature(path)!=entry['before']:raise t.Refusal('Recovery verification failed. Copies retained at '+str(self.root))
+    def undo(self,start):
+        """Put one game's checkpoint back (after seal) and drop it from the session."""
+        self._restore(self.entries[start:])
+        for entry in self.entries[start:]:entry['after']=entry['before']
+        self.save()
+    def rollback(self):
+        self.status='rolling-back';self.save()
+        self._restore(self.entries)
         self.status='cancelled';self.save()
     def complete(self):
         self.status='complete';self.save()

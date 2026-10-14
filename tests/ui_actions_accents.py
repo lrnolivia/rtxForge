@@ -48,13 +48,15 @@ def narrow():
     done=ui.button('Done',lambda *_:None)
     assert not any(isinstance(x,Gtk.Image) for x in children(done))
     glyphs.set_active(True);assert all(x.get_visible() for x in ui.BUTTON_IMAGES)
-    w.dialog.close();w.set_input_surface(True);w.couch.open_game(w.games[0]);w.couch.open('tools')
+    w.dialog.close();w.set_input_surface(True);w.couch.open_details(w.games[0]);w.couch.open_section('Tools')
 def couch():
     w=app.window;c=w.couch
-    assert len(c.controls)==4
-    c.entries[1]['enabled']=True;c.controls[1].set_sensitive(True)
-    c.focus(0);c.navigate('right');assert c.current==1
-    c.navigate('left');assert c.current==0
+    from game_mode import descendants
+    tiles=[x for x in descendants(c.body) if isinstance(x,Gtk.Button) and x.has_css_class('gm-tile')]
+    assert len(tiles)==4
+    tiles[1].set_sensitive(True)
+    tiles[0].grab_focus();c.navigate('right');assert w.get_focus() is tiles[1]
+    c.navigate('left');assert w.get_focus() is tiles[0]
     assert w.capture('actions-couch-tools.png')
     w.set_input_surface(False)
     w.settings['game_accents'][w.games[0]['game']]='#ffffff'

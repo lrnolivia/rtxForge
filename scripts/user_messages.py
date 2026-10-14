@@ -22,7 +22,7 @@ ERRORS=(
     (('close running games',), "Close the running games, then try again. Your recovery files are still available."),
     (('no steam launch settings','no unique steam shortcut'), "rtxForge couldn’t find this game’s Steam entry. Add it to Steam or check its shortcut, then refresh your library."),
     (('uninstall before changing',), "Restore this game’s original files before switching its feature package or mode."),
-    (('launch settings need attention',), "The feature files were installed, but the launch settings couldn’t be updated. Open Technical details to see what needs attention."),
+    (('launch settings need attention',), "The launch settings couldn’t be updated, so rtxForge put this game’s files back as they were. Open Technical details to see what needs attention."),
     (('permission denied','not writable','read-only file system'), "rtxForge can’t write to this folder. Check its permissions and make sure the drive allows changes, then retry."),
     (('no space left','disk full'), "There isn’t enough free space. Free up some space on this drive, then retry."),
     (('timed out','connection','network','urlopen','http error'), "rtxForge couldn’t complete the download. Check your connection and try again."),

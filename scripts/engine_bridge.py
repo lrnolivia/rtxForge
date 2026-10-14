@@ -221,13 +221,29 @@ def write_install_record(e,g,review):
         # The install itself succeeded; Windows will just not recognise it.
         ui.line('Install record',f'Not written: {error}')
 
+def undo_game(e,session,checkpoint,result):
+    """Put a failed game back exactly as it was before this run touched it."""
+    changed=session.changed(checkpoint)
+    if not changed:return True
+    steam_files={str(p) for p in (e.STATE_ROOT/'steam-config-backups',e._steam_transaction_root())}
+    if e.steam_running() and any(p.name in ('localconfig.vdf','shortcuts.vdf') or str(p) in steam_files for p in changed):
+        result['error']+=' Close Steam, then undo it from Previous changes. Copies retained at '+str(session.root)
+        return False
+    try:session.undo(checkpoint)
+    except Exception as ex:
+        result['error']+=' Could not undo: '+str(ex)
+        return False
+    return True
+
 def execute(review):
     e=review['engine'];results=[]
     # Never kill Steam behind a GUI action, or wait invisibly for terminal prompts.
     # With Steam open, installs use each game's Proton prefix (decided per game
     # in prepare); Steam-saved launch settings still need Steam closed.
     cancel=review.get('cancel_event')
-    session=Session(e.STATE_ROOT/'desktop-operations') if cancel is not None else None
+    # Every game is checkpointed before it changes: Cancel undoes the whole run,
+    # and a game that fails partway is put back as it was.
+    session=Session(e.STATE_ROOT/'desktop-operations')
     with e.mutation_lock():
         for index,item in enumerate(review['plans'],1):
             if cancel is not None and cancel.is_set():break
@@ -274,21 +290,26 @@ def execute(review):
                     if item.get('prefix'):
                         launch=e._launch_record_for_game(g)
                         names=proton_prefix.override_names((launch or {}).get('required') or record.get('launch_options',''))
-                        t.need(names,'Files installed, but no Proton setting was planned; close Steam and repair this game')
+                        t.need(names,'No Proton setting was planned for this game; close Steam and install again')
                         proton_prefix.apply(Path(item['prefix']),names,prefix_state(e,g))
                     else:
                         synced=e.sync_launch_options_batch([g],assume_yes=True,prompt=False)
-                        t.need(synced and all(r.get('status')=='written' for r in synced),'Files installed, but launch settings need attention: '+str(synced or record['launch_options']))
+                        t.need(synced and all(r.get('status')=='written' for r in synced),'The launch settings could not be saved, so launch settings need attention: '+str(synced or record['launch_options']))
                     write_install_record(e,g,review)
                 results.append({'name':g.name,'status':'complete','record':record})
-            except Exception as ex:results.append({'name':g.name,'status':'failed','error':str(ex)})
+            except Exception as ex:
+                results.append({'name':g.name,'status':'failed','error':str(ex)})
+                if 'checkpoint' in locals():
+                    session.seal(checkpoint)
+                    results[-1]['undone']=undo_game(e,session,checkpoint,results[-1])
+                    del checkpoint
             finally:
-                if session and 'checkpoint' in locals():session.seal(checkpoint);del checkpoint
+                if 'checkpoint' in locals():session.seal(checkpoint);del checkpoint
                 report('Finished this game',1)
         if review.get('on_finalizing'):
             review['on_finalizing']()
         if session:
-            if cancel.is_set():
+            if cancel is not None and cancel.is_set():
                 t.need(not any(e._running_processes_under_root(p['game'].root.resolve()) for p in review['plans']),'Close running games before recovery. Copies retained at '+str(session.root))
                 # Only Steam's own launch settings need Steam closed to undo safely.
                 if any(p.get('steam_route',review['operation']!='reset') for p in review['plans']):t.need(not e.steam_running(),'Close Steam before recovery. Copies retained at '+str(session.root))
@@ -296,6 +317,8 @@ def execute(review):
                 raise Cancelled('Changes undone.')
             session.complete()
     path=e.STATE_ROOT/('desktop-'+e.now_stamp()+'.json');e.save_json_atomic(path,{'results':results})
-    failures=sum(r['status']=='failed' for r in results)
-    if failures:raise t.Refusal(f'{failures} game(s) need attention. Completed games retain backups. Report: {path}')
+    failed=[r for r in results if r['status']=='failed']
+    if failed:
+        kept='' if all(r.get('undone') for r in failed) else ' Some changes could not be undone; see the report.'
+        raise t.Refusal(f'{len(failed)} game(s) need attention. Their files were put back as they were; completed games keep their changes.{kept} Report: {path}')
     return str(path)

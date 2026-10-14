@@ -121,6 +121,26 @@ class SteamOpenInstallTest(unittest.TestCase):
                 engine_bridge.steam_open_route(self.e, self.g, 'install', None)
 
 
+class FailedInstallTest(SteamOpenInstallTest):
+    """A game that fails partway is put back exactly as it was."""
+
+    def test_failed_install_is_undone(self):
+        def broken(g, *args, **kwargs):
+            (self.target / 'OptiScaler').mkdir()
+            (self.target / 'OptiScaler' / 'OptiScaler.ini').write_text('[half]\n')
+            raise OSError('disk full')
+        self.e.install_target = broken
+        before = sorted(p.name for p in self.target.iterdir())
+        with self.assertRaisesRegex(t.Refusal, 'put back as they were'):
+            engine_bridge.execute(self.review('install', self.plan('install')))
+        self.assertEqual(sorted(p.name for p in self.target.iterdir()), before)
+        self.assertEqual((self.prefix / 'user.reg').read_text(), USER_REG)
+
+    def test_completed_games_keep_their_changes(self):
+        engine_bridge.execute(self.review('install', self.plan('install')))
+        self.assertEqual(self.overrides()['winmm'], 'native,builtin')
+
+
 class CrossOsTest(SteamOpenInstallTest):
     """A Windows install in a shared game folder is recognised and adapted, not reinstalled."""
 

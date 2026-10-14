@@ -270,6 +270,8 @@ public sealed partial class MainWindow
             try { report = await Service.DiagnoseAsync(game); }
             catch (InvalidOperationException error) { await Message(game.Name + " · NR Diagnosis", error.Message); return; }
             var body = new StackPanel { Spacing = 10, MinWidth = 560 };
+            foreach (var warning in report.Warnings)
+                body.Children.Add(new InfoBar { IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Warning, Title = "DLSS Override", Message = warning });
             foreach (var observation in report.Observations) body.Children.Add(Prefs.Label(observation));
             body.Children.Add(Prefs.Label("Visible result: " + report.VisualResult, "ForgeHeadingTextStyle"));
             if (report.Report.Length > 0)

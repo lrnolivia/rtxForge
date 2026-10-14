@@ -65,6 +65,7 @@ import library_media  # noqa: E402
 import package_catalog  # noqa: E402
 import runtime_diagnostics  # noqa: E402
 import runtime_updates  # noqa: E402
+import sl_override  # noqa: E402
 import steam_artwork  # noqa: E402
 import steamgrid_client  # noqa: E402
 import steamgrid_credentials  # noqa: E402
@@ -460,8 +461,32 @@ def sgdb_download(params):
 # ---------- Diagnose NR ----------
 
 
+def provider_name(provider_id) -> str:
+    try:
+        return json.loads((ROOT / "providers" / "lock.json").read_text())[provider_id]["name"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return "the installed provider"
+
+
+def streamline_override(row, *, provider=None, payload=None) -> dict:
+    """sl_override.check for a scan row (read only)."""
+    root = Path(row["game"])
+    relative = Path(row.get("exe", ""))
+    t.need(not relative.is_absolute() and ".." not in relative.parts, "Unsafe executable path")
+    return sl_override.check(root / relative.parent, root, payload=payload,
+                             provider=provider or provider_name(row.get("runtime_provider") or "y4my"))
+
+
 def diagnose(params):
-    return runtime_diagnostics.inspect(params["row"])
+    report = runtime_diagnostics.inspect(params["row"])
+    try:
+        override = streamline_override(params["row"])
+    except (OSError, ValueError, t.Refusal) as error:
+        override = {"warning": None, "notes": ["DLSS Override check unavailable: " + type(error).__name__]}
+    report["streamline_override"] = override
+    report["warnings"] = [override["warning"]] if override.get("warning") else []
+    report["observations"] = override.get("notes", []) + report["observations"]
+    return report
 
 
 # ---------- DLSS files ----------

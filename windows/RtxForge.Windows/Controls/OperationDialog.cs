@@ -124,6 +124,12 @@ public sealed class OperationDialog
         var list = new StackPanel { Spacing = 4 };
         foreach (var (game, detail) in review.Ready)
             list.Children.Add(ReviewRow(game, game.Name, detail, "Ready", true));
+        foreach (var warning in review.Warnings)
+            list.Children.Add(new InfoBar
+            {
+                IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Warning, Margin = new Thickness(0, 8, 0, 0),
+                Title = warning.Name, Message = warning.Reason,
+            });
         if (review.Blocked.Count > 0)
         {
             var header = Prefs.Label($"Needs attention · {review.Blocked.Count}", "ForgeHeadingTextStyle");

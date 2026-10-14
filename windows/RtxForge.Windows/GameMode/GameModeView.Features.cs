@@ -354,6 +354,7 @@ public sealed partial class GameModeView
         try { report = await shell.Service.DiagnoseAsync(g); }
         catch (InvalidOperationException error) { ShowDone(false, "NR Diagnosis", error.Message); return; }
         var content = new StackPanel { Spacing = t.Px(14) };
+        foreach (var warning in report.Warnings) content.Children.Add(ui.Text(warning, 0.9, t.Danger, FontWeights.SemiBold, wrap: true));
         foreach (var observation in report.Observations) content.Children.Add(ui.P(observation, 0.88));
         content.Children.Add(ui.Text("Visible result: " + report.VisualResult, 0.95, weight: FontWeights.SemiBold, wrap: true));
         if (report.Report.Length > 0)

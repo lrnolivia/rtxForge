@@ -275,7 +275,9 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             .Where(r => r.Game is not null).Select(r => (r.Game!, r.Detail)).ToList();
         var blocked = (result?["blocked"] as JsonArray ?? []).OfType<JsonObject>()
             .Select(b => new ReviewBlock(Match(b["name"]?.ToString()), b["name"]?.ToString() ?? "", b["reason"]?.ToString() ?? "")).ToList();
-        return new OperationReview(operation, result?["token"]?.ToString() ?? "", readyRows, blocked);
+        var warnings = (result?["warnings"] as JsonArray ?? []).OfType<JsonObject>()
+            .Select(w => new ReviewBlock(Match(w["name"]?.ToString()), w["name"]?.ToString() ?? "", w["reason"]?.ToString() ?? "")).ToList();
+        return new OperationReview(operation, result?["token"]?.ToString() ?? "", readyRows, blocked, warnings);
     }
 
     public async Task<int> ExecuteAsync(OperationReview review, IProgress<OperationStep> progress, CancellationToken cancel = default)

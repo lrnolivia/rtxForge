@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import hashlib, json, sys, tempfile, unittest
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-import engine_bridge, proton_prefix, transactions as t
+import engine_bridge, proton_prefix, cross_os, transactions as t
 
 USER_REG = 'WINE REGISTRY Version 2\n\n[Software\\\\Wine\\\\DllOverrides] 1788804309\n"atiadlxx"="disabled"\n\n'
 
@@ -119,6 +119,41 @@ class SteamOpenInstallTest(unittest.TestCase):
         with patch.object(proton_prefix, 'prefix_in_use', return_value=True):
             with self.assertRaisesRegex(t.Refusal, 'running'):
                 engine_bridge.steam_open_route(self.e, self.g, 'install', None)
+
+
+class CrossOsTest(SteamOpenInstallTest):
+    """A Windows install in a shared game folder is recognised and adapted, not reinstalled."""
+
+    def windows_install(self):
+        (self.target / 'dxgi.dll').write_bytes(b'optiscaler')
+        (self.target / 'OptiScaler').mkdir()
+        (self.target / 'OptiScaler' / 'OptiScaler.ini').write_text('[FrameGen]\n')
+        with patch.object(cross_os, 'THIS_OS', 'windows'):
+            return cross_os.write(self.target, 'windows', ['dxgi.dll', 'OptiScaler'], {'id': 'dlss-unlocked', 'name': 'DLSS-Unlocked', 'version': 'NR-v0.9.51'},
+                                  'mfg-only', 'dxgi.dll')
+
+    def test_record_round_trip_and_tamper_check(self):
+        record = self.windows_install()
+        self.assertEqual(set(record['files']), {'dxgi.dll', 'OptiScaler/OptiScaler.ini'})
+        self.assertEqual(cross_os.other_install(self.target, 'linux')['os'], 'windows')
+        self.assertIsNone(cross_os.other_install(self.target, 'windows'))
+        (self.target / 'dxgi.dll').write_bytes(b'something else')
+        self.assertIsNone(cross_os.other_install(self.target, 'linux'), 'changed files are not trusted')
+
+    def test_linux_adapts_a_windows_install_with_the_proton_setting_only(self):
+        self.windows_install()
+        record = engine_bridge.windows_install(self.e, self.g, None)
+        prefix, names = engine_bridge.proton_setup(self.e, self.g, record)
+        self.assertEqual(names, ['dxgi'])
+        plan = {'game': self.g, 'row': {'name': 'Game'}, 'preview': {}, 'fingerprint': engine_bridge.fingerprint(self.e, self.g),
+                'prefix': str(prefix), 'linux_setup': names}
+        engine_bridge.execute(self.review('install', plan))
+        self.assertEqual(self.overrides()['dxgi'], 'native,builtin')
+        self.assertEqual((self.target / 'dxgi.dll').read_bytes(), b'optiscaler', 'game files are not touched')
+        remove = dict(plan, prefix=None, linux_setup=None, linux_setup_remove=True)
+        engine_bridge.execute(self.review('uninstall', remove))
+        self.assertEqual(self.overrides(), {'atiadlxx': 'disabled'})
+        self.assertTrue((self.target / cross_os.MARKER).is_file(), "Windows' record stays for Windows")
 
 
 if __name__ == '__main__':

@@ -140,7 +140,8 @@ def square_progress():
 def compact_done():
     w=app.window
     assert w.operation_flow.stage=='done' and w.operation_flow.primary.get_label()=='Done'
-    assert w.dialog.get_child().get_height()<300, w.dialog.get_child().get_height()
+    # Status page plus the bottom action bar.
+    assert w.dialog.get_child().get_height()<360, w.dialog.get_child().get_height()
     assert w.capture('compact-square-done.png')
     ui.apply_corner_style('rounded')
 def round_done():

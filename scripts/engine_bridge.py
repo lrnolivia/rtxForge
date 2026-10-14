@@ -1,7 +1,7 @@
 """Serialized desktop adapter for the RC1.38-derived transaction engine."""
 from pathlib import Path
 import importlib.util,sys,json,hashlib,zipfile,os
-import transactions as t,packages,ui,package_catalog,proton_prefix
+import transactions as t,packages,ui,package_catalog,proton_prefix,cross_os
 from operation_session import Session,Cancelled
 from storage import storage
 ROOT=Path(__file__).resolve().parents[1]
@@ -109,7 +109,7 @@ def steam_open_route(e,g,operation,baseline):
     Returns the prefix to use, or None when Steam is closed (LaunchOptions route).
     Raises a per-game reason when the change cannot be made with Steam open.
     """
-    if not e.steam_running():return None
+    if not getattr(e,'steam_running',lambda:False)():return None
     if operation in ('install','repair'):
         prefix=proton_prefix.find_prefix(g.root,g.appid)
         t.need(not proton_prefix.prefix_in_use(prefix),'This game is running. Quit it, then try again.')
@@ -119,6 +119,20 @@ def steam_open_route(e,g,operation,baseline):
         record=proton_prefix.load_record(prefix_state(e,g))
         if record:t.need(not proton_prefix.prefix_in_use(Path(record['prefix'])),'This game is running. Quit it, then try again.')
     return None
+
+def windows_install(e,g,baseline):
+    """An intact install made by rtxForge on the other OS in this game folder (no local baseline)."""
+    if baseline:return None
+    return cross_os.other_install(g.target_dir,cross_os.THIS_OS)
+
+def proton_setup(e,g,record):
+    """Prefix and DLL names that make a Windows install load under Proton."""
+    prefix=proton_prefix.find_prefix(g.root,g.appid)
+    t.need(not proton_prefix.prefix_in_use(prefix),'This game is running. Quit it, then try again.')
+    names=list(record.get('proton_overrides') or [])
+    if not names and record.get('proxy'):names=[Path(record['proxy']).stem.lower()]
+    t.need(names,'The Windows install does not name its proxy DLL; restore it on Windows and install again here')
+    return prefix,names
 
 def prepare(config,rows,mode,operation,settings):
     selected=settings.get('runtime_provider','y4my')
@@ -148,6 +162,22 @@ def prepare(config,rows,mode,operation,settings):
             baseline=e.load_baseline(g.target_dir)
             if baseline:
                 t.need(not any(v.get('kind') in ('tar_tree','tar_file') for v in baseline.get('originals',{}).values()),'Privileged backup requires terminal restore before desktop management')
+            windows=windows_install(e,g,baseline) if operation in ('install','repair','uninstall') else None
+            if windows and cross_os.THIS_OS=='windows':
+                # Installed with rtxForge on Linux: Windows loads it natively, so there is nothing to add.
+                t.need(False,'Installed with rtxForge on Linux. It already loads on Windows; restore its original files in rtxForge on Linux, where they are backed up.' if operation=='uninstall' else 'Installed with rtxForge on Linux. It already loads on Windows; nothing to change here.')
+            if windows:
+                # Installed with rtxForge on Windows: adapt it for Linux instead of reinstalling.
+                if operation=='uninstall':
+                    t.need(proton_prefix.load_record(prefix_state(e,g)),"Installed with rtxForge on Windows. Restore its original files in rtxForge on Windows, where they are backed up.")
+                    preview={'files':[],'launch_options':'Removes the Linux setting only · restore the original files in rtxForge on Windows'}
+                    ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g),'prefix':None,'steam_route':False,'linux_setup_remove':True})
+                else:
+                    prefix,names=proton_setup(e,g,windows)
+                    preview={'files':[],'launch_options':'Installed with rtxForge on Windows · adds the Proton setting only ('+', '.join(names)+')'}
+                    ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g),'prefix':str(prefix),'steam_route':False,'linux_setup':names})
+                ui.progress('Game checked',phase='review-check',game=row['name'],checked=index,total=len(rows))
+                continue
             prefix=steam_open_route(e,g,operation,baseline)
             if operation=='reset':
                 preview=e.reset_visual_settings(g,dry_run=True,nr_strength=strength,mfg_multiplier=multiplier,sharpening_strength=sharpening)
@@ -179,6 +209,18 @@ def prepare(config,rows,mode,operation,settings):
     return {'kind':'engine','operation':operation,'title':operation.title(),'rows':[{'name':p['row']['name'],'detail':p['preview']['launch_options'] if operation=='reset' else f"{e.Y4MY_PROVIDER['name']} · {len(p['preview']['files'])} managed files · "+p['preview']['launch_options']} for p in ready],
             'blocked':blocked,'plans':ready,'engine':e,'payload':data,'meta':meta,'nr':nr,'nrmeta':nrmeta,'mode':mode,'enable_effects':True,'native_mfg_fallback':bool(settings.get('native_mfg_fallback',False)),'nr_strength':strength,'mfg_multiplier':multiplier,'sharpening_strength':sharpening,'apply_requested_presets':bool(settings.get('apply_requested_presets',False))}
 
+def write_install_record(e,g,review):
+    """Tell rtxForge on the other OS what this install is, so it can recognise it."""
+    try:
+        baseline=e.load_baseline(g.target_dir) or {}
+        current=baseline.get('current') or {}
+        launch=e._launch_record_for_game(g) or {}
+        cross_os.write(g.target_dir,cross_os.THIS_OS,baseline.get('managed_paths',[]),dict(getattr(e,'Y4MY_PROVIDER',{}) or {}),review.get('mode',''),
+            current.get('proxy',''),proton_prefix.override_names(launch.get('required','')),app_version=getattr(e,'APP_VERSION',''))
+    except Exception as error:
+        # The install itself succeeded; Windows will just not recognise it.
+        ui.line('Install record',f'Not written: {error}')
+
 def execute(review):
     e=review['engine'];results=[]
     # Never kill Steam behind a GUI action, or wait invisibly for terminal prompts.
@@ -199,7 +241,7 @@ def execute(review):
                     names=set(item['preview'].get('files',[]))|set(item['preview'].get('remove',[]))|set(baseline.get('managed_paths',[]))|set(baseline.get('originals',{}))
                     if review['operation']=='reset':names={p.name for p in g.target_dir.iterdir() if p.name.lower()=='optiscaler.ini'}
                     else:names.add('OptiScaler')
-                    paths=[g.target_dir/name for name in names]+[e.state_dir_for(g.target_dir)]
+                    paths=[g.target_dir/name for name in names]+[e.state_dir_for(g.target_dir),g.target_dir/cross_os.MARKER]
                     if review['operation']!='reset':
                         paths.extend([e.STATE_ROOT/'steam-config-backups',e._steam_transaction_root(),prefix_state(e,g)])
                         account=e.choose_steam_user_config([g],assume_yes=True)
@@ -211,13 +253,21 @@ def execute(review):
                     report('Backing up your current files',0.15)
                     checkpoint=session.capture(paths)
                 report({'reset':'Saving your settings','uninstall':'Restoring original files','install':'Installing features','repair':'Repairing feature files'}[review['operation']],0.4)
-                if review['operation']=='reset':
+                if item.get('linux_setup'):
+                    report('Saving the Proton setting',0.6)
+                    proton_prefix.apply(Path(item['prefix']),item['linux_setup'],prefix_state(e,g))
+                    record={'linux_setup':item['linux_setup']}
+                elif item.get('linux_setup_remove'):
+                    report('Removing the Proton setting',0.6)
+                    record=proton_prefix.restore(prefix_state(e,g))
+                elif review['operation']=='reset':
                     record=e.reset_visual_settings(g,nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'])
                 elif review['operation']=='uninstall':
                     e.verify_native_restore(e.load_baseline(g.target_dir))
                     proton_prefix.restore(prefix_state(e,g))
                     e.restore_launch_options_batch([g],assume_yes=True)
                     record=e.restore_target(g)
+                    cross_os.remove(g.target_dir,cross_os.THIS_OS)
                 else:
                     record=e.install_target(g,review['payload'],review['meta'],'ada',nr_runtime_payload=review['nr'],nr_runtime_meta=review['nrmeta'],feature_mode=review['mode'],enable_effects=review['enable_effects'],native_mfg_fallback=review.get('native_mfg_fallback',False),nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'],preserve_visual_settings=not review.get('apply_requested_presets',False))
                     report('Saving launch settings',0.85)
@@ -229,6 +279,7 @@ def execute(review):
                     else:
                         synced=e.sync_launch_options_batch([g],assume_yes=True,prompt=False)
                         t.need(synced and all(r.get('status')=='written' for r in synced),'Files installed, but launch settings need attention: '+str(synced or record['launch_options']))
+                    write_install_record(e,g,review)
                 results.append({'name':g.name,'status':'complete','record':record})
             except Exception as ex:results.append({'name':g.name,'status':'failed','error':str(ex)})
             finally:

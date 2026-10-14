@@ -932,6 +932,10 @@ class LibraryPill(Gtk.Box):
         content.append(
             self._label
         )
+        # Tiny OS mark: which rtxForge (Linux or Windows) installed the features.
+        self._os=Gtk.Image(pixel_size=10,visible=False,valign=Gtk.Align.CENTER)
+        self._os.add_css_class('library-pill-os')
+        content.append(self._os)
 
         self._content=content
         self.append(
@@ -968,11 +972,21 @@ class LibraryPill(Gtk.Box):
         self.queue_resize()
 
 
+    def set_os(self,name):
+        """Show the tiny Linux or Windows mark (None hides it)."""
+        self._os.set_visible(name in ('linux','windows'))
+        if name in ('linux','windows'):
+            self._os.set_from_icon_name('rtx-os-'+name+'-symbolic')
+            self._os.set_tooltip_text('Installed with rtxForge on '+('Linux' if name=='linux' else 'Windows'))
+
     def _update_icon(self,text):
         value=str(
             text or ''
         ).strip().casefold()
-
+        if self.kind=='state':
+            icon={'installed':'object-select-symbolic','unsupported':'dialog-warning-symbolic'}.get(value,'folder-download-symbolic')
+            self._icon.set_from_icon_name(icon)
+            return
         if self.kind=='source':
             if (
                 value=='steam'
@@ -2832,6 +2846,10 @@ headerbar, .titlebar {
 .forge-sidebar-brand {
     padding: 18px 12px 12px 22px;
 }
+.library-status-pill.state-installed .library-pill-icon { color: #76b900; }
+.library-status-pill.state-unsupported .library-pill-icon { color: @warning_color; }
+.library-pill-os { opacity: 0.8; margin-left: 2px; }
+.game-card.selected .library-status-pill .library-pill-icon { color: inherit; }
 .forge-brand-title {
     font-family: "Bakbak One";
     font-size: 22px;
@@ -3664,9 +3682,15 @@ class OperationFlow:
         self.primary=Gtk.Button(label=self.verb,sensitive=False)
         self.primary.add_css_class('suggested-action')
         self.primary.connect('clicked',lambda *_:self._primary_clicked())
-        self.header.pack_start(self.cancel_button)
-        self.header.pack_end(self.primary)
         toolbar.add_top_bar(self.header)
+        # Actions sit along the bottom: Cancel, then the action, right aligned.
+        actions=Gtk.Box(spacing=12,halign=Gtk.Align.END)
+        actions.add_css_class('operation-actions')
+        actions.set_margin_start(24);actions.set_margin_end(24);actions.set_margin_top(4);actions.set_margin_bottom(24)
+        actions.append(self.cancel_button)
+        actions.append(self.primary)
+        toolbar.add_bottom_bar(actions)
+        self.actions=actions
         self.toolbar=toolbar
         self.content=None
         self.dialog.set_child(toolbar)
@@ -3690,7 +3714,7 @@ class OperationFlow:
     def _fit(self,child,width):
         """Size the dialog to the current stage, within the window."""
         if self.closed or self.content is not child:return False
-        header=self.header.measure(Gtk.Orientation.VERTICAL,width)[1]
+        header=self.header.measure(Gtk.Orientation.VERTICAL,width)[1]+self.actions.measure(Gtk.Orientation.VERTICAL,width)[1]
         content=child.measure(Gtk.Orientation.VERTICAL,width)[1]
         if isinstance(child,Gtk.ScrolledWindow) and child.get_child() is not None:
             content=child.get_child().measure(Gtk.Orientation.VERTICAL,width)[1]
@@ -3731,6 +3755,8 @@ class OperationFlow:
     def _body(self):
         body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
         margins(body,24)
+        # The action bar below brings its own spacing.
+        body.set_margin_bottom(16)
         return body
 
     def _set_accent(self,game):
@@ -7094,15 +7120,21 @@ class Window(Adw.ApplicationWindow):
             meta_row=entry.get('meta_row')
             if meta_row is not None:
                 meta_row.set_orientation(Gtk.Orientation.HORIZONTAL)
-                meta_row.set_homogeneous(True)
-                for pill in (entry['meta'],entry['test_meta']):
-                    pill.set_halign(Gtk.Align.FILL)
-                    pill_width=max(16,(card_width-28)//2)
-                    pill.set_fixed_width(pill_width)
-                    pill._label.set_visible(pill_width>=76)
-                    pill.set_tooltip_text(pill._label.get_text())
-                    pill._content.set_margin_start(2 if pill_width<30 else 6 if pill_width<76 else 9)
-                    pill._content.set_margin_end(2 if pill_width<30 else 6 if pill_width<76 else 8)
+                meta_row.set_homogeneous(False)
+                test=entry['test_meta']
+                tested=test.get_visible()
+                test.set_halign(Gtk.Align.START)
+                test.set_fixed_width(28)
+                test._label.set_visible(False)
+                test._content.set_margin_start(7);test._content.set_margin_end(7)
+                status=entry['meta']
+                status.set_halign(Gtk.Align.START)
+                status_width=max(28,min(132,card_width-28-(34 if tested else 0)))
+                status.set_fixed_width(status_width)
+                status._label.set_visible(status_width>=86)
+                status.set_tooltip_text(status._label.get_text().title())
+                status._content.set_margin_start(7 if status_width<86 else 9)
+                status._content.set_margin_end(7 if status_width<86 else 8)
 
             if text_box is not None:
                 text_box.set_size_request(
@@ -8571,6 +8603,10 @@ class Window(Adw.ApplicationWindow):
         root._dot=dot
         root._state=state
         root._test=test
+        # Tiny OS mark beside "Installed".
+        root._os=Gtk.Image(pixel_size=10,visible=False,valign=Gtk.Align.CENTER)
+        root._os.add_css_class('library-pill-os')
+        primary.append(root._os)
 
         self.attach_game_context(root,lambda: list_item.get_item().game if list_item.get_item() is not None else None)
         list_item.set_child(
@@ -8612,6 +8648,11 @@ class Window(Adw.ApplicationWindow):
         root._state.set_text(
             text
         )
+        installed_on=game.get('installed_on') if game.get('installed') else None
+        root._os.set_visible(installed_on in ('linux','windows'))
+        if installed_on in ('linux','windows'):
+            root._os.set_from_icon_name('rtx-os-'+installed_on+'-symbolic')
+            root._os.set_tooltip_text('Installed with rtxForge on '+installed_on.title())
 
         test_status=library_display_test_status(
             game
@@ -8620,6 +8661,7 @@ class Window(Adw.ApplicationWindow):
         root._test.set_text(
             test_status.upper()
         )
+        root._test.set_visible(test_status.casefold() not in ('untested','n/a',''))
 
         for css_class in (
             'test-untested',
@@ -9013,13 +9055,18 @@ class Window(Adw.ApplicationWindow):
         if game is None or game.get('blocked'):return
         if getattr(self,'preset_selecting',False):
             self.apply_presets_to([game])
-        elif game.get('installed'):
+        elif game.get('installed') and not self.needs_linux_setup(game):
             self.launch_action('uninstall',targets=[game])
         else:
             self.launch_action('install',targets=[game])
 
+    def needs_linux_setup(self,game):
+        """Installed with rtxForge on Windows, not yet set up to run under Proton."""
+        return game.get('installed_on')=='windows' and not game.get('linux_ready')
+
     def list_primary_caption(self,game):
         if getattr(self,'preset_selecting',False):return 'Apply'
+        if self.needs_linux_setup(game):return 'Set Up'
         return 'Restore' if game.get('installed') else 'Install'
 
     def list_primary_enabled(self,game,compatible):
@@ -9054,8 +9101,13 @@ class Window(Adw.ApplicationWindow):
         def files():
             self.details(game);self.detail_pages.set_visible_child_name('DLSS Files')
         add('DLSS Files',files)
-        add('Install Features',lambda:self.launch_action('install',targets=[game]),not game.get('blocked') and not self.busy)
-        add('Restore Original Files',lambda:self.launch_action('uninstall',targets=[game]),bool(game.get('installed')) and not self.busy)
+        if game.get('installed_on')=='windows':
+            # Installed with rtxForge on Windows: Linux only adds or removes its Proton setting.
+            if self.needs_linux_setup(game):add('Set Up for Linux',lambda:self.launch_action('install',targets=[game]),not self.busy)
+            else:add('Remove Linux Setup',lambda:self.launch_action('uninstall',targets=[game]),not self.busy)
+        else:
+            add('Install Features',lambda:self.launch_action('install',targets=[game]),not game.get('blocked') and not self.busy)
+            add('Restore Original Files',lambda:self.launch_action('uninstall',targets=[game]),bool(game.get('installed')) and not self.busy)
         add('Open Folder',lambda:Gio.AppInfo.launch_default_for_uri(Path(game['game']).as_uri(),None),not self.options.demo)
         pop.set_child(content)
         pop.connect('closed',lambda *_:GLib.idle_add(lambda:(pop.unparent(),False)[1]))
@@ -10840,14 +10892,7 @@ class Window(Adw.ApplicationWindow):
         if badge_mode:
             badge=profile_label(badge_mode,badge.get_text());badge.add_css_class('cover-badge');badge.set_halign(Gtk.Align.START);badge.set_valign(Gtk.Align.END);margins(badge,7)
         badge.add_css_class('state-unavailable' if game.get('blocked') else 'state-nr' if game.get('profile')=='NR + MFG' else 'state-mfg' if game.get('installed') else 'state-ready')
-        if view!='list':
-            overlay.add_overlay(
-                badge
-            )
-            overlay.set_measure_overlay(
-                badge,
-                False,
-            )
+        # The artwork stays clean: the feature profile lives in Details.
         text=Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
             spacing=1,
@@ -10906,8 +10951,12 @@ class Window(Adw.ApplicationWindow):
             'library-meta-row'
         )
 
+        # One status pill (with the tiny OS mark) and a tested icon, as on Windows.
         meta=LibraryPill(
-            kind='source',
+            kind='state',
+        )
+        meta.add_css_class(
+            'library-status-pill'
         )
         meta.add_css_class(
             'library-source-pill'
@@ -11060,14 +11109,11 @@ class Window(Adw.ApplicationWindow):
         else:
             entry['picture'].set_paintable(None);entry['fallback'].set_visible(True)
         self.decorate_support_artwork(entry['overlay'],entry['picture'],game,path)
-        entry['meta'].set_text(
-            str(
-                game.get(
-                    'source',
-                    '',
-                )
-            ).upper()
-        )
+        state='Unsupported' if game.get('blocked') else 'Installed' if game.get('installed') else 'Available'
+        entry['meta'].set_text(state.upper())
+        entry['meta'].set_os(game.get('installed_on') if game.get('installed') else None)
+        for css in ('state-installed','state-available','state-unsupported'):entry['meta'].remove_css_class(css)
+        entry['meta'].add_css_class('state-'+state.lower())
 
         test_meta=entry.get(
             'test_meta'
@@ -11095,6 +11141,9 @@ class Window(Adw.ApplicationWindow):
                 if test_status.casefold()=='untested'
                 else 'test-tested'
             )
+            # Only a tested game carries the (icon-only) test badge.
+            test_meta.set_visible(test_status.casefold() not in ('untested','n/a',''))
+            test_meta.set_tooltip_text(test_status)
         entry['widget'].set_tooltip_text(game['name']+'\n'+(game.get('art_credit') or 'Artwork pending'))
     def filter_games(self):
         if not hasattr(
@@ -11837,8 +11886,8 @@ class Window(Adw.ApplicationWindow):
             'Features',
             'DLSS Files',
             'Tools',
-            'Notes',
             'Appearance',
+            'Notes',
         ):
             action_row=Gtk.Box(
                 spacing=7,
@@ -11876,8 +11925,8 @@ class Window(Adw.ApplicationWindow):
             'Features',
             'DLSS Files',
             'Tools',
-            'Notes',
             'Appearance',
+            'Notes',
         ):
             page=Gtk.Box(
                 orientation=Gtk.Orientation.VERTICAL,
@@ -12938,6 +12987,8 @@ class Window(Adw.ApplicationWindow):
         if entire and operation in ('install','repair'):rows=[g for g in rows if g.get('test_record',{}).get('status')!='Bench']
         if operation=='reset':rows=[g for g in rows if g.get('installed')]
         if not rows:self.toast('No eligible games selected.');return
+        # Windows installs only need their Proton setting here: no presets step.
+        if operation=='install' and rows and all(self.needs_linux_setup(g) for g in rows):_presets_confirmed=True
         if operation=='install' and not _presets_confirmed:
             # Stage 1 (install only): presets, in the same dialog as the rest.
             flow=OperationFlow(self,operation,rows)

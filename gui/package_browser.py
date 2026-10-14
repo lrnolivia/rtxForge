@@ -21,7 +21,7 @@ def show_packages(owner, fixture=None):
     return dialog
 
 
-def build_packages(owner, fixture=None, on_selected=None, alive=None, header=False):
+def build_packages(owner, fixture=None, on_selected=None, alive=None, header=False, column=None):
     """The package view, as the Packages page or inside the Packages dialog."""
     alive = alive if alive is not None else {'value':True}
     toolbar = Adw.ToolbarView()
@@ -31,10 +31,18 @@ def build_packages(owner, fixture=None, on_selected=None, alive=None, header=Fal
         bar.pack_start(back)
     footer=Gtk.Box(spacing=16,visible=False);margins(footer,16);toolbar.add_bottom_bar(footer)
     scroll = Gtk.ScrolledWindow(vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER)
-    clamp = Adw.Clamp(maximum_size=760, tightening_threshold=560)
+    # As a page, one wide centered column like the Library; in the dialog, a reading width.
+    clamp = Adw.Clamp(maximum_size=1600 if column else 760, tightening_threshold=1600 if column else 560)
     box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24)
     margins(box)
     clamp.set_child(box); scroll.set_child(clamp); toolbar.set_content(scroll)
+    if column:
+        box.set_margin_start(0); box.set_margin_end(0)
+        def resized(adjustment, *_):
+            width = int(adjustment.get_page_size())
+            if width > 1:
+                side = column(width); clamp.set_margin_start(side); clamp.set_margin_end(side)
+        scroll.get_hadjustment().connect('notify::page-size', resized)
     if not header:
         back.set_halign(Gtk.Align.START); back.add_css_class('flat'); box.append(back)
     title = Gtk.Label(label='Choose your graphics package', xalign=0)

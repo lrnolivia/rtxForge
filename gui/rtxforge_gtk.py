@@ -2670,12 +2670,13 @@ button.suggested-action label {
  * ---------------------------------------------------------- */
 
 
+/* Library toolbar controls: 38 px, between GNOME's 34 px and the old 44 px. */
 .library-sticky-header entry {
-    min-height: 36px;
+    min-height: 38px;
 }
 
 .library-sticky-header button, .library-sticky-header toggle {
-    min-height: 34px;
+    min-height: 28px;
     padding: 5px 10px;
 }
 
@@ -2864,7 +2865,7 @@ headerbar, .titlebar {
  * ---------------------------------------------------------- */
 
 .library-sticky-header {
-    min-height: 42px;
+    min-height: 38px;
 }
 
 
@@ -4732,7 +4733,7 @@ class Window(Adw.ApplicationWindow):
 
         # Balanced light-side inset at the dark/light seam.
         viewbar.set_margin_top(
-            8
+            12
         )
 
         library_title=label('Library','heading')
@@ -4895,7 +4896,7 @@ class Window(Adw.ApplicationWindow):
         # Balance the two-tone panel seam:
         # dark dashboard bottom = 16px
         # light Library top     = 16px
-        viewbar.set_margin_bottom(8)
+        viewbar.set_margin_bottom(12)
         controls_surface.append(viewbar)
 
         # List mode uses a real Gtk.ColumnView. Its built-in
@@ -5314,8 +5315,23 @@ class Window(Adw.ApplicationWindow):
 
     # ---------------- PRESETS ----------------
 
+    def page_column(self,content):
+        """A page as one centered column, like the Library: 3% side margins, at most 1600 px."""
+        scroll=Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,vexpand=True)
+        clamp=Adw.Clamp(maximum_size=1600,tightening_threshold=1600)
+        clamp.set_child(content)
+        scroll.set_child(clamp)
+        content.set_margin_top(24);content.set_margin_bottom(32)
+        def resized(adjustment,*_):
+            width=int(adjustment.get_page_size())
+            if width<=1:return
+            side=self.page_side_margin(width)
+            if clamp.get_margin_start()!=side:clamp.set_margin_start(side);clamp.set_margin_end(side)
+        scroll.get_hadjustment().connect('notify::page-size',resized)
+        return scroll
+
     def build_presets_page(self,tuning):
-        page=Adw.PreferencesPage()
+        page=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=24)
         page.add_css_class('forge-page')
         group=Adw.PreferencesGroup(
             title='Library Presets',
@@ -5330,7 +5346,7 @@ class Window(Adw.ApplicationWindow):
         self.presets_status=label('','dim-label')
         self.presets_status.set_margin_top(12)
         group.add(self.presets_status)
-        page.add(group)
+        page.append(group)
 
         apply_group=Adw.PreferencesGroup(title='Apply')
         self.presets_apply_row=Adw.ActionRow(title='Apply to all configured games',subtitle='Review the presets for every game with features installed.')
@@ -5345,13 +5361,11 @@ class Window(Adw.ApplicationWindow):
         self.reset_all.set_valign(Gtk.Align.CENTER)
         reset.add_suffix(self.reset_all)
         apply_group.add(reset)
-        page.add(apply_group)
-        note=Adw.PreferencesGroup()
+        page.append(apply_group)
         hint=label('Saved settings take effect on the next game launch. They do not verify the rendered effect.','dim-label')
         hint.add_css_class('caption')
-        note.add(hint)
-        page.add(note)
-        return page
+        page.append(hint)
+        return self.page_column(page)
 
     def preset_summary_text(self,values=None):
         values=values or self.tuning_values(self.tuning_widgets)
@@ -5422,16 +5436,16 @@ class Window(Adw.ApplicationWindow):
 
     def refresh_packages_page(self):
         old=self.page_stack.get_child_by_name('packages')
-        page=build_packages(self,on_selected=lambda:self.show_page('library'))
+        page=build_packages(self,on_selected=lambda:self.show_page('library'),column=self.page_side_margin)
         if old is not None:self.page_stack.remove(old)
         self.page_stack.add_named(page,'packages')
 
     def refresh_extras_page(self):
         old=self.page_stack.get_child_by_name('extras')
-        page=Adw.PreferencesPage()
-        page.add_css_class('forge-page')
+        column=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=24)
         group=Adw.PreferencesGroup(title='Extras',description='Standalone tools and NR diagnostics for each game.')
-        page.add(group)
+        column.append(group)
+        page=self.page_column(column)
         if not self.games:
             group.add(label('Your games appear here once the Library has been scanned.','dim-label'))
         for game in self.games:
@@ -6685,6 +6699,15 @@ class Window(Adw.ApplicationWindow):
                 'wrapper'
             ].get_visible()
         ]
+        # Never ask cards to be narrower than their own content allows (title,
+        # source and test pills): fewer columns rather than a clipped row.
+        content_minimum=0
+        for entry in visible_entries[:12]:
+            text=entry.get('text')
+            if text is not None:content_minimum=max(content_minimum,text.measure(Gtk.Orientation.HORIZONTAL,-1)[0])
+        content_minimum+=12
+        while slot_count>1 and (usable_width-preferred_gap*(slot_count-1))//slot_count<content_minimum:
+            slot_count-=1
 
         for entry in entries:
             entry[

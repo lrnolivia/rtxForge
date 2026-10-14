@@ -13,6 +13,11 @@ ERRORS=(
     (('proxy dll','another graphics tool'), "Another graphics tool already uses a file this change needs. Review that tool’s installation before trying again."),
     (('linked installer input','symlink'), "A required file points to another location. Choose the original file or folder, then try again."),
     (('duplicate or overlapping',), "Some selected games share the same folder. Select one entry for each game, then try again."),
+    # Steam-open installs (Proton prefix route) explain their own next step.
+    (('started with proton yet',), "This game hasn’t been started with Proton yet. Play it once and quit, then try again — or close Steam to save the setting in Steam instead."),
+    (('this game is running',), "This game is running. Quit it, then try again."),
+    (('non-steam games need steam closed',), "Non-Steam games need Steam closed for this change. Close Steam, then try again."),
+    (('launch setting is saved in steam',), "This game’s launch setting is saved in Steam. Close Steam, then restore it."),
     (('close steam',), "Close Steam, then try again so rtxForge can safely update your launch settings."),
     (('close running games',), "Close the running games, then try again. Your recovery files are still available."),
     (('no steam launch settings','no unique steam shortcut'), "rtxForge couldn’t find this game’s Steam entry. Add it to Steam or check its shortcut, then refresh your library."),

@@ -1,7 +1,7 @@
 """Serialized desktop adapter for the RC1.38-derived transaction engine."""
 from pathlib import Path
 import importlib.util,sys,json,hashlib,zipfile,os
-import transactions as t,packages,ui,package_catalog
+import transactions as t,packages,ui,package_catalog,proton_prefix
 from operation_session import Session,Cancelled
 from storage import storage
 ROOT=Path(__file__).resolve().parents[1]
@@ -99,6 +99,27 @@ def desktop_mode(e):
             return original.check_output(args,*a,**kw)
     e.subprocess=DesktopProcesses()
 
+def prefix_state(e,g):
+    """Where the record of a game's prefix overrides lives (outside the engine's target state)."""
+    return e.STATE_ROOT/'prefix-overrides'/e.target_key(g.target_dir)
+
+def steam_open_route(e,g,operation,baseline):
+    """With Steam running, a game's Proton setting goes in its own prefix.
+
+    Returns the prefix to use, or None when Steam is closed (LaunchOptions route).
+    Raises a per-game reason when the change cannot be made with Steam open.
+    """
+    if not e.steam_running():return None
+    if operation in ('install','repair'):
+        prefix=proton_prefix.find_prefix(g.root,g.appid)
+        t.need(not proton_prefix.prefix_in_use(prefix),'This game is running. Quit it, then try again.')
+        return prefix
+    if operation=='uninstall':
+        t.need(not (baseline and isinstance(baseline.get('steam_launch'),dict)),"This game's launch setting is saved in Steam. Close Steam to restore it.")
+        record=proton_prefix.load_record(prefix_state(e,g))
+        if record:t.need(not proton_prefix.prefix_in_use(Path(record['prefix'])),'This game is running. Quit it, then try again.')
+    return None
+
 def prepare(config,rows,mode,operation,settings):
     selected=settings.get('runtime_provider','y4my')
     custom=settings.get('custom_package') if selected=='custom' else None
@@ -127,6 +148,7 @@ def prepare(config,rows,mode,operation,settings):
             baseline=e.load_baseline(g.target_dir)
             if baseline:
                 t.need(not any(v.get('kind') in ('tar_tree','tar_file') for v in baseline.get('originals',{}).values()),'Privileged backup requires terminal restore before desktop management')
+            prefix=steam_open_route(e,g,operation,baseline)
             if operation=='reset':
                 preview=e.reset_visual_settings(g,dry_run=True,nr_strength=strength,mfg_multiplier=multiplier,sharpening_strength=sharpening)
             elif operation=='uninstall':
@@ -136,9 +158,9 @@ def prepare(config,rows,mode,operation,settings):
                 preview={'files':baseline['managed_paths'],'proxy':(baseline.get('current') or {}).get('proxy',''),'launch_options':'Restore only recorded proxy override; preserve NVIDIA capability flags'}
             else:
                 t.need(not row.get('blocked'),row.get('blocked',''))
-                account=e.choose_steam_user_config([g],assume_yes=True)
-                t.need(account is not None,'No Steam launch settings found; add the game to Steam before desktop installation')
-                if not g.appid:
+                account=None if prefix else e.choose_steam_user_config([g],assume_yes=True)
+                t.need(prefix or account is not None,'No Steam launch settings found; add the game to Steam before desktop installation')
+                if not g.appid and not prefix:
                     shortcuts=account['shortcuts']
                     match=e.match_shortcut_span(g,e.parse_shortcuts_spans(shortcuts.read_bytes())) if shortcuts.is_file() else None
                     t.need(match is not None,'No unique Steam shortcut targets this game directory. Add this copy as a separate Non-Steam game before desktop installation')
@@ -148,7 +170,10 @@ def prepare(config,rows,mode,operation,settings):
                     t.need((baseline.get('current') or {}).get('feature_mode',mode)==mode,'Uninstall before changing feature profiles so original runtime files are restored')
                     t.need(old==e.Y4MY_PROVIDER['id'],'Uninstall the current provider before switching providers; its original backups must be restored first')
                 preview=e.install_target(g,data,meta,'ada',nr_runtime_payload=nr,nr_runtime_meta=nrmeta,feature_mode=mode,enable_effects=True,native_mfg_fallback=bool(settings.get('native_mfg_fallback',False)),nr_strength=strength,mfg_multiplier=multiplier,sharpening_strength=sharpening,preserve_visual_settings=not settings.get("apply_requested_presets",False),dry_run=True)
-            ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g)})
+            if prefix:preview=dict(preview,launch_options="Proton setting saved in this game's prefix · Steam can stay open")
+            # Which Steam-side state this game touches: its prefix, Steam's launch settings, or neither.
+            steam_route=operation in ('install','repair') and not prefix or operation=='uninstall' and bool(baseline and isinstance(baseline.get('steam_launch'),dict))
+            ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g),'prefix':str(prefix) if prefix else None,'steam_route':steam_route})
         except (e.Stop,t.Refusal,OSError,ValueError) as ex:blocked.append({'name':row['name'],'reason':str(ex)})
         ui.progress('Game checked',phase='review-check',game=row['name'],checked=index,total=len(rows))
     return {'kind':'engine','operation':operation,'title':operation.title(),'rows':[{'name':p['row']['name'],'detail':p['preview']['launch_options'] if operation=='reset' else f"{e.Y4MY_PROVIDER['name']} · {len(p['preview']['files'])} managed files · "+p['preview']['launch_options']} for p in ready],
@@ -157,7 +182,8 @@ def prepare(config,rows,mode,operation,settings):
 def execute(review):
     e=review['engine'];results=[]
     # Never kill Steam behind a GUI action, or wait invisibly for terminal prompts.
-    if review['operation']!='reset':t.need(not e.steam_running(),'Close Steam before applying changes so launch settings can be saved safely.')
+    # With Steam open, installs use each game's Proton prefix (decided per game
+    # in prepare); Steam-saved launch settings still need Steam closed.
     cancel=review.get('cancel_event')
     session=Session(e.STATE_ROOT/'desktop-operations') if cancel is not None else None
     with e.mutation_lock():
@@ -175,9 +201,13 @@ def execute(review):
                     else:names.add('OptiScaler')
                     paths=[g.target_dir/name for name in names]+[e.state_dir_for(g.target_dir)]
                     if review['operation']!='reset':
-                        paths.extend([e.STATE_ROOT/'steam-config-backups',e._steam_transaction_root()])
+                        paths.extend([e.STATE_ROOT/'steam-config-backups',e._steam_transaction_root(),prefix_state(e,g)])
                         account=e.choose_steam_user_config([g],assume_yes=True)
                         if account:paths.extend(account[k] for k in ('localconfig','shortcuts') if account.get(k))
+                        # The prefix registry is part of the undo too.
+                        prefix_record=proton_prefix.load_record(prefix_state(e,g))
+                        for registry in {item.get('prefix') and str(Path(item['prefix'])/'user.reg'),prefix_record and prefix_record.get('registry')}:
+                            if registry:paths.append(Path(registry))
                     report('Backing up your current files',0.15)
                     checkpoint=session.capture(paths)
                 report({'reset':'Saving your settings','uninstall':'Restoring original files','install':'Installing features','repair':'Repairing feature files'}[review['operation']],0.4)
@@ -185,13 +215,20 @@ def execute(review):
                     record=e.reset_visual_settings(g,nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'])
                 elif review['operation']=='uninstall':
                     e.verify_native_restore(e.load_baseline(g.target_dir))
+                    proton_prefix.restore(prefix_state(e,g))
                     e.restore_launch_options_batch([g],assume_yes=True)
                     record=e.restore_target(g)
                 else:
                     record=e.install_target(g,review['payload'],review['meta'],'ada',nr_runtime_payload=review['nr'],nr_runtime_meta=review['nrmeta'],feature_mode=review['mode'],enable_effects=review['enable_effects'],native_mfg_fallback=review.get('native_mfg_fallback',False),nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'],preserve_visual_settings=not review.get('apply_requested_presets',False))
                     report('Saving launch settings',0.85)
-                    synced=e.sync_launch_options_batch([g],assume_yes=True,prompt=False)
-                    t.need(synced and all(r.get('status')=='written' for r in synced),'Files installed, but launch settings need attention: '+str(synced or record['launch_options']))
+                    if item.get('prefix'):
+                        launch=e._launch_record_for_game(g)
+                        names=proton_prefix.override_names((launch or {}).get('required') or record.get('launch_options',''))
+                        t.need(names,'Files installed, but no Proton setting was planned; close Steam and repair this game')
+                        proton_prefix.apply(Path(item['prefix']),names,prefix_state(e,g))
+                    else:
+                        synced=e.sync_launch_options_batch([g],assume_yes=True,prompt=False)
+                        t.need(synced and all(r.get('status')=='written' for r in synced),'Files installed, but launch settings need attention: '+str(synced or record['launch_options']))
                 results.append({'name':g.name,'status':'complete','record':record})
             except Exception as ex:results.append({'name':g.name,'status':'failed','error':str(ex)})
             finally:
@@ -202,7 +239,8 @@ def execute(review):
         if session:
             if cancel.is_set():
                 t.need(not any(e._running_processes_under_root(p['game'].root.resolve()) for p in review['plans']),'Close running games before recovery. Copies retained at '+str(session.root))
-                if review['operation']!='reset':t.need(not e.steam_running(),'Close Steam before recovery. Copies retained at '+str(session.root))
+                # Only Steam's own launch settings need Steam closed to undo safely.
+                if any(p.get('steam_route',review['operation']!='reset') for p in review['plans']):t.need(not e.steam_running(),'Close Steam before recovery. Copies retained at '+str(session.root))
                 session.rollback()
                 raise Cancelled('Changes undone.')
             session.complete()

@@ -34,6 +34,10 @@ public sealed class Game
     public string? AppId { get; init; }
     /// <summary>Feature profile the engine recorded: NR + MFG, MFG Only, NR Only.</summary>
     public string? Profile { get; init; }
+    /// <summary>Which rtxForge installed the features: "windows", "linux" (shared .rtxforge-install.json), or null.</summary>
+    public string? InstalledOn { get; set; }
+    /// <summary>Installed with rtxForge on Linux: Windows loads it natively; its originals are backed up on Linux.</summary>
+    public bool InstalledOnLinux => Installed && InstalledOn == "linux";
     /// <summary>The engine's scan row, passed back unchanged for review and execution.</summary>
     public System.Text.Json.Nodes.JsonObject? EngineRow { get; init; }
 
@@ -41,6 +45,18 @@ public sealed class Game
     public double? NrStrength { get; set; }
     public double? SharpeningStrength { get; set; }
     public string? MfgMultiplier { get; set; }
+}
+
+/// <summary>
+/// Cross-OS installs (scripts/cross_os.py). The engine refuses Install and Restore for a
+/// Linux install with these reasons (engine_bridge.prepare); the UI shows them up front.
+/// </summary>
+public static class CrossOs
+{
+    public const string InstallReason = "Installed with rtxForge on Linux. It already loads on Windows; nothing to change here.";
+    public const string RestoreReason = "Installed with rtxForge on Linux. Restore its original files in rtxForge on Linux, where they are backed up.";
+
+    public static string Name(string? os) => os switch { "linux" => "Linux", "windows" => "Windows", _ => "" };
 }
 
 /// <summary>NR Strength / Sharpening / MFG, as written to OptiScaler.ini.</summary>

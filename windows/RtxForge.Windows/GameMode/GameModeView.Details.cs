@@ -96,6 +96,13 @@ public sealed partial class GameModeView
         var badges = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(8) };
         var sourceBadge = ui.Badge(g.Library, t.Card, t.Fg, 0.62 * 1.2, g.Library == "Steam" ? "" : null);
         badges.Children.Add(sourceBadge);
+        // Which rtxForge installed it (Linux game_mode: "Installed on Linux" with the rtx-os mark).
+        if (g.Installed && g.InstalledOn is "linux" or "windows")
+        {
+            var osBadge = ui.Badge("Installed on " + CrossOs.Name(g.InstalledOn), t.Card, t.Fg, 0.62 * 1.2);
+            ((StackPanel)osBadge.Child).Children.Insert(0, OsMark.Create(g.InstalledOn, t.Em(0.62 * 1.2), GmTheme.B(t.Fg)));
+            badges.Children.Add(osBadge);
+        }
         badges.Children.Add(ui.Badge(g.Tested ? "Tested" : "Untested", GmTheme.Hex("#573d18"), GmTheme.Hex("#ffe8a2"), 0.62 * 1.2, g.Tested ? "" : ""));
         text.Children.Add(badges);
         text.Children.Add(ui.Text(string.Join(" · ", new[] { g.Library, g.Installed ? "Configured" : g.Blocked ? "Unsupported" : "Available", ProviderName() }), 0.78, t.Fg));
@@ -107,7 +114,8 @@ public sealed partial class GameModeView
         var install = ui.Button(Glyph("", g.Installed ? "Repair Features" : "Install Features"), () => _ = RunOperationAsync("install", [g]),
             GmKind.Primary, 0.82, enabled: !g.Blocked, minHeight: t.Compact ? 46 : 54);
         Key(install, "hero-install");
-        actions.Children.Add(install);
+        // Installed with rtxForge on Linux: it already loads here, so there is nothing to install.
+        if (!g.InstalledOnLinux) actions.Children.Add(install);
         var restore = ui.Button(Glyph("", "Restore Original Files"), () => _ = RunOperationAsync("uninstall", [g]),
             GmKind.Danger, 0.82, enabled: g.Installed, minHeight: t.Compact ? 46 : 54);
         Key(restore, "hero-restore");
@@ -202,7 +210,9 @@ public sealed partial class GameModeView
         switch (detailsSection)
         {
             case "Features":
-                SectionTitle(content, "Features", g.Installed
+                SectionTitle(content, "Features", g.InstalledOnLinux
+                    ? $"Saved: {g.Profile ?? "Configured"}. Installed with rtxForge on Linux; it already loads on Windows. Restore its original files in rtxForge on Linux, where they are backed up."
+                    : g.Installed
                     ? $"Saved: {g.Profile ?? "Configured"}. The rendered effect still needs an in-game check."
                     : g.Blocked ? g.BlockedReason ?? "This game is not supported." : "Not installed. Review every file change before installing.");
                 var expander = ui.Button(new Grid().With(row =>

@@ -21,6 +21,12 @@ public sealed partial class GameModeView
         if (shell.Busy) { Toast("Another operation is running."); return; }
         targets ??= operation == "uninstall" ? shell.Games.Where(g => g.Installed).ToList() : shell.Games.Where(g => !g.Blocked).ToList();
         if (targets.Count == 0) { Toast("No eligible games."); return; }
+        // Installed with rtxForge on Linux: explain instead of a review with nothing to do (as the desktop).
+        if (operation is "install" or "uninstall" && targets.All(g => g.InstalledOnLinux))
+        {
+            ShowDone(false, "Installed on Linux", operation == "uninstall" ? CrossOs.RestoreReason : CrossOs.InstallReason);
+            return;
+        }
         if (operation == "install" && values is null)
         {
             values = await AskPresetsAsync(targets.Count == 1 ? shell.GameTuning(targets[0]) : shell.Settings.Presets);

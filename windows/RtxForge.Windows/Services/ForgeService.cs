@@ -97,7 +97,8 @@ public sealed class PreviewForgeService : IForgeService
         SteamGame("1091500", "Cyberpunk 2077", "Cyberpunk 2077", installed: true, tested: true, developer: "CD PROJEKT RED", release: "2020", dlss: "310.4.0",
             summary: "An open-world, action-adventure RPG set in the megalopolis of Night City."),
         SteamGame("2840770", "Avatar: Frontiers of Pandora", "Avatar Frontiers of Pandora", installed: true, tested: true, developer: "Massive Entertainment", release: "2023", dlss: "310.2.1"),
-        SteamGame("292030", "The Witcher 3: Wild Hunt", "The Witcher 3", installed: true, tested: true, developer: "CD PROJEKT RED", release: "2015", dlss: "310.1.0"),
+        SteamGame("292030", "The Witcher 3: Wild Hunt", "The Witcher 3", installed: true, tested: true, developer: "CD PROJEKT RED", release: "2015", dlss: "310.1.0",
+            installedOn: "linux"),
         SteamGame("3321460", "Crimson Desert", "Crimson Desert", tested: true, developer: "Pearl Abyss", release: "2026"),
         SteamGame("1449110", "The Outer Worlds 2", "The Outer Worlds 2", tested: true, developer: "Obsidian Entertainment", release: "2025"),
         SteamGame("1681430", "RoboCop: Rogue City", "RoboCop Rogue City", developer: "Teyon", release: "2023"),
@@ -107,13 +108,14 @@ public sealed class PreviewForgeService : IForgeService
     ];
 
     static Game SteamGame(string appid, string name, string folder, bool installed = false, bool tested = false,
-        string? developer = null, string? release = null, string? dlss = null, string? summary = null, string? blocked = null)
+        string? developer = null, string? release = null, string? dlss = null, string? summary = null, string? blocked = null,
+        string installedOn = "windows")
     {
         const string cdn = "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/";
         return new Game
         {
             Id = appid, AppId = appid, Name = name, Library = "Steam", Location = $@"{Steam}\{folder}",
-            Installed = installed, Tested = tested, Developer = developer, Release = release, DlssVersion = dlss,
+            Installed = installed, InstalledOn = installed ? installedOn : null, Tested = tested, Developer = developer, Release = release, DlssVersion = dlss,
             Summary = summary, MetadataSource = "Steam", Blocked = blocked is not null, BlockedReason = blocked,
             PosterPath = $"{cdn}{appid}/library_600x900.jpg",
             CapsulePath = $"{cdn}{appid}/header.jpg",
@@ -141,9 +143,13 @@ public sealed class PreviewForgeService : IForgeService
     {
         progress?.Report(new PrepareProgress("Checking game files", targets.FirstOrDefault()?.Name, 0, targets.Count));
         await Task.Delay(400, cancel);
-        var ready = targets.Where(g => !g.Blocked && (operation is not ("uninstall" or "reset") || g.Installed))
+        // As engine_bridge.prepare: a Linux install is never reinstalled or restored here.
+        bool CrossOsBlocked(Game g) => g.InstalledOnLinux && operation is "install" or "uninstall";
+        var ready = targets.Where(g => !g.Blocked && !CrossOsBlocked(g) && (operation is not ("uninstall" or "reset") || g.Installed))
             .Select(g => (g, $"Ready to {Verb(operation)}")).ToList();
-        var blocked = targets.Where(g => g.Blocked).Select(g => new ReviewBlock(g, g.Name, g.BlockedReason ?? "Not supported")).ToList();
+        var blocked = targets.Where(g => g.Blocked).Select(g => new ReviewBlock(g, g.Name, g.BlockedReason ?? "Not supported"))
+            .Concat(targets.Where(g => !g.Blocked && CrossOsBlocked(g))
+                .Select(g => new ReviewBlock(g, g.Name, operation == "uninstall" ? CrossOs.RestoreReason : CrossOs.InstallReason))).ToList();
         var token = operation + ":" + Guid.NewGuid().ToString("N");
         reviewed[token] = tuning;
         return new OperationReview(operation, token, ready, blocked);
@@ -170,6 +176,7 @@ public sealed class PreviewForgeService : IForgeService
             {
                 case "install":
                     game.Installed = true;
+                    game.InstalledOn = "windows";
                     game.NrStrength = tuning.NrStrength;
                     game.SharpeningStrength = tuning.SharpeningStrength;
                     game.MfgMultiplier = tuning.MfgMultiplier;
@@ -177,6 +184,7 @@ public sealed class PreviewForgeService : IForgeService
                 case "uninstall":
                     if (!game.Installed) continue;
                     game.Installed = false;
+                    game.InstalledOn = null;
                     break;
                 case "reset":
                     game.NrStrength = game.SharpeningStrength = null;

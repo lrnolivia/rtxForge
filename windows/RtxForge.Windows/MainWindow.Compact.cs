@@ -2,6 +2,7 @@ using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media.Animation;
 
 namespace RtxForge.Windows;
 
@@ -63,6 +64,31 @@ public sealed partial class MainWindow
         compactVisible = visible;
         ApplyCompactPanels();
         UpdateTitleBarRegions();
+    }
+
+    bool brandShown = true;
+    Storyboard? brandMotion;
+
+    /// <summary>
+    /// The titlebar brand stays out of the way while the Library's full dashboard hero shows the
+    /// mark and wordmark, then slides in from the left and fades up when it is needed again.
+    /// </summary>
+    public void ShowBrand(bool visible)
+    {
+        if (visible == brandShown) return;
+        brandShown = visible;
+        brandMotion?.Stop();
+        var ease = new CubicEase { EasingMode = visible ? EasingMode.EaseOut : EasingMode.EaseIn };
+        var duration = TimeSpan.FromMilliseconds(visible ? 280 : 140);
+        DoubleAnimation To(DependencyObject target, string property, double value)
+        {
+            var animation = new DoubleAnimation { To = value, Duration = duration, EasingFunction = ease };
+            Storyboard.SetTarget(animation, target);
+            Storyboard.SetTargetProperty(animation, property);
+            return animation;
+        }
+        brandMotion = new Storyboard { Children = { To(CompactBrand, "Opacity", visible ? 1 : 0), To(BrandShift, "X", visible ? 0 : -16) } };
+        brandMotion.Begin();
     }
 
     /// <summary>Beside the brand: the Features selector and library actions, or the presets-mode options.</summary>

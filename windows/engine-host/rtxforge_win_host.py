@@ -247,7 +247,38 @@ def adapt_engine(e):
     e.restore_launch_options_batch = lambda games, assume_yes=False, **kw: []
     e._running_processes_under_root = _running_under
     e._archive_payload_cli = lambda archive: _extract_with_windows_tar(e, archive)
+    e._fsync_file = lambda path: _fsync_file(e, path)
+    if not getattr(e, "_windows_undo", False):
+        # A game that fails part-way is put back exactly as it was before rtxForge touched it.
+        for name in ("install_target", "restore_target", "reset_visual_settings"):
+            setattr(e, name, _undo_on_failure(getattr(e, name)))
+        e._windows_undo = True
     return e
+
+
+def _fsync_file(e, path: Path) -> None:
+    """Windows flushes through a writable handle only (os.fsync on a read-only one is EBADF)."""
+    e.require(path.is_file() and not path.is_symlink(), f"Cannot fsync unsafe file: {path}")
+    try:
+        fd = os.open(path, os.O_RDWR | os.O_BINARY)
+    except PermissionError:
+        return  # read-only files were written and closed already; nothing is pending
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _undo_on_failure(step):
+    def guarded(*args, **kwargs):
+        try:
+            return step(*args, **kwargs)
+        except Exception as ex:
+            session = _GameSession.active()
+            if kwargs.get("dry_run") or session is None:
+                raise
+            raise engine_bridge.t.Refusal(f"{ex} {session.undo_game()}") from ex
+    return guarded
 
 
 def _steam_config_engine(e):
@@ -310,6 +341,65 @@ class _WindowsCopy:
 import operation_session  # noqa: E402
 
 operation_session.subprocess = _WindowsCopy()
+
+
+class _GameSession(operation_session.Session):
+    """The desktop operation session, able to undo just the game that failed.
+
+    engine_bridge.execute captures each game's files before changing them but
+    only rolls back on Cancel; a failed game would otherwise keep whatever it
+    had half-written. The engine calls are wrapped (_undo_on_failure) so a
+    failure restores that game's captured files and state on the spot."""
+
+    _current = None
+
+    def __init__(self, root):
+        super().__init__(root)
+        self._start, self._thread, self._keep = None, threading.get_ident(), False
+        _GameSession._current = self
+
+    @classmethod
+    def active(cls):
+        s = cls._current
+        if s and s._start is not None and s._thread == threading.get_ident() and s.status == "applying":
+            return s
+        return None
+
+    def capture(self, paths):
+        self._start = super().capture(paths)
+        return self._start
+
+    def seal(self, start):
+        super().seal(start)
+        self._start = None
+
+    def undo_game(self) -> str:
+        start, kept = self._start, self.entries
+        try:
+            self.entries = kept[start:]
+            for entry in self.entries:
+                entry["after"] = operation_session.signature(Path(entry["path"]))
+            self.rollback()
+            outcome = "Changes to this game were undone."
+        except Exception as ex:
+            self._keep = True
+            outcome = f"Undoing this game's changes failed ({ex}); recovery copies kept at {self.root}."
+        finally:
+            # Undone entries leave the session; Cancel and completion handle the rest as before.
+            self.entries = kept[:start] if not self._keep else kept
+            self.status, self._start = "applying", None
+            self.save()
+        return outcome
+
+    def complete(self):
+        if self._keep:
+            self.status = "needs-recovery"
+            self.save()
+            return
+        super().complete()
+
+
+engine_bridge.Session = _GameSession
 
 _module = engine_bridge.module
 

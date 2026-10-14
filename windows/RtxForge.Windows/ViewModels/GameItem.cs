@@ -160,7 +160,8 @@ public sealed class GameItem : INotifyPropertyChanged
     public Brush StatusDot => Game.Blocked ? UnsupportedDot : Game.Installed ? InstalledDot : AvailableDot;
     public Visibility TestedVisibility => Game.Tested ? Visibility.Visible : Visibility.Collapsed;
 
-    // Cross-OS installs: a 10 px OS mark inside the INSTALLED pill (Linux rtx-os-*-symbolic).
+    // Cross-OS installs: the OS mark (Linux rtx-os-*-symbolic) on a translucent badge over the card art,
+    // and beside the status in list rows.
     Geometry? osMark;
     bool HasOsMark => Game.Installed && Game.InstalledOn is "linux" or "windows";
     public Geometry? OsMark => HasOsMark ? osMark ??= Controls.OsMark.Data(Game.InstalledOn) : null;

@@ -39,6 +39,12 @@
                         <TextBlock Text="{Binding Name}" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center"
                                    VerticalAlignment="Center" Margin="12" FontSize="14" FontWeight="SemiBold" />
                         <Image Source="{Binding Poster}" Stretch="UniformToFill" Visibility="{Binding PosterVisibility}" />
+                        <Border Style="{StaticResource ForgePosterBadgeStyle}" Visibility="{Binding OsMarkVisibility}"
+                                ToolTipService.ToolTip="{Binding OsMarkTooltip}" AutomationProperties.Name="{Binding OsMarkTooltip}">
+                            <Viewbox Width="12" Height="12">
+                                <PathIcon Width="16" Height="16" Data="{Binding OsMark}" Foreground="White" />
+                            </Viewbox>
+                        </Border>
                         <Border Tag="check" Style="{StaticResource ForgeCheckStyle}" Visibility="{Binding SelectVisibility}"
                                 HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" Background="{Binding CheckFill}" BorderBrush="{Binding CheckBorder}"
                                 ToolTipService.ToolTip="Select">
@@ -52,10 +58,6 @@
                                 <StackPanel Orientation="Horizontal" Spacing="4">
                                     <FontIcon Glyph="{Binding StatusGlyph}" FontSize="10" Foreground="{Binding CardStatusPillText}" />
                                     <TextBlock Text="{Binding Status}" FontSize="9" FontWeight="Bold" CharacterSpacing="42" VerticalAlignment="Center" Foreground="{Binding CardStatusPillText}" />
-                                    <Viewbox Width="10" Height="10" VerticalAlignment="Center" Visibility="{Binding OsMarkVisibility}"
-                                             ToolTipService.ToolTip="{Binding OsMarkTooltip}" AutomationProperties.Name="{Binding OsMarkTooltip}">
-                                        <PathIcon Width="16" Height="16" Data="{Binding OsMark}" Foreground="{Binding CardStatusPillText}" />
-                                    </Viewbox>
                                 </StackPanel>
                             </Border>
                             <Border Style="{StaticResource ForgePillStyle}" Background="{Binding CardTestPillFill}" Visibility="{Binding TestedVisibility}"
@@ -81,6 +83,12 @@
                         <TextBlock Text="{Binding Name}" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center"
                                    VerticalAlignment="Center" Margin="12" FontSize="14" FontWeight="SemiBold" />
                         <Image Source="{Binding Capsule}" Stretch="UniformToFill" Visibility="{Binding CapsuleVisibility}" />
+                        <Border Style="{StaticResource ForgePosterBadgeStyle}" Visibility="{Binding OsMarkVisibility}"
+                                ToolTipService.ToolTip="{Binding OsMarkTooltip}" AutomationProperties.Name="{Binding OsMarkTooltip}">
+                            <Viewbox Width="12" Height="12">
+                                <PathIcon Width="16" Height="16" Data="{Binding OsMark}" Foreground="White" />
+                            </Viewbox>
+                        </Border>
                         <Border Tag="check" Style="{StaticResource ForgeCheckStyle}" Visibility="{Binding SelectVisibility}"
                                 HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" Background="{Binding CheckFill}" BorderBrush="{Binding CheckBorder}"
                                 ToolTipService.ToolTip="Select">
@@ -94,10 +102,6 @@
                                 <StackPanel Orientation="Horizontal" Spacing="4">
                                     <FontIcon Glyph="{Binding StatusGlyph}" FontSize="10" Foreground="{Binding CardStatusPillText}" />
                                     <TextBlock Text="{Binding Status}" FontSize="9" FontWeight="Bold" CharacterSpacing="42" VerticalAlignment="Center" Foreground="{Binding CardStatusPillText}" />
-                                    <Viewbox Width="10" Height="10" VerticalAlignment="Center" Visibility="{Binding OsMarkVisibility}"
-                                             ToolTipService.ToolTip="{Binding OsMarkTooltip}" AutomationProperties.Name="{Binding OsMarkTooltip}">
-                                        <PathIcon Width="16" Height="16" Data="{Binding OsMark}" Foreground="{Binding CardStatusPillText}" />
-                                    </Viewbox>
                                 </StackPanel>
                             </Border>
                             <Border Style="{StaticResource ForgePillStyle}" Background="{Binding CardTestPillFill}" Visibility="{Binding TestedVisibility}"

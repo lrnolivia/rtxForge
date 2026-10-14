@@ -181,10 +181,32 @@ public sealed partial class ExtrasPage : Page
             diagnose.IsEnabled = game.Installed;
             actions.Children.Add(diagnose);
             actions.Children.Add(Prefs.ActionButton("Tools", (_, _) => shell.OpenGame(game, "Tools")));
-            var thumb = new Image { Source = ViewModels.GameItem.Image(game.PosterPath ?? game.CapsulePath), Width = 40, Height = 56, Stretch = Microsoft.UI.Xaml.Media.Stretch.UniformToFill };
             var row = Prefs.Row(game.Name, game.Installed ? game.Profile ?? "Configured" : game.Blocked ? game.BlockedReason ?? "Unsupported" : "Not installed", actions);
-            if (row.Child is Grid grid) grid.Children.Add(thumb);
+            if (row.Child is Grid grid) grid.Children.Add(Art(game));
             list.Children.Add(row);
         }
+    }
+
+    /// <summary>
+    /// The list view's wide capsule (98×46, art corner radius) with the review
+    /// screen's 2px bezel in the game's own accent color.
+    /// </summary>
+    static Grid Art(Game game)
+    {
+        var art = new Grid
+        {
+            Width = 98, Height = 46,
+            CornerRadius = (CornerRadius)Application.Current.Resources["ForgeArtCornerRadius"],
+            Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["ControlFillColorSecondaryBrush"],
+            BorderThickness = new Thickness(2),
+        };
+        art.Children.Add(new Image { Source = ViewModels.GameItem.Image(game.CapsulePath ?? game.PosterPath), Stretch = Microsoft.UI.Xaml.Media.Stretch.UniformToFill });
+        _ = BezelAsync(art, game);
+        return art;
+    }
+
+    static async System.Threading.Tasks.Task BezelAsync(Grid art, Game game)
+    {
+        if (await Services.ArtAccent.ForGameAsync(game) is { } palette) art.BorderBrush = palette.AccentBrush;
     }
 }

@@ -40,7 +40,19 @@ public sealed class GamepadInput : IDisposable
 
     void Refresh()
     {
-        var current = Gamepad.Gamepads.FirstOrDefault();
+        Gamepad? current;
+        try
+        {
+            // Steam Input's projected collection can support indexed access
+            // without exposing the iterable interface used by LINQ.
+            var pads = Gamepad.Gamepads;
+            current = pads.Count > 0 ? pads[0] : null;
+        }
+        catch (Exception error) when (error is InvalidCastException or System.Runtime.InteropServices.COMException)
+        {
+            // A controller provider must not prevent the app from opening.
+            current = null;
+        }
         if (ReferenceEquals(current, pad)) return;
         pad = current;
         previous = [];
@@ -51,7 +63,9 @@ public sealed class GamepadInput : IDisposable
 
     static string FamilyOf(Gamepad gamepad)
     {
-        var raw = RawGameController.FromGameController(gamepad);
+        RawGameController? raw;
+        try { raw = RawGameController.FromGameController(gamepad); }
+        catch (Exception error) when (error is InvalidCastException or System.Runtime.InteropServices.COMException) { return "xbox"; }
         return raw?.HardwareVendorId switch
         {
             0x054C => "playstation",

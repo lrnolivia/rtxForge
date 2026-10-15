@@ -24,7 +24,8 @@ public sealed partial class MainWindow
         gamepad.Action += OnGamepadAction;
         gamepad.Changed += () => gameMode?.SetControllerFamily(gamepad.Family);
         Closed += (_, _) => gamepad?.Dispose();
-        if (Environment.GetCommandLineArgs().Contains("--game-mode", StringComparer.OrdinalIgnoreCase))
+        if (Environment.GetCommandLineArgs().Contains("--game-mode", StringComparer.OrdinalIgnoreCase)
+            || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SteamAppId")))
             DispatcherQueue.TryEnqueue(EnterGameMode);
     }
 

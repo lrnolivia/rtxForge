@@ -415,9 +415,25 @@ def save_defaults(params):
     return {}
 
 
+def prepare_dlss(params):
+    import dlss_updates
+    review = dlss_updates.prepare(service.config, params['rows'])
+    token = uuid.uuid4().hex
+    dlss_reviews[token] = review
+    return {key: value for key, value in review.items() if key != 'plans'} | {'token': token}
+
+
+dlss_reviews: dict[str, dict] = {}
+
+
 def update_dlss(params):
     """Linux manage_dlss_files: update older known native DLSS files; backups kept."""
     import runtime_updates
+    if 'token' in params:
+        import dlss_updates
+        review = dlss_reviews.pop(params['token'], None)
+        t.need(review is not None, 'DLSS review expired. Review the update again.')
+        return dlss_updates.execute(service.config, review)
     if params.get("restore"):
         return {"restored": [str(runtime_updates.restore_game(service.config, row["game"])) for row in params["rows"]]}
     return runtime_updates.manage(service.config, params["rows"], replace_same=params.get("replace_same", False))
@@ -481,7 +497,8 @@ def steam_remove(params):
 
 running: dict[str, dict] = {}
 METHODS = {"hello": hello, "hardware": lambda _p: service.hardware(), "scan": scan, "prepare": prepare,
-           "execute": execute, "cancel": cancel, "save_defaults": save_defaults, "update_dlss": update_dlss,
+           "execute": execute, "cancel": cancel, "save_defaults": save_defaults,
+           "prepare_dlss": prepare_dlss, "update_dlss": update_dlss,
            "steam_status": steam_status, "steam_review": steam_review, "steam_install": steam_install,
            "steam_remove": steam_remove}
 

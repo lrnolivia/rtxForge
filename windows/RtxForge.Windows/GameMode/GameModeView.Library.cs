@@ -15,14 +15,7 @@ public sealed partial class GameModeView
     double libraryScroll;
     ScrollViewer? libraryScroller;
 
-    IEnumerable<Game> FilteredGames() => shell.Games
-        .Where(g => shell.Settings.LibraryFilter switch
-        {
-            "installed" => g.Installed,
-            "all" => true,
-            _ => !g.Blocked,
-        })
-        .OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase);
+    IEnumerable<Game> FilteredGames() => LibraryScope.Filter(shell.Games, shell.Settings.LibraryFilter);
 
     static string FilterLabel(string key) => key switch { "installed" => "Installed", "all" => "All", _ => "Available" };
 
@@ -63,17 +56,19 @@ public sealed partial class GameModeView
             [("nr-only", "NR Only", shell.NrOnlyAvailable), ("mfg-only", "MFG Only", true), ("nr-mfg", "NR + MFG", true)],
             shell.Mode, key => { shell.Mode = key; Render(keepFocus: true); }));
         toolbar.Children.Add(mode);
-        var targets = selecting ? SelectedGames() : null;
+        var targets = LibraryScope.Targets(shell.Games, shell.Settings.LibraryFilter, "", selectedIds, selecting);
+        var installTargets = targets.Where(g => !g.Blocked).ToList();
+        var restoreTargets = targets.Where(g => g.Installed).ToList();
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12), VerticalAlignment = VerticalAlignment.Center };
-        var install = ui.Button(Glyph("", selecting ? $"Install selected ({selectedIds.Count})" : "Install to all"),
-            () => _ = RunOperationAsync("install", targets), GmKind.Primary, 0.85, enabled: !selecting || selectedIds.Count > 0, minHeight: t.Compact ? 48 : 60);
+        var install = ui.Button(Glyph("", selecting ? $"Install selected ({selectedIds.Count})" : "Install Features"),
+            () => _ = RunOperationAsync("install", installTargets), GmKind.Primary, 0.85, enabled: installTargets.Count > 0, minHeight: t.Compact ? 48 : 60);
         Key(install, "lib-install");
         var restore = ui.Button(Glyph("", "Restore"),
-            () => _ = RunOperationAsync("uninstall", targets?.Where(g => g.Installed).ToList()), GmKind.Danger, 0.85,
-            enabled: (targets ?? shell.Games).Any(g => g.Installed), minHeight: t.Compact ? 48 : 60);
+            () => _ = RunOperationAsync("uninstall", restoreTargets), GmKind.Danger, 0.85,
+            enabled: restoreTargets.Count > 0, minHeight: t.Compact ? 48 : 60);
         Key(restore, "lib-restore");
-        var update = ui.Button(Glyph("", "Update DLSS"), () => _ = RunOperationAsync("update-dlss", targets), GmKind.Dlss, 0.85,
-            enabled: !selecting || selectedIds.Count > 0, minHeight: t.Compact ? 48 : 60);
+        var update = ui.Button(Glyph("", "Update DLSS"), () => _ = RunOperationAsync("update-dlss", installTargets), GmKind.Dlss, 0.85,
+            enabled: installTargets.Count > 0, minHeight: t.Compact ? 48 : 60);
         Key(update, "lib-update");
         actions.Children.Add(install);
         actions.Children.Add(restore);
@@ -493,7 +488,7 @@ public sealed partial class GameModeView
         }
         foreach (var (key, label, description) in new[]
         {
-            ("available", "Available", "Supported game folders"),
+            ("available", "Available", "Supported games without features installed"),
             ("installed", "Installed", "Games with managed features"),
             ("all", "All", "Every discovered game"),
         })

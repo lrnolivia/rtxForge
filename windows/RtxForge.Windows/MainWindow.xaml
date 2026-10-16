@@ -79,13 +79,13 @@
             <StackPanel x:Name="CompactActions" Grid.Column="2" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" VerticalAlignment="Center"
                         Visibility="Collapsed" SizeChanged="OnCompactBarSizeChanged">
                 <Button Style="{StaticResource AccentButtonStyle}" Click="OnCompactInstall" Padding="10,4,10,4"
-                        ToolTipService.ToolTip="Install features across the Library">
+                        ToolTipService.ToolTip="Install features for selected games or the current view">
                     <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE896;" FontSize="13" /><TextBlock x:Name="CompactInstallText" Text="Install Features" /></StackPanel>
                 </Button>
-                <Button Click="OnCompactRestore" Padding="10,4,10,4" ToolTipService.ToolTip="Restore original files for the selected games or Library">
+                <Button Click="OnCompactRestore" Padding="10,4,10,4" ToolTipService.ToolTip="Restore original files for selected games or the current view">
                     <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE7A7;" FontSize="13" Foreground="{ThemeResource ForgeRemoveBrush}" /><TextBlock Text="Restore Original Files" /></StackPanel>
                 </Button>
-                <Button Click="OnCompactUpdateDlss" Padding="10,4,10,4" ToolTipService.ToolTip="Update older DLSS files across the library">
+                <Button Click="OnCompactUpdateDlss" Padding="10,4,10,4" ToolTipService.ToolTip="Update older DLSS files for selected games or the current view">
                     <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE777;" FontSize="13" /><TextBlock Text="Update DLSS" /></StackPanel>
                 </Button>
             </StackPanel>

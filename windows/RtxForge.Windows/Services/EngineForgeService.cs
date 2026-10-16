@@ -242,15 +242,24 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         var rows = new JsonArray(targets.Where(g => g.EngineRow is not null).Select(g => (JsonNode)g.EngineRow!.DeepClone()).ToArray());
         if (operation == "update-dlss")
         {
-            // runtime_updates.manage checks versions itself; the review lists the candidates.
-            var ready = targets.Where(g => !g.Blocked).Select(g => (g, "Check for newer DLSS files")).ToList();
-            var skipped = targets.Where(g => g.Blocked).Select(g => new ReviewBlock(g, g.Name, g.BlockedReason ?? "Not supported")).ToList();
-            return new OperationReview(operation, "update-dlss", ready, skipped);
+            var checkedFiles = await CallAsync("prepare_dlss", new JsonObject { ["rows"] = rows },
+                message => progress?.Report(new PrepareProgress(message["label"]?.ToString() ?? "",
+                    message["game"]?.ToString(), I(message, "checked"), I(message, "total"))), cancel);
+            // Paths identify installations even when Steam and Non-Steam names match.
+            Game? Installation(JsonObject row) => targets.FirstOrDefault(g =>
+                string.Equals(g.Location, row["game"]?.ToString(), StringComparison.OrdinalIgnoreCase));
+            var ready = Objects(checkedFiles?["rows"]).Select(r =>
+                (Game: Installation(r), Detail: r["detail"]?.ToString() ?? ""))
+                .Where(r => r.Game is not null).Select(r => (r.Game!, r.Detail)).ToList();
+            var skipped = Objects(checkedFiles?["blocked"]).Select(r =>
+                new ReviewBlock(Installation(r), r["name"]?.ToString() ?? "", r["reason"]?.ToString() ?? "")).ToList();
+            return new OperationReview(operation, checkedFiles?["token"]?.ToString() ?? "", ready, skipped);
         }
         var engineOperation = operation switch { "install" => "install", "uninstall" => "uninstall", _ => "reset" };
         var settings = new JsonObject
         {
             ["runtime_provider"] = Settings.RuntimeProvider,
+            ["manage_dlss_files"] = Settings.ManageDlssFiles,
             ["nr_runtime"] = Settings.NrRuntime,
             ["nr_strength"] = Math.Round(tuning.NrStrength, 1),
             ["sharpening_strength"] = Math.Round(tuning.SharpeningStrength, 1),
@@ -269,9 +278,11 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             message["checked"] is JsonValue c && c.TryGetValue<int>(out var done) ? done : 0,
             message["total"] is JsonValue n && n.TryGetValue<int>(out var all) ? all : 0)), cancel);
 
-        Game? Match(string? name) => targets.FirstOrDefault(g => g.Name == name);
+        Game? Match(string? name, string? path = null) => path is not null
+            ? targets.FirstOrDefault(g => string.Equals(g.Location, path, StringComparison.OrdinalIgnoreCase))
+            : targets.FirstOrDefault(g => g.Name == name);
         var readyRows = (result?["rows"] as JsonArray ?? []).OfType<JsonObject>()
-            .Select(r => (Game: Match(r["name"]?.ToString()), Detail: r["detail"]?.ToString() ?? ""))
+            .Select(r => (Game: Match(r["name"]?.ToString(), r["game"]?.ToString()), Detail: r["detail"]?.ToString() ?? ""))
             .Where(r => r.Game is not null).Select(r => (r.Game!, r.Detail)).ToList();
         var blocked = (result?["blocked"] as JsonArray ?? []).OfType<JsonObject>()
             .Select(b => new ReviewBlock(Match(b["name"]?.ToString()), b["name"]?.ToString() ?? "", b["reason"]?.ToString() ?? "")).ToList();
@@ -283,12 +294,18 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
     public async Task<int> ExecuteAsync(OperationReview review, IProgress<OperationStep> progress, CancellationToken cancel = default)
     {
         var games = review.Ready.Select(r => r.Game).ToList();
-        if (review.Token == "update-dlss")
+        if (review.Operation == "update-dlss")
         {
             if (games.Count > 0) progress.Report(new OperationStep(0, games.Count, games[0], "Updating DLSS files…", 0.1));
-            var rows = new JsonArray(games.Where(g => g.EngineRow is not null).Select(g => (JsonNode)g.EngineRow!.DeepClone()).ToArray());
-            var result = await CallAsync("update_dlss", new JsonObject { ["rows"] = rows }, cancel: cancel);
-            return result?["updated_games"]?.GetValue<int>() ?? 0;
+            var result = await CallAsync("update_dlss", new { token = review.Token }, message =>
+            {
+                var game = games.FirstOrDefault(g => g.Name == message["game"]?.ToString()) ?? games.FirstOrDefault();
+                if (game is not null) progress.Report(new OperationStep(Math.Max(0, I(message, "current") - 1),
+                    games.Count, game, message["label"]?.ToString() ?? "Updating DLSS files…"));
+            }, cancel);
+            var count = I(result, "updated_games");
+            if (count == 0) throw new EngineException("No native DLSS files changed. Review the update again to check the file versions.");
+            return count;
         }
 
         void Report(JsonObject message)

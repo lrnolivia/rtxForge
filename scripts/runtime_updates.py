@@ -219,11 +219,15 @@ def prepare(config, snapshot, selected):
     return plans
 
 
-def apply(config, plans):
+def apply(config, plans, *, state_paths=None):
     t.need(plans, 'Selected runtimes already match the source')
     engine = engine_bridge.module(config)
     root = storage(config) / 'runtime-transactions'
     root.mkdir(parents=True, exist_ok=True)
+    states = [t.safe(path) for path in state_paths] if state_paths is not None else [root / uuid.uuid4().hex for _ in plans]
+    t.need(len(states) == len(plans) and len(set(states)) == len(states), 'Invalid runtime recovery selection')
+    for state in states:
+        t.need(state.parent == root and not state.exists(), 'Invalid runtime recovery path')
     # Fail preflight for every target before the first game is changed.
     for plan in plans:
         t.check_plan(plan)
@@ -231,7 +235,7 @@ def apply(config, plans):
         t.need(shutil.disk_usage(plan['game']).free > required + 64 * 1024 * 1024,
                'Insufficient target space: ' + plan['game'])
     completed = []
-    for plan in plans:
+    for plan, state in zip(plans, states):
         t.need(not engine._running_processes_under_root(Path(plan['game'])), 'Close the selected game before updating')
         # Recheck ownership and eligibility at the write boundary.
         found = discovery.inspect_game(discovery.Game('', plan['name'], plan['game'], 'Folder'))
@@ -241,7 +245,6 @@ def apply(config, plans):
             t.need(path.name.casefold() in COMPONENTS and not _private(Path(change['path'])), 'Unsupported runtime target')
             t.need(change['before'] is not None, 'Runtime updates only replace existing DLLs')
             t.need(not _owned(engine, Path(plan['game']), path), 'Runtime ownership changed; scan again')
-        state = root / uuid.uuid4().hex
         ui.progress('Updating '+plan['name'])
         try:
             t.apply_transaction(plan, state)

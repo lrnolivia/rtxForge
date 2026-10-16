@@ -404,6 +404,7 @@ def execute(review):
                     if review['operation']=='reset':names={p.name for p in g.target_dir.iterdir() if p.name.lower()=='optiscaler.ini'}
                     else:names.add('OptiScaler')
                     paths=[g.target_dir/name for name in names]+[e.state_dir_for(g.target_dir),g.target_dir/cross_os.MARKER,g.target_dir/cross_os.SHARED]
+                    paths.extend(item.get('extra_checkpoint_paths', []))
                     if review['operation']!='reset':
                         paths.extend([e.STATE_ROOT/'steam-config-backups',e._steam_transaction_root(),prefix_state(e,g)])
                         account=e.choose_steam_user_config([g],assume_yes=True)
@@ -414,6 +415,8 @@ def execute(review):
                             if registry:paths.append(Path(registry))
                     report('Backing up your current files',0.15)
                     checkpoint=session.capture(paths,label=g.name)
+                if item.get('before_game'):
+                    item['before_game']()
                 if item.get('adopt'):
                     report('Adapting the install for '+OS_NAMES[cross_os.THIS_OS],0.3)
                     adopt(e,g,item['adopt'])

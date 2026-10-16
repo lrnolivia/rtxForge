@@ -109,6 +109,10 @@ public sealed partial class GameModeView
         Grid.SetColumn(viewSurface, 1);
         subbar.Children.Add(viewSurface);
         var selection = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(4), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+        selection.Children.Add(ui.Button(Glyph("", "Rescan"), () => _ = RefreshAsync(), GmKind.Quiet, 0.78,
+            enabled: !shell.Busy, minHeight: t.Compact ? 40 : 48).With(b => Key(b, "lib-rescan")));
+        selection.Children.Add(ui.Button(ui.Icon("", 0.85), OpenLibraryOptions, GmKind.Quiet, 0.78,
+            minHeight: t.Compact ? 40 : 48, name: "Library options").With(b => Key(b, "lib-options")));
         if (selecting)
         {
             selection.Children.Add(ui.Button("Select all", () => { foreach (var g in games.Where(g => !g.Blocked)) selectedIds.Add(g.Id); Render(keepFocus: true); }, GmKind.Quiet, 0.78).With(b => Key(b, "sel-all")));
@@ -141,10 +145,11 @@ public sealed partial class GameModeView
         var page = new StackPanel { Spacing = t.Px(24), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, t.Px(60), 0, 0) };
         page.Children.Add(ui.Icon("", 2.4, t.Muted).With(i => i.HorizontalAlignment = HorizontalAlignment.Center));
         page.Children.Add(ui.H2(shell.Games.Count == 0 ? "No games found" : "No games match this filter").With(h => h.HorizontalAlignment = HorizontalAlignment.Center));
-        page.Children.Add(ui.P(shell.Games.Count == 0 ? "Refresh the library, or add a game folder in Desktop UI." : "Choose a different filter to see more of your library.", 0.92)
+        page.Children.Add(ui.P(shell.Games.Count == 0 ? "Rescan your library, or add a game folder from Library options." : "Choose a different filter to see more of your library.", 0.92)
             .With(p => { p.TextAlignment = TextAlignment.Center; p.MaxWidth = t.Em(0.92) * 30; }));
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(16), HorizontalAlignment = HorizontalAlignment.Center };
-        actions.Children.Add(ui.Button("Refresh library", () => _ = RefreshAsync(), GmKind.Card, 0.92));
+        actions.Children.Add(ui.Button("Rescan library", () => _ = RefreshAsync(), GmKind.Card, 0.92));
+        actions.Children.Add(ui.Button("Library options", OpenLibraryOptions, GmKind.Card, 0.92));
         actions.Children.Add(ui.Button("Filter", OpenFilter, GmKind.Card, 0.92));
         page.Children.Add(actions);
         return page;

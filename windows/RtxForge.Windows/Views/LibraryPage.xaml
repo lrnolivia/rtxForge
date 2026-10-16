@@ -310,12 +310,17 @@
                     <AppBarButton x:Name="SelectAllButton" Label="Select all" Click="OnSelectAll" ToolTipService.ToolTip="Select every game in this view">
                         <AppBarButton.Icon><FontIcon x:Name="SelectAllIcon" Glyph="&#xE8B3;" /></AppBarButton.Icon>
                     </AppBarButton>
-                    <AppBarButton Label="Refresh" Click="OnRefreshLibrary" ToolTipService.ToolTip="Refresh Library">
+                    <AppBarButton Label="Rescan" Click="OnRefreshLibrary" ToolTipService.ToolTip="Rescan all library folders (F5)">
                         <AppBarButton.Icon><FontIcon Glyph="&#xE72C;" /></AppBarButton.Icon>
                     </AppBarButton>
                     <AppBarButton Label="Add folder" Click="OnAddGameFolder" ToolTipService.ToolTip="Add Game Folder">
                         <AppBarButton.Icon><FontIcon Glyph="&#xE8F4;" /></AppBarButton.Icon>
                     </AppBarButton>
+                    <CommandBar.SecondaryCommands>
+                        <AppBarButton Label="Add library folder" Click="OnAddLibraryFolder" />
+                        <AppBarButton x:Name="RemoveSelectedButton" Label="Remove selected entries" Click="OnRemoveSelected" IsEnabled="False" />
+                        <AppBarButton Label="Removed games" Click="OnRemovedGames" />
+                    </CommandBar.SecondaryCommands>
                 </CommandBar>
             </Grid>
 

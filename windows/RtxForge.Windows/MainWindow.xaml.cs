@@ -60,6 +60,10 @@ public sealed partial class MainWindow : Window
         Nav.SelectedItem = Nav.MenuItems[0];
         Closed += (_, _) => (Service as IDisposable)?.Dispose();
         InitializeGameMode();
+        RootGrid.KeyDown += (_, e) =>
+        {
+            if (e.Key == global::Windows.System.VirtualKey.F5) { e.Handled = true; _ = RescanLibraryAsync(); }
+        };
         _ = LoadAsync();
         if (App.EngineProblem is { } problem)
             DispatcherQueue.TryEnqueue(() => ShowToast("Preview mode · " + problem));
@@ -105,6 +109,15 @@ public sealed partial class MainWindow : Window
     public void NotifyGamesChanged() => GamesChanged?.Invoke();
 
     public async Task ScanAsync()
+    {
+        if (libraryScan is { IsCompleted: false }) { await libraryScan; return; }
+        libraryScan = ScanLibraryCoreAsync();
+        await libraryScan;
+    }
+
+    Task? libraryScan;
+
+    async Task ScanLibraryCoreAsync()
     {
         Games = await Service.ScanAsync();
         GamesChanged?.Invoke();

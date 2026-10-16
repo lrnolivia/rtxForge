@@ -264,7 +264,8 @@ def media(params):
     for index, row in enumerate(rows):
         ui.progress(f"Updating artwork · {row.get('name', '')}", current=index + 1, total=len(rows))
         try:
-            data = library.enrich(row, bool(params.get("refresh")))
+            metadata = dict(row, appid=row['metadata_appid']) if row.get('metadata_appid') else row
+            data = library.enrich(metadata, bool(params.get("refresh")))
         except Exception as error:  # one game's artwork never stops the rest
             data = {"media_note": str(error)}
         keep = ("poster", "capsule", "hero", "art_credit", "capsule_credit", "hero_credit", "description",

@@ -139,6 +139,7 @@ public sealed partial class LibraryPage : Page
 
     void ApplySettings()
     {
+        (Settings.LibraryFilter switch { "available" => FilterAvailable, "installed" => FilterInstalled, _ => FilterAll }).IsChecked = true;
         ModeNrOnly.IsEnabled = shell.NrOnlyAvailable;
         SetMode(shell.Mode);
         (Settings.LibraryView switch { "capsules" => ViewCapsules, "list" => ViewList, _ => ViewPosters }).IsChecked = true;
@@ -308,6 +309,8 @@ public sealed partial class LibraryPage : Page
         menu.Items.Add(new MenuFlyoutSeparator());
         Add("Open Folder", "", () => Process.Start(new ProcessStartInfo("explorer.exe", $"\"{game.Location}\"") { UseShellExecute = true }),
             !shell.Service.IsPreview && Directory.Exists(game.Location));
+        menu.Items.Add(new MenuFlyoutSeparator());
+        Add("Remove from library", "", () => _ = shell.ConfirmRemoveLibraryEntriesAsync([game]), !shell.Busy);
         return menu;
     }
 
@@ -370,6 +373,7 @@ public sealed partial class LibraryPage : Page
         shell.SyncCompactDashboard(shell.Mode, ModeNrOnly.IsEnabled, InstallText.Text);
         shell.SyncCompactPresets(count);
         SelectAllButton.Label = count > 0 ? "Clear" : "Select all";
+        RemoveSelectedButton.IsEnabled = count > 0 && !shell.Busy;
         SelectAllIcon.Glyph = count > 0 ? "" : "";
         ToolTipService.SetToolTip(SelectAllButton, count > 0 ? "Clear selection" : "Select every game in this view");
         // Once anything is selected, every card shows its check.
@@ -409,18 +413,10 @@ public sealed partial class LibraryPage : Page
 
     // ---------- Library commands ----------
 
-    void OnRefreshLibrary(object sender, RoutedEventArgs e) => _ = shell.ScanAsync();
+    void OnRefreshLibrary(object sender, RoutedEventArgs e) => _ = shell.RescanLibraryAsync();
+    void OnAddLibraryFolder(object sender, RoutedEventArgs e) => _ = shell.AddLibraryFolderAsync(collection: true);
+    void OnRemoveSelected(object sender, RoutedEventArgs e) => _ = shell.ConfirmRemoveLibraryEntriesAsync(SelectedGames());
+    void OnRemovedGames(object sender, RoutedEventArgs e) => _ = shell.ShowRemovedLibraryEntriesAsync();
 
-    async void OnAddGameFolder(object sender, RoutedEventArgs e)
-    {
-        var picker = new global::Windows.Storage.Pickers.FolderPicker();
-        picker.FileTypeFilter.Add("*");
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, shell.Handle);
-        var folder = await picker.PickSingleFolderAsync();
-        if (folder is null) return;
-        if (!Settings.GameFolders.Contains(folder.Path)) Settings.GameFolders.Add(folder.Path);
-        Settings.Save();
-        shell.ShowToast($"Added {folder.Path}");
-        await shell.ScanAsync();
-    }
+    void OnAddGameFolder(object sender, RoutedEventArgs e) => _ = shell.AddLibraryFolderAsync();
 }

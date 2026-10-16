@@ -371,6 +371,8 @@ public sealed partial class GameModeView
                     ui.PreferenceRow("Location", null, ui.Text(g.Location, 0.85, t.Muted).With(x => { x.TextWrapping = TextWrapping.Wrap; x.TextAlignment = TextAlignment.Right; x.MaxWidth = t.Px(560); })),
                     ui.PreferenceRow("Compatibility", null, ui.Text(g.Blocked ? g.BlockedReason ?? "Unsupported" : "Supported", 0.85, t.Muted)),
                     ui.PreferenceRow("Metadata Source", null, ui.Text(g.MetadataSource ?? g.Library, 0.85, t.Muted)),
+                    ui.RowButton("Remove from library", null, () => ConfirmRemoveGames([g]), danger: true,
+                        description: "Hide this entry. Game files and recovery backups are kept.", enabled: !shell.Busy),
                 ]));
                 break;
         }

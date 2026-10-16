@@ -166,14 +166,10 @@ public sealed partial class MainWindow : Window
     /// Install / uninstall / update-dlss / reset / apply through the Linux
     /// modal flow: presets (install) → review → progress → done.
     /// </summary>
-    public async Task LaunchAction(string operation, IReadOnlyList<Game>? targets, Tuning? values = null)
+    public async Task LaunchAction(string operation, IReadOnlyList<Game> targets, Tuning? values = null)
     {
         if (Busy) { ShowToast("Another operation is running."); return; }
-        targets ??= operation switch
-        {
-            "uninstall" => Games.Where(g => g.Installed).ToList(),
-            _ => Games.Where(g => !g.Blocked).ToList(),
-        };
+        ArgumentNullException.ThrowIfNull(targets);
         if (targets.Count == 0) { ShowToast("No eligible games selected."); return; }
 
         if (operation == "install" && values is null)

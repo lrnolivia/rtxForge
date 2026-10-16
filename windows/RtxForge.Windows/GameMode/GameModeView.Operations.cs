@@ -16,10 +16,10 @@ namespace RtxForge.Windows.GameMode;
 /// </summary>
 public sealed partial class GameModeView
 {
-    async Task RunOperationAsync(string operation, IReadOnlyList<Game>? targets, Tuning? values = null)
+    async Task RunOperationAsync(string operation, IReadOnlyList<Game> targets, Tuning? values = null)
     {
         if (shell.Busy) { Toast("Another operation is running."); return; }
-        targets ??= operation == "uninstall" ? shell.Games.Where(g => g.Installed).ToList() : shell.Games.Where(g => !g.Blocked).ToList();
+        ArgumentNullException.ThrowIfNull(targets);
         if (targets.Count == 0) { Toast("No eligible games."); return; }
         if (operation == "install" && values is null)
         {

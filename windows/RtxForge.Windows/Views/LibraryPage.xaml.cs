@@ -52,21 +52,20 @@ public sealed partial class LibraryPage : Page
         // to learn whether the press started on a selection check.
         Library.AddHandler(PointerPressedEvent, new PointerEventHandler((_, e) => pressedOnCheck = IsOnCheck(e.GetCurrentPoint(null).Position)), true);
 
-        shell.GamesChanged += ShowGames;
-        shell.QueryChanged += ShowGames;
-        shell.SettingsChanged += ApplySettings;
-        // The titlebar's compact dashboard mirrors this page's mode selector and library actions.
-        shell.CompactModeChosen += mode => { if (mode != shell.Mode) SetMode(mode); };
-        shell.CompactActionInvoked += action =>
-        {
-            if (action == "install") OnInstallFeatures(this, new RoutedEventArgs());
-            else if (action == "uninstall") OnRestoreOriginal(this, new RoutedEventArgs());
-            else if (action == "apply-selected") _ = ApplyPresetsAsync(SelectedGames());
-            else OnUpdateDlss(this, new RoutedEventArgs());
-        };
-        shell.PresetModeChanged += () => { selectedIds.Clear(); ShowGames(); UpdateDashboard(); };
         ShowGames();
     }
+
+    void OnCompactModeChosen(string mode) { if (mode != shell.Mode) SetMode(mode); }
+
+    void OnCompactActionInvoked(string action)
+    {
+        if (action == "install") OnInstallFeatures(this, new RoutedEventArgs());
+        else if (action == "uninstall") OnRestoreOriginal(this, new RoutedEventArgs());
+        else if (action == "apply-selected") _ = ApplyPresetsAsync(SelectedGames());
+        else OnUpdateDlss(this, new RoutedEventArgs());
+    }
+
+    void OnPresetModeChanged() { selectedIds.Clear(); ShowGames(); UpdateDashboard(); }
 
     /// <summary>Presets mode: the library presets for these games, through the usual review.</summary>
     async Task ApplyPresetsAsync(IReadOnlyList<Game> games)
@@ -80,6 +79,15 @@ public sealed partial class LibraryPage : Page
     {
         base.OnNavigatedTo(e);
         onScreen = true;
+        // Only the active page may handle titlebar actions. Old pages can have a different selection.
+        shell.GamesChanged += ShowGames;
+        shell.QueryChanged += ShowGames;
+        shell.SettingsChanged += ApplySettings;
+        shell.CompactModeChosen += OnCompactModeChosen;
+        shell.CompactActionInvoked += OnCompactActionInvoked;
+        shell.PresetModeChanged += OnPresetModeChanged;
+        SearchBox.Text = shell.Query;
+        ApplySettings();
         ShowGames();
         UpdateDashboard();
     }
@@ -88,6 +96,12 @@ public sealed partial class LibraryPage : Page
     {
         base.OnNavigatedFrom(e);
         onScreen = false;
+        shell.GamesChanged -= ShowGames;
+        shell.QueryChanged -= ShowGames;
+        shell.SettingsChanged -= ApplySettings;
+        shell.CompactModeChosen -= OnCompactModeChosen;
+        shell.CompactActionInvoked -= OnCompactActionInvoked;
+        shell.PresetModeChanged -= OnPresetModeChanged;
         shell.ShowCompactDashboard(false);
         shell.ShowBrand(true);
         // Presets mode belongs to this page; Edit Presets or any other page ends it.
@@ -148,15 +162,7 @@ public sealed partial class LibraryPage : Page
                 : hardware.Gpu + " · " + (hardware.Ready ? "Hardware check passed" : "Install unavailable — see Settings");
 
         var scale = Settings.ArtScale / 100.0;
-        var items = games
-            .Where(g => Settings.LibraryFilter switch
-            {
-                "available" => !g.Installed && !g.Blocked,
-                "installed" => g.Installed,
-                _ => true,
-            })
-            .Where(g => shell.Query.Length == 0 || g.Name.Contains(shell.Query, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase)
+        var items = LibraryScope.Filter(games, Settings.LibraryFilter, shell.Query)
             .Select(g => new GameItem(g, Settings, actions, selectedIds.Count > 0, selectedIds.Contains(g.Id), density) { PresetMode = shell.PresetSelecting })
             .ToList();
         for (var i = 0; i < items.Count; i++)
@@ -371,15 +377,11 @@ public sealed partial class LibraryPage : Page
             foreach (var item in visible) item.IsSelecting = selectedIds.Count > 0;
     }
 
-    void OnInstallFeatures(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("install", Selection());
-    void OnRestoreOriginal(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("uninstall", Selection()?.Where(g => g.Installed).ToList());
-    void OnUpdateDlss(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("update-dlss", Selection());
+    void OnInstallFeatures(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("install", Selection().Where(g => !g.Blocked).ToList());
+    void OnRestoreOriginal(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("uninstall", Selection().Where(g => g.Installed).ToList());
+    void OnUpdateDlss(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("update-dlss", Selection().Where(g => !g.Blocked).ToList());
 
-    List<Game>? Selection()
-    {
-        var selected = SelectedGames();
-        return selected.Count > 0 ? selected : null;
-    }
+    List<Game> Selection() => LibraryScope.Targets(shell.Games, Settings.LibraryFilter, shell.Query, selectedIds);
 
     // ---------- Features mode ----------
 

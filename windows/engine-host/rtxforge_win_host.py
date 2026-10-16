@@ -374,6 +374,9 @@ def prepare(params):
     review = service.prepare(params["rows"], params["mode"], params["operation"],
                              visual_settings=params.get("settings"), save_defaults=params.get("save_defaults", False))
     if review.get("kind") == "engine":
+        import dlss_updates
+        settings = library_media.load_settings(service.config) | (params.get("settings") or {})
+        dlss_updates.attach_install(service.config, review, enabled=settings.get('manage_dlss_files', True))
         review["cancel_event"] = threading.Event()
     token = uuid.uuid4().hex
     reviews[token] = review

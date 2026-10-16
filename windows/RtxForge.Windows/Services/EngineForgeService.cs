@@ -259,6 +259,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         var settings = new JsonObject
         {
             ["runtime_provider"] = Settings.RuntimeProvider,
+            ["manage_dlss_files"] = Settings.ManageDlssFiles,
             ["nr_runtime"] = Settings.NrRuntime,
             ["nr_strength"] = Math.Round(tuning.NrStrength, 1),
             ["sharpening_strength"] = Math.Round(tuning.SharpeningStrength, 1),
@@ -277,9 +278,11 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             message["checked"] is JsonValue c && c.TryGetValue<int>(out var done) ? done : 0,
             message["total"] is JsonValue n && n.TryGetValue<int>(out var all) ? all : 0)), cancel);
 
-        Game? Match(string? name) => targets.FirstOrDefault(g => g.Name == name);
+        Game? Match(string? name, string? path = null) => path is not null
+            ? targets.FirstOrDefault(g => string.Equals(g.Location, path, StringComparison.OrdinalIgnoreCase))
+            : targets.FirstOrDefault(g => g.Name == name);
         var readyRows = (result?["rows"] as JsonArray ?? []).OfType<JsonObject>()
-            .Select(r => (Game: Match(r["name"]?.ToString()), Detail: r["detail"]?.ToString() ?? ""))
+            .Select(r => (Game: Match(r["name"]?.ToString(), r["game"]?.ToString()), Detail: r["detail"]?.ToString() ?? ""))
             .Where(r => r.Game is not null).Select(r => (r.Game!, r.Detail)).ToList();
         var blocked = (result?["blocked"] as JsonArray ?? []).OfType<JsonObject>()
             .Select(b => new ReviewBlock(Match(b["name"]?.ToString()), b["name"]?.ToString() ?? "", b["reason"]?.ToString() ?? "")).ToList();

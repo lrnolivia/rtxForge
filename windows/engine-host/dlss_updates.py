@@ -1,5 +1,6 @@
 """Native DLSS review/execute adapter shared by both Windows interfaces."""
 from pathlib import Path
+import uuid
 import runtime_updates as runtime
 import transactions as t
 import ui
@@ -62,3 +63,27 @@ def execute(config, review):
         except Exception as exc:
             raise t.Refusal(f'{exc} {len(records)} game(s) completed; their backups are available in DLSS Files.') from exc
     return {'updated_games': len(records), 'records': records}
+
+
+def attach_install(config, review, enabled=True):
+    """Include native updates in an install's existing review and recovery session."""
+    if not enabled or review.get('operation') not in ('install', 'repair') or not review.get('plans'):
+        return
+    updates = prepare(config, [item['row'] for item in review['plans']])
+    plans = {plan['game']: plan for plan in updates['plans']}
+    details = {row['game']: row['detail'] for row in updates['rows']}
+    skipped = {row['game']: row['reason'] for row in updates['blocked']}
+    for item, row in zip(review['plans'], review['rows']):
+        game = str(Path(item['row']['game']).resolve())
+        row['game'] = game
+        native = plans.get(game)
+        if native is None:
+            row['detail'] += '\nNative DLSS: ' + skipped.get(game, 'No file changes needed.')
+            continue
+        state = runtime.storage(config) / 'runtime-transactions' / uuid.uuid4().hex
+        # The feature operation's per-game checkpoint owns both the native
+        # files and this new recovery record. Failure/cancel/crash recovers
+        # them together; successful updates retain their separate DLSS backups.
+        item['extra_checkpoint_paths'] = [Path(game) / change['path'] for change in native['changes']] + [state]
+        item['before_game'] = lambda plan=native, state=state: runtime.apply(config, [plan], state_paths=[state])
+        row['detail'] += '\nNative DLSS updates:\n' + details[game]

@@ -1,5 +1,7 @@
 """DLSS review, exact execution and recovery against temporary games only."""
 import struct
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -11,6 +13,7 @@ sys.path[:0] = [str(ROOT / 'scripts'), str(ROOT / 'windows/engine-host')]
 import dlss_updates as updates
 import runtime_updates as runtime
 import transactions as t
+import operation_session
 
 
 def pe(major):
@@ -133,6 +136,71 @@ class DlssUpdatesTest(unittest.TestCase):
         review = updates.prepare({}, [game])
         self.assertIn('Anti-cheat', review['blocked'][0]['reason'])
         self.assertFalse(review['plans'])
+
+    def install_review(self, games, operation='install'):
+        return {'operation': operation, 'plans': [{'row': game} for game in games],
+                'rows': [{'name': game['name'], 'detail': 'Feature installation'} for game in games]}
+
+    def test_normal_install_and_repair_honor_the_native_update_setting(self):
+        game, dll = self.game('Mafia')
+        with patch.object(updates, 'prepare', side_effect=AssertionError('Unexpected update lookup')):
+            updates.attach_install({}, self.install_review([game]), enabled=False)
+            updates.attach_install({}, self.install_review([game], 'reset'))
+            updates.attach_install({}, self.install_review([game], 'uninstall'))
+            updates.attach_install({}, self.install_review([]))
+        review = self.install_review([game], 'repair')
+        updates.attach_install({}, review)
+        self.assertIn('Native DLSS updates', review['rows'][0]['detail'])
+        self.assertEqual(dll.read_bytes(), pe(1))
+        review['plans'][0]['before_game']()
+        self.assertEqual(dll.read_bytes(), pe(2))
+        self.assertEqual(len(runtime.game_recoveries({}, game['game'])), 1)
+
+    @staticmethod
+    def copy_for_session(args, **kwargs):
+        src, dst = map(Path, args[-2:])
+        if src.is_dir():
+            shutil.copytree(src, dst, copy_function=shutil.copy2)
+        else:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+        return subprocess.CompletedProcess(args, 0)
+
+    def test_install_failure_cancel_and_crash_restore_native_files_and_records(self):
+        for action in ('failure', 'cancel', 'crash'):
+            with self.subTest(action=action), patch.object(operation_session.subprocess, 'run', self.copy_for_session):
+                game, dll = self.game(action)
+                review = self.install_review([game])
+                updates.attach_install({}, review)
+                item = review['plans'][0]
+                session = operation_session.Session(self.state / 'desktop-operations')
+                checkpoint = session.capture(item['extra_checkpoint_paths'], label=game['name'])
+                item['before_game']()
+                self.assertEqual(dll.read_bytes(), pe(2))
+                self.assertTrue(runtime.game_recoveries({}, game['game']))
+                if action == 'crash':
+                    operation_session.Session.load(session.root).recover()
+                else:
+                    session.seal(checkpoint)
+                    if action == 'failure':
+                        session.undo(checkpoint)
+                    else:
+                        session.rollback()
+                self.assertEqual(dll.read_bytes(), pe(1))
+                self.assertFalse(runtime.game_recoveries({}, game['game']))
+                operation_session.LIVE.discard(str(session.root))
+
+    def test_reserved_recovery_paths_are_scoped_and_each_game_has_its_own_record(self):
+        first, dll = self.game('Mafia')
+        second, other = self.game('Halo')
+        plans = updates.prepare({}, [first, second])['plans']
+        with self.assertRaisesRegex(t.Refusal, 'recovery path'):
+            runtime.apply({}, plans, state_paths=[self.root / 'escape', self.state / 'runtime-transactions/valid'])
+        self.assertEqual(dll.read_bytes(), pe(1))
+        records = runtime.apply({}, plans)
+        self.assertEqual(len(set(records)), 2)
+        self.assertEqual(dll.read_bytes(), pe(2))
+        self.assertEqual(other.read_bytes(), pe(2))
 
 
 if __name__ == '__main__':

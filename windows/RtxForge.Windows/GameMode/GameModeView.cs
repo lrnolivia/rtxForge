@@ -101,7 +101,12 @@ public sealed partial class GameModeView : UserControl
 
     void OnGamesChanged()
     {
-        if (detailsGame is { } current) detailsGame = shell.Games.FirstOrDefault(g => g.Id == current.Id) ?? current;
+        selectedIds.IntersectWith(shell.Games.Select(g => g.Id));
+        if (detailsGame is { } current)
+        {
+            detailsGame = shell.Games.FirstOrDefault(g => g.Id == current.Id);
+            if (detailsGame is null) page = "library";
+        }
         if (modals.Count == 0) Render(keepFocus: true);
     }
 
@@ -507,7 +512,8 @@ public sealed partial class GameModeView : UserControl
         {
             ui.RowButton("Library", null, () => { CloseModal(); Open("library"); }),
             ui.RowButton("Packages", null, () => _ = ShowPackagesAsync()),
-            ui.RowButton("Refresh library", null, () => { CloseModal(); _ = RefreshAsync(); }, glyph: ""),
+            ui.RowButton("Rescan library", "F5", () => { CloseModal(); _ = RefreshAsync(); }, glyph: ""),
+            ui.RowButton("Library options", null, () => { CloseModal(); OpenLibraryOptions(); }),
             ui.RowButton("Desktop UI", null, () => { CloseModal(); ExitRequested?.Invoke(); }),
             ui.RowButton("Exit App", null, ConfirmExit, danger: true),
         };
@@ -524,8 +530,8 @@ public sealed partial class GameModeView : UserControl
 
     async Task RefreshAsync()
     {
-        Toast("Refreshing your library…");
-        try { await shell.ScanAsync(); Toast("Library refreshed."); }
-        catch (InvalidOperationException error) { Toast("Could not refresh: " + error.Message); }
+        Toast("Rescanning your library…");
+        if (await shell.RescanLibraryAsync()) Toast($"Library rescanned · {shell.Games.Count} games.");
+        else Toast("Could not rescan. Check the folder is available, then try again.");
     }
 }

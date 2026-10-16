@@ -60,7 +60,23 @@ if (!checkedIds.SequenceEqual(["3321460"])) throw new Exception("Restore visited
 tests++;
 EqualIds("Restore preserves other installs", games.Where(g => g.Installed), originallyInstalled.Append("1449110").ToArray());
 
-Console.WriteLine($"PASS: {tests} operation scope checks (real preview review/execute; no game writes).");
+// Removing an entry is path-specific, reversible and independent of game files.
+var librarySettings = new ForgeSettings();
+var sameName = new[]
+{
+    new Game { Id = "live", Name = "PRAGMATA", Location = @"G:\SteamLibrary\steamapps\common\PRAGMATA" },
+    new Game { Id = "pinned", Name = "PRAGMATA", Location = @"G:\SteamLibrary\PinnedBuilds\PRAGMATA-22357085" },
+};
+LibraryLocations.Remove(librarySettings, [sameName[1]]);
+EqualIds("Remove affects only the selected installation", LibraryLocations.Visible(sameName, librarySettings.RemovedGames), "live");
+var reloaded = librarySettings.Clone();
+EqualIds("Removed entry survives settings reload/rescan", LibraryLocations.Visible(sameName, reloaded.RemovedGames), "live");
+LibraryLocations.Show(reloaded, sameName[1].Location.ToLowerInvariant());
+EqualIds("Show again restores the same installation", LibraryLocations.Visible(sameName, reloaded.RemovedGames), "live", "pinned");
+LibraryLocations.Remove(librarySettings, [sameName[1], sameName[1]]);
+if (librarySettings.RemovedGames.Count != 1) throw new Exception("Duplicate removal records");
+tests++;
+Console.WriteLine($"PASS: {tests} scope and library visibility checks (no game writes).");
 
 sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
 {

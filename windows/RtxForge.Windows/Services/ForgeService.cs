@@ -129,7 +129,7 @@ public sealed class PreviewForgeService : IForgeService
     public async Task<IReadOnlyList<Game>> ScanAsync(CancellationToken cancel = default)
     {
         await Task.Delay(350, cancel);
-        return games;
+        return LibraryLocations.Visible(games, Settings.RemovedGames);
     }
 
     public Task<HardwareInfo> DetectHardwareAsync(CancellationToken cancel = default) =>

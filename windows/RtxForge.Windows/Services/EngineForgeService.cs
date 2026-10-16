@@ -180,9 +180,9 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
 
     public async Task<IReadOnlyList<Game>> ScanAsync(CancellationToken cancel = default)
     {
-        var rows = await CallAsync("scan", new { folders = Settings.GameFolders }, cancel: cancel) as JsonArray ?? [];
+        var rows = await CallAsync("scan", new { folders = Settings.GameFolders, library_folders = Settings.LibraryFolders }, cancel: cancel) as JsonArray ?? [];
         var art = new SteamArtwork(Settings.OnlineArt);
-        return rows.OfType<JsonObject>().Select(row => ToGame(row, art)).ToList();
+        return LibraryLocations.Visible(rows.OfType<JsonObject>().Select(row => ToGame(row, art)), Settings.RemovedGames);
     }
 
     static Game ToGame(JsonObject row, SteamArtwork art)
@@ -191,7 +191,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         double? D(string key) => row[key] is JsonValue v && v.TryGetValue<double>(out var d) ? d : null;
         string? Art(string role) => row["art"] is JsonObject found && found[role] is JsonValue v && v.TryGetValue<string>(out var p) && File.Exists(p) ? p : null;
         var source = S("source") ?? "Folder";
-        var appid = S("appid");
+        var appid = S("appid") ?? S("metadata_appid");
         var multiplier = row["mfg_multiplier"] switch
         {
             JsonValue v when v.TryGetValue<int>(out var n) => n.ToString(),

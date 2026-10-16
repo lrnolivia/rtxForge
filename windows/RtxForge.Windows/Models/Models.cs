@@ -183,6 +183,8 @@ public sealed class ForgeSettings
     [JsonPropertyName("sharpening_strength")] public double SharpeningStrength { get; set; } = 0.5;
     [JsonPropertyName("mfg_multiplier")] public string MfgMultiplier { get; set; } = "auto";
     [JsonPropertyName("game_folders")] public List<string> GameFolders { get; set; } = [];
+    [JsonPropertyName("library_folders")] public List<string> LibraryFolders { get; set; } = [];
+    [JsonPropertyName("removed_games")] public List<string> RemovedGames { get; set; } = [];
     [JsonPropertyName("game_accents")] public Dictionary<string, string> GameAccents { get; set; } = [];
 
     // Gaming Mode (Linux couch shell; same keys and defaults as library_media.DEFAULTS).

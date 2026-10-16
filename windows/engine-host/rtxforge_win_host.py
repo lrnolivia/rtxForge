@@ -346,23 +346,15 @@ def hello(_params):
 
 
 def scan(params):
-    extra = [str(Path(p)) for p in params.get("folders", [])]
-    rows, seen = [], set()
-    for library in service.libraries():
-        for row in service.scan(library):
-            if row["game"] not in seen:
-                rows.append(row)
-                seen.add(row["game"])
-    for row in service.scan(None, extra):
-        if row["game"] not in seen:
-            rows.append(row)
-            seen.add(row["game"])
+    import library_scan
+    rows = library_scan.scan(service, params.get('folders', []), params.get('library_folders', []))
     # Linux LibraryMedia.steam_art: the signed-in account's custom grid
     # (Non-Steam games matched through shortcuts.vdf), then Steam's cache.
     media = library_media.LibraryMedia(service.config, dict(library_media.DEFAULTS))
     for row in rows:
         try:
-            row["art"] = media.steam_art(row)
+            art_row = dict(row, appid=row['metadata_appid']) if row.get('metadata_appid') else row
+            row["art"] = media.steam_art(art_row)
         except Exception:  # artwork is optional; never fail the scan for it
             traceback.print_exc()
     # Your chosen artwork over Steam's, and each game's saved notes (Linux details()).

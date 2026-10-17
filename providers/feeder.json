@@ -1,0 +1,100 @@
+{
+  "schema": 1,
+  "id": "feeder",
+  "name": "Feeder NR",
+  "version": "Feeder 1.19.0 / RenoDX 8.5.0-rc5",
+  "platform": "windows-x64-d3d11",
+  "distribution": "Import locally supplied runtime files; this app does not redistribute the third-party binary stack or NR model.",
+  "assets": {
+    "dxgi.dll": {
+      "sha256": "0cee63f9c9f13f3ac909c5b4903f4dbb4b719a7ab3b4f13b0deaf83c814b94f7",
+      "size": 5592064
+    },
+    "dlss5-feed.addon64": {
+      "sha256": "2b8c905012fd464ddf0554c6b178cba55030ec10eb917acdcee0e7a2376fe4dd",
+      "size": 343552
+    },
+    "renodx-dlss5.addon64": {
+      "sha256": "f0ed0bf424ac29c2c83212e259e89d3de5fb995317c34d1bd2c76bea157253cb",
+      "size": 3039744
+    },
+    "nvngx_dlss.dll": {
+      "sha256": "d00b5b0ab29c3ca101b70c3a5ecb3a01b7ef33766a3383a28a18623083e6123e",
+      "size": 58956912
+    },
+    "reshade-shaders/Shaders/DLSS5_Feed.fx": {
+      "sha256": "c4ba1610df8e1593faa7c203d6d0517058d3a8ecf2dfda18ca67849844391456",
+      "size": 52600
+    },
+    "reshade-shaders/Shaders/include/lumenite_ColorManagement.fxh": {
+      "sha256": "116d3c41cd48f7787a2ed87eefc65fb2d9083fc1ab609766a3fbcca3e62649a6",
+      "size": 7811
+    },
+    "reshade-shaders/Shaders/include/lumenite_Compute.fxh": {
+      "sha256": "736e3f39fc0c48a405c4d10b0d158502009db940e2673ff778e6b919d3c1a55f",
+      "size": 1843
+    },
+    "reshade-shaders/Shaders/include/lumenite_Helpers.fxh": {
+      "sha256": "8826d613944be27e14095982b20098fff6d45e91c7d4028473c2f5b784c80028",
+      "size": 3270
+    },
+    "reshade-shaders/Shaders/include/lumenite_Projections.fxh": {
+      "sha256": "709ec414649b74e573ca0f12a5ef25998d332238f7cab14a3d91053c8d388cab",
+      "size": 3523
+    },
+    "reshade-shaders/Shaders/lumenite_Kernel.fx": {
+      "sha256": "869821002c97ead3424740d747af1972f9869adeb75288166f5ffdfa56b6c8ce",
+      "size": 73022
+    },
+    "reshade-shaders/Shaders/ReShade.fxh": {
+      "sha256": "6dabfbbaf968c3871905d2ea17f96572ff7b1cec01310b5d0e5252b66b30174f",
+      "size": 4250
+    }
+  },
+  "models": {
+    "e67dee209320cdafe0e93e45675d7aa34323a53acc57a72b2e40a181581c989a": {
+      "version": "310.8.0.0",
+      "size": 165840496
+    },
+    "cdfa6c1ec784867182164c7836f324f087b5c9f374d0c9fe46f54999feabf3ed": {
+      "version": "310.9.16.0",
+      "size": 276162560
+    }
+  },
+  "sources": [
+    {
+      "name": "DLSS5-Feeder",
+      "version": "1.19.0",
+      "commit": "3c09eabcd138a68d144b6cc396a23e6b493eea4d",
+      "url": "https://github.com/jlrouzies-fr/DLSS5-Feeder/releases/tag/v1.19.0",
+      "license": "https://github.com/jlrouzies-fr/DLSS5-Feeder/blob/3c09eabcd138a68d144b6cc396a23e6b493eea4d/LICENSE"
+    },
+    {
+      "name": "RenoDX DLSS5",
+      "version": "8.5.0-rc5",
+      "url": "https://github.com/RankFTW/rhi-repo/releases/tag/renodx-dlss5-8.5.0-rc5",
+      "distribution": "User-supplied binary only; not bundled or downloaded by this provider."
+    },
+    {
+      "name": "ReShade",
+      "version": "6.8.0",
+      "url": "https://reshade.me/",
+      "license": "https://github.com/crosire/reshade/blob/v6.8.0/LICENSE.md"
+    },
+    {
+      "name": "LumeniteFX",
+      "commit": "f80e98d716ad72e12af6f7baa727bcfeb4be5094",
+      "url": "https://github.com/umar-afzaal/LumeniteFX/tree/f80e98d716ad72e12af6f7baa727bcfeb4be5094",
+      "license": "https://github.com/umar-afzaal/LumeniteFX/blob/f80e98d716ad72e12af6f7baa727bcfeb4be5094/LICENSE.md"
+    },
+    {
+      "name": "Production DLSS SR",
+      "url": "https://github.com/NVIDIA/DLSS/tree/310.9.16/lib/Windows_x86_64/rel"
+    },
+    {
+      "name": "Ada NR model compatibility",
+      "url": "https://github.com/clshortfuse/openNR",
+      "distribution": "Validated user-supplied model only."
+    }
+  ]
+}

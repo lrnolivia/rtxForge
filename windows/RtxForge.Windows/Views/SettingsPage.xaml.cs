@@ -12,7 +12,7 @@ namespace RtxForge.Windows.Views;
 /// </summary>
 public sealed partial class SettingsPage : Page
 {
-    static readonly string[] ProviderKeys = ["y4my", "dlss-unlocked", "custom", "skynizz"];
+    static readonly string[] ProviderKeys = ["y4my", "dlss-unlocked", "custom", "skynizz", "feeder"];
     static readonly string[] Modes = ["nr-only", "mfg-only", "nr-mfg"];
     static readonly string[] Views = ["posters", "capsules", "list"];
 
@@ -55,7 +55,7 @@ public sealed partial class SettingsPage : Page
         // ----- Graphics -----
         var graphics = new PreferencesGroup(null, "Restore original files before switching providers.");
         var (row, provider) = Prefs.ComboRow("Provider", "Package that supplies NR and MFG.",
-            ["y4my Multipass", "DLSS-Unlocked", "Custom package", "Skynizz NR + MFG bridge (preview)"], Math.Max(0, Array.IndexOf(ProviderKeys, Settings.RuntimeProvider)), "");
+            ["y4my Multipass", "DLSS-Unlocked", "Custom package", "Skynizz NR + MFG bridge (preview)", "Feeder NR (DirectX 11)"], Math.Max(0, Array.IndexOf(ProviderKeys, Settings.RuntimeProvider)), "");
         graphics.Add(row);
         (row, var nrPath) = Prefs.EntryRow("Local NR model DLL", "Compatible nvngx_dlssnr.dll. Required for Skynizz unless a suitable model is already beside the game executable.",
             Settings.NrRuntime, @"C:\path\to\nvngx_dlssnr.dll", "");
@@ -78,6 +78,14 @@ public sealed partial class SettingsPage : Page
         {
             var selectedProvider = ProviderKeys[Math.Max(0, provider.SelectedIndex)];
             var selectedMode = Modes[Math.Max(0, profile.SelectedIndex)];
+            if (selectedProvider == "feeder" && selectedMode != "nr-only")
+            {
+                profile.SelectedIndex = Array.IndexOf(Modes, "nr-only");
+                selectedMode = "nr-only";
+                Notice.Title = "Feeder provides NR Only.";
+                Notice.Message = "Frame generation is unavailable for this route.";
+                Notice.IsOpen = true;
+            }
             if (selectedProvider == "skynizz" && selectedMode == "mfg-only")
             {
                 profile.SelectedIndex = Array.IndexOf(Modes, "nr-mfg");

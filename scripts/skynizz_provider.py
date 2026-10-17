@@ -319,6 +319,8 @@ def check_target(e, game, baseline):
 
 def scan_rows(rows, mode='nr-only'):
     for row in rows:
+        if row.get('runtime_provider') == 'feeder':
+            continue
         if not row.get('exe'):
             row['blocked'] = 'No Windows executable found'
         elif row.get('anti_cheat'):

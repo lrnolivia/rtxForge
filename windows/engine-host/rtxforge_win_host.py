@@ -355,6 +355,9 @@ def hello(_params):
 def scan(params):
     import library_scan
     rows = library_scan.scan(service, params.get('folders', []), params.get('library_folders', []))
+    import feeder_provider
+    rows = feeder_provider.expand_rows(engine_bridge.module(service.config), rows,
+                                      selected=params.get('runtime_provider') == 'feeder')
     if params.get('runtime_provider')=='skynizz':
         import skynizz_provider
         skynizz_provider.scan_rows(rows,params.get('feature_mode','nr-only'))
@@ -384,6 +387,8 @@ def prepare(params):
         import review_copy
         review_copy.attach(review)
         review["cancel_event"] = threading.Event()
+    elif review.get('kind') == 'feeder':
+        review['cancel_event'] = threading.Event()
     token = uuid.uuid4().hex
     reviews[token] = review
     return {"token": token, "title": review.get("title"), "rows": review.get("rows", []), "blocked": review.get("blocked", []),

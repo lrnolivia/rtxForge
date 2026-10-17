@@ -55,6 +55,7 @@ public sealed partial class MainWindow : Window
 
         PreviewBadge.Visibility = service.IsPreview ? Visibility.Visible : Visibility.Collapsed;
         Mode = Settings.RuntimeProvider == "skynizz" && Settings.DefaultProfile == "mfg-only" ? "nr-mfg" : NrOnlyAvailable || Settings.DefaultProfile != "nr-only" ? Settings.DefaultProfile : "mfg-only";
+        if (Settings.RuntimeProvider == "feeder") Mode = "nr-only";
         ThemeController.Apply(this, RootGrid, Settings.Theme);
 
         Nav.SelectedItem = Nav.MenuItems[0];
@@ -83,7 +84,7 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>NR Only requires DLSS-Unlocked or a custom package (provider rule).</summary>
-    public bool NrOnlyAvailable => Settings.RuntimeProvider is "dlss-unlocked" or "custom" or "skynizz";
+    public bool NrOnlyAvailable => Settings.RuntimeProvider is "dlss-unlocked" or "custom" or "skynizz" or "feeder";
 
     public void SaveSettings()
     {
@@ -191,7 +192,7 @@ public sealed partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(targets);
         if (targets.Count == 0) { ShowToast("No eligible games selected."); return; }
 
-        if (operation == "install" && values is null)
+        if (operation == "install" && values is null && Settings.RuntimeProvider != "feeder" && !targets.All(g => g.IsFeeder))
         {
             values = await OperationDialog.AskPresetsAsync(this, targets.Count == 1 ? GameTuning(targets[0]) : Settings.Presets);
             if (values is null) return;

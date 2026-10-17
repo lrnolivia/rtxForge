@@ -127,6 +127,10 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
             python -X utf8 -m unittest discover -s windows/tests -p test_review_copy.py
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest discover -s tests -p test_feeder_provider.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest discover -s windows/tests -p test_feeder_provider.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
             python -X utf8 -m unittest discover -s windows/tests -p test_dlss_updates.py
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s windows/tests -p test_skynizz_provider.py

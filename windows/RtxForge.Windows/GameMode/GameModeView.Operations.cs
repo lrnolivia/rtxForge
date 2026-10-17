@@ -21,7 +21,7 @@ public sealed partial class GameModeView
         if (shell.Busy) { Toast("Another operation is running."); return; }
         ArgumentNullException.ThrowIfNull(targets);
         if (targets.Count == 0) { Toast("No eligible games."); return; }
-        if (operation == "install" && values is null)
+        if (operation == "install" && values is null && shell.Settings.RuntimeProvider != "feeder" && !targets.All(g => g.IsFeeder))
         {
             values = await AskPresetsAsync(targets.Count == 1 ? shell.GameTuning(targets[0]) : shell.Settings.Presets);
             if (values is null) return;
@@ -91,7 +91,8 @@ public sealed partial class GameModeView
         var summary = new StackPanel { Spacing = t.Px(10) };
         var count = review.Ready.Count;
         summary.Children.Add(ui.H2(count > 0 ? $"{count} game{(count == 1 ? "" : "s")} ready" : "Nothing ready yet", 1.3));
-        if (operation == "install") summary.Children.Add(ui.P($"{ModeLabel()} · {ProviderName()}"));
+        if (operation == "install") summary.Children.Add(ui.P(shell.Settings.RuntimeProvider == "feeder" || review.Ready.All(r => r.Game.IsFeeder)
+            ? "NR Only · Feeder NR" : $"{ModeLabel()} · {ProviderName()}"));
         content.Children.Add(summary);
 
         var list = new StackPanel();

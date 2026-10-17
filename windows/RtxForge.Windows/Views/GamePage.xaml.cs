@@ -85,6 +85,7 @@ public sealed partial class GamePage : Page
     void Refresh()
     {
         StatusBadge.Text = game.Blocked ? "Unsupported"
+            : game.IsFeeder ? "Feeder NR"
             : game.InstalledOnLinux ? "Installed on Linux"
             : game.Installed ? shell.Mode switch { "nr-only" => "NR Only", "nr-mfg" => "NR + MFG", _ => "MFG Only" }
             : "Ready for Features";
@@ -117,8 +118,7 @@ public sealed partial class GamePage : Page
     void OnUpdateDlss(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("update-dlss", [game]);
     void OnCompanion(object sender, RoutedEventArgs e) => shell.OpenCompanion(game);
     void OnRemoveFromLibrary(object sender, RoutedEventArgs e) => _ = shell.ConfirmRemoveLibraryEntriesAsync([game]);
-    void OnOpenFolder(object sender, RoutedEventArgs e) =>
-        Process.Start(new ProcessStartInfo("explorer.exe", $"\"{game.Location}\"") { UseShellExecute = true });
+    void OnOpenFolder(object sender, RoutedEventArgs e) => _ = shell.OpenGameFolderAsync(game);
 
     void Build(string name)
     {
@@ -144,6 +144,10 @@ public sealed partial class GamePage : Page
                             + "Set Up for Windows hands them to rtxForge here, so you can repair, retune or restore them from Windows.",
                     });
                 var info = new PreferencesGroup("Game Information");
+                if (g.IsFeeder)
+                    info.Add(Prefs.Row("NR route", "Feeder NR · " + (g.EngineRow?["nr_runtime"]?["version"]?.ToString() ?? "Version unavailable")
+                        + (g.EngineRow?["nr_enabled"]?.GetValue<bool>() == true ? ". Enabled in saved settings." : ". Disabled in saved settings.")
+                        + " Check the running game with Diagnose NR.", glyph: ""));
                 foreach (var (title, value, glyph) in new (string, string?, string)[]
                 {
                     ("Library", g.Library, ""), ("Location", g.Location, ""),
@@ -163,6 +167,11 @@ public sealed partial class GamePage : Page
                 break;
 
             case "Presets":
+                if (g.IsFeeder)
+                {
+                    PageHost.Children.Add(Prefs.Row("Feeder NR settings", "Your existing tuning is preserved. Use ReShade's NR panel in the running game to adjust passes, resolution, tone and structure.", glyph: ""));
+                    break;
+                }
                 var features = new PreferencesGroup(null,
                     "Tuning values for this game. Reset restores your library presets. Apply saves them for this game.");
                 if (g.Installed)

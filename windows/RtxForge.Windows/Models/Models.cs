@@ -34,12 +34,14 @@ public sealed class Game
     public string? AppId { get; init; }
     /// <summary>Feature profile the engine recorded: NR + MFG, MFG Only, NR Only.</summary>
     public string? Profile { get; init; }
+    public string? RuntimeProvider { get; init; }
+    public bool IsFeeder => RuntimeProvider == "feeder";
     /// <summary>Which rtxForge installed the features: "windows", "linux" (shared .rtxforge-install.json), or null.</summary>
     public string? InstalledOn { get; set; }
     /// <summary>Installed with rtxForge on Linux: Windows loads it natively; Set Up for Windows adapts it here.</summary>
     public bool InstalledOnLinux => Installed && InstalledOn == "linux";
     /// <summary>The library's install action: Set Up for Windows adapts a Linux install instead of reinstalling it.</summary>
-    public string InstallLabel => InstalledOnLinux ? "Set Up for Windows" : "Install Features";
+    public string InstallLabel => InstalledOnLinux ? "Set Up for Windows" : IsFeeder ? "Update Feeder NR" : "Install Features";
     /// <summary>The engine's scan row, passed back unchanged for review and execution.</summary>
     public System.Text.Json.Nodes.JsonObject? EngineRow { get; init; }
 
@@ -172,6 +174,8 @@ public sealed class ForgeSettings
     [JsonPropertyName("skynizz_version")] public string SkynizzVersion { get; set; } = "latest";
     [JsonPropertyName("mfg_provider")] public string MfgProvider { get; set; } = "integrated";
     [JsonPropertyName("nr_preset")] public int? NrPreset { get; set; }
+    [JsonPropertyName("feeder_source")] public string FeederSource { get; set; } = "";
+    [JsonPropertyName("feeder_backups")] public string FeederBackups { get; set; } = "";
     [JsonPropertyName("manage_dlss_files")] public bool ManageDlssFiles { get; set; } = true;
     [JsonPropertyName("borderless_4k")] public bool Borderless4K { get; set; }
     [JsonPropertyName("panel_hotkey")] public string PanelHotkey { get; set; } = "Ctrl+Shift+R";

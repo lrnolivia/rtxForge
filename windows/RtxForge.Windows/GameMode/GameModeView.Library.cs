@@ -53,7 +53,7 @@ public sealed partial class GameModeView
         var mode = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(28), VerticalAlignment = VerticalAlignment.Center };
         mode.Children.Add(ui.Text("Features", 0.92, weight: FontWeights.SemiBold).With(x => x.VerticalAlignment = VerticalAlignment.Center));
         mode.Children.Add(ui.Segments(
-            [("nr-only", "NR Only", shell.NrOnlyAvailable), ("mfg-only", "MFG Only", true), ("nr-mfg", "NR + MFG", true)],
+            [("nr-only", "NR Only", shell.NrOnlyAvailable), ("mfg-only", "MFG Only", shell.Settings.RuntimeProvider != "feeder"), ("nr-mfg", "NR + MFG", shell.Settings.RuntimeProvider != "feeder")],
             shell.Mode, key => { shell.Mode = key; Render(keepFocus: true); }));
         toolbar.Children.Add(mode);
         var targets = LibraryScope.Targets(shell.Games, shell.Settings.LibraryFilter, "", selectedIds, selecting);
@@ -159,6 +159,7 @@ public sealed partial class GameModeView
 
     string ProviderName() => shell.Settings.RuntimeProvider switch
     {
+        "feeder" => "Feeder NR",
         "skynizz" => "Skynizz",
         "dlss-unlocked" => "DLSS-Unlocked",
         "custom" => "Custom package",

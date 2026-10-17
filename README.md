@@ -37,6 +37,14 @@ Start with one game and see how it feels before changing your whole library. **T
 4. **Launch and check.** Enable DLSS and frame generation in the game for MFG. Actual output depends on the game and runtime. NR remains experimental and is not confirmed by a saved setting or diagnostic log. DLSS-Unlocked NR starts off; F10 toggles it where supported.
 5. **Tune or recover.** Per-game **Apply** saves presets for the next launch. **Repair Feature Files** replaces damaged files while keeping tuning. **Restore Original Files** removes installed features; use it before changing provider or feature profile.
 
+### Feeder NR (Windows, x64 DirectX 11)
+
+**Feeder NR** in Packages provides neural rendering through ReShade for games without native DLSS. Its supported local recipe uses DLSS5-Feeder 1.19.0, RenoDX DLSS5 8.5.0-rc5, ReShade 6.8, Lumenite Kernel and production DLSS SR. Third-party runtime binaries and the compatible NR model are supplied locally; the app does not redistribute them or execute upstream installer scripts. Choose a supported **Local stack folder** for new installs and the verified RTX 40 model in Settings. Other APIs, 32-bit games and frame generation are unavailable for this route.
+
+Existing setups are detected separately from native NR/MFG, including each Mass Effect Legendary Edition executable. Select the **Original backups folder** containing their manual install manifests to recognize them through review. The update backs up the old model, replaces only the selected NR DLL and records genuine Feeder ownership while preserving the ReShade settings, shaders, HDR/depth choices and saves. Missing generated `dlss5-feed.cfg` files before first launch do not mean uninstalled. Unknown stacks, conflicting hooks and damaged or missing original backups are refused. Repair keeps the recorded model and current tuning; Restore returns managed files to their original state. Independent compiler fixes and unrelated mods are preserved.
+
+Feeder tuning remains in its ReShade NR panel. Installed and enabled in saved settings are separate from a captured NR evaluation. **Diagnose NR** checks current model/log identity, actual feature 18 creation/evaluation and depth/motion-vector evidence; a feed counter alone is insufficient, and file/log checks do not establish visual correctness. This synthetic NR route is distinct from genuine native DLSS upscaling and native MFG.
+
 ### Skynizz NR + MFG preview (Windows)
 
 Select **Skynizz NR + Ada MFG bridge** in Packages for NR + MFG. It combines Skynizz's NR implementation and the existing Ada MFG unlock in one loader, with the verified private NVIDIA/Streamline companion runtime. A game-native DLSS Frame Generation route is required. The app build must include the compiled bridge; the stock upstream Skynizz DLL is not substituted for it.

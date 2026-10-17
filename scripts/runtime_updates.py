@@ -123,6 +123,11 @@ def _owned(engine, root, path):
     for parent in (path.parent, *path.parent.parents):
         if not parent.is_relative_to(root):
             break
+        if hasattr(engine, 'STATE_ROOT'):
+            import feeder_provider
+            feeder = feeder_provider.state(engine, parent)
+            if feeder and feeder.get('status') in ('active', 'preparing') and path.relative_to(parent).as_posix() in feeder.get('originals', {}):
+                return True
         baseline = engine.load_baseline(parent, readonly=True)
         if baseline and baseline.get('status') != 'restored':
             rel = path.relative_to(parent).as_posix().casefold()

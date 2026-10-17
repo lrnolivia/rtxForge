@@ -65,6 +65,11 @@ def catalog(host=None):
             'recommended': key == 'dlss-unlocked' and supported,
         })
     if host.get('system')=='Windows':
+        rows.append({'id': 'feeder', 'name': 'Feeder NR', 'version': '1.19.0 / RenoDX 8.5.0-rc5',
+                     'url': 'https://github.com/jlrouzies-fr/DLSS5-Feeder', 'sha256': '',
+                     'available': supported, 'recommended': False,
+                     'reason': 'Requires a local Feeder stack and a compatible NR model' if supported else host.get('reason', 'Unsupported system'),
+                     'summary': 'NR for DirectX 11 games through ReShade. Recognize existing setups or use your local stack. NR Only.'})
         import skynizz_provider
         record=locks['skynizz']
         bridge=None

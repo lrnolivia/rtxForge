@@ -28,7 +28,7 @@ public sealed partial class PackagesPage : Page
         Loaded += async (_, _) => await LoadAsync();
     }
 
-    static string ProviderName(string id) => id switch { "dlss-unlocked" => "DLSS-Unlocked", "skynizz" => "Skynizz NR + Ada MFG bridge", "custom" => "Custom package", "y4my" => "y4my Multipass", _ => id };
+    static string ProviderName(string id) => id switch { "feeder" => "Feeder NR", "dlss-unlocked" => "DLSS-Unlocked", "skynizz" => "Skynizz NR + Ada MFG bridge", "custom" => "Custom package", "y4my" => "y4my Multipass", _ => id };
 
     async Task LoadAsync()
     {
@@ -50,6 +50,17 @@ public sealed partial class PackagesPage : Page
             available.Add(Prefs.Row(item.Name, item.Version + " · " + item.Summary, use, ""));
         }
         body.Children.Add(available);
+        if (shell.Settings.RuntimeProvider == "feeder")
+        {
+            var feeder = new PreferencesGroup("Feeder NR", "For x64 DirectX 11 games. Existing setups keep their tuning; installation updates the NR model selected in Settings. Frame generation is unavailable.");
+            var (sourceRow, source) = Prefs.EntryRow("Local stack folder", "For new installs: a folder containing your supported ReShade, Feeder, RenoDX and shader files. These runtimes are supplied locally.", shell.Settings.FeederSource);
+            source.LostFocus += (_, _) => { shell.Settings.FeederSource = source.Text.Trim(); shell.SaveSettings(); };
+            feeder.Add(sourceRow);
+            var (backupRow, backups) = Prefs.EntryRow("Original backups folder", "For recognizing existing setups: the folder containing each game's original manifest and backups. Your saved settings are preserved.", shell.Settings.FeederBackups);
+            backups.LostFocus += (_, _) => { shell.Settings.FeederBackups = backups.Text.Trim(); shell.SaveSettings(); };
+            feeder.Add(backupRow);
+            body.Children.Add(feeder);
+        }
         if (shell.Settings.RuntimeProvider == "skynizz")
         {
             var version = new PreferencesGroup("NR package", "Skynizz requires a compatible local model and D3D12/DLSS. NR + MFG also requires game-native DLSS Frame Generation. Target runtime validation is pending.");

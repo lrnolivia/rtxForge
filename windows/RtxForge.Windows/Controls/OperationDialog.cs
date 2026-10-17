@@ -160,12 +160,19 @@ public sealed class OperationDialog
 
     IEnumerable<string> Details()
     {
-        if (operation == "install")
+        if (operation == "install" && (shell.Settings.RuntimeProvider == "feeder" || targets.All(g => g.IsFeeder)))
+        {
+            yield return "NR Only";
+            yield return "Feeder NR";
+            yield break;
+        }
+        if (operation == "install" && shell.Settings.RuntimeProvider != "feeder")
         {
             yield return shell.Mode switch { "nr-only" => "NR Only", "nr-mfg" => "NR + MFG", _ => "MFG Only" };
             yield return shell.Settings.RuntimeProvider switch
             {
                 "skynizz" => "Skynizz",
+                "feeder" => "Feeder NR",
                 "dlss-unlocked" => "DLSS-Unlocked",
                 "custom" => "Custom package",
                 _ => "y4my",

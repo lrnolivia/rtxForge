@@ -4,6 +4,7 @@ import copy
 import configparser
 import hashlib
 import json
+import urllib.request
 import zipfile
 
 import packages
@@ -69,7 +70,10 @@ def load_payload(config, record):
     cache = storage(config, 16 * 1024**2) / 'packages' / record['sha256']
     addon = packages.download(record['url'], cache / record['archive'], expected=record['sha256'], size=record['release_size'])
     host = record['host']
-    setup = packages.download(host['url'], cache / host['archive'], expected=host['sha256'], size=host['release_size'])
+    # ReShade's server rejects Python's default user agent. Identify the app
+    # while retaining the same exact URL, size and SHA-256 checks.
+    request = urllib.request.Request(host['url'], headers={'User-Agent': 'rtxForge/1.0'})
+    setup = packages.download(request, cache / host['archive'], expected=host['sha256'], size=host['release_size'])
     # The official setup is a self-extracting ZIP. Never execute it, and read
     # only the exact pinned DLL member rather than extracting arbitrary paths.
     _read(setup, host['sha256'], host['release_size'])

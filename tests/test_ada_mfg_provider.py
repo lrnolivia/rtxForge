@@ -69,6 +69,9 @@ class AdaMfgTest(unittest.TestCase):
             for value in record['notices'].values():
                 value.update(sha256=t.digest(notice), release_size=notice.stat().st_size)
             def download(url, *args, **kwargs):
+                if isinstance(url, provider.urllib.request.Request):
+                    self.assertEqual(url.get_header('User-agent'), 'rtxForge/1.0')
+                    url = url.full_url
                 return setup if url == host['url'] else addon if url == record['url'] else notice
             with patch.object(provider, 'KNOWN', {'1.4.4': (record['commit'], record['sha256'], len(dll))}), \
                  patch.object(provider, 'HOST', (host['sha256'], host['release_size'], host['dll_sha256'], len(dll))), \

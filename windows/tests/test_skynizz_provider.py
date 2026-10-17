@@ -208,6 +208,58 @@ assert files(failed_combined)==combined_before
 sr_only=host.scan({'folders':[str(missing)],'runtime_provider':'skynizz','feature_mode':'nr-mfg'})[0]
 assert 'game-native DLSS Frame Generation' in sr_only['blocked']
 checks.append('combined runtime failure restores NR/MFG changes; combined scan requires native FG')
+# Exercise the external MFG recipe through the same review/execute/restore path.
+# This verifies ownership and rollback; these fixture DLLs provide no GPU proof.
+import ada_mfg_provider
+external=game('ExternalMfg');(external/'nvngx_dlssg.dll').write_bytes(fixtures.pe())
+(external/'ReShade.ini').write_text('[Other]\nKeep=1\n')
+external_before=files(external)
+external_payload={'ReShade64.dll':fixtures.pe(), 'renodx-mfgunlock.addon64':fixtures.pe(),
+                  'OptiScaler/licenses/MFG-Unlock-LICENSE.txt':b'fixture license'}
+ada_mfg_provider.load_payload=lambda config,record:dict(external_payload)
+external_settings=settings | {'mfg_provider':'mfg-unlock','mfg_multiplier':4,'nr_preset':2}
+review=service.prepare([scan(external)],'nr-mfg','install',visual_settings=external_settings)
+assert files(external)==external_before
+assert 'MFG Unlock 1.4.4' in review['rows'][0]['detail']
+run(review);record=baseline(external)
+assert record['mfg_provider']['ownership']=='managed-addon'
+assert record['compatibility_policy']['mfg_route']=='native-ada-mfg-unlock-addon'
+ini=(external/'OptiScaler.ini').read_text()
+for value in ('AdaMfgUnlock=false','AdaBlackwellKernels=false','OverrideInterpolationCount=auto','LoadReShade=true','Preset=2'):
+    assert value in ini,value
+reshade=external/'ReShade.ini'
+assert 'ForceMultiplier=4' in reshade.read_text() and 'DynamicMFG=0' in reshade.read_text()
+tuned=reshade.read_text().replace('ForceMultiplier=4','ForceMultiplier=3')+'\n; user preset\n'
+reshade.write_text(tuned)
+run(service.prepare([scan(external)],'nr-mfg','repair',visual_settings=settings | {'mfg_provider':'integrated'}))
+assert reshade.read_text()==tuned,'repair reset the addon preset or changed MFG owner'
+assert baseline(external)['mfg_provider']['version']=='1.4.4'
+run(service.prepare([scan(external)],'nr-mfg','reset',visual_settings=settings | {'mfg_multiplier':4}))
+assert 'AdaMfgUnlock=false' in (external/'OptiScaler.ini').read_text()
+assert 'ForceMultiplier=4' in reshade.read_text() and '; user preset' in reshade.read_text()
+run(service.prepare([scan(external)],'nr-mfg','uninstall',visual_settings=settings))
+assert files(external)==external_before
+checks.append('external MFG recipe pins addon/host, disables internal unlock, preserves tuning on repair/reset and restores original files')
+collision=game('ExternalCollision');(collision/'nvngx_dlssg.dll').write_bytes(fixtures.pe())
+(collision/'ReShade64.dll').write_bytes(b'unmanaged host');collision_before=files(collision)
+review=service.prepare([scan(collision)],'nr-mfg','install',visual_settings=external_settings)
+assert not review['rows'] and 'Unmanaged MFG' in review['blocked'][0]['reason']
+assert files(collision)==collision_before
+checks.append('unmanaged addon host refuses before mutation')
+external_fail=game('ExternalFailure');(external_fail/'nvngx_dlssg.dll').write_bytes(fixtures.pe())
+fail_before=files(external_fail)
+review=service.prepare([scan(external_fail)],'nr-mfg','install',visual_settings=external_settings)
+e=review['engine'];original_write=e.atomic_write;failed=[False]
+def fail_addon(path,*args,**kwargs):
+    if Path(path).name=='renodx-mfgunlock.addon64' and not failed[0]:
+        failed[0]=True;raise OSError('injected addon failure')
+    return original_write(path,*args,**kwargs)
+e.atomic_write=fail_addon
+try:service.execute(review)
+except Exception:pass
+else:raise AssertionError('addon write failure was ignored')
+assert files(external_fail)==fail_before
+checks.append('external addon failure rolls back the complete recipe')
 local=game('LocalModel');(local/'nvngx_dlssnr.dll').write_bytes(fixtures.pe()+b'1'*(32*1024**2))
 local_before=files(local);run(prepare(local,values={'nr_runtime':''}))
 assert baseline(local)['nr_runtime']['path']==str(local/'nvngx_dlssnr.dll')
@@ -264,7 +316,7 @@ class WindowsSkynizzTest(unittest.TestCase):
                                     env=env, capture_output=True, text=True, timeout=180)
             self.assertEqual(result.returncode, 0, result.stderr[-12000:] + result.stdout[-3000:])
             receipt = json.loads(result.stdout.strip().splitlines()[-1])
-            self.assertEqual(receipt['count'], 13)
+            self.assertEqual(receipt['count'], 16)
             print('PASS: ' + '; '.join(receipt['checks']))
 
 

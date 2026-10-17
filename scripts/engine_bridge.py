@@ -1,7 +1,7 @@
 """Serialized desktop adapter for the RC1.38-derived transaction engine."""
 from pathlib import Path
 import importlib.util,sys,json,hashlib,zipfile,os,contextlib
-import transactions as t,packages,ui,package_catalog,proton_prefix,cross_os,skynizz_provider
+import transactions as t,packages,ui,package_catalog,proton_prefix,cross_os,skynizz_provider,ada_mfg_provider
 from operation_session import Session,Cancelled
 from storage import storage
 ROOT=Path(__file__).resolve().parents[1]
@@ -53,6 +53,10 @@ def payload(e,config,mode,archive=None):
                 private['OptiScaler/'+filename]=skynizz_provider.load_production_runtime(source,runtime,component)
                 meta[component]=runtime
             data.update(private);meta['mfg_runtime']={**companion,'repository':donor['repo']}
+            if p.get('mfg_component'):
+                component=ada_mfg_provider.validate(p['mfg_component'])
+                data.update(ada_mfg_provider.load_payload(config,component))
+                meta['mfg_component']=component
         return data,meta
     if p.get('custom'):
         data,meta=package_catalog.load_custom_payload(p)
@@ -105,7 +109,7 @@ def fingerprint(e,g):
     # Snapshot only installer inputs, not the whole game or saves.
     target=g.target_dir;result={}
     for p in target.iterdir():
-        if p.name.lower() in set(e.PROXY_NAMES)|{'optiscaler.ini','nvngx_dlssnr.dll'} or p==g.exe:
+        if p.name.lower() in set(e.PROXY_NAMES)|{'optiscaler.ini','nvngx_dlssnr.dll','reshade.ini','reshade64.dll','renodx-mfgunlock.addon64'} or p==g.exe:
             t.need(not p.is_symlink(),'Linked installer input refused: '+str(p))
             if p.is_file():result[p.name]=e.sha256_file(p)
     opti=target/'OptiScaler'
@@ -332,7 +336,15 @@ def prepare(config,rows,mode,operation,settings):
                 if release is None:
                     if selection not in releases:
                         releases[selection]=(skynizz_provider.bundled_bridge(selection)[0] if mode=='nr-mfg' else ui.work('Resolving Skynizz release',skynizz_provider.resolve,selection))
-                    release=releases[selection]
+                    release=dict(releases[selection])
+                    mfg_provider=settings.get('mfg_provider','integrated')
+                    t.need(mfg_provider in ('integrated','mfg-unlock'),'Choose a supported MFG component.')
+                    if mfg_provider=='mfg-unlock':
+                        t.need(mode=='nr-mfg','MFG Unlock requires the combined native FG route.')
+                        release['mfg_component']=ada_mfg_provider.pinned()
+                    if settings.get('nr_preset') is not None:
+                        t.need(type(settings['nr_preset']) is int and settings['nr_preset'] in (0,1,2),'Choose a supported NR preset.')
+                        release['nr_preset']=settings['nr_preset']
                 t.need(mode!='nr-mfg' or release.get('variant')=='nr-mfg-bridge','NR + MFG requires the combined bridge; restore the stock NR-only package first.')
                 e.Y4MY_PROVIDER=release
                 target_data,target_meta=ui.work('Verifying Skynizz package',payload,e,config,mode)
@@ -395,6 +407,8 @@ def prepare(config,rows,mode,operation,settings):
                 if selected=='skynizz':
                     model=preview.get('nr_runtime') or {}
                     route='Combined NR + Ada MFG bridge · target runtime validation pending' if mode=='nr-mfg' else 'NR Only · requires D3D12/DLSS'
+                    if component:=release.get('mfg_component'):
+                        route=f"NR + {component['name']} {component['version']} · SHA-256 {component['sha256']} · ReShade {component['host']['version']} · internal unlock disabled · target runtime validation pending"
                     preview=dict(preview,launch_options=f"{release['tag']} · SHA-256 {release['sha256']} · model {model.get('path','')} · SHA-256 {model.get('sha256','')} · "+route)
                     for component,(_,label) in skynizz_provider.PRODUCTION_RUNTIMES.items():
                         if runtime:=target_meta.get(component):

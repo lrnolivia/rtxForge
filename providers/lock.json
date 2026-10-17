@@ -86,5 +86,39 @@
     "modes": [
       "nr-only"
     ]
+  },
+  "mfg-unlock": {
+    "id": "mfg-unlock",
+    "name": "MFG Unlock",
+    "version": "1.4.4",
+    "repo": "mavismmg/MFGAdaUnlock-RenoDx",
+    "commit": "3e898157fd59ed9eef65c181619060ddb305c6bd",
+    "archive": "renodx-mfgunlock.addon64",
+    "url": "https://github.com/mavismmg/MFGAdaUnlock-RenoDx/releases/download/1.4.4/renodx-mfgunlock.addon64",
+    "sha256": "5a193d86c6f60a7f0f275799d66eef7f14bd0946cdbefd48a3237506c747d5cd",
+    "release_size": 1199104,
+    "runtime_verified": false,
+    "host": {
+      "name": "ReShade with addon support",
+      "version": "6.8.0",
+      "archive": "ReShade_Setup_6.8.0_Addon.exe",
+      "url": "https://reshade.me/downloads/ReShade_Setup_6.8.0_Addon.exe",
+      "sha256": "afe4c8f13048306307983b8b3d41d5bf00a86820440b0e57dea10950e1176445",
+      "release_size": 4318424,
+      "dll_sha256": "0cee63f9c9f13f3ac909c5b4903f4dbb4b719a7ab3b4f13b0deaf83c814b94f7",
+      "dll_size": 5592064
+    },
+    "notices": {
+      "MFG-Unlock-LICENSE.txt": {
+        "url": "https://raw.githubusercontent.com/mavismmg/MFGAdaUnlock-RenoDx/3e898157fd59ed9eef65c181619060ddb305c6bd/LICENSE",
+        "sha256": "4ce922ecb6aa4b60d24f63f6241f0436e960a00989d71c68e2eb81ecc3d718fd",
+        "release_size": 1065
+      },
+      "ReShade-LICENSE.txt": {
+        "url": "https://raw.githubusercontent.com/crosire/reshade/v6.8.0/LICENSE.md",
+        "sha256": "237ded5b8344f820113efab1e65e91e1f159d9202c5b4856606a0590d3ffdab0",
+        "release_size": 1481
+      }
+    }
   }
 }

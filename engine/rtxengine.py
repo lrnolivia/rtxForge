@@ -2204,22 +2204,46 @@ def _reset_visual_settings(game: Game, *, dry_run: bool = False, nr_strength: st
     else:
         text, values = apply_visual_defaults(original.decode("utf-8-sig"), None, mode, nr_strength, mfg_multiplier, sharpening_strength)
     updated = text.encode("utf-8")
+    changes = {managed[0]: (original, updated)}
+    component = ((current.get("archive") or {}).get("release") or {}).get("mfg_component")
+    if component:
+        import ada_mfg_provider
+        ada_mfg_provider.validate(component)
+        require("ReShade.ini" in current.get("installed_hashes", {}), "MFG config ownership is missing; repair first")
+        addon_ini = target / "ReShade.ini"
+        require(addon_ini.is_file() and not addon_ini.is_symlink(), "MFG config is missing or linked; repair first")
+        addon_original = addon_ini.read_bytes()
+        changes["ReShade.ini"] = (addon_original, ada_mfg_provider.reset_multiplier(sys.modules[__name__], addon_original, mfg_multiplier))
     record = {"action": "reset-visual-settings", "name": game.name, "feature_mode": mode,
-              "provider_id": current.get("provider_id"), "files": [managed[0]],
+              "provider_id": current.get("provider_id"), "files": list(changes),
               "launch_options": f"NR {visual_strength_label(nr_strength, 'nr')} · Sharpening {visual_strength_label(sharpening_strength, 'sharpness')}" + (f" · MFG {'In game' if mfg_multiplier == 'auto' else str(mfg_multiplier) + 'x' if mfg_multiplier else 'Off'} requested" if mode != "nr-only" else " · NR Only retained"),
               "before_sha256": sha256_bytes(original), "after_sha256": sha256_bytes(updated),
-              "nr_strength": nr_strength, "sharpening_strength": sharpening_strength, "mfg_multiplier": mfg_multiplier if mode != "nr-only" else None, "defaults": values, "changed": original != updated}
-    if dry_run or original == updated:
+              "nr_strength": nr_strength, "sharpening_strength": sharpening_strength, "mfg_multiplier": mfg_multiplier if mode != "nr-only" else None, "defaults": values, "changed": any(before != after for before, after in changes.values()),
+              "file_hashes": {name: {"before": sha256_bytes(before), "after": sha256_bytes(after)} for name, (before, after) in changes.items()}}
+    if dry_run or not record["changed"]:
         return record
     backup_dir = _validated_state_dir(target) / "settings-resets" / str(time.time_ns())
     require(not backup_dir.parent.is_symlink(), "Linked settings backup directory refused")
     _mkdir_durable(backup_dir)
     backup = backup_dir / "OptiScaler.ini"
-    atomic_write(backup, original)
+    for name, (before, after) in changes.items():
+        atomic_write(backup_dir / name, before)
     record.update(backup=str(backup), status="prepared", created_utc=now_iso())
     save_json_atomic(backup_dir / "reset.json", record)
-    require(ini.read_bytes() == original, "Settings changed during reset; retry")
-    atomic_write(ini, updated, mode=stat.S_IMODE(ini.stat().st_mode))
+    for name, (before, after) in changes.items():
+        require((target / name).read_bytes() == before, "Settings changed during reset; retry")
+    written = []
+    try:
+        for name, (before, after) in changes.items():
+            path = target / name
+            atomic_write(path, after, mode=stat.S_IMODE(path.stat().st_mode))
+            written.append(name)
+    except BaseException:
+        for name in reversed(written):
+            atomic_write(target / name, changes[name][0])
+        record["status"] = "failed-restored"
+        save_json_atomic(backup_dir / "reset.json", record)
+        raise
     record["status"] = "complete"
     save_json_atomic(backup_dir / "reset.json", record)
     # Like an overlay save, keep the original installation hash so Repair merges
@@ -3855,6 +3879,9 @@ def _verify_root_payload_refresh_safe(target: Path, baseline: dict, payload: dic
         if not path.exists() and not path.is_symlink():
             continue
         require(path.is_file() and not path.is_symlink(), f"Managed payload path changed filesystem type externally: {path}")
+        if rel.casefold() == "reshade.ini" and Y4MY_PROVIDER.get("mfg_component") and path.read_bytes() == payload[rel]:
+            # The addon saves tuning here. Repair stages these exact live bytes.
+            continue
         require(
             sha256_file(path) in allowed,
             f"Managed payload file changed externally; refusing refresh: {rel}",
@@ -4266,6 +4293,7 @@ def install_target(
     visual_defaults(nr_strength, mfg_multiplier, sharpening_strength)  # Validate before any mutation.
     is_skynizz = Y4MY_PROVIDER.get("id") == "skynizz"
     is_skynizz_bridge = is_skynizz and Y4MY_PROVIDER.get("variant") == "nr-mfg-bridge"
+    mfg_component = Y4MY_PROVIDER.get("mfg_component") if is_skynizz_bridge else None
     if is_skynizz:
         import skynizz_provider
         desktop_platform = getattr(sys.modules[__name__], "DESKTOP_PLATFORM", "windows" if os.name == "nt" else "linux")
@@ -4480,6 +4508,9 @@ def install_target(
     is_dlss_unlocked = Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) == "dlss-unlocked"
     if is_skynizz:
         text, nr_tuning = skynizz_provider.configure(sys.modules[__name__], ini_source, saved_ini, mode=feature_mode, mfg_multiplier=mfg_multiplier, game=game)
+        if mfg_component:
+            import ada_mfg_provider
+            payload["ReShade.ini"] = ada_mfg_provider.configure(sys.modules[__name__], game, existing_baseline, mfg_multiplier)
         visual_tuning = {"DlssNr": nr_tuning}
     else:
         payload[ini_key] = patch_optiscaler_ini(ini_source, family, ada_mfg_mode=ada_mfg_mode, disable_overlays=eos_overlay)
@@ -4688,7 +4719,9 @@ def install_target(
             "proxy": chosen_proxy,
             # Compatibility field retained for old audit/report readers, but the
             # active provider is now the same y4my OptiScaler proxy as NR.
-            "mfg_provider": (
+            "mfg_provider": ({**mfg_component, "ownership": "managed-addon", "shared_proxy": chosen_proxy,
+                              "enabled": enable_effects and feature_mode != "nr-only", "activation": "startup",
+                              "runtime_verified": False} if mfg_component else (
                 {
                     "name": Y4MY_PROVIDER["name"],
                     "version": Y4MY_PROVIDER["tag"],
@@ -4700,7 +4733,7 @@ def install_target(
                     "activation": "startup" if enable_effects else "manual-after-launch",
                 }
                 if family == "ada" and (not is_skynizz or is_skynizz_bridge) else None
-            ),
+            )),
             "nr_runtime": dict(selected_nr_meta or {}),
             "provider_id": Y4MY_PROVIDER.get("id", "y4my"),
             "feature_mode": feature_mode,
@@ -4710,7 +4743,7 @@ def install_target(
                 "placement": "pre-sr-with-post-sr-fallback" if nr_tuning.get("PreSr") == "true" else "upstream-configured",
                 "cache_policy": {key: value for key, value in nr_tuning.items() if key.startswith("Cache")},
                 "working_scale": nr_tuning.get("WorkingScale", "auto"), "menu_key": "Insert",
-                "mfg": "integrated Ada bridge; target runtime unverified" if is_skynizz_bridge else "unmanaged",
+                "mfg": "MFG Unlock addon; target runtime unverified" if mfg_component else "integrated Ada bridge; target runtime unverified" if is_skynizz_bridge else "unmanaged",
             } if is_skynizz else {
                 "enabled": False if is_dlss_unlocked else (enable_effects and feature_mode in {"nr-mfg", "nr-only"} and nr_tuning.get("Enabled") == "true"),
                 "activation": "toggle-key-f10" if (is_dlss_unlocked and feature_mode in {"nr-mfg", "nr-only"}) else ("startup" if enable_effects else "manual-after-launch"),
@@ -4732,7 +4765,7 @@ def install_target(
                 "dxgi_spoofing": False,
                 "vulkan_spoofing": False,
                 "upscaler_route": "auto-first-launch",
-                "mfg_route": ("native-ada-skynizz-bridge-armed" if is_skynizz_bridge else "unmanaged-skynizz-nr-only" if is_skynizz else
+                "mfg_route": ("native-ada-mfg-unlock-addon" if mfg_component else "native-ada-skynizz-bridge-armed" if is_skynizz_bridge else "unmanaged-skynizz-nr-only" if is_skynizz else
                               ("native-game-dlssg-ada-unlock" if is_dlss_unlocked else "native-ada-y4my-v4-armed") if family == "ada" else "disabled-sm86"),
                 "native_mfg_fallback": bool(native_mfg_fallback) if is_dlss_unlocked else False,
                 "mfg_multiplier": mfg_multiplier if feature_mode != "nr-only" else None,

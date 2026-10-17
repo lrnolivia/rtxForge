@@ -86,6 +86,10 @@ def validate_release(record):
     tag = record.get('tag', '')
     t.need(bool(re.fullmatch(r'v\d+\.\d+\.\d+', tag)), 'Choose latest or a stable Skynizz version such as v1.2.1.')
     if record.get('variant') == 'nr-mfg-bridge':
+        if record.get('mfg_component'):
+            import ada_mfg_provider
+            ada_mfg_provider.validate(record['mfg_component'])
+        t.need(record.get('nr_preset') in (None, 0, 1, 2), 'Unsupported NR model preset')
         for component in PRODUCTION_RUNTIMES:
             if component in record:
                 validate_production_runtime(record[component], component)
@@ -217,6 +221,7 @@ def startup_overlay_disabled(game):
 def configure(e, source, saved=None, mode='nr-only', mfg_multiplier='auto', game=None):
     """Repair retains the complete user preset, including cache/placement choices."""
     text = (saved if saved is not None else source).decode('utf-8-sig')
+    external_mfg = bool(getattr(e, 'Y4MY_PROVIDER', {}).get('mfg_component'))
     if saved is None:
         for section, values in DEFAULTS.items():
             for key, value in values.items():
@@ -225,14 +230,23 @@ def configure(e, source, saved=None, mode='nr-only', mfg_multiplier='auto', game
             # Upstream issue #2 reports MFG pacing trouble with edit reuse.
             # Keep the pre-SR path, with cache reuse opt-in until runtime QA.
             text = e.set_ini_value(text, 'DlssNr', 'CacheEnabled', 'false')
+        if (preset := getattr(e, 'Y4MY_PROVIDER', {}).get('nr_preset')) is not None:
+            text = e.set_ini_value(text, 'DlssNr', 'Preset', str(preset))
     if mode == 'nr-mfg':
-        for section, values in {'DLSSG':{'AdaMfgUnlock':'true','AdaBlackwellKernels':'true','AmpereMfgUnlock':'false'},
+        unlock = 'false' if external_mfg else 'true'
+        for section, values in {'DLSSG':{'AdaMfgUnlock':unlock,'AdaBlackwellKernels':unlock,'AmpereMfgUnlock':'false'},
                                 'FrameGen':{'Enabled':'false','FGInput':'nofg','FGOutput':'nofg','FGNvngxReplacement':'None'}}.items():
             for key, value in values.items():
                 text = e.set_ini_value(text, section, key, value)
         if saved is None:
             for key, value in e.visual_defaults(2, mfg_multiplier, .5)['DLSSG'].items():
                 text = e.set_ini_value(text, 'DLSSG', key, value)
+        if external_mfg:
+            # Only the addon owns the count, kernels and capability patches.
+            for key, value in {'OverrideInterpolationCount': 'auto', 'OverrideForceDMFG': 'false'}.items():
+                text = e.set_ini_value(text, 'DLSSG', key, value)
+            text = e.set_ini_value(text, 'Plugins', 'LoadReShade', 'true')
+            text = e.set_ini_value(text, 'Menu', 'OverlayMenu', 'false')
     if startup_overlay_disabled(game):
         # The swapchain overlay hangs inZOI before NR evaluation. The classic
         # menu path allows startup and leaves the native FG and NR routes on.
@@ -248,6 +262,9 @@ def configure(e, source, saved=None, mode='nr-only', mfg_multiplier='auto', game
 
 def check_target(e, game, baseline):
     target = game.target_dir
+    if e.Y4MY_PROVIDER.get('mfg_component'):
+        import ada_mfg_provider
+        ada_mfg_provider.check_target(e, game, baseline)
     t.need(not (target / 'renodx-dlss5.addon64').exists(),
            'Another NR consumer (renodx-dlss5.addon64) is present. Disable it yourself before installing Skynizz.')
     # A second OptiScaler cannot share this INI or the existing MFG hook tree.

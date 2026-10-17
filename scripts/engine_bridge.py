@@ -45,12 +45,13 @@ def payload(e,config,mode,archive=None):
                 e.Y4MY_PROVIDER=p;e.Y4MY_REQUIRED_FILES=required
             private={n:v for n,v in extra.items() if n.startswith('OptiScaler/streamline/') or n in ('OptiScaler/nvngx_dlss.dll','OptiScaler/nvngx_dlssd.dll','OptiScaler/nvngx_dlssg.dll')}
             t.need({'OptiScaler/streamline/sl.interposer.dll','OptiScaler/streamline/sl.dlss_g.dll'}<=private.keys(),'The MFG companion runtime is incomplete')
-            if p.get('sr_runtime'):
-                sr=skynizz_provider.validate_sr_runtime(p['sr_runtime'])
-                sr_path=storage(config,sr['release_size'])/'runtime-cache'/sr['sha256']/'nvngx_dlss.dll'
-                sr_file=packages.download(sr['url'],sr_path,expected=sr['sha256'],size=sr['release_size'])
-                private['OptiScaler/nvngx_dlss.dll']=skynizz_provider.load_sr_runtime(sr_file,sr)
-                meta['sr_runtime']=sr
+            for component,(filename,_) in skynizz_provider.PRODUCTION_RUNTIMES.items():
+                if not p.get(component):continue
+                runtime=skynizz_provider.validate_production_runtime(p[component],component)
+                path=storage(config,runtime['release_size'])/'runtime-cache'/runtime['sha256']/filename
+                source=packages.download(runtime['url'],path,expected=runtime['sha256'],size=runtime['release_size'])
+                private['OptiScaler/'+filename]=skynizz_provider.load_production_runtime(source,runtime,component)
+                meta[component]=runtime
             data.update(private);meta['mfg_runtime']={**companion,'repository':donor['repo']}
         return data,meta
     if p.get('custom'):
@@ -395,8 +396,9 @@ def prepare(config,rows,mode,operation,settings):
                     model=preview.get('nr_runtime') or {}
                     route='Combined NR + Ada MFG bridge · target runtime validation pending' if mode=='nr-mfg' else 'NR Only · requires D3D12/DLSS'
                     preview=dict(preview,launch_options=f"{release['tag']} · SHA-256 {release['sha256']} · model {model.get('path','')} · SHA-256 {model.get('sha256','')} · "+route)
-                    if sr:=target_meta.get('sr_runtime'):
-                        preview['launch_options']+=f" · production SR {sr['version']} · SHA-256 {sr['sha256']}"
+                    for component,(_,label) in skynizz_provider.PRODUCTION_RUNTIMES.items():
+                        if runtime:=target_meta.get(component):
+                            preview['launch_options']+=f" · production {label} {runtime['version']} · SHA-256 {runtime['sha256']}"
                 if interrupted_install(baseline):
                     preview=dict(preview,launch_options='Finishes an install that was interrupted · '+preview['launch_options'])
             if prefix:preview=dict(preview,launch_options="Proton setting saved in this game's prefix · Steam can stay open")

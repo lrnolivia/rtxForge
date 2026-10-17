@@ -50,10 +50,12 @@ def bridge_fixture(path, sr_path=None):
             'upstream':spec['upstream'],'mfg_source':spec['mfg_source'],'patch_sha256':spec['patch_sha256'],
             'bridge_id':spec['id'],'runtime_verified':False}
     if sr_path is not None:
-        sr_path.write_bytes(pe()+b'production-sr-fixture')
-        sr=json.loads((ROOT/'providers/lock.json').read_text())['skynizz']['sr_runtime']
-        record['sr_runtime']=sr | {'sha256':hashlib.sha256(sr_path.read_bytes()).hexdigest(),
-                                  'release_size':sr_path.stat().st_size}
+        lock=json.loads((ROOT/'providers/lock.json').read_text())['skynizz']
+        for component,(filename,_) in provider.PRODUCTION_RUNTIMES.items():
+            target=sr_path if component=='sr_runtime' else sr_path.parent/('production-'+filename)
+            target.write_bytes(pe()+('production-'+component+'-fixture').encode())
+            record[component]=lock[component] | {'sha256':hashlib.sha256(target.read_bytes()).hexdigest(),
+                                               'release_size':target.stat().st_size}
     with zipfile.ZipFile(path,'a') as archive:
         archive.writestr('DLSS5-Optimised/rtxforge-bridge.json',json.dumps(record))
     return provider.validate_release(record | {'release_size':path.stat().st_size,'sha256':hashlib.sha256(path.read_bytes()).hexdigest()})
@@ -102,6 +104,23 @@ class SkynizzPolicyTest(unittest.TestCase):
         path.write_bytes(pe()+b'different-sr')
         with self.assertRaises(transactions.Refusal):
             provider.load_sr_runtime(path,record)
+
+    def test_each_production_component_rejects_development_paths_and_component_substitution(self):
+        path=Path(self.temp.name).resolve()/'production-sr.dll'
+        release=bridge_fixture(self.archive,path)
+        for component,(filename,_) in provider.PRODUCTION_RUNTIMES.items():
+            with self.subTest(component=component):
+                record=release[component]
+                source=path if component=='sr_runtime' else path.parent/('production-'+filename)
+                self.assertEqual(provider.load_production_runtime(source,record,component),source.read_bytes())
+                with self.assertRaises(transactions.Refusal):
+                    provider.validate_production_runtime(record | {'url':record['url'].replace('/rel/','/dev/')},component)
+                wrong=next(k for k in provider.PRODUCTION_RUNTIMES if k!=component)
+                with self.assertRaises(transactions.Refusal):
+                    provider.validate_production_runtime(release[wrong],component)
+                source.write_bytes(source.read_bytes()+b'drift')
+                with self.assertRaises(transactions.Refusal):
+                    provider.load_production_runtime(source,record,component)
 
     def test_traversal_case_collision_and_foreign_payloads_are_refused(self):
         for extra in ({'../escape.dll': pe()}, {'a\\b.dll': pe()}, {'dlss5-optimised/optiscaler.dll': pe()},

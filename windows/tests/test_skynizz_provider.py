@@ -30,7 +30,8 @@ provider.resolve=resolve
 original_download=packages.download
 def download(url,*args,**kwargs):
     if url.startswith('https://raw.githubusercontent.com/NVIDIA/DLSS/'):
-        return root/'production-sr.dll'
+        name=Path(url).name
+        return root/('production-sr.dll' if name=='nvngx_dlss.dll' else 'production-'+name)
     return original_download(url,*args,**kwargs) if url.startswith('file:') else archive
 packages.download=download
 original_module=engine_bridge.module
@@ -141,7 +142,8 @@ combined_archive=root/'combined.zip';combined_release=fixtures.bridge_fixture(co
 provider.bundled_bridge=lambda selection='latest':(dict(combined_release,selected_source=selection),combined_archive)
 combined=game('Combined');(combined/'nvngx_dlssg.dll').write_bytes(fixtures.pe());combined_before=files(combined)
 combined_review=service.prepare([scan(combined)],'nr-mfg','install',visual_settings=settings | {'mfg_multiplier':6})
-assert combined_release['sr_runtime']['sha256'] in combined_review['rows'][0]['detail']
+for component in provider.PRODUCTION_RUNTIMES:
+    assert combined_release[component]['sha256'] in combined_review['rows'][0]['detail']
 run(combined_review);combined_record=baseline(combined);combined_ini=(combined/'OptiScaler.ini').read_text()
 assert combined_record['mfg_provider']['enabled'] and combined_record['compatibility_policy']['mfg_route']=='native-ada-skynizz-bridge-armed'
 assert combined_record['archive']['release']['variant']=='nr-mfg-bridge' and combined_record['archive']['mfg_runtime']['sha256']
@@ -149,15 +151,18 @@ assert combined_record['nr_profile']['enabled'] and not combined_record['nr_prof
 for value in ('AdaMfgUnlock=true','AdaBlackwellKernels=true','OverrideInterpolationCount=5','CacheEnabled=false','PreSr=true'):
     assert value in combined_ini,value
 assert (combined/'OptiScaler/streamline/sl.dlss_g.dll').is_file()
-assert (combined/'OptiScaler/nvngx_dlss.dll').read_bytes()==(root/'production-sr.dll').read_bytes()
-assert combined_record['archive']['release']['sr_runtime']==combined_release['sr_runtime']
+for component,(filename,_) in provider.PRODUCTION_RUNTIMES.items():
+    source=root/('production-sr.dll' if component=='sr_runtime' else 'production-'+filename)
+    assert (combined/'OptiScaler'/filename).read_bytes()==source.read_bytes()
+    assert combined_record['archive']['release'][component]==combined_release[component]
 assert (combined/'dxgi.dll').read_bytes()==fixtures.pe(),'MFG donor replaced the NR loader'
 assert (combined/'nvngx_dlssg.dll').read_bytes()==fixtures.pe(),'game native runtime replaced'
 run(service.prepare([scan(combined)],'nr-mfg','repair',visual_settings=settings | {'skynizz_version':'v9.9.9'}))
 assert baseline(combined)['archive']['release']['sha256']==combined_release['sha256']
-assert baseline(combined)['archive']['release']['sr_runtime']==combined_release['sr_runtime']
+for component in provider.PRODUCTION_RUNTIMES:
+    assert baseline(combined)['archive']['release'][component]==combined_release[component]
 run(service.prepare([scan(combined)],'nr-mfg','uninstall',visual_settings=settings));assert files(combined)==combined_before
-checks.append('combined NR+MFG uses one loader, production SR and private MFG stack; pinned repair/restore preserve ownership')
+checks.append('combined NR+MFG uses one loader, production SR/RR/FG and private Streamline; pinned repair/restore preserve ownership')
 failed_combined=game('CombinedFailure');(failed_combined/'nvngx_dlssg.dll').write_bytes(fixtures.pe());combined_before=files(failed_combined)
 review=service.prepare([scan(failed_combined)],'nr-mfg','install',visual_settings=settings)
 e=review['engine'];write=e.atomic_write

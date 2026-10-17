@@ -40,6 +40,24 @@
     "runtime_verified": false
   },
   "skynizz": {
+    "rr_runtime": {
+      "name": "NVIDIA DLSS Ray Reconstruction production",
+      "version": "310.9.16.0",
+      "repository": "NVIDIA/DLSS",
+      "commit": "9981c6350dc58c0ce21f024fd65e31e851c31689",
+      "url": "https://raw.githubusercontent.com/NVIDIA/DLSS/9981c6350dc58c0ce21f024fd65e31e851c31689/lib/Windows_x86_64/rel/nvngx_dlssd.dll",
+      "sha256": "b49435ae346f227feafe7bbe937d88277ea0ee7323975ec06488f377fdb46cee",
+      "release_size": 48343664
+    },
+    "fg_runtime": {
+      "name": "NVIDIA DLSS Frame Generation production",
+      "version": "310.9.16.0",
+      "repository": "NVIDIA/DLSS",
+      "commit": "9981c6350dc58c0ce21f024fd65e31e851c31689",
+      "url": "https://raw.githubusercontent.com/NVIDIA/DLSS/9981c6350dc58c0ce21f024fd65e31e851c31689/lib/Windows_x86_64/rel/nvngx_dlssg.dll",
+      "sha256": "8d59d49b36410dd6b62fef2503a5871d347415bd85d943fa0848563a95dd50c7",
+      "release_size": 7506544
+    },
     "sr_runtime": {
       "name": "NVIDIA DLSS Super Resolution production",
       "version": "310.9.16.0",

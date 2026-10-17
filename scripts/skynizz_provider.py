@@ -17,6 +17,11 @@ REPO = 'Skynizz/optiscaler-dlss5'
 API = 'https://api.github.com/repos/' + REPO
 MAX_ARCHIVE = 128 * 1024**2
 MAX_EXPANDED = 256 * 1024**2
+PRODUCTION_RUNTIMES = {
+    'sr_runtime': ('nvngx_dlss.dll', 'SR'),
+    'rr_runtime': ('nvngx_dlssd.dll', 'RR'),
+    'fg_runtime': ('nvngx_dlssg.dll', 'FG'),
+}
 FILES = {'OptiScaler.dll': 'dxgi.dll', 'OptiScaler.ini': 'OptiScaler.ini',
          'nvngx.dll_dlssnr.dll': 'nvngx.dll_dlssnr.dll'}
 DEFAULTS = {
@@ -42,28 +47,38 @@ def get_json(url):
     return json.loads(raw)
 
 
-def validate_sr_runtime(record):
-    t.need(isinstance(record, dict), 'Production SR runtime provenance is missing')
+def validate_production_runtime(record, component='sr_runtime'):
+    filename, label = PRODUCTION_RUNTIMES[component]
+    t.need(isinstance(record, dict), f'Production {label} runtime provenance is missing')
     commit = record.get('commit', '')
     t.need(record.get('repository') == 'NVIDIA/DLSS' and re.fullmatch(r'[0-9a-f]{40}', commit)
-           and record.get('url') == f'https://raw.githubusercontent.com/NVIDIA/DLSS/{commit}/lib/Windows_x86_64/rel/nvngx_dlss.dll'
+           and record.get('url') == f'https://raw.githubusercontent.com/NVIDIA/DLSS/{commit}/lib/Windows_x86_64/rel/{filename}'
            and re.fullmatch(r'[0-9a-f]{64}', record.get('sha256', ''))
            and re.fullmatch(r'\d+\.\d+\.\d+\.\d+', record.get('version', ''))
            and type(record.get('release_size')) is int and 64 < record['release_size'] <= MAX_ARCHIVE,
-           'Untrusted production SR runtime identity')
+           f'Untrusted production {label} runtime identity')
     return dict(record)
 
 
-def load_sr_runtime(path, record):
-    record = validate_sr_runtime(record)
+def load_production_runtime(path, record, component='sr_runtime'):
+    record = validate_production_runtime(record, component)
+    label = PRODUCTION_RUNTIMES[component][1]
     path = Path(path)
     t.need(path.is_file() and not path.is_symlink() and path.absolute() == path.resolve()
            and path.stat().st_size == record['release_size'] and t.digest(path) == record['sha256'],
-           'Production SR runtime size/type/hash mismatch')
+           f'Production {label} runtime size/type/hash mismatch')
     data = path.read_bytes()
     t.need(amd64(data) and hashlib.sha256(data).hexdigest() == record['sha256'],
-           'Production SR runtime architecture/hash mismatch')
+           f'Production {label} runtime architecture/hash mismatch')
     return data
+
+
+def validate_sr_runtime(record):
+    return validate_production_runtime(record)
+
+
+def load_sr_runtime(path, record):
+    return load_production_runtime(path, record)
 
 
 def validate_release(record):
@@ -71,8 +86,9 @@ def validate_release(record):
     tag = record.get('tag', '')
     t.need(bool(re.fullmatch(r'v\d+\.\d+\.\d+', tag)), 'Choose latest or a stable Skynizz version such as v1.2.1.')
     if record.get('variant') == 'nr-mfg-bridge':
-        if 'sr_runtime' in record:
-            validate_sr_runtime(record['sr_runtime'])
+        for component in PRODUCTION_RUNTIMES:
+            if component in record:
+                validate_production_runtime(record[component], component)
         name = 'rtxForge-Skynizz-' + tag + '-MFG.zip'
         t.need(record.get('repo') == 'lrnolivia/rtxForge' and record.get('archive') == name
                and record.get('url') == 'bundled:providers/skynizz-bridge/' + name,
@@ -105,9 +121,11 @@ def bundled_bridge(selection='latest'):
     folder = next((path for path in roots if (path / 'package.json').is_file()), None)
     t.need(folder is not None, 'This app build does not contain the combined NR + MFG bridge. Use a build with the compiled bridge package.')
     record = json.loads((folder / 'package.json').read_text(encoding='utf-8-sig'))
-    # The compiled loader and its independently pinned production SR form one
-    # recorded recipe. Repair uses the saved recipe, including its SR hash.
-    record['sr_runtime'] = json.loads((ROOT / 'providers/lock.json').read_text(encoding='utf-8'))['skynizz']['sr_runtime']
+    # The loader and each production runtime form one recorded recipe. Repair
+    # retains those exact identities instead of resolving a newer runtime.
+    lock = json.loads((ROOT / 'providers/lock.json').read_text(encoding='utf-8'))['skynizz']
+    for component in PRODUCTION_RUNTIMES:
+        record[component] = lock[component]
     record = validate_release(record)
     t.need(record.get('variant')=='nr-mfg-bridge','The bundled package is not the combined bridge')
     spec = json.loads((ROOT / 'providers/skynizz-bridge/source.json').read_text(encoding='utf-8'))

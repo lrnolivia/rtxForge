@@ -67,6 +67,150 @@ index 00369a32..cf411588 100644
      <ClCompile Include="framegen\ffx\FSRFG_Dx12.cpp" />
      <ClCompile Include="framegen\IFGFeature.cpp" />
      <ClCompile Include="framegen\IFGFeature_Dx12.cpp" />
+diff --git a/OptiScaler/framegen/dlssg/Companion.h b/OptiScaler/framegen/dlssg/Companion.h
+new file mode 100644
+index 00000000..ff035c71
+--- /dev/null
++++ b/OptiScaler/framegen/dlssg/Companion.h
+@@ -0,0 +1,138 @@
++#pragma once
++
++#include <Config.h>
++#include <dlssnr/DlssNr.h>
++#include <cmath>
++#include <mutex>
++
++// A local-session mailbox, not an overlay or an injection interface. Commands
++// contain only bounded numeric settings. The render thread owns Config and
++// publishes coherent snapshots; no worker thread touches graphics or Config.
++namespace ForgeCompanion
++{
++struct Mailbox
++{
++    LONG magic, version, pid, snapshot;
++    LONG command, acknowledged, result;
++    LONG enabled;
++    float intensity;
++    LONG multiplier, preSr, cache, interval, style;
++    float structure, tone;
++    LONG actualEnabled;
++    float actualIntensity;
++    LONG actualMultiplier, actualPreSr, actualCache, actualInterval, actualStyle;
++    float actualStructure, actualTone;
++    LONG nrRunning;
++    float nrMs, renderedFps;
++    LONG backendMax, lastGenerated, frames, fgSuccesses;
++    char failure[128];
++};
++static_assert(sizeof(Mailbox) == 256);
++
++inline std::recursive_mutex guard;
++inline Mailbox* mailbox = nullptr;
++inline HANDLE mapping = nullptr;
++inline bool attempted = false;
++inline LONG observedFgSuccesses = 0;
++inline LONG observedGenerated = 0;
++
++inline void Completed(bool fg, NVSDK_NGX_Result result, NVSDK_NGX_Parameter* parameters)
++{
++    if (!fg || result != NVSDK_NGX_Result_Success)
++        return;
++    std::lock_guard lock(guard);
++    ++observedFgSuccesses;
++    int count = 0;
++    parameters->Get("DLSSG.MultiFrameCount", &count);
++    observedGenerated = count;
++}
++
++inline void Tick()
++{
++    std::lock_guard lock(guard);
++    if (!attempted)
++    {
++        attempted = true;
++        const auto name = L"Local\\rtxForge.controls." + std::to_wstring(GetCurrentProcessId());
++        mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(Mailbox), name.c_str());
++        // Never consume a pre-existing mailbox supplied by another process.
++        if (mapping && GetLastError() != ERROR_ALREADY_EXISTS)
++            mailbox = static_cast<Mailbox*>(MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(Mailbox)));
++        if (!mailbox)
++        {
++            if (mapping) CloseHandle(mapping);
++            mapping = nullptr;
++            return;
++        }
++        *mailbox = {};
++        mailbox->magic = 0x46585452;
++        mailbox->version = 1;
++        mailbox->pid = GetCurrentProcessId();
++    }
++    if (!mailbox) return;
++    auto& cfg = *Config::Instance();
++    const LONG sequence = InterlockedCompareExchange(&mailbox->command, 0, 0);
++    if (sequence > 0 && !(sequence & 1) && sequence != mailbox->acknowledged)
++    {
++        // Client marks an in-flight write odd and commits it even. Never read
++        // a partially written command, and validate every value before apply.
++        Mailbox request = *mailbox;
++        MemoryBarrier();
++        if (sequence == InterlockedCompareExchange(&mailbox->command, 0, 0))
++        {
++            const auto boolean = [](LONG n) { return n == 0 || n == 1; };
++            const auto bounded = [](float n, float lo, float hi) { return std::isfinite(n) && n >= lo && n <= hi; };
++            const bool valid = boolean(request.enabled) && boolean(request.preSr) && boolean(request.cache) &&
++                bounded(request.intensity, 0.f, 2.f) && bounded(request.structure, 0.f, 2.f) &&
++                bounded(request.tone, 0.f, 2.f) && request.interval >= 1 && request.interval <= 16 &&
++                request.style >= 0 && request.style <= 2 &&
++                (request.multiplier == -1 || request.multiplier == 0 || (request.multiplier >= 2 && request.multiplier <= 6));
++            auto& state = State::Instance();
++            const auto maximum = state.dlssgMfgMax.value_or(0);
++            const bool supported = request.multiplier <= 0 || maximum >= request.multiplier - 1;
++            mailbox->result = !valid ? 2 : !supported ? 3 : 1;
++            if (valid && supported)
++            {
++                cfg.DlssNrEnabled.set_volatile_value(request.enabled != 0);
++                cfg.DlssNrIntensity.set_volatile_value(request.intensity);
++                cfg.DlssNrPreSr.set_volatile_value(request.preSr != 0);
++                cfg.DlssNrCacheEnabled.set_volatile_value(request.cache != 0);
++                cfg.DlssNrCacheInterval.set_volatile_value(request.interval);
++                cfg.DlssNrStyle.set_volatile_value(request.style);
++                cfg.DlssNrLocalStructure.set_volatile_value(request.structure);
++                cfg.DlssNrLocalTone.set_volatile_value(request.tone);
++                if (request.multiplier == -1)
++                    cfg.FGDLSSGOverrideInterpolationCount = std::nullopt;
++                else
++                {
++                    const int generated = request.multiplier == 0 ? 0 : request.multiplier - 1;
++                    cfg.FGDLSSGOverrideInterpolationCount.set_volatile_value(generated);
++                    if (generated > 0) cfg.FGDLSSGInterpolationCount.set_volatile_value(generated);
++                }
++            }
++            InterlockedExchange(&mailbox->acknowledged, sequence);
++        }
++    }
++    InterlockedIncrement(&mailbox->snapshot);
++    mailbox->actualEnabled = cfg.DlssNrEnabled.value_or_default();
++    mailbox->actualIntensity = cfg.DlssNrIntensity.value_or_default();
++    auto count = cfg.FGDLSSGOverrideInterpolationCount;
++    mailbox->actualMultiplier = !count.has_value() ? -1 : count.value() == 0 ? 0 : count.value() + 1;
++    mailbox->actualPreSr = cfg.DlssNrPreSr.value_or_default();
++    mailbox->actualCache = cfg.DlssNrCacheEnabled.value_or_default();
++    mailbox->actualInterval = cfg.DlssNrCacheInterval.value_or_default();
++    mailbox->actualStyle = cfg.DlssNrStyle.value_or_default();
++    mailbox->actualStructure = cfg.DlssNrLocalStructure.value_or_default();
++    mailbox->actualTone = cfg.DlssNrLocalTone.value_or_default();
++    const auto live = DlssNr::GetLiveStats();
++    mailbox->nrRunning = cfg.DlssNrEnabled.value_or_default() && DlssNr::IsRunning();
++    mailbox->nrMs = static_cast<float>(live.nrMs);
++    mailbox->renderedFps = static_cast<float>(live.renderedFps);
++    mailbox->backendMax = State::Instance().dlssgMfgMax.value_or(0);
++    mailbox->lastGenerated = observedGenerated;
++    mailbox->fgSuccesses = observedFgSuccesses;
++    ++mailbox->frames;
++    strncpy_s(mailbox->failure, DlssNr::FailureReason(), _TRUNCATE);
++    InterlockedIncrement(&mailbox->snapshot);
++}
++}
 diff --git a/OptiScaler/framegen/dlssg/MfgUnlock.cpp b/OptiScaler/framegen/dlssg/MfgUnlock.cpp
 new file mode 100644
 index 00000000..3fca66d7
@@ -717,18 +861,19 @@ index 176dab06..f235597d 100644
              }
          }
 diff --git a/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp b/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
-index 0b25fbe5..370a72ca 100644
+index 0b25fbe5..e38af953 100644
 --- a/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
 +++ b/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
-@@ -14,6 +14,7 @@
+@@ -14,6 +14,8 @@
  #include "upscalers/dlss/DLSSFeature_Dx12.h"
 
  #include <framegen/nvngx/Nvngx_FG.h>
 +#include <framegen/dlssg/MfgUnlock.h>
++#include <framegen/dlssg/Companion.h>
  #include "FG/FSR3_Dx12_FG.h"
  #include "FG/Upscaler_Inputs_Dx12.h"
 
-@@ -53,6 +54,7 @@ class ScopedInitDx12
+@@ -53,6 +55,7 @@ class ScopedInitDx12
 
  static void UpdateInitPaths(NVSDK_NGX_FeatureCommonInfo* InFeatureInfo)
  {
@@ -736,3 +881,56 @@ index 0b25fbe5..370a72ca 100644
      State::Instance().NVNGX_FeatureInfo_Paths.clear();
 
      if (InFeatureInfo != nullptr)
+@@ -1118,6 +1121,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
+
+     const uint32_t handleId = InFeatureHandle->Id;
+     LOG_DEBUG("EvaluateFeature - Handle: {}, CmdList: {:p}", handleId, (void*) InCmdList);
++    ForgeCompanion::Tick();
+
+     const State& state = State::Instance();
+     const Config& cfg = *Config::Instance();
+@@ -1134,6 +1138,16 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
+     {
+         evalWithoutFG = 0;
+
++        // Positive session requests can update an existing NGX feature without
++        // replaying a game's Streamline option chain. Off is handled by the
++        // existing Streamline options hook on its next game options update.
++        if (cfg.FGDLSSGOverrideInterpolationCount.has_value())
++        {
++            const int requested = cfg.FGDLSSGOverrideInterpolationCount.value();
++            if (requested > 0 && requested <= State::Instance().dlssgMfgMax.value_or(0))
++                InParameters->Set("DLSSG.MultiFrameCount", requested);
++        }
++
+         int frameCount = 0;
+         InParameters->Get("DLSSG.MultiFrameCount", &frameCount);
+         State::Instance().dlssgDetectedInterpolationCount = frameCount;
+@@ -1179,6 +1193,8 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
+             if (result == NVSDK_NGX_Result_Success && feature != NVSDK_NGX_Feature_FrameGeneration)
+                 DlssNr::EvaluateAfterUpscale(InCmdList, InParameters);
+
++            ForgeCompanion::Completed(feature == NVSDK_NGX_Feature_FrameGeneration, result, InParameters);
++
+             return result;
+         }
+
+@@ -1190,7 +1206,9 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
+     if (State::Instance().activeFgNvngx != FGNvngxReplacement::None && handleId >= NVNGX_PROVIDER_ID_OFFSET)
+     {
+         LOG_DEBUG("Passthrough to DLSSG Replacement's EvaluateFeature for handle {}", handleId);
+-        return Nvngx_FG::D3D12_EvaluateFeature(InCmdList, InFeatureHandle, InParameters, InCallback);
++        const auto result = Nvngx_FG::D3D12_EvaluateFeature(InCmdList, InFeatureHandle, InParameters, InCallback);
++        ForgeCompanion::Completed(feature == NVSDK_NGX_Feature_FrameGeneration, result, InParameters);
++        return result;
+     }
+
+     if (lastDlssgCameraNear.has_value())
+@@ -1206,6 +1224,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
+
+     // OptiScaler internal handling
+     const NVSDK_NGX_Result optiResult = TryEvaluateOptiFeature(InCmdList, InFeatureHandle, InParameters, InCallback);
++    ForgeCompanion::Completed(feature == NVSDK_NGX_Feature_FrameGeneration, optiResult, InParameters);
+
+     if (nrPreSr)
+         DlssNr::EndBeforeUpscale(InParameters);

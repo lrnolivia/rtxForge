@@ -1605,6 +1605,7 @@ def load_user_nr_runtime(
             "path": str(path.resolve()),
             "sha256": sha256_bytes(data),
             "ownership": "user-supplied NVIDIA runtime",
+            "explicit_override": is_explicit,
             "skipped_auto_candidates": diagnostics,
         }
 
@@ -4430,7 +4431,7 @@ def install_target(
                 "ownership": "caller-supplied NVIDIA runtime",
             }
         live_nr = target / NR_RUNTIME_NAME
-        if live_nr.is_file() and not live_nr.is_symlink() and Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) != "dlss-unlocked":
+        if live_nr.is_file() and not live_nr.is_symlink() and Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) != "dlss-unlocked" and not (selected_nr_meta or {}).get("explicit_override"):
             live_bytes = live_nr.read_bytes()
             require(len(live_bytes) > NR_RUNTIME_MIN_BYTES and live_bytes[:2] == b"MZ", f"Existing {NR_RUNTIME_NAME} is invalid")
             selected_nr_payload = live_bytes

@@ -43,6 +43,8 @@ Select **Skynizz NR + Ada MFG bridge** in Packages for NR + MFG. It combines Sky
 
 Choose `latest` supported bridge or pin an included release such as `v1.2.1`. NR Only can separately use stock Skynizz stable releases. The review identifies the exact source, package SHA-256 and selected model. Repair retains that game's recorded release and complete in-game preset. Restore is required before changing provider or mode. Existing provider choices and defaults are preserved.
 
+An explicitly selected local NR DLL takes priority over a game-local model. The review shows its path and hash, and the replaced file is backed up for Restore. With no explicit selection, the game's existing model is preserved.
+
 This provider requires a compatible, user-supplied RTX 40 `nvngx_dlssnr.dll` in Settings or beside the game executable, and D3D12 with DLSS enabled. The similarly named `nvngx.dll_dlssnr.dll` is only the forwarder. Combined mode starts with pre-SR NR and edit-cache reuse off to address the reported MFG pacing issue. The Insert overlay retains NR preset controls; Repair preserves them. **Reset Presets** restores the combined policy. Upstream installer scripts are never run.
 
 The combined package uses NVIDIA's version- and hash-pinned production `rel` DLLs for Super Resolution, Ray Reconstruction and Frame Generation. This prevents private SDK variants from taking priority over the game's production files and displaying development watermarks. Each component's source is recorded with new installations and retained by Repair; older bridge recipes require Restore and reinstall to select the new runtime set. The NR model remains a separate local file.

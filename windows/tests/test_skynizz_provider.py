@@ -117,6 +117,22 @@ assert 'CacheInterval=1' in reset_ini and 'WorkingScale=0.67' in reset_ini and '
 checks.append('repair pins exact release and preserves full preset; reset retains Skynizz policy')
 run(prepare(fresh,'uninstall'));assert files(fresh)==before,files(fresh)
 checks.append('restore reproduces the original file hashes')
+local_model=game('ExplicitModel')
+old_model=fixtures.pe()+b'old'*(12*1024**2)
+(local_model/'nvngx_dlssnr.dll').write_bytes(old_model)
+local_before=files(local_model)
+run(prepare(local_model,values={'nr_runtime':''}))
+assert (local_model/'nvngx_dlssnr.dll').read_bytes()==old_model
+run(prepare(local_model,'uninstall'))
+assert files(local_model)==local_before
+explicit=prepare(local_model)
+assert str(model) in explicit['rows'][0]['detail']
+run(explicit)
+assert (local_model/'nvngx_dlssnr.dll').read_bytes()==model.read_bytes()
+assert baseline(local_model)['nr_runtime']['explicit_override']
+run(prepare(local_model,'uninstall'))
+assert files(local_model)==local_before
+checks.append('explicit model replaces a game-local copy after review and restores it; automatic selection preserves it')
 mfg=game('ExistingMfg');(mfg/'nvngx_dlssg.dll').write_bytes(fixtures.pe());mfg_before=files(mfg)
 mfg_settings=settings | {'runtime_provider':'y4my'}
 run(service.prepare([scan(mfg,'y4my')],'mfg-only','install',visual_settings=mfg_settings))
@@ -193,7 +209,7 @@ sr_only=host.scan({'folders':[str(missing)],'runtime_provider':'skynizz','featur
 assert 'game-native DLSS Frame Generation' in sr_only['blocked']
 checks.append('combined runtime failure restores NR/MFG changes; combined scan requires native FG')
 local=game('LocalModel');(local/'nvngx_dlssnr.dll').write_bytes(fixtures.pe()+b'1'*(32*1024**2))
-local_before=files(local);run(prepare(local))
+local_before=files(local);run(prepare(local,values={'nr_runtime':''}))
 assert baseline(local)['nr_runtime']['path']==str(local/'nvngx_dlssnr.dll')
 assert baseline(local)['nr_runtime']['sha256']==local_before['nvngx_dlssnr.dll']
 run(prepare(local,'uninstall'));assert files(local)==local_before
@@ -248,7 +264,7 @@ class WindowsSkynizzTest(unittest.TestCase):
                                     env=env, capture_output=True, text=True, timeout=180)
             self.assertEqual(result.returncode, 0, result.stderr[-12000:] + result.stdout[-3000:])
             receipt = json.loads(result.stdout.strip().splitlines()[-1])
-            self.assertEqual(receipt['count'], 12)
+            self.assertEqual(receipt['count'], 13)
             print('PASS: ' + '; '.join(receipt['checks']))
 
 

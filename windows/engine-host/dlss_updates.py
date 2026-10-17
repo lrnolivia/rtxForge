@@ -44,7 +44,12 @@ def prepare(config, games):
         for change in plan['changes']:
             item = files[change['path']]
             details.append(f"{item['path']} · {item['current']} → {item['target']}")
-        rows.append({'name': plan['name'], 'game': plan['game'], 'detail': '\n'.join(details)})
+        count = len(plan['changes'])
+        rows.append({'name': plan['name'], 'game': plan['game'], 'detail': '\n'.join(details),
+                     'summary': f"Update {count} DLSS {'file' if count == 1 else 'files'}. Originals will be backed up."})
+    import review_copy
+    for row in blocked:
+        row['summary'] = review_copy.blocked_summary(row['reason'])
     return {'plans': plans, 'rows': rows, 'blocked': blocked}
 
 
@@ -78,7 +83,10 @@ def attach_install(config, review, enabled=True):
         row['game'] = game
         native = plans.get(game)
         if native is None:
-            row['detail'] += '\nNative DLSS: ' + skipped.get(game, 'No file changes needed.')
+            reason = skipped.get(game, 'No file changes needed.')
+            import review_copy
+            row['native_summary'] = review_copy.blocked_summary(reason)
+            row['detail'] += '\nNative DLSS: ' + reason
             continue
         state = runtime.storage(config) / 'runtime-transactions' / uuid.uuid4().hex
         # The feature operation's per-game checkpoint owns both the native
@@ -87,3 +95,5 @@ def attach_install(config, review, enabled=True):
         item['extra_checkpoint_paths'] = [Path(game) / change['path'] for change in native['changes']] + [state]
         item['before_game'] = lambda plan=native, state=state: runtime.apply(config, [plan], state_paths=[state])
         row['detail'] += '\nNative DLSS updates:\n' + details[game]
+        count = len(native['changes'])
+        row['native_summary'] = f"Update {count} DLSS {'file' if count == 1 else 'files'}. Originals will be backed up."

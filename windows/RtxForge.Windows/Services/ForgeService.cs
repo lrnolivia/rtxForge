@@ -145,10 +145,10 @@ public sealed class PreviewForgeService : IForgeService
         await Task.Delay(400, cancel);
         // As engine_bridge.adopt_plan: a Linux install is adapted for Windows, not reinstalled.
         var ready = targets.Where(g => !g.Blocked && (operation is not ("uninstall" or "reset") || g.Installed))
-            .Select(g => (g, g.InstalledOnLinux
+            .Select(g => new OperationGameReview(g, g.InstalledOnLinux
                 ? operation == "uninstall" ? "Installed with rtxForge on Linux · restores the original files it backed up"
                 : "Installed with rtxForge on Linux · adapts it for Windows: it already loads here, so no game files change"
-                : $"Ready to {Verb(operation)}")).ToList();
+                : $"Ready to {Verb(operation)}", $"Ready to {Verb(operation)}.")).ToList();
         var blocked = targets.Where(g => g.Blocked).Select(g => new ReviewBlock(g, g.Name, g.BlockedReason ?? "Not supported")).ToList();
         var token = operation + ":" + Guid.NewGuid().ToString("N");
         reviewed[token] = tuning;

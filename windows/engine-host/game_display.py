@@ -154,6 +154,11 @@ def attach(review, enabled=False):
         plan, description = prepare(review['engine'], item['game'], restore)
         if description:
             row['detail'] += ' · ' + description
+            row['display_summary'] = (
+                'Restore the display settings backed up by rtxForge.' if plan and restore else
+                'Set 4K borderless. Your display settings will be backed up.' if plan else
+                'Display settings will stay as they are. Set 4K borderless in the game for the overlay.'
+            )
         if plan:
             item.setdefault('extra_checkpoint_paths', []).extend([plan['path'], plan['record_path'].parent])
             previous = item.get('after_game')

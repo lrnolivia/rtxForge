@@ -159,6 +159,7 @@ public sealed partial class GameModeView
 
     string ProviderName() => shell.Settings.RuntimeProvider switch
     {
+        "skynizz" => "Skynizz",
         "dlss-unlocked" => "DLSS-Unlocked",
         "custom" => "Custom package",
         _ => "y4my Multipass",

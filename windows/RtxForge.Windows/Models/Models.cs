@@ -69,13 +69,16 @@ public sealed record OperationStep(int Index, int Total, Game Game, string Capti
 public sealed record PrepareProgress(string Label, string? Game = null, int Checked = 0, int Total = 0);
 
 /// <summary>A game the engine refused for this operation, with its reason.</summary>
-public sealed record ReviewBlock(Game? Game, string Name, string Reason);
+public sealed record ReviewBlock(Game? Game, string Name, string Reason, string? Summary = null);
+
+/// <summary>A readable change summary plus the engine's complete diagnostic text.</summary>
+public sealed record OperationGameReview(Game Game, string Detail, string Summary);
 
 /// <summary>
 /// The engine's prepared review (engine_bridge.prepare). Execution runs this
 /// exact review by token, so only what the user saw is written.
 /// </summary>
-public sealed record OperationReview(string Operation, string Token, IReadOnlyList<(Game Game, string Detail)> Ready, IReadOnlyList<ReviewBlock> Blocked,
+public sealed record OperationReview(string Operation, string Token, IReadOnlyList<OperationGameReview> Ready, IReadOnlyList<ReviewBlock> Blocked,
     IReadOnlyList<ReviewBlock>? Warnings = null)
 {
     /// <summary>Heads-ups for ready games (e.g. NVIDIA App's DLSS Override); they never block the install.</summary>

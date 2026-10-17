@@ -381,6 +381,8 @@ def prepare(params):
         dlss_updates.attach_install(service.config, review, enabled=settings.get('manage_dlss_files', True))
         import game_display
         game_display.attach(review, enabled=settings.get('borderless_4k', False))
+        import review_copy
+        review_copy.attach(review)
         review["cancel_event"] = threading.Event()
     token = uuid.uuid4().hex
     reviews[token] = review

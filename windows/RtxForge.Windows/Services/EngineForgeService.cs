@@ -250,10 +250,11 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             Game? Installation(JsonObject row) => targets.FirstOrDefault(g =>
                 string.Equals(g.Location, row["game"]?.ToString(), StringComparison.OrdinalIgnoreCase));
             var ready = Objects(checkedFiles?["rows"]).Select(r =>
-                (Game: Installation(r), Detail: r["detail"]?.ToString() ?? ""))
-                .Where(r => r.Game is not null).Select(r => (r.Game!, r.Detail)).ToList();
+                (Game: Installation(r), Detail: r["detail"]?.ToString() ?? "", Summary: r["summary"]?.ToString()))
+                .Where(r => r.Game is not null).Select(r => new OperationGameReview(r.Game!, r.Detail,
+                    r.Summary ?? "Update this game's DLSS files. Originals will be backed up.")).ToList();
             var skipped = Objects(checkedFiles?["blocked"]).Select(r =>
-                new ReviewBlock(Installation(r), r["name"]?.ToString() ?? "", r["reason"]?.ToString() ?? "")).ToList();
+                new ReviewBlock(Installation(r), r["name"]?.ToString() ?? "", r["reason"]?.ToString() ?? "", r["summary"]?.ToString())).ToList();
             return new OperationReview(operation, checkedFiles?["token"]?.ToString() ?? "", ready, skipped);
         }
         var engineOperation = operation switch { "install" => "install", "uninstall" => "uninstall", _ => "reset" };
@@ -287,10 +288,11 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             ? targets.FirstOrDefault(g => string.Equals(g.Location, path, StringComparison.OrdinalIgnoreCase))
             : targets.FirstOrDefault(g => g.Name == name);
         var readyRows = (result?["rows"] as JsonArray ?? []).OfType<JsonObject>()
-            .Select(r => (Game: Match(r["name"]?.ToString(), r["game"]?.ToString()), Detail: r["detail"]?.ToString() ?? ""))
-            .Where(r => r.Game is not null).Select(r => (r.Game!, r.Detail)).ToList();
+            .Select(r => (Game: Match(r["name"]?.ToString(), r["game"]?.ToString()), Detail: r["detail"]?.ToString() ?? "", Summary: r["summary"]?.ToString()))
+            .Where(r => r.Game is not null).Select(r => new OperationGameReview(r.Game!, r.Detail,
+                r.Summary ?? "Review the technical details before continuing.")).ToList();
         var blocked = (result?["blocked"] as JsonArray ?? []).OfType<JsonObject>()
-            .Select(b => new ReviewBlock(Match(b["name"]?.ToString()), b["name"]?.ToString() ?? "", b["reason"]?.ToString() ?? "")).ToList();
+            .Select(b => new ReviewBlock(Match(b["name"]?.ToString()), b["name"]?.ToString() ?? "", b["reason"]?.ToString() ?? "", b["summary"]?.ToString())).ToList();
         var warnings = (result?["warnings"] as JsonArray ?? []).OfType<JsonObject>()
             .Select(w => new ReviewBlock(Match(w["name"]?.ToString()), w["name"]?.ToString() ?? "", w["reason"]?.ToString() ?? "")).ToList();
         return new OperationReview(operation, result?["token"]?.ToString() ?? "", readyRows, blocked, warnings);

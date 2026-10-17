@@ -11,7 +11,6 @@ using Microsoft.UI.Xaml.Media;
 using RtxForge.Windows.Models;
 using RtxForge.Windows.Services;
 using Windows.Graphics;
-using Color = global::Windows.UI.Color;
 
 namespace RtxForge.Windows.Views;
 
@@ -194,7 +193,8 @@ public sealed partial class CompanionWindow : Window
     void SetAvailability()
     {
         if (Controls is null) return;
-        var connected = game is not null && Flag(status, "can_edit") && !requesting;
+        var session = game is not null && Flag(status, "can_edit");
+        var connected = session && !requesting;
         var expanded = Int(status, "version") >= 3;
         foreach (var control in new Control[] { NrEnabled, Strength, Structure, Tone, NrPreset, PreSr, Cache, Interval })
             control.IsEnabled = connected;
@@ -216,11 +216,30 @@ public sealed partial class CompanionWindow : Window
         CompatibilityNote.Text = "Update this game's package for model passes, image tuning and resolution controls.";
         CompatibilityNote.Visibility = connected && !expanded ? Visibility.Visible : Visibility.Collapsed;
         Feedback.Visibility = string.IsNullOrEmpty(Feedback.Text) ? Visibility.Collapsed : Visibility.Visible;
+        SetChoices(MultiplierChoices, session ? multiplier : int.MinValue);
+        SetChoices(StyleChoices, session ? style : int.MinValue);
+        if (!session)
+        {
+            var wasSyncing = syncing;
+            syncing = true;
+            foreach (var toggle in new[] { NrEnabled, PreSr, Cache, Reduced, EdgeAware, AutoMask })
+                toggle.IsOn = false;
+            Interval.Value = double.NaN;
+            NrPreset.SelectedIndex = Passes.SelectedIndex = HigherMultiplier.SelectedIndex = -1;
+            syncing = wasSyncing;
+        }
+        UpdateLabels();
     }
 
     void UpdateLabels()
     {
         string Percent(double value) => value.ToString("0%", CultureInfo.CurrentCulture);
+        if (game is null || !Flag(status, "can_edit"))
+        {
+            foreach (var label in new[] { StrengthText, StructureText, ToneText, DetailText, ColourText, SkinText, ScaleText })
+                label.Text = "—";
+            return;
+        }
         StrengthText.Text = Percent(Strength.Value); StructureText.Text = Percent(Structure.Value);
         ToneText.Text = Percent(Tone.Value); DetailText.Text = Percent(Detail.Value); ColourText.Text = Percent(Colour.Value);
         SkinText.Text = Skin.Value < 0 ? "Follow structure" : Percent(Skin.Value); ScaleText.Text = Percent(WorkScale.Value);
@@ -229,15 +248,12 @@ public sealed partial class CompanionWindow : Window
     {
         foreach (var button in group.Children.OfType<ToggleButton>())
         {
-            var chosen = int.Parse((string)button.Tag) == selected;
-            button.IsChecked = chosen;
-            button.Background = new SolidColorBrush(chosen ? Color.FromArgb(255, 244, 244, 244) : Color.FromArgb(24, 255, 255, 255));
-            button.Foreground = new SolidColorBrush(chosen ? Color.FromArgb(255, 10, 10, 10) : Color.FromArgb(255, 255, 255, 255));
+            button.IsChecked = int.Parse((string)button.Tag) == selected;
         }
     }
     void Edited()
     {
-        if (syncing || Feedback is null) return;
+        if (syncing || Feedback is null || !Flag(status, "can_edit")) return;
         dirty = true; UpdateLabels(); SetAvailability(); QueueApply();
     }
     void QueueApply() { if (!dirty || dragging || disposed) return; editTimer.Stop(); editTimer.Start(); }

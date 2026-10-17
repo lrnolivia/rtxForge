@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "id": "skynizz-ada-mfg-1",
+  "upstream": {
+    "repository": "Skynizz/optiscaler-dlss5",
+    "tag": "v1.2.1",
+    "commit": "6bfc4389c25054ef6747df6e6b1b470e9541c4da"
+  },
+  "mfg_source": {
+    "repository": "y4my4my4m/OptiScaler_DLSSNR_Multipass_MFG",
+    "commit": "7b7220bbb4994a9c8ae60cfc75a44cb67995efb8",
+    "files": [
+      "OptiScaler/framegen/dlssg/MfgUnlock.cpp",
+      "OptiScaler/framegen/dlssg/MfgUnlock.h",
+      "OptiScaler/hooks/Streamline_Hooks.cpp",
+      "OptiScaler/hooks/LibraryLoad_Hooks.cpp",
+      "OptiScaler/Config.h",
+      "OptiScaler/Config.cpp"
+    ]
+  },
+  "patch": "ada-mfg.patch",
+  "patch_sha256": "b163d1e92cf552e0af6792685dcf782fba7643f0d10ef0b4a7cccfa63d69716b",
+  "license": "GPL-3.0-only",
+  "runtime_verified": false,
+  "default_promoted": false,
+  "required_gpu": "RTX 40 Ada",
+  "mfg_runtime": "existing y4my private NVIDIA/Streamline companion stack",
+  "cache_default": "disabled for combined mode until target pacing is verified"
+}

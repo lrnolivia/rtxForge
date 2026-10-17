@@ -12,7 +12,7 @@ namespace RtxForge.Windows.Views;
 /// </summary>
 public sealed partial class SettingsPage : Page
 {
-    static readonly string[] ProviderKeys = ["y4my", "dlss-unlocked", "custom"];
+    static readonly string[] ProviderKeys = ["y4my", "dlss-unlocked", "custom", "skynizz"];
     static readonly string[] Modes = ["nr-only", "mfg-only", "nr-mfg"];
     static readonly string[] Views = ["posters", "capsules", "list"];
 
@@ -55,9 +55,9 @@ public sealed partial class SettingsPage : Page
         // ----- Graphics -----
         var graphics = new PreferencesGroup(null, "Restore original files before switching providers.");
         var (row, provider) = Prefs.ComboRow("Provider", "Package that supplies NR and MFG.",
-            ["y4my Multipass", "DLSS-Unlocked", "Custom package"], Math.Max(0, Array.IndexOf(ProviderKeys, Settings.RuntimeProvider)), "");
+            ["y4my Multipass", "DLSS-Unlocked", "Custom package", "Skynizz DLSS 5 NR (NR Only)"], Math.Max(0, Array.IndexOf(ProviderKeys, Settings.RuntimeProvider)), "");
         graphics.Add(row);
-        (row, var nrPath) = Prefs.EntryRow("Local NR DLL for y4my", "Optional nvngx_dlssnr.dll used with the y4my provider.",
+        (row, var nrPath) = Prefs.EntryRow("Local NR model DLL", "Compatible nvngx_dlssnr.dll. Required for Skynizz unless a suitable model is already beside the game executable.",
             Settings.NrRuntime, @"C:\path\to\nvngx_dlssnr.dll", "");
         nrPath.LostFocus += (_, _) => { Settings.NrRuntime = nrPath.Text.Trim(); Save(); };
         graphics.Add(row);
@@ -78,6 +78,14 @@ public sealed partial class SettingsPage : Page
         {
             var selectedProvider = ProviderKeys[Math.Max(0, provider.SelectedIndex)];
             var selectedMode = Modes[Math.Max(0, profile.SelectedIndex)];
+            if (selectedProvider == "skynizz" && selectedMode != "nr-only")
+            {
+                profile.SelectedIndex = Array.IndexOf(Modes, "nr-only");
+                Notice.Title = "Skynizz currently supports NR Only.";
+                Notice.Message = "Its composition with rtxForge MFG is not verified.";
+                Notice.IsOpen = true;
+                selectedMode = "nr-only";
+            }
             if (selectedProvider == "y4my" && selectedMode == "nr-only")
             {
                 profile.SelectedIndex = Array.IndexOf(Modes, "mfg-only");
@@ -86,10 +94,12 @@ public sealed partial class SettingsPage : Page
                 Notice.IsOpen = true;
                 selectedMode = "mfg-only";
             }
+            var providerChanged = Settings.RuntimeProvider != selectedProvider;
             Settings.RuntimeProvider = selectedProvider;
             Settings.DefaultProfile = selectedMode;
             shell.Mode = selectedMode;
             shell.SaveSettings();
+            if (providerChanged) _ = shell.ScanAsync();
         }
         provider.SelectionChanged += (_, _) => ValidateProvider();
         profile.SelectionChanged += (_, _) => ValidateProvider();

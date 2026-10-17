@@ -180,7 +180,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
 
     public async Task<IReadOnlyList<Game>> ScanAsync(CancellationToken cancel = default)
     {
-        var rows = await CallAsync("scan", new { folders = Settings.GameFolders, library_folders = Settings.LibraryFolders }, cancel: cancel) as JsonArray ?? [];
+        var rows = await CallAsync("scan", new { folders = Settings.GameFolders, library_folders = Settings.LibraryFolders, runtime_provider = Settings.RuntimeProvider }, cancel: cancel) as JsonArray ?? [];
         var art = new SteamArtwork(Settings.OnlineArt);
         return LibraryLocations.Visible(rows.OfType<JsonObject>().Select(row => ToGame(row, art)), Settings.RemovedGames);
     }
@@ -261,6 +261,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             ["runtime_provider"] = Settings.RuntimeProvider,
             ["manage_dlss_files"] = Settings.ManageDlssFiles,
             ["nr_runtime"] = Settings.NrRuntime,
+            ["skynizz_version"] = Settings.SkynizzVersion,
             ["nr_strength"] = Math.Round(tuning.NrStrength, 1),
             ["sharpening_strength"] = Math.Round(tuning.SharpeningStrength, 1),
             ["mfg_multiplier"] = tuning.MfgMultiplier == "auto" ? "auto" : int.Parse(tuning.MfgMultiplier),

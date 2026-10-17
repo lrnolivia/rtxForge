@@ -2196,7 +2196,12 @@ def _reset_visual_settings(game: Game, *, dry_run: bool = False, nr_strength: st
     require(ini.is_file() and not ini.is_symlink(), "Managed OptiScaler.ini is missing or linked; repair first")
     require(not _running_processes_under_root(game.root), "Close this game before resetting its settings")
     original = ini.read_bytes()
-    text, values = apply_visual_defaults(original.decode("utf-8-sig"), None, mode, nr_strength, mfg_multiplier, sharpening_strength)
+    if current.get("provider_id") == "skynizz":
+        import skynizz_provider
+        text, nr_values = skynizz_provider.configure(sys.modules[__name__], original)
+        values = {"DlssNr": nr_values}
+    else:
+        text, values = apply_visual_defaults(original.decode("utf-8-sig"), None, mode, nr_strength, mfg_multiplier, sharpening_strength)
     updated = text.encode("utf-8")
     record = {"action": "reset-visual-settings", "name": game.name, "feature_mode": mode,
               "provider_id": current.get("provider_id"), "files": [managed[0]],
@@ -4258,7 +4263,13 @@ def install_target(
     dry_run: bool = False,
 ) -> dict:
     visual_defaults(nr_strength, mfg_multiplier, sharpening_strength)  # Validate before any mutation.
-    require(game.eligible, f"Game is not eligible: {game.name} ({game.reason})")
+    is_skynizz = Y4MY_PROVIDER.get("id") == "skynizz"
+    if is_skynizz:
+        import skynizz_provider
+        desktop_platform = getattr(sys.modules[__name__], "DESKTOP_PLATFORM", "windows" if os.name == "nt" else "linux")
+        skynizz_provider.require_mode(desktop_platform, feature_mode, native_mfg_fallback)
+    require(game.eligible or (is_skynizz and game.exe and game.dlss and not game.anti_cheat),
+            f"Game is not eligible: {game.name} ({game.reason})")
     require(game.target_dir is not None and game.exe is not None, "Missing game target")
     running = _running_processes_under_root(game.root.resolve())
     require(not running, f"Game process still using {game.root}: {', '.join(running[:5])}")
@@ -4284,6 +4295,8 @@ def install_target(
     if existing_baseline and Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) == "dlss-unlocked":
         prior_mode = (existing_baseline.get("current") or {}).get("feature_mode")
         require(prior_mode in (None, feature_mode), "Uninstall before changing DLSS-Unlocked pipelines")
+    if is_skynizz:
+        skynizz_provider.check_target(sys.modules[__name__], game, existing_baseline)
     reshade = detect_reshade(target)
     # Keep y4my's overlay behavior unchanged by default. Its global overlay
     # blocker also disables Steam Input, so RC1 does not infer a per-game route.
@@ -4386,7 +4399,7 @@ def install_target(
     # because a global runtime was supplied for other games in the batch.
     # Frozen DLSS-Unlocked MFG recipe: update only existing native runtime files.
     # create_baseline below backs up every replacement before the first write.
-    require(feature_mode != "nr-only" or Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) == "dlss-unlocked",
+    require(feature_mode != "nr-only" or is_skynizz or Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) == "dlss-unlocked",
             "NR Only is currently available with DLSS-Unlocked")
     if Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) == "dlss-unlocked" and feature_mode == "mfg-only" and native_mfg_fallback:
         # Explicit, opt-in fallback only. The normal route leaves the game's
@@ -4462,61 +4475,66 @@ def install_target(
             # in-game. Preserve those settings, then reassert only rtxEngine's
             # policy-owned keys instead of replacing the whole config.
             ini_source = live_ini.read_bytes()
-    payload[ini_key] = patch_optiscaler_ini(ini_source, family, ada_mfg_mode=ada_mfg_mode, disable_overlays=eos_overlay)
-
-    # Preserve the game-native DLSS-G path. Ada unlock is independent of OptiFG.
-    text = payload[ini_key].decode("utf-8")
     is_dlss_unlocked = Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) == "dlss-unlocked"
-    ada_active = enable_effects and family == "ada" and feature_mode != "nr-only"
-    text = set_ini_value(text, "DLSSG", "AdaMfgUnlock", "true" if ada_active else "false")
-    text = set_ini_value(
-        text, "DLSSG", "AdaBlackwellKernels",
-        "true" if ada_active else "false" if is_dlss_unlocked else "auto",
-    )
-    text = set_ini_value(text, "DLSSG", "AmpereMfgUnlock", "false")
-    if is_dlss_unlocked and family == "ada":
-        # Default DLSS-Unlocked route: the game owns native NVIDIA
-        # Streamline/DLSS-G; OptiScaler applies only the Ada capability unlock.
-        text = set_ini_value(text, "FrameGen", "External", "false")
-        text = set_ini_value(text, "FrameGen", "Enabled", "auto")
-        text = set_ini_value(text, "FrameGen", "FGInput", "auto")
-        text = set_ini_value(text, "FrameGen", "FGOutput", "auto")
-        text = set_ini_value(text, "FrameGen", "FGNvngxReplacement", "auto")
-        text = set_ini_value(text, "Menu", "OverlayMenu", "false")
-        text = set_ini_value(text, "Menu", "ShortcutKey", "-1")
-    if is_dlss_unlocked:
-        for key in ("DualFeature", "DualEnlarger", "PreUpscale"):
-            text = remove_ini_key(text, "DlssNr", key)
-        text = set_ini_value(text, "DlssNr", "RunBeforeSR", "true")
-        text = set_ini_value(text, "DlssNr", "DeferredDLSS", "false")
-        if feature_mode in {"nr-mfg", "nr-only"}:
-            text = set_ini_value(text, "DlssNr", "ToggleKey", "0x79")
-    text, visual_tuning = apply_visual_defaults(
-        text, saved_ini.decode("utf-8-sig") if saved_ini is not None else None, feature_mode, nr_strength, mfg_multiplier, sharpening_strength,
-    )
-    if not preserve_visual_settings:
-        # An explicit Install preset form changes only the three exposed controls.
-        # Preserve unrelated overlay/custom tuning; Repair never enters this path.
-        requested = visual_defaults(nr_strength, mfg_multiplier, sharpening_strength)
-        keys = {"DlssNr": ("Intensity", "SkinStructure", "Enabled"),
-                "Sharpness": ("Sharpness",),
-                "CAS": ("Enabled", "MotionSharpnessEnabled"),
-                "DLSSG": ("OverrideInterpolationCount", "OverrideForceDMFG", "FramerateTargetDMFG")}
-        for section, names in keys.items():
-            if section == "DlssNr" and feature_mode == "mfg-only":
-                continue
-            if section == "DLSSG" and feature_mode == "nr-only":
-                continue
-            for key in names:
-                if key in requested.get(section, {}):
-                    value = requested[section][key]
-                    text = set_ini_value(text, section, key, value)
-                    visual_tuning.setdefault(section, {})[key] = value
-    # Explicit ratios override the game; auto leaves the native game selection in control.
-    # DLSS-Unlocked NR still starts dormant and is toggled independently with F10.
-    if not enable_effects or is_dlss_unlocked:
-        text = set_ini_value(text, "DlssNr", "Enabled", "false")
-    nr_tuning = visual_tuning.get("DlssNr", visual_defaults(nr_strength)["DlssNr"])
+    if is_skynizz:
+        text, nr_tuning = skynizz_provider.configure(sys.modules[__name__], ini_source, saved_ini)
+        visual_tuning = {"DlssNr": nr_tuning}
+    else:
+        payload[ini_key] = patch_optiscaler_ini(ini_source, family, ada_mfg_mode=ada_mfg_mode, disable_overlays=eos_overlay)
+
+        # Preserve the game-native DLSS-G path. Ada unlock is independent of OptiFG.
+        text = payload[ini_key].decode("utf-8")
+        is_dlss_unlocked = Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) == "dlss-unlocked"
+        ada_active = enable_effects and family == "ada" and feature_mode != "nr-only"
+        text = set_ini_value(text, "DLSSG", "AdaMfgUnlock", "true" if ada_active else "false")
+        text = set_ini_value(
+            text, "DLSSG", "AdaBlackwellKernels",
+            "true" if ada_active else "false" if is_dlss_unlocked else "auto",
+        )
+        text = set_ini_value(text, "DLSSG", "AmpereMfgUnlock", "false")
+        if is_dlss_unlocked and family == "ada":
+            # Default DLSS-Unlocked route: the game owns native NVIDIA
+            # Streamline/DLSS-G; OptiScaler applies only the Ada capability unlock.
+            text = set_ini_value(text, "FrameGen", "External", "false")
+            text = set_ini_value(text, "FrameGen", "Enabled", "auto")
+            text = set_ini_value(text, "FrameGen", "FGInput", "auto")
+            text = set_ini_value(text, "FrameGen", "FGOutput", "auto")
+            text = set_ini_value(text, "FrameGen", "FGNvngxReplacement", "auto")
+            text = set_ini_value(text, "Menu", "OverlayMenu", "false")
+            text = set_ini_value(text, "Menu", "ShortcutKey", "-1")
+        if is_dlss_unlocked:
+            for key in ("DualFeature", "DualEnlarger", "PreUpscale"):
+                text = remove_ini_key(text, "DlssNr", key)
+            text = set_ini_value(text, "DlssNr", "RunBeforeSR", "true")
+            text = set_ini_value(text, "DlssNr", "DeferredDLSS", "false")
+            if feature_mode in {"nr-mfg", "nr-only"}:
+                text = set_ini_value(text, "DlssNr", "ToggleKey", "0x79")
+        text, visual_tuning = apply_visual_defaults(
+            text, saved_ini.decode("utf-8-sig") if saved_ini is not None else None, feature_mode, nr_strength, mfg_multiplier, sharpening_strength,
+        )
+        if not preserve_visual_settings:
+            # An explicit Install preset form changes only the three exposed controls.
+            # Preserve unrelated overlay/custom tuning; Repair never enters this path.
+            requested = visual_defaults(nr_strength, mfg_multiplier, sharpening_strength)
+            keys = {"DlssNr": ("Intensity", "SkinStructure", "Enabled"),
+                    "Sharpness": ("Sharpness",),
+                    "CAS": ("Enabled", "MotionSharpnessEnabled"),
+                    "DLSSG": ("OverrideInterpolationCount", "OverrideForceDMFG", "FramerateTargetDMFG")}
+            for section, names in keys.items():
+                if section == "DlssNr" and feature_mode == "mfg-only":
+                    continue
+                if section == "DLSSG" and feature_mode == "nr-only":
+                    continue
+                for key in names:
+                    if key in requested.get(section, {}):
+                        value = requested[section][key]
+                        text = set_ini_value(text, section, key, value)
+                        visual_tuning.setdefault(section, {})[key] = value
+        # Explicit ratios override the game; auto leaves the native game selection in control.
+        # DLSS-Unlocked NR still starts dormant and is toggled independently with F10.
+        if not enable_effects or is_dlss_unlocked:
+            text = set_ini_value(text, "DlssNr", "Enabled", "false")
+        nr_tuning = visual_tuning.get("DlssNr", visual_defaults(nr_strength)["DlssNr"])
     payload[ini_key] = text.encode("utf-8")
 
     if mfg_proxy:
@@ -4530,7 +4548,7 @@ def install_target(
         return {"proxy":chosen_proxy, "files":sorted(payload), "remove":stale,
                 "launch_options":build_launch_options(chosen_proxy,reshade),
                 "feature_mode":feature_mode, "effects_enabled":enable_effects,
-                "provider":dict(Y4MY_PROVIDER)}
+                "provider":dict(Y4MY_PROVIDER), "nr_runtime":dict(selected_nr_meta or {})}
 
     # If a previously-owned proxy was externally replaced between installs and
     # ownership is changing now, adopt those current bytes as the restore
@@ -4679,12 +4697,19 @@ def install_target(
                     "enabled": enable_effects and feature_mode != "nr-only",
                     "activation": "startup" if enable_effects else "manual-after-launch",
                 }
-                if family == "ada" else None
+                if family == "ada" and not is_skynizz else None
             ),
             "nr_runtime": dict(selected_nr_meta or {}),
             "provider_id": Y4MY_PROVIDER.get("id", "y4my"),
             "feature_mode": feature_mode,
-            "nr_profile": {
+            "nr_profile": ({
+                "enabled": nr_tuning.get("Enabled", "auto").lower() == "true",
+                "activation": "startup", "runtime_verified": False,
+                "placement": "pre-sr-with-post-sr-fallback" if nr_tuning.get("PreSr") == "true" else "upstream-configured",
+                "cache_policy": {key: value for key, value in nr_tuning.items() if key.startswith("Cache")},
+                "working_scale": nr_tuning.get("WorkingScale", "auto"), "menu_key": "Insert",
+                "mfg": "unmanaged; rtxForge composition not verified",
+            } if is_skynizz else {
                 "enabled": False if is_dlss_unlocked else (enable_effects and feature_mode in {"nr-mfg", "nr-only"} and nr_tuning.get("Enabled") == "true"),
                 "activation": "toggle-key-f10" if (is_dlss_unlocked and feature_mode in {"nr-mfg", "nr-only"}) else ("startup" if enable_effects else "manual-after-launch"),
                 "dual_feature": Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) != "dlss-unlocked",
@@ -4696,7 +4721,7 @@ def install_target(
                 "skin_structure": float(nr_tuning["SkinStructure"]),
                 "intensity": float(nr_tuning["Intensity"]),
                 "menu_key": "F10 (NR toggle) / overlay menu disabled" if is_dlss_unlocked else "Alt+Insert / Insert",
-            },
+            }),
             "compatibility_policy": {
                 "proxy_imports": sorted(pe_imported_dlls(game.exe)),
                 "proxy_selected": chosen_proxy,
@@ -4705,7 +4730,8 @@ def install_target(
                 "dxgi_spoofing": False,
                 "vulkan_spoofing": False,
                 "upscaler_route": "auto-first-launch",
-                "mfg_route": ("native-game-dlssg-ada-unlock" if is_dlss_unlocked else "native-ada-y4my-v4-armed") if family == "ada" else "disabled-sm86",
+                "mfg_route": ("unmanaged-skynizz-nr-only" if is_skynizz else
+                              ("native-game-dlssg-ada-unlock" if is_dlss_unlocked else "native-ada-y4my-v4-armed") if family == "ada" else "disabled-sm86"),
                 "native_mfg_fallback": bool(native_mfg_fallback) if is_dlss_unlocked else False,
                 "mfg_multiplier": mfg_multiplier if feature_mode != "nr-only" else None,
                 "prior_runtime_status": prior_runtime_evidence.get("status") if existing_baseline else None,

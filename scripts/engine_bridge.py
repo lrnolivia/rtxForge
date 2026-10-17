@@ -1,7 +1,7 @@
 """Serialized desktop adapter for the RC1.38-derived transaction engine."""
 from pathlib import Path
 import importlib.util,sys,json,hashlib,zipfile,os,contextlib
-import transactions as t,packages,ui,package_catalog,proton_prefix,cross_os
+import transactions as t,packages,ui,package_catalog,proton_prefix,cross_os,skynizz_provider
 from operation_session import Session,Cancelled
 from storage import storage
 ROOT=Path(__file__).resolve().parents[1]
@@ -11,6 +11,7 @@ def module(config,provider='y4my',mode=None):
     e=importlib.util.module_from_spec(spec);sys.modules[name]=e;spec.loader.exec_module(e)
     e.Y4MY_PROVIDER=providers()[provider]
     e.Y4MY_PROVIDER=e.Y4MY_PROVIDER.get('profile_pins',{}).get(mode,e.Y4MY_PROVIDER)
+    e.DESKTOP_PLATFORM=cross_os.THIS_OS
     # Retain terminal edition's namespace so its original backups remain authoritative.
     e.STATE_ROOT=Path(os.environ.get('RTXFORGE_DLSS_UNLOCKED_STATE',str(Path.home()/'.local/state/rtxforge-dlss-unlocked')))
     e.Y4MY_CACHE_DIR=storage(config)/'packages'/e.Y4MY_PROVIDER['sha256']
@@ -19,6 +20,11 @@ def module(config,provider='y4my',mode=None):
 
 def payload(e,config,mode,archive=None):
     p=e.Y4MY_PROVIDER
+    if p.get('id')=='skynizz':
+        skynizz_provider.require_mode(cross_os.THIS_OS,mode)
+        cache=storage(config,skynizz_provider.MAX_ARCHIVE)/'packages'/p['sha256']
+        source=Path(archive) if archive else packages.download(p['url'],cache/p['archive'],expected=p['sha256'],size=p['release_size'])
+        return skynizz_provider.load_payload(source,p)
     if p.get('custom'):
         data,meta=package_catalog.load_custom_payload(p)
         if mode=='mfg-only':
@@ -209,6 +215,8 @@ def adopt_plan(e,g,row,record,operation,mode):
     other=OS_NAMES[record['os']];here=OS_NAMES[cross_os.THIS_OS]
     data=shared_baseline(g)
     current=data.get('current') or {}
+    t.need(cross_os.THIS_OS=='windows' or current.get('provider_id')!='skynizz' or operation=='uninstall',
+           'Skynizz installation/adoption is not available on Linux in this release.')
     managed=[p for p in data.get('managed_paths') or [] if isinstance(p,str)]
     mine=(data.get('cross_os_extras') or {}).get(cross_os.THIS_OS) or {}
     # What this OS saved in Steam the last time it owned the install, if anything.
@@ -250,6 +258,8 @@ def proton_setup(e,g,record):
 
 def prepare(config,rows,mode,operation,settings):
     selected=settings.get('runtime_provider','y4my')
+    if selected=='skynizz' and operation in ('install','repair'):
+        skynizz_provider.require_mode(cross_os.THIS_OS,mode,bool(settings.get('native_mfg_fallback')))
     custom=settings.get('custom_package') if selected=='custom' else None
     t.need(selected!='custom' or isinstance(custom,dict),'Choose and review a custom package first.')
     e=module(config,custom['family'] if custom else selected,mode);data={};meta={};nr=None;nrmeta=None
@@ -257,7 +267,8 @@ def prepare(config,rows,mode,operation,settings):
         # Unique package identity keeps switching providers behind existing restore checks.
         package_catalog.validate_parameters(custom.get('parameters',{}))
         e.Y4MY_PROVIDER=dict(custom)
-    if operation in ('install','repair'):
+    releases={}
+    if operation in ('install','repair') and selected!='skynizz':
         data,meta=ui.work('Verifying '+e.Y4MY_PROVIDER['name'],payload,e,config,mode)
         if mode in ('nr-mfg','nr-only') and 'nvngx_dlssnr.dll' not in data:
             # Local-only for y4my; missing per-game model is a per-target refusal.
@@ -266,19 +277,42 @@ def prepare(config,rows,mode,operation,settings):
     # Validate granular values before any target mutation.
     e.visual_defaults(strength,multiplier,sharpening)
     desktop_mode(e)
+    selected_provider=dict(e.Y4MY_PROVIDER)
     ready=[];blocked=[];seen=[]
     for index,row in enumerate(rows,1):
         ui.progress('Checking game files',phase='review-check',game=row['name'],checked=index-1,total=len(rows))
         try:
+            e.Y4MY_PROVIDER=dict(selected_provider)
             g=game(e,row)
             t.need(not any(g.root.resolve().is_relative_to(p) or p.is_relative_to(g.root.resolve()) for p in seen),'Duplicate or overlapping game selection; refresh the library')
             seen.append(g.root.resolve())
             baseline=e.load_baseline(g.target_dir)
+            target_data,target_meta=data,meta
+            installed=installed_package(baseline)
+            if installed and installed.get('provider_id')=='skynizz' and operation in ('reset','uninstall'):
+                t.need(cross_os.THIS_OS=='windows' or operation=='uninstall','Skynizz settings/adoption are not available on Linux in this release.')
+                e.Y4MY_PROVIDER=skynizz_provider.validate_release((installed.get('archive') or {}).get('release') or {})
+            if selected=='skynizz' and operation in ('install','repair'):
+                current=installed_package(baseline)
+                check_switch(e,current,mode)
+                # Repair never silently advances a game's release or mutable latest tag.
+                saved_release=(current.get('archive') or {}).get('release') if current else None
+                t.need(not current or isinstance(saved_release,dict),'Installed Skynizz release provenance is missing; restore before reinstalling.')
+                release=skynizz_provider.validate_release(saved_release) if current else None
+                selection=settings.get('skynizz_version','latest')
+                if release is None:
+                    if selection not in releases:releases[selection]=ui.work('Resolving Skynizz release',skynizz_provider.resolve,selection)
+                    release=releases[selection]
+                e.Y4MY_PROVIDER=release
+                target_data,target_meta=ui.work('Verifying Skynizz package',payload,e,config,mode)
+                nr,nrmeta=e.load_user_nr_runtime(settings.get('nr_runtime') or None,family=None)
             if baseline:
                 t.need(not any(v.get('kind') in ('tar_tree','tar_file') for v in baseline.get('originals',{}).values()),'Privileged backup requires terminal restore before desktop management')
             # Installed (or last changed) with rtxForge on the other OS: adapt it for this one.
             shared=cross_os.adoptable(g.target_dir,cross_os.THIS_OS,(baseline or {}).get('cross_os_revision')) if operation in ('install','repair','uninstall','reset') else None
             if shared:
+                t.need(cross_os.THIS_OS=='windows' or (shared.get('provider') or {}).get('id')!='skynizz',
+                       'Skynizz installation/adoption is not available on Linux in this release.')
                 ready.append(adopt_plan(e,g,row,shared,operation,mode))
                 ui.progress('Game checked',phase='review-check',game=row['name'],checked=index,total=len(rows))
                 continue
@@ -326,13 +360,17 @@ def prepare(config,rows,mode,operation,settings):
 
                 check_switch(e,installed_package(baseline),mode)
                 with _without_baseline(e,g) if retired else contextlib.nullcontext():
-                    preview=e.install_target(g,data,meta,'ada',nr_runtime_payload=nr,nr_runtime_meta=nrmeta,feature_mode=mode,enable_effects=True,native_mfg_fallback=bool(settings.get('native_mfg_fallback',False)),nr_strength=strength,mfg_multiplier=multiplier,sharpening_strength=sharpening,preserve_visual_settings=not settings.get("apply_requested_presets",False),dry_run=True)
+                    preview=e.install_target(g,target_data,target_meta,'ada',nr_runtime_payload=nr,nr_runtime_meta=nrmeta,feature_mode=mode,enable_effects=True,native_mfg_fallback=bool(settings.get('native_mfg_fallback',False)),nr_strength=strength,mfg_multiplier=multiplier,sharpening_strength=sharpening,preserve_visual_settings=not settings.get("apply_requested_presets",False),dry_run=True)
+                if selected=='skynizz':
+                    model=preview.get('nr_runtime') or {}
+                    preview=dict(preview,launch_options=f"{release['tag']} · SHA-256 {release['sha256']} · model {model.get('path','')} · SHA-256 {model.get('sha256','')} · NR Only, requires D3D12/DLSS; MFG composition unverified")
                 if interrupted_install(baseline):
                     preview=dict(preview,launch_options='Finishes an install that was interrupted · '+preview['launch_options'])
             if prefix:preview=dict(preview,launch_options="Proton setting saved in this game's prefix · Steam can stay open")
             # Which Steam-side state this game touches: its prefix, Steam's launch settings, or neither.
             steam_route=operation in ('install','repair') and not prefix or operation=='uninstall' and bool(baseline and isinstance(baseline.get('steam_launch'),dict))
-            ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g),'prefix':str(prefix) if prefix else None,'steam_route':steam_route,'retire':retired})
+            ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g),'prefix':str(prefix) if prefix else None,'steam_route':steam_route,'retire':retired,
+                          'provider':dict(e.Y4MY_PROVIDER),'payload':target_data,'meta':target_meta,'nr':nr,'nrmeta':nrmeta})
         except (e.Stop,t.Refusal,OSError,ValueError) as ex:blocked.append({'name':row['name'],'reason':str(ex)})
         ui.progress('Game checked',phase='review-check',game=row['name'],checked=index,total=len(rows))
     return {'kind':'engine','operation':operation,'title':operation.title(),'rows':[{'name':p['row']['name'],'detail':p['preview']['launch_options'] if operation=='reset' else f"{e.Y4MY_PROVIDER['name']} · {len(p['preview']['files'])} managed files · "+p['preview']['launch_options']} for p in ready],
@@ -393,6 +431,7 @@ def execute(review):
     with e.mutation_lock():
         for index,item in enumerate(review['plans'],1):
             if cancel is not None and cancel.is_set():break
+            if item.get('provider'):e.Y4MY_PROVIDER=item['provider']
             g=item['game'];total=len(review['plans'])
             def report(stage,part):ui.progress(stage,game=g.name,current=index,total=total,fraction=(index-1+part)/total)
             report('Checking game files',0)
@@ -459,7 +498,7 @@ def execute(review):
                     record=e.restore_target(g)
                     release_install(g,owned)
                 else:
-                    record=e.install_target(g,review['payload'],review['meta'],'ada',nr_runtime_payload=review['nr'],nr_runtime_meta=review['nrmeta'],feature_mode=review['mode'],enable_effects=review['enable_effects'],native_mfg_fallback=review.get('native_mfg_fallback',False),nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'],preserve_visual_settings=not review.get('apply_requested_presets',False))
+                    record=e.install_target(g,item.get('payload',review['payload']),item.get('meta',review['meta']),'ada',nr_runtime_payload=item.get('nr',review['nr']),nr_runtime_meta=item.get('nrmeta',review['nrmeta']),feature_mode=review['mode'],enable_effects=review['enable_effects'],native_mfg_fallback=review.get('native_mfg_fallback',False),nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'],preserve_visual_settings=not review.get('apply_requested_presets',False))
                     report('Saving launch settings',0.85)
                     if item.get('prefix'):
                         launch=e._launch_record_for_game(g)

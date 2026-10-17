@@ -47,7 +47,7 @@ def relative(name):
 def catalog(host=None):
     host = host or {'system': platform.system(), 'architecture': platform.machine(), 'ready': False}
     locks = json.loads((ROOT / 'providers/lock.json').read_text())
-    supported = (host.get('system') == 'Linux'
+    supported = (host.get('system') in ('Linux', 'Windows')
                  and host.get('architecture', '').lower() in ('x86_64', 'amd64')
                  and host.get('ready') is True)
     rows = []
@@ -63,6 +63,12 @@ def catalog(host=None):
                         else 'Alternative OptiScaler package; a local NR model may be needed'),
             'recommended': key == 'dlss-unlocked' and supported,
         })
+    if host.get('system')=='Windows':
+        record=locks['skynizz']
+        rows.append({'id':'skynizz','name':record['name'],'version':record['tag']+' baseline · selectable release',
+                     'url':'https://github.com/'+record['repo'],'sha256':record['sha256'],
+                     'available':supported,'reason':'Requires a compatible local RTX40 NR model and D3D12/DLSS.' if supported else host.get('reason') or 'Verify a supported NVIDIA system first',
+                     'summary':'NR Only · optional until MFG composition is verified · runtime not verified','recommended':False})
     return rows
 
 
@@ -83,6 +89,7 @@ def inspect_archive(path):
             raise PackageError('Too many files in this archive.')
         total = 0
         for member in members:
+            relative(member.orig_filename.rstrip('/') if member.is_dir() else member.orig_filename)
             name = member.filename.rstrip('/') if member.is_dir() else member.filename
             relative(name)
             folded = name.casefold()

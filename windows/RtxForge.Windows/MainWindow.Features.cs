@@ -427,7 +427,9 @@ public sealed partial class MainWindow
             Settings.MfgMultiplier = presets.MfgMultiplier;
         }
         if (!NrOnlyAvailable && Mode == "nr-only") Mode = "mfg-only";
+        if (provider == "skynizz") Settings.DefaultProfile = Mode = "nr-only";
         SaveSettings();
+        _ = ScanAsync();
         ShowToast("Package selected. Select games, then choose Install Features.");
     }
 }

@@ -32,10 +32,18 @@ Portable skips app installation, but it can still save preferences, runtime down
 Start with one game and see how it feels before changing your whole library. **The steps below currently work in the Linux build.** The Windows x64 preview now connects to the shared engine for real library scans and reviewed operations. Its bundled engine and installer passed basic automated checks, but a real-game feature installation has not yet been verified. For sample games without game writes, launch rtxForge with `--preview`.
 
 1. **Find a game** in the Library. Search, filter, or add a game folder in Settings.
-2. **Choose what to try:** MFG Only, NR Only, or NR + MFG, along with your provider. NR Only requires DLSS-Unlocked; NR + MFG is experimental.
+2. **Choose what to try:** MFG Only, NR Only, or NR + MFG, along with your provider. NR Only requires DLSS-Unlocked or the Windows Skynizz preview; NR + MFG is experimental.
 3. **Close the game and Steam.** Choose **Install Features**, review the proposed changes, and apply. Packages are verified before installation and originals are backed up.
 4. **Launch and check.** Enable DLSS and frame generation in the game for MFG. Actual output depends on the game and runtime. NR remains experimental and is not confirmed by a saved setting or diagnostic log. DLSS-Unlocked NR starts off; F10 toggles it where supported.
 5. **Tune or recover.** Per-game **Apply** saves presets for the next launch. **Repair Feature Files** replaces damaged files while keeping tuning. **Restore Original Files** removes installed features; use it before changing provider or feature profile.
+
+### Skynizz NR preview (Windows)
+
+Select **Skynizz DLSS 5 NR** in Packages for NR Only, then choose `latest` stable or a release such as `v1.2.1`. The review identifies the exact release, archive SHA-256 and selected model. Repair retains that game's recorded release and complete in-game preset. Restore is required before switching providers. Existing provider selections and defaults are preserved.
+
+This provider requires a compatible, user-supplied RTX 40 `nvngx_dlssnr.dll` in Settings or beside the game executable, and a D3D12 game running DLSS Super Resolution. The package's `nvngx.dll_dlssnr.dll` is a forwarder, not that model. Fresh installs use upstream's Quality NR policy; edit-cache presets can be changed through the Insert overlay. **Reset Presets** restores that policy rather than the other provider's tuning. Upstream installer scripts are never run.
+
+Skynizz remains optional until its composition with rtxForge's existing MFG is verified. This preview refuses NR + MFG, MFG Only and Linux/Proton installation; it does not replace a working MFG setup or establish support for games without a native DLSS route. File staging and configuration checks do not prove neural rendering or frame pacing in game. [Upstream source and releases](https://github.com/Skynizz/optiscaler-dlss5).
 
 | Setting | Choices |
 | --- | --- |

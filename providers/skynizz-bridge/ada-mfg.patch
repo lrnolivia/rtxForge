@@ -1,0 +1,680 @@
+diff --git a/OptiScaler/Config.cpp b/OptiScaler/Config.cpp
+index 967731c1..3062ff17 100644
+--- a/OptiScaler/Config.cpp
++++ b/OptiScaler/Config.cpp
+@@ -194,6 +194,8 @@ bool Config::Reload(std::filesystem::path iniPath)
+         }
+ 
+         {
++            FGDLSSGAdaMfgUnlock.set_from_config(readBool("DLSSG", "AdaMfgUnlock"));
++            FGDLSSGAdaBlackwellKernels.set_from_config(readBool("DLSSG", "AdaBlackwellKernels"));
+             FGDLSSGInterpolationCount.set_from_config(readInt("DLSSG", "InterpolationCount"));
+             if (FGDLSSGInterpolationCount.has_value() &&
+                 (FGDLSSGInterpolationCount.value() < 1 || FGDLSSGInterpolationCount.value() > 6))
+@@ -1068,6 +1070,10 @@ bool Config::SaveIni()
+     }
+ 
+     {
++        ini.SetValue("DLSSG", "AdaMfgUnlock",
++                     GetBoolValue(Instance()->FGDLSSGAdaMfgUnlock.value_for_config()).c_str());
++        ini.SetValue("DLSSG", "AdaBlackwellKernels",
++                     GetBoolValue(Instance()->FGDLSSGAdaBlackwellKernels.value_for_config()).c_str());
+         ini.SetValue("DLSSG", "InterpolationCount",
+                      GetIntValue(Instance()->FGDLSSGInterpolationCount.value_for_config()).c_str());
+         ini.SetValue("DLSSG", "UseGamesReflexMarkers",
+diff --git a/OptiScaler/Config.h b/OptiScaler/Config.h
+index e7ce081a..0d19959e 100644
+--- a/OptiScaler/Config.h
++++ b/OptiScaler/Config.h
+@@ -1,4 +1,4 @@
+-﻿#pragma once
++#pragma once
+ 
+ #include "SysUtils.h"
+ #include "State.h"
+@@ -1010,6 +1010,8 @@ class Config
+     CustomOptional<bool> FGXeFGForceBorderless { false };
+ 
+     // DLSSG
++    CustomOptional<bool> FGDLSSGAdaMfgUnlock { false };
++    CustomOptional<bool> FGDLSSGAdaBlackwellKernels { false };
+     CustomOptional<int> FGDLSSGInterpolationCount { 1 }; // For Opti's own SL instance
+     CustomOptional<bool> FGDLSSGUseGamesReflexMarkers { true };
+     CustomOptional<int, NoDefault>
+diff --git a/OptiScaler/OptiScaler.vcxproj b/OptiScaler/OptiScaler.vcxproj
+index 00369a32..cf411588 100644
+--- a/OptiScaler/OptiScaler.vcxproj
++++ b/OptiScaler/OptiScaler.vcxproj
+@@ -1,4 +1,4 @@
+-﻿<?xml version="1.0" encoding="utf-8"?>
++<?xml version="1.0" encoding="utf-8"?>
+ <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+   <ItemGroup Label="ProjectConfigurations">
+     <ProjectConfiguration Include="Debug|Win32">
+@@ -322,6 +322,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
+     <ClInclude Include="exports\wininet.h" />
+     <ClInclude Include="exports\winmm.h" />
+     <ClInclude Include="framegen\dlssg\DLSSG_Dx12.h" />
++    <ClInclude Include="framegen\dlssg\MfgUnlock.h" />
+     <ClInclude Include="framegen\ffx\FSRFG_Dx12.h" />
+     <ClInclude Include="framegen\IFGFeature.h" />
+     <ClInclude Include="framegen\IFGFeature_Dx12.h" />
+@@ -628,6 +629,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
+     <ClCompile Include="gpu_time\GpuTime_Dx12.cpp" />
+     <ClCompile Include="hooks\Amdxc64_Hooks.cpp" />
+     <ClCompile Include="framegen\dlssg\DLSSG_Dx12.cpp" />
++    <ClCompile Include="framegen\dlssg\MfgUnlock.cpp" />
+     <ClCompile Include="framegen\ffx\FSRFG_Dx12.cpp" />
+     <ClCompile Include="framegen\IFGFeature.cpp" />
+     <ClCompile Include="framegen\IFGFeature_Dx12.cpp" />
+diff --git a/OptiScaler/framegen/dlssg/MfgUnlock.cpp b/OptiScaler/framegen/dlssg/MfgUnlock.cpp
+new file mode 100644
+index 00000000..94b3b4a5
+--- /dev/null
++++ b/OptiScaler/framegen/dlssg/MfgUnlock.cpp
+@@ -0,0 +1,373 @@
++#include "pch.h"
++
++#include "MfgUnlock.h"
++
++#include <Config.h>
++#include <Util.h>
++#include <scanner/scanner.h>
++#include <misc/IdentifyGpu.h>
++
++
++namespace
++{
++// mov ebx,1 / mov r8d,3 / cmp edi,0x1b0 / cmovl r8d,ebx. The two counts and the architecture
++// constant together are unique in the module; the wildcards cover nothing, they are here only to
++// keep the shape readable.
++constexpr std::string_view kAdvertisePattern = "BB 01 00 00 00 41 B8 03 00 00 00 81 FF B0 01 00 00 44 0F 4C C3";
++
++// cmp eax,0x1b0 / jl / cmp ebx,3 / jbe. The only comparison against the architecture constant that
++// is followed by a signed branch and a count test.
++constexpr std::string_view kValidatePattern = "3D B0 01 00 00 7C ? 83 FB 03 76";
++
++// Five generated frames, the count both patched sites carry.
++constexpr uint8_t kMaxGeneratedFrames = 5;
++
++// 310.9 restructured both gates. The count is no longer an immediate next to the comparison: the
++// Blackwell branch starts at five and reads a configured value, and anything below Blackwell is sent
++// to a branch that publishes one.
++//     cmp ebp, 0x1b0
++//     jl  ada          <- neutralised, so every card takes the Blackwell branch
++//     mov edi, 0x5
++constexpr std::string_view kAdvertisePattern309 = "81 FD B0 01 00 00 0F 8C ? ? ? ? BF 05 00 00 00";
++
++// The capability flag in the same build is a setae rather than a branch.
++//     cmp   eax, 0x1b0
++//     setae al
++constexpr std::string_view kValidatePattern309 = "3D B0 01 00 00 0F 93 C0";
++
++
++
++// scanner::GetAddress only walks sections marked executable. Fatbins are data, so they need their own
++// search. Returns 0 unless exactly one non-executable section holds the sequence, once.
++uintptr_t FindDataBytes(HMODULE module, const uint8_t* needle, size_t length)
++{
++    auto base = reinterpret_cast<uint8_t*>(module);
++    auto dos = reinterpret_cast<IMAGE_DOS_HEADER*>(base);
++    auto nt = reinterpret_cast<IMAGE_NT_HEADERS64*>(base + dos->e_lfanew);
++    auto section = IMAGE_FIRST_SECTION(nt);
++
++    uintptr_t found = 0;
++    size_t hits = 0;
++
++    for (unsigned i = 0; i < nt->FileHeader.NumberOfSections; ++i)
++    {
++        const auto& s = section[i];
++
++        if (s.Characteristics & IMAGE_SCN_MEM_EXECUTE)
++            continue;
++
++        uint8_t* start = base + s.VirtualAddress;
++        uint8_t* end = start + s.Misc.VirtualSize;
++
++        for (uint8_t* p = std::search(start, end, needle, needle + length); p != end;
++             p = std::search(p + 1, end, needle, needle + length))
++        {
++            found = reinterpret_cast<uintptr_t>(p);
++
++            if (++hits > 1)
++                return 0;
++        }
++    }
++
++    return hits == 1 ? found : 0;
++}
++
++MfgUnlock::Status g_status {};
++
++// The module's own file version, for the report. A signature that does not match is expected on a
++// version nobody has looked at, and the version is the one thing that makes such a report actionable.
++std::string ModuleVersion(HMODULE module)
++{
++    wchar_t path[MAX_PATH] {};
++
++    if (GetModuleFileNameW(module, path, MAX_PATH) == 0)
++        return {};
++
++    version_t file {};
++    version_t product {};
++
++    if (!Util::GetFileVersion(path, &file, &product))
++        return {};
++
++    return std::format("{}.{}.{}", file.major, file.minor, file.patch);
++}
++
++bool WriteBytes(uintptr_t address, const uint8_t* bytes, size_t count)
++{
++    DWORD oldProtect = 0;
++
++    if (!VirtualProtect((LPVOID) address, count, PAGE_EXECUTE_READWRITE, &oldProtect))
++    {
++        LOG_WARN("VirtualProtect failed at {:X}", address);
++        return false;
++    }
++
++    std::memcpy((void*) address, bytes, count);
++
++    DWORD ignored = 0;
++    VirtualProtect((LPVOID) address, count, oldProtect, &ignored);
++    FlushInstructionCache(GetCurrentProcess(), (LPCVOID) address, count);
++
++    return true;
++}
++
++std::string Hex(const uint8_t* bytes, size_t count)
++{
++    std::string out;
++
++    for (size_t i = 0; i < count; ++i)
++        out += std::format("{}{:02X}", i == 0 ? "" : " ", bytes[i]);
++
++    return out;
++}
++
++// Rewrites count and neutralises the architecture clamp, so MultiFrameCountMax is published as five.
++bool PatchAdvertise(HMODULE module)
++{
++    if (const auto at309 = scanner::GetAddress(module, kAdvertisePattern309); at309 != 0)
++    {
++        // The jl is a rel32, six bytes.
++        const auto branchAt = at309 + 6;
++        const uint8_t nop[] = { 0x0F, 0x1F, 0x44, 0x00, 0x00, 0x90 };
++
++        LOG_INFO("MFG unlock: advertise (310.9) at {:X}, jl {} -> {}", at309,
++                 Hex((const uint8_t*) branchAt, sizeof(nop)), Hex(nop, sizeof(nop)));
++
++        return WriteBytes(branchAt, nop, sizeof(nop));
++    }
++
++    const auto address = scanner::GetAddress(module, kAdvertisePattern);
++
++    if (address == 0)
++    {
++        LOG_WARN("MFG unlock: the advertise signature did not match, nvngx_dlssg.dll left alone");
++        return false;
++    }
++
++    // Offsets within the matched sequence: the r8d immediate, and the cmovl.
++    const auto countAt = address + 7;
++    const auto cmovAt = address + 17;
++
++    const uint8_t count[] = { kMaxGeneratedFrames };
++    const uint8_t nop[] = { 0x0F, 0x1F, 0x40, 0x00 };
++
++    LOG_INFO("MFG unlock: advertise at {:X}, count {} -> {}, cmovl {} -> {}", address,
++             *(const uint8_t*) countAt, kMaxGeneratedFrames, Hex((const uint8_t*) cmovAt, sizeof(nop)),
++             Hex(nop, sizeof(nop)));
++
++    return WriteBytes(countAt, count, sizeof(count)) && WriteBytes(cmovAt, nop, sizeof(nop));
++}
++
++// Drops the Ada branch and raises the accepted count, so a request for five is not rejected.
++bool PatchValidate(HMODULE module)
++{
++    if (const auto at309 = scanner::GetAddress(module, kValidatePattern309); at309 != 0)
++    {
++        // setae al -> mov al, 1, so the flag is set whatever the architecture reports.
++        const auto setAt = at309 + 5;
++        const uint8_t always[] = { 0xB0, 0x01, 0x90 };
++
++        LOG_INFO("MFG unlock: validate (310.9) at {:X}, setae {} -> {}", at309,
++                 Hex((const uint8_t*) setAt, sizeof(always)), Hex(always, sizeof(always)));
++
++        return WriteBytes(setAt, always, sizeof(always));
++    }
++
++    const auto address = scanner::GetAddress(module, kValidatePattern);
++
++    if (address == 0)
++    {
++        LOG_WARN("MFG unlock: the validate signature did not match, nvngx_dlssg.dll left alone");
++        return false;
++    }
++
++    // Offsets within the matched sequence: the jl, and the immediate of the count test behind it.
++    const auto branchAt = address + 5;
++    const auto countAt = address + 9;
++
++    const uint8_t nop[] = { 0x90, 0x90 };
++    const uint8_t count[] = { kMaxGeneratedFrames };
++
++    LOG_INFO("MFG unlock: validate at {:X}, jl {} -> {}, count {} -> {}", address,
++             Hex((const uint8_t*) branchAt, sizeof(nop)), Hex(nop, sizeof(nop)), *(const uint8_t*) countAt,
++             kMaxGeneratedFrames);
++
++    return WriteBytes(branchAt, nop, sizeof(nop)) && WriteBytes(countAt, count, sizeof(count));
++}
++
++
++// Gives Ada the Blackwell kernels the module already carries.
++//
++// nvngx_dlssg.dll ships two builds of the interpolation kernels. Kernel_EstimateIntermMvecsScatter
++// reads three f32 fields of its parameter block on sm_120 and one on sm_89, so on Ada every generated
++// frame is placed at the same point between the two real ones: the world does not advance between
++// them while the interface, composited once per present, does. At 2X there is one frame and nothing
++// to distinguish; above it that is the whole symptom.
++//
++// The sm_120 module uses no instruction Ada lacks. So per container: the Blackwell PTX image is
++// relabelled sm_89, its .target directive is rewritten in place (".target sm_120" and
++// ".target sm_89 " are both fourteen bytes, and the directive sits in the literal run at the head of
++// the LZ4 stream), and the images that were sm_89 -- the Ada PTX and its SASS -- are relabelled to an
++// architecture that does not exist so the driver cannot select them. The driver then JITs Blackwell's
++// kernel when it asks for Ada's.
++//
++// Nothing is copied in and no payload changes length. A container without both images is left alone.
++constexpr uint32_t kArchAda = 89;
++constexpr uint32_t kArchBlackwell = 120;
++
++// No such shader model. Parks an image where nothing will ask for it.
++constexpr uint32_t kArchParked = 122;
++
++// Offsets inside a fatbin image header: payload length, and the architecture the image answers for.
++constexpr size_t kImagePayloadSize = 8;
++constexpr size_t kImageArch = 28;
++
++unsigned int RewriteBlackwellKernels(HMODULE module)
++{
++    auto base = reinterpret_cast<uint8_t*>(module);
++    auto dos = reinterpret_cast<IMAGE_DOS_HEADER*>(base);
++    auto nt = reinterpret_cast<IMAGE_NT_HEADERS64*>(base + dos->e_lfanew);
++    auto section = IMAGE_FIRST_SECTION(nt);
++
++    const uint8_t magic[] = { 0x50, 0xED, 0x55, 0xBA };
++    unsigned int rewritten = 0;
++
++    for (unsigned i = 0; i < nt->FileHeader.NumberOfSections; ++i)
++    {
++        const auto& s = section[i];
++
++        if (s.Characteristics & IMAGE_SCN_MEM_EXECUTE)
++            continue;
++
++        uint8_t* start = base + s.VirtualAddress;
++        uint8_t* end = start + s.Misc.VirtualSize;
++
++        for (uint8_t* c = std::search(start, end, magic, magic + sizeof(magic)); c < end;
++             c = std::search(c + 1, end, magic, magic + sizeof(magic)))
++        {
++            if (c + 16 > end)
++                break;
++
++            const auto headerSize = *reinterpret_cast<const uint16_t*>(c + 6);
++            const auto fatSize = *reinterpret_cast<const uint64_t*>(c + 8);
++
++            if (headerSize != 0x10 || fatSize == 0 || c + 16 + fatSize > end)
++                continue;
++
++            uint8_t* blackwell = nullptr;
++            size_t blackwellHeader = 0;
++            size_t blackwellPayload = 0;
++            std::vector<uint8_t*> ada;
++
++            for (uint8_t* image = c + 16; image < c + 16 + fatSize;)
++            {
++                const auto kind = *reinterpret_cast<const uint16_t*>(image);
++                const auto imageHeader = *reinterpret_cast<const uint32_t*>(image + 4);
++                const auto payload = *reinterpret_cast<const uint64_t*>(image + kImagePayloadSize);
++                const auto arch = *reinterpret_cast<const uint32_t*>(image + kImageArch);
++
++                if (imageHeader == 0 || payload == 0)
++                    break;
++
++                // kind 1 is PTX, 2 is a cubin. Only the PTX can be retargeted; the cubin is parked.
++                if (kind == 1 && arch == kArchBlackwell)
++                {
++                    blackwell = image;
++                    blackwellHeader = imageHeader;
++                    blackwellPayload = payload;
++                }
++                else if (arch == kArchAda)
++                {
++                    ada.push_back(image);
++                }
++
++                image += imageHeader + payload;
++            }
++
++            if (blackwell == nullptr || ada.empty())
++                continue;
++
++            const char from[] = ".target sm_120";
++            const char to[] = ".target sm_89 ";
++            static_assert(sizeof(from) == sizeof(to), "the directive rewrite must not change length");
++
++            uint8_t* body = blackwell + blackwellHeader;
++            uint8_t* bodyEnd = body + blackwellPayload;
++            auto at = std::search(body, bodyEnd, from, from + sizeof(from) - 1);
++
++            if (at == bodyEnd)
++                continue;
++
++            if (!WriteBytes(reinterpret_cast<uintptr_t>(at), reinterpret_cast<const uint8_t*>(to),
++                            sizeof(to) - 1))
++                continue;
++
++            const uint32_t ada89 = kArchAda;
++            const uint32_t parked = kArchParked;
++
++            WriteBytes(reinterpret_cast<uintptr_t>(blackwell + kImageArch),
++                       reinterpret_cast<const uint8_t*>(&ada89), sizeof(ada89));
++
++            for (uint8_t* image : ada)
++                WriteBytes(reinterpret_cast<uintptr_t>(image + kImageArch),
++                           reinterpret_cast<const uint8_t*>(&parked), sizeof(parked));
++
++            ++rewritten;
++        }
++    }
++
++    LOG_INFO("MFG unlock: {} kernel containers answer Ada with the Blackwell image", rewritten);
++
++    return rewritten;
++}
++} // namespace
++
++void MfgUnlock::TryApply()
++{
++    if (!Config::Instance()->FGDLSSGAdaMfgUnlock.value_or_default())
++        return;
++
++    // Latches once nvngx_dlssg.dll is present; before that every call rescans for it.
++    static bool snippetDone = false;
++
++    if (!snippetDone)
++    {
++        if (auto module = GetModuleHandleW(L"nvngx_dlssg.dll"); module != nullptr)
++        {
++            snippetDone = true;
++            g_status.ModuleFound = true;
++            g_status.SnippetVersion = ModuleVersion(module);
++
++            const bool advertise = PatchAdvertise(module);
++            const bool validate = PatchValidate(module);
++
++            g_status.AdvertiseMatched = advertise;
++            g_status.ValidateMatched = validate;
++
++            // Default on where it applies: below Blackwell the unlock alone produces frames that do
++            // not advance the picture, so the two belong together. dlssCapable is set from the same
++            // field, so an architecture that never reported leaves this off.
++            const auto& gpu = IdentifyGpu::getPrimaryGpu();
++            const bool preBlackwell = gpu.vendorId == VendorId::Nvidia &&
++                                      gpu.nvidiaArchInfo.architecture_id >= NV_GPU_ARCHITECTURE_TU100 &&
++                                      gpu.nvidiaArchInfo.architecture_id <= NV_GPU_ARCHITECTURE_AD100;
++
++            if (Config::Instance()->FGDLSSGAdaBlackwellKernels.value_or(preBlackwell))
++                g_status.KernelsRewritten = RewriteBlackwellKernels(module);
++
++            if (advertise && validate)
++                LOG_INFO("MFG unlock: nvngx_dlssg.dll patched for {} generated frames", kMaxGeneratedFrames);
++            else
++                LOG_WARN("MFG unlock: nvngx_dlssg.dll incomplete, advertise {}, validate {}", advertise, validate);
++        }
++    }
++}
++
++unsigned int MfgUnlock::UnlockedMax()
++{
++    const auto& status = LastStatus();
++
++    return status.AdvertiseMatched && status.ValidateMatched ? kMaxGeneratedFrames : 0;
++}
++
++const MfgUnlock::Status& MfgUnlock::LastStatus() { return g_status; }
+diff --git a/OptiScaler/framegen/dlssg/MfgUnlock.h b/OptiScaler/framegen/dlssg/MfgUnlock.h
+new file mode 100644
+index 00000000..ac366311
+--- /dev/null
++++ b/OptiScaler/framegen/dlssg/MfgUnlock.h
+@@ -0,0 +1,59 @@
++#pragma once
++
++#include <SysUtils.h>
++
++#include <string>
++
++// Multi Frame Generation on Ada.
++//
++// nvngx_dlssg.dll gates MFG on the architecture id reported by the driver: 0x1b0 is Blackwell, Ada
++// is below it. Two sites decide what a card is allowed to do, and both compare against that constant.
++//
++//   Advertise, the function that publishes DLSSG.MultiFrameCountMax:
++//       mov   ebx, 0x1
++//       mov   r8d, 0x3            the Blackwell count
++//       cmp   edi, 0x1b0
++//       cmovl r8d, ebx            below Blackwell the count becomes 1
++//
++//   Validate, the function that accepts or rejects a requested count:
++//       cmp   eax, 0x1b0
++//       jl    ada                 Ada takes this branch and accepts only 1
++//       cmp   ebx, 0x3
++//       jbe   accept
++//
++// Patched: the count immediates become 5, the cmovl becomes a nop, and the jl becomes two nops. The
++// result is a maximum of five generated frames -- 6X -- on any architecture.
++//
++// Memory only. The file on disk carries an Authenticode signature and is left alone.
++//
++// A Streamline wrapper between the game and the snippet can carry a lower ceiling of its own. That
++// one is raised where the count crosses slDLSSGGetState. Advertise and validate have no such
++// boundary: nothing stands between sl.dlss_g.dll and nvngx_dlssg.dll to intercept.
++//
++// Ada also runs a different interpolation kernel: Kernel_EstimateIntermMvecsScatter reads three f32
++// fields of its parameter block on sm_120 and one on sm_89, so every generated frame lands at the
++// same point between the two real ones. The Blackwell image is retargeted in place to answer for Ada.
++namespace MfgUnlock
++{
++// What the last attempt found. The signatures are version specific by construction -- they carry the
++// shape of the code they patch -- so a module this does not recognise is the expected outcome on a
++// version nobody has looked at yet, not a fault. The menu reports this so a report comes back with a
++// version number attached rather than "it does not work".
++struct Status
++{
++    bool ModuleFound = false; // nvngx_dlssg.dll was loaded
++    bool AdvertiseMatched = false;
++    bool ValidateMatched = false;
++    unsigned int KernelsRewritten = 0;
++    std::string SnippetVersion; // file version of nvngx_dlssg.dll, empty if it could not be read
++};
++
++const Status& LastStatus();
++
++// Applies the patches once per process. Silent and harmless when the config option is off, when
++// nvngx_dlssg.dll is not loaded, or when a signature does not match exactly once.
++void TryApply();
++
++// The generated frame ceiling the patches opened, or 0 when they did not land.
++unsigned int UnlockedMax();
++} // namespace MfgUnlock
+diff --git a/OptiScaler/hooks/LibraryLoad_Hooks.cpp b/OptiScaler/hooks/LibraryLoad_Hooks.cpp
+index 142037d7..2ab7d8d1 100644
+--- a/OptiScaler/hooks/LibraryLoad_Hooks.cpp
++++ b/OptiScaler/hooks/LibraryLoad_Hooks.cpp
+@@ -1,4 +1,5 @@
+ #include "pch.h"
++#include <framegen/dlssg/MfgUnlock.h>
+ #include "LibraryLoad_Hooks.h"
+ 
+ #include <Config.h>
+@@ -107,6 +108,23 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
+             LOG_ERROR("Trying to load dll: {}", libNameA);
+     }
+ 
++    // nvngx_dlssg
++    //
++    // The module publishes DLSSG.MultiFrameCountMax while it initialises and slDLSSGGetState returns
++    // the published value rather than recomputing it, so the patch has to be in before anything in
++    // here runs. Patching at the first GetState is one call too late.
++    if (libName.contains(L"nvngx_dlssg"))
++    {
++        auto dlssgSnippet = NtdllProxy::LoadLibraryExW_Ldr(lpLibFullPath, NULL, 0);
++
++        if (dlssgSnippet != nullptr)
++            MfgUnlock::TryApply();
++        else
++            LOG_ERROR("Trying to load dll as nvngx_dlssg: {}", libNameA);
++
++        return dlssgSnippet;
++    }
++
+     // NGX OTA
+     // Try to catch something like this:
+     // c:\programdata/nvidia/ngx/models//dlss/versions/20316673/files/160_e658700.bin
+diff --git a/OptiScaler/hooks/Streamline_Hooks.cpp b/OptiScaler/hooks/Streamline_Hooks.cpp
+index 176dab06..f235597d 100644
+--- a/OptiScaler/hooks/Streamline_Hooks.cpp
++++ b/OptiScaler/hooks/Streamline_Hooks.cpp
+@@ -1,4 +1,5 @@
+ #include <pch.h>
++#include <framegen/dlssg/MfgUnlock.h>
+ 
+ #include "Streamline_Hooks.h"
+ 
+@@ -1303,21 +1304,39 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
+ 
+     if (dlssgPotentiallyActive && state.streamlineVersion >= feature_version { 2, 7, 1 })
+     {
++        // Before the read, so the count this captures is the patched one. Five stays under the
++        // sanity bound below.
++        MfgUnlock::TryApply();
++
++        // nvngx_dlssg.dll can load after this runs, and the ceiling read before it does is Ada's
++        // 1. Caching that holds it for the session and clamps the override to it. ModuleFound
++        // means the patches have been attempted, so from there the answer is final either way.
++        const bool unlockPending =
++            Config::Instance()->FGDLSSGAdaMfgUnlock.value_or_default() && !MfgUnlock::LastStatus().ModuleFound;
++
+         // Populate dlssgMfgMax once
+-        if (!state.dlssgMfgMax.has_value())
++        if (!state.dlssgMfgMax.has_value() && !unlockPending)
+         {
+             sl::DLSSGState localState {};
+             sl::DLSSGOptions localOptions {};
+-            if (o_slDLSSGGetState(viewport, localState, &localOptions) == sl::Result::eOk &&
+-                localState.numFramesToGenerateMax > 0 && localState.numFramesToGenerateMax < 6)
++            if (o_slDLSSGGetState(viewport, localState, &localOptions) == sl::Result::eOk)
+             {
+-                state.dlssgMfgMax = localState.numFramesToGenerateMax;
+-                LOG_TRACE("Saving original numFramesToGenerateMax: {}", state.dlssgMfgMax.value());
++                // A wrapper ahead of the snippet can answer a lower ceiling than the patched one.
++                if (auto unlockedMax = MfgUnlock::UnlockedMax(); unlockedMax > localState.numFramesToGenerateMax)
++                    localState.numFramesToGenerateMax = unlockedMax;
+ 
+-                if (Config::Instance()->FGDLSSGOverrideInterpolationCount.has_value() &&
+-                    Config::Instance()->FGDLSSGOverrideInterpolationCount.value() > state.dlssgMfgMax.value())
++                if (localState.numFramesToGenerateMax > 0 && localState.numFramesToGenerateMax < 6)
+                 {
+-                    Config::Instance()->FGDLSSGOverrideInterpolationCount = state.dlssgMfgMax.value();
++                    state.dlssgMfgMax = localState.numFramesToGenerateMax;
++                    LOG_TRACE("Saving original numFramesToGenerateMax: {}", state.dlssgMfgMax.value());
++
++                    // Volatile: the clamp holds for this run and leaves the ini setting alone.
++                    if (Config::Instance()->FGDLSSGOverrideInterpolationCount.has_value() &&
++                        Config::Instance()->FGDLSSGOverrideInterpolationCount.value() > state.dlssgMfgMax.value())
++                    {
++                        Config::Instance()->FGDLSSGOverrideInterpolationCount.set_volatile_value(
++                            state.dlssgMfgMax.value());
++                    }
+                 }
+             }
+         }
+@@ -1344,6 +1363,9 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
+     if (o_slDLSSGGetState == nullptr)
+         return sl::Result::eErrorFeatureMissing;
+ 
++    // Ahead of every read of numFramesToGenerateMax, which is the value the patch raises.
++    MfgUnlock::TryApply();
++
+     sl::Result result {};
+ 
+     const auto originalStructVersion = state.structVersion;
+@@ -1363,6 +1385,12 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
+             state.numFramesToGenerateMax = newState.numFramesToGenerateMax;
+             state.bReserved4 = newState.bReserved4;
+             state.bIsVsyncSupportAvailable = newState.bIsVsyncSupportAvailable;
++
++            // nvngx_dlssg.dll answers the real ceiling, but a Streamline wrapper between here and the
++            // snippet can carry a lower one of its own. Publish the unlocked count. Struct version 1
++            // ends ahead of this field, so the raise stays inside this branch.
++            if (auto unlockedMax = MfgUnlock::UnlockedMax(); unlockedMax > state.numFramesToGenerateMax)
++                state.numFramesToGenerateMax = unlockedMax;
+         }
+ 
+         if (originalStructVersion >= 3)
+@@ -1378,6 +1406,10 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
+     {
+         result = o_slDLSSGGetState(viewport, state, options);
+         State::Instance().dlssgGameDMFGSupported = state.bIsDynamicMFGSupported == sl::eTrue;
++
++        // The wrapper's ceiling, replaced by the unlocked count.
++        if (auto unlockedMax = MfgUnlock::UnlockedMax(); unlockedMax > state.numFramesToGenerateMax)
++            state.numFramesToGenerateMax = unlockedMax;
+     }
+ 
+     if (!State::Instance().dlssgGameDMFGSupported)
+@@ -1389,20 +1421,32 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
+ 
+     if (optiState.streamlineVersion >= feature_version { 2, 7, 1 })
+     {
+-        if (!optiState.dlssgMfgMax.has_value())
++        // Provisional until the snippet has been seen. See the note in hkslDLSSGSetOptions.
++        const bool unlockPending =
++            Config::Instance()->FGDLSSGAdaMfgUnlock.value_or_default() && !MfgUnlock::LastStatus().ModuleFound;
++
++        if (!optiState.dlssgMfgMax.has_value() && !unlockPending)
+         {
+             sl::DLSSGState localState {};
+             sl::DLSSGOptions localOptions {};
+-            if (o_slDLSSGGetState(viewport, localState, &localOptions) == sl::Result::eOk &&
+-                localState.numFramesToGenerateMax > 0 && localState.numFramesToGenerateMax < 6)
++            if (o_slDLSSGGetState(viewport, localState, &localOptions) == sl::Result::eOk)
+             {
+-                optiState.dlssgMfgMax = localState.numFramesToGenerateMax;
+-                LOG_TRACE("Saving original numFramesToGenerateMax: {}", optiState.dlssgMfgMax.value());
++                // A wrapper ahead of the snippet can answer a lower ceiling than the patched one.
++                if (auto unlockedMax = MfgUnlock::UnlockedMax(); unlockedMax > localState.numFramesToGenerateMax)
++                    localState.numFramesToGenerateMax = unlockedMax;
+ 
+-                if (Config::Instance()->FGDLSSGOverrideInterpolationCount.has_value() &&
+-                    Config::Instance()->FGDLSSGOverrideInterpolationCount.value() > optiState.dlssgMfgMax.value())
++                if (localState.numFramesToGenerateMax > 0 && localState.numFramesToGenerateMax < 6)
+                 {
+-                    Config::Instance()->FGDLSSGOverrideInterpolationCount = optiState.dlssgMfgMax.value();
++                    optiState.dlssgMfgMax = localState.numFramesToGenerateMax;
++                    LOG_TRACE("Saving original numFramesToGenerateMax: {}", optiState.dlssgMfgMax.value());
++
++                    // Volatile: the clamp holds for this run and leaves the ini setting alone.
++                    if (Config::Instance()->FGDLSSGOverrideInterpolationCount.has_value() &&
++                        Config::Instance()->FGDLSSGOverrideInterpolationCount.value() > optiState.dlssgMfgMax.value())
++                    {
++                        Config::Instance()->FGDLSSGOverrideInterpolationCount.set_volatile_value(
++                            optiState.dlssgMfgMax.value());
++                    }
+                 }
+             }
+         }

@@ -167,6 +167,8 @@ public sealed class ForgeSettings
     [JsonPropertyName("runtime_provider")] public string RuntimeProvider { get; set; } = "y4my";
     [JsonPropertyName("nr_runtime")] public string NrRuntime { get; set; } = "";
     [JsonPropertyName("skynizz_version")] public string SkynizzVersion { get; set; } = "latest";
+    [JsonPropertyName("mfg_provider")] public string MfgProvider { get; set; } = "integrated";
+    [JsonPropertyName("nr_preset")] public int? NrPreset { get; set; }
     [JsonPropertyName("manage_dlss_files")] public bool ManageDlssFiles { get; set; } = true;
     [JsonPropertyName("default_profile")] public string DefaultProfile { get; set; } = "mfg-only";
     [JsonPropertyName("recognize_previous")] public bool RecognizePrevious { get; set; } = true;

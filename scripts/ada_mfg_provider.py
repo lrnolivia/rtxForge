@@ -127,6 +127,23 @@ def reset_multiplier(e, raw, multiplier):
     return text.encode('utf-8')
 
 
+def configured_state(target, record):
+    """Saved settings only; never treat an INI request as runtime verification."""
+    record = validate(record)
+    path = Path(target) / 'ReShade.ini'
+    t.need(path.is_file() and not path.is_symlink(), 'MFG configuration is missing or linked')
+    parser = configparser.ConfigParser(interpolation=None, strict=True, inline_comment_prefixes=(';', '#'))
+    try:
+        parser.read_string(path.read_text(encoding='utf-8-sig'))
+        enabled = parser.getint(SECTION, 'Enabled', fallback=1) != 0
+        force = parser.getint(SECTION, 'ForceMultiplier', fallback=0)
+    except configparser.Error as error:
+        raise t.Refusal('MFG configuration could not be parsed') from error
+    t.need(force in (0, 2, 3, 4, 5, 6), 'Unsupported saved MFG multiplier')
+    return {'mfg_provider': ID, 'mfg_multiplier': 0 if not enabled else 'auto' if force == 0 else force,
+            'mfg_enabled': enabled, 'mfg_route': 'Native DLSS-G · MFG Unlock ' + record['version'] + ' (configured)'}
+
+
 def check_target(e, game, baseline):
     """Do not replace an unmanaged host/addon or switch a recorded MFG recipe."""
     record = validate(e.Y4MY_PROVIDER['mfg_component'])

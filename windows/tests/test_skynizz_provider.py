@@ -226,6 +226,7 @@ assert 'MFG Unlock 1.4.4' in review['rows'][0]['detail']
 later_engine=module(service.config,'y4my')
 run(review);record=baseline(external)
 assert record['mfg_provider']['ownership']=='managed-addon'
+assert scan(external)['mfg_multiplier']==4 and scan(external)['mfg_provider']=='mfg-unlock'
 assert record['compatibility_policy']['mfg_route']=='native-ada-mfg-unlock-addon'
 ini=(external/'OptiScaler.ini').read_text()
 for value in ('AdaMfgUnlock=false','AdaBlackwellKernels=false','OverrideInterpolationCount=auto','LoadReShade=true','Preset=2'):
@@ -236,6 +237,7 @@ tuned=reshade.read_text().replace('ForceMultiplier=4','ForceMultiplier=3')+'\n; 
 reshade.write_text(tuned)
 run(service.prepare([scan(external)],'nr-mfg','repair',visual_settings=settings | {'mfg_provider':'integrated'}))
 assert reshade.read_text()==tuned,'repair reset the addon preset or changed MFG owner'
+assert scan(external)['mfg_multiplier']==3
 assert baseline(external)['mfg_provider']['version']=='1.4.4'
 run(service.prepare([scan(external)],'nr-mfg','reset',visual_settings=settings | {'mfg_multiplier':4}))
 assert 'AdaMfgUnlock=false' in (external/'OptiScaler.ini').read_text()

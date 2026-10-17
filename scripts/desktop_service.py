@@ -78,6 +78,13 @@ class DesktopService:
                         row['profile']={'nr-mfg':'NR + MFG','nr-only':'NR Only','mfg-only':'MFG Only'}.get(current['feature_mode'],'Unknown')
                         row['runtime_provider']=current.get('provider_id','y4my')
                         row['effects_enabled']=ini.get('DLSSG',{}).get('AdaMfgUnlock','false').lower()=='true'
+                        if component:=((current.get('archive') or {}).get('release') or {}).get('mfg_component'):
+                            import ada_mfg_provider
+                            try:
+                                row.update(ada_mfg_provider.configured_state(config.parent,component))
+                                row['effects_enabled']=row['nr_enabled'] or row['mfg_enabled']
+                            except (t.Refusal,ValueError,OSError):
+                                row['mfg_multiplier']=None
                 except (engine.Stop,OSError,ValueError):pass
             if g.manifest:
                 try:

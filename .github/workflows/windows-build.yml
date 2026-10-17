@@ -109,9 +109,13 @@ jobs:
       - name: Verify Skynizz package and active Windows lifecycle
         if: matrix.platform == 'x64'
         run: |
+          python -X utf8 -m unittest discover -s tests -p test_ada_mfg_provider.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s tests -p test_skynizz_provider.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s tests -p test_skynizz_bridge.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest discover -s windows/tests -p test_processes.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s windows/tests -p test_skynizz_provider.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }

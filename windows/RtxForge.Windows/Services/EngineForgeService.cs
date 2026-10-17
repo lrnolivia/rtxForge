@@ -263,6 +263,8 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             ["manage_dlss_files"] = Settings.ManageDlssFiles,
             ["nr_runtime"] = Settings.NrRuntime,
             ["skynizz_version"] = Settings.SkynizzVersion,
+            ["mfg_provider"] = Settings.MfgProvider,
+            ["nr_preset"] = Settings.NrPreset,
             ["nr_strength"] = Math.Round(tuning.NrStrength, 1),
             ["sharpening_strength"] = Math.Round(tuning.SharpeningStrength, 1),
             ["mfg_multiplier"] = tuning.MfgMultiplier == "auto" ? "auto" : int.Parse(tuning.MfgMultiplier),

@@ -99,8 +99,12 @@ class AdaMfgTest(unittest.TestCase):
             path.write_bytes(text.encode())
             baseline = {'current': {'archive': {'release': {'mfg_component': provider.pinned()}}}}
             self.assertEqual(provider.configure(e, game, baseline, 6).decode(), text)
+            self.assertEqual(provider.configured_state(game.target_dir, provider.pinned())['mfg_multiplier'], 3)
             with self.assertRaises(t.Refusal):
                 provider.configure(e, game, None, 4)
+            path.write_text('malformed settings')
+            with self.assertRaises(t.Refusal):
+                provider.configured_state(game.target_dir, provider.pinned())
 
 
 if __name__ == '__main__':

@@ -29,6 +29,20 @@ engine = SimpleNamespace(set_ini_value=namespace['set_ini_value'])
 
 
 class AdaMfgTest(unittest.TestCase):
+    def test_failed_inzoi_composition_refuses_steam_and_manual_installs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            e = SimpleNamespace(Y4MY_PROVIDER={'mfg_component': provider.pinned()},
+                                detect_reshade=lambda path: {'detected': False})
+            for appid, exe in [('2456740', 'game.exe'),
+                               ('manual', 'BlueClient/Binaries/Win64/inZOI-Win64-Shipping.exe'),
+                               ('manual', 'BlueClient\\Binaries\\Win64\\inZOI-Win64-Shipping.exe')]:
+                game = SimpleNamespace(appid=appid, exe=exe, target_dir=target)
+                with self.subTest(appid=appid, exe=exe), self.assertRaisesRegex(t.Refusal, 'Choose Integrated Ada MFG'):
+                    provider.check_target(e, game, None)
+                self.assertEqual(list(target.iterdir()), [])
+            provider.check_target(e, SimpleNamespace(appid='other', exe='game.exe', target_dir=target), None)
+
     def test_saved_recipe_rejects_changed_binary_host_or_source(self):
         pinned = provider.pinned()
         self.assertEqual(provider.validate(pinned), pinned)

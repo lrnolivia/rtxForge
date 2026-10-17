@@ -147,6 +147,15 @@ def configured_state(target, record):
 def check_target(e, game, baseline):
     """Do not replace an unmanaged host/addon or switch a recorded MFG recipe."""
     record = validate(e.Y4MY_PROVIDER['mfg_component'])
+    # The 1.4.4 + ReShade 6.8 composition hangs at inZOI's first Present,
+    # before NR starts. The same NR/bridge build boots with integrated MFG.
+    # Keep this failed composition out of fresh installs and repairs.
+    inzoi = (str(getattr(game, 'appid', '')) == '2456740'
+             or str(getattr(game, 'exe', '')).replace('\\', '/').rsplit('/', 1)[-1].casefold()
+             == 'inzoi-win64-shipping.exe')
+    t.need(not (record['version'] == '1.4.4' and inzoi),
+           'MFG Unlock 1.4.4 with Skynizz NR currently fails inZOI startup. '
+           'Choose Integrated Ada MFG for this game; restore first if already installed.')
     current = (baseline or {}).get('current') or {}
     installed = ((current.get('archive') or {}).get('release') or {}).get('mfg_component')
     t.need(not current or installed == record, 'Restore before changing MFG components.')

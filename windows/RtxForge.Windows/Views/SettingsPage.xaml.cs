@@ -105,6 +105,21 @@ public sealed partial class SettingsPage : Page
         profile.SelectionChanged += (_, _) => ValidateProvider();
 
         // ----- Appearance -----
+        (row, var borderless) = Prefs.SwitchRow("4K borderless on install", "Use 3840 × 2160 borderless in supported games. Review shows each change; Restore preserves later preferences.", Settings.Borderless4K, "");
+        borderless.Toggled += (_, _) => { Settings.Borderless4K = borderless.IsOn; Save(); };
+        graphics.Add(row);
+
+        (row, var shortcut) = Prefs.ComboRow("Live controls shortcut", "Show or hide the NR + MFG panel above a windowed or borderless game. Keep rtxForge running.",
+            MainWindow.CompanionShortcuts, Math.Max(0, Array.IndexOf(MainWindow.CompanionShortcuts, Settings.PanelHotkey)), "");
+        shortcut.SelectionChanged += (_, _) =>
+        {
+            Settings.PanelHotkey = MainWindow.CompanionShortcuts[Math.Max(0, shortcut.SelectedIndex)];
+            shell.ConfigureCompanionShortcut();
+            Save();
+            if (shell.CompanionShortcutProblem is { } problem) { Notice.Title = "Shortcut unavailable"; Notice.Message = problem; Notice.IsOpen = true; }
+        };
+        graphics.Add(row);
+
         var appearance = new PreferencesGroup(null);
         (row, var theme) = Prefs.ComboRow("App theme", "Changes only rtxForge.", ThemeController.Captions,
             Math.Max(0, Array.IndexOf(ThemeController.Keys, Settings.Theme)), "");

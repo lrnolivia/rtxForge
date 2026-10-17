@@ -265,6 +265,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             ["skynizz_version"] = Settings.SkynizzVersion,
             ["mfg_provider"] = Settings.MfgProvider,
             ["nr_preset"] = Settings.NrPreset,
+            ["borderless_4k"] = Settings.Borderless4K,
             ["nr_strength"] = Math.Round(tuning.NrStrength, 1),
             ["sharpening_strength"] = Math.Round(tuning.SharpeningStrength, 1),
             ["mfg_multiplier"] = tuning.MfgMultiplier == "auto" ? "auto" : int.Parse(tuning.MfgMultiplier),

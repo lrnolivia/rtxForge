@@ -379,6 +379,8 @@ def prepare(params):
         import dlss_updates
         settings = library_media.load_settings(service.config) | (params.get("settings") or {})
         dlss_updates.attach_install(service.config, review, enabled=settings.get('manage_dlss_files', True))
+        import game_display
+        game_display.attach(review, enabled=settings.get('borderless_4k', False))
         review["cancel_event"] = threading.Event()
     token = uuid.uuid4().hex
     reviews[token] = review
@@ -512,6 +514,9 @@ METHODS = {"hello": hello, "hardware": lambda _p: service.hardware(), "scan": sc
 import win_features  # noqa: E402
 
 METHODS.update(win_features.install(service, lambda: engine_bridge.module(service.config).steam_config_engine()))
+
+import companion_controls  # noqa: E402
+METHODS.update(companion_controls.methods(STATE))
 
 
 def handle(request: dict) -> None:

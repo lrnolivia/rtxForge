@@ -117,6 +117,38 @@ assert 'CacheInterval=1' in reset_ini and 'WorkingScale=0.67' in reset_ini and '
 checks.append('repair pins exact release and preserves full preset; reset retains Skynizz policy')
 run(prepare(fresh,'uninstall'));assert files(fresh)==before,files(fresh)
 checks.append('restore reproduces the original file hashes')
+import game_display as display
+from types import SimpleNamespace
+display_game=game('DisplayReview');display_before=files(display_game)
+original_target=display.target
+display.target=lambda *a,**kw:original_target(SimpleNamespace(appid='2456740',exe='inZOI-Win64-Shipping.exe'))
+display_path,display_section,_=display.target(None)
+display_path.parent.mkdir(parents=True,exist_ok=True)
+display_original=('['+display_section+']\nFullscreenMode=0\nResolutionSizeX=1920\nResolutionSizeY=1080\nDLSSG_Mode=4\n').encode()
+display_path.write_bytes(display_original)
+def display_review(operation='install',enabled=True):
+    checked=host.prepare({'rows':[scan(display_game)],'mode':'nr-only','operation':operation,
+                          'settings':settings|{'borderless_4k':enabled}})
+    return host.reviews.pop(checked['token'])
+review=display_review()
+assert display_path.read_bytes()==display_original,'display review wrote settings'
+assert '3840' in review['rows'][0]['detail']
+run(review)
+assert b'ResolutionSizeX=3840' in display_path.read_bytes()
+assert b'DLSSG_Mode=4' in display_path.read_bytes()
+run(display_review('uninstall',False))
+assert display_path.read_bytes()==display_original and files(display_game)==display_before
+checks.append('Windows host review installs and restores backed-up borderless preferences')
+review=display_review()
+display_current=display_original+b'; changed after review\n'
+display_path.write_bytes(display_current)
+try:service.execute(review)
+except Exception:pass
+else:raise AssertionError('display review drift was ignored')
+assert files(display_game)==display_before,'display failure left a partial feature install'
+assert display_path.read_bytes()==display_current,'rollback overwrote a concurrent display preference'
+display.target=original_target
+checks.append('display drift rolls back feature writes and preserves newer display settings')
 local_model=game('ExplicitModel')
 old_model=fixtures.pe()+b'old'*(12*1024**2)
 (local_model/'nvngx_dlssnr.dll').write_bytes(old_model)
@@ -321,7 +353,7 @@ class WindowsSkynizzTest(unittest.TestCase):
                                     env=env, capture_output=True, text=True, timeout=180)
             self.assertEqual(result.returncode, 0, result.stderr[-12000:] + result.stdout[-3000:])
             receipt = json.loads(result.stdout.strip().splitlines()[-1])
-            self.assertEqual(receipt['count'], 16)
+            self.assertEqual(receipt['count'], 18)
             print('PASS: ' + '; '.join(receipt['checks']))
 
 

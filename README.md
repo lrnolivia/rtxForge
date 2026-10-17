@@ -53,6 +53,16 @@ The combined package uses NVIDIA's version- and hash-pinned production `rel` DLL
 
 For inZOI, the swapchain overlay is disabled to avoid a startup hang. NR and the native MFG configuration remain enabled; Repair and Reset retain this compatibility setting.
 
+### Live controls (Windows)
+
+Open **Game Details → More → Live NR + MFG controls**, or press **Ctrl+Shift+R** while rtxForge is running. Change the shortcut in **Settings → Graphics** if another app uses it. The separate, always-on-top acrylic window is intended for windowed or borderless games; exclusive fullscreen can cover it. You can also launch `rtxForge.exe --controls`, optionally adding `--controls-game <Steam app ID or library path>`.
+
+Choose the game explicitly. **Apply live** sends the supported NR controls and integrated MFG multiplier to its running bridge and waits for acknowledgement. The selected multiplier and the game's reported presented-frame count are separate; four presented frames do not promise a fourfold net FPS gain. Unsupported packages, stopped games and stalled connections disable the affected live controls. Advanced contains the additional NR settings exposed by the bridge.
+
+**Save for game** stores a preset in rtxForge, without editing game files. The app reapplies it when that same installed package/model recipe connects while rtxForge is running. A package change requires reviewing and saving the preset again. **Clear saved preset** removes only that automatic preset; current live values remain until changed or the game restarts. The external MFG Unlock preview retains ownership of its MFG settings; the panel can edit its compatible NR controls.
+
+**Settings → Graphics → 4K borderless on install** optionally includes supported 3840×2160 borderless preferences in the installation review. Adapters currently cover inZOI, The Witcher 3 DX12 and Starfield. Missing or unsupported settings are skipped with an explanation. Original display values are backed up, and Restore preserves preferences changed after installation.
+
 The bridge is a preview until actual RTX40 NR, generated-frame progression and pacing are verified together; it will become the default NR package after that gate. File/configuration checks alone do not establish that result. MFG Only continues to use the existing provider, and Skynizz Linux/Proton installation remains unavailable in this Windows-first pass. [Skynizz source](https://github.com/Skynizz/optiscaler-dlss5), [combined source and provenance](providers/skynizz-bridge/README.md).
 
 | Setting | Choices |

@@ -560,6 +560,8 @@ def execute(review):
                         synced=e.sync_launch_options_batch([g],assume_yes=True,prompt=False)
                         t.need(synced and all(r.get('status')=='written' for r in synced),'The launch settings could not be saved, so launch settings need attention: '+str(synced or record['launch_options']))
                     share_install(e,g,review)
+                if item.get('after_game'):
+                    item['after_game']()
                 results.append({'name':g.name,'status':'complete','record':record})
             except Exception as ex:
                 results.append({'name':g.name,'status':'failed','error':str(ex)})

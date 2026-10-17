@@ -60,6 +60,7 @@ public sealed partial class MainWindow : Window
         Nav.SelectedItem = Nav.MenuItems[0];
         Closed += (_, _) => (Service as IDisposable)?.Dispose();
         InitializeGameMode();
+        InitializeCompanion();
         RootGrid.KeyDown += (_, e) =>
         {
             if (e.Key == global::Windows.System.VirtualKey.F5) { e.Handled = true; _ = RescanLibraryAsync(); }
@@ -97,6 +98,15 @@ public sealed partial class MainWindow : Window
         {
             Hardware = await Service.DetectHardwareAsync();
             await ScanAsync();
+            var arguments = Environment.GetCommandLineArgs();
+            if (arguments.Contains("--controls", StringComparer.OrdinalIgnoreCase))
+            {
+                var selector = Array.FindIndex(arguments, arg => arg.Equals("--controls-game", StringComparison.OrdinalIgnoreCase));
+                var identity = selector >= 0 && selector + 1 < arguments.Length ? arguments[selector + 1] : null;
+                var selected = identity is null ? null : Games.FirstOrDefault(g => g.AppId == identity || g.Id.Equals(identity, StringComparison.OrdinalIgnoreCase));
+                if (identity is not null && selected is null) ShowToast("The requested game was not found. Choose it in Live controls.");
+                OpenCompanion(selected);
+            }
         }
         catch (InvalidOperationException error)
         {

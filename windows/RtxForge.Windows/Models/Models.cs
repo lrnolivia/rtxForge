@@ -170,6 +170,9 @@ public sealed class ForgeSettings
     [JsonPropertyName("mfg_provider")] public string MfgProvider { get; set; } = "integrated";
     [JsonPropertyName("nr_preset")] public int? NrPreset { get; set; }
     [JsonPropertyName("manage_dlss_files")] public bool ManageDlssFiles { get; set; } = true;
+    [JsonPropertyName("borderless_4k")] public bool Borderless4K { get; set; }
+    [JsonPropertyName("panel_hotkey")] public string PanelHotkey { get; set; } = "Ctrl+Shift+R";
+    [JsonPropertyName("companion_game")] public string CompanionGame { get; set; } = "";
     [JsonPropertyName("default_profile")] public string DefaultProfile { get; set; } = "mfg-only";
     [JsonPropertyName("recognize_previous")] public bool RecognizePrevious { get; set; } = true;
     [JsonPropertyName("library_view")] public string LibraryView { get; set; } = "posters";
@@ -184,7 +187,8 @@ public sealed class ForgeSettings
     [JsonPropertyName("art_scale")] public int ArtScale { get; set; } = 100;
     [JsonPropertyName("nr_strength")] public double NrStrength { get; set; } = 2.0;
     [JsonPropertyName("sharpening_strength")] public double SharpeningStrength { get; set; } = 0.5;
-    [JsonPropertyName("mfg_multiplier")] public string MfgMultiplier { get; set; } = "auto";
+    [JsonPropertyName("mfg_multiplier"), JsonConverter(typeof(MfgMultiplierConverter))]
+    public string MfgMultiplier { get; set; } = "auto";
     [JsonPropertyName("game_folders")] public List<string> GameFolders { get; set; } = [];
     [JsonPropertyName("library_folders")] public List<string> LibraryFolders { get; set; } = [];
     [JsonPropertyName("removed_games")] public List<string> RemovedGames { get; set; } = [];
@@ -207,6 +211,9 @@ public sealed class ForgeSettings
         get => UiScale.ValueKind == JsonValueKind.Number ? UiScale.GetInt32().ToString() : "auto";
         set => UiScale = value == "auto" ? JsonSerializer.SerializeToElement("auto") : JsonSerializer.SerializeToElement(int.Parse(value));
     }
+
+    // The shared engine owns additional settings that this shell does not edit.
+    [JsonExtensionData] public Dictionary<string, JsonElement> AdditionalSettings { get; set; } = [];
 
     [JsonIgnore] public Tuning Presets => new(NrStrength, SharpeningStrength, MfgMultiplier);
 
@@ -237,4 +244,28 @@ public sealed class ForgeSettings
 
     public ForgeSettings Clone() =>
         JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(this, Json), Json)!;
+}
+
+/// <summary>The shared engine stores a numeric multiplier; older Windows builds stored text.</summary>
+public sealed class MfgMultiplierConverter : JsonConverter<string>
+{
+    public override bool HandleNull => true;
+
+    static string Normalize(string? value) => value is "0" or "2" or "3" or "4" or "5" or "6" ? value : "auto";
+
+    public override string Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.String) return Normalize(reader.GetString());
+        if (reader.TokenType == JsonTokenType.Number && reader.TryGetInt32(out var number))
+            return Normalize(number.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        reader.Skip();
+        return "auto";
+    }
+
+    public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options)
+    {
+        var normalized = Normalize(value);
+        if (normalized == "auto") writer.WriteStringValue("auto");
+        else writer.WriteNumberValue(int.Parse(normalized, System.Globalization.CultureInfo.InvariantCulture));
+    }
 }

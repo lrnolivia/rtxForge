@@ -395,6 +395,8 @@ def prepare(config,rows,mode,operation,settings):
                     model=preview.get('nr_runtime') or {}
                     route='Combined NR + Ada MFG bridge · target runtime validation pending' if mode=='nr-mfg' else 'NR Only · requires D3D12/DLSS'
                     preview=dict(preview,launch_options=f"{release['tag']} · SHA-256 {release['sha256']} · model {model.get('path','')} · SHA-256 {model.get('sha256','')} · "+route)
+                    if sr:=target_meta.get('sr_runtime'):
+                        preview['launch_options']+=f" · production SR {sr['version']} · SHA-256 {sr['sha256']}"
                 if interrupted_install(baseline):
                     preview=dict(preview,launch_options='Finishes an install that was interrupted · '+preview['launch_options'])
             if prefix:preview=dict(preview,launch_options="Proton setting saved in this game's prefix · Steam can stay open")

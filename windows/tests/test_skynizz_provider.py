@@ -141,6 +141,7 @@ combined_archive=root/'combined.zip';combined_release=fixtures.bridge_fixture(co
 provider.bundled_bridge=lambda selection='latest':(dict(combined_release,selected_source=selection),combined_archive)
 combined=game('Combined');(combined/'nvngx_dlssg.dll').write_bytes(fixtures.pe());combined_before=files(combined)
 combined_review=service.prepare([scan(combined)],'nr-mfg','install',visual_settings=settings | {'mfg_multiplier':6})
+assert combined_release['sr_runtime']['sha256'] in combined_review['rows'][0]['detail']
 run(combined_review);combined_record=baseline(combined);combined_ini=(combined/'OptiScaler.ini').read_text()
 assert combined_record['mfg_provider']['enabled'] and combined_record['compatibility_policy']['mfg_route']=='native-ada-skynizz-bridge-armed'
 assert combined_record['archive']['release']['variant']=='nr-mfg-bridge' and combined_record['archive']['mfg_runtime']['sha256']
@@ -154,6 +155,7 @@ assert (combined/'dxgi.dll').read_bytes()==fixtures.pe(),'MFG donor replaced the
 assert (combined/'nvngx_dlssg.dll').read_bytes()==fixtures.pe(),'game native runtime replaced'
 run(service.prepare([scan(combined)],'nr-mfg','repair',visual_settings=settings | {'skynizz_version':'v9.9.9'}))
 assert baseline(combined)['archive']['release']['sha256']==combined_release['sha256']
+assert baseline(combined)['archive']['release']['sr_runtime']==combined_release['sr_runtime']
 run(service.prepare([scan(combined)],'nr-mfg','uninstall',visual_settings=settings));assert files(combined)==combined_before
 checks.append('combined NR+MFG uses one loader, production SR and private MFG stack; pinned repair/restore preserve ownership')
 failed_combined=game('CombinedFailure');(failed_combined/'nvngx_dlssg.dll').write_bytes(fixtures.pe());combined_before=files(failed_combined)

@@ -106,12 +106,12 @@
                         <TextBlock x:Name="TelemetryText" Style="{StaticResource PanelCaption}" />
                     </StackPanel>
                 </Expander>
-                <TextBlock x:Name="Feedback" Visibility="Collapsed" Style="{StaticResource PanelCaption}" AutomationProperties.LiveSetting="Polite" />
                 <Button x:Name="ClearSaved" Visibility="Collapsed" Content="Clear saved preset" Click="OnClear" HorizontalAlignment="Left" />
             </StackPanel>
         </ScrollViewer>
         <Border Grid.Row="2" Background="#E6202327" Padding="24,16,24,20">
             <StackPanel Spacing="10">
+                <TextBlock x:Name="Feedback" Visibility="Collapsed" Style="{StaticResource PanelCaption}" AutomationProperties.LiveSetting="Polite" />
                 <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
                     <Button x:Name="ApplyLive" Content="Apply live" Click="OnApply" HorizontalAlignment="Stretch" Style="{StaticResource AccentButtonStyle}" />

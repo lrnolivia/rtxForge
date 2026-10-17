@@ -336,7 +336,7 @@ class Controls:
             self.last_pid.pop(game['key'], None)
             self.preset_errors.pop(game['key'], None)
             self._start_watcher()
-            return {'saved': True, 'detail': 'Saved in rtxForge. Applied when this game connects while rtxForge is running.'}
+            return {'saved': True, 'detail': 'Saved in rtxForge. Applies when connected, including the current session, while rtxForge is running.'}
 
     def forget(self, params):
         with self.lock:

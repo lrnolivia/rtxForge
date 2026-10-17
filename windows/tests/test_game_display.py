@@ -16,7 +16,7 @@ class DisplayTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve()
         self.engine = SimpleNamespace(STATE_ROOT=self.root / 'state')
         self.game = SimpleNamespace(appid='2456740', exe='inZOI-Win64-Shipping.exe', root=self.root / 'game')
         self.locations = dict(local=self.root / 'local', docs=self.root / 'docs')

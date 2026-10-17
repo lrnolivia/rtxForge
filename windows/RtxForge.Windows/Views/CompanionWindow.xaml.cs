@@ -145,7 +145,7 @@ public sealed partial class CompanionWindow : Window
             "waiting" => "Game is not connected", "stalled" => "Game is not responding", _ => "Controls unavailable"
         };
         ConnectionDot.Fill = new SolidColorBrush(running ? Color.FromArgb(255, 157, 211, 77) : Color.FromArgb(255, 173, 180, 188));
-        ConnectionDetail.Text = running ? "Changes apply when you select Apply live." : Text(status, "detail");
+        ConnectionDetail.Text = running ? "Apply live changes now. Saving also applies and reuses them." : Text(status, "detail");
         var fresh = Flag(status, "native_fresh");
         MfgActual.Text = !running ? "Start the game to verify output."
             : !Flag(status, "can_mfg") ? "MFG is managed by the installed package."
@@ -214,6 +214,7 @@ public sealed partial class CompanionWindow : Window
         }
         ApplyLive.IsEnabled = !requesting && dirty && Flag(status, "can_edit");
         SavePreset.IsEnabled = editable;
+        SavePreset.Content = Text(status, "state") == "running" ? "Save + apply" : "Save for game";
         ClearSaved.IsEnabled = !requesting && Flag(status, "saved");
         ClearSaved.Visibility = Flag(status, "saved") ? Visibility.Visible : Visibility.Collapsed;
         Feedback.Visibility = string.IsNullOrEmpty(Feedback.Text) ? Visibility.Collapsed : Visibility.Visible;

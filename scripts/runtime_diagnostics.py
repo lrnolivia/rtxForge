@@ -13,7 +13,8 @@ BLACKWELL_SHA256='e16bcf15e16e13f527491cdf7845b2fe6521a738d8f7c9c721866a8496e1fc
 
 
 def read_regular(path, limit=4*1024*1024, tail=False):
-    path=t.safe(path)
+    try:path=t.safe(path)
+    except t.Refusal as error:raise ValueError(str(error)) from error
     before=path.stat()
     fd=os.open(path,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_NONBLOCK',0))
     with os.fdopen(fd,'rb') as source:

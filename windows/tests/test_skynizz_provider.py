@@ -9,7 +9,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKER = r'''
-import importlib.util,json,sys,hashlib
+import importlib.util,json,sys,hashlib,zipfile
 from pathlib import Path
 root=Path(sys.argv[1]);repo=Path(sys.argv[2])
 sys.path[:0]=[str(repo/'scripts'),str(repo/'windows/engine-host')]
@@ -205,12 +205,48 @@ for component,(filename,_) in provider.PRODUCTION_RUNTIMES.items():
     assert combined_record['archive']['release'][component]==combined_release[component]
 assert (combined/'dxgi.dll').read_bytes()==fixtures.pe(),'MFG donor replaced the NR loader'
 assert (combined/'nvngx_dlssg.dll').read_bytes()==fixtures.pe(),'game native runtime replaced'
+# A newer bundled loader must remain opt-in for an already pinned recipe.
+updated_archive=root/'updated-combined.zip'
+with zipfile.ZipFile(combined_archive) as source,zipfile.ZipFile(updated_archive,'w') as target:
+    for member in source.infolist():
+        data=source.read(member)
+        if member.filename.endswith('/OptiScaler.dll'):data+=b'updated bridge'
+        target.writestr(member,data)
+updated_release=combined_release | {'sha256':hashlib.sha256(updated_archive.read_bytes()).hexdigest(),
+                                    'release_size':updated_archive.stat().st_size}
+provider.bundled_bridge=lambda selection='latest':(dict(updated_release,selected_source=selection),updated_archive)
+combined_ini=combined_ini.replace('WorkingScale=0.67','WorkingScale=0.5')+'\n; keep this game tuning\n'
+(combined/'OptiScaler.ini').write_text(combined_ini)
 run(service.prepare([scan(combined)],'nr-mfg','repair',visual_settings=settings | {'skynizz_version':'v9.9.9'}))
 assert baseline(combined)['archive']['release']['sha256']==combined_release['sha256']
 for component in provider.PRODUCTION_RUNTIMES:
     assert baseline(combined)['archive']['release'][component]==combined_release[component]
+upgrade_settings=settings | {'upgrade_skynizz_bridge':True,'nr_runtime':str(root/'missing-global-model.dll'),
+                            'mfg_multiplier':2,'nr_preset':0}
+review=service.prepare([scan(combined)],'nr-mfg','repair',visual_settings=upgrade_settings)
+assert review['title']=='Update NR + MFG bridge' and updated_release['sha256'] in review['rows'][0]['detail']
+assert (combined/'dxgi.dll').read_bytes()==fixtures.pe(),'review changed the loader'
+run(review)
+assert baseline(combined)['archive']['release']['sha256']==updated_release['sha256']
+assert (combined/'dxgi.dll').read_bytes()==fixtures.pe()+b'updated bridge'
+assert (combined/'nvngx_dlssnr.dll').read_bytes()==model.read_bytes()
+assert (combined/'OptiScaler.ini').read_text()==combined_ini,'bridge upgrade reset tuning or MFG count'
+for component in provider.PRODUCTION_RUNTIMES:
+    assert baseline(combined)['archive']['release'][component]==combined_release[component]
+checks.append('explicit bridge upgrade adopts the new loader while preserving exact model, game tuning, MFG count and runtime pins')
 run(service.prepare([scan(combined)],'nr-mfg','uninstall',visual_settings=settings));assert files(combined)==combined_before
 checks.append('combined NR+MFG uses one loader, production SR/RR/FG and private Streamline; pinned repair/restore preserve ownership')
+review=service.prepare([scan(combined)],'nr-mfg','repair',visual_settings=upgrade_settings)
+assert not review['rows'] and 'before updating' in review['blocked'][0]['reason']
+assert files(combined)==combined_before
+for mode,operation,values in [('nr-only','repair',upgrade_settings),('nr-mfg','install',upgrade_settings)]:
+    try:service.prepare([scan(combined)],mode,operation,visual_settings=values)
+    except Exception:pass
+    else:raise AssertionError('unsafe bridge update selection accepted')
+try:engine_bridge.prepare(service.config,[scan(combined)],'nr-mfg','repair',upgrade_settings | {'apply_requested_presets':True})
+except Exception:pass
+else:raise AssertionError('bridge update accepted preset reset')
+checks.append('bridge update refuses unowned installs, mode changes and preset resets before writes')
 inzoi=game('inZOI');(inzoi/'Game.exe').rename(inzoi/'inZOI-Win64-Shipping.exe')
 (inzoi/'nvngx_dlssg.dll').write_bytes(fixtures.pe());inzoi_before=files(inzoi)
 review=service.prepare([scan(inzoi)],'nr-mfg','install',visual_settings=settings)
@@ -271,6 +307,11 @@ run(service.prepare([scan(external)],'nr-mfg','repair',visual_settings=settings 
 assert reshade.read_text()==tuned,'repair reset the addon preset or changed MFG owner'
 assert scan(external)['mfg_multiplier']==3
 assert baseline(external)['mfg_provider']['version']=='1.4.4'
+external_ini=(external/'OptiScaler.ini').read_text()
+run(service.prepare([scan(external)],'nr-mfg','repair',visual_settings=upgrade_settings | {'mfg_provider':'integrated'}))
+assert baseline(external)['archive']['release']['mfg_component']==record['archive']['release']['mfg_component']
+assert (external/'OptiScaler.ini').read_text()==external_ini and reshade.read_text()==tuned
+assert scan(external)['mfg_provider']=='mfg-unlock' and scan(external)['mfg_multiplier']==3
 run(service.prepare([scan(external)],'nr-mfg','reset',visual_settings=settings | {'mfg_multiplier':4}))
 assert 'AdaMfgUnlock=false' in (external/'OptiScaler.ini').read_text()
 assert 'ForceMultiplier=4' in reshade.read_text() and '; user preset' in reshade.read_text()
@@ -353,7 +394,7 @@ class WindowsSkynizzTest(unittest.TestCase):
                                     env=env, capture_output=True, text=True, timeout=180)
             self.assertEqual(result.returncode, 0, result.stderr[-12000:] + result.stdout[-3000:])
             receipt = json.loads(result.stdout.strip().splitlines()[-1])
-            self.assertEqual(receipt['count'], 18)
+            self.assertEqual(receipt['count'], 20)
             print('PASS: ' + '; '.join(receipt['checks']))
 
 

@@ -291,6 +291,12 @@ def proton_setup(e,g,record):
 
 def prepare(config,rows,mode,operation,settings):
     selected=settings.get('runtime_provider','y4my')
+    upgrade=settings.get('upgrade_skynizz_bridge',False)
+    t.need(type(upgrade) is bool,'Invalid bridge update selection.')
+    t.need(not upgrade or (selected=='skynizz' and mode=='nr-mfg' and operation=='repair'),
+           'A bridge update requires an existing combined NR + MFG installation.')
+    t.need(not upgrade or not settings.get('apply_requested_presets',False),
+           'A bridge update preserves each game preset; apply new presets separately.')
     if selected=='skynizz' and operation in ('install','repair'):
         skynizz_provider.require_mode(cross_os.THIS_OS,mode,bool(settings.get('native_mfg_fallback')),bridge=mode=='nr-mfg')
     custom=settings.get('custom_package') if selected=='custom' else None
@@ -332,6 +338,16 @@ def prepare(config,rows,mode,operation,settings):
                 saved_release=(current.get('archive') or {}).get('release') if current else None
                 t.need(not current or isinstance(saved_release,dict),'Installed Skynizz release provenance is missing; restore before reinstalling.')
                 release=skynizz_provider.validate_release(saved_release) if current else None
+                if upgrade:
+                    t.need(release is not None and release.get('variant')=='nr-mfg-bridge',
+                           'Install the combined NR + MFG package before updating its bridge.')
+                    previous=release
+                    release=dict(skynizz_provider.bundled_bridge(previous['tag'])[0])
+                    # Explicitly update only the bridge. Keep the component owner,
+                    # preset and production runtime identities selected for this game.
+                    for key in ('mfg_component','nr_preset',*skynizz_provider.PRODUCTION_RUNTIMES):
+                        if key in previous:release[key]=previous[key]
+                    release=skynizz_provider.validate_release(release)
                 selection=settings.get('skynizz_version','latest')
                 if release is None:
                     if selection not in releases:
@@ -348,7 +364,13 @@ def prepare(config,rows,mode,operation,settings):
                 t.need(mode!='nr-mfg' or release.get('variant')=='nr-mfg-bridge','NR + MFG requires the combined bridge; restore the stock NR-only package first.')
                 e.Y4MY_PROVIDER=release
                 target_data,target_meta=ui.work('Verifying Skynizz package',payload,e,config,mode)
-                nr,nrmeta=e.load_user_nr_runtime(settings.get('nr_runtime') or None,family=None)
+                if upgrade:
+                    expected=(current.get('nr_runtime') or {}).get('sha256')
+                    nr,nrmeta=e.load_user_nr_runtime(str(g.target_dir/'nvngx_dlssnr.dll'),family=None)
+                    t.need(expected and nrmeta.get('sha256')==expected,
+                           'The installed NR model changed; repair its recorded model before updating the bridge.')
+                else:
+                    nr,nrmeta=e.load_user_nr_runtime(settings.get('nr_runtime') or None,family=None)
             if baseline:
                 t.need(not any(v.get('kind') in ('tar_tree','tar_file') for v in baseline.get('originals',{}).values()),'Privileged backup requires terminal restore before desktop management')
             # Installed (or last changed) with rtxForge on the other OS: adapt it for this one.
@@ -410,6 +432,8 @@ def prepare(config,rows,mode,operation,settings):
                     if component:=release.get('mfg_component'):
                         route=f"NR + {component['name']} {component['version']} · SHA-256 {component['sha256']} · ReShade {component['host']['version']} · internal unlock disabled · target runtime validation pending"
                     preview=dict(preview,launch_options=f"{release['tag']} · SHA-256 {release['sha256']} · model {model.get('path','')} · SHA-256 {model.get('sha256','')} · "+route)
+                    if upgrade:
+                        preview['launch_options']='Update bridge · '+str(previous.get('bridge_id','recorded build'))+' → '+str(release.get('bridge_id','bundled build'))+' · preserve game tuning and NR model · '+preview['launch_options']
                     for component,(_,label) in skynizz_provider.PRODUCTION_RUNTIMES.items():
                         if runtime:=target_meta.get(component):
                             preview['launch_options']+=f" · production {label} {runtime['version']} · SHA-256 {runtime['sha256']}"
@@ -424,7 +448,7 @@ def prepare(config,rows,mode,operation,settings):
                           'provider':dict(e.Y4MY_PROVIDER),'payload':target_data,'meta':target_meta,'nr':nr,'nrmeta':nrmeta})
         except (e.Stop,t.Refusal,OSError,ValueError) as ex:blocked.append({'name':row['name'],'reason':str(ex)})
         ui.progress('Game checked',phase='review-check',game=row['name'],checked=index,total=len(rows))
-    return {'kind':'engine','operation':operation,'title':operation.title(),'rows':[{'name':p['row']['name'],'detail':p['preview']['launch_options'] if operation=='reset' else f"{e.Y4MY_PROVIDER['name']} · {len(p['preview']['files'])} managed files · "+p['preview']['launch_options']} for p in ready],
+    return {'kind':'engine','operation':operation,'title':'Update NR + MFG bridge' if upgrade else operation.title(),'rows':[{'name':p['row']['name'],'detail':p['preview']['launch_options'] if operation=='reset' else f"{e.Y4MY_PROVIDER['name']} · {len(p['preview']['files'])} managed files · "+p['preview']['launch_options']} for p in ready],
             'blocked':blocked,'plans':ready,'engine':e,'payload':data,'meta':meta,'nr':nr,'nrmeta':nrmeta,'mode':mode,'enable_effects':True,'native_mfg_fallback':bool(settings.get('native_mfg_fallback',False)),'nr_strength':strength,'mfg_multiplier':multiplier,'sharpening_strength':sharpening,'apply_requested_presets':bool(settings.get('apply_requested_presets',False))}
 
 def share_install(e,g,review):

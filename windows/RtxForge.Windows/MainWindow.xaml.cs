@@ -101,11 +101,7 @@ public sealed partial class MainWindow : Window
             var arguments = Environment.GetCommandLineArgs();
             if (arguments.Contains("--controls", StringComparer.OrdinalIgnoreCase))
             {
-                var selector = Array.FindIndex(arguments, arg => arg.Equals("--controls-game", StringComparison.OrdinalIgnoreCase));
-                var identity = selector >= 0 && selector + 1 < arguments.Length ? arguments[selector + 1] : null;
-                var selected = identity is null ? null : Games.FirstOrDefault(g => g.AppId == identity || g.Id.Equals(identity, StringComparison.OrdinalIgnoreCase));
-                if (identity is not null && selected is null) ShowToast("The requested game was not found. Choose it in Live controls.");
-                OpenCompanion(selected);
+                OpenCompanion();
             }
         }
         catch (InvalidOperationException error)

@@ -209,7 +209,12 @@ def load_payload(archive, record):
     }
 
 
-def configure(e, source, saved=None, mode='nr-only', mfg_multiplier='auto'):
+def startup_overlay_disabled(game):
+    return game is not None and (str(game.appid) == '2456740'
+                                 or Path(game.exe or '').name.casefold() == 'inzoi-win64-shipping.exe')
+
+
+def configure(e, source, saved=None, mode='nr-only', mfg_multiplier='auto', game=None):
     """Repair retains the complete user preset, including cache/placement choices."""
     text = (saved if saved is not None else source).decode('utf-8-sig')
     if saved is None:
@@ -228,6 +233,10 @@ def configure(e, source, saved=None, mode='nr-only', mfg_multiplier='auto'):
         if saved is None:
             for key, value in e.visual_defaults(2, mfg_multiplier, .5)['DLSSG'].items():
                 text = e.set_ini_value(text, 'DLSSG', key, value)
+    if startup_overlay_disabled(game):
+        # The swapchain overlay hangs inZOI before NR evaluation. The classic
+        # menu path allows startup and leaves the native FG and NR routes on.
+        text = e.set_ini_value(text, 'Menu', 'OverlayMenu', 'false')
     parser = configparser.ConfigParser(interpolation=None, strict=True, inline_comment_prefixes=(';', '#'))
     parser.optionxform = str
     try:

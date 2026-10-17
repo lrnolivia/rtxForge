@@ -2198,7 +2198,7 @@ def _reset_visual_settings(game: Game, *, dry_run: bool = False, nr_strength: st
     original = ini.read_bytes()
     if current.get("provider_id") == "skynizz":
         import skynizz_provider
-        text, nr_values = skynizz_provider.configure(sys.modules[__name__], original, mode=mode, mfg_multiplier=mfg_multiplier)
+        text, nr_values = skynizz_provider.configure(sys.modules[__name__], original, mode=mode, mfg_multiplier=mfg_multiplier, game=game)
         values = {"DlssNr": nr_values}
     else:
         text, values = apply_visual_defaults(original.decode("utf-8-sig"), None, mode, nr_strength, mfg_multiplier, sharpening_strength)
@@ -4478,7 +4478,7 @@ def install_target(
             ini_source = live_ini.read_bytes()
     is_dlss_unlocked = Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) == "dlss-unlocked"
     if is_skynizz:
-        text, nr_tuning = skynizz_provider.configure(sys.modules[__name__], ini_source, saved_ini, mode=feature_mode, mfg_multiplier=mfg_multiplier)
+        text, nr_tuning = skynizz_provider.configure(sys.modules[__name__], ini_source, saved_ini, mode=feature_mode, mfg_multiplier=mfg_multiplier, game=game)
         visual_tuning = {"DlssNr": nr_tuning}
     else:
         payload[ini_key] = patch_optiscaler_ini(ini_source, family, ada_mfg_mode=ada_mfg_mode, disable_overlays=eos_overlay)

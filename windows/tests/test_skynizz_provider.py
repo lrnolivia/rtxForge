@@ -163,6 +163,21 @@ for component in provider.PRODUCTION_RUNTIMES:
     assert baseline(combined)['archive']['release'][component]==combined_release[component]
 run(service.prepare([scan(combined)],'nr-mfg','uninstall',visual_settings=settings));assert files(combined)==combined_before
 checks.append('combined NR+MFG uses one loader, production SR/RR/FG and private Streamline; pinned repair/restore preserve ownership')
+inzoi=game('inZOI');(inzoi/'Game.exe').rename(inzoi/'inZOI-Win64-Shipping.exe')
+(inzoi/'nvngx_dlssg.dll').write_bytes(fixtures.pe());inzoi_before=files(inzoi)
+review=service.prepare([scan(inzoi)],'nr-mfg','install',visual_settings=settings)
+assert 'overlay disabled for inZOI startup' in review['rows'][0]['detail']
+run(review)
+ini=inzoi/'OptiScaler.ini'
+assert 'OverlayMenu=false' in ini.read_text() and 'Enabled=true' in ini.read_text()
+ini.write_text(ini.read_text().replace('OverlayMenu=false','OverlayMenu=true').replace('CacheInterval=1','CacheInterval=5'))
+run(service.prepare([scan(inzoi)],'nr-mfg','repair',visual_settings=settings))
+assert 'OverlayMenu=false' in ini.read_text() and 'CacheInterval=5' in ini.read_text()
+assert 'AdaMfgUnlock=true' in ini.read_text() and 'PreSr=true' in ini.read_text()
+run(service.prepare([scan(inzoi)],'nr-mfg','reset',visual_settings=settings))
+assert 'OverlayMenu=false' in ini.read_text()
+run(service.prepare([scan(inzoi)],'nr-mfg','uninstall',visual_settings=settings));assert files(inzoi)==inzoi_before
+checks.append('inZOI disables the startup overlay through install/repair/reset while retaining NR/MFG and restoring original files')
 failed_combined=game('CombinedFailure');(failed_combined/'nvngx_dlssg.dll').write_bytes(fixtures.pe());combined_before=files(failed_combined)
 review=service.prepare([scan(failed_combined)],'nr-mfg','install',visual_settings=settings)
 e=review['engine'];write=e.atomic_write
@@ -233,7 +248,7 @@ class WindowsSkynizzTest(unittest.TestCase):
                                     env=env, capture_output=True, text=True, timeout=180)
             self.assertEqual(result.returncode, 0, result.stderr[-12000:] + result.stdout[-3000:])
             receipt = json.loads(result.stdout.strip().splitlines()[-1])
-            self.assertEqual(receipt['count'], 11)
+            self.assertEqual(receipt['count'], 12)
             print('PASS: ' + '; '.join(receipt['checks']))
 
 

@@ -47,6 +47,8 @@ This provider requires a compatible, user-supplied RTX 40 `nvngx_dlssnr.dll` in 
 
 The combined package uses NVIDIA's version- and hash-pinned production `rel` DLLs for Super Resolution, Ray Reconstruction and Frame Generation. This prevents private SDK variants from taking priority over the game's production files and displaying development watermarks. Each component's source is recorded with new installations and retained by Repair; older bridge recipes require Restore and reinstall to select the new runtime set. The NR model remains a separate local file.
 
+For inZOI, the swapchain overlay is disabled to avoid a startup hang. NR and the native MFG configuration remain enabled; Repair and Reset retain this compatibility setting.
+
 The bridge is a preview until actual RTX40 NR, generated-frame progression and pacing are verified together; it will become the default NR package after that gate. File/configuration checks alone do not establish that result. MFG Only continues to use the existing provider, and Skynizz Linux/Proton installation remains unavailable in this Windows-first pass. [Skynizz source](https://github.com/Skynizz/optiscaler-dlss5), [combined source and provenance](providers/skynizz-bridge/README.md).
 
 | Setting | Choices |

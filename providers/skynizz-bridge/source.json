@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "id": "skynizz-ada-mfg-4",
+  "id": "skynizz-ada-mfg-5",
   "upstream": {
     "repository": "Skynizz/optiscaler-dlss5",
     "tag": "v1.2.1",
@@ -19,7 +19,7 @@
     ]
   },
   "patch": "ada-mfg.patch",
-  "patch_sha256": "e593bd0ab18e7e5907dce6a888e9bc85b4f31b1764a4cbc5c66bb969b77c9318",
+  "patch_sha256": "908003220fc3cb51e362aff67adab1ad1bf28b480723c4dd80be217a593137ed",
   "license": "GPL-3.0-only",
   "runtime_verified": false,
   "default_promoted": false,

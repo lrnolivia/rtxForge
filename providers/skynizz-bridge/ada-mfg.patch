@@ -69,10 +69,10 @@ index 00369a32..cf411588 100644
      <ClCompile Include="framegen\IFGFeature_Dx12.cpp" />
 diff --git a/OptiScaler/framegen/dlssg/Companion.h b/OptiScaler/framegen/dlssg/Companion.h
 new file mode 100644
-index 00000000..2c0a88c7
+index 00000000..6ee11cab
 --- /dev/null
 +++ b/OptiScaler/framegen/dlssg/Companion.h
-@@ -0,0 +1,142 @@
+@@ -0,0 +1,170 @@
 +#pragma once
 +
 +#include <Config.h>
@@ -102,7 +102,9 @@ index 00000000..2c0a88c7
 +    float nrMs, renderedFps;
 +    LONG backendMax, lastGenerated, frames, fgSuccesses;
 +    LONG preset, actualPreset;
-+    char failure[120];
++    LONG nativeStatus, nativePresented, stateSamples, stateTick;
++    LONG nativeMode, nativeGenerated;
++    char failure[96];
 +};
 +static_assert(sizeof(Mailbox) == 256);
 +
@@ -112,6 +114,26 @@ index 00000000..2c0a88c7
 +inline bool attempted = false;
 +inline LONG observedFgSuccesses = 0;
 +inline LONG observedGenerated = 0;
++inline LONG nativeStatus = -1, nativePresented = 0, stateSamples = 0, stateTick = 0;
++inline LONG nativeMode = -1, nativeGenerated = 0;
++
++// Record the native Streamline result before any compatibility reporting is
++// applied. A configured multiplier or successful NGX call is not a present.
++inline void ObservedDlssgState(LONG status, LONG presented)
++{
++    std::lock_guard lock(guard);
++    nativeStatus = status;
++    nativePresented = presented;
++    ++stateSamples;
++    stateTick = static_cast<LONG>(GetTickCount());
++}
++
++inline void ObservedDlssgOptions(LONG mode, LONG generated)
++{
++    std::lock_guard lock(guard);
++    nativeMode = mode;
++    nativeGenerated = generated;
++}
 +
 +inline void Completed(bool fg, NVSDK_NGX_Result result, NVSDK_NGX_Parameter* parameters)
 +{
@@ -143,7 +165,7 @@ index 00000000..2c0a88c7
 +        }
 +        *mailbox = {};
 +        mailbox->magic = 0x46585452;
-+        mailbox->version = 1;
++        mailbox->version = 2;
 +        mailbox->pid = GetCurrentProcessId();
 +    }
 +    if (!mailbox) return;
@@ -210,6 +232,12 @@ index 00000000..2c0a88c7
 +    mailbox->backendMax = State::Instance().dlssgMfgMax.value_or(0);
 +    mailbox->lastGenerated = observedGenerated;
 +    mailbox->fgSuccesses = observedFgSuccesses;
++    mailbox->nativeStatus = nativeStatus;
++    mailbox->nativePresented = nativePresented;
++    mailbox->stateSamples = stateSamples;
++    mailbox->stateTick = stateTick;
++    mailbox->nativeMode = nativeMode;
++    mailbox->nativeGenerated = nativeGenerated;
 +    ++mailbox->frames;
 +    strncpy_s(mailbox->failure, DlssNr::FailureReason(), _TRUNCATE);
 +    InterlockedIncrement(&mailbox->snapshot);
@@ -732,16 +760,17 @@ index 142037d7..b41d413a 100644
      // Try to catch something like this:
      // c:\programdata/nvidia/ngx/models//dlss/versions/20316673/files/160_e658700.bin
 diff --git a/OptiScaler/hooks/Streamline_Hooks.cpp b/OptiScaler/hooks/Streamline_Hooks.cpp
-index 176dab06..f235597d 100644
+index 176dab06..38b3842e 100644
 --- a/OptiScaler/hooks/Streamline_Hooks.cpp
 +++ b/OptiScaler/hooks/Streamline_Hooks.cpp
-@@ -1,4 +1,5 @@
+@@ -1,4 +1,6 @@
  #include <pch.h>
 +#include <framegen/dlssg/MfgUnlock.h>
++#include <framegen/dlssg/Companion.h>
 
  #include "Streamline_Hooks.h"
 
-@@ -1303,21 +1304,39 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
+@@ -1303,21 +1305,39 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
 
      if (dlssgPotentiallyActive && state.streamlineVersion >= feature_version { 2, 7, 1 })
      {
@@ -789,7 +818,19 @@ index 176dab06..f235597d 100644
                  }
              }
          }
-@@ -1344,6 +1363,9 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
+@@ -1335,7 +1355,10 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
+
+     state.dlssgLastSetMode = newOptions.mode;
+
+-    return o_slDLSSGSetOptions(viewport, newOptions);
++    const auto result = o_slDLSSGSetOptions(viewport, newOptions);
++    if (result == sl::Result::eOk)
++        ForgeCompanion::ObservedDlssgOptions(static_cast<LONG>(newOptions.mode), newOptions.numFramesToGenerate);
++    return result;
+ }
+
+ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport, sl::DLSSGState& state,
+@@ -1344,6 +1367,9 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
      if (o_slDLSSGGetState == nullptr)
          return sl::Result::eErrorFeatureMissing;
 
@@ -799,7 +840,16 @@ index 176dab06..f235597d 100644
      sl::Result result {};
 
      const auto originalStructVersion = state.structVersion;
-@@ -1363,6 +1385,12 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
+@@ -1353,6 +1379,8 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
+
+         // We might be feeding a newer struct to an older SL but that seems to work just fine for this Get function
+         result = o_slDLSSGGetState(viewport, dynamic_cast<sl::DLSSGState&>(newState), options);
++        if (result == sl::Result::eOk)
++            ForgeCompanion::ObservedDlssgState(static_cast<LONG>(newState.status), newState.numFramesActuallyPresented);
+
+         // Copy back data to game's struct
+         memcpy(&state, &newState, 56); // struct ver 1 size
+@@ -1363,6 +1391,12 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
              state.numFramesToGenerateMax = newState.numFramesToGenerateMax;
              state.bReserved4 = newState.bReserved4;
              state.bIsVsyncSupportAvailable = newState.bIsVsyncSupportAvailable;
@@ -812,9 +862,12 @@ index 176dab06..f235597d 100644
          }
 
          if (originalStructVersion >= 3)
-@@ -1378,6 +1406,10 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
+@@ -1377,7 +1411,13 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
+     else
      {
          result = o_slDLSSGGetState(viewport, state, options);
++        if (result == sl::Result::eOk)
++            ForgeCompanion::ObservedDlssgState(static_cast<LONG>(state.status), state.numFramesActuallyPresented);
          State::Instance().dlssgGameDMFGSupported = state.bIsDynamicMFGSupported == sl::eTrue;
 +
 +        // The wrapper's ceiling, replaced by the unlocked count.
@@ -823,7 +876,7 @@ index 176dab06..f235597d 100644
      }
 
      if (!State::Instance().dlssgGameDMFGSupported)
-@@ -1389,20 +1421,32 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
+@@ -1389,20 +1429,32 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
 
      if (optiState.streamlineVersion >= feature_version { 2, 7, 1 })
      {

@@ -69,15 +69,16 @@ index 00369a32..cf411588 100644
      <ClCompile Include="framegen\IFGFeature_Dx12.cpp" />
 diff --git a/OptiScaler/framegen/dlssg/Companion.h b/OptiScaler/framegen/dlssg/Companion.h
 new file mode 100644
-index 00000000..ff035c71
+index 00000000..2c0a88c7
 --- /dev/null
 +++ b/OptiScaler/framegen/dlssg/Companion.h
-@@ -0,0 +1,138 @@
+@@ -0,0 +1,142 @@
 +#pragma once
 +
 +#include <Config.h>
 +#include <dlssnr/DlssNr.h>
 +#include <cmath>
++#include <atomic>
 +#include <mutex>
 +
 +// A local-session mailbox, not an overlay or an injection interface. Commands
@@ -100,7 +101,8 @@ index 00000000..ff035c71
 +    LONG nrRunning;
 +    float nrMs, renderedFps;
 +    LONG backendMax, lastGenerated, frames, fgSuccesses;
-+    char failure[128];
++    LONG preset, actualPreset;
++    char failure[120];
 +};
 +static_assert(sizeof(Mailbox) == 256);
 +
@@ -152,7 +154,7 @@ index 00000000..ff035c71
 +        // Client marks an in-flight write odd and commits it even. Never read
 +        // a partially written command, and validate every value before apply.
 +        Mailbox request = *mailbox;
-+        MemoryBarrier();
++        std::atomic_thread_fence(std::memory_order_seq_cst);
 +        if (sequence == InterlockedCompareExchange(&mailbox->command, 0, 0))
 +        {
 +            const auto boolean = [](LONG n) { return n == 0 || n == 1; };
@@ -160,7 +162,7 @@ index 00000000..ff035c71
 +            const bool valid = boolean(request.enabled) && boolean(request.preSr) && boolean(request.cache) &&
 +                bounded(request.intensity, 0.f, 2.f) && bounded(request.structure, 0.f, 2.f) &&
 +                bounded(request.tone, 0.f, 2.f) && request.interval >= 1 && request.interval <= 16 &&
-+                request.style >= 0 && request.style <= 2 &&
++                request.style >= 0 && request.style <= 2 && request.preset >= 0 && request.preset <= 3 &&
 +                (request.multiplier == -1 || request.multiplier == 0 || (request.multiplier >= 2 && request.multiplier <= 6));
 +            auto& state = State::Instance();
 +            const auto maximum = state.dlssgMfgMax.value_or(0);
@@ -174,6 +176,7 @@ index 00000000..ff035c71
 +                cfg.DlssNrCacheEnabled.set_volatile_value(request.cache != 0);
 +                cfg.DlssNrCacheInterval.set_volatile_value(request.interval);
 +                cfg.DlssNrStyle.set_volatile_value(request.style);
++                cfg.DlssNrPreset.set_volatile_value(request.preset);
 +                cfg.DlssNrLocalStructure.set_volatile_value(request.structure);
 +                cfg.DlssNrLocalTone.set_volatile_value(request.tone);
 +                if (request.multiplier == -1)
@@ -199,6 +202,7 @@ index 00000000..ff035c71
 +    mailbox->actualStyle = cfg.DlssNrStyle.value_or_default();
 +    mailbox->actualStructure = cfg.DlssNrLocalStructure.value_or_default();
 +    mailbox->actualTone = cfg.DlssNrLocalTone.value_or_default();
++    mailbox->actualPreset = cfg.DlssNrPreset.value_or_default();
 +    const auto live = DlssNr::GetLiveStats();
 +    mailbox->nrRunning = cfg.DlssNrEnabled.value_or_default() && DlssNr::IsRunning();
 +    mailbox->nrMs = static_cast<float>(live.nrMs);

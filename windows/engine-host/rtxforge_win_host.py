@@ -202,14 +202,21 @@ _NO_SHORTCUT = LOCAL / "engine-state" / "windows-native-launch"
 
 def _running_under(root: Path) -> list[str]:
     """Processes whose image lives under this game folder (Windows process list)."""
-    script = ("$r=$args[0]; Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($r, "
+    from transactions import Refusal
+    # -Command does not bind trailing arguments to $args as a script file does.
+    # Pass the root as JSON on stdin, keeping paths out of executable shell text.
+    script = ("$ErrorActionPreference='Stop'; $r=([Console]::In.ReadLine() | ConvertFrom-Json); "
+              "Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($r, "
               "[StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { \"$($_.Id):$($_.ProcessName)\" }")
     try:
-        result = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script, str(root.resolve())],
-                                text=True, capture_output=True, timeout=20, creationflags=NO_WINDOW)
+        prefix = str(root.resolve()).rstrip('\\/') + '\\'
+        result = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+                                input=json.dumps(prefix) + '\n', text=True, capture_output=True, timeout=20, creationflags=NO_WINDOW)
+        if result.returncode:
+            raise Refusal('Could not check running game processes. No game files were changed; retry after closing the game.')
         return [line for line in result.stdout.splitlines() if line.strip()]
-    except (OSError, subprocess.SubprocessError):
-        return []
+    except (OSError, subprocess.SubprocessError) as error:
+        raise Refusal('Could not check running game processes. No game files were changed; retry after closing the game.') from error
 
 
 def windows_steam_running() -> bool:

@@ -4,7 +4,7 @@ index 967731c1..3062ff17 100644
 +++ b/OptiScaler/Config.cpp
 @@ -194,6 +194,8 @@ bool Config::Reload(std::filesystem::path iniPath)
          }
- 
+
          {
 +            FGDLSSGAdaMfgUnlock.set_from_config(readBool("DLSSG", "AdaMfgUnlock"));
 +            FGDLSSGAdaBlackwellKernels.set_from_config(readBool("DLSSG", "AdaBlackwellKernels"));
@@ -13,7 +13,7 @@ index 967731c1..3062ff17 100644
                  (FGDLSSGInterpolationCount.value() < 1 || FGDLSSGInterpolationCount.value() > 6))
 @@ -1068,6 +1070,10 @@ bool Config::SaveIni()
      }
- 
+
      {
 +        ini.SetValue("DLSSG", "AdaMfgUnlock",
 +                     GetBoolValue(Instance()->FGDLSSGAdaMfgUnlock.value_for_config()).c_str());
@@ -29,12 +29,12 @@ index e7ce081a..0d19959e 100644
 @@ -1,4 +1,4 @@
 -﻿#pragma once
 +#pragma once
- 
+
  #include "SysUtils.h"
  #include "State.h"
 @@ -1010,6 +1010,8 @@ class Config
      CustomOptional<bool> FGXeFGForceBorderless { false };
- 
+
      // DLSSG
 +    CustomOptional<bool> FGDLSSGAdaMfgUnlock { false };
 +    CustomOptional<bool> FGDLSSGAdaBlackwellKernels { false };
@@ -69,10 +69,10 @@ index 00369a32..cf411588 100644
      <ClCompile Include="framegen\IFGFeature_Dx12.cpp" />
 diff --git a/OptiScaler/framegen/dlssg/MfgUnlock.cpp b/OptiScaler/framegen/dlssg/MfgUnlock.cpp
 new file mode 100644
-index 00000000..94b3b4a5
+index 00000000..3fca66d7
 --- /dev/null
 +++ b/OptiScaler/framegen/dlssg/MfgUnlock.cpp
-@@ -0,0 +1,373 @@
+@@ -0,0 +1,408 @@
 +#include "pch.h"
 +
 +#include "MfgUnlock.h"
@@ -81,6 +81,9 @@ index 00000000..94b3b4a5
 +#include <Util.h>
 +#include <scanner/scanner.h>
 +#include <misc/IdentifyGpu.h>
++#include <proxies/Ntdll_Proxy.h>
++#include <map>
++#include <mutex>
 +
 +
 +namespace
@@ -148,6 +151,8 @@ index 00000000..94b3b4a5
 +}
 +
 +MfgUnlock::Status g_status {};
++std::recursive_mutex g_patchMutex;
++std::map<HMODULE, MfgUnlock::Status> g_modules;
 +
 +// The module's own file version, for the report. A signature that does not match is expected on a
 +// version nobody has looked at, and the version is the one thing that makes such a report actionable.
@@ -397,49 +402,79 @@ index 00000000..94b3b4a5
 +}
 +} // namespace
 +
-+void MfgUnlock::TryApply()
++void MfgUnlock::TryApply(HMODULE module)
 +{
 +    if (!Config::Instance()->FGDLSSGAdaMfgUnlock.value_or_default())
 +        return;
 +
-+    // Latches once nvngx_dlssg.dll is present; before that every call rescans for it.
-+    static bool snippetDone = false;
++    if (module == nullptr)
++        module = GetModuleHandleW(L"nvngx_dlssg.dll");
 +
-+    if (!snippetDone)
++    if (module == nullptr)
++        return;
++
++    std::scoped_lock lock(g_patchMutex);
++    auto [entry, inserted] = g_modules.try_emplace(module);
++    if (!inserted)
++        return;
++
++    auto& status = entry->second;
++    status.ModuleFound = true;
++    status.SnippetVersion = ModuleVersion(module);
++    status.AdvertiseMatched = PatchAdvertise(module);
++    status.ValidateMatched = PatchValidate(module);
++
++    const auto& gpu = IdentifyGpu::getPrimaryGpu();
++    const bool preBlackwell = gpu.vendorId == VendorId::Nvidia &&
++                              gpu.nvidiaArchInfo.architecture_id >= NV_GPU_ARCHITECTURE_TU100 &&
++                              gpu.nvidiaArchInfo.architecture_id <= NV_GPU_ARCHITECTURE_AD100;
++
++    if (Config::Instance()->FGDLSSGAdaBlackwellKernels.value_or(preBlackwell))
++        status.KernelsRewritten = RewriteBlackwellKernels(module);
++
++    // A successful native copy must not mask a failed private copy.
++    g_status = {};
++    g_status.ModuleFound = true;
++    g_status.AdvertiseMatched = true;
++    g_status.ValidateMatched = true;
++    g_status.SnippetVersion = status.SnippetVersion;
++    for (const auto& [handle, result] : g_modules)
 +    {
-+        if (auto module = GetModuleHandleW(L"nvngx_dlssg.dll"); module != nullptr)
-+        {
-+            snippetDone = true;
-+            g_status.ModuleFound = true;
-+            g_status.SnippetVersion = ModuleVersion(module);
-+
-+            const bool advertise = PatchAdvertise(module);
-+            const bool validate = PatchValidate(module);
-+
-+            g_status.AdvertiseMatched = advertise;
-+            g_status.ValidateMatched = validate;
-+
-+            // Default on where it applies: below Blackwell the unlock alone produces frames that do
-+            // not advance the picture, so the two belong together. dlssCapable is set from the same
-+            // field, so an architecture that never reported leaves this off.
-+            const auto& gpu = IdentifyGpu::getPrimaryGpu();
-+            const bool preBlackwell = gpu.vendorId == VendorId::Nvidia &&
-+                                      gpu.nvidiaArchInfo.architecture_id >= NV_GPU_ARCHITECTURE_TU100 &&
-+                                      gpu.nvidiaArchInfo.architecture_id <= NV_GPU_ARCHITECTURE_AD100;
-+
-+            if (Config::Instance()->FGDLSSGAdaBlackwellKernels.value_or(preBlackwell))
-+                g_status.KernelsRewritten = RewriteBlackwellKernels(module);
-+
-+            if (advertise && validate)
-+                LOG_INFO("MFG unlock: nvngx_dlssg.dll patched for {} generated frames", kMaxGeneratedFrames);
-+            else
-+                LOG_WARN("MFG unlock: nvngx_dlssg.dll incomplete, advertise {}, validate {}", advertise, validate);
-+        }
++        g_status.AdvertiseMatched &= result.AdvertiseMatched;
++        g_status.ValidateMatched &= result.ValidateMatched;
++        g_status.KernelsRewritten += result.KernelsRewritten;
 +    }
++
++    if (status.AdvertiseMatched && status.ValidateMatched)
++        LOG_INFO("MFG unlock: module {:X} patched for {} generated frames ({} modules)",
++                 reinterpret_cast<uintptr_t>(module), kMaxGeneratedFrames, g_modules.size());
++    else
++        LOG_WARN("MFG unlock: module {:X} incomplete, advertise {}, validate {}",
++                 reinterpret_cast<uintptr_t>(module), status.AdvertiseMatched, status.ValidateMatched);
++}
++
++void MfgUnlock::PreparePrivateRuntime()
++{
++    if (!Config::Instance()->FGDLSSGAdaMfgUnlock.value_or_default())
++        return;
++
++    const auto path = std::filesystem::path(Config::Instance()->MainDllPath.value()) / L"nvngx_dlssg.dll";
++    if (!std::filesystem::is_regular_file(path))
++        return;
++
++    auto module = GetModuleHandleW(path.c_str());
++    if (module == nullptr)
++        module = NtdllProxy::LoadLibraryExW_Ldr(path.c_str(), nullptr, 0);
++
++    if (module != nullptr)
++        TryApply(module);
++    else
++        LOG_WARN("MFG unlock: private runtime could not be loaded before NGX initialization");
 +}
 +
 +unsigned int MfgUnlock::UnlockedMax()
 +{
++    std::scoped_lock lock(g_patchMutex);
 +    const auto& status = LastStatus();
 +
 +    return status.AdvertiseMatched && status.ValidateMatched ? kMaxGeneratedFrames : 0;
@@ -448,10 +483,10 @@ index 00000000..94b3b4a5
 +const MfgUnlock::Status& MfgUnlock::LastStatus() { return g_status; }
 diff --git a/OptiScaler/framegen/dlssg/MfgUnlock.h b/OptiScaler/framegen/dlssg/MfgUnlock.h
 new file mode 100644
-index 00000000..ac366311
+index 00000000..7f877204
 --- /dev/null
 +++ b/OptiScaler/framegen/dlssg/MfgUnlock.h
-@@ -0,0 +1,59 @@
+@@ -0,0 +1,62 @@
 +#pragma once
 +
 +#include <SysUtils.h>
@@ -504,27 +539,30 @@ index 00000000..ac366311
 +
 +const Status& LastStatus();
 +
-+// Applies the patches once per process. Silent and harmless when the config option is off, when
-+// nvngx_dlssg.dll is not loaded, or when a signature does not match exactly once.
-+void TryApply();
++// Applies once per loaded module. NGX may load a private copy after the game has
++// already loaded its native copy; both must answer the same capability ceiling.
++void TryApply(HMODULE module = nullptr);
++
++// Load and patch the managed private copy before NGX caches its capabilities.
++void PreparePrivateRuntime();
 +
 +// The generated frame ceiling the patches opened, or 0 when they did not land.
 +unsigned int UnlockedMax();
 +} // namespace MfgUnlock
 diff --git a/OptiScaler/hooks/LibraryLoad_Hooks.cpp b/OptiScaler/hooks/LibraryLoad_Hooks.cpp
-index 142037d7..2ab7d8d1 100644
+index 142037d7..b41d413a 100644
 --- a/OptiScaler/hooks/LibraryLoad_Hooks.cpp
 +++ b/OptiScaler/hooks/LibraryLoad_Hooks.cpp
 @@ -1,4 +1,5 @@
  #include "pch.h"
 +#include <framegen/dlssg/MfgUnlock.h>
  #include "LibraryLoad_Hooks.h"
- 
+
  #include <Config.h>
 @@ -107,6 +108,23 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
              LOG_ERROR("Trying to load dll: {}", libNameA);
      }
- 
+
 +    // nvngx_dlssg
 +    //
 +    // The module publishes DLSSG.MultiFrameCountMax while it initialises and slDLSSGGetState returns
@@ -535,7 +573,7 @@ index 142037d7..2ab7d8d1 100644
 +        auto dlssgSnippet = NtdllProxy::LoadLibraryExW_Ldr(lpLibFullPath, NULL, 0);
 +
 +        if (dlssgSnippet != nullptr)
-+            MfgUnlock::TryApply();
++            MfgUnlock::TryApply(dlssgSnippet);
 +        else
 +            LOG_ERROR("Trying to load dll as nvngx_dlssg: {}", libNameA);
 +
@@ -552,11 +590,11 @@ index 176dab06..f235597d 100644
 @@ -1,4 +1,5 @@
  #include <pch.h>
 +#include <framegen/dlssg/MfgUnlock.h>
- 
+
  #include "Streamline_Hooks.h"
- 
+
 @@ -1303,21 +1304,39 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
- 
+
      if (dlssgPotentiallyActive && state.streamlineVersion >= feature_version { 2, 7, 1 })
      {
 +        // Before the read, so the count this captures is the patched one. Five stays under the
@@ -584,7 +622,7 @@ index 176dab06..f235597d 100644
 +                // A wrapper ahead of the snippet can answer a lower ceiling than the patched one.
 +                if (auto unlockedMax = MfgUnlock::UnlockedMax(); unlockedMax > localState.numFramesToGenerateMax)
 +                    localState.numFramesToGenerateMax = unlockedMax;
- 
+
 -                if (Config::Instance()->FGDLSSGOverrideInterpolationCount.has_value() &&
 -                    Config::Instance()->FGDLSSGOverrideInterpolationCount.value() > state.dlssgMfgMax.value())
 +                if (localState.numFramesToGenerateMax > 0 && localState.numFramesToGenerateMax < 6)
@@ -606,12 +644,12 @@ index 176dab06..f235597d 100644
 @@ -1344,6 +1363,9 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
      if (o_slDLSSGGetState == nullptr)
          return sl::Result::eErrorFeatureMissing;
- 
+
 +    // Ahead of every read of numFramesToGenerateMax, which is the value the patch raises.
 +    MfgUnlock::TryApply();
 +
      sl::Result result {};
- 
+
      const auto originalStructVersion = state.structVersion;
 @@ -1363,6 +1385,12 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
              state.numFramesToGenerateMax = newState.numFramesToGenerateMax;
@@ -624,7 +662,7 @@ index 176dab06..f235597d 100644
 +            if (auto unlockedMax = MfgUnlock::UnlockedMax(); unlockedMax > state.numFramesToGenerateMax)
 +                state.numFramesToGenerateMax = unlockedMax;
          }
- 
+
          if (originalStructVersion >= 3)
 @@ -1378,6 +1406,10 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
      {
@@ -635,10 +673,10 @@ index 176dab06..f235597d 100644
 +        if (auto unlockedMax = MfgUnlock::UnlockedMax(); unlockedMax > state.numFramesToGenerateMax)
 +            state.numFramesToGenerateMax = unlockedMax;
      }
- 
+
      if (!State::Instance().dlssgGameDMFGSupported)
 @@ -1389,20 +1421,32 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
- 
+
      if (optiState.streamlineVersion >= feature_version { 2, 7, 1 })
      {
 -        if (!optiState.dlssgMfgMax.has_value())
@@ -659,7 +697,7 @@ index 176dab06..f235597d 100644
 +                // A wrapper ahead of the snippet can answer a lower ceiling than the patched one.
 +                if (auto unlockedMax = MfgUnlock::UnlockedMax(); unlockedMax > localState.numFramesToGenerateMax)
 +                    localState.numFramesToGenerateMax = unlockedMax;
- 
+
 -                if (Config::Instance()->FGDLSSGOverrideInterpolationCount.has_value() &&
 -                    Config::Instance()->FGDLSSGOverrideInterpolationCount.value() > optiState.dlssgMfgMax.value())
 +                if (localState.numFramesToGenerateMax > 0 && localState.numFramesToGenerateMax < 6)
@@ -678,3 +716,23 @@ index 176dab06..f235597d 100644
                  }
              }
          }
+diff --git a/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp b/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
+index 0b25fbe5..370a72ca 100644
+--- a/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
++++ b/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
+@@ -14,6 +14,7 @@
+ #include "upscalers/dlss/DLSSFeature_Dx12.h"
+
+ #include <framegen/nvngx/Nvngx_FG.h>
++#include <framegen/dlssg/MfgUnlock.h>
+ #include "FG/FSR3_Dx12_FG.h"
+ #include "FG/Upscaler_Inputs_Dx12.h"
+
+@@ -53,6 +54,7 @@ class ScopedInitDx12
+
+ static void UpdateInitPaths(NVSDK_NGX_FeatureCommonInfo* InFeatureInfo)
+ {
++    MfgUnlock::PreparePrivateRuntime();
+     State::Instance().NVNGX_FeatureInfo_Paths.clear();
+
+     if (InFeatureInfo != nullptr)

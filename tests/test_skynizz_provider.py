@@ -42,13 +42,18 @@ def fixture(path, extra=None, omit=None):
     return dict(record, release_size=path.stat().st_size, sha256=hashlib.sha256(path.read_bytes()).hexdigest())
 
 
-def bridge_fixture(path):
+def bridge_fixture(path, sr_path=None):
     fixture(path)
     spec=json.loads((ROOT/'providers/skynizz-bridge/source.json').read_text())
     record={'variant':'nr-mfg-bridge','repo':'lrnolivia/rtxForge','tag':'v1.2.1','commit':'b'*40,
             'archive':'rtxForge-Skynizz-v1.2.1-MFG.zip','url':'bundled:providers/skynizz-bridge/rtxForge-Skynizz-v1.2.1-MFG.zip',
             'upstream':spec['upstream'],'mfg_source':spec['mfg_source'],'patch_sha256':spec['patch_sha256'],
             'bridge_id':spec['id'],'runtime_verified':False}
+    if sr_path is not None:
+        sr_path.write_bytes(pe()+b'production-sr-fixture')
+        sr=json.loads((ROOT/'providers/lock.json').read_text())['skynizz']['sr_runtime']
+        record['sr_runtime']=sr | {'sha256':hashlib.sha256(sr_path.read_bytes()).hexdigest(),
+                                  'release_size':sr_path.stat().st_size}
     with zipfile.ZipFile(path,'a') as archive:
         archive.writestr('DLSS5-Optimised/rtxforge-bridge.json',json.dumps(record))
     return provider.validate_release(record | {'release_size':path.stat().st_size,'sha256':hashlib.sha256(path.read_bytes()).hexdigest()})
@@ -87,6 +92,16 @@ class SkynizzPolicyTest(unittest.TestCase):
         provider.require_mode('windows','nr-mfg',bridge=True)
         with self.assertRaisesRegex(transactions.Refusal,'receipt mismatch'):
             provider.load_payload(self.archive,record | {'patch_sha256':'c'*64})
+
+    def test_production_sr_is_pinned_to_official_release_path_and_exact_bytes(self):
+        path=Path(self.temp.name).resolve()/'nvngx_dlss.dll'
+        record=bridge_fixture(self.archive,path)['sr_runtime']
+        self.assertEqual(provider.load_sr_runtime(path,record),path.read_bytes())
+        with self.assertRaises(transactions.Refusal):
+            provider.validate_sr_runtime(record | {'url':record['url'].replace('/rel/','/dev/')})
+        path.write_bytes(pe()+b'different-sr')
+        with self.assertRaises(transactions.Refusal):
+            provider.load_sr_runtime(path,record)
 
     def test_traversal_case_collision_and_foreign_payloads_are_refused(self):
         for extra in ({'../escape.dll': pe()}, {'a\\b.dll': pe()}, {'dlss5-optimised/optiscaler.dll': pe()},

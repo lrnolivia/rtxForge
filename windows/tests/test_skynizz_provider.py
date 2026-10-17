@@ -29,6 +29,8 @@ def resolve(selection='latest'):
 provider.resolve=resolve
 original_download=packages.download
 def download(url,*args,**kwargs):
+    if url.startswith('https://raw.githubusercontent.com/NVIDIA/DLSS/'):
+        return root/'production-sr.dll'
     return original_download(url,*args,**kwargs) if url.startswith('file:') else archive
 packages.download=download
 original_module=engine_bridge.module
@@ -135,7 +137,7 @@ for mode in ('mfg-only',):
     else:raise AssertionError('unsupported MFG composition accepted')
 assert files(missing)==missing_before
 checks.append('missing model and unsupported modes refuse before game writes')
-combined_archive=root/'combined.zip';combined_release=fixtures.bridge_fixture(combined_archive)
+combined_archive=root/'combined.zip';combined_release=fixtures.bridge_fixture(combined_archive,root/'production-sr.dll')
 provider.bundled_bridge=lambda selection='latest':(dict(combined_release,selected_source=selection),combined_archive)
 combined=game('Combined');(combined/'nvngx_dlssg.dll').write_bytes(fixtures.pe());combined_before=files(combined)
 combined_review=service.prepare([scan(combined)],'nr-mfg','install',visual_settings=settings | {'mfg_multiplier':6})
@@ -146,12 +148,14 @@ assert combined_record['nr_profile']['enabled'] and not combined_record['nr_prof
 for value in ('AdaMfgUnlock=true','AdaBlackwellKernels=true','OverrideInterpolationCount=5','CacheEnabled=false','PreSr=true'):
     assert value in combined_ini,value
 assert (combined/'OptiScaler/streamline/sl.dlss_g.dll').is_file()
+assert (combined/'OptiScaler/nvngx_dlss.dll').read_bytes()==(root/'production-sr.dll').read_bytes()
+assert combined_record['archive']['release']['sr_runtime']==combined_release['sr_runtime']
 assert (combined/'dxgi.dll').read_bytes()==fixtures.pe(),'MFG donor replaced the NR loader'
 assert (combined/'nvngx_dlssg.dll').read_bytes()==fixtures.pe(),'game native runtime replaced'
 run(service.prepare([scan(combined)],'nr-mfg','repair',visual_settings=settings | {'skynizz_version':'v9.9.9'}))
 assert baseline(combined)['archive']['release']['sha256']==combined_release['sha256']
 run(service.prepare([scan(combined)],'nr-mfg','uninstall',visual_settings=settings));assert files(combined)==combined_before
-checks.append('combined NR+MFG uses one loader, exact source and private MFG stack; repair/restore preserve ownership')
+checks.append('combined NR+MFG uses one loader, production SR and private MFG stack; pinned repair/restore preserve ownership')
 failed_combined=game('CombinedFailure');(failed_combined/'nvngx_dlssg.dll').write_bytes(fixtures.pe());combined_before=files(failed_combined)
 review=service.prepare([scan(failed_combined)],'nr-mfg','install',visual_settings=settings)
 e=review['engine'];write=e.atomic_write

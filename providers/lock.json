@@ -40,6 +40,15 @@
     "runtime_verified": false
   },
   "skynizz": {
+    "sr_runtime": {
+      "name": "NVIDIA DLSS Super Resolution production",
+      "version": "310.9.16.0",
+      "repository": "NVIDIA/DLSS",
+      "commit": "9981c6350dc58c0ce21f024fd65e31e851c31689",
+      "url": "https://raw.githubusercontent.com/NVIDIA/DLSS/9981c6350dc58c0ce21f024fd65e31e851c31689/lib/Windows_x86_64/rel/nvngx_dlss.dll",
+      "sha256": "d00b5b0ab29c3ca101b70c3a5ecb3a01b7ef33766a3383a28a18623083e6123e",
+      "release_size": 58956912
+    },
     "id": "skynizz",
     "family": "skynizz",
     "name": "Skynizz DLSS 5 NR",

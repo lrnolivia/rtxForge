@@ -45,6 +45,8 @@ Choose `latest` supported bridge or pin an included release such as `v1.2.1`. NR
 
 This provider requires a compatible, user-supplied RTX 40 `nvngx_dlssnr.dll` in Settings or beside the game executable, and D3D12 with DLSS enabled. The similarly named `nvngx.dll_dlssnr.dll` is only the forwarder. Combined mode starts with pre-SR NR and edit-cache reuse off to address the reported MFG pacing issue. The Insert overlay retains NR preset controls; Repair preserves them. **Reset Presets** restores the combined policy. Upstream installer scripts are never run.
 
+The combined package replaces the companion archive's development Super Resolution DLL with NVIDIA's version- and hash-pinned production `rel` DLL. This prevents the private SDK copy from taking priority over the game's production SR and displaying its development watermark. The SR source is recorded with each new installation and retained by Repair; older bridge recipes require Restore and reinstall to select it. The NR model remains a separate local file.
+
 The bridge is a preview until actual RTX40 NR, generated-frame progression and pacing are verified together; it will become the default NR package after that gate. File/configuration checks alone do not establish that result. MFG Only continues to use the existing provider, and Skynizz Linux/Proton installation remains unavailable in this Windows-first pass. [Skynizz source](https://github.com/Skynizz/optiscaler-dlss5), [combined source and provenance](providers/skynizz-bridge/README.md).
 
 | Setting | Choices |

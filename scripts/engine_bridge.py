@@ -45,6 +45,12 @@ def payload(e,config,mode,archive=None):
                 e.Y4MY_PROVIDER=p;e.Y4MY_REQUIRED_FILES=required
             private={n:v for n,v in extra.items() if n.startswith('OptiScaler/streamline/') or n in ('OptiScaler/nvngx_dlss.dll','OptiScaler/nvngx_dlssd.dll','OptiScaler/nvngx_dlssg.dll')}
             t.need({'OptiScaler/streamline/sl.interposer.dll','OptiScaler/streamline/sl.dlss_g.dll'}<=private.keys(),'The MFG companion runtime is incomplete')
+            if p.get('sr_runtime'):
+                sr=skynizz_provider.validate_sr_runtime(p['sr_runtime'])
+                sr_path=storage(config,sr['release_size'])/'runtime-cache'/sr['sha256']/'nvngx_dlss.dll'
+                sr_file=packages.download(sr['url'],sr_path,expected=sr['sha256'],size=sr['release_size'])
+                private['OptiScaler/nvngx_dlss.dll']=skynizz_provider.load_sr_runtime(sr_file,sr)
+                meta['sr_runtime']=sr
             data.update(private);meta['mfg_runtime']={**companion,'repository':donor['repo']}
         return data,meta
     if p.get('custom'):

@@ -26,18 +26,20 @@ The desktop application and controller-oriented Game Mode share the package engi
 - Keep one MFG component responsible for capability patches, kernels and multiplier control.
 - Distinguish selected settings, applied runtime state and measured performance. A selected 4× multiplier does not promise a fourfold performance gain.
 - The companion's primary controls are MFG and NR. Other supported settings belong under Advanced.
+- The overlay detects the compatible game being played from its verified running process. It has no game picker. Live edits target that exact game session and acknowledge application before reporting success.
+- NR controls include model style, preset, strength and passes; detail, colour, local structure, local tone and skin handling; placement, model resolution and cache reuse. Group these by purpose and progressively reveal fine tuning and performance controls.
 - Live edits require a compatible running installation. Show unavailable, waiting, stopped and failed states accurately; never substitute demonstration telemetry.
 - Preserve existing application layouts and functions outside the requested companion and its entry points.
 - Use supported per-game configuration for optional 3840×2160 borderless setup, with backups. Do not force unsupported display modes.
 
 ## Brand Commitments
 
-Keep the rtxForge name and existing icon. The companion brief specifies dark translucent surfaces with blur, distinct surface depth, rounded corners, soft shadows and readable typography. It should feel at home beside the existing Windows application.
+Keep the rtxForge name and existing icon. The Windows overlay is a minimal floating NR + MFG sidebar: nearly full screen height with generous edge and internal padding, rounded corners, a soft drop shadow and translucent black surfaces over a blurred game backdrop. Its text and controls are monochrome, set in Inter. It has no standard app title bar or game-selection menu. The main application keeps its existing visual system.
 
 ## Product Principles
 
 1. Back up originals and make changes attributable to an exact package.
-2. Give the player direct control of the selected game.
+2. Give the player direct control of the game being played.
 3. Keep the main task small and progressively reveal advanced settings.
 4. Report actual runtime behavior separately from configuration.
 

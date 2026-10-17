@@ -20,12 +20,13 @@ import transactions as t
 
 
 def snapshot(pid=123, version=2):
-    raw = bytearray(256)
+    raw = bytearray(512 if version == 3 else 256)
     struct.pack_into('<IIIi', raw, 0, control.MAGIC, version, pid, 10)
     for key, offset in control.OFFSETS.items():
+        if version != 3 and key not in control.LEGACY_KEYS: continue
         struct.pack_into('<f' if key in control._FLOATS else '<i', raw, offset, control.DEFAULTS[key])
     struct.pack_into('<iffiiii', raw, 100, 1, 0.0, 28.0, 5, 3, 100, 300)
-    if version == 2: struct.pack_into('<iiiiii', raw, 136, 0, 4, 100, 1000, 1, 3)
+    if version >= 2: struct.pack_into('<iiiiii', raw, 136, 0, 4, 100, 1000, 1, 3)
     return raw
 
 
@@ -58,16 +59,67 @@ class ControlsTest(unittest.TestCase):
         self.assertEqual(found['native_presented'], 4)
         older = control.decode(snapshot(version=1), 123)
         self.assertNotIn('native_presented', older)
+        expanded = control.decode(snapshot(version=3), 123)
+        self.assertEqual(expanded['values']['skin'], -1)
+        self.assertEqual(expanded['values']['passes'], 1)
+        self.assertEqual(expanded['values']['work_scale'], 1)
+        self.assertNotIn('work_scale', found['values'])
         for data, pid in [(snapshot(), 999), (snapshot(version=99), 123), (snapshot()[:200], 123)]:
             with self.assertRaises(t.Refusal): control.decode(data, pid)
 
     def test_invalid_requests_and_nonfinite_snapshots_refuse(self):
         for values in [{'intensity': float('nan')}, {'tone': float('inf')}, {'multiplier': 1},
-                       {'enabled': True}, {'preset': 4}, {'interval': 0}, {'unknown': 1}]:
+                       {'enabled': True}, {'preset': 4}, {'interval': 0}, {'unknown': 1},
+                       {'skin': -1.01}, {'work_scale': .24}, {'passes': 4}, {'auto_mask': 2}]:
             with self.subTest(values=values), self.assertRaises(t.Refusal): control.validate_changes(values)
         raw = snapshot()
         struct.pack_into('<f', raw, 68, float('nan'))
         with self.assertRaises(t.Refusal): control.decode(raw, 123)
+
+    def test_active_game_uses_verified_process_and_never_a_library_default(self):
+        class Box:
+            pid = 123
+            k = SimpleNamespace(GetTickCount=lambda: 1010)
+            def __enter__(self): return self
+            def __exit__(self, *_): pass
+            def read(self): return control.decode(snapshot(), self.pid)
+        with patch.object(self.controls, '_processes', return_value={'game.exe': [123]}), \
+             patch.object(self.controls, '_open', return_value=Box()):
+            result = self.controls.active({'rows': [self.row], 'foreground_pid': 123})
+            self.assertEqual(result['row']['game'], self.row['game'])
+            self.assertEqual(result['pid'], 123)
+            (self.target / 'winhttp.dll').write_bytes(b'changed')
+            self.assertIsNone(self.controls.active({'rows': [self.row], 'foreground_pid': 123})['row'])
+        with patch.object(self.controls, '_processes', return_value={}):
+            self.assertIsNone(self.controls.active({'rows': [self.row]})['row'])
+
+    def test_two_running_games_require_foreground_or_retained_verified_session(self):
+        import shutil
+        second = self.root / 'second'
+        shutil.copytree(self.game, second)
+        row2 = self.row | {'game': str(second), 'name': 'Second'}
+        class Box:
+            k = SimpleNamespace(GetTickCount=lambda: 1010)
+            def __init__(self, pid): self.pid = pid
+            def __enter__(self): return self
+            def __exit__(self, *_): pass
+            def read(self): return control.decode(snapshot(self.pid), self.pid)
+        with patch.object(self.controls, '_processes', return_value={'game.exe': [123, 456]}), \
+             patch.object(self.controls, '_open', side_effect=lambda g: Box(123 if g['root'] == self.game else 456)):
+            params = {'rows': [self.row, row2]}
+            self.assertEqual(self.controls.active(params | {'foreground_pid': 456})['row']['name'], 'Second')
+            self.assertIsNone(self.controls.active(params)['row'])
+            self.assertEqual(self.controls.active(params | {'retained_pid': 123})['pid'], 123)
+
+    def test_restarted_game_cannot_receive_a_previous_sessions_save(self):
+        class Box:
+            pid = 456
+            def __enter__(self): return self
+            def __exit__(self, *_): pass
+        with patch.object(self.controls, '_open', return_value=Box()), \
+             self.assertRaisesRegex(t.Refusal, 'session changed'):
+            self.controls.save({'row': self.row, 'pid': 123, 'changes': {'intensity': 1.2}})
+        self.assertFalse(self.controls.presets)
 
     def test_stalled_runtime_disables_edits_and_unavailable_timing_is_not_zero(self):
         game = self.controls._game({'row': self.row})
@@ -141,16 +193,21 @@ class ControlsTest(unittest.TestCase):
 @unittest.skipUnless(os.name == 'nt', 'Windows named mapping')
 class WindowsProtocolTest(unittest.TestCase):
     def test_actual_mapping_ack_and_backend_ceiling(self):
+        for version in (2, 3):
+            with self.subTest(version=version): self.mapping_round_trip(version)
+
+    def mapping_round_trip(self, version):
         k = control._api()
         k.CreateFileMappingW.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_wchar_p]
         k.CreateFileMappingW.restype = ctypes.c_void_p
-        handle = k.CreateFileMappingW(ctypes.c_void_p(-1), None, 4, 0, 256, f'Local\\rtxForge.controls.{os.getpid()}')
+        raw = snapshot(os.getpid(), version)
+        handle = k.CreateFileMappingW(ctypes.c_void_p(-1), None, 4, 0, len(raw), f'Local\\rtxForge.controls.{os.getpid()}')
         self.assertTrue(handle)
         self.assertNotEqual(ctypes.get_last_error(), 183)
-        view = k.MapViewOfFile(handle, 6, 0, 0, 256)
+        view = k.MapViewOfFile(handle, 6, 0, 0, len(raw))
         self.assertTrue(view)
         stopped = threading.Event()
-        ctypes.memmove(view, bytes(snapshot(os.getpid())), 256)
+        ctypes.memmove(view, bytes(raw), len(raw))
         def renderer():
             while not stopped.wait(.005):
                 command = ctypes.c_long.from_address(view + 16).value
@@ -159,6 +216,8 @@ class WindowsProtocolTest(unittest.TestCase):
                 data = ctypes.string_at(view + 28, 36)
                 ctypes.memmove(view + 64, data, 36)
                 ctypes.c_long.from_address(view + 132).value = ctypes.c_long.from_address(view + 128).value
+                if version == 3:
+                    ctypes.memmove(view + 288, ctypes.string_at(view + 256, 32), 32)
                 ctypes.c_long.from_address(view + 24).value = 1
                 ctypes.c_long.from_address(view + 20).value = command
                 ctypes.c_long.from_address(view + 12).value += 1
@@ -171,6 +230,17 @@ class WindowsProtocolTest(unittest.TestCase):
                 self.assertEqual(result['values']['intensity'], 1.25)
                 self.assertEqual(result['values']['preset'], 2)
                 previous = result['command']
+                if version == 3:
+                    result = box.apply({'work_scale': .75, 'skin': -.5, 'detail': 1.25, 'passes': 2, 'auto_mask': 0})
+                    self.assertEqual(result['values']['work_scale'], .75)
+                    self.assertEqual(result['values']['skin'], -.5)
+                    self.assertEqual(result['values']['detail'], 1.25)
+                    self.assertEqual(result['values']['passes'], 2)
+                    self.assertEqual(result['values']['auto_mask'], 0)
+                    previous = result['command']
+                else:
+                    with self.assertRaisesRegex(t.Refusal, 'Update this game package'): box.apply({'passes': 2})
+                    self.assertEqual(box.read()['command'], previous)
                 ctypes.c_long.from_address(view + 112).value = 1
                 with self.assertRaises(t.Refusal): box.apply({'multiplier': 4})
                 self.assertEqual(box.read()['command'], previous)

@@ -29,6 +29,16 @@ INI_KEYS = {'enabled': 'Enabled', 'intensity': 'Intensity', 'pre_sr': 'PreSr',
             'cache': 'CacheEnabled', 'interval': 'CacheInterval', 'style': 'Style',
             'structure': 'LocalStructure', 'tone': 'LocalTone', 'preset': 'Preset'}
 _FLOATS = {'intensity', 'structure', 'tone'}
+EXTRA = {'work_scale': (288, 'WorkingScale', 1.0), 'passes': (292, 'Passes', 1),
+         'skin': (296, 'SkinStructure', -1.0), 'auto_mask': (300, 'AutoMask', 1),
+         'detail': (304, 'TransferStrength', 1.0), 'colour': (308, 'ColourStrength', 1.0),
+         'reduced': (312, 'PreSrReduced', 0), 'edge_aware': (316, 'JbuUpsample', 0)}
+LEGACY_KEYS = set(DEFAULTS)
+OFFSETS.update({key: spec[0] for key, spec in EXTRA.items()})
+DEFAULTS.update({key: spec[2] for key, spec in EXTRA.items()})
+INI_KEYS.update({key: spec[1] for key, spec in EXTRA.items()})
+_FLOATS.update({'work_scale', 'skin', 'detail', 'colour'})
+_BOOLS = {'enabled', 'pre_sr', 'cache', 'auto_mask', 'reduced', 'edge_aware'}
 
 
 def validate_changes(changes):
@@ -36,14 +46,16 @@ def validate_changes(changes):
     result = {}
     for key, value in changes.items():
         if key in _FLOATS:
-            t.need(type(value) in (int, float) and math.isfinite(value) and 0 <= value <= 2,
-                   'Image controls must be between 0 and 200%.')
+            low = -1 if key == 'skin' else .25 if key == 'work_scale' else 0
+            t.need(type(value) in (int, float) and math.isfinite(value) and low <= value <= 2,
+                   'An image control is outside its supported range.')
             result[key] = float(value)
         else:
             t.need(type(value) is int, 'A control value is invalid.')
-            valid = (value in (0, 1) if key in ('enabled', 'pre_sr', 'cache') else
+            valid = (value in (0, 1) if key in _BOOLS else
                      value in (-1, 0, 2, 3, 4, 5, 6) if key == 'multiplier' else
                      1 <= value <= 16 if key == 'interval' else
+                     1 <= value <= 3 if key == 'passes' else
                      0 <= value <= 2 if key == 'style' else 0 <= value <= 3)
             t.need(valid, 'A control value is outside the supported range.')
             result[key] = value
@@ -51,20 +63,22 @@ def validate_changes(changes):
 
 
 def decode(raw, pid):
-    t.need(len(raw) == SIZE, 'The game returned an incomplete control snapshot.')
+    t.need(len(raw) in (SIZE, 512), 'The game returned an incomplete control snapshot.')
     magic, version, found = struct.unpack_from('<III', raw)
-    t.need(magic == MAGIC and version in (1, 2) and found == pid, 'This game uses an unsupported control protocol.')
+    t.need(magic == MAGIC and version in (1, 2, 3) and found == pid
+           and len(raw) == (512 if version == 3 else SIZE), 'This game uses an unsupported control protocol.')
     values = {key: struct.unpack_from('<f' if key in _FLOATS else '<i', raw, offset)[0]
-              for key, offset in OFFSETS.items()}
+              for key, offset in OFFSETS.items() if version == 3 or key in LEGACY_KEYS}
     validate_changes(values)
-    failure = raw[160 if version == 2 else 136:].split(b'\0', 1)[0].decode('utf-8', errors='replace')
+    failure = raw[160:256] if version >= 2 else raw[136:256]
+    failure = failure.split(b'\0', 1)[0].decode('utf-8', errors='replace')
     result = {'values': values, 'sequence': struct.unpack_from('<i', raw, 12)[0],
               'command': struct.unpack_from('<i', raw, 16)[0], 'ack': struct.unpack_from('<i', raw, 20)[0],
               'result': struct.unpack_from('<i', raw, 24)[0], 'nr_running': bool(struct.unpack_from('<i', raw, 100)[0]),
               'nr_ms': struct.unpack_from('<f', raw, 104)[0], 'rendered_fps': struct.unpack_from('<f', raw, 108)[0],
               'backend_max': struct.unpack_from('<i', raw, 112)[0], 'fg_successes': struct.unpack_from('<i', raw, 124)[0],
               'version': version, 'failure': failure}
-    if version == 2:
+    if version >= 2:
         for key, offset in {'native_status': 136, 'native_presented': 140, 'native_samples': 144,
                             'native_tick': 148, 'native_mode': 152, 'native_generated': 156}.items():
             result[key] = struct.unpack_from('<i', raw, offset)[0]
@@ -102,8 +116,12 @@ class Mailbox:
             access = 6 if write else 4
             self.mapping = self.k.OpenFileMappingW(access, False, f'Local\\rtxForge.controls.{pid}')
             if not self.mapping: raise OSError('Waiting for the game controls to start.')
-            self.view = self.k.MapViewOfFile(self.mapping, access, 0, 0, SIZE)
+            self.view = self.k.MapViewOfFile(self.mapping, access, 0, 0, 0)
             if not self.view: raise OSError('The game control snapshot could not be opened.')
+            header = ctypes.string_at(self.view, 12)
+            magic, version, found = struct.unpack('<III', header)
+            t.need(magic == MAGIC and version in (1, 2, 3) and found == pid, 'Unsupported game control protocol.')
+            self.size = 512 if version == 3 else SIZE
             self.read()
         except BaseException:
             self.close()
@@ -121,7 +139,7 @@ class Mailbox:
     def read(self):
         t.need(self.k.WaitForSingleObject(self.process, 0) == 258, 'The game has stopped.')
         for _ in range(12):
-            raw = ctypes.string_at(self.view, SIZE)
+            raw = ctypes.string_at(self.view, self.size)
             sequence = struct.unpack_from('<i', raw, 12)[0]
             if not sequence & 1 and ctypes.c_long.from_address(self.view + 12).value == sequence:
                 return decode(raw, self.pid)
@@ -131,6 +149,8 @@ class Mailbox:
     def apply(self, changes):
         changes = validate_changes(changes)
         before = self.read()
+        t.need(before['version'] >= 3 or not (set(changes) - LEGACY_KEYS),
+               'Update this game package to use the additional NR controls.')
         values = before['values'] | changes
         if 'multiplier' in changes and changes['multiplier'] > 0:
             t.need(before['backend_max'] >= changes['multiplier'] - 1, 'This game does not support that multiplier.')
@@ -141,6 +161,10 @@ class Mailbox:
                              values['pre_sr'], values['cache'], values['interval'], values['style'], values['structure'], values['tone'])
         ctypes.memmove(self.view + 28, packed, len(packed))
         ctypes.c_long.from_address(self.view + 128).value = values['preset']
+        if before['version'] >= 3:
+            for key, (offset, _, _) in EXTRA.items():
+                raw = struct.pack('<f' if key in _FLOATS else '<i', values[key])
+                ctypes.memmove(self.view + offset - 32, raw, 4)
         ctypes.c_long.from_address(self.view + 16).value = sequence
         deadline = time.monotonic() + 2
         while time.monotonic() < deadline:
@@ -219,9 +243,9 @@ class Controls:
         for key, ini in INI_KEYS.items():
             raw = parser.get('DlssNr', ini, fallback='auto').strip().casefold()
             if raw != 'auto':
-                if key in ('enabled', 'pre_sr', 'cache'):
+                if key in _BOOLS:
                     t.need(raw in ('true', 'false', '0', '1'), 'A game configuration value is invalid; repair this game.')
-                values[key] = (int(raw in ('true', '1')) if key in ('enabled', 'pre_sr', 'cache') else
+                values[key] = (int(raw in ('true', '1')) if key in _BOOLS else
                                float(raw) if key in _FLOATS else int(raw))
         count = parser.get('DLSSG', 'OverrideInterpolationCount', fallback='auto').strip().casefold()
         if count != 'auto':
@@ -301,6 +325,38 @@ class Controls:
                 return {'state': 'unavailable', 'detail': str(error), 'can_edit': False, 'can_save': False,
                         'can_mfg': False, 'native_fresh': False, 'values': dict(DEFAULTS)}
 
+    def active(self, params):
+        """Resolve only verified, connected game processes; never choose a library default."""
+        with self.lock:
+            rows = params.get('rows')
+            t.need(isinstance(rows, list) and len(rows) <= 500, 'Refresh the game library.')
+            foreground = params.get('foreground_pid', 0)
+            retained = params.get('retained_pid', 0)
+            t.need(type(foreground) is int and type(retained) is int, 'Invalid process selection.')
+            processes = self._processes()
+            candidates, seen = [], set()
+            for row in rows:
+                if not isinstance(row, dict) or not isinstance(row.get('exe'), str): continue
+                if Path(row['exe']).name.casefold() not in processes: continue
+                try:
+                    game = self._game({'row': row})
+                    if game['key'] in seen: continue
+                    seen.add(game['key'])
+                    box = self._open(game)
+                    if box is None: continue
+                    with box:
+                        found = self._present(game, box, box.read())
+                        candidates.append({'row': game['row'], **found})
+                except (t.Refusal, OSError, ValueError, KeyError, configparser.Error): continue
+            for pid in (foreground, retained):
+                if pid > 0:
+                    match = next((item for item in candidates if item['pid'] == pid), None)
+                    if match is not None: return match
+            if len(candidates) == 1: return candidates[0]
+            return {'state': 'idle', 'detail': 'Focus your game, then open the overlay.' if candidates
+                    else 'Start a game with the NR + MFG package.', 'can_edit': False, 'can_save': False,
+                    'can_mfg': False, 'values': {}, 'row': None}
+
     def apply(self, params):
         with self.lock:
             game = self._game(params)
@@ -309,6 +365,8 @@ class Controls:
             box = self._open(game, True)
             t.need(box is not None, 'Start this game with the current bridge before applying live changes.')
             with box:
+                t.need(not params.get('pid') or params['pid'] == box.pid,
+                       'The game session changed. Open the overlay again.')
                 current = self._present(game, box, box.read())
                 t.need(current['can_edit'], current['detail'])
                 found = box.apply(changes)
@@ -318,6 +376,14 @@ class Controls:
         with self.lock:
             game = self._game(params)
             changes = validate_changes(params.get('changes'))
+            if params.get('pid'):
+                box = self._open(game)
+                t.need(box is not None, 'The game session ended. Open the overlay again.')
+                with box:
+                    t.need(box.pid == params['pid'], 'The game session changed. Open the overlay again.')
+                    found = box.read()
+                    t.need(found['version'] >= 3 or not (set(changes) - LEGACY_KEYS),
+                           'Update this game package to save the additional NR controls.')
             old = self.presets.get(game['key']) or {}
             if old.get('recipe') == game['recipe']:
                 changes = validate_changes((old.get('changes') or {}) | changes)
@@ -388,5 +454,5 @@ class Controls:
 
 def methods(state):
     controls = Controls(state)
-    return {'companion_status': controls.status, 'companion_apply': controls.apply,
+    return {'companion_active': controls.active, 'companion_status': controls.status, 'companion_apply': controls.apply,
             'companion_save': controls.save, 'companion_forget': controls.forget}

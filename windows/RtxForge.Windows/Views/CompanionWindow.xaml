@@ -1,124 +1,145 @@
-<Window
-    x:Class="RtxForge.Windows.Views.CompanionWindow"
+<Window x:Class="RtxForge.Windows.Views.CompanionWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Title="rtxForge · Live controls">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="rtxForge overlay">
     <Grid x:Name="Root" RequestedTheme="Dark" Background="Transparent">
         <Grid.Resources>
-            <SolidColorBrush x:Key="PanelSecondary" Color="#C4CAD0" />
-            <Style x:Key="PanelCaption" TargetType="TextBlock">
-                <Setter Property="Foreground" Value="{StaticResource PanelSecondary}" />
+            <FontFamily x:Key="OverlayFont">ms-appx:///Assets/Fonts/InterVariable.ttf#Inter Variable</FontFamily>
+            <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="White" />
+            <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#E0FFFFFF" />
+            <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="Black" />
+            <SolidColorBrush x:Key="SliderTrackValueFill" Color="White" />
+            <SolidColorBrush x:Key="SliderTrackValueFillPointerOver" Color="White" />
+            <SolidColorBrush x:Key="SliderThumbBackground" Color="White" />
+            <SolidColorBrush x:Key="SliderThumbBackgroundPointerOver" Color="White" />
+            <SolidColorBrush x:Key="SliderThumbBackgroundPressed" Color="#CCCCCC" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="White" />
+            <SolidColorBrush x:Key="ToggleSwitchKnobFillOn" Color="Black" />
+            <Style TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{StaticResource OverlayFont}" />
+                <Setter Property="Foreground" Value="#F4FFFFFF" />
+                <Setter Property="FontSize" Value="14" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+            <Style x:Key="Note" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{StaticResource OverlayFont}" />
+                <Setter Property="Foreground" Value="#BFFFFFFF" />
                 <Setter Property="FontSize" Value="12" />
                 <Setter Property="TextWrapping" Value="Wrap" />
             </Style>
-            <Style x:Key="PanelHeading" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="20" />
+            <Style x:Key="Section" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{StaticResource OverlayFont}" />
+                <Setter Property="FontSize" Value="18" />
                 <Setter Property="FontWeight" Value="SemiBold" />
             </Style>
-            <Style x:Key="PanelPlate" TargetType="Border">
-                <Setter Property="Background" Value="#D12C3035" />
-                <Setter Property="CornerRadius" Value="16" />
-                <Setter Property="Padding" Value="20" />
+            <Style TargetType="Button">
+                <Setter Property="FontFamily" Value="{StaticResource OverlayFont}" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="Foreground" Value="White" />
+                <Setter Property="Padding" Value="10,8" />
+            </Style>
+            <Style TargetType="ToggleButton">
+                <Setter Property="FontFamily" Value="{StaticResource OverlayFont}" />
+                <Setter Property="Background" Value="#18FFFFFF" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="Foreground" Value="White" />
+                <Setter Property="Padding" Value="6,10" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+            </Style>
+            <Style TargetType="Slider">
+                <Setter Property="MinHeight" Value="28" />
+                <Setter Property="Margin" Value="0,-5,0,0" />
             </Style>
         </Grid.Resources>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="52" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
-        <Grid x:Name="DragBar" Margin="24,0,64,0">
-            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                <TextBlock Text="rtxForge" FontFamily="{StaticResource ForgeHeroFontFamily}" FontSize="18" />
-                <TextBlock Text="Live controls" Style="{StaticResource PanelCaption}" VerticalAlignment="Center" />
-            </StackPanel>
-        </Grid>
-        <Button HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0" Width="36" Height="32"
-                Background="Transparent" BorderThickness="0" Click="OnHide" AutomationProperties.Name="Hide live controls" ToolTipService.ToolTip="Hide panel">
-            <FontIcon Glyph="&#xE8BB;" FontSize="12" />
-        </Button>
-        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" HorizontalScrollMode="Disabled">
-            <StackPanel Padding="24,8,24,24" Spacing="16">
-                <StackPanel Spacing="8">
-                    <ComboBox x:Name="GamePicker" HorizontalAlignment="Stretch" DisplayMemberPath="Name" SelectionChanged="OnGameChanged"
-                              AutomationProperties.Name="Game controlled by this panel" />
-                    <StackPanel Orientation="Horizontal" Spacing="7">
-                        <Ellipse x:Name="ConnectionDot" Width="6" Height="6" Fill="#ADB4BC" />
-                        <TextBlock x:Name="ConnectionText" Text="Choose a game" Style="{StaticResource PanelCaption}" />
+        <Border CornerRadius="20" Background="#AE080808">
+            <Grid>
+                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                <Grid Padding="26,22,26,20" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="36" /></Grid.ColumnDefinitions>
+                    <StackPanel x:Name="DragBar" Spacing="10">
+                        <TextBlock Text="rtxForge" FontSize="15" FontWeight="SemiBold" Foreground="#BFFFFFFF" />
+                        <TextBlock x:Name="GameName" Text="Ready when you are" FontSize="23" FontWeight="SemiBold" MaxLines="2" TextTrimming="CharacterEllipsis" />
+                        <TextBlock x:Name="ConnectionText" Text="Start your game to connect." Style="{StaticResource Note}" />
                     </StackPanel>
-                    <TextBlock x:Name="ConnectionDetail" Style="{StaticResource PanelCaption}" />
-                </StackPanel>
-
-                <Border Style="{StaticResource PanelPlate}">
-                    <StackPanel Spacing="12">
-                        <TextBlock Text="Multi Frame Generation" Style="{StaticResource PanelHeading}" />
-                        <TextBlock Text="Requested multiplier" Style="{StaticResource PanelCaption}" />
-                        <Grid x:Name="MultiplierChoices" ColumnSpacing="4">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition /><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /><ColumnDefinition />
-                            </Grid.ColumnDefinitions>
-                            <ToggleButton Grid.Column="0" Content="Auto" Tag="-1" Click="OnMultiplier" HorizontalAlignment="Stretch" Padding="4,8" />
-                            <ToggleButton Grid.Column="1" Content="Off" Tag="0" Click="OnMultiplier" HorizontalAlignment="Stretch" Padding="4,8" />
-                            <ToggleButton Grid.Column="2" Content="2×" Tag="2" Click="OnMultiplier" HorizontalAlignment="Stretch" Padding="4,8" />
-                            <ToggleButton Grid.Column="3" Content="3×" Tag="3" Click="OnMultiplier" HorizontalAlignment="Stretch" Padding="4,8" />
-                            <ToggleButton Grid.Column="4" Content="4×" Tag="4" Click="OnMultiplier" HorizontalAlignment="Stretch" Padding="4,8" />
-                        </Grid>
-                        <TextBlock x:Name="MfgActual" Text="Start the game to verify output." FontSize="14" TextWrapping="Wrap" />
-                        <TextBlock x:Name="MfgDetail" Style="{StaticResource PanelCaption}" />
-                    </StackPanel>
-                </Border>
-
-                <Border Style="{StaticResource PanelPlate}" Background="#DD34383D">
-                    <StackPanel Spacing="12">
-                        <Grid>
-                            <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                            <TextBlock Text="Neural Rendering" Style="{StaticResource PanelHeading}" VerticalAlignment="Center" />
-                            <ToggleSwitch x:Name="NrEnabled" Grid.Column="1" OnContent="" OffContent="" MinWidth="0" Toggled="OnEdit"
-                                          AutomationProperties.Name="Neural Rendering enabled" />
-                        </Grid>
-                        <TextBlock x:Name="NrActual" Style="{StaticResource PanelCaption}" Text="Waiting for runtime status" />
-                        <Grid>
-                            <TextBlock Text="Strength" FontSize="14" />
-                            <TextBlock x:Name="StrengthText" Text="100%" HorizontalAlignment="Right" FontSize="14" />
-                        </Grid>
-                        <Slider x:Name="Strength" Minimum="0" Maximum="2" StepFrequency="0.05" Value="1" ValueChanged="OnSliderEdit"
-                                AutomationProperties.Name="NR strength" />
-                        <ComboBox x:Name="NrPreset" Header="Model preset" HorizontalAlignment="Stretch" SelectionChanged="OnChoiceEdit"
-                                  AutomationProperties.Name="NR model preset">
-                            <x:String>Automatic</x:String><x:String>Preset 1</x:String><x:String>Preset 2</x:String><x:String>Preset 3</x:String>
-                        </ComboBox>
-                    </StackPanel>
-                </Border>
-
-                <Expander x:Name="Advanced" Header="Advanced" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
-                    <StackPanel Spacing="14">
-                        <TextBlock Text="Additional controls exposed by this NR bridge." Style="{StaticResource PanelCaption}" />
-                        <ToggleSwitch x:Name="PreSr" Header="Run NR before super resolution" Toggled="OnEdit" />
-                        <ToggleSwitch x:Name="Cache" Header="Reuse cached NR output" Toggled="OnEdit" />
-                        <NumberBox x:Name="Interval" Header="Cache interval (frames)" Minimum="1" Maximum="16" Value="1" SmallChange="1" ValueChanged="OnNumberEdit" />
-                        <ComboBox x:Name="NrStyle" Header="NR style" HorizontalAlignment="Stretch" SelectionChanged="OnChoiceEdit">
-                            <x:String>Style 0</x:String><x:String>Style 1</x:String><x:String>Style 2</x:String>
-                        </ComboBox>
-                        <TextBlock Text="Local structure" /><Slider x:Name="Structure" Minimum="0" Maximum="2" StepFrequency="0.05" Value="1" ValueChanged="OnSliderEdit" AutomationProperties.Name="Local structure" />
-                        <TextBlock Text="Local tone" /><Slider x:Name="Tone" Minimum="0" Maximum="2" StepFrequency="0.05" Value="1" ValueChanged="OnSliderEdit" AutomationProperties.Name="Local tone" />
-                        <ComboBox x:Name="HigherMultiplier" Header="Additional MFG multipliers" HorizontalAlignment="Stretch" SelectionChanged="OnHigherMultiplier">
-                            <x:String>Use selection above</x:String><x:String>5×</x:String><x:String>6×</x:String>
-                        </ComboBox>
-                        <TextBlock x:Name="TelemetryText" Style="{StaticResource PanelCaption}" />
-                    </StackPanel>
-                </Expander>
-                <Button x:Name="ClearSaved" Visibility="Collapsed" Content="Clear saved preset" Click="OnClear" HorizontalAlignment="Left" />
-            </StackPanel>
-        </ScrollViewer>
-        <Border Grid.Row="2" Background="#E6202327" Padding="24,16,24,20">
-            <StackPanel Spacing="10">
-                <TextBlock x:Name="Feedback" Visibility="Collapsed" Style="{StaticResource PanelCaption}" AutomationProperties.LiveSetting="Polite" />
-                <Grid ColumnSpacing="8">
-                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
-                    <Button x:Name="ApplyLive" Content="Apply live" Click="OnApply" HorizontalAlignment="Stretch" Style="{StaticResource AccentButtonStyle}" />
-                    <Button x:Name="SavePreset" Grid.Column="1" Content="Save for game" Click="OnSave" HorizontalAlignment="Stretch" />
+                    <Button Grid.Column="1" Width="32" Height="32" VerticalAlignment="Top" Click="OnHide" AutomationProperties.Name="Hide overlay" ToolTipService.ToolTip="Back to game"><FontIcon Glyph="&#xE8BB;" FontSize="12" /></Button>
                 </Grid>
-                <TextBlock x:Name="ShortcutHint" Style="{StaticResource PanelCaption}" />
-            </StackPanel>
+                <ScrollViewer Grid.Row="1" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel x:Name="Controls" Padding="26,4,26,24" Spacing="24">
+                        <Border Background="#10FFFFFF" CornerRadius="12" Padding="14">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="Frame generation" Style="{StaticResource Section}" />
+                            <Grid x:Name="MultiplierChoices" ColumnSpacing="5">
+                                <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
+                                <ToggleButton Grid.Column="0" Content="Auto" Tag="-1" Click="OnMultiplier" AutomationProperties.Name="Follow game frame generation" />
+                                <ToggleButton Grid.Column="1" Content="Off" Tag="0" Click="OnMultiplier" AutomationProperties.Name="Frame generation off" />
+                                <ToggleButton Grid.Column="2" Content="2×" Tag="2" Click="OnMultiplier" AutomationProperties.Name="Two times frame generation" />
+                                <ToggleButton Grid.Column="3" Content="3×" Tag="3" Click="OnMultiplier" AutomationProperties.Name="Three times frame generation" />
+                                <ToggleButton Grid.Column="4" Content="4×" Tag="4" Click="OnMultiplier" AutomationProperties.Name="Four times frame generation" />
+                            </Grid>
+                            <TextBlock x:Name="MfgActual" Style="{StaticResource Note}" />
+                        </StackPanel>
+                        </Border>
+                        <StackPanel Spacing="16">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <TextBlock Text="Neural rendering" Style="{StaticResource Section}" VerticalAlignment="Center" />
+                                <ToggleSwitch x:Name="NrEnabled" Grid.Column="1" OnContent="" OffContent="" MinWidth="0" Toggled="OnEdit" AutomationProperties.Name="Neural rendering enabled" />
+                            </Grid>
+                            <TextBlock x:Name="NrActual" Style="{StaticResource Note}" />
+                            <Grid x:Name="StyleChoices" ColumnSpacing="5">
+                                <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
+                                <ToggleButton Grid.Column="0" Content="Default" Tag="0" Click="OnStyle" />
+                                <ToggleButton Grid.Column="1" Content="Natural" Tag="1" Click="OnStyle" />
+                                <ToggleButton Grid.Column="2" Content="Cinematic" Tag="2" Click="OnStyle" />
+                            </Grid>
+                            <StackPanel Spacing="4">
+                                <Grid><TextBlock Text="Model strength" /><TextBlock x:Name="StrengthText" HorizontalAlignment="Right" /></Grid>
+                                <Slider x:Name="Strength" Minimum="0" Maximum="2" StepFrequency="0.05" Value="1" ValueChanged="OnSliderEdit" AutomationProperties.Name="NR model strength" />
+                            </StackPanel>
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
+                                <ComboBox x:Name="NrPreset" Header="Model preset" HorizontalAlignment="Stretch" SelectionChanged="OnChoiceEdit"><x:String>Automatic</x:String><x:String>Preset 1</x:String><x:String>Preset 2</x:String><x:String>Preset 3</x:String></ComboBox>
+                                <ComboBox x:Name="Passes" Grid.Column="1" Header="Model passes" HorizontalAlignment="Stretch" SelectionChanged="OnChoiceEdit"><x:String>1 pass</x:String><x:String>2 passes</x:String><x:String>3 passes</x:String></ComboBox>
+                            </Grid>
+                        </StackPanel>
+                        <StackPanel x:Name="ImageControls" Spacing="16">
+                            <TextBlock Text="Image tuning" Style="{StaticResource Section}" />
+                            <StackPanel Spacing="4"><Grid><TextBlock Text="Detail" /><TextBlock x:Name="DetailText" HorizontalAlignment="Right" /></Grid><Slider x:Name="Detail" Minimum="0" Maximum="2" StepFrequency="0.05" Value="1" ValueChanged="OnSliderEdit" AutomationProperties.Name="NR detail strength" /></StackPanel>
+                            <StackPanel Spacing="4"><Grid><TextBlock Text="Colour" /><TextBlock x:Name="ColourText" HorizontalAlignment="Right" /></Grid><Slider x:Name="Colour" Minimum="0" Maximum="2" StepFrequency="0.05" Value="1" ValueChanged="OnSliderEdit" AutomationProperties.Name="NR colour strength" /></StackPanel>
+                            <Expander Header="Fine tuning" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Background="Transparent" BorderThickness="0">
+                                <StackPanel Spacing="12">
+                                    <StackPanel Spacing="4"><Grid><TextBlock Text="Local structure" /><TextBlock x:Name="StructureText" HorizontalAlignment="Right" /></Grid><Slider x:Name="Structure" Minimum="0" Maximum="2" StepFrequency="0.05" Value="1" ValueChanged="OnSliderEdit" AutomationProperties.Name="Local structure" /></StackPanel>
+                                    <StackPanel Spacing="4"><Grid><TextBlock Text="Local tone" /><TextBlock x:Name="ToneText" HorizontalAlignment="Right" /></Grid><Slider x:Name="Tone" Minimum="0" Maximum="2" StepFrequency="0.05" Value="1" ValueChanged="OnSliderEdit" AutomationProperties.Name="Local tone" /></StackPanel>
+                                    <StackPanel Spacing="4"><Grid><TextBlock Text="Skin structure" /><TextBlock x:Name="SkinText" HorizontalAlignment="Right" /></Grid><Slider x:Name="Skin" Minimum="-1" Maximum="2" StepFrequency="0.05" Value="-1" ValueChanged="OnSliderEdit" AutomationProperties.Name="Skin structure, minus one follows local structure" /></StackPanel>
+                                    <ToggleSwitch x:Name="AutoMask" Header="Automatic skin mask" Toggled="OnEdit" />
+                                </StackPanel>
+                            </Expander>
+                        </StackPanel>
+                        <Expander x:Name="Performance" Header="Performance" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Background="Transparent" BorderThickness="0">
+                            <StackPanel Spacing="14">
+                                <ToggleSwitch x:Name="PreSr" Header="Run before super resolution" Toggled="OnEdit" />
+                                <ToggleSwitch x:Name="Reduced" Header="Use reduced model resolution" Toggled="OnEdit" />
+                                <StackPanel Spacing="4"><Grid><TextBlock Text="Model resolution" /><TextBlock x:Name="ScaleText" HorizontalAlignment="Right" /></Grid><Slider x:Name="WorkScale" Minimum="0.25" Maximum="2" StepFrequency="0.01" Value="1" ValueChanged="OnSliderEdit" AutomationProperties.Name="NR model resolution" /></StackPanel>
+                                <TextBlock Text="Resolution applies after SR, or with reduced resolution enabled above." Style="{StaticResource Note}" />
+                                <ToggleSwitch x:Name="EdgeAware" Header="Edge-aware enlargement" Toggled="OnEdit" />
+                                <ToggleSwitch x:Name="Cache" Header="Reuse NR between frames" Toggled="OnEdit" />
+                                <NumberBox x:Name="Interval" Header="Run NR every N frames" Minimum="1" Maximum="16" Value="1" SmallChange="1" ValueChanged="OnNumberEdit" />
+                                <TextBlock Text="Cache reuse trades fresh model output for performance. Leave it off for the tested NR + MFG setup." Style="{StaticResource Note}" />
+                                <ComboBox x:Name="HigherMultiplier" Header="More FG multipliers" HorizontalAlignment="Stretch" SelectionChanged="OnHigherMultiplier"><x:String>Use selection above</x:String><x:String>5×</x:String><x:String>6×</x:String></ComboBox>
+                                <TextBlock x:Name="TelemetryText" Style="{StaticResource Note}" />
+                            </StackPanel>
+                        </Expander>
+                        <TextBlock x:Name="CompatibilityNote" Style="{StaticResource Note}" Visibility="Collapsed" />
+                    </StackPanel>
+                </ScrollViewer>
+                <StackPanel Grid.Row="2" Padding="26,16,26,22" Spacing="10">
+                    <TextBlock x:Name="Feedback" Visibility="Collapsed" Style="{StaticResource Note}" AutomationProperties.LiveSetting="Polite" />
+                    <Grid><Button x:Name="SavePreset" Content="Save preset" Click="OnSave" HorizontalAlignment="Left" /><Button x:Name="ClearSaved" Content="Clear saved" Click="OnClear" HorizontalAlignment="Right" Visibility="Collapsed" /></Grid>
+                    <TextBlock x:Name="ShortcutHint" Style="{StaticResource Note}" />
+                </StackPanel>
+            </Grid>
         </Border>
     </Grid>
 </Window>

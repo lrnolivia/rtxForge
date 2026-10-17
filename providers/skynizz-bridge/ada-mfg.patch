@@ -4,7 +4,7 @@ index 967731c1..3062ff17 100644
 +++ b/OptiScaler/Config.cpp
 @@ -194,6 +194,8 @@ bool Config::Reload(std::filesystem::path iniPath)
          }
-
+ 
          {
 +            FGDLSSGAdaMfgUnlock.set_from_config(readBool("DLSSG", "AdaMfgUnlock"));
 +            FGDLSSGAdaBlackwellKernels.set_from_config(readBool("DLSSG", "AdaBlackwellKernels"));
@@ -13,7 +13,7 @@ index 967731c1..3062ff17 100644
                  (FGDLSSGInterpolationCount.value() < 1 || FGDLSSGInterpolationCount.value() > 6))
 @@ -1068,6 +1070,10 @@ bool Config::SaveIni()
      }
-
+ 
      {
 +        ini.SetValue("DLSSG", "AdaMfgUnlock",
 +                     GetBoolValue(Instance()->FGDLSSGAdaMfgUnlock.value_for_config()).c_str());
@@ -29,12 +29,12 @@ index e7ce081a..0d19959e 100644
 @@ -1,4 +1,4 @@
 -﻿#pragma once
 +#pragma once
-
+ 
  #include "SysUtils.h"
  #include "State.h"
 @@ -1010,6 +1010,8 @@ class Config
      CustomOptional<bool> FGXeFGForceBorderless { false };
-
+ 
      // DLSSG
 +    CustomOptional<bool> FGDLSSGAdaMfgUnlock { false };
 +    CustomOptional<bool> FGDLSSGAdaBlackwellKernels { false };
@@ -69,15 +69,16 @@ index 00369a32..cf411588 100644
      <ClCompile Include="framegen\IFGFeature_Dx12.cpp" />
 diff --git a/OptiScaler/framegen/dlssg/Companion.h b/OptiScaler/framegen/dlssg/Companion.h
 new file mode 100644
-index 00000000..6ee11cab
+index 00000000..845f1915
 --- /dev/null
 +++ b/OptiScaler/framegen/dlssg/Companion.h
-@@ -0,0 +1,170 @@
+@@ -0,0 +1,205 @@
 +#pragma once
 +
 +#include <Config.h>
 +#include <dlssnr/DlssNr.h>
 +#include <cmath>
++#include <cstddef>
 +#include <atomic>
 +#include <mutex>
 +
@@ -105,8 +106,23 @@ index 00000000..6ee11cab
 +    LONG nativeStatus, nativePresented, stateSamples, stateTick;
 +    LONG nativeMode, nativeGenerated;
 +    char failure[96];
++    float workScale;
++    LONG passes;
++    float skin;
++    LONG autoMask;
++    float detail, colour;
++    LONG reduced, edgeAware;
++    float actualWorkScale;
++    LONG actualPasses;
++    float actualSkin;
++    LONG actualAutoMask;
++    float actualDetail, actualColour;
++    LONG actualReduced, actualEdgeAware;
++    char reserved[192];
 +};
-+static_assert(sizeof(Mailbox) == 256);
++static_assert(sizeof(Mailbox) == 512);
++static_assert(offsetof(Mailbox, workScale) == 256);
++static_assert(offsetof(Mailbox, actualWorkScale) == 288);
 +
 +inline std::recursive_mutex guard;
 +inline Mailbox* mailbox = nullptr;
@@ -165,7 +181,7 @@ index 00000000..6ee11cab
 +        }
 +        *mailbox = {};
 +        mailbox->magic = 0x46585452;
-+        mailbox->version = 2;
++        mailbox->version = 3;
 +        mailbox->pid = GetCurrentProcessId();
 +    }
 +    if (!mailbox) return;
@@ -181,7 +197,10 @@ index 00000000..6ee11cab
 +        {
 +            const auto boolean = [](LONG n) { return n == 0 || n == 1; };
 +            const auto bounded = [](float n, float lo, float hi) { return std::isfinite(n) && n >= lo && n <= hi; };
-+            const bool valid = boolean(request.enabled) && boolean(request.preSr) && boolean(request.cache) &&
++            const bool valid = bounded(request.workScale, .25f, 2.f) && request.passes >= 1 && request.passes <= 3 &&
++                bounded(request.skin, -1.f, 2.f) && boolean(request.autoMask) &&
++                bounded(request.detail, 0.f, 2.f) && bounded(request.colour, 0.f, 2.f) &&
++                boolean(request.reduced) && boolean(request.edgeAware) && boolean(request.enabled) && boolean(request.preSr) && boolean(request.cache) &&
 +                bounded(request.intensity, 0.f, 2.f) && bounded(request.structure, 0.f, 2.f) &&
 +                bounded(request.tone, 0.f, 2.f) && request.interval >= 1 && request.interval <= 16 &&
 +                request.style >= 0 && request.style <= 2 && request.preset >= 0 && request.preset <= 3 &&
@@ -192,6 +211,14 @@ index 00000000..6ee11cab
 +            mailbox->result = !valid ? 2 : !supported ? 3 : 1;
 +            if (valid && supported)
 +            {
++                cfg.DlssNrWorkingScale.set_volatile_value(request.workScale);
++                cfg.DlssNrPasses.set_volatile_value(request.passes);
++                cfg.DlssNrSkinStructure.set_volatile_value(request.skin);
++                cfg.DlssNrAutoMask.set_volatile_value(request.autoMask != 0);
++                cfg.DlssNrTransferStrength.set_volatile_value(request.detail);
++                cfg.DlssNrColourStrength.set_volatile_value(request.colour);
++                cfg.DlssNrPreSrReduced.set_volatile_value(request.reduced != 0);
++                cfg.DlssNrJbuUpsample.set_volatile_value(request.edgeAware != 0);
 +                cfg.DlssNrEnabled.set_volatile_value(request.enabled != 0);
 +                cfg.DlssNrIntensity.set_volatile_value(request.intensity);
 +                cfg.DlssNrPreSr.set_volatile_value(request.preSr != 0);
@@ -214,6 +241,14 @@ index 00000000..6ee11cab
 +        }
 +    }
 +    InterlockedIncrement(&mailbox->snapshot);
++    mailbox->actualWorkScale = cfg.DlssNrWorkingScale.value_or_default();
++    mailbox->actualPasses = cfg.DlssNrPasses.value_or_default();
++    mailbox->actualSkin = cfg.DlssNrSkinStructure.value_or_default();
++    mailbox->actualAutoMask = cfg.DlssNrAutoMask.value_or_default();
++    mailbox->actualDetail = cfg.DlssNrTransferStrength.value_or_default();
++    mailbox->actualColour = cfg.DlssNrColourStrength.value_or_default();
++    mailbox->actualReduced = cfg.DlssNrPreSrReduced.value_or_default();
++    mailbox->actualEdgeAware = cfg.DlssNrJbuUpsample.value_or_default();
 +    mailbox->actualEnabled = cfg.DlssNrEnabled.value_or_default();
 +    mailbox->actualIntensity = cfg.DlssNrIntensity.value_or_default();
 +    auto count = cfg.FGDLSSGOverrideInterpolationCount;
@@ -733,12 +768,12 @@ index 142037d7..b41d413a 100644
  #include "pch.h"
 +#include <framegen/dlssg/MfgUnlock.h>
  #include "LibraryLoad_Hooks.h"
-
+ 
  #include <Config.h>
 @@ -107,6 +108,23 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
              LOG_ERROR("Trying to load dll: {}", libNameA);
      }
-
+ 
 +    // nvngx_dlssg
 +    //
 +    // The module publishes DLSSG.MultiFrameCountMax while it initialises and slDLSSGGetState returns
@@ -767,11 +802,11 @@ index 176dab06..38b3842e 100644
  #include <pch.h>
 +#include <framegen/dlssg/MfgUnlock.h>
 +#include <framegen/dlssg/Companion.h>
-
+ 
  #include "Streamline_Hooks.h"
-
+ 
 @@ -1303,21 +1305,39 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
-
+ 
      if (dlssgPotentiallyActive && state.streamlineVersion >= feature_version { 2, 7, 1 })
      {
 +        // Before the read, so the count this captures is the patched one. Five stays under the
@@ -799,7 +834,7 @@ index 176dab06..38b3842e 100644
 +                // A wrapper ahead of the snippet can answer a lower ceiling than the patched one.
 +                if (auto unlockedMax = MfgUnlock::UnlockedMax(); unlockedMax > localState.numFramesToGenerateMax)
 +                    localState.numFramesToGenerateMax = unlockedMax;
-
+ 
 -                if (Config::Instance()->FGDLSSGOverrideInterpolationCount.has_value() &&
 -                    Config::Instance()->FGDLSSGOverrideInterpolationCount.value() > state.dlssgMfgMax.value())
 +                if (localState.numFramesToGenerateMax > 0 && localState.numFramesToGenerateMax < 6)
@@ -819,34 +854,34 @@ index 176dab06..38b3842e 100644
              }
          }
 @@ -1335,7 +1355,10 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
-
+ 
      state.dlssgLastSetMode = newOptions.mode;
-
+ 
 -    return o_slDLSSGSetOptions(viewport, newOptions);
 +    const auto result = o_slDLSSGSetOptions(viewport, newOptions);
 +    if (result == sl::Result::eOk)
 +        ForgeCompanion::ObservedDlssgOptions(static_cast<LONG>(newOptions.mode), newOptions.numFramesToGenerate);
 +    return result;
  }
-
+ 
  sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport, sl::DLSSGState& state,
 @@ -1344,6 +1367,9 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
      if (o_slDLSSGGetState == nullptr)
          return sl::Result::eErrorFeatureMissing;
-
+ 
 +    // Ahead of every read of numFramesToGenerateMax, which is the value the patch raises.
 +    MfgUnlock::TryApply();
 +
      sl::Result result {};
-
+ 
      const auto originalStructVersion = state.structVersion;
 @@ -1353,6 +1379,8 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
-
+ 
          // We might be feeding a newer struct to an older SL but that seems to work just fine for this Get function
          result = o_slDLSSGGetState(viewport, dynamic_cast<sl::DLSSGState&>(newState), options);
 +        if (result == sl::Result::eOk)
 +            ForgeCompanion::ObservedDlssgState(static_cast<LONG>(newState.status), newState.numFramesActuallyPresented);
-
+ 
          // Copy back data to game's struct
          memcpy(&state, &newState, 56); // struct ver 1 size
 @@ -1363,6 +1391,12 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
@@ -860,7 +895,7 @@ index 176dab06..38b3842e 100644
 +            if (auto unlockedMax = MfgUnlock::UnlockedMax(); unlockedMax > state.numFramesToGenerateMax)
 +                state.numFramesToGenerateMax = unlockedMax;
          }
-
+ 
          if (originalStructVersion >= 3)
 @@ -1377,7 +1411,13 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
      else
@@ -874,10 +909,10 @@ index 176dab06..38b3842e 100644
 +        if (auto unlockedMax = MfgUnlock::UnlockedMax(); unlockedMax > state.numFramesToGenerateMax)
 +            state.numFramesToGenerateMax = unlockedMax;
      }
-
+ 
      if (!State::Instance().dlssgGameDMFGSupported)
 @@ -1389,20 +1429,32 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
-
+ 
      if (optiState.streamlineVersion >= feature_version { 2, 7, 1 })
      {
 -        if (!optiState.dlssgMfgMax.has_value())
@@ -898,7 +933,7 @@ index 176dab06..38b3842e 100644
 +                // A wrapper ahead of the snippet can answer a lower ceiling than the patched one.
 +                if (auto unlockedMax = MfgUnlock::UnlockedMax(); unlockedMax > localState.numFramesToGenerateMax)
 +                    localState.numFramesToGenerateMax = unlockedMax;
-
+ 
 -                if (Config::Instance()->FGDLSSGOverrideInterpolationCount.has_value() &&
 -                    Config::Instance()->FGDLSSGOverrideInterpolationCount.value() > optiState.dlssgMfgMax.value())
 +                if (localState.numFramesToGenerateMax > 0 && localState.numFramesToGenerateMax < 6)
@@ -923,33 +958,33 @@ index 0b25fbe5..e38af953 100644
 +++ b/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
 @@ -14,6 +14,8 @@
  #include "upscalers/dlss/DLSSFeature_Dx12.h"
-
+ 
  #include <framegen/nvngx/Nvngx_FG.h>
 +#include <framegen/dlssg/MfgUnlock.h>
 +#include <framegen/dlssg/Companion.h>
  #include "FG/FSR3_Dx12_FG.h"
  #include "FG/Upscaler_Inputs_Dx12.h"
-
+ 
 @@ -53,6 +55,7 @@ class ScopedInitDx12
-
+ 
  static void UpdateInitPaths(NVSDK_NGX_FeatureCommonInfo* InFeatureInfo)
  {
 +    MfgUnlock::PreparePrivateRuntime();
      State::Instance().NVNGX_FeatureInfo_Paths.clear();
-
+ 
      if (InFeatureInfo != nullptr)
 @@ -1118,6 +1121,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
-
+ 
      const uint32_t handleId = InFeatureHandle->Id;
      LOG_DEBUG("EvaluateFeature - Handle: {}, CmdList: {:p}", handleId, (void*) InCmdList);
 +    ForgeCompanion::Tick();
-
+ 
      const State& state = State::Instance();
      const Config& cfg = *Config::Instance();
 @@ -1134,6 +1138,16 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
      {
          evalWithoutFG = 0;
-
+ 
 +        // Positive session requests can update an existing NGX feature without
 +        // replaying a game's Streamline option chain. Off is handled by the
 +        // existing Streamline options hook on its next game options update.
@@ -966,12 +1001,12 @@ index 0b25fbe5..e38af953 100644
 @@ -1179,6 +1193,8 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
              if (result == NVSDK_NGX_Result_Success && feature != NVSDK_NGX_Feature_FrameGeneration)
                  DlssNr::EvaluateAfterUpscale(InCmdList, InParameters);
-
+ 
 +            ForgeCompanion::Completed(feature == NVSDK_NGX_Feature_FrameGeneration, result, InParameters);
 +
              return result;
          }
-
+ 
 @@ -1190,7 +1206,9 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
      if (State::Instance().activeFgNvngx != FGNvngxReplacement::None && handleId >= NVNGX_PROVIDER_ID_OFFSET)
      {
@@ -981,13 +1016,13 @@ index 0b25fbe5..e38af953 100644
 +        ForgeCompanion::Completed(feature == NVSDK_NGX_Feature_FrameGeneration, result, InParameters);
 +        return result;
      }
-
+ 
      if (lastDlssgCameraNear.has_value())
 @@ -1206,6 +1224,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
-
+ 
      // OptiScaler internal handling
      const NVSDK_NGX_Result optiResult = TryEvaluateOptiFeature(InCmdList, InFeatureHandle, InParameters, InCallback);
 +    ForgeCompanion::Completed(feature == NVSDK_NGX_Feature_FrameGeneration, optiResult, InParameters);
-
+ 
      if (nrPreSr)
          DlssNr::EndBeforeUpscale(InParameters);

@@ -32,7 +32,7 @@ public sealed partial class MainWindow
     {
         if (Service is not EngineForgeService engine) { ShowToast("Live controls require the installed engine."); return; }
         companion ??= new CompanionWindow(this, engine);
-        companion.Present(game);
+        companion.Present();
     }
 
     public void ConfigureCompanionShortcut()
@@ -73,4 +73,14 @@ public sealed partial class MainWindow
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     static extern bool UnregisterHotKey(nint hwnd, int id);
+
+    internal static uint ForegroundProcessId()
+    {
+        GetWindowThreadProcessId(GetForegroundWindow(), out var pid);
+        return pid;
+    }
+    [DllImport("user32.dll")]
+    static extern nint GetForegroundWindow();
+    [DllImport("user32.dll")]
+    static extern uint GetWindowThreadProcessId(nint hwnd, out uint pid);
 }

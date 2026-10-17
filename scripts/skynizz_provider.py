@@ -260,6 +260,42 @@ def configure(e, source, saved=None, mode='nr-only', mfg_multiplier='auto', game
     return text, dict(parser['DlssNr']) if parser.has_section('DlssNr') else {}
 
 
+def restored_support_tree(e, game):
+    """Recognize only exact inactive bytes retained by a completed engine restore.
+
+    This is permission to back up the tree as original data, never to delete it
+    or adopt an unrecorded live mod. The normal install/restore owns that backup.
+    """
+    target = game.target_dir
+    tree = target / 'OptiScaler'
+    if not tree.is_dir() or tree.is_symlink() or (target / 'OptiScaler.ini').exists():
+        return False
+    receipts = sorted(e._validated_state_dir(target).glob('baseline-restored-*.json'), reverse=True)
+    if not receipts:
+        return False
+    receipt = receipts[0]
+    if receipt.is_symlink() or receipt.stat().st_size > 1024 * 1024:
+        return False
+    try:
+        record = json.loads(receipt.read_text(encoding='utf-8'))
+        if (record.get('schema') != e.ENGINE_SCHEMA or record.get('status') != 'restored'
+                or record.get('baseline_payload_retained') is not False
+                or Path(record.get('target_dir', '')).resolve() != target.resolve()
+                or Path(record.get('exe', '')).resolve() != Path(game.exe).resolve()):
+            return False
+        original = (record.get('originals') or {}).get('OptiScaler/') or {}
+        proxy = (record.get('current') or {}).get('proxy')
+        if (original.get('kind') != 'tree' or original.get('existed') is not True
+                or not isinstance(proxy, str) or not proxy or Path(proxy).name != proxy
+                or '/' in proxy or '\\' in proxy or ':' in proxy
+                or (target / proxy).exists() or (target / proxy).is_symlink()):
+            return False
+        actual = e._tree_manifest_data(tree)
+        return all(actual.get(key) == original.get(key) for key in ('tree_sha256', 'file_count', 'bytes'))
+    except (OSError, ValueError, TypeError, AttributeError):
+        return False
+
+
 def check_target(e, game, baseline):
     target = game.target_dir
     if e.Y4MY_PROVIDER.get('mfg_component'):
@@ -268,14 +304,17 @@ def check_target(e, game, baseline):
     t.need(not (target / 'renodx-dlss5.addon64').exists(),
            'Another NR consumer (renodx-dlss5.addon64) is present. Disable it yourself before installing Skynizz.')
     # A second OptiScaler cannot share this INI or the existing MFG hook tree.
+    restored_tree = False
     if not baseline:
-        t.need(not (target / 'OptiScaler.ini').exists() and not (target / 'OptiScaler').exists(),
+        restored_tree = restored_support_tree(e, game) if (target / 'OptiScaler').exists() else False
+        t.need(not (target / 'OptiScaler.ini').exists() and (not (target / 'OptiScaler').exists() or restored_tree),
                'Existing OptiScaler configuration/runtime is unmanaged. Restore or remove it before installing Skynizz.')
         t.need(not (target / 'nvngx.dll_dlssnr.dll').exists(),
                'An unmanaged NR forwarder is already present. Restore or remove that installation before using Skynizz.')
     else:
         current = baseline.get('current') or {}
         t.need(not current or current.get('provider_id') == 'skynizz', 'Restore the existing provider before switching to Skynizz.')
+    return restored_tree
 
 
 def scan_rows(rows, mode='nr-only'):

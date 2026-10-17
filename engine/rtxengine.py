@@ -4330,8 +4330,9 @@ def install_target(
     if existing_baseline and Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) == "dlss-unlocked":
         prior_mode = (existing_baseline.get("current") or {}).get("feature_mode")
         require(prior_mode in (None, feature_mode), "Uninstall before changing DLSS-Unlocked pipelines")
+    restored_support_tree = False
     if is_skynizz:
-        skynizz_provider.check_target(_ENGINE_MODULE, game, existing_baseline)
+        restored_support_tree = skynizz_provider.check_target(_ENGINE_MODULE, game, existing_baseline)
     reshade = detect_reshade(target)
     # Keep y4my's overlay behavior unchanged by default. Its global overlay
     # blocker also disables Steam Input, so RC1 does not infer a per-game route.
@@ -4585,6 +4586,7 @@ def install_target(
         stale = stale_owned_proxies(target, chosen_proxy, reshade)
         return {"proxy":chosen_proxy, "files":sorted(payload), "remove":stale,
                 "launch_options":build_launch_options(chosen_proxy,reshade),
+                "restored_support_tree":restored_support_tree,
                 "feature_mode":feature_mode, "effects_enabled":enable_effects,
                 "provider":dict(Y4MY_PROVIDER), "nr_runtime":dict(selected_nr_meta or {})}
 

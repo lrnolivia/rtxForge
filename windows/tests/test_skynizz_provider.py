@@ -165,7 +165,9 @@ assert baseline(local_model)['nr_runtime']['explicit_override']
 run(prepare(local_model,'uninstall'))
 assert files(local_model)==local_before
 checks.append('explicit model replaces a game-local copy after review and restores it; automatic selection preserves it')
-mfg=game('ExistingMfg');(mfg/'nvngx_dlssg.dll').write_bytes(fixtures.pe());mfg_before=files(mfg)
+mfg=game('ExistingMfg');(mfg/'nvngx_dlssg.dll').write_bytes(fixtures.pe())
+(mfg/'OptiScaler').mkdir();(mfg/'OptiScaler/old-support.dll').write_bytes(b'original support bytes')
+mfg_before=files(mfg)
 mfg_settings=settings | {'runtime_provider':'y4my'}
 run(service.prepare([scan(mfg,'y4my')],'mfg-only','install',visual_settings=mfg_settings))
 mfg_record=baseline(mfg)
@@ -176,6 +178,33 @@ assert (mfg/'nvngx_dlssg.dll').read_bytes()==fixtures.pe()
 run(service.prepare([scan(mfg,'y4my')],'mfg-only','uninstall',visual_settings=mfg_settings))
 assert files(mfg)==mfg_before
 checks.append('existing y4my MFG config/ownership and provider-switch restoration boundary')
+# A restore returns an original support tree, but removes its former loader/INI.
+# A subsequent install may back up these exact recorded bytes without treating
+# an unknown live OptiScaler install as ours.
+old_proxy=mfg/mfg_record['proxy'];old_proxy.write_bytes(b'external active loader')
+review=prepare(mfg)
+assert not review['rows'] and 'unmanaged' in review['blocked'][0]['reason']
+old_proxy.unlink()
+review=prepare(mfg)
+assert review['plans'][0]['preview']['restored_support_tree']
+assert 'previous restore' in review['rows'][0]['detail'] and files(mfg)==mfg_before
+(mfg/'OptiScaler/old-support.dll').write_bytes(b'changed since review')
+drift_before=files(mfg)
+try:service.execute(review)
+except Exception:pass
+else:raise AssertionError('restored support drift was ignored')
+assert files(mfg)==drift_before
+review=prepare(mfg)
+assert not review['rows'] and 'unmanaged' in review['blocked'][0]['reason']
+(mfg/'OptiScaler/old-support.dll').write_bytes(b'original support bytes')
+run(prepare(mfg));run(prepare(mfg,'uninstall'))
+assert files(mfg)==mfg_before,'support tree was not restored exactly'
+unknown=game('UnknownSupport');(unknown/'OptiScaler').mkdir()
+(unknown/'OptiScaler/old-support.dll').write_bytes(b'original support bytes')
+unknown_before=files(unknown);review=prepare(unknown)
+assert not review['rows'] and 'unmanaged' in review['blocked'][0]['reason']
+assert files(unknown)==unknown_before
+checks.append('exact inactive restored support tree can be backed up and restored; active loaders, unknown folders and review drift still refuse')
 missing=game('Missing');missing_before=files(missing)
 review=prepare(missing,values={'nr_runtime':''})
 assert not review['rows'] and 'required' in review['blocked'][0]['reason']
@@ -394,7 +423,7 @@ class WindowsSkynizzTest(unittest.TestCase):
                                     env=env, capture_output=True, text=True, timeout=180)
             self.assertEqual(result.returncode, 0, result.stderr[-12000:] + result.stdout[-3000:])
             receipt = json.loads(result.stdout.strip().splitlines()[-1])
-            self.assertEqual(receipt['count'], 20)
+            self.assertEqual(receipt['count'], 21)
             print('PASS: ' + '; '.join(receipt['checks']))
 
 

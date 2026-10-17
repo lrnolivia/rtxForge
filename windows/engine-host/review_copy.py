@@ -43,7 +43,8 @@ def attach(review):
             # Cross-OS adoption and record-only cleanup have different effects.
             # Keep their explicit description instead of implying a fresh install.
             summary = preview.get('launch_options') or 'Review the technical details before continuing.'
-        additions = [row.get('native_summary'), row.get('display_summary')]
+        additions = ['Back up the support files kept by your earlier restore.' if preview.get('restored_support_tree') else None,
+                     row.get('native_summary'), row.get('display_summary')]
         row['summary'] = '\n'.join([summary] + [text for text in additions if text])
     for row in review.get('blocked', []):
         row['summary'] = blocked_summary(row.get('reason', ''))

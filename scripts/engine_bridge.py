@@ -432,6 +432,8 @@ def prepare(config,rows,mode,operation,settings):
                     if component:=release.get('mfg_component'):
                         route=f"NR + {component['name']} {component['version']} · SHA-256 {component['sha256']} · ReShade {component['host']['version']} · internal unlock disabled · target runtime validation pending"
                     preview=dict(preview,launch_options=f"{release['tag']} · SHA-256 {release['sha256']} · model {model.get('path','')} · SHA-256 {model.get('sha256','')} · "+route)
+                    if preview.get('restored_support_tree'):
+                        preview['launch_options'] += ' · Back up the exact OptiScaler support tree retained by the previous restore; restore returns it unchanged'
                     if upgrade:
                         preview['launch_options']='Update bridge · '+str(previous.get('bridge_id','recorded build'))+' → '+str(release.get('bridge_id','bundled build'))+' · preserve game tuning and NR model · '+preview['launch_options']
                     for component,(_,label) in skynizz_provider.PRODUCTION_RUNTIMES.items():

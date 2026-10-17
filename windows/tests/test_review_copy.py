@@ -54,6 +54,12 @@ class ReviewCopyTests(unittest.TestCase):
         review_copy.attach(review)
         self.assertTrue(review['rows'][0]['summary'].startswith('Already installed on Linux; no game files change'))
 
+    def test_restored_support_files_are_disclosed(self):
+        review = self.review()
+        review['plans'][0]['preview']['restored_support_tree'] = True
+        review_copy.attach(review)
+        self.assertIn('Back up the support files kept by your earlier restore.', review['rows'][0]['summary'])
+
     def test_blocked_reason_is_preserved_and_unknown_errors_stay_visible(self):
         reason = 'Existing OptiScaler configuration/runtime is unmanaged. Restore or remove it before installing Skynizz.'
         review = self.review()

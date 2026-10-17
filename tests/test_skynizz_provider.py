@@ -58,7 +58,9 @@ class SkynizzPolicyTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.archive = Path(self.temp.name) / 'release.zip'
+        # Hosted Windows runners can expose TEMP through an 8.3 alias.
+        # Supply a canonical fixture path, as the real Windows storage adapter does.
+        self.archive = Path(self.temp.name).resolve() / 'release.zip'
 
     def test_normalizes_only_required_files_and_records_exact_source(self):
         record = fixture(self.archive)

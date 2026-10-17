@@ -2198,7 +2198,7 @@ def _reset_visual_settings(game: Game, *, dry_run: bool = False, nr_strength: st
     original = ini.read_bytes()
     if current.get("provider_id") == "skynizz":
         import skynizz_provider
-        text, nr_values = skynizz_provider.configure(sys.modules[__name__], original)
+        text, nr_values = skynizz_provider.configure(sys.modules[__name__], original, mode=mode, mfg_multiplier=mfg_multiplier)
         values = {"DlssNr": nr_values}
     else:
         text, values = apply_visual_defaults(original.decode("utf-8-sig"), None, mode, nr_strength, mfg_multiplier, sharpening_strength)
@@ -4264,11 +4264,12 @@ def install_target(
 ) -> dict:
     visual_defaults(nr_strength, mfg_multiplier, sharpening_strength)  # Validate before any mutation.
     is_skynizz = Y4MY_PROVIDER.get("id") == "skynizz"
+    is_skynizz_bridge = is_skynizz and Y4MY_PROVIDER.get("variant") == "nr-mfg-bridge"
     if is_skynizz:
         import skynizz_provider
         desktop_platform = getattr(sys.modules[__name__], "DESKTOP_PLATFORM", "windows" if os.name == "nt" else "linux")
-        skynizz_provider.require_mode(desktop_platform, feature_mode, native_mfg_fallback)
-    require(game.eligible or (is_skynizz and game.exe and game.dlss and not game.anti_cheat),
+        skynizz_provider.require_mode(desktop_platform, feature_mode, native_mfg_fallback, bridge=is_skynizz_bridge)
+    require(game.eligible or (is_skynizz and feature_mode == "nr-only" and game.exe and game.dlss and not game.anti_cheat),
             f"Game is not eligible: {game.name} ({game.reason})")
     require(game.target_dir is not None and game.exe is not None, "Missing game target")
     running = _running_processes_under_root(game.root.resolve())
@@ -4477,7 +4478,7 @@ def install_target(
             ini_source = live_ini.read_bytes()
     is_dlss_unlocked = Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) == "dlss-unlocked"
     if is_skynizz:
-        text, nr_tuning = skynizz_provider.configure(sys.modules[__name__], ini_source, saved_ini)
+        text, nr_tuning = skynizz_provider.configure(sys.modules[__name__], ini_source, saved_ini, mode=feature_mode, mfg_multiplier=mfg_multiplier)
         visual_tuning = {"DlssNr": nr_tuning}
     else:
         payload[ini_key] = patch_optiscaler_ini(ini_source, family, ada_mfg_mode=ada_mfg_mode, disable_overlays=eos_overlay)
@@ -4697,7 +4698,7 @@ def install_target(
                     "enabled": enable_effects and feature_mode != "nr-only",
                     "activation": "startup" if enable_effects else "manual-after-launch",
                 }
-                if family == "ada" and not is_skynizz else None
+                if family == "ada" and (not is_skynizz or is_skynizz_bridge) else None
             ),
             "nr_runtime": dict(selected_nr_meta or {}),
             "provider_id": Y4MY_PROVIDER.get("id", "y4my"),
@@ -4708,7 +4709,7 @@ def install_target(
                 "placement": "pre-sr-with-post-sr-fallback" if nr_tuning.get("PreSr") == "true" else "upstream-configured",
                 "cache_policy": {key: value for key, value in nr_tuning.items() if key.startswith("Cache")},
                 "working_scale": nr_tuning.get("WorkingScale", "auto"), "menu_key": "Insert",
-                "mfg": "unmanaged; rtxForge composition not verified",
+                "mfg": "integrated Ada bridge; target runtime unverified" if is_skynizz_bridge else "unmanaged",
             } if is_skynizz else {
                 "enabled": False if is_dlss_unlocked else (enable_effects and feature_mode in {"nr-mfg", "nr-only"} and nr_tuning.get("Enabled") == "true"),
                 "activation": "toggle-key-f10" if (is_dlss_unlocked and feature_mode in {"nr-mfg", "nr-only"}) else ("startup" if enable_effects else "manual-after-launch"),
@@ -4730,7 +4731,7 @@ def install_target(
                 "dxgi_spoofing": False,
                 "vulkan_spoofing": False,
                 "upscaler_route": "auto-first-launch",
-                "mfg_route": ("unmanaged-skynizz-nr-only" if is_skynizz else
+                "mfg_route": ("native-ada-skynizz-bridge-armed" if is_skynizz_bridge else "unmanaged-skynizz-nr-only" if is_skynizz else
                               ("native-game-dlssg-ada-unlock" if is_dlss_unlocked else "native-ada-y4my-v4-armed") if family == "ada" else "disabled-sm86"),
                 "native_mfg_fallback": bool(native_mfg_fallback) if is_dlss_unlocked else False,
                 "mfg_multiplier": mfg_multiplier if feature_mode != "nr-only" else None,

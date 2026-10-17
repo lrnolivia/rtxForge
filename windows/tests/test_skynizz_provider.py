@@ -27,13 +27,20 @@ def resolve(selection='latest'):
     resolutions.append(selection)
     return dict(release,selected_source=selection)
 provider.resolve=resolve
-packages.download=lambda *a,**kw:archive
+original_download=packages.download
+def download(url,*args,**kwargs):
+    return original_download(url,*args,**kwargs) if url.startswith('file:') else archive
+packages.download=download
 original_module=engine_bridge.module
 inject_failure=False
 def module(*a,**kw):
     e=original_module(*a,**kw)
     e._running_processes_under_root=lambda root:[]
     e._nr_runtime_candidates=lambda explicit=None:[Path(explicit)] if explicit else []
+    e.original_archive_loader=lambda source:({'OptiScaler/streamline/sl.interposer.dll':fixtures.pe(),
+                                            'OptiScaler/streamline/sl.dlss_g.dll':fixtures.pe(),
+                                            'OptiScaler/nvngx_dlssg.dll':fixtures.pe(),
+                                            'dxgi.dll':b'never replace Skynizz loader'}, {})
     if inject_failure:
         original_write=e.atomic_write
         failed=[False]
@@ -122,12 +129,43 @@ missing=game('Missing');missing_before=files(missing)
 review=prepare(missing,values={'nr_runtime':''})
 assert not review['rows'] and 'required' in review['blocked'][0]['reason']
 assert files(missing)==missing_before
-for mode in ('mfg-only','nr-mfg'):
+for mode in ('mfg-only',):
     try:service.prepare([scan(missing)],mode,'install',visual_settings=settings)
     except Exception as error:assert 'NR Only' in str(error)
     else:raise AssertionError('unsupported MFG composition accepted')
 assert files(missing)==missing_before
 checks.append('missing model and unsupported modes refuse before game writes')
+combined_archive=root/'combined.zip';combined_release=fixtures.bridge_fixture(combined_archive)
+provider.bundled_bridge=lambda selection='latest':(dict(combined_release,selected_source=selection),combined_archive)
+combined=game('Combined');(combined/'nvngx_dlssg.dll').write_bytes(fixtures.pe());combined_before=files(combined)
+combined_review=service.prepare([scan(combined)],'nr-mfg','install',visual_settings=settings | {'mfg_multiplier':6})
+run(combined_review);combined_record=baseline(combined);combined_ini=(combined/'OptiScaler.ini').read_text()
+assert combined_record['mfg_provider']['enabled'] and combined_record['compatibility_policy']['mfg_route']=='native-ada-skynizz-bridge-armed'
+assert combined_record['archive']['release']['variant']=='nr-mfg-bridge' and combined_record['archive']['mfg_runtime']['sha256']
+assert combined_record['nr_profile']['enabled'] and not combined_record['nr_profile']['runtime_verified']
+for value in ('AdaMfgUnlock=true','AdaBlackwellKernels=true','OverrideInterpolationCount=5','CacheEnabled=false','PreSr=true'):
+    assert value in combined_ini,value
+assert (combined/'OptiScaler/streamline/sl.dlss_g.dll').is_file()
+assert (combined/'dxgi.dll').read_bytes()==fixtures.pe(),'MFG donor replaced the NR loader'
+assert (combined/'nvngx_dlssg.dll').read_bytes()==fixtures.pe(),'game native runtime replaced'
+run(service.prepare([scan(combined)],'nr-mfg','repair',visual_settings=settings | {'skynizz_version':'v9.9.9'}))
+assert baseline(combined)['archive']['release']['sha256']==combined_release['sha256']
+run(service.prepare([scan(combined)],'nr-mfg','uninstall',visual_settings=settings));assert files(combined)==combined_before
+checks.append('combined NR+MFG uses one loader, exact source and private MFG stack; repair/restore preserve ownership')
+failed_combined=game('CombinedFailure');(failed_combined/'nvngx_dlssg.dll').write_bytes(fixtures.pe());combined_before=files(failed_combined)
+review=service.prepare([scan(failed_combined)],'nr-mfg','install',visual_settings=settings)
+e=review['engine'];write=e.atomic_write
+def fail_private(path,*args,**kwargs):
+    if Path(path).name=='sl.dlss_g.dll':raise OSError('injected combined runtime failure')
+    return write(path,*args,**kwargs)
+e.atomic_write=fail_private
+try:service.execute(review)
+except Exception:pass
+else:raise AssertionError('combined write failure was ignored')
+assert files(failed_combined)==combined_before
+sr_only=host.scan({'folders':[str(missing)],'runtime_provider':'skynizz','feature_mode':'nr-mfg'})[0]
+assert 'game-native DLSS Frame Generation' in sr_only['blocked']
+checks.append('combined runtime failure restores NR/MFG changes; combined scan requires native FG')
 local=game('LocalModel');(local/'nvngx_dlssnr.dll').write_bytes(fixtures.pe()+b'1'*(32*1024**2))
 local_before=files(local);run(prepare(local))
 assert baseline(local)['nr_runtime']['path']==str(local/'nvngx_dlssnr.dll')
@@ -184,7 +222,7 @@ class WindowsSkynizzTest(unittest.TestCase):
                                     env=env, capture_output=True, text=True, timeout=180)
             self.assertEqual(result.returncode, 0, result.stderr[-12000:] + result.stdout[-3000:])
             receipt = json.loads(result.stdout.strip().splitlines()[-1])
-            self.assertEqual(receipt['count'], 9)
+            self.assertEqual(receipt['count'], 11)
             print('PASS: ' + '; '.join(receipt['checks']))
 
 

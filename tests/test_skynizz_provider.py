@@ -42,6 +42,18 @@ def fixture(path, extra=None, omit=None):
     return dict(record, release_size=path.stat().st_size, sha256=hashlib.sha256(path.read_bytes()).hexdigest())
 
 
+def bridge_fixture(path):
+    fixture(path)
+    spec=json.loads((ROOT/'providers/skynizz-bridge/source.json').read_text())
+    record={'variant':'nr-mfg-bridge','repo':'lrnolivia/rtxForge','tag':'v1.2.1','commit':'b'*40,
+            'archive':'rtxForge-Skynizz-v1.2.1-MFG.zip','url':'bundled:providers/skynizz-bridge/rtxForge-Skynizz-v1.2.1-MFG.zip',
+            'upstream':spec['upstream'],'mfg_source':spec['mfg_source'],'patch_sha256':spec['patch_sha256'],
+            'bridge_id':spec['id'],'runtime_verified':False}
+    with zipfile.ZipFile(path,'a') as archive:
+        archive.writestr('DLSS5-Optimised/rtxforge-bridge.json',json.dumps(record))
+    return provider.validate_release(record | {'release_size':path.stat().st_size,'sha256':hashlib.sha256(path.read_bytes()).hexdigest()})
+
+
 class SkynizzPolicyTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -64,6 +76,15 @@ class SkynizzPolicyTest(unittest.TestCase):
         record = fixture(self.archive, omit='DLSS5-Optimised/nvngx.dll_dlssnr.dll')
         with self.assertRaisesRegex(transactions.Refusal, 'layout'):
             provider.load_payload(self.archive, record)
+
+    def test_combined_payload_binds_source_and_patch_receipt(self):
+        record=bridge_fixture(self.archive)
+        data,meta=provider.load_payload(self.archive,record)
+        self.assertEqual(meta['release']['variant'],'nr-mfg-bridge')
+        self.assertEqual(set(data),set(provider.FILES.values()))
+        provider.require_mode('windows','nr-mfg',bridge=True)
+        with self.assertRaisesRegex(transactions.Refusal,'receipt mismatch'):
+            provider.load_payload(self.archive,record | {'patch_sha256':'c'*64})
 
     def test_traversal_case_collision_and_foreign_payloads_are_refused(self):
         for extra in ({'../escape.dll': pe()}, {'a\\b.dll': pe()}, {'dlss5-optimised/optiscaler.dll': pe()},
@@ -110,7 +131,9 @@ class SkynizzPolicyTest(unittest.TestCase):
         fetch.assert_not_called()
 
     def test_windows_catalog_keeps_existing_default_and_linux_excludes_skynizz(self):
-        windows=package_catalog.catalog({'system':'Windows','architecture':'AMD64','ready':True})
+        release=bridge_fixture(self.archive)
+        with patch.object(provider,'bundled_bridge',return_value=(release,self.archive)):
+            windows=package_catalog.catalog({'system':'Windows','architecture':'AMD64','ready':True})
         self.assertTrue(next(row for row in windows if row['id']=='skynizz')['available'])
         self.assertFalse(next(row for row in windows if row['id']=='skynizz')['recommended'])
         self.assertTrue(next(row for row in windows if row['id']=='dlss-unlocked')['recommended'])

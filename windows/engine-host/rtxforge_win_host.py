@@ -350,7 +350,7 @@ def scan(params):
     rows = library_scan.scan(service, params.get('folders', []), params.get('library_folders', []))
     if params.get('runtime_provider')=='skynizz':
         import skynizz_provider
-        skynizz_provider.scan_rows(rows)
+        skynizz_provider.scan_rows(rows,params.get('feature_mode','nr-only'))
     # Linux LibraryMedia.steam_art: the signed-in account's custom grid
     # (Non-Steam games matched through shortcuts.vdf), then Steam's cache.
     media = library_media.LibraryMedia(service.config, dict(library_media.DEFAULTS))

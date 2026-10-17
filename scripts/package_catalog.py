@@ -11,6 +11,7 @@ import platform
 import re
 import stat
 import zipfile
+import transactions as t
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -64,11 +65,19 @@ def catalog(host=None):
             'recommended': key == 'dlss-unlocked' and supported,
         })
     if host.get('system')=='Windows':
+        import skynizz_provider
         record=locks['skynizz']
-        rows.append({'id':'skynizz','name':record['name'],'version':record['tag']+' baseline · selectable release',
-                     'url':'https://github.com/'+record['repo'],'sha256':record['sha256'],
-                     'available':supported,'reason':'Requires a compatible local RTX40 NR model and D3D12/DLSS.' if supported else host.get('reason') or 'Verify a supported NVIDIA system first',
-                     'summary':'NR Only · optional until MFG composition is verified · runtime not verified','recommended':False})
+        bridge=None
+        try:
+            bridge,archive=skynizz_provider.bundled_bridge()
+            bridge_ready=archive.is_file()
+        except (OSError,ValueError,t.Refusal):
+            bridge_ready=False
+        rows.append({'id':'skynizz','name':'Skynizz NR + Ada MFG bridge','version':record['tag']+' bridge · preview',
+                     'url':'https://github.com/'+record['repo'],'sha256':(bridge or record)['sha256'],
+                     'available':supported and bridge_ready,
+                     'reason':('Requires a compatible local RTX40 NR model, D3D12/DLSS and native FG; target runtime QA pending.' if bridge_ready else 'The combined NR + MFG bridge is not included in this app build.') if supported else host.get('reason') or 'Verify a supported NVIDIA system first',
+                     'summary':'Single-loader NR + Ada MFG · requires a compiled bridge build · runtime QA pending','recommended':False})
     return rows
 
 

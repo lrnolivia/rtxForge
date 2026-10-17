@@ -1,4 +1,4 @@
-"""Windows NR-only policy and verified release adapter for Skynizz OptiScaler."""
+"""Verified Skynizz releases and the single-loader Ada MFG bridge."""
 from pathlib import Path
 import hashlib
 import configparser
@@ -12,6 +12,7 @@ import zipfile
 import transactions as t
 import package_catalog
 
+ROOT = Path(__file__).resolve().parents[1]
 REPO = 'Skynizz/optiscaler-dlss5'
 API = 'https://api.github.com/repos/' + REPO
 MAX_ARCHIVE = 128 * 1024**2
@@ -27,10 +28,10 @@ DEFAULTS = {
 }
 
 
-def require_mode(system, mode, fallback=False):
+def require_mode(system, mode, fallback=False, bridge=False):
     t.need(system == 'windows', 'Skynizz is Windows-only in this release; Proton support is not verified.')
-    t.need(mode == 'nr-only' and not fallback,
-           'Skynizz currently supports NR Only. Its composition with rtxForge MFG is not verified; use the existing MFG package for MFG.')
+    t.need((mode == 'nr-only' or (mode == 'nr-mfg' and bridge)) and not fallback,
+           'NR + MFG requires the combined Skynizz/Ada bridge build. Stock Skynizz supports NR Only; use the existing MFG package for MFG Only.')
 
 
 def get_json(url):
@@ -45,6 +46,21 @@ def validate_release(record):
     """Also validate saved releases before repair; never turn state into arbitrary URLs."""
     tag = record.get('tag', '')
     t.need(bool(re.fullmatch(r'v\d+\.\d+\.\d+', tag)), 'Choose latest or a stable Skynizz version such as v1.2.1.')
+    if record.get('variant') == 'nr-mfg-bridge':
+        name = 'rtxForge-Skynizz-' + tag + '-MFG.zip'
+        t.need(record.get('repo') == 'lrnolivia/rtxForge' and record.get('archive') == name
+               and record.get('url') == 'bundled:providers/skynizz-bridge/' + name,
+               'Untrusted combined bridge identity')
+        upstream = record.get('upstream') or {}
+        t.need(upstream.get('repository') == REPO and upstream.get('tag') == tag
+               and re.fullmatch(r'[0-9a-f]{40}', upstream.get('commit', ''))
+               and re.fullmatch(r'[0-9a-f]{64}', record.get('patch_sha256', '')),
+               'Combined bridge source provenance is incomplete')
+        t.need(re.fullmatch(r'[0-9a-f]{64}', record.get('sha256', ''))
+               and re.fullmatch(r'[0-9a-f]{40}', record.get('commit', ''))
+               and type(record.get('release_size')) is int and 0 < record['release_size'] <= MAX_ARCHIVE,
+               'Combined bridge archive provenance is incomplete')
+        return dict(record, id='skynizz', family='skynizz', name='Skynizz NR + Ada MFG bridge', runtime_verified=False)
     name = 'OptiScaler-DLSS5-' + tag[1:] + '-win-x64.zip'
     t.need(record.get('repo') == REPO and record.get('archive') == name
            and record.get('url') == f'https://github.com/{REPO}/releases/download/{tag}/{name}',
@@ -54,6 +70,22 @@ def validate_release(record):
            'Skynizz archive size is invalid')
     t.need(bool(re.fullmatch(r'[0-9a-f]{40}', record.get('commit', ''))), 'Skynizz release commit is missing')
     return dict(record, id='skynizz', family='skynizz', name='Skynizz DLSS 5 NR', runtime_verified=False)
+
+
+def bundled_bridge(selection='latest'):
+    """The app ships its exact compiled bridge, independently of mutable upstream releases."""
+    t.need(selection == 'latest' or re.fullmatch(r'v\d+\.\d+\.\d+', selection or ''), 'Invalid bridge release selection')
+    roots = [ROOT / 'providers/skynizz-bridge', ROOT / 'windows/out/skynizz-bridge']
+    folder = next((path for path in roots if (path / 'package.json').is_file()), None)
+    t.need(folder is not None, 'This app build does not contain the combined NR + MFG bridge. Use a build with the compiled bridge package.')
+    record = validate_release(json.loads((folder / 'package.json').read_text(encoding='utf-8-sig')))
+    t.need(record.get('variant')=='nr-mfg-bridge','The bundled package is not the combined bridge')
+    spec = json.loads((ROOT / 'providers/skynizz-bridge/source.json').read_text(encoding='utf-8'))
+    t.need(record['patch_sha256'] == spec['patch_sha256'] and record['upstream'] == spec['upstream']
+           and record.get('mfg_source') == spec['mfg_source'] and record.get('bridge_id') == spec['id'],
+           'Bundled bridge does not match the admitted source patch')
+    t.need(selection in ('latest', record['tag']), 'This Skynizz version has no compiled NR + MFG bridge in the app; keep the recorded version or update the app.')
+    return dict(record, selected_source=selection), folder / record['archive']
 
 
 def resolve(selection='latest'):
@@ -111,6 +143,13 @@ def load_payload(archive, record):
             parts = name.split('/')
             if not member.is_dir() and len(parts) == 2 and parts[0] == 'DLSS5-Optimised' and parts[1] in FILES:
                 found[parts[1]] = source.read(member)
+        if record.get('variant') == 'nr-mfg-bridge':
+            t.need('DLSS5-Optimised/rtxforge-bridge.json' in source.namelist(),'Combined bridge source receipt is missing')
+            marker = source.read('DLSS5-Optimised/rtxforge-bridge.json')
+            t.need(len(marker) < 128 * 1024, 'Bridge receipt exceeds the limit')
+            receipt = json.loads(marker.decode('utf-8-sig'))
+            t.need(all(receipt.get(key) == record.get(key) for key in ('commit','patch_sha256','upstream','mfg_source','bridge_id')),
+                   'Combined bridge payload/source receipt mismatch')
     t.need(set(found) == set(FILES), 'Unrecognized Skynizz payload layout; required loader, INI and NR forwarder must be present')
     t.need(amd64(found['OptiScaler.dll']) and amd64(found['nvngx.dll_dlssnr.dll']), 'Skynizz requires AMD64 PE payloads')
     ini = found['OptiScaler.ini'].decode('utf-8-sig')
@@ -122,13 +161,25 @@ def load_payload(archive, record):
     }
 
 
-def configure(e, source, saved=None):
+def configure(e, source, saved=None, mode='nr-only', mfg_multiplier='auto'):
     """Repair retains the complete user preset, including cache/placement choices."""
     text = (saved if saved is not None else source).decode('utf-8-sig')
     if saved is None:
         for section, values in DEFAULTS.items():
             for key, value in values.items():
                 text = e.set_ini_value(text, section, key, value)
+        if mode == 'nr-mfg':
+            # Upstream issue #2 reports MFG pacing trouble with edit reuse.
+            # Keep the pre-SR path, with cache reuse opt-in until runtime QA.
+            text = e.set_ini_value(text, 'DlssNr', 'CacheEnabled', 'false')
+    if mode == 'nr-mfg':
+        for section, values in {'DLSSG':{'AdaMfgUnlock':'true','AdaBlackwellKernels':'true','AmpereMfgUnlock':'false'},
+                                'FrameGen':{'Enabled':'false','FGInput':'nofg','FGOutput':'nofg','FGNvngxReplacement':'None'}}.items():
+            for key, value in values.items():
+                text = e.set_ini_value(text, section, key, value)
+        if saved is None:
+            for key, value in e.visual_defaults(2, mfg_multiplier, .5)['DLSSG'].items():
+                text = e.set_ini_value(text, 'DLSSG', key, value)
     parser = configparser.ConfigParser(interpolation=None, strict=True, inline_comment_prefixes=(';', '#'))
     parser.optionxform = str
     try:
@@ -153,7 +204,7 @@ def check_target(e, game, baseline):
         t.need(not current or current.get('provider_id') == 'skynizz', 'Restore the existing provider before switching to Skynizz.')
 
 
-def scan_rows(rows):
+def scan_rows(rows, mode='nr-only'):
     for row in rows:
         if not row.get('exe'):
             row['blocked'] = 'No Windows executable found'
@@ -161,7 +212,9 @@ def scan_rows(rows):
             row['blocked'] = 'Anti-cheat detected'
         elif not row.get('native_dlss'):
             row['blocked'] = 'Skynizz needs a native DLSS Super Resolution route; D3D12/DLSS must be used in game.'
+        elif mode == 'nr-mfg' and not row.get('native_dlssg'):
+            row['blocked'] = 'The combined NR + MFG bridge requires game-native DLSS Frame Generation.'
         else:
             row['blocked'] = ''
-        row['nr_route_note'] = 'NR Only · requires D3D12 with DLSS enabled · MFG composition unverified'
+        row['nr_route_note'] = 'Requires D3D12 with DLSS enabled · combined-build runtime validation pending' if mode == 'nr-mfg' else 'NR Only · requires D3D12 with DLSS enabled'
     return rows

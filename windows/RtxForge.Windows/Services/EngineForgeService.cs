@@ -180,6 +180,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
 
     public async Task<IReadOnlyList<Game>> ScanAsync(CancellationToken cancel = default)
     {
+        // The library serves every mode; the installation review checks native FG for NR + MFG.
         var rows = await CallAsync("scan", new { folders = Settings.GameFolders, library_folders = Settings.LibraryFolders, runtime_provider = Settings.RuntimeProvider }, cancel: cancel) as JsonArray ?? [];
         var art = new SteamArtwork(Settings.OnlineArt);
         return LibraryLocations.Visible(rows.OfType<JsonObject>().Select(row => ToGame(row, art)), Settings.RemovedGames);

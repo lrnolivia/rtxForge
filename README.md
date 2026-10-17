@@ -37,13 +37,15 @@ Start with one game and see how it feels before changing your whole library. **T
 4. **Launch and check.** Enable DLSS and frame generation in the game for MFG. Actual output depends on the game and runtime. NR remains experimental and is not confirmed by a saved setting or diagnostic log. DLSS-Unlocked NR starts off; F10 toggles it where supported.
 5. **Tune or recover.** Per-game **Apply** saves presets for the next launch. **Repair Feature Files** replaces damaged files while keeping tuning. **Restore Original Files** removes installed features; use it before changing provider or feature profile.
 
-### Skynizz NR preview (Windows)
+### Skynizz NR + MFG preview (Windows)
 
-Select **Skynizz DLSS 5 NR** in Packages for NR Only, then choose `latest` stable or a release such as `v1.2.1`. The review identifies the exact release, archive SHA-256 and selected model. Repair retains that game's recorded release and complete in-game preset. Restore is required before switching providers. Existing provider selections and defaults are preserved.
+Select **Skynizz NR + Ada MFG bridge** in Packages for NR + MFG. It combines Skynizz's NR implementation and the existing Ada MFG unlock in one loader, with the verified private NVIDIA/Streamline companion runtime. A game-native DLSS Frame Generation route is required. The app build must include the compiled bridge; the stock upstream Skynizz DLL is not substituted for it.
 
-This provider requires a compatible, user-supplied RTX 40 `nvngx_dlssnr.dll` in Settings or beside the game executable, and a D3D12 game running DLSS Super Resolution. The package's `nvngx.dll_dlssnr.dll` is a forwarder, not that model. Fresh installs use upstream's Quality NR policy; edit-cache presets can be changed through the Insert overlay. **Reset Presets** restores that policy rather than the other provider's tuning. Upstream installer scripts are never run.
+Choose `latest` supported bridge or pin an included release such as `v1.2.1`. NR Only can separately use stock Skynizz stable releases. The review identifies the exact source, package SHA-256 and selected model. Repair retains that game's recorded release and complete in-game preset. Restore is required before changing provider or mode. Existing provider choices and defaults are preserved.
 
-Skynizz remains optional until its composition with rtxForge's existing MFG is verified. This preview refuses NR + MFG, MFG Only and Linux/Proton installation; it does not replace a working MFG setup or establish support for games without a native DLSS route. File staging and configuration checks do not prove neural rendering or frame pacing in game. [Upstream source and releases](https://github.com/Skynizz/optiscaler-dlss5).
+This provider requires a compatible, user-supplied RTX 40 `nvngx_dlssnr.dll` in Settings or beside the game executable, and D3D12 with DLSS enabled. The similarly named `nvngx.dll_dlssnr.dll` is only the forwarder. Combined mode starts with pre-SR NR and edit-cache reuse off to address the reported MFG pacing issue. The Insert overlay retains NR preset controls; Repair preserves them. **Reset Presets** restores the combined policy. Upstream installer scripts are never run.
+
+The bridge is a preview until actual RTX40 NR, generated-frame progression and pacing are verified together; it will become the default NR package after that gate. File/configuration checks alone do not establish that result. MFG Only continues to use the existing provider, and Skynizz Linux/Proton installation remains unavailable in this Windows-first pass. [Skynizz source](https://github.com/Skynizz/optiscaler-dlss5), [combined source and provenance](providers/skynizz-bridge/README.md).
 
 | Setting | Choices |
 | --- | --- |

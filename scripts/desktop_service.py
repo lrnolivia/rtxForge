@@ -44,6 +44,7 @@ class DesktopService:
                  'profile':('NR + MFG' if ini.get('DlssNr',{}).get('Enabled','false').lower()=='true' else 'MFG Only') if installed else 'Not installed'}
             row['native_dlss']=any(Path(p).name.lower()=='nvngx_dlss.dll' and 'optiscaler' not in [q.lower() for q in Path(p).relative_to(g.root).parts] for p in g.upscalers)
             row['anti_cheat']=bool(g.anti_cheat)
+            row['native_dlssg']=native
             if installed:
                 nr_values=ini.get('DlssNr',{});sharp_values=ini.get('Sharpness',{})
                 row['nr_enabled']=nr_values.get('Enabled','false').split(';',1)[0].strip().lower()=='true'

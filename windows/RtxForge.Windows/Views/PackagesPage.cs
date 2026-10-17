@@ -28,7 +28,7 @@ public sealed partial class PackagesPage : Page
         Loaded += async (_, _) => await LoadAsync();
     }
 
-    static string ProviderName(string id) => id switch { "dlss-unlocked" => "DLSS-Unlocked", "skynizz" => "Skynizz DLSS 5 NR", "custom" => "Custom package", "y4my" => "y4my Multipass", _ => id };
+    static string ProviderName(string id) => id switch { "dlss-unlocked" => "DLSS-Unlocked", "skynizz" => "Skynizz NR + Ada MFG bridge", "custom" => "Custom package", "y4my" => "y4my Multipass", _ => id };
 
     async Task LoadAsync()
     {
@@ -52,8 +52,8 @@ public sealed partial class PackagesPage : Page
         body.Children.Add(available);
         if (shell.Settings.RuntimeProvider == "skynizz")
         {
-            var version = new PreferencesGroup("Skynizz release", "NR Only. A compatible local model and D3D12/DLSS are required. Existing games keep their installed release on repair. MFG composition is not verified.");
-            var (versionRow, choice) = Prefs.EntryRow("Version", "Use latest stable, or pin a release such as v1.2.1. The exact tag and SHA-256 are shown before installation.", shell.Settings.SkynizzVersion);
+            var version = new PreferencesGroup("Skynizz release", "NR + MFG uses the app's compiled Ada bridge and requires native DLSS Frame Generation. NR Only can use stock Skynizz. Both require a compatible local model and D3D12/DLSS; target runtime validation is pending.");
+            var (versionRow, choice) = Prefs.EntryRow("Version", "Use latest supported, or pin a release such as v1.2.1. Repair retains the recorded package. Exact source and SHA-256 are reviewed before installation.", shell.Settings.SkynizzVersion);
             choice.LostFocus += (_, _) => { shell.Settings.SkynizzVersion = string.IsNullOrWhiteSpace(choice.Text) ? "latest" : choice.Text.Trim(); shell.SaveSettings(); };
             version.Add(versionRow);
             body.Children.Add(version);

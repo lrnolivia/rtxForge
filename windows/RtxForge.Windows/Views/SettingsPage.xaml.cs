@@ -55,7 +55,7 @@ public sealed partial class SettingsPage : Page
         // ----- Graphics -----
         var graphics = new PreferencesGroup(null, "Restore original files before switching providers.");
         var (row, provider) = Prefs.ComboRow("Provider", "Package that supplies NR and MFG.",
-            ["y4my Multipass", "DLSS-Unlocked", "Custom package", "Skynizz DLSS 5 NR (NR Only)"], Math.Max(0, Array.IndexOf(ProviderKeys, Settings.RuntimeProvider)), "");
+            ["y4my Multipass", "DLSS-Unlocked", "Custom package", "Skynizz NR + MFG bridge (preview)"], Math.Max(0, Array.IndexOf(ProviderKeys, Settings.RuntimeProvider)), "");
         graphics.Add(row);
         (row, var nrPath) = Prefs.EntryRow("Local NR model DLL", "Compatible nvngx_dlssnr.dll. Required for Skynizz unless a suitable model is already beside the game executable.",
             Settings.NrRuntime, @"C:\path\to\nvngx_dlssnr.dll", "");
@@ -78,13 +78,13 @@ public sealed partial class SettingsPage : Page
         {
             var selectedProvider = ProviderKeys[Math.Max(0, provider.SelectedIndex)];
             var selectedMode = Modes[Math.Max(0, profile.SelectedIndex)];
-            if (selectedProvider == "skynizz" && selectedMode != "nr-only")
+            if (selectedProvider == "skynizz" && selectedMode == "mfg-only")
             {
-                profile.SelectedIndex = Array.IndexOf(Modes, "nr-only");
-                Notice.Title = "Skynizz currently supports NR Only.";
-                Notice.Message = "Its composition with rtxForge MFG is not verified.";
+                profile.SelectedIndex = Array.IndexOf(Modes, "nr-mfg");
+                Notice.Title = "Skynizz uses the combined NR + MFG bridge.";
+                Notice.Message = "Select a compiled bridge build. In-game runtime verification remains required.";
                 Notice.IsOpen = true;
-                selectedMode = "nr-only";
+                selectedMode = "nr-mfg";
             }
             if (selectedProvider == "y4my" && selectedMode == "nr-only")
             {

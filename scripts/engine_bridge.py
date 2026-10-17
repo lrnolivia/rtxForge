@@ -21,10 +21,32 @@ def module(config,provider='y4my',mode=None):
 def payload(e,config,mode,archive=None):
     p=e.Y4MY_PROVIDER
     if p.get('id')=='skynizz':
-        skynizz_provider.require_mode(cross_os.THIS_OS,mode)
+        bridge=p.get('variant')=='nr-mfg-bridge'
+        skynizz_provider.require_mode(cross_os.THIS_OS,mode,bridge=bridge)
         cache=storage(config,skynizz_provider.MAX_ARCHIVE)/'packages'/p['sha256']
-        source=Path(archive) if archive else packages.download(p['url'],cache/p['archive'],expected=p['sha256'],size=p['release_size'])
-        return skynizz_provider.load_payload(source,p)
+        if bridge:
+            source=cache/p['archive']
+            if not source.is_file():
+                bundled,local=skynizz_provider.bundled_bridge(p['tag'])
+                t.need(bundled['sha256']==p['sha256'],'The recorded bridge is not cached or bundled; repair cannot switch versions.')
+                source=packages.download(local.resolve().as_uri(),source,expected=p['sha256'],size=p['release_size'])
+        else:
+            source=Path(archive) if archive else packages.download(p['url'],cache/p['archive'],expected=p['sha256'],size=p['release_size'])
+        data,meta=skynizz_provider.load_payload(source,p)
+        if bridge:
+            # Reuse only the verified private MFG runtime, never its OptiScaler loader or INI.
+            donor=providers()['y4my'];companion=donor['runtime_archive']
+            runtime=packages.download(companion['url'],cache/companion['archive'],expected=companion['sha256'],size=companion['release_size'])
+            required=e.Y4MY_REQUIRED_FILES
+            try:
+                e.Y4MY_PROVIDER={**donor,**companion}
+                extra,_=getattr(e,'original_archive_loader',e.load_archive_payload)(runtime)
+            finally:
+                e.Y4MY_PROVIDER=p;e.Y4MY_REQUIRED_FILES=required
+            private={n:v for n,v in extra.items() if n.startswith('OptiScaler/streamline/') or n in ('OptiScaler/nvngx_dlss.dll','OptiScaler/nvngx_dlssd.dll','OptiScaler/nvngx_dlssg.dll')}
+            t.need({'OptiScaler/streamline/sl.interposer.dll','OptiScaler/streamline/sl.dlss_g.dll'}<=private.keys(),'The MFG companion runtime is incomplete')
+            data.update(private);meta['mfg_runtime']={**companion,'repository':donor['repo']}
+        return data,meta
     if p.get('custom'):
         data,meta=package_catalog.load_custom_payload(p)
         if mode=='mfg-only':
@@ -259,7 +281,7 @@ def proton_setup(e,g,record):
 def prepare(config,rows,mode,operation,settings):
     selected=settings.get('runtime_provider','y4my')
     if selected=='skynizz' and operation in ('install','repair'):
-        skynizz_provider.require_mode(cross_os.THIS_OS,mode,bool(settings.get('native_mfg_fallback')))
+        skynizz_provider.require_mode(cross_os.THIS_OS,mode,bool(settings.get('native_mfg_fallback')),bridge=mode=='nr-mfg')
     custom=settings.get('custom_package') if selected=='custom' else None
     t.need(selected!='custom' or isinstance(custom,dict),'Choose and review a custom package first.')
     e=module(config,custom['family'] if custom else selected,mode);data={};meta={};nr=None;nrmeta=None
@@ -301,8 +323,10 @@ def prepare(config,rows,mode,operation,settings):
                 release=skynizz_provider.validate_release(saved_release) if current else None
                 selection=settings.get('skynizz_version','latest')
                 if release is None:
-                    if selection not in releases:releases[selection]=ui.work('Resolving Skynizz release',skynizz_provider.resolve,selection)
+                    if selection not in releases:
+                        releases[selection]=(skynizz_provider.bundled_bridge(selection)[0] if mode=='nr-mfg' else ui.work('Resolving Skynizz release',skynizz_provider.resolve,selection))
                     release=releases[selection]
+                t.need(mode!='nr-mfg' or release.get('variant')=='nr-mfg-bridge','NR + MFG requires the combined bridge; restore the stock NR-only package first.')
                 e.Y4MY_PROVIDER=release
                 target_data,target_meta=ui.work('Verifying Skynizz package',payload,e,config,mode)
                 nr,nrmeta=e.load_user_nr_runtime(settings.get('nr_runtime') or None,family=None)
@@ -363,7 +387,8 @@ def prepare(config,rows,mode,operation,settings):
                     preview=e.install_target(g,target_data,target_meta,'ada',nr_runtime_payload=nr,nr_runtime_meta=nrmeta,feature_mode=mode,enable_effects=True,native_mfg_fallback=bool(settings.get('native_mfg_fallback',False)),nr_strength=strength,mfg_multiplier=multiplier,sharpening_strength=sharpening,preserve_visual_settings=not settings.get("apply_requested_presets",False),dry_run=True)
                 if selected=='skynizz':
                     model=preview.get('nr_runtime') or {}
-                    preview=dict(preview,launch_options=f"{release['tag']} · SHA-256 {release['sha256']} · model {model.get('path','')} · SHA-256 {model.get('sha256','')} · NR Only, requires D3D12/DLSS; MFG composition unverified")
+                    route='Combined NR + Ada MFG bridge · target runtime validation pending' if mode=='nr-mfg' else 'NR Only · requires D3D12/DLSS'
+                    preview=dict(preview,launch_options=f"{release['tag']} · SHA-256 {release['sha256']} · model {model.get('path','')} · SHA-256 {model.get('sha256','')} · "+route)
                 if interrupted_install(baseline):
                     preview=dict(preview,launch_options='Finishes an install that was interrupted · '+preview['launch_options'])
             if prefix:preview=dict(preview,launch_options="Proton setting saved in this game's prefix · Steam can stay open")

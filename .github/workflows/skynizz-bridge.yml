@@ -1,7 +1,6 @@
 name: Skynizz NR and Ada MFG bridge
 on:
-  pull_request:
-    paths: ['providers/skynizz-bridge/**', 'windows/build/Build-SkynizzBridge.ps1', '.github/workflows/skynizz-bridge.yml']
+  # Application CI builds and bundles this dependency. This is a manual source-only lane.
   workflow_dispatch:
 permissions:
   contents: read

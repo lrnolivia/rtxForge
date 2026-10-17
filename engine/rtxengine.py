@@ -64,6 +64,11 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Optional
 
+# The desktop host loads independent engine instances under the same import
+# name. Keep this instance's context when a later scan/native-DLL review replaces
+# sys.modules[name] while an earlier reviewed operation is still pending.
+_ENGINE_MODULE = sys.modules[__name__]
+
 APP_NAME = "rtxEngine · Terminal Edition"
 ENGINE_SCHEMA = 13
 HOME = Path.home()
@@ -2199,7 +2204,7 @@ def _reset_visual_settings(game: Game, *, dry_run: bool = False, nr_strength: st
     original = ini.read_bytes()
     if current.get("provider_id") == "skynizz":
         import skynizz_provider
-        text, nr_values = skynizz_provider.configure(sys.modules[__name__], original, mode=mode, mfg_multiplier=mfg_multiplier, game=game)
+        text, nr_values = skynizz_provider.configure(_ENGINE_MODULE, original, mode=mode, mfg_multiplier=mfg_multiplier, game=game)
         values = {"DlssNr": nr_values}
     else:
         text, values = apply_visual_defaults(original.decode("utf-8-sig"), None, mode, nr_strength, mfg_multiplier, sharpening_strength)
@@ -2213,7 +2218,7 @@ def _reset_visual_settings(game: Game, *, dry_run: bool = False, nr_strength: st
         addon_ini = target / "ReShade.ini"
         require(addon_ini.is_file() and not addon_ini.is_symlink(), "MFG config is missing or linked; repair first")
         addon_original = addon_ini.read_bytes()
-        changes["ReShade.ini"] = (addon_original, ada_mfg_provider.reset_multiplier(sys.modules[__name__], addon_original, mfg_multiplier))
+        changes["ReShade.ini"] = (addon_original, ada_mfg_provider.reset_multiplier(_ENGINE_MODULE, addon_original, mfg_multiplier))
     record = {"action": "reset-visual-settings", "name": game.name, "feature_mode": mode,
               "provider_id": current.get("provider_id"), "files": list(changes),
               "launch_options": f"NR {visual_strength_label(nr_strength, 'nr')} · Sharpening {visual_strength_label(sharpening_strength, 'sharpness')}" + (f" · MFG {'In game' if mfg_multiplier == 'auto' else str(mfg_multiplier) + 'x' if mfg_multiplier else 'Off'} requested" if mode != "nr-only" else " · NR Only retained"),
@@ -4296,7 +4301,7 @@ def install_target(
     mfg_component = Y4MY_PROVIDER.get("mfg_component") if is_skynizz_bridge else None
     if is_skynizz:
         import skynizz_provider
-        desktop_platform = getattr(sys.modules[__name__], "DESKTOP_PLATFORM", "windows" if os.name == "nt" else "linux")
+        desktop_platform = getattr(_ENGINE_MODULE, "DESKTOP_PLATFORM", "windows" if os.name == "nt" else "linux")
         skynizz_provider.require_mode(desktop_platform, feature_mode, native_mfg_fallback, bridge=is_skynizz_bridge)
     require(game.eligible or (is_skynizz and feature_mode == "nr-only" and game.exe and game.dlss and not game.anti_cheat),
             f"Game is not eligible: {game.name} ({game.reason})")
@@ -4326,7 +4331,7 @@ def install_target(
         prior_mode = (existing_baseline.get("current") or {}).get("feature_mode")
         require(prior_mode in (None, feature_mode), "Uninstall before changing DLSS-Unlocked pipelines")
     if is_skynizz:
-        skynizz_provider.check_target(sys.modules[__name__], game, existing_baseline)
+        skynizz_provider.check_target(_ENGINE_MODULE, game, existing_baseline)
     reshade = detect_reshade(target)
     # Keep y4my's overlay behavior unchanged by default. Its global overlay
     # blocker also disables Steam Input, so RC1 does not infer a per-game route.
@@ -4507,10 +4512,10 @@ def install_target(
             ini_source = live_ini.read_bytes()
     is_dlss_unlocked = Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) == "dlss-unlocked"
     if is_skynizz:
-        text, nr_tuning = skynizz_provider.configure(sys.modules[__name__], ini_source, saved_ini, mode=feature_mode, mfg_multiplier=mfg_multiplier, game=game)
+        text, nr_tuning = skynizz_provider.configure(_ENGINE_MODULE, ini_source, saved_ini, mode=feature_mode, mfg_multiplier=mfg_multiplier, game=game)
         if mfg_component:
             import ada_mfg_provider
-            payload["ReShade.ini"] = ada_mfg_provider.configure(sys.modules[__name__], game, existing_baseline, mfg_multiplier)
+            payload["ReShade.ini"] = ada_mfg_provider.configure(_ENGINE_MODULE, game, existing_baseline, mfg_multiplier)
         visual_tuning = {"DlssNr": nr_tuning}
     else:
         payload[ini_key] = patch_optiscaler_ini(ini_source, family, ada_mfg_mode=ada_mfg_mode, disable_overlays=eos_overlay)

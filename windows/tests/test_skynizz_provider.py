@@ -221,6 +221,9 @@ external_settings=settings | {'mfg_provider':'mfg-unlock','mfg_multiplier':4,'nr
 review=service.prepare([scan(external)],'nr-mfg','install',visual_settings=external_settings)
 assert files(external)==external_before
 assert 'MFG Unlock 1.4.4' in review['rows'][0]['detail']
+# Native DLL preparation loads another engine after the provider review. It
+# must not replace the pending operation's provider/configuration context.
+later_engine=module(service.config,'y4my')
 run(review);record=baseline(external)
 assert record['mfg_provider']['ownership']=='managed-addon'
 assert record['compatibility_policy']['mfg_route']=='native-ada-mfg-unlock-addon'

@@ -21,6 +21,8 @@ from operation_session import Session, Cancelled
 ROOT = Path(__file__).resolve().parents[1]
 CONFIGS = ('ReShade.ini', 'ReShadePreset.ini')
 MODEL = 'nvngx_dlssnr.dll'
+INSTALL_DEFAULTS = {'NRFollowInputRes': '0', 'NRResolutionScale': '0.65',
+                    'NRLocalStructure': '1.0', 'NRSkinStructure': '1.0'}
 _hashes = {}
 
 
@@ -116,6 +118,13 @@ def configured(directory):
         techniques = found[1] if found else ''
     return {'nr_enabled': nr.get('NeuralUplift', '0') == '1' and 'DLSS5_Feed' in techniques,
             'passes': nr.get('NRPasses'), 'scale': nr.get('NRResolutionScale'), 'preset': nr.get('NRPreset')}
+
+
+def configure_new_install(text, nr_on_launch=False):
+    """Apply fresh-install tuning without changing other ReShade or depth settings."""
+    for key, value in INSTALL_DEFAULTS.items():
+        text = t.setvalue(text, 'RenoDX.DLSS5', key, value)
+    return t.setvalue(text, 'RenoDX.DLSS5', 'NeuralUplift', '1' if nr_on_launch else '0')
 
 
 def _read_ini(path):
@@ -348,7 +357,10 @@ def prepare(config, rows, mode, operation, settings, e):
                 source_ini = (Path(writes['ReShade.ini']['path']).read_bytes().decode('utf-8-sig')
                               if 'ReShade.ini' in writes else (directory / 'ReShade.ini').read_bytes().decode('utf-8-sig'))
                 desired_startup = '1' if settings.get('nr_on_launch', False) else '0'
-                changed = source_ini if t.ini(source_ini).get('RenoDX.DLSS5', 'NeuralUplift', fallback='0') == desired_startup else t.setvalue(source_ini, 'RenoDX.DLSS5', 'NeuralUplift', desired_startup)
+                if not existing:
+                    changed = configure_new_install(source_ini, settings.get('nr_on_launch', False))
+                else:
+                    changed = source_ini if t.ini(source_ini).get('RenoDX.DLSS5', 'NeuralUplift', fallback='0') == desired_startup else t.setvalue(source_ini, 'RenoDX.DLSS5', 'NeuralUplift', desired_startup)
                 dest = t.safe(e.STATE_ROOT / 'feeder-cache' / t.sha(changed.encode()))
                 if not dest.exists(): t.atomic_file(dest, changed.encode(), 0o600)
                 if changed != source_ini or 'ReShade.ini' in writes:

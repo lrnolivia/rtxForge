@@ -217,7 +217,7 @@ def _register_feeder(plan):
     if plan['clean']:
         data = dict(plan['clean_payload'])
         text = data['ReShade.ini'].decode('utf-8-sig')
-        data['ReShade.ini'] = t.setvalue(text, 'RenoDX.DLSS5', 'NeuralUplift', '1' if plan['settings'].get('nr_on_launch', False) else '0').encode()
+        data['ReShade.ini'] = feeder.configure_new_install(text, plan['settings'].get('nr_on_launch', False)).encode()
         for name, value in data.items():
             t.atomic_file(t.safe(target / t.relative(name)), value, 0o644)
         record['installed_hashes'] = {name: t.digest(target / name) for name in plan['hashes']}

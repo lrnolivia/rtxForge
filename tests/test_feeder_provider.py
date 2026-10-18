@@ -78,7 +78,7 @@ class FeederTest(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
         (directory / feeder.MODEL).write_bytes(self.old)
-        (directory / 'ReShade.ini').write_bytes(b'[DEPTH]\r\nDepthCopyBeforeClears=1\r\n[RenoDX.DLSS5]\r\nNeuralUplift=1\r\nNRPasses=1\r\nNRResolutionScale=0.7\r\nNRLocalTone=2\r\n')
+        (directory / 'ReShade.ini').write_bytes(b'[DEPTH]\r\nDepthCopyBeforeClears=1\r\n[RenoDX.DLSS5]\r\nNeuralUplift=1\r\nNRPasses=1\r\nNRFollowInputRes=1\r\nNRResolutionScale=0.7\r\nNRLocalTone=2\r\n')
         (directory / 'ReShadePreset.ini').write_text('Techniques=Lumenite_Kernel@lumenite_Kernel.fx,DLSS5_Feed@DLSS5_Feed.fx\n\n[DLSS5_Feed.fx]\nDEBUG_VIEW=0\n')
 
     def game(self, name='game', installed=False):
@@ -139,12 +139,24 @@ class FeederTest(unittest.TestCase):
         review = feeder.prepare({}, [row], 'nr-only', 'install', settings, self.e)
         self.apply(review)
         self.assertFalse(feeder.configured(Path(row['game']))['nr_enabled'])
+        values = feeder._read_ini(Path(row['game']) / 'ReShade.ini')['RenoDX.DLSS5']
+        self.assertEqual(float(values['NRResolutionScale']), .65)
+        self.assertEqual(float(values['NRLocalStructure']), 1.0)
+        self.assertEqual(float(values['NRSkinStructure']), 1.0)
+        self.assertEqual(values['NRFollowInputRes'], '0')
 
     def test_new_install_and_repeat_restore(self):
         row = self.game()
         before = self.files(row)
         self.apply(self.prepare(row))
         self.assertEqual((Path(row['game']) / feeder.MODEL).read_bytes(), self.new)
+        ini = feeder._read_ini(Path(row['game']) / 'ReShade.ini')
+        self.assertTrue(feeder.configured(Path(row['game']))['nr_enabled'])
+        for key, expected in {'NRResolutionScale': .65, 'NRLocalStructure': 1.0, 'NRSkinStructure': 1.0}.items():
+            self.assertEqual(float(ini['RenoDX.DLSS5'][key]), expected)
+        self.assertEqual(ini['RenoDX.DLSS5']['NRLocalTone'], '2')
+        self.assertEqual(ini['RenoDX.DLSS5']['NRFollowInputRes'], '0')
+        self.assertEqual(ini['DEPTH']['DepthCopyBeforeClears'], '1')
         self.apply(self.prepare(row, 'uninstall'))
         self.assertEqual(self.files(row), before)
         self.apply(self.prepare(row))

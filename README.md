@@ -15,6 +15,8 @@ Already have a feature package installed? Rescan your library, then review **Ado
 
 New and clean installs start with NR off unless you check **Enable NR on launch**. Set the default in Graphics settings; turn NR on later from the overlay. Adoption and repair keep existing settings.
 
+New and clean Skynizz and Feeder installs use a 65% NR model scale, with local and skin structure at 1.0. Existing presets and repair tuning are preserved.
+
 Verified offline-only profiles are explicit exceptions to the anti-cheat block. Adopted Gears E-Day installs offer **Launch offline** in game details. Use that route while the package is installed; normal Steam launch settings remain unchanged. This does not enable online play.
 
 Choose **Installer** for guided setup, or **Portable** to download and launch without installing the app. Both are intended release options for Linux and Windows.

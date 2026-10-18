@@ -94,6 +94,8 @@ assert not a.prepare(host.service.config,[row],'adopt',settings)['plans']
 # A clean install resets config, starts NR off, and restores the exact adopted setup.
 row,target=game('Clean');before=files(target);r=review(row,True);a.execute(r)
 assert t.ini((target/'OptiScaler.ini').read_text()).get('DlssNr','Enabled')=='false'
+for key,value in {'WorkingScale':.65,'LocalStructure':1.0,'SkinStructure':1.0}.items():
+    assert t.ini((target/'OptiScaler.ini').read_text()).getfloat('DlssNr',key)==value
 e=module(host.service.config);e.restore_target(b.game(e,row));assert files(target)==before
 # New install default and explicit opt-in are independent of MFG.
 row,target=game('NewInstall');e=module(host.service.config);g=b.game(e,row)
@@ -150,6 +152,21 @@ try:
     assert r['plans'],r['blocked']
     a.execute(r);assert files(target)==before
     assert a.feeder.state(module(host.service.config),target)['restore_boundary']=='before-adoption'
+    # Clean Adoption gets fresh defaults and can still restore the exact old tuning.
+    row=case.game('FeedClean',installed=True);row['runtime_provider']='feeder'
+    target=Path(row['game']);before=files(target)
+    r=a.prepare(host.service.config,[row],'adopt-clean',case.settings|{'runtime_provider':'feeder','nr_on_launch':False})
+    assert r['plans'],r['blocked']
+    a.execute(r)
+    values=t.ini((target/'ReShade.ini').read_text())['RenoDX.DLSS5']
+    assert values['NeuralUplift']=='0'
+    assert values['NRFollowInputRes']=='0'
+    for key,value in {'NRResolutionScale':.65,'NRLocalStructure':1.0,'NRSkinStructure':1.0}.items():
+        assert float(values[key])==value
+    assert values['NRLocalTone']=='2'
+    r=a.feeder.prepare(host.service.config,[row],'nr-only','uninstall',case.settings,module(host.service.config))
+    assert r['plans'],r['blocked']
+    a.feeder.execute(r);assert files(target)==before
 finally:case.doCleanups()
 print('adoption, clean install, restore, drift, running, unknown files and scoped offline consent passed')
 '''

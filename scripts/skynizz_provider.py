@@ -28,7 +28,8 @@ DEFAULTS = {
     'Upscalers': {'Dx12Upscaler': 'dlss'},
     'Log': {'LogToFile': 'true', 'LogLevel': '2'},
     'DlssNr': {'Enabled': 'true', 'CacheEnabled': 'true', 'CacheInterval': '1',
-               'PreSr': 'true', 'WorkingScale': '0.67', 'JbuUpsample': 'true',
+               'PreSr': 'true', 'WorkingScale': '0.65', 'JbuUpsample': 'true',
+               'LocalStructure': '1.0', 'SkinStructure': '1.0',
                'CacheRefreshBlend': '1.0', 'WhitePointSource': '3'},
 }
 

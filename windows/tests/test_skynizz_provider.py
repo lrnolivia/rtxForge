@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 WORKER = r'''
 import importlib.util,json,sys,hashlib,zipfile
 from pathlib import Path
+from unittest.mock import patch
 root=Path(sys.argv[1]);repo=Path(sys.argv[2])
 sys.path[:0]=[str(repo/'scripts'),str(repo/'windows/engine-host')]
 spec=importlib.util.spec_from_file_location('nr_fixture',repo/'tests/test_skynizz_provider.py')
@@ -98,8 +99,13 @@ review=prepare(fresh);assert files(fresh)==before
 assert release['sha256'] in review['rows'][0]['detail'] and str(model) in review['rows'][0]['detail']
 run(review)
 record=baseline(fresh);ini=(fresh/'OptiScaler.ini').read_text()
-for value in ('Enabled=true','CacheInterval=1','WorkingScale=0.67','WhitePointSource=3','PreSr=true'):
+for value in ('Enabled=true','CacheInterval=1','WorkingScale=0.65','LocalStructure=1.0','SkinStructure=1.0','WhitePointSource=3','PreSr=true'):
     assert value in ini,value
+import companion_controls
+with patch.object(companion_controls.Controls,'_start_watcher',lambda self:None):
+    controls=companion_controls.Controls(host.STATE)
+    values=controls.status({'row':scan(fresh)})['values']
+assert values['work_scale']==.65 and values['structure']==1.0 and values['skin']==1.0,values
 assert 'DualFeature=' not in ini and 'AdaMfgUnlock=true' not in ini
 assert record['provider_id']=='skynizz' and record['mfg_provider'] is None
 assert record['compatibility_policy']['mfg_route']=='unmanaged-skynizz-nr-only'
@@ -120,7 +126,7 @@ def payload(e,config,mode,archive=None):
 engine_bridge.payload=payload
 switch=service.prepare([scan(fresh)],'nr-only','install',visual_settings=settings | {'runtime_provider':'y4my'})
 assert not switch['rows'] and 'switching providers' in switch['blocked'][0]['reason']
-ini=ini.replace('CacheInterval=1','CacheInterval=8').replace('WorkingScale=0.67','WorkingScale=0.5')
+ini=ini.replace('CacheInterval=1','CacheInterval=8').replace('WorkingScale=0.65','WorkingScale=0.5').replace('LocalStructure=1.0','LocalStructure=0.43').replace('SkinStructure=1.0','SkinStructure=0.71')
 (fresh/'OptiScaler.ini').write_text(ini)
 count=len(resolutions);repair=prepare(fresh,'repair',{'skynizz_version':'v9.9.9'})
 assert len(resolutions)==count,'repair resolved a different release'
@@ -129,7 +135,7 @@ assert (fresh/'OptiScaler.ini').read_text()==ini,'repair replaced the user cache
 assert baseline(fresh)['archive']['release']['tag']=='v1.2.1'
 reset=prepare(fresh,'reset');run(reset)
 reset_ini=(fresh/'OptiScaler.ini').read_text()
-assert 'CacheInterval=1' in reset_ini and 'WorkingScale=0.67' in reset_ini and 'DualFeature=' not in reset_ini
+assert 'CacheInterval=1' in reset_ini and 'WorkingScale=0.65' in reset_ini and 'LocalStructure=1.0' in reset_ini and 'SkinStructure=1.0' in reset_ini and 'DualFeature=' not in reset_ini
 checks.append('repair pins exact release and preserves full preset; reset retains Skynizz policy')
 run(prepare(fresh,'uninstall'));assert files(fresh)==before,files(fresh)
 checks.append('restore reproduces the original file hashes')
@@ -314,7 +320,7 @@ with zipfile.ZipFile(combined_archive) as source,zipfile.ZipFile(updated_archive
 updated_release=combined_release | {'sha256':hashlib.sha256(updated_archive.read_bytes()).hexdigest(),
                                     'release_size':updated_archive.stat().st_size}
 provider.bundled_bridge=lambda selection='latest':(dict(updated_release,selected_source=selection),updated_archive)
-combined_ini=combined_ini.replace('WorkingScale=0.67','WorkingScale=0.5')+'\n; keep this game tuning\n'
+combined_ini=combined_ini.replace('WorkingScale=0.65','WorkingScale=0.5')+'\n; keep this game tuning\n'
 (combined/'OptiScaler.ini').write_text(combined_ini)
 run(service.prepare([scan(combined)],'nr-mfg','repair',visual_settings=settings | {'skynizz_version':'v9.9.9'}))
 assert baseline(combined)['archive']['release']['sha256']==combined_release['sha256']

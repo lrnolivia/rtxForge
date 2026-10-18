@@ -18,7 +18,8 @@ public sealed class OverlayPreferencesView : StackPanel
         Note("rtxForge opens a floating sidebar on the left. OptiScaler opens its original in-game panel, including all upstream options.");
         var layout = Choice("Controls", ["Unified", "Advanced"], current.OverlayControls == "classic" ? 1 : 0);
         Note("Unified uses simple labels and percentages. Advanced uses OptiScaler labels and original units for the sidebar’s live controls.");
-        var key = Choice("rtxForge shortcut", OverlayShortcut.Choices, Math.Max(0, Array.IndexOf(OverlayShortcut.Choices, current.PanelHotkey)));
+        var key = new OverlayShortcutPicker(current.PanelHotkey);
+        Children.Add(key);
         var nativeKey = Choice("OptiScaler shortcut", ["Insert", "F8", "Disabled"], current.OptiScalerHotkey == "F8" ? 1 : current.OptiScalerHotkey == "Disabled" ? 2 : 0);
         var restart = Note("Switching overlays or changing the OptiScaler key takes effect after restarting the game. Install the current rtxForge package in your game to use the original panel.");
         var material = Choice("Window material", ["Acrylic", "Mica"], current.OverlayMaterial == "mica" ? 1 : 0);
@@ -34,7 +35,7 @@ public sealed class OverlayPreferencesView : StackPanel
             nativeKey.Visibility = native ? Visibility.Visible : Visibility.Collapsed;
             restart.Visibility = native ? Visibility.Visible : Visibility.Collapsed;
         }
-        void Save(Action<ForgeSettings> edit)
+        bool Save(Action<ForgeSettings> edit)
         {
             try
             {
@@ -46,12 +47,13 @@ public sealed class OverlayPreferencesView : StackPanel
                     ? "Saved · restart your game to use OptiScaler. Open this gear or the tray to switch back."
                     : "Saved";
             }
-            catch (Exception error) { feedback.Text = error.Message; }
+            catch (Exception error) { feedback.Text = error.Message; Availability(); return false; }
             Availability();
+            return true;
         }
         renderer.SelectionChanged += (_, _) => Save(s => s.OverlayRenderer = renderer.SelectedIndex == 1 ? "optiscaler" : "rtxforge");
         layout.SelectionChanged += (_, _) => Save(s => s.OverlayControls = layout.SelectedIndex == 1 ? "classic" : "unified");
-        key.SelectionChanged += (_, _) => Save(s => s.PanelHotkey = OverlayShortcut.Choices[Math.Max(0, key.SelectedIndex)]);
+        key.SaveBinding = value => Save(s => s.PanelHotkey = value);
         nativeKey.SelectionChanged += (_, _) => Save(s => s.OptiScalerHotkey = nativeKey.SelectedIndex == 1 ? "F8" : nativeKey.SelectedIndex == 2 ? "Disabled" : "Insert");
         material.SelectionChanged += (_, _) => Save(s => s.OverlayMaterial = material.SelectedIndex == 1 ? "mica" : "acrylic");
         helper.Toggled += (_, _) => Save(s => s.OverlayHelper = helper.IsOn);

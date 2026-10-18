@@ -6,7 +6,6 @@ namespace RtxForge.Windows;
 
 public sealed partial class MainWindow
 {
-    public static readonly string[] CompanionShortcuts = OverlayShortcut.Choices;
     public string? CompanionShortcutProblem { get; private set; }
 
     void InitializeCompanion()

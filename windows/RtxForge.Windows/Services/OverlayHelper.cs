@@ -67,10 +67,11 @@ public sealed class OverlayHelperWindow : Window
     readonly CancellationTokenSource stopping = new();
     readonly Subclass callback;
     readonly nint handle;
+    readonly Microsoft.UI.Dispatching.DispatcherQueueTimer captureTimeout;
     EngineForgeService? engine;
     CompanionWindow? panel;
     string? problem;
-    bool showWhenReady, closing;
+    bool showWhenReady, closing, trayAdded;
     const int HotkeyId = 0x5254;
     const uint TrayMessage = 0x8001;
 
@@ -81,11 +82,13 @@ public sealed class OverlayHelperWindow : Window
         Content = new Grid();
         AppWindow.IsShownInSwitchers = false;
         handle = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        captureTimeout = DispatcherQueue.CreateTimer();
+        captureTimeout.IsRepeating = false; captureTimeout.Interval = TimeSpan.FromSeconds(30);
+        captureTimeout.Tick += (_, _) => ConfigureShortcut();
         callback = WindowProc;
         SetWindowSubclass(handle, callback, 0x5255, 0);
         AppWindow.Hide();
         ConfigureShortcut();
-        Tray(true);
         Closed += (_, _) => Cleanup();
         _ = ListenAsync();
         _ = StartEngineAsync();
@@ -107,7 +110,10 @@ public sealed class OverlayHelperWindow : Window
 
     void ConfigureShortcut()
     {
+        captureTimeout.Stop();
         var settings = ForgeSettings.Load();
+        if (settings.PanelHotkeyMigrated) settings = ForgeSettings.EditOverlay(s => s.PanelHotkey = s.PanelHotkey);
+        Tray(true);
         if (engine is not null)
         {
             engine.Settings.CopyOverlayFrom(settings);
@@ -115,7 +121,8 @@ public sealed class OverlayHelperWindow : Window
         panel?.ApplyPreferences();
         UnregisterHotKey(handle, HotkeyId);
         if (settings.OverlayRenderer == "optiscaler" || !settings.OverlayHelper) { problem = null; return; }
-        var (modifiers, key) = OverlayShortcut.Decode(settings.PanelHotkey);
+        if (!OverlayShortcut.TryParse(settings.PanelHotkey, out _, out var shortcut, out var error)) { problem = error; return; }
+        var (modifiers, key) = shortcut;
         problem = key != 0 && !RegisterHotKey(handle, HotkeyId, modifiers | 0x4000, key)
             ? "Shortcut in use. Choose another in Settings → Overlay." : null;
     }
@@ -134,6 +141,11 @@ public sealed class OverlayHelperWindow : Window
                 var command = await reader.ReadLineAsync(stopping.Token).AsTask().WaitAsync(TimeSpan.FromSeconds(3));
                 if (command == "show") { showWhenReady = true; panel?.Present(); }
                 else if (command == "reload") ConfigureShortcut();
+                else if (command == "suspend-shortcut")
+                {
+                    UnregisterHotKey(handle, HotkeyId);
+                    captureTimeout.Start();
+                }
                 else if (command == "reload-presets" && engine is not null) await engine.ReloadCompanionPresetsAsync();
                 await writer.WriteLineAsync(problem ?? "");
                 if (command == "exit") { Close(); return; }
@@ -188,14 +200,15 @@ public sealed class OverlayHelperWindow : Window
         var value = new NotifyIcon { Size = Marshal.SizeOf<NotifyIcon>(), Window = handle, Id = 1, Flags = 7,
             Callback = TrayMessage, Icon = icon, Tip = "rtxForge Overlay · " + ForgeSettings.Load().PanelHotkey,
             Info = "", InfoTitle = "" };
-        Shell_NotifyIconW(add ? 0u : 2u, ref value);
+        Shell_NotifyIconW(add ? (trayAdded ? 1u : 0u) : 2u, ref value);
+        trayAdded = add;
         if (icon != 0) DestroyIcon(icon);
     }
 
     void Cleanup()
     {
         if (closing) return;
-        closing = true; stopping.Cancel(); Tray(false);
+        closing = true; stopping.Cancel(); captureTimeout.Stop(); Tray(false);
         UnregisterHotKey(handle, HotkeyId);
         RemoveWindowSubclass(handle, callback, 0x5255);
         panel?.Shutdown(); engine?.Dispose();

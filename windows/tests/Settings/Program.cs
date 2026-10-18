@@ -23,18 +23,40 @@ foreach (var raw in new[] { "0", "2", "3", "4", "5", "6", "\"0\"", "\"2\"", "\"3
 }
 Console.WriteLine($"PASS: {count} numeric/text multiplier and shared-settings round trips.");
 var defaults = new ForgeSettings();
-if (defaults.PanelHotkey != "Insert" || OverlayShortcut.Decode(defaults.PanelHotkey) != (0u, 0x2Du))
-    throw new Exception("Overlay must have a single-key Insert default");
-foreach (var key in OverlayShortcut.Choices)
+if (defaults.PanelHotkey != "End" || !OverlayShortcut.TryParse(defaults.PanelHotkey, out _, out var defaultKey, out _) || defaultKey != (0u, 0x23u))
+    throw new Exception("Overlay must have a single-key End default");
+foreach (var key in new[] { "End", "Home", "Ctrl+Shift+R", "Ctrl+Alt+R", "Ctrl+Shift+F10", "F8", "Ctrl+Num3", "Shift+Backtick", "Disabled" })
 {
     var settings = JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(new ForgeSettings { PanelHotkey = key, OverlayHelper = false, OverlayStartWithWindows = false, OverlayMaterial = "mica" }))!;
     if (settings.PanelHotkey != key || settings.OverlayHelper || settings.OverlayStartWithWindows || settings.OverlayMaterial != "mica")
         throw new Exception("Overlay choices were not retained");
-    var (modifiers, code) = OverlayShortcut.Decode(key);
+    if (!OverlayShortcut.TryParse(key, out var normalized, out var decoded, out _) || normalized != key)
+        throw new Exception("Custom shortcut could not be decoded: " + key);
+    var (modifiers, code) = decoded;
     if (key == "F8" && (modifiers != 0 || code != 0x77) || key == "Disabled" && code != 0)
         throw new Exception("Single key or disabled shortcut changed");
 }
-Console.WriteLine("PASS: single-key overlay default, legacy shortcuts, disabled helper/startup and material round trips.");
+var migrated = JsonSerializer.Deserialize<ForgeSettings>("{\"panel_hotkey\":\"Insert\",\"optiscaler_hotkey\":\"Insert\",\"nr_strength\":1.25,\"unrelated\":true}")!;
+if (migrated.PanelHotkey != "End" || migrated.OptiScalerHotkey != "Insert" || migrated.NrStrength != 1.25
+    || !migrated.AdditionalSettings["unrelated"].GetBoolean()) throw new Exception("Insert migration changed unrelated settings");
+foreach (var invalid in new string?[] { null, "", "Insert", "Ctrl+Insert", "Ctrl", "Shift", "Win+R", "Ctrl+Ctrl+R", "R+Ctrl", "Ctrl++R", "Escape", "Tab", "F12", "Alt+F4", "Alt+Space", "Ctrl+Alt+Delete", "arbitrary" })
+    if (OverlayShortcut.TryParse(invalid, out _, out var rejected, out _) || rejected != (0u, 0u))
+        throw new Exception("Invalid/reserved shortcut was registered: " + invalid);
+if (!OverlayShortcut.TryParse(" shift + ctrl + r ", out var canonical, out var canonicalKey, out _) || canonical != "Ctrl+Shift+R" || canonicalKey != (6u, 0x52u))
+    throw new Exception("Custom modifiers were not normalized");
+if (new ForgeSettings { PanelHotkey = "invalid" }.PanelHotkey != "invalid") throw new Exception("An invalid binding silently selected a different shortcut");
+if (!migrated.PanelHotkeyMigrated || migrated.Clone().PanelHotkeyMigrated
+    || JsonSerializer.Serialize(migrated).Contains("PanelHotkeyMigrated")) throw new Exception("Shortcut migration was not a one-time settings-only operation");
+var shortcutCount = 0;
+for (uint key = 0; key < 256; key++)
+for (uint modifiers = 0; modifiers < 16; modifiers++)
+{
+    if (!OverlayShortcut.TryCreate(key, modifiers, out var label, out _)) continue;
+    if (!OverlayShortcut.TryParse(label, out var roundTrip, out var decoded, out _) || roundTrip != label || decoded != (modifiers, key))
+        throw new Exception("Recorder and persisted shortcut disagree: " + label);
+    shortcutCount++;
+}
+Console.WriteLine($"PASS: End default, Insert migration, preserved legacy/disabled choices and {shortcutCount} custom binding round trips; reserved/malformed shortcuts refused.");
 foreach (var controls in new[] { "unified", "classic" })
 foreach (var renderer in new[] { "rtxforge", "optiscaler" })
 {

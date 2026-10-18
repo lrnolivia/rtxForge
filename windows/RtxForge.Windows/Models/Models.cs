@@ -202,7 +202,17 @@ public sealed class ForgeSettings
     [JsonPropertyName("feeder_backups")] public string FeederBackups { get; set; } = "";
     [JsonPropertyName("manage_dlss_files")] public bool ManageDlssFiles { get; set; } = true;
     [JsonPropertyName("borderless_4k")] public bool Borderless4K { get; set; }
-    [JsonPropertyName("panel_hotkey")] public string PanelHotkey { get; set; } = "Insert";
+    string panelHotkey = Services.OverlayShortcut.Default;
+    [JsonPropertyName("panel_hotkey")] public string PanelHotkey
+    {
+        get => panelHotkey;
+        set
+        {
+            PanelHotkeyMigrated = string.Equals(value?.Trim(), "Insert", StringComparison.OrdinalIgnoreCase);
+            panelHotkey = Services.OverlayShortcut.NormalizeStored(value);
+        }
+    }
+    [JsonIgnore] public bool PanelHotkeyMigrated { get; private set; }
     [JsonPropertyName("overlay_helper")] public bool OverlayHelper { get; set; } = true;
     [JsonPropertyName("overlay_start_with_windows")] public bool OverlayStartWithWindows { get; set; } = true;
     [JsonPropertyName("overlay_material")] public string OverlayMaterial { get; set; } = "acrylic";

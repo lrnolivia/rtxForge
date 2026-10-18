@@ -178,7 +178,8 @@ def prepare(e, state, params):
                 continue
             if check_running is None: check_running = _process_check(e)
             t.need(not check_running(root), 'Close this game, then review the bulk change again.')
-            t.need(anti_cheat(e, root) is None, 'Anti-cheat detected; this game is excluded.')
+            import offline_routes
+            t.need(anti_cheat(e, root) is None or (not is_feeder and offline_routes.allowed_target(e, target, root)), 'Anti-cheat detected; this game is excluded.')
             ui.progress('Verifying package files', game=name, current=index, total=len(candidates))
             if is_feeder:
                 found = feeder.inspect(e, row, cached=False)
@@ -187,7 +188,7 @@ def prepare(e, state, params):
             for filename, digest in owned_files.items():
                 t.need(t.digest(filename) == digest, 'Package files changed; repair this game first.')
                 checks[filename] = digest
-            plans.append({'name': name, 'root': str(root), 'checks': checks, 'writes': writes,
+            plans.append({'name': name, 'root': str(root), 'target': str(target), 'checks': checks, 'writes': writes,
                           'summary': label, 'note': ' '.join(notes)})
         except (t.Refusal, e.Stop, OSError, ValueError, KeyError, TypeError) as error:
             blocked.append({'title': name, 'detail': str(error), 'details': str(root) if root else ''})
@@ -197,7 +198,8 @@ def prepare(e, state, params):
 
 def _check(e, plan):
     t.need(not e._running_processes_under_root(Path(plan['root'])), 'A reviewed game started. Close it and review again.')
-    t.need(anti_cheat(e, Path(plan['root'])) is None, 'Anti-cheat appeared after review; nothing further was changed.')
+    import offline_routes
+    t.need(anti_cheat(e, Path(plan['root'])) is None or (plan.get('target') and offline_routes.allowed_target(e, Path(plan['target']), Path(plan['root']))), 'Anti-cheat appeared after review; nothing further was changed.')
     for filename, digest in plan['checks'].items():
         t.need(t.digest(t.safe(filename)) == digest, 'Files changed since review. Review the bulk change again.')
 

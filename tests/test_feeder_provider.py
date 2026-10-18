@@ -70,7 +70,7 @@ class FeederTest(unittest.TestCase):
         self.new_path.write_bytes(self.new)
         self.backups = self.root / 'manual-backups'
         self.backups.mkdir()
-        self.settings = {'nr_runtime': str(self.new_path), 'feeder_source': str(self.source), 'feeder_backups': str(self.backups)}
+        self.settings = {'nr_on_launch': True, 'nr_runtime': str(self.new_path), 'feeder_source': str(self.source), 'feeder_backups': str(self.backups)}
 
     def write_stack(self, directory):
         for name, data in self.assets.items():
@@ -131,6 +131,14 @@ class FeederTest(unittest.TestCase):
         self.assertTrue(found['installed'])
         self.assertFalse(found['feeder_managed'])
         self.assertEqual(found['runtime_provider'], 'feeder')
+
+    def test_nr_starts_off_unless_enabled_on_launch(self):
+        row = self.game('startup-default')
+        settings = dict(self.settings)
+        settings.pop('nr_on_launch')
+        review = feeder.prepare({}, [row], 'nr-only', 'install', settings, self.e)
+        self.apply(review)
+        self.assertFalse(feeder.configured(Path(row['game']))['nr_enabled'])
 
     def test_new_install_and_repeat_restore(self):
         row = self.game()

@@ -75,7 +75,7 @@ ANTI_CHEAT_PATTERNS = ['easyanticheat*.exe', 'eanticheat*.exe', 'beservice*.exe'
 ANTI_CHEAT_DIR_NAMES = {'easyanticheat', 'battleye', 'eaanticheat', 'anticheatexpert'}
 UPSCALE_NAMES = {'nvngx_dlss.dll', 'nvngx_dlssg.dll', 'nvngx_dlssd.dll', 'libxess.dll', 'libxess_fg.dll', 'amd_fidelityfx_dx12.dll', 'ffx_fsr2_api_dx12_x64.dll', 'ffx_fsr3upscaler_x64.dll'}
 IGNORE_DIR_NAMES = {'.git', '.svn', '__pycache__', 'redist', 'redistributables', '_commonredist', 'crashpad', 'crashreportclient', 'digitalextras'}
-EXE_BAD_RE = re.compile('(vc_redist|vcredist|redistribut|crashreport|crashpad|unins|setup|installer|bootstrap|easyanticheat|eanticheat|battleye|beservice)', re.I)
+EXE_BAD_RE = re.compile('(vc_redist|vcredist|redistribut|crashreport|crashpad|unins|setup|installer|bootstrap|start_protected_game|easyanticheat|eanticheat|battleye|beservice)', re.I)
 LEGACY_FILE_RE = re.compile('(?:dlss5|rtx40mfg|mfg[-_ ]?unlock|renodx[-_ ]?dlss5|dlss5[-_ ]?feed|multipass.*mfg)', re.I)
 OPTISCALER_FILE_RE = re.compile('^optiscaler\\.(?:ini|log|asi|dll)$', re.I)
 RESH_FILE_RE = re.compile('^reshade', re.I)
@@ -381,7 +381,7 @@ def score_exe(exe: Path, upscalers: list[Path]) -> int:
         score += min(250, int(exe.stat().st_size / (1024 * 1024)))
     except OSError:
         pass
-    if re.search('launcher|helper|benchmark|report|updater', name, re.I):
+    if re.search('launcher|helper|benchmark|report|updater|start_protected_game', name, re.I):
         score -= 4000
     if re.search('/Engine/Binaries/ThirdParty/', s, re.I):
         score -= 6000

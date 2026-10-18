@@ -84,7 +84,7 @@ public sealed partial class GamePage : Page
 
     void Refresh()
     {
-        StatusBadge.Text = game.Blocked ? "Unsupported"
+        StatusBadge.Text = game.AdoptionAvailable ? "Installed · Adoption available" : game.OfflineOnly ? "Installed · Offline only" : game.Blocked ? "Unsupported"
             : game.IsFeeder ? "Feeder NR"
             : game.InstalledOnLinux ? "Installed on Linux"
             : game.Installed ? shell.Mode switch { "nr-only" => "NR Only", "nr-mfg" => "NR + MFG", _ => "MFG Only" }
@@ -101,8 +101,10 @@ public sealed partial class GamePage : Page
             ToolTipService.SetToolTip(OsBadge, OsMark.Tooltip(os));
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(OsBadge, OsMark.Tooltip(os));
         }
-        InstallButton.IsEnabled = !game.Blocked && !shell.Busy;
-        RestoreButton.IsEnabled = game.Installed && !shell.Busy;
+        InstallButton.IsEnabled = (!game.Blocked || game.AdoptionAvailable) && !shell.Busy;
+        RestoreButton.IsEnabled = game.Installed && !game.AdoptionAvailable && !shell.Busy;
+        AdoptionItem.Visibility = game.AdoptionAvailable ? Visibility.Visible : Visibility.Collapsed;
+        OfflineLaunchItem.Visibility = game.OfflineOnly ? Visibility.Visible : Visibility.Collapsed;
         UpdateDlssItem.IsEnabled = !game.Blocked;
         OpenFolderItem.IsEnabled = !shell.Service.IsPreview && Directory.Exists(game.Location);
         Build(section);
@@ -117,6 +119,8 @@ public sealed partial class GamePage : Page
     void OnRestore(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("uninstall", [game]);
     void OnUpdateDlss(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("update-dlss", [game]);
     void OnCompanion(object sender, RoutedEventArgs e) => shell.OpenCompanion(game);
+    void OnAdoption(object sender, RoutedEventArgs e) => _ = shell.ReviewAdoptionAsync([game]);
+    void OnLaunchOffline(object sender, RoutedEventArgs e) => _ = shell.LaunchOfflineAsync(game);
     void OnRemoveFromLibrary(object sender, RoutedEventArgs e) => _ = shell.ConfirmRemoveLibraryEntriesAsync([game]);
     void OnOpenFolder(object sender, RoutedEventArgs e) => _ = shell.OpenGameFolderAsync(game);
 
@@ -129,6 +133,14 @@ public sealed partial class GamePage : Page
         switch (name)
         {
             case "Overview":
+                if (g.OfflineOnly)
+                {
+                    var offline = new PreferencesGroup("Offline-only features", "Launch here to use the reviewed offline route. The normal Steam launch is unchanged. Online play requires removing these feature files. Adoption restore returns the previous modded setup.");
+                    offline.Add(Prefs.ActionButton("Launch offline", (_, _) => _ = shell.LaunchOfflineAsync(g), accent: true));
+                    PageHost.Children.Add(offline);
+                }
+                if (g.AdoptionAvailable)
+                    PageHost.Children.Add(Prefs.Row("Adoption available", "This package is installed. Adopt its current setup or back it up and clean install from rtxForge.", Prefs.ActionButton("Review Adoption", (_, _) => _ = shell.ReviewAdoptionAsync([g]))));
                 if (g.Blocked)
                     PageHost.Children.Add(new InfoBar
                     {

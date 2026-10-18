@@ -353,6 +353,8 @@ def scan(params):
     import feeder_provider
     rows = feeder_provider.expand_rows(engine_bridge.module(service.config), rows,
                                       selected=params.get('runtime_provider') == 'feeder')
+    import package_adoption
+    package_adoption.decorate(engine_bridge.module(service.config), rows)
     if params.get('runtime_provider')=='skynizz':
         import skynizz_provider
         skynizz_provider.scan_rows(rows,params.get('feature_mode','nr-only'))
@@ -387,7 +389,7 @@ def prepare(params):
         import review_copy
         review_copy.attach(review)
         review["cancel_event"] = threading.Event()
-    elif review.get('kind') == 'feeder':
+    elif review.get('kind') in ('feeder', 'adoption'):
         review['cancel_event'] = threading.Event()
     token = uuid.uuid4().hex
     reviews[token] = review
@@ -530,6 +532,8 @@ METHODS = {"hello": hello, "hardware": lambda _p: service.hardware(), "scan": sc
 import win_features  # noqa: E402
 
 METHODS.update(win_features.install(service, lambda: engine_bridge.module(service.config).steam_config_engine()))
+import offline_routes
+METHODS['launch_offline'] = lambda p: offline_routes.launch(engine_bridge.module(service.config), p['row'])
 
 import companion_controls  # noqa: E402
 METHODS.update(companion_controls.methods(STATE))

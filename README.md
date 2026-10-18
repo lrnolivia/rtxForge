@@ -11,6 +11,12 @@ rtxForge gives you one place to try multi-frame generation (MFG), explore experi
 
 ## Start here
 
+Already have a feature package installed? Rescan your library, then review **Adoption**. Keep the current setup and let rtxForge manage it, or back it up and clean install the matching package selected in the app. Restore returns to the setup found at adoption. Unrecognized files stay unowned.
+
+New and clean installs start with NR off unless you check **Enable NR on launch**. Set the default in Graphics settings; turn NR on later from the overlay. Adoption and repair keep existing settings.
+
+Verified offline-only profiles are explicit exceptions to the anti-cheat block. Adopted Gears E-Day installs offer **Launch offline** in game details. Use that route while the package is installed; normal Steam launch settings remain unchanged. This does not enable online play.
+
 Choose **Installer** for guided setup, or **Portable** to download and launch without installing the app. Both are intended release options for Linux and Windows.
 
 | Option | How you use it |

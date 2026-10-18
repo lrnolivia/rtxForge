@@ -19,7 +19,7 @@ sys.stdout=saved_stdout
 import engine_bridge,feeder_provider,runtime_updates
 spec=importlib.util.spec_from_file_location('feeder_fixtures',repo/'tests/test_feeder_provider.py')
 fixtures=importlib.util.module_from_spec(spec);spec.loader.exec_module(fixtures)
-case=fixtures.FeederTest();case.setUp()
+case=fixtures.FeederTest();case.setUp();case.settings['nr_on_launch']=True
 try:
     original=engine_bridge.module
     def module(*args,**kwargs):

@@ -336,7 +336,7 @@ def scan_rows(rows, mode='nr-only'):
             continue
         if not row.get('exe'):
             row['blocked'] = 'No Windows executable found'
-        elif row.get('anti_cheat'):
+        elif row.get('anti_cheat') and not row.get('offline_only'):
             row['blocked'] = 'Anti-cheat detected'
         elif mode != 'mfg-only' and native_nr_refusal(row.get('exe'), row.get('appid')):
             row['blocked'] = native_nr_refusal(row.get('exe'), row.get('appid'))

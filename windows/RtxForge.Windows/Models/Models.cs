@@ -41,7 +41,10 @@ public sealed class Game
     /// <summary>Installed with rtxForge on Linux: Windows loads it natively; Set Up for Windows adapts it here.</summary>
     public bool InstalledOnLinux => Installed && InstalledOn == "linux";
     /// <summary>The library's install action: Set Up for Windows adapts a Linux install instead of reinstalling it.</summary>
-    public string InstallLabel => InstalledOnLinux ? "Set Up for Windows" : IsFeeder ? "Update Feeder NR" : "Install Features";
+    public bool AdoptionAvailable => EngineRow?["adoption_available"]?.GetValue<bool>() == true;
+    public bool Managed => EngineRow?["managed"]?.GetValue<bool>() == true;
+    public bool OfflineOnly => EngineRow?["offline_only"]?.GetValue<bool>() == true;
+    public string InstallLabel => AdoptionAvailable ? "Adopt with rtxForge" : InstalledOnLinux ? "Set Up for Windows" : IsFeeder ? "Update Feeder NR" : "Install Features";
     /// <summary>The engine's scan row, passed back unchanged for review and execution.</summary>
     public System.Text.Json.Nodes.JsonObject? EngineRow { get; init; }
     public bool AntiCheatDetected
@@ -67,7 +70,7 @@ public static class CrossOs
 }
 
 /// <summary>NR Strength / Sharpening / MFG, as written to OptiScaler.ini.</summary>
-public sealed record Tuning(double NrStrength, double SharpeningStrength, string MfgMultiplier)
+public sealed record Tuning(double NrStrength, double SharpeningStrength, string MfgMultiplier, bool? NrOnLaunch = null)
 {
     public static readonly string[] MultiplierValues = ["auto", "0", "2", "3", "4", "5", "6"];
     public static readonly string[] MultiplierCaptions = ["In game", "Off", "2×", "3×", "4×", "5×", "6×"];
@@ -194,6 +197,7 @@ public sealed class ForgeSettings
     [JsonPropertyName("skynizz_version")] public string SkynizzVersion { get; set; } = "latest";
     [JsonPropertyName("mfg_provider")] public string MfgProvider { get; set; } = "integrated";
     [JsonPropertyName("nr_preset")] public int? NrPreset { get; set; }
+    [JsonPropertyName("nr_on_launch")] public bool NrOnLaunch { get; set; } = false;
     [JsonPropertyName("feeder_source")] public string FeederSource { get; set; } = "";
     [JsonPropertyName("feeder_backups")] public string FeederBackups { get; set; } = "";
     [JsonPropertyName("manage_dlss_files")] public bool ManageDlssFiles { get; set; } = true;

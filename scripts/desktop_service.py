@@ -119,11 +119,14 @@ class DesktopService:
 
     def prepare(self,rows,mode,operation,adopt=False,visual_settings=None,save_defaults=False):
         import ui
-        if operation in ('install','repair'):
+        if operation in ('install','repair','adopt-clean'):
             host=self.hardware()
             if not host['ready']:return {'kind':'batch','operation':operation,'title':operation.title(),'plans':[],'rows':[],'blocked':[{'name':'Hardware check','reason':host['reason']}]}
         settings=library_media.load_settings(self.config)
         if visual_settings is not None:settings.update(visual_settings)
+        if operation in ('adopt', 'adopt-clean'):
+            import package_adoption
+            return package_adoption.prepare(self.config, rows, operation, settings)
         settings['apply_requested_presets']=operation=='install' and visual_settings is not None
         feeder = settings.get('runtime_provider') == 'feeder'
         # Restoring an installed Feeder setup must use its actual ownership,
@@ -222,6 +225,9 @@ class DesktopService:
     def execute(self,review):
         # The desktop must pass the exact in-memory review shown to the user.
         kind=review['kind']
+        if kind=='adoption':
+            import package_adoption
+            return package_adoption.execute(review)
         if kind=='feeder':
             import feeder_provider
             return feeder_provider.execute(review)

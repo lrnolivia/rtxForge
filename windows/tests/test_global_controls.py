@@ -17,7 +17,7 @@ sys.stdout=out
 import engine_bridge,feeder_provider as feeder,transactions as t,win_features,global_controls
 spec=importlib.util.spec_from_file_location('feeder_fixtures',repo/'tests/test_feeder_provider.py')
 fixtures=importlib.util.module_from_spec(spec);spec.loader.exec_module(fixtures)
-case=fixtures.FeederTest();case.setUp()
+case=fixtures.FeederTest();case.setUp();case.settings['nr_on_launch']=True
 try:
     e=engine_bridge.module(host.service.config)
     engine_bridge.module=lambda *args,**kwargs:e

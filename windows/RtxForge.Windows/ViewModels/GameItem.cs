@@ -154,8 +154,8 @@ public sealed class GameItem : INotifyPropertyChanged
     public string Meta => string.Join(" · ", new[] { Game.Library, Game.Release }.Where(s => !string.IsNullOrEmpty(s)));
 
     // .library-meta-pill / .library-status-stack
-    public string Status => Game.Blocked ? "UNSUPPORTED" : Game.Installed ? "INSTALLED" : "AVAILABLE";
-    public string StatusText => Game.Blocked ? "Unsupported" : Game.Installed ? "Installed" : "Available";
+    public string Status => Game.AdoptionAvailable ? "ADOPTION" : Game.OfflineOnly ? "OFFLINE ONLY" : Game.Blocked ? "UNSUPPORTED" : Game.Installed ? "INSTALLED" : "AVAILABLE";
+    public string StatusText => Game.AdoptionAvailable ? "Installed · Adoption available" : Game.OfflineOnly ? "Installed · Offline only" : Game.Blocked ? "Unsupported" : Game.Installed ? "Installed" : "Available";
     public string StatusGlyph => Game.Blocked ? "" : Game.Installed ? "" : "";
     public Brush StatusDot => Game.Blocked ? UnsupportedDot : Game.Installed ? InstalledDot : AvailableDot;
     public Visibility TestedVisibility => Game.Tested ? Visibility.Visible : Visibility.Collapsed;
@@ -179,8 +179,8 @@ public sealed class GameItem : INotifyPropertyChanged
     // Actions column
     /// <summary>Library in presets mode (Presets › Select games): the row action applies presets.</summary>
     public bool PresetMode { get; init; }
-    public string PrimaryLabel => PresetMode ? "Apply" : Game.Installed ? "Restore" : "Install";
-    public bool PrimaryEnabled => PresetMode ? Game.Installed && !Game.Blocked : !Game.Blocked;
+    public string PrimaryLabel => Game.AdoptionAvailable ? "Adopt" : PresetMode ? "Apply" : Game.Installed ? "Restore" : "Install";
+    public bool PrimaryEnabled => Game.AdoptionAvailable || (PresetMode ? Game.Installed && !Game.Blocked : !Game.Blocked);
     public ICommand PrimaryCommand { get; }
     public ICommand MoreCommand { get; }
 

@@ -76,12 +76,14 @@ public sealed class OperationDialog
         tuning.SetMode(shell.Mode);
         var body = new StackPanel { Spacing = 16 };
         body.Children.Add(Prefs.Label("Adjust your presets or continue. You can change these settings later in OptiScaler."));
-        body.Children.Add(tuning);
+        if (shell.Settings.RuntimeProvider != "feeder") body.Children.Add(tuning);
+        var startup = new CheckBox { Content = "Enable NR on launch", IsChecked = shell.Settings.NrOnLaunch };
+        if (shell.Mode != "mfg-only") body.Children.Add(startup);
         dialog.Content = body;
         dialog.PrimaryButtonText = "Continue";
         dialog.CloseButtonText = "Cancel";
         dialog.DefaultButton = ContentDialogButton.Primary;
-        return await dialog.ShowAsync() == ContentDialogResult.Primary ? tuning.Value : null;
+        return await dialog.ShowAsync() == ContentDialogResult.Primary ? tuning.Value with { NrOnLaunch = startup.IsChecked == true } : null;
     }
 
     // ---------- Checking (engine prepare: every target verified, nothing written) ----------
@@ -117,6 +119,7 @@ public sealed class OperationDialog
         "install" => "Review Installation",
         "uninstall" => "Review Restoration",
         "update-dlss" => "Review DLSS Update",
+        "adopt" or "adopt-clean" => "Review Adoption",
         _ => "Review Presets",
     };
 
@@ -185,6 +188,8 @@ public sealed class OperationDialog
         "install" => "Install",
         "uninstall" => "Restore",
         "update-dlss" => "Update",
+        "adopt" => "Adopt with rtxForge",
+        "adopt-clean" => "Adopt and clean install",
         _ => "Apply presets",
     };
 

@@ -225,7 +225,7 @@ IGNORE_DIRS = {
 }
 EXE_BAD_RE = re.compile(
     r"(vc_redist|vcredist|redistribut|crashreport|crashpad|unins|setup|installer|"
-    r"bootstrap|easyanticheat|eanticheat|battleye|beservice|updater|"
+    r"bootstrap|start_protected_game|easyanticheat|eanticheat|battleye|beservice|updater|"
     r"benchmark|helper)",
     re.I,
 )
@@ -807,7 +807,14 @@ class Game:
 
     @property
     def eligible(self) -> bool:
-        return bool(self.exe and self.dlss and self.dlssg and not self.anti_cheat)
+        return bool(self.exe and self.dlss and self.dlssg and anti_cheat_allowed(self))
+
+
+def anti_cheat_allowed(game) -> bool:
+    if not game.anti_cheat:
+        return True
+    import offline_routes
+    return offline_routes.allowed(_ENGINE_MODULE, game)
 
 def scan_game_files(root: Path) -> tuple[list[Path], list[Path], Optional[Path]]:
     exes: list[Path] = []
@@ -860,7 +867,7 @@ def score_exe(exe: Path, evidence: list[Path]) -> int:
         score += min(300, int(exe.stat().st_size / (1024 * 1024)))
     except OSError:
         pass
-    if re.search(r"launcher|helper|benchmark|report|updater", name, re.I):
+    if re.search(r"launcher|helper|benchmark|report|updater|start_protected_game", name, re.I):
         score -= 5000
     if re.search(r"/Engine/Binaries/ThirdParty/", normalized, re.I):
         score -= 7000
@@ -4293,6 +4300,8 @@ def install_target(
     mfg_multiplier: int | str = "auto",
     sharpening_strength: str = "strong",
     preserve_visual_settings: bool = True,
+    clean_config: bool = False,
+    nr_on_launch: Optional[bool] = False,
     dry_run: bool = False,
 ) -> dict:
     visual_defaults(nr_strength, mfg_multiplier, sharpening_strength)  # Validate before any mutation.
@@ -4303,7 +4312,7 @@ def install_target(
         import skynizz_provider
         desktop_platform = getattr(_ENGINE_MODULE, "DESKTOP_PLATFORM", "windows" if os.name == "nt" else "linux")
         skynizz_provider.require_mode(desktop_platform, feature_mode, native_mfg_fallback, bridge=is_skynizz_bridge)
-    require(game.eligible or (is_skynizz and feature_mode == "nr-only" and game.exe and game.dlss and not game.anti_cheat),
+    require(game.eligible or (is_skynizz and feature_mode == "nr-only" and game.exe and game.dlss and anti_cheat_allowed(game)),
             f"Game is not eligible: {game.name} ({game.reason})")
     require(game.target_dir is not None and game.exe is not None, "Missing game target")
     running = _running_processes_under_root(game.root.resolve())
@@ -4512,6 +4521,9 @@ def install_target(
             # policy-owned keys instead of replacing the whole config.
             ini_source = live_ini.read_bytes()
     is_dlss_unlocked = Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) == "dlss-unlocked"
+    if clean_config:
+        ini_source = payload[ini_key]
+        saved_ini = None
     if is_skynizz:
         text, nr_tuning = skynizz_provider.configure(_ENGINE_MODULE, ini_source, saved_ini, mode=feature_mode, mfg_multiplier=mfg_multiplier, game=game)
         if mfg_component:
@@ -4574,6 +4586,11 @@ def install_target(
         if not enable_effects or is_dlss_unlocked:
             text = set_ini_value(text, "DlssNr", "Enabled", "false")
         nr_tuning = visual_tuning.get("DlssNr", visual_defaults(nr_strength)["DlssNr"])
+    require(nr_on_launch is None or type(nr_on_launch) is bool, "Invalid NR launch choice")
+    if nr_on_launch is not None:
+        enabled = nr_on_launch and feature_mode != "mfg-only"
+        text = set_ini_value(text, "DlssNr", "Enabled", "true" if enabled else "false")
+        nr_tuning["Enabled"] = "true" if enabled else "false"
     payload[ini_key] = text.encode("utf-8")
 
     if mfg_proxy:
@@ -4744,6 +4761,7 @@ def install_target(
             "nr_runtime": dict(selected_nr_meta or {}),
             "provider_id": Y4MY_PROVIDER.get("id", "y4my"),
             "feature_mode": feature_mode,
+            "nr_on_launch": nr_on_launch if nr_on_launch is not None else ((existing_baseline or {}).get('current') or {}).get('nr_on_launch'),
             "nr_profile": ({
                 "enabled": nr_tuning.get("Enabled", "auto").lower() == "true",
                 "activation": "startup", "runtime_verified": False,

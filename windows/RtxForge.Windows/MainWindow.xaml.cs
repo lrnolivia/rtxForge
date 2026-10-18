@@ -201,8 +201,14 @@ public sealed partial class MainWindow : Window
         if (Busy) { ShowToast("Another operation is running."); return; }
         ArgumentNullException.ThrowIfNull(targets);
         if (targets.Count == 0) { ShowToast("No eligible games selected."); return; }
+        if ((operation is "install" or "uninstall") && targets.Any(g => g.AdoptionAvailable))
+        {
+            await ReviewAdoptionAsync(targets.Where(g => g.AdoptionAvailable).ToArray());
+            targets = targets.Where(g => !g.AdoptionAvailable).ToArray();
+            if (targets.Count == 0) return;
+        }
 
-        if (operation == "install" && values is null && Settings.RuntimeProvider != "feeder" && !targets.All(g => g.IsFeeder))
+        if (operation == "install" && values is null)
         {
             values = await OperationDialog.AskPresetsAsync(this, targets.Count == 1 ? GameTuning(targets[0]) : Settings.Presets);
             if (values is null) return;

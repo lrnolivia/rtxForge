@@ -56,7 +56,7 @@ def module(*a,**kw):
     return e
 engine_bridge.module=module
 model=root/'model.dll';model.write_bytes(fixtures.pe()+b'0'*(32*1024**2))
-settings={'runtime_provider':'skynizz','skynizz_version':'latest','nr_runtime':str(model),'manage_dlss_files':False}
+settings={'runtime_provider':'skynizz','skynizz_version':'latest','nr_runtime':str(model),'manage_dlss_files':False,'nr_on_launch':True}
 def game(name):
     folder=root/name;folder.mkdir()
     (folder/'Game.exe').write_bytes(fixtures.pe())

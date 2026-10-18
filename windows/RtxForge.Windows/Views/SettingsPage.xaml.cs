@@ -71,6 +71,9 @@ public sealed partial class SettingsPage : Page
         (row, var profile) = Prefs.ComboRow("Default Mode", "Features selected when rtxForge starts.",
             ["NR Only", "MFG Only", "NR + MFG"], Math.Max(0, Array.IndexOf(Modes, Settings.DefaultProfile)), "");
         graphics.Add(row);
+        (row, var startupNr) = Prefs.SwitchRow("Enable NR on launch", "Default for new and clean installs. Leave off to enable NR later from the overlay.", Settings.NrOnLaunch, "");
+        startupNr.Toggled += (_, _) => { Settings.NrOnLaunch = startupNr.IsOn; Save(); };
+        graphics.Add(row);
         (row, var adopt) = Prefs.SwitchRow("Recognize Existing Features", "Allow updates to compatible installations from other tools.",
             Settings.RecognizePrevious, "");
         adopt.Toggled += (_, _) => { Settings.RecognizePrevious = adopt.IsOn; Save(); };

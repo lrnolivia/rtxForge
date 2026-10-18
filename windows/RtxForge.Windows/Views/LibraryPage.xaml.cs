@@ -305,7 +305,8 @@ public sealed partial class LibraryPage : Page
         Add("Game Details", "", () => shell.OpenGame(game));
         Add("DLSS Files", "", () => shell.OpenGame(game, "DLSS Files"));
         menu.Items.Add(new MenuFlyoutSeparator());
-        Add(game.InstallLabel, "", () => _ = shell.LaunchAction("install", [game]), !game.Blocked && !shell.Busy);
+        Add(game.InstallLabel, "", () => _ = shell.LaunchAction("install", [game]), (!game.Blocked || game.AdoptionAvailable) && !shell.Busy);
+        if (game.OfflineOnly) Add("Launch offline", "", () => _ = shell.LaunchOfflineAsync(game), !shell.Busy);
         Add("Restore Original Files", "", () => _ = shell.LaunchAction("uninstall", [game]), game.Installed && !shell.Busy);
         menu.Items.Add(new MenuFlyoutSeparator());
         Add("Open Folder", "", () => _ = shell.OpenGameFolderAsync(game),

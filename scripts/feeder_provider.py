@@ -343,6 +343,17 @@ def prepare(config, rows, mode, operation, settings, e):
                 if old_version != selected['version']:
                     summary += f" NR runtime: {old_version or 'not installed'} → {selected['version']}."
                 summary += ' Keep your saved tuning. Frame generation is unavailable.' if existing else ' Frame generation is unavailable.'
+            if operation == 'install':
+                # NR startup is an explicit install choice, independent of MFG.
+                source_ini = (Path(writes['ReShade.ini']['path']).read_bytes().decode('utf-8-sig')
+                              if 'ReShade.ini' in writes else (directory / 'ReShade.ini').read_bytes().decode('utf-8-sig'))
+                desired_startup = '1' if settings.get('nr_on_launch', False) else '0'
+                changed = source_ini if t.ini(source_ini).get('RenoDX.DLSS5', 'NeuralUplift', fallback='0') == desired_startup else t.setvalue(source_ini, 'RenoDX.DLSS5', 'NeuralUplift', desired_startup)
+                dest = t.safe(e.STATE_ROOT / 'feeder-cache' / t.sha(changed.encode()))
+                if not dest.exists(): t.atomic_file(dest, changed.encode(), 0o600)
+                if changed != source_ini or 'ReShade.ini' in writes:
+                    inputs['startup-ini'] = writes['ReShade.ini'] = {'path': str(dest), 'sha256': t.sha(changed.encode())}
+                summary += ' NR starts ' + ('on.' if settings.get('nr_on_launch', False) else 'off; enable it from the overlay.')
             checks = _checks(directory, names)
             plan = dict(row=dict(row), target=str(directory), existing=existing, checks=checks,
                         baseline_before=digest(state_dir(e, directory) / 'baseline.json'), baseline=baseline,

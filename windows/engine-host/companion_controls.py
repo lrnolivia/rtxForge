@@ -52,6 +52,13 @@ def supported_keys(version):
     return LEGACY_KEYS | (set(EXTRA) if version >= 3 else set()) | (set(SHARP) if version >= 4 else set())
 
 
+def startup_changes(game, changes):
+    changes = dict(changes)
+    if type(game.get('nr_on_launch')) is bool:
+        changes['enabled'] = int(game['nr_on_launch'] and game['can_nr'])
+    return changes
+
+
 def validate_changes(changes):
     t.need(isinstance(changes, dict) and changes and set(changes) <= set(DEFAULTS), 'Choose a supported control.')
     result = {}
@@ -239,7 +246,8 @@ class Controls:
                 if (current.get('archive') or {}).get('family') != 'skynizz': continue
                 exe = t.safe(record['exe'])
                 if not exe.is_file(): continue
-                rows.append({'game': str(exe.parent), 'exe': exe.name,
+                root = Path(record.get('game_root') or exe.parent)
+                rows.append({'game': str(root), 'exe': exe.relative_to(root).as_posix(),
                              'name': record.get('name') or exe.stem, 'appid': record.get('appid')})
             except (OSError, ValueError, KeyError, TypeError, AttributeError, t.Refusal): continue
         return rows
@@ -253,6 +261,15 @@ class Controls:
         exe = (root / relative).resolve()
         t.need(exe.is_file() and exe.suffix.casefold() == '.exe' and exe.is_relative_to(root), 'The game executable is missing or outside its folder.')
         target = exe.parent
+        baseline_path = self.installations / hashlib.sha256(str(target).encode('utf-8')).hexdigest()[:20] / 'baseline.json'
+        if baseline_path.is_file():
+            t.need(baseline_path.stat().st_size < 2 * 1024**2, 'Install record too large')
+            baseline = t.read_json(t.safe(baseline_path))
+            if baseline.get('offline_route'):
+                import offline_routes
+                offline_routes.verify(baseline['offline_route'], self.verified)
+                t.need(not any('easyanticheat' in name or name.startswith('start_protected_game') for name in self._processes()),
+                       'Offline-only controls are unavailable while anti-cheat is running.')
         metadata = target / '.rtxforge-install.json'
         t.need(metadata.is_file() and not metadata.is_symlink() and metadata.stat().st_size < 2 * 1024**2,
                'Install the current Skynizz package for this game first.')
@@ -278,7 +295,7 @@ class Controls:
         recipe = hashlib.sha256(json.dumps({'files': immutable, 'mode': record.get('feature_mode')}, sort_keys=True).encode()).hexdigest()
         mfg = record.get('feature_mode') in ('nr-mfg', 'mfg-only') and 'renodx-mfgunlock.addon64' not in files
         return {'row': {k: row.get(k) for k in ('game', 'exe', 'appid', 'name')}, 'root': root,
-                'exe': exe, 'target': target, 'key': key, 'recipe': recipe, 'can_mfg': mfg, 'can_nr': record.get('feature_mode') in ('nr-mfg','nr-only'), 'files': record['files']}
+                'exe': exe, 'target': target, 'key': key, 'recipe': recipe, 'can_mfg': mfg, 'can_nr': record.get('feature_mode') in ('nr-mfg','nr-only'), 'files': record['files'], 'nr_on_launch': record.get('nr_on_launch')}
 
     def pipelines(self, game):
         result = {}
@@ -551,7 +568,7 @@ class Controls:
                             self.last_pid[key] = box.pid
                             t.need(game['can_mfg'] or 'multiplier' not in record['changes'], 'MFG ownership changed')
                             t.need(game['can_nr'] or record['changes'].get('enabled',0)==0, 'NR ownership changed')
-                            box.apply(record['changes'])
+                            box.apply(startup_changes(game, record['changes']))
                             self.preset_errors.pop(key, None)
                     except (OSError, ValueError, KeyError, t.Refusal) as error:
                         self.preset_errors[key] = str(error)

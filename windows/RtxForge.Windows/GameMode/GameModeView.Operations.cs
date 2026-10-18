@@ -21,7 +21,13 @@ public sealed partial class GameModeView
         if (shell.Busy) { Toast("Another operation is running."); return; }
         ArgumentNullException.ThrowIfNull(targets);
         if (targets.Count == 0) { Toast("No eligible games."); return; }
-        if (operation == "install" && values is null && shell.Settings.RuntimeProvider != "feeder" && !targets.All(g => g.IsFeeder))
+        if ((operation is "install" or "uninstall") && targets.Any(g => g.AdoptionAvailable))
+        {
+            await shell.ReviewAdoptionAsync(targets.Where(g => g.AdoptionAvailable).ToArray());
+            targets = targets.Where(g => !g.AdoptionAvailable).ToArray();
+            if (targets.Count == 0) return;
+        }
+        if (operation == "install" && values is null)
         {
             values = await AskPresetsAsync(targets.Count == 1 ? shell.GameTuning(targets[0]) : shell.Settings.Presets);
             if (values is null) return;
@@ -78,10 +84,12 @@ public sealed partial class GameModeView
         var content = new StackPanel { Spacing = t.Px(20) };
         content.Children.Add(ui.P("Adjust your presets or continue. You can change these settings later in OptiScaler.", 0.92));
         content.Children.Add(ui.IconLabel("", ProviderName()).With(p => { foreach (var c in p.Children) if (c is TextBlock tb) tb.FontSize = t.Em(0.85); }));
-        content.Children.Add(ui.Group(rows, t.Card));
+        if (shell.Settings.RuntimeProvider != "feeder") content.Children.Add(ui.Group(rows, t.Card));
+        var startup = new CheckBox { Content = "Enable NR on launch", IsChecked = shell.Settings.NrOnLaunch };
+        if (shell.Mode != "mfg-only") content.Children.Add(startup);
         void Cancel() { CloseModal(); done.TrySetResult(null); }
         var cancel = ui.Button("Cancel", Cancel, GmKind.Card, 0.92);
-        var next = ui.Button("Continue", () => { CloseModal(); done.TrySetResult(value()); }, GmKind.Primary, 0.92);
+        var next = ui.Button("Continue", () => { CloseModal(); done.TrySetResult(value() with { NrOnLaunch = startup.IsChecked == true }); }, GmKind.Primary, 0.92);
         ShowModal("Install Features", content, [cancel, next], Cancel, 1100, cancel);
         return done.Task;
     }

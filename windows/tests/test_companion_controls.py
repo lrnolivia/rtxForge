@@ -92,6 +92,13 @@ class ControlsTest(unittest.TestCase):
         self.assertTrue(found['nr_running'])
         self.assertTrue(status['native_fresh'])
 
+    def test_launch_policy_wins_over_saved_nr_enablement(self):
+        saved = {'enabled': 1, 'multiplier': 4, 'intensity': 1.37}
+        self.assertEqual(control.startup_changes({'nr_on_launch': False, 'can_nr': True}, saved),
+                         {'enabled': 0, 'multiplier': 4, 'intensity': 1.37})
+        self.assertEqual(saved['enabled'], 1)
+        self.assertEqual(control.startup_changes({'can_nr': True}, saved), saved)
+
     def test_colour_matches_upstream_range_and_other_image_bounds_stay_intact(self):
         self.assertEqual(control.validate_changes({'colour':4.0}), {'colour':4.0})
         for changes in ({'colour':4.01},{'intensity':2.01},{'structure':2.01},{'tone':2.01}):

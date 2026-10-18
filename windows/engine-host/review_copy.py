@@ -22,7 +22,7 @@ def attach(review):
         preview = plan.get('preview', {})
         mode = preview.get('feature_mode')
         if operation == 'uninstall':
-            summary = 'Restore the original files backed up by rtxForge.'
+            summary = ('Restore the setup saved before Adoption.' if preview.get('restore_boundary') == 'before-adoption' else 'Restore the original files backed up by rtxForge.')
         elif operation == 'reset':
             summary = ('Apply presets: ' + preview['launch_options'] if preview.get('launch_options') else
                        'Apply your selected presets. The installed package stays the same.')
@@ -43,6 +43,8 @@ def attach(review):
             # Cross-OS adoption and record-only cleanup have different effects.
             # Keep their explicit description instead of implying a fresh install.
             summary = preview.get('launch_options') or 'Review the technical details before continuing.'
+        if operation == 'install' and mode != 'mfg-only':
+            summary += ' NR starts ' + ('on.' if review.get('nr_on_launch', False) else 'off; enable it from the overlay.')
         additions = ['Back up the support files kept by your earlier restore.' if preview.get('restored_support_tree') else None,
                      row.get('native_summary'), row.get('display_summary')]
         row['summary'] = '\n'.join([summary] + [text for text in additions if text])

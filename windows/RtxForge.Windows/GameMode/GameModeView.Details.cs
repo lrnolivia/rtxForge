@@ -111,8 +111,8 @@ public sealed partial class GameModeView
         // The desktop Game Details hero actions, in the same order.
         identity.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12), VerticalAlignment = VerticalAlignment.Bottom };
-        var install = ui.Button(Glyph("", g.InstalledOnLinux ? g.InstallLabel : g.Installed ? "Repair Features" : "Install Features"), () => _ = RunOperationAsync("install", [g]),
-            GmKind.Primary, 0.82, enabled: !g.Blocked, minHeight: t.Compact ? 46 : 54);
+        var install = ui.Button(Glyph("", g.AdoptionAvailable || g.InstalledOnLinux ? g.InstallLabel : g.Installed ? "Repair Features" : "Install Features"), () => _ = RunOperationAsync("install", [g]),
+            GmKind.Primary, 0.82, enabled: !g.Blocked || g.AdoptionAvailable, minHeight: t.Compact ? 46 : 54);
         Key(install, "hero-install");
         actions.Children.Add(install);
         var restore = ui.Button(Glyph("", "Restore Original Files"), () => _ = RunOperationAsync("uninstall", [g]),
@@ -213,7 +213,7 @@ public sealed partial class GameModeView
                 {
                     SectionTitle(content, "Feeder NR", "Your existing tuning is preserved. Use ReShade's NR panel in the running game to adjust passes, resolution, tone and structure. Frame generation is unavailable for this route.");
                     content.Children.Add(ui.Group([
-                        ui.RowButton("Update Feeder NR", null, () => _ = RunOperationAsync("install", [g]), enabled: !g.Blocked),
+                        ui.RowButton("Update Feeder NR", null, () => _ = RunOperationAsync("install", [g]), enabled: !g.Blocked || g.AdoptionAvailable),
                         ui.RowButton("Restore Original Files", null, () => _ = RunOperationAsync("uninstall", [g]), danger: true, enabled: g.Installed),
                     ]));
                     break;
@@ -361,6 +361,8 @@ public sealed partial class GameModeView
 
             default:
                 SectionTitle(content, "Overview");
+                if (g.AdoptionAvailable) content.Children.Add(ui.RowButton("Review Adoption", "Register this setup or back it up and clean install.", () => _ = shell.ReviewAdoptionAsync([g])));
+                if (g.OfflineOnly) content.Children.Add(ui.RowButton("Launch offline", "Use this reviewed route while feature files are installed. Online play is unavailable.", () => _ = shell.LaunchOfflineAsync(g)));
                 // Store description and credits live here, not in the hero (Settings › Download game information).
                 if (!string.IsNullOrWhiteSpace(g.Summary))
                 {

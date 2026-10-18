@@ -22,6 +22,16 @@ The desktop application and controller-oriented Game Mode share the package engi
 
 ## Capabilities and Constraints
 
+### Adoption
+
+rtxForge detects existing feature packages separately from management ownership. Refreshing the library offers Adoption for detected, unmanaged installations. The same action is available from game details. Review verifies the selected provider's complete known recipe before registering it; filenames alone never grant ownership. This applies to supported OptiScaler package families and the separate Feeder route across games.
+
+Adopt existing setup preserves the installed files and tuning. Back up and clean install captures that setup before applying the matching app-selected package with fresh settings. Unknown or mixed runtimes, changed review inputs and running games are refused. Adoption stores a recovery baseline; Restore returns to the pre-adoption setup, which may itself contain mods. It does not manufacture vanilla originals. Existing authoritative recovery records are never replaced by Adoption.
+
+NR starts off on new and clean installs. Enable NR on launch is an explicit per-install choice, with its default in Graphics settings. MFG is independent. Adoption and repair preserve the existing startup choice. Installed files, saved enablement and observed runtime activity remain distinct.
+
+Anti-cheat remains a block unless a title has an explicit verified offline profile and the owner reviews its exception. Gears E-Day has a Windows offline-only profile, bound to its actual executable and EAC files. It launches the game directly with child-process-only null-client and Steam identification variables. Anti-cheat files, system environment and normal Steam launch settings are unchanged. Route drift or a running protected session disables the exception. Online support is not implied; adopted mod files must be removed before online play.
+
 - Preserve explicit package choices and each installed game's recorded recipe during repair and restore.
 - Keep one MFG component responsible for capability patches, kernels and multiplier control.
 - Distinguish selected settings, applied runtime state and measured performance. A selected 4× multiplier does not promise a fourfold performance gain.

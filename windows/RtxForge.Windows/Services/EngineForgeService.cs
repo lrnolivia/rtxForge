@@ -263,10 +263,11 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
                 new ReviewBlock(Installation(r), r["name"]?.ToString() ?? "", r["reason"]?.ToString() ?? "", r["summary"]?.ToString())).ToList();
             return new OperationReview(operation, checkedFiles?["token"]?.ToString() ?? "", ready, skipped);
         }
-        var engineOperation = operation switch { "install" => "install", "uninstall" => "uninstall", _ => "reset" };
+        var engineOperation = operation switch { "install" => "install", "uninstall" => "uninstall", "adopt" => "adopt", "adopt-clean" => "adopt-clean", _ => "reset" };
         var settings = new JsonObject
         {
             ["runtime_provider"] = Settings.RuntimeProvider,
+            ["nr_on_launch"] = tuning.NrOnLaunch ?? Settings.NrOnLaunch,
             ["prefer_bundled_nr_only"] = supportedSubset && mode == "nr-only",
             ["manage_dlss_files"] = Settings.ManageDlssFiles,
             ["nr_runtime"] = Settings.NrRuntime,

@@ -430,7 +430,7 @@ def prepare(config,rows,mode,operation,settings):
                 t.need(baseline,'No terminal-engine baseline; use legacy Undo for an older app install')
                 e.verify_baseline_integrity(g.target_dir,baseline,adopt_legacy=False)
                 e.verify_native_restore(baseline)
-                preview={'files':baseline['managed_paths'],'proxy':(baseline.get('current') or {}).get('proxy',''),'launch_options':'Restore only recorded proxy override; preserve NVIDIA capability flags'}
+                preview={'restore_boundary':'before-adoption' if baseline.get('adoption') else 'original','files':baseline['managed_paths'],'proxy':(baseline.get('current') or {}).get('proxy',''),'launch_options':'Restore only recorded proxy override; preserve NVIDIA capability flags'}
             else:
                 t.need(not row.get('blocked'),row.get('blocked',''))
                 account=None if prefix else e.choose_steam_user_config([g],assume_yes=True)
@@ -442,7 +442,7 @@ def prepare(config,rows,mode,operation,settings):
 
                 check_switch(e,installed_package(baseline),mode)
                 with _without_baseline(e,g) if retired else contextlib.nullcontext():
-                    preview=e.install_target(g,target_data,target_meta,'ada',nr_runtime_payload=nr,nr_runtime_meta=nrmeta,feature_mode=mode,enable_effects=True,native_mfg_fallback=bool(settings.get('native_mfg_fallback',False)),nr_strength=strength,mfg_multiplier=multiplier,sharpening_strength=sharpening,preserve_visual_settings=not settings.get("apply_requested_presets",False),dry_run=True)
+                    preview=e.install_target(g,target_data,target_meta,'ada',nr_runtime_payload=nr,nr_runtime_meta=nrmeta,feature_mode=mode,enable_effects=True,nr_on_launch=settings.get('nr_on_launch',False) if operation=='install' else None,native_mfg_fallback=bool(settings.get('native_mfg_fallback',False)),nr_strength=strength,mfg_multiplier=multiplier,sharpening_strength=sharpening,preserve_visual_settings=not settings.get("apply_requested_presets",False),dry_run=True)
                 if selected=='skynizz':
                     model=preview.get('nr_runtime') or {}
                     route='Combined NR + Ada MFG bridge · target runtime validation pending' if mode=='nr-mfg' else 'MFG Only · neural rendering disabled' if mode=='mfg-only' else 'NR Only · requires D3D12/DLSS'
@@ -468,7 +468,7 @@ def prepare(config,rows,mode,operation,settings):
         except (e.Stop,t.Refusal,OSError,ValueError) as ex:blocked.append({'name':row['name'],'reason':str(ex)})
         ui.progress('Game checked',phase='review-check',game=row['name'],checked=index,total=len(rows))
     return {'kind':'engine','operation':operation,'title':'Update NR + MFG bridge' if upgrade else operation.title(),'rows':[{'name':p['row']['name'],'detail':p['preview']['launch_options'] if operation=='reset' else f"{e.Y4MY_PROVIDER['name']} · {len(p['preview']['files'])} managed files · "+p['preview']['launch_options']} for p in ready],
-            'blocked':blocked,'plans':ready,'engine':e,'payload':data,'meta':meta,'nr':nr,'nrmeta':nrmeta,'mode':mode,'enable_effects':True,'native_mfg_fallback':bool(settings.get('native_mfg_fallback',False)),'nr_strength':strength,'mfg_multiplier':multiplier,'sharpening_strength':sharpening,'apply_requested_presets':bool(settings.get('apply_requested_presets',False))}
+            'blocked':blocked,'plans':ready,'engine':e,'payload':data,'meta':meta,'nr':nr,'nrmeta':nrmeta,'mode':mode,'enable_effects':True,'nr_on_launch':settings.get('nr_on_launch',False) if operation=='install' else None,'native_mfg_fallback':bool(settings.get('native_mfg_fallback',False)),'nr_strength':strength,'mfg_multiplier':multiplier,'sharpening_strength':sharpening,'apply_requested_presets':bool(settings.get('apply_requested_presets',False))}
 
 def share_install(e,g,review):
     """Tell rtxForge on the other OS what this install is, and share its state so that OS can adapt it."""
@@ -486,9 +486,12 @@ def share_install(e,g,review):
             cross_os.export_state(target,e.state_dir_for(target),baseline,revision,extras)
             baseline['cross_os_extras']=extras;baseline['cross_os_revision']=revision
             e.save_json_atomic(e.baseline_path(target),baseline)
-        cross_os.write(target,cross_os.THIS_OS,baseline.get('managed_paths',[]),dict(getattr(e,'Y4MY_PROVIDER',{}) or {}),
+        marker=cross_os.write(target,cross_os.THIS_OS,baseline.get('managed_paths',[]),dict(getattr(e,'Y4MY_PROVIDER',{}) or {}),
             current.get('feature_mode') or review.get('mode',''),current.get('proxy',''),proton_prefix.override_names(launch.get('required','')),
             app_version=getattr(e,'APP_VERSION',''),revision=revision,shared_state=portable)
+        if type(current.get('nr_on_launch')) is bool:
+            marker['nr_on_launch']=current['nr_on_launch']
+            e.save_json_atomic(target/cross_os.MARKER,marker)
     except Exception as error:
         # The change itself succeeded; the other OS will just not be able to adapt it.
         ui.line('Install record',f'Not written: {error}')
@@ -592,7 +595,7 @@ def execute(review):
                     record=e.restore_target(g)
                     release_install(g,owned)
                 else:
-                    record=e.install_target(g,item.get('payload',review['payload']),item.get('meta',review['meta']),'ada',nr_runtime_payload=item.get('nr',review['nr']),nr_runtime_meta=item.get('nrmeta',review['nrmeta']),feature_mode=review['mode'],enable_effects=review['enable_effects'],native_mfg_fallback=review.get('native_mfg_fallback',False),nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'],preserve_visual_settings=not review.get('apply_requested_presets',False))
+                    record=e.install_target(g,item.get('payload',review['payload']),item.get('meta',review['meta']),'ada',nr_runtime_payload=item.get('nr',review['nr']),nr_runtime_meta=item.get('nrmeta',review['nrmeta']),feature_mode=review['mode'],enable_effects=review['enable_effects'],nr_on_launch=review.get('nr_on_launch'),native_mfg_fallback=review.get('native_mfg_fallback',False),nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'],preserve_visual_settings=not review.get('apply_requested_presets',False))
                     report('Saving launch settings',0.85)
                     if item.get('prefix'):
                         launch=e._launch_record_for_game(g)

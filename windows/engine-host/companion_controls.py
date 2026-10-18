@@ -58,7 +58,7 @@ def validate_changes(changes):
     for key, value in changes.items():
         if key in _FLOATS:
             low = -1 if key == 'skin' else .25 if key == 'work_scale' else 0
-            maximum = 1 if key in ('sharpness', 'motion_sharpness') else 2
+            maximum = 1 if key in ('sharpness', 'motion_sharpness') else 4 if key == 'colour' else 2
             t.need(type(value) in (int, float) and math.isfinite(value) and low <= value <= maximum,
                    'An image control is outside its supported range.')
             result[key] = float(value)
@@ -77,7 +77,7 @@ def validate_changes(changes):
 def decode(raw, pid):
     t.need(len(raw) in (SIZE, 512), 'The game returned an incomplete control snapshot.')
     magic, version, found = struct.unpack_from('<III', raw)
-    t.need(magic == MAGIC and version in (1, 2, 3, 4) and found == pid
+    t.need(magic == MAGIC and version in (1, 2, 3, 4, 5) and found == pid
            and len(raw) == (512 if version >= 3 else SIZE), 'This game uses an unsupported control protocol.')
     values = {key: struct.unpack_from('<f' if key in _FLOATS else '<i', raw, offset)[0]
               for key, offset in OFFSETS.items() if key in supported_keys(version)}
@@ -94,6 +94,8 @@ def decode(raw, pid):
         for key, offset in {'native_status': 136, 'native_presented': 140, 'native_samples': 144,
                             'native_tick': 148, 'native_mode': 152, 'native_generated': 156}.items():
             result[key] = struct.unpack_from('<i', raw, offset)[0]
+    if version >= 5:
+        result['original_menu'], result['original_menu_key'] = struct.unpack_from('<ii', raw, 368)
     return result
 
 
@@ -132,7 +134,7 @@ class Mailbox:
             if not self.view: raise OSError('The game control snapshot could not be opened.')
             header = ctypes.string_at(self.view, 12)
             magic, version, found = struct.unpack('<III', header)
-            t.need(magic == MAGIC and version in (1, 2, 3, 4) and found == pid, 'Unsupported game control protocol.')
+            t.need(magic == MAGIC and version in (1, 2, 3, 4, 5) and found == pid, 'Unsupported game control protocol.')
             self.size = 512 if version >= 3 else SIZE
             self.read()
         except BaseException:
@@ -163,6 +165,9 @@ class Mailbox:
         before = self.read()
         t.need(set(changes) <= supported_keys(before['version']),
                'Update this game package to use the additional NR controls.')
+        t.need(before['version'] >= 5 or changes.get('colour', 0) <= 2,
+               'Update this game package to use colour strength above 2.00.')
+        t.need(not before.get('original_menu'), 'OptiScaler controls this session. Restart the game after switching overlays.')
         values = before['values'] | changes
         if 'multiplier' in changes and changes['multiplier'] > 0:
             t.need(before['backend_max'] >= changes['multiplier'] - 1, 'This game does not support that multiplier.')
@@ -201,19 +206,25 @@ class Controls:
         self.process_cache, self.process_time = {}, 0
         self.presets = {}
         self.watcher = None
-        if self.state.is_dir():
-            for path in list(self.state.glob('*.json'))[:1000]:
-                try:
-                    t.need(not path.is_symlink() and path.stat().st_size < 65536, 'Unsafe preset')
-                    data = json.loads(path.read_text(encoding='utf-8'))
-                    t.need(isinstance(data, dict) and data.get('schema') == 1, 'Unsupported preset')
-                    row = data.get('row')
-                    t.need(isinstance(row, dict) and all(isinstance(row.get(key), str) for key in ('game', 'exe')), 'Invalid preset game')
-                    t.need(isinstance(data.get('recipe'), str) and len(data['recipe']) == 64, 'Invalid preset recipe')
-                    validate_changes(data['changes'])
-                    self.presets[path.stem] = data
-                except (OSError, ValueError, KeyError, TypeError, t.Refusal): pass
+        self.reload_presets()
         self._start_watcher()
+
+    def reload_presets(self, _params=None):
+        with self.lock:
+            self.presets.clear(); self.last_pid.clear(); self.preset_errors.clear()
+            if self.state.is_dir():
+                for path in list(self.state.glob('*.json'))[:1000]:
+                    try:
+                        t.need(not path.is_symlink() and path.stat().st_size < 65536, 'Unsafe preset')
+                        data = json.loads(path.read_text(encoding='utf-8'))
+                        t.need(isinstance(data, dict) and data.get('schema') == 1, 'Unsupported preset')
+                        row = data.get('row')
+                        t.need(isinstance(row, dict) and all(isinstance(row.get(key), str) for key in ('game', 'exe')), 'Invalid preset game')
+                        t.need(isinstance(data.get('recipe'), str) and len(data['recipe']) == 64, 'Invalid preset recipe')
+                        validate_changes(data['changes'])
+                        self.presets[path.stem] = data
+                    except (OSError, ValueError, KeyError, TypeError, t.Refusal): pass
+        return {}
 
     def targets(self, _params=None):
         """Known managed targets only; no library walk or artwork/network work."""
@@ -265,9 +276,9 @@ class Controls:
                      if not name.casefold().endswith(('.ini', '.log'))}
         t.need(all(isinstance(value, str) and len(value) == 64 for value in immutable.values()), 'The installed recipe is invalid; repair this game.')
         recipe = hashlib.sha256(json.dumps({'files': immutable, 'mode': record.get('feature_mode')}, sort_keys=True).encode()).hexdigest()
-        mfg = record.get('feature_mode') == 'nr-mfg' and 'renodx-mfgunlock.addon64' not in files
+        mfg = record.get('feature_mode') in ('nr-mfg', 'mfg-only') and 'renodx-mfgunlock.addon64' not in files
         return {'row': {k: row.get(k) for k in ('game', 'exe', 'appid', 'name')}, 'root': root,
-                'exe': exe, 'target': target, 'key': key, 'recipe': recipe, 'can_mfg': mfg, 'files': record['files']}
+                'exe': exe, 'target': target, 'key': key, 'recipe': recipe, 'can_mfg': mfg, 'can_nr': record.get('feature_mode') in ('nr-mfg','nr-only'), 'files': record['files']}
 
     def pipelines(self, game):
         result = {}
@@ -369,8 +380,10 @@ class Controls:
         found['nr_ms'] = found['nr_ms'] if found['nr_ms'] > 0 and math.isfinite(found['nr_ms']) else None
         fps = found['rendered_fps']
         found['rendered_fps'] = fps if found['nr_running'] and 0 < fps < 10000 and math.isfinite(fps) else None
-        return {'state': 'stalled' if stalled else 'running', 'detail': 'Waiting for the game to respond.' if stalled else 'Connected',
-                'pid': box.pid, 'can_edit': not stalled, 'can_save': True, 'can_mfg': game['can_mfg'],
+        native_menu = bool(found.get('original_menu'))
+        return {'state': 'stalled' if stalled else 'running',
+                'detail': 'OptiScaler controls this session. Restart the game after switching overlays.' if native_menu else 'Waiting for the game to respond.' if stalled else 'Connected',
+                'pid': box.pid, 'can_edit': not stalled and not native_menu, 'can_save': not native_menu, 'can_mfg': game['can_mfg'], 'can_nr': game['can_nr'],
                 'native_fresh': bool(native_fresh) and not stalled, **found}
 
     def status(self, params):
@@ -380,7 +393,7 @@ class Controls:
                 configured = self._configured(game)
                 saved = self.presets.get(game['key'])
                 result = {'state': 'waiting', 'detail': 'Start this game to use live controls.', 'can_edit': False,
-                          'can_save': True, 'can_mfg': game['can_mfg'], 'values': configured, 'native_fresh': False}
+                          'can_save': True, 'can_mfg': game['can_mfg'], 'can_nr': game['can_nr'], 'values': configured, 'native_fresh': False}
                 box = self._open(game)
                 if box:
                     with box: result = self._present(game, box, box.read())
@@ -430,6 +443,7 @@ class Controls:
         with self.lock:
             game = self._game(params)
             changes = validate_changes(params.get('changes'))
+            t.need(game['can_nr'] or changes.get('enabled',0)==0, 'Neural rendering is not installed in this package.')
             t.need(game['can_mfg'] or 'multiplier' not in changes, 'This MFG package does not support live edits. NR controls remain available.')
             box = self._open(game, True)
             t.need(box is not None, 'Start this game with the current bridge before applying live changes.')
@@ -445,17 +459,20 @@ class Controls:
         with self.lock:
             game = self._game(params)
             changes = validate_changes(params.get('changes'))
+            t.need(game['can_nr'] or changes.get('enabled',0)==0, 'Neural rendering is not installed in this package.')
             if params.get('pid'):
                 box = self._open(game)
                 t.need(box is not None, 'The game session ended. Open the overlay again.')
                 with box:
                     t.need(box.pid == params['pid'], 'The game session changed. Open the overlay again.')
                     found = box.read()
+                    t.need(not found.get('original_menu'), 'OptiScaler controls this session. Restart the game after switching overlays.')
                     t.need(set(changes) <= supported_keys(found['version']),
                            'Update this game package to save the additional NR controls.')
             old = self.presets.get(game['key']) or {}
             if old.get('recipe') == game['recipe']:
                 changes = validate_changes((old.get('changes') or {}) | changes)
+            t.need(game['can_nr'] or changes.get('enabled',0)==0, 'Neural rendering is not installed in this package.')
             t.need(game['can_mfg'] or 'multiplier' not in changes, 'This MFG package does not support saved live edits.')
             record = {'schema': 1, 'row': game['row'], 'recipe': game['recipe'], 'changes': changes, 'saved_at': time.time()}
             self.state.mkdir(parents=True, exist_ok=True)
@@ -533,6 +550,7 @@ class Controls:
                             # preset or game process is required after refusal.
                             self.last_pid[key] = box.pid
                             t.need(game['can_mfg'] or 'multiplier' not in record['changes'], 'MFG ownership changed')
+                            t.need(game['can_nr'] or record['changes'].get('enabled',0)==0, 'NR ownership changed')
                             box.apply(record['changes'])
                             self.preset_errors.pop(key, None)
                     except (OSError, ValueError, KeyError, t.Refusal) as error:
@@ -541,5 +559,5 @@ class Controls:
 
 def methods(state):
     controls = Controls(state)
-    return {'companion_targets': controls.targets, 'companion_active': controls.active, 'companion_status': controls.status, 'companion_apply': controls.apply,
+    return {'companion_reload': controls.reload_presets, 'companion_targets': controls.targets, 'companion_active': controls.active, 'companion_status': controls.status, 'companion_apply': controls.apply,
             'companion_save': controls.save, 'companion_forget': controls.forget, 'companion_reset': controls.reset}

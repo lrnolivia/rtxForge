@@ -35,7 +35,7 @@ DEFAULTS = {
 
 def require_mode(system, mode, fallback=False, bridge=False):
     t.need(system == 'windows', 'Skynizz is Windows-only in this release; Proton support is not verified.')
-    t.need((mode == 'nr-only' or (mode == 'nr-mfg' and bridge)) and not fallback,
+    t.need((mode == 'nr-only' or (mode in ('nr-mfg', 'mfg-only') and bridge)) and not fallback,
            'NR + MFG requires the combined Skynizz/Ada bridge build. Stock Skynizz supports NR Only; use the existing MFG package for MFG Only.')
 
 
@@ -232,7 +232,7 @@ def configure(e, source, saved=None, mode='nr-only', mfg_multiplier='auto', game
             text = e.set_ini_value(text, 'DlssNr', 'CacheEnabled', 'false')
         if (preset := getattr(e, 'Y4MY_PROVIDER', {}).get('nr_preset')) is not None:
             text = e.set_ini_value(text, 'DlssNr', 'Preset', str(preset))
-    if mode == 'nr-mfg':
+    if mode in ('nr-mfg', 'mfg-only'):
         unlock = 'false' if external_mfg else 'true'
         for section, values in {'DLSSG':{'AdaMfgUnlock':unlock,'AdaBlackwellKernels':unlock,'AmpereMfgUnlock':'false'},
                                 'FrameGen':{'Enabled':'false','FGInput':'nofg','FGOutput':'nofg','FGNvngxReplacement':'None'}}.items():
@@ -247,6 +247,11 @@ def configure(e, source, saved=None, mode='nr-only', mfg_multiplier='auto', game
                 text = e.set_ini_value(text, 'DLSSG', key, value)
             text = e.set_ini_value(text, 'Plugins', 'LoadReShade', 'true')
             text = e.set_ini_value(text, 'Menu', 'OverlayMenu', 'false')
+    if mode == 'nr-only' and getattr(e, 'Y4MY_PROVIDER', {}).get('variant') == 'nr-mfg-bridge':
+        for key in ('AdaMfgUnlock', 'AdaBlackwellKernels', 'AmpereMfgUnlock'):
+            text = e.set_ini_value(text, 'DLSSG', key, 'false')
+    if mode == 'mfg-only':
+        text = e.set_ini_value(text, 'DlssNr', 'Enabled', 'false')
     if startup_overlay_disabled(game):
         # The swapchain overlay hangs inZOI before NR evaluation. The classic
         # menu path allows startup and leaves the native FG and NR routes on.

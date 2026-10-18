@@ -13,6 +13,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Hosting;
 using RtxForge.Windows.Models;
 using RtxForge.Windows.Services;
+using RtxForge.Windows.Controls;
 using Windows.Graphics;
 using WinRT;
 
@@ -22,6 +23,11 @@ public sealed partial class CompanionWindow : Window
 {
     readonly EngineForgeService service;
     readonly Func<string?> shortcutProblem;
+    readonly Action preferencesChanged;
+    bool settingsShown;
+    bool globalShown;
+    bool opening;
+    bool Classic => service.Settings.OverlayControls == "classic";
     IReadOnlyList<Game> games = [];
     DateTime targetsUpdated;
     DesktopAcrylicController? acrylic;
@@ -36,9 +42,9 @@ public sealed partial class CompanionWindow : Window
     bool syncing = true, dirty, requesting, polling, disposed, dragging;
     public bool IsShown { get; private set; }
 
-    public CompanionWindow(EngineForgeService engine, Func<string?> getShortcutProblem)
+    public CompanionWindow(EngineForgeService engine, Func<string?> getShortcutProblem, Action reloadPreferences)
     {
-        service = engine; shortcutProblem = getShortcutProblem;
+        service = engine; shortcutProblem = getShortcutProblem; preferencesChanged = reloadPreferences;
         InitializeComponent();
         ApplyMaterial(engine.Settings.OverlayMaterial);
         ExtendsContentIntoTitleBar = true;
@@ -57,7 +63,8 @@ public sealed partial class CompanionWindow : Window
         DwmSetWindowAttribute(handle, 34, ref noBorder, sizeof(int));
         Root.KeyDown += (_, e) =>
         {
-            if (e.Key == global::Windows.System.VirtualKey.Escape) { e.Handled = true; HidePanel(); }
+            if (e.Key == global::Windows.System.VirtualKey.Escape)
+            { e.Handled = true; if (settingsShown && service.Settings.OverlayRenderer != "optiscaler") ShowSettings(false); else HidePanel(); }
         };
         AppWindow.Closing += (_, e) => { if (!disposed) { e.Cancel = true; HidePanel(); } };
         pollTimer = DispatcherQueue.CreateTimer();
@@ -75,11 +82,34 @@ public sealed partial class CompanionWindow : Window
             slider.AddHandler(UIElement.PointerCaptureLostEvent, new PointerEventHandler((_, _) => { dragging = false; QueueApply(); }), true);
         }
         syncing = false;
+        ApplyPreferences();
         RenderPipelines();
         SetAvailability();
     }
 
-    public void Present()
+    public async void Present()
+    {
+        if (opening || disposed) return;
+        opening = true;
+        try
+        {
+            if (!settingsShown && !globalShown && service.Settings.OverlayRenderer != "optiscaler")
+            {
+                // A running native menu keeps its key until restart. Never open
+                // both panels when the preference changed during that session.
+                var targets = await service.CompanionTargetsAsync();
+                var active = await service.ActiveCompanionAsync(targets, MainWindow.ForegroundProcessId(), pid);
+                var location = (active["row"] as JsonObject)?["game"]?.GetValue<string>();
+                var target = targets.FirstOrDefault(g => string.Equals(g.Id, location, StringComparison.OrdinalIgnoreCase));
+                if (target is not null && Int(await service.CompanionAsync("status", target), "original_menu") == 1) return;
+            }
+            PresentCore();
+            if (game is not null) _ = ApplyGameAccentAsync(game, generation);
+        }
+        catch (Exception error) { Feedback.Text = error.Message; PresentCore(); }
+        finally { opening = false; }
+    }
+    void PresentCore()
     {
         if (!IsShown)
         {
@@ -89,16 +119,17 @@ public sealed partial class CompanionWindow : Window
             var scale = GetDpiForWindow(foregroundWindow == 0 ? WinRT.Interop.WindowNative.GetWindowHandle(this) : foregroundWindow) / 96.0;
             var edge = (int)Math.Round(24 * scale);
             var width = Math.Min((int)Math.Round(420 * scale), area.Width - 2 * edge);
-            AppWindow.MoveAndResize(new RectInt32(area.X + area.Width - width - edge,
+            AppWindow.MoveAndResize(new RectInt32(area.X + edge,
                 area.Y + edge, width, area.Height - 2 * edge));
         }
         ShortcutHint.Text = shortcutProblem() ?? (service.Settings.PanelHotkey == "Disabled"
             ? "Esc to return to your game" : $"{service.Settings.PanelHotkey} · show or hide");
         IsShown = true;
+        if (service.Settings.OverlayRenderer == "optiscaler" && !globalShown) ShowSettings(true);
         // Resolve the foreground game before Activate makes the overlay foreground.
         var foreground = MainWindow.ForegroundProcessId();
-        Activate(); AnimateVisibility(true); pollTimer.Start();
-        _ = RefreshAsync(foreground);
+        Activate(); AnimateVisibility(true);
+        if (!settingsShown && !globalShown) { pollTimer.Start(); _ = RefreshAsync(foreground); }
     }
 
     public void HidePanel() { editTimer.Stop(); pollTimer.Stop(); dirty = dragging = false; IsShown = false; AnimateVisibility(false); }
@@ -116,7 +147,7 @@ public sealed partial class CompanionWindow : Window
         }
         if (show && !windowVisible)
         { visual.Opacity = 0; visual.Scale = new Vector3(.97f, .97f, 1); }
-        visual.CenterPoint = new Vector3((float)Surface.ActualWidth, (float)Surface.ActualHeight / 2, 0);
+        visual.CenterPoint = new Vector3(0, (float)Surface.ActualHeight / 2, 0);
         windowVisible = true;
         var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(.16f, 1), new Vector2(.3f, 1));
         var duration = TimeSpan.FromMilliseconds(show ? 160 : 110);
@@ -154,6 +185,68 @@ public sealed partial class CompanionWindow : Window
         else Root.Background = new SolidColorBrush(global::Windows.UI.Color.FromArgb(255, 24, 24, 24));
     }
     void OnHide(object sender, RoutedEventArgs e) => HidePanel();
+    void OnSettings(object sender, RoutedEventArgs e) => ShowSettings(!settingsShown);
+    void OnGlobal(object sender, RoutedEventArgs e)
+    {
+        globalShown = !globalShown; ShowSettings(false);
+    }
+    public void OpenSettings() { ShowSettings(true); Present(); }
+    void ShowSettings(bool show)
+    {
+        if (!show && !globalShown && service.Settings.OverlayRenderer == "optiscaler") { HidePanel(); return; }
+        settingsShown = show;
+        GlobalButton.IsChecked = globalShown;
+        ControlsScroll.Visibility = PresetFooter.Visibility = show || globalShown ? Visibility.Collapsed : Visibility.Visible;
+        SettingsScroll.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        GlobalScroll.Visibility = globalShown && !show ? Visibility.Visible : Visibility.Collapsed;
+        PipelinePills.Visibility = globalShown ? Visibility.Collapsed : Visibility.Visible;
+        if (show)
+        {
+            // Settings are independent of game rendering and suspend status polling.
+            pollTimer.Stop(); editTimer.Stop(); dirty = dragging = false;
+            SettingsHost.Children.Clear();
+            SettingsHost.Children.Add(new OverlayPreferencesView(fresh =>
+            { service.Settings.CopyOverlayFrom(fresh); preferencesChanged(); }));
+            SettingsButton.Focus(FocusState.Programmatic);
+        }
+        else if (globalShown)
+        {
+            pollTimer.Stop(); editTimer.Stop(); dirty = dragging = false;
+            GameName.Text = "All installed games"; ConnectionText.Text = "One-time changes · review before applying";
+            ApplyAccent(ArtAccent.Palette(ArtAccent.NoArtwork));
+            if (GlobalHost.Children.Count == 0) GlobalHost.Children.Add(new GlobalControlsView(service));
+        }
+        else if (IsShown) { pollTimer.Start(); _ = RefreshAsync(); if (game is not null) _ = ApplyGameAccentAsync(game, generation); }
+    }
+    public void ApplyPreferences()
+    {
+        ApplyMaterial(service.Settings.OverlayMaterial);
+        var wasSyncing = syncing; syncing = true;
+        StrengthLabel.Text = Classic ? "Intensity" : "Model strength";
+        DetailLabel.Text = Classic ? "Detail strength" : "Detail";
+        ColourLabel.Text = Classic ? "Colour strength" : "Colour";
+        PreSr.Header = Classic ? "Run before the upscaler" : "Run before super resolution";
+        Reduced.Header = Classic ? "Reduced model before the upscaler" : "Use reduced model resolution";
+        Cache.Header = Classic ? "Reuse the model’s edit between runs" : "Reuse NR between frames";
+        Interval.Header = Classic ? "Max frames between runs" : "Run NR every N frames";
+        AutoMask.Header = Classic ? "Auto skin mask" : "Automatic skin mask";
+        MfgHeading.Text = Classic ? "Override DLSSG Ratio" : "Frame generation";
+        var automatic = MultiplierChoices.Children.OfType<ToggleButton>().First();
+        automatic.Content = Classic ? "Default" : "Auto";
+        if (NrPreset.Items.Count > 0 && !Equals(NrPreset.Items[0], Classic ? "Default" : "Automatic"))
+            NrPreset.Items[0] = Classic ? "Default" : "Automatic";
+        SharpFilter.Header = Classic ? "Method" : "Filter";
+        SharpFilter.Items[1] = Classic ? "Depth Aware (RCAS)" : "Depth aware";
+        SharpFilter.Items[2] = Classic ? "Depth Aware (DAS)" : "Local contrast depth aware";
+        // Layout preferences never quantize a game's current values.
+        foreach (var slider in new[] { Strength, Structure, Tone, Skin, Detail, Colour })
+            slider.StepFrequency = .01;
+        // Model resolution is a percentage in OptiScaler itself.
+        WorkScale.StepFrequency = .01;
+        syncing = wasSyncing; UpdateLabels();
+        ShortcutHint.Text = shortcutProblem() ?? (service.Settings.PanelHotkey == "Disabled"
+            ? "Esc to return to your game" : $"{service.Settings.PanelHotkey} · show or hide");
+    }
     static int Int(JsonObject? data, string key, int fallback = 0) => data?[key]?.GetValue<int>() ?? fallback;
     static bool Flag(JsonObject? data, string key) => data?[key]?.GetValue<bool>() == true;
     static string Text(JsonObject? data, string key) => data?[key]?.GetValue<string>() ?? "";
@@ -161,7 +254,7 @@ public sealed partial class CompanionWindow : Window
 
     async Task RefreshAsync(uint? observedForeground = null)
     {
-        if (requesting || polling || disposed || !IsShown) return;
+        if (requesting || polling || disposed || !IsShown || settingsShown || globalShown) return;
         polling = true;
         try
         {
@@ -170,7 +263,7 @@ public sealed partial class CompanionWindow : Window
             var foreground = observedForeground ?? MainWindow.ForegroundProcessId();
             var retained = foreground == (uint)Environment.ProcessId ? pid : 0;
             var active = await service.ActiveCompanionAsync(games, foreground, retained);
-            if (disposed || requesting || !IsShown) return;
+            if (disposed || requesting || !IsShown || settingsShown || globalShown) return;
             var location = (active["row"] as JsonObject)?["game"]?.GetValue<string>();
             var next = games.FirstOrDefault(g => string.Equals(g.Id, location, StringComparison.OrdinalIgnoreCase));
             var nextPid = Int(active, "pid");
@@ -178,10 +271,12 @@ public sealed partial class CompanionWindow : Window
             {
                 generation++; editTimer.Stop(); dirty = dragging = false;
                 game = next; pid = nextPid; Feedback.Text = "";
+                if (next is not null) _ = ApplyGameAccentAsync(next, generation);
+                else ApplyAccent(ArtAccent.Palette(ArtAccent.NoArtwork));
             }
             var ticket = generation;
             var result = game is null ? active : await service.CompanionAsync("status", game);
-            if (ticket != generation || disposed || requesting || !IsShown) return;
+            if (ticket != generation || disposed || requesting || !IsShown || settingsShown || globalShown) return;
             status = result;
             pollTimer.Interval = TimeSpan.FromSeconds(game is null ? 3 : 1);
             GameName.Text = game?.Name ?? "Ready when you are";
@@ -197,6 +292,33 @@ public sealed partial class CompanionWindow : Window
             Feedback.Text = error.Message;
         }
         finally { polling = false; SetAvailability(); }
+    }
+
+    async Task ApplyGameAccentAsync(Game target, int ticket)
+    {
+        var palette = await OverlayAccent.ForGameAsync(target);
+        if (!disposed && !globalShown && ticket == generation && game?.Id == target.Id) ApplyAccent(palette);
+    }
+    void ApplyAccent(AccentPalette palette)
+    {
+        void Paint(string key, global::Windows.UI.Color colour)
+        {
+            if (Root.Resources.TryGetValue(key, out var resource) && resource is SolidColorBrush brush) brush.Color = colour;
+            else Root.Resources[key] = new SolidColorBrush(colour);
+        }
+        Paint("OverlayHeadingBrush", palette.NavAccent);
+        foreach (var key in new[] { "AccentFillColorDefaultBrush", "AccentFillColorSecondaryBrush", "ToggleButtonBackgroundChecked",
+            "ToggleButtonBackgroundCheckedPointerOver", "ToggleButtonBackgroundCheckedPressed", "SliderTrackValueFill", "SliderTrackValueFillPointerOver",
+            "SliderTrackValueFillPressed", "SliderThumbBackground", "SliderThumbBackgroundPointerOver", "SliderThumbBackgroundPressed",
+            "ToggleSwitchFillOn", "ToggleSwitchFillOnPointerOver", "ToggleSwitchFillOnPressed", "ComboBoxDropDownGlyphForeground" })
+            Paint(key, palette.Color);
+        foreach (var key in new[] { "TextOnAccentFillColorPrimaryBrush", "ToggleButtonForegroundChecked", "ToggleButtonForegroundCheckedPointerOver",
+            "ToggleButtonForegroundCheckedPressed", "ToggleSwitchKnobFillOn" }) Paint(key, palette.AccentFg);
+        SavePreset.Background = palette.AccentBrush; SavePreset.Foreground = palette.Brush(palette.AccentFg);
+        foreach (var key in new[] { "ButtonBackgroundPointerOver", "ButtonBackgroundPressed" })
+            ((SolidColorBrush)SavePreset.Resources[key]).Color = palette.Color;
+        foreach (var key in new[] { "ButtonForegroundPointerOver", "ButtonForegroundPressed" })
+            ((SolidColorBrush)SavePreset.Resources[key]).Color = palette.AccentFg;
     }
 
     void RenderStatus()
@@ -253,6 +375,7 @@ public sealed partial class CompanionWindow : Window
     void LoadValues(JsonObject values)
     {
         syncing = true;
+        Colour.Maximum = Int(status, "version") >= 5 ? 4 : 2;
         multiplier = Int(values, "multiplier", -1); style = Int(values, "style");
         NrEnabled.IsOn = Int(values, "enabled", 1) == 1;
         Strength.Value = Number(values, "intensity");
@@ -311,6 +434,7 @@ public sealed partial class CompanionWindow : Window
         if (Controls is null) return;
         var session = game is not null && Flag(status, "can_edit");
         var connected = session && !requesting;
+        var nrConnected = connected && Flag(status, "can_nr");
         var expanded = Int(status, "version") >= 3;
         var sharpening = Int(status, "version") >= 4;
         SharpeningGroup.Visibility = game is null || sharpening ? Visibility.Visible : Visibility.Collapsed;
@@ -319,14 +443,14 @@ public sealed partial class CompanionWindow : Window
         Sharpness.IsEnabled = connected && sharpening && SharpEnabled.IsOn && SharpOverride.IsOn;
         MotionSharpness.IsEnabled = connected && sharpening && SharpEnabled.IsOn && MotionSharpEnabled.IsOn;
         foreach (var control in new Control[] { NrEnabled, Strength, Structure, Tone, NrPreset, PreSr, Cache, Interval })
-            control.IsEnabled = connected;
+            control.IsEnabled = nrConnected;
         foreach (var control in new Control[] { Passes, Skin, Detail, Colour, AutoMask, EdgeAware })
-            control.IsEnabled = connected && expanded;
-        Reduced.IsEnabled = connected && expanded && PreSr.IsOn;
-        WorkScale.IsEnabled = connected && expanded && (!PreSr.IsOn || Reduced.IsOn);
-        Interval.IsEnabled = connected && Cache.IsOn;
+            control.IsEnabled = nrConnected && expanded;
+        Reduced.IsEnabled = nrConnected && expanded && PreSr.IsOn;
+        WorkScale.IsEnabled = nrConnected && expanded && (!PreSr.IsOn || Reduced.IsOn);
+        Interval.IsEnabled = nrConnected && Cache.IsOn;
         HigherMultiplier.IsEnabled = connected && Flag(status, "can_mfg");
-        foreach (var button in StyleChoices.Children.OfType<ToggleButton>()) button.IsEnabled = connected;
+        foreach (var button in StyleChoices.Children.OfType<ToggleButton>()) button.IsEnabled = nrConnected;
         SavePreset.IsEnabled = connected && !dirty;
         ClearSaved.IsEnabled = connected;
         foreach (var button in MultiplierChoices.Children.OfType<ToggleButton>())
@@ -356,17 +480,24 @@ public sealed partial class CompanionWindow : Window
     void UpdateLabels()
     {
         string Percent(double value) => value.ToString("0%", CultureInfo.CurrentCulture);
+        string Unit(double value) => Classic ? value.ToString("0.00", CultureInfo.CurrentCulture) : Percent(value);
         if (game is null || !Flag(status, "can_edit"))
         {
             foreach (var label in new[] { StrengthText, StructureText, ToneText, DetailText, ColourText, SkinText, ScaleText, SharpnessText, MotionSharpnessText })
                 label.Text = "—";
             return;
         }
-        StrengthText.Text = Percent(Strength.Value); StructureText.Text = Percent(Structure.Value);
-        ToneText.Text = Percent(Tone.Value); DetailText.Text = Percent(Detail.Value); ColourText.Text = Percent(Colour.Value);
-        SkinText.Text = Skin.Value < 0 ? "Follow structure" : Percent(Skin.Value); ScaleText.Text = Percent(WorkScale.Value);
-        SharpnessText.Text = Int(status, "version") >= 4 ? Percent(Sharpness.Value) : "—";
-        MotionSharpnessText.Text = Int(status, "version") >= 4 ? Percent(MotionSharpness.Value) : "—";
+        StrengthText.Text = Unit(Strength.Value); StructureText.Text = Unit(Structure.Value);
+        ToneText.Text = Unit(Tone.Value); DetailText.Text = Unit(Detail.Value); ColourText.Text = Unit(Colour.Value);
+        SkinText.Text = Skin.Value < 0 && !Classic ? "Follow structure" : Unit(Skin.Value); ScaleText.Text = Percent(WorkScale.Value);
+        SharpnessText.Text = Int(status, "version") >= 4 ? Unit(Sharpness.Value) : "—";
+        MotionSharpnessText.Text = Int(status, "version") >= 4 ? Unit(MotionSharpness.Value) : "—";
+        foreach (var (slider, text) in new[] { (Strength, StrengthText), (Structure, StructureText), (Tone, ToneText),
+            (Detail, DetailText), (Colour, ColourText), (Skin, SkinText), (WorkScale, ScaleText), (Sharpness, SharpnessText), (MotionSharpness, MotionSharpnessText) })
+        {
+            slider.IsThumbToolTipEnabled = false;
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(slider, text.Text);
+        }
     }
     static void SetChoices(Grid group, int selected)
     {

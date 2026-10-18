@@ -35,3 +35,31 @@ foreach (var key in OverlayShortcut.Choices)
         throw new Exception("Single key or disabled shortcut changed");
 }
 Console.WriteLine("PASS: single-key overlay default, legacy shortcuts, disabled helper/startup and material round trips.");
+foreach (var controls in new[] { "unified", "classic" })
+foreach (var renderer in new[] { "rtxforge", "optiscaler" })
+{
+    var original = new ForgeSettings { OverlayControls = controls, OverlayRenderer = renderer, OptiScalerHotkey = "F8", NrStrength = 1.25 };
+    var saved = JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(original))!;
+    var manager = new ForgeSettings { NrStrength = .75, RuntimeProvider = "feeder" };
+    manager.CopyOverlayFrom(saved);
+    if (manager.OverlayControls != controls || manager.OverlayRenderer != renderer || manager.OptiScalerHotkey != "F8"
+        || manager.NrStrength != .75 || manager.RuntimeProvider != "feeder") throw new Exception("Overlay preferences changed game tuning");
+}
+Console.WriteLine("PASS: renderer/layout/native shortcut persistence and overlay-only merge preserve tuning.");
+
+var firstGame = new Game { Id = "full", Name = "Full" };
+var otherGame = new Game { Id = "partial", Name = "Partial" };
+var firstReview = new OperationReview("install", "full-token", [new(firstGame, "", "NR + MFG")], []);
+var otherReview = new OperationReview("install", "nr-token", [new(otherGame, "", "NR Only")], []);
+var combined = (firstReview with { Supported = [new(otherReview, true, false, "No FG")] }).IncludeSupported();
+if (combined.Ready.Count != 2 || combined.Steps.Count != 2 || combined.Steps[0].Token != "full-token" || combined.Steps[1].Token != "nr-token"
+    || combined.Steps[1].Ready.Single().Game.Id != "partial" || combined.Supported.Count != 0)
+    throw new Exception("Supported-feature review lost the exact per-mode token or target");
+Console.WriteLine("PASS: supported subsets retain distinct exact review tokens and targets.");
+
+foreach (var raw in new[] { "false", "null", "true", "\"unknown\"" })
+{
+    var game = new Game { Id = "caps", Name = "Caps", EngineRow = System.Text.Json.Nodes.JsonNode.Parse("{\"anti_cheat\":" + raw + "}")!.AsObject() };
+    if (game.AntiCheatDetected != (raw is not "false" and not "null")) throw new Exception("Partial-support anti-cheat filtering changed");
+}
+Console.WriteLine("PASS: false anti-cheat flags admit support review; true and malformed flags stay excluded.");

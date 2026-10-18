@@ -239,8 +239,12 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         return credits;
     }
 
-    public async Task<OperationReview> PrepareAsync(string operation, IReadOnlyList<Game> targets, Tuning tuning, string mode,
-        IProgress<PrepareProgress>? progress = null, CancellationToken cancel = default)
+    public Task<OperationReview> PrepareAsync(string operation, IReadOnlyList<Game> targets, Tuning tuning, string mode,
+        IProgress<PrepareProgress>? progress = null, CancellationToken cancel = default) =>
+        PrepareCoreAsync(operation, targets, tuning, mode, progress, cancel, false);
+
+    async Task<OperationReview> PrepareCoreAsync(string operation, IReadOnlyList<Game> targets, Tuning tuning, string mode,
+        IProgress<PrepareProgress>? progress, CancellationToken cancel, bool supportedSubset)
     {
         var rows = new JsonArray(targets.Where(g => g.EngineRow is not null).Select(g => (JsonNode)g.EngineRow!.DeepClone()).ToArray());
         if (operation == "update-dlss")
@@ -263,6 +267,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         var settings = new JsonObject
         {
             ["runtime_provider"] = Settings.RuntimeProvider,
+            ["prefer_bundled_nr_only"] = supportedSubset && mode == "nr-only",
             ["manage_dlss_files"] = Settings.ManageDlssFiles,
             ["nr_runtime"] = Settings.NrRuntime,
             ["skynizz_version"] = Settings.SkynizzVersion,
@@ -299,11 +304,82 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             .Select(b => new ReviewBlock(Match(b["name"]?.ToString()), b["name"]?.ToString() ?? "", b["reason"]?.ToString() ?? "", b["summary"]?.ToString())).ToList();
         var warnings = (result?["warnings"] as JsonArray ?? []).OfType<JsonObject>()
             .Select(w => new ReviewBlock(Match(w["name"]?.ToString()), w["name"]?.ToString() ?? "", w["reason"]?.ToString() ?? "")).ToList();
-        return new OperationReview(operation, result?["token"]?.ToString() ?? "", readyRows, blocked, warnings);
+        var prepared = new OperationReview(operation, result?["token"]?.ToString() ?? "", readyRows, blocked, warnings);
+        if (operation == "install" && mode == "nr-mfg")
+        {
+            var available = new List<SupportedOperationReview>();
+            if (readyRows.Count > 0 && readyRows.All(r => r.Game.IsFeeder))
+            {
+                available.Add(new(prepared, true, false, "Feeder provides neural rendering. Frame generation is unavailable for this route."));
+                prepared = prepared with { Ready = [] };
+            }
+            var candidates = targets.Where(g => !readyRows.Any(r => r.Game.Id == g.Id)
+                && !g.AntiCheatDetected && g.EngineRow?["exe"] is not null).ToArray();
+            var feeder = candidates.Where(g => g.IsFeeder).ToArray();
+            var nrOnly = candidates.Where(g => !g.IsFeeder && Settings.RuntimeProvider == "skynizz"
+                && g.EngineRow?["native_dlss"]?.GetValue<bool>() == true
+                && g.EngineRow?["native_dlssg"]?.GetValue<bool>() != true).ToArray();
+            foreach (var group in new[] { feeder, nrOnly })
+            {
+                if (group.Length == 0) continue;
+                OperationReview supported;
+                try { supported = await PrepareCoreAsync(operation, group, tuning, "nr-only", progress, cancel, true); }
+                catch (EngineException) { continue; } // Keep the original refusal; no partial recipe was admitted.
+                if (supported.Ready.Count > 0)
+                    available.Add(new(supported, true, false, group[0].IsFeeder
+                        ? "Feeder provides neural rendering. Frame generation is unavailable for this route."
+                        : "Neural rendering is supported. This game has no native DLSS frame generation route."));
+                else DiscardOperation(supported);
+            }
+            var mfgOnly = candidates.Where(g => !g.IsFeeder && Settings.RuntimeProvider == "skynizz"
+                && !available.SelectMany(p => p.Review.Ready).Any(p => p.Game.Id == g.Id)
+                && g.EngineRow?["native_dlssg"]?.GetValue<bool>() == true
+                && blocked.Any(b => b.Game?.Id == g.Id && (b.Reason.Contains("NR runtime", StringComparison.OrdinalIgnoreCase)
+                    || b.Reason.Contains("NR model", StringComparison.OrdinalIgnoreCase) || b.Reason.Contains("nvngx_dlssnr", StringComparison.OrdinalIgnoreCase)))).ToArray();
+            if (mfgOnly.Length > 0)
+            {
+                try
+                {
+                    var supported = await PrepareAsync(operation, mfgOnly, tuning, "mfg-only", progress, cancel);
+                    if (supported.Ready.Count > 0)
+                        available.Add(new(supported, false, true, "Frame generation is supported. Neural rendering could not be prepared with the selected NR runtime."));
+                    else DiscardOperation(supported);
+                }
+                catch (EngineException) { } // Preserve the original refusal when no subset was admitted.
+            }
+            var included = available.SelectMany(r => r.Review.Ready).Select(r => r.Game.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            prepared = prepared with { Supported = available, Blocked = blocked.Where(b => b.Game is null || !included.Contains(b.Game.Id)).ToArray() };
+        }
+        return prepared;
+    }
+
+    public void DiscardOperation(OperationReview review)
+    {
+        static IEnumerable<string> Tokens(OperationReview item) => new[] { item.Token }
+            .Concat(item.Steps.SelectMany(Tokens)).Concat(item.Supported.SelectMany(s => Tokens(s.Review)));
+        _ = DiscardOperationAsync(Tokens(review).Where(t => !string.IsNullOrWhiteSpace(t)).Distinct().ToArray());
+    }
+    async Task DiscardOperationAsync(string[] tokens)
+    {
+        try { await CallAsync("discard_operation", new { tokens }); }
+        catch (Exception error) when (error is IOException or InvalidOperationException) { System.Diagnostics.Debug.WriteLine(error); }
     }
 
     public async Task<int> ExecuteAsync(OperationReview review, IProgress<OperationStep> progress, CancellationToken cancel = default)
     {
+        if (review.Steps.Count > 0)
+        {
+            var completed = 0;
+            foreach (var step in review.Steps)
+            {
+                cancel.ThrowIfCancellationRequested();
+                var offset = completed;
+                var partProgress = new Progress<OperationStep>(p => progress.Report(p with { Index = p.Index + offset, Total = review.Ready.Count }));
+                try { completed += await ExecuteAsync(step, partProgress, cancel); }
+                catch (EngineException error) { throw new EngineException($"{completed} games updated before the operation stopped. {error.Message}"); }
+            }
+            return completed;
+        }
         var games = review.Ready.Select(r => r.Game).ToList();
         if (review.Operation == "update-dlss")
         {

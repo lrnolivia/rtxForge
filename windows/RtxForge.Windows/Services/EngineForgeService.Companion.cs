@@ -5,6 +5,8 @@ namespace RtxForge.Windows.Services;
 
 public sealed partial class EngineForgeService
 {
+    public async Task<EngineReview> ReviewGlobalControlsAsync(JsonObject changes) => ToReview(await CallAsync("global_review", changes));
+    public Task ReloadCompanionPresetsAsync() => CallAsync("companion_reload");
     public async Task<IReadOnlyList<Game>> CompanionTargetsAsync()
     {
         var rows = await CallAsync("companion_targets") as JsonArray ?? [];
@@ -12,6 +14,7 @@ public sealed partial class EngineForgeService
         {
             Id = row["game"]!.GetValue<string>(), Location = row["game"]!.GetValue<string>(),
             Name = row["name"]?.GetValue<string>() ?? "Game", RuntimeProvider = "skynizz",
+            AppId = row["appid"]?.GetValue<string>(),
             Installed = true, EngineRow = row,
         }).ToArray();
     }

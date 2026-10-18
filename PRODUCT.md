@@ -26,6 +26,10 @@ The desktop application and controller-oriented Game Mode share the package engi
 - Keep one MFG component responsible for capability patches, kernels and multiplier control.
 - Distinguish selected settings, applied runtime state and measured performance. A selected 4× multiplier does not promise a fourfold performance gain.
 - The companion's primary controls are MFG and NR. Other supported settings belong under Advanced.
+- Unified controls use simple labels; Classic uses original OptiScaler labels and numeric units for the supported live controls. Model resolution remains a percentage. Original OptiScaler is a separate overlay choice; its full menu needs the updated game package and a restart.
+- A gear beside close exposes all Overlay settings without opening the manager. A globe opens a one-time Global NR/MFG bulk review, also available in the app’s Settings → Global. It preserves unrelated tuning and preset fields, retains backups, and excludes running or unsupported targets. It does not override future installs.
+- NR + MFG installs present a second review for supported subsets, with NR/MFG check or unavailable badges and a concise reason. The confirmed operation retains exact per-mode review tokens; hard blockers remain excluded.
+- Batch reviews reuse identical verified package and model payloads, release dismissed reviews, and use fresh native process checks at write boundaries.
 - The overlay detects the compatible game being played from its verified running process. It has no game picker. Live edits target that exact game session and acknowledge application before reporting success.
 - NR controls include model style, preset, strength and passes; detail, colour, local structure, local tone and skin handling; placement, model resolution and cache reuse. Group these by purpose and progressively reveal fine tuning and performance controls.
 - Live edits require a compatible running installation. Show unavailable, waiting, stopped and failed states accurately; never substitute demonstration telemetry.
@@ -34,7 +38,7 @@ The desktop application and controller-oriented Game Mode share the package engi
 
 ## Brand Commitments
 
-Keep the rtxForge name and existing icon. The Windows overlay is a minimal floating NR + MFG sidebar: nearly full screen height with generous edge and internal padding, rounded corners, a soft drop shadow and translucent black surfaces over a blurred game backdrop. Its text and controls are monochrome, set in Inter. It has no standard app title bar or game-selection menu. The main application keeps its existing visual system.
+Keep the rtxForge name and existing icon. The Windows overlay is a minimal floating NR + MFG sidebar: nearly full screen height with generous edge and internal padding, rounded corners, a soft drop shadow and translucent black surfaces over a blurred game backdrop. It opens on the left. Titles, headings and controls use the active game's existing artwork-derived or custom rtxForge accent, set in Inter; idle and Global surfaces use a neutral accent. It has no standard app title bar or game-selection menu. The main application keeps its existing visual system.
 
 ## Product Principles
 

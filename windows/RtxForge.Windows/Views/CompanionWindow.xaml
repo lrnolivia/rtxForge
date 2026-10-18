@@ -3,16 +3,17 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="rtxForge overlay">
     <Grid x:Name="Root" RequestedTheme="Dark" Background="Transparent">
         <Grid.Resources>
+            <SolidColorBrush x:Key="OverlayHeadingBrush" Color="#B4B4B4" />
             <FontFamily x:Key="OverlayFont">ms-appx:///Assets/Fonts/InterVariable.ttf#Inter Variable</FontFamily>
-            <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="White" />
-            <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#E0FFFFFF" />
+            <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#B4B4B4" />
+            <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#B4B4B4" />
             <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="Black" />
             <SolidColorBrush x:Key="ToggleButtonBackgroundPointerOver" Color="#26FFFFFF" />
             <SolidColorBrush x:Key="ToggleButtonBackgroundPressed" Color="#33FFFFFF" />
             <SolidColorBrush x:Key="ToggleButtonBackgroundDisabled" Color="#0DFFFFFF" />
-            <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="#F4F4F4" />
-            <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="White" />
-            <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="#D6D6D6" />
+            <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="#B4B4B4" />
+            <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="#C4C4C4" />
+            <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="#A4A4A4" />
             <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedDisabled" Color="#A6FFFFFF" />
             <SolidColorBrush x:Key="ToggleButtonForegroundChecked" Color="#101010" />
             <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPointerOver" Color="#101010" />
@@ -35,12 +36,12 @@
             <SolidColorBrush x:Key="SliderTrackFillPointerOver" Color="#50FFFFFF" />
             <SolidColorBrush x:Key="SliderTrackFillPressed" Color="#50FFFFFF" />
             <SolidColorBrush x:Key="SliderTrackFillDisabled" Color="#20FFFFFF" />
-            <SolidColorBrush x:Key="SliderTrackValueFill" Color="White" />
-            <SolidColorBrush x:Key="SliderTrackValueFillPointerOver" Color="White" />
+            <SolidColorBrush x:Key="SliderTrackValueFill" Color="#B4B4B4" />
+            <SolidColorBrush x:Key="SliderTrackValueFillPointerOver" Color="#C4C4C4" />
             <SolidColorBrush x:Key="SliderTrackValueFillDisabled" Color="Transparent" />
-            <SolidColorBrush x:Key="SliderThumbBackground" Color="White" />
-            <SolidColorBrush x:Key="SliderThumbBackgroundPointerOver" Color="White" />
-            <SolidColorBrush x:Key="SliderThumbBackgroundPressed" Color="#CCCCCC" />
+            <SolidColorBrush x:Key="SliderThumbBackground" Color="#B4B4B4" />
+            <SolidColorBrush x:Key="SliderThumbBackgroundPointerOver" Color="#C4C4C4" />
+            <SolidColorBrush x:Key="SliderThumbBackgroundPressed" Color="#A4A4A4" />
             <SolidColorBrush x:Key="SliderThumbBackgroundDisabled" Color="Transparent" />
             <SolidColorBrush x:Key="SliderOuterThumbBackground" Color="Transparent" />
             <SolidColorBrush x:Key="SliderThumbBorderBrush" Color="Transparent" />
@@ -49,12 +50,12 @@
             <x:Double x:Key="SliderHorizontalThumbHeight">16</x:Double>
             <x:Double x:Key="SliderInnerThumbWidth">14</x:Double>
             <x:Double x:Key="SliderInnerThumbHeight">14</x:Double>
-            <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="White" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="#B4B4B4" />
             <SolidColorBrush x:Key="ToggleSwitchKnobFillOn" Color="Black" />
             <Style x:Key="SectionGlyph" TargetType="Path">
                 <Setter Property="Width" Value="20" />
                 <Setter Property="Height" Value="20" />
-                <Setter Property="Stroke" Value="#C2FFFFFF" />
+                <Setter Property="Stroke" Value="{StaticResource OverlayHeadingBrush}" />
                 <Setter Property="StrokeThickness" Value="1.5" />
                 <Setter Property="StrokeLineJoin" Value="Round" />
                 <Setter Property="StrokeStartLineCap" Value="Round" />
@@ -78,7 +79,7 @@
             </Style>
             <Style x:Key="Section" TargetType="TextBlock">
                 <Setter Property="FontFamily" Value="{StaticResource OverlayFont}" />
-                <Setter Property="FontSize" Value="18" />
+                <Setter Property="FontSize" Value="18" /><Setter Property="Foreground" Value="{StaticResource OverlayHeadingBrush}" />
                 <Setter Property="FontWeight" Value="SemiBold" />
             </Style>
             <Style TargetType="Button">
@@ -97,13 +98,13 @@
                 <Setter Property="Foreground" Value="White" />
                 <Setter Property="Padding" Value="6,10" />
                 <Setter Property="HorizontalAlignment" Value="Stretch" />
-                <Setter Property="FocusVisualPrimaryBrush" Value="White" />
+                <Setter Property="FocusVisualPrimaryBrush" Value="{StaticResource OverlayHeadingBrush}" />
                 <Setter Property="FocusVisualSecondaryBrush" Value="#101010" />
             </Style>
             <Style TargetType="Slider">
                 <Setter Property="MinHeight" Value="28" />
                 <Setter Property="Margin" Value="0,-5,0,0" />
-                <Setter Property="FocusVisualPrimaryBrush" Value="White" />
+                <Setter Property="FocusVisualPrimaryBrush" Value="{StaticResource OverlayHeadingBrush}" />
                 <Setter Property="FocusVisualSecondaryBrush" Value="#101010" />
             </Style>
             <Style TargetType="ComboBox">
@@ -114,7 +115,7 @@
                 <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="CornerRadius" Value="8" />
                 <Setter Property="Padding" Value="12,9" />
-                <Setter Property="FocusVisualPrimaryBrush" Value="White" />
+                <Setter Property="FocusVisualPrimaryBrush" Value="{StaticResource OverlayHeadingBrush}" />
                 <Setter Property="FocusVisualSecondaryBrush" Value="#101010" />
             </Style>
         </Grid.Resources>
@@ -122,22 +123,26 @@
             <Grid>
                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                 <Grid Padding="26,22,26,20" ColumnSpacing="12">
-                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="36" /></Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="116" /></Grid.ColumnDefinitions>
                     <StackPanel x:Name="DragBar" Spacing="10">
-                        <TextBlock Text="rtxForge" FontSize="15" FontWeight="SemiBold" Foreground="#BFFFFFFF" />
-                        <TextBlock x:Name="GameName" Text="Ready when you are" FontSize="23" FontWeight="SemiBold" MaxLines="2" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="rtxForge" FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource OverlayHeadingBrush}" />
+                        <TextBlock x:Name="GameName" Text="Ready when you are" Foreground="{StaticResource OverlayHeadingBrush}" FontSize="23" FontWeight="SemiBold" MaxLines="2" TextTrimming="CharacterEllipsis" />
                         <StackPanel x:Name="PipelinePills" Orientation="Horizontal" Spacing="6" AutomationProperties.Name="Installed DLSS files" />
                         <TextBlock x:Name="ConnectionText" Text="Start your game to connect." Style="{StaticResource Note}" />
                     </StackPanel>
-                    <Button Grid.Column="1" Width="32" Height="32" VerticalAlignment="Top" Click="OnHide" AutomationProperties.Name="Hide overlay" ToolTipService.ToolTip="Back to game"><FontIcon Glyph="&#xE8BB;" FontSize="12" /></Button>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Top">
+                        <ToggleButton x:Name="GlobalButton" Width="36" Height="36" Padding="8" Click="OnGlobal" AutomationProperties.Name="Global controls" ToolTipService.ToolTip="Switch between this game and Global controls" Foreground="{StaticResource OverlayHeadingBrush}"><FontIcon Glyph="&#xE774;" FontSize="16" /></ToggleButton>
+                        <Button x:Name="SettingsButton" Width="36" Height="36" Click="OnSettings" AutomationProperties.Name="Overlay settings" ToolTipService.ToolTip="Overlay settings" Foreground="{StaticResource OverlayHeadingBrush}"><FontIcon Glyph="&#xE713;" FontSize="16" /></Button>
+                        <Button Width="36" Height="36" Click="OnHide" AutomationProperties.Name="Hide overlay" ToolTipService.ToolTip="Back to game"><FontIcon Glyph="&#xE8BB;" FontSize="12" /></Button>
+                    </StackPanel>
                 </Grid>
-                <ScrollViewer Grid.Row="1" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+                <ScrollViewer x:Name="ControlsScroll" Grid.Row="1" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel x:Name="Controls" Padding="26,4,26,24" Spacing="24">
                         <Border Background="#10FFFFFF" CornerRadius="12" Padding="14">
                         <StackPanel Spacing="12">
                             <StackPanel Orientation="Horizontal" Spacing="10">
                                 <Path Style="{StaticResource SectionGlyph}" Data="M3,13 L3,3 Q3,2 4,2 L14,2 M7,6 L17,6 Q18,6 18,7 L18,17 Q18,18 17,18 L7,18 Q6,18 6,17 L6,7 Q6,6 7,6 Z" />
-                                <TextBlock Text="Frame generation" Style="{StaticResource Section}" />
+                                <TextBlock x:Name="MfgHeading" Text="Frame generation" Style="{StaticResource Section}" />
                             </StackPanel>
                             <Grid x:Name="MultiplierChoices" ColumnSpacing="5">
                                 <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
@@ -167,7 +172,7 @@
                                 <ToggleButton Grid.Column="2" Content="Cinematic" Tag="2" Click="OnStyle" />
                             </Grid>
                             <StackPanel Spacing="4">
-                                <Grid><TextBlock Text="Model strength" /><TextBlock x:Name="StrengthText" HorizontalAlignment="Right" /></Grid>
+                                <Grid><TextBlock x:Name="StrengthLabel" Text="Model strength" /><TextBlock x:Name="StrengthText" Foreground="{StaticResource OverlayHeadingBrush}" HorizontalAlignment="Right" /></Grid>
                                 <Slider x:Name="Strength" Minimum="0" Maximum="2" StepFrequency="0.05" Value="1" ValueChanged="OnSliderEdit" AutomationProperties.Name="NR model strength" />
                             </StackPanel>
                             <Grid ColumnSpacing="16">
@@ -181,13 +186,13 @@
                                 <Path Style="{StaticResource SectionGlyph}" Data="M2,5 L5,5 M9,5 L18,5 M2,10 L11,10 M15,10 L18,10 M2,15 L5,15 M9,15 L18,15 M7,3 A2,2 0 1 0 7,7 A2,2 0 1 0 7,3 M13,8 A2,2 0 1 0 13,12 A2,2 0 1 0 13,8 M7,13 A2,2 0 1 0 7,17 A2,2 0 1 0 7,13" />
                                 <TextBlock Text="Image tuning" Style="{StaticResource Section}" />
                             </StackPanel>
-                            <StackPanel Spacing="4"><Grid><TextBlock Text="Detail" /><TextBlock x:Name="DetailText" HorizontalAlignment="Right" /></Grid><Slider x:Name="Detail" Minimum="0" Maximum="2" StepFrequency="0.05" Value="1" ValueChanged="OnSliderEdit" AutomationProperties.Name="NR detail strength" /></StackPanel>
-                            <StackPanel Spacing="4"><Grid><TextBlock Text="Colour" /><TextBlock x:Name="ColourText" HorizontalAlignment="Right" /></Grid><Slider x:Name="Colour" Minimum="0" Maximum="2" StepFrequency="0.05" Value="1" ValueChanged="OnSliderEdit" AutomationProperties.Name="NR colour strength" /></StackPanel>
+                            <StackPanel Spacing="4"><Grid><TextBlock x:Name="DetailLabel" Text="Detail" /><TextBlock x:Name="DetailText" Foreground="{StaticResource OverlayHeadingBrush}" HorizontalAlignment="Right" /></Grid><Slider x:Name="Detail" Minimum="0" Maximum="2" StepFrequency="0.05" Value="1" ValueChanged="OnSliderEdit" AutomationProperties.Name="NR detail strength" /></StackPanel>
+                            <StackPanel Spacing="4"><Grid><TextBlock x:Name="ColourLabel" Text="Colour" /><TextBlock x:Name="ColourText" Foreground="{StaticResource OverlayHeadingBrush}" HorizontalAlignment="Right" /></Grid><Slider x:Name="Colour" Minimum="0" Maximum="2" StepFrequency="0.05" Value="1" ValueChanged="OnSliderEdit" AutomationProperties.Name="NR colour strength" /></StackPanel>
                             <Expander Header="Fine tuning" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Background="Transparent" BorderThickness="0">
                                 <StackPanel Spacing="12">
-                                    <StackPanel Spacing="4"><Grid><TextBlock Text="Local structure" /><TextBlock x:Name="StructureText" HorizontalAlignment="Right" /></Grid><Slider x:Name="Structure" Minimum="0" Maximum="2" StepFrequency="0.05" Value="1" ValueChanged="OnSliderEdit" AutomationProperties.Name="Local structure" /></StackPanel>
-                                    <StackPanel Spacing="4"><Grid><TextBlock Text="Local tone" /><TextBlock x:Name="ToneText" HorizontalAlignment="Right" /></Grid><Slider x:Name="Tone" Minimum="0" Maximum="2" StepFrequency="0.05" Value="1" ValueChanged="OnSliderEdit" AutomationProperties.Name="Local tone" /></StackPanel>
-                                    <StackPanel Spacing="4"><Grid><TextBlock Text="Skin structure" /><TextBlock x:Name="SkinText" HorizontalAlignment="Right" /></Grid><Slider x:Name="Skin" Minimum="-1" Maximum="2" StepFrequency="0.05" Value="-1" ValueChanged="OnSliderEdit" AutomationProperties.Name="Skin structure, minus one follows local structure" /></StackPanel>
+                                    <StackPanel Spacing="4"><Grid><TextBlock Text="Local structure" /><TextBlock x:Name="StructureText" Foreground="{StaticResource OverlayHeadingBrush}" HorizontalAlignment="Right" /></Grid><Slider x:Name="Structure" Minimum="0" Maximum="2" StepFrequency="0.05" Value="1" ValueChanged="OnSliderEdit" AutomationProperties.Name="Local structure" /></StackPanel>
+                                    <StackPanel Spacing="4"><Grid><TextBlock Text="Local tone" /><TextBlock x:Name="ToneText" Foreground="{StaticResource OverlayHeadingBrush}" HorizontalAlignment="Right" /></Grid><Slider x:Name="Tone" Minimum="0" Maximum="2" StepFrequency="0.05" Value="1" ValueChanged="OnSliderEdit" AutomationProperties.Name="Local tone" /></StackPanel>
+                                    <StackPanel Spacing="4"><Grid><TextBlock Text="Skin structure" /><TextBlock x:Name="SkinText" Foreground="{StaticResource OverlayHeadingBrush}" HorizontalAlignment="Right" /></Grid><Slider x:Name="Skin" Minimum="-1" Maximum="2" StepFrequency="0.05" Value="-1" ValueChanged="OnSliderEdit" AutomationProperties.Name="Skin structure, minus one follows local structure" /></StackPanel>
                                     <ToggleSwitch x:Name="AutoMask" Header="Automatic skin mask" Toggled="OnEdit" />
                                 </StackPanel>
                             </Expander>
@@ -198,9 +203,9 @@
                             <TextBlock Text="The same OptiScaler filter used by your rtxForge presets." Style="{StaticResource Note}" />
                             <ComboBox x:Name="SharpFilter" Header="Filter" PlaceholderText="—" HorizontalAlignment="Stretch" SelectionChanged="OnChoiceEdit"><x:String>RCAS</x:String><x:String>Depth aware</x:String><x:String>Local contrast depth aware</x:String></ComboBox>
                             <ToggleSwitch x:Name="SharpOverride" Header="Override game sharpening" Toggled="OnEdit" />
-                            <StackPanel Spacing="4"><Grid><TextBlock Text="Strength" /><TextBlock x:Name="SharpnessText" HorizontalAlignment="Right" /></Grid><Slider x:Name="Sharpness" Minimum="0" Maximum="1" StepFrequency="0.01" Value="0.5" ValueChanged="OnSliderEdit" AutomationProperties.Name="OptiScaler sharpening strength" /></StackPanel>
+                            <StackPanel Spacing="4"><Grid><TextBlock Text="Strength" /><TextBlock x:Name="SharpnessText" Foreground="{StaticResource OverlayHeadingBrush}" HorizontalAlignment="Right" /></Grid><Slider x:Name="Sharpness" Minimum="0" Maximum="1" StepFrequency="0.01" Value="0.5" ValueChanged="OnSliderEdit" AutomationProperties.Name="OptiScaler sharpening strength" /></StackPanel>
                             <Expander Header="Motion sharpening" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Background="Transparent" BorderThickness="0">
-                                <StackPanel Spacing="12"><ToggleSwitch x:Name="MotionSharpEnabled" Header="Sharpen moving detail" Toggled="OnEdit" /><StackPanel Spacing="4"><Grid><TextBlock Text="Motion strength" /><TextBlock x:Name="MotionSharpnessText" HorizontalAlignment="Right" /></Grid><Slider x:Name="MotionSharpness" Minimum="0" Maximum="1" StepFrequency="0.01" Value="0.2" ValueChanged="OnSliderEdit" AutomationProperties.Name="Motion sharpening strength" /></StackPanel></StackPanel>
+                                <StackPanel Spacing="12"><ToggleSwitch x:Name="MotionSharpEnabled" Header="Sharpen moving detail" Toggled="OnEdit" /><StackPanel Spacing="4"><Grid><TextBlock Text="Motion strength" /><TextBlock x:Name="MotionSharpnessText" Foreground="{StaticResource OverlayHeadingBrush}" HorizontalAlignment="Right" /></Grid><Slider x:Name="MotionSharpness" Minimum="0" Maximum="1" StepFrequency="0.01" Value="0.2" ValueChanged="OnSliderEdit" AutomationProperties.Name="Motion sharpening strength" /></StackPanel></StackPanel>
                             </Expander>
                         </StackPanel>
                         </Expander>
@@ -214,7 +219,7 @@
                             <StackPanel Spacing="14">
                                 <ToggleSwitch x:Name="PreSr" Header="Run before super resolution" Toggled="OnEdit" />
                                 <ToggleSwitch x:Name="Reduced" Header="Use reduced model resolution" Toggled="OnEdit" />
-                                <StackPanel Spacing="4"><Grid><TextBlock Text="Model resolution" /><TextBlock x:Name="ScaleText" HorizontalAlignment="Right" /></Grid><Slider x:Name="WorkScale" Minimum="0.25" Maximum="2" StepFrequency="0.01" Value="1" ValueChanged="OnSliderEdit" AutomationProperties.Name="NR model resolution" /></StackPanel>
+                                <StackPanel Spacing="4"><Grid><TextBlock Text="Model resolution" /><TextBlock x:Name="ScaleText" Foreground="{StaticResource OverlayHeadingBrush}" HorizontalAlignment="Right" /></Grid><Slider x:Name="WorkScale" Minimum="0.25" Maximum="2" StepFrequency="0.01" Value="1" ValueChanged="OnSliderEdit" AutomationProperties.Name="NR model resolution" /></StackPanel>
                                 <TextBlock Text="Resolution applies after SR, or with reduced resolution enabled above." Style="{StaticResource Note}" />
                                 <ToggleSwitch x:Name="EdgeAware" Header="Edge-aware enlargement" Toggled="OnEdit" />
                                 <ToggleSwitch x:Name="Cache" Header="Reuse NR between frames" Toggled="OnEdit" />
@@ -227,13 +232,28 @@
                         <TextBlock x:Name="CompatibilityNote" Style="{StaticResource Note}" Visibility="Collapsed" />
                     </StackPanel>
                 </ScrollViewer>
-                <StackPanel Grid.Row="2" Padding="26,16,26,22" Spacing="10">
+                <ScrollViewer x:Name="SettingsScroll" Grid.Row="1" Grid.RowSpan="2" Visibility="Collapsed" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Padding="26,4,26,24" Spacing="24">
+                        <Grid>
+                            <TextBlock Text="Overlay settings" Style="{StaticResource Section}" VerticalAlignment="Center" />
+                            <Button x:Name="BackToControls" Content="Done" Click="OnSettings" HorizontalAlignment="Right" Foreground="{StaticResource OverlayHeadingBrush}" AutomationProperties.Name="Back to overlay controls" />
+                        </Grid>
+                        <StackPanel x:Name="SettingsHost" />
+                    </StackPanel>
+                </ScrollViewer>
+                <ScrollViewer x:Name="GlobalScroll" Grid.Row="1" Grid.RowSpan="2" Visibility="Collapsed" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Padding="26,4,26,24" Spacing="20">
+                        <TextBlock Text="Global controls" Style="{StaticResource Section}" />
+                        <StackPanel x:Name="GlobalHost" />
+                    </StackPanel>
+                </ScrollViewer>
+                <StackPanel x:Name="PresetFooter" Grid.Row="2" Padding="26,16,26,22" Spacing="10">
                     <TextBlock x:Name="Feedback" Visibility="Collapsed" Style="{StaticResource Note}" AutomationProperties.LiveSetting="Polite" />
                     <Grid ColumnSpacing="10">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="2*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                        <Button x:Name="SavePreset" Content="Save preset" Click="OnSave" HorizontalAlignment="Stretch" Height="44" Background="#76B900" Foreground="#101010" FontWeight="SemiBold">
+                        <Button x:Name="SavePreset" Content="Save preset" Click="OnSave" HorizontalAlignment="Stretch" Height="44" Background="{StaticResource AccentFillColorDefaultBrush}" Foreground="#101010" FontWeight="SemiBold">
                             <Button.Resources>
-                                <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#8DCE20" /><SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#669E00" />
+                                <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#C4C4C4" /><SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#A4A4A4" />
                                 <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#101010" /><SolidColorBrush x:Key="ButtonForegroundPressed" Color="#101010" />
                             </Button.Resources>
                         </Button>

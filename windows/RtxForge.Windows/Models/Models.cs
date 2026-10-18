@@ -44,6 +44,15 @@ public sealed class Game
     public string InstallLabel => InstalledOnLinux ? "Set Up for Windows" : IsFeeder ? "Update Feeder NR" : "Install Features";
     /// <summary>The engine's scan row, passed back unchanged for review and execution.</summary>
     public System.Text.Json.Nodes.JsonObject? EngineRow { get; init; }
+    public bool AntiCheatDetected
+    {
+        get
+        {
+            var node = EngineRow?["anti_cheat"];
+            return node is not null && (node is not System.Text.Json.Nodes.JsonValue value
+                || !value.TryGetValue<bool>(out var detected) || detected);
+        }
+    }
 
     // Per-game tuning; null inherits the library presets.
     public double? NrStrength { get; set; }
@@ -85,7 +94,17 @@ public sealed record OperationReview(string Operation, string Token, IReadOnlyLi
 {
     /// <summary>Heads-ups for ready games (e.g. NVIDIA App's DLSS Override); they never block the install.</summary>
     public IReadOnlyList<ReviewBlock> Warnings { get; init; } = Warnings ?? [];
+    public IReadOnlyList<SupportedOperationReview> Supported { get; init; } = [];
+    public IReadOnlyList<OperationReview> Steps { get; init; } = [];
+    public OperationReview IncludeSupported()
+    {
+        var steps = new[] { this with { Supported = [] } }.Where(r => r.Ready.Count > 0)
+            .Concat(Supported.Select(p => p.Review)).ToArray();
+        return this with { Ready = steps.SelectMany(r => r.Ready).ToArray(), Steps = steps, Supported = [] };
+    }
 }
+
+public sealed record SupportedOperationReview(OperationReview Review, bool Nr, bool Mfg, string Reason);
 
 /// <summary>Whether this rtxForge installation is in Steam; Token carries the checked state into Remove.</summary>
 public sealed record SteamShortcutStatus(bool Added, string Token);
@@ -182,6 +201,17 @@ public sealed class ForgeSettings
     [JsonPropertyName("overlay_helper")] public bool OverlayHelper { get; set; } = true;
     [JsonPropertyName("overlay_start_with_windows")] public bool OverlayStartWithWindows { get; set; } = true;
     [JsonPropertyName("overlay_material")] public string OverlayMaterial { get; set; } = "acrylic";
+    [JsonPropertyName("overlay_controls")] public string OverlayControls { get; set; } = "unified";
+    [JsonPropertyName("overlay_renderer")] public string OverlayRenderer { get; set; } = "rtxforge";
+    [JsonPropertyName("optiscaler_hotkey")] public string OptiScalerHotkey { get; set; } = "Insert";
+
+    public void CopyOverlayFrom(ForgeSettings source)
+    {
+        PanelHotkey = source.PanelHotkey; OverlayHelper = source.OverlayHelper;
+        OverlayStartWithWindows = source.OverlayStartWithWindows; OverlayMaterial = source.OverlayMaterial;
+        OverlayControls = source.OverlayControls; OverlayRenderer = source.OverlayRenderer;
+        OptiScalerHotkey = source.OptiScalerHotkey;
+    }
     [JsonPropertyName("companion_game")] public string CompanionGame { get; set; } = "";
     [JsonPropertyName("default_profile")] public string DefaultProfile { get; set; } = "mfg-only";
     [JsonPropertyName("recognize_previous")] public bool RecognizePrevious { get; set; } = true;
@@ -244,12 +274,37 @@ public sealed class ForgeSettings
         return new();
     }
 
-    public void Save()
+    static void WithSettingsLock(Action write)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-        var temp = FilePath + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(this, Json));
-        File.Move(temp, FilePath, overwrite: true);
+        using var mutex = new Mutex(false, @"Local\rtxForge.Settings");
+        bool held;
+        try { held = mutex.WaitOne(TimeSpan.FromSeconds(2)); }
+        catch (AbandonedMutexException) { held = true; }
+        if (!held) throw new IOException("Settings are busy. Try the change again.");
+        try { write(); } finally { mutex.ReleaseMutex(); }
+    }
+
+    public static ForgeSettings EditOverlay(Action<ForgeSettings> edit)
+    {
+        ForgeSettings? fresh = null;
+        WithSettingsLock(() => { fresh = Load(); edit(fresh); fresh.Save(); });
+        return fresh!;
+    }
+
+    public void Save(bool preserveOverlay = false)
+    {
+        WithSettingsLock(() =>
+        {
+            if (preserveOverlay) CopyOverlayFrom(Load());
+            Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
+            var temp = FilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                File.WriteAllText(temp, JsonSerializer.Serialize(this, Json));
+                File.Move(temp, FilePath, overwrite: true);
+            }
+            finally { if (File.Exists(temp)) File.Delete(temp); }
+        });
     }
 
     public ForgeSettings Clone() =>

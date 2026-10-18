@@ -18,6 +18,8 @@ public interface IForgeService
         IProgress<PrepareProgress>? progress = null, CancellationToken cancel = default);
     /// <summary>Applies exactly the reviewed changes. Returns the number of games changed.</summary>
     Task<int> ExecuteAsync(OperationReview review, IProgress<OperationStep> progress, CancellationToken cancel = default);
+    /// <summary>Releases prepared payloads when a review is dismissed or skipped.</summary>
+    void DiscardOperation(OperationReview review) { }
 
     // Add rtxForge to Steam (steam_self_install): review, then add or remove by token.
     Task<SteamShortcutStatus> SteamStatusAsync();

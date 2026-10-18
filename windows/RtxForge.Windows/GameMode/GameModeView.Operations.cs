@@ -47,7 +47,8 @@ public sealed partial class GameModeView
             ShowDone(false, "Could not check these games", error.Message);
             return;
         }
-        if (modals.Count == 0 || !ReferenceEquals(modals.Peek(), checkingModal)) return;   // cancelled while checking
+        if (modals.Count == 0 || !ReferenceEquals(modals.Peek(), checkingModal))
+        { shell.Service.DiscardOperation(review); return; }   // cancelled while checking
         CloseModal();
         ShowReview(operation, review);
     }
@@ -115,9 +116,40 @@ public sealed partial class GameModeView
         var scroll = new ScrollViewer { Content = list, MaxHeight = t.Px(t.Compact ? 260 : 380), HorizontalScrollMode = ScrollMode.Disabled };
         content.Children.Add(scroll);
         content.Children.Add(ui.P("Your files only change after you confirm.", 0.8));
-        var cancel = ui.Button("Cancel", CloseModal, GmKind.Card, 0.92);
-        var go = ui.Button(Verb(operation), () => { CloseModal(); _ = ExecuteAsync(operation, review); }, GmKind.Primary, 0.92, enabled: count > 0);
-        ShowModal(ReviewTitle(operation), content, [cancel, go], CloseModal, 1100, cancel);
+        void Dismiss() { shell.Service.DiscardOperation(review); CloseModal(); }
+        var cancel = ui.Button("Cancel", Dismiss, GmKind.Card, 0.92);
+        var go = ui.Button(review.Supported.Count > 0 ? "Continue" : Verb(operation), () =>
+        {
+            CloseModal();
+            if (review.Supported.Count > 0) ShowSupportedFeatures(operation, review);
+            else _ = ExecuteAsync(operation, review);
+        }, GmKind.Primary, 0.92, enabled: count > 0 || review.Supported.Count > 0);
+        ShowModal(ReviewTitle(operation), content, [cancel, go], Dismiss, 1100, cancel);
+    }
+
+    void ShowSupportedFeatures(string operation, OperationReview review)
+    {
+        var content = new StackPanel { Spacing = t.Px(20) };
+        content.Children.Add(ui.H2("These games support part of your selection", 1.2));
+        var list = new StackPanel { Spacing = t.Px(10) };
+        foreach (var group in review.Supported)
+        foreach (var item in group.Review.Ready)
+        {
+            var card = RtxForge.Windows.Controls.SupportedFeatureCard.Create(item, group.Nr, group.Mfg, group.Reason);
+            list.Children.Add(card);
+        }
+        content.Children.Add(new ScrollViewer { Content = list, MaxHeight = t.Px(440), HorizontalScrollMode = ScrollMode.Disabled });
+        content.Children.Add(ui.P("Install the supported features shown above, along with the games on the previous review.", .85));
+        var back = ui.Button("Back", () => { CloseModal(); ShowReview(operation, review); }, GmKind.Card, .92);
+        var skip = ui.Button("Skip these games", () =>
+        {
+            CloseModal();
+            foreach (var part in review.Supported) shell.Service.DiscardOperation(part.Review);
+            if (review.Ready.Count > 0) _ = ExecuteAsync(operation, review with { Supported = [] });
+            else ShowDone(false, "Nothing selected", "No games were changed.");
+        }, GmKind.Card, .92);
+        var install = ui.Button("Install supported features", () => { CloseModal(); _ = ExecuteAsync(operation, review.IncludeSupported()); }, GmKind.Primary, .92);
+        ShowModal("Install the supported features", content, [back, skip, install], () => { shell.Service.DiscardOperation(review); CloseModal(); }, 1100, back);
     }
 
     string ModeLabel() => shell.Mode switch { "nr-only" => "NR Only", "nr-mfg" => "NR + MFG", _ => "MFG Only" };
@@ -193,6 +225,7 @@ public sealed partial class GameModeView
             CloseModal();
             ShowDone(false, "Could not finish", error.Message);
         }
+        finally { shell.Service.DiscardOperation(review); }
     }
 
     void ShowDone(bool success, string title, string message)

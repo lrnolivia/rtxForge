@@ -72,7 +72,7 @@ new file mode 100644
 index 00000000..ab89b246
 --- /dev/null
 +++ b/OptiScaler/framegen/dlssg/Companion.h
-@@ -0,0 +1,228 @@
+@@ -0,0 +1,245 @@
 +#pragma once
 +
 +#include <Config.h>
@@ -81,6 +81,7 @@ index 00000000..ab89b246
 +#include <cstddef>
 +#include <atomic>
 +#include <mutex>
++#pragma comment(lib, "Advapi32.lib")
 +
 +// A local-session mailbox, not an overlay or an injection interface. Commands
 +// contain only bounded numeric settings. The render thread owns Config and
@@ -122,7 +123,8 @@ index 00000000..ab89b246
 +    float sharpness, motionSharpness;
 +    LONG actualSharpen, actualSharpOverride, actualSharpenShader, actualMotionSharpen;
 +    float actualSharpness, actualMotionSharpness;
-+    char reserved[144];
++    LONG originalMenu, originalMenuKey;
++    char reserved[136];
 +};
 +static_assert(sizeof(Mailbox) == 512);
 +static_assert(offsetof(Mailbox, workScale) == 256);
@@ -186,14 +188,27 @@ index 00000000..ab89b246
 +        }
 +        *mailbox = {};
 +        mailbox->magic = 0x46585452;
-+        mailbox->version = 4;
++        mailbox->version = 5;
 +        mailbox->pid = GetCurrentProcessId();
 +    }
 +    if (!mailbox) return;
 +    auto& cfg = *Config::Instance();
-+    // This bridge uses the companion helper for its menu. Leave the game's
-+    // other bindings alone; Insert must not open a second OptiScaler menu.
-+    cfg.ShortcutKey.set_volatile_value(0);
++    // Read the per-user overlay choice once, before menu input is handled.
++    // Preserve the game's safe legacy/swapchain rendering choice. Switching
++    // menus is a next-launch preference, never a live hook reinitialization.
++    static const bool originalMenu = [] {
++        DWORD enabled = 0, bytes = sizeof(DWORD);
++        return RegGetValueW(HKEY_CURRENT_USER, L"Software\\rtxForge\\Overlay", L"UseOptiScaler",
++                            RRF_RT_REG_DWORD, nullptr, &enabled, &bytes) == ERROR_SUCCESS && enabled == 1;
++    }();
++    static const int menuKey = [] {
++        if (!originalMenu) return 0;
++        DWORD key = VK_INSERT, bytes = sizeof(DWORD);
++        RegGetValueW(HKEY_CURRENT_USER, L"Software\\rtxForge\\Overlay", L"ShortcutKey",
++                     RRF_RT_REG_DWORD, nullptr, &key, &bytes);
++        return key == VK_INSERT || key == VK_F8 ? static_cast<int>(key) : 0;
++    }();
++    cfg.ShortcutKey.set_volatile_value(menuKey);
 +    const LONG sequence = InterlockedCompareExchange(&mailbox->command, 0, 0);
 +    if (sequence > 0 && !(sequence & 1) && sequence != mailbox->acknowledged)
 +    {
@@ -210,7 +225,7 @@ index 00000000..ab89b246
 +                bounded(request.sharpness, 0.f, 1.f) && bounded(request.motionSharpness, 0.f, 1.f) &&
 +                bounded(request.workScale, .25f, 2.f) && request.passes >= 1 && request.passes <= 3 &&
 +                bounded(request.skin, -1.f, 2.f) && boolean(request.autoMask) &&
-+                bounded(request.detail, 0.f, 2.f) && bounded(request.colour, 0.f, 2.f) &&
++                bounded(request.detail, 0.f, 2.f) && bounded(request.colour, 0.f, 4.f) &&
 +                boolean(request.reduced) && boolean(request.edgeAware) && boolean(request.enabled) && boolean(request.preSr) && boolean(request.cache) &&
 +                bounded(request.intensity, 0.f, 2.f) && bounded(request.structure, 0.f, 2.f) &&
 +                bounded(request.tone, 0.f, 2.f) && request.interval >= 1 && request.interval <= 16 &&
@@ -258,6 +273,8 @@ index 00000000..ab89b246
 +        }
 +    }
 +    InterlockedIncrement(&mailbox->snapshot);
++    mailbox->originalMenu = originalMenu;
++    mailbox->originalMenuKey = menuKey;
 +    mailbox->actualWorkScale = cfg.DlssNrWorkingScale.value_or_default();
 +    mailbox->actualSharpen = cfg.RcasEnabled.value_or_default();
 +    mailbox->actualSharpOverride = cfg.OverrideSharpness.value_or_default();

@@ -93,3 +93,5 @@ Type: filesandordirs; Name: "{app}\python"
 [Registry]
 ; The helper is user-controlled in Settings. Remove its sign-in entry on uninstall.
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "rtxForge Overlay"; Flags: uninsdeletevalue
+
+Root: HKCU; Subkey: "Software\rtxForge\Overlay"; Flags: uninsdeletekey

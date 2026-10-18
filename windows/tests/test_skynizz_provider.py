@@ -67,8 +67,8 @@ def scan(folder,selected='skynizz'):
     return host.scan({'folders':[str(folder)],'runtime_provider':selected})[0]
 def prepare(folder,operation='install',values=None):
     return service.prepare([scan(folder)],'nr-only',operation,visual_settings=settings | (values or {}))
-def run(review):
-    assert review['rows'] and not review['blocked'],review.get('blocked')
+def run(review,allow_blocked=False):
+    assert review['rows'] and (allow_blocked or not review['blocked']),review.get('blocked')
     service.execute(review)
 def baseline(folder):
     e=module(service.config)
@@ -209,10 +209,9 @@ missing=game('Missing');missing_before=files(missing)
 review=prepare(missing,values={'nr_runtime':''})
 assert not review['rows'] and 'required' in review['blocked'][0]['reason']
 assert files(missing)==missing_before
-for mode in ('mfg-only',):
-    try:service.prepare([scan(missing)],mode,'install',visual_settings=settings)
-    except Exception as error:assert 'NR Only' in str(error)
-    else:raise AssertionError('unsupported MFG composition accepted')
+try:provider.require_mode('windows','mfg-only')
+except Exception as error:assert 'NR Only' in str(error)
+else:raise AssertionError('stock package accepted MFG')
 assert files(missing)==missing_before
 checks.append('missing model and unsupported modes refuse before game writes')
 combined_archive=root/'combined.zip';combined_release=fixtures.bridge_fixture(combined_archive,root/'production-sr.dll')
@@ -221,6 +220,60 @@ combined=game('Combined');(combined/'nvngx_dlssg.dll').write_bytes(fixtures.pe()
 combined_review=service.prepare([scan(combined)],'nr-mfg','install',visual_settings=settings | {'mfg_multiplier':6})
 for component in provider.PRODUCTION_RUNTIMES:
     assert combined_release[component]['sha256'] in combined_review['rows'][0]['detail']
+mfg_only=game('Bridge MFG Only');(mfg_only/'nvngx_dlssg.dll').write_bytes(fixtures.pe());mfg_original=files(mfg_only)
+mfg_review=service.prepare([scan(mfg_only)],'mfg-only','install',visual_settings=settings | {'nr_runtime':''})
+assert mfg_review['rows'] and not mfg_review['blocked'],mfg_review
+run(mfg_review)
+assert not (mfg_only/'nvngx_dlssnr.dll').exists()
+import configparser
+mfg_ini=configparser.ConfigParser();mfg_ini.read(mfg_only/'OptiScaler.ini')
+assert mfg_ini['DlssNr'].getboolean('Enabled') is False
+assert 'AdaMfgUnlock=true' in (mfg_only/'OptiScaler.ini').read_text()
+assert baseline(mfg_only)['feature_mode']=='mfg-only'
+run(service.prepare([scan(mfg_only)],'mfg-only','uninstall',visual_settings=settings))
+assert files(mfg_only)==mfg_original
+checks.append('combined bridge MFG-only install needs no NR model, disables NR, and restores exactly')
+nr_subset=game('Supported NR Subset');nr_subset_before=files(nr_subset)
+subset_settings=settings | {'prefer_bundled_nr_only':True}
+run(service.prepare([scan(nr_subset)],'nr-only','install',visual_settings=subset_settings))
+subset_ini=configparser.ConfigParser();subset_ini.read(nr_subset/'OptiScaler.ini')
+assert baseline(nr_subset)['feature_mode']=='nr-only'
+assert baseline(nr_subset)['archive']['release']['variant']=='nr-mfg-bridge'
+assert subset_ini['DlssNr'].getboolean('Enabled') is True
+assert subset_ini['DLSSG'].getboolean('AdaMfgUnlock') is False
+assert subset_ini['DLSSG'].getboolean('AdaBlackwellKernels') is False
+assert not baseline(nr_subset)['mfg_provider']['enabled']
+run(service.prepare([scan(nr_subset)],'nr-only','uninstall',visual_settings=subset_settings))
+assert files(nr_subset)==nr_subset_before
+checks.append('supported NR-only subset gets the helper-compatible bridge with MFG unlock disabled and exact restore')
+discarded=game('Discarded Review');discarded_before=files(discarded)
+prepared=host.prepare({'rows':[scan(discarded)],'mode':'nr-only','operation':'install','settings':subset_settings,'save_defaults':False})
+token=prepared['token'];assert token in host.reviews
+active={'cancel_event':__import__('threading').Event()};host.running['active-write']=active
+host.discard_operation({'tokens':[token,'active-write','missing-token']})
+assert token not in host.reviews and host.running['active-write'] is active
+assert not active['cancel_event'].is_set() and files(discarded)==discarded_before
+host.running.pop('active-write')
+checks.append('dismissing a review releases its payload without touching games or active operations')
+from unittest.mock import patch as measure_calls
+batch_a=game('Batch A');batch_b=game('Batch B');batch_blocked=game('Batch Blocked')
+for folder in (batch_a,batch_b):(folder/'nvngx_dlssg.dll').write_bytes(fixtures.pe())
+factory=engine_bridge.module;model_reads=[]
+def observed_factory(*a,**kw):
+    e=factory(*a,**kw);load=e.load_user_nr_runtime
+    def measured(*a,**kw):
+        model_reads.append(1);return load(*a,**kw)
+    e.load_user_nr_runtime=measured;return e
+blocked_row=scan(batch_blocked);blocked_row['blocked']='Anti-cheat detected'
+with measure_calls.object(engine_bridge,'module',side_effect=observed_factory), measure_calls.object(engine_bridge,'payload',wraps=engine_bridge.payload) as verify:
+    batch=service.prepare([scan(batch_a),scan(batch_b),blocked_row],'nr-mfg','install',visual_settings=settings)
+    assert len(batch['rows'])==2 and len(batch['blocked'])==1,batch
+    assert verify.call_count==1 and len(model_reads)==1,(verify.call_count,len(model_reads))
+run(batch,allow_blocked=True)
+for folder in (batch_a,batch_b):
+    assert baseline(folder)['feature_mode']=='nr-mfg'
+    assert (folder/'nvngx_dlssnr.dll').read_bytes()==model.read_bytes()
+checks.append('batch extracts/verifies one exact package and reads one NR model for two targets; blocked target never reaches payload work')
 run(combined_review);combined_record=baseline(combined);combined_ini=(combined/'OptiScaler.ini').read_text()
 assert combined_record['mfg_provider']['enabled'] and combined_record['compatibility_policy']['mfg_route']=='native-ada-skynizz-bridge-armed'
 assert combined_record['archive']['release']['variant']=='nr-mfg-bridge' and combined_record['archive']['mfg_runtime']['sha256']
@@ -423,7 +476,7 @@ class WindowsSkynizzTest(unittest.TestCase):
                                     env=env, capture_output=True, text=True, timeout=180)
             self.assertEqual(result.returncode, 0, result.stderr[-12000:] + result.stdout[-3000:])
             receipt = json.loads(result.stdout.strip().splitlines()[-1])
-            self.assertEqual(receipt['count'], 21)
+            self.assertEqual(receipt['count'], 25)
             print('PASS: ' + '; '.join(receipt['checks']))
 
 

@@ -76,6 +76,41 @@ class ControlsTest(unittest.TestCase):
         struct.pack_into('<f', raw, 68, float('nan'))
         with self.assertRaises(t.Refusal): control.decode(raw, 123)
 
+    def test_original_overlay_session_is_read_only_to_the_companion(self):
+        raw = snapshot(version=5)
+        struct.pack_into('<ii', raw, 368, 1, 0x2d)
+        struct.pack_into('<f', raw, control.OFFSETS['colour'], 4.0)
+        found = control.decode(raw, 123)
+        box = SimpleNamespace(pid=123, k=SimpleNamespace(GetTickCount=lambda:1010))
+        status = self.controls._present(self.controls._game({'row':self.row}), box, found)
+        self.assertEqual(found['original_menu_key'], 0x2d)
+        self.assertAlmostEqual(found['values']['colour'], 4.0)
+        self.assertFalse(status['can_edit'])
+        self.assertFalse(status['can_save'])
+        self.assertIn('Restart', status['detail'])
+        # File ownership or reported NR activity cannot bypass native ownership.
+        self.assertTrue(found['nr_running'])
+        self.assertTrue(status['native_fresh'])
+
+    def test_colour_matches_upstream_range_and_other_image_bounds_stay_intact(self):
+        self.assertEqual(control.validate_changes({'colour':4.0}), {'colour':4.0})
+        for changes in ({'colour':4.01},{'intensity':2.01},{'structure':2.01},{'tone':2.01}):
+            with self.assertRaises(t.Refusal): control.validate_changes(changes)
+
+    def test_supported_subset_controls_follow_the_installed_features(self):
+        self.metadata['feature_mode'] = 'mfg-only'; self.write_metadata()
+        game = self.controls._game({'row':self.row})
+        self.assertTrue(game['can_mfg']); self.assertFalse(game['can_nr'])
+        with self.assertRaisesRegex(t.Refusal, 'Neural rendering is not installed'):
+            self.controls.save({'row':self.row, 'changes':{'enabled':1, 'multiplier':4}})
+        self.controls.save({'row':self.row, 'changes':{'multiplier':4}})
+        self.assertEqual(next(iter(self.controls.presets.values()))['changes'], {'multiplier':4})
+        self.metadata['feature_mode'] = 'nr-only'; self.write_metadata()
+        game = self.controls._game({'row':self.row})
+        self.assertTrue(game['can_nr']); self.assertFalse(game['can_mfg'])
+        with self.assertRaisesRegex(t.Refusal, 'MFG package'):
+            self.controls.save({'row':self.row, 'changes':{'multiplier':4}})
+
     def test_sharpening_preserves_the_actual_presets_filter_and_bounds(self):
         path = self.target/'OptiScaler.ini'
         path.write_text(path.read_text()+'[Sharpness]\nShader=da\nOverrideSharpness=true\nSharpness=0.65\n[CAS]\nEnabled=true\nMotionSharpnessEnabled=true\nMotionSharpness=0.3\n')

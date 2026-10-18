@@ -201,22 +201,9 @@ _NO_SHORTCUT = LOCAL / "engine-state" / "windows-native-launch"
 
 
 def _running_under(root: Path) -> list[str]:
-    """Processes whose image lives under this game folder (Windows process list)."""
-    from transactions import Refusal
-    # -Command does not bind trailing arguments to $args as a script file does.
-    # Pass the root as JSON on stdin, keeping paths out of executable shell text.
-    script = ("$ErrorActionPreference='Stop'; $r=([Console]::In.ReadLine() | ConvertFrom-Json); "
-              "Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($r, "
-              "[StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { \"$($_.Id):$($_.ProcessName)\" }")
-    try:
-        prefix = str(root.resolve()).rstrip('\\/') + '\\'
-        result = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-                                input=json.dumps(prefix) + '\n', text=True, capture_output=True, timeout=20, creationflags=NO_WINDOW)
-        if result.returncode:
-            raise Refusal('Could not check running game processes. No game files were changed; retry after closing the game.')
-        return [line for line in result.stdout.splitlines() if line.strip()]
-    except (OSError, subprocess.SubprocessError) as error:
-        raise Refusal('Could not check running game processes. No game files were changed; retry after closing the game.') from error
+    """Fresh native inventory; no PowerShell process per check or stale cache."""
+    import win_processes
+    return win_processes.running_under(root)
 
 
 def windows_steam_running() -> bool:
@@ -376,6 +363,11 @@ def scan(params):
 
 
 def prepare(params):
+    if (params.get('settings') or {}).get('runtime_provider') == 'skynizz':
+        import skynizz_provider
+        # Presentation flags belong to the requested mode. Fresh engine game
+        # inspection still owns all capability/ownership and anti-cheat checks.
+        params = dict(params, rows=skynizz_provider.scan_rows([dict(row) for row in params['rows']], params['mode']))
     review = service.prepare(params["rows"], params["mode"], params["operation"],
                              visual_settings=params.get("settings"), save_defaults=params.get("save_defaults", False))
     if review.get("kind") == "engine":
@@ -421,6 +413,15 @@ def cancel(params):
     review = reviews.get(params["token"]) or running.get(params["token"])
     if review and review.get("cancel_event"):
         review["cancel_event"].set()
+    return {}
+
+
+def discard_operation(params):
+    # Executing operations already own their payload outside these dictionaries.
+    # Discarding a review can never cancel or alter an in-flight write.
+    for token in params.get('tokens', []):
+        reviews.pop(token, None)
+        dlss_reviews.pop(token, None)
     return {}
 
 
@@ -511,7 +512,7 @@ def steam_remove(params):
 
 running: dict[str, dict] = {}
 METHODS = {"hello": hello, "hardware": lambda _p: service.hardware(), "scan": scan, "prepare": prepare,
-           "execute": execute, "cancel": cancel, "save_defaults": save_defaults,
+           "execute": execute, "cancel": cancel, "discard_operation": discard_operation, "save_defaults": save_defaults,
            "prepare_dlss": prepare_dlss, "update_dlss": update_dlss,
            "steam_status": steam_status, "steam_review": steam_review, "steam_install": steam_install,
            "steam_remove": steam_remove}

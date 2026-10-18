@@ -98,7 +98,7 @@ public sealed partial class MainWindow : Window
 
     public void SaveSettings()
     {
-        Settings.Save();
+        Settings.Save(preserveOverlay: true);
         ThemeController.Apply(this, RootGrid, Settings.Theme);
         SettingsChanged?.Invoke();
     }

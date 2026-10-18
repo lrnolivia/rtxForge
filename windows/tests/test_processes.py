@@ -21,12 +21,16 @@ folder=Path(sys.executable).parent
 actual=host._running_under(folder)
 assert any(line.startswith(str(os.getpid())+':') for line in actual),actual
 assert not host._running_under(folder/'not-a-real-game')
-for result in [subprocess.CompletedProcess([],1,stdout='',stderr='failure'),OSError('missing query'),subprocess.TimeoutExpired('query',20)]:
-    options={'side_effect':result} if isinstance(result,Exception) else {'return_value':result}
-    with patch.object(host.subprocess,'run',**options):
+import win_processes
+for result in [OSError('missing query'),OSError('incomplete snapshot'),ValueError('invalid query')]:
+    with patch.object(win_processes,'_inventory',side_effect=result):
         try:host._running_under(folder)
         except Refusal:pass
         else:raise AssertionError('unknown process state allowed game writes')
+with patch.object(win_processes,'_inventory',return_value=[(123,'python.exe',None,5)]):
+    try:host._running_under(folder)
+    except Refusal:pass
+    else:raise AssertionError('access-denied matching process allowed writes')
 print(json.dumps({'self_detected':True,'boundary_checked':True,'errors_refused':3}))
 '''
 

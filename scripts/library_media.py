@@ -6,7 +6,8 @@ from storage import storage
 DEFAULTS={'game_artwork':{},'steam_artwork_profile':None,'steam_artwork_pending':{},'button_glyphs':True,'big_picture_ui':True,'ui_scale':'auto','dashboard_view':'capsules','dashboard_row_count':5,'navigation_position':'top','controller_hints':'always','input_mode':'auto','controller_glyphs':'auto','corner_style':'system','ui_mode':'classic','start_page':'library','compact_header':False,'custom_package':None,'theme':None,'library_columns':7,'presets_hint_seen':False,'manage_dlss_files':True,'game_accents':{},'sharpening_strength':0.5,'mfg_multiplier':'auto','nr_strength':2.0,'runtime_provider':'y4my','skynizz_version':'latest','enable_effects':True,'nr_runtime':'','dark':True,'library_view':'posters','art_scale':80,'cache_days':7,'network_timeout':10,'default_profile':'mfg-only','online_art':True,'steam_metadata':True,'recognize_previous':False,'extra_folders':[]}
 
 DEFAULTS.update(mfg_provider='integrated', nr_preset=None, feeder_source='', feeder_backups='',
-                panel_hotkey='Insert', overlay_helper=True, overlay_start_with_windows=True, overlay_material='acrylic')
+                panel_hotkey='Insert', overlay_helper=True, overlay_start_with_windows=True, overlay_material='acrylic',
+                overlay_controls='unified', overlay_renderer='rtxforge', optiscaler_hotkey='Insert')
 
 LEGACY_NR_STRENGTH={
     'off':0.0,

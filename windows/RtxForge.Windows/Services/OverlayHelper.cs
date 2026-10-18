@@ -17,8 +17,15 @@ public static class OverlayHelper
 
     public static void ConfigureStartup(ForgeSettings settings)
     {
+        // Read once by bridge 8 at game startup. Never rewrite a game's INI,
+        // switch its swapchain hooks, or poll the registry on the render thread.
+        using (var overlay = Registry.CurrentUser.CreateSubKey(@"Software\rtxForge\Overlay"))
+        {
+            overlay.SetValue("UseOptiScaler", settings.OverlayRenderer == "optiscaler" ? 1 : 0, RegistryValueKind.DWord);
+            overlay.SetValue("ShortcutKey", settings.OptiScalerHotkey == "F8" ? 0x77 : settings.OptiScalerHotkey == "Disabled" ? 0 : 0x2D, RegistryValueKind.DWord);
+        }
         using var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
-        if (settings.OverlayHelper && settings.OverlayStartWithWindows)
+        if (settings.OverlayHelper && settings.OverlayStartWithWindows && settings.OverlayRenderer != "optiscaler")
             key.SetValue("rtxForge Overlay", StartupCommand(Environment.ProcessPath!), RegistryValueKind.String);
         else key.DeleteValue("rtxForge Overlay", throwOnMissingValue: false);
     }
@@ -92,7 +99,7 @@ public sealed class OverlayHelperWindow : Window
             if (closing) { result.Service?.Dispose(); return; }
             engine = result.Service;
             if (engine is null) { problem = result.Problem ?? "The overlay engine couldn't start."; return; }
-            panel = new CompanionWindow(engine, () => problem);
+            panel = new CompanionWindow(engine, () => problem, ConfigureShortcut);
             if (showWhenReady) panel.Present();
         }
         catch (Exception error) { problem = error.Message; }
@@ -103,11 +110,11 @@ public sealed class OverlayHelperWindow : Window
         var settings = ForgeSettings.Load();
         if (engine is not null)
         {
-            engine.Settings.PanelHotkey = settings.PanelHotkey;
-            engine.Settings.OverlayMaterial = settings.OverlayMaterial;
+            engine.Settings.CopyOverlayFrom(settings);
         }
-        panel?.ApplyMaterial(settings.OverlayMaterial);
+        panel?.ApplyPreferences();
         UnregisterHotKey(handle, HotkeyId);
+        if (settings.OverlayRenderer == "optiscaler" || !settings.OverlayHelper) { problem = null; return; }
         var (modifiers, key) = OverlayShortcut.Decode(settings.PanelHotkey);
         problem = key != 0 && !RegisterHotKey(handle, HotkeyId, modifiers | 0x4000, key)
             ? "Shortcut in use. Choose another in Settings → Overlay." : null;
@@ -127,6 +134,7 @@ public sealed class OverlayHelperWindow : Window
                 var command = await reader.ReadLineAsync(stopping.Token).AsTask().WaitAsync(TimeSpan.FromSeconds(3));
                 if (command == "show") { showWhenReady = true; panel?.Present(); }
                 else if (command == "reload") ConfigureShortcut();
+                else if (command == "reload-presets" && engine is not null) await engine.ReloadCompanionPresetsAsync();
                 await writer.WriteLineAsync(problem ?? "");
                 if (command == "exit") { Close(); return; }
             }
@@ -167,8 +175,7 @@ public sealed class OverlayHelperWindow : Window
             if (selected == 1) { showWhenReady = true; panel?.Present(); }
             if (selected == 2)
             {
-                var info = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false };
-                info.ArgumentList.Add("--overlay-settings"); Process.Start(info);
+                showWhenReady = true; panel?.OpenSettings();
             }
             if (selected == 3) Close();
         }

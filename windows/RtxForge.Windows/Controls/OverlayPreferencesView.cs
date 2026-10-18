@@ -14,10 +14,10 @@ public sealed class OverlayPreferencesView : StackPanel
     {
         Spacing = 20;
         var current = ForgeSettings.Load();
-        var renderer = Choice("Overlay", ["rtxForge", "Classic OptiScaler overlay"], current.OverlayRenderer == "optiscaler" ? 1 : 0);
+        var renderer = Choice("Overlay", ["rtxForge", "Original OptiScaler overlay"], current.OverlayRenderer == "optiscaler" ? 1 : 0);
         Note("rtxForge opens a floating sidebar on the left. OptiScaler opens its original in-game panel, including all upstream options.");
-        var layout = Choice("Controls", ["Unified", "Classic"], current.OverlayControls == "classic" ? 1 : 0);
-        Note("Unified uses simple labels and percentages. Classic uses OptiScaler labels and original units for the sidebar’s live controls.");
+        var layout = Choice("Controls", ["Unified", "Advanced"], current.OverlayControls == "classic" ? 1 : 0);
+        Note("Unified uses simple labels and percentages. Advanced uses OptiScaler labels and original units for the sidebar’s live controls.");
         var key = Choice("rtxForge shortcut", OverlayShortcut.Choices, Math.Max(0, Array.IndexOf(OverlayShortcut.Choices, current.PanelHotkey)));
         var nativeKey = Choice("OptiScaler shortcut", ["Insert", "F8", "Disabled"], current.OptiScalerHotkey == "F8" ? 1 : current.OptiScalerHotkey == "Disabled" ? 2 : 0);
         var restart = Note("Switching overlays or changing the OptiScaler key takes effect after restarting the game. Install the current rtxForge package in your game to use the original panel.");

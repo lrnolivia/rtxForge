@@ -36,7 +36,7 @@ Anti-cheat remains a block unless a title has an explicit verified offline profi
 - Keep one MFG component responsible for capability patches, kernels and multiplier control.
 - Distinguish selected settings, applied runtime state and measured performance. A selected 4× multiplier does not promise a fourfold performance gain.
 - The companion's primary controls are MFG and NR. Other supported settings belong under Advanced.
-- Unified controls use simple labels; Classic uses original OptiScaler labels and numeric units for the supported live controls. Model resolution remains a percentage. Original OptiScaler is a separate overlay choice; its full menu needs the updated game package and a restart.
+- Unified controls use simple labels; Advanced uses original OptiScaler labels and numeric units for the supported live controls. Model resolution remains a percentage. Original OptiScaler is a separate overlay choice; its full menu needs the updated game package and a restart.
 - A gear beside close exposes all Overlay settings without opening the manager. A globe opens a one-time Global NR/MFG bulk review, also available in the app’s Settings → Global. It preserves unrelated tuning and preset fields, retains backups, and excludes running or unsupported targets. It does not override future installs.
 - NR + MFG installs present a second review for supported subsets, with NR/MFG check or unavailable badges and a concise reason. The confirmed operation retains exact per-mode review tokens; hard blockers remain excluded.
 - Batch reviews reuse identical verified package and model payloads, release dismissed reviews, and use fresh native process checks at write boundaries.

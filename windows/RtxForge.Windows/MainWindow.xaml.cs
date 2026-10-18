@@ -58,7 +58,7 @@ public sealed partial class MainWindow : Window
         if (Settings.RuntimeProvider == "feeder") Mode = "nr-only";
         ThemeController.Apply(this, RootGrid, Settings.Theme);
 
-        Nav.SelectedItem = Nav.MenuItems[0];
+        Nav.SelectedItem = SettingsPage.OpenOverlaySection ? Nav.SettingsItem : Nav.MenuItems[0];
         Closed += (_, _) => (Service as IDisposable)?.Dispose();
         InitializeGameMode();
         InitializeCompanion();

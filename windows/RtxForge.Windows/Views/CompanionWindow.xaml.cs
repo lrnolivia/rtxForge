@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -11,13 +12,19 @@ using Microsoft.UI.Xaml.Media;
 using RtxForge.Windows.Models;
 using RtxForge.Windows.Services;
 using Windows.Graphics;
+using WinRT;
 
 namespace RtxForge.Windows.Views;
 
 public sealed partial class CompanionWindow : Window
 {
-    readonly MainWindow shell;
     readonly EngineForgeService service;
+    readonly Func<string?> shortcutProblem;
+    IReadOnlyList<Game> games = [];
+    DateTime targetsUpdated;
+    DesktopAcrylicController? acrylic;
+    MicaController? mica;
+    string? pipelinesRendered;
     readonly DispatcherQueueTimer pollTimer, editTimer;
     Game? game;
     JsonObject? status;
@@ -25,11 +32,11 @@ public sealed partial class CompanionWindow : Window
     bool syncing = true, dirty, requesting, polling, disposed, dragging;
     public bool IsShown { get; private set; }
 
-    public CompanionWindow(MainWindow owner, EngineForgeService engine)
+    public CompanionWindow(EngineForgeService engine, Func<string?> getShortcutProblem)
     {
-        shell = owner; service = engine;
+        service = engine; shortcutProblem = getShortcutProblem;
         InitializeComponent();
-        SystemBackdrop = new DesktopAcrylicBackdrop();
+        ApplyMaterial(engine.Settings.OverlayMaterial);
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(DragBar);
         AppWindow.IsShownInSwitchers = false;
@@ -56,7 +63,7 @@ public sealed partial class CompanionWindow : Window
         editTimer.IsRepeating = false;
         editTimer.Interval = TimeSpan.FromMilliseconds(350);
         editTimer.Tick += async (_, _) => await ApplyEditsAsync();
-        foreach (var slider in new[] { Strength, Structure, Tone, Skin, Detail, Colour, WorkScale })
+        foreach (var slider in new[] { Strength, Structure, Tone, Skin, Detail, Colour, WorkScale, Sharpness, MotionSharpness })
         {
             slider.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, _) => dragging = true), true);
             slider.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler((_, _) => { dragging = false; QueueApply(); }), true);
@@ -64,6 +71,7 @@ public sealed partial class CompanionWindow : Window
             slider.AddHandler(UIElement.PointerCaptureLostEvent, new PointerEventHandler((_, _) => { dragging = false; QueueApply(); }), true);
         }
         syncing = false;
+        RenderPipelines();
         SetAvailability();
     }
 
@@ -71,15 +79,17 @@ public sealed partial class CompanionWindow : Window
     {
         if (!IsShown)
         {
-            var area = DisplayArea.GetFromWindowId(shell.AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
-            var scale = GetDpiForWindow(shell.Handle) / 96.0;
+            var foregroundWindow = GetForegroundWindow();
+            var windowId = foregroundWindow == 0 ? AppWindow.Id : Microsoft.UI.Win32Interop.GetWindowIdFromWindow(foregroundWindow);
+            var area = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Primary).WorkArea;
+            var scale = GetDpiForWindow(foregroundWindow == 0 ? WinRT.Interop.WindowNative.GetWindowHandle(this) : foregroundWindow) / 96.0;
             var edge = (int)Math.Round(24 * scale);
             var width = Math.Min((int)Math.Round(420 * scale), area.Width - 2 * edge);
             AppWindow.MoveAndResize(new RectInt32(area.X + area.Width - width - edge,
                 area.Y + edge, width, area.Height - 2 * edge));
         }
-        ShortcutHint.Text = shell.CompanionShortcutProblem ?? (shell.Settings.PanelHotkey == "Disabled"
-            ? "Esc to return to your game" : $"{shell.Settings.PanelHotkey} · show or hide");
+        ShortcutHint.Text = shortcutProblem() ?? (service.Settings.PanelHotkey == "Disabled"
+            ? "Esc to return to your game" : $"{service.Settings.PanelHotkey} · show or hide");
         IsShown = true;
         // Resolve the foreground game before Activate makes the overlay foreground.
         var foreground = MainWindow.ForegroundProcessId();
@@ -88,7 +98,25 @@ public sealed partial class CompanionWindow : Window
     }
 
     public void HidePanel() { editTimer.Stop(); pollTimer.Stop(); dirty = dragging = false; AppWindow.Hide(); IsShown = false; }
-    public void Shutdown() { disposed = true; editTimer.Stop(); pollTimer.Stop(); Close(); }
+    public void Shutdown() { disposed = true; editTimer.Stop(); pollTimer.Stop(); acrylic?.Dispose(); mica?.Dispose(); Close(); }
+
+    public void ApplyMaterial(string material)
+    {
+        acrylic?.Dispose(); mica?.Dispose(); acrylic = null; mica = null;
+        var config = new SystemBackdropConfiguration { IsInputActive = true, Theme = SystemBackdropTheme.Dark };
+        var target = this.As<Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop>();
+        if (material == "mica" && MicaController.IsSupported())
+        {
+            mica = new MicaController { Kind = MicaKind.BaseAlt };
+            mica.SetSystemBackdropConfiguration(config); mica.AddSystemBackdropTarget(target);
+        }
+        else if (DesktopAcrylicController.IsSupported())
+        {
+            acrylic = new DesktopAcrylicController { TintColor = global::Windows.UI.Color.FromArgb(255, 12, 12, 12), TintOpacity = 0.45f, LuminosityOpacity = 0.65f };
+            acrylic.SetSystemBackdropConfiguration(config); acrylic.AddSystemBackdropTarget(target);
+        }
+        else Root.Background = new SolidColorBrush(global::Windows.UI.Color.FromArgb(255, 24, 24, 24));
+    }
     void OnHide(object sender, RoutedEventArgs e) => HidePanel();
     static int Int(JsonObject? data, string key, int fallback = 0) => data?[key]?.GetValue<int>() ?? fallback;
     static bool Flag(JsonObject? data, string key) => data?[key]?.GetValue<bool>() == true;
@@ -101,12 +129,14 @@ public sealed partial class CompanionWindow : Window
         polling = true;
         try
         {
+            if (DateTime.UtcNow - targetsUpdated > TimeSpan.FromSeconds(5))
+            { games = await service.CompanionTargetsAsync(); targetsUpdated = DateTime.UtcNow; }
             var foreground = observedForeground ?? MainWindow.ForegroundProcessId();
             var retained = foreground == (uint)Environment.ProcessId ? pid : 0;
-            var active = await service.ActiveCompanionAsync(shell.Games, foreground, retained);
+            var active = await service.ActiveCompanionAsync(games, foreground, retained);
             if (disposed || requesting) return;
             var location = (active["row"] as JsonObject)?["game"]?.GetValue<string>();
-            var next = shell.Games.FirstOrDefault(g => string.Equals(g.Id, location, StringComparison.OrdinalIgnoreCase));
+            var next = games.FirstOrDefault(g => string.Equals(g.Id, location, StringComparison.OrdinalIgnoreCase));
             var nextPid = Int(active, "pid");
             if (game?.Id != next?.Id || pid != nextPid)
             {
@@ -120,7 +150,7 @@ public sealed partial class CompanionWindow : Window
             GameName.Text = game?.Name ?? "Ready when you are";
             ConnectionText.Text = game is null ? Text(result, "detail")
                 : Text(result, "state") == "running" ? "Connected · changes apply live" : Text(result, "detail");
-            if (!dirty && result["values"] is JsonObject values) LoadValues(values);
+            if (!dirty && game is not null && Flag(result, "can_edit") && result["values"] is JsonObject values) LoadValues(values);
             RenderStatus();
         }
         catch (Exception error)
@@ -134,6 +164,7 @@ public sealed partial class CompanionWindow : Window
 
     void RenderStatus()
     {
+        RenderPipelines();
         var running = Text(status, "state") == "running";
         MfgActual.Text = !running ? "Output appears when your game connects."
             : !Flag(status, "can_mfg") ? "This package controls FG in the game."
@@ -152,6 +183,36 @@ public sealed partial class CompanionWindow : Window
         else if (Text(status, "preset_error") is { Length: > 0 } error) Feedback.Text = "Preset could not apply: " + error;
     }
 
+    void RenderPipelines()
+    {
+        var identity = status?["pipelines"]?.ToJsonString() ?? "idle";
+        if (identity == pipelinesRendered) return;
+        pipelinesRendered = identity;
+        PipelinePills.Children.Clear();
+        PipelinePills.Children.Add(new TextBlock { Text = "DLSS files", FontSize = 11, Foreground = new SolidColorBrush(global::Windows.UI.Color.FromArgb(190, 255, 255, 255)), VerticalAlignment = VerticalAlignment.Center });
+        foreach (var label in new[] { "SR", "RR", "NR", "FG" })
+        {
+            var found = status?["pipelines"]?[label];
+            var state = found?["state"]?.ToString();
+            var colour = state switch
+            {
+                "managed" => global::Windows.UI.Color.FromArgb(255, 151, 215, 105),
+                "other" => global::Windows.UI.Color.FromArgb(255, 244, 198, 98),
+                "changed" => global::Windows.UI.Color.FromArgb(255, 255, 135, 142),
+                _ => global::Windows.UI.Color.FromArgb(255, 170, 170, 170),
+            };
+            var brush = new SolidColorBrush(colour);
+            var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
+            content.Children.Add(new Microsoft.UI.Xaml.Shapes.Ellipse { Width = 5, Height = 5, Fill = brush, VerticalAlignment = VerticalAlignment.Center });
+            content.Children.Add(new TextBlock { Text = label, FontSize = 11, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = brush });
+            var pill = new Border { Child = content, Padding = new Thickness(8, 4, 8, 4), CornerRadius = new CornerRadius(12), Background = new SolidColorBrush(global::Windows.UI.Color.FromArgb(20, colour.R, colour.G, colour.B)) };
+            var detail = found?["detail"]?.ToString() ?? "Waiting for a supported game. Installed DLL status appears when it connects.";
+            ToolTipService.SetToolTip(pill, detail);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(pill, label + ": " + detail);
+            PipelinePills.Children.Add(pill);
+        }
+    }
+
     void LoadValues(JsonObject values)
     {
         syncing = true;
@@ -166,6 +227,15 @@ public sealed partial class CompanionWindow : Window
         Reduced.IsOn = Int(values, "reduced") == 1; EdgeAware.IsOn = Int(values, "edge_aware") == 1;
         AutoMask.IsOn = Int(values, "auto_mask", 1) == 1; Interval.Value = Int(values, "interval", 1);
         HigherMultiplier.SelectedIndex = multiplier > 4 ? multiplier - 4 : 0;
+        if (Int(status, "version") >= 4)
+        {
+            SharpEnabled.IsOn = Int(values, "sharpen") == 1;
+            SharpOverride.IsOn = Int(values, "sharp_override") == 1;
+            SharpFilter.SelectedIndex = Int(values, "sharpen_shader");
+            MotionSharpEnabled.IsOn = Int(values, "motion_sharpen") == 1;
+            Sharpness.Value = Number(values, "sharpness", .5);
+            MotionSharpness.Value = Number(values, "motion_sharpness", .2);
+        }
         UpdateLabels(); SetChoices(MultiplierChoices, multiplier); SetChoices(StyleChoices, style);
         syncing = false;
     }
@@ -187,6 +257,15 @@ public sealed partial class CompanionWindow : Window
             result["reduced"] = Reduced.IsOn ? 1 : 0; result["edge_aware"] = EdgeAware.IsOn ? 1 : 0;
         }
         if (Flag(status, "can_mfg")) result["multiplier"] = multiplier;
+        if (Int(status, "version") >= 4)
+        {
+            result["sharpen"] = SharpEnabled.IsOn ? 1 : 0;
+            result["sharp_override"] = SharpOverride.IsOn ? 1 : 0;
+            result["sharpen_shader"] = Math.Max(0, SharpFilter.SelectedIndex);
+            result["motion_sharpen"] = MotionSharpEnabled.IsOn ? 1 : 0;
+            result["sharpness"] = Sharpness.Value;
+            result["motion_sharpness"] = MotionSharpness.Value;
+        }
         return result;
     }
 
@@ -196,6 +275,12 @@ public sealed partial class CompanionWindow : Window
         var session = game is not null && Flag(status, "can_edit");
         var connected = session && !requesting;
         var expanded = Int(status, "version") >= 3;
+        var sharpening = Int(status, "version") >= 4;
+        SharpeningGroup.Visibility = game is null || sharpening ? Visibility.Visible : Visibility.Collapsed;
+        foreach (var control in new Control[] { SharpEnabled, SharpFilter, SharpOverride, MotionSharpEnabled })
+            control.IsEnabled = connected && sharpening;
+        Sharpness.IsEnabled = connected && sharpening && SharpEnabled.IsOn && SharpOverride.IsOn;
+        MotionSharpness.IsEnabled = connected && sharpening && SharpEnabled.IsOn && MotionSharpEnabled.IsOn;
         foreach (var control in new Control[] { NrEnabled, Strength, Structure, Tone, NrPreset, PreSr, Cache, Interval })
             control.IsEnabled = connected;
         foreach (var control in new Control[] { Passes, Skin, Detail, Colour, AutoMask, EdgeAware })
@@ -207,7 +292,6 @@ public sealed partial class CompanionWindow : Window
         foreach (var button in StyleChoices.Children.OfType<ToggleButton>()) button.IsEnabled = connected;
         SavePreset.IsEnabled = connected && !dirty;
         ClearSaved.IsEnabled = connected;
-        ClearSaved.Visibility = Flag(status, "saved") ? Visibility.Visible : Visibility.Collapsed;
         foreach (var button in MultiplierChoices.Children.OfType<ToggleButton>())
         {
             var count = int.Parse((string)button.Tag);
@@ -222,10 +306,11 @@ public sealed partial class CompanionWindow : Window
         {
             var wasSyncing = syncing;
             syncing = true;
-            foreach (var toggle in new[] { NrEnabled, PreSr, Cache, Reduced, EdgeAware, AutoMask })
+            foreach (var toggle in new[] { NrEnabled, PreSr, Cache, Reduced, EdgeAware, AutoMask, SharpEnabled, SharpOverride, MotionSharpEnabled })
                 toggle.IsOn = false;
             Interval.Value = double.NaN;
             NrPreset.SelectedIndex = Passes.SelectedIndex = HigherMultiplier.SelectedIndex = -1;
+            SharpFilter.SelectedIndex = -1;
             syncing = wasSyncing;
         }
         UpdateLabels();
@@ -236,13 +321,15 @@ public sealed partial class CompanionWindow : Window
         string Percent(double value) => value.ToString("0%", CultureInfo.CurrentCulture);
         if (game is null || !Flag(status, "can_edit"))
         {
-            foreach (var label in new[] { StrengthText, StructureText, ToneText, DetailText, ColourText, SkinText, ScaleText })
+            foreach (var label in new[] { StrengthText, StructureText, ToneText, DetailText, ColourText, SkinText, ScaleText, SharpnessText, MotionSharpnessText })
                 label.Text = "—";
             return;
         }
         StrengthText.Text = Percent(Strength.Value); StructureText.Text = Percent(Structure.Value);
         ToneText.Text = Percent(Tone.Value); DetailText.Text = Percent(Detail.Value); ColourText.Text = Percent(Colour.Value);
         SkinText.Text = Skin.Value < 0 ? "Follow structure" : Percent(Skin.Value); ScaleText.Text = Percent(WorkScale.Value);
+        SharpnessText.Text = Int(status, "version") >= 4 ? Percent(Sharpness.Value) : "—";
+        MotionSharpnessText.Text = Int(status, "version") >= 4 ? Percent(MotionSharpness.Value) : "—";
     }
     static void SetChoices(Grid group, int selected)
     {
@@ -304,12 +391,13 @@ public sealed partial class CompanionWindow : Window
     async void OnClear(object sender, RoutedEventArgs e) => await SaveAsync(true);
     async Task SaveAsync(bool clear)
     {
-        if (game is null || requesting || dirty) return;
+        if (game is null || requesting || (!clear && dirty)) return;
+        if (clear) { editTimer.Stop(); dirty = dragging = false; }
         requesting = true; var ticket = generation; SetAvailability();
         try
         {
-            var result = await service.CompanionAsync(clear ? "forget" : "save", game, clear ? null : Values(), pid);
-            if (ticket == generation) Feedback.Text = clear ? "Saved preset cleared · live settings kept" : "Preset saved · used while rtxForge is running";
+            var result = await service.CompanionAsync(clear ? "reset" : "save", game, clear ? null : Values(), pid);
+            if (ticket == generation) Feedback.Text = clear ? "Reset to this game's installed settings" : "Preset saved · the overlay helper will apply it";
         }
         catch (Exception error) { if (ticket == generation) Feedback.Text = error.Message; }
         finally { requesting = false; SetAvailability(); }
@@ -317,5 +405,6 @@ public sealed partial class CompanionWindow : Window
     }
 
     [DllImport("user32.dll")] static extern uint GetDpiForWindow(nint hwnd);
+    [DllImport("user32.dll")] static extern nint GetForegroundWindow();
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(nint hwnd, int attribute, ref int value, int size);
 }

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using RtxForge.Windows.Models;
+using RtxForge.Windows.Services;
 
 var count = 0;
 foreach (var raw in new[] { "0", "2", "3", "4", "5", "6", "\"0\"", "\"2\"", "\"3\"", "\"4\"", "\"5\"", "\"6\"", "\"auto\"", "null", "1", "7", "-1", "4.5", "\"invalid\"", "{}", "[]", "true" })
@@ -21,3 +22,16 @@ foreach (var raw in new[] { "0", "2", "3", "4", "5", "6", "\"0\"", "\"2\"", "\"3
     count++;
 }
 Console.WriteLine($"PASS: {count} numeric/text multiplier and shared-settings round trips.");
+var defaults = new ForgeSettings();
+if (defaults.PanelHotkey != "Insert" || OverlayShortcut.Decode(defaults.PanelHotkey) != (0u, 0x2Du))
+    throw new Exception("Overlay must have a single-key Insert default");
+foreach (var key in OverlayShortcut.Choices)
+{
+    var settings = JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(new ForgeSettings { PanelHotkey = key, OverlayHelper = false, OverlayStartWithWindows = false, OverlayMaterial = "mica" }))!;
+    if (settings.PanelHotkey != key || settings.OverlayHelper || settings.OverlayStartWithWindows || settings.OverlayMaterial != "mica")
+        throw new Exception("Overlay choices were not retained");
+    var (modifiers, code) = OverlayShortcut.Decode(key);
+    if (key == "F8" && (modifiers != 0 || code != 0x77) || key == "Disabled" && code != 0)
+        throw new Exception("Single key or disabled shortcut changed");
+}
+Console.WriteLine("PASS: single-key overlay default, legacy shortcuts, disabled helper/startup and material round trips.");

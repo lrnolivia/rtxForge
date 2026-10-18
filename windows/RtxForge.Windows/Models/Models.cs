@@ -178,7 +178,10 @@ public sealed class ForgeSettings
     [JsonPropertyName("feeder_backups")] public string FeederBackups { get; set; } = "";
     [JsonPropertyName("manage_dlss_files")] public bool ManageDlssFiles { get; set; } = true;
     [JsonPropertyName("borderless_4k")] public bool Borderless4K { get; set; }
-    [JsonPropertyName("panel_hotkey")] public string PanelHotkey { get; set; } = "Ctrl+Shift+R";
+    [JsonPropertyName("panel_hotkey")] public string PanelHotkey { get; set; } = "Insert";
+    [JsonPropertyName("overlay_helper")] public bool OverlayHelper { get; set; } = true;
+    [JsonPropertyName("overlay_start_with_windows")] public bool OverlayStartWithWindows { get; set; } = true;
+    [JsonPropertyName("overlay_material")] public string OverlayMaterial { get; set; } = "acrylic";
     [JsonPropertyName("companion_game")] public string CompanionGame { get; set; } = "";
     [JsonPropertyName("default_profile")] public string DefaultProfile { get; set; } = "mfg-only";
     [JsonPropertyName("recognize_previous")] public bool RecognizePrevious { get; set; } = true;

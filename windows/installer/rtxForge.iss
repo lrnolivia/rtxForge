@@ -78,6 +78,7 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 
 [Icons]
 Name: "{autoprograms}\rtxForge"; Filename: "{app}\rtxForge.exe"
+Name: "{autoprograms}\rtxForge Overlay"; Filename: "{app}\rtxForge.exe"; Parameters: "--controls"
 Name: "{autoprograms}\rtxForge Game Mode"; Filename: "{app}\rtxForge.exe"; Parameters: "--game-mode"; Tasks: gamemodeicon
 Name: "{autodesktop}\rtxForge"; Filename: "{app}\rtxForge.exe"; Tasks: desktopicon
 
@@ -88,3 +89,7 @@ Filename: "{app}\rtxForge.exe"; Description: "{cm:LaunchProgram,rtxForge}"; Flag
 ; Byte-code caches the engine may write next to itself (it normally runs with -B).
 Type: filesandordirs; Name: "{app}\engine"
 Type: filesandordirs; Name: "{app}\python"
+
+[Registry]
+; The helper is user-controlled in Settings. Remove its sign-in entry on uninstall.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "rtxForge Overlay"; Flags: uninsdeletevalue

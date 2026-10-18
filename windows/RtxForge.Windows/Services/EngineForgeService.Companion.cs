@@ -5,6 +5,16 @@ namespace RtxForge.Windows.Services;
 
 public sealed partial class EngineForgeService
 {
+    public async Task<IReadOnlyList<Game>> CompanionTargetsAsync()
+    {
+        var rows = await CallAsync("companion_targets") as JsonArray ?? [];
+        return rows.OfType<JsonObject>().Select(row => new Game
+        {
+            Id = row["game"]!.GetValue<string>(), Location = row["game"]!.GetValue<string>(),
+            Name = row["name"]?.GetValue<string>() ?? "Game", RuntimeProvider = "skynizz",
+            Installed = true, EngineRow = row,
+        }).ToArray();
+    }
     public async Task<JsonObject> CompanionAsync(string action, Game game, JsonObject? changes = null, int pid = 0)
     {
         if (game.EngineRow is null) throw new InvalidOperationException("Rescan the library before opening live controls.");

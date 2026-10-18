@@ -118,7 +118,7 @@
                 <Setter Property="FocusVisualSecondaryBrush" Value="#101010" />
             </Style>
         </Grid.Resources>
-        <Border CornerRadius="20" Background="#AE080808">
+        <Border CornerRadius="20" Background="#30080808">
             <Grid>
                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                 <Grid Padding="26,22,26,20" ColumnSpacing="12">
@@ -126,6 +126,7 @@
                     <StackPanel x:Name="DragBar" Spacing="10">
                         <TextBlock Text="rtxForge" FontSize="15" FontWeight="SemiBold" Foreground="#BFFFFFFF" />
                         <TextBlock x:Name="GameName" Text="Ready when you are" FontSize="23" FontWeight="SemiBold" MaxLines="2" TextTrimming="CharacterEllipsis" />
+                        <StackPanel x:Name="PipelinePills" Orientation="Horizontal" Spacing="6" AutomationProperties.Name="Installed DLSS files" />
                         <TextBlock x:Name="ConnectionText" Text="Start your game to connect." Style="{StaticResource Note}" />
                     </StackPanel>
                     <Button Grid.Column="1" Width="32" Height="32" VerticalAlignment="Top" Click="OnHide" AutomationProperties.Name="Hide overlay" ToolTipService.ToolTip="Back to game"><FontIcon Glyph="&#xE8BB;" FontSize="12" /></Button>
@@ -191,6 +192,19 @@
                                 </StackPanel>
                             </Expander>
                         </StackPanel>
+                        <StackPanel x:Name="SharpeningGroup" Spacing="12">
+                            <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <TextBlock Text="Sharpening" Style="{StaticResource Section}" VerticalAlignment="Center" />
+                                <ToggleSwitch x:Name="SharpEnabled" Grid.Column="1" OnContent="" OffContent="" MinWidth="0" Toggled="OnEdit" AutomationProperties.Name="OptiScaler sharpening enabled" />
+                            </Grid>
+                            <TextBlock Text="The same OptiScaler filter used by your rtxForge presets." Style="{StaticResource Note}" />
+                            <ComboBox x:Name="SharpFilter" Header="Filter" PlaceholderText="—" HorizontalAlignment="Stretch" SelectionChanged="OnChoiceEdit"><x:String>RCAS</x:String><x:String>Depth aware</x:String><x:String>Local contrast depth aware</x:String></ComboBox>
+                            <ToggleSwitch x:Name="SharpOverride" Header="Override game sharpening" Toggled="OnEdit" />
+                            <StackPanel Spacing="4"><Grid><TextBlock Text="Strength" /><TextBlock x:Name="SharpnessText" HorizontalAlignment="Right" /></Grid><Slider x:Name="Sharpness" Minimum="0" Maximum="1" StepFrequency="0.01" Value="0.5" ValueChanged="OnSliderEdit" AutomationProperties.Name="OptiScaler sharpening strength" /></StackPanel>
+                            <Expander Header="Motion sharpening" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Background="Transparent" BorderThickness="0">
+                                <StackPanel Spacing="12"><ToggleSwitch x:Name="MotionSharpEnabled" Header="Sharpen moving detail" Toggled="OnEdit" /><StackPanel Spacing="4"><Grid><TextBlock Text="Motion strength" /><TextBlock x:Name="MotionSharpnessText" HorizontalAlignment="Right" /></Grid><Slider x:Name="MotionSharpness" Minimum="0" Maximum="1" StepFrequency="0.01" Value="0.2" ValueChanged="OnSliderEdit" AutomationProperties.Name="Motion sharpening strength" /></StackPanel></StackPanel>
+                            </Expander>
+                        </StackPanel>
                         <Expander x:Name="Performance" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Background="Transparent" BorderThickness="0" CornerRadius="8">
                             <Expander.Header>
                                 <StackPanel Orientation="Horizontal" Spacing="10">
@@ -216,7 +230,18 @@
                 </ScrollViewer>
                 <StackPanel Grid.Row="2" Padding="26,16,26,22" Spacing="10">
                     <TextBlock x:Name="Feedback" Visibility="Collapsed" Style="{StaticResource Note}" AutomationProperties.LiveSetting="Polite" />
-                    <Grid><Button x:Name="SavePreset" Content="Save preset" Click="OnSave" HorizontalAlignment="Left" /><Button x:Name="ClearSaved" Content="Clear saved" Click="OnClear" HorizontalAlignment="Right" Visibility="Collapsed" /></Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="2*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <Button x:Name="SavePreset" Content="Save preset" Click="OnSave" HorizontalAlignment="Stretch" Height="44" Background="#76B900" Foreground="#101010" FontWeight="SemiBold">
+                            <Button.Resources>
+                                <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#8DCE20" /><SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#669E00" />
+                                <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#101010" /><SolidColorBrush x:Key="ButtonForegroundPressed" Color="#101010" />
+                            </Button.Resources>
+                        </Button>
+                        <Button x:Name="ClearSaved" Grid.Column="1" Content="Reset" Click="OnClear" HorizontalAlignment="Stretch" Height="44" Background="#B92E39" Foreground="White" ToolTipService.ToolTip="Reset live controls to this game's installed settings and clear its saved overlay preset.">
+                            <Button.Resources><SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#CB3B47" /><SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#9C2430" /></Button.Resources>
+                        </Button>
+                    </Grid>
                     <TextBlock x:Name="ShortcutHint" Style="{StaticResource Note}" />
                 </StackPanel>
             </Grid>

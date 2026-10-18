@@ -39,6 +39,17 @@ DEFAULTS.update({key: spec[2] for key, spec in EXTRA.items()})
 INI_KEYS.update({key: spec[1] for key, spec in EXTRA.items()})
 _FLOATS.update({'work_scale', 'skin', 'detail', 'colour'})
 _BOOLS = {'enabled', 'pre_sr', 'cache', 'auto_mask', 'reduced', 'edge_aware'}
+SHARP = {'sharpen': (344, 'CAS', 'Enabled', 0), 'sharp_override': (348, 'Sharpness', 'OverrideSharpness', 0),
+         'sharpen_shader': (352, 'Sharpness', 'Shader', 0), 'motion_sharpen': (356, 'CAS', 'MotionSharpnessEnabled', 0),
+         'sharpness': (360, 'Sharpness', 'Sharpness', .4), 'motion_sharpness': (364, 'CAS', 'MotionSharpness', .2)}
+OFFSETS.update({key: value[0] for key, value in SHARP.items()})
+DEFAULTS.update({key: value[3] for key, value in SHARP.items()})
+_FLOATS.update({'sharpness', 'motion_sharpness'})
+_BOOLS.update({'sharpen', 'sharp_override', 'motion_sharpen'})
+
+
+def supported_keys(version):
+    return LEGACY_KEYS | (set(EXTRA) if version >= 3 else set()) | (set(SHARP) if version >= 4 else set())
 
 
 def validate_changes(changes):
@@ -47,7 +58,8 @@ def validate_changes(changes):
     for key, value in changes.items():
         if key in _FLOATS:
             low = -1 if key == 'skin' else .25 if key == 'work_scale' else 0
-            t.need(type(value) in (int, float) and math.isfinite(value) and low <= value <= 2,
+            maximum = 1 if key in ('sharpness', 'motion_sharpness') else 2
+            t.need(type(value) in (int, float) and math.isfinite(value) and low <= value <= maximum,
                    'An image control is outside its supported range.')
             result[key] = float(value)
         else:
@@ -56,7 +68,7 @@ def validate_changes(changes):
                      value in (-1, 0, 2, 3, 4, 5, 6) if key == 'multiplier' else
                      1 <= value <= 16 if key == 'interval' else
                      1 <= value <= 3 if key == 'passes' else
-                     0 <= value <= 2 if key == 'style' else 0 <= value <= 3)
+                     0 <= value <= 2 if key in ('style', 'sharpen_shader') else 0 <= value <= 3)
             t.need(valid, 'A control value is outside the supported range.')
             result[key] = value
     return result
@@ -65,10 +77,10 @@ def validate_changes(changes):
 def decode(raw, pid):
     t.need(len(raw) in (SIZE, 512), 'The game returned an incomplete control snapshot.')
     magic, version, found = struct.unpack_from('<III', raw)
-    t.need(magic == MAGIC and version in (1, 2, 3) and found == pid
-           and len(raw) == (512 if version == 3 else SIZE), 'This game uses an unsupported control protocol.')
+    t.need(magic == MAGIC and version in (1, 2, 3, 4) and found == pid
+           and len(raw) == (512 if version >= 3 else SIZE), 'This game uses an unsupported control protocol.')
     values = {key: struct.unpack_from('<f' if key in _FLOATS else '<i', raw, offset)[0]
-              for key, offset in OFFSETS.items() if version == 3 or key in LEGACY_KEYS}
+              for key, offset in OFFSETS.items() if key in supported_keys(version)}
     validate_changes(values)
     failure = raw[160:256] if version >= 2 else raw[136:256]
     failure = failure.split(b'\0', 1)[0].decode('utf-8', errors='replace')
@@ -120,8 +132,8 @@ class Mailbox:
             if not self.view: raise OSError('The game control snapshot could not be opened.')
             header = ctypes.string_at(self.view, 12)
             magic, version, found = struct.unpack('<III', header)
-            t.need(magic == MAGIC and version in (1, 2, 3) and found == pid, 'Unsupported game control protocol.')
-            self.size = 512 if version == 3 else SIZE
+            t.need(magic == MAGIC and version in (1, 2, 3, 4) and found == pid, 'Unsupported game control protocol.')
+            self.size = 512 if version >= 3 else SIZE
             self.read()
         except BaseException:
             self.close()
@@ -149,7 +161,7 @@ class Mailbox:
     def apply(self, changes):
         changes = validate_changes(changes)
         before = self.read()
-        t.need(before['version'] >= 3 or not (set(changes) - LEGACY_KEYS),
+        t.need(set(changes) <= supported_keys(before['version']),
                'Update this game package to use the additional NR controls.')
         values = before['values'] | changes
         if 'multiplier' in changes and changes['multiplier'] > 0:
@@ -165,6 +177,10 @@ class Mailbox:
             for key, (offset, _, _) in EXTRA.items():
                 raw = struct.pack('<f' if key in _FLOATS else '<i', values[key])
                 ctypes.memmove(self.view + offset - 32, raw, 4)
+        if before['version'] >= 4:
+            for key, (offset, _, _, _) in SHARP.items():
+                raw = struct.pack('<f' if key in _FLOATS else '<i', values[key])
+                ctypes.memmove(self.view + offset - 24, raw, 4)
         ctypes.c_long.from_address(self.view + 16).value = sequence
         deadline = time.monotonic() + 2
         while time.monotonic() < deadline:
@@ -179,6 +195,7 @@ class Mailbox:
 class Controls:
     def __init__(self, state):
         self.state = Path(state) / 'runtime-presets'
+        self.installations = Path(os.environ.get('RTXFORGE_DLSS_UNLOCKED_STATE') or Path(state).parent / 'engine-state') / 'targets'
         self.lock = threading.RLock()
         self.verified, self.previous, self.last_pid, self.preset_errors = {}, {}, {}, {}
         self.process_cache, self.process_time = {}, 0
@@ -197,6 +214,24 @@ class Controls:
                     self.presets[path.stem] = data
                 except (OSError, ValueError, KeyError, TypeError, t.Refusal): pass
         self._start_watcher()
+
+    def targets(self, _params=None):
+        """Known managed targets only; no library walk or artwork/network work."""
+        rows = []
+        for path in sorted(self.installations.glob('*/baseline.json'))[:500]:
+            try:
+                t.safe(path)
+                t.need(path.stat().st_size < 2 * 1024**2, 'Install record too large')
+                record = t.read_json(path)
+                if record.get('status') != 'active': continue
+                current = record.get('current') or {}
+                if (current.get('archive') or {}).get('family') != 'skynizz': continue
+                exe = t.safe(record['exe'])
+                if not exe.is_file(): continue
+                rows.append({'game': str(exe.parent), 'exe': exe.name,
+                             'name': record.get('name') or exe.stem, 'appid': record.get('appid')})
+            except (OSError, ValueError, KeyError, TypeError, AttributeError, t.Refusal): continue
+        return rows
 
     def _game(self, params):
         row = params.get('row') or {}
@@ -232,7 +267,30 @@ class Controls:
         recipe = hashlib.sha256(json.dumps({'files': immutable, 'mode': record.get('feature_mode')}, sort_keys=True).encode()).hexdigest()
         mfg = record.get('feature_mode') == 'nr-mfg' and 'renodx-mfgunlock.addon64' not in files
         return {'row': {k: row.get(k) for k in ('game', 'exe', 'appid', 'name')}, 'root': root,
-                'exe': exe, 'target': target, 'key': key, 'recipe': recipe, 'can_mfg': mfg}
+                'exe': exe, 'target': target, 'key': key, 'recipe': recipe, 'can_mfg': mfg, 'files': record['files']}
+
+    def pipelines(self, game):
+        result = {}
+        for label, filename in {'SR': 'nvngx_dlss.dll', 'RR': 'nvngx_dlssd.dll',
+                                'NR': 'nvngx_dlssnr.dll', 'FG': 'nvngx_dlssg.dll'}.items():
+            owned = [(name, expected) for name, expected in game['files'].items()
+                     if Path(name).name.casefold() == filename]
+            matches = True
+            for name, expected in owned:
+                path = t.safe(game['target'] / t.relative(name))
+                if not path.is_file(): matches = False; continue
+                signature = (path.stat().st_size, path.stat().st_mtime_ns, expected)
+                if self.verified.get(str(path)) != signature:
+                    with path.open('rb') as stream: actual = hashlib.file_digest(stream, 'sha256').hexdigest()
+                    if actual == expected: self.verified[str(path)] = signature
+                    else: matches = False
+            other = any((game['target'] / directory / filename).is_file() for directory in ('', 'OptiScaler'))
+            state = 'managed' if owned and matches else 'changed' if owned else 'other' if other else 'absent'
+            result[label] = {'state': state, 'detail': {'managed': 'rtxForge-managed DLL installed',
+                'changed': 'An expected rtxForge DLL is missing or changed. Repair this game.',
+                'other': 'Game-provided or other DLL installed', 'absent': 'No DLL found for this feature'}[state]
+                + '. File status does not establish live activity.'}
+        return result
 
     def _configured(self, game):
         path = game['target'] / 'OptiScaler.ini'
@@ -247,6 +305,16 @@ class Controls:
                     t.need(raw in ('true', 'false', '0', '1'), 'A game configuration value is invalid; repair this game.')
                 values[key] = (int(raw in ('true', '1')) if key in _BOOLS else
                                float(raw) if key in _FLOATS else int(raw))
+        for key, (_, section, ini, default) in SHARP.items():
+            raw = parser.get(section, ini, fallback='auto').strip().casefold()
+            if raw == 'auto': continue
+            if key == 'sharpen_shader':
+                t.need(raw in ('rcas', 'da', 'lcda'), 'The saved sharpening filter is invalid.')
+                values[key] = {'rcas': 0, 'da': 1, 'lcda': 2}[raw]
+            elif key in _BOOLS:
+                t.need(raw in ('true', 'false', '0', '1'), 'The saved sharpening setting is invalid.')
+                values[key] = int(raw in ('true', '1'))
+            else: values[key] = float(raw)
         count = parser.get('DLSSG', 'OverrideInterpolationCount', fallback='auto').strip().casefold()
         if count != 'auto':
             t.need(0 <= int(count) <= 5, 'The saved MFG count is invalid; repair this game.')
@@ -320,6 +388,7 @@ class Controls:
                 result['saved_values'] = (saved or {}).get('changes') or {}
                 result['preset_compatible'] = not saved or saved.get('recipe') == game['recipe']
                 result['preset_error'] = self.preset_errors.get(game['key'], '')
+                result['pipelines'] = self.pipelines(game)
                 return result
             except (t.Refusal, OSError, ValueError, KeyError, configparser.Error) as error:
                 return {'state': 'unavailable', 'detail': str(error), 'can_edit': False, 'can_save': False,
@@ -382,7 +451,7 @@ class Controls:
                 with box:
                     t.need(box.pid == params['pid'], 'The game session changed. Open the overlay again.')
                     found = box.read()
-                    t.need(found['version'] >= 3 or not (set(changes) - LEGACY_KEYS),
+                    t.need(set(changes) <= supported_keys(found['version']),
                            'Update this game package to save the additional NR controls.')
             old = self.presets.get(game['key']) or {}
             if old.get('recipe') == game['recipe']:
@@ -415,7 +484,25 @@ class Controls:
             self.preset_errors.pop(game['key'], None)
             return {'saved': False, 'detail': 'Saved preset cleared. Current live settings are unchanged.'}
 
+    def reset(self, params):
+        with self.lock:
+            game = self._game(params)
+            box = self._open(game, True)
+            t.need(box is not None, 'Start this game before resetting its live controls.')
+            with box:
+                t.need(type(params.get('pid')) is int and params['pid'] == box.pid,
+                       'The game session changed. Open the overlay again.')
+                current = self._present(game, box, box.read())
+                t.need(current['can_edit'], current['detail'])
+                changes = self._configured(game)
+                if not game['can_mfg']: changes.pop('multiplier', None)
+                changes = {k: v for k, v in changes.items() if k in supported_keys(current['version'])}
+                found = box.apply(changes)
+                self.forget(params)
+                return {**self._present(game, box, found), 'saved': False}
+
     def _start_watcher(self):
+        if os.environ.get('RTXFORGE_OVERLAY_HOST') == '0': return
         if self.presets and self.watcher is None:
             self.watcher = threading.Thread(target=self._watch, daemon=True, name='runtime-presets')
             self.watcher.start()
@@ -454,5 +541,5 @@ class Controls:
 
 def methods(state):
     controls = Controls(state)
-    return {'companion_active': controls.active, 'companion_status': controls.status, 'companion_apply': controls.apply,
-            'companion_save': controls.save, 'companion_forget': controls.forget}
+    return {'companion_targets': controls.targets, 'companion_active': controls.active, 'companion_status': controls.status, 'companion_apply': controls.apply,
+            'companion_save': controls.save, 'companion_forget': controls.forget, 'companion_reset': controls.reset}

@@ -69,10 +69,10 @@ index 00369a32..cf411588 100644
      <ClCompile Include="framegen\IFGFeature_Dx12.cpp" />
 diff --git a/OptiScaler/framegen/dlssg/Companion.h b/OptiScaler/framegen/dlssg/Companion.h
 new file mode 100644
-index 00000000..845f1915
+index 00000000..ab89b246
 --- /dev/null
 +++ b/OptiScaler/framegen/dlssg/Companion.h
-@@ -0,0 +1,205 @@
+@@ -0,0 +1,228 @@
 +#pragma once
 +
 +#include <Config.h>
@@ -118,11 +118,16 @@ index 00000000..845f1915
 +    LONG actualAutoMask;
 +    float actualDetail, actualColour;
 +    LONG actualReduced, actualEdgeAware;
-+    char reserved[192];
++    LONG sharpen, sharpOverride, sharpenShader, motionSharpen;
++    float sharpness, motionSharpness;
++    LONG actualSharpen, actualSharpOverride, actualSharpenShader, actualMotionSharpen;
++    float actualSharpness, actualMotionSharpness;
++    char reserved[144];
 +};
 +static_assert(sizeof(Mailbox) == 512);
 +static_assert(offsetof(Mailbox, workScale) == 256);
 +static_assert(offsetof(Mailbox, actualWorkScale) == 288);
++static_assert(offsetof(Mailbox, actualSharpen) == 344);
 +
 +inline std::recursive_mutex guard;
 +inline Mailbox* mailbox = nullptr;
@@ -181,11 +186,14 @@ index 00000000..845f1915
 +        }
 +        *mailbox = {};
 +        mailbox->magic = 0x46585452;
-+        mailbox->version = 3;
++        mailbox->version = 4;
 +        mailbox->pid = GetCurrentProcessId();
 +    }
 +    if (!mailbox) return;
 +    auto& cfg = *Config::Instance();
++    // This bridge uses the companion helper for its menu. Leave the game's
++    // other bindings alone; Insert must not open a second OptiScaler menu.
++    cfg.ShortcutKey.set_volatile_value(0);
 +    const LONG sequence = InterlockedCompareExchange(&mailbox->command, 0, 0);
 +    if (sequence > 0 && !(sequence & 1) && sequence != mailbox->acknowledged)
 +    {
@@ -197,7 +205,10 @@ index 00000000..845f1915
 +        {
 +            const auto boolean = [](LONG n) { return n == 0 || n == 1; };
 +            const auto bounded = [](float n, float lo, float hi) { return std::isfinite(n) && n >= lo && n <= hi; };
-+            const bool valid = bounded(request.workScale, .25f, 2.f) && request.passes >= 1 && request.passes <= 3 &&
++            const bool valid = boolean(request.sharpen) && boolean(request.sharpOverride) && boolean(request.motionSharpen) &&
++                request.sharpenShader >= 0 && request.sharpenShader <= 2 &&
++                bounded(request.sharpness, 0.f, 1.f) && bounded(request.motionSharpness, 0.f, 1.f) &&
++                bounded(request.workScale, .25f, 2.f) && request.passes >= 1 && request.passes <= 3 &&
 +                bounded(request.skin, -1.f, 2.f) && boolean(request.autoMask) &&
 +                bounded(request.detail, 0.f, 2.f) && bounded(request.colour, 0.f, 2.f) &&
 +                boolean(request.reduced) && boolean(request.edgeAware) && boolean(request.enabled) && boolean(request.preSr) && boolean(request.cache) &&
@@ -211,6 +222,12 @@ index 00000000..845f1915
 +            mailbox->result = !valid ? 2 : !supported ? 3 : 1;
 +            if (valid && supported)
 +            {
++                cfg.RcasEnabled.set_volatile_value(request.sharpen != 0);
++                cfg.OverrideSharpness.set_volatile_value(request.sharpOverride != 0);
++                cfg.SharpnessShader.set_volatile_value(static_cast<SharpenShader>(request.sharpenShader));
++                cfg.MotionSharpnessEnabled.set_volatile_value(request.motionSharpen != 0);
++                cfg.Sharpness.set_volatile_value(request.sharpness);
++                cfg.MotionSharpness.set_volatile_value(request.motionSharpness);
 +                cfg.DlssNrWorkingScale.set_volatile_value(request.workScale);
 +                cfg.DlssNrPasses.set_volatile_value(request.passes);
 +                cfg.DlssNrSkinStructure.set_volatile_value(request.skin);
@@ -242,6 +259,12 @@ index 00000000..845f1915
 +    }
 +    InterlockedIncrement(&mailbox->snapshot);
 +    mailbox->actualWorkScale = cfg.DlssNrWorkingScale.value_or_default();
++    mailbox->actualSharpen = cfg.RcasEnabled.value_or_default();
++    mailbox->actualSharpOverride = cfg.OverrideSharpness.value_or_default();
++    mailbox->actualSharpenShader = static_cast<LONG>(cfg.SharpnessShader.value_or_default());
++    mailbox->actualMotionSharpen = cfg.MotionSharpnessEnabled.value_or_default();
++    mailbox->actualSharpness = cfg.Sharpness.value_or_default();
++    mailbox->actualMotionSharpness = cfg.MotionSharpness.value_or_default();
 +    mailbox->actualPasses = cfg.DlssNrPasses.value_or_default();
 +    mailbox->actualSkin = cfg.DlssNrSkinStructure.value_or_default();
 +    mailbox->actualAutoMask = cfg.DlssNrAutoMask.value_or_default();

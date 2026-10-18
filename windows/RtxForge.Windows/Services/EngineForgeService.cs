@@ -37,7 +37,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
     // ---------- startup ----------
 
     /// <summary>Starts the host, or returns null (with the reason) when Python or the engine is unavailable.</summary>
-    public static async Task<(EngineForgeService? Service, string? Problem)> TryStartAsync()
+    public static async Task<(EngineForgeService? Service, string? Problem)> TryStartAsync(string logName = "engine.log")
     {
         var root = FindEngineRoot();
         if (root is null) return (null, "The rtxForge engine files were not found next to the app.");
@@ -62,6 +62,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         // Add rtxForge to Steam points the shortcut at this executable.
         info.Environment["RTXFORGE_APP_EXE"] = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "rtxForge.exe");
         info.Environment["PYTHONIOENCODING"] = "utf-8";
+        info.Environment["RTXFORGE_OVERLAY_HOST"] = logName == "overlay-engine.log" ? "1" : "0";
 
         Process process;
         try { process = Process.Start(info)!; }
@@ -73,7 +74,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         var service = new EngineForgeService(process, root);
         var ready = new TaskCompletionSource<JsonObject>(TaskCreationOptions.RunContinuationsAsynchronously);
         _ = Task.Run(() => service.ReadLoop(ready));
-        _ = Task.Run(() => service.DrainErrors());
+        _ = Task.Run(() => service.DrainErrors(logName));
         var first = await Task.WhenAny(ready.Task, Task.Delay(TimeSpan.FromSeconds(30)));
         if (first != ready.Task)
         {
@@ -139,10 +140,10 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         ready.TrySetCanceled();
     }
 
-    async Task DrainErrors()
+    async Task DrainErrors(string logName)
     {
         // Engine diagnostics go to %LOCALAPPDATA%\rtxForge\engine.log for support reports.
-        var log = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rtxForge", "engine.log");
+        var log = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rtxForge", logName);
         Directory.CreateDirectory(Path.GetDirectoryName(log)!);
         try
         {

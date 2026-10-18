@@ -20,10 +20,10 @@ import transactions as t
 
 
 def snapshot(pid=123, version=2):
-    raw = bytearray(512 if version == 3 else 256)
+    raw = bytearray(512 if version >= 3 else 256)
     struct.pack_into('<IIIi', raw, 0, control.MAGIC, version, pid, 10)
     for key, offset in control.OFFSETS.items():
-        if version != 3 and key not in control.LEGACY_KEYS: continue
+        if key not in control.supported_keys(version): continue
         struct.pack_into('<f' if key in control._FLOATS else '<i', raw, offset, control.DEFAULTS[key])
     struct.pack_into('<iffiiii', raw, 100, 1, 0.0, 28.0, 5, 3, 100, 300)
     if version >= 2: struct.pack_into('<iiiiii', raw, 136, 0, 4, 100, 1000, 1, 3)
@@ -75,6 +75,66 @@ class ControlsTest(unittest.TestCase):
         raw = snapshot()
         struct.pack_into('<f', raw, 68, float('nan'))
         with self.assertRaises(t.Refusal): control.decode(raw, 123)
+
+    def test_sharpening_preserves_the_actual_presets_filter_and_bounds(self):
+        path = self.target/'OptiScaler.ini'
+        path.write_text(path.read_text()+'[Sharpness]\nShader=da\nOverrideSharpness=true\nSharpness=0.65\n[CAS]\nEnabled=true\nMotionSharpnessEnabled=true\nMotionSharpness=0.3\n')
+        values = self.controls._configured(self.controls._game({'row':self.row}))
+        self.assertEqual(values['sharpen_shader'],1)
+        self.assertEqual(values['sharpen'],1)
+        self.assertAlmostEqual(values['sharpness'],.65)
+        for changes in ({'sharpness':1.01},{'motion_sharpness':-1},{'sharpen_shader':3}):
+            with self.assertRaises(t.Refusal):control.validate_changes(changes)
+
+    def test_file_pills_distinguish_owned_other_absent_and_changed(self):
+        nr = self.target/'nvngx_dlssnr.dll';nr.write_bytes(b'managed NR')
+        self.metadata['files'][nr.name]=hashlib.sha256(nr.read_bytes()).hexdigest();self.write_metadata()
+        (self.target/'nvngx_dlss.dll').write_bytes(b'game provided SR')
+        game=self.controls._game({'row':self.row})
+        states=self.controls.pipelines(game)
+        self.assertEqual({key:value['state'] for key,value in states.items()},
+                         {'SR':'other','RR':'absent','NR':'managed','FG':'absent'})
+        self.assertIn('does not establish live activity',states['NR']['detail'])
+        nr.write_bytes(b'changed NR')
+        self.assertEqual(self.controls.pipelines(game)['NR']['state'],'changed')
+        nr.unlink()
+        self.assertEqual(self.controls.pipelines(game)['NR']['state'],'changed')
+
+    def test_helper_target_discovery_uses_install_records_without_library_scan(self):
+        self.controls.installations=self.root/'engine-state/targets'
+        folder=self.controls.installations/'one';folder.mkdir(parents=True)
+        record={'status':'active','name':'Fixture','exe':str(self.target/'Game.exe'),
+                'current':{'archive':{'family':'skynizz'}}}
+        (folder/'baseline.json').write_text(json.dumps(record))
+        rows=self.controls.targets()
+        self.assertEqual(rows,[{'game':str(self.target),'exe':'Game.exe','name':'Fixture','appid':None}])
+        record['status']='restored';(folder/'baseline.json').write_text(json.dumps(record))
+        self.assertFalse(self.controls.targets())
+
+    def test_reset_applies_installed_settings_clears_preset_and_preserves_game_files(self):
+        self.controls.save({'row':self.row,'changes':{'intensity':1.25}})
+        before={str(p):p.read_bytes() for p in self.target.rglob('*') if p.is_file()}
+        class Box:
+            pid=123
+            k=SimpleNamespace(GetTickCount=lambda:1010)
+            applied=None
+            def __enter__(self):return self
+            def __exit__(self,*_):pass
+            def read(self):return control.decode(snapshot(version=4),self.pid)
+            def apply(self,changes):
+                self.applied=changes
+                return self.read()|{'values':changes}
+        box=Box()
+        with patch.object(self.controls,'_open',return_value=box):
+            with self.assertRaisesRegex(t.Refusal,'session changed'):
+                self.controls.reset({'row':self.row,'pid':456})
+            self.assertTrue(self.controls.presets)
+            result=self.controls.reset({'row':self.row,'pid':123})
+        self.assertEqual(box.applied['preset'],2)
+        self.assertEqual(box.applied['multiplier'],4)
+        self.assertFalse(result['saved'])
+        self.assertFalse(self.controls.presets)
+        self.assertEqual(before,{str(p):p.read_bytes() for p in self.target.rglob('*') if p.is_file()})
 
     def test_active_game_uses_verified_process_and_never_a_library_default(self):
         class Box:
@@ -193,7 +253,7 @@ class ControlsTest(unittest.TestCase):
 @unittest.skipUnless(os.name == 'nt', 'Windows named mapping')
 class WindowsProtocolTest(unittest.TestCase):
     def test_actual_mapping_ack_and_backend_ceiling(self):
-        for version in (2, 3):
+        for version in (2, 3, 4):
             with self.subTest(version=version): self.mapping_round_trip(version)
 
     def mapping_round_trip(self, version):
@@ -216,8 +276,10 @@ class WindowsProtocolTest(unittest.TestCase):
                 data = ctypes.string_at(view + 28, 36)
                 ctypes.memmove(view + 64, data, 36)
                 ctypes.c_long.from_address(view + 132).value = ctypes.c_long.from_address(view + 128).value
-                if version == 3:
+                if version >= 3:
                     ctypes.memmove(view + 288, ctypes.string_at(view + 256, 32), 32)
+                if version >= 4:
+                    ctypes.memmove(view + 344, ctypes.string_at(view + 320, 24), 24)
                 ctypes.c_long.from_address(view + 24).value = 1
                 ctypes.c_long.from_address(view + 20).value = command
                 ctypes.c_long.from_address(view + 12).value += 1
@@ -230,7 +292,7 @@ class WindowsProtocolTest(unittest.TestCase):
                 self.assertEqual(result['values']['intensity'], 1.25)
                 self.assertEqual(result['values']['preset'], 2)
                 previous = result['command']
-                if version == 3:
+                if version >= 3:
                     result = box.apply({'work_scale': .75, 'skin': -.5, 'detail': 1.25, 'passes': 2, 'auto_mask': 0})
                     self.assertEqual(result['values']['work_scale'], .75)
                     self.assertEqual(result['values']['skin'], -.5)
@@ -240,6 +302,15 @@ class WindowsProtocolTest(unittest.TestCase):
                     previous = result['command']
                 else:
                     with self.assertRaisesRegex(t.Refusal, 'Update this game package'): box.apply({'passes': 2})
+                    self.assertEqual(box.read()['command'], previous)
+                if version >= 4:
+                    result = box.apply({'sharpen': 1, 'sharp_override': 1, 'sharpen_shader': 1, 'sharpness': .65,
+                                        'motion_sharpen': 1, 'motion_sharpness': .3})
+                    self.assertEqual(result['values']['sharpen_shader'], 1)
+                    self.assertAlmostEqual(result['values']['sharpness'], .65)
+                    previous = result['command']
+                else:
+                    with self.assertRaisesRegex(t.Refusal, 'Update this game package'): box.apply({'sharpness': .5})
                     self.assertEqual(box.read()['command'], previous)
                 ctypes.c_long.from_address(view + 112).value = 1
                 with self.assertRaises(t.Refusal): box.apply({'multiplier': 4})

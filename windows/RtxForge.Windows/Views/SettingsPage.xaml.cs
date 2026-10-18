@@ -19,11 +19,13 @@ public sealed partial class SettingsPage : Page
     readonly MainWindow shell = App.Main!;
     readonly Dictionary<string, PreferencesGroup[]> sections = [];
     static string selectedSection = "Graphics";
+    public static bool OpenOverlaySection { get; set; }
     ForgeSettings Settings => shell.Settings;
 
     public SettingsPage()
     {
         InitializeComponent();
+        if (OpenOverlaySection) { selectedSection = "Overlay"; OpenOverlaySection = false; }
         Build();
     }
 
@@ -117,16 +119,28 @@ public sealed partial class SettingsPage : Page
         borderless.Toggled += (_, _) => { Settings.Borderless4K = borderless.IsOn; Save(); };
         graphics.Add(row);
 
-        (row, var shortcut) = Prefs.ComboRow("Live controls shortcut", "Show or hide the NR + MFG panel above a windowed or borderless game. Keep rtxForge running.",
+        var overlay = new PreferencesGroup(null, "A small background helper opens the NR + MFG sidebar. You can close the main rtxForge window.");
+        (row, var helper) = Prefs.SwitchRow("Background overlay helper", "Keep the overlay shortcut available after closing rtxForge. Exit it from the system tray whenever you like.", Settings.OverlayHelper, "");
+        helper.Toggled += (_, _) => { Settings.OverlayHelper = helper.IsOn; Save(); shell.ConfigureCompanionShortcut(); };
+        overlay.Add(row);
+        (row, var startup) = Prefs.SwitchRow("Start with Windows", "Start only the overlay helper when you sign in.", Settings.OverlayStartWithWindows, "");
+        startup.Toggled += (_, _) => { Settings.OverlayStartWithWindows = startup.IsOn; Save(); shell.ConfigureCompanionShortcut(); };
+        overlay.Add(row);
+        (row, var shortcut) = Prefs.ComboRow("Overlay shortcut", "Press once to show the sidebar and again to return to your game. Use windowed or borderless mode.",
             MainWindow.CompanionShortcuts, Math.Max(0, Array.IndexOf(MainWindow.CompanionShortcuts, Settings.PanelHotkey)), "");
         shortcut.SelectionChanged += (_, _) =>
         {
             Settings.PanelHotkey = MainWindow.CompanionShortcuts[Math.Max(0, shortcut.SelectedIndex)];
-            shell.ConfigureCompanionShortcut();
             Save();
+            shell.ConfigureCompanionShortcut();
             if (shell.CompanionShortcutProblem is { } problem) { Notice.Title = "Shortcut unavailable"; Notice.Message = problem; Notice.IsOpen = true; }
         };
-        graphics.Add(row);
+        overlay.Add(row);
+        (row, var material) = Prefs.ComboRow("Window material", "Acrylic blurs the game behind the sidebar. Mica uses your desktop background. Windows transparency settings still apply.",
+            ["Acrylic", "Mica"], Settings.OverlayMaterial == "mica" ? 1 : 0, "");
+        material.SelectionChanged += (_, _) => { Settings.OverlayMaterial = material.SelectedIndex == 1 ? "mica" : "acrylic"; Save(); shell.ConfigureCompanionShortcut(); };
+        overlay.Add(row);
+        overlay.Add(Prefs.Row("Open overlay", "Automatically connects to a supported running game.", Prefs.ActionButton("Open", (_, _) => shell.OpenCompanion()), ""));
 
         var appearance = new PreferencesGroup(null);
         (row, var theme) = Prefs.ComboRow("App theme", "Changes only rtxForge.", ThemeController.Captions,
@@ -252,6 +266,7 @@ public sealed partial class SettingsPage : Page
 
         // Linux organize_pages(): one page per section. Windows shows them as SelectorBar tabs.
         sections["Graphics"] = [graphics];
+        sections["Overlay"] = [overlay];
         sections["Appearance"] = [appearance];
         sections["Library"] = [library];
         sections["Gaming Mode"] = [gamingMode, steamLibrary, interfaceGroup, controller];

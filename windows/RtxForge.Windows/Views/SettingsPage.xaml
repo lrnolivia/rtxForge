@@ -8,7 +8,7 @@
         Settings as a Windows settings page: section tabs (SelectorBar) over
         settings cards, reached from the NavigationView Settings item. Changes
         apply immediately; there is no Save button. Same sections as Linux
-        (Graphics, Appearance, Library, Gaming Mode, System, Recovery) plus About.
+        (Graphics, Overlay, Appearance, Library, Gaming Mode, System, Recovery) plus About.
     -->
     <ScrollViewer HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
         <!-- Left-aligned and full width with responsive margins, like the other pages. -->

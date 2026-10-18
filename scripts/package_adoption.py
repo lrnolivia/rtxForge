@@ -92,7 +92,7 @@ def _native(config, row, settings, cache=None):
     # No claiming an unknown companion DLL/addon by recursively owning a tree.
     if (target / 'OptiScaler').exists():
         for name in t.files(target / 'OptiScaler').values():
-            t.need('OptiScaler/' + name in expected or not name.lower().endswith(('.dll', '.addon64')),
+            t.need('OptiScaler/' + name in expected or not name.lower().endswith(('.dll', '.addon64', '.exe')),
                    'Another graphics runtime is present: OptiScaler/' + name)
     t.need(not any((target / name).exists() for name in ('renodx-dlss5.addon64', 'dlss5-feed.addon64', 'renodx-mfgunlock.addon64')),
            'Another NR/MFG hook is present. Resolve it before Adoption.')

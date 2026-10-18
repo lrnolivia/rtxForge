@@ -4764,14 +4764,14 @@ def install_target(
             "nr_on_launch": nr_on_launch if nr_on_launch is not None else ((existing_baseline or {}).get('current') or {}).get('nr_on_launch'),
             "nr_profile": ({
                 "enabled": nr_tuning.get("Enabled", "auto").lower() == "true",
-                "activation": "startup", "runtime_verified": False,
+                "activation": "startup" if nr_tuning.get("Enabled", "false").lower() == "true" else "manual-after-launch", "runtime_verified": False,
                 "placement": "pre-sr-with-post-sr-fallback" if nr_tuning.get("PreSr") == "true" else "upstream-configured",
                 "cache_policy": {key: value for key, value in nr_tuning.items() if key.startswith("Cache")},
                 "working_scale": nr_tuning.get("WorkingScale", "auto"), "menu_key": "Insert",
                 "mfg": "MFG Unlock addon; target runtime unverified" if mfg_component else "integrated Ada bridge; target runtime unverified" if is_skynizz_bridge else "unmanaged",
             } if is_skynizz else {
-                "enabled": False if is_dlss_unlocked else (enable_effects and feature_mode in {"nr-mfg", "nr-only"} and nr_tuning.get("Enabled") == "true"),
-                "activation": "toggle-key-f10" if (is_dlss_unlocked and feature_mode in {"nr-mfg", "nr-only"}) else ("startup" if enable_effects else "manual-after-launch"),
+                "enabled": feature_mode in {"nr-mfg", "nr-only"} and nr_tuning.get("Enabled") == "true",
+                "activation": "startup" if nr_tuning.get("Enabled") == "true" else "toggle-key-f10" if is_dlss_unlocked else "manual-after-launch",
                 "dual_feature": Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) != "dlss-unlocked",
                 "dual_enlarger": "dlss" if Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) != "dlss-unlocked" else None,
                 "run_before_sr": Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) == "dlss-unlocked",

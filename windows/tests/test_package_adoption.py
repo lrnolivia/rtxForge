@@ -107,6 +107,7 @@ e.Y4MY_PROVIDER=copy.deepcopy(release)
 e.install_target(g,payload,meta,'ada',nr_runtime_payload=fixture.pe()+b'model',nr_runtime_meta={'sha256':t.sha(fixture.pe()+b'model')},feature_mode='nr-mfg',enable_effects=True)
 assert not t.ini((target/'OptiScaler.ini').read_text()).getboolean('DlssNr','Enabled')
 assert t.ini((target/'OptiScaler.ini').read_text()).getboolean('DLSSG','AdaMfgUnlock')
+assert e.load_baseline(target)['current']['nr_profile']['activation']=='manual-after-launch'
 # Gears requires explicit reviewed consent; all other EAC games remain blocked.
 row,target=game('Gears',True);e=module(host.service.config);g=b.game(e,row)
 assert g.anti_cheat and not g.eligible

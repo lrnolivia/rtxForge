@@ -90,6 +90,12 @@ public sealed partial class CompanionWindow : Window
     public async void Present()
     {
         if (opening || disposed) return;
+        // Keep the invoking display/game even if the asynchronous ownership
+        // lookup completes after foreground focus has moved elsewhere.
+        var foregroundWindow = GetForegroundWindow();
+        var foreground = MainWindow.ForegroundProcessId();
+        var windowId = foregroundWindow == 0 ? AppWindow.Id : Microsoft.UI.Win32Interop.GetWindowIdFromWindow(foregroundWindow);
+        var area = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Primary).WorkArea;
         opening = true;
         try
         {
@@ -98,37 +104,41 @@ public sealed partial class CompanionWindow : Window
                 // A running native menu keeps its key until restart. Never open
                 // both panels when the preference changed during that session.
                 var targets = await service.CompanionTargetsAsync();
-                var active = await service.ActiveCompanionAsync(targets, MainWindow.ForegroundProcessId(), pid);
+                var active = await service.ActiveCompanionAsync(targets, foreground, pid);
                 var location = (active["row"] as JsonObject)?["game"]?.GetValue<string>();
                 var target = targets.FirstOrDefault(g => string.Equals(g.Id, location, StringComparison.OrdinalIgnoreCase));
                 if (target is not null && Int(await service.CompanionAsync("status", target), "original_menu") == 1) return;
             }
-            PresentCore();
+            if (disposed) return;
+            PresentCore(area, foreground);
             if (game is not null) _ = ApplyGameAccentAsync(game, generation);
         }
-        catch (Exception error) { Feedback.Text = error.Message; PresentCore(); }
+        catch (Exception error) { if (!disposed) { Feedback.Text = error.Message; PresentCore(area, foreground); } }
         finally { opening = false; }
     }
-    void PresentCore()
+    void PositionAtLeft(RectInt32 area)
     {
-        if (!IsShown)
-        {
-            var foregroundWindow = GetForegroundWindow();
-            var windowId = foregroundWindow == 0 ? AppWindow.Id : Microsoft.UI.Win32Interop.GetWindowIdFromWindow(foregroundWindow);
-            var area = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Primary).WorkArea;
-            var scale = GetDpiForWindow(foregroundWindow == 0 ? WinRT.Interop.WindowNative.GetWindowHandle(this) : foregroundWindow) / 96.0;
-            var edge = (int)Math.Round(24 * scale);
-            var width = Math.Min((int)Math.Round(420 * scale), area.Width - 2 * edge);
-            AppWindow.MoveAndResize(new RectInt32(area.X + edge,
-                area.Y + edge, width, area.Height - 2 * edge));
-        }
+        // Our per-monitor-aware HWND supplies the display's scale even when
+        // the game itself is DPI-unaware. Moving first updates it on display changes.
+        var scale = Math.Max(96u, GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this))) / 96.0;
+        var edge = (int)Math.Round(24 * scale);
+        var width = Math.Min((int)Math.Round(420 * scale), area.Width - 2 * edge);
+        AppWindow.MoveAndResize(new RectInt32(area.X + edge,
+            area.Y + edge, width, area.Height - 2 * edge));
+    }
+    void PresentCore(RectInt32 area, uint foreground)
+    {
+        // Re-anchor on every open, including an already visible Global/settings
+        // panel. Repeat after activation so first-show placement and monitor DPI
+        // changes cannot leave it centered or at a previous dragged position.
+        PositionAtLeft(area);
         ShortcutHint.Text = shortcutProblem() ?? (service.Settings.PanelHotkey == "Disabled"
             ? "Esc to return to your game" : $"{service.Settings.PanelHotkey} · show or hide");
         IsShown = true;
         if (service.Settings.OverlayRenderer == "optiscaler" && !globalShown) ShowSettings(true);
-        // Resolve the foreground game before Activate makes the overlay foreground.
-        var foreground = MainWindow.ForegroundProcessId();
-        Activate(); AnimateVisibility(true);
+        Activate();
+        PositionAtLeft(area);
+        AnimateVisibility(true);
         if (!settingsShown && !globalShown) { pollTimer.Start(); _ = RefreshAsync(foreground); }
     }
 

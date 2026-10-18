@@ -253,6 +253,9 @@ def configure(e, source, saved=None, mode='nr-only', mfg_multiplier='auto', game
             text = e.set_ini_value(text, 'DLSSG', key, 'false')
     if mode == 'mfg-only':
         text = e.set_ini_value(text, 'DlssNr', 'Enabled', 'false')
+    # Skynizz bypasses the generic OptiScaler INI policy. Suppress its startup
+    # splash on fresh installs and repairs without disabling the manual menu.
+    text = e.set_ini_value(text, 'Menu', 'DisableSplash', 'true')
     if startup_overlay_disabled(game):
         # The swapchain overlay hangs inZOI before NR evaluation. The classic
         # menu path allows startup and leaves the native FG and NR routes on.

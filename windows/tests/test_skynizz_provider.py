@@ -99,7 +99,7 @@ review=prepare(fresh);assert files(fresh)==before
 assert release['sha256'] in review['rows'][0]['detail'] and str(model) in review['rows'][0]['detail']
 run(review)
 record=baseline(fresh);ini=(fresh/'OptiScaler.ini').read_text()
-for value in ('Enabled=true','CacheInterval=1','WorkingScale=0.65','LocalStructure=1.0','SkinStructure=1.0','WhitePointSource=3','PreSr=true'):
+for value in ('Enabled=true','CacheInterval=1','WorkingScale=0.65','LocalStructure=1.0','SkinStructure=1.0','WhitePointSource=3','PreSr=true','DisableSplash=true'):
     assert value in ini,value
 import companion_controls
 with patch.object(companion_controls.Controls,'_start_watcher',lambda self:None):
@@ -127,7 +127,9 @@ engine_bridge.payload=payload
 switch=service.prepare([scan(fresh)],'nr-only','install',visual_settings=settings | {'runtime_provider':'y4my'})
 assert not switch['rows'] and 'switching providers' in switch['blocked'][0]['reason']
 ini=ini.replace('CacheInterval=1','CacheInterval=8').replace('WorkingScale=0.65','WorkingScale=0.5').replace('LocalStructure=1.0','LocalStructure=0.43').replace('SkinStructure=1.0','SkinStructure=0.71')
-(fresh/'OptiScaler.ini').write_text(ini)
+for key,value in {'OverlayMenu':'true','ShortcutKey':'0x2D'}.items():
+    ini=module(service.config).set_ini_value(ini,'Menu',key,value)
+(fresh/'OptiScaler.ini').write_text(ini.replace('DisableSplash=true','DisableSplash=false'))
 count=len(resolutions);repair=prepare(fresh,'repair',{'skynizz_version':'v9.9.9'})
 assert len(resolutions)==count,'repair resolved a different release'
 run(repair)
@@ -135,8 +137,8 @@ assert (fresh/'OptiScaler.ini').read_text()==ini,'repair replaced the user cache
 assert baseline(fresh)['archive']['release']['tag']=='v1.2.1'
 reset=prepare(fresh,'reset');run(reset)
 reset_ini=(fresh/'OptiScaler.ini').read_text()
-assert 'CacheInterval=1' in reset_ini and 'WorkingScale=0.65' in reset_ini and 'LocalStructure=1.0' in reset_ini and 'SkinStructure=1.0' in reset_ini and 'DualFeature=' not in reset_ini
-checks.append('repair pins exact release and preserves full preset; reset retains Skynizz policy')
+assert 'CacheInterval=1' in reset_ini and 'WorkingScale=0.65' in reset_ini and 'LocalStructure=1.0' in reset_ini and 'SkinStructure=1.0' in reset_ini and 'DisableSplash=true' in reset_ini and 'DualFeature=' not in reset_ini
+checks.append('fresh/repair/reset suppress startup splash, preserve manual menu and tuning, and pin exact release')
 run(prepare(fresh,'uninstall'));assert files(fresh)==before,files(fresh)
 checks.append('restore reproduces the original file hashes')
 import game_display as display

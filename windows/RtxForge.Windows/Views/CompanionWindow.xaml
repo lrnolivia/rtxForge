@@ -124,8 +124,9 @@
                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                 <Grid Padding="26,22,26,20" ColumnSpacing="12">
                     <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="116" /></Grid.ColumnDefinitions>
-                    <StackPanel x:Name="DragBar" Spacing="10">
-                        <TextBlock Text="rtxForge" FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource OverlayHeadingBrush}" />
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                    <TextBlock Text="rtxForge" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{StaticResource OverlayHeadingBrush}" />
+                    <StackPanel x:Name="DragBar" Grid.Row="1" Grid.ColumnSpan="2" Spacing="10" Margin="0,10,0,0">
                         <TextBlock x:Name="GameName" Text="Ready when you are" Foreground="{StaticResource OverlayHeadingBrush}" FontSize="23" FontWeight="SemiBold" MaxLines="2" TextTrimming="CharacterEllipsis" />
                         <StackPanel x:Name="PipelinePills" Orientation="Horizontal" Spacing="6" AutomationProperties.Name="Installed DLSS files" />
                         <TextBlock x:Name="ConnectionText" Text="Start your game to connect." Style="{StaticResource Note}" />

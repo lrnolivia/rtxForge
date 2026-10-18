@@ -118,7 +118,7 @@
                 <Setter Property="FocusVisualSecondaryBrush" Value="#101010" />
             </Style>
         </Grid.Resources>
-        <Border CornerRadius="20" Background="#30080808">
+        <Border x:Name="Surface" CornerRadius="20" Background="#30080808">
             <Grid>
                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                 <Grid Padding="26,22,26,20" ColumnSpacing="12">
@@ -192,11 +192,9 @@
                                 </StackPanel>
                             </Expander>
                         </StackPanel>
-                        <StackPanel x:Name="SharpeningGroup" Spacing="12">
-                            <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                <TextBlock Text="Sharpening" Style="{StaticResource Section}" VerticalAlignment="Center" />
-                                <ToggleSwitch x:Name="SharpEnabled" Grid.Column="1" OnContent="" OffContent="" MinWidth="0" Toggled="OnEdit" AutomationProperties.Name="OptiScaler sharpening enabled" />
-                            </Grid>
+                        <Expander x:Name="SharpeningGroup" Header="Sharpening" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Background="Transparent" BorderThickness="0">
+                        <StackPanel Spacing="12">
+                            <ToggleSwitch x:Name="SharpEnabled" Header="Enable filter" Toggled="OnEdit" AutomationProperties.Name="OptiScaler sharpening enabled" />
                             <TextBlock Text="The same OptiScaler filter used by your rtxForge presets." Style="{StaticResource Note}" />
                             <ComboBox x:Name="SharpFilter" Header="Filter" PlaceholderText="—" HorizontalAlignment="Stretch" SelectionChanged="OnChoiceEdit"><x:String>RCAS</x:String><x:String>Depth aware</x:String><x:String>Local contrast depth aware</x:String></ComboBox>
                             <ToggleSwitch x:Name="SharpOverride" Header="Override game sharpening" Toggled="OnEdit" />
@@ -205,6 +203,7 @@
                                 <StackPanel Spacing="12"><ToggleSwitch x:Name="MotionSharpEnabled" Header="Sharpen moving detail" Toggled="OnEdit" /><StackPanel Spacing="4"><Grid><TextBlock Text="Motion strength" /><TextBlock x:Name="MotionSharpnessText" HorizontalAlignment="Right" /></Grid><Slider x:Name="MotionSharpness" Minimum="0" Maximum="1" StepFrequency="0.01" Value="0.2" ValueChanged="OnSliderEdit" AutomationProperties.Name="Motion sharpening strength" /></StackPanel></StackPanel>
                             </Expander>
                         </StackPanel>
+                        </Expander>
                         <Expander x:Name="Performance" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Background="Transparent" BorderThickness="0" CornerRadius="8">
                             <Expander.Header>
                                 <StackPanel Orientation="Horizontal" Spacing="10">

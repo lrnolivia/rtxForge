@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
+using System.Numerics;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Windowing;
@@ -9,6 +10,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Hosting;
 using RtxForge.Windows.Models;
 using RtxForge.Windows.Services;
 using Windows.Graphics;
@@ -25,6 +27,8 @@ public sealed partial class CompanionWindow : Window
     DesktopAcrylicController? acrylic;
     MicaController? mica;
     string? pipelinesRendered;
+    int visibilityRevision;
+    bool windowVisible;
     readonly DispatcherQueueTimer pollTimer, editTimer;
     Game? game;
     JsonObject? status;
@@ -93,11 +97,43 @@ public sealed partial class CompanionWindow : Window
         IsShown = true;
         // Resolve the foreground game before Activate makes the overlay foreground.
         var foreground = MainWindow.ForegroundProcessId();
-        Activate(); pollTimer.Start();
+        Activate(); AnimateVisibility(true); pollTimer.Start();
         _ = RefreshAsync(foreground);
     }
 
-    public void HidePanel() { editTimer.Stop(); pollTimer.Stop(); dirty = dragging = false; AppWindow.Hide(); IsShown = false; }
+    public void HidePanel() { editTimer.Stop(); pollTimer.Stop(); dirty = dragging = false; IsShown = false; AnimateVisibility(false); }
+
+    void AnimateVisibility(bool show)
+    {
+        var ticket = ++visibilityRevision;
+        var visual = ElementCompositionPreview.GetElementVisual(Surface);
+        var compositor = visual.Compositor;
+        if (!new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled)
+        {
+            visual.StopAnimation("Opacity"); visual.StopAnimation("Scale");
+            visual.Opacity = 1; visual.Scale = Vector3.One;
+            if (!show) AppWindow.Hide(); windowVisible = show; return;
+        }
+        if (show && !windowVisible)
+        { visual.Opacity = 0; visual.Scale = new Vector3(.97f, .97f, 1); }
+        visual.CenterPoint = new Vector3((float)Surface.ActualWidth, (float)Surface.ActualHeight / 2, 0);
+        windowVisible = true;
+        var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(.16f, 1), new Vector2(.3f, 1));
+        var duration = TimeSpan.FromMilliseconds(show ? 160 : 110);
+        var fade = compositor.CreateScalarKeyFrameAnimation();
+        fade.Duration = duration; fade.InsertExpressionKeyFrame(0, "this.StartingValue"); fade.InsertKeyFrame(1, show ? 1 : 0, easing);
+        var scale = compositor.CreateVector3KeyFrameAnimation();
+        scale.Duration = duration; scale.InsertExpressionKeyFrame(0, "this.StartingValue"); scale.InsertKeyFrame(1, show ? Vector3.One : new Vector3(.98f, .98f, 1), easing);
+        var batch = compositor.CreateScopedBatch(Microsoft.UI.Composition.CompositionBatchTypes.Animation);
+        visual.StartAnimation("Opacity", fade); visual.StartAnimation("Scale", scale);
+        batch.Completed += (_, _) =>
+        {
+            batch.Dispose();
+            if (disposed || ticket != visibilityRevision || show || IsShown) return;
+            AppWindow.Hide(); windowVisible = false;
+        };
+        batch.End();
+    }
     public void Shutdown() { disposed = true; editTimer.Stop(); pollTimer.Stop(); acrylic?.Dispose(); mica?.Dispose(); Close(); }
 
     public void ApplyMaterial(string material)
@@ -125,7 +161,7 @@ public sealed partial class CompanionWindow : Window
 
     async Task RefreshAsync(uint? observedForeground = null)
     {
-        if (requesting || polling || disposed) return;
+        if (requesting || polling || disposed || !IsShown) return;
         polling = true;
         try
         {
@@ -134,7 +170,7 @@ public sealed partial class CompanionWindow : Window
             var foreground = observedForeground ?? MainWindow.ForegroundProcessId();
             var retained = foreground == (uint)Environment.ProcessId ? pid : 0;
             var active = await service.ActiveCompanionAsync(games, foreground, retained);
-            if (disposed || requesting) return;
+            if (disposed || requesting || !IsShown) return;
             var location = (active["row"] as JsonObject)?["game"]?.GetValue<string>();
             var next = games.FirstOrDefault(g => string.Equals(g.Id, location, StringComparison.OrdinalIgnoreCase));
             var nextPid = Int(active, "pid");
@@ -145,8 +181,9 @@ public sealed partial class CompanionWindow : Window
             }
             var ticket = generation;
             var result = game is null ? active : await service.CompanionAsync("status", game);
-            if (ticket != generation || disposed || requesting) return;
+            if (ticket != generation || disposed || requesting || !IsShown) return;
             status = result;
+            pollTimer.Interval = TimeSpan.FromSeconds(game is null ? 3 : 1);
             GameName.Text = game?.Name ?? "Ready when you are";
             ConnectionText.Text = game is null ? Text(result, "detail")
                 : Text(result, "state") == "running" ? "Connected · changes apply live" : Text(result, "detail");

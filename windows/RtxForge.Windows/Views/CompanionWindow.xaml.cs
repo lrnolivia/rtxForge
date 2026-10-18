@@ -35,6 +35,8 @@ public sealed partial class CompanionWindow : Window
     string? pipelinesRendered;
     int visibilityRevision;
     bool windowVisible;
+    RectInt32 openingArea;
+    long anchorUntil;
     readonly DispatcherQueueTimer pollTimer, editTimer;
     Game? game;
     JsonObject? status;
@@ -57,6 +59,13 @@ public sealed partial class CompanionWindow : Window
             presenter.SetBorderAndTitleBar(true, false);
         }
         var handle = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        AppWindow.Changed += (_, e) =>
+        {
+            // Some desktop arrangers center newly shown windows asynchronously.
+            // Settle only during opening; no polling or restriction on later dragging.
+            if (!disposed && IsShown && e.DidPositionChange && Environment.TickCount64 < anchorUntil)
+                PositionAtLeft(openingArea);
+        };
         var rounded = 2;
         DwmSetWindowAttribute(handle, 33, ref rounded, sizeof(int));
         var noBorder = unchecked((int)0xFFFFFFFE);
@@ -123,11 +132,15 @@ public sealed partial class CompanionWindow : Window
         var scale = Math.Max(96u, GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this))) / 96.0;
         var edge = (int)Math.Round(24 * scale);
         var width = Math.Min((int)Math.Round(420 * scale), area.Width - 2 * edge);
-        AppWindow.MoveAndResize(new RectInt32(area.X + edge,
-            area.Y + edge, width, area.Height - 2 * edge));
+        var bounds = new RectInt32(area.X + edge, area.Y + edge, width, area.Height - 2 * edge);
+        if (AppWindow.Position.X != bounds.X || AppWindow.Position.Y != bounds.Y
+            || AppWindow.Size.Width != bounds.Width || AppWindow.Size.Height != bounds.Height)
+            AppWindow.MoveAndResize(bounds);
     }
     void PresentCore(RectInt32 area, uint foreground)
     {
+        openingArea = area;
+        anchorUntil = Environment.TickCount64 + 500;
         // Re-anchor on every open, including an already visible Global/settings
         // panel. Repeat after activation so first-show placement and monitor DPI
         // changes cannot leave it centered or at a previous dragged position.
@@ -142,7 +155,7 @@ public sealed partial class CompanionWindow : Window
         if (!settingsShown && !globalShown) { pollTimer.Start(); _ = RefreshAsync(foreground); }
     }
 
-    public void HidePanel() { editTimer.Stop(); pollTimer.Stop(); dirty = dragging = false; IsShown = false; AnimateVisibility(false); }
+    public void HidePanel() { anchorUntil = 0; editTimer.Stop(); pollTimer.Stop(); dirty = dragging = false; IsShown = false; AnimateVisibility(false); }
 
     void AnimateVisibility(bool show)
     {

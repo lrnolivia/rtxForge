@@ -91,8 +91,9 @@ public sealed partial class GameModeView
         var content = new StackPanel { Spacing = t.Px(20) };
         var summary = new StackPanel { Spacing = t.Px(10) };
         var count = review.Ready.Count;
-        summary.Children.Add(ui.H2(count > 0 ? $"{count} game{(count == 1 ? "" : "s")} ready" : "Nothing ready yet", 1.3));
-        if (operation == "install") summary.Children.Add(ui.P(shell.Settings.RuntimeProvider == "feeder" || review.Ready.All(r => r.Game.IsFeeder)
+        summary.Children.Add(ui.H2(count > 0 ? $"{count} game{(count == 1 ? "" : "s")} ready"
+            : review.Supported.Count > 0 ? "Supported features available" : "Nothing ready yet", 1.3));
+        if (operation == "install") summary.Children.Add(ui.P(shell.Settings.RuntimeProvider == "feeder" || (count > 0 && review.Ready.All(r => r.Game.IsFeeder))
             ? "NR Only · Feeder NR" : $"{ModeLabel()} · {ProviderName()}"));
         content.Children.Add(summary);
 

@@ -322,6 +322,14 @@ def check_target(e, game, baseline):
     return restored_tree
 
 
+def native_nr_refusal(exe, appid=None):
+    # Larian documents DX11/Vulkan only; neither reaches this D3D12 NR hook.
+    # https://larian.com/support/faqs/graphical-issues_83
+    if str(appid) == '1086940' or Path(exe or '').name.casefold() in {'bg3.exe', 'bg3_dx11.exe'}:
+        return 'Native NR needs DirectX 12. Baldur’s Gate 3 uses DirectX 11 or Vulkan; this package cannot provide NR here.'
+    return ''
+
+
 def scan_rows(rows, mode='nr-only'):
     for row in rows:
         if row.get('runtime_provider') == 'feeder':
@@ -330,6 +338,8 @@ def scan_rows(rows, mode='nr-only'):
             row['blocked'] = 'No Windows executable found'
         elif row.get('anti_cheat'):
             row['blocked'] = 'Anti-cheat detected'
+        elif mode != 'mfg-only' and native_nr_refusal(row.get('exe'), row.get('appid')):
+            row['blocked'] = native_nr_refusal(row.get('exe'), row.get('appid'))
         elif not row.get('native_dlss'):
             row['blocked'] = 'Skynizz needs a native DLSS Super Resolution route; D3D12/DLSS must be used in game.'
         elif mode == 'nr-mfg' and not row.get('native_dlssg'):

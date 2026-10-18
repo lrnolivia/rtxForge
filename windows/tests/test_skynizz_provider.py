@@ -76,6 +76,22 @@ def baseline(folder):
 def files(folder):
     return {p.relative_to(folder).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in folder.rglob('*') if p.is_file()}
 checks=[]
+control=game('Control')
+(control/'Control_DX12.exe').write_bytes(fixtures.pe())
+(control/'Control_DX11.exe').write_bytes(fixtures.pe()+b'larger alternate renderer')
+control_row=scan(control)
+assert control_row['exe']=='Control_DX12.exe',control_row
+assert engine_bridge.game(module(service.config),control_row).exe==control/'Control_DX12.exe'
+checks.append('Control Ultimate Edition keeps the same DX12 executable in discovery and review')
+bg3=game('Baldurs Gate 3')
+(bg3/'Game.exe').rename(bg3/'bg3.exe')
+bg3_before=files(bg3);bg3_row=scan(bg3)
+assert 'DirectX 11 or Vulkan' in bg3_row['blocked'],bg3_row
+bg3_row['blocked']=''
+bg3_review=service.prepare([bg3_row],'nr-only','install',visual_settings=settings)
+assert not bg3_review['rows'] and 'DirectX 11 or Vulkan' in bg3_review['blocked'][0]['reason'],bg3_review
+assert files(bg3)==bg3_before
+checks.append('DX11/Vulkan-only BG3 cannot enter native NR through scan or a stale review row')
 fresh=game('Fresh');before=files(fresh)
 assert scan(fresh)['blocked']=='' and 'DLSS-G' in scan(fresh,'y4my')['blocked']
 review=prepare(fresh);assert files(fresh)==before
@@ -477,7 +493,7 @@ class WindowsSkynizzTest(unittest.TestCase):
                                     env=env, capture_output=True, text=True, timeout=180)
             self.assertEqual(result.returncode, 0, result.stderr[-12000:] + result.stdout[-3000:])
             receipt = json.loads(result.stdout.strip().splitlines()[-1])
-            self.assertEqual(receipt['count'], 25)
+            self.assertEqual(receipt['count'], 27)
             print('PASS: ' + '; '.join(receipt['checks']))
 
 

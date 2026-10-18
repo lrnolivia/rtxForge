@@ -871,7 +871,7 @@ def score_exe(exe: Path, evidence: list[Path]) -> int:
 def choose_game_exe(root: Path, name: str, exes: list[Path], evidence: list[Path]) -> Optional[Path]:
     # Known cases from rtxEngine's existing scanner.
     control = root / "Control_DX12.exe"
-    if name.casefold().strip() == "control" and control.is_file():
+    if (root.name.casefold() == "control" or name.casefold().strip() == "control") and control.is_file():
         return control
 
     if root.name.casefold() == "halo campaign evolved" or "halo campaign evolved" in name.casefold():

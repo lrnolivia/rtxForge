@@ -328,7 +328,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
                 if (supported.Ready.Count > 0)
                     available.Add(new(supported, true, false, group[0].IsFeeder
                         ? "Feeder provides neural rendering. Frame generation is unavailable for this route."
-                        : "Neural rendering is supported. This game has no native DLSS frame generation route."));
+                        : "Use DirectX 12 and enable DLSS in the game for NR. Native frame generation is unavailable."));
                 else DiscardOperation(supported);
             }
             var mfgOnly = candidates.Where(g => !g.IsFeeder && Settings.RuntimeProvider == "skynizz"

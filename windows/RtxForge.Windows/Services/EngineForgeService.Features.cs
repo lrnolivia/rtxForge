@@ -34,7 +34,8 @@ public sealed partial class EngineForgeService
     {
         static ReviewItem Item(JsonObject i) => new(S(i, "title") ?? "", S(i, "detail") ?? "", S(i, "badge") ?? "", S(i, "game"), S(i, "details"));
         return new EngineReview(S(r, "token") ?? "", S(r, "kind") ?? "", S(r, "title") ?? "", S(r, "summary") ?? "", S(r, "action") ?? "Apply",
-            Objects(r?["items"]).Select(Item).ToList(), Objects(r?["blocked"]).Select(Item).ToList(), S(r, "trust"), S(r, "note"));
+            Objects(r?["items"]).Select(Item).ToList(), Objects(r?["blocked"]).Select(Item).ToList(), S(r, "trust"), S(r, "note"))
+            { Skipped = Objects(r?["skipped"]).Select(Item).ToList() };
     }
 
     static PrepareProgress Phase(JsonObject message) => new(message["label"]?.ToString() ?? "", message["game"]?.ToString(),

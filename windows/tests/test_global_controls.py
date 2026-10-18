@@ -80,11 +80,18 @@ try:
     assert len(blocked['blocked'])==2 and not blocked['items']
     e._running_processes_under_root=lambda root:[]
     checked=host.METHODS['global_review']({'nr':True})
-    scan=e.scan_game_files;e.scan_game_files=lambda root:([],[],Path(root)/'EasyAntiCheat')
+    marker=native/'EasyAntiCheat';marker.mkdir()
     current=before()
     try:host.METHODS['run']({'token':checked['token']});raise AssertionError('new anti-cheat accepted')
     except t.Refusal:pass
-    assert before()==current;e.scan_game_files=scan
+    assert before()==current;marker.rmdir()
+    assert global_controls.anti_cheat(e,native) is None
+    hidden=native/'Data';hidden.mkdir();(hidden/'Start_Protected_Game.exe').write_bytes(b'marker')
+    assert global_controls.anti_cheat(e,native)==hidden/'Start_Protected_Game.exe'
+    (hidden/'Start_Protected_Game.exe').unlink();hidden.rmdir()
+    ignored=native/'_optiscaler_backups';ignored.mkdir();(ignored/'start_protected_game.exe').write_bytes(b'backup')
+    assert global_controls.anti_cheat(e,native) is None
+    (ignored/'start_protected_game.exe').unlink();ignored.rmdir()
     checked=host.METHODS['global_review']({'nr':True})
     previous=before();write=t.atomic_file;failed=[False]
     def injected(path,*args,**kwargs):
@@ -97,6 +104,33 @@ try:
         except t.Refusal as error:assert 'Updated 0 games' in str(error),str(error)
     finally:t.atomic_file=write
     assert failed[0] and before()==previous,'failed game was not restored exactly'
+    from unittest.mock import patch
+    # Already-applied controls need no expensive process, evidence or DLL scan.
+    with patch.object(global_controls,'anti_cheat',side_effect=AssertionError('no-op scanned game')), patch.object(t,'digest',side_effect=AssertionError('no-op hashed runtime')):
+        noop=host.METHODS['global_review']({'nr':False,'mfg':0})
+    assert not noop['items'] and not noop['blocked'] and len(noop['skipped'])==2,noop
+    assert all('Already set' in item['detail'] for item in noop['skipped'])
+    host.METHODS['discard']({'token':noop['token']})
+    for label,exists in [('Old MFG',True),('Missing Game',False)]:
+        folder=case.root/label
+        if exists:folder.mkdir();(folder/'Game.exe').write_bytes(fixtures.pe(b'old game'))
+        old={'schema':e.ENGINE_SCHEMA,'status':'active','name':label,'target_dir':str(folder),'exe':str(folder/'Game.exe'),
+             'current':{'provider_id':'dlss-unlocked','feature_mode':'mfg-only'}}
+        t.atomic_file(e.state_dir_for(folder)/'baseline.json',json.dumps(old).encode(),0o600)
+    skipped=host.METHODS['global_review']({'nr':False})
+    assert not skipped['items'] and not skipped['blocked'],skipped
+    reasons={item['title']:item['detail'] for item in skipped['skipped']}
+    assert reasons['Old MFG']=='NR is not installed in this package.'
+    assert reasons['Missing Game']=='Game no longer found at this location.'
+    host.METHODS['discard']({'token':skipped['token']})
+    # Both native and Feeder payloads stay bound to review-time file hashes.
+    checked=host.METHODS['global_review']({'nr':True})
+    model=Path(row['game'])/'nvngx_dlssnr.dll';original_model=model.read_bytes()
+    model.write_bytes(original_model+b'drift');drift=before()
+    try:host.METHODS['run']({'token':checked['token']});raise AssertionError('Feeder model drift accepted')
+    except t.Refusal:pass
+    assert before()==drift
+    model.write_bytes(original_model)
     for params in ({},{'nr':1},{'mfg':True},{'mfg':1},{'nr':False,'unknown':1}):
         try:global_controls.changes(params);raise AssertionError('invalid controls accepted')
         except t.Refusal:pass

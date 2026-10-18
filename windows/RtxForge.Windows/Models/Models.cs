@@ -128,6 +128,7 @@ public sealed record ReviewItem(string Title, string Detail, string Badge, strin
 public sealed record EngineReview(string Token, string Kind, string Title, string Summary, string Action,
     IReadOnlyList<ReviewItem> Items, IReadOnlyList<ReviewItem> Blocked, string? Trust = null, string? Note = null)
 {
+    public IReadOnlyList<ReviewItem> Skipped { get; init; } = [];
     public bool Ready => Items.Count > 0;
 }
 

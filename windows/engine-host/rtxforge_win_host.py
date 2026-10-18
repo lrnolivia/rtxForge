@@ -206,6 +206,14 @@ def _running_under(root: Path) -> list[str]:
     return win_processes.running_under(root)
 
 
+def _running_snapshot():
+    import win_processes
+    return win_processes.snapshot()
+
+
+_running_under.snapshot = _running_snapshot
+
+
 def windows_steam_running() -> bool:
     """Steam's client process (steam.exe) in the Windows process list."""
     try:

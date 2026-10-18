@@ -5,7 +5,8 @@ namespace RtxForge.Windows.Services;
 
 public sealed partial class EngineForgeService
 {
-    public async Task<EngineReview> ReviewGlobalControlsAsync(JsonObject changes) => ToReview(await CallAsync("global_review", changes));
+    public async Task<EngineReview> ReviewGlobalControlsAsync(JsonObject changes, IProgress<PrepareProgress>? progress = null) =>
+        ToReview(await CallAsync("global_review", changes, m => progress?.Report(Phase(m))));
     public Task ReloadCompanionPresetsAsync() => CallAsync("companion_reload");
     public async Task<IReadOnlyList<Game>> CompanionTargetsAsync()
     {

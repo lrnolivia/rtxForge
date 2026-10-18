@@ -217,12 +217,12 @@ def _settings() -> dict:
     return library_media.load_settings(_config())
 
 
-def _review(kind: str, title: str, items: list, *, blocked=(), summary="", action="Apply", trust=None, note=None, payload=None) -> dict:
+def _review(kind: str, title: str, items: list, *, blocked=(), skipped=(), summary="", action="Apply", trust=None, note=None, payload=None) -> dict:
     """A review the app shows as-is; `run` executes the stored payload once."""
     token = uuid.uuid4().hex
     _reviews[token] = {"kind": kind, "payload": payload}
     return {"token": token, "kind": kind, "title": title, "summary": summary, "action": action,
-            "items": list(items), "blocked": list(blocked), "trust": trust, "note": note}
+            "items": list(items), "blocked": list(blocked), "skipped": list(skipped), "trust": trust, "note": note}
 
 
 def _item(title, detail="", badge="", game=None, details=None) -> dict:
@@ -245,9 +245,10 @@ def global_review(params):
     import global_controls
     plan = global_controls.prepare(engine_bridge.module(_config()), LOCAL / 'state', params)
     return _review('global-controls', 'Review bulk changes',
-                   [_item(p['name'], p['summary'] + ('. ' + p['note'] if p['note'] else '')) for p in plan['plans']],
-                   blocked=plan['blocked'], payload=plan, action='Apply to games',
-                   summary=f"{len(plan['plans'])} games ready. This is a one-time change to the selected controls.",
+                   [_item(p['name'], p['summary'] + ('. ' + p['note'] if p['note'] else ''), details=p['root']) for p in plan['plans']],
+                   blocked=plan['blocked'], skipped=plan['skipped'], payload=plan, action='Apply to games',
+                   summary=(f"{len(plan['plans'])} games ready. This is a one-time change to the selected controls." if plan['plans']
+                            else 'No changes needed. These settings are already applied or unavailable in the listed games.'),
                    note='Other tuning and original restore backups are preserved. Running games are skipped; close them and review again.')
 
 

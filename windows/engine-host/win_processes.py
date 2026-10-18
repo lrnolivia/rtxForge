@@ -46,14 +46,25 @@ def _inventory():
     return found
 
 
-def running_under(root):
+def snapshot():
+    """One fresh inventory shared only within a single read-only review."""
+    try:
+        inventory = [(pid, name, Path(image).resolve() if image else None, error)
+                     for pid, name, image, error in _inventory()]
+    except (OSError, ValueError, AttributeError) as error:
+        raise Refusal('Could not check running game processes. No game files were changed; retry after closing the game.') from error
+    return lambda root: running_under(root, inventory=inventory)
+
+
+def running_under(root, *, inventory=None):
     try:
         root = Path(root).resolve()
-        inventory = _inventory()
+        if inventory is None: inventory = _inventory()
         found, denied = [], set()
         for pid, name, image, error in inventory:
             if image:
-                if Path(image).resolve().is_relative_to(root): found.append(f'{pid}:{name}')
+                image = image if isinstance(image, Path) else Path(image).resolve()
+                if image.is_relative_to(root): found.append(f'{pid}:{name}')
             elif error not in (0, 6, 87) and name.casefold().endswith('.exe'):
                 denied.add(name.casefold())
         if denied and root.is_dir():

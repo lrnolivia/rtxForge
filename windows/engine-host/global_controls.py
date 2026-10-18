@@ -2,14 +2,17 @@
 from __future__ import annotations
 
 import copy
+import fnmatch
 import hashlib
 import json
 import os
 from pathlib import Path
+import re
 
 import transactions as t
 from operation_session import Session
 import feeder_provider as feeder
+import ui
 
 
 def changes(params):
@@ -31,41 +34,72 @@ def _json(data):
     return (json.dumps(data, indent=2) + '\n').encode()
 
 
+def anti_cheat(e, root):
+    """Check names without stat-ing every texture, archive and save in a game."""
+    pattern = re.compile('|'.join(fnmatch.translate(p) for p in e.ANTI_CHEAT_PATTERNS))
+    count = 0
+    def fail(error): raise error
+    for parent, dirs, files in os.walk(root, followlinks=False, onerror=fail):
+        safe_dirs = []
+        for name in dirs:
+            low = name.casefold()
+            if low in e.IGNORE_DIRS or low.startswith(('_optiscaler', '_true_uninstall')): continue
+            child = Path(parent) / name
+            if child.is_symlink() or e._path_is_mount(child): continue
+            if low in e.ANTI_CHEAT_DIRS: return child
+            safe_dirs.append(name)
+        dirs[:] = safe_dirs
+        count += len(files)
+        t.need(count <= 250000, 'Too many files to safely check this game. No settings were changed.')
+        for name in files:
+            if pattern.fullmatch(name.casefold()): return Path(parent) / name
+    return None
+
+
+def _process_check(e):
+    check = e._running_processes_under_root
+    return check.snapshot() if hasattr(check, 'snapshot') else check
+
+
 def prepare(e, state, params):
     nr, mfg = changes(params)
-    plans, blocked, seen = [], [], set()
+    plans, blocked, skipped, seen = [], [], [], set()
     candidates = [(p, False) for p in sorted((e.STATE_ROOT / 'targets').glob('*/baseline.json'))]
     candidates += [(p, True) for p in sorted((e.STATE_ROOT / 'feeder-targets').glob('*/baseline.json'))]
     t.need(len(candidates) <= 1000, 'Too many installation records. Refresh your library first.')
-    for path, is_feeder in candidates:
+    check_running = None
+    for index, (path, is_feeder) in enumerate(candidates, 1):
         name = path.parent.name
+        root = None
         try:
             record = json.loads(_read(path))
             if record.get('status') != 'active': continue
             name = record.get('name') or name
+            ui.progress('Checking installed games', game=name, current=index, total=len(candidates))
             target = t.safe(record['target'] if is_feeder else record['target_dir'])
             expected = feeder.state_dir(e, target) if is_feeder else e.state_dir_for(target)
             t.need(t.safe(path.parent) == t.safe(expected), 'Installation record identity differs.')
             t.need(str(target).casefold() not in seen, 'Duplicate installation record.')
             seen.add(str(target).casefold())
+            exe = t.safe(Path(record['game']) / record['exe'] if is_feeder else record['exe'])
+            if not target.is_dir() or not exe.is_file():
+                skipped.append({'title': name, 'detail': 'Game no longer found at this location.', 'details': str(target)})
+                continue
             root = t.safe(record.get('game') or target)
             # Use the full Steam installation when the baseline's target is a
             # nested Binaries folder, so anti-cheat markers cannot be missed.
             for parent in (target, *target.parents):
                 if parent.parent.name.casefold() in ('common', 'pinnedbuilds'):
                     root = parent; break
-            t.need(not e._running_processes_under_root(root), 'Close this game, then review the bulk change again.')
-            t.need(e.scan_game_files(root)[2] is None, 'Anti-cheat detected; this game is excluded.')
             checks, writes, notes = {str(path): t.sha(_read(path))}, {}, []
             baseline = copy.deepcopy(record)
             actual = {}
+            owned_files = {}
             if is_feeder:
                 row = {'game': record['game'], 'exe': record['exe'], 'name': name}
-                found = feeder.inspect(e, row, cached=False)
-                t.need(found['managed'], 'Recognize this Feeder installation first.')
                 if mfg is not None: notes.append('MFG unavailable in Feeder; NR can still change.')
                 if nr is None:
-                    blocked.append({'title': name, 'detail': 'Feeder provides NR only; MFG is unavailable.'}); continue
+                    skipped.append({'title': name, 'detail': 'Feeder provides NR only; MFG is unavailable.', 'details': str(root)}); continue
                 config = target / 'ReShade.ini'
                 original = _read(config)
                 if nr:
@@ -81,7 +115,10 @@ def prepare(e, state, params):
             else:
                 current = record.get('current') or {}
                 family = (current.get('archive') or {}).get('family') or current.get('provider_id')
-                t.need(family in ('skynizz', 'y4my'), 'This package does not expose these NR/MFG settings.')
+                mode = current.get('feature_mode')
+                if family not in ('skynizz', 'y4my') or (nr is not None and mfg is None and mode not in ('nr-only', 'nr-mfg')):
+                    skipped.append({'title': name, 'detail': 'NR is not installed in this package.' if nr is not None and mfg is None
+                                    else 'This package has no compatible Global controls.', 'details': str(root)}); continue
                 t.need(e.load_baseline(target, readonly=True) is not None, 'Installation ownership is missing.')
                 meta_path = target / '.rtxforge-install.json'
                 meta_bytes = _read(meta_path); metadata = json.loads(meta_bytes)
@@ -93,11 +130,10 @@ def prepare(e, state, params):
                 for filename, digest in files.items():
                     if filename.casefold().endswith(('.ini', '.log')): continue
                     owned = t.safe(target / t.relative(filename))
-                    t.need(owned.is_relative_to(target) and t.digest(owned) == digest, 'Package files changed; repair this game first.')
-                    checks[str(owned)] = digest
+                    t.need(owned.is_relative_to(target), 'Package path is outside this game.')
+                    owned_files[str(owned)] = digest
                 config = target / 'OptiScaler.ini'; original = _read(config)
                 text = original.decode('utf-8-sig')
-                mode = current.get('feature_mode')
                 if nr is not None:
                     if mode in ('nr-only', 'nr-mfg'):
                         text = e.set_ini_value(text, 'DlssNr', 'Enabled', 'true' if nr else 'false')
@@ -112,10 +148,12 @@ def prepare(e, state, params):
                         text = e.set_ini_value(text, 'DLSSG', 'OverrideInterpolationCount', value)
                         actual['multiplier'] = mfg
                     else: notes.append('This package does not provide this MFG control; MFG setting skipped.')
-                t.need(actual, 'None of the chosen features is installed in this package.')
+                if not actual:
+                    skipped.append({'title': name, 'detail': 'None of the selected features is installed in this package.', 'details': str(root)}); continue
                 digest = t.sha(text.encode('utf-8'))
-                metadata['files']['OptiScaler.ini'] = digest
-                baseline['current']['installed_hashes']['OptiScaler.ini'] = digest
+                if digest != t.sha(original):
+                    metadata['files']['OptiScaler.ini'] = digest
+                    baseline['current']['installed_hashes']['OptiScaler.ini'] = digest
                 checks[str(meta_path)] = t.sha(meta_bytes); writes[str(meta_path)] = _json(metadata)
                 # A previously saved sidebar preset must not undo this one-time
                 # choice at the next game launch. Preserve every other field.
@@ -133,19 +171,33 @@ def prepare(e, state, params):
             checks[str(config)] = t.sha(original)
             writes[str(config)] = text.encode('utf-8'); writes[str(path)] = _json(baseline)
             writes = {p: data for p, data in writes.items() if t.sha(data) != checks.get(p)}
-            if not writes: continue
             label = ' · '.join([*(('NR on' if nr else 'NR off',) if 'enabled' in actual else ()),
                                 *(('MFG follows game' if mfg == -1 else 'MFG off' if mfg == 0 else f'MFG {mfg}×',) if 'multiplier' in actual else ())])
+            if not writes:
+                skipped.append({'title': name, 'detail': 'Already set: ' + label + '.', 'details': str(root)})
+                continue
+            if check_running is None: check_running = _process_check(e)
+            t.need(not check_running(root), 'Close this game, then review the bulk change again.')
+            t.need(anti_cheat(e, root) is None, 'Anti-cheat detected; this game is excluded.')
+            ui.progress('Verifying package files', game=name, current=index, total=len(candidates))
+            if is_feeder:
+                found = feeder.inspect(e, row, cached=False)
+                t.need(found['managed'], 'Recognize this Feeder installation first.')
+                owned_files = {str(t.safe(target / t.relative(n))): h for n, h in record['installed_hashes'].items() if n not in feeder.CONFIGS}
+            for filename, digest in owned_files.items():
+                t.need(t.digest(filename) == digest, 'Package files changed; repair this game first.')
+                checks[filename] = digest
             plans.append({'name': name, 'root': str(root), 'checks': checks, 'writes': writes,
                           'summary': label, 'note': ' '.join(notes)})
         except (t.Refusal, e.Stop, OSError, ValueError, KeyError, TypeError) as error:
-            blocked.append({'title': name, 'detail': str(error)})
-    return {'engine': e, 'plans': plans, 'blocked': blocked}
+            blocked.append({'title': name, 'detail': str(error), 'details': str(root) if root else ''})
+    ui.progress('Review ready', current=len(candidates), total=len(candidates))
+    return {'engine': e, 'plans': plans, 'blocked': blocked, 'skipped': skipped}
 
 
 def _check(e, plan):
     t.need(not e._running_processes_under_root(Path(plan['root'])), 'A reviewed game started. Close it and review again.')
-    t.need(e.scan_game_files(Path(plan['root']))[2] is None, 'Anti-cheat appeared after review; nothing further was changed.')
+    t.need(anti_cheat(e, Path(plan['root'])) is None, 'Anti-cheat appeared after review; nothing further was changed.')
     for filename, digest in plan['checks'].items():
         t.need(t.digest(t.safe(filename)) == digest, 'Files changed since review. Review the bulk change again.')
 
@@ -154,11 +206,14 @@ def execute(review):
     e, plans = review['engine'], review['plans']
     t.need(plans, 'No bulk changes were reviewed.')
     with e.mutation_lock():
-        for plan in plans: _check(e, plan)
+        for index, plan in enumerate(plans, 1):
+            ui.progress('Verifying reviewed games', game=plan['name'], current=index, total=len(plans))
+            _check(e, plan)
         session = Session(e.STATE_ROOT / 'desktop-operations')
         completed = []
         try:
             for plan in plans:
+                ui.progress('Applying settings', game=plan['name'], current=len(completed) + 1, total=len(plans))
                 _check(e, plan)
                 checkpoint = session.capture([Path(p) for p in plan['writes']], label=plan['name'])
                 try:

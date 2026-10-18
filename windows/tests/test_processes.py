@@ -22,6 +22,12 @@ actual=host._running_under(folder)
 assert any(line.startswith(str(os.getpid())+':') for line in actual),actual
 assert not host._running_under(folder/'not-a-real-game')
 import win_processes
+with patch.object(win_processes,'_inventory',return_value=[(123,'Game.exe',str(folder/'Game.exe'),0)]) as inventory:
+    check=win_processes.snapshot()
+    assert check(folder)==['123:Game.exe'] and not check(folder/'unrelated')
+    assert inventory.call_count==1
+with patch.object(win_processes,'_inventory',return_value=[]):
+    assert not win_processes.snapshot()(folder),'a new review reused an old process inventory'
 for result in [OSError('missing query'),OSError('incomplete snapshot'),ValueError('invalid query')]:
     with patch.object(win_processes,'_inventory',side_effect=result):
         try:host._running_under(folder)

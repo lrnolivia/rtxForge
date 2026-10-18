@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 WORKER = r'''
 import importlib.util,sys,json,hashlib,copy
 from pathlib import Path
-repo=Path(sys.argv[1]);root=Path(sys.argv[2])
+repo=Path(sys.argv[1]).resolve();root=Path(sys.argv[2]).resolve()
 sys.path[:0]=[str(repo/'scripts'),str(repo/'windows/engine-host')]
 spec=importlib.util.spec_from_file_location('adopt_fixture',repo/'tests/test_skynizz_provider.py')
 fixture=importlib.util.module_from_spec(spec);spec.loader.exec_module(fixture)
@@ -154,6 +154,7 @@ print('adoption, clean install, restore, drift, running, unknown files and scope
 class AdoptionTransactions(unittest.TestCase):
     def test_transactions(self):
         with tempfile.TemporaryDirectory() as temp:
+            temp = str(Path(temp).resolve())
             env = dict(os.environ, LOCALAPPDATA=str(Path(temp)/'local'), RTXFORGE_STATE_ROOT=str(Path(temp)/'state'),
                        RTXFORGE_DLSS_UNLOCKED_STATE=str(Path(temp)/'engine'), RTXFORGE_ROOT=str(ROOT), PYTHONIOENCODING='utf-8')
             result = subprocess.run([sys.executable, '-X', 'utf8', '-c', WORKER, str(ROOT), temp],

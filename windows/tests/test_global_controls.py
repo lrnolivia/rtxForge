@@ -24,7 +24,9 @@ try:
     e._running_processes_under_root=lambda root:[]
     case.e=e
     row=case.game(installed=True)
-    feeder.execute(feeder.prepare(host.service.config,[row],'nr-only','install',case.settings,e))
+    adoption=feeder.prepare(host.service.config,[row],'nr-only','install',case.settings,e)
+    assert adoption['plans'] and not adoption['blocked'],adoption['blocked']
+    feeder.execute(adoption)
     native=case.root/'Native';native.mkdir()
     (native/'Game.exe').write_bytes(fixtures.pe(b'game'))
     (native/'winhttp.dll').write_bytes(fixtures.pe(b'loader'))
@@ -107,7 +109,7 @@ finally:case.doCleanups()
 class GlobalControlsTest(unittest.TestCase):
     def test_bulk_lifecycle(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             (root/'Steam').mkdir()
             env = dict(os.environ, RTXFORGE_ROOT=str(ROOT), RTXFORGE_STATE_ROOT=str(root/'state'),
                        RTXFORGE_DLSS_UNLOCKED_STATE=str(root/'engine-state'), LOCALAPPDATA=str(root/'appdata'),

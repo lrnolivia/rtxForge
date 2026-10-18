@@ -243,6 +243,7 @@ assert subset_ini['DlssNr'].getboolean('Enabled') is True
 assert subset_ini['DLSSG'].getboolean('AdaMfgUnlock') is False
 assert subset_ini['DLSSG'].getboolean('AdaBlackwellKernels') is False
 assert not baseline(nr_subset)['mfg_provider']['enabled']
+assert baseline(nr_subset)['compatibility_policy']['mfg_route']=='disabled-nr-only'
 run(service.prepare([scan(nr_subset)],'nr-only','uninstall',visual_settings=subset_settings))
 assert files(nr_subset)==nr_subset_before
 checks.append('supported NR-only subset gets the helper-compatible bridge with MFG unlock disabled and exact restore')

@@ -135,7 +135,7 @@ public sealed partial class GameModeView
         foreach (var group in review.Supported)
         foreach (var item in group.Review.Ready)
         {
-            var card = RtxForge.Windows.Controls.SupportedFeatureCard.Create(item, group.Nr, group.Mfg, group.Reason);
+            var card = RtxForge.Windows.Controls.SupportedFeatureCard.Create(item, group.Nr, group.Mfg, group.Reason, t.Px(1));
             list.Children.Add(card);
         }
         content.Children.Add(new ScrollViewer { Content = list, MaxHeight = t.Px(440), HorizontalScrollMode = ScrollMode.Disabled });

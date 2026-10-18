@@ -88,14 +88,6 @@ public sealed partial class SettingsPage : Page
                 Notice.Message = "Frame generation is unavailable for this route.";
                 Notice.IsOpen = true;
             }
-            if (selectedProvider == "skynizz" && selectedMode == "mfg-only")
-            {
-                profile.SelectedIndex = Array.IndexOf(Modes, "nr-mfg");
-                Notice.Title = "Skynizz uses the combined NR + MFG bridge.";
-                Notice.Message = "Select a compiled bridge build. In-game runtime verification remains required.";
-                Notice.IsOpen = true;
-                selectedMode = "nr-mfg";
-            }
             if (selectedProvider == "y4my" && selectedMode == "nr-only")
             {
                 profile.SelectedIndex = Array.IndexOf(Modes, "mfg-only");

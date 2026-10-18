@@ -4772,7 +4772,7 @@ def install_target(
                 "dxgi_spoofing": False,
                 "vulkan_spoofing": False,
                 "upscaler_route": "auto-first-launch",
-                "mfg_route": ("native-ada-mfg-unlock-addon" if mfg_component else "native-ada-skynizz-bridge-armed" if is_skynizz_bridge else "unmanaged-skynizz-nr-only" if is_skynizz else
+                "mfg_route": ("disabled-nr-only" if is_skynizz_bridge and feature_mode == "nr-only" else "native-ada-mfg-unlock-addon" if mfg_component else "native-ada-skynizz-bridge-armed" if is_skynizz_bridge else "unmanaged-skynizz-nr-only" if is_skynizz else
                               ("native-game-dlssg-ada-unlock" if is_dlss_unlocked else "native-ada-y4my-v4-armed") if family == "ada" else "disabled-sm86"),
                 "native_mfg_fallback": bool(native_mfg_fallback) if is_dlss_unlocked else False,
                 "mfg_multiplier": mfg_multiplier if feature_mode != "nr-only" else None,

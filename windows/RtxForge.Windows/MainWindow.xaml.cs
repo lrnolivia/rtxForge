@@ -54,7 +54,7 @@ public sealed partial class MainWindow : Window
         RootGrid.ActualThemeChanged += (_, _) => ThemeController.Apply(this, RootGrid, Settings.Theme);
 
         PreviewBadge.Visibility = service.IsPreview ? Visibility.Visible : Visibility.Collapsed;
-        Mode = Settings.RuntimeProvider == "skynizz" && Settings.DefaultProfile == "mfg-only" ? "nr-mfg" : NrOnlyAvailable || Settings.DefaultProfile != "nr-only" ? Settings.DefaultProfile : "mfg-only";
+        Mode = NrOnlyAvailable || Settings.DefaultProfile != "nr-only" ? Settings.DefaultProfile : "mfg-only";
         if (Settings.RuntimeProvider == "feeder") Mode = "nr-only";
         ThemeController.Apply(this, RootGrid, Settings.Theme);
 

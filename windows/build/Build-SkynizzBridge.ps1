@@ -1,0 +1,62 @@
+param(
+    [Parameter(Mandatory)][string]$SourceRoot,
+    [string]$Output = (Join-Path $PSScriptRoot '..\out\skynizz-bridge')
+)
+$ErrorActionPreference = 'Stop'
+$repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$source = (Resolve-Path -LiteralPath $SourceRoot).Path
+$specRoot = Join-Path $repo 'providers\skynizz-bridge'
+$spec = Get-Content -LiteralPath (Join-Path $specRoot 'source.json') -Raw | ConvertFrom-Json
+$patch = Join-Path $specRoot $spec.patch
+if ((Get-FileHash -LiteralPath $patch -Algorithm SHA256).Hash.ToLowerInvariant() -ne $spec.patch_sha256) { throw 'Bridge patch digest mismatch' }
+$head = (& git -C $source rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or $head -ne $spec.upstream.commit) { throw 'Skynizz source is not the admitted commit' }
+if (& git -C $source status --porcelain --untracked-files=no) { throw 'Skynizz checkout has tracked edits before patching' }
+& git -C $source apply --check -- $patch
+if ($LASTEXITCODE -ne 0) { throw 'Bridge patch does not apply to the exact source' }
+& git -C $source apply -- $patch
+if ($LASTEXITCODE -ne 0) { throw 'Bridge source patch failed' }
+$msbuild = (Get-Command MSBuild.exe -ErrorAction SilentlyContinue).Source
+if (-not $msbuild) {
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    if (-not (Test-Path -LiteralPath $vswhere)) { throw 'Visual Studio C++ Build Tools are required' }
+    $msbuild = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
+}
+if (-not $msbuild) { throw 'MSBuild with the x64 C++ toolset was not found' }
+$Output = [IO.Path]::GetFullPath($Output)
+New-Item -ItemType Directory -Force -Path $Output | Out-Null
+$compiled = Join-Path $Output 'compiled'
+$common = @('/m', '/v:minimal', '/p:Configuration=Release', '/p:Platform=x64', '/p:PlatformToolset=v143', "/p:SolutionDir=$source\", '/p:PostBuildEventUseInBuild=false')
+& $msbuild (Join-Path $source 'OptiScaler\OptiScaler.vcxproj') @common "/p:OutDir=$compiled\main\" "/p:IntDir=$compiled\obj-main\"
+if ($LASTEXITCODE -ne 0) { throw 'Combined OptiScaler build failed' }
+& $msbuild (Join-Path $source 'OptiScaler\dlssnr\forwarder\dlssnr_forwarder.vcxproj') @common "/p:OutDir=$compiled\forwarder\" "/p:IntDir=$compiled\obj-forwarder\"
+if ($LASTEXITCODE -ne 0) { throw 'NR forwarder build failed' }
+$stage = Join-Path $Output ('stage-' + [Guid]::NewGuid().ToString('N'))
+$payload = Join-Path $stage 'DLSS5-Optimised'
+New-Item -ItemType Directory -Force -Path $payload | Out-Null
+Copy-Item -LiteralPath (Join-Path $compiled 'main\OptiScaler.dll') -Destination (Join-Path $payload 'OptiScaler.dll')
+Copy-Item -LiteralPath (Join-Path $compiled 'forwarder\nvngx.dll_dlssnr.dll') -Destination $payload
+Copy-Item -LiteralPath (Join-Path $source 'OptiScaler.ini') -Destination $payload
+Copy-Item -LiteralPath (Join-Path $specRoot 'LICENSE') -Destination $payload
+Copy-Item -LiteralPath $patch -Destination $payload
+$productHead = (& git -C $repo rev-parse HEAD).Trim()
+$receipt = [ordered]@{
+    schema = 1; variant = 'nr-mfg-bridge'; id = 'skynizz'; family = 'skynizz'; name = 'Skynizz NR + Ada MFG bridge'
+    repo = 'lrnolivia/rtxForge'; tag = $spec.upstream.tag; commit = $productHead
+    upstream = $spec.upstream; mfg_source = $spec.mfg_source; patch_sha256 = $spec.patch_sha256
+    bridge_id = $spec.id; runtime_verified = $false; selected_source = 'bundled-bridge'
+    license = $spec.license; source_url = "https://github.com/lrnolivia/rtxForge/tree/$productHead/providers/skynizz-bridge"
+}
+$receipt | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $payload 'rtxforge-bridge.json') -Encoding utf8
+$archiveName = 'rtxForge-Skynizz-' + $spec.upstream.tag + '-MFG.zip'
+$archive = Join-Path $Output $archiveName
+Compress-Archive -LiteralPath $payload -DestinationPath $archive -Force
+$receipt.archive = $archiveName
+$receipt.url = 'bundled:providers/skynizz-bridge/' + $archiveName
+$receipt.sha256 = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+$receipt.release_size = (Get-Item -LiteralPath $archive).Length
+$receipt.files = @{}
+Get-ChildItem -LiteralPath $payload -File | ForEach-Object { $receipt.files[$_.Name] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
+$receipt | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $Output 'package.json') -Encoding utf8
+Write-Host "Combined NR+MFG candidate: $archive"
+Write-Host "SHA-256: $($receipt.sha256)"

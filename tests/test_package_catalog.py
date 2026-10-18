@@ -15,7 +15,12 @@ class PackageCatalogTests(unittest.TestCase):
     def package(self, files):
         p = self.root / 'custom.zip'
         with zipfile.ZipFile(p, 'w') as z:
-            for name, data in files.items(): z.writestr(name, data)
+            for name, data in files.items():
+                # ZipInfo's constructor normalizes backslashes on Windows.
+                # Keep the literal hostile name so both platforms test the same archive.
+                info = zipfile.ZipInfo('entry')
+                info.filename = name
+                z.writestr(info, data)
         return p
     def test_recognizes_wrapped_layout_without_executing_instructions(self):
         p = self.package({'release/dxgi.dll': b'MZfixture', 'release/OptiScaler.ini': '[DlssNr]\nIntensity=1.5',

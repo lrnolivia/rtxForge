@@ -202,14 +202,21 @@ _NO_SHORTCUT = LOCAL / "engine-state" / "windows-native-launch"
 
 def _running_under(root: Path) -> list[str]:
     """Processes whose image lives under this game folder (Windows process list)."""
-    script = ("$r=$args[0]; Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($r, "
+    from transactions import Refusal
+    # -Command does not bind trailing arguments to $args as a script file does.
+    # Pass the root as JSON on stdin, keeping paths out of executable shell text.
+    script = ("$ErrorActionPreference='Stop'; $r=([Console]::In.ReadLine() | ConvertFrom-Json); "
+              "Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($r, "
               "[StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { \"$($_.Id):$($_.ProcessName)\" }")
     try:
-        result = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script, str(root.resolve())],
-                                text=True, capture_output=True, timeout=20, creationflags=NO_WINDOW)
+        prefix = str(root.resolve()).rstrip('\\/') + '\\'
+        result = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+                                input=json.dumps(prefix) + '\n', text=True, capture_output=True, timeout=20, creationflags=NO_WINDOW)
+        if result.returncode:
+            raise Refusal('Could not check running game processes. No game files were changed; retry after closing the game.')
         return [line for line in result.stdout.splitlines() if line.strip()]
-    except (OSError, subprocess.SubprocessError):
-        return []
+    except (OSError, subprocess.SubprocessError) as error:
+        raise Refusal('Could not check running game processes. No game files were changed; retry after closing the game.') from error
 
 
 def windows_steam_running() -> bool:
@@ -348,6 +355,12 @@ def hello(_params):
 def scan(params):
     import library_scan
     rows = library_scan.scan(service, params.get('folders', []), params.get('library_folders', []))
+    import feeder_provider
+    rows = feeder_provider.expand_rows(engine_bridge.module(service.config), rows,
+                                      selected=params.get('runtime_provider') == 'feeder')
+    if params.get('runtime_provider')=='skynizz':
+        import skynizz_provider
+        skynizz_provider.scan_rows(rows,params.get('feature_mode','nr-only'))
     # Linux LibraryMedia.steam_art: the signed-in account's custom grid
     # (Non-Steam games matched through shortcuts.vdf), then Steam's cache.
     media = library_media.LibraryMedia(service.config, dict(library_media.DEFAULTS))
@@ -369,7 +382,13 @@ def prepare(params):
         import dlss_updates
         settings = library_media.load_settings(service.config) | (params.get("settings") or {})
         dlss_updates.attach_install(service.config, review, enabled=settings.get('manage_dlss_files', True))
+        import game_display
+        game_display.attach(review, enabled=settings.get('borderless_4k', False))
+        import review_copy
+        review_copy.attach(review)
         review["cancel_event"] = threading.Event()
+    elif review.get('kind') == 'feeder':
+        review['cancel_event'] = threading.Event()
     token = uuid.uuid4().hex
     reviews[token] = review
     return {"token": token, "title": review.get("title"), "rows": review.get("rows", []), "blocked": review.get("blocked", []),
@@ -503,6 +522,9 @@ import win_features  # noqa: E402
 
 METHODS.update(win_features.install(service, lambda: engine_bridge.module(service.config).steam_config_engine()))
 
+import companion_controls  # noqa: E402
+METHODS.update(companion_controls.methods(STATE))
+
 
 def handle(request: dict) -> None:
     rid = request.get("id")
@@ -538,6 +560,8 @@ def main() -> int:
         if not line:
             continue
         request = json.loads(line)
+        # A long-lived helper must not retain every completed request thread.
+        workers[:] = [worker for worker in workers if worker.is_alive()]
         if request.get("method") == "cancel":
             handle(request)  # answered immediately, even while an operation runs
         else:

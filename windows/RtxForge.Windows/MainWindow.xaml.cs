@@ -54,12 +54,24 @@ public sealed partial class MainWindow : Window
         RootGrid.ActualThemeChanged += (_, _) => ThemeController.Apply(this, RootGrid, Settings.Theme);
 
         PreviewBadge.Visibility = service.IsPreview ? Visibility.Visible : Visibility.Collapsed;
-        Mode = NrOnlyAvailable || Settings.DefaultProfile != "nr-only" ? Settings.DefaultProfile : "mfg-only";
+        Mode = Settings.RuntimeProvider == "skynizz" && Settings.DefaultProfile == "mfg-only" ? "nr-mfg" : NrOnlyAvailable || Settings.DefaultProfile != "nr-only" ? Settings.DefaultProfile : "mfg-only";
+        if (Settings.RuntimeProvider == "feeder") Mode = "nr-only";
         ThemeController.Apply(this, RootGrid, Settings.Theme);
 
-        Nav.SelectedItem = Nav.MenuItems[0];
+        if (SettingsPage.OpenOverlaySection)
+        {
+            // NavigationView creates its Settings item when the template loads.
+            void OpenOverlaySettings(object sender, RoutedEventArgs e)
+            {
+                RootGrid.Loaded -= OpenOverlaySettings;
+                Navigate("Settings");
+            }
+            RootGrid.Loaded += OpenOverlaySettings;
+        }
+        else Nav.SelectedItem = Nav.MenuItems[0];
         Closed += (_, _) => (Service as IDisposable)?.Dispose();
         InitializeGameMode();
+        InitializeCompanion();
         RootGrid.KeyDown += (_, e) =>
         {
             if (e.Key == global::Windows.System.VirtualKey.F5) { e.Handled = true; _ = RescanLibraryAsync(); }
@@ -82,7 +94,7 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>NR Only requires DLSS-Unlocked or a custom package (provider rule).</summary>
-    public bool NrOnlyAvailable => Settings.RuntimeProvider is "dlss-unlocked" or "custom";
+    public bool NrOnlyAvailable => Settings.RuntimeProvider is "dlss-unlocked" or "custom" or "skynizz" or "feeder";
 
     public void SaveSettings()
     {
@@ -97,6 +109,11 @@ public sealed partial class MainWindow : Window
         {
             Hardware = await Service.DetectHardwareAsync();
             await ScanAsync();
+            var arguments = Environment.GetCommandLineArgs();
+            if (arguments.Contains("--controls", StringComparer.OrdinalIgnoreCase))
+            {
+                OpenCompanion();
+            }
         }
         catch (InvalidOperationException error)
         {
@@ -185,7 +202,7 @@ public sealed partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(targets);
         if (targets.Count == 0) { ShowToast("No eligible games selected."); return; }
 
-        if (operation == "install" && values is null)
+        if (operation == "install" && values is null && Settings.RuntimeProvider != "feeder" && !targets.All(g => g.IsFeeder))
         {
             values = await OperationDialog.AskPresetsAsync(this, targets.Count == 1 ? GameTuning(targets[0]) : Settings.Presets);
             if (values is null) return;

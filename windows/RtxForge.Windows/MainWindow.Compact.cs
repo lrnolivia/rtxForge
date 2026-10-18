@@ -108,6 +108,7 @@ public sealed partial class MainWindow
             toggle.IsChecked = (string)toggle.Tag == mode;
         syncingCompact = false;
         CompactNrOnly.IsEnabled = nrOnlyAvailable;
+        CompactMfgOnly.IsEnabled = CompactNrMfg.IsEnabled = Settings.RuntimeProvider != "feeder";
         CompactInstallText.Text = installText;
     }
 

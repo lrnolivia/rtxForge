@@ -37,6 +37,8 @@
 
   <!-- Shared brand assets: one source of truth with the Linux build. -->
   <ItemGroup>
+    <Content Include="Assets\Fonts\InterVariable.ttf" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Fonts\OFL-Inter.txt" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\gui\fonts\BakbakOne-Regular.ttf" Link="Assets\Fonts\BakbakOne-Regular.ttf" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\gui\fonts\OFL-BakbakOne.txt" Link="Assets\Fonts\OFL-BakbakOne.txt" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\gui\icons\rtxforge-mark.svg" Link="Assets\rtxforge-mark.svg" CopyToOutputDirectory="PreserveNewest" />

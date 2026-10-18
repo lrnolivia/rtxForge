@@ -141,6 +141,7 @@ public sealed partial class LibraryPage : Page
     {
         (Settings.LibraryFilter switch { "available" => FilterAvailable, "installed" => FilterInstalled, _ => FilterAll }).IsChecked = true;
         ModeNrOnly.IsEnabled = shell.NrOnlyAvailable;
+        ModeMfgOnly.IsEnabled = ModeNrMfg.IsEnabled = Settings.RuntimeProvider != "feeder";
         SetMode(shell.Mode);
         (Settings.LibraryView switch { "capsules" => ViewCapsules, "list" => ViewList, _ => ViewPosters }).IsChecked = true;
         UpdateDashboard();
@@ -307,7 +308,7 @@ public sealed partial class LibraryPage : Page
         Add(game.InstallLabel, "", () => _ = shell.LaunchAction("install", [game]), !game.Blocked && !shell.Busy);
         Add("Restore Original Files", "", () => _ = shell.LaunchAction("uninstall", [game]), game.Installed && !shell.Busy);
         menu.Items.Add(new MenuFlyoutSeparator());
-        Add("Open Folder", "", () => Process.Start(new ProcessStartInfo("explorer.exe", $"\"{game.Location}\"") { UseShellExecute = true }),
+        Add("Open Folder", "", () => _ = shell.OpenGameFolderAsync(game),
             !shell.Service.IsPreview && Directory.Exists(game.Location));
         menu.Items.Add(new MenuFlyoutSeparator());
         Add("Remove from library", "", () => _ = shell.ConfirmRemoveLibraryEntriesAsync([game]), !shell.Busy);
@@ -396,6 +397,7 @@ public sealed partial class LibraryPage : Page
 
     void SetMode(string value)
     {
+        if (Settings.RuntimeProvider == "feeder") value = "nr-only";
         shell.Mode = value;
         syncingMode = true;
         foreach (var toggle in new[] { ModeNrOnly, ModeMfgOnly, ModeNrMfg })

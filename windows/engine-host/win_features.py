@@ -186,8 +186,6 @@ _catalog = package_catalog.catalog
 
 def _windows_catalog(host=None):
     host = dict(host or {"system": platform.system(), "architecture": platform.machine(), "ready": False})
-    if host.get("system") == "Windows":
-        host["system"] = "Linux"  # the rule is "x86-64 and a ready NVIDIA host"; Windows loads the same DLLs natively
     return _catalog(host)
 
 
@@ -480,6 +478,8 @@ def streamline_override(row, *, provider=None, payload=None) -> dict:
 
 def diagnose(params):
     report = runtime_diagnostics.inspect(params["row"])
+    if report.get('provider') == 'feeder':
+        return report
     try:
         override = streamline_override(params["row"])
     except (OSError, ValueError, t.Refusal) as error:

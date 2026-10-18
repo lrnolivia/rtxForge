@@ -37,7 +37,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
     // ---------- startup ----------
 
     /// <summary>Starts the host, or returns null (with the reason) when Python or the engine is unavailable.</summary>
-    public static async Task<(EngineForgeService? Service, string? Problem)> TryStartAsync()
+    public static async Task<(EngineForgeService? Service, string? Problem)> TryStartAsync(string logName = "engine.log")
     {
         var root = FindEngineRoot();
         if (root is null) return (null, "The rtxForge engine files were not found next to the app.");
@@ -62,6 +62,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         // Add rtxForge to Steam points the shortcut at this executable.
         info.Environment["RTXFORGE_APP_EXE"] = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "rtxForge.exe");
         info.Environment["PYTHONIOENCODING"] = "utf-8";
+        info.Environment["RTXFORGE_OVERLAY_HOST"] = logName == "overlay-engine.log" ? "1" : "0";
 
         Process process;
         try { process = Process.Start(info)!; }
@@ -73,7 +74,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         var service = new EngineForgeService(process, root);
         var ready = new TaskCompletionSource<JsonObject>(TaskCreationOptions.RunContinuationsAsynchronously);
         _ = Task.Run(() => service.ReadLoop(ready));
-        _ = Task.Run(() => service.DrainErrors());
+        _ = Task.Run(() => service.DrainErrors(logName));
         var first = await Task.WhenAny(ready.Task, Task.Delay(TimeSpan.FromSeconds(30)));
         if (first != ready.Task)
         {
@@ -139,10 +140,10 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         ready.TrySetCanceled();
     }
 
-    async Task DrainErrors()
+    async Task DrainErrors(string logName)
     {
         // Engine diagnostics go to %LOCALAPPDATA%\rtxForge\engine.log for support reports.
-        var log = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rtxForge", "engine.log");
+        var log = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rtxForge", logName);
         Directory.CreateDirectory(Path.GetDirectoryName(log)!);
         try
         {
@@ -180,7 +181,8 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
 
     public async Task<IReadOnlyList<Game>> ScanAsync(CancellationToken cancel = default)
     {
-        var rows = await CallAsync("scan", new { folders = Settings.GameFolders, library_folders = Settings.LibraryFolders }, cancel: cancel) as JsonArray ?? [];
+        // The library serves every mode; the installation review checks native FG for NR + MFG.
+        var rows = await CallAsync("scan", new { folders = Settings.GameFolders, library_folders = Settings.LibraryFolders, runtime_provider = Settings.RuntimeProvider }, cancel: cancel) as JsonArray ?? [];
         var art = new SteamArtwork(Settings.OnlineArt);
         return LibraryLocations.Visible(rows.OfType<JsonObject>().Select(row => ToGame(row, art)), Settings.RemovedGames);
     }
@@ -210,6 +212,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             MetadataSource = appid is null ? null : "Steam",
             AppId = appid,
             Profile = S("profile"),
+            RuntimeProvider = S("runtime_provider"),
             InstalledOn = S("installed_on") is "linux" or "windows" ? S("installed_on") : null,
             NrStrength = D("nr_strength"),
             SharpeningStrength = D("sharpening_strength"),
@@ -249,10 +252,11 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             Game? Installation(JsonObject row) => targets.FirstOrDefault(g =>
                 string.Equals(g.Location, row["game"]?.ToString(), StringComparison.OrdinalIgnoreCase));
             var ready = Objects(checkedFiles?["rows"]).Select(r =>
-                (Game: Installation(r), Detail: r["detail"]?.ToString() ?? ""))
-                .Where(r => r.Game is not null).Select(r => (r.Game!, r.Detail)).ToList();
+                (Game: Installation(r), Detail: r["detail"]?.ToString() ?? "", Summary: r["summary"]?.ToString()))
+                .Where(r => r.Game is not null).Select(r => new OperationGameReview(r.Game!, r.Detail,
+                    r.Summary ?? "Update this game's DLSS files. Originals will be backed up.")).ToList();
             var skipped = Objects(checkedFiles?["blocked"]).Select(r =>
-                new ReviewBlock(Installation(r), r["name"]?.ToString() ?? "", r["reason"]?.ToString() ?? "")).ToList();
+                new ReviewBlock(Installation(r), r["name"]?.ToString() ?? "", r["reason"]?.ToString() ?? "", r["summary"]?.ToString())).ToList();
             return new OperationReview(operation, checkedFiles?["token"]?.ToString() ?? "", ready, skipped);
         }
         var engineOperation = operation switch { "install" => "install", "uninstall" => "uninstall", _ => "reset" };
@@ -261,6 +265,12 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             ["runtime_provider"] = Settings.RuntimeProvider,
             ["manage_dlss_files"] = Settings.ManageDlssFiles,
             ["nr_runtime"] = Settings.NrRuntime,
+            ["skynizz_version"] = Settings.SkynizzVersion,
+            ["mfg_provider"] = Settings.MfgProvider,
+            ["nr_preset"] = Settings.NrPreset,
+            ["feeder_source"] = Settings.FeederSource,
+            ["feeder_backups"] = Settings.FeederBackups,
+            ["borderless_4k"] = Settings.Borderless4K,
             ["nr_strength"] = Math.Round(tuning.NrStrength, 1),
             ["sharpening_strength"] = Math.Round(tuning.SharpeningStrength, 1),
             ["mfg_multiplier"] = tuning.MfgMultiplier == "auto" ? "auto" : int.Parse(tuning.MfgMultiplier),
@@ -282,10 +292,11 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             ? targets.FirstOrDefault(g => string.Equals(g.Location, path, StringComparison.OrdinalIgnoreCase))
             : targets.FirstOrDefault(g => g.Name == name);
         var readyRows = (result?["rows"] as JsonArray ?? []).OfType<JsonObject>()
-            .Select(r => (Game: Match(r["name"]?.ToString(), r["game"]?.ToString()), Detail: r["detail"]?.ToString() ?? ""))
-            .Where(r => r.Game is not null).Select(r => (r.Game!, r.Detail)).ToList();
+            .Select(r => (Game: Match(r["name"]?.ToString(), r["game"]?.ToString()), Detail: r["detail"]?.ToString() ?? "", Summary: r["summary"]?.ToString()))
+            .Where(r => r.Game is not null).Select(r => new OperationGameReview(r.Game!, r.Detail,
+                r.Summary ?? "Review the technical details before continuing.")).ToList();
         var blocked = (result?["blocked"] as JsonArray ?? []).OfType<JsonObject>()
-            .Select(b => new ReviewBlock(Match(b["name"]?.ToString()), b["name"]?.ToString() ?? "", b["reason"]?.ToString() ?? "")).ToList();
+            .Select(b => new ReviewBlock(Match(b["name"]?.ToString()), b["name"]?.ToString() ?? "", b["reason"]?.ToString() ?? "", b["summary"]?.ToString())).ToList();
         var warnings = (result?["warnings"] as JsonArray ?? []).OfType<JsonObject>()
             .Select(w => new ReviewBlock(Match(w["name"]?.ToString()), w["name"]?.ToString() ?? "", w["reason"]?.ToString() ?? "")).ToList();
         return new OperationReview(operation, result?["token"]?.ToString() ?? "", readyRows, blocked, warnings);

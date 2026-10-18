@@ -34,12 +34,14 @@ public sealed class Game
     public string? AppId { get; init; }
     /// <summary>Feature profile the engine recorded: NR + MFG, MFG Only, NR Only.</summary>
     public string? Profile { get; init; }
+    public string? RuntimeProvider { get; init; }
+    public bool IsFeeder => RuntimeProvider == "feeder";
     /// <summary>Which rtxForge installed the features: "windows", "linux" (shared .rtxforge-install.json), or null.</summary>
     public string? InstalledOn { get; set; }
     /// <summary>Installed with rtxForge on Linux: Windows loads it natively; Set Up for Windows adapts it here.</summary>
     public bool InstalledOnLinux => Installed && InstalledOn == "linux";
     /// <summary>The library's install action: Set Up for Windows adapts a Linux install instead of reinstalling it.</summary>
-    public string InstallLabel => InstalledOnLinux ? "Set Up for Windows" : "Install Features";
+    public string InstallLabel => InstalledOnLinux ? "Set Up for Windows" : IsFeeder ? "Update Feeder NR" : "Install Features";
     /// <summary>The engine's scan row, passed back unchanged for review and execution.</summary>
     public System.Text.Json.Nodes.JsonObject? EngineRow { get; init; }
 
@@ -69,13 +71,16 @@ public sealed record OperationStep(int Index, int Total, Game Game, string Capti
 public sealed record PrepareProgress(string Label, string? Game = null, int Checked = 0, int Total = 0);
 
 /// <summary>A game the engine refused for this operation, with its reason.</summary>
-public sealed record ReviewBlock(Game? Game, string Name, string Reason);
+public sealed record ReviewBlock(Game? Game, string Name, string Reason, string? Summary = null);
+
+/// <summary>A readable change summary plus the engine's complete diagnostic text.</summary>
+public sealed record OperationGameReview(Game Game, string Detail, string Summary);
 
 /// <summary>
 /// The engine's prepared review (engine_bridge.prepare). Execution runs this
 /// exact review by token, so only what the user saw is written.
 /// </summary>
-public sealed record OperationReview(string Operation, string Token, IReadOnlyList<(Game Game, string Detail)> Ready, IReadOnlyList<ReviewBlock> Blocked,
+public sealed record OperationReview(string Operation, string Token, IReadOnlyList<OperationGameReview> Ready, IReadOnlyList<ReviewBlock> Blocked,
     IReadOnlyList<ReviewBlock>? Warnings = null)
 {
     /// <summary>Heads-ups for ready games (e.g. NVIDIA App's DLSS Override); they never block the install.</summary>
@@ -166,7 +171,18 @@ public sealed class ForgeSettings
 {
     [JsonPropertyName("runtime_provider")] public string RuntimeProvider { get; set; } = "y4my";
     [JsonPropertyName("nr_runtime")] public string NrRuntime { get; set; } = "";
+    [JsonPropertyName("skynizz_version")] public string SkynizzVersion { get; set; } = "latest";
+    [JsonPropertyName("mfg_provider")] public string MfgProvider { get; set; } = "integrated";
+    [JsonPropertyName("nr_preset")] public int? NrPreset { get; set; }
+    [JsonPropertyName("feeder_source")] public string FeederSource { get; set; } = "";
+    [JsonPropertyName("feeder_backups")] public string FeederBackups { get; set; } = "";
     [JsonPropertyName("manage_dlss_files")] public bool ManageDlssFiles { get; set; } = true;
+    [JsonPropertyName("borderless_4k")] public bool Borderless4K { get; set; }
+    [JsonPropertyName("panel_hotkey")] public string PanelHotkey { get; set; } = "Insert";
+    [JsonPropertyName("overlay_helper")] public bool OverlayHelper { get; set; } = true;
+    [JsonPropertyName("overlay_start_with_windows")] public bool OverlayStartWithWindows { get; set; } = true;
+    [JsonPropertyName("overlay_material")] public string OverlayMaterial { get; set; } = "acrylic";
+    [JsonPropertyName("companion_game")] public string CompanionGame { get; set; } = "";
     [JsonPropertyName("default_profile")] public string DefaultProfile { get; set; } = "mfg-only";
     [JsonPropertyName("recognize_previous")] public bool RecognizePrevious { get; set; } = true;
     [JsonPropertyName("library_view")] public string LibraryView { get; set; } = "posters";
@@ -181,7 +197,8 @@ public sealed class ForgeSettings
     [JsonPropertyName("art_scale")] public int ArtScale { get; set; } = 100;
     [JsonPropertyName("nr_strength")] public double NrStrength { get; set; } = 2.0;
     [JsonPropertyName("sharpening_strength")] public double SharpeningStrength { get; set; } = 0.5;
-    [JsonPropertyName("mfg_multiplier")] public string MfgMultiplier { get; set; } = "auto";
+    [JsonPropertyName("mfg_multiplier"), JsonConverter(typeof(MfgMultiplierConverter))]
+    public string MfgMultiplier { get; set; } = "auto";
     [JsonPropertyName("game_folders")] public List<string> GameFolders { get; set; } = [];
     [JsonPropertyName("library_folders")] public List<string> LibraryFolders { get; set; } = [];
     [JsonPropertyName("removed_games")] public List<string> RemovedGames { get; set; } = [];
@@ -204,6 +221,9 @@ public sealed class ForgeSettings
         get => UiScale.ValueKind == JsonValueKind.Number ? UiScale.GetInt32().ToString() : "auto";
         set => UiScale = value == "auto" ? JsonSerializer.SerializeToElement("auto") : JsonSerializer.SerializeToElement(int.Parse(value));
     }
+
+    // The shared engine owns additional settings that this shell does not edit.
+    [JsonExtensionData] public Dictionary<string, JsonElement> AdditionalSettings { get; set; } = [];
 
     [JsonIgnore] public Tuning Presets => new(NrStrength, SharpeningStrength, MfgMultiplier);
 
@@ -234,4 +254,28 @@ public sealed class ForgeSettings
 
     public ForgeSettings Clone() =>
         JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(this, Json), Json)!;
+}
+
+/// <summary>The shared engine stores a numeric multiplier; older Windows builds stored text.</summary>
+public sealed class MfgMultiplierConverter : JsonConverter<string>
+{
+    public override bool HandleNull => true;
+
+    static string Normalize(string? value) => value is "0" or "2" or "3" or "4" or "5" or "6" ? value : "auto";
+
+    public override string Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.String) return Normalize(reader.GetString());
+        if (reader.TokenType == JsonTokenType.Number && reader.TryGetInt32(out var number))
+            return Normalize(number.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        reader.Skip();
+        return "auto";
+    }
+
+    public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options)
+    {
+        var normalized = Normalize(value);
+        if (normalized == "auto") writer.WriteStringValue("auto");
+        else writer.WriteNumberValue(int.Parse(normalized, System.Globalization.CultureInfo.InvariantCulture));
+    }
 }

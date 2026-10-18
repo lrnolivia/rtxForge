@@ -28,7 +28,7 @@ public sealed partial class PackagesPage : Page
         Loaded += async (_, _) => await LoadAsync();
     }
 
-    static string ProviderName(string id) => id switch { "dlss-unlocked" => "DLSS-Unlocked", "custom" => "Custom package", _ => "y4my Multipass" };
+    static string ProviderName(string id) => id switch { "feeder" => "Feeder NR", "dlss-unlocked" => "DLSS-Unlocked", "skynizz" => "Skynizz NR + Ada MFG bridge", "custom" => "Custom package", "y4my" => "y4my Multipass", _ => id };
 
     async Task LoadAsync()
     {
@@ -50,6 +50,35 @@ public sealed partial class PackagesPage : Page
             available.Add(Prefs.Row(item.Name, item.Version + " · " + item.Summary, use, ""));
         }
         body.Children.Add(available);
+        if (shell.Settings.RuntimeProvider == "feeder")
+        {
+            var feeder = new PreferencesGroup("Feeder NR", "For x64 DirectX 11 games. Existing setups keep their tuning; installation updates the NR model selected in Settings. Frame generation is unavailable.");
+            var (sourceRow, source) = Prefs.EntryRow("Local stack folder", "For new installs: a folder containing your supported ReShade, Feeder, RenoDX and shader files. These runtimes are supplied locally.", shell.Settings.FeederSource);
+            source.LostFocus += (_, _) => { shell.Settings.FeederSource = source.Text.Trim(); shell.SaveSettings(); };
+            feeder.Add(sourceRow);
+            var (backupRow, backups) = Prefs.EntryRow("Original backups folder", "For recognizing existing setups: the folder containing each game's original manifest and backups. Your saved settings are preserved.", shell.Settings.FeederBackups);
+            backups.LostFocus += (_, _) => { shell.Settings.FeederBackups = backups.Text.Trim(); shell.SaveSettings(); };
+            feeder.Add(backupRow);
+            body.Children.Add(feeder);
+        }
+        if (shell.Settings.RuntimeProvider == "skynizz")
+        {
+            var version = new PreferencesGroup("NR package", "Skynizz requires a compatible local model and D3D12/DLSS. NR + MFG also requires game-native DLSS Frame Generation. Target runtime validation is pending.");
+            var (versionRow, choice) = Prefs.EntryRow("Version", "Use latest supported, or pin a release such as v1.2.1. Repair retains the recorded package. Exact source and SHA-256 are reviewed before installation.", shell.Settings.SkynizzVersion);
+            choice.LostFocus += (_, _) => { shell.Settings.SkynizzVersion = string.IsNullOrWhiteSpace(choice.Text) ? "latest" : choice.Text.Trim(); shell.SaveSettings(); };
+            version.Add(versionRow);
+            var (presetRow, preset) = Prefs.ComboRow("NR model preset", "Performance (B) selects preset 2 for compatible 310.9.16 models. Repair preserves each game's saved preset.",
+                ["Automatic", "Legacy (A)", "Performance (B)"], Math.Clamp(shell.Settings.NrPreset ?? 0, 0, 2));
+            preset.SelectionChanged += (_, _) => { shell.Settings.NrPreset = Math.Max(0, preset.SelectedIndex); shell.SaveSettings(); };
+            version.Add(presetRow);
+            body.Children.Add(version);
+            var mfg = new PreferencesGroup("MFG package", "Applies to new NR + MFG installs. Repair keeps the recorded component; restore before switching an installed game's package. Saved multipliers are requests, not measured performance.");
+            var (mfgRow, component) = Prefs.ComboRow("Ada MFG component", "MFG Unlock uses its own ReShade host and disables Skynizz's internal unlock. The new combination is a preview pending game validation.",
+                ["Integrated Ada bridge", "MFG Unlock 1.4.4 (preview)"], shell.Settings.MfgProvider == "mfg-unlock" ? 1 : 0);
+            component.SelectionChanged += (_, _) => { shell.Settings.MfgProvider = component.SelectedIndex == 1 ? "mfg-unlock" : "integrated"; shell.SaveSettings(); };
+            mfg.Add(mfgRow);
+            body.Children.Add(mfg);
+        }
 
         var custom = new PreferencesGroup("Your own package", "ZIP archives. Files and instructions are inspected without running them.");
         var pick = Prefs.ActionButton("Choose archive", async (_, _) => await InspectAsync(), glyph: "");

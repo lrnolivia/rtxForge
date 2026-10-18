@@ -105,7 +105,7 @@ public sealed partial class GameModeView
         }
         badges.Children.Add(ui.Badge(g.Tested ? "Tested" : "Untested", GmTheme.Hex("#573d18"), GmTheme.Hex("#ffe8a2"), 0.62 * 1.2, g.Tested ? "" : ""));
         text.Children.Add(badges);
-        text.Children.Add(ui.Text(string.Join(" · ", new[] { g.Library, g.Installed ? "Configured" : g.Blocked ? "Unsupported" : "Available", ProviderName() }), 0.78, t.Fg));
+        text.Children.Add(ui.Text(string.Join(" · ", new[] { g.Library, g.Installed ? "Configured" : g.Blocked ? "Unsupported" : "Available", g.IsFeeder ? "Feeder NR" : ProviderName() }), 0.78, t.Fg));
         Grid.SetColumn(text, 1);
         identity.Children.Add(text);
         // The desktop Game Details hero actions, in the same order.
@@ -209,6 +209,15 @@ public sealed partial class GameModeView
         switch (detailsSection)
         {
             case "Features":
+                if (g.IsFeeder)
+                {
+                    SectionTitle(content, "Feeder NR", "Your existing tuning is preserved. Use ReShade's NR panel in the running game to adjust passes, resolution, tone and structure. Frame generation is unavailable for this route.");
+                    content.Children.Add(ui.Group([
+                        ui.RowButton("Update Feeder NR", null, () => _ = RunOperationAsync("install", [g]), enabled: !g.Blocked),
+                        ui.RowButton("Restore Original Files", null, () => _ = RunOperationAsync("uninstall", [g]), danger: true, enabled: g.Installed),
+                    ]));
+                    break;
+                }
                 SectionTitle(content, "Features", g.InstalledOnLinux
                     ? $"Saved: {g.Profile ?? "Configured"}. Installed with rtxForge on Linux; it already loads on Windows. Set Up for Windows hands it to rtxForge here to repair, retune or restore."
                     : g.Installed
@@ -368,7 +377,8 @@ public sealed partial class GameModeView
                 [
                     .. info,
                     ui.PreferenceRow("Library", null, ui.Text(g.Library, 0.85, t.Muted)),
-                    ui.PreferenceRow("Location", null, ui.Text(g.Location, 0.85, t.Muted).With(x => { x.TextWrapping = TextWrapping.Wrap; x.TextAlignment = TextAlignment.Right; x.MaxWidth = t.Px(560); })),
+                    ui.PreferenceRow("Location", g.Location, ui.Button("Open Folder", () => _ = shell.OpenGameFolderAsync(g),
+                        GmKind.Card, 0.85, enabled: !shell.Service.IsPreview && Directory.Exists(g.Location))),
                     ui.PreferenceRow("Compatibility", null, ui.Text(g.Blocked ? g.BlockedReason ?? "Unsupported" : "Supported", 0.85, t.Muted)),
                     ui.PreferenceRow("Metadata Source", null, ui.Text(g.MetadataSource ?? g.Library, 0.85, t.Muted)),
                     ui.RowButton("Remove from library", null, () => ConfirmRemoveGames([g]), danger: true,

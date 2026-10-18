@@ -118,12 +118,13 @@ public sealed class OperationDialog
             Text = count > 0 ? $"{count} game{(count == 1 ? "" : "s")} ready" : "Nothing ready yet",
             FontSize = 20, FontWeight = FontWeights.SemiBold,
         });
-        summary.Children.Add(Prefs.Label(string.Join(" · ", Details()), "ForgeDimTextStyle"));
+        var description = string.Join(" · ", Details());
+        if (description.Length > 0) summary.Children.Add(Prefs.Label(description, "ForgeDimTextStyle"));
         body.Children.Add(summary);
 
         var list = new StackPanel { Spacing = 4 };
-        foreach (var (game, detail) in review.Ready)
-            list.Children.Add(ReviewRow(game, game.Name, detail, "Ready", true));
+        foreach (var item in review.Ready)
+            list.Children.Add(ReviewRow(item.Game, item.Game.Name, item.Summary, "Ready", true, item.Detail));
         foreach (var warning in review.Warnings)
             list.Children.Add(new InfoBar
             {
@@ -136,7 +137,8 @@ public sealed class OperationDialog
             header.Margin = new Thickness(0, 12, 0, 2);
             list.Children.Add(header);
             foreach (var block in review.Blocked)
-                list.Children.Add(ReviewRow(block.Game, block.Name, block.Reason, "Skipped", false));
+                list.Children.Add(ReviewRow(block.Game, block.Name, block.Summary ?? block.Reason, "Skipped", false,
+                    block.Summary is null ? null : block.Reason));
         }
         body.Children.Add(new ScrollViewer { Content = list, MaxHeight = 380, HorizontalScrollMode = ScrollMode.Disabled });
         body.Children.Add(Prefs.Label("Your files will only change after you review and confirm.", "ForgeCaptionDimTextStyle"));
@@ -158,20 +160,27 @@ public sealed class OperationDialog
 
     IEnumerable<string> Details()
     {
-        yield return ActionVerb();
-        if (operation is "install" or "apply" or "reset")
+        if (operation == "install" && (shell.Settings.RuntimeProvider == "feeder" || targets.All(g => g.IsFeeder)))
         {
+            yield return "NR Only";
+            yield return "Feeder NR";
+            yield break;
+        }
+        if (operation == "install" && shell.Settings.RuntimeProvider != "feeder")
+        {
+            yield return shell.Mode switch { "nr-only" => "NR Only", "nr-mfg" => "NR + MFG", _ => "MFG Only" };
             yield return shell.Settings.RuntimeProvider switch
             {
+                "skynizz" => "Skynizz",
+                "feeder" => "Feeder NR",
                 "dlss-unlocked" => "DLSS-Unlocked",
                 "custom" => "Custom package",
                 _ => "y4my",
             };
-            yield return "MFG " + (values.MfgMultiplier switch { "auto" => "In game", "0" => "Off", var m => m + "×" });
         }
     }
 
-    static Border ReviewRow(Game? game, string name, string detail, string state, bool ready)
+    static Border ReviewRow(Game? game, string name, string detail, string state, bool ready, string? technical = null)
     {
         var grid = new Grid { ColumnSpacing = 12 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -192,6 +201,22 @@ public sealed class OperationDialog
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = 1 };
         text.Children.Add(new TextBlock { Text = name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
         text.Children.Add(Prefs.Label(detail, "ForgeCaptionDimTextStyle"));
+        if (!string.IsNullOrWhiteSpace(technical))
+        {
+            var full = new TextBox
+            {
+                Text = technical, IsReadOnly = true, TextWrapping = TextWrapping.Wrap,
+                AcceptsReturn = true, MaxHeight = 200, FontSize = 12,
+                FontFamily = new FontFamily("Cascadia Mono, Consolas"),
+            };
+            ScrollViewer.SetVerticalScrollBarVisibility(full, ScrollBarVisibility.Auto);
+            text.Children.Add(new Expander
+            {
+                Header = "Technical details", Content = full,
+                HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                Margin = new Thickness(0, 8, 0, 0),
+            });
+        }
         Grid.SetColumn(text, 1);
         grid.Children.Add(text);
 
@@ -250,7 +275,7 @@ public sealed class OperationDialog
         dialog.PrimaryButtonText = "";
         dialog.CloseButtonText = "Cancel";
         progressPanel.AccentChanged += TintButtons;
-        progressPanel.Show(ProgressVerb(), review!.Ready.FirstOrDefault().Game, 0, review.Ready.Count, "Starting");
+        progressPanel.Show(ProgressVerb(), review!.Ready.FirstOrDefault()?.Game, 0, review.Ready.Count, "Starting");
         dialog.Content = progressPanel.Root;
 
         var done = 0;

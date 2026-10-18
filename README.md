@@ -32,10 +32,48 @@ Portable skips app installation, but it can still save preferences, runtime down
 Start with one game and see how it feels before changing your whole library. **The steps below currently work in the Linux build.** The Windows x64 preview now connects to the shared engine for real library scans and reviewed operations. Its bundled engine and installer passed basic automated checks, but a real-game feature installation has not yet been verified. For sample games without game writes, launch rtxForge with `--preview`.
 
 1. **Find a game** in the Library. Search, filter, or add a game folder in Settings.
-2. **Choose what to try:** MFG Only, NR Only, or NR + MFG, along with your provider. NR Only requires DLSS-Unlocked; NR + MFG is experimental.
+2. **Choose what to try:** MFG Only, NR Only, or NR + MFG, along with your provider. NR Only requires DLSS-Unlocked or the Windows Skynizz preview; NR + MFG is experimental.
 3. **Close the game and Steam.** Choose **Install Features**, review the proposed changes, and apply. Packages are verified before installation and originals are backed up.
 4. **Launch and check.** Enable DLSS and frame generation in the game for MFG. Actual output depends on the game and runtime. NR remains experimental and is not confirmed by a saved setting or diagnostic log. DLSS-Unlocked NR starts off; F10 toggles it where supported.
 5. **Tune or recover.** Per-game **Apply** saves presets for the next launch. **Repair Feature Files** replaces damaged files while keeping tuning. **Restore Original Files** removes installed features; use it before changing provider or feature profile.
+
+### Feeder NR (Windows, x64 DirectX 11)
+
+**Feeder NR** in Packages provides neural rendering through ReShade for games without native DLSS. Its supported local recipe uses DLSS5-Feeder 1.19.0, RenoDX DLSS5 8.5.0-rc5, ReShade 6.8, Lumenite Kernel and production DLSS SR. Third-party runtime binaries and the compatible NR model are supplied locally; the app does not redistribute them or execute upstream installer scripts. Choose a supported **Local stack folder** for new installs and the verified RTX 40 model in Settings. Other APIs, 32-bit games and frame generation are unavailable for this route.
+
+Existing setups are detected separately from native NR/MFG, including each Mass Effect Legendary Edition executable. Select the **Original backups folder** containing their manual install manifests to recognize them through review. The update backs up the old model, replaces only the selected NR DLL and records genuine Feeder ownership while preserving the ReShade settings, shaders, HDR/depth choices and saves. Missing generated `dlss5-feed.cfg` files before first launch do not mean uninstalled. Unknown stacks, conflicting hooks and damaged or missing original backups are refused. Repair keeps the recorded model and current tuning; Restore returns managed files to their original state. Independent compiler fixes and unrelated mods are preserved.
+
+Feeder tuning remains in its ReShade NR panel. Installed and enabled in saved settings are separate from a captured NR evaluation. **Diagnose NR** checks current model/log identity, actual feature 18 creation/evaluation and depth/motion-vector evidence; a feed counter alone is insufficient, and file/log checks do not establish visual correctness. This synthetic NR route is distinct from genuine native DLSS upscaling and native MFG.
+
+### Skynizz NR + MFG preview (Windows)
+
+Select **Skynizz NR + Ada MFG bridge** in Packages for NR + MFG. It combines Skynizz's NR implementation and the existing Ada MFG unlock in one loader, with the verified private NVIDIA/Streamline companion runtime. A game-native DLSS Frame Generation route is required. The app build must include the compiled bridge; the stock upstream Skynizz DLL is not substituted for it.
+
+Choose `latest` supported bridge or pin an included release such as `v1.2.1`. NR Only can separately use stock Skynizz stable releases. The review identifies the exact source, package SHA-256 and selected model. Repair retains that game's recorded release and complete in-game preset. Restore is required before changing provider or mode. Existing provider choices and defaults are preserved.
+
+Packages separates the NR model preset from the Ada MFG component. The optional **MFG Unlock 1.4.4** preview uses an exact, hash-pinned addon and addon-enabled ReShade 6.8 through Skynizz's existing loader. It disables Skynizz's internal Ada unlock, kernel patches and count override so only the selected MFG component owns that path. This composition currently fails inZOI startup; installation and repair refuse it there. Choose **Integrated Ada MFG** for inZOI. Restore before switching an installed game's component. Repair retains its recorded version and addon tuning; Reset Presets writes the owning configuration with backups. Preset **Performance (B)** selects NR preset 2 for a compatible 310.9.16 model. Enable DLSS Frame Generation in the game. A saved 4× request does not establish a 4× FPS gain or actual frame presentation.
+
+An explicitly selected local NR DLL takes priority over a game-local model. The review shows its path and hash, and the replaced file is backed up for Restore. With no explicit selection, the game's existing model is preserved.
+
+This provider requires a compatible, user-supplied RTX 40 `nvngx_dlssnr.dll` in Settings or beside the game executable, and D3D12 with DLSS enabled. The similarly named `nvngx.dll_dlssnr.dll` is only the forwarder. Combined mode starts with pre-SR NR and edit-cache reuse off to address the reported MFG pacing issue. The Insert overlay retains NR preset controls; Repair preserves them. **Reset Presets** restores the combined policy. Upstream installer scripts are never run.
+
+The combined package uses NVIDIA's version- and hash-pinned production `rel` DLLs for Super Resolution, Ray Reconstruction and Frame Generation. This prevents private SDK variants from taking priority over the game's production files and displaying development watermarks. Each component's source is recorded with new installations and retained by Repair; older bridge recipes require Restore and reinstall to select the new runtime set. The NR model remains a separate local file.
+
+For inZOI, the swapchain overlay is disabled to avoid a startup hang. NR and the native MFG configuration remain enabled; Repair and Reset retain this compatibility setting.
+
+### Live controls (Windows)
+
+Press **Insert** to show or hide the NR + MFG sidebar. A separate background helper keeps the shortcut available after the main rtxForge window closes; it does not open or scan the library. **Settings → Overlay** controls the shortcut, helper, start with Windows and Acrylic/Mica material. Its system-tray menu opens the overlay, settings or exits the helper. Use a windowed or borderless game; exclusive fullscreen can cover the sidebar. You can also use the **rtxForge Overlay** Start menu shortcut, **Game Details → More → Live NR + MFG controls**, or `rtxForge.exe --controls`.
+
+The overlay detects the compatible running game and shows its name. With multiple games running, focus the intended game before opening the overlay. Changes apply live after an adjustment finishes and the bridge acknowledges it. The selected multiplier and the game's reported presented-frame count are separate; four presented frames do not promise a fourfold net FPS gain. Unsupported packages, stopped games and stalled connections disable the affected controls. NR includes model style, preset, strength and passes; image tuning includes detail, colour, local structure/tone and skin handling. Performance contains placement, model resolution and cache reuse. Older bridge packages retain their supported controls and show when a package update is needed for the additional settings.
+
+**Save preset** stores applied controls without editing game files. The helper reapplies them when that exact installed package/model recipe connects. **Reset** applies this game's installed settings and clears its saved overlay preset after the game acknowledges the reset. A package change requires reviewing and saving the preset again. The current bridge's **Sharpening** section exposes the same RCAS, depth-aware and motion sharpening used by rtxForge's Presets, separately from NR detail. Older packages keep their supported controls. The external MFG Unlock preview retains its own MFG settings.
+
+The **DLSS files** pills show installation ownership: green means an exact rtxForge-managed DLL is installed; amber means a game-provided or other DLL exists; grey means absent or not yet known; red means an expected managed DLL is missing or changed. NR/FG readouts separately report confirmed runtime activity. A green pill does not mean that feature is enabled in the game's settings.
+
+**Settings → Graphics → 4K borderless on install** optionally includes supported 3840×2160 borderless preferences in the installation review. Adapters currently cover inZOI, The Witcher 3 DX12 and Starfield. Missing or unsupported settings are skipped with an explanation. Original display values are backed up, and Restore preserves preferences changed after installation.
+
+The bridge is a preview until actual RTX40 NR, generated-frame progression and pacing are verified together; it will become the default NR package after that gate. File/configuration checks alone do not establish that result. MFG Only continues to use the existing provider, and Skynizz Linux/Proton installation remains unavailable in this Windows-first pass. [Skynizz source](https://github.com/Skynizz/optiscaler-dlss5), [combined source and provenance](providers/skynizz-bridge/README.md).
 
 | Setting | Choices |
 | --- | --- |

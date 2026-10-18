@@ -12,18 +12,20 @@ namespace RtxForge.Windows.Views;
 /// </summary>
 public sealed partial class SettingsPage : Page
 {
-    static readonly string[] ProviderKeys = ["y4my", "dlss-unlocked", "custom"];
+    static readonly string[] ProviderKeys = ["y4my", "dlss-unlocked", "custom", "skynizz", "feeder"];
     static readonly string[] Modes = ["nr-only", "mfg-only", "nr-mfg"];
     static readonly string[] Views = ["posters", "capsules", "list"];
 
     readonly MainWindow shell = App.Main!;
     readonly Dictionary<string, PreferencesGroup[]> sections = [];
     static string selectedSection = "Graphics";
+    public static bool OpenOverlaySection { get; set; }
     ForgeSettings Settings => shell.Settings;
 
     public SettingsPage()
     {
         InitializeComponent();
+        if (OpenOverlaySection) { selectedSection = "Overlay"; OpenOverlaySection = false; }
         Build();
     }
 
@@ -55,9 +57,9 @@ public sealed partial class SettingsPage : Page
         // ----- Graphics -----
         var graphics = new PreferencesGroup(null, "Restore original files before switching providers.");
         var (row, provider) = Prefs.ComboRow("Provider", "Package that supplies NR and MFG.",
-            ["y4my Multipass", "DLSS-Unlocked", "Custom package"], Math.Max(0, Array.IndexOf(ProviderKeys, Settings.RuntimeProvider)), "");
+            ["y4my Multipass", "DLSS-Unlocked", "Custom package", "Skynizz NR + MFG bridge (preview)", "Feeder NR (DirectX 11)"], Math.Max(0, Array.IndexOf(ProviderKeys, Settings.RuntimeProvider)), "");
         graphics.Add(row);
-        (row, var nrPath) = Prefs.EntryRow("Local NR DLL for y4my", "Optional nvngx_dlssnr.dll used with the y4my provider.",
+        (row, var nrPath) = Prefs.EntryRow("Local NR model DLL", "Compatible nvngx_dlssnr.dll. Required for Skynizz unless a suitable model is already beside the game executable.",
             Settings.NrRuntime, @"C:\path\to\nvngx_dlssnr.dll", "");
         nrPath.LostFocus += (_, _) => { Settings.NrRuntime = nrPath.Text.Trim(); Save(); };
         graphics.Add(row);
@@ -78,6 +80,22 @@ public sealed partial class SettingsPage : Page
         {
             var selectedProvider = ProviderKeys[Math.Max(0, provider.SelectedIndex)];
             var selectedMode = Modes[Math.Max(0, profile.SelectedIndex)];
+            if (selectedProvider == "feeder" && selectedMode != "nr-only")
+            {
+                profile.SelectedIndex = Array.IndexOf(Modes, "nr-only");
+                selectedMode = "nr-only";
+                Notice.Title = "Feeder provides NR Only.";
+                Notice.Message = "Frame generation is unavailable for this route.";
+                Notice.IsOpen = true;
+            }
+            if (selectedProvider == "skynizz" && selectedMode == "mfg-only")
+            {
+                profile.SelectedIndex = Array.IndexOf(Modes, "nr-mfg");
+                Notice.Title = "Skynizz uses the combined NR + MFG bridge.";
+                Notice.Message = "Select a compiled bridge build. In-game runtime verification remains required.";
+                Notice.IsOpen = true;
+                selectedMode = "nr-mfg";
+            }
             if (selectedProvider == "y4my" && selectedMode == "nr-only")
             {
                 profile.SelectedIndex = Array.IndexOf(Modes, "mfg-only");
@@ -86,15 +104,44 @@ public sealed partial class SettingsPage : Page
                 Notice.IsOpen = true;
                 selectedMode = "mfg-only";
             }
+            var providerChanged = Settings.RuntimeProvider != selectedProvider;
             Settings.RuntimeProvider = selectedProvider;
             Settings.DefaultProfile = selectedMode;
             shell.Mode = selectedMode;
             shell.SaveSettings();
+            if (providerChanged) _ = shell.ScanAsync();
         }
         provider.SelectionChanged += (_, _) => ValidateProvider();
         profile.SelectionChanged += (_, _) => ValidateProvider();
 
         // ----- Appearance -----
+        (row, var borderless) = Prefs.SwitchRow("4K borderless on install", "Use 3840 × 2160 borderless in supported games. Review shows each change; Restore preserves later preferences.", Settings.Borderless4K, "");
+        borderless.Toggled += (_, _) => { Settings.Borderless4K = borderless.IsOn; Save(); };
+        graphics.Add(row);
+
+        var overlay = new PreferencesGroup(null, "A small background helper opens the NR + MFG sidebar. You can close the main rtxForge window.");
+        (row, var helper) = Prefs.SwitchRow("Background overlay helper", "Keep the overlay shortcut available after closing rtxForge. Exit it from the system tray whenever you like.", Settings.OverlayHelper, "");
+        helper.Toggled += (_, _) => { Settings.OverlayHelper = helper.IsOn; Save(); shell.ConfigureCompanionShortcut(); };
+        overlay.Add(row);
+        (row, var startup) = Prefs.SwitchRow("Start with Windows", "Start only the overlay helper when you sign in.", Settings.OverlayStartWithWindows, "");
+        startup.Toggled += (_, _) => { Settings.OverlayStartWithWindows = startup.IsOn; Save(); shell.ConfigureCompanionShortcut(); };
+        overlay.Add(row);
+        (row, var shortcut) = Prefs.ComboRow("Overlay shortcut", "Press once to show the sidebar and again to return to your game. Use windowed or borderless mode.",
+            MainWindow.CompanionShortcuts, Math.Max(0, Array.IndexOf(MainWindow.CompanionShortcuts, Settings.PanelHotkey)), "");
+        shortcut.SelectionChanged += (_, _) =>
+        {
+            Settings.PanelHotkey = MainWindow.CompanionShortcuts[Math.Max(0, shortcut.SelectedIndex)];
+            Save();
+            shell.ConfigureCompanionShortcut();
+            if (shell.CompanionShortcutProblem is { } problem) { Notice.Title = "Shortcut unavailable"; Notice.Message = problem; Notice.IsOpen = true; }
+        };
+        overlay.Add(row);
+        (row, var material) = Prefs.ComboRow("Window material", "Acrylic blurs the game behind the sidebar. Mica uses your desktop background. Windows transparency settings still apply.",
+            ["Acrylic", "Mica"], Settings.OverlayMaterial == "mica" ? 1 : 0, "");
+        material.SelectionChanged += (_, _) => { Settings.OverlayMaterial = material.SelectedIndex == 1 ? "mica" : "acrylic"; Save(); shell.ConfigureCompanionShortcut(); };
+        overlay.Add(row);
+        overlay.Add(Prefs.Row("Open overlay", "Automatically connects to a supported running game.", Prefs.ActionButton("Open", (_, _) => shell.OpenCompanion()), ""));
+
         var appearance = new PreferencesGroup(null);
         (row, var theme) = Prefs.ComboRow("App theme", "Changes only rtxForge.", ThemeController.Captions,
             Math.Max(0, Array.IndexOf(ThemeController.Keys, Settings.Theme)), "");
@@ -219,6 +266,7 @@ public sealed partial class SettingsPage : Page
 
         // Linux organize_pages(): one page per section. Windows shows them as SelectorBar tabs.
         sections["Graphics"] = [graphics];
+        sections["Overlay"] = [overlay];
         sections["Appearance"] = [appearance];
         sections["Library"] = [library];
         sections["Gaming Mode"] = [gamingMode, steamLibrary, interfaceGroup, controller];

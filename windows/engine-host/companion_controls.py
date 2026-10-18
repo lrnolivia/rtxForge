@@ -84,7 +84,7 @@ def validate_changes(changes):
 def decode(raw, pid):
     t.need(len(raw) in (SIZE, 512), 'The game returned an incomplete control snapshot.')
     magic, version, found = struct.unpack_from('<III', raw)
-    t.need(magic == MAGIC and version in (1, 2, 3, 4, 5) and found == pid
+    t.need(magic == MAGIC and version in (1, 2, 3, 4, 5, 6) and found == pid
            and len(raw) == (512 if version >= 3 else SIZE), 'This game uses an unsupported control protocol.')
     values = {key: struct.unpack_from('<f' if key in _FLOATS else '<i', raw, offset)[0]
               for key, offset in OFFSETS.items() if key in supported_keys(version)}
@@ -103,6 +103,12 @@ def decode(raw, pid):
             result[key] = struct.unpack_from('<i', raw, offset)[0]
     if version >= 5:
         result['original_menu'], result['original_menu_key'] = struct.unpack_from('<ii', raw, 368)
+    if version >= 6:
+        actual, reason, width, height, reduced, requested, tick = struct.unpack_from('<7I', raw, 376)
+        t.need(actual <= 4 and reason <= 4 and width <= 32768 and height <= 32768
+               and reduced in (0, 1) and requested in (0, 1), 'Invalid observed NR placement.')
+        result.update(nr_placement=actual, nr_placement_reason=reason, nr_model_width=width,
+                      nr_model_height=height, nr_reduced=bool(reduced), nr_requested_before=bool(requested), nr_placement_tick=tick)
     return result
 
 
@@ -141,7 +147,7 @@ class Mailbox:
             if not self.view: raise OSError('The game control snapshot could not be opened.')
             header = ctypes.string_at(self.view, 12)
             magic, version, found = struct.unpack('<III', header)
-            t.need(magic == MAGIC and version in (1, 2, 3, 4, 5) and found == pid, 'Unsupported game control protocol.')
+            t.need(magic == MAGIC and version in (1, 2, 3, 4, 5, 6) and found == pid, 'Unsupported game control protocol.')
             self.size = 512 if version >= 3 else SIZE
             self.read()
         except BaseException:
@@ -398,6 +404,17 @@ class Controls:
         fps = found['rendered_fps']
         found['rendered_fps'] = fps if found['nr_running'] and 0 < fps < 10000 and math.isfinite(fps) else None
         native_menu = bool(found.get('original_menu'))
+        placement_age = (box.k.GetTickCount() - found.get('nr_placement_tick', 0)) & 0xffffffff
+        observed = found.get('version', 0) >= 6 and not stalled and placement_age < 2000 and found.get('nr_placement_tick', 0) != 0
+        found['nr_placement_verified'] = observed
+        found['nr_placement_label'] = ({0: 'Waiting for a model evaluation', 1: 'NR off', 2: 'Before super resolution',
+                                        3: 'After super resolution', 4: 'No model result this frame'}[found['nr_placement']]
+                                       if observed else 'Actual placement is unverified')
+        found['nr_placement_detail'] = ({0: '', 1: "Before-upscale NR isn't supported with Ray Reconstruction yet.",
+                                         2: "Before-upscale NR wasn't available; using after-upscale NR.",
+                                         3: "The game couldn't complete upscaling.", 4: 'Waiting for a new model result.'}
+                                        [found['nr_placement_reason']] if observed else
+                                        'This package does not report actual placement.' if found.get('version', 0) < 6 else 'Waiting for a fresh placement report.')
         return {'state': 'stalled' if stalled else 'running',
                 'detail': 'OptiScaler controls this session. Restart the game after switching overlays.' if native_menu else 'Waiting for the game to respond.' if stalled else 'Connected',
                 'pid': box.pid, 'can_edit': not stalled and not native_menu, 'can_save': not native_menu, 'can_mfg': game['can_mfg'], 'can_nr': game['can_nr'],

@@ -76,6 +76,35 @@ class ControlsTest(unittest.TestCase):
         struct.pack_into('<f', raw, 68, float('nan'))
         with self.assertRaises(t.Refusal): control.decode(raw, 123)
 
+    def test_observed_rr_fallback_does_not_claim_the_requested_pre_placement(self):
+        raw = snapshot(version=6)
+        struct.pack_into('<7I', raw, 376, 3, 1, 1920, 1080, 0, 1, 1000)
+        found = control.decode(raw, 123)
+        box = SimpleNamespace(pid=123, k=SimpleNamespace(GetTickCount=lambda:1010))
+        status = self.controls._present(self.controls._game({'row': self.row}), box, found)
+        self.assertEqual(status['values']['pre_sr'], 1)
+        self.assertTrue(status['nr_requested_before'])
+        self.assertTrue(status['nr_placement_verified'])
+        self.assertEqual(status['nr_placement_label'], 'After super resolution')
+        self.assertIn('Ray Reconstruction', status['nr_placement_detail'])
+        self.assertEqual((status['nr_model_width'], status['nr_model_height']), (1920, 1080))
+        self.assertFalse(status['nr_reduced'])
+
+    def test_old_and_stale_placement_is_explicitly_unverified(self):
+        box = SimpleNamespace(pid=123, k=SimpleNamespace(GetTickCount=lambda:5000))
+        for version in (2, 3, 4, 5, 6):
+            raw = snapshot(version=version)
+            if version == 6: struct.pack_into('<7I', raw, 376, 2, 0, 1280, 720, 1, 1, 1000)
+            status = self.controls._present(self.controls._game({'row': self.row}), box, control.decode(raw, 123))
+            self.assertFalse(status['nr_placement_verified'])
+            self.assertEqual(status['nr_placement_label'], 'Actual placement is unverified')
+
+    def test_observed_placement_rejects_malformed_codes_and_sizes(self):
+        for values in ((99, 0, 0, 0, 0, 0, 1000), (2, 99, 1280, 720, 1, 1, 1000),
+                       (2, 0, 999999, 720, 1, 1, 1000), (2, 0, 1280, 720, 2, 1, 1000)):
+            raw = snapshot(version=6); struct.pack_into('<7I', raw, 376, *values)
+            with self.assertRaises(t.Refusal): control.decode(raw, 123)
+
     def test_original_overlay_session_is_read_only_to_the_companion(self):
         raw = snapshot(version=5)
         struct.pack_into('<ii', raw, 368, 1, 0x2d)
@@ -295,7 +324,7 @@ class ControlsTest(unittest.TestCase):
 @unittest.skipUnless(os.name == 'nt', 'Windows named mapping')
 class WindowsProtocolTest(unittest.TestCase):
     def test_actual_mapping_ack_and_backend_ceiling(self):
-        for version in (2, 3, 4):
+        for version in (2, 3, 4, 5, 6):
             with self.subTest(version=version): self.mapping_round_trip(version)
 
     def mapping_round_trip(self, version):

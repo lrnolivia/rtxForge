@@ -44,6 +44,7 @@ Anti-cheat remains a block unless a title has an explicit verified offline profi
 - The overlay detects the compatible game being played from its verified running process. It has no game picker. Live edits target that exact game session and acknowledge application before reporting success.
 - NR controls include model style, preset, strength and passes; detail, colour, local structure, local tone and skin handling; placement, model resolution and cache reuse. Group these by purpose and progressively reveal fine tuning and performance controls.
 - Live edits require a compatible running installation. Show unavailable, waiting, stopped and failed states accurately; never substitute demonstration telemetry.
+- Placement requests and observed placement are separate. Report actual model dimensions and a concise fallback reason only from fresh runtime observations. Older protocols show unverified placement. RR must retain the finished-image route until its pre-denoising input contract is validated; isolated candidates need gameplay acceptance before replacing installed runtimes.
 - Preserve existing application layouts and functions outside the requested companion and its entry points.
 - Use supported per-game configuration for optional 3840×2160 borderless setup, with backups. Do not force unsupported display modes.
 

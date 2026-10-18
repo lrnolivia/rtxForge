@@ -2,6 +2,11 @@ name: Skynizz NR and Ada MFG bridge
 on:
   # Application CI builds and bundles this dependency. This is a manual source-only lane.
   workflow_dispatch:
+    inputs:
+      placement_candidate:
+        description: Build the isolated NR placement candidate (never the app default)
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -23,12 +28,17 @@ jobs:
       - uses: microsoft/setup-msbuild@v2
       - name: Build the exact combined source and NR forwarder
         shell: pwsh
-        run: ./windows/build/Build-SkynizzBridge.ps1 -SourceRoot windows/out/skynizz-source
+        run: |
+          $arguments = @{ SourceRoot = 'windows/out/skynizz-source' }
+          if ('${{ inputs.placement_candidate }}' -eq 'true') { $arguments.PlacementCandidate = $true }
+          ./windows/build/Build-SkynizzBridge.ps1 @arguments
       - uses: actions/upload-artifact@v4
         with:
           name: skynizz-nr-mfg-candidate
           path: |
             windows/out/skynizz-bridge/*.zip
             windows/out/skynizz-bridge/package.json
+            windows/out/skynizz-placement-candidate/*.zip
+            windows/out/skynizz-placement-candidate/package.json
           if-no-files-found: error
           retention-days: 14

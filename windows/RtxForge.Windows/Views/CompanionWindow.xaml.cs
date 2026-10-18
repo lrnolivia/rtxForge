@@ -249,6 +249,7 @@ public sealed partial class CompanionWindow : Window
         DetailLabel.Text = Classic ? "Detail strength" : "Detail";
         ColourLabel.Text = Classic ? "Colour strength" : "Colour";
         PreSr.Header = Classic ? "Run before the upscaler" : "Run before super resolution";
+        ToolTipService.SetToolTip(PreSr, "Requests before-upscale placement. The live report below shows where NR actually ran; some routes use the finished image.");
         Reduced.Header = Classic ? "Reduced model before the upscaler" : "Use reduced model resolution";
         Cache.Header = Classic ? "Reuse the model’s edit between runs" : "Reuse NR between frames";
         Interval.Header = Classic ? "Max frames between runs" : "Run NR every N frames";
@@ -360,6 +361,23 @@ public sealed partial class CompanionWindow : Window
             NrActual.Text += $" · {fps.GetValue<double>():0.#} rendered FPS";
         TelemetryText.Text = running && status?["nr_ms"] is JsonNode timing
             ? $"NR GPU time · {timing.GetValue<double>():0.00} ms" : "NR GPU timing is unavailable.";
+        if (running)
+        {
+            TelemetryText.Text += "\n" + Text(status, "nr_placement_label");
+            if (Flag(status, "nr_placement_verified"))
+            {
+                var requested = Flag(status, "nr_requested_before") ? "before" : "after";
+                TelemetryText.Text += $" · requested {requested}";
+                var width = Int(status, "nr_model_width"); var height = Int(status, "nr_model_height");
+                if (width > 0 && height > 0 && Int(status, "nr_placement") is 2 or 3)
+                    TelemetryText.Text += $"\nModel · {width} × {height}";
+            }
+            if (status?["values"] is JsonObject liveValues && Int(liveValues, "reduced") == 1 && Int(liveValues, "pre_sr") == 1)
+                TelemetryText.Text += "\nReduced pre-SR · " + (!Flag(status, "nr_placement_verified") ? "unverified"
+                    : Flag(status, "nr_reduced") ? "active" : "not active on this route");
+            if (Text(status, "nr_placement_detail") is { Length: > 0 } placementDetail)
+                TelemetryText.Text += "\n" + placementDetail;
+        }
         if (Flag(status, "saved") && !Flag(status, "preset_compatible"))
             Feedback.Text = "The package changed. Save this preset again to use it with the new package.";
         else if (Text(status, "preset_error") is { Length: > 0 } error) Feedback.Text = "Preset could not apply: " + error;

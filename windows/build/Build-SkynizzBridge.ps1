@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory)][string]$SourceRoot,
-    [string]$Output = (Join-Path $PSScriptRoot '..\out\skynizz-bridge')
+    [string]$Output = (Join-Path $PSScriptRoot '..\out\skynizz-bridge'),
+    [switch]$PlacementCandidate
 )
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -16,6 +17,20 @@ if (& git -C $source status --porcelain --untracked-files=no) { throw 'Skynizz c
 if ($LASTEXITCODE -ne 0) { throw 'Bridge patch does not apply to the exact source' }
 & git -C $source apply -- $patch
 if ($LASTEXITCODE -ne 0) { throw 'Bridge source patch failed' }
+$candidate = $null
+if ($PlacementCandidate) {
+    if (-not $PSBoundParameters.ContainsKey('Output')) { $Output = Join-Path $PSScriptRoot '..\out\skynizz-placement-candidate' }
+    $candidate = Get-Content -Raw -LiteralPath (Join-Path $specRoot 'placement-candidate.json') | ConvertFrom-Json
+    if ($candidate.base_bridge_id -ne $spec.id -or $candidate.base_patch_sha256 -ne $spec.patch_sha256) { throw 'Placement candidate has a different base bridge' }
+    foreach ($entry in @(@{name=$candidate.patch; hash=$candidate.patch_sha256}, @{name=$candidate.header; hash=$candidate.header_sha256})) {
+        if ((Get-FileHash -LiteralPath (Join-Path $specRoot $entry.name) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $entry.hash) { throw 'Placement candidate source digest mismatch' }
+    }
+    & git -C $source apply --check -- (Join-Path $specRoot $candidate.patch)
+    if ($LASTEXITCODE -ne 0) { throw 'Placement candidate does not apply to the admitted base' }
+    & git -C $source apply -- (Join-Path $specRoot $candidate.patch)
+    if ($LASTEXITCODE -ne 0) { throw 'Placement candidate patch failed' }
+    Copy-Item -LiteralPath (Join-Path $specRoot $candidate.header) -Destination (Join-Path $source 'OptiScaler\dlssnr\ForgeNrRoute.h')
+}
 $msbuild = (Get-Command MSBuild.exe -ErrorAction SilentlyContinue).Source
 if (-not $msbuild) {
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
@@ -39,6 +54,10 @@ Copy-Item -LiteralPath (Join-Path $compiled 'forwarder\nvngx.dll_dlssnr.dll') -D
 Copy-Item -LiteralPath (Join-Path $source 'OptiScaler.ini') -Destination $payload
 Copy-Item -LiteralPath (Join-Path $specRoot 'LICENSE') -Destination $payload
 Copy-Item -LiteralPath $patch -Destination $payload
+if ($candidate) {
+    Copy-Item -LiteralPath (Join-Path $specRoot $candidate.patch) -Destination $payload
+    Copy-Item -LiteralPath (Join-Path $specRoot $candidate.header) -Destination $payload
+}
 $productHead = (& git -C $repo rev-parse HEAD).Trim()
 $receipt = [ordered]@{
     schema = 1; variant = 'nr-mfg-bridge'; id = 'skynizz'; family = 'skynizz'; name = 'Skynizz NR + Ada MFG bridge'
@@ -46,6 +65,15 @@ $receipt = [ordered]@{
     upstream = $spec.upstream; mfg_source = $spec.mfg_source; patch_sha256 = $spec.patch_sha256
     bridge_id = $spec.id; runtime_verified = $false; selected_source = 'bundled-bridge'
     license = $spec.license; source_url = "https://github.com/lrnolivia/rtxForge/tree/$productHead/providers/skynizz-bridge"
+}
+if ($candidate) {
+    $receipt.bridge_id = $candidate.id
+    $receipt.base_bridge_id = $spec.id
+    $receipt.base_patch_sha256 = $spec.patch_sha256
+    $receipt.patch_sha256 = $candidate.patch_sha256
+    $receipt.route_header_sha256 = $candidate.header_sha256
+    $receipt.candidate_only = $true
+    $receipt.default_promoted = $false
 }
 $receipt | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $payload 'rtxforge-bridge.json') -Encoding utf8
 $archiveName = 'rtxForge-Skynizz-' + $spec.upstream.tag + '-MFG.zip'

@@ -560,6 +560,8 @@ def main() -> int:
         if not line:
             continue
         request = json.loads(line)
+        # A long-lived helper must not retain every completed request thread.
+        workers[:] = [worker for worker in workers if worker.is_alive()]
         if request.get("method") == "cancel":
             handle(request)  # answered immediately, even while an operation runs
         else:

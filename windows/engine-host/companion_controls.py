@@ -471,7 +471,7 @@ class Controls:
             self.last_pid.pop(game['key'], None)
             self.preset_errors.pop(game['key'], None)
             self._start_watcher()
-            return {'saved': True, 'detail': 'Saved in rtxForge. Applies when connected, including the current session, while rtxForge is running.'}
+            return {'saved': True, 'detail': 'Preset saved. The overlay helper applies it when this game connects.'}
 
     def forget(self, params):
         with self.lock:

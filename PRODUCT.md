@@ -18,7 +18,7 @@ Manage compatible Neural Rendering (NR), Multi Frame Generation (MFG) and DLSS r
 
 ## Operating Context
 
-The desktop application and controller-oriented Game Mode share the package engine. Package support depends on the game, renderer, hardware and installed runtime. A Windows companion must remain accessible above a windowed or borderless game through a configurable keyboard shortcut while rtxForge is running.
+The desktop application and controller-oriented Game Mode share the package engine. Package support depends on the game, renderer, hardware and installed runtime. A Windows companion remains accessible above a windowed or borderless game through a configurable keyboard shortcut and an independent overlay helper. The main rtxForge window can close. Panel polling stops while hidden; animations use a short compositor scale and fade and respect reduced-motion settings.
 
 ## Capabilities and Constraints
 

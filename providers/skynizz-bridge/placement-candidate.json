@@ -4,9 +4,9 @@
   "base_bridge_id": "skynizz-ada-mfg-8",
   "base_patch_sha256": "c4f179856aabae24f3f9559f7d093027296d33f7298f524888174859c1c67f7c",
   "patch": "nr-placement.patch",
-  "patch_sha256": "51d8d69b5649b303e4bc65e619b7507cfdbfb8de0770f093f2791fdb059fbf33",
+  "patch_sha256": "80bd5bfc8634334ae4f79122a64128f9f7a654f952db279c6d186b0cda3b32b2",
   "header": "ForgeNrRoute.h",
-  "header_sha256": "e95427e0983d37f361e19ac436c0c255e7e8c38e5ceedfe03f479b89fbb9b86a",
+  "header_sha256": "fac5ef22a6a4a6634743aaff10d3edc2046d4c6374f06fd6d6733dbe6fedfd61",
   "runtime_verified": false,
   "default_promoted": false
 }

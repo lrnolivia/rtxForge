@@ -3,6 +3,44 @@
 
 namespace ForgeNrRoute
 {
+struct Observation
+{
+    unsigned int actual = 0, reason = 0;
+    unsigned int modelWidth = 0, modelHeight = 0, tick = 0;
+    bool reduced = false, requestedBefore = false;
+};
+
+// Publish only completed upscales. A concurrent FG snapshot keeps the previous
+// completed observation while the next model evaluation is in progress.
+class Observations
+{
+    Observation pending, completed;
+    bool rayReconstruction = false;
+public:
+    void Begin(bool requestedBefore, bool rr)
+    {
+        pending = {}; pending.requestedBefore = requestedBefore; rayReconstruction = rr;
+    }
+    void ModelEvaluated(bool before, unsigned int width, unsigned int height, bool reduced)
+    {
+        pending.actual = before ? 2 : 3;
+        pending.modelWidth = width; pending.modelHeight = height;
+        pending.reduced = before && reduced;
+    }
+    void Finish(bool success, bool enabled, unsigned int tick)
+    {
+        if (!success || !enabled)
+        {
+            pending.actual = success ? 1 : 4; pending.reason = success ? 0 : 3;
+            pending.modelWidth = pending.modelHeight = 0; pending.reduced = false;
+        }
+        else if (pending.actual == 0) { pending.actual = 4; pending.reason = 4; }
+        else if (pending.requestedBefore && pending.actual == 3) pending.reason = rayReconstruction ? 1 : 2;
+        pending.tick = tick; completed = pending;
+    }
+    Observation Published() const { return completed; }
+};
+
 struct FlagScope
 {
     bool& flag;

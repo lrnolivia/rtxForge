@@ -74,5 +74,30 @@ int main()
         throw std::runtime_error("dispatch exception");
     }
     catch (const std::runtime_error&) { need(!preDispatch); }
+    ForgeNrRoute::Observations observation;
+    observation.Begin(true, true);
+    observation.ModelEvaluated(false, 1920, 1080, false);
+    need(observation.Published().actual == 0); // No partial publication.
+    observation.Finish(true, true, 1000);
+    auto actual = observation.Published();
+    need(actual.actual == 3 && actual.reason == 1 && actual.requestedBefore && actual.modelWidth == 1920 && !actual.reduced);
+    observation.Begin(true, false);
+    observation.ModelEvaluated(true, 1280, 720, true);
+    need(observation.Published().actual == 3 && observation.Published().tick == 1000);
+    observation.Finish(true, true, 1100);
+    actual = observation.Published();
+    need(actual.actual == 2 && actual.reason == 0 && actual.reduced && actual.modelWidth == 1280);
+    observation.Begin(true, false); observation.Finish(true, true, 1200);
+    actual = observation.Published();
+    need(actual.actual == 4 && actual.reason == 4 && actual.modelWidth == 0);
+    observation.Begin(true, false); observation.ModelEvaluated(true, 1280, 720, true);
+    observation.Finish(false, true, 1300); actual = observation.Published();
+    need(actual.actual == 4 && actual.reason == 3 && actual.modelWidth == 0 && !actual.reduced);
+    observation.Begin(false, false); observation.Finish(true, false, 1400);
+    actual = observation.Published(); need(actual.actual == 1 && actual.reason == 0 && actual.modelWidth == 0);
+    observation.Begin(true, false); observation.ModelEvaluated(false, 1920, 1080, false);
+    observation.Finish(true, true, 1500); actual = observation.Published();
+    need(actual.actual == 3 && actual.reason == 2 && actual.modelWidth == 1920);
     std::cout << "PASS: " << cases + 2 << " native/internal SR, RR, FG, off, fallback and restoration cases\n";
+    std::cout << "PASS: completed-only observations, actual model sizes, RR/pre fallback, off and failed upscale\n";
 }

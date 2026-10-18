@@ -1,21 +1,23 @@
 diff --git a/OptiScaler/dlssnr/DlssNrFeature_Dx12.h b/OptiScaler/dlssnr/DlssNrFeature_Dx12.h
-index 6a0f55f..13e41c0 100644
+index 6a0f55f..cc0914a 100644
 --- a/OptiScaler/dlssnr/DlssNrFeature_Dx12.h
 +++ b/OptiScaler/dlssnr/DlssNrFeature_Dx12.h
-@@ -45,6 +45,20 @@ bool EvaluateBeforeUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramet
+@@ -7,6 +7,7 @@
+ 
+ #include <shaders/dlssnr/DlssNr_Common.h>
+ #include <nvsdk_ngx.h>
++#include "ForgeNrRoute.h"
+ 
+ // DLSS 5 Neural Rendering, run over the upscaler's output.
+ //
+@@ -45,6 +46,14 @@ bool EvaluateBeforeUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramet
                             ID3D12CommandQueue* timingQueue = nullptr);
  void EndBeforeUpscale(NVSDK_NGX_Parameter* params);
  
 +// Observed evaluation, distinct from the requested PreSr setting. Model size is
 +// published only after a successful model evaluate in this upscale; FG never
 +// resets it. Codes are shared with companion protocol 6.
-+struct PlacementStats
-+{
-+    unsigned int actual = 0; // unknown, off, before, after, no evaluation
-+    unsigned int reason = 0; // none, RR contract, pre unavailable, upscale failed, no model evaluate
-+    unsigned int modelWidth = 0, modelHeight = 0, tick = 0;
-+    bool reduced = false, requestedBefore = false;
-+};
++using PlacementStats = ForgeNrRoute::Observation;
 +void BeginUpscalerEvaluation(bool rayReconstruction);
 +void FinishUpscalerEvaluation(bool success);
 +PlacementStats GetPlacementStats();
@@ -151,7 +153,7 @@ index e38af95..371135b 100644
  }
  
 diff --git a/OptiScaler/shaders/dlssnr/DlssNr_Dx12.cpp b/OptiScaler/shaders/dlssnr/DlssNr_Dx12.cpp
-index 9760879..d110091 100644
+index 9760879..0076425 100644
 --- a/OptiScaler/shaders/dlssnr/DlssNr_Dx12.cpp
 +++ b/OptiScaler/shaders/dlssnr/DlssNr_Dx12.cpp
 @@ -3,6 +3,7 @@
@@ -162,17 +164,16 @@ index 9760879..d110091 100644
  
  
  #include <dlssnr/DlssNr_Capture.h>
-@@ -540,6 +541,9 @@ struct PreSrState
+@@ -540,6 +541,8 @@ struct PreSrState
  };
  
  PreSrState g_preSr;
-+DlssNr::PlacementStats g_placement;
++ForgeNrRoute::Observations g_placement;
 +std::mutex g_placementMutex;
-+bool g_placementRr = false;
  
  // Set around the pre-SR dispatch, so the pass knows its target is the copy rather than the output.
  bool g_preSrDispatch = false;
-@@ -3864,6 +3868,17 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
+@@ -3864,6 +3867,14 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
      }
  
      g_nr.passesRun = passesReady;
@@ -180,17 +181,14 @@ index 9760879..d110091 100644
 +        std::lock_guard lock(g_placementMutex);
 +        if (result == NVSDK_NGX_Result_Success)
 +        {
-+            g_placement.actual = g_preSrDispatch ? 2 : 3;
-+            g_placement.modelWidth = workWidth;
-+            g_placement.modelHeight = workHeight;
-+            g_placement.reduced = g_preSrDispatch && cfg.DlssNrPreSrReduced.value_or_default() &&
-+                                  workWidth < width && workHeight < height;
++            g_placement.ModelEvaluated(g_preSrDispatch, workWidth, workHeight,
++                cfg.DlssNrPreSrReduced.value_or_default() && workWidth < width && workHeight < height);
 +        }
 +    }
  
      if (g_ngxTime != nullptr)
          g_ngxTime->End(cmdList);
-@@ -5008,13 +5023,14 @@ LiveStats GetLiveStats()
+@@ -5008,13 +5019,14 @@ LiveStats GetLiveStats()
  
      s.valid = g_live.count > 0;
      s.enabled = EffEnabled(cfg);
@@ -208,7 +206,7 @@ index 9760879..d110091 100644
      s.benchmark = g_bench.active;
      s.mode = g_bench.active ? BenchmarkPhaseName(g_bench.phase) : CompareModeName((CompareMode) g_userCompare);
      s.compare = (CompareMode) g_userCompare;
-@@ -5024,6 +5040,46 @@ LiveStats GetLiveStats()
+@@ -5024,6 +5036,26 @@ LiveStats GetLiveStats()
  
  namespace DlssNr
  {
@@ -217,45 +215,25 @@ index 9760879..d110091 100644
 +    // A failed upscale must not leave a pre-SR latch for the next RR frame.
 +    g_preSr.ranThisFrame = false;
 +    std::lock_guard lock(g_placementMutex);
-+    g_placement = {};
-+    g_placement.requestedBefore = EffPreSr(*Config::Instance());
-+    g_placementRr = rayReconstruction;
++    g_placement.Begin(EffPreSr(*Config::Instance()), rayReconstruction);
 +}
 +
 +void FinishUpscalerEvaluation(bool success)
 +{
 +    std::lock_guard lock(g_placementMutex);
-+    if (!success)
-+    {
-+        g_placement.actual = 4; g_placement.reason = 3;
-+        g_placement.modelWidth = g_placement.modelHeight = 0;
-+        g_placement.reduced = false;
-+    }
-+    else if (!EffEnabled(*Config::Instance()))
-+    {
-+        g_placement.actual = 1; g_placement.reason = 0;
-+        g_placement.modelWidth = g_placement.modelHeight = 0;
-+        g_placement.reduced = false;
-+    }
-+    else if (g_placement.actual == 0)
-+    {
-+        g_placement.actual = 4; g_placement.reason = 4;
-+    }
-+    else if (g_placement.requestedBefore && g_placement.actual == 3)
-+        g_placement.reason = g_placementRr ? 1 : 2;
-+    g_placement.tick = GetTickCount();
++    g_placement.Finish(success, EffEnabled(*Config::Instance()), GetTickCount());
 +}
 +
 +PlacementStats GetPlacementStats()
 +{
 +    std::lock_guard lock(g_placementMutex);
-+    return g_placement;
++    return g_placement.Published();
 +}
 +
  void RetryAfterFailure()
  {
      g_nr.failed = false;
-@@ -5402,9 +5458,10 @@ bool EvaluateBeforeUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramet
+@@ -5402,9 +5434,10 @@ bool EvaluateBeforeUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramet
  
      // The pass, on the copy. Whatever it does or declines to do this frame, the copy holds at least the
      // game's own colour, so handing it over is always safe.

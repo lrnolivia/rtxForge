@@ -25,11 +25,14 @@ def decorate(e, rows):
             target = t.safe(Path(row['game']) / t.relative(row['exe'])).parent
             baseline = e.load_baseline(target, readonly=True)
             fstate = feeder.state(e, target) if (target / 'dlss5-feed.addon64').is_file() else None
-            managed = bool(baseline and baseline.get('status') == 'active' or fstate and fstate.get('status') == 'active')
+            managed = bool(baseline and baseline.get('status') == 'active' or fstate and fstate.get('status') == 'active'
+                           or row.get('adaptable'))
             detected = (target / 'OptiScaler.ini').is_file() or (target / 'dlss5-feed.addon64').is_file()
             row.update(package_detected=detected, managed=managed, adoption_available=detected and not managed)
             if detected:
                 row['installed'] = True
+                if not managed:
+                    row['installed_on'] = None
             if baseline and baseline.get('offline_route'):
                 # Do not hide the anti-cheat flag. A separate scoped policy
                 # admits management only while the reviewed route still matches.

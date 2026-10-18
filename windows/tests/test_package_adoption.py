@@ -65,8 +65,12 @@ def review(row,clean=False):
     r=a.prepare(host.service.config,[row],'adopt-clean' if clean else 'adopt',settings)
     assert len(r['plans'])==1,r['blocked']
     return r
-row,target=game();before=files(target)
+row,target=game();before=files(target);row['installed_on']='windows'
 a.decorate(module(host.service.config),[row]);assert row['adoption_available'] and row['installed'] and not row['managed']
+assert row['installed_on'] is None,'unmanaged files must not claim installation by rtxForge'
+foreign=dict(row,adaptable=True,installed_on='linux')
+a.decorate(module(host.service.config),[foreign])
+assert foreign['managed'] and not foreign['adoption_available'] and foreign['installed_on']=='linux'
 r=review(row);a.execute(r)
 assert files(target)==before
 e=module(host.service.config);g=b.game(e,row);baseline=e.load_baseline(target)

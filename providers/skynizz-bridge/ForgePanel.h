@@ -89,7 +89,7 @@ inline bool CapturingShortcut()
 }
 inline bool ShortcutReleased()
 {
-    if (!enabled || (!nrAllowed && !mfgAllowed) || !OptiInput::IsFocused() || key <= 0 || key >= 256 || key == VK_INSERT || key == VK_F12) return false;
+    if (!enabled || !OptiInput::IsFocused() || key <= 0 || key >= 256 || key == VK_INSERT || key == VK_F12) return false;
     const int held = (OptiInput::IsKeyDown(VK_MENU) ? 1 : 0) | (OptiInput::IsKeyDown(VK_CONTROL) ? 2 : 0) | (OptiInput::IsKeyDown(VK_SHIFT) ? 4 : 0);
     return OptiInput::IsKeyReleased(key) && held == modifiers;
 }

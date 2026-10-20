@@ -42,7 +42,7 @@ export function createGallery() {
     stage.classList.add('is-pending'); stage.setAttribute('aria-busy', 'false');
     schedule();
   }
-  function show(next, { manual = false, animate = true, selection = 0 } = {}) {
+  function show(next, { manual = false, animate = true, selection = hovering ? 1 : 0 } = {}) {
     clearTimeout(timer); cancelTransition();
     index = next; failed = false; const current = ++generation;
     if (manual) pause();
@@ -117,11 +117,17 @@ export function createGallery() {
   rotation.addEventListener('pointerdown', () => { pointerRotation = rotating; });
   rotation.addEventListener('click', event => { rotating = !(event.detail ? (pointerRotation ?? rotating) : rotating); pointerRotation = undefined; rotationState(); });
   gallery.addEventListener('focusin', pause);
-  gallery.addEventListener('pointerenter', event => {
-    if (event.pointerType === 'mouse') { hovering = true; schedule(); }
+  stage.addEventListener('pointerenter', event => {
+    if (event.pointerType !== 'mouse') return;
+    hovering = true;
+    if (captures[index]?.[1].selected && frame === 0) show(index, { selection: 1 });
+    else schedule();
   });
-  gallery.addEventListener('pointerleave', event => {
-    if (event.pointerType === 'mouse') { hovering = false; schedule(); }
+  stage.addEventListener('pointerleave', event => {
+    if (event.pointerType !== 'mouse') return;
+    hovering = false;
+    if (captures[index]?.[1].selected && frame === 1) show(index, { selection: 0 });
+    else schedule();
   });
   document.addEventListener('visibilitychange', schedule);
   addEventListener('pagehide', () => clearTimeout(timer));

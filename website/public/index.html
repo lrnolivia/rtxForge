@@ -12,6 +12,7 @@
   <script src="app.js" defer></script>
 </head>
 <body>
+  <div class="hero-art" aria-hidden="true"><img src="assets/steam-hero.webp" width="3840" height="1240" alt="" fetchpriority="high"></div>
   <a class="skip-link" href="#main">Skip to content</a>
   <div class="page">
     <header class="header">
@@ -21,10 +22,9 @@
         </picture>
         <span class="brand-name">rtxForge</span><span class="beta">Beta</span>
       </a>
-      <nav class="header-links" aria-label="Main navigation">
-        <a href="https://github.com/lrnolivia/rtxForge" target="_blank" rel="noopener">GitHub <span aria-hidden="true">↗</span></a>
+      <div class="header-links">
         <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light appearance"><img id="theme-icon" src="assets/sun.svg" width="20" height="20" alt=""></button>
-      </nav>
+      </div>
     </header>
 
     <main id="main">
@@ -39,7 +39,6 @@
 
       <section id="platform-content" class="hero" role="tabpanel" aria-labelledby="tab-linux" tabindex="0">
         <div class="hero-copy">
-          <img class="hero-mark" id="hero-mark" src="assets/rtxforge.svg" width="112" height="112" alt="rtxForge app icon">
           <h1>New tricks for<br>old cards.</h1>
           <p class="intro">Manage multi-frame generation, experimental neural rendering, and DLSS updates across your game library.</p>
           <p class="platform-copy" id="platform-copy">A native Linux app. Built with GTK and libadwaita.</p>
@@ -85,6 +84,7 @@
     <footer class="footer">
       <a class="loew" href="https://loew.fi" target="_blank" rel="noopener">loew.fi</a>
       <div class="footer-links">
+        <a href="https://github.com/lrnolivia/rtxForge" target="_blank" rel="noopener">GitHub <span aria-hidden="true">↗</span></a>
         <a id="report-link" href="https://github.com/lrnolivia/rtxForge/issues/new" target="_blank" rel="noopener">Report a bug <span aria-hidden="true">↗</span></a>
         <a href="https://github.com/lrnolivia/rtxForge/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
       </div>

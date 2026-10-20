@@ -99,7 +99,6 @@
     byId('theme-icon').src = next === 'light' ? 'assets/sun.svg' : 'assets/moon.svg';
     byId('theme-toggle').setAttribute('aria-label', `Switch to ${next} appearance`);
     byId('brand-mark').src = theme === 'light' ? 'assets/rtxforge-light.svg' : 'assets/rtxforge.svg';
-    byId('hero-mark').src = byId('brand-mark').src;
     if (persist) storage.set('rtxforge-theme', theme);
   }
   const savedTheme = storage.get('rtxforge-theme');

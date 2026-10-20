@@ -161,6 +161,7 @@ export function createGallery() {
     interfaces.forEach((button, i) => {
       button.setAttribute('aria-selected', String(i === next)); button.tabIndex = i === next ? 0 : -1;
     });
+    byId('gallery-content').setAttribute('aria-labelledby', interfaces[next].id);
     pause(); setPlatform(os);
   }
   interfaces.forEach((button, i) => {

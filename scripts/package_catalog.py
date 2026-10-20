@@ -258,6 +258,8 @@ def load_custom_payload(record):
 def community_sources():
     """Discovery links, explicitly separate from tested deployment adapters."""
     return [
+        {'name':'Universal MFG Unlocker 1.6.1','url':'https://github.com/dashdogy/MFG-Unlocker/releases/tag/v1.6.1',
+         'note':'Pinned integration candidate. Upstream RTX 30/40 support; RTX 20 and the RTX 30 OptiScaler DLSSG route remain experimental. Requires OptiScaler 10; no deployment adapter yet.'},
         {'name':'wilsjo2 · NR Pre-SR Multipass','url':'https://github.com/wilsjo2/OptiScaler-DLSSNR-PreSR-Multipass',
          'note':'Experimental NR for RTX 20–50. Upstream support is not rtxForge runtime validation; custom-layout review required.'},
         {'name':'Dagherbou · OptiScaler DLSSNR','url':'https://github.com/Dagherbou/OptiScaler_DLSSNR',

@@ -25,6 +25,7 @@ class InventoryTest(unittest.TestCase):
         dlss = self.file('Binaries/Win64/NVNGX_DLSS.DLL')
         fg = self.file('Binaries/Win64/sl.dlss_g.extra.dll')
         self.file('setup.exe'); self.file('data/not-an-exe.exe.pak')
+        self.file('data/.exe')
         self.file('data/Game.pak')
         upscalers, exes, anti = discovery.scan_files(self.root)
         self.assertEqual(set(upscalers), {dlss, fg})

@@ -349,7 +349,7 @@ def scan_files(root: Path) -> tuple[list[Path], list[Path], Optional[Path]]:
         name = filename.lower()
         if name in UPSCALE_NAMES or name.startswith('sl.dlss_g'):
             upscalers.append(parent / filename)
-        if name.endswith('.exe') and (not EXE_BAD_RE.search(name)):
+        if len(name) > 4 and name.endswith('.exe') and (not EXE_BAD_RE.search(name)):
             exes.append(parent / filename)
         if anti is None:
             if parent is not prior_parent:

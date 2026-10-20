@@ -80,6 +80,7 @@ function setPlatform(os, { updateUrl = false, announce = false } = {}) {
   byId('guide-link').href = data.guide;
   byId('guide-link').textContent = data.guideLabel;
   byId('footer-guide-link').href = data.guide;
+  byId('faq-guide-link').href = data.guide;
   byId('platform-content').setAttribute('aria-labelledby', `tab-${os}`);
   for (const tab of tabs) {
     const selected = tab.dataset.platform === os;

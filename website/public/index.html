@@ -3,10 +3,26 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="rtxForge Beta for Linux and Windows. Try multi-frame generation, experimental neural rendering, and DLSS updates in your PC games.">
+  <meta name="description" content="Deploy experimental neural rendering, bring multi-frame generation to RTX 20, 30 and 40 series, and update DLSS in compatible games. Native apps for Linux and Windows.">
   <link rel="canonical" href="https://rtxforge.loew.fi/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="rtxForge">
+  <meta property="og:title" content="rtxForge — New tricks for old cards">
+  <meta property="og:description" content="Experimental neural rendering, multi-frame generation and DLSS updates for compatible games. Native apps for Linux and Windows.">
+  <meta property="og:url" content="https://rtxforge.loew.fi/">
+  <meta property="og:image" content="https://rtxforge.loew.fi/assets/rtxforge-banner.png">
+  <meta property="og:image:secure_url" content="https://rtxforge.loew.fi/assets/rtxforge-banner.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1600">
+  <meta property="og:image:height" content="517">
+  <meta property="og:image:alt" content="rtxForge — new tricks for old cards. The rtxForge icon and wordmark beside a graphics card fan.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="rtxForge — New tricks for old cards">
+  <meta name="twitter:description" content="Experimental neural rendering, multi-frame generation and DLSS updates for compatible games. Native apps for Linux and Windows.">
+  <meta name="twitter:image" content="https://rtxforge.loew.fi/assets/rtxforge-banner.png">
+  <meta name="twitter:image:alt" content="rtxForge — new tricks for old cards. The rtxForge icon and wordmark beside a graphics card fan.">
   <meta name="color-scheme" content="dark light">
-  <title>rtxForge Beta for Linux</title>
+  <title>rtxForge Beta — Linux and Windows</title>
   <link rel="icon" href="assets/rtxforge.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
   <script type="module" src="app.js"></script>
@@ -167,23 +183,60 @@
         <p class="feature-footnote">Game and GPU support depends on the installed provider. Neural rendering is experimental.</p>
       </section>
 
-      <section class="essentials" aria-label="Installation and support">
+      <section class="faq" aria-labelledby="faq-heading">
+        <h2 id="faq-heading">Frequently asked<br> questions.</h2>
+        <div class="faq-questions">
         <details id="requirements-details">
-          <summary><span>Before you install</span><span class="disclosure" aria-hidden="true">+</span></summary>
+          <summary><span>Which GPUs and games work?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary>
           <div class="details-body">
             <p id="requirements-copy">Linux x86_64 with a working NVIDIA driver. Package-specific requirements are listed with each release.</p>
             <p>NR works with compatible RTX cards. MFG supports RTX 20, 30 and 40 series. Check compatibility for your game and installed provider. Neural rendering is experimental.</p>
             <p>Start with one game. Close it before making changes, review the files, and keep the original-file backups. Avoid protected online games and anti-cheat.</p>
           </div>
         </details>
+        <details>
+          <summary><span>Should I choose Beta or Development?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary>
+          <div class="details-body">
+            <p><strong>Start with Beta</strong>, the regular public testing release. Development is a moving release with the latest changes and unfinished features.</p>
+            <p>If a channel says <strong>coming soon</strong>, its release or a package for your OS has not been published yet. You can also download published packages from <a href="https://github.com/lrnolivia/rtxForge/releases" target="_blank" rel="noopener">GitHub Releases</a> under Assets.</p>
+          </div>
+        </details>
+        <details>
+          <summary><span>How do I get started?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary>
+          <div class="details-body">
+            <p>Download the app package for your OS and channel. In rtxForge, find one compatible game, choose your packages, tune presets, then review and install the features with the game closed.</p>
+            <a id="faq-guide-link" class="text-link" href="install.html?os=linux">Follow the installation guide <span aria-hidden="true">→</span></a>
+          </div>
+        </details>
+        <details>
+          <summary><span>Can I undo an installation?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary>
+          <div class="details-body">
+            <p><strong>Restore Original Files</strong> uses your feature-install backups to remove a managed installation. Native DLL updates made through <strong>DLSS Files</strong> have their own restore controls.</p>
+            <p>Keep your backups and recovery records. If a game update or another mod has changed the files, review any restore conflict before replacing them.</p>
+          </div>
+        </details>
+        <details>
+          <summary><span>Can I use the same games in a dual-boot setup?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary>
+          <div class="details-body">
+            <p>That is the goal: install a package on either OS, then adapt the same games on the other in one click. <strong>Dual-boot adaptation is a work in progress.</strong> Use the adaptation review offered by your build; launch settings differ between Linux and Windows.</p>
+          </div>
+        </details>
+        <details>
+          <summary><span>Are Game Mode and the overlay finished?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary>
+          <div class="details-body">
+            <p>Both are works in progress. Game Mode is the controller interface for browsing your library, game details and presets. The in-game overlay is in development for Windows.</p>
+            <p>Availability and controls depend on your OS and build. Check the release notes for the version you download.</p>
+          </div>
+        </details>
         <details id="support-details">
-          <summary><span>Found a bug?</span><span class="disclosure" aria-hidden="true">+</span></summary>
+          <summary><span>Found a bug?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary>
           <div class="details-body">
             <p>Open <strong>Settings → Recovery → Library Reports → Preview Support Report</strong> in rtxForge. Review the report, export it, then attach it to your bug report.</p>
             <p>Include your platform, GPU and driver, game, provider, and what happened. Logs and notes are optional. Check the export before sharing; redaction can miss personal information.</p>
             <a id="support-issue-link" class="text-link" href="https://github.com/lrnolivia/rtxForge/issues/new" target="_blank" rel="noopener">Open a bug report on GitHub <span aria-hidden="true">↗</span></a>
           </div>
         </details>
+        </div>
       </section>
       <noscript><p class="noscript"><a href="https://github.com/lrnolivia/rtxForge/releases">Check Beta and Development releases on GitHub</a>.</p></noscript>
     </main>

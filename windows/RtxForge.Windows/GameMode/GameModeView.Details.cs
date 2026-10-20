@@ -247,7 +247,7 @@ public sealed partial class GameModeView
                     var tuning = shell.GameTuning(g);
                     var (rows, value) = PresetRows(tuning, g.Installed && !g.Blocked, g.RuntimeProvider != "skynizz");
                     content.Children.Add(ui.P("Only this game changes. Review the changes before applying."));
-                    content.Children.Add(ui.Group(rows));
+                    foreach (var row in rows) content.Children.Add(row);
                     var apply = ui.Button("Apply to this game", () => _ = RunOperationAsync("apply", [g], value()), GmKind.Primary, 0.85,
                         enabled: g.Installed && !g.Blocked);
                     content.Children.Add(apply.With(b => b.HorizontalAlignment = HorizontalAlignment.Left));
@@ -435,31 +435,98 @@ public sealed partial class GameModeView
         }
     }
 
-    /// <summary>NR Strength / Sharpening / Frame generation steppers (Left/Right adjust).</summary>
+    /// <summary>Compact controller cards retain the overlay vocabulary and original values.</summary>
     (List<UIElement> Rows, Func<Tuning> Value) PresetRows(Tuning initial, bool enabled = true, bool legacy = false)
     {
         var values = FeatureControlSchema.Resolve(initial);
         var advanced = shell.Settings.OverlayControls == "classic";
-        var rows = new List<UIElement>();
-        foreach (var group in FeatureControlSchema.Shared.Groups)
+        var controls = FeatureControlSchema.Shared.Controls;
+        FeatureControl Definition(string key) => controls.Single(f => f.Key == key);
+        Controls.PresetColumns Pair(params UIElement[] children)
         {
-            rows.Add(ui.Text(group.Name, 1.05, weight: FontWeights.SemiBold).With(text => text.Margin = new Thickness(t.Px(16), t.Px(20), 0, t.Px(8))));
-            foreach (var field in FeatureControlSchema.Shared.Controls.Where(f => f.Group == group.Name))
-            {
-                var available = enabled && FeatureControlSchema.Available(field, shell.Mode, legacy);
-                rows.Add(ui.StepperRow(field.Key == "enabled" ? "Enable NR on launch" : field.Caption(advanced),
-                    !available ? "Unavailable for this package or feature selection." : field.Key == "skin" ? "−1 follows local structure."
-                    : field.Key == "multiplier" ? "Enable frame generation in the game." : null,
-                    () => field.Display(FeatureControlSchema.Number(values, field), advanced), direction =>
-                    {
-                        var current = FeatureControlSchema.Number(values, field);
-                        var next = field.Kind == "toggle" ? current == 0 ? 1 : 0
-                            : field.Values.Length > 0 ? field.Values[Math.Clamp(Array.IndexOf(field.Values, current) + direction, 0, field.Values.Length - 1)]
-                            : Math.Clamp(Math.Round(current + direction * field.Step, 2), field.Min, field.Max);
-                        FeatureControlSchema.Put(values, field, next);
-                    }, available));
-            }
+            var columns = new Controls.PresetColumns(t.Px(200), 2) { ColumnSpacing = t.Px(12), RowSpacing = t.Px(12) };
+            foreach (var child in children) columns.Children.Add(child); return columns;
         }
+        Border Card(string title, params UIElement[] children)
+        {
+            var section = new StackPanel { Spacing = t.Px(12), Padding = new Thickness(t.Px(20)) };
+            section.Children.Add(ui.Text(title, 1.05, weight: FontWeights.SemiBold));
+            foreach (var child in children) section.Children.Add(child);
+            return new Border { Child = section, Background = GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(16)), VerticalAlignment = VerticalAlignment.Top };
+        }
+        UIElement Field(FeatureControl field)
+        {
+            var available = enabled && FeatureControlSchema.Available(field, shell.Mode, legacy);
+            return ui.StepperRow(field.Key == "enabled" ? "Enable NR on launch" : field.Caption(advanced),
+                !available ? "Unavailable for this package." : field.Key == "skin" ? "−1 follows local structure." : null,
+                () => field.Display(FeatureControlSchema.Number(values, field), advanced), direction =>
+                {
+                    var current = FeatureControlSchema.Number(values, field);
+                    var next = field.Kind == "toggle" ? current == 0 ? 1 : 0
+                        : field.Values.Length > 0 ? field.Values[Math.Clamp(Array.IndexOf(field.Values, current) + direction, 0, field.Values.Length - 1)]
+                        : Math.Clamp(Math.Round(current + direction * field.Step, 2), field.Min, field.Max);
+                    FeatureControlSchema.Put(values, field, next);
+                }, available, compact: true);
+        }
+        UIElement Choices(string key)
+        {
+            var definition = Definition(key);
+            var line = new Controls.PresetColumns(t.Px(70), definition.Values.Length) { ColumnSpacing = t.Px(4), RowSpacing = t.Px(4) };
+            var buttons = new List<Button>();
+            void Select(double value)
+            {
+                FeatureControlSchema.Put(values, definition, value);
+                for (var i = 0; i < buttons.Count; i++)
+                {
+                    buttons[i].Background = GmTheme.B(definition.Values[i] == value ? t.SegmentSelected : t.Card);
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(buttons[i], definition.Label + " " + definition.Choices[i] + (definition.Values[i] == value ? " selected" : ""));
+                }
+            }
+            for (var i = 0; i < definition.Values.Length; i++)
+            {
+                var number = definition.Values[i];
+                var button = ui.Button(definition.Choices[i], () => Select(number), GmKind.Card, .85,
+                    enabled && FeatureControlSchema.Available(definition, shell.Mode, legacy), radius: 8,
+                    padding: new Thickness(t.Px(10)), minHeight: 42);
+                button.HorizontalAlignment = HorizontalAlignment.Stretch;
+                Key(button, "preset-" + key + "-" + i); buttons.Add(button); line.Children.Add(button);
+            }
+            Select(FeatureControlSchema.Number(values, definition)); return line;
+        }
+        UIElement Disclosure(string title, params UIElement[] children)
+        {
+            var body = new StackPanel { Spacing = t.Px(12), Visibility = Visibility.Collapsed };
+            foreach (var child in children) body.Children.Add(child);
+            var icon = ui.Icon("", .7);
+            var heading = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12) };
+            heading.Children.Add(icon); heading.Children.Add(ui.Text(title, .9, weight: FontWeights.SemiBold));
+            Button? button = null;
+            button = ui.Button(heading, () =>
+            {
+                body.Visibility = body.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+                icon.Glyph = body.Visibility == Visibility.Visible ? "" : "";
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button!, title + (body.Visibility == Visibility.Visible ? " expanded" : " collapsed"));
+            }, GmKind.Transparent, radius: 8, padding: new Thickness(t.Px(8)), minHeight: 42, name: title + " collapsed");
+            Key(button, "preset-disclosure-" + title);
+            var group = new StackPanel { Spacing = t.Px(12) }; group.Children.Add(button); group.Children.Add(body); return group;
+        }
+        var rows = new List<UIElement>
+        { Card("Frame generation", ui.P("Requested multiplier · enable frame generation in the game.", .75), Choices("multiplier")) };
+        var primary = new Controls.PresetColumns(t.Px(480), 2) { ColumnSpacing = t.Px(16), RowSpacing = t.Px(16) };
+        primary.Children.Add(Card("Neural rendering", Field(Definition("enabled")), Choices("style"), Field(Definition("intensity")),
+            Pair(Field(Definition("preset")), Field(Definition("passes")))));
+        var secondary = new StackPanel { Spacing = t.Px(16) };
+        secondary.Children.Add(Card("Image tuning", Pair(Field(Definition("detail")), Field(Definition("colour"))),
+            Disclosure("Fine tuning", Pair(Field(Definition("structure")), Field(Definition("tone"))), Pair(Field(Definition("skin")), Field(Definition("auto_mask"))))));
+        secondary.Children.Add(Card("Sharpening", Disclosure("Filter controls", Field(Definition("sharpen")),
+            Pair(Field(Definition("sharpen_shader")), Field(Definition("sharp_override"))), Field(Definition("sharpness")),
+            Disclosure("Motion sharpening", Field(Definition("motion_sharpen")), Field(Definition("motion_sharpness"))))));
+        var performance = controls.Where(f => f.Group == "Performance").Select(Field).ToArray();
+        var performanceRows = new List<UIElement>();
+        for (var i = 0; i < performance.Length; i += 2)
+            performanceRows.Add(i + 1 < performance.Length ? Pair(performance[i], performance[i + 1]) : performance[i]);
+        secondary.Children.Add(Card("Performance", Disclosure("Rendering and cache", performanceRows.ToArray())));
+        primary.Children.Add(secondary); rows.Add(primary);
         return (rows, () => FeatureControlSchema.Tuning(values));
     }
 }

@@ -30,16 +30,16 @@ public sealed partial class GameModeView
         page.Children.Add(head);
         var (rows, value) = PresetRows(shell.Settings.Presets);
         presetValue = value;
-        page.Children.Add(ui.Group(rows));
+        foreach (var row in rows) page.Children.Add(row);
         page.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12) }.With(note =>
         {
             note.Children.Add(ui.Icon("", 0.8, t.Muted));
             note.Children.Add(ui.P("Saved settings take effect on the next game launch. They do not verify the rendered effect.", 0.83));
         }));
         var configured = shell.Games.Where(g => g.Installed && !g.Blocked).ToList();
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(16) };
+        var actions = new Controls.PresetColumns(t.Px(230), 4) { ColumnSpacing = t.Px(12), RowSpacing = t.Px(12) };
         actions.Children.Add(ui.Button("Save preset", () => { SavePresets(); Toast("Library preset saved"); }, GmKind.Primary, .85));
-        actions.Children.Add(ui.Button($"Apply to all configured games ({configured.Count})", () => ApplyPresets(configured), GmKind.Primary, 0.85,
+        actions.Children.Add(ui.Button($"Review all games ({configured.Count})", () => ApplyPresets(configured), GmKind.Card, 0.85,
             enabled: configured.Count > 0).With(b => Key(b, "presets-apply")));
         actions.Children.Add(ui.Button("Select games to apply", () =>
         {
@@ -50,6 +50,7 @@ public sealed partial class GameModeView
             Toast("Select games, then Install selected or use Presets › Apply.");
         }, GmKind.Card, 0.85, enabled: configured.Count > 0));
         actions.Children.Add(ui.Button("Reset Presets", () => Render(), GmKind.Card, 0.85));
+        foreach (var action in actions.Children.OfType<Button>()) action.HorizontalAlignment = HorizontalAlignment.Stretch;
         page.Children.Add(actions);
         return new ScrollViewer { Content = page, HorizontalScrollMode = ScrollMode.Disabled };
     }

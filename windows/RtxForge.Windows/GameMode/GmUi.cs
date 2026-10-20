@@ -269,11 +269,11 @@ public sealed class GmUi(GmTheme t)
     /// .rf-stepper inside a whole-row focus target: Left/Right adjust (controller,
     /// keyboard) and the − / + glyphs are clickable.
     /// </summary>
-    public Button StepperRow(string title, string? description, Func<string> value, Action<int> adjust, bool enabled = true)
+    public Button StepperRow(string title, string? description, Func<string> value, Action<int> adjust, bool enabled = true, bool compact = false)
     {
         var shown = Text(value(), 1.18, enabled ? t.Fg : t.DisabledFg, FontWeights.Bold);
         shown.HorizontalAlignment = HorizontalAlignment.Center;
-        shown.MinWidth = t.Px(90);
+        shown.MinWidth = t.Px(compact ? 60 : 90);
         shown.TextAlignment = TextAlignment.Center;
         Border Step(string glyph, int delta)
         {
@@ -285,11 +285,20 @@ public sealed class GmUi(GmTheme t)
             if (enabled) border.Tapped += (_, e) => { adjust(delta); shown.Text = value(); e.Handled = true; };
             return border;
         }
-        var stepper = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(28), MinWidth = t.Px(220) };
+        var stepper = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(compact ? 12 : 28), MinWidth = compact ? 0 : t.Px(220) };
         stepper.Children.Add(Step("", -1));
         stepper.Children.Add(shown);
         stepper.Children.Add(Step("", 1));
-        var row = PreferenceRow(title, description, stepper);
+        FrameworkElement row;
+        if (compact)
+        {
+            var column = new StackPanel { Spacing = t.Px(8), Padding = new Thickness(t.Px(16), t.Px(12), t.Px(16), t.Px(12)) };
+            column.Children.Add(Text(title, .85, weight: FontWeights.SemiBold, wrap: true));
+            column.Children.Add(stepper);
+            if (description is not null) column.Children.Add(P(description, .7));
+            row = column;
+        }
+        else row = PreferenceRow(title, description, stepper);
         var button = Button(row, null, GmKind.Transparent, 1, enabled, radius: 0, padding: new Thickness(0), minHeight: 0);
         button.HorizontalAlignment = HorizontalAlignment.Stretch;
         button.HorizontalContentAlignment = HorizontalAlignment.Stretch;

@@ -23,26 +23,32 @@ public sealed partial class PresetsPage : Page
         tuning = new PresetControlsView(shell.Settings.Presets, shell.Settings.OverlayControls == "classic");
         tuning.Changed += (_, _) => Refresh();
 
-        var page = new StackPanel { Spacing = 8, Padding = new Thickness(36, 12, 36, 48) };
-        page.Children.Add(new TextBlock { Text = "Presets", Style = Prefs.GetStyle("ForgePageTitleTextStyle") });
-        page.Children.Add(Prefs.Label("The same NR, MFG and image controls as the overlay. Save them for new installs or apply them to configured games."));
-        tuning.Margin = new Thickness(0, 24, 0, 0);
-        page.Children.Add(tuning);
-        page.Children.Add(Prefs.Label("Saved settings take effect on the next game launch. They do not verify the rendered effect.", "ForgeCaptionDimTextStyle"));
+        var page = new Grid { RowSpacing = 20, Padding = new Thickness(36, 12, 36, 24) };
+        page.RowDefinitions.Add(new() { Height = GridLength.Auto });
+        page.RowDefinitions.Add(new() { Height = new GridLength(1, GridUnitType.Star) });
+        page.RowDefinitions.Add(new() { Height = GridLength.Auto });
+        var heading = new StackPanel { Spacing = 6 };
+        heading.Children.Add(new TextBlock { Text = "Presets", Style = Prefs.GetStyle("ForgePageTitleTextStyle") });
+        heading.Children.Add(Prefs.Label("Your defaults for new installs. Review games to apply them to existing packages."));
+        page.Children.Add(heading);
+        var scroll = new ScrollViewer { Content = tuning, HorizontalScrollMode = ScrollMode.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(0, 0, 4, 4) };
+        Grid.SetRow(scroll, 1); page.Children.Add(scroll);
 
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 16, 0, 0) };
-        applyAll = Prefs.ActionButton("Apply to all configured games", async (_, _) => await ApplyAllAsync(), accent: true, glyph: "");
-        actions.Children.Add(applyAll);
+        var footer = new StackPanel { Spacing = 8 };
+        var actions = new PresetColumns(180, 4) { ColumnSpacing = 8, RowSpacing = 8 };
+        applyAll = Prefs.ActionButton("Review all games", async (_, _) => await ApplyAllAsync(), glyph: "");
         actions.Children.Add(Prefs.ActionButton("Save preset", (_, _) => Save(), accent: true, glyph: ""));
-        actions.Children.Add(Prefs.ActionButton("Select games to apply presets", (_, _) => { Save(); shell.BeginPresetSelection(); }, glyph: ""));
+        actions.Children.Add(applyAll);
+        actions.Children.Add(Prefs.ActionButton("Choose games", (_, _) => { Save(); shell.BeginPresetSelection(); }, glyph: ""));
         reset = Prefs.ActionButton("Reset", (_, _) => { tuning.Value = shell.Settings.Presets; Refresh(); }, glyph: "");
         ToolTipService.SetToolTip(reset, "Discard unsaved preset changes.");
         actions.Children.Add(reset);
-        page.Children.Add(actions);
-        page.Children.Add(changed);
-        Content = new ScrollViewer { Content = page, HorizontalScrollMode = ScrollMode.Disabled };
+        foreach (var action in actions.Children.OfType<Button>()) action.HorizontalAlignment = HorizontalAlignment.Stretch;
+        footer.Children.Add(actions); footer.Children.Add(changed);
+        Grid.SetRow(footer, 2); page.Children.Add(footer); Content = page;
         // One centered column, as every page (Controls/PageMargins).
-        SizeChanged += (_, e) => page.Padding = PageMargins.For(e.NewSize.Width);
+        SizeChanged += (_, e) => page.Padding = PageMargins.For(e.NewSize.Width, bottom: 24);
         shell.GamesChanged += Refresh;
         Unloaded += (_, _) => shell.GamesChanged -= Refresh;
     }
@@ -60,7 +66,7 @@ public sealed partial class PresetsPage : Page
     void Refresh()
     {
         var count = Configured().Count;
-        applyAll.Content = Prefs.Content($"Apply to all configured games ({count})", "");
+        applyAll.Content = Prefs.Content($"Review all games ({count})", "");
         applyAll.IsEnabled = count > 0 && !shell.Busy;
         var dirty = tuning.HasChanges(shell.Settings.Presets);
         reset.IsEnabled = dirty;

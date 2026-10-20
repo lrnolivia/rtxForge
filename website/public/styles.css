@@ -85,12 +85,13 @@ body{position:relative;isolation:isolate}.page{position:relative;z-index:1}.hero
 .feature-play-options{display:grid;gap:16px;min-width:0}
 .feature-media{margin:32px 0 0}
 .feature-media img{display:block;width:100%;height:auto;border-radius:12px;box-shadow:0 14px 35px rgba(0,0,0,.2)}
-/* Card crops keep the original screenshots intact and fade into either page theme. */
-#feature-presets-media,#feature-game-mode-media{overflow:hidden;mask-image:linear-gradient(to bottom,transparent,#000 6%,#000 76%,transparent);-webkit-mask-image:linear-gradient(to bottom,transparent,#000 6%,#000 76%,transparent)}
-#feature-presets-media{aspect-ratio:2.25}
-#feature-presets-media img{width:114%;max-width:none;margin-left:-7%;transform:translateY(-15%);box-shadow:none}
-#feature-game-mode-media{aspect-ratio:1.6}
-#feature-game-mode-media img{width:160%;max-width:none;margin-left:-30%;transform:translateY(-30%);box-shadow:none}
+/* Isolate complete Presets cards from the native 1440 × 965 capture. */
+#feature-presets-media{position:relative;aspect-ratio:1305/600;overflow:hidden;border-radius:12px;box-shadow:0 14px 35px rgba(0,0,0,.16)}
+#feature-presets-media img{position:absolute;width:110.345%;max-width:none;height:auto;left:-7.203%;top:-26%;border-radius:0;box-shadow:none}
+/* Game Mode needs the whole screen and controller footer, with room to read it. */
+.feature-play>.feature-copy{grid-template-columns:1fr;gap:28px}
+#feature-game-mode-media{margin-top:28px}
+#feature-game-mode-media img{width:100%;height:auto}
 .feature-footnote{font-size:12px;color:var(--muted);line-height:1.7;margin:24px 4px 0}
 .faq{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:40px;align-items:start;margin-top:80px;padding-top:36px;border-top:1px solid var(--raised)}
 .faq>h2{font-size:36px;line-height:1.15;letter-spacing:-.6px;margin:13px 0 0}
@@ -132,6 +133,9 @@ body{position:relative;isolation:isolate}.page{position:relative;z-index:1}.hero
   .feature-subheading h4{font-size:23px}
   .feature-subcard p{font-size:14px}
   .feature-media{margin-top:28px}
+  /* On phones, focus the Presets illustration on the complete NR card. */
+  #feature-presets-media{aspect-ratio:642/387}
+  #feature-presets-media img{width:224.299%;left:-14.642%;top:-83.204%}
   .faq{grid-template-columns:1fr;gap:18px;margin-top:48px;padding-top:32px}
   .faq>h2{font-size:30px;margin:0}
   .faq>h2 br{display:none}

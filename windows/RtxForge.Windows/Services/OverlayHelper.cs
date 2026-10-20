@@ -41,18 +41,24 @@ public static class OverlayHelper
         {
             overlay.SetValue("UseOptiScaler", settings.OptiScalerUi ? 1 : 0, RegistryValueKind.DWord);
             overlay.SetValue("ShortcutKey", settings.OptiScalerHotkey == "F8" ? 0x77 : settings.OptiScalerHotkey == "Disabled" ? 0 : 0x2D, RegistryValueKind.DWord);
-            if (OverlayShortcut.TryParse(settings.PanelHotkey, out _, out var binding, out _))
-            {
-                overlay.SetValue("PanelKey", (int)binding.Key, RegistryValueKind.DWord);
-                overlay.SetValue("PanelModifiers", (int)binding.Modifiers, RegistryValueKind.DWord);
-            }
-            overlay.SetValue("Advanced", settings.OverlayControls == "classic" ? 1 : 0, RegistryValueKind.DWord);
-            overlay.SetValue("InGamePanel", settings.OverlayRenderer == "game" ? 1 : 0, RegistryValueKind.DWord);
         }
+        ConfigurePanel(settings);
         using var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
         if (settings.OverlayHelper && settings.OverlayStartWithWindows && settings.OverlayRenderer != "optiscaler")
             key.SetValue("rtxForge Overlay", StartupCommand(Environment.ProcessPath!), RegistryValueKind.String);
         else key.DeleteValue("rtxForge Overlay", throwOnMissingValue: false);
+    }
+
+    // The helper can start without the manager. Publish only our panel's
+    // next-launch preferences; leave other menus and Windows startup alone.
+    internal static void ConfigurePanel(ForgeSettings settings)
+    {
+        using var overlay = Registry.CurrentUser.CreateSubKey(@"Software\rtxForge\Overlay");
+        var valid = OverlayShortcut.TryParse(settings.PanelHotkey, out _, out var binding, out _);
+        overlay.SetValue("PanelKey", valid ? (int)binding.Key : 0, RegistryValueKind.DWord);
+        overlay.SetValue("PanelModifiers", valid ? (int)binding.Modifiers : 0, RegistryValueKind.DWord);
+        overlay.SetValue("Advanced", settings.OverlayControls == "classic" ? 1 : 0, RegistryValueKind.DWord);
+        overlay.SetValue("InGamePanel", settings.OverlayRenderer == "game" ? 1 : 0, RegistryValueKind.DWord);
     }
 
     public static async Task<string?> CommandAsync(string command, bool start = true)
@@ -141,6 +147,7 @@ public sealed class OverlayHelperWindow : Window
         captureTimeout.Stop();
         var settings = ForgeSettings.Load();
         if (settings.PanelHotkeyMigrated) settings = ForgeSettings.EditOverlay(s => s.PanelHotkey = s.PanelHotkey);
+        OverlayHelper.ConfigurePanel(settings);
         Tray(true);
         if (engine is not null)
         {

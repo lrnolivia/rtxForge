@@ -1,5 +1,6 @@
 #pragma once
 #include <Config.h>
+#include <Logger.h>
 #include <imgui/imgui.h>
 #include <json.hpp>
 #include <fstream>
@@ -27,24 +28,30 @@ struct Control
 #include "ForgePanelFont.h"
 inline ImFont* font = nullptr;
 inline bool selected = false, settings = false, global = false, advanced = false, nrAllowed = false, mfgAllowed = false, enabled = false, binding = false, initialized = false;
-inline int key = VK_SCROLL, modifiers = 0, bindingRelease = 0;
+inline int key = VK_DELETE, modifiers = 0, bindingRelease = 0;
 inline float animation = 0, cpuMs = 0;
 inline ImVec4 accent(.82f, .82f, .82f, 1);
 inline std::string title = "Game";
 inline DWORD Preference(const wchar_t* name, DWORD fallback)
 {
     DWORD value = fallback, bytes = sizeof(value);
-    RegGetValueW(HKEY_CURRENT_USER, L"Software\\rtxForge\\Overlay", name, RRF_RT_REG_DWORD, nullptr, &value, &bytes);
-    return value;
+    const auto result = RegGetValueW(HKEY_CURRENT_USER, L"Software\\rtxForge\\Overlay", name, RRF_RT_REG_DWORD, nullptr, &value, &bytes);
+    if(result != ERROR_SUCCESS) LOG_WARN("rtxForge panel preference read failed: {}, using default {}", result, fallback);
+    return result == ERROR_SUCCESS ? value : fallback;
 }
 inline void Init(HWND window)
 {
-    if(!initialized) { enabled = Preference(L"InGamePanel",0) != 0; initialized = true; }
+    if(!initialized)
+    {
+        enabled = Preference(L"InGamePanel",0) != 0; initialized = true;
+        LOG_INFO("rtxForge panel startup: enabled {}", enabled);
+    }
     if(!enabled) return;
     ForgePanelChannel::Init();
+    LOG_INFO("rtxForge panel channel: ready {}", ForgePanelChannel::channel != nullptr);
     ImFontConfig options; options.FontDataOwnedByAtlas = false;
     font = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(forgeInter, sizeof(forgeInter), 18.f, &options);
-    key = int(Preference(L"PanelKey", VK_SCROLL)); modifiers = int(Preference(L"PanelModifiers", 0));
+    key = int(Preference(L"PanelKey", VK_DELETE)); modifiers = int(Preference(L"PanelModifiers", 0));
     advanced = Preference(L"Advanced", 0) != 0;
     wchar_t caption[256] {}; GetWindowTextW(window, caption, 256);
     title = wstring_to_string(caption);

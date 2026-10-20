@@ -2,7 +2,7 @@ namespace RtxForge.Windows.Services;
 
 public static class OverlayShortcut
 {
-    public const string Default = "ScrollLock";
+    public const string Default = "Delete";
     public const string Disabled = "Disabled";
     static readonly Dictionary<string, uint> Keys = BuildKeys();
 

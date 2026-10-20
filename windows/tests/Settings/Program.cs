@@ -51,9 +51,9 @@ for (int mask = 0; mask < 16; mask++)
         throw new Exception("Menu/intro settings were coupled or reset rendering settings");
 }
 Console.WriteLine("PASS: all 16 independent game-menu/welcome combinations round trip and merge without changing tuning.");
-if (defaults.PanelHotkey != "ScrollLock" || !OverlayShortcut.TryParse(defaults.PanelHotkey, out _, out var defaultKey, out _) || defaultKey != (0u, 0x91u))
-    throw new Exception("Overlay must have a single-key Scroll Lock default");
-foreach (var key in new[] { "ScrollLock", "Pause", "Home", "Ctrl+Shift+R", "Ctrl+Alt+R", "Ctrl+Shift+F10", "F8", "Ctrl+Num3", "Shift+Backtick", "Disabled" })
+if (defaults.PanelHotkey != "Delete" || !OverlayShortcut.TryParse(defaults.PanelHotkey, out _, out var defaultKey, out _) || defaultKey != (0u, 0x2Eu))
+    throw new Exception("Overlay must have a single-key Delete default");
+foreach (var key in new[] { "Delete", "ScrollLock", "Pause", "Home", "Ctrl+Shift+R", "Ctrl+Alt+R", "Ctrl+Shift+F10", "F8", "Ctrl+Num3", "Shift+Backtick", "Disabled" })
 {
     var settings = JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(new ForgeSettings { PanelHotkey = key, OverlayHelper = false, OverlayStartWithWindows = false, OverlayMaterial = "mica" }))!;
     if (settings.PanelHotkey != key || settings.OverlayHelper || settings.OverlayStartWithWindows || settings.OverlayMaterial != "mica")
@@ -65,10 +65,10 @@ foreach (var key in new[] { "ScrollLock", "Pause", "Home", "Ctrl+Shift+R", "Ctrl
         throw new Exception("Single key or disabled shortcut changed");
 }
 var migrated = JsonSerializer.Deserialize<ForgeSettings>("{\"panel_hotkey\":\"Insert\",\"optiscaler_hotkey\":\"Insert\",\"nr_strength\":1.25,\"unrelated\":true}")!;
-if (migrated.PanelHotkey != "ScrollLock" || migrated.OptiScalerHotkey != "Insert" || migrated.NrStrength != 1.25
+if (migrated.PanelHotkey != "Delete" || migrated.OptiScalerHotkey != "Insert" || migrated.NrStrength != 1.25
     || !migrated.AdditionalSettings["unrelated"].GetBoolean()) throw new Exception("Insert migration changed unrelated settings");
 var retiredEnd = JsonSerializer.Deserialize<ForgeSettings>("{\"panel_hotkey\":\"End\",\"optiscaler_hotkey\":\"Insert\",\"reshade_ui\":true,\"nr_strength\":1.25}")!;
-if (retiredEnd.PanelHotkey != "ScrollLock" || !retiredEnd.PanelHotkeyMigrated || retiredEnd.OptiScalerHotkey != "Insert"
+if (retiredEnd.PanelHotkey != "Delete" || !retiredEnd.PanelHotkeyMigrated || retiredEnd.OptiScalerHotkey != "Insert"
     || !retiredEnd.ReShadeUi || retiredEnd.NrStrength != 1.25) throw new Exception("End migration changed another overlay or tuning");
 foreach (var invalid in new string?[] { null, "", "Insert", "Ctrl+Insert", "End", "Ctrl+End", "Ctrl", "Shift", "Win+R", "Ctrl+Ctrl+R", "R+Ctrl", "Ctrl++R", "Escape", "Tab", "F12", "Alt+F4", "Alt+Space", "Ctrl+Alt+Delete", "arbitrary" })
     if (OverlayShortcut.TryParse(invalid, out _, out var rejected, out _) || rejected != (0u, 0u))
@@ -87,7 +87,7 @@ for (uint modifiers = 0; modifiers < 16; modifiers++)
         throw new Exception("Recorder and persisted shortcut disagree: " + label);
     shortcutCount++;
 }
-Console.WriteLine($"PASS: Scroll Lock default, retired Insert/End migration, unchanged other overlays and {shortcutCount} custom binding round trips; reserved/malformed shortcuts refused.");
+Console.WriteLine($"PASS: Delete default, retired Insert/End migration, unchanged other overlays and {shortcutCount} custom binding round trips; reserved/malformed shortcuts refused.");
 foreach (var controls in new[] { "unified", "classic" })
 foreach (var renderer in new[] { "rtxforge", "optiscaler" })
 {

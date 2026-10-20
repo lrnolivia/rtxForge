@@ -1,6 +1,7 @@
 #pragma once
 #include <Config.h>
 #include <Logger.h>
+#include <Util.h>
 #include <imgui/imgui.h>
 #include <json.hpp>
 #include <fstream>
@@ -57,7 +58,9 @@ inline void Init(HWND window)
     title = wstring_to_string(caption);
     try
     {
-        const auto folder = std::filesystem::path(Config::Instance()->MainDllPath.value());
+        // MainDllPath is the configurable DLSS search directory (often the
+        // OptiScaler subfolder), not the installed bridge's directory.
+        const auto folder = Util::DllPath().parent_path();
         const auto path = folder / ".rtxforge-install.json";
         if (std::filesystem::file_size(path) < 2 * 1024 * 1024)
         {
@@ -71,6 +74,7 @@ inline void Init(HWND window)
         }
     }
     catch (...) { nrAllowed = mfgAllowed = false; }
+    LOG_INFO("rtxForge panel features: NR {}, MFG {}", nrAllowed, mfgAllowed);
     // Identity is cached by the helper/manager before launch. Never load artwork
     // or walk a library from the game's render thread.
     wchar_t exe[32768] {}, identity[1024] {}; GetModuleFileNameW(nullptr, exe, 32768);

@@ -1,27 +1,14 @@
 import { REPOSITORY as repo, CHANNELS, selectDownloads } from './releases.mjs';
 import { createGallery } from './gallery.js';
 import { setFeaturePlatform } from './features.js';
+import { platforms, storage, platformFromLocation } from './platforms.mjs';
+import { initTheme } from './theme.mjs';
 
 const root = document.documentElement;
 const byId = id => document.getElementById(id);
 const gallery = createGallery();
 const tabs = [...document.querySelectorAll('[data-platform]')];
-const storage = {
-  get(key) { try { return localStorage.getItem(key); } catch { return null; } },
-  set(key, value) { try { localStorage.setItem(key, value); } catch { /* Preferences and cache are optional. */ } }
-};
-const platforms = {
-  linux: {
-    name: 'Linux', copy: 'A native app for your Linux desktop.', arch: 'x86_64',
-    requirements: 'Linux x86_64 with a working NVIDIA driver. Package-specific requirements are listed with each release.',
-    guide: `${repo}#your-first-game`, guideLabel: 'Read the getting started guide'
-  },
-  windows: {
-    name: 'Windows', copy: 'A native app for your Windows desktop.', arch: 'x64',
-    requirements: 'Windows 10 version 2004 or later, x64, with a working NVIDIA driver. Packaged builds include the app runtimes.',
-    guide: `${repo}/blob/main/windows/README.md#installer`, guideLabel: 'Read the Windows setup guide'
-  }
-};
+initTheme();
 const releases = { beta: { status: 'loading' }, development: { status: 'loading' } };
 let retryingReleases = false;
 function linkState(element, url) {
@@ -91,8 +78,8 @@ function setPlatform(os, { updateUrl = false, announce = false } = {}) {
   document.title = `rtxForge Beta for ${data.name}`;
   byId('platform-name').textContent = data.name; byId('platform-copy').textContent = data.copy;
   byId('guide-link').href = data.guide;
-  byId('guide-link').replaceChildren(document.createTextNode(`${data.guideLabel} `));
-  const arrow = document.createElement('span'); arrow.setAttribute('aria-hidden', 'true'); arrow.textContent = '↗'; byId('guide-link').append(arrow);
+  byId('guide-link').textContent = data.guideLabel;
+  byId('footer-guide-link').href = data.guide;
   byId('platform-content').setAttribute('aria-labelledby', `tab-${os}`);
   for (const tab of tabs) {
     const selected = tab.dataset.platform === os;
@@ -117,17 +104,6 @@ for (const tab of tabs) {
     tabs[next].focus(); setPlatform(tabs[next].dataset.platform, { updateUrl: true, announce: true });
   });
 }
-const colorPreference = matchMedia('(prefers-color-scheme: light)');
-function setTheme(theme, persist = false) {
-  root.dataset.theme = theme; const next = theme === 'light' ? 'dark' : 'light';
-  byId('theme-icon').src = next === 'light' ? 'assets/sun.svg' : 'assets/moon.svg';
-  byId('theme-toggle').setAttribute('aria-label', `Switch to ${next} appearance`);
-  byId('brand-mark').src = 'assets/rtxforge.svg';
-  if (persist) storage.set('rtxforge-theme', theme);
-}
-const savedTheme = storage.get('rtxforge-theme');
-setTheme(['dark', 'light'].includes(savedTheme) ? savedTheme : colorPreference.matches ? 'light' : 'dark');
-byId('theme-toggle').addEventListener('click', () => setTheme(root.dataset.theme === 'light' ? 'dark' : 'light', true));
 byId('requirements-link').addEventListener('click', event => {
   event.preventDefault();
   const requirements = byId('requirements-details');
@@ -139,13 +115,6 @@ byId('requirements-link').addEventListener('click', event => {
 byId('release-retry').addEventListener('click', () => {
   if (!retryingReleases) refreshReleases({ retry: true });
 });
-colorPreference.addEventListener('change', event => {
-  if (!storage.get('rtxforge-theme')) setTheme(event.matches ? 'light' : 'dark');
-});
-function platformFromLocation() {
-  const requested = new URL(location.href).searchParams.get('os'), saved = storage.get('rtxforge-platform');
-  return Object.hasOwn(platforms, requested) ? requested : Object.hasOwn(platforms, saved) ? saved : /Windows/i.test(navigator.userAgent) ? 'windows' : 'linux';
-}
 setPlatform(platformFromLocation());
 addEventListener('popstate', () => setPlatform(platformFromLocation()));
 async function refreshReleases({ retry = false } = {}) {

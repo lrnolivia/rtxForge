@@ -4,7 +4,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "check": "node --check public/app.js && node --check public/gallery.js && node --check public/features.js && node --check public/screenshots.mjs && node --test test/*.test.mjs && wrangler deploy --dry-run",
+    "check": "node --check public/app.js && node --check public/gallery.js && node --check public/features.js && node --check public/screenshots.mjs && node --check public/install.js && node --check public/theme.mjs && node --check public/platforms.mjs && node --test test/*.test.mjs && wrangler deploy --dry-run",
     "test": "node --test test/*.test.mjs"
   },
   "devDependencies": {

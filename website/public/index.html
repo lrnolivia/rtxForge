@@ -40,7 +40,7 @@
       <section id="platform-content" class="hero" role="tabpanel" aria-labelledby="tab-linux" tabindex="0">
         <div class="hero-copy">
           <h1>New tricks for<br>old cards.</h1>
-          <p class="intro">Manage multi-frame generation, experimental neural rendering, and DLSS updates across your game library.</p>
+          <p class="intro">Deploy neural rendering across your game library, bring multi-frame generation to RTX 20, 30 and 40 series, and keep DLSS up to date.</p>
           <p class="platform-copy" id="platform-copy">A native Linux app. Built with GTK and libadwaita.</p>
           <a class="text-link" id="guide-link" href="https://github.com/lrnolivia/rtxForge#your-first-game" target="_blank" rel="noopener">Read the getting started guide <span aria-hidden="true">↗</span></a>
         </div>
@@ -61,20 +61,13 @@
         </div>
       </section>
 
-      <section class="app-gallery" aria-labelledby="gallery-heading">
+      <section class="app-gallery" aria-labelledby="gallery-heading" aria-roledescription="carousel">
         <div class="gallery-heading">
           <h2 id="gallery-heading">Inside rtxForge</h2>
-          <div class="gallery-modes" role="group" aria-label="App interface">
-            <button type="button" data-gallery-mode="desktop" aria-pressed="true">Desktop</button>
-            <button type="button" data-gallery-mode="game-mode" aria-pressed="false">Game Mode</button>
-          </div>
         </div>
-        <div class="gallery-views" role="tablist" aria-label="App screenshots">
-          <button type="button" id="gallery-tab-library" role="tab" aria-selected="true" aria-controls="gallery-panel" data-gallery-view="library">Library</button>
-          <button type="button" id="gallery-tab-details" role="tab" aria-selected="false" aria-controls="gallery-panel" tabindex="-1" data-gallery-view="details">Game details</button>
-        </div>
-        <figure id="gallery-panel" role="tabpanel" aria-labelledby="gallery-tab-library" tabindex="0">
+        <figure id="gallery-panel" role="group" aria-roledescription="slide" aria-label="App screenshot">
           <div class="gallery-stage" id="gallery-stage" aria-busy="false">
+            <img id="gallery-previous" hidden alt="" aria-hidden="true" decoding="async">
             <img id="gallery-image" hidden alt="" decoding="async">
             <div class="gallery-message" id="gallery-message" hidden>
               <p id="gallery-message-title">App screenshots are on the way.</p>
@@ -82,11 +75,60 @@
             </div>
           </div>
           <figcaption class="gallery-caption">
-            <div><p id="gallery-title"></p><p id="gallery-provenance"></p></div>
+            <p id="gallery-title"></p>
+            <div class="gallery-controls" id="gallery-controls" hidden>
+              <div class="gallery-dots" id="gallery-dots" role="group" aria-label="Choose an app screenshot"></div>
+              <button class="gallery-rotation" id="gallery-rotation" type="button" aria-label="Pause screenshot carousel"><img id="gallery-rotation-icon" src="assets/player-pause.svg" width="17" height="17" alt=""></button>
+            </div>
             <a class="text-link" id="gallery-original" target="_blank" rel="noopener" hidden>View full size <span aria-hidden="true">↗</span></a>
           </figcaption>
         </figure>
         <p class="sr-only" id="gallery-status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section class="features" aria-labelledby="features-heading">
+        <h2 id="features-heading">Neural rendering.<br><span>Across your library.</span></h2>
+        <p class="features-intro">Select your games and deploy NR in one pass, on compatible RTX cards.</p>
+        <div class="feature-mfg">
+          <h3>Multi-frame generation.<br><span>RTX 20, 30 and 40 series.</span></h3>
+          <p>Deploy MFG across your compatible games, then tune each game’s preset.</p>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-panel feature-packages">
+            <div class="feature-copy">
+              <h3>Choose your<br>packages.</h3>
+              <p>Choose a supported package or inspect your own ZIP. Pick NR, MFG or both for compatible games.</p>
+            </div>
+          </article>
+          <article class="feature-panel">
+            <div class="feature-copy">
+              <h3>Tune presets.</h3>
+              <p>Set NR strength, sharpening and frame-generation presets. Use library defaults, then fine-tune individual games.</p>
+            </div>
+            <figure class="feature-media" id="feature-presets-media" hidden>
+              <img id="feature-presets-image" alt="" loading="lazy" decoding="async">
+              <figcaption class="sr-only" id="feature-presets-provenance"></figcaption>
+            </figure>
+          </article>
+          <article class="feature-panel feature-panel-secondary">
+            <div class="feature-copy">
+              <h3>Install.</h3>
+              <p>Deploy NR and MFG across your selected games. Your original files stay backed up for restore.</p>
+            </div>
+          </article>
+          <article class="feature-panel feature-play">
+            <div class="feature-copy">
+              <h3 id="feature-second-heading">Play.</h3>
+              <p id="feature-second-copy">Open your library in Game Mode, with larger artwork and controller navigation.</p>
+              <p class="feature-availability" id="feature-second-availability" hidden></p>
+            </div>
+            <figure class="feature-media" id="feature-second-media" hidden>
+              <img id="feature-second-image" alt="" loading="lazy" decoding="async">
+              <figcaption class="sr-only" id="feature-second-provenance"></figcaption>
+            </figure>
+          </article>
+        </div>
+        <p class="feature-footnote">Game and GPU support depends on the installed provider. Neural rendering is experimental.</p>
       </section>
 
       <section class="essentials" aria-label="Installation and support">
@@ -94,7 +136,7 @@
           <summary><span>Before you install</span><span class="disclosure" aria-hidden="true">+</span></summary>
           <div class="details-body">
             <p id="requirements-copy">Linux x86_64 with a working NVIDIA driver. Package-specific requirements are listed with each release.</p>
-            <p>Feature installs currently target RTX 40-series cards and compatible x64 games. Other GPU generations are unvalidated. NR is experimental; results vary by game.</p>
+            <p>NR works with compatible RTX cards. MFG supports RTX 20, 30 and 40 series. Check compatibility for your game and installed provider. Neural rendering is experimental.</p>
             <p>Start with one game. Close it before making changes, review the files, and keep the original-file backups. Avoid protected online games and anti-cheat.</p>
           </div>
         </details>

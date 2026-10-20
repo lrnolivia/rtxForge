@@ -33,9 +33,9 @@ public sealed class OverlayShortcutPicker : UserControl
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var reset = new Button { Content = "Reset" };
         var disable = new Button { Content = "Disable" };
-        ToolTipService.SetToolTip(reset, "Use End (default)");
+        ToolTipService.SetToolTip(reset, "Use Scroll Lock (default)");
         AutomationProperties.SetName(record, "Change rtxForge shortcut");
-        AutomationProperties.SetName(reset, "Reset rtxForge shortcut to End");
+        AutomationProperties.SetName(reset, "Reset rtxForge shortcut to Scroll Lock");
         AutomationProperties.SetName(disable, "Disable rtxForge shortcut");
         row.Children.Add(record); Grid.SetColumn(reset, 1); row.Children.Add(reset);
         Grid.SetColumn(disable, 2); row.Children.Add(disable);
@@ -56,7 +56,7 @@ public sealed class OverlayShortcutPicker : UserControl
     void ShowBinding()
     {
         record.Content = binding == OverlayShortcut.Disabled ? "Set shortcut" : binding + " · Change";
-        hint.Text = "Default: End. Choose a key or combination. Insert stays with OptiScaler.";
+        hint.Text = "Default: Scroll Lock. Choose an unused key or combination. Other overlays keep their shortcuts.";
     }
 
     async Task BeginAsync()

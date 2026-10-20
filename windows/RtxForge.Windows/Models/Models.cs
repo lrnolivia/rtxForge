@@ -210,7 +210,7 @@ public sealed class ForgeSettings
         get => panelHotkey;
         set
         {
-            PanelHotkeyMigrated = string.Equals(value?.Trim(), "Insert", StringComparison.OrdinalIgnoreCase);
+            PanelHotkeyMigrated = Services.OverlayShortcut.IsRetiredDefault(value);
             panelHotkey = Services.OverlayShortcut.NormalizeStored(value);
         }
     }

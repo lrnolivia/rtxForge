@@ -24,7 +24,7 @@ public sealed partial class GameModeView
             ["rtxforge", "optiscaler", "game"], ["rtxForge sidebar", "Original OptiScaler", "rtxForge in-game (preview)"], () => shell.Settings.OverlayRenderer, v => SetOverlay(s => s.OverlayRenderer = v)),
         Choice("Controls", "Advanced uses OptiScaler labels and original units.", ["unified", "classic"], ["Unified", "Advanced"],
             () => shell.Settings.OverlayControls, v => SetOverlay(s => s.OverlayControls = v)),
-        ui.RowButton("rtxForge shortcut", shell.Settings.PanelHotkey, OpenOverlayShortcut, description: "Default: End. Record a key or combination; Insert stays with OptiScaler."),
+        ui.RowButton("rtxForge shortcut", shell.Settings.PanelHotkey, OpenOverlayShortcut, description: "Default: Scroll Lock. Record an unused key or combination; other overlays keep their shortcuts."),
         OverlayToggle("OptiScaler menu", "Keep NR and MFG installed when the menu is off.", () => shell.Settings.OptiScalerUi, (s, v) => s.OptiScalerUi = v),
         OverlayToggle("OptiScaler intro", "The startup message is separate from menu access.", () => shell.Settings.OptiScalerIntro, (s, v) => s.OptiScalerIntro = v),
         Choice("OptiScaler shortcut", "Independent of the rtxForge shortcut. Applies next game launch.",

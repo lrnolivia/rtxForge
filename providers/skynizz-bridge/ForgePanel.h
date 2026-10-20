@@ -27,7 +27,7 @@ struct Control
 #include "ForgePanelFont.h"
 inline ImFont* font = nullptr;
 inline bool selected = false, settings = false, global = false, advanced = false, nrAllowed = false, mfgAllowed = false, enabled = false, binding = false, initialized = false;
-inline int key = VK_END, modifiers = 0, bindingRelease = 0;
+inline int key = VK_SCROLL, modifiers = 0, bindingRelease = 0;
 inline float animation = 0, cpuMs = 0;
 inline ImVec4 accent(.82f, .82f, .82f, 1);
 inline std::string title = "Game";
@@ -44,7 +44,7 @@ inline void Init(HWND window)
     ForgePanelChannel::Init();
     ImFontConfig options; options.FontDataOwnedByAtlas = false;
     font = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(forgeInter, sizeof(forgeInter), 18.f, &options);
-    key = int(Preference(L"PanelKey", VK_END)); modifiers = int(Preference(L"PanelModifiers", 0));
+    key = int(Preference(L"PanelKey", VK_SCROLL)); modifiers = int(Preference(L"PanelModifiers", 0));
     advanced = Preference(L"Advanced", 0) != 0;
     wchar_t caption[256] {}; GetWindowTextW(window, caption, 256);
     title = wstring_to_string(caption);
@@ -89,9 +89,11 @@ inline bool CapturingShortcut()
 }
 inline bool ShortcutReleased()
 {
-    if (!enabled || !OptiInput::IsFocused() || key <= 0 || key >= 256 || key == VK_INSERT || key == VK_F12) return false;
+    if (!enabled || !OptiInput::IsFocused() || key <= 0 || key >= 256 || key == VK_INSERT || key == VK_END || key == VK_F12) return false;
     const int held = (OptiInput::IsKeyDown(VK_MENU) ? 1 : 0) | (OptiInput::IsKeyDown(VK_CONTROL) ? 2 : 0) | (OptiInput::IsKeyDown(VK_SHIFT) ? 4 : 0);
-    return OptiInput::IsKeyReleased(key) && held == modifiers;
+    // Pause keyboards can omit key-up. Use its existing input press event;
+    // all other keys retain release behavior. No native shortcut is consumed.
+    return (key == VK_PAUSE ? OptiInput::IsKeyPressed(key) : OptiInput::IsKeyReleased(key)) && held == modifiers;
 }
 inline bool Animating() { return selected && animation > 0; }
 inline ImVec4 Mix(ImVec4 a, ImVec4 b, float amount)
@@ -294,7 +296,7 @@ inline void SettingsControls()
     int selectedRenderer=renderer=="rtxforge" ? 1 : renderer=="optiscaler" ? 2 : 0;
     ImGui::SetNextItemWidth(-1);
     if(ImGui::Combo("Primary overlay",&selectedRenderer,rendererItems,3)) Preference("overlay_renderer",selectedRenderer==1 ? "rtxforge" : selectedRenderer==2 ? "optiscaler" : "game");
-    const auto shortcut=prefs.value("panel_hotkey",std::string("End"));
+    const auto shortcut=prefs.value("panel_hotkey",std::string("ScrollLock"));
     if(ImGui::Button(binding ? "Press a key..." : ("Shortcut: "+shortcut).c_str(),ImVec2(-1,0))) binding=true;
     if(binding)
     {
@@ -347,7 +349,7 @@ inline bool Draw(bool& visible, float scale)
     Poll();
     if(!pending && needsHello && Send({{"op","hello"}})) needsHello = false;
     if(ForgePanelChannel::settings.contains("overlay_controls")) advanced = ForgePanelChannel::settings.value("overlay_controls",std::string()) == "classic";
-    if(ForgePanelChannel::settings.contains("panel_key")) key = ForgePanelChannel::settings.value("panel_key",int(VK_END));
+    if(ForgePanelChannel::settings.contains("panel_key")) key = ForgePanelChannel::settings.value("panel_key",int(VK_SCROLL));
     if(ForgePanelChannel::settings.contains("panel_modifiers")) modifiers = ForgePanelChannel::settings.value("panel_modifiers",0);
     const auto edge = 24.f*scale, width = std::min(420.f*scale, display.x-edge*2);
     const auto height = display.y-edge*2;
@@ -462,7 +464,7 @@ inline bool Draw(bool& visible, float scale)
     { Send({{"op","reset"}}); }
     ImGui::PopStyleColor(); ImGui::EndDisabled();
     }
-    ImGui::TextDisabled("%s",(ForgePanelChannel::settings.value("panel_hotkey",std::string("End"))+" - show or hide").c_str());
+    ImGui::TextDisabled("%s",(ForgePanelChannel::settings.value("panel_hotkey",std::string("ScrollLock"))+" - show or hide").c_str());
     if(ImGui::IsKeyPressed(ImGuiKey_Escape,false)) visible = false;
     ImGui::End(); ImGui::PopStyleColor(10); ImGui::PopStyleVar(7); ImGui::PopFont();
     cpuMs = std::chrono::duration<float,std::milli>(std::chrono::steady_clock::now()-start).count();

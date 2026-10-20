@@ -2,7 +2,7 @@ namespace RtxForge.Windows.Services;
 
 public static class OverlayShortcut
 {
-    public const string Default = "End";
+    public const string Default = "ScrollLock";
     public const string Disabled = "Disabled";
     static readonly Dictionary<string, uint> Keys = BuildKeys();
 
@@ -28,9 +28,12 @@ public static class OverlayShortcut
         return keys;
     }
 
-    // Migrate the retired default without changing an intentional alternate binding.
+    public static bool IsRetiredDefault(string? value) => string.Equals(value?.Trim(), "Insert", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(value?.Trim(), "End", StringComparison.OrdinalIgnoreCase);
+
+    // Only our retired defaults move; other overlays keep their own shortcuts.
     public static string NormalizeStored(string? value) => string.IsNullOrWhiteSpace(value)
-        || value.Trim().Equals("Insert", StringComparison.OrdinalIgnoreCase) ? Default
+        || IsRetiredDefault(value) ? Default
         : TryParse(value, out var normalized, out _, out _) ? normalized : value.Trim();
 
     public static bool IsModifier(uint key) => key is 0x10 or 0x11 or 0x12 or 0x5B or 0x5C
@@ -41,6 +44,7 @@ public static class OverlayShortcut
         value = "";
         error = "Choose a key, with optional Ctrl, Alt or Shift.";
         if (key == 0x2D) { error = "Insert is reserved for OptiScaler. Choose another key."; return false; }
+        if (key == 0x23) { error = "End is reserved for OptiScaler frame generation. Choose another key."; return false; }
         if ((modifiers & ~7u) != 0) { error = "Windows-key shortcuts belong to Windows. Choose another shortcut."; return false; }
         var name = Keys.FirstOrDefault(pair => pair.Value == key).Key;
         if (name is null) return false;

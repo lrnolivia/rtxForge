@@ -1,0 +1,12 @@
+{
+  "name": "rtxforge-website",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "check": "node --check public/app.js && wrangler deploy --dry-run"
+  },
+  "devDependencies": {
+    "wrangler": "4.133.0"
+  }
+}

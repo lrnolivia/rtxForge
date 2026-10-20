@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en" data-os="linux">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="rtxForge Beta for Linux and Windows. Try multi-frame generation, experimental neural rendering, and DLSS updates in your PC games.">
+  <link rel="canonical" href="https://rtxforge.loew.fi/">
+  <meta name="color-scheme" content="dark light">
+  <title>rtxForge Beta for Linux</title>
+  <link rel="icon" href="assets/rtxforge.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="page">
+    <header class="header">
+      <a class="brand" href="./" aria-label="rtxForge Beta home">
+        <picture>
+          <img class="brand-mark" id="brand-mark" src="assets/rtxforge.svg" width="52" height="52" alt="">
+        </picture>
+        <span class="brand-name">rtxForge</span><span class="beta">Beta</span>
+      </a>
+      <nav class="header-links" aria-label="Main navigation">
+        <a href="https://github.com/lrnolivia/rtxForge" target="_blank" rel="noopener">GitHub <span aria-hidden="true">↗</span></a>
+        <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light appearance">Light</button>
+      </nav>
+    </header>
+
+    <main id="main">
+      <div class="platform-picker" role="tablist" aria-label="Choose your operating system">
+        <button id="tab-linux" class="platform-tab" role="tab" aria-selected="true" aria-controls="platform-content" type="button" data-platform="linux">
+          <img class="os-icon" src="assets/linux.svg" width="21" height="21" alt=""> Linux
+        </button>
+        <button id="tab-windows" class="platform-tab" role="tab" aria-selected="false" aria-controls="platform-content" tabindex="-1" type="button" data-platform="windows">
+          <img class="os-icon" src="assets/windows.svg" width="20" height="20" alt=""> Windows
+        </button>
+      </div>
+
+      <section id="platform-content" class="hero" role="tabpanel" aria-labelledby="tab-linux" tabindex="0">
+        <div class="hero-copy">
+          <img class="hero-mark" id="hero-mark" src="assets/rtxforge.svg" width="112" height="112" alt="rtxForge app icon">
+          <h1>New tricks for<br>old cards.</h1>
+          <p class="intro">Manage multi-frame generation, experimental neural rendering, and DLSS updates across your game library.</p>
+          <p class="platform-copy" id="platform-copy">A native Linux app. Built with GTK and libadwaita.</p>
+          <a class="text-link" id="guide-link" href="https://github.com/lrnolivia/rtxForge#your-first-game" target="_blank" rel="noopener">Read the getting started guide <span aria-hidden="true">↗</span></a>
+        </div>
+
+        <div class="download-panel">
+          <div class="download-heading">
+            <h2>Get rtxForge<br>for <span id="platform-name">Linux</span></h2>
+            <span class="download-os" id="download-os" aria-hidden="true"></span>
+          </div>
+          <p class="package-meta" id="package-meta">AppImage · x86_64 · Prerelease</p>
+          <a class="download-button" id="download-link" href="https://github.com/lrnolivia/rtxForge/releases/download/continuous/rtxForge-Bazzite-x86_64.AppImage">
+            <span id="download-label">Download AppImage</span><span class="download-arrow" aria-hidden="true">↓</span>
+          </a>
+          <p class="install-copy" id="install-copy">Allow the AppImage to run in file properties, then open it. No extraction needed.</p>
+          <a class="secondary-download" id="secondary-link" href="https://github.com/lrnolivia/rtxForge/releases/tag/continuous" target="_blank" rel="noopener"><span id="secondary-label">Release details & checksum</span><span aria-hidden="true">↗</span></a>
+          <p class="channel-note" id="channel-note">A moving development preview. Updates are available in the app.</p>
+        </div>
+      </section>
+
+      <section class="essentials" aria-label="Installation and support">
+        <details id="requirements-details">
+          <summary><span>Before you install</span><span class="disclosure" aria-hidden="true">+</span></summary>
+          <div class="details-body">
+            <p id="requirements-copy">Linux x86_64 with a working NVIDIA driver, Python 3, GTK4, libadwaita 1.7+, and PyGObject. The AppImage checks capabilities, so it isn't limited to Bazzite.</p>
+            <p>Feature installs currently target RTX 40-series cards and compatible x64 games. Other GPU generations are unvalidated. NR is experimental; results vary by game.</p>
+            <p>Start with one game. Close it before making changes, review the files, and keep the original-file backups. Avoid protected online games and anti-cheat.</p>
+          </div>
+        </details>
+        <details id="support-details">
+          <summary><span>Found a bug?</span><span class="disclosure" aria-hidden="true">+</span></summary>
+          <div class="details-body">
+            <p>Open <strong>Settings → Recovery → Library Reports → Preview Support Report</strong> in rtxForge. Review the report, export it, then attach it to your bug report.</p>
+            <p>Include your platform, GPU and driver, game, provider, and what happened. Logs and notes are optional. Check the export before sharing; redaction can miss personal information.</p>
+            <a id="support-issue-link" class="text-link" href="https://github.com/lrnolivia/rtxForge/issues/new" target="_blank" rel="noopener">Open a bug report on GitHub <span aria-hidden="true">↗</span></a>
+          </div>
+        </details>
+      </section>
+      <noscript><p class="noscript">Linux downloads are shown. <a href="https://github.com/lrnolivia/rtxForge/actions/workflows/windows-build.yml">Browse Windows preview builds</a>.</p></noscript>
+    </main>
+
+    <footer class="footer">
+      <a class="loew" href="https://loew.fi" target="_blank" rel="noopener">loew.fi</a>
+      <div class="footer-links">
+        <a id="report-link" href="https://github.com/lrnolivia/rtxForge/issues/new" target="_blank" rel="noopener">Report a bug <span aria-hidden="true">↗</span></a>
+        <a href="https://github.com/lrnolivia/rtxForge/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+      </div>
+    </footer>
+  </div>
+  <p class="sr-only" id="platform-status" role="status" aria-live="polite"></p>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "name": "rtxforge",
+  "account_id": "8df30cd302a4d4a4c01db9863c712166",
+  "compatibility_date": "2026-10-20",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [
+    {
+      "pattern": "rtxforge.loew.fi",
+      "custom_domain": true
+    }
+  ],
+  "assets": {
+    "directory": "./public"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

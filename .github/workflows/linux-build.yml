@@ -253,7 +253,7 @@ jobs:
           git push --force-with-lease="refs/tags/continuous:$CURRENT_TAG" origin refs/tags/continuous
 
           gh release edit continuous \
-            --title "rtxForge Continuous" \
+            --title "rtxForge Beta" \
             --prerelease \
             --notes "Verified development preview AppImage: $GITHUB_SHA. This moving prerelease is the rtxForge continuous update channel, not a numbered stable release. Verified previous updater files are retained as .previous assets."
 

@@ -1,7 +1,9 @@
 import { REPOSITORY as repo, CHANNELS, selectDownloads } from './releases.mjs';
+import { createGallery } from './gallery.js';
 
 const root = document.documentElement;
 const byId = id => document.getElementById(id);
+const gallery = createGallery();
 const tabs = [...document.querySelectorAll('[data-platform]')];
 const storage = {
   get(key) { try { return localStorage.getItem(key); } catch { return null; } },
@@ -79,7 +81,7 @@ async function loadRelease(channel) {
 }
 function setPlatform(os, { updateUrl = false, announce = false } = {}) {
   if (!Object.hasOwn(platforms, os)) os = 'linux';
-  const data = platforms[os]; root.dataset.os = os;
+  const data = platforms[os]; root.dataset.os = os; gallery.setPlatform(os);
   document.title = `rtxForge Beta for ${data.name}`;
   byId('platform-name').textContent = data.name; byId('platform-copy').textContent = data.copy;
   byId('guide-link').href = data.guide;
@@ -98,7 +100,7 @@ function setPlatform(os, { updateUrl = false, announce = false } = {}) {
     const url = new URL(location.href); url.searchParams.set('os', os);
     history.replaceState({ os }, '', url); storage.set('rtxforge-platform', os);
   }
-  if (announce) byId('platform-status').textContent = `Showing ${data.name} downloads, installation instructions, and requirements.`;
+  if (announce) byId('platform-status').textContent = `Showing ${data.name} screenshots, downloads, installation instructions, and requirements.`;
 }
 for (const tab of tabs) {
   tab.addEventListener('click', () => setPlatform(tab.dataset.platform, { updateUrl: true, announce: true }));

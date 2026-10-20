@@ -61,6 +61,34 @@
         </div>
       </section>
 
+      <section class="app-gallery" aria-labelledby="gallery-heading">
+        <div class="gallery-heading">
+          <h2 id="gallery-heading">Inside rtxForge</h2>
+          <div class="gallery-modes" role="group" aria-label="App interface">
+            <button type="button" data-gallery-mode="desktop" aria-pressed="true">Desktop</button>
+            <button type="button" data-gallery-mode="game-mode" aria-pressed="false">Game Mode</button>
+          </div>
+        </div>
+        <div class="gallery-views" role="tablist" aria-label="App screenshots">
+          <button type="button" id="gallery-tab-library" role="tab" aria-selected="true" aria-controls="gallery-panel" data-gallery-view="library">Library</button>
+          <button type="button" id="gallery-tab-details" role="tab" aria-selected="false" aria-controls="gallery-panel" tabindex="-1" data-gallery-view="details">Game details</button>
+        </div>
+        <figure id="gallery-panel" role="tabpanel" aria-labelledby="gallery-tab-library" tabindex="0">
+          <div class="gallery-stage" id="gallery-stage" aria-busy="false">
+            <img id="gallery-image" hidden alt="" decoding="async">
+            <div class="gallery-message" id="gallery-message" hidden>
+              <p id="gallery-message-title">App screenshots are on the way.</p>
+              <p id="gallery-message-copy">Library and game details, on desktop and in Game Mode.</p>
+            </div>
+          </div>
+          <figcaption class="gallery-caption">
+            <div><p id="gallery-title"></p><p id="gallery-provenance"></p></div>
+            <a class="text-link" id="gallery-original" target="_blank" rel="noopener" hidden>View full size <span aria-hidden="true">↗</span></a>
+          </figcaption>
+        </figure>
+        <p class="sr-only" id="gallery-status" role="status" aria-live="polite"></p>
+      </section>
+
       <section class="essentials" aria-label="Installation and support">
         <details id="requirements-details">
           <summary><span>Before you install</span><span class="disclosure" aria-hidden="true">+</span></summary>

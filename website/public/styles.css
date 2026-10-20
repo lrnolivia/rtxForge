@@ -13,3 +13,5 @@
 
 .hero-mark{display:block;width:112px;height:112px;object-fit:contain;margin:0 0 22px}
 @media(max-width:760px){.hero-mark{width:96px;height:96px;margin-bottom:18px}}
+
+.theme-toggle{display:grid;place-items:center;min-width:44px;width:44px;padding:0}.theme-toggle img{filter:brightness(0) invert(.8)}[data-theme=light] .theme-toggle img{filter:brightness(0);opacity:.75}

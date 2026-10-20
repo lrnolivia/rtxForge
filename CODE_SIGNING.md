@@ -1,19 +1,18 @@
 # Code signing policy
 
-Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
-[SignPath Foundation](https://signpath.org).
+SignPath signing has not been set up for rtxForge. The optional signing steps in
+`.github/workflows/windows-build.yml` are preparation for a future setup; they do not
+establish that a signing service or certificate is active.
 
-Signed files are the Windows release builds of rtxForge published on this repository's
-[Releases](https://github.com/lrnolivia/rtxForge/releases) page: the setup program
-(`rtxForge-Setup-<version>-<arch>.exe`) and the application files it installs
-(`rtxForge.exe`, `rtxForge.dll`). They are built from this repository by GitHub Actions
-(`.github/workflows/windows-build.yml`); nothing built elsewhere is signed. Each release
-is signed only after a maintainer approves its signing request.
+Check the signing status stated with each Windows package on the
+[Releases](https://github.com/lrnolivia/rtxForge/releases) page. A release must not be
+described as signed without verification of its downloaded installer and application
+files. The repository does not currently claim SignPath-signed release builds.
 
 ## Team roles
 
 - Committers and reviewers: [repository members](https://github.com/lrnolivia/rtxForge/graphs/contributors)
-- Approvers: [@lrnolivia](https://github.com/lrnolivia) (loew.fi)
+- Release maintainer: [@lrnolivia](https://github.com/lrnolivia) (loew.fi)
 
 ## Privacy policy
 

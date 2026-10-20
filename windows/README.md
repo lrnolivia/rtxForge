@@ -50,10 +50,12 @@ survive a reinstall.
 
 ### Code signing
 
-Release builds are signed through [SignPath](https://signpath.org) (free for
-open source; see [CODE_SIGNING.md](../CODE_SIGNING.md)). Only the manual
-**draft_release** run signs; every other CI run stays unsigned. Each signing
-request waits for an approver in SignPath.
+SignPath signing has not been set up for this project. Check each release's signing
+status; the presence of optional signing steps in CI does not mean a package is signed.
+See [CODE_SIGNING.md](../CODE_SIGNING.md).
+
+The workflow can request signing during a manual **draft_release** run once the service
+is configured. Other CI runs remain unsigned. The following is future setup guidance.
 
 Setup, once SignPath accepts the project:
 

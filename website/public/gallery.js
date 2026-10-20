@@ -7,13 +7,16 @@ export function createGallery() {
   const stage = byId('gallery-stage'), dots = byId('gallery-dots');
   const rotation = byId('gallery-rotation');
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-  let os = 'linux', captures = [], index = 0, generation = 0, timer;
+  let os = 'linux', interfaceMode = 'desktop', captures = [], index = 0, frame = 0, generation = 0, timer;
   let rotating = !reducedMotion.matches, hovering = false, visible = false, loading = false, failed = false, pointerRotation;
 
   function schedule() {
     clearTimeout(timer);
-    if (rotating && visible && !hovering && !loading && !failed && !document.hidden && captures.length > 1) {
-      timer = setTimeout(() => show((index + 1) % captures.length), 6000);
+    if (rotating && visible && !hovering && !loading && !failed && !document.hidden && (captures.length > 1 || captures[index]?.[1].selected)) {
+      timer = setTimeout(() => {
+        const selectionNext = captures[index]?.[1].selected && frame === 0;
+        show(selectionNext ? index : (index + 1) % captures.length, { selection: selectionNext ? 1 : 0 });
+      }, 6000);
     }
   }
   function rotationState() {
@@ -39,22 +42,25 @@ export function createGallery() {
     stage.classList.add('is-pending'); stage.setAttribute('aria-busy', 'false');
     schedule();
   }
-  function show(next, { manual = false, animate = true } = {}) {
+  function show(next, { manual = false, animate = true, selection = 0 } = {}) {
     clearTimeout(timer); cancelTransition();
     index = next; failed = false; const current = ++generation;
     if (manual) pause();
     const name = os === 'windows' ? 'Windows' : 'Linux';
-    const capture = captures[index]?.[1];
+    const interfaceName = interfaceMode === 'game-mode' ? 'Game Mode' : 'Desktop';
+    const view = captures[index]?.[1];
+    frame = selection && view?.selected ? 1 : 0;
+    const capture = frame ? { ...view, ...view.selected } : view;
     [...dots.children].forEach((button, i) => {
       if (i === index) button.setAttribute('aria-current', 'true');
       else button.removeAttribute('aria-current');
     });
     byId('gallery-status').textContent = '';
-    byId('gallery-title').textContent = capture ? `${name} – ${capture.caption}` : name;
+    byId('gallery-title').textContent = capture?.caption || '';
     if (!capture) {
-      byId('gallery-title').textContent = name;
-      byId('gallery-panel').setAttribute('aria-label', `${name} app screenshots coming soon`);
-      message(`${name} screenshots are on the way.`, 'The app, its presets and Game Mode.');
+      byId('gallery-title').textContent = '';
+      byId('gallery-panel').setAttribute('aria-label', `${name} ${interfaceName} screenshots coming soon`);
+      message(`${name} ${interfaceName} screenshots are on the way.`, 'More app views will appear here when they are ready.');
       return;
     }
     loading = true; stage.setAttribute('aria-busy', 'true');
@@ -72,7 +78,7 @@ export function createGallery() {
       if (document.activeElement === byId('gallery-retry')) dots.children[index]?.focus();
       byId('gallery-message').hidden = true; stage.classList.remove('is-pending');
       stage.setAttribute('aria-busy', 'false'); loading = false;
-      byId('gallery-title').textContent = `${name} – ${capture.caption}`;
+      byId('gallery-title').textContent = capture.caption;
       byId('gallery-original').href = capture.src; byId('gallery-original').hidden = false;
       const label = `${index + 1} of ${captures.length}: ${name} ${capture.label}`;
       byId('gallery-panel').setAttribute('aria-label', label);
@@ -97,9 +103,12 @@ export function createGallery() {
     preload.src = capture.src;
   }
   byId('gallery-retry').addEventListener('click', () => {
-    if (!loading) show(index, { manual: true, animate: false });
+    if (!loading) show(index, { manual: true, animate: false, selection: frame });
   });
-  function choose(next) { show(next, { manual: true }); dots.children[next]?.focus(); }
+  function choose(next, { switchSelection = false } = {}) {
+    const selection = switchSelection && next === index && captures[index]?.[1].selected ? 1 - frame : 0;
+    show(next, { manual: true, selection }); dots.children[next]?.focus();
+  }
   dots.addEventListener('keydown', event => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || !captures.length) return;
     event.preventDefault();
@@ -125,24 +134,42 @@ export function createGallery() {
     schedule();
   }, { threshold: [0, .35] }).observe(stage);
   rotationState();
-  return {
-    setPlatform(platform) {
-      const selected = captures[index]?.[0]; os = platform;
-      captures = Object.entries(SCREENSHOTS[os] || {});
-      cancelTransition(); image.hidden = true; image.removeAttribute('src');
-      byId('gallery-message').hidden = true; byId('gallery-retry').hidden = true;
-      byId('gallery-original').hidden = true;
-      dots.replaceChildren();
-      captures.forEach(([key, capture], i) => {
-        const button = document.createElement('button'); button.type = 'button';
-        button.className = 'gallery-dot'; button.dataset.capture = key;
-        button.setAttribute('aria-label', `Show screenshot ${i + 1} of ${captures.length}: ${capture.label}`);
-        button.setAttribute('aria-controls', 'gallery-panel');
-        button.addEventListener('click', () => show(i, { manual: true })); dots.append(button);
-      });
-      byId('gallery-controls').hidden = captures.length < 2;
-      show(Math.max(0, captures.findIndex(([key]) => key === selected)), { animate: false });
-      rotationState();
-    }
-  };
+  function setPlatform(platform) {
+    const selected = captures[index]?.[0], selection = frame; os = platform;
+    captures = Object.entries(SCREENSHOTS[os] || {}).filter(([key]) => key.startsWith('game-mode-') === (interfaceMode === 'game-mode'));
+    cancelTransition(); image.hidden = true; image.removeAttribute('src');
+    byId('gallery-message').hidden = true; byId('gallery-retry').hidden = true;
+    byId('gallery-original').hidden = true;
+    dots.replaceChildren();
+    captures.forEach(([key, capture], i) => {
+      const button = document.createElement('button'); button.type = 'button';
+      button.className = 'gallery-dot'; button.dataset.capture = key;
+      button.setAttribute('aria-label', `Show screenshot ${i + 1} of ${captures.length}: ${capture.label}${capture.selected ? '. Activate again to switch selected games.' : ''}`);
+      if (capture.selected) button.title = 'Activate again to switch selected and unselected games';
+      button.setAttribute('aria-controls', 'gallery-panel');
+      button.addEventListener('click', () => choose(i, { switchSelection: true })); dots.append(button);
+    });
+    byId('gallery-controls').hidden = captures.length < 2 && !captures[0]?.[1].selected;
+    show(Math.max(0, captures.findIndex(([key]) => key === selected)), { animate: false, selection });
+    rotationState();
+  }
+  const interfaces = [byId('gallery-desktop'), byId('gallery-game-mode')];
+  function setInterface(next) {
+    const mode = next === 1 ? 'game-mode' : 'desktop';
+    if (mode === interfaceMode) return;
+    interfaceMode = mode; frame = 0;
+    interfaces.forEach((button, i) => {
+      button.setAttribute('aria-selected', String(i === next)); button.tabIndex = i === next ? 0 : -1;
+    });
+    pause(); setPlatform(os);
+  }
+  interfaces.forEach((button, i) => {
+    button.addEventListener('click', () => setInterface(i));
+    button.addEventListener('keydown', event => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault(); const next = event.key === 'Home' ? 0 : event.key === 'End' ? 1 : 1 - i;
+      setInterface(next); interfaces[next].focus();
+    });
+  });
+  return { setPlatform };
 }

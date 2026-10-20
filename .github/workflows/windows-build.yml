@@ -108,7 +108,10 @@ jobs:
 
       - name: Verify shared Windows settings compatibility
         if: matrix.platform == 'x64'
-        run: dotnet run --project windows/tests/Settings/Settings.csproj -c Release
+        run: |
+          dotnet run --project windows/tests/Settings/Settings.csproj -c Release
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          dotnet run --project windows/tests/OverlayWindow/OverlayWindow.csproj -c Release
 
       - name: Verify Skynizz package and active Windows lifecycle
         if: matrix.platform == 'x64'

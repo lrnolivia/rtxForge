@@ -24,6 +24,7 @@ public sealed partial class CompanionWindow : Window
     readonly EngineForgeService service;
     readonly Func<string?> shortcutProblem;
     readonly Action preferencesChanged;
+    readonly OverlayWindowHost nativeWindow;
     bool settingsShown;
     bool globalShown;
     bool opening;
@@ -61,6 +62,7 @@ public sealed partial class CompanionWindow : Window
             presenter.SetBorderAndTitleBar(true, false);
         }
         var handle = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        nativeWindow = new OverlayWindowHost(handle);
         AppWindow.Changed += (_, e) =>
         {
             // Some desktop arrangers center newly shown windows asynchronously.
@@ -139,8 +141,10 @@ public sealed partial class CompanionWindow : Window
         // panel. Repeat after showing so first-show placement and monitor DPI
         // changes cannot leave it centered or at a previous dragged position.
         PositionAtLeft(area);
+        nativeWindow.SetKeyboardInteraction(settingsShown || globalShown);
+        nativeWindow.SetFullscreen(OverlayWindowHost.CoversDisplay(invokingWindow, area.X, area.Y, area.Width, area.Height));
         ShortcutHint.Text = shortcutProblem() ?? (service.Settings.PanelHotkey == "Disabled"
-            ? "Esc to return to your game" : $"{service.Settings.PanelHotkey} · show or hide");
+            ? "Close to return to your game" : $"{service.Settings.PanelHotkey} · show or hide");
         IsShown = true;
         if (service.Settings.OverlayRenderer == "optiscaler" && !globalShown) ShowSettings(true);
         AnimateVisibility(true);
@@ -149,12 +153,19 @@ public sealed partial class CompanionWindow : Window
         // Mouse interaction can still focus controls when the user chooses it.
         AppWindow.Show(activateWindow: false);
         PositionAtLeft(area);
+        if (!string.IsNullOrEmpty(nativeWindow.ShellError)) Feedback.Text = "Windows overlay integration: " + nativeWindow.ShellError;
         if (!settingsShown && !globalShown) { pollTimer.Start(); _ = RefreshAsync(foreground); }
     }
 
     public void HidePanel()
     {
         anchorUntil = 0; editTimer.Stop(); pollTimer.Stop(); dirty = dragging = false; IsShown = false;
+        RestoreCallerFocus();
+        nativeWindow.SetFullscreen(false);
+        AnimateVisibility(false);
+    }
+    void RestoreCallerFocus()
+    {
         // Only return focus after interaction with our own panel. An Alt-Tab
         // to another app must never be undone by a late hide or animation.
         GetWindowThreadProcessId(GetForegroundWindow(), out var foreground);
@@ -163,7 +174,6 @@ public sealed partial class CompanionWindow : Window
             GetWindowThreadProcessId(invokingWindow, out var owner);
             if (owner == invokingProcess) SetForegroundWindow(invokingWindow);
         }
-        AnimateVisibility(false);
     }
 
     void AnimateVisibility(bool show)
@@ -197,7 +207,7 @@ public sealed partial class CompanionWindow : Window
         };
         batch.End();
     }
-    public void Shutdown() { disposed = true; editTimer.Stop(); pollTimer.Stop(); acrylic?.Dispose(); mica?.Dispose(); Close(); }
+    public void Shutdown() { disposed = true; editTimer.Stop(); pollTimer.Stop(); nativeWindow.Dispose(); acrylic?.Dispose(); mica?.Dispose(); Close(); }
 
     public void ApplyMaterial(string material)
     {
@@ -227,6 +237,13 @@ public sealed partial class CompanionWindow : Window
     {
         if (!show && !globalShown && service.Settings.OverlayRenderer == "optiscaler") { HidePanel(); return; }
         settingsShown = show;
+        nativeWindow.SetKeyboardInteraction(show || globalShown);
+        if (IsShown && (show || globalShown))
+        {
+            nativeWindow.SetFullscreen(OverlayWindowHost.CoversDisplay(invokingWindow, openingArea.X, openingArea.Y, openingArea.Width, openingArea.Height));
+            Activate(); // Explicit settings interaction, never the show/hide hotkey.
+        }
+        else if (IsShown) RestoreCallerFocus();
         GlobalButton.IsChecked = globalShown;
         ControlsScroll.Visibility = PresetFooter.Visibility = show || globalShown ? Visibility.Collapsed : Visibility.Visible;
         SettingsScroll.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
@@ -339,19 +356,38 @@ public sealed partial class CompanionWindow : Window
             if (Root.Resources.TryGetValue(key, out var resource) && resource is SolidColorBrush brush) brush.Color = colour;
             else Root.Resources[key] = new SolidColorBrush(colour);
         }
-        Paint("OverlayHeadingBrush", palette.NavAccent);
-        foreach (var key in new[] { "AccentFillColorDefaultBrush", "AccentFillColorSecondaryBrush", "ToggleButtonBackgroundChecked",
-            "ToggleButtonBackgroundCheckedPointerOver", "ToggleButtonBackgroundCheckedPressed", "SliderTrackValueFill", "SliderTrackValueFillPointerOver",
-            "SliderTrackValueFillPressed", "SliderThumbBackground", "SliderThumbBackgroundPointerOver", "SliderThumbBackgroundPressed",
-            "ToggleSwitchFillOn", "ToggleSwitchFillOnPointerOver", "ToggleSwitchFillOnPressed", "ComboBoxDropDownGlyphForeground" })
-            Paint(key, palette.Color);
-        foreach (var key in new[] { "TextOnAccentFillColorPrimaryBrush", "ToggleButtonForegroundChecked", "ToggleButtonForegroundCheckedPointerOver",
-            "ToggleButtonForegroundCheckedPressed", "ToggleSwitchKnobFillOn" }) Paint(key, palette.AccentFg);
-        SavePreset.Background = palette.AccentBrush; SavePreset.Foreground = palette.Brush(palette.AccentFg);
-        foreach (var key in new[] { "ButtonBackgroundPointerOver", "ButtonBackgroundPressed" })
-            ((SolidColorBrush)SavePreset.Resources[key]).Color = palette.Color;
-        foreach (var key in new[] { "ButtonForegroundPointerOver", "ButtonForegroundPressed" })
-            ((SolidColorBrush)SavePreset.Resources[key]).Color = palette.AccentFg;
+        var dark = global::Windows.UI.Color.FromArgb(255, 40, 40, 40);
+        var white = global::Windows.UI.Color.FromArgb(255, 238, 238, 238);
+        var selected = ArtAccent.Mix(palette.Color, dark, .28);
+        var selectedHover = ArtAccent.Mix(palette.Color, dark, .38);
+        var selectedPressed = ArtAccent.Mix(palette.Color, dark, .20);
+        var selectedText = ArtAccent.Mix(palette.Color, white, .16);
+        var control = ArtAccent.Mix(palette.Color, white, .55);
+        var controlHover = ArtAccent.Mix(palette.Color, white, .40);
+        var save = ArtAccent.Mix(palette.Color, dark, .55);
+        var saveHover = ArtAccent.Mix(palette.Color, dark, .65);
+        var savePressed = ArtAccent.Mix(palette.Color, dark, .45);
+        var saveText = ArtAccent.Readable(white, save);
+        // Game identity is the strongest color; chrome, headings and icons stay
+        // neutral. State fills use quieter shades of the same artwork accent.
+        Paint("OverlayGameTitleBrush", palette.HeroAccent);
+        foreach (var key in new[] { "AccentFillColorDefaultBrush", "AccentFillColorSecondaryBrush", "ToggleButtonBackgroundChecked" }) Paint(key, selected);
+        Paint("ToggleButtonBackgroundCheckedPointerOver", selectedHover);
+        Paint("ToggleButtonBackgroundCheckedPressed", selectedPressed);
+        foreach (var key in new[] { "SliderTrackValueFill", "SliderThumbBackground", "ToggleSwitchFillOn" }) Paint(key, control);
+        foreach (var key in new[] { "SliderTrackValueFillPointerOver", "SliderThumbBackgroundPointerOver", "ToggleSwitchFillOnPointerOver" }) Paint(key, controlHover);
+        foreach (var key in new[] { "SliderTrackValueFillPressed", "SliderThumbBackgroundPressed", "ToggleSwitchFillOnPressed" }) Paint(key, control);
+        Paint("TextOnAccentFillColorPrimaryBrush", ArtAccent.Readable(selectedText, selected));
+        Paint("ToggleButtonForegroundChecked", ArtAccent.Readable(selectedText, selected));
+        Paint("ToggleButtonForegroundCheckedPointerOver", ArtAccent.Readable(selectedText, selectedHover));
+        Paint("ToggleButtonForegroundCheckedPressed", ArtAccent.Readable(selectedText, selectedPressed));
+        Paint("ToggleSwitchKnobFillOn", ArtAccent.Readable(dark, control));
+        Paint("ComboBoxDropDownGlyphForeground", global::Windows.UI.Color.FromArgb(255, 196, 196, 196));
+        SavePreset.Background = palette.Brush(save); SavePreset.Foreground = palette.Brush(saveText);
+        ((SolidColorBrush)SavePreset.Resources["ButtonBackgroundPointerOver"]).Color = saveHover;
+        ((SolidColorBrush)SavePreset.Resources["ButtonBackgroundPressed"]).Color = savePressed;
+        ((SolidColorBrush)SavePreset.Resources["ButtonForegroundPointerOver"]).Color = ArtAccent.Readable(white, saveHover);
+        ((SolidColorBrush)SavePreset.Resources["ButtonForegroundPressed"]).Color = ArtAccent.Readable(white, savePressed);
     }
 
     void RenderStatus()

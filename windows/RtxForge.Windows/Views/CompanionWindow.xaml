@@ -3,7 +3,9 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="rtxForge overlay">
     <Grid x:Name="Root" RequestedTheme="Dark" Background="Transparent">
         <Grid.Resources>
-            <SolidColorBrush x:Key="OverlayHeadingBrush" Color="#B4B4B4" />
+            <SolidColorBrush x:Key="OverlayHeadingBrush" Color="#E6E6E6" />
+            <SolidColorBrush x:Key="OverlayIconBrush" Color="#C4C4C4" />
+            <SolidColorBrush x:Key="OverlayGameTitleBrush" Color="#E6E6E6" />
             <FontFamily x:Key="OverlayFont">ms-appx:///Assets/Fonts/InterVariable.ttf#Inter Variable</FontFamily>
             <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#B4B4B4" />
             <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#B4B4B4" />
@@ -55,7 +57,7 @@
             <Style x:Key="SectionGlyph" TargetType="Path">
                 <Setter Property="Width" Value="20" />
                 <Setter Property="Height" Value="20" />
-                <Setter Property="Stroke" Value="{StaticResource OverlayHeadingBrush}" />
+                <Setter Property="Stroke" Value="{StaticResource OverlayIconBrush}" />
                 <Setter Property="StrokeThickness" Value="1.5" />
                 <Setter Property="StrokeLineJoin" Value="Round" />
                 <Setter Property="StrokeStartLineCap" Value="Round" />
@@ -71,6 +73,7 @@
                 <Setter Property="FontSize" Value="14" />
                 <Setter Property="TextWrapping" Value="Wrap" />
             </Style>
+            <Style TargetType="FontIcon"><Setter Property="Foreground" Value="{StaticResource OverlayIconBrush}" /></Style>
             <Style x:Key="Note" TargetType="TextBlock">
                 <Setter Property="FontFamily" Value="{StaticResource OverlayFont}" />
                 <Setter Property="Foreground" Value="#BFFFFFFF" />
@@ -127,13 +130,13 @@
                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                     <TextBlock Text="rtxForge" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{StaticResource OverlayHeadingBrush}" />
                     <StackPanel x:Name="DragBar" Grid.Row="1" Grid.ColumnSpan="2" Spacing="10" Margin="0,10,0,0">
-                        <TextBlock x:Name="GameName" Text="Ready when you are" Foreground="{StaticResource OverlayHeadingBrush}" FontSize="23" FontWeight="SemiBold" MaxLines="2" TextTrimming="CharacterEllipsis" />
+                        <TextBlock x:Name="GameName" Text="Ready when you are" Foreground="{StaticResource OverlayGameTitleBrush}" FontSize="23" FontWeight="SemiBold" MaxLines="2" TextTrimming="CharacterEllipsis" />
                         <StackPanel x:Name="PipelinePills" Orientation="Horizontal" Spacing="6" AutomationProperties.Name="Installed DLSS files" />
                         <TextBlock x:Name="ConnectionText" Text="Start your game to connect." Style="{StaticResource Note}" />
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Top">
-                        <ToggleButton x:Name="GlobalButton" Width="36" Height="36" Padding="8" Click="OnGlobal" AutomationProperties.Name="Global controls" ToolTipService.ToolTip="Switch between this game and Global controls" Foreground="{StaticResource OverlayHeadingBrush}"><FontIcon Glyph="&#xE774;" FontSize="16" /></ToggleButton>
-                        <Button x:Name="SettingsButton" Width="36" Height="36" Click="OnSettings" AutomationProperties.Name="Overlay settings" ToolTipService.ToolTip="Overlay settings" Foreground="{StaticResource OverlayHeadingBrush}"><FontIcon Glyph="&#xE713;" FontSize="16" /></Button>
+                        <ToggleButton x:Name="GlobalButton" Width="36" Height="36" Padding="8" Click="OnGlobal" AutomationProperties.Name="Global controls" ToolTipService.ToolTip="Switch between this game and Global controls" Foreground="{StaticResource OverlayIconBrush}"><FontIcon Glyph="&#xE774;" FontSize="16" /></ToggleButton>
+                        <Button x:Name="SettingsButton" Width="36" Height="36" Click="OnSettings" AutomationProperties.Name="Overlay settings" ToolTipService.ToolTip="Overlay settings" Foreground="{StaticResource OverlayIconBrush}"><FontIcon Glyph="&#xE713;" FontSize="16" /></Button>
                         <Button Width="36" Height="36" Click="OnHide" AutomationProperties.Name="Hide overlay" ToolTipService.ToolTip="Back to game"><FontIcon Glyph="&#xE8BB;" FontSize="12" /></Button>
                     </StackPanel>
                 </Grid>

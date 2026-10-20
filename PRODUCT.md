@@ -53,7 +53,7 @@ Anti-cheat remains a block unless a title has an explicit verified offline profi
 
 ## Brand Commitments
 
-Keep the rtxForge name and existing icon. The Windows overlay is a minimal floating NR + MFG sidebar: nearly full screen height with generous edge and internal padding, rounded corners, a soft drop shadow and translucent black surfaces over a blurred game backdrop. It opens on the left. Titles, headings and controls use the active game's existing artwork-derived or custom rtxForge accent, set in Inter; idle and Global surfaces use a neutral accent. It has no standard app title bar or game-selection menu. The main application keeps its existing visual system.
+Keep the rtxForge name and existing icon. The Windows overlay is a minimal floating NR + MFG sidebar: nearly full screen height with generous edge and internal padding, rounded corners, a soft drop shadow and translucent black surfaces over a blurred game backdrop. It opens on the left. The game title carries the strongest artwork-derived or custom game accent. Branding, icons and section headings stay neutral white/grey; selected controls and the primary action use quieter shades of the game color with distinct hover/pressed states. Inter remains the typeface; idle and Global surfaces use a neutral accent. It has no standard app title bar or game-selection menu. The main application keeps its existing visual system.
 
 ## Product Principles
 

@@ -136,7 +136,7 @@ class ControlsTest(unittest.TestCase):
         raw = snapshot(version=5)
         struct.pack_into('<ii', raw, 368, 1, 0x2d)
         box = SimpleNamespace(pid=123, k=SimpleNamespace(GetTickCount=lambda:1010))
-        for primary, menu, expected in [('rtxforge', True, True), ('optiscaler', True, False), ('rtxforge', False, False)]:
+        for primary, menu, expected in [('rtxforge', True, True), ('optiscaler', True, False), ('rtxforge', False, True)]:
             settings.write_text(json.dumps({'overlay_renderer':primary, 'optiscaler_ui':menu}))
             self.assertEqual(control.shared_native_menu(), expected)
             status = self.controls._present(self.controls._game({'row':self.row}), box, control.decode(raw, 123))

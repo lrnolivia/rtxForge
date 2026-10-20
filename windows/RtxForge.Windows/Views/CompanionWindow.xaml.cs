@@ -36,6 +36,8 @@ public sealed partial class CompanionWindow : Window
     int visibilityRevision;
     bool windowVisible;
     RectInt32 openingArea;
+    nint invokingWindow;
+    uint invokingProcess;
     long anchorUntil;
     readonly DispatcherQueueTimer pollTimer, editTimer;
     Game? game;
@@ -96,28 +98,20 @@ public sealed partial class CompanionWindow : Window
         SetAvailability();
     }
 
-    public async void Present()
+    public void Present()
     {
         if (opening || disposed) return;
         // Keep the invoking display/game even if the asynchronous ownership
         // lookup completes after foreground focus has moved elsewhere.
         var foregroundWindow = GetForegroundWindow();
         var foreground = MainWindow.ForegroundProcessId();
+        if (foregroundWindow != 0 && foreground != (uint)Environment.ProcessId)
+        { invokingWindow = foregroundWindow; invokingProcess = foreground; }
         var windowId = foregroundWindow == 0 ? AppWindow.Id : Microsoft.UI.Win32Interop.GetWindowIdFromWindow(foregroundWindow);
-        var area = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Primary).WorkArea;
+        var area = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Primary).OuterBounds;
         opening = true;
         try
         {
-            if (!settingsShown && !globalShown && service.Settings.OverlayRenderer != "optiscaler")
-            {
-                // A running native menu keeps its key until restart. Never open
-                // both panels when the preference changed during that session.
-                var targets = await service.CompanionTargetsAsync();
-                var active = await service.ActiveCompanionAsync(targets, foreground, pid);
-                var location = (active["row"] as JsonObject)?["game"]?.GetValue<string>();
-                var target = targets.FirstOrDefault(g => string.Equals(g.Id, location, StringComparison.OrdinalIgnoreCase));
-                if (target is not null && Int(await service.CompanionAsync("status", target), "original_menu") == 1) return;
-            }
             if (disposed) return;
             PresentCore(area, foreground);
             if (game is not null) _ = ApplyGameAccentAsync(game, generation);
@@ -142,20 +136,35 @@ public sealed partial class CompanionWindow : Window
         openingArea = area;
         anchorUntil = Environment.TickCount64 + 500;
         // Re-anchor on every open, including an already visible Global/settings
-        // panel. Repeat after activation so first-show placement and monitor DPI
+        // panel. Repeat after showing so first-show placement and monitor DPI
         // changes cannot leave it centered or at a previous dragged position.
         PositionAtLeft(area);
         ShortcutHint.Text = shortcutProblem() ?? (service.Settings.PanelHotkey == "Disabled"
             ? "Esc to return to your game" : $"{service.Settings.PanelHotkey} · show or hide");
         IsShown = true;
         if (service.Settings.OverlayRenderer == "optiscaler" && !globalShown) ShowSettings(true);
-        Activate();
-        PositionAtLeft(area);
         AnimateVisibility(true);
+        // Keep the game in the foreground. Activating this separate window
+        // tells the shell the user left fullscreen and can raise the taskbar.
+        // Mouse interaction can still focus controls when the user chooses it.
+        AppWindow.Show(activateWindow: false);
+        PositionAtLeft(area);
         if (!settingsShown && !globalShown) { pollTimer.Start(); _ = RefreshAsync(foreground); }
     }
 
-    public void HidePanel() { anchorUntil = 0; editTimer.Stop(); pollTimer.Stop(); dirty = dragging = false; IsShown = false; AnimateVisibility(false); }
+    public void HidePanel()
+    {
+        anchorUntil = 0; editTimer.Stop(); pollTimer.Stop(); dirty = dragging = false; IsShown = false;
+        // Only return focus after interaction with our own panel. An Alt-Tab
+        // to another app must never be undone by a late hide or animation.
+        GetWindowThreadProcessId(GetForegroundWindow(), out var foreground);
+        if (foreground == (uint)Environment.ProcessId && IsWindow(invokingWindow) && !IsIconic(invokingWindow))
+        {
+            GetWindowThreadProcessId(invokingWindow, out var owner);
+            if (owner == invokingProcess) SetForegroundWindow(invokingWindow);
+        }
+        AnimateVisibility(false);
+    }
 
     void AnimateVisibility(bool show)
     {
@@ -615,5 +624,9 @@ public sealed partial class CompanionWindow : Window
 
     [DllImport("user32.dll")] static extern uint GetDpiForWindow(nint hwnd);
     [DllImport("user32.dll")] static extern nint GetForegroundWindow();
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(nint hwnd, out uint processId);
+    [DllImport("user32.dll")] static extern bool IsWindow(nint hwnd);
+    [DllImport("user32.dll")] static extern bool IsIconic(nint hwnd);
+    [DllImport("user32.dll")] static extern bool SetForegroundWindow(nint hwnd);
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(nint hwnd, int attribute, ref int value, int size);
 }

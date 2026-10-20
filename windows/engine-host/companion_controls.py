@@ -26,7 +26,7 @@ def shared_native_menu():
         path = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData/Local')) / 'rtxForge/settings.json'
         settings = json.loads(path.read_text(encoding='utf-8-sig'))
         t.need(isinstance(settings, dict), 'Overlay settings are invalid.')
-        return settings.get('optiscaler_ui', True) is True and settings.get('overlay_renderer', 'rtxforge') == 'rtxforge'
+        return settings.get('overlay_renderer', 'rtxforge') == 'rtxforge'
     except (OSError, ValueError, t.Refusal):
         return False
 

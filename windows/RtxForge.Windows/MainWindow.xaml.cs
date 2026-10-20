@@ -137,12 +137,25 @@ public sealed partial class MainWindow : Window
 
     public async Task ScanAsync()
     {
-        if (libraryScan is { IsCompleted: false }) { await libraryScan; return; }
-        libraryScan = ScanLibraryCoreAsync();
-        await libraryScan;
+        string CurrentKey() => LibrarySnapshot.Key(Settings.RuntimeProvider, Settings.GameFolders, Settings.LibraryFolders);
+        while (true)
+        {
+            if (libraryScan is not { IsCompleted: false })
+            {
+                libraryScanKey = CurrentKey();
+                libraryScan = ScanLibraryCoreAsync();
+            }
+            var active = libraryScan;
+            var activeKey = libraryScanKey;
+            await active;
+            // Adding a folder during startup must not reuse the older inventory.
+            // UI-thread callers share an in-flight scan for the same settings.
+            if (activeKey == CurrentKey()) return;
+        }
     }
 
     Task? libraryScan;
+    string? libraryScanKey;
 
     async Task ScanLibraryCoreAsync()
     {

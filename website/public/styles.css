@@ -32,3 +32,5 @@ body{position:relative;isolation:isolate}.page{position:relative;z-index:1}.hero
 .feature-packages{grid-column:1/-1;padding-top:36px;padding-bottom:36px}.feature-packages .feature-copy{max-width:none;display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:center}.feature-packages .feature-copy h3,.feature-packages .feature-copy p{margin:0}.feature-packages .feature-copy p{max-width:420px}@media(max-width:760px){.feature-packages{padding-top:28px;padding-bottom:28px}.feature-packages .feature-copy{grid-template-columns:1fr;gap:22px}}
 
 .feature-play{grid-column:1/-1}.feature-play .feature-copy{max-width:640px}
+
+.feature-copy strong{color:var(--text);font-weight:600}

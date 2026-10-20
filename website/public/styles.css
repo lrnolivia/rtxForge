@@ -85,6 +85,12 @@ body{position:relative;isolation:isolate}.page{position:relative;z-index:1}.hero
 .feature-play-options{display:grid;gap:16px;min-width:0}
 .feature-media{margin:32px 0 0}
 .feature-media img{display:block;width:100%;height:auto;border-radius:12px;box-shadow:0 14px 35px rgba(0,0,0,.2)}
+/* Card crops keep the original screenshots intact and fade into either page theme. */
+#feature-presets-media,#feature-game-mode-media{overflow:hidden;mask-image:linear-gradient(to bottom,transparent,#000 6%,#000 76%,transparent);-webkit-mask-image:linear-gradient(to bottom,transparent,#000 6%,#000 76%,transparent)}
+#feature-presets-media{aspect-ratio:2.25}
+#feature-presets-media img{width:114%;max-width:none;margin-left:-7%;transform:translateY(-15%);box-shadow:none}
+#feature-game-mode-media{aspect-ratio:1.6}
+#feature-game-mode-media img{width:160%;max-width:none;margin-left:-30%;transform:translateY(-30%);box-shadow:none}
 .feature-footnote{font-size:12px;color:var(--muted);line-height:1.7;margin:24px 4px 0}
 .faq{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:40px;align-items:start;margin-top:80px;padding-top:36px;border-top:1px solid var(--raised)}
 .faq>h2{font-size:36px;line-height:1.15;letter-spacing:-.6px;margin:13px 0 0}

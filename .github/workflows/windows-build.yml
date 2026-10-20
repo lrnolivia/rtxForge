@@ -136,6 +136,10 @@ jobs:
           dotnet run --project windows/tests/Settings/Settings.csproj -c Release
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           dotnet run --project windows/tests/OverlayWindow/OverlayWindow.csproj -c Release
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          dotnet run --project windows/tests/NativePanelChannel/NativePanelChannel.csproj -c Release
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          dotnet run --project windows/tests/LibrarySnapshot/LibrarySnapshot.csproj -c Release
 
       - name: Verify Skynizz package and active Windows lifecycle
         if: matrix.platform == 'x64'
@@ -147,6 +151,10 @@ jobs:
           python -X utf8 -m unittest discover -s tests -p test_skynizz_bridge.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s windows/tests -p test_processes.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest discover -s windows/tests -p test_library_scan.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest discover -s windows/tests -p test_discovery_inventory.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s windows/tests -p test_companion_controls.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }

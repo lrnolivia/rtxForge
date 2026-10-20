@@ -75,7 +75,7 @@ if ($candidate) {
     Copy-Item -LiteralPath (Join-Path $specRoot $candidate.header) -Destination $payload
 }
 if ($panel) {
-    foreach ($name in @($panel.patch, 'ForgePanel.h', 'Generate-Panel.ps1', 'controls.json', 'panel-candidate.json')) {
+    foreach ($name in @($panel.patch, 'ForgePanel.h', 'ForgePanelChannel.h', 'Generate-Panel.ps1', 'controls.json', 'panel-candidate.json')) {
         Copy-Item -LiteralPath (Join-Path $specRoot $name) -Destination $payload
     }
     Copy-Item -LiteralPath (Join-Path $repo 'windows\RtxForge.Windows\Assets\Fonts\OFL-Inter.txt') -Destination $payload

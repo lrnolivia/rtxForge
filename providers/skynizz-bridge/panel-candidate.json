@@ -4,11 +4,12 @@
   "base_bridge_id": "skynizz-ada-mfg-9-placement-candidate",
   "patch": "panel-candidate.patch",
   "sources": {
-    "providers/skynizz-bridge/panel-candidate.patch": "fe1bfc87973569ebf147910bbd42cad2930f9d719d6cc67ea6a9c0e93f9ee3bf",
-    "providers/skynizz-bridge/ForgePanel.h": "2eba650e33e1df0cec858e7e5dac3f0dfe1f1f194a11a7eae39e6563170a1487",
-    "providers/skynizz-bridge/Generate-Panel.ps1": "efe16ca9cd6a94b52e2d6431180bb3d709762f91c7c3aa7b7a525eac82bf07a3",
+    "providers/skynizz-bridge/panel-candidate.patch": "8034c27322b94eaf6a3f4f010890e6647fab6677c63a4b627d71285996bae9b3",
+    "providers/skynizz-bridge/ForgePanel.h": "bd376c93c275bd223cdfd092069e4abb1a6e090b2f6715f0f07734f92960dff8",
+    "providers/skynizz-bridge/Generate-Panel.ps1": "fb73c59d526dd0a17abe4aee8d7f0d475aa0bc45a5e15fb59f94dc14d53b6830",
     "providers/skynizz-bridge/controls.json": "a1d41503aa12597e2942ff14a0bc5341b08db0ec595d12ba0f2845612d900a9f",
-    "windows/RtxForge.Windows/Assets/Fonts/InterVariable.ttf": "4989b125924991b90d05b2d16e0e388c48f7d5bb8b30539bbf9c755278d0ccaf"
+    "windows/RtxForge.Windows/Assets/Fonts/InterVariable.ttf": "4989b125924991b90d05b2d16e0e388c48f7d5bb8b30539bbf9c755278d0ccaf",
+    "providers/skynizz-bridge/ForgePanelChannel.h": "c05527caf0abed416966e0a819c77aefd625a78f8cbea447b2a6a893616d76cd"
   },
   "candidate_only": true,
   "runtime_verified": false,

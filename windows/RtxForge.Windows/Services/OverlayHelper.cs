@@ -47,6 +47,7 @@ public static class OverlayHelper
                 overlay.SetValue("PanelModifiers", (int)binding.Modifiers, RegistryValueKind.DWord);
             }
             overlay.SetValue("Advanced", settings.OverlayControls == "classic" ? 1 : 0, RegistryValueKind.DWord);
+            overlay.SetValue("InGamePanel", settings.OverlayRenderer == "game" ? 1 : 0, RegistryValueKind.DWord);
         }
         using var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
         if (settings.OverlayHelper && settings.OverlayStartWithWindows && settings.OverlayRenderer != "optiscaler")
@@ -94,6 +95,7 @@ public sealed class OverlayHelperWindow : Window
     readonly Microsoft.UI.Dispatching.DispatcherQueueTimer captureTimeout;
     EngineForgeService? engine;
     CompanionWindow? panel;
+    NativePanelCoordinator? nativePanel;
     string? problem;
     bool showWhenReady, closing, trayAdded;
     const int HotkeyId = 0x5254;
@@ -114,6 +116,7 @@ public sealed class OverlayHelperWindow : Window
         AppWindow.Hide();
         ConfigureShortcut();
         Closed += (_, _) => Cleanup();
+        AppWindow.Closing += (_, e) => { if (nativePanel?.Applying == true) e.Cancel = true; };
         _ = ListenAsync();
         _ = StartEngineAsync();
     }
@@ -127,6 +130,7 @@ public sealed class OverlayHelperWindow : Window
             engine = result.Service;
             if (engine is null) { problem = result.Problem ?? "The overlay engine couldn't start."; return; }
             panel = new CompanionWindow(engine, () => problem, ConfigureShortcut);
+            nativePanel = new NativePanelCoordinator(engine, DispatcherQueue, ConfigureShortcut, Close);
             if (showWhenReady) panel.Present();
         }
         catch (Exception error) { problem = error.Message; }
@@ -144,7 +148,7 @@ public sealed class OverlayHelperWindow : Window
         }
         panel?.ApplyPreferences();
         UnregisterHotKey(handle, HotkeyId);
-        if (settings.OverlayRenderer is "optiscaler" or "game" || !settings.OverlayHelper) { problem = null; return; }
+        if (settings.OverlayRenderer is "optiscaler" or "game" || nativePanel?.OwnsShortcut == true || !settings.OverlayHelper) { problem = null; return; }
         if (!OverlayShortcut.TryParse(settings.PanelHotkey, out _, out var shortcut, out var error)) { problem = error; return; }
         var (modifiers, key) = shortcut;
         problem = key != 0 && !RegisterHotKey(handle, HotkeyId, modifiers | 0x4000, key)
@@ -171,6 +175,9 @@ public sealed class OverlayHelperWindow : Window
                     captureTimeout.Start();
                 }
                 else if (command == "reload-presets" && engine is not null) await engine.ReloadCompanionPresetsAsync();
+                else if (command == "refresh-targets" && nativePanel is not null) await nativePanel.ReloadTargetsAsync();
+                if (command == "exit" && nativePanel?.Applying == true)
+                { await writer.WriteLineAsync("Game settings are still being applied. Wait for them to finish."); continue; }
                 await writer.WriteLineAsync(problem ?? "");
                 if (command == "exit") { Close(); return; }
             }
@@ -235,7 +242,7 @@ public sealed class OverlayHelperWindow : Window
         closing = true; stopping.Cancel(); captureTimeout.Stop(); Tray(false);
         UnregisterHotKey(handle, HotkeyId);
         RemoveWindowSubclass(handle, callback, 0x5255);
-        panel?.Shutdown(); engine?.Dispose();
+        nativePanel?.Dispose(); panel?.Shutdown(); engine?.Dispose();
         instance.ReleaseMutex(); instance.Dispose();
     }
 

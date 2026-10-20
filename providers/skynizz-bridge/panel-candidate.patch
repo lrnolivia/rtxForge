@@ -1,5 +1,5 @@
 diff --git a/OptiScaler/menu/menu_common.cpp b/OptiScaler/menu/menu_common.cpp
-index b4d37e6..a1fb81e 100644
+index b4d37e6..48f18c3 100644
 --- a/OptiScaler/menu/menu_common.cpp
 +++ b/OptiScaler/menu/menu_common.cpp
 @@ -8,6 +8,7 @@
@@ -18,9 +18,12 @@ index b4d37e6..a1fb81e 100644
  static bool inputFG = false;
  static bool inputFps = false;
  static bool inputFpsCycle = false;
-@@ -420,6 +422,7 @@ void MenuCommon::UpdateManualInput(HWND targetHwnd)
+@@ -418,8 +420,9 @@ void MenuCommon::UpdateManualInput(HWND targetHwnd)
+     const auto currentTick = GetTickCount64();
+     const bool canAcceptInputs = lastInputTick + debounceThreshold < currentTick;
  
-     if (!capturingKey && canAcceptInputs)
+-    if (!capturingKey && canAcceptInputs)
++    if (!capturingKey && canAcceptInputs && !ForgePanel::CapturingShortcut())
      {
 +        if (ForgePanel::ShortcutReleased()) inputForge = true;
          CheckShortcut(config->ShortcutKey.value_or_default(), inputMenu, "Menu key pressed, will be switching menu");
@@ -58,17 +61,18 @@ index b4d37e6..a1fb81e 100644
          DlssNr::OverlayWanted() ||
          (config->DlssNrCompare.value_or_default() != 0 && config->DlssNrCompareTags.value_or_default()))
      {
-@@ -8982,7 +9001,8 @@ bool MenuCommon::RenderMenu()
+@@ -8982,7 +9001,9 @@ bool MenuCommon::RenderMenu()
      DlssNr::RenderOverlay(ctx.config->FpsOverlayAlpha.value_or_default());
  
      // 4) Draw the full settings menu last so popups and child windows keep their existing behavior.
 -    RenderMainMenuWindow(ctx);
++    ForgePanelChannel::Visible(ForgePanel::selected && _isVisible);
 +    if (!ForgePanel::selected) RenderMainMenuWindow(ctx);
 +    else if (ctx.newFrame) ForgePanel::Draw(_isVisible, ctx.menuResScale);
  
      if (ctx.newFrame)
          ImGui::EndFrame();
-@@ -9074,6 +9094,8 @@ void MenuCommon::Init(HWND InHwnd, bool isUWP)
+@@ -9074,6 +9095,8 @@ void MenuCommon::Init(HWND InHwnd, bool isUWP)
          }
      }
  
@@ -77,3 +81,11 @@ index b4d37e6..a1fb81e 100644
      if (!Config::Instance()->OverlayMenu.value_or_default())
      {
          _hdrTonemapApplied = false;
+@@ -9116,6 +9139,7 @@ void MenuCommon::Shutdown()
+     else
+         ImGui_ImplUwp_Shutdown();
+ 
++    ForgePanelChannel::Shutdown();
+     ImGui::DestroyContext();
+ 
+     _handle = nullptr;

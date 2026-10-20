@@ -15,6 +15,24 @@ public static class OverlayHelper
     internal static string PipeName => "rtxForge.Overlay." + Process.GetCurrentProcess().SessionId;
     public static string StartupCommand(string executable) => $"\"{executable}\" --overlay-helper";
 
+    public static async Task CacheGameIdentitiesAsync(IEnumerable<Game> games)
+    {
+        try
+        {
+            using var identities = Registry.CurrentUser.CreateSubKey(@"Software\rtxForge\Overlay\Games");
+            foreach (var game in games.Where(g => g.Installed && g.EngineRow?["exe"] is not null))
+            {
+                var relative = game.EngineRow!["exe"]!.ToString();
+                var exe = Path.GetFullPath(Path.Combine(game.Location, relative));
+                if (!File.Exists(exe)) continue;
+                var palette = await OverlayAccent.ForGameAsync(game);
+                var color = palette.Color;
+                identities.SetValue(exe, $"#{color.R:X2}{color.G:X2}{color.B:X2}|{game.Name}", RegistryValueKind.String);
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or System.Runtime.InteropServices.COMException) { }
+    }
+
     public static void ConfigureStartup(ForgeSettings settings)
     {
         // Read once by bridge 8 at game startup. Never rewrite a game's INI,
@@ -23,6 +41,12 @@ public static class OverlayHelper
         {
             overlay.SetValue("UseOptiScaler", settings.OptiScalerUi ? 1 : 0, RegistryValueKind.DWord);
             overlay.SetValue("ShortcutKey", settings.OptiScalerHotkey == "F8" ? 0x77 : settings.OptiScalerHotkey == "Disabled" ? 0 : 0x2D, RegistryValueKind.DWord);
+            if (OverlayShortcut.TryParse(settings.PanelHotkey, out _, out var binding, out _))
+            {
+                overlay.SetValue("PanelKey", (int)binding.Key, RegistryValueKind.DWord);
+                overlay.SetValue("PanelModifiers", (int)binding.Modifiers, RegistryValueKind.DWord);
+            }
+            overlay.SetValue("Advanced", settings.OverlayControls == "classic" ? 1 : 0, RegistryValueKind.DWord);
         }
         using var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
         if (settings.OverlayHelper && settings.OverlayStartWithWindows && settings.OverlayRenderer != "optiscaler")
@@ -120,7 +144,7 @@ public sealed class OverlayHelperWindow : Window
         }
         panel?.ApplyPreferences();
         UnregisterHotKey(handle, HotkeyId);
-        if (settings.OverlayRenderer == "optiscaler" || !settings.OverlayHelper) { problem = null; return; }
+        if (settings.OverlayRenderer is "optiscaler" or "game" || !settings.OverlayHelper) { problem = null; return; }
         if (!OverlayShortcut.TryParse(settings.PanelHotkey, out _, out var shortcut, out var error)) { problem = error; return; }
         var (modifiers, key) = shortcut;
         problem = key != 0 && !RegisterHotKey(handle, HotkeyId, modifiers | 0x4000, key)

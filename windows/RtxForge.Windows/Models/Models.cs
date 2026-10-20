@@ -62,6 +62,7 @@ public sealed class Game
     public double? NrStrength { get; set; }
     public double? SharpeningStrength { get; set; }
     public string? MfgMultiplier { get; set; }
+    public JsonObject? FeatureControls { get; set; }
 }
 
 /// <summary>Cross-OS installs (scripts/cross_os.py): whichever OS runs the game adapts the install.</summary>
@@ -71,7 +72,7 @@ public static class CrossOs
 }
 
 /// <summary>NR Strength / Sharpening / MFG, as written to OptiScaler.ini.</summary>
-public sealed record Tuning(double NrStrength, double SharpeningStrength, string MfgMultiplier, bool? NrOnLaunch = null)
+public sealed record Tuning(double NrStrength, double SharpeningStrength, string MfgMultiplier, bool? NrOnLaunch = null, JsonObject? FeatureControls = null)
 {
     public static readonly string[] MultiplierValues = ["auto", "0", "2", "3", "4", "5", "6"];
     public static readonly string[] MultiplierCaptions = ["In game", "Off", "2×", "3×", "4×", "5×", "6×"];
@@ -257,6 +258,7 @@ public sealed class ForgeSettings
     [JsonPropertyName("sharpening_strength")] public double SharpeningStrength { get; set; } = 0.5;
     [JsonPropertyName("mfg_multiplier"), JsonConverter(typeof(MfgMultiplierConverter))]
     public string MfgMultiplier { get; set; } = "auto";
+    [JsonPropertyName("feature_controls")] public JsonObject? FeatureControls { get; set; }
     [JsonPropertyName("game_folders")] public List<string> GameFolders { get; set; } = [];
     [JsonPropertyName("library_folders")] public List<string> LibraryFolders { get; set; } = [];
     [JsonPropertyName("removed_games")] public List<string> RemovedGames { get; set; } = [];
@@ -283,7 +285,7 @@ public sealed class ForgeSettings
     // The shared engine owns additional settings that this shell does not edit.
     [JsonExtensionData] public Dictionary<string, JsonElement> AdditionalSettings { get; set; } = [];
 
-    [JsonIgnore] public Tuning Presets => new(NrStrength, SharpeningStrength, MfgMultiplier);
+    [JsonIgnore] public Tuning Presets => new(NrStrength, SharpeningStrength, MfgMultiplier, NrOnLaunch, FeatureControls);
 
     static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rtxForge", "settings.json");

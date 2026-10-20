@@ -21,6 +21,7 @@ so the files written are exactly the ones the user reviewed.
 from __future__ import annotations
 
 import io
+import configparser
 import json
 import os
 import subprocess
@@ -369,6 +370,12 @@ def scan(params):
             traceback.print_exc()
     # Your chosen artwork over Steam's, and each game's saved notes (Linux details()).
     win_features.decorate(rows)
+    import skynizz_provider
+    import transactions
+    for row in rows:
+        if row.get('installed') and row.get('runtime_provider') == 'skynizz' and row.get('exe'):
+            try: row['feature_controls'] = skynizz_provider.read_controls((Path(row['game']) / row['exe']).parent / 'OptiScaler.ini')
+            except (OSError, ValueError, TypeError, configparser.Error, transactions.Refusal): pass
     return sorted(rows, key=lambda r: r["name"].casefold())
 
 

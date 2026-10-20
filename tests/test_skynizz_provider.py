@@ -62,6 +62,31 @@ def bridge_fixture(path, sr_path=None):
 
 
 class SkynizzPolicyTest(unittest.TestCase):
+    def test_full_controls_use_real_ini_keys_and_round_trip(self):
+        from types import SimpleNamespace
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('preset_engine', ROOT / 'engine/rtxengine.py')
+        engine = importlib.util.module_from_spec(spec); sys.modules[spec.name] = engine
+        # Only the real INI parser/writer is exercised here. Windows has no
+        # fcntl; the native lifecycle suite supplies the actual locking adapter.
+        if sys.platform == 'win32':
+            with patch.dict(sys.modules, {'fcntl': SimpleNamespace()}): spec.loader.exec_module(engine)
+        else: spec.loader.exec_module(engine)
+        controls = {item['key']: item['values'][-1] if 'values' in item else item['max'] for item in provider.control_schema()}
+        text = provider.apply_controls(engine, '[Unrelated]\nKeep=please\n', controls)
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'OptiScaler.ini'; path.write_text(text, encoding='utf-8')
+            self.assertEqual(provider.read_controls(path), controls)
+        self.assertIn('Keep=please', text)
+        self.assertIn('Shader=lcda', text)
+        self.assertIn('OverrideInterpolationCount=5', text)
+        nr_only = provider.apply_controls(engine, '[DLSSG]\nOverrideInterpolationCount=auto\n', controls, 'nr-only')
+        self.assertIn('OverrideInterpolationCount=auto', nr_only)
+        mfg_only = provider.apply_controls(engine, '[DlssNr]\nEnabled=false\n', controls, 'mfg-only')
+        self.assertIn('Enabled=false', mfg_only)
+        for invalid in ({'colour': 4.1}, {'passes': 1.5}, {'intensity': float('nan')}, {'multiplier': 1}, {'file': 'anything'}, {'enabled': True}):
+            with self.assertRaises(transactions.Refusal): provider.validate_controls(invalid)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

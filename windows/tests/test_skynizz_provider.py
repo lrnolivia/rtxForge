@@ -145,6 +145,19 @@ reset=prepare(fresh,'reset');run(reset)
 reset_ini=(fresh/'OptiScaler.ini').read_text()
 assert 'CacheInterval=1' in reset_ini and 'WorkingScale=0.65' in reset_ini and 'LocalStructure=1.0' in reset_ini and 'SkinStructure=1.0' in reset_ini and 'DisableSplash=true' in reset_ini and 'DualFeature=' not in reset_ini
 checks.append('fresh/repair/reset suppress startup splash, preserve manual menu and tuning, and pin exact release')
+import skynizz_provider
+complete={item['key']:item['default'] for item in skynizz_provider.control_schema()}
+complete.update(enabled=0,intensity=.73,passes=3,colour=3.25,skin=-1,work_scale=.57,sharpen=1,sharp_override=1,sharpen_shader=2,sharpness=.63)
+full_before=files(fresh)
+full_review=service.prepare([scan(fresh)],'nr-only','reset',visual_settings=settings|{'feature_controls':complete})
+assert full_review['rows'] and files(fresh)==full_before
+service.execute(full_review)
+found=skynizz_provider.read_controls(fresh/'OptiScaler.ini')
+for key,value in complete.items():
+    if key!='multiplier': assert found[key]==value,(key,found.get(key),value)
+assert json.loads((fresh/'.rtxforge-install.json').read_text())['nr_on_launch'] is False
+assert baseline(fresh)['nr_on_launch'] is False
+checks.append('all supported preset controls persist with exact units through reviewed apply; startup NR choice updates metadata and baseline')
 run(prepare(fresh,'uninstall'));assert files(fresh)==before,files(fresh)
 checks.append('restore reproduces the original file hashes')
 import game_display as display
@@ -514,7 +527,7 @@ class WindowsSkynizzTest(unittest.TestCase):
                                     env=env, capture_output=True, text=True, timeout=180)
             self.assertEqual(result.returncode, 0, result.stderr[-12000:] + result.stdout[-3000:])
             receipt = json.loads(result.stdout.strip().splitlines()[-1])
-            self.assertEqual(receipt['count'], 27)
+            self.assertEqual(receipt['count'], 28)
             print('PASS: ' + '; '.join(receipt['checks']))
 
 

@@ -3,6 +3,8 @@ from pathlib import Path
 import hashlib
 import configparser
 import json
+import math
+from functools import lru_cache
 import re
 import stat
 import struct
@@ -219,7 +221,60 @@ def startup_overlay_disabled(game):
                                  or Path(game.exe or '').name.casefold() == 'inzoi-win64-shipping.exe')
 
 
-def configure(e, source, saved=None, mode='nr-only', mfg_multiplier='auto', game=None):
+@lru_cache(maxsize=1)
+def control_schema():
+    return json.loads((ROOT / 'providers/skynizz-bridge/controls.json').read_text(encoding='utf-8'))['controls']
+
+
+def validate_controls(values):
+    t.need(isinstance(values, dict), 'Feature presets must contain supported numeric controls.')
+    definitions = {item['key']: item for item in control_schema()}
+    t.need(set(values) <= set(definitions), 'An unsupported feature preset was requested.')
+    for key, value in values.items():
+        item = definitions[key]
+        t.need(type(value) in (int, float) and math.isfinite(value) and item['min'] <= value <= item['max']
+               and (item['kind'] == 'slider' or value == int(value))
+               and ('values' not in item or value in item['values']), 'Choose a supported value for ' + item['label'] + '.')
+    return dict(values)
+
+
+def apply_controls(e, text, values, mode='nr-mfg', external_mfg=False):
+    values = validate_controls(values)
+    for item in control_schema():
+        key = item['key']
+        if key not in values: continue
+        if item['section'] == 'DlssNr' and mode == 'mfg-only': continue
+        if key == 'multiplier' and (mode == 'nr-only' or external_mfg): continue
+        value = values[key]
+        if key == 'multiplier': value = 'auto' if value == -1 else str(max(0, int(value) - 1))
+        elif key == 'sharpen_shader': value = ('rcas', 'da', 'lcda')[int(value)]
+        elif item['kind'] == 'toggle': value = 'true' if value else 'false'
+        elif item['kind'] != 'slider': value = str(int(value))
+        else: value = format(value, '.8g')
+        text = e.set_ini_value(text, item['section'], item['ini'], value)
+    return text
+
+
+def read_controls(path):
+    path = Path(path)
+    t.need(path.is_file() and not path.is_symlink() and path.stat().st_size < 2 * 1024**2, 'Game settings need repair.')
+    parser = configparser.ConfigParser(interpolation=None, strict=True, inline_comment_prefixes=(';', '#'))
+    parser.read_string(path.read_text(encoding='utf-8-sig'))
+    values = {}
+    for item in control_schema():
+        raw = parser.get(item['section'], item['ini'], fallback='auto').casefold()
+        if raw == 'auto' and item['key'] != 'multiplier': continue
+        if item['key'] == 'multiplier': value = -1 if raw == 'auto' else 0 if int(raw) == 0 else int(raw) + 1
+        elif item['key'] == 'sharpen_shader': value = ('rcas', 'da', 'lcda').index(raw)
+        elif item['kind'] == 'toggle':
+            t.need(raw in ('true', 'false', '0', '1'), 'An installed feature preset is invalid.')
+            value = int(raw in ('true', '1'))
+        else: value = float(raw) if item['kind'] == 'slider' else int(raw)
+        values[item['key']] = value
+    return validate_controls(values)
+
+
+def configure(e, source, saved=None, mode='nr-only', mfg_multiplier='auto', game=None, controls=None):
     """Repair retains the complete user preset, including cache/placement choices."""
     text = (saved if saved is not None else source).decode('utf-8-sig')
     external_mfg = bool(getattr(e, 'Y4MY_PROVIDER', {}).get('mfg_component'))
@@ -253,6 +308,8 @@ def configure(e, source, saved=None, mode='nr-only', mfg_multiplier='auto', game
             text = e.set_ini_value(text, 'DLSSG', key, 'false')
     if mode == 'mfg-only':
         text = e.set_ini_value(text, 'DlssNr', 'Enabled', 'false')
+    if controls is not None:
+        text = apply_controls(e, text, controls, mode, external_mfg)
     # Skynizz bypasses the generic OptiScaler INI policy. Suppress its startup
     # splash on fresh installs and repairs without disabling the manual menu.
     text = e.set_ini_value(text, 'Menu', 'DisableSplash', 'true')

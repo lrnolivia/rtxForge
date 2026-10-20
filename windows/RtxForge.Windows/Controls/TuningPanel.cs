@@ -18,11 +18,13 @@ public sealed class TuningPanel : UserControl
     readonly List<FrameworkElement> nrPods = [];
     readonly Border mfgPod;
     bool syncing;
+    readonly Tuning original;
 
     public event EventHandler? Changed;
 
     public TuningPanel(Tuning initial)
     {
+        original = initial;
         var grid = new Grid { ColumnSpacing = 16 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -152,8 +154,16 @@ public sealed class TuningPanel : UserControl
 
     public Tuning Value
     {
-        get => new(Math.Round(nr.Value, 1), Math.Round(sharpening.Value, 1),
-            Tuning.MultiplierValues[Math.Max(0, mfg.SelectedIndex)]);
+        get
+        {
+            var result = original with { NrStrength = Math.Round(nr.Value, 1), SharpeningStrength = Math.Round(sharpening.Value, 1),
+                MfgMultiplier = Tuning.MultiplierValues[Math.Max(0, mfg.SelectedIndex)] };
+            if (result.FeatureControls is null) return result;
+            var values = (System.Text.Json.Nodes.JsonObject)result.FeatureControls.DeepClone();
+            values["intensity"] = result.NrStrength; values["sharpness"] = result.SharpeningStrength;
+            values["multiplier"] = result.MfgMultiplier == "auto" ? -1 : int.Parse(result.MfgMultiplier);
+            return result with { FeatureControls = values };
+        }
         set
         {
             nr.Value = value.NrStrength;

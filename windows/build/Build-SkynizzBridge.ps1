@@ -1,12 +1,14 @@
 param(
     [Parameter(Mandatory)][string]$SourceRoot,
     [string]$Output = (Join-Path $PSScriptRoot '..\out\skynizz-bridge'),
-    [switch]$PlacementCandidate
+    [switch]$PlacementCandidate,
+    [switch]$PanelCandidate
 )
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $source = (Resolve-Path -LiteralPath $SourceRoot).Path
 $specRoot = Join-Path $repo 'providers\skynizz-bridge'
+if ($PanelCandidate) { $PlacementCandidate = $true }
 $spec = Get-Content -LiteralPath (Join-Path $specRoot 'source.json') -Raw | ConvertFrom-Json
 $patch = Join-Path $specRoot $spec.patch
 if ((Get-FileHash -LiteralPath $patch -Algorithm SHA256).Hash.ToLowerInvariant() -ne $spec.patch_sha256) { throw 'Bridge patch digest mismatch' }
@@ -30,6 +32,20 @@ if ($PlacementCandidate) {
     & git -C $source apply -- (Join-Path $specRoot $candidate.patch)
     if ($LASTEXITCODE -ne 0) { throw 'Placement candidate patch failed' }
     Copy-Item -LiteralPath (Join-Path $specRoot $candidate.header) -Destination (Join-Path $source 'OptiScaler\dlssnr\ForgeNrRoute.h')
+}
+$panel = $null
+if ($PanelCandidate) {
+    if (-not $PSBoundParameters.ContainsKey('Output')) { $Output = Join-Path $PSScriptRoot '..\out\skynizz-panel-candidate' }
+    $panel = Get-Content -Raw -LiteralPath (Join-Path $specRoot 'panel-candidate.json') | ConvertFrom-Json
+    if ($panel.base_bridge_id -ne $candidate.id) { throw 'Panel candidate has a different placement bridge' }
+    foreach ($entry in $panel.sources.PSObject.Properties) {
+        if ((Get-FileHash -LiteralPath (Join-Path $repo $entry.Name) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $entry.Value) { throw "Panel source digest mismatch: $($entry.Name)" }
+    }
+    & git -C $source apply --check -- (Join-Path $specRoot $panel.patch)
+    if ($LASTEXITCODE -ne 0) { throw 'Panel candidate does not apply to the admitted source' }
+    & git -C $source apply -- (Join-Path $specRoot $panel.patch)
+    if ($LASTEXITCODE -ne 0) { throw 'Panel candidate patch failed' }
+    & (Join-Path $specRoot 'Generate-Panel.ps1') -SourceRoot $source
 }
 $msbuild = (Get-Command MSBuild.exe -ErrorAction SilentlyContinue).Source
 if (-not $msbuild) {
@@ -58,6 +74,12 @@ if ($candidate) {
     Copy-Item -LiteralPath (Join-Path $specRoot $candidate.patch) -Destination $payload
     Copy-Item -LiteralPath (Join-Path $specRoot $candidate.header) -Destination $payload
 }
+if ($panel) {
+    foreach ($name in @($panel.patch, 'ForgePanel.h', 'Generate-Panel.ps1', 'controls.json', 'panel-candidate.json')) {
+        Copy-Item -LiteralPath (Join-Path $specRoot $name) -Destination $payload
+    }
+    Copy-Item -LiteralPath (Join-Path $repo 'windows\RtxForge.Windows\Assets\Fonts\OFL-Inter.txt') -Destination $payload
+}
 $productHead = (& git -C $repo rev-parse HEAD).Trim()
 $receipt = [ordered]@{
     schema = 1; variant = 'nr-mfg-bridge'; id = 'skynizz'; family = 'skynizz'; name = 'Skynizz NR + Ada MFG bridge'
@@ -74,6 +96,13 @@ if ($candidate) {
     $receipt.route_header_sha256 = $candidate.header_sha256
     $receipt.candidate_only = $true
     $receipt.default_promoted = $false
+}
+if ($panel) {
+    $receipt.bridge_id = $panel.id
+    $receipt.panel_sources = $panel.sources
+    $receipt.panel_candidate = $true
+    $receipt.panel_renderer = 'in-game'
+    $receipt.performance_verified = $false
 }
 $receipt | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $payload 'rtxforge-bridge.json') -Encoding utf8
 $archiveName = 'rtxForge-Skynizz-' + $spec.upstream.tag + '-MFG.zip'

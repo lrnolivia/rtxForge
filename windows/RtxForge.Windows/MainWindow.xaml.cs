@@ -138,6 +138,7 @@ public sealed partial class MainWindow : Window
     {
         Games = await Service.ScanAsync();
         GamesChanged?.Invoke();
+        if (!Service.IsPreview) _ = OverlayHelper.CacheGameIdentitiesAsync(Games.ToArray());
         // Linux fetch_media: cached artwork and store details, downloaded when missing.
         _ = RefreshArtworkAsync(false);
     }
@@ -249,7 +250,7 @@ public sealed partial class MainWindow : Window
     public Tuning GameTuning(Game game) => new(
         game.NrStrength ?? Settings.NrStrength,
         game.SharpeningStrength ?? Settings.SharpeningStrength,
-        game.MfgMultiplier ?? Settings.MfgMultiplier);
+        game.MfgMultiplier ?? Settings.MfgMultiplier, null, game.FeatureControls);
 
     void AddLog(string text) => log.Add($"{DateTime.Now:HH:mm:ss}  {text}");
 

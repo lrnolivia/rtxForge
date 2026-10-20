@@ -26,7 +26,7 @@ public sealed partial class GameModeView
         };
         var head = new StackPanel { Spacing = t.Px(10) };
         head.Children.Add(ui.H1("Library presets"));
-        head.Children.Add(ui.P("Apply to your configured games. Unmanaged games are skipped."));
+        head.Children.Add(ui.P("The same NR, MFG and image controls as the overlay. Save for new installs or review configured games."));
         page.Children.Add(head);
         var (rows, value) = PresetRows(shell.Settings.Presets);
         presetValue = value;
@@ -38,6 +38,7 @@ public sealed partial class GameModeView
         }));
         var configured = shell.Games.Where(g => g.Installed && !g.Blocked).ToList();
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(16) };
+        actions.Children.Add(ui.Button("Save preset", () => { SavePresets(); Toast("Library preset saved"); }, GmKind.Primary, .85));
         actions.Children.Add(ui.Button($"Apply to all configured games ({configured.Count})", () => ApplyPresets(configured), GmKind.Primary, 0.85,
             enabled: configured.Count > 0).With(b => Key(b, "presets-apply")));
         actions.Children.Add(ui.Button("Select games to apply", () =>
@@ -60,6 +61,8 @@ public sealed partial class GameModeView
         shell.Settings.NrStrength = v.NrStrength;
         shell.Settings.SharpeningStrength = v.SharpeningStrength;
         shell.Settings.MfgMultiplier = v.MfgMultiplier;
+        shell.Settings.NrOnLaunch = v.NrOnLaunch == true;
+        shell.Settings.FeatureControls = v.FeatureControls;
         shell.Settings.Save();
     }
 

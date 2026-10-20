@@ -20,6 +20,17 @@ def attach(review):
     operation = review.get('operation')
     for plan, row in zip(review.get('plans', []), review.get('rows', [])):
         preview = plan.get('preview', {})
+        if preview.get('feature_controls'):
+            import skynizz_provider
+            values = preview['feature_controls']
+            settings = []
+            for field in skynizz_provider.control_schema():
+                if field['key'] not in values: continue
+                value = values[field['key']]
+                if field['kind'] == 'toggle': value = 'On' if value else 'Off'
+                elif 'values' in field: value = field['choices'][field['values'].index(value)]
+                settings.append(field['label'] + ': ' + str(value))
+            row['detail'] = (row.get('detail') or '') + '\n' + '\n'.join(settings)
         mode = preview.get('feature_mode')
         if operation == 'uninstall':
             summary = ('Restore the setup saved before Adoption.' if preview.get('restore_boundary') == 'before-adoption' else 'Restore the original files backed up by rtxForge.')

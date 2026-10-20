@@ -40,6 +40,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  panel-candidate:
+    name: In-game panel candidate
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Skynizz/optiscaler-dlss5
+          ref: 6bfc4389c25054ef6747df6e6b1b470e9541c4da
+          submodules: recursive
+          persist-credentials: false
+          path: windows/out/skynizz-source
+      - uses: microsoft/setup-msbuild@v2
+      - name: Build isolated renderer candidate
+        run: ./windows/build/Build-SkynizzBridge.ps1 -SourceRoot windows/out/skynizz-source -PanelCandidate
+      - uses: actions/upload-artifact@v4
+        with:
+          name: skynizz-in-game-panel-candidate
+          path: |
+            windows/out/skynizz-panel-candidate/*.zip
+            windows/out/skynizz-panel-candidate/package.json
+          if-no-files-found: error
+          retention-days: 14
   build:
     name: WinUI 3 ${{ matrix.platform }}
     runs-on: windows-2025

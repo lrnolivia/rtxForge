@@ -2187,15 +2187,15 @@ def apply_visual_defaults(text: str, saved: str | None, feature_mode: str, nr_st
     return text, selected
 
 
-def reset_visual_settings(game: Game, *, dry_run: bool = False, nr_strength: str = "strong", mfg_multiplier: int | str = "auto", sharpening_strength: str = "strong") -> dict:
+def reset_visual_settings(game: Game, *, dry_run: bool = False, nr_strength: str = "strong", mfg_multiplier: int | str = "auto", sharpening_strength: str = "strong", feature_controls: dict | None = None) -> dict:
     """Reset managed visual tuning only; never install payloads or edit Steam."""
     if dry_run:
-        return _reset_visual_settings(game, dry_run=True, nr_strength=nr_strength, mfg_multiplier=mfg_multiplier, sharpening_strength=sharpening_strength)
+        return _reset_visual_settings(game, dry_run=True, nr_strength=nr_strength, mfg_multiplier=mfg_multiplier, sharpening_strength=sharpening_strength, feature_controls=feature_controls)
     with mutation_lock():
-        return _reset_visual_settings(game, nr_strength=nr_strength, mfg_multiplier=mfg_multiplier, sharpening_strength=sharpening_strength)
+        return _reset_visual_settings(game, nr_strength=nr_strength, mfg_multiplier=mfg_multiplier, sharpening_strength=sharpening_strength, feature_controls=feature_controls)
 
 
-def _reset_visual_settings(game: Game, *, dry_run: bool = False, nr_strength: str = "strong", mfg_multiplier: int | str = "auto", sharpening_strength: str = "strong") -> dict:
+def _reset_visual_settings(game: Game, *, dry_run: bool = False, nr_strength: str = "strong", mfg_multiplier: int | str = "auto", sharpening_strength: str = "strong", feature_controls: dict | None = None) -> dict:
     target = game.target_dir
     baseline = load_baseline(target, readonly=True)
     require(baseline and baseline.get("status") == "active", "No active managed installation; install enhancements first")
@@ -2211,12 +2211,49 @@ def _reset_visual_settings(game: Game, *, dry_run: bool = False, nr_strength: st
     original = ini.read_bytes()
     if current.get("provider_id") == "skynizz":
         import skynizz_provider
-        text, nr_values = skynizz_provider.configure(_ENGINE_MODULE, original, mode=mode, mfg_multiplier=mfg_multiplier, game=game)
+        text, nr_values = skynizz_provider.configure(_ENGINE_MODULE, original, saved=original if feature_controls is not None else None,
+            mode=mode, mfg_multiplier=mfg_multiplier, game=game, controls=feature_controls)
         values = {"DlssNr": nr_values}
     else:
         text, values = apply_visual_defaults(original.decode("utf-8-sig"), None, mode, nr_strength, mfg_multiplier, sharpening_strength)
     updated = text.encode("utf-8")
     changes = {managed[0]: (original, updated)}
+    paths = {managed[0]: ini}
+    # The launch checkbox must agree with the helper's recorded startup policy.
+    # Include both records in the same backed-up settings transaction.
+    if feature_controls is not None and 'enabled' in feature_controls and current.get('provider_id') == 'skynizz':
+        metadata_path = target / '.rtxforge-install.json'
+        require(metadata_path.is_file() and not metadata_path.is_symlink(), 'Install record needs repair')
+        metadata_before = metadata_path.read_bytes()
+        metadata = json.loads(metadata_before.decode('utf-8-sig'))
+        metadata['nr_on_launch'] = bool(feature_controls['enabled'] and mode != 'mfg-only')
+        if isinstance(metadata.get('nr_profile'), dict): metadata['nr_profile']['enabled'] = metadata['nr_on_launch']
+        paths['install-record.json'] = metadata_path
+        changes['install-record.json'] = (metadata_before, (json.dumps(metadata, indent=2) + '\n').encode('utf-8'))
+        baseline_path = _validated_state_dir(target) / 'baseline.json'
+        paths['baseline-record.json'] = baseline_path
+        baseline_before = baseline_path.read_bytes()
+        baseline['current']['nr_on_launch'] = metadata['nr_on_launch']
+        if isinstance(baseline['current'].get('nr_profile'), dict): baseline['current']['nr_profile']['enabled'] = metadata['nr_on_launch']
+        changes['baseline-record.json'] = (baseline_before, (json.dumps(baseline, indent=2) + '\n').encode('utf-8'))
+        # An older helper preset must not undo an explicitly applied preset at
+        # the next launch. Back up and merge only this game's existing record.
+        state_root = os.environ.get('RTXFORGE_STATE_ROOT')
+        if state_root:
+            key = hashlib.sha256(os.path.normcase(str(game.exe.resolve())).encode()).hexdigest()
+            preset_path = Path(state_root) / 'runtime-presets' / (key + '.json')
+            if preset_path.exists():
+                skynizz_provider.t.safe(preset_path)
+                require(preset_path.stat().st_size < 65536, 'Saved preset is too large; review it first')
+                preset_before = preset_path.read_bytes()
+                preset = json.loads(preset_before.decode('utf-8-sig'))
+                require(preset.get('schema') == 1 and isinstance(preset.get('changes'), dict), 'Saved preset needs review first')
+                values_to_save = {k: v for k, v in feature_controls.items() if k != 'multiplier' or mode != 'nr-only'}
+                if mode == 'mfg-only': values_to_save = {k: v for k, v in values_to_save.items() if next(f for f in skynizz_provider.control_schema() if f['key'] == k)['section'] != 'DlssNr'}
+                preset['changes'].update(values_to_save)
+                skynizz_provider.validate_controls(preset['changes'])
+                paths['preset-record.json'] = preset_path
+                changes['preset-record.json'] = (preset_before, (json.dumps(preset, indent=2) + '\n').encode('utf-8'))
     component = ((current.get("archive") or {}).get("release") or {}).get("mfg_component")
     if component:
         import ada_mfg_provider
@@ -2226,12 +2263,16 @@ def _reset_visual_settings(game: Game, *, dry_run: bool = False, nr_strength: st
         require(addon_ini.is_file() and not addon_ini.is_symlink(), "MFG config is missing or linked; repair first")
         addon_original = addon_ini.read_bytes()
         changes["ReShade.ini"] = (addon_original, ada_mfg_provider.reset_multiplier(_ENGINE_MODULE, addon_original, mfg_multiplier))
+        paths['ReShade.ini'] = addon_ini
     record = {"action": "reset-visual-settings", "name": game.name, "feature_mode": mode,
               "provider_id": current.get("provider_id"), "files": list(changes),
               "launch_options": f"NR {visual_strength_label(nr_strength, 'nr')} · Sharpening {visual_strength_label(sharpening_strength, 'sharpness')}" + (f" · MFG {'In game' if mfg_multiplier == 'auto' else str(mfg_multiplier) + 'x' if mfg_multiplier else 'Off'} requested" if mode != "nr-only" else " · NR Only retained"),
               "before_sha256": sha256_bytes(original), "after_sha256": sha256_bytes(updated),
               "nr_strength": nr_strength, "sharpening_strength": sharpening_strength, "mfg_multiplier": mfg_multiplier if mode != "nr-only" else None, "defaults": values, "changed": any(before != after for before, after in changes.values()),
               "file_hashes": {name: {"before": sha256_bytes(before), "after": sha256_bytes(after)} for name, (before, after) in changes.items()}}
+    if feature_controls is not None and current.get('provider_id') == 'skynizz':
+        record['feature_controls'] = dict(feature_controls)
+        record['launch_options'] = 'NR, frame generation and image tuning preset' + (' · NR starts on' if feature_controls.get('enabled') else ' · NR starts off')
     if dry_run or not record["changed"]:
         return record
     backup_dir = _validated_state_dir(target) / "settings-resets" / str(time.time_ns())
@@ -2243,16 +2284,16 @@ def _reset_visual_settings(game: Game, *, dry_run: bool = False, nr_strength: st
     record.update(backup=str(backup), status="prepared", created_utc=now_iso())
     save_json_atomic(backup_dir / "reset.json", record)
     for name, (before, after) in changes.items():
-        require((target / name).read_bytes() == before, "Settings changed during reset; retry")
+        require(paths[name].read_bytes() == before, "Settings changed during reset; retry")
     written = []
     try:
         for name, (before, after) in changes.items():
-            path = target / name
+            path = paths[name]
             atomic_write(path, after, mode=stat.S_IMODE(path.stat().st_mode))
             written.append(name)
     except BaseException:
         for name in reversed(written):
-            atomic_write(target / name, changes[name][0])
+            atomic_write(paths[name], changes[name][0])
         record["status"] = "failed-restored"
         save_json_atomic(backup_dir / "reset.json", record)
         raise
@@ -4306,6 +4347,7 @@ def install_target(
     mfg_multiplier: int | str = "auto",
     sharpening_strength: str = "strong",
     preserve_visual_settings: bool = True,
+    feature_controls: dict | None = None,
     clean_config: bool = False,
     nr_on_launch: Optional[bool] = False,
     dry_run: bool = False,
@@ -4531,7 +4573,8 @@ def install_target(
         ini_source = payload[ini_key]
         saved_ini = None
     if is_skynizz:
-        text, nr_tuning = skynizz_provider.configure(_ENGINE_MODULE, ini_source, saved_ini, mode=feature_mode, mfg_multiplier=mfg_multiplier, game=game)
+        text, nr_tuning = skynizz_provider.configure(_ENGINE_MODULE, ini_source, saved_ini, mode=feature_mode, mfg_multiplier=mfg_multiplier, game=game,
+            controls=feature_controls if saved_ini is None or not preserve_visual_settings else None)
         if mfg_component:
             import ada_mfg_provider
             payload["ReShade.ini"] = ada_mfg_provider.configure(_ENGINE_MODULE, game, existing_baseline, mfg_multiplier)

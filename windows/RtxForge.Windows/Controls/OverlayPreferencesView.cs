@@ -14,8 +14,8 @@ public sealed class OverlayPreferencesView : StackPanel
     {
         Spacing = 20;
         var current = ForgeSettings.Load();
-        var renderer = Choice("Overlay", ["rtxForge", "Original OptiScaler overlay"], current.OverlayRenderer == "optiscaler" ? 1 : 0);
-        Note("rtxForge opens a floating sidebar on the left. OptiScaler opens its original in-game panel, including all upstream options.");
+        var renderer = Choice("Overlay", ["rtxForge sidebar", "Original OptiScaler overlay", "rtxForge in-game (preview)"], current.OverlayRenderer == "game" ? 2 : current.OverlayRenderer == "optiscaler" ? 1 : 0);
+        Note("The in-game preview needs the new renderer package. It draws inside the game and opens only there. The sidebar is a separate helper window.");
         var layout = Choice("Controls", ["Unified", "Advanced"], current.OverlayControls == "classic" ? 1 : 0);
         Note("Unified uses simple labels and percentages. Advanced uses OptiScaler labels and original units for the sidebar’s live controls.");
         var key = new OverlayShortcutPicker(current.PanelHotkey);
@@ -42,7 +42,9 @@ public sealed class OverlayPreferencesView : StackPanel
         void Availability()
         {
             var native = renderer.SelectedIndex == 1;
-            layout.IsEnabled = key.IsEnabled = material.IsEnabled = helper.IsEnabled = startup.IsEnabled = !native;
+            layout.IsEnabled = key.IsEnabled = !native;
+            material.IsEnabled = renderer.SelectedIndex == 0;
+            helper.IsEnabled = startup.IsEnabled = !native;
             nativeKey.IsEnabled = optiUi.IsOn;
             restart.Visibility = Visibility.Visible;
         }
@@ -63,7 +65,7 @@ public sealed class OverlayPreferencesView : StackPanel
             Availability();
             return true;
         }
-        renderer.SelectionChanged += (_, _) => Save(s => s.OverlayRenderer = renderer.SelectedIndex == 1 ? "optiscaler" : "rtxforge");
+        renderer.SelectionChanged += (_, _) => Save(s => s.OverlayRenderer = renderer.SelectedIndex == 2 ? "game" : renderer.SelectedIndex == 1 ? "optiscaler" : "rtxforge");
         layout.SelectionChanged += (_, _) => Save(s => s.OverlayControls = layout.SelectedIndex == 1 ? "classic" : "unified");
         key.SaveBinding = value => Save(s => s.PanelHotkey = value);
         nativeKey.SelectionChanged += (_, _) => Save(s => s.OptiScalerHotkey = nativeKey.SelectedIndex == 1 ? "F8" : nativeKey.SelectedIndex == 2 ? "Disabled" : "Insert");

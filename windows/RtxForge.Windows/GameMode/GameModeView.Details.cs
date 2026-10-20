@@ -245,7 +245,7 @@ public sealed partial class GameModeView
                 if (presetsExpanded)
                 {
                     var tuning = shell.GameTuning(g);
-                    var (rows, value) = PresetRows(tuning, g.Installed && !g.Blocked);
+                    var (rows, value) = PresetRows(tuning, g.Installed && !g.Blocked, g.RuntimeProvider != "skynizz");
                     content.Children.Add(ui.P("Only this game changes. Review the changes before applying."));
                     content.Children.Add(ui.Group(rows));
                     var apply = ui.Button("Apply to this game", () => _ = RunOperationAsync("apply", [g], value()), GmKind.Primary, 0.85,
@@ -436,22 +436,30 @@ public sealed partial class GameModeView
     }
 
     /// <summary>NR Strength / Sharpening / Frame generation steppers (Left/Right adjust).</summary>
-    (List<UIElement> Rows, Func<Tuning> Value) PresetRows(Tuning initial, bool enabled = true)
+    (List<UIElement> Rows, Func<Tuning> Value) PresetRows(Tuning initial, bool enabled = true, bool legacy = false)
     {
-        var nr = initial.NrStrength;
-        var sharp = initial.SharpeningStrength;
-        var mfg = initial.MfgMultiplier;
-        string[] multipliers = ["0", "2", "3", "4", "5", "6", "auto"];
-        string Mfg(string v) => v switch { "auto" => "In game", "0" => "Off", _ => v + "×" };
-        var nrEnabled = enabled && shell.Mode != "mfg-only";
-        var mfgEnabled = enabled && shell.Mode != "nr-only";
-        var rows = new List<UIElement>
+        var values = FeatureControlSchema.Resolve(initial);
+        var advanced = shell.Settings.OverlayControls == "classic";
+        var rows = new List<UIElement>();
+        foreach (var group in FeatureControlSchema.Shared.Groups)
         {
-            ui.StepperRow("NR Strength", "0.0 turns the effect off.", () => nr.ToString("0.0"), d => nr = Math.Clamp(Math.Round(nr + d * 0.1, 1), 0, 2), nrEnabled),
-            ui.StepperRow("Sharpening", "0.0 turns sharpening off.", () => sharp.ToString("0.0"), d => sharp = Math.Clamp(Math.Round(sharp + d * 0.1, 1), 0, 1), enabled),
-            ui.StepperRow("Frame generation", "MFG multiplier · enable frame generation in the game.", () => Mfg(mfg),
-                d => mfg = multipliers[Math.Clamp(Array.IndexOf(multipliers, mfg) + d, 0, multipliers.Length - 1)], mfgEnabled),
-        };
-        return (rows, () => new Tuning(nr, sharp, mfg));
+            rows.Add(ui.Text(group.Name, 1.05, weight: FontWeights.SemiBold).With(text => text.Margin = new Thickness(t.Px(16), t.Px(20), 0, t.Px(8))));
+            foreach (var field in FeatureControlSchema.Shared.Controls.Where(f => f.Group == group.Name))
+            {
+                var available = enabled && FeatureControlSchema.Available(field, shell.Mode, legacy);
+                rows.Add(ui.StepperRow(field.Key == "enabled" ? "Enable NR on launch" : field.Caption(advanced),
+                    !available ? "Unavailable for this package or feature selection." : field.Key == "skin" ? "−1 follows local structure."
+                    : field.Key == "multiplier" ? "Enable frame generation in the game." : null,
+                    () => field.Display(FeatureControlSchema.Number(values, field), advanced), direction =>
+                    {
+                        var current = FeatureControlSchema.Number(values, field);
+                        var next = field.Kind == "toggle" ? current == 0 ? 1 : 0
+                            : field.Values.Length > 0 ? field.Values[Math.Clamp(Array.IndexOf(field.Values, current) + direction, 0, field.Values.Length - 1)]
+                            : Math.Clamp(Math.Round(current + direction * field.Step, 2), field.Min, field.Max);
+                        FeatureControlSchema.Put(values, field, next);
+                    }, available));
+            }
+        }
+        return (rows, () => FeatureControlSchema.Tuning(values));
     }
 }

@@ -16,6 +16,7 @@ public sealed partial class MainWindow
     public async void OpenCompanion(Game? game = null)
     {
         if (Service.IsPreview) { ShowToast("Live controls require the installed engine."); return; }
+        if (Settings.OverlayRenderer == "game") { ShowToast("Press " + Settings.PanelHotkey + " inside a game with the in-game renderer package."); return; }
         try { await OverlayHelper.CommandAsync("show"); }
         catch (Exception error) { ShowToast(error.Message); }
     }

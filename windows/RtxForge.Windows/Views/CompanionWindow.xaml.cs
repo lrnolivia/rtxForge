@@ -100,7 +100,7 @@ public sealed partial class CompanionWindow : Window
         SetAvailability();
     }
 
-    public void Present()
+    public async void Present(bool settingsOnly = false)
     {
         if (opening || disposed) return;
         // Keep the invoking display/game even if the asynchronous ownership
@@ -114,11 +114,22 @@ public sealed partial class CompanionWindow : Window
         opening = true;
         try
         {
+            if (!settingsOnly)
+            {
+                // A global hotkey must never summon game controls over the
+                // desktop, or guess the only running game in the background.
+                if (service.Settings.OverlayRenderer == "game") return;
+                var targets = await service.CompanionTargetsAsync();
+                var active = await service.ActiveCompanionAsync(targets, foreground, 0);
+                if (disposed || foreground == 0 || Int(active, "pid") != foreground || active["row"] is not JsonObject
+                    || GetForegroundWindow() != foregroundWindow) return;
+                games = targets; targetsUpdated = DateTime.UtcNow;
+            }
             if (disposed) return;
             PresentCore(area, foreground);
             if (game is not null) _ = ApplyGameAccentAsync(game, generation);
         }
-        catch (Exception error) { if (!disposed) { Feedback.Text = error.Message; PresentCore(area, foreground); } }
+        catch (Exception error) { if (!disposed && settingsOnly) { Feedback.Text = error.Message; PresentCore(area, foreground); } }
         finally { opening = false; }
     }
     void PositionAtLeft(RectInt32 area)
@@ -232,7 +243,7 @@ public sealed partial class CompanionWindow : Window
     {
         globalShown = !globalShown; ShowSettings(false);
     }
-    public void OpenSettings() { ShowSettings(true); Present(); }
+    public void OpenSettings() { ShowSettings(true); Present(settingsOnly: true); }
     void ShowSettings(bool show)
     {
         if (!show && !globalShown && service.Settings.OverlayRenderer == "optiscaler") { HidePanel(); return; }

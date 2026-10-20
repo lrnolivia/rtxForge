@@ -22,6 +22,19 @@ foreach (var raw in new[] { "0", "2", "3", "4", "5", "6", "\"0\"", "\"2\"", "\"3
     count++;
 }
 Console.WriteLine($"PASS: {count} numeric/text multiplier and shared-settings round trips.");
+var allControls = FeatureControlSchema.Resolve(new ForgeSettings().Presets);
+foreach (var control in FeatureControlSchema.Shared.Controls)
+{
+    var value = control.Values.Length > 0 ? control.Values[^1] : control.Max;
+    FeatureControlSchema.Put(allControls, control, value);
+}
+var complete = FeatureControlSchema.Tuning(allControls);
+var presetSettings = JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(new ForgeSettings { FeatureControls = complete.FeatureControls }))!;
+if (!System.Text.Json.Nodes.JsonNode.DeepEquals(allControls, FeatureControlSchema.Resolve(presetSettings.Presets)))
+    throw new Exception("The full preset lost control values or units during persistence.");
+if (FeatureControlSchema.Shared.Controls.Length != 24 || FeatureControlSchema.Shared.Controls.Single(c => c.Key == "colour").Max != 4)
+    throw new Exception("The app lost the shared control vocabulary or colour range.");
+Console.WriteLine("PASS: all 24 ordered feature controls round trip with native units, including extended colour and exact MFG choices.");
 var defaults = new ForgeSettings();
 if (!defaults.OptiScalerUi || !defaults.ReShadeUi || defaults.OptiScalerIntro || defaults.ReShadeIntro)
     throw new Exception("Game menus must be independent of the default-hidden welcome messages");

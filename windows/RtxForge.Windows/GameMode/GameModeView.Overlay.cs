@@ -21,7 +21,7 @@ public sealed partial class GameModeView
     List<UIElement> OverlayRows() =>
     [
         Choice("Primary overlay", "Keep the rtxForge sidebar alongside the native menus, or use OptiScaler alone.",
-            ["rtxforge", "optiscaler"], ["rtxForge", "Original OptiScaler"], () => shell.Settings.OverlayRenderer, v => SetOverlay(s => s.OverlayRenderer = v)),
+            ["rtxforge", "optiscaler", "game"], ["rtxForge sidebar", "Original OptiScaler", "rtxForge in-game (preview)"], () => shell.Settings.OverlayRenderer, v => SetOverlay(s => s.OverlayRenderer = v)),
         Choice("Controls", "Advanced uses OptiScaler labels and original units.", ["unified", "classic"], ["Unified", "Advanced"],
             () => shell.Settings.OverlayControls, v => SetOverlay(s => s.OverlayControls = v)),
         ui.RowButton("rtxForge shortcut", shell.Settings.PanelHotkey, OpenOverlayShortcut, description: "Default: End. Record a key or combination; Insert stays with OptiScaler."),

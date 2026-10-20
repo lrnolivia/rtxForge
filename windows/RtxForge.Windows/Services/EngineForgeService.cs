@@ -217,6 +217,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             NrStrength = D("nr_strength"),
             SharpeningStrength = D("sharpening_strength"),
             MfgMultiplier = multiplier,
+            FeatureControls = row["feature_controls"] is JsonObject controls ? (JsonObject)controls.DeepClone() : null,
             // Your Steam grid picks (Steam and Non-Steam) and Steam's cache, as Linux; then the store CDN.
             PosterPath = Art("poster") ?? art.Poster(appid),
             CapsulePath = Art("capsule") ?? art.Capsule(appid),
@@ -280,6 +281,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             ["nr_strength"] = Math.Round(tuning.NrStrength, 1),
             ["sharpening_strength"] = Math.Round(tuning.SharpeningStrength, 1),
             ["mfg_multiplier"] = tuning.MfgMultiplier == "auto" ? "auto" : int.Parse(tuning.MfgMultiplier),
+            ["feature_controls"] = tuning.FeatureControls?.DeepClone(),
         };
         foreach (var item in ForgeSettings.Load().GameUiOptions()) settings[item.Key] = item.Value?.DeepClone();
         var result = await CallAsync("prepare", new JsonObject

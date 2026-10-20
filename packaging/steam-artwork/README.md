@@ -1,8 +1,8 @@
-# rtxForge Steam artwork — 35mm hardware edition
+# Steam artwork
 
 Approved static artwork for rtxForge, including the raised poster lockup, user-revised hero and stronger transparent-logo shadow.
 
-[Download the original artwork pack](https://github.com/lrnolivia/rtxForge/releases/tag/artwork-35mm-20261004). That historical pack predates the revised hero and stronger logo shadow. Current exports contain every PNG and SVG listed below; `build.py` reproduces them from the source assets.
+[Download the original artwork pack](https://github.com/lrnolivia/rtxForge/releases/download/continuous/rtxforge-steam-hardware-film.zip). That historical pack predates the revised hero and stronger logo shadow. Current exports contain every PNG and SVG listed below; `build.py` reproduces them from the source assets.
 
 | Asset | Size | Use |
 | --- | --- | --- |

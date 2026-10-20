@@ -2,6 +2,7 @@
     x:Class="RtxForge.Windows.Views.LibraryPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:RtxForge.Windows.Controls"
     NavigationCacheMode="Required"
     SizeChanged="OnPageSizeChanged">
 
@@ -345,6 +346,9 @@
         <ScrollViewer x:Name="LibraryScroll" Grid.Row="2" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
                       ViewChanged="OnLibraryScrolled">
         <StackPanel x:Name="Body" Padding="36,16,36,48" Spacing="16">
+            <TextBlock x:Name="RefreshStatus" Visibility="Collapsed" Style="{StaticResource ForgeCaptionDimTextStyle}"
+                       AutomationProperties.LiveSetting="Polite" Text="Finding your games…" />
+            <controls:LibrarySkeleton x:Name="LoadingCards" Visibility="Collapsed" />
             <ItemsView x:Name="Library" SelectionMode="None" IsItemInvokedEnabled="True"
                        ItemInvoked="OnItemInvoked" PointerMoved="OnLibraryPointerMoved" PointerExited="OnLibraryPointerExited"
                        RightTapped="OnLibraryRightTapped" SizeChanged="OnLibrarySizeChanged" />

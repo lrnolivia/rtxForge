@@ -155,7 +155,7 @@ public sealed partial class LibraryPage : Page
         var games = shell.Games;
         var libs = games.Select(g => g.Library).Distinct().Count();
         var installs = games.Count(g => g.Installed);
-        StatsText.Text = games.Count == 0 && shell.Hardware is null
+        StatsText.Text = games.Count == 0 && shell.LibraryRefreshing
             ? "Finding your games…"
             : $"{games.Count} games · {libs} locations · {installs} OptiScaler installs detected";
         if (shell.Hardware is { } hardware)
@@ -174,6 +174,11 @@ public sealed partial class LibraryPage : Page
         }
 
         var view = Settings.LibraryView;
+        var loading = shell.LibraryRefreshing && games.Count == 0;
+        LoadingCards.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
+        RefreshStatus.Visibility = shell.LibraryRefreshing || shell.LibraryLoadError is not null ? Visibility.Visible : Visibility.Collapsed;
+        RefreshStatus.Text = shell.LibraryLoadError is not null ? "Could not refresh your library. Rescan to try again."
+            : games.Count > 0 ? "Refreshing library…" : "Finding your games…";
         Library.ItemTemplate = (DataTemplate)Resources[view switch
         {
             "capsules" => "CapsuleTemplate",
@@ -189,7 +194,9 @@ public sealed partial class LibraryPage : Page
         }
         Library.ItemsSource = items;
         ListHeader.Visibility = view == "list" && items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        EmptyText.Visibility = items.Count == 0 && games.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        EmptyText.Visibility = items.Count == 0 && !shell.LibraryRefreshing ? Visibility.Visible : Visibility.Collapsed;
+        EmptyText.Text = shell.LibraryLoadError is not null ? "Your library could not be loaded."
+            : games.Count == 0 ? "No games found. Add a folder or rescan your library." : "No games match this view.";
         ArtScale.IsEnabled = view != "list";
         UpdateSelectionActions();
     }

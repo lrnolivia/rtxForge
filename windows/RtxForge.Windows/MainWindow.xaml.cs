@@ -35,6 +35,8 @@ public sealed partial class MainWindow : Window
     string query = "";
     public string Mode { get; set; } = "mfg-only";
     public bool Busy { get; private set; }
+    public bool LibraryRefreshing { get; private set; } = true;
+    public string? LibraryLoadError { get; private set; }
 
     public event Action? GamesChanged;
     public event Action? QueryChanged;
@@ -43,6 +45,7 @@ public sealed partial class MainWindow : Window
     public MainWindow(IForgeService service)
     {
         Service = service;
+        if (service is EngineForgeService engine) Games = engine.CachedLibrary();
         App.Main = this;
         InitializeComponent();
 
@@ -105,9 +108,15 @@ public sealed partial class MainWindow : Window
 
     async Task LoadAsync()
     {
+        // Neither hardware probing nor a full folder walk should delay a cached library.
+        async Task ReadHardwareAsync()
+        {
+            try { Hardware = await Service.DetectHardwareAsync(); }
+            catch (InvalidOperationException error) { AddLog("Hardware check: " + error.Message); }
+        }
+        var hardware = ReadHardwareAsync();
         try
         {
-            Hardware = await Service.DetectHardwareAsync();
             await ScanAsync();
             var arguments = Environment.GetCommandLineArgs();
             if (arguments.Contains("--controls", StringComparer.OrdinalIgnoreCase))
@@ -120,6 +129,7 @@ public sealed partial class MainWindow : Window
             AddLog("Library scan stopped: " + error.Message);
             ShowToast("Could not read your library: " + error.Message);
         }
+        await hardware;
     }
 
     /// <summary>Re-render pages after per-game changes (for example a custom accent).</summary>
@@ -136,9 +146,18 @@ public sealed partial class MainWindow : Window
 
     async Task ScanLibraryCoreAsync()
     {
-        Games = await Service.ScanAsync();
-        GamesChanged?.Invoke();
-        if (!Service.IsPreview) _ = OverlayHelper.CacheGameIdentitiesAsync(Games.ToArray());
+        LibraryRefreshing = true; LibraryLoadError = null; GamesChanged?.Invoke();
+        try
+        {
+            Games = await Service.ScanAsync();
+        }
+        catch (InvalidOperationException error) { LibraryLoadError = error.Message; throw; }
+        finally { LibraryRefreshing = false; GamesChanged?.Invoke(); }
+        if (!Service.IsPreview)
+        {
+            _ = OverlayHelper.CacheGameIdentitiesAsync(Games.ToArray());
+            _ = OverlayHelper.CommandAsync("refresh-targets", start: false);
+        }
         // Linux fetch_media: cached artwork and store details, downloaded when missing.
         _ = RefreshArtworkAsync(false);
     }

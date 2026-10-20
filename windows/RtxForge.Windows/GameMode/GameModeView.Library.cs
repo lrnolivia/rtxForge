@@ -32,8 +32,10 @@ public sealed partial class GameModeView
         var titles = new StackPanel { Spacing = t.Px(10) };
         titles.Children.Add(ui.H1(selecting ? "Select games" : "Library", t.Compact ? 1.18 : 1.62));
         var configured = shell.Games.Count(g => g.Installed);
-        if (!t.Compact)
+        if (!t.Compact || shell.LibraryRefreshing || shell.LibraryLoadError is not null)
             titles.Children.Add(ui.P(selecting ? $"{selectedIds.Count} selected · {FilterLabel(shell.Settings.LibraryFilter)}"
+                : shell.LibraryLoadError is not null ? "Could not refresh your library. Rescan to try again."
+                : shell.LibraryRefreshing ? shell.Games.Count == 0 ? "Finding your games…" : $"{shell.Games.Count} games · Refreshing library…"
                 : $"{shell.Games.Count} games · {configured} configured"));
         heading.Children.Add(titles);
         var provider = GmUi.Capsule(new Border
@@ -129,7 +131,7 @@ public sealed partial class GameModeView
         var scroller = new ScrollViewer { HorizontalScrollMode = ScrollMode.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         var available = Math.Max(320, ActualWidth - t.Px(56) * 2 - t.Px(40));
         scroller.Content = games.Count == 0
-            ? EmptyLibrary()
+            ? shell.LibraryRefreshing ? new Controls.LibrarySkeleton(shell.Settings.LibraryView, GmTheme.B(t.Panel), t.Px(1)) : EmptyLibrary()
             : shell.Settings.LibraryView == "list" ? ListLayout(games) : CardLayout(games, available, shell.Settings.LibraryView == "capsules");
         scroller.ViewChanged += (_, _) => libraryScroll = scroller.VerticalOffset;
         libraryScroller = scroller;   // Render restores libraryScroll before focusing (see RestoreScroll)
@@ -144,7 +146,7 @@ public sealed partial class GameModeView
     {
         var page = new StackPanel { Spacing = t.Px(24), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, t.Px(60), 0, 0) };
         page.Children.Add(ui.Icon("", 2.4, t.Muted).With(i => i.HorizontalAlignment = HorizontalAlignment.Center));
-        page.Children.Add(ui.H2(shell.Games.Count == 0 ? "No games found" : "No games match this filter").With(h => h.HorizontalAlignment = HorizontalAlignment.Center));
+        page.Children.Add(ui.H2(shell.LibraryLoadError is not null ? "Library unavailable" : shell.Games.Count == 0 ? "No games found" : "No games match this filter").With(h => h.HorizontalAlignment = HorizontalAlignment.Center));
         page.Children.Add(ui.P(shell.Games.Count == 0 ? "Rescan your library, or add a game folder from Library options." : "Choose a different filter to see more of your library.", 0.92)
             .With(p => { p.TextAlignment = TextAlignment.Center; p.MaxWidth = t.Em(0.92) * 30; }));
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(16), HorizontalAlignment = HorizontalAlignment.Center };

@@ -41,7 +41,7 @@
         <div class="hero-copy">
           <h1>New tricks for<br>old cards.</h1>
           <p class="intro">Deploy neural rendering across your game library, bring multi-frame generation to RTX 20, 30 and 40 series, and keep DLSS up to date.</p>
-          <p class="platform-copy" id="platform-copy">A native Linux app. Built with GTK and libadwaita.</p>
+          <p class="platform-copy" id="platform-copy">A native app for your Linux desktop.</p>
           <a class="text-link" id="guide-link" href="https://github.com/lrnolivia/rtxForge#your-first-game" target="_blank" rel="noopener">Read the getting started guide <span aria-hidden="true">↗</span></a>
         </div>
 
@@ -51,11 +51,19 @@
             <span class="download-os" id="download-os" aria-hidden="true"></span>
           </div>
           <p class="package-meta" id="package-meta">Beta · Linux x86_64</p>
+          <div class="download-compatibility">
+            <p>NR for compatible RTX cards.<br>MFG for RTX 20, 30 and 40 series.</p>
+            <a class="text-link" id="requirements-link" href="#requirements-details">Check game and GPU requirements</a>
+          </div>
           <a class="download-button" id="download-link" aria-disabled="true" tabindex="-1">
             <span id="download-label">Beta coming soon</span><span class="download-arrow" aria-hidden="true">↓</span>
           </a>
           <a class="text-link portable-link" id="portable-link" hidden>Portable Beta <span aria-hidden="true">↗</span></a>
-          <p class="install-copy" id="install-copy">The Linux Beta download will appear here when it is published.</p>
+          <p class="install-copy" id="install-copy" role="status">The Linux Beta download will appear here when it is published.</p>
+          <div class="release-actions" id="release-actions">
+            <a class="text-link" id="release-github" href="https://github.com/lrnolivia/rtxForge/releases" target="_blank" rel="noopener">View releases on GitHub <span aria-hidden="true">↗</span></a>
+            <button class="text-link retry-button" id="release-retry" type="button" hidden>Try again</button>
+          </div>
           <a class="secondary-download" id="secondary-link" aria-disabled="true" tabindex="-1" target="_blank" rel="noopener"><span id="secondary-label">Development coming soon</span><span aria-hidden="true">↗</span></a>
           <p class="channel-note" id="channel-note">Development follows the latest changes and may be less stable than Beta.</p>
         </div>
@@ -72,6 +80,7 @@
             <div class="gallery-message" id="gallery-message" hidden>
               <p id="gallery-message-title">App screenshots are on the way.</p>
               <p id="gallery-message-copy">Library and game details, on desktop and in Game Mode.</p>
+              <button class="text-link retry-button" id="gallery-retry" type="button" hidden>Retry screenshot</button>
             </div>
           </div>
           <figcaption class="gallery-caption">
@@ -91,16 +100,16 @@
         <p class="features-intro">Select your games and deploy NR in one pass, on compatible RTX cards.</p>
         <div class="feature-mfg">
           <h3>Multi-frame generation.<br><span>RTX 20, 30 and 40 series.</span></h3>
-          <p>Deploy MFG across your compatible games, then tune each game’s preset.</p>
+          <p>Choose MFG, tune your presets, then deploy across your compatible games.</p>
         </div>
-        <div class="feature-grid">
-          <article class="feature-panel feature-packages">
+        <ol class="feature-flow" aria-label="From package to play">
+          <li class="feature-panel feature-packages">
             <div class="feature-copy">
               <h3>Choose your<br>packages.</h3>
               <p>Choose a supported package or inspect your own ZIP. Pick NR, MFG or both for compatible games.</p>
             </div>
-          </article>
-          <article class="feature-panel">
+          </li>
+          <li class="feature-panel">
             <div class="feature-copy">
               <h3>Tune presets.</h3>
               <p>Set NR strength, sharpening and frame-generation presets. Use library defaults, then fine-tune individual games.</p>
@@ -109,26 +118,27 @@
               <img id="feature-presets-image" alt="" loading="lazy" decoding="async">
               <figcaption class="sr-only" id="feature-presets-provenance"></figcaption>
             </figure>
-          </article>
-          <article class="feature-panel feature-panel-secondary">
+          </li>
+          <li class="feature-panel feature-panel-secondary">
             <div class="feature-copy">
               <h3>Install.</h3>
-              <p>Deploy NR and MFG across your selected games. Your original files stay backed up for restore.</p>
-              <p><strong>Built for dual boot.</strong> One-click adaptation between Windows and Linux is in progress: install your package on either OS, then carry the same game setup across to the other.</p>
+              <div>
+                <p>Deploy NR and MFG across your selected games. Your original files stay backed up for restore.</p>
+                <p><strong>Built for dual boot. Still a work in progress.</strong> The goal: install your package on either OS, then adapt the same games on the other in one click.</p>
+              </div>
             </div>
-          </article>
-          <article class="feature-panel feature-play">
+          </li>
+          <li class="feature-panel feature-play">
             <div class="feature-copy">
               <h3 id="feature-second-heading">Play.</h3>
               <p id="feature-second-copy">Open your library in Game Mode, with larger artwork and controller navigation.</p>
-              <p class="feature-availability" id="feature-second-availability" hidden></p>
             </div>
             <figure class="feature-media" id="feature-second-media" hidden>
               <img id="feature-second-image" alt="" loading="lazy" decoding="async">
               <figcaption class="sr-only" id="feature-second-provenance"></figcaption>
             </figure>
-          </article>
-        </div>
+          </li>
+        </ol>
         <p class="feature-footnote">Game and GPU support depends on the installed provider. Neural rendering is experimental.</p>
       </section>
 

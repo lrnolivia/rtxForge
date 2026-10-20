@@ -8,11 +8,11 @@ export function createGallery() {
   const rotation = byId('gallery-rotation');
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   let os = 'linux', captures = [], index = 0, generation = 0, timer;
-  let rotating = !reducedMotion.matches, hovering = false, visible = false, loading = false, pointerRotation;
+  let rotating = !reducedMotion.matches, hovering = false, visible = false, loading = false, failed = false, pointerRotation;
 
   function schedule() {
     clearTimeout(timer);
-    if (rotating && visible && !hovering && !loading && !document.hidden && captures.length > 1) {
+    if (rotating && visible && !hovering && !loading && !failed && !document.hidden && captures.length > 1) {
       timer = setTimeout(() => show((index + 1) % captures.length), 6000);
     }
   }
@@ -27,18 +27,21 @@ export function createGallery() {
     previous.getAnimations().forEach(animation => animation.cancel());
     previous.hidden = true; previous.removeAttribute('src');
   }
-  function message(title, copy) {
+  function message(title, copy, { retry = false } = {}) {
     loading = false; image.hidden = true; image.removeAttribute('src'); image.alt = '';
     byId('gallery-original').hidden = true;
     byId('gallery-message-title').textContent = title;
     byId('gallery-message-copy').textContent = copy;
     byId('gallery-message').hidden = false;
+    byId('gallery-retry').hidden = !retry;
+    byId('gallery-retry').setAttribute('aria-disabled', 'false');
+    byId('gallery-retry').textContent = 'Retry screenshot';
     stage.classList.add('is-pending'); stage.setAttribute('aria-busy', 'false');
     schedule();
   }
   function show(next, { manual = false, animate = true } = {}) {
     clearTimeout(timer); cancelTransition();
-    index = next; const current = ++generation;
+    index = next; failed = false; const current = ++generation;
     if (manual) pause();
     const name = os === 'windows' ? 'Windows' : 'Linux';
     const capture = captures[index]?.[1];
@@ -55,6 +58,8 @@ export function createGallery() {
       return;
     }
     loading = true; stage.setAttribute('aria-busy', 'true');
+    byId('gallery-retry').setAttribute('aria-disabled', 'true');
+    byId('gallery-retry').textContent = 'Retrying…';
     const preload = new Image();
     preload.onload = () => {
       if (current !== generation) return;
@@ -64,6 +69,7 @@ export function createGallery() {
       }
       image.src = capture.src; image.alt = capture.alt;
       image.width = capture.width; image.height = capture.height; image.hidden = false;
+      if (document.activeElement === byId('gallery-retry')) dots.children[index]?.focus();
       byId('gallery-message').hidden = true; stage.classList.remove('is-pending');
       stage.setAttribute('aria-busy', 'false'); loading = false;
       byId('gallery-title').textContent = `${name} – ${capture.caption}`;
@@ -81,10 +87,18 @@ export function createGallery() {
       schedule();
     };
     preload.onerror = () => {
-      if (current === generation) message('This screenshot could not be loaded.', 'Choose another dot or try again shortly.');
+      if (current === generation) {
+        failed = true;
+        byId('gallery-panel').setAttribute('aria-label', `${name} ${capture.label} unavailable`);
+        message('This screenshot could not be loaded.', 'Retry this image or choose another dot.', { retry: true });
+        byId('gallery-status').textContent = `${name} ${capture.label} could not be loaded. Retry this image or choose another screenshot.`;
+      }
     };
     preload.src = capture.src;
   }
+  byId('gallery-retry').addEventListener('click', () => {
+    if (!loading) show(index, { manual: true, animate: false });
+  });
   function choose(next) { show(next, { manual: true }); dots.children[next]?.focus(); }
   dots.addEventListener('keydown', event => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || !captures.length) return;
@@ -116,6 +130,7 @@ export function createGallery() {
       const selected = captures[index]?.[0]; os = platform;
       captures = Object.entries(SCREENSHOTS[os] || {});
       cancelTransition(); image.hidden = true; image.removeAttribute('src');
+      byId('gallery-message').hidden = true; byId('gallery-retry').hidden = true;
       byId('gallery-original').hidden = true;
       dots.replaceChildren();
       captures.forEach(([key, capture], i) => {

@@ -304,6 +304,8 @@ def prepare(config,rows,mode,operation,settings):
     custom=settings.get('custom_package') if selected=='custom' else None
     t.need(selected!='custom' or isinstance(custom,dict),'Choose and review a custom package first.')
     e=module(config,custom['family'] if custom else selected,mode);data={};meta={};nr=None;nrmeta=None
+    import overlay_policy
+    e.OVERLAY_UI = dict(settings) if overlay_policy.explicit(settings) else None
     if custom:
         # Unique package identity keeps switching providers behind existing restore checks.
         package_catalog.validate_parameters(custom.get('parameters',{}))

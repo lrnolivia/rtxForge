@@ -3891,9 +3891,15 @@ def _verify_root_payload_refresh_safe(target: Path, baseline: dict, payload: dic
         if not path.exists() and not path.is_symlink():
             continue
         require(path.is_file() and not path.is_symlink(), f"Managed payload path changed filesystem type externally: {path}")
-        if rel.casefold() == "reshade.ini" and Y4MY_PROVIDER.get("mfg_component") and path.read_bytes() == payload[rel]:
-            # The addon saves tuning here. Repair stages these exact live bytes.
-            continue
+        if rel.casefold() == "reshade.ini" and Y4MY_PROVIDER.get("mfg_component"):
+            # The addon saves tuning here. Permit exact live bytes or only the
+            # explicitly requested menu/welcome policy applied to those bytes.
+            live = path.read_bytes()
+            if live == payload[rel]: continue
+            if getattr(_ENGINE_MODULE, 'OVERLAY_UI', None) is not None:
+                import overlay_policy
+                updated = overlay_policy.reshade(live.decode('utf-8-sig'), _ENGINE_MODULE.OVERLAY_UI).encode('utf-8')
+                if updated == payload[rel]: continue
         require(
             sha256_file(path) in allowed,
             f"Managed payload file changed externally; refusing refresh: {rel}",
@@ -4591,6 +4597,14 @@ def install_target(
         enabled = nr_on_launch and feature_mode != "mfg-only"
         text = set_ini_value(text, "DlssNr", "Enabled", "true" if enabled else "false")
         nr_tuning["Enabled"] = "true" if enabled else "false"
+    if not is_skynizz and getattr(_ENGINE_MODULE, 'OVERLAY_UI', None) is not None:
+        import overlay_policy
+        text = overlay_policy.optiscaler(text, _ENGINE_MODULE.OVERLAY_UI, set_ini_value)
+    if 'ReShade.ini' in payload and getattr(_ENGINE_MODULE, 'OVERLAY_UI', None) is not None:
+        import overlay_policy
+        original_text = payload['ReShade.ini'].decode('utf-8-sig')
+        updated_text = overlay_policy.reshade(original_text, _ENGINE_MODULE.OVERLAY_UI)
+        if updated_text != original_text: payload['ReShade.ini'] = updated_text.encode('utf-8')
     payload[ini_key] = text.encode("utf-8")
 
     if mfg_proxy:

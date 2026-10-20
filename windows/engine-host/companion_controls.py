@@ -19,6 +19,17 @@ import configparser
 
 import transactions as t
 
+
+def shared_native_menu():
+    """The primary-overlay choice distinguishes a shared menu from native-only."""
+    try:
+        path = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData/Local')) / 'rtxForge/settings.json'
+        settings = json.loads(path.read_text(encoding='utf-8-sig'))
+        t.need(isinstance(settings, dict), 'Overlay settings are invalid.')
+        return settings.get('optiscaler_ui', True) is True and settings.get('overlay_renderer', 'rtxforge') == 'rtxforge'
+    except (OSError, ValueError, t.Refusal):
+        return False
+
 MAGIC, SIZE = 0x46585452, 256
 OFFSETS = {'enabled': 64, 'intensity': 68, 'multiplier': 72, 'pre_sr': 76,
            'cache': 80, 'interval': 84, 'style': 88, 'structure': 92,
@@ -180,7 +191,7 @@ class Mailbox:
                'Update this game package to use the additional NR controls.')
         t.need(before['version'] >= 5 or changes.get('colour', 0) <= 2,
                'Update this game package to use colour strength above 2.00.')
-        t.need(not before.get('original_menu'), 'OptiScaler controls this session. Restart the game after switching overlays.')
+        t.need(not before.get('original_menu') or shared_native_menu(), 'OptiScaler controls this session. Restart the game after switching overlays.')
         values = before['values'] | changes
         if 'multiplier' in changes and changes['multiplier'] > 0:
             t.need(before['backend_max'] >= changes['multiplier'] - 1, 'This game does not support that multiplier.')
@@ -403,7 +414,7 @@ class Controls:
         found['nr_ms'] = found['nr_ms'] if found['nr_ms'] > 0 and math.isfinite(found['nr_ms']) else None
         fps = found['rendered_fps']
         found['rendered_fps'] = fps if found['nr_running'] and 0 < fps < 10000 and math.isfinite(fps) else None
-        native_menu = bool(found.get('original_menu'))
+        native_menu = bool(found.get('original_menu')) and not shared_native_menu()
         placement_age = (box.k.GetTickCount() - found.get('nr_placement_tick', 0)) & 0xffffffff
         observed = found.get('version', 0) >= 6 and not stalled and placement_age < 2000 and found.get('nr_placement_tick', 0) != 0
         found['nr_placement_verified'] = observed
@@ -500,7 +511,7 @@ class Controls:
                 with box:
                     t.need(box.pid == params['pid'], 'The game session changed. Open the overlay again.')
                     found = box.read()
-                    t.need(not found.get('original_menu'), 'OptiScaler controls this session. Restart the game after switching overlays.')
+                    t.need(not found.get('original_menu') or shared_native_menu(), 'OptiScaler controls this session. Restart the game after switching overlays.')
                     t.need(set(changes) <= supported_keys(found['version']),
                            'Update this game package to save the additional NR controls.')
             old = self.presets.get(game['key']) or {}

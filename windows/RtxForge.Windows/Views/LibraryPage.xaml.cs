@@ -201,8 +201,9 @@ public sealed partial class LibraryPage : Page
     /// </summary>
     void ApplyGridMetrics()
     {
-        const double gap = 16, footer = 68, border = 4;
+        const double gap = 16, border = 4;
         var capsules = Settings.LibraryView == "capsules";
+        var footer = capsules ? 68 : 88;
         var preferred = (capsules ? 300 : 212) * Settings.ArtScale / 100.0;
         var available = Library.ActualWidth;
         if (available <= 0) available = Math.Max(preferred, ActualWidth - 72);

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace RtxForge.Windows.Models;
@@ -219,6 +220,16 @@ public sealed class ForgeSettings
     [JsonPropertyName("overlay_controls")] public string OverlayControls { get; set; } = "unified";
     [JsonPropertyName("overlay_renderer")] public string OverlayRenderer { get; set; } = "rtxforge";
     [JsonPropertyName("optiscaler_hotkey")] public string OptiScalerHotkey { get; set; } = "Insert";
+    [JsonPropertyName("optiscaler_ui")] public bool OptiScalerUi { get; set; } = true;
+    [JsonPropertyName("optiscaler_intro")] public bool OptiScalerIntro { get; set; }
+    [JsonPropertyName("reshade_ui")] public bool ReShadeUi { get; set; } = true;
+    [JsonPropertyName("reshade_intro")] public bool ReShadeIntro { get; set; }
+    public JsonObject GameUiOptions() => new()
+    {
+        ["optiscaler_ui"] = OptiScalerUi, ["optiscaler_intro"] = OptiScalerIntro,
+        ["reshade_ui"] = ReShadeUi, ["reshade_intro"] = ReShadeIntro,
+        ["optiscaler_hotkey"] = OptiScalerHotkey,
+    };
 
     public void CopyOverlayFrom(ForgeSettings source)
     {
@@ -226,6 +237,8 @@ public sealed class ForgeSettings
         OverlayStartWithWindows = source.OverlayStartWithWindows; OverlayMaterial = source.OverlayMaterial;
         OverlayControls = source.OverlayControls; OverlayRenderer = source.OverlayRenderer;
         OptiScalerHotkey = source.OptiScalerHotkey;
+        OptiScalerUi = source.OptiScalerUi; OptiScalerIntro = source.OptiScalerIntro;
+        ReShadeUi = source.ReShadeUi; ReShadeIntro = source.ReShadeIntro;
     }
     [JsonPropertyName("companion_game")] public string CompanionGame { get; set; } = "";
     [JsonPropertyName("default_profile")] public string DefaultProfile { get; set; } = "mfg-only";

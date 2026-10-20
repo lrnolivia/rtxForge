@@ -366,6 +366,16 @@ def prepare(config, rows, mode, operation, settings, e):
                 if changed != source_ini or 'ReShade.ini' in writes:
                     inputs['startup-ini'] = writes['ReShade.ini'] = {'path': str(dest), 'sha256': t.sha(changed.encode())}
                 summary += ' NR starts ' + ('on.' if settings.get('nr_on_launch', False) else 'off; enable it from the overlay.')
+            if operation in ('install', 'repair'):
+                import overlay_policy
+                if overlay_policy.explicit(settings):
+                    source_ui = (Path(writes['ReShade.ini']['path']) if 'ReShade.ini' in writes else directory / 'ReShade.ini').read_text(encoding='utf-8-sig')
+                    updated_ui = overlay_policy.reshade(source_ui, settings)
+                    if updated_ui != source_ui:
+                        ui_file = t.safe(e.STATE_ROOT / 'feeder-cache' / t.sha(updated_ui.encode()))
+                        if not ui_file.exists(): t.atomic_file(ui_file, updated_ui.encode(), 0o600)
+                        inputs['ui-ini'] = writes['ReShade.ini'] = {'path': str(ui_file), 'sha256': t.sha(updated_ui.encode())}
+                    summary += ' Menu access and welcome messages follow Overlay settings.'
             checks = _checks(directory, names)
             plan = dict(row=dict(row), target=str(directory), existing=existing, checks=checks,
                         baseline_before=digest(state_dir(e, directory) / 'baseline.json'), baseline=baseline,

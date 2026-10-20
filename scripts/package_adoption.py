@@ -217,7 +217,10 @@ def _register_feeder(plan):
     if plan['clean']:
         data = dict(plan['clean_payload'])
         text = data['ReShade.ini'].decode('utf-8-sig')
-        data['ReShade.ini'] = feeder.configure_new_install(text, plan['settings'].get('nr_on_launch', False)).encode()
+        text = feeder.configure_new_install(text, plan['settings'].get('nr_on_launch', False))
+        import overlay_policy
+        if overlay_policy.explicit(plan['settings']): text = overlay_policy.reshade(text, plan['settings'])
+        data['ReShade.ini'] = text.encode()
         for name, value in data.items():
             t.atomic_file(t.safe(target / t.relative(name)), value, 0o644)
         record['installed_hashes'] = {name: t.digest(target / name) for name in plan['hashes']}

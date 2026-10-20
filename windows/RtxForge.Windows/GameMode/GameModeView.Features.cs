@@ -48,7 +48,8 @@ public sealed partial class GameModeView
         }
         if (review.Summary.Length > 0) content.Children.Add(ui.P(review.Summary));
         var list = new StackPanel { Spacing = t.Px(18) };
-        list.Children.Add(ui.Group(review.Items.Select(i => (UIElement)ReviewRow(Find(i), i.Title, i.Details is { } d ? Shorten(d) : i.Detail, true)), t.Card));
+        list.Children.Add(ui.Group(review.Items.Select(i => (UIElement)ReviewRow(Find(i), i.Title,
+            review.Kind == "overlay-ui" ? i.Detail : i.Details is { } d ? Shorten(d) : i.Detail, true)), t.Card));
         if (review.Blocked.Count > 0)
         {
             list.Children.Add(ui.Text($"Skipped · {review.Blocked.Count}", 0.88, weight: FontWeights.SemiBold));

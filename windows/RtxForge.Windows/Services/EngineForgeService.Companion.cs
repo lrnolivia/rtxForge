@@ -7,6 +7,8 @@ public sealed partial class EngineForgeService
 {
     public async Task<EngineReview> ReviewGlobalControlsAsync(JsonObject changes, IProgress<PrepareProgress>? progress = null) =>
         ToReview(await CallAsync("global_review", changes, m => progress?.Report(Phase(m))));
+    public async Task<EngineReview> ReviewOverlayUiAsync(JsonObject changes, IProgress<PrepareProgress>? progress = null) =>
+        ToReview(await CallAsync("overlay_ui_review", changes, m => progress?.Report(Phase(m))));
     public Task ReloadCompanionPresetsAsync() => CallAsync("companion_reload");
     public async Task<IReadOnlyList<Game>> CompanionTargetsAsync()
     {

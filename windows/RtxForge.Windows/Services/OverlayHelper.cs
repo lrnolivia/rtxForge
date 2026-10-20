@@ -21,7 +21,7 @@ public static class OverlayHelper
         // switch its swapchain hooks, or poll the registry on the render thread.
         using (var overlay = Registry.CurrentUser.CreateSubKey(@"Software\rtxForge\Overlay"))
         {
-            overlay.SetValue("UseOptiScaler", settings.OverlayRenderer == "optiscaler" ? 1 : 0, RegistryValueKind.DWord);
+            overlay.SetValue("UseOptiScaler", settings.OptiScalerUi ? 1 : 0, RegistryValueKind.DWord);
             overlay.SetValue("ShortcutKey", settings.OptiScalerHotkey == "F8" ? 0x77 : settings.OptiScalerHotkey == "Disabled" ? 0 : 0x2D, RegistryValueKind.DWord);
         }
         using var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");

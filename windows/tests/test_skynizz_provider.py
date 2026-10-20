@@ -134,6 +134,12 @@ count=len(resolutions);repair=prepare(fresh,'repair',{'skynizz_version':'v9.9.9'
 assert len(resolutions)==count,'repair resolved a different release'
 run(repair)
 assert (fresh/'OptiScaler.ini').read_text()==ini,'repair replaced the user cache preset'
+run(prepare(fresh,'repair',{'optiscaler_ui':False,'optiscaler_intro':True}))
+menu_off=(fresh/'OptiScaler.ini').read_text()
+assert 'ShortcutKey=0' in menu_off and 'DisableSplash=false' in menu_off
+assert 'WorkingScale=0.5' in menu_off and 'CacheInterval=8' in menu_off and 'OverlayMenu=true' in menu_off
+run(prepare(fresh,'repair',{'optiscaler_ui':True,'optiscaler_intro':False}))
+assert (fresh/'OptiScaler.ini').read_text()==ini,'menu options failed to restore original settings independently'
 assert baseline(fresh)['archive']['release']['tag']=='v1.2.1'
 reset=prepare(fresh,'reset');run(reset)
 reset_ini=(fresh/'OptiScaler.ini').read_text()
@@ -392,7 +398,7 @@ external_before=files(external)
 external_payload={'ReShade64.dll':fixtures.pe(), 'renodx-mfgunlock.addon64':fixtures.pe(),
                   'OptiScaler/licenses/MFG-Unlock-LICENSE.txt':b'fixture license'}
 ada_mfg_provider.load_payload=lambda config,record:dict(external_payload)
-external_settings=settings | {'mfg_provider':'mfg-unlock','mfg_multiplier':4,'nr_preset':2}
+external_settings=settings | {'mfg_provider':'mfg-unlock','mfg_multiplier':4,'nr_preset':2,'reshade_ui':False,'reshade_intro':False}
 review=service.prepare([scan(external)],'nr-mfg','install',visual_settings=external_settings)
 assert files(external)==external_before
 assert 'MFG Unlock 1.4.4' in review['rows'][0]['detail']
@@ -408,12 +414,17 @@ for value in ('AdaMfgUnlock=false','AdaBlackwellKernels=false','OverrideInterpol
     assert value in ini,value
 reshade=external/'ReShade.ini'
 assert 'ForceMultiplier=4' in reshade.read_text() and 'DynamicMFG=0' in reshade.read_text()
+assert 'KeyOverlay=0,0,0,0' in reshade.read_text() and 'TutorialProgress=4' in reshade.read_text()
 tuned=reshade.read_text().replace('ForceMultiplier=4','ForceMultiplier=3')+'\n; user preset\n'
 reshade.write_text(tuned)
 run(service.prepare([scan(external)],'nr-mfg','repair',visual_settings=settings | {'mfg_provider':'integrated'}))
 assert reshade.read_text()==tuned,'repair reset the addon preset or changed MFG owner'
 assert scan(external)['mfg_multiplier']==3
 assert baseline(external)['mfg_provider']['version']=='1.4.4'
+run(service.prepare([scan(external)],'nr-mfg','repair',visual_settings=settings | {'mfg_provider':'integrated','reshade_ui':True,'reshade_intro':True}))
+tuned=reshade.read_text()
+assert 'KeyOverlay=36,0,0,0' in tuned and 'TutorialProgress=0' in tuned
+assert 'ForceMultiplier=3' in tuned and '; user preset' in tuned
 external_ini=(external/'OptiScaler.ini').read_text()
 run(service.prepare([scan(external)],'nr-mfg','repair',visual_settings=upgrade_settings | {'mfg_provider':'integrated'}))
 assert baseline(external)['archive']['release']['mfg_component']==record['archive']['release']['mfg_component']
@@ -497,7 +508,9 @@ class WindowsSkynizzTest(unittest.TestCase):
             env = dict(os.environ, RTXFORGE_ROOT=str(ROOT), RTXFORGE_STATE_ROOT=str(root / 'state'),
                        RTXFORGE_DLSS_UNLOCKED_STATE=str(root / 'engine-state'), LOCALAPPDATA=str(root / 'appdata'),
                        RTXFORGE_STEAM_ROOTS=str(root / 'Steam'), PYTHONUTF8='1')
-            result = subprocess.run([sys.executable, '-X', 'utf8', '-c', WORKER, str(root), str(ROOT)],
+            worker = root / 'native-lifecycle.py'
+            worker.write_text(WORKER, encoding='utf-8')
+            result = subprocess.run([sys.executable, '-X', 'utf8', str(worker), str(root), str(ROOT)],
                                     env=env, capture_output=True, text=True, timeout=180)
             self.assertEqual(result.returncode, 0, result.stderr[-12000:] + result.stdout[-3000:])
             receipt = json.loads(result.stdout.strip().splitlines()[-1])

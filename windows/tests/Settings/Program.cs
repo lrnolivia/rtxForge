@@ -23,6 +23,21 @@ foreach (var raw in new[] { "0", "2", "3", "4", "5", "6", "\"0\"", "\"2\"", "\"3
 }
 Console.WriteLine($"PASS: {count} numeric/text multiplier and shared-settings round trips.");
 var defaults = new ForgeSettings();
+if (!defaults.OptiScalerUi || !defaults.ReShadeUi || defaults.OptiScalerIntro || defaults.ReShadeIntro)
+    throw new Exception("Game menus must be independent of the default-hidden welcome messages");
+for (int mask = 0; mask < 16; mask++)
+{
+    var original = new ForgeSettings { OptiScalerUi = (mask & 1) != 0, OptiScalerIntro = (mask & 2) != 0,
+        ReShadeUi = (mask & 4) != 0, ReShadeIntro = (mask & 8) != 0, NrStrength = 1.25 };
+    var saved = JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(original))!;
+    var other = new ForgeSettings { NrStrength = .75, RuntimeProvider = "feeder" };
+    other.CopyOverlayFrom(saved);
+    if (other.OptiScalerUi != original.OptiScalerUi || other.OptiScalerIntro != original.OptiScalerIntro
+        || other.ReShadeUi != original.ReShadeUi || other.ReShadeIntro != original.ReShadeIntro
+        || other.NrStrength != .75 || other.RuntimeProvider != "feeder")
+        throw new Exception("Menu/intro settings were coupled or reset rendering settings");
+}
+Console.WriteLine("PASS: all 16 independent game-menu/welcome combinations round trip and merge without changing tuning.");
 if (defaults.PanelHotkey != "End" || !OverlayShortcut.TryParse(defaults.PanelHotkey, out _, out var defaultKey, out _) || defaultKey != (0u, 0x23u))
     throw new Exception("Overlay must have a single-key End default");
 foreach (var key in new[] { "End", "Home", "Ctrl+Shift+R", "Ctrl+Alt+R", "Ctrl+Shift+F10", "F8", "Ctrl+Num3", "Shift+Backtick", "Disabled" })

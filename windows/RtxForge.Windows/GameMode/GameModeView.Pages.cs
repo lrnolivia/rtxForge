@@ -71,7 +71,7 @@ public sealed partial class GameModeView
 
     // ---------- Settings (the same preferences, sized for the couch) ----------
 
-    static readonly string[] SettingsSections = ["Gaming Mode", "Appearance", "Library", "Controller", "Keyboard", "System"];
+    static readonly string[] SettingsSections = ["Gaming Mode", "Overlay", "Appearance", "Library", "Controller", "Keyboard", "System"];
 
     UIElement BuildSettings()
     {
@@ -103,6 +103,7 @@ public sealed partial class GameModeView
         grid.Children.Add(nav);
 
         var content = new StackPanel { Spacing = t.Px(24) };
+        if (settingsSection == "Overlay") shell.Settings.CopyOverlayFrom(ForgeSettings.Load());
         var (description, rows) = SettingsRows(settingsSection);
         var title = new StackPanel { Spacing = t.Px(10) };
         title.Children.Add(ui.H2(settingsSection));
@@ -188,6 +189,7 @@ public sealed partial class GameModeView
     }
     (string Description, List<UIElement> Rows) SettingsRows(string section) => section switch
     {
+        "Overlay" => ("The same settings as the desktop and in-game gear. Menu and welcome changes take effect on the next launch; review installed games to apply them.", OverlayRows()),
         "Appearance" => ("Shared desktop appearance. Gaming Mode keeps a clear focus ring.",
         [
             Choice("Theme", "Night is the Game Mode default.", ["night", "dark", "light"], ["Night", "Dark", "Light"],

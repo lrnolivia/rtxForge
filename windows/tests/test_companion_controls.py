@@ -35,6 +35,8 @@ class ControlsTest(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name).resolve()
+        self.addCleanup(patch.stopall)
+        patch.dict(os.environ, LOCALAPPDATA=str(self.root / 'appdata')).start()
         self.game = self.root / 'game'
         self.target = self.game / 'Bin'
         self.target.mkdir(parents=True)
@@ -127,6 +129,19 @@ class ControlsTest(unittest.TestCase):
                          {'enabled': 0, 'multiplier': 4, 'intensity': 1.37})
         self.assertEqual(saved['enabled'], 1)
         self.assertEqual(control.startup_changes({'can_nr': True}, saved), saved)
+
+    def test_native_menu_can_share_sidebar_but_native_primary_stays_exclusive(self):
+        settings = self.root / 'appdata/rtxForge/settings.json'
+        settings.parent.mkdir(parents=True)
+        raw = snapshot(version=5)
+        struct.pack_into('<ii', raw, 368, 1, 0x2d)
+        box = SimpleNamespace(pid=123, k=SimpleNamespace(GetTickCount=lambda:1010))
+        for primary, menu, expected in [('rtxforge', True, True), ('optiscaler', True, False), ('rtxforge', False, False)]:
+            settings.write_text(json.dumps({'overlay_renderer':primary, 'optiscaler_ui':menu}))
+            self.assertEqual(control.shared_native_menu(), expected)
+            status = self.controls._present(self.controls._game({'row':self.row}), box, control.decode(raw, 123))
+            self.assertEqual(status['can_edit'], expected)
+            self.assertEqual(status['can_save'], expected)
 
     def test_colour_matches_upstream_range_and_other_image_bounds_stay_intact(self):
         self.assertEqual(control.validate_changes({'colour':4.0}), {'colour':4.0})
@@ -383,6 +398,15 @@ class WindowsProtocolTest(unittest.TestCase):
                 else:
                     with self.assertRaisesRegex(t.Refusal, 'Update this game package'): box.apply({'sharpness': .5})
                     self.assertEqual(box.read()['command'], previous)
+                if version >= 5:
+                    ctypes.c_long.from_address(view + 368).value = 1
+                    with patch.object(control, 'shared_native_menu', return_value=False):
+                        with self.assertRaisesRegex(t.Refusal, 'OptiScaler controls'): box.apply({'intensity':1.1})
+                    with patch.object(control, 'shared_native_menu', return_value=True):
+                        result = box.apply({'intensity':1.1})
+                        self.assertAlmostEqual(result['values']['intensity'], 1.1)
+                        previous = result['command']
+                    ctypes.c_long.from_address(view + 368).value = 0
                 ctypes.c_long.from_address(view + 112).value = 1
                 with self.assertRaises(t.Refusal): box.apply({'multiplier': 4})
                 self.assertEqual(box.read()['command'], previous)

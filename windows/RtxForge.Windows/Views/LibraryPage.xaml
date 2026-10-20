@@ -32,7 +32,7 @@
                 <Grid Tag="card" Style="{StaticResource ForgeGameCardGridStyle}" BorderThickness="2" BorderBrush="{Binding CardRing}">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*" />
-                        <RowDefinition Height="68" />
+                        <RowDefinition Height="88" />
                     </Grid.RowDefinitions>
                     <!-- Inside the 2px ring, so 10 = the art's top corners; square corners would poke past the ring. -->
                     <Border Grid.RowSpan="2" Background="{Binding CardFill}" CornerRadius="10" />
@@ -53,7 +53,8 @@
                         </Border>
                     </Grid>
                     <StackPanel Grid.Row="1" Padding="12,10,12,12" Spacing="6">
-                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Foreground="{Binding CardTitle}" />
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" MaxLines="2"
+                                   TextTrimming="CharacterEllipsis" LineHeight="20" Height="40" Foreground="{Binding CardTitle}" />
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <Border Style="{StaticResource ForgePillStyle}" Background="{Binding CardStatusPillFill}">
                                 <StackPanel Orientation="Horizontal" Spacing="4">
@@ -303,7 +304,7 @@
                                      ToolTipService.ToolTip="List" AutomationProperties.Name="List"><FontIcon Glyph="&#xE8FD;" FontSize="14" /></RadioButton>
                     </StackPanel>
                 </Border>
-                <Slider x:Name="ArtScale" Grid.Column="4" Width="120" Minimum="85" Maximum="150" StepFrequency="5" VerticalAlignment="Center"
+                <Slider x:Name="ArtScale" Grid.Column="4" Width="120" Minimum="75" Maximum="150" StepFrequency="5" VerticalAlignment="Center"
                         ValueChanged="OnArtScaleChanged" AutomationProperties.Name="Artwork size" ToolTipService.ToolTip="Artwork size" />
                 <CommandBar x:Name="LibraryCommands" Grid.Column="5" DefaultLabelPosition="Right" Background="Transparent" IsOpen="False" VerticalAlignment="Center">
                     <!-- Linux library-selection-tools: Select all, which becomes Clear while anything is selected -->

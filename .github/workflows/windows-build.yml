@@ -123,6 +123,10 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s windows/tests -p test_companion_controls.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest discover -s tests -p test_overlay_policy.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest discover -s windows/tests -p test_overlay_ui.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s windows/tests -p test_global_controls.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s windows/tests -p test_package_adoption.py

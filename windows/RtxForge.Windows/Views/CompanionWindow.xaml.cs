@@ -229,7 +229,7 @@ public sealed partial class CompanionWindow : Window
             pollTimer.Stop(); editTimer.Stop(); dirty = dragging = false;
             SettingsHost.Children.Clear();
             SettingsHost.Children.Add(new OverlayPreferencesView(fresh =>
-            { service.Settings.CopyOverlayFrom(fresh); preferencesChanged(); }));
+            { service.Settings.CopyOverlayFrom(fresh); preferencesChanged(); }, service));
             SettingsButton.Focus(FocusState.Programmatic);
         }
         else if (globalShown)

@@ -281,6 +281,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             ["sharpening_strength"] = Math.Round(tuning.SharpeningStrength, 1),
             ["mfg_multiplier"] = tuning.MfgMultiplier == "auto" ? "auto" : int.Parse(tuning.MfgMultiplier),
         };
+        foreach (var item in ForgeSettings.Load().GameUiOptions()) settings[item.Key] = item.Value?.DeepClone();
         var result = await CallAsync("prepare", new JsonObject
         {
             ["rows"] = rows,

@@ -119,7 +119,7 @@ public sealed partial class SettingsPage : Page
         {
             Settings.CopyOverlayFrom(fresh);
             shell.ConfigureCompanionShortcut();
-        }) { Margin = new Thickness(0, 12, 0, 20), MaxWidth = 640, HorizontalAlignment = HorizontalAlignment.Left });
+        }, shell.Service as EngineForgeService) { Margin = new Thickness(0, 12, 0, 20), MaxWidth = 640, HorizontalAlignment = HorizontalAlignment.Left });
         overlay.Add(Prefs.Row("Open overlay", "Automatically connects to a supported running game.", Prefs.ActionButton("Open", (_, _) => shell.OpenCompanion()), ""));
 
         var globalControls = new PreferencesGroup(null, "A one-time bulk change to games with packages installed.");

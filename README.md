@@ -20,6 +20,15 @@ Deploy neural rendering across compatible games, bring multi-frame generation to
 
 The new channels use the `beta` and `development` release tags. They are being set up; the site shows **coming soon** until a channel has a package for your OS. The older `continuous` prerelease remains for existing Linux updater compatibility. Release channels are separate from source-code branches.
 
+### Download directly from GitHub
+
+1. Open **[Releases](https://github.com/lrnolivia/rtxForge/releases)** on this repository.
+2. Choose **rtxForge Beta** (`beta`) or **rtxForge Development** (`development`) when published.
+3. Expand **Assets** and download the package for your OS: Linux `.AppImage` or a provided Flatpak; Windows setup `.exe`, setup ZIP or portable Windows ZIP.
+4. Run the installer, or extract the entire portable ZIP and open `rtxForge.exe`. For Linux setup, follow the [installation guide](https://rtxforge.loew.fi/install?os=linux).
+
+The automatic **Source code (zip)** and **Source code (tar.gz)** links contain the source, not the ready-to-run app. Checksum files are for verifying a download.
+
 ## Your first game
 
 1. **Find your game.** Rescan the Library or add its folder. Start with one compatible title.
@@ -52,4 +61,4 @@ See [Development](docs/DEVELOPMENT.md) for the shared engine, checks and contrib
 
 rtxForge is released under the [MIT License](LICENSE). Runtime packages retain their upstream terms. Font notices are preserved for [Bakbak One](gui/fonts/OFL-BakbakOne.txt) and [Inter](packaging/steam-artwork/source/OFL-Inter.txt).
 
-Free code signing for the Windows builds is provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org); see the [code signing policy](CODE_SIGNING.md).
+See [code signing status](CODE_SIGNING.md) for Windows packages.

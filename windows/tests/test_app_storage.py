@@ -191,7 +191,10 @@ print('host storage review, pending-install refusal, exact token cleanup, replay
 class WindowsHostStorageTest(unittest.TestCase):
     def test_real_host_dispatch_and_locks(self):
         with tempfile.TemporaryDirectory() as folder:
-            local = Path(folder) / 'local'
+            # Hosted Windows runners expose TEMP through an 8.3 alias. The
+            # transaction engine intentionally refuses aliases; give the fixture
+            # the canonical directory just as the other host fixtures do.
+            local = Path(folder).resolve() / 'local'
             env = dict(os.environ, LOCALAPPDATA=str(local), RTXFORGE_ROOT=str(ROOT),
                        RTXFORGE_STATE_ROOT=str(local/'rtxForge/state'),
                        RTXFORGE_DLSS_UNLOCKED_STATE=str(local/'rtxForge/engine-state'), PYTHONUTF8='1')

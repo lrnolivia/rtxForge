@@ -85,9 +85,32 @@ public static class Prefs
             suffix.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(suffix, 2);
             grid.Children.Add(suffix);
+            // Narrow cards (phone width) put the control under the text instead of
+            // squeezing the title into a column; a toggle still fits beside it.
+            if (suffix is not ToggleSwitch)
+            {
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                var alignment = suffix.HorizontalAlignment;
+                var minimum = suffix.MinWidth;
+                var stretch = suffix is ComboBox or TextBox or AutoSuggestBox;
+                grid.SizeChanged += (_, e) =>
+                {
+                    var stacked = e.NewSize.Width < StackWidth;
+                    Grid.SetRow(suffix, stacked ? 1 : 0);
+                    Grid.SetColumn(suffix, stacked ? 1 : 2);
+                    Grid.SetColumnSpan(suffix, stacked ? 2 : 1);
+                    suffix.Margin = new Thickness(0, stacked ? 10 : 0, 0, 0);
+                    suffix.HorizontalAlignment = stacked ? stretch ? HorizontalAlignment.Stretch : HorizontalAlignment.Left : alignment;
+                    suffix.MinWidth = stacked ? 0 : minimum;
+                };
+            }
         }
         return new Border { Style = GetStyle("ForgeSettingsCardStyle"), Child = grid };
     }
+
+    /// <summary>Below this card width a row's control moves under its text.</summary>
+    public const double StackWidth = 520;
 
     public static (Border Row, ToggleSwitch Toggle) SwitchRow(string title, string? subtitle, bool on, string? glyph = null)
     {

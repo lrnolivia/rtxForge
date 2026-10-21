@@ -71,7 +71,7 @@ public sealed partial class GameModeView
             () => _ = RunOperationAsync("uninstall", restoreTargets), GmKind.Danger, 0.85,
             enabled: restoreTargets.Count > 0, minHeight: t.Compact ? 48 : 60);
         Key(restore, "lib-restore");
-        var update = ui.Button(Glyph("", "Update DLSS"), () => _ = RunOperationAsync("update-dlss", installTargets), GmKind.Dlss, 0.85,
+        var update = ui.Button(Glyph("", "Update DLSS"), () => _ = RunOperationAsync("update-dlss", installTargets), GmKind.Dlss, 0.85,
             enabled: installTargets.Count > 0, minHeight: t.Compact ? 48 : 60);
         Key(update, "lib-update");
         actions.Children.Add(install);

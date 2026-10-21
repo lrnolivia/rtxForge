@@ -60,7 +60,7 @@ public sealed partial class GamePage : Page
         _ = LoadSteamInfoAsync(game);
         HeroImage.SetSource(game.HeroPath ?? game.CapsulePath);
         PosterImage.Source = ViewModels.GameItem.Image(game.PosterPath);
-        PosterFrame.Visibility = game.PosterPath is null ? Visibility.Collapsed : Visibility.Visible;
+        PosterFrame.Visibility = game.PosterPath is null || phoneLayout ? Visibility.Collapsed : Visibility.Visible;
         ApplyLayout(ActualWidth);
         _ = ApplyAccentAsync();
         SelectSection(request.Section);
@@ -254,7 +254,7 @@ public sealed partial class GamePage : Page
                 var fileActions = new PresetColumns(360, 2) { ColumnSpacing = 12, RowSpacing = 12 };
                 var update = Prefs.ActionButton("Update", (_, _) => _ = shell.LaunchAction("update-dlss", [g]));
                 update.IsEnabled = !g.Blocked && !shell.Busy;
-                fileActions.Children.Add(DetailActionCard("Update DLSS", "Update older DLSS files. Backups are kept for restoration.", update, ""));
+                fileActions.Children.Add(DetailActionCard("Update DLSS", "Update older DLSS files. Backups are kept for restoration.", update, ""));
                 var restoreDlss = Prefs.ActionButton("Restore", async (_, _) => await shell.RestoreDlssFilesAsync(g));
                 restoreDlss.IsEnabled = false;
                 var backupRow = DetailActionCard("Restore original DLSS files", "Checking for backups…", restoreDlss, "");
@@ -400,6 +400,29 @@ public sealed partial class GamePage : Page
     }
     // ---------- Responsive layout ----------
 
+    bool phoneLayout;
+
+    /// <summary>
+    /// Phone width: one scrolling column like a mobile page — a short art banner, then the
+    /// identity (no poster beside it), the section tabs and the content. Wider windows keep
+    /// the sticky collapsing hero with the identity over its art.
+    /// </summary>
+    void UsePhoneLayout(bool phone)
+    {
+        phoneLayout = phone;
+        collapsingHero.Enabled = !phone;
+        // The identity stays over the art's faded lower edge; on a phone the banner grows to fit it.
+        foreach (var element in new FrameworkElement[] { HeroBanner, SectionsScroll }) ((Panel)element.Parent).Children.Remove(element);
+        var host = phone ? DetailsWorkspace.Children : HeroHost.Children;
+        host.Insert(phone ? 0 : host.Count, HeroBanner);
+        host.Insert(phone ? 1 : host.Count, SectionsScroll);
+        if (phone) HeroBanner.Height = double.NaN;
+        DispatcherQueue.TryEnqueue(HeroImage.Reattach);
+        HeroSpacer.Visibility = phone ? Visibility.Collapsed : Visibility.Visible;
+        RestoreText.Text = phone ? "Restore Files" : "Restore Original Files";
+        PosterFrame.Visibility = phone || game?.PosterPath is null ? Visibility.Collapsed : Visibility.Visible;
+    }
+
     void OnPageSizeChanged(object sender, SizeChangedEventArgs e) => ApplyLayout(ContentScroll.ActualWidth > 0 ? ContentScroll.ActualWidth : e.NewSize.Width);
 
     /// <summary>
@@ -411,9 +434,24 @@ public sealed partial class GamePage : Page
         if (width <= 0 || game is null) return;
         var side = PageMargins.Side(width);
         heroLayoutWidth = width;
-        heroExpandedHeight = Math.Round(Math.Clamp(width * .38, 360, 620));
-        collapsingHero.SetRange(heroExpandedHeight, width < 700 ? 220 : 180);
-        Identity.Padding = new Thickness(side, 0, side, Math.Round(Math.Clamp(width * 0.02, 16, 32)));
+        var phone = PageMargins.IsPhone(width) && SectionRail.Visibility != Visibility.Visible;
+        if (phone != phoneLayout) UsePhoneLayout(phone);
+        if (!phone)
+        {
+            heroExpandedHeight = Math.Round(Math.Clamp(width * .38, 360, 620));
+            collapsingHero.SetRange(heroExpandedHeight, width < 700 ? 220 : 180);
+        }
+        // Phone: the art shows above the identity, which sits over its faded lower part.
+        Identity.Padding = phone ? new Thickness(side, Math.Round(Math.Clamp(width * .42, 150, 240)), side, 16)
+            : new Thickness(side, 0, side, Math.Round(Math.Clamp(width * 0.02, 16, 32)));
+        // Tablet and phone: the hero content lines up with the cards below, with the same
+        // padding on both sides (no spacing for an empty poster or actions column).
+        Identity.ColumnSpacing = phone ? 0 : 20;
+        HeroBody.ColumnSpacing = width < 980 ? 0 : 20;
+        // Phone: Install Features and Restore Files share the row equally beside a square More.
+        var half = phone ? Math.Max(0, Math.Floor((width - side * 2 - Identity.ColumnSpacing - HeroBody.ColumnSpacing - 48 - HeroActions.Spacing * 2 - 2) / 2)) : double.NaN;
+        InstallButton.Width = RestoreButton.Width = half;
+        MoreButton.Width = phone ? 48 : double.NaN;
         Sections.Margin = new Thickness(side - 8, 8, side, 0);
         PageHost.Padding = new Thickness(side, 0, side, 0);
 

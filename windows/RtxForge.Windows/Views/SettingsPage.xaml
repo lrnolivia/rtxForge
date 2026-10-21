@@ -15,7 +15,10 @@
         <StackPanel x:Name="Body" Padding="36,12,36,48">
             <TextBlock Text="Settings" Style="{StaticResource ForgePageTitleTextStyle}" Margin="0,0,0,4" />
             <!-- Linux settings pages as section tabs (same control as Game Details). -->
-            <SelectorBar x:Name="Sections" Margin="-8,0,0,0" SelectionChanged="OnSectionChanged" />
+            <!-- The section tabs scroll sideways when the window is too narrow for all of them. -->
+            <ScrollViewer HorizontalScrollMode="Enabled" HorizontalScrollBarVisibility="Hidden" VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled">
+                <SelectorBar x:Name="Sections" Margin="-8,0,0,0" SelectionChanged="OnSectionChanged" />
+            </ScrollViewer>
             <InfoBar x:Name="Notice" IsOpen="False" Severity="Warning" IsClosable="True" Margin="0,8,0,0" />
             <StackPanel x:Name="PageHost" />
         </StackPanel>

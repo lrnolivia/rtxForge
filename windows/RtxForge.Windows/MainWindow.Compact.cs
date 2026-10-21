@@ -210,6 +210,7 @@ public sealed partial class MainWindow
         }
         var regions = new List<global::Windows.Graphics.RectInt32>();
         if (TitleBack.Visibility == Visibility.Visible) regions.Add(Rect(TitleBack));
+        if (TitlePaneToggle.Visibility == Visibility.Visible) regions.Add(Rect(TitlePaneToggle));
         if (compactVisible)
         {
             if (PresetSelecting) regions.Add(Rect(CompactPresetActions));

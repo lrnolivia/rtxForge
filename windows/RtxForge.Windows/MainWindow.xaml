@@ -44,6 +44,12 @@
                     <KeyboardAccelerator Key="Left" Modifiers="Menu" />
                 </Button.KeyboardAccelerators>
             </Button>
+            <!-- Phone width: the TitleBar pane toggle opens navigation, instead of a toggle floating over page content. -->
+            <Button x:Name="TitlePaneToggle" Style="{ThemeResource TitleBarPaneToggleButtonStyle}" Click="OnNavigationMenuClick" Visibility="Collapsed"
+                    Height="36" VerticalAlignment="Center" Margin="12,0,6,0" RenderTransformOrigin="0.5,0.5"
+                    ToolTipService.ToolTip="Navigation" AutomationProperties.Name="Navigation" SizeChanged="OnCompactBarSizeChanged">
+                <Button.RenderTransform><ScaleTransform ScaleX="1.25" ScaleY="1.25" /></Button.RenderTransform>
+            </Button>
             <!--
                 Brand (Linux sticky-dashboard-brand): the logo mark and the Bakbak One wordmark.
                 Absent while the Library's full dashboard hero carries the brand; it slides into
@@ -102,7 +108,7 @@
                     <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE7A7;" FontSize="13" Foreground="{ThemeResource ForgeRemoveBrush}" /><TextBlock Text="Restore Original Files" /></StackPanel>
                 </Button>
                 <Button Click="OnCompactUpdateDlss" Padding="10,4,10,4" ToolTipService.ToolTip="Update older DLSS files for selected games or the current view">
-                    <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE898;" FontSize="13" /><TextBlock Text="Update DLSS" /></StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE8AB;" FontSize="13" /><TextBlock Text="Update DLSS" /></StackPanel>
                 </Button>
             </StackPanel>
         </Grid>

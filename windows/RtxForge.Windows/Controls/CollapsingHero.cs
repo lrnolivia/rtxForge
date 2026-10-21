@@ -33,9 +33,29 @@ public sealed class CollapsingHero
         previousHeight = -1; Apply();
     }
 
+    /// <summary>
+    /// Off: the hero scrolls with the page (phone layouts), so the scroller keeps its own inset
+    /// and the spacer takes no room. On again, the next layout restores the sticky range.
+    /// </summary>
+    public bool Enabled
+    {
+        get => enabled;
+        set
+        {
+            if (enabled == value) return;
+            enabled = value;
+            previousHeight = -1;
+            if (enabled) { Apply(); return; }
+            scroll.Margin = inset;
+            spacer.Height = 0;
+            changed(0);
+        }
+    }
+    bool enabled = true;
+
     void Apply()
     {
-        if (expanded <= 0) return;
+        if (expanded <= 0 || !enabled) return;
         // The hero sits above the scroller. A fixed compact inset clips content
         // below it; a fixed spacer supplies only its expandable portion. Neither
         // changes with scrolling, so the scroll range cannot feed back on itself.

@@ -26,7 +26,7 @@
             <StackPanel x:Name="PageHost" Padding="36,0,36,0" />
         </StackPanel>
     </ScrollViewer>
-    <StackPanel Grid.Column="1" VerticalAlignment="Top" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+    <StackPanel x:Name="HeroHost" Grid.Column="1" VerticalAlignment="Top" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
 
             <!-- .game-banner: edge to edge -->
             <Grid x:Name="HeroBanner" Height="360">
@@ -100,14 +100,14 @@
                                 <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE896;" FontSize="14" /><TextBlock x:Name="InstallText" Text="Install Features" /></StackPanel>
                             </Button>
                             <Button x:Name="RestoreButton" Click="OnRestore">
-                                <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE7A7;" FontSize="14" Foreground="{ThemeResource ForgeRemoveBrush}" /><TextBlock Text="Restore Original Files" /></StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE7A7;" FontSize="14" Foreground="{ThemeResource ForgeRemoveBrush}" /><TextBlock x:Name="RestoreText" Text="Restore Original Files" /></StackPanel>
                             </Button>
                             <Button x:Name="MoreButton" AutomationProperties.Name="More options" ToolTipService.ToolTip="More options">
                                 <FontIcon Glyph="&#xE712;" FontSize="14" />
                                 <Button.Flyout>
                                     <MenuFlyout Placement="BottomEdgeAlignedRight">
                                         <MenuFlyoutItem Text="Live NR + MFG controls" Click="OnCompanion"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE713;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
-                                        <MenuFlyoutItem x:Name="UpdateDlssItem" Text="Update DLSS" Click="OnUpdateDlss"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE898;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
+                                        <MenuFlyoutItem x:Name="UpdateDlssItem" Text="Update DLSS" Click="OnUpdateDlss"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8AB;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
                                         <MenuFlyoutItem x:Name="AdoptionItem" Text="Adopt with rtxForge" Click="OnAdoption" />
                                         <MenuFlyoutItem x:Name="OfflineLaunchItem" Text="Launch offline" Click="OnLaunchOffline" />
                                         <MenuFlyoutItem x:Name="OpenFolderItem" Text="Open Folder" Click="OnOpenFolder"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE838;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
@@ -133,14 +133,18 @@
                 </Grid>
             </Grid>
 
-            <SelectorBar x:Name="Sections" Margin="28,8,36,0" SelectionChanged="OnSectionChanged">
-                <SelectorBarItem Text="Overview" Tag="Overview" />
-                <SelectorBarItem Text="Presets" Tag="Presets" />
-                <SelectorBarItem Text="DLSS Files" Tag="DLSS Files" />
-                <SelectorBarItem Text="Tools" Tag="Tools" />
-                <SelectorBarItem Text="Appearance" Tag="Appearance" />
-                <SelectorBarItem Text="Notes" Tag="Notes" />
-            </SelectorBar>
+            <!-- The sections scroll sideways when the window is too narrow for all of them. -->
+            <ScrollViewer x:Name="SectionsScroll" HorizontalScrollMode="Enabled" HorizontalScrollBarVisibility="Hidden"
+                          VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled">
+                <SelectorBar x:Name="Sections" Margin="28,8,36,0" SelectionChanged="OnSectionChanged">
+                    <SelectorBarItem Text="Overview" Tag="Overview" />
+                    <SelectorBarItem Text="Presets" Tag="Presets" />
+                    <SelectorBarItem Text="DLSS Files" Tag="DLSS Files" />
+                    <SelectorBarItem Text="Tools" Tag="Tools" />
+                    <SelectorBarItem Text="Appearance" Tag="Appearance" />
+                    <SelectorBarItem Text="Notes" Tag="Notes" />
+                </SelectorBar>
+            </ScrollViewer>
 
     </StackPanel>
         <InfoBar x:Name="DetailsNotice" Grid.Column="1" IsOpen="False" IsClosable="True" VerticalAlignment="Bottom" Margin="24" />

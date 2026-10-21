@@ -49,6 +49,8 @@ public sealed partial class MainWindow : Window
         App.Main = this;
         InitializeComponent();
         Nav.RegisterPropertyChangedCallback(NavigationView.IsPaneOpenProperty, (_, _) => UpdateNavigationCommands());
+        Nav.DisplayModeChanged += (_, _) => UpdateNavigationCommands();
+        Nav.Loaded += (_, _) => UpdateNavigationCommands();
         UpdateNavigationCommands();
 
         ExtendsContentIntoTitleBar = true;
@@ -215,11 +217,49 @@ public sealed partial class MainWindow : Window
 
     void OnNavigationMenuClick(object sender, RoutedEventArgs e) => Nav.IsPaneOpen = !Nav.IsPaneOpen;
 
+    CornerRadius? paneRadius;
+
+    /// <summary>An overlay pane (phone and tablet) meets the content with square inner corners.</summary>
+    void SquarePane(bool square)
+    {
+        static SplitView? Find(DependencyObject parent)
+        {
+            for (var i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+            {
+                var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(parent, i);
+                if (child is SplitView { Name: "RootSplitView" } split) return split;
+                if (Find(child) is { } found) return found;
+            }
+            return null;
+        }
+        if (Find(Nav) is not { } split) return;
+        paneRadius ??= split.CornerRadius;
+        split.CornerRadius = square ? new CornerRadius(0) : paneRadius.Value;
+    }
+
+    /// <summary>Back and the phone menu sit just before the mark, as in TitleBar, instead of pushing it across.</summary>
+    void UpdateBrandSpacing()
+    {
+        var back = TitleBack.Visibility == Visibility.Visible;
+        var menu = TitlePaneToggle.Visibility == Visibility.Visible;
+        TitlePaneToggle.Margin = new Thickness(back ? 4 : 12, 0, 6, 0);
+        CompactBrand.Margin = new Thickness(back || menu ? 6 : 12, 0, 12, 0);
+        UpdateTitleBarRegions();
+    }
+
     void UpdateNavigationCommands()
     {
         // NavigationView hides PaneHeader in compact mode. Its native toggle
         // remains reachable there so the pane can always be expanded again.
-        Nav.IsPaneToggleButtonVisible = !Nav.IsPaneOpen;
+        // In Minimal (phone) mode the titlebar's toggle replaces it.
+        var minimal = Nav.DisplayMode == NavigationViewDisplayMode.Minimal;
+        Nav.IsPaneToggleButtonVisible = !Nav.IsPaneOpen && !minimal;
+        TitlePaneToggle.Visibility = minimal ? Visibility.Visible : Visibility.Collapsed;
+        // The titlebar toggle opens and closes it, so the pane's own header toggle would repeat it.
+        NavigationCommands.Visibility = minimal ? Visibility.Collapsed : Visibility.Visible;
+        // Phone and tablet panes open over the content: square their inner corners.
+        SquarePane(Nav.DisplayMode != NavigationViewDisplayMode.Expanded);
+        UpdateBrandSpacing();
         var padding = Nav.IsPaneOpen ? 12 : 4;
         NavigationCommands.Width = Math.Max(40, (Nav.IsPaneOpen ? Nav.OpenPaneLength : Nav.CompactPaneLength) - padding * 2);
         NavigationCommands.Margin = new Thickness(padding, 6, padding, 6);
@@ -231,9 +271,7 @@ public sealed partial class MainWindow : Window
     void OnFrameNavigated(object sender, NavigationEventArgs e)
     {
         TitleBack.Visibility = ContentFrame.CanGoBack ? Visibility.Visible : Visibility.Collapsed;
-        // The arrow sits just before the mark, as in TitleBar, instead of pushing it across.
-        CompactBrand.Margin = new Thickness(ContentFrame.CanGoBack ? 6 : 12, 0, 12, 0);
-        UpdateTitleBarRegions();
+        UpdateBrandSpacing();
         var tag = e.SourcePageType == typeof(SettingsPage) ? "Settings"
             : e.SourcePageType == typeof(ActivityPage) ? "Activity"
             : e.SourcePageType == typeof(PresetsPage) ? "Presets"

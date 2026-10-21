@@ -381,7 +381,7 @@ public sealed partial class GameModeView
                 var restoreDlss = ui.RowButton("Restore original DLSS files", null, () => _ = RestoreDlssAsync(g), danger: true, glyph: "\uE7A7", enabled: !g.Blocked);
                 var fileActions = DetailColumns();
                 foreach (var action in new[] {
-                    ui.RowButton("Update DLSS files", null, () => _ = RunOperationAsync("update-dlss", [g]), glyph: "\uE898", enabled: !g.Blocked),
+                    ui.RowButton("Update DLSS files", null, () => _ = RunOperationAsync("update-dlss", [g]), glyph: "\uE8AB", enabled: !g.Blocked),
                     restoreDlss,
                 }) fileActions.Children.Add(ui.Group([action], t.Card));
                 content.Children.Add(fileActions);

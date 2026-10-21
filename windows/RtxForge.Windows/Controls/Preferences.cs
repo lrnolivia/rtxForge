@@ -99,7 +99,7 @@ public static class Prefs
                 grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
                 var alignment = suffix.HorizontalAlignment;
                 var minimum = suffix.MinWidth;
-                var stretch = suffix is ComboBox or TextBox or AutoSuggestBox;
+                var stretch = suffix is ComboBox or TextBox or AutoSuggestBox or Button;
                 grid.SizeChanged += (_, e) =>
                 {
                     var stacked = e.NewSize.Width < StackWidth;
@@ -109,6 +109,19 @@ public static class Prefs
                     suffix.Margin = new Thickness(0, stacked ? 10 : 0, 0, 0);
                     suffix.HorizontalAlignment = stacked ? stretch ? HorizontalAlignment.Stretch : HorizontalAlignment.Left : alignment;
                     suffix.MinWidth = stacked ? 0 : minimum;
+                    // A row of buttons shares the full width under the text; swatches and
+                    // other fixed pieces keep their size.
+                    if (suffix is StackPanel { Orientation: Orientation.Horizontal } row)
+                    {
+                        var buttons = row.Children.OfType<Button>().ToList();
+                        var fixedWidth = row.Children.OfType<FrameworkElement>().Where(child => child is not Button).Sum(child => child.ActualWidth)
+                            + row.Spacing * Math.Max(0, row.Children.Count - 1);
+                        var indent = grid.Children.Any(child => Grid.GetColumn((FrameworkElement)child) == 0)
+                            ? grid.ColumnDefinitions[0].ActualWidth + grid.ColumnSpacing : 0;
+                        var share = stacked && buttons.Count > 0
+                            ? Math.Floor((e.NewSize.Width - indent - fixedWidth) / buttons.Count) : double.NaN;
+                        foreach (var button in buttons) button.Width = share > 0 ? share : double.NaN;
+                    }
                 };
             }
         }

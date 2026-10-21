@@ -43,6 +43,18 @@ if (-not $PublishDir) {
 foreach ($required in 'rtxForge.exe', 'python\python.exe', 'engine\windows\engine-host\rtxforge_win_host.py') {
     if (-not (Test-Path (Join-Path $PublishDir $required))) { throw "Publish folder is missing $required" }
 }
+# A supplied -PublishDir must meet the same runtime contract as our own publish.
+# Stale runtime DLLs in that folder do not make a framework-dependent app private.
+$runtimeConfig = Join-Path $PublishDir 'rtxForge.runtimeconfig.json'
+if (-not (Test-Path -LiteralPath $runtimeConfig)) { throw 'Publish folder is missing rtxForge.runtimeconfig.json' }
+$runtimeOptions = (Get-Content -LiteralPath $runtimeConfig -Raw | ConvertFrom-Json).runtimeOptions
+if ($runtimeOptions.framework -or $runtimeOptions.frameworks -or
+    -not @($runtimeOptions.includedFrameworks | Where-Object { $_.name -eq 'Microsoft.NETCore.App' }).Count) {
+    throw 'The installer requires a self-contained publish with its private .NET runtime. Publish with -p:SelfContained=true.'
+}
+foreach ($runtimeFile in 'coreclr.dll', 'hostfxr.dll', 'hostpolicy.dll', 'System.Private.CoreLib.dll') {
+    if (-not (Test-Path -LiteralPath (Join-Path $PublishDir $runtimeFile))) { throw "Private .NET runtime is missing $runtimeFile" }
+}
 
 if (-not $Iscc) {
     $cache = Join-Path $Root "windows\RtxForge.Windows\obj\innosetup-$InnoVersion"

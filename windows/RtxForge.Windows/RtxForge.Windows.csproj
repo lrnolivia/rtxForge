@@ -23,6 +23,7 @@
     <!-- Unpackaged apps still need the MSIX tooling to emit rtxForge.pri and the compiled .xbf XAML on publish. -->
     <EnableMsixTooling>true</EnableMsixTooling>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>

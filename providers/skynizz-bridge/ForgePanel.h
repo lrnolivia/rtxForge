@@ -93,9 +93,9 @@ inline void Init(HWND window)
     if(!enabled) return;
     ForgePanelChannel::Init();
     LOG_INFO("rtxForge panel channel: ready {}", ForgePanelChannel::channel != nullptr);
-    // FreeType light hinting snaps only vertically, like ClearType, instead of
-    // the default full hinting that makes small text look sharp.
-    ImFontConfig options; options.FontDataOwnedByAtlas = false; options.FontBuilderFlags = ImGuiFreeTypeBuilderFlags_LightHinting;
+    // Unhinted outlines with slightly heavier coverage, as macOS renders text,
+    // instead of FreeType's default hinting that snaps small text sharp.
+    ImFontConfig options; options.FontDataOwnedByAtlas = false; options.FontBuilderFlags = ImGuiFreeTypeBuilderFlags_NoHinting; options.RasterizerMultiply = 1.15f;
     font = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(forgeInter, sizeof(forgeInter), 18.f, &options);
     bold = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(forgeInterSemiBold, sizeof(forgeInterSemiBold), 18.f, &options);
     key = int(Preference(L"PanelKey", VK_DELETE)); modifiers = int(Preference(L"PanelModifiers", 0));
@@ -150,6 +150,37 @@ inline bool ShortcutReleased()
     // all other keys retain release behavior. No native shortcut is consumed.
     return (key == VK_PAUSE ? OptiInput::IsKeyPressed(key) : OptiInput::IsKeyReleased(key)) && held == modifiers;
 }
+// HDR games give OptiScaler a PQ (HDR10) or scRGB swapchain and it draws
+// ImGui straight into it. Panel colours are sRGB, so encode them for the
+// output at a 203-nit UI white; otherwise white text lands near 5,000 nits
+// and dark greys near black. Mirrors OptiScaler's own target detection.
+inline ImVec4 Output(ImVec4 c)
+{
+    const auto& output = State::Instance().outputColorSpace;
+    if(!output.valid || output.model != ColorModel::RGB) return c;
+    const auto linear = [](float x) { x = std::clamp(x, 0.f, 1.f); return x <= .04045f ? x/12.92f : std::pow((x+.055f)/1.055f, 2.4f); };
+    const float r = linear(c.x), g = linear(c.y), b = linear(c.z);
+    if(output.transfer == ColorTransfer::Linear && output.primaries == ColorPrimaries::Rec709)
+    {
+        const float scale = State::Instance().hdrOutputActive ? 203.f/80.f : 1.f;
+        return ImVec4(r*scale, g*scale, b*scale, c.w);
+    }
+    if(output.transfer == ColorTransfer::PQ && output.primaries == ColorPrimaries::Rec2020)
+    {
+        const auto pq = [](float value)
+        {
+            const float y = std::pow(std::clamp(value*203.f/10000.f, 0.f, 1.f), 2610.f/16384.f);
+            return std::pow((3424.f/4096.f + 2413.f/128.f*y)/(1.f + 2392.f/128.f*y), 2523.f/32.f);
+        };
+        return ImVec4(pq(.6274040f*r + .3292820f*g + .0433136f*b), pq(.0690970f*r + .9195400f*g + .0113612f*b),
+                      pq(.0163916f*r + .0880132f*g + .8955950f*b), c.w);
+    }
+    return c;
+}
+inline void PushColor(ImGuiCol slot, ImVec4 colour) { ImGui::PushStyleColor(slot, Output(colour)); }
+inline ImU32 Colour(ImVec4 colour) { return ImGui::GetColorU32(Output(colour)); }
+inline ImU32 Colour(ImU32 colour) { return ImGui::GetColorU32(Output(ImGui::ColorConvertU32ToFloat4(colour))); }
+inline ImU32 Colour(ImGuiCol slot) { return ImGui::GetColorU32(slot); }
 inline bool Animating() { return selected && animation > 0; }
 inline ImVec4 Mix(ImVec4 a, ImVec4 b, float amount)
 { return ImVec4(a.x*amount+b.x*(1-amount), a.y*amount+b.y*(1-amount), a.z*amount+b.z*(1-amount), 1); }
@@ -181,8 +212,8 @@ inline bool IconButton(const char* id, int kind, float scale)
     const bool pressed = ImGui::InvisibleButton(id,ImVec2(30.f*scale,30.f*scale));
     auto* draw = ImGui::GetWindowDrawList();
     const auto center = ImVec2(position.x+15.f*scale,position.y+15.f*scale);
-    const auto ink = ImGui::GetColorU32(ImVec4(.77f,.77f,.77f,1));
-    if(ImGui::IsItemHovered()) draw->AddRectFilled(position,ImVec2(position.x+30*scale,position.y+30*scale),ImGui::GetColorU32(ImVec4(1,1,1,.09f)),8*scale);
+    const auto ink = Colour(ImVec4(.77f,.77f,.77f,1));
+    if(ImGui::IsItemHovered()) draw->AddRectFilled(position,ImVec2(position.x+30*scale,position.y+30*scale),Colour(ImVec4(1,1,1,.09f)),8*scale);
     if(kind == 1)
     {
         draw->AddCircle(center,6*scale,ink,24,1.5f*scale); draw->AddCircle(center,2*scale,ink,16,1.5f*scale);
@@ -230,10 +261,10 @@ inline void SliderBegin(const char* text)
 {
     const auto label = ImGui::GetItemRectMin();
     const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
-    ImGui::GetWindowDrawList()->AddText(ImVec2(right - ImGui::CalcTextSize(text).x, label.y), ImGui::GetColorU32(ImVec4(.90f,.90f,.90f,1)), text);
+    ImGui::GetWindowDrawList()->AddText(ImVec2(right - ImGui::CalcTextSize(text).x, label.y), Colour(ImVec4(.90f,.90f,.90f,1)), text);
     ImGui::SetNextItemWidth(-1);
     for(const auto slot : {ImGuiCol_FrameBg, ImGuiCol_FrameBgHovered, ImGuiCol_FrameBgActive, ImGuiCol_SliderGrab, ImGuiCol_SliderGrabActive})
-        ImGui::PushStyleColor(slot, ImVec4(0,0,0,0));
+        PushColor(slot, ImVec4(0,0,0,0));
 }
 inline void SliderEnd(float fraction, float scale)
 {
@@ -244,9 +275,9 @@ inline void SliderEnd(float fraction, float scale)
     const float thumb = 3.f*scale, half = (hot ? 10.f : 9.f)*scale, line = 1.f*scale, y = (min.y+max.y)*.5f;
     const float left = min.x+thumb, right = max.x-thumb, at = left+std::clamp(fraction,0.f,1.f)*(right-left);
     const auto control = Mix(accent, ImVec4(.93f,.93f,.93f,1), .45f);
-    draw->AddRectFilled(ImVec2(min.x,y-line), ImVec2(max.x,y+line), ImGui::GetColorU32(ImVec4(1,1,1,hot ? .31f : .22f)), line);
-    draw->AddRectFilled(ImVec2(min.x,y-line), ImVec2(at,y+line), ImGui::GetColorU32(control), line);
-    draw->AddRectFilled(ImVec2(at-thumb,y-half), ImVec2(at+thumb,y+half), ImGui::GetColorU32(hot ? Mix(control, ImVec4(1,1,1,1), .7f) : control), thumb);
+    draw->AddRectFilled(ImVec2(min.x,y-line), ImVec2(max.x,y+line), Colour(ImVec4(1,1,1,hot ? .31f : .22f)), line);
+    draw->AddRectFilled(ImVec2(min.x,y-line), ImVec2(at,y+line), Colour(control), line);
+    draw->AddRectFilled(ImVec2(at-thumb,y-half), ImVec2(at+thumb,y+half), Colour(hot ? Mix(control, ImVec4(1,1,1,1), .7f) : control), thumb);
 }
 // The rtxForge mark, generated from gui/icons/rtxforge-mark.svg.
 inline void Brand(float scale)
@@ -258,7 +289,7 @@ inline void Brand(float scale)
     {
         const int count = std::min(shape.count, 256);
         for(int i=0;i<count;++i) points[i] = ImVec2(origin.x+forgeIconPoints[2*(shape.start+i)]*unit, origin.y+forgeIconPoints[2*(shape.start+i)+1]*unit);
-        draw->AddConcavePolyFilled(points, count, ImGui::GetColorU32(shape.hole ? IM_COL32(12,12,12,255) : shape.colour));
+        draw->AddConcavePolyFilled(points, count, Colour(shape.hole ? IM_COL32(12,12,12,255) : shape.colour));
     }
     ImGui::Dummy(ImVec2(unit*forgeIconWidth, height)); ImGui::SameLine(0, 8.f*scale);
 }
@@ -272,15 +303,15 @@ inline bool Dropdown(const char* preview)
     auto* draw = ImGui::GetWindowDrawList();
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.f*scale);
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.f*scale);
-    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(1,1,1,.13f));
-    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(.13f,.13f,.13f,1));
-    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(.17f,.17f,.17f,1));
+    PushColor(ImGuiCol_Border, ImVec4(1,1,1,.16f));
+    PushColor(ImGuiCol_FrameBg, ImVec4(.20f,.20f,.20f,1));
+    PushColor(ImGuiCol_FrameBgHovered, ImVec4(.25f,.25f,.25f,1));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6.f*scale, 6.f*scale));
     const bool open = ImGui::BeginCombo("##value", preview, ImGuiComboFlags_NoArrowButton);
     ImGui::PopStyleVar();
     ImGui::PopStyleColor(3); ImGui::PopStyleVar(2);
     const float x = position.x+size.x-16.f*scale, y = position.y+size.y*.5f, arm = 4.f*scale;
-    const auto ink = ImGui::GetColorU32(ImVec4(.77f,.77f,.77f,1));
+    const auto ink = Colour(ImVec4(.77f,.77f,.77f,1));
     draw->AddLine(ImVec2(x-arm,y-arm*.5f), ImVec2(x,y+arm*.5f), ink, 1.5f*scale);
     draw->AddLine(ImVec2(x,y+arm*.5f), ImVec2(x+arm,y-arm*.5f), ink, 1.5f*scale);
     if(open)
@@ -299,7 +330,7 @@ inline void BoldWrapped(const char* text, ImVec4 colour, float scale)
     const float wrap = ImGui::GetContentRegionAvail().x;
     const auto size = ImGui::CalcTextSize(text, nullptr, false, wrap);
     const auto position = ImGui::GetCursorScreenPos(); auto* draw = ImGui::GetWindowDrawList();
-    const auto col = ImGui::GetColorU32(colour);
+    const auto col = Colour(colour);
     ImGui::PushFont(bold ? bold : font, ImGui::GetFontSize());
     const auto weighted = ImGui::CalcTextSize(text, nullptr, false, wrap);
     draw->AddText(nullptr, 0.f, position, col, text, nullptr, wrap);
@@ -323,9 +354,9 @@ inline bool Switch(const char* id, bool* on)
     const auto control = Mix(accent, ImVec4(.93f,.93f,.93f,1), .45f);
     const auto track = *on ? (hot ? Mix(control, ImVec4(1,1,1,1), .8f) : control) : ImVec4(1,1,1, hot ? .26f : .18f);
     auto* draw = ImGui::GetWindowDrawList();
-    draw->AddRectFilled(position, ImVec2(position.x+width, position.y+height), ImGui::GetColorU32(track), height*.5f);
+    draw->AddRectFilled(position, ImVec2(position.x+width, position.y+height), Colour(track), height*.5f);
     const float x = *on ? position.x+width-height*.5f : position.x+height*.5f;
-    draw->AddCircleFilled(ImVec2(x, position.y+height*.5f), height*.5f-4.f*scale, ImGui::GetColorU32(*on ? OnColor(control) : ImVec4(.86f,.86f,.86f,1)), 20);
+    draw->AddCircleFilled(ImVec2(x, position.y+height*.5f), height*.5f-4.f*scale, Colour(*on ? OnColor(control) : ImVec4(.86f,.86f,.86f,1)), 20);
     return pressed;
 }
 // A label with its switch right-aligned on the same line.
@@ -364,10 +395,10 @@ inline void HeaderSwitch(const char* text, const char* key, Config& cfg)
 }// A sidebar-style segmented button: accent fill when selected.
 inline bool Segment(const char* label, bool selected, float width, bool enabled = true)
 {
-    const ImVec4 dark(.12f,.12f,.12f,1);
+    const ImVec4 dark(.21f,.21f,.21f,1);
     ImGui::BeginDisabled(!enabled);
-    ImGui::PushStyleColor(ImGuiCol_Button, Mix(accent, dark, selected ? .45f : .06f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Mix(accent, dark, selected ? .55f : .16f));
+    PushColor(ImGuiCol_Button, Mix(accent, dark, selected ? .45f : .06f));
+    PushColor(ImGuiCol_ButtonHovered, Mix(accent, dark, selected ? .55f : .16f));
     ImGui::PushFont(selected && bold ? bold : font, ImGui::GetFontSize());
     const bool pressed = ImGui::Button(label, ImVec2(width, 0));
     ImGui::PopFont(); ImGui::PopStyleColor(2); ImGui::EndDisabled();
@@ -456,7 +487,7 @@ inline bool ChoiceList(const char* label, int* current, const char* const items[
             const bool selectedOption=value==option.value;
             const bool unavailable=std::strcmp(field.key,"multiplier")==0 && option.value>0 && option.value-1>State::Instance().dlssgMfgMax.value_or(0);
             ImGui::BeginDisabled(unavailable);
-            ImGui::PushStyleColor(ImGuiCol_Button,Mix(accent,ImVec4(.12f,.12f,.12f,1),selectedOption ? .45f : .06f));
+            PushColor(ImGuiCol_Button,Mix(accent,ImVec4(.21f,.21f,.21f,1),selectedOption ? .45f : .06f));
             if(ImGui::Button(option.label,ImVec2(width,0))) { value=option.value; changed=true; }
             ImGui::PopStyleColor(); ImGui::EndDisabled();
         }
@@ -520,11 +551,11 @@ inline bool ChoiceList(const char* label, int* current, const char* const items[
 inline void Pipelines(float scale)
 {
     const auto& status = ForgePanelChannel::status;
-    // The label is centred on the 22 px pill row.
-    ImGui::PushFontSize(11.f*scale); const float row = ImGui::GetCursorPosY();
-    ImGui::SetCursorPosY(row + (22.f*scale - ImGui::GetTextLineHeight())*.5f);
-    ImGui::PushStyleColor(ImGuiCol_Text,ImVec4(1,1,1,.75f)); ImGui::TextUnformatted("DLSS files"); ImGui::PopStyleColor();
-    ImGui::SameLine(); ImGui::SetCursorPosY(row);
+    // The label is drawn centred on the 22 px pill row without moving the line.
+    ImGui::PushFontSize(11.f*scale);
+    const auto start = ImGui::GetCursorScreenPos(); const auto label = ImGui::CalcTextSize("DLSS files");
+    ImGui::GetWindowDrawList()->AddText(ImVec2(start.x, start.y + (22.f*scale - label.y)*.5f), Colour(ImVec4(1,1,1,.75f)), "DLSS files");
+    ImGui::Dummy(ImVec2(label.x, 22.f*scale)); ImGui::SameLine();
     for(const auto* name : {"SR","RR","NR","FG"})
     {
         const auto info = status.contains("pipelines") && status["pipelines"].contains(name) ? status["pipelines"][name] : nlohmann::json::object();
@@ -533,9 +564,9 @@ inline void Pipelines(float scale)
             : state == "changed" || state == "absent" ? ImVec4(1,.53f,.56f,1) : ImVec4(.67f,.67f,.67f,1);
         const auto pos = ImGui::GetCursorScreenPos(); const auto size = ImVec2(42.f*scale,22.f*scale);
         ImGui::InvisibleButton(name,size); auto* draw=ImGui::GetWindowDrawList();
-        draw->AddRectFilled(pos,ImVec2(pos.x+size.x,pos.y+size.y),ImGui::GetColorU32(ImVec4(color.x,color.y,color.z,.10f)),11*scale);
-        draw->AddCircleFilled(ImVec2(pos.x+10*scale,pos.y+11*scale),2.5f*scale,ImGui::GetColorU32(color),12);
-        draw->AddText(bold ? bold : font,11.f*scale,ImVec2(pos.x+17*scale,pos.y+5*scale),ImGui::GetColorU32(color),name);
+        draw->AddRectFilled(pos,ImVec2(pos.x+size.x,pos.y+size.y),Colour(ImVec4(color.x,color.y,color.z,.10f)),11*scale);
+        draw->AddCircleFilled(ImVec2(pos.x+10*scale,pos.y+11*scale),2.5f*scale,Colour(color),12);
+        draw->AddText(bold ? bold : font,11.f*scale,ImVec2(pos.x+17*scale,pos.y+5*scale),Colour(color),name);
         if(ImGui::IsItemHovered()) ImGui::SetTooltip("%s",info.value("detail",std::string("File ownership is unavailable. This does not indicate live activity.")).c_str());
         if(std::strcmp(name,"FG") != 0) ImGui::SameLine();
     }
@@ -558,7 +589,7 @@ inline void ReviewEntries(const char* label, const char* key)
     if(ImGui::CollapsingHeader((std::string(label)+" ("+std::to_string(review[key].size())+")").c_str(),std::strcmp(key,"items")==0 ? ImGuiTreeNodeFlags_DefaultOpen : 0))
     {
         for(const auto& entry : review[key])
-        { ImGui::TextWrapped("%s",entry.value("title",std::string()).c_str()); ImGui::PushStyleColor(ImGuiCol_Text,ImVec4(.7f,.7f,.7f,1)); ImGui::TextWrapped("%s",entry.value("detail",std::string()).c_str()); ImGui::PopStyleColor(); ImGui::Spacing(); }
+        { ImGui::TextWrapped("%s",entry.value("title",std::string()).c_str()); PushColor(ImGuiCol_Text,ImVec4(.7f,.7f,.7f,1)); ImGui::TextWrapped("%s",entry.value("detail",std::string()).c_str()); ImGui::PopStyleColor(); ImGui::Spacing(); }
     }
 }
 inline void ReviewedChanges()
@@ -683,32 +714,33 @@ inline bool Draw(bool& visible, float scale)
     ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding,12.f*scale);
     ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarRounding,12.f*scale);
     ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize,8.f*scale);
-    const ImVec4 neutral(.91f,.91f,.91f,1), dark(.12f,.12f,.12f,1), well(.18f,.18f,.18f,1);
+    const ImVec4 neutral(.91f,.91f,.91f,1), dark(.20f,.20f,.20f,1), well(.22f,.22f,.22f,1);
     const auto ink = TitleColor();
     const auto alpha = [](ImVec4 color, float a) { color.w = a; return color; };
-    ImGui::PushStyleColor(ImGuiCol_WindowBg,ImVec4(.045f,.045f,.045f,.85f));
-    ImGui::PushStyleColor(ImGuiCol_Border,ImVec4(1,1,1,.08f));
-    ImGui::PushStyleColor(ImGuiCol_Text,neutral);
-    ImGui::PushStyleColor(ImGuiCol_Button,Mix(accent,dark,.20f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered,Mix(accent,dark,.32f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive,Mix(accent,dark,.45f));
-    ImGui::PushStyleColor(ImGuiCol_FrameBg,well);
-    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered,Mix(accent,well,.18f));
-    ImGui::PushStyleColor(ImGuiCol_FrameBgActive,Mix(accent,well,.28f));
-    ImGui::PushStyleColor(ImGuiCol_CheckMark,ink);
-    ImGui::PushStyleColor(ImGuiCol_SliderGrab,ink);
-    ImGui::PushStyleColor(ImGuiCol_SliderGrabActive,Mix(ink,neutral,.6f));
-    ImGui::PushStyleColor(ImGuiCol_Header,ImVec4(.20f,.20f,.20f,1));
-    ImGui::PushStyleColor(ImGuiCol_HeaderHovered,ImVec4(.26f,.26f,.26f,1));
-    ImGui::PushStyleColor(ImGuiCol_HeaderActive,ImVec4(.31f,.31f,.31f,1));
-    ImGui::PushStyleColor(ImGuiCol_PopupBg,ImVec4(.07f,.07f,.07f,1));
-    ImGui::PushStyleColor(ImGuiCol_ScrollbarBg,ImVec4(0,0,0,0));
-    ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab,ImVec4(.32f,.32f,.32f,1));
-    ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabHovered,ImVec4(.42f,.42f,.42f,1));
-    ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabActive,ImVec4(.52f,.52f,.52f,1));
-    ImGui::PushStyleColor(ImGuiCol_Separator,ImVec4(1,1,1,.10f));
-    ImGui::PushStyleColor(ImGuiCol_NavCursor,ink);
-    ImGui::PushStyleColor(ImGuiCol_TextSelectedBg,alpha(Mix(accent,dark,.4f),.5f));
+    PushColor(ImGuiCol_WindowBg,ImVec4(.06f,.06f,.06f,.75f));
+    PushColor(ImGuiCol_TextDisabled,ImVec4(.62f,.62f,.62f,1));
+    PushColor(ImGuiCol_Border,ImVec4(1,1,1,.08f));
+    PushColor(ImGuiCol_Text,neutral);
+    PushColor(ImGuiCol_Button,Mix(accent,dark,.20f));
+    PushColor(ImGuiCol_ButtonHovered,Mix(accent,dark,.32f));
+    PushColor(ImGuiCol_ButtonActive,Mix(accent,dark,.45f));
+    PushColor(ImGuiCol_FrameBg,well);
+    PushColor(ImGuiCol_FrameBgHovered,Mix(accent,well,.18f));
+    PushColor(ImGuiCol_FrameBgActive,Mix(accent,well,.28f));
+    PushColor(ImGuiCol_CheckMark,ink);
+    PushColor(ImGuiCol_SliderGrab,ink);
+    PushColor(ImGuiCol_SliderGrabActive,Mix(ink,neutral,.6f));
+    PushColor(ImGuiCol_Header,ImVec4(.20f,.20f,.20f,1));
+    PushColor(ImGuiCol_HeaderHovered,ImVec4(.26f,.26f,.26f,1));
+    PushColor(ImGuiCol_HeaderActive,ImVec4(.31f,.31f,.31f,1));
+    PushColor(ImGuiCol_PopupBg,ImVec4(.07f,.07f,.07f,1));
+    PushColor(ImGuiCol_ScrollbarBg,ImVec4(0,0,0,0));
+    PushColor(ImGuiCol_ScrollbarGrab,ImVec4(.32f,.32f,.32f,1));
+    PushColor(ImGuiCol_ScrollbarGrabHovered,ImVec4(.42f,.42f,.42f,1));
+    PushColor(ImGuiCol_ScrollbarGrabActive,ImVec4(.52f,.52f,.52f,1));
+    PushColor(ImGuiCol_Separator,ImVec4(1,1,1,.10f));
+    PushColor(ImGuiCol_NavCursor,ink);
+    PushColor(ImGuiCol_TextSelectedBg,alpha(Mix(accent,dark,.4f),.5f));
     ImGui::Begin("rtxForge##ingame",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoSavedSettings|ImGuiWindowFlags_NoScrollWithMouse|ImGuiWindowFlags_NoScrollbar);
     Brand(scale); ImGui::PushFontSize(15.f*scale); BoldWrapped("rtxForge",ImVec4(.90f,.90f,.90f,1),scale); ImGui::PopFontSize(); ImGui::SameLine(ImGui::GetWindowWidth()-ImGui::GetStyle().WindowPadding.x-110.f*scale);
     if(IconButton("Global controls",2,scale)) { global = !global; settings = false; ForgePanelChannel::DiscardReview(); }
@@ -719,7 +751,8 @@ inline bool Draw(bool& visible, float scale)
     else Pipelines(scale);
     ImGui::Spacing();
     const auto feedbackHeight=message.empty() ? 0.f : std::min(60.f*scale,ImGui::CalcTextSize(message.c_str(),nullptr,false,ImGui::GetContentRegionAvail().x).y);
-    const auto footer = (settings || global ? 40.f : 94.f)*scale+feedbackHeight;
+    const float spacing = ImGui::GetStyle().ItemSpacing.y, hint = ImGui::GetTextLineHeight();
+    const auto footer = (settings || global ? hint : 42.f*scale + spacing + hint) + spacing + (message.empty() ? 0.f : feedbackHeight + spacing);
     ImGui::BeginChild("controls",ImVec2(0,-footer),ImGuiChildFlags_None,ImGuiWindowFlags_NoBackground);
     // A narrower inner region keeps content clear of the scrollbar.
     ImGui::BeginChild("content",ImVec2(ImGui::GetContentRegionAvail().x-12.f*scale,0),ImGuiChildFlags_AutoResizeY|ImGuiChildFlags_NavFlattened,ImGuiWindowFlags_NoBackground|ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
@@ -760,7 +793,7 @@ inline bool Draw(bool& visible, float scale)
     if(!settings && !global)
     {
     const auto saveColor=Mix(accent,dark,.45f);
-    ImGui::PushStyleColor(ImGuiCol_Button,saveColor); ImGui::PushStyleColor(ImGuiCol_Text,OnColor(saveColor));
+    PushColor(ImGuiCol_Button,saveColor); PushColor(ImGuiCol_Text,OnColor(saveColor));
     ImGui::BeginDisabled(pending || !helperReady || !ForgePanelChannel::settings.value("overlay_helper",true));
     ImGui::PushFont(bold ? bold : font, ImGui::GetFontSize());
     const bool saveClicked = ImGui::Button("Save preset",ImVec2((available-gap)*.66f,42.f*scale));
@@ -774,14 +807,14 @@ inline bool Draw(bool& visible, float scale)
         Send({{"op","save"},{"changes",changes}});
     }
     ImGui::PopStyleColor(2); ImGui::SameLine();
-    ImGui::PushStyleColor(ImGuiCol_Button,ImVec4(.55f,.15f,.18f,1));
+    PushColor(ImGuiCol_Button,ImVec4(.55f,.15f,.18f,1));
     if(ImGui::Button("Reset",ImVec2(-1,42.f*scale)))
     { Send({{"op","reset"}}); }
     ImGui::PopStyleColor(); ImGui::EndDisabled();
     }
     ImGui::TextDisabled("%s",(ForgePanelChannel::settings.value("panel_hotkey",std::string("ScrollLock"))+" - show or hide").c_str());
     if(ImGui::IsKeyPressed(ImGuiKey_Escape,false)) visible = false;
-    ImGui::End(); ImGui::PopStyleColor(23); ImGui::PopStyleVar(13); ImGui::PopFont();
+    ImGui::End(); ImGui::PopStyleColor(24); ImGui::PopStyleVar(13); ImGui::PopFont();
     cpuMs = std::chrono::duration<float,std::milli>(std::chrono::steady_clock::now()-start).count();
     return true;
 }

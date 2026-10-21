@@ -48,6 +48,28 @@ inline LSTATUS ReadUser(const wchar_t* path, const wchar_t* name, DWORD type, vo
     if(direct == ERROR_SUCCESS) { size = bytes; direct = RegGetValueW(user, path, name, type, nullptr, data, &size); RegCloseKey(user); }
     LOG_WARN("rtxForge preference {}: cached HKCU {}, Software\\rtxForge open {}, impersonating {}, current-user hive {}",
              wstring_to_string(name), cached, root, impersonating, direct);
+    // Once per launch, record what this process can actually see.
+    static bool listed = false;
+    if(!listed && root == ERROR_SUCCESS)
+    {
+        listed = true; std::string seen;
+        if(RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\rtxForge", 0, KEY_READ, &parent) == ERROR_SUCCESS)
+        {
+            wchar_t item[256]; DWORD length = 256;
+            for(DWORD i = 0; i < 32 && RegEnumKeyExW(parent, i, item, &length, nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS; ++i, length = 256)
+                seen += " key:" + wstring_to_string(item);
+            RegCloseKey(parent);
+        }
+        HKEY overlay = nullptr; const auto open = RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\rtxForge\\Overlay", 0, KEY_READ, &overlay);
+        if(open == ERROR_SUCCESS)
+        {
+            wchar_t item[256]; DWORD length = 256, kind = 0;
+            for(DWORD i = 0; i < 32 && RegEnumValueW(overlay, i, item, &length, nullptr, &kind, nullptr, nullptr) == ERROR_SUCCESS; ++i, length = 256)
+                seen += " value:" + wstring_to_string(item) + "/" + std::to_string(kind);
+            RegCloseKey(overlay);
+        }
+        LOG_WARN("rtxForge registry view: Overlay open {}{}", open, seen);
+    }
     return direct;
 }
 inline DWORD Preference(const wchar_t* name, DWORD fallback)

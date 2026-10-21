@@ -73,7 +73,7 @@ inline void Init()
         channel = static_cast<Header*>(MapViewOfFile(mapping,FILE_MAP_ALL_ACCESS,0,0,sizeof(Header)));
     if(!channel) { if(mapping) CloseHandle(mapping); mapping = nullptr; return; }
     *channel = {}; channel->version = 1; channel->pid = GetCurrentProcessId(); channel->ownsShortcut = 1;
-    MemoryBarrier(); InterlockedExchange(&channel->magic,Magic);
+    std::atomic_thread_fence(std::memory_order_seq_cst); InterlockedExchange(&channel->magic,Magic);
 }
 inline void Visible(bool visible)
 {
@@ -89,7 +89,7 @@ inline bool Send(nlohmann::json request)
     const LONG next = channel->request < 0x7fffff00 ? channel->request+2 : 2;
     InterlockedExchange(&channel->request,next|1);
     std::memcpy(channel->requestData,body.data(),body.size()); channel->requestLength = LONG(body.size());
-    MemoryBarrier(); InterlockedExchange(&channel->request,next);
+    std::atomic_thread_fence(std::memory_order_seq_cst); InterlockedExchange(&channel->request,next);
     pending = true; requestedAt = GetTickCount64();
     const auto op = request.value("op",std::string());
     if(op != "hello" && op != "status" && op != "discard-review") message = op == "save" ? "Saving preset..." : op == "apply-review" ? "Applying changes..." : "Working...";
@@ -134,7 +134,7 @@ inline void Poll()
     { if(pending && GetTickCount64()-requestedAt > 10000) message = "Waiting for the background helper. Start it from rtxForge if needed."; return; }
     const auto length = channel->responseLength;
     if(length <= 0 || length > Capacity) return;
-    std::string body(channel->responseData,size_t(length)); MemoryBarrier();
+    std::string body(channel->responseData,size_t(length)); std::atomic_thread_fence(std::memory_order_seq_cst);
     if(revision != InterlockedCompareExchange(&channel->revision,0,0)) return;
     try
     {

@@ -685,7 +685,7 @@ inline void SettingsControls()
         }
         ImGui::TextWrapped("Optional Ctrl, Alt or Shift. Insert stays with OptiScaler.");
     }
-    if(ImGui::Button("Disable shortcut",ImVec2(-1,36.f*scale))) Send({{"op","set-setting"},{"key","panel_binding"},{"value",{{"key",0},{"modifiers",0}}}});
+    if(ImGui::Button("Disable shortcut",ImVec2(-1,ImGui::GetFrameHeight()))) Send({{"op","set-setting"},{"key","panel_binding"},{"value",{{"key",0},{"modifiers",0}}}});
     Section("OptiScaler");
     PreferenceToggle("In-game menu##opti","optiscaler_ui",true);
     PreferenceToggle("Intro message##opti","optiscaler_intro",false);

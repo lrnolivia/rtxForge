@@ -107,7 +107,17 @@ if ($panel) {
 $receipt | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $payload 'rtxforge-bridge.json') -Encoding utf8
 $archiveName = 'rtxForge-Skynizz-' + $spec.upstream.tag + '-MFG.zip'
 $archive = Join-Path $Output $archiveName
-Compress-Archive -LiteralPath $payload -DestinationPath $archive -Force
+# Windows PowerShell 5.1's Compress-Archive writes backslash entry names, which
+# the engine rejects as unsafe. Name entries with forward slashes everywhere.
+Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+if (Test-Path -LiteralPath $archive) { Remove-Item -LiteralPath $archive -Force }
+$zip = [IO.Compression.ZipFile]::Open($archive, [IO.Compression.ZipArchiveMode]::Create)
+try {
+    foreach ($file in Get-ChildItem -LiteralPath $payload -Recurse -File) {
+        $entry = $file.FullName.Substring($stage.Length + 1).Replace('\', '/')
+        [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $file.FullName, $entry, [IO.Compression.CompressionLevel]::Optimal)
+    }
+} finally { $zip.Dispose() }
 $receipt.archive = $archiveName
 $receipt.url = 'bundled:providers/skynizz-bridge/' + $archiveName
 $receipt.sha256 = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()

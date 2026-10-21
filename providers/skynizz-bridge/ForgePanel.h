@@ -3,6 +3,7 @@
 #include <Logger.h>
 #include <Util.h>
 #include <imgui/imgui.h>
+#include <imgui/misc/freetype/imgui_freetype.h>
 #include <json.hpp>
 #include <fstream>
 #include <array>
@@ -92,8 +93,9 @@ inline void Init(HWND window)
     if(!enabled) return;
     ForgePanelChannel::Init();
     LOG_INFO("rtxForge panel channel: ready {}", ForgePanelChannel::channel != nullptr);
-    // A little more coverage and sub-pixel placement read closer to DirectWrite.
-    ImFontConfig options; options.FontDataOwnedByAtlas = false; options.RasterizerMultiply = 1.2f; options.PixelSnapH = false;
+    // FreeType light hinting snaps only vertically, like ClearType, instead of
+    // the default full hinting that makes small text look sharp.
+    ImFontConfig options; options.FontDataOwnedByAtlas = false; options.FontBuilderFlags = ImGuiFreeTypeBuilderFlags_LightHinting;
     font = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(forgeInter, sizeof(forgeInter), 18.f, &options);
     bold = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(forgeInterSemiBold, sizeof(forgeInterSemiBold), 18.f, &options);
     key = int(Preference(L"PanelKey", VK_DELETE)); modifiers = int(Preference(L"PanelModifiers", 0));
@@ -273,14 +275,24 @@ inline bool Dropdown(const char* preview)
     ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(1,1,1,.13f));
     ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(.13f,.13f,.13f,1));
     ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(.17f,.17f,.17f,1));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6.f*scale, 6.f*scale));
     const bool open = ImGui::BeginCombo("##value", preview, ImGuiComboFlags_NoArrowButton);
+    ImGui::PopStyleVar();
     ImGui::PopStyleColor(3); ImGui::PopStyleVar(2);
     const float x = position.x+size.x-16.f*scale, y = position.y+size.y*.5f, arm = 4.f*scale;
     const auto ink = ImGui::GetColorU32(ImVec4(.77f,.77f,.77f,1));
     draw->AddLine(ImVec2(x-arm,y-arm*.5f), ImVec2(x,y+arm*.5f), ink, 1.5f*scale);
     draw->AddLine(ImVec2(x,y+arm*.5f), ImVec2(x+arm,y-arm*.5f), ink, 1.5f*scale);
+    if(open)
+    {
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, 2.f*scale));
+        ImGui::PushStyleVar(ImGuiStyleVar_SelectableTextAlign, ImVec2(0, .5f));
+    }
     return open;
 }
+inline bool DropdownItem(const char* label, bool selected)
+{ return ImGui::Selectable(label, selected, 0, ImVec2(0, 32.f*ImGui::GetFontSize()/14.f)); }
+inline void DropdownEnd() { ImGui::PopStyleVar(2); ImGui::EndCombo(); }
 // Titles, headings and emphasis use Inter SemiBold, as in the rtxForge sidebar.
 inline void BoldWrapped(const char* text, ImVec4 colour, float scale)
 {
@@ -354,8 +366,8 @@ inline bool ChoiceList(const char* label, int* current, const char* const items[
     bool changed = false;
     if(Dropdown(items[std::clamp(*current, 0, count-1)]))
     {
-        for(int i=0;i<count;++i) if(ImGui::Selectable(items[i], i == *current)) { *current = i; changed = true; }
-        ImGui::EndCombo();
+        for(int i=0;i<count;++i) if(DropdownItem(items[i], i == *current)) { *current = i; changed = true; }
+        DropdownEnd();
     }
     ImGui::PopID(); return changed;
 }inline void Field(const Control& field, Config& cfg)
@@ -401,10 +413,10 @@ inline bool ChoiceList(const char* label, int* current, const char* const items[
                     const bool unavailable = std::strcmp(field.key,"multiplier") == 0 && choice.value > 0
                         && choice.value - 1 > State::Instance().dlssgMfgMax.value_or(0);
                     ImGui::BeginDisabled(unavailable);
-                    if(ImGui::Selectable(choice.label, value == choice.value)) { value = choice.value; changed = true; }
+                    if(DropdownItem(choice.label, value == choice.value)) { value = choice.value; changed = true; }
                     ImGui::EndDisabled();
                 }
-                ImGui::EndCombo();
+                DropdownEnd();
             }
         }
         else
@@ -441,7 +453,11 @@ inline bool ChoiceList(const char* label, int* current, const char* const items[
 inline void Pipelines(float scale)
 {
     const auto& status = ForgePanelChannel::status;
-    ImGui::PushFontSize(11.f*scale); ImGui::PushStyleColor(ImGuiCol_Text,ImVec4(1,1,1,.75f)); ImGui::TextUnformatted("DLSS files"); ImGui::PopStyleColor(); ImGui::SameLine();
+    // The label is centred on the 22 px pill row.
+    ImGui::PushFontSize(11.f*scale); const float row = ImGui::GetCursorPosY();
+    ImGui::SetCursorPosY(row + (22.f*scale - ImGui::GetTextLineHeight())*.5f);
+    ImGui::PushStyleColor(ImGuiCol_Text,ImVec4(1,1,1,.75f)); ImGui::TextUnformatted("DLSS files"); ImGui::PopStyleColor();
+    ImGui::SameLine(); ImGui::SetCursorPosY(row);
     for(const auto* name : {"SR","RR","NR","FG"})
     {
         const auto info = status.contains("pipelines") && status["pipelines"].contains(name) ? status["pipelines"][name] : nlohmann::json::object();
@@ -603,7 +619,7 @@ inline bool Draw(bool& visible, float scale)
     const ImVec4 neutral(.91f,.91f,.91f,1), dark(.12f,.12f,.12f,1), well(.18f,.18f,.18f,1);
     const auto ink = TitleColor();
     const auto alpha = [](ImVec4 color, float a) { color.w = a; return color; };
-    ImGui::PushStyleColor(ImGuiCol_WindowBg,ImVec4(.045f,.045f,.045f,.90f));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg,ImVec4(.045f,.045f,.045f,.85f));
     ImGui::PushStyleColor(ImGuiCol_Border,ImVec4(1,1,1,.08f));
     ImGui::PushStyleColor(ImGuiCol_Text,neutral);
     ImGui::PushStyleColor(ImGuiCol_Button,Mix(accent,dark,.20f));

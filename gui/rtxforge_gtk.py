@@ -16,6 +16,7 @@ from native_shell import new_shell
 from ui_scaling import ScaledContent, content_scale, SCALES
 from operation_scope import operation_targets, ScopeError
 import mfg_choice
+import overview_facts
 
 ACCENT_PROVIDERS={}
 ACCENT_SOURCES={}
@@ -2708,6 +2709,8 @@ button.dlss-outline:active { background: alpha(@window_fg_color,0.25); }
 }
 .card-meta { font-size: 10px; opacity: 0.7; }
 
+.overview-fact { background: alpha(currentColor,0.05); border-radius: 12px; padding: 12px 14px; }
+.overview-fact-value { font-weight: 600; }
 .poster-os-badge { min-width: 22px; min-height: 22px; background: alpha(black,0.35); border: 1px solid alpha(white,0.22); border-radius: 6px; }
 .poster-os-badge image { color: white; }
 .cover-badge { background: alpha(black,0.65); color: white; text-shadow: 0 1px 3px black; padding: 5px 8px; border-radius: 8px; font-size: 10px; font-weight: 700; }
@@ -9630,6 +9633,36 @@ class Window(Adw.ApplicationWindow):
             else:values[key]=round(float(w.get_value()),1)
         return values
 
+    def overview_facts(self,game):
+        """Short facts on responsive rows, then the full game folder (Windows shared Overview)."""
+        box=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12)
+        facts=overview_facts.compact_facts(game)
+        if facts:
+            flow=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,homogeneous=True,column_spacing=12,row_spacing=12,
+                             min_children_per_line=1,max_children_per_line=min(3,len(facts)))
+            flow.add_css_class('overview-facts')
+            for title,value in facts:
+                card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4)
+                card.add_css_class('overview-fact')
+                caption=label(title,'caption');caption.add_css_class('dim-label');caption.set_xalign(0)
+                text=label(str(value),'overview-fact-value');text.set_xalign(0);text.set_wrap(True)
+                card.append(caption);card.append(text)
+                flow.append(card)
+            box.append(flow)
+        path=overview_facts.folder(game)
+        if path:
+            row_box=Gtk.Box(spacing=12)
+            row_box.add_css_class('overview-fact')
+            text=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4,hexpand=True)
+            caption=label('Game folder','caption');caption.add_css_class('dim-label');caption.set_xalign(0)
+            value=label(str(path),'overview-fact-value');value.set_xalign(0);value.set_wrap(True);value.set_wrap_mode(Pango.WrapMode.WORD_CHAR);value.set_selectable(True)
+            text.append(caption);text.append(value);row_box.append(text)
+            open_button=button('Open Folder',lambda *_:Gio.AppInfo.launch_default_for_uri(Path(path).as_uri(),None))
+            open_button.set_valign(Gtk.Align.CENTER);open_button.set_sensitive(not self.options.demo)
+            row_box.append(open_button)
+            box.append(row_box)
+        return box
+
     def tuning_differs(self,widgets,source):
         """True when an editable control differs from the saved values."""
         for key,widget in widgets.items():
@@ -12138,9 +12171,7 @@ class Window(Adw.ApplicationWindow):
         self.populate_tools(content['Tools'],game)
         overview=content['Overview']
         if game.get('blocked'):overview.append(self.unsupported_notice(game))
-        info=Adw.PreferencesGroup(title='Game Information');overview.append(info)
-        for title,value in [('Library',game.get('library')),('Location',game['game']),('Compatibility',None if game.get('blocked') else 'Supported'),('Metadata Source',game.get('metadata_source')),('Developer',game.get('developers')),('Release',game.get('release'))]:
-            if value:info.add(row(title,value))
+        overview.append(self.overview_facts(game))
         features=content['Features'];installed=game.get('installed',False)
         if installed:
             features.append(label('Saved NR: '+('enabled' if game.get('nr_enabled') else 'disabled')+' · runtime and visual results require diagnosis.','dim-label'))
@@ -13001,17 +13032,7 @@ class Window(Adw.ApplicationWindow):
             credits.append(
                 pod
             )
-        open_folder=button(
-            'Open Folder',
-            lambda *_:Gio.AppInfo.launch_default_for_uri(
-                Path(game['game']).as_uri(),
-                None,
-            ),
-        )
-        detail_action_rows['Overview'].append(
-            open_folder
-        )
-
+        # Open Folder lives on the Overview game-folder row.
         play=button('Play', lambda *_:self.play_game(game), 'suggested-action')
         play.set_sensitive(not self.options.demo)
         detail_action_rows['Overview'].prepend(play)

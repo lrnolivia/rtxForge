@@ -22,13 +22,13 @@ public sealed class OverlayShortcutPicker : UserControl
     bool recording, arming;
     int revision;
 
-    public OverlayShortcutPicker(string current)
+    public OverlayShortcutPicker(string current, bool settingsRow = false)
     {
         binding = current;
         var stack = new StackPanel { Spacing = 8 }; Content = stack;
-        stack.Children.Add(new TextBlock { Text = "rtxForge shortcut" });
+        if (!settingsRow) stack.Children.Add(new TextBlock { Text = "rtxForge shortcut" });
         var row = new Grid { ColumnSpacing = 8 };
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = settingsRow ? GridLength.Auto : new GridLength(1, GridUnitType.Star) });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var reset = new Button { Content = "Reset" };
@@ -39,7 +39,30 @@ public sealed class OverlayShortcutPicker : UserControl
         AutomationProperties.SetName(disable, "Disable rtxForge shortcut");
         row.Children.Add(record); Grid.SetColumn(reset, 1); row.Children.Add(reset);
         Grid.SetColumn(disable, 2); row.Children.Add(disable);
-        stack.Children.Add(row); stack.Children.Add(hint);
+        if (settingsRow)
+        {
+            record.MinWidth = 160;
+            row.HorizontalAlignment = HorizontalAlignment.Right;
+            var card = Prefs.Row("rtxForge shortcut", null, row, "");
+            var cardGrid = (Grid)card.Child;
+            var label = cardGrid.Children.OfType<StackPanel>().Single();
+            label.Children.Add(hint);
+            card.SizeChanged += (_, e) =>
+            {
+                var compact = e.NewSize.Width < 560;
+                Grid.SetRow(row, compact ? 1 : 0);
+                Grid.SetColumn(row, compact ? 1 : 2);
+                Grid.SetColumnSpan(row, compact ? 2 : 1);
+                if (cardGrid.RowDefinitions.Count == 0)
+                {
+                    cardGrid.RowDefinitions.Add(new() { Height = GridLength.Auto });
+                    cardGrid.RowDefinitions.Add(new() { Height = GridLength.Auto });
+                }
+                cardGrid.RowSpacing = compact ? 12 : 0;
+            };
+            stack.Children.Add(card);
+        }
+        else { stack.Children.Add(row); stack.Children.Add(hint); }
         timeout = DispatcherQueue.CreateTimer();
         timeout.IsRepeating = false; timeout.Interval = TimeSpan.FromSeconds(20);
         timeout.Tick += (_, _) => Cancel("Recording timed out. Your shortcut is unchanged.");

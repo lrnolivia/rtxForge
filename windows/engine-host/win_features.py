@@ -200,12 +200,14 @@ _steam_engine = None
 _settings_lock = threading.RLock()
 _reviews: dict[str, dict] = {}
 _packages: dict[str, dict] = {}
+_storage_busy = lambda: False
 
 
-def install(desktop: desktop_service.DesktopService, steam_engine) -> dict:
+def install(desktop: desktop_service.DesktopService, steam_engine, storage_busy=None) -> dict:
     """Binds the host's service and Steam-config engine; returns the request methods."""
-    global service, _steam_engine
+    global service, _steam_engine, _storage_busy
     service, _steam_engine = desktop, steam_engine
+    _storage_busy = storage_busy or (lambda: False)
     return dict(METHODS)
 
 
@@ -239,6 +241,44 @@ def discard(params):
     _reviews.pop(params.get("token", ""), None)
     _packages.pop(params.get("token", ""), None)
     return {}
+
+
+# ---------- Settings > Recovery: app storage ----------
+
+def storage_inventory(params):
+    import app_storage
+    return app_storage.inventory(LOCAL)
+
+
+def _storage_idle():
+    import operation_session
+    t.need(not _storage_busy() and not operation_session.LIVE and not _packages
+           and not any(r['kind'] != 'storage-cleanup' for r in _reviews.values()),
+           'Finish or cancel the other file review before cleaning downloads.')
+
+
+def storage_review(params):
+    import app_storage
+    _storage_idle()
+    plan = app_storage.prepare(LOCAL)
+    items = [_item(c['title'], f"{app_storage.size_label(c['cleanable_bytes'])} · unused downloads", 'Remove')
+             for c in plan.categories if c['cache'] and c['cleanable_bytes']]
+    total = sum(c['cleanable_bytes'] for c in plan.categories)
+    return _review('storage-cleanup', 'Review download cleanup', items, payload=plan, action='Clear downloads',
+                   summary=f'{app_storage.size_label(total)} can be cleared.' if items else 'No unused downloads to clear.',
+                   note='Game files, restore backups, Feeder files and settings are kept. Files referenced by saved records are kept. Future installs or updates may need to download packages again.')
+
+
+def _run_storage(plan):
+    import app_storage
+    _storage_idle()
+    e = engine_bridge.module(_config())
+    transactions_root = t.safe(LOCAL / 'state' / 'runtime-transactions')
+    transactions_root.mkdir(parents=True, exist_ok=True)
+    # Share the package writer and native-DLSS transaction locks. Review still
+    # rechecks all inputs: acquiring a lock does not make an old review current.
+    with e.mutation_lock(), t.transaction_lock(transactions_root / 'cleanup'):
+        return app_storage.execute(LOCAL, plan)
 
 
 def global_review(params):
@@ -758,7 +798,8 @@ def _run_update(info):
 
 
 RUNNERS = {"art-sync": _run_art_sync, "dlss-restore": _run_dlss_restore, "report": _run_report, "service": _run_service,
-           "extra": _run_extra, "extra-restore": _run_extra_restore, "update": _run_update, 'global-controls': _run_global_controls, 'overlay-ui': _run_global_controls}
+           "extra": _run_extra, "extra-restore": _run_extra_restore, "update": _run_update, 'global-controls': _run_global_controls, 'overlay-ui': _run_global_controls,
+           'storage-cleanup': _run_storage}
 
 METHODS = {
     "run": run, "discard": discard, "media": media, 'global_review': global_review, 'overlay_ui_review': overlay_ui_review,
@@ -772,4 +813,5 @@ METHODS = {
     "extras_list": extras_list, "extra_review": extra_review, "extra_restore_review": extra_restore_review,
     "packages": packages, "package_inspect": package_inspect, "package_use": package_use,
     "update_check": update_check,
+    "storage_inventory": storage_inventory, "storage_review": storage_review,
 }

@@ -126,6 +126,22 @@ public sealed partial class GameModeView
     static readonly string[] SettingsSections = ["Graphics", "Overlay", "Appearance", "Library", "Gaming Mode", "System", "Recovery", "About"];
     sealed record SettingsGroup(string Title, string? Description, IReadOnlyList<UIElement> Rows);
 
+    Control? FocusedWithin(DependencyObject container)
+    {
+        if (XamlRoot is null) return null;
+        var focused = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot) as Control;
+        for (DependencyObject? node = focused; node is not null; node = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(node))
+            if (ReferenceEquals(node, container)) return focused;
+        return null;
+    }
+
+    void RestoreLayoutFocus(Control? control)
+    {
+        if (control is null) return;
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        { if (control.XamlRoot is not null) control.Focus(FocusState.Keyboard); });
+    }
+
     UIElement BuildSettings()
     {
         var grid = new Grid { ColumnSpacing = t.Px(40), Padding = new Thickness(t.Px(56), t.Px(32), t.Px(56), t.Px(8)), RowSpacing = t.Px(22) };
@@ -162,15 +178,57 @@ public sealed partial class GameModeView
         var title = new StackPanel { Spacing = t.Px(10) };
         title.Children.Add(ui.H2(settingsSection));
         content.Children.Add(title);
-        var groups = new Controls.PresetColumns(t.Px(620), 2) { ColumnSpacing = t.Px(24), RowSpacing = t.Px(28) };
-        foreach (var group in SettingsGroups(settingsSection))
+        var definitions = SettingsGroups(settingsSection);
+        var sections = new List<StackPanel>();
+        foreach (var group in definitions)
         {
             var section = new StackPanel { Spacing = t.Px(12) };
             section.Children.Add(ui.H2(group.Title, .96));
             if (group.Description is not null) section.Children.Add(ui.P(group.Description, .75));
-            section.Children.Add(ui.Group(group.Rows)); groups.Children.Add(section);
+            var rows = new StackPanel { Spacing = t.Px(8) };
+            foreach (var row in group.Rows)
+            {
+                if (row is Button button) { ui.StyleSettingsRow(button); rows.Children.Add(button); }
+                else rows.Children.Add(new Border { Background = GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(12)), Child = row });
+            }
+            section.Children.Add(rows); sections.Add(section);
         }
-        content.Children.Add(groups);
+        // Independent semantic lanes avoid the empty cells made by unequal groups
+        // sharing one grid row. Narrow layouts restore the original group order.
+        var groupHost = new Grid();
+        var groups = new Grid { ColumnSpacing = t.Px(28), HorizontalAlignment = HorizontalAlignment.Left };
+        groupHost.Children.Add(groups);
+        bool? twoLanes = null;
+        void LayoutGroups(double width)
+        {
+            if (width <= 0) return;
+            var wide = sections.Count > 1 && width >= t.Px(1268);
+            groups.Width = Math.Min(width, t.Px(wide ? 1440 : 1000));
+            if (twoLanes == wide) return;
+            twoLanes = wide;
+            var focused = FocusedWithin(groups);
+            foreach (var lane in groups.Children.OfType<StackPanel>()) lane.Children.Clear();
+            groups.Children.Clear(); groups.ColumnDefinitions.Clear();
+            var lanes = Enumerable.Range(0, wide ? 2 : 1).Select(_ => new StackPanel { Spacing = t.Px(28) }).ToArray();
+            for (var index = 0; index < lanes.Length; index++)
+            {
+                groups.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+                Grid.SetColumn(lanes[index], index); groups.Children.Add(lanes[index]);
+            }
+            for (var index = 0; index < sections.Count; index++)
+            {
+                var lane = !wide ? 0 : settingsSection switch
+                {
+                    "Graphics" => index == 1 ? 1 : 0,
+                    "Overlay" or "Library" => index < 2 ? 0 : 1,
+                    _ => index % 2,
+                };
+                lanes[lane].Children.Add(sections[index]);
+            }
+            RestoreLayoutFocus(focused);
+        }
+        groupHost.SizeChanged += (_, e) => LayoutGroups(e.NewSize.Width);
+        content.Children.Add(groupHost);
         var scroll = new ScrollViewer { Content = content, HorizontalScrollMode = ScrollMode.Disabled, Padding = new Thickness(0, 0, t.Px(12), 0) };
         Grid.SetRow(scroll, 1);
         Grid.SetColumn(scroll, 1);

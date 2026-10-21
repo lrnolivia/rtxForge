@@ -131,8 +131,8 @@ public sealed partial class SettingsPage : Page
             globalControls.Add(new GlobalControlsView(globalEngine, settingsRows: true) { Margin = new Thickness(0, 12, 0, 20) });
         else globalControls.Add(new TextBlock { Text = "Global controls are available in the installed app." });
 
-        var appearance = new PreferencesGroup("Theme and scale");
-        var navigation = new PreferencesGroup("Navigation and labels");
+        var appearance = new PreferencesGroup("Theme");
+        var navigation = new PreferencesGroup("Navigation");
         var details = new PreferencesGroup("Game Details", "Choose how Game Details opens in Desktop Mode.");
         (row, var detailsWindow) = Prefs.ComboRow("Open Game Details", "Use tabs in the app, or a sidebar in a separate window.",
             ["In the app", "In a separate window"], Settings.SeparateGameDetails ? 1 : 0, "\uE8A7");
@@ -196,6 +196,7 @@ public sealed partial class SettingsPage : Page
         Unloaded += (_, _) => shell.SteamShortcutChanged -= RefreshSteamRow;
         RefreshSteamRow();
 
+        var gameModeLayout = new PreferencesGroup("Layout and labels");
         var interfaceGroup = new PreferencesGroup("Interface", "Choose the experience for Gaming Mode.");
         (row, var bigPicture) = Prefs.ComboRow("Interface", "Choose Desktop or Big Picture UI. Keyboard, mouse and controller input keep your choice.",
             ["Desktop", "Big Picture UI"], Settings.BigPictureUi ? 1 : 0, "");
@@ -216,11 +217,11 @@ public sealed partial class SettingsPage : Page
         {
             (row, var choice) = Prefs.ComboRow(title, null, captions, Math.Max(0, Array.IndexOf(keys, get())), glyph);
             choice.SelectionChanged += (_, _) => { set(keys[choice.SelectedIndex]); Save(); };
-            if (title == "Game Mode scale") appearance.Add(row); else navigation.Add(row);
+            gameModeLayout.Add(row);
         }
         (row, var glyphs) = Prefs.SwitchRow("Button glyphs", "Show icons beside action labels.", Settings.ButtonGlyphs, "");
         glyphs.Toggled += (_, _) => { Settings.ButtonGlyphs = glyphs.IsOn; Save(); };
-        navigation.Add(row);
+        gameModeLayout.Add(row);
 
         var controller = new PreferencesGroup("Controller", "Button labels and navigation prompts.");
         foreach (var (title, keys, captions, get, set, glyph) in new (string, string[], string[], Func<string>, Action<string>, string)[]
@@ -280,7 +281,7 @@ public sealed partial class SettingsPage : Page
         sections["Global"] = [globalControls];
         sections["Appearance"] = [appearance, navigation, details];
         sections["Library"] = [libraryView, library, steamLibrary, reports];
-        sections["Gaming Mode"] = [interfaceGroup, controller];
+        sections["Gaming Mode"] = [interfaceGroup, gameModeLayout, controller];
         sections["System"] = [system];
         sections["Recovery"] = [appStorage, recovery, cleanup];
         sections["About"] = [about];

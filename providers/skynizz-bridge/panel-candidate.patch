@@ -89,3 +89,96 @@ index b4d37e6..48f18c3 100644
      ImGui::DestroyContext();
  
      _handle = nullptr;
+diff --git a/OptiScaler/framegen/dlssg/Companion.h b/OptiScaler/framegen/dlssg/Companion.h
+--- a/OptiScaler/framegen/dlssg/Companion.h
++++ b/OptiScaler/framegen/dlssg/Companion.h
+@@ -51,13 +51,24 @@ struct Mailbox
+     LONG originalMenu, originalMenuKey;
+     LONG nrPlacement, nrPlacementReason, nrModelWidth, nrModelHeight;
+     LONG nrReduced, nrRequestedBefore, nrPlacementTick;
+-    char reserved[108];
++    // Protocol 7. A negative request leaves the running Dynamic setting alone,
++    // so a client that predates these fields never clears it.
++    LONG dynamic;
++    float dynamicTarget;
++    LONG actualDynamic;
++    float actualDynamicTarget;
++    LONG dynamicSupport; // -1 before the game reports DLSS-G state, then 0 or 1
++    // DLSS and Ray Reconstruction render presets: 0 is the game's own choice, -1 unchanged.
++    LONG dlssPreset, rrPreset, actualDlssPreset, actualRrPreset;
++    char reserved[72];
+ };
+ static_assert(sizeof(Mailbox) == 512);
+ static_assert(offsetof(Mailbox, workScale) == 256);
+ static_assert(offsetof(Mailbox, actualWorkScale) == 288);
+ static_assert(offsetof(Mailbox, actualSharpen) == 344);
+ static_assert(offsetof(Mailbox, nrPlacement) == 376);
++static_assert(offsetof(Mailbox, dynamic) == 404);
++static_assert(offsetof(Mailbox, dlssPreset) == 424);
+ 
+ inline std::recursive_mutex guard;
+ inline Mailbox* mailbox = nullptr;
+@@ -116,8 +127,12 @@ inline void Tick()
+         }
+         *mailbox = {};
+         mailbox->magic = 0x46585452;
+-        mailbox->version = 6;
++        mailbox->version = 7;
+         mailbox->pid = GetCurrentProcessId();
++        mailbox->dynamic = -1;
++        mailbox->dynamicTarget = -1.f;
++        mailbox->dlssPreset = -1;
++        mailbox->rrPreset = -1;
+     }
+     if (!mailbox) return;
+     auto& cfg = *Config::Instance();
+@@ -158,10 +173,15 @@ inline void Tick()
+                 bounded(request.intensity, 0.f, 2.f) && bounded(request.structure, 0.f, 2.f) &&
+                 bounded(request.tone, 0.f, 2.f) && request.interval >= 1 && request.interval <= 16 &&
+                 request.style >= 0 && request.style <= 2 && request.preset >= 0 && request.preset <= 3 &&
+-                (request.multiplier == -1 || request.multiplier == 0 || (request.multiplier >= 2 && request.multiplier <= 6));
++                (request.multiplier == -1 || request.multiplier == 0 || (request.multiplier >= 2 && request.multiplier <= 6)) &&
++                request.dynamic >= -1 && request.dynamic <= 1 &&
++                std::isfinite(request.dynamicTarget) && request.dynamicTarget <= 1000.f &&
++                request.dlssPreset >= -1 && request.dlssPreset <= 15 && request.rrPreset >= -1 && request.rrPreset <= 15;
+             auto& state = State::Instance();
+             const auto maximum = state.dlssgMfgMax.value_or(0);
+-            const bool supported = request.multiplier <= 0 || maximum >= request.multiplier - 1;
++            // Dynamic is refused only once the game has said it cannot do it.
++            const bool dynamicRefused = request.dynamic == 1 && stateSamples > 0 && !state.dlssgGameDMFGSupported;
++            const bool supported = (request.multiplier <= 0 || maximum >= request.multiplier - 1) && !dynamicRefused;
+             mailbox->result = !valid ? 2 : !supported ? 3 : 1;
+             if (valid && supported)
+             {
+@@ -196,6 +216,19 @@ inline void Tick()
+                     cfg.FGDLSSGOverrideInterpolationCount.set_volatile_value(generated);
+                     if (generated > 0) cfg.FGDLSSGInterpolationCount.set_volatile_value(generated);
+                 }
++                if (request.dynamic >= 0) cfg.FGDLSSGOverrideForceDMFG.set_volatile_value(request.dynamic == 1);
++                if (request.dynamicTarget >= 0.f) cfg.FGDLSSGFramerateTargetDMFG.set_volatile_value(request.dynamicTarget);
++                // A preset takes effect when the game next creates its DLSS feature.
++                if (request.dlssPreset >= 0)
++                {
++                    cfg.RenderPresetOverride.set_volatile_value(request.dlssPreset > 0);
++                    cfg.RenderPresetForAll.set_volatile_value(static_cast<uint32_t>(request.dlssPreset));
++                }
++                if (request.rrPreset >= 0)
++                {
++                    cfg.DLSSDRenderPresetOverride.set_volatile_value(request.rrPreset > 0);
++                    cfg.DLSSDRenderPresetForAll.set_volatile_value(static_cast<uint32_t>(request.rrPreset));
++                }
+             }
+             InterlockedExchange(&mailbox->acknowledged, sequence);
+         }
+@@ -241,6 +274,11 @@ inline void Tick()
+     mailbox->nrMs = static_cast<float>(live.nrMs);
+     mailbox->renderedFps = static_cast<float>(live.renderedFps);
+     mailbox->backendMax = State::Instance().dlssgMfgMax.value_or(0);
++    mailbox->actualDynamic = cfg.FGDLSSGOverrideForceDMFG.value_or_default();
++    mailbox->actualDynamicTarget = cfg.FGDLSSGFramerateTargetDMFG.value_or_default();
++    mailbox->dynamicSupport = stateSamples == 0 ? -1 : State::Instance().dlssgGameDMFGSupported ? 1 : 0;
++    mailbox->actualDlssPreset = cfg.RenderPresetOverride.value_or_default() ? static_cast<LONG>(cfg.RenderPresetForAll.value_or_default()) : 0;
++    mailbox->actualRrPreset = cfg.DLSSDRenderPresetOverride.value_or_default() ? static_cast<LONG>(cfg.DLSSDRenderPresetForAll.value_or_default()) : 0;
+     mailbox->lastGenerated = observedGenerated;
+     mailbox->fgSuccesses = observedFgSuccesses;
+     mailbox->nativeStatus = nativeStatus;

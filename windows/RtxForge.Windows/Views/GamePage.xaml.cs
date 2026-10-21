@@ -19,6 +19,17 @@ public sealed partial class GamePage : Page
     readonly CollapsingHero collapsingHero;
     double heroLayoutWidth;
     double heroExpandedHeight;
+    double heroProgress;
+
+    /// <summary>
+    /// Text never fades over the art: the summary steps out first, then the credits row,
+    /// so every state stays readable and the compact hero is poster, title and actions.
+    /// </summary>
+    void UpdateHeroText()
+    {
+        SummaryText.Visibility = heroProgress >= .3 || string.IsNullOrEmpty(SummaryText.Text) ? Visibility.Collapsed : Visibility.Visible;
+        HeroText.Visibility = heroProgress >= .65 ? Visibility.Collapsed : Visibility.Visible;
+    }
 
     public GamePage()
     {
@@ -31,8 +42,10 @@ public sealed partial class GamePage : Page
             var fullTitle = Math.Clamp(heroLayoutWidth / 26, 26, 64) * (game?.Name.Length > 28 ? .78 : 1);
             TitleText.FontSize = fullTitle + (Math.Min(fullTitle, 32) - fullTitle) * progress;
             TitleText.LineHeight = TitleText.FontSize * 1.1;
-            HeroText.Opacity = 1 - progress;
-            HeroText.Visibility = progress >= .75 ? Visibility.Collapsed : Visibility.Visible;
+            heroProgress = progress;
+            UpdateHeroText();
+            // The compact strip sits over the art's brightest band; recede the art, never the text.
+            HeroImage.Opacity = 1 - .6 * progress;
         }, Sections);
         ActualThemeChanged += (_, _) => ApplyAccentText();
         ContentScroll.SizeChanged += (_, e) => ApplyLayout(e.NewSize.Width);
@@ -234,7 +247,7 @@ public sealed partial class GamePage : Page
                 var tuning = new PresetControlsView(shell.GameTuning(g), shell.Settings.OverlayControls == "classic", embedded: true);
                 tuning.SetMode(g.Profile?.Contains("Only", StringComparison.OrdinalIgnoreCase) == true
                     ? g.Profile.StartsWith("NR", StringComparison.OrdinalIgnoreCase) ? "nr-only" : "mfg-only" : shell.Mode,
-                    g.Installed, g.RuntimeProvider != "skynizz", dynamicSupported: g.DynamicMfgAvailable);
+                    g.Installed, g.RuntimeProvider != "skynizz", dynamicSupported: g.DynamicMfgAvailable, dynamicDetail: g.DynamicMfgDetail);
                 // 16px gaps (the pods' own spacing): group spacing 4 + margin 12.
                 if (g.Installed) tuning.Margin = new Thickness(0, 12, 0, 0);
                 features.Add(tuning);
@@ -390,7 +403,7 @@ public sealed partial class GamePage : Page
         TestBadgeIcon.Glyph = game.Tested ? "" : "";
         TestBadgeIcon.Foreground = (Brush)Application.Current.Resources[game.Tested ? "ForgePillTestedBrush" : "SystemFillColorCautionBrush"];
         SummaryText.Text = game.Summary ?? "";
-        SummaryText.Visibility = string.IsNullOrEmpty(game.Summary) ? Visibility.Collapsed : Visibility.Visible;
+        UpdateHeroText();
         ToolTipService.SetToolTip(SummaryText, game.Summary);
     }
 

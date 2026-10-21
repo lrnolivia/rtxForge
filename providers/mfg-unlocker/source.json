@@ -30,6 +30,12 @@
   },
   "integration_status": "default",
   "installable": true,
-  "runtime_verified": false,
+  "runtime_verified": true,
+  "runtime_evidence": [
+    { "date": "2026-10-21", "gpu": "RTX 4070", "game": "Halo: Campaign Evolved", "route": "native-dlssg-universal-plugin",
+      "observed": "plugin loaded by OptiScaler; DLSS-G created; native NGX ceiling 1 raised to 3 generated; 4 frames presented per real frame; Dynamic not reported by the game" },
+    { "date": "2026-10-21", "gpu": "RTX 4070", "game": "CONTROL Resonant", "route": "native-dlssg-universal-plugin",
+      "observed": "plugin loaded by OptiScaler; 4 frames presented per real frame; Dynamic reported supported" }
+  ],
   "default_promoted": true
 }

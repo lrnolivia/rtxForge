@@ -55,6 +55,7 @@ public sealed class Game
     public bool OfflineOnly => EngineRow?["offline_only"]?.GetValue<bool>() == true;
     public bool DynamicMfgAvailable => RuntimeProvider == "skynizz" && EngineRow?["dynamic_mfg_available"] is JsonValue flag
         && flag.TryGetValue<bool>(out var available) && available;
+    public string DynamicMfgDetail => EngineRow?["dynamic_mfg_detail"] is JsonValue detail && detail.TryGetValue<string>(out var text) ? text : "";
     public string InstallLabel => AdoptionAvailable ? "Adopt with rtxForge" : InstalledOnLinux ? "Set Up for Windows"
         : UsesFeeder ? Installed ? "Update Feeder NR" : "Install Feeder NR" : "Install Features";
     /// <summary>The engine's scan row, passed back unchanged for review and execution.</summary>
@@ -212,6 +213,8 @@ public sealed class ForgeSettings
     [JsonPropertyName("nr_runtime")] public string NrRuntime { get; set; } = "";
     [JsonPropertyName("skynizz_version")] public string SkynizzVersion { get; set; } = "latest";
     [JsonPropertyName("mfg_provider")] public string MfgProvider { get; set; } = "universal";
+    /// <summary>Absent in files saved before Universal MFG replaced the integrated bridge as the default (revision 1).</summary>
+    [JsonPropertyName("mfg_default_revision")] public int? MfgDefaultRevision { get; set; }
     /// <summary>Dynamic MFG needs OptiScaler to own the count: the integrated bridge or the Universal plugin.</summary>
     [JsonIgnore] public bool DynamicMfgSupported => MfgProvider is "universal" or "integrated";
     [JsonPropertyName("nr_preset")] public int? NrPreset { get; set; }
@@ -313,14 +316,23 @@ public sealed class ForgeSettings
 
     public static ForgeSettings Load()
     {
+        var settings = new ForgeSettings();
         try
         {
             if (File.Exists(FilePath))
-                return JsonSerializer.Deserialize<ForgeSettings>(File.ReadAllText(FilePath), Json) ?? new();
+                settings = JsonSerializer.Deserialize<ForgeSettings>(File.ReadAllText(FilePath), Json) ?? new();
         }
         catch (JsonException) { }
         catch (IOException) { }
-        return new();
+        return settings.Migrated();
+    }
+
+    /// <summary>The old default moves to Universal once; a choice made since is kept.</summary>
+    public ForgeSettings Migrated()
+    {
+        if (MfgDefaultRevision is null && MfgProvider == "integrated") MfgProvider = "universal";
+        MfgDefaultRevision = 1;
+        return this;
     }
 
     static void WithSettingsLock(Action write)

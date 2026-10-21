@@ -302,19 +302,11 @@ public sealed partial class GameModeView
             ],
             "Appearance" =>
             [
-                new("Theme and scale", null,
+                new("Theme", null,
                 [
                     Choice("Theme", "Night is the Game Mode default.", ["night", "dark", "light"], ["Night", "Dark", "Light"],
                         () => shell.Settings.Theme is "light" or "dark" ? shell.Settings.Theme : "night",
                         value => { shell.Settings.Theme = value; DispatcherQueue.TryEnqueue(ApplySettings); }),
-                    Choice("UI scale", "Automatic uses a 130% reference at 4K and adapts to the window.", ["auto", "100", "125", "130", "150", "175", "200"],
-                        ["Automatic", "100%", "125%", "130%", "150%", "175%", "200%"], () => shell.Settings.UiScaleKey,
-                        value => { shell.Settings.UiScaleKey = value; DispatcherQueue.TryEnqueue(ApplySettings); }),
-                ]),
-                new("Navigation and labels", null,
-                [
-                    Choice("Navigation placement", null, ["top", "bottom"], ["Top", "Bottom"], () => shell.Settings.NavigationPosition, value => shell.Settings.NavigationPosition = value),
-                    SettingToggle("Button glyphs", "Show icons beside action labels.", () => shell.Settings.ButtonGlyphs, value => shell.Settings.ButtonGlyphs = value),
                 ]),
             ],
             "Library" =>
@@ -341,6 +333,14 @@ public sealed partial class GameModeView
                 [
                     Choice("Interface", null, ["game", "desktop"], ["Gaming Mode", "Desktop"], () => "game", value =>
                     { if (value == "desktop") DispatcherQueue.TryEnqueue(() => ExitRequested?.Invoke()); }),
+                ]),
+                new("Layout and labels", null,
+                [
+                    Choice("Game Mode scale", "Automatic uses a 130% reference at 4K and adapts to the window.", ["auto", "100", "125", "130", "150", "175", "200"],
+                        ["Automatic", "100%", "125%", "130%", "150%", "175%", "200%"], () => shell.Settings.UiScaleKey,
+                        value => { shell.Settings.UiScaleKey = value; DispatcherQueue.TryEnqueue(ApplySettings); }),
+                    Choice("Navigation placement", null, ["top", "bottom"], ["Top", "Bottom"], () => shell.Settings.NavigationPosition, value => shell.Settings.NavigationPosition = value),
+                    SettingToggle("Button glyphs", "Show icons beside action labels.", () => shell.Settings.ButtonGlyphs, value => shell.Settings.ButtonGlyphs = value),
                 ]),
                 new("Controller", null,
                 [

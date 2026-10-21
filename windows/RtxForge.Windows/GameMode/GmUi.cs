@@ -214,11 +214,15 @@ public sealed partial class GmUi(GmTheme t)
     /// <summary>.rf-badge pill.</summary>
     public Border Badge(string text, Color background, Color foreground, double em = 0.62, string? glyph = null)
     {
+        var badgeColors = BadgeTheme.Light(foreground);
+        if (t.IsLight) { background = badgeColors.Surface; foreground = badgeColors.Ink; }
         var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(6) };
         if (glyph is not null) line.Children.Add(new FontIcon { Glyph = glyph, FontSize = t.Em(em), Foreground = GmTheme.B(foreground), VerticalAlignment = VerticalAlignment.Center });
         line.Children.Add(PillText(text).With(x => { x.FontSize = t.Em(em); x.FontWeight = new FontWeight(650); x.Foreground = GmTheme.B(foreground); }));
         return Capsule(new Border
         {
+            BorderBrush = t.IsLight ? GmTheme.B(badgeColors.Stroke) : null,
+            BorderThickness = new Thickness(t.IsLight ? 1 : 0),
             Background = GmTheme.B(background), CornerRadius = new CornerRadius(t.Px(18)),
             Padding = new Thickness(t.Px(12), t.Px(7), t.Px(12), t.Px(7)), Child = line,
             VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Left,

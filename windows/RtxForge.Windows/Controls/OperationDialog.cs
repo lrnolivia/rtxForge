@@ -71,12 +71,12 @@ public sealed class OperationDialog
     {
         var dialog = shell.NewDialog();
         dialog.Title = "Install Features";
-        var editorWidth = Math.Max(280, Math.Min(960, ((shell.Content as FrameworkElement)?.XamlRoot?.Size.Width ?? 1120) - 120));
-        dialog.Resources["ContentDialogMaxWidth"] = 1120.0;
-        var tuning = new PresetControlsView(initial, shell.Settings.OverlayControls == "classic", embedded: true) { Width = editorWidth };
+        var editorWidth = Math.Max(280, Math.Min(760, ((shell.Content as FrameworkElement)?.XamlRoot?.Size.Width ?? 1120) - 120));
+        dialog.Resources["ContentDialogMaxWidth"] = 840.0;
+        var tuning = new PresetControlsView(initial, shell.Settings.OverlayControls == "classic", embedded: true, installation: true) { Width = editorWidth };
         tuning.SetMode(shell.Mode, legacy: shell.Settings.RuntimeProvider != "skynizz", dynamicSupported: shell.Settings.DynamicMfgSupported);
         var body = new StackPanel { Spacing = 16 };
-        body.Children.Add(Prefs.Label("Adjust your presets or continue. You can change these settings later in OptiScaler."));
+        body.Children.Add(Prefs.Label("Choose startup settings. You can adjust them later."));
         var feeder = shell.Settings.RuntimeProvider == "feeder";
         if (!feeder) body.Children.Add(tuning);
         var startup = new CheckBox { Content = "Enable NR on launch", IsChecked = shell.Settings.NrOnLaunch };
@@ -84,7 +84,7 @@ public sealed class OperationDialog
         if (separateStartup && shell.Mode != "mfg-only") body.Children.Add(startup);
         dialog.Content = new ScrollViewer { Content = body, HorizontalScrollMode = ScrollMode.Disabled,
             MaxHeight = Math.Max(280, ((shell.Content as FrameworkElement)?.XamlRoot?.Size.Height ?? 900) - 280) };
-        dialog.PrimaryButtonText = "Continue";
+        dialog.PrimaryButtonText = "Review games";
         dialog.CloseButtonText = "Cancel";
         dialog.DefaultButton = ContentDialogButton.Primary;
         return await dialog.ShowAsync() == ContentDialogResult.Primary
@@ -261,6 +261,9 @@ public sealed class OperationDialog
         Grid.SetColumn(pill, 2);
         grid.Children.Add(pill);
         if (ready && game is not null) _ = ReviewAccentAsync(thumb, pill, pillLine, game);
+        else BadgeTheme.AttachLight(pill, ready
+            ? global::Windows.UI.Color.FromArgb(255, 49, 91, 21)
+            : global::Windows.UI.Color.FromArgb(255, 155, 48, 40));
 
         return new Border { Style = Prefs.GetStyle("ForgeSettingsCardStyle"), MinHeight = 0, Padding = new Thickness(10, 8, 12, 8), Child = grid };
     }
@@ -277,6 +280,7 @@ public sealed class OperationDialog
             if (child is FontIcon icon) icon.Foreground = palette.Brush(palette.BadgeFg);
             if (child is TextBlock text) text.Foreground = palette.Brush(palette.BadgeFg);
         }
+        BadgeTheme.AttachLight(badge, palette.Color);
     }
 
     // ---------- Progress (progress_view) ----------

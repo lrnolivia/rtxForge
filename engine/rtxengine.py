@@ -426,8 +426,31 @@ def safe_rel(name: str) -> str:
 def target_key(target_dir: Path) -> str:
     return hashlib.sha256(str(target_dir.resolve()).encode("utf-8")).hexdigest()[:20]
 
+def _flush_windows_dir(path: Path) -> bool:
+    """Commit a directory's entries on NTFS. Python cannot open a directory fd on
+    Windows, so without this a crash can undo deletions that state already records."""
+    import ctypes
+    from ctypes import wintypes
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p,
+                                   wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    kernel.CreateFileW.restype = wintypes.HANDLE
+    kernel.FlushFileBuffers.argtypes = [wintypes.HANDLE]
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    # GENERIC_WRITE, share read/write/delete, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS
+    handle = kernel.CreateFileW(str(path), 0x40000000, 7, None, 3, 0x02000000, None)
+    if handle in (None, wintypes.HANDLE(-1).value):
+        return False
+    try:
+        return bool(kernel.FlushFileBuffers(handle))
+    finally:
+        kernel.CloseHandle(handle)
+
 def _fsync_dir(path: Path) -> None:
     """Best-effort directory durability barrier for recovery/state boundaries."""
+    if os.name == "nt":
+        _flush_windows_dir(Path(path))
+        return
     try:
         fd = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
     except OSError:
@@ -474,6 +497,9 @@ def _fsync_tree(root: Path) -> None:
 
 def _sync_filesystem(path: Path) -> None:
     """Flush privileged restore output when individual files may be unreadable."""
+    if os.name == "nt":
+        _flush_windows_dir(Path(path))
+        return
     sync_bin = shutil.which("sync")
     if sync_bin:
         subprocess.run([sync_bin, "-f", str(path)], check=True)

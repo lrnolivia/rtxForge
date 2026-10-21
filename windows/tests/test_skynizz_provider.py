@@ -484,7 +484,15 @@ ini=(universal/'OptiScaler.ini').read_text()
 for value in ('AdaMfgUnlock=false','AdaBlackwellKernels=false','LoadAsiPlugins=true','FGOutput=nofg'):
     assert value in ini,value
 assert 'LoadReShade=true' not in ini and not (universal/'ReShade64.dll').exists()
-assert scan(universal)['mfg_multiplier']==4 and scan(universal)['dynamic_mfg_available'] is True
+assert scan(universal)['mfg_multiplier']==4 and scan(universal)['dynamic_mfg_available'] is False
+assert 'Launch the game once' in scan(universal)['dynamic_mfg_detail']
+# Dynamic follows the plugin's own report from the game's last run.
+(universal/'RTXMFG-Universal.status.json').write_text(json.dumps({'dynamicMfgSupportKnown':True,'dynamicMfgSupported':True}))
+assert scan(universal)['dynamic_mfg_available'] is True and scan(universal)['dynamic_mfg_detail']==''
+(universal/'RTXMFG-Universal.status.json').write_text(json.dumps({'dynamicMfgSupportKnown':True,'dynamicMfgSupported':False}))
+assert scan(universal)['dynamic_mfg_available'] is False and 'Not supported' in scan(universal)['dynamic_mfg_detail']
+(universal/'RTXMFG-Universal.status.json').unlink()
+checks.append('Universal Dynamic MFG is offered only where the plugin reported support')
 # Repair keeps the recorded component even when new installs would choose another.
 run(service.prepare([scan(universal)],'nr-mfg','repair',visual_settings=settings))
 assert baseline(universal)['archive']['release']['mfg_component']==record['archive']['release']['mfg_component']
@@ -570,7 +578,7 @@ class WindowsSkynizzTest(unittest.TestCase):
                                     env=env, capture_output=True, text=True, timeout=180)
             self.assertEqual(result.returncode, 0, result.stderr[-12000:] + result.stdout[-3000:])
             receipt = json.loads(result.stdout.strip().splitlines()[-1])
-            self.assertEqual(receipt['count'], 30)
+            self.assertEqual(receipt['count'], 31)
             print('PASS: ' + '; '.join(receipt['checks']))
 
 

@@ -32,9 +32,9 @@ var complete = FeatureControlSchema.Tuning(allControls);
 var presetSettings = JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(new ForgeSettings { FeatureControls = complete.FeatureControls }))!;
 if (!System.Text.Json.Nodes.JsonNode.DeepEquals(allControls, FeatureControlSchema.Resolve(presetSettings.Presets)))
     throw new Exception("The full preset lost control values or units during persistence.");
-if (FeatureControlSchema.Shared.Controls.Length != 27 || FeatureControlSchema.Shared.Controls.Single(c => c.Key == "colour").Max != 4)
+if (FeatureControlSchema.Shared.Controls.Length != 29 || FeatureControlSchema.Shared.Controls.Single(c => c.Key == "colour").Max != 4)
     throw new Exception("The app lost the shared control vocabulary or colour range.");
-Console.WriteLine("PASS: all 27 ordered feature controls round trip with native units, including extended color and exact MFG choices.");
+Console.WriteLine("PASS: all 29 ordered feature controls round trip with native units, including extended color and exact MFG choices.");
 var defaults = new ForgeSettings();
 if (!defaults.OptiScalerUi || !defaults.ReShadeUi || defaults.OptiScalerIntro || defaults.ReShadeIntro)
     throw new Exception("Game menus must be independent of the default-hidden welcome messages");
@@ -160,3 +160,14 @@ foreach (var raw in new[] { "true", "false", "null", "\"unknown\"" })
         EngineRow = System.Text.Json.Nodes.JsonNode.Parse("{\"dynamic_mfg_available\":" + raw + "}")!.AsObject() };
     if (game.DynamicMfgAvailable != (raw == "true")) throw new Exception("Dynamic MFG availability was invented for an unknown route");
 }
+foreach (var (stored, expected) in new[] { ("{\"mfg_provider\":\"integrated\"}", "universal"),
+             ("{\"mfg_provider\":\"integrated\",\"mfg_default_revision\":1}", "integrated"),
+             ("{\"mfg_provider\":\"mfg-unlock\"}", "mfg-unlock"), ("{}", "universal") })
+{
+    var loaded = JsonSerializer.Deserialize<ForgeSettings>(stored)!.Migrated();
+    if (loaded.MfgProvider != expected || loaded.MfgDefaultRevision != 1)
+        throw new Exception("The Universal default migration changed a deliberate choice or skipped the old default: " + stored);
+    if (JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(loaded))!.Migrated().MfgProvider != expected)
+        throw new Exception("The Universal default migration ran twice");
+}
+Console.WriteLine("PASS: the old integrated default moves to Universal once; later choices stay.");

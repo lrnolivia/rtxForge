@@ -81,10 +81,9 @@ public sealed partial class GameModeView
     {
         var done = new TaskCompletionSource<Tuning?>();
         var (rows, value) = PresetRows(initial, legacy: shell.Settings.RuntimeProvider != "skynizz", embedded: true,
-            dynamicSupported: shell.Settings.DynamicMfgSupported);
+            dynamicSupported: shell.Settings.DynamicMfgSupported, installation: true);
         var content = new StackPanel { Spacing = t.Px(20) };
-        content.Children.Add(ui.P("Adjust your presets or continue. You can change these settings later in OptiScaler.", 0.92));
-        content.Children.Add(ui.IconLabel("", ProviderName()).With(p => { foreach (var c in p.Children) if (c is TextBlock tb) tb.FontSize = t.Em(0.85); }));
+        content.Children.Add(ui.P($"{ProviderName()} · Choose startup settings. You can adjust them later.", 0.8));
         if (shell.Settings.RuntimeProvider != "feeder")
         {
             var editor = new StackPanel { Spacing = t.Px(28) };
@@ -96,8 +95,8 @@ public sealed partial class GameModeView
         if (separateStartup && shell.Mode != "mfg-only") content.Children.Add(startup);
         void Cancel() { CloseModal(); done.TrySetResult(null); }
         var cancel = ui.Button("Cancel", Cancel, GmKind.Card, 0.92);
-        var next = ui.Button("Continue", () => { CloseModal(); done.TrySetResult(separateStartup ? value() with { NrOnLaunch = startup.IsChecked == true } : value()); }, GmKind.Primary, 0.92);
-        ShowModal("Install Features", content, [cancel, next], Cancel, 1500, cancel);
+        var next = ui.Button("Review games", () => { CloseModal(); done.TrySetResult(separateStartup ? value() with { NrOnLaunch = startup.IsChecked == true } : value()); }, GmKind.Primary, 0.92);
+        ShowModal("Install Features", content, [cancel, next], Cancel, 1120, cancel);
         return done.Task;
     }
 
@@ -216,6 +215,7 @@ public sealed partial class GameModeView
         title.Foreground = GmTheme.B(colors.Title);
         badge.Background = GmTheme.B(colors.Tint);
         if (badge.Child is StackPanel line) foreach (var c in line.Children.OfType<TextBlock>()) c.Foreground = GmTheme.B(colors.TintText);
+        if (t.IsLight) BadgeTheme.AttachLight(badge, colors.Accent);
     }
 
     async Task ExecuteAsync(string operation, OperationReview review)

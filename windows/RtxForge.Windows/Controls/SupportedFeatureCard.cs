@@ -26,6 +26,7 @@ public static class SupportedFeatureCard
         line.Children.Add(new FontIcon { Glyph = available ? "\uE73E" : "\uE733", FontSize = 12 * scale, Foreground = brush });
         line.Children.Add(new TextBlock { Text = label, FontSize = 12 * scale, FontWeight = FontWeights.SemiBold, Foreground = brush });
         var pill = new Border { Child = line, Padding = new Thickness(10 * scale, 5 * scale, 10 * scale, 5 * scale), CornerRadius = new CornerRadius(12 * scale), Background = new SolidColorBrush(global::Windows.UI.Color.FromArgb(24, colour.R, colour.G, colour.B)) };
+        BadgeTheme.AttachLight(pill, colour);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(pill, label + (available ? " supported" : " unavailable"));
         return pill;
     }

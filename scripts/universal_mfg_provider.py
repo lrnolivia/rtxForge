@@ -30,6 +30,8 @@ KNOWN = {
 NOTICES = {'LICENSE': 'MFG-Unlocker-LICENSE.txt', 'NOTICE.md': 'MFG-Unlocker-NOTICE.md'}
 # A manual install hides under a proxy name; these are the files that give it away.
 FOREIGN_PREFIXES = ('mfgunlocker', 'rtxmfg', 'rtx40mfg')
+# Written by the plugin beside the game executable on every run.
+STATUS = 'RTXMFG-Universal.status.json'
 
 
 def pinned():
@@ -112,5 +114,23 @@ def check_target(e, game, baseline):
     target = game.target_dir
     t.need(not (target / PLUGIN).exists(), 'An unmanaged MFG Unlocker plugin already exists; restore it first.')
     for path in target.iterdir():
-        t.need(not path.name.casefold().startswith(FOREIGN_PREFIXES),
+        name = path.name.casefold()
+        # The plugin's own run reports outlive a restore; they are not an install.
+        if name.startswith('rtxmfg-') and name.endswith(('.log', '.status.json')):
+            continue
+        t.need(not name.startswith(FOREIGN_PREFIXES),
                'An unmanaged MFG Unlocker install is present (' + path.name + '); remove it before installing.')
+
+
+def dynamic_support(target):
+    """What the plugin reported on the game's last run: True, False, or None before any report."""
+    path = Path(target) / STATUS
+    try:
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > 1024**2:
+            return None
+        status = json.loads(path.read_text(encoding='utf-8-sig'))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(status, dict) or status.get('dynamicMfgSupportKnown') is not True:
+        return None
+    return status.get('dynamicMfgSupported') is True

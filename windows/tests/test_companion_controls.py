@@ -19,7 +19,7 @@ import companion_controls as control
 import transactions as t
 
 
-def snapshot(pid=123, version=2):
+def snapshot(pid=123, version=2, support=-1):
     raw = bytearray(512 if version >= 3 else 256)
     struct.pack_into('<IIIi', raw, 0, control.MAGIC, version, pid, 10)
     for key, offset in control.OFFSETS.items():
@@ -27,7 +27,25 @@ def snapshot(pid=123, version=2):
         struct.pack_into('<f' if key in control._FLOATS else '<i', raw, offset, control.DEFAULTS[key])
     struct.pack_into('<iffiiii', raw, 100, 1, 0.0, 28.0, 5, 3, 100, 300)
     if version >= 2: struct.pack_into('<iiiiii', raw, 136, 0, 4, 100, 1000, 1, 3)
+    if version >= 7: struct.pack_into('<i', raw, control.DYNAMIC_SUPPORT, support)
     return raw
+
+
+def replay(controls, found):
+    """Run the saved-preset watcher once against a fake connected game; returns what it applied."""
+    box = SimpleNamespace(pid=123, k=SimpleNamespace(GetTickCount=lambda: 1010), applied=[])
+    box.read = lambda: found
+    box.apply = lambda changes: box.applied.append(changes) or found
+    class Open:
+        def __enter__(self): return box
+        def __exit__(self, *_): pass
+        def __getattr__(self, name): return getattr(box, name)
+    with patch.object(controls, '_processes', return_value={'game.exe': [123]}), \
+         patch.object(controls, '_open', return_value=Open()), \
+         patch.object(control.time, 'sleep', side_effect=[None, RuntimeError('stop')]):
+        try: controls._watch()
+        except RuntimeError: pass
+    return box.applied
 
 
 class ControlsTest(unittest.TestCase):
@@ -328,6 +346,57 @@ class ControlsTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'stop'): self.controls._watch()
         self.assertEqual(apply.call_count, 1)
 
+    def test_protocol7_reports_dynamic_and_its_support(self):
+        raw = snapshot(version=7, support=1)
+        struct.pack_into('<i', raw, control.OFFSETS['dynamic_mfg'], 1)
+        found = control.decode(raw, 123)
+        self.assertEqual(found['values']['dynamic_mfg'], 1)
+        self.assertIs(found['dynamic_supported'], True)
+        self.assertIsNone(control.decode(snapshot(version=7), 123)['dynamic_supported'])
+        self.assertIs(control.decode(snapshot(version=7, support=0), 123)['dynamic_supported'], False)
+        self.assertNotIn('dynamic_mfg', control.decode(snapshot(version=6), 123)['values'])
+        with self.assertRaises(t.Refusal): control.decode(snapshot(version=7, support=5), 123)
+        with self.assertRaises(t.Refusal): control.validate_changes({'dynamic_mfg': 2})
+
+    def test_installed_dynamic_and_presets_are_read_for_reset(self):
+        path = self.target / 'OptiScaler.ini'
+        path.write_text(path.read_text() + 'OverrideForceDMFG=true\n[DLSS]\nRenderPresetOverride=true\nRenderPresetForAll=12\n'
+                        '[DLSSD]\nRenderPresetOverride=false\nRenderPresetForAll=5\n')
+        configured = self.controls._configured(self.controls._game({'row': self.row}))
+        self.assertEqual((configured['dynamic_mfg'], configured['dlss_preset'], configured['rr_preset']), (1, 12, 0))
+        self.assertEqual(control.validate_changes({'dlss_preset': 14}), {'dlss_preset': 14})
+        with self.assertRaises(t.Refusal): control.validate_changes({'rr_preset': 16})
+
+    def test_saved_dynamic_replays_where_supported_and_never_blocks_the_rest(self):
+        self.controls.save({'row': self.row, 'changes': {'multiplier': 6, 'dynamic_mfg': 1, 'intensity': 1.2}})
+        key = next(iter(self.controls.presets))
+        for found, sent, note in [
+                (snapshot(version=7, support=1), True, None),
+                # Unknown before the game's first DLSS-G report: OptiScaler only tries it.
+                (snapshot(version=7), True, None),
+                (snapshot(version=7, support=0), False, "isn't supported"),
+                (snapshot(version=6), False, 'Update this game package')]:
+            with self.subTest(version=struct.unpack_from('<I', found, 4)[0]):
+                self.controls.last_pid.clear(); self.controls.preset_errors.clear()
+                applied = replay(self.controls, control.decode(found, 123))
+                self.assertEqual(len(applied), 1)
+                self.assertEqual(applied[0]['multiplier'], 6)
+                self.assertEqual('dynamic_mfg' in applied[0], sent)
+                if note: self.assertIn(note, self.controls.preset_errors[key])
+                else: self.assertNotIn(key, self.controls.preset_errors)
+
+    def test_live_save_refuses_dynamic_the_game_reported_unsupported(self):
+        class Box:
+            pid = 123
+            def __enter__(self): return self
+            def __exit__(self, *_): pass
+            def read(self): return control.decode(snapshot(version=7, support=0), 123)
+        with patch.object(self.controls, '_open', return_value=Box()):
+            with self.assertRaisesRegex(t.Refusal, 'Dynamic'):
+                self.controls.save({'row': self.row, 'pid': 123, 'changes': {'dynamic_mfg': 1}})
+            self.controls.save({'row': self.row, 'pid': 123, 'changes': {'dynamic_mfg': 0, 'multiplier': 4}})
+        self.assertEqual(next(iter(self.controls.presets.values()))['changes'], {'dynamic_mfg': 0, 'multiplier': 4})
+
     def test_malformed_saved_records_do_not_stop_the_watcher(self):
         self.controls.state.mkdir(parents=True)
         for index, record in enumerate([None, [], {'schema': 99}, {'schema': 1, 'row': []},
@@ -339,7 +408,7 @@ class ControlsTest(unittest.TestCase):
 @unittest.skipUnless(os.name == 'nt', 'Windows named mapping')
 class WindowsProtocolTest(unittest.TestCase):
     def test_actual_mapping_ack_and_backend_ceiling(self):
-        for version in (2, 3, 4, 5, 6):
+        for version in (2, 3, 4, 5, 6, 7):
             with self.subTest(version=version): self.mapping_round_trip(version)
 
     def mapping_round_trip(self, version):
@@ -366,6 +435,10 @@ class WindowsProtocolTest(unittest.TestCase):
                     ctypes.memmove(view + 288, ctypes.string_at(view + 256, 32), 32)
                 if version >= 4:
                     ctypes.memmove(view + 344, ctypes.string_at(view + 320, 24), 24)
+                if version >= 7:
+                    for request, actual in ((404, 412), (424, 432), (428, 436)):
+                        requested = ctypes.c_long.from_address(view + request).value
+                        if requested >= 0: ctypes.c_long.from_address(view + actual).value = requested
                 ctypes.c_long.from_address(view + 24).value = 1
                 ctypes.c_long.from_address(view + 20).value = command
                 ctypes.c_long.from_address(view + 12).value += 1
@@ -407,6 +480,24 @@ class WindowsProtocolTest(unittest.TestCase):
                         self.assertAlmostEqual(result['values']['intensity'], 1.1)
                         previous = result['command']
                     ctypes.c_long.from_address(view + 368).value = 0
+                if version >= 7:
+                    # The bridge starts at "unchanged"; the client writes the running value back.
+                    ctypes.c_long.from_address(view + 404).value = -1
+                    result = box.apply({'dynamic_mfg': 1})
+                    self.assertEqual(result['values']['dynamic_mfg'], 1)
+                    self.assertEqual(box.apply({'intensity': 1.0})['values']['dynamic_mfg'], 1)
+                    self.assertEqual(ctypes.c_long.from_address(view + 404).value, 1)
+                    ctypes.c_long.from_address(view + control.DYNAMIC_SUPPORT).value = 0
+                    previous = box.read()['command']
+                    with self.assertRaisesRegex(t.Refusal, 'Dynamic'): box.apply({'dynamic_mfg': 1})
+                    self.assertEqual(box.read()['command'], previous)
+                    previous = box.apply({'dynamic_mfg': 0})['command']
+                    self.assertEqual(ctypes.c_long.from_address(view + 408).value, 0, 'the FPS target is never written')
+                    result = box.apply({'dlss_preset': 12, 'rr_preset': 5})
+                    self.assertEqual((result['values']['dlss_preset'], result['values']['rr_preset']), (12, 5))
+                    previous = box.apply({'dlss_preset': 0})['command']
+                else:
+                    with self.assertRaisesRegex(t.Refusal, 'Update this game package'): box.apply({'dynamic_mfg': 1})
                 ctypes.c_long.from_address(view + 112).value = 1
                 with self.assertRaises(t.Refusal): box.apply({'multiplier': 4})
                 self.assertEqual(box.read()['command'], previous)

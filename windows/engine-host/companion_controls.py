@@ -57,10 +57,22 @@ OFFSETS.update({key: value[0] for key, value in SHARP.items()})
 DEFAULTS.update({key: value[3] for key, value in SHARP.items()})
 _FLOATS.update({'sharpness', 'motion_sharpness'})
 _BOOLS.update({'sharpen', 'sharp_override', 'motion_sharpen'})
+# Protocol 7 as (actual offset, request offset): Dynamic MFG and the DLSS / Ray
+# Reconstruction render presets (0 is the game's own choice). The Dynamic FPS
+# target's request slot stays at its "unchanged" sentinel; this client never writes it.
+PROTOCOL7 = {'dynamic_mfg': (412, 404), 'dlss_preset': (432, 424), 'rr_preset': (436, 428)}
+DYNAMIC_SUPPORT = 420
+OFFSETS.update({key: spec[0] for key, spec in PROTOCOL7.items()})
+DEFAULTS.update(dynamic_mfg=0, dlss_preset=0, rr_preset=0)
+_BOOLS.add('dynamic_mfg')
+# OptiScaler numbers presets 1 (A) to 15 (O); one picked in its own menu still round-trips.
+_PRESETS = {'dlss_preset': ('DLSS', range(16)), 'rr_preset': ('DLSSD', range(16))}
+VERSIONS = (1, 2, 3, 4, 5, 6, 7)
 
 
 def supported_keys(version):
-    return LEGACY_KEYS | (set(EXTRA) if version >= 3 else set()) | (set(SHARP) if version >= 4 else set())
+    return (LEGACY_KEYS | (set(EXTRA) if version >= 3 else set()) | (set(SHARP) if version >= 4 else set())
+            | (set(PROTOCOL7) if version >= 7 else set()))
 
 
 def startup_changes(game, changes):
@@ -84,6 +96,7 @@ def validate_changes(changes):
             t.need(type(value) is int, 'A control value is invalid.')
             valid = (value in (0, 1) if key in _BOOLS else
                      value in (-1, 0, 2, 3, 4, 5, 6) if key == 'multiplier' else
+                     value in _PRESETS[key][1] if key in _PRESETS else
                      1 <= value <= 16 if key == 'interval' else
                      1 <= value <= 3 if key == 'passes' else
                      0 <= value <= 2 if key in ('style', 'sharpen_shader') else 0 <= value <= 3)
@@ -95,7 +108,7 @@ def validate_changes(changes):
 def decode(raw, pid):
     t.need(len(raw) in (SIZE, 512), 'The game returned an incomplete control snapshot.')
     magic, version, found = struct.unpack_from('<III', raw)
-    t.need(magic == MAGIC and version in (1, 2, 3, 4, 5, 6) and found == pid
+    t.need(magic == MAGIC and version in VERSIONS and found == pid
            and len(raw) == (512 if version >= 3 else SIZE), 'This game uses an unsupported control protocol.')
     values = {key: struct.unpack_from('<f' if key in _FLOATS else '<i', raw, offset)[0]
               for key, offset in OFFSETS.items() if key in supported_keys(version)}
@@ -120,6 +133,12 @@ def decode(raw, pid):
                and reduced in (0, 1) and requested in (0, 1), 'Invalid observed NR placement.')
         result.update(nr_placement=actual, nr_placement_reason=reason, nr_model_width=width,
                       nr_model_height=height, nr_reduced=bool(reduced), nr_requested_before=bool(requested), nr_placement_tick=tick)
+    # None until the game reports DLSS-G state; older packages never report it.
+    result['dynamic_supported'] = None
+    if version >= 7:
+        support = struct.unpack_from('<i', raw, DYNAMIC_SUPPORT)[0]
+        t.need(support in (-1, 0, 1), 'Invalid Dynamic MFG report.')
+        result['dynamic_supported'] = None if support < 0 else bool(support)
     return result
 
 
@@ -158,7 +177,7 @@ class Mailbox:
             if not self.view: raise OSError('The game control snapshot could not be opened.')
             header = ctypes.string_at(self.view, 12)
             magic, version, found = struct.unpack('<III', header)
-            t.need(magic == MAGIC and version in (1, 2, 3, 4, 5, 6) and found == pid, 'Unsupported game control protocol.')
+            t.need(magic == MAGIC and version in VERSIONS and found == pid, 'Unsupported game control protocol.')
             self.size = 512 if version >= 3 else SIZE
             self.read()
         except BaseException:
@@ -195,6 +214,8 @@ class Mailbox:
         values = before['values'] | changes
         if 'multiplier' in changes and changes['multiplier'] > 0:
             t.need(before['backend_max'] >= changes['multiplier'] - 1, 'This game does not support that multiplier.')
+        t.need(not changes.get('dynamic_mfg') or before['dynamic_supported'] is not False,
+               "This game doesn't support Dynamic Multi-Frame Generation.")
         sequence = max(before['command'], before['ack']) + 2
         sequence += sequence & 1
         ctypes.c_long.from_address(self.view + 16).value = sequence - 1
@@ -210,6 +231,9 @@ class Mailbox:
             for key, (offset, _, _, _) in SHARP.items():
                 raw = struct.pack('<f' if key in _FLOATS else '<i', values[key])
                 ctypes.memmove(self.view + offset - 24, raw, 4)
+        if before['version'] >= 7:
+            for key, (_, request) in PROTOCOL7.items():
+                ctypes.c_long.from_address(self.view + request).value = values[key]
         ctypes.c_long.from_address(self.view + 16).value = sequence
         deadline = time.monotonic() + 2
         while time.monotonic() < deadline:
@@ -360,6 +384,13 @@ class Controls:
                 t.need(raw in ('true', 'false', '0', '1'), 'The saved sharpening setting is invalid.')
                 values[key] = int(raw in ('true', '1'))
             else: values[key] = float(raw)
+        dynamic = parser.get('DLSSG', 'OverrideForceDMFG', fallback='false').strip().casefold()
+        t.need(dynamic in ('true', 'false', '0', '1', 'auto'), 'The saved Dynamic MFG setting is invalid; repair this game.')
+        values['dynamic_mfg'] = int(dynamic in ('true', '1'))
+        for key, (section, allowed) in _PRESETS.items():
+            override = parser.get(section, 'RenderPresetOverride', fallback='false').strip().casefold()
+            preset = parser.get(section, 'RenderPresetForAll', fallback='auto').strip().casefold()
+            values[key] = int(preset) if override in ('true', '1') and preset.isdigit() and int(preset) in allowed else 0
         count = parser.get('DLSSG', 'OverrideInterpolationCount', fallback='auto').strip().casefold()
         if count != 'auto':
             t.need(0 <= int(count) <= 5, 'The saved MFG count is invalid; repair this game.')
@@ -514,6 +545,8 @@ class Controls:
                     t.need(not found.get('original_menu') or shared_native_menu(), 'OptiScaler controls this session. Restart the game after switching overlays.')
                     t.need(set(changes) <= supported_keys(found['version']),
                            'Update this game package to save the additional NR controls.')
+                    t.need(not changes.get('dynamic_mfg') or found['dynamic_supported'] is not False,
+                           "This game doesn't support Dynamic Multi-Frame Generation.")
             old = self.presets.get(game['key']) or {}
             if old.get('recipe') == game['recipe']:
                 changes = validate_changes((old.get('changes') or {}) | changes)
@@ -596,8 +629,19 @@ class Controls:
                             self.last_pid[key] = box.pid
                             t.need(game['can_mfg'] or 'multiplier' not in record['changes'], 'MFG ownership changed')
                             t.need(game['can_nr'] or record['changes'].get('enabled',0)==0, 'NR ownership changed')
-                            box.apply(startup_changes(game, record['changes']))
-                            self.preset_errors.pop(key, None)
+                            changes, note = startup_changes(game, record['changes']), None
+                            # Dynamic never blocks the rest of a saved preset.
+                            if 'dynamic_mfg' in changes:
+                                wanted = changes['dynamic_mfg']
+                                if 'dynamic_mfg' not in supported_keys(current['version']):
+                                    changes.pop('dynamic_mfg')
+                                    if wanted: note = 'Update this game package to replay Dynamic MFG; the rest of the preset was applied.'
+                                elif wanted and current['dynamic_supported'] is False:
+                                    changes.pop('dynamic_mfg')
+                                    note = "Dynamic MFG isn't supported by this game; the rest of the preset was applied."
+                            box.apply(changes)
+                            if note: self.preset_errors[key] = note
+                            else: self.preset_errors.pop(key, None)
                     except (OSError, ValueError, KeyError, t.Refusal) as error:
                         self.preset_errors[key] = str(error)
 

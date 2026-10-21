@@ -15,7 +15,7 @@ written before the review is confirmed.
 from pathlib import Path
 import time
 
-from gi.repository import Gdk, GLib, Gtk, Pango
+from gi.repository import Gdk, Gio, GLib, Gtk, Pango
 
 import controller_input
 import game_notes
@@ -24,6 +24,7 @@ import ui_colors
 import user_messages
 from operation_scope import operation_targets, ScopeError
 import mfg_choice
+import overview_facts
 
 ACCENT = '#76b900'
 ACCENT_INK = '#151c07'
@@ -1269,7 +1270,7 @@ class GameMode(Gtk.Overlay):
     def build_details(self, g):
         t = self.theme
         width = self.layout_width
-        hero_height = t.px(240 if t.compact else 280 if width <= 1500 else 320)
+        hero_height = t.px(290 if t.compact else 340 if width <= 1500 else 390)
         nav_width = t.px(184 if width <= 1050 else 246 if width <= 1500 else 254)
         side = t.px(24 if width <= 1050 else 36 if width <= 1500 else 56)
         accent = self.accent_class(g)
@@ -1303,10 +1304,22 @@ class GameMode(Gtk.Overlay):
         tested = (g.get('test_record') or {}).get('status', 'Untested') not in ('Untested', '')
         badges.append(self.badge('Tested' if tested else 'Untested', 'gm-badge-tested', 'object-select-symbolic' if tested else 'applications-science-symbolic', big=True))
         if g.get('installed') and g.get('installed_on') in ('linux', 'windows'):
-            badges.append(self.badge('Installed on ' + g['installed_on'].title(), 'gm-badge-source', 'rtx-os-' + g['installed_on'] + '-symbolic', big=True))
+            badges.append(self.badge(g['installed_on'].title(), 'gm-badge-source', 'rtx-os-' + g['installed_on'] + '-symbolic', big=True))
         text.append(badges)
-        state = 'Configured' if g.get('installed') else 'Unsupported' if g.get('blocked') else 'Available'
-        text.append(self.label(' · '.join((source, state, self.provider_name())), 'gm-small'))
+        # Windows hero: title and badges own the full width; developer ·
+        # release and summary sit beside the actions underneath.
+        lower_row = Gtk.Box(spacing=t.px(24))
+        about = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(6), hexpand=True, valign=Gtk.Align.END)
+        meta = ' · '.join(str(g[k]) for k in ('developers', 'release') if g.get(k))
+        if meta:
+            about.append(self.label(meta, 'gm-small'))
+        if g.get('description'):
+            summary = self.label(g['description'], 'gm-p', wrap=True, lines=2)
+            summary.set_max_width_chars(80)
+            summary.set_ellipsize(Pango.EllipsizeMode.END)
+            about.append(summary)
+        lower_row.append(about)
+        text.append(lower_row)
         identity.append(text)
         actions = Gtk.Box(spacing=t.px(12), valign=Gtk.Align.END)
         setup = self.owner.needs_linux_setup(g)
@@ -1317,7 +1330,10 @@ class GameMode(Gtk.Overlay):
                                    enabled=bool(g.get('installed')), key='hero-restore'))
         actions.append(self.button('Update DLSS', lambda: self.run_operation('update-dlss', [g]), 'dlss', 'emblem-synchronizing-symbolic',
                                    enabled=not g.get('blocked'), key='hero-update'))
-        identity.append(actions)
+        if tight:
+            # Narrow windows drop the actions under the summary.
+            lower_row.set_orientation(Gtk.Orientation.VERTICAL)
+        lower_row.append(actions)
         hero.add_overlay(identity)
         back = Gtk.Button(child=self.content('Back to Library', 'go-previous-symbolic'), halign=Gtk.Align.START, valign=Gtk.Align.START)
         back.add_css_class('gm-back')
@@ -1513,21 +1529,20 @@ class GameMode(Gtk.Overlay):
                 about.set_max_width_chars(90)
                 content.append(about)
             content.append(self.label('Game Information', 'gm-h3'))
-            rows = []
-            for title, key in (('Developer', 'developers'), ('Release', 'release')):
-                if g.get(key):
-                    rows.append(self.preference(title, None, self.label(g[key], 'gm-value')))
-            location = self.label(g.get('game', ''), 'gm-value', wrap=True, xalign=1.0)
-            location.set_max_width_chars(48)
-            rows += [
-                self.preference('Library', None, self.label(g.get('library') or g.get('source') or '', 'gm-value')),
-                self.preference('Location', None, location),
-                self.preference('Compatibility', None, self.label(g.get('blocked') or 'Supported', 'gm-value')),
-                self.preference('Metadata Source', None, self.label(g.get('metadata_source') or g.get('source') or '', 'gm-value')),
-            ]
-            if g.get('installed') and g.get('installed_on') in ('linux', 'windows'):
-                rows.append(self.preference('Installed with', None, self.label('rtxForge on ' + g['installed_on'].title(), 'gm-value')))
+            rows = [self.preference(title, None, self.label(str(value), 'gm-value')) for title, value in overview_facts.compact_facts(g)]
+            if g.get('blocked'):
+                rows.append(self.preference('Compatibility', None, self.label(str(g['blocked']), 'gm-value')))
+            folder = overview_facts.folder(g)
+            if folder:
+                location = self.label(folder, 'gm-value', wrap=True, xalign=0)
+                location.set_max_width_chars(60)
+                open_folder = self.button('Open folder', lambda: Gio.AppInfo.launch_default_for_uri(Path(folder).as_uri(), None),
+                                          enabled=not self.owner.options.demo, key='details-open-folder')
+                rows.append(self.preference('Game folder', None, location))
             content.append(self.group(rows))
+            if folder:
+                open_folder.set_halign(Gtk.Align.START)
+                content.append(open_folder)
 
     def toggle_presets(self):
         self.presets_expanded = not self.presets_expanded

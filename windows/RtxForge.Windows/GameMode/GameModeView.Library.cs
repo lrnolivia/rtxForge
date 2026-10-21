@@ -32,7 +32,8 @@ public sealed partial class GameModeView
         var titles = new StackPanel { Spacing = t.Px(10) };
         titles.Children.Add(ui.H1(selecting ? "Select games" : "Library", t.Compact ? 1.18 : 1.62));
         var configured = shell.Games.Count(g => g.Installed);
-        if (!t.Compact || shell.LibraryRefreshing || shell.LibraryLoadError is not null)
+        if ((!t.Compact || shell.LibraryRefreshing || shell.LibraryLoadError is not null)
+            && (shell.Games.Count > 0 || !shell.LibraryRefreshing || shell.LibraryLoadError is not null))
             titles.Children.Add(ui.P(selecting ? $"{selectedIds.Count} selected · {FilterLabel(shell.Settings.LibraryFilter)}"
                 : shell.LibraryLoadError is not null ? "Could not refresh your library. Rescan to try again."
                 : shell.LibraryRefreshing ? shell.Games.Count == 0 ? "Finding your games…" : $"{shell.Games.Count} games · Refreshing library…"
@@ -131,12 +132,14 @@ public sealed partial class GameModeView
         var scroller = new ScrollViewer { HorizontalScrollMode = ScrollMode.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         var available = Math.Max(320, ActualWidth - t.Px(56) * 2 - t.Px(40));
         scroller.Content = games.Count == 0
-            ? shell.LibraryRefreshing ? new Controls.LibrarySkeleton(shell.Settings.LibraryView, GmTheme.B(t.Panel), t.Px(1)) : EmptyLibrary()
+            ? EmptyLibrary()
             : shell.Settings.LibraryView == "list" ? ListLayout(games) : CardLayout(games, available, shell.Settings.LibraryView == "capsules");
         scroller.ViewChanged += (_, _) => libraryScroll = scroller.VerticalOffset;
         libraryScroller = scroller;   // Render restores libraryScroll before focusing (see RestoreScroll)
-        Grid.SetRow(scroller, 3);
-        main.Children.Add(scroller);
+        FrameworkElement viewport = shell.Games.Count == 0 && shell.LibraryRefreshing
+            ? new Controls.LibrarySkeleton(shell.Settings.LibraryView, GmTheme.B(t.Panel), t.Px(1)) : scroller;
+        Grid.SetRow(viewport, 3);
+        main.Children.Add(viewport);
 
         // No scroll cue: navigation help is contextual tips (see Tip / TipOnFocus).
         return main;

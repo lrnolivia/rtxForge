@@ -348,7 +348,6 @@
         <StackPanel x:Name="Body" Padding="36,16,36,48" Spacing="16">
             <TextBlock x:Name="RefreshStatus" Visibility="Collapsed" Style="{StaticResource ForgeCaptionDimTextStyle}"
                        AutomationProperties.LiveSetting="Polite" Text="Finding your games…" />
-            <controls:LibrarySkeleton x:Name="LoadingCards" Visibility="Collapsed" />
             <ItemsView x:Name="Library" SelectionMode="None" IsItemInvokedEnabled="True"
                        ItemInvoked="OnItemInvoked" PointerMoved="OnLibraryPointerMoved" PointerExited="OnLibraryPointerExited"
                        RightTapped="OnLibraryRightTapped" SizeChanged="OnLibrarySizeChanged" />
@@ -357,5 +356,6 @@
                        Style="{StaticResource ForgeDimTextStyle}" Text="No games match this view." />
         </StackPanel>
         </ScrollViewer>
+        <controls:LibrarySkeleton x:Name="LoadingCards" Grid.Row="2" Margin="36,16,36,48" Visibility="Collapsed" />
     </Grid>
 </Page>

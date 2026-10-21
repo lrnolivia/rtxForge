@@ -57,7 +57,7 @@ public sealed class GmUi(GmTheme t)
             GmKind.Quiet or GmKind.Transparent => (Microsoft.UI.Colors.Transparent, t.Fg),
             GmKind.Active => (t.Active, t.ActiveFg),
             GmKind.Dlss => (t.DlssSurface, t.DlssInk),
-            _ => (t.Card, t.Fg),
+            _ => (t.IsLight ? GmTheme.Hex("#454545") : t.Card, GmTheme.Hex("#f2f2f2")),
         };
         if (!enabled) (bg, fg) = (kind is GmKind.Quiet or GmKind.Transparent ? Microsoft.UI.Colors.Transparent : t.Disabled, t.DisabledFg);
         var button = new Button
@@ -74,6 +74,8 @@ public sealed class GmUi(GmTheme t)
             MinHeight = t.Px(minHeight),
             IsEnabled = enabled,
         };
+        if ((kind is GmKind.Card or GmKind.Active or GmKind.Primary or GmKind.Danger) && button.Content is UIElement contentElement)
+            InheritButtonInk(contentElement);
         if (kind == GmKind.Dlss)
         {
             button.BorderBrush = GmTheme.B(t.DlssBorder);
@@ -83,6 +85,16 @@ public sealed class GmUi(GmTheme t)
         if (click is not null) button.Click += (_, _) => click();
         if (name is not null) Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, name);
         return button;
+    }
+
+    // Nested labels inherit the button's contrast choice rather than the
+    // page's text color. Bright accent/danger surfaces retain their dark ink.
+    static void InheritButtonInk(UIElement content)
+    {
+        if (content is TextBlock label) label.ClearValue(TextBlock.ForegroundProperty);
+        else if (content is FontIcon icon) icon.ClearValue(IconElement.ForegroundProperty);
+        else if (content is Panel panel) foreach (var child in panel.Children) InheritButtonInk(child);
+        else if (content is Border { Child: UIElement child }) InheritButtonInk(child);
     }
 
     /// <summary>

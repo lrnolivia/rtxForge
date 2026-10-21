@@ -211,7 +211,7 @@ public sealed partial class GameModeView
     {
         SectionTitle(content, "Custom Artwork", "Artwork changes also sync to your local Steam library. Reset restores your original Steam artwork.");
         var preview = shell.Service.IsPreview;
-        var rows = new List<UIElement>();
+        var cards = new Controls.PresetColumns(t.Px(260), 3) { ColumnSpacing = t.Px(16), RowSpacing = t.Px(16) };
         foreach (var (role, title, path) in new[] { ("poster", "Poster", g.PosterPath), ("capsule", "Wide Capsule", g.CapsulePath), ("hero", "Hero", g.HeroPath) })
         {
             var thumb = new Border
@@ -220,19 +220,23 @@ public sealed partial class GameModeView
                 Background = GmTheme.B(t.Card),
             };
             if (GameItem.Image(path) is { } image) thumb.Child = new Border { CornerRadius = new CornerRadius(t.Px(8)), Background = new ImageBrush { ImageSource = image, Stretch = Stretch.UniformToFill } };
-            var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12) };
-            actions.Children.Add(ui.Button("Choose Image", () => _ = ChooseArtworkAsync(g, role), GmKind.Card, 0.8, !preview, minHeight: 48).With(b => Key(b, "art-choose-" + role)));
-            actions.Children.Add(ui.Button("Browse artwork", () => _ = BrowseArtworkAsync(g, role), GmKind.Card, 0.8, !preview, minHeight: 48).With(b => Key(b, "art-browse-" + role)));
-            actions.Children.Add(ui.Button("Reset", () => _ = ResetArtworkAsync(g, role), GmKind.Card, 0.8, !preview, minHeight: 48).With(b => Key(b, "art-reset-" + role)));
-            var row = ui.PreferenceRow(title, g.ArtCredits.GetValueOrDefault(role) ?? (path is null ? "No artwork yet" : g.MetadataSource ?? g.Library), actions);
-            row.ColumnDefinitions.Insert(0, new ColumnDefinition { Width = GridLength.Auto });
-            foreach (var child in row.Children.OfType<FrameworkElement>()) Grid.SetColumn(child, Grid.GetColumn(child) + 1);
-            row.Children.Add(thumb);
-            rows.Add(row);
+            thumb.HorizontalAlignment = HorizontalAlignment.Center;
+            var card = new StackPanel { Spacing = t.Px(12) };
+            card.Children.Add(ui.Text(title, .9, weight: FontWeights.SemiBold));
+            card.Children.Add(new Grid { Height = t.Px(110), Children = { thumb } });
+            card.Children.Add(ui.P(g.ArtCredits.GetValueOrDefault(role) ?? (path is null ? "No artwork yet" : g.MetadataSource ?? g.Library), .72));
+            var choose = ui.Button("Choose image", () => _ = ChooseArtworkAsync(g, role), GmKind.Card, .78, !preview, radius: 10, minHeight: 48);
+            choose.HorizontalAlignment = HorizontalAlignment.Stretch; Key(choose, "art-choose-" + role); card.Children.Add(choose);
+            var actions = new Controls.PresetColumns(t.Px(100), 2) { ColumnSpacing = t.Px(8), RowSpacing = t.Px(8) };
+            actions.Children.Add(ui.Button("Browse", () => _ = BrowseArtworkAsync(g, role), GmKind.Card, .72, !preview, radius: 10, minHeight: 48,
+                padding: new Thickness(t.Px(10))).With(b => { b.HorizontalAlignment = HorizontalAlignment.Stretch; Key(b, "art-browse-" + role); }));
+            actions.Children.Add(ui.Button("Reset", () => _ = ResetArtworkAsync(g, role), GmKind.Card, .72, !preview, radius: 10, minHeight: 48,
+                padding: new Thickness(t.Px(10))).With(b => { b.HorizontalAlignment = HorizontalAlignment.Stretch; Key(b, "art-reset-" + role); }));
+            card.Children.Add(actions); cards.Children.Add(DetailPlate(card));
         }
-        content.Children.Add(ui.Group(rows));
+        content.Children.Add(cards);
         content.Children.Add(ui.Button(IconText("", "Sync artwork to Steam"), () => _ = SyncArtworkAsync(g), GmKind.Primary, 0.85, !preview)
-            .With(b => { b.HorizontalAlignment = HorizontalAlignment.Left; Key(b, "art-sync-game"); }));
+            .With(b => { b.HorizontalAlignment = HorizontalAlignment.Right; Key(b, "art-sync-game"); }));
     }
 
     object IconText(string glyph, string text) => shell.Settings.ButtonGlyphs ? ui.IconLabel(glyph, text) : text;

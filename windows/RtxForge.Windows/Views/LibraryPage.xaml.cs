@@ -161,7 +161,7 @@ public sealed partial class LibraryPage : Page
         var libs = games.Select(g => g.Library).Distinct().Count();
         var installs = games.Count(g => g.Installed);
         StatsText.Text = games.Count == 0 && shell.LibraryRefreshing
-            ? "Finding your games…"
+            ? ""
             : $"{games.Count} games · {libs} locations · {installs} OptiScaler installs detected";
         if (shell.Hardware is { } hardware)
             HardwareText.Text = shell.Service.IsPreview
@@ -180,8 +180,10 @@ public sealed partial class LibraryPage : Page
 
         var view = Settings.LibraryView;
         var loading = shell.LibraryRefreshing && games.Count == 0;
+        StatsText.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
+        LoadingCards.Configure(view, Settings.ArtScale / 100.0);
         LoadingCards.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
-        RefreshStatus.Visibility = shell.LibraryRefreshing || shell.LibraryLoadError is not null ? Visibility.Visible : Visibility.Collapsed;
+        RefreshStatus.Visibility = !loading && (shell.LibraryRefreshing || shell.LibraryLoadError is not null) ? Visibility.Visible : Visibility.Collapsed;
         RefreshStatus.Text = shell.LibraryLoadError is not null ? "Could not refresh your library. Rescan to try again."
             : games.Count > 0 ? "Refreshing library…" : "Finding your games…";
         Library.ItemTemplate = (DataTemplate)Resources[view switch
@@ -244,6 +246,7 @@ public sealed partial class LibraryPage : Page
         Dashboard.Padding = new Thickness(side, 12, side, 0);
         Toolbar.Padding = new Thickness(side, Toolbar.Padding.Top, side, 0);
         Body.Padding = new Thickness(side, 16, side, 48);
+        LoadingCards.Margin = new Thickness(side, 16, side, 48);
 
         var narrowHero = width < 1100;
         Grid.SetRow(HeroActions, narrowHero ? 1 : 0);

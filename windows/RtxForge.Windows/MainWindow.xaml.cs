@@ -218,6 +218,9 @@ public sealed partial class MainWindow : Window
 
     void UpdateNavigationCommands()
     {
+        // NavigationView hides PaneHeader in compact mode. Its native toggle
+        // remains reachable there so the pane can always be expanded again.
+        Nav.IsPaneToggleButtonVisible = !Nav.IsPaneOpen;
         var padding = Nav.IsPaneOpen ? 12 : 4;
         NavigationCommands.Width = Math.Max(40, (Nav.IsPaneOpen ? Nav.OpenPaneLength : Nav.CompactPaneLength) - padding * 2);
         NavigationCommands.Margin = new Thickness(padding, 6, padding, 6);

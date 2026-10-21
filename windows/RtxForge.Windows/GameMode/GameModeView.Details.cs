@@ -205,6 +205,21 @@ public sealed partial class GameModeView
         content.Children.Add(block);
     }
 
+    Controls.PresetColumns DetailColumns(int maximum = 2) => new(t.Px(340), maximum)
+    { ColumnSpacing = t.Px(16), RowSpacing = t.Px(16) };
+
+    Border DetailPlate(UIElement content) => new()
+    { Background = GmTheme.B(t.Card), CornerRadius = new CornerRadius(t.Px(16)), Padding = new Thickness(t.Px(20)), Child = content };
+
+    Border DetailFact(string title, string value, Button? action = null)
+    {
+        var lines = new StackPanel { Spacing = t.Px(10) };
+        lines.Children.Add(ui.Text(title, .88, weight: FontWeights.SemiBold));
+        lines.Children.Add(ui.P(value, .8));
+        if (action is not null) { action.HorizontalAlignment = HorizontalAlignment.Right; lines.Children.Add(action); }
+        return DetailPlate(lines);
+    }
+
     void BuildSection(Game g, StackPanel content)
     {
         switch (detailsSection)
@@ -213,10 +228,12 @@ public sealed partial class GameModeView
                 if (g.IsFeeder)
                 {
                     SectionTitle(content, "Feeder NR", "Your existing tuning is preserved. Use ReShade's NR panel in the running game to adjust passes, resolution, tone and structure. Frame generation is unavailable for this route.");
-                    content.Children.Add(ui.Group([
+                    var feederActions = DetailColumns();
+                    foreach (var action in new[] {
                         ui.RowButton("Update Feeder NR", null, () => _ = RunOperationAsync("install", [g]), enabled: !g.Blocked || g.AdoptionAvailable),
                         ui.RowButton("Restore Original Files", null, () => _ = RunOperationAsync("uninstall", [g]), danger: true, enabled: g.Installed),
-                    ]));
+                    }) feederActions.Children.Add(ui.Group([action], t.Card));
+                    content.Children.Add(feederActions);
                     break;
                 }
                 SectionTitle(content, "Features", g.InstalledOnLinux
@@ -251,15 +268,16 @@ public sealed partial class GameModeView
                     foreach (var row in rows) content.Children.Add(row);
                     var apply = ui.Button("Apply to this game", () => _ = RunOperationAsync("apply", [g], value()), GmKind.Primary, 0.85,
                         enabled: g.Installed && !g.Blocked);
-                    content.Children.Add(apply.With(b => b.HorizontalAlignment = HorizontalAlignment.Left));
+                    content.Children.Add(apply.With(b => b.HorizontalAlignment = HorizontalAlignment.Right));
                 }
                 SectionTitle(content, "Installation");
-                content.Children.Add(ui.Group(
-                [
+                var installActions = DetailColumns(3);
+                foreach (var action in new[] {
                     ui.RowButton(g.InstallLabel, null, () => _ = RunOperationAsync("install", [g]), enabled: !g.Blocked),
                     ui.RowButton("Repair Feature Files", null, () => _ = RunOperationAsync("install", [g]), enabled: g.Installed && !g.Blocked),
                     ui.RowButton("Restore Original Files", null, () => _ = RunOperationAsync("uninstall", [g]), danger: true, enabled: g.Installed),
-                ]));
+                }) installActions.Children.Add(ui.Group([action], t.Card));
+                content.Children.Add(installActions);
                 break;
 
             case "DLSS Files":
@@ -270,11 +288,12 @@ public sealed partial class GameModeView
                 ]));
                 SectionTitle(content, "File Management");
                 var restoreDlss = ui.RowButton("Restore original DLSS files", null, () => _ = RestoreDlssAsync(g), danger: true, enabled: !g.Blocked);
-                content.Children.Add(ui.Group(
-                [
+                var fileActions = DetailColumns();
+                foreach (var action in new[] {
                     ui.RowButton("Update DLSS files", null, () => _ = RunOperationAsync("update-dlss", [g]), enabled: !g.Blocked),
                     restoreDlss,
-                ]));
+                }) fileActions.Children.Add(ui.Group([action], t.Card));
+                content.Children.Add(fileActions);
                 var inventory = new StackPanel { Spacing = t.Px(16) };
                 content.Children.Add(inventory);
                 _ = FillDlssInventoryAsync(g, inventory, restoreDlss);
@@ -282,12 +301,7 @@ public sealed partial class GameModeView
 
             case "Tools":
                 SectionTitle(content, "Tools", "Check NR or add ReShade to this game. Existing graphics files are kept safe.");
-                var tools = new Grid { ColumnSpacing = t.Px(20), RowSpacing = t.Px(20) };
-                tools.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                tools.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                tools.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-                tools.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-                var index = 0;
+                var tools = DetailColumns();
                 foreach (var (glyph, label, enabled, action) in new (string, string, bool, Action)[]
                 {
                     ("", "Diagnose NR", g.Installed, () => _ = DiagnoseAsync(g)),
@@ -301,10 +315,7 @@ public sealed partial class GameModeView
                     tile.Children.Add(ui.Text(label, 1, weight: FontWeights.SemiBold).With(x => x.HorizontalAlignment = HorizontalAlignment.Center));
                     var button = ui.Button(tile, action, GmKind.Card, 1, enabled, radius: 14, minHeight: t.Compact ? 90 : 116);
                     button.HorizontalAlignment = HorizontalAlignment.Stretch;
-                    Grid.SetRow(button, index / 2);
-                    Grid.SetColumn(button, index % 2);
                     tools.Children.Add(button);
-                    index++;
                 }
                 content.Children.Add(tools);
                 content.Children.Add(ui.P("Use an extracted x64 ReShade DLL or .addon64 file from a source you trust. Each install is reviewed first and can be restored.", 0.83));
@@ -325,20 +336,23 @@ public sealed partial class GameModeView
                 notes.TextChanged += (_, _) => notesDraft = notes.Text;
                 ui.Focusable(notes);
                 Key(notes, "notes");
-                content.Children.Add(notes);
+                var noteCards = DetailColumns();
+                noteCards.Children.Add(DetailPlate(notes));
+                var testSettings = new StackPanel { Spacing = t.Px(16) };
                 // game_notes: the test result and notes are saved with this game (shared with Desktop UI).
                 notesStatus ??= g.TestStatus;
-                content.Children.Add(ui.Group(
+                testSettings.Children.Add(ui.Group(
                 [
                     Choice("Test Result", "Bench excludes this game from bulk installation and repair.", ["Untested", "Working", "Problem", "Bench"],
                         ["Untested", "Working", "Problem", "Bench"], () => notesStatus ?? g.TestStatus, v => notesStatus = v),
                 ]));
-                content.Children.Add(ui.P("Controller text entry uses the Windows touch keyboard or Steam's keyboard.", 0.83));
-                var noteActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(16) };
-                noteActions.Children.Add(ui.Button("Save Notes", () => _ = SaveNotesAsync(g, notesStatus ?? g.TestStatus, notes.Text), GmKind.Primary, 0.85).With(b => Key(b, "notes-save")));
+                testSettings.Children.Add(ui.P("Controller text entry uses the Windows touch keyboard or Steam's keyboard.", 0.83));
+                var noteActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12), HorizontalAlignment = HorizontalAlignment.Right };
                 noteActions.Children.Add(ui.Button(g.TestActive ? "Finish Test" : "Start Test", () => _ = RecordTestAsync(g), GmKind.Card, 0.85,
                     enabled: !shell.Service.IsPreview).With(b => Key(b, "notes-test")));
-                content.Children.Add(noteActions);
+                noteActions.Children.Add(ui.Button("Save Notes", () => _ = SaveNotesAsync(g, notesStatus ?? g.TestStatus, notes.Text), GmKind.Primary, 0.85).With(b => Key(b, "notes-save")));
+                testSettings.Children.Add(noteActions);
+                noteCards.Children.Add(DetailPlate(testSettings)); content.Children.Add(noteCards);
                 break;
 
             case "Appearance":
@@ -362,31 +376,27 @@ public sealed partial class GameModeView
 
             default:
                 SectionTitle(content, "Overview");
-                if (g.AdoptionAvailable) content.Children.Add(ui.RowButton("Review Adoption", "Register this setup or back it up and clean install.", () => _ = shell.ReviewAdoptionAsync([g])));
-                if (g.OfflineOnly) content.Children.Add(ui.RowButton("Launch offline", "Use this reviewed route while feature files are installed. Online play is unavailable.", () => _ = shell.LaunchOfflineAsync(g)));
+                if (g.AdoptionAvailable) content.Children.Add(ui.RowButton("Review Adoption", null, () => _ = shell.ReviewAdoptionAsync([g]), description: "Register this setup or back it up and clean install."));
+                if (g.OfflineOnly) content.Children.Add(ui.RowButton("Launch offline", null, () => _ = shell.LaunchOfflineAsync(g), description: "Use this reviewed route while feature files are installed. Online play is unavailable."));
                 // Store description and credits live here, not in the hero (Settings › Download game information).
                 if (!string.IsNullOrWhiteSpace(g.Summary))
                 {
-                    content.Children.Add(ui.H2("About", 1.06));
-                    content.Children.Add(ui.P(g.Summary).With(p => { p.MaxWidth = t.Px(980); p.HorizontalAlignment = HorizontalAlignment.Left; }));
+                    content.Children.Add(DetailFact("About", g.Summary));
                 }
                 else if (shell.Settings.SteamMetadata)
                     _ = FillStoreInfoAsync(g);
                 content.Children.Add(ui.H2("Game Information", 1.06));
-                var info = new List<UIElement>();
-                if (!string.IsNullOrWhiteSpace(g.Developer)) info.Add(ui.PreferenceRow("Developer", null, ui.Text(g.Developer, 0.85, t.Muted)));
-                if (!string.IsNullOrWhiteSpace(g.Release)) info.Add(ui.PreferenceRow("Release", null, ui.Text(g.Release, 0.85, t.Muted)));
-                content.Children.Add(ui.Group(
-                [
-                    .. info,
-                    ui.PreferenceRow("Library", null, ui.Text(g.Library, 0.85, t.Muted)),
-                    ui.PreferenceRow("Location", g.Location, ui.Button("Open Folder", () => _ = shell.OpenGameFolderAsync(g),
-                        GmKind.Card, 0.85, enabled: !shell.Service.IsPreview && Directory.Exists(g.Location))),
-                    ui.PreferenceRow("Compatibility", null, ui.Text(g.Blocked ? g.BlockedReason ?? "Unsupported" : "Supported", 0.85, t.Muted)),
-                    ui.PreferenceRow("Metadata Source", null, ui.Text(g.MetadataSource ?? g.Library, 0.85, t.Muted)),
-                    ui.RowButton("Remove from library", null, () => ConfirmRemoveGames([g]), danger: true,
-                        description: "Hide this entry. Game files and recovery backups are kept.", enabled: !shell.Busy),
-                ]));
+                var info = DetailColumns(3);
+                if (!string.IsNullOrWhiteSpace(g.Developer)) info.Children.Add(DetailFact("Developer", g.Developer));
+                if (!string.IsNullOrWhiteSpace(g.Release)) info.Children.Add(DetailFact("Release", g.Release));
+                info.Children.Add(DetailFact("Library", g.Library));
+                info.Children.Add(DetailFact("Location", g.Location, ui.Button("Open Folder", () => _ = shell.OpenGameFolderAsync(g),
+                    GmKind.Card, .8, enabled: !shell.Service.IsPreview && Directory.Exists(g.Location))));
+                info.Children.Add(DetailFact("Compatibility", g.Blocked ? g.BlockedReason ?? "Unsupported" : g.UsesFeeder ? "Feeder NR · NR only" : "Supported"));
+                info.Children.Add(DetailFact("Metadata Source", g.MetadataSource ?? g.Library));
+                content.Children.Add(info);
+                content.Children.Add(ui.RowButton("Remove from library", null, () => ConfirmRemoveGames([g]), danger: true,
+                    description: "Hide this entry. Game files and recovery backups are kept.", enabled: !shell.Busy));
                 break;
         }
     }

@@ -22,6 +22,7 @@ import game_notes
 import library_media
 import ui_colors
 import user_messages
+from operation_scope import operation_targets, ScopeError
 
 ACCENT = '#76b900'
 ACCENT_INK = '#151c07'
@@ -951,15 +952,14 @@ class GameMode(Gtk.Overlay):
         mode.append(self.segments([('nr-only', 'NR Only', nr_available), ('mfg-only', 'MFG Only'), ('nr-mfg', 'NR + MFG')],
                                   owner.mode, self.set_mode))
         inner.append(mode)
-        targets = self.selected_games() if self.selecting else None
-        pool = targets if self.selecting else owner.games
+        pool = self.selected_games() if self.selecting else games
         actions = Gtk.Box(spacing=t.px(12), valign=Gtk.Align.CENTER, halign=Gtk.Align.START)
-        actions.append(self.button(f'Install selected ({len(self.selected)})' if self.selecting else 'Install to all',
-                                   lambda: self.run_operation('install', targets), 'primary', 'folder-download-symbolic',
+        actions.append(self.button(f'Install selected ({len(self.selected)})' if self.selecting else f'Install shown ({sum(1 for g in games if not g.get("blocked"))})',
+                                   lambda: self.run_operation('install', self.scoped_targets()), 'primary', 'folder-download-symbolic',
                                    enabled=any(not g.get('blocked') for g in pool), key='lib-install'))
-        actions.append(self.button('Restore', lambda: self.run_operation('uninstall', [g for g in (targets or owner.games) if g.get('installed')]),
+        actions.append(self.button('Restore', lambda: self.run_operation('uninstall', [g for g in self.scoped_targets() if g.get('installed')]),
                                    'danger', 'edit-undo-symbolic', enabled=any(g.get('installed') for g in pool), key='lib-restore'))
-        actions.append(self.button('Update DLSS', lambda: self.run_operation('update-dlss', targets), 'dlss', 'emblem-synchronizing-symbolic',
+        actions.append(self.button('Update DLSS', lambda: self.run_operation('update-dlss', self.scoped_targets()), 'dlss', 'emblem-synchronizing-symbolic',
                                    enabled=any(not g.get('blocked') for g in pool), key='lib-update'))
         inner.append(actions)
         main.append(toolbar)
@@ -1156,6 +1156,19 @@ class GameMode(Gtk.Overlay):
 
     def selected_games(self):
         return [g for g in self.owner.games if g['game'] in self.selected]
+
+    def scoped_targets(self):
+        """Explicit selection wins, else the current filter; never the whole library by default."""
+        if self.selecting and not self.selected:
+            self.toast('No games selected.')
+            return []
+        visible = {g['game'] for g in self.filtered_games()}
+        try:
+            return operation_targets(self.owner.games, self.selected if self.selecting else set(),
+                                     lambda g: g['game'] in visible)
+        except ScopeError as error:
+            self.toast(str(error))
+            return []
 
     def start_selecting(self):
         self.selecting = True
@@ -1756,7 +1769,8 @@ class GameMode(Gtk.Overlay):
             self.toast('Another operation is running.')
             return
         if targets is None:
-            targets = [g for g in owner.games if g.get('installed')] if operation == 'uninstall' else [g for g in owner.games if not g.get('blocked')]
+            targets = self.scoped_targets()
+            targets = [g for g in targets if g.get('installed')] if operation == 'uninstall' else [g for g in targets if not g.get('blocked')]
         if not targets:
             self.toast('No eligible games.')
             return

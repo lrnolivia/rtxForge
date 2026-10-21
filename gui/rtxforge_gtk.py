@@ -14,6 +14,7 @@ from desktop_service import DesktopService
 from package_browser import build_packages,show_packages
 from native_shell import new_shell
 from ui_scaling import ScaledContent, content_scale, SCALES
+from operation_scope import operation_targets, ScopeError
 
 ACCENT_PROVIDERS={}
 ACCENT_SOURCES={}
@@ -4329,10 +4330,7 @@ class Window(Adw.ApplicationWindow):
         self.install_all=icon_button(
             'Install Features',
             'document-save-symbolic',
-            lambda *_:self.launch_action(
-                'install',
-                not bool(self.selected_game_ids),
-            ),
+            lambda *_:self.launch_scoped('install'),
             'forge-primary',
         )
         bulk.append(self.install_all)
@@ -4340,10 +4338,7 @@ class Window(Adw.ApplicationWindow):
         self.uninstall_all=icon_button(
             'Restore Original Files',
             'document-revert-symbolic',
-            lambda *_:self.launch_action(
-                'uninstall',
-                not bool(self.selected_game_ids),
-            ),
+            lambda *_:self.launch_scoped('uninstall'),
             'bulk-remove',
         )
         bulk.append(self.uninstall_all)
@@ -4553,20 +4548,14 @@ class Window(Adw.ApplicationWindow):
         self.sticky_install_all=icon_button(
             'Install Features',
             'document-save-symbolic',
-            lambda *_:self.launch_action(
-                'install',
-                not bool(self.selected_game_ids),
-            ),
+            lambda *_:self.launch_scoped('install'),
             'forge-primary',
         )
 
         self.sticky_remove_all=icon_button(
             'Restore Original Files',
             'document-revert-symbolic',
-            lambda *_:self.launch_action(
-                'uninstall',
-                not bool(self.selected_game_ids),
-            ),
+            lambda *_:self.launch_scoped('uninstall'),
             'bulk-remove',
         )
 
@@ -9337,9 +9326,16 @@ class Window(Adw.ApplicationWindow):
         self.update_dlss_games(list(self.games if games is None else games))
 
     def selected_or_library(self):
-        """Library-wide actions act on the selection when there is one."""
-        selected=[game for game in self.games if game['game'] in self.selected_game_ids]
-        return selected or list(self.games)
+        """Library-wide actions act on the selection, else the current view."""
+        try:return operation_targets(self.games,self.selected_game_ids,self.game_matches_view)
+        except ScopeError as error:
+            self.toast(str(error));return []
+
+    def launch_scoped(self,operation,**kwargs):
+        """Toolbar actions: never widen past the selection or current view."""
+        targets=self.selected_or_library()
+        if not targets:return
+        self.launch_action(operation,not bool(self.selected_game_ids),targets=targets,**kwargs)
 
     def update_dlss_games(self,games):
         """Review DLSS Update → Updating → Done, in one dialog."""
@@ -9578,7 +9574,7 @@ class Window(Adw.ApplicationWindow):
             else:widget.set_value(value)
         self.apply_library_settings()
     def apply_library_settings(self,*_):
-        if self.games and any(g.get('installed') for g in self.games):self.launch_action('reset',not bool(self.selected_game_ids),visual_settings=self.tuning_values(self.tuning_widgets));return
+        if self.games and any(g.get('installed') for g in self.games):self.launch_scoped('reset',visual_settings=self.tuning_values(self.tuning_widgets));return
         values=self.tuning_values(self.tuning_widgets)
         if self.options.demo:self.defaults_applied(values);return
         self.start('Saving defaults',lambda:self.service.save_visual_defaults(values),lambda _:(self.defaults_applied(values),self.toast('Defaults saved for new installs.')))

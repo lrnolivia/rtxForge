@@ -1,7 +1,46 @@
 #pragma once
+#include <Windows.h>
 #include <json.hpp>
 #include <atomic>
 #include <cstring>
+
+// Windows keeps its named pagefile mapping. Wine exposes the same protocol
+// through a private prefix file, shared with the native Linux helper.
+#include <string>
+#include <vector>
+#include <mutex>
+namespace ForgeWineMapping
+{
+struct Files {
+    std::vector<HANDLE> handles;
+    std::mutex mutex;
+    ~Files() { for(auto file : handles) CloseHandle(file); }
+};
+inline Files files;
+inline HANDLE Create(const wchar_t* kind, DWORD size, const wchar_t* name)
+{
+    auto ntdll=GetModuleHandleW(L"ntdll.dll");
+    if(!ntdll || !GetProcAddress(ntdll,"wine_get_version"))
+        return CreateFileMappingW(INVALID_HANDLE_VALUE,nullptr,PAGE_READWRITE,0,size,name);
+    wchar_t local[32768];
+    auto length=GetEnvironmentVariableW(L"LOCALAPPDATA",local,32768);
+    if(!length || length>=32768) return nullptr;
+    const std::wstring folder=std::wstring(local)+L"\\rtxForge";
+    if(!CreateDirectoryW(folder.c_str(),nullptr) && GetLastError()!=ERROR_ALREADY_EXISTS) return nullptr;
+    const auto path=folder+L"\\"+kind+L"."+std::to_wstring(GetCurrentProcessId())+L".map";
+    // Do not truncate a stale or concurrently held file. Clean shutdown removes
+    // our file; a crash leaves cleanup to the operator if the Wine PID recurs.
+    auto file=CreateFileW(path.c_str(),GENERIC_READ|GENERIC_WRITE,
+                          FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,CREATE_NEW,
+                          FILE_ATTRIBUTE_TEMPORARY|FILE_FLAG_DELETE_ON_CLOSE,nullptr);
+    if(file==INVALID_HANDLE_VALUE) return nullptr;
+    auto result=CreateFileMappingW(file,nullptr,PAGE_READWRITE,0,size,nullptr);
+    if(!result) { CloseHandle(file); return nullptr; }
+    { std::lock_guard<std::mutex> lock(files.mutex); files.handles.push_back(file); }
+    SetLastError(ERROR_SUCCESS);
+    return result;
+}
+}
 
 namespace ForgePanelChannel
 {
@@ -29,7 +68,7 @@ inline void Init()
     // Device/ImGui resets must not replace a mapping the helper still holds.
     if(channel) { InterlockedExchange(&channel->visible,0); needsHello = true; return; }
     const auto name = L"Local\\rtxForge.panel." + std::to_wstring(GetCurrentProcessId());
-    mapping = CreateFileMappingW(INVALID_HANDLE_VALUE,nullptr,PAGE_READWRITE,0,sizeof(Header),name.c_str());
+    mapping = ForgeWineMapping::Create(L"panel",sizeof(Header),name.c_str());
     if(mapping && GetLastError() != ERROR_ALREADY_EXISTS)
         channel = static_cast<Header*>(MapViewOfFile(mapping,FILE_MAP_ALL_ACCESS,0,0,sizeof(Header)));
     if(!channel) { if(mapping) CloseHandle(mapping); mapping = nullptr; return; }

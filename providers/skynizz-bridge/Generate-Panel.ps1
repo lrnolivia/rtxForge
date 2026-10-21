@@ -52,3 +52,12 @@ $fontCode += "`n" + 'inline unsigned char forgeInterSemiBold[] = {' + (($semiBol
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'ForgePanel.h') -Destination $menu
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'ForgePanelChannel.h') -Destination $menu
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'ForgePanelIcon.h') -Destination $menu
+
+# Both mappings must use the same Wine transport. Apply after all versioned
+# patches, without changing the upstream patch stack or the Windows protocol.
+$companion = Join-Path $SourceRoot 'OptiScaler\framegen\dlssg\Companion.h'
+$text = [IO.File]::ReadAllText($companion)
+$old = 'CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(Mailbox), name.c_str())'
+if (-not $text.Contains($old)) { throw 'Companion mapping source changed; review the Wine transport integration.' }
+$text = "#include <menu/ForgePanelChannel.h>`n" + $text.Replace($old, 'ForgeWineMapping::Create(L"controls", sizeof(Mailbox), name.c_str())')
+[IO.File]::WriteAllText($companion, $text, [Text.UTF8Encoding]::new($false))

@@ -7,12 +7,14 @@ DEFAULTS={'nr_on_launch':False,'game_artwork':{},'steam_artwork_profile':None,'s
 
 DEFAULTS.update(mfg_provider='universal', nr_preset=None, feeder_source='', feeder_backups='',
                 panel_hotkey='Delete', overlay_helper=True, overlay_start_with_windows=True, overlay_material='acrylic',
-                overlay_controls='unified', overlay_renderer='rtxforge', optiscaler_hotkey='Insert')
+                overlay_controls='unified', overlay_renderer='game', optiscaler_hotkey='Insert')
 # Revision 1: Universal MFG replaced the integrated bridge as the default.
 MFG_DEFAULT_REVISION=1
 DEFAULTS['mfg_default_revision']=MFG_DEFAULT_REVISION
 # Experimental, Linux only: adopt a Windows Skynizz install under Proton.
 DEFAULTS['skynizz_proton']=False
+DEFAULTS['feature_controls']={}
+DEFAULTS['separate_game_details']=False
 
 LEGACY_NR_STRENGTH={
     'off':0.0,

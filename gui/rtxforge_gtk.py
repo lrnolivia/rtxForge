@@ -18,6 +18,30 @@ from operation_scope import operation_targets, ScopeError
 import mfg_choice
 import overview_facts
 import overlay_shortcut
+from feature_presets import FeaturePresets
+
+class EmbeddedDetails(Gtk.Box):
+    """A Details page in the desktop stack, with the dialog content contract."""
+    __gsignals__={'closed':(GObject.SignalFlags.RUN_FIRST,None,())}
+    def __init__(self,owner,title):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL,hexpand=True,vexpand=True)
+        self.owner=owner;self.title=title;self.child=None
+        self.previous=owner.page_stack.get_visible_child_name()
+    def get_title(self):return self.title
+    def get_child(self):return self.child
+    def set_child(self,child):
+        if self.child is not None:self.remove(self.child)
+        self.child=child
+        if child is not None:self.append(child)
+    def present(self,*_):
+        self.owner.page_stack.add_named(self,'game-details')
+        self.owner.page_stack.set_visible_child(self)
+    def force_close(self):
+        if self.get_parent() is self.owner.page_stack:
+            self.owner.page_stack.set_visible_child_name(self.previous)
+            self.owner.page_stack.remove(self)
+            self.emit('closed')
+    close=force_close
 
 ACCENT_PROVIDERS={}
 ACCENT_SOURCES={}
@@ -3535,22 +3559,9 @@ class ResizablePanelWindow(Adw.Window):
         self._requested_width=width
         self._requested_height=height
 
-        # Keep the parent only for the compositor's initial placement.
-        # Once mapped, detach so this becomes a normal independent
-        # movable window instead of an attached transient panel.
-        self._detach_scheduled=False
-
-        try:
-            self.set_destroy_with_parent(
-                False
-            )
-        except Exception:
-            pass
-
-        self.connect(
-            'map',
-            self._schedule_parent_detach,
-        )
+        # Keep a non-modal transient relationship for the window's lifetime.
+        # Dropping it after map lets the compositor stack panels behind the app.
+        self.set_destroy_with_parent(True)
 
         self.set_size_request(
             640,
@@ -3561,28 +3572,6 @@ class ResizablePanelWindow(Adw.Window):
             'close-request',
             self._on_close_request,
         )
-
-    def _schedule_parent_detach(self,*_):
-        if self._detach_scheduled:
-            return
-
-        self._detach_scheduled=True
-
-        # Waiting until idle gives the compositor one mapped frame with
-        # transient_for intact, which preserves initial centered placement.
-        GLib.idle_add(
-            self._detach_transient_parent
-        )
-
-    def _detach_transient_parent(self):
-        try:
-            self.set_transient_for(
-                None
-            )
-        except Exception:
-            pass
-
-        return False
 
     def _on_close_request(self,*_):
         if not self._can_close:
@@ -4172,6 +4161,13 @@ class Window(Adw.ApplicationWindow):
         super().__init__(application=application,title='rtxForge',default_width=1280,default_height=820)
         self.options=options;self.service=DesktopService(options.provider)
         self.settings=dict(library_media.DEFAULTS) if options.demo else library_media.load_settings(self.service.config)
+        if not options.demo and self.settings.get('overlay_helper',True):
+            from linux_overlay_host import Host
+            from storage import storage
+            engine=__import__('engine_bridge').module(self.service.config)
+            self.overlay_host=Host(storage(self.service.config),lambda:dict(self.settings),engine.STATE_ROOT)
+            application.connect('shutdown',lambda *_:self.overlay_host.stop.set())
+            threading.Thread(target=self.overlay_host.run,daemon=True,name='proton-panel').start()
         set_button_glyphs(self.settings.get('button_glyphs',True))
         global COUCH_MODE
         COUCH_MODE=self.settings.get('input_mode','auto') if self.settings.get('big_picture_ui',True) else 'desktop'
@@ -5952,14 +5948,16 @@ class Window(Adw.ApplicationWindow):
             title='Custom Artwork',
             description='Artwork changes also sync to your local Steam library. Reset restores your original Steam artwork.',
         )
-        group.add(button('Sync artwork to Steam',lambda *_:self.sync_steam_artwork(game=game)))
+        artwork_body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
+        group.add(artwork_body)
+        artwork_body.append(button('Sync artwork to Steam',lambda *_:self.sync_steam_artwork(game=game)))
         group.artwork_controls={}
         accent_path=accent_source(game)
         try:
             editor_accent=artwork_accent(accent_path,self.settings.get('game_accents',{}).get(game['game'])) if accent_path else None
         except Exception:editor_accent=None
         cards=Gtk.Box(spacing=16,homogeneous=True)
-        group.add(cards)
+        artwork_body.append(cards)
         for role,title,hint,width,height in (
             ('poster','Poster','600 × 900',72,108),
             ('capsule','Wide Capsule','920 × 430',132,62),
@@ -9637,7 +9635,9 @@ class Window(Adw.ApplicationWindow):
         self.mode=group.get_active_name() or 'mfg-only'
         self.profile_note.set_text({'nr-only':'Neural Rendering','nr-mfg':'Neural Rendering and frame generation','mfg-only':'Native frame generation'}[self.mode])
     def tuning_controls(self,initial):
+        outer=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
         box=Gtk.Box(spacing=16)
+        outer.append(box)
         widgets={}
 
         for key,title,upper in [
@@ -9773,12 +9773,24 @@ class Window(Adw.ApplicationWindow):
         pod.append(multiplier)
         widgets['mfg_multiplier']=multiplier
 
-        return box,widgets
+        if initial.get('runtime_provider',self.settings.get('runtime_provider'))=='skynizz':
+            features=FeaturePresets(initial.get('feature_controls',self.settings.get('feature_controls',{})),
+                                    advanced=self.settings.get('overlay_controls')=='classic',
+                                    mode=initial.get('feature_mode',self.mode))
+            outer.append(features)
+            # The shared editor owns independent NR/sharpening values. Keep
+            # legacy widget keys for older providers without coupling skin/intensity.
+            for key in ('nr_strength','sharpening_strength'):
+                widgets[key].set_sensitive(False)
+                widgets[key].get_parent().get_parent().set_visible(False)
+            widgets['feature_controls']=features
+        return outer,widgets
 
     def tuning_values(self,widgets):
         values={}
         for key,w in widgets.items():
-            if key=='mfg_multiplier':values.update(w.values())
+            if key=='feature_controls':values[key]=w.get_value()
+            elif key=='mfg_multiplier':values.update(w.values())
             else:values[key]=round(float(w.get_value()),1)
         return values
 
@@ -9892,6 +9904,8 @@ class Window(Adw.ApplicationWindow):
             if not widget.get_sensitive():continue
             if key=='mfg_multiplier':
                 if widget.values()!=mfg_choice.to_values(*mfg_choice.from_values(source)):return True
+            elif key=='feature_controls':
+                if widget.get_value()!=FeaturePresets.normalized(source.get(key,{})):return True
             elif round(float(widget.get_value()),1)!=source.get(key):return True
         return False
 
@@ -10285,12 +10299,16 @@ class Window(Adw.ApplicationWindow):
         height=620,
         show_close=True,
         resizable=False,
+        embedded=False,
     ):
         if self.dialog:
             self.dialog.force_close()
 
         resizable=resizable and not gamescope_session() and not (hasattr(self,'input_stack') and self.input_stack.get_visible_child_name()=='couch')
-        if resizable:
+        if embedded:
+            resizable=False
+            dialog=EmbeddedDetails(self,title)
+        elif resizable:
             dialog=ResizablePanelWindow(
                 self,
                 title,
@@ -11717,6 +11735,7 @@ class Window(Adw.ApplicationWindow):
             width=920,
             height=700,
             resizable=True,
+            embedded=not self.settings.get('separate_game_details',False),
         )
         self.detail_resize_source=0
 
@@ -11808,6 +11827,7 @@ class Window(Adw.ApplicationWindow):
         DETAIL_HERO_HEIGHT=280
 
         banner=Gtk.Overlay(
+            hexpand=True,
             height_request=DETAIL_HERO_HEIGHT,
             vexpand=False,
         )
@@ -11819,13 +11839,14 @@ class Window(Adw.ApplicationWindow):
             -1,
             DETAIL_HERO_HEIGHT,
         )
-        detail_window_handle=Gtk.WindowHandle()
+        detail_window_handle=Gtk.Box() if isinstance(d,EmbeddedDetails) else Gtk.WindowHandle()
         detail_window_handle.set_hexpand(
             True
         )
-        detail_window_handle.set_child(
-            banner
-        )
+        if isinstance(d,EmbeddedDetails):
+            detail_window_handle.append(banner)
+        else:
+            detail_window_handle.set_child(banner)
 
         main.append(
             detail_window_handle
@@ -12206,9 +12227,8 @@ class Window(Adw.ApplicationWindow):
 
 
         # Add close control last so no hero overlay can intercept it.
-        banner.add_overlay(
-            close_holder
-        )
+        if not isinstance(d,EmbeddedDetails):
+            banner.add_overlay(close_holder)
         pages=Gtk.Stack(
             transition_type=Gtk.StackTransitionType.CROSSFADE,
             transition_duration=220,
@@ -12397,6 +12417,12 @@ class Window(Adw.ApplicationWindow):
             # Sidebar navigation must not reshape the dialog or hero.
             return False
 
+        if isinstance(d,EmbeddedDetails):
+            sidebar.set_visible(False)
+            tabs=Gtk.StackSwitcher(stack=pages,halign=Gtk.Align.CENTER)
+            tab_scroll=Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.AUTOMATIC,vscrollbar_policy=Gtk.PolicyType.NEVER)
+            tab_scroll.set_child(tabs)
+            main.insert_child_after(tab_scroll,detail_window_handle)
         self.detail_pages=pages
         self.detail_fit_page=fit_detail_page
         self.populate_tools(content['Tools'],game)
@@ -12420,7 +12446,7 @@ class Window(Adw.ApplicationWindow):
         preset_actions=Gtk.Box(spacing=8,halign=Gtk.Align.END)
         preset_actions.append(preset_reset)
         mode=game.get('feature_mode') or {'NR Only':'nr-only','MFG Only':'mfg-only'}.get(game.get('profile'),'nr-mfg')
-        for key,w in widgets.items():w.set_sensitive(installed and not (key=='nr_strength' and mode=='mfg-only') and not (key=='mfg_multiplier' and mode=='nr-only'))
+        for key,w in widgets.items():w.set_sensitive(installed and not ('feature_controls' in widgets and key in ('nr_strength','sharpening_strength')) and not (key=='nr_strength' and mode=='mfg-only') and not (key=='mfg_multiplier' and mode=='nr-only'))
         apply=button(
             'Apply',
             lambda *_:self.launch_action(
@@ -12797,7 +12823,7 @@ class Window(Adw.ApplicationWindow):
             # It stays above Game Details and is movable by its HeaderBar.
             picker=Adw.Window(
                 application=self.get_application(),
-                transient_for=d,
+                transient_for=self if isinstance(d,EmbeddedDetails) else d,
                 modal=True,
                 title='Pick Accent Color',
                 default_width=display_w+52,
@@ -14137,6 +14163,12 @@ class Window(Adw.ApplicationWindow):
         adopt=Adw.SwitchRow(title='Recognize Existing Features',subtitle='Allow updates to compatible installations from other tools.',active=self.settings['recognize_previous']);defaults.add(adopt)
         appearance=Adw.PreferencesGroup(title='Theme',description='Choose the look of rtxForge.')
         window_style=Adw.PreferencesGroup(title='Window',description='Shape and spacing for the desktop interface.')
+        detached=Adw.SwitchRow(title='Separate Game Details window',subtitle='Off uses tabs in the main window. Game Mode stays embedded.',active=self.settings.get('separate_game_details',False))
+        def details_preference(widget,*_):
+            self.settings['separate_game_details']=widget.get_active()
+            if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
+        detached.connect('notify::active',details_preference)
+        window_style.add(detached)
         library_layout=Adw.PreferencesGroup(title='Library Layout',description='Choose how your desktop game collection is displayed.')
         compact=Adw.SwitchRow(title='Compact Header',subtitle='Keep more room for your games.',active=self.settings.get('compact_header',True))
         compact.connect('notify::active',lambda widget,*_: self.toggle_compact_header() if widget.get_active()!=self.settings.get('compact_header',True) else None)

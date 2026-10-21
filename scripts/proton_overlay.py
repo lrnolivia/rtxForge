@@ -18,10 +18,12 @@ on Linux:
    ForgePanelChannel.h). A native Linux process cannot open a Wine named
    section. PanelChannelFile below implements the exact same 64-byte header and
    seqlock over a *file-backed* mapping, which both a Wine process (mapping a
-   Z:\\ file) and this host can open coherently. It is the host half of the
-   bridge proposal in docs/linux/overlay-channel.md and is fixture-tested only:
-   the shipped bridge still uses a pagefile-backed name, so nothing connects to
-   it until a bridge build opts in. See that document for the alternatives.
+   prefix file) and this host can open coherently. The candidate bridge detects
+   Wine and creates this file; Windows retains its named pagefile mapping.
+   linux_overlay_host binds the mapping to a managed executable and its exact
+   live prefix, handles save/reset, and replays recipe-bound presets through
+   the controls mailbox. Synthetic tests establish protocol compatibility,
+   not real Proton execution. See docs/linux/overlay-channel.md.
 
 The panel shortcut is read in-process by OptiScaler's input hook (OptiInput).
 The Linux host never registers a global grab for it, so opening the panel
@@ -96,6 +98,7 @@ def preferences(settings):
             raise OverlayError('Choose on or off for ' + name.replace('_', ' ') + '.')
         return value
     renderer = settings.get('overlay_renderer', 'game')
+    if renderer == 'rtxforge': renderer = 'game'  # shared Windows preference
     if renderer not in ('game', 'optiscaler', 'standalone'):
         raise OverlayError('Choose a supported overlay renderer.')
     controls = settings.get('overlay_controls', 'unified')
@@ -366,7 +369,14 @@ class PanelChannelFile:
         path = Path(path)
         if path.is_symlink() or not path.is_file() or path.stat().st_size != SIZE:
             raise FileNotFoundError(str(path))
-        self._file = open(path, 'r+b')
+        fd=os.open(path,os.O_RDWR|os.O_NOFOLLOW|os.O_CLOEXEC)
+        try:
+            info=os.fstat(fd)
+            if info.st_uid!=os.getuid() or info.st_nlink!=1 or info.st_size!=SIZE:
+                raise OverlayError('Invalid panel channel file.')
+            self._file=os.fdopen(fd,'r+b')
+        except BaseException:
+            os.close(fd);raise
         self._map = mmap.mmap(self._file.fileno(), SIZE)
         self.handled = 0
 

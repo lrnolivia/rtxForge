@@ -87,6 +87,9 @@ class DesktopService:
                         row['feature_mode']=current['feature_mode']
                         row['profile']={'nr-mfg':'NR + MFG','nr-only':'NR Only','mfg-only':'MFG Only'}.get(current['feature_mode'],'Unknown')
                         row['runtime_provider']=current.get('provider_id','y4my')
+                        if row['runtime_provider']=='skynizz':
+                            import skynizz_provider
+                            row['feature_controls']=skynizz_provider.read_controls(config)
                         component=((current.get('archive') or {}).get('release') or {}).get('mfg_component')
                         universal=bool(component) and component.get('id')=='universal'
                         row['dynamic_mfg_available']=current.get('provider_id')=='skynizz' and not component
@@ -128,6 +131,8 @@ class DesktopService:
             if record and record['os']=='windows' and cross_os.THIS_OS=='linux':
                 row['linux_ready']=bool(proton_prefix.load_record(engine_bridge.prefix_state(engine,SimpleNamespace(target_dir=target))))
             rows.append(row)
+        import package_adoption
+        package_adoption.decorate(engine,rows)
         return sorted(rows,key=lambda r:r['name'].casefold())
 
     def scan_all(self,extra=()):
@@ -168,7 +173,7 @@ class DesktopService:
             return feeder_provider.prepare(self.config, rows, 'nr-only' if not feeder and mode != 'mfg-only' else mode, operation,
                                            settings, engine_bridge.module(self.config))
         review=engine_bridge.prepare(self.config,rows,mode,operation,settings)
-        if save_defaults and operation=='reset':review['save_defaults']={k:settings[k] for k in ('nr_strength','sharpening_strength','mfg_multiplier','dynamic_mfg','mfg_saved_mode','mfg_saved_multiplier') if k in settings}
+        if save_defaults and operation=='reset':review['save_defaults']={k:settings[k] for k in ('nr_strength','sharpening_strength','mfg_multiplier','dynamic_mfg','mfg_saved_mode','mfg_saved_multiplier','feature_controls') if k in settings}
         return review
 
     # Second-review offers when a game supports only part of NR + MFG (reason code -> user text).
@@ -247,6 +252,9 @@ class DesktopService:
             mfg_multiplier=values['mfg_multiplier'],
         )
         if preset:settings.update(preset)
+        if 'feature_controls' in values:
+            import skynizz_provider
+            settings['feature_controls']=skynizz_provider.validate_controls(values['feature_controls'])
         library_media.save_settings(self.config,settings)
 
     def recoveries(self):

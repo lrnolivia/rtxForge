@@ -1604,7 +1604,25 @@ class GameMode(Gtk.Overlay):
                          lambda: mfg_choice.MODE_NAMES[state['mfg_mode']], mode_step, mfg_enabled, key='step-mfg-mode'),
             self.stepper('MFG ratio', 'Used by Custom and Dynamic.', lambda: f"{state['mfg_ratio']}×", ratio_step, mfg_enabled, key='step-mfg-ratio'),
         ]
-        return rows, lambda: {'nr_strength': state['nr'], 'sharpening_strength': state['sharp'],
+        features={}
+        if source.get('runtime_provider',owner.settings.get('runtime_provider'))=='skynizz':
+            from feature_presets import definitions, normalized
+            features=normalized(source.get('feature_controls',owner.settings.get('feature_controls',{})))
+            for item in definitions():
+                k=item['key']
+                choices=item.get('values')
+                def step(delta,k=k,item=item,choices=choices):
+                    if choices:
+                        index=choices.index(features[k]) if features[k] in choices else 0
+                        features[k]=choices[max(0,min(len(choices)-1,index+delta))]
+                    else:features[k]=round(max(item['min'],min(item['max'],features[k]+delta*item.get('step',1))),2)
+                def caption(k=k,item=item,choices=choices):
+                    if choices:return item['choices'][choices.index(features[k])]
+                    if item['kind']=='toggle':return 'On' if features[k] else 'Off'
+                    return str(features[k])
+                editable=enabled and not (item['section']=='DlssNr' and source.get('feature_mode',owner.mode)=='mfg-only')
+                rows.append(self.stepper(item['label'],item['group'],caption,step,editable,key='preset-'+k))
+        return rows, lambda: {**({'feature_controls':dict(features)} if features else {}), 'nr_strength': state['nr'], 'sharpening_strength': state['sharp'],
                               **mfg_choice.to_values(state['mfg_on'], state['mfg_mode'], state['mfg_ratio'], dynamic_available)}
 
     # ---------------- presets ----------------
@@ -1659,7 +1677,7 @@ class GameMode(Gtk.Overlay):
 
     def apply_presets(self, games):
         self.save_presets()
-        keys = ('nr_strength', 'sharpening_strength', 'mfg_multiplier', 'dynamic_mfg', 'mfg_saved_mode', 'mfg_saved_multiplier')
+        keys = ('nr_strength', 'sharpening_strength', 'mfg_multiplier', 'dynamic_mfg', 'mfg_saved_mode', 'mfg_saved_multiplier', 'feature_controls')
         self.run_operation('reset', games, {k: self.owner.settings[k] for k in keys if k in self.owner.settings})
 
     # ---------------- settings ----------------

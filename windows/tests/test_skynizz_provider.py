@@ -544,7 +544,7 @@ class WindowsSkynizzTest(unittest.TestCase):
                                     env=env, capture_output=True, text=True, timeout=180)
             self.assertEqual(result.returncode, 0, result.stderr[-12000:] + result.stdout[-3000:])
             receipt = json.loads(result.stdout.strip().splitlines()[-1])
-            self.assertEqual(receipt['count'], 28)
+            self.assertEqual(receipt['count'], 29)
             print('PASS: ' + '; '.join(receipt['checks']))
 
 

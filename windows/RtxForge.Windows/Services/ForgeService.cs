@@ -77,6 +77,8 @@ public interface IForgeService
 
     // Packages (package_catalog).
     Task<PackageCatalog> PackagesAsync();
+    /// <summary>Imports the given Feeder folders into app-owned storage (when set), then reports what is kept.</summary>
+    Task<FeederStorage> FeederStorageAsync(string? source = null, string? backups = null);
     Task<PackageInspection> InspectPackageAsync(string path);
     Task<PackageChoice> UseCustomPackageAsync(PackageInspection inspection, IReadOnlyDictionary<string, string> values, bool trusted, string notes);
 
@@ -265,7 +267,9 @@ public sealed class PreviewForgeService : IForgeService
         Task.FromResult(new DlssInventory([], "Preview mode · file versions appear here for your installed games.", null));
     public Task<EngineReview> ReviewDlssRestoreAsync(Game game) => Disabled<EngineReview>("Restoring DLSS files");
 
-    public Task<PackageCatalog> PackagesAsync() => Task.FromResult(new PackageCatalog("Preview system · NVIDIA RTX 4070 · no game writes",
+    public Task<FeederStorage> FeederStorageAsync(string? source = null, string? backups = null) =>
+        Task.FromResult(new FeederStorage(null, null, null, 0));
+    public Task<PackageCatalog> PackagesAsync() =>Task.FromResult(new PackageCatalog("Preview system · NVIDIA RTX 4070 · no game writes",
     [
         new("skynizz", "Skynizz NR + Ada MFG bridge", "v1.2.1 bridge · preview", "Neural rendering and multi-frame generation for DirectX 12 games with native DLSS Frame Generation.", true,
             "Preview package · no game writes", false, "https://github.com/Skynizz/optiscaler-dlss5"),

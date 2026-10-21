@@ -48,13 +48,35 @@ public sealed partial class PackagesPage : Page
         body.Children.Add(curated);
         if (catalog.Packages.Any(p => p.Id == "feeder") || shell.Settings.RuntimeProvider == "feeder")
         {
-            var feeder = Section("Feeder NR", "Used for compatible DirectX 11 games, including when Skynizz is selected. Choose your local stack once; installation copies ReShade, Feeder, RenoDX and shaders for you. NR only.");
+            var feeder = Section("Feeder NR", "Used for compatible DirectX 11 games, including when Skynizz is selected. Choose your local stack once; rtxForge keeps a verified copy, and installation copies ReShade, Feeder, RenoDX and shaders for you. NR only.");
             var paths = new PresetColumns(360, 2) { ColumnSpacing = 16, RowSpacing = 12 };
-            paths.Children.Add(FolderField("Local stack folder", "Your ReShade, Feeder, RenoDX and shader files for new installs.",
+            paths.Children.Add(FolderField("Local stack folder", "Your ReShade, Feeder, RenoDX and shader files. Only needed until rtxForge keeps a copy.",
                 shell.Settings.FeederSource, path => shell.Settings.FeederSource = path));
-            paths.Children.Add(FolderField("Original backups folder", "Original manifests and backups used to recognize existing setups.",
+            paths.Children.Add(FolderField("Original backups folder", "Original manifests and backups used to recognize existing setups. rtxForge keeps verified copies.",
                 shell.Settings.FeederBackups, path => shell.Settings.FeederBackups = path));
             feeder.Children.Add(paths);
+            var kept = Prefs.Label("Checking stored Feeder files…", "ForgeCaptionDimTextStyle");
+            var keep = new Button { Content = "Keep a copy in rtxForge", HorizontalAlignment = HorizontalAlignment.Left };
+            ToolTipService.SetToolTip(keep, "Verify both folders and store their files with rtxForge. Game files are not changed.");
+            async Task ShowKeptAsync(bool import)
+            {
+                keep.IsEnabled = false;
+                try
+                {
+                    var storage = await shell.Service.FeederStorageAsync(import ? NonEmpty(shell.Settings.FeederSource) : null,
+                        import ? NonEmpty(shell.Settings.FeederBackups) : null);
+                    kept.Text = (storage.Recipe is null ? "No stack stored yet" : "Stored stack · " + storage.Recipe
+                        + (storage.NrVersion is null ? "" : " · NR model " + storage.NrVersion))
+                        + $" · {storage.Backups} original backup{(storage.Backups == 1 ? "" : "s")} kept";
+                }
+                catch (InvalidOperationException error) { kept.Text = error.Message; }
+                finally { keep.IsEnabled = true; }
+            }
+            static string? NonEmpty(string value) => string.IsNullOrWhiteSpace(value) ? null : value;
+            keep.Click += async (_, _) => await ShowKeptAsync(true);
+            feeder.Children.Add(kept);
+            feeder.Children.Add(keep);
+            _ = ShowKeptAsync(false);
             body.Children.Add(shell.Settings.RuntimeProvider == "feeder" ? Card(feeder) : new Expander
             {
                 Header = "Feeder setup · DirectX 11 NR", Content = feeder, HorizontalAlignment = HorizontalAlignment.Stretch,

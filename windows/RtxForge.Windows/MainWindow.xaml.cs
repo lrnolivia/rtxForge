@@ -208,11 +208,6 @@ public sealed partial class MainWindow : Window
         else Navigate("Game", new GameRequest(game, section));
     }
 
-    void OnNavBackRequested(NavigationView sender, NavigationViewBackRequestedEventArgs args)
-    {
-        if (ContentFrame.CanGoBack) ContentFrame.GoBack();
-    }
-
     void OnNavigationBackClick(object sender, RoutedEventArgs e)
     {
         if (ContentFrame.CanGoBack) ContentFrame.GoBack();
@@ -228,13 +223,17 @@ public sealed partial class MainWindow : Window
         var padding = Nav.IsPaneOpen ? 12 : 4;
         NavigationCommands.Width = Math.Max(40, (Nav.IsPaneOpen ? Nav.OpenPaneLength : Nav.CompactPaneLength) - padding * 2);
         NavigationCommands.Margin = new Thickness(padding, 6, padding, 6);
-        NavigationBack.Visibility = Nav.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
+        // The brand lines up with the open pane; beside the compact rail it only needs its own width.
+        BrandColumn.MinWidth = Nav.IsPaneOpen ? Nav.OpenPaneLength : 0;
+        UpdateTitleBarRegions();
     }
 
     void OnFrameNavigated(object sender, NavigationEventArgs e)
     {
-        Nav.IsBackEnabled = ContentFrame.CanGoBack;
-        NavigationBack.IsEnabled = ContentFrame.CanGoBack;
+        TitleBack.Visibility = ContentFrame.CanGoBack ? Visibility.Visible : Visibility.Collapsed;
+        // The arrow sits just before the mark, as in TitleBar, instead of pushing it across.
+        CompactBrand.Margin = new Thickness(ContentFrame.CanGoBack ? 6 : 12, 0, 12, 0);
+        UpdateTitleBarRegions();
         var tag = e.SourcePageType == typeof(SettingsPage) ? "Settings"
             : e.SourcePageType == typeof(ActivityPage) ? "Activity"
             : e.SourcePageType == typeof(PresetsPage) ? "Presets"

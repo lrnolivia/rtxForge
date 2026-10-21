@@ -111,10 +111,10 @@ public sealed partial class GmUi(GmTheme t)
     static object Label(string text, GmKind kind) => PillText(text);
 
     /// <summary>Content with a leading icon (button glyphs preference).</summary>
-    public StackPanel IconLabel(string glyph, string text, double gap = 12)
+    public StackPanel IconLabel(string glyph, string text, double gap = 18)
     {
         var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(gap) };
-        line.Children.Add(new FontIcon { Glyph = glyph, FontSize = t.Em(0.9), VerticalAlignment = VerticalAlignment.Center });
+        line.Children.Add(new FontIcon { Glyph = glyph, FontSize = t.Em(0.9), Width = t.Px(24), VerticalAlignment = VerticalAlignment.Center });
         line.Children.Add(PillText(text));
         return line;
     }

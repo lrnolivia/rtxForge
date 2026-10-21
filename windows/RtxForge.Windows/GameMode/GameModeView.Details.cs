@@ -46,10 +46,10 @@ public sealed partial class GameModeView
 
     UIElement BuildDetails(Game g)
     {
-        var navWidth = t.Px(ActualWidth <= 1050 ? 184 : ActualWidth <= 1500 ? 246 : 254);
+        var navWidth = t.Px(ActualWidth <= 1050 ? 220 : ActualWidth <= 1500 ? 254 : 268);
         var side = PageInset;
         var heroWidth = Math.Max(t.Px(420), ActualWidth - navWidth - side);
-        var heroHeight = Math.Clamp(heroWidth * .30, t.Px(300), t.Px(560));
+        var heroHeight = Math.Clamp(heroWidth * .38, t.Px(360), t.Px(620));
         var grid = new Grid { RowSpacing = t.Px(t.Compact ? 12 : 22), Padding = new Thickness(0, 0, 0, t.Px(8)) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(navWidth + side) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -89,7 +89,7 @@ public sealed partial class GameModeView
         for (var row = 0; row < 3; row++) heroBody.RowDefinitions.Add(new() { Height = GridLength.Auto });
         var head = new StackPanel { Spacing = t.Px(6) };
         var status = g.AdoptionAvailable ? "Installed · Adoption available" : g.OfflineOnly ? "Installed · Offline only"
-            : g.Blocked ? "Unsupported" : g.UsesFeeder ? g.Installed ? "Feeder NR" : "Available · Feeder NR"
+            : g.Blocked ? g.BlockedStatus : g.UsesFeeder ? g.Installed ? "Feeder NR" : "Available · Feeder NR"
             : g.InstalledOnLinux ? "Installed on Linux" : g.Installed ? g.Profile ?? "Configured" : "Ready for Features";
         head.Children.Add(ui.Badge(status, t.Card, t.Fg, .62));
         var title = ui.Text(g.Name, color: t.Fg, wrap: true, maxLines: 2);
@@ -99,16 +99,14 @@ public sealed partial class GameModeView
         head.Children.Add(title);
         Grid.SetColumnSpan(head, 2); heroBody.Children.Add(head);
         var text = new StackPanel { Spacing = t.Px(8), VerticalAlignment = VerticalAlignment.Bottom };
-        var metadata = new Grid { ColumnSpacing = t.Px(12), RowSpacing = t.Px(6) };
-        metadata.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
-        metadata.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
-        metadata.RowDefinitions.Add(new() { Height = GridLength.Auto });
-        metadata.RowDefinitions.Add(new() { Height = GridLength.Auto });
-        var credits = string.Join(" · ", new[] { g.Developer, g.Release }.Where(value => !string.IsNullOrWhiteSpace(value)));
-        var creditsText = ui.Text(credits, .72, t.Muted);
-        creditsText.Visibility = credits.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-        metadata.Children.Add(creditsText);
-        var badges = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(8) };
+        // Credits, then the badges inline after them, wrapping as the hero narrows.
+        var badges = new WrapRow { Spacing = t.Px(10), LineSpacing = t.Px(6) };
+        var creditsText = ui.Text(GameCredits.Line(g), .72, t.Muted);
+        creditsText.TextTrimming = TextTrimming.CharacterEllipsis;
+        creditsText.VerticalAlignment = VerticalAlignment.Center;
+        creditsText.Visibility = creditsText.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ToolTipService.SetToolTip(creditsText, GameCredits.Tooltip(g));
+        badges.Children.Add(creditsText);
         var sourceBadge = ui.Badge(g.Library == "Steam" ? "STEAM" : "NON-STEAM", t.Card, t.Fg, .58, g.Library == "Steam" ? "" : null);
         badges.Children.Add(sourceBadge);
         // Which rtxForge installed it (Linux game_mode: "Installed on Linux" with the rtx-os mark).
@@ -119,13 +117,7 @@ public sealed partial class GameModeView
             badges.Children.Add(osBadge);
         }
         badges.Children.Add(ui.Badge(g.Tested ? "TESTED" : "UNTESTED", t.Card, t.Muted, .58, g.Tested ? "" : ""));
-        Grid.SetColumn(badges, 1); metadata.Children.Add(badges); text.Children.Add(metadata);
-        text.SizeChanged += (_, e) =>
-        {
-            var narrow = e.NewSize.Width < t.Px(620);
-            Grid.SetRow(badges, narrow ? 1 : 0); Grid.SetColumn(badges, narrow ? 0 : 1);
-            Grid.SetColumnSpan(badges, narrow ? 2 : 1); Grid.SetColumnSpan(creditsText, narrow ? 2 : 1);
-        };
+        text.Children.Add(badges);
         var summaryText = ui.Text(g.Summary ?? "", .70, t.Muted, wrap: true, maxLines: 2);
         summaryText.MaxWidth = t.Px(640); summaryText.HorizontalAlignment = HorizontalAlignment.Left;
         ToolTipService.SetToolTip(summaryText, g.Summary);
@@ -193,18 +185,21 @@ public sealed partial class GameModeView
         var content = new StackPanel { Spacing = t.Px(24), Padding = new Thickness(t.Px(32), t.Px(16), side, t.Px(20)) };
         BuildSection(g, content);
         var workspace = new StackPanel();
-        grid.Children.Remove(hero);
-        workspace.Children.Add(hero); workspace.Children.Add(content);
+        var heroSpacer = new Border();
+        workspace.Children.Add(heroSpacer); workspace.Children.Add(content);
         var scroll = new ScrollViewer
         {
             Content = workspace, HorizontalScrollMode = ScrollMode.Disabled,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
         };
         Grid.SetRowSpan(scroll, 2); Grid.SetColumn(scroll, 1); grid.Children.Add(scroll);
+        grid.Children.Remove(hero);
+        Grid.SetRowSpan(hero, 2); hero.VerticalAlignment = VerticalAlignment.Top;
+        grid.Children.Add(hero);
         var expandedWidth = heroWidth;
-        var collapsing = new CollapsingHero(scroll, hero, workspace, progress =>
+        var collapsing = new CollapsingHero(scroll, hero, heroSpacer, progress =>
         {
-            var fullPoster = Math.Clamp(expandedWidth * .30 * .48, t.Px(120), t.Px(260));
+            var fullPoster = Math.Clamp(heroHeight * .48, t.Px(120), t.Px(260));
             poster.Height = fullPoster + (t.Px(100) - fullPoster) * progress;
             poster.Width = Math.Round(poster.Height * 2 / 3);
             var fullTitle = Math.Clamp(expandedWidth / t.S / 26, 32, 64) * t.S * (g.Name.Length > 28 ? .78 : 1);
@@ -218,7 +213,8 @@ public sealed partial class GameModeView
             if (width <= 0) return;
             expandedWidth = width;
             poster.Visibility = g.PosterPath is not null && width >= t.Px(620) ? Visibility.Visible : Visibility.Collapsed;
-            collapsing.SetRange(Math.Clamp(width * .30, t.Px(300), t.Px(560)), t.Px(width < t.Px(620) ? 290 : 210));
+            heroHeight = Math.Clamp(width * .38, t.Px(360), t.Px(620));
+            collapsing.SetRange(heroHeight, t.Px(width < t.Px(620) ? 290 : 210));
         }
         var lastWidth = 0d;
         hero.SizeChanged += (_, e) =>
@@ -385,7 +381,7 @@ public sealed partial class GameModeView
                 var restoreDlss = ui.RowButton("Restore original DLSS files", null, () => _ = RestoreDlssAsync(g), danger: true, glyph: "\uE7A7", enabled: !g.Blocked);
                 var fileActions = DetailColumns();
                 foreach (var action in new[] {
-                    ui.RowButton("Update DLSS files", null, () => _ = RunOperationAsync("update-dlss", [g]), glyph: "\uE896", enabled: !g.Blocked),
+                    ui.RowButton("Update DLSS files", null, () => _ = RunOperationAsync("update-dlss", [g]), glyph: "\uE898", enabled: !g.Blocked),
                     restoreDlss,
                 }) fileActions.Children.Add(ui.Group([action], t.Card));
                 content.Children.Add(fileActions);
@@ -490,8 +486,9 @@ public sealed partial class GameModeView
         if (await SteamStoreInfo.FillAsync(g, shell.Settings.SteamMetadata)
             && detailsGame == g && page == "details")
         {
-            credits.Text = string.Join(" · ", new[] { g.Developer, g.Release }.Where(value => !string.IsNullOrWhiteSpace(value)));
+            credits.Text = GameCredits.Line(g);
             credits.Visibility = credits.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+            ToolTipService.SetToolTip(credits, GameCredits.Tooltip(g));
             summary.Text = g.Summary ?? "";
             summary.Visibility = summary.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
             ToolTipService.SetToolTip(summary, g.Summary);

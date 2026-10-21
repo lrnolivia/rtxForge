@@ -20,16 +20,15 @@ public sealed class OverlayPreferencesView : StackPanel
         Spacing = 20;
         var current = ForgeSettings.Load();
         Heading("rtxForge panel");
-        var renderer = Choice("Overlay", ["rtxForge sidebar", "Original OptiScaler overlay", "rtxForge in-game (preview)"], current.OverlayRenderer == "game" ? 2 : current.OverlayRenderer == "optiscaler" ? 1 : 0,
-            "The in-game preview needs the new renderer package. It draws inside the game and opens only there. The sidebar is a separate helper window.", glyph: "\uE7F4");
+        var renderer = Choice("Overlay", ["rtxForge", "Native"], current.OverlayRenderer == "optiscaler" ? 1 : 0,
+            "Use the rtxForge panel in compatible packages, or the original menus provided by OptiScaler, Feeder or ReShade.", glyph: "\uE7F4");
         var layout = Choice("Controls", ["Unified", "Advanced"], current.OverlayControls == "classic" ? 1 : 0,
-            "Unified uses simple labels and percentages. Advanced uses OptiScaler labels and original units for the sidebar’s live controls.", glyph: "\uE713");
-        var material = Choice("Window material", ["Acrylic", "Mica"], current.OverlayMaterial == "mica" ? 1 : 0, glyph: "\uE790");
+            "Unified uses simple labels. Advanced uses the package’s labels and original units.", glyph: "\uE713");
         Heading("Shortcuts and helper");
         var key = new OverlayShortcutPicker(current.PanelHotkey, settingsRow: groupCards);
         AddControl(key);
         var helper = Switch("Background overlay helper", current.OverlayHelper,
-            "Keep the rtxForge shortcut available after closing the manager. OptiScaler’s panel runs inside the game.", glyph: "\uE7F8");
+            "Keep saved presets and panel settings available after closing the manager.", glyph: "\uE7F8");
         var startup = Switch("Start with Windows", current.OverlayStartWithWindows,
             "Starts only the helper, when the rtxForge overlay is selected.", glyph: "\uE7E8");
         Heading("OptiScaler");
@@ -51,7 +50,6 @@ public sealed class OverlayPreferencesView : StackPanel
         {
             var native = renderer.SelectedIndex == 1;
             layout.IsEnabled = key.IsEnabled = !native;
-            material.IsEnabled = renderer.SelectedIndex == 0;
             helper.IsEnabled = startup.IsEnabled = !native;
             nativeKey.IsEnabled = optiUi.IsOn;
         }
@@ -65,18 +63,17 @@ public sealed class OverlayPreferencesView : StackPanel
                 OverlayHelper.ConfigureStartup(fresh); applied(fresh);
                 gameReview?.Invalidate();
                 feedback.Text = fresh.OverlayRenderer == "optiscaler"
-                    ? "Saved · restart your game to use OptiScaler. Open this gear or the tray to switch back."
+                    ? "Saved · restart your game to use its native overlay."
                     : "Saved";
             }
             catch (Exception error) { feedback.Text = error.Message; Availability(); return false; }
             Availability();
             return true;
         }
-        renderer.SelectionChanged += (_, _) => Save(s => s.OverlayRenderer = renderer.SelectedIndex == 2 ? "game" : renderer.SelectedIndex == 1 ? "optiscaler" : "rtxforge");
+        renderer.SelectionChanged += (_, _) => Save(s => s.OverlayRenderer = renderer.SelectedIndex == 1 ? "optiscaler" : "game");
         layout.SelectionChanged += (_, _) => Save(s => s.OverlayControls = layout.SelectedIndex == 1 ? "classic" : "unified");
         key.SaveBinding = value => Save(s => s.PanelHotkey = value);
         nativeKey.SelectionChanged += (_, _) => Save(s => s.OptiScalerHotkey = nativeKey.SelectedIndex == 1 ? "F8" : nativeKey.SelectedIndex == 2 ? "Disabled" : "Insert");
-        material.SelectionChanged += (_, _) => Save(s => s.OverlayMaterial = material.SelectedIndex == 1 ? "mica" : "acrylic");
         helper.Toggled += (_, _) => Save(s => s.OverlayHelper = helper.IsOn);
         startup.Toggled += (_, _) => Save(s => s.OverlayStartWithWindows = startup.IsOn);
         optiUi.Toggled += (_, _) => Save(s => s.OptiScalerUi = optiUi.IsOn);

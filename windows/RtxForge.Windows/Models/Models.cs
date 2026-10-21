@@ -42,6 +42,11 @@ public sealed class Game
         && EngineRow?["feeder_available"] is JsonValue flag && flag.TryGetValue<bool>(out var supported) && supported;
     /// <summary>Which rtxForge installed the features: "windows", "linux" (shared .rtxforge-install.json), or null.</summary>
     public string? InstalledOn { get; set; }
+    /// <summary>A Feeder setup is installed but needs attention (BlockedReason says why); not an unsupported game.</summary>
+    public bool FeederNeedsAttention => Blocked && EngineRow?["feeder_detected"] is JsonValue detected
+        && detected.TryGetValue<bool>(out var found) && found;
+    /// <summary>"Unsupported", or the Feeder status for an installed setup that needs attention.</summary>
+    public string BlockedStatus => FeederNeedsAttention ? "Needs Attention" : "Unsupported";
     /// <summary>Installed with rtxForge on Linux: Windows loads it natively; Set Up for Windows adapts it here.</summary>
     public bool InstalledOnLinux => Installed && InstalledOn == "linux";
     /// <summary>The library's install action: Set Up for Windows adapts a Linux install instead of reinstalling it.</summary>
@@ -182,6 +187,9 @@ public sealed record PackageOption(string Id, string Name, string Version, strin
 public sealed record CommunitySource(string Name, string Url, string Note);
 
 public sealed record PackageCatalog(string Status, IReadOnlyList<PackageOption> Packages, IReadOnlyList<CommunitySource> Community, string? CustomName);
+
+/// <summary>Feeder NR files rtxForge keeps itself: the verified stack (null when none) and original backups.</summary>
+public sealed record FeederStorage(string? Recipe, string? ImportedFrom, string? NrVersion, int Backups);
 
 public sealed record PackageParameter(string Key, string Label, string Value, string Origin);
 

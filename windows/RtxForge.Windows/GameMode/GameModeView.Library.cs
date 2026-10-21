@@ -71,7 +71,7 @@ public sealed partial class GameModeView
             () => _ = RunOperationAsync("uninstall", restoreTargets), GmKind.Danger, 0.85,
             enabled: restoreTargets.Count > 0, minHeight: t.Compact ? 48 : 60);
         Key(restore, "lib-restore");
-        var update = ui.Button(Glyph("", "Update DLSS"), () => _ = RunOperationAsync("update-dlss", installTargets), GmKind.Dlss, 0.85,
+        var update = ui.Button(Glyph("", "Update DLSS"), () => _ = RunOperationAsync("update-dlss", installTargets), GmKind.Dlss, 0.85,
             enabled: installTargets.Count > 0, minHeight: t.Compact ? 48 : 60);
         Key(update, "lib-update");
         actions.Children.Add(install);
@@ -471,7 +471,7 @@ public sealed partial class GameModeView
         if (game.Installed) dot.Fill = GmTheme.B(GmTheme.Accent);
         else { dot.Stroke = GmTheme.B(t.Muted); dot.StrokeThickness = 1.5; }
         state.Children.Add(dot);
-        state.Children.Add(ui.Text(game.Blocked ? "Unsupported" : game.Installed ? "Installed" : game.UsesFeeder ? "Available · Feeder NR" : "Available", 0.85, t.Muted));
+        state.Children.Add(ui.Text(game.Blocked ? game.BlockedStatus : game.Installed ? "Installed" : game.UsesFeeder ? "Available · Feeder NR" : "Available", 0.85, t.Muted));
         Grid.SetColumn(state, 3);
         grid.Children.Add(state);
 

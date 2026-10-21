@@ -49,8 +49,8 @@ public sealed partial class MainWindow
         var display = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(AppWindow.Id, Microsoft.UI.Windowing.DisplayAreaFallback.Primary);
         var work = display.WorkArea;
         var scale = RootGrid.XamlRoot?.RasterizationScale ?? 1;
-        var width = Math.Min((int)(1200 * scale), work.Width - 80);
-        var height = Math.Min((int)(850 * scale), work.Height - 80);
+        var width = Math.Min((int)(1340 * scale), work.Width - 80);
+        var height = Math.Min((int)(800 * scale), work.Height - 80);
         window.AppWindow.MoveAndResize(new global::Windows.Graphics.RectInt32(
             work.X + (work.Width - width) / 2, work.Y + (work.Height - height) / 2, width, height));
         window.Activate();

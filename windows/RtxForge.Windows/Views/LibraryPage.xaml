@@ -236,7 +236,7 @@
                         <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE7A7;" FontSize="14" Foreground="{ThemeResource ForgeRemoveBrush}" /><TextBlock Text="Restore Original Files" /></StackPanel>
                     </Button>
                     <Button Click="OnUpdateDlss" ToolTipService.ToolTip="Update older DLSS files for selected games or the current view">
-                        <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE777;" FontSize="14" /><TextBlock Text="Update DLSS" /></StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE898;" FontSize="14" /><TextBlock Text="Update DLSS" /></StackPanel>
                     </Button>
                 </StackPanel>
             </Grid>
@@ -283,7 +283,7 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="Library" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
                 <!-- .library-filter-group -->
-                <Border Grid.Column="1" Style="{StaticResource ForgeSegmentGroupStyle}" Margin="12,0,0,0">
+                <Border x:Name="FilterGroup" Grid.Column="1" Style="{StaticResource ForgeSegmentGroupStyle}" Margin="12,0,0,0">
                     <StackPanel Orientation="Horizontal">
                         <RadioButton x:Name="FilterAvailable" GroupName="Filter" Tag="available" Content="Available" Style="{StaticResource ForgeCompactSegmentStyle}" Checked="OnFilterChecked" />
                         <RadioButton x:Name="FilterInstalled" GroupName="Filter" Tag="installed" Content="Installed" Style="{StaticResource ForgeCompactSegmentStyle}" Checked="OnFilterChecked" />
@@ -324,6 +324,8 @@
                         <AppBarButton Label="Removed games" Click="OnRemovedGames" />
                     </CommandBar.SecondaryCommands>
                 </CommandBar>
+                <!-- Narrow windows: the filters, view, size and commands flow together under the title and search. -->
+                <controls:WrapRow x:Name="LibraryTools" Grid.Row="1" Grid.ColumnSpan="6" Spacing="12" LineSpacing="8" Visibility="Collapsed" />
             </Grid>
 
             <!-- List column header (Gtk.ColumnView header) -->

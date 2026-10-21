@@ -22,6 +22,11 @@
         </Border>
     <ScrollViewer x:Name="ContentScroll" Grid.Column="1" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
         <StackPanel x:Name="DetailsWorkspace" Padding="0,0,0,48">
+            <Border x:Name="HeroSpacer" />
+            <StackPanel x:Name="PageHost" Padding="36,0,36,0" />
+        </StackPanel>
+    </ScrollViewer>
+    <StackPanel Grid.Column="1" VerticalAlignment="Top" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
 
             <!-- .game-banner: edge to edge -->
             <Grid x:Name="HeroBanner" Height="360">
@@ -64,8 +69,8 @@
                                        TextWrapping="WrapWholeWords" MaxLines="2" LineHeight="46" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                         </StackPanel>
                         <StackPanel x:Name="HeroText" Grid.Row="1" Spacing="4" VerticalAlignment="Bottom">
-                            <!-- metadata line: developer · release, source badge, test badge -->
-                            <StackPanel Orientation="Horizontal" Spacing="8">
+                            <!-- metadata line: developer · release, then source / OS / test badges inline, wrapping -->
+                            <controls:WrapRow Spacing="8" LineSpacing="6">
                                 <TextBlock x:Name="MetaText" Style="{StaticResource ForgeDimTextStyle}" FontSize="13" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                                 <Border Style="{StaticResource ForgePillStyle}" VerticalAlignment="Center">
                                     <TextBlock x:Name="SourceBadge" FontSize="9" FontWeight="Bold" CharacterSpacing="42" />
@@ -85,12 +90,12 @@
                                         <TextBlock x:Name="TestBadgeText" FontSize="9" FontWeight="Bold" CharacterSpacing="42" />
                                     </StackPanel>
                                 </Border>
-                            </StackPanel>
+                            </controls:WrapRow>
                             <!-- .game-detail-summary: two lines -->
                             <TextBlock x:Name="SummaryText" Style="{StaticResource ForgeDimTextStyle}" FontSize="12" MaxLines="2"
                                        TextTrimming="CharacterEllipsis" MaxWidth="520" HorizontalAlignment="Left" />
                         </StackPanel>
-                        <StackPanel x:Name="HeroActions" Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Bottom">
+                        <controls:WrapRow x:Name="HeroActions" Grid.Row="1" Grid.Column="1" Spacing="8" LineSpacing="8" VerticalAlignment="Bottom">
                             <Button x:Name="InstallButton" Style="{StaticResource AccentButtonStyle}" Click="OnInstall">
                                 <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE896;" FontSize="14" /><TextBlock x:Name="InstallText" Text="Install Features" /></StackPanel>
                             </Button>
@@ -102,7 +107,7 @@
                                 <Button.Flyout>
                                     <MenuFlyout Placement="BottomEdgeAlignedRight">
                                         <MenuFlyoutItem Text="Live NR + MFG controls" Click="OnCompanion"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE713;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
-                                        <MenuFlyoutItem x:Name="UpdateDlssItem" Text="Update DLSS" Click="OnUpdateDlss"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE777;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
+                                        <MenuFlyoutItem x:Name="UpdateDlssItem" Text="Update DLSS" Click="OnUpdateDlss"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE898;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
                                         <MenuFlyoutItem x:Name="AdoptionItem" Text="Adopt with rtxForge" Click="OnAdoption" />
                                         <MenuFlyoutItem x:Name="OfflineLaunchItem" Text="Launch offline" Click="OnLaunchOffline" />
                                         <MenuFlyoutItem x:Name="OpenFolderItem" Text="Open Folder" Click="OnOpenFolder"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE838;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
@@ -111,10 +116,10 @@
                                     </MenuFlyout>
                                 </Button.Flyout>
                             </Button>
-                        </StackPanel>
+                        </controls:WrapRow>
                     </Grid>
                 </Grid>
-                <Grid x:Name="WindowActions" Visibility="Collapsed" Width="92" Height="40" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,16,16,0"
+                <Grid x:Name="WindowActions" Visibility="Collapsed" Width="92" Height="40" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,16,16,0" Background="Transparent"
                       PointerEntered="OnWindowActionsEntered" PointerExited="OnWindowActionsExited">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="40" /><ColumnDefinition Width="12" /><ColumnDefinition Width="40" /></Grid.ColumnDefinitions>
                     <Button x:Name="WindowMinimize" Width="40" Height="40" CornerRadius="20" Padding="0" IsTabStop="False" IsHitTestVisible="False"
@@ -137,10 +142,7 @@
                 <SelectorBarItem Text="Notes" Tag="Notes" />
             </SelectorBar>
 
-            <!-- Content lines up with the title's left edge and grows with the window -->
-            <StackPanel x:Name="PageHost" Padding="36,0,36,0" />
-        </StackPanel>
-    </ScrollViewer>
+    </StackPanel>
         <InfoBar x:Name="DetailsNotice" Grid.Column="1" IsOpen="False" IsClosable="True" VerticalAlignment="Bottom" Margin="24" />
     </Grid>
 </Page>

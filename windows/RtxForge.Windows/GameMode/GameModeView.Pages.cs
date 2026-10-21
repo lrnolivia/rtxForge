@@ -143,7 +143,7 @@ public sealed partial class GameModeView
     {
         var side = PageInset;
         var grid = new Grid { ColumnSpacing = t.Px(24), Padding = new Thickness(side, t.Px(32), side, t.Px(8)), RowSpacing = t.Px(22) };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(t.Px(ActualWidth <= 1050 ? 180 : 232)) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(t.Px(ActualWidth <= 1050 ? 220 : 264)) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -157,7 +157,7 @@ public sealed partial class GameModeView
         foreach (var section in SettingsSections)
         {
             var active = section == settingsSection;
-            var button = ui.Button(section, () => { settingsSection = section; Render(); pendingFocusKey = "gm_set-" + section; },
+            var button = ui.Button(ui.IconLabel(SettingsCategory.Glyph(section), section), () => { settingsSection = section; Render(); pendingFocusKey = "gm_set-" + section; },
                 active ? GmKind.Card : GmKind.Transparent, 0.92, radius: 12, padding: new Thickness(t.Px(24), t.Px(18), t.Px(24), t.Px(18)),
                 minHeight: t.Compact ? 56 : 70);
             button.HorizontalAlignment = HorizontalAlignment.Stretch;

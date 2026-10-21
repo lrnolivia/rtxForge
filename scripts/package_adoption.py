@@ -146,10 +146,14 @@ def prepare(config, rows, operation, settings):
                 t.need(settings.get('runtime_provider') == plan['provider']['id'] or (settings.get('runtime_provider') == 'custom' and plan['provider'].get('custom')),
                        'Clean install requires the matching package. Adopt first, then restore before switching package families.')
                 if plan.get('feeder'):
-                    source = t.safe(settings.get('feeder_source') or '')
-                    feeder.stack(source)
-                    plan['clean_payload'] = {name: (source / name).read_bytes() for name in [*feeder.lock()['assets'], *feeder.CONFIGS]}
-                    model = t.safe(settings.get('nr_runtime') or source / feeder.MODEL)
+                    files = feeder.stack_files(plan['engine'], settings)
+                    plan['clean_payload'] = {}
+                    for name in [*feeder.lock()['assets'], *feeder.CONFIGS]:
+                        data = feeder.cached_input(plan['engine'], files[name]).read_bytes()
+                        t.need(t.sha(data) == files[name]['sha256'], 'The stored Feeder stack changed: ' + name)
+                        plan['clean_payload'][name] = data
+                    t.need(settings.get('nr_runtime') or feeder.MODEL in files, 'Choose a verified RTX 40 compatible NR model in Settings')
+                    model = t.safe(settings.get('nr_runtime') or files[feeder.MODEL]['path'])
                     feeder.model(model)
                     plan['clean_payload'][feeder.MODEL] = model.read_bytes()
                 else:

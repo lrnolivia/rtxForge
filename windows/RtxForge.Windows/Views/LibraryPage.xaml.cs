@@ -257,12 +257,19 @@ public sealed partial class LibraryPage : Page
         if (nowCompact != compact)
         {
             compact = nowCompact;
-            foreach (var (element, column) in new (FrameworkElement, int)[] { (ViewGroup, 0), (ArtScale, 1), (LibraryCommands, 2) })
+            // Narrow: title and a full-width search on top; filters, view, size and commands
+            // flow together beneath instead of sitting under unrelated columns.
+            FrameworkElement[] tools = [FilterGroup, ViewGroup, ArtScale, LibraryCommands];
+            foreach (var element in tools)
             {
-                Grid.SetRow(element, compact ? 1 : 0);
-                Grid.SetColumn(element, compact ? column : column + 3);
+                ((Panel)element.Parent).Children.Remove(element);
+                (compact ? LibraryTools.Children : LibraryHeader.Children).Add(element);
             }
-            if (compact) Grid.SetColumnSpan(LibraryCommands, 4); else Grid.SetColumnSpan(LibraryCommands, 1);
+            FilterGroup.Margin = new Thickness(compact ? 0 : 12, 0, 0, 0);
+            LibraryTools.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
+            Grid.SetColumn(SearchBox, compact ? 1 : 2);
+            Grid.SetColumnSpan(SearchBox, compact ? 5 : 1);
+            SearchBox.MaxWidth = compact ? double.PositiveInfinity : 360;
             LibraryCommands.HorizontalAlignment = compact ? HorizontalAlignment.Left : HorizontalAlignment.Stretch;
         }
         LibraryCommands.DefaultLabelPosition = width < 820 ? CommandBarDefaultLabelPosition.Collapsed : CommandBarDefaultLabelPosition.Right;

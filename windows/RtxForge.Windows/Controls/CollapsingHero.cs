@@ -8,17 +8,23 @@ public sealed class CollapsingHero
 {
     readonly ScrollViewer scroll;
     readonly FrameworkElement hero;
-    readonly StackPanel workspace;
+    readonly FrameworkElement spacer;
+    readonly FrameworkElement? navigation;
     readonly Thickness inset;
     readonly Action<double> changed;
     double expanded, compact;
     double previousHeight = -1;
 
-    public CollapsingHero(ScrollViewer scroll, FrameworkElement hero, StackPanel workspace, Action<double> changed)
+    public CollapsingHero(ScrollViewer scroll, FrameworkElement hero, FrameworkElement spacer, Action<double> changed, FrameworkElement? navigation = null)
     {
-        this.scroll = scroll; this.hero = hero; this.workspace = workspace; this.changed = changed;
-        inset = workspace.Padding;
+        this.scroll = scroll; this.hero = hero; this.spacer = spacer; this.changed = changed; this.navigation = navigation;
+        inset = scroll.Margin;
         scroll.ViewChanged += (_, _) => Apply();
+        if (navigation is not null)
+        {
+            navigation.SizeChanged += (_, _) => Apply();
+            navigation.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (_, _) => Apply());
+        }
     }
 
     public void SetRange(double fullHeight, double minimumHeight)
@@ -30,19 +36,18 @@ public sealed class CollapsingHero
     void Apply()
     {
         if (expanded <= 0) return;
+        // The hero sits above the scroller. A fixed compact inset clips content
+        // below it; a fixed spacer supplies only its expandable portion. Neither
+        // changes with scrolling, so the scroll range cannot feed back on itself.
+        var extra = navigation?.Visibility == Visibility.Visible
+            ? navigation.ActualHeight + navigation.Margin.Top + navigation.Margin.Bottom : 0;
+        scroll.Margin = new Thickness(inset.Left, inset.Top + compact + extra, inset.Right, inset.Bottom);
+        spacer.Height = expanded - compact;
         var removed = Math.Round(Math.Clamp(scroll.VerticalOffset, 0, expanded - compact));
         var height = expanded - removed;
-        var previousInset = workspace.Padding.Bottom - inset.Bottom;
-        var unclampedRange = scroll.ExtentHeight - previousInset - scroll.ViewportHeight;
-        // Long pages already have enough body below the compact hero. They need no
-        // compensation (and must not end in a large empty area).
-        var compensation = removed >= expanded - compact && unclampedRange > expanded - compact + 32 ? 0 : removed;
-        if (Math.Abs(previousHeight - height) < .5 && Math.Abs(previousInset - compensation) < .5) return;
+        if (Math.Abs(previousHeight - height) < .5) return;
         previousHeight = height;
         hero.Height = height;
-        // Keep the original scroll range. Shrinking the header near the bottom must
-        // not clamp the offset and repeatedly expand/collapse the header again.
-        workspace.Padding = new Thickness(inset.Left, inset.Top, inset.Right, inset.Bottom + compensation);
         changed(expanded == compact ? 0 : removed / (expanded - compact));
     }
 }

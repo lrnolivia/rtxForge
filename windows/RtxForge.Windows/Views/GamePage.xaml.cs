@@ -23,7 +23,7 @@ public sealed partial class GamePage : Page
     public GamePage()
     {
         InitializeComponent();
-        collapsingHero = new CollapsingHero(ContentScroll, HeroBanner, DetailsWorkspace, progress =>
+        collapsingHero = new CollapsingHero(ContentScroll, HeroBanner, HeroSpacer, progress =>
         {
             var fullPoster = Math.Round(Math.Clamp(heroExpandedHeight * .48, 120, 260));
             PosterFrame.Height = fullPoster + (100 - fullPoster) * progress;
@@ -33,7 +33,7 @@ public sealed partial class GamePage : Page
             TitleText.LineHeight = TitleText.FontSize * 1.1;
             HeroText.Opacity = 1 - progress;
             HeroText.Visibility = progress >= .75 ? Visibility.Collapsed : Visibility.Visible;
-        });
+        }, Sections);
         ActualThemeChanged += (_, _) => ApplyAccentText();
         ContentScroll.SizeChanged += (_, e) => ApplyLayout(e.NewSize.Width);
         shell.GamesChanged += Refresh;
@@ -111,6 +111,7 @@ public sealed partial class GamePage : Page
 
     void ApplyAccentText()
     {
+        ApplyWindowActionsTint();
         if (gamePalette is not { } palette) return;
         var light = ActualTheme == ElementTheme.Light;
         var ink = light ? Services.ArtAccent.Readable(palette.Color, global::Windows.UI.Color.FromArgb(255, 243, 243, 243)) : palette.HeroAccent;
@@ -120,7 +121,7 @@ public sealed partial class GamePage : Page
 
     void Refresh()
     {
-        StatusBadge.Text = game.AdoptionAvailable ? "Installed · Adoption available" : game.OfflineOnly ? "Installed · Offline only" : game.Blocked ? "Unsupported"
+        StatusBadge.Text = game.AdoptionAvailable ? "Installed · Adoption available" : game.OfflineOnly ? "Installed · Offline only" : game.Blocked ? game.BlockedStatus
             : game.UsesFeeder ? game.Installed ? "Feeder NR" : "Available · Feeder NR"
             : game.InstalledOnLinux ? "Installed on Linux"
             : game.Installed ? shell.Mode switch { "nr-only" => "NR Only", "nr-mfg" => "NR + MFG", _ => "MFG Only" }
@@ -253,7 +254,7 @@ public sealed partial class GamePage : Page
                 var fileActions = new PresetColumns(360, 2) { ColumnSpacing = 12, RowSpacing = 12 };
                 var update = Prefs.ActionButton("Update", (_, _) => _ = shell.LaunchAction("update-dlss", [g]));
                 update.IsEnabled = !g.Blocked && !shell.Busy;
-                fileActions.Children.Add(DetailActionCard("Update DLSS", "Update older DLSS files. Backups are kept for restoration.", update, ""));
+                fileActions.Children.Add(DetailActionCard("Update DLSS", "Update older DLSS files. Backups are kept for restoration.", update, ""));
                 var restoreDlss = Prefs.ActionButton("Restore", async (_, _) => await shell.RestoreDlssFilesAsync(g));
                 restoreDlss.IsEnabled = false;
                 var backupRow = DetailActionCard("Restore original DLSS files", "Checking for backups…", restoreDlss, "");
@@ -380,8 +381,9 @@ public sealed partial class GamePage : Page
 
     void ShowIdentity()
     {
-        MetaText.Text = string.Join(" · ", new[] { game.Developer, game.Release }.Where(s => !string.IsNullOrEmpty(s)));
+        MetaText.Text = GameCredits.Line(game);
         MetaText.Visibility = MetaText.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ToolTipService.SetToolTip(MetaText, GameCredits.Tooltip(game));
         SourceBadge.Text = game.Library == "Steam" ? "STEAM" : "NON-STEAM";
         TestBadgeText.Text = game.Tested ? "TESTED" : "UNTESTED";
         TestBadgeIcon.Glyph = game.Tested ? "" : "";
@@ -409,7 +411,7 @@ public sealed partial class GamePage : Page
         if (width <= 0 || game is null) return;
         var side = PageMargins.Side(width);
         heroLayoutWidth = width;
-        heroExpandedHeight = Math.Round(Math.Clamp(width * .30, 240, 560));
+        heroExpandedHeight = Math.Round(Math.Clamp(width * .38, 360, 620));
         collapsingHero.SetRange(heroExpandedHeight, width < 700 ? 220 : 180);
         Identity.Padding = new Thickness(side, 0, side, Math.Round(Math.Clamp(width * 0.02, 16, 32)));
         Sections.Margin = new Thickness(side - 8, 8, side, 0);

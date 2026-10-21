@@ -44,7 +44,8 @@ public static partial class SteamStoreInfo
             }
             if (game.Developer is null && data.TryGetProperty("developers", out var developers) && developers.GetArrayLength() > 0)
             {
-                game.Developer = developers[0].GetString();
+                // The full list, as library_media keeps it; the hero shows the first (GameCredits).
+                game.Developer = string.Join(", ", developers.EnumerateArray().Select(d => d.GetString()).Where(d => !string.IsNullOrWhiteSpace(d)));
                 changed = true;
             }
             if (game.Release is null && data.TryGetProperty("release_date", out var release) && release.TryGetProperty("date", out var date))

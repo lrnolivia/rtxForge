@@ -6,6 +6,8 @@ Writes (overlay_apply / overlay_restore) are reviewed first and refuse a busy
 prefix or a registry that changed since review.
 """
 from pathlib import Path
+import importlib
+import sys
 
 import proton_mfg
 import proton_overlay
@@ -65,3 +67,35 @@ def record_runtime_evidence(e, row, report, observed, confirmed_by):
                                         (report.get('gpu') or {}).get('model'),
                                         f"{component.get('id', 'nr-only')}-{component.get('version', '')}".rstrip('-'),
                                         observed, confirmed_by)
+
+
+# --- One-time Global review and game-menu review (shared with Windows) -----------------------
+
+HOST = Path(__file__).resolve().parents[1] / 'windows' / 'engine-host'
+
+
+def _shared(name):
+    """The reviewed bulk modules the Windows host uses. They are platform-neutral Python
+    over the same engine records; appended to the path so scripts/ always wins on names."""
+    if str(HOST) not in sys.path:
+        sys.path.append(str(HOST))
+    return importlib.import_module(name)
+
+
+def global_review(e, params):
+    """ONE-TIME reviewed NR on/off and MFG (-1 auto, 0 off, 2..6) for installed packages.
+
+    Never a persistent override: each game's INI changes once, with running,
+    anti-cheat, drift and ownership checks; Feeder games take NR only.
+    """
+    return _shared('global_controls').prepare(e, e.STATE_ROOT, params)
+
+
+def menus_review(e, params):
+    """Reviewed OptiScaler/ReShade menu and intro changes for installed games (config only)."""
+    return _shared('overlay_ui').prepare(e, params)
+
+
+def apply_review(review):
+    """Apply a global_review or menus_review result; every file is re-checked first."""
+    return _shared('global_controls').execute(review)

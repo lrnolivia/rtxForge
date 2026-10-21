@@ -135,7 +135,7 @@ class LinuxUniversalLifecycleTest(unittest.TestCase):
                       'WorkingScale=0.65', 'LocalStructure=1.0', 'SkinStructure=1.0', 'DisableSplash=true'):
             self.assertIn(value, ini)
         # NR is off on a new install unless Enable NR on launch was chosen.
-        self.assertRegex(ini, r'(?m)^Enabled=false')
+        self.assertEqual(t.ini(ini).get('DlssNr', 'Enabled'), 'false')
         overrides = proton_prefix.read_overrides((self.prefix / 'user.reg').read_text())
         self.assertEqual(overrides.get('dxgi'), 'native,builtin')
         self.assertEqual(overrides.get('atiadlxx'), 'disabled', 'other prefix settings stay')
@@ -160,6 +160,49 @@ class LinuxUniversalLifecycleTest(unittest.TestCase):
         engine_bridge.execute(self.prepare('uninstall'))
         self.assertEqual(self.files(), self.before)
         self.assertEqual((self.prefix / 'user.reg').read_bytes(), self.registry_before)
+
+    def test_enable_nr_on_launch_is_explicit_and_repair_keeps_the_choice(self):
+        engine_bridge.execute(self.prepare(nr_on_launch=True))
+        ini = (self.target / 'OptiScaler.ini').read_text()
+        self.assertEqual(t.ini(ini).get('DlssNr', 'Enabled'), 'true')
+        self.assertIs(cross_os.read(self.target).get('nr_on_launch'), True)
+        # The person turns NR off in game; repair (nr_on_launch None) keeps it off.
+        e = engine_bridge.module(self.config)
+        (self.target / 'OptiScaler.ini').write_text(e.set_ini_value(ini, 'DlssNr', 'Enabled', 'false'))
+        engine_bridge.execute(self.prepare('repair', nr_on_launch=True))
+        self.assertEqual(t.ini((self.target / 'OptiScaler.ini').read_text()).get('DlssNr', 'Enabled'), 'false')
+
+    def test_one_time_global_and_menu_reviews_change_only_reviewed_config(self):
+        import linux_runtime
+        review = self.prepare()
+        engine_bridge.execute(review)
+        e = review['engine']
+        payload = {p: h for p, h in self.files().items() if not p.endswith(('.ini', '.json'))}
+        global_review = linux_runtime.global_review(e, {'nr': True, 'mfg': 6})
+        self.assertEqual(([p['name'] for p in global_review['plans']], global_review['blocked']), (['Control'], []))
+        self.assertEqual(global_review['plans'][0]['summary'], 'NR on · MFG 6×')
+        self.assertEqual(t.ini((self.target / 'OptiScaler.ini').read_text()).get('DlssNr', 'Enabled'), 'false', 'review never writes')
+        linux_runtime.apply_review(global_review)
+        ini = t.ini((self.target / 'OptiScaler.ini').read_text())
+        self.assertEqual((ini.get('DlssNr', 'Enabled'), ini.get('DLSSG', 'OverrideInterpolationCount')), ('true', '5'))
+        self.assertEqual({p: h for p, h in self.files().items() if not p.endswith(('.ini', '.json'))}, payload)
+        # Not a persistent override: the same request again is already set.
+        again = linux_runtime.global_review(e, {'nr': True, 'mfg': 6})
+        self.assertEqual((again['plans'], [s['detail'] for s in again['skipped']]), ([], ['Already set: NR on · MFG 6×.']))
+        # A reviewed file changing before apply refuses the whole change.
+        stale = linux_runtime.global_review(e, {'nr': False})
+        (self.target / 'OptiScaler.ini').write_text((self.target / 'OptiScaler.ini').read_text() + '; edited\n')
+        with self.assertRaisesRegex(t.Refusal, 'changed since review'):
+            linux_runtime.apply_review(stale)
+        menus = linux_runtime.menus_review(e, {'optiscaler_ui': False, 'optiscaler_intro': True})
+        self.assertEqual(len(menus['plans']), 1, menus['blocked'])
+        linux_runtime.apply_review(menus)
+        ini = t.ini((self.target / 'OptiScaler.ini').read_text())
+        self.assertEqual((ini.get('Menu', 'ShortcutKey'), ini.get('Menu', 'DisableSplash')), ('0', 'false'))
+        self.assertEqual((ini.get('DlssNr', 'Enabled'), ini.get('DLSSG', 'OverrideInterpolationCount')), ('true', '5'), 'menus never change NR/MFG')
+        # Restore still returns the exact originals after both reviewed changes.
+        engine_bridge.execute(self.prepare('uninstall'))
+        self.assertEqual(self.files(), self.before)
 
     def test_panel_preferences_in_the_prefix_are_restored_with_the_game(self):
         import linux_runtime, proton_overlay

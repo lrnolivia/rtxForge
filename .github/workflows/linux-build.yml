@@ -88,6 +88,8 @@ jobs:
           /usr/bin/python3 -m unittest discover -s tests -p test_package_download.py
 
           /usr/bin/python3 -m unittest discover -s tests -p test_release_backup.py
+          /usr/bin/python3 -m unittest discover -s tests -p test_cross_os_adapt.py
+          /usr/bin/python3 -m unittest discover -s tests -p test_linux_skynizz_adoption.py
 
           /usr/bin/python3 tests/test_batches.py
           /usr/bin/python3 tests/test_cleanup.py

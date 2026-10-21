@@ -244,20 +244,32 @@ def steam_owned(path):
     """Files Steam or Wine own and may have rewritten since: recovery reports them instead of rewriting."""
     return Path(path).name.lower() in STEAM_OWNED
 
+# Experimental: Linux may adopt a Windows Skynizz install under Proton (DLL override
+# only, no game files change). Fresh Skynizz installs on Linux stay Windows-only.
+LINUX_SKYNIZZ_REFUSAL=('Skynizz installation/adoption is not available on Linux in this release. '
+                       'To try a Windows install under Proton, turn on Skynizz on Proton (experimental) in Settings.')
+
+def skynizz_proton(settings):
+    return cross_os.THIS_OS=='linux' and settings.get('skynizz_proton') is True
+
 def adopt_plan(e,g,row,record,operation,mode):
     """Review entry for adapting the other OS's install of this game to this OS."""
     other=OS_NAMES[record['os']];here=OS_NAMES[cross_os.THIS_OS]
     data=shared_baseline(g)
     current=data.get('current') or {}
-    t.need(cross_os.THIS_OS=='windows' or current.get('provider_id')!='skynizz' or operation=='uninstall',
-           'Skynizz installation/adoption is not available on Linux in this release.')
+    t.need(cross_os.THIS_OS=='windows' or current.get('provider_id')!='skynizz' or operation=='uninstall'
+           or getattr(e,'SKYNIZZ_PROTON',False),LINUX_SKYNIZZ_REFUSAL)
     managed=[p for p in data.get('managed_paths') or [] if isinstance(p,str)]
     mine=(data.get('cross_os_extras') or {}).get(cross_os.THIS_OS) or {}
     # What this OS saved in Steam the last time it owned the install, if anything.
     view={'steam_launch':mine['steam_launch']} if isinstance(mine.get('steam_launch'),dict) else None
     prefix=None;steam_route=False
     if operation in ('install','repair'):
-        check_switch(e,current or None,mode)
+        if current.get('provider_id')=='skynizz' and getattr(e,'SKYNIZZ_PROTON',False):
+            # Adopting the same Windows install is not a provider switch; Linux selects no Skynizz package.
+            t.need(current.get('feature_mode',mode)==mode,'Uninstall before changing feature profiles so original runtime files are restored')
+        else:
+            check_switch(e,current or None,mode)
         if cross_os.THIS_OS=='linux':
             prefix=steam_open_route(e,g,operation,view)
             if not prefix:
@@ -300,11 +312,14 @@ def prepare(config,rows,mode,operation,settings):
            'A bridge update requires an existing combined NR + MFG installation.')
     t.need(not upgrade or not settings.get('apply_requested_presets',False),
            'A bridge update preserves each game preset; apply new presets separately.')
-    if selected=='skynizz' and operation in ('install','repair'):
+    proton=skynizz_proton(settings)
+    # With the experimental opt-in, each Linux row is checked instead: adoption passes, a fresh install still refuses.
+    if selected=='skynizz' and operation in ('install','repair') and not proton:
         skynizz_provider.require_mode(cross_os.THIS_OS,mode,bool(settings.get('native_mfg_fallback')),bridge=mode in ('nr-mfg','mfg-only'))
     custom=settings.get('custom_package') if selected=='custom' else None
     t.need(selected!='custom' or isinstance(custom,dict),'Choose and review a custom package first.')
     e=module(config,custom['family'] if custom else selected,mode);data={};meta={};nr=None;nrmeta=None
+    e.SKYNIZZ_PROTON=proton
     import overlay_policy
     e.OVERLAY_UI = dict(settings) if overlay_policy.explicit(settings) else None
     if custom:
@@ -344,9 +359,11 @@ def prepare(config,rows,mode,operation,settings):
             target_data,target_meta=data,meta
             installed=installed_package(baseline)
             if installed and installed.get('provider_id')=='skynizz' and operation in ('reset','uninstall'):
-                t.need(cross_os.THIS_OS=='windows' or operation=='uninstall','Skynizz settings/adoption are not available on Linux in this release.')
+                t.need(cross_os.THIS_OS=='windows' or operation=='uninstall' or proton,LINUX_SKYNIZZ_REFUSAL)
                 e.Y4MY_PROVIDER=skynizz_provider.validate_release((installed.get('archive') or {}).get('release') or {})
-            if selected=='skynizz' and operation in ('install','repair'):
+            # Installed (or last changed) with rtxForge on the other OS: adapt it for this one.
+            shared=cross_os.adoptable(g.target_dir,cross_os.THIS_OS,(baseline or {}).get('cross_os_revision')) if operation in ('install','repair','uninstall','reset') else None
+            if selected=='skynizz' and operation in ('install','repair') and not (proton and shared):
                 current=installed_package(baseline)
                 check_switch(e,current,mode)
                 # Repair never silently advances a game's release or mutable latest tag.
@@ -400,11 +417,9 @@ def prepare(config,rows,mode,operation,settings):
                     nr,nrmeta=model_cache[model_key]
             if baseline:
                 t.need(not any(v.get('kind') in ('tar_tree','tar_file') for v in baseline.get('originals',{}).values()),'Privileged backup requires terminal restore before desktop management')
-            # Installed (or last changed) with rtxForge on the other OS: adapt it for this one.
-            shared=cross_os.adoptable(g.target_dir,cross_os.THIS_OS,(baseline or {}).get('cross_os_revision')) if operation in ('install','repair','uninstall','reset') else None
             if shared:
-                t.need(cross_os.THIS_OS=='windows' or (shared.get('provider') or {}).get('id')!='skynizz',
-                       'Skynizz installation/adoption is not available on Linux in this release.')
+                t.need(cross_os.THIS_OS=='windows' or (shared.get('provider') or {}).get('id')!='skynizz' or proton,
+                       LINUX_SKYNIZZ_REFUSAL)
                 ready.append(adopt_plan(e,g,row,shared,operation,mode))
                 ui.progress('Game checked',phase='review-check',game=row['name'],checked=index,total=len(rows))
                 continue

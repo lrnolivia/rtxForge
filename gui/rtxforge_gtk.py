@@ -13721,6 +13721,9 @@ class Window(Adw.ApplicationWindow):
         graphics=Adw.PreferencesGroup(title='Graphics Provider',description='Restore original files before switching providers.')
         provider_keys=['y4my','dlss-unlocked','custom'];provider=safe_combo_row(title='Provider',model=Gtk.StringList.new(['y4my Multipass','DLSS-Unlocked','Custom package']),selected=provider_keys.index(self.settings.get('runtime_provider','y4my')));graphics.add(provider)
         nr_path=Adw.EntryRow(title='Local NR DLL for y4my');nr_path.set_text(self.settings.get('nr_runtime',''));graphics.add(nr_path)
+        # Adopting only: the Windows install's own files load through a Proton DLL override. Not yet runtime-verified.
+        skynizz_proton=Adw.SwitchRow(title='Skynizz on Proton (experimental)',subtitle='Set up Skynizz + Universal MFG installs made on Windows to run here. Unverified under Proton.',active=self.settings.get('skynizz_proton',False) is True)
+        graphics.add(skynizz_proton)
         defaults=Adw.PreferencesGroup(title='Installation')
         manage_files=Adw.SwitchRow(title='DLSS Files',subtitle='Update older DLSS files when installing features. Backups are kept for restoration.',active=self.settings.get('manage_dlss_files',True))
         defaults.add(manage_files)
@@ -13966,7 +13969,7 @@ class Window(Adw.ApplicationWindow):
             selected_provider=provider_keys[provider.get_selected()];selected_mode=modes[profile.get_selected()]
             if selected_provider=='y4my' and selected_mode=='nr-only':self.toast('NR Only requires DLSS-Unlocked.');return
             settings_saved['value']=True
-            self.settings.update(manage_dlss_files=manage_files.get_active(),runtime_provider=selected_provider,nr_runtime=nr_path.get_text().strip(),default_profile=selected_mode,library_view=pending_library_view['value'],dark=theme_selector.get_active_name()!='light',online_art=art.get_active(),steam_metadata=metadata.get_active(),network_timeout=timeout.get_value_as_int(),recognize_previous=adopt.get_active())
+            self.settings.update(manage_dlss_files=manage_files.get_active(),runtime_provider=selected_provider,nr_runtime=nr_path.get_text().strip(),default_profile=selected_mode,library_view=pending_library_view['value'],dark=theme_selector.get_active_name()!='light',online_art=art.get_active(),steam_metadata=metadata.get_active(),network_timeout=timeout.get_value_as_int(),recognize_previous=adopt.get_active(),skynizz_proton=skynizz_proton.get_active())
             self.nr_only.set_enabled(selected_provider in ('dlss-unlocked','custom'))
             self.profile_group.set_active_name(selected_mode)
             Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)

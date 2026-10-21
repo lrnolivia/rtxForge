@@ -313,6 +313,7 @@ public sealed partial class GameModeView
             {
                 chip.Background = new SolidColorBrush(global::Windows.UI.Color.FromArgb(0x29, 0, 0, 0));
                 chip.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+                if (t.IsLight) BadgeTheme.AttachLight(chip, colors.Accent);
             }
         }
         void Paint(bool focused)

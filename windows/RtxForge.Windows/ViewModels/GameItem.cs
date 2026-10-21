@@ -118,10 +118,14 @@ public sealed class GameItem : INotifyPropertyChanged
         selected && Accent(p => p.SelectedTitle) is { } s ? s
         : hovered && Accent(p => HoverTitle(p, p.CardHoverTitle)) is { } h ? h
         : Resource("TextFillColorPrimaryBrush");
-    public Brush CardStatusPillFill => selected && Accent(p => p.SourceBg) is { } b ? b : Resource("ControlFillColorSecondaryBrush");
-    public Brush CardStatusPillText => selected && Accent(p => p.SourceFg) is { } f ? f : Resource("TextFillColorPrimaryBrush");
-    public Brush CardTestPillFill => selected && Accent(p => p.AccentShadow, 0.94) is { } b ? b : Resource("ControlFillColorSecondaryBrush");
-    public Brush CardTestPillIcon => selected ? White : Resource("ForgePillTestedBrush");
+    bool IsLight => themeHost?.ActualTheme == ElementTheme.Light;
+    BadgeColors LightStatusColors => BadgeTheme.Light(selected && palette is not null
+        ? palette.Color : Color.FromArgb(255, 85, 85, 85));
+    BadgeColors LightTestColors => BadgeTheme.Light(Color.FromArgb(255, 49, 91, 21));
+    public Brush CardStatusPillFill => IsLight ? new SolidColorBrush(LightStatusColors.Surface) : selected && Accent(p => p.SourceBg) is { } b ? b : Resource("ControlFillColorSecondaryBrush");
+    public Brush CardStatusPillText => IsLight ? new SolidColorBrush(LightStatusColors.Ink) : selected && Accent(p => p.SourceFg) is { } f ? f : Resource("TextFillColorPrimaryBrush");
+    public Brush CardTestPillFill => IsLight ? new SolidColorBrush(LightTestColors.Surface) : selected && Accent(p => p.AccentShadow, 0.94) is { } b ? b : Resource("ControlFillColorSecondaryBrush");
+    public Brush CardTestPillIcon => IsLight ? new SolidColorBrush(LightTestColors.Ink) : selected ? White : Resource("ForgePillTestedBrush");
 
     // Check (.{name} check:checked: accent background, accent_dark glyph)
     public Brush CheckFill => selected && Accent(p => p.Color) is { } fill ? fill : new SolidColorBrush(Color.FromArgb(0x73, 0, 0, 0));
@@ -153,7 +157,7 @@ public sealed class GameItem : INotifyPropertyChanged
         : Resource("TextFillColorPrimaryBrush");
     public Brush RowText => selected && Accent(p => p.AccentDark) is { } d ? d : Resource("TextFillColorPrimaryBrush");
     public Brush RowSubtext => selected && Accent(p => p.AccentDark) is { } d ? d : Resource("TextFillColorSecondaryBrush");
-    public Brush RowChipFill => selected ? new SolidColorBrush(Color.FromArgb(0x29, 0, 0, 0)) : Resource("ControlFillColorSecondaryBrush");
+    public Brush RowChipFill => IsLight ? new SolidColorBrush(LightStatusColors.Surface) : selected ? new SolidColorBrush(Color.FromArgb(0x29, 0, 0, 0)) : Resource("ControlFillColorSecondaryBrush");
     public Brush RowArtRing =>
         selected && Accent(p => p.Color) is { } s ? s
         : hovered && Accent(p => p.Color, 0.68) is { } h ? h

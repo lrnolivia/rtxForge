@@ -24,36 +24,72 @@ public sealed class PresetControlsView : UserControl
     string dynamicDetail = "";
     public event EventHandler? Changed;
 
-    public PresetControlsView(Tuning initial, bool advanced = false, bool embedded = false)
+    public PresetControlsView(Tuning initial, bool advanced = false, bool embedded = false, bool installation = false)
     {
         this.advanced = advanced; this.embedded = embedded; values = FeatureControlSchema.Resolve(initial);
         mfgPreset = new(values);
-        var root = new StackPanel { Spacing = 24 };
-        root.Children.Add(Card(MfgControls()));
-        var primary = new PresetColumns(560, 2) { ColumnSpacing = 24, RowSpacing = 24 };
-        var nr = Section("Neural rendering");
-        nr.Children.Add(Field("enabled")); nr.Children.Add(Field("style")); nr.Children.Add(Field("intensity"));
-        nr.Children.Add(Pair(Field("preset"), Field("passes"))); primary.Children.Add(Card(nr));
-        var image = Section("Image tuning");
-        image.Children.Add(Pair(Field("detail"), Field("colour")));
-        var fine = new StackPanel { Spacing = 16 };
-        fine.Children.Add(Pair(Field("structure"), Field("tone")));
-        fine.Children.Add(Pair(Field("skin"), Field("auto_mask")));
-        image.Children.Add(Disclosure("Fine tuning", fine));
-        var secondary = new StackPanel { Spacing = 12 }; secondary.Children.Add(Card(image));
-        var sharp = new StackPanel { Spacing = 16 };
-        sharp.Children.Add(Field("sharpen")); sharp.Children.Add(Pair(Field("sharpen_shader"), Field("sharp_override")));
-        sharp.Children.Add(Field("sharpness"));
-        var motion = new StackPanel { Spacing = 16 };
-        motion.Children.Add(Field("motion_sharpen")); motion.Children.Add(Field("motion_sharpness"));
-        sharp.Children.Add(Disclosure("Motion sharpening", motion)); secondary.Children.Add(Card(Disclosure("Sharpening", sharp)));
-        var performance = new StackPanel { Spacing = 16 };
-        var fields = FeatureControlSchema.Shared.Controls.Where(f => f.Group == "Performance").ToArray();
-        for (var i = 0; i < fields.Length; i += 2)
-            performance.Children.Add(i + 1 < fields.Length ? Pair(Field(fields[i]), Field(fields[i + 1])) : Field(fields[i]));
-        secondary.Children.Add(Card(Disclosure("Performance", performance)));
-        primary.Children.Add(secondary); root.Children.Add(primary);
-        Content = root;
+        if (installation)
+        {
+            var root = new StackPanel { Spacing = 16 };
+            var main = new PresetColumns(320, 2) { ColumnSpacing = 24, RowSpacing = 16 };
+            main.Children.Add(Card(MfgControls()));
+            var nr = Section("Neural rendering");
+            nr.Spacing = 12;
+            nr.Children.Add(Field("enabled"));
+            nr.Children.Add(Field("style"));
+            nr.Children.Add(Field("intensity"));
+            main.Children.Add(Card(nr)); root.Children.Add(main);
+
+            var more = new StackPanel { Spacing = 16 };
+            more.Children.Add(Pair(Field("preset"), Field("passes")));
+            var image = new StackPanel { Spacing = 12 };
+            image.Children.Add(Pair(Field("detail"), Field("colour")));
+            image.Children.Add(Pair(Field("structure"), Field("tone")));
+            image.Children.Add(Pair(Field("skin"), Field("auto_mask")));
+            more.Children.Add(Disclosure("Image tuning", image));
+            var sharp = new StackPanel { Spacing = 12 };
+            sharp.Children.Add(Field("sharpen"));
+            sharp.Children.Add(Pair(Field("sharpen_shader"), Field("sharp_override")));
+            sharp.Children.Add(Field("sharpness"));
+            sharp.Children.Add(Pair(Field("motion_sharpen"), Field("motion_sharpness")));
+            more.Children.Add(Disclosure("Sharpening", sharp));
+            var performance = new StackPanel { Spacing = 12 };
+            var fields = FeatureControlSchema.Shared.Controls.Where(f => f.Group == "Performance").ToArray();
+            for (var i = 0; i < fields.Length; i += 2)
+                performance.Children.Add(i + 1 < fields.Length ? Pair(Field(fields[i]), Field(fields[i + 1])) : Field(fields[i]));
+            more.Children.Add(Disclosure("Performance", performance));
+            root.Children.Add(Disclosure("More settings", more));
+            Content = root;
+        }
+        else
+        {
+            var root = new StackPanel { Spacing = 24 };
+            root.Children.Add(Card(MfgControls()));
+            var primary = new PresetColumns(560, 2) { ColumnSpacing = 24, RowSpacing = 24 };
+            var nr = Section("Neural rendering");
+            nr.Children.Add(Field("enabled")); nr.Children.Add(Field("style")); nr.Children.Add(Field("intensity"));
+            nr.Children.Add(Pair(Field("preset"), Field("passes"))); primary.Children.Add(Card(nr));
+            var image = Section("Image tuning");
+            image.Children.Add(Pair(Field("detail"), Field("colour")));
+            var fine = new StackPanel { Spacing = 16 };
+            fine.Children.Add(Pair(Field("structure"), Field("tone")));
+            fine.Children.Add(Pair(Field("skin"), Field("auto_mask")));
+            image.Children.Add(Disclosure("Fine tuning", fine));
+            var secondary = new StackPanel { Spacing = 12 }; secondary.Children.Add(Card(image));
+            var sharp = new StackPanel { Spacing = 16 };
+            sharp.Children.Add(Field("sharpen")); sharp.Children.Add(Pair(Field("sharpen_shader"), Field("sharp_override")));
+            sharp.Children.Add(Field("sharpness"));
+            var motion = new StackPanel { Spacing = 16 };
+            motion.Children.Add(Field("motion_sharpen")); motion.Children.Add(Field("motion_sharpness"));
+            sharp.Children.Add(Disclosure("Motion sharpening", motion)); secondary.Children.Add(Card(Disclosure("Sharpening", sharp)));
+            var performance = new StackPanel { Spacing = 16 };
+            var fields = FeatureControlSchema.Shared.Controls.Where(f => f.Group == "Performance").ToArray();
+            for (var i = 0; i < fields.Length; i += 2)
+                performance.Children.Add(i + 1 < fields.Length ? Pair(Field(fields[i]), Field(fields[i + 1])) : Field(fields[i]));
+            secondary.Children.Add(Card(Disclosure("Performance", performance)));
+            primary.Children.Add(secondary); root.Children.Add(primary);
+            Content = root;
+        }
         RefreshAvailability();
     }
 

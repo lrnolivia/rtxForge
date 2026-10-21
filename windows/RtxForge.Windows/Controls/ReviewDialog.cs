@@ -153,6 +153,9 @@ public sealed class ReviewDialog
                 Style = Prefs.GetStyle("ForgePillStyle"), VerticalAlignment = VerticalAlignment.Center,
                 Child = new TextBlock { Text = badge.ToUpperInvariant(), FontSize = 9, FontWeight = FontWeights.Bold, CharacterSpacing = 42 },
             };
+            BadgeTheme.AttachLight(pill, ready
+                ? global::Windows.UI.Color.FromArgb(255, 49, 91, 21)
+                : global::Windows.UI.Color.FromArgb(255, 155, 48, 40));
             Grid.SetColumn(pill, 2);
             grid.Children.Add(pill);
         }

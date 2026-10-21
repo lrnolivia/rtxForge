@@ -533,7 +533,7 @@ public sealed partial class GameModeView
     }
 
     /// <summary>Compact controller cards retain the overlay vocabulary and original values.</summary>
-    (List<UIElement> Rows, Func<Tuning> Value) PresetRows(Tuning initial, bool enabled = true, bool legacy = false, Action? changed = null, bool embedded = false, bool dynamicSupported = true)
+    (List<UIElement> Rows, Func<Tuning> Value) PresetRows(Tuning initial, bool enabled = true, bool legacy = false, Action? changed = null, bool embedded = false, bool dynamicSupported = true, bool installation = false)
     {
         var values = FeatureControlSchema.Resolve(initial);
         var advanced = shell.Settings.OverlayControls == "classic";
@@ -738,6 +738,25 @@ public sealed partial class GameModeView
             ToolTipService.SetToolTip(tabs[2], "Requires the integrated MFG package and a compatible game and driver.");
             Refresh();
             return Card("", header, modes, ratioGroup, description);
+        }
+        if (installation)
+        {
+            var main = new Controls.PresetColumns(t.Px(420), 2) { ColumnSpacing = t.Px(24), RowSpacing = t.Px(20) };
+            main.Children.Add(MfgControls());
+            main.Children.Add(Card("Neural rendering", Field(Definition("enabled")), Choices("style"), Field(Definition("intensity"))));
+            var performanceFields = controls.Where(f => f.Group == "Performance").Select(Field).ToArray();
+            var morePerformance = new List<UIElement>();
+            for (var i = 0; i < performanceFields.Length; i += 2)
+                morePerformance.Add(i + 1 < performanceFields.Length ? Pair(performanceFields[i], performanceFields[i + 1]) : performanceFields[i]);
+            var more = Disclosure("More settings",
+                Pair(Field(Definition("preset")), Field(Definition("passes"))),
+                Disclosure("Image tuning", Pair(Field(Definition("detail")), Field(Definition("colour"))),
+                    Pair(Field(Definition("structure")), Field(Definition("tone"))), Pair(Field(Definition("skin")), Field(Definition("auto_mask")))),
+                Disclosure("Sharpening", Field(Definition("sharpen")),
+                    Pair(Field(Definition("sharpen_shader")), Field(Definition("sharp_override"))), Field(Definition("sharpness")),
+                    Pair(Field(Definition("motion_sharpen")), Field(Definition("motion_sharpness")))),
+                Disclosure("Performance", morePerformance.ToArray()));
+            return ([main, more], () => FeatureControlSchema.Tuning(values));
         }
         var rows = new List<UIElement> { MfgControls() };
         var primary = new Controls.PresetColumns(t.Px(560), 2) { ColumnSpacing = t.Px(28), RowSpacing = t.Px(28) };

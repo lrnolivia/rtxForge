@@ -10182,6 +10182,7 @@ class Window(Adw.ApplicationWindow):
             'Appearance':'applications-graphics-symbolic',
             'System':'computer-symbolic',
             'Recovery':'document-revert-symbolic',
+            'About':'help-about-symbolic',
         }
 
         for title,items in sections:
@@ -13879,7 +13880,8 @@ class Window(Adw.ApplicationWindow):
         steam_shortcut.add_suffix(steam_action);steam_launcher.add(steam_shortcut)
         self.steam_shortcut_row=steam_shortcut;self.steam_shortcut_button=steam_action
         controls=Adw.PreferencesGroup(title='Interface',description='Choose the experience for Gaming Mode.')
-        controller_options=Adw.PreferencesGroup(title='Controller',description='Button labels and navigation prompts.')
+        controller_options=Adw.PreferencesGroup(title='Controller',description='Navigation prompts in Gaming Mode.')
+        scale_navigation=Adw.PreferencesGroup(title='Scale and Navigation',description='Size, navigation and button labels for both interfaces.')
         big_picture=safe_combo_row(title='Interface',subtitle='Choose Desktop or Big Picture UI. Keyboard, mouse and controller input keep your choice.',model=Gtk.StringList.new(['Desktop','Big Picture UI']),selected=1 if self.input_stack.get_visible_child_name()=='couch' else 0)
         big_picture.connect('notify::selected',lambda widget,*_:self.set_big_picture_ui(widget.get_selected()==1))
         controls.add(big_picture)
@@ -13892,14 +13894,14 @@ class Window(Adw.ApplicationWindow):
                 COUCH_MODE=self.settings.get('input_mode','auto') if self.settings.get('big_picture_ui',True) else 'desktop'
                 if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
                 if key=='input_mode':self.toast('Input mode saved. Restart to rebuild all menu controls.')
-            choice.connect('notify::selected',change_input);(controller_options if key=='controller_glyphs' else controls).add(choice)
+            choice.connect('notify::selected',change_input);(scale_navigation if key=='controller_glyphs' else controls).add(choice)
         for key,title,keys,captions in [
-            ('ui_scale','UI Scale',list(SCALES),['Automatic (150% at 4K)','100%','125%','150%','175%','200%']),
+            ('ui_scale','UI Scale',list(SCALES),['Automatic (130% at 4K)','100%','125%','130%','150%','175%','200%']),
             ('navigation_position','Navigation Position',['top','bottom'],['Top','Bottom']),
             ('controller_hints','Controller Hints',['always','auto'],['Always visible','Hide when idle'])]:
             choice=safe_combo_row(title=title,model=Gtk.StringList.new(captions),selected=keys.index(self.settings.get(key,library_media.DEFAULTS[key])))
             choice.connect('notify::selected',lambda widget,*_,key=key,keys=keys:self.set_display_preference(key,keys[widget.get_selected()]))
-            target=controller_options if key=='controller_hints' else controls
+            target=controller_options if key=='controller_hints' else scale_navigation
             target.add(choice)
         controller_options.add(row('Controller Navigation','D-pad / stick: focus · South: activate · East: back · North: library · Start: menu · View/Select: settings · Bumpers: tab'))
         settings_saved={'value':False}
@@ -14011,10 +14013,12 @@ class Window(Adw.ApplicationWindow):
             action.set_valign(Gtk.Align.CENTER)
             item.add_suffix(action)
             app.add(item)
-        recovery=Adw.PreferencesGroup(title='Recovery')
-        for title,subtitle,caption,fn in [('Previous Changes','Browse available recovery records.','Browse',lambda *_:self.show_undo()),('Old NR Files','Review legacy files before removal.','Review',lambda *_:self.show_cleanup()),('Library Reports','View test notes and export a support report.','Open',self.show_reports)]:
+        recovery=Adw.PreferencesGroup(title='Recovery',description='Restore original files and clean up older installs.')
+        library_reports=Adw.PreferencesGroup(title='Reports')
+        item=row('Library Reports','View test notes and export a support report.');action=button('Open',self.show_reports);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);library_reports.add(item)
+        for title,subtitle,caption,fn in [('Previous Changes','Browse available recovery records.','Browse',lambda *_:self.show_undo()),('Old NR Files','Review legacy files before removal.','Review',lambda *_:self.show_cleanup())]:
             item=row(title,subtitle);action=button(caption,fn);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);recovery.add(item)
-        self.organize_pages(b,[('Graphics',[graphics,defaults]),('Appearance',[appearance,window_style,library_layout]),('Library',[artwork,steam_artwork]),('Gaming Mode',[steam_launcher,controls,controller_options]),('System',[system,app]),('Recovery',[recovery])])
+        self.organize_pages(b,[('Graphics',[graphics,defaults]),('Appearance',[appearance,scale_navigation,window_style]),('Library',[library_layout,artwork,steam_artwork,library_reports]),('Gaming Mode',[controls,controller_options,steam_launcher]),('System',[system]),('Recovery',[recovery]),('About',[app])])
         def save(*_):
             selected_provider=provider_keys[provider.get_selected()];selected_mode=modes[profile.get_selected()]
             if selected_provider=='y4my' and selected_mode=='nr-only':self.toast('NR Only requires DLSS-Unlocked.');return

@@ -7,7 +7,7 @@ from ui_scaling import content_scale
 
 class ScalingTests(unittest.TestCase):
     def test_auto_4k_and_compositor_scaling(self):
-        self.assertEqual(content_scale('auto',3840,2160,1),1.5)
+        self.assertEqual(content_scale('auto',3840,2160,1),1.3)
         self.assertEqual(content_scale('auto',3840,2160,2),1)
         self.assertEqual(content_scale('auto',1920,1080,1),1)
         self.assertEqual(content_scale('auto',2560,1440,2),1)

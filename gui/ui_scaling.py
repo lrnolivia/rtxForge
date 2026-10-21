@@ -4,12 +4,12 @@ import gi
 gi.require_version('Gtk','4.0')
 from gi.repository import Gtk, Gsk
 
-SCALES = ('auto', 100, 125, 150, 175, 200)
+SCALES = ('auto', 100, 125, 130, 150, 175, 200)
 
 def content_scale(choice, physical_width, physical_height, system_scale=1):
     system_scale = max(1.0, float(system_scale))
     if choice == 'auto':
-        target = max(system_scale, 1.5 if physical_width >= 3840 and physical_height >= 2160 else 1.0)
+        target = max(system_scale, 1.3 if physical_width >= 3840 and physical_height >= 2160 else 1.0)
     else:
         target = float(choice) / 100
     return max(.5, min(2.0, target / system_scale))

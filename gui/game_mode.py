@@ -1745,8 +1745,8 @@ class GameMode(Gtk.Overlay):
                 owner.apply_display_preferences()
                 GLib.idle_add(lambda: (self.apply_theme(), self.render(keep_focus=True), False)[-1])
             return 'Display scaling, navigation, recovery and updates.', [
-                self.choice('UI scale', 'Automatic follows the window size (150% at 4K).', ['auto', '100', '125', '150', '175', '200'],
-                            ['Automatic', '100%', '125%', '150%', '175%', '200%'], lambda: str(s.get('ui_scale', 'auto')), set_scale),
+                self.choice('UI scale', 'Automatic follows the window size (130% at 4K).', ['auto', '100', '125', '130', '150', '175', '200'],
+                            ['Automatic', '100%', '125%', '130%', '150%', '175%', '200%'], lambda: str(s.get('ui_scale', 'auto')), set_scale),
                 self.choice('Navigation', None, ['top', 'bottom'], ['Top', 'Bottom'], lambda: s.get('navigation_position', 'top'), lambda v: s.update(navigation_position=v)),
                 self.row_button('Previous changes', None, owner.show_undo, description='Browse available recovery records.', icon='document-revert-symbolic'),
                 self.row_button('Old NR files', None, owner.show_cleanup, description='Find NR files left by older tools.'),

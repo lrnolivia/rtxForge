@@ -24,8 +24,8 @@ def start():
 def native_scale():
     w=app.window;c=w.couch
     if os.environ.get('RTXFORGE_QA_FULLSCREEN'):assert w.is_fullscreen()
-    assert w.presentation_scale==1.5
-    assert c.get_width()==round(w.get_width()/1.5)
+    assert w.presentation_scale==1.3
+    assert c.get_width()==round(w.get_width()/1.3)
     assert c.layout_width==c.get_width()
     assert w.capture('layout-4k-wide-top.png')
     c.set_library_view('posters')
@@ -77,7 +77,7 @@ def settings_capture():
 def panel():
     w=app.window
     assert isinstance(w.dialog,ui.PresentationDialog)
-    assert w.dialog._scaled_child.factor==1.5
+    assert w.dialog._scaled_child.factor==1.3
     assert w.capture('layout-4k-settings-panel.png')
     w.dialog.force_close() if hasattr(w.dialog,'force_close') else w.dialog.close()
     w.couch.open('library')

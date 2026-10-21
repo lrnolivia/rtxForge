@@ -5,13 +5,13 @@
   "patch": "panel-candidate.patch",
   "sources": {
     "providers/skynizz-bridge/panel-candidate.patch": "8034c27322b94eaf6a3f4f010890e6647fab6677c63a4b627d71285996bae9b3",
-    "providers/skynizz-bridge/ForgePanel.h": "e32bed3cedc59b8be8b0d82f4d2689e6f8da6786cd0ba2854ae2dd1ed52bfdb5",
-    "providers/skynizz-bridge/Generate-Panel.ps1": "a94d2f422b5b995e68ef71787df4d65136baf7be921fb521877630bb71701822",
+    "providers/skynizz-bridge/ForgePanel.h": "6bd5fa453a558e386ff290b2203383af91a64e8b59aefa3e03d5df5c31f3883c",
+    "providers/skynizz-bridge/Generate-Panel.ps1": "8bfeb872e2f0404bcfdb6db29854b2a07b8f95a8f50ef03f2cae2bc1a500d55a",
     "providers/skynizz-bridge/controls.json": "a1d41503aa12597e2942ff14a0bc5341b08db0ec595d12ba0f2845612d900a9f",
     "windows/RtxForge.Windows/Assets/Fonts/InterVariable.ttf": "4989b125924991b90d05b2d16e0e388c48f7d5bb8b30539bbf9c755278d0ccaf",
     "providers/skynizz-bridge/Inter-SemiBold.ttf": "78a843fade9d4612a5567302fb595b56976eb5fcebf4fea5a5912d638bafcde3",
     "providers/skynizz-bridge/ForgePanelIcon.h": "a6037b066c03146b3cb766afd69ea694a247699b7e66cd7f346fd7e4aae799e7",
-    "providers/skynizz-bridge/ForgePanelChannel.h": "c05527caf0abed416966e0a819c77aefd625a78f8cbea447b2a6a893616d76cd"
+    "providers/skynizz-bridge/ForgePanelChannel.h": "432d6290164401207f7b08264ba189189bd89b8bf83abf0cca517e2775ba1350"
   },
   "candidate_only": true,
   "runtime_verified": false,

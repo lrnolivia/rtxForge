@@ -2,7 +2,7 @@ param([Parameter(Mandatory)][string]$SourceRoot)
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $menu = Join-Path $SourceRoot 'OptiScaler\menu'
-$schema = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'controls.json') | ConvertFrom-Json
+$schema = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $PSScriptRoot 'controls.json') | ConvertFrom-Json
 function CppString([string]$value) {
     $result = [Text.StringBuilder]::new('"')
     foreach ($letter in [Text.Encoding]::UTF8.GetBytes($value)) {

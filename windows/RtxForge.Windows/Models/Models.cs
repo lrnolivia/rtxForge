@@ -225,7 +225,7 @@ public sealed class ForgeSettings
     [JsonPropertyName("overlay_start_with_windows")] public bool OverlayStartWithWindows { get; set; } = true;
     [JsonPropertyName("overlay_material")] public string OverlayMaterial { get; set; } = "acrylic";
     [JsonPropertyName("overlay_controls")] public string OverlayControls { get; set; } = "unified";
-    [JsonPropertyName("overlay_renderer")] public string OverlayRenderer { get; set; } = "rtxforge";
+    [JsonPropertyName("overlay_renderer")] public string OverlayRenderer { get; set; } = "game";
     [JsonPropertyName("optiscaler_hotkey")] public string OptiScalerHotkey { get; set; } = "Insert";
     [JsonPropertyName("optiscaler_ui")] public bool OptiScalerUi { get; set; } = true;
     [JsonPropertyName("optiscaler_intro")] public bool OptiScalerIntro { get; set; }

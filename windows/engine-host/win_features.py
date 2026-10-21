@@ -307,6 +307,16 @@ def overlay_ui_review(params):
                    note='NR, MFG, effects and original restore backups are preserved. Running games are skipped.')
 
 
+def overlay_package_review(params):
+    import overlay_packages
+    plan = overlay_packages.prepare(engine_bridge.module(_config()), LOCAL / 'state')
+    return _review('overlay-packages', 'Update in-game overlays',
+                   [_item(p['name'], p['summary'], details=p['note']) for p in plan['plans']],
+                   blocked=plan['blocked'], skipped=plan['skipped'], payload=plan, action='Update overlays',
+                   summary=f"{len(plan['plans'])} games ready. Changes take effect next launch.",
+                   note='Game settings and original restore backups are preserved. Other package types are listed separately.')
+
+
 # ---------- library rows: custom artwork and test records ----------
 
 
@@ -798,11 +808,11 @@ def _run_update(info):
 
 
 RUNNERS = {"art-sync": _run_art_sync, "dlss-restore": _run_dlss_restore, "report": _run_report, "service": _run_service,
-           "extra": _run_extra, "extra-restore": _run_extra_restore, "update": _run_update, 'global-controls': _run_global_controls, 'overlay-ui': _run_global_controls,
+           "extra": _run_extra, "extra-restore": _run_extra_restore, "update": _run_update, 'global-controls': _run_global_controls, 'overlay-ui': _run_global_controls, 'overlay-packages': _run_global_controls,
            'storage-cleanup': _run_storage}
 
 METHODS = {
-    "run": run, "discard": discard, "media": media, 'global_review': global_review, 'overlay_ui_review': overlay_ui_review,
+    "run": run, "discard": discard, "media": media, 'global_review': global_review, 'overlay_ui_review': overlay_ui_review, 'overlay_package_review': overlay_package_review,
     "art_profiles": art_profiles, "art_set_profile": art_set_profile, "art_store": art_store, "art_reset": art_reset,
     "art_sync_review": art_sync_review,
     "sgdb_status": sgdb_status, "sgdb_connect": sgdb_connect, "sgdb_disconnect": sgdb_disconnect,

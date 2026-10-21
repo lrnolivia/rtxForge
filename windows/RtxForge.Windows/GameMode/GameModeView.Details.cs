@@ -176,7 +176,7 @@ public sealed partial class GameModeView
         foreach (var section in Sections)
         {
             var active = section == detailsSection;
-            var button = ui.Button(section, () => { detailsSection = section; Render(); pendingFocusKey = "gm_section-" + section; },
+            var button = ui.Button(ui.IconLabel(GameSections.Glyph(section), section), () => { detailsSection = section; Render(); pendingFocusKey = "gm_section-" + section; },
                 GmKind.Transparent, 0.88, radius: 12, padding: new Thickness(t.Px(18), t.Px(12), t.Px(18), t.Px(12)), minHeight: t.Compact ? 46 : 60);
             button.HorizontalAlignment = HorizontalAlignment.Stretch;
             button.HorizontalContentAlignment = HorizontalAlignment.Left;

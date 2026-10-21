@@ -23,6 +23,10 @@ public sealed partial class MainWindow
         var window = new Window { Title = game.Name + " · rtxForge", Content = frame, SystemBackdrop = new MicaBackdrop() };
         frame.RequestedTheme = RootGrid.ActualTheme;
         frame.Navigate(typeof(GamePage), new GameRequest(game, section, SeparateWindow: true));
+        window.ExtendsContentIntoTitleBar = true;
+        if (window.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter)
+            presenter.SetBorderAndTitleBar(true, false);
+        ((GamePage)frame.Content).AttachWindow(window);
         gameWindows[game.Id] = (window, frame);
         window.Activated += (_, e) =>
         {

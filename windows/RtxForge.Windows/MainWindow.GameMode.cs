@@ -20,7 +20,8 @@ public sealed partial class MainWindow
 
     void InitializeGameMode()
     {
-        gamepad = new GamepadInput(DispatcherQueue);
+        gamepad = new GamepadInput(DispatcherQueue, WinRT.Interop.WindowNative.GetWindowHandle(this),
+            () => ForegroundProcessId() == Environment.ProcessId);
         gamepad.Action += OnGamepadAction;
         gamepad.Changed += () => gameMode?.SetControllerFamily(gamepad.Family);
         gamepad.Activity += () => gameMode?.ControllerActivity();
@@ -29,6 +30,8 @@ public sealed partial class MainWindow
             || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SteamAppId")))
             DispatcherQueue.TryEnqueue(EnterGameMode);
     }
+
+    internal bool ControllerLegacyInputActive => gamepad?.LegacyInputActive == true;
 
     void OnGamepadAction(string action)
     {

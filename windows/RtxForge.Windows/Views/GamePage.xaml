@@ -25,6 +25,7 @@
 
             <!-- .game-banner: edge to edge -->
             <Grid x:Name="HeroBanner" Height="360">
+                <Grid x:Name="WindowDragRegion" Height="48" Margin="0,0,112,0" VerticalAlignment="Top" Background="Transparent" />
                 <!-- .banner-shade: the art itself fades out, so it blends into any theme's background -->
                 <controls:FadedImage x:Name="HeroImage" />
                 <!-- identity: poster · status badge · title · meta, anchored to the hero's lower edge -->
@@ -112,6 +113,18 @@
                             </Button>
                         </StackPanel>
                     </Grid>
+                </Grid>
+                <Grid x:Name="WindowActions" Visibility="Collapsed" Width="92" Height="40" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,16,16,0"
+                      PointerEntered="OnWindowActionsEntered" PointerExited="OnWindowActionsExited">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="40" /><ColumnDefinition Width="12" /><ColumnDefinition Width="40" /></Grid.ColumnDefinitions>
+                    <Button x:Name="WindowMinimize" Width="40" Height="40" CornerRadius="20" Padding="0" IsTabStop="False" IsHitTestVisible="False"
+                            AutomationProperties.Name="Minimize Game Details" ToolTipService.ToolTip="Minimize" Click="OnMinimizeWindow" GotFocus="OnWindowActionFocus" LostFocus="OnWindowActionFocus">
+                        <FontIcon Glyph="&#xE921;" FontSize="12" />
+                    </Button>
+                    <Button x:Name="WindowClose" Grid.Column="2" Width="40" Height="40" CornerRadius="20" Padding="0"
+                            AutomationProperties.Name="Close Game Details" ToolTipService.ToolTip="Close" Click="OnCloseWindow" GotFocus="OnWindowActionFocus" LostFocus="OnWindowActionFocus">
+                        <FontIcon Glyph="&#xE8BB;" FontSize="12" />
+                    </Button>
                 </Grid>
             </Grid>
 

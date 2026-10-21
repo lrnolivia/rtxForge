@@ -136,8 +136,17 @@ def bundled_bridge(selection='latest'):
     record = validate_release(record)
     t.need(record.get('variant')=='nr-mfg-bridge','The bundled package is not the combined bridge')
     spec = json.loads((ROOT / 'providers/skynizz-bridge/source.json').read_text(encoding='utf-8'))
-    t.need(record['patch_sha256'] == spec['patch_sha256'] and record['upstream'] == spec['upstream']
-           and record.get('mfg_source') == spec['mfg_source'] and record.get('bridge_id') == spec['id'],
+    matches = record['patch_sha256'] == spec['patch_sha256'] and record.get('bridge_id') == spec['id']
+    if record.get('panel_candidate'):
+        panel = json.loads((ROOT / 'providers/skynizz-bridge/panel-candidate.json').read_text(encoding='utf-8'))
+        placement = json.loads((ROOT / 'providers/skynizz-bridge/placement-candidate.json').read_text(encoding='utf-8'))
+        matches = (record.get('bridge_id') == panel['id'] and record.get('base_bridge_id') == spec['id']
+                   and record.get('base_patch_sha256') == spec['patch_sha256']
+                   and panel['base_bridge_id'] == placement['id']
+                   and record['patch_sha256'] == placement['patch_sha256']
+                   and record.get('route_header_sha256') == placement['header_sha256']
+                   and record.get('panel_sources') == panel['sources'] and record.get('panel_renderer') == 'in-game')
+    t.need(matches and record['upstream'] == spec['upstream'] and record.get('mfg_source') == spec['mfg_source'],
            'Bundled bridge does not match the admitted source patch')
     t.need(selection in ('latest', record['tag']), 'This Skynizz version has no compiled NR + MFG bridge in the app; keep the recorded version or update the app.')
     return dict(record, selected_source=selection), folder / record['archive']

@@ -1,4 +1,5 @@
 using Microsoft.UI.Dispatching;
+using System.Runtime.InteropServices;
 using Windows.Gaming.Input;
 
 namespace RtxForge.Windows.GameMode;
@@ -20,6 +21,10 @@ public sealed class GamepadInput : IDisposable
     GamepadReading lastReading;
     readonly EventHandler<Gamepad> added;
     readonly EventHandler<Gamepad> removed;
+    readonly Func<bool> foreground;
+    readonly ControllerRawInput raw;
+    bool xinputConnected;
+    public bool LegacyInputActive => raw.LegacyInputActive;
 
     /// <summary>One action per press (and per repeat for directions).</summary>
     public event Action<string>? Action;
@@ -29,10 +34,16 @@ public sealed class GamepadInput : IDisposable
 
     /// <summary>xbox, playstation, nintendo, steam or generic: drives button labels.</summary>
     public string Family { get; private set; } = "xbox";
-    public bool Connected => pad is not null;
+    public bool Connected => pad is not null || xinputConnected || raw.LegacyInputActive;
 
-    public GamepadInput(DispatcherQueue queue)
+    public GamepadInput(DispatcherQueue queue, nint window, Func<bool> foreground)
     {
+        this.foreground = foreground;
+        raw = new ControllerRawInput(window, foreground, family =>
+        {
+            SetFamily(family);
+            Activity?.Invoke();
+        });
         added = (_, _) => queue.TryEnqueue(Refresh);
         removed = (_, _) => queue.TryEnqueue(Refresh);
         Gamepad.GamepadAdded += added;
@@ -42,6 +53,13 @@ public sealed class GamepadInput : IDisposable
         timer.Tick += (_, _) => Poll();
         Refresh();
         timer.Start();
+    }
+
+    void SetFamily(string family)
+    {
+        if (Family == family) return;
+        Family = family;
+        Changed?.Invoke();
     }
 
     void Refresh()
@@ -72,23 +90,19 @@ public sealed class GamepadInput : IDisposable
         RawGameController? raw;
         try { raw = RawGameController.FromGameController(gamepad); }
         catch (Exception error) when (error is InvalidCastException or System.Runtime.InteropServices.COMException) { return "xbox"; }
-        return raw?.HardwareVendorId switch
-        {
-            0x054C => "playstation",
-            0x057E => "nintendo",
-            0x28DE => "steam",
-            0x045E => "xbox",
-            null => "xbox",
-            _ => "generic",
-        };
+        return raw is null ? "xbox" : ControllerDevice.Family(raw.HardwareVendorId);
     }
 
     void Poll()
     {
-        if (pad is null) return;
+        if (!foreground()) { previous.Clear(); repeats.Clear(); lastReading = default; return; }
         GamepadReading reading;
-        try { reading = pad.GetCurrentReading(); }
-        catch (Exception error) when (error is InvalidOperationException or System.Runtime.InteropServices.COMException) { return; }
+        if (pad is not null)
+        {
+            try { reading = pad.GetCurrentReading(); }
+            catch (Exception error) when (error is InvalidOperationException or System.Runtime.InteropServices.COMException) { return; }
+        }
+        else if (!ReadXInput(out reading)) return;
 
         if (reading.Buttons != lastReading.Buttons && reading.Buttons != GamepadButtons.None
             || Math.Abs(reading.RightThumbstickX - lastReading.RightThumbstickX) > .15
@@ -137,6 +151,37 @@ public sealed class GamepadInput : IDisposable
         foreach (var key in repeats.Keys.Where(k => !pressed.Contains(k)).ToList()) repeats.Remove(key);
     }
 
+    bool ReadXInput(out GamepadReading reading)
+    {
+        reading = default;
+        xinputConnected = false;
+        // WGI remains primary. This fallback handles virtual XInput devices
+        // without dispatching the same physical press through both providers.
+        for (uint slot = 0; slot < 4; slot++)
+        {
+            if (XInputGetState(slot, out var state) != 0) continue;
+            xinputConnected = true;
+            var value = state.Pad;
+            if (value.Buttons == 0 && Math.Abs((int)value.X) < 12000 && Math.Abs((int)value.Y) < 12000
+                && Math.Abs((int)value.RX) < 12000 && Math.Abs((int)value.RY) < 12000 && value.LT < 50 && value.RT < 50) continue;
+            SetFamily(raw.SlotFamily((int)slot) ?? "xbox");
+            GamepadButtons buttons = 0;
+            void Map(ushort bit, GamepadButtons button) { if ((value.Buttons & bit) != 0) buttons |= button; }
+            Map(0x1000, GamepadButtons.A); Map(0x2000, GamepadButtons.B); Map(0x4000, GamepadButtons.X); Map(0x8000, GamepadButtons.Y);
+            Map(0x20, GamepadButtons.View); Map(0x10, GamepadButtons.Menu);
+            Map(0x100, GamepadButtons.LeftShoulder); Map(0x200, GamepadButtons.RightShoulder);
+            Map(1, GamepadButtons.DPadUp); Map(2, GamepadButtons.DPadDown); Map(4, GamepadButtons.DPadLeft); Map(8, GamepadButtons.DPadRight);
+            reading = new GamepadReading { Buttons = buttons, LeftThumbstickX = value.X / 32768.0, LeftThumbstickY = value.Y / 32768.0,
+                RightThumbstickX = value.RX / 32768.0, RightThumbstickY = value.RY / 32768.0, LeftTrigger = value.LT / 255.0, RightTrigger = value.RT / 255.0 };
+            return true;
+        }
+        return xinputConnected;
+    }
+
+    [StructLayout(LayoutKind.Sequential)] struct XPad { public ushort Buttons; public byte LT, RT; public short X, Y, RX, RY; }
+    [StructLayout(LayoutKind.Sequential)] struct XState { public uint Packet; public XPad Pad; }
+    [DllImport("xinput1_4.dll")] static extern uint XInputGetState(uint slot, out XState state);
+
     /// <summary>Button labels per family (controller_input.GLYPHS: accept, back, library, menu).</summary>
     public static (string Accept, string Back, string Library, string Menu) Glyphs(string family) => family switch
     {
@@ -152,5 +197,6 @@ public sealed class GamepadInput : IDisposable
         timer.Stop();
         Gamepad.GamepadAdded -= added;
         Gamepad.GamepadRemoved -= removed;
+        raw.Dispose();
     }
 }

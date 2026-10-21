@@ -365,7 +365,8 @@ def prepare(config,rows,mode,operation,settings):
                 selection=settings.get('skynizz_version','latest')
                 if release is None:
                     if selection not in releases:
-                        releases[selection]=(skynizz_provider.bundled_bridge(selection)[0] if mode in ('nr-mfg','mfg-only') or prefer_bundled_nr_only else ui.work('Resolving Skynizz release',skynizz_provider.resolve,selection))
+                        native_panel = settings.get('overlay_helper', True) and settings.get('overlay_renderer') == 'game'
+                        releases[selection]=(skynizz_provider.bundled_bridge(selection)[0] if mode in ('nr-mfg','mfg-only') or prefer_bundled_nr_only or native_panel else ui.work('Resolving Skynizz release',skynizz_provider.resolve,selection))
                     release=dict(releases[selection])
                     mfg_provider=settings.get('mfg_provider','integrated')
                     t.need(mfg_provider in ('integrated','mfg-unlock'),'Choose a supported MFG component.')

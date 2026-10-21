@@ -49,7 +49,12 @@ public sealed partial class GamePage : Page
         Sections.Visibility = request.SeparateWindow ? Visibility.Collapsed : Visibility.Visible;
         if (request.SeparateWindow)
             foreach (var item in Sections.Items)
-                SidebarSections.Items.Add(new ListViewItem { Content = item.Text, Tag = item.Tag, CornerRadius = new CornerRadius(8), Margin = new Thickness(0, 2, 0, 2) });
+            {
+                var label = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
+                label.Children.Add(new FontIcon { Glyph = GameSections.Glyph(item.Text), FontSize = 16 });
+                label.Children.Add(new TextBlock { Text = item.Text });
+                SidebarSections.Items.Add(new ListViewItem { Content = label, Tag = item.Tag, CornerRadius = new CornerRadius(8), Margin = new Thickness(0, 2, 0, 2) });
+            }
         TitleText.Text = game.Name;
         ShowIdentity();
         _ = LoadSteamInfoAsync(game);

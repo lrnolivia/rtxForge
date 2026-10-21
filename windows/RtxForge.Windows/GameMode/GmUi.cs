@@ -340,11 +340,12 @@ public sealed partial class GmUi(GmTheme t)
         grid.Children.Remove(value);
         value.TextWrapping = TextWrapping.WrapWholeWords; value.MaxLines = 2;
         value.FontSize = t.Em(.83); value.Foreground = GmTheme.B(t.Fg);
+        value.TextAlignment = TextAlignment.Center;
         var field = new Border
         {
             Background = GmTheme.B(t.Card), CornerRadius = new CornerRadius(t.Px(9)),
             Padding = new Thickness(t.Px(12), t.Px(10), t.Px(12), t.Px(10)),
-            MinWidth = t.Px(120), MaxWidth = t.Px(240), Child = value,
+            MinWidth = t.Px(160), MaxWidth = t.Px(280), Child = value,
             HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
         };
         Grid.SetColumn(field, 1); grid.Children.Add(field);

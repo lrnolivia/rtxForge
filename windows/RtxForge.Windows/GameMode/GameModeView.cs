@@ -376,6 +376,7 @@ public sealed partial class GameModeView : UserControl
 
     void SetInput(string kind)
     {
+        if (kind == "keyboard" && shell.ControllerLegacyInputActive) { ControllerActivity(); return; }
         if (inputKind == kind) return;
         inputKind = kind;
         RenderFooter();

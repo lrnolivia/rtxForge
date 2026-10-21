@@ -48,6 +48,7 @@ public sealed partial class GameModeView
         new("Apply to games", "Menu and welcome changes take effect next launch.",
         [
             ui.RowButton("Review installed games", null, () => _ = ReviewOverlayGames(), description: "Apply saved choices with backups. Running games are skipped.", glyph: "\uE9D9"),
+            ui.RowButton("Update in-game overlays", null, () => _ = ReviewOverlayPackages(), description: "Review managed Skynizz games. Tuning and restore backups are kept.", glyph: "\uE777"),
         ]),
     ];
 
@@ -67,5 +68,11 @@ public sealed partial class GameModeView
     {
         if (shell.Service is not EngineForgeService engine) { Toast("Game-menu changes are available in the installed app."); return; }
         await RunReviewAsync("Review game menus", () => engine.ReviewOverlayUiAsync(ForgeSettings.Load().GameUiOptions()));
+    }
+
+    async Task ReviewOverlayPackages()
+    {
+        if (shell.Service is not EngineForgeService engine) { Toast("Overlay updates require the installed app."); return; }
+        await RunReviewAsync("Update in-game overlays", () => engine.ReviewOverlayPackagesAsync());
     }
 }

@@ -100,8 +100,9 @@
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <Button x:Name="NavigationBack" Click="OnNavigationBackClick" IsEnabled="False" Width="40" Height="40"
                             Padding="0" Background="Transparent" BorderThickness="0" HorizontalAlignment="Left"
+                            Style="{StaticResource SubtleButtonStyle}" CornerRadius="20"
                             ToolTipService.ToolTip="Back" AutomationProperties.Name="Back">
-                        <FontIcon Glyph="&#xE72B;" FontSize="16" />
+                        <SymbolIcon Symbol="Back" />
                     </Button>
                     <Button Grid.Column="1" Click="OnNavigationMenuClick" Width="40" Height="40" Padding="0"
                             Background="Transparent" BorderThickness="0" HorizontalAlignment="Right"

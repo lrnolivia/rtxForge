@@ -68,6 +68,9 @@ $copy = @(
     @{ From = 'scripts'; Filter = '*.py' }
     @{ From = 'providers'; Filter = '*.json' }
     @{ From = 'providers\skynizz-bridge\controls.json' }
+    @{ From = 'providers\skynizz-bridge\source.json' }
+    @{ From = 'providers\skynizz-bridge\placement-candidate.json' }
+    @{ From = 'providers\skynizz-bridge\panel-candidate.json' }
     @{ From = 'provider.json' }
     @{ From = 'VERSION' }
     @{ From = 'windows\engine-host'; Filter = '*.py' }

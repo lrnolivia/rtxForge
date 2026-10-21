@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Windows.Input;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using RtxForge.Windows.Models;
@@ -28,16 +29,18 @@ public sealed class GameItem : INotifyPropertyChanged
     static readonly SolidColorBrush White = new(Color.FromArgb(255, 255, 255, 255));
 
     readonly GameActions actions;
+    readonly Control? themeHost;
     AccentPalette? palette;
     bool selected, hovered, selecting;
 
-    public GameItem(Game game, ForgeSettings settings, GameActions actions, bool selecting, bool selected, int density = 0)
+    public GameItem(Game game, ForgeSettings settings, GameActions actions, bool selecting, bool selected, int density = 0, Control? themeHost = null)
     {
         // List density: 0 all columns, 1 hides Location, 2 also hides Features.
         LocationWidth = new GridLength(density >= 1 ? 0 : 240);
         FeaturesWidth = new GridLength(density >= 2 ? 0 : 150);
         Game = game;
         this.actions = actions;
+        this.themeHost = themeHost;
         this.selected = selected;
         this.selecting = selecting;
         PrimaryCommand = new RelayCommand(_ => actions.Primary(game));
@@ -92,8 +95,19 @@ public sealed class GameItem : INotifyPropertyChanged
     }
 
     void Changed() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty));
+    public void RefreshTheme() => Changed();
 
-    static Brush Resource(string key) => (Brush)Application.Current.Resources[key];
+    Brush Resource(string key)
+    {
+        // The app theme is applied to the window's root, not Application.Current.
+        // Read inherited text from the attached page so light cards don't receive dark-theme ink.
+        if (themeHost is not null && key is "TextFillColorPrimaryBrush" or "ButtonForeground") return themeHost.Foreground;
+        if (themeHost?.Foreground is SolidColorBrush ink && key == "TextFillColorSecondaryBrush")
+            return new SolidColorBrush(ink.Color) { Opacity = ink.Opacity * .72 };
+        return (Brush)Application.Current.Resources[key];
+    }
+    Color HoverTitle(AccentPalette p, Color dark) => themeHost?.ActualTheme == ElementTheme.Light
+        ? ArtAccent.Readable(p.Color, Color.FromArgb(255, 250, 250, 250)) : dark;
     Brush? Accent(Func<AccentPalette, Color> pick, double opacity = 1) =>
         palette is null ? null : new SolidColorBrush(pick(palette)) { Opacity = opacity };
 
@@ -102,7 +116,7 @@ public sealed class GameItem : INotifyPropertyChanged
     public Brush CardFill => selected && Accent(p => p.Color) is { } fill ? fill : Transparent;
     public Brush CardTitle =>
         selected && Accent(p => p.SelectedTitle) is { } s ? s
-        : hovered && Accent(p => p.CardHoverTitle) is { } h ? h
+        : hovered && Accent(p => HoverTitle(p, p.CardHoverTitle)) is { } h ? h
         : Resource("TextFillColorPrimaryBrush");
     public Brush CardStatusPillFill => selected && Accent(p => p.SourceBg) is { } b ? b : Resource("ControlFillColorSecondaryBrush");
     public Brush CardStatusPillText => selected && Accent(p => p.SourceFg) is { } f ? f : Resource("TextFillColorPrimaryBrush");
@@ -135,7 +149,7 @@ public sealed class GameItem : INotifyPropertyChanged
     }
     public Brush RowTitle =>
         selected && Accent(p => p.AccentDark) is { } d ? d
-        : hovered && Accent(p => p.RowHoverTitle) is { } h ? h
+        : hovered && Accent(p => HoverTitle(p, p.RowHoverTitle)) is { } h ? h
         : Resource("TextFillColorPrimaryBrush");
     public Brush RowText => selected && Accent(p => p.AccentDark) is { } d ? d : Resource("TextFillColorPrimaryBrush");
     public Brush RowSubtext => selected && Accent(p => p.AccentDark) is { } d ? d : Resource("TextFillColorSecondaryBrush");

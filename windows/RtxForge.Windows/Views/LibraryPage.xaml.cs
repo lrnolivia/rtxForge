@@ -30,6 +30,11 @@ public sealed partial class LibraryPage : Page
     public LibraryPage()
     {
         InitializeComponent();
+        ActualThemeChanged += (_, _) =>
+        {
+            if (Library.ItemsSource is IEnumerable<GameItem> items)
+                foreach (var item in items) item.RefreshTheme();
+        };
 
         // List view Actions column: Install / Restore, and the row's "…" menu.
         actions = new GameActions(
@@ -165,7 +170,7 @@ public sealed partial class LibraryPage : Page
 
         var scale = Settings.ArtScale / 100.0;
         var items = LibraryScope.Filter(games, Settings.LibraryFilter, shell.Query)
-            .Select(g => new GameItem(g, Settings, actions, selectedIds.Count > 0, selectedIds.Contains(g.Id), density) { PresetMode = shell.PresetSelecting })
+            .Select(g => new GameItem(g, Settings, actions, selectedIds.Count > 0, selectedIds.Contains(g.Id), density, this) { PresetMode = shell.PresetSelecting })
             .ToList();
         for (var i = 0; i < items.Count; i++)
         {

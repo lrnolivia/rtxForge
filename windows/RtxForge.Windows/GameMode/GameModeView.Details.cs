@@ -49,15 +49,15 @@ public sealed partial class GameModeView
         var heroHeight = t.Px(t.Compact ? 240 : ActualWidth <= 1500 ? 280 : 320);
         var navWidth = t.Px(ActualWidth <= 1050 ? 184 : ActualWidth <= 1500 ? 246 : 254);
         var side = t.Px(ActualWidth <= 1050 ? 24 : ActualWidth <= 1500 ? 36 : 56);
-        var grid = new Grid { ColumnSpacing = t.Px(26), RowSpacing = t.Px(t.Compact ? 12 : 22), Padding = new Thickness(0, 0, 0, t.Px(8)) };
+        var grid = new Grid { RowSpacing = t.Px(t.Compact ? 12 : 22), Padding = new Thickness(0, 0, 0, t.Px(8)) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(navWidth + side) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(heroHeight) });
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-        // ----- Hero: full width; art fades into the workspace (--view) -----
+        // The section rail spans the workspace; the hero belongs to the content column.
         var hero = new Grid { Background = GmTheme.B(t.View) };
-        Grid.SetColumnSpan(hero, 2);
+        Grid.SetColumn(hero, 1);
         if ((g.HeroPath ?? g.CapsulePath) is { } heroSource)
         {
             var art = new FadedImage { FadeStart = 0.3f };
@@ -73,11 +73,14 @@ public sealed partial class GameModeView
         var identity = new Grid
         {
             ColumnSpacing = t.Px(30), VerticalAlignment = VerticalAlignment.Bottom,
-            Padding = new Thickness(side, t.Px(t.Compact ? 66 : 82), side, t.Px(t.Compact ? 18 : 26)),
+            Padding = new Thickness(t.Px(24), t.Px(20), side, t.Px(t.Compact ? 18 : 26)),
+            RowSpacing = t.Px(18),
         };
+        identity.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        identity.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         identity.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         identity.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var posterHeight = t.Px(t.Compact ? 156 : ActualWidth <= 1500 ? 184 : 210);
+        var posterHeight = t.Px(t.Compact ? 124 : ActualWidth <= 1500 ? 148 : 166);
         var poster = new Border
         {
             Height = posterHeight, Width = Math.Round(posterHeight * 2 / 3), CornerRadius = new CornerRadius(t.Px(10)),
@@ -105,40 +108,37 @@ public sealed partial class GameModeView
         }
         badges.Children.Add(ui.Badge(g.Tested ? "Tested" : "Untested", GmTheme.Hex("#573d18"), GmTheme.Hex("#ffe8a2"), 0.62 * 1.2, g.Tested ? "" : ""));
         text.Children.Add(badges);
-        text.Children.Add(ui.Text(string.Join(" · ", new[] { g.Library, g.Installed ? "Configured" : g.Blocked ? "Unsupported" : "Available", g.IsFeeder ? "Feeder NR" : ProviderName() }), 0.78, t.Fg));
+        text.Children.Add(ui.Text(string.Join(" · ", new[] { g.Installed ? "Configured" : g.Blocked ? "Unsupported" : "Available", g.IsFeeder ? "Feeder NR" : ProviderName() }), 0.74, t.Muted));
         Grid.SetColumn(text, 1);
         identity.Children.Add(text);
         // The desktop Game Details hero actions, in the same order.
-        identity.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12), VerticalAlignment = VerticalAlignment.Bottom };
+        var actions = new Controls.PresetColumns(t.Px(210), 3) { ColumnSpacing = t.Px(10), RowSpacing = t.Px(10) };
         var install = ui.Button(Glyph("", g.AdoptionAvailable || g.InstalledOnLinux ? g.InstallLabel : g.Installed ? "Repair Features" : "Install Features"), () => _ = RunOperationAsync("install", [g]),
-            GmKind.Primary, 0.82, enabled: !g.Blocked || g.AdoptionAvailable, minHeight: t.Compact ? 46 : 54);
+            GmKind.Primary, 0.76, enabled: !g.Blocked || g.AdoptionAvailable, radius: 10, minHeight: 46);
         Key(install, "hero-install");
         actions.Children.Add(install);
         var restore = ui.Button(Glyph("", "Restore Original Files"), () => _ = RunOperationAsync("uninstall", [g]),
-            GmKind.Danger, 0.82, enabled: g.Installed, minHeight: t.Compact ? 46 : 54);
+            GmKind.Danger, 0.76, enabled: g.Installed, radius: 10, minHeight: 46);
         Key(restore, "hero-restore");
         actions.Children.Add(restore);
         var update = ui.Button(Glyph("", "Update DLSS"), () => _ = RunOperationAsync("update-dlss", [g]),
-            GmKind.Dlss, 0.82, enabled: !g.Blocked, minHeight: t.Compact ? 46 : 54);
+            GmKind.Dlss, 0.76, enabled: !g.Blocked, radius: 10, minHeight: 46);
         Key(update, "hero-update");
         actions.Children.Add(update);
-        Grid.SetColumn(actions, 2);
+        foreach (var action in actions.Children.OfType<Button>()) action.HorizontalAlignment = HorizontalAlignment.Stretch;
+        Grid.SetRow(actions, 1);
+        Grid.SetColumnSpan(actions, 2);
         identity.Children.Add(actions);
         hero.Children.Add(identity);
         var back = ui.Button(Glyph("", "Back to Library"), CloseDetails, GmKind.Transparent, 0.78, radius: 12,
             padding: new Thickness(t.Px(18), t.Px(10), t.Px(18), t.Px(10)), minHeight: t.Compact ? 38 : 46);
-        back.Background = GmTheme.B(GmTheme.Hex("#121212"), 0.86);
-        back.Foreground = GmTheme.B(Microsoft.UI.Colors.White);
         back.HorizontalAlignment = HorizontalAlignment.Left;
-        back.VerticalAlignment = VerticalAlignment.Top;
-        back.Margin = new Thickness(side, t.Px(t.Compact ? 12 : 18), 0, 0);
         Key(back, "details-back");
-        hero.Children.Add(back);
         grid.Children.Add(hero);
 
         // ----- Section navigation -----
-        var nav = new StackPanel { Spacing = t.Px(t.Compact ? 6 : 12), Padding = new Thickness(side, t.Px(8), t.Px(18), t.Px(8)) };
+        var nav = new StackPanel { Spacing = t.Px(8), Padding = new Thickness(t.Px(20), t.Px(20), t.Px(20), t.Px(20)) };
+        nav.Children.Add(back);
         nav.Children.Add(ui.Text("Game Details", 1.06, weight: FontWeights.SemiBold).With(h => h.Margin = new Thickness(t.Px(16), t.Px(8), 0, t.Px(t.Compact ? 12 : 20))));
         var navButtons = new List<(Button Button, string Section)>();
         foreach (var section in Sections)
@@ -152,8 +152,8 @@ public sealed partial class GameModeView
             navButtons.Add((button, section));
             nav.Children.Add(button);
         }
-        var navScroll = new ScrollViewer { Content = nav, HorizontalScrollMode = ScrollMode.Disabled };
-        Grid.SetRow(navScroll, 1);
+        var navScroll = new ScrollViewer { Content = nav, Background = GmTheme.B(t.Panel), HorizontalScrollMode = ScrollMode.Disabled };
+        Grid.SetRowSpan(navScroll, 2);
         grid.Children.Add(navScroll);
 
         // ----- Section body -----
@@ -449,24 +449,70 @@ public sealed partial class GameModeView
         }
         Border Card(string title, params UIElement[] children)
         {
-            var section = new StackPanel { Spacing = t.Px(12), Padding = new Thickness(t.Px(20)) };
-            section.Children.Add(ui.Text(title, 1.05, weight: FontWeights.SemiBold));
+            var section = new StackPanel { Spacing = t.Px(10), Padding = new Thickness(t.Px(18)) };
+            if (title.Length > 0) section.Children.Add(ui.Text(title, .96, weight: FontWeights.SemiBold));
             foreach (var child in children) section.Children.Add(child);
-            return new Border { Child = section, Background = GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(16)), VerticalAlignment = VerticalAlignment.Top };
+            return new Border { Child = section, Background = GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(12)), VerticalAlignment = VerticalAlignment.Top };
         }
         UIElement Field(FeatureControl field)
         {
             var available = enabled && FeatureControlSchema.Available(field, shell.Mode, legacy);
-            return ui.StepperRow(field.Key == "enabled" ? "Enable NR on launch" : field.Caption(advanced),
-                !available ? "Unavailable for this package." : field.Key == "skin" ? "−1 follows local structure." : null,
-                () => field.Display(FeatureControlSchema.Number(values, field), advanced), direction =>
+            var label = field.Key == "enabled" ? "Enable NR on launch" : field.Caption(advanced);
+            var shown = ui.Text("", .78, available ? t.Fg : t.DisabledFg);
+            shown.HorizontalAlignment = HorizontalAlignment.Center;
+            shown.VerticalAlignment = VerticalAlignment.Center;
+            var line = new Grid { ColumnSpacing = t.Px(8) };
+            line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Button? button = null;
+            void Refresh()
+            {
+                var current = FeatureControlSchema.Number(values, field);
+                // Keep the runtime's numeric units in both control styles.
+                shown.Text = field.Key == "skin" && current < 0 && !advanced ? "Follow structure" : field.Display(current, true);
+                if (button is not null) Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, label + ": " + shown.Text);
+            }
+            void Adjust(int direction)
+            {
+                if (!available) return;
+                var current = FeatureControlSchema.Number(values, field);
+                var next = field.Kind == "toggle" ? current == 0 ? 1 : 0
+                    : field.Values.Length > 0 ? field.Values[Math.Clamp(Array.IndexOf(field.Values, current) + direction, 0, field.Values.Length - 1)]
+                    : Math.Clamp(Math.Round(current + direction * field.Step, 2), field.Min, field.Max);
+                FeatureControlSchema.Put(values, field, next);
+                Refresh();
+            }
+            Border Step(string glyph, int direction)
+            {
+                var target = new Border
                 {
-                    var current = FeatureControlSchema.Number(values, field);
-                    var next = field.Kind == "toggle" ? current == 0 ? 1 : 0
-                        : field.Values.Length > 0 ? field.Values[Math.Clamp(Array.IndexOf(field.Values, current) + direction, 0, field.Values.Length - 1)]
-                        : Math.Clamp(Math.Round(current + direction * field.Step, 2), field.Min, field.Max);
-                    FeatureControlSchema.Put(values, field, next);
-                }, available, compact: true);
+                    MinWidth = t.Px(38), MinHeight = t.Px(42), Background = GmTheme.B(Microsoft.UI.Colors.Transparent),
+                    Child = ui.Icon(glyph, .55, available ? t.Muted : t.DisabledFg),
+                };
+                target.Tapped += (_, e) => { Adjust(direction); e.Handled = true; };
+                return target;
+            }
+            line.Children.Add(Step("", -1));
+            Grid.SetColumn(shown, 1); line.Children.Add(shown);
+            var right = Step("", 1); Grid.SetColumn(right, 2); line.Children.Add(right);
+            button = ui.Button(line, field.Kind == "toggle" ? () => Adjust(1) : null, GmKind.Card, .78, available,
+                radius: 22, padding: new Thickness(t.Px(4), 0, t.Px(4), 0), minHeight: 46);
+            button.HorizontalAlignment = HorizontalAlignment.Stretch;
+            button.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+            button.BorderBrush = GmTheme.B(t.Line);
+            button.BorderThickness = new Thickness(t.Px(1));
+            button.Tag = new Adjustable(Adjust);
+            GmUi.NoLift(button);
+            ui.Focusable(button, 0);
+            Key(button, "preset-field-" + field.Key);
+            Refresh();
+            var fieldColumn = new StackPanel { Spacing = t.Px(8) };
+            fieldColumn.Children.Add(ui.Text(label, .84, available ? t.Fg : t.DisabledFg, FontWeights.SemiBold, wrap: true));
+            fieldColumn.Children.Add(button);
+            if (!available) fieldColumn.Children.Add(ui.P("Unavailable for this package.", .66));
+            else if (field.Key == "skin") fieldColumn.Children.Add(ui.P("−1 follows local structure.", .66));
+            return fieldColumn;
         }
         UIElement Choices(string key)
         {
@@ -491,7 +537,10 @@ public sealed partial class GameModeView
                 button.HorizontalAlignment = HorizontalAlignment.Stretch;
                 Key(button, "preset-" + key + "-" + i); buttons.Add(button); line.Children.Add(button);
             }
-            Select(FeatureControlSchema.Number(values, definition)); return line;
+            foreach (var button in buttons) { GmUi.NoLift(button); ui.Focusable(button, -4); }
+            Select(FeatureControlSchema.Number(values, definition));
+            return new Border { Child = line, Background = GmTheme.B(t.Card), BorderBrush = GmTheme.B(t.Line),
+                BorderThickness = new Thickness(t.Px(1)), CornerRadius = new CornerRadius(t.Px(12)), Padding = new Thickness(t.Px(4)) };
         }
         UIElement Disclosure(string title, params UIElement[] children)
         {
@@ -518,14 +567,14 @@ public sealed partial class GameModeView
         var secondary = new StackPanel { Spacing = t.Px(16) };
         secondary.Children.Add(Card("Image tuning", Pair(Field(Definition("detail")), Field(Definition("colour"))),
             Disclosure("Fine tuning", Pair(Field(Definition("structure")), Field(Definition("tone"))), Pair(Field(Definition("skin")), Field(Definition("auto_mask"))))));
-        secondary.Children.Add(Card("Sharpening", Disclosure("Filter controls", Field(Definition("sharpen")),
+        secondary.Children.Add(Card("", Disclosure("Sharpening", Field(Definition("sharpen")),
             Pair(Field(Definition("sharpen_shader")), Field(Definition("sharp_override"))), Field(Definition("sharpness")),
             Disclosure("Motion sharpening", Field(Definition("motion_sharpen")), Field(Definition("motion_sharpness"))))));
         var performance = controls.Where(f => f.Group == "Performance").Select(Field).ToArray();
         var performanceRows = new List<UIElement>();
         for (var i = 0; i < performance.Length; i += 2)
             performanceRows.Add(i + 1 < performance.Length ? Pair(performance[i], performance[i + 1]) : performance[i]);
-        secondary.Children.Add(Card("Performance", Disclosure("Rendering and cache", performanceRows.ToArray())));
+        secondary.Children.Add(Card("", Disclosure("Performance", performanceRows.ToArray())));
         primary.Children.Add(secondary); rows.Add(primary);
         return (rows, () => FeatureControlSchema.Tuning(values));
     }

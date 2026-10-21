@@ -16,10 +16,12 @@ public sealed partial class GamePage : Page
     Game game = null!;
     string section = "Overview";
     bool narrow;
+    Services.AccentPalette? gamePalette;
 
     public GamePage()
     {
         InitializeComponent();
+        ActualThemeChanged += (_, _) => ApplyAccentText();
         shell.GamesChanged += Refresh;
         Unloaded += (_, _) => shell.GamesChanged -= Refresh;
     }
@@ -52,7 +54,8 @@ public sealed partial class GamePage : Page
         if (palette is null || current != game) return;
 
         // .{art} .game-banner-title / .progress-poster-frame
-        TitleText.Foreground = palette.Brush(palette.HeroAccent);
+        gamePalette = palette;
+        ApplyAccentText();
         PosterFrame.BorderBrush = palette.AccentBrush;
         PosterFrame.BorderThickness = new Thickness(2);
 
@@ -73,13 +76,22 @@ public sealed partial class GamePage : Page
             ("ToggleSwitchKnobFillOn", accentFg), ("ProgressBarForeground", accent),
             ("SelectorBarItemPillFill", accent),
             ("SelectorBarItemBackgroundSelected", palette.Brush(palette.Color, 0.10)),
-            ("SelectorBarItemForegroundSelected", palette.Brush(palette.NavAccent)),
         })
             Resources[key] = brush;
 
         // Re-resolve ThemeResource lookups against the new page-level overrides.
         RequestedTheme = ActualTheme == ElementTheme.Dark ? ElementTheme.Light : ElementTheme.Dark;
         RequestedTheme = ElementTheme.Default;
+        ApplyAccentText();
+    }
+
+    void ApplyAccentText()
+    {
+        if (gamePalette is not { } palette) return;
+        var light = ActualTheme == ElementTheme.Light;
+        var ink = light ? Services.ArtAccent.Readable(palette.Color, global::Windows.UI.Color.FromArgb(255, 243, 243, 243)) : palette.HeroAccent;
+        TitleText.Foreground = palette.Brush(ink);
+        Resources["SelectorBarItemForegroundSelected"] = palette.Brush(light ? ink : palette.NavAccent);
     }
 
     void Refresh()

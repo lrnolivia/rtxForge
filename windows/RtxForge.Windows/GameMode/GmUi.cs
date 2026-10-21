@@ -46,7 +46,7 @@ public sealed class GmUi(GmTheme t)
         return icon;
     }
 
-    /// <summary>.rf-button with the prototype's 4px focus outline at a 4px offset.</summary>
+    /// <summary>Native button with a restrained, visible controller focus indicator.</summary>
     public Button Button(object content, Action? click, GmKind kind = GmKind.Card, double em = 1, bool enabled = true,
         double radius = 32, Thickness? padding = null, double minHeight = 60, string? name = null)
     {
@@ -80,7 +80,6 @@ public sealed class GmUi(GmTheme t)
             button.BorderThickness = new Thickness(t.Px(2));
         }
         Focusable(button);
-        Lift(button);
         if (click is not null) button.Click += (_, _) => click();
         if (name is not null) Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, name);
         return button;
@@ -106,14 +105,14 @@ public sealed class GmUi(GmTheme t)
         return line;
     }
 
-    /// <summary>Prototype focus: 4px outline in --focus, offset 4px, following the control's corners.</summary>
-    public void Focusable(Control control, double offset = 4)
+    /// <summary>Focus stays separate from selection without growing into neighbouring controls.</summary>
+    public void Focusable(Control control, double offset = 0)
     {
         control.UseSystemFocusVisuals = true;
         control.FocusVisualPrimaryBrush = GmTheme.B(t.Focus);
-        control.FocusVisualPrimaryThickness = new Thickness(t.Px(4));
+        control.FocusVisualPrimaryThickness = new Thickness(0, 0, 0, t.Px(2));
         control.FocusVisualSecondaryThickness = new Thickness(0);
-        control.FocusVisualMargin = new Thickness(-t.Px(offset + 4));
+        control.FocusVisualMargin = new Thickness(-t.Px(offset + 2));
         control.IsTabStop = true;
     }
 

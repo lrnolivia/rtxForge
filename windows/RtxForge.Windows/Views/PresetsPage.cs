@@ -37,11 +37,11 @@ public sealed partial class PresetsPage : Page
 
         var footer = new StackPanel { Spacing = 8 };
         var actions = new PresetColumns(180, 4) { ColumnSpacing = 8, RowSpacing = 8 };
-        applyAll = Prefs.ActionButton("Review all games", async (_, _) => await ApplyAllAsync(), glyph: "");
-        actions.Children.Add(Prefs.ActionButton("Save preset", (_, _) => Save(), accent: true, glyph: ""));
+        applyAll = Prefs.ActionButton("Review all games…", async (_, _) => await ApplyAllAsync(), glyph: "");
+        actions.Children.Add(Prefs.ActionButton("Save as default", (_, _) => Save(), accent: true, glyph: ""));
+        actions.Children.Add(Prefs.ActionButton("Choose games…", (_, _) => { Save(); shell.BeginPresetSelection(); }, glyph: ""));
         actions.Children.Add(applyAll);
-        actions.Children.Add(Prefs.ActionButton("Choose games", (_, _) => { Save(); shell.BeginPresetSelection(); }, glyph: ""));
-        reset = Prefs.ActionButton("Reset", (_, _) => { tuning.Value = shell.Settings.Presets; Refresh(); }, glyph: "");
+        reset = Prefs.ActionButton("Reset changes", (_, _) => { tuning.Value = shell.Settings.Presets; Refresh(); }, glyph: "");
         ToolTipService.SetToolTip(reset, "Discard unsaved preset changes.");
         actions.Children.Add(reset);
         foreach (var action in actions.Children.OfType<Button>()) action.HorizontalAlignment = HorizontalAlignment.Stretch;
@@ -66,7 +66,7 @@ public sealed partial class PresetsPage : Page
     void Refresh()
     {
         var count = Configured().Count;
-        applyAll.Content = Prefs.Content($"Review all games ({count})", "");
+        applyAll.Content = Prefs.Content($"Review all games… ({count})", "");
         applyAll.IsEnabled = count > 0 && !shell.Busy;
         var dirty = tuning.HasChanges(shell.Settings.Presets);
         reset.IsEnabled = dirty;

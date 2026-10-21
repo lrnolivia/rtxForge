@@ -19,29 +19,34 @@ public sealed partial class GameModeView
         // than the Library / Settings page margin.
         var column = Math.Min(t.Px(1600), Math.Max(0, ActualWidth - t.Px(56) * 2));
         var side = Math.Max(t.Px(56), (ActualWidth - column) / 2);
-        var page = new StackPanel
+        var page = new Grid
         {
-            Spacing = t.Px(24), HorizontalAlignment = HorizontalAlignment.Stretch,
-            Padding = new Thickness(side, t.Px(32), side, t.Px(24)),
+            RowSpacing = t.Px(20), HorizontalAlignment = HorizontalAlignment.Stretch,
+            Padding = new Thickness(side, t.Px(24), side, t.Px(20)),
         };
+        page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         var head = new StackPanel { Spacing = t.Px(10) };
-        head.Children.Add(ui.H1("Library presets"));
-        head.Children.Add(ui.P("The same NR, MFG and image controls as the overlay. Save for new installs or review configured games."));
+        head.Children.Add(ui.H1("Presets", 1.4));
+        head.Children.Add(ui.P("Save defaults for new installs, or review changes for configured games.", .78));
         page.Children.Add(head);
+        var fields = new StackPanel { Spacing = t.Px(16), Padding = new Thickness(t.Px(4), t.Px(4), t.Px(4), t.Px(8)) };
         var (rows, value) = PresetRows(shell.Settings.Presets);
         presetValue = value;
-        foreach (var row in rows) page.Children.Add(row);
-        page.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12) }.With(note =>
+        foreach (var row in rows) fields.Children.Add(row);
+        var scroll = new ScrollViewer { Content = fields, HorizontalScrollMode = ScrollMode.Disabled };
+        Grid.SetRow(scroll, 1); page.Children.Add(scroll);
+        var footer = new StackPanel { Spacing = t.Px(12) };
+        footer.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12) }.With(note =>
         {
             note.Children.Add(ui.Icon("", 0.8, t.Muted));
-            note.Children.Add(ui.P("Saved settings take effect on the next game launch. They do not verify the rendered effect.", 0.83));
+            note.Children.Add(ui.P("Changes take effect on the next game launch.", .72));
         }));
         var configured = shell.Games.Where(g => g.Installed && !g.Blocked).ToList();
         var actions = new Controls.PresetColumns(t.Px(230), 4) { ColumnSpacing = t.Px(12), RowSpacing = t.Px(12) };
-        actions.Children.Add(ui.Button("Save preset", () => { SavePresets(); Toast("Library preset saved"); }, GmKind.Primary, .85));
-        actions.Children.Add(ui.Button($"Review all games ({configured.Count})", () => ApplyPresets(configured), GmKind.Card, 0.85,
-            enabled: configured.Count > 0).With(b => Key(b, "presets-apply")));
-        actions.Children.Add(ui.Button("Select games to apply", () =>
+        actions.Children.Add(ui.Button("Save as default", () => { SavePresets(); Toast("Default preset saved"); }, GmKind.Primary, .85));
+        actions.Children.Add(ui.Button("Choose games…", () =>
         {
             SavePresets();
             selecting = true;
@@ -49,10 +54,21 @@ public sealed partial class GameModeView
             Open("library");
             Toast("Select games, then Install selected or use Presets › Apply.");
         }, GmKind.Card, 0.85, enabled: configured.Count > 0));
-        actions.Children.Add(ui.Button("Reset Presets", () => Render(), GmKind.Card, 0.85));
-        foreach (var action in actions.Children.OfType<Button>()) action.HorizontalAlignment = HorizontalAlignment.Stretch;
-        page.Children.Add(actions);
-        return new ScrollViewer { Content = page, HorizontalScrollMode = ScrollMode.Disabled };
+        actions.Children.Add(ui.Button($"Review all games… ({configured.Count})", () => ApplyPresets(configured), GmKind.Card, 0.85,
+            enabled: configured.Count > 0).With(b => Key(b, "presets-apply")));
+        var reset = ui.Button("Reset changes", () => Render(), GmKind.Transparent, .85);
+        ToolTipService.SetToolTip(reset, "Discard unsaved preset changes.");
+        actions.Children.Add(reset);
+        foreach (var action in actions.Children.OfType<Button>())
+        {
+            action.HorizontalAlignment = HorizontalAlignment.Stretch;
+            action.CornerRadius = new CornerRadius(t.Px(10));
+            action.MinHeight = t.Px(48);
+            GmUi.NoLift(action);
+        }
+        footer.Children.Add(actions);
+        Grid.SetRow(footer, 2); page.Children.Add(footer);
+        return page;
     }
 
     void SavePresets()

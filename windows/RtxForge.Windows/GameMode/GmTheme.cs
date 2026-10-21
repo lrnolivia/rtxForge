@@ -73,7 +73,7 @@ public sealed class GmTheme
     {
         Name = "dark",
         Window = Hex("#242424"), View = Hex("#2a2a2a"), Panel = Hex("#303030"), Card = Hex("#383838"),
-        Fg = Hex("#f2f2f2"), Muted = Hex("#c5c5c5"), Focus = Hex("#fafafa"),
+        Fg = Hex("#f2f2f2"), Muted = Hex("#c5c5c5"), Focus = Hex("#a4a4a4"),
         Danger = Hex("#ffc1c6"), DangerBg = Hex("#4b2328"), Line = Hex("#454545"),
         Active = Hex("#505050"), ActiveFg = Hex("#ffffff"), SegmentSelected = Hex("#575757"), RowFocus = Hex("#414141"),
         // The prototype's disabled #2a2a2a equals Dark's --view; one step up keeps disabled controls visible.
@@ -86,7 +86,7 @@ public sealed class GmTheme
         Name = "night",
         // --view: color-mix(window 50%, panel)
         Window = Hex("#080808"), View = Hex("#0f0f0f"), Panel = Hex("#171717"), Card = Hex("#252525"),
-        Fg = Hex("#f2f2f2"), Muted = Hex("#c5c5c5"), Focus = Hex("#fafafa"),
+        Fg = Hex("#f2f2f2"), Muted = Hex("#c5c5c5"), Focus = Hex("#a4a4a4"),
         Danger = Hex("#ffc1c6"), DangerBg = Hex("#4b2328"), Line = Hex("#454545"),
         Active = Hex("#505050"), ActiveFg = Hex("#ffffff"), SegmentSelected = Hex("#575757"), RowFocus = Hex("#414141"),
         Disabled = Hex("#2a2a2a"), DisabledFg = Hex("#9fa2a8"),
@@ -97,7 +97,7 @@ public sealed class GmTheme
     {
         Name = "light",
         Window = Hex("#f5f5f5"), View = Hex("#fafafa"), Panel = Hex("#ebebeb"), Card = Hex("#ffffff"),
-        Fg = Hex("#222222"), Muted = Hex("#555555"), Focus = Hex("#222222"),
+        Fg = Hex("#222222"), Muted = Hex("#555555"), Focus = Hex("#767676"),
         Danger = Hex("#8b2029"), DangerBg = Hex("#f6dce0"), Line = Hex("#cecece"),
         Active = Hex("#d2d2d2"), ActiveFg = Hex("#222222"), SegmentSelected = Hex("#d4d4d4"), RowFocus = Hex("#dedede"),
         Disabled = Hex("#e5e5e5"), DisabledFg = Hex("#666666"),

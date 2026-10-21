@@ -7,8 +7,7 @@
         font size are set per control by GameModeView from the Night / Dark /
         Light palette; this template only adds the prototype's hover
         (brightness 1.09) and press (brightness 0.9) as light/dark overlays,
-        and keeps the system focus visual (styled per control as the
-        prototype's 4px outline with 4px offset).
+        and keeps the system focus visual, styled as a subtle underline.
     -->
     <Style x:Key="GmButtonStyle" TargetType="Button">
         <Setter Property="UseSystemFocusVisuals" Value="True" />
@@ -20,8 +19,8 @@
                 <ControlTemplate TargetType="Button">
                     <Grid x:Name="Root" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
                           BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}">
-                        <Border x:Name="Hover" Background="White" Opacity="0" IsHitTestVisible="False" />
-                        <Border x:Name="Press" Background="Black" Opacity="0" IsHitTestVisible="False" />
+                        <Border x:Name="Hover" Background="White" CornerRadius="{TemplateBinding CornerRadius}" Opacity="0" IsHitTestVisible="False" />
+                        <Border x:Name="Press" Background="Black" CornerRadius="{TemplateBinding CornerRadius}" Opacity="0" IsHitTestVisible="False" />
                         <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}"
                                           ContentTemplate="{TemplateBinding ContentTemplate}" Padding="{TemplateBinding Padding}"
                                           HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"

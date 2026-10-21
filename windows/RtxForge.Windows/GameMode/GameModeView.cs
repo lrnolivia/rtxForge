@@ -171,8 +171,9 @@ public sealed partial class GameModeView : UserControl
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-        // Brand: the main menu (logo menu, never a page tab).
-        var brand = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(16) };
+        // Branding is informational. The menu has its own explicit control.
+        var brand = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(16),
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false };
         brand.Children.Add(new Image
         {
             Source = new Microsoft.UI.Xaml.Media.Imaging.SvgImageSource(new Uri("ms-appx:///Assets/rtxforge-mark.svg")),
@@ -183,11 +184,15 @@ public sealed partial class GameModeView : UserControl
             Text = "rtxForge", FontSize = t.Em(t.Compact ? 1.4 : 1.62), VerticalAlignment = VerticalAlignment.Center,
             FontFamily = (FontFamily)Application.Current.Resources["ForgeHeroFontFamily"], Foreground = GmTheme.B(t.Fg),
         });
-        var brandButton = ui.Button(brand, OpenMainMenu, GmKind.Transparent, 1, radius: 12,
-            padding: new Thickness(t.Px(6), 0, t.Px(6), 0), minHeight: 0, name: "rtxForge main menu");
-        brandButton.HorizontalAlignment = HorizontalAlignment.Left;
-        Key(brandButton, "brand");
-        header.Children.Add(brandButton);
+        header.Children.Add(brand);
+        var menu = ui.Button(ui.Icon("", .95), OpenMainMenu, GmKind.Transparent, radius: 12,
+            padding: new Thickness(t.Px(14)), minHeight: 48, name: "Main menu");
+        menu.HorizontalAlignment = HorizontalAlignment.Right;
+        menu.VerticalAlignment = VerticalAlignment.Center;
+        ToolTipService.SetToolTip(menu, "Main menu");
+        Key(menu, "menu");
+        Grid.SetColumn(menu, 2);
+        header.Children.Add(menu);
 
         var tabs = BuildTabs();
         if (shell.Settings.NavigationPosition == "bottom")

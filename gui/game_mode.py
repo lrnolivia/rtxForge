@@ -23,6 +23,7 @@ import library_media
 import ui_colors
 import user_messages
 from operation_scope import operation_targets, ScopeError
+import mfg_choice
 
 ACCENT = '#76b900'
 ACCENT_INK = '#151c07'
@@ -1560,24 +1561,32 @@ class GameMode(Gtk.Overlay):
         source = game if game is not None else owner.settings
         state = {'nr': float(source.get('nr_strength', owner.settings.get('nr_strength', 2.0)) or 0),
                  'sharp': float(source.get('sharpening_strength', owner.settings.get('sharpening_strength', 0.5)) or 0),
-                 'mfg': source.get('mfg_multiplier', owner.settings.get('mfg_multiplier', 'auto'))}
-        if state['mfg'] not in MULTIPLIERS:
-            state['mfg'] = 'auto'
-        def mfg_text():
-            value = state['mfg']
-            return 'In game' if value == 'auto' else 'Off' if value == 0 else f'{value}×'
-        def mfg_step(delta):
-            order = [0, 2, 3, 4, 5, 6, 'auto']
-            state['mfg'] = order[max(0, min(len(order) - 1, order.index(state['mfg']) + delta))]
+                 }
+        saved = dict(owner.settings)
+        saved.update({k: source[k] for k in ('mfg_multiplier', 'dynamic_mfg', 'mfg_saved_mode', 'mfg_saved_multiplier') if source.get(k) is not None})
+        dynamic_available = bool(game.get('dynamic_mfg_available')) if game is not None else owner.settings.get('runtime_provider') == 'skynizz'
+        state['mfg_on'], state['mfg_mode'], state['mfg_ratio'] = mfg_choice.from_values(saved)
+        if state['mfg_mode'] == mfg_choice.DYNAMIC and not dynamic_available:
+            state['mfg_mode'] = mfg_choice.CUSTOM
+        modes = [m for m in mfg_choice.MODES if m != mfg_choice.DYNAMIC or dynamic_available]
+        def mode_step(delta):
+            state['mfg_mode'] = modes[max(0, min(len(modes) - 1, modes.index(state['mfg_mode']) + delta))]
+        def ratio_step(delta):
+            state['mfg_ratio'] = max(2, min(6, state['mfg_ratio'] + delta))
+        mfg_enabled = enabled and owner.mode != 'nr-only'
         rows = [
             self.stepper('NR Strength', '0.0 turns the effect off.', lambda: f"{state['nr']:.1f}",
                          lambda d: state.update(nr=max(0.0, min(2.0, round(state['nr'] + d * 0.1, 1)))), enabled and owner.mode != 'mfg-only', key='step-nr'),
             self.stepper('Sharpening', '0.0 turns sharpening off.', lambda: f"{state['sharp']:.1f}",
                          lambda d: state.update(sharp=max(0.0, min(1.0, round(state['sharp'] + d * 0.1, 1)))), enabled, key='step-sharp'),
-            self.stepper('Frame generation', 'MFG multiplier · enable frame generation in the game.', mfg_text, mfg_step,
-                         enabled and owner.mode != 'nr-only', key='step-mfg'),
+            self.stepper('Multi-Frame Generation', 'Enable frame generation in the game as well.', lambda: 'On' if state['mfg_on'] else 'Off',
+                         lambda d: state.update(mfg_on=d > 0), mfg_enabled, key='step-mfg'),
+            self.stepper('MFG mode', 'Auto follows the game · Custom is fixed · Dynamic is a maximum where supported.',
+                         lambda: mfg_choice.MODE_NAMES[state['mfg_mode']], mode_step, mfg_enabled, key='step-mfg-mode'),
+            self.stepper('MFG ratio', 'Used by Custom and Dynamic.', lambda: f"{state['mfg_ratio']}×", ratio_step, mfg_enabled, key='step-mfg-ratio'),
         ]
-        return rows, lambda: {'nr_strength': state['nr'], 'sharpening_strength': state['sharp'], 'mfg_multiplier': state['mfg']}
+        return rows, lambda: {'nr_strength': state['nr'], 'sharpening_strength': state['sharp'],
+                              **mfg_choice.to_values(state['mfg_on'], state['mfg_mode'], state['mfg_ratio'], dynamic_available)}
 
     # ---------------- presets ----------------
 
@@ -1624,14 +1633,15 @@ class GameMode(Gtk.Overlay):
         self.owner.settings.update(values)
         for key, widget in self.owner.tuning_widgets.items():
             if key == 'mfg_multiplier':
-                widget.set_selected(self.owner.multiplier_values.index(values[key]))
+                widget.set_values(values)
             else:
                 widget.set_value(values[key])
         self.save_settings()
 
     def apply_presets(self, games):
         self.save_presets()
-        self.run_operation('reset', games, {k: self.owner.settings[k] for k in ('nr_strength', 'sharpening_strength', 'mfg_multiplier')})
+        keys = ('nr_strength', 'sharpening_strength', 'mfg_multiplier', 'dynamic_mfg', 'mfg_saved_mode', 'mfg_saved_multiplier')
+        self.run_operation('reset', games, {k: self.owner.settings[k] for k in keys if k in self.owner.settings})
 
     # ---------------- settings ----------------
 

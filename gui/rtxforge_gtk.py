@@ -15,6 +15,7 @@ from package_browser import build_packages,show_packages
 from native_shell import new_shell
 from ui_scaling import ScaledContent, content_scale, SCALES
 from operation_scope import operation_targets, ScopeError
+import mfg_choice
 
 ACCENT_PROVIDERS={}
 ACCENT_SOURCES={}
@@ -850,6 +851,73 @@ def library_display_test_status(game):
         return 'N/A'
 
     return status
+
+
+class MfgControl(Gtk.Box):
+    """Multi-Frame Generation: On/Off, Auto/Custom/Dynamic, and 2×–6× ratios."""
+    __gsignals__={'changed':(GObject.SignalFlags.RUN_FIRST,None,())}
+    def __init__(self,values,dynamic_available=True,on_change=None):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL,spacing=8,valign=Gtk.Align.CENTER)
+        self.add_css_class('mfg-control')
+        self.dynamic_available=dynamic_available
+        self._on_change=on_change
+        self._syncing=False
+        header=Gtk.Box(spacing=12)
+        heading=label('Multi-Frame Generation','heading');heading.set_wrap(False);heading.set_hexpand(True)
+        header.append(heading)
+        self.switch=Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.switch.update_property([Gtk.AccessibleProperty.LABEL],['Multi-Frame Generation'])
+        header.append(self.switch)
+        self.append(header)
+        self.modes=Adw.ToggleGroup(homogeneous=True)
+        for index,name in enumerate(mfg_choice.MODE_NAMES):
+            toggle=Adw.Toggle(name=str(index),label=name)
+            if index==mfg_choice.DYNAMIC and not dynamic_available:
+                toggle.set_enabled(False)
+                toggle.set_tooltip('Not supported by this game or package')
+            self.modes.add(toggle)
+        self.append(self.modes)
+        self.ratios=Adw.ToggleGroup(homogeneous=True)
+        for ratio in mfg_choice.RATIOS:
+            self.ratios.add(Adw.Toggle(name=str(ratio),label=f'{ratio}×'))
+        self.append(self.ratios)
+        self.caption=label('','dim-label');self.caption.set_xalign(0)
+        self.append(self.caption)
+        self.switch.connect('notify::active',self._changed)
+        self.modes.connect('notify::active-name',self._changed)
+        self.ratios.connect('notify::active-name',self._changed)
+        self.set_values(values)
+
+    def set_values(self,values):
+        enabled,mode,ratio=mfg_choice.from_values(values)
+        if mode==mfg_choice.DYNAMIC and not self.dynamic_available:mode=mfg_choice.CUSTOM
+        self._syncing=True
+        try:
+            self.switch.set_active(enabled)
+            self.modes.set_active_name(str(mode))
+            self.ratios.set_active_name(str(ratio))
+        finally:
+            self._syncing=False
+        self._sync()
+
+    def values(self):
+        return mfg_choice.to_values(self.switch.get_active(),int(self.modes.get_active_name() or 0),
+                                    int(self.ratios.get_active_name() or 2),self.dynamic_available)
+
+    def _sync(self):
+        enabled=self.switch.get_active();mode=int(self.modes.get_active_name() or 0)
+        self.modes.set_sensitive(enabled)
+        self.ratios.set_visible(enabled and mode!=mfg_choice.AUTO)
+        self.caption.set_text('Off' if not enabled else
+                              'Follows the game\'s own frame generation setting' if mode==mfg_choice.AUTO else
+                              'Fixed ratio' if mode==mfg_choice.CUSTOM else
+                              'Maximum ratio · only where the game and driver support it')
+
+    def _changed(self,*_):
+        if self._syncing:return
+        self._sync()
+        if self._on_change:self._on_change()
+        self.emit('changed')
 
 
 class LibraryPill(Gtk.Box):
@@ -4397,7 +4465,7 @@ class Window(Adw.ApplicationWindow):
         self.operation_status=label('');self.operation_status.set_max_width_chars(54);self.operation_status.set_ellipsize(Pango.EllipsizeMode.END);operation.append(self.operation_status)
         self.operation_elapsed=label('','dim-label');operation.append(self.operation_elapsed)
         self.operation_dismiss=Gtk.Button(icon_name='window-close-symbolic');self.operation_dismiss.add_css_class('operation-dismiss');self.operation_dismiss.set_tooltip_text('Dismiss');self.operation_dismiss.set_visible(False);self.operation_dismiss.connect('clicked',lambda *_:self.hide_operation_status());operation.append(self.operation_dismiss)
-        for key,widget in self.tuning_widgets.items():widget.connect('notify::selected' if key=='mfg_multiplier' else 'value-changed',self.strength_changed)
+        for key,widget in self.tuning_widgets.items():widget.connect('changed' if key=='mfg_multiplier' else 'value-changed',self.strength_changed)
         self.strength_changed()
         self.reset_all.set_tooltip_text('Discard unsaved preset changes.')
         self.install_all.set_tooltip_text('Review feature installation across every library before applying changes. Incompatible games are skipped.')
@@ -5414,8 +5482,7 @@ class Window(Adw.ApplicationWindow):
 
     def preset_summary_text(self,values=None):
         values=values or self.tuning_values(self.tuning_widgets)
-        mfg=values.get('mfg_multiplier','auto')
-        mfg='In game' if mfg=='auto' else 'Off' if mfg==0 else f'{mfg}×'
+        mfg=mfg_choice.summary(values)
         return f"NR {float(values.get('nr_strength',0)):.1f} · Sharpening {float(values.get('sharpening_strength',0)):.1f} · MFG {mfg}"
 
     def configured_games(self):
@@ -5436,9 +5503,8 @@ class Window(Adw.ApplicationWindow):
 
     def discard_preset_changes(self,*_):
         for key,widget in self.tuning_widgets.items():
-            value=self.settings[key]
-            if key=='mfg_multiplier':widget.set_selected(self.multiplier_values.index(value))
-            else:widget.set_value(value)
+            if key=='mfg_multiplier':widget.set_values(self.settings)
+            else:widget.set_value(self.settings[key])
         self.strength_changed()
 
     def apply_presets_to(self,games,entire=False):
@@ -8796,7 +8862,7 @@ class Window(Adw.ApplicationWindow):
             '<span weight="800">MFG</span> '
             '<span weight="500">'
             +GLib.markup_escape_text(
-                'In game' if mfg_value == 'auto' else 'Off' if mfg_value == 0 else str(mfg_value) + ('×' if isinstance(mfg_value,int) else '')
+                'Auto' if mfg_value == 'auto' else 'Off' if mfg_value == 0 else str(mfg_value) + ('×' if isinstance(mfg_value,int) else '')
             )
             +'</span>'
         )
@@ -9548,47 +9614,35 @@ class Window(Adw.ApplicationWindow):
         pod=Gtk.Box()
         pod.add_css_class('control-pod')
         box.append(pod)
-
-        group=Gtk.Box(
-            orientation=Gtk.Orientation.VERTICAL,
-            spacing=6,
-            valign=Gtk.Align.CENTER,
-        )
-        pod.append(group)
-        group.append(label('MFG','heading'))
-
-        multiplier=safe_dropdown(
-            ['In game','Off']+[str(x)+'×' for x in range(2,7)]
-        )
-        multiplier.set_selected(
-            self.multiplier_values.index(
-                initial['mfg_multiplier']
-                if initial.get('mfg_multiplier') is not None
-                else self.settings.get('mfg_multiplier','auto')
-            )
-        )
-        multiplier.update_property(
-            [Gtk.AccessibleProperty.LABEL],
-            ['MFG Multiplier'],
-        )
-
-        group.append(multiplier)
-        group.append(label('Requested ratio','dim-label'))
+        source=dict(self.settings)
+        source.update({k:v for k,v in initial.items() if k in ('mfg_multiplier','dynamic_mfg','mfg_saved_mode','mfg_saved_multiplier') and v is not None})
+        dynamic=bool(initial.get('dynamic_mfg_available')) if 'dynamic_mfg_available' in initial else self.settings.get('runtime_provider')=='skynizz'
+        multiplier=MfgControl(source,dynamic_available=dynamic)
+        pod.append(multiplier)
         widgets['mfg_multiplier']=multiplier
 
         return box,widgets
 
     def tuning_values(self,widgets):
-        return {
-            key:
-                self.multiplier_values[int(w.get_selected())]
-                if key=='mfg_multiplier'
-                else round(float(w.get_value()),1)
-            for key,w in widgets.items()
-        }
+        values={}
+        for key,w in widgets.items():
+            if key=='mfg_multiplier':values.update(w.values())
+            else:values[key]=round(float(w.get_value()),1)
+        return values
+
+    def tuning_differs(self,widgets,source):
+        """True when an editable control differs from the saved values."""
+        for key,widget in widgets.items():
+            if not widget.get_sensitive():continue
+            if key=='mfg_multiplier':
+                if widget.values()!=mfg_choice.to_values(*mfg_choice.from_values(source)):return True
+            elif round(float(widget.get_value()),1)!=source.get(key):return True
+        return False
 
     def chosen_strength(self):return self.tuning_values(self.tuning_widgets)['nr_strength']
-    def defaults_changed(self):return any(self.settings.get(k)!=v for k,v in self.tuning_values(self.tuning_widgets).items())
+    def defaults_changed(self):
+        saved=dict(self.settings);saved.update(mfg_choice.to_values(*mfg_choice.from_values(self.settings)))
+        return any(saved.get(k)!=v for k,v in self.tuning_values(self.tuning_widgets).items())
     def strength_changed(self,*_):
         self.reset_all.text_label.set_text('Reset')
         if hasattr(self,'profile_group'):self.controls()
@@ -9597,9 +9651,8 @@ class Window(Adw.ApplicationWindow):
         self.settings.update(values);self.strength_changed()
     def reset_library_settings(self,*_):
         for key,widget in self.tuning_widgets.items():
-            value=self.settings[key]
-            if key=='mfg_multiplier':widget.set_selected(self.multiplier_values.index(value))
-            else:widget.set_value(value)
+            if key=='mfg_multiplier':widget.set_values(self.settings)
+            else:widget.set_value(self.settings[key])
         self.apply_library_settings()
     def apply_library_settings(self,*_):
         if self.games and any(g.get('installed') for g in self.games):self.launch_scoped('reset',visual_settings=self.tuning_values(self.tuning_widgets));return
@@ -12123,8 +12176,8 @@ class Window(Adw.ApplicationWindow):
             presets_body.append(label('Custom or unreadable preset values found. Reset explicitly to library defaults before editing; existing values are preserved.','dim-label'))
         preset_actions.append(apply)
         presets_body.append(preset_actions)
-        def changed(*_):apply.set_sensitive(installed and not unknown_presets and any(v!=game.get(k) for k,v in self.tuning_values(widgets).items() if widgets[k].get_sensitive()))
-        for key,w in widgets.items():w.connect('notify::selected' if key=='mfg_multiplier' else 'value-changed',changed)
+        def changed(*_):apply.set_sensitive(installed and not unknown_presets and self.tuning_differs(widgets,game))
+        for key,w in widgets.items():w.connect('changed' if key=='mfg_multiplier' else 'value-changed',changed)
         changed();self.detail_tuning_widgets=widgets;self.detail_apply_settings=apply
         maintenance=Adw.PreferencesGroup(
             title='Installation'
@@ -13702,7 +13755,7 @@ class Window(Adw.ApplicationWindow):
             provider=self.settings.get('runtime_provider','dlss-unlocked')
             details.append({'dlss-unlocked':'DLSS-Unlocked','y4my':'y4my','custom':'Custom package'}.get(provider,provider))
             mfg=review.get('mfg_multiplier')
-            if mfg is not None:details.append('MFG '+('In game' if mfg=='auto' else 'Off' if mfg==0 else str(mfg)+'×'))
+            if mfg is not None:details.append('MFG '+('Auto' if mfg=='auto' else 'Off' if mfg==0 else str(mfg)+'×'))
         return details
 
     def action_ready(self,review,*_legacy):
@@ -15245,13 +15298,13 @@ class Window(Adw.ApplicationWindow):
 
             for key,widget in self.tuning_widgets.items():
                 original=(
-                    widget.get_selected()
+                    widget.values()
                     if key=='mfg_multiplier'
                     else widget.get_value()
                 )
 
                 if key=='mfg_multiplier':
-                    widget.set_selected(1 if original == 0 else 0)
+                    widget.switch.set_active(not widget.switch.get_active())
                 else:
                     widget.set_value(0)
 
@@ -15260,7 +15313,7 @@ class Window(Adw.ApplicationWindow):
                 )
 
                 if key=='mfg_multiplier':
-                    widget.set_selected(
+                    widget.set_values(
                         original
                     )
                 else:

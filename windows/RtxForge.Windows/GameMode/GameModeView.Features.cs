@@ -446,6 +446,8 @@ public sealed partial class GameModeView
 
     IReadOnlyList<SettingsGroup> RecoveryGroups() =>
     [
+        new("App storage", null,
+        [ui.RowButton("Storage usage", "View", () => _ = AppStorageAsync(), description: "Review download cleanup. Restore backups and settings are kept.", glyph: "")]),
         new("Restore", "Review a backup before restoring game files.",
         [ui.RowButton("Previous changes", null, () => _ = PreviousChangesAsync(), description: "Browse available recovery records.", glyph: "")]),
         new("Cleanup", null,
@@ -456,6 +458,28 @@ public sealed partial class GameModeView
                 await shell.ScanAsync();
         }, description: "Review legacy files before removal.", glyph: "")]),
     ];
+
+    async Task AppStorageAsync()
+    {
+        if (shell.Service is not Services.EngineForgeService engine) { Toast("Storage usage is available in the installed app."); return; }
+        AppStorage data;
+        try { data = await engine.AppStorageAsync(); }
+        catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException)
+        { ShowDone(false, "App storage", error.Message); return; }
+        var content = new StackPanel { Spacing = t.Px(18) };
+        content.Children.Add(ui.P("Restore backups, original game files and settings are kept."));
+        if (data.Warning is { } warning) content.Children.Add(ui.P(warning));
+        var rows = data.Categories.Where(c => c.Bytes > 0).Select(c => (UIElement)ui.PreferenceRow(c.Title, c.Detail,
+            ui.Text(AppStorage.Format(c.Bytes), .85, t.Muted)));
+        content.Children.Add(new ScrollViewer { Content = ui.Group(rows, t.Card), MaxHeight = t.Px(t.Compact ? 300 : 460), HorizontalScrollMode = ScrollMode.Disabled });
+        var back = ui.Button("Back", CloseModal, GmKind.Card, .92);
+        var review = ui.Button("Review cleanup", async () =>
+        {
+            CloseModal();
+            await RunReviewAsync("Clear unused downloads", engine.ReviewStorageCleanupAsync);
+        }, GmKind.Primary, .92, enabled: data.Warning is null && data.DownloadBytes > 0);
+        ShowModal("App storage · " + AppStorage.Format(data.Bytes), content, [back, review], CloseModal, 1100, back);
+    }
 
     async Task PreviousChangesAsync()
     {

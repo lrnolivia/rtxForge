@@ -21,6 +21,7 @@ so the files written are exactly the ones the user reviewed.
 from __future__ import annotations
 
 import io
+import contextlib
 import configparser
 import json
 import os
@@ -538,12 +539,17 @@ METHODS = {"hello": hello, "hardware": lambda _p: service.hardware(), "scan": sc
 # DLSS restore and updates: windows/engine-host/win_features.py.
 import win_features  # noqa: E402
 
-METHODS.update(win_features.install(service, lambda: engine_bridge.module(service.config).steam_config_engine()))
+METHODS.update(win_features.install(service, lambda: engine_bridge.module(service.config).steam_config_engine(),
+                                  storage_busy=lambda: bool(reviews or dlss_reviews or running)))
 import offline_routes
 METHODS['launch_offline'] = lambda p: offline_routes.launch(engine_bridge.module(service.config), p['row'])
 
 import companion_controls  # noqa: E402
 METHODS.update(companion_controls.methods(STATE))
+
+
+_download_gate = threading.RLock()
+_DOWNLOAD_METHODS = {'prepare', 'execute', 'prepare_dlss', 'update_dlss', 'run', 'storage_review'}
 
 
 def handle(request: dict) -> None:
@@ -560,7 +566,10 @@ def handle(request: dict) -> None:
         method = METHODS[request["method"]]
         if request["method"] == "execute":
             running[request["params"]["token"]] = reviews.get(request["params"]["token"], {})
-        with ui.report_to(report):
+        # A cleanup cannot race a payload preparation in this host. Scans,
+        # hardware checks, live controls and cancellation remain independent.
+        gate = _download_gate if request['method'] in _DOWNLOAD_METHODS else contextlib.nullcontext()
+        with gate, ui.report_to(report):
             result = method(request.get("params") or {})
         send({"id": rid, "result": result})
     except BaseException as exc:  # every failure is reported, never left hanging

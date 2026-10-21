@@ -247,6 +247,10 @@ public sealed partial class SettingsPage : Page
         // ----- Recovery -----
         var recovery = new PreferencesGroup("Restore");
         var cleanup = new PreferencesGroup("Cleanup");
+        var appStorage = new PreferencesGroup("App storage");
+        if (shell.Service is EngineForgeService storageEngine)
+            appStorage.Add(new AppStorageView(shell, storageEngine));
+        else appStorage.Add(Prefs.Row("App data", "Storage usage is available in the installed app."));
         var reports = new PreferencesGroup("Reports");
         foreach (var (title, subtitle, caption, glyph, action) in new (string, string, string, string, Func<Task>)[]
         {
@@ -273,7 +277,7 @@ public sealed partial class SettingsPage : Page
         sections["Library"] = [libraryView, library, steamLibrary, reports];
         sections["Gaming Mode"] = [interfaceGroup, controller];
         sections["System"] = [system];
-        sections["Recovery"] = [recovery, cleanup];
+        sections["Recovery"] = [appStorage, recovery, cleanup];
         sections["About"] = [about];
         foreach (var name in sections.Keys)
             Sections.Items.Add(new SelectorBarItem { Text = name, Tag = name });

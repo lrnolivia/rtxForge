@@ -1003,6 +1003,10 @@ class LibraryPill(Gtk.Box):
                 except Exception:
                     pass
 
+            if value in ('linux','windows'):
+                self._icon.set_pixel_size(10)
+                self._icon.set_from_icon_name('rtx-os-'+value+'-symbolic')
+                return
             if value=='steam':
                 icon=_library_icon_name(
                     'steam-symbolic',
@@ -11832,6 +11836,15 @@ class Window(Adw.ApplicationWindow):
         test_badge.set_text(test_status.upper())
         test_badge.add_css_class('test-untested' if test_status.casefold()=='untested' else 'test-tested')
         metadata_line.append(source_badge)
+        installed_on=game.get('installed_on') if game.get('installed') else None
+        if installed_on in ('linux','windows'):
+            # Windows GamePage OsBadge: between the source and tested pills.
+            os_badge=LibraryPill(kind='source')
+            os_badge.add_css_class('library-source-pill')
+            os_badge.set_fixed_width(108)
+            os_badge.set_text(installed_on.upper())
+            os_badge.set_tooltip_text('Installed with rtxForge on '+installed_on.title())
+            metadata_line.append(os_badge)
         metadata_line.append(test_badge)
 
 

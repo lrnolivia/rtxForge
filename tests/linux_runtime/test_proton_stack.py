@@ -118,6 +118,17 @@ class ProtonStackTest(unittest.TestCase):
         after = {p: p.read_bytes() for p in self.root.rglob('*') if p.is_file() and not p.is_symlink()}
         self.assertEqual(before, after)
 
+    def test_feeder_route_is_reported_but_never_offered(self):
+        pfx = fx.prefix(self.root / 'lib', 1328670, self.lib)
+        report = proton_stack.feeder_detect(pfx, driver_root=self.proc, driver_dirs=(str(self.wine),))
+        self.assertTrue(report['prerequisites_met'])
+        self.assertFalse(report['offered'])
+        self.assertIn('Windows-only', report['offer_reason'])
+        lib = fx.proton(self.root / 'no-dxvk', components=('vkd3d-proton', 'nvapi'))
+        pfx = fx.prefix(self.root / 'lib2', 1328670, lib)
+        report = proton_stack.feeder_detect(pfx, driver_root=self.proc, driver_dirs=(str(self.wine),))
+        self.assertEqual(report['reasons'], ['dxvk-missing'])
+
     def test_not_linux(self):
         self.assertEqual(proton_stack.detect(None, system='windows')['reasons'], ['not-linux'])
 

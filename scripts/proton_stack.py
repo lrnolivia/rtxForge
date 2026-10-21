@@ -37,6 +37,8 @@ REASONS = {
     'nvapi-not-in-prefix': "NVAPI was not set up in this game's prefix on its last run. Play it once with Proton, quit, then check again.",
     'ngx-not-in-prefix': "Proton did not copy the NVIDIA NGX files into this game's prefix on its last run. Play it once, quit, then check again.",
     'native-dlssg-missing': "MFG needs the game's own DLSS Frame Generation; this game does not ship it.",
+    'dxvk-missing': 'This Proton build has no DXVK, so DirectX 11 games cannot use ReShade and the Feeder.',
+    'feeder-linux-unverified': 'The Feeder route (ReShade + RenoDX) is Windows-only until it is shown working in a moving scene under Proton.',
 }
 
 # Component name -> folder under Proton's lib/wine and the 64-bit DLLs it must hold.
@@ -201,6 +203,28 @@ def detect(prefix, mode='nr-mfg', launch_options='', native_dlssg=None, system='
         check('nvapi-prefix', files['nvapi64.dll'], 'nvapi-not-in-prefix')
         check('ngx-prefix', files['nvngx.dll'] and files['_nvngx.dll'], 'ngx-not-in-prefix')
     return _finish(checks, tool, components, card)
+
+
+def feeder_detect(prefix, launch_options='', driver_root=None, driver_dirs=None):
+    """Read-only report for the Feeder route (ReShade + DLSS5 Feeder/RenoDX, DX11 through DXVK).
+
+    The pieces it would need are reported, but the route is never offered on
+    Linux yet: ReShade's depth/present behaviour and the Feeder's NGX path under
+    DXVK have not been shown in a moving scene under Proton.
+    """
+    report = detect(prefix, 'nr-only', launch_options, driver_root=driver_root, driver_dirs=driver_dirs)
+    present = (report.get('components') or {}).get('dxvk', {}).get('present')
+    if prefix and (Path(prefix) / 'user.reg').is_file():
+        report['checks'].append({'id': 'dxvk', 'state': 'ok' if present else 'missing', 'required': True,
+                                 'reason': None if present else 'dxvk-missing',
+                                 'detail': '' if present else REASONS['dxvk-missing']})
+        if not present:
+            report['reasons'].append('dxvk-missing')
+    report['prerequisites_met'] = not report['reasons']
+    report['offered'] = False
+    report['offer_reason'] = REASONS['feeder-linux-unverified']
+    report['label'] = 'Feeder under Proton is not offered yet'
+    return report
 
 
 def _finish(checks, tool, components, card):

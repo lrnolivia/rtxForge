@@ -29,6 +29,11 @@ foreach ($control in $schema.controls) {
     if ($control.key -eq 'multiplier') {
         $get = '[](Config& c) { return !c.FGDLSSGOverrideInterpolationCount.has_value() ? -1.f : c.FGDLSSGOverrideInterpolationCount.value() == 0 ? 0.f : float(c.FGDLSSGOverrideInterpolationCount.value() + 1); }'
         $set = '[](Config& c, float n, bool save) { if(n < 0) c.FGDLSSGOverrideInterpolationCount = std::nullopt; else { int count = n == 0 ? 0 : int(n)-1; if(save) c.FGDLSSGOverrideInterpolationCount = count; else c.FGDLSSGOverrideInterpolationCount.set_volatile_value(count); if(count > 0) c.FGDLSSGInterpolationCount.set_volatile_value(count); } }'
+    } elseif ($control.key -in 'dlss_preset', 'rr_preset') {
+        # OptiScaler applies a render preset only with its override on; Game default turns it off.
+        $override = if ($control.key -eq 'rr_preset') { 'DLSSDRenderPresetOverride' } else { 'RenderPresetOverride' }
+        $get = '[](Config& c) { return c.' + $override + '.value_or_default() ? float(c.' + $member + '.value_or_default()) : 0.f; }'
+        $set = '[](Config& c, float n, bool save) { const bool on = n > 0; const auto preset = static_cast<uint32_t>(n); if(save) { c.' + $override + ' = on; c.' + $member + ' = preset; } else { c.' + $override + '.set_volatile_value(on); c.' + $member + '.set_volatile_value(preset); } }'
     } else {
         $get = '[](Config& c) { return float(c.' + $member + '.value_or_default()); }'
         $cast = 'static_cast<typename std::decay_t<decltype(c.' + $member + ')>::value_type>(n)'

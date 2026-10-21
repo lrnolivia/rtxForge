@@ -237,7 +237,7 @@ inline ImVec4 TitleColor()
 inline bool Available(const Control& field)
 {
     if (std::strcmp(field.key,"multiplier") == 0) return mfgAllowed;
-    return std::strcmp(field.group,"Sharpening") == 0 || std::strcmp(field.group,"Motion sharpening") == 0 || nrAllowed;
+    return std::strcmp(field.group,"Upscaling") == 0 || std::strcmp(field.group,"Sharpening") == 0 || std::strcmp(field.group,"Motion sharpening") == 0 || nrAllowed;
 }
 inline bool IconButton(const char* id, int kind, float scale)
 {
@@ -836,7 +836,12 @@ inline bool Draw(bool& visible, float scale)
         Flush(cfg, true);
         nlohmann::json changes = nlohmann::json::object();
         for(const auto& field : controls) if(Available(field))
-        { auto n=field.get(cfg); if(field.kind == Kind::slider) changes[field.key]=n; else changes[field.key]=int(n); }
+        {
+            auto n=field.get(cfg);
+            // A value chosen in OptiScaler's own menu that rtxForge does not list stays out of the preset.
+            if(field.kind == Kind::choice && std::none_of(field.choices,field.choices+field.count,[n](const Choice& c){ return c.value == n; })) continue;
+            if(field.kind == Kind::slider) changes[field.key]=n; else changes[field.key]=int(n);
+        }
         // Protocol 7 replays Dynamic; it lives in OptiScaler's config, not the control list.
         if(mfgAllowed) changes["dynamic_mfg"]=int(cfg.FGDLSSGOverrideForceDMFG.value_or_default());
         Send({{"op","save"},{"changes",changes}});

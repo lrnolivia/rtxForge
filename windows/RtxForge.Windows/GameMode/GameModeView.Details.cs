@@ -750,6 +750,7 @@ public sealed partial class GameModeView
                 morePerformance.Add(i + 1 < performanceFields.Length ? Pair(performanceFields[i], performanceFields[i + 1]) : performanceFields[i]);
             var more = Disclosure("More settings",
                 Pair(Field(Definition("preset")), Field(Definition("passes"))),
+                Disclosure("DLSS presets", Pair(Field(Definition("dlss_preset")), Field(Definition("rr_preset")))),
                 Disclosure("Image tuning", Pair(Field(Definition("detail")), Field(Definition("colour"))),
                     Pair(Field(Definition("structure")), Field(Definition("tone"))), Pair(Field(Definition("skin")), Field(Definition("auto_mask")))),
                 Disclosure("Sharpening", Field(Definition("sharpen")),
@@ -774,6 +775,8 @@ public sealed partial class GameModeView
             performanceRows.Add(i + 1 < performance.Length ? Pair(performance[i], performance[i + 1]) : performance[i]);
         secondary.Children.Add(Card("", Disclosure("Performance", performanceRows.ToArray())));
         primary.Children.Add(secondary); rows.Add(primary);
+        rows.Add(Card("DLSS presets", ui.P("Applies when the game next starts DLSS. Game default keeps the game's own choice.", .72),
+            Pair(Field(Definition("dlss_preset")), Field(Definition("rr_preset")))));
         return (rows, () => FeatureControlSchema.Tuning(values));
     }
 }

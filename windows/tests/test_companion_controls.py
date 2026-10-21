@@ -358,10 +358,14 @@ class ControlsTest(unittest.TestCase):
         with self.assertRaises(t.Refusal): control.decode(snapshot(version=7, support=5), 123)
         with self.assertRaises(t.Refusal): control.validate_changes({'dynamic_mfg': 2})
 
-    def test_installed_dynamic_setting_is_read_for_reset(self):
+    def test_installed_dynamic_and_presets_are_read_for_reset(self):
         path = self.target / 'OptiScaler.ini'
-        path.write_text(path.read_text() + 'OverrideForceDMFG=true\n')
-        self.assertEqual(self.controls._configured(self.controls._game({'row': self.row}))['dynamic_mfg'], 1)
+        path.write_text(path.read_text() + 'OverrideForceDMFG=true\n[DLSS]\nRenderPresetOverride=true\nRenderPresetForAll=12\n'
+                        '[DLSSD]\nRenderPresetOverride=false\nRenderPresetForAll=5\n')
+        configured = self.controls._configured(self.controls._game({'row': self.row}))
+        self.assertEqual((configured['dynamic_mfg'], configured['dlss_preset'], configured['rr_preset']), (1, 12, 0))
+        self.assertEqual(control.validate_changes({'dlss_preset': 14}), {'dlss_preset': 14})
+        with self.assertRaises(t.Refusal): control.validate_changes({'rr_preset': 16})
 
     def test_saved_dynamic_replays_where_supported_and_never_blocks_the_rest(self):
         self.controls.save({'row': self.row, 'changes': {'multiplier': 6, 'dynamic_mfg': 1, 'intensity': 1.2}})
@@ -432,8 +436,9 @@ class WindowsProtocolTest(unittest.TestCase):
                 if version >= 4:
                     ctypes.memmove(view + 344, ctypes.string_at(view + 320, 24), 24)
                 if version >= 7:
-                    requested = ctypes.c_long.from_address(view + 404).value
-                    if requested >= 0: ctypes.c_long.from_address(view + 412).value = requested
+                    for request, actual in ((404, 412), (424, 432), (428, 436)):
+                        requested = ctypes.c_long.from_address(view + request).value
+                        if requested >= 0: ctypes.c_long.from_address(view + actual).value = requested
                 ctypes.c_long.from_address(view + 24).value = 1
                 ctypes.c_long.from_address(view + 20).value = command
                 ctypes.c_long.from_address(view + 12).value += 1
@@ -488,6 +493,9 @@ class WindowsProtocolTest(unittest.TestCase):
                     self.assertEqual(box.read()['command'], previous)
                     previous = box.apply({'dynamic_mfg': 0})['command']
                     self.assertEqual(ctypes.c_long.from_address(view + 408).value, 0, 'the FPS target is never written')
+                    result = box.apply({'dlss_preset': 12, 'rr_preset': 5})
+                    self.assertEqual((result['values']['dlss_preset'], result['values']['rr_preset']), (12, 5))
+                    previous = box.apply({'dlss_preset': 0})['command']
                 else:
                     with self.assertRaisesRegex(t.Refusal, 'Update this game package'): box.apply({'dynamic_mfg': 1})
                 ctypes.c_long.from_address(view + 112).value = 1

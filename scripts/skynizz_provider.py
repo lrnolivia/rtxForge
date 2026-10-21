@@ -236,6 +236,10 @@ def startup_overlay_disabled(game):
                                  or Path(game.exe or '').name.casefold() == 'inzoi-win64-shipping.exe')
 
 
+# DLSS render presets: OptiScaler applies RenderPresetForAll only with RenderPresetOverride on.
+RENDER_PRESETS = {'dlss_preset', 'rr_preset'}
+
+
 @lru_cache(maxsize=1)
 def control_schema():
     controls = json.loads((ROOT / 'providers/skynizz-bridge/controls.json').read_text(encoding='utf-8'))['controls']
@@ -267,6 +271,11 @@ def apply_controls(e, text, values, mode='nr-mfg', external_mfg=False):
         if item['group'] == 'Frame generation' and mode == 'nr-only': continue
         if item['section'] == 'DLSSG' and external_mfg: continue
         value = values[key]
+        if key in RENDER_PRESETS:
+            # Game default hands the choice back to the game; any preset needs the override on.
+            text = e.set_ini_value(text, item['section'], 'RenderPresetOverride', 'true' if value else 'false')
+            text = e.set_ini_value(text, item['section'], item['ini'], str(int(value)) if value else 'auto')
+            continue
         if key == 'multiplier': value = 'auto' if value == -1 else str(max(0, int(value) - 1))
         elif key == 'sharpen_shader': value = ('rcas', 'da', 'lcda')[int(value)]
         elif item['kind'] == 'toggle': value = 'true' if value else 'false'
@@ -284,6 +293,12 @@ def read_controls(path):
     values = {}
     for item in control_schema():
         raw = parser.get(item['section'], item['ini'], fallback='auto').casefold()
+        if item['key'] in RENDER_PRESETS:
+            override = parser.get(item['section'], 'RenderPresetOverride', fallback='auto').casefold()
+            preset = int(raw) if override in ('true', '1') and raw.isdigit() else 0
+            # A preset picked in OptiScaler's own menu that rtxForge does not list stays untouched.
+            if preset in item['values']: values[item['key']] = preset
+            continue
         if raw == 'auto' and item['key'] != 'multiplier': continue
         if item['key'] == 'multiplier': value = -1 if raw == 'auto' else 0 if int(raw) == 0 else int(raw) + 1
         elif item['key'] == 'sharpen_shader': value = ('rcas', 'da', 'lcda').index(raw)

@@ -42,6 +42,9 @@ public sealed class PresetControlsView : UserControl
 
             var more = new StackPanel { Spacing = 16 };
             more.Children.Add(Pair(Field("preset"), Field("passes")));
+            var upscaling = new StackPanel { Spacing = 12 };
+            upscaling.Children.Add(Pair(Field("dlss_preset"), Field("rr_preset")));
+            more.Children.Add(Disclosure("DLSS presets", upscaling));
             var image = new StackPanel { Spacing = 12 };
             image.Children.Add(Pair(Field("detail"), Field("colour")));
             image.Children.Add(Pair(Field("structure"), Field("tone")));
@@ -88,6 +91,8 @@ public sealed class PresetControlsView : UserControl
                 performance.Children.Add(i + 1 < fields.Length ? Pair(Field(fields[i]), Field(fields[i + 1])) : Field(fields[i]));
             secondary.Children.Add(Card(Disclosure("Performance", performance)));
             primary.Children.Add(secondary); root.Children.Add(primary);
+            var upscaling = Section("DLSS presets", "Applies when the game next starts DLSS. Game default keeps the game's own choice.");
+            upscaling.Children.Add(Pair(Field("dlss_preset"), Field("rr_preset"))); root.Children.Add(Card(upscaling));
             Content = root;
         }
         RefreshAvailability();

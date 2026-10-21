@@ -106,6 +106,20 @@ class SkynizzPolicyTest(unittest.TestCase):
         self.assertEqual(external, text)
         with self.assertRaises(transactions.Refusal): provider.validate_controls({'dynamic_mfg': 2})
 
+        # DLSS presets: a choice turns OptiScaler's override on; Game default hands it back to the game.
+        self.assertRegex(text, r'(?ms)^\[DLSS\].*?^RenderPresetOverride=true.*?^RenderPresetForAll=13')
+        self.assertRegex(text, r'(?ms)^\[DLSSD\].*?^RenderPresetOverride=true.*?^RenderPresetForAll=5')
+        default = provider.apply_controls(engine, text, {'dlss_preset': 0, 'rr_preset': 0})
+        self.assertRegex(default, r'(?ms)^\[DLSS\].*?^RenderPresetOverride=false.*?^RenderPresetForAll=auto')
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'OptiScaler.ini'
+            path.write_text(default, encoding='utf-8')
+            self.assertEqual({k: provider.read_controls(path)[k] for k in ('dlss_preset', 'rr_preset')}, {'dlss_preset': 0, 'rr_preset': 0})
+            # A preset chosen in OptiScaler's own menu that rtxForge does not list is left alone, not refused.
+            path.write_text('[DLSS]\nRenderPresetOverride=true\nRenderPresetForAll=14\n', encoding='utf-8')
+            self.assertNotIn('dlss_preset', provider.read_controls(path))
+        with self.assertRaises(transactions.Refusal): provider.validate_controls({'dlss_preset': 14})
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

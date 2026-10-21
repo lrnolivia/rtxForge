@@ -57,19 +57,22 @@ OFFSETS.update({key: value[0] for key, value in SHARP.items()})
 DEFAULTS.update({key: value[3] for key, value in SHARP.items()})
 _FLOATS.update({'sharpness', 'motion_sharpness'})
 _BOOLS.update({'sharpen', 'sharp_override', 'motion_sharpen'})
-# Protocol 7: Dynamic MFG as (actual offset, request offset). The FPS target's
-# request slot stays at its "unchanged" sentinel; this client never writes it.
-DYNAMIC = {'dynamic_mfg': (412, 404)}
+# Protocol 7 as (actual offset, request offset): Dynamic MFG and the DLSS / Ray
+# Reconstruction render presets (0 is the game's own choice). The Dynamic FPS
+# target's request slot stays at its "unchanged" sentinel; this client never writes it.
+PROTOCOL7 = {'dynamic_mfg': (412, 404), 'dlss_preset': (432, 424), 'rr_preset': (436, 428)}
 DYNAMIC_SUPPORT = 420
-OFFSETS.update({key: spec[0] for key, spec in DYNAMIC.items()})
-DEFAULTS['dynamic_mfg'] = 0
+OFFSETS.update({key: spec[0] for key, spec in PROTOCOL7.items()})
+DEFAULTS.update(dynamic_mfg=0, dlss_preset=0, rr_preset=0)
 _BOOLS.add('dynamic_mfg')
+# OptiScaler numbers presets 1 (A) to 15 (O); one picked in its own menu still round-trips.
+_PRESETS = {'dlss_preset': ('DLSS', range(16)), 'rr_preset': ('DLSSD', range(16))}
 VERSIONS = (1, 2, 3, 4, 5, 6, 7)
 
 
 def supported_keys(version):
     return (LEGACY_KEYS | (set(EXTRA) if version >= 3 else set()) | (set(SHARP) if version >= 4 else set())
-            | (set(DYNAMIC) if version >= 7 else set()))
+            | (set(PROTOCOL7) if version >= 7 else set()))
 
 
 def startup_changes(game, changes):
@@ -93,6 +96,7 @@ def validate_changes(changes):
             t.need(type(value) is int, 'A control value is invalid.')
             valid = (value in (0, 1) if key in _BOOLS else
                      value in (-1, 0, 2, 3, 4, 5, 6) if key == 'multiplier' else
+                     value in _PRESETS[key][1] if key in _PRESETS else
                      1 <= value <= 16 if key == 'interval' else
                      1 <= value <= 3 if key == 'passes' else
                      0 <= value <= 2 if key in ('style', 'sharpen_shader') else 0 <= value <= 3)
@@ -228,7 +232,7 @@ class Mailbox:
                 raw = struct.pack('<f' if key in _FLOATS else '<i', values[key])
                 ctypes.memmove(self.view + offset - 24, raw, 4)
         if before['version'] >= 7:
-            for key, (_, request) in DYNAMIC.items():
+            for key, (_, request) in PROTOCOL7.items():
                 ctypes.c_long.from_address(self.view + request).value = values[key]
         ctypes.c_long.from_address(self.view + 16).value = sequence
         deadline = time.monotonic() + 2
@@ -383,6 +387,10 @@ class Controls:
         dynamic = parser.get('DLSSG', 'OverrideForceDMFG', fallback='false').strip().casefold()
         t.need(dynamic in ('true', 'false', '0', '1', 'auto'), 'The saved Dynamic MFG setting is invalid; repair this game.')
         values['dynamic_mfg'] = int(dynamic in ('true', '1'))
+        for key, (section, allowed) in _PRESETS.items():
+            override = parser.get(section, 'RenderPresetOverride', fallback='false').strip().casefold()
+            preset = parser.get(section, 'RenderPresetForAll', fallback='auto').strip().casefold()
+            values[key] = int(preset) if override in ('true', '1') and preset.isdigit() and int(preset) in allowed else 0
         count = parser.get('DLSSG', 'OverrideInterpolationCount', fallback='auto').strip().casefold()
         if count != 'auto':
             t.need(0 <= int(count) <= 5, 'The saved MFG count is invalid; repair this game.')

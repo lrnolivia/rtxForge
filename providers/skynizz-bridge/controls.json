@@ -30,6 +30,10 @@
     {
       "name": "Performance",
       "expanded": false
+    },
+    {
+      "name": "Upscaling",
+      "expanded": false
     }
   ],
   "controls": [
@@ -461,6 +465,60 @@
       "member": "DlssNrCacheInterval",
       "protocol": 1,
       "step": 1
+    },
+    {
+      "key": "dlss_preset",
+      "label": "DLSS preset",
+      "advanced": "DLSS render preset for all modes",
+      "group": "Upscaling",
+      "kind": "choice",
+      "min": 0,
+      "default": 0,
+      "ini": "RenderPresetForAll",
+      "protocol": 7,
+      "step": 1,
+      "max": 13,
+      "section": "DLSS",
+      "member": "RenderPresetForAll",
+      "values": [
+        0,
+        10,
+        11,
+        12,
+        13
+      ],
+      "choices": [
+        "Game default",
+        "J",
+        "K",
+        "L",
+        "M"
+      ]
+    },
+    {
+      "key": "rr_preset",
+      "label": "Ray Reconstruction preset",
+      "advanced": "DLSSD render preset for all modes",
+      "group": "Upscaling",
+      "kind": "choice",
+      "min": 0,
+      "default": 0,
+      "ini": "RenderPresetForAll",
+      "protocol": 7,
+      "step": 1,
+      "max": 5,
+      "section": "DLSSD",
+      "member": "DLSSDRenderPresetForAll",
+      "values": [
+        0,
+        4,
+        5
+      ],
+      "choices": [
+        "Game default",
+        "D",
+        "E"
+      ]
     }
   ]
 }

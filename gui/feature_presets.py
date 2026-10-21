@@ -21,7 +21,7 @@ class FeaturePresets(Gtk.Box):
     __gsignals__={'value-changed':(GObject.SignalFlags.RUN_FIRST,None,())}
     normalized=staticmethod(normalized)
 
-    def __init__(self,values,advanced=False,mode='nr-mfg',legacy=False):
+    def __init__(self,values,advanced=False,mode='nr-mfg',legacy=False,installation=False):
         super().__init__(orientation=Gtk.Orientation.VERTICAL,spacing=12)
         self.inputs={}
         self.rows={}
@@ -29,18 +29,26 @@ class FeaturePresets(Gtk.Box):
         self.mode=mode
         values=normalized(values)
         groups={}
+        more=None
+        if installation:
+            more=Gtk.Expander(label='More settings',expanded=False)
+            more_body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12)
+            more_body.set_margin_top(12)
+            more.set_child(more_body)
         for item in definitions():
-            group=groups.get(item['group'])
+            group_key='Additional neural settings' if installation and item['key'] in ('preset','passes') else item['group']
+            group=groups.get(group_key)
             if group is None:
-                name='DLSS presets' if item['group']=='Upscaling' else item['group']
+                name='DLSS presets' if item['group']=='Upscaling' else group_key
+                parent=more_body if installation and group_key!='Neural rendering' else self
                 if item['group'] in ('Fine tuning','Sharpening','Motion sharpening','Performance'):
                     container=Adw.PreferencesGroup()
                     group=Adw.ExpanderRow(title=name)
-                    container.add(group);self.append(container)
+                    container.add(group);parent.append(container)
                 else:
                     group=Adw.PreferencesGroup(title=name)
-                    self.append(group)
-                groups[item['group']]=group
+                    parent.append(group)
+                groups[group_key]=group
             key=item['key'];title=item['advanced'] if advanced else item['label']
             if item['kind']=='toggle':
                 row=Adw.SwitchRow(title=title,active=bool(values[key]))
@@ -57,9 +65,25 @@ class FeaturePresets(Gtk.Box):
                 control=Gtk.SpinButton(adjustment=adjustment,digits=2 if item['kind']=='slider' else 0,numeric=True,valign=Gtk.Align.CENTER)
                 control.connect('value-changed',lambda *_:self.emit('value-changed'))
                 row.add_suffix(control)
+                if item['kind']=='slider':
+                    field=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4)
+                    field.append(row)
+                    slider=Gtk.Scale(orientation=Gtk.Orientation.HORIZONTAL,adjustment=adjustment,draw_value=False,hexpand=True)
+                    slider.set_margin_start(16);slider.set_margin_end(16);slider.set_margin_bottom(8)
+                    slider.set_tooltip_text(f"{item['min']}–{item['max']}")
+                    slider.update_property([Gtk.AccessibleProperty.LABEL],[title])
+                    field.append(slider)
+                    def display(spin,r=row,i=item):
+                        value=spin.get_value()
+                        caption=('Follow structure' if i['key']=='skin' and value<0 and not advanced else
+                                 f'{value:.0%}' if i.get('unit')=='percent' or i.get('unit')=='strength' and not advanced else f'{value:.2f}')
+                        r.set_subtitle(caption)
+                    control.connect('value-changed',display);display(control)
+                    row=field
             if isinstance(group,Adw.ExpanderRow):group.add_row(row)
             else:group.add(row)
             self.inputs[key]=(item,control);self.rows[key]=row
+        if more is not None:self.append(more)
         self.connect('value-changed',lambda *_:self.refresh_availability())
         self.refresh_availability()
 

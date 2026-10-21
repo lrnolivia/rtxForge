@@ -3900,7 +3900,9 @@ class OperationFlow:
         body.append(tuning)
         self.primary.set_label('Continue')
         self.primary.set_sensitive(True)
-        self._page('presets',body,width=820)
+        scroll=Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,vexpand=True)
+        scroll.set_child(body)
+        self._page('presets',scroll,width=820)
 
     def show_checking(self):
         """The engine prepares every target; nothing is written yet."""
@@ -9636,7 +9638,7 @@ class Window(Adw.ApplicationWindow):
     def profile_changed(self,group,*_):
         self.mode=group.get_active_name() or 'mfg-only'
         self.profile_note.set_text({'nr-only':'Neural Rendering','nr-mfg':'Neural Rendering and frame generation','mfg-only':'Native frame generation'}[self.mode])
-    def tuning_controls(self,initial):
+    def tuning_controls(self,initial,installation=False):
         outer=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
         box=Gtk.Box(spacing=16)
         outer.append(box)
@@ -9782,7 +9784,24 @@ class Window(Adw.ApplicationWindow):
                     'sharpness':widgets['sharpening_strength'].get_value(),
                     'enabled':int(bool(initial.get('nr_on_launch',self.settings.get('nr_on_launch',False))))}
         features=FeaturePresets(values,advanced=self.settings.get('overlay_controls')=='classic',
-                                mode=initial.get('feature_mode',self.mode),legacy=legacy)
+                                mode=initial.get('feature_mode',self.mode),legacy=legacy,installation=installation)
+        if installation:
+            # Windows installation view: MFG and the three primary NR fields,
+            # followed by the collapsed secondary settings disclosure.
+            outer.remove(pod)
+            primary=features.get_first_child()
+            features.remove(primary)
+            nr=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,hexpand=True)
+            nr.add_css_class('control-pod');nr.append(primary)
+            pod.set_hexpand(True)
+            columns=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=24,homogeneous=True)
+            columns.append(pod);columns.append(nr)
+            outer.append(columns)
+            def fit_columns(widget,_clock):
+                direction=Gtk.Orientation.HORIZONTAL if widget.get_width()>=700 else Gtk.Orientation.VERTICAL
+                if widget.get_orientation()!=direction:widget.set_orientation(direction)
+                return True
+            columns.add_tick_callback(fit_columns)
         outer.append(features)
         box.set_visible(False)
         def sync_legacy(*_):
@@ -13403,7 +13422,7 @@ class Window(Adw.ApplicationWindow):
         if operation=='install' and not _presets_confirmed:
             # Stage 1 (install only): presets, in the same dialog as the rest.
             flow=self.new_operation_flow(operation,rows)
-            tuning,widgets=self.tuning_controls(visual_settings if visual_settings is not None else rows[0] if len(rows)==1 else self.tuning_values(self.tuning_widgets))
+            tuning,widgets=self.tuning_controls(visual_settings if visual_settings is not None else rows[0] if len(rows)==1 else self.tuning_values(self.tuning_widgets),installation=True)
             flow.show_presets(tuning,lambda:self.launch_action(operation,entire,targets,self.tuning_values(widgets),True,_flow=flow))
             return
         applying_strength=operation=='reset' and entire and self.defaults_changed()

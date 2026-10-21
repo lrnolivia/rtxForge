@@ -110,7 +110,7 @@ public sealed class GmUi(GmTheme t)
     {
         control.UseSystemFocusVisuals = true;
         control.FocusVisualPrimaryBrush = GmTheme.B(t.Focus);
-        control.FocusVisualPrimaryThickness = new Thickness(0, 0, 0, t.Px(2));
+        control.FocusVisualPrimaryThickness = new Thickness(t.Px(2));
         control.FocusVisualSecondaryThickness = new Thickness(0);
         control.FocusVisualMargin = new Thickness(-t.Px(offset + 2));
         control.IsTabStop = true;
@@ -158,6 +158,25 @@ public sealed class GmUi(GmTheme t)
         button.TranslationTransition = null;
         button.Shadow = null;
         button.GotFocus += (_, _) => { button.Scale = System.Numerics.Vector3.One; button.Translation = System.Numerics.Vector3.Zero; };
+    }
+
+    /// <summary>Menu focus adds a surface and brighter ink; selection colours remain owned by the page.</summary>
+    public void MenuFocus(Button button)
+    {
+        Brush? priorBackground = null, priorForeground = null;
+        var focusedBackground = GmTheme.B(t.RowFocus);
+        var focusedForeground = GmTheme.B(t.ActiveFg);
+        button.GotFocus += (_, _) =>
+        {
+            if (button.FocusState == FocusState.Pointer) return;
+            priorBackground = button.Background; priorForeground = button.Foreground;
+            button.Background = focusedBackground; button.Foreground = focusedForeground;
+        };
+        button.LostFocus += (_, _) =>
+        {
+            if (ReferenceEquals(button.Background, focusedBackground)) button.Background = priorBackground;
+            if (ReferenceEquals(button.Foreground, focusedForeground)) button.Foreground = priorForeground;
+        };
     }
 
     /// <summary>.rf-key: a controller/keyboard key cap.</summary>
@@ -239,7 +258,8 @@ public sealed class GmUi(GmTheme t)
         var text = new StackPanel { Spacing = t.Px(8), VerticalAlignment = VerticalAlignment.Center };
         var titleLine = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12) };
         if (glyph is not null) titleLine.Children.Add(Icon(glyph, 0.85, danger ? t.Danger : null));
-        titleLine.Children.Add(Text(title, 0.96, danger ? t.Danger : enabled ? t.Fg : t.DisabledFg, FontWeights.SemiBold));
+        var titleText = Text(title, 0.96, danger ? t.Danger : enabled ? t.Fg : t.DisabledFg, FontWeights.SemiBold);
+        titleLine.Children.Add(titleText);
         text.Children.Add(titleLine);
         if (description is not null) text.Children.Add(P(description, 0.83));
         grid.Children.Add(text);
@@ -261,6 +281,12 @@ public sealed class GmUi(GmTheme t)
         button.HorizontalContentAlignment = HorizontalAlignment.Stretch;
         if (!enabled) button.Background = GmTheme.B(Microsoft.UI.Colors.Transparent);
         RowFocus(button);   // ring inside the row: rows sit edge to edge in a rounded group
+        if (!danger)
+        {
+            MenuFocus(button);
+            button.GotFocus += (_, _) => { if (button.FocusState != FocusState.Pointer) titleText.Foreground = GmTheme.B(t.ActiveFg); };
+            button.LostFocus += (_, _) => titleText.Foreground = GmTheme.B(enabled ? t.Fg : t.DisabledFg);
+        }
         return button;
     }
 

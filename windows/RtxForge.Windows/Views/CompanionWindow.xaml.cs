@@ -284,7 +284,7 @@ public sealed partial class CompanionWindow : Window
         var wasSyncing = syncing; syncing = true;
         StrengthLabel.Text = Classic ? "Intensity" : "Model strength";
         DetailLabel.Text = Classic ? "Detail strength" : "Detail";
-        ColourLabel.Text = Classic ? "Colour strength" : "Colour";
+        ColourLabel.Text = Classic ? "Color strength" : "Color";
         PreSr.Header = Classic ? "Run before the upscaler" : "Run before super resolution";
         ToolTipService.SetToolTip(PreSr, "Requests before-upscale placement. The live report below shows where NR actually ran; some routes use the finished image.");
         Reduced.Header = Classic ? "Reduced model before the upscaler" : "Use reduced model resolution";

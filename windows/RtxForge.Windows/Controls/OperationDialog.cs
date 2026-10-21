@@ -238,19 +238,7 @@ public sealed class OperationDialog
         text.Children.Add(Prefs.Label(detail, "ForgeCaptionDimTextStyle"));
         if (!string.IsNullOrWhiteSpace(technical))
         {
-            var full = new TextBox
-            {
-                Text = technical, IsReadOnly = true, TextWrapping = TextWrapping.Wrap,
-                AcceptsReturn = true, MaxHeight = 200, FontSize = 12,
-                FontFamily = new FontFamily("Cascadia Mono, Consolas"),
-            };
-            ScrollViewer.SetVerticalScrollBarVisibility(full, ScrollBarVisibility.Auto);
-            text.Children.Add(new Expander
-            {
-                Header = "Technical details", Content = full,
-                HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                Margin = new Thickness(0, 8, 0, 0),
-            });
+            text.Children.Add(TechnicalDetails.Create(technical));
         }
         Grid.SetColumn(text, 1);
         grid.Children.Add(text);

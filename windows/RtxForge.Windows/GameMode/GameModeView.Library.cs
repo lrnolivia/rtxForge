@@ -234,19 +234,11 @@ public sealed partial class GameModeView
         card.Width = width;
         card.HorizontalContentAlignment = HorizontalAlignment.Stretch;
         title.Width = width;
-        // .rf-game-card: no fill or hover overlay; the focus ring outlines the art only
-        // An underline distinguishes focus from the artwork's accent selection stroke.
+        // Keep a thin rounded focus ring separate from the artwork's accent selection stroke.
         card.Style = (Style)Application.Current.Resources["GmBareButtonStyle"];
-        card.UseSystemFocusVisuals = false;   // ui.Button set it locally, which outranks the style
+        card.UseSystemFocusVisuals = true;
+        card.FocusVisualMargin = new Thickness(-t.Px(5), -t.Px(5), -t.Px(5), title.MinHeight + column.Spacing - t.Px(5));
         card.IsTabStop = true;
-        var ring = new Border
-        {
-            Margin = new Thickness(0, 0, 0, -t.Px(5)), BorderThickness = new Thickness(0, 0, 0, t.Px(2)),
-            BorderBrush = GmTheme.B(t.Focus), IsHitTestVisible = false, Visibility = Visibility.Collapsed,
-        };
-        overlay.Children.Add(ring);
-        card.GotFocus += (_, _) => ring.Visibility = card.FocusState == FocusState.Pointer ? Visibility.Collapsed : Visibility.Visible;
-        card.LostFocus += (_, _) => ring.Visibility = Visibility.Collapsed;
         GmUi.NoLift(card);
         Drift(card, art);
         if (!enabled) art.Opacity = 0.5;

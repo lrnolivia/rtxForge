@@ -48,6 +48,8 @@ public sealed partial class MainWindow : Window
         if (service is EngineForgeService engine) Games = engine.CachedLibrary();
         App.Main = this;
         InitializeComponent();
+        Nav.RegisterPropertyChangedCallback(NavigationView.IsPaneOpenProperty, (_, _) => UpdateNavigationCommands());
+        UpdateNavigationCommands();
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
@@ -207,9 +209,25 @@ public sealed partial class MainWindow : Window
         if (ContentFrame.CanGoBack) ContentFrame.GoBack();
     }
 
+    void OnNavigationBackClick(object sender, RoutedEventArgs e)
+    {
+        if (ContentFrame.CanGoBack) ContentFrame.GoBack();
+    }
+
+    void OnNavigationMenuClick(object sender, RoutedEventArgs e) => Nav.IsPaneOpen = !Nav.IsPaneOpen;
+
+    void UpdateNavigationCommands()
+    {
+        var padding = Nav.IsPaneOpen ? 12 : 4;
+        NavigationCommands.Width = Math.Max(40, (Nav.IsPaneOpen ? Nav.OpenPaneLength : Nav.CompactPaneLength) - padding * 2);
+        NavigationCommands.Margin = new Thickness(padding, 6, padding, 6);
+        NavigationBack.Visibility = Nav.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     void OnFrameNavigated(object sender, NavigationEventArgs e)
     {
         Nav.IsBackEnabled = ContentFrame.CanGoBack;
+        NavigationBack.IsEnabled = ContentFrame.CanGoBack;
         var tag = e.SourcePageType == typeof(SettingsPage) ? "Settings"
             : e.SourcePageType == typeof(ActivityPage) ? "Activity"
             : e.SourcePageType == typeof(PresetsPage) ? "Presets"

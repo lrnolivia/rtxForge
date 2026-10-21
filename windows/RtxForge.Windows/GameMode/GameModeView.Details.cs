@@ -148,6 +148,7 @@ public sealed partial class GameModeView
                 GmKind.Transparent, 0.88, radius: 12, padding: new Thickness(t.Px(18), t.Px(12), t.Px(18), t.Px(12)), minHeight: t.Compact ? 46 : 60);
             button.HorizontalAlignment = HorizontalAlignment.Stretch;
             button.HorizontalContentAlignment = HorizontalAlignment.Left;
+            ui.MenuFocus(button);
             Key(button, "section-" + section);
             navButtons.Add((button, section));
             nav.Children.Add(button);
@@ -436,7 +437,7 @@ public sealed partial class GameModeView
     }
 
     /// <summary>Compact controller cards retain the overlay vocabulary and original values.</summary>
-    (List<UIElement> Rows, Func<Tuning> Value) PresetRows(Tuning initial, bool enabled = true, bool legacy = false)
+    (List<UIElement> Rows, Func<Tuning> Value) PresetRows(Tuning initial, bool enabled = true, bool legacy = false, Action? changed = null)
     {
         var values = FeatureControlSchema.Resolve(initial);
         var advanced = shell.Settings.OverlayControls == "classic";
@@ -482,6 +483,7 @@ public sealed partial class GameModeView
                     : Math.Clamp(Math.Round(current + direction * field.Step, 2), field.Min, field.Max);
                 FeatureControlSchema.Put(values, field, next);
                 Refresh();
+                changed?.Invoke();
             }
             Border Step(string glyph, int direction)
             {
@@ -527,6 +529,7 @@ public sealed partial class GameModeView
                     buttons[i].Background = GmTheme.B(definition.Values[i] == value ? t.SegmentSelected : t.Card);
                     Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(buttons[i], definition.Label + " " + definition.Choices[i] + (definition.Values[i] == value ? " selected" : ""));
                 }
+                changed?.Invoke();
             }
             for (var i = 0; i < definition.Values.Length; i++)
             {

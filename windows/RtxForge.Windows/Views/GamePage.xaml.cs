@@ -448,7 +448,7 @@ public sealed partial class GamePage : Page
         var suffix = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Children = { swatch, edit } };
         var customHex = shell.Settings.GameAccents.GetValueOrDefault(g.Id);
         accentGroup.Add(Prefs.Row("Game Accent", customHex is null ? "Artwork-derived" : "Custom · " + customHex.ToUpperInvariant(), suffix, ""));
-        PageHost.Children.Add(accentGroup);
+        PageHost.Children.Insert(0, accentGroup);
 
         // Artwork Credits pods.
         var credits = new PreferencesGroup("Artwork Credits");

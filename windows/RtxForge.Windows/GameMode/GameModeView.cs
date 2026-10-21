@@ -24,6 +24,7 @@ namespace RtxForge.Windows.GameMode;
 public sealed partial class GameModeView : UserControl
 {
     readonly MainWindow shell;
+    readonly FocusVisualKind desktopFocusKind = Application.Current.FocusVisualKind;
     GmTheme t;
     GmUi ui;
 
@@ -95,8 +96,8 @@ public sealed partial class GameModeView : UserControl
         toastTimer.Tick += (_, _) => { toastTimer.Stop(); toastHost.Visibility = Visibility.Collapsed; };
 
         shell.GamesChanged += OnGamesChanged;
-        Unloaded += (_, _) => shell.GamesChanged -= OnGamesChanged;
-        Loaded += (_, _) => { t.Resize(ActualWidth, ActualHeight); Render(); };
+        Unloaded += (_, _) => { shell.GamesChanged -= OnGamesChanged; Application.Current.FocusVisualKind = desktopFocusKind; };
+        Loaded += (_, _) => { Application.Current.FocusVisualKind = FocusVisualKind.Reveal; t.Resize(ActualWidth, ActualHeight); Render(); };
     }
 
     void OnGamesChanged()

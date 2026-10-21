@@ -22,10 +22,10 @@ public sealed class PresetControlsView : UserControl
     public PresetControlsView(Tuning initial, bool advanced = false)
     {
         this.advanced = advanced; values = FeatureControlSchema.Resolve(initial);
-        var root = new StackPanel { Spacing = 16 };
+        var root = new StackPanel { Spacing = 12 };
         var mfg = Section("Frame generation", "Requested multiplier · enable frame generation in the game.");
         mfg.Children.Add(Field("multiplier", true)); root.Children.Add(Card(mfg));
-        var primary = new PresetColumns(460, 2);
+        var primary = new PresetColumns(460, 2) { ColumnSpacing = 12, RowSpacing = 12 };
         var nr = Section("Neural rendering");
         nr.Children.Add(Field("enabled")); nr.Children.Add(Field("style")); nr.Children.Add(Field("intensity"));
         nr.Children.Add(Pair(Field("preset"), Field("passes"))); primary.Children.Add(Card(nr));
@@ -35,7 +35,7 @@ public sealed class PresetControlsView : UserControl
         fine.Children.Add(Pair(Field("structure"), Field("tone")));
         fine.Children.Add(Pair(Field("skin"), Field("auto_mask")));
         image.Children.Add(Disclosure("Fine tuning", fine));
-        var secondary = new StackPanel { Spacing = 16 }; secondary.Children.Add(Card(image));
+        var secondary = new StackPanel { Spacing = 12 }; secondary.Children.Add(Card(image));
         var sharp = new StackPanel { Spacing = 16 };
         sharp.Children.Add(Field("sharpen")); sharp.Children.Add(Pair(Field("sharpen_shader"), Field("sharp_override")));
         sharp.Children.Add(Field("sharpness"));
@@ -54,14 +54,14 @@ public sealed class PresetControlsView : UserControl
 
     static StackPanel Section(string title, string? description = null)
     {
-        var section = new StackPanel { Spacing = 16 };
+        var section = new StackPanel { Spacing = 12 };
         var heading = new StackPanel { Spacing = 4 };
         heading.Children.Add(Prefs.Label(title, "ForgeHeadingTextStyle"));
         if (description is not null) heading.Children.Add(Prefs.Label(description, "ForgeCaptionDimTextStyle"));
         section.Children.Add(heading); return section;
     }
     static Border Card(UIElement content) => new()
-    { Style = Prefs.GetStyle("ForgeControlPodStyle"), Child = content, VerticalAlignment = VerticalAlignment.Top };
+    { Style = Prefs.GetStyle("ForgeControlPodStyle"), Padding = new Thickness(16, 12, 16, 12), Child = content, VerticalAlignment = VerticalAlignment.Top };
     static PresetColumns Pair(params UIElement[] children)
     {
         var pair = new PresetColumns(210, 2) { ColumnSpacing = 20, RowSpacing = 16 };

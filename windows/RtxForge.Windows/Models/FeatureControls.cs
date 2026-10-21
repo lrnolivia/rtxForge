@@ -23,7 +23,7 @@ public sealed class FeatureControl
     public double[] Values { get; set; } = [];
     public string[] Choices { get; set; } = [];
     public bool Integer => Kind != "slider";
-    public string Caption(bool advanced) => advanced ? Advanced : Label;
+    public string Caption(bool advanced) => (advanced ? Advanced : Label).Replace("Colour", "Color", StringComparison.Ordinal);
     public string Display(double value, bool advanced) => Key == "skin" && value < 0 && !advanced ? "Follow structure"
         : Kind == "toggle" ? value == 0 ? "Off" : "On"
         : Values.Length > 0 ? Choices[Math.Max(0, Array.IndexOf(Values, value))]

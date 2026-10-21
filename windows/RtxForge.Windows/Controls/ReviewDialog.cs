@@ -140,13 +140,7 @@ public sealed class ReviewDialog
         if (item.Detail.Length > 0) text.Children.Add(Prefs.Label(item.Detail, "ForgeCaptionDimTextStyle"));
         if (item.Details is { } details)
         {
-            var full = new TextBox
-            {
-                Text = details, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, MaxHeight = 240,
-                FontFamily = new FontFamily("Cascadia Mono, Consolas"), FontSize = 12,
-            };
-            ScrollViewer.SetVerticalScrollBarVisibility(full, ScrollBarVisibility.Auto);
-            text.Children.Add(new Expander { Header = "Details", Content = full, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 6, 0, 0) });
+            text.Children.Add(TechnicalDetails.Create(details));
         }
         Grid.SetColumn(text, 1);
         grid.Children.Add(text);

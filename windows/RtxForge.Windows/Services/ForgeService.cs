@@ -267,9 +267,13 @@ public sealed class PreviewForgeService : IForgeService
 
     public Task<PackageCatalog> PackagesAsync() => Task.FromResult(new PackageCatalog("Preview system · NVIDIA RTX 4070 · no game writes",
     [
+        new("skynizz", "Skynizz NR + Ada MFG bridge", "v1.2.1 bridge · preview", "Neural rendering and multi-frame generation for DirectX 12 games with native DLSS Frame Generation.", true,
+            "Preview package · no game writes", false, "https://github.com/Skynizz/optiscaler-dlss5"),
         new("dlss-unlocked", "DLSS-Unlocked", "Preview", "Native MFG path; NR needs per-game verification", true, "Ready to review for your system", true, "https://github.com/ShyVortex/dlss-unlocked"),
         new("y4my", "y4my Multipass", "nightly", "Alternative OptiScaler package; a local NR model may be needed", true, "Ready to review for your system", false,
             "https://github.com/y4my4my4m/OptiScaler_DLSSNR_Multipass_MFG"),
+        new("feeder", "Feeder NR", "Preview", "Neural rendering for DirectX 11 games through ReShade. NR only.", true,
+            "Preview package · no game writes", false, "https://github.com/jlrouzies-fr/DLSS5-Feeder"),
     ], [], null));
 
     public Task<PackageInspection> InspectPackageAsync(string path) => Disabled<PackageInspection>("Custom packages");

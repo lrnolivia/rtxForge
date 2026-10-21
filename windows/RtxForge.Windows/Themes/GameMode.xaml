@@ -7,7 +7,7 @@
         font size are set per control by GameModeView from the Night / Dark /
         Light palette; this template only adds the prototype's hover
         (brightness 1.09) and press (brightness 0.9) as light/dark overlays,
-        and keeps the system focus visual, styled as a subtle underline.
+        and keeps the system focus visual, styled as a thin rounded outline.
     -->
     <Style x:Key="GmButtonStyle" TargetType="Button">
         <Setter Property="UseSystemFocusVisuals" Value="True" />

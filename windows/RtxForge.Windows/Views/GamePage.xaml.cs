@@ -59,6 +59,7 @@ public sealed partial class GamePage : Page
         ShowIdentity();
         _ = LoadSteamInfoAsync(game);
         HeroImage.SetSource(game.HeroPath ?? game.CapsulePath);
+        HeroImage.ChosenFocus = FadedImage.Stored(shell.Settings.GameHeroFocus, game.Id);
         PosterImage.Source = ViewModels.GameItem.Image(game.PosterPath);
         PosterFrame.Visibility = game.PosterPath is null || phoneLayout ? Visibility.Collapsed : Visibility.Visible;
         ApplyLayout(ActualWidth);
@@ -534,6 +535,26 @@ public sealed partial class GamePage : Page
         accentGroup.Add(Prefs.Row("Game Accent", customHex is null ? "Artwork-derived" : "Custom · " + customHex.ToUpperInvariant(), suffix, ""));
         PageHost.Children.Insert(0, accentGroup);
 
+        // Hero Focus: the point of the hero art kept in view at every window size.
+        if ((g.HeroPath ?? g.CapsulePath) is not null)
+        {
+            var focusGroup = new PreferencesGroup("Hero Focus", "The part of the hero art kept in view as the window narrows.");
+            var chosen = FadedImage.Stored(shell.Settings.GameHeroFocus, g.Id) is not null;
+            var set = Prefs.ActionButton("Set focal point", (_, _) => _ = PickHeroFocusAsync(g));
+            var automatic = Prefs.ActionButton("Automatic", (_, _) =>
+            {
+                shell.Settings.GameHeroFocus.Remove(g.Id);
+                shell.Settings.Save();
+                HeroImage.ChosenFocus = null;
+                Build("Appearance");
+            });
+            automatic.IsEnabled = chosen;
+            ToolTipService.SetToolTip(automatic, "Follow the subject rtxForge finds in the art");
+            var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { set, automatic } };
+            focusGroup.Add(Prefs.Row("Focal Point", chosen ? "Chosen for this game" : "Automatic · follows the subject", actions, ""));
+            PageHost.Children.Insert(1, focusGroup);
+        }
+
         // Artwork Credits pods.
         var credits = new PreferencesGroup("Artwork Credits");
         var pods = new PresetColumns(220, 3) { ColumnSpacing = 12, RowSpacing = 12 };
@@ -552,6 +573,75 @@ public sealed partial class GamePage : Page
         PageHost.Children.Add(credits);
 
         _ = PaintAppearanceAsync(g, frames, swatch);
+    }
+
+    /// <summary>
+    /// "Set Focal Point": the whole hero art with a marker; click the subject to move it, and the
+    /// hero behind the dialog follows. Done saves it for this game (desktop and Game Mode).
+    /// </summary>
+    async Task PickHeroFocusAsync(Game g)
+    {
+        if ((g.HeroPath ?? g.CapsulePath) is not { } source) return;
+        uint sw, sh;
+        try { (_, sw, sh) = await Services.ArtAccent.DecodeAsync(await Services.ArtAccent.LoadAsync(source)); }
+        catch (Exception error) when (error is HttpRequestException or IOException or TaskCanceledException or System.Runtime.InteropServices.COMException)
+        {
+            shell.ShowToast("Could not open this game’s artwork.");
+            return;
+        }
+        var displayW = Math.Min(560, Math.Max(280, (XamlRoot?.Size.Width ?? 800) - 160));
+        var displayH = Math.Round(displayW * sh / sw);
+        var before = HeroImage.ChosenFocus;
+        var point = before ?? new System.Numerics.Vector2(.5f, .3f);
+
+        var image = new Image { Source = ViewModels.GameItem.Image(source), Stretch = Stretch.Fill, Width = displayW, Height = displayH };
+        var marker = new Microsoft.UI.Xaml.Shapes.Ellipse
+        {
+            Width = 28, Height = 28, StrokeThickness = 3, IsHitTestVisible = false,
+            Stroke = new SolidColorBrush(Microsoft.UI.Colors.White),
+            Fill = new SolidColorBrush(global::Windows.UI.Color.FromArgb(0x55, 0, 0, 0)),
+            Visibility = before is null ? Visibility.Collapsed : Visibility.Visible,
+        };
+        var stage = new Canvas { Width = displayW, Height = displayH, Children = { image, marker } };
+        void Place(System.Numerics.Vector2 at)
+        {
+            Canvas.SetLeft(marker, at.X * displayW - marker.Width / 2);
+            Canvas.SetTop(marker, at.Y * displayH - marker.Height / 2);
+        }
+        Place(point);
+        image.PointerEntered += (_, _) => ProtectedCursor = Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.Cross);
+        image.PointerExited += (_, _) => ProtectedCursor = null;
+        image.Tapped += (_, e) =>
+        {
+            var at = e.GetPosition(image);
+            point = new((float)Math.Clamp(at.X / displayW, 0, 1), (float)Math.Clamp(at.Y / displayH, 0, 1));
+            marker.Visibility = Visibility.Visible;
+            Place(point);
+            HeroImage.ChosenFocus = point;
+        };
+        var frame = new Border
+        {
+            HorizontalAlignment = HorizontalAlignment.Center, Child = stage,
+            CornerRadius = (CornerRadius)Application.Current.Resources["ForgeCardCornerRadius"],
+        };
+        var instructions = Prefs.Label("Click the subject to keep in view. The hero updates as you choose.", "ForgeDimTextStyle");
+        var body = new StackPanel { Spacing = 12, Children = { instructions, frame } };
+
+        var dialog = shell.NewDialog();
+        dialog.Title = "Set Focal Point";
+        dialog.Content = body;
+        dialog.PrimaryButtonText = "Done";
+        dialog.CloseButtonText = "Cancel";
+        dialog.DefaultButton = ContentDialogButton.Primary;
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary || marker.Visibility != Visibility.Visible)
+        {
+            HeroImage.ChosenFocus = before;
+            return;
+        }
+        shell.Settings.GameHeroFocus[g.Id] = [Math.Round(point.X, 4), Math.Round(point.Y, 4)];
+        shell.Settings.Save();
+        shell.NotifyGamesChanged();
+        Build("Appearance");
     }
 
     /// <summary>.artwork-editor.{art} .artwork-preview border and the accent swatch.</summary>

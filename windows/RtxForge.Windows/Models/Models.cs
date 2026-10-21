@@ -278,6 +278,8 @@ public sealed class ForgeSettings
     [JsonPropertyName("library_folders")] public List<string> LibraryFolders { get; set; } = [];
     [JsonPropertyName("removed_games")] public List<string> RemovedGames { get; set; } = [];
     [JsonPropertyName("game_accents")] public Dictionary<string, string> GameAccents { get; set; } = [];
+    /// <summary>Hero art focal points chosen per game: [x, y] as fractions of the art. Absent means automatic.</summary>
+    [JsonPropertyName("game_hero_focus")] public Dictionary<string, double[]> GameHeroFocus { get; set; } = [];
 
     // Gaming Mode (Linux couch shell; same keys and defaults as library_media.DEFAULTS).
     [JsonPropertyName("big_picture_ui")] public bool BigPictureUi { get; set; } = true;

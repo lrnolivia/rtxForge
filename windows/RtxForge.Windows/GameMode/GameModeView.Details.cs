@@ -61,7 +61,7 @@ public sealed partial class GameModeView
         Grid.SetColumn(hero, 1);
         if ((g.HeroPath ?? g.CapsulePath) is { } heroSource)
         {
-            var art = new FadedImage();
+            var art = new FadedImage { ChosenFocus = FadedImage.Stored(shell.Settings.GameHeroFocus, g.Id) };
             art.SetSource(heroSource);
             hero.Children.Add(art);
         }

@@ -4,6 +4,7 @@
 #include <Util.h>
 #include <imgui/imgui.h>
 #include <imgui/misc/freetype/imgui_freetype.h>
+#include <imgui/imgui_internal.h>
 #include <json.hpp>
 #include <fstream>
 #include <array>
@@ -83,7 +84,40 @@ inline DWORD Preference(const wchar_t* name, DWORD fallback)
     if(result != ERROR_SUCCESS) LOG_WARN("rtxForge panel preference read failed: {}, using default {}", result, fallback);
     return result == ERROR_SUCCESS ? value : fallback;
 }
-inline void Init(HWND window)
+// Windows-like text from the FreeType rasterizer built into the bridge, so it
+// renders the same natively and under Proton: light (vertical-only) hinting,
+// then DirectWrite's grayscale enhanced-contrast curve c(k+1)/(ck+1), k = 1,
+// applied once to each glyph's coverage when it is first rasterized.
+inline bool WindowsGlyph(ImFontAtlas* atlas, ImFontConfig* src, ImFontBaked* baked, void* data, ImWchar codepoint, ImFontGlyph* glyph)
+{
+    if(!ImGuiFreeType::GetFontLoader()->FontBakedLoadGlyph(atlas, src, baked, data, codepoint, glyph)) return false;
+    if(!glyph->Visible || glyph->Colored) return true;
+    ImTextureData* tex = atlas->TexData; const ImTextureRect* r = ImFontAtlasPackGetRect(atlas, glyph->PackId);
+    const bool rgba = tex->Format == ImTextureFormat_RGBA32;
+    for(int y = 0; y < r->h; ++y)
+    {
+        auto* row = static_cast<unsigned char*>(tex->GetPixelsAt(r->x, r->y + y));
+        for(int x = 0; x < r->w; ++x)
+        {
+            unsigned char& alpha = row[rgba ? x*4 + 3 : x];
+            const float coverage = alpha/255.f;
+            alpha = static_cast<unsigned char>(std::lround(255.f*coverage*2.f/(coverage + 1.f)));
+        }
+    }
+    ImFontAtlasTextureBlockQueueUpload(atlas, tex, r->x, r->y, r->w, r->h);
+    return true;
+}
+// Per-font loaders must leave LoaderInit/Shutdown to the atlas's FreeType loader.
+inline const ImFontLoader* WindowsText()
+{
+    static const ImFontLoader loader = [] {
+        ImFontLoader copy = *ImGuiFreeType::GetFontLoader();
+        copy.Name = "rtxForge FreeType"; copy.LoaderInit = nullptr; copy.LoaderShutdown = nullptr;
+        copy.FontBakedLoadGlyph = WindowsGlyph;
+        return copy;
+    }();
+    return &loader;
+}inline void Init(HWND window)
 {
     if(!initialized)
     {
@@ -93,9 +127,8 @@ inline void Init(HWND window)
     if(!enabled) return;
     ForgePanelChannel::Init();
     LOG_INFO("rtxForge panel channel: ready {}", ForgePanelChannel::channel != nullptr);
-    // Unhinted outlines with slightly heavier coverage, as macOS renders text,
-    // instead of FreeType's default hinting that snaps small text sharp.
-    ImFontConfig options; options.FontDataOwnedByAtlas = false; options.FontBuilderFlags = ImGuiFreeTypeBuilderFlags_NoHinting; options.RasterizerMultiply = 1.15f;
+    ImFontConfig options; options.FontDataOwnedByAtlas = false;
+    options.FontBuilderFlags = ImGuiFreeTypeBuilderFlags_LightHinting; options.FontLoader = WindowsText();
     font = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(forgeInter, sizeof(forgeInter), 18.f, &options);
     bold = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(forgeInterSemiBold, sizeof(forgeInterSemiBold), 18.f, &options);
     key = int(Preference(L"PanelKey", VK_DELETE)); modifiers = int(Preference(L"PanelModifiers", 0));
@@ -717,7 +750,7 @@ inline bool Draw(bool& visible, float scale)
     const ImVec4 neutral(.91f,.91f,.91f,1), dark(.20f,.20f,.20f,1), well(.22f,.22f,.22f,1);
     const auto ink = TitleColor();
     const auto alpha = [](ImVec4 color, float a) { color.w = a; return color; };
-    PushColor(ImGuiCol_WindowBg,ImVec4(.06f,.06f,.06f,.75f));
+    PushColor(ImGuiCol_WindowBg,ImVec4(.06f,.06f,.06f,.85f));
     PushColor(ImGuiCol_TextDisabled,ImVec4(.62f,.62f,.62f,1));
     PushColor(ImGuiCol_Border,ImVec4(1,1,1,.08f));
     PushColor(ImGuiCol_Text,neutral);
@@ -757,10 +790,9 @@ inline bool Draw(bool& visible, float scale)
     // A narrower inner region keeps content clear of the scrollbar.
     ImGui::BeginChild("content",ImVec2(ImGui::GetContentRegionAvail().x-12.f*scale,0),ImGuiChildFlags_AutoResizeY|ImGuiChildFlags_NavFlattened,ImGuiWindowFlags_NoBackground|ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
     auto& cfg = *Config::Instance();
-    if(settings)
-    {
-        SettingsControls();
-    }
+    // Settings and Global use the main page's looser rhythm.
+    if(settings || global) ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(10.f*scale, 14.f*scale));
+    if(settings) SettingsControls();
     else if(global) GlobalControls();
     else
     {
@@ -786,6 +818,7 @@ inline bool Draw(bool& visible, float scale)
             else Field(field,cfg);
         }
     }
+    if(settings || global) ImGui::PopStyleVar();
     ImGui::EndChild(); ImGui::EndChild();
     if(!message.empty())
     { ImGui::BeginChild("feedback",ImVec2(0,feedbackHeight),ImGuiChildFlags_None,ImGuiWindowFlags_NoBackground); ImGui::TextWrapped("%s",message.c_str()); ImGui::EndChild(); }

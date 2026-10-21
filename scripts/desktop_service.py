@@ -77,9 +77,15 @@ class DesktopService:
                         row['feature_mode']=current['feature_mode']
                         row['profile']={'nr-mfg':'NR + MFG','nr-only':'NR Only','mfg-only':'MFG Only'}.get(current['feature_mode'],'Unknown')
                         row['runtime_provider']=current.get('provider_id','y4my')
-                        row['dynamic_mfg_available']=current.get('provider_id')=='skynizz' and not ((current.get('archive') or {}).get('release') or {}).get('mfg_component')
+                        component=((current.get('archive') or {}).get('release') or {}).get('mfg_component')
+                        universal=bool(component) and component.get('id')=='universal'
+                        # OptiScaler owns the count with the Universal plugin, so Dynamic stays available.
+                        row['dynamic_mfg_available']=current.get('provider_id')=='skynizz' and (not component or universal)
                         row['effects_enabled']=ini.get('DLSSG',{}).get('AdaMfgUnlock','false').lower()=='true'
-                        if component:=((current.get('archive') or {}).get('release') or {}).get('mfg_component'):
+                        if universal:
+                            row['effects_enabled']=ini.get('Plugins',{}).get('LoadAsiPlugins','false').split(';',1)[0].strip().lower()=='true'
+                            row['mfg_route']='Native DLSS-G · Universal MFG '+component.get('version','')
+                        elif component:
                             import ada_mfg_provider
                             try:
                                 row.update(ada_mfg_provider.configured_state(config.parent,component))

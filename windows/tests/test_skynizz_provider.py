@@ -57,7 +57,7 @@ def module(*a,**kw):
     return e
 engine_bridge.module=module
 model=root/'model.dll';model.write_bytes(fixtures.pe()+b'0'*(32*1024**2))
-settings={'runtime_provider':'skynizz','skynizz_version':'latest','nr_runtime':str(model),'manage_dlss_files':False,'nr_on_launch':True}
+settings={'runtime_provider':'skynizz','skynizz_version':'latest','nr_runtime':str(model),'manage_dlss_files':False,'nr_on_launch':True,'mfg_provider':'integrated'}
 def game(name):
     folder=root/name;folder.mkdir()
     (folder/'Game.exe').write_bytes(fixtures.pe())
@@ -466,6 +466,32 @@ assert 'ForceMultiplier=4' in reshade.read_text() and '; user preset' in reshade
 run(service.prepare([scan(external)],'nr-mfg','uninstall',visual_settings=settings))
 assert files(external)==external_before
 checks.append('external MFG recipe pins addon/host, disables internal unlock, preserves tuning on repair/reset and restores original files')
+# Universal MFG: OptiScaler loads the pinned plugin; the integrated unlock steps aside
+# and the game's own DLSS-G stays the FG path. Fixture DLLs provide no GPU proof.
+import universal_mfg_provider
+universal=game('UniversalMfg');(universal/'nvngx_dlssg.dll').write_bytes(fixtures.pe())
+universal_before=files(universal)
+universal_payload={universal_mfg_provider.PLUGIN:fixtures.pe(),'OptiScaler/licenses/MFG-Unlocker-LICENSE.txt':b'fixture license',
+                   'OptiScaler/licenses/MFG-Unlocker-NOTICE.md':b'fixture notice'}
+universal_mfg_provider.load_payload=lambda config,record:dict(universal_payload)
+review=service.prepare([scan(universal)],'nr-mfg','install',visual_settings=settings | {'mfg_provider':'universal','mfg_multiplier':4})
+assert files(universal)==universal_before and review['rows'],review['blocked']
+run(review);record=baseline(universal)
+assert record['mfg_provider']['ownership']=='managed-optiscaler-plugin'
+assert record['compatibility_policy']['mfg_route']=='native-dlssg-universal-plugin'
+assert (universal/universal_mfg_provider.PLUGIN).read_bytes()==universal_payload[universal_mfg_provider.PLUGIN]
+ini=(universal/'OptiScaler.ini').read_text()
+for value in ('AdaMfgUnlock=false','AdaBlackwellKernels=false','LoadAsiPlugins=true','FGOutput=nofg'):
+    assert value in ini,value
+assert 'LoadReShade=true' not in ini and not (universal/'ReShade64.dll').exists()
+assert scan(universal)['mfg_multiplier']==4 and scan(universal)['dynamic_mfg_available'] is True
+# Repair keeps the recorded component even when new installs would choose another.
+run(service.prepare([scan(universal)],'nr-mfg','repair',visual_settings=settings))
+assert baseline(universal)['archive']['release']['mfg_component']==record['archive']['release']['mfg_component']
+assert (universal/universal_mfg_provider.PLUGIN).is_file()
+run(service.prepare([scan(universal)],'nr-mfg','uninstall',visual_settings=settings))
+assert files(universal)==universal_before
+checks.append('Universal MFG installs its pinned OptiScaler plugin, disables the internal unlock, keeps native DLSS-G, repairs in place and restores original files')
 collision=game('ExternalCollision');(collision/'nvngx_dlssg.dll').write_bytes(fixtures.pe())
 (collision/'ReShade64.dll').write_bytes(b'unmanaged host');collision_before=files(collision)
 review=service.prepare([scan(collision)],'nr-mfg','install',visual_settings=external_settings)
@@ -544,7 +570,7 @@ class WindowsSkynizzTest(unittest.TestCase):
                                     env=env, capture_output=True, text=True, timeout=180)
             self.assertEqual(result.returncode, 0, result.stderr[-12000:] + result.stdout[-3000:])
             receipt = json.loads(result.stdout.strip().splitlines()[-1])
-            self.assertEqual(receipt['count'], 29)
+            self.assertEqual(receipt['count'], 30)
             print('PASS: ' + '; '.join(receipt['checks']))
 
 

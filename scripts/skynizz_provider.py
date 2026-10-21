@@ -84,14 +84,20 @@ def load_sr_runtime(path, record):
     return load_production_runtime(path, record)
 
 
+def mfg_component_module(record):
+    """The module owning a recorded MFG component: Universal (OptiScaler plugin) or MFG Unlock (ReShade addon)."""
+    import ada_mfg_provider
+    import universal_mfg_provider
+    return universal_mfg_provider if (record or {}).get('id') == universal_mfg_provider.ID else ada_mfg_provider
+
+
 def validate_release(record):
     """Also validate saved releases before repair; never turn state into arbitrary URLs."""
     tag = record.get('tag', '')
     t.need(bool(re.fullmatch(r'v\d+\.\d+\.\d+', tag)), 'Choose latest or a stable Skynizz version such as v1.2.1.')
     if record.get('variant') == 'nr-mfg-bridge':
         if record.get('mfg_component'):
-            import ada_mfg_provider
-            ada_mfg_provider.validate(record['mfg_component'])
+            mfg_component_module(record['mfg_component']).validate(record['mfg_component'])
         t.need(record.get('nr_preset') in (None, 0, 1, 2), 'Unsupported NR model preset')
         for component in PRODUCTION_RUNTIMES:
             if component in record:
@@ -292,7 +298,10 @@ def read_controls(path):
 def configure(e, source, saved=None, mode='nr-only', mfg_multiplier='auto', game=None, controls=None):
     """Repair retains the complete user preset, including cache/placement choices."""
     text = (saved if saved is not None else source).decode('utf-8-sig')
-    external_mfg = bool(getattr(e, 'Y4MY_PROVIDER', {}).get('mfg_component'))
+    component = getattr(e, 'Y4MY_PROVIDER', {}).get('mfg_component')
+    universal = bool(component) and mfg_component_module(component).ID == 'universal'
+    # A ReShade-hosted addon owns the count; the Universal plugin leaves it to OptiScaler.
+    external_mfg = bool(component) and not universal
     if saved is None:
         for section, values in DEFAULTS.items():
             for key, value in values.items():
@@ -304,7 +313,7 @@ def configure(e, source, saved=None, mode='nr-only', mfg_multiplier='auto', game
         if (preset := getattr(e, 'Y4MY_PROVIDER', {}).get('nr_preset')) is not None:
             text = e.set_ini_value(text, 'DlssNr', 'Preset', str(preset))
     if mode in ('nr-mfg', 'mfg-only'):
-        unlock = 'false' if external_mfg else 'true'
+        unlock = 'false' if component else 'true'
         for section, values in {'DLSSG':{'AdaMfgUnlock':unlock,'AdaBlackwellKernels':unlock,'AmpereMfgUnlock':'false'},
                                 'FrameGen':{'Enabled':'false','FGInput':'nofg','FGOutput':'nofg','FGNvngxReplacement':'None'}}.items():
             for key, value in values.items():
@@ -318,6 +327,9 @@ def configure(e, source, saved=None, mode='nr-only', mfg_multiplier='auto', game
                 text = e.set_ini_value(text, 'DLSSG', key, value)
             text = e.set_ini_value(text, 'Plugins', 'LoadReShade', 'true')
             text = e.set_ini_value(text, 'Menu', 'OverlayMenu', 'false')
+        if universal:
+            import universal_mfg_provider
+            text = universal_mfg_provider.configure(e, text)
     if mode == 'nr-only' and getattr(e, 'Y4MY_PROVIDER', {}).get('variant') == 'nr-mfg-bridge':
         for key in ('AdaMfgUnlock', 'AdaBlackwellKernels', 'AmpereMfgUnlock'):
             text = e.set_ini_value(text, 'DLSSG', key, 'false')
@@ -382,9 +394,8 @@ def restored_support_tree(e, game):
 
 def check_target(e, game, baseline):
     target = game.target_dir
-    if e.Y4MY_PROVIDER.get('mfg_component'):
-        import ada_mfg_provider
-        ada_mfg_provider.check_target(e, game, baseline)
+    if component := e.Y4MY_PROVIDER.get('mfg_component'):
+        mfg_component_module(component).check_target(e, game, baseline)
     t.need(not (target / 'renodx-dlss5.addon64').exists(),
            'Another NR consumer (renodx-dlss5.addon64) is present. Disable it yourself before installing Skynizz.')
     # A second OptiScaler cannot share this INI or the existing MFG hook tree.

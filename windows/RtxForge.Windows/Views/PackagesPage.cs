@@ -104,10 +104,12 @@ public sealed partial class PackagesPage : Page
                 index => shell.Settings.NrPreset = index));
             components.Children.Add(Card(nr));
             var mfg = Section("MFG package", "For NR + MFG installs in games with native DLSS Frame Generation.");
+            string[] mfgComponents = ["universal", "integrated", "mfg-unlock"];
             mfg.Children.Add(Choice("MFG component", "Applies to new installs. Restore an existing package before switching components.",
-                ["Integrated Ada bridge", "MFG Unlock 1.4.4 (preview)"], shell.Settings.MfgProvider == "mfg-unlock" ? 1 : 0,
-                index => shell.Settings.MfgProvider = index == 1 ? "mfg-unlock" : "integrated"));
-            mfg.Children.Add(Prefs.Label("MFG Unlock uses ReShade and replaces the integrated unlock. The separate component remains a preview.", "ForgeCaptionDimTextStyle"));
+                ["Universal MFG 1.6.1 (recommended)", "Integrated Ada bridge", "MFG Unlock 1.4.4 (preview)"],
+                Math.Max(0, Array.IndexOf(mfgComponents, shell.Settings.MfgProvider)),
+                index => shell.Settings.MfgProvider = mfgComponents[index]));
+            mfg.Children.Add(Prefs.Label("Universal loads as an OptiScaler plugin and replaces the integrated unlock; OptiScaler keeps the multiplier and Dynamic controls. Upstream lists RTX 30 and 40 support (RTX 20 experimental); rtxForge has not yet validated it in games. MFG Unlock uses ReShade and remains a preview.", "ForgeCaptionDimTextStyle"));
             components.Children.Add(Card(mfg));
             body.Children.Add(components);
         }

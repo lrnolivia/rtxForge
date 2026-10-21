@@ -211,7 +211,9 @@ public sealed class ForgeSettings
     [JsonPropertyName("runtime_provider")] public string RuntimeProvider { get; set; } = "y4my";
     [JsonPropertyName("nr_runtime")] public string NrRuntime { get; set; } = "";
     [JsonPropertyName("skynizz_version")] public string SkynizzVersion { get; set; } = "latest";
-    [JsonPropertyName("mfg_provider")] public string MfgProvider { get; set; } = "integrated";
+    [JsonPropertyName("mfg_provider")] public string MfgProvider { get; set; } = "universal";
+    /// <summary>Dynamic MFG needs OptiScaler to own the count: the integrated bridge or the Universal plugin.</summary>
+    [JsonIgnore] public bool DynamicMfgSupported => MfgProvider is "universal" or "integrated";
     [JsonPropertyName("nr_preset")] public int? NrPreset { get; set; }
     [JsonPropertyName("nr_on_launch")] public bool NrOnLaunch { get; set; } = false;
     [JsonPropertyName("feeder_source")] public string FeederSource { get; set; } = "";

@@ -54,8 +54,9 @@ def payload(e,config,mode,archive=None):
                 meta[component]=runtime
             data.update(private);meta['mfg_runtime']={**companion,'repository':donor['repo']}
             if p.get('mfg_component'):
-                component=ada_mfg_provider.validate(p['mfg_component'])
-                data.update(ada_mfg_provider.load_payload(config,component))
+                owner=skynizz_provider.mfg_component_module(p['mfg_component'])
+                component=owner.validate(p['mfg_component'])
+                data.update(owner.load_payload(config,component))
                 meta['mfg_component']=component
         return data,meta
     if p.get('custom'):
@@ -368,11 +369,15 @@ def prepare(config,rows,mode,operation,settings):
                         native_panel = settings.get('overlay_helper', True) and settings.get('overlay_renderer') == 'game'
                         releases[selection]=(skynizz_provider.bundled_bridge(selection)[0] if mode in ('nr-mfg','mfg-only') or prefer_bundled_nr_only or native_panel else ui.work('Resolving Skynizz release',skynizz_provider.resolve,selection))
                     release=dict(releases[selection])
-                    mfg_provider=settings.get('mfg_provider','integrated')
-                    t.need(mfg_provider in ('integrated','mfg-unlock'),'Choose a supported MFG component.')
+                    mfg_provider=settings.get('mfg_provider','universal')
+                    t.need(mfg_provider in ('universal','integrated','mfg-unlock'),'Choose a supported MFG component.')
                     if mfg_provider=='mfg-unlock':
                         t.need(mode=='nr-mfg','MFG Unlock requires the combined native FG route.')
                         release['mfg_component']=ada_mfg_provider.pinned()
+                    elif mfg_provider=='universal' and mode in ('nr-mfg','mfg-only'):
+                        # OptiScaler loads the Universal plugin; the game's own DLSS-G stays the FG path.
+                        import universal_mfg_provider
+                        release['mfg_component']=universal_mfg_provider.pinned()
                     if settings.get('nr_preset') is not None:
                         t.need(type(settings['nr_preset']) is int and settings['nr_preset'] in (0,1,2),'Choose a supported NR preset.')
                         release['nr_preset']=settings['nr_preset']
@@ -451,7 +456,10 @@ def prepare(config,rows,mode,operation,settings):
                 if selected=='skynizz':
                     model=preview.get('nr_runtime') or {}
                     route='Combined NR + Ada MFG bridge · target runtime validation pending' if mode=='nr-mfg' else 'MFG Only · neural rendering disabled' if mode=='mfg-only' else 'NR Only · requires D3D12/DLSS'
-                    if component:=release.get('mfg_component'):
+                    if (component:=release.get('mfg_component')) and component.get('id')=='universal':
+                        lead='NR + ' if mode=='nr-mfg' else 'MFG Only · '
+                        route=f"{lead}Universal MFG {component['version']} · OptiScaler plugin · SHA-256 {component['dll']['sha256']} · game-native DLSS-G · internal unlock disabled · target runtime validation pending"
+                    elif component:
                         route=f"NR + {component['name']} {component['version']} · SHA-256 {component['sha256']} · ReShade {component['host']['version']} · internal unlock disabled · target runtime validation pending"
                     preview=dict(preview,launch_options=f"{release['tag']} · SHA-256 {release['sha256']} · model {model.get('path','')} · SHA-256 {model.get('sha256','')} · "+route)
                     if preview.get('restored_support_tree'):

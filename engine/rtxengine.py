@@ -2259,7 +2259,9 @@ def _reset_visual_settings(game: Game, *, dry_run: bool = False, nr_strength: st
                 paths['preset-record.json'] = preset_path
                 changes['preset-record.json'] = (preset_before, (json.dumps(preset, indent=2) + '\n').encode('utf-8'))
     component = ((current.get("archive") or {}).get("release") or {}).get("mfg_component")
-    if component:
+    # The Universal plugin keeps its count in OptiScaler.ini (reset above); only the
+    # ReShade-hosted addon has a separate configuration to reset.
+    if component and component.get("id") != "universal":
         import ada_mfg_provider
         ada_mfg_provider.validate(component)
         require("ReShade.ini" in current.get("installed_hashes", {}), "MFG config ownership is missing; repair first")
@@ -4579,7 +4581,7 @@ def install_target(
     if is_skynizz:
         text, nr_tuning = skynizz_provider.configure(_ENGINE_MODULE, ini_source, saved_ini, mode=feature_mode, mfg_multiplier=mfg_multiplier, game=game,
             controls=feature_controls if saved_ini is None or not preserve_visual_settings else None)
-        if mfg_component:
+        if mfg_component and mfg_component.get("id") != "universal":
             import ada_mfg_provider
             payload["ReShade.ini"] = ada_mfg_provider.configure(_ENGINE_MODULE, game, existing_baseline, mfg_multiplier)
         visual_tuning = {"DlssNr": nr_tuning}
@@ -4804,7 +4806,8 @@ def install_target(
             "proxy": chosen_proxy,
             # Compatibility field retained for old audit/report readers, but the
             # active provider is now the same y4my OptiScaler proxy as NR.
-            "mfg_provider": ({**mfg_component, "ownership": "managed-addon", "shared_proxy": chosen_proxy,
+            "mfg_provider": ({**mfg_component, "ownership": "managed-optiscaler-plugin" if mfg_component.get("id") == "universal" else "managed-addon",
+                              "shared_proxy": chosen_proxy,
                               "enabled": enable_effects and feature_mode != "nr-only", "activation": "startup",
                               "runtime_verified": False} if mfg_component else (
                 {
@@ -4829,7 +4832,8 @@ def install_target(
                 "placement": "pre-sr-with-post-sr-fallback" if nr_tuning.get("PreSr") == "true" else "upstream-configured",
                 "cache_policy": {key: value for key, value in nr_tuning.items() if key.startswith("Cache")},
                 "working_scale": nr_tuning.get("WorkingScale", "auto"), "menu_key": "Insert",
-                "mfg": "MFG Unlock addon; target runtime unverified" if mfg_component else "integrated Ada bridge; target runtime unverified" if is_skynizz_bridge else "unmanaged",
+                "mfg": ("Universal MFG OptiScaler plugin; target runtime unverified" if mfg_component.get("id") == "universal"
+                        else "MFG Unlock addon; target runtime unverified") if mfg_component else "integrated Ada bridge; target runtime unverified" if is_skynizz_bridge else "unmanaged",
             } if is_skynizz else {
                 "enabled": feature_mode in {"nr-mfg", "nr-only"} and nr_tuning.get("Enabled") == "true",
                 "activation": "startup" if nr_tuning.get("Enabled") == "true" else "toggle-key-f10" if is_dlss_unlocked else "manual-after-launch",
@@ -4851,7 +4855,8 @@ def install_target(
                 "dxgi_spoofing": False,
                 "vulkan_spoofing": False,
                 "upscaler_route": "auto-first-launch",
-                "mfg_route": ("disabled-nr-only" if is_skynizz_bridge and feature_mode == "nr-only" else "native-ada-mfg-unlock-addon" if mfg_component else "native-ada-skynizz-bridge-armed" if is_skynizz_bridge else "unmanaged-skynizz-nr-only" if is_skynizz else
+                "mfg_route": ("disabled-nr-only" if is_skynizz_bridge and feature_mode == "nr-only" else
+                              ("native-dlssg-universal-plugin" if mfg_component.get("id") == "universal" else "native-ada-mfg-unlock-addon") if mfg_component else "native-ada-skynizz-bridge-armed" if is_skynizz_bridge else "unmanaged-skynizz-nr-only" if is_skynizz else
                               ("native-game-dlssg-ada-unlock" if is_dlss_unlocked else "native-ada-y4my-v4-armed") if family == "ada" else "disabled-sm86"),
                 "native_mfg_fallback": bool(native_mfg_fallback) if is_dlss_unlocked else False,
                 "mfg_multiplier": mfg_multiplier if feature_mode != "nr-only" else None,

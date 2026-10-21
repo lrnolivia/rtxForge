@@ -30,7 +30,7 @@ public sealed partial class GameModeView
         var fields = new StackPanel { Spacing = t.Px(16), Padding = new Thickness(t.Px(4), t.Px(4), t.Px(4), t.Px(8)) };
         Action? refreshFooter = null;
         var (rows, value) = PresetRows(shell.Settings.Presets, legacy: shell.Settings.RuntimeProvider != "skynizz", changed: () => refreshFooter?.Invoke(),
-            dynamicSupported: shell.Settings.MfgProvider == "integrated");
+            dynamicSupported: shell.Settings.DynamicMfgSupported);
         presetValue = value;
         foreach (var row in rows) fields.Children.Add(row);
         var scroll = new ScrollViewer { Content = fields, HorizontalScrollMode = ScrollMode.Disabled };

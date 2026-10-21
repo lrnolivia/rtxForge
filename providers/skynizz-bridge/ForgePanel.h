@@ -10,6 +10,7 @@
 #include <cmath>
 #include <chrono>
 #include <cstring>
+#include <unordered_map>
 #include "ForgePanelChannel.h"
 
 // Runs inside the already-installed menu hook. No HWND, secondary swapchain,
@@ -198,11 +199,31 @@ inline bool IconButton(const char* id, int kind, float scale)
     }
     return pressed;
 }
+// NR tuning is baked into the model, so every commit rebuilds it, and
+// creation frames are where upstream saw GPU hangs. Sliders commit on
+// release; commits are spaced and applied together as one rebuild.
+inline std::unordered_map<std::string, float> dragging;
+inline std::unordered_map<const Control*, float> queued;
+inline std::chrono::steady_clock::time_point lastCommit {};
+inline void Flush(Config& cfg, bool force = false)
+{
+    const auto now = std::chrono::steady_clock::now();
+    if(queued.empty() || (!force && now - lastCommit < std::chrono::milliseconds(400))) return;
+    for(const auto& [field, value] : queued) field->set(cfg, std::clamp(value, field->low, field->high), false);
+    queued.clear(); lastCommit = now;
+}
+inline void Commit(const Control& field, Config& cfg, float value)
+{
+    if(!std::isfinite(value)) return;
+    queued[&field] = value; Flush(cfg);
+}
 inline void Field(const Control& field, Config& cfg)
 {
     ImGui::PushID(field.key);
     ImGui::BeginDisabled(!Available(field));
     auto value = field.get(cfg); bool changed = false;
+    if(const auto pending = queued.find(&field); pending != queued.end()) value = pending->second;
+    if(const auto held = dragging.find(field.key); held != dragging.end()) value = held->second;
     const auto label = advanced ? field.advanced : field.label;
     if(std::strcmp(field.key,"multiplier") == 0 || std::strcmp(field.key,"style") == 0)
     {
@@ -215,7 +236,7 @@ inline void Field(const Control& field, Config& cfg)
             const bool selectedOption=value==option.value;
             const bool unavailable=std::strcmp(field.key,"multiplier")==0 && option.value>0 && option.value-1>State::Instance().dlssgMfgMax.value_or(0);
             ImGui::BeginDisabled(unavailable);
-            ImGui::PushStyleColor(ImGuiCol_Button,Mix(accent,ImVec4(.12f,.12f,.12f,1),selectedOption ? .32f : .06f));
+            ImGui::PushStyleColor(ImGuiCol_Button,Mix(accent,ImVec4(.12f,.12f,.12f,1),selectedOption ? .45f : .06f));
             if(ImGui::Button(option.label,ImVec2(width,0))) { value=option.value; changed=true; }
             ImGui::PopStyleColor(); ImGui::EndDisabled();
         }
@@ -243,19 +264,28 @@ inline void Field(const Control& field, Config& cfg)
                 ImGui::EndCombo();
             }
         }
-        else if(field.kind == Kind::number)
-        { int n = int(value); changed = ImGui::SliderInt("##value", &n, int(field.low), int(field.high)); value = float(n); }
         else
         {
-            const bool percent = !advanced || std::strcmp(field.key,"work_scale") == 0;
-            const auto format = percent ? "%.0f%%" : "%.2f";
-            auto shown = percent ? value * 100.f : value;
-            changed = ImGui::SliderFloat("##value", &shown, percent ? field.low*100 : field.low, percent ? field.high*100 : field.high, format, ImGuiSliderFlags_AlwaysClamp);
-            value = percent ? shown/100.f : shown;
-            if(std::strcmp(field.key,"skin") == 0 && value < 0) ImGui::TextDisabled("-1 follows local structure");
+            // Checked straight after the slider, before any hint text becomes the last item.
+            const auto released = [&] {
+                if(!ImGui::IsItemDeactivatedAfterEdit()) return;
+                if(const auto held = dragging.find(field.key); held != dragging.end()) { value = held->second; dragging.erase(held); changed = true; }
+            };
+            if(field.kind == Kind::number)
+            { int n = int(value); if(ImGui::SliderInt("##value", &n, int(field.low), int(field.high))) dragging[field.key] = float(n); released(); }
+            else
+            {
+                const bool percent = !advanced || std::strcmp(field.key,"work_scale") == 0;
+                const auto format = percent ? "%.0f%%" : "%.2f";
+                auto shown = percent ? value * 100.f : value;
+                if(ImGui::SliderFloat("##value", &shown, percent ? field.low*100 : field.low, percent ? field.high*100 : field.high, format, ImGuiSliderFlags_AlwaysClamp))
+                    dragging[field.key] = percent ? shown/100.f : shown;
+                released();
+                if(std::strcmp(field.key,"skin") == 0 && value < 0) ImGui::TextDisabled("-1 follows local structure");
+            }
         }
     }
-    if(changed && std::isfinite(value)) field.set(cfg, std::clamp(value, field.low, field.high), false);
+    if(changed) Commit(field, cfg, value);
     ImGui::EndDisabled(); ImGui::PopID(); ImGui::Spacing();
 }
 inline void Pipelines(float scale)
@@ -385,6 +415,7 @@ inline void SettingsControls()
 inline bool Draw(bool& visible, float scale)
 {
     if (!selected) return false;
+    Flush(*Config::Instance());
     if (!OptiInput::IsFocused()) { visible = false; animation = 0; ForgePanelChannel::Visible(false); return false; }
     const auto start = std::chrono::steady_clock::now();
     const auto dt = std::min(ImGui::GetIO().DeltaTime, .05f);
@@ -401,37 +432,50 @@ inline bool Draw(bool& visible, float scale)
     if(ForgePanelChannel::settings.contains("panel_modifiers")) modifiers = ForgePanelChannel::settings.value("panel_modifiers",0);
     const auto edge = 24.f*scale, width = std::min(420.f*scale, display.x-edge*2);
     const auto height = display.y-edge*2;
-    // A few translucent rounded quads give a soft offset shadow. No texture,
-    // backdrop sampling, render target or shader pass is allocated for it.
-    auto* shadow = ImGui::GetBackgroundDrawList();
-    for(int layer=6;layer>0;--layer)
-    {
-        const auto spread=float(layer)*2*scale;
-        shadow->AddRectFilled(ImVec2(edge-spread,edge-spread+6*scale),
-            ImVec2(edge+width*sizeScale+spread,edge+height*sizeScale+spread+6*scale),
-            IM_COL32(0,0,0,int(5*eased)),(20*scale)+spread);
-    }
+    // Translucent surface with a hairline edge. No shadow quads, texture,
+    // backdrop sampling, render target or shader pass.
     ImGui::SetNextWindowPos(ImVec2(edge,edge + height*(1-sizeScale)*.5f), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(width*sizeScale,height*sizeScale), ImGuiCond_Always);
     ImGui::PushFont(font, 15.f*scale);
     ImGui::PushStyleVar(ImGuiStyleVar_Alpha,eased);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding,20.f*scale);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,ImVec2(26.f*scale,22.f*scale));
-    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding,8.f*scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding,10.f*scale);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,ImVec2(10.f*scale,9.f*scale));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,ImVec2(10.f*scale,12.f*scale));
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize,0);
-    const ImVec4 neutral(.91f,.91f,.91f,1), dark(.12f,.12f,.12f,1);
-    ImGui::PushStyleColor(ImGuiCol_WindowBg,ImVec4(.045f,.045f,.045f,.94f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize,1.f*scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize,16.f*scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding,8.f*scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding,12.f*scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding,12.f*scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarRounding,12.f*scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize,8.f*scale);
+    const ImVec4 neutral(.91f,.91f,.91f,1), dark(.12f,.12f,.12f,1), well(.18f,.18f,.18f,1);
+    const auto ink = TitleColor();
+    const auto alpha = [](ImVec4 color, float a) { color.w = a; return color; };
+    ImGui::PushStyleColor(ImGuiCol_WindowBg,ImVec4(.045f,.045f,.045f,.78f));
+    ImGui::PushStyleColor(ImGuiCol_Border,ImVec4(1,1,1,.08f));
     ImGui::PushStyleColor(ImGuiCol_Text,neutral);
     ImGui::PushStyleColor(ImGuiCol_Button,Mix(accent,dark,.20f));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered,Mix(accent,dark,.32f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive,Mix(accent,dark,.15f));
-    ImGui::PushStyleColor(ImGuiCol_FrameBg,ImVec4(.16f,.16f,.16f,.8f));
-    ImGui::PushStyleColor(ImGuiCol_CheckMark,Mix(accent,neutral,.45f));
-    ImGui::PushStyleColor(ImGuiCol_SliderGrab,Mix(accent,neutral,.45f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive,Mix(accent,dark,.45f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBg,alpha(well,.55f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered,alpha(Mix(accent,well,.18f),.65f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgActive,alpha(Mix(accent,well,.28f),.7f));
+    ImGui::PushStyleColor(ImGuiCol_CheckMark,ink);
+    ImGui::PushStyleColor(ImGuiCol_SliderGrab,ink);
+    ImGui::PushStyleColor(ImGuiCol_SliderGrabActive,Mix(ink,neutral,.6f));
     ImGui::PushStyleColor(ImGuiCol_Header,Mix(accent,dark,.18f));
     ImGui::PushStyleColor(ImGuiCol_HeaderHovered,Mix(accent,dark,.26f));
+    ImGui::PushStyleColor(ImGuiCol_HeaderActive,Mix(accent,dark,.34f));
+    ImGui::PushStyleColor(ImGuiCol_PopupBg,ImVec4(.07f,.07f,.07f,.94f));
+    ImGui::PushStyleColor(ImGuiCol_ScrollbarBg,ImVec4(0,0,0,0));
+    ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab,ImVec4(.5f,.5f,.5f,.35f));
+    ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabHovered,ImVec4(.6f,.6f,.6f,.5f));
+    ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabActive,ImVec4(.7f,.7f,.7f,.6f));
+    ImGui::PushStyleColor(ImGuiCol_Separator,ImVec4(1,1,1,.10f));
+    ImGui::PushStyleColor(ImGuiCol_NavCursor,ink);
+    ImGui::PushStyleColor(ImGuiCol_TextSelectedBg,alpha(Mix(accent,dark,.4f),.5f));
     ImGui::Begin("rtxForge##ingame",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoSavedSettings|ImGuiWindowFlags_NoScrollWithMouse|ImGuiWindowFlags_NoScrollbar);
     ImGui::TextUnformatted("rtxForge"); ImGui::SameLine(ImGui::GetWindowWidth()-ImGui::GetStyle().WindowPadding.x-110.f*scale);
     if(IconButton("Global controls",2,scale)) { global = !global; settings = false; ForgePanelChannel::DiscardReview(); }
@@ -484,7 +528,7 @@ inline bool Draw(bool& visible, float scale)
             if(ImGui::Combo("Multiplier",&selectedExtra,extra,3) && selectedExtra>0)
             {
                 const int requested=selectedExtra+4;
-                if(requested-1 <= State::Instance().dlssgMfgMax.value_or(0)) controls[0].set(cfg,float(requested),false);
+                if(requested-1 <= State::Instance().dlssgMfgMax.value_or(0)) Commit(controls[0],cfg,float(requested));
                 else ForgePanelChannel::message="This frame generation ratio is unavailable on the active backend.";
             }
             ImGui::EndDisabled();
@@ -501,6 +545,7 @@ inline bool Draw(bool& visible, float scale)
     ImGui::BeginDisabled(pending || !helperReady || !ForgePanelChannel::settings.value("overlay_helper",true));
     if(ImGui::Button("Save preset",ImVec2((available-gap)*.66f,42.f*scale)))
     {
+        Flush(cfg, true);
         nlohmann::json changes = nlohmann::json::object();
         for(const auto& field : controls) if(Available(field))
         { auto n=field.get(cfg); if(field.kind == Kind::slider) changes[field.key]=n; else changes[field.key]=int(n); }
@@ -514,7 +559,7 @@ inline bool Draw(bool& visible, float scale)
     }
     ImGui::TextDisabled("%s",(ForgePanelChannel::settings.value("panel_hotkey",std::string("ScrollLock"))+" - show or hide").c_str());
     if(ImGui::IsKeyPressed(ImGuiKey_Escape,false)) visible = false;
-    ImGui::End(); ImGui::PopStyleColor(10); ImGui::PopStyleVar(7); ImGui::PopFont();
+    ImGui::End(); ImGui::PopStyleColor(23); ImGui::PopStyleVar(13); ImGui::PopFont();
     cpuMs = std::chrono::duration<float,std::milli>(std::chrono::steady_clock::now()-start).count();
     return true;
 }

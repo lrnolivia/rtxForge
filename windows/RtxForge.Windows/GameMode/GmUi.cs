@@ -306,6 +306,59 @@ public sealed class GmUi(GmTheme t)
         return button;
     }
 
+    /// <summary>Settings-specific cards: finite labels and a bounded trailing value field.</summary>
+    public void StyleSettingsRow(Button button)
+    {
+        if (button.Content is not Grid grid || grid.Children.FirstOrDefault() is not StackPanel text) return;
+        button.Background = GmTheme.B(t.Panel);
+        button.CornerRadius = new CornerRadius(t.Px(12));
+        button.Padding = new Thickness(t.Px(20), t.Px(16), t.Px(20), t.Px(16));
+        button.MinHeight = t.Px(84);
+        grid.ColumnSpacing = t.Px(16); text.Spacing = t.Px(6);
+        if (text.Children.FirstOrDefault() is StackPanel titleLine)
+        {
+            var title = new Grid { ColumnSpacing = titleLine.Children.Count > 1 ? t.Px(10) : 0 };
+            title.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+            title.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+            foreach (var child in titleLine.Children.ToList())
+            {
+                titleLine.Children.Remove(child);
+                if (child is TextBlock label)
+                {
+                    label.TextWrapping = TextWrapping.WrapWholeWords; label.FontSize = t.Em(.90);
+                    Grid.SetColumn(label, 1);
+                }
+                title.Children.Add(child);
+            }
+            text.Children[0] = title;
+        }
+        foreach (var description in text.Children.OfType<TextBlock>()) description.FontSize = t.Em(.74);
+        if (grid.Children.OfType<TextBlock>().FirstOrDefault() is not { } value)
+        { Grid.SetColumnSpan(text, 2); return; }
+        grid.Children.Remove(value);
+        value.TextWrapping = TextWrapping.WrapWholeWords; value.MaxLines = 2;
+        value.FontSize = t.Em(.83); value.Foreground = GmTheme.B(t.Fg);
+        var field = new Border
+        {
+            Background = GmTheme.B(t.Card), CornerRadius = new CornerRadius(t.Px(9)),
+            Padding = new Thickness(t.Px(12), t.Px(10), t.Px(12), t.Px(10)),
+            MinWidth = t.Px(120), MaxWidth = t.Px(240), Child = value,
+            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(field, 1); grid.Children.Add(field);
+        grid.RowDefinitions.Add(new() { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new() { Height = GridLength.Auto });
+        var chevron = grid.Children.OfType<FontIcon>().Single();
+        button.SizeChanged += (_, e) =>
+        {
+            var narrow = e.NewSize.Width < t.Px(540);
+            Grid.SetColumnSpan(text, narrow ? 3 : 1);
+            Grid.SetRow(field, narrow ? 1 : 0); Grid.SetColumn(field, narrow ? 0 : 1);
+            Grid.SetColumnSpan(field, narrow ? 2 : 1); Grid.SetRow(chevron, narrow ? 1 : 0);
+            grid.RowSpacing = narrow ? t.Px(12) : 0;
+        };
+    }
+
     /// <summary>
     /// .rf-stepper inside a whole-row focus target: Left/Right adjust (controller,
     /// keyboard) and the − / + glyphs are clickable.

@@ -46,98 +46,133 @@ public sealed partial class GameModeView
 
     UIElement BuildDetails(Game g)
     {
-        var heroHeight = t.Px(t.Compact ? 330 : ActualWidth <= 1500 ? 360 : 420);
         var navWidth = t.Px(ActualWidth <= 1050 ? 184 : ActualWidth <= 1500 ? 246 : 254);
         var side = t.Px(ActualWidth <= 1050 ? 24 : ActualWidth <= 1500 ? 36 : 56);
+        var heroWidth = Math.Max(t.Px(420), ActualWidth - navWidth - side);
+        var heroHeight = Math.Clamp(heroWidth * .30, t.Px(300), t.Px(560));
         var grid = new Grid { RowSpacing = t.Px(t.Compact ? 12 : 22), Padding = new Thickness(0, 0, 0, t.Px(8)) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(navWidth + side) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(heroHeight) });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
         // The section rail spans the workspace; the hero belongs to the content column.
-        var hero = new Grid { Background = GmTheme.B(t.View) };
+        var hero = new Grid { Background = GmTheme.B(t.View), MinHeight = heroHeight };
         Grid.SetColumn(hero, 1);
         if ((g.HeroPath ?? g.CapsulePath) is { } heroSource)
         {
-            var art = new FadedImage { FadeStart = 0.3f };
+            var art = new FadedImage();
             art.SetSource(heroSource);
             hero.Children.Add(art);
-            // Legibility scrim behind the identity (left), so accent titles read over bright art.
-            var scrim = new LinearGradientBrush { StartPoint = new global::Windows.Foundation.Point(0, 0), EndPoint = new global::Windows.Foundation.Point(1, 0) };
-            scrim.GradientStops.Add(new GradientStop { Color = WithAlpha(t.View, 0.82), Offset = 0 });
-            scrim.GradientStops.Add(new GradientStop { Color = WithAlpha(t.View, 0.55), Offset = 0.38 });
-            scrim.GradientStops.Add(new GradientStop { Color = WithAlpha(t.View, 0), Offset = 0.72 });
-            hero.Children.Add(new Border { Background = scrim, IsHitTestVisible = false });
         }
         var identity = new Grid
         {
-            ColumnSpacing = t.Px(30), VerticalAlignment = VerticalAlignment.Bottom,
-            Padding = new Thickness(t.Px(24), t.Px(20), side, t.Px(t.Compact ? 18 : 26)),
-            RowSpacing = t.Px(18),
+            ColumnSpacing = t.Px(20), VerticalAlignment = VerticalAlignment.Bottom,
+            Padding = new Thickness(t.Px(36), t.Px(24), side, t.Px(t.Compact ? 20 : 28)),
         };
-        identity.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        identity.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         identity.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         identity.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var posterHeight = t.Px(t.Compact ? 164 : ActualWidth <= 1500 ? 184 : 208);
+        var posterHeight = Math.Clamp(heroHeight * .48, t.Px(120), t.Px(260));
         var poster = new Border
         {
             Height = posterHeight, Width = Math.Round(posterHeight * 2 / 3), CornerRadius = new CornerRadius(t.Px(10)),
-            BorderThickness = new Thickness(t.Px(3)), BorderBrush = GmTheme.B(t.Line), Background = GmTheme.B(t.Card),
+            BorderThickness = new Thickness(t.Px(2)), BorderBrush = GmTheme.B(t.Line), Background = GmTheme.B(t.Card),
             VerticalAlignment = VerticalAlignment.Bottom,
+            Visibility = g.PosterPath is null ? Visibility.Collapsed : Visibility.Visible,
         };
-        if (GameItem.Image(g.PosterPath ?? g.CapsulePath) is { } posterImage)
+        if (GameItem.Image(g.PosterPath) is { } posterImage)
             poster.Child = new Border { CornerRadius = new CornerRadius(t.Px(7)), Background = new ImageBrush { ImageSource = posterImage, Stretch = Stretch.UniformToFill } };
         identity.Children.Add(poster);
-        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Bottom, Spacing = t.Px(8) };
-        if (g.Installed && g.Profile is { } profile)
-            text.Children.Add(ui.Badge(profile, Microsoft.UI.Colors.Black, Microsoft.UI.Colors.White, 0.68).With(b => b.Background = GmTheme.B(Microsoft.UI.Colors.Black, 0.8)));
-        var title = ui.Text(g.Name, t.Compact ? 1.35 : 1.65, t.Fg, FontWeights.Bold, wrap: true, maxLines: 2);
-        title.LineHeight = t.Em(t.Compact ? 1.35 : 1.65) * 1.1;
-        text.Children.Add(title);
+        var heroBody = new Grid { ColumnSpacing = t.Px(24), RowSpacing = t.Px(10), VerticalAlignment = VerticalAlignment.Bottom };
+        heroBody.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+        heroBody.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        for (var row = 0; row < 3; row++) heroBody.RowDefinitions.Add(new() { Height = GridLength.Auto });
+        var head = new StackPanel { Spacing = t.Px(6) };
+        var status = g.AdoptionAvailable ? "Installed · Adoption available" : g.OfflineOnly ? "Installed · Offline only"
+            : g.Blocked ? "Unsupported" : g.UsesFeeder ? g.Installed ? "Feeder NR" : "Available · Feeder NR"
+            : g.InstalledOnLinux ? "Installed on Linux" : g.Installed ? g.Profile ?? "Configured" : "Ready for Features";
+        head.Children.Add(ui.Badge(status, t.Card, t.Fg, .62));
+        var title = ui.Text(g.Name, color: t.Fg, wrap: true, maxLines: 2);
+        title.FontFamily = (FontFamily)Application.Current.Resources["ForgeHeroFontFamily"];
+        title.FontSize = Math.Clamp(heroWidth / t.S / 26, 32, 64) * t.S * (g.Name.Length > 28 ? .78 : 1);
+        title.LineHeight = title.FontSize * 1.1;
+        var laidOutHeroWidth = 0d;
+        hero.SizeChanged += (_, e) =>
+        {
+            if (e.NewSize.Width <= 0 || Math.Abs(laidOutHeroWidth - e.NewSize.Width) < .5) return;
+            laidOutHeroWidth = e.NewSize.Width;
+            hero.MinHeight = Math.Clamp(e.NewSize.Width * .30, t.Px(300), t.Px(560));
+            poster.Height = Math.Clamp(hero.MinHeight * .48, t.Px(120), t.Px(260));
+            poster.Width = Math.Round(poster.Height * 2 / 3);
+            poster.Visibility = g.PosterPath is not null && e.NewSize.Width >= t.Px(620) ? Visibility.Visible : Visibility.Collapsed;
+            title.FontSize = Math.Clamp(e.NewSize.Width / t.S / 26, 32, 64) * t.S * (g.Name.Length > 28 ? .78 : 1);
+            title.LineHeight = title.FontSize * 1.1;
+        };
+        head.Children.Add(title);
+        Grid.SetColumnSpan(head, 2); heroBody.Children.Add(head);
+        var text = new StackPanel { Spacing = t.Px(8), VerticalAlignment = VerticalAlignment.Bottom };
+        var metadata = new Grid { ColumnSpacing = t.Px(12), RowSpacing = t.Px(6) };
+        metadata.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+        metadata.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        metadata.RowDefinitions.Add(new() { Height = GridLength.Auto });
+        metadata.RowDefinitions.Add(new() { Height = GridLength.Auto });
         var credits = string.Join(" · ", new[] { g.Developer, g.Release }.Where(value => !string.IsNullOrWhiteSpace(value)));
-        var creditsText = ui.Text(credits, .76, t.Muted, wrap: true, maxLines: 2);
+        var creditsText = ui.Text(credits, .72, t.Muted);
         creditsText.Visibility = credits.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-        text.Children.Add(creditsText);
+        metadata.Children.Add(creditsText);
         var badges = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(8) };
-        var sourceBadge = ui.Badge(g.Library, t.Card, t.Fg, 0.62 * 1.2, g.Library == "Steam" ? "" : null);
+        var sourceBadge = ui.Badge(g.Library == "Steam" ? "STEAM" : "NON-STEAM", t.Card, t.Fg, .58, g.Library == "Steam" ? "" : null);
         badges.Children.Add(sourceBadge);
         // Which rtxForge installed it (Linux game_mode: "Installed on Linux" with the rtx-os mark).
         if (g.Installed && g.InstalledOn is "linux" or "windows")
         {
-            var osBadge = ui.Badge("Installed on " + CrossOs.Name(g.InstalledOn), t.Card, t.Fg, 0.62 * 1.2);
-            ((StackPanel)osBadge.Child).Children.Insert(0, OsMark.Create(g.InstalledOn, t.Em(0.62 * 1.2), GmTheme.B(t.Fg)));
+            var osBadge = ui.Badge(CrossOs.Name(g.InstalledOn).ToUpperInvariant(), t.Card, t.Fg, .58);
+            ((StackPanel)osBadge.Child).Children.Insert(0, OsMark.Create(g.InstalledOn, t.Em(.58), GmTheme.B(t.Fg)));
             badges.Children.Add(osBadge);
         }
-        badges.Children.Add(ui.Badge(g.Tested ? "Tested" : "Untested", GmTheme.Hex("#573d18"), GmTheme.Hex("#ffe8a2"), 0.62 * 1.2, g.Tested ? "" : ""));
-        text.Children.Add(badges);
-        text.Children.Add(ui.Text(string.Join(" · ", new[] { g.Installed ? "Configured" : g.Blocked ? "Unsupported" : "Available", g.UsesFeeder ? "Feeder NR" : ProviderName() }), 0.74, t.Muted));
-        var summaryText = ui.Text(g.Summary ?? "", .74, t.Muted, wrap: true, maxLines: 2);
+        badges.Children.Add(ui.Badge(g.Tested ? "TESTED" : "UNTESTED", t.Card, t.Muted, .58, g.Tested ? "" : ""));
+        Grid.SetColumn(badges, 1); metadata.Children.Add(badges); text.Children.Add(metadata);
+        text.SizeChanged += (_, e) =>
+        {
+            var narrow = e.NewSize.Width < t.Px(620);
+            Grid.SetRow(badges, narrow ? 1 : 0); Grid.SetColumn(badges, narrow ? 0 : 1);
+            Grid.SetColumnSpan(badges, narrow ? 2 : 1); Grid.SetColumnSpan(creditsText, narrow ? 2 : 1);
+        };
+        var summaryText = ui.Text(g.Summary ?? "", .70, t.Muted, wrap: true, maxLines: 2);
+        summaryText.MaxWidth = t.Px(640); summaryText.HorizontalAlignment = HorizontalAlignment.Left;
+        ToolTipService.SetToolTip(summaryText, g.Summary);
         summaryText.Visibility = string.IsNullOrWhiteSpace(g.Summary) ? Visibility.Collapsed : Visibility.Visible;
         text.Children.Add(summaryText);
         if (shell.Settings.SteamMetadata && (g.Summary is null || g.Developer is null || g.Release is null))
             _ = FillStoreInfoAsync(g, creditsText, summaryText);
-        Grid.SetColumn(text, 1);
-        identity.Children.Add(text);
-        // The desktop Game Details hero actions, in the same order.
-        var actions = new Controls.PresetColumns(t.Px(210), 3) { ColumnSpacing = t.Px(10), RowSpacing = t.Px(10) };
-        var install = ui.Button(Glyph("", g.AdoptionAvailable || g.InstalledOnLinux ? g.InstallLabel : g.Installed ? "Repair Features" : "Install Features"), () => _ = RunOperationAsync("install", [g]),
+        Grid.SetRow(text, 1); heroBody.Children.Add(text);
+        // The same action hierarchy as Desktop: primary, restore, then More.
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(10), VerticalAlignment = VerticalAlignment.Bottom };
+        var install = ui.Button(Glyph("", g.InstallLabel), () => _ = RunOperationAsync("install", [g]),
             GmKind.Primary, 0.76, enabled: !g.Blocked || g.AdoptionAvailable, radius: 10, minHeight: 46);
         Key(install, "hero-install");
         actions.Children.Add(install);
         var restore = ui.Button(Glyph("", "Restore Original Files"), () => _ = RunOperationAsync("uninstall", [g]),
-            GmKind.Danger, 0.76, enabled: g.Installed, radius: 10, minHeight: 46);
+            GmKind.Card, 0.76, enabled: g.Installed && !g.AdoptionAvailable, radius: 10, minHeight: 46);
         Key(restore, "hero-restore");
         actions.Children.Add(restore);
-        var update = ui.Button(Glyph("", "Update DLSS"), () => _ = RunOperationAsync("update-dlss", [g]),
-            GmKind.Dlss, 0.76, enabled: !g.Blocked, radius: 10, minHeight: 46);
-        Key(update, "hero-update");
-        actions.Children.Add(update);
-        foreach (var action in actions.Children.OfType<Button>()) action.HorizontalAlignment = HorizontalAlignment.Stretch;
-        Grid.SetRow(actions, 1);
-        Grid.SetColumnSpan(actions, 2);
-        identity.Children.Add(actions);
+        var more = ui.Button(ui.Icon("", .85), () => OpenDetailsActions(g), GmKind.Card,
+            radius: 10, padding: new Thickness(t.Px(14)), minHeight: 46, name: "More game options");
+        Key(more, "hero-more"); ToolTipService.SetToolTip(more, "More options"); actions.Children.Add(more);
+        Grid.SetRow(actions, 1); Grid.SetColumn(actions, 1); heroBody.Children.Add(actions);
+        heroBody.SizeChanged += (_, e) =>
+        {
+            foreach (var button in actions.Children) button.Measure(new global::Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+            var actionWidth = actions.Children.Cast<FrameworkElement>().Sum(button => button.DesiredSize.Width) + actions.Spacing * (actions.Children.Count - 1);
+            var stack = e.NewSize.Width < actionWidth;
+            actions.Orientation = stack ? Orientation.Vertical : Orientation.Horizontal;
+            foreach (var button in actions.Children.OfType<Button>()) button.HorizontalAlignment = stack ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+            var narrow = e.NewSize.Width < actionWidth + t.Px(364);
+            Grid.SetRow(actions, narrow ? 2 : 1); Grid.SetColumn(actions, narrow ? 0 : 1);
+            Grid.SetColumnSpan(actions, narrow ? 2 : 1);
+            actions.HorizontalAlignment = stack ? HorizontalAlignment.Stretch : narrow ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+        };
+        Grid.SetColumn(heroBody, 1); identity.Children.Add(heroBody);
         hero.Children.Add(identity);
         var back = ui.Button(Glyph("", "Back to Library"), CloseDetails, GmKind.Transparent, 0.78, radius: 12,
             padding: new Thickness(t.Px(18), t.Px(10), t.Px(18), t.Px(10)), minHeight: t.Compact ? 38 : 46);
@@ -176,18 +211,56 @@ public sealed partial class GameModeView
         };
         Grid.SetRow(scroll, 1);
         Grid.SetColumn(scroll, 1);
+        var workspace = new StackPanel();
+        var wholeWorkspaceScrolls = false;
+        void LayoutWorkspace()
+        {
+            var whole = ActualHeight < t.Px(900);
+            if (whole == wholeWorkspaceScrolls) return;
+            wholeWorkspaceScrolls = whole;
+            var focused = FocusedWithin(grid);
+            scroll.Content = null; workspace.Children.Clear();
+            if (whole)
+            {
+                grid.Children.Remove(hero);
+                workspace.Children.Add(hero); workspace.Children.Add(content);
+                scroll.Content = workspace; scroll.Margin = new Thickness(0);
+                Grid.SetRow(scroll, 0); Grid.SetRowSpan(scroll, 2);
+            }
+            else
+            {
+                grid.Children.Add(hero); scroll.Content = content;
+                scroll.Margin = new Thickness(0, 0, side, 0);
+                Grid.SetRow(scroll, 1); Grid.SetRowSpan(scroll, 1);
+            }
+            RestoreLayoutFocus(focused);
+        }
+        // Reflow existing controls within scale buckets, preserving preset drafts.
+        grid.SizeChanged += (_, _) => LayoutWorkspace();
+        LayoutWorkspace();
         grid.Children.Add(scroll);
 
         // Accent: poster stroke, title, active section (tint + readable title).
-        _ = DetailsAccentAsync(g, poster, title, sourceBadge, navButtons);
+        _ = DetailsAccentAsync(g, poster, title, sourceBadge, install, navButtons);
         if (initialFocus is null) initialFocus = navButtons.First(b => b.Section == detailsSection).Button;
         return grid;
     }
 
-    static global::Windows.UI.Color WithAlpha(global::Windows.UI.Color c, double alpha) =>
-        global::Windows.UI.Color.FromArgb((byte)Math.Round(alpha * 255), c.R, c.G, c.B);
+    void OpenDetailsActions(Game g)
+    {
+        var rows = new List<UIElement>
+        {
+            ui.RowButton("Live NR + MFG controls", null, () => { CloseModal(); shell.OpenCompanion(g); }),
+            ui.RowButton("Update DLSS", null, () => { CloseModal(); _ = RunOperationAsync("update-dlss", [g]); }, enabled: !g.Blocked),
+        };
+        if (g.AdoptionAvailable) rows.Add(ui.RowButton("Adopt with rtxForge", null, () => { CloseModal(); _ = shell.ReviewAdoptionAsync([g]); }));
+        if (g.OfflineOnly) rows.Add(ui.RowButton("Launch offline", null, () => { CloseModal(); _ = shell.LaunchOfflineAsync(g); }));
+        rows.Add(ui.RowButton("Open Folder", null, () => { CloseModal(); _ = shell.OpenGameFolderAsync(g); }, enabled: !shell.Service.IsPreview && Directory.Exists(g.Location)));
+        rows.Add(ui.RowButton("Remove from library", null, () => { CloseModal(); ConfirmRemoveGames([g]); }, danger: true));
+        ShowModal("Game options", ui.Group(rows), [ui.Button("Back", CloseModal, GmKind.Card, .85)], CloseModal, 900);
+    }
 
-    async Task DetailsAccentAsync(Game g, Border poster, TextBlock title, Border sourceBadge, List<(Button Button, string Section)> nav)
+    async Task DetailsAccentAsync(Game g, Border poster, TextBlock title, Border sourceBadge, Button install, List<(Button Button, string Section)> nav)
     {
         var renderedUi = ui;
         var colors = t.GameColors(await ArtAccent.ForGameAsync(g));
@@ -195,6 +268,7 @@ public sealed partial class GameModeView
         ui.FocusBrush.Color = colors.Title;
         poster.BorderBrush = GmTheme.B(colors.Accent);
         title.Foreground = GmTheme.B(colors.Title);
+        if (install.IsEnabled) { install.Background = GmTheme.B(colors.Accent); install.Foreground = GmTheme.B(colors.Ink); }
         sourceBadge.Background = GmTheme.B(colors.Pill);
         foreach (var child in ((StackPanel)sourceBadge.Child).Children)
         {
@@ -414,6 +488,7 @@ public sealed partial class GameModeView
             credits.Visibility = credits.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
             summary.Text = g.Summary ?? "";
             summary.Visibility = summary.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+            ToolTipService.SetToolTip(summary, g.Summary);
         }
     }
 

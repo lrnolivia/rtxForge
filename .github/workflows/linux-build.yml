@@ -75,6 +75,10 @@ jobs:
             scripts/desktop_install.py \
             scripts/runtime_updates.py \
             scripts/ui_colors.py \
+            scripts/proton_stack.py \
+            scripts/proton_mfg.py \
+            scripts/proton_overlay.py \
+            scripts/linux_runtime.py \
             gui/rtxforge_gtk.py
 
           /usr/bin/python3 -m unittest \
@@ -90,6 +94,7 @@ jobs:
           /usr/bin/python3 -m unittest discover -s tests -p test_release_backup.py
           /usr/bin/python3 -m unittest discover -s tests -p test_cross_os_adapt.py
           /usr/bin/python3 -m unittest discover -s tests -p test_linux_skynizz_adoption.py
+          /usr/bin/python3 -m unittest discover -s tests/linux_runtime -p 'test_*.py'
 
           /usr/bin/python3 tests/test_batches.py
           /usr/bin/python3 tests/test_cleanup.py

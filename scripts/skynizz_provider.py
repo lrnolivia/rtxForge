@@ -36,8 +36,13 @@ DEFAULTS = {
 }
 
 
-def require_mode(system, mode, fallback=False, bridge=False):
-    t.need(system == 'windows', 'Skynizz is Windows-only in this release; Proton support is not verified.')
+def require_mode(system, mode, fallback=False, bridge=False, proton=None):
+    # Linux is allowed only per game, with the experimental opt-in and a passing
+    # proton_mfg.gate report (every Proton prerequisite present). That is not
+    # runtime verification; the review labels it experimental and unverified.
+    t.need(system == 'windows' or (system == 'linux' and isinstance(proton, dict) and proton.get('opt_in') is True
+                                   and proton.get('prerequisites_met') is True),
+           'Skynizz is Windows-only in this release; Proton support is not verified.')
     t.need((mode == 'nr-only' or (mode in ('nr-mfg', 'mfg-only') and bridge)) and not fallback,
            'NR + MFG requires the combined Skynizz/Ada bridge build. Stock Skynizz supports NR Only; use the existing MFG package for MFG Only.')
 

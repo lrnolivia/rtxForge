@@ -3903,6 +3903,13 @@ class OperationFlow:
         scroll=Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,vexpand=True)
         scroll.set_child(body)
         self._page('presets',scroll,width=820)
+        def refit():
+            if self.closed or self.stage!='presets':return False
+            # Re-measure after responsive columns and expanders have laid out.
+            # The initial vertical measurement must not leave a tall blank dialog.
+            self._fit(scroll,min(820,max(320,self.owner.get_width()-48)))
+            return True
+        GLib.timeout_add(100,refit)
 
     def show_checking(self):
         """The engine prepares every target; nothing is written yet."""
@@ -9793,6 +9800,7 @@ class Window(Adw.ApplicationWindow):
             features.remove(primary)
             nr=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,hexpand=True)
             nr.add_css_class('control-pod');nr.append(primary)
+            nr.set_valign(Gtk.Align.START);pod.set_valign(Gtk.Align.START)
             pod.set_hexpand(True)
             columns=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=24,homogeneous=True)
             columns.append(pod);columns.append(nr)

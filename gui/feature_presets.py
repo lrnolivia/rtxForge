@@ -31,10 +31,12 @@ class FeaturePresets(Gtk.Box):
         groups={}
         more=None
         if installation:
-            more=Gtk.Expander(label='More settings',expanded=False)
+            more=Adw.ExpanderRow(title='More settings',expanded=False)
+            self.more_expander=more
             more_body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12)
             more_body.set_margin_top(12)
-            more.set_child(more_body)
+            for side in ('start','end','bottom'):getattr(more_body,'set_margin_'+side)(16)
+            more.add_row(more_body)
         for item in definitions():
             group_key='Additional neural settings' if installation and item['key'] in ('preset','passes') else item['group']
             group=groups.get(group_key)
@@ -83,7 +85,9 @@ class FeaturePresets(Gtk.Box):
             if isinstance(group,Adw.ExpanderRow):group.add_row(row)
             else:group.add(row)
             self.inputs[key]=(item,control);self.rows[key]=row
-        if more is not None:self.append(more)
+        if more is not None:
+            surface=Adw.PreferencesGroup()
+            surface.add(more);self.append(surface)
         self.connect('value-changed',lambda *_:self.refresh_availability())
         self.refresh_availability()
 

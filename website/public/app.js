@@ -1,7 +1,7 @@
 import { REPOSITORY as repo, CHANNELS, selectDownloads } from './releases.mjs';
 import { createGallery } from './gallery.js';
 import { setFeaturePlatform } from './features.js';
-import { platforms, storage, platformFromLocation } from './platforms.mjs';
+import { platforms, storage } from './platforms.mjs';
 import { initTheme } from './theme.mjs';
 
 const root = document.documentElement;
@@ -9,6 +9,14 @@ const byId = id => document.getElementById(id);
 const gallery = createGallery();
 const tabs = [...document.querySelectorAll('[data-platform]')];
 initTheme();
+new MutationObserver(() => {
+  gallery.setPlatform(root.dataset.os);
+  setFeaturePlatform(root.dataset.os);
+}).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+function platformForPage() {
+  const requested = new URL(location.href).searchParams.get('os'), saved = storage.get('rtxforge-platform');
+  return Object.hasOwn(platforms, requested) ? requested : Object.hasOwn(platforms, saved) ? saved : 'windows';
+}
 const releases = { beta: { status: 'loading' }, development: { status: 'loading' } };
 let retryingReleases = false;
 function linkState(element, url) {
@@ -117,8 +125,8 @@ byId('requirements-link').addEventListener('click', event => {
 byId('release-retry').addEventListener('click', () => {
   if (!retryingReleases) refreshReleases({ retry: true });
 });
-setPlatform(platformFromLocation());
-addEventListener('popstate', () => setPlatform(platformFromLocation()));
+setPlatform(platformForPage());
+addEventListener('popstate', () => setPlatform(platformForPage()));
 async function refreshReleases({ retry = false } = {}) {
   retryingReleases = retry;
   const channels = Object.keys(CHANNELS).filter(channel => releases[channel].status !== 'published');

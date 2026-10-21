@@ -123,6 +123,76 @@ public sealed partial class MainWindow
 
     void OnCompactBarSizeChanged(object sender, SizeChangedEventArgs e) => UpdateTitleBarRegions();
 
+    // Widths seen in each presentation, so a choice never depends on its own result.
+    readonly Dictionary<string, double> compactWidths = [];
+    int compactLevel;
+
+    /// <summary>
+    /// The titlebar row fits the window, not its own overflow: as room runs out the actions
+    /// drop to icons (tooltips and accessible names stay), the Features selector tightens,
+    /// then the wordmark gives way to the mark. Nothing runs under the caption buttons.
+    /// </summary>
+    void FitCompactBar(double scale)
+    {
+        var actions = PresetSelecting ? CompactPresetActions : CompactActions;
+        var labels = actions.Children.OfType<Button>()
+            .Select(button => (Button: button, Label: (button.Content as StackPanel)?.Children.OfType<TextBlock>().FirstOrDefault()))
+            .Where(item => item.Label is not null).ToList();
+        var modes = CompactModes.Visibility == Visibility.Visible;
+        // Each width is remembered per presentation: actions with labels or icons, the
+        // selector full or tight, the brand with or without its wordmark.
+        string Key(string part, int level) => part switch
+        {
+            "actions" => (PresetSelecting ? "preset-" : "") + (level >= 1 ? "icons" : "labels"),
+            "modes" => level >= 2 ? "modes-tight" : "modes",
+            _ => level >= 4 ? "mark" : level >= 3 ? "brand-plain" : "brand",
+        };
+        void Seen(string part, double width) { if (width > 0) compactWidths[Key(part, compactLevel)] = width; }
+        if (compactVisible)
+        {
+            Seen("actions", actions.ActualWidth);
+            // The selector shares a star column, so its arranged width may already be squeezed:
+            // measure its natural width once per presentation. Measuring again on every size
+            // change would feed back into layout (flicker, a layout cycle).
+            if (modes && !compactWidths.ContainsKey(Key("modes", compactLevel)))
+            {
+                CompactModes.Measure(new global::Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+                Seen("modes", CompactModes.DesiredSize.Width);
+                CompactModes.InvalidateMeasure();
+            }
+        }
+        Seen("brand", BrandArea.ActualWidth);
+        double Width(string part, int level, double estimate) =>
+            compactWidths.TryGetValue(Key(part, level), out var seen) ? seen
+            : compactWidths.TryGetValue(Key(part, 0), out var full) ? full * estimate : 0;
+        var room = AppWindow.ClientSize.Width / scale - AppWindow.TitleBar.RightInset / scale - 8;
+        var level = 0;
+        var badge = Service.IsPreview;
+        for (; level < 4; level++)
+        {
+            if (level == 3 && !badge) continue;
+            var need = Math.Max(BrandColumn.MinWidth, Width("brand", level, level >= 4 ? .45 : level >= 3 ? .75 : 1))
+                + (compactVisible ? Width("actions", level, level >= 1 ? .3 : 1) : 0)
+                + (compactVisible && modes ? Width("modes", level, level >= 2 ? .75 : 1) : 0);
+            if (need <= room) break;
+        }
+        if (level == compactLevel && compactWidths.Count > 0) return;
+        compactLevel = level;
+        foreach (var (button, label) in labels)
+        {
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, label!.Text);
+            label.Visibility = level >= 1 ? Visibility.Collapsed : Visibility.Visible;
+        }
+        foreach (var toggle in new[] { CompactNrOnly, CompactMfgOnly, CompactNrMfg })
+        {
+            toggle.MinWidth = level >= 2 ? 0 : 108;
+            toggle.Padding = level >= 2 ? new Thickness(10, 5, 10, 6) : new Thickness(20, 5, 20, 6);
+        }
+        // The Preview badge gives way first, then the wordmark; the mark always stays.
+        if (badge) PreviewBadge.Visibility = level >= 3 ? Visibility.Collapsed : Visibility.Visible;
+        BrandWordmark.Visibility = level >= 4 ? Visibility.Collapsed : Visibility.Visible;
+    }
+
     /// <summary>
     /// The titlebar drags the window; the compact selector and actions must take clicks instead
     /// (passthrough regions, in physical pixels). The actions keep clear of the caption buttons.
@@ -132,16 +202,23 @@ public sealed partial class MainWindow
         if (AppTitleBar.XamlRoot is not { } root) return;
         var scale = root.RasterizationScale;
         CompactActions.Margin = CompactPresetActions.Margin = new Thickness(0, 0, AppWindow.TitleBar.RightInset / scale + 8, 0);
+        FitCompactBar(scale);
         var source = InputNonClientPointerSource.GetForWindowId(AppWindow.Id);
-        if (!compactVisible) { source.ClearRegionRects(NonClientRegionKind.Passthrough); return; }
         global::Windows.Graphics.RectInt32 Rect(FrameworkElement element)
         {
             var bounds = element.TransformToVisual(null).TransformBounds(new global::Windows.Foundation.Rect(0, 0, element.ActualWidth, element.ActualHeight));
             return new((int)Math.Round(bounds.X * scale), (int)Math.Round(bounds.Y * scale),
                 (int)Math.Round(bounds.Width * scale), (int)Math.Round(bounds.Height * scale));
         }
-        source.SetRegionRects(NonClientRegionKind.Passthrough, PresetSelecting
-            ? [Rect(CompactPresetActions)]
-            : [Rect(CompactModes), Rect(CompactActions)]);
+        var regions = new List<global::Windows.Graphics.RectInt32>();
+        if (TitleBack.Visibility == Visibility.Visible) regions.Add(Rect(TitleBack));
+        if (TitlePaneToggle.Visibility == Visibility.Visible) regions.Add(Rect(TitlePaneToggle));
+        if (compactVisible)
+        {
+            if (PresetSelecting) regions.Add(Rect(CompactPresetActions));
+            else { regions.Add(Rect(CompactModes)); regions.Add(Rect(CompactActions)); }
+        }
+        if (regions.Count == 0) source.ClearRegionRects(NonClientRegionKind.Passthrough);
+        else source.SetRegionRects(NonClientRegionKind.Passthrough, regions.ToArray());
     }
 }

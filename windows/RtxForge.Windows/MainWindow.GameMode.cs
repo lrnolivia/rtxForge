@@ -20,20 +20,24 @@ public sealed partial class MainWindow
 
     void InitializeGameMode()
     {
-        gamepad = new GamepadInput(DispatcherQueue);
+        gamepad = new GamepadInput(DispatcherQueue, WinRT.Interop.WindowNative.GetWindowHandle(this),
+            () => ForegroundProcessId() == Environment.ProcessId);
         gamepad.Action += OnGamepadAction;
         gamepad.Changed += () => gameMode?.SetControllerFamily(gamepad.Family);
+        gamepad.Activity += () => gameMode?.ControllerActivity();
         Closed += (_, _) => gamepad?.Dispose();
         if (Environment.GetCommandLineArgs().Contains("--game-mode", StringComparer.OrdinalIgnoreCase)
             || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SteamAppId")))
             DispatcherQueue.TryEnqueue(EnterGameMode);
     }
 
+    internal bool ControllerLegacyInputActive => gamepad?.LegacyInputActive == true;
+
     void OnGamepadAction(string action)
     {
         if (gameMode is not null) { gameMode.Handle(action, fromController: true); return; }
         // Desktop with Big Picture UI chosen: a controller press opens Game Mode (Linux poll_controller).
-        if (Settings.BigPictureUi && AppWindow.IsVisible) EnterGameMode();
+        if (Settings.BigPictureUi && AppWindow.IsVisible) { EnterGameMode(); gameMode?.ControllerActivity(); }
     }
 
     public void EnterGameMode()

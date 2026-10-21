@@ -11,6 +11,11 @@ public static class PageMargins
 {
     public const double MaxColumn = 1600;
 
+    /// <summary>Below this page width every desktop view becomes a single phone-style column.</summary>
+    public const double PhoneWidth = 640;
+
+    public static bool IsPhone(double width) => width > 0 && width < PhoneWidth;
+
     /// <summary>The side margin for a page of this width.</summary>
     public static double Side(double width) =>
         Math.Round(Math.Max(Math.Clamp(width * 0.03, 16, 56), (width - MaxColumn) / 2));

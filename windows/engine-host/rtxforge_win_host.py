@@ -544,12 +544,29 @@ METHODS.update(win_features.install(service, lambda: engine_bridge.module(servic
 import offline_routes
 METHODS['launch_offline'] = lambda p: offline_routes.launch(engine_bridge.module(service.config), p['row'])
 
+
+def feeder_storage(params):
+    """Packages › Feeder NR: import the chosen folders into app-owned storage, then report what is kept."""
+    import feeder_provider
+    e = engine_bridge.module(service.config)
+    if params.get('source'):
+        feeder_provider.import_stack(e, params['source'])
+    if params.get('backups'):
+        feeder_provider.import_backups(e, params['backups'])
+    owned = feeder_provider.owned_stack(e)
+    kept = feeder_provider.originals_root(e)
+    return {'stack': None if owned is None else {k: owned.get(k) for k in ('recipe', 'imported_from', 'imported_utc', 'nr_version')},
+            'backups': len(list(kept.glob('*/manifest.json'))) if kept.is_dir() else 0}
+
+
+METHODS['feeder_storage'] = feeder_storage
+
 import companion_controls  # noqa: E402
 METHODS.update(companion_controls.methods(STATE))
 
 
 _download_gate = threading.RLock()
-_DOWNLOAD_METHODS = {'prepare', 'execute', 'prepare_dlss', 'update_dlss', 'run', 'storage_review'}
+_DOWNLOAD_METHODS = {'prepare', 'execute', 'prepare_dlss', 'update_dlss', 'run', 'storage_review', 'feeder_storage'}
 
 
 def handle(request: dict) -> None:

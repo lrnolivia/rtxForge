@@ -15,10 +15,13 @@ public sealed class OverlayUiReviewView : StackPanel
     EngineReview? review;
     bool busy;
     int generation;
-    public OverlayUiReviewView(EngineForgeService engine)
+    readonly bool packages;
+    string ReviewLabel => packages ? "Review overlay updates" : "Review installed games";
+    public OverlayUiReviewView(EngineForgeService engine, bool packages = false)
     {
-        service = engine; Spacing = 12;
-        Children.Add(new TextBlock { Text = "Saved choices are used for future installs. Review installed games to update their menus and intro messages too.", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
+        service = engine; this.packages = packages; Spacing = 12; action.Content = ReviewLabel;
+        Children.Add(new TextBlock { Text = packages ? "Update the in-game overlay in managed Skynizz games. Your tuning, NR model and original restore backups are kept. Other package types are listed separately."
+            : "Saved choices are used for future installs. Review installed games to update their menus and intro messages too.", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
         Children.Add(rows); Children.Add(status); Children.Add(action);
         action.Click += async (_, _) => await Run();
         Unloaded += (_, _) => Invalidate();
@@ -27,7 +30,7 @@ public sealed class OverlayUiReviewView : StackPanel
     {
         generation++;
         if (review is not null) service.DiscardReview(review);
-        review = null; rows.Children.Clear(); status.Text = ""; action.Content = "Review installed games";
+        review = null; rows.Children.Clear(); status.Text = ""; action.Content = ReviewLabel;
     }
     async Task Run()
     {
@@ -40,10 +43,11 @@ public sealed class OverlayUiReviewView : StackPanel
             {
                 action.Content = "Reviewing games…";
                 var s = ForgeSettings.Load();
-                review = await service.ReviewOverlayUiAsync(s.GameUiOptions(), new Progress<PrepareProgress>(p =>
+                var progress = new Progress<PrepareProgress>(p =>
                 {
                     if (started == generation && IsLoaded) status.Text = p.Label;
-                }));
+                });
+                review = packages ? await service.ReviewOverlayPackagesAsync(progress) : await service.ReviewOverlayUiAsync(s.GameUiOptions(), progress);
                 if (started != generation || !IsLoaded) { service.DiscardReview(review); review = null; return; }
                 rows.Children.Clear();
                 void Group(string label, IReadOnlyList<ReviewItem> items, bool collapsed = false)
@@ -77,7 +81,7 @@ public sealed class OverlayUiReviewView : StackPanel
                 Group("Needs attention", review.Blocked);
                 Group("Unchanged or unavailable", review.Skipped, collapsed: true);
                 status.Text = review.Summary + " Restart updated games to use these choices.";
-                action.Content = review.Items.Count > 0 ? "Apply to games" : "Review installed games";
+                action.Content = review.Items.Count > 0 ? packages ? "Update overlays" : "Apply to games" : ReviewLabel;
                 if (review.Items.Count == 0) { service.DiscardReview(review); review = null; }
             }
             else
@@ -85,7 +89,7 @@ public sealed class OverlayUiReviewView : StackPanel
                 var pending = review; review = null; action.Content = "Applying…";
                 var result = await service.RunReviewAsync(pending);
                 if (started != generation || !IsLoaded) return;
-                rows.Children.Clear(); status.Text = result.Message + " Takes effect next launch."; action.Content = "Review installed games";
+                rows.Children.Clear(); status.Text = result.Message + " Takes effect next launch."; action.Content = ReviewLabel;
             }
         }
         catch (Exception error) { Invalidate(); status.Text = error.Message; }

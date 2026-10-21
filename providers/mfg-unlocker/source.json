@@ -28,8 +28,8 @@
     "settings": { "Plugins": { "LoadAsiPlugins": "true" }, "FrameGen": { "FGOutput": "DLSSG" } },
     "rtx30_dlssg_output": "experimental"
   },
-  "integration_status": "candidate",
-  "installable": false,
+  "integration_status": "default",
+  "installable": true,
   "runtime_verified": false,
-  "default_promoted": false
+  "default_promoted": true
 }

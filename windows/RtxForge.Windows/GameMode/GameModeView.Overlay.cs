@@ -22,17 +22,16 @@ public sealed partial class GameModeView
     [
         new("rtxForge panel", null,
         [
-            Choice("Primary overlay", "Keep the rtxForge panel alongside the native menus, or use OptiScaler alone.",
-                ["rtxforge", "optiscaler", "game"], ["rtxForge sidebar", "Original OptiScaler", "rtxForge in-game (preview)"], () => shell.Settings.OverlayRenderer, value => SetOverlay(s => s.OverlayRenderer = value), glyph: "\uE7F4"),
-            Choice("Controls", "Advanced uses OptiScaler labels and original units.", ["unified", "classic"], ["Unified", "Advanced"],
+            Choice("Primary overlay", "Use the rtxForge panel in compatible packages, or the original OptiScaler, Feeder or ReShade menus.",
+                ["game", "optiscaler"], ["rtxForge", "Native"], () => shell.Settings.OverlayRenderer == "optiscaler" ? "optiscaler" : "game", value => SetOverlay(s => s.OverlayRenderer = value), glyph: "\uE7F4"),
+            Choice("Controls", "Advanced uses the package’s labels and original units.", ["unified", "classic"], ["Unified", "Advanced"],
                 () => shell.Settings.OverlayControls, value => SetOverlay(s => s.OverlayControls = value), glyph: "\uE713"),
-            Choice("Window material", "Appearance of the standalone sidebar.", ["acrylic", "mica"], ["Acrylic", "Mica"], () => shell.Settings.OverlayMaterial, value => SetOverlay(s => s.OverlayMaterial = value), glyph: "\uE790"),
         ]),
         new("Shortcuts and helper", null,
         [
             ui.RowButton("rtxForge shortcut", shell.Settings.PanelHotkey, OpenOverlayShortcut, description: "Choose an unused key or combination. Other overlays keep their shortcuts.", glyph: "\uE765"),
-            OverlayToggle("Background overlay helper", "Keep the sidebar shortcut available after closing the manager.", () => shell.Settings.OverlayHelper, (s, value) => s.OverlayHelper = value, glyph: "\uE7F8"),
-            OverlayToggle("Start helper with Windows", "Starts the helper for the rtxForge sidebar.", () => shell.Settings.OverlayStartWithWindows, (s, value) => s.OverlayStartWithWindows = value, glyph: "\uE7E8"),
+            OverlayToggle("Background overlay helper", "Keep saved presets and panel settings available after closing the manager.", () => shell.Settings.OverlayHelper, (s, value) => s.OverlayHelper = value, glyph: "\uE7F8"),
+            OverlayToggle("Start helper with Windows", "Starts the helper for the rtxForge panel.", () => shell.Settings.OverlayStartWithWindows, (s, value) => s.OverlayStartWithWindows = value, glyph: "\uE7E8"),
         ]),
         new("OptiScaler", "Menu access and the welcome message are independent.",
         [
@@ -48,6 +47,7 @@ public sealed partial class GameModeView
         new("Apply to games", "Menu and welcome changes take effect next launch.",
         [
             ui.RowButton("Review installed games", null, () => _ = ReviewOverlayGames(), description: "Apply saved choices with backups. Running games are skipped.", glyph: "\uE9D9"),
+            ui.RowButton("Update in-game overlays", null, () => _ = ReviewOverlayPackages(), description: "Review managed Skynizz games. Tuning and restore backups are kept.", glyph: "\uE777"),
         ]),
     ];
 
@@ -67,5 +67,11 @@ public sealed partial class GameModeView
     {
         if (shell.Service is not EngineForgeService engine) { Toast("Game-menu changes are available in the installed app."); return; }
         await RunReviewAsync("Review game menus", () => engine.ReviewOverlayUiAsync(ForgeSettings.Load().GameUiOptions()));
+    }
+
+    async Task ReviewOverlayPackages()
+    {
+        if (shell.Service is not EngineForgeService engine) { Toast("Overlay updates require the installed app."); return; }
+        await RunReviewAsync("Update in-game overlays", () => engine.ReviewOverlayPackagesAsync());
     }
 }

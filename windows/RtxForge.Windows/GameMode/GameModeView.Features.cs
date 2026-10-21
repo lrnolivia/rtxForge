@@ -222,8 +222,8 @@ public sealed partial class GameModeView
             };
             if (GameItem.Image(path) is { } image) thumb.Child = new Border { CornerRadius = new CornerRadius(t.Px(8)), Background = new ImageBrush { ImageSource = image, Stretch = Stretch.UniformToFill } };
             thumb.HorizontalAlignment = HorizontalAlignment.Center;
-            var card = new StackPanel { Spacing = t.Px(12) };
-            card.Children.Add(ui.Text(title, .9, weight: FontWeights.SemiBold));
+            var card = new StackPanel { Spacing = t.Px(20) };
+            card.Children.Add(DetailHeading(title, "\uE790"));
             card.Children.Add(new Grid { Height = t.Px(110), Children = { thumb } });
             card.Children.Add(ui.P(g.ArtCredits.GetValueOrDefault(role) ?? (path is null ? "No artwork yet" : g.MetadataSource ?? g.Library), .72));
             var choose = ui.Button("Choose image", () => _ = ChooseArtworkAsync(g, role), GmKind.Card, .78, !preview, radius: 10, minHeight: 48);

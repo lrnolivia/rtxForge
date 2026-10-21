@@ -214,6 +214,66 @@ class FeederTest(unittest.TestCase):
         self.apply(self.prepare(row, 'uninstall'))
         self.assertEqual(self.files(row), before)
 
+    def test_fresh_install_uses_owned_stack_after_source_folder_is_gone(self):
+        feeder.import_stack(self.e, self.source)
+        shutil.rmtree(self.source)
+        row = self.game('owned-stack')
+        before = self.files(row)
+        self.apply(self.prepare(row, feeder_source=str(self.source)))
+        self.assertTrue((Path(row['game']) / 'dlss5-feed.addon64').is_file())
+        self.assertEqual((Path(row['game']) / feeder.MODEL).read_bytes(), self.new)
+        self.apply(self.prepare(row, 'uninstall'))
+        self.assertEqual(self.files(row), before)
+
+    def test_review_imports_source_and_owned_model_serves_without_selection(self):
+        (self.source / feeder.MODEL).write_bytes(self.new)
+        row = self.game('imported-on-review')
+        self.apply(self.prepare(row))
+        record = feeder.owned_stack(self.e)
+        self.assertEqual(record['imported_from'], str(self.source))
+        self.assertEqual(record['nr_version'], '310.9.16.0')
+        other = self.game('no-model-choice')
+        self.apply(self.prepare(other, feeder_source='', nr_runtime=None))
+        self.assertEqual((Path(other['game']) / feeder.MODEL).read_bytes(), self.new)
+
+    def test_without_source_or_owned_stack_fresh_install_refuses(self):
+        row = self.game('nothing-stored')
+        review = self.prepare(row, feeder_source='')
+        self.assertFalse(review['rows'])
+        self.assertIn('Import a verified Feeder stack', review['blocked'][0]['reason'])
+
+    def test_changed_owned_stack_is_refused(self):
+        record = feeder.import_stack(self.e, self.source)
+        Path(record['files']['dxgi.dll']['path']).write_bytes(pe(b'tampered'))
+        with self.assertRaisesRegex(t.Refusal, 'stored Feeder stack changed'):
+            feeder.owned_stack(self.e)
+
+    def test_recognition_uses_owned_originals_after_backups_folder_is_gone(self):
+        row = self.game(installed=True)
+        path = self.backups / row['name'] / 'manifest.json'
+        doc = json.loads(path.read_text())
+        original = b'original SR before this mod'
+        next(entry for entry in doc['files'] if entry['path'] == 'nvngx_dlss.dll')['before'] = t.sha(original)
+        path.write_text(json.dumps(doc))
+        (path.parent / 'originals').mkdir()
+        (path.parent / 'originals/nvngx_dlss.dll').write_bytes(original)
+        self.assertEqual(feeder.import_backups(self.e, self.backups), 1)
+        shutil.rmtree(self.backups)
+        self.apply(self.prepare(row))
+        self.apply(self.prepare(row, 'uninstall'))
+        self.assertEqual((Path(row['game']) / 'nvngx_dlss.dll').read_bytes(), original)
+
+    def test_owned_and_folder_copies_of_one_manifest_are_not_ambiguous(self):
+        row = self.game(installed=True)
+        feeder.import_backups(self.e, self.backups)
+        self.assertTrue(self.prepare(row)['rows'])
+        twin = self.backups / 'second-copy'
+        twin.mkdir()
+        doc = json.loads((self.backups / row['name'] / 'manifest.json').read_text())
+        doc['note'] = 'another recipe record for the same game'
+        (twin / 'manifest.json').write_text(json.dumps(doc))
+        self.assertFalse(self.prepare(row)['rows'])
+
     def test_repair_pins_model_and_preserves_later_settings(self):
         row = self.game(installed=True)
         self.apply(self.prepare(row))

@@ -74,7 +74,7 @@ public sealed class OperationDialog
         var editorWidth = Math.Max(280, Math.Min(960, ((shell.Content as FrameworkElement)?.XamlRoot?.Size.Width ?? 1120) - 120));
         dialog.Resources["ContentDialogMaxWidth"] = 1120.0;
         var tuning = new PresetControlsView(initial, shell.Settings.OverlayControls == "classic", embedded: true) { Width = editorWidth };
-        tuning.SetMode(shell.Mode, legacy: shell.Settings.RuntimeProvider != "skynizz", dynamicSupported: shell.Settings.MfgProvider == "integrated");
+        tuning.SetMode(shell.Mode, legacy: shell.Settings.RuntimeProvider != "skynizz", dynamicSupported: shell.Settings.DynamicMfgSupported);
         var body = new StackPanel { Spacing = 16 };
         body.Children.Add(Prefs.Label("Adjust your presets or continue. You can change these settings later in OptiScaler."));
         var feeder = shell.Settings.RuntimeProvider == "feeder";

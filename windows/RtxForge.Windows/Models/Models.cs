@@ -42,6 +42,11 @@ public sealed class Game
         && EngineRow?["feeder_available"] is JsonValue flag && flag.TryGetValue<bool>(out var supported) && supported;
     /// <summary>Which rtxForge installed the features: "windows", "linux" (shared .rtxforge-install.json), or null.</summary>
     public string? InstalledOn { get; set; }
+    /// <summary>A Feeder setup is installed but needs attention (BlockedReason says why); not an unsupported game.</summary>
+    public bool FeederNeedsAttention => Blocked && EngineRow?["feeder_detected"] is JsonValue detected
+        && detected.TryGetValue<bool>(out var found) && found;
+    /// <summary>"Unsupported", or the Feeder status for an installed setup that needs attention.</summary>
+    public string BlockedStatus => FeederNeedsAttention ? "Needs Attention" : "Unsupported";
     /// <summary>Installed with rtxForge on Linux: Windows loads it natively; Set Up for Windows adapts it here.</summary>
     public bool InstalledOnLinux => Installed && InstalledOn == "linux";
     /// <summary>The library's install action: Set Up for Windows adapts a Linux install instead of reinstalling it.</summary>
@@ -183,6 +188,9 @@ public sealed record CommunitySource(string Name, string Url, string Note);
 
 public sealed record PackageCatalog(string Status, IReadOnlyList<PackageOption> Packages, IReadOnlyList<CommunitySource> Community, string? CustomName);
 
+/// <summary>Feeder NR files rtxForge keeps itself: the verified stack (null when none) and original backups.</summary>
+public sealed record FeederStorage(string? Recipe, string? ImportedFrom, string? NrVersion, int Backups);
+
 public sealed record PackageParameter(string Key, string Label, string Value, string Origin);
 
 /// <summary>package_catalog.inspect_archive, held by the host under Token until it is used or discarded.</summary>
@@ -203,7 +211,9 @@ public sealed class ForgeSettings
     [JsonPropertyName("runtime_provider")] public string RuntimeProvider { get; set; } = "y4my";
     [JsonPropertyName("nr_runtime")] public string NrRuntime { get; set; } = "";
     [JsonPropertyName("skynizz_version")] public string SkynizzVersion { get; set; } = "latest";
-    [JsonPropertyName("mfg_provider")] public string MfgProvider { get; set; } = "integrated";
+    [JsonPropertyName("mfg_provider")] public string MfgProvider { get; set; } = "universal";
+    /// <summary>Dynamic MFG needs OptiScaler to own the count: the integrated bridge or the Universal plugin.</summary>
+    [JsonIgnore] public bool DynamicMfgSupported => MfgProvider is "universal" or "integrated";
     [JsonPropertyName("nr_preset")] public int? NrPreset { get; set; }
     [JsonPropertyName("nr_on_launch")] public bool NrOnLaunch { get; set; } = false;
     [JsonPropertyName("feeder_source")] public string FeederSource { get; set; } = "";
@@ -225,7 +235,7 @@ public sealed class ForgeSettings
     [JsonPropertyName("overlay_start_with_windows")] public bool OverlayStartWithWindows { get; set; } = true;
     [JsonPropertyName("overlay_material")] public string OverlayMaterial { get; set; } = "acrylic";
     [JsonPropertyName("overlay_controls")] public string OverlayControls { get; set; } = "unified";
-    [JsonPropertyName("overlay_renderer")] public string OverlayRenderer { get; set; } = "rtxforge";
+    [JsonPropertyName("overlay_renderer")] public string OverlayRenderer { get; set; } = "game";
     [JsonPropertyName("optiscaler_hotkey")] public string OptiScalerHotkey { get; set; } = "Insert";
     [JsonPropertyName("optiscaler_ui")] public bool OptiScalerUi { get; set; } = true;
     [JsonPropertyName("optiscaler_intro")] public bool OptiScalerIntro { get; set; }
@@ -255,6 +265,7 @@ public sealed class ForgeSettings
     [JsonPropertyName("theme")] public string Theme { get; set; } = "system";
     /// <summary>Compact is the default: the dashboard stays collapsed and the titlebar carries the brand, Features and actions.</summary>
     [JsonPropertyName("compact_header")] public bool CompactHeader { get; set; } = true;
+    [JsonPropertyName("separate_game_details")] public bool SeparateGameDetails { get; set; }
     [JsonPropertyName("button_glyphs")] public bool ButtonGlyphs { get; set; } = true;
     [JsonPropertyName("online_art")] public bool OnlineArt { get; set; } = true;
     [JsonPropertyName("steam_metadata")] public bool SteamMetadata { get; set; } = true;
@@ -269,6 +280,8 @@ public sealed class ForgeSettings
     [JsonPropertyName("library_folders")] public List<string> LibraryFolders { get; set; } = [];
     [JsonPropertyName("removed_games")] public List<string> RemovedGames { get; set; } = [];
     [JsonPropertyName("game_accents")] public Dictionary<string, string> GameAccents { get; set; } = [];
+    /// <summary>Hero art focal points chosen per game: [x, y] as fractions of the art. Absent means automatic.</summary>
+    [JsonPropertyName("game_hero_focus")] public Dictionary<string, double[]> GameHeroFocus { get; set; } = [];
 
     // Gaming Mode (Linux couch shell; same keys and defaults as library_media.DEFAULTS).
     [JsonPropertyName("big_picture_ui")] public bool BigPictureUi { get; set; } = true;

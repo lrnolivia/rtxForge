@@ -16,11 +16,26 @@ public sealed partial class GamePage : Page
     Game game = null!;
     string section = "Overview";
     Services.AccentPalette? gamePalette;
+    readonly CollapsingHero collapsingHero;
+    double heroLayoutWidth;
+    double heroExpandedHeight;
 
     public GamePage()
     {
         InitializeComponent();
+        collapsingHero = new CollapsingHero(ContentScroll, HeroBanner, HeroSpacer, progress =>
+        {
+            var fullPoster = Math.Round(Math.Clamp(heroExpandedHeight * .48, 120, 260));
+            PosterFrame.Height = fullPoster + (100 - fullPoster) * progress;
+            PosterFrame.Width = Math.Round(PosterFrame.Height * 2 / 3);
+            var fullTitle = Math.Clamp(heroLayoutWidth / 26, 26, 64) * (game?.Name.Length > 28 ? .78 : 1);
+            TitleText.FontSize = fullTitle + (Math.Min(fullTitle, 32) - fullTitle) * progress;
+            TitleText.LineHeight = TitleText.FontSize * 1.1;
+            HeroText.Opacity = 1 - progress;
+            HeroText.Visibility = progress >= .75 ? Visibility.Collapsed : Visibility.Visible;
+        }, Sections);
         ActualThemeChanged += (_, _) => ApplyAccentText();
+        ContentScroll.SizeChanged += (_, e) => ApplyLayout(e.NewSize.Width);
         shell.GamesChanged += Refresh;
         Unloaded += (_, _) => shell.GamesChanged -= Refresh;
     }
@@ -30,15 +45,26 @@ public sealed partial class GamePage : Page
         base.OnNavigatedTo(e);
         var request = (GameRequest)e.Parameter;
         game = request.Game;
+        SectionRail.Visibility = request.SeparateWindow ? Visibility.Visible : Visibility.Collapsed;
+        Sections.Visibility = request.SeparateWindow ? Visibility.Collapsed : Visibility.Visible;
+        if (request.SeparateWindow)
+            foreach (var item in Sections.Items)
+            {
+                var label = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
+                label.Children.Add(new FontIcon { Glyph = GameSections.Glyph(item.Text), FontSize = 16 });
+                label.Children.Add(new TextBlock { Text = item.Text });
+                SidebarSections.Items.Add(new ListViewItem { Content = label, Tag = item.Tag, CornerRadius = new CornerRadius(8), Margin = new Thickness(0, 2, 0, 2) });
+            }
         TitleText.Text = game.Name;
         ShowIdentity();
         _ = LoadSteamInfoAsync(game);
         HeroImage.SetSource(game.HeroPath ?? game.CapsulePath);
+        HeroImage.ChosenFocus = FadedImage.Stored(shell.Settings.GameHeroFocus, game.Id);
         PosterImage.Source = ViewModels.GameItem.Image(game.PosterPath);
-        PosterFrame.Visibility = game.PosterPath is null ? Visibility.Collapsed : Visibility.Visible;
+        PosterFrame.Visibility = game.PosterPath is null || phoneLayout ? Visibility.Collapsed : Visibility.Visible;
         ApplyLayout(ActualWidth);
         _ = ApplyAccentAsync();
-        Sections.SelectedItem = Sections.Items.First(i => (string)i.Tag == request.Section);
+        SelectSection(request.Section);
         Refresh();
     }
 
@@ -86,6 +112,7 @@ public sealed partial class GamePage : Page
 
     void ApplyAccentText()
     {
+        ApplyWindowActionsTint();
         if (gamePalette is not { } palette) return;
         var light = ActualTheme == ElementTheme.Light;
         var ink = light ? Services.ArtAccent.Readable(palette.Color, global::Windows.UI.Color.FromArgb(255, 243, 243, 243)) : palette.HeroAccent;
@@ -95,7 +122,7 @@ public sealed partial class GamePage : Page
 
     void Refresh()
     {
-        StatusBadge.Text = game.AdoptionAvailable ? "Installed · Adoption available" : game.OfflineOnly ? "Installed · Offline only" : game.Blocked ? "Unsupported"
+        StatusBadge.Text = game.AdoptionAvailable ? "Installed · Adoption available" : game.OfflineOnly ? "Installed · Offline only" : game.Blocked ? game.BlockedStatus
             : game.UsesFeeder ? game.Installed ? "Feeder NR" : "Available · Feeder NR"
             : game.InstalledOnLinux ? "Installed on Linux"
             : game.Installed ? shell.Mode switch { "nr-only" => "NR Only", "nr-mfg" => "NR + MFG", _ => "MFG Only" }
@@ -123,7 +150,22 @@ public sealed partial class GamePage : Page
 
     void OnSectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
-        if (sender.SelectedItem is SelectorBarItem item && game is not null) Build((string)item.Tag);
+        if (sender.SelectedItem is SelectorBarItem item && game is not null)
+        {
+            if (SectionRail.Visibility == Visibility.Visible)
+                SidebarSections.SelectedItem = SidebarSections.Items.OfType<ListViewItem>().FirstOrDefault(row => Equals(row.Tag, item.Tag));
+            Build((string)item.Tag);
+        }
+    }
+
+    public void SelectSection(string name) => Sections.SelectedItem = Sections.Items.FirstOrDefault(i => (string)i.Tag == name) ?? Sections.Items[0];
+
+    public void ShowNotice(string message) { DetailsNotice.Message = message; DetailsNotice.IsOpen = true; }
+
+    void OnSidebarSectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (SidebarSections.SelectedItem is ListViewItem item && (Sections.SelectedItem as SelectorBarItem)?.Tag as string != item.Tag as string)
+            SelectSection((string)item.Tag);
     }
 
     void OnInstall(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("install", [game]);
@@ -213,7 +255,7 @@ public sealed partial class GamePage : Page
                 var fileActions = new PresetColumns(360, 2) { ColumnSpacing = 12, RowSpacing = 12 };
                 var update = Prefs.ActionButton("Update", (_, _) => _ = shell.LaunchAction("update-dlss", [g]));
                 update.IsEnabled = !g.Blocked && !shell.Busy;
-                fileActions.Children.Add(DetailActionCard("Update DLSS", "Update older DLSS files. Backups are kept for restoration.", update, ""));
+                fileActions.Children.Add(DetailActionCard("Update DLSS", "Update older DLSS files. Backups are kept for restoration.", update, ""));
                 var restoreDlss = Prefs.ActionButton("Restore", async (_, _) => await shell.RestoreDlssFilesAsync(g));
                 restoreDlss.IsEnabled = false;
                 var backupRow = DetailActionCard("Restore original DLSS files", "Checking for backups…", restoreDlss, "");
@@ -340,8 +382,9 @@ public sealed partial class GamePage : Page
 
     void ShowIdentity()
     {
-        MetaText.Text = string.Join(" · ", new[] { game.Developer, game.Release }.Where(s => !string.IsNullOrEmpty(s)));
+        MetaText.Text = GameCredits.Line(game);
         MetaText.Visibility = MetaText.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ToolTipService.SetToolTip(MetaText, GameCredits.Tooltip(game));
         SourceBadge.Text = game.Library == "Steam" ? "STEAM" : "NON-STEAM";
         TestBadgeText.Text = game.Tested ? "TESTED" : "UNTESTED";
         TestBadgeIcon.Glyph = game.Tested ? "" : "";
@@ -358,7 +401,30 @@ public sealed partial class GamePage : Page
     }
     // ---------- Responsive layout ----------
 
-    void OnPageSizeChanged(object sender, SizeChangedEventArgs e) => ApplyLayout(e.NewSize.Width);
+    bool phoneLayout;
+
+    /// <summary>
+    /// Phone width: one scrolling column like a mobile page — a short art banner, then the
+    /// identity (no poster beside it), the section tabs and the content. Wider windows keep
+    /// the sticky collapsing hero with the identity over its art.
+    /// </summary>
+    void UsePhoneLayout(bool phone)
+    {
+        phoneLayout = phone;
+        collapsingHero.Enabled = !phone;
+        // The identity stays over the art's faded lower edge; on a phone the banner grows to fit it.
+        foreach (var element in new FrameworkElement[] { HeroBanner, SectionsScroll }) ((Panel)element.Parent).Children.Remove(element);
+        var host = phone ? DetailsWorkspace.Children : HeroHost.Children;
+        host.Insert(phone ? 0 : host.Count, HeroBanner);
+        host.Insert(phone ? 1 : host.Count, SectionsScroll);
+        if (phone) HeroBanner.Height = double.NaN;
+        DispatcherQueue.TryEnqueue(HeroImage.Reattach);
+        HeroSpacer.Visibility = phone ? Visibility.Collapsed : Visibility.Visible;
+        RestoreText.Text = phone ? "Restore Files" : "Restore Original Files";
+        PosterFrame.Visibility = phone || game?.PosterPath is null ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    void OnPageSizeChanged(object sender, SizeChangedEventArgs e) => ApplyLayout(ContentScroll.ActualWidth > 0 ? ContentScroll.ActualWidth : e.NewSize.Width);
 
     /// <summary>
     /// Scales the hero, poster, title and margins with the window, and moves
@@ -368,14 +434,25 @@ public sealed partial class GamePage : Page
     {
         if (width <= 0 || game is null) return;
         var side = PageMargins.Side(width);
-        HeroBanner.Height = Math.Round(Math.Clamp(width * 0.30, 240, 560));
-        var posterHeight = Math.Round(Math.Clamp(HeroBanner.Height * 0.48, 120, 260));
-        PosterFrame.Height = posterHeight;
-        PosterFrame.Width = Math.Round(posterHeight * 2 / 3);
-        var title = Math.Clamp(width / 26, 26, 64) * (game.Name.Length > 28 ? 0.78 : 1); // detail-title step-down
-        TitleText.FontSize = Math.Round(title);
-        TitleText.LineHeight = Math.Round(title * 1.1);
-        Identity.Padding = new Thickness(side, 0, side, Math.Round(Math.Clamp(width * 0.02, 16, 32)));
+        heroLayoutWidth = width;
+        var phone = PageMargins.IsPhone(width) && SectionRail.Visibility != Visibility.Visible;
+        if (phone != phoneLayout) UsePhoneLayout(phone);
+        if (!phone)
+        {
+            heroExpandedHeight = Math.Round(Math.Clamp(width * .38, 360, 620));
+            collapsingHero.SetRange(heroExpandedHeight, width < 700 ? 220 : 180);
+        }
+        // Phone: the art shows above the identity, which sits over its faded lower part.
+        Identity.Padding = phone ? new Thickness(side, Math.Round(Math.Clamp(width * .42, 150, 240)), side, 16)
+            : new Thickness(side, 0, side, Math.Round(Math.Clamp(width * 0.02, 16, 32)));
+        // Tablet and phone: the hero content lines up with the cards below, with the same
+        // padding on both sides (no spacing for an empty poster or actions column).
+        Identity.ColumnSpacing = phone ? 0 : 20;
+        HeroBody.ColumnSpacing = width < 980 ? 0 : 20;
+        // Phone: Install Features and Restore Files share the row equally beside a square More.
+        var half = phone ? Math.Max(0, Math.Floor((width - side * 2 - Identity.ColumnSpacing - HeroBody.ColumnSpacing - 48 - HeroActions.Spacing * 2 - 2) / 2)) : double.NaN;
+        InstallButton.Width = RestoreButton.Width = half;
+        MoreButton.Width = phone ? 48 : double.NaN;
         Sections.Margin = new Thickness(side - 8, 8, side, 0);
         PageHost.Padding = new Thickness(side, 0, side, 0);
 
@@ -458,6 +535,26 @@ public sealed partial class GamePage : Page
         accentGroup.Add(Prefs.Row("Game Accent", customHex is null ? "Artwork-derived" : "Custom · " + customHex.ToUpperInvariant(), suffix, ""));
         PageHost.Children.Insert(0, accentGroup);
 
+        // Hero Focus: the point of the hero art kept in view at every window size.
+        if ((g.HeroPath ?? g.CapsulePath) is not null)
+        {
+            var focusGroup = new PreferencesGroup("Hero Focus", "The part of the hero art kept in view as the window narrows.");
+            var chosen = FadedImage.Stored(shell.Settings.GameHeroFocus, g.Id) is not null;
+            var set = Prefs.ActionButton("Set focal point", (_, _) => _ = PickHeroFocusAsync(g));
+            var automatic = Prefs.ActionButton("Automatic", (_, _) =>
+            {
+                shell.Settings.GameHeroFocus.Remove(g.Id);
+                shell.Settings.Save();
+                HeroImage.ChosenFocus = null;
+                Build("Appearance");
+            });
+            automatic.IsEnabled = chosen;
+            ToolTipService.SetToolTip(automatic, "Follow the subject rtxForge finds in the art");
+            var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { set, automatic } };
+            focusGroup.Add(Prefs.Row("Focal Point", chosen ? "Chosen for this game" : "Automatic · follows the subject", actions, ""));
+            PageHost.Children.Insert(1, focusGroup);
+        }
+
         // Artwork Credits pods.
         var credits = new PreferencesGroup("Artwork Credits");
         var pods = new PresetColumns(220, 3) { ColumnSpacing = 12, RowSpacing = 12 };
@@ -476,6 +573,75 @@ public sealed partial class GamePage : Page
         PageHost.Children.Add(credits);
 
         _ = PaintAppearanceAsync(g, frames, swatch);
+    }
+
+    /// <summary>
+    /// "Set Focal Point": the whole hero art with a marker; click the subject to move it, and the
+    /// hero behind the dialog follows. Done saves it for this game (desktop and Game Mode).
+    /// </summary>
+    async Task PickHeroFocusAsync(Game g)
+    {
+        if ((g.HeroPath ?? g.CapsulePath) is not { } source) return;
+        uint sw, sh;
+        try { (_, sw, sh) = await Services.ArtAccent.DecodeAsync(await Services.ArtAccent.LoadAsync(source)); }
+        catch (Exception error) when (error is HttpRequestException or IOException or TaskCanceledException or System.Runtime.InteropServices.COMException)
+        {
+            shell.ShowToast("Could not open this game’s artwork.");
+            return;
+        }
+        var displayW = Math.Min(560, Math.Max(280, (XamlRoot?.Size.Width ?? 800) - 160));
+        var displayH = Math.Round(displayW * sh / sw);
+        var before = HeroImage.ChosenFocus;
+        var point = before ?? new System.Numerics.Vector2(.5f, .3f);
+
+        var image = new Image { Source = ViewModels.GameItem.Image(source), Stretch = Stretch.Fill, Width = displayW, Height = displayH };
+        var marker = new Microsoft.UI.Xaml.Shapes.Ellipse
+        {
+            Width = 28, Height = 28, StrokeThickness = 3, IsHitTestVisible = false,
+            Stroke = new SolidColorBrush(Microsoft.UI.Colors.White),
+            Fill = new SolidColorBrush(global::Windows.UI.Color.FromArgb(0x55, 0, 0, 0)),
+            Visibility = before is null ? Visibility.Collapsed : Visibility.Visible,
+        };
+        var stage = new Canvas { Width = displayW, Height = displayH, Children = { image, marker } };
+        void Place(System.Numerics.Vector2 at)
+        {
+            Canvas.SetLeft(marker, at.X * displayW - marker.Width / 2);
+            Canvas.SetTop(marker, at.Y * displayH - marker.Height / 2);
+        }
+        Place(point);
+        image.PointerEntered += (_, _) => ProtectedCursor = Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.Cross);
+        image.PointerExited += (_, _) => ProtectedCursor = null;
+        image.Tapped += (_, e) =>
+        {
+            var at = e.GetPosition(image);
+            point = new((float)Math.Clamp(at.X / displayW, 0, 1), (float)Math.Clamp(at.Y / displayH, 0, 1));
+            marker.Visibility = Visibility.Visible;
+            Place(point);
+            HeroImage.ChosenFocus = point;
+        };
+        var frame = new Border
+        {
+            HorizontalAlignment = HorizontalAlignment.Center, Child = stage,
+            CornerRadius = (CornerRadius)Application.Current.Resources["ForgeCardCornerRadius"],
+        };
+        var instructions = Prefs.Label("Click the subject to keep in view. The hero updates as you choose.", "ForgeDimTextStyle");
+        var body = new StackPanel { Spacing = 12, Children = { instructions, frame } };
+
+        var dialog = shell.NewDialog();
+        dialog.Title = "Set Focal Point";
+        dialog.Content = body;
+        dialog.PrimaryButtonText = "Done";
+        dialog.CloseButtonText = "Cancel";
+        dialog.DefaultButton = ContentDialogButton.Primary;
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary || marker.Visibility != Visibility.Visible)
+        {
+            HeroImage.ChosenFocus = before;
+            return;
+        }
+        shell.Settings.GameHeroFocus[g.Id] = [Math.Round(point.X, 4), Math.Round(point.Y, 4)];
+        shell.Settings.Save();
+        shell.NotifyGamesChanged();
+        Build("Appearance");
     }
 
     /// <summary>.artwork-editor.{art} .artwork-preview border and the accent swatch.</summary>

@@ -66,6 +66,7 @@ jobs:
           retention-days: 14
   build:
     name: WinUI 3 ${{ matrix.platform }}
+    needs: panel-candidate
     runs-on: windows-2025
     # Signed release runs wait for the SignPath approval (up to an hour per request).
     timeout-minutes: 150
@@ -97,33 +98,12 @@ jobs:
       - name: Checkout rtxForge
         uses: actions/checkout@v4
 
-      - name: Cache the combined NR and MFG dependency
+      - name: Bundle the matching in-game overlay bridge
         if: matrix.platform == 'x64'
-        id: bridge-cache
-        uses: actions/cache@v4
+        uses: actions/download-artifact@v4
         with:
-          path: |
-            windows/out/skynizz-bridge/*.zip
-            windows/out/skynizz-bridge/package.json
-          key: skynizz-ada-mfg-x64-v1-${{ hashFiles('providers/skynizz-bridge/**', 'windows/build/Build-SkynizzBridge.ps1') }}
-
-      - name: Checkout exact Skynizz source
-        if: matrix.platform == 'x64' && steps.bridge-cache.outputs.cache-hit != 'true'
-        uses: actions/checkout@v4
-        with:
-          repository: Skynizz/optiscaler-dlss5
-          ref: 6bfc4389c25054ef6747df6e6b1b470e9541c4da
-          submodules: recursive
-          persist-credentials: false
-          path: windows/out/skynizz-source
-
-      - name: Prepare MSBuild for the combined dependency
-        if: matrix.platform == 'x64' && steps.bridge-cache.outputs.cache-hit != 'true'
-        uses: microsoft/setup-msbuild@v2
-
-      - name: Build the combined Skynizz NR and Ada MFG loader
-        if: matrix.platform == 'x64' && steps.bridge-cache.outputs.cache-hit != 'true'
-        run: ./windows/build/Build-SkynizzBridge.ps1 -SourceRoot windows/out/skynizz-source
+          name: skynizz-in-game-panel-candidate
+          path: windows/out/skynizz-bridge
 
       - name: Set up .NET 10
         uses: actions/setup-dotnet@v4
@@ -179,6 +159,8 @@ jobs:
             python -X utf8 -m unittest discover -s windows/tests -p test_dlss_updates.py
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s windows/tests -p test_skynizz_provider.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest discover -s windows/tests -p test_overlay_packages.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
       - name: Restore

@@ -14,6 +14,7 @@ public sealed partial class GameModeView
     readonly HashSet<string> selectedIds = [];
     double libraryScroll;
     ScrollViewer? libraryScroller;
+    bool libraryFilterHidden;
 
     IEnumerable<Game> FilteredGames() => LibraryScope.Filter(shell.Games, shell.Settings.LibraryFilter);
 
@@ -21,8 +22,8 @@ public sealed partial class GameModeView
 
     UIElement BuildLibrary()
     {
-        var main = new Grid { Padding = new Thickness(t.Px(56), t.Px(t.Compact ? 16 : 24), t.Px(56), t.Px(8)), RowSpacing = t.Px(t.Compact ? 12 : 14) };
-        for (var i = 0; i < 5; i++) main.RowDefinitions.Add(new RowDefinition { Height = i == 3 ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
+        var main = new Grid { Padding = new Thickness(PageInset, t.Px(t.Compact ? 16 : 24), PageInset, 0), RowSpacing = t.Px(t.Compact ? 12 : 14) };
+        for (var i = 0; i < 4; i++) main.RowDefinitions.Add(new RowDefinition { Height = i == 3 ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
         var games = FilteredGames().ToList();
 
         // Heading: Library · counts · package identity.
@@ -70,7 +71,7 @@ public sealed partial class GameModeView
             () => _ = RunOperationAsync("uninstall", restoreTargets), GmKind.Danger, 0.85,
             enabled: restoreTargets.Count > 0, minHeight: t.Compact ? 48 : 60);
         Key(restore, "lib-restore");
-        var update = ui.Button(Glyph("", "Update DLSS"), () => _ = RunOperationAsync("update-dlss", installTargets), GmKind.Dlss, 0.85,
+        var update = ui.Button(Glyph("", "Update DLSS"), () => _ = RunOperationAsync("update-dlss", installTargets), GmKind.Dlss, 0.85,
             enabled: installTargets.Count > 0, minHeight: t.Compact ? 48 : 60);
         Key(update, "lib-update");
         actions.Children.Add(install);
@@ -125,16 +126,49 @@ public sealed partial class GameModeView
         else selection.Children.Add(ui.Button(Glyph("", "Select games"), () => { selecting = true; Render(keepFocus: true); }, GmKind.Quiet, 0.85, minHeight: t.Compact ? 40 : 48).With(b => Key(b, "sel-start")));
         Grid.SetColumn(selection, 2);
         subbar.Children.Add(selection);
-        Grid.SetRow(subbar, 2);
-        main.Children.Add(subbar);
+        var filterHost = new Border { Child = subbar };
+        Grid.SetRow(filterHost, 2);
+        main.Children.Add(filterHost);
 
         // Games.
         var scroller = new ScrollViewer { HorizontalScrollMode = ScrollMode.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-        var available = Math.Max(320, ActualWidth - t.Px(56) * 2 - t.Px(40));
+        var available = Math.Max(320, ActualWidth - PageInset * 2 - t.Px(34));
         scroller.Content = games.Count == 0
             ? EmptyLibrary()
             : shell.Settings.LibraryView == "list" ? ListLayout(games) : CardLayout(games, available, shell.Settings.LibraryView == "capsules");
-        scroller.ViewChanged += (_, _) => libraryScroll = scroller.VerticalOffset;
+        var previousOffset = libraryScroll;
+        var filterHeight = 0d;
+        bool? renderedFilters = null;
+        var changingFilterLayout = false;
+        void ShowFilters(bool show)
+        {
+            if (filterHeight <= 0 || renderedFilters == show) return;
+            renderedFilters = show; changingFilterLayout = true;
+            libraryFilterHidden = !show;
+            filterHost.Height = show ? double.NaN : 0;
+            filterHost.Opacity = show ? 1 : 0;
+            filterHost.IsHitTestVisible = show;
+            filterHost.Clip = show ? null : new Microsoft.UI.Xaml.Media.RectangleGeometry { Rect = new global::Windows.Foundation.Rect(0, 0, 0, 0) };
+            // A growing viewport can clamp its offset near the last row. That layout
+            // adjustment is not an upward user scroll and must not reopen the bar.
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            { previousOffset = scroller.VerticalOffset; changingFilterLayout = false; });
+        }
+        subbar.SizeChanged += (_, e) =>
+        {
+            if (e.NewSize.Height <= 0) return;
+            filterHeight = e.NewSize.Height; ShowFilters(!libraryFilterHidden);
+        };
+        subbar.GotFocus += (_, _) => ShowFilters(true);
+        scroller.ViewChanged += (_, _) =>
+        {
+            var offset = scroller.VerticalOffset;
+            var delta = offset - previousOffset;
+            if (changingFilterLayout) { previousOffset = offset; libraryScroll = offset; return; }
+            if (offset <= t.Px(8) || delta < -t.Px(6)) ShowFilters(true);
+            else if (delta > t.Px(8) && offset > filterHeight && FocusedWithin(subbar) is null) ShowFilters(false);
+            previousOffset = offset; libraryScroll = offset;
+        };
         libraryScroller = scroller;   // Render restores libraryScroll before focusing (see RestoreScroll)
         FrameworkElement viewport = shell.Games.Count == 0 && shell.LibraryRefreshing
             ? new Controls.LibrarySkeleton(shell.Settings.LibraryView, GmTheme.B(t.Panel), t.Px(1)) : scroller;
@@ -437,7 +471,7 @@ public sealed partial class GameModeView
         if (game.Installed) dot.Fill = GmTheme.B(GmTheme.Accent);
         else { dot.Stroke = GmTheme.B(t.Muted); dot.StrokeThickness = 1.5; }
         state.Children.Add(dot);
-        state.Children.Add(ui.Text(game.Blocked ? "Unsupported" : game.Installed ? "Installed" : game.UsesFeeder ? "Available · Feeder NR" : "Available", 0.85, t.Muted));
+        state.Children.Add(ui.Text(game.Blocked ? game.BlockedStatus : game.Installed ? "Installed" : game.UsesFeeder ? "Available · Feeder NR" : "Available", 0.85, t.Muted));
         Grid.SetColumn(state, 3);
         grid.Children.Add(state);
 

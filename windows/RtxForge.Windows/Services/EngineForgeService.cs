@@ -298,6 +298,9 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             ["feature_controls"] = tuning.FeatureControls?.DeepClone(),
         };
         foreach (var item in ForgeSettings.Load().GameUiOptions()) settings[item.Key] = item.Value?.DeepClone();
+        var overlay = ForgeSettings.Load();
+        settings["overlay_helper"] = overlay.OverlayHelper;
+        settings["overlay_renderer"] = overlay.OverlayRenderer;
         var result = await CallAsync("prepare", new JsonObject
         {
             ["rows"] = rows,

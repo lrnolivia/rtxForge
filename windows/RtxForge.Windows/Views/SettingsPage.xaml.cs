@@ -133,6 +133,11 @@ public sealed partial class SettingsPage : Page
 
         var appearance = new PreferencesGroup("Theme and scale");
         var navigation = new PreferencesGroup("Navigation and labels");
+        var details = new PreferencesGroup("Game Details", "Choose how Game Details opens in Desktop Mode.");
+        (row, var detailsWindow) = Prefs.ComboRow("Open Game Details", "Use tabs in the app, or a sidebar in a separate window.",
+            ["In the app", "In a separate window"], Settings.SeparateGameDetails ? 1 : 0, "\uE8A7");
+        detailsWindow.SelectionChanged += (_, _) => { Settings.SeparateGameDetails = detailsWindow.SelectedIndex == 1; Save(); };
+        details.Add(row);
         var libraryView = new PreferencesGroup("Library view");
         (row, var theme) = Prefs.ComboRow("App theme", "Changes only rtxForge.", ThemeController.Captions,
             Math.Max(0, Array.IndexOf(ThemeController.Keys, Settings.Theme)), "");
@@ -220,7 +225,7 @@ public sealed partial class SettingsPage : Page
         var controller = new PreferencesGroup("Controller", "Button labels and navigation prompts.");
         foreach (var (title, keys, captions, get, set, glyph) in new (string, string[], string[], Func<string>, Action<string>, string)[]
         {
-            ("Controller Labels", ["auto", "xbox", "playstation", "nintendo", "generic"], ["Automatic", "Xbox", "PlayStation", "Nintendo", "Generic"],
+            ("Controller Labels", ["auto", "xbox", "playstation", "nintendo", "steam", "generic"], ["Automatic", "Xbox", "PlayStation", "Nintendo", "Steam Controller", "Generic"],
                 () => Settings.ControllerGlyphs, v => Settings.ControllerGlyphs = v, ""),
             ("Controller Hints", ["always", "auto"], ["Always visible", "Hide when idle"],
                 () => Settings.ControllerHints, v => Settings.ControllerHints = v, ""),
@@ -273,7 +278,7 @@ public sealed partial class SettingsPage : Page
         sections["Graphics"] = [graphics, installDefaults, existingFeatures];
         sections["Overlay"] = overlay.Groups.ToArray();
         sections["Global"] = [globalControls];
-        sections["Appearance"] = [appearance, navigation];
+        sections["Appearance"] = [appearance, navigation, details];
         sections["Library"] = [libraryView, library, steamLibrary, reports];
         sections["Gaming Mode"] = [interfaceGroup, controller];
         sections["System"] = [system];

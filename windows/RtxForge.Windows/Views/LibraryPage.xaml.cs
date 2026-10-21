@@ -20,7 +20,8 @@ public sealed partial class LibraryPage : Page
     bool syncingMode, ready, pressedOnCheck;
     GameItem? hovered;
     int density;
-    bool compact;
+    int toolLayout; // 0 one row, 1 search beside the title with tools beneath, 2 phone column
+    bool phone;
     /// <summary>The library is scrolled far enough that the dashboard has collapsed (Linux collapse_header).</summary>
     bool scrolledAway;
     bool onScreen;
@@ -129,14 +130,15 @@ public sealed partial class LibraryPage : Page
     void UpdateDashboard()
     {
         // Presets mode always uses the compact titlebar: its options replace the Features selector and install actions.
-        var collapsed = Settings.CompactHeader || scrolledAway || shell.PresetSelecting;
+        // At phone width the titlebar has no room, so the slim dashboard stays in the page above the games.
+        var collapsed = Settings.CompactHeader && !phone || scrolledAway || shell.PresetSelecting;
         Dashboard.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
         // Compact: the toolbar meets the titlebar with ordinary spacing (Linux top margin 0).
         Toolbar.Padding = new Thickness(Toolbar.Padding.Left, collapsed ? 12 : 32, Toolbar.Padding.Right, 0);
         shell.SyncCompactDashboard(shell.Mode, ModeNrOnly.IsEnabled, InstallText.Text);
-        shell.ShowCompactDashboard(collapsed && onScreen);
+        shell.ShowCompactDashboard(collapsed && onScreen && !phone);
         // The full hero carries the mark and wordmark, so the titlebar brand waits until it collapses.
-        shell.ShowBrand(collapsed || !onScreen);
+        shell.ShowBrand(collapsed || !onScreen || phone);
     }
 
     void OnSearchChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args) =>
@@ -249,23 +251,53 @@ public sealed partial class LibraryPage : Page
         LoadingCards.Margin = new Thickness(side, 16, side, 48);
 
         var narrowHero = width < 1100;
-        Grid.SetRow(HeroActions, narrowHero ? 1 : 0);
-        Grid.SetColumn(HeroActions, narrowHero ? 1 : 2);
-        HeroActions.HorizontalAlignment = narrowHero ? HorizontalAlignment.Left : HorizontalAlignment.Right;
-
-        var nowCompact = width < 1180;
-        if (nowCompact != compact)
+        var nowPhone = PageMargins.IsPhone(width);
+        var column = width - side * 2;
+        if (nowPhone != phone) UsePhoneDashboard(nowPhone);
+        if (!phone)
         {
-            compact = nowCompact;
-            foreach (var (element, column) in new (FrameworkElement, int)[] { (ViewGroup, 0), (ArtScale, 1), (LibraryCommands, 2) })
-            {
-                Grid.SetRow(element, compact ? 1 : 0);
-                Grid.SetColumn(element, compact ? column : column + 3);
-            }
-            if (compact) Grid.SetColumnSpan(LibraryCommands, 4); else Grid.SetColumnSpan(LibraryCommands, 1);
-            LibraryCommands.HorizontalAlignment = compact ? HorizontalAlignment.Left : HorizontalAlignment.Stretch;
+            Grid.SetRow(HeroActions, narrowHero ? 1 : 0);
+            Grid.SetColumn(HeroActions, narrowHero ? 1 : 2);
+            HeroActions.HorizontalAlignment = narrowHero ? HorizontalAlignment.Left : HorizontalAlignment.Right;
         }
-        LibraryCommands.DefaultLabelPosition = width < 820 ? CommandBarDefaultLabelPosition.Collapsed : CommandBarDefaultLabelPosition.Right;
+        // Phone: Install takes the row beside two square icon actions; the selector fills the column.
+        InstallButton.Width = phone ? Math.Max(0, column - 2 * (48 + HeroActions.Spacing)) : double.NaN;
+        var modeWidth = phone ? Math.Max(0, (column - 8) / 3) : 104;
+        foreach (var mode in new[] { ModeNrOnly, ModeMfgOnly, ModeNrMfg }) mode.MinWidth = modeWidth;
+
+        // One row while it fits (labelled commands from 1180, icons from 1000). Below that the
+        // search sits beside the title with the filters, view, size and commands beneath. At
+        // phone width that second row keeps the filters and view; the size slider steps aside
+        // and commands that no longer fit move into the command bar's More menu.
+        var layout = width < PageMargins.PhoneWidth ? 2 : width < 1000 ? 1 : 0;
+        var labelled = width >= 1180;
+        foreach (var command in LibraryCommands.PrimaryCommands.OfType<AppBarButton>()) command.Width = labelled ? double.NaN : 44;
+        SearchBox.MinWidth = layout == 0 ? 160 : 0;
+        if ((layout > 0) != (toolLayout > 0))
+        {
+            foreach (var element in new FrameworkElement[] { FilterGroup, ViewGroup, ArtScale, LibraryCommands })
+            {
+                ((Panel)element.Parent).Children.Remove(element);
+                (layout > 0 ? LibraryTools.Children : LibraryHeader.Children).Add(element);
+            }
+            FilterGroup.Margin = new Thickness(layout > 0 ? 0 : 12, 0, 0, 0);
+            LibraryTools.Visibility = layout > 0 ? Visibility.Visible : Visibility.Collapsed;
+            SearchBox.MaxWidth = layout > 0 ? double.PositiveInfinity : 360;
+            LibraryCommands.HorizontalAlignment = layout > 0 ? HorizontalAlignment.Left : HorizontalAlignment.Stretch;
+        }
+        // Phone: the dashboard carries the title, so the search spans the whole row.
+        Grid.SetColumn(SearchBox, layout == 2 ? 0 : layout == 1 ? 1 : 2);
+        Grid.SetColumnSpan(SearchBox, layout == 2 ? 6 : layout == 1 ? 5 : 1);
+        toolLayout = layout;
+        ArtScale.Visibility = layout == 2 ? Visibility.Collapsed : Visibility.Visible;
+        // A slimmer size slider keeps the tools on one row beneath the search.
+        ArtScale.Width = layout == 1 ? 100 : 120;
+        // Phone: only More stays on the bar; the filters share what the view switcher leaves, in thirds.
+        LibraryCommands.MaxWidth = layout == 2 ? 48 : double.PositiveInfinity;
+        var filterWidth = layout == 2 ? Math.Max(0, (column - ViewGroup.ActualWidth - 48 - LibraryTools.Spacing * 2 - 8) / 3) : 0;
+        foreach (var filter in new[] { FilterAvailable, FilterInstalled, FilterAll }) filter.MinWidth = filterWidth;
+        // Below 1180 the commands are icons (their tooltips stay).
+        LibraryCommands.DefaultLabelPosition = labelled ? CommandBarDefaultLabelPosition.Right : CommandBarDefaultLabelPosition.Collapsed;
 
         var listWidth = width - side * 2;
         var nowDensity = listWidth < 860 ? 2 : listWidth < 1060 ? 1 : 0;
@@ -278,6 +310,44 @@ public sealed partial class LibraryPage : Page
             HeaderFeaturesText.Visibility = density >= 2 ? Visibility.Collapsed : Visibility.Visible;
             if (ready && Settings.LibraryView == "list") ShowGames();
         }
+    }
+
+    Thickness podPadding, podBorder;
+    Brush? podBackground;
+
+    /// <summary>
+    /// Phone width reads top to bottom: the Library title and stats, the Features selector
+    /// across the column (without its card), then Install beside square Restore and Update
+    /// DLSS. The titlebar keeps the brand, and the sticky toolbar holds search and filters.
+    /// </summary>
+    void UsePhoneDashboard(bool on)
+    {
+        phone = on;
+        var wide = on ? Visibility.Collapsed : Visibility.Visible;
+        HeroMark.Visibility = HeroEyebrow.Visibility = HeroTitle.Visibility = wide;
+        RestoreText.Visibility = UpdateText.Visibility = wide;
+        FeaturesIcon.Visibility = FeaturesLabel.Visibility = wide;
+        LibraryTitle.Visibility = wide;
+        PhoneTitle.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        Grid.SetColumn(HeroText, on ? 0 : 1);
+        Grid.SetColumnSpan(HeroText, on ? 3 : 1);
+        Grid.SetColumn(ModeGroup, on ? 0 : 2);
+        Grid.SetColumnSpan(ModeGroup, on ? 3 : 1);
+        if (on) { podPadding = FeaturesPod.Padding; podBorder = FeaturesPod.BorderThickness; podBackground = FeaturesPod.Background; }
+        FeaturesPod.Padding = on ? new Thickness(0) : podPadding;
+        FeaturesPod.BorderThickness = on ? new Thickness(0) : podBorder;
+        FeaturesPod.Background = on ? null : podBackground;
+        // The actions follow the selector instead of sitting under the stats.
+        ((Panel)HeroActions.Parent).Children.Remove(HeroActions);
+        if (on) Dashboard.Children.Add(HeroActions);
+        else
+        {
+            Hero.Children.Add(HeroActions);
+            Grid.SetColumnSpan(HeroActions, 1);
+        }
+        HeroActions.HorizontalAlignment = HorizontalAlignment.Left;
+        foreach (var button in new[] { RestoreButton, UpdateButton }) button.Width = on ? 48 : double.NaN;
+        UpdateDashboard();
     }
 
     void OnLibrarySizeChanged(object sender, SizeChangedEventArgs e)

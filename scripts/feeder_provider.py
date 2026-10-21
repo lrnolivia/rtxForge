@@ -224,20 +224,136 @@ def cache(e, source):
     return {'path': str(dest), 'sha256': value}
 
 
-def original_manifest(settings, directory):
-    folder = settings.get('feeder_backups', '')
-    t.need(folder, 'Choose the original Feeder backups folder in Packages to recognize this installation')
+def stack_record_path(e):
+    return t.safe(e.STATE_ROOT / 'feeder-stack' / 'stack.json')
+
+
+def owned_stack(e):
+    """The app-owned reusable stack, verified against the current recipe; None when absent.
+
+    Its files live content-addressed in feeder-cache, so new installs never
+    depend on another game's folder or on the folder they were imported from."""
+    path = stack_record_path(e)
+    if not path.is_file():
+        return None
+    t.need(path.stat().st_size <= 1024 * 1024, 'The stored Feeder stack record is too large')
+    record = t.read_json(path)
+    spec = lock()
+    t.need(isinstance(record, dict) and record.get('schema') == 1 and record.get('provider_id') == 'feeder'
+           and isinstance(record.get('files'), dict), 'The stored Feeder stack record is invalid')
+    if record.get('recipe') != spec['version']:
+        return None
+    for name in [*spec['assets'], *CONFIGS, *([MODEL] if MODEL in record['files'] else [])]:
+        item = record['files'].get(name)
+        t.need(item is not None, 'The stored Feeder stack is incomplete: ' + name)
+        cached = cached_input(e, item)
+        t.need(digest(cached, cached=True) == item['sha256'], 'The stored Feeder stack changed: ' + name)
+        if name in spec['assets']:
+            t.need(item['sha256'] == spec['assets'][name]['sha256'], 'The stored Feeder stack is another recipe: ' + name)
+        elif name in CONFIGS:
+            t.need(cached.stat().st_size <= 256 * 1024, 'Stored Feeder settings are too large: ' + name)
+            _read_ini(cached)
+    return record
+
+
+def import_stack(e, source):
+    """Copy a verified reusable stack (and its NR model, when verified) into app-owned storage."""
+    source = t.safe(source)
+    spec = stack(source)
+    files = {name: cache(e, source / t.relative(name)) for name in [*spec['assets'], *CONFIGS]}
+    nr = None
+    try:
+        nr = model(source / MODEL)
+        files[MODEL] = cache(e, source / MODEL)
+    except (t.Refusal, OSError):
+        pass
+    current = owned_stack(e)
+    if current is None or current['files'] != files:
+        record = dict(schema=1, provider_id='feeder', recipe=spec['version'], imported_from=str(source),
+                      imported_utc=t.now(), files=files, nr_version=nr['version'] if nr else None)
+        t.atomic_file(stack_record_path(e), (json.dumps(record, indent=2) + '\n').encode(), 0o600)
+    return owned_stack(e)
+
+
+def stack_files(e, settings):
+    """Files for a fresh install: the chosen folder (imported again when it verifies), else the owned copy."""
+    source = settings.get('feeder_source')
+    if source and Path(source).is_dir():
+        try:
+            return import_stack(e, source)['files']
+        except (t.Refusal, OSError, ValueError, configparser.Error):
+            if owned_stack(e) is None:
+                raise
+    owned = owned_stack(e)
+    t.need(owned is not None, 'Import a verified Feeder stack in Packages first')
+    return owned['files']
+
+
+def originals_root(e):
+    return t.safe(e.STATE_ROOT / 'feeder-originals')
+
+
+def _backup_manifest(path):
+    if not (path.is_file() and path.stat().st_size <= 1024 * 1024):
+        return None
+    try:
+        doc = t.read_json(t.safe(path))
+    except (ValueError, OSError, t.Refusal):
+        return None
+    return doc if isinstance(doc, dict) and doc.get('schema') == 1 and isinstance(doc.get('target'), str) else None
+
+
+def import_backups(e, folder):
+    """Copy original Feeder manifests and their verified originals into app-owned storage.
+
+    Copies are keyed by the manifest's content, so a later or different
+    manifest for the same game never replaces one already kept."""
     folder = t.safe(folder)
-    paths = [folder / 'manifest.json', *sorted(folder.glob('*/manifest.json'))[:128]]
-    found = []
-    for path in paths:
-        if path.is_file() and path.stat().st_size <= 1024 * 1024:
-            try:
-                doc = t.read_json(t.safe(path))
-            except (ValueError, OSError, t.Refusal):
+    imported = 0
+    for path in [folder / 'manifest.json', *sorted(folder.glob('*/manifest.json'))[:128]]:
+        doc = _backup_manifest(path)
+        entries = doc.get('files') if doc else None
+        if not isinstance(entries, list) or len(entries) > 256:
+            continue
+        data = path.read_bytes()
+        dest = t.safe(originals_root(e) / t.sha(data))
+        for entry in entries:
+            if not (isinstance(entry, dict) and isinstance(entry.get('path'), str) and isinstance(entry.get('before'), str)):
                 continue
-            if isinstance(doc, dict) and doc.get('schema') == 1 and isinstance(doc.get('target'), str) and Path(doc['target']).resolve() == directory:
-                found.append((path, doc))
+            try:
+                name = t.relative(entry['path'])
+                original = t.safe(path.parent / 'originals' / name)
+                kept = t.safe(dest / 'originals' / name)
+            except t.Refusal:
+                continue
+            if digest(kept) != entry['before'] and original.is_file() and digest(original) == entry['before']:
+                t.atomic_file(kept, original.read_bytes(), 0o600)
+        if digest(dest / 'manifest.json') != t.sha(data):
+            t.atomic_file(dest / 'manifest.json', data, 0o600)
+        imported += 1
+    return imported
+
+
+def original_manifest(settings, directory, e=None):
+    folder = settings.get('feeder_backups', '')
+    roots = []
+    if e is not None:
+        if folder and Path(folder).is_dir():
+            import_backups(e, folder)
+        if originals_root(e).is_dir():
+            roots.append((originals_root(e), None))
+    if folder and Path(folder).is_dir():
+        roots.append((t.safe(folder), 128))
+    t.need(roots, 'Choose the original Feeder backups folder in Packages to recognize this installation')
+    # The owned copy comes first, so its originals are the ones used.
+    found = {}
+    for root, limit in roots:
+        listed = sorted(root.glob('*/manifest.json'))
+        for path in [root / 'manifest.json', *(listed[:limit] if limit else listed)]:
+            doc = _backup_manifest(path)
+            if doc and Path(doc['target']).resolve() == directory:
+                found.setdefault(t.digest(path), (path, doc))
+    found = list(found.values())
     t.need(len(found) == 1, 'A unique original Feeder backup for this executable is required')
     path, doc = found[0]
     t.need(doc.get('state') == 'installed-unverified', 'This manual Feeder backup is not an installed recipe')
@@ -301,16 +417,14 @@ def prepare(config, rows, mode, operation, settings, e):
                 if not existing:
                     t.need(not any((directory / name).exists() for name in (*t.PROXIES, 'ReShade.ini', 'renodx-dlss5.addon64')),
                            'Other graphics mods are present. Restore them before installing Feeder NR')
-                    t.need(settings.get('feeder_source'), 'Choose a local Feeder stack folder in Packages first')
-                    source = t.safe(settings['feeder_source'])
-                    stack(source)
+                    files = stack_files(e, settings)
                     for name in [*spec['assets'], *CONFIGS]:
-                        inputs[name] = writes[name] = cache(e, source / name)
+                        inputs[name] = writes[name] = files[name]
                 if baseline is None:
                     originals = {}
                     manifest = None
                     if existing:
-                        manifest, old = original_manifest(settings, directory)
+                        manifest, old = original_manifest(settings, directory, e)
                         inputs['manual-manifest'] = cache(e, manifest)
                     for name in names:
                         if existing:
@@ -342,8 +456,12 @@ def prepare(config, rows, mode, operation, settings, e):
                                     adopted=existing, original_manifest=str(manifest) if manifest else None,
                                     created_utc=t.now(), installed_hashes={})
                 desired = settings.get('nr_runtime') if operation == 'install' else None
-                source = (Path(desired) if desired else Path(current['nr_runtime']['cache']['path']) if current else
-                          directory / MODEL if existing else Path(settings['feeder_source']) / MODEL)
+                if desired or current or existing:
+                    source = (Path(desired) if desired else Path(current['nr_runtime']['cache']['path']) if current else
+                              directory / MODEL)
+                else:
+                    t.need(MODEL in files, 'Choose a verified RTX 40 compatible NR model in Settings')
+                    source = Path(files[MODEL]['path'])
                 selected = model(source)
                 inputs[MODEL] = cache(e, source)
                 if digest(directory / MODEL) != selected['sha256']:

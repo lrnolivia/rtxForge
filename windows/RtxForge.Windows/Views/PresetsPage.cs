@@ -69,7 +69,7 @@ public sealed partial class PresetsPage : Page
     {
         base.OnNavigatedTo(e);
         shell.EndPresetSelection();
-        tuning.SetMode(shell.Mode, legacy: shell.Settings.RuntimeProvider != "skynizz", dynamicSupported: shell.Settings.MfgProvider == "integrated");
+        tuning.SetMode(shell.Mode, legacy: shell.Settings.RuntimeProvider != "skynizz", dynamicSupported: shell.Settings.DynamicMfgSupported);
         Refresh();
     }
 

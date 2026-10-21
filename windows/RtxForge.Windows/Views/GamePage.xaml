@@ -12,11 +12,29 @@
           content                 left-aligned under the title
         Back returns to the library through the NavigationView back button.
     -->
-    <ScrollViewer x:Name="ContentScroll" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Padding="0,0,0,48">
+    <Grid>
+        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+        <Border x:Name="SectionRail" Width="208" Padding="16,24,16,16" Visibility="Collapsed" Background="{ThemeResource ControlFillColorSecondaryBrush}">
+            <StackPanel Spacing="16">
+                <TextBlock Text="Game Details" FontSize="18" FontWeight="SemiBold" Margin="12,0,0,0" />
+                <ListView x:Name="SidebarSections" SelectionMode="Single" SelectionChanged="OnSidebarSectionChanged" />
+            </StackPanel>
+        </Border>
+    <ScrollViewer x:Name="ContentScroll" Grid.Column="1" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel x:Name="DetailsWorkspace" Padding="0,0,0,48">
+            <Border x:Name="HeroSpacer" />
+            <StackPanel x:Name="PageHost" Padding="36,0,36,0" />
+        </StackPanel>
+    </ScrollViewer>
+    <!--
+        No fill of its own: the scroller starts below the collapsing hero, so content never passes
+        underneath, and the art's fade blends into the same surface as the cards in every theme.
+    -->
+    <StackPanel x:Name="HeroHost" Grid.Column="1" VerticalAlignment="Top">
 
             <!-- .game-banner: edge to edge -->
             <Grid x:Name="HeroBanner" Height="360">
+                <Grid x:Name="WindowDragRegion" Height="48" Margin="0,0,112,0" VerticalAlignment="Top" Background="Transparent" />
                 <!-- .banner-shade: the art itself fades out, so it blends into any theme's background -->
                 <controls:FadedImage x:Name="HeroImage" />
                 <!-- identity: poster · status badge · title · meta, anchored to the hero's lower edge -->
@@ -55,8 +73,8 @@
                                        TextWrapping="WrapWholeWords" MaxLines="2" LineHeight="46" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                         </StackPanel>
                         <StackPanel x:Name="HeroText" Grid.Row="1" Spacing="4" VerticalAlignment="Bottom">
-                            <!-- metadata line: developer · release, source badge, test badge -->
-                            <StackPanel Orientation="Horizontal" Spacing="8">
+                            <!-- metadata line: developer · release, then source / OS / test badges inline, wrapping -->
+                            <controls:WrapRow Spacing="8" LineSpacing="6">
                                 <TextBlock x:Name="MetaText" Style="{StaticResource ForgeDimTextStyle}" FontSize="13" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                                 <Border Style="{StaticResource ForgePillStyle}" VerticalAlignment="Center">
                                     <TextBlock x:Name="SourceBadge" FontSize="9" FontWeight="Bold" CharacterSpacing="42" />
@@ -76,24 +94,24 @@
                                         <TextBlock x:Name="TestBadgeText" FontSize="9" FontWeight="Bold" CharacterSpacing="42" />
                                     </StackPanel>
                                 </Border>
-                            </StackPanel>
+                            </controls:WrapRow>
                             <!-- .game-detail-summary: two lines -->
                             <TextBlock x:Name="SummaryText" Style="{StaticResource ForgeDimTextStyle}" FontSize="12" MaxLines="2"
                                        TextTrimming="CharacterEllipsis" MaxWidth="520" HorizontalAlignment="Left" />
                         </StackPanel>
-                        <StackPanel x:Name="HeroActions" Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Bottom">
+                        <controls:WrapRow x:Name="HeroActions" Grid.Row="1" Grid.Column="1" Spacing="8" LineSpacing="8" VerticalAlignment="Bottom">
                             <Button x:Name="InstallButton" Style="{StaticResource AccentButtonStyle}" Click="OnInstall">
                                 <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE896;" FontSize="14" /><TextBlock x:Name="InstallText" Text="Install Features" /></StackPanel>
                             </Button>
                             <Button x:Name="RestoreButton" Click="OnRestore">
-                                <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE7A7;" FontSize="14" Foreground="{ThemeResource ForgeRemoveBrush}" /><TextBlock Text="Restore Original Files" /></StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE7A7;" FontSize="14" Foreground="{ThemeResource ForgeRemoveBrush}" /><TextBlock x:Name="RestoreText" Text="Restore Original Files" /></StackPanel>
                             </Button>
                             <Button x:Name="MoreButton" AutomationProperties.Name="More options" ToolTipService.ToolTip="More options">
                                 <FontIcon Glyph="&#xE712;" FontSize="14" />
                                 <Button.Flyout>
                                     <MenuFlyout Placement="BottomEdgeAlignedRight">
                                         <MenuFlyoutItem Text="Live NR + MFG controls" Click="OnCompanion"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE713;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
-                                        <MenuFlyoutItem x:Name="UpdateDlssItem" Text="Update DLSS" Click="OnUpdateDlss"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE777;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
+                                        <MenuFlyoutItem x:Name="UpdateDlssItem" Text="Update DLSS" Click="OnUpdateDlss"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8AB;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
                                         <MenuFlyoutItem x:Name="AdoptionItem" Text="Adopt with rtxForge" Click="OnAdoption" />
                                         <MenuFlyoutItem x:Name="OfflineLaunchItem" Text="Launch offline" Click="OnLaunchOffline" />
                                         <MenuFlyoutItem x:Name="OpenFolderItem" Text="Open Folder" Click="OnOpenFolder"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE838;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
@@ -102,22 +120,37 @@
                                     </MenuFlyout>
                                 </Button.Flyout>
                             </Button>
-                        </StackPanel>
+                        </controls:WrapRow>
                     </Grid>
+                </Grid>
+                <Grid x:Name="WindowActions" Visibility="Collapsed" Width="92" Height="40" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,16,16,0" Background="Transparent"
+                      PointerEntered="OnWindowActionsEntered" PointerExited="OnWindowActionsExited">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="40" /><ColumnDefinition Width="12" /><ColumnDefinition Width="40" /></Grid.ColumnDefinitions>
+                    <Button x:Name="WindowMinimize" Width="40" Height="40" CornerRadius="20" Padding="0" IsTabStop="False" IsHitTestVisible="False"
+                            AutomationProperties.Name="Minimize Game Details" ToolTipService.ToolTip="Minimize" Click="OnMinimizeWindow" GotFocus="OnWindowActionFocus" LostFocus="OnWindowActionFocus">
+                        <FontIcon Glyph="&#xE921;" FontSize="12" />
+                    </Button>
+                    <Button x:Name="WindowClose" Grid.Column="2" Width="40" Height="40" CornerRadius="20" Padding="0"
+                            AutomationProperties.Name="Close Game Details" ToolTipService.ToolTip="Close" Click="OnCloseWindow" GotFocus="OnWindowActionFocus" LostFocus="OnWindowActionFocus">
+                        <FontIcon Glyph="&#xE8BB;" FontSize="12" />
+                    </Button>
                 </Grid>
             </Grid>
 
-            <SelectorBar x:Name="Sections" Margin="28,8,36,0" SelectionChanged="OnSectionChanged">
-                <SelectorBarItem Text="Overview" Tag="Overview" />
-                <SelectorBarItem Text="Presets" Tag="Presets" />
-                <SelectorBarItem Text="DLSS Files" Tag="DLSS Files" />
-                <SelectorBarItem Text="Tools" Tag="Tools" />
-                <SelectorBarItem Text="Appearance" Tag="Appearance" />
-                <SelectorBarItem Text="Notes" Tag="Notes" />
-            </SelectorBar>
+            <!-- The sections scroll sideways when the window is too narrow for all of them. -->
+            <ScrollViewer x:Name="SectionsScroll" HorizontalScrollMode="Enabled" HorizontalScrollBarVisibility="Hidden"
+                          VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled">
+                <SelectorBar x:Name="Sections" Margin="28,8,36,0" SelectionChanged="OnSectionChanged">
+                    <SelectorBarItem Text="Overview" Tag="Overview" />
+                    <SelectorBarItem Text="Presets" Tag="Presets" />
+                    <SelectorBarItem Text="DLSS Files" Tag="DLSS Files" />
+                    <SelectorBarItem Text="Tools" Tag="Tools" />
+                    <SelectorBarItem Text="Appearance" Tag="Appearance" />
+                    <SelectorBarItem Text="Notes" Tag="Notes" />
+                </SelectorBar>
+            </ScrollViewer>
 
-            <!-- Content lines up with the title's left edge and grows with the window -->
-            <StackPanel x:Name="PageHost" Padding="36,0,36,0" />
-        </StackPanel>
-    </ScrollViewer>
+    </StackPanel>
+        <InfoBar x:Name="DetailsNotice" Grid.Column="1" IsOpen="False" IsClosable="True" VerticalAlignment="Bottom" Margin="24" />
+    </Grid>
 </Page>

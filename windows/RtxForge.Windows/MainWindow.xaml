@@ -26,25 +26,47 @@
         <!-- Title bar -->
         <Grid x:Name="AppTitleBar" SizeChanged="OnCompactBarSizeChanged">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="208" />
+                <ColumnDefinition x:Name="BrandColumn" Width="Auto" MinWidth="208" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
+            <StackPanel x:Name="BrandArea" Orientation="Horizontal">
+            <!--
+                The WinUI TitleBar back button (its own TitleBarBackButtonStyle and animated
+                glyph), placed before the app icon as TitleBar does. Shown while there is history.
+            -->
+            <Button x:Name="TitleBack" Style="{StaticResource TitleBarBackButtonStyle}" Click="OnNavigationBackClick" Visibility="Collapsed"
+                    Height="36" VerticalAlignment="Center" Margin="12,0,6,0" RenderTransformOrigin="0.5,0.5"
+                    ToolTipService.ToolTip="Back" AutomationProperties.Name="Back" SizeChanged="OnCompactBarSizeChanged">
+                <!-- The template's animated glyph is fixed at 16px; scale the whole control to the 40px mark. -->
+                <Button.RenderTransform><ScaleTransform ScaleX="1.25" ScaleY="1.25" /></Button.RenderTransform>
+                <Button.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="Left" Modifiers="Menu" />
+                </Button.KeyboardAccelerators>
+            </Button>
+            <!-- Phone width: the TitleBar pane toggle opens navigation, instead of a toggle floating over page content. -->
+            <Button x:Name="TitlePaneToggle" Style="{StaticResource TitleBarPaneToggleButtonStyle}" Click="OnNavigationMenuClick" Visibility="Collapsed"
+                    Height="36" VerticalAlignment="Center" Margin="12,0,6,0" RenderTransformOrigin="0.5,0.5"
+                    ToolTipService.ToolTip="Navigation" AutomationProperties.Name="Navigation" SizeChanged="OnCompactBarSizeChanged">
+                <Button.RenderTransform><ScaleTransform ScaleX="1.25" ScaleY="1.25" /></Button.RenderTransform>
+            </Button>
             <!--
                 Brand (Linux sticky-dashboard-brand): the logo mark and the Bakbak One wordmark.
                 Absent while the Library's full dashboard hero carries the brand; it slides into
                 place when the hero collapses or another page opens (ShowBrand).
             -->
-            <StackPanel x:Name="CompactBrand" Orientation="Horizontal" Spacing="8" Margin="12,0,0,0" VerticalAlignment="Center">
+            <StackPanel x:Name="CompactBrand" Orientation="Horizontal" Spacing="8" Margin="12,0,12,0" VerticalAlignment="Center">
                 <StackPanel.RenderTransform>
                     <TranslateTransform x:Name="BrandShift" />
                 </StackPanel.RenderTransform>
-                <Image Source="ms-appx:///Assets/rtxforge-mark.svg" Width="40" Height="40" VerticalAlignment="Center" />
-                <TextBlock Text="rtxForge" FontFamily="{StaticResource ForgeHeroFontFamily}" FontSize="16" FontWeight="Bold" CharacterSpacing="-14"
-                           VerticalAlignment="Center" />
+                <Image Source="ms-appx:///Assets/rtxforge-mark.svg" Width="32" Height="32" VerticalAlignment="Center" />
+                <!-- Bakbak One sits low in its line box; lift it optically onto the back arrow's center line. -->
+                <TextBlock x:Name="BrandWordmark" Text="rtxForge" FontFamily="{StaticResource ForgeHeroFontFamily}" FontSize="16" FontWeight="Bold" CharacterSpacing="-14"
+                           VerticalAlignment="Center" Margin="0,0,0,1" />
                 <Border x:Name="PreviewBadge" Style="{StaticResource ForgePillStyle}" VerticalAlignment="Center" Margin="4,0,0,0" Visibility="Collapsed">
                     <TextBlock Text="Preview" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </Border>
+            </StackPanel>
             </StackPanel>
 
             <!--
@@ -86,23 +108,18 @@
                     <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE7A7;" FontSize="13" Foreground="{ThemeResource ForgeRemoveBrush}" /><TextBlock Text="Restore Original Files" /></StackPanel>
                 </Button>
                 <Button Click="OnCompactUpdateDlss" Padding="10,4,10,4" ToolTipService.ToolTip="Update older DLSS files for selected games or the current view">
-                    <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE777;" FontSize="13" /><TextBlock Text="Update DLSS" /></StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE8AB;" FontSize="13" /><TextBlock Text="Update DLSS" /></StackPanel>
                 </Button>
             </StackPanel>
         </Grid>
 
         <NavigationView x:Name="Nav" Grid.Row="1"
-                        PaneDisplayMode="Auto" OpenPaneLength="208" IsBackButtonVisible="Collapsed" IsBackEnabled="False" IsPaneToggleButtonVisible="False"
+                        PaneDisplayMode="Auto" OpenPaneLength="208" IsBackButtonVisible="Collapsed" IsPaneToggleButtonVisible="False"
                         IsSettingsVisible="True" IsTitleBarAutoPaddingEnabled="False"
-                        SelectionChanged="OnNavSelectionChanged" ItemInvoked="OnNavItemInvoked" BackRequested="OnNavBackRequested">
+                        SelectionChanged="OnNavSelectionChanged" ItemInvoked="OnNavItemInvoked">
             <NavigationView.PaneHeader>
                 <Grid x:Name="NavigationCommands" Margin="12,6,12,6" Height="40">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                    <Button x:Name="NavigationBack" Click="OnNavigationBackClick" IsEnabled="False" Width="40" Height="40"
-                            Padding="0" Background="Transparent" BorderThickness="0" HorizontalAlignment="Left"
-                            ToolTipService.ToolTip="Back" AutomationProperties.Name="Back">
-                        <FontIcon Glyph="&#xE72B;" FontSize="16" />
-                    </Button>
                     <Button Grid.Column="1" Click="OnNavigationMenuClick" Width="40" Height="40" Padding="0"
                             Background="Transparent" BorderThickness="0" HorizontalAlignment="Right"
                             ToolTipService.ToolTip="Toggle navigation" AutomationProperties.Name="Toggle navigation">

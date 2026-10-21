@@ -71,7 +71,13 @@ public static class Prefs
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         if (glyph is not null)
-            grid.Children.Add(new FontIcon { Glyph = glyph, FontSize = 20, VerticalAlignment = VerticalAlignment.Center });
+        {
+            // Centered on the whole card, also when its control stacks under the text.
+            // A fixed slot, so every card's text starts at the same edge whatever the glyph's width.
+            var icon = new FontIcon { Glyph = glyph, FontSize = 20, Width = 24, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetRowSpan(icon, 2);
+            grid.Children.Add(icon);
+        }
 
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = 1 };
         text.Children.Add(new TextBlock { Text = title, TextWrapping = TextWrapping.Wrap });
@@ -85,9 +91,45 @@ public static class Prefs
             suffix.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(suffix, 2);
             grid.Children.Add(suffix);
+            // Narrow cards (phone width) put the control under the text instead of
+            // squeezing the title into a column; a toggle still fits beside it.
+            if (suffix is not ToggleSwitch)
+            {
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                var alignment = suffix.HorizontalAlignment;
+                var minimum = suffix.MinWidth;
+                var stretch = suffix is ComboBox or TextBox or AutoSuggestBox or Button;
+                grid.SizeChanged += (_, e) =>
+                {
+                    var stacked = e.NewSize.Width < StackWidth;
+                    Grid.SetRow(suffix, stacked ? 1 : 0);
+                    Grid.SetColumn(suffix, stacked ? 1 : 2);
+                    Grid.SetColumnSpan(suffix, stacked ? 2 : 1);
+                    suffix.Margin = new Thickness(0, stacked ? 10 : 0, 0, 0);
+                    suffix.HorizontalAlignment = stacked ? stretch ? HorizontalAlignment.Stretch : HorizontalAlignment.Left : alignment;
+                    suffix.MinWidth = stacked ? 0 : minimum;
+                    // A row of buttons shares the full width under the text; swatches and
+                    // other fixed pieces keep their size.
+                    if (suffix is StackPanel { Orientation: Orientation.Horizontal } row)
+                    {
+                        var buttons = row.Children.OfType<Button>().ToList();
+                        var fixedWidth = row.Children.OfType<FrameworkElement>().Where(child => child is not Button).Sum(child => child.ActualWidth)
+                            + row.Spacing * Math.Max(0, row.Children.Count - 1);
+                        var indent = grid.Children.Any(child => Grid.GetColumn((FrameworkElement)child) == 0)
+                            ? grid.ColumnDefinitions[0].ActualWidth + grid.ColumnSpacing : 0;
+                        var share = stacked && buttons.Count > 0
+                            ? Math.Floor((e.NewSize.Width - indent - fixedWidth) / buttons.Count) : double.NaN;
+                        foreach (var button in buttons) button.Width = share > 0 ? share : double.NaN;
+                    }
+                };
+            }
         }
         return new Border { Style = GetStyle("ForgeSettingsCardStyle"), Child = grid };
     }
+
+    /// <summary>Below this card width a row's control moves under its text.</summary>
+    public const double StackWidth = 520;
 
     public static (Border Row, ToggleSwitch Toggle) SwitchRow(string title, string? subtitle, bool on, string? glyph = null)
     {

@@ -81,7 +81,7 @@ public sealed partial class GameModeView
     {
         var done = new TaskCompletionSource<Tuning?>();
         var (rows, value) = PresetRows(initial, legacy: shell.Settings.RuntimeProvider != "skynizz", embedded: true,
-            dynamicSupported: shell.Settings.MfgProvider == "integrated");
+            dynamicSupported: shell.Settings.DynamicMfgSupported);
         var content = new StackPanel { Spacing = t.Px(20) };
         content.Children.Add(ui.P("Adjust your presets or continue. You can change these settings later in OptiScaler.", 0.92));
         content.Children.Add(ui.IconLabel("", ProviderName()).With(p => { foreach (var c in p.Children) if (c is TextBlock tb) tb.FontSize = t.Em(0.85); }));

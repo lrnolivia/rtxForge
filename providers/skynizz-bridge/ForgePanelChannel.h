@@ -103,6 +103,7 @@ inline void Poll()
         Validate(response);
         pending = response.value("busy",false); helperReady = true;
         if(response.contains("message")) message = response.value("message",std::string());
+        else if(message.rfind("Waiting for the background helper",0) == 0) message.clear();
         if(response.contains("settings")) settings = response["settings"];
         if(response.contains("status")) status = response["status"];
         const auto op = response.value("op",std::string());

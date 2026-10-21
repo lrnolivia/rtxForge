@@ -15,7 +15,7 @@ public enum GmKind { Card, Primary, Danger, Quiet, Transparent, Active, Dlss }
 /// .rf-preference, .rf-stepper, .rf-action-row, .rf-key, .rf-badge) as
 /// native WinUI controls, sized from the current theme unit.
 /// </summary>
-public sealed class GmUi(GmTheme t)
+public sealed partial class GmUi(GmTheme t)
 {
     public GmTheme T => t;
     public SolidColorBrush FocusBrush { get; } = GmTheme.B(t.Focus);
@@ -111,10 +111,10 @@ public sealed class GmUi(GmTheme t)
     static object Label(string text, GmKind kind) => PillText(text);
 
     /// <summary>Content with a leading icon (button glyphs preference).</summary>
-    public StackPanel IconLabel(string glyph, string text, double gap = 12)
+    public StackPanel IconLabel(string glyph, string text, double gap = 18)
     {
         var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(gap) };
-        line.Children.Add(new FontIcon { Glyph = glyph, FontSize = t.Em(0.9), VerticalAlignment = VerticalAlignment.Center });
+        line.Children.Add(new FontIcon { Glyph = glyph, FontSize = t.Em(0.9), Width = t.Px(24), VerticalAlignment = VerticalAlignment.Center });
         line.Children.Add(PillText(text));
         return line;
     }
@@ -312,11 +312,13 @@ public sealed class GmUi(GmTheme t)
         if (button.Content is not Grid grid || grid.Children.FirstOrDefault() is not StackPanel text) return;
         button.Background = GmTheme.B(t.Panel);
         button.CornerRadius = new CornerRadius(t.Px(12));
-        button.Padding = new Thickness(t.Px(20), t.Px(16), t.Px(20), t.Px(16));
+        button.Padding = new Thickness(t.Px(28), t.Px(22), t.Px(28), t.Px(22));
         button.MinHeight = t.Px(84);
-        grid.ColumnSpacing = t.Px(16); text.Spacing = t.Px(6);
+        grid.ColumnSpacing = t.Px(24); text.Spacing = t.Px(10);
         if (text.Children.FirstOrDefault() is StackPanel titleLine)
         {
+            if (titleLine.Children.OfType<TextBlock>().FirstOrDefault() is { } caption && titleLine.Children.Count == 1)
+                titleLine.Children.Insert(0, Icon(SettingsGlyph(caption.Text), .95));
             var title = new Grid { ColumnSpacing = titleLine.Children.Count > 1 ? t.Px(10) : 0 };
             title.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
             title.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
@@ -338,11 +340,12 @@ public sealed class GmUi(GmTheme t)
         grid.Children.Remove(value);
         value.TextWrapping = TextWrapping.WrapWholeWords; value.MaxLines = 2;
         value.FontSize = t.Em(.83); value.Foreground = GmTheme.B(t.Fg);
+        value.TextAlignment = TextAlignment.Center;
         var field = new Border
         {
             Background = GmTheme.B(t.Card), CornerRadius = new CornerRadius(t.Px(9)),
             Padding = new Thickness(t.Px(12), t.Px(10), t.Px(12), t.Px(10)),
-            MinWidth = t.Px(120), MaxWidth = t.Px(240), Child = value,
+            MinWidth = t.Px(160), MaxWidth = t.Px(280), Child = value,
             HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
         };
         Grid.SetColumn(field, 1); grid.Children.Add(field);
@@ -358,6 +361,20 @@ public sealed class GmUi(GmTheme t)
             grid.RowSpacing = narrow ? t.Px(12) : 0;
         };
     }
+
+    static string SettingsGlyph(string title) => title switch
+    {
+        "Provider" => "\uE7F4", "Default mode" or "Enable NR on launch" => "\uE9E9",
+        "Update DLSS files" => "\uE8A5", "4K borderless on install" => "\uE7F4",
+        "Recognize existing features" => "\uE73E", "Theme" or "Accent color" => "\uE790",
+        "UI scale" or "Game Mode scale" => "\uE740", "Controller labels" or "Controller hints" => "\uE7FC",
+        "Navigation" or "Navigation position" => "\uE8A0", "Library layout" => "\uE8A9",
+        "Shortcut" or "Live controls shortcut" => "\uE765", "Interface" => "\uE737",
+        _ when title.Contains("artwork", StringComparison.OrdinalIgnoreCase) => "\uEB9F",
+        _ when title.Contains("Steam", StringComparison.OrdinalIgnoreCase) => "\uE7FC",
+        _ when title.Contains("folder", StringComparison.OrdinalIgnoreCase) => "\uE838",
+        _ => "\uE713",
+    };
 
     /// <summary>
     /// .rf-stepper inside a whole-row focus target: Left/Right adjust (controller,

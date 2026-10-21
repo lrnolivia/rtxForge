@@ -23,6 +23,7 @@
     <!-- Unpackaged apps still need the MSIX tooling to emit rtxForge.pri and the compiled .xbf XAML on publish. -->
     <EnableMsixTooling>true</EnableMsixTooling>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
@@ -32,6 +33,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="..\..\providers\skynizz-bridge\controls.json" LogicalName="RtxForge.FeatureControls.json" />
+    <EmbeddedResource Include="..\..\providers\mfg-unlocker\preset-controls.json" LogicalName="RtxForge.MfgControls.json" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
   </ItemGroup>

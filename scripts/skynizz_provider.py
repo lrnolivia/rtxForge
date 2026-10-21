@@ -223,7 +223,10 @@ def startup_overlay_disabled(game):
 
 @lru_cache(maxsize=1)
 def control_schema():
-    return json.loads((ROOT / 'providers/skynizz-bridge/controls.json').read_text(encoding='utf-8'))['controls']
+    controls = json.loads((ROOT / 'providers/skynizz-bridge/controls.json').read_text(encoding='utf-8'))['controls']
+    extension = json.loads((ROOT / 'providers/mfg-unlocker/preset-controls.json').read_text(encoding='utf-8'))['controls']
+    keys = {control['key'] for control in controls}
+    return controls + [item for item in extension if item['key'] not in keys]
 
 
 def validate_controls(values):
@@ -240,11 +243,14 @@ def validate_controls(values):
 
 def apply_controls(e, text, values, mode='nr-mfg', external_mfg=False):
     values = validate_controls(values)
+    t.need(not (external_mfg and mode != 'nr-only' and values.get('dynamic_mfg')),
+           'Dynamic Multi-Frame Generation requires the integrated MFG route. Choose Auto or Custom for this package.')
     for item in control_schema():
         key = item['key']
         if key not in values: continue
         if item['section'] == 'DlssNr' and mode == 'mfg-only': continue
-        if key == 'multiplier' and (mode == 'nr-only' or external_mfg): continue
+        if item['group'] == 'Frame generation' and mode == 'nr-only': continue
+        if item['section'] == 'DLSSG' and external_mfg: continue
         value = values[key]
         if key == 'multiplier': value = 'auto' if value == -1 else str(max(0, int(value) - 1))
         elif key == 'sharpen_shader': value = ('rcas', 'da', 'lcda')[int(value)]

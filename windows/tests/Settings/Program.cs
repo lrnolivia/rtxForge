@@ -32,9 +32,9 @@ var complete = FeatureControlSchema.Tuning(allControls);
 var presetSettings = JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(new ForgeSettings { FeatureControls = complete.FeatureControls }))!;
 if (!System.Text.Json.Nodes.JsonNode.DeepEquals(allControls, FeatureControlSchema.Resolve(presetSettings.Presets)))
     throw new Exception("The full preset lost control values or units during persistence.");
-if (FeatureControlSchema.Shared.Controls.Length != 24 || FeatureControlSchema.Shared.Controls.Single(c => c.Key == "colour").Max != 4)
+if (FeatureControlSchema.Shared.Controls.Length != 27 || FeatureControlSchema.Shared.Controls.Single(c => c.Key == "colour").Max != 4)
     throw new Exception("The app lost the shared control vocabulary or colour range.");
-Console.WriteLine("PASS: all 24 ordered feature controls round trip with native units, including extended colour and exact MFG choices.");
+Console.WriteLine("PASS: all 27 ordered feature controls round trip with native units, including extended color and exact MFG choices.");
 var defaults = new ForgeSettings();
 if (!defaults.OptiScalerUi || !defaults.ReShadeUi || defaults.OptiScalerIntro || defaults.ReShadeIntro)
     throw new Exception("Game menus must be independent of the default-hidden welcome messages");
@@ -128,3 +128,35 @@ foreach (var raw in new[] { "false", "null", "true", "\"unknown\"" })
 var installedFeeder = new Game { Id = "managed-feeder", Name = "Installed Feeder", Installed = true, RuntimeProvider = "feeder" };
 if (!installedFeeder.UsesFeeder || installedFeeder.InstallLabel != "Update Feeder NR") throw new Exception("Existing Feeder update route changed");
 Console.WriteLine("PASS: fresh Feeder capability stays separate from installation ownership and labels.");
+
+var mfgValues = FeatureControlSchema.Resolve(new Tuning(1.25, .4, "auto"));
+var mfgPreset = new MfgPreset(mfgValues);
+foreach (var selection in Enumerable.Range(0, MfgPreset.Modes.Length))
+foreach (var ratio in MfgPreset.Multipliers)
+{
+    mfgPreset.SetEnabled(true); mfgPreset.SetMode(selection); mfgPreset.SetMultiplier(ratio); mfgPreset.Store(mfgValues);
+    var requested = FeatureControlSchema.Tuning(mfgValues);
+    var persisted = FeatureControlSchema.Resolve(JsonSerializer.Deserialize<Tuning>(JsonSerializer.Serialize(requested))!);
+    var restored = new MfgPreset(persisted);
+    if (!restored.Enabled || restored.Mode != selection || selection != 0 && restored.Multiplier != ratio
+        || requested.MfgMultiplier != (selection == 0 ? "auto" : ratio.ToString()) || requested.NrStrength != 1.25
+        || FeatureControlSchema.Read(persisted["dynamic_mfg"]) != (selection == 2 ? 1 : 0))
+        throw new Exception("MFG mode/ratio did not survive preset persistence");
+    mfgPreset.SetEnabled(false); mfgPreset.Store(mfgValues);
+    if (FeatureControlSchema.Tuning(mfgValues).MfgMultiplier != "0" || FeatureControlSchema.Read(mfgValues["dynamic_mfg"]) != 0)
+        throw new Exception("MFG Off left a dynamic request enabled");
+    var off = new MfgPreset(FeatureControlSchema.Resolve(FeatureControlSchema.Tuning(mfgValues)));
+    if (off.Enabled || off.Mode != selection || off.Multiplier != ratio) throw new Exception("Saved Off lost the dormant mode or multiplier");
+    mfgPreset.SetEnabled(true); mfgPreset.Store(mfgValues);
+    if (mfgPreset.Mode != selection || mfgPreset.Multiplier != ratio) throw new Exception("MFG toggle lost its draft selection");
+}
+var dynamicField = FeatureControlSchema.Shared.Controls.Single(field => field.Key == "dynamic_mfg");
+if (FeatureControlSchema.Available(dynamicField, "nr-only") || FeatureControlSchema.Available(dynamicField, "nr-mfg", true)
+    || !FeatureControlSchema.Available(dynamicField, "mfg-only")) throw new Exception("Dynamic MFG availability crossed package boundaries");
+Console.WriteLine("PASS: Auto/Custom/Dynamic, 2×–6×, independent On/Off and unchanged NR survive preset persistence.");
+foreach (var raw in new[] { "true", "false", "null", "\"unknown\"" })
+{
+    var game = new Game { Id = "route", Name = "MFG route", RuntimeProvider = "skynizz",
+        EngineRow = System.Text.Json.Nodes.JsonNode.Parse("{\"dynamic_mfg_available\":" + raw + "}")!.AsObject() };
+    if (game.DynamicMfgAvailable != (raw == "true")) throw new Exception("Dynamic MFG availability was invented for an unknown route");
+}

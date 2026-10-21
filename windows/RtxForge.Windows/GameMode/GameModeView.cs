@@ -407,6 +407,9 @@ public sealed partial class GameModeView : UserControl
             case ToggleButton toggle when toggle.IsEnabled:
                 (FrameworkElementAutomationPeer.CreatePeerForElement(toggle) as IToggleProvider)?.Toggle();
                 break;
+            case ToggleSwitch toggle when toggle.IsEnabled:
+                toggle.IsOn = !toggle.IsOn;
+                break;
             case TextBox box:
                 box.Focus(FocusState.Keyboard);
                 break;

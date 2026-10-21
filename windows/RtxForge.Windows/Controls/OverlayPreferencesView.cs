@@ -21,27 +21,27 @@ public sealed class OverlayPreferencesView : StackPanel
         var current = ForgeSettings.Load();
         Heading("rtxForge panel");
         var renderer = Choice("Overlay", ["rtxForge sidebar", "Original OptiScaler overlay", "rtxForge in-game (preview)"], current.OverlayRenderer == "game" ? 2 : current.OverlayRenderer == "optiscaler" ? 1 : 0,
-            "The in-game preview needs the new renderer package. It draws inside the game and opens only there. The sidebar is a separate helper window.");
+            "The in-game preview needs the new renderer package. It draws inside the game and opens only there. The sidebar is a separate helper window.", glyph: "\uE7F4");
         var layout = Choice("Controls", ["Unified", "Advanced"], current.OverlayControls == "classic" ? 1 : 0,
-            "Unified uses simple labels and percentages. Advanced uses OptiScaler labels and original units for the sidebar’s live controls.");
-        var material = Choice("Window material", ["Acrylic", "Mica"], current.OverlayMaterial == "mica" ? 1 : 0);
+            "Unified uses simple labels and percentages. Advanced uses OptiScaler labels and original units for the sidebar’s live controls.", glyph: "\uE713");
+        var material = Choice("Window material", ["Acrylic", "Mica"], current.OverlayMaterial == "mica" ? 1 : 0, glyph: "\uE790");
         Heading("Shortcuts and helper");
         var key = new OverlayShortcutPicker(current.PanelHotkey, settingsRow: groupCards);
         AddControl(key);
         var helper = Switch("Background overlay helper", current.OverlayHelper,
-            "Keep the rtxForge shortcut available after closing the manager. OptiScaler’s panel runs inside the game.");
+            "Keep the rtxForge shortcut available after closing the manager. OptiScaler’s panel runs inside the game.", glyph: "\uE7F8");
         var startup = Switch("Start with Windows", current.OverlayStartWithWindows,
-            "Starts only the helper, when the rtxForge overlay is selected.");
+            "Starts only the helper, when the rtxForge overlay is selected.", glyph: "\uE7E8");
         Heading("OptiScaler");
-        var optiUi = Switch("In-game menu", current.OptiScalerUi);
+        var optiUi = Switch("In-game menu", current.OptiScalerUi, glyph: "\uE700");
         var optiIntro = Switch("Intro message", current.OptiScalerIntro,
-            "The startup message and the menu are separate. Turning either off keeps NR and MFG installed.");
+            "The startup message and the menu are separate. Turning either off keeps NR and MFG installed.", glyph: "\uE8F2");
         var nativeKey = Choice("OptiScaler shortcut", ["Insert", "F8", "Disabled"], current.OptiScalerHotkey == "F8" ? 1 : current.OptiScalerHotkey == "Disabled" ? 2 : 0,
-            "Switching overlays or changing the OptiScaler key takes effect after restarting the game. Install the current rtxForge package in your game to use the original panel.");
+            "Switching overlays or changing the OptiScaler key takes effect after restarting the game. Install the current rtxForge package in your game to use the original panel.", glyph: "\uE765");
         Heading("ReShade");
-        var reshadeUi = Switch("In-game menu", current.ReShadeUi);
+        var reshadeUi = Switch("In-game menu", current.ReShadeUi, glyph: "\uE700");
         var reshadeIntro = Switch("Welcome messages", current.ReShadeIntro,
-            "Controls the ReShade guide and RenoDX welcome dialog, matching the TS4 and Mass Effect setup. Loading notices are separate. Feeder NR and effects stay running.");
+            "Controls the ReShade guide and RenoDX welcome dialog, matching the TS4 and Mass Effect setup. Loading notices are separate. Feeder NR and effects stay running.", glyph: "\uE8F2");
         Heading("Apply to games");
         OverlayUiReviewView? gameReview = null;
         if (engine is not null) { gameReview = new(engine); AddControl(gameReview); }
@@ -85,21 +85,21 @@ public sealed class OverlayPreferencesView : StackPanel
         Availability();
     }
 
-    ComboBox Choice(string label, string[] choices, int index, string? description = null)
+    ComboBox Choice(string label, string[] choices, int index, string? description = null, string? glyph = null)
     {
         if (groupCards)
         {
-            var (row, combo) = Prefs.ComboRow(label, description, choices, index);
+            var (row, combo) = Prefs.ComboRow(label, description, choices, index, glyph);
             AddControl(row); return combo;
         }
         var control = new ComboBox { Header = label, ItemsSource = choices, SelectedIndex = index, HorizontalAlignment = HorizontalAlignment.Stretch };
         AddControl(control); if (description is not null) Note(description); return control;
     }
-    ToggleSwitch Switch(string label, bool enabled, string? description = null)
+    ToggleSwitch Switch(string label, bool enabled, string? description = null, string? glyph = null)
     {
         if (groupCards)
         {
-            var (row, toggle) = Prefs.SwitchRow(label, description, enabled);
+            var (row, toggle) = Prefs.SwitchRow(label, description, enabled, glyph);
             AddControl(row); return toggle;
         }
         var control = new ToggleSwitch { Header = label, IsOn = enabled };

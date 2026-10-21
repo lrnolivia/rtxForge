@@ -8,7 +8,9 @@
   <ItemGroup>
     <Compile Include="../../RtxForge.Windows/Models/Models.cs" Link="Models.cs" />
     <Compile Include="../../RtxForge.Windows/Models/FeatureControls.cs" Link="FeatureControls.cs" />
+    <Compile Include="../../RtxForge.Windows/Models/MfgPreset.cs" Link="MfgPreset.cs" />
     <EmbeddedResource Include="../../../providers/skynizz-bridge/controls.json" LogicalName="RtxForge.FeatureControls.json" />
+    <EmbeddedResource Include="../../../providers/mfg-unlocker/preset-controls.json" LogicalName="RtxForge.MfgControls.json" />
     <Compile Include="../../RtxForge.Windows/Services/OverlayShortcut.cs" Link="OverlayShortcut.cs" />
   </ItemGroup>
 </Project>

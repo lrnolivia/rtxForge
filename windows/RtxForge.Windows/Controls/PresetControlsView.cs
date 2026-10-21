@@ -16,16 +16,19 @@ public sealed class PresetControlsView : UserControl
     readonly Dictionary<FeatureControl, Control> rows = [];
     readonly Dictionary<string, Action<double>> setters = [];
     bool syncing;
+    MfgPreset mfgPreset;
+    Action? refreshMfg;
     string mode = "nr-mfg";
     bool available = true, legacy;
+    bool dynamicSupported = true;
     public event EventHandler? Changed;
 
     public PresetControlsView(Tuning initial, bool advanced = false, bool embedded = false)
     {
         this.advanced = advanced; this.embedded = embedded; values = FeatureControlSchema.Resolve(initial);
+        mfgPreset = new(values);
         var root = new StackPanel { Spacing = 24 };
-        var mfg = Section("Frame generation", "Requested multiplier · enable frame generation in the game.");
-        mfg.Children.Add(Field("multiplier", true)); root.Children.Add(Card(mfg));
+        root.Children.Add(Card(MfgControls()));
         var primary = new PresetColumns(560, 2) { ColumnSpacing = 24, RowSpacing = 24 };
         var nr = Section("Neural rendering");
         nr.Children.Add(Field("enabled")); nr.Children.Add(Field("style")); nr.Children.Add(Field("intensity"));
@@ -78,6 +81,77 @@ public sealed class PresetControlsView : UserControl
         Header = heading, Content = content, HorizontalAlignment = HorizontalAlignment.Stretch,
         HorizontalContentAlignment = HorizontalAlignment.Stretch, Background = null, BorderThickness = new Thickness(0),
     };
+
+    StackPanel MfgControls()
+    {
+        var body = new StackPanel { Spacing = 16 };
+        var header = new Grid { ColumnSpacing = 16 };
+        header.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        var title = Prefs.Label("Multi-Frame Generation", "ForgeHeadingTextStyle");
+        title.VerticalAlignment = VerticalAlignment.Center; header.Children.Add(title);
+        var toggle = new ToggleSwitch { OnContent = "On", OffContent = "Off", MinWidth = 0 };
+        AutomationProperties.SetName(toggle, "Multi-Frame Generation");
+        Grid.SetColumn(toggle, 1); header.Children.Add(toggle); body.Children.Add(header);
+        var tabs = new List<RadioButton>(); var ratios = new List<RadioButton>();
+        var caption = Prefs.Label("Multiplier", "ForgeCaptionDimTextStyle");
+        var description = Prefs.Label("", "ForgeCaptionDimTextStyle");
+        bool refreshing = false;
+        void Change(Action change)
+        {
+            if (refreshing || syncing) return;
+            change(); mfgPreset.Store(values); RefreshAvailability(); Changed?.Invoke(this, EventArgs.Empty);
+        }
+        Border Segments(string[] captions, List<RadioButton> buttons, Action<int> select)
+        {
+            var grid = new PresetColumns(captions.Length == 3 ? 100 : 58, captions.Length) { ColumnSpacing = 2, RowSpacing = 2 };
+            var group = "mfg-" + Guid.NewGuid().ToString("N");
+            for (var i = 0; i < captions.Length; i++)
+            {
+                var index = i;
+                var button = new RadioButton { Content = captions[i], GroupName = group,
+                    Style = Prefs.GetStyle("ForgeSegmentStyle"), MinWidth = 0, MinHeight = 36,
+                    Padding = new Thickness(8, 6, 8, 8), HorizontalAlignment = HorizontalAlignment.Stretch };
+                AutomationProperties.SetName(button, "Multi-Frame Generation " + captions[i]);
+                button.Checked += (_, _) => Change(() => select(index));
+                buttons.Add(button); grid.Children.Add(button);
+            }
+            return new Border { Style = Prefs.GetStyle("ForgeSegmentGroupStyle"), Child = grid };
+        }
+        body.Children.Add(Segments(MfgPreset.Modes, tabs, i => mfgPreset.SetMode(i)));
+        var ratioGroup = new StackPanel { Spacing = 8 };
+        ratioGroup.Children.Add(caption);
+        ratioGroup.Children.Add(Segments(MfgPreset.Multipliers.Select(n => n + "×").ToArray(), ratios,
+            i => mfgPreset.SetMultiplier(MfgPreset.Multipliers[i])));
+        body.Children.Add(ratioGroup); body.Children.Add(description);
+        toggle.Toggled += (_, _) => Change(() =>
+        {
+            if (toggle.IsOn && mfgPreset.Mode == 2 && (legacy || !dynamicSupported)) mfgPreset.SetMode(1);
+            mfgPreset.SetEnabled(toggle.IsOn);
+        });
+        ToolTipService.SetToolTip(tabs[2], "Requires the integrated MFG package and a compatible game and driver.");
+        refreshMfg = () =>
+        {
+            refreshing = true;
+            try
+            {
+                var enabled = available && mode != "nr-only";
+                toggle.IsEnabled = enabled; toggle.IsOn = mfgPreset.Enabled;
+                for (var i = 0; i < tabs.Count; i++)
+                {
+                    tabs[i].IsChecked = mfgPreset.Mode == i;
+                    tabs[i].IsEnabled = enabled && mfgPreset.Enabled && (i != 2 || !legacy && dynamicSupported);
+                }
+                for (var i = 0; i < ratios.Count; i++)
+                { ratios[i].IsChecked = mfgPreset.Multiplier == MfgPreset.Multipliers[i]; ratios[i].IsEnabled = enabled && mfgPreset.Enabled; }
+                ratioGroup.Visibility = mfgPreset.Mode != 0 && mfgPreset.Enabled ? Visibility.Visible : Visibility.Collapsed;
+                caption.Text = mfgPreset.Mode == 2 ? "Maximum multiplier" : "Multiplier";
+                description.Text = !enabled ? "Unavailable for this package." : mfgPreset.Description;
+            }
+            finally { refreshing = false; }
+        };
+        return body;
+    }
 
     FrameworkElement Field(string key, bool hideLabel = false) => Field(FeatureControlSchema.Shared.Controls.Single(f => f.Key == key), hideLabel);
     FrameworkElement Field(FeatureControl field, bool hideLabel = false)
@@ -165,17 +239,18 @@ public sealed class PresetControlsView : UserControl
         get => FeatureControlSchema.Tuning(values);
         set
         {
-            values = FeatureControlSchema.Resolve(value); syncing = true;
-            try { foreach (var definition in FeatureControlSchema.Shared.Controls) setters[definition.Key](FeatureControlSchema.Number(values, definition)); }
+            values = FeatureControlSchema.Resolve(value); mfgPreset = new(values); syncing = true;
+            try { foreach (var definition in FeatureControlSchema.Shared.Controls) if (setters.TryGetValue(definition.Key, out var set)) set(FeatureControlSchema.Number(values, definition)); }
             finally { syncing = false; }
             RefreshAvailability(); Changed?.Invoke(this, EventArgs.Empty);
         }
     }
     public bool HasChanges(Tuning reference) => !JsonNode.DeepEquals(values, FeatureControlSchema.Resolve(reference));
-    public void SetMode(string selected, bool enabled = true, bool legacy = false)
-    { mode = selected; available = enabled; this.legacy = legacy; RefreshAvailability(); }
+    public void SetMode(string selected, bool enabled = true, bool legacy = false, bool dynamicSupported = true)
+    { mode = selected; available = enabled; this.legacy = legacy; this.dynamicSupported = dynamicSupported; RefreshAvailability(); }
     void RefreshAvailability()
     {
+        refreshMfg?.Invoke();
         bool On(string key) => FeatureControlSchema.Read(values[key]) != 0;
         foreach (var (field, row) in rows)
         {
@@ -204,7 +279,7 @@ internal sealed class PresetColumns : Grid
     }
     void ArrangeColumns(double width)
     {
-        var count = Math.Clamp((int)((width + ColumnSpacing) / (minimum + ColumnSpacing)), 1, maximum);
+        var count = Math.Clamp((int)((width + ColumnSpacing) / (minimum + ColumnSpacing)), 1, Math.Min(maximum, Math.Max(1, Children.Count)));
         if (maximum == 4 && count == 3) count = 2;
         if (count == columns && RowDefinitions.Count == (Children.Count + count - 1) / count) return;
         columns = count; ColumnDefinitions.Clear(); RowDefinitions.Clear();

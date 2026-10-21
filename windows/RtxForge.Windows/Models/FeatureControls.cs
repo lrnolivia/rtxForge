@@ -23,7 +23,8 @@ public sealed class FeatureControl
     public double[] Values { get; set; } = [];
     public string[] Choices { get; set; } = [];
     public bool Integer => Kind != "slider";
-    public string Caption(bool advanced) => (advanced ? Advanced : Label).Replace("Colour", "Color", StringComparison.Ordinal);
+    public string Caption(bool advanced) => Key == "multiplier" && !advanced ? "Multi-Frame Generation"
+        : (advanced ? Advanced : Label).Replace("Colour", "Color", StringComparison.Ordinal);
     public string Display(double value, bool advanced) => Key == "skin" && value < 0 && !advanced ? "Follow structure"
         : Kind == "toggle" ? value == 0 ? "Off" : "On"
         : Values.Length > 0 ? Choices[Math.Max(0, Array.IndexOf(Values, value))]
@@ -47,8 +48,15 @@ public sealed class FeatureControlSchema
     {
         using var stream = typeof(FeatureControlSchema).Assembly.GetManifestResourceStream("RtxForge.FeatureControls.json")
             ?? throw new InvalidOperationException("The feature control definitions are missing.");
-        return JsonSerializer.Deserialize<FeatureControlSchema>(stream, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var schema = JsonSerializer.Deserialize<FeatureControlSchema>(stream, options)
             ?? throw new InvalidOperationException("The feature control definitions are invalid.");
+        using var mfgStream = typeof(FeatureControlSchema).Assembly.GetManifestResourceStream("RtxForge.MfgControls.json")
+            ?? throw new InvalidOperationException("The MFG control definitions are missing.");
+        var mfg = JsonSerializer.Deserialize<FeatureControlSchema>(mfgStream, options)
+            ?? throw new InvalidOperationException("The MFG control definitions are invalid.");
+        schema.Controls = [.. schema.Controls, .. mfg.Controls.Where(field => !schema.Controls.Any(existing => existing.Key == field.Key))];
+        return schema;
     }
     public static double Read(JsonNode? node, double fallback = 0) => node is null ? fallback
         : double.Parse(node.ToString(), CultureInfo.InvariantCulture);
@@ -79,7 +87,7 @@ public sealed class FeatureControlSchema
         (JsonObject)values.DeepClone());
     public static bool Available(FeatureControl field, string mode, bool legacy = false) =>
         (!legacy || field.Key is "intensity" or "sharpness" or "multiplier")
-        && (field.Key == "multiplier" ? mode != "nr-only" : field.SectionIsNr() ? mode != "mfg-only" : true);
+        && (field.Group == "Frame generation" ? mode != "nr-only" : field.SectionIsNr() ? mode != "mfg-only" : true);
 }
 
 static class FeatureControlKinds

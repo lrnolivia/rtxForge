@@ -48,6 +48,8 @@ public sealed class Game
     public bool AdoptionAvailable => EngineRow?["adoption_available"]?.GetValue<bool>() == true;
     public bool Managed => EngineRow?["managed"]?.GetValue<bool>() == true;
     public bool OfflineOnly => EngineRow?["offline_only"]?.GetValue<bool>() == true;
+    public bool DynamicMfgAvailable => RuntimeProvider == "skynizz" && EngineRow?["dynamic_mfg_available"] is JsonValue flag
+        && flag.TryGetValue<bool>(out var available) && available;
     public string InstallLabel => AdoptionAvailable ? "Adopt with rtxForge" : InstalledOnLinux ? "Set Up for Windows"
         : UsesFeeder ? Installed ? "Update Feeder NR" : "Install Feeder NR" : "Install Features";
     /// <summary>The engine's scan row, passed back unchanged for review and execution.</summary>

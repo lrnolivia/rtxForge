@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "description": "Additional saved MFG controls shared by native preset editors and the package engine.",
+  "controls": [
+    {
+      "key": "dynamic_mfg",
+      "label": "Dynamic Multi-Frame Generation",
+      "advanced": "Override Dynamic DLSSG",
+      "group": "Frame generation",
+      "kind": "toggle",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "step": 1,
+      "section": "DLSSG",
+      "ini": "OverrideForceDMFG"
+    },
+    {
+      "key": "mfg_saved_mode", "label": "Saved MFG mode", "advanced": "Saved MFG mode",
+      "group": "Frame generation", "kind": "choice", "min": 0, "max": 2, "default": 0, "step": 1,
+      "values": [0, 1, 2], "choices": ["Auto", "Custom", "Dynamic"],
+      "section": "rtxForge.Presets", "ini": "MfgMode"
+    },
+    {
+      "key": "mfg_saved_multiplier", "label": "Saved MFG multiplier", "advanced": "Saved MFG multiplier",
+      "group": "Frame generation", "kind": "choice", "min": 2, "max": 6, "default": 2, "step": 1,
+      "values": [2, 3, 4, 5, 6], "choices": ["2×", "3×", "4×", "5×", "6×"],
+      "section": "rtxForge.Presets", "ini": "MfgMultiplier"
+    }
+  ]
+}

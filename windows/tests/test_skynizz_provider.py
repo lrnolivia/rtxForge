@@ -9,7 +9,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKER = r'''
-import importlib.util,json,sys,hashlib,zipfile
+import importlib.util,json,sys,hashlib,zipfile,os
 from pathlib import Path
 from unittest.mock import patch
 root=Path(sys.argv[1]);repo=Path(sys.argv[2])
@@ -149,12 +149,14 @@ import skynizz_provider
 complete={item['key']:item['default'] for item in skynizz_provider.control_schema()}
 complete.update(enabled=0,intensity=.73,passes=3,colour=3.25,skin=-1,work_scale=.57,sharpen=1,sharp_override=1,sharpen_shader=2,sharpness=.63)
 full_before=files(fresh)
+before_controls=skynizz_provider.read_controls(fresh/'OptiScaler.ini')
 full_review=service.prepare([scan(fresh)],'nr-only','reset',visual_settings=settings|{'feature_controls':complete})
 assert full_review['rows'] and files(fresh)==full_before
 service.execute(full_review)
 found=skynizz_provider.read_controls(fresh/'OptiScaler.ini')
 for key,value in complete.items():
-    if key!='multiplier': assert found[key]==value,(key,found.get(key),value)
+    if key in ('multiplier','dynamic_mfg','mfg_saved_mode','mfg_saved_multiplier'): assert found.get(key)==before_controls.get(key),(key,found.get(key),before_controls.get(key))
+    else: assert found[key]==value,(key,found.get(key),value)
 assert json.loads((fresh/'.rtxforge-install.json').read_text())['nr_on_launch'] is False
 assert baseline(fresh)['nr_on_launch'] is False
 checks.append('all supported preset controls persist with exact units through reviewed apply; startup NR choice updates metadata and baseline')
@@ -318,6 +320,19 @@ for folder in (batch_a,batch_b):
     assert baseline(folder)['feature_mode']=='nr-mfg'
     assert (folder/'nvngx_dlssnr.dll').read_bytes()==model.read_bytes()
 checks.append('batch extracts/verifies one exact package and reads one NR model for two targets; blocked target never reaches payload work')
+import companion_controls
+preset_key=hashlib.sha256(os.path.normcase(str((batch_a/'Game.exe').resolve())).encode()).hexdigest()
+preset_file=Path(os.environ['RTXFORGE_STATE_ROOT'])/'runtime-presets'/(preset_key+'.json')
+preset_file.parent.mkdir(parents=True,exist_ok=True)
+preset_file.write_text(json.dumps({'schema':1,'changes':{'multiplier':4}}))
+dynamic_controls=provider.read_controls(batch_a/'OptiScaler.ini')|{'multiplier':6,'dynamic_mfg':1,'mfg_saved_mode':2,'mfg_saved_multiplier':6}
+run(service.prepare([scan(batch_a)],'nr-mfg','reset',visual_settings=settings|{'feature_controls':dynamic_controls}))
+saved_changes=json.loads(preset_file.read_text())['changes']
+companion_controls.validate_changes(saved_changes)
+assert saved_changes['multiplier']==6 and not {'dynamic_mfg','mfg_saved_mode','mfg_saved_multiplier'}&saved_changes.keys()
+configured=provider.read_controls(batch_a/'OptiScaler.ini')
+assert all(configured[key]==dynamic_controls[key] for key in ('multiplier','dynamic_mfg','mfg_saved_mode','mfg_saved_multiplier'))
+checks.append('reviewed Dynamic MFG persists in INI without sending saved-only preferences to protocol6 startup replay')
 run(combined_review);combined_record=baseline(combined);combined_ini=(combined/'OptiScaler.ini').read_text()
 assert combined_record['mfg_provider']['enabled'] and combined_record['compatibility_policy']['mfg_route']=='native-ada-skynizz-bridge-armed'
 assert combined_record['archive']['release']['variant']=='nr-mfg-bridge' and combined_record['archive']['mfg_runtime']['sha256']
@@ -354,6 +369,7 @@ assert review['title']=='Update NR + MFG bridge' and updated_release['sha256'] i
 assert (combined/'dxgi.dll').read_bytes()==fixtures.pe(),'review changed the loader'
 run(review)
 assert baseline(combined)['archive']['release']['sha256']==updated_release['sha256']
+assert scan(combined)['dynamic_mfg_available'] is True
 assert (combined/'dxgi.dll').read_bytes()==fixtures.pe()+b'updated bridge'
 assert (combined/'nvngx_dlssnr.dll').read_bytes()==model.read_bytes()
 assert (combined/'OptiScaler.ini').read_text()==combined_ini,'bridge upgrade reset tuning or MFG count'
@@ -421,6 +437,7 @@ later_engine=module(service.config,'y4my')
 run(review);record=baseline(external)
 assert record['mfg_provider']['ownership']=='managed-addon'
 assert scan(external)['mfg_multiplier']==4 and scan(external)['mfg_provider']=='mfg-unlock'
+assert scan(external)['dynamic_mfg_available'] is False
 assert record['compatibility_policy']['mfg_route']=='native-ada-mfg-unlock-addon'
 ini=(external/'OptiScaler.ini').read_text()
 for value in ('AdaMfgUnlock=false','AdaBlackwellKernels=false','OverrideInterpolationCount=auto','LoadReShade=true','Preset=2'):
@@ -527,7 +544,7 @@ class WindowsSkynizzTest(unittest.TestCase):
                                     env=env, capture_output=True, text=True, timeout=180)
             self.assertEqual(result.returncode, 0, result.stderr[-12000:] + result.stdout[-3000:])
             receipt = json.loads(result.stdout.strip().splitlines()[-1])
-            self.assertEqual(receipt['count'], 28)
+            self.assertEqual(receipt['count'], 29)
             print('PASS: ' + '; '.join(receipt['checks']))
 
 

@@ -11,7 +11,9 @@
 #include <chrono>
 #include <cstring>
 #include <unordered_map>
+#include <cstdio>
 #include "ForgePanelChannel.h"
+#include "ForgePanelIcon.h"
 
 // Runs inside the already-installed menu hook. No HWND, secondary swapchain,
 // screen copy, blur pass, process polling, network or per-frame disk access.
@@ -28,7 +30,7 @@ struct Control
 };
 #include "ForgePanelBindings.h"
 #include "ForgePanelFont.h"
-inline ImFont* font = nullptr;
+inline ImFont* font = nullptr; inline ImFont* bold = nullptr;
 inline bool selected = false, settings = false, global = false, advanced = false, nrAllowed = false, mfgAllowed = false, enabled = false, binding = false, initialized = false;
 inline int key = VK_DELETE, modifiers = 0, bindingRelease = 0;
 inline float animation = 0, cpuMs = 0;
@@ -92,6 +94,7 @@ inline void Init(HWND window)
     LOG_INFO("rtxForge panel channel: ready {}", ForgePanelChannel::channel != nullptr);
     ImFontConfig options; options.FontDataOwnedByAtlas = false;
     font = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(forgeInter, sizeof(forgeInter), 18.f, &options);
+    bold = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(forgeInterSemiBold, sizeof(forgeInterSemiBold), 18.f, &options);
     key = int(Preference(L"PanelKey", VK_DELETE)); modifiers = int(Preference(L"PanelModifiers", 0));
     advanced = Preference(L"Advanced", 0) != 0;
     wchar_t caption[256] {}; GetWindowTextW(window, caption, 256);
@@ -217,19 +220,84 @@ inline void Commit(const Control& field, Config& cfg, float value)
     if(!std::isfinite(value)) return;
     queued[&field] = value; Flush(cfg);
 }
-// Draws a slider's track and an accent fill up to its value beneath the
-// slider, whose own frame is then kept transparent.
-inline void SliderSurface(float fraction)
+// The rtxForge sidebar's slider: a thin track with a subtle fill and a small
+// vertical thumb, its value right-aligned on the label line. Drawn over an
+// invisible ImGui slider, so mouse, keyboard and gamepad input are unchanged.
+inline void SliderBegin(const char* text)
 {
+    const auto label = ImGui::GetItemRectMin();
+    const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+    ImGui::GetWindowDrawList()->AddText(ImVec2(right - ImGui::CalcTextSize(text).x, label.y), ImGui::GetColorU32(ImVec4(.90f,.90f,.90f,1)), text);
+    ImGui::SetNextItemWidth(-1);
+    for(const auto slot : {ImGuiCol_FrameBg, ImGuiCol_FrameBgHovered, ImGuiCol_FrameBgActive, ImGuiCol_SliderGrab, ImGuiCol_SliderGrabActive})
+        ImGui::PushStyleColor(slot, ImVec4(0,0,0,0));
+}
+inline void SliderEnd(float fraction, float scale)
+{
+    ImGui::PopStyleColor(5);
+    const auto min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
+    const bool hot = ImGui::IsItemHovered() || ImGui::IsItemActive();
+    auto* draw = ImGui::GetWindowDrawList();
+    const float thumb = 3.f*scale, half = (hot ? 10.f : 9.f)*scale, line = 1.f*scale, y = (min.y+max.y)*.5f;
+    const float left = min.x+thumb, right = max.x-thumb, at = left+std::clamp(fraction,0.f,1.f)*(right-left);
+    const auto control = Mix(accent, ImVec4(.93f,.93f,.93f,1), .45f);
+    draw->AddRectFilled(ImVec2(min.x,y-line), ImVec2(max.x,y+line), ImGui::GetColorU32(ImVec4(1,1,1,hot ? .31f : .22f)), line);
+    draw->AddRectFilled(ImVec2(min.x,y-line), ImVec2(at,y+line), ImGui::GetColorU32(control), line);
+    draw->AddRectFilled(ImVec2(at-thumb,y-half), ImVec2(at+thumb,y+half), ImGui::GetColorU32(hot ? Mix(control, ImVec4(1,1,1,1), .7f) : control), thumb);
+}
+// The rtxForge mark, generated from gui/icons/rtxforge-mark.svg.
+inline void Brand(float scale)
+{
+    const float height = 18.f*scale, unit = height/forgeIconHeight;
+    const auto origin = ImGui::GetCursorScreenPos(); auto* draw = ImGui::GetWindowDrawList();
+    ImVec2 points[256];
+    for(const auto& shape : forgeIconShapes)
+    {
+        const int count = std::min(shape.count, 256);
+        for(int i=0;i<count;++i) points[i] = ImVec2(origin.x+forgeIconPoints[2*(shape.start+i)]*unit, origin.y+forgeIconPoints[2*(shape.start+i)+1]*unit);
+        draw->AddConcavePolyFilled(points, count, ImGui::GetColorU32(shape.hole ? IM_COL32(12,12,12,255) : shape.colour));
+    }
+    ImGui::Dummy(ImVec2(unit*forgeIconWidth, height)); ImGui::SameLine(0, 8.f*scale);
+}
+// The sidebar's dropdown: flat fill, hairline border and a small chevron.
+// The frame is measured first because an open combo makes its popup current.
+inline bool Dropdown(const char* preview)
+{
+    const float scale = ImGui::GetFontSize()/14.f;
     const auto position = ImGui::GetCursorScreenPos();
     const auto size = ImVec2(ImGui::CalcItemWidth(), ImGui::GetFrameHeight());
-    const auto rounding = ImGui::GetStyle().FrameRounding;
     auto* draw = ImGui::GetWindowDrawList();
-    draw->AddRectFilled(position, ImVec2(position.x+size.x, position.y+size.y), ImGui::GetColorU32(ImVec4(.24f,.24f,.24f,.8f)), rounding);
-    const auto filled = std::clamp(fraction, 0.f, 1.f) * size.x;
-    if(filled > 1) draw->AddRectFilled(position, ImVec2(position.x+std::max(filled, rounding*2), position.y+size.y),
-        ImGui::GetColorU32(Mix(accent, ImVec4(.24f,.24f,.24f,1), .45f)), rounding);
-    for(const auto slot : {ImGuiCol_FrameBg, ImGuiCol_FrameBgHovered, ImGuiCol_FrameBgActive}) ImGui::PushStyleColor(slot, ImVec4(0,0,0,0));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.f*scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.f*scale);
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(1,1,1,.13f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(.13f,.13f,.13f,1));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(.17f,.17f,.17f,1));
+    const bool open = ImGui::BeginCombo("##value", preview, ImGuiComboFlags_NoArrowButton);
+    ImGui::PopStyleColor(3); ImGui::PopStyleVar(2);
+    const float x = position.x+size.x-16.f*scale, y = position.y+size.y*.5f, arm = 4.f*scale;
+    const auto ink = ImGui::GetColorU32(ImVec4(.77f,.77f,.77f,1));
+    draw->AddLine(ImVec2(x-arm,y-arm*.5f), ImVec2(x,y+arm*.5f), ink, 1.5f*scale);
+    draw->AddLine(ImVec2(x,y+arm*.5f), ImVec2(x+arm,y-arm*.5f), ink, 1.5f*scale);
+    return open;
+}
+// Titles, headings and emphasis use Inter SemiBold, as in the rtxForge sidebar.
+inline void BoldWrapped(const char* text, ImVec4 colour, float scale)
+{
+    const float wrap = ImGui::GetContentRegionAvail().x;
+    const auto size = ImGui::CalcTextSize(text, nullptr, false, wrap);
+    const auto position = ImGui::GetCursorScreenPos(); auto* draw = ImGui::GetWindowDrawList();
+    const auto col = ImGui::GetColorU32(colour);
+    ImGui::PushFont(bold ? bold : font, ImGui::GetFontSize());
+    const auto weighted = ImGui::CalcTextSize(text, nullptr, false, wrap);
+    draw->AddText(nullptr, 0.f, position, col, text, nullptr, wrap);
+    ImGui::PopFont();
+    ImGui::Dummy(ImVec2(std::max(size.x, weighted.x), std::max(size.y, weighted.y)));
+}
+// Section headings at the sidebar's 18 px SemiBold step.
+inline void Section(const char* text)
+{
+    const float size = ImGui::GetFontSize()*18.f/14.f;
+    ImGui::Spacing(); ImGui::PushFontSize(size); BoldWrapped(text, ImVec4(.90f,.90f,.90f,1), size/18.f); ImGui::PopFontSize();
 }
 inline void Field(const Control& field, Config& cfg)
 {
@@ -259,12 +327,14 @@ inline void Field(const Control& field, Config& cfg)
     { bool on = value != 0; changed = ImGui::Checkbox(label, &on); value = on ? 1.f : 0.f; }
     else
     {
-        ImGui::TextUnformatted(label); ImGui::SetNextItemWidth(-1);
+        // Labels sit close to their control, as in the rtxForge sidebar.
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,ImVec2(ImGui::GetStyle().ItemSpacing.x,3.f*ImGui::GetFontSize()/14.f));
+        ImGui::TextUnformatted(label); ImGui::PopStyleVar(); ImGui::SetNextItemWidth(-1);
         if(field.kind == Kind::choice)
         {
             const char* preview = "Automatic";
             for(size_t i=0; i<field.count; ++i) if(field.choices[i].value == value) preview = field.choices[i].label;
-            if(ImGui::BeginCombo("##value", preview))
+            if(Dropdown(preview))
             {
                 for(size_t i=0; i<field.count; ++i)
                 {
@@ -285,17 +355,23 @@ inline void Field(const Control& field, Config& cfg)
                 if(!ImGui::IsItemDeactivatedAfterEdit()) return;
                 if(const auto held = dragging.find(field.key); held != dragging.end()) { value = held->second; dragging.erase(held); changed = true; }
             };
-            SliderSurface(field.high > field.low ? (value - field.low) / (field.high - field.low) : 0.f);
+            const float scale = ImGui::GetFontSize()/14.f;
+            const float fraction = field.high > field.low ? (value - field.low) / (field.high - field.low) : 0.f;
+            char text[32];
             if(field.kind == Kind::number)
-            { int n = int(value); if(ImGui::SliderInt("##value", &n, int(field.low), int(field.high))) dragging[field.key] = float(n); ImGui::PopStyleColor(3); released(); }
+            {
+                int n = int(value); std::snprintf(text, sizeof(text), "%d", n); SliderBegin(text);
+                if(ImGui::SliderInt("##value", &n, int(field.low), int(field.high), "")) dragging[field.key] = float(n);
+                released(); SliderEnd(fraction, scale);
+            }
             else
             {
                 const bool percent = !advanced || std::strcmp(field.key,"work_scale") == 0;
-                const auto format = percent ? "%.0f%%" : "%.2f";
                 auto shown = percent ? value * 100.f : value;
-                if(ImGui::SliderFloat("##value", &shown, percent ? field.low*100 : field.low, percent ? field.high*100 : field.high, format, ImGuiSliderFlags_AlwaysClamp))
+                std::snprintf(text, sizeof(text), percent ? "%.0f%%" : "%.2f", shown); SliderBegin(text);
+                if(ImGui::SliderFloat("##value", &shown, percent ? field.low*100 : field.low, percent ? field.high*100 : field.high, "", ImGuiSliderFlags_AlwaysClamp))
                     dragging[field.key] = percent ? shown/100.f : shown;
-                ImGui::PopStyleColor(3); released();
+                released(); SliderEnd(fraction, scale);
                 if(std::strcmp(field.key,"skin") == 0 && value < 0) ImGui::TextDisabled("-1 follows local structure");
             }
         }
@@ -317,7 +393,7 @@ inline void Pipelines(float scale)
         ImGui::InvisibleButton(name,size); auto* draw=ImGui::GetWindowDrawList();
         draw->AddRectFilled(pos,ImVec2(pos.x+size.x,pos.y+size.y),ImGui::GetColorU32(ImVec4(1,1,1,.06f)),11*scale);
         draw->AddCircleFilled(ImVec2(pos.x+10*scale,pos.y+11*scale),2.5f*scale,ImGui::GetColorU32(color),12);
-        draw->AddText(ImVec2(pos.x+17*scale,pos.y+4*scale),ImGui::GetColorU32(ImVec4(.8f,.8f,.8f,1)),name);
+        draw->AddText(bold ? bold : font,11.f*scale,ImVec2(pos.x+17*scale,pos.y+5*scale),ImGui::GetColorU32(color),name);
         if(ImGui::IsItemHovered()) ImGui::SetTooltip("%s",info.value("detail",std::string("File ownership is unavailable. This does not indicate live activity.")).c_str());
         if(std::strcmp(name,"FG") != 0) ImGui::SameLine();
     }
@@ -379,7 +455,7 @@ inline void SettingsControls()
 {
     using ForgePanelChannel::pending; using ForgePanelChannel::helperReady; using ForgePanelChannel::Send;
     auto& prefs = ForgePanelChannel::settings;
-    ImGui::SeparatorText("Overlay settings");
+    Section("Overlay settings");
     ImGui::BeginDisabled(pending || !helperReady);
     bool advancedChoice=advanced;
     if(ImGui::Checkbox("Advanced controls", &advancedChoice))
@@ -404,14 +480,14 @@ inline void SettingsControls()
         ImGui::TextWrapped("Optional Ctrl, Alt or Shift. Insert stays with OptiScaler.");
     }
     if(ImGui::SmallButton("Disable shortcut")) Send({{"op","set-setting"},{"key","panel_binding"},{"value",{{"key",0},{"modifiers",0}}}});
-    ImGui::SeparatorText("OptiScaler");
+    Section("OptiScaler");
     PreferenceToggle("In-game menu##opti","optiscaler_ui",true);
     PreferenceToggle("Intro message##opti","optiscaler_intro",false);
     const char* nativeItems[]={"Insert","F8","Disabled"};
     const auto native=prefs.value("optiscaler_hotkey",std::string("Insert")); int selectedNative=native=="F8" ? 1 : native=="Disabled" ? 2 : 0;
     ImGui::SetNextItemWidth(-1);
     if(ImGui::Combo("Original menu shortcut",&selectedNative,nativeItems,3)) Preference("optiscaler_hotkey",nativeItems[selectedNative]);
-    ImGui::SeparatorText("ReShade");
+    Section("ReShade");
     PreferenceToggle("In-game menu##reshade","reshade_ui",true);
     PreferenceToggle("Welcome messages##reshade","reshade_intro",false);
     ImGui::TextWrapped("Menu access and welcome messages are separate. NR, MFG and effects stay installed.");
@@ -419,7 +495,7 @@ inline void SettingsControls()
     { ForgePanelChannel::review=nlohmann::json::object(); Send({{"op","menus-review"}}); }
     ImGui::TextWrapped("Menu, intro and primary overlay changes take effect after restarting the game.");
     ReviewedChanges();
-    ImGui::SeparatorText("Background helper");
+    Section("Background helper");
     PreferenceToggle("Start with Windows","overlay_start_with_windows",true);
     ImGui::TextWrapped("The helper saves presets and handles reviews. The main rtxForge window can stay closed.");
     PreferenceToggle("Enable helper","overlay_helper",true);
@@ -451,13 +527,13 @@ inline bool Draw(bool& visible, float scale)
     // backdrop sampling, render target or shader pass.
     ImGui::SetNextWindowPos(ImVec2(edge,edge + height*(1-sizeScale)*.5f), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(width*sizeScale,height*sizeScale), ImGuiCond_Always);
-    ImGui::PushFont(font, 15.f*scale);
+    ImGui::PushFont(font, 14.f*scale);
     ImGui::PushStyleVar(ImGuiStyleVar_Alpha,eased);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding,20.f*scale);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,ImVec2(26.f*scale,22.f*scale));
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding,10.f*scale);
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,ImVec2(10.f*scale,9.f*scale));
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,ImVec2(10.f*scale,12.f*scale));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,ImVec2(10.f*scale,8.f*scale));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,ImVec2(10.f*scale,8.f*scale));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize,1.f*scale);
     ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize,16.f*scale);
     ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding,8.f*scale);
@@ -468,42 +544,43 @@ inline bool Draw(bool& visible, float scale)
     const ImVec4 neutral(.91f,.91f,.91f,1), dark(.12f,.12f,.12f,1), well(.18f,.18f,.18f,1);
     const auto ink = TitleColor();
     const auto alpha = [](ImVec4 color, float a) { color.w = a; return color; };
-    ImGui::PushStyleColor(ImGuiCol_WindowBg,ImVec4(.045f,.045f,.045f,.78f));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg,ImVec4(.045f,.045f,.045f,.55f));
     ImGui::PushStyleColor(ImGuiCol_Border,ImVec4(1,1,1,.08f));
     ImGui::PushStyleColor(ImGuiCol_Text,neutral);
     ImGui::PushStyleColor(ImGuiCol_Button,Mix(accent,dark,.20f));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered,Mix(accent,dark,.32f));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive,Mix(accent,dark,.45f));
-    ImGui::PushStyleColor(ImGuiCol_FrameBg,alpha(well,.8f));
-    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered,alpha(Mix(accent,well,.18f),.85f));
-    ImGui::PushStyleColor(ImGuiCol_FrameBgActive,alpha(Mix(accent,well,.28f),.9f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBg,well);
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered,Mix(accent,well,.18f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgActive,Mix(accent,well,.28f));
     ImGui::PushStyleColor(ImGuiCol_CheckMark,ink);
     ImGui::PushStyleColor(ImGuiCol_SliderGrab,ink);
     ImGui::PushStyleColor(ImGuiCol_SliderGrabActive,Mix(ink,neutral,.6f));
-    ImGui::PushStyleColor(ImGuiCol_Header,Mix(accent,dark,.18f));
-    ImGui::PushStyleColor(ImGuiCol_HeaderHovered,Mix(accent,dark,.26f));
-    ImGui::PushStyleColor(ImGuiCol_HeaderActive,Mix(accent,dark,.34f));
-    ImGui::PushStyleColor(ImGuiCol_PopupBg,ImVec4(.07f,.07f,.07f,.94f));
+    ImGui::PushStyleColor(ImGuiCol_Header,ImVec4(.20f,.20f,.20f,1));
+    ImGui::PushStyleColor(ImGuiCol_HeaderHovered,ImVec4(.26f,.26f,.26f,1));
+    ImGui::PushStyleColor(ImGuiCol_HeaderActive,ImVec4(.31f,.31f,.31f,1));
+    ImGui::PushStyleColor(ImGuiCol_PopupBg,ImVec4(.07f,.07f,.07f,1));
     ImGui::PushStyleColor(ImGuiCol_ScrollbarBg,ImVec4(0,0,0,0));
-    ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab,ImVec4(.5f,.5f,.5f,.35f));
-    ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabHovered,ImVec4(.6f,.6f,.6f,.5f));
-    ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabActive,ImVec4(.7f,.7f,.7f,.6f));
+    ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab,ImVec4(.32f,.32f,.32f,1));
+    ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabHovered,ImVec4(.42f,.42f,.42f,1));
+    ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabActive,ImVec4(.52f,.52f,.52f,1));
     ImGui::PushStyleColor(ImGuiCol_Separator,ImVec4(1,1,1,.10f));
     ImGui::PushStyleColor(ImGuiCol_NavCursor,ink);
     ImGui::PushStyleColor(ImGuiCol_TextSelectedBg,alpha(Mix(accent,dark,.4f),.5f));
     ImGui::Begin("rtxForge##ingame",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoSavedSettings|ImGuiWindowFlags_NoScrollWithMouse|ImGuiWindowFlags_NoScrollbar);
-    ImGui::TextUnformatted("rtxForge"); ImGui::SameLine(ImGui::GetWindowWidth()-ImGui::GetStyle().WindowPadding.x-110.f*scale);
+    Brand(scale); ImGui::PushFontSize(15.f*scale); BoldWrapped("rtxForge",ImVec4(.90f,.90f,.90f,1),scale); ImGui::PopFontSize(); ImGui::SameLine(ImGui::GetWindowWidth()-ImGui::GetStyle().WindowPadding.x-110.f*scale);
     if(IconButton("Global controls",2,scale)) { global = !global; settings = false; ForgePanelChannel::DiscardReview(); }
     ImGui::SameLine(); if(IconButton("Overlay settings",1,scale)) { settings = !settings; global = false; ForgePanelChannel::DiscardReview(); }
     ImGui::SameLine(); if(IconButton("Close panel",0,scale)) visible = false;
-    ImGui::PushFontSize(24.f*scale); ImGui::PushStyleColor(ImGuiCol_Text,global ? neutral : TitleColor());
-    ImGui::TextWrapped("%s",global ? "All installed games" : title.c_str()); ImGui::PopStyleColor(); ImGui::PopFontSize();
+    ImGui::PushFontSize(23.f*scale); BoldWrapped(global ? "All installed games" : title.c_str(), global ? neutral : TitleColor(), scale); ImGui::PopFontSize();
     if(global) ImGui::TextDisabled("One-time changes - review before applying");
     else Pipelines(scale);
     ImGui::Spacing();
     const auto feedbackHeight=message.empty() ? 0.f : std::min(60.f*scale,ImGui::CalcTextSize(message.c_str(),nullptr,false,ImGui::GetContentRegionAvail().x).y);
     const auto footer = (settings || global ? 40.f : 94.f)*scale+feedbackHeight;
     ImGui::BeginChild("controls",ImVec2(0,-footer),ImGuiChildFlags_None,ImGuiWindowFlags_NoBackground);
+    // A narrower inner region keeps content clear of the scrollbar.
+    ImGui::BeginChild("content",ImVec2(ImGui::GetContentRegionAvail().x-12.f*scale,0),ImGuiChildFlags_AutoResizeY|ImGuiChildFlags_NavFlattened,ImGuiWindowFlags_NoBackground|ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
     auto& cfg = *Config::Instance();
     if(settings)
     {
@@ -520,7 +597,7 @@ inline bool Draw(bool& visible, float scale)
             {
                 group = field.group; ImGui::Spacing();
                 const bool primary = std::strcmp(group,"Frame generation") == 0 || std::strcmp(group,"Neural rendering") == 0 || std::strcmp(group,"Image tuning") == 0;
-                if(primary) { ImGui::SeparatorText(group); open = true; }
+                if(primary) { Section(group); open = true; }
                 else open = ImGui::CollapsingHeader(group);
             }
             if(!open) continue;
@@ -549,7 +626,7 @@ inline bool Draw(bool& visible, float scale)
             ImGui::EndDisabled();
         }
     }
-    ImGui::EndChild();
+    ImGui::EndChild(); ImGui::EndChild();
     if(!message.empty())
     { ImGui::BeginChild("feedback",ImVec2(0,feedbackHeight),ImGuiChildFlags_None,ImGuiWindowFlags_NoBackground); ImGui::TextWrapped("%s",message.c_str()); ImGui::EndChild(); }
     const auto available = ImGui::GetContentRegionAvail().x, gap = 10.f*scale;
@@ -558,7 +635,10 @@ inline bool Draw(bool& visible, float scale)
     const auto saveColor=Mix(accent,dark,.45f);
     ImGui::PushStyleColor(ImGuiCol_Button,saveColor); ImGui::PushStyleColor(ImGuiCol_Text,OnColor(saveColor));
     ImGui::BeginDisabled(pending || !helperReady || !ForgePanelChannel::settings.value("overlay_helper",true));
-    if(ImGui::Button("Save preset",ImVec2((available-gap)*.66f,42.f*scale)))
+    ImGui::PushFont(bold ? bold : font, ImGui::GetFontSize());
+    const bool saveClicked = ImGui::Button("Save preset",ImVec2((available-gap)*.66f,42.f*scale));
+    ImGui::PopFont();
+    if(saveClicked)
     {
         Flush(cfg, true);
         nlohmann::json changes = nlohmann::json::object();

@@ -2636,6 +2636,8 @@ button.dlss-outline:active { background: alpha(@window_fg_color,0.25); }
 }
 .card-meta { font-size: 10px; opacity: 0.7; }
 
+.poster-os-badge { min-width: 22px; min-height: 22px; background: alpha(black,0.35); border: 1px solid alpha(white,0.22); border-radius: 6px; }
+.poster-os-badge image { color: white; }
 .cover-badge { background: alpha(black,0.65); color: white; text-shadow: 0 1px 3px black; padding: 5px 8px; border-radius: 8px; font-size: 10px; font-weight: 700; }
 .cover-badge.unavailable { color: #ffb3ad; }
 
@@ -5117,7 +5119,7 @@ class Window(Adw.ApplicationWindow):
         self.selected_label=label('0 selected', 'selection-count')
         # Artwork size, as on Windows: the window width decides how many
         # posters or capsules fit at this size.
-        self.art_scale=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,85,150,5)
+        self.art_scale=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,75,150,5)
         self.art_scale.set_draw_value(False)
         self.art_scale.set_size_request(120,-1)
         self.art_scale.set_valign(Gtk.Align.CENTER)
@@ -6706,9 +6708,9 @@ class Window(Adw.ApplicationWindow):
 
         # As many columns as fit at the slider's size; the solver below then
         # widens them so the row ends flush with the edge (Windows
-        # ApplyGridMetrics: 180 px posters / 300 px capsules at 100%).
+        # ApplyGridMetrics: 212 px posters / 300 px capsules at 100%).
         preferred_gap=16
-        preferred_width=(300 if view=='capsules' else 180)*self.library_art_scale()/100
+        preferred_width=(300 if view=='capsules' else 212)*self.library_art_scale()/100
         slot_count=max(1,int((usable_width+preferred_gap)//(preferred_width+preferred_gap)))
         visible_entries=[
             entry
@@ -9190,11 +9192,11 @@ class Window(Adw.ApplicationWindow):
 
 
     def library_art_scale(self):
-        """Artwork size in percent (85–150), 100 until the person changes it."""
+        """Artwork size in percent (75–150), 100 until the person changes it."""
         if not self.settings.get('art_scale_chosen'):return 100
         try:value=int(self.settings.get('art_scale',100))
         except (TypeError,ValueError):value=100
-        return max(85,min(150,value))
+        return max(75,min(150,value))
 
     def art_scale_changed(self,scale):
         value=int(round(scale.get_value()/5)*5)
@@ -10887,6 +10889,13 @@ class Window(Adw.ApplicationWindow):
                 check,
                 False,
             )
+        # Installed-OS mark on the art, top-left: 22 px translucent square.
+        os_badge=Gtk.Box(halign=Gtk.Align.START,valign=Gtk.Align.START,can_target=True,visible=False)
+        os_badge.add_css_class('poster-os-badge');margins(os_badge,8)
+        os_badge._icon=Gtk.Image(pixel_size=12,halign=Gtk.Align.CENTER,valign=Gtk.Align.CENTER,hexpand=True)
+        os_badge.append(os_badge._icon)
+        if view!='list':
+            overlay.add_overlay(os_badge);overlay.set_measure_overlay(os_badge,False)
         badge=label('Unsupported' if game.get('blocked') else game.get('profile','Ready') if game.get('installed') else 'Ready','cover-badge');badge.set_halign(Gtk.Align.START);badge.set_valign(Gtk.Align.END);margins(badge,7)
         badge_mode={'NR Only':'nr-only','MFG Only':'mfg-only','NR + MFG':'nr-mfg'}.get(game.get('profile'))
         if badge_mode:
@@ -11072,6 +11081,7 @@ class Window(Adw.ApplicationWindow):
             'picture':pic,
             'fallback':fallback,
             'meta':meta,
+            'os_badge':os_badge,
             'test_meta':test_meta,
             'meta_row':meta_row,
             'data':game,
@@ -11111,7 +11121,16 @@ class Window(Adw.ApplicationWindow):
         self.decorate_support_artwork(entry['overlay'],entry['picture'],game,path)
         state='Unsupported' if game.get('blocked') else 'Installed' if game.get('installed') else 'Available'
         entry['meta'].set_text(state.upper())
-        entry['meta'].set_os(game.get('installed_on') if game.get('installed') else None)
+        installed_on=game.get('installed_on') if game.get('installed') else None
+        on_art=installed_on in ('linux','windows') and self.settings.get('library_view','posters')!='list'
+        # Posters and capsules carry the mark on the art; List keeps it beside the status.
+        entry['meta'].set_os(None if on_art else installed_on)
+        badge=entry.get('os_badge')
+        if badge is not None:
+            badge.set_visible(on_art)
+            if on_art:
+                badge._icon.set_from_icon_name('rtx-os-'+installed_on+'-symbolic')
+                badge.set_tooltip_text('Installed with rtxForge on '+installed_on.title())
         for css in ('state-installed','state-available','state-unsupported'):entry['meta'].remove_css_class(css)
         entry['meta'].add_css_class('state-'+state.lower())
 

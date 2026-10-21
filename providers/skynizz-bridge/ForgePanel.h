@@ -340,23 +340,90 @@ inline bool SwitchRow(const char* label, bool* on)
     return changed;
 }
 // A section heading with a feature switch inline, like the sidebar's Neural rendering.
-inline void HeaderSwitch(const char* text, const char* key, Config& cfg)
+inline bool HeaderToggle(const char* text, bool* on, bool enabled)
 {
     const float scale = ImGui::GetFontSize()/14.f, size = 18.f*scale, width = 40.f*scale, height = 20.f*scale;
     ImGui::Spacing();
     const float left = ImGui::GetCursorPosX(), available = ImGui::GetContentRegionAvail().x, top = ImGui::GetCursorPosY();
     ImGui::PushFontSize(size); BoldWrapped(text, ImVec4(.90f,.90f,.90f,1), scale); const float line = ImGui::GetFontSize(); ImGui::PopFontSize();
+    ImGui::SameLine(left + available - width); ImGui::SetCursorPosY(top + (line - height)*.5f);
+    ImGui::BeginDisabled(!enabled); ImGui::PushID(text);
+    const bool changed = Switch("##header", on);
+    ImGui::PopID(); ImGui::EndDisabled();
+    return changed;
+}
+inline void HeaderSwitch(const char* text, const char* key, Config& cfg)
+{
     for(const auto& field : controls)
     {
         if(std::strcmp(field.key, key) != 0) continue;
-        ImGui::SameLine(left + available - width); ImGui::SetCursorPosY(top + (line - height)*.5f);
         const auto pending = queued.find(&field);
         bool on = (pending != queued.end() ? pending->second : field.get(cfg)) != 0;
-        ImGui::BeginDisabled(!Available(field)); ImGui::PushID(field.key);
-        if(Switch("##header", &on)) Commit(field, cfg, on ? 1.f : 0.f);
-        ImGui::PopID(); ImGui::EndDisabled();
+        if(HeaderToggle(text, &on, Available(field))) Commit(field, cfg, on ? 1.f : 0.f);
     }
+}// A sidebar-style segmented button: accent fill when selected.
+inline bool Segment(const char* label, bool selected, float width, bool enabled = true)
+{
+    const ImVec4 dark(.12f,.12f,.12f,1);
+    ImGui::BeginDisabled(!enabled);
+    ImGui::PushStyleColor(ImGuiCol_Button, Mix(accent, dark, selected ? .45f : .06f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Mix(accent, dark, selected ? .55f : .16f));
+    ImGui::PushFont(selected && bold ? bold : font, ImGui::GetFontSize());
+    const bool pressed = ImGui::Button(label, ImVec2(width, 0));
+    ImGui::PopFont(); ImGui::PopStyleColor(2); ImGui::EndDisabled();
+    return pressed;
 }
+inline float lastFrameGeneration = -1.f;
+// Multi-Frame Generation: an on/off switch on the heading, Auto/Custom/Dynamic
+// tabs, and 2x to 6x as the fixed ratio (Custom) or the ceiling (Dynamic).
+inline void FrameGeneration(Config& cfg)
+{
+    const Control* field = nullptr;
+    for(const auto& control : controls) if(std::strcmp(control.key, "multiplier") == 0) field = &control;
+    if(!field) return;
+    const auto pending = queued.find(field);
+    const float value = pending != queued.end() ? pending->second : field->get(cfg);
+    const bool dynamic = cfg.FGDLSSGOverrideForceDMFG.value_or_default();
+    const int ceiling = std::clamp(State::Instance().dlssgMfgMax.value_or(0) + 1, 2, 6);
+    bool on = value != 0;
+    if(HeaderToggle("Multi-Frame Generation", &on, mfgAllowed))
+    {
+        if(on) Commit(*field, cfg, lastFrameGeneration != 0 ? lastFrameGeneration : -1.f);
+        else { lastFrameGeneration = value; cfg.FGDLSSGOverrideForceDMFG.set_volatile_value(false); Commit(*field, cfg, 0.f); }
+    }
+    if(!on) { ImGui::TextDisabled("Multi-Frame Generation is off."); ImGui::Spacing(); return; }
+    ImGui::BeginDisabled(!mfgAllowed);
+    const int mode = dynamic ? 2 : value < 0 ? 0 : 1;
+    const char* tabs[] = { "Auto", "Custom", "Dynamic" };
+    const float gap = ImGui::GetStyle().ItemSpacing.x, third = (ImGui::GetContentRegionAvail().x - gap*2)/3;
+    const bool dynamicReady = State::Instance().dlssgGameDMFGSupported;
+    for(int i = 0; i < 3; ++i)
+    {
+        if(i) ImGui::SameLine();
+        if(!Segment(tabs[i], mode == i, third, i != 2 || dynamicReady || dynamic)) continue;
+        const float ratio = value >= 2 ? value : float(i == 2 ? ceiling : 2);
+        cfg.FGDLSSGOverrideForceDMFG.set_volatile_value(i == 2);
+        Commit(*field, cfg, i == 0 ? -1.f : ratio);
+    }
+    if(mode == 0) ImGui::TextDisabled("Follows the game's frame generation setting.");
+    else
+    {
+        ImGui::TextUnformatted(mode == 2 ? "Maximum generated frames" : "Multiplier");
+        const char* ratios[] = { "2\xC3\x97", "3\xC3\x97", "4\xC3\x97", "5\xC3\x97", "6\xC3\x97" };
+        const float fifth = (ImGui::GetContentRegionAvail().x - gap*4)/5;
+        for(int r = 2; r <= 6; ++r)
+        {
+            if(r > 2) ImGui::SameLine();
+            ImGui::PushID(r);
+            if(Segment(ratios[r-2], int(value) == r, fifth, r <= ceiling)) Commit(*field, cfg, float(r));
+            ImGui::PopID();
+        }
+        if(mode == 2) ImGui::TextDisabled("Generates up to this many frames to reach your display's refresh rate.");
+    }
+    if(!dynamicReady && !dynamic) ImGui::TextDisabled("Dynamic needs a game and driver that support it.");
+    ImGui::EndDisabled(); ImGui::Spacing();
+}
+
 // The sidebar's labelled dropdown for plain lists.
 inline bool ChoiceList(const char* label, int* current, const char* const items[], int count)
 {
@@ -672,11 +739,11 @@ inline bool Draw(bool& visible, float scale)
             {
                 group = field.group; ImGui::Spacing();
                 const bool primary = std::strcmp(group,"Frame generation") == 0 || std::strcmp(group,"Neural rendering") == 0 || std::strcmp(group,"Image tuning") == 0;
-                if(primary) { if(std::strcmp(group,"Neural rendering") == 0) HeaderSwitch(group,"enabled",cfg); else Section(group); open = true; }
+                if(primary) { if(std::strcmp(group,"Neural rendering") == 0) HeaderSwitch(group,"enabled",cfg); else if(std::strcmp(group,"Frame generation") == 0) FrameGeneration(cfg); else Section(group); open = true; }
                 else open = ImGui::CollapsingHeader(group);
             }
             if(!open) continue;
-            if(std::strcmp(field.key,"passes")==0 || std::strcmp(field.key,"enabled")==0) continue;
+            if(std::strcmp(field.key,"passes")==0 || std::strcmp(field.key,"enabled")==0 || std::strcmp(field.key,"multiplier")==0) continue;
             if(std::strcmp(field.key,"preset")==0 && ImGui::BeginTable("model choices",2,ImGuiTableFlags_SizingStretchSame))
             {
                 ImGui::TableNextColumn(); Field(field,cfg); ImGui::TableNextColumn();
@@ -684,21 +751,6 @@ inline bool Draw(bool& visible, float scale)
                 ImGui::EndTable();
             }
             else Field(field,cfg);
-        }
-        if(ImGui::CollapsingHeader("More frame generation options"))
-        {
-            int selectedExtra=0;
-            auto& ratio=cfg.FGDLSSGOverrideInterpolationCount;
-            if(ratio.has_value() && ratio.value()>=4) selectedExtra=ratio.value()-3;
-            const char* extra[]={"Use selection above","5x","6x"};
-            ImGui::BeginDisabled(!mfgAllowed); ImGui::SetNextItemWidth(-1);
-            if(ChoiceList("Multiplier",&selectedExtra,extra,3) && selectedExtra>0)
-            {
-                const int requested=selectedExtra+4;
-                if(requested-1 <= State::Instance().dlssgMfgMax.value_or(0)) Commit(controls[0],cfg,float(requested));
-                else ForgePanelChannel::message="This frame generation ratio is unavailable on the active backend.";
-            }
-            ImGui::EndDisabled();
         }
     }
     ImGui::EndChild(); ImGui::EndChild();

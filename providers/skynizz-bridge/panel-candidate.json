@@ -5,7 +5,7 @@
   "patch": "panel-candidate.patch",
   "sources": {
     "providers/skynizz-bridge/panel-candidate.patch": "8034c27322b94eaf6a3f4f010890e6647fab6677c63a4b627d71285996bae9b3",
-    "providers/skynizz-bridge/ForgePanel.h": "1f8e41b2367ec95f0005a9eef74fc71a1e989688da35d8b8c0465298ee739b24",
+    "providers/skynizz-bridge/ForgePanel.h": "a1c8bfe616447341c13df4227d730177e03e7c547a55a17318832b3f9d9c14d2",
     "providers/skynizz-bridge/Generate-Panel.ps1": "8bfeb872e2f0404bcfdb6db29854b2a07b8f95a8f50ef03f2cae2bc1a500d55a",
     "providers/skynizz-bridge/controls.json": "a1d41503aa12597e2942ff14a0bc5341b08db0ec595d12ba0f2845612d900a9f",
     "windows/RtxForge.Windows/Assets/Fonts/InterVariable.ttf": "4989b125924991b90d05b2d16e0e388c48f7d5bb8b30539bbf9c755278d0ccaf",

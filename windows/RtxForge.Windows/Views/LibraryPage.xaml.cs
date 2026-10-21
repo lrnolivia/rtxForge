@@ -30,6 +30,11 @@ public sealed partial class LibraryPage : Page
     public LibraryPage()
     {
         InitializeComponent();
+        ActualThemeChanged += (_, _) =>
+        {
+            if (Library.ItemsSource is IEnumerable<GameItem> items)
+                foreach (var item in items) item.RefreshTheme();
+        };
 
         // List view Actions column: Install / Restore, and the row's "…" menu.
         actions = new GameActions(
@@ -141,6 +146,7 @@ public sealed partial class LibraryPage : Page
     {
         (Settings.LibraryFilter switch { "available" => FilterAvailable, "installed" => FilterInstalled, _ => FilterAll }).IsChecked = true;
         ModeNrOnly.IsEnabled = shell.NrOnlyAvailable;
+        ModeMfgOnly.IsEnabled = ModeNrMfg.IsEnabled = Settings.RuntimeProvider != "feeder";
         SetMode(shell.Mode);
         (Settings.LibraryView switch { "capsules" => ViewCapsules, "list" => ViewList, _ => ViewPosters }).IsChecked = true;
         UpdateDashboard();
@@ -154,8 +160,8 @@ public sealed partial class LibraryPage : Page
         var games = shell.Games;
         var libs = games.Select(g => g.Library).Distinct().Count();
         var installs = games.Count(g => g.Installed);
-        StatsText.Text = games.Count == 0 && shell.Hardware is null
-            ? "Finding your games…"
+        StatsText.Text = games.Count == 0 && shell.LibraryRefreshing
+            ? ""
             : $"{games.Count} games · {libs} locations · {installs} OptiScaler installs detected";
         if (shell.Hardware is { } hardware)
             HardwareText.Text = shell.Service.IsPreview
@@ -164,7 +170,7 @@ public sealed partial class LibraryPage : Page
 
         var scale = Settings.ArtScale / 100.0;
         var items = LibraryScope.Filter(games, Settings.LibraryFilter, shell.Query)
-            .Select(g => new GameItem(g, Settings, actions, selectedIds.Count > 0, selectedIds.Contains(g.Id), density) { PresetMode = shell.PresetSelecting })
+            .Select(g => new GameItem(g, Settings, actions, selectedIds.Count > 0, selectedIds.Contains(g.Id), density, this) { PresetMode = shell.PresetSelecting })
             .ToList();
         for (var i = 0; i < items.Count; i++)
         {
@@ -173,6 +179,13 @@ public sealed partial class LibraryPage : Page
         }
 
         var view = Settings.LibraryView;
+        var loading = shell.LibraryRefreshing && games.Count == 0;
+        StatsText.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
+        LoadingCards.Configure(view, Settings.ArtScale / 100.0);
+        LoadingCards.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
+        RefreshStatus.Visibility = !loading && (shell.LibraryRefreshing || shell.LibraryLoadError is not null) ? Visibility.Visible : Visibility.Collapsed;
+        RefreshStatus.Text = shell.LibraryLoadError is not null ? "Could not refresh your library. Rescan to try again."
+            : games.Count > 0 ? "Refreshing library…" : "Finding your games…";
         Library.ItemTemplate = (DataTemplate)Resources[view switch
         {
             "capsules" => "CapsuleTemplate",
@@ -188,7 +201,9 @@ public sealed partial class LibraryPage : Page
         }
         Library.ItemsSource = items;
         ListHeader.Visibility = view == "list" && items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        EmptyText.Visibility = items.Count == 0 && games.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        EmptyText.Visibility = items.Count == 0 && !shell.LibraryRefreshing ? Visibility.Visible : Visibility.Collapsed;
+        EmptyText.Text = shell.LibraryLoadError is not null ? "Your library could not be loaded."
+            : games.Count == 0 ? "No games found. Add a folder or rescan your library." : "No games match this view.";
         ArtScale.IsEnabled = view != "list";
         UpdateSelectionActions();
     }
@@ -200,8 +215,9 @@ public sealed partial class LibraryPage : Page
     /// </summary>
     void ApplyGridMetrics()
     {
-        const double gap = 16, footer = 68, border = 4;
+        const double gap = 16, border = 4;
         var capsules = Settings.LibraryView == "capsules";
+        var footer = capsules ? 68 : 88;
         var preferred = (capsules ? 300 : 212) * Settings.ArtScale / 100.0;
         var available = Library.ActualWidth;
         if (available <= 0) available = Math.Max(preferred, ActualWidth - 72);
@@ -230,6 +246,7 @@ public sealed partial class LibraryPage : Page
         Dashboard.Padding = new Thickness(side, 12, side, 0);
         Toolbar.Padding = new Thickness(side, Toolbar.Padding.Top, side, 0);
         Body.Padding = new Thickness(side, 16, side, 48);
+        LoadingCards.Margin = new Thickness(side, 16, side, 48);
 
         var narrowHero = width < 1100;
         Grid.SetRow(HeroActions, narrowHero ? 1 : 0);
@@ -304,10 +321,11 @@ public sealed partial class LibraryPage : Page
         Add("Game Details", "", () => shell.OpenGame(game));
         Add("DLSS Files", "", () => shell.OpenGame(game, "DLSS Files"));
         menu.Items.Add(new MenuFlyoutSeparator());
-        Add(game.InstallLabel, "", () => _ = shell.LaunchAction("install", [game]), !game.Blocked && !shell.Busy);
+        Add(game.InstallLabel, "", () => _ = shell.LaunchAction("install", [game]), (!game.Blocked || game.AdoptionAvailable) && !shell.Busy);
+        if (game.OfflineOnly) Add("Launch offline", "", () => _ = shell.LaunchOfflineAsync(game), !shell.Busy);
         Add("Restore Original Files", "", () => _ = shell.LaunchAction("uninstall", [game]), game.Installed && !shell.Busy);
         menu.Items.Add(new MenuFlyoutSeparator());
-        Add("Open Folder", "", () => Process.Start(new ProcessStartInfo("explorer.exe", $"\"{game.Location}\"") { UseShellExecute = true }),
+        Add("Open Folder", "", () => _ = shell.OpenGameFolderAsync(game),
             !shell.Service.IsPreview && Directory.Exists(game.Location));
         menu.Items.Add(new MenuFlyoutSeparator());
         Add("Remove from library", "", () => _ = shell.ConfirmRemoveLibraryEntriesAsync([game]), !shell.Busy);
@@ -396,6 +414,7 @@ public sealed partial class LibraryPage : Page
 
     void SetMode(string value)
     {
+        if (Settings.RuntimeProvider == "feeder") value = "nr-only";
         shell.Mode = value;
         syncingMode = true;
         foreach (var toggle in new[] { ModeNrOnly, ModeMfgOnly, ModeNrMfg })

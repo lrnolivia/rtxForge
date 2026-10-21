@@ -21,6 +21,7 @@ so the files written are exactly the ones the user reviewed.
 from __future__ import annotations
 
 import io
+import configparser
 import json
 import os
 import subprocess
@@ -201,15 +202,17 @@ _NO_SHORTCUT = LOCAL / "engine-state" / "windows-native-launch"
 
 
 def _running_under(root: Path) -> list[str]:
-    """Processes whose image lives under this game folder (Windows process list)."""
-    script = ("$r=$args[0]; Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($r, "
-              "[StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { \"$($_.Id):$($_.ProcessName)\" }")
-    try:
-        result = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script, str(root.resolve())],
-                                text=True, capture_output=True, timeout=20, creationflags=NO_WINDOW)
-        return [line for line in result.stdout.splitlines() if line.strip()]
-    except (OSError, subprocess.SubprocessError):
-        return []
+    """Fresh native inventory; no PowerShell process per check or stale cache."""
+    import win_processes
+    return win_processes.running_under(root)
+
+
+def _running_snapshot():
+    import win_processes
+    return win_processes.snapshot()
+
+
+_running_under.snapshot = _running_snapshot
 
 
 def windows_steam_running() -> bool:
@@ -348,6 +351,14 @@ def hello(_params):
 def scan(params):
     import library_scan
     rows = library_scan.scan(service, params.get('folders', []), params.get('library_folders', []))
+    import feeder_provider
+    rows = feeder_provider.expand_rows(engine_bridge.module(service.config), rows,
+                                      selected=params.get('runtime_provider') == 'feeder')
+    import package_adoption
+    package_adoption.decorate(engine_bridge.module(service.config), rows)
+    if params.get('runtime_provider')=='skynizz':
+        import skynizz_provider
+        skynizz_provider.scan_rows(rows,params.get('feature_mode','nr-only'))
     # Linux LibraryMedia.steam_art: the signed-in account's custom grid
     # (Non-Steam games matched through shortcuts.vdf), then Steam's cache.
     media = library_media.LibraryMedia(service.config, dict(library_media.DEFAULTS))
@@ -359,17 +370,34 @@ def scan(params):
             traceback.print_exc()
     # Your chosen artwork over Steam's, and each game's saved notes (Linux details()).
     win_features.decorate(rows)
+    import skynizz_provider
+    import transactions
+    for row in rows:
+        if row.get('installed') and row.get('runtime_provider') == 'skynizz' and row.get('exe'):
+            try: row['feature_controls'] = skynizz_provider.read_controls((Path(row['game']) / row['exe']).parent / 'OptiScaler.ini')
+            except (OSError, ValueError, TypeError, configparser.Error, transactions.Refusal): pass
     return sorted(rows, key=lambda r: r["name"].casefold())
 
 
 def prepare(params):
+    if (params.get('settings') or {}).get('runtime_provider') == 'skynizz':
+        import skynizz_provider
+        # Presentation flags belong to the requested mode. Fresh engine game
+        # inspection still owns all capability/ownership and anti-cheat checks.
+        params = dict(params, rows=skynizz_provider.scan_rows([dict(row) for row in params['rows']], params['mode']))
     review = service.prepare(params["rows"], params["mode"], params["operation"],
                              visual_settings=params.get("settings"), save_defaults=params.get("save_defaults", False))
     if review.get("kind") == "engine":
         import dlss_updates
         settings = library_media.load_settings(service.config) | (params.get("settings") or {})
         dlss_updates.attach_install(service.config, review, enabled=settings.get('manage_dlss_files', True))
+        import game_display
+        game_display.attach(review, enabled=settings.get('borderless_4k', False))
+        import review_copy
+        review_copy.attach(review)
         review["cancel_event"] = threading.Event()
+    elif review.get('kind') in ('feeder', 'adoption'):
+        review['cancel_event'] = threading.Event()
     token = uuid.uuid4().hex
     reviews[token] = review
     return {"token": token, "title": review.get("title"), "rows": review.get("rows", []), "blocked": review.get("blocked", []),
@@ -402,6 +430,15 @@ def cancel(params):
     review = reviews.get(params["token"]) or running.get(params["token"])
     if review and review.get("cancel_event"):
         review["cancel_event"].set()
+    return {}
+
+
+def discard_operation(params):
+    # Executing operations already own their payload outside these dictionaries.
+    # Discarding a review can never cancel or alter an in-flight write.
+    for token in params.get('tokens', []):
+        reviews.pop(token, None)
+        dlss_reviews.pop(token, None)
     return {}
 
 
@@ -492,7 +529,7 @@ def steam_remove(params):
 
 running: dict[str, dict] = {}
 METHODS = {"hello": hello, "hardware": lambda _p: service.hardware(), "scan": scan, "prepare": prepare,
-           "execute": execute, "cancel": cancel, "save_defaults": save_defaults,
+           "execute": execute, "cancel": cancel, "discard_operation": discard_operation, "save_defaults": save_defaults,
            "prepare_dlss": prepare_dlss, "update_dlss": update_dlss,
            "steam_status": steam_status, "steam_review": steam_review, "steam_install": steam_install,
            "steam_remove": steam_remove}
@@ -502,6 +539,11 @@ METHODS = {"hello": hello, "hardware": lambda _p: service.hardware(), "scan": sc
 import win_features  # noqa: E402
 
 METHODS.update(win_features.install(service, lambda: engine_bridge.module(service.config).steam_config_engine()))
+import offline_routes
+METHODS['launch_offline'] = lambda p: offline_routes.launch(engine_bridge.module(service.config), p['row'])
+
+import companion_controls  # noqa: E402
+METHODS.update(companion_controls.methods(STATE))
 
 
 def handle(request: dict) -> None:
@@ -538,6 +580,8 @@ def main() -> int:
         if not line:
             continue
         request = json.loads(line)
+        # A long-lived helper must not retain every completed request thread.
+        workers[:] = [worker for worker in workers if worker.is_alive()]
         if request.get("method") == "cancel":
             handle(request)  # answered immediately, even while an operation runs
         else:

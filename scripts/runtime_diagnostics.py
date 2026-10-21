@@ -6,16 +6,21 @@ import hashlib
 import os
 import re
 import stat
+import transactions as t
 
 CROSS_GEN_SHA256='e67dee209320cdafe0e93e45675d7aa34323a53acc57a72b2e40a181581c989a'
 BLACKWELL_SHA256='e16bcf15e16e13f527491cdf7845b2fe6521a738d8f7c9c721866a8496e1fc8e'
 
 
 def read_regular(path, limit=4*1024*1024, tail=False):
-    fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+    try:path=t.safe(path)
+    except t.Refusal as error:raise ValueError(str(error)) from error
+    before=path.stat()
+    fd=os.open(path,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_NONBLOCK',0))
     with os.fdopen(fd,'rb') as source:
         info=os.fstat(source.fileno())
         if not stat.S_ISREG(info.st_mode):raise ValueError('Not a regular file')
+        if (info.st_dev,info.st_ino)!=(before.st_dev,before.st_ino):raise ValueError('File changed while opening')
         if tail:source.seek(max(0,info.st_size-limit))
         return source.read(limit),info
 
@@ -43,6 +48,9 @@ def inspect(game, hashes=True):
     relative=Path(game.get('exe',''))
     if relative.is_absolute() or '..' in relative.parts:raise ValueError('Unsafe executable path')
     directory=root/relative.parent
+    if game.get('runtime_provider') == 'feeder' or (directory/'dlss5-feed.addon64').is_file():
+        import feeder_provider
+        return feeder_provider.diagnose(game)
     result={'name':game.get('name',root.name),'settings':{},'files':{},'observations':[],
             'visual_result':'Not established by file or log inspection'}
     try:

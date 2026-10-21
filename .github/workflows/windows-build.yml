@@ -40,6 +40,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  panel-candidate:
+    name: In-game panel candidate
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Skynizz/optiscaler-dlss5
+          ref: 6bfc4389c25054ef6747df6e6b1b470e9541c4da
+          submodules: recursive
+          persist-credentials: false
+          path: windows/out/skynizz-source
+      - uses: microsoft/setup-msbuild@v2
+      - name: Build isolated renderer candidate
+        run: ./windows/build/Build-SkynizzBridge.ps1 -SourceRoot windows/out/skynizz-source -PanelCandidate
+      - uses: actions/upload-artifact@v4
+        with:
+          name: skynizz-in-game-panel-candidate
+          path: |
+            windows/out/skynizz-panel-candidate/*.zip
+            windows/out/skynizz-panel-candidate/package.json
+          if-no-files-found: error
+          retention-days: 14
   build:
     name: WinUI 3 ${{ matrix.platform }}
     runs-on: windows-2025
@@ -73,10 +97,87 @@ jobs:
       - name: Checkout rtxForge
         uses: actions/checkout@v4
 
+      - name: Cache the combined NR and MFG dependency
+        if: matrix.platform == 'x64'
+        id: bridge-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            windows/out/skynizz-bridge/*.zip
+            windows/out/skynizz-bridge/package.json
+          key: skynizz-ada-mfg-x64-v1-${{ hashFiles('providers/skynizz-bridge/**', 'windows/build/Build-SkynizzBridge.ps1') }}
+
+      - name: Checkout exact Skynizz source
+        if: matrix.platform == 'x64' && steps.bridge-cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: Skynizz/optiscaler-dlss5
+          ref: 6bfc4389c25054ef6747df6e6b1b470e9541c4da
+          submodules: recursive
+          persist-credentials: false
+          path: windows/out/skynizz-source
+
+      - name: Prepare MSBuild for the combined dependency
+        if: matrix.platform == 'x64' && steps.bridge-cache.outputs.cache-hit != 'true'
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build the combined Skynizz NR and Ada MFG loader
+        if: matrix.platform == 'x64' && steps.bridge-cache.outputs.cache-hit != 'true'
+        run: ./windows/build/Build-SkynizzBridge.ps1 -SourceRoot windows/out/skynizz-source
+
       - name: Set up .NET 10
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+
+      - name: Verify shared Windows settings compatibility
+        if: matrix.platform == 'x64'
+        run: |
+          dotnet run --project windows/tests/Settings/Settings.csproj -c Release
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          dotnet run --project windows/tests/OverlayWindow/OverlayWindow.csproj -c Release
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          dotnet run --project windows/tests/NativePanelChannel/NativePanelChannel.csproj -c Release
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          dotnet run --project windows/tests/LibrarySnapshot/LibrarySnapshot.csproj -c Release
+
+      - name: Verify Skynizz package and active Windows lifecycle
+        if: matrix.platform == 'x64'
+        run: |
+          python -X utf8 -m unittest discover -s tests -p test_ada_mfg_provider.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest discover -s tests -p test_skynizz_provider.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest discover -s tests -p test_skynizz_bridge.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest discover -s windows/tests -p test_processes.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest discover -s windows/tests -p test_library_scan.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest discover -s windows/tests -p test_discovery_inventory.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest discover -s windows/tests -p test_companion_controls.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest discover -s tests -p test_overlay_policy.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest discover -s windows/tests -p test_overlay_ui.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest discover -s windows/tests -p test_global_controls.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest discover -s windows/tests -p test_package_adoption.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest discover -s windows/tests -p test_game_display.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            python -X utf8 -m unittest discover -s windows/tests -p test_review_copy.py
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest discover -s tests -p test_feeder_provider.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest discover -s windows/tests -p test_feeder_provider.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            python -X utf8 -m unittest discover -s windows/tests -p test_dlss_updates.py
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest discover -s windows/tests -p test_skynizz_provider.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
       - name: Restore
         run: dotnet restore $env:PROJECT -r ${{ matrix.rid }} -p:Platform=${{ matrix.platform }}

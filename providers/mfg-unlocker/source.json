@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "id": "mfg-unlocker",
+  "name": "Universal MFG Unlocker",
+  "version": "1.6.1",
+  "repo": "dashdogy/MFG-Unlocker",
+  "tag": "v1.6.1",
+  "commit": "29504cdd5d209a25e3b91e809a7e0d6f9db8cbdc",
+  "url": "https://github.com/dashdogy/MFG-Unlocker/releases/download/v1.6.1/MFGUnlocker-v1.6.1.zip",
+  "archive": "MFGUnlocker-v1.6.1.zip",
+  "release_size": 2713094,
+  "sha256": "abe4d6ae7eab1ea4cacc4775b05521c459516ed72f434784e4420080571e87c5",
+  "files": {
+    "MFGUnlocker.dll": {
+      "size": 7353344,
+      "sha256": "24e3e6a8c07639fd9cbd79274e4eb21cc65a13f0453e1157720620c3d6286b33",
+      "architecture": "windows-x64"
+    }
+  },
+  "notices": {
+    "LICENSE": { "size": 1071, "sha256": "433da96087fd9b91afd44c6350ca92da53167c9636a0a71e428f71036d8c372f" },
+    "NOTICE.md": { "size": 886, "sha256": "65e6472efe0eb3e499dd9cb86152544b20a15f040c0bbaf09d8602abdb7bb44b" }
+  },
+  "upstream_gpu_support": { "rtx20": "experimental", "rtx30": "supported", "rtx40": "supported", "rtx50": "native-controls" },
+  "optiscaler": {
+    "minimum_major": 10,
+    "plugin": "OptiScaler/plugins/MFGUnlocker.asi",
+    "settings": { "Plugins": { "LoadAsiPlugins": "true" }, "FrameGen": { "FGOutput": "DLSSG" } },
+    "rtx30_dlssg_output": "experimental"
+  },
+  "integration_status": "candidate",
+  "installable": false,
+  "runtime_verified": false,
+  "default_promoted": false
+}

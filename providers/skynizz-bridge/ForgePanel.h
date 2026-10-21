@@ -1,0 +1,484 @@
+#pragma once
+#include <Config.h>
+#include <Logger.h>
+#include <Util.h>
+#include <imgui/imgui.h>
+#include <json.hpp>
+#include <fstream>
+#include <array>
+#include <type_traits>
+#include <cmath>
+#include <chrono>
+#include <cstring>
+#include "ForgePanelChannel.h"
+
+// Runs inside the already-installed menu hook. No HWND, secondary swapchain,
+// screen copy, blur pass, process polling, network or per-frame disk access.
+namespace ForgePanel
+{
+enum class Kind { toggle, choice, slider, number };
+struct Choice { float value; const char* label; };
+struct Control
+{
+    const char *key, *label, *advanced, *group;
+    Kind kind; float low, high;
+    float (*get)(Config&); void (*set)(Config&, float, bool);
+    const Choice* choices; size_t count;
+};
+#include "ForgePanelBindings.h"
+#include "ForgePanelFont.h"
+inline ImFont* font = nullptr;
+inline bool selected = false, settings = false, global = false, advanced = false, nrAllowed = false, mfgAllowed = false, enabled = false, binding = false, initialized = false;
+inline int key = VK_DELETE, modifiers = 0, bindingRelease = 0;
+inline float animation = 0, cpuMs = 0;
+inline ImVec4 accent(.82f, .82f, .82f, 1);
+inline std::string title = "Game";
+inline DWORD Preference(const wchar_t* name, DWORD fallback)
+{
+    DWORD value = fallback, bytes = sizeof(value);
+    const auto result = RegGetValueW(HKEY_CURRENT_USER, L"Software\\rtxForge\\Overlay", name, RRF_RT_REG_DWORD, nullptr, &value, &bytes);
+    if(result != ERROR_SUCCESS) LOG_WARN("rtxForge panel preference read failed: {}, using default {}", result, fallback);
+    return result == ERROR_SUCCESS ? value : fallback;
+}
+inline void Init(HWND window)
+{
+    if(!initialized)
+    {
+        enabled = Preference(L"InGamePanel",0) != 0; initialized = true;
+        LOG_INFO("rtxForge panel startup: enabled {}", enabled);
+    }
+    if(!enabled) return;
+    ForgePanelChannel::Init();
+    LOG_INFO("rtxForge panel channel: ready {}", ForgePanelChannel::channel != nullptr);
+    ImFontConfig options; options.FontDataOwnedByAtlas = false;
+    font = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(forgeInter, sizeof(forgeInter), 18.f, &options);
+    key = int(Preference(L"PanelKey", VK_DELETE)); modifiers = int(Preference(L"PanelModifiers", 0));
+    advanced = Preference(L"Advanced", 0) != 0;
+    wchar_t caption[256] {}; GetWindowTextW(window, caption, 256);
+    title = wstring_to_string(caption);
+    try
+    {
+        // MainDllPath is the configurable DLSS search directory (often the
+        // OptiScaler subfolder), not the installed bridge's directory.
+        const auto folder = Util::DllPath().parent_path();
+        const auto path = folder / ".rtxforge-install.json";
+        if (std::filesystem::file_size(path) < 2 * 1024 * 1024)
+        {
+            std::ifstream input(path); const auto metadata = nlohmann::json::parse(input);
+            const auto mode = metadata.value("feature_mode", std::string());
+            nrAllowed = mode == "nr-mfg" || mode == "nr-only";
+            mfgAllowed = mode == "nr-mfg" || mode == "mfg-only";
+            if(metadata.contains("mfg_provider") && metadata["mfg_provider"].is_object()
+                && metadata["mfg_provider"].value("ownership",std::string()) == "managed-addon") mfgAllowed = false;
+            if (metadata.contains("name")) title = metadata.value("name", title);
+        }
+    }
+    catch (...) { nrAllowed = mfgAllowed = false; }
+    LOG_INFO("rtxForge panel features: NR {}, MFG {}", nrAllowed, mfgAllowed);
+    // Identity is cached by the helper/manager before launch. Never load artwork
+    // or walk a library from the game's render thread.
+    wchar_t exe[32768] {}, identity[1024] {}; GetModuleFileNameW(nullptr, exe, 32768);
+    DWORD bytes = sizeof(identity);
+    if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\rtxForge\\Overlay\\Games", exe, RRF_RT_REG_SZ,
+                    nullptr, identity, &bytes) == ERROR_SUCCESS)
+    {
+        const auto text = wstring_to_string(identity);
+        if(text.size() > 8 && text[0] == '#' && text[7] == '|')
+        {
+            try { const auto rgb = std::stoul(text.substr(1,6), nullptr, 16);
+                accent = ImVec4(float((rgb >> 16) & 255)/255, float((rgb >> 8) & 255)/255, float(rgb & 255)/255, 1);
+                title = text.substr(8); } catch (...) { }
+        }
+    }
+}
+inline bool CapturingShortcut()
+{
+    if(binding) return true;
+    if(bindingRelease == 0) return false;
+    if(OptiInput::IsKeyReleased(bindingRelease) || !OptiInput::IsKeyDown(bindingRelease)) bindingRelease = 0;
+    return true;
+}
+inline bool ShortcutReleased()
+{
+    if (!enabled || !OptiInput::IsFocused() || key <= 0 || key >= 256 || key == VK_INSERT || key == VK_END || key == VK_F12) return false;
+    const int held = (OptiInput::IsKeyDown(VK_MENU) ? 1 : 0) | (OptiInput::IsKeyDown(VK_CONTROL) ? 2 : 0) | (OptiInput::IsKeyDown(VK_SHIFT) ? 4 : 0);
+    // Pause keyboards can omit key-up. Use its existing input press event;
+    // all other keys retain release behavior. No native shortcut is consumed.
+    return (key == VK_PAUSE ? OptiInput::IsKeyPressed(key) : OptiInput::IsKeyReleased(key)) && held == modifiers;
+}
+inline bool Animating() { return selected && animation > 0; }
+inline ImVec4 Mix(ImVec4 a, ImVec4 b, float amount)
+{ return ImVec4(a.x*amount+b.x*(1-amount), a.y*amount+b.y*(1-amount), a.z*amount+b.z*(1-amount), 1); }
+inline float Luminance(ImVec4 color)
+{
+    const auto linear=[](float n) { return n<=.04045f ? n/12.92f : std::pow((n+.055f)/1.055f,2.4f); };
+    return .2126f*linear(color.x)+.7152f*linear(color.y)+.0722f*linear(color.z);
+}
+inline ImVec4 OnColor(ImVec4 background)
+{
+    const float lum=Luminance(background);
+    return (1.05f/(lum+.05f)) >= ((lum+.05f)/.05f) ? ImVec4(1,1,1,1) : ImVec4(0,0,0,1);
+}
+inline ImVec4 TitleColor()
+{
+    const ImVec4 neutral(.91f,.91f,.91f,1), surface(.045f,.045f,.045f,1);
+    for(float amount=.85f;amount>=0;amount-=.05f)
+    { const auto color=Mix(accent,neutral,amount); if((Luminance(color)+.05f)/(Luminance(surface)+.05f)>=4.5f) return color; }
+    return neutral;
+}
+inline bool Available(const Control& field)
+{
+    if (std::strcmp(field.key,"multiplier") == 0) return mfgAllowed;
+    return std::strcmp(field.group,"Sharpening") == 0 || std::strcmp(field.group,"Motion sharpening") == 0 || nrAllowed;
+}
+inline bool IconButton(const char* id, int kind, float scale)
+{
+    const auto position = ImGui::GetCursorScreenPos();
+    const bool pressed = ImGui::InvisibleButton(id,ImVec2(30.f*scale,30.f*scale));
+    auto* draw = ImGui::GetWindowDrawList();
+    const auto center = ImVec2(position.x+15.f*scale,position.y+15.f*scale);
+    const auto ink = ImGui::GetColorU32(ImVec4(.77f,.77f,.77f,1));
+    if(ImGui::IsItemHovered()) draw->AddRectFilled(position,ImVec2(position.x+30*scale,position.y+30*scale),ImGui::GetColorU32(ImVec4(1,1,1,.09f)),8*scale);
+    if(kind == 1)
+    {
+        draw->AddCircle(center,6*scale,ink,24,1.5f*scale); draw->AddCircle(center,2*scale,ink,16,1.5f*scale);
+        for(int i=0;i<8;++i) { const float angle=i*3.14159265f/4;
+            draw->AddLine(ImVec2(center.x+std::cos(angle)*6*scale,center.y+std::sin(angle)*6*scale),
+                ImVec2(center.x+std::cos(angle)*9*scale,center.y+std::sin(angle)*9*scale),ink,1.5f*scale); }
+    }
+    else if(kind == 2)
+    {
+        const float r=7*scale;
+        draw->AddCircle(center,r,ink,24,1.5f*scale);
+        draw->AddLine(ImVec2(center.x-r,center.y),ImVec2(center.x+r,center.y),ink,1.5f*scale);
+        draw->AddBezierCubic(ImVec2(center.x,center.y-r),ImVec2(center.x-r*.7f,center.y-r),ImVec2(center.x-r*.7f,center.y+r),ImVec2(center.x,center.y+r),ink,1.5f*scale,16);
+        draw->AddBezierCubic(ImVec2(center.x,center.y-r),ImVec2(center.x+r*.7f,center.y-r),ImVec2(center.x+r*.7f,center.y+r),ImVec2(center.x,center.y+r),ink,1.5f*scale,16);
+    }
+    else
+    {
+        draw->AddLine(ImVec2(center.x-5*scale,center.y-5*scale),ImVec2(center.x+5*scale,center.y+5*scale),ink,1.5f*scale);
+        draw->AddLine(ImVec2(center.x+5*scale,center.y-5*scale),ImVec2(center.x-5*scale,center.y+5*scale),ink,1.5f*scale);
+    }
+    return pressed;
+}
+inline void Field(const Control& field, Config& cfg)
+{
+    ImGui::PushID(field.key);
+    ImGui::BeginDisabled(!Available(field));
+    auto value = field.get(cfg); bool changed = false;
+    const auto label = advanced ? field.advanced : field.label;
+    if(std::strcmp(field.key,"multiplier") == 0 || std::strcmp(field.key,"style") == 0)
+    {
+        const auto count=std::strcmp(field.key,"style")==0 ? 3u : 5u;
+        const auto width=(ImGui::GetContentRegionAvail().x-ImGui::GetStyle().ItemSpacing.x*(count-1))/count;
+        for(unsigned i=0;i<count;++i)
+        {
+            if(i) ImGui::SameLine();
+            const auto& option=field.choices[i];
+            const bool selectedOption=value==option.value;
+            const bool unavailable=std::strcmp(field.key,"multiplier")==0 && option.value>0 && option.value-1>State::Instance().dlssgMfgMax.value_or(0);
+            ImGui::BeginDisabled(unavailable);
+            ImGui::PushStyleColor(ImGuiCol_Button,Mix(accent,ImVec4(.12f,.12f,.12f,1),selectedOption ? .32f : .06f));
+            if(ImGui::Button(option.label,ImVec2(width,0))) { value=option.value; changed=true; }
+            ImGui::PopStyleColor(); ImGui::EndDisabled();
+        }
+    }
+    else if (field.kind == Kind::toggle)
+    { bool on = value != 0; changed = ImGui::Checkbox(label, &on); value = on ? 1.f : 0.f; }
+    else
+    {
+        ImGui::TextUnformatted(label); ImGui::SetNextItemWidth(-1);
+        if(field.kind == Kind::choice)
+        {
+            const char* preview = "Automatic";
+            for(size_t i=0; i<field.count; ++i) if(field.choices[i].value == value) preview = field.choices[i].label;
+            if(ImGui::BeginCombo("##value", preview))
+            {
+                for(size_t i=0; i<field.count; ++i)
+                {
+                    const auto& choice = field.choices[i];
+                    const bool unavailable = std::strcmp(field.key,"multiplier") == 0 && choice.value > 0
+                        && choice.value - 1 > State::Instance().dlssgMfgMax.value_or(0);
+                    ImGui::BeginDisabled(unavailable);
+                    if(ImGui::Selectable(choice.label, value == choice.value)) { value = choice.value; changed = true; }
+                    ImGui::EndDisabled();
+                }
+                ImGui::EndCombo();
+            }
+        }
+        else if(field.kind == Kind::number)
+        { int n = int(value); changed = ImGui::SliderInt("##value", &n, int(field.low), int(field.high)); value = float(n); }
+        else
+        {
+            const bool percent = !advanced || std::strcmp(field.key,"work_scale") == 0;
+            const auto format = percent ? "%.0f%%" : "%.2f";
+            auto shown = percent ? value * 100.f : value;
+            changed = ImGui::SliderFloat("##value", &shown, percent ? field.low*100 : field.low, percent ? field.high*100 : field.high, format, ImGuiSliderFlags_AlwaysClamp);
+            value = percent ? shown/100.f : shown;
+            if(std::strcmp(field.key,"skin") == 0 && value < 0) ImGui::TextDisabled("-1 follows local structure");
+        }
+    }
+    if(changed && std::isfinite(value)) field.set(cfg, std::clamp(value, field.low, field.high), false);
+    ImGui::EndDisabled(); ImGui::PopID(); ImGui::Spacing();
+}
+inline void Pipelines(float scale)
+{
+    const auto& status = ForgePanelChannel::status;
+    ImGui::PushFontSize(11.f*scale); ImGui::TextDisabled("DLSS files"); ImGui::SameLine();
+    for(const auto* name : {"SR","RR","NR","FG"})
+    {
+        const auto info = status.contains("pipelines") && status["pipelines"].contains(name) ? status["pipelines"][name] : nlohmann::json::object();
+        const auto state = info.value("state",std::string());
+        const auto color = state == "managed" ? ImVec4(.4f,.88f,.65f,1) : state == "other" ? ImVec4(.96f,.77f,.39f,1)
+            : state == "changed" || state == "absent" ? ImVec4(1,.5f,.55f,1) : ImVec4(.6f,.6f,.6f,1);
+        const auto pos = ImGui::GetCursorScreenPos(); const auto size = ImVec2(42.f*scale,22.f*scale);
+        ImGui::InvisibleButton(name,size); auto* draw=ImGui::GetWindowDrawList();
+        draw->AddRectFilled(pos,ImVec2(pos.x+size.x,pos.y+size.y),ImGui::GetColorU32(ImVec4(1,1,1,.06f)),11*scale);
+        draw->AddCircleFilled(ImVec2(pos.x+10*scale,pos.y+11*scale),2.5f*scale,ImGui::GetColorU32(color),12);
+        draw->AddText(ImVec2(pos.x+17*scale,pos.y+4*scale),ImGui::GetColorU32(ImVec4(.8f,.8f,.8f,1)),name);
+        if(ImGui::IsItemHovered()) ImGui::SetTooltip("%s",info.value("detail",std::string("File ownership is unavailable. This does not indicate live activity.")).c_str());
+        if(std::strcmp(name,"FG") != 0) ImGui::SameLine();
+    }
+    ImGui::PopFontSize();
+}
+inline bool Preference(const char* name, nlohmann::json value)
+{
+    if(!ForgePanelChannel::Send({{"op","set-setting"},{"key",name},{"value",value}})) return false;
+    ForgePanelChannel::settings[name] = std::move(value); return true;
+}
+inline void PreferenceToggle(const char* label, const char* name, bool fallback)
+{
+    auto value = ForgePanelChannel::settings.value(name,fallback);
+    if(ImGui::Checkbox(label,&value)) Preference(name,value);
+}
+inline void ReviewEntries(const char* label, const char* key)
+{
+    const auto& review = ForgePanelChannel::review;
+    if(!review.contains(key) || review[key].empty()) return;
+    if(ImGui::CollapsingHeader((std::string(label)+" ("+std::to_string(review[key].size())+")").c_str(),std::strcmp(key,"items")==0 ? ImGuiTreeNodeFlags_DefaultOpen : 0))
+    {
+        for(const auto& entry : review[key])
+        { ImGui::TextWrapped("%s",entry.value("title",std::string()).c_str()); ImGui::PushStyleColor(ImGuiCol_Text,ImVec4(.7f,.7f,.7f,1)); ImGui::TextWrapped("%s",entry.value("detail",std::string()).c_str()); ImGui::PopStyleColor(); ImGui::Spacing(); }
+    }
+}
+inline void ReviewedChanges()
+{
+    using namespace ForgePanelChannel;
+    if(review.empty()) return;
+    ReviewEntries("Ready","items"); ReviewEntries("Needs attention","blocked"); ReviewEntries("Unchanged or unavailable","skipped");
+    ImGui::BeginDisabled(pending || !review.value("ready",false));
+    if(ImGui::Button("Apply to games",ImVec2(-1,0))) Send({{"op","apply-review"},{"review_id",review.value("review_id",0)}});
+    ImGui::EndDisabled();
+}
+inline void GlobalControls()
+{
+    static int nr=0,mfg=0;
+    const char* nrItems[]={"Leave as is","Off","On"};
+    const char* mfgItems[]={"Leave as is","Off","2x","3x","4x","5x","6x","Follow game"};
+    ImGui::TextWrapped("One-time changes. Review the games before applying. Running games are skipped.");
+    ImGui::BeginDisabled(ForgePanelChannel::pending || !ForgePanelChannel::helperReady);
+    ImGui::SetNextItemWidth(-1);
+    if(ImGui::Combo("Neural rendering",&nr,nrItems,3)) ForgePanelChannel::DiscardReview();
+    ImGui::SetNextItemWidth(-1);
+    if(ImGui::Combo("Frame generation",&mfg,mfgItems,8)) ForgePanelChannel::DiscardReview();
+    ImGui::BeginDisabled(nr==0 && mfg==0);
+    if(ImGui::Button("Review games",ImVec2(-1,0)))
+    {
+        nlohmann::json changes = nlohmann::json::object();
+        if(nr) changes["nr"] = nr==2;
+        if(mfg) changes["mfg"] = mfg==1 ? 0 : mfg==7 ? -1 : mfg;
+        ForgePanelChannel::review = nlohmann::json::object();
+        ForgePanelChannel::Send({{"op","global-review"},{"changes",changes}});
+    }
+    ImGui::EndDisabled(); ImGui::EndDisabled();
+    ReviewedChanges();
+}
+inline void SettingsControls()
+{
+    using ForgePanelChannel::pending; using ForgePanelChannel::helperReady; using ForgePanelChannel::Send;
+    auto& prefs = ForgePanelChannel::settings;
+    ImGui::SeparatorText("Overlay settings");
+    ImGui::BeginDisabled(pending || !helperReady);
+    bool advancedChoice=advanced;
+    if(ImGui::Checkbox("Advanced controls", &advancedChoice))
+    { if(Preference("overlay_controls",advancedChoice)) prefs["overlay_controls"] = advancedChoice ? "classic" : "unified"; }
+    const char* rendererItems[]={"rtxForge in-game","rtxForge sidebar","Original OptiScaler"};
+    const auto renderer=prefs.value("overlay_renderer",std::string("game"));
+    int selectedRenderer=renderer=="rtxforge" ? 1 : renderer=="optiscaler" ? 2 : 0;
+    ImGui::SetNextItemWidth(-1);
+    if(ImGui::Combo("Primary overlay",&selectedRenderer,rendererItems,3)) Preference("overlay_renderer",selectedRenderer==1 ? "rtxforge" : selectedRenderer==2 ? "optiscaler" : "game");
+    const auto shortcut=prefs.value("panel_hotkey",std::string("ScrollLock"));
+    if(ImGui::Button(binding ? "Press a key..." : ("Shortcut: "+shortcut).c_str(),ImVec2(-1,0))) binding=true;
+    if(binding)
+    {
+        const auto code=OptiInput::GetLastPressedKey();
+        if(code==VK_ESCAPE && OptiInput::IsKeyPressed(code)) { bindingRelease=code; binding=false; }
+        else if(code>0 && OptiInput::IsKeyPressed(code) && code!=VK_CONTROL && code!=VK_SHIFT && code!=VK_MENU
+                && !(code>=VK_LSHIFT && code<=VK_RMENU))
+        {
+            const int mods=(OptiInput::IsKeyDown(VK_MENU)?1:0)|(OptiInput::IsKeyDown(VK_CONTROL)?2:0)|(OptiInput::IsKeyDown(VK_SHIFT)?4:0);
+            if(Send({{"op","set-setting"},{"key","panel_binding"},{"value",{{"key",code},{"modifiers",mods}}}})) { bindingRelease=code; binding=false; }
+        }
+        ImGui::TextWrapped("Optional Ctrl, Alt or Shift. Insert stays with OptiScaler.");
+    }
+    if(ImGui::SmallButton("Disable shortcut")) Send({{"op","set-setting"},{"key","panel_binding"},{"value",{{"key",0},{"modifiers",0}}}});
+    ImGui::SeparatorText("OptiScaler");
+    PreferenceToggle("In-game menu##opti","optiscaler_ui",true);
+    PreferenceToggle("Intro message##opti","optiscaler_intro",false);
+    const char* nativeItems[]={"Insert","F8","Disabled"};
+    const auto native=prefs.value("optiscaler_hotkey",std::string("Insert")); int selectedNative=native=="F8" ? 1 : native=="Disabled" ? 2 : 0;
+    ImGui::SetNextItemWidth(-1);
+    if(ImGui::Combo("Original menu shortcut",&selectedNative,nativeItems,3)) Preference("optiscaler_hotkey",nativeItems[selectedNative]);
+    ImGui::SeparatorText("ReShade");
+    PreferenceToggle("In-game menu##reshade","reshade_ui",true);
+    PreferenceToggle("Welcome messages##reshade","reshade_intro",false);
+    ImGui::TextWrapped("Menu access and welcome messages are separate. NR, MFG and effects stay installed.");
+    if(ImGui::Button("Review installed game menus",ImVec2(-1,0)))
+    { ForgePanelChannel::review=nlohmann::json::object(); Send({{"op","menus-review"}}); }
+    ImGui::TextWrapped("Menu, intro and primary overlay changes take effect after restarting the game.");
+    ReviewedChanges();
+    ImGui::SeparatorText("Background helper");
+    PreferenceToggle("Start with Windows","overlay_start_with_windows",true);
+    ImGui::TextWrapped("The helper saves presets and handles reviews. The main rtxForge window can stay closed.");
+    PreferenceToggle("Enable helper","overlay_helper",true);
+    ImGui::EndDisabled();
+    if(ImGui::CollapsingHeader("Performance"))
+    { ImGui::Text("Panel CPU submit: %.3f ms",cpuMs); ImGui::TextWrapped("Translucent surface. No additional blur pass. Live controls work without the helper; saving and reviews need it."); }
+}
+inline bool Draw(bool& visible, float scale)
+{
+    if (!selected) return false;
+    if (!OptiInput::IsFocused()) { visible = false; animation = 0; ForgePanelChannel::Visible(false); return false; }
+    const auto start = std::chrono::steady_clock::now();
+    const auto dt = std::min(ImGui::GetIO().DeltaTime, .05f);
+    animation = std::clamp(animation + dt / (visible ? .16f : -.11f), 0.f, 1.f);
+    if(animation <= 0) return false;
+    const auto eased = 1 - std::pow(1-animation, 3.f), sizeScale = .97f + .03f*eased;
+    const auto display = ImGui::GetIO().DisplaySize;
+    using ForgePanelChannel::Send; using ForgePanelChannel::Poll; using ForgePanelChannel::pending;
+    using ForgePanelChannel::needsHello; using ForgePanelChannel::helperReady; using ForgePanelChannel::message;
+    Poll();
+    if(!pending && needsHello && Send({{"op","hello"}})) needsHello = false;
+    if(ForgePanelChannel::settings.contains("overlay_controls")) advanced = ForgePanelChannel::settings.value("overlay_controls",std::string()) == "classic";
+    if(ForgePanelChannel::settings.contains("panel_key")) key = ForgePanelChannel::settings.value("panel_key",int(VK_SCROLL));
+    if(ForgePanelChannel::settings.contains("panel_modifiers")) modifiers = ForgePanelChannel::settings.value("panel_modifiers",0);
+    const auto edge = 24.f*scale, width = std::min(420.f*scale, display.x-edge*2);
+    const auto height = display.y-edge*2;
+    // A few translucent rounded quads give a soft offset shadow. No texture,
+    // backdrop sampling, render target or shader pass is allocated for it.
+    auto* shadow = ImGui::GetBackgroundDrawList();
+    for(int layer=6;layer>0;--layer)
+    {
+        const auto spread=float(layer)*2*scale;
+        shadow->AddRectFilled(ImVec2(edge-spread,edge-spread+6*scale),
+            ImVec2(edge+width*sizeScale+spread,edge+height*sizeScale+spread+6*scale),
+            IM_COL32(0,0,0,int(5*eased)),(20*scale)+spread);
+    }
+    ImGui::SetNextWindowPos(ImVec2(edge,edge + height*(1-sizeScale)*.5f), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(width*sizeScale,height*sizeScale), ImGuiCond_Always);
+    ImGui::PushFont(font, 15.f*scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_Alpha,eased);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding,20.f*scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,ImVec2(26.f*scale,22.f*scale));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding,8.f*scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,ImVec2(10.f*scale,9.f*scale));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,ImVec2(10.f*scale,12.f*scale));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize,0);
+    const ImVec4 neutral(.91f,.91f,.91f,1), dark(.12f,.12f,.12f,1);
+    ImGui::PushStyleColor(ImGuiCol_WindowBg,ImVec4(.045f,.045f,.045f,.94f));
+    ImGui::PushStyleColor(ImGuiCol_Text,neutral);
+    ImGui::PushStyleColor(ImGuiCol_Button,Mix(accent,dark,.20f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered,Mix(accent,dark,.32f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive,Mix(accent,dark,.15f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBg,ImVec4(.16f,.16f,.16f,.8f));
+    ImGui::PushStyleColor(ImGuiCol_CheckMark,Mix(accent,neutral,.45f));
+    ImGui::PushStyleColor(ImGuiCol_SliderGrab,Mix(accent,neutral,.45f));
+    ImGui::PushStyleColor(ImGuiCol_Header,Mix(accent,dark,.18f));
+    ImGui::PushStyleColor(ImGuiCol_HeaderHovered,Mix(accent,dark,.26f));
+    ImGui::Begin("rtxForge##ingame",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoSavedSettings|ImGuiWindowFlags_NoScrollWithMouse|ImGuiWindowFlags_NoScrollbar);
+    ImGui::TextUnformatted("rtxForge"); ImGui::SameLine(ImGui::GetWindowWidth()-ImGui::GetStyle().WindowPadding.x-110.f*scale);
+    if(IconButton("Global controls",2,scale)) { global = !global; settings = false; ForgePanelChannel::DiscardReview(); }
+    ImGui::SameLine(); if(IconButton("Overlay settings",1,scale)) { settings = !settings; global = false; ForgePanelChannel::DiscardReview(); }
+    ImGui::SameLine(); if(IconButton("Close panel",0,scale)) visible = false;
+    ImGui::PushFontSize(24.f*scale); ImGui::PushStyleColor(ImGuiCol_Text,global ? neutral : TitleColor());
+    ImGui::TextWrapped("%s",global ? "All installed games" : title.c_str()); ImGui::PopStyleColor(); ImGui::PopFontSize();
+    if(global) ImGui::TextDisabled("One-time changes - review before applying");
+    else Pipelines(scale);
+    ImGui::Spacing();
+    const auto feedbackHeight=message.empty() ? 0.f : std::min(60.f*scale,ImGui::CalcTextSize(message.c_str(),nullptr,false,ImGui::GetContentRegionAvail().x).y);
+    const auto footer = (settings || global ? 40.f : 94.f)*scale+feedbackHeight;
+    ImGui::BeginChild("controls",ImVec2(0,-footer),ImGuiChildFlags_None,ImGuiWindowFlags_NoBackground);
+    auto& cfg = *Config::Instance();
+    if(settings)
+    {
+        SettingsControls();
+    }
+    else if(global) GlobalControls();
+    else
+    {
+        const char* group = "";
+        bool open = true;
+        for(const auto& field : controls)
+        {
+            if(std::strcmp(group,field.group) != 0)
+            {
+                group = field.group; ImGui::Spacing();
+                const bool primary = std::strcmp(group,"Frame generation") == 0 || std::strcmp(group,"Neural rendering") == 0 || std::strcmp(group,"Image tuning") == 0;
+                if(primary) { ImGui::SeparatorText(group); open = true; }
+                else open = ImGui::CollapsingHeader(group);
+            }
+            if(!open) continue;
+            if(std::strcmp(field.key,"passes")==0) continue;
+            if(std::strcmp(field.key,"preset")==0 && ImGui::BeginTable("model choices",2,ImGuiTableFlags_SizingStretchSame))
+            {
+                ImGui::TableNextColumn(); Field(field,cfg); ImGui::TableNextColumn();
+                for(const auto& other : controls) if(std::strcmp(other.key,"passes")==0) Field(other,cfg);
+                ImGui::EndTable();
+            }
+            else Field(field,cfg);
+        }
+        if(ImGui::CollapsingHeader("More frame generation options"))
+        {
+            int selectedExtra=0;
+            auto& ratio=cfg.FGDLSSGOverrideInterpolationCount;
+            if(ratio.has_value() && ratio.value()>=4) selectedExtra=ratio.value()-3;
+            const char* extra[]={"Use selection above","5x","6x"};
+            ImGui::BeginDisabled(!mfgAllowed); ImGui::SetNextItemWidth(-1);
+            if(ImGui::Combo("Multiplier",&selectedExtra,extra,3) && selectedExtra>0)
+            {
+                const int requested=selectedExtra+4;
+                if(requested-1 <= State::Instance().dlssgMfgMax.value_or(0)) controls[0].set(cfg,float(requested),false);
+                else ForgePanelChannel::message="This frame generation ratio is unavailable on the active backend.";
+            }
+            ImGui::EndDisabled();
+        }
+    }
+    ImGui::EndChild();
+    if(!message.empty())
+    { ImGui::BeginChild("feedback",ImVec2(0,feedbackHeight),ImGuiChildFlags_None,ImGuiWindowFlags_NoBackground); ImGui::TextWrapped("%s",message.c_str()); ImGui::EndChild(); }
+    const auto available = ImGui::GetContentRegionAvail().x, gap = 10.f*scale;
+    if(!settings && !global)
+    {
+    const auto saveColor=Mix(accent,dark,.45f);
+    ImGui::PushStyleColor(ImGuiCol_Button,saveColor); ImGui::PushStyleColor(ImGuiCol_Text,OnColor(saveColor));
+    ImGui::BeginDisabled(pending || !helperReady || !ForgePanelChannel::settings.value("overlay_helper",true));
+    if(ImGui::Button("Save preset",ImVec2((available-gap)*.66f,42.f*scale)))
+    {
+        nlohmann::json changes = nlohmann::json::object();
+        for(const auto& field : controls) if(Available(field))
+        { auto n=field.get(cfg); if(field.kind == Kind::slider) changes[field.key]=n; else changes[field.key]=int(n); }
+        Send({{"op","save"},{"changes",changes}});
+    }
+    ImGui::PopStyleColor(2); ImGui::SameLine();
+    ImGui::PushStyleColor(ImGuiCol_Button,ImVec4(.55f,.15f,.18f,1));
+    if(ImGui::Button("Reset",ImVec2(-1,42.f*scale)))
+    { Send({{"op","reset"}}); }
+    ImGui::PopStyleColor(); ImGui::EndDisabled();
+    }
+    ImGui::TextDisabled("%s",(ForgePanelChannel::settings.value("panel_hotkey",std::string("ScrollLock"))+" - show or hide").c_str());
+    if(ImGui::IsKeyPressed(ImGuiKey_Escape,false)) visible = false;
+    ImGui::End(); ImGui::PopStyleColor(10); ImGui::PopStyleVar(7); ImGui::PopFont();
+    cpuMs = std::chrono::duration<float,std::milli>(std::chrono::steady_clock::now()-start).count();
+    return true;
+}
+}

@@ -21,6 +21,12 @@ public sealed partial class GameModeView
         if (shell.Busy) { Toast("Another operation is running."); return; }
         ArgumentNullException.ThrowIfNull(targets);
         if (targets.Count == 0) { Toast("No eligible games."); return; }
+        if ((operation is "install" or "uninstall") && targets.Any(g => g.AdoptionAvailable))
+        {
+            await shell.ReviewAdoptionAsync(targets.Where(g => g.AdoptionAvailable).ToArray());
+            targets = targets.Where(g => !g.AdoptionAvailable).ToArray();
+            if (targets.Count == 0) return;
+        }
         if (operation == "install" && values is null)
         {
             values = await AskPresetsAsync(targets.Count == 1 ? shell.GameTuning(targets[0]) : shell.Settings.Presets);
@@ -47,7 +53,8 @@ public sealed partial class GameModeView
             ShowDone(false, "Could not check these games", error.Message);
             return;
         }
-        if (modals.Count == 0 || !ReferenceEquals(modals.Peek(), checkingModal)) return;   // cancelled while checking
+        if (modals.Count == 0 || !ReferenceEquals(modals.Peek(), checkingModal))
+        { shell.Service.DiscardOperation(review); return; }   // cancelled while checking
         CloseModal();
         ShowReview(operation, review);
     }
@@ -77,10 +84,12 @@ public sealed partial class GameModeView
         var content = new StackPanel { Spacing = t.Px(20) };
         content.Children.Add(ui.P("Adjust your presets or continue. You can change these settings later in OptiScaler.", 0.92));
         content.Children.Add(ui.IconLabel("", ProviderName()).With(p => { foreach (var c in p.Children) if (c is TextBlock tb) tb.FontSize = t.Em(0.85); }));
-        content.Children.Add(ui.Group(rows, t.Card));
+        if (shell.Settings.RuntimeProvider != "feeder") content.Children.Add(ui.Group(rows, t.Card));
+        var startup = new CheckBox { Content = "Enable NR on launch", IsChecked = shell.Settings.NrOnLaunch };
+        if (shell.Mode != "mfg-only") content.Children.Add(startup);
         void Cancel() { CloseModal(); done.TrySetResult(null); }
         var cancel = ui.Button("Cancel", Cancel, GmKind.Card, 0.92);
-        var next = ui.Button("Continue", () => { CloseModal(); done.TrySetResult(value()); }, GmKind.Primary, 0.92);
+        var next = ui.Button("Continue", () => { CloseModal(); done.TrySetResult(value() with { NrOnLaunch = startup.IsChecked == true }); }, GmKind.Primary, 0.92);
         ShowModal("Install Features", content, [cancel, next], Cancel, 1100, cancel);
         return done.Task;
     }
@@ -90,13 +99,15 @@ public sealed partial class GameModeView
         var content = new StackPanel { Spacing = t.Px(20) };
         var summary = new StackPanel { Spacing = t.Px(10) };
         var count = review.Ready.Count;
-        summary.Children.Add(ui.H2(count > 0 ? $"{count} game{(count == 1 ? "" : "s")} ready" : "Nothing ready yet", 1.3));
-        summary.Children.Add(ui.P($"{Verb(operation)} · {ProviderName()} · {ModeLabel()}"));
+        summary.Children.Add(ui.H2(count > 0 ? $"{count} game{(count == 1 ? "" : "s")} ready"
+            : review.Supported.Count > 0 ? "Supported features available" : "Nothing ready yet", 1.3));
+        if (operation == "install") summary.Children.Add(ui.P(shell.Settings.RuntimeProvider == "feeder" || (count > 0 && review.Ready.All(r => r.Game.IsFeeder))
+            ? "NR Only · Feeder NR" : $"{ModeLabel()} · {ProviderName()}"));
         content.Children.Add(summary);
 
         var list = new StackPanel();
         var group = new List<UIElement>();
-        foreach (var (game, detail) in review.Ready) group.Add(ReviewRow(game, game.Name, detail, true));
+        foreach (var item in review.Ready) group.Add(ReviewRow(item.Game, item.Game.Name, item.Summary, true, item.Detail));
         if (group.Count > 0) list.Children.Add(ui.Group(group, t.Card));
         foreach (var warning in review.Warnings)
         {
@@ -108,19 +119,51 @@ public sealed partial class GameModeView
         if (review.Blocked.Count > 0)
         {
             list.Children.Add(ui.Text($"Skipped · {review.Blocked.Count}", 0.88, weight: FontWeights.SemiBold).With(x => x.Margin = new Thickness(0, t.Px(26), 0, t.Px(14))));
-            list.Children.Add(ui.Group(review.Blocked.Select(b => (UIElement)ReviewRow(b.Game, b.Name, b.Reason, false)), t.Card));
+            list.Children.Add(ui.Group(review.Blocked.Select(b => (UIElement)ReviewRow(b.Game, b.Name, b.Summary ?? b.Reason, false,
+                b.Summary is null ? null : b.Reason)), t.Card));
         }
         var scroll = new ScrollViewer { Content = list, MaxHeight = t.Px(t.Compact ? 260 : 380), HorizontalScrollMode = ScrollMode.Disabled };
         content.Children.Add(scroll);
         content.Children.Add(ui.P("Your files only change after you confirm.", 0.8));
-        var cancel = ui.Button("Cancel", CloseModal, GmKind.Card, 0.92);
-        var go = ui.Button(Verb(operation), () => { CloseModal(); _ = ExecuteAsync(operation, review); }, GmKind.Primary, 0.92, enabled: count > 0);
-        ShowModal(ReviewTitle(operation), content, [cancel, go], CloseModal, 1100, cancel);
+        void Dismiss() { shell.Service.DiscardOperation(review); CloseModal(); }
+        var cancel = ui.Button("Cancel", Dismiss, GmKind.Card, 0.92);
+        var go = ui.Button(review.Supported.Count > 0 ? "Continue" : Verb(operation), () =>
+        {
+            CloseModal();
+            if (review.Supported.Count > 0) ShowSupportedFeatures(operation, review);
+            else _ = ExecuteAsync(operation, review);
+        }, GmKind.Primary, 0.92, enabled: count > 0 || review.Supported.Count > 0);
+        ShowModal(ReviewTitle(operation), content, [cancel, go], Dismiss, 1100, cancel);
+    }
+
+    void ShowSupportedFeatures(string operation, OperationReview review)
+    {
+        var content = new StackPanel { Spacing = t.Px(20) };
+        content.Children.Add(ui.H2("These games support part of your selection", 1.2));
+        var list = new StackPanel { Spacing = t.Px(10) };
+        foreach (var group in review.Supported)
+        foreach (var item in group.Review.Ready)
+        {
+            var card = RtxForge.Windows.Controls.SupportedFeatureCard.Create(item, group.Nr, group.Mfg, group.Reason, t.Px(1));
+            list.Children.Add(card);
+        }
+        content.Children.Add(new ScrollViewer { Content = list, MaxHeight = t.Px(440), HorizontalScrollMode = ScrollMode.Disabled });
+        content.Children.Add(ui.P("Install the supported features shown above, along with the games on the previous review.", .85));
+        var back = ui.Button("Back", () => { CloseModal(); ShowReview(operation, review); }, GmKind.Card, .92);
+        var skip = ui.Button("Skip these games", () =>
+        {
+            CloseModal();
+            foreach (var part in review.Supported) shell.Service.DiscardOperation(part.Review);
+            if (review.Ready.Count > 0) _ = ExecuteAsync(operation, review with { Supported = [] });
+            else ShowDone(false, "Nothing selected", "No games were changed.");
+        }, GmKind.Card, .92);
+        var install = ui.Button("Install supported features", () => { CloseModal(); _ = ExecuteAsync(operation, review.IncludeSupported()); }, GmKind.Primary, .92);
+        ShowModal("Install the supported features", content, [back, skip, install], () => { shell.Service.DiscardOperation(review); CloseModal(); }, 1100, back);
     }
 
     string ModeLabel() => shell.Mode switch { "nr-only" => "NR Only", "nr-mfg" => "NR + MFG", _ => "MFG Only" };
 
-    Grid ReviewRow(Game? game, string name, string detail, bool ready)
+    Grid ReviewRow(Game? game, string name, string detail, bool ready, string? technical = null)
     {
         var row = new Grid { ColumnSpacing = t.Px(22), Padding = new Thickness(t.Px(22), t.Px(18), t.Px(22), t.Px(18)) };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -137,7 +180,15 @@ public sealed partial class GameModeView
         var text = new StackPanel { Spacing = t.Px(6), VerticalAlignment = VerticalAlignment.Center };
         var title = ui.Text(name, 0.9, t.Fg, FontWeights.SemiBold);
         text.Children.Add(title);
-        text.Children.Add(ui.Text(detail, 0.72, t.Muted, wrap: true, maxLines: 2));
+        text.Children.Add(ui.Text(detail, 0.72, t.Muted, wrap: true));
+        if (!string.IsNullOrWhiteSpace(technical))
+            text.Children.Add(new Expander
+            {
+                Header = "Technical details", HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                Content = new TextBox { Text = technical, IsReadOnly = true, TextWrapping = TextWrapping.Wrap,
+                    AcceptsReturn = true, MaxHeight = t.Px(200), FontSize = t.Px(14) },
+            });
         Grid.SetColumn(text, 1);
         row.Children.Add(text);
         var badge = ui.Badge(ready ? "Ready" : "Skipped", t.Panel, ready ? t.Fg : t.Danger, 0.7);
@@ -164,7 +215,7 @@ public sealed partial class GameModeView
         cancel = ui.Button("Cancel", () => { cts.Cancel(); cancel!.IsEnabled = false; step.Show(Doing(operation), null, 0, null, "Cancelling and undoing changes"); }, GmKind.Card, 0.92);
         // Busy-operation protection: Back does not dismiss a running operation.
         ShowModal(null, step.Root, [cancel], () => { }, 1100, cancel);
-        step.Show(Doing(operation), review.Ready.FirstOrDefault().Game, 0, review.Ready.Count, "Starting");
+        step.Show(Doing(operation), review.Ready.FirstOrDefault()?.Game, 0, review.Ready.Count, "Starting");
         var progress = new Progress<OperationStep>(s => step.Show(Doing(operation), s.Game, s.Index, s.Total, s.Caption, s.Fraction));
         try
         {
@@ -183,6 +234,7 @@ public sealed partial class GameModeView
             CloseModal();
             ShowDone(false, "Could not finish", error.Message);
         }
+        finally { shell.Service.DiscardOperation(review); }
     }
 
     void ShowDone(bool success, string title, string message)

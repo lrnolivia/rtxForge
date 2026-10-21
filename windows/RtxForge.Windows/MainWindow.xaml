@@ -24,9 +24,9 @@
         </Grid.RowDefinitions>
 
         <!-- Title bar -->
-        <Grid x:Name="AppTitleBar" ColumnSpacing="16" SizeChanged="OnCompactBarSizeChanged">
+        <Grid x:Name="AppTitleBar" SizeChanged="OnCompactBarSizeChanged">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="208" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
@@ -52,12 +52,12 @@
                 the Library dashboard is collapsed (compact header, or the library scrolled). Mirrors the
                 Library page's Features selector and library-wide actions; the page stays the owner.
             -->
-            <Border x:Name="CompactModes" Grid.Column="1" Style="{StaticResource ForgeSegmentGroupStyle}" HorizontalAlignment="Center" VerticalAlignment="Center"
+            <Border x:Name="CompactModes" Grid.Column="1" Style="{StaticResource ForgeSegmentGroupStyle}" HorizontalAlignment="Left" VerticalAlignment="Center"
                     Visibility="Collapsed" SizeChanged="OnCompactBarSizeChanged">
                 <StackPanel Orientation="Horizontal">
-                    <RadioButton x:Name="CompactNrOnly" GroupName="CompactProfile" Tag="nr-only" Content="NR Only" Style="{StaticResource ForgeCompactSegmentStyle}" Checked="OnCompactModeChecked" MinWidth="88" />
-                    <RadioButton x:Name="CompactMfgOnly" GroupName="CompactProfile" Tag="mfg-only" Content="MFG Only" Style="{StaticResource ForgeCompactSegmentStyle}" Checked="OnCompactModeChecked" MinWidth="88" />
-                    <RadioButton x:Name="CompactNrMfg" GroupName="CompactProfile" Tag="nr-mfg" Content="NR + MFG" Style="{StaticResource ForgeCompactSegmentStyle}" Checked="OnCompactModeChecked" MinWidth="88" />
+                    <RadioButton x:Name="CompactNrOnly" GroupName="CompactProfile" Tag="nr-only" Content="NR Only" Style="{StaticResource ForgeCompactSegmentStyle}" Checked="OnCompactModeChecked" MinWidth="108" Padding="20,5,20,6" />
+                    <RadioButton x:Name="CompactMfgOnly" GroupName="CompactProfile" Tag="mfg-only" Content="MFG Only" Style="{StaticResource ForgeCompactSegmentStyle}" Checked="OnCompactModeChecked" MinWidth="108" Padding="20,5,20,6" />
+                    <RadioButton x:Name="CompactNrMfg" GroupName="CompactProfile" Tag="nr-mfg" Content="NR + MFG" Style="{StaticResource ForgeCompactSegmentStyle}" Checked="OnCompactModeChecked" MinWidth="108" Padding="20,5,20,6" />
                 </StackPanel>
             </Border>
             <!-- Presets mode (Presets › Select games to apply presets): the saved presets and how to apply them. -->
@@ -92,9 +92,24 @@
         </Grid>
 
         <NavigationView x:Name="Nav" Grid.Row="1"
-                        PaneDisplayMode="Auto" OpenPaneLength="208" IsBackButtonVisible="Auto" IsBackEnabled="False"
+                        PaneDisplayMode="Auto" OpenPaneLength="208" IsBackButtonVisible="Collapsed" IsBackEnabled="False" IsPaneToggleButtonVisible="False"
                         IsSettingsVisible="True" IsTitleBarAutoPaddingEnabled="False"
                         SelectionChanged="OnNavSelectionChanged" ItemInvoked="OnNavItemInvoked" BackRequested="OnNavBackRequested">
+            <NavigationView.PaneHeader>
+                <Grid x:Name="NavigationCommands" Margin="12,6,12,6" Height="40">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <Button x:Name="NavigationBack" Click="OnNavigationBackClick" IsEnabled="False" Width="40" Height="40"
+                            Padding="0" Background="Transparent" BorderThickness="0" HorizontalAlignment="Left"
+                            ToolTipService.ToolTip="Back" AutomationProperties.Name="Back">
+                        <FontIcon Glyph="&#xE72B;" FontSize="16" />
+                    </Button>
+                    <Button Grid.Column="1" Click="OnNavigationMenuClick" Width="40" Height="40" Padding="0"
+                            Background="Transparent" BorderThickness="0" HorizontalAlignment="Right"
+                            ToolTipService.ToolTip="Toggle navigation" AutomationProperties.Name="Toggle navigation">
+                        <FontIcon Glyph="&#xE700;" FontSize="16" />
+                    </Button>
+                </Grid>
+            </NavigationView.PaneHeader>
             <NavigationView.MenuItems>
                 <NavigationViewItem Content="Library" Tag="Library"><NavigationViewItem.Icon><FontIcon Glyph="&#xE7FC;" /></NavigationViewItem.Icon></NavigationViewItem>
                 <NavigationViewItem Content="Presets" Tag="Presets"><NavigationViewItem.Icon><FontIcon Glyph="&#xE9F5;" /></NavigationViewItem.Icon></NavigationViewItem>

@@ -27,6 +27,13 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
     public bool IsPreview => false;
     public ForgeSettings Settings { get; } = ForgeSettings.Load();
     public string EngineRoot { get; }
+    static string SnapshotPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rtxForge", "state", "library-snapshot.json");
+    string SnapshotKey() => LibrarySnapshot.Key(Settings.RuntimeProvider, Settings.GameFolders, Settings.LibraryFolders);
+    public IReadOnlyList<Game> CachedLibrary()
+    {
+        try { return LibraryGames(LibrarySnapshot.Read(SnapshotPath, SnapshotKey())); }
+        catch (Exception error) when (error is InvalidOperationException or FormatException or JsonException or ArgumentException) { return []; }
+    }
 
     EngineForgeService(Process process, string root)
     {
@@ -37,7 +44,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
     // ---------- startup ----------
 
     /// <summary>Starts the host, or returns null (with the reason) when Python or the engine is unavailable.</summary>
-    public static async Task<(EngineForgeService? Service, string? Problem)> TryStartAsync()
+    public static async Task<(EngineForgeService? Service, string? Problem)> TryStartAsync(string logName = "engine.log")
     {
         var root = FindEngineRoot();
         if (root is null) return (null, "The rtxForge engine files were not found next to the app.");
@@ -62,6 +69,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         // Add rtxForge to Steam points the shortcut at this executable.
         info.Environment["RTXFORGE_APP_EXE"] = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "rtxForge.exe");
         info.Environment["PYTHONIOENCODING"] = "utf-8";
+        info.Environment["RTXFORGE_OVERLAY_HOST"] = logName == "overlay-engine.log" ? "1" : "0";
 
         Process process;
         try { process = Process.Start(info)!; }
@@ -73,7 +81,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         var service = new EngineForgeService(process, root);
         var ready = new TaskCompletionSource<JsonObject>(TaskCreationOptions.RunContinuationsAsynchronously);
         _ = Task.Run(() => service.ReadLoop(ready));
-        _ = Task.Run(() => service.DrainErrors());
+        _ = Task.Run(() => service.DrainErrors(logName));
         var first = await Task.WhenAny(ready.Task, Task.Delay(TimeSpan.FromSeconds(30)));
         if (first != ready.Task)
         {
@@ -139,10 +147,10 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         ready.TrySetCanceled();
     }
 
-    async Task DrainErrors()
+    async Task DrainErrors(string logName)
     {
         // Engine diagnostics go to %LOCALAPPDATA%\rtxForge\engine.log for support reports.
-        var log = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rtxForge", "engine.log");
+        var log = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rtxForge", logName);
         Directory.CreateDirectory(Path.GetDirectoryName(log)!);
         try
         {
@@ -180,7 +188,15 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
 
     public async Task<IReadOnlyList<Game>> ScanAsync(CancellationToken cancel = default)
     {
-        var rows = await CallAsync("scan", new { folders = Settings.GameFolders, library_folders = Settings.LibraryFolders }, cancel: cancel) as JsonArray ?? [];
+        var key = SnapshotKey();
+        // The library serves every mode; the installation review checks native FG for NR + MFG.
+        var rows = await CallAsync("scan", new { folders = Settings.GameFolders, library_folders = Settings.LibraryFolders, runtime_provider = Settings.RuntimeProvider }, cancel: cancel) as JsonArray ?? [];
+        LibrarySnapshot.Write(SnapshotPath, key, rows);
+        return LibraryGames(rows);
+    }
+
+    IReadOnlyList<Game> LibraryGames(JsonArray rows)
+    {
         var art = new SteamArtwork(Settings.OnlineArt);
         return LibraryLocations.Visible(rows.OfType<JsonObject>().Select(row => ToGame(row, art)), Settings.RemovedGames);
     }
@@ -210,10 +226,12 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             MetadataSource = appid is null ? null : "Steam",
             AppId = appid,
             Profile = S("profile"),
+            RuntimeProvider = S("runtime_provider"),
             InstalledOn = S("installed_on") is "linux" or "windows" ? S("installed_on") : null,
             NrStrength = D("nr_strength"),
             SharpeningStrength = D("sharpening_strength"),
             MfgMultiplier = multiplier,
+            FeatureControls = row["feature_controls"] is JsonObject controls ? (JsonObject)controls.DeepClone() : null,
             // Your Steam grid picks (Steam and Non-Steam) and Steam's cache, as Linux; then the store CDN.
             PosterPath = Art("poster") ?? art.Poster(appid),
             CapsulePath = Art("capsule") ?? art.Capsule(appid),
@@ -236,8 +254,12 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         return credits;
     }
 
-    public async Task<OperationReview> PrepareAsync(string operation, IReadOnlyList<Game> targets, Tuning tuning, string mode,
-        IProgress<PrepareProgress>? progress = null, CancellationToken cancel = default)
+    public Task<OperationReview> PrepareAsync(string operation, IReadOnlyList<Game> targets, Tuning tuning, string mode,
+        IProgress<PrepareProgress>? progress = null, CancellationToken cancel = default) =>
+        PrepareCoreAsync(operation, targets, tuning, mode, progress, cancel, false);
+
+    async Task<OperationReview> PrepareCoreAsync(string operation, IReadOnlyList<Game> targets, Tuning tuning, string mode,
+        IProgress<PrepareProgress>? progress, CancellationToken cancel, bool supportedSubset)
     {
         var rows = new JsonArray(targets.Where(g => g.EngineRow is not null).Select(g => (JsonNode)g.EngineRow!.DeepClone()).ToArray());
         if (operation == "update-dlss")
@@ -249,22 +271,33 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             Game? Installation(JsonObject row) => targets.FirstOrDefault(g =>
                 string.Equals(g.Location, row["game"]?.ToString(), StringComparison.OrdinalIgnoreCase));
             var ready = Objects(checkedFiles?["rows"]).Select(r =>
-                (Game: Installation(r), Detail: r["detail"]?.ToString() ?? ""))
-                .Where(r => r.Game is not null).Select(r => (r.Game!, r.Detail)).ToList();
+                (Game: Installation(r), Detail: r["detail"]?.ToString() ?? "", Summary: r["summary"]?.ToString()))
+                .Where(r => r.Game is not null).Select(r => new OperationGameReview(r.Game!, r.Detail,
+                    r.Summary ?? "Update this game's DLSS files. Originals will be backed up.")).ToList();
             var skipped = Objects(checkedFiles?["blocked"]).Select(r =>
-                new ReviewBlock(Installation(r), r["name"]?.ToString() ?? "", r["reason"]?.ToString() ?? "")).ToList();
+                new ReviewBlock(Installation(r), r["name"]?.ToString() ?? "", r["reason"]?.ToString() ?? "", r["summary"]?.ToString())).ToList();
             return new OperationReview(operation, checkedFiles?["token"]?.ToString() ?? "", ready, skipped);
         }
-        var engineOperation = operation switch { "install" => "install", "uninstall" => "uninstall", _ => "reset" };
+        var engineOperation = operation switch { "install" => "install", "uninstall" => "uninstall", "adopt" => "adopt", "adopt-clean" => "adopt-clean", _ => "reset" };
         var settings = new JsonObject
         {
             ["runtime_provider"] = Settings.RuntimeProvider,
+            ["nr_on_launch"] = tuning.NrOnLaunch ?? Settings.NrOnLaunch,
+            ["prefer_bundled_nr_only"] = supportedSubset && mode == "nr-only",
             ["manage_dlss_files"] = Settings.ManageDlssFiles,
             ["nr_runtime"] = Settings.NrRuntime,
+            ["skynizz_version"] = Settings.SkynizzVersion,
+            ["mfg_provider"] = Settings.MfgProvider,
+            ["nr_preset"] = Settings.NrPreset,
+            ["feeder_source"] = Settings.FeederSource,
+            ["feeder_backups"] = Settings.FeederBackups,
+            ["borderless_4k"] = Settings.Borderless4K,
             ["nr_strength"] = Math.Round(tuning.NrStrength, 1),
             ["sharpening_strength"] = Math.Round(tuning.SharpeningStrength, 1),
             ["mfg_multiplier"] = tuning.MfgMultiplier == "auto" ? "auto" : int.Parse(tuning.MfgMultiplier),
+            ["feature_controls"] = tuning.FeatureControls?.DeepClone(),
         };
+        foreach (var item in ForgeSettings.Load().GameUiOptions()) settings[item.Key] = item.Value?.DeepClone();
         var result = await CallAsync("prepare", new JsonObject
         {
             ["rows"] = rows,
@@ -282,17 +315,96 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             ? targets.FirstOrDefault(g => string.Equals(g.Location, path, StringComparison.OrdinalIgnoreCase))
             : targets.FirstOrDefault(g => g.Name == name);
         var readyRows = (result?["rows"] as JsonArray ?? []).OfType<JsonObject>()
-            .Select(r => (Game: Match(r["name"]?.ToString(), r["game"]?.ToString()), Detail: r["detail"]?.ToString() ?? ""))
-            .Where(r => r.Game is not null).Select(r => (r.Game!, r.Detail)).ToList();
+            .Select(r => (Game: Match(r["name"]?.ToString(), r["game"]?.ToString()), Detail: r["detail"]?.ToString() ?? "", Summary: r["summary"]?.ToString()))
+            .Where(r => r.Game is not null).Select(r => new OperationGameReview(r.Game!, r.Detail,
+                r.Summary ?? "Review the technical details before continuing.")).ToList();
         var blocked = (result?["blocked"] as JsonArray ?? []).OfType<JsonObject>()
-            .Select(b => new ReviewBlock(Match(b["name"]?.ToString()), b["name"]?.ToString() ?? "", b["reason"]?.ToString() ?? "")).ToList();
+            .Select(b => new ReviewBlock(Match(b["name"]?.ToString()), b["name"]?.ToString() ?? "", b["reason"]?.ToString() ?? "", b["summary"]?.ToString())).ToList();
         var warnings = (result?["warnings"] as JsonArray ?? []).OfType<JsonObject>()
             .Select(w => new ReviewBlock(Match(w["name"]?.ToString()), w["name"]?.ToString() ?? "", w["reason"]?.ToString() ?? "")).ToList();
-        return new OperationReview(operation, result?["token"]?.ToString() ?? "", readyRows, blocked, warnings);
+        var prepared = new OperationReview(operation, result?["token"]?.ToString() ?? "", readyRows, blocked, warnings);
+        if (operation == "install" && !supportedSubset && (mode is "nr-mfg" or "nr-only"))
+        {
+            var available = new List<SupportedOperationReview>();
+            if (mode == "nr-mfg" && readyRows.Count > 0 && readyRows.All(r => r.Game.UsesFeeder))
+            {
+                available.Add(new(prepared, true, false, "Feeder provides neural rendering. Frame generation is unavailable for this route."));
+                prepared = prepared with { Ready = [] };
+            }
+            var candidates = targets.Where(g => !readyRows.Any(r => r.Game.Id == g.Id)
+                && !g.AntiCheatDetected && g.EngineRow?["exe"] is not null).ToArray();
+            var feeder = candidates.Where(g => g.UsesFeeder).ToArray();
+            var nrOnly = candidates.Where(g => mode == "nr-mfg" && !g.UsesFeeder && Settings.RuntimeProvider == "skynizz"
+                && g.EngineRow?["native_dlss"]?.GetValue<bool>() == true
+                && g.EngineRow?["native_dlssg"]?.GetValue<bool>() != true).ToArray();
+            foreach (var group in new[] { feeder, nrOnly })
+            {
+                if (group.Length == 0) continue;
+                OperationReview supported;
+                try { supported = await PrepareCoreAsync(operation, group, tuning, "nr-only", progress, cancel, true); }
+                catch (EngineException) { continue; } // Keep the original refusal; no partial recipe was admitted.
+                // Keep route-specific setup problems even when other Feeder
+                // targets in this group can proceed.
+                foreach (var failure in supported.Blocked.Where(b => b.Game?.UsesFeeder == true))
+                {
+                    var index = blocked.FindIndex(b => b.Game?.Id == failure.Game!.Id);
+                    if (index >= 0) blocked[index] = failure;
+                }
+                if (supported.Ready.Count > 0)
+                    available.Add(new(supported, true, false, group[0].UsesFeeder
+                        ? "Feeder provides neural rendering. Frame generation is unavailable for this route."
+                        : "Use DirectX 12 and enable DLSS in the game for NR. Native frame generation is unavailable."));
+                else DiscardOperation(supported);
+            }
+            var mfgOnly = candidates.Where(g => mode == "nr-mfg" && !g.UsesFeeder && Settings.RuntimeProvider == "skynizz"
+                && !available.SelectMany(p => p.Review.Ready).Any(p => p.Game.Id == g.Id)
+                && g.EngineRow?["native_dlssg"]?.GetValue<bool>() == true
+                && blocked.Any(b => b.Game?.Id == g.Id && (b.Reason.Contains("NR runtime", StringComparison.OrdinalIgnoreCase)
+                    || b.Reason.Contains("NR model", StringComparison.OrdinalIgnoreCase) || b.Reason.Contains("nvngx_dlssnr", StringComparison.OrdinalIgnoreCase)))).ToArray();
+            if (mfgOnly.Length > 0)
+            {
+                try
+                {
+                    var supported = await PrepareAsync(operation, mfgOnly, tuning, "mfg-only", progress, cancel);
+                    if (supported.Ready.Count > 0)
+                        available.Add(new(supported, false, true, "Frame generation is supported. Neural rendering could not be prepared with the selected NR runtime."));
+                    else DiscardOperation(supported);
+                }
+                catch (EngineException) { } // Preserve the original refusal when no subset was admitted.
+            }
+            var included = available.SelectMany(r => r.Review.Ready).Select(r => r.Game.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            prepared = prepared with { Supported = available, Blocked = blocked.Where(b => b.Game is null || !included.Contains(b.Game.Id)).ToArray() };
+        }
+        return prepared;
+    }
+
+    public void DiscardOperation(OperationReview review)
+    {
+        static IEnumerable<string> Tokens(OperationReview item) => new[] { item.Token }
+            .Concat(item.Steps.SelectMany(Tokens)).Concat(item.Supported.SelectMany(s => Tokens(s.Review)));
+        _ = DiscardOperationAsync(Tokens(review).Where(t => !string.IsNullOrWhiteSpace(t)).Distinct().ToArray());
+    }
+    async Task DiscardOperationAsync(string[] tokens)
+    {
+        try { await CallAsync("discard_operation", new { tokens }); }
+        catch (Exception error) when (error is IOException or InvalidOperationException) { System.Diagnostics.Debug.WriteLine(error); }
     }
 
     public async Task<int> ExecuteAsync(OperationReview review, IProgress<OperationStep> progress, CancellationToken cancel = default)
     {
+        if (review.Steps.Count > 0)
+        {
+            var completed = 0;
+            foreach (var step in review.Steps)
+            {
+                cancel.ThrowIfCancellationRequested();
+                var offset = completed;
+                var partProgress = new Progress<OperationStep>(p => progress.Report(p with { Index = p.Index + offset, Total = review.Ready.Count }));
+                try { completed += await ExecuteAsync(step, partProgress, cancel); }
+                catch (EngineException error) { throw new EngineException($"{completed} games updated before the operation stopped. {error.Message}"); }
+            }
+            return completed;
+        }
         var games = review.Ready.Select(r => r.Game).ToList();
         if (review.Operation == "update-dlss")
         {

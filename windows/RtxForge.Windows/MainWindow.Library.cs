@@ -19,6 +19,7 @@ public sealed partial class MainWindow
             SaveSettings();
             await ScanAsync();
             ShowToast($"Library rescanned · {Games.Count} games found.");
+            await ReviewAdoptionAsync(Games.Where(g => g.AdoptionAvailable).ToArray());
             return true;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)

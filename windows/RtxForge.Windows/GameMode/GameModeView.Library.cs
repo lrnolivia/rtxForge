@@ -32,8 +32,11 @@ public sealed partial class GameModeView
         var titles = new StackPanel { Spacing = t.Px(10) };
         titles.Children.Add(ui.H1(selecting ? "Select games" : "Library", t.Compact ? 1.18 : 1.62));
         var configured = shell.Games.Count(g => g.Installed);
-        if (!t.Compact)
+        if ((!t.Compact || shell.LibraryRefreshing || shell.LibraryLoadError is not null)
+            && (shell.Games.Count > 0 || !shell.LibraryRefreshing || shell.LibraryLoadError is not null))
             titles.Children.Add(ui.P(selecting ? $"{selectedIds.Count} selected · {FilterLabel(shell.Settings.LibraryFilter)}"
+                : shell.LibraryLoadError is not null ? "Could not refresh your library. Rescan to try again."
+                : shell.LibraryRefreshing ? shell.Games.Count == 0 ? "Finding your games…" : $"{shell.Games.Count} games · Refreshing library…"
                 : $"{shell.Games.Count} games · {configured} configured"));
         heading.Children.Add(titles);
         var provider = GmUi.Capsule(new Border
@@ -53,7 +56,7 @@ public sealed partial class GameModeView
         var mode = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(28), VerticalAlignment = VerticalAlignment.Center };
         mode.Children.Add(ui.Text("Features", 0.92, weight: FontWeights.SemiBold).With(x => x.VerticalAlignment = VerticalAlignment.Center));
         mode.Children.Add(ui.Segments(
-            [("nr-only", "NR Only", shell.NrOnlyAvailable), ("mfg-only", "MFG Only", true), ("nr-mfg", "NR + MFG", true)],
+            [("nr-only", "NR Only", shell.NrOnlyAvailable), ("mfg-only", "MFG Only", shell.Settings.RuntimeProvider != "feeder"), ("nr-mfg", "NR + MFG", shell.Settings.RuntimeProvider != "feeder")],
             shell.Mode, key => { shell.Mode = key; Render(keepFocus: true); }));
         toolbar.Children.Add(mode);
         var targets = LibraryScope.Targets(shell.Games, shell.Settings.LibraryFilter, "", selectedIds, selecting);
@@ -133,8 +136,10 @@ public sealed partial class GameModeView
             : shell.Settings.LibraryView == "list" ? ListLayout(games) : CardLayout(games, available, shell.Settings.LibraryView == "capsules");
         scroller.ViewChanged += (_, _) => libraryScroll = scroller.VerticalOffset;
         libraryScroller = scroller;   // Render restores libraryScroll before focusing (see RestoreScroll)
-        Grid.SetRow(scroller, 3);
-        main.Children.Add(scroller);
+        FrameworkElement viewport = shell.Games.Count == 0 && shell.LibraryRefreshing
+            ? new Controls.LibrarySkeleton(shell.Settings.LibraryView, GmTheme.B(t.Panel), t.Px(1)) : scroller;
+        Grid.SetRow(viewport, 3);
+        main.Children.Add(viewport);
 
         // No scroll cue: navigation help is contextual tips (see Tip / TipOnFocus).
         return main;
@@ -144,7 +149,7 @@ public sealed partial class GameModeView
     {
         var page = new StackPanel { Spacing = t.Px(24), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, t.Px(60), 0, 0) };
         page.Children.Add(ui.Icon("", 2.4, t.Muted).With(i => i.HorizontalAlignment = HorizontalAlignment.Center));
-        page.Children.Add(ui.H2(shell.Games.Count == 0 ? "No games found" : "No games match this filter").With(h => h.HorizontalAlignment = HorizontalAlignment.Center));
+        page.Children.Add(ui.H2(shell.LibraryLoadError is not null ? "Library unavailable" : shell.Games.Count == 0 ? "No games found" : "No games match this filter").With(h => h.HorizontalAlignment = HorizontalAlignment.Center));
         page.Children.Add(ui.P(shell.Games.Count == 0 ? "Rescan your library, or add a game folder from Library options." : "Choose a different filter to see more of your library.", 0.92)
             .With(p => { p.TextAlignment = TextAlignment.Center; p.MaxWidth = t.Em(0.92) * 30; }));
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(16), HorizontalAlignment = HorizontalAlignment.Center };
@@ -159,6 +164,8 @@ public sealed partial class GameModeView
 
     string ProviderName() => shell.Settings.RuntimeProvider switch
     {
+        "feeder" => "Feeder NR",
+        "skynizz" => "Skynizz",
         "dlss-unlocked" => "DLSS-Unlocked",
         "custom" => "Custom package",
         _ => "y4my Multipass",
@@ -230,20 +237,12 @@ public sealed partial class GameModeView
         card.Width = width;
         card.HorizontalContentAlignment = HorizontalAlignment.Stretch;
         title.Width = width;
-        // .rf-game-card: no fill or hover overlay; the focus ring outlines the art only
-        // (4px in --focus, 5px offset), never the title.
+        // Keep a thin rounded focus ring separate from the artwork's accent selection stroke.
         card.Style = (Style)Application.Current.Resources["GmBareButtonStyle"];
-        card.UseSystemFocusVisuals = false;   // ui.Button set it locally, which outranks the style
+        card.UseSystemFocusVisuals = true;
+        card.FocusVisualMargin = new Thickness(-t.Px(5), -t.Px(5), -t.Px(5), title.MinHeight + column.Spacing - t.Px(5));
         card.IsTabStop = true;
-        var ring = new Border
-        {
-            Margin = new Thickness(-t.Px(9)), BorderThickness = new Thickness(t.Px(4)), CornerRadius = new CornerRadius(t.Px(12 + 9)),
-            BorderBrush = GmTheme.B(t.Focus), IsHitTestVisible = false, Visibility = Visibility.Collapsed,
-        };
-        overlay.Children.Add(ring);
-        card.GotFocus += (_, _) => ring.Visibility = card.FocusState == FocusState.Pointer ? Visibility.Collapsed : Visibility.Visible;
-        card.LostFocus += (_, _) => ring.Visibility = Visibility.Collapsed;
-        ui.Lift(card, 1.05, 32);
+        GmUi.NoLift(card);
         Drift(card, art);
         if (!enabled) art.Opacity = 0.5;
         Key(card, "game-" + game.Id.GetHashCode().ToString("x"));
@@ -438,7 +437,7 @@ public sealed partial class GameModeView
         if (game.Installed) dot.Fill = GmTheme.B(GmTheme.Accent);
         else { dot.Stroke = GmTheme.B(t.Muted); dot.StrokeThickness = 1.5; }
         state.Children.Add(dot);
-        state.Children.Add(ui.Text(game.Blocked ? "Unsupported" : game.Installed ? "Installed" : "Available", 0.85, t.Muted));
+        state.Children.Add(ui.Text(game.Blocked ? "Unsupported" : game.Installed ? "Installed" : game.UsesFeeder ? "Available · Feeder NR" : "Available", 0.85, t.Muted));
         Grid.SetColumn(state, 3);
         grid.Children.Add(state);
 

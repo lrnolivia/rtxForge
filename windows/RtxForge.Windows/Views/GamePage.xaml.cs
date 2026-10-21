@@ -15,11 +15,12 @@ public sealed partial class GamePage : Page
     readonly MainWindow shell = App.Main!;
     Game game = null!;
     string section = "Overview";
-    bool narrow;
+    Services.AccentPalette? gamePalette;
 
     public GamePage()
     {
         InitializeComponent();
+        ActualThemeChanged += (_, _) => ApplyAccentText();
         shell.GamesChanged += Refresh;
         Unloaded += (_, _) => shell.GamesChanged -= Refresh;
     }
@@ -52,7 +53,8 @@ public sealed partial class GamePage : Page
         if (palette is null || current != game) return;
 
         // .{art} .game-banner-title / .progress-poster-frame
-        TitleText.Foreground = palette.Brush(palette.HeroAccent);
+        gamePalette = palette;
+        ApplyAccentText();
         PosterFrame.BorderBrush = palette.AccentBrush;
         PosterFrame.BorderThickness = new Thickness(2);
 
@@ -73,18 +75,28 @@ public sealed partial class GamePage : Page
             ("ToggleSwitchKnobFillOn", accentFg), ("ProgressBarForeground", accent),
             ("SelectorBarItemPillFill", accent),
             ("SelectorBarItemBackgroundSelected", palette.Brush(palette.Color, 0.10)),
-            ("SelectorBarItemForegroundSelected", palette.Brush(palette.NavAccent)),
         })
             Resources[key] = brush;
 
         // Re-resolve ThemeResource lookups against the new page-level overrides.
         RequestedTheme = ActualTheme == ElementTheme.Dark ? ElementTheme.Light : ElementTheme.Dark;
         RequestedTheme = ElementTheme.Default;
+        ApplyAccentText();
+    }
+
+    void ApplyAccentText()
+    {
+        if (gamePalette is not { } palette) return;
+        var light = ActualTheme == ElementTheme.Light;
+        var ink = light ? Services.ArtAccent.Readable(palette.Color, global::Windows.UI.Color.FromArgb(255, 243, 243, 243)) : palette.HeroAccent;
+        TitleText.Foreground = palette.Brush(ink);
+        Resources["SelectorBarItemForegroundSelected"] = palette.Brush(light ? ink : palette.NavAccent);
     }
 
     void Refresh()
     {
-        StatusBadge.Text = game.Blocked ? "Unsupported"
+        StatusBadge.Text = game.AdoptionAvailable ? "Installed · Adoption available" : game.OfflineOnly ? "Installed · Offline only" : game.Blocked ? "Unsupported"
+            : game.UsesFeeder ? game.Installed ? "Feeder NR" : "Available · Feeder NR"
             : game.InstalledOnLinux ? "Installed on Linux"
             : game.Installed ? shell.Mode switch { "nr-only" => "NR Only", "nr-mfg" => "NR + MFG", _ => "MFG Only" }
             : "Ready for Features";
@@ -100,8 +112,10 @@ public sealed partial class GamePage : Page
             ToolTipService.SetToolTip(OsBadge, OsMark.Tooltip(os));
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(OsBadge, OsMark.Tooltip(os));
         }
-        InstallButton.IsEnabled = !game.Blocked && !shell.Busy;
-        RestoreButton.IsEnabled = game.Installed && !shell.Busy;
+        InstallButton.IsEnabled = (!game.Blocked || game.AdoptionAvailable) && !shell.Busy;
+        RestoreButton.IsEnabled = game.Installed && !game.AdoptionAvailable && !shell.Busy;
+        AdoptionItem.Visibility = game.AdoptionAvailable ? Visibility.Visible : Visibility.Collapsed;
+        OfflineLaunchItem.Visibility = game.OfflineOnly ? Visibility.Visible : Visibility.Collapsed;
         UpdateDlssItem.IsEnabled = !game.Blocked;
         OpenFolderItem.IsEnabled = !shell.Service.IsPreview && Directory.Exists(game.Location);
         Build(section);
@@ -115,9 +129,11 @@ public sealed partial class GamePage : Page
     void OnInstall(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("install", [game]);
     void OnRestore(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("uninstall", [game]);
     void OnUpdateDlss(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("update-dlss", [game]);
+    void OnCompanion(object sender, RoutedEventArgs e) => shell.OpenCompanion(game);
+    void OnAdoption(object sender, RoutedEventArgs e) => _ = shell.ReviewAdoptionAsync([game]);
+    void OnLaunchOffline(object sender, RoutedEventArgs e) => _ = shell.LaunchOfflineAsync(game);
     void OnRemoveFromLibrary(object sender, RoutedEventArgs e) => _ = shell.ConfirmRemoveLibraryEntriesAsync([game]);
-    void OnOpenFolder(object sender, RoutedEventArgs e) =>
-        Process.Start(new ProcessStartInfo("explorer.exe", $"\"{game.Location}\"") { UseShellExecute = true });
+    void OnOpenFolder(object sender, RoutedEventArgs e) => _ = shell.OpenGameFolderAsync(game);
 
     void Build(string name)
     {
@@ -128,6 +144,14 @@ public sealed partial class GamePage : Page
         switch (name)
         {
             case "Overview":
+                if (g.OfflineOnly)
+                {
+                    var offline = new PreferencesGroup("Offline-only features", "Launch here to use the reviewed offline route. The normal Steam launch is unchanged. Online play requires removing these feature files. Adoption restore returns the previous modded setup.");
+                    offline.Add(Prefs.ActionButton("Launch offline", (_, _) => _ = shell.LaunchOfflineAsync(g), accent: true));
+                    PageHost.Children.Add(offline);
+                }
+                if (g.AdoptionAvailable)
+                    PageHost.Children.Add(Prefs.Row("Adoption available", "This package is installed. Adopt its current setup or back it up and clean install from rtxForge.", Prefs.ActionButton("Review Adoption", (_, _) => _ = shell.ReviewAdoptionAsync([g]))));
                 if (g.Blocked)
                     PageHost.Children.Add(new InfoBar
                     {
@@ -143,38 +167,48 @@ public sealed partial class GamePage : Page
                             + "Set Up for Windows hands them to rtxForge here, so you can repair, retune or restore them from Windows.",
                     });
                 var info = new PreferencesGroup("Game Information");
+                var facts = new PresetColumns(300, 3) { ColumnSpacing = 12, RowSpacing = 12 };
+                if (g.IsFeeder)
+                    info.Add(Prefs.Row("NR route", "Feeder NR · " + (g.EngineRow?["nr_runtime"]?["version"]?.ToString() ?? "Version unavailable")
+                        + (g.EngineRow?["nr_enabled"]?.GetValue<bool>() == true ? ". Enabled in saved settings." : ". Disabled in saved settings.")
+                        + " Check the running game with Diagnose NR.", glyph: ""));
                 foreach (var (title, value, glyph) in new (string, string?, string)[]
                 {
                     ("Library", g.Library, ""), ("Location", g.Location, ""),
                     ("Compatibility", g.Blocked ? null : "Supported", ""), ("Metadata Source", g.MetadataSource, ""),
                     ("Developer", g.Developer, ""), ("Release", g.Release, ""),
                 })
-                    if (!string.IsNullOrEmpty(value)) info.Add(Prefs.Row(title, value, glyph: glyph));
+                    if (!string.IsNullOrEmpty(value)) facts.Children.Add(Prefs.Row(title, value, glyph: glyph));
                 if (g.Installed && g.InstalledOn is "linux" or "windows")
                 {
                     // The OS mark sits where the other rows have their glyph.
                     var installedWith = Prefs.Row("Installed with", "rtxForge on " + CrossOs.Name(g.InstalledOn));
                     ((Grid)installedWith.Child).Children.Insert(0,
                         OsMark.Create(g.InstalledOn, 20, (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"]));
-                    info.Add(installedWith);
+                    facts.Children.Add(installedWith);
                 }
+                info.Add(facts);
                 PageHost.Children.Add(info);
                 break;
 
             case "Presets":
+                if (g.IsFeeder)
+                {
+                    PageHost.Children.Add(Prefs.Row("Feeder NR settings", "Your existing tuning is preserved. Use ReShade's NR panel in the running game to adjust passes, resolution, tone and structure.", glyph: ""));
+                    break;
+                }
                 var features = new PreferencesGroup(null,
                     "Tuning values for this game. Reset restores your library presets. Apply saves them for this game.");
-                if (g.Installed)
-                    features.Add(Prefs.Row("Saved NR", ((g.NrStrength ?? shell.Settings.NrStrength) > 0 ? "Enabled" : "Disabled")
-                        + " · runtime and visual results require diagnosis.", glyph: ""));
-                var tuning = new TuningPanel(shell.GameTuning(g));
-                tuning.SetMode(shell.Mode, g.Installed);
+                var tuning = new PresetControlsView(shell.GameTuning(g), shell.Settings.OverlayControls == "classic");
+                tuning.SetMode(g.Profile?.Contains("Only", StringComparison.OrdinalIgnoreCase) == true
+                    ? g.Profile.StartsWith("NR", StringComparison.OrdinalIgnoreCase) ? "nr-only" : "mfg-only" : shell.Mode,
+                    g.Installed, g.RuntimeProvider != "skynizz");
                 // 16px gaps (the pods' own spacing): group spacing 4 + margin 12.
                 if (g.Installed) tuning.Margin = new Thickness(0, 12, 0, 0);
                 features.Add(tuning);
                 var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
-                var reset = Prefs.ActionButton("Reset", (_, _) => _ = shell.LaunchAction("reset", [g]));
-                var apply = Prefs.ActionButton("Apply", (_, _) => _ = shell.LaunchAction("apply", [g], tuning.Value), accent: true);
+                var reset = Prefs.ActionButton("Use library defaults", (_, _) => _ = shell.LaunchAction("reset", [g]));
+                var apply = Prefs.ActionButton("Apply to this game", (_, _) => _ = shell.LaunchAction("apply", [g], tuning.Value), accent: true);
                 reset.IsEnabled = apply.IsEnabled = g.Installed && !shell.Busy;
                 actions.Children.Add(reset);
                 actions.Children.Add(apply);
@@ -185,35 +219,39 @@ public sealed partial class GamePage : Page
             case "DLSS Files":
                 var files = new PreferencesGroup("Installed DLSS Files");
                 files.Add(Prefs.Row("nvngx_dlss.dll", g.DlssVersion is null ? "Not detected" : "Version " + g.DlssVersion, glyph: ""));
-                PageHost.Children.Add(files);
                 var manage = new PreferencesGroup("File Management");
+                var fileActions = new PresetColumns(360, 2) { ColumnSpacing = 12, RowSpacing = 12 };
                 var update = Prefs.ActionButton("Update", (_, _) => _ = shell.LaunchAction("update-dlss", [g]));
                 update.IsEnabled = !g.Blocked && !shell.Busy;
-                manage.Add(Prefs.Row("Update DLSS", "Update older DLSS files. Backups are kept for restoration.", update, ""));
+                fileActions.Children.Add(DetailActionCard("Update DLSS", "Update older DLSS files. Backups are kept for restoration.", update, ""));
                 var restoreDlss = Prefs.ActionButton("Restore", async (_, _) => await shell.RestoreDlssFilesAsync(g));
                 restoreDlss.IsEnabled = false;
-                var backupRow = Prefs.Row("Restore original DLSS files", "Checking for backups…", restoreDlss, "");
-                manage.Add(backupRow);
+                var backupRow = DetailActionCard("Restore original DLSS files", "Checking for backups…", restoreDlss, "");
+                fileActions.Children.Add(backupRow); manage.Add(fileActions);
                 PageHost.Children.Add(manage);
+                PageHost.Children.Add(files);
                 _ = FillDlssInventoryAsync(g, files, backupRow, restoreDlss);
                 break;
 
             case "Tools":
                 var tools = new PreferencesGroup("Tools");
+                var locationTools = new PresetColumns(360, 2) { ColumnSpacing = 12, RowSpacing = 12 };
                 var open = Prefs.ActionButton("Open", (_, _) => OnOpenFolder(this, new RoutedEventArgs()));
                 open.IsEnabled = OpenFolderItem.IsEnabled;
-                tools.Add(Prefs.Row("Game Folder", g.Location, open, ""));
-                tools.Add(Prefs.Row("Copy Location", "Copy the install path to the clipboard.", Prefs.ActionButton("Copy", (_, _) =>
+                locationTools.Children.Add(DetailActionCard("Game Folder", g.Location, open, ""));
+                locationTools.Children.Add(DetailActionCard("Copy Location", "Copy the install path to the clipboard.", Prefs.ActionButton("Copy", (_, _) =>
                 {
                     var data = new DataPackage();
                     data.SetText(g.Location);
                     Clipboard.SetContent(data);
                     shell.ShowToast("Location copied.");
                 }), ""));
+                tools.Add(locationTools);
                 PageHost.Children.Add(tools);
                 // populate_tools: NR diagnosis and ReShade / add-ons, each reviewed before it touches the game.
                 var extras = new PreferencesGroup("Graphics Tools", "Check NR or add ReShade to this game. Existing graphics files are kept safe.");
-                extras.Add(Prefs.Row("Diagnose NR", "Read the saved NR settings, runtime hashes and log evidence.",
+                var graphicsTools = new PresetColumns(360, 2) { ColumnSpacing = 12, RowSpacing = 12 };
+                graphicsTools.Children.Add(DetailActionCard("Diagnose NR", "Read the saved NR settings, runtime hashes and log evidence.",
                     Prefs.ActionButton("Diagnose", async (_, _) => await shell.DiagnoseAsync(g)), ""));
                 foreach (var (kind, title, subtitle) in new[]
                 {
@@ -223,10 +261,11 @@ public sealed partial class GamePage : Page
                 {
                     var install = Prefs.ActionButton("Choose", async (_, _) => await shell.InstallExtraAsync(g, kind));
                     install.IsEnabled = !shell.Service.IsPreview && !g.Blocked && !shell.Busy;
-                    extras.Add(Prefs.Row(title, subtitle, install, ""));
+                    graphicsTools.Children.Add(DetailActionCard(title, subtitle, install, ""));
                 }
-                extras.Add(Prefs.Row("ReShade Downloads", "Get ReShade from its official site.",
+                graphicsTools.Children.Add(DetailActionCard("ReShade Downloads", "Get ReShade from its official site.",
                     Prefs.ActionButton("Open", (_, _) => MainWindow.OpenUri("https://reshade.me/")), ""));
+                extras.Add(graphicsTools);
                 PageHost.Children.Add(extras);
                 PageHost.Children.Add(Prefs.Label("Use an extracted x64 ReShade DLL or .addon64 file from a source you trust. Shader packs and presets remain yours to manage.", "ForgeCaptionDimTextStyle"));
                 _ = FillExtraRecordsAsync(g);
@@ -234,18 +273,22 @@ public sealed partial class GamePage : Page
 
             case "Notes":
                 var notes = new PreferencesGroup("Your Notes", "Kept with this game in rtxForge. Included in support reports when you choose.");
+                var noteCards = new PresetColumns(420, 2) { ColumnSpacing = 12, RowSpacing = 12 };
+                var testCard = new StackPanel { Spacing = 12 };
                 string[] states = ["Untested", "Working", "Problem", "Bench"];
                 var (statusRow, status) = Prefs.ComboRow("Test Result", "Bench excludes this game from bulk installation and repair.", states,
                     Math.Max(0, Array.IndexOf(states, g.TestStatus)), "");
-                notes.Add(statusRow);
+                testCard.Children.Add(statusRow);
                 var text = new TextBox { Text = g.Notes, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 180, PlaceholderText = "What worked, what didn't, settings you used" };
-                notes.Add(text);
+                noteCards.Children.Add(DetailSurface(text));
                 var noteActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
                 var test = Prefs.ActionButton(g.TestActive ? "Finish Test" : "Start Test", async (_, _) => await shell.RecordTestAsync(g));
                 test.IsEnabled = !shell.Service.IsPreview;
                 noteActions.Children.Add(test);
                 noteActions.Children.Add(Prefs.ActionButton("Save Notes", async (_, _) => await shell.SaveNotesAsync(g, states[Math.Max(0, status.SelectedIndex)], text.Text), accent: true));
-                notes.Add(noteActions);
+                testCard.Children.Add(noteActions);
+                noteCards.Children.Add(DetailSurface(testCard));
+                notes.Add(noteCards);
                 PageHost.Children.Add(notes);
                 break;
 
@@ -253,6 +296,21 @@ public sealed partial class GamePage : Page
                 BuildAppearance(g);
                 break;
         }
+    }
+
+    static Border DetailSurface(UIElement content) => new()
+    { Style = Prefs.GetStyle("ForgeControlPodStyle"), Child = content, VerticalAlignment = VerticalAlignment.Top };
+
+    static Border DetailActionCard(string title, string description, Button action, string glyph)
+    {
+        var card = Prefs.Row(title, description, action, glyph);
+        var layout = (Grid)card.Child;
+        layout.RowDefinitions.Add(new() { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new() { Height = GridLength.Auto });
+        layout.RowSpacing = 12;
+        Grid.SetRow(action, 1); Grid.SetColumn(action, 1);
+        action.HorizontalAlignment = HorizontalAlignment.Right;
+        return card;
     }
 
     /// <summary>DLSS Files: the native files found outside the feature stack, and the latest updater backup.</summary>
@@ -339,11 +397,6 @@ public sealed partial class GamePage : Page
         Grid.SetColumn(HeroActions, nowNarrow ? 0 : 1);
         HeroActions.Margin = new Thickness(0, nowNarrow ? 12 : 0, 0, 0);
         HeroActions.HorizontalAlignment = nowNarrow ? HorizontalAlignment.Left : HorizontalAlignment.Right;
-        if (nowNarrow != narrow)
-        {
-            narrow = nowNarrow;
-            if (section == "Appearance") Build(section);
-        }
     }
 
     // ---------- Appearance (artwork_preferences + Accent Color + Artwork Credits) ----------
@@ -357,7 +410,7 @@ public sealed partial class GamePage : Page
         sync.IsEnabled = !preview;
         var custom = new PreferencesGroup("Custom Artwork",
             "Artwork changes also sync to your local Steam library. Reset restores your original Steam artwork.", sync);
-        var editors = new Grid { ColumnSpacing = 16, RowSpacing = 24 };
+        var editors = new PresetColumns(240, 3) { ColumnSpacing = 12, RowSpacing = 12 };
         var frames = new List<Border>();
         foreach (var (index, (title, hint, width, height, source)) in new[]
         {
@@ -366,9 +419,6 @@ public sealed partial class GamePage : Page
             ("Hero", "1920 × 620", 156.0, 50.0, g.HeroPath),
         }.Select((spec, i) => (i, spec)))
         {
-            // Three across; one per row when the window is narrow.
-            if (narrow) editors.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            else editors.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             var item = new StackPanel { Spacing = 12 };
             var heading = Prefs.Label(title, "ForgeHeadingTextStyle");
             heading.HorizontalAlignment = HorizontalAlignment.Center;
@@ -388,24 +438,25 @@ public sealed partial class GamePage : Page
             var dims = Prefs.Label(hint, "ForgeCaptionDimTextStyle");
             dims.HorizontalAlignment = HorizontalAlignment.Center;
             item.Children.Add(dims);
-            foreach (var (caption, glyph) in new[] { ("Choose Image", ""), ("Browse artwork", ""), ("Reset", "") })
+            var secondaryActions = new PresetColumns(90, 2) { ColumnSpacing = 8, RowSpacing = 8 };
+            foreach (var (caption, glyph) in new[] { ("Choose Image", ""), ("Browse", ""), ("Reset", "") })
             {
                 var role = title switch { "Poster" => "poster", "Hero" => "hero", _ => "capsule" };
                 var action = Prefs.ActionButton(caption, async (_, _) =>
                 {
                     if (caption == "Choose Image") await shell.ChooseArtworkAsync(g, role);
-                    else if (caption == "Browse artwork") await shell.BrowseArtworkAsync(g, role);
+                    else if (caption == "Browse") await shell.BrowseArtworkAsync(g, role);
                     else await shell.ResetArtworkAsync(g, role);
                 }, glyph: glyph);
                 action.HorizontalAlignment = HorizontalAlignment.Stretch;
                 action.IsEnabled = !preview;
                 ToolTipService.SetToolTip(action, preview ? "Preview mode" : caption);
-                item.Children.Add(action);
+                if (caption == "Choose Image") item.Children.Add(action); else secondaryActions.Children.Add(action);
             }
-            if (narrow) Grid.SetRow(item, index); else Grid.SetColumn(item, index);
-            editors.Children.Add(item);
+            item.Children.Add(secondaryActions);
+            editors.Children.Add(DetailSurface(item));
         }
-        custom.Add(new Border { Style = Prefs.GetStyle("ForgeControlPodStyle"), Child = editors });
+        custom.Add(editors);
         PageHost.Children.Add(custom);
 
         // Accent Color: Game Accent row with swatch and the poster picker.
@@ -415,14 +466,13 @@ public sealed partial class GamePage : Page
         var suffix = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Children = { swatch, edit } };
         var customHex = shell.Settings.GameAccents.GetValueOrDefault(g.Id);
         accentGroup.Add(Prefs.Row("Game Accent", customHex is null ? "Artwork-derived" : "Custom · " + customHex.ToUpperInvariant(), suffix, ""));
-        PageHost.Children.Add(accentGroup);
+        PageHost.Children.Insert(0, accentGroup);
 
         // Artwork Credits pods.
         var credits = new PreferencesGroup("Artwork Credits");
-        var pods = new Grid { ColumnSpacing = 16 };
+        var pods = new PresetColumns(220, 3) { ColumnSpacing = 12, RowSpacing = 12 };
         foreach (var (index, title) in new[] { "Poster", "Wide Capsule", "Hero" }.Select((t, i) => (i, t)))
         {
-            pods.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             var pod = new StackPanel { Spacing = 5 };
             pod.Children.Add(Prefs.Label(title, "ForgeHeadingTextStyle"));
             var creditRole = title switch { "Poster" => "poster", "Hero" => "hero", _ => "capsule" };
@@ -430,7 +480,6 @@ public sealed partial class GamePage : Page
             var source = g.ArtCredits.GetValueOrDefault(creditRole) ?? (hasArt ? g.MetadataSource : null);
             pod.Children.Add(Prefs.Label(source ?? "Source information unavailable", "ForgeCaptionDimTextStyle"));
             var card = new Border { Style = Prefs.GetStyle("ForgeControlPodStyle"), Padding = new Thickness(16), Child = pod };
-            Grid.SetColumn(card, index);
             pods.Children.Add(card);
         }
         credits.Add(pods);

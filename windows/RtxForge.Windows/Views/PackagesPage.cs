@@ -12,7 +12,7 @@ namespace RtxForge.Windows.Views;
 public sealed partial class PackagesPage : Page
 {
     readonly MainWindow shell = App.Main!;
-    readonly StackPanel body = new() { Spacing = 4 };
+    readonly StackPanel body = new() { Spacing = 20 };
     readonly TextBlock status = Prefs.Label("Checking your system…");
 
     public PackagesPage()
@@ -28,7 +28,7 @@ public sealed partial class PackagesPage : Page
         Loaded += async (_, _) => await LoadAsync();
     }
 
-    static string ProviderName(string id) => id switch { "dlss-unlocked" => "DLSS-Unlocked", "custom" => "Custom package", _ => "y4my Multipass" };
+    static string ProviderName(string id) => id switch { "feeder" => "Feeder NR", "dlss-unlocked" => "DLSS-Unlocked", "skynizz" => "Skynizz NR + Ada MFG bridge", "custom" => "Custom package", "y4my" => "y4my Multipass", _ => id };
 
     async Task LoadAsync()
     {
@@ -39,32 +39,141 @@ public sealed partial class PackagesPage : Page
             ? name : ProviderName(shell.Settings.RuntimeProvider));
         body.Children.Clear();
 
-        var available = new PreferencesGroup("Available packages");
-        foreach (var item in catalog.Packages)
+        var curated = new StackPanel { Spacing = 12, Margin = new Thickness(0, 12, 0, 0) };
+        curated.Children.Add(Prefs.Label("Curated Packages", "ForgeHeadingTextStyle"));
+        var packages = new PresetColumns(360, 2) { ColumnSpacing = 12, RowSpacing = 12 };
+        foreach (var item in catalog.Packages.OrderByDescending(p => p.Id == shell.Settings.RuntimeProvider).ThenByDescending(p => p.Recommended))
+            packages.Children.Add(PackageCard(item));
+        curated.Children.Add(packages);
+        body.Children.Add(curated);
+        if (catalog.Packages.Any(p => p.Id == "feeder") || shell.Settings.RuntimeProvider == "feeder")
         {
-            var current = shell.Settings.RuntimeProvider == item.Id;
-            var use = Prefs.ActionButton(current ? "In use" : "Use package", (_, _) => { shell.SelectPackage(item.Id); _ = LoadAsync(); },
-                accent: item.Recommended && !current);
-            use.IsEnabled = item.Available && !current;
-            ToolTipService.SetToolTip(use, item.Reason);
-            available.Add(Prefs.Row(item.Name, item.Version + " · " + item.Summary, use, ""));
+            var feeder = Section("Feeder NR", "Used for compatible DirectX 11 games, including when Skynizz is selected. Choose your local stack once; installation copies ReShade, Feeder, RenoDX and shaders for you. NR only.");
+            var paths = new PresetColumns(360, 2) { ColumnSpacing = 16, RowSpacing = 12 };
+            paths.Children.Add(FolderField("Local stack folder", "Your ReShade, Feeder, RenoDX and shader files for new installs.",
+                shell.Settings.FeederSource, path => shell.Settings.FeederSource = path));
+            paths.Children.Add(FolderField("Original backups folder", "Original manifests and backups used to recognize existing setups.",
+                shell.Settings.FeederBackups, path => shell.Settings.FeederBackups = path));
+            feeder.Children.Add(paths);
+            body.Children.Add(shell.Settings.RuntimeProvider == "feeder" ? Card(feeder) : new Expander
+            {
+                Header = "Feeder setup · DirectX 11 NR", Content = feeder, HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            });
         }
-        body.Children.Add(available);
+        if (shell.Settings.RuntimeProvider == "skynizz")
+        {
+            var components = new PresetColumns(400, 2) { ColumnSpacing = 12, RowSpacing = 12 };
+            var nr = Section("NR package", "Skynizz for DirectX 12 games with DLSS. A compatible local NR model is required.");
+            var release = catalog.Packages.FirstOrDefault(p => p.Id == "skynizz")?.Version.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+            var releases = new List<string> { "latest" };
+            var captions = new List<string> { "Latest supported (recommended)" };
+            if (release is not null && release.StartsWith('v') && Version.TryParse(release[1..], out _))
+            {
+                releases.Add(release); captions.Add(release + " · keep this release");
+            }
+            var saved = shell.Settings.SkynizzVersion;
+            var savedOnly = !releases.Contains(saved);
+            if (savedOnly) { releases.Add(saved); captions.Add("Saved release · " + saved); }
+            nr.Children.Add(Choice("Release", "Repairs keep each game's installed release. New installs use this selection.", captions,
+                releases.IndexOf(saved), index => shell.Settings.SkynizzVersion = releases[index], savedOnly ? captions.Count - 1 : -1));
+            nr.Children.Add(Choice("NR model preset", "Performance (B) uses preset 2 with compatible 310.9.16 models.",
+                ["Automatic", "Legacy (A)", "Performance (B)"], Math.Clamp(shell.Settings.NrPreset ?? 0, 0, 2),
+                index => shell.Settings.NrPreset = index));
+            components.Children.Add(Card(nr));
+            var mfg = Section("MFG package", "For NR + MFG installs in games with native DLSS Frame Generation.");
+            mfg.Children.Add(Choice("MFG component", "Applies to new installs. Restore an existing package before switching components.",
+                ["Integrated Ada bridge", "MFG Unlock 1.4.4 (preview)"], shell.Settings.MfgProvider == "mfg-unlock" ? 1 : 0,
+                index => shell.Settings.MfgProvider = index == 1 ? "mfg-unlock" : "integrated"));
+            mfg.Children.Add(Prefs.Label("MFG Unlock uses ReShade and replaces the integrated unlock. The separate component remains a preview.", "ForgeCaptionDimTextStyle"));
+            components.Children.Add(Card(mfg));
+            body.Children.Add(components);
+        }
 
-        var custom = new PreferencesGroup("Your own package", "ZIP archives. Files and instructions are inspected without running them.");
+        var sources = new PresetColumns(400, catalog.Community.Count > 0 ? 2 : 1) { ColumnSpacing = 12, RowSpacing = 12 };
+        var custom = Section("Your own package", "Inspect a ZIP archive and review its settings before using it. Instructions are never run.");
         var pick = Prefs.ActionButton("Choose archive", async (_, _) => await InspectAsync(), glyph: "");
         pick.IsEnabled = !shell.Service.IsPreview;
-        custom.Add(Prefs.Row("Add custom package", catalog.CustomName is { } saved ? "Reviewed: " + saved : "Detect the layout and review suggested settings", pick, ""));
-        body.Children.Add(custom);
+        pick.HorizontalAlignment = HorizontalAlignment.Right;
+        if (catalog.CustomName is { } customName) custom.Children.Add(Prefs.Label("Reviewed: " + customName, "ForgeCaptionDimTextStyle"));
+        custom.Children.Add(pick);
+        sources.Children.Add(Card(custom));
 
         if (catalog.Community.Count > 0)
         {
-            var community = new PreferencesGroup("Other community projects",
-                "Source discovery only. Other GPUs and layouts remain unvalidated by this app; the current deployment route targets RTX 40.");
+            var community = Section("Other community projects", "Explore other projects. These sources aren't curated install options.");
             foreach (var source in catalog.Community)
-                community.Add(Prefs.Row(source.Name, source.Note, new HyperlinkButton { Content = "View source", NavigateUri = new Uri(source.Url) }, ""));
-            body.Children.Add(community);
+            {
+                var entry = new StackPanel { Spacing = 4 };
+                entry.Children.Add(new HyperlinkButton { Content = source.Name, NavigateUri = new Uri(source.Url), Padding = new Thickness(0) });
+                entry.Children.Add(Prefs.Label(source.Note, "ForgeCaptionDimTextStyle"));
+                community.Children.Add(entry);
+            }
+            sources.Children.Add(Card(community));
         }
+        body.Children.Add(sources);
+    }
+
+    Border PackageCard(PackageOption item)
+    {
+        var current = shell.Settings.RuntimeProvider == item.Id;
+        var content = new Grid { RowSpacing = 12 };
+        content.RowDefinitions.Add(new() { Height = GridLength.Auto });
+        content.RowDefinitions.Add(new() { Height = new GridLength(1, GridUnitType.Star) });
+        content.RowDefinitions.Add(new() { Height = GridLength.Auto });
+        content.Children.Add(Section(item.Name, item.Version));
+        var description = new StackPanel { Spacing = 8 };
+        description.Children.Add(Prefs.Label(item.Summary));
+        if (!item.Available) description.Children.Add(Prefs.Label(item.Reason, "ForgeCaptionDimTextStyle"));
+        Grid.SetRow(description, 1); content.Children.Add(description);
+        var use = Prefs.ActionButton(current ? "In use" : "Use package", (_, _) => { shell.SelectPackage(item.Id); _ = LoadAsync(); },
+            accent: item.Recommended && !current);
+        use.IsEnabled = item.Available && !current && !shell.Busy;
+        use.HorizontalAlignment = HorizontalAlignment.Right;
+        ToolTipService.SetToolTip(use, item.Reason);
+        Grid.SetRow(use, 2); content.Children.Add(use);
+        return Card(content);
+    }
+
+    static StackPanel Section(string title, string description)
+    {
+        var section = new StackPanel { Spacing = 10 };
+        var heading = new StackPanel { Spacing = 4 };
+        heading.Children.Add(Prefs.Label(title, "ForgeHeadingTextStyle"));
+        heading.Children.Add(Prefs.Label(description, "ForgeCaptionDimTextStyle"));
+        section.Children.Add(heading);
+        return section;
+    }
+
+    static Border Card(UIElement content) => new()
+    {
+        Style = Prefs.GetStyle("ForgeControlPodStyle"), Padding = new Thickness(20, 16, 20, 16), Child = content,
+    };
+
+    UIElement Choice(string title, string description, IReadOnlyList<string> captions, int selected, Action<int> save, int retainedOnly = -1)
+    {
+        var field = new StackPanel { Spacing = 6 };
+        field.Children.Add(new TextBlock { Text = title, TextWrapping = TextWrapping.Wrap });
+        var combo = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+        for (var i = 0; i < captions.Count; i++) combo.Items.Add(new ComboBoxItem { Content = captions[i], IsEnabled = i != retainedOnly });
+        combo.SelectedIndex = selected;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(combo, title);
+        combo.SelectionChanged += (_, _) => { if (combo.SelectedIndex < 0 || combo.SelectedIndex == retainedOnly) return; save(combo.SelectedIndex); shell.SaveSettings(); };
+        field.Children.Add(combo);
+        field.Children.Add(Prefs.Label(description, "ForgeCaptionDimTextStyle"));
+        return field;
+    }
+
+    UIElement FolderField(string title, string description, string value, Action<string> save)
+    {
+        var field = new StackPanel { Spacing = 6 };
+        field.Children.Add(new TextBlock { Text = title, TextWrapping = TextWrapping.Wrap });
+        var input = new TextBox { Text = value };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(input, title);
+        input.LostFocus += (_, _) => { save(input.Text.Trim()); shell.SaveSettings(); };
+        field.Children.Add(input);
+        field.Children.Add(Prefs.Label(description, "ForgeCaptionDimTextStyle"));
+        return field;
     }
 
     async Task InspectAsync()

@@ -186,8 +186,6 @@ _catalog = package_catalog.catalog
 
 def _windows_catalog(host=None):
     host = dict(host or {"system": platform.system(), "architecture": platform.machine(), "ready": False})
-    if host.get("system") == "Windows":
-        host["system"] = "Linux"  # the rule is "x86-64 and a ready NVIDIA host"; Windows loads the same DLLs natively
     return _catalog(host)
 
 
@@ -219,12 +217,12 @@ def _settings() -> dict:
     return library_media.load_settings(_config())
 
 
-def _review(kind: str, title: str, items: list, *, blocked=(), summary="", action="Apply", trust=None, note=None, payload=None) -> dict:
+def _review(kind: str, title: str, items: list, *, blocked=(), skipped=(), summary="", action="Apply", trust=None, note=None, payload=None) -> dict:
     """A review the app shows as-is; `run` executes the stored payload once."""
     token = uuid.uuid4().hex
     _reviews[token] = {"kind": kind, "payload": payload}
     return {"token": token, "kind": kind, "title": title, "summary": summary, "action": action,
-            "items": list(items), "blocked": list(blocked), "trust": trust, "note": note}
+            "items": list(items), "blocked": list(blocked), "skipped": list(skipped), "trust": trust, "note": note}
 
 
 def _item(title, detail="", badge="", game=None, details=None) -> dict:
@@ -241,6 +239,32 @@ def discard(params):
     _reviews.pop(params.get("token", ""), None)
     _packages.pop(params.get("token", ""), None)
     return {}
+
+
+def global_review(params):
+    import global_controls
+    plan = global_controls.prepare(engine_bridge.module(_config()), LOCAL / 'state', params)
+    return _review('global-controls', 'Review bulk changes',
+                   [_item(p['name'], p['summary'] + ('. ' + p['note'] if p['note'] else ''), details=p['root']) for p in plan['plans']],
+                   blocked=plan['blocked'], skipped=plan['skipped'], payload=plan, action='Apply to games',
+                   summary=(f"{len(plan['plans'])} games ready. This is a one-time change to the selected controls." if plan['plans']
+                            else 'No changes needed. These settings are already applied or unavailable in the listed games.'),
+                   note='Other tuning and original restore backups are preserved. Running games are skipped; close them and review again.')
+
+
+def _run_global_controls(plan):
+    import global_controls
+    return global_controls.execute(plan)
+
+
+def overlay_ui_review(params):
+    import overlay_ui
+    plan = overlay_ui.prepare(engine_bridge.module(_config()), params)
+    return _review('overlay-ui', 'Review game menus',
+                   [_item(p['name'], p['summary'], details=p['note']) for p in plan['plans']],
+                   blocked=plan['blocked'], skipped=plan['skipped'], payload=plan, action='Apply to games',
+                   summary=f"{len(plan['plans'])} games ready. Menu and intro changes take effect next launch.",
+                   note='NR, MFG, effects and original restore backups are preserved. Running games are skipped.')
 
 
 # ---------- library rows: custom artwork and test records ----------
@@ -480,6 +504,8 @@ def streamline_override(row, *, provider=None, payload=None) -> dict:
 
 def diagnose(params):
     report = runtime_diagnostics.inspect(params["row"])
+    if report.get('provider') == 'feeder':
+        return report
     try:
         override = streamline_override(params["row"])
     except (OSError, ValueError, t.Refusal) as error:
@@ -732,10 +758,10 @@ def _run_update(info):
 
 
 RUNNERS = {"art-sync": _run_art_sync, "dlss-restore": _run_dlss_restore, "report": _run_report, "service": _run_service,
-           "extra": _run_extra, "extra-restore": _run_extra_restore, "update": _run_update}
+           "extra": _run_extra, "extra-restore": _run_extra_restore, "update": _run_update, 'global-controls': _run_global_controls, 'overlay-ui': _run_global_controls}
 
 METHODS = {
-    "run": run, "discard": discard, "media": media,
+    "run": run, "discard": discard, "media": media, 'global_review': global_review, 'overlay_ui_review': overlay_ui_review,
     "art_profiles": art_profiles, "art_set_profile": art_set_profile, "art_store": art_store, "art_reset": art_reset,
     "art_sync_review": art_sync_review,
     "sgdb_status": sgdb_status, "sgdb_connect": sgdb_connect, "sgdb_disconnect": sgdb_disconnect,

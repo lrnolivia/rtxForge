@@ -14,7 +14,7 @@ namespace RtxForge.Windows.Controls;
 /// </summary>
 public sealed class OperationDialog
 {
-    enum Stage { Review, Progress, Done }
+    enum Stage { Review, Supported, Progress, Done }
 
     readonly MainWindow shell;
     readonly string operation;
@@ -24,6 +24,7 @@ public sealed class OperationDialog
     readonly ContentDialog dialog;
     Stage stage = Stage.Review;
     CancellationTokenSource? cancel;
+    bool closed;
 
     // One step layout for checking and progress (OperationStepPanel).
     readonly OperationStepPanel checkingPanel = new();
@@ -38,8 +39,21 @@ public sealed class OperationDialog
         dialog = shell.NewDialog();
         dialog.Resources["ContentDialogMaxWidth"] = 760.0;
         dialog.PrimaryButtonClick += OnPrimary;
+        dialog.SecondaryButtonClick += (sender, args) =>
+        {
+            if (stage != Stage.Supported || review is null) return;
+            args.Cancel = true;
+            foreach (var part in review.Supported) shell.Service.DiscardOperation(part.Review);
+            if (review.Ready.Count == 0) { ShowDone(false, "No games selected."); return; }
+            review = review with { Supported = [] }; _ = RunAsync();
+        };
         dialog.CloseButtonClick += OnClose;
         dialog.Closing += (_, e) => { if (stage == Stage.Progress) e.Cancel = true; };
+        dialog.Closed += (_, _) =>
+        {
+            closed = true;
+            if (review is not null) shell.Service.DiscardOperation(review);
+        };
     }
 
     /// <summary>Review, then run with progress, then report. Returns when the dialog closes.</summary>
@@ -62,12 +76,14 @@ public sealed class OperationDialog
         tuning.SetMode(shell.Mode);
         var body = new StackPanel { Spacing = 16 };
         body.Children.Add(Prefs.Label("Adjust your presets or continue. You can change these settings later in OptiScaler."));
-        body.Children.Add(tuning);
+        if (shell.Settings.RuntimeProvider != "feeder") body.Children.Add(tuning);
+        var startup = new CheckBox { Content = "Enable NR on launch", IsChecked = shell.Settings.NrOnLaunch };
+        if (shell.Mode != "mfg-only") body.Children.Add(startup);
         dialog.Content = body;
         dialog.PrimaryButtonText = "Continue";
         dialog.CloseButtonText = "Cancel";
         dialog.DefaultButton = ContentDialogButton.Primary;
-        return await dialog.ShowAsync() == ContentDialogResult.Primary ? tuning.Value : null;
+        return await dialog.ShowAsync() == ContentDialogResult.Primary ? tuning.Value with { NrOnLaunch = startup.IsChecked == true } : null;
     }
 
     // ---------- Checking (engine prepare: every target verified, nothing written) ----------
@@ -90,6 +106,7 @@ public sealed class OperationDialog
         try
         {
             review = await shell.Service.PrepareAsync(operation, targets, values, shell.Mode, progress);
+            if (closed) { shell.Service.DiscardOperation(review); return; }
             ShowReview(review);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
@@ -102,6 +119,7 @@ public sealed class OperationDialog
         "install" => "Review Installation",
         "uninstall" => "Review Restoration",
         "update-dlss" => "Review DLSS Update",
+        "adopt" or "adopt-clean" => "Review Adoption",
         _ => "Review Presets",
     };
 
@@ -115,15 +133,16 @@ public sealed class OperationDialog
         var summary = new StackPanel { Spacing = 4 };
         summary.Children.Add(new TextBlock
         {
-            Text = count > 0 ? $"{count} game{(count == 1 ? "" : "s")} ready" : "Nothing ready yet",
+            Text = count > 0 ? $"{count} game{(count == 1 ? "" : "s")} ready" : review.Supported.Count > 0 ? "Supported features available" : "Nothing ready yet",
             FontSize = 20, FontWeight = FontWeights.SemiBold,
         });
-        summary.Children.Add(Prefs.Label(string.Join(" · ", Details()), "ForgeDimTextStyle"));
+        var description = string.Join(" · ", Details());
+        if (description.Length > 0) summary.Children.Add(Prefs.Label(description, "ForgeDimTextStyle"));
         body.Children.Add(summary);
 
         var list = new StackPanel { Spacing = 4 };
-        foreach (var (game, detail) in review.Ready)
-            list.Children.Add(ReviewRow(game, game.Name, detail, "Ready", true));
+        foreach (var item in review.Ready)
+            list.Children.Add(ReviewRow(item.Game, item.Game.Name, item.Summary, "Ready", true, item.Detail));
         foreach (var warning in review.Warnings)
             list.Children.Add(new InfoBar
             {
@@ -136,16 +155,32 @@ public sealed class OperationDialog
             header.Margin = new Thickness(0, 12, 0, 2);
             list.Children.Add(header);
             foreach (var block in review.Blocked)
-                list.Children.Add(ReviewRow(block.Game, block.Name, block.Reason, "Skipped", false));
+                list.Children.Add(ReviewRow(block.Game, block.Name, block.Summary ?? block.Reason, "Skipped", false,
+                    block.Summary is null ? null : block.Reason));
         }
         body.Children.Add(new ScrollViewer { Content = list, MaxHeight = 380, HorizontalScrollMode = ScrollMode.Disabled });
         body.Children.Add(Prefs.Label("Your files will only change after you review and confirm.", "ForgeCaptionDimTextStyle"));
 
         dialog.Content = body;
-        dialog.PrimaryButtonText = ActionVerb();
-        dialog.IsPrimaryButtonEnabled = count > 0;
+        dialog.PrimaryButtonText = review.Supported.Count > 0 ? "Continue" : ActionVerb();
+        dialog.IsPrimaryButtonEnabled = count > 0 || review.Supported.Count > 0;
         dialog.CloseButtonText = "Cancel";
         dialog.DefaultButton = ContentDialogButton.Primary;
+    }
+
+    void ShowSupportedReview()
+    {
+        stage = Stage.Supported; dialog.Title = "Install the supported features";
+        var body = new StackPanel { Spacing = 16 };
+        body.Children.Add(new TextBlock { Text = "These games support part of your selection", FontSize = 20, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+        var list = new StackPanel { Spacing = 8 };
+        foreach (var group in review!.Supported)
+        foreach (var item in group.Review.Ready)
+            list.Children.Add(SupportedFeatureCard.Create(item, group.Nr, group.Mfg, group.Reason));
+        body.Children.Add(new ScrollViewer { Content = list, MaxHeight = 420, HorizontalScrollMode = ScrollMode.Disabled });
+        body.Children.Add(Prefs.Label($"{review.Ready.Count} games will receive your full selection. Include these additional games with the features shown above.", "ForgeCaptionDimTextStyle"));
+        dialog.Content = body; dialog.PrimaryButtonText = "Install supported features"; dialog.IsPrimaryButtonEnabled = true;
+        dialog.SecondaryButtonText = "Skip these games"; dialog.CloseButtonText = "Cancel";
     }
 
     string ActionVerb() => operation switch
@@ -153,25 +188,34 @@ public sealed class OperationDialog
         "install" => "Install",
         "uninstall" => "Restore",
         "update-dlss" => "Update",
+        "adopt" => "Adopt with rtxForge",
+        "adopt-clean" => "Adopt and clean install",
         _ => "Apply presets",
     };
 
     IEnumerable<string> Details()
     {
-        yield return ActionVerb();
-        if (operation is "install" or "apply" or "reset")
+        if (operation == "install" && (shell.Settings.RuntimeProvider == "feeder" || targets.All(g => g.IsFeeder)))
         {
+            yield return "NR Only";
+            yield return "Feeder NR";
+            yield break;
+        }
+        if (operation == "install" && shell.Settings.RuntimeProvider != "feeder")
+        {
+            yield return shell.Mode switch { "nr-only" => "NR Only", "nr-mfg" => "NR + MFG", _ => "MFG Only" };
             yield return shell.Settings.RuntimeProvider switch
             {
+                "skynizz" => "Skynizz",
+                "feeder" => "Feeder NR",
                 "dlss-unlocked" => "DLSS-Unlocked",
                 "custom" => "Custom package",
                 _ => "y4my",
             };
-            yield return "MFG " + (values.MfgMultiplier switch { "auto" => "In game", "0" => "Off", var m => m + "×" });
         }
     }
 
-    static Border ReviewRow(Game? game, string name, string detail, string state, bool ready)
+    static Border ReviewRow(Game? game, string name, string detail, string state, bool ready, string? technical = null)
     {
         var grid = new Grid { ColumnSpacing = 12 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -192,6 +236,10 @@ public sealed class OperationDialog
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = 1 };
         text.Children.Add(new TextBlock { Text = name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
         text.Children.Add(Prefs.Label(detail, "ForgeCaptionDimTextStyle"));
+        if (!string.IsNullOrWhiteSpace(technical))
+        {
+            text.Children.Add(TechnicalDetails.Create(technical));
+        }
         Grid.SetColumn(text, 1);
         grid.Children.Add(text);
 
@@ -229,8 +277,15 @@ public sealed class OperationDialog
 
     void OnPrimary(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
+        if (stage == Stage.Supported && review is not null)
+        {
+            args.Cancel = true;
+            review = review.IncludeSupported();
+            _ = RunAsync(); return;
+        }
         if (stage != Stage.Review || review is null) return; // Done closes normally
         args.Cancel = true;
+        if (review.Supported.Count > 0) { ShowSupportedReview(); return; }
         _ = RunAsync();
     }
 
@@ -248,9 +303,10 @@ public sealed class OperationDialog
         cancel = new CancellationTokenSource();
         dialog.Title = null;
         dialog.PrimaryButtonText = "";
+        dialog.SecondaryButtonText = "";
         dialog.CloseButtonText = "Cancel";
         progressPanel.AccentChanged += TintButtons;
-        progressPanel.Show(ProgressVerb(), review!.Ready.FirstOrDefault().Game, 0, review.Ready.Count, "Starting");
+        progressPanel.Show(ProgressVerb(), review!.Ready.FirstOrDefault()?.Game, 0, review.Ready.Count, "Starting");
         dialog.Content = progressPanel.Root;
 
         var done = 0;
@@ -299,6 +355,7 @@ public sealed class OperationDialog
     void ShowDone(bool success, string message, string? title = null)
     {
         stage = Stage.Done;
+        dialog.SecondaryButtonText = "";
         dialog.Title = null;
         dialog.Resources["ContentDialogMaxWidth"] = 520.0;
 

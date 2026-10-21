@@ -378,6 +378,24 @@ public sealed partial class MainWindow
 
     public static void OpenUri(string uri) => Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true });
 
+    public async Task OpenGameFolderAsync(Game game)
+    {
+        if (Service.IsPreview) { ShowToast("Folder opening is unavailable in preview mode."); return; }
+        try
+        {
+            var path = Path.GetFullPath(game.Location);
+            if (!Directory.Exists(path)) { ShowToast("This game folder is unavailable. Reconnect its drive or rescan your library."); return; }
+            var folder = await global::Windows.Storage.StorageFolder.GetFolderFromPathAsync(path);
+            if (!await global::Windows.System.Launcher.LaunchFolderAsync(folder))
+                ShowToast("Windows couldn't open this game folder. Try opening it from File Explorer.");
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException
+            or System.Runtime.InteropServices.COMException)
+        {
+            ShowToast("Couldn't open the game folder: " + error.Message);
+        }
+    }
+
     // ---------- DLSS files ----------
 
     public async Task RestoreDlssFilesAsync(Game game)
@@ -427,7 +445,10 @@ public sealed partial class MainWindow
             Settings.MfgMultiplier = presets.MfgMultiplier;
         }
         if (!NrOnlyAvailable && Mode == "nr-only") Mode = "mfg-only";
+        if (provider == "skynizz") Settings.DefaultProfile = Mode = "nr-mfg";
+        if (provider == "feeder") Settings.DefaultProfile = Mode = "nr-only";
         SaveSettings();
+        _ = ScanAsync();
         ShowToast("Package selected. Select games, then choose Install Features.");
     }
 }

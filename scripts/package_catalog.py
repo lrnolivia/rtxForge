@@ -11,6 +11,7 @@ import platform
 import re
 import stat
 import zipfile
+import transactions as t
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,7 +48,7 @@ def relative(name):
 def catalog(host=None):
     host = host or {'system': platform.system(), 'architecture': platform.machine(), 'ready': False}
     locks = json.loads((ROOT / 'providers/lock.json').read_text())
-    supported = (host.get('system') == 'Linux'
+    supported = (host.get('system') in ('Linux', 'Windows')
                  and host.get('architecture', '').lower() in ('x86_64', 'amd64')
                  and host.get('ready') is True)
     rows = []
@@ -63,6 +64,25 @@ def catalog(host=None):
                         else 'Alternative OptiScaler package; a local NR model may be needed'),
             'recommended': key == 'dlss-unlocked' and supported,
         })
+    if host.get('system')=='Windows':
+        rows.append({'id': 'feeder', 'name': 'Feeder NR', 'version': '1.19.0 / RenoDX 8.5.0-rc5',
+                     'url': 'https://github.com/jlrouzies-fr/DLSS5-Feeder', 'sha256': '',
+                     'available': supported, 'recommended': False,
+                     'reason': 'Requires a local Feeder stack and a compatible NR model' if supported else host.get('reason', 'Unsupported system'),
+                     'summary': 'NR for DirectX 11 games through ReShade. Recognize existing setups or use your local stack. NR Only.'})
+        import skynizz_provider
+        record=locks['skynizz']
+        bridge=None
+        try:
+            bridge,archive=skynizz_provider.bundled_bridge()
+            bridge_ready=archive.is_file()
+        except (OSError,ValueError,t.Refusal):
+            bridge_ready=False
+        rows.append({'id':'skynizz','name':'Skynizz NR + Ada MFG bridge','version':record['tag']+' bridge · preview',
+                     'url':'https://github.com/'+record['repo'],'sha256':(bridge or record)['sha256'],
+                     'available':supported and bridge_ready,
+                     'reason':('Requires a compatible local RTX40 NR model, D3D12/DLSS and native FG; target runtime QA pending.' if bridge_ready else 'The combined NR + MFG bridge is not included in this app build.') if supported else host.get('reason') or 'Verify a supported NVIDIA system first',
+                     'summary':'Single-loader NR + Ada MFG · requires a compiled bridge build · runtime QA pending','recommended':False})
     return rows
 
 
@@ -83,6 +103,7 @@ def inspect_archive(path):
             raise PackageError('Too many files in this archive.')
         total = 0
         for member in members:
+            relative(member.orig_filename.rstrip('/') if member.is_dir() else member.orig_filename)
             name = member.filename.rstrip('/') if member.is_dir() else member.filename
             relative(name)
             folded = name.casefold()
@@ -237,6 +258,8 @@ def load_custom_payload(record):
 def community_sources():
     """Discovery links, explicitly separate from tested deployment adapters."""
     return [
+        {'name':'Universal MFG Unlocker 1.6.1','url':'https://github.com/dashdogy/MFG-Unlocker/releases/tag/v1.6.1',
+         'note':'Pinned integration candidate. Upstream RTX 30/40 support; RTX 20 and the RTX 30 OptiScaler DLSSG route remain experimental. Requires OptiScaler 10; no deployment adapter yet.'},
         {'name':'wilsjo2 · NR Pre-SR Multipass','url':'https://github.com/wilsjo2/OptiScaler-DLSSNR-PreSR-Multipass',
          'note':'Experimental NR for RTX 20–50. Upstream support is not rtxForge runtime validation; custom-layout review required.'},
         {'name':'Dagherbou · OptiScaler DLSSNR','url':'https://github.com/Dagherbou/OptiScaler_DLSSNR',

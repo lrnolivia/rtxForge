@@ -42,6 +42,9 @@ class DesktopService:
             row={'name':g.name,'game':str(root),'exe':exe,'source':g.type,'blocked':reason,'appid':g.appid,
                  'library':str(library or root.parent),'installed':installed,'mfg_route':mfg_route,
                  'profile':('NR + MFG' if ini.get('DlssNr',{}).get('Enabled','false').lower()=='true' else 'MFG Only') if installed else 'Not installed'}
+            row['native_dlss']=any(Path(p).name.lower()=='nvngx_dlss.dll' and 'optiscaler' not in [q.lower() for q in Path(p).relative_to(g.root).parts] for p in g.upscalers)
+            row['anti_cheat']=bool(g.anti_cheat)
+            row['native_dlssg']=native
             if installed:
                 nr_values=ini.get('DlssNr',{});sharp_values=ini.get('Sharpness',{})
                 row['nr_enabled']=nr_values.get('Enabled','false').split(';',1)[0].strip().lower()=='true'
@@ -75,6 +78,13 @@ class DesktopService:
                         row['profile']={'nr-mfg':'NR + MFG','nr-only':'NR Only','mfg-only':'MFG Only'}.get(current['feature_mode'],'Unknown')
                         row['runtime_provider']=current.get('provider_id','y4my')
                         row['effects_enabled']=ini.get('DLSSG',{}).get('AdaMfgUnlock','false').lower()=='true'
+                        if component:=((current.get('archive') or {}).get('release') or {}).get('mfg_component'):
+                            import ada_mfg_provider
+                            try:
+                                row.update(ada_mfg_provider.configured_state(config.parent,component))
+                                row['effects_enabled']=row['nr_enabled'] or row['mfg_enabled']
+                            except (t.Refusal,ValueError,OSError):
+                                row['mfg_multiplier']=None
                 except (engine.Stop,OSError,ValueError):pass
             if g.manifest:
                 try:
@@ -109,12 +119,24 @@ class DesktopService:
 
     def prepare(self,rows,mode,operation,adopt=False,visual_settings=None,save_defaults=False):
         import ui
-        if operation in ('install','repair'):
+        if operation in ('install','repair','adopt-clean'):
             host=self.hardware()
             if not host['ready']:return {'kind':'batch','operation':operation,'title':operation.title(),'plans':[],'rows':[],'blocked':[{'name':'Hardware check','reason':host['reason']}]}
         settings=library_media.load_settings(self.config)
         if visual_settings is not None:settings.update(visual_settings)
+        if operation in ('adopt', 'adopt-clean'):
+            import package_adoption
+            return package_adoption.prepare(self.config, rows, operation, settings)
         settings['apply_requested_presets']=operation=='install' and visual_settings is not None
+        feeder = settings.get('runtime_provider') == 'feeder'
+        # Restoring an installed Feeder setup must use its actual ownership,
+        # regardless of the package currently selected for new installations.
+        if feeder or (rows and all(row.get('runtime_provider') == 'feeder'
+                                  or row.get('install_provider') == 'feeder' and row.get('feeder_available') is True for row in rows)
+                      and operation in ('install', 'uninstall', 'repair', 'reset')):
+            import feeder_provider
+            return feeder_provider.prepare(self.config, rows, 'nr-only' if not feeder and mode != 'mfg-only' else mode, operation,
+                                           settings, engine_bridge.module(self.config))
         review=engine_bridge.prepare(self.config,rows,mode,operation,settings)
         if save_defaults and operation=='reset':review['save_defaults']={k:settings[k] for k in ('nr_strength','sharpening_strength','mfg_multiplier')}
         return review
@@ -204,6 +226,12 @@ class DesktopService:
     def execute(self,review):
         # The desktop must pass the exact in-memory review shown to the user.
         kind=review['kind']
+        if kind=='adoption':
+            import package_adoption
+            return package_adoption.execute(review)
+        if kind=='feeder':
+            import feeder_provider
+            return feeder_provider.execute(review)
         if kind=='engine':
             result=engine_bridge.execute(review)
             if review.get('save_defaults'):self.save_visual_defaults(review['save_defaults'])

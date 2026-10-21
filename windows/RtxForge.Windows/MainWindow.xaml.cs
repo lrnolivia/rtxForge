@@ -35,6 +35,8 @@ public sealed partial class MainWindow : Window
     string query = "";
     public string Mode { get; set; } = "mfg-only";
     public bool Busy { get; private set; }
+    public bool LibraryRefreshing { get; private set; } = true;
+    public string? LibraryLoadError { get; private set; }
 
     public event Action? GamesChanged;
     public event Action? QueryChanged;
@@ -43,8 +45,11 @@ public sealed partial class MainWindow : Window
     public MainWindow(IForgeService service)
     {
         Service = service;
+        if (service is EngineForgeService engine) Games = engine.CachedLibrary();
         App.Main = this;
         InitializeComponent();
+        Nav.RegisterPropertyChangedCallback(NavigationView.IsPaneOpenProperty, (_, _) => UpdateNavigationCommands());
+        UpdateNavigationCommands();
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
@@ -55,11 +60,23 @@ public sealed partial class MainWindow : Window
 
         PreviewBadge.Visibility = service.IsPreview ? Visibility.Visible : Visibility.Collapsed;
         Mode = NrOnlyAvailable || Settings.DefaultProfile != "nr-only" ? Settings.DefaultProfile : "mfg-only";
+        if (Settings.RuntimeProvider == "feeder") Mode = "nr-only";
         ThemeController.Apply(this, RootGrid, Settings.Theme);
 
-        Nav.SelectedItem = Nav.MenuItems[0];
+        if (SettingsPage.OpenOverlaySection)
+        {
+            // NavigationView creates its Settings item when the template loads.
+            void OpenOverlaySettings(object sender, RoutedEventArgs e)
+            {
+                RootGrid.Loaded -= OpenOverlaySettings;
+                Navigate("Settings");
+            }
+            RootGrid.Loaded += OpenOverlaySettings;
+        }
+        else Nav.SelectedItem = Nav.MenuItems[0];
         Closed += (_, _) => (Service as IDisposable)?.Dispose();
         InitializeGameMode();
+        InitializeCompanion();
         RootGrid.KeyDown += (_, e) =>
         {
             if (e.Key == global::Windows.System.VirtualKey.F5) { e.Handled = true; _ = RescanLibraryAsync(); }
@@ -82,27 +99,39 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>NR Only requires DLSS-Unlocked or a custom package (provider rule).</summary>
-    public bool NrOnlyAvailable => Settings.RuntimeProvider is "dlss-unlocked" or "custom";
+    public bool NrOnlyAvailable => Settings.RuntimeProvider is "dlss-unlocked" or "custom" or "skynizz" or "feeder";
 
     public void SaveSettings()
     {
-        Settings.Save();
+        Settings.Save(preserveOverlay: true);
         ThemeController.Apply(this, RootGrid, Settings.Theme);
         SettingsChanged?.Invoke();
     }
 
     async Task LoadAsync()
     {
+        // Neither hardware probing nor a full folder walk should delay a cached library.
+        async Task ReadHardwareAsync()
+        {
+            try { Hardware = await Service.DetectHardwareAsync(); }
+            catch (InvalidOperationException error) { AddLog("Hardware check: " + error.Message); }
+        }
+        var hardware = ReadHardwareAsync();
         try
         {
-            Hardware = await Service.DetectHardwareAsync();
             await ScanAsync();
+            var arguments = Environment.GetCommandLineArgs();
+            if (arguments.Contains("--controls", StringComparer.OrdinalIgnoreCase))
+            {
+                OpenCompanion();
+            }
         }
         catch (InvalidOperationException error)
         {
             AddLog("Library scan stopped: " + error.Message);
             ShowToast("Could not read your library: " + error.Message);
         }
+        await hardware;
     }
 
     /// <summary>Re-render pages after per-game changes (for example a custom accent).</summary>
@@ -110,17 +139,40 @@ public sealed partial class MainWindow : Window
 
     public async Task ScanAsync()
     {
-        if (libraryScan is { IsCompleted: false }) { await libraryScan; return; }
-        libraryScan = ScanLibraryCoreAsync();
-        await libraryScan;
+        string CurrentKey() => LibrarySnapshot.Key(Settings.RuntimeProvider, Settings.GameFolders, Settings.LibraryFolders);
+        while (true)
+        {
+            if (libraryScan is not { IsCompleted: false })
+            {
+                libraryScanKey = CurrentKey();
+                libraryScan = ScanLibraryCoreAsync();
+            }
+            var active = libraryScan;
+            var activeKey = libraryScanKey;
+            await active;
+            // Adding a folder during startup must not reuse the older inventory.
+            // UI-thread callers share an in-flight scan for the same settings.
+            if (activeKey == CurrentKey()) return;
+        }
     }
 
     Task? libraryScan;
+    string? libraryScanKey;
 
     async Task ScanLibraryCoreAsync()
     {
-        Games = await Service.ScanAsync();
-        GamesChanged?.Invoke();
+        LibraryRefreshing = true; LibraryLoadError = null; GamesChanged?.Invoke();
+        try
+        {
+            Games = await Service.ScanAsync();
+        }
+        catch (InvalidOperationException error) { LibraryLoadError = error.Message; throw; }
+        finally { LibraryRefreshing = false; GamesChanged?.Invoke(); }
+        if (!Service.IsPreview)
+        {
+            _ = OverlayHelper.CacheGameIdentitiesAsync(Games.ToArray());
+            _ = OverlayHelper.CommandAsync("refresh-targets", start: false);
+        }
         // Linux fetch_media: cached artwork and store details, downloaded when missing.
         _ = RefreshArtworkAsync(false);
     }
@@ -157,9 +209,28 @@ public sealed partial class MainWindow : Window
         if (ContentFrame.CanGoBack) ContentFrame.GoBack();
     }
 
+    void OnNavigationBackClick(object sender, RoutedEventArgs e)
+    {
+        if (ContentFrame.CanGoBack) ContentFrame.GoBack();
+    }
+
+    void OnNavigationMenuClick(object sender, RoutedEventArgs e) => Nav.IsPaneOpen = !Nav.IsPaneOpen;
+
+    void UpdateNavigationCommands()
+    {
+        // NavigationView hides PaneHeader in compact mode. Its native toggle
+        // remains reachable there so the pane can always be expanded again.
+        Nav.IsPaneToggleButtonVisible = !Nav.IsPaneOpen;
+        var padding = Nav.IsPaneOpen ? 12 : 4;
+        NavigationCommands.Width = Math.Max(40, (Nav.IsPaneOpen ? Nav.OpenPaneLength : Nav.CompactPaneLength) - padding * 2);
+        NavigationCommands.Margin = new Thickness(padding, 6, padding, 6);
+        NavigationBack.Visibility = Nav.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     void OnFrameNavigated(object sender, NavigationEventArgs e)
     {
         Nav.IsBackEnabled = ContentFrame.CanGoBack;
+        NavigationBack.IsEnabled = ContentFrame.CanGoBack;
         var tag = e.SourcePageType == typeof(SettingsPage) ? "Settings"
             : e.SourcePageType == typeof(ActivityPage) ? "Activity"
             : e.SourcePageType == typeof(PresetsPage) ? "Presets"
@@ -184,6 +255,12 @@ public sealed partial class MainWindow : Window
         if (Busy) { ShowToast("Another operation is running."); return; }
         ArgumentNullException.ThrowIfNull(targets);
         if (targets.Count == 0) { ShowToast("No eligible games selected."); return; }
+        if ((operation is "install" or "uninstall") && targets.Any(g => g.AdoptionAvailable))
+        {
+            await ReviewAdoptionAsync(targets.Where(g => g.AdoptionAvailable).ToArray());
+            targets = targets.Where(g => !g.AdoptionAvailable).ToArray();
+            if (targets.Count == 0) return;
+        }
 
         if (operation == "install" && values is null)
         {
@@ -226,7 +303,7 @@ public sealed partial class MainWindow : Window
     public Tuning GameTuning(Game game) => new(
         game.NrStrength ?? Settings.NrStrength,
         game.SharpeningStrength ?? Settings.SharpeningStrength,
-        game.MfgMultiplier ?? Settings.MfgMultiplier);
+        game.MfgMultiplier ?? Settings.MfgMultiplier, null, game.FeatureControls);
 
     void AddLog(string text) => log.Add($"{DateTime.Now:HH:mm:ss}  {text}");
 

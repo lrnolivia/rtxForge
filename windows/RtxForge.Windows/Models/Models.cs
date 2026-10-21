@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace RtxForge.Windows.Models;
@@ -34,19 +35,38 @@ public sealed class Game
     public string? AppId { get; init; }
     /// <summary>Feature profile the engine recorded: NR + MFG, MFG Only, NR Only.</summary>
     public string? Profile { get; init; }
+    public string? RuntimeProvider { get; init; }
+    public bool IsFeeder => RuntimeProvider == "feeder";
+    /// <summary>A detected installation or a fresh DX11 target admitted to the separate Feeder route.</summary>
+    public bool UsesFeeder => IsFeeder || EngineRow?["install_provider"]?.ToString() == "feeder"
+        && EngineRow?["feeder_available"] is JsonValue flag && flag.TryGetValue<bool>(out var supported) && supported;
     /// <summary>Which rtxForge installed the features: "windows", "linux" (shared .rtxforge-install.json), or null.</summary>
     public string? InstalledOn { get; set; }
     /// <summary>Installed with rtxForge on Linux: Windows loads it natively; Set Up for Windows adapts it here.</summary>
     public bool InstalledOnLinux => Installed && InstalledOn == "linux";
     /// <summary>The library's install action: Set Up for Windows adapts a Linux install instead of reinstalling it.</summary>
-    public string InstallLabel => InstalledOnLinux ? "Set Up for Windows" : "Install Features";
+    public bool AdoptionAvailable => EngineRow?["adoption_available"]?.GetValue<bool>() == true;
+    public bool Managed => EngineRow?["managed"]?.GetValue<bool>() == true;
+    public bool OfflineOnly => EngineRow?["offline_only"]?.GetValue<bool>() == true;
+    public string InstallLabel => AdoptionAvailable ? "Adopt with rtxForge" : InstalledOnLinux ? "Set Up for Windows"
+        : UsesFeeder ? Installed ? "Update Feeder NR" : "Install Feeder NR" : "Install Features";
     /// <summary>The engine's scan row, passed back unchanged for review and execution.</summary>
     public System.Text.Json.Nodes.JsonObject? EngineRow { get; init; }
+    public bool AntiCheatDetected
+    {
+        get
+        {
+            var node = EngineRow?["anti_cheat"];
+            return node is not null && (node is not System.Text.Json.Nodes.JsonValue value
+                || !value.TryGetValue<bool>(out var detected) || detected);
+        }
+    }
 
     // Per-game tuning; null inherits the library presets.
     public double? NrStrength { get; set; }
     public double? SharpeningStrength { get; set; }
     public string? MfgMultiplier { get; set; }
+    public JsonObject? FeatureControls { get; set; }
 }
 
 /// <summary>Cross-OS installs (scripts/cross_os.py): whichever OS runs the game adapts the install.</summary>
@@ -56,7 +76,7 @@ public static class CrossOs
 }
 
 /// <summary>NR Strength / Sharpening / MFG, as written to OptiScaler.ini.</summary>
-public sealed record Tuning(double NrStrength, double SharpeningStrength, string MfgMultiplier)
+public sealed record Tuning(double NrStrength, double SharpeningStrength, string MfgMultiplier, bool? NrOnLaunch = null, JsonObject? FeatureControls = null)
 {
     public static readonly string[] MultiplierValues = ["auto", "0", "2", "3", "4", "5", "6"];
     public static readonly string[] MultiplierCaptions = ["In game", "Off", "2×", "3×", "4×", "5×", "6×"];
@@ -69,18 +89,31 @@ public sealed record OperationStep(int Index, int Total, Game Game, string Capti
 public sealed record PrepareProgress(string Label, string? Game = null, int Checked = 0, int Total = 0);
 
 /// <summary>A game the engine refused for this operation, with its reason.</summary>
-public sealed record ReviewBlock(Game? Game, string Name, string Reason);
+public sealed record ReviewBlock(Game? Game, string Name, string Reason, string? Summary = null);
+
+/// <summary>A readable change summary plus the engine's complete diagnostic text.</summary>
+public sealed record OperationGameReview(Game Game, string Detail, string Summary);
 
 /// <summary>
 /// The engine's prepared review (engine_bridge.prepare). Execution runs this
 /// exact review by token, so only what the user saw is written.
 /// </summary>
-public sealed record OperationReview(string Operation, string Token, IReadOnlyList<(Game Game, string Detail)> Ready, IReadOnlyList<ReviewBlock> Blocked,
+public sealed record OperationReview(string Operation, string Token, IReadOnlyList<OperationGameReview> Ready, IReadOnlyList<ReviewBlock> Blocked,
     IReadOnlyList<ReviewBlock>? Warnings = null)
 {
     /// <summary>Heads-ups for ready games (e.g. NVIDIA App's DLSS Override); they never block the install.</summary>
     public IReadOnlyList<ReviewBlock> Warnings { get; init; } = Warnings ?? [];
+    public IReadOnlyList<SupportedOperationReview> Supported { get; init; } = [];
+    public IReadOnlyList<OperationReview> Steps { get; init; } = [];
+    public OperationReview IncludeSupported()
+    {
+        var steps = new[] { this with { Supported = [] } }.Where(r => r.Ready.Count > 0)
+            .Concat(Supported.Select(p => p.Review)).ToArray();
+        return this with { Ready = steps.SelectMany(r => r.Ready).ToArray(), Steps = steps, Supported = [] };
+    }
 }
+
+public sealed record SupportedOperationReview(OperationReview Review, bool Nr, bool Mfg, string Reason);
 
 /// <summary>Whether this rtxForge installation is in Steam; Token carries the checked state into Remove.</summary>
 public sealed record SteamShortcutStatus(bool Added, string Token);
@@ -104,6 +137,7 @@ public sealed record ReviewItem(string Title, string Detail, string Badge, strin
 public sealed record EngineReview(string Token, string Kind, string Title, string Summary, string Action,
     IReadOnlyList<ReviewItem> Items, IReadOnlyList<ReviewItem> Blocked, string? Trust = null, string? Note = null)
 {
+    public IReadOnlyList<ReviewItem> Skipped { get; init; } = [];
     public bool Ready => Items.Count > 0;
 }
 
@@ -166,7 +200,52 @@ public sealed class ForgeSettings
 {
     [JsonPropertyName("runtime_provider")] public string RuntimeProvider { get; set; } = "y4my";
     [JsonPropertyName("nr_runtime")] public string NrRuntime { get; set; } = "";
+    [JsonPropertyName("skynizz_version")] public string SkynizzVersion { get; set; } = "latest";
+    [JsonPropertyName("mfg_provider")] public string MfgProvider { get; set; } = "integrated";
+    [JsonPropertyName("nr_preset")] public int? NrPreset { get; set; }
+    [JsonPropertyName("nr_on_launch")] public bool NrOnLaunch { get; set; } = false;
+    [JsonPropertyName("feeder_source")] public string FeederSource { get; set; } = "";
+    [JsonPropertyName("feeder_backups")] public string FeederBackups { get; set; } = "";
     [JsonPropertyName("manage_dlss_files")] public bool ManageDlssFiles { get; set; } = true;
+    [JsonPropertyName("borderless_4k")] public bool Borderless4K { get; set; }
+    string panelHotkey = Services.OverlayShortcut.Default;
+    [JsonPropertyName("panel_hotkey")] public string PanelHotkey
+    {
+        get => panelHotkey;
+        set
+        {
+            PanelHotkeyMigrated = Services.OverlayShortcut.IsRetiredDefault(value);
+            panelHotkey = Services.OverlayShortcut.NormalizeStored(value);
+        }
+    }
+    [JsonIgnore] public bool PanelHotkeyMigrated { get; private set; }
+    [JsonPropertyName("overlay_helper")] public bool OverlayHelper { get; set; } = true;
+    [JsonPropertyName("overlay_start_with_windows")] public bool OverlayStartWithWindows { get; set; } = true;
+    [JsonPropertyName("overlay_material")] public string OverlayMaterial { get; set; } = "acrylic";
+    [JsonPropertyName("overlay_controls")] public string OverlayControls { get; set; } = "unified";
+    [JsonPropertyName("overlay_renderer")] public string OverlayRenderer { get; set; } = "rtxforge";
+    [JsonPropertyName("optiscaler_hotkey")] public string OptiScalerHotkey { get; set; } = "Insert";
+    [JsonPropertyName("optiscaler_ui")] public bool OptiScalerUi { get; set; } = true;
+    [JsonPropertyName("optiscaler_intro")] public bool OptiScalerIntro { get; set; }
+    [JsonPropertyName("reshade_ui")] public bool ReShadeUi { get; set; } = true;
+    [JsonPropertyName("reshade_intro")] public bool ReShadeIntro { get; set; }
+    public JsonObject GameUiOptions() => new()
+    {
+        ["optiscaler_ui"] = OptiScalerUi, ["optiscaler_intro"] = OptiScalerIntro,
+        ["reshade_ui"] = ReShadeUi, ["reshade_intro"] = ReShadeIntro,
+        ["optiscaler_hotkey"] = OptiScalerHotkey,
+    };
+
+    public void CopyOverlayFrom(ForgeSettings source)
+    {
+        PanelHotkey = source.PanelHotkey; OverlayHelper = source.OverlayHelper;
+        OverlayStartWithWindows = source.OverlayStartWithWindows; OverlayMaterial = source.OverlayMaterial;
+        OverlayControls = source.OverlayControls; OverlayRenderer = source.OverlayRenderer;
+        OptiScalerHotkey = source.OptiScalerHotkey;
+        OptiScalerUi = source.OptiScalerUi; OptiScalerIntro = source.OptiScalerIntro;
+        ReShadeUi = source.ReShadeUi; ReShadeIntro = source.ReShadeIntro;
+    }
+    [JsonPropertyName("companion_game")] public string CompanionGame { get; set; } = "";
     [JsonPropertyName("default_profile")] public string DefaultProfile { get; set; } = "mfg-only";
     [JsonPropertyName("recognize_previous")] public bool RecognizePrevious { get; set; } = true;
     [JsonPropertyName("library_view")] public string LibraryView { get; set; } = "posters";
@@ -181,7 +260,9 @@ public sealed class ForgeSettings
     [JsonPropertyName("art_scale")] public int ArtScale { get; set; } = 100;
     [JsonPropertyName("nr_strength")] public double NrStrength { get; set; } = 2.0;
     [JsonPropertyName("sharpening_strength")] public double SharpeningStrength { get; set; } = 0.5;
-    [JsonPropertyName("mfg_multiplier")] public string MfgMultiplier { get; set; } = "auto";
+    [JsonPropertyName("mfg_multiplier"), JsonConverter(typeof(MfgMultiplierConverter))]
+    public string MfgMultiplier { get; set; } = "auto";
+    [JsonPropertyName("feature_controls")] public JsonObject? FeatureControls { get; set; }
     [JsonPropertyName("game_folders")] public List<string> GameFolders { get; set; } = [];
     [JsonPropertyName("library_folders")] public List<string> LibraryFolders { get; set; } = [];
     [JsonPropertyName("removed_games")] public List<string> RemovedGames { get; set; } = [];
@@ -205,7 +286,10 @@ public sealed class ForgeSettings
         set => UiScale = value == "auto" ? JsonSerializer.SerializeToElement("auto") : JsonSerializer.SerializeToElement(int.Parse(value));
     }
 
-    [JsonIgnore] public Tuning Presets => new(NrStrength, SharpeningStrength, MfgMultiplier);
+    // The shared engine owns additional settings that this shell does not edit.
+    [JsonExtensionData] public Dictionary<string, JsonElement> AdditionalSettings { get; set; } = [];
+
+    [JsonIgnore] public Tuning Presets => new(NrStrength, SharpeningStrength, MfgMultiplier, NrOnLaunch, FeatureControls);
 
     static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rtxForge", "settings.json");
@@ -224,14 +308,63 @@ public sealed class ForgeSettings
         return new();
     }
 
-    public void Save()
+    static void WithSettingsLock(Action write)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-        var temp = FilePath + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(this, Json));
-        File.Move(temp, FilePath, overwrite: true);
+        using var mutex = new Mutex(false, @"Local\rtxForge.Settings");
+        bool held;
+        try { held = mutex.WaitOne(TimeSpan.FromSeconds(2)); }
+        catch (AbandonedMutexException) { held = true; }
+        if (!held) throw new IOException("Settings are busy. Try the change again.");
+        try { write(); } finally { mutex.ReleaseMutex(); }
+    }
+
+    public static ForgeSettings EditOverlay(Action<ForgeSettings> edit)
+    {
+        ForgeSettings? fresh = null;
+        WithSettingsLock(() => { fresh = Load(); edit(fresh); fresh.Save(); });
+        return fresh!;
+    }
+
+    public void Save(bool preserveOverlay = false)
+    {
+        WithSettingsLock(() =>
+        {
+            if (preserveOverlay) CopyOverlayFrom(Load());
+            Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
+            var temp = FilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                File.WriteAllText(temp, JsonSerializer.Serialize(this, Json));
+                File.Move(temp, FilePath, overwrite: true);
+            }
+            finally { if (File.Exists(temp)) File.Delete(temp); }
+        });
     }
 
     public ForgeSettings Clone() =>
         JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(this, Json), Json)!;
+}
+
+/// <summary>The shared engine stores a numeric multiplier; older Windows builds stored text.</summary>
+public sealed class MfgMultiplierConverter : JsonConverter<string>
+{
+    public override bool HandleNull => true;
+
+    static string Normalize(string? value) => value is "0" or "2" or "3" or "4" or "5" or "6" ? value : "auto";
+
+    public override string Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.String) return Normalize(reader.GetString());
+        if (reader.TokenType == JsonTokenType.Number && reader.TryGetInt32(out var number))
+            return Normalize(number.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        reader.Skip();
+        return "auto";
+    }
+
+    public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options)
+    {
+        var normalized = Normalize(value);
+        if (normalized == "auto") writer.WriteStringValue("auto");
+        else writer.WriteNumberValue(int.Parse(normalized, System.Globalization.CultureInfo.InvariantCulture));
+    }
 }

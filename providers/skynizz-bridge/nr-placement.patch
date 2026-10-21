@@ -1,0 +1,249 @@
+diff --git a/OptiScaler/dlssnr/DlssNrFeature_Dx12.h b/OptiScaler/dlssnr/DlssNrFeature_Dx12.h
+index 6a0f55f..cc0914a 100644
+--- a/OptiScaler/dlssnr/DlssNrFeature_Dx12.h
++++ b/OptiScaler/dlssnr/DlssNrFeature_Dx12.h
+@@ -7,6 +7,7 @@
+ 
+ #include <shaders/dlssnr/DlssNr_Common.h>
+ #include <nvsdk_ngx.h>
++#include "ForgeNrRoute.h"
+ 
+ // DLSS 5 Neural Rendering, run over the upscaler's output.
+ //
+@@ -45,6 +46,14 @@ bool EvaluateBeforeUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramet
+                            ID3D12CommandQueue* timingQueue = nullptr);
+ void EndBeforeUpscale(NVSDK_NGX_Parameter* params);
+ 
++// Observed evaluation, distinct from the requested PreSr setting. Model size is
++// published only after a successful model evaluate in this upscale; FG never
++// resets it. Codes are shared with companion protocol 6.
++using PlacementStats = ForgeNrRoute::Observation;
++void BeginUpscalerEvaluation(bool rayReconstruction);
++void FinishUpscalerEvaluation(bool success);
++PlacementStats GetPlacementStats();
++
+ // Hot-swap comparison: what Neural Rendering runs as, live, without touching any setting. Cycled by the
+ // comparison key (DlssNrCompareKey) or chosen in the menu.
+ enum class CompareMode : int
+diff --git a/OptiScaler/framegen/dlssg/Companion.h b/OptiScaler/framegen/dlssg/Companion.h
+index a00c031..f57b05a 100644
+--- a/OptiScaler/framegen/dlssg/Companion.h
++++ b/OptiScaler/framegen/dlssg/Companion.h
+@@ -49,12 +49,15 @@ struct Mailbox
+     LONG actualSharpen, actualSharpOverride, actualSharpenShader, actualMotionSharpen;
+     float actualSharpness, actualMotionSharpness;
+     LONG originalMenu, originalMenuKey;
+-    char reserved[136];
++    LONG nrPlacement, nrPlacementReason, nrModelWidth, nrModelHeight;
++    LONG nrReduced, nrRequestedBefore, nrPlacementTick;
++    char reserved[108];
+ };
+ static_assert(sizeof(Mailbox) == 512);
+ static_assert(offsetof(Mailbox, workScale) == 256);
+ static_assert(offsetof(Mailbox, actualWorkScale) == 288);
+ static_assert(offsetof(Mailbox, actualSharpen) == 344);
++static_assert(offsetof(Mailbox, nrPlacement) == 376);
+ 
+ inline std::recursive_mutex guard;
+ inline Mailbox* mailbox = nullptr;
+@@ -113,7 +116,7 @@ inline void Tick()
+         }
+         *mailbox = {};
+         mailbox->magic = 0x46585452;
+-        mailbox->version = 5;
++        mailbox->version = 6;
+         mailbox->pid = GetCurrentProcessId();
+     }
+     if (!mailbox) return;
+@@ -226,6 +229,14 @@ inline void Tick()
+     mailbox->actualTone = cfg.DlssNrLocalTone.value_or_default();
+     mailbox->actualPreset = cfg.DlssNrPreset.value_or_default();
+     const auto live = DlssNr::GetLiveStats();
++    const auto placement = DlssNr::GetPlacementStats();
++    mailbox->nrPlacement = placement.actual;
++    mailbox->nrPlacementReason = placement.reason;
++    mailbox->nrModelWidth = placement.modelWidth;
++    mailbox->nrModelHeight = placement.modelHeight;
++    mailbox->nrReduced = placement.reduced;
++    mailbox->nrRequestedBefore = placement.requestedBefore;
++    mailbox->nrPlacementTick = placement.tick;
+     mailbox->nrRunning = cfg.DlssNrEnabled.value_or_default() && DlssNr::IsRunning();
+     mailbox->nrMs = static_cast<float>(live.nrMs);
+     mailbox->renderedFps = static_cast<float>(live.renderedFps);
+diff --git a/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp b/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
+index e38af95..371135b 100644
+--- a/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
++++ b/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
+@@ -16,6 +16,7 @@
+ #include <framegen/nvngx/Nvngx_FG.h>
+ #include <framegen/dlssg/MfgUnlock.h>
+ #include <framegen/dlssg/Companion.h>
++#include <dlssnr/ForgeNrRoute.h>
+ #include "FG/FSR3_Dx12_FG.h"
+ #include "FG/Upscaler_Inputs_Dx12.h"
+ 
+@@ -1174,6 +1175,21 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
+         }
+     }
+ 
++    // One route for native and internal SR. RR keeps its finished-image input;
++    // its noisy pre-denoising colour has not been validated for this model.
++    auto nrEvaluate = [&](auto evaluate)
++    {
++        return ForgeNrRoute::Run(feature == NVSDK_NGX_Feature_SuperSampling,
++            feature == NVSDK_NGX_Feature_RayReconstruction,
++            [&] { DlssNr::BeginUpscalerEvaluation(feature == NVSDK_NGX_Feature_RayReconstruction); },
++            [&] { return DlssNr::EvaluateBeforeUpscale(InCmdList, InParameters); },
++            evaluate,
++            [&] { DlssNr::EndBeforeUpscale(InParameters); },
++            [&] { DlssNr::EvaluateAfterUpscale(InCmdList, InParameters); },
++            [](NVSDK_NGX_Result result) { return result == NVSDK_NGX_Result_Success; },
++            [](bool accepted, bool) { DlssNr::FinishUpscalerEvaluation(accepted); });
++    };
++
+     // Native DLSS passthrough
+     if (handleId < DLSS_MOD_ID_OFFSET)
+     {
+@@ -1181,18 +1197,11 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
+         {
+             LOG_DEBUG("Passthrough to native DLSS EvaluateFeature for handle {}", handleId);
+ 
+-            NVSDK_NGX_Result result =
+-                NVNGXProxy::D3D12_EvaluateFeature()(InCmdList, InFeatureHandle, InParameters, InCallback);
++            NVSDK_NGX_Result result = nrEvaluate([&] {
++                return NVNGXProxy::D3D12_EvaluateFeature()(InCmdList, InFeatureHandle, InParameters, InCallback);
++            });
+             LOG_DEBUG("Native DLSS EvaluateFeature result: 0x{:X}", (uint32_t) result);
+ 
+-            // Neural Rendering runs over what the upscaler just wrote, on the same list, so frame
+-            // generation interpolates from enhanced frames and the model still costs one run per
+-            // rendered frame. The feature check is the point: frame generation is handed depth and
+-            // motion vectors too, and its handle can reach here because the branch above does not
+-            // return, so filtering on the parameter block alone would run the model twice a frame.
+-            if (result == NVSDK_NGX_Result_Success && feature != NVSDK_NGX_Feature_FrameGeneration)
+-                DlssNr::EvaluateAfterUpscale(InCmdList, InParameters);
+-
+             ForgeCompanion::Completed(feature == NVSDK_NGX_Feature_FrameGeneration, result, InParameters);
+ 
+             return result;
+@@ -1217,22 +1226,12 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
+     if (lastDlssgCameraFar.has_value())
+         InParameters->Set("DLSSG.CameraFar", lastDlssgCameraFar.value());
+ 
+-    // Pre-SR (DlssNrPreSr, off by default): Neural Rendering first, on the render-resolution colour the
+-    // upscaler is about to read, which is swapped for the enhanced copy and put back right after.
+-    const bool nrPreSr =
+-        feature == NVSDK_NGX_Feature_SuperSampling && DlssNr::EvaluateBeforeUpscale(InCmdList, InParameters);
+-
+     // OptiScaler internal handling
+-    const NVSDK_NGX_Result optiResult = TryEvaluateOptiFeature(InCmdList, InFeatureHandle, InParameters, InCallback);
++    const NVSDK_NGX_Result optiResult = nrEvaluate([&] {
++        return TryEvaluateOptiFeature(InCmdList, InFeatureHandle, InParameters, InCallback);
++    });
+     ForgeCompanion::Completed(feature == NVSDK_NGX_Feature_FrameGeneration, optiResult, InParameters);
+ 
+-    if (nrPreSr)
+-        DlssNr::EndBeforeUpscale(InParameters);
+-
+-    // Same pass, for OptiScaler's own upscalers rather than native DLSS.
+-    if (optiResult == NVSDK_NGX_Result_Success && feature != NVSDK_NGX_Feature_FrameGeneration)
+-        DlssNr::EvaluateAfterUpscale(InCmdList, InParameters);
+-
+     return optiResult;
+ }
+ 
+diff --git a/OptiScaler/shaders/dlssnr/DlssNr_Dx12.cpp b/OptiScaler/shaders/dlssnr/DlssNr_Dx12.cpp
+index 9760879..0076425 100644
+--- a/OptiScaler/shaders/dlssnr/DlssNr_Dx12.cpp
++++ b/OptiScaler/shaders/dlssnr/DlssNr_Dx12.cpp
+@@ -3,6 +3,7 @@
+ #include <set>
+ 
+ #include <dlssnr/DlssNr.h>
++#include <dlssnr/ForgeNrRoute.h>
+ 
+ 
+ #include <dlssnr/DlssNr_Capture.h>
+@@ -540,6 +541,8 @@ struct PreSrState
+ };
+ 
+ PreSrState g_preSr;
++ForgeNrRoute::Observations g_placement;
++std::mutex g_placementMutex;
+ 
+ // Set around the pre-SR dispatch, so the pass knows its target is the copy rather than the output.
+ bool g_preSrDispatch = false;
+@@ -3864,6 +3867,14 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
+     }
+ 
+     g_nr.passesRun = passesReady;
++    {
++        std::lock_guard lock(g_placementMutex);
++        if (result == NVSDK_NGX_Result_Success)
++        {
++            g_placement.ModelEvaluated(g_preSrDispatch, workWidth, workHeight,
++                cfg.DlssNrPreSrReduced.value_or_default() && workWidth < width && workHeight < height);
++        }
++    }
+ 
+     if (g_ngxTime != nullptr)
+         g_ngxTime->End(cmdList);
+@@ -5008,13 +5019,14 @@ LiveStats GetLiveStats()
+ 
+     s.valid = g_live.count > 0;
+     s.enabled = EffEnabled(cfg);
+-    s.preSr = s.enabled && EffPreSr(cfg);
++    const auto placement = GetPlacementStats();
++    s.preSr = s.enabled && placement.actual == 2;
+     s.cache = s.enabled && EffCache(cfg);
+     s.nrMs = s.enabled && g_nr.feature != nullptr ? g_avgGpuTime : 0.0;
+-    s.modelWidth = g_nr.workWidth;
++    s.modelWidth = s.enabled ? placement.modelWidth : 0;
+     s.passes = s.enabled ? g_nr.passesRun : 0;
+     s.style = EffStyle(cfg);
+-    s.modelHeight = g_nr.workHeight;
++    s.modelHeight = s.enabled ? placement.modelHeight : 0;
+     s.benchmark = g_bench.active;
+     s.mode = g_bench.active ? BenchmarkPhaseName(g_bench.phase) : CompareModeName((CompareMode) g_userCompare);
+     s.compare = (CompareMode) g_userCompare;
+@@ -5024,6 +5036,26 @@ LiveStats GetLiveStats()
+ 
+ namespace DlssNr
+ {
++void BeginUpscalerEvaluation(bool rayReconstruction)
++{
++    // A failed upscale must not leave a pre-SR latch for the next RR frame.
++    g_preSr.ranThisFrame = false;
++    std::lock_guard lock(g_placementMutex);
++    g_placement.Begin(EffPreSr(*Config::Instance()), rayReconstruction);
++}
++
++void FinishUpscalerEvaluation(bool success)
++{
++    std::lock_guard lock(g_placementMutex);
++    g_placement.Finish(success, EffEnabled(*Config::Instance()), GetTickCount());
++}
++
++PlacementStats GetPlacementStats()
++{
++    std::lock_guard lock(g_placementMutex);
++    return g_placement.Published();
++}
++
+ void RetryAfterFailure()
+ {
+     g_nr.failed = false;
+@@ -5402,9 +5434,10 @@ bool EvaluateBeforeUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramet
+ 
+     // The pass, on the copy. Whatever it does or declines to do this frame, the copy holds at least the
+     // game's own colour, so handing it over is always safe.
+-    g_preSrDispatch = true;
+-    g_compose->Dispatch(cmdList, g_preSr.tex, depth, motion, g_preSr.tex, frame, timingQueue);
+-    g_preSrDispatch = false;
++    {
++        const ForgeNrRoute::FlagScope placement(g_preSrDispatch, true);
++        g_compose->Dispatch(cmdList, g_preSr.tex, depth, motion, g_preSr.tex, frame, timingQueue);
++    }
+ 
+     // Readable the way the upscaler reads its inputs: as a shader resource, or the state the user told
+     // OptiScaler the game leaves its colour in.

@@ -12,18 +12,20 @@ namespace RtxForge.Windows.Views;
 /// </summary>
 public sealed partial class SettingsPage : Page
 {
-    static readonly string[] ProviderKeys = ["y4my", "dlss-unlocked", "custom"];
+    static readonly string[] ProviderKeys = ["y4my", "dlss-unlocked", "custom", "skynizz", "feeder"];
     static readonly string[] Modes = ["nr-only", "mfg-only", "nr-mfg"];
     static readonly string[] Views = ["posters", "capsules", "list"];
 
     readonly MainWindow shell = App.Main!;
     readonly Dictionary<string, PreferencesGroup[]> sections = [];
     static string selectedSection = "Graphics";
+    public static bool OpenOverlaySection { get; set; }
     ForgeSettings Settings => shell.Settings;
 
     public SettingsPage()
     {
         InitializeComponent();
+        if (OpenOverlaySection) { selectedSection = "Overlay"; OpenOverlaySection = false; }
         Build();
     }
 
@@ -55,9 +57,9 @@ public sealed partial class SettingsPage : Page
         // ----- Graphics -----
         var graphics = new PreferencesGroup(null, "Restore original files before switching providers.");
         var (row, provider) = Prefs.ComboRow("Provider", "Package that supplies NR and MFG.",
-            ["y4my Multipass", "DLSS-Unlocked", "Custom package"], Math.Max(0, Array.IndexOf(ProviderKeys, Settings.RuntimeProvider)), "");
+            ["y4my Multipass", "DLSS-Unlocked", "Custom package", "Skynizz NR + MFG bridge (preview)", "Feeder NR (DirectX 11)"], Math.Max(0, Array.IndexOf(ProviderKeys, Settings.RuntimeProvider)), "");
         graphics.Add(row);
-        (row, var nrPath) = Prefs.EntryRow("Local NR DLL for y4my", "Optional nvngx_dlssnr.dll used with the y4my provider.",
+        (row, var nrPath) = Prefs.EntryRow("Local NR model DLL", "Compatible nvngx_dlssnr.dll. Required for Skynizz unless a suitable model is already beside the game executable.",
             Settings.NrRuntime, @"C:\path\to\nvngx_dlssnr.dll", "");
         nrPath.LostFocus += (_, _) => { Settings.NrRuntime = nrPath.Text.Trim(); Save(); };
         graphics.Add(row);
@@ -69,6 +71,9 @@ public sealed partial class SettingsPage : Page
         (row, var profile) = Prefs.ComboRow("Default Mode", "Features selected when rtxForge starts.",
             ["NR Only", "MFG Only", "NR + MFG"], Math.Max(0, Array.IndexOf(Modes, Settings.DefaultProfile)), "");
         graphics.Add(row);
+        (row, var startupNr) = Prefs.SwitchRow("Enable NR on launch", "Default for new and clean installs. Leave off to enable NR later from the overlay.", Settings.NrOnLaunch, "");
+        startupNr.Toggled += (_, _) => { Settings.NrOnLaunch = startupNr.IsOn; Save(); };
+        graphics.Add(row);
         (row, var adopt) = Prefs.SwitchRow("Recognize Existing Features", "Allow updates to compatible installations from other tools.",
             Settings.RecognizePrevious, "");
         adopt.Toggled += (_, _) => { Settings.RecognizePrevious = adopt.IsOn; Save(); };
@@ -78,6 +83,14 @@ public sealed partial class SettingsPage : Page
         {
             var selectedProvider = ProviderKeys[Math.Max(0, provider.SelectedIndex)];
             var selectedMode = Modes[Math.Max(0, profile.SelectedIndex)];
+            if (selectedProvider == "feeder" && selectedMode != "nr-only")
+            {
+                profile.SelectedIndex = Array.IndexOf(Modes, "nr-only");
+                selectedMode = "nr-only";
+                Notice.Title = "Feeder provides NR Only.";
+                Notice.Message = "Frame generation is unavailable for this route.";
+                Notice.IsOpen = true;
+            }
             if (selectedProvider == "y4my" && selectedMode == "nr-only")
             {
                 profile.SelectedIndex = Array.IndexOf(Modes, "mfg-only");
@@ -86,15 +99,34 @@ public sealed partial class SettingsPage : Page
                 Notice.IsOpen = true;
                 selectedMode = "mfg-only";
             }
+            var providerChanged = Settings.RuntimeProvider != selectedProvider;
             Settings.RuntimeProvider = selectedProvider;
             Settings.DefaultProfile = selectedMode;
             shell.Mode = selectedMode;
             shell.SaveSettings();
+            if (providerChanged) _ = shell.ScanAsync();
         }
         provider.SelectionChanged += (_, _) => ValidateProvider();
         profile.SelectionChanged += (_, _) => ValidateProvider();
 
         // ----- Appearance -----
+        (row, var borderless) = Prefs.SwitchRow("4K borderless on install", "Use 3840 × 2160 borderless in supported games. Review shows each change; Restore preserves later preferences.", Settings.Borderless4K, "");
+        borderless.Toggled += (_, _) => { Settings.Borderless4K = borderless.IsOn; Save(); };
+        graphics.Add(row);
+
+        var overlay = new PreferencesGroup(null, "A small background helper opens the NR + MFG sidebar. You can close the main rtxForge window.");
+        overlay.Add(new OverlayPreferencesView(fresh =>
+        {
+            Settings.CopyOverlayFrom(fresh);
+            shell.ConfigureCompanionShortcut();
+        }, shell.Service as EngineForgeService) { Margin = new Thickness(0, 12, 0, 20), MaxWidth = 640, HorizontalAlignment = HorizontalAlignment.Left });
+        overlay.Add(Prefs.Row("Open overlay", "Automatically connects to a supported running game.", Prefs.ActionButton("Open", (_, _) => shell.OpenCompanion()), ""));
+
+        var globalControls = new PreferencesGroup(null, "A one-time bulk change to games with packages installed.");
+        if (shell.Service is EngineForgeService globalEngine)
+            globalControls.Add(new GlobalControlsView(globalEngine) { Margin = new Thickness(0, 12, 0, 20), MaxWidth = 640, HorizontalAlignment = HorizontalAlignment.Left });
+        else globalControls.Add(new TextBlock { Text = "Global controls are available in the installed app." });
+
         var appearance = new PreferencesGroup(null);
         (row, var theme) = Prefs.ComboRow("App theme", "Changes only rtxForge.", ThemeController.Captions,
             Math.Max(0, Array.IndexOf(ThemeController.Keys, Settings.Theme)), "");
@@ -219,6 +251,8 @@ public sealed partial class SettingsPage : Page
 
         // Linux organize_pages(): one page per section. Windows shows them as SelectorBar tabs.
         sections["Graphics"] = [graphics];
+        sections["Overlay"] = [overlay];
+        sections["Global"] = [globalControls];
         sections["Appearance"] = [appearance];
         sections["Library"] = [library];
         sections["Gaming Mode"] = [gamingMode, steamLibrary, interfaceGroup, controller];

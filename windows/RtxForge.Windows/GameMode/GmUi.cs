@@ -46,7 +46,7 @@ public sealed class GmUi(GmTheme t)
         return icon;
     }
 
-    /// <summary>.rf-button with the prototype's 4px focus outline at a 4px offset.</summary>
+    /// <summary>Native button with a restrained, visible controller focus indicator.</summary>
     public Button Button(object content, Action? click, GmKind kind = GmKind.Card, double em = 1, bool enabled = true,
         double radius = 32, Thickness? padding = null, double minHeight = 60, string? name = null)
     {
@@ -57,7 +57,7 @@ public sealed class GmUi(GmTheme t)
             GmKind.Quiet or GmKind.Transparent => (Microsoft.UI.Colors.Transparent, t.Fg),
             GmKind.Active => (t.Active, t.ActiveFg),
             GmKind.Dlss => (t.DlssSurface, t.DlssInk),
-            _ => (t.Card, t.Fg),
+            _ => (t.IsLight ? GmTheme.Hex("#454545") : t.Card, GmTheme.Hex("#f2f2f2")),
         };
         if (!enabled) (bg, fg) = (kind is GmKind.Quiet or GmKind.Transparent ? Microsoft.UI.Colors.Transparent : t.Disabled, t.DisabledFg);
         var button = new Button
@@ -74,16 +74,27 @@ public sealed class GmUi(GmTheme t)
             MinHeight = t.Px(minHeight),
             IsEnabled = enabled,
         };
+        if ((kind is GmKind.Card or GmKind.Active or GmKind.Primary or GmKind.Danger) && button.Content is UIElement contentElement)
+            InheritButtonInk(contentElement);
         if (kind == GmKind.Dlss)
         {
             button.BorderBrush = GmTheme.B(t.DlssBorder);
             button.BorderThickness = new Thickness(t.Px(2));
         }
         Focusable(button);
-        Lift(button);
         if (click is not null) button.Click += (_, _) => click();
         if (name is not null) Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, name);
         return button;
+    }
+
+    // Nested labels inherit the button's contrast choice rather than the
+    // page's text color. Bright accent/danger surfaces retain their dark ink.
+    static void InheritButtonInk(UIElement content)
+    {
+        if (content is TextBlock label) label.ClearValue(TextBlock.ForegroundProperty);
+        else if (content is FontIcon icon) icon.ClearValue(IconElement.ForegroundProperty);
+        else if (content is Panel panel) foreach (var child in panel.Children) InheritButtonInk(child);
+        else if (content is Border { Child: UIElement child }) InheritButtonInk(child);
     }
 
     /// <summary>
@@ -106,14 +117,14 @@ public sealed class GmUi(GmTheme t)
         return line;
     }
 
-    /// <summary>Prototype focus: 4px outline in --focus, offset 4px, following the control's corners.</summary>
-    public void Focusable(Control control, double offset = 4)
+    /// <summary>Focus stays separate from selection without growing into neighbouring controls.</summary>
+    public void Focusable(Control control, double offset = 0)
     {
         control.UseSystemFocusVisuals = true;
         control.FocusVisualPrimaryBrush = GmTheme.B(t.Focus);
-        control.FocusVisualPrimaryThickness = new Thickness(t.Px(4));
+        control.FocusVisualPrimaryThickness = new Thickness(t.Px(2));
         control.FocusVisualSecondaryThickness = new Thickness(0);
-        control.FocusVisualMargin = new Thickness(-t.Px(offset + 4));
+        control.FocusVisualMargin = new Thickness(-t.Px(offset + 2));
         control.IsTabStop = true;
     }
 
@@ -159,6 +170,25 @@ public sealed class GmUi(GmTheme t)
         button.TranslationTransition = null;
         button.Shadow = null;
         button.GotFocus += (_, _) => { button.Scale = System.Numerics.Vector3.One; button.Translation = System.Numerics.Vector3.Zero; };
+    }
+
+    /// <summary>Menu focus adds a surface and brighter ink; selection colours remain owned by the page.</summary>
+    public void MenuFocus(Button button)
+    {
+        Brush? priorBackground = null, priorForeground = null;
+        var focusedBackground = GmTheme.B(t.RowFocus);
+        var focusedForeground = GmTheme.B(t.ActiveFg);
+        button.GotFocus += (_, _) =>
+        {
+            if (button.FocusState == FocusState.Pointer) return;
+            priorBackground = button.Background; priorForeground = button.Foreground;
+            button.Background = focusedBackground; button.Foreground = focusedForeground;
+        };
+        button.LostFocus += (_, _) =>
+        {
+            if (ReferenceEquals(button.Background, focusedBackground)) button.Background = priorBackground;
+            if (ReferenceEquals(button.Foreground, focusedForeground)) button.Foreground = priorForeground;
+        };
     }
 
     /// <summary>.rf-key: a controller/keyboard key cap.</summary>
@@ -240,7 +270,8 @@ public sealed class GmUi(GmTheme t)
         var text = new StackPanel { Spacing = t.Px(8), VerticalAlignment = VerticalAlignment.Center };
         var titleLine = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12) };
         if (glyph is not null) titleLine.Children.Add(Icon(glyph, 0.85, danger ? t.Danger : null));
-        titleLine.Children.Add(Text(title, 0.96, danger ? t.Danger : enabled ? t.Fg : t.DisabledFg, FontWeights.SemiBold));
+        var titleText = Text(title, 0.96, danger ? t.Danger : enabled ? t.Fg : t.DisabledFg, FontWeights.SemiBold);
+        titleLine.Children.Add(titleText);
         text.Children.Add(titleLine);
         if (description is not null) text.Children.Add(P(description, 0.83));
         grid.Children.Add(text);
@@ -262,6 +293,12 @@ public sealed class GmUi(GmTheme t)
         button.HorizontalContentAlignment = HorizontalAlignment.Stretch;
         if (!enabled) button.Background = GmTheme.B(Microsoft.UI.Colors.Transparent);
         RowFocus(button);   // ring inside the row: rows sit edge to edge in a rounded group
+        if (!danger)
+        {
+            MenuFocus(button);
+            button.GotFocus += (_, _) => { if (button.FocusState != FocusState.Pointer) titleText.Foreground = GmTheme.B(t.ActiveFg); };
+            button.LostFocus += (_, _) => titleText.Foreground = GmTheme.B(enabled ? t.Fg : t.DisabledFg);
+        }
         return button;
     }
 
@@ -269,11 +306,11 @@ public sealed class GmUi(GmTheme t)
     /// .rf-stepper inside a whole-row focus target: Left/Right adjust (controller,
     /// keyboard) and the − / + glyphs are clickable.
     /// </summary>
-    public Button StepperRow(string title, string? description, Func<string> value, Action<int> adjust, bool enabled = true)
+    public Button StepperRow(string title, string? description, Func<string> value, Action<int> adjust, bool enabled = true, bool compact = false)
     {
         var shown = Text(value(), 1.18, enabled ? t.Fg : t.DisabledFg, FontWeights.Bold);
         shown.HorizontalAlignment = HorizontalAlignment.Center;
-        shown.MinWidth = t.Px(90);
+        shown.MinWidth = t.Px(compact ? 60 : 90);
         shown.TextAlignment = TextAlignment.Center;
         Border Step(string glyph, int delta)
         {
@@ -285,11 +322,20 @@ public sealed class GmUi(GmTheme t)
             if (enabled) border.Tapped += (_, e) => { adjust(delta); shown.Text = value(); e.Handled = true; };
             return border;
         }
-        var stepper = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(28), MinWidth = t.Px(220) };
+        var stepper = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(compact ? 12 : 28), MinWidth = compact ? 0 : t.Px(220) };
         stepper.Children.Add(Step("", -1));
         stepper.Children.Add(shown);
         stepper.Children.Add(Step("", 1));
-        var row = PreferenceRow(title, description, stepper);
+        FrameworkElement row;
+        if (compact)
+        {
+            var column = new StackPanel { Spacing = t.Px(8), Padding = new Thickness(t.Px(16), t.Px(12), t.Px(16), t.Px(12)) };
+            column.Children.Add(Text(title, .85, weight: FontWeights.SemiBold, wrap: true));
+            column.Children.Add(stepper);
+            if (description is not null) column.Children.Add(P(description, .7));
+            row = column;
+        }
+        else row = PreferenceRow(title, description, stepper);
         var button = Button(row, null, GmKind.Transparent, 1, enabled, radius: 0, padding: new Thickness(0), minHeight: 0);
         button.HorizontalAlignment = HorizontalAlignment.Stretch;
         button.HorizontalContentAlignment = HorizontalAlignment.Stretch;

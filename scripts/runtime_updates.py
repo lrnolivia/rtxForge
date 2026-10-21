@@ -123,6 +123,11 @@ def _owned(engine, root, path):
     for parent in (path.parent, *path.parent.parents):
         if not parent.is_relative_to(root):
             break
+        if hasattr(engine, 'STATE_ROOT'):
+            import feeder_provider
+            feeder = feeder_provider.state(engine, parent)
+            if feeder and feeder.get('status') in ('active', 'preparing') and path.relative_to(parent).as_posix() in feeder.get('originals', {}):
+                return True
         baseline = engine.load_baseline(parent, readonly=True)
         if baseline and baseline.get('status') != 'restored':
             rel = path.relative_to(parent).as_posix().casefold()
@@ -146,6 +151,13 @@ def backup_comparison(path):
         return 'Shipping version unknown'
 
 
+def _anti_cheat_clear(engine, found):
+    if not found.anti_cheat:
+        return True
+    import offline_routes
+    return bool(found.exe and offline_routes.allowed_target(engine, Path(found.exe).parent, Path(found.root)))
+
+
 def inspect(config, games, snapshot=None):
     engine = engine_bridge.module(config)
     rows = []
@@ -156,7 +168,7 @@ def inspect(config, games, snapshot=None):
             t.safe(root)
             t.need(root.is_dir(), 'Game folder is unavailable')
             found = discovery.inspect_game(discovery.Game('', game['name'], str(root), game.get('source', 'Folder')))
-            t.need(not found.anti_cheat, 'Anti-cheat detected')
+            t.need(_anti_cheat_clear(engine, found), 'Anti-cheat detected')
             t.need(found.exe, 'No Windows executable found')
             for raw in found.upscalers:
                 path = Path(raw)
@@ -193,7 +205,7 @@ def prepare(config, snapshot, selected):
         t.need(not row['blocked'] and row['files'], 'No eligible runtime selection')
         root = t.safe(row['game'])
         found = discovery.inspect_game(discovery.Game('', row['name'], str(root), 'Folder'))
-        t.need(not found.anti_cheat and found.exe, 'Game eligibility changed; scan again')
+        t.need(_anti_cheat_clear(engine, found) and found.exe, 'Game eligibility changed; scan again')
         changes = []
         inputs = {}
         for item in row['files']:
@@ -239,7 +251,7 @@ def apply(config, plans, *, state_paths=None):
         t.need(not engine._running_processes_under_root(Path(plan['game'])), 'Close the selected game before updating')
         # Recheck ownership and eligibility at the write boundary.
         found = discovery.inspect_game(discovery.Game('', plan['name'], plan['game'], 'Folder'))
-        t.need(not found.anti_cheat and found.exe, 'Game eligibility changed; scan again')
+        t.need(_anti_cheat_clear(engine, found) and found.exe, 'Game eligibility changed; scan again')
         for change in plan['changes']:
             path = Path(plan['game']) / t.relative(change['path'])
             t.need(path.name.casefold() in COMPONENTS and not _private(Path(change['path'])), 'Unsupported runtime target')

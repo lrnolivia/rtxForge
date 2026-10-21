@@ -19,38 +19,64 @@ public sealed partial class GameModeView
         // than the Library / Settings page margin.
         var column = Math.Min(t.Px(1600), Math.Max(0, ActualWidth - t.Px(56) * 2));
         var side = Math.Max(t.Px(56), (ActualWidth - column) / 2);
-        var page = new StackPanel
+        var page = new Grid
         {
-            Spacing = t.Px(24), HorizontalAlignment = HorizontalAlignment.Stretch,
-            Padding = new Thickness(side, t.Px(32), side, t.Px(24)),
+            RowSpacing = t.Px(20), HorizontalAlignment = HorizontalAlignment.Stretch,
+            Padding = new Thickness(side, t.Px(24), side, t.Px(20)),
         };
+        page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         var head = new StackPanel { Spacing = t.Px(10) };
-        head.Children.Add(ui.H1("Library presets"));
-        head.Children.Add(ui.P("Apply to your configured games. Unmanaged games are skipped."));
+        head.Children.Add(ui.H1("Presets", 1.4));
+        head.Children.Add(ui.P("Save defaults for new installs, or review changes for configured games.", .78));
         page.Children.Add(head);
-        var (rows, value) = PresetRows(shell.Settings.Presets);
+        var fields = new StackPanel { Spacing = t.Px(16), Padding = new Thickness(t.Px(4), t.Px(4), t.Px(4), t.Px(8)) };
+        Action? refreshFooter = null;
+        var (rows, value) = PresetRows(shell.Settings.Presets, changed: () => refreshFooter?.Invoke());
         presetValue = value;
-        page.Children.Add(ui.Group(rows));
-        page.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12) }.With(note =>
-        {
-            note.Children.Add(ui.Icon("", 0.8, t.Muted));
-            note.Children.Add(ui.P("Saved settings take effect on the next game launch. They do not verify the rendered effect.", 0.83));
-        }));
+        foreach (var row in rows) fields.Children.Add(row);
+        var scroll = new ScrollViewer { Content = fields, HorizontalScrollMode = ScrollMode.Disabled };
+        Grid.SetRow(scroll, 1); page.Children.Add(scroll);
+        var footer = new StackPanel { Spacing = t.Px(12) };
+        footer.Children.Add(ui.P("Save defaults for new installs, or apply these settings to configured games after review.", .72));
         var configured = shell.Games.Where(g => g.Installed && !g.Blocked).ToList();
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(16) };
-        actions.Children.Add(ui.Button($"Apply to all configured games ({configured.Count})", () => ApplyPresets(configured), GmKind.Primary, 0.85,
-            enabled: configured.Count > 0).With(b => Key(b, "presets-apply")));
-        actions.Children.Add(ui.Button("Select games to apply", () =>
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12), HorizontalAlignment = HorizontalAlignment.Right };
+        actions.Children.Add(ui.Button("Save defaults", () => { SavePresets(); refreshFooter?.Invoke(); Toast("Defaults saved for new installs"); }, GmKind.Primary, .85));
+        actions.Children.Add(ui.Button("Apply to games…", () =>
         {
-            SavePresets();
-            selecting = true;
-            selectedIds.Clear();
-            Open("library");
-            Toast("Select games, then Install selected or use Presets › Apply.");
-        }, GmKind.Card, 0.85, enabled: configured.Count > 0));
-        actions.Children.Add(ui.Button("Reset Presets", () => Render(), GmKind.Card, 0.85));
-        page.Children.Add(actions);
-        return new ScrollViewer { Content = page, HorizontalScrollMode = ScrollMode.Disabled };
+            var targets = new UIElement[]
+            {
+                ui.RowButton("All installed games", configured.Count.ToString(), () => { CloseModal(); ApplyPresets(configured); },
+                    description: "Review changes for every configured game."),
+                ui.RowButton("Choose games", null, () => { CloseModal(); ChoosePresetGames(configured); },
+                    description: "Pick which games to update."),
+            };
+            ShowModal("Apply to games", ui.Group(targets, t.Card), [ui.Button("Cancel", CloseModal, GmKind.Card, .85)], CloseModal, 860);
+        }, GmKind.Card, .85, enabled: configured.Count > 0).With(b => Key(b, "presets-apply")));
+        var reset = ui.Button("Discard changes", () => Render(), GmKind.Transparent, .76,
+            radius: 10, minHeight: 40, padding: new Thickness(t.Px(8)));
+        ToolTipService.SetToolTip(reset, "Discard unsaved preset changes.");
+        reset.HorizontalAlignment = HorizontalAlignment.Left;
+        reset.VerticalAlignment = VerticalAlignment.Center;
+        Key(reset, "presets-discard");
+        refreshFooter = () => reset.Visibility = System.Text.Json.Nodes.JsonNode.DeepEquals(
+            FeatureControlSchema.Resolve(value()), FeatureControlSchema.Resolve(shell.Settings.Presets)) ? Visibility.Collapsed : Visibility.Visible;
+        refreshFooter();
+        foreach (var action in actions.Children.OfType<Button>())
+        {
+            action.Width = t.Px(260);
+            action.CornerRadius = new CornerRadius(t.Px(10));
+            action.MinHeight = t.Px(48);
+            GmUi.NoLift(action);
+        }
+        var actionRow = new Grid { ColumnSpacing = t.Px(12) };
+        actionRow.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+        actionRow.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        actionRow.Children.Add(reset); Grid.SetColumn(actions, 1); actionRow.Children.Add(actions);
+        footer.Children.Add(actionRow);
+        Grid.SetRow(footer, 2); page.Children.Add(footer);
+        return page;
     }
 
     void SavePresets()
@@ -60,18 +86,44 @@ public sealed partial class GameModeView
         shell.Settings.NrStrength = v.NrStrength;
         shell.Settings.SharpeningStrength = v.SharpeningStrength;
         shell.Settings.MfgMultiplier = v.MfgMultiplier;
+        shell.Settings.NrOnLaunch = v.NrOnLaunch == true;
+        shell.Settings.FeatureControls = v.FeatureControls;
         shell.Settings.Save();
     }
 
     void ApplyPresets(List<Game> games)
     {
-        SavePresets();
-        _ = RunOperationAsync("apply", games, shell.Settings.Presets);
+        if (presetValue is { } value) _ = RunOperationAsync("apply", games, value());
+    }
+
+    void ChoosePresetGames(List<Game> games)
+    {
+        var choices = new StackPanel { Spacing = t.Px(8) };
+        choices.Children.Add(ui.P("Select games, then review the changes before applying.", .8));
+        var selected = new HashSet<Game>();
+        var review = ui.Button("Review changes", () => { CloseModal(); ApplyPresets(games.Where(selected.Contains).ToList()); },
+            GmKind.Primary, .85, enabled: false, radius: 10, minHeight: 48);
+        void UpdateReview()
+        {
+            review.IsEnabled = selected.Count > 0;
+            review.Background = GmTheme.B(review.IsEnabled ? GmTheme.Accent : t.Disabled);
+            review.Foreground = GmTheme.B(review.IsEnabled ? GmTheme.AccentInk : t.DisabledFg);
+        }
+        foreach (var game in games)
+        {
+            var check = new CheckBox { Content = game.Name, FontSize = t.Em(.85), Foreground = GmTheme.B(t.Fg),
+                MinHeight = t.Px(48), Padding = new Thickness(t.Px(10)) };
+            ui.Focusable(check);
+            check.Checked += (_, _) => { selected.Add(game); UpdateReview(); };
+            check.Unchecked += (_, _) => { selected.Remove(game); UpdateReview(); };
+            choices.Children.Add(check);
+        }
+        ShowModal("Choose games", choices, [ui.Button("Cancel", CloseModal, GmKind.Card, .85), review], CloseModal, 920);
     }
 
     // ---------- Settings (the same preferences, sized for the couch) ----------
 
-    static readonly string[] SettingsSections = ["Gaming Mode", "Appearance", "Library", "Controller", "Keyboard", "System"];
+    static readonly string[] SettingsSections = ["Gaming Mode", "Overlay", "Appearance", "Library", "Controller", "Keyboard", "System"];
 
     UIElement BuildSettings()
     {
@@ -95,6 +147,7 @@ public sealed partial class GameModeView
                 minHeight: t.Compact ? 56 : 70);
             button.HorizontalAlignment = HorizontalAlignment.Stretch;
             button.HorizontalContentAlignment = HorizontalAlignment.Left;
+            ui.MenuFocus(button);
             Key(button, "set-" + section);
             if (active && initialFocus is null) initialFocus = button;
             nav.Children.Add(button);
@@ -103,6 +156,7 @@ public sealed partial class GameModeView
         grid.Children.Add(nav);
 
         var content = new StackPanel { Spacing = t.Px(24) };
+        if (settingsSection == "Overlay") shell.Settings.CopyOverlayFrom(ForgeSettings.Load());
         var (description, rows) = SettingsRows(settingsSection);
         var title = new StackPanel { Spacing = t.Px(10) };
         title.Children.Add(ui.H2(settingsSection));
@@ -188,6 +242,7 @@ public sealed partial class GameModeView
     }
     (string Description, List<UIElement> Rows) SettingsRows(string section) => section switch
     {
+        "Overlay" => ("The same settings as the desktop and in-game gear. Menu and welcome changes take effect on the next launch; review installed games to apply them.", OverlayRows()),
         "Appearance" => ("Shared desktop appearance. Gaming Mode keeps a clear focus ring.",
         [
             Choice("Theme", "Night is the Game Mode default.", ["night", "dark", "light"], ["Night", "Dark", "Light"],

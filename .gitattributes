@@ -1,0 +1,8 @@
+# The combined-build receipt hashes canonical patch bytes on both platforms.
+providers/skynizz-bridge/*.patch text eol=lf whitespace=-blank-at-eol
+providers/skynizz-bridge/ForgeNrRoute.h text eol=lf
+providers/skynizz-bridge/ForgePanel.h text eol=lf
+providers/skynizz-bridge/ForgePanelChannel.h text eol=lf
+providers/skynizz-bridge/Generate-Panel.ps1 text eol=lf
+providers/skynizz-bridge/controls.json text eol=lf
+providers/skynizz-bridge/panel-candidate.json text eol=lf

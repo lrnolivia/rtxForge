@@ -72,10 +72,11 @@ PROTECTED_NATIVE_NAMES = {'nvngx_dlss.dll', 'nvngx_dlssg.dll', 'nvngx_dlssd.dll'
 NON_STEAM_RELATIVES = [Path('Non-Steam Games'), Path('Non Steam Games'), Path('NonSteam Games'), Path('Games') / 'Non-Steam Games', Path('Games') / 'Non Steam Games', Path('Games') / 'NonSteam Games']
 MOUNT_FALLBACKS = [Path('/run/media'), Path('/mnt'), Path('/var/mnt'), Path('/media')]
 ANTI_CHEAT_PATTERNS = ['easyanticheat*.exe', 'eanticheat*.exe', 'beservice*.exe', 'bedaisy*.sys', 'start_protected_game.exe', 'ace-*.exe']
+_ANTI_CHEAT_FILE_RE = re.compile('|'.join(fnmatch.translate(pattern) for pattern in ANTI_CHEAT_PATTERNS))
 ANTI_CHEAT_DIR_NAMES = {'easyanticheat', 'battleye', 'eaanticheat', 'anticheatexpert'}
 UPSCALE_NAMES = {'nvngx_dlss.dll', 'nvngx_dlssg.dll', 'nvngx_dlssd.dll', 'libxess.dll', 'libxess_fg.dll', 'amd_fidelityfx_dx12.dll', 'ffx_fsr2_api_dx12_x64.dll', 'ffx_fsr3upscaler_x64.dll'}
 IGNORE_DIR_NAMES = {'.git', '.svn', '__pycache__', 'redist', 'redistributables', '_commonredist', 'crashpad', 'crashreportclient', 'digitalextras'}
-EXE_BAD_RE = re.compile('(vc_redist|vcredist|redistribut|crashreport|crashpad|unins|setup|installer|bootstrap|easyanticheat|eanticheat|battleye|beservice)', re.I)
+EXE_BAD_RE = re.compile('(vc_redist|vcredist|redistribut|crashreport|crashpad|unins|setup|installer|bootstrap|start_protected_game|easyanticheat|eanticheat|battleye|beservice)', re.I)
 LEGACY_FILE_RE = re.compile('(?:dlss5|rtx40mfg|mfg[-_ ]?unlock|renodx[-_ ]?dlss5|dlss5[-_ ]?feed|multipass.*mfg)', re.I)
 OPTISCALER_FILE_RE = re.compile('^optiscaler\\.(?:ini|log|asi|dll)$', re.I)
 RESH_FILE_RE = re.compile('^reshade', re.I)
@@ -150,7 +151,7 @@ def code_for_index(i: int) -> str:
         out = chr(65 + r) + out
     return out
 
-def iter_walk(root: Path, max_files: int=300000):
+def _walk_entries(root: Path, max_files: int=300000):
     count = 0
     for cur, dirs, files in os.walk(root):
         curp = Path(cur)
@@ -159,7 +160,11 @@ def iter_walk(root: Path, max_files: int=300000):
             count += 1
             if count > max_files:
                 return
-            yield (curp / name)
+            yield curp, name
+
+def iter_walk(root: Path, max_files: int=300000):
+    for parent, name in _walk_entries(root, max_files):
+        yield parent / name
 
 def parse_vdf_paths(path: Path) -> list[Path]:
     """Extract Steam library paths from modern/legacy libraryfolders.vdf."""
@@ -338,19 +343,20 @@ def scan_files(root: Path) -> tuple[list[Path], list[Path], Optional[Path]]:
     upscalers: list[Path] = []
     exes: list[Path] = []
     anti: Optional[Path] = None
-    for p in iter_walk(root):
-        name = p.name.lower()
+    prior_parent = None
+    directory_anti = False
+    for parent, filename in _walk_entries(root):
+        name = filename.lower()
         if name in UPSCALE_NAMES or name.startswith('sl.dlss_g'):
-            upscalers.append(p)
-        if p.suffix.lower() == '.exe' and (not EXE_BAD_RE.search(name)):
-            exes.append(p)
+            upscalers.append(parent / filename)
+        if len(name) > 4 and name.endswith('.exe') and (not EXE_BAD_RE.search(name)):
+            exes.append(parent / filename)
         if anti is None:
-            for pat in ANTI_CHEAT_PATTERNS:
-                if fnmatch.fnmatch(name, pat):
-                    anti = p
-                    break
-            if anti is None and any((part.lower() in ANTI_CHEAT_DIR_NAMES for part in p.parts)):
-                anti = p
+            if parent is not prior_parent:
+                prior_parent = parent
+                directory_anti = any(part.lower() in ANTI_CHEAT_DIR_NAMES for part in parent.parts)
+            if _ANTI_CHEAT_FILE_RE.match(name) or directory_anti or name in ANTI_CHEAT_DIR_NAMES:
+                anti = parent / filename
     return (upscalers, exes, anti)
 
 def score_exe(exe: Path, upscalers: list[Path]) -> int:
@@ -381,7 +387,7 @@ def score_exe(exe: Path, upscalers: list[Path]) -> int:
         score += min(250, int(exe.stat().st_size / (1024 * 1024)))
     except OSError:
         pass
-    if re.search('launcher|helper|benchmark|report|updater', name, re.I):
+    if re.search('launcher|helper|benchmark|report|updater|start_protected_game', name, re.I):
         score -= 4000
     if re.search('/Engine/Binaries/ThirdParty/', s, re.I):
         score -= 6000

@@ -5,6 +5,7 @@ namespace RtxForge.Windows;
 
 public partial class App : Application
 {
+    OverlayHelperWindow? overlayHelper;
     public static IForgeService Service { get; private set; } = null!;
     /// <summary>Set by the MainWindow constructor before its first page loads.</summary>
     public static MainWindow? Main { get; internal set; }
@@ -33,6 +34,22 @@ public partial class App : Application
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
+        var arguments = Environment.GetCommandLineArgs();
+        if (arguments.Contains("--overlay-helper", StringComparer.OrdinalIgnoreCase))
+        {
+            var ownership = new Mutex(false, "Local\\" + OverlayHelper.PipeName);
+            bool owns;
+            try { owns = ownership.WaitOne(0); } catch (AbandonedMutexException) { owns = true; }
+            if (!owns) { ownership.Dispose(); await OverlayHelper.CommandAsync("reload", false); Exit(); return; }
+            overlayHelper = new OverlayHelperWindow(ownership);
+            return;
+        }
+        if (arguments.Contains("--overlay-exit", StringComparer.OrdinalIgnoreCase))
+        { await OverlayHelper.CommandAsync("exit", false); Exit(); return; }
+        if (arguments.Contains("--controls", StringComparer.OrdinalIgnoreCase))
+        { await OverlayHelper.CommandAsync("show"); Exit(); return; }
+        if (arguments.Contains("--overlay-settings", StringComparer.OrdinalIgnoreCase))
+            Views.SettingsPage.OpenOverlaySection = true;
         // The real engine (bundled Python host) unless --preview is passed or
         // it cannot start; preview is `rtxforge_gtk.py --demo`: sample
         // library, no game writes.

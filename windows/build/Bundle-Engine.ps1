@@ -67,6 +67,7 @@ $copy = @(
     @{ From = 'engine\SOURCE.json' }
     @{ From = 'scripts'; Filter = '*.py' }
     @{ From = 'providers'; Filter = '*.json' }
+    @{ From = 'providers\skynizz-bridge\controls.json' }
     @{ From = 'provider.json' }
     @{ From = 'VERSION' }
     @{ From = 'windows\engine-host'; Filter = '*.py' }
@@ -89,6 +90,21 @@ foreach ($item in $copy) {
         New-Item -ItemType Directory -Force (Split-Path $target) | Out-Null
         Copy-Item $source $target
     }
+}
+# The combined C++ dependency has its own source/patch and payload receipt.
+# Ordinary development builds may omit it; NR+MFG then refuses with a clear reason.
+$bridgeRoot = Join-Path $repo 'windows\out\skynizz-bridge'
+$bridgeReceipt = Join-Path $bridgeRoot 'package.json'
+if ($RuntimeIdentifier -eq 'win-x64' -and (Test-Path -LiteralPath $bridgeReceipt)) {
+    $receipt = Get-Content -LiteralPath $bridgeReceipt -Raw | ConvertFrom-Json
+    $expectedName = 'rtxForge-Skynizz-' + $receipt.tag + '-MFG.zip'
+    if ($receipt.archive -ne $expectedName -or $receipt.variant -ne 'nr-mfg-bridge') { throw 'Unsafe combined bridge receipt' }
+    $archive = Join-Path $bridgeRoot $expectedName
+    if ((Get-Sha256 $archive) -ne $receipt.sha256) { throw 'Combined bridge archive changed before bundling' }
+    $target = Join-Path $engine 'providers\skynizz-bridge'
+    New-Item -ItemType Directory -Force -Path $target | Out-Null
+    Copy-Item -LiteralPath $bridgeReceipt -Destination $target
+    Copy-Item -LiteralPath $archive -Destination $target
 }
 $count = (Get-ChildItem $engine -Recurse -File).Count
 Write-Host "Engine ($count files) -> $engine"

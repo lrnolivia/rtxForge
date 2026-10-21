@@ -855,6 +855,13 @@ def library_display_test_status(game):
     return status
 
 
+def _size_label(size):
+    size=float(size or 0)
+    for unit in ('bytes','KB','MB','GB','TB'):
+        if size<1024 or unit=='TB':return (f'{int(size)} {unit}' if unit=='bytes' else f'{size:.1f} {unit}')
+        size/=1024
+
+
 class MfgControl(Gtk.Box):
     """Multi-Frame Generation: On/Off, Auto/Custom/Dynamic, and 2×–6× ratios."""
     __gsignals__={'changed':(GObject.SignalFlags.RUN_FIRST,None,())}
@@ -1056,7 +1063,7 @@ class LibraryPill(Gtk.Box):
             text or ''
         ).strip().casefold()
         if self.kind=='state':
-            icon={'installed':'object-select-symbolic','unsupported':'dialog-warning-symbolic'}.get(value,'folder-download-symbolic')
+            icon={'installed':'object-select-symbolic','unsupported':'dialog-warning-symbolic','detected':'system-search-symbolic'}.get(value,'folder-download-symbolic')
             self._icon.set_from_icon_name(icon)
             return
         if self.kind=='source':
@@ -2710,6 +2717,7 @@ button.dlss-outline:active { background: alpha(@window_fg_color,0.25); }
 }
 .card-meta { font-size: 10px; opacity: 0.7; }
 
+.library-pill.state-detected, .state-detected { color: @warning_color; }
 .subset-offer { background: alpha(currentColor,0.05); border-radius: 12px; padding: 12px 14px; }
 .subset-badge { border-radius: 999px; padding: 2px 8px; }
 .subset-badge.available { background: alpha(@success_color,0.18); color: @success_color; }
@@ -3678,6 +3686,11 @@ OPERATION_WORDS={
     'artwork':('Review Artwork Sync','Sync','Syncing'),
     'steam-shortcut':('Review rtxForge in Steam','Apply','Applying'),
     'report':('Review Support Report','Export','Exporting'),
+    'adopt':('Review Adoption','Adopt','Adopting'),
+    'adopt-clean':('Review Adoption','Adopt and Reinstall','Reinstalling'),
+    'global':('Review Library Change','Apply','Applying'),
+    'menus':('Review Game Menus','Apply','Applying'),
+    'storage':('Review App Storage','Clear','Clearing'),
 }
 
 
@@ -9204,11 +9217,113 @@ class Window(Adw.ApplicationWindow):
             add('Set Up for Linux' if self.needs_linux_setup(game) else 'Install Features',lambda:self.launch_action('install',targets=[game]),not game.get('blocked') and not self.busy)
             add('Restore Original Files',lambda:self.launch_action('uninstall',targets=[game]),bool(game.get('installed')) and not self.busy)
         add('Open Folder',lambda:Gio.AppInfo.launch_default_for_uri(Path(game['game']).as_uri(),None),not self.options.demo)
+        if self.adoptable(game):add('Adopt Existing Setup…',lambda:self.choose_adoption([game]),not self.busy)
         add('Remove from Library',lambda:self.confirm_remove_game(game),not self.busy)
         pop.set_child(content)
         pop.connect('closed',lambda *_:GLib.idle_add(lambda:(pop.unparent(),False)[1]))
         pop.popup()
         return pop
+
+    def prepare_scope(self,rows,targets=None):
+        """The reviewed scope, for engines that check it ({} for older services)."""
+        import inspect
+        try:accepts='scope' in inspect.signature(self.service.prepare).parameters
+        except (TypeError,ValueError):accepts=False
+        if not accepts:return {}
+        kind='selected' if self.selected_game_ids or (targets is not None and len(rows)==1) else 'filtered'
+        return {'scope':{'kind':kind,'games':[row['game'] for row in rows]}}
+
+    @staticmethod
+    def runtime_api():
+        """Linux runtime helpers (Global, game menus, App Storage), when this build has them."""
+        try:
+            import linux_runtime
+            return linux_runtime
+        except ImportError:
+            return None
+
+    def adoptable(self,game):
+        return bool(game.get('adoption_available')) and not game.get('blocked')
+
+    def choose_adoption(self,games):
+        """Adopt keeps the detected files and tuning; Adopt and Reinstall puts in a fresh copy. Both can be restored to before Adoption."""
+        games=[g for g in games if self.adoptable(g)]
+        if not games:
+            self.toast('No detected setups to adopt.');return
+        names=games[0]['name'] if len(games)==1 else f'{len(games)} games'
+        dialog=Adw.AlertDialog(heading='Adopt the existing setup in '+names+'?',
+                               body='rtxForge found NR or MFG files it didn\u2019t install. Adopt keeps those files and their tuning and starts managing them. '
+                                    'Adopt and Reinstall backs them up and installs a clean copy. Either way, Restore returns to the setup from before Adoption.')
+        dialog.add_response('cancel','Cancel');dialog.add_response('adopt-clean','Adopt and Reinstall');dialog.add_response('adopt','Adopt')
+        dialog.set_response_appearance('adopt',Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response('adopt');dialog.set_close_response('cancel')
+        dialog.connect('response',lambda _d,response:self.adopt_games(games,response) if response in ('adopt','adopt-clean') else None)
+        dialog.present(self)
+
+    def adopt_games(self,games,operation):
+        scope=self.prepare_scope(games,games)
+        def prepare():
+            review=self.service.prepare(games,self.mode,operation,**scope)
+            for row in review.get('rows',[]):row.setdefault('detail',row.get('summary',''))
+            return review
+        flow=self.review_write(operation,prepare=prepare,run=lambda review:self.service.execute(review),
+                               details=['Adopt','Keeps current files and tuning' if operation=='adopt' else 'Backs up, then installs a clean copy','Restore returns to before Adoption'],
+                               done=lambda _:'Adoption finished. Restore now returns to the setup from before Adoption.')
+        if flow is not None:flow.rescan=True
+
+    def global_review(self,nr,mfg):
+        """One-time reviewed NR/MFG change for installed games; never a lasting override."""
+        runtime=self.runtime_api()
+        params={k:v for k,v in (('nr',nr),('mfg',mfg)) if v is not None}
+        if runtime is None or not params:
+            self.toast('Choose an NR or MFG change first.' if runtime else 'This build can\u2019t review library-wide changes yet.');return
+        self.bulk_review('global',lambda e:runtime.global_review(e,params),runtime.apply_review,
+                         ['Apply once','Each game changes once; new installs keep your presets'])
+
+    def menus_review(self):
+        runtime=self.runtime_api()
+        if runtime is None:
+            self.toast('This build can\u2019t update installed games\u2019 menus yet.');return
+        params={k:self.settings.get(k,library_media.DEFAULTS[k]) for k in ('optiscaler_ui','optiscaler_intro','reshade_ui','reshade_intro','optiscaler_hotkey')}
+        self.bulk_review('menus',lambda e:runtime.menus_review(e,params),runtime.apply_review,
+                         ['Apply','Game settings files only','NR, MFG and effects stay on'])
+
+    def bulk_review(self,operation,prepare_raw,apply,details):
+        """Shared Checking → Review → Apply for the reviewed bulk changes (plans, blocked, skipped)."""
+        import engine_bridge
+        raw={}
+        def prepare():
+            raw['review']=prepare_raw(engine_bridge.module(self.service.config))
+            review=raw['review']
+            return {'operation':operation,'kind':operation,
+                    'rows':[{'name':p['name'],'detail':p.get('summary','')} for p in review.get('plans',[])],
+                    'blocked':[{'name':b.get('title',''),'reason':b.get('detail','')} for b in review.get('blocked',[])],
+                    'skipped':review.get('skipped',[])}
+        def run(_shown):
+            result=apply(raw['review'])
+            return result.get('message','Done.') if isinstance(result,dict) else str(result)
+        flow=self.review_write(operation,prepare=prepare,run=run,details=details)
+        if flow is not None:flow.rescan=True
+
+    def storage_roots(self):
+        import engine_bridge,storage
+        return storage.storage(self.service.config),engine_bridge.module(self.service.config).STATE_ROOT
+
+    def review_storage(self):
+        runtime=self.runtime_api()
+        if runtime is None:
+            self.toast('This build can\u2019t clean up app storage yet.');return
+        raw={}
+        def prepare():
+            app_root,engine_root=self.storage_roots()
+            plan=runtime.storage_review(app_root,engine_root);raw['plan']=plan
+            rows=[{'name':c.get('title',c.get('key','')),'detail':_size_label(c.get('cleanable_bytes',0))+' unused'}
+                  for c in plan.get('categories',[]) if c.get('cleanable_bytes')]
+            return {'operation':'storage','kind':'storage','rows':rows,'blocked':[]}
+        def run(_shown):
+            app_root,engine_root=self.storage_roots()
+            return runtime.storage_cleanup(app_root,engine_root,raw['plan'])['message']
+        self.review_write('storage',prepare=prepare,run=run,details=['Clear','Unused downloads only','Restore backups and settings are kept'])
 
     def confirm_remove_game(self,game):
         """Hide a game from the library without touching its files or rtxForge setup."""
@@ -9752,7 +9867,24 @@ class Window(Adw.ApplicationWindow):
         reshade=Adw.PreferencesGroup(title='ReShade',description='For games set up with the Feeder route.')
         switch('ReShade Menu','Allow the ReShade overlay and gamepad navigation.','reshade_ui',reshade)
         switch('ReShade Welcome','Show ReShade\u2019s first-run guide. Its short loading banner can\u2019t be turned off.','reshade_intro',reshade)
-        return [panel,shortcut,optiscaler,reshade]
+        installed=Adw.PreferencesGroup(title='Installed Games')
+        item=row('Apply to Installed Games','Review the menu and intro choices above for games that are already set up. Only their settings files change.')
+        action=button('Review',lambda *_:self.menus_review());action.set_valign(Gtk.Align.CENTER);action.set_sensitive(self.runtime_api() is not None)
+        item.add_suffix(action);installed.add(item)
+        return [panel,shortcut,optiscaler,reshade,installed]
+
+    def global_settings_groups(self):
+        """One-time NR/MFG change for every installed game, reviewed first (Windows Global)."""
+        group=Adw.PreferencesGroup(title='Change Installed Games',description='A one-time change, reviewed before anything is written. New installs keep using your presets. Running games, anti-cheat titles and changed files are skipped.')
+        nr_keys=[None,True,False];nr=safe_combo_row(title='Neural Rendering',model=Gtk.StringList.new(['Leave as is','On','Off']),selected=0)
+        mfg_keys=[None,-1,0,2,3,4,5,6];mfg=safe_combo_row(title='Multi-Frame Generation',subtitle='Feeder games take NR only.',
+                                                        model=Gtk.StringList.new(['Leave as is','Follow the game','Off','2×','3×','4×','5×','6×']),selected=0)
+        group.add(nr);group.add(mfg)
+        item=row('Review Installed Games','See exactly which games change before applying.')
+        action=button('Review',lambda *_:self.global_review(nr_keys[nr.get_selected()],mfg_keys[mfg.get_selected()]),'suggested-action')
+        action.set_valign(Gtk.Align.CENTER);action.set_sensitive(self.runtime_api() is not None)
+        item.add_suffix(action);group.add(item)
+        return [group]
 
     def tuning_differs(self,widgets,source):
         """True when an editable control differs from the saved values."""
@@ -10361,6 +10493,7 @@ class Window(Adw.ApplicationWindow):
             'Recovery':'document-revert-symbolic',
             'About':'help-about-symbolic',
             'Overlay':'view-reveal-symbolic',
+            'Global':'emblem-system-symbolic',
         }
 
         for title,items in sections:
@@ -10467,6 +10600,9 @@ class Window(Adw.ApplicationWindow):
         extra=list(self.settings['extra_folders']);self.start('Checking hardware and scanning libraries',lambda:{'hardware':self.service.hardware(),'games':self.service.scan_all(extra)},self.scanned)
     def scanned(self,result):
         self.hardware_info=result['hardware'];self.hardware_label.set_text(self.hardware_info['gpu']+' · '+('Hardware check passed' if self.hardware_info['ready'] else 'Install unavailable — see Settings'));self.show_games(result['games'])
+        detected=[g for g in self.games if self.adoptable(g)]
+        if detected:
+            self.toast(f'{len(detected)} existing setup'+('s' if len(detected)!=1 else '')+' detected. Open a game marked Detected to adopt it.')
     def choose_folder(self,*_):
         if gamescope_session():
             dialog=Adw.Dialog(
@@ -11327,7 +11463,7 @@ class Window(Adw.ApplicationWindow):
         else:
             entry['picture'].set_paintable(None);entry['fallback'].set_visible(True)
         self.decorate_support_artwork(entry['overlay'],entry['picture'],game,path)
-        state='Unsupported' if game.get('blocked') else 'Installed' if game.get('installed') else 'Available'
+        state='Unsupported' if game.get('blocked') else 'Detected' if self.adoptable(game) else 'Installed' if game.get('installed') else 'Available'
         entry['meta'].set_text(state.upper())
         installed_on=game.get('installed_on') if game.get('installed') else None
         on_art=installed_on in ('linux','windows') and self.settings.get('library_view','posters')!='list'
@@ -11339,7 +11475,7 @@ class Window(Adw.ApplicationWindow):
             if on_art:
                 badge._icon.set_from_icon_name('rtx-os-'+installed_on+'-symbolic')
                 badge.set_tooltip_text('Installed with rtxForge on '+installed_on.title())
-        for css in ('state-installed','state-available','state-unsupported'):entry['meta'].remove_css_class(css)
+        for css in ('state-installed','state-available','state-unsupported','state-detected'):entry['meta'].remove_css_class(css)
         entry['meta'].add_css_class('state-'+state.lower())
 
         test_meta=entry.get(
@@ -12305,6 +12441,11 @@ class Window(Adw.ApplicationWindow):
         def changed(*_):apply.set_sensitive(installed and not unknown_presets and self.tuning_differs(widgets,game))
         for key,w in widgets.items():w.connect('changed' if key=='mfg_multiplier' else 'value-changed',changed)
         changed();self.detail_tuning_widgets=widgets;self.detail_apply_settings=apply
+        if self.adoptable(game):
+            adoption=Adw.PreferencesGroup(title='Existing Setup',description='rtxForge found NR or MFG files it didn\u2019t install.')
+            item=row('Adopt Existing Setup','Keep it as is, or back it up and reinstall a clean copy. Restore returns to before Adoption.')
+            action=button('Adopt…',lambda *_:self.choose_adoption([game]),'suggested-action');action.set_valign(Gtk.Align.CENTER)
+            item.add_suffix(action);adoption.add(item);features.append(adoption)
         maintenance=Adw.PreferencesGroup(
             title='Installation'
         )
@@ -13246,12 +13387,13 @@ class Window(Adw.ApplicationWindow):
                 return
             self.action_ready(preview);return
         mode=self.mode;adopt=self.settings['recognize_previous'];values=self.tuning_values(self.tuning_widgets) if entire and operation=='reset' else visual_settings
+        scope=self.prepare_scope(rows,targets)
         supported=getattr(self.service,'prepare_supported',None) if operation=='install' and mode!='mfg-only' else None
         if supported is not None:
             # Install also reviews games that support only part of NR + MFG (opt-in second review).
-            self.start('Preparing '+title.lower(),lambda:supported(rows,mode,operation,visual_settings=values),self.action_ready)
+            self.start('Preparing '+title.lower(),lambda:supported(rows,mode,operation,adopt,visual_settings=values,**scope),self.action_ready)
             return
-        self.start('Preparing '+title.lower(),lambda:self.service.prepare(rows,mode,operation,adopt,visual_settings=values,save_defaults=entire and operation=='reset'),self.action_ready)
+        self.start('Preparing '+title.lower(),lambda:self.service.prepare(rows,mode,operation,adopt,visual_settings=values,save_defaults=entire and operation=='reset',**scope),self.action_ready)
     def live_smoke_begin(self,footer):
         """Interactive, write-disabled preview of Progress -> Done."""
         self.live_smoke_footer=footer
@@ -14227,6 +14369,11 @@ class Window(Adw.ApplicationWindow):
             item.add_suffix(action)
             app.add(item)
         overlay_groups=self.overlay_settings_groups()
+        global_groups=self.global_settings_groups()
+        app_storage=Adw.PreferencesGroup(title='App Storage',description='Downloads and restore backups kept by rtxForge.')
+        item=row('Clean Up Downloads','Review unused package and DLSS downloads. Restore backups and settings are never removed.')
+        action=button('Review',lambda *_:self.review_storage());action.set_valign(Gtk.Align.CENTER);action.set_sensitive(self.runtime_api() is not None)
+        item.add_suffix(action);app_storage.add(item)
         recovery=Adw.PreferencesGroup(title='Recovery',description='Restore original files and clean up older installs.')
         library_reports=Adw.PreferencesGroup(title='Reports')
         removed_count=len(self.settings.get('removed_games') or [])
@@ -14236,7 +14383,7 @@ class Window(Adw.ApplicationWindow):
         item=row('Library Reports','View test notes and export a support report.');action=button('Open',self.show_reports);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);library_reports.add(item)
         for title,subtitle,caption,fn in [('Previous Changes','Browse available recovery records.','Browse',lambda *_:self.show_undo()),('Old NR Files','Review legacy files before removal.','Review',lambda *_:self.show_cleanup())]:
             item=row(title,subtitle);action=button(caption,fn);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);recovery.add(item)
-        self.organize_pages(b,[('Graphics',[graphics,defaults]),('Appearance',[appearance,scale_navigation,window_style]),('Overlay',overlay_groups),('Library',[library_layout,artwork,steam_artwork,library_reports]),('Gaming Mode',[controls,controller_options,steam_launcher]),('System',[system]),('Recovery',[recovery]),('About',[app])])
+        self.organize_pages(b,[('Graphics',[graphics,defaults]),('Appearance',[appearance,scale_navigation,window_style]),('Overlay',overlay_groups),('Library',[library_layout,artwork,steam_artwork,library_reports]),('Gaming Mode',[controls,controller_options,steam_launcher]),('Global',global_groups),('System',[system]),('Recovery',[recovery,app_storage]),('About',[app])])
         def save(*_):
             selected_provider=provider_keys[provider.get_selected()];selected_mode=modes[profile.get_selected()]
             if selected_provider=='y4my' and selected_mode=='nr-only':self.toast('NR Only requires DLSS-Unlocked.');return

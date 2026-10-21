@@ -80,17 +80,22 @@ public sealed partial class GameModeView
     Task<Tuning?> AskPresetsAsync(Tuning initial)
     {
         var done = new TaskCompletionSource<Tuning?>();
-        var (rows, value) = PresetRows(initial);
+        var (rows, value) = PresetRows(initial, embedded: true);
         var content = new StackPanel { Spacing = t.Px(20) };
         content.Children.Add(ui.P("Adjust your presets or continue. You can change these settings later in OptiScaler.", 0.92));
         content.Children.Add(ui.IconLabel("", ProviderName()).With(p => { foreach (var c in p.Children) if (c is TextBlock tb) tb.FontSize = t.Em(0.85); }));
-        if (shell.Settings.RuntimeProvider != "feeder") content.Children.Add(ui.Group(rows, t.Card));
+        if (shell.Settings.RuntimeProvider != "feeder")
+        {
+            var editor = new StackPanel { Spacing = t.Px(28) };
+            foreach (var row in rows) editor.Children.Add(row);
+            content.Children.Add(editor);
+        }
         var startup = new CheckBox { Content = "Enable NR on launch", IsChecked = shell.Settings.NrOnLaunch };
         if (shell.Mode != "mfg-only") content.Children.Add(startup);
         void Cancel() { CloseModal(); done.TrySetResult(null); }
         var cancel = ui.Button("Cancel", Cancel, GmKind.Card, 0.92);
         var next = ui.Button("Continue", () => { CloseModal(); done.TrySetResult(value() with { NrOnLaunch = startup.IsChecked == true }); }, GmKind.Primary, 0.92);
-        ShowModal("Install Features", content, [cancel, next], Cancel, 1100, cancel);
+        ShowModal("Install Features", content, [cancel, next], Cancel, 1500, cancel);
         return done.Task;
     }
 
@@ -182,13 +187,17 @@ public sealed partial class GameModeView
         text.Children.Add(title);
         text.Children.Add(ui.Text(detail, 0.72, t.Muted, wrap: true));
         if (!string.IsNullOrWhiteSpace(technical))
-            text.Children.Add(new Expander
+        {
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var info = Controls.TechnicalDetails.Create(technical, t.Px(1), () =>
             {
-                Header = "Technical details", HorizontalAlignment = HorizontalAlignment.Stretch,
-                HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                Content = new TextBox { Text = technical, IsReadOnly = true, TextWrapping = TextWrapping.Wrap,
-                    AcceptsReturn = true, MaxHeight = t.Px(200), FontSize = t.Px(14) },
+                var diagnostic = ui.Text(technical, .72, wrap: true); diagnostic.IsTextSelectionEnabled = true;
+                ShowModal("Details", diagnostic, [ui.Button("Close", CloseModal, GmKind.Card, .85)], CloseModal, 900);
             });
+            info.Style = (Style)Application.Current.Resources["GmButtonStyle"];
+            info.Foreground = GmTheme.B(t.Fg); ui.Focusable(info);
+            Grid.SetColumn(info, 3); row.Children.Add(info);
+        }
         Grid.SetColumn(text, 1);
         row.Children.Add(text);
         var badge = ui.Badge(ready ? "Ready" : "Skipped", t.Panel, ready ? t.Fg : t.Danger, 0.7);

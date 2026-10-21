@@ -7,7 +7,7 @@ namespace RtxForge.Windows.GameMode;
 
 public sealed partial class GameModeView
 {
-    string settingsSection = "Gaming Mode";
+    string settingsSection = "Graphics";
     Func<Tuning>? presetValue;
 
     // ---------- Presets (library presets) ----------
@@ -123,7 +123,8 @@ public sealed partial class GameModeView
 
     // ---------- Settings (the same preferences, sized for the couch) ----------
 
-    static readonly string[] SettingsSections = ["Gaming Mode", "Overlay", "Appearance", "Library", "Controller", "Keyboard", "System"];
+    static readonly string[] SettingsSections = ["Graphics", "Overlay", "Appearance", "Library", "Gaming Mode", "System", "Recovery", "About"];
+    sealed record SettingsGroup(string Title, string? Description, IReadOnlyList<UIElement> Rows);
 
     UIElement BuildSettings()
     {
@@ -152,28 +153,24 @@ public sealed partial class GameModeView
             if (active && initialFocus is null) initialFocus = button;
             nav.Children.Add(button);
         }
-        Grid.SetRow(nav, 1);
-        grid.Children.Add(nav);
+        var navigation = new ScrollViewer { Content = nav, HorizontalScrollMode = ScrollMode.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        Grid.SetRow(navigation, 1);
+        grid.Children.Add(navigation);
 
         var content = new StackPanel { Spacing = t.Px(24) };
         if (settingsSection == "Overlay") shell.Settings.CopyOverlayFrom(ForgeSettings.Load());
-        var (description, rows) = SettingsRows(settingsSection);
         var title = new StackPanel { Spacing = t.Px(10) };
         title.Children.Add(ui.H2(settingsSection));
-        title.Children.Add(ui.P(description));
         content.Children.Add(title);
-        content.Children.Add(ui.Group(rows));
-        if (settingsSection == "Controller")
+        var groups = new Controls.PresetColumns(t.Px(620), 2) { ColumnSpacing = t.Px(24), RowSpacing = t.Px(28) };
+        foreach (var group in SettingsGroups(settingsSection))
         {
-            // Options above; the button guide in its own group.
-            content.Children.Add(ui.H2("Buttons", 1.06).With(h => h.Margin = new Thickness(0, t.Px(12), 0, 0)));
-            content.Children.Add(ui.Group(GuideRows("controller")));
+            var section = new StackPanel { Spacing = t.Px(12) };
+            section.Children.Add(ui.H2(group.Title, .96));
+            if (group.Description is not null) section.Children.Add(ui.P(group.Description, .75));
+            section.Children.Add(ui.Group(group.Rows)); groups.Children.Add(section);
         }
-        content.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12) }.With(note =>
-        {
-            note.Children.Add(ui.Icon("", 0.8, t.Muted));
-            note.Children.Add(ui.P("Mouse or keyboard input keeps your chosen interface.", 0.83));
-        }));
+        content.Children.Add(groups);
         var scroll = new ScrollViewer { Content = content, HorizontalScrollMode = ScrollMode.Disabled, Padding = new Thickness(0, 0, t.Px(12), 0) };
         Grid.SetRow(scroll, 1);
         Grid.SetColumn(scroll, 1);
@@ -181,19 +178,19 @@ public sealed partial class GameModeView
         return grid;
     }
 
-    /// <summary>A choice row: Select cycles forward, Left/Right step through the choices.</summary>
+    /// <summary>A choice row opens its options; opening or dismissing never changes the setting.</summary>
     Button Choice(string title, string? description, string[] keys, string[] captions, Func<string> get, Action<string> set)
     {
         string Caption() => captions[Math.Max(0, Array.IndexOf(keys, get()))];
-        void Step(int d)
+        Button? row = null;
+        void Choose(int index)
         {
-            var i = (Math.Max(0, Array.IndexOf(keys, get())) + d + keys.Length) % keys.Length;
-            set(keys[i]);
+            if (keys[index] == get()) return;
+            set(keys[index]);
             shell.SaveSettings();
             Render(keepFocus: true);
         }
-        var row = ui.RowButton(title, Caption(), () => Step(1), description: description);
-        row.Tag = new Adjustable(Step);
+        row = ui.RowButton(title, Caption(), () => OpenChoiceMenu(row!, title, captions, Math.Max(0, Array.IndexOf(keys, get())), Choose), description: description);
         Key(row, "choice-" + title);
         return row;
     }
@@ -240,47 +237,105 @@ public sealed partial class GameModeView
         }
         return rows;
     }
-    (string Description, List<UIElement> Rows) SettingsRows(string section) => section switch
+    Button SettingToggle(string title, string description, Func<bool> get, Action<bool> set) =>
+        Choice(title, description, ["on", "off"], ["On", "Off"], () => get() ? "on" : "off", value => set(value == "on"));
+
+    void OpenInputGuide(string input)
     {
-        "Overlay" => ("The same settings as the desktop and in-game gear. Menu and welcome changes take effect on the next launch; review installed games to apply them.", OverlayRows()),
-        "Appearance" => ("Shared desktop appearance. Gaming Mode keeps a clear focus ring.",
-        [
-            Choice("Theme", "Night is the Game Mode default.", ["night", "dark", "light"], ["Night", "Dark", "Light"],
-                () => shell.Settings.Theme is "light" or "dark" ? shell.Settings.Theme : "night",
-                v => { shell.Settings.Theme = v; DispatcherQueue.TryEnqueue(ApplySettings); }),
-            Choice("Button glyphs", "Icons beside action labels; selection and package identity stay visible.", ["on", "off"], ["On", "Off"],
-                () => shell.Settings.ButtonGlyphs ? "on" : "off", v => shell.Settings.ButtonGlyphs = v == "on"),
-        ]),
-        "Library" => ("Manage the library layout and artwork sources.",
-        [
-            Choice("Library layout", null, ["posters", "capsules", "list"], ["Posters", "Wide Capsule", "List"],
-                () => shell.Settings.LibraryView, v => shell.Settings.LibraryView = v),
-            .. LibraryArtworkRows(),
-        ]),
-        "Controller" => ("Keep button labels and hints consistent with your controller.",
-        [
-            Choice("Button labels", "Match your controller family.", ["auto", "xbox", "playstation", "nintendo", "generic"],
-                ["Automatic", "Xbox", "PlayStation", "Nintendo", "Generic"], () => shell.Settings.ControllerGlyphs,
-                v => { shell.Settings.ControllerGlyphs = v; family = v == "auto" ? family : v; }),
-            Choice("Controller hints", null, ["always", "auto"], ["Always visible", "Hide when idle"],
-                () => shell.Settings.ControllerHints, v => shell.Settings.ControllerHints = v),
-        ]),
-        "Keyboard" => ("Every keyboard shortcut in Gaming Mode.", GuideRows("keyboard")),
-        "System" => ("Display scaling, navigation, recovery and updates.",
-        [
-            Choice("UI scale", "Automatic follows the window size (150% at 4K).", ["auto", "100", "125", "150", "175", "200"],
-                ["Automatic", "100%", "125%", "150%", "175%", "200%"], () => shell.Settings.UiScaleKey,
-                v => { shell.Settings.UiScaleKey = v; DispatcherQueue.TryEnqueue(ApplySettings); }),
-            Choice("Navigation", null, ["top", "bottom"], ["Top", "Bottom"], () => shell.Settings.NavigationPosition, v => shell.Settings.NavigationPosition = v),
-            .. RecoveryRows(),
-        ]),
-        _ => ("Open rtxForge from your existing gaming environment.",
-        [
-            Choice("Interface", null, ["game", "desktop"], ["Gaming Mode", "Desktop"], () => "game", v =>
-            {
-                if (v == "desktop") DispatcherQueue.TryEnqueue(() => ExitRequested?.Invoke());
-            }),
-            ui.RowButton(SteamRowTitle(), null, () => _ = ToggleSteamAsync(), glyph: "").With(row => { Key(row, "steam-shortcut"); if (steamAdded is null) LoadSteamStatus(); }),
-        ]),
-    };
+        ShowModal(input == "controller" ? "Controller buttons" : "Keyboard shortcuts", ui.Group(GuideRows(input)),
+            [ui.Button("Close", CloseModal, GmKind.Card, .85)], CloseModal, 1000);
+    }
+
+    IReadOnlyList<SettingsGroup> SettingsGroups(string section)
+    {
+        if (section == "Overlay") return OverlayGroups();
+        var modes = shell.Settings.RuntimeProvider == "feeder" ? new[] { "nr-only" }
+            : shell.NrOnlyAvailable ? new[] { "nr-only", "mfg-only", "nr-mfg" } : new[] { "mfg-only", "nr-mfg" };
+        return section switch
+        {
+            "Graphics" =>
+            [
+                new("Package", "Feature provider and default selection.",
+                [
+                    ui.RowButton("Provider", ProviderName(), () => _ = ShowPackagesAsync(), description: "Review curated packages. Restore original files before switching providers."),
+                ]),
+                new("Install defaults", "Applied to new installs; game changes are reviewed first.",
+                [
+                    Choice("Default mode", "Features selected when rtxForge starts.", modes, modes.Select(mode => mode switch { "nr-only" => "NR Only", "nr-mfg" => "NR + MFG", _ => "MFG Only" }).ToArray(),
+                        () => shell.Settings.DefaultProfile, value => { shell.Settings.DefaultProfile = value; shell.Mode = value; }),
+                    SettingToggle("Enable NR on launch", "Leave off to enable NR later from the overlay.", () => shell.Settings.NrOnLaunch, value => shell.Settings.NrOnLaunch = value),
+                    SettingToggle("Update DLSS files", "Keep backups when updating older DLSS files.", () => shell.Settings.ManageDlssFiles, value => shell.Settings.ManageDlssFiles = value),
+                    SettingToggle("4K borderless on install", "Use 3840 × 2160 borderless in supported games.", () => shell.Settings.Borderless4K, value => shell.Settings.Borderless4K = value),
+                ]),
+                new("Existing features", "Register compatible feature packages already installed.",
+                [SettingToggle("Recognize existing features", "Allow updates to compatible installations from other tools.", () => shell.Settings.RecognizePrevious, value => shell.Settings.RecognizePrevious = value)]),
+            ],
+            "Appearance" =>
+            [
+                new("Theme and scale", null,
+                [
+                    Choice("Theme", "Night is the Game Mode default.", ["night", "dark", "light"], ["Night", "Dark", "Light"],
+                        () => shell.Settings.Theme is "light" or "dark" ? shell.Settings.Theme : "night",
+                        value => { shell.Settings.Theme = value; DispatcherQueue.TryEnqueue(ApplySettings); }),
+                    Choice("UI scale", "Automatic uses a 130% reference at 4K and adapts to the window.", ["auto", "100", "125", "130", "150", "175", "200"],
+                        ["Automatic", "100%", "125%", "130%", "150%", "175%", "200%"], () => shell.Settings.UiScaleKey,
+                        value => { shell.Settings.UiScaleKey = value; DispatcherQueue.TryEnqueue(ApplySettings); }),
+                ]),
+                new("Navigation and labels", null,
+                [
+                    Choice("Navigation placement", null, ["top", "bottom"], ["Top", "Bottom"], () => shell.Settings.NavigationPosition, value => shell.Settings.NavigationPosition = value),
+                    SettingToggle("Button glyphs", "Show icons beside action labels.", () => shell.Settings.ButtonGlyphs, value => shell.Settings.ButtonGlyphs = value),
+                ]),
+            ],
+            "Library" =>
+            [
+                new("Library view", null,
+                [
+                    Choice("Library layout", null, ["posters", "capsules", "list"], ["Posters", "Wide Capsule", "List"], () => shell.Settings.LibraryView, value => shell.Settings.LibraryView = value),
+                ]),
+                new("Artwork and game information", null,
+                [
+                    SettingToggle("Download missing artwork", "Cached images stay available offline.", () => shell.Settings.OnlineArt, value => shell.Settings.OnlineArt = value),
+                    SettingToggle("Download game information", "Descriptions, developers, and release dates from Steam.", () => shell.Settings.SteamMetadata, value => shell.Settings.SteamMetadata = value),
+                    RefreshArtworkRow(),
+                ]),
+                new("Steam integration", null,
+                [
+                    .. SteamArtworkRows(),
+                    ui.RowButton(SteamRowTitle(), null, () => _ = ToggleSteamAsync(), glyph: "").With(row => { Key(row, "steam-shortcut"); if (steamAdded is null) LoadSteamStatus(); }),
+                ]),
+            ],
+            "Gaming Mode" =>
+            [
+                new("Interface", "Mouse, keyboard, and controller input keep your chosen interface.",
+                [
+                    Choice("Interface", null, ["game", "desktop"], ["Gaming Mode", "Desktop"], () => "game", value =>
+                    { if (value == "desktop") DispatcherQueue.TryEnqueue(() => ExitRequested?.Invoke()); }),
+                ]),
+                new("Controller", null,
+                [
+                    Choice("Controller labels", "Match your controller family.", ["auto", "xbox", "playstation", "nintendo", "generic"],
+                        ["Automatic", "Xbox", "PlayStation", "Nintendo", "Generic"], () => shell.Settings.ControllerGlyphs,
+                        value => { shell.Settings.ControllerGlyphs = value; family = value == "auto" ? family : value; }),
+                    Choice("Controller hints", null, ["always", "auto"], ["Always visible", "Hide when idle"], () => shell.Settings.ControllerHints, value => shell.Settings.ControllerHints = value),
+                    ui.RowButton("Controller buttons", null, () => OpenInputGuide("controller")),
+                    ui.RowButton("Keyboard shortcuts", null, () => OpenInputGuide("keyboard")),
+                ]),
+            ],
+            "Recovery" => RecoveryGroups(),
+            "System" =>
+            [
+                new("Hardware", null, shell.Hardware is { } hardware
+                    ? [ui.PreferenceRow("Graphics card", null, ui.Text(hardware.Gpu, .8, t.Muted)), ui.PreferenceRow("Driver", null, ui.Text(hardware.Driver, .8, t.Muted))]
+                    : [ui.P("Hardware information is unavailable.", .8)]),
+            ],
+            _ =>
+            [
+                new("App and updates", null,
+                [
+                    ui.RowButton("Check for updates", null, () => _ = CheckForUpdatesAsync(), description: $"rtxForge {MainWindow.AppVersion} · download, verify and install the newest build.", glyph: ""),
+                ]),
+            ],
+        };
+    }
 }

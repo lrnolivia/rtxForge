@@ -12,6 +12,7 @@ public sealed class PresetControlsView : UserControl
 {
     JsonObject values;
     readonly bool advanced;
+    readonly bool embedded;
     readonly Dictionary<FeatureControl, Control> rows = [];
     readonly Dictionary<string, Action<double>> setters = [];
     bool syncing;
@@ -19,13 +20,13 @@ public sealed class PresetControlsView : UserControl
     bool available = true, legacy;
     public event EventHandler? Changed;
 
-    public PresetControlsView(Tuning initial, bool advanced = false)
+    public PresetControlsView(Tuning initial, bool advanced = false, bool embedded = false)
     {
-        this.advanced = advanced; values = FeatureControlSchema.Resolve(initial);
-        var root = new StackPanel { Spacing = 12 };
+        this.advanced = advanced; this.embedded = embedded; values = FeatureControlSchema.Resolve(initial);
+        var root = new StackPanel { Spacing = 24 };
         var mfg = Section("Frame generation", "Requested multiplier · enable frame generation in the game.");
         mfg.Children.Add(Field("multiplier", true)); root.Children.Add(Card(mfg));
-        var primary = new PresetColumns(460, 2) { ColumnSpacing = 12, RowSpacing = 12 };
+        var primary = new PresetColumns(560, 2) { ColumnSpacing = 24, RowSpacing = 24 };
         var nr = Section("Neural rendering");
         nr.Children.Add(Field("enabled")); nr.Children.Add(Field("style")); nr.Children.Add(Field("intensity"));
         nr.Children.Add(Pair(Field("preset"), Field("passes"))); primary.Children.Add(Card(nr));
@@ -54,17 +55,22 @@ public sealed class PresetControlsView : UserControl
 
     static StackPanel Section(string title, string? description = null)
     {
-        var section = new StackPanel { Spacing = 12 };
+        var section = new StackPanel { Spacing = 18 };
         var heading = new StackPanel { Spacing = 4 };
         heading.Children.Add(Prefs.Label(title, "ForgeHeadingTextStyle"));
         if (description is not null) heading.Children.Add(Prefs.Label(description, "ForgeCaptionDimTextStyle"));
         section.Children.Add(heading); return section;
     }
-    static Border Card(UIElement content) => new()
-    { Style = Prefs.GetStyle("ForgeControlPodStyle"), Padding = new Thickness(16, 12, 16, 12), Child = content, VerticalAlignment = VerticalAlignment.Top };
+    Border Card(UIElement content)
+    {
+        var card = new Border { Style = Prefs.GetStyle("ForgeControlPodStyle"),
+            Padding = embedded ? new Thickness(0, 8, 0, 8) : new Thickness(20), Child = content, VerticalAlignment = VerticalAlignment.Top };
+        if (embedded) { card.Background = null; card.BorderThickness = new Thickness(0); }
+        return card;
+    }
     static PresetColumns Pair(params UIElement[] children)
     {
-        var pair = new PresetColumns(210, 2) { ColumnSpacing = 20, RowSpacing = 16 };
+        var pair = new PresetColumns(260, 2) { ColumnSpacing = 24, RowSpacing = 20 };
         foreach (var child in children) pair.Children.Add(child); return pair;
     }
     static Expander Disclosure(string heading, StackPanel content) => new()

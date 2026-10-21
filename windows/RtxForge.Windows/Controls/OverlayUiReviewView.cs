@@ -52,11 +52,18 @@ public sealed class OverlayUiReviewView : StackPanel
                     var group = new StackPanel { Spacing = 10 };
                     foreach (var item in items)
                     {
+                        var line = new Grid { ColumnSpacing = 12 };
+                        line.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+                        line.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
                         var row = new StackPanel { Spacing = 3 };
                         row.Children.Add(new TextBlock { Text = item.Title, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
                         row.Children.Add(new TextBlock { Text = item.Detail, FontSize = 12, TextWrapping = TextWrapping.Wrap });
-                        if (!string.IsNullOrWhiteSpace(item.Details)) row.Children.Add(new TextBlock { Text = item.Details, FontSize = 12, TextWrapping = TextWrapping.Wrap });
-                        group.Children.Add(row);
+                        line.Children.Add(row);
+                        if (!string.IsNullOrWhiteSpace(item.Details))
+                        {
+                            var info = TechnicalDetails.Create(item.Details); Grid.SetColumn(info, 1); line.Children.Add(info);
+                        }
+                        group.Children.Add(line);
                     }
                     if (collapsed) rows.Children.Add(new Expander { Header = $"{label} · {items.Count}", Content = group,
                         HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch });

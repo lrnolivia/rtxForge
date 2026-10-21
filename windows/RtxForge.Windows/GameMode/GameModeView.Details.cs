@@ -46,7 +46,7 @@ public sealed partial class GameModeView
 
     UIElement BuildDetails(Game g)
     {
-        var heroHeight = t.Px(t.Compact ? 240 : ActualWidth <= 1500 ? 280 : 320);
+        var heroHeight = t.Px(t.Compact ? 330 : ActualWidth <= 1500 ? 360 : 420);
         var navWidth = t.Px(ActualWidth <= 1050 ? 184 : ActualWidth <= 1500 ? 246 : 254);
         var side = t.Px(ActualWidth <= 1050 ? 24 : ActualWidth <= 1500 ? 36 : 56);
         var grid = new Grid { RowSpacing = t.Px(t.Compact ? 12 : 22), Padding = new Thickness(0, 0, 0, t.Px(8)) };
@@ -80,7 +80,7 @@ public sealed partial class GameModeView
         identity.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         identity.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         identity.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var posterHeight = t.Px(t.Compact ? 124 : ActualWidth <= 1500 ? 148 : 166);
+        var posterHeight = t.Px(t.Compact ? 164 : ActualWidth <= 1500 ? 184 : 208);
         var poster = new Border
         {
             Height = posterHeight, Width = Math.Round(posterHeight * 2 / 3), CornerRadius = new CornerRadius(t.Px(10)),
@@ -96,6 +96,10 @@ public sealed partial class GameModeView
         var title = ui.Text(g.Name, t.Compact ? 1.35 : 1.65, t.Fg, FontWeights.Bold, wrap: true, maxLines: 2);
         title.LineHeight = t.Em(t.Compact ? 1.35 : 1.65) * 1.1;
         text.Children.Add(title);
+        var credits = string.Join(" · ", new[] { g.Developer, g.Release }.Where(value => !string.IsNullOrWhiteSpace(value)));
+        var creditsText = ui.Text(credits, .76, t.Muted, wrap: true, maxLines: 2);
+        creditsText.Visibility = credits.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        text.Children.Add(creditsText);
         var badges = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(8) };
         var sourceBadge = ui.Badge(g.Library, t.Card, t.Fg, 0.62 * 1.2, g.Library == "Steam" ? "" : null);
         badges.Children.Add(sourceBadge);
@@ -109,6 +113,11 @@ public sealed partial class GameModeView
         badges.Children.Add(ui.Badge(g.Tested ? "Tested" : "Untested", GmTheme.Hex("#573d18"), GmTheme.Hex("#ffe8a2"), 0.62 * 1.2, g.Tested ? "" : ""));
         text.Children.Add(badges);
         text.Children.Add(ui.Text(string.Join(" · ", new[] { g.Installed ? "Configured" : g.Blocked ? "Unsupported" : "Available", g.UsesFeeder ? "Feeder NR" : ProviderName() }), 0.74, t.Muted));
+        var summaryText = ui.Text(g.Summary ?? "", .74, t.Muted, wrap: true, maxLines: 2);
+        summaryText.Visibility = string.IsNullOrWhiteSpace(g.Summary) ? Visibility.Collapsed : Visibility.Visible;
+        text.Children.Add(summaryText);
+        if (shell.Settings.SteamMetadata && (g.Summary is null || g.Developer is null || g.Release is null))
+            _ = FillStoreInfoAsync(g, creditsText, summaryText);
         Grid.SetColumn(text, 1);
         identity.Children.Add(text);
         // The desktop Game Details hero actions, in the same order.
@@ -180,7 +189,10 @@ public sealed partial class GameModeView
 
     async Task DetailsAccentAsync(Game g, Border poster, TextBlock title, Border sourceBadge, List<(Button Button, string Section)> nav)
     {
+        var renderedUi = ui;
         var colors = t.GameColors(await ArtAccent.ForGameAsync(g));
+        if (page != "details" || detailsGame?.Id != g.Id || !ReferenceEquals(ui, renderedUi)) return;
+        ui.FocusBrush.Color = colors.Title;
         poster.BorderBrush = GmTheme.B(colors.Accent);
         title.Foreground = GmTheme.B(colors.Title);
         sourceBadge.Background = GmTheme.B(colors.Pill);
@@ -263,7 +275,7 @@ public sealed partial class GameModeView
                 if (presetsExpanded)
                 {
                     var tuning = shell.GameTuning(g);
-                    var (rows, value) = PresetRows(tuning, g.Installed && !g.Blocked, g.RuntimeProvider != "skynizz");
+                    var (rows, value) = PresetRows(tuning, g.Installed && !g.Blocked, g.RuntimeProvider != "skynizz", embedded: true);
                     content.Children.Add(ui.P("Only this game changes. Review the changes before applying."));
                     foreach (var row in rows) content.Children.Add(row);
                     var apply = ui.Button("Apply to this game", () => _ = RunOperationAsync("apply", [g], value()), GmKind.Primary, 0.85,
@@ -378,17 +390,8 @@ public sealed partial class GameModeView
                 SectionTitle(content, "Overview");
                 if (g.AdoptionAvailable) content.Children.Add(ui.RowButton("Review Adoption", null, () => _ = shell.ReviewAdoptionAsync([g]), description: "Register this setup or back it up and clean install."));
                 if (g.OfflineOnly) content.Children.Add(ui.RowButton("Launch offline", null, () => _ = shell.LaunchOfflineAsync(g), description: "Use this reviewed route while feature files are installed. Online play is unavailable."));
-                // Store description and credits live here, not in the hero (Settings › Download game information).
-                if (!string.IsNullOrWhiteSpace(g.Summary))
-                {
-                    content.Children.Add(DetailFact("About", g.Summary));
-                }
-                else if (shell.Settings.SteamMetadata)
-                    _ = FillStoreInfoAsync(g);
                 content.Children.Add(ui.H2("Game Information", 1.06));
                 var info = DetailColumns(3);
-                if (!string.IsNullOrWhiteSpace(g.Developer)) info.Children.Add(DetailFact("Developer", g.Developer));
-                if (!string.IsNullOrWhiteSpace(g.Release)) info.Children.Add(DetailFact("Release", g.Release));
                 info.Children.Add(DetailFact("Library", g.Library));
                 info.Children.Add(DetailFact("Location", g.Location, ui.Button("Open Folder", () => _ = shell.OpenGameFolderAsync(g),
                     GmKind.Card, .8, enabled: !shell.Service.IsPreview && Directory.Exists(g.Location))));
@@ -401,12 +404,17 @@ public sealed partial class GameModeView
         }
     }
 
-    /// <summary>Fetches store information once, then re-renders Overview if it is still showing.</summary>
-    async Task FillStoreInfoAsync(Game g)
+    /// <summary>Update hero metadata in place, preserving any unsaved preset edits below it.</summary>
+    async Task FillStoreInfoAsync(Game g, TextBlock credits, TextBlock summary)
     {
         if (await SteamStoreInfo.FillAsync(g, shell.Settings.SteamMetadata)
-            && detailsGame == g && page == "details" && detailsSection == "Overview")
-            Render(keepFocus: true);
+            && detailsGame == g && page == "details")
+        {
+            credits.Text = string.Join(" · ", new[] { g.Developer, g.Release }.Where(value => !string.IsNullOrWhiteSpace(value)));
+            credits.Visibility = credits.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+            summary.Text = g.Summary ?? "";
+            summary.Visibility = summary.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
     }
 
     /// <summary>The shared accent suggestions, as focusable swatches.</summary>
@@ -447,7 +455,7 @@ public sealed partial class GameModeView
     }
 
     /// <summary>Compact controller cards retain the overlay vocabulary and original values.</summary>
-    (List<UIElement> Rows, Func<Tuning> Value) PresetRows(Tuning initial, bool enabled = true, bool legacy = false, Action? changed = null)
+    (List<UIElement> Rows, Func<Tuning> Value) PresetRows(Tuning initial, bool enabled = true, bool legacy = false, Action? changed = null, bool embedded = false)
     {
         var values = FeatureControlSchema.Resolve(initial);
         var advanced = shell.Settings.OverlayControls == "classic";
@@ -455,15 +463,15 @@ public sealed partial class GameModeView
         FeatureControl Definition(string key) => controls.Single(f => f.Key == key);
         Controls.PresetColumns Pair(params UIElement[] children)
         {
-            var columns = new Controls.PresetColumns(t.Px(200), 2) { ColumnSpacing = t.Px(12), RowSpacing = t.Px(12) };
+            var columns = new Controls.PresetColumns(t.Px(270), 2) { ColumnSpacing = t.Px(24), RowSpacing = t.Px(20) };
             foreach (var child in children) columns.Children.Add(child); return columns;
         }
         Border Card(string title, params UIElement[] children)
         {
-            var section = new StackPanel { Spacing = t.Px(10), Padding = new Thickness(t.Px(18)) };
+            var section = new StackPanel { Spacing = t.Px(20), Padding = new Thickness(embedded ? 0 : t.Px(24)) };
             if (title.Length > 0) section.Children.Add(ui.Text(title, .96, weight: FontWeights.SemiBold));
             foreach (var child in children) section.Children.Add(child);
-            return new Border { Child = section, Background = GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(12)), VerticalAlignment = VerticalAlignment.Top };
+            return new Border { Child = section, Background = embedded ? null : GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(16)), VerticalAlignment = VerticalAlignment.Top };
         }
         UIElement Field(FeatureControl field)
         {
@@ -505,16 +513,34 @@ public sealed partial class GameModeView
                 target.Tapped += (_, e) => { Adjust(direction); e.Handled = true; };
                 return target;
             }
-            line.Children.Add(Step("", -1));
-            Grid.SetColumn(shown, 1); line.Children.Add(shown);
-            var right = Step("", 1); Grid.SetColumn(right, 2); line.Children.Add(right);
-            button = ui.Button(line, field.Kind == "toggle" ? () => Adjust(1) : null, GmKind.Card, .78, available,
-                radius: 22, padding: new Thickness(t.Px(4), 0, t.Px(4), 0), minHeight: 46);
+            var discrete = field.Kind is "toggle" or "choice";
+            if (discrete)
+            {
+                Grid.SetColumnSpan(shown, 2); line.Children.Add(shown);
+                var arrow = ui.Icon("", .55); Grid.SetColumn(arrow, 2); line.Children.Add(arrow);
+            }
+            else
+            {
+                line.Children.Add(Step("", -1));
+                Grid.SetColumn(shown, 1); line.Children.Add(shown);
+                var right = Step("", 1); Grid.SetColumn(right, 2); line.Children.Add(right);
+            }
+            void Choose()
+            {
+                var numbers = field.Kind == "toggle" ? new double[] { 0, 1 } : field.Values;
+                var captions = field.Kind == "toggle" ? new[] { "Off", "On" } : field.Choices;
+                OpenChoiceMenu(button!, label, captions, Math.Max(0, Array.IndexOf(numbers, FeatureControlSchema.Number(values, field))), i =>
+                {
+                    FeatureControlSchema.Put(values, field, numbers[i]); Refresh(); changed?.Invoke();
+                });
+            }
+            button = ui.Button(line, discrete ? Choose : null, GmKind.Card, .78, available,
+                radius: 12, padding: new Thickness(t.Px(12), t.Px(4), t.Px(12), t.Px(4)), minHeight: 54);
             button.HorizontalAlignment = HorizontalAlignment.Stretch;
             button.HorizontalContentAlignment = HorizontalAlignment.Stretch;
             button.BorderBrush = GmTheme.B(t.Line);
             button.BorderThickness = new Thickness(t.Px(1));
-            button.Tag = new Adjustable(Adjust);
+            if (!discrete) button.Tag = new Adjustable(Adjust);
             GmUi.NoLift(button);
             ui.Focusable(button, 0);
             Key(button, "preset-field-" + field.Key);
@@ -537,6 +563,7 @@ public sealed partial class GameModeView
                 for (var i = 0; i < buttons.Count; i++)
                 {
                     buttons[i].Background = GmTheme.B(definition.Values[i] == value ? t.SegmentSelected : t.Card);
+                    buttons[i].Foreground = GmTheme.B(definition.Values[i] == value ? t.ActiveFg : t.Fg);
                     Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(buttons[i], definition.Label + " " + definition.Choices[i] + (definition.Values[i] == value ? " selected" : ""));
                 }
                 changed?.Invoke();
@@ -574,7 +601,7 @@ public sealed partial class GameModeView
         }
         var rows = new List<UIElement>
         { Card("Frame generation", ui.P("Requested multiplier · enable frame generation in the game.", .75), Choices("multiplier")) };
-        var primary = new Controls.PresetColumns(t.Px(480), 2) { ColumnSpacing = t.Px(16), RowSpacing = t.Px(16) };
+        var primary = new Controls.PresetColumns(t.Px(560), 2) { ColumnSpacing = t.Px(28), RowSpacing = t.Px(28) };
         primary.Children.Add(Card("Neural rendering", Field(Definition("enabled")), Choices("style"), Field(Definition("intensity")),
             Pair(Field(Definition("preset")), Field(Definition("passes")))));
         var secondary = new StackPanel { Spacing = t.Px(16) };

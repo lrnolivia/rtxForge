@@ -199,7 +199,7 @@ public sealed partial class GamePage : Page
                 }
                 var features = new PreferencesGroup(null,
                     "Tuning values for this game. Reset restores your library presets. Apply saves them for this game.");
-                var tuning = new PresetControlsView(shell.GameTuning(g), shell.Settings.OverlayControls == "classic");
+                var tuning = new PresetControlsView(shell.GameTuning(g), shell.Settings.OverlayControls == "classic", embedded: true);
                 tuning.SetMode(g.Profile?.Contains("Only", StringComparison.OrdinalIgnoreCase) == true
                     ? g.Profile.StartsWith("NR", StringComparison.OrdinalIgnoreCase) ? "nr-only" : "mfg-only" : shell.Mode,
                     g.Installed, g.RuntimeProvider != "skynizz");

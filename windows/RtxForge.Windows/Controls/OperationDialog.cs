@@ -71,8 +71,9 @@ public sealed class OperationDialog
     {
         var dialog = shell.NewDialog();
         dialog.Title = "Install Features";
-        dialog.Resources["ContentDialogMaxWidth"] = 900.0;
-        var tuning = new TuningPanel(initial) { MinWidth = 760 };
+        var editorWidth = Math.Max(280, Math.Min(960, ((shell.Content as FrameworkElement)?.XamlRoot?.Size.Width ?? 1120) - 120));
+        dialog.Resources["ContentDialogMaxWidth"] = 1120.0;
+        var tuning = new TuningPanel(initial) { Width = editorWidth };
         tuning.SetMode(shell.Mode);
         var body = new StackPanel { Spacing = 16 };
         body.Children.Add(Prefs.Label("Adjust your presets or continue. You can change these settings later in OptiScaler."));
@@ -238,7 +239,8 @@ public sealed class OperationDialog
         text.Children.Add(Prefs.Label(detail, "ForgeCaptionDimTextStyle"));
         if (!string.IsNullOrWhiteSpace(technical))
         {
-            text.Children.Add(TechnicalDetails.Create(technical));
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var info = TechnicalDetails.Create(technical); Grid.SetColumn(info, 3); grid.Children.Add(info);
         }
         Grid.SetColumn(text, 1);
         grid.Children.Add(text);

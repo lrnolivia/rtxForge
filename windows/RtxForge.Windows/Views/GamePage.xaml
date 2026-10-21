@@ -128,5 +128,6 @@
             <StackPanel x:Name="PageHost" Padding="36,0,36,0" />
         </StackPanel>
     </ScrollViewer>
+        <InfoBar x:Name="DetailsNotice" Grid.Column="1" IsOpen="False" IsClosable="True" VerticalAlignment="Bottom" Margin="24" />
     </Grid>
 </Page>

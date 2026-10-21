@@ -32,12 +32,17 @@ public sealed class CollapsingHero
         if (expanded <= 0) return;
         var removed = Math.Round(Math.Clamp(scroll.VerticalOffset, 0, expanded - compact));
         var height = expanded - removed;
-        if (Math.Abs(previousHeight - height) < .5) return;
+        var previousInset = workspace.Padding.Bottom - inset.Bottom;
+        var unclampedRange = scroll.ExtentHeight - previousInset - scroll.ViewportHeight;
+        // Long pages already have enough body below the compact hero. They need no
+        // compensation (and must not end in a large empty area).
+        var compensation = removed >= expanded - compact && unclampedRange > expanded - compact + 32 ? 0 : removed;
+        if (Math.Abs(previousHeight - height) < .5 && Math.Abs(previousInset - compensation) < .5) return;
         previousHeight = height;
         hero.Height = height;
         // Keep the original scroll range. Shrinking the header near the bottom must
         // not clamp the offset and repeatedly expand/collapse the header again.
-        workspace.Padding = new Thickness(inset.Left, inset.Top, inset.Right, inset.Bottom + removed);
+        workspace.Padding = new Thickness(inset.Left, inset.Top, inset.Right, inset.Bottom + compensation);
         changed(expanded == compact ? 0 : removed / (expanded - compact));
     }
 }

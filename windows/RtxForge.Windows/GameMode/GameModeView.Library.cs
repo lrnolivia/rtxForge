@@ -136,20 +136,23 @@ public sealed partial class GameModeView
         scroller.Content = games.Count == 0
             ? EmptyLibrary()
             : shell.Settings.LibraryView == "list" ? ListLayout(games) : CardLayout(games, available, shell.Settings.LibraryView == "capsules");
-        var cards = (UIElement)scroller.Content;
-        var scrollContent = new StackPanel(); scrollContent.Children.Add(cards); scroller.Content = scrollContent;
         var previousOffset = libraryScroll;
         var filterHeight = 0d;
+        bool? renderedFilters = null;
+        var changingFilterLayout = false;
         void ShowFilters(bool show)
         {
-            if (filterHeight <= 0) return;
+            if (filterHeight <= 0 || renderedFilters == show) return;
+            renderedFilters = show; changingFilterLayout = true;
             libraryFilterHidden = !show;
             filterHost.Height = show ? double.NaN : 0;
             filterHost.Opacity = show ? 1 : 0;
             filterHost.IsHitTestVisible = show;
             filterHost.Clip = show ? null : new Microsoft.UI.Xaml.Media.RectangleGeometry { Rect = new global::Windows.Foundation.Rect(0, 0, 0, 0) };
-            // Preserve the scroll range when the viewport grows, avoiding bottom-edge oscillation.
-            scrollContent.Padding = new Thickness(0, 0, 0, show ? 0 : filterHeight);
+            // A growing viewport can clamp its offset near the last row. That layout
+            // adjustment is not an upward user scroll and must not reopen the bar.
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            { previousOffset = scroller.VerticalOffset; changingFilterLayout = false; });
         }
         subbar.SizeChanged += (_, e) =>
         {
@@ -161,6 +164,7 @@ public sealed partial class GameModeView
         {
             var offset = scroller.VerticalOffset;
             var delta = offset - previousOffset;
+            if (changingFilterLayout) { previousOffset = offset; libraryScroll = offset; return; }
             if (offset <= t.Px(8) || delta < -t.Px(6)) ShowFilters(true);
             else if (delta > t.Px(8) && offset > filterHeight && FocusedWithin(subbar) is null) ShowFilters(false);
             previousOffset = offset; libraryScroll = offset;

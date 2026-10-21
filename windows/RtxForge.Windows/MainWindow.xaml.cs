@@ -314,6 +314,7 @@ public sealed partial class MainWindow : Window
     /// <summary>Adw.Toast: a short opaque notice at the bottom of the window.</summary>
     public void ShowToast(string text)
     {
+        if (detailsDialogRoot is Frame { Content: GamePage gamePage }) { gamePage.ShowNotice(text); return; }
         Toast.Message = text;
         ToastHost.Visibility = Visibility.Visible;
         Toast.IsOpen = true;

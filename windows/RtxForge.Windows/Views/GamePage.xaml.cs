@@ -35,6 +35,7 @@ public sealed partial class GamePage : Page
             HeroText.Visibility = progress >= .75 ? Visibility.Collapsed : Visibility.Visible;
         });
         ActualThemeChanged += (_, _) => ApplyAccentText();
+        ContentScroll.SizeChanged += (_, e) => ApplyLayout(e.NewSize.Width);
         shell.GamesChanged += Refresh;
         Unloaded += (_, _) => shell.GamesChanged -= Refresh;
     }
@@ -151,6 +152,8 @@ public sealed partial class GamePage : Page
     }
 
     public void SelectSection(string name) => Sections.SelectedItem = Sections.Items.FirstOrDefault(i => (string)i.Tag == name) ?? Sections.Items[0];
+
+    public void ShowNotice(string message) { DetailsNotice.Message = message; DetailsNotice.IsOpen = true; }
 
     void OnSidebarSectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -390,7 +393,7 @@ public sealed partial class GamePage : Page
     }
     // ---------- Responsive layout ----------
 
-    void OnPageSizeChanged(object sender, SizeChangedEventArgs e) => ApplyLayout(e.NewSize.Width);
+    void OnPageSizeChanged(object sender, SizeChangedEventArgs e) => ApplyLayout(ContentScroll.ActualWidth > 0 ? ContentScroll.ActualWidth : e.NewSize.Width);
 
     /// <summary>
     /// Scales the hero, poster, title and margins with the window, and moves

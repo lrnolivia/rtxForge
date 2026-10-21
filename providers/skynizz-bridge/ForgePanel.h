@@ -685,7 +685,7 @@ inline void SettingsControls()
         }
         ImGui::TextWrapped("Optional Ctrl, Alt or Shift. Insert stays with OptiScaler.");
     }
-    if(ImGui::SmallButton("Disable shortcut")) Send({{"op","set-setting"},{"key","panel_binding"},{"value",{{"key",0},{"modifiers",0}}}});
+    if(ImGui::Button("Disable shortcut",ImVec2(-1,36.f*scale))) Send({{"op","set-setting"},{"key","panel_binding"},{"value",{{"key",0},{"modifiers",0}}}});
     Section("OptiScaler");
     PreferenceToggle("In-game menu##opti","optiscaler_ui",true);
     PreferenceToggle("Intro message##opti","optiscaler_intro",false);
@@ -840,10 +840,11 @@ inline bool Draw(bool& visible, float scale)
         Send({{"op","save"},{"changes",changes}});
     }
     ImGui::PopStyleColor(2); ImGui::SameLine();
-    PushColor(ImGuiCol_Button,ImVec4(.55f,.15f,.18f,1));
+    PushColor(ImGuiCol_Button,Mix(dark,ImVec4(1,1,1,1),.10f));
+    PushColor(ImGuiCol_Text,ImVec4(.94f,.94f,.94f,1));
     if(ImGui::Button("Reset",ImVec2(-1,42.f*scale)))
     { Send({{"op","reset"}}); }
-    ImGui::PopStyleColor(); ImGui::EndDisabled();
+    ImGui::PopStyleColor(2); ImGui::EndDisabled();
     }
     ImGui::TextDisabled("%s",(ForgePanelChannel::settings.value("panel_hotkey",std::string("ScrollLock"))+" - show or hide").c_str());
     if(ImGui::IsKeyPressed(ImGuiKey_Escape,false)) visible = false;

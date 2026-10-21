@@ -146,13 +146,13 @@ def inspect(e, row, cached=True):
     return {'managed': record is not None, 'nr_runtime': nr, **configured(directory)}
 
 
-def eligible(e, row, existing=False):
+def eligible(e, row, existing=False, check_running=True):
     root, exe, directory = target(row)
     t.need(getattr(e, 'DESKTOP_PLATFORM', 'windows' if os.name == 'nt' else 'linux') == 'windows',
            'Feeder installation is available on Windows only in this release')
     t.need(not row.get('anti_cheat'), 'Anti-cheat detected; Feeder is unavailable for this game')
-    t.need(not e._running_processes_under_root(root), 'Close this game before changing Feeder files')
-    t.need(not e.load_baseline(directory) and not (directory / 'OptiScaler.ini').exists(),
+    t.need(not check_running or not e._running_processes_under_root(root), 'Close this game before changing Feeder files')
+    t.need(not e.load_baseline(directory, readonly=True) and not (directory / 'OptiScaler.ini').exists(),
            'Restore the existing OptiScaler package before installing Feeder NR')
     t.need(not any((directory / name).exists() for name in ('nvngx.dll_dlssnr.dll', 'dlss5-feed-helper.addon64',
                                                          'dlss5-bridge.addon64', 'renodx-mfgunlock.addon64')),
@@ -163,6 +163,7 @@ def eligible(e, row, existing=False):
 
 
 def expand_rows(e, rows, selected=False):
+    import skynizz_provider
     result = []
     for original in rows:
         root = Path(original['game'])
@@ -170,7 +171,7 @@ def expand_rows(e, rows, selected=False):
         # ME Legendary Edition has one Steam entry and three actual targets.
         for index in (1, 2, 3):
             exe = root / f'Game/ME{index}/Binaries/Win64/MassEffect{index}.exe'
-            if exe.is_file() and (exe.parent / 'dlss5-feed.addon64').is_file():
+            if exe.is_file():
                 candidates.append((exe, f"{original['name']} · Mass Effect {index}"))
         if not candidates and original.get('exe'):
             exe = root / original['exe']
@@ -194,12 +195,19 @@ def expand_rows(e, rows, selected=False):
                                  blocked='')
                 except (t.Refusal, OSError, ValueError, configparser.Error) as error:
                     child.update(blocked=str(error), feeder_detected=True)
-            elif selected:
+            elif selected or not child.get('native_dlss') or skynizz_provider.native_nr_refusal(child.get('exe'), child.get('appid')):
                 try:
-                    eligible(e, child)
-                    child['blocked'] = ''
-                except (t.Refusal, OSError, ValueError) as error:
-                    child['blocked'] = str(error)
+                    # Capability is independent of the package selected for native
+                    # DLSS games. Mutation checks still run again during review.
+                    eligible(e, child, check_running=False)
+                    child.update(blocked='', feeder_available=True, install_provider='feeder',
+                                 nr_route_note='Feeder NR · DirectX 11 · NR only')
+                except (t.Refusal, e.Stop, OSError, ValueError) as error:
+                    child.pop('feeder_available', None)
+                    if child.get('install_provider') == 'feeder':
+                        child.pop('install_provider')
+                    if selected:
+                        child['blocked'] = str(error)
             result.append(child)
         if not candidates:
             result.append(original)

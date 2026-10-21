@@ -131,10 +131,11 @@ class DesktopService:
         feeder = settings.get('runtime_provider') == 'feeder'
         # Restoring an installed Feeder setup must use its actual ownership,
         # regardless of the package currently selected for new installations.
-        if feeder or (rows and all(row.get('runtime_provider') == 'feeder' for row in rows)
+        if feeder or (rows and all(row.get('runtime_provider') == 'feeder'
+                                  or row.get('install_provider') == 'feeder' and row.get('feeder_available') is True for row in rows)
                       and operation in ('install', 'uninstall', 'repair', 'reset')):
             import feeder_provider
-            return feeder_provider.prepare(self.config, rows, 'nr-only' if not feeder else mode, operation,
+            return feeder_provider.prepare(self.config, rows, 'nr-only' if not feeder and mode != 'mfg-only' else mode, operation,
                                            settings, engine_bridge.module(self.config))
         review=engine_bridge.prepare(self.config,rows,mode,operation,settings)
         if save_defaults and operation=='reset':review['save_defaults']={k:settings[k] for k in ('nr_strength','sharpening_strength','mfg_multiplier')}

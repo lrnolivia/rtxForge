@@ -46,16 +46,20 @@ public sealed partial class PackagesPage : Page
             packages.Children.Add(PackageCard(item));
         curated.Children.Add(packages);
         body.Children.Add(curated);
-        if (shell.Settings.RuntimeProvider == "feeder")
+        if (catalog.Packages.Any(p => p.Id == "feeder") || shell.Settings.RuntimeProvider == "feeder")
         {
-            var feeder = Section("Feeder NR", "For DirectX 11 games. Existing setups keep their tuning. This route provides NR only.");
+            var feeder = Section("Feeder NR", "Used for compatible DirectX 11 games, including when Skynizz is selected. Choose your local stack once; installation copies ReShade, Feeder, RenoDX and shaders for you. NR only.");
             var paths = new PresetColumns(360, 2) { ColumnSpacing = 16, RowSpacing = 12 };
             paths.Children.Add(FolderField("Local stack folder", "Your ReShade, Feeder, RenoDX and shader files for new installs.",
                 shell.Settings.FeederSource, path => shell.Settings.FeederSource = path));
             paths.Children.Add(FolderField("Original backups folder", "Original manifests and backups used to recognize existing setups.",
                 shell.Settings.FeederBackups, path => shell.Settings.FeederBackups = path));
             feeder.Children.Add(paths);
-            body.Children.Add(Card(feeder));
+            body.Children.Add(shell.Settings.RuntimeProvider == "feeder" ? Card(feeder) : new Expander
+            {
+                Header = "Feeder setup · DirectX 11 NR", Content = feeder, HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            });
         }
         if (shell.Settings.RuntimeProvider == "skynizz")
         {

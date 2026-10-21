@@ -434,7 +434,7 @@ public sealed partial class GameModeView
         if (game.Installed) dot.Fill = GmTheme.B(GmTheme.Accent);
         else { dot.Stroke = GmTheme.B(t.Muted); dot.StrokeThickness = 1.5; }
         state.Children.Add(dot);
-        state.Children.Add(ui.Text(game.Blocked ? "Unsupported" : game.Installed ? "Installed" : "Available", 0.85, t.Muted));
+        state.Children.Add(ui.Text(game.Blocked ? "Unsupported" : game.Installed ? "Installed" : game.UsesFeeder ? "Available · Feeder NR" : "Available", 0.85, t.Muted));
         Grid.SetColumn(state, 3);
         grid.Children.Add(state);
 

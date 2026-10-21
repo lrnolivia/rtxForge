@@ -116,3 +116,15 @@ foreach (var raw in new[] { "false", "null", "true", "\"unknown\"" })
     if (game.AntiCheatDetected != (raw is not "false" and not "null")) throw new Exception("Partial-support anti-cheat filtering changed");
 }
 Console.WriteLine("PASS: false anti-cheat flags admit support review; true and malformed flags stay excluded.");
+
+foreach (var raw in new[] { "false", "null", "true", "\"unknown\"" })
+{
+    var game = new Game { Id = "feeder", Name = "Feeder candidate", EngineRow = System.Text.Json.Nodes.JsonNode.Parse(
+        "{\"install_provider\":\"feeder\",\"feeder_available\":" + raw + "}")!.AsObject() };
+    if (game.UsesFeeder != (raw == "true") || game.IsFeeder || game.Installed)
+        throw new Exception("Feeder capability was mistaken for an installed or managed runtime");
+    if (raw == "true" && game.InstallLabel != "Install Feeder NR") throw new Exception("Fresh Feeder target has an update-only action");
+}
+var installedFeeder = new Game { Id = "managed-feeder", Name = "Installed Feeder", Installed = true, RuntimeProvider = "feeder" };
+if (!installedFeeder.UsesFeeder || installedFeeder.InstallLabel != "Update Feeder NR") throw new Exception("Existing Feeder update route changed");
+Console.WriteLine("PASS: fresh Feeder capability stays separate from installation ownership and labels.");

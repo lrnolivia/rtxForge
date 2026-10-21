@@ -169,7 +169,7 @@ public sealed class GameItem : INotifyPropertyChanged
 
     // .library-meta-pill / .library-status-stack
     public string Status => Game.AdoptionAvailable ? "ADOPTION" : Game.OfflineOnly ? "OFFLINE ONLY" : Game.Blocked ? "UNSUPPORTED" : Game.Installed ? "INSTALLED" : "AVAILABLE";
-    public string StatusText => Game.AdoptionAvailable ? "Installed · Adoption available" : Game.OfflineOnly ? "Installed · Offline only" : Game.Blocked ? "Unsupported" : Game.Installed ? "Installed" : "Available";
+    public string StatusText => Game.AdoptionAvailable ? "Installed · Adoption available" : Game.OfflineOnly ? "Installed · Offline only" : Game.Blocked ? "Unsupported" : Game.Installed ? "Installed" : Game.UsesFeeder ? "Available · Feeder NR" : "Available";
     public string StatusGlyph => Game.Blocked ? "" : Game.Installed ? "" : "";
     public Brush StatusDot => Game.Blocked ? UnsupportedDot : Game.Installed ? InstalledDot : AvailableDot;
     public Visibility TestedVisibility => Game.Tested ? Visibility.Visible : Visibility.Collapsed;

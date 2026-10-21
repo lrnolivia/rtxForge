@@ -37,6 +37,9 @@ public sealed class Game
     public string? Profile { get; init; }
     public string? RuntimeProvider { get; init; }
     public bool IsFeeder => RuntimeProvider == "feeder";
+    /// <summary>A detected installation or a fresh DX11 target admitted to the separate Feeder route.</summary>
+    public bool UsesFeeder => IsFeeder || EngineRow?["install_provider"]?.ToString() == "feeder"
+        && EngineRow?["feeder_available"] is JsonValue flag && flag.TryGetValue<bool>(out var supported) && supported;
     /// <summary>Which rtxForge installed the features: "windows", "linux" (shared .rtxforge-install.json), or null.</summary>
     public string? InstalledOn { get; set; }
     /// <summary>Installed with rtxForge on Linux: Windows loads it natively; Set Up for Windows adapts it here.</summary>
@@ -45,7 +48,8 @@ public sealed class Game
     public bool AdoptionAvailable => EngineRow?["adoption_available"]?.GetValue<bool>() == true;
     public bool Managed => EngineRow?["managed"]?.GetValue<bool>() == true;
     public bool OfflineOnly => EngineRow?["offline_only"]?.GetValue<bool>() == true;
-    public string InstallLabel => AdoptionAvailable ? "Adopt with rtxForge" : InstalledOnLinux ? "Set Up for Windows" : IsFeeder ? "Update Feeder NR" : "Install Features";
+    public string InstallLabel => AdoptionAvailable ? "Adopt with rtxForge" : InstalledOnLinux ? "Set Up for Windows"
+        : UsesFeeder ? Installed ? "Update Feeder NR" : "Install Feeder NR" : "Install Features";
     /// <summary>The engine's scan row, passed back unchanged for review and execution.</summary>
     public System.Text.Json.Nodes.JsonObject? EngineRow { get; init; }
     public bool AntiCheatDetected

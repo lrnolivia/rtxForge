@@ -24,6 +24,7 @@ try:
     original=engine_bridge.module
     def module(*args,**kwargs):
         e=original(*args,**kwargs);e._running_processes_under_root=lambda root:[]
+        e.pe_imported_dlls=lambda exe:{'d3d11.dll'}
         return e
     engine_bridge.module=module
     case.e=module(host.service.config)
@@ -54,7 +55,30 @@ try:
     assert checked['rows'] and not checked['blocked'],checked
     host.execute({'token':checked['token']})
     assert case.files(row)=={'game.exe':before['game.exe'],'save.dat':before['save.dat']}
-    print(json.dumps({'checks':7,'result':'host scan, exact-token model-only adoption, separate ownership, native updater exclusion, installed refresh, honest diagnosis and original restore passed'}))
+    fresh=case.game('fresh-dx11');clean=case.files(fresh)
+    selected=next(r for r in host.scan({'folders':[fresh['game']],'runtime_provider':'skynizz'}) if r['game']==fresh['game'])
+    assert selected['feeder_available'] and selected['install_provider']=='feeder' and not selected['blocked']
+    assert not selected.get('installed') and selected.get('runtime_provider')!='feeder','capability forged ownership'
+    checked=host.prepare({'rows':[selected],'mode':'nr-mfg','operation':'install','settings':settings|{'nr_on_launch':False}})
+    assert checked['rows'] and not checked['blocked'],checked
+    assert host.reviews[checked['token']]['kind']=='feeder','fresh route used native package'
+    assert case.files(fresh)==clean,'fresh review changed game files'
+    host.execute({'token':checked['token']})
+    target=Path(fresh['game'])
+    for name,data in case.assets.items():
+        assert (target/name).read_bytes()==data,'missing local-stack asset: '+name
+    assert (target/feeder_provider.MODEL).read_bytes()==case.new
+    assert not feeder_provider.configured(target)['nr_enabled'],'fresh NR did not default off'
+    refreshed=next(r for r in host.scan({'folders':[fresh['game']],'runtime_provider':'skynizz'}) if r['game']==fresh['game'])
+    assert refreshed['installed'] and refreshed['feeder_managed'] and refreshed['runtime_provider']=='feeder'
+    checked=host.prepare({'rows':[refreshed],'mode':'nr-mfg','operation':'uninstall','settings':settings})
+    assert checked['rows'] and not checked['blocked'],checked
+    host.execute({'token':checked['token']})
+    assert case.files(fresh)==clean,'fresh restore left package files behind'
+    try:host.prepare({'rows':[selected],'mode':'mfg-only','operation':'install','settings':settings})
+    except Exception as error:assert 'Feeder provides NR Only' in str(error),error
+    else:raise AssertionError('MFG-only request silently installed NR')
+    print(json.dumps({'checks':12,'result':'existing adoption plus fresh Skynizz-selected DX11 detection, exact-token full ReShade/Feeder/RenoDX/shader/model deployment, NR-off default, managed refresh, MFG-only refusal and original restore passed'}))
 finally:case.doCleanups()
 '''
 
@@ -72,7 +96,7 @@ class WindowsFeederTest(unittest.TestCase):
                                     env=env,capture_output=True,text=True,timeout=120)
             self.assertEqual(result.returncode,0,result.stderr[-10000:]+result.stdout[-3000:])
             receipt=json.loads(result.stdout.strip().splitlines()[-1])
-            self.assertEqual(receipt['checks'],7)
+            self.assertEqual(receipt['checks'],12)
             print('PASS: '+receipt['result'])
 
 

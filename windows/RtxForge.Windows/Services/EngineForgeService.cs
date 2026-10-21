@@ -323,18 +323,18 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         var warnings = (result?["warnings"] as JsonArray ?? []).OfType<JsonObject>()
             .Select(w => new ReviewBlock(Match(w["name"]?.ToString()), w["name"]?.ToString() ?? "", w["reason"]?.ToString() ?? "")).ToList();
         var prepared = new OperationReview(operation, result?["token"]?.ToString() ?? "", readyRows, blocked, warnings);
-        if (operation == "install" && mode == "nr-mfg")
+        if (operation == "install" && !supportedSubset && (mode is "nr-mfg" or "nr-only"))
         {
             var available = new List<SupportedOperationReview>();
-            if (readyRows.Count > 0 && readyRows.All(r => r.Game.IsFeeder))
+            if (mode == "nr-mfg" && readyRows.Count > 0 && readyRows.All(r => r.Game.UsesFeeder))
             {
                 available.Add(new(prepared, true, false, "Feeder provides neural rendering. Frame generation is unavailable for this route."));
                 prepared = prepared with { Ready = [] };
             }
             var candidates = targets.Where(g => !readyRows.Any(r => r.Game.Id == g.Id)
                 && !g.AntiCheatDetected && g.EngineRow?["exe"] is not null).ToArray();
-            var feeder = candidates.Where(g => g.IsFeeder).ToArray();
-            var nrOnly = candidates.Where(g => !g.IsFeeder && Settings.RuntimeProvider == "skynizz"
+            var feeder = candidates.Where(g => g.UsesFeeder).ToArray();
+            var nrOnly = candidates.Where(g => mode == "nr-mfg" && !g.UsesFeeder && Settings.RuntimeProvider == "skynizz"
                 && g.EngineRow?["native_dlss"]?.GetValue<bool>() == true
                 && g.EngineRow?["native_dlssg"]?.GetValue<bool>() != true).ToArray();
             foreach (var group in new[] { feeder, nrOnly })
@@ -343,13 +343,20 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
                 OperationReview supported;
                 try { supported = await PrepareCoreAsync(operation, group, tuning, "nr-only", progress, cancel, true); }
                 catch (EngineException) { continue; } // Keep the original refusal; no partial recipe was admitted.
+                // Keep route-specific setup problems even when other Feeder
+                // targets in this group can proceed.
+                foreach (var failure in supported.Blocked.Where(b => b.Game?.UsesFeeder == true))
+                {
+                    var index = blocked.FindIndex(b => b.Game?.Id == failure.Game!.Id);
+                    if (index >= 0) blocked[index] = failure;
+                }
                 if (supported.Ready.Count > 0)
-                    available.Add(new(supported, true, false, group[0].IsFeeder
+                    available.Add(new(supported, true, false, group[0].UsesFeeder
                         ? "Feeder provides neural rendering. Frame generation is unavailable for this route."
                         : "Use DirectX 12 and enable DLSS in the game for NR. Native frame generation is unavailable."));
                 else DiscardOperation(supported);
             }
-            var mfgOnly = candidates.Where(g => !g.IsFeeder && Settings.RuntimeProvider == "skynizz"
+            var mfgOnly = candidates.Where(g => mode == "nr-mfg" && !g.UsesFeeder && Settings.RuntimeProvider == "skynizz"
                 && !available.SelectMany(p => p.Review.Ready).Any(p => p.Game.Id == g.Id)
                 && g.EngineRow?["native_dlssg"]?.GetValue<bool>() == true
                 && blocked.Any(b => b.Game?.Id == g.Id && (b.Reason.Contains("NR runtime", StringComparison.OrdinalIgnoreCase)

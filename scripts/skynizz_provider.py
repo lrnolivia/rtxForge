@@ -396,7 +396,7 @@ def native_nr_refusal(exe, appid=None):
 
 def scan_rows(rows, mode='nr-only'):
     for row in rows:
-        if row.get('runtime_provider') == 'feeder':
+        if row.get('runtime_provider') == 'feeder' or row.get('install_provider') == 'feeder' and row.get('feeder_available') is True:
             continue
         if not row.get('exe'):
             row['blocked'] = 'No Windows executable found'

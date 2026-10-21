@@ -97,7 +97,7 @@ public sealed partial class GamePage : Page
     void Refresh()
     {
         StatusBadge.Text = game.AdoptionAvailable ? "Installed · Adoption available" : game.OfflineOnly ? "Installed · Offline only" : game.Blocked ? "Unsupported"
-            : game.IsFeeder ? "Feeder NR"
+            : game.UsesFeeder ? game.Installed ? "Feeder NR" : "Available · Feeder NR"
             : game.InstalledOnLinux ? "Installed on Linux"
             : game.Installed ? shell.Mode switch { "nr-only" => "NR Only", "nr-mfg" => "NR + MFG", _ => "MFG Only" }
             : "Ready for Features";

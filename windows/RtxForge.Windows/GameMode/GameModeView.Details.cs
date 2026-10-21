@@ -108,7 +108,7 @@ public sealed partial class GameModeView
         }
         badges.Children.Add(ui.Badge(g.Tested ? "Tested" : "Untested", GmTheme.Hex("#573d18"), GmTheme.Hex("#ffe8a2"), 0.62 * 1.2, g.Tested ? "" : ""));
         text.Children.Add(badges);
-        text.Children.Add(ui.Text(string.Join(" · ", new[] { g.Installed ? "Configured" : g.Blocked ? "Unsupported" : "Available", g.IsFeeder ? "Feeder NR" : ProviderName() }), 0.74, t.Muted));
+        text.Children.Add(ui.Text(string.Join(" · ", new[] { g.Installed ? "Configured" : g.Blocked ? "Unsupported" : "Available", g.UsesFeeder ? "Feeder NR" : ProviderName() }), 0.74, t.Muted));
         Grid.SetColumn(text, 1);
         identity.Children.Add(text);
         // The desktop Game Details hero actions, in the same order.

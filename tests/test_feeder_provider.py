@@ -132,6 +132,57 @@ class FeederTest(unittest.TestCase):
         self.assertFalse(found['feeder_managed'])
         self.assertEqual(found['runtime_provider'], 'feeder')
 
+    def test_clean_dx11_candidate_is_available_without_switching_packages(self):
+        row = self.game('clean-dx11') | {'blocked': 'No native DLSS-G detected', 'native_dlss': False}
+        before = self.files(row)
+        found = feeder.expand_rows(self.e, [row])[0]
+        self.assertEqual(found['blocked'], '')
+        self.assertTrue(found['feeder_available'])
+        self.assertEqual(found['install_provider'], 'feeder')
+        self.assertFalse(found.get('installed', False))
+        self.assertNotIn('runtime_provider', found)
+        import skynizz_provider
+        self.assertEqual(skynizz_provider.scan_rows([found], 'nr-mfg')[0]['blocked'], '')
+        self.assertEqual(self.files(row), before)
+
+    def test_scan_capability_does_not_allow_writes_to_a_running_game(self):
+        row = self.game('running-dx11') | {'blocked': 'No native DLSS-G detected'}
+        self.e._running_processes_under_root = lambda root: ['game.exe']
+        found = feeder.expand_rows(self.e, [row])[0]
+        self.assertTrue(found['feeder_available'])
+        review = self.prepare(found)
+        self.assertFalse(review['rows'])
+        self.assertIn('Close this game', review['blocked'][0]['reason'])
+
+    def test_known_dx11_native_nr_refusal_can_use_feeder(self):
+        row = self.game('bg3-dx11') | {'appid': '1086940', 'native_dlss': True}
+        found = feeder.expand_rows(self.e, [row])[0]
+        import skynizz_provider
+        self.assertTrue(found['feeder_available'])
+        self.assertFalse(skynizz_provider.scan_rows([found], 'nr-only')[0]['blocked'])
+
+    def test_sims_launcher_resolves_to_the_dx11_game_before_install(self):
+        row = self.game('sims')
+        directory = Path(row['game'])
+        (directory / 'TS4_Launcher_x64.exe').write_bytes(pe())
+        (directory / 'TS4_x64.exe').write_bytes(pe())
+        row['exe'] = 'TS4_Launcher_x64.exe'
+        found = feeder.expand_rows(self.e, [row])[0]
+        self.assertEqual(found['exe'], 'TS4_x64.exe')
+        self.assertTrue(found['feeder_available'])
+
+    def test_automatic_route_does_not_replace_native_or_unsupported_targets(self):
+        row = self.game('native') | {'blocked': 'Original reason', 'native_dlss': True}
+        self.assertNotIn('feeder_available', feeder.expand_rows(self.e, [row])[0])
+        row['native_dlss'] = False
+        row['anti_cheat'] = True
+        self.assertNotIn('feeder_available', feeder.expand_rows(self.e, [row])[0])
+        row['anti_cheat'] = False
+        self.e.pe_imported_dlls = lambda exe: {'d3d12.dll'}
+        found = feeder.expand_rows(self.e, [row])[0]
+        self.assertNotIn('feeder_available', found)
+        self.assertEqual(found['blocked'], 'Original reason')
+
     def test_nr_starts_off_unless_enabled_on_launch(self):
         row = self.game('startup-default')
         settings = dict(self.settings)
@@ -327,6 +378,18 @@ class FeederTest(unittest.TestCase):
         self.assertEqual(len(rows), 3)
         self.assertEqual(len({row['game'] for row in rows}), 3)
         self.assertTrue(all(row['installed'] and row['profile'] == 'NR Only' for row in rows))
+
+    def test_clean_collection_exposes_each_game_before_feeder_is_installed(self):
+        root = self.root / 'clean-collection'
+        for index in (1, 2, 3):
+            directory = root / f'Game/ME{index}/Binaries/Win64'
+            directory.mkdir(parents=True)
+            (directory / f'MassEffect{index}.exe').write_bytes(pe())
+        rows = feeder.expand_rows(self.e, [{'name': 'Mass Effect Legendary Edition', 'game': str(root),
+                                          'exe': 'Launcher.exe', 'native_dlss': False, 'blocked': 'No native DLSS-G detected'}])
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(len({row['game'] for row in rows}), 3)
+        self.assertTrue(all(row['feeder_available'] and not row.get('installed') and not row['blocked'] for row in rows))
 
     def test_feed_counters_and_requested_settings_do_not_prove_nr(self):
         feed = 'NGX runtime nvngx_dlssnr.dll: 310.9.16.0\n600 frames: feed GPU 1ms\n'

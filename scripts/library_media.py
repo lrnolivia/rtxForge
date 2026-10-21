@@ -11,6 +11,8 @@ DEFAULTS.update(mfg_provider='universal', nr_preset=None, feeder_source='', feed
 # Revision 1: Universal MFG replaced the integrated bridge as the default.
 MFG_DEFAULT_REVISION=1
 DEFAULTS['mfg_default_revision']=MFG_DEFAULT_REVISION
+# Experimental, Linux only: adopt a Windows Skynizz install under Proton.
+DEFAULTS['skynizz_proton']=False
 
 LEGACY_NR_STRENGTH={
     'off':0.0,

@@ -146,12 +146,12 @@ public sealed partial class GamePage : Page
             case "Overview":
                 if (g.OfflineOnly)
                 {
-                    var offline = new PreferencesGroup("Offline-only features", "Launch here to use the reviewed offline route. The normal Steam launch is unchanged. Online play requires removing these feature files. Adoption restore returns the previous modded setup.");
+                    var offline = new PreferencesGroup("Offline-only features", GameOverview.OfflineNote);
                     offline.Add(Prefs.ActionButton("Launch offline", (_, _) => _ = shell.LaunchOfflineAsync(g), accent: true));
                     PageHost.Children.Add(offline);
                 }
                 if (g.AdoptionAvailable)
-                    PageHost.Children.Add(Prefs.Row("Adoption available", "This package is installed. Adopt its current setup or back it up and clean install from rtxForge.", Prefs.ActionButton("Review Adoption", (_, _) => _ = shell.ReviewAdoptionAsync([g]))));
+                    PageHost.Children.Add(Prefs.Row("Adoption available", GameOverview.AdoptionNote, Prefs.ActionButton("Review Adoption", (_, _) => _ = shell.ReviewAdoptionAsync([g]))));
                 if (g.Blocked)
                     PageHost.Children.Add(new InfoBar
                     {
@@ -163,32 +163,22 @@ public sealed partial class GamePage : Page
                     {
                         IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Informational, Margin = new Thickness(0, 24, 0, 0),
                         Title = "Installed on Linux",
-                        Message = "These features were installed with rtxForge on Linux and already load on Windows. "
-                            + "Set Up for Windows hands them to rtxForge here, so you can repair, retune or restore them from Windows.",
+                        Message = GameOverview.LinuxNote,
                     });
-                var info = new PreferencesGroup("Game Information");
-                var facts = new PresetColumns(300, 3) { ColumnSpacing = 12, RowSpacing = 12 };
-                if (g.IsFeeder)
-                    info.Add(Prefs.Row("NR route", "Feeder NR · " + (g.EngineRow?["nr_runtime"]?["version"]?.ToString() ?? "Version unavailable")
-                        + (g.EngineRow?["nr_enabled"]?.GetValue<bool>() == true ? ". Enabled in saved settings." : ". Disabled in saved settings.")
-                        + " Check the running game with Diagnose NR.", glyph: ""));
-                foreach (var (title, value, glyph) in new (string, string?, string)[]
+                var overviewFacts = GameOverview.Facts(g);
+                var facts = new PresetColumns(280, overviewFacts.Count > 3 ? 4 : 3) { ColumnSpacing = 12, RowSpacing = 12, Margin = new Thickness(0, 20, 0, 0) };
+                foreach (var fact in overviewFacts)
                 {
-                    ("Library", g.Library, ""), ("Location", g.Location, ""),
-                    ("Compatibility", g.Blocked ? null : "Supported", ""), ("Metadata Source", g.MetadataSource, ""),
-                    ("Developer", g.Developer, ""), ("Release", g.Release, ""),
-                })
-                    if (!string.IsNullOrEmpty(value)) facts.Children.Add(Prefs.Row(title, value, glyph: glyph));
-                if (g.Installed && g.InstalledOn is "linux" or "windows")
-                {
-                    // The OS mark sits where the other rows have their glyph.
-                    var installedWith = Prefs.Row("Installed with", "rtxForge on " + CrossOs.Name(g.InstalledOn));
-                    ((Grid)installedWith.Child).Children.Insert(0,
-                        OsMark.Create(g.InstalledOn, 20, (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"]));
-                    facts.Children.Add(installedWith);
+                    var card = Prefs.Row(fact.Title, fact.Value, glyph: fact.Glyph);
+                    card.VerticalAlignment = VerticalAlignment.Top;
+                    facts.Children.Add(card);
                 }
-                info.Add(facts);
-                PageHost.Children.Add(info);
+                PageHost.Children.Add(facts);
+                var openFolder = Prefs.ActionButton("Open folder", (_, _) => _ = shell.OpenGameFolderAsync(g));
+                openFolder.IsEnabled = !shell.Service.IsPreview && Directory.Exists(g.Location);
+                var folder = Prefs.Row("Game folder", g.Location, openFolder, "\uE838");
+                folder.Margin = new Thickness(0, 12, 0, 0);
+                PageHost.Children.Add(folder);
                 break;
 
             case "Presets":
@@ -202,7 +192,7 @@ public sealed partial class GamePage : Page
                 var tuning = new PresetControlsView(shell.GameTuning(g), shell.Settings.OverlayControls == "classic", embedded: true);
                 tuning.SetMode(g.Profile?.Contains("Only", StringComparison.OrdinalIgnoreCase) == true
                     ? g.Profile.StartsWith("NR", StringComparison.OrdinalIgnoreCase) ? "nr-only" : "mfg-only" : shell.Mode,
-                    g.Installed, g.RuntimeProvider != "skynizz");
+                    g.Installed, g.RuntimeProvider != "skynizz", dynamicSupported: g.DynamicMfgAvailable);
                 // 16px gaps (the pods' own spacing): group spacing 4 + margin 12.
                 if (g.Installed) tuning.Margin = new Thickness(0, 12, 0, 0);
                 features.Add(tuning);

@@ -73,18 +73,22 @@ public sealed class OperationDialog
         dialog.Title = "Install Features";
         var editorWidth = Math.Max(280, Math.Min(960, ((shell.Content as FrameworkElement)?.XamlRoot?.Size.Width ?? 1120) - 120));
         dialog.Resources["ContentDialogMaxWidth"] = 1120.0;
-        var tuning = new TuningPanel(initial) { Width = editorWidth };
-        tuning.SetMode(shell.Mode);
+        var tuning = new PresetControlsView(initial, shell.Settings.OverlayControls == "classic", embedded: true) { Width = editorWidth };
+        tuning.SetMode(shell.Mode, legacy: shell.Settings.RuntimeProvider != "skynizz", dynamicSupported: shell.Settings.MfgProvider == "integrated");
         var body = new StackPanel { Spacing = 16 };
         body.Children.Add(Prefs.Label("Adjust your presets or continue. You can change these settings later in OptiScaler."));
-        if (shell.Settings.RuntimeProvider != "feeder") body.Children.Add(tuning);
+        var feeder = shell.Settings.RuntimeProvider == "feeder";
+        if (!feeder) body.Children.Add(tuning);
         var startup = new CheckBox { Content = "Enable NR on launch", IsChecked = shell.Settings.NrOnLaunch };
-        if (shell.Mode != "mfg-only") body.Children.Add(startup);
-        dialog.Content = body;
+        var separateStartup = shell.Settings.RuntimeProvider != "skynizz";
+        if (separateStartup && shell.Mode != "mfg-only") body.Children.Add(startup);
+        dialog.Content = new ScrollViewer { Content = body, HorizontalScrollMode = ScrollMode.Disabled,
+            MaxHeight = Math.Max(280, ((shell.Content as FrameworkElement)?.XamlRoot?.Size.Height ?? 900) - 280) };
         dialog.PrimaryButtonText = "Continue";
         dialog.CloseButtonText = "Cancel";
         dialog.DefaultButton = ContentDialogButton.Primary;
-        return await dialog.ShowAsync() == ContentDialogResult.Primary ? tuning.Value with { NrOnLaunch = startup.IsChecked == true } : null;
+        return await dialog.ShowAsync() == ContentDialogResult.Primary
+            ? separateStartup ? tuning.Value with { NrOnLaunch = startup.IsChecked == true } : tuning.Value : null;
     }
 
     // ---------- Checking (engine prepare: every target verified, nothing written) ----------

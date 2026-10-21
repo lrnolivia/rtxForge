@@ -15,39 +15,39 @@ public sealed partial class GameModeView
         OverlayHelper.ConfigureStartup(fresh);
         shell.ConfigureCompanionShortcut();
     }
-    Button OverlayToggle(string title, string description, Func<bool> get, Action<ForgeSettings, bool> set) =>
-        Choice(title, description, ["on", "off"], ["On", "Off"], () => get() ? "on" : "off", value => SetOverlay(s => set(s, value == "on")));
+    Button OverlayToggle(string title, string description, Func<bool> get, Action<ForgeSettings, bool> set, string? glyph = null) =>
+        Choice(title, description, ["on", "off"], ["On", "Off"], () => get() ? "on" : "off", value => SetOverlay(s => set(s, value == "on")), glyph);
 
     IReadOnlyList<SettingsGroup> OverlayGroups() =>
     [
         new("rtxForge panel", null,
         [
             Choice("Primary overlay", "Keep the rtxForge panel alongside the native menus, or use OptiScaler alone.",
-                ["rtxforge", "optiscaler", "game"], ["rtxForge sidebar", "Original OptiScaler", "rtxForge in-game (preview)"], () => shell.Settings.OverlayRenderer, value => SetOverlay(s => s.OverlayRenderer = value)),
+                ["rtxforge", "optiscaler", "game"], ["rtxForge sidebar", "Original OptiScaler", "rtxForge in-game (preview)"], () => shell.Settings.OverlayRenderer, value => SetOverlay(s => s.OverlayRenderer = value), glyph: "\uE7F4"),
             Choice("Controls", "Advanced uses OptiScaler labels and original units.", ["unified", "classic"], ["Unified", "Advanced"],
-                () => shell.Settings.OverlayControls, value => SetOverlay(s => s.OverlayControls = value)),
-            Choice("Window material", "Appearance of the standalone sidebar.", ["acrylic", "mica"], ["Acrylic", "Mica"], () => shell.Settings.OverlayMaterial, value => SetOverlay(s => s.OverlayMaterial = value)),
+                () => shell.Settings.OverlayControls, value => SetOverlay(s => s.OverlayControls = value), glyph: "\uE713"),
+            Choice("Window material", "Appearance of the standalone sidebar.", ["acrylic", "mica"], ["Acrylic", "Mica"], () => shell.Settings.OverlayMaterial, value => SetOverlay(s => s.OverlayMaterial = value), glyph: "\uE790"),
         ]),
         new("Shortcuts and helper", null,
         [
-            ui.RowButton("rtxForge shortcut", shell.Settings.PanelHotkey, OpenOverlayShortcut, description: "Choose an unused key or combination. Other overlays keep their shortcuts."),
-            OverlayToggle("Background overlay helper", "Keep the sidebar shortcut available after closing the manager.", () => shell.Settings.OverlayHelper, (s, value) => s.OverlayHelper = value),
-            OverlayToggle("Start helper with Windows", "Starts the helper for the rtxForge sidebar.", () => shell.Settings.OverlayStartWithWindows, (s, value) => s.OverlayStartWithWindows = value),
+            ui.RowButton("rtxForge shortcut", shell.Settings.PanelHotkey, OpenOverlayShortcut, description: "Choose an unused key or combination. Other overlays keep their shortcuts.", glyph: "\uE765"),
+            OverlayToggle("Background overlay helper", "Keep the sidebar shortcut available after closing the manager.", () => shell.Settings.OverlayHelper, (s, value) => s.OverlayHelper = value, glyph: "\uE7F8"),
+            OverlayToggle("Start helper with Windows", "Starts the helper for the rtxForge sidebar.", () => shell.Settings.OverlayStartWithWindows, (s, value) => s.OverlayStartWithWindows = value, glyph: "\uE7E8"),
         ]),
         new("OptiScaler", "Menu access and the welcome message are independent.",
         [
-            OverlayToggle("OptiScaler menu", "Keep NR and MFG installed when the menu is off.", () => shell.Settings.OptiScalerUi, (s, value) => s.OptiScalerUi = value),
-            Choice("OptiScaler shortcut", "Applies next game launch.", ["Insert", "F8", "Disabled"], ["Insert", "F8", "Disabled"], () => shell.Settings.OptiScalerHotkey, value => SetOverlay(s => s.OptiScalerHotkey = value)),
-            OverlayToggle("OptiScaler intro", "Startup message only.", () => shell.Settings.OptiScalerIntro, (s, value) => s.OptiScalerIntro = value),
+            OverlayToggle("OptiScaler menu", "Keep NR and MFG installed when the menu is off.", () => shell.Settings.OptiScalerUi, (s, value) => s.OptiScalerUi = value, glyph: "\uE700"),
+            Choice("OptiScaler shortcut", "Applies next game launch.", ["Insert", "F8", "Disabled"], ["Insert", "F8", "Disabled"], () => shell.Settings.OptiScalerHotkey, value => SetOverlay(s => s.OptiScalerHotkey = value), glyph: "\uE765"),
+            OverlayToggle("OptiScaler intro", "Startup message only.", () => shell.Settings.OptiScalerIntro, (s, value) => s.OptiScalerIntro = value, glyph: "\uE8F2"),
         ]),
         new("ReShade", "Menu access and the welcome message are independent.",
         [
-            OverlayToggle("ReShade menu", "Feeder NR and effects keep running when this is off.", () => shell.Settings.ReShadeUi, (s, value) => s.ReShadeUi = value),
-            OverlayToggle("ReShade welcome", "ReShade guide and RenoDX welcome dialog. Loading notices are separate.", () => shell.Settings.ReShadeIntro, (s, value) => s.ReShadeIntro = value),
+            OverlayToggle("ReShade menu", "Feeder NR and effects keep running when this is off.", () => shell.Settings.ReShadeUi, (s, value) => s.ReShadeUi = value, glyph: "\uE700"),
+            OverlayToggle("ReShade welcome", "ReShade guide and RenoDX welcome dialog. Loading notices are separate.", () => shell.Settings.ReShadeIntro, (s, value) => s.ReShadeIntro = value, glyph: "\uE8F2"),
         ]),
         new("Apply to games", "Menu and welcome changes take effect next launch.",
         [
-            ui.RowButton("Review installed games", null, () => _ = ReviewOverlayGames(), description: "Apply saved choices with backups. Running games are skipped."),
+            ui.RowButton("Review installed games", null, () => _ = ReviewOverlayGames(), description: "Apply saved choices with backups. Running games are skipped.", glyph: "\uE9D9"),
         ]),
     ];
 

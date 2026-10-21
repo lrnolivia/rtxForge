@@ -80,12 +80,31 @@ class SkynizzPolicyTest(unittest.TestCase):
         self.assertIn('Keep=please', text)
         self.assertIn('Shader=lcda', text)
         self.assertIn('OverrideInterpolationCount=5', text)
+        self.assertIn('OverrideForceDMFG=true', text)
         nr_only = provider.apply_controls(engine, '[DLSSG]\nOverrideInterpolationCount=auto\n', controls, 'nr-only')
         self.assertIn('OverrideInterpolationCount=auto', nr_only)
+        self.assertNotIn('OverrideForceDMFG', nr_only)
         mfg_only = provider.apply_controls(engine, '[DlssNr]\nEnabled=false\n', controls, 'mfg-only')
         self.assertIn('Enabled=false', mfg_only)
         for invalid in ({'colour': 4.1}, {'passes': 1.5}, {'intensity': float('nan')}, {'multiplier': 1}, {'file': 'anything'}, {'enabled': True}):
             with self.assertRaises(transactions.Refusal): provider.validate_controls(invalid)
+
+        # The UI's Auto / Custom / Dynamic tabs write the same two settings as the game panel.
+        for ratio, dynamic, expected in ((-1, 0, 'auto'), (2, 0, '1'), (5, 0, '4'), (6, 1, '5'), (0, 0, '0')):
+            with self.subTest(ratio=ratio, dynamic=dynamic):
+                values = {'multiplier': ratio, 'dynamic_mfg': dynamic}
+                updated = provider.apply_controls(engine, text, values)
+                self.assertIn('OverrideInterpolationCount=' + expected, updated)
+                self.assertIn('OverrideForceDMFG=' + ('true' if dynamic else 'false'), updated)
+                with tempfile.TemporaryDirectory() as folder:
+                    path = Path(folder) / 'OptiScaler.ini'; path.write_text(updated, encoding='utf-8')
+                    installed = provider.read_controls(path)
+                    for key, value in values.items(): self.assertEqual(installed[key], value)
+        with self.assertRaisesRegex(transactions.Refusal, 'integrated MFG route'):
+            provider.apply_controls(engine, text, {'dynamic_mfg': 1}, external_mfg=True)
+        external = provider.apply_controls(engine, text, {'dynamic_mfg': 0, 'multiplier': 2}, external_mfg=True)
+        self.assertEqual(external, text)
+        with self.assertRaises(transactions.Refusal): provider.validate_controls({'dynamic_mfg': 2})
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

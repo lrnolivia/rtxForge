@@ -11,7 +11,7 @@ public sealed class GlobalControlsView : StackPanel
 {
     readonly EngineForgeService service;
     readonly ComboBox nr = new() { Header = "Neural rendering", ItemsSource = new[] { "Leave as is", "Off", "On" }, SelectedIndex = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
-    readonly ComboBox mfg = new() { Header = "Frame generation", ItemsSource = new[] { "Leave as is", "Off", "2×", "3×", "4×", "5×", "6×", "Follow game" }, SelectedIndex = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
+    readonly ComboBox mfg = new() { Header = "Multi-Frame Generation", ItemsSource = new[] { "Leave as is", "Off", "2×", "3×", "4×", "5×", "6×", "Follow game" }, SelectedIndex = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
     readonly StackPanel entries = new() { Spacing = 12 };
     readonly TextBlock feedback = new() { TextWrapping = TextWrapping.Wrap };
     readonly Button apply = new() { Content = "Review changes", HorizontalAlignment = HorizontalAlignment.Stretch, Height = 44 };
@@ -29,9 +29,9 @@ public sealed class GlobalControlsView : StackPanel
             nr.Header = mfg.Header = null;
             nr.MinWidth = mfg.MinWidth = 180;
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(nr, "Neural rendering");
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(mfg, "Frame generation");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(mfg, "Multi-Frame Generation");
             Children.Add(Prefs.Row("Neural rendering", "Choose only the setting to change across installed games.", nr));
-            Children.Add(Prefs.Row("Frame generation", "Feeder games support NR only. Leave other games as they are, or choose a new mode.", mfg));
+            Children.Add(Prefs.Row("Multi-Frame Generation", "Feeder games support NR only. Leave other games as they are, or choose a new mode.", mfg));
             var results = new StackPanel { Spacing = 12 };
             results.Children.Add(progress); results.Children.Add(entries); results.Children.Add(feedback);
             reviewCard = new Border { Style = Prefs.GetStyle("ForgeSettingsCardStyle"), Child = results, Visibility = Visibility.Collapsed };

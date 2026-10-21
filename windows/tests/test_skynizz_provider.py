@@ -149,12 +149,14 @@ import skynizz_provider
 complete={item['key']:item['default'] for item in skynizz_provider.control_schema()}
 complete.update(enabled=0,intensity=.73,passes=3,colour=3.25,skin=-1,work_scale=.57,sharpen=1,sharp_override=1,sharpen_shader=2,sharpness=.63)
 full_before=files(fresh)
+before_controls=skynizz_provider.read_controls(fresh/'OptiScaler.ini')
 full_review=service.prepare([scan(fresh)],'nr-only','reset',visual_settings=settings|{'feature_controls':complete})
 assert full_review['rows'] and files(fresh)==full_before
 service.execute(full_review)
 found=skynizz_provider.read_controls(fresh/'OptiScaler.ini')
 for key,value in complete.items():
-    if key!='multiplier': assert found[key]==value,(key,found.get(key),value)
+    if key in ('multiplier','dynamic_mfg','mfg_saved_mode','mfg_saved_multiplier'): assert found.get(key)==before_controls.get(key),(key,found.get(key),before_controls.get(key))
+    else: assert found[key]==value,(key,found.get(key),value)
 assert json.loads((fresh/'.rtxforge-install.json').read_text())['nr_on_launch'] is False
 assert baseline(fresh)['nr_on_launch'] is False
 checks.append('all supported preset controls persist with exact units through reviewed apply; startup NR choice updates metadata and baseline')
@@ -354,6 +356,7 @@ assert review['title']=='Update NR + MFG bridge' and updated_release['sha256'] i
 assert (combined/'dxgi.dll').read_bytes()==fixtures.pe(),'review changed the loader'
 run(review)
 assert baseline(combined)['archive']['release']['sha256']==updated_release['sha256']
+assert scan(combined)['dynamic_mfg_available'] is True
 assert (combined/'dxgi.dll').read_bytes()==fixtures.pe()+b'updated bridge'
 assert (combined/'nvngx_dlssnr.dll').read_bytes()==model.read_bytes()
 assert (combined/'OptiScaler.ini').read_text()==combined_ini,'bridge upgrade reset tuning or MFG count'
@@ -421,6 +424,7 @@ later_engine=module(service.config,'y4my')
 run(review);record=baseline(external)
 assert record['mfg_provider']['ownership']=='managed-addon'
 assert scan(external)['mfg_multiplier']==4 and scan(external)['mfg_provider']=='mfg-unlock'
+assert scan(external)['dynamic_mfg_available'] is False
 assert record['compatibility_policy']['mfg_route']=='native-ada-mfg-unlock-addon'
 ini=(external/'OptiScaler.ini').read_text()
 for value in ('AdaMfgUnlock=false','AdaBlackwellKernels=false','OverrideInterpolationCount=auto','LoadReShade=true','Preset=2'):

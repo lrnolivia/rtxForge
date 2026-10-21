@@ -297,13 +297,18 @@ public sealed partial class GameModeView
     Border DetailPlate(UIElement content) => new()
     { Background = GmTheme.B(t.Card), CornerRadius = new CornerRadius(t.Px(16)), Padding = new Thickness(t.Px(20)), Child = content };
 
-    Border DetailFact(string title, string value, Button? action = null)
+    Border DetailFact(string title, string value, Button? action = null, string? glyph = null)
     {
         var lines = new StackPanel { Spacing = t.Px(10) };
-        lines.Children.Add(ui.Text(title, .88, weight: FontWeights.SemiBold));
+        var heading = new Grid { ColumnSpacing = t.Px(12) };
+        heading.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        heading.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+        if (glyph is not null) heading.Children.Add(ui.Icon(glyph, .8).With(icon => icon.VerticalAlignment = VerticalAlignment.Center));
+        var label = ui.Text(title, .88, weight: FontWeights.SemiBold, wrap: true);
+        Grid.SetColumn(label, 1); heading.Children.Add(label); lines.Children.Add(heading);
         lines.Children.Add(ui.P(value, .8));
         if (action is not null) { action.HorizontalAlignment = HorizontalAlignment.Right; lines.Children.Add(action); }
-        return DetailPlate(lines);
+        return DetailPlate(lines).With(card => card.VerticalAlignment = VerticalAlignment.Top);
     }
 
     void BuildSection(Game g, StackPanel content)
@@ -349,7 +354,8 @@ public sealed partial class GameModeView
                 if (presetsExpanded)
                 {
                     var tuning = shell.GameTuning(g);
-                    var (rows, value) = PresetRows(tuning, g.Installed && !g.Blocked, g.RuntimeProvider != "skynizz", embedded: true);
+                    var (rows, value) = PresetRows(tuning, g.Installed && !g.Blocked, g.RuntimeProvider != "skynizz", embedded: true,
+                        dynamicSupported: g.DynamicMfgAvailable);
                     content.Children.Add(ui.P("Only this game changes. Review the changes before applying."));
                     foreach (var row in rows) content.Children.Add(row);
                     var apply = ui.Button("Apply to this game", () => _ = RunOperationAsync("apply", [g], value()), GmKind.Primary, 0.85,
@@ -461,19 +467,18 @@ public sealed partial class GameModeView
                 break;
 
             default:
-                SectionTitle(content, "Overview");
-                if (g.AdoptionAvailable) content.Children.Add(ui.RowButton("Review Adoption", null, () => _ = shell.ReviewAdoptionAsync([g]), description: "Register this setup or back it up and clean install."));
-                if (g.OfflineOnly) content.Children.Add(ui.RowButton("Launch offline", null, () => _ = shell.LaunchOfflineAsync(g), description: "Use this reviewed route while feature files are installed. Online play is unavailable."));
-                content.Children.Add(ui.H2("Game Information", 1.06));
-                var info = DetailColumns(3);
-                info.Children.Add(DetailFact("Library", g.Library));
-                info.Children.Add(DetailFact("Location", g.Location, ui.Button("Open Folder", () => _ = shell.OpenGameFolderAsync(g),
-                    GmKind.Card, .8, enabled: !shell.Service.IsPreview && Directory.Exists(g.Location))));
-                info.Children.Add(DetailFact("Compatibility", g.Blocked ? g.BlockedReason ?? "Unsupported" : g.UsesFeeder ? "Feeder NR · NR only" : "Supported"));
-                info.Children.Add(DetailFact("Metadata Source", g.MetadataSource ?? g.Library));
+                if (g.AdoptionAvailable) content.Children.Add(DetailFact("Adoption available", GameOverview.AdoptionNote,
+                    ui.Button("Review Adoption", () => _ = shell.ReviewAdoptionAsync([g]), GmKind.Card, .8), "\uE930"));
+                if (g.OfflineOnly) content.Children.Add(DetailFact("Offline-only features", GameOverview.OfflineNote,
+                    ui.Button("Launch offline", () => _ = shell.LaunchOfflineAsync(g), GmKind.Card, .8), "\uE72E"));
+                if (g.Blocked) content.Children.Add(DetailFact("rtxForge will not modify this game", g.BlockedReason ?? "Unsupported", glyph: "\uE7BA"));
+                else if (g.InstalledOnLinux) content.Children.Add(DetailFact("Installed on Linux", GameOverview.LinuxNote, glyph: "\uE946"));
+                var overviewFacts = GameOverview.Facts(g);
+                var info = DetailColumns(overviewFacts.Count > 3 ? 4 : 3);
+                foreach (var fact in overviewFacts) info.Children.Add(DetailFact(fact.Title, fact.Value, glyph: fact.Glyph));
                 content.Children.Add(info);
-                content.Children.Add(ui.RowButton("Remove from library", null, () => ConfirmRemoveGames([g]), danger: true,
-                    description: "Hide this entry. Game files and recovery backups are kept.", enabled: !shell.Busy));
+                content.Children.Add(DetailFact("Game folder", g.Location, ui.Button("Open folder", () => _ = shell.OpenGameFolderAsync(g),
+                    GmKind.Card, .8, enabled: !shell.Service.IsPreview && Directory.Exists(g.Location)), "\uE838"));
                 break;
         }
     }
@@ -530,7 +535,7 @@ public sealed partial class GameModeView
     }
 
     /// <summary>Compact controller cards retain the overlay vocabulary and original values.</summary>
-    (List<UIElement> Rows, Func<Tuning> Value) PresetRows(Tuning initial, bool enabled = true, bool legacy = false, Action? changed = null, bool embedded = false)
+    (List<UIElement> Rows, Func<Tuning> Value) PresetRows(Tuning initial, bool enabled = true, bool legacy = false, Action? changed = null, bool embedded = false, bool dynamicSupported = true)
     {
         var values = FeatureControlSchema.Resolve(initial);
         var advanced = shell.Settings.OverlayControls == "classic";
@@ -674,8 +679,69 @@ public sealed partial class GameModeView
             Key(button, "preset-disclosure-" + title);
             var group = new StackPanel { Spacing = t.Px(12) }; group.Children.Add(button); group.Children.Add(body); return group;
         }
-        var rows = new List<UIElement>
-        { Card("Frame generation", ui.P("Requested multiplier · enable frame generation in the game.", .75), Choices("multiplier")) };
+        UIElement MfgControls()
+        {
+            var state = new MfgPreset(values);
+            var allowed = enabled && shell.Mode != "nr-only";
+            var header = new Grid { ColumnSpacing = t.Px(20) };
+            header.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+            header.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+            var title = ui.Text("Multi-Frame Generation", .96, weight: FontWeights.SemiBold, wrap: true);
+            title.VerticalAlignment = VerticalAlignment.Center; header.Children.Add(title);
+            var toggle = new ToggleSwitch { OnContent = "On", OffContent = "Off", MinWidth = 0,
+                IsOn = state.Enabled, IsEnabled = allowed, Foreground = GmTheme.B(t.Fg), FontSize = t.Em(.8) };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(toggle, "Multi-Frame Generation");
+            ui.Focusable(toggle); Key(toggle, "preset-mfg-enabled"); Grid.SetColumn(toggle, 1); header.Children.Add(toggle);
+            var tabs = new List<Button>(); var ratios = new List<Button>();
+            var caption = ui.P("Multiplier", .75); var description = ui.P("", .75);
+            var ratioGroup = new StackPanel { Spacing = t.Px(8) };
+            void Refresh()
+            {
+                void Selection(Button button, bool selected, bool canSelect, string label)
+                {
+                    button.Background = GmTheme.B(selected ? t.SegmentSelected : t.Card);
+                    button.Foreground = GmTheme.B(selected ? t.ActiveFg : t.Fg);
+                    button.IsEnabled = canSelect;
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, "Multi-Frame Generation " + label + (selected ? " selected" : ""));
+                }
+                for (var i = 0; i < tabs.Count; i++)
+                    Selection(tabs[i], state.Mode == i, allowed && state.Enabled && (i != 2 || !legacy && dynamicSupported), MfgPreset.Modes[i]);
+                for (var i = 0; i < ratios.Count; i++)
+                    Selection(ratios[i], state.Multiplier == MfgPreset.Multipliers[i], allowed && state.Enabled, MfgPreset.Multipliers[i] + "×");
+                ratioGroup.Visibility = state.Enabled && state.Mode != 0 ? Visibility.Visible : Visibility.Collapsed;
+                caption.Text = state.Mode == 2 ? "Maximum multiplier" : "Multiplier";
+                description.Text = allowed ? state.Description : "Unavailable for this package.";
+            }
+            void Change(Action change) { change(); state.Store(values); Refresh(); changed?.Invoke(); }
+            UIElement Segments(string[] captions, List<Button> buttons, Action<int> select, string key)
+            {
+                var line = new Controls.PresetColumns(t.Px(70), captions.Length) { ColumnSpacing = t.Px(4), RowSpacing = t.Px(4) };
+                for (var i = 0; i < captions.Length; i++)
+                {
+                    var index = i;
+                    var button = ui.Button(captions[i], () => Change(() => select(index)), GmKind.Card, .85,
+                        radius: 8, padding: new Thickness(t.Px(10)), minHeight: 42);
+                    button.HorizontalAlignment = HorizontalAlignment.Stretch;
+                    Key(button, "preset-mfg-" + key + "-" + i); GmUi.NoLift(button); ui.Focusable(button, -4);
+                    buttons.Add(button); line.Children.Add(button);
+                }
+                return new Border { Child = line, Background = GmTheme.B(t.Card), BorderBrush = GmTheme.B(t.Line),
+                    BorderThickness = new Thickness(t.Px(1)), CornerRadius = new CornerRadius(t.Px(12)), Padding = new Thickness(t.Px(4)) };
+            }
+            var modes = Segments(MfgPreset.Modes, tabs, state.SetMode, "mode");
+            ratioGroup.Children.Add(caption);
+            ratioGroup.Children.Add(Segments(MfgPreset.Multipliers.Select(n => n + "×").ToArray(), ratios,
+                i => state.SetMultiplier(MfgPreset.Multipliers[i]), "ratio"));
+            toggle.Toggled += (_, _) => Change(() =>
+            {
+                if (toggle.IsOn && state.Mode == 2 && (legacy || !dynamicSupported)) state.SetMode(1);
+                state.SetEnabled(toggle.IsOn);
+            });
+            ToolTipService.SetToolTip(tabs[2], "Requires the integrated MFG package and a compatible game and driver.");
+            Refresh();
+            return Card("", header, modes, ratioGroup, description);
+        }
+        var rows = new List<UIElement> { MfgControls() };
         var primary = new Controls.PresetColumns(t.Px(560), 2) { ColumnSpacing = t.Px(28), RowSpacing = t.Px(28) };
         primary.Children.Add(Card("Neural rendering", Field(Definition("enabled")), Choices("style"), Field(Definition("intensity")),
             Pair(Field(Definition("preset")), Field(Definition("passes")))));

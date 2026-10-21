@@ -33,7 +33,8 @@ public sealed partial class GameModeView
         page.Children.Add(head);
         var fields = new StackPanel { Spacing = t.Px(16), Padding = new Thickness(t.Px(4), t.Px(4), t.Px(4), t.Px(8)) };
         Action? refreshFooter = null;
-        var (rows, value) = PresetRows(shell.Settings.Presets, changed: () => refreshFooter?.Invoke());
+        var (rows, value) = PresetRows(shell.Settings.Presets, legacy: shell.Settings.RuntimeProvider != "skynizz", changed: () => refreshFooter?.Invoke(),
+            dynamicSupported: shell.Settings.MfgProvider == "integrated");
         presetValue = value;
         foreach (var row in rows) fields.Children.Add(row);
         var scroll = new ScrollViewer { Content = fields, HorizontalScrollMode = ScrollMode.Disabled };
@@ -144,8 +145,9 @@ public sealed partial class GameModeView
 
     UIElement BuildSettings()
     {
-        var grid = new Grid { ColumnSpacing = t.Px(40), Padding = new Thickness(t.Px(56), t.Px(32), t.Px(56), t.Px(8)), RowSpacing = t.Px(22) };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(t.Px(ActualWidth <= 1050 ? 180 : ActualWidth <= 1500 ? 220 : 270)) });
+        var side = t.Px(ActualWidth <= 1050 ? 24 : 40);
+        var grid = new Grid { ColumnSpacing = t.Px(24), Padding = new Thickness(side, t.Px(32), side, t.Px(8)), RowSpacing = t.Px(22) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(t.Px(ActualWidth <= 1050 ? 180 : 232)) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -196,20 +198,19 @@ public sealed partial class GameModeView
         // Independent semantic lanes avoid the empty cells made by unequal groups
         // sharing one grid row. Narrow layouts restore the original group order.
         var groupHost = new Grid();
-        var groups = new Grid { ColumnSpacing = t.Px(28), HorizontalAlignment = HorizontalAlignment.Left };
+        var groups = new Grid { ColumnSpacing = t.Px(24), HorizontalAlignment = HorizontalAlignment.Stretch };
         groupHost.Children.Add(groups);
-        bool? twoLanes = null;
+        var laneCount = 0;
         void LayoutGroups(double width)
         {
             if (width <= 0) return;
-            var wide = sections.Count > 1 && width >= t.Px(1268);
-            groups.Width = Math.Min(width, t.Px(wide ? 1440 : 1000));
-            if (twoLanes == wide) return;
-            twoLanes = wide;
+            var count = Math.Clamp((int)((width + groups.ColumnSpacing) / (t.Px(680) + groups.ColumnSpacing)), 1, Math.Min(3, Math.Max(1, sections.Count)));
+            if (laneCount == count) return;
+            laneCount = count;
             var focused = FocusedWithin(groups);
             foreach (var lane in groups.Children.OfType<StackPanel>()) lane.Children.Clear();
             groups.Children.Clear(); groups.ColumnDefinitions.Clear();
-            var lanes = Enumerable.Range(0, wide ? 2 : 1).Select(_ => new StackPanel { Spacing = t.Px(28) }).ToArray();
+            var lanes = Enumerable.Range(0, count).Select(_ => new StackPanel { Spacing = t.Px(28) }).ToArray();
             for (var index = 0; index < lanes.Length; index++)
             {
                 groups.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
@@ -217,7 +218,7 @@ public sealed partial class GameModeView
             }
             for (var index = 0; index < sections.Count; index++)
             {
-                var lane = !wide ? 0 : settingsSection switch
+                var lane = count != 2 ? index % count : settingsSection switch
                 {
                     "Graphics" => index == 1 ? 1 : 0,
                     "Overlay" or "Library" => index < 2 ? 0 : 1,
@@ -237,7 +238,7 @@ public sealed partial class GameModeView
     }
 
     /// <summary>A choice row opens its options; opening or dismissing never changes the setting.</summary>
-    Button Choice(string title, string? description, string[] keys, string[] captions, Func<string> get, Action<string> set)
+    Button Choice(string title, string? description, string[] keys, string[] captions, Func<string> get, Action<string> set, string? glyph = null)
     {
         string Caption() => captions[Math.Max(0, Array.IndexOf(keys, get()))];
         Button? row = null;
@@ -248,7 +249,7 @@ public sealed partial class GameModeView
             shell.SaveSettings();
             Render(keepFocus: true);
         }
-        row = ui.RowButton(title, Caption(), () => OpenChoiceMenu(row!, title, captions, Math.Max(0, Array.IndexOf(keys, get())), Choose), description: description);
+        row = ui.RowButton(title, Caption(), () => OpenChoiceMenu(row!, title, captions, Math.Max(0, Array.IndexOf(keys, get())), Choose), description: description, glyph: glyph);
         Key(row, "choice-" + title);
         return row;
     }

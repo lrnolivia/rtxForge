@@ -2248,7 +2248,8 @@ def _reset_visual_settings(game: Game, *, dry_run: bool = False, nr_strength: st
                 preset_before = preset_path.read_bytes()
                 preset = json.loads(preset_before.decode('utf-8-sig'))
                 require(preset.get('schema') == 1 and isinstance(preset.get('changes'), dict), 'Saved preset needs review first')
-                values_to_save = {k: v for k, v in feature_controls.items() if k != 'multiplier' or mode != 'nr-only'}
+                mfg_keys = {field['key'] for field in skynizz_provider.control_schema() if field['group'] == 'Frame generation'}
+                values_to_save = {k: v for k, v in feature_controls.items() if k not in mfg_keys or mode != 'nr-only'}
                 if mode == 'mfg-only': values_to_save = {k: v for k, v in values_to_save.items() if next(f for f in skynizz_provider.control_schema() if f['key'] == k)['section'] != 'DlssNr'}
                 preset['changes'].update(values_to_save)
                 skynizz_provider.validate_controls(preset['changes'])

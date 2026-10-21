@@ -2851,6 +2851,14 @@ headerbar, .titlebar {
     min-width: 0;
     background: transparent;
 }
+.forge-brand-reveal {
+    transition: opacity 280ms cubic-bezier(0.1, 0.9, 0.2, 1), transform 280ms cubic-bezier(0.1, 0.9, 0.2, 1);
+}
+.forge-brand-reveal.brand-hidden {
+    opacity: 0;
+    transform: translateX(-16px);
+    transition: opacity 140ms ease-in, transform 140ms ease-in;
+}
 .forge-sidebar-brand {
     padding: 18px 12px 12px 22px;
 }
@@ -5247,12 +5255,18 @@ class Window(Adw.ApplicationWindow):
         header=Gtk.Box(spacing=10)
         header.add_css_class('settings-sidebar-header')
         header.add_css_class('forge-sidebar-brand')
+        # The brand keeps its slot while hidden so nothing beside it shifts;
+        # it fades and slides in once the Library hero is out of view.
+        brand=Gtk.Box(spacing=10,hexpand=True)
+        brand.add_css_class('forge-brand-reveal')
+        self.sidebar_brand=brand
         mark=make_brand_icon(30)
         mark.set_valign(Gtk.Align.CENTER)
-        header.append(mark)
+        brand.append(mark)
         title=label('rtxForge','forge-brand-title')
         title.set_wrap(False);title.set_valign(Gtk.Align.CENTER);title.set_hexpand(True)
-        header.append(title)
+        brand.append(title)
+        header.append(brand)
         menu.set_valign(Gtk.Align.CENTER)
         menu.add_css_class('flat')
         header.append(menu)
@@ -5325,6 +5339,14 @@ class Window(Adw.ApplicationWindow):
             revealer.set_reveal_child(shown)
             if not shown and not revealer.get_child_revealed():revealer.set_visible(False)
         self.header_title_stack.set_visible_child_name('presets' if presets else 'dashboard' if library else 'page')
+        # Windows ShowBrand: no sidebar brand while the full Library hero
+        # shows its own logo and wordmark.
+        brand=getattr(self,'sidebar_brand',None)
+        if brand is not None:
+            hero_visible=library and not presets and not getattr(self,'_sticky_wanted',False)
+            if hero_visible:brand.add_css_class('brand-hidden')
+            else:brand.remove_css_class('brand-hidden')
+            brand.set_can_target(not hero_visible)
         self.page_title.set_visible(not library)
         # Without a centered title the Library's start and end groups size
         # independently instead of reserving symmetric space.

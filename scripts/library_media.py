@@ -8,6 +8,9 @@ DEFAULTS={'nr_on_launch':False,'game_artwork':{},'steam_artwork_profile':None,'s
 DEFAULTS.update(mfg_provider='universal', nr_preset=None, feeder_source='', feeder_backups='',
                 panel_hotkey='Delete', overlay_helper=True, overlay_start_with_windows=True, overlay_material='acrylic',
                 overlay_controls='unified', overlay_renderer='rtxforge', optiscaler_hotkey='Insert')
+# Revision 1: Universal MFG replaced the integrated bridge as the default.
+MFG_DEFAULT_REVISION=1
+DEFAULTS['mfg_default_revision']=MFG_DEFAULT_REVISION
 
 LEGACY_NR_STRENGTH={
     'off':0.0,
@@ -45,7 +48,12 @@ def normalize_strength(value,kind):
 def settings_path(config):return storage(config)/'desktop/settings.json'
 def load_settings(config):
     try:
-        settings={**copy.deepcopy(DEFAULTS),**json.loads(settings_path(config).read_text())}
+        stored=json.loads(settings_path(config).read_text())
+        settings={**copy.deepcopy(DEFAULTS),**stored}
+        # Settings from before Universal MFG became the default kept the old default once.
+        if isinstance(stored,dict) and 'mfg_default_revision' not in stored and stored.get('mfg_provider')=='integrated':
+            settings['mfg_provider']='universal'
+        settings['mfg_default_revision']=MFG_DEFAULT_REVISION
         settings['library_columns']=max(3,min(9,int(settings.get('library_columns',7))))
         settings['nr_strength']=normalize_strength(settings.get('nr_strength'),'nr')
         settings['sharpening_strength']=normalize_strength(settings.get('sharpening_strength'),'sharpness')

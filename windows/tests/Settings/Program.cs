@@ -160,3 +160,14 @@ foreach (var raw in new[] { "true", "false", "null", "\"unknown\"" })
         EngineRow = System.Text.Json.Nodes.JsonNode.Parse("{\"dynamic_mfg_available\":" + raw + "}")!.AsObject() };
     if (game.DynamicMfgAvailable != (raw == "true")) throw new Exception("Dynamic MFG availability was invented for an unknown route");
 }
+foreach (var (stored, expected) in new[] { ("{\"mfg_provider\":\"integrated\"}", "universal"),
+             ("{\"mfg_provider\":\"integrated\",\"mfg_default_revision\":1}", "integrated"),
+             ("{\"mfg_provider\":\"mfg-unlock\"}", "mfg-unlock"), ("{}", "universal") })
+{
+    var loaded = JsonSerializer.Deserialize<ForgeSettings>(stored)!.Migrated();
+    if (loaded.MfgProvider != expected || loaded.MfgDefaultRevision != 1)
+        throw new Exception("The Universal default migration changed a deliberate choice or skipped the old default: " + stored);
+    if (JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(loaded))!.Migrated().MfgProvider != expected)
+        throw new Exception("The Universal default migration ran twice");
+}
+Console.WriteLine("PASS: the old integrated default moves to Universal once; later choices stay.");

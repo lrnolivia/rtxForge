@@ -21,6 +21,7 @@ public sealed class PresetControlsView : UserControl
     string mode = "nr-mfg";
     bool available = true, legacy;
     bool dynamicSupported = true;
+    string dynamicDetail = "";
     public event EventHandler? Changed;
 
     public PresetControlsView(Tuning initial, bool advanced = false, bool embedded = false)
@@ -129,7 +130,7 @@ public sealed class PresetControlsView : UserControl
             if (toggle.IsOn && mfgPreset.Mode == 2 && (legacy || !dynamicSupported)) mfgPreset.SetMode(1);
             mfgPreset.SetEnabled(toggle.IsOn);
         });
-        ToolTipService.SetToolTip(tabs[2], "Requires the integrated MFG package and a compatible game and driver.");
+        ToolTipService.SetToolTip(tabs[2], "Available where the game reports Dynamic MFG support.");
         refreshMfg = () =>
         {
             refreshing = true;
@@ -146,7 +147,8 @@ public sealed class PresetControlsView : UserControl
                 { ratios[i].IsChecked = mfgPreset.Multiplier == MfgPreset.Multipliers[i]; ratios[i].IsEnabled = enabled && mfgPreset.Enabled; }
                 ratioGroup.Visibility = mfgPreset.Mode != 0 && mfgPreset.Enabled ? Visibility.Visible : Visibility.Collapsed;
                 caption.Text = mfgPreset.Mode == 2 ? "Maximum multiplier" : "Multiplier";
-                description.Text = !enabled ? "Unavailable for this package." : mfgPreset.Description;
+                description.Text = !enabled ? "Unavailable for this package."
+                    : mfgPreset.Description + (mfgPreset.Enabled && !dynamicSupported && dynamicDetail != "" ? "\nDynamic: " + dynamicDetail : "");
             }
             finally { refreshing = false; }
         };
@@ -246,8 +248,8 @@ public sealed class PresetControlsView : UserControl
         }
     }
     public bool HasChanges(Tuning reference) => !JsonNode.DeepEquals(values, FeatureControlSchema.Resolve(reference));
-    public void SetMode(string selected, bool enabled = true, bool legacy = false, bool dynamicSupported = true)
-    { mode = selected; available = enabled; this.legacy = legacy; this.dynamicSupported = dynamicSupported; RefreshAvailability(); }
+    public void SetMode(string selected, bool enabled = true, bool legacy = false, bool dynamicSupported = true, string dynamicDetail = "")
+    { mode = selected; available = enabled; this.legacy = legacy; this.dynamicSupported = dynamicSupported; this.dynamicDetail = dynamicDetail; RefreshAvailability(); }
     void RefreshAvailability()
     {
         refreshMfg?.Invoke();

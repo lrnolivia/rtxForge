@@ -234,7 +234,7 @@ public sealed partial class GamePage : Page
                 var tuning = new PresetControlsView(shell.GameTuning(g), shell.Settings.OverlayControls == "classic", embedded: true);
                 tuning.SetMode(g.Profile?.Contains("Only", StringComparison.OrdinalIgnoreCase) == true
                     ? g.Profile.StartsWith("NR", StringComparison.OrdinalIgnoreCase) ? "nr-only" : "mfg-only" : shell.Mode,
-                    g.Installed, g.RuntimeProvider != "skynizz", dynamicSupported: g.DynamicMfgAvailable);
+                    g.Installed, g.RuntimeProvider != "skynizz", dynamicSupported: g.DynamicMfgAvailable, dynamicDetail: g.DynamicMfgDetail);
                 // 16px gaps (the pods' own spacing): group spacing 4 + margin 12.
                 if (g.Installed) tuning.Margin = new Thickness(0, 12, 0, 0);
                 features.Add(tuning);

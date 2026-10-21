@@ -79,8 +79,14 @@ class DesktopService:
                         row['runtime_provider']=current.get('provider_id','y4my')
                         component=((current.get('archive') or {}).get('release') or {}).get('mfg_component')
                         universal=bool(component) and component.get('id')=='universal'
-                        # OptiScaler owns the count with the Universal plugin, so Dynamic stays available.
-                        row['dynamic_mfg_available']=current.get('provider_id')=='skynizz' and (not component or universal)
+                        row['dynamic_mfg_available']=current.get('provider_id')=='skynizz' and not component
+                        if universal:
+                            # Only where the plugin has seen the game's DLSS-G report Dynamic support.
+                            import universal_mfg_provider
+                            support=universal_mfg_provider.dynamic_support(config.parent)
+                            row['dynamic_mfg_available']=support is True
+                            row['dynamic_mfg_detail']=('' if support else 'Not supported by this game' if support is False
+                                                       else 'Launch the game once to check Dynamic support')
                         row['effects_enabled']=ini.get('DLSSG',{}).get('AdaMfgUnlock','false').lower()=='true'
                         if universal:
                             row['effects_enabled']=ini.get('Plugins',{}).get('LoadAsiPlugins','false').split(';',1)[0].strip().lower()=='true'

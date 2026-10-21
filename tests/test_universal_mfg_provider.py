@@ -2,6 +2,7 @@
 import ast
 import copy
 import hashlib
+import json
 import re
 from pathlib import Path
 import sys
@@ -121,6 +122,41 @@ class UniversalMfgTest(unittest.TestCase):
             # Repairing the same recorded component is allowed with its own plugin present.
             same = {'current': {'archive': {'release': {'mfg_component': provider.pinned()}}}}
             provider.check_target(e, game, same)
+
+    def test_plugin_run_reports_left_by_a_restore_do_not_block_reinstall(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            e = SimpleNamespace(Y4MY_PROVIDER={'mfg_component': provider.pinned()})
+            (target / 'RTXMFG-halocampaignevolved-B3DAE402A7B7D259.log').write_text('run')
+            (target / provider.STATUS).write_text('{}')
+            provider.check_target(e, SimpleNamespace(target_dir=target), None)
+
+    def test_dynamic_support_follows_the_plugin_report(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            self.assertIsNone(provider.dynamic_support(target))
+            for report, expected in [({'dynamicMfgSupportKnown': True, 'dynamicMfgSupported': True}, True),
+                                     ({'dynamicMfgSupportKnown': True, 'dynamicMfgSupported': False}, False),
+                                     ({'dynamicMfgSupportKnown': False, 'dynamicMfgSupported': False}, None),
+                                     ([], None)]:
+                with self.subTest(report=report):
+                    (target / provider.STATUS).write_text(json.dumps(report))
+                    self.assertIs(provider.dynamic_support(target), expected)
+            (target / provider.STATUS).write_text('{not json')
+            self.assertIsNone(provider.dynamic_support(target))
+
+    def test_dynamic_preset_is_refused_only_where_the_plugin_reported_no_support(self):
+        e = SimpleNamespace(set_ini_value=set_ini_value, Y4MY_PROVIDER={'mfg_component': provider.pinned()},
+                            visual_defaults=lambda nr, mfg, sharp: {'DLSSG': {}})
+        with tempfile.TemporaryDirectory() as directory:
+            game = SimpleNamespace(target_dir=Path(directory), exe=None, appid=None)
+            dynamic = {'multiplier': 4, 'dynamic_mfg': 1}
+            text, _ = skynizz_provider.configure(e, b'[DLSSG]\n', mode='nr-mfg', game=game, controls=dynamic)
+            self.assertRegex(text, r'(?m)^OverrideForceDMFG=\s*true\b')
+            (game.target_dir / provider.STATUS).write_text(json.dumps({'dynamicMfgSupportKnown': True, 'dynamicMfgSupported': False}))
+            with self.assertRaisesRegex(t.Refusal, 'Dynamic'):
+                skynizz_provider.configure(e, b'[DLSSG]\n', mode='nr-mfg', game=game, controls=dynamic)
+            skynizz_provider.configure(e, b'[DLSSG]\n', mode='nr-mfg', game=game, controls={'multiplier': 4, 'dynamic_mfg': 0})
 
 
 if __name__ == '__main__':

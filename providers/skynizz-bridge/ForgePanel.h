@@ -837,6 +837,8 @@ inline bool Draw(bool& visible, float scale)
         nlohmann::json changes = nlohmann::json::object();
         for(const auto& field : controls) if(Available(field))
         { auto n=field.get(cfg); if(field.kind == Kind::slider) changes[field.key]=n; else changes[field.key]=int(n); }
+        // Protocol 7 replays Dynamic; it lives in OptiScaler's config, not the control list.
+        if(mfgAllowed) changes["dynamic_mfg"]=int(cfg.FGDLSSGOverrideForceDMFG.value_or_default());
         Send({{"op","save"},{"changes",changes}});
     }
     ImGui::PopStyleColor(2); ImGui::SameLine();

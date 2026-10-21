@@ -7,12 +7,12 @@ function windows(view, width, height, alt, label, caption, extra = {}) {
     width, height, radius: 16, alt, label, caption, provenance, ...extra
   };
 }
-function install(mode, game, sizes) {
+function install(mode, game, width, height) {
   const captions = { review: 'Review Installation', progress: 'Installing features', done: 'Done' };
-  const frames = Object.entries(sizes).map(([step, [width, height]]) => windows(
+  const frames = Object.keys(captions).map(step => windows(
     `${mode}-install-${step}`, width, height,
-    `${game} ${captions[step]} panel in the native Windows ${mode === 'desktop' ? 'desktop' : 'Game Mode'} app.`,
-    `${mode === 'desktop' ? 'Desktop' : 'Game Mode'} install: ${captions[step]}`, 'Install', { radius: mode === 'desktop' ? 14 : 22 }
+    `${game} ${captions[step]} in the native Windows ${mode === 'desktop' ? 'desktop' : 'Game Mode'} app, with the game artwork and navigation visible${mode === 'game-mode' ? ', including Xbox controller glyphs' : ''}.`,
+    `${mode === 'desktop' ? 'Desktop' : 'Game Mode'} install: ${captions[step]}`, 'Install'
   ));
   return { ...frames[0], sequence: frames.slice(1) };
 }
@@ -40,7 +40,7 @@ export const SCREENSHOTS = {
     'desktop-details': windows('desktop-details', 2985, 1781,
       'The Witcher 3: Wild Hunt — Remastered Overview in the Windows desktop app, with the expanded sidebar.',
       'Desktop game details', 'Game Details'),
-    'desktop-install': install('desktop', 'inZOI', { review: [667, 574], progress: [998, 478], done: [858, 338] }),
+    'desktop-install': install('desktop', 'inZOI', 2556, 1437),
     presets: windows('desktop-presets', 2985, 1781,
       'Standalone Windows Presets with frame generation, neural rendering and image-tuning controls.',
       'Desktop presets', 'Presets', { carousel: false }),
@@ -57,7 +57,13 @@ export const SCREENSHOTS = {
     'game-mode-presets': windows('game-mode-presets', 2560, 1438,
       'Windows Game Mode Presets with frame generation, neural rendering, image tuning and Xbox controller glyphs.',
       'Game Mode presets', 'Presets'),
-    'game-mode-install': install('game-mode', 'Avatar: Frontiers of Pandora', { review: [1268, 565], progress: [1268, 570], done: [1268, 290] })
+    'game-mode-install': install('game-mode', 'Avatar: Frontiers of Pandora', 2560, 1438),
+    overlay: {
+      src: 'assets/screenshots/windows-control-overlay.webp', width: 2560, height: 1440, radius: 16,
+      alt: 'rtxForge overlay open during actual CONTROL Resonant gameplay, beside a close-up of the character.',
+      label: 'Windows gameplay overlay', caption: 'Overlay', carousel: false,
+      provenance: 'Native Windows overlay over actual CONTROL Resonant gameplay · October 21, 2026. Work in progress; captured appearance is unchanged.'
+    }
   }
 };
 export function captureForTheme(capture, theme) {

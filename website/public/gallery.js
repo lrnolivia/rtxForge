@@ -6,10 +6,22 @@ export function createGallery() {
   const image = byId('gallery-image'), previous = byId('gallery-previous');
   const stage = byId('gallery-stage'), dots = byId('gallery-dots');
   const rotation = byId('gallery-rotation');
+  const sequence = byId('gallery-sequence');
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   let os = 'linux', interfaceMode = 'desktop', captures = [], index = 0, frame = 0, generation = 0, timer;
   let rotating = !reducedMotion.matches, hovering = false, visible = false, loading = false, failed = false, pointerRotation;
   const frames = view => view ? [view, ...(view.selected ? [view.selected] : view.sequence || [])] : [];
+  function sequenceControls(view) {
+    sequence.hidden = !view?.sequence;
+    if (sequence.hidden) return;
+    if (!sequence.children.length) ['Review', 'Installing', 'Done'].forEach((label, i) => {
+      const button = document.createElement('button'); button.type = 'button';
+      button.textContent = label; button.setAttribute('aria-controls', 'gallery-image');
+      button.addEventListener('click', () => show(index, { manual: true, selection: i }));
+      sequence.append(button);
+    });
+    [...sequence.children].forEach((button, i) => button.setAttribute('aria-pressed', String(i === frame)));
+  }
 
   function schedule() {
     clearTimeout(timer);
@@ -52,6 +64,7 @@ export function createGallery() {
     const view = captures[index]?.[1];
     frame = Math.min(selection, Math.max(0, frames(view).length - 1));
     const capture = view && { ...view, ...frames(view)[frame] };
+    sequenceControls(view);
     [...dots.children].forEach((button, i) => {
       if (i === index) button.setAttribute('aria-current', 'true');
       else button.removeAttribute('aria-current');

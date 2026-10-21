@@ -110,6 +110,7 @@
           </div>
           <figcaption class="gallery-caption">
             <p id="gallery-title"></p>
+            <div class="media-sequence" id="gallery-sequence" role="group" aria-label="Installation steps" hidden></div>
             <div class="gallery-controls" id="gallery-controls" hidden>
               <div class="gallery-dots" id="gallery-dots" role="group" aria-label="Choose an app screenshot"></div>
               <button class="gallery-rotation" id="gallery-rotation" type="button" aria-label="Pause screenshot carousel"><img id="gallery-rotation-icon" src="assets/player-pause.svg" width="17" height="17" alt=""></button>
@@ -159,6 +160,13 @@
                 </article>
               </div>
             </div>
+            <figure class="feature-media" id="feature-install-media" hidden>
+              <img id="feature-install-image" alt="" loading="lazy" decoding="async">
+              <figcaption>
+                <div class="media-sequence" id="feature-install-steps" role="group" aria-label="Installation screenshots"></div>
+                <span class="sr-only" id="feature-install-provenance"></span>
+              </figcaption>
+            </figure>
           </li>
           <li class="feature-panel feature-play">
             <div class="feature-copy">

@@ -9,17 +9,29 @@ namespace RtxForge.Windows.Controls;
 public sealed class OverlayPreferencesView : StackPanel
 {
     readonly TextBlock feedback = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
+    readonly List<PreferencesGroup> groups = [];
+    readonly bool groupCards;
+    PreferencesGroup? group;
+    public IReadOnlyList<PreferencesGroup> Groups => groups;
 
-    public OverlayPreferencesView(Action<ForgeSettings> applied, EngineForgeService? engine = null)
+    public OverlayPreferencesView(Action<ForgeSettings> applied, EngineForgeService? engine = null, bool groupCards = false)
     {
+        this.groupCards = groupCards;
         Spacing = 20;
         var current = ForgeSettings.Load();
+        Heading("rtxForge panel");
         var renderer = Choice("Overlay", ["rtxForge sidebar", "Original OptiScaler overlay", "rtxForge in-game (preview)"], current.OverlayRenderer == "game" ? 2 : current.OverlayRenderer == "optiscaler" ? 1 : 0);
         Note("The in-game preview needs the new renderer package. It draws inside the game and opens only there. The sidebar is a separate helper window.");
         var layout = Choice("Controls", ["Unified", "Advanced"], current.OverlayControls == "classic" ? 1 : 0);
         Note("Unified uses simple labels and percentages. Advanced uses OptiScaler labels and original units for the sidebar’s live controls.");
+        var material = Choice("Window material", ["Acrylic", "Mica"], current.OverlayMaterial == "mica" ? 1 : 0);
+        Heading("Shortcuts and helper");
         var key = new OverlayShortcutPicker(current.PanelHotkey);
-        Children.Add(key);
+        AddControl(key);
+        var helper = Switch("Background overlay helper", current.OverlayHelper);
+        Note("Keep the rtxForge shortcut available after closing the manager. OptiScaler’s panel runs inside the game.");
+        var startup = Switch("Start with Windows", current.OverlayStartWithWindows);
+        Note("Starts only the helper, when the rtxForge overlay is selected.");
         Heading("OptiScaler");
         var optiUi = Switch("In-game menu", current.OptiScalerUi);
         var optiIntro = Switch("Intro message", current.OptiScalerIntro);
@@ -30,15 +42,10 @@ public sealed class OverlayPreferencesView : StackPanel
         var reshadeUi = Switch("In-game menu", current.ReShadeUi);
         var reshadeIntro = Switch("Welcome messages", current.ReShadeIntro);
         Note("Controls the ReShade guide and RenoDX welcome dialog, matching the TS4 and Mass Effect setup. Loading notices are separate. Feeder NR and effects stay running.");
+        Heading("Apply to games");
         OverlayUiReviewView? gameReview = null;
-        if (engine is not null) { gameReview = new(engine); Children.Add(gameReview); }
-        Heading("rtxForge helper");
-        var material = Choice("Window material", ["Acrylic", "Mica"], current.OverlayMaterial == "mica" ? 1 : 0);
-        var helper = Switch("Background overlay helper", current.OverlayHelper);
-        Note("Keep the rtxForge shortcut available after closing the manager. OptiScaler’s panel runs inside the game.");
-        var startup = Switch("Start with Windows", current.OverlayStartWithWindows);
-        Note("Starts only the helper, when the rtxForge overlay is selected.");
-        Children.Add(feedback);
+        if (engine is not null) { gameReview = new(engine); AddControl(gameReview); }
+        AddControl(feedback);
         void Availability()
         {
             var native = renderer.SelectedIndex == 1;
@@ -81,19 +88,38 @@ public sealed class OverlayPreferencesView : StackPanel
 
     ComboBox Choice(string label, string[] choices, int index)
     {
+        if (groupCards)
+        {
+            var (row, combo) = Prefs.ComboRow(label, null, choices, index);
+            AddControl(row); return combo;
+        }
         var control = new ComboBox { Header = label, ItemsSource = choices, SelectedIndex = index, HorizontalAlignment = HorizontalAlignment.Stretch };
-        Children.Add(control); return control;
+        AddControl(control); return control;
     }
     ToggleSwitch Switch(string label, bool enabled)
     {
+        if (groupCards)
+        {
+            var (row, toggle) = Prefs.SwitchRow(label, null, enabled);
+            AddControl(row); return toggle;
+        }
         var control = new ToggleSwitch { Header = label, IsOn = enabled };
-        Children.Add(control); return control;
+        AddControl(control); return control;
     }
     TextBlock Note(string text)
     {
-        var note = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .8, Margin = new Thickness(0, -12, 0, 0) };
-        Children.Add(note); return note;
+        var note = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .8,
+            Margin = groupCards ? new Thickness(0, 4, 0, 8) : new Thickness(0, -12, 0, 0) };
+        AddControl(note); return note;
     }
-    void Heading(string text) => Children.Add(new TextBlock
-    { Text = text, FontSize = 16, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 0) });
+    void AddControl(UIElement control)
+    {
+        if (groupCards) group!.Add(control); else Children.Add(control);
+    }
+    void Heading(string text)
+    {
+        if (groupCards) { group = new PreferencesGroup(text); groups.Add(group); }
+        else Children.Add(new TextBlock
+        { Text = text, FontSize = 16, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 0) });
+    }
 }

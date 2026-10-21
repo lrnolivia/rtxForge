@@ -140,7 +140,8 @@ public sealed class ReviewDialog
         if (item.Detail.Length > 0) text.Children.Add(Prefs.Label(item.Detail, "ForgeCaptionDimTextStyle"));
         if (item.Details is { } details)
         {
-            text.Children.Add(TechnicalDetails.Create(details));
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var info = TechnicalDetails.Create(details); Grid.SetColumn(info, 3); grid.Children.Add(info);
         }
         Grid.SetColumn(text, 1);
         grid.Children.Add(text);

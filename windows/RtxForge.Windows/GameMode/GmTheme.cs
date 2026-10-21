@@ -37,8 +37,8 @@ public sealed class GmTheme
     public static readonly Color Accent = Hex("#76b900");
     public static readonly Color AccentInk = Hex("#151c07");
 
-    /// <summary>Prototype --unit: 26px, 22px ≤1500 wide, 20px ≤1050, 46px ≥3000 (effective pixels).</summary>
-    public double Unit { get; private set; } = 26;
+    /// <summary>Responsive scale with a 130% reference at the 4K desktop's effective viewport.</summary>
+    public double Unit { get; private set; } = 22.5;
     /// <summary>Pixel sizes in the prototype are authored at --unit 26; S scales them.</summary>
     public double S => Unit / 26;
     /// <summary>The prototype's short-window compaction (max-height 800, max-width 2000).</summary>
@@ -51,7 +51,7 @@ public sealed class GmTheme
     {
         var unit = Scale != "auto" && int.TryParse(Scale, out var percent)
             ? Math.Round(26.0 * percent / 150, 1)
-            : width >= 3000 ? 46 : width <= 1050 ? 20 : width <= 1500 ? 22 : 26;
+            : Math.Round((width >= 3000 ? 46 : width <= 1050 ? 20 : width <= 1500 ? 22 : 26) * 130.0 / 150, 1);
         var compact = height <= 800 && width <= 2000;
         if (unit == Unit && compact == Compact) return false;
         Unit = unit;

@@ -17,7 +17,7 @@ public sealed partial class GameModeView
         var options = new List<Button>();
         var list = new StackPanel { Spacing = t.Px(6), Width = Math.Min(t.Px(380), Math.Max(240, ActualWidth - t.Px(100))) };
         list.Children.Add(ui.P(title, .74).With(x => x.Margin = new Thickness(t.Px(12), t.Px(4), t.Px(12), t.Px(10))));
-        var popup = new Flyout { Content = list, Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft };
+        var popup = new Flyout { Content = list, Placement = FlyoutPlacementMode.BottomEdgeAlignedRight };
         var presenter = new Style(typeof(FlyoutPresenter));
         presenter.Setters.Add(new Setter(Control.BackgroundProperty, GmTheme.B(t.Panel)));
         presenter.Setters.Add(new Setter(Control.ForegroundProperty, GmTheme.B(t.Fg)));

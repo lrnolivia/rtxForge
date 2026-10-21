@@ -37,14 +37,20 @@ public sealed class GlobalControlsView : StackPanel
         review = null; entries.Children.Clear(); feedback.Text = ""; apply.Content = "Review changes";
         apply.IsEnabled = !busy && (nr.SelectedIndex != 0 || mfg.SelectedIndex != 0);
     }
-    static StackPanel Entry(ReviewItem item)
+    static Grid Entry(ReviewItem item)
     {
+        var row = new Grid { ColumnSpacing = 12 };
+        row.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         var entry = new StackPanel { Spacing = 4 };
         entry.Children.Add(new TextBlock { Text = item.Title, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
         entry.Children.Add(new TextBlock { Text = item.Detail, FontSize = 12, Opacity = .8, TextWrapping = TextWrapping.Wrap });
-        if (!string.IsNullOrEmpty(item.Details))
-            entry.Children.Add(new TextBlock { Text = item.Details, FontSize = 11, Opacity = .65, TextWrapping = TextWrapping.Wrap });
-        return entry;
+        row.Children.Add(entry);
+        if (!string.IsNullOrWhiteSpace(item.Details))
+        {
+            var info = TechnicalDetails.Create(item.Details); Grid.SetColumn(info, 1); row.Children.Add(info);
+        }
+        return row;
     }
     async Task RunAsync()
     {

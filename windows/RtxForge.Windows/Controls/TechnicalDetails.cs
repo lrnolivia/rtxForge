@@ -1,36 +1,47 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 
 namespace RtxForge.Windows.Controls;
 
-/// <summary>A small disclosure inside a review row, with bounded, selectable diagnostic text.</summary>
+/// <summary>Fixed-size information action; diagnostics never expand the surrounding row.</summary>
 internal static class TechnicalDetails
 {
-    public static UIElement Create(string text)
+    public static Button Create(string text, double scale = 1, Action? show = null)
     {
-        var details = new ScrollViewer
+        var button = new Button
         {
-            Visibility = Visibility.Collapsed, MaxHeight = 180, HorizontalScrollMode = ScrollMode.Disabled,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Content = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true,
-                FontSize = 12, FontFamily = new FontFamily("Cascadia Mono, Consolas"), Margin = new Thickness(0, 4, 0, 8) },
+            Content = new FontIcon { Glyph = "", FontSize = 16 * scale },
+            Width = 36 * scale, Height = 36 * scale, MinWidth = 0, MinHeight = 0,
+            Padding = new Thickness(6 * scale), CornerRadius = new CornerRadius(18 * scale),
+            Background = null, BorderThickness = new Thickness(0), VerticalAlignment = VerticalAlignment.Center,
         };
-        var chevron = new FontIcon { Glyph = "", FontSize = 10 };
-        var label = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-        label.Children.Add(chevron);
-        label.Children.Add(new TextBlock { Text = "Technical details", FontSize = 12 });
-        var toggle = new Button { Content = label, Background = null, BorderThickness = new Thickness(0),
-            MinHeight = 28, Padding = new Thickness(0, 4, 4, 4), HorizontalAlignment = HorizontalAlignment.Left };
-        AutomationProperties.SetName(toggle, "Technical details, collapsed");
-        toggle.Click += (_, _) =>
+        AutomationProperties.SetName(button, "Show details");
+        ToolTipService.SetToolTip(button, "Details");
+        if (show is not null) button.Click += (_, _) => show();
+        else
         {
-            var expanded = details.Visibility != Visibility.Visible;
-            details.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
-            chevron.Glyph = expanded ? "" : "";
-            AutomationProperties.SetName(toggle, "Technical details, " + (expanded ? "expanded" : "collapsed"));
-        };
-        return new StackPanel { Spacing = 2, Margin = new Thickness(0, 4, 0, 0), Children = { toggle, details } };
+            var details = new ScrollViewer
+            {
+                HorizontalScrollMode = ScrollMode.Disabled, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true,
+                    FontSize = 12, FontFamily = new FontFamily("Cascadia Mono, Consolas") },
+            };
+            var body = new StackPanel { Spacing = 12 };
+            body.Children.Add(new TextBlock { Text = "Details", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+            body.Children.Add(details);
+            var popup = new Flyout { Content = body, Placement = FlyoutPlacementMode.BottomEdgeAlignedRight };
+            button.Click += (_, _) =>
+            {
+                var size = button.XamlRoot?.Size ?? new global::Windows.Foundation.Size(640, 480);
+                details.Width = Math.Max(200, Math.Min(480, size.Width - 96));
+                details.MaxHeight = Math.Max(120, Math.Min(340, size.Height - 160));
+                popup.ShowAt(button);
+            };
+        }
+        return button;
     }
 }

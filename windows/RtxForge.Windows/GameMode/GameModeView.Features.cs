@@ -41,19 +41,18 @@ public sealed partial class GameModeView
         {
             content.Children.Add(ui.P(empty ?? (review.Summary.Length > 0 ? review.Summary : "Nothing to change."), 0.95));
             if (review.Blocked.Count > 0)
-                content.Children.Add(ui.Group(review.Blocked.Select(b => (UIElement)ReviewRow(Find(b), b.Title, b.Detail, false)), t.Card));
+                content.Children.Add(ui.Group(review.Blocked.Select(b => (UIElement)ReviewRow(Find(b), b.Title, b.Detail, false, b.Details)), t.Card));
             var close = ui.Button("Done", () => { CloseModal(); done.TrySetResult(null); }, GmKind.Card, 0.92);
             ShowModal(review.Title, content, [close], () => { CloseModal(); done.TrySetResult(null); }, 1100, close);
             return await done.Task;
         }
         if (review.Summary.Length > 0) content.Children.Add(ui.P(review.Summary));
         var list = new StackPanel { Spacing = t.Px(18) };
-        list.Children.Add(ui.Group(review.Items.Select(i => (UIElement)ReviewRow(Find(i), i.Title,
-            review.Kind == "overlay-ui" ? i.Detail : i.Details is { } d ? Shorten(d) : i.Detail, true)), t.Card));
+        list.Children.Add(ui.Group(review.Items.Select(i => (UIElement)ReviewRow(Find(i), i.Title, i.Detail, true, i.Details)), t.Card));
         if (review.Blocked.Count > 0)
         {
             list.Children.Add(ui.Text($"Skipped · {review.Blocked.Count}", 0.88, weight: FontWeights.SemiBold));
-            list.Children.Add(ui.Group(review.Blocked.Select(b => (UIElement)ReviewRow(Find(b), b.Title, b.Detail, false)), t.Card));
+            list.Children.Add(ui.Group(review.Blocked.Select(b => (UIElement)ReviewRow(Find(b), b.Title, b.Detail, false, b.Details)), t.Card));
         }
         content.Children.Add(new ScrollViewer { Content = list, MaxHeight = t.Px(t.Compact ? 260 : 380), HorizontalScrollMode = ScrollMode.Disabled });
         if (review.Note is { } note) content.Children.Add(ui.P(note, 0.8));
@@ -113,10 +112,12 @@ public sealed partial class GameModeView
 
     // ---------- Settings › Library: artwork ----------
 
-    List<UIElement> LibraryArtworkRows() =>
-    [
+    Button RefreshArtworkRow() =>
         ui.RowButton("Refresh artwork", "Refresh", () => { Toast("Refreshing artwork…"); _ = shell.RefreshArtworkAsync(true); },
-            description: "Cached images remain available offline.", glyph: "").With(r => Key(r, "art-refresh")),
+            description: "Cached images remain available offline.", glyph: "").With(r => Key(r, "art-refresh"));
+
+    List<UIElement> SteamArtworkRows() =>
+    [
         ui.RowButton("Sync artwork to Steam", null, () => _ = SyncArtworkAsync(null), description: "Review and sync artwork for your library.",
             glyph: "").With(r => Key(r, "art-sync")),
         ui.RowButton("Steam artwork profile", null, () => _ = ChooseProfileAsync(), description: "Choose which local Steam account receives artwork.",
@@ -443,15 +444,17 @@ public sealed partial class GameModeView
 
     // ---------- Settings › Recovery / System ----------
 
-    List<UIElement> RecoveryRows() =>
+    IReadOnlyList<SettingsGroup> RecoveryGroups() =>
     [
-        ui.RowButton("Previous changes", null, () => _ = PreviousChangesAsync(), description: "Browse available recovery records.", glyph: ""),
-        ui.RowButton("Old NR files", null, async () =>
+        new("Restore", "Review a backup before restoring game files.",
+        [ui.RowButton("Previous changes", null, () => _ = PreviousChangesAsync(), description: "Browse available recovery records.", glyph: "")]),
+        new("Cleanup", null,
+        [ui.RowButton("Old NR files", null, async () =>
         {
             if (shell.Service.IsPreview) { Toast("Old NR file cleanup is disabled in preview mode."); return; }
             if (await RunReviewAsync("Remove old NR files", shell.Service.ReviewCleanupAsync, "No old NR files were found in your libraries.") is not null)
                 await shell.ScanAsync();
-        }, description: "Review legacy files before removal.", glyph: ""),
+        }, description: "Review legacy files before removal.", glyph: "")]),
     ];
 
     async Task PreviousChangesAsync()

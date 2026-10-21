@@ -187,13 +187,17 @@ public sealed partial class GameModeView
         text.Children.Add(title);
         text.Children.Add(ui.Text(detail, 0.72, t.Muted, wrap: true));
         if (!string.IsNullOrWhiteSpace(technical))
-            text.Children.Add(new Expander
+        {
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var info = Controls.TechnicalDetails.Create(technical, t.Px(1), () =>
             {
-                Header = "Technical details", HorizontalAlignment = HorizontalAlignment.Stretch,
-                HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                Content = new TextBox { Text = technical, IsReadOnly = true, TextWrapping = TextWrapping.Wrap,
-                    AcceptsReturn = true, MaxHeight = t.Px(200), FontSize = t.Px(14) },
+                var diagnostic = ui.Text(technical, .72, wrap: true); diagnostic.IsTextSelectionEnabled = true;
+                ShowModal("Details", diagnostic, [ui.Button("Close", CloseModal, GmKind.Card, .85)], CloseModal, 900);
             });
+            info.Style = (Style)Application.Current.Resources["GmButtonStyle"];
+            info.Foreground = GmTheme.B(t.Fg); ui.Focusable(info);
+            Grid.SetColumn(info, 3); row.Children.Add(info);
+        }
         Grid.SetColumn(text, 1);
         row.Children.Add(text);
         var badge = ui.Badge(ready ? "Ready" : "Skipped", t.Panel, ready ? t.Fg : t.Danger, 0.7);

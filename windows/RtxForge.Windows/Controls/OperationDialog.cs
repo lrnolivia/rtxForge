@@ -239,7 +239,8 @@ public sealed class OperationDialog
         text.Children.Add(Prefs.Label(detail, "ForgeCaptionDimTextStyle"));
         if (!string.IsNullOrWhiteSpace(technical))
         {
-            text.Children.Add(TechnicalDetails.Create(technical));
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var info = TechnicalDetails.Create(technical); Grid.SetColumn(info, 3); grid.Children.Add(info);
         }
         Grid.SetColumn(text, 1);
         grid.Children.Add(text);

@@ -46,7 +46,7 @@ public sealed partial class GameModeView
 
     UIElement BuildDetails(Game g)
     {
-        var heroHeight = t.Px(t.Compact ? 240 : ActualWidth <= 1500 ? 280 : 320);
+        var heroHeight = t.Px(t.Compact ? 330 : ActualWidth <= 1500 ? 360 : 420);
         var navWidth = t.Px(ActualWidth <= 1050 ? 184 : ActualWidth <= 1500 ? 246 : 254);
         var side = t.Px(ActualWidth <= 1050 ? 24 : ActualWidth <= 1500 ? 36 : 56);
         var grid = new Grid { RowSpacing = t.Px(t.Compact ? 12 : 22), Padding = new Thickness(0, 0, 0, t.Px(8)) };
@@ -80,7 +80,7 @@ public sealed partial class GameModeView
         identity.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         identity.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         identity.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var posterHeight = t.Px(t.Compact ? 124 : ActualWidth <= 1500 ? 148 : 166);
+        var posterHeight = t.Px(t.Compact ? 164 : ActualWidth <= 1500 ? 184 : 208);
         var poster = new Border
         {
             Height = posterHeight, Width = Math.Round(posterHeight * 2 / 3), CornerRadius = new CornerRadius(t.Px(10)),
@@ -96,6 +96,10 @@ public sealed partial class GameModeView
         var title = ui.Text(g.Name, t.Compact ? 1.35 : 1.65, t.Fg, FontWeights.Bold, wrap: true, maxLines: 2);
         title.LineHeight = t.Em(t.Compact ? 1.35 : 1.65) * 1.1;
         text.Children.Add(title);
+        var credits = string.Join(" · ", new[] { g.Developer, g.Release }.Where(value => !string.IsNullOrWhiteSpace(value)));
+        var creditsText = ui.Text(credits, .76, t.Muted, wrap: true, maxLines: 2);
+        creditsText.Visibility = credits.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        text.Children.Add(creditsText);
         var badges = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(8) };
         var sourceBadge = ui.Badge(g.Library, t.Card, t.Fg, 0.62 * 1.2, g.Library == "Steam" ? "" : null);
         badges.Children.Add(sourceBadge);
@@ -109,6 +113,11 @@ public sealed partial class GameModeView
         badges.Children.Add(ui.Badge(g.Tested ? "Tested" : "Untested", GmTheme.Hex("#573d18"), GmTheme.Hex("#ffe8a2"), 0.62 * 1.2, g.Tested ? "" : ""));
         text.Children.Add(badges);
         text.Children.Add(ui.Text(string.Join(" · ", new[] { g.Installed ? "Configured" : g.Blocked ? "Unsupported" : "Available", g.UsesFeeder ? "Feeder NR" : ProviderName() }), 0.74, t.Muted));
+        var summaryText = ui.Text(g.Summary ?? "", .74, t.Muted, wrap: true, maxLines: 2);
+        summaryText.Visibility = string.IsNullOrWhiteSpace(g.Summary) ? Visibility.Collapsed : Visibility.Visible;
+        text.Children.Add(summaryText);
+        if (shell.Settings.SteamMetadata && (g.Summary is null || g.Developer is null || g.Release is null))
+            _ = FillStoreInfoAsync(g, creditsText, summaryText);
         Grid.SetColumn(text, 1);
         identity.Children.Add(text);
         // The desktop Game Details hero actions, in the same order.
@@ -381,17 +390,8 @@ public sealed partial class GameModeView
                 SectionTitle(content, "Overview");
                 if (g.AdoptionAvailable) content.Children.Add(ui.RowButton("Review Adoption", null, () => _ = shell.ReviewAdoptionAsync([g]), description: "Register this setup or back it up and clean install."));
                 if (g.OfflineOnly) content.Children.Add(ui.RowButton("Launch offline", null, () => _ = shell.LaunchOfflineAsync(g), description: "Use this reviewed route while feature files are installed. Online play is unavailable."));
-                // Store description and credits live here, not in the hero (Settings › Download game information).
-                if (!string.IsNullOrWhiteSpace(g.Summary))
-                {
-                    content.Children.Add(DetailFact("About", g.Summary));
-                }
-                else if (shell.Settings.SteamMetadata)
-                    _ = FillStoreInfoAsync(g);
                 content.Children.Add(ui.H2("Game Information", 1.06));
                 var info = DetailColumns(3);
-                if (!string.IsNullOrWhiteSpace(g.Developer)) info.Children.Add(DetailFact("Developer", g.Developer));
-                if (!string.IsNullOrWhiteSpace(g.Release)) info.Children.Add(DetailFact("Release", g.Release));
                 info.Children.Add(DetailFact("Library", g.Library));
                 info.Children.Add(DetailFact("Location", g.Location, ui.Button("Open Folder", () => _ = shell.OpenGameFolderAsync(g),
                     GmKind.Card, .8, enabled: !shell.Service.IsPreview && Directory.Exists(g.Location))));
@@ -404,12 +404,17 @@ public sealed partial class GameModeView
         }
     }
 
-    /// <summary>Fetches store information once, then re-renders Overview if it is still showing.</summary>
-    async Task FillStoreInfoAsync(Game g)
+    /// <summary>Update hero metadata in place, preserving any unsaved preset edits below it.</summary>
+    async Task FillStoreInfoAsync(Game g, TextBlock credits, TextBlock summary)
     {
         if (await SteamStoreInfo.FillAsync(g, shell.Settings.SteamMetadata)
-            && detailsGame == g && page == "details" && detailsSection == "Overview")
-            Render(keepFocus: true);
+            && detailsGame == g && page == "details")
+        {
+            credits.Text = string.Join(" · ", new[] { g.Developer, g.Release }.Where(value => !string.IsNullOrWhiteSpace(value)));
+            credits.Visibility = credits.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+            summary.Text = g.Summary ?? "";
+            summary.Visibility = summary.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
     }
 
     /// <summary>The shared accent suggestions, as focusable swatches.</summary>

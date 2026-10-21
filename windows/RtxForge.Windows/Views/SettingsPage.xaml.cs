@@ -38,8 +38,11 @@ public sealed partial class SettingsPage : Page
     {
         if (sender.SelectedItem?.Tag is not string name || !sections.TryGetValue(name, out var groups)) return;
         selectedSection = name;
+        if (PageHost.Children.FirstOrDefault() is PresetColumns previous) previous.Children.Clear();
         PageHost.Children.Clear();
-        foreach (var group in groups) PageHost.Children.Add(group.Root);
+        var cards = new PresetColumns(680, 2) { ColumnSpacing = 24, RowSpacing = 24 };
+        foreach (var group in groups) cards.Children.Add(group.Root);
+        PageHost.Children.Add(cards);
     }
 
     /// <summary>The title line of a settings card built by Prefs.Row.</summary>
@@ -55,7 +58,7 @@ public sealed partial class SettingsPage : Page
     void Build()
     {
         // ----- Graphics -----
-        var graphics = new PreferencesGroup(null, "Restore original files before switching providers.");
+        var graphics = new PreferencesGroup("Package", "Restore original files before switching providers.");
         var (row, provider) = Prefs.ComboRow("Provider", "Package that supplies NR and MFG.",
             ["y4my Multipass", "DLSS-Unlocked", "Custom package", "Skynizz NR + MFG bridge (preview)", "Feeder NR (DirectX 11)"], Math.Max(0, Array.IndexOf(ProviderKeys, Settings.RuntimeProvider)), "");
         graphics.Add(row);
@@ -64,20 +67,22 @@ public sealed partial class SettingsPage : Page
         nrPath.LostFocus += (_, _) => { Settings.NrRuntime = nrPath.Text.Trim(); Save(); };
         graphics.Add(row);
 
+        var installDefaults = new PreferencesGroup("Install defaults", "Changes to game files are reviewed before applying.");
         (row, var manageFiles) = Prefs.SwitchRow("DLSS Files", "Update older DLSS files when installing features. Backups are kept for restoration.",
             Settings.ManageDlssFiles, "");
         manageFiles.Toggled += (_, _) => { Settings.ManageDlssFiles = manageFiles.IsOn; Save(); };
-        graphics.Add(row);
+        installDefaults.Add(row);
         (row, var profile) = Prefs.ComboRow("Default Mode", "Features selected when rtxForge starts.",
             ["NR Only", "MFG Only", "NR + MFG"], Math.Max(0, Array.IndexOf(Modes, Settings.DefaultProfile)), "");
-        graphics.Add(row);
+        installDefaults.Add(row);
         (row, var startupNr) = Prefs.SwitchRow("Enable NR on launch", "Default for new and clean installs. Leave off to enable NR later from the overlay.", Settings.NrOnLaunch, "");
         startupNr.Toggled += (_, _) => { Settings.NrOnLaunch = startupNr.IsOn; Save(); };
-        graphics.Add(row);
+        installDefaults.Add(row);
+        var existingFeatures = new PreferencesGroup("Existing features", "Register compatible feature packages already installed.");
         (row, var adopt) = Prefs.SwitchRow("Recognize Existing Features", "Allow updates to compatible installations from other tools.",
             Settings.RecognizePrevious, "");
         adopt.Toggled += (_, _) => { Settings.RecognizePrevious = adopt.IsOn; Save(); };
-        graphics.Add(row);
+        existingFeatures.Add(row);
 
         void ValidateProvider()
         {
@@ -112,22 +117,23 @@ public sealed partial class SettingsPage : Page
         // ----- Appearance -----
         (row, var borderless) = Prefs.SwitchRow("4K borderless on install", "Use 3840 × 2160 borderless in supported games. Review shows each change; Restore preserves later preferences.", Settings.Borderless4K, "");
         borderless.Toggled += (_, _) => { Settings.Borderless4K = borderless.IsOn; Save(); };
-        graphics.Add(row);
+        installDefaults.Add(row);
 
-        var overlay = new PreferencesGroup(null, "A small background helper opens the NR + MFG sidebar. You can close the main rtxForge window.");
-        overlay.Add(new OverlayPreferencesView(fresh =>
+        var overlay = new OverlayPreferencesView(fresh =>
         {
             Settings.CopyOverlayFrom(fresh);
             shell.ConfigureCompanionShortcut();
-        }, shell.Service as EngineForgeService) { Margin = new Thickness(0, 12, 0, 20), MaxWidth = 640, HorizontalAlignment = HorizontalAlignment.Left });
-        overlay.Add(Prefs.Row("Open overlay", "Automatically connects to a supported running game.", Prefs.ActionButton("Open", (_, _) => shell.OpenCompanion()), ""));
+        }, shell.Service as EngineForgeService, groupCards: true);
+        overlay.Groups[^1].Add(Prefs.Row("Open overlay", "Automatically connects to a supported running game.", Prefs.ActionButton("Open", (_, _) => shell.OpenCompanion()), ""));
 
-        var globalControls = new PreferencesGroup(null, "A one-time bulk change to games with packages installed.");
+        var globalControls = new PreferencesGroup("One-time changes", "Review a bulk change to games with packages installed.");
         if (shell.Service is EngineForgeService globalEngine)
             globalControls.Add(new GlobalControlsView(globalEngine) { Margin = new Thickness(0, 12, 0, 20), MaxWidth = 640, HorizontalAlignment = HorizontalAlignment.Left });
         else globalControls.Add(new TextBlock { Text = "Global controls are available in the installed app." });
 
-        var appearance = new PreferencesGroup(null);
+        var appearance = new PreferencesGroup("Theme and scale");
+        var navigation = new PreferencesGroup("Navigation and labels");
+        var libraryView = new PreferencesGroup("Library view");
         (row, var theme) = Prefs.ComboRow("App theme", "Changes only rtxForge.", ThemeController.Captions,
             Math.Max(0, Array.IndexOf(ThemeController.Keys, Settings.Theme)), "");
         theme.SelectionChanged += (_, _) => { Settings.Theme = ThemeController.Keys[theme.SelectedIndex]; Save(); };
@@ -135,14 +141,15 @@ public sealed partial class SettingsPage : Page
         (row, var layout) = Prefs.ComboRow("Library layout", "Choose how your game collection is displayed.",
             ["Poster", "Wide Capsule", "List"], Math.Max(0, Array.IndexOf(Views, Settings.LibraryView)), "");
         layout.SelectionChanged += (_, _) => { Settings.LibraryView = Views[layout.SelectedIndex]; Save(); };
-        appearance.Add(row);
+        libraryView.Add(row);
         (row, var compact) = Prefs.SwitchRow("Compact header", "Keep more room for your games.",
             Settings.CompactHeader, "");
         compact.Toggled += (_, _) => { Settings.CompactHeader = compact.IsOn; Save(); };
-        appearance.Add(row);
+        navigation.Add(row);
 
         // ----- Library -----
-        var library = new PreferencesGroup(null, "Your Steam poster, capsule, and hero images take priority.");
+        var library = new PreferencesGroup("Artwork and game information", "Your Steam poster, capsule, and hero images take priority.");
+        var steamLibrary = new PreferencesGroup("Steam integration");
         (row, var onlineArt) = Prefs.SwitchRow("Download missing artwork", "Use SteamGridDB and Steam when local images are unavailable.",
             Settings.OnlineArt, "");
         onlineArt.Toggled += (_, _) => { Settings.OnlineArt = onlineArt.IsOn; Save(); };
@@ -165,11 +172,12 @@ public sealed partial class SettingsPage : Page
             ("Sync artwork to Steam", "Review and sync artwork for your library.", "Sync", "", shell.SyncLibraryArtworkAsync),
             ("SteamGridDB", "Connect your account to browse custom artwork.", "Connect", "", async () => await shell.ConnectSteamGridAsync()),
         })
-            library.Add(Prefs.Row(title, subtitle, Prefs.ActionButton(caption, async (_, _) => await action()), glyph));
+        {
+            var artworkRow = Prefs.Row(title, subtitle, Prefs.ActionButton(caption, async (_, _) => await action()), glyph);
+            if (title == "Refresh artwork") library.Add(artworkRow); else steamLibrary.Add(artworkRow);
+        }
 
         // ----- Gaming Mode (Linux: Steam Library · Interface · Controller) -----
-        var gamingMode = new PreferencesGroup(null, "Use rtxForge from Steam, or switch between Desktop and Big Picture UI.");
-        var steamLibrary = new PreferencesGroup("Steam Library");
         var steamButton = Prefs.ActionButton("Add to Steam", async (_, _) => await shell.ToggleSteamShortcutAsync());
         var steamRow = Prefs.Row("Add rtxForge to Steam", "Manage this app’s shortcut in your selected Steam profile.", steamButton, "");
         steamLibrary.Add(steamRow);
@@ -195,7 +203,7 @@ public sealed partial class SettingsPage : Page
         interfaceGroup.Add(row);
         foreach (var (title, keys, captions, get, set, glyph) in new (string, string[], string[], Func<string>, Action<string>, string)[]
         {
-            ("UI Scale", ["auto", "100", "125", "150", "175", "200"], ["Automatic (150% at 4K)", "100%", "125%", "150%", "175%", "200%"],
+            ("Game Mode scale", ["auto", "100", "125", "130", "150", "175", "200"], ["Automatic (130% at 4K)", "100%", "125%", "130%", "150%", "175%", "200%"],
                 () => Settings.UiScaleKey, v => Settings.UiScaleKey = v, ""),
             ("Navigation Position", ["top", "bottom"], ["Top", "Bottom"],
                 () => Settings.NavigationPosition, v => Settings.NavigationPosition = v, ""),
@@ -203,8 +211,11 @@ public sealed partial class SettingsPage : Page
         {
             (row, var choice) = Prefs.ComboRow(title, null, captions, Math.Max(0, Array.IndexOf(keys, get())), glyph);
             choice.SelectionChanged += (_, _) => { set(keys[choice.SelectedIndex]); Save(); };
-            interfaceGroup.Add(row);
+            if (title == "Game Mode scale") appearance.Add(row); else navigation.Add(row);
         }
+        (row, var glyphs) = Prefs.SwitchRow("Button glyphs", "Show icons beside action labels.", Settings.ButtonGlyphs, "");
+        glyphs.Toggled += (_, _) => { Settings.ButtonGlyphs = glyphs.IsOn; Save(); };
+        navigation.Add(row);
 
         var controller = new PreferencesGroup("Controller", "Button labels and navigation prompts.");
         foreach (var (title, keys, captions, get, set, glyph) in new (string, string[], string[], Func<string>, Action<string>, string)[]
@@ -223,7 +234,7 @@ public sealed partial class SettingsPage : Page
             "D-pad / stick: focus · A: activate · B: back · Y: library · Menu: menu · View: settings · Bumpers: tab", glyph: ""));
 
         // ----- System -----
-        var system = new PreferencesGroup(null);
+        var system = new PreferencesGroup("Hardware");
         if (shell.Hardware is { } hardware)
             foreach (var (title, value, glyph) in new[]
             {
@@ -234,30 +245,35 @@ public sealed partial class SettingsPage : Page
         system.Add(Prefs.Row("Compatibility", shell.Hardware?.Reason ?? "Not checked", glyph: ""));
 
         // ----- Recovery -----
-        var recovery = new PreferencesGroup(null);
+        var recovery = new PreferencesGroup("Restore");
+        var cleanup = new PreferencesGroup("Cleanup");
+        var reports = new PreferencesGroup("Reports");
         foreach (var (title, subtitle, caption, glyph, action) in new (string, string, string, string, Func<Task>)[]
         {
             ("Previous changes", "Browse available recovery records.", "Browse", "", shell.ShowPreviousChangesAsync),
             ("Old NR files", "Review legacy files before removal.", "Review", "", shell.ReviewOldNrFilesAsync),
             ("Library reports", "View test notes and export a support report.", "Open", "", shell.ShowReportsAsync),
         })
-            recovery.Add(Prefs.Row(title, subtitle, Prefs.ActionButton(caption, async (_, _) => await action()), glyph));
+        {
+            var actionRow = Prefs.Row(title, subtitle, Prefs.ActionButton(caption, async (_, _) => await action()), glyph);
+            (title == "Previous changes" ? recovery : title == "Old NR files" ? cleanup : reports).Add(actionRow);
+        }
 
         // ----- About (Linux: Application group + About dialog) -----
-        var about = new PreferencesGroup(null);
+        var about = new PreferencesGroup("App and updates");
         about.Add(Prefs.Row("rtxForge", $"Version {MainWindow.AppVersion} · Built for Windows with WinUI 3", glyph: ""));
         about.Add(Prefs.Row("Updates", "Download, verify, and install the newest rtxForge build.",
             Prefs.ActionButton("Check for updates", async (_, _) => await shell.CheckForUpdatesAsync()), ""));
 
         // Linux organize_pages(): one page per section. Windows shows them as SelectorBar tabs.
-        sections["Graphics"] = [graphics];
-        sections["Overlay"] = [overlay];
+        sections["Graphics"] = [graphics, installDefaults, existingFeatures];
+        sections["Overlay"] = overlay.Groups.ToArray();
         sections["Global"] = [globalControls];
-        sections["Appearance"] = [appearance];
-        sections["Library"] = [library];
-        sections["Gaming Mode"] = [gamingMode, steamLibrary, interfaceGroup, controller];
+        sections["Appearance"] = [appearance, navigation];
+        sections["Library"] = [libraryView, library, steamLibrary, reports];
+        sections["Gaming Mode"] = [interfaceGroup, controller];
         sections["System"] = [system];
-        sections["Recovery"] = [recovery];
+        sections["Recovery"] = [recovery, cleanup];
         sections["About"] = [about];
         foreach (var name in sections.Keys)
             Sections.Items.Add(new SelectorBarItem { Text = name, Tag = name });

@@ -8,6 +8,7 @@ import subprocess
 import tarfile
 from capture_flow import apply as apply_capture_flow
 from settings_categories import apply as apply_settings_categories
+from badge_theme import apply as apply_badge_theme
 
 
 def generate(repo, revision, output):
@@ -40,6 +41,7 @@ def generate(repo, revision, output):
     (project / 'SampleProfile.cs').write_bytes((tooling / 'SampleProfile.cs').read_bytes())
     apply_capture_flow(project)
     apply_settings_categories(project)
+    apply_badge_theme(project)
     engine = project / 'Services/EngineForgeService.cs'
     text = engine.read_text(encoding='utf-8')
     start = text.index('    public static async Task<(EngineForgeService? Service, string? Problem)> TryStartAsync(')

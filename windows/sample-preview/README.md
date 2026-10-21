@@ -12,6 +12,8 @@ Sample installs animate determinate progress over approximately ten seconds for 
 
 Both settings views place Game Mode scale, navigation placement and button glyphs under Gaming Mode → Layout and labels. Appearance keeps app-wide theme and desktop presentation preferences. Existing settings values and serialization keys are preserved.
 
+Light-mode review, feature and Library badges use pale surfaces derived from their text or accent color, with readable ink and a subtle matching outline. Dark-mode badge roles are retained.
+
 Use a normal C: source directory for the generated project; the G: artifact junction can produce padded intermediate XML that the native manifest tool rejects. Output may still be on G:. Do not change the original project's intermediate paths.
 
 Build `SampleTests.csproj` with `-p:SampleAppDir=<private-app-folder>`. Copy its console DLL, deps and runtimeconfig next to the private app's runtime files, then execute that console DLL there; the referenced WinUI assembly requires its Windows App Runtime even without creating a window. It exercises the actual generated service/settings implementation, including remove/relaunch, simulated installation, static overlay settings, clones, malformed/missing manifest refusal and unchanged live settings bytes. It does not establish rendered UI acceptance; open and inspect the native sample separately.

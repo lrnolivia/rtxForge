@@ -41,6 +41,13 @@ static class Program
         service.Settings.Theme = "light"; service.Settings.Save(preserveOverlay: true);
         Check(ForgeSettings.Load().PanelHotkey == "F10" && ForgeSettings.Load().Theme == "light", "preserveOverlay uses sample");
         Check(service.Settings.Clone().RemovedGames.Count == 1, "Clone keeps sample removal");
+        foreach (var hue in new[] { "#76b900", "#ff979d", "#30a0db", "#555555" })
+        {
+            RtxForge.Windows.Services.ArtAccent.TryParse(hue, out var color);
+            var badge = SampleBadgeTheme.Light(color);
+            Check(RtxForge.Windows.Services.ArtAccent.Luminance(badge.Surface) > .7, "Light badge surface: " + hue);
+            Check(RtxForge.Windows.Services.ArtAccent.Contrast(badge.Ink, badge.Surface) >= 4.5, "Readable badge text: " + hue);
+        }
         OverlayHelper.ConfigureStartup(edited);
         Check((await OverlayHelper.CommandAsync("exit"))!.Contains("sample"), "No live helper command");
         var engine = await EngineForgeService.TryStartAsync();

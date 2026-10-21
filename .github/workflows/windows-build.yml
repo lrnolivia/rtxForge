@@ -15,6 +15,7 @@ on:
       - engine/**
       - scripts/**
       - providers/**
+      - tests/**
       - provider.json
       - gui/fonts/**
       - gui/icons/**
@@ -26,6 +27,7 @@ on:
       - engine/**
       - scripts/**
       - providers/**
+      - tests/**
       - provider.json
       - gui/fonts/**
       - gui/icons/**

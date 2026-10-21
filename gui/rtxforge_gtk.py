@@ -9204,10 +9204,39 @@ class Window(Adw.ApplicationWindow):
             add('Set Up for Linux' if self.needs_linux_setup(game) else 'Install Features',lambda:self.launch_action('install',targets=[game]),not game.get('blocked') and not self.busy)
             add('Restore Original Files',lambda:self.launch_action('uninstall',targets=[game]),bool(game.get('installed')) and not self.busy)
         add('Open Folder',lambda:Gio.AppInfo.launch_default_for_uri(Path(game['game']).as_uri(),None),not self.options.demo)
+        add('Remove from Library',lambda:self.confirm_remove_game(game),not self.busy)
         pop.set_child(content)
         pop.connect('closed',lambda *_:GLib.idle_add(lambda:(pop.unparent(),False)[1]))
         pop.popup()
         return pop
+
+    def confirm_remove_game(self,game):
+        """Hide a game from the library without touching its files or rtxForge setup."""
+        body=('Its game files stay where they are, and Rescan won\u2019t bring it back. '
+              'Restore it any time from Settings \u203a Library.')
+        if game.get('installed'):
+            body+=' rtxForge features stay installed; restore original files first if you want them gone.'
+        dialog=Adw.AlertDialog(heading='Remove '+game['name']+' from the library?',body=body)
+        dialog.add_response('cancel','Cancel');dialog.add_response('remove','Remove')
+        dialog.set_response_appearance('remove',Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response('cancel');dialog.set_close_response('cancel')
+        def chosen(_dialog,response):
+            if response!='remove':return
+            removed=list(self.settings.get('removed_games') or [])
+            if game['game'] not in removed:removed.append(game['game'])
+            self.settings['removed_games']=removed
+            self.selected_game_ids.discard(game['game'])
+            if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
+            self.show_games(self.games,art=False)
+            self.toast(game['name']+' removed from the library.')
+        dialog.connect('response',chosen)
+        dialog.present(self)
+
+    def restore_removed_games(self,*_):
+        self.settings['removed_games']=[]
+        if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
+        self.toast('Removed games will return on the next scan.')
+        self.scan()
 
     def _column_more_clicked(self,button,root):
         if root._game is not None:
@@ -10582,6 +10611,9 @@ class Window(Adw.ApplicationWindow):
         )
 
         self.ghost_slots=[]
+        # Removed entries stay removed across rescans; their files are untouched.
+        removed=set(self.settings.get('removed_games') or [])
+        games=[g for g in games if g.get('game') not in removed]
         self.games=games
         if hasattr(self,'couch'):GLib.idle_add(lambda:(self.couch.refresh(),False)[1])
         self.cards={}
@@ -14197,6 +14229,10 @@ class Window(Adw.ApplicationWindow):
         overlay_groups=self.overlay_settings_groups()
         recovery=Adw.PreferencesGroup(title='Recovery',description='Restore original files and clean up older installs.')
         library_reports=Adw.PreferencesGroup(title='Reports')
+        removed_count=len(self.settings.get('removed_games') or [])
+        item=row('Removed Games',f'{removed_count} game'+('s' if removed_count!=1 else '')+' hidden from the library. Their files were never changed.')
+        action=button('Restore All',self.restore_removed_games);action.set_valign(Gtk.Align.CENTER);action.set_sensitive(bool(removed_count))
+        item.add_suffix(action);library_reports.add(item)
         item=row('Library Reports','View test notes and export a support report.');action=button('Open',self.show_reports);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);library_reports.add(item)
         for title,subtitle,caption,fn in [('Previous Changes','Browse available recovery records.','Browse',lambda *_:self.show_undo()),('Old NR Files','Review legacy files before removal.','Review',lambda *_:self.show_cleanup())]:
             item=row(title,subtitle);action=button(caption,fn);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);recovery.add(item)

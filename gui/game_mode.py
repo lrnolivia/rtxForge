@@ -1541,9 +1541,12 @@ class GameMode(Gtk.Overlay):
                                           enabled=not self.owner.options.demo, key='details-open-folder')
                 rows.append(self.preference('Game folder', None, location))
             content.append(self.group(rows))
+            actions = Gtk.Box(spacing=self.theme.px(12))
             if folder:
-                open_folder.set_halign(Gtk.Align.START)
-                content.append(open_folder)
+                actions.append(open_folder)
+            actions.append(self.button('Remove from library', lambda: self.owner.confirm_remove_game(g), enabled=not self.owner.busy,
+                                       key='details-remove'))
+            content.append(actions)
 
     def toggle_presets(self):
         self.presets_expanded = not self.presets_expanded

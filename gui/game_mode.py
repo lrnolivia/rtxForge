@@ -25,6 +25,7 @@ import user_messages
 from operation_scope import operation_targets, ScopeError
 import mfg_choice
 import overview_facts
+import overlay_shortcut
 
 ACCENT = '#76b900'
 ACCENT_INK = '#151c07'
@@ -47,7 +48,7 @@ THEMES = {
 }
 PAGES = (('library', 'Library'), ('presets', 'Presets'), ('settings', 'Settings'))
 SECTIONS = ('Overview', 'Features', 'DLSS Files', 'Tools', 'Appearance', 'Notes')
-SETTINGS_SECTIONS = ('Gaming Mode', 'Appearance', 'Library', 'Controller', 'Keyboard', 'System')
+SETTINGS_SECTIONS = ('Gaming Mode', 'Appearance', 'Overlay', 'Library', 'Controller', 'Keyboard', 'System')
 MULTIPLIERS = ('auto', 0, 2, 3, 4, 5, 6)
 
 
@@ -1745,6 +1746,24 @@ class GameMode(Gtk.Overlay):
                             lambda: s.get('theme') if s.get('theme') in ('light', 'dark') else 'night', set_theme),
                 self.choice('Button glyphs', 'Icons beside action labels; selection and package identity stay visible.', [True, False], ['On', 'Off'],
                             lambda: bool(s.get('button_glyphs', True)), lambda v: s.update(button_glyphs=v)),
+            ]
+        if section == 'Overlay':
+            on_off = ([True, False], ['On', 'Off'])
+            return 'In-game controls. Games pick these up on their next reviewed install or repair.', [
+                self.choice('Panel', None, ['game', 'optiscaler'], ['In the game', 'OptiScaler menu only'],
+                            lambda: s.get('overlay_renderer', 'game'), lambda v: s.update(overlay_renderer=v)),
+                self.choice('Controls', 'Advanced shows OptiScaler\u2019s own variables and units.', ['unified', 'classic'], ['Unified', 'Advanced'],
+                            lambda: s.get('overlay_controls', 'unified'), lambda v: s.update(overlay_controls=v)),
+                self.row_button('Panel shortcut', overlay_shortcut.display(s.get('panel_hotkey')),
+                                lambda: self.toast('Record a new shortcut in Desktop Settings \u203a Overlay.'), description='Opens the rtxForge panel in game.'),
+                self.choice('OptiScaler menu', 'Hiding it never turns off NR or MFG.', *on_off,
+                            lambda: bool(s.get('optiscaler_ui', True)), lambda v: s.update(optiscaler_ui=v)),
+                self.choice('OptiScaler intro', None, *on_off, lambda: bool(s.get('optiscaler_intro', False)), lambda v: s.update(optiscaler_intro=v)),
+                self.choice('OptiScaler shortcut', None, ['Insert', 'F8', 'Disabled'], ['Insert', 'F8', 'Disabled'],
+                            lambda: s.get('optiscaler_hotkey', 'Insert'), lambda v: s.update(optiscaler_hotkey=v)),
+                self.choice('ReShade menu', 'For games set up with the Feeder route.', *on_off,
+                            lambda: bool(s.get('reshade_ui', True)), lambda v: s.update(reshade_ui=v)),
+                self.choice('ReShade welcome', None, *on_off, lambda: bool(s.get('reshade_intro', False)), lambda v: s.update(reshade_intro=v)),
             ]
         if section == 'Library':
             return 'Manage the library layout and artwork sources.', [

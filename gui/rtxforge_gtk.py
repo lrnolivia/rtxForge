@@ -17,6 +17,7 @@ from ui_scaling import ScaledContent, content_scale, SCALES
 from operation_scope import operation_targets, ScopeError
 import mfg_choice
 import overview_facts
+import overlay_shortcut
 
 ACCENT_PROVIDERS={}
 ACCENT_SOURCES={}
@@ -2709,6 +2710,10 @@ button.dlss-outline:active { background: alpha(@window_fg_color,0.25); }
 }
 .card-meta { font-size: 10px; opacity: 0.7; }
 
+.subset-offer { background: alpha(currentColor,0.05); border-radius: 12px; padding: 12px 14px; }
+.subset-badge { border-radius: 999px; padding: 2px 8px; }
+.subset-badge.available { background: alpha(@success_color,0.18); color: @success_color; }
+.subset-badge.unavailable { background: alpha(currentColor,0.08); color: alpha(currentColor,0.6); }
 .overview-fact { background: alpha(currentColor,0.05); border-radius: 12px; padding: 12px 14px; }
 .overview-fact-value { font-weight: 600; }
 .poster-os-badge { min-width: 22px; min-height: 22px; background: alpha(black,0.35); border: 1px solid alpha(white,0.22); border-radius: 6px; }
@@ -9663,6 +9668,63 @@ class Window(Adw.ApplicationWindow):
             box.append(row_box)
         return box
 
+    def save_overlay_preference(self,key,value):
+        self.settings[key]=value
+        if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
+
+    def overlay_settings_groups(self):
+        """Overlay preferences shared with Windows; games pick them up on their next reviewed install or repair."""
+        s=self.settings
+        def choice(title,subtitle,keys,captions,key,group):
+            current=s.get(key,keys[0])
+            widget=safe_combo_row(title=title,subtitle=subtitle,model=Gtk.StringList.new(captions),selected=keys.index(current) if current in keys else 0)
+            widget.connect('notify::selected',lambda w,*_:self.save_overlay_preference(key,keys[w.get_selected()]))
+            group.add(widget);return widget
+        def switch(title,subtitle,key,group):
+            widget=Adw.SwitchRow(title=title,subtitle=subtitle,active=bool(s.get(key,library_media.DEFAULTS[key])))
+            widget.connect('notify::active',lambda w,*_:self.save_overlay_preference(key,w.get_active()))
+            group.add(widget);return widget
+        panel=Adw.PreferencesGroup(title='rtxForge Panel',description='NR and MFG controls drawn inside the game. Saved here, then written to each game on its next reviewed install or repair.')
+        choice('Panel','Where rtxForge\u2019s controls appear while you play.',['game','optiscaler'],['In the game','OptiScaler menu only'],'overlay_renderer',panel)
+        choice('Controls','Unified uses simple values; Advanced shows OptiScaler\u2019s own variables and units.',['unified','classic'],['Unified','Advanced'],'overlay_controls',panel)
+        shortcut=Adw.PreferencesGroup(title='Shortcut',description='Opens the rtxForge panel in game. Insert stays with OptiScaler\u2019s own menu.')
+        shortcut_row=Adw.ActionRow(title='Panel shortcut',subtitle=overlay_shortcut.display(s.get('panel_hotkey')))
+        record=Gtk.Button(label='Record',valign=Gtk.Align.CENTER)
+        reset=Gtk.Button(label='Reset',valign=Gtk.Align.CENTER)
+        disable=Gtk.Button(label='Disable',valign=Gtk.Align.CENTER)
+        for widget in (record,reset,disable):shortcut_row.add_suffix(widget)
+        shortcut.add(shortcut_row)
+        def store(value):
+            self.save_overlay_preference('panel_hotkey',value)
+            shortcut_row.set_subtitle(overlay_shortcut.display(value))
+            record.set_label('Record')
+        keys=Gtk.EventControllerKey();keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        def pressed(_controller,keyval,_code,state):
+            if record.get_label()!='Press a key\u2026':return False
+            name=Gdk.keyval_name(keyval) or ''
+            if name=='Escape':
+                record.set_label('Record');shortcut_row.set_subtitle(overlay_shortcut.display(s.get('panel_hotkey')));return True
+            try:
+                value=overlay_shortcut.compose(name,bool(state&Gdk.ModifierType.CONTROL_MASK),bool(state&Gdk.ModifierType.ALT_MASK),bool(state&Gdk.ModifierType.SHIFT_MASK))
+            except overlay_shortcut.ShortcutError as error:
+                shortcut_row.set_subtitle(str(error));return True
+            if value is not None:store(value)
+            return True
+        keys.connect('key-pressed',pressed);record.add_controller(keys)
+        def start_recording(*_):
+            record.set_label('Press a key\u2026');shortcut_row.set_subtitle('Press the new shortcut, or Escape to cancel.');record.grab_focus()
+        record.connect('clicked',start_recording)
+        reset.connect('clicked',lambda *_:store(overlay_shortcut.DEFAULT))
+        disable.connect('clicked',lambda *_:store('Disabled'))
+        optiscaler=Adw.PreferencesGroup(title='OptiScaler',description='Its own menu stays available alongside rtxForge. Hiding it never turns off NR or MFG.')
+        switch('OptiScaler Menu','Allow the native OptiScaler menu in game.','optiscaler_ui',optiscaler)
+        switch('OptiScaler Intro','Show OptiScaler\u2019s welcome banner when a game starts.','optiscaler_intro',optiscaler)
+        choice('OptiScaler Shortcut',None,['Insert','F8','Disabled'],['Insert','F8','Disabled'],'optiscaler_hotkey',optiscaler)
+        reshade=Adw.PreferencesGroup(title='ReShade',description='For games set up with the Feeder route.')
+        switch('ReShade Menu','Allow the ReShade overlay and gamepad navigation.','reshade_ui',reshade)
+        switch('ReShade Welcome','Show ReShade\u2019s first-run guide. Its short loading banner can\u2019t be turned off.','reshade_intro',reshade)
+        return [panel,shortcut,optiscaler,reshade]
+
     def tuning_differs(self,widgets,source):
         """True when an editable control differs from the saved values."""
         for key,widget in widgets.items():
@@ -10269,6 +10331,7 @@ class Window(Adw.ApplicationWindow):
             'System':'computer-symbolic',
             'Recovery':'document-revert-symbolic',
             'About':'help-about-symbolic',
+            'Overlay':'view-reveal-symbolic',
         }
 
         for title,items in sections:
@@ -13151,6 +13214,11 @@ class Window(Adw.ApplicationWindow):
                 return
             self.action_ready(preview);return
         mode=self.mode;adopt=self.settings['recognize_previous'];values=self.tuning_values(self.tuning_widgets) if entire and operation=='reset' else visual_settings
+        supported=getattr(self.service,'prepare_supported',None) if operation=='install' and mode!='mfg-only' else None
+        if supported is not None:
+            # Install also reviews games that support only part of NR + MFG (opt-in second review).
+            self.start('Preparing '+title.lower(),lambda:supported(rows,mode,operation,visual_settings=values),self.action_ready)
+            return
         self.start('Preparing '+title.lower(),lambda:self.service.prepare(rows,mode,operation,adopt,visual_settings=values,save_defaults=entire and operation=='reset'),self.action_ready)
     def live_smoke_begin(self,footer):
         """Interactive, write-disabled preview of Progress -> Done."""
@@ -13787,14 +13855,47 @@ class Window(Adw.ApplicationWindow):
         flow=getattr(self,'operation_flow',None)
         if flow is None or flow.closed or flow.operation!=operation:
             flow=self.new_operation_flow(operation,getattr(self,'operation_games',[]) or self.games)
-        flow.show_review(review,self.execute,self.review_details(review),enabled=not self.options.demo)
+        offers=review.get('supported') or []
+        review['_chosen_offers']=[]
+        extra=self.supported_offers(review,offers,flow) if offers else None
+        flow.show_review(review,self.execute,self.review_details(review),enabled=not self.options.demo,extra=extra)
+
+    def supported_offers(self,review,offers,flow):
+        """Games that support only part of the request: each is an explicit, separate opt-in."""
+        box=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=10)
+        box.append(label('Also available with fewer features','heading'))
+        box.append(label('These games support part of what you asked for. Choose any you want to set up as well.','dim-label'))
+        names={g.get('game'):g.get('name') for g in self.games}
+        for offer in offers:
+            card=Gtk.Box(spacing=12);card.add_css_class('subset-offer')
+            check=Gtk.CheckButton(valign=Gtk.Align.START)
+            text=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6,hexpand=True)
+            badges=Gtk.Box(spacing=6)
+            for feature,available in (('NR',offer.get('nr')),('MFG',offer.get('mfg'))):
+                badge=Gtk.Box(spacing=4);badge.add_css_class('subset-badge');badge.add_css_class('available' if available else 'unavailable')
+                badge.append(Gtk.Image(icon_name='object-select-symbolic' if available else 'window-close-symbolic',pixel_size=12))
+                badge.append(label(feature+(' available' if available else ' unavailable'),'caption'))
+                badges.append(badge)
+            text.append(badges)
+            reason=label(offer.get('reason',''),'');reason.set_wrap(True);reason.set_xalign(0);text.append(reason)
+            games=[names.get(g) or Path(str(g)).name for g in offer.get('games',[])]
+            listed=label(', '.join(games),'dim-label');listed.set_wrap(True);listed.set_xalign(0);text.append(listed)
+            check.update_property([Gtk.AccessibleProperty.LABEL],['Also set up '+', '.join(games)])
+            def toggled(button,offer=offer):
+                chosen=review['_chosen_offers']
+                if button.get_active() and offer not in chosen:chosen.append(offer)
+                elif not button.get_active() and offer in chosen:chosen.remove(offer)
+                flow.primary.set_sensitive(not self.options.demo and bool(review.get('rows') or chosen))
+            check.connect('toggled',toggled)
+            card.append(check);card.append(text);box.append(card)
+        return box
 
     def execute(self,review,*_legacy):
         """Stage 4: progress, then Done or Could not finish."""
         if self.options.demo:return
         flow=self.operation_flow
         if review.get('kind') in ('rollback','restore-cleanup','operation','cleanup'):flow.show_working(flow.progress_verb+'…')
-        else:flow.show_progress(len(review.get('rows',[])) or len(self.operation_games))
+        else:flow.show_progress((len(review.get('rows',[])) or len(self.operation_games))+sum(len(o.get('games',[])) for o in review.get('_chosen_offers') or []))
         flow.rescan=True
         if review.get('kind')=='engine':
             self.operation_executing=True;review['cancel_event']=self.operation_cancel
@@ -13811,7 +13912,13 @@ class Window(Adw.ApplicationWindow):
                 ready.wait()
             review['on_finalizing']=finalizing
         def apply_with_files():
-            path=self.service.execute(review)
+            path=self.service.execute(review) if review.get('rows') or not review.get('_chosen_offers') else None
+            for offer in review.get('_chosen_offers') or []:
+                if self.operation_cancel is not None and self.operation_cancel.is_set():break
+                offer_review=offer['review']
+                if offer_review.get('kind')=='engine':
+                    offer_review['cancel_event']=review.get('cancel_event');offer_review['on_finalizing']=review.get('on_finalizing')
+                path=self.service.execute(offer_review) or path
             if review.get('operation')=='install' and self.settings.get('manage_dlss_files',True) and not self.operation_cancel.is_set():
                 try:
                     import runtime_updates
@@ -14087,12 +14194,13 @@ class Window(Adw.ApplicationWindow):
             action.set_valign(Gtk.Align.CENTER)
             item.add_suffix(action)
             app.add(item)
+        overlay_groups=self.overlay_settings_groups()
         recovery=Adw.PreferencesGroup(title='Recovery',description='Restore original files and clean up older installs.')
         library_reports=Adw.PreferencesGroup(title='Reports')
         item=row('Library Reports','View test notes and export a support report.');action=button('Open',self.show_reports);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);library_reports.add(item)
         for title,subtitle,caption,fn in [('Previous Changes','Browse available recovery records.','Browse',lambda *_:self.show_undo()),('Old NR Files','Review legacy files before removal.','Review',lambda *_:self.show_cleanup())]:
             item=row(title,subtitle);action=button(caption,fn);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);recovery.add(item)
-        self.organize_pages(b,[('Graphics',[graphics,defaults]),('Appearance',[appearance,scale_navigation,window_style]),('Library',[library_layout,artwork,steam_artwork,library_reports]),('Gaming Mode',[controls,controller_options,steam_launcher]),('System',[system]),('Recovery',[recovery]),('About',[app])])
+        self.organize_pages(b,[('Graphics',[graphics,defaults]),('Appearance',[appearance,scale_navigation,window_style]),('Overlay',overlay_groups),('Library',[library_layout,artwork,steam_artwork,library_reports]),('Gaming Mode',[controls,controller_options,steam_launcher]),('System',[system]),('Recovery',[recovery]),('About',[app])])
         def save(*_):
             selected_provider=provider_keys[provider.get_selected()];selected_mode=modes[profile.get_selected()]
             if selected_provider=='y4my' and selected_mode=='nr-only':self.toast('NR Only requires DLSS-Unlocked.');return

@@ -3,7 +3,7 @@ from pathlib import Path
 import copy,json,urllib.request,urllib.parse,urllib.error,re,time,hashlib,html,math
 import transactions as t
 from storage import storage
-DEFAULTS={'nr_on_launch':False,'game_artwork':{},'steam_artwork_profile':None,'steam_artwork_pending':{},'button_glyphs':True,'big_picture_ui':True,'ui_scale':'auto','dashboard_view':'capsules','dashboard_row_count':5,'navigation_position':'top','controller_hints':'always','input_mode':'auto','controller_glyphs':'auto','corner_style':'system','ui_mode':'classic','start_page':'library','compact_header':True,'custom_package':None,'theme':None,'library_columns':7,'presets_hint_seen':False,'manage_dlss_files':True,'game_accents':{},'sharpening_strength':0.5,'mfg_multiplier':'auto','dynamic_mfg':0,'mfg_saved_mode':0,'mfg_saved_multiplier':2,'nr_strength':2.0,'runtime_provider':'y4my','skynizz_version':'latest','enable_effects':True,'nr_runtime':'','dark':True,'library_view':'posters','art_scale':80,'cache_days':7,'network_timeout':10,'default_profile':'mfg-only','online_art':True,'steam_metadata':True,'recognize_previous':False,'extra_folders':[]}
+DEFAULTS={'nr_on_launch':False,'game_artwork':{},'steam_artwork_profile':None,'steam_artwork_pending':{},'button_glyphs':True,'big_picture_ui':True,'ui_scale':'auto','dashboard_view':'capsules','dashboard_row_count':5,'navigation_position':'top','controller_hints':'always','input_mode':'auto','controller_glyphs':'auto','corner_style':'system','ui_mode':'classic','start_page':'library','compact_header':True,'custom_package':None,'theme':None,'library_columns':7,'presets_hint_seen':False,'manage_dlss_files':True,'game_accents':{},'sharpening_strength':0.5,'overlay_renderer':'game','overlay_controls':'unified','panel_hotkey':'Delete','overlay_helper':True,'optiscaler_ui':True,'optiscaler_intro':False,'optiscaler_hotkey':'Insert','reshade_ui':True,'reshade_intro':False,'mfg_multiplier':'auto','dynamic_mfg':0,'mfg_saved_mode':0,'mfg_saved_multiplier':2,'nr_strength':2.0,'runtime_provider':'y4my','skynizz_version':'latest','enable_effects':True,'nr_runtime':'','dark':True,'library_view':'posters','art_scale':80,'cache_days':7,'network_timeout':10,'default_profile':'mfg-only','online_art':True,'steam_metadata':True,'recognize_previous':False,'extra_folders':[]}
 
 DEFAULTS.update(mfg_provider='universal', nr_preset=None, feeder_source='', feeder_backups='',
                 panel_hotkey='Delete', overlay_helper=True, overlay_start_with_windows=True, overlay_material='acrylic',
@@ -65,6 +65,15 @@ def load_settings(config):
         for key,choices in {'input_mode':('auto','desktop','couch'),'controller_glyphs':('auto','xbox','playstation','nintendo','generic'),'corner_style':('system','rounded','square'),'library_view':('posters','capsules','list'),'dashboard_view':('posters','capsules'),'navigation_position':('top','bottom'),'controller_hints':('always','auto')}.items():
             if settings.get(key) not in choices:settings[key]=DEFAULTS[key]
         if settings.get('ui_scale') not in ('auto',100,125,130,150,175,200):settings['ui_scale']='auto'
+        if settings.get('dynamic_mfg') not in (0,1):settings['dynamic_mfg']=0
+        if settings.get('mfg_saved_mode') not in (0,1,2):settings['mfg_saved_mode']=0
+        if settings.get('mfg_saved_multiplier') not in (2,3,4,5,6):settings['mfg_saved_multiplier']=2
+        if settings.get('overlay_renderer') not in ('game','optiscaler'):settings['overlay_renderer']='game'
+        if settings.get('overlay_controls') not in ('unified','classic'):settings['overlay_controls']='unified'
+        if settings.get('optiscaler_hotkey') not in ('Insert','F8','Disabled'):settings['optiscaler_hotkey']='Insert'
+        if not isinstance(settings.get('panel_hotkey'),str) or settings['panel_hotkey'].strip().casefold() in ('','insert','end'):settings['panel_hotkey']='Delete'
+        for key in ('overlay_helper','optiscaler_ui','optiscaler_intro','reshade_ui','reshade_intro'):
+            if type(settings.get(key)) is not bool:settings[key]=DEFAULTS[key]
         settings['dashboard_row_count']=max(3,min(8,int(settings.get('dashboard_row_count',5))))
         return settings
     except (OSError,ValueError,t.Refusal):return {**copy.deepcopy(DEFAULTS),'extra_folders':[]}

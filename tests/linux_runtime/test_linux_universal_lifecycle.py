@@ -161,6 +161,26 @@ class LinuxUniversalLifecycleTest(unittest.TestCase):
         self.assertEqual(self.files(), self.before)
         self.assertEqual((self.prefix / 'user.reg').read_bytes(), self.registry_before)
 
+    def test_panel_preferences_in_the_prefix_are_restored_with_the_game(self):
+        import linux_runtime, proton_overlay
+        review = self.prepare()
+        engine_bridge.execute(review)
+        after_install = (self.prefix / 'user.reg').read_bytes()
+        e = review['engine']
+        report = linux_runtime.proton_report(dict(self.row(), native_dlssg=True))
+        self.assertTrue(report['prerequisites_met'], report['user_reasons'])
+        plan = linux_runtime.overlay_review(self.row(), {'overlay_renderer': 'game', 'panel_hotkey': 'Backtick'}, '#EC3D28')
+        self.assertEqual((self.prefix / 'user.reg').read_bytes(), after_install, 'review never writes')
+        linux_runtime.overlay_apply(e, self.row(), plan)
+        values = proton_overlay.read_values((self.prefix / 'user.reg').read_text(), proton_overlay.OVERLAY_KEY)
+        self.assertEqual((values['InGamePanel'], values['PanelKey']), ('dword:00000001', 'dword:000000c0'))
+        engine_bridge.execute(self.prepare('uninstall'))
+        self.assertEqual(self.files(), self.before)
+        restored = (self.prefix / 'user.reg').read_text()
+        self.assertEqual(proton_overlay.read_values(restored, proton_overlay.OVERLAY_KEY), {})
+        self.assertEqual(proton_overlay.read_values(restored, proton_overlay.GAMES_KEY), {})
+        self.assertEqual(proton_prefix.read_overrides(restored), {'atiadlxx': 'disabled'})
+
     def test_refused_without_opt_in_prerequisites_or_universal_and_nothing_changes(self):
         # Without the experimental opt-in the whole Linux request refuses up front.
         with self.assertRaisesRegex(t.Refusal, 'Windows-only'):

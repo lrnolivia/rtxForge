@@ -146,6 +146,10 @@ def prefix_state(e,g):
     """Where the record of a game's prefix overrides lives (outside the engine's target state)."""
     return e.STATE_ROOT/'prefix-overrides'/e.target_key(g.target_dir)
 
+def overlay_state(e,g):
+    """Record of the in-game panel preferences written into this game's Proton prefix."""
+    return e.STATE_ROOT/'prefix-overlay'/e.target_key(g.target_dir)
+
 def steam_open_route(e,g,operation,baseline):
     """With Steam running, a game's Proton setting goes in its own prefix.
 
@@ -643,7 +647,10 @@ def execute(review):
                         if account:paths.extend(account[k] for k in ('localconfig','shortcuts') if account.get(k))
                         # The prefix registry is part of the undo too.
                         prefix_record=proton_prefix.load_record(prefix_state(e,g))
-                        for registry in {item.get('prefix') and str(Path(item['prefix'])/'user.reg'),prefix_record and prefix_record.get('registry')}:
+                        overlay_path=overlay_state(e,g)/'prefix-overlay.json'
+                        overlay_record=json.loads(overlay_path.read_text()) if overlay_path.is_file() else None
+                        paths.append(overlay_state(e,g))
+                        for registry in {item.get('prefix') and str(Path(item['prefix'])/'user.reg'),prefix_record and prefix_record.get('registry'),overlay_record and overlay_record.get('registry')}:
                             if registry:paths.append(Path(registry))
                     report('Backing up your current files',0.15)
                     checkpoint=session.capture(paths,label=g.name)
@@ -687,6 +694,9 @@ def execute(review):
                     owned=e.load_baseline(g.target_dir)
                     e.verify_native_restore(owned)
                     proton_prefix.restore(prefix_state(e,g))
+                    # Panel preferences rtxForge put in the prefix go back too (user edits since are kept).
+                    import proton_overlay
+                    proton_overlay.restore(overlay_state(e,g))
                     e.restore_launch_options_batch([g],assume_yes=True)
                     record=e.restore_target(g)
                     release_install(g,owned)

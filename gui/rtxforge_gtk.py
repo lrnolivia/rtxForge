@@ -4323,7 +4323,13 @@ class Window(Adw.ApplicationWindow):
             header
         )
         self.content_header=header
+        self.page_history=[]
+        self._navigating_back=False
+        self.back_button=Gtk.Button(icon_name='go-previous-symbolic',tooltip_text='Back (Alt+Left)',sensitive=False)
+        self.back_button.connect('clicked',lambda *_:self.navigate_back())
+        header.pack_start(self.back_button)
         self.page_stack=Gtk.Stack(hexpand=True,vexpand=True,transition_type=Gtk.StackTransitionType.CROSSFADE,transition_duration=120)
+        self.page_stack.connect('notify::visible-child-name',lambda *_:self.back_button.set_sensitive(self.current_page()=='game-details' or bool(self.page_history)))
         outer.append(self.page_stack)
         library_page=Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.page_stack.add_named(library_page,'library')
@@ -5398,8 +5404,22 @@ class Window(Adw.ApplicationWindow):
         stack=getattr(self,'page_stack',None)
         return stack.get_visible_child_name() if stack is not None else 'library'
 
+    def navigate_back(self):
+        if self.get_visible_dialog():return False
+        current=self.page_stack.get_visible_child()
+        if isinstance(current,EmbeddedDetails):
+            current.close();self.sync_header_bar();return True
+        if not self.page_history:return False
+        self._navigating_back=True
+        try:self.show_page(self.page_history.pop())
+        finally:self._navigating_back=False
+        self.back_button.set_sensitive(bool(self.page_history))
+        return True
+
     def show_page(self,name):
         if name not in dict((key,title) for key,title,_icon in self.PAGES):return
+        previous=self.current_page()
+        if previous!=name and previous!='game-details' and not self._navigating_back:self.page_history.append(previous)
         # Presets mode belongs to the Library; any other page ends it.
         if name!='library' and getattr(self,'preset_selecting',False):self.end_preset_selection()
         if name=='packages':self.refresh_packages_page()
@@ -5632,6 +5652,8 @@ class Window(Adw.ApplicationWindow):
     def keyboard_input(self,_controller=None,keyval=None,_keycode=None,state=0):
         # Device changes affect prompts, never the selected interface.
         self.set_input_kind('keyboard')
+        if self.input_stack.get_visible_child_name()!='couch' and keyval==Gdk.KEY_Left and state&Gdk.ModifierType.ALT_MASK:
+            return self.navigate_back()
         if keyval is None or self.input_stack.get_visible_child_name()!='couch':return False
         dialog=self.get_visible_dialog()
         if dialog:
@@ -9808,6 +9830,7 @@ class Window(Adw.ApplicationWindow):
             def fit_columns(widget,_clock):
                 direction=Gtk.Orientation.HORIZONTAL if widget.get_width()>=700 else Gtk.Orientation.VERTICAL
                 if widget.get_orientation()!=direction:widget.set_orientation(direction)
+                widget.set_homogeneous(direction==Gtk.Orientation.HORIZONTAL)
                 return True
             columns.add_tick_callback(fit_columns)
         outer.append(features)

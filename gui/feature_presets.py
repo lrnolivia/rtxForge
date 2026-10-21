@@ -29,6 +29,7 @@ class FeaturePresets(Gtk.Box):
         self.mode=mode
         values=normalized(values)
         groups={}
+        surfaces={}
         more=None
         if installation:
             more=Adw.ExpanderRow(title='More settings',expanded=False)
@@ -47,9 +48,11 @@ class FeaturePresets(Gtk.Box):
                     container=Adw.PreferencesGroup()
                     group=Adw.ExpanderRow(title=name)
                     container.add(group);parent.append(container)
+                    surfaces[group_key]=container
                 else:
                     group=Adw.PreferencesGroup(title=name)
                     parent.append(group)
+                    surfaces[group_key]=group
                 groups[group_key]=group
             key=item['key'];title=item['advanced'] if advanced else item['label']
             if item['kind']=='toggle':
@@ -88,6 +91,29 @@ class FeaturePresets(Gtk.Box):
         if more is not None:
             surface=Adw.PreferencesGroup()
             surface.add(more);self.append(surface)
+        if not installation:
+            for surface in surfaces.values():self.remove(surface)
+            def card(child):
+                box=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,hexpand=True,valign=Gtk.Align.START)
+                box.add_css_class('control-pod');box.append(child)
+                return box
+            columns=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=24,homogeneous=True)
+            columns.append(card(surfaces['Neural rendering']))
+            secondary=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True,valign=Gtk.Align.START)
+            image=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12)
+            image.append(surfaces['Image tuning']);image.append(surfaces['Fine tuning'])
+            secondary.append(card(image))
+            sharp=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12)
+            sharp.append(surfaces['Sharpening']);sharp.append(surfaces['Motion sharpening'])
+            secondary.append(card(sharp));secondary.append(card(surfaces['Performance']))
+            columns.append(secondary);self.append(columns)
+            self.append(card(surfaces['Upscaling']))
+            def responsive(widget,_clock):
+                direction=Gtk.Orientation.HORIZONTAL if widget.get_width()>=1120 else Gtk.Orientation.VERTICAL
+                if widget.get_orientation()!=direction:widget.set_orientation(direction)
+                widget.set_homogeneous(direction==Gtk.Orientation.HORIZONTAL)
+                return True
+            columns.add_tick_callback(responsive)
         self.connect('value-changed',lambda *_:self.refresh_availability())
         self.refresh_availability()
 

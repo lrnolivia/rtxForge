@@ -4,7 +4,7 @@ function windows(view, width, height, alt, label, caption, extra = {}) {
   return {
     src: `assets/screenshots/windows-${view}-dark.webp`,
     light: { src: `assets/screenshots/windows-${view}-light.webp` },
-    width, height, radius: view.startsWith('desktop-') ? 16 : 0, alt, label, caption, provenance, ...extra
+    width, height, radius: 16, alt, label, caption, provenance, ...extra
   };
 }
 function install(mode, game, sizes) {
@@ -30,31 +30,31 @@ export const SCREENSHOTS = {
     }
   },
   windows: {
-    'desktop-library': windows('desktop-library', 2989, 1785,
+    'desktop-library': windows('desktop-library', 2985, 1781,
       'Windows desktop Library in Poster View, with the expanded sidebar and no games selected.',
       'Desktop library', 'Library', {
-        selected: windows('desktop-library-selected', 2989, 1785,
+        selected: windows('desktop-library-selected', 2985, 1781,
           'The same Windows desktop Library with six games selected in a staggered pattern.',
           'Desktop library with games selected', 'Library')
       }),
-    'desktop-details': windows('desktop-details', 2989, 1785,
+    'desktop-details': windows('desktop-details', 2985, 1781,
       'The Witcher 3: Wild Hunt — Remastered Overview in the Windows desktop app, with the expanded sidebar.',
       'Desktop game details', 'Game Details'),
     'desktop-install': install('desktop', 'inZOI', { review: [667, 574], progress: [998, 478], done: [858, 338] }),
-    presets: windows('desktop-presets', 2989, 1785,
+    presets: windows('desktop-presets', 2985, 1781,
       'Standalone Windows Presets with frame generation, neural rendering and image-tuning controls.',
       'Desktop presets', 'Presets', { carousel: false }),
-    'game-mode-library': windows('game-mode-library', 2560, 1440,
+    'game-mode-library': windows('game-mode-library', 2560, 1438,
       'Windows Game Mode Library in Poster View, with no games selected and Xbox controller glyphs visible.',
       'Game Mode library', 'Library', {
-        selected: windows('game-mode-library-selected', 2560, 1440,
+        selected: windows('game-mode-library-selected', 2560, 1438,
           'The same Windows Game Mode Library with six games selected in a staggered pattern and Xbox controller glyphs visible.',
           'Game Mode library with games selected', 'Library')
       }),
-    'game-mode-details': windows('game-mode-details', 2560, 1440,
+    'game-mode-details': windows('game-mode-details', 2560, 1438,
       'Dragon Age: The Veilguard Game Details with the DLSS Files tab selected and Xbox controller glyphs visible.',
       'Game Mode game details', 'Game Details'),
-    'game-mode-presets': windows('game-mode-presets', 2560, 1440,
+    'game-mode-presets': windows('game-mode-presets', 2560, 1438,
       'Windows Game Mode Presets with frame generation, neural rendering, image tuning and Xbox controller glyphs.',
       'Game Mode presets', 'Presets'),
     'game-mode-install': install('game-mode', 'Avatar: Frontiers of Pandora', { review: [1268, 565], progress: [1268, 570], done: [1268, 290] })

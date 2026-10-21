@@ -127,6 +127,8 @@ public sealed partial class GameModeView : UserControl
     void Render(bool keepFocus = false)
     {
         var focusedName = keepFocus ? FocusKey(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject) : null;
+        root.RequestedTheme = t.IsLight ? ElementTheme.Light : ElementTheme.Dark;
+        ui.FocusBrush.Color = t.Focus;
         root.Background = GmTheme.B(t.Window);
         RenderHeader();
         body.Children.Clear();
@@ -324,6 +326,7 @@ public sealed partial class GameModeView : UserControl
         if (fromController) SetInput("controller");
         WakeHints();
         var focused = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
+        if (HandleChoiceMenu(action, focused)) return;
         switch (action)
         {
             case "up" or "down" or "left" or "right":
@@ -456,9 +459,9 @@ public sealed partial class GameModeView : UserControl
             MaxHeight = Math.Max(240, ActualHeight - footer.ActualHeight - t.Px(96)),
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
             Child = new ScrollViewer { Content = panel, HorizontalScrollMode = ScrollMode.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto },
-            Shadow = new ThemeShadow(), Translation = new System.Numerics.Vector3(0, 0, 48),
+            Shadow = new ThemeShadow(), Translation = new System.Numerics.Vector3(0, 0, t.IsLight ? 12 : 32),
         };
-        var layer = new Grid { Background = GmTheme.B(Microsoft.UI.Colors.Black, 0.7), Padding = new Thickness(t.Px(48)) };
+        var layer = new Grid { Background = GmTheme.B(Microsoft.UI.Colors.Black, t.IsLight ? .18 : .60), Padding = new Thickness(t.Px(48)) };
         layer.Children.Add(dialog);
         layer.TabFocusNavigation = KeyboardNavigationMode.Cycle;
         layer.XYFocusKeyboardNavigation = XYFocusKeyboardNavigationMode.Enabled;

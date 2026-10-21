@@ -7,10 +7,10 @@
         font size are set per control by GameModeView from the Night / Dark /
         Light palette; this template only adds the prototype's hover
         (brightness 1.09) and press (brightness 0.9) as light/dark overlays,
-        and keeps the system focus visual, styled as a thin rounded outline.
+        and draws focus inside the same rounded geometry as the control.
     -->
     <Style x:Key="GmButtonStyle" TargetType="Button">
-        <Setter Property="UseSystemFocusVisuals" Value="True" />
+        <Setter Property="UseSystemFocusVisuals" Value="False" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="BorderThickness" Value="0" />
@@ -26,7 +26,22 @@
                                           HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
                                           VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
                                           Foreground="{TemplateBinding Foreground}" />
+                        <Border x:Name="FocusWash" Background="{TemplateBinding FocusVisualPrimaryBrush}" Margin="2"
+                                CornerRadius="{TemplateBinding CornerRadius}" Opacity="0" IsHitTestVisible="False" />
+                        <Border x:Name="FocusRing" BorderBrush="{TemplateBinding FocusVisualPrimaryBrush}" Margin="2"
+                                BorderThickness="{TemplateBinding FocusVisualPrimaryThickness}"
+                                CornerRadius="{TemplateBinding CornerRadius}" Opacity="0" IsHitTestVisible="False" />
                         <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="FocusStates">
+                                <VisualState x:Name="Unfocused" />
+                                <VisualState x:Name="PointerFocused" />
+                                <VisualState x:Name="Focused">
+                                    <VisualState.Setters>
+                                        <Setter Target="FocusRing.Opacity" Value="1" />
+                                        <Setter Target="FocusWash.Opacity" Value="0.06" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
                             <VisualStateGroup x:Name="CommonStates">
                                 <VisualState x:Name="Normal" />
                                 <VisualState x:Name="PointerOver">
@@ -61,10 +76,25 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
+                    <Grid>
                     <ContentPresenter Content="{TemplateBinding Content}" Padding="{TemplateBinding Padding}"
                                       HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
                                       VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
                                       Foreground="{TemplateBinding Foreground}" Background="Transparent" />
+                        <Border x:Name="FocusRing" Margin="{TemplateBinding FocusVisualMargin}"
+                                BorderBrush="{TemplateBinding FocusVisualPrimaryBrush}"
+                                BorderThickness="{TemplateBinding FocusVisualPrimaryThickness}"
+                                CornerRadius="{TemplateBinding CornerRadius}" Opacity="0" IsHitTestVisible="False" />
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="FocusStates">
+                                <VisualState x:Name="Unfocused" />
+                                <VisualState x:Name="PointerFocused" />
+                                <VisualState x:Name="Focused">
+                                    <VisualState.Setters><Setter Target="FocusRing.Opacity" Value="1" /></VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Grid>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>

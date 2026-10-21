@@ -2,6 +2,7 @@ using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using RtxForge.Windows.Services;
 using Windows.UI;
 using Windows.UI.Text;
 
@@ -17,6 +18,7 @@ public enum GmKind { Card, Primary, Danger, Quiet, Transparent, Active, Dlss }
 public sealed class GmUi(GmTheme t)
 {
     public GmTheme T => t;
+    public SolidColorBrush FocusBrush { get; } = GmTheme.B(t.Focus);
     static Style Style(string key) => (Style)Application.Current.Resources[key];
 
     public TextBlock Text(string text, double em = 1, Color? color = null, FontWeight? weight = null, bool wrap = false, int maxLines = 0)
@@ -57,7 +59,7 @@ public sealed class GmUi(GmTheme t)
             GmKind.Quiet or GmKind.Transparent => (Microsoft.UI.Colors.Transparent, t.Fg),
             GmKind.Active => (t.Active, t.ActiveFg),
             GmKind.Dlss => (t.DlssSurface, t.DlssInk),
-            _ => (t.IsLight ? GmTheme.Hex("#454545") : t.Card, GmTheme.Hex("#f2f2f2")),
+            _ => (t.Card, t.Fg),
         };
         if (!enabled) (bg, fg) = (kind is GmKind.Quiet or GmKind.Transparent ? Microsoft.UI.Colors.Transparent : t.Disabled, t.DisabledFg);
         var button = new Button
@@ -120,9 +122,9 @@ public sealed class GmUi(GmTheme t)
     /// <summary>Focus stays separate from selection without growing into neighbouring controls.</summary>
     public void Focusable(Control control, double offset = 0)
     {
-        control.UseSystemFocusVisuals = true;
-        control.FocusVisualPrimaryBrush = GmTheme.B(t.Focus);
-        control.FocusVisualPrimaryThickness = new Thickness(t.Px(2));
+        control.UseSystemFocusVisuals = control is not Microsoft.UI.Xaml.Controls.Button;
+        control.FocusVisualPrimaryBrush = FocusBrush;
+        control.FocusVisualPrimaryThickness = new Thickness(t.Px(t.IsLight ? 1.25 : 1.75));
         control.FocusVisualSecondaryThickness = new Thickness(0);
         control.FocusVisualMargin = new Thickness(-t.Px(offset + 2));
         control.IsTabStop = true;
@@ -140,13 +142,13 @@ public sealed class GmUi(GmTheme t)
     {
         element.ScaleTransition = new Vector3Transition { Duration = TimeSpan.FromMilliseconds(150) };
         element.TranslationTransition = new Vector3Transition { Duration = TimeSpan.FromMilliseconds(150) };
-        element.Shadow ??= new ThemeShadow();
+        if (!t.IsLight) element.Shadow ??= new ThemeShadow();
         void Set(bool on)
         {
             if (element is FrameworkElement fe) element.CenterPoint = new System.Numerics.Vector3((float)fe.ActualWidth / 2, (float)fe.ActualHeight / 2, 0);
             var grow = on && Animations ? (float)scale : 1f;
             element.Scale = new System.Numerics.Vector3(grow, grow, 1);
-            element.Translation = new System.Numerics.Vector3(0, 0, on ? depth : 0);
+            element.Translation = new System.Numerics.Vector3(0, 0, on ? t.IsLight ? Math.Min(depth, 8) : depth : 0);
         }
         element.GotFocus += (_, _) => Set(element is Control c && c.FocusState != FocusState.Pointer);
         element.LostFocus += (_, _) => Set(false);
@@ -181,6 +183,8 @@ public sealed class GmUi(GmTheme t)
         button.GotFocus += (_, _) =>
         {
             if (button.FocusState == FocusState.Pointer) return;
+            focusedBackground.Color = ArtAccent.Mix(FocusBrush.Color, t.Panel, t.IsLight ? .10 : .18);
+            focusedForeground.Color = ArtAccent.Readable(FocusBrush.Color, focusedBackground.Color);
             priorBackground = button.Background; priorForeground = button.Foreground;
             button.Background = focusedBackground; button.Foreground = focusedForeground;
         };

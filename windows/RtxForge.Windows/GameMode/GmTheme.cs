@@ -97,7 +97,7 @@ public sealed class GmTheme
     {
         Name = "light",
         Window = Hex("#f5f5f5"), View = Hex("#fafafa"), Panel = Hex("#ebebeb"), Card = Hex("#ffffff"),
-        Fg = Hex("#222222"), Muted = Hex("#555555"), Focus = Hex("#767676"),
+        Fg = Hex("#222222"), Muted = Hex("#555555"), Focus = Hex("#81898c"),
         Danger = Hex("#8b2029"), DangerBg = Hex("#f6dce0"), Line = Hex("#cecece"),
         Active = Hex("#d2d2d2"), ActiveFg = Hex("#222222"), SegmentSelected = Hex("#d4d4d4"), RowFocus = Hex("#dedede"),
         Disabled = Hex("#e5e5e5"), DisabledFg = Hex("#666666"),

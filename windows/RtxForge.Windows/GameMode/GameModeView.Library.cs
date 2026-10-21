@@ -239,7 +239,7 @@ public sealed partial class GameModeView
         title.Width = width;
         // Keep a thin rounded focus ring separate from the artwork's accent selection stroke.
         card.Style = (Style)Application.Current.Resources["GmBareButtonStyle"];
-        card.UseSystemFocusVisuals = true;
+        card.UseSystemFocusVisuals = false;
         card.FocusVisualMargin = new Thickness(-t.Px(5), -t.Px(5), -t.Px(5), title.MinHeight + column.Spacing - t.Px(5));
         card.IsTabStop = true;
         GmUi.NoLift(card);

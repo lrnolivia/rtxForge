@@ -180,7 +180,10 @@ public sealed partial class GameModeView
 
     async Task DetailsAccentAsync(Game g, Border poster, TextBlock title, Border sourceBadge, List<(Button Button, string Section)> nav)
     {
+        var renderedUi = ui;
         var colors = t.GameColors(await ArtAccent.ForGameAsync(g));
+        if (page != "details" || detailsGame?.Id != g.Id || !ReferenceEquals(ui, renderedUi)) return;
+        ui.FocusBrush.Color = colors.Title;
         poster.BorderBrush = GmTheme.B(colors.Accent);
         title.Foreground = GmTheme.B(colors.Title);
         sourceBadge.Background = GmTheme.B(colors.Pill);
@@ -263,7 +266,7 @@ public sealed partial class GameModeView
                 if (presetsExpanded)
                 {
                     var tuning = shell.GameTuning(g);
-                    var (rows, value) = PresetRows(tuning, g.Installed && !g.Blocked, g.RuntimeProvider != "skynizz");
+                    var (rows, value) = PresetRows(tuning, g.Installed && !g.Blocked, g.RuntimeProvider != "skynizz", embedded: true);
                     content.Children.Add(ui.P("Only this game changes. Review the changes before applying."));
                     foreach (var row in rows) content.Children.Add(row);
                     var apply = ui.Button("Apply to this game", () => _ = RunOperationAsync("apply", [g], value()), GmKind.Primary, 0.85,
@@ -447,7 +450,7 @@ public sealed partial class GameModeView
     }
 
     /// <summary>Compact controller cards retain the overlay vocabulary and original values.</summary>
-    (List<UIElement> Rows, Func<Tuning> Value) PresetRows(Tuning initial, bool enabled = true, bool legacy = false, Action? changed = null)
+    (List<UIElement> Rows, Func<Tuning> Value) PresetRows(Tuning initial, bool enabled = true, bool legacy = false, Action? changed = null, bool embedded = false)
     {
         var values = FeatureControlSchema.Resolve(initial);
         var advanced = shell.Settings.OverlayControls == "classic";
@@ -455,15 +458,15 @@ public sealed partial class GameModeView
         FeatureControl Definition(string key) => controls.Single(f => f.Key == key);
         Controls.PresetColumns Pair(params UIElement[] children)
         {
-            var columns = new Controls.PresetColumns(t.Px(200), 2) { ColumnSpacing = t.Px(12), RowSpacing = t.Px(12) };
+            var columns = new Controls.PresetColumns(t.Px(270), 2) { ColumnSpacing = t.Px(24), RowSpacing = t.Px(20) };
             foreach (var child in children) columns.Children.Add(child); return columns;
         }
         Border Card(string title, params UIElement[] children)
         {
-            var section = new StackPanel { Spacing = t.Px(10), Padding = new Thickness(t.Px(18)) };
+            var section = new StackPanel { Spacing = t.Px(20), Padding = new Thickness(embedded ? 0 : t.Px(24)) };
             if (title.Length > 0) section.Children.Add(ui.Text(title, .96, weight: FontWeights.SemiBold));
             foreach (var child in children) section.Children.Add(child);
-            return new Border { Child = section, Background = GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(12)), VerticalAlignment = VerticalAlignment.Top };
+            return new Border { Child = section, Background = embedded ? null : GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(16)), VerticalAlignment = VerticalAlignment.Top };
         }
         UIElement Field(FeatureControl field)
         {
@@ -505,16 +508,34 @@ public sealed partial class GameModeView
                 target.Tapped += (_, e) => { Adjust(direction); e.Handled = true; };
                 return target;
             }
-            line.Children.Add(Step("", -1));
-            Grid.SetColumn(shown, 1); line.Children.Add(shown);
-            var right = Step("", 1); Grid.SetColumn(right, 2); line.Children.Add(right);
-            button = ui.Button(line, field.Kind == "toggle" ? () => Adjust(1) : null, GmKind.Card, .78, available,
-                radius: 22, padding: new Thickness(t.Px(4), 0, t.Px(4), 0), minHeight: 46);
+            var discrete = field.Kind is "toggle" or "choice";
+            if (discrete)
+            {
+                Grid.SetColumnSpan(shown, 2); line.Children.Add(shown);
+                var arrow = ui.Icon("", .55); Grid.SetColumn(arrow, 2); line.Children.Add(arrow);
+            }
+            else
+            {
+                line.Children.Add(Step("", -1));
+                Grid.SetColumn(shown, 1); line.Children.Add(shown);
+                var right = Step("", 1); Grid.SetColumn(right, 2); line.Children.Add(right);
+            }
+            void Choose()
+            {
+                var numbers = field.Kind == "toggle" ? new double[] { 0, 1 } : field.Values;
+                var captions = field.Kind == "toggle" ? new[] { "Off", "On" } : field.Choices;
+                OpenChoiceMenu(button!, label, captions, Math.Max(0, Array.IndexOf(numbers, FeatureControlSchema.Number(values, field))), i =>
+                {
+                    FeatureControlSchema.Put(values, field, numbers[i]); Refresh(); changed?.Invoke();
+                });
+            }
+            button = ui.Button(line, discrete ? Choose : null, GmKind.Card, .78, available,
+                radius: 12, padding: new Thickness(t.Px(12), t.Px(4), t.Px(12), t.Px(4)), minHeight: 54);
             button.HorizontalAlignment = HorizontalAlignment.Stretch;
             button.HorizontalContentAlignment = HorizontalAlignment.Stretch;
             button.BorderBrush = GmTheme.B(t.Line);
             button.BorderThickness = new Thickness(t.Px(1));
-            button.Tag = new Adjustable(Adjust);
+            if (!discrete) button.Tag = new Adjustable(Adjust);
             GmUi.NoLift(button);
             ui.Focusable(button, 0);
             Key(button, "preset-field-" + field.Key);
@@ -537,6 +558,7 @@ public sealed partial class GameModeView
                 for (var i = 0; i < buttons.Count; i++)
                 {
                     buttons[i].Background = GmTheme.B(definition.Values[i] == value ? t.SegmentSelected : t.Card);
+                    buttons[i].Foreground = GmTheme.B(definition.Values[i] == value ? t.ActiveFg : t.Fg);
                     Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(buttons[i], definition.Label + " " + definition.Choices[i] + (definition.Values[i] == value ? " selected" : ""));
                 }
                 changed?.Invoke();
@@ -574,7 +596,7 @@ public sealed partial class GameModeView
         }
         var rows = new List<UIElement>
         { Card("Frame generation", ui.P("Requested multiplier · enable frame generation in the game.", .75), Choices("multiplier")) };
-        var primary = new Controls.PresetColumns(t.Px(480), 2) { ColumnSpacing = t.Px(16), RowSpacing = t.Px(16) };
+        var primary = new Controls.PresetColumns(t.Px(560), 2) { ColumnSpacing = t.Px(28), RowSpacing = t.Px(28) };
         primary.Children.Add(Card("Neural rendering", Field(Definition("enabled")), Choices("style"), Field(Definition("intensity")),
             Pair(Field(Definition("preset")), Field(Definition("passes")))));
         var secondary = new StackPanel { Spacing = t.Px(16) };

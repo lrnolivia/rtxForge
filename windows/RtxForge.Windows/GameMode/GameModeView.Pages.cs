@@ -181,19 +181,19 @@ public sealed partial class GameModeView
         return grid;
     }
 
-    /// <summary>A choice row: Select cycles forward, Left/Right step through the choices.</summary>
+    /// <summary>A choice row opens its options; opening or dismissing never changes the setting.</summary>
     Button Choice(string title, string? description, string[] keys, string[] captions, Func<string> get, Action<string> set)
     {
         string Caption() => captions[Math.Max(0, Array.IndexOf(keys, get()))];
-        void Step(int d)
+        Button? row = null;
+        void Choose(int index)
         {
-            var i = (Math.Max(0, Array.IndexOf(keys, get())) + d + keys.Length) % keys.Length;
-            set(keys[i]);
+            if (keys[index] == get()) return;
+            set(keys[index]);
             shell.SaveSettings();
             Render(keepFocus: true);
         }
-        var row = ui.RowButton(title, Caption(), () => Step(1), description: description);
-        row.Tag = new Adjustable(Step);
+        row = ui.RowButton(title, Caption(), () => OpenChoiceMenu(row!, title, captions, Math.Max(0, Array.IndexOf(keys, get())), Choose), description: description);
         Key(row, "choice-" + title);
         return row;
     }

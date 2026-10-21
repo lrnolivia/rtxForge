@@ -80,17 +80,22 @@ public sealed partial class GameModeView
     Task<Tuning?> AskPresetsAsync(Tuning initial)
     {
         var done = new TaskCompletionSource<Tuning?>();
-        var (rows, value) = PresetRows(initial);
+        var (rows, value) = PresetRows(initial, embedded: true);
         var content = new StackPanel { Spacing = t.Px(20) };
         content.Children.Add(ui.P("Adjust your presets or continue. You can change these settings later in OptiScaler.", 0.92));
         content.Children.Add(ui.IconLabel("", ProviderName()).With(p => { foreach (var c in p.Children) if (c is TextBlock tb) tb.FontSize = t.Em(0.85); }));
-        if (shell.Settings.RuntimeProvider != "feeder") content.Children.Add(ui.Group(rows, t.Card));
+        if (shell.Settings.RuntimeProvider != "feeder")
+        {
+            var editor = new StackPanel { Spacing = t.Px(28) };
+            foreach (var row in rows) editor.Children.Add(row);
+            content.Children.Add(editor);
+        }
         var startup = new CheckBox { Content = "Enable NR on launch", IsChecked = shell.Settings.NrOnLaunch };
         if (shell.Mode != "mfg-only") content.Children.Add(startup);
         void Cancel() { CloseModal(); done.TrySetResult(null); }
         var cancel = ui.Button("Cancel", Cancel, GmKind.Card, 0.92);
         var next = ui.Button("Continue", () => { CloseModal(); done.TrySetResult(value() with { NrOnLaunch = startup.IsChecked == true }); }, GmKind.Primary, 0.92);
-        ShowModal("Install Features", content, [cancel, next], Cancel, 1100, cancel);
+        ShowModal("Install Features", content, [cancel, next], Cancel, 1500, cancel);
         return done.Task;
     }
 

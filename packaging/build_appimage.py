@@ -65,7 +65,7 @@ for name in ['provider.json','README.md']:shutil.copyfile(root/name,payload/name
 (payload/'engine').mkdir()
 # Reviewed Global and game-menu bulk changes share the Windows host's platform-neutral modules.
 (payload/'windows/engine-host').mkdir(parents=True)
-for name in ('global_controls.py','overlay_ui.py','app_storage.py','companion_controls.py','offline_routes.py'):
+for name in ('global_controls.py','overlay_ui.py','app_storage.py','companion_controls.py'):
  shutil.copyfile(root/'windows/engine-host'/name,payload/'windows/engine-host'/name)
 shutil.copyfile(root/'engine/rtxengine.py',payload/'engine/rtxengine.py')
 bundle_steam_artwork(root, payload)

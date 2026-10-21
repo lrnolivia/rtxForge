@@ -890,13 +890,13 @@ class MfgControl(Gtk.Box):
     """Multi-Frame Generation: On/Off, Auto/Custom/Dynamic, and 2×–6× ratios."""
     __gsignals__={'changed':(GObject.SignalFlags.RUN_FIRST,None,())}
     def __init__(self,values,dynamic_available=True,on_change=None):
-        super().__init__(orientation=Gtk.Orientation.VERTICAL,spacing=8,valign=Gtk.Align.CENTER)
+        super().__init__(orientation=Gtk.Orientation.VERTICAL,spacing=16,valign=Gtk.Align.CENTER)
         self.add_css_class('mfg-control')
         self.dynamic_available=dynamic_available
         self._on_change=on_change
         self._syncing=False
         header=Gtk.Box(spacing=12)
-        heading=label('Multi-Frame Generation','heading');heading.set_wrap(False);heading.set_hexpand(True)
+        heading=label('Multi-Frame Generation','heading');heading.set_wrap(True);heading.set_hexpand(True)
         header.append(heading)
         self.switch=Gtk.Switch(valign=Gtk.Align.CENTER)
         self.switch.update_property([Gtk.AccessibleProperty.LABEL],['Multi-Frame Generation'])
@@ -5916,7 +5916,7 @@ class Window(Adw.ApplicationWindow):
             bezel.button.set_can_target(False);bezel.button.set_focusable(False)
         else:
             bezel=Gtk.Frame(width_request=100,height_request=49,valign=Gtk.Align.CENTER)
-            bezel.set_child(Gtk.Image(icon_name=icon,pixel_size=28))
+            bezel.set_child(Gtk.Image(icon_name=icon,pixel_size=18,halign=Gtk.Align.CENTER,valign=Gtk.Align.CENTER))
         bezel.add_css_class('review-bezel');bezel.set_overflow(Gtk.Overflow.HIDDEN)
         entry.add_prefix(bezel)
         if badge:
@@ -5931,14 +5931,15 @@ class Window(Adw.ApplicationWindow):
         return next((g for g in self.games if (game_id and g['game']==game_id) or g['name']==name),None)
 
     def add_game_art_prefix(self,entry,game):
-        if game and poster_art_path(game):
-            art=Gtk.Picture.new_for_filename(poster_art_path(game))
-            art.set_content_fit(Gtk.ContentFit.COVER)
-            art.set_size_request(40,56)
-            art.set_can_shrink(True)
-            art.set_valign(Gtk.Align.CENTER)
-        else:
-            art=Gtk.Image(icon_name='applications-games-symbolic',pixel_size=28)
+        art=ListArtwork()
+        art.set_artwork(capsule_art_path(game) if game else None)
+        art.picture.set_content_fit(Gtk.ContentFit.CONTAIN)
+        art.button.set_can_target(False)
+        art.button.set_focusable(False)
+        art.set_valign(Gtk.Align.CENTER)
+        if game:
+            accent=self._ensure_game_accent(game)
+            if accent:entry.add_css_class(accent)
         entry.add_prefix(art)
 
     make_brand_icon=staticmethod(make_brand_icon)
@@ -9766,7 +9767,7 @@ class Window(Adw.ApplicationWindow):
 
         pod=Gtk.Box()
         pod.add_css_class('control-pod')
-        box.append(pod)
+        outer.append(pod)
         source=dict(self.settings)
         source.update({k:v for k,v in initial.items() if k in ('mfg_multiplier','dynamic_mfg','mfg_saved_mode','mfg_saved_multiplier') and v is not None})
         dynamic=bool(initial.get('dynamic_mfg_available')) if 'dynamic_mfg_available' in initial else self.settings.get('runtime_provider')=='skynizz'
@@ -15781,6 +15782,12 @@ class Application(Adw.Application):
             ).add_search_path(
                 str(ROOT/'gui/icons')
             )
+            # An isolated HOME (portable builds and smoke sessions) can retain
+            # the desktop's theme name without its user-installed theme files.
+            # Fall back within this process; never change desktop preferences.
+            theme=Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
+            if not any(theme.has_icon(icon) for _,_,icon in Window.PAGES):
+                Gtk.Settings.get_default().set_property('gtk-icon-theme-name','Adwaita')
             Gtk.Window.set_default_icon_name(
                 'io.github.lrnolivia.RTXForge'
             )

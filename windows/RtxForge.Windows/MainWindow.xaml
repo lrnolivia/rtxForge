@@ -98,11 +98,12 @@
             <NavigationView.PaneHeader>
                 <Grid x:Name="NavigationCommands" Margin="12,6,12,6" Height="40">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                    <Button x:Name="NavigationBack" Click="OnNavigationBackClick" IsEnabled="False" Width="40" Height="40"
+                    <Button x:Name="NavigationBack" Click="OnNavigationBackClick" IsEnabled="False" Width="32" Height="32" MinWidth="0" MinHeight="0"
                             Padding="0" Background="Transparent" BorderThickness="0" HorizontalAlignment="Left"
-                            Style="{StaticResource SubtleButtonStyle}" CornerRadius="20"
+                            VerticalAlignment="Center" Style="{StaticResource SubtleButtonStyle}" CornerRadius="16"
                             ToolTipService.ToolTip="Back" AutomationProperties.Name="Back">
-                        <SymbolIcon Symbol="Back" />
+                        <FontIcon Glyph="&#xE72B;" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="14"
+                                  Width="16" Height="16" IsTextScaleFactorEnabled="False" />
                     </Button>
                     <Button Grid.Column="1" Click="OnNavigationMenuClick" Width="40" Height="40" Padding="0"
                             Background="Transparent" BorderThickness="0" HorizontalAlignment="Right"

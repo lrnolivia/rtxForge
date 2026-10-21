@@ -1824,6 +1824,7 @@ spinbutton.tuning-number-input text {
 .settings-content row { min-height: 56px; }
 .settings-content popover row, dropdown popover row { min-height: 32px; padding: 4px 10px; margin: 0; }
 .settings-content popover row > box, dropdown popover row > box { min-height: 0; padding: 0; margin: 0; }
+.settings-navigation row image, .game-detail-nav row image { color: @window_fg_color; }
 .settings-navigation row:selected image { color: @accent_color; }
 
 .settings-footer {

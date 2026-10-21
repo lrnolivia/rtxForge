@@ -145,12 +145,15 @@ class UniversalMfgTest(unittest.TestCase):
             (target / provider.STATUS).write_text('{not json')
             self.assertIsNone(provider.dynamic_support(target))
 
-    def test_dynamic_preset_is_refused_only_where_the_plugin_reported_no_support(self):
+    def test_dynamic_preset_requires_confirmed_per_game_support(self):
         e = SimpleNamespace(set_ini_value=set_ini_value, Y4MY_PROVIDER={'mfg_component': provider.pinned()},
                             visual_defaults=lambda nr, mfg, sharp: {'DLSSG': {}})
         with tempfile.TemporaryDirectory() as directory:
             game = SimpleNamespace(target_dir=Path(directory), exe=None, appid=None)
             dynamic = {'multiplier': 4, 'dynamic_mfg': 1}
+            with self.assertRaisesRegex(t.Refusal, 'confirmed Dynamic'):
+                skynizz_provider.configure(e, b'[DLSSG]\n', mode='nr-mfg', game=game, controls=dynamic)
+            (game.target_dir / provider.STATUS).write_text(json.dumps({'dynamicMfgSupportKnown': True, 'dynamicMfgSupported': True}))
             text, _ = skynizz_provider.configure(e, b'[DLSSG]\n', mode='nr-mfg', game=game, controls=dynamic)
             self.assertRegex(text, r'(?m)^OverrideForceDMFG=\s*true\b')
             (game.target_dir / provider.STATUS).write_text(json.dumps({'dynamicMfgSupportKnown': True, 'dynamicMfgSupported': False}))

@@ -2218,8 +2218,8 @@ def apply_mfg_preset(text: str, game: "Game", feature_mode: str, provider: dict,
                 "Dynamic Multi-Frame Generation needs the Skynizz bridge with its integrated or Universal MFG. Choose Auto or Custom.")
         if component:
             import universal_mfg_provider
-            require(universal_mfg_provider.dynamic_support(game.target_dir) is not False,
-                    "This game doesn't support Dynamic Multi-Frame Generation. Choose Auto or Custom.")
+            require(universal_mfg_provider.dynamic_support(game.target_dir) is True,
+                    "This game hasn't confirmed Dynamic Multi-Frame Generation support. Choose Auto or Custom, then launch it to check.")
     if not external:
         # A ReShade-hosted addon owns the count; it is reset through its own config.
         if "multiplier" not in controls:

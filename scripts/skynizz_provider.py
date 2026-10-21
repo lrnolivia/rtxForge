@@ -350,10 +350,10 @@ def configure(e, source, saved=None, mode='nr-only', mfg_multiplier='auto', game
         if universal:
             import universal_mfg_provider
             text = universal_mfg_provider.configure(e, text)
-            # Before the game's first run nothing is known, and OptiScaler only tries Dynamic.
-            t.need(not (controls and controls.get('dynamic_mfg') and game is not None
-                        and universal_mfg_provider.dynamic_support(game.target_dir) is False),
-                   "This game doesn't support Dynamic Multi-Frame Generation. Choose Auto or Custom.")
+            # Dynamic is offered only after this game's plugin confirms support.
+            t.need(not (controls and controls.get('dynamic_mfg')
+                        and (game is None or universal_mfg_provider.dynamic_support(game.target_dir) is not True)),
+                   "This game hasn't confirmed Dynamic Multi-Frame Generation support. Choose Auto or Custom, then launch it to check.")
     if mode == 'nr-only' and getattr(e, 'Y4MY_PROVIDER', {}).get('variant') == 'nr-mfg-bridge':
         for key in ('AdaMfgUnlock', 'AdaBlackwellKernels', 'AmpereMfgUnlock'):
             text = e.set_ini_value(text, 'DLSSG', key, 'false')

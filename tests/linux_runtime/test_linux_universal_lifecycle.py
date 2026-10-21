@@ -244,7 +244,7 @@ class LinuxUniversalLifecycleTest(unittest.TestCase):
         (self.target / 'RTX40MFGCore.dll').unlink()
         (self.target / universal.STATUS).write_text(json.dumps({'dynamicMfgSupportKnown': True, 'dynamicMfgSupported': False}))
         review = self.prepare(dynamic_mfg=1, mfg_saved_mode=2)
-        self.assertIn("doesn't support Dynamic", review['blocked'][0]['reason'])
+        self.assertIn('confirmed Dynamic', review['blocked'][0]['reason'])
 
     def test_proton_change_between_review_and_apply_refuses_and_is_undone(self):
         review = self.prepare()

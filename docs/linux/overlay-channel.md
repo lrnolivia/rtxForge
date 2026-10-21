@@ -1,12 +1,10 @@
 # In-game panel on Linux (Proton)
 
-Status: host side implemented and fixture-tested only (`scripts/proton_overlay.py`,
-`tests/linux_runtime/test_proton_overlay.py`). Nothing here has been run with a real
-game under Proton yet.
-
-The panel (ForgePanel) is drawn inside the game by the Skynizz bridge through
-OptiScaler's existing ImGui hook, so the Windows build runs under Proton unchanged.
-Two host-side pieces differ on Linux.
+Status: candidate bridge and Linux host implemented; synthetic protocol tests pass.
+The exact-source native DLL build and real Proton validation are still required.
+The panel draws inside the game through OptiScaler's ImGui hook. The candidate
+bridge detects Wine and uses prefix-local file mappings; Windows keeps its existing
+named pagefile mappings.
 
 ## 1. Preferences (implemented)
 
@@ -35,27 +33,30 @@ Unverified:
 - Whether a Proton update rewrites `user.reg` keys outside `Software\Wine`. It should
   not, but a real session has not checked it yet.
 
-## 2. Control channel (prototype; needs a decision)
+## 2. Control channel (candidate implementation)
 
-The panel creates `Local\rtxForge.panel.<pid>` (header and seqlock in
-`providers/skynizz-bridge/ForgePanelChannel.h`, 64 + 2×32768 bytes). Per-game presets use
-`Local\rtxForge.controls.<pid>`. A native Linux process cannot open a Wine named section.
-Until the channel exists, the panel shows "Waiting for the background helper" and its
-controls still apply live in process. Only Save, Reset, preset replay and the reviews
-need the helper.
+`ForgePanelChannel.h` uses `ntdll!wine_get_version` to select a file-backed mapping
+under `%LOCALAPPDATA%\rtxForge`: `panel.<WinePID>.map` carries the 64-byte header and
+two 32768-byte JSON slots; `controls.<WinePID>.map` carries the 512-byte controls
+mailbox. Both keep the Windows protocol unchanged. Files use exclusive creation
+and delete-on-close; a stale file is never truncated to admit a new session.
 
-| Option | How | For | Against |
-|---|---|---|---|
-| **A. Wine-side relay exe** | A tiny console exe started in the game's prefix (the game's Proton `wine64` with the same `WINEPREFIX`) opens both mappings as the Windows helper does and forwards JSON over an AF_UNIX socket (or 127.0.0.1 TCP with a per-session token) to the Linux app. | No bridge change. | A second Windows binary to build in CI (mingw) and sign. It must reach the *same* wineserver: a Proton or wine version mismatch starts a second server and the mapping is invisible. Process lifetime, and a launch per game session. Adds latency. |
-| **B. File-backed mapping (recommended)** | Under Wine only (`ntdll!wine_get_version` present), `ForgePanelChannel::Init` maps `C:\users\steamuser\AppData\Local\rtxForge\panel.<pid>.map` (`CreateFileW` + `CreateFileMappingW`) instead of a pagefile section. Wine maps file sections with `mmap(MAP_SHARED)` of the Unix file, so the Linux app's `mmap` of `pfx/drive_c/.../panel.<pid>.map` sees the same bytes. | Same protocol and seqlock, with no extra process. The Linux half already exists (`PanelChannelFile`, `channel_path`). Windows keeps the pagefile name. | Needs a bridge change and the native owner's CI build plus a Windows regression check. Stale files after a crash need validation: the helper must check magic, version and that `visible` is set, and remove files whose Wine PID is gone. The Wine PID is not the Linux PID, so the helper finds channels by globbing the prefix folder. |
-| C. Read Wine's anonymous section | Find the game's `anonmap` file through `/proc/<pid>/map_files`. | No change anywhere. | Depends on Wine internals and CAP_SYS_ADMIN or ptrace rules. Rejected. |
+`scripts/linux_overlay_host.py` binds a channel only when a live Linux process has
+the exact managed executable and channel mapped and an exact matching `WINEPREFIX`.
+It opens files without following symlinks and checks owner, single-link count and
+size. Wine PIDs and Linux PIDs are kept separate. Mailbox sequence fields use
+explicit signed 32-bit access: Linux `ctypes.c_long` is not the Windows LONG type.
 
-Recommendation: B. The bridge change is small and confined to `Init`/`Lifetime`
-(Wine-only path, then delete the file on clean exit). A is the fallback if a bridge
-change is not wanted. Either way the Linux helper answers with the same handlers as
-`windows/engine-host/companion_controls.py` and `NativePanelCoordinator`. Today
-`proton_overlay.handle()` answers only `hello`/`status`/`discard-review`, and refuses
-writes honestly ("Use rtxForge on Linux for this").
+The app starts the helper when enabled. It answers hello/status/save/reset and
+replays presets using the shared recipe-bound store and acknowledged mailbox.
+Dynamic MFG requires confirmed per-game capability; unknown support is not an
+opt-in. Replay retries a failed apply and stops when the app exits. The helper
+currently directs setting changes and global/menu reviews to the main app, where
+reviewed APIs are available. It does not edit a running game's INI.
+
+Synthetic tests cover message acknowledgement, mapping identity, unsafe file
+rejection and bound save dispatch. They do not prove Wine mapping visibility,
+real NR/MFG operation, focus behavior or game-rendered overlay output.
 
 ## 3. Shortcut and focus
 
@@ -81,5 +82,5 @@ A separate desktop-wide shortcut is needed only for the standalone companion win
 1. Prefix preferences reach the bridge: the log shows `rtxForge panel startup: enabled true`.
 2. Backtick opens and closes the panel with no focus change or stutter (KDE Wayland,
    X11, and Gamescope separately).
-3. Once B or A exists: Save persists and replays on the next launch, and Dynamic and
+3. Save persists and replays on the next launch, and Dynamic and
    DLSS presets round-trip.

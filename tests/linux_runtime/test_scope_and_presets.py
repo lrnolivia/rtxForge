@@ -132,13 +132,16 @@ class MfgPresetTest(unittest.TestCase):
         integrated = self.values(self.apply(dynamic, {'id': 'skynizz'}))
         self.assertEqual((integrated[('DLSSG', 'OverrideForceDMFG')], integrated[('DLSSG', 'OverrideInterpolationCount')]), ('true', '5'))
         plugin = {'id': 'skynizz', 'mfg_component': universal.pinned()}
-        self.assertEqual(self.values(self.apply(dynamic, plugin))[('DLSSG', 'OverrideForceDMFG')], 'true', 'not yet reported')
+        with self.assertRaisesRegex(Exception, 'confirmed Dynamic'):
+            self.apply(dynamic, plugin)
+        (self.game.target_dir / universal.STATUS).write_text(json.dumps({'dynamicMfgSupportKnown': True, 'dynamicMfgSupported': True}))
+        self.assertEqual(self.values(self.apply(dynamic, plugin))[('DLSSG', 'OverrideForceDMFG')], 'true')
         (self.game.target_dir / universal.STATUS).write_text(json.dumps({'dynamicMfgSupportKnown': True, 'dynamicMfgSupported': False}))
-        with self.assertRaisesRegex(Exception, "doesn't support Dynamic"):
+        with self.assertRaisesRegex(Exception, 'confirmed Dynamic'):
             self.apply(dynamic, plugin)
         # Installed baselines name the component through their archive record (reset path).
         installed = {'provider_id': 'skynizz', 'archive': {'release': {'mfg_component': universal.pinned()}}}
-        with self.assertRaisesRegex(Exception, "doesn't support Dynamic"):
+        with self.assertRaisesRegex(Exception, 'confirmed Dynamic'):
             self.apply(dynamic, installed)
         import ada_mfg_provider
         addon = {'id': 'skynizz', 'mfg_component': ada_mfg_provider.pinned()}

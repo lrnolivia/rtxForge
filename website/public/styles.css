@@ -23,6 +23,11 @@ body{position:relative;isolation:isolate}.page{position:relative;z-index:1}.hero
 @media(min-width:1500px){.hero-art{top:0;height:720px}}@media(max-width:760px){.hero-art{top:0;height:590px}}
 
 /* Compatibility and recovery stay with the release they explain. */
+.beta-launch{display:flex;align-items:center;gap:9px;width:fit-content;margin:20px 0 0;padding:9px 12px;border-radius:10px;background:color-mix(in srgb,var(--accent) 10%,var(--surface));color:color-mix(in srgb,var(--accent) 80%,var(--text));font-size:13px;font-weight:600;line-height:1.5}
+.beta-launch svg{flex:none}
+.beta-launch time{white-space:nowrap}
+.beta-launch[hidden]{display:none}
+.beta-launch:not([hidden])+.package-meta{margin-top:14px}
 .download-compatibility{margin:0 0 18px}
 .download-compatibility p{font-size:13px;line-height:1.65;color:var(--secondary);margin:0}
 .download-compatibility .text-link{font-size:12px;text-decoration:underline;text-underline-offset:4px}

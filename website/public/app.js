@@ -32,6 +32,7 @@ function renderDownloads() {
   const platform = platforms[os];
   const beta = releases.beta, dev = releases.development;
   const betaFiles = selectDownloads(beta.release, os), devFiles = selectDownloads(dev.release, os);
+  byId('beta-launch').hidden = Boolean(betaFiles);
   linkState(byId('download-link'), betaFiles?.primary.url);
   byId('download-label').textContent = betaFiles ? 'Download Beta' : beta.status === 'loading' ? 'Checking Beta downloads…' : beta.status === 'error' ? 'Beta downloads unavailable' : 'Beta coming soon';
   byId('package-meta').textContent = betaFiles ? `Beta · ${betaFiles.primary.format} · ${platform.arch}` : `Beta · ${platform.name} ${platform.arch}`;

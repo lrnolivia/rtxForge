@@ -441,7 +441,7 @@ public sealed partial class GameModeView
         Render(keepFocus: true);
     }
 
-    // ---------- Settings › System: recovery and updates ----------
+    // ---------- Settings › Recovery / System ----------
 
     List<UIElement> RecoveryRows() =>
     [
@@ -452,7 +452,6 @@ public sealed partial class GameModeView
             if (await RunReviewAsync("Remove old NR files", shell.Service.ReviewCleanupAsync, "No old NR files were found in your libraries.") is not null)
                 await shell.ScanAsync();
         }, description: "Review legacy files before removal.", glyph: ""),
-        ui.RowButton("Check for updates", null, () => _ = CheckForUpdatesAsync(), description: $"rtxForge {MainWindow.AppVersion} · download, verify and install the newest build.", glyph: ""),
     ];
 
     async Task PreviousChangesAsync()

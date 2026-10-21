@@ -123,7 +123,7 @@ public sealed partial class GameModeView
 
     // ---------- Settings (the same preferences, sized for the couch) ----------
 
-    static readonly string[] SettingsSections = ["Gaming Mode", "Overlay", "Appearance", "Library", "Controller", "Keyboard", "System"];
+    static readonly string[] SettingsSections = ["Gaming Mode", "Overlay", "Appearance", "Library", "Controller", "Keyboard", "System", "Recovery"];
 
     UIElement BuildSettings()
     {
@@ -152,8 +152,9 @@ public sealed partial class GameModeView
             if (active && initialFocus is null) initialFocus = button;
             nav.Children.Add(button);
         }
-        Grid.SetRow(nav, 1);
-        grid.Children.Add(nav);
+        var navigation = new ScrollViewer { Content = nav, HorizontalScrollMode = ScrollMode.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        Grid.SetRow(navigation, 1);
+        grid.Children.Add(navigation);
 
         var content = new StackPanel { Spacing = t.Px(24) };
         if (settingsSection == "Overlay") shell.Settings.CopyOverlayFrom(ForgeSettings.Load());
@@ -250,6 +251,10 @@ public sealed partial class GameModeView
                 v => { shell.Settings.Theme = v; DispatcherQueue.TryEnqueue(ApplySettings); }),
             Choice("Button glyphs", "Icons beside action labels; selection and package identity stay visible.", ["on", "off"], ["On", "Off"],
                 () => shell.Settings.ButtonGlyphs ? "on" : "off", v => shell.Settings.ButtonGlyphs = v == "on"),
+            Choice("UI scale", "Automatic follows the window size (150% at 4K).", ["auto", "100", "125", "150", "175", "200"],
+                ["Automatic", "100%", "125%", "150%", "175%", "200%"], () => shell.Settings.UiScaleKey,
+                v => { shell.Settings.UiScaleKey = v; DispatcherQueue.TryEnqueue(ApplySettings); }),
+            Choice("Navigation placement", null, ["top", "bottom"], ["Top", "Bottom"], () => shell.Settings.NavigationPosition, v => shell.Settings.NavigationPosition = v),
         ]),
         "Library" => ("Manage the library layout and artwork sources.",
         [
@@ -266,13 +271,10 @@ public sealed partial class GameModeView
                 () => shell.Settings.ControllerHints, v => shell.Settings.ControllerHints = v),
         ]),
         "Keyboard" => ("Every keyboard shortcut in Gaming Mode.", GuideRows("keyboard")),
-        "System" => ("Display scaling, navigation, recovery and updates.",
+        "Recovery" => ("Review previous changes, restore backups, and clean up old NR files.", RecoveryRows()),
+        "System" => ("App version and updates.",
         [
-            Choice("UI scale", "Automatic follows the window size (150% at 4K).", ["auto", "100", "125", "150", "175", "200"],
-                ["Automatic", "100%", "125%", "150%", "175%", "200%"], () => shell.Settings.UiScaleKey,
-                v => { shell.Settings.UiScaleKey = v; DispatcherQueue.TryEnqueue(ApplySettings); }),
-            Choice("Navigation", null, ["top", "bottom"], ["Top", "Bottom"], () => shell.Settings.NavigationPosition, v => shell.Settings.NavigationPosition = v),
-            .. RecoveryRows(),
+            ui.RowButton("Check for updates", null, () => _ = CheckForUpdatesAsync(), description: $"rtxForge {MainWindow.AppVersion} · download, verify and install the newest build.", glyph: ""),
         ]),
         _ => ("Open rtxForge from your existing gaming environment.",
         [

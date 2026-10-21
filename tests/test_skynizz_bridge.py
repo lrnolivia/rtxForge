@@ -55,7 +55,8 @@ class PlacementCandidateTest(unittest.TestCase):
                 command = [found[0], str(project), '/p:Configuration=Release', '/p:Platform=x64', '/v:q']
             else:
                 self.skipTest('A C++ compiler is required for this source test')
-            compiled = subprocess.run(command, capture_output=True, text=True, timeout=90)
+            # A cold C++20 compile on a hosted runner has taken longer than 90 s.
+            compiled = subprocess.run(command, capture_output=True, text=True, timeout=300)
             self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
             ran = subprocess.run([str(executable)], capture_output=True, text=True, timeout=10)
             self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)

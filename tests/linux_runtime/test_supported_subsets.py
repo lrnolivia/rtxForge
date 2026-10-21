@@ -19,14 +19,16 @@ class SupportedSubsetTest(unittest.TestCase):
         self.service = desktop_service.DesktopService.__new__(desktop_service.DesktopService)
         self.service.config = {}
         self.calls = []
+        self.adopt = []
 
-    def run_with(self, rows, outcome, provider='skynizz', mode='nr-mfg', operation='install'):
-        def prepare(rows, mode, operation, visual_settings=None, scope=None, **kwargs):
+    def run_with(self, rows, outcome, provider='skynizz', mode='nr-mfg', operation='install', adopt=True):
+        def prepare(rows, mode, operation, adopt=False, visual_settings=None, scope=None, **kwargs):
+            self.adopt.append(adopt)
             self.calls.append((mode, [r['game'] for r in rows], scope, dict(visual_settings or {})))
             return outcome(rows, mode)
         with patch.object(desktop_service.library_media, 'load_settings', return_value={'runtime_provider': provider}), \
              patch.object(self.service, 'prepare', side_effect=prepare):
-            return self.service.prepare_supported(rows, mode, operation, visual_settings={'nr_on_launch': False})
+            return self.service.prepare_supported(rows, mode, operation, adopt, visual_settings={'nr_on_launch': False})
 
     @staticmethod
     def engine(ready, blocked):
@@ -74,6 +76,7 @@ class SupportedSubsetTest(unittest.TestCase):
             self.assertIs(values['prefer_bundled_nr_only'], mode == 'nr-only')
         self.assertEqual([r['game'] for r in (p['row'] for p in review['plans'])], ['/games/Both'])
         self.assertEqual({b['name'] for b in review['blocked']}, {'AntiCheat', 'NoExe'})
+        self.assertEqual(set(self.adopt), {True}, 'Recognize Existing Features reaches every review')
 
     def test_feeder_games_are_offered_nr_only(self):
         rows = [row('MassEffect', install_provider='feeder', feeder_available=True), row('Plain', native_dlss=True, native_dlssg=True)]

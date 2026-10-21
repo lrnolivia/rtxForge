@@ -171,7 +171,12 @@ def prepare(config, rows, operation, settings):
                 summary += ' Offline only · launch from rtxForge. Online play is unavailable with this package.'
             if operation == 'adopt-clean':
                 summary += ' NR starts ' + ('on.' if settings.get('nr_on_launch', False) else 'off; enable it from the overlay.')
+            provider = plan['provider']
             ready.append({'name': row['name'], 'game': row['game'], 'summary': summary,
+                          # Chooser data: what was found, both choices and where Restore returns to.
+                          'adoption': {'detected': ' '.join(str(v) for v in (provider.get('name'), provider.get('version')) if v),
+                                       'choices': ['adopt', 'adopt-clean'], 'chosen': operation,
+                                       'restore_boundary': 'before-adoption'},
                           'detail': json.dumps({'provider': plan['provider'], 'files': plan['hashes'], 'offline': plan.get('offline')}, indent=2)})
         except (t.Refusal, OSError, ValueError, KeyError, RuntimeError) as error:
             blocked.append({'name': row['name'], 'game': row['game'], 'reason': str(error)})

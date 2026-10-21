@@ -178,7 +178,7 @@ class DesktopService:
         'nr-runtime-unavailable':'Frame generation is supported. Neural rendering could not be prepared with the selected NR runtime.',
     }
 
-    def prepare_supported(self,rows,mode,operation,visual_settings=None,scope=None):
+    def prepare_supported(self,rows,mode,operation,adopt=False,visual_settings=None,scope=None):
         """The requested review plus separate, opt-in reviews for games that support only NR or only MFG.
 
         Mirrors the Windows rule (EngineForgeService.PrepareCoreAsync). Hard
@@ -186,7 +186,7 @@ class DesktopService:
         its own review over exactly its games, so applying it needs an explicit
         choice and its own scope; nothing is merged into the main review.
         """
-        review=self.prepare(rows,mode,operation,visual_settings=visual_settings,scope=scope)
+        review=self.prepare(rows,mode,operation,adopt,visual_settings=visual_settings,scope=scope)
         review['supported']=[]
         if operation!='install' or mode not in ('nr-mfg','nr-only'):return review
         settings=dict(library_media.load_settings(self.config),**(visual_settings or {}))
@@ -207,7 +207,7 @@ class DesktopService:
             if not group:continue
             values=dict(visual_settings or {},prefer_bundled_nr_only=subset_mode=='nr-only')
             try:
-                supported=self.prepare(group,subset_mode,operation,visual_settings=values,
+                supported=self.prepare(group,subset_mode,operation,adopt,visual_settings=values,
                                        scope={'kind':'selected','games':[r['game'] for r in group]})
             except (t.Refusal,ValueError,OSError):continue
             games=sorted(planned(supported))

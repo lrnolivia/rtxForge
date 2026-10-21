@@ -33,10 +33,27 @@ inline int key = VK_DELETE, modifiers = 0, bindingRelease = 0;
 inline float animation = 0, cpuMs = 0;
 inline ImVec4 accent(.82f, .82f, .82f, 1);
 inline std::string title = "Game";
+// HKEY_CURRENT_USER is a process-wide cached handle another module can
+// redirect; RegOpenCurrentUser opens the caller's own hive. Init only.
+inline LSTATUS ReadUser(const wchar_t* path, const wchar_t* name, DWORD type, void* data, DWORD bytes)
+{
+    DWORD size = bytes;
+    const auto cached = RegGetValueW(HKEY_CURRENT_USER, path, name, type, nullptr, data, &size);
+    if(cached == ERROR_SUCCESS) return cached;
+    HKEY parent = nullptr; const auto root = RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\rtxForge", 0, KEY_READ, &parent);
+    if(root == ERROR_SUCCESS) RegCloseKey(parent);
+    HANDLE token = nullptr; const bool impersonating = OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, TRUE, &token) != FALSE;
+    if(impersonating) CloseHandle(token);
+    HKEY user = nullptr; auto direct = RegOpenCurrentUser(KEY_READ, &user);
+    if(direct == ERROR_SUCCESS) { size = bytes; direct = RegGetValueW(user, path, name, type, nullptr, data, &size); RegCloseKey(user); }
+    LOG_WARN("rtxForge preference {}: cached HKCU {}, Software\\rtxForge open {}, impersonating {}, current-user hive {}",
+             wstring_to_string(name), cached, root, impersonating, direct);
+    return direct;
+}
 inline DWORD Preference(const wchar_t* name, DWORD fallback)
 {
-    DWORD value = fallback, bytes = sizeof(value);
-    const auto result = RegGetValueW(HKEY_CURRENT_USER, L"Software\\rtxForge\\Overlay", name, RRF_RT_REG_DWORD, nullptr, &value, &bytes);
+    DWORD value = fallback;
+    const auto result = ReadUser(L"Software\\rtxForge\\Overlay", name, RRF_RT_REG_DWORD, &value, sizeof(value));
     if(result != ERROR_SUCCESS) LOG_WARN("rtxForge panel preference read failed: {}, using default {}", result, fallback);
     return result == ERROR_SUCCESS ? value : fallback;
 }
@@ -78,9 +95,7 @@ inline void Init(HWND window)
     // Identity is cached by the helper/manager before launch. Never load artwork
     // or walk a library from the game's render thread.
     wchar_t exe[32768] {}, identity[1024] {}; GetModuleFileNameW(nullptr, exe, 32768);
-    DWORD bytes = sizeof(identity);
-    if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\rtxForge\\Overlay\\Games", exe, RRF_RT_REG_SZ,
-                    nullptr, identity, &bytes) == ERROR_SUCCESS)
+    if (ReadUser(L"Software\\rtxForge\\Overlay\\Games", exe, RRF_RT_REG_SZ, identity, sizeof(identity)) == ERROR_SUCCESS)
     {
         const auto text = wstring_to_string(identity);
         if(text.size() > 8 && text[0] == '#' && text[7] == '|')

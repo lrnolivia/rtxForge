@@ -20,6 +20,7 @@ public sealed class CollapsingHero
         this.scroll = scroll; this.hero = hero; this.spacer = spacer; this.changed = changed; this.navigation = navigation;
         inset = scroll.Margin;
         scroll.ViewChanged += (_, _) => Apply();
+        scroll.SizeChanged += (_, _) => Apply();
         if (navigation is not null)
         {
             navigation.SizeChanged += (_, _) => Apply();
@@ -48,6 +49,7 @@ public sealed class CollapsingHero
             if (enabled) { Apply(); return; }
             scroll.Margin = inset;
             spacer.Height = 0;
+            if (scroll.Content is FrameworkElement content) content.MinHeight = 0;
             changed(0);
         }
     }
@@ -63,6 +65,10 @@ public sealed class CollapsingHero
             ? navigation.ActualHeight + navigation.Margin.Top + navigation.Margin.Bottom : 0;
         scroll.Margin = new Thickness(inset.Left, inset.Top + compact + extra, inset.Right, inset.Bottom);
         spacer.Height = expanded - compact;
+        // A short page must still be able to scroll the whole range, or the hero stalls
+        // half-collapsed. The viewport does not depend on the offset, so this is stable.
+        if (scroll.Content is FrameworkElement content && scroll.ViewportHeight > 0)
+            content.MinHeight = scroll.ViewportHeight + expanded - compact;
         var removed = Math.Round(Math.Clamp(scroll.VerticalOffset, 0, expanded - compact));
         var height = expanded - removed;
         if (Math.Abs(previousHeight - height) < .5) return;

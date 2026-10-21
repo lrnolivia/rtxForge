@@ -71,7 +71,13 @@ public static class Prefs
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         if (glyph is not null)
-            grid.Children.Add(new FontIcon { Glyph = glyph, FontSize = 20, VerticalAlignment = VerticalAlignment.Center });
+        {
+            // Centered on the whole card, also when its control stacks under the text.
+            // A fixed slot, so every card's text starts at the same edge whatever the glyph's width.
+            var icon = new FontIcon { Glyph = glyph, FontSize = 20, Width = 24, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetRowSpan(icon, 2);
+            grid.Children.Add(icon);
+        }
 
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = 1 };
         text.Children.Add(new TextBlock { Text = title, TextWrapping = TextWrapping.Wrap });

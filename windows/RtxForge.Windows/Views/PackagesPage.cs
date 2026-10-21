@@ -330,7 +330,10 @@ public sealed partial class ExtrasPage : Page
             CornerRadius = (CornerRadius)Application.Current.Resources["ForgeArtCornerRadius"],
             Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["ControlFillColorSecondaryBrush"],
             BorderThickness = new Thickness(2),
+            // Centered on the whole card, also when its actions stack under the name.
+            VerticalAlignment = VerticalAlignment.Center,
         };
+        Grid.SetRowSpan(art, 2);
         art.Children.Add(new Image { Source = ViewModels.GameItem.Image(game.CapsulePath ?? game.PosterPath), Stretch = Microsoft.UI.Xaml.Media.Stretch.UniformToFill });
         _ = BezelAsync(art, game);
         return art;

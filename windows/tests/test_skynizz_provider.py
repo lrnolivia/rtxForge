@@ -9,7 +9,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKER = r'''
-import importlib.util,json,sys,hashlib,zipfile
+import importlib.util,json,sys,hashlib,zipfile,os
 from pathlib import Path
 from unittest.mock import patch
 root=Path(sys.argv[1]);repo=Path(sys.argv[2])
@@ -320,6 +320,19 @@ for folder in (batch_a,batch_b):
     assert baseline(folder)['feature_mode']=='nr-mfg'
     assert (folder/'nvngx_dlssnr.dll').read_bytes()==model.read_bytes()
 checks.append('batch extracts/verifies one exact package and reads one NR model for two targets; blocked target never reaches payload work')
+import companion_controls
+preset_key=hashlib.sha256(os.path.normcase(str((batch_a/'Game.exe').resolve())).encode()).hexdigest()
+preset_file=Path(os.environ['RTXFORGE_STATE_ROOT'])/'runtime-presets'/(preset_key+'.json')
+preset_file.parent.mkdir(parents=True,exist_ok=True)
+preset_file.write_text(json.dumps({'schema':1,'changes':{'multiplier':4}}))
+dynamic_controls=provider.read_controls(batch_a/'OptiScaler.ini')|{'multiplier':6,'dynamic_mfg':1,'mfg_saved_mode':2,'mfg_saved_multiplier':6}
+run(service.prepare([scan(batch_a)],'nr-mfg','reset',visual_settings=settings|{'feature_controls':dynamic_controls}))
+saved_changes=json.loads(preset_file.read_text())['changes']
+companion_controls.validate_changes(saved_changes)
+assert saved_changes['multiplier']==6 and not {'dynamic_mfg','mfg_saved_mode','mfg_saved_multiplier'}&saved_changes.keys()
+configured=provider.read_controls(batch_a/'OptiScaler.ini')
+assert all(configured[key]==dynamic_controls[key] for key in ('multiplier','dynamic_mfg','mfg_saved_mode','mfg_saved_multiplier'))
+checks.append('reviewed Dynamic MFG persists in INI without sending saved-only preferences to protocol6 startup replay')
 run(combined_review);combined_record=baseline(combined);combined_ini=(combined/'OptiScaler.ini').read_text()
 assert combined_record['mfg_provider']['enabled'] and combined_record['compatibility_policy']['mfg_route']=='native-ada-skynizz-bridge-armed'
 assert combined_record['archive']['release']['variant']=='nr-mfg-bridge' and combined_record['archive']['mfg_runtime']['sha256']

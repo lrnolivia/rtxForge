@@ -8,7 +8,9 @@ def _portable_root():
     raw=os.environ.get('XDG_STATE_HOME','').strip()
     base=P(raw).expanduser() if raw else P.home()/'.local/state'
     e.need(base.is_absolute(),'XDG_STATE_HOME must be an absolute path')
-    return base/'rtxforge'
+    # Canonicalize the OS-provided base only (e.g. /home -> /var/home on
+    # Bazzite); the rtxforge folder itself is still checked for aliases.
+    return P(os.path.realpath(base))/'rtxforge'
 
 def _looks_like_existing_state(path):
     path=P(path)

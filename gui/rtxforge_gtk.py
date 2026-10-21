@@ -4172,12 +4172,17 @@ class Window(Adw.ApplicationWindow):
         self.options=options;self.service=DesktopService(options.provider)
         self.settings=dict(library_media.DEFAULTS) if options.demo else library_media.load_settings(self.service.config)
         if not options.demo and self.settings.get('overlay_helper',True):
-            from linux_overlay_host import Host
-            from storage import storage
-            engine=__import__('engine_bridge').module(self.service.config)
-            self.overlay_host=Host(storage(self.service.config),lambda:dict(self.settings),engine.STATE_ROOT,engine=engine)
-            application.connect('shutdown',lambda *_:self.overlay_host.stop.set())
-            threading.Thread(target=self.overlay_host.run,daemon=True,name='proton-panel').start()
+            # The in-game panel helper is optional: a failure here must never
+            # stop the window from opening.
+            try:
+                from linux_overlay_host import Host
+                from storage import storage
+                engine=__import__('engine_bridge').module(self.service.config)
+                self.overlay_host=Host(storage(self.service.config),lambda:dict(self.settings),engine.STATE_ROOT,engine=engine)
+                application.connect('shutdown',lambda *_:self.overlay_host.stop.set())
+                threading.Thread(target=self.overlay_host.run,daemon=True,name='proton-panel').start()
+            except Exception:
+                print('In-game panel helper unavailable:',file=sys.stderr);traceback.print_exc()
         set_button_glyphs(self.settings.get('button_glyphs',True))
         global COUCH_MODE
         COUCH_MODE=self.settings.get('input_mode','auto') if self.settings.get('big_picture_ui',True) else 'desktop'

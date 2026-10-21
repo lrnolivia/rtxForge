@@ -70,6 +70,16 @@ class DesktopService:
                     count=int(raw) if raw.lower() != 'auto' else None
                     row['mfg_multiplier']='auto' if count is None else 0 if count==0 else count+1 if count in range(1,6) else None
                 except ValueError:row['mfg_multiplier']=None
+                # The shared MFG preset replays from the INI: Dynamic plus the dormant saved choice.
+                try:
+                    force=ini.get('DLSSG',{}).get('OverrideForceDMFG','false').split(';',1)[0].strip().lower()
+                    row['dynamic_mfg']=1 if force in ('true','1') else 0
+                    saved=ini.get('rtxForge.Presets',{})
+                    mode=int(saved.get('MfgMode','').split(';',1)[0].strip() or -1)
+                    ratio=int(saved.get('MfgMultiplier','').split(';',1)[0].strip() or -1)
+                    if mode in (0,1,2):row['mfg_saved_mode']=mode
+                    if ratio in range(2,7):row['mfg_saved_multiplier']=ratio
+                except (ValueError,AttributeError):pass
                 try:
                     baseline=engine.load_baseline(config.parent)
                     current=(baseline or {}).get('current') or {}
@@ -130,13 +140,20 @@ class DesktopService:
             if row['game'] not in seen:rows.append(row);seen.add(row['game'])
         return sorted(rows,key=lambda r:r['name'].casefold())
 
-    def prepare(self,rows,mode,operation,adopt=False,visual_settings=None,save_defaults=False):
+    def prepare(self,rows,mode,operation,adopt=False,visual_settings=None,save_defaults=False,scope=None):
         import ui
+        # Every route (engine, Feeder, Adoption) acts only on the reviewed games:
+        # an empty or stale selection refuses instead of widening to the library.
+        # Saving library defaults with no games selected changes no game.
+        defaults_only=rows==[] and operation=='reset' and bool(save_defaults) and scope is None
+        if not defaults_only:engine_bridge.check_scope(rows,scope)
         if operation in ('install','repair','adopt-clean'):
             host=self.hardware()
             if not host['ready']:return {'kind':'batch','operation':operation,'title':operation.title(),'plans':[],'rows':[],'blocked':[{'name':'Hardware check','reason':host['reason']}]}
         settings=library_media.load_settings(self.config)
         if visual_settings is not None:settings.update(visual_settings)
+        if scope is not None:settings['operation_scope']=scope
+        settings['defaults_only']=defaults_only
         if operation in ('adopt', 'adopt-clean'):
             import package_adoption
             return package_adoption.prepare(self.config, rows, operation, settings)
@@ -151,7 +168,7 @@ class DesktopService:
             return feeder_provider.prepare(self.config, rows, 'nr-only' if not feeder and mode != 'mfg-only' else mode, operation,
                                            settings, engine_bridge.module(self.config))
         review=engine_bridge.prepare(self.config,rows,mode,operation,settings)
-        if save_defaults and operation=='reset':review['save_defaults']={k:settings[k] for k in ('nr_strength','sharpening_strength','mfg_multiplier')}
+        if save_defaults and operation=='reset':review['save_defaults']={k:settings[k] for k in ('nr_strength','sharpening_strength','mfg_multiplier','dynamic_mfg','mfg_saved_mode','mfg_saved_multiplier') if k in settings}
         return review
 
     def save_visual_defaults(self,values):
@@ -172,12 +189,14 @@ class DesktopService:
             'Invalid MFG multiplier',
         )
 
+        preset=engine_bridge.mfg_preset(values)
         settings=library_media.load_settings(self.config)
         settings.update(
             nr_strength=round(float(nr),1),
             sharpening_strength=round(float(sharp),1),
             mfg_multiplier=values['mfg_multiplier'],
         )
+        if preset:settings.update(preset)
         library_media.save_settings(self.config,settings)
 
     def recoveries(self):

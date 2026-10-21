@@ -1,0 +1,258 @@
+"""What a game's Proton setup provides for native NR and Ada MFG (read-only).
+
+Skynizz NR and the Universal MFG Unlocker run inside the game process. Under
+Proton they need the same pieces a Windows install gets from the NVIDIA
+driver: D3D12 through vkd3d-proton, NVAPI through dxvk-nvapi, and NGX through
+the driver's Wine DLLs (nvngx.dll / _nvngx.dll) that Proton copies into the
+prefix. This module only looks. It never starts Proton, never writes to a
+prefix and never changes the environment.
+
+A passing report means the pieces are present. It is not runtime evidence:
+only a real Proton session on the target GPU can show NR or MFG working, and
+`runtime_verified` stays False until such evidence is recorded for that
+game, Proton build and GPU (see evidence()).
+
+Every refusal has a stable reason code (REASONS) so the GTK app can show the
+user text and the review can keep the technical detail behind Details.
+"""
+from pathlib import Path
+import json
+import re
+import shlex
+
+# Stable reason codes -> user text. The UI may show the text as-is.
+REASONS = {
+    'not-linux': 'Proton checks only apply on Linux.',
+    'nvidia-driver-missing': 'The NVIDIA driver is not loaded. NR and MFG need an NVIDIA RTX GPU.',
+    'nvidia-driver-old': 'Update the NVIDIA driver to the 570 series or newer for DLSS Frame Generation under Proton.',
+    'gpu-not-rtx': 'No NVIDIA RTX GPU was found.',
+    'mfg-gpu-unverified-linux': 'MFG under Proton has only been prepared for RTX 40 (Ada) GPUs. Other GPUs are not offered on Linux yet.',
+    'driver-ngx-missing': "The NVIDIA driver's Wine NGX files (nvngx.dll) were not found, so Proton cannot provide DLSS.",
+    'prefix-missing': 'This game has not been started with Proton yet. Play it once, quit, then check again.',
+    'tool-unknown': "The Proton version this game last used could not be read. Play it once with Proton, quit, then check again.",
+    'vkd3d-missing': 'This Proton build has no vkd3d-proton, so DirectX 12 games cannot use DLSS.',
+    'vkd3d-disabled': 'The launch options turn off DirectX 12 (PROTON_NO_D3D12 or PROTON_USE_WINED3D). Remove that to use DLSS.',
+    'nvapi-missing': 'This Proton build has no dxvk-nvapi, so DLSS cannot start.',
+    'nvapi-disabled': 'NVAPI is turned off for this game (PROTON_DISABLE_NVAPI, or Proton disables it for this title). DLSS cannot start.',
+    'nvapi-not-in-prefix': "NVAPI was not set up in this game's prefix on its last run. Play it once with Proton, quit, then check again.",
+    'ngx-not-in-prefix': "Proton did not copy the NVIDIA NGX files into this game's prefix on its last run. Play it once, quit, then check again.",
+    'native-dlssg-missing': "MFG needs the game's own DLSS Frame Generation; this game does not ship it.",
+}
+
+# Component name -> folder under Proton's lib/wine and the 64-bit DLLs it must hold.
+COMPONENTS = {
+    'dxvk': ('dxvk', ('dxgi.dll', 'd3d11.dll')),
+    'vkd3d-proton': ('vkd3d-proton', ('d3d12.dll', 'd3d12core.dll')),
+    'dxvk-nvapi': ('nvapi', ('nvapi64.dll',)),
+}
+DRIVER_WINE_DIRS = ('/usr/lib64/nvidia/wine', '/usr/lib/nvidia/wine', '/usr/lib/x86_64-linux-gnu/nvidia/wine')
+DRIVER_ROOT = Path('/proc/driver/nvidia')
+MIN_DRIVER = 570
+_ASSIGNMENT = re.compile(r'^([A-Za-z_][A-Za-z0-9_]*)=(.*)$')
+
+
+def _read(path, limit=1024 * 1024):
+    path = Path(path)
+    try:
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > limit:
+            return None
+        return path.read_text(encoding='utf-8', errors='replace')
+    except OSError:
+        return None
+
+
+def gpu(driver_root=None):
+    """The NVIDIA driver version and the first GPU's model and architecture."""
+    driver_root = Path(driver_root or DRIVER_ROOT)
+    version_text = _read(driver_root / 'version') or ''
+    match = re.search(r'Kernel Module(?: for \S+)?\s+(\d+)\.(\d+)(?:\.(\d+))?', version_text)
+    models = []
+    try:
+        for info in sorted((driver_root / 'gpus').iterdir()):
+            text = _read(info / 'information') or ''
+            found = re.search(r'^Model:\s*(.+)$', text, re.M)
+            if found:
+                models.append(found.group(1).strip())
+    except OSError:
+        pass
+    model = models[0] if models else ''
+    return {'driver': '.'.join(g for g in match.groups() if g) if match else None,
+            'driver_major': int(match.group(1)) if match else None,
+            'model': model, 'models': models, 'architecture': architecture(model)}
+
+
+def architecture(model):
+    """RTX generation from the marketing name: ada, blackwell, ampere, turing or unknown."""
+    found = re.search(r'RTX\s*(?:A\d+\s*)?(\d)(\d)\d{1,2}', model or '', re.I)
+    if not found:
+        return 'unknown'
+    return {'2': 'turing', '3': 'ampere', '4': 'ada', '5': 'blackwell'}.get(found.group(1), 'unknown')
+
+
+def driver_wine_dir(candidates=None):
+    """Where the driver keeps the Wine NGX DLLs Proton copies into each prefix."""
+    for folder in candidates if candidates is not None else DRIVER_WINE_DIRS:
+        if (Path(folder) / 'nvngx.dll').is_file():
+            return Path(folder)
+    return None
+
+
+def compat_tool(compatdata):
+    """The Proton build a game last ran with, from compatdata/<appid>/{version,config_info}.
+
+    config_info's third line is the tool's lib directory (".../files/lib/").
+    """
+    compatdata = Path(compatdata)
+    version = (_read(compatdata / 'version') or '').strip() or None
+    lines = (_read(compatdata / 'config_info') or '').splitlines()
+    lib = Path(lines[2].strip()) if len(lines) > 2 and lines[2].strip().startswith('/') else None
+    return {'version': version, 'lib_dir': lib if lib and lib.is_dir() else None}
+
+
+def component_versions(lib_dir):
+    """{component: {'present': bool, 'version': str|None}} inside a Proton build."""
+    report = {}
+    for name, (folder, dlls) in COMPONENTS.items():
+        root = Path(lib_dir) / 'wine' / folder if lib_dir else None
+        present = bool(root) and all((root / 'x86_64-windows' / dll).is_file() for dll in dlls)
+        text = (_read(root / 'version') or '').strip() if root else ''
+        described = re.search(r'\(([^)]+)\)', text)
+        report[name] = {'present': present, 'version': described.group(1) if described else (text or None)}
+    return report
+
+
+def launch_environment(launch_options):
+    """Environment assignments before %command% in Steam launch options."""
+    text = (launch_options or '').split('%command%', 1)[0]
+    try:
+        words = shlex.split(text)
+    except ValueError:
+        words = text.split()
+    values = {}
+    for word in words:
+        match = _ASSIGNMENT.match(word)
+        if match:
+            values[match.group(1)] = match.group(2)
+    return values
+
+
+def _truthy(value):
+    return value is not None and value.strip() not in ('', '0')
+
+
+def prefix_files(prefix):
+    system32 = Path(prefix) / 'drive_c' / 'windows' / 'system32'
+    return {name: (system32 / name).is_file() for name in ('nvapi64.dll', 'nvngx.dll', '_nvngx.dll')}
+
+
+def detect(prefix, mode='nr-mfg', launch_options='', native_dlssg=None, system='linux',
+           driver_root=None, driver_dirs=None):
+    """Read-only prerequisite report for native NR/MFG in one game's Proton prefix.
+
+    prefix        -- <library>/steamapps/compatdata/<appid>/pfx, or None if never run
+    mode          -- 'nr-only', 'nr-mfg' or 'mfg-only'
+    native_dlssg  -- the library scan's game-native DLSS-G flag (None = unknown)
+    """
+    checks = []
+
+    def check(check_id, ok, reason=None, detail='', required=True):
+        checks.append({'id': check_id, 'state': 'ok' if ok else ('missing' if required else 'note'),
+                       'required': required, 'reason': None if ok else reason,
+                       'detail': detail or (REASONS.get(reason, '') if not ok else '')})
+        return ok
+
+    if system != 'linux':
+        check('platform', False, 'not-linux')
+        return _finish(checks, None, {}, None)
+    card = gpu(driver_root)
+    check('nvidia-driver', card['driver_major'] is not None, 'nvidia-driver-missing',
+          'NVIDIA ' + card['driver'] if card['driver'] else '')
+    if card['driver_major'] is not None:
+        check('driver-version', card['driver_major'] >= MIN_DRIVER, 'nvidia-driver-old', 'NVIDIA ' + str(card['driver']))
+    check('gpu', card['architecture'] != 'unknown', 'gpu-not-rtx', card['model'])
+    if mode in ('nr-mfg', 'mfg-only'):
+        check('mfg-gpu', card['architecture'] == 'ada', 'mfg-gpu-unverified-linux', card['model'])
+        if native_dlssg is not None:
+            check('native-dlssg', bool(native_dlssg), 'native-dlssg-missing')
+    wine_dir = driver_wine_dir(driver_dirs)
+    check('driver-ngx', wine_dir is not None, 'driver-ngx-missing', str(wine_dir or ''))
+    env = launch_environment(launch_options)
+    tool = {'version': None, 'lib_dir': None}
+    components = {}
+    if not prefix or not (Path(prefix) / 'user.reg').is_file():
+        check('prefix', False, 'prefix-missing')
+    else:
+        prefix = Path(prefix)
+        check('prefix', True, detail=str(prefix))
+        tool = compat_tool(prefix.parent)
+        if check('proton', tool['lib_dir'] is not None, 'tool-unknown', 'Proton ' + str(tool['version'] or '')):
+            components = component_versions(tool['lib_dir'])
+            check('vkd3d-proton', components['vkd3d-proton']['present'], 'vkd3d-missing',
+                  components['vkd3d-proton']['version'] or '')
+            check('dxvk-nvapi', components['dxvk-nvapi']['present'], 'nvapi-missing',
+                  components['dxvk-nvapi']['version'] or '')
+        check('d3d12-enabled', not (_truthy(env.get('PROTON_NO_D3D12')) or _truthy(env.get('PROTON_USE_WINED3D'))),
+              'vkd3d-disabled')
+        disabled = _truthy(env.get('PROTON_DISABLE_NVAPI')) and not _truthy(env.get('PROTON_FORCE_NVAPI'))
+        check('nvapi-enabled', not disabled, 'nvapi-disabled')
+        files = prefix_files(prefix)
+        # Proton copies nvapi64.dll on every run where NVAPI is enabled and
+        # deletes it where it is disabled, so its presence reflects the last run.
+        check('nvapi-prefix', files['nvapi64.dll'], 'nvapi-not-in-prefix')
+        check('ngx-prefix', files['nvngx.dll'] and files['_nvngx.dll'], 'ngx-not-in-prefix')
+    return _finish(checks, tool, components, card)
+
+
+def _finish(checks, tool, components, card):
+    reasons = [c['reason'] for c in checks if c['required'] and c['state'] != 'ok']
+    return {
+        'schema': 1,
+        'checks': checks,
+        'reasons': reasons,
+        'prerequisites_met': not reasons,
+        # Presence is not proof. Only a recorded real Proton session sets this.
+        'runtime_verified': False,
+        'tool': {'version': (tool or {}).get('version'), 'lib_dir': str((tool or {}).get('lib_dir') or '') or None},
+        'components': components,
+        'gpu': card,
+        'label': 'Prerequisites found · Linux runtime not yet verified' if not reasons else 'Not ready under Proton',
+    }
+
+
+EVIDENCE_NAME = 'proton-runtime-evidence.json'
+
+
+def evidence(state_dir, appid, tool_version, gpu_model, component_id):
+    """A recorded real-session observation for this exact game/Proton/GPU/component, or None.
+
+    Records are written only from a human-confirmed in-game session
+    (record_evidence); file presence or this report alone never creates one.
+    """
+    text = _read(Path(state_dir) / EVIDENCE_NAME)
+    try:
+        records = json.loads(text) if text else []
+    except ValueError:
+        return None
+    for record in records if isinstance(records, list) else []:
+        if (isinstance(record, dict) and record.get('appid') == str(appid) and record.get('tool') == tool_version
+                and record.get('gpu') == gpu_model and record.get('component') == component_id
+                and record.get('confirmed_by') and record.get('observed')):
+            return record
+    return None
+
+
+def record_evidence(state_dir, appid, tool_version, gpu_model, component_id, observed, confirmed_by):
+    """Append a human-confirmed real Proton session. Refuses anonymous or empty observations."""
+    if not (isinstance(observed, str) and observed.strip() and isinstance(confirmed_by, str) and confirmed_by.strip()):
+        raise ValueError('Runtime evidence needs what was observed and who confirmed it.')
+    path = Path(state_dir) / EVIDENCE_NAME
+    text = _read(path)
+    records = json.loads(text) if text else []
+    record = {'appid': str(appid), 'tool': tool_version, 'gpu': gpu_model, 'component': component_id,
+              'observed': observed.strip(), 'confirmed_by': confirmed_by.strip()}
+    records.append(record)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + '.tmp')
+    temporary.write_text(json.dumps(records, indent=1) + '\n', encoding='utf-8')
+    temporary.replace(path)
+    return record

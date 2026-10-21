@@ -2192,6 +2192,48 @@ def visual_defaults(
     return defaults
 
 
+def apply_mfg_preset(text: str, game: "Game", feature_mode: str, provider: dict, feature_controls: dict | None = None) -> str:
+    """Shared MFG preset (Auto/Custom/Dynamic plus the dormant saved choice) for every provider.
+
+    MFG_PRESET is set by the desktop bridge from mfg_multiplier ('auto', 0 or
+    2..6), dynamic_mfg (0/1), mfg_saved_mode (0 Auto, 1 Custom, 2 Dynamic) and
+    mfg_saved_multiplier (2..6). Off keeps the saved mode and ratio dormant in
+    rtxForge.Presets. Values already given as skynizz feature controls win.
+    """
+    preset = getattr(_ENGINE_MODULE, "MFG_PRESET", None)
+    if preset is None or feature_mode == "nr-only":
+        return text
+    controls = feature_controls or {}
+    multiplier = preset["mfg_multiplier"]
+    dynamic = bool(preset["dynamic_mfg"]) and multiplier != 0
+    skynizz = provider.get("id") == "skynizz" or provider.get("provider_id") == "skynizz"
+    # A release record names its component directly; an installed baseline's
+    # current record keeps it under archive.release.
+    archive = provider.get("archive")
+    component = ((archive.get("release") or {}).get("mfg_component") if isinstance(archive, dict)
+                 else provider.get("mfg_component"))
+    external = bool(component) and component.get("id") != "universal"
+    if dynamic and "dynamic_mfg" not in controls:
+        require(skynizz and not external,
+                "Dynamic Multi-Frame Generation needs the Skynizz bridge with its integrated or Universal MFG. Choose Auto or Custom.")
+        if component:
+            import universal_mfg_provider
+            require(universal_mfg_provider.dynamic_support(game.target_dir) is not False,
+                    "This game doesn't support Dynamic Multi-Frame Generation. Choose Auto or Custom.")
+    if not external:
+        # A ReShade-hosted addon owns the count; it is reset through its own config.
+        if "multiplier" not in controls:
+            text = set_ini_value(text, "DLSSG", "OverrideInterpolationCount",
+                                 "auto" if multiplier == "auto" else str(max(0, multiplier - 1)))
+        if "dynamic_mfg" not in controls:
+            text = set_ini_value(text, "DLSSG", "OverrideForceDMFG", "true" if dynamic else "false")
+    if "mfg_saved_mode" not in controls:
+        text = set_ini_value(text, "rtxForge.Presets", "MfgMode", str(preset["mfg_saved_mode"]))
+    if "mfg_saved_multiplier" not in controls:
+        text = set_ini_value(text, "rtxForge.Presets", "MfgMultiplier", str(preset["mfg_saved_multiplier"]))
+    return text
+
+
 def apply_visual_defaults(text: str, saved: str | None, feature_mode: str, nr_strength: str = "strong", mfg_multiplier: int | str = "auto", sharpening_strength: str = "strong") -> tuple[str, dict]:
     """Set fresh defaults; preserve explicit saved tuning during managed repair."""
     selected = {}
@@ -2242,6 +2284,7 @@ def _reset_visual_settings(game: Game, *, dry_run: bool = False, nr_strength: st
         values = {"DlssNr": nr_values}
     else:
         text, values = apply_visual_defaults(original.decode("utf-8-sig"), None, mode, nr_strength, mfg_multiplier, sharpening_strength)
+    text = apply_mfg_preset(text, game, mode, current, feature_controls)
     updated = text.encode("utf-8")
     changes = {managed[0]: (original, updated)}
     paths = {managed[0]: ini}
@@ -4391,7 +4434,8 @@ def install_target(
     if is_skynizz:
         import skynizz_provider
         desktop_platform = getattr(_ENGINE_MODULE, "DESKTOP_PLATFORM", "windows" if os.name == "nt" else "linux")
-        skynizz_provider.require_mode(desktop_platform, feature_mode, native_mfg_fallback, bridge=is_skynizz_bridge)
+        skynizz_provider.require_mode(desktop_platform, feature_mode, native_mfg_fallback, bridge=is_skynizz_bridge,
+                                      proton=getattr(_ENGINE_MODULE, "PROTON_STACK", None))
     require(game.eligible or (is_skynizz and feature_mode == "nr-only" and game.exe and game.dlss and anti_cheat_allowed(game)),
             f"Game is not eligible: {game.name} ({game.reason})")
     require(game.target_dir is not None and game.exe is not None, "Missing game target")
@@ -4667,6 +4711,8 @@ def install_target(
         if not enable_effects or is_dlss_unlocked:
             text = set_ini_value(text, "DlssNr", "Enabled", "false")
         nr_tuning = visual_tuning.get("DlssNr", visual_defaults(nr_strength)["DlssNr"])
+    if saved_ini is None or not preserve_visual_settings:
+        text = apply_mfg_preset(text, game, feature_mode, Y4MY_PROVIDER, feature_controls)
     require(nr_on_launch is None or type(nr_on_launch) is bool, "Invalid NR launch choice")
     if nr_on_launch is not None:
         enabled = nr_on_launch and feature_mode != "mfg-only"

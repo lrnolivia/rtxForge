@@ -1,7 +1,7 @@
 """Serialized desktop adapter for the RC1.38-derived transaction engine."""
 from pathlib import Path
 import importlib.util,sys,json,hashlib,zipfile,os,contextlib
-import transactions as t,packages,ui,package_catalog,proton_prefix,cross_os,skynizz_provider,ada_mfg_provider
+import transactions as t,packages,ui,package_catalog,proton_prefix,cross_os,skynizz_provider,ada_mfg_provider,proton_mfg
 from operation_session import Session,Cancelled
 from storage import storage
 ROOT=Path(__file__).resolve().parents[1]
@@ -22,7 +22,10 @@ def payload(e,config,mode,archive=None):
     p=e.Y4MY_PROVIDER
     if p.get('id')=='skynizz':
         bridge=p.get('variant')=='nr-mfg-bridge'
-        skynizz_provider.require_mode(cross_os.THIS_OS,mode,bridge=bridge)
+        # Verifying the payload is OS-neutral. Under the Linux opt-in each game is
+        # gated separately (proton_mfg.gate) before anything is installed.
+        if not (cross_os.THIS_OS=='linux' and getattr(e,'SKYNIZZ_PROTON',False)):
+            skynizz_provider.require_mode(cross_os.THIS_OS,mode,bridge=bridge)
         cache=storage(config,skynizz_provider.MAX_ARCHIVE)/'packages'/p['sha256']
         if bridge:
             source=cache/p['archive']
@@ -302,7 +305,57 @@ def proton_setup(e,g,record):
     t.need(names,'The Windows install does not name its proxy DLL; restore it on Windows and install again here')
     return prefix,names
 
+def check_scope(rows,scope=None):
+    """Engine-side scope guard for every service prepare.
+
+    A request names exactly the games the person reviewed. It never widens to
+    the library: an empty or stale selection refuses, and when the UI sends
+    its resolved scope ({'kind': 'selected'|'filtered', 'games': [ids]}) the
+    rows must be exactly those games. The UI rule that resolves selection vs
+    filter lives in gui/operation_scope.py; this only refuses drift.
+    """
+    t.need(isinstance(rows,list) and rows,'No games are selected. Choose games, then try again. Nothing was changed.')
+    ids=[row.get('game') if isinstance(row,dict) else None for row in rows]
+    t.need(all(isinstance(i,str) and i for i in ids),'A selected game is missing its folder; refresh the library.')
+    t.need(len(set(ids))==len(ids),'Duplicate or overlapping game selection; refresh the library')
+    if scope is None:return ids
+    t.need(isinstance(scope,dict) and scope.get('kind') in ('selected','filtered'),'Unsupported operation scope.')
+    games=scope.get('games')
+    t.need(isinstance(games,list) and games and all(isinstance(i,str) and i for i in games),
+           'No games are selected. Choose games, then try again. Nothing was changed.')
+    t.need(len(games)==len(set(games))==len(ids) and set(games)==set(ids),
+           'The games to change no longer match your selection. Review again. Nothing was changed.')
+    return ids
+
+MFG_PRESET_KEYS=('mfg_multiplier','dynamic_mfg','mfg_saved_mode','mfg_saved_multiplier')
+
+def mfg_preset(settings):
+    """The shared MFG preset (UI: gui/mfg_choice.py), validated; None when the caller sent none of it.
+
+    mfg_multiplier 'auto' | 0 (Off) | 2..6, dynamic_mfg 0/1, mfg_saved_mode 0 Auto / 1 Custom / 2 Dynamic,
+    mfg_saved_multiplier 2..6. Off keeps the saved mode and ratio dormant.
+    """
+    if not any(key in settings for key in MFG_PRESET_KEYS[1:]):return None
+    multiplier=settings.get('mfg_multiplier','auto')
+    t.need(multiplier=='auto' or type(multiplier) is int and multiplier in (0,2,3,4,5,6),'Invalid MFG multiplier')
+    dynamic=settings.get('dynamic_mfg',0)
+    t.need(type(dynamic) in (int,bool) and int(dynamic) in (0,1),'Choose on or off for Dynamic Multi-Frame Generation.')
+    mode=settings.get('mfg_saved_mode',2 if dynamic else 0 if multiplier=='auto' else 1)
+    t.need(type(mode) is int and mode in (0,1,2),'Choose Auto, Custom or Dynamic.')
+    saved=settings.get('mfg_saved_multiplier',multiplier if type(multiplier) is int and multiplier>=2 else 2)
+    t.need(type(saved) is int and saved in (2,3,4,5,6),'Choose a supported MFG ratio.')
+    return {'mfg_multiplier':multiplier,'dynamic_mfg':int(dynamic),'mfg_saved_mode':mode,'mfg_saved_multiplier':saved}
+
+def proton_gate(e,g,settings,mode):
+    """Fresh Skynizz on Linux: the per-game Proton report, or a refusal naming what is missing."""
+    try:prefix=proton_prefix.find_prefix(g.root,g.appid)
+    except proton_prefix.PrefixError:prefix=None
+    return proton_mfg.gate(settings,mode,settings.get('mfg_provider','universal'),prefix,
+                           native_dlssg=bool(getattr(g,'dlssg',None)) if mode!='nr-only' else None)
+
 def prepare(config,rows,mode,operation,settings):
+    if not (rows==[] and operation=='reset' and settings.get('defaults_only') is True):
+        check_scope(rows,settings.get('operation_scope'))
     selected=settings.get('runtime_provider','y4my')
     prefer_bundled_nr_only=settings.get('prefer_bundled_nr_only',False)
     t.need(type(prefer_bundled_nr_only) is bool,'Invalid supported-feature package selection.')
@@ -337,6 +390,8 @@ def prepare(config,rows,mode,operation,settings):
     if controls is not None: controls=skynizz_provider.validate_controls(controls)
     # Validate granular values before any target mutation.
     e.visual_defaults(strength,multiplier,sharpening)
+    # Auto/Custom/Dynamic and the dormant saved choice, written for every provider.
+    e.MFG_PRESET=mfg_preset(settings)
     desktop_mode(e)
     selected_provider=dict(e.Y4MY_PROVIDER)
     ready=[];blocked=[];seen=[]
@@ -363,6 +418,11 @@ def prepare(config,rows,mode,operation,settings):
                 e.Y4MY_PROVIDER=skynizz_provider.validate_release((installed.get('archive') or {}).get('release') or {})
             # Installed (or last changed) with rtxForge on the other OS: adapt it for this one.
             shared=cross_os.adoptable(g.target_dir,cross_os.THIS_OS,(baseline or {}).get('cross_os_revision')) if operation in ('install','repair','uninstall','reset') else None
+            stack=None
+            if selected=='skynizz' and operation in ('install','repair') and proton and not shared:
+                # A fresh Linux install: every Proton prerequisite must be present for this game.
+                stack=proton_gate(e,g,settings,mode)
+            e.PROTON_STACK=stack
             if selected=='skynizz' and operation in ('install','repair') and not (proton and shared):
                 current=installed_package(baseline)
                 check_switch(e,current,mode)
@@ -486,13 +546,21 @@ def prepare(config,rows,mode,operation,settings):
                             preview['launch_options']+=f" · production {label} {runtime['version']} · SHA-256 {runtime['sha256']}"
                     if skynizz_provider.startup_overlay_disabled(g):
                         preview['launch_options']+=' · OptiScaler swapchain overlay disabled for inZOI startup'
+                    if stack:
+                        preview['launch_options']=proton_mfg.LABEL+' · '+preview['launch_options']
+                        preview['proton']={'checks':stack['checks'],'tool':stack['tool'],'components':stack['components'],'gpu':stack['gpu']}
                 if interrupted_install(baseline):
                     preview=dict(preview,launch_options='Finishes an install that was interrupted · '+preview['launch_options'])
-            if prefix:preview=dict(preview,launch_options="Proton setting saved in this game's prefix · Steam can stay open")
+            if prefix and stack:
+                # Fresh Linux Skynizz: keep the experimental label and route in user language.
+                lead=proton_mfg.LABEL+' · '+('Universal MFG '+release['mfg_component']['version']+' · ' if (release.get('mfg_component') or {}).get('id')=='universal' else '')
+                preview=dict(preview,launch_options=lead+"Proton setting saved in this game's prefix · Steam can stay open")
+            elif prefix:preview=dict(preview,launch_options="Proton setting saved in this game's prefix · Steam can stay open")
             # Which Steam-side state this game touches: its prefix, Steam's launch settings, or neither.
             steam_route=operation in ('install','repair') and not prefix or operation=='uninstall' and bool(baseline and isinstance(baseline.get('steam_launch'),dict))
             ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g),'prefix':str(prefix) if prefix else None,'steam_route':steam_route,'retire':retired,
-                          'provider':dict(e.Y4MY_PROVIDER),'payload':target_data,'meta':target_meta,'nr':nr,'nrmeta':nrmeta})
+                          'provider':dict(e.Y4MY_PROVIDER),'payload':target_data,'meta':target_meta,'nr':nr,'nrmeta':nrmeta,
+                          'proton_stack':stack,'settings':{k:settings.get(k) for k in ('skynizz_proton','mfg_provider')} if stack else None})
         except (e.Stop,t.Refusal,OSError,ValueError) as ex:blocked.append({'name':row['name'],'reason':str(ex)})
         ui.progress('Game checked',phase='review-check',game=row['name'],checked=index,total=len(rows))
     return {'kind':'engine','operation':operation,'title':'Update NR + MFG bridge' if upgrade else operation.title(),'rows':[{'name':p['row']['name'],'detail':p['preview']['launch_options'] if operation=='reset' else f"{e.Y4MY_PROVIDER['name']} · {len(p['preview']['files'])} managed files · "+p['preview']['launch_options']} for p in ready],
@@ -623,6 +691,10 @@ def execute(review):
                     record=e.restore_target(g)
                     release_install(g,owned)
                 else:
+                    e.PROTON_STACK=None
+                    if item.get('proton_stack'):
+                        # Re-check at execute time: a Proton or driver change since review refuses.
+                        e.PROTON_STACK=proton_gate(e,g,item['settings'],review['mode'])
                     record=e.install_target(g,item.get('payload',review['payload']),item.get('meta',review['meta']),'ada',nr_runtime_payload=item.get('nr',review['nr']),nr_runtime_meta=item.get('nrmeta',review['nrmeta']),feature_mode=review['mode'],enable_effects=review['enable_effects'],nr_on_launch=review.get('nr_on_launch'),native_mfg_fallback=review.get('native_mfg_fallback',False),nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'],feature_controls=review.get('feature_controls'),preserve_visual_settings=not review.get('apply_requested_presets',False))
                     report('Saving launch settings',0.85)
                     if item.get('prefix'):

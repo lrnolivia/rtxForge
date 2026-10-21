@@ -128,7 +128,7 @@ public sealed partial class SettingsPage : Page
 
         var globalControls = new PreferencesGroup("One-time changes", "Review a bulk change to games with packages installed.");
         if (shell.Service is EngineForgeService globalEngine)
-            globalControls.Add(new GlobalControlsView(globalEngine) { Margin = new Thickness(0, 12, 0, 20), MaxWidth = 640, HorizontalAlignment = HorizontalAlignment.Left });
+            globalControls.Add(new GlobalControlsView(globalEngine, settingsRows: true) { Margin = new Thickness(0, 12, 0, 20) });
         else globalControls.Add(new TextBlock { Text = "Global controls are available in the installed app." });
 
         var appearance = new PreferencesGroup("Theme and scale");

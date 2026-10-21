@@ -16,16 +16,36 @@ public sealed class GlobalControlsView : StackPanel
     readonly TextBlock feedback = new() { TextWrapping = TextWrapping.Wrap };
     readonly Button apply = new() { Content = "Review changes", HorizontalAlignment = HorizontalAlignment.Stretch, Height = 44 };
     readonly ProgressBar progress = new() { IsIndeterminate = true, Visibility = Visibility.Collapsed };
+    readonly Border? reviewCard;
     EngineReview? review;
     bool busy;
 
-    public GlobalControlsView(EngineForgeService engine)
+    public GlobalControlsView(EngineForgeService engine, bool settingsRows = false)
     {
         service = engine; Spacing = 20;
-        Children.Add(new TextBlock { Text = "Change installed games together. Choose only the controls you want to change; everything else stays as it is.", FontSize = 13, TextWrapping = TextWrapping.Wrap });
-        Children.Add(nr); Children.Add(mfg);
-        Children.Add(new TextBlock { Text = "Feeder games support NR only. Close running games before applying. This won’t change defaults for future installs.", FontSize = 12, Opacity = .8, TextWrapping = TextWrapping.Wrap });
-        Children.Add(progress); Children.Add(entries); Children.Add(feedback); Children.Add(apply);
+        if (settingsRows)
+        {
+            Spacing = 4;
+            nr.Header = mfg.Header = null;
+            nr.MinWidth = mfg.MinWidth = 180;
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(nr, "Neural rendering");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(mfg, "Frame generation");
+            Children.Add(Prefs.Row("Neural rendering", "Choose only the setting to change across installed games.", nr));
+            Children.Add(Prefs.Row("Frame generation", "Feeder games support NR only. Leave other games as they are, or choose a new mode.", mfg));
+            var results = new StackPanel { Spacing = 12 };
+            results.Children.Add(progress); results.Children.Add(entries); results.Children.Add(feedback);
+            reviewCard = new Border { Style = Prefs.GetStyle("ForgeSettingsCardStyle"), Child = results, Visibility = Visibility.Collapsed };
+            Children.Add(reviewCard);
+            apply.HorizontalAlignment = HorizontalAlignment.Right;
+            Children.Add(Prefs.Row("Installed games", "Review before applying. Close running games first. Defaults for future installs stay the same.", apply));
+        }
+        else
+        {
+            Children.Add(new TextBlock { Text = "Change installed games together. Choose only the controls you want to change; everything else stays as it is.", FontSize = 13, TextWrapping = TextWrapping.Wrap });
+            Children.Add(nr); Children.Add(mfg);
+            Children.Add(new TextBlock { Text = "Feeder games support NR only. Close running games before applying. This won’t change defaults for future installs.", FontSize = 12, Opacity = .8, TextWrapping = TextWrapping.Wrap });
+            Children.Add(progress); Children.Add(entries); Children.Add(feedback); Children.Add(apply);
+        }
         nr.SelectionChanged += (_, _) => Invalidate(); mfg.SelectionChanged += (_, _) => Invalidate();
         apply.Click += async (_, _) => await RunAsync();
         Unloaded += (_, _) => { if (review is not null) { service.DiscardReview(review); review = null; } };
@@ -35,6 +55,7 @@ public sealed class GlobalControlsView : StackPanel
     {
         if (review is not null) service.DiscardReview(review);
         review = null; entries.Children.Clear(); feedback.Text = ""; apply.Content = "Review changes";
+        if (reviewCard is not null) reviewCard.Visibility = Visibility.Collapsed;
         apply.IsEnabled = !busy && (nr.SelectedIndex != 0 || mfg.SelectedIndex != 0);
     }
     static Grid Entry(ReviewItem item)
@@ -56,6 +77,7 @@ public sealed class GlobalControlsView : StackPanel
     {
         if (busy) return;
         busy = true;
+        if (reviewCard is not null) reviewCard.Visibility = Visibility.Visible;
         apply.IsEnabled = nr.IsEnabled = mfg.IsEnabled = false; progress.Visibility = Visibility.Visible;
         var phases = new Progress<PrepareProgress>(p =>
         {

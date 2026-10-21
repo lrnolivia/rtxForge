@@ -20,28 +20,28 @@ public sealed class OverlayPreferencesView : StackPanel
         Spacing = 20;
         var current = ForgeSettings.Load();
         Heading("rtxForge panel");
-        var renderer = Choice("Overlay", ["rtxForge sidebar", "Original OptiScaler overlay", "rtxForge in-game (preview)"], current.OverlayRenderer == "game" ? 2 : current.OverlayRenderer == "optiscaler" ? 1 : 0);
-        Note("The in-game preview needs the new renderer package. It draws inside the game and opens only there. The sidebar is a separate helper window.");
-        var layout = Choice("Controls", ["Unified", "Advanced"], current.OverlayControls == "classic" ? 1 : 0);
-        Note("Unified uses simple labels and percentages. Advanced uses OptiScaler labels and original units for the sidebar’s live controls.");
+        var renderer = Choice("Overlay", ["rtxForge sidebar", "Original OptiScaler overlay", "rtxForge in-game (preview)"], current.OverlayRenderer == "game" ? 2 : current.OverlayRenderer == "optiscaler" ? 1 : 0,
+            "The in-game preview needs the new renderer package. It draws inside the game and opens only there. The sidebar is a separate helper window.");
+        var layout = Choice("Controls", ["Unified", "Advanced"], current.OverlayControls == "classic" ? 1 : 0,
+            "Unified uses simple labels and percentages. Advanced uses OptiScaler labels and original units for the sidebar’s live controls.");
         var material = Choice("Window material", ["Acrylic", "Mica"], current.OverlayMaterial == "mica" ? 1 : 0);
         Heading("Shortcuts and helper");
-        var key = new OverlayShortcutPicker(current.PanelHotkey);
+        var key = new OverlayShortcutPicker(current.PanelHotkey, settingsRow: groupCards);
         AddControl(key);
-        var helper = Switch("Background overlay helper", current.OverlayHelper);
-        Note("Keep the rtxForge shortcut available after closing the manager. OptiScaler’s panel runs inside the game.");
-        var startup = Switch("Start with Windows", current.OverlayStartWithWindows);
-        Note("Starts only the helper, when the rtxForge overlay is selected.");
+        var helper = Switch("Background overlay helper", current.OverlayHelper,
+            "Keep the rtxForge shortcut available after closing the manager. OptiScaler’s panel runs inside the game.");
+        var startup = Switch("Start with Windows", current.OverlayStartWithWindows,
+            "Starts only the helper, when the rtxForge overlay is selected.");
         Heading("OptiScaler");
         var optiUi = Switch("In-game menu", current.OptiScalerUi);
-        var optiIntro = Switch("Intro message", current.OptiScalerIntro);
-        Note("The startup message and the menu are separate. Turning either off keeps NR and MFG installed.");
-        var nativeKey = Choice("OptiScaler shortcut", ["Insert", "F8", "Disabled"], current.OptiScalerHotkey == "F8" ? 1 : current.OptiScalerHotkey == "Disabled" ? 2 : 0);
-        var restart = Note("Switching overlays or changing the OptiScaler key takes effect after restarting the game. Install the current rtxForge package in your game to use the original panel.");
+        var optiIntro = Switch("Intro message", current.OptiScalerIntro,
+            "The startup message and the menu are separate. Turning either off keeps NR and MFG installed.");
+        var nativeKey = Choice("OptiScaler shortcut", ["Insert", "F8", "Disabled"], current.OptiScalerHotkey == "F8" ? 1 : current.OptiScalerHotkey == "Disabled" ? 2 : 0,
+            "Switching overlays or changing the OptiScaler key takes effect after restarting the game. Install the current rtxForge package in your game to use the original panel.");
         Heading("ReShade");
         var reshadeUi = Switch("In-game menu", current.ReShadeUi);
-        var reshadeIntro = Switch("Welcome messages", current.ReShadeIntro);
-        Note("Controls the ReShade guide and RenoDX welcome dialog, matching the TS4 and Mass Effect setup. Loading notices are separate. Feeder NR and effects stay running.");
+        var reshadeIntro = Switch("Welcome messages", current.ReShadeIntro,
+            "Controls the ReShade guide and RenoDX welcome dialog, matching the TS4 and Mass Effect setup. Loading notices are separate. Feeder NR and effects stay running.");
         Heading("Apply to games");
         OverlayUiReviewView? gameReview = null;
         if (engine is not null) { gameReview = new(engine); AddControl(gameReview); }
@@ -53,7 +53,6 @@ public sealed class OverlayPreferencesView : StackPanel
             material.IsEnabled = renderer.SelectedIndex == 0;
             helper.IsEnabled = startup.IsEnabled = !native;
             nativeKey.IsEnabled = optiUi.IsOn;
-            restart.Visibility = Visibility.Visible;
         }
         bool Save(Action<ForgeSettings> edit)
         {
@@ -86,25 +85,25 @@ public sealed class OverlayPreferencesView : StackPanel
         Availability();
     }
 
-    ComboBox Choice(string label, string[] choices, int index)
+    ComboBox Choice(string label, string[] choices, int index, string? description = null)
     {
         if (groupCards)
         {
-            var (row, combo) = Prefs.ComboRow(label, null, choices, index);
+            var (row, combo) = Prefs.ComboRow(label, description, choices, index);
             AddControl(row); return combo;
         }
         var control = new ComboBox { Header = label, ItemsSource = choices, SelectedIndex = index, HorizontalAlignment = HorizontalAlignment.Stretch };
-        AddControl(control); return control;
+        AddControl(control); if (description is not null) Note(description); return control;
     }
-    ToggleSwitch Switch(string label, bool enabled)
+    ToggleSwitch Switch(string label, bool enabled, string? description = null)
     {
         if (groupCards)
         {
-            var (row, toggle) = Prefs.SwitchRow(label, null, enabled);
+            var (row, toggle) = Prefs.SwitchRow(label, description, enabled);
             AddControl(row); return toggle;
         }
         var control = new ToggleSwitch { Header = label, IsOn = enabled };
-        AddControl(control); return control;
+        AddControl(control); if (description is not null) Note(description); return control;
     }
     TextBlock Note(string text)
     {

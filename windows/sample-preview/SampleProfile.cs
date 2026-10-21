@@ -138,3 +138,23 @@ public sealed class SampleSelection : HashSet<string>
     public new void IntersectWith(IEnumerable<string> values) { base.IntersectWith(values); SampleProfile.SaveSelection(); }
     public new int RemoveWhere(Predicate<string> match) { var result = base.RemoveWhere(match); SampleProfile.SaveSelection(); return result; }
 }
+
+public static class SampleInstallProgress
+{
+    public const int DurationMilliseconds = 10_000;
+
+    public static async Task WaitAsync(int index, int total, Game game, IProgress<OperationStep> progress, CancellationToken cancel)
+    {
+        var duration = DurationMilliseconds / (double)total;
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        while (timer.Elapsed.TotalMilliseconds < duration)
+        {
+            cancel.ThrowIfCancellationRequested();
+            var fraction = (index + timer.Elapsed.TotalMilliseconds / duration) / total;
+            progress.Report(new OperationStep(index, total, game, "Installing features…", Math.Clamp(fraction, 0, 1)));
+            await Task.Delay(TimeSpan.FromMilliseconds(Math.Clamp(duration - timer.Elapsed.TotalMilliseconds, 1, 50)), cancel);
+        }
+        cancel.ThrowIfCancellationRequested();
+        progress.Report(new OperationStep(index, total, game, "Installing features…", (index + 1.0) / total));
+    }
+}

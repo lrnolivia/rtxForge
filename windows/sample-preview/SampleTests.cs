@@ -45,9 +45,26 @@ static class Program
         Check((await OverlayHelper.CommandAsync("exit"))!.Contains("sample"), "No live helper command");
         var engine = await EngineForgeService.TryStartAsync();
         Check(engine.Service is null && engine.Problem!.Contains("disabled"), "Real engine fail closed");
-        var review = await restarted.PrepareAsync("install", visible.Take(1).ToArray(), restarted.Settings.Presets, "nr-mfg");
-        Check(await restarted.ExecuteAsync(review, new Progress<OperationStep>()) == 1, "Simulated install");
-        Check((await new PreviewForgeService().ScanAsync()).Count(x => x.Installed) == 1, "Simulation persists separately");
+        var review = await restarted.PrepareAsync("install", visible, restarted.Settings.Presets, "nr-mfg");
+        var steps = new CaptureProgress();
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        Check(await restarted.ExecuteAsync(review, steps) == 2, "Simulated batch install");
+        Check(timer.Elapsed.TotalSeconds is >= 9.9 and < 14, "Batch takes ten seconds, not ten per game");
+        Console.WriteLine($"Batch duration: {timer.Elapsed.TotalSeconds:F2}s");
+        var fractions = steps.Values.Where(step => step.Fraction.HasValue).Select(step => step.Fraction!.Value).ToArray();
+        Check(fractions.Length > 100 && fractions.First() < .05 && fractions.Last() == 1,
+            "Determinate progress spans the full duration");
+        Check(fractions.Zip(fractions.Skip(1)).All(pair => pair.First <= pair.Second), "Monotonic progress");
+        Check((await new PreviewForgeService().ScanAsync()).Count(x => x.Installed) == 2, "Simulation persists separately");
+        timer.Restart();
+        await SampleInstallProgress.WaitAsync(0, 1, visible[0], new CaptureProgress(), default);
+        Check(timer.Elapsed.TotalSeconds is >= 9.9 and < 14, "Single-game duration");
+        Console.WriteLine($"Single-game duration: {timer.Elapsed.TotalSeconds:F2}s");
+        var cancellation = new CancellationTokenSource(120);
+        var cancelled = await restarted.PrepareAsync("install", [initial[0]], restarted.Settings.Presets, "nr-mfg");
+        try { await restarted.ExecuteAsync(cancelled, new CaptureProgress(), cancellation.Token); throw new Exception("Cancellation ignored"); }
+        catch (OperationCanceledException) { checks++; }
+        Check(!initial[0].Installed && (await new PreviewForgeService().ScanAsync()).Count(x => x.Installed) == 2, "Cancellation preserves saved state");
         Check(!Directory.Exists(Path.Combine(root, "catalog")), "Simulation never visits target folders");
         Check(before.SequenceEqual(File.ReadAllBytes(live)), "Live settings bytes unchanged");
         Reject(() => SampleProfile.Configure(["sample.exe"]), "Missing manifest accepted");
@@ -56,5 +73,11 @@ static class Program
         Reject(() => SampleProfile.Configure(["sample.exe", "--sample-library", path]), "Malformed manifest accepted");
         Check(SampleProfile.Root == "", "Invalid manifest leaves profile unconfigured");
         Console.WriteLine($"PASS {checks} sample isolation checks; live settings bytes unchanged; no real engine, helper, game paths.");
+    }
+
+    sealed class CaptureProgress : IProgress<OperationStep>
+    {
+        public List<OperationStep> Values { get; } = [];
+        public void Report(OperationStep value) => Values.Add(value);
     }
 }

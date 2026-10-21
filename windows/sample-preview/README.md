@@ -8,6 +8,10 @@ Generate the fork using `build_sample.py --repo <isolated-worktree> --revision <
 
 The generated fork redirects all local application data references to the sample profile, uses a profile-specific settings mutex, disables real engine startup and replaces overlay helper commands/registry writes with inert methods. Desktop and Game Mode use the same sample service, persistent removals/preferences and simulated game state. The existing UI and native window sizing are retained.
 
+Sample installs animate determinate progress over approximately ten seconds for the entire batch, regardless of the game count. Cancellation interrupts the simulation. The install startup dialog shows the primary NR and Multi-Frame Generation controls first, with remaining controls under More settings. These capture-only changes never affect production install timing or game files.
+
+Both settings views place Game Mode scale, navigation placement and button glyphs under Gaming Mode → Layout and labels. Appearance keeps app-wide theme and desktop presentation preferences. Existing settings values and serialization keys are preserved.
+
 Use a normal C: source directory for the generated project; the G: artifact junction can produce padded intermediate XML that the native manifest tool rejects. Output may still be on G:. Do not change the original project's intermediate paths.
 
 Build `SampleTests.csproj` with `-p:SampleAppDir=<private-app-folder>`. Copy its console DLL, deps and runtimeconfig next to the private app's runtime files, then execute that console DLL there; the referenced WinUI assembly requires its Windows App Runtime even without creating a window. It exercises the actual generated service/settings implementation, including remove/relaunch, simulated installation, static overlay settings, clones, malformed/missing manifest refusal and unchanged live settings bytes. It does not establish rendered UI acceptance; open and inspect the native sample separately.

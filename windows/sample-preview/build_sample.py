@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 import subprocess
 import tarfile
+from capture_flow import apply as apply_capture_flow
+from settings_categories import apply as apply_settings_categories
 
 
 def generate(repo, revision, output):
@@ -36,6 +38,8 @@ def generate(repo, revision, output):
     for original, replacement in [('App.xaml.cs', 'App.sample.cs'), ('Services/OverlayHelper.cs', 'OverlayHelper.sample.cs')]:
         (project / original).write_bytes((tooling / replacement).read_bytes())
     (project / 'SampleProfile.cs').write_bytes((tooling / 'SampleProfile.cs').read_bytes())
+    apply_capture_flow(project)
+    apply_settings_categories(project)
     engine = project / 'Services/EngineForgeService.cs'
     text = engine.read_text(encoding='utf-8')
     start = text.index('    public static async Task<(EngineForgeService? Service, string? Problem)> TryStartAsync(')

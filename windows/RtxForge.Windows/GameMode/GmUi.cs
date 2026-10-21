@@ -317,6 +317,8 @@ public sealed partial class GmUi(GmTheme t)
         grid.ColumnSpacing = t.Px(24); text.Spacing = t.Px(10);
         if (text.Children.FirstOrDefault() is StackPanel titleLine)
         {
+            if (titleLine.Children.OfType<TextBlock>().FirstOrDefault() is { } caption && titleLine.Children.Count == 1)
+                titleLine.Children.Insert(0, Icon(SettingsGlyph(caption.Text), .95));
             var title = new Grid { ColumnSpacing = titleLine.Children.Count > 1 ? t.Px(10) : 0 };
             title.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
             title.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
@@ -358,6 +360,20 @@ public sealed partial class GmUi(GmTheme t)
             grid.RowSpacing = narrow ? t.Px(12) : 0;
         };
     }
+
+    static string SettingsGlyph(string title) => title switch
+    {
+        "Provider" => "\uE7F4", "Default mode" or "Enable NR on launch" => "\uE9E9",
+        "Update DLSS files" => "\uE8A5", "4K borderless on install" => "\uE7F4",
+        "Recognize existing features" => "\uE73E", "Theme" or "Accent color" => "\uE790",
+        "UI scale" or "Game Mode scale" => "\uE740", "Controller labels" or "Controller hints" => "\uE7FC",
+        "Navigation" or "Navigation position" => "\uE8A0", "Library layout" => "\uE8A9",
+        "Shortcut" or "Live controls shortcut" => "\uE765", "Interface" => "\uE737",
+        _ when title.Contains("artwork", StringComparison.OrdinalIgnoreCase) => "\uEB9F",
+        _ when title.Contains("Steam", StringComparison.OrdinalIgnoreCase) => "\uE7FC",
+        _ when title.Contains("folder", StringComparison.OrdinalIgnoreCase) => "\uE838",
+        _ => "\uE713",
+    };
 
     /// <summary>
     /// .rf-stepper inside a whole-row focus target: Left/Right adjust (controller,

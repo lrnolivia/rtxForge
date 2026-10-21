@@ -21,8 +21,7 @@ public sealed partial class MainWindow
         }
         var frame = new Frame();
         var window = new Window { Title = game.Name + " · rtxForge", Content = frame, SystemBackdrop = new MicaBackdrop() };
-        frame.RequestedTheme = Settings.Theme == "light" ? ElementTheme.Light
-            : Settings.Theme is "dark" or "night" ? ElementTheme.Dark : ElementTheme.Default;
+        frame.RequestedTheme = RootGrid.ActualTheme;
         frame.Navigate(typeof(GamePage), new GameRequest(game, section, SeparateWindow: true));
         gameWindows[game.Id] = (window, frame);
         window.Activated += (_, e) =>
@@ -39,11 +38,15 @@ public sealed partial class MainWindow
         if (!gameWindowsInitialized)
         {
             gameWindowsInitialized = true;
+            RootGrid.ActualThemeChanged += (_, _) =>
+            { foreach (var child in gameWindows.Values) child.Frame.RequestedTheme = RootGrid.ActualTheme; };
             Closed += (_, _) => { foreach (var child in gameWindows.Values.ToArray()) child.Window.Close(); };
         }
         var display = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(AppWindow.Id, Microsoft.UI.Windowing.DisplayAreaFallback.Primary);
         var work = display.WorkArea;
-        var width = Math.Min(1500, work.Width - 80); var height = Math.Min(1100, work.Height - 80);
+        var scale = RootGrid.XamlRoot?.RasterizationScale ?? 1;
+        var width = Math.Min((int)(1200 * scale), work.Width - 80);
+        var height = Math.Min((int)(850 * scale), work.Height - 80);
         window.AppWindow.MoveAndResize(new global::Windows.Graphics.RectInt32(
             work.X + (work.Width - width) / 2, work.Y + (work.Height - height) / 2, width, height));
         window.Activate();

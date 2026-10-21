@@ -26,7 +26,11 @@
             <StackPanel x:Name="PageHost" Padding="36,0,36,0" />
         </StackPanel>
     </ScrollViewer>
-    <StackPanel x:Name="HeroHost" Grid.Column="1" VerticalAlignment="Top" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+    <!--
+        No fill of its own: the scroller starts below the collapsing hero, so content never passes
+        underneath, and the art's fade blends into the same surface as the cards in every theme.
+    -->
+    <StackPanel x:Name="HeroHost" Grid.Column="1" VerticalAlignment="Top">
 
             <!-- .game-banner: edge to edge -->
             <Grid x:Name="HeroBanner" Height="360">

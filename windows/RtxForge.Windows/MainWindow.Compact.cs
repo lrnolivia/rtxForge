@@ -151,9 +151,11 @@ public sealed partial class MainWindow
         if (compactVisible)
         {
             Seen("actions", actions.ActualWidth);
-            if (modes)
+            // The selector shares a star column, so its arranged width may already be squeezed:
+            // measure its natural width once per presentation. Measuring again on every size
+            // change would feed back into layout (flicker, a layout cycle).
+            if (modes && !compactWidths.ContainsKey(Key("modes", compactLevel)))
             {
-                // The selector shares a star column, so its arranged width may already be squeezed.
                 CompactModes.Measure(new global::Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
                 Seen("modes", CompactModes.DesiredSize.Width);
                 CompactModes.InvalidateMeasure();

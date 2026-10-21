@@ -35,7 +35,7 @@
                 The WinUI TitleBar back button (its own TitleBarBackButtonStyle and animated
                 glyph), placed before the app icon as TitleBar does. Shown while there is history.
             -->
-            <Button x:Name="TitleBack" Style="{ThemeResource TitleBarBackButtonStyle}" Click="OnNavigationBackClick" Visibility="Collapsed"
+            <Button x:Name="TitleBack" Style="{StaticResource TitleBarBackButtonStyle}" Click="OnNavigationBackClick" Visibility="Collapsed"
                     Height="36" VerticalAlignment="Center" Margin="12,0,6,0" RenderTransformOrigin="0.5,0.5"
                     ToolTipService.ToolTip="Back" AutomationProperties.Name="Back" SizeChanged="OnCompactBarSizeChanged">
                 <!-- The template's animated glyph is fixed at 16px; scale the whole control to the 40px mark. -->
@@ -45,7 +45,7 @@
                 </Button.KeyboardAccelerators>
             </Button>
             <!-- Phone width: the TitleBar pane toggle opens navigation, instead of a toggle floating over page content. -->
-            <Button x:Name="TitlePaneToggle" Style="{ThemeResource TitleBarPaneToggleButtonStyle}" Click="OnNavigationMenuClick" Visibility="Collapsed"
+            <Button x:Name="TitlePaneToggle" Style="{StaticResource TitleBarPaneToggleButtonStyle}" Click="OnNavigationMenuClick" Visibility="Collapsed"
                     Height="36" VerticalAlignment="Center" Margin="12,0,6,0" RenderTransformOrigin="0.5,0.5"
                     ToolTipService.ToolTip="Navigation" AutomationProperties.Name="Navigation" SizeChanged="OnCompactBarSizeChanged">
                 <Button.RenderTransform><ScaleTransform ScaleX="1.25" ScaleY="1.25" /></Button.RenderTransform>

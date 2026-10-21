@@ -666,11 +666,11 @@ inline void SettingsControls()
     bool advancedChoice=advanced;
     if(SwitchRow("Advanced controls", &advancedChoice))
     { if(Preference("overlay_controls",advancedChoice)) prefs["overlay_controls"] = advancedChoice ? "classic" : "unified"; }
-    const char* rendererItems[]={"rtxForge in-game","rtxForge sidebar","Original OptiScaler"};
+    const char* rendererItems[]={"rtxForge","Native"};
     const auto renderer=prefs.value("overlay_renderer",std::string("game"));
-    int selectedRenderer=renderer=="rtxforge" ? 1 : renderer=="optiscaler" ? 2 : 0;
+    int selectedRenderer=renderer=="optiscaler" ? 1 : 0;
     ImGui::SetNextItemWidth(-1);
-    if(ChoiceList("Primary overlay",&selectedRenderer,rendererItems,3)) Preference("overlay_renderer",selectedRenderer==1 ? "rtxforge" : selectedRenderer==2 ? "optiscaler" : "game");
+    if(ChoiceList("Primary overlay",&selectedRenderer,rendererItems,2)) Preference("overlay_renderer",selectedRenderer==1 ? "optiscaler" : "game");
     const auto shortcut=prefs.value("panel_hotkey",std::string("ScrollLock"));
     if(ImGui::Button(binding ? "Press a key..." : ("Shortcut: "+shortcut).c_str(),ImVec2(-1,0))) binding=true;
     if(binding)

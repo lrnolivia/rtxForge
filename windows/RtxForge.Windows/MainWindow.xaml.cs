@@ -202,7 +202,11 @@ public sealed partial class MainWindow : Window
         ContentFrame.Navigate(page, parameter ?? tag);
     }
 
-    public void OpenGame(Game game, string section = "Overview") => Navigate("Game", new GameRequest(game, section));
+    public void OpenGame(Game game, string section = "Overview")
+    {
+        if (Settings.SeparateGameDetails && !InGameMode) OpenGameWindow(game, section);
+        else Navigate("Game", new GameRequest(game, section));
+    }
 
     void OnNavBackRequested(NavigationView sender, NavigationViewBackRequestedEventArgs args)
     {
@@ -328,7 +332,7 @@ public sealed partial class MainWindow : Window
     {
         var dialog = new ContentDialog
         {
-            XamlRoot = RootGrid.XamlRoot,
+            XamlRoot = detailsDialogRoot?.XamlRoot ?? RootGrid.XamlRoot,
             Style = (Style)Application.Current.Resources["DefaultContentDialogStyle"],
             RequestedTheme = RootGrid.ActualTheme,
         };
@@ -358,4 +362,4 @@ public sealed partial class MainWindow : Window
     public nint Handle => WinRT.Interop.WindowNative.GetWindowHandle(this);
 }
 
-public sealed record GameRequest(Game Game, string Section);
+public sealed record GameRequest(Game Game, string Section, bool SeparateWindow = false);

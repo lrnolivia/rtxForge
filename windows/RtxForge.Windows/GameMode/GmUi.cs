@@ -15,7 +15,7 @@ public enum GmKind { Card, Primary, Danger, Quiet, Transparent, Active, Dlss }
 /// .rf-preference, .rf-stepper, .rf-action-row, .rf-key, .rf-badge) as
 /// native WinUI controls, sized from the current theme unit.
 /// </summary>
-public sealed class GmUi(GmTheme t)
+public sealed partial class GmUi(GmTheme t)
 {
     public GmTheme T => t;
     public SolidColorBrush FocusBrush { get; } = GmTheme.B(t.Focus);
@@ -312,9 +312,9 @@ public sealed class GmUi(GmTheme t)
         if (button.Content is not Grid grid || grid.Children.FirstOrDefault() is not StackPanel text) return;
         button.Background = GmTheme.B(t.Panel);
         button.CornerRadius = new CornerRadius(t.Px(12));
-        button.Padding = new Thickness(t.Px(20), t.Px(16), t.Px(20), t.Px(16));
+        button.Padding = new Thickness(t.Px(28), t.Px(22), t.Px(28), t.Px(22));
         button.MinHeight = t.Px(84);
-        grid.ColumnSpacing = t.Px(16); text.Spacing = t.Px(6);
+        grid.ColumnSpacing = t.Px(24); text.Spacing = t.Px(10);
         if (text.Children.FirstOrDefault() is StackPanel titleLine)
         {
             var title = new Grid { ColumnSpacing = titleLine.Children.Count > 1 ? t.Px(10) : 0 };

@@ -12,8 +12,16 @@
           content                 left-aligned under the title
         Back returns to the library through the NavigationView back button.
     -->
-    <ScrollViewer x:Name="ContentScroll" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Padding="0,0,0,48">
+    <Grid>
+        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+        <Border x:Name="SectionRail" Width="208" Padding="16,24,16,16" Visibility="Collapsed" Background="{ThemeResource ControlFillColorSecondaryBrush}">
+            <StackPanel Spacing="16">
+                <TextBlock Text="Game Details" FontSize="18" FontWeight="SemiBold" Margin="12,0,0,0" />
+                <ListView x:Name="SidebarSections" SelectionMode="Single" SelectionChanged="OnSidebarSectionChanged" />
+            </StackPanel>
+        </Border>
+    <ScrollViewer x:Name="ContentScroll" Grid.Column="1" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel x:Name="DetailsWorkspace" Padding="0,0,0,48">
 
             <!-- .game-banner: edge to edge -->
             <Grid x:Name="HeroBanner" Height="360">
@@ -120,4 +128,5 @@
             <StackPanel x:Name="PageHost" Padding="36,0,36,0" />
         </StackPanel>
     </ScrollViewer>
+    </Grid>
 </Page>

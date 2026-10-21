@@ -47,7 +47,7 @@ public sealed partial class GameModeView
     UIElement BuildDetails(Game g)
     {
         var navWidth = t.Px(ActualWidth <= 1050 ? 184 : ActualWidth <= 1500 ? 246 : 254);
-        var side = t.Px(ActualWidth <= 1050 ? 24 : ActualWidth <= 1500 ? 36 : 56);
+        var side = PageInset;
         var heroWidth = Math.Max(t.Px(420), ActualWidth - navWidth - side);
         var heroHeight = Math.Clamp(heroWidth * .30, t.Px(300), t.Px(560));
         var grid = new Grid { RowSpacing = t.Px(t.Compact ? 12 : 22), Padding = new Thickness(0, 0, 0, t.Px(8)) };
@@ -57,7 +57,7 @@ public sealed partial class GameModeView
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
         // The section rail spans the workspace; the hero belongs to the content column.
-        var hero = new Grid { Background = GmTheme.B(t.View), MinHeight = heroHeight };
+        var hero = new Grid { Background = GmTheme.B(t.View), Height = heroHeight };
         Grid.SetColumn(hero, 1);
         if ((g.HeroPath ?? g.CapsulePath) is { } heroSource)
         {
@@ -96,18 +96,6 @@ public sealed partial class GameModeView
         title.FontFamily = (FontFamily)Application.Current.Resources["ForgeHeroFontFamily"];
         title.FontSize = Math.Clamp(heroWidth / t.S / 26, 32, 64) * t.S * (g.Name.Length > 28 ? .78 : 1);
         title.LineHeight = title.FontSize * 1.1;
-        var laidOutHeroWidth = 0d;
-        hero.SizeChanged += (_, e) =>
-        {
-            if (e.NewSize.Width <= 0 || Math.Abs(laidOutHeroWidth - e.NewSize.Width) < .5) return;
-            laidOutHeroWidth = e.NewSize.Width;
-            hero.MinHeight = Math.Clamp(e.NewSize.Width * .30, t.Px(300), t.Px(560));
-            poster.Height = Math.Clamp(hero.MinHeight * .48, t.Px(120), t.Px(260));
-            poster.Width = Math.Round(poster.Height * 2 / 3);
-            poster.Visibility = g.PosterPath is not null && e.NewSize.Width >= t.Px(620) ? Visibility.Visible : Visibility.Collapsed;
-            title.FontSize = Math.Clamp(e.NewSize.Width / t.S / 26, 32, 64) * t.S * (g.Name.Length > 28 ? .78 : 1);
-            title.LineHeight = title.FontSize * 1.1;
-        };
         head.Children.Add(title);
         Grid.SetColumnSpan(head, 2); heroBody.Children.Add(head);
         var text = new StackPanel { Spacing = t.Px(8), VerticalAlignment = VerticalAlignment.Bottom };
@@ -202,43 +190,43 @@ public sealed partial class GameModeView
         grid.Children.Add(navScroll);
 
         // ----- Section body -----
-        var content = new StackPanel { Spacing = t.Px(24), Padding = new Thickness(t.Px(24), t.Px(12), t.Px(24), t.Px(12)) };
+        var content = new StackPanel { Spacing = t.Px(24), Padding = new Thickness(t.Px(32), t.Px(16), side, t.Px(20)) };
         BuildSection(g, content);
+        var workspace = new StackPanel();
+        grid.Children.Remove(hero);
+        workspace.Children.Add(hero); workspace.Children.Add(content);
         var scroll = new ScrollViewer
         {
-            Content = content, HorizontalScrollMode = ScrollMode.Disabled, Margin = new Thickness(0, 0, side, 0),
+            Content = workspace, HorizontalScrollMode = ScrollMode.Disabled,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
         };
-        Grid.SetRow(scroll, 1);
-        Grid.SetColumn(scroll, 1);
-        var workspace = new StackPanel();
-        var wholeWorkspaceScrolls = false;
-        void LayoutWorkspace()
+        Grid.SetRowSpan(scroll, 2); Grid.SetColumn(scroll, 1); grid.Children.Add(scroll);
+        var expandedWidth = heroWidth;
+        var collapsing = new CollapsingHero(scroll, hero, workspace, progress =>
         {
-            var whole = ActualHeight < t.Px(900);
-            if (whole == wholeWorkspaceScrolls) return;
-            wholeWorkspaceScrolls = whole;
-            var focused = FocusedWithin(grid);
-            scroll.Content = null; workspace.Children.Clear();
-            if (whole)
-            {
-                grid.Children.Remove(hero);
-                workspace.Children.Add(hero); workspace.Children.Add(content);
-                scroll.Content = workspace; scroll.Margin = new Thickness(0);
-                Grid.SetRow(scroll, 0); Grid.SetRowSpan(scroll, 2);
-            }
-            else
-            {
-                grid.Children.Add(hero); scroll.Content = content;
-                scroll.Margin = new Thickness(0, 0, side, 0);
-                Grid.SetRow(scroll, 1); Grid.SetRowSpan(scroll, 1);
-            }
-            RestoreLayoutFocus(focused);
+            var fullPoster = Math.Clamp(expandedWidth * .30 * .48, t.Px(120), t.Px(260));
+            poster.Height = fullPoster + (t.Px(100) - fullPoster) * progress;
+            poster.Width = Math.Round(poster.Height * 2 / 3);
+            var fullTitle = Math.Clamp(expandedWidth / t.S / 26, 32, 64) * t.S * (g.Name.Length > 28 ? .78 : 1);
+            title.FontSize = fullTitle + (Math.Min(fullTitle, t.Px(32)) - fullTitle) * progress;
+            title.LineHeight = title.FontSize * 1.1;
+            text.Opacity = 1 - progress;
+            text.Visibility = progress >= .75 ? Visibility.Collapsed : Visibility.Visible;
+        });
+        void ResizeHero(double width)
+        {
+            if (width <= 0) return;
+            expandedWidth = width;
+            poster.Visibility = g.PosterPath is not null && width >= t.Px(620) ? Visibility.Visible : Visibility.Collapsed;
+            collapsing.SetRange(Math.Clamp(width * .30, t.Px(300), t.Px(560)), t.Px(width < t.Px(620) ? 290 : 210));
         }
-        // Reflow existing controls within scale buckets, preserving preset drafts.
-        grid.SizeChanged += (_, _) => LayoutWorkspace();
-        LayoutWorkspace();
-        grid.Children.Add(scroll);
+        var lastWidth = 0d;
+        hero.SizeChanged += (_, e) =>
+        {
+            if (Math.Abs(lastWidth - e.NewSize.Width) < .5) return;
+            lastWidth = e.NewSize.Width; ResizeHero(lastWidth);
+        };
+        ResizeHero(heroWidth);
 
         // Accent: poster stroke, title, active section (tint + readable title).
         _ = DetailsAccentAsync(g, poster, title, sourceBadge, install, navButtons);
@@ -283,10 +271,28 @@ public sealed partial class GameModeView
             }
     }
 
+    Grid DetailHeading(string title, string? glyph = null)
+    {
+        glyph ??= title switch
+        {
+            "Features" or "Feeder NR" or "Neural rendering" => "\uE9E9",
+            "Installation" or "File Management" => "\uE896", "DLSS Files" => "\uE8A5",
+            "Tools" => "\uE90F", "Notes" => "\uE70B", "Appearance" or "Custom Artwork" => "\uE790",
+            "Performance" => "\uE9D9", "Sharpening" => "\uE7AD", "Multi-Frame Generation" => "\uE7F4",
+            _ => "\uE713",
+        };
+        var row = new Grid { ColumnSpacing = t.Px(14) };
+        row.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+        row.Children.Add(ui.Icon(glyph, 1.05).With(icon => icon.VerticalAlignment = VerticalAlignment.Center));
+        var label = ui.Text(title, .96, weight: FontWeights.SemiBold, wrap: true);
+        Grid.SetColumn(label, 1); row.Children.Add(label); return row;
+    }
+
     void SectionTitle(StackPanel content, string title, string? description = null)
     {
         var block = new StackPanel { Spacing = t.Px(10) };
-        block.Children.Add(ui.H2(title));
+        block.Children.Add(DetailHeading(title));
         if (description is not null) block.Children.Add(ui.P(description));
         content.Children.Add(block);
     }
@@ -295,15 +301,15 @@ public sealed partial class GameModeView
     { ColumnSpacing = t.Px(16), RowSpacing = t.Px(16) };
 
     Border DetailPlate(UIElement content) => new()
-    { Background = GmTheme.B(t.Card), CornerRadius = new CornerRadius(t.Px(16)), Padding = new Thickness(t.Px(20)), Child = content };
+    { Background = GmTheme.B(t.Card), CornerRadius = new CornerRadius(t.Px(16)), Padding = new Thickness(t.Px(28)), Child = content };
 
     Border DetailFact(string title, string value, Button? action = null, string? glyph = null)
     {
-        var lines = new StackPanel { Spacing = t.Px(10) };
+        var lines = new StackPanel { Spacing = t.Px(16) };
         var heading = new Grid { ColumnSpacing = t.Px(12) };
         heading.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         heading.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
-        if (glyph is not null) heading.Children.Add(ui.Icon(glyph, .8).With(icon => icon.VerticalAlignment = VerticalAlignment.Center));
+        if (glyph is not null) heading.Children.Add(ui.Icon(glyph, 1.05).With(icon => icon.VerticalAlignment = VerticalAlignment.Center));
         var label = ui.Text(title, .88, weight: FontWeights.SemiBold, wrap: true);
         Grid.SetColumn(label, 1); heading.Children.Add(label); lines.Children.Add(heading);
         lines.Children.Add(ui.P(value, .8));
@@ -321,8 +327,8 @@ public sealed partial class GameModeView
                     SectionTitle(content, "Feeder NR", "Your existing tuning is preserved. Use ReShade's NR panel in the running game to adjust passes, resolution, tone and structure. Frame generation is unavailable for this route.");
                     var feederActions = DetailColumns();
                     foreach (var action in new[] {
-                        ui.RowButton("Update Feeder NR", null, () => _ = RunOperationAsync("install", [g]), enabled: !g.Blocked || g.AdoptionAvailable),
-                        ui.RowButton("Restore Original Files", null, () => _ = RunOperationAsync("uninstall", [g]), danger: true, enabled: g.Installed),
+                        ui.RowButton("Update Feeder NR", null, () => _ = RunOperationAsync("install", [g]), glyph: "\uE896", enabled: !g.Blocked || g.AdoptionAvailable),
+                        ui.RowButton("Restore Original Files", null, () => _ = RunOperationAsync("uninstall", [g]), danger: true, glyph: "\uE7A7", enabled: g.Installed),
                     }) feederActions.Children.Add(ui.Group([action], t.Card));
                     content.Children.Add(feederActions);
                     break;
@@ -365,24 +371,21 @@ public sealed partial class GameModeView
                 SectionTitle(content, "Installation");
                 var installActions = DetailColumns(3);
                 foreach (var action in new[] {
-                    ui.RowButton(g.InstallLabel, null, () => _ = RunOperationAsync("install", [g]), enabled: !g.Blocked),
-                    ui.RowButton("Repair Feature Files", null, () => _ = RunOperationAsync("install", [g]), enabled: g.Installed && !g.Blocked),
-                    ui.RowButton("Restore Original Files", null, () => _ = RunOperationAsync("uninstall", [g]), danger: true, enabled: g.Installed),
+                    ui.RowButton(g.InstallLabel, null, () => _ = RunOperationAsync("install", [g]), glyph: "\uE896", enabled: !g.Blocked),
+                    ui.RowButton("Repair Feature Files", null, () => _ = RunOperationAsync("install", [g]), glyph: "\uE90F", enabled: g.Installed && !g.Blocked),
+                    ui.RowButton("Restore Original Files", null, () => _ = RunOperationAsync("uninstall", [g]), danger: true, glyph: "\uE7A7", enabled: g.Installed),
                 }) installActions.Children.Add(ui.Group([action], t.Card));
                 content.Children.Add(installActions);
                 break;
 
             case "DLSS Files":
                 SectionTitle(content, "DLSS Files", "Updater backups are previous copies, not proof of the version currently shipped by the game.");
-                content.Children.Add(ui.Group(
-                [
-                    ui.PreferenceRow("Installed DLSS version", null, ui.Text(g.DlssVersion ?? "Checked during update", 0.85, t.Muted)),
-                ]));
+                content.Children.Add(DetailFact("Installed DLSS version", g.DlssVersion ?? "Checked during update", glyph: "\uE8A5"));
                 SectionTitle(content, "File Management");
-                var restoreDlss = ui.RowButton("Restore original DLSS files", null, () => _ = RestoreDlssAsync(g), danger: true, enabled: !g.Blocked);
+                var restoreDlss = ui.RowButton("Restore original DLSS files", null, () => _ = RestoreDlssAsync(g), danger: true, glyph: "\uE7A7", enabled: !g.Blocked);
                 var fileActions = DetailColumns();
                 foreach (var action in new[] {
-                    ui.RowButton("Update DLSS files", null, () => _ = RunOperationAsync("update-dlss", [g]), enabled: !g.Blocked),
+                    ui.RowButton("Update DLSS files", null, () => _ = RunOperationAsync("update-dlss", [g]), glyph: "\uE896", enabled: !g.Blocked),
                     restoreDlss,
                 }) fileActions.Children.Add(ui.Group([action], t.Card));
                 content.Children.Add(fileActions);
@@ -403,7 +406,7 @@ public sealed partial class GameModeView
                 })
                 {
                     var tile = new StackPanel { Spacing = t.Px(10), HorizontalAlignment = HorizontalAlignment.Center };
-                    tile.Children.Add(ui.Icon(glyph, 0.8).With(i => i.HorizontalAlignment = HorizontalAlignment.Center));
+                    tile.Children.Add(ui.Icon(glyph, 1.05).With(i => i.HorizontalAlignment = HorizontalAlignment.Center));
                     tile.Children.Add(ui.Text(label, 1, weight: FontWeights.SemiBold).With(x => x.HorizontalAlignment = HorizontalAlignment.Center));
                     var button = ui.Button(tile, action, GmKind.Card, 1, enabled, radius: 14, minHeight: t.Compact ? 90 : 116);
                     button.HorizontalAlignment = HorizontalAlignment.Stretch;
@@ -429,8 +432,9 @@ public sealed partial class GameModeView
                 ui.Focusable(notes);
                 Key(notes, "notes");
                 var noteCards = DetailColumns();
-                noteCards.Children.Add(DetailPlate(notes));
-                var testSettings = new StackPanel { Spacing = t.Px(16) };
+                noteCards.Children.Add(new StackPanel { Spacing = t.Px(16), Children = { DetailHeading("Notes", "\uE70B"), notes } });
+                var testSettings = new StackPanel { Spacing = t.Px(20) };
+                testSettings.Children.Add(DetailHeading("Testing", "\uE9D9"));
                 // game_notes: the test result and notes are saved with this game (shared with Desktop UI).
                 notesStatus ??= g.TestStatus;
                 testSettings.Children.Add(ui.Group(
@@ -450,10 +454,7 @@ public sealed partial class GameModeView
             case "Appearance":
                 SectionTitle(content, "Accent Color", "Pick a suggestion from this game's artwork. Your own picks are kept.");
                 var current = shell.Settings.GameAccents.GetValueOrDefault(g.Id);
-                content.Children.Add(ui.Group(
-                [
-                    ui.PreferenceRow("Game Accent", current is null ? "Artwork-derived" : "Custom", ui.Text(current?.ToUpperInvariant() ?? "Automatic", 0.85, t.Muted)),
-                ]));
+                content.Children.Add(DetailFact("Game Accent", current?.ToUpperInvariant() ?? "Automatic · from artwork", glyph: "\uE790"));
                 var swatches = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(16) };
                 content.Children.Add(swatches);
                 _ = FillSwatchesAsync(g, swatches, current);
@@ -548,8 +549,8 @@ public sealed partial class GameModeView
         }
         Border Card(string title, params UIElement[] children)
         {
-            var section = new StackPanel { Spacing = t.Px(20), Padding = new Thickness(embedded ? 0 : t.Px(24)) };
-            if (title.Length > 0) section.Children.Add(ui.Text(title, .96, weight: FontWeights.SemiBold));
+            var section = new StackPanel { Spacing = t.Px(20), Padding = new Thickness(embedded ? 0 : t.Px(28)) };
+            if (title.Length > 0) section.Children.Add(DetailHeading(title));
             foreach (var child in children) section.Children.Add(child);
             return new Border { Child = section, Background = embedded ? null : GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(16)), VerticalAlignment = VerticalAlignment.Top };
         }

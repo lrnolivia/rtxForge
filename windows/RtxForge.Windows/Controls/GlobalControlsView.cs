@@ -30,14 +30,14 @@ public sealed class GlobalControlsView : StackPanel
             nr.MinWidth = mfg.MinWidth = 180;
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(nr, "Neural rendering");
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(mfg, "Multi-Frame Generation");
-            Children.Add(Prefs.Row("Neural rendering", "Choose only the setting to change across installed games.", nr));
-            Children.Add(Prefs.Row("Multi-Frame Generation", "Feeder games support NR only. Leave other games as they are, or choose a new mode.", mfg));
+            Children.Add(Prefs.Row("Neural rendering", "Choose only the setting to change across installed games.", nr, "\uE9E9"));
+            Children.Add(Prefs.Row("Multi-Frame Generation", "Feeder games support NR only. Leave other games as they are, or choose a new mode.", mfg, "\uE7F4"));
             var results = new StackPanel { Spacing = 12 };
             results.Children.Add(progress); results.Children.Add(entries); results.Children.Add(feedback);
             reviewCard = new Border { Style = Prefs.GetStyle("ForgeSettingsCardStyle"), Child = results, Visibility = Visibility.Collapsed };
             Children.Add(reviewCard);
             apply.HorizontalAlignment = HorizontalAlignment.Right;
-            Children.Add(Prefs.Row("Installed games", "Review before applying. Close running games first. Defaults for future installs stay the same.", apply));
+            Children.Add(Prefs.Row("Installed games", "Review before applying. Close running games first. Defaults for future installs stay the same.", apply, "\uE7FC"));
         }
         else
         {

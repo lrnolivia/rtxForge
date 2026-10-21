@@ -14,6 +14,7 @@ public sealed partial class GameModeView
     readonly HashSet<string> selectedIds = [];
     double libraryScroll;
     ScrollViewer? libraryScroller;
+    bool libraryFilterHidden;
 
     IEnumerable<Game> FilteredGames() => LibraryScope.Filter(shell.Games, shell.Settings.LibraryFilter);
 
@@ -21,8 +22,8 @@ public sealed partial class GameModeView
 
     UIElement BuildLibrary()
     {
-        var main = new Grid { Padding = new Thickness(t.Px(56), t.Px(t.Compact ? 16 : 24), t.Px(56), t.Px(8)), RowSpacing = t.Px(t.Compact ? 12 : 14) };
-        for (var i = 0; i < 5; i++) main.RowDefinitions.Add(new RowDefinition { Height = i == 3 ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
+        var main = new Grid { Padding = new Thickness(PageInset, t.Px(t.Compact ? 16 : 24), PageInset, 0), RowSpacing = t.Px(t.Compact ? 12 : 14) };
+        for (var i = 0; i < 4; i++) main.RowDefinitions.Add(new RowDefinition { Height = i == 3 ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
         var games = FilteredGames().ToList();
 
         // Heading: Library · counts · package identity.
@@ -125,16 +126,45 @@ public sealed partial class GameModeView
         else selection.Children.Add(ui.Button(Glyph("", "Select games"), () => { selecting = true; Render(keepFocus: true); }, GmKind.Quiet, 0.85, minHeight: t.Compact ? 40 : 48).With(b => Key(b, "sel-start")));
         Grid.SetColumn(selection, 2);
         subbar.Children.Add(selection);
-        Grid.SetRow(subbar, 2);
-        main.Children.Add(subbar);
+        var filterHost = new Border { Child = subbar };
+        Grid.SetRow(filterHost, 2);
+        main.Children.Add(filterHost);
 
         // Games.
         var scroller = new ScrollViewer { HorizontalScrollMode = ScrollMode.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-        var available = Math.Max(320, ActualWidth - t.Px(56) * 2 - t.Px(40));
+        var available = Math.Max(320, ActualWidth - PageInset * 2 - t.Px(34));
         scroller.Content = games.Count == 0
             ? EmptyLibrary()
             : shell.Settings.LibraryView == "list" ? ListLayout(games) : CardLayout(games, available, shell.Settings.LibraryView == "capsules");
-        scroller.ViewChanged += (_, _) => libraryScroll = scroller.VerticalOffset;
+        var cards = (UIElement)scroller.Content;
+        var scrollContent = new StackPanel(); scrollContent.Children.Add(cards); scroller.Content = scrollContent;
+        var previousOffset = libraryScroll;
+        var filterHeight = 0d;
+        void ShowFilters(bool show)
+        {
+            if (filterHeight <= 0) return;
+            libraryFilterHidden = !show;
+            filterHost.Height = show ? double.NaN : 0;
+            filterHost.Opacity = show ? 1 : 0;
+            filterHost.IsHitTestVisible = show;
+            filterHost.Clip = show ? null : new Microsoft.UI.Xaml.Media.RectangleGeometry { Rect = new global::Windows.Foundation.Rect(0, 0, 0, 0) };
+            // Preserve the scroll range when the viewport grows, avoiding bottom-edge oscillation.
+            scrollContent.Padding = new Thickness(0, 0, 0, show ? 0 : filterHeight);
+        }
+        subbar.SizeChanged += (_, e) =>
+        {
+            if (e.NewSize.Height <= 0) return;
+            filterHeight = e.NewSize.Height; ShowFilters(!libraryFilterHidden);
+        };
+        subbar.GotFocus += (_, _) => ShowFilters(true);
+        scroller.ViewChanged += (_, _) =>
+        {
+            var offset = scroller.VerticalOffset;
+            var delta = offset - previousOffset;
+            if (offset <= t.Px(8) || delta < -t.Px(6)) ShowFilters(true);
+            else if (delta > t.Px(8) && offset > filterHeight && FocusedWithin(subbar) is null) ShowFilters(false);
+            previousOffset = offset; libraryScroll = offset;
+        };
         libraryScroller = scroller;   // Render restores libraryScroll before focusing (see RestoreScroll)
         FrameworkElement viewport = shell.Games.Count == 0 && shell.LibraryRefreshing
             ? new Controls.LibrarySkeleton(shell.Settings.LibraryView, GmTheme.B(t.Panel), t.Px(1)) : scroller;

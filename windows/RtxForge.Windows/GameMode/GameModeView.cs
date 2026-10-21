@@ -45,6 +45,10 @@ public sealed partial class GameModeView : UserControl
     string page = "library";          // library · presets · settings · details
     string inputKind = "keyboard";    // keyboard · controller: drives hint glyphs
     string family = "xbox";
+    string detectedFamily = "xbox";
+    DateTime lastControllerInput;
+    global::Windows.Foundation.Point? pointerPosition;
+    double PageInset => t.Px(ActualWidth <= 1050 ? 32 : ActualWidth <= 1500 ? 48 : 64);
     readonly Stack<Modal> modals = new();
 
     sealed record Modal(UIElement Element, Action OnBack, DependencyObject? Restore);
@@ -85,10 +89,22 @@ public sealed partial class GameModeView : UserControl
         KeyDown += OnKeyDown;
         // WinUI also turns D-pad/stick into key events that move focus natively; with
         // GamepadInput that moved focus twice and skipped rows. One source only.
-        PreviewKeyDown += (_, e) => { if (e.Key >= VirtualKey.GamepadA && e.Key <= VirtualKey.GamepadRightThumbstickLeft) e.Handled = true; };
+        PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key >= VirtualKey.GamepadA && e.Key <= VirtualKey.GamepadRightThumbstickLeft)
+            { ControllerActivity(); e.Handled = true; }
+        };
         XYFocusUpNavigationStrategy = XYFocusDownNavigationStrategy = XYFocusLeftNavigationStrategy = XYFocusRightNavigationStrategy =
             XYFocusNavigationStrategy.Projection;
-        PointerMoved += (_, _) => SetInput("keyboard");
+        PointerMoved += (_, e) =>
+        {
+            var position = e.GetCurrentPoint(this).Position;
+            var previous = pointerPosition; pointerPosition = position;
+            if (previous is { } before && DateTime.UtcNow - lastControllerInput > TimeSpan.FromMilliseconds(500)
+                && Math.Abs(position.X - before.X) + Math.Abs(position.Y - before.Y) >= 3)
+                SetInput("keyboard");
+        };
+        PointerPressed += (_, _) => SetInput("keyboard");
         SizeChanged += (_, e) => { if (t.Resize(e.NewSize.Width, e.NewSize.Height)) Render(keepFocus: true); };
 
         toastTimer = DispatcherQueue.CreateTimer();
@@ -248,8 +264,8 @@ public sealed partial class GameModeView : UserControl
         footer.Visibility = Visibility.Visible;
         footer.Children.Clear();
         footer.Background = GmTheme.B(t.Window);
-        footer.MinHeight = t.Px(t.Compact ? 64 : 90);
-        footer.Padding = new Thickness(t.Px(56), t.Px(t.Compact ? 14 : 22), t.Px(56), t.Px(t.Compact ? 14 : 22));
+        footer.MinHeight = t.Px(t.Compact ? 48 : 58);
+        footer.Padding = new Thickness(PageInset, t.Px(8), PageInset, t.Px(8));
         hintsPanel.Children.Clear();
         hintsPanel.Spacing = t.Px(30);
         hintsPanel.VerticalAlignment = VerticalAlignment.Center;
@@ -265,7 +281,7 @@ public sealed partial class GameModeView : UserControl
         {
             if (action == "search" && modals.Count > 0) continue;
             var pair = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(10) };
-            pair.Children.Add(ui.Key(key));
+            pair.Children.Add(keyboard ? ui.Key(key) : ui.ControllerKey(family, action));
             pair.Children.Add(ui.Text(label, 0.85).With(x => x.VerticalAlignment = VerticalAlignment.Center));
             var hint = ui.Button(pair, () => Handle(action), GmKind.Transparent, 1, radius: 8, padding: new Thickness(t.Px(2)), minHeight: 0);
             hint.IsTabStop = false;
@@ -323,7 +339,7 @@ public sealed partial class GameModeView : UserControl
     /// <summary>A controller action (GamepadInput) or its keyboard equivalent.</summary>
     public void Handle(string action, bool fromController = false)
     {
-        if (fromController) SetInput("controller");
+        if (fromController) ControllerActivity();
         WakeHints();
         var focused = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
         if (HandleChoiceMenu(action, focused)) return;
@@ -367,14 +383,24 @@ public sealed partial class GameModeView : UserControl
 
     public void SetControllerFamily(string value)
     {
+        detectedFamily = value;
         var chosen = shell.Settings.ControllerGlyphs == "auto" ? value : shell.Settings.ControllerGlyphs;
         if (family == chosen) return;
         family = chosen;
         RenderFooter();
     }
 
+    public void ControllerActivity()
+    {
+        lastControllerInput = DateTime.UtcNow;
+        SetInput("controller");
+        WakeHints();
+    }
+
     void OnKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if (e.Key >= VirtualKey.GamepadA && e.Key <= VirtualKey.GamepadRightThumbstickLeft)
+        { ControllerActivity(); e.Handled = true; return; }
         SetInput("keyboard");
         var ctrl = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
             .HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down);

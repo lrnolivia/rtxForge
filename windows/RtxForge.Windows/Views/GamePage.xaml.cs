@@ -16,10 +16,24 @@ public sealed partial class GamePage : Page
     Game game = null!;
     string section = "Overview";
     Services.AccentPalette? gamePalette;
+    readonly CollapsingHero collapsingHero;
+    double heroLayoutWidth;
+    double heroExpandedHeight;
 
     public GamePage()
     {
         InitializeComponent();
+        collapsingHero = new CollapsingHero(ContentScroll, HeroBanner, DetailsWorkspace, progress =>
+        {
+            var fullPoster = Math.Round(Math.Clamp(heroExpandedHeight * .48, 120, 260));
+            PosterFrame.Height = fullPoster + (100 - fullPoster) * progress;
+            PosterFrame.Width = Math.Round(PosterFrame.Height * 2 / 3);
+            var fullTitle = Math.Clamp(heroLayoutWidth / 26, 26, 64) * (game?.Name.Length > 28 ? .78 : 1);
+            TitleText.FontSize = fullTitle + (Math.Min(fullTitle, 32) - fullTitle) * progress;
+            TitleText.LineHeight = TitleText.FontSize * 1.1;
+            HeroText.Opacity = 1 - progress;
+            HeroText.Visibility = progress >= .75 ? Visibility.Collapsed : Visibility.Visible;
+        });
         ActualThemeChanged += (_, _) => ApplyAccentText();
         shell.GamesChanged += Refresh;
         Unloaded += (_, _) => shell.GamesChanged -= Refresh;
@@ -30,6 +44,11 @@ public sealed partial class GamePage : Page
         base.OnNavigatedTo(e);
         var request = (GameRequest)e.Parameter;
         game = request.Game;
+        SectionRail.Visibility = request.SeparateWindow ? Visibility.Visible : Visibility.Collapsed;
+        Sections.Visibility = request.SeparateWindow ? Visibility.Collapsed : Visibility.Visible;
+        if (request.SeparateWindow)
+            foreach (var item in Sections.Items)
+                SidebarSections.Items.Add(new ListViewItem { Content = item.Text, Tag = item.Tag, CornerRadius = new CornerRadius(8), Margin = new Thickness(0, 2, 0, 2) });
         TitleText.Text = game.Name;
         ShowIdentity();
         _ = LoadSteamInfoAsync(game);
@@ -38,7 +57,7 @@ public sealed partial class GamePage : Page
         PosterFrame.Visibility = game.PosterPath is null ? Visibility.Collapsed : Visibility.Visible;
         ApplyLayout(ActualWidth);
         _ = ApplyAccentAsync();
-        Sections.SelectedItem = Sections.Items.First(i => (string)i.Tag == request.Section);
+        SelectSection(request.Section);
         Refresh();
     }
 
@@ -123,7 +142,20 @@ public sealed partial class GamePage : Page
 
     void OnSectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
-        if (sender.SelectedItem is SelectorBarItem item && game is not null) Build((string)item.Tag);
+        if (sender.SelectedItem is SelectorBarItem item && game is not null)
+        {
+            if (SectionRail.Visibility == Visibility.Visible)
+                SidebarSections.SelectedItem = SidebarSections.Items.OfType<ListViewItem>().FirstOrDefault(row => Equals(row.Tag, item.Tag));
+            Build((string)item.Tag);
+        }
+    }
+
+    public void SelectSection(string name) => Sections.SelectedItem = Sections.Items.FirstOrDefault(i => (string)i.Tag == name) ?? Sections.Items[0];
+
+    void OnSidebarSectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (SidebarSections.SelectedItem is ListViewItem item && (Sections.SelectedItem as SelectorBarItem)?.Tag as string != item.Tag as string)
+            SelectSection((string)item.Tag);
     }
 
     void OnInstall(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("install", [game]);
@@ -368,13 +400,9 @@ public sealed partial class GamePage : Page
     {
         if (width <= 0 || game is null) return;
         var side = PageMargins.Side(width);
-        HeroBanner.Height = Math.Round(Math.Clamp(width * 0.30, 240, 560));
-        var posterHeight = Math.Round(Math.Clamp(HeroBanner.Height * 0.48, 120, 260));
-        PosterFrame.Height = posterHeight;
-        PosterFrame.Width = Math.Round(posterHeight * 2 / 3);
-        var title = Math.Clamp(width / 26, 26, 64) * (game.Name.Length > 28 ? 0.78 : 1); // detail-title step-down
-        TitleText.FontSize = Math.Round(title);
-        TitleText.LineHeight = Math.Round(title * 1.1);
+        heroLayoutWidth = width;
+        heroExpandedHeight = Math.Round(Math.Clamp(width * .30, 240, 560));
+        collapsingHero.SetRange(heroExpandedHeight, width < 700 ? 220 : 180);
         Identity.Padding = new Thickness(side, 0, side, Math.Round(Math.Clamp(width * 0.02, 16, 32)));
         Sections.Margin = new Thickness(side - 8, 8, side, 0);
         PageHost.Padding = new Thickness(side, 0, side, 0);

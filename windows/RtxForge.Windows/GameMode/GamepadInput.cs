@@ -17,20 +17,26 @@ public sealed class GamepadInput : IDisposable
     HashSet<string> previous = [];
     readonly Dictionary<string, DateTime> repeats = [];
     Gamepad? pad;
+    GamepadReading lastReading;
+    readonly EventHandler<Gamepad> added;
+    readonly EventHandler<Gamepad> removed;
 
     /// <summary>One action per press (and per repeat for directions).</summary>
     public event Action<string>? Action;
     /// <summary>The connected controller changed (attach, detach or a new family).</summary>
     public event Action? Changed;
+    public event Action? Activity;
 
-    /// <summary>xbox, playstation, nintendo or generic: drives button labels.</summary>
+    /// <summary>xbox, playstation, nintendo, steam or generic: drives button labels.</summary>
     public string Family { get; private set; } = "xbox";
     public bool Connected => pad is not null;
 
     public GamepadInput(DispatcherQueue queue)
     {
-        Gamepad.GamepadAdded += (_, _) => queue.TryEnqueue(Refresh);
-        Gamepad.GamepadRemoved += (_, _) => queue.TryEnqueue(Refresh);
+        added = (_, _) => queue.TryEnqueue(Refresh);
+        removed = (_, _) => queue.TryEnqueue(Refresh);
+        Gamepad.GamepadAdded += added;
+        Gamepad.GamepadRemoved += removed;
         timer = queue.CreateTimer();
         timer.Interval = TimeSpan.FromMilliseconds(16);
         timer.Tick += (_, _) => Poll();
@@ -70,7 +76,7 @@ public sealed class GamepadInput : IDisposable
         {
             0x054C => "playstation",
             0x057E => "nintendo",
-            0x28DE => "xbox",   // Steam Input presents an Xbox layout
+            0x28DE => "steam",
             0x045E => "xbox",
             null => "xbox",
             _ => "generic",
@@ -83,6 +89,14 @@ public sealed class GamepadInput : IDisposable
         GamepadReading reading;
         try { reading = pad.GetCurrentReading(); }
         catch (Exception error) when (error is InvalidOperationException or System.Runtime.InteropServices.COMException) { return; }
+
+        if (reading.Buttons != lastReading.Buttons && reading.Buttons != GamepadButtons.None
+            || Math.Abs(reading.RightThumbstickX - lastReading.RightThumbstickX) > .15
+            || Math.Abs(reading.RightThumbstickY - lastReading.RightThumbstickY) > .15
+            || reading.LeftTrigger > .2 && lastReading.LeftTrigger <= .2
+            || reading.RightTrigger > .2 && lastReading.RightTrigger <= .2)
+            Activity?.Invoke();
+        lastReading = reading;
 
         var pressed = new HashSet<string>();
         void Map(GamepadButtons button, string action) { if ((reading.Buttons & button) != 0) pressed.Add(action); }
@@ -128,9 +142,15 @@ public sealed class GamepadInput : IDisposable
     {
         "playstation" => ("×", "○", "△", "Options"),
         "nintendo" => ("B", "A", "X", "+"),
+        "steam" => ("A", "B", "Y", "Menu"),
         "generic" => ("South", "East", "North", "Start"),
         _ => ("A", "B", "Y", "Menu"),
     };
 
-    public void Dispose() => timer.Stop();
+    public void Dispose()
+    {
+        timer.Stop();
+        Gamepad.GamepadAdded -= added;
+        Gamepad.GamepadRemoved -= removed;
+    }
 }

@@ -255,6 +255,7 @@ public sealed class ForgeSettings
     [JsonPropertyName("theme")] public string Theme { get; set; } = "system";
     /// <summary>Compact is the default: the dashboard stays collapsed and the titlebar carries the brand, Features and actions.</summary>
     [JsonPropertyName("compact_header")] public bool CompactHeader { get; set; } = true;
+    [JsonPropertyName("separate_game_details")] public bool SeparateGameDetails { get; set; }
     [JsonPropertyName("button_glyphs")] public bool ButtonGlyphs { get; set; } = true;
     [JsonPropertyName("online_art")] public bool OnlineArt { get; set; } = true;
     [JsonPropertyName("steam_metadata")] public bool SteamMetadata { get; set; } = true;

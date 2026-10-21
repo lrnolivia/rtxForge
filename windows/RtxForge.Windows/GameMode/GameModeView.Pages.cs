@@ -14,11 +14,7 @@ public sealed partial class GameModeView
 
     UIElement BuildPresets()
     {
-        // A wide column centered in the window: equal side margins computed from the
-        // view width (alignment inside the ScrollViewer drifted right), never less
-        // than the Library / Settings page margin.
-        var column = Math.Min(t.Px(1600), Math.Max(0, ActualWidth - t.Px(56) * 2));
-        var side = Math.Max(t.Px(56), (ActualWidth - column) / 2);
+        var side = PageInset;
         var page = new Grid
         {
             RowSpacing = t.Px(20), HorizontalAlignment = HorizontalAlignment.Stretch,
@@ -145,7 +141,7 @@ public sealed partial class GameModeView
 
     UIElement BuildSettings()
     {
-        var side = t.Px(ActualWidth <= 1050 ? 24 : 40);
+        var side = PageInset;
         var grid = new Grid { ColumnSpacing = t.Px(24), Padding = new Thickness(side, t.Px(32), side, t.Px(8)), RowSpacing = t.Px(22) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(t.Px(ActualWidth <= 1050 ? 180 : 232)) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -195,41 +191,9 @@ public sealed partial class GameModeView
             }
             section.Children.Add(rows); sections.Add(section);
         }
-        // Independent semantic lanes avoid the empty cells made by unequal groups
-        // sharing one grid row. Narrow layouts restore the original group order.
-        var groupHost = new Grid();
-        var groups = new Grid { ColumnSpacing = t.Px(24), HorizontalAlignment = HorizontalAlignment.Stretch };
-        groupHost.Children.Add(groups);
-        var laneCount = 0;
-        void LayoutGroups(double width)
-        {
-            if (width <= 0) return;
-            var count = Math.Clamp((int)((width + groups.ColumnSpacing) / (t.Px(680) + groups.ColumnSpacing)), 1, Math.Min(3, Math.Max(1, sections.Count)));
-            if (laneCount == count) return;
-            laneCount = count;
-            var focused = FocusedWithin(groups);
-            foreach (var lane in groups.Children.OfType<StackPanel>()) lane.Children.Clear();
-            groups.Children.Clear(); groups.ColumnDefinitions.Clear();
-            var lanes = Enumerable.Range(0, count).Select(_ => new StackPanel { Spacing = t.Px(28) }).ToArray();
-            for (var index = 0; index < lanes.Length; index++)
-            {
-                groups.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
-                Grid.SetColumn(lanes[index], index); groups.Children.Add(lanes[index]);
-            }
-            for (var index = 0; index < sections.Count; index++)
-            {
-                var lane = count != 2 ? index % count : settingsSection switch
-                {
-                    "Graphics" => index == 1 ? 1 : 0,
-                    "Overlay" or "Library" => index < 2 ? 0 : 1,
-                    _ => index % 2,
-                };
-                lanes[lane].Children.Add(sections[index]);
-            }
-            RestoreLayoutFocus(focused);
-        }
-        groupHost.SizeChanged += (_, e) => LayoutGroups(e.NewSize.Width);
-        content.Children.Add(groupHost);
+        var groups = new StackPanel { Spacing = t.Px(32), HorizontalAlignment = HorizontalAlignment.Stretch };
+        foreach (var section in sections) groups.Children.Add(section);
+        content.Children.Add(groups);
         var scroll = new ScrollViewer { Content = content, HorizontalScrollMode = ScrollMode.Disabled, Padding = new Thickness(0, 0, t.Px(12), 0) };
         Grid.SetRow(scroll, 1);
         Grid.SetColumn(scroll, 1);
@@ -287,7 +251,7 @@ public sealed partial class GameModeView
         var rows = new List<UIElement>();
         foreach (var (action, key) in entries)
         {
-            var row = ui.Button(ui.PreferenceRow(action, null, ui.Key(key, 0.8), minHeight: 80), null, GmKind.Transparent, 1, radius: 0,
+            var row = ui.Button(ui.PreferenceRow(action, null, view == "controller" ? ui.ControllerKey(family, GuideAction(action), .8) : ui.Key(key, .8), minHeight: 80), null, GmKind.Transparent, 1, radius: 0,
                 padding: new Thickness(0), minHeight: 0);
             row.HorizontalAlignment = HorizontalAlignment.Stretch;
             row.HorizontalContentAlignment = HorizontalAlignment.Stretch;
@@ -296,6 +260,13 @@ public sealed partial class GameModeView
         }
         return rows;
     }
+
+    static string GuideAction(string label) => label switch
+    {
+        "Select" => "accept", "Back, or close a dialog" => "back", "Library" => "search",
+        "Select games" => "select", "Switch pages" => "shoulders", "Adjust a value" => "adjust",
+        "Settings" => "settings", "Main menu" => "menu", _ => "move",
+    };
     Button SettingToggle(string title, string description, Func<bool> get, Action<bool> set) =>
         Choice(title, description, ["on", "off"], ["On", "Off"], () => get() ? "on" : "off", value => set(value == "on"));
 
@@ -373,9 +344,9 @@ public sealed partial class GameModeView
                 ]),
                 new("Controller", null,
                 [
-                    Choice("Controller labels", "Match your controller family.", ["auto", "xbox", "playstation", "nintendo", "generic"],
-                        ["Automatic", "Xbox", "PlayStation", "Nintendo", "Generic"], () => shell.Settings.ControllerGlyphs,
-                        value => { shell.Settings.ControllerGlyphs = value; family = value == "auto" ? family : value; }),
+                    Choice("Controller labels", "Match your controller family.", ["auto", "xbox", "playstation", "nintendo", "steam", "generic"],
+                        ["Automatic", "Xbox", "PlayStation", "Nintendo", "Steam Controller", "Generic"], () => shell.Settings.ControllerGlyphs,
+                        value => { shell.Settings.ControllerGlyphs = value; family = value == "auto" ? detectedFamily : value; RenderFooter(); }),
                     Choice("Controller hints", null, ["always", "auto"], ["Always visible", "Hide when idle"], () => shell.Settings.ControllerHints, value => shell.Settings.ControllerHints = value),
                     ui.RowButton("Controller buttons", null, () => OpenInputGuide("controller")),
                     ui.RowButton("Keyboard shortcuts", null, () => OpenInputGuide("keyboard")),

@@ -325,7 +325,7 @@
                     </CommandBar.SecondaryCommands>
                 </CommandBar>
                 <!-- Narrow windows: the filters, view, size and commands flow together under the title and search. -->
-                <controls:WrapRow x:Name="LibraryTools" Grid.Row="1" Grid.ColumnSpan="6" Spacing="12" LineSpacing="8" Visibility="Collapsed" />
+                <controls:WrapRow x:Name="LibraryTools" Grid.Row="1" Grid.ColumnSpan="6" Spacing="8" LineSpacing="8" Visibility="Collapsed" />
             </Grid>
 
             <!-- List column header (Gtk.ColumnView header) -->

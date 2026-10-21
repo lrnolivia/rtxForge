@@ -271,6 +271,9 @@ public sealed partial class LibraryPage : Page
             Grid.SetColumnSpan(SearchBox, compact ? 5 : 1);
             SearchBox.MaxWidth = compact ? double.PositiveInfinity : 360;
             LibraryCommands.HorizontalAlignment = compact ? HorizontalAlignment.Left : HorizontalAlignment.Stretch;
+            // Icon-width commands and a slimmer size slider keep the tools on one row beneath.
+            foreach (var command in LibraryCommands.PrimaryCommands.OfType<AppBarButton>()) command.Width = compact ? 44 : double.NaN;
+            ArtScale.Width = compact ? 100 : 120;
         }
         LibraryCommands.DefaultLabelPosition = width < 820 ? CommandBarDefaultLabelPosition.Collapsed : CommandBarDefaultLabelPosition.Right;
 

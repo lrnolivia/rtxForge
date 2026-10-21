@@ -69,6 +69,27 @@ class IntegrationContracts(unittest.TestCase):
                     struct.pack_into('<i',box.mem,420,-1)
                     with self.assertRaises(t.Refusal):box.apply({'dynamic_mfg':1})
 
+    def test_panel_reviews_are_session_bound_and_single_use(self):
+        from unittest.mock import Mock
+        h=host.Host.__new__(host.Host);h.settings=lambda:dict(library_media.DEFAULTS)
+        h.engine=object();h.controls=Mock();h.reviews={};h.review_id=0
+        row={'game':'/fixture/game','exe':'Game.exe'}
+        review={'plans':[{'name':'Fixture','summary':'NR off'}],'blocked':[],'skipped':[]}
+        with patch.object(host.linux_runtime,'global_review',return_value=review) as prepare, patch.object(host.linux_runtime,'apply_review',return_value={'message':'Updated 1 game.'}) as apply:
+            result=h.handle({'op':'global-review','changes':{'nr':False}},row,8,(42,100))
+            self.assertTrue(result['ready'])
+            prepare.assert_called_once_with(h.engine,{'nr':False})
+            command={'op':'apply-review','review_id':result['review_id']}
+            self.assertTrue(h.handle(command,row,8,(43,101))['error'])
+            apply.assert_not_called()
+            self.assertNotIn('error',h.handle(command,row,8,(42,100)))
+            apply.assert_called_once_with(review)
+            self.assertTrue(h.handle(command,row,8,(42,100))['error'])
+        with patch.object(host.linux_runtime,'menus_review',return_value=review):
+            result=h.handle({'op':'menus-review'},row,8,(42,100))
+            h.handle({'op':'discard-review'},row,8,(42,100))
+            self.assertTrue(h.handle({'op':'apply-review','review_id':result['review_id']},row,8,(42,100))['error'])
+
     def test_save_uses_exact_bound_game_and_session(self):
         h=host.Host.__new__(host.Host);h.settings=lambda:dict(library_media.DEFAULTS)
         from unittest.mock import Mock

@@ -51,8 +51,9 @@ The app starts the helper when enabled. It answers hello/status/save/reset and
 replays presets using the shared recipe-bound store and acknowledged mailbox.
 Dynamic MFG requires confirmed per-game capability; unknown support is not an
 opt-in. Replay retries a failed apply and stops when the app exits. The helper
-currently directs setting changes and global/menu reviews to the main app, where
-reviewed APIs are available. It does not edit a running game's INI.
+routes global/menu reviews through the guarded shared APIs. Reviews expire after
+five minutes and are bound to the exact Linux process and mapping inode; Apply
+is single-use and rechecks files. Overlay setting changes still use the main app. It does not edit a running game's INI.
 
 Synthetic tests cover message acknowledgement, mapping identity, unsafe file
 rejection and bound save dispatch. They do not prove Wine mapping visibility,

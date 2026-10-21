@@ -185,15 +185,18 @@ class LinuxControls(controls.Controls):
 
 
 class Host:
-    def __init__(self,state,settings,engine_state):
+    def __init__(self,state,settings,engine_state,engine=None):
         self.controls=LinuxControls(state)
         self.controls.installations=Path(engine_state)/'targets'
         self.settings=settings
+        self.engine=engine
+        self.reviews={}
+        self.review_id=0
         controls.shared_native_menu=lambda:self.settings().get('overlay_renderer','game') in ('game','rtxforge')
         self.channels={}
         self.stop=threading.Event()
 
-    def handle(self,message,row,pid):
+    def handle(self,message,row,pid,session=None):
         op=message.get('op') if isinstance(message,dict) else ''
         response={'op':op,'settings':proton_overlay.settings_snapshot(self.settings())}
         try:
@@ -205,7 +208,38 @@ class Host:
             elif op=='reset':
                 response['status']=self.controls.reset(params)
                 response['message']='Saved game configuration restored.'
-            elif op=='discard-review':response['message']=''
+            elif op in ('global-review','menus-review'):
+                t.need(self.engine is not None,'Open the app before reviewing installed games.')
+                key=(row['game'],row['exe'],session or pid)
+                self.reviews.pop(key,None)
+                if op=='global-review':
+                    review=linux_runtime.global_review(self.engine,message.get('changes') or {})
+                else:
+                    settings=self.settings()
+                    review=linux_runtime.menus_review(self.engine,{k:settings[k] for k in
+                        ('optiscaler_ui','optiscaler_intro','reshade_ui','reshade_intro','optiscaler_hotkey') if k in settings})
+                self.reviews={k:v for k,v in self.reviews.items() if time.monotonic()-v[1]<300}
+                t.need(len(self.reviews)<100,'Close old reviews before opening another.')
+                self.review_id+=1
+                self.reviews[key]=(self.review_id,time.monotonic(),review)
+                plans=review.get('plans',[])
+                response.update(review_id=self.review_id,ready=bool(plans),
+                    message=f'{len(plans)} games ready. Review every change before applying.',
+                    items=[{'title':p['name'],'detail':p.get('summary','')} for p in plans],
+                    blocked=[{'title':p.get('title',''),'detail':p.get('detail','')} for p in review.get('blocked',[])],
+                    skipped=[{'title':p.get('title',''),'detail':p.get('detail','')} for p in review.get('skipped',[])])
+            elif op=='apply-review':
+                key=(row['game'],row['exe'],session or pid)
+                pending=self.reviews.pop(key,None)
+                t.need(pending is not None and type(message.get('review_id')) is int
+                       and message['review_id']==pending[0] and time.monotonic()-pending[1]<300,
+                       'Review the games again before applying.')
+                result=linux_runtime.apply_review(pending[2])
+                self.controls.reload_presets()
+                response['message']=result.get('message','Done.')
+            elif op=='discard-review':
+                self.reviews.pop((row['game'],row['exe'],session or pid),None)
+                response['message']=''
             else:response.update(error=True,message='Use the app to review library and overlay settings changes.')
         except (OSError,ValueError,KeyError,t.Refusal) as error:
             response.update(error=True,message=str(error))
@@ -232,7 +266,7 @@ class Host:
                     request=channel.try_read()
                     if request:
                         identity,message=request
-                        channel.reply(identity,self.handle(message,row,channel.header()['pid']))
+                        channel.reply(identity,self.handle(message,row,channel.header()['pid'],(linux_pid,path.stat().st_ino)))
             except (OSError,ValueError,KeyError,t.Refusal):continue
         for path in list(self.channels):
             if path not in active:

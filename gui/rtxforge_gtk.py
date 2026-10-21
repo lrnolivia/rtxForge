@@ -4166,7 +4166,7 @@ class Window(Adw.ApplicationWindow):
             from linux_overlay_host import Host
             from storage import storage
             engine=__import__('engine_bridge').module(self.service.config)
-            self.overlay_host=Host(storage(self.service.config),lambda:dict(self.settings),engine.STATE_ROOT)
+            self.overlay_host=Host(storage(self.service.config),lambda:dict(self.settings),engine.STATE_ROOT,engine=engine)
             application.connect('shutdown',lambda *_:self.overlay_host.stop.set())
             threading.Thread(target=self.overlay_host.run,daemon=True,name='proton-panel').start()
         set_button_glyphs(self.settings.get('button_glyphs',True))

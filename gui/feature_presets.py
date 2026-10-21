@@ -98,7 +98,10 @@ class FeaturePresets(Gtk.Box):
                 box.add_css_class('control-pod');box.append(child)
                 return box
             columns=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=24,homogeneous=True)
-            columns.append(card(surfaces['Neural rendering']))
+            primary=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True,valign=Gtk.Align.START)
+            primary.append(card(surfaces['Upscaling']))
+            primary.append(card(surfaces['Neural rendering']))
+            columns.append(primary)
             secondary=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True,valign=Gtk.Align.START)
             image=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12)
             image.append(surfaces['Image tuning']);image.append(surfaces['Fine tuning'])
@@ -107,9 +110,8 @@ class FeaturePresets(Gtk.Box):
             sharp.append(surfaces['Sharpening']);sharp.append(surfaces['Motion sharpening'])
             secondary.append(card(sharp));secondary.append(card(surfaces['Performance']))
             columns.append(secondary);self.append(columns)
-            self.append(card(surfaces['Upscaling']))
             def responsive(widget,_clock):
-                direction=Gtk.Orientation.HORIZONTAL if widget.get_width()>=1120 else Gtk.Orientation.VERTICAL
+                direction=Gtk.Orientation.HORIZONTAL if widget.get_width()>=820 else Gtk.Orientation.VERTICAL
                 if widget.get_orientation()!=direction:widget.set_orientation(direction)
                 widget.set_homogeneous(direction==Gtk.Orientation.HORIZONTAL)
                 return True

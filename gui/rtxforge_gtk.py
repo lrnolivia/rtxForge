@@ -5508,24 +5508,16 @@ class Window(Adw.ApplicationWindow):
         group.add(self.presets_status)
         page.append(group)
 
-        apply_group=Adw.PreferencesGroup(title='Apply')
-        self.presets_apply_row=Adw.ActionRow(title='Apply to all configured games',subtitle='Review the presets for every game with features installed.')
-        self.apply_presets.set_valign(Gtk.Align.CENTER)
-        self.presets_apply_row.add_suffix(self.apply_presets)
-        apply_group.add(self.presets_apply_row)
-        choose=Adw.ActionRow(title='Select games to apply presets',subtitle='Return to the Library and choose games. Each one is reviewed first.',activatable=True)
-        choose.add_suffix(Gtk.Image(icon_name='go-next-symbolic'))
-        choose.connect('activated',lambda *_:self.begin_preset_selection())
-        apply_group.add(choose)
-        reset=Adw.ActionRow(title='Discard changes',subtitle='Go back to the saved library presets.')
-        self.reset_all.set_valign(Gtk.Align.CENTER)
-        reset.add_suffix(self.reset_all)
-        apply_group.add(reset)
-        page.append(apply_group)
-        hint=label('Saved settings take effect on the next game launch. They do not verify the rendered effect.','dim-label')
-        hint.add_css_class('caption')
-        page.append(hint)
-        return self.page_column(page)
+        footer=Gtk.Box(spacing=12,halign=Gtk.Align.END)
+        margins(footer,16)
+        self.reset_all=button('Discard changes',self.discard_preset_changes)
+        choose=button('Select games',lambda *_:self.begin_preset_selection())
+        self.apply_presets=button('Apply to all',lambda *_:self.apply_presets_to(self.configured_games(),entire=True),'suggested-action')
+        footer.append(self.reset_all);footer.append(choose);footer.append(self.apply_presets)
+        view=Adw.ToolbarView()
+        view.set_content(self.page_column(page))
+        view.add_bottom_bar(footer)
+        return view
 
     def preset_summary_text(self,values=None):
         values=values or self.tuning_values(self.tuning_widgets)
@@ -5541,7 +5533,7 @@ class Window(Adw.ApplicationWindow):
     def sync_presets_page(self):
         if not hasattr(self,'presets_status'):return
         count=len(self.configured_games())
-        self.presets_apply_row.set_title(f'Apply to all configured games ({count})')
+        self.apply_presets.set_tooltip_text(f'Review and apply to {count} configured games')
         self.presets_status.set_text(
             'Unsaved changes · applying to all configured games saves them as your library presets.'
             if self.defaults_changed()
@@ -9828,7 +9820,7 @@ class Window(Adw.ApplicationWindow):
             columns.append(pod);columns.append(nr)
             outer.append(columns)
             def fit_columns(widget,_clock):
-                direction=Gtk.Orientation.HORIZONTAL if widget.get_width()>=700 else Gtk.Orientation.VERTICAL
+                direction=Gtk.Orientation.HORIZONTAL if widget.get_width()>=640 else Gtk.Orientation.VERTICAL
                 if widget.get_orientation()!=direction:widget.set_orientation(direction)
                 widget.set_homogeneous(direction==Gtk.Orientation.HORIZONTAL)
                 return True
@@ -12525,7 +12517,7 @@ class Window(Adw.ApplicationWindow):
         if installed and unknown_presets:
             presets_body.append(label('Custom or unreadable preset values found. Reset explicitly to library defaults before editing; existing values are preserved.','dim-label'))
         preset_actions.append(apply)
-        presets_body.append(preset_actions)
+        detail_action_rows['Features'].append(preset_actions)
         def changed(*_):apply.set_sensitive(installed and not unknown_presets and self.tuning_differs(widgets,game))
         for key,w in widgets.items():w.connect('changed' if key=='mfg_multiplier' else 'value-changed',changed)
         changed();self.detail_tuning_widgets=widgets;self.detail_apply_settings=apply

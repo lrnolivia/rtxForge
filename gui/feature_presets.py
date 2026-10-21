@@ -21,16 +21,26 @@ class FeaturePresets(Gtk.Box):
     __gsignals__={'value-changed':(GObject.SignalFlags.RUN_FIRST,None,())}
     normalized=staticmethod(normalized)
 
-    def __init__(self,values,advanced=False,mode='nr-mfg'):
+    def __init__(self,values,advanced=False,mode='nr-mfg',legacy=False):
         super().__init__(orientation=Gtk.Orientation.VERTICAL,spacing=12)
         self.inputs={}
+        self.rows={}
+        self.legacy=legacy
+        self.mode=mode
         values=normalized(values)
         groups={}
         for item in definitions():
             group=groups.get(item['group'])
             if group is None:
-                group=Adw.PreferencesGroup(title=item['group'])
-                self.append(group);groups[item['group']]=group
+                name='DLSS presets' if item['group']=='Upscaling' else item['group']
+                if item['group'] in ('Fine tuning','Sharpening','Motion sharpening','Performance'):
+                    container=Adw.PreferencesGroup()
+                    group=Adw.ExpanderRow(title=name)
+                    container.add(group);self.append(container)
+                else:
+                    group=Adw.PreferencesGroup(title=name)
+                    self.append(group)
+                groups[item['group']]=group
             key=item['key'];title=item['advanced'] if advanced else item['label']
             if item['kind']=='toggle':
                 row=Adw.SwitchRow(title=title,active=bool(values[key]))
@@ -47,8 +57,25 @@ class FeaturePresets(Gtk.Box):
                 control=Gtk.SpinButton(adjustment=adjustment,digits=2 if item['kind']=='slider' else 0,numeric=True,valign=Gtk.Align.CENTER)
                 control.connect('value-changed',lambda *_:self.emit('value-changed'))
                 row.add_suffix(control)
-            row.set_sensitive(not (mode=='mfg-only' and item['section']=='DlssNr'))
-            group.add(row);self.inputs[key]=(item,control)
+            if isinstance(group,Adw.ExpanderRow):group.add_row(row)
+            else:group.add(row)
+            self.inputs[key]=(item,control);self.rows[key]=row
+        self.connect('value-changed',lambda *_:self.refresh_availability())
+        self.refresh_availability()
+
+    def refresh_availability(self):
+        values=self.get_value()
+        dependencies={'reduced':bool(values['pre_sr']),
+                      'work_scale':not values['pre_sr'] or bool(values['reduced']),
+                      'interval':bool(values['cache']),
+                      'sharpness':bool(values['sharpen'] and values['sharp_override']),
+                      'motion_sharpness':bool(values['sharpen'] and values['motion_sharpen'])}
+        for key,(item,control) in self.inputs.items():
+            available=(not self.legacy or key in ('intensity','sharpness')) and not (self.mode=='mfg-only' and item['section']=='DlssNr')
+            if not self.legacy:available=available and dependencies.get(key,True)
+            self.rows[key].set_sensitive(available)
+            if self.legacy and key not in ('intensity','sharpness'):
+                self.rows[key].set_tooltip_text('This package does not support this control')
 
     def get_value(self):
         values={}
@@ -60,6 +87,9 @@ class FeaturePresets(Gtk.Box):
         return skynizz_provider.validate_controls(values)
 
     def set_value(self,values):
+        if self.legacy:
+            current=self.get_value()
+            values={**(values or {}),'intensity':current['intensity'],'sharpness':current['sharpness']}
         values=normalized(values)
         for key,(item,control) in self.inputs.items():
             if item['kind']=='toggle':control.set_active(bool(values[key]))

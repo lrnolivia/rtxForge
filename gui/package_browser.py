@@ -45,13 +45,20 @@ def build_packages(owner, fixture=None, on_selected=None, alive=None, header=Fal
         scroll.get_hadjustment().connect('notify::page-size', resized)
     if not header:
         back.set_halign(Gtk.Align.START); back.add_css_class('flat'); box.append(back)
-    title = Gtk.Label(label='Choose your graphics package', xalign=0)
+    title = Gtk.Label(label='Packages', xalign=0)
     title.add_css_class('title-1'); box.append(title)
     intro = Gtk.Label(label='Use a supported package or inspect your own. Every game change is reviewed before it is applied.', xalign=0, wrap=True)
     intro.add_css_class('dim-label'); box.append(intro)
     status = Gtk.Label(label='Checking your system…', xalign=0, wrap=True)
     box.append(status)
-    recommended = Adw.PreferencesGroup(title='Available packages')
+    recommended = Adw.PreferencesGroup(title='Curated Packages')
+    cards = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
+                        min_children_per_line=1, max_children_per_line=1,
+                        column_spacing=12, row_spacing=12)
+    recommended.add(cards)
+    def fit_cards(adjustment,*_):
+        cards.set_max_children_per_line(2 if adjustment.get_page_size()>=1000 else 1)
+    scroll.get_hadjustment().connect('notify::page-size',fit_cards)
     box.append(recommended)
     custom = Adw.PreferencesGroup(title='Your own package', description='ZIP archives. Files and instructions are inspected without running them.')
     choose = Adw.ActionRow(title='Add custom package', subtitle='Detect the layout and review suggested settings')
@@ -74,14 +81,36 @@ def build_packages(owner, fixture=None, on_selected=None, alive=None, header=Fal
 
     def render_catalog(host):
         if not alive['value']:return False
-        status.set_text('Preview system · NVIDIA RTX 4070 · no game writes' if owner.options.demo else host.get('gpu','System') + ' · ' + host.get('reason',''))
-        for item in packages.catalog(host):
-            row = Adw.ActionRow(title=item['name'], subtitle=item['version'] + ' · ' + item['summary'])
-            button = owner.make_action_button('Use package',lambda _, key=item['id']:select(key))
-            button.set_sensitive(item['available'])
-            button.set_tooltip_text(user_messages.friendly_error(item['reason']) if not item['available'] else item['reason'])
-            if item['recommended']:button.add_css_class('suggested-action')
-            row.add_suffix(button);recommended.add(row)
+        while cards.get_first_child():cards.remove(cards.get_first_child())
+        current=owner.settings.get('runtime_provider','dlss-unlocked')
+        catalog=sorted(packages.catalog(host),key=lambda item:(item['id']!=current,not item['recommended']))
+        active=next((item['name'] for item in catalog if item['id']==current),current)
+        system='Preview system · NVIDIA RTX 4070 · no game writes' if owner.options.demo else host.get('gpu','System')+' · '+host.get('reason','')
+        status.set_text(system+' · In use: '+active)
+        for item in catalog:
+            card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True)
+            card.add_css_class('card')
+            body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True)
+            margins(body,20);card.append(body)
+            heading=Gtk.Label(label=item['name'],xalign=0,wrap=True)
+            heading.add_css_class('heading');body.append(heading)
+            version=Gtk.Label(label=item['version'],xalign=0,wrap=True)
+            version.add_css_class('dim-label');body.append(version)
+            description=Gtk.Label(label=item['summary'],xalign=0,wrap=True,vexpand=True,valign=Gtk.Align.START)
+            description.set_max_width_chars(45);body.append(description)
+            if not item['available']:
+                reason=Gtk.Label(label=user_messages.friendly_error(item['reason']),xalign=0,wrap=True)
+                reason.set_max_width_chars(45);reason.add_css_class('dim-label');body.append(reason)
+            selected=item['id']==current
+            def use(_,key=item['id']):
+                select(key)
+                if alive['value']:render_catalog(host)
+            action=owner.make_action_button('In use' if selected else 'Use package',use)
+            action.set_sensitive(item['available'] and not selected)
+            action.set_halign(Gtk.Align.END)
+            action.set_tooltip_text(item['reason'])
+            if item['recommended'] and not selected:action.add_css_class('suggested-action')
+            body.append(action);cards.append(card)
         return False
 
     def render_inspection(result):
@@ -150,7 +179,7 @@ def build_packages(owner, fixture=None, on_selected=None, alive=None, header=Fal
     def catalog_again(*_):
         footer.set_visible(False)
         detail.set_visible(False);recommended.set_visible(True);custom.set_visible(True);community.set_visible(True);intro.set_visible(True)
-        title.set_text('Choose your graphics package');back.set_visible(False)
+        title.set_text('Packages');back.set_visible(False)
         status.set_text('Choose a package to review. No game files have changed.')
     back.connect('clicked',catalog_again)
 

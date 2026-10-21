@@ -9775,23 +9775,31 @@ class Window(Adw.ApplicationWindow):
         pod.append(multiplier)
         widgets['mfg_multiplier']=multiplier
 
-        if initial.get('runtime_provider',self.settings.get('runtime_provider'))=='skynizz':
-            features=FeaturePresets(initial.get('feature_controls',self.settings.get('feature_controls',{})),
-                                    advanced=self.settings.get('overlay_controls')=='classic',
-                                    mode=initial.get('feature_mode',self.mode))
-            outer.append(features)
-            # The shared editor owns independent NR/sharpening values. Keep
-            # legacy widget keys for older providers without coupling skin/intensity.
-            for key in ('nr_strength','sharpening_strength'):
-                widgets[key].set_sensitive(False)
-                widgets[key].get_parent().get_parent().set_visible(False)
-            widgets['feature_controls']=features
+        legacy=initial.get('runtime_provider',self.settings.get('runtime_provider'))!='skynizz'
+        values=initial.get('feature_controls',self.settings.get('feature_controls',{})) or {}
+        if not values or legacy:
+            values={**values,'intensity':widgets['nr_strength'].get_value(),
+                    'sharpness':widgets['sharpening_strength'].get_value(),
+                    'enabled':int(bool(initial.get('nr_on_launch',self.settings.get('nr_on_launch',False))))}
+        features=FeaturePresets(values,advanced=self.settings.get('overlay_controls')=='classic',
+                                mode=initial.get('feature_mode',self.mode),legacy=legacy)
+        outer.append(features)
+        box.set_visible(False)
+        def sync_legacy(*_):
+            values=features.get_value()
+            widgets['nr_strength'].set_value(values['intensity'])
+            widgets['sharpening_strength'].set_value(values['sharpness'])
+        features.connect('value-changed',sync_legacy)
+        for old,key in (('nr_strength','intensity'),('sharpening_strength','sharpness')):
+            widgets[old].connect('value-changed',lambda slider,k=key:features.inputs[k][1].set_value(slider.get_value()))
+        widgets['feature_controls']=features
         return outer,widgets
 
     def tuning_values(self,widgets):
         values={}
         for key,w in widgets.items():
-            if key=='feature_controls':values[key]=w.get_value()
+            if key=='feature_controls':
+                if not w.legacy:values[key]=w.get_value()
             elif key=='mfg_multiplier':values.update(w.values())
             else:values[key]=round(float(w.get_value()),1)
         return values
@@ -9907,7 +9915,9 @@ class Window(Adw.ApplicationWindow):
             if key=='mfg_multiplier':
                 if widget.values()!=mfg_choice.to_values(*mfg_choice.from_values(source)):return True
             elif key=='feature_controls':
-                if widget.get_value()!=FeaturePresets.normalized(source.get(key,{})):return True
+                if widget.legacy:
+                    if widget.get_value()['intensity']!=source.get('nr_strength') or widget.get_value()['sharpness']!=source.get('sharpening_strength'):return True
+                elif widget.get_value()!=FeaturePresets.normalized(source.get(key,{})):return True
             elif round(float(widget.get_value()),1)!=source.get(key):return True
         return False
 

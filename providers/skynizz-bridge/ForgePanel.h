@@ -217,6 +217,20 @@ inline void Commit(const Control& field, Config& cfg, float value)
     if(!std::isfinite(value)) return;
     queued[&field] = value; Flush(cfg);
 }
+// Draws a slider's track and an accent fill up to its value beneath the
+// slider, whose own frame is then kept transparent.
+inline void SliderSurface(float fraction)
+{
+    const auto position = ImGui::GetCursorScreenPos();
+    const auto size = ImVec2(ImGui::CalcItemWidth(), ImGui::GetFrameHeight());
+    const auto rounding = ImGui::GetStyle().FrameRounding;
+    auto* draw = ImGui::GetWindowDrawList();
+    draw->AddRectFilled(position, ImVec2(position.x+size.x, position.y+size.y), ImGui::GetColorU32(ImVec4(.24f,.24f,.24f,.8f)), rounding);
+    const auto filled = std::clamp(fraction, 0.f, 1.f) * size.x;
+    if(filled > 1) draw->AddRectFilled(position, ImVec2(position.x+std::max(filled, rounding*2), position.y+size.y),
+        ImGui::GetColorU32(Mix(accent, ImVec4(.24f,.24f,.24f,1), .45f)), rounding);
+    for(const auto slot : {ImGuiCol_FrameBg, ImGuiCol_FrameBgHovered, ImGuiCol_FrameBgActive}) ImGui::PushStyleColor(slot, ImVec4(0,0,0,0));
+}
 inline void Field(const Control& field, Config& cfg)
 {
     ImGui::PushID(field.key);
@@ -271,8 +285,9 @@ inline void Field(const Control& field, Config& cfg)
                 if(!ImGui::IsItemDeactivatedAfterEdit()) return;
                 if(const auto held = dragging.find(field.key); held != dragging.end()) { value = held->second; dragging.erase(held); changed = true; }
             };
+            SliderSurface(field.high > field.low ? (value - field.low) / (field.high - field.low) : 0.f);
             if(field.kind == Kind::number)
-            { int n = int(value); if(ImGui::SliderInt("##value", &n, int(field.low), int(field.high))) dragging[field.key] = float(n); released(); }
+            { int n = int(value); if(ImGui::SliderInt("##value", &n, int(field.low), int(field.high))) dragging[field.key] = float(n); ImGui::PopStyleColor(3); released(); }
             else
             {
                 const bool percent = !advanced || std::strcmp(field.key,"work_scale") == 0;
@@ -280,7 +295,7 @@ inline void Field(const Control& field, Config& cfg)
                 auto shown = percent ? value * 100.f : value;
                 if(ImGui::SliderFloat("##value", &shown, percent ? field.low*100 : field.low, percent ? field.high*100 : field.high, format, ImGuiSliderFlags_AlwaysClamp))
                     dragging[field.key] = percent ? shown/100.f : shown;
-                released();
+                ImGui::PopStyleColor(3); released();
                 if(std::strcmp(field.key,"skin") == 0 && value < 0) ImGui::TextDisabled("-1 follows local structure");
             }
         }
@@ -459,9 +474,9 @@ inline bool Draw(bool& visible, float scale)
     ImGui::PushStyleColor(ImGuiCol_Button,Mix(accent,dark,.20f));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered,Mix(accent,dark,.32f));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive,Mix(accent,dark,.45f));
-    ImGui::PushStyleColor(ImGuiCol_FrameBg,alpha(well,.55f));
-    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered,alpha(Mix(accent,well,.18f),.65f));
-    ImGui::PushStyleColor(ImGuiCol_FrameBgActive,alpha(Mix(accent,well,.28f),.7f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBg,alpha(well,.8f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered,alpha(Mix(accent,well,.18f),.85f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgActive,alpha(Mix(accent,well,.28f),.9f));
     ImGui::PushStyleColor(ImGuiCol_CheckMark,ink);
     ImGui::PushStyleColor(ImGuiCol_SliderGrab,ink);
     ImGui::PushStyleColor(ImGuiCol_SliderGrabActive,Mix(ink,neutral,.6f));

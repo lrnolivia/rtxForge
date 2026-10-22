@@ -99,7 +99,7 @@ def build_packages(owner, fixture=None, on_selected=None, alive=None, header=Fal
             description=Gtk.Label(label=item['summary'],xalign=0,wrap=True,vexpand=True,valign=Gtk.Align.START)
             description.set_max_width_chars(45);body.append(description)
             if not item['available']:
-                reason=Gtk.Label(label=user_messages.friendly_error(item['reason']),xalign=0,wrap=True)
+                reason=Gtk.Label(label=item['reason'],xalign=0,wrap=True)  # catalog reasons are already written for people
                 reason.set_max_width_chars(45);reason.add_css_class('dim-label');body.append(reason)
             selected=item['id']==current
             def use(_,key=item['id']):

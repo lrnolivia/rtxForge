@@ -64,6 +64,27 @@ def catalog(host=None):
                         else 'Alternative OptiScaler package; a local NR model may be needed'),
             'recommended': key == 'dlss-unlocked' and supported,
         })
+    if host.get('system')=='Linux':
+        # Listed as on Windows, with honest Linux availability: Feeder is detected
+        # but not offered under Proton yet, and Skynizz needs the compiled bridge
+        # (Windows-built) plus the experimental Proton opt-in per game.
+        rows.append({'id': 'feeder', 'name': 'Feeder NR', 'version': '1.19.0 / RenoDX 8.5.0-rc5',
+                     'url': 'https://github.com/jlrouzies-fr/DLSS5-Feeder', 'sha256': '', 'available': False, 'recommended': False,
+                     'reason': 'Not offered on Linux yet: ReShade under Proton has not been validated. Existing setups are detected.',
+                     'summary': 'NR for DirectX 11 games through ReShade. NR Only.'})
+        import skynizz_provider
+        record=locks['skynizz']
+        try:
+            bridge,archive=skynizz_provider.bundled_bridge();bridge_ready=archive.is_file()
+        except (OSError,ValueError,t.Refusal):
+            bridge,bridge_ready=None,False
+        rows.append({'id':'skynizz','name':'Skynizz NR + Ada MFG bridge','version':record['tag']+' bridge · preview',
+                     'url':'https://github.com/'+record['repo'],'sha256':(bridge or record)['sha256'],
+                     'available':supported and bridge_ready,'recommended':False,
+                     'reason':('Experimental under Proton: turn on Skynizz on Proton in Settings › Graphics; each game is checked for its Proton prerequisites. Runtime QA pending.'
+                               if bridge_ready else 'This Linux build does not include the compiled NR + MFG bridge yet. Skynizz installs made on Windows can still be set up for Linux.')
+                               if supported else host.get('reason') or 'Verify a supported NVIDIA system first',
+                     'summary':'Single-loader NR + Ada MFG · requires a compiled bridge build · runtime QA pending'})
     if host.get('system')=='Windows':
         rows.append({'id': 'feeder', 'name': 'Feeder NR', 'version': '1.19.0 / RenoDX 8.5.0-rc5',
                      'url': 'https://github.com/jlrouzies-fr/DLSS5-Feeder', 'sha256': '',

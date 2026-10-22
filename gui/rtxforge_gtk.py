@@ -5457,7 +5457,7 @@ class Window(Adw.ApplicationWindow):
 
     # ---------------- NAVIGATION ----------------
 
-    PAGES_WITH_TITLES=('presets',)
+    PAGES_WITH_TITLES=('presets','packages','extras')
     PAGES=(
         ('library','Library','input-gaming-symbolic'),
         ('presets','Presets','system-run-symbolic'),
@@ -5737,17 +5737,25 @@ class Window(Adw.ApplicationWindow):
     def refresh_extras_page(self):
         old=self.page_stack.get_child_by_name('extras')
         column=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=24)
-        group=Adw.PreferencesGroup(title='Extras',description='Standalone tools and NR diagnostics for each game.')
+        # Windows ExtrasPage: page title, guidance, then each game with Diagnose NR and Tools.
+        heading=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6)
+        title=label('Extras','forge-page-title');title.set_xalign(0);heading.append(title)
+        intro=label('Manage standalone tools and NR diagnostics for each game.','dim-label');intro.set_xalign(0);heading.append(intro)
+        column.append(heading)
+        group=Adw.PreferencesGroup()
         column.append(group)
         page=self.page_column(column)
         if not self.games:
-            group.add(label('Your games appear here once the Library has been scanned.','dim-label'))
+            group.add(label('Your games appear here after the library scan.','dim-label'))
         for game in self.games:
-            item=row(game['name'],game.get('profile',''))
+            status=(game.get('profile') or 'Configured') if game.get('installed') else ('Unsupported' if game.get('blocked') else 'Not installed')
+            item=row(game['name'],status)
             self.add_game_art_prefix(item,game)
+            diagnose=button('Diagnose NR',lambda _,g=game:self.show_diagnostics(g))
+            diagnose.set_valign(Gtk.Align.CENTER);diagnose.set_sensitive(bool(game.get('installed')))
             tools=button('Tools',lambda _,g=game:(self.details(g),self.detail_pages.set_visible_child_name('Tools')))
             tools.set_valign(Gtk.Align.CENTER)
-            item.add_suffix(tools)
+            item.add_suffix(diagnose);item.add_suffix(tools)
             group.add(item)
         if old is not None:self.page_stack.remove(old)
         self.page_stack.add_named(page,'extras')

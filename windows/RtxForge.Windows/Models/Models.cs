@@ -224,6 +224,26 @@ public sealed class ForgeSettings
         get => runtimeProvider;
         set => runtimeProvider = value is "feeder" or "y4my" ? "skynizz" : value;
     }
+    /// <summary>A game's own package for games with DLSS, by game folder; absent games use RuntimeProvider.</summary>
+    [JsonPropertyName("game_packages")] public Dictionary<string, string> GamePackages { get; set; } = [];
+    /// <summary>Packages a game can choose on Windows. Feeder NR stays automatic for DX11 games without DLSS.</summary>
+    public static readonly (string Key, string Name)[] GamePackageChoices = [("skynizz", "Skynizz NR + Universal MFG"), ("dlss-unlocked", "DLSS-Unlocked")];
+    public static string PackageName(string key) => GamePackageChoices.FirstOrDefault(c => c.Key == key).Name ?? key;
+    /// <summary>A game's package choices for both UIs: "" follows the library package.</summary>
+    public (string[] Keys, string[] Captions) GamePackageOptions() =>
+        (["", .. GamePackageChoices.Select(c => c.Key)], ["Library package · " + PackageName(RuntimeProvider), .. GamePackageChoices.Select(c => c.Name)]);
+    public string GamePackage(Game game) => GamePackages.GetValueOrDefault(game.Id, "");
+    public static string GamePackageNote(Game game) => game.Installed && game.RuntimeProvider is { } installed
+        ? $"Installed with {PackageName(installed)}. Another package applies after you restore this game."
+        : "Used when you install features on this game. Games without DLSS use Feeder NR.";
+    /// <summary>The package a review prepares this game with: Feeder games keep their route, repairs keep the installed package.</summary>
+    public string PackageFor(Game game, string operation)
+    {
+        static bool Known(string? key) => GamePackageChoices.Any(c => c.Key == key);
+        if (game.UsesFeeder) return RuntimeProvider;
+        if (operation == "repair" && game.Installed && Known(game.RuntimeProvider)) return game.RuntimeProvider!;
+        return GamePackages.TryGetValue(game.Id, out var chosen) && Known(chosen) ? chosen : RuntimeProvider;
+    }
     [JsonPropertyName("nr_runtime")] public string NrRuntime { get; set; } = "";
     /// <summary>
     /// The app ships one compiled Skynizz bridge, so new installs always use it; a release saved by an

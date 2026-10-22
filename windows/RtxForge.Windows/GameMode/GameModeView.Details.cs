@@ -336,6 +336,12 @@ public sealed partial class GameModeView
                     content.Children.Add(DetailFact("Feeder NR settings", "Your existing tuning is preserved. Use ReShade's NR panel in the running game to adjust passes, resolution, tone and structure.", glyph: ""));
                     break;
                 }
+                if (!g.UsesFeeder && !shell.Service.IsPreview)
+                {
+                    var (packageKeys, packageCaptions) = shell.Settings.GamePackageOptions();
+                    content.Children.Add(ui.Group([Choice("Package", ForgeSettings.GamePackageNote(g), packageKeys, packageCaptions,
+                        () => shell.Settings.GamePackage(g), v => _ = shell.SelectGamePackageAsync(g, v), "")]));
+                }
                 var (presetRows, value) = PresetRows(shell.GameTuning(g), g.Installed && !g.Blocked, g.RuntimeProvider != "skynizz",
                     dynamicSupported: g.DynamicMfgAvailable);
                 foreach (var row in presetRows) content.Children.Add(row);

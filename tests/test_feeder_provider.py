@@ -154,7 +154,7 @@ class FeederTest(unittest.TestCase):
         self.assertFalse(review['rows'])
         self.assertIn('Close this game', review['blocked'][0]['reason'])
 
-    def test_known_dx11_native_nr_refusal_can_use_feeder(self):
+    def test_known_dx11_native_nr_hint_can_use_feeder(self):
         row = self.game('bg3-dx11') | {'appid': '1086940', 'native_dlss': True}
         found = feeder.expand_rows(self.e, [row])[0]
         import skynizz_provider

@@ -102,6 +102,17 @@ if (JsonSerializer.Deserialize<ForgeSettings>("{\"runtime_provider\":\"feeder\"}
     throw new Exception("The retired Feeder-only package choice did not migrate to a DLSS package");
 if (JsonSerializer.Deserialize<ForgeSettings>("{\"runtime_provider\":\"y4my\"}")!.RuntimeProvider != "skynizz")
     throw new Exception("The hidden y4my package choice did not migrate to Skynizz on Windows");
+{
+    // A game's own package survives a save, repairs keep the installed package, and unknown keys fall back.
+    var mixed = JsonSerializer.Deserialize<ForgeSettings>("{\"game_packages\":{\"C:\\\\Games\\\\A\":\"dlss-unlocked\",\"C:\\\\Games\\\\B\":\"custom-x\"}}")!;
+    var a = new Game { Id = @"C:\Games\A", Name = "A" };
+    var b = new Game { Id = @"C:\Games\B", Name = "B" };
+    var installed = new Game { Id = @"C:\Games\A", Name = "A", Installed = true, RuntimeProvider = "skynizz" };
+    if (mixed.PackageFor(a, "install") != "dlss-unlocked" || mixed.PackageFor(b, "install") != "skynizz"
+        || mixed.PackageFor(installed, "repair") != "skynizz" || mixed.PackageFor(installed, "install") != "dlss-unlocked"
+        || JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(mixed))!.GamePackage(a) != "dlss-unlocked")
+        throw new Exception("Per-game package choices did not resolve");
+}
 if (JsonSerializer.Deserialize<ForgeSettings>("{\"overlay_renderer\":\"rtxforge\"}")!.OverlayRenderer != "game")
     throw new Exception("The retired desktop overlay did not migrate to the in-game panel");
 Console.WriteLine("PASS: renderer/layout/native shortcut persistence and overlay-only merge preserve tuning; the retired desktop overlay reads as the in-game panel.");

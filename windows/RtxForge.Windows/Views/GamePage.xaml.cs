@@ -225,6 +225,22 @@ public sealed partial class GamePage : Page
                     PageHost.Children.Add(Prefs.Row("Feeder NR settings", "Your existing tuning is preserved. Use ReShade's NR panel in the running game to adjust passes, resolution, tone and structure.", glyph: ""));
                     break;
                 }
+                if (!g.UsesFeeder)
+                {
+                    var (packageKeys, packageCaptions) = shell.Settings.GamePackageOptions();
+                    var chosen = shell.Settings.GamePackage(g);
+                    var (packageRow, packageCombo) = Prefs.ComboRow("Package", ForgeSettings.GamePackageNote(g), packageCaptions,
+                        Math.Max(0, Array.IndexOf(packageKeys, chosen)), "");
+                    packageCombo.IsEnabled = !shell.Busy && !shell.Service.IsPreview;
+                    packageCombo.SelectionChanged += (_, _) =>
+                    {
+                        if (packageCombo.SelectedIndex >= 0 && packageKeys[packageCombo.SelectedIndex] != chosen)
+                            _ = shell.SelectGamePackageAsync(g, packageKeys[packageCombo.SelectedIndex]);
+                    };
+                    var package = new PreferencesGroup(null);
+                    package.Add(packageRow);
+                    PageHost.Children.Add(package);
+                }
                 var features = new PreferencesGroup(null,
                     "Tuning values for this game. Reset restores your library presets. Apply saves them for this game.");
                 var tuning = new PresetControlsView(shell.GameTuning(g), shell.Settings.OverlayControls == "classic");

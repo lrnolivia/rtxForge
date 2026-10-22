@@ -30,11 +30,11 @@ FEEDER_ONLY = ('dlss5-feed.addon64', 'renodx-dlss5.addon64', 'ReShade.ini')
 # EA's activation wrapper hides these executables' imports until it decrypts
 # them at launch. Each was reviewed as an x64 DirectX 11 game.
 REVIEWED_DX11 = {'ts4_x64.exe'}
-# rtxForge's in-game panel (windows/feeder-panel), bundled by Build-FeederPanel.ps1.
-PANEL = 'rtxforge-panel.addon64'
-# Added by hand before the panel existed; the panel now hides ReShade's banner itself.
+# rtxForge's in-game panel and banner hider (windows/feeder-panel), bundled by Build-FeederPanel.ps1.
+PANELS = ('rtxforge-panel.addon64', 'rtxforge-quiet.addon64')
+# Added by hand before rtxforge-quiet existed.
 RETIRED = {'quiet-startup.addon64': 'a33e97b437a6410d01d4dafc1ae770afa9c1e37a84bdbbe87926e24b5735f0a4'}
-OWNED = (PANEL, *RETIRED)
+OWNED = (*PANELS, *RETIRED)
 # rtxForge preset controls and the RenoDX keys they set. RenoDX reads these
 # once, when the game starts; the in-game panel writes the same keys.
 TUNING = {'intensity': ('NRIntensity', 0.0, 2.0), 'passes': ('NRPasses', 1, 4),
@@ -182,15 +182,17 @@ def apply_tuning(text, settings):
 
 
 def panel(e):
-    """The bundled in-game panel, verified against its build receipt; None in builds without it."""
+    """The bundled in-game panel add-ons, verified against their build receipt; empty in builds without them."""
     folder = ROOT / 'providers/feeder-panel'
-    receipt, addon = folder / 'package.json', folder / PANEL
-    if not (receipt.is_file() and addon.is_file()):
-        return None
+    receipt = folder / 'package.json'
+    if not receipt.is_file():
+        return {}
     spec = t.read_json(t.safe(receipt))
-    t.need(isinstance(spec, dict) and spec.get('name') == PANEL and digest(addon) == spec.get('sha256'),
+    files = spec.get('files') if isinstance(spec, dict) else None
+    t.need(isinstance(files, dict) and set(files) == set(PANELS)
+           and all(digest(folder / name) == files[name].get('sha256') for name in PANELS),
            'The bundled rtxForge panel changed. Reinstall rtxForge')
-    return cache(e, addon)
+    return {name: cache(e, folder / name) for name in PANELS}
 
 
 def _read_ini(path):
@@ -632,9 +634,10 @@ def prepare(config, rows, mode, operation, settings, e):
                         if not ui_file.exists(): t.atomic_file(ui_file, updated_ui.encode(), 0o600)
                         inputs['ui-ini'] = writes['ReShade.ini'] = {'path': str(ui_file), 'sha256': t.sha(updated_ui.encode())}
                     summary += ' Menu access and welcome messages follow Overlay settings.'
-                bundled = panel(e)
-                if bundled and digest(directory / PANEL) != bundled['sha256']:
-                    inputs[PANEL] = writes[PANEL] = bundled
+                bundled = {name: item for name, item in panel(e).items() if digest(directory / name) != item['sha256']}
+                for name, item in bundled.items():
+                    inputs[name] = writes[name] = item
+                if bundled:
                     summary += ' Add the rtxForge in-game panel.'
                 for name, retired in RETIRED.items():
                     if digest(directory / name) == retired:

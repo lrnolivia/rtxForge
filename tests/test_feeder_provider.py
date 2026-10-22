@@ -524,19 +524,21 @@ class FeederTest(unittest.TestCase):
         self.assertIn('Close this game', self.prepare(row, 'apply', nr_strength=.5)['blocked'][0]['reason'])
 
     def test_panel_is_owned_and_replaces_the_manual_quiet_startup_addon(self):
-        addon, quiet = pe(b'rtxforge panel'), pe(b'quiet startup')
-        source = self.root / feeder.PANEL
-        source.write_bytes(addon)
+        quiet = pe(b'quiet startup')
+        addons = {name: pe(name.encode()) for name in feeder.PANELS}
+        for name, data in addons.items():
+            (self.root / name).write_bytes(data)
         row = self.game(installed=True)
         directory = Path(row['game'])
         (directory / 'quiet-startup.addon64').write_bytes(quiet)
         before = self.files(row)
-        with patch.object(feeder, 'panel', lambda e: feeder.cache(e, source)), \
+        with patch.object(feeder, 'panel', lambda e: {name: feeder.cache(e, self.root / name) for name in feeder.PANELS}), \
                 patch.dict(feeder.RETIRED, {'quiet-startup.addon64': t.sha(quiet)}):
             review = self.prepare(row, reshade_intro=False)
             self.assertEqual(review['plans'][0]['writes']['quiet-startup.addon64'], None)
             self.apply(review)
-            self.assertEqual((directory / feeder.PANEL).read_bytes(), addon)
+            for name, data in addons.items():
+                self.assertEqual((directory / name).read_bytes(), data)
             self.assertFalse((directory / 'quiet-startup.addon64').exists())
             self.assertTrue(feeder.inspect(self.e, row)['managed'])
             self.apply(self.prepare(row, 'repair', reshade_intro=True))

@@ -750,7 +750,7 @@ inline bool Draw(bool& visible, float scale)
     const ImVec4 neutral(.91f,.91f,.91f,1), dark(.20f,.20f,.20f,1), well(.22f,.22f,.22f,1);
     const auto ink = TitleColor();
     const auto alpha = [](ImVec4 color, float a) { color.w = a; return color; };
-    PushColor(ImGuiCol_WindowBg,ImVec4(.06f,.06f,.06f,.85f));
+    PushColor(ImGuiCol_WindowBg,ImVec4(.06f,.06f,.06f,.92f));
     PushColor(ImGuiCol_TextDisabled,ImVec4(.62f,.62f,.62f,1));
     PushColor(ImGuiCol_Border,ImVec4(1,1,1,.08f));
     PushColor(ImGuiCol_Text,neutral);
@@ -847,7 +847,7 @@ inline bool Draw(bool& visible, float scale)
         Send({{"op","save"},{"changes",changes}});
     }
     ImGui::PopStyleColor(2); ImGui::SameLine();
-    PushColor(ImGuiCol_Button,Mix(dark,ImVec4(1,1,1,1),.10f));
+    PushColor(ImGuiCol_Button,Mix(ImVec4(1,1,1,1),dark,.10f));
     PushColor(ImGuiCol_Text,ImVec4(.94f,.94f,.94f,1));
     if(ImGui::Button("Reset",ImVec2(-1,42.f*scale)))
     { Send({{"op","reset"}}); }

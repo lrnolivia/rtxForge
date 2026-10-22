@@ -107,9 +107,19 @@ jobs:
           name: skynizz-in-game-panel-candidate
           path: windows/out/skynizz-bridge
 
+      # The Feeder panel hosts the same ForgePanel.h with OptiScaler's Dear ImGui and FreeType.
+      - name: Check out the admitted OptiScaler source for the Feeder panel
+        if: matrix.platform == 'x64'
+        uses: actions/checkout@v4
+        with:
+          repository: Skynizz/optiscaler-dlss5
+          ref: 6bfc4389c25054ef6747df6e6b1b470e9541c4da
+          persist-credentials: false
+          path: windows/out/skynizz-source
+
       - name: Build the Feeder NR in-game panel
         if: matrix.platform == 'x64'
-        run: ./windows/build/Build-FeederPanel.ps1 -Compiler msvc
+        run: ./windows/build/Build-FeederPanel.ps1 -SourceRoot windows/out/skynizz-source
 
       - name: Set up .NET 10
         uses: actions/setup-dotnet@v4

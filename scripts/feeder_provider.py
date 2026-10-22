@@ -110,12 +110,21 @@ def model(path):
     return {'path': str(path), 'sha256': value, **spec}
 
 
-def stack(directory, cached=False):
+def accepted(spec, name, installed):
+    """(sha256, size) pairs a file may have. Games installed with an earlier
+    recipe keep repairing and restoring; imports and new installs use the pin."""
+    pairs = {(spec['assets'][name]['sha256'], spec['assets'][name]['size'])}
+    if installed:
+        pairs |= {(item['sha256'], item['size']) for item in spec.get('previous_assets', {}).get(name, [])}
+    return pairs
+
+
+def stack(directory, cached=False, installed=False):
     directory = t.safe(directory)
     spec = lock()
-    for name, expected in spec['assets'].items():
+    for name in spec['assets']:
         path = t.safe(directory / t.relative(name))
-        t.need(path.is_file() and path.stat().st_size == expected['size'] and digest(path, cached) == expected['sha256'],
+        t.need(path.is_file() and (digest(path, cached), path.stat().st_size) in accepted(spec, name, installed),
                'Feeder files are missing or changed: ' + name)
     for name in CONFIGS:
         path = t.safe(directory / name)
@@ -203,7 +212,7 @@ def _read_ini(path):
 
 def inspect(e, row, cached=True):
     _, _, directory = target(row)
-    stack(directory, cached)
+    stack(directory, cached, installed=True)
     nr = model(directory / MODEL)
     record = state(e, directory)
     if record:
@@ -509,7 +518,7 @@ def prepare(config, rows, mode, operation, settings, e):
                 # the current files, so install again from a fresh record.
                 current = None
             eligible(e, row, existing)
-            spec = stack(directory) if existing else lock()
+            spec = stack(directory, installed=True) if existing else lock()
             names = list(spec['assets']) + [*CONFIGS, MODEL]
             inputs, writes = {}, {}
             baseline = copy.deepcopy(current)
@@ -556,7 +565,7 @@ def prepare(config, rows, mode, operation, settings, e):
                             t.need(name in old, 'The original backup does not cover: ' + name)
                             installed = old[name].get('after')
                             if name in spec['assets']:
-                                expected = {spec['assets'][name]['sha256']}
+                                expected = {sha for sha, _ in accepted(spec, name, installed=True)}
                                 if name == 'nvngx_dlss.dll':
                                     # Earlier manual installs were subsequently
                                     # upgraded to the verified production SR.
@@ -709,7 +718,7 @@ def execute(review):
                         baseline = copy.deepcopy(plan['baseline'])
                         baseline['status'] = 'active'
                         baseline['installed_hashes'] = _checks(directory, plan['checks'])
-                        stack(directory)
+                        stack(directory, installed=True)
                     t.atomic_file(state_dir(e, directory) / 'baseline.json', (json.dumps(baseline, indent=2) + '\n').encode(), 0o600)
                     session.seal(checkpoint)
                     results.append({'name': plan['row']['name'], 'game': plan['row']['game'], 'status': 'complete'})

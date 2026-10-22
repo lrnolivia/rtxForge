@@ -71,7 +71,7 @@ def catalog(host=None):
             'recommended': key == 'dlss-unlocked' and supported and host.get('system') != 'Windows',
         })
     if host.get('system')=='Windows':
-        rows.append({'id': 'feeder', 'name': 'Feeder NR', 'version': '1.19.0 / RenoDX 8.5.0-rc5',
+        rows.append({'id': 'feeder', 'name': 'Feeder NR', 'version': '1.19.0 / RenoDX 8.5.0-rc10',
                      'url': 'https://github.com/jlrouzies-fr/DLSS5-Feeder', 'sha256': '',
                      'available': supported, 'recommended': False,
                      'reason': 'Requires a local Feeder stack and a compatible NR model' if supported else host.get('reason', 'Unsupported system'),

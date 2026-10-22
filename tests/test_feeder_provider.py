@@ -285,6 +285,21 @@ class FeederTest(unittest.TestCase):
         self.assertEqual((directory / feeder.MODEL).read_bytes(), self.new)
         self.assertEqual((directory / 'ReShade.ini').read_bytes(), settings)
 
+    def test_previous_renodx_keeps_installed_games_working_but_is_not_imported(self):
+        earlier = pe(b'earlier renodx')
+        self.spec['previous_assets'] = {'renodx-dlss5.addon64': [{'version': 'earlier', 'sha256': t.sha(earlier), 'size': len(earlier)}]}
+        current, self.assets['renodx-dlss5.addon64'] = self.assets['renodx-dlss5.addon64'], earlier
+        row = self.game(installed=True)
+        old_source = self.root / 'old-source'
+        old_source.mkdir()
+        self.write_stack(old_source)
+        self.assets['renodx-dlss5.addon64'] = current
+        self.apply(self.prepare(row))
+        self.apply(self.prepare(row, 'uninstall'))
+        self.assertFalse((Path(row['game']) / 'renodx-dlss5.addon64').exists())
+        with self.assertRaisesRegex(t.Refusal, 'Feeder files are missing or changed: renodx-dlss5.addon64'):
+            feeder.import_stack(self.e, old_source)
+
     def test_wrong_stack_or_model_refused_without_game_changes(self):
         row = self.game(installed=True)
         before = self.files(row)

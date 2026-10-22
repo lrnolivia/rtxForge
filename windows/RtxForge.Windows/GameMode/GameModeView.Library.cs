@@ -102,7 +102,7 @@ public sealed partial class GameModeView
         foreach (var (key, label) in new[] { ("posters", "Posters"), ("capsules", "Wide Capsule"), ("list", "List") })
         {
             var on = shell.Settings.LibraryView == key;
-            var view = ui.Button(on ? Glyph("", label) : label, () => SetLibraryView(key), on ? GmKind.Card : GmKind.Transparent, 0.8,
+            var view = ui.Button(on ? Glyph("", label) : label, () => SetLibraryView(key), on ? GmKind.Active : GmKind.Transparent, 0.8,
                 radius: 8, padding: new Thickness(t.Px(16), t.Px(10), t.Px(16), t.Px(10)), minHeight: t.Compact ? 40 : 48);
             GmUi.Capsule(view);
             ui.Focusable(view, -6);

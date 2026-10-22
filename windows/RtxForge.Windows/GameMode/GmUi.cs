@@ -83,6 +83,7 @@ public sealed partial class GmUi(GmTheme t)
             button.BorderBrush = GmTheme.B(t.DlssBorder);
             button.BorderThickness = new Thickness(t.Px(2));
         }
+        if (radius == 32) Capsule(button);
         Focusable(button);
         if (click is not null) button.Click += (_, _) => click();
         if (name is not null) Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, name);
@@ -304,7 +305,7 @@ public sealed partial class GmUi(GmTheme t)
         if (!danger)
         {
             MenuFocus(button);
-            button.GotFocus += (_, _) => { if (button.FocusState != FocusState.Pointer) titleText.Foreground = GmTheme.B(t.ActiveFg); };
+            button.GotFocus += (_, _) => { if (button.FocusState != FocusState.Pointer) titleText.Foreground = button.Foreground; };
             button.LostFocus += (_, _) => titleText.Foreground = GmTheme.B(enabled ? t.Fg : t.DisabledFg);
         }
         return button;
@@ -441,18 +442,28 @@ public sealed partial class GmUi(GmTheme t)
     public static Border Spacer(double height) => new() { Height = height };
 
     /// <summary>
-    /// A true pill (.rf-badge, .rf-segments): corners always half the element's height, so the
-    /// ends stay round at every UI scale instead of a fixed radius turning into a rounded rectangle.
+    /// A true pill: equal circular end caps, sized after layout at every UI scale.
+    /// An explicit corner override by the caller keeps its own shape.
     /// </summary>
     public static T Capsule<T>(T element) where T : FrameworkElement
     {
-        void Round(double height)
+        CornerRadius CurrentRadius() => element switch
         {
-            var radius = new CornerRadius(Math.Max(0, height / 2));
+            Border border => border.CornerRadius,
+            Control control => control.CornerRadius,
+            _ => new CornerRadius(0),
+        };
+        var appliedRadius = CurrentRadius();
+        void Round(double width, double height)
+        {
+            if (width <= 0 || height <= 0 || !CurrentRadius().Equals(appliedRadius)) return;
+            var radius = new CornerRadius(Math.Min(width, height) / 2);
             if (element is Border border) border.CornerRadius = radius;
             else if (element is Control control) control.CornerRadius = radius;
+            appliedRadius = radius;
         }
-        element.SizeChanged += (_, e) => Round(e.NewSize.Height);
+        element.SizeChanged += (_, e) => Round(e.NewSize.Width, e.NewSize.Height);
+        Round(element.ActualWidth, element.ActualHeight);
         return element;
     }
 }

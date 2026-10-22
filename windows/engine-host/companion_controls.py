@@ -18,6 +18,7 @@ import uuid
 import configparser
 
 import transactions as t
+import feeder_controls
 
 
 def shared_native_menu():
@@ -249,6 +250,7 @@ class Controls:
     def __init__(self, state):
         self.state = Path(state) / 'runtime-presets'
         self.installations = Path(os.environ.get('RTXFORGE_DLSS_UNLOCKED_STATE') or Path(state).parent / 'engine-state') / 'targets'
+        self.feeder = self.installations.parent / 'feeder-targets'
         self.lock = threading.RLock()
         self.verified, self.previous, self.last_pid, self.preset_errors = {}, {}, {}, {}
         self.process_cache, self.process_time = {}, 0
@@ -291,7 +293,12 @@ class Controls:
                 rows.append({'game': str(root), 'exe': exe.relative_to(root).as_posix(),
                              'name': record.get('name') or exe.stem, 'appid': record.get('appid')})
             except (OSError, ValueError, KeyError, TypeError, AttributeError, t.Refusal): continue
-        return rows
+        return rows + feeder_controls.targets(self.feeder)
+
+    def _feeder(self, params):
+        """Feeder NR games have no live mailbox; their panel saves to ReShade.ini."""
+        try: return feeder_controls.game(self.feeder, params.get('row'))
+        except (OSError, ValueError, KeyError, TypeError, t.Refusal): return None
 
     def _game(self, params):
         row = params.get('row') or {}
@@ -465,6 +472,8 @@ class Controls:
     def status(self, params):
         with self.lock:
             try:
+                feeder = self._feeder(params)
+                if feeder: return feeder_controls.status(feeder, feeder_controls.running(feeder, self._processes()))
                 game = self._game(params)
                 configured = self._configured(game)
                 saved = self.presets.get(game['key'])
@@ -497,6 +506,13 @@ class Controls:
                 if not isinstance(row, dict) or not isinstance(row.get('exe'), str): continue
                 if Path(row['exe']).name.casefold() not in processes: continue
                 try:
+                    feeder = self._feeder({'row': row})
+                    if feeder:
+                        pid = feeder_controls.running(feeder, processes)
+                        if pid and str(feeder['exe']) not in seen:
+                            seen.add(str(feeder['exe']))
+                            candidates.append({'row': feeder['row'], **feeder_controls.status(feeder, pid)})
+                        continue
                     game = self._game({'row': row})
                     if game['key'] in seen: continue
                     seen.add(game['key'])
@@ -517,6 +533,7 @@ class Controls:
 
     def apply(self, params):
         with self.lock:
+            t.need(not self._feeder(params), 'Feeder NR loads its tuning when the game starts. Save a preset instead.')
             game = self._game(params)
             changes = validate_changes(params.get('changes'))
             t.need(game['can_nr'] or changes.get('enabled',0)==0, 'Neural rendering is not installed in this package.')
@@ -533,6 +550,11 @@ class Controls:
 
     def save(self, params):
         with self.lock:
+            feeder = self._feeder(params)
+            if feeder:
+                feeder_controls.write(feeder, validate_changes(params.get('changes')))
+                detail = 'Preset saved. Model changes apply the next time the game starts.'
+                return {'saved': True, 'detail': detail, 'panel_message': detail}
             game = self._game(params)
             changes = validate_changes(params.get('changes'))
             t.need(game['can_nr'] or changes.get('enabled',0)==0, 'Neural rendering is not installed in this package.')
@@ -581,6 +603,11 @@ class Controls:
 
     def reset(self, params):
         with self.lock:
+            feeder = self._feeder(params)
+            if feeder:
+                feeder_controls.reset(feeder)
+                return {**feeder_controls.status(feeder, feeder_controls.running(feeder, self._processes())), 'saved': False,
+                        'panel_message': 'Reset to Feeder defaults. Model changes apply the next time the game starts.'}
             game = self._game(params)
             box = self._open(game, True)
             t.need(box is not None, 'Start this game before resetting its live controls.')

@@ -44,7 +44,7 @@ public sealed partial class PackagesPage : Page
         ("integrated", "Integrated Ada unlock", "Built into the Skynizz bridge",
             "Patches NVIDIA's DLSS Frame Generation for 3x to 6x on RTX 40, with no extra plugin.", ["windows"]),
         ("mfg-unlock", "MFG Unlock", "1.4.5 · ReShade add-on",
-            "Raises NVIDIA's DLSS Frame Generation multiplier through ReShade. The rtxForge Overlay can't change its multiplier while you play, and it hangs inZOI at startup.", ["windows"]),
+            "Raises NVIDIA's DLSS Frame Generation multiplier through ReShade. The rtxForge Overlay can't change its multiplier while you play, and it isn't offered for inZOI yet.",["windows"]),
     ];
 
     async Task LoadAsync()

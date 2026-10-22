@@ -72,40 +72,62 @@ public sealed class GmTheme
     static GmTheme Dark() => new()
     {
         Name = "dark",
-        Window = Hex("#242424"), View = Hex("#2a2a2a"), Panel = Hex("#303030"), Card = Hex("#383838"),
-        Fg = Hex("#f2f2f2"), Muted = Hex("#c5c5c5"), Focus = Hex("#a4a4a4"),
-        Danger = Hex("#ffc1c6"), DangerBg = Hex("#4b2328"), Line = Hex("#454545"),
-        Active = Hex("#505050"), ActiveFg = Hex("#ffffff"), SegmentSelected = Hex("#575757"), RowFocus = Hex("#414141"),
-        // The prototype's disabled #2a2a2a equals Dark's --view; one step up keeps disabled controls visible.
-        Disabled = Hex("#333333"), DisabledFg = Hex("#9fa2a8"),
-        DlssSurface = Hex("#474747"), DlssInk = Hex("#ffffff"), DlssBorder = Hex("#999999"),
+        Window = Hex("#171d21"), View = Hex("#20272c"), Panel = Hex("#293238"), Card = Hex("#364149"),
+        Fg = Hex("#f0f4f5"), Muted = Hex("#d8e1e6"), Focus = Hex("#b9c8cf"),
+        Danger = Hex("#ffc6cc"), DangerBg = Hex("#4b2932"), Line = Hex("#4a5962"),
+        Active = Hex("#41515b"), ActiveFg = Hex("#ffffff"), SegmentSelected = Hex("#465965"), RowFocus = Hex("#3a474f"),
+        Disabled = Hex("#2d373e"), DisabledFg = Hex("#96a6af"),
+        DlssSurface = Hex("#3b4b55"), DlssInk = Hex("#f0f4f5"), DlssBorder = Hex("#899fae"),
     };
 
     static GmTheme Night() => new()
     {
         Name = "night",
-        // --view: color-mix(window 50%, panel)
-        Window = Hex("#080808"), View = Hex("#0f0f0f"), Panel = Hex("#171717"), Card = Hex("#252525"),
-        Fg = Hex("#f2f2f2"), Muted = Hex("#c5c5c5"), Focus = Hex("#a4a4a4"),
-        Danger = Hex("#ffc1c6"), DangerBg = Hex("#4b2328"), Line = Hex("#454545"),
-        Active = Hex("#505050"), ActiveFg = Hex("#ffffff"), SegmentSelected = Hex("#575757"), RowFocus = Hex("#414141"),
-        Disabled = Hex("#2a2a2a"), DisabledFg = Hex("#9fa2a8"),
-        DlssSurface = Hex("#363636"), DlssInk = Hex("#f2f2f2"), DlssBorder = Hex("#888888"),
+        Window = Hex("#080c0f"), View = Hex("#0f1519"), Panel = Hex("#192228"), Card = Hex("#27343c"),
+        Fg = Hex("#e8f0f4"), Muted = Hex("#bfd0da"), Focus = Hex("#adc5d3"),
+        Danger = Hex("#ffc0cb"), DangerBg = Hex("#3e202b"), Line = Hex("#3e535f"),
+        Active = Hex("#344c59"), ActiveFg = Hex("#f4f9fc"), SegmentSelected = Hex("#384f5d"), RowFocus = Hex("#30424d"),
+        Disabled = Hex("#202c33"), DisabledFg = Hex("#8eabbc"),
+        DlssSurface = Hex("#2e424f"), DlssInk = Hex("#e8f0f4"), DlssBorder = Hex("#7d9bab"),
     };
 
     static GmTheme Light() => new()
     {
         Name = "light",
-        Window = Hex("#f5f5f5"), View = Hex("#fafafa"), Panel = Hex("#ebebeb"), Card = Hex("#ffffff"),
-        Fg = Hex("#222222"), Muted = Hex("#555555"), Focus = Hex("#81898c"),
-        Danger = Hex("#8b2029"), DangerBg = Hex("#f6dce0"), Line = Hex("#cecece"),
-        Active = Hex("#d2d2d2"), ActiveFg = Hex("#222222"), SegmentSelected = Hex("#d4d4d4"), RowFocus = Hex("#dedede"),
-        Disabled = Hex("#e5e5e5"), DisabledFg = Hex("#666666"),
-        DlssSurface = Hex("#ffffff"), DlssInk = Hex("#222222"), DlssBorder = Hex("#707070"),
+        Window = Hex("#e2e9e5"), View = Hex("#f2f5f2"), Panel = Hex("#e6ece7"), Card = Hex("#ffffff"),
+        Fg = Hex("#1c2b25"), Muted = Hex("#3d5043"), Focus = Hex("#566f61"),
+        Danger = Hex("#7b2030"), DangerBg = Hex("#f5dfe3"), Line = Hex("#bdcac1"),
+        Active = Hex("#c4d2c9"), ActiveFg = Hex("#192b20"), SegmentSelected = Hex("#c9d8ce"), RowFocus = Hex("#d6e1d9"),
+        Disabled = Hex("#dbe3dd"), DisabledFg = Hex("#67776c"),
+        DlssSurface = Hex("#f9fcfa"), DlssInk = Hex("#253c2e"), DlssBorder = Hex("#748b7c"),
     };
 
     public static Color Hex(string hex) => ArtAccent.TryParse(hex, out var c) ? c : Microsoft.UI.Colors.Magenta;
     public static SolidColorBrush B(Color c, double opacity = 1) => new(c) { Opacity = opacity };
+
+    /// <summary>A shallow satin finish; the underlying role color stays dominant.</summary>
+    public LinearGradientBrush Surface(Color color, bool control = false) => new()
+    {
+        StartPoint = new(0, 0), EndPoint = new(0, 1),
+        GradientStops =
+        {
+            new GradientStop { Color = ArtAccent.Mix(Microsoft.UI.Colors.White, color, control ? .06 : IsLight ? .24 : .035), Offset = 0 },
+            new GradientStop { Color = color, Offset = .55 },
+            new GradientStop { Color = ArtAccent.Mix(Microsoft.UI.Colors.Black, color, IsLight ? .018 : .035), Offset = 1 },
+        },
+    };
+
+    /// <summary>Inset edge lighting, drawn by the template without affecting button measurement.</summary>
+    public LinearGradientBrush SurfaceEdge() => new()
+    {
+        StartPoint = new(0, 0), EndPoint = new(0, 1),
+        GradientStops =
+        {
+            new GradientStop { Color = Color.FromArgb(IsLight ? (byte)166 : (byte)66, 255, 255, 255), Offset = 0 },
+            new GradientStop { Color = Color.FromArgb(IsLight ? (byte)16 : (byte)23, 255, 255, 255), Offset = .55 },
+            new GradientStop { Color = Color.FromArgb(IsLight ? (byte)46 : (byte)61, 0, 0, 0), Offset = 1 },
+        },
+    };
 
     /// <summary>Per-game roles (--game-accent, --game-title, --game-tint, --game-pill, --game-ink).</summary>
     public GameColors GameColors(AccentPalette? palette)

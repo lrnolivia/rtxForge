@@ -42,7 +42,7 @@ public sealed partial class GameModeView
         heading.Children.Add(titles);
         var provider = GmUi.Capsule(new Border
         {
-            Background = GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(24)), VerticalAlignment = VerticalAlignment.Center,
+            Background = t.Surface(t.Panel), CornerRadius = new CornerRadius(t.Px(24)), VerticalAlignment = VerticalAlignment.Center,
             Padding = new Thickness(t.Px(20), t.Px(t.Compact ? 7 : 10), t.Px(20), t.Px(t.Compact ? 7 : 10)),
             Child = ui.IconLabel("", ProviderName()).With(p => { foreach (var c in p.Children) if (c is TextBlock tb) tb.FontSize = t.Em(0.85); }),
         });
@@ -81,7 +81,7 @@ public sealed partial class GameModeView
         toolbar.Children.Add(actions);
         var toolbarSurface = new Border
         {
-            Background = GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(16)), Child = toolbar,
+            Background = t.Surface(t.Panel), CornerRadius = new CornerRadius(t.Px(16)), Child = toolbar,
             Padding = new Thickness(t.Px(24), t.Px(t.Compact ? 8 : 20), t.Px(24), t.Px(t.Compact ? 8 : 20)),
         };
         Grid.SetRow(toolbarSurface, 1);
@@ -109,7 +109,7 @@ public sealed partial class GameModeView
             Key(view, "view-" + key);
             views.Children.Add(view);
         }
-        var viewSurface = GmUi.Capsule(new Border { Background = GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(12)), Padding = new Thickness(t.Px(4)), Child = views });
+        var viewSurface = GmUi.Capsule(new Border { Background = t.Surface(t.Panel), CornerRadius = new CornerRadius(t.Px(12)), Padding = new Thickness(t.Px(4)), Child = views });
         Grid.SetColumn(viewSurface, 1);
         subbar.Children.Add(viewSurface);
         var selection = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(4), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };

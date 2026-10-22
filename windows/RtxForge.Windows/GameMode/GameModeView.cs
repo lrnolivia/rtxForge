@@ -183,7 +183,7 @@ public sealed partial class GameModeView : UserControl
     {
         header.Children.Clear();
         header.ColumnDefinitions.Clear();
-        header.Background = GmTheme.B(t.Window);
+        header.Background = t.Surface(t.Window);
         header.Height = t.Px(t.Compact ? 80 : 104);
         header.Padding = new Thickness(t.Px(56), t.Px(t.Compact ? 10 : 14), t.Px(56), t.Px(t.Compact ? 10 : 14));
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -246,7 +246,7 @@ public sealed partial class GameModeView : UserControl
         }
         return GmUi.Capsule(new Border
         {
-            Background = GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(40)), Padding = new Thickness(t.Px(8)),
+            Background = t.Surface(t.Panel), CornerRadius = new CornerRadius(t.Px(40)), Padding = new Thickness(t.Px(8)),
             Child = line, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
         });
     }
@@ -263,7 +263,7 @@ public sealed partial class GameModeView : UserControl
     {
         footer.Visibility = Visibility.Visible;
         footer.Children.Clear();
-        footer.Background = GmTheme.B(t.Window);
+        footer.Background = t.Surface(t.Window);
         footer.MinHeight = t.Px(t.Compact ? 48 : 58);
         footer.Padding = new Thickness(PageInset, t.Px(8), PageInset, t.Px(8));
         hintsPanel.Children.Clear();
@@ -484,7 +484,7 @@ public sealed partial class GameModeView : UserControl
         if (row.Children.Count > 0) panel.Children.Add(row);
         var dialog = new Border
         {
-            Background = GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(20)),
+            Background = t.Surface(t.Panel), CornerRadius = new CornerRadius(t.Px(20)),
             Padding = new Thickness(t.Px(t.Compact ? 24 : 40)), Width = Math.Min(t.Px(width), Math.Max(320, ActualWidth - t.Px(96))),
             MaxHeight = Math.Max(240, ActualHeight - footer.ActualHeight - t.Px(96)),
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
@@ -533,7 +533,7 @@ public sealed partial class GameModeView : UserControl
     {
         toastHost.Child = new Border
         {
-            Background = GmTheme.B(t.Card), CornerRadius = new CornerRadius(t.Px(16)), Padding = new Thickness(t.Px(24), t.Px(14), t.Px(24), t.Px(14)),
+            Background = t.Surface(t.Card), CornerRadius = new CornerRadius(t.Px(16)), Padding = new Thickness(t.Px(24), t.Px(14), t.Px(24), t.Px(14)),
             Child = ui.Text(text, 0.85, wrap: true), MaxWidth = t.Px(900),
         };
         toastHost.Margin = new Thickness(0, 0, 0, t.Px(24));

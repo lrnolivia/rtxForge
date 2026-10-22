@@ -140,7 +140,7 @@ assert 'ShortcutKey=0' in menu_off and 'DisableSplash=false' in menu_off
 assert 'WorkingScale=0.5' in menu_off and 'CacheInterval=8' in menu_off and 'OverlayMenu=true' in menu_off
 run(prepare(fresh,'repair',{'optiscaler_ui':True,'optiscaler_intro':False}))
 assert (fresh/'OptiScaler.ini').read_text()==ini,'menu options failed to restore original settings independently'
-assert baseline(fresh)['archive']['release']['tag']=='v1.2.1'
+assert baseline(fresh)['archive']['release']['tag']=='v1.3.0'
 reset=prepare(fresh,'reset');run(reset)
 reset_ini=(fresh/'OptiScaler.ini').read_text()
 assert 'CacheInterval=1' in reset_ini and 'WorkingScale=0.65' in reset_ini and 'LocalStructure=1.0' in reset_ini and 'SkinStructure=1.0' in reset_ini and 'DisableSplash=true' in reset_ini and 'DualFeature=' not in reset_ini

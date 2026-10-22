@@ -1,5 +1,5 @@
 diff --git a/OptiScaler/dlssnr/DlssNrFeature_Dx12.h b/OptiScaler/dlssnr/DlssNrFeature_Dx12.h
-index 6a0f55f..cc0914a 100644
+index ecde0c8e..68c4a847 100644
 --- a/OptiScaler/dlssnr/DlssNrFeature_Dx12.h
 +++ b/OptiScaler/dlssnr/DlssNrFeature_Dx12.h
 @@ -7,6 +7,7 @@
@@ -26,7 +26,7 @@ index 6a0f55f..cc0914a 100644
  // comparison key (DlssNrCompareKey) or chosen in the menu.
  enum class CompareMode : int
 diff --git a/OptiScaler/framegen/dlssg/Companion.h b/OptiScaler/framegen/dlssg/Companion.h
-index a00c031..f57b05a 100644
+index a00c0317..f57b05a8 100644
 --- a/OptiScaler/framegen/dlssg/Companion.h
 +++ b/OptiScaler/framegen/dlssg/Companion.h
 @@ -49,12 +49,15 @@ struct Mailbox
@@ -71,10 +71,10 @@ index a00c031..f57b05a 100644
      mailbox->nrMs = static_cast<float>(live.nrMs);
      mailbox->renderedFps = static_cast<float>(live.renderedFps);
 diff --git a/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp b/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
-index e38af95..371135b 100644
+index 75e7ef35..acba39d8 100644
 --- a/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
 +++ b/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
-@@ -16,6 +16,7 @@
+@@ -18,6 +18,7 @@
  #include <framegen/nvngx/Nvngx_FG.h>
  #include <framegen/dlssg/MfgUnlock.h>
  #include <framegen/dlssg/Companion.h>
@@ -82,7 +82,7 @@ index e38af95..371135b 100644
  #include "FG/FSR3_Dx12_FG.h"
  #include "FG/Upscaler_Inputs_Dx12.h"
  
-@@ -1174,6 +1175,21 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
+@@ -1176,6 +1177,21 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
          }
      }
  
@@ -104,7 +104,7 @@ index e38af95..371135b 100644
      // Native DLSS passthrough
      if (handleId < DLSS_MOD_ID_OFFSET)
      {
-@@ -1181,18 +1197,11 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
+@@ -1183,18 +1199,11 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
          {
              LOG_DEBUG("Passthrough to native DLSS EvaluateFeature for handle {}", handleId);
  
@@ -126,15 +126,26 @@ index e38af95..371135b 100644
              ForgeCompanion::Completed(feature == NVSDK_NGX_Feature_FrameGeneration, result, InParameters);
  
              return result;
-@@ -1217,22 +1226,12 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
+@@ -1219,8 +1228,6 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
      if (lastDlssgCameraFar.has_value())
          InParameters->Set("DLSSG.CameraFar", lastDlssgCameraFar.value());
  
 -    // Pre-SR (DlssNrPreSr, off by default): Neural Rendering first, on the render-resolution colour the
 -    // upscaler is about to read, which is swapped for the enhanced copy and put back right after.
+     // Speckle cleanup (FGSpeckleCleanup, off by default) first, so DLSS 5's pre-SR pass and the upscaler
+     // both read the cleaned colour; the game's colour is put back last.
+     // A new rendered frame, for the frame generation meter and the auto multiplier (both off by default).
+@@ -1230,27 +1237,19 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
+     const bool checkerCleaned =
+         feature == NVSDK_NGX_Feature_SuperSampling && CheckerGuard::BeginBeforeUpscale(InCmdList, InParameters);
+ 
 -    const bool nrPreSr =
 -        feature == NVSDK_NGX_Feature_SuperSampling && DlssNr::EvaluateBeforeUpscale(InCmdList, InParameters);
 -
+     // After a DLSS 5 preset has settled: the upscaler starts its history again too (RequestSettleReset).
+     if (feature == NVSDK_NGX_Feature_SuperSampling && DlssNr::ConsumeUpscalerReset())
+         InParameters->Set(NVSDK_NGX_Parameter_Reset, 1);
+ 
      // OptiScaler internal handling
 -    const NVSDK_NGX_Result optiResult = TryEvaluateOptiFeature(InCmdList, InFeatureHandle, InParameters, InCallback);
 +    const NVSDK_NGX_Result optiResult = nrEvaluate([&] {
@@ -145,6 +156,9 @@ index e38af95..371135b 100644
 -    if (nrPreSr)
 -        DlssNr::EndBeforeUpscale(InParameters);
 -
+     if (checkerCleaned)
+         CheckerGuard::EndBeforeUpscale(InParameters);
+ 
 -    // Same pass, for OptiScaler's own upscalers rather than native DLSS.
 -    if (optiResult == NVSDK_NGX_Result_Success && feature != NVSDK_NGX_Feature_FrameGeneration)
 -        DlssNr::EvaluateAfterUpscale(InCmdList, InParameters);
@@ -153,18 +167,18 @@ index e38af95..371135b 100644
  }
  
 diff --git a/OptiScaler/shaders/dlssnr/DlssNr_Dx12.cpp b/OptiScaler/shaders/dlssnr/DlssNr_Dx12.cpp
-index 9760879..0076425 100644
+index 7da0030b..f66bf145 100644
 --- a/OptiScaler/shaders/dlssnr/DlssNr_Dx12.cpp
 +++ b/OptiScaler/shaders/dlssnr/DlssNr_Dx12.cpp
-@@ -3,6 +3,7 @@
- #include <set>
+@@ -5,6 +5,7 @@
+ #include <map>
  
  #include <dlssnr/DlssNr.h>
 +#include <dlssnr/ForgeNrRoute.h>
  
  
  #include <dlssnr/DlssNr_Capture.h>
-@@ -540,6 +541,8 @@ struct PreSrState
+@@ -593,6 +594,8 @@ struct PreSrState
  };
  
  PreSrState g_preSr;
@@ -173,7 +187,7 @@ index 9760879..0076425 100644
  
  // Set around the pre-SR dispatch, so the pass knows its target is the copy rather than the output.
  bool g_preSrDispatch = false;
-@@ -3864,6 +3867,14 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
+@@ -4695,6 +4698,14 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
      }
  
      g_nr.passesRun = passesReady;
@@ -188,7 +202,7 @@ index 9760879..0076425 100644
  
      if (g_ngxTime != nullptr)
          g_ngxTime->End(cmdList);
-@@ -5008,13 +5019,14 @@ LiveStats GetLiveStats()
+@@ -5854,13 +5865,14 @@ LiveStats GetLiveStats()
  
      s.valid = g_live.count > 0;
      s.enabled = EffEnabled(cfg);
@@ -206,7 +220,7 @@ index 9760879..0076425 100644
      s.benchmark = g_bench.active;
      s.mode = g_bench.active ? BenchmarkPhaseName(g_bench.phase) : CompareModeName((CompareMode) g_userCompare);
      s.compare = (CompareMode) g_userCompare;
-@@ -5024,6 +5036,26 @@ LiveStats GetLiveStats()
+@@ -5870,6 +5882,26 @@ LiveStats GetLiveStats()
  
  namespace DlssNr
  {
@@ -233,7 +247,7 @@ index 9760879..0076425 100644
  void RetryAfterFailure()
  {
      g_nr.failed = false;
-@@ -5402,9 +5434,10 @@ bool EvaluateBeforeUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramet
+@@ -6262,9 +6294,10 @@ bool EvaluateBeforeUpscale(ID3D12GraphicsCommandList* cmdList, NVSDK_NGX_Paramet
  
      // The pass, on the copy. Whatever it does or declines to do this frame, the copy holds at least the
      // game's own colour, so handing it over is always safe.

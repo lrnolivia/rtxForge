@@ -45,8 +45,9 @@ def fixture(path, extra=None, omit=None):
 def bridge_fixture(path, sr_path=None):
     fixture(path)
     spec=json.loads((ROOT/'providers/skynizz-bridge/source.json').read_text())
-    record={'variant':'nr-mfg-bridge','repo':'lrnolivia/rtxForge','tag':'v1.2.1','commit':'b'*40,
-            'archive':'rtxForge-Skynizz-v1.2.1-MFG.zip','url':'bundled:providers/skynizz-bridge/rtxForge-Skynizz-v1.2.1-MFG.zip',
+    tag=spec['upstream']['tag']
+    record={'variant':'nr-mfg-bridge','repo':'lrnolivia/rtxForge','tag':tag,'commit':'b'*40,
+            'archive':f'rtxForge-Skynizz-{tag}-MFG.zip','url':f'bundled:providers/skynizz-bridge/rtxForge-Skynizz-{tag}-MFG.zip',
             'upstream':spec['upstream'],'mfg_source':spec['mfg_source'],'patch_sha256':spec['patch_sha256'],
             'bridge_id':spec['id'],'runtime_verified':False}
     if sr_path is not None:

@@ -271,7 +271,7 @@ public sealed class PreviewForgeService : IForgeService
         Task.FromResult(new FeederStorage(null, null, null, 0));
     public Task<PackageCatalog> PackagesAsync() =>Task.FromResult(new PackageCatalog("Preview system · NVIDIA RTX 4070 · no game writes",
     [
-        new("skynizz", "Skynizz NR + Universal MFG", "v1.2.1 bridge · Universal MFG 1.6.1", "Recommended. Neural rendering with Universal MFG 1.6.1 frame generation in DirectX 12 games with DLSS.", true,
+        new("skynizz", "Skynizz NR + Universal MFG", "v1.3.0 bridge · Universal MFG 1.6.1", "Recommended. Neural rendering with Universal MFG 1.6.1 frame generation in DirectX 12 games with DLSS.", true,
             "Preview package · no game writes", true, "https://github.com/Skynizz/optiscaler-dlss5", ["windows"]),
         new("dlss-unlocked", "DLSS-Unlocked", "Preview", "Native MFG path; NR needs per-game verification", true, "Ready to review for your system", false, "https://github.com/ShyVortex/dlss-unlocked"),
         new("y4my", "y4my Multipass", "nightly", "Alternative OptiScaler package; a local NR model may be needed", true, "Ready to review for your system", false,

@@ -84,7 +84,7 @@ def catalog(host=None):
             bridge_ready=archive.is_file()
         except (OSError,ValueError,t.Refusal):
             bridge_ready=False
-        rows.append({'id':'skynizz','name':'Skynizz NR + Universal MFG','version':record['tag']+' bridge · Universal MFG 1.6.1',
+        rows.append({'id':'skynizz','name':'Skynizz NR + Universal MFG','version':(bridge or record)['tag']+' bridge · Universal MFG 1.6.1',
                      'url':'https://github.com/'+record['repo'],'sha256':(bridge or record)['sha256'],
                      'available':supported and bridge_ready,
                      'reason':('Requires a compatible local NR model, DirectX 12 with DLSS, and native DLSS Frame Generation for MFG.' if bridge_ready else 'The combined NR + MFG bridge is not included in this app build.') if supported else host.get('reason') or 'Verify a supported NVIDIA system first',

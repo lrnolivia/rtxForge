@@ -1621,7 +1621,7 @@ class GameMode(Gtk.Overlay):
                     if item['kind']=='toggle':return 'On' if features[k] else 'Off'
                     return str(features[k])
                 editable=enabled and not (item['section']=='DlssNr' and source.get('feature_mode',owner.mode)=='mfg-only')
-                rows.append(self.stepper(item['label'],item['group'],caption,step,editable,key='preset-'+k))
+                rows.append(self.stepper(item['label'].replace('Colour','Color'),item['group'],caption,step,editable,key='preset-'+k))
         return rows, lambda: {**({'feature_controls':dict(features)} if features else {}), 'nr_strength': state['nr'], 'sharpening_strength': state['sharp'],
                               **mfg_choice.to_values(state['mfg_on'], state['mfg_mode'], state['mfg_ratio'], dynamic_available)}
 

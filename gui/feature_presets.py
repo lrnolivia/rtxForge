@@ -6,6 +6,12 @@ from gi.repository import Gtk, Adw, GObject
 import skynizz_provider
 
 
+def us_label(text):
+    """Shared control labels use British spelling; the apps show US English, as Windows does."""
+    return str(text).replace('Colour','Color').replace('colour','color')
+
+
+
 def definitions():
     # MFG has its own On/Off and Auto/Custom/Dynamic editor. The remaining
     # controls retain the schema's runtime units, ranges and ordering.
@@ -54,7 +60,7 @@ class FeaturePresets(Gtk.Box):
                     parent.append(group)
                     surfaces[group_key]=group
                 groups[group_key]=group
-            key=item['key'];title=item['advanced'] if advanced else item['label']
+            key=item['key'];title=us_label(item['advanced'] if advanced else item['label'])
             if item['kind']=='toggle':
                 row=Adw.SwitchRow(title=title,active=bool(values[key]))
                 row.connect('notify::active',lambda *_:self.emit('value-changed'))

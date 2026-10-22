@@ -111,6 +111,27 @@ def neutral_palette():
                 popover='#303030' if dark else '#ffffff')
 
 
+ACCENT_PROVIDER=None
+def apply_brand_accent():
+    """rtxForge green, as Windows overrides SystemAccentColor in App.xaml.
+
+    Desktop accent tools write ~/.config/gtk-4.0/gtk.css at USER priority, so
+    this app-only provider sits just above it. Other apps keep the desktop accent.
+    """
+    global ACCENT_PROVIDER
+    if ACCENT_PROVIDER is None:
+        ACCENT_PROVIDER=Gtk.CssProvider()
+        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(),ACCENT_PROVIDER,Gtk.STYLE_PROVIDER_PRIORITY_USER+1)
+    text='#95cf38' if Adw.StyleManager.get_default().get_dark() else '#437500'
+    ACCENT_PROVIDER.load_from_data((f':root {{ --accent-bg-color: #76b900; --accent-color: {text}; --accent-fg-color: #102000; }}'
+                                    f'@define-color accent_bg_color #76b900; @define-color accent_color {text}; @define-color accent_fg_color #102000;'
+                                    # Windows segmented control: the checked segment carries a 16x3 accent pill.
+                                    '.library-filter-group button:checked, button.view-action:checked,'
+                                    '.sticky-mode-selector toggle:checked, .mode-selector toggle:checked, .mfg-control toggle:checked {'
+                                    ' background-image: linear-gradient(#76b900, #76b900); background-size: 16px 3px;'
+                                    ' background-position: 50% 100%; background-repeat: no-repeat; }').encode())
+
+
 def apply_neutral_palette():
     global NEUTRAL_PROVIDER
     if NEUTRAL_PROVIDER is None:
@@ -134,10 +155,12 @@ def apply_neutral_palette():
            'headerbar_bg_color':'window','headerbar_fg_color':'fg','headerbar_backdrop_color':'window',
            'secondary_sidebar_bg_color':'sidebar','secondary_sidebar_fg_color':'fg'}
     theme_css=''.join(f'@define-color {name} {palette[value]};' for name,value in names.items()) if THEME_MODE=='night' else ''
+    apply_brand_accent()
     if THEME_MODE!='night':theme_css+='columnview.library-column-view header { background: mix(@sidebar_bg_color,black,0.12); }'
     theme_css+='list.boxed-list, list.content, list.boxed-list-separate > row, .card { box-shadow: 0 0 0 1px alpha(black,0.03), 0 1px 3px 1px alpha(black,0.07), 0 2px 6px 2px alpha(black,0.03); }'
     theme_css+='\n    button.bulk-remove { border: 1px solid alpha(currentColor,0.18); }\n    .library-selection-tools button, button.view-action, \n    button.game-details, .library-column-actions button,\n    .progress-inline-cancel {\n        border: 1px solid alpha(@window_fg_color,0.035);\n    }\n    '
     if THEME_MODE=='night':
+        theme_css+='@define-color forge_shell_bg #000000; @define-color forge_layer_bg #121212;'
         theme_css+='@define-color forge_top_bg #000000; @define-color forge_lower_bg #181818; @define-color forge_library_card_a #222222; @define-color forge_library_card_b #262626; @define-color forge_panel_bg #171717;'
         theme_css+='''
         .bulk-remove { background: #352828; color: #ffaaa3; border: 1px solid alpha(#ffaaa3,0.18); }
@@ -151,6 +174,8 @@ def apply_neutral_palette():
         theme_css+='@define-color forge_library_card_a mix(@window_bg_color,@window_fg_color,0.06); @define-color forge_library_card_b mix(@window_bg_color,@window_fg_color,0.09); @define-color forge_panel_bg alpha(@window_fg_color,0.08); @define-color forge_library_list_hover mix(@window_bg_color,@window_fg_color,0.12);'
     else:
         theme_css+="""
+        @define-color forge_shell_bg #f3f3f3;
+        @define-color forge_layer_bg #fafafa;
         @define-color forge_lower_bg @window_bg_color;
         @define-color forge_library_card_a @card_bg_color;
         @define-color forge_library_card_b mix(@card_bg_color,@sidebar_bg_color,0.2);
@@ -158,6 +183,7 @@ def apply_neutral_palette():
         @define-color forge_library_list_hover #e2e2e2;
         @define-color forge_panel_bg @card_bg_color;
         @define-color accent_color #437500;
+        :root { --accent-color: #437500; }
         .game-card { box-shadow: 0 1px 3px alpha(black,0.06), 0 0 8px alpha(black,0.035); }
         .game-card .card-footer { background: alpha(black,0.025); }
         .game-card:not(.selected) .game-details { background: alpha(black,0.055); }
@@ -576,9 +602,9 @@ def artwork_accent(path,color=None,muted=False):
             f'color: white; '
             f'}} '
 
-            f'.game-card.{name}:hover .gallery-artwork-ring, '
-            f'.game-card.{name}:focus-within .gallery-artwork-ring, '
-            f'.game-card.{name}.selected .gallery-artwork-ring {{ '
+            f'.game-card.{name}:hover, '
+            f'.game-card.{name}:focus-within, '
+            f'.game-card.{name}.selected {{ '
             f'border-color: {color}; '
             f'}} '
 
@@ -1640,6 +1666,16 @@ CSS=b'''
 @define-color accent_bg_color #76b900;
 @define-color accent_color #95cf38;
 @define-color accent_fg_color #102000;
+/* libadwaita 1.6+ applies the desktop accent through these variables;
+   rtxForge keeps its own green, as the Windows app does. */
+:root { --accent-bg-color: #76b900; --accent-color: #95cf38; --accent-fg-color: #102000; }
+.library-page-title { font-size: 20px; font-weight: 600; }
+.forge-page-title { font-size: 28px; font-weight: 600; }
+/* Game Details tabs (Windows GamePage pivot) */
+.detail-tab-bar { background: transparent; margin: 8px 24px 0; }
+.detail-tabs toggle { padding: 4px 12px 6px; min-height: 0; border-radius: 6px; font-weight: 400; font-size: 14px; }
+button.library-command { padding: 4px 10px; font-weight: 400; }
+button.library-command label { font-weight: 400; }
 .dim-label { opacity: 0.78; }
 .operation-complete { color: #76b900; }
 
@@ -1660,6 +1696,10 @@ CSS=b'''
  */
 @define-color forge_top_bg @view_bg_color;
 @define-color forge_lower_bg @window_bg_color;
+/* Windows shell (Mica: title bar + navigation) and content layer. Every page,
+   hero fade and bottom fade uses the layer color, so gradients stay seamless. */
+@define-color forge_shell_bg mix(@window_bg_color,black,0.12);
+@define-color forge_layer_bg mix(@window_bg_color,@window_fg_color,0.025);
 @define-color forge_panel_bg alpha(@window_fg_color,0.12);
 @define-color forge_library_card_a mix(@forge_lower_bg,@window_fg_color,0.08);
 @define-color forge_library_card_b mix(@forge_lower_bg,@window_fg_color,0.13);
@@ -1826,6 +1866,19 @@ spinbutton.tuning-number-input text {
 .settings-content popover row > box, dropdown popover row > box { min-height: 0; padding: 0; margin: 0; }
 .settings-navigation row image, .game-detail-nav row image { color: @window_fg_color; }
 .settings-navigation row:selected image { color: @accent_color; }
+/* Main window: Windows NavigationView selection (left accent pill, regular weight). */
+.forge-main-sidebar .settings-navigation row { border-radius: 6px; }
+.forge-main-sidebar .settings-navigation row box { padding: 9px 12px; }
+.forge-main-sidebar .settings-navigation row:selected {
+    background-color: alpha(@window_fg_color,0.06);
+    background-image: linear-gradient(@accent_bg_color, @accent_bg_color);
+    background-size: 3px 16px;
+    background-position: left center;
+    background-repeat: no-repeat;
+}
+.forge-main-sidebar .settings-navigation row:selected label { font-weight: 400; }
+.forge-main-sidebar .settings-navigation row:selected image { color: @window_fg_color; }
+.forge-nav-footer { padding-top: 0; padding-bottom: 12px; }
 
 .settings-footer {
     padding: 14px 18px;
@@ -2938,11 +2991,27 @@ columnview.library-column-view header button {
 
 
 /* ----------------------------------------------------------
+ * Windows card (ForgeGameCardGridStyle): 2px ring, art full width with
+ * square bottom edge, title + status on the card surface.
+ * ---------------------------------------------------------- */
+.game-card { border-radius: 12px; }
+.game-card .gallery-artwork-ring { border-width: 0; border-color: transparent; }
+.game-card .poster-button, .game-card .poster,
+.game-card .gallery-artwork-frame, .game-card .gallery-artwork-frame .poster-button,
+.game-card .gallery-artwork-frame .poster { border-radius: 10px 10px 0 0; }
+.game-card .gallery-artwork-frame { background: alpha(@window_fg_color,0.06); }
+.game-card .card-footer { background: transparent; padding: 0 12px 12px; border-radius: 0 0 10px 10px; }
+.game-card .card-title, .game-card .card-title.art-title-xs, .game-card .card-title.art-title-sm,
+.game-card .card-title.art-title-md, .game-card .card-title.art-title-lg {
+    font-size: 14px; font-weight: 600; margin: 10px 12px 6px;
+}
+
+/* ----------------------------------------------------------
  * Native titlebar: slightly less cramped.
  * ---------------------------------------------------------- */
 
 headerbar, .titlebar {
-    background: @forge_top_bg;
+    background: @forge_shell_bg;
     background-image: none;
     border-width: 0;
     border-style: none;
@@ -3149,6 +3218,23 @@ columnview.library-column-view header button:first-child { padding-left: 52px; }
     0%, 40% { opacity: 1; }
     50%, 100% { opacity: 0; }
 }
+/* ----------------------------------------------------------
+ * Windows surfaces: shell (title bar + navigation) and one content layer.
+ * ---------------------------------------------------------- */
+.forge-split > .sidebar-pane, .forge-main-sidebar { background: @forge_shell_bg; }
+.forge-window-surface, .forge-top-surface, .forge-library-surface,
+.game-detail-root, .game-banner, .game-detail-main, .detail-tab-bar { background: @forge_layer_bg; }
+.banner-shade {
+    background: linear-gradient(to bottom,
+        alpha(@forge_layer_bg,0.08) 0%, alpha(@forge_layer_bg,0.30) 28%,
+        alpha(@forge_layer_bg,0.72) 52%, alpha(@forge_layer_bg,0.94) 76%, @forge_layer_bg 100%);
+}
+.library-bottom-fade { background-image: linear-gradient(to bottom, alpha(@forge_layer_bg,0), @forge_layer_bg 90%, @forge_layer_bg); border-top: none; }
+.game-card, .game-card.library-stripe-a, .game-card.library-stripe-b { background: mix(@forge_layer_bg,@window_fg_color,0.06); }
+
+.game-detail-root .settings-footer { background: @forge_layer_bg; border-top: none; box-shadow: none; }
+.banner-edge { background: @forge_layer_bg; min-height: 2px; }
+.detail-footer { background: @forge_layer_bg; border-top: none; box-shadow: none; }
 '''
 
 def profile_icon(mode):
@@ -4252,6 +4338,13 @@ class Window(Adw.ApplicationWindow):
             self.refresh_action
         )
 
+        remove_selected=Gio.SimpleAction.new('remove-selected',None)
+        remove_selected.connect('activate',lambda *_:self.confirm_remove_games(self.selected_games()))
+        self.add_action(remove_selected)
+        removed_games=Gio.SimpleAction.new('removed-games',None)
+        removed_games.connect('activate',lambda *_:self.show_removed_games())
+        self.add_action(removed_games)
+
         self.add_folder_action=Gio.SimpleAction.new(
             'add-game-folder',
             None,
@@ -4333,7 +4426,7 @@ class Window(Adw.ApplicationWindow):
         self.back_button=Gtk.Button(icon_name='go-previous-symbolic',tooltip_text='Back (Alt+Left)',sensitive=False)
         self.back_button.connect('clicked',lambda *_:self.navigate_back())
         header.pack_start(self.back_button)
-        self.page_stack=Gtk.Stack(hexpand=True,vexpand=True,transition_type=Gtk.StackTransitionType.CROSSFADE,transition_duration=120)
+        self.page_stack=Gtk.Stack(hexpand=True,vexpand=True,hhomogeneous=False,transition_type=Gtk.StackTransitionType.CROSSFADE,transition_duration=120)
         self.page_stack.connect('notify::visible-child-name',lambda *_:self.back_button.set_sensitive(self.current_page()=='game-details' or bool(self.page_history)))
         outer.append(self.page_stack)
         library_page=Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -4872,7 +4965,7 @@ class Window(Adw.ApplicationWindow):
             12
         )
 
-        library_title=label('Library','heading')
+        library_title=label('Library','library-page-title')
         library_title.set_valign(Gtk.Align.CENTER)
         library_title.set_margin_end(4)
         viewbar.append(library_title)
@@ -4923,6 +5016,7 @@ class Window(Adw.ApplicationWindow):
             placeholder_text='Search library',
             hexpand=True,
         )
+        self.search.set_size_request(180,-1)
         self.search.connect(
             'search-changed',
             lambda *_:self.filter_games(),
@@ -5003,14 +5097,22 @@ class Window(Adw.ApplicationWindow):
         )
         self.select_toggle.set_tooltip_text('Select every game in this view')
 
-        refresh=Gtk.Button(icon_name='view-refresh-symbolic',valign=Gtk.Align.CENTER)
+        # Windows LibraryCommands: labeled Rescan / Add folder, then a More menu.
+        refresh=icon_button('Rescan','view-refresh-symbolic',lambda *_:None)
         refresh.set_action_name('win.refresh-library')
-        refresh.set_tooltip_text('Refresh Library')
-        refresh.update_property([Gtk.AccessibleProperty.LABEL],['Refresh Library'])
-        add_folder=Gtk.Button(icon_name='folder-new-symbolic',valign=Gtk.Align.CENTER)
+        refresh.set_tooltip_text('Rescan all library folders (F5)')
+        add_folder=icon_button('Add folder','folder-new-symbolic',lambda *_:None)
         add_folder.set_action_name('win.add-game-folder')
         add_folder.set_tooltip_text('Add Game Folder')
-        add_folder.update_property([Gtk.AccessibleProperty.LABEL],['Add Game Folder'])
+        for widget in (self.select_toggle,refresh,add_folder):widget.add_css_class('flat');widget.add_css_class('library-command')
+        self.library_commands=(self.select_toggle,refresh,add_folder)
+        more_menu=Gio.Menu()
+        more_menu.append('Add library folder','win.add-game-folder')
+        more_menu.append('Remove selected entries','win.remove-selected')
+        more_menu.append('Removed games','win.removed-games')
+        library_more=Gtk.MenuButton(icon_name='view-more-horizontal-symbolic',menu_model=more_menu,valign=Gtk.Align.CENTER)
+        library_more.add_css_class('flat');library_more.set_tooltip_text('More')
+        library_more.update_property([Gtk.AccessibleProperty.LABEL],['More library actions'])
 
         controls_surface=Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         controls_surface.add_css_class('forge-top-surface')
@@ -5248,7 +5350,7 @@ class Window(Adw.ApplicationWindow):
         self.art_scale.connect('value-changed',self.art_scale_changed)
         self.art_scale.set_sensitive(self.settings.get('library_view','posters')!='list')
         self.size_button=self.art_scale
-        for widget in (self.size_button,self.select_toggle,refresh,add_folder):
+        for widget in (self.size_button,self.select_toggle,refresh,add_folder,library_more):
             viewbar.append(widget)
 
 
@@ -5345,6 +5447,7 @@ class Window(Adw.ApplicationWindow):
 
     # ---------------- NAVIGATION ----------------
 
+    PAGES_WITH_TITLES=('presets',)
     PAGES=(
         ('library','Library','applications-games-symbolic'),
         ('presets','Presets','preferences-color-symbolic'),
@@ -5395,14 +5498,35 @@ class Window(Adw.ApplicationWindow):
         self.nav_list.select_row(self.nav_rows['library'])
         self.nav_list.connect('row-selected',lambda _list,row:row is not None and self.show_page(row.page))
         sidebar.append(self.nav_list)
+        # Windows NavigationView footer: Game Mode, Activity, Settings.
+        footer=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE,valign=Gtk.Align.END)
+        footer.add_css_class('settings-navigation');footer.add_css_class('forge-nav-footer')
+        for title_text,icon,action in (('Game Mode','input-gaming-symbolic','win.game-mode'),
+                                       ('Activity','document-open-recent-symbolic','win.activity'),
+                                       ('Settings','emblem-system-symbolic','win.settings')):
+            row=Gtk.ListBoxRow(activatable=True);row.action=action
+            content=Gtk.Box(spacing=12)
+            content.append(Gtk.Image(icon_name=icon))
+            content.append(Gtk.Label(label=title_text,xalign=0,hexpand=True))
+            row.set_child(content);footer.append(row)
+        footer.connect('row-activated',lambda _list,row:self.activate_action(row.action,None))
+        sidebar.append(footer)
         return sidebar
 
     def _header_density(self,*_):
         width=self.get_width() or self.get_default_size()[0]
         scale=Gtk.Settings.get_default().get_property('gtk-xft-dpi')/(96*1024) if Gtk.Settings.get_default() else 1
-        labels=width>=1400*max(1.0,scale)
+        unit=max(1.0,scale)
+        labels=width>=1180*unit
         for widget in (self.sticky_install_all,self.sticky_remove_all,self.sticky_update_dlss):
             if widget.text_label.get_visible()!=labels:widget.text_label.set_visible(labels)
+        # Library toolbar: Windows keeps labels while there is room, then icons,
+        # and never lets the toolbar set the window's minimum width.
+        commands=width>=1460*unit
+        for widget in getattr(self,'library_commands',()):
+            if widget.text_label.get_visible()!=commands:widget.text_label.set_visible(commands)
+        if hasattr(self,'art_scale'):self.art_scale.set_visible(width>=1250*unit)
+        if hasattr(self,'search'):self.search.set_size_request(180 if commands else 120,-1)
         return False
 
     def current_page(self):
@@ -5467,10 +5591,12 @@ class Window(Adw.ApplicationWindow):
             if hero_visible:brand.add_css_class('brand-hidden')
             else:brand.remove_css_class('brand-hidden')
             brand.set_can_target(not hero_visible)
-        self.page_title.set_visible(not library)
+        # Windows shows page names in the page, not the title bar.
+        titled=library or self.current_page() in self.PAGES_WITH_TITLES
+        self.page_title.set_visible(not titled)
         # Without a centered title the Library's start and end groups size
         # independently instead of reserving symmetric space.
-        self.content_header.set_show_title(not library)
+        self.content_header.set_show_title(not titled)
 
     def enter_game_mode(self,*_):
         if not self.settings.get('big_picture_ui',True):
@@ -5498,14 +5624,17 @@ class Window(Adw.ApplicationWindow):
     def build_presets_page(self,tuning):
         page=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=24)
         page.add_css_class('forge-page')
-        group=Adw.PreferencesGroup(
-            title='Library Presets',
-            description='NR Strength, Sharpening and MFG for new installs. Apply them to games you have already configured.',
-        )
+        # Windows PresetsPage: a page title and one line of guidance, then the cards.
+        heading=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6)
+        heading.append(label('Presets','forge-page-title'))
+        heading.append(label('Your defaults for new installs. Review games to apply them to existing packages.','dim-label'))
+        for child in (heading.get_first_child(),heading.get_last_child()):child.set_xalign(0)
+        page.append(heading)
+        group=Adw.PreferencesGroup()
         pod=Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        pod.add_css_class('card')
         pod.add_css_class('presets-card')
-        margins(tuning,18)
+        # Cards align with the page title (the old outer card supplied this inset).
+        margins(tuning,0)
         pod.append(tuning)
         group.add(pod)
         self.presets_status=label('','dim-label')
@@ -9353,6 +9482,41 @@ class Window(Adw.ApplicationWindow):
             return runtime.storage_cleanup(app_root,engine_root,raw['plan'])['message']
         self.review_write('storage',prepare=prepare,run=run,details=['Clear','Unused downloads only','Restore backups and settings are kept'])
 
+    def confirm_remove_games(self,games):
+        games=[g for g in games if g]
+        if not games:
+            self.toast('Select games to remove from the library.');return
+        if len(games)==1:return self.confirm_remove_game(games[0])
+        body=('Their game files stay where they are, and Rescan won\u2019t bring them back. '
+              'Restore them any time from Removed games.')
+        dialog=Adw.AlertDialog(heading=f'Remove {len(games)} games from the library?',body=body)
+        dialog.add_response('cancel','Cancel');dialog.add_response('remove','Remove')
+        dialog.set_response_appearance('remove',Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response('cancel');dialog.set_close_response('cancel')
+        def chosen(_dialog,response):
+            if response!='remove':return
+            removed=list(self.settings.get('removed_games') or [])
+            for game in games:
+                if game['game'] not in removed:removed.append(game['game'])
+                self.selected_game_ids.discard(game['game'])
+            self.settings['removed_games']=removed
+            if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
+            self.show_games(self.games,art=False)
+            self.toast(f'{len(games)} games removed from the library.')
+        dialog.connect('response',chosen)
+        dialog.present(self)
+
+    def show_removed_games(self):
+        removed=list(self.settings.get('removed_games') or [])
+        if not removed:
+            self.toast('No games have been removed.');return
+        body='\n'.join(Path(p).name for p in removed[:12])+('\n\u2026' if len(removed)>12 else '')
+        dialog=Adw.AlertDialog(heading=f'{len(removed)} removed game'+('s' if len(removed)!=1 else ''),body=body)
+        dialog.add_response('close','Close');dialog.add_response('restore','Restore All')
+        dialog.set_response_appearance('restore',Adw.ResponseAppearance.SUGGESTED)
+        dialog.connect('response',lambda _d,r:self.restore_removed_games() if r=='restore' else None)
+        dialog.present(self)
+
     def confirm_remove_game(self,game):
         """Hide a game from the library without touching its files or rtxForge setup."""
         body=('Its game files stay where they are, and Rescan won\u2019t bring it back. '
@@ -11876,6 +12040,7 @@ class Window(Adw.ApplicationWindow):
         )
 
         f=detail_footer
+        f.add_css_class('detail-footer')
         f.add_css_class(
             'detail-footer'
         )
@@ -11930,6 +12095,8 @@ class Window(Adw.ApplicationWindow):
             try:image.set_paintable(Gdk.Texture.new_from_filename(game['hero']))
             except Exception:pass
         banner.set_child(image);shade=Gtk.Box();shade.add_css_class('banner-shade');banner.add_overlay(shade)
+        # Cover the picture's last pixel row so the hero meets the page seamlessly.
+        edge=Gtk.Box(valign=Gtk.Align.END,can_target=False);edge.add_css_class('banner-edge');banner.add_overlay(edge)
         self.detail_game=game['game'];self.detail_dialog=d;self.detail_banner=image
 
         def detail_closed(*_):
@@ -12288,11 +12455,9 @@ class Window(Adw.ApplicationWindow):
         # Add close control last so no hero overlay can intercept it.
         if not isinstance(d,EmbeddedDetails):
             banner.add_overlay(close_holder)
-        pages=Gtk.Stack(
-            transition_type=Gtk.StackTransitionType.CROSSFADE,
-            transition_duration=220,
-            hexpand=True,
-        )
+        # Adw.ViewStack so the inline Details view can use libadwaita's native
+        # Adw.InlineViewSwitcher (the GTK equivalent of the Windows pivot).
+        pages=Adw.ViewStack(hexpand=True,enable_transitions=True)
         pages.set_vhomogeneous(
             False
         )
@@ -12396,7 +12561,7 @@ class Window(Adw.ApplicationWindow):
             pages.add_titled(
                 page,
                 name,
-                name,
+                'Presets' if name=='Features' else name,
             )
 
             nav_row=Gtk.ListBoxRow()
@@ -12478,9 +12643,13 @@ class Window(Adw.ApplicationWindow):
 
         if isinstance(d,EmbeddedDetails):
             sidebar.set_visible(False)
-            tabs=Gtk.StackSwitcher(stack=pages,halign=Gtk.Align.CENTER)
-            tab_scroll=Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.AUTOMATIC,vscrollbar_policy=Gtk.PolicyType.NEVER)
-            tab_scroll.set_child(tabs)
+            # Windows GamePage pivot, built on libadwaita's native inline switcher:
+            # flat text tabs, left-aligned, the selected one in the game's accent.
+            tabs=Adw.InlineViewSwitcher(stack=pages,halign=Gtk.Align.START,display_mode=Adw.InlineViewSwitcherDisplayMode.LABELS,homogeneous=False)
+            tabs.add_css_class('flat');tabs.add_css_class('detail-tabs')
+            if game.get('accent_class'):tabs.add_css_class(game['accent_class'])
+            tab_scroll=Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.EXTERNAL,vscrollbar_policy=Gtk.PolicyType.NEVER,propagate_natural_height=True)
+            tab_scroll.set_child(tabs);tab_scroll.add_css_class('detail-tab-bar')
             main.insert_child_after(tab_scroll,detail_window_handle)
         self.detail_pages=pages
         self.detail_fit_page=fit_detail_page

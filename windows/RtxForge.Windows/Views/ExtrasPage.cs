@@ -24,7 +24,7 @@ public sealed partial class ExtrasPage : Page
         // The three one-button tools share a row; the two longer tools pair below, so
         // neither row leaves a short card beside a tall one.
         var actions = new PresetColumns(300, 3) { ColumnSpacing = 16, RowSpacing = 16, Margin = new Thickness(0, 12, 0, 0) };
-        actions.Children.Add(Card("Update the rtxForge Overlay", "Bring the in-game overlay in your installed games up to date. Tuning and restore backups are kept.",
+        actions.Children.Add(Card("Update the rtxForge Overlay", "Bring the in-game overlay in your installed games up to date. Your tuning, NR model and restore backups are kept.",
             engine is null ? null : new OverlayUiReviewView(engine, packages: true)));
         actions.Children.Add(Card("Update DLSS files", "Replace older DLSS files across your library. Originals are backed up.",
             Action("Review games", "", () => shell.LaunchAction("update-dlss", shell.Games.Where(g => !g.Blocked).ToList()))));
@@ -34,9 +34,9 @@ public sealed partial class ExtrasPage : Page
 
         var tools = new PresetColumns(420, 2) { ColumnSpacing = 16, RowSpacing = 16, Margin = new Thickness(0, 8, 0, 0) };
         tools.Children.Add(Card("One-time changes", "Turn neural rendering or frame generation on or off, or set the multiplier, in every game with a package installed.",
-            engine is null ? null : new GlobalControlsView(engine, settingsRows: true)));
+            engine is null ? null : new GlobalControlsView(engine, settingsRows: true), pinToBottom: false));
         tools.Children.Add(Card("App storage", "Downloads, backups and caches rtxForge keeps. Clean up what no game needs.",
-            engine is null ? null : new AppStorageView(shell, engine)));
+            engine is null ? null : new AppStorageView(shell, engine), pinToBottom: false));
         page.Children.Add(tools);
 
         Content = new ScrollViewer { Content = page, HorizontalScrollMode = ScrollMode.Disabled };
@@ -52,14 +52,15 @@ public sealed partial class ExtrasPage : Page
     }
 
     /// <summary>
-    /// A tool card that fills its row, with the tool pinned to the bottom so buttons
-    /// line up across a row. Preview mode shows it without engine-backed controls.
+    /// A tool card that fills its row. A one-button tool is pinned to the bottom so buttons
+    /// line up across a row; a tool with stacked rows stays under its heading. Preview mode
+    /// shows it without engine-backed controls.
     /// </summary>
-    static Border Card(string title, string description, UIElement? tool)
+    static Border Card(string title, string description, UIElement? tool, bool pinToBottom = true)
     {
         var content = new Grid { RowSpacing = 12 };
-        content.RowDefinitions.Add(new() { Height = new GridLength(1, GridUnitType.Star) });
-        content.RowDefinitions.Add(new() { Height = GridLength.Auto });
+        content.RowDefinitions.Add(new() { Height = pinToBottom ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
+        content.RowDefinitions.Add(new() { Height = pinToBottom ? GridLength.Auto : new GridLength(1, GridUnitType.Star) });
         var heading = new StackPanel { Spacing = 4 };
         heading.Children.Add(Prefs.Label(title, "ForgeHeadingTextStyle"));
         heading.Children.Add(Prefs.Label(description, "ForgeCaptionDimTextStyle"));

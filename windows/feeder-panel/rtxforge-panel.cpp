@@ -16,8 +16,8 @@
 #include <cstdio>
 #include <cstdlib>
 
-extern "C" __declspec(dllexport) const char *NAME = "rtxForge panel";
-extern "C" __declspec(dllexport) const char *DESCRIPTION = "rtxForge's in-game panel for Feeder NR games.";
+extern "C" __declspec(dllexport) const char *NAME = "rtxForge Overlay";
+extern "C" __declspec(dllexport) const char *DESCRIPTION = "The rtxForge Overlay.";
 
 namespace
 {

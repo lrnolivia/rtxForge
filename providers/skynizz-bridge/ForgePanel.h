@@ -568,7 +568,8 @@ inline bool ChoiceList(const char* label, int* current, const char* const items[
             }
             else
             {
-                const bool percent = !advanced || std::strcmp(field.key,"work_scale") == 0;
+                // Strengths read 0.00-2.00 as in Presets; only model resolution is a percentage.
+                const bool percent = std::strcmp(field.key,"work_scale") == 0;
                 auto shown = percent ? value * 100.f : value;
                 std::snprintf(text, sizeof(text), percent ? "%.0f%%" : "%.2f", shown); SliderBegin(text);
                 if(ImGui::SliderFloat("##value", &shown, percent ? field.low*100 : field.low, percent ? field.high*100 : field.high, "", ImGuiSliderFlags_AlwaysClamp))

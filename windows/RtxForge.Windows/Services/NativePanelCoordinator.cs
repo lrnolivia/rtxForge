@@ -157,7 +157,7 @@ internal sealed class NativePanelCoordinator : IDisposable
                 case "overlay_controls": s.OverlayControls = value.GetValue<bool>() ? "classic" : "unified"; break;
                 case "overlay_renderer":
                     var renderer = value.GetValue<string>();
-                    if (renderer is not ("game" or "rtxforge" or "optiscaler")) throw new InvalidOperationException("Choose an available overlay.");
+                    if (renderer is not ("game" or "optiscaler")) throw new InvalidOperationException("Choose an available overlay.");
                     s.OverlayRenderer = renderer; break;
                 case "panel_binding":
                     var code = value["key"]?.GetValue<int>() ?? -1; var modifiers = value["modifiers"]?.GetValue<int>() ?? -1;

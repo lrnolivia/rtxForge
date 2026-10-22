@@ -124,7 +124,6 @@ public sealed partial class SettingsPage : Page
             Settings.CopyOverlayFrom(fresh);
             shell.ConfigureCompanionShortcut();
         }, shell.Service as EngineForgeService, groupCards: true);
-        overlay.Groups[^1].Add(Prefs.Row("Open overlay", "Automatically connects to a supported running game.", Prefs.ActionButton("Open", (_, _) => shell.OpenCompanion()), ""));
 
         var globalControls = new PreferencesGroup("One-time changes", "Review a bulk change to games with packages installed.");
         if (shell.Service is EngineForgeService globalEngine)

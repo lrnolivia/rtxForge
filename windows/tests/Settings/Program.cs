@@ -89,7 +89,7 @@ for (uint modifiers = 0; modifiers < 16; modifiers++)
 }
 Console.WriteLine($"PASS: Delete default, retired Insert/End migration, unchanged other overlays and {shortcutCount} custom binding round trips; reserved/malformed shortcuts refused.");
 foreach (var controls in new[] { "unified", "classic" })
-foreach (var renderer in new[] { "rtxforge", "optiscaler" })
+foreach (var renderer in new[] { "game", "optiscaler" })
 {
     var original = new ForgeSettings { OverlayControls = controls, OverlayRenderer = renderer, OptiScalerHotkey = "F8", NrStrength = 1.25 };
     var saved = JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(original))!;
@@ -98,7 +98,9 @@ foreach (var renderer in new[] { "rtxforge", "optiscaler" })
     if (manager.OverlayControls != controls || manager.OverlayRenderer != renderer || manager.OptiScalerHotkey != "F8"
         || manager.NrStrength != .75 || manager.RuntimeProvider != "feeder") throw new Exception("Overlay preferences changed game tuning");
 }
-Console.WriteLine("PASS: renderer/layout/native shortcut persistence and overlay-only merge preserve tuning.");
+if (JsonSerializer.Deserialize<ForgeSettings>("{\"overlay_renderer\":\"rtxforge\"}")!.OverlayRenderer != "game")
+    throw new Exception("The retired desktop overlay did not migrate to the in-game panel");
+Console.WriteLine("PASS: renderer/layout/native shortcut persistence and overlay-only merge preserve tuning; the retired desktop overlay reads as the in-game panel.");
 
 var firstGame = new Game { Id = "full", Name = "Full" };
 var otherGame = new Game { Id = "partial", Name = "Partial" };

@@ -72,13 +72,14 @@ Name: "gamemodeicon"; Description: "Add an ""rtxForge Game Mode"" shortcut (full
 ; newer engine dropped can never be imported by mistake.
 Type: filesandordirs; Name: "{app}\engine"
 Type: filesandordirs; Name: "{app}\python"
+; The rtxForge Overlay lives in each game; the desktop overlay window is retired.
+Type: files; Name: "{autoprograms}\rtxForge Overlay.lnk"
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\rtxForge"; Filename: "{app}\rtxForge.exe"
-Name: "{autoprograms}\rtxForge Overlay"; Filename: "{app}\rtxForge.exe"; Parameters: "--controls"
 Name: "{autoprograms}\rtxForge Game Mode"; Filename: "{app}\rtxForge.exe"; Parameters: "--game-mode"; Tasks: gamemodeicon
 Name: "{autodesktop}\rtxForge"; Filename: "{app}\rtxForge.exe"; Tasks: desktopicon
 

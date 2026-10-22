@@ -110,7 +110,6 @@
                                 <FontIcon Glyph="&#xE712;" FontSize="14" />
                                 <Button.Flyout>
                                     <MenuFlyout Placement="BottomEdgeAlignedRight">
-                                        <MenuFlyoutItem Text="Live NR + MFG controls" Click="OnCompanion"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE713;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
                                         <MenuFlyoutItem x:Name="UpdateDlssItem" Text="Update DLSS" Click="OnUpdateDlss"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8AB;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
                                         <MenuFlyoutItem x:Name="AdoptionItem" Text="Adopt with rtxForge" Click="OnAdoption" />
                                         <MenuFlyoutItem x:Name="OfflineLaunchItem" Text="Launch offline" Click="OnLaunchOffline" />

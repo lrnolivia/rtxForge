@@ -234,7 +234,6 @@ public sealed partial class GameModeView
     {
         var rows = new List<UIElement>
         {
-            ui.RowButton("Live NR + MFG controls", null, () => { CloseModal(); shell.OpenCompanion(g); }),
             ui.RowButton("Update DLSS", null, () => { CloseModal(); _ = RunOperationAsync("update-dlss", [g]); }, enabled: !g.Blocked),
         };
         if (g.AdoptionAvailable) rows.Add(ui.RowButton("Adopt with rtxForge", null, () => { CloseModal(); _ = shell.ReviewAdoptionAsync([g]); }));

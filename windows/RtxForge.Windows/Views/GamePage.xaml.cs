@@ -184,7 +184,6 @@ public sealed partial class GamePage : Page
     void OnInstall(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("install", [game]);
     void OnRestore(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("uninstall", [game]);
     void OnUpdateDlss(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("update-dlss", [game]);
-    void OnCompanion(object sender, RoutedEventArgs e) => shell.OpenCompanion(game);
     void OnAdoption(object sender, RoutedEventArgs e) => _ = shell.ReviewAdoptionAsync([game]);
     void OnLaunchOffline(object sender, RoutedEventArgs e) => _ = shell.LaunchOfflineAsync(game);
     void OnRemoveFromLibrary(object sender, RoutedEventArgs e) => _ = shell.ConfirmRemoveLibraryEntriesAsync([game]);

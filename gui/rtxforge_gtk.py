@@ -570,6 +570,7 @@ def artwork_accent(path,color=None,muted=False):
 
         provider.load_from_data((
             f'.review-game.{name} .review-bezel {{ border-color: {color}; }} '
+            f'.extras-row.{name} .extras-art {{ border-color: {color}; }} '
             f'.{name} button.hero-install {{ background: {color}; color: {accent_dark}; }} '
             f'.{name} button.hero-install:hover {{ background: mix({color},white,0.08); }} '
             f'.artwork-editor.{name} .artwork-preview {{ border-color: {color}; }} '
@@ -2803,6 +2804,12 @@ button.dlss-outline:active { background: alpha(@window_fg_color,0.25); }
 .subset-badge.available { background: alpha(@success_color,0.18); color: @success_color; }
 .subset-badge.unavailable { background: alpha(currentColor,0.08); color: alpha(currentColor,0.6); }
 .overview-fact-icon { margin-right: 6px; }
+/* Extras rows: Windows settings-card padding and the 98x46 capsule in a 2px accent bezel. */
+.extras-list > row.extras-row { min-height: 68px; }
+.extras-list.boxed-list-separate > row { margin-bottom: 4px; }
+.extras-list.boxed-list-separate > row:last-child { margin-bottom: 0; }
+.extras-art { border: 2px solid alpha(@window_fg_color,0.15); border-radius: 8px; min-width: 94px; min-height: 42px; margin-right: 12px; }
+.extras-list { margin-top: 8px; }
 button.hero-restore image { color: #ff928c; }
 .overview-facts flowboxchild { padding: 0; }
 .overview-banner { border-radius: 8px; }
@@ -5742,21 +5749,24 @@ class Window(Adw.ApplicationWindow):
         title=label('Extras','forge-page-title');title.set_xalign(0);heading.append(title)
         intro=label('Manage standalone tools and NR diagnostics for each game.','dim-label');intro.set_xalign(0);heading.append(intro)
         column.append(heading)
-        group=Adw.PreferencesGroup()
+        # Windows Prefs.Row cards: one card per game, 4px apart (libadwaita boxed-list-separate).
+        group=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        group.add_css_class('boxed-list-separate');group.add_css_class('extras-list')
         column.append(group)
         page=self.page_column(column)
         if not self.games:
-            group.add(label('Your games appear here after the library scan.','dim-label'))
+            column.append(label('Your games appear here after the library scan.','dim-label'))
         for game in self.games:
             status=(game.get('profile') or 'Configured') if game.get('installed') else ('Unsupported' if game.get('blocked') else 'Not installed')
             item=row(game['name'],status)
-            self.add_game_art_prefix(item,game)
+            item.add_css_class('extras-row')
+            self.add_game_art_prefix(item,game,css='extras-art')
             diagnose=button('Diagnose NR',lambda _,g=game:self.show_diagnostics(g))
             diagnose.set_valign(Gtk.Align.CENTER);diagnose.set_sensitive(bool(game.get('installed')))
             tools=button('Tools',lambda _,g=game:(self.details(g),self.detail_pages.set_visible_child_name('Tools')))
             tools.set_valign(Gtk.Align.CENTER)
             item.add_suffix(diagnose);item.add_suffix(tools)
-            group.add(item)
+            group.append(item)
         if old is not None:self.page_stack.remove(old)
         self.page_stack.add_named(page,'extras')
 
@@ -6105,10 +6115,11 @@ class Window(Adw.ApplicationWindow):
     def review_game(self,name,game_id=None):
         return next((g for g in self.games if (game_id and g['game']==game_id) or g['name']==name),None)
 
-    def add_game_art_prefix(self,entry,game):
+    def add_game_art_prefix(self,entry,game,css=None):
         art=ListArtwork()
         art.set_artwork(capsule_art_path(game) if game else None)
-        art.picture.set_content_fit(Gtk.ContentFit.CONTAIN)
+        art.picture.set_content_fit(Gtk.ContentFit.COVER if css else Gtk.ContentFit.CONTAIN)
+        if css:art.add_css_class(css);art.set_overflow(Gtk.Overflow.HIDDEN)
         art.button.set_can_target(False)
         art.button.set_focusable(False)
         art.set_valign(Gtk.Align.CENTER)

@@ -57,7 +57,8 @@ def catalog(host=None):
                  and host.get('architecture', '').lower() in ('x86_64', 'amd64')
                  and host.get('ready') is True)
     rows = []
-    for key in ('dlss-unlocked', 'y4my'):
+    # y4my's MFG stays at 2x on RTX 40 under Windows; DLSS-Unlocked is the alternative there.
+    for key in ('dlss-unlocked',) if host.get('system') == 'Windows' else ('dlss-unlocked', 'y4my'):
         record = locks[key]
         rows.append({
             'id': key, 'name': record['name'], 'version': record['tag'],

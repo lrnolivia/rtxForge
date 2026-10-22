@@ -216,11 +216,13 @@ public sealed class ForgeSettings
     /// <summary>
     /// The package for games with DLSS. Games without DLSS use Feeder NR automatically, so the
     /// retired Feeder-only choice ("feeder") reads as Skynizz, the Feeder route's DLSS partner.
+    /// y4my is no longer offered on Windows (its MFG stays at 2x on RTX 40), so it reads as Skynizz
+    /// too; games already installed with y4my keep repairing and restoring from their records.
     /// </summary>
     [JsonPropertyName("runtime_provider")] public string RuntimeProvider
     {
         get => runtimeProvider;
-        set => runtimeProvider = value == "feeder" ? "skynizz" : value;
+        set => runtimeProvider = value is "feeder" or "y4my" ? "skynizz" : value;
     }
     [JsonPropertyName("nr_runtime")] public string NrRuntime { get; set; } = "";
     /// <summary>

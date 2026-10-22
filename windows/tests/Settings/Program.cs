@@ -100,6 +100,8 @@ foreach (var renderer in new[] { "game", "optiscaler" })
 }
 if (JsonSerializer.Deserialize<ForgeSettings>("{\"runtime_provider\":\"feeder\"}")!.RuntimeProvider != "skynizz")
     throw new Exception("The retired Feeder-only package choice did not migrate to a DLSS package");
+if (JsonSerializer.Deserialize<ForgeSettings>("{\"runtime_provider\":\"y4my\"}")!.RuntimeProvider != "skynizz")
+    throw new Exception("The hidden y4my package choice did not migrate to Skynizz on Windows");
 if (JsonSerializer.Deserialize<ForgeSettings>("{\"overlay_renderer\":\"rtxforge\"}")!.OverlayRenderer != "game")
     throw new Exception("The retired desktop overlay did not migrate to the in-game panel");
 Console.WriteLine("PASS: renderer/layout/native shortcut persistence and overlay-only merge preserve tuning; the retired desktop overlay reads as the in-game panel.");

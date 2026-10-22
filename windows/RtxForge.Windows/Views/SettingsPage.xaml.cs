@@ -1,4 +1,4 @@
-using Microsoft.UI.Xaml;
+﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using RtxForge.Windows.Controls;
 using RtxForge.Windows.Models;
@@ -13,7 +13,7 @@ namespace RtxForge.Windows.Views;
 public sealed partial class SettingsPage : Page
 {
     // The package for games with DLSS; games without DLSS use Feeder automatically.
-    static readonly string[] ProviderKeys = ["skynizz", "dlss-unlocked", "y4my"];
+    static readonly string[] ProviderKeys = ["skynizz", "dlss-unlocked"];
     static readonly string[] Modes = ["nr-only", "mfg-only", "nr-mfg"];
     static readonly string[] Views = ["posters", "capsules", "list"];
 
@@ -61,7 +61,7 @@ public sealed partial class SettingsPage : Page
         // ----- Graphics -----
         var graphics = new PreferencesGroup("Package", "Restore original files before switching providers.");
         var (row, provider) = Prefs.ComboRow("Package for DLSS games", "Supplies NR and MFG in games with native DLSS. Games without DLSS use Feeder NR automatically.",
-            ["Skynizz NR + MFG bridge", "DLSS-Unlocked", "y4my Multipass"], Array.IndexOf(ProviderKeys, Settings.RuntimeProvider), "");
+            ["Skynizz NR + MFG bridge", "DLSS-Unlocked"], Array.IndexOf(ProviderKeys, Settings.RuntimeProvider), "");
         graphics.Add(row);
         (row, var nrPath) = Prefs.EntryRow("Local NR model DLL", "Compatible nvngx_dlssnr.dll. Required for Skynizz unless a suitable model is already beside the game executable.",
             Settings.NrRuntime, @"C:\path\to\nvngx_dlssnr.dll", "");
@@ -96,14 +96,6 @@ public sealed partial class SettingsPage : Page
                 Notice.Title = "Feeder provides NR Only.";
                 Notice.Message = "Frame generation is unavailable for this route.";
                 Notice.IsOpen = true;
-            }
-            if (selectedProvider == "y4my" && selectedMode == "nr-only")
-            {
-                profile.SelectedIndex = Array.IndexOf(Modes, "mfg-only");
-                Notice.Title = "NR Only requires DLSS-Unlocked.";
-                Notice.Message = "Default Mode was changed to MFG Only.";
-                Notice.IsOpen = true;
-                selectedMode = "mfg-only";
             }
             var providerChanged = Settings.RuntimeProvider != selectedProvider;
             Settings.RuntimeProvider = selectedProvider;

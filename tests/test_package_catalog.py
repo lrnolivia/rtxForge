@@ -63,6 +63,10 @@ class PackageCatalogTests(unittest.TestCase):
     def test_catalog_uses_existing_pins(self):
         rows=pc.catalog({'system':'Linux','architecture':'x86_64','ready':True})
         self.assertTrue(rows[0]['recommended']);self.assertEqual(len(rows[0]['sha256']),64)
+    def test_y4my_is_offered_on_linux_only(self):
+        ids=lambda system:{x['id'] for x in pc.catalog({'system':system,'architecture':'x86_64','ready':True})}
+        self.assertIn('y4my',ids('Linux'))
+        self.assertNotIn('y4my',ids('Windows'));self.assertIn('dlss-unlocked',ids('Windows'))
 
 class CustomDeploymentBoundaryTests(PackageCatalogTests):
     def fixture(self,extra=None):

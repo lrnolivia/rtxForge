@@ -223,7 +223,15 @@ public sealed class ForgeSettings
         set => runtimeProvider = value == "feeder" ? "skynizz" : value;
     }
     [JsonPropertyName("nr_runtime")] public string NrRuntime { get; set; } = "";
-    [JsonPropertyName("skynizz_version")] public string SkynizzVersion { get; set; } = "latest";
+    /// <summary>
+    /// The app ships one compiled Skynizz bridge, so new installs always use it; a release saved by an
+    /// earlier app reads as "latest". Repairs keep each game's recorded release.
+    /// </summary>
+    [JsonPropertyName("skynizz_version")] public string SkynizzVersion
+    {
+        get => "latest";
+        set { }
+    }
     [JsonPropertyName("mfg_provider")] public string MfgProvider { get; set; } = "universal";
     /// <summary>Absent in files saved before Universal MFG replaced the integrated bridge as the default (revision 1).</summary>
     [JsonPropertyName("mfg_default_revision")] public int? MfgDefaultRevision { get; set; }

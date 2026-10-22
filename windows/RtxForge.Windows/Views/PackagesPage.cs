@@ -156,18 +156,6 @@ public sealed partial class PackagesPage : Page
     StackPanel SkynizzSettings(PackageCatalog catalog)
     {
         var settings = new StackPanel { Spacing = 12 };
-        var release = catalog.Packages.FirstOrDefault(p => p.Id == "skynizz")?.Version.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-        var releases = new List<string> { "latest" };
-        var captions = new List<string> { "Latest supported (recommended)" };
-        if (release is not null && release.StartsWith('v') && Version.TryParse(release[1..], out _))
-        {
-            releases.Add(release); captions.Add(release + " · keep this release");
-        }
-        var saved = shell.Settings.SkynizzVersion;
-        var savedOnly = !releases.Contains(saved);
-        if (savedOnly) { releases.Add(saved); captions.Add("Saved release · " + saved); }
-        settings.Children.Add(Choice("Release", "Repairs keep each game's installed release. New installs use this selection.", captions,
-            releases.IndexOf(saved), index => shell.Settings.SkynizzVersion = releases[index], savedOnly ? captions.Count - 1 : -1));
         settings.Children.Add(Choice("NR model preset", "Performance (B) uses preset 2 with compatible 310.9.16 models.",
             ["Automatic", "Legacy (A)", "Performance (B)"], Math.Clamp(shell.Settings.NrPreset ?? 0, 0, 2),
             index => shell.Settings.NrPreset = index));

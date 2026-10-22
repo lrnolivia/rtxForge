@@ -24,7 +24,7 @@ public sealed class OperationDialog
     readonly ContentDialog dialog;
     Stage stage = Stage.Review;
     CancellationTokenSource? cancel;
-    bool closed;
+    bool closed, completed;
 
     // One step layout for checking and progress (OperationStepPanel).
     readonly OperationStepPanel checkingPanel = new();
@@ -56,14 +56,15 @@ public sealed class OperationDialog
         };
     }
 
-    /// <summary>Review, then run with progress, then report. Returns when the dialog closes.</summary>
-    public static async Task ShowAsync(MainWindow shell, string operation, IReadOnlyList<Game> targets, Tuning values)
+    /// <summary>Review, then run with progress, then report. Returns when the dialog closes: true when the reviewed run completed.</summary>
+    public static async Task<bool> ShowAsync(MainWindow shell, string operation, IReadOnlyList<Game> targets, Tuning values)
     {
         var flow = new OperationDialog(shell, operation, targets, values);
         flow.ShowChecking();
         var shown = flow.dialog.ShowAsync();
         await flow.PrepareAsync();
         await shown;
+        return flow.completed;
     }
 
     /// <summary>"Install Features" presets step that precedes the review (Linux: _presets_confirmed).</summary>
@@ -329,6 +330,7 @@ public sealed class OperationDialog
         try
         {
             var count = await shell.ExecuteAsync(review!, progress, cancel.Token);
+            completed = true;
             progressPanel.Complete();
             ShowDone(true, $"{count} game{(count == 1 ? "" : "s")} updated.");
         }

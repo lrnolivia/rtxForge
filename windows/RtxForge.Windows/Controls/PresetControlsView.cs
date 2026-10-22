@@ -69,9 +69,14 @@ public sealed class PresetControlsView : UserControl
             var root = new StackPanel { Spacing = 24 };
             root.Children.Add(Card(MfgControls()));
             var primary = new PresetColumns(560, 2) { ColumnSpacing = 24, RowSpacing = 24 };
+            // Left column: DLSS presets, then Neural rendering. Stacked, the order reads
+            // MFG, DLSS presets, Neural rendering, Image tuning, Sharpening, Performance.
+            var first = new StackPanel { Spacing = 24 };
+            var upscaling = Section("DLSS presets", "Applies when the game next starts DLSS. Game default keeps the game's own choice.");
+            upscaling.Children.Add(Pair(Field("dlss_preset"), Field("rr_preset"))); first.Children.Add(Card(upscaling));
             var nr = Section("Neural rendering");
             nr.Children.Add(Field("enabled")); nr.Children.Add(Field("style")); nr.Children.Add(Field("intensity"));
-            nr.Children.Add(Pair(Field("preset"), Field("passes"))); primary.Children.Add(Card(nr));
+            nr.Children.Add(Pair(Field("preset"), Field("passes"))); first.Children.Add(Card(nr)); primary.Children.Add(first);
             var image = Section("Image tuning");
             image.Children.Add(Pair(Field("detail"), Field("colour")));
             var fine = new StackPanel { Spacing = 16 };
@@ -91,8 +96,6 @@ public sealed class PresetControlsView : UserControl
                 performance.Children.Add(i + 1 < fields.Length ? Pair(Field(fields[i]), Field(fields[i + 1])) : Field(fields[i]));
             secondary.Children.Add(Card(Disclosure("Performance", performance)));
             primary.Children.Add(secondary); root.Children.Add(primary);
-            var upscaling = Section("DLSS presets", "Applies when the game next starts DLSS. Game default keeps the game's own choice.");
-            upscaling.Children.Add(Pair(Field("dlss_preset"), Field("rr_preset"))); root.Children.Add(Card(upscaling));
             Content = root;
         }
         RefreshAvailability();

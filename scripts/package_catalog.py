@@ -66,7 +66,7 @@ def catalog(host=None):
             'sha256': record['sha256'], 'available': supported,
             'reason': ('Ready to review for your system' if supported else
                        host.get('reason') or 'Verify a supported NVIDIA system first'),
-            'summary': ('Native MFG path; NR needs per-game verification' if key == 'dlss-unlocked'
+            'summary': ('NR and native MFG in one OptiScaler package' if key == 'dlss-unlocked'
                         else 'Alternative OptiScaler package; a local NR model may be needed'),
             # On Windows, Skynizz + Universal MFG is the flagship. Linux has not tested it yet.
             'recommended': key == 'dlss-unlocked' and supported and host.get('system') != 'Windows',
@@ -266,12 +266,10 @@ def load_custom_payload(record):
 
 
 def community_sources():
-    """Discovery links, explicitly separate from tested deployment adapters."""
+    """Discovery links for projects rtxForge doesn't install. Packages it installs are not listed here."""
     return [
-        {'name':'Universal MFG Unlocker 1.6.1','url':'https://github.com/dashdogy/MFG-Unlocker/releases/tag/v1.6.1',
-         'note':'Pinned integration candidate. Upstream RTX 30/40 support; RTX 20 and the RTX 30 OptiScaler DLSSG route remain experimental. Requires OptiScaler 10; no deployment adapter yet.'},
         {'name':'wilsjo2 · NR Pre-SR Multipass','url':'https://github.com/wilsjo2/OptiScaler-DLSSNR-PreSR-Multipass',
-         'note':'Experimental NR for RTX 20–50. Upstream support is not rtxForge runtime validation; custom-layout review required.'},
+         'note':'Experimental NR for RTX 20–50. rtxForge hasn\'t tested it and can\'t install it.'},
         {'name':'Dagherbou · OptiScaler DLSSNR','url':'https://github.com/Dagherbou/OptiScaler_DLSSNR',
-         'note':'Alternative NR branch. Proton behavior depends on the exact build; no deployment adapter is claimed.'},
+         'note':'Another OptiScaler NR branch. rtxForge hasn\'t tested it and can\'t install it.'},
     ]

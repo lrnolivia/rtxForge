@@ -69,21 +69,22 @@ public sealed class PresetControlsView : UserControl
             var root = new StackPanel { Spacing = 24 };
             root.Children.Add(Card(MfgControls()));
             var primary = new PresetColumns(560, 2) { ColumnSpacing = 24, RowSpacing = 24 };
-            // Left column: DLSS presets, then Neural rendering. Stacked, the order reads
-            // MFG, DLSS presets, Neural rendering, Image tuning, Sharpening, Performance.
+            // Left column: Neural rendering, then DLSS presets. Stacked, the order reads
+            // MFG, Neural rendering, DLSS presets, Image tuning, Sharpening, Performance.
             var first = new StackPanel { Spacing = 24 };
-            var upscaling = Section("DLSS presets", "Applies when the game next starts DLSS. Game default keeps the game's own choice.");
-            upscaling.Children.Add(Pair(Field("dlss_preset"), Field("rr_preset"))); first.Children.Add(Card(upscaling));
             var nr = Section("Neural rendering");
             nr.Children.Add(Field("enabled")); nr.Children.Add(Field("style")); nr.Children.Add(Field("intensity"));
-            nr.Children.Add(Pair(Field("preset"), Field("passes"))); first.Children.Add(Card(nr)); primary.Children.Add(first);
+            nr.Children.Add(Pair(Field("preset"), Field("passes"))); first.Children.Add(Card(nr));
+            var upscaling = Section("DLSS presets", "Applies when the game next starts DLSS. Game default keeps the game's own choice.");
+            upscaling.Children.Add(Pair(Field("dlss_preset"), Field("rr_preset"))); first.Children.Add(Card(upscaling)); primary.Children.Add(first);
             var image = Section("Image tuning");
             image.Children.Add(Pair(Field("detail"), Field("colour")));
             var fine = new StackPanel { Spacing = 16 };
             fine.Children.Add(Pair(Field("structure"), Field("tone")));
             fine.Children.Add(Pair(Field("skin"), Field("auto_mask")));
             image.Children.Add(Disclosure("Fine tuning", fine));
-            var secondary = new StackPanel { Spacing = 12 }; secondary.Children.Add(Card(image));
+            // Same gap as between the columns and the left column's cards, so spacing reads 1:1.
+            var secondary = new StackPanel { Spacing = 24 }; secondary.Children.Add(Card(image));
             var sharp = new StackPanel { Spacing = 16 };
             sharp.Children.Add(Field("sharpen")); sharp.Children.Add(Pair(Field("sharpen_shader"), Field("sharp_override")));
             sharp.Children.Add(Field("sharpness"));

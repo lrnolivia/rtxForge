@@ -13,7 +13,6 @@ namespace RtxForge.Windows.Views;
 public sealed partial class SettingsPage : Page
 {
     // The package for games with DLSS; games without DLSS use Feeder automatically.
-    static readonly string[] ProviderKeys = ["skynizz", "dlss-unlocked"];
     static readonly string[] Modes = ["nr-only", "mfg-only", "nr-mfg"];
     static readonly string[] Views = ["posters", "capsules", "list"];
 
@@ -59,17 +58,9 @@ public sealed partial class SettingsPage : Page
     void Build()
     {
         // ----- Graphics -----
-        var graphics = new PreferencesGroup("Package", "Restore original files before switching providers.");
-        var (row, provider) = Prefs.ComboRow("Package for DLSS games", "Supplies NR and MFG in games with native DLSS. Games without DLSS use Feeder NR automatically.",
-            ["Skynizz NR + MFG bridge", "DLSS-Unlocked"], Array.IndexOf(ProviderKeys, Settings.RuntimeProvider), "");
-        graphics.Add(row);
-        (row, var nrPath) = Prefs.EntryRow("Local NR model DLL", "Compatible nvngx_dlssnr.dll. Required for Skynizz unless a suitable model is already beside the game executable.",
-            Settings.NrRuntime, @"C:\path\to\nvngx_dlssnr.dll", "");
-        nrPath.LostFocus += (_, _) => { Settings.NrRuntime = nrPath.Text.Trim(); Save(); };
-        graphics.Add(row);
-
+        // Packages chooses the package and its files; Extras holds the library-wide tools.
         var installDefaults = new PreferencesGroup("Install defaults", "Changes to game files are reviewed before applying.");
-        (row, var manageFiles) = Prefs.SwitchRow("DLSS Files", "Update older DLSS files when installing features. Backups are kept for restoration.",
+        var (row, manageFiles) = Prefs.SwitchRow("DLSS Files", "Update older DLSS files when installing features. Backups are kept for restoration.",
             Settings.ManageDlssFiles, "");
         manageFiles.Toggled += (_, _) => { Settings.ManageDlssFiles = manageFiles.IsOn; Save(); };
         installDefaults.Add(row);
@@ -85,11 +76,10 @@ public sealed partial class SettingsPage : Page
         adopt.Toggled += (_, _) => { Settings.RecognizePrevious = adopt.IsOn; Save(); };
         existingFeatures.Add(row);
 
-        void ValidateProvider()
+        void ValidateMode()
         {
-            var selectedProvider = provider.SelectedIndex >= 0 ? ProviderKeys[provider.SelectedIndex] : Settings.RuntimeProvider;
             var selectedMode = Modes[Math.Max(0, profile.SelectedIndex)];
-            if (selectedProvider == "feeder" && selectedMode != "nr-only")
+            if (Settings.RuntimeProvider == "feeder" && selectedMode != "nr-only")
             {
                 profile.SelectedIndex = Array.IndexOf(Modes, "nr-only");
                 selectedMode = "nr-only";
@@ -97,15 +87,11 @@ public sealed partial class SettingsPage : Page
                 Notice.Message = "Frame generation is unavailable for this route.";
                 Notice.IsOpen = true;
             }
-            var providerChanged = Settings.RuntimeProvider != selectedProvider;
-            Settings.RuntimeProvider = selectedProvider;
             Settings.DefaultProfile = selectedMode;
             shell.Mode = selectedMode;
             shell.SaveSettings();
-            if (providerChanged) _ = shell.ScanAsync();
         }
-        provider.SelectionChanged += (_, _) => ValidateProvider();
-        profile.SelectionChanged += (_, _) => ValidateProvider();
+        profile.SelectionChanged += (_, _) => ValidateMode();
 
         // ----- Appearance -----
         (row, var borderless) = Prefs.SwitchRow("4K borderless on install", "Use 3840 × 2160 borderless in supported games. Review shows each change; Restore preserves later preferences.", Settings.Borderless4K, "");
@@ -117,11 +103,6 @@ public sealed partial class SettingsPage : Page
             Settings.CopyOverlayFrom(fresh);
             shell.ConfigureCompanionShortcut();
         }, shell.Service as EngineForgeService, groupCards: true);
-
-        var globalControls = new PreferencesGroup("One-time changes", "Review a bulk change to games with packages installed.");
-        if (shell.Service is EngineForgeService globalEngine)
-            globalControls.Add(new GlobalControlsView(globalEngine, settingsRows: true) { Margin = new Thickness(0, 12, 0, 20) });
-        else globalControls.Add(new TextBlock { Text = "Global controls are available in the installed app." });
 
         var appearance = new PreferencesGroup("Theme");
         var navigation = new PreferencesGroup("Navigation");
@@ -243,22 +224,16 @@ public sealed partial class SettingsPage : Page
         system.Add(Prefs.Row("Compatibility", shell.Hardware?.Reason ?? "Not checked", glyph: ""));
 
         // ----- Recovery -----
-        var recovery = new PreferencesGroup("Restore");
         var cleanup = new PreferencesGroup("Cleanup");
-        var appStorage = new PreferencesGroup("App storage");
-        if (shell.Service is EngineForgeService storageEngine)
-            appStorage.Add(new AppStorageView(shell, storageEngine));
-        else appStorage.Add(Prefs.Row("App data", "Storage usage is available in the installed app."));
         var reports = new PreferencesGroup("Reports");
         foreach (var (title, subtitle, caption, glyph, action) in new (string, string, string, string, Func<Task>)[]
         {
-            ("Previous changes", "Browse available recovery records.", "Browse", "", shell.ShowPreviousChangesAsync),
             ("Old NR files", "Review legacy files before removal.", "Review", "", shell.ReviewOldNrFilesAsync),
             ("Library reports", "View test notes and export a support report.", "Open", "", shell.ShowReportsAsync),
         })
         {
             var actionRow = Prefs.Row(title, subtitle, Prefs.ActionButton(caption, async (_, _) => await action()), glyph);
-            (title == "Previous changes" ? recovery : title == "Old NR files" ? cleanup : reports).Add(actionRow);
+            (title == "Old NR files" ? cleanup : reports).Add(actionRow);
         }
 
         // ----- About (Linux: Application group + About dialog) -----
@@ -268,14 +243,13 @@ public sealed partial class SettingsPage : Page
             Prefs.ActionButton("Check for updates", async (_, _) => await shell.CheckForUpdatesAsync()), ""));
 
         // Linux organize_pages(): one page per section. Windows shows them as SelectorBar tabs.
-        sections["Graphics"] = [graphics, installDefaults, existingFeatures];
+        sections["Graphics"] = [installDefaults, existingFeatures];
         sections["Overlay"] = overlay.Groups.ToArray();
-        sections["Global"] = [globalControls];
         sections["Appearance"] = [appearance, navigation, details];
         sections["Library"] = [libraryView, library, steamLibrary, reports];
         sections["Gaming Mode"] = [interfaceGroup, gameModeLayout, controller];
         sections["System"] = [system];
-        sections["Recovery"] = [appStorage, recovery, cleanup];
+        sections["Recovery"] = [cleanup];
         sections["About"] = [about];
         foreach (var name in sections.Keys)
             Sections.Items.Add(new SelectorBarItem { Text = name, Tag = name });

@@ -119,9 +119,9 @@ public sealed partial class PackagesPage : Page
     {
         var feeder = Section("Feeder setup", "Choose your local stack once; rtxForge keeps a verified copy, and installation copies ReShade, Feeder, RenoDX and shaders for you.");
         var paths = new PresetColumns(360, 2) { ColumnSpacing = 16, RowSpacing = 12 };
-        paths.Children.Add(FolderField("Local stack folder", "Your ReShade, Feeder, RenoDX and shader files. Only needed until rtxForge keeps a copy.",
+        paths.Children.Add(PathField("Local stack folder", "Your ReShade, Feeder, RenoDX and shader files. Only needed until rtxForge keeps a copy.",
             shell.Settings.FeederSource, path => shell.Settings.FeederSource = path));
-        paths.Children.Add(FolderField("Original backups folder", "Original manifests and backups used to recognize existing setups. rtxForge keeps verified copies.",
+        paths.Children.Add(PathField("Original backups folder", "Original manifests and backups used to recognize existing setups. rtxForge keeps verified copies.",
             shell.Settings.FeederBackups, path => shell.Settings.FeederBackups = path));
         feeder.Children.Add(paths);
         var kept = Prefs.Label("Checking stored Feeder files…", "ForgeCaptionDimTextStyle");
@@ -159,6 +159,8 @@ public sealed partial class PackagesPage : Page
         settings.Children.Add(Choice("NR model preset", "Performance (B) uses preset 2 with compatible 310.9.16 models.",
             ["Automatic", "Legacy (A)", "Performance (B)"], Math.Clamp(shell.Settings.NrPreset ?? 0, 0, 2),
             index => shell.Settings.NrPreset = index));
+        settings.Children.Add(PathField("Local NR model DLL", "Compatible nvngx_dlssnr.dll. Needed unless a suitable model is already beside the game executable.",
+            shell.Settings.NrRuntime, value => shell.Settings.NrRuntime = value));
         return settings;
     }
 
@@ -215,17 +217,33 @@ public sealed partial class PackagesPage : Page
         footer.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
         footer.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         var marks = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
-        var brush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
+        Microsoft.UI.Xaml.Media.Brush Resource(string key) => (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[key];
         foreach (var os in verified ?? [])
         {
-            var pill = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-            pill.Children.Add(OsMark.Create(os, 12, brush));
-            pill.Children.Add(Prefs.Label(CrossOs.Name(os), "ForgeCaptionDimTextStyle"));
-            var tip = "Tested in games on " + CrossOs.Name(os);
+            // Badges like the Details header's; the OS this PC runs is filled with the accent.
+            var current = os == "windows";
+            var ink = Resource(current ? "TextOnAccentFillColorPrimaryBrush" : "TextFillColorSecondaryBrush");
+            var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            line.Children.Add(OsMark.Create(os, 12, ink));
+            line.Children.Add(new TextBlock { Text = CrossOs.Name(os).ToUpperInvariant(), FontSize = 11, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Foreground = ink, VerticalAlignment = VerticalAlignment.Center });
+            var pill = new Border { Child = line, Padding = new Thickness(10, 4, 10, 4), CornerRadius = new CornerRadius(12),
+                Background = Resource(current ? "AccentFillColorDefaultBrush" : "ControlFillColorSecondaryBrush") };
+            var tip = "Tested in games on " + CrossOs.Name(os) + (current ? " · this PC" : "");
             ToolTipService.SetToolTip(pill, tip); Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(pill, tip);
             marks.Children.Add(pill);
         }
-        if (marks.Children.Count == 0) marks.Children.Add(Prefs.Label("Not yet tested in games", "ForgeCaptionDimTextStyle"));
+        if (marks.Children.Count == 0)
+        {
+            // Not yet tested in games: one friendly mark instead of a caveat sentence.
+            var label = new TextBlock { Text = "EXPERIMENTAL", FontSize = 11, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Foreground = Resource("SystemFillColorCautionBrush"), VerticalAlignment = VerticalAlignment.Center };
+            var pill = new Border { Child = label, Padding = new Thickness(10, 4, 10, 4), CornerRadius = new CornerRadius(12),
+                Background = Resource("SystemFillColorCautionBackgroundBrush") };
+            ToolTipService.SetToolTip(pill, "Experimental support");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(pill, "Experimental support");
+            marks.Children.Add(pill);
+        }
         footer.Children.Add(marks);
         action.HorizontalAlignment = HorizontalAlignment.Right; action.VerticalAlignment = VerticalAlignment.Center;
         Grid.SetColumn(action, 1); footer.Children.Add(action);
@@ -270,7 +288,7 @@ public sealed partial class PackagesPage : Page
         return field;
     }
 
-    UIElement FolderField(string title, string description, string value, Action<string> save)
+    UIElement PathField(string title, string description, string value, Action<string> save)
     {
         var field = new StackPanel { Spacing = 6 };
         field.Children.Add(new TextBlock { Text = title, TextWrapping = TextWrapping.Wrap });

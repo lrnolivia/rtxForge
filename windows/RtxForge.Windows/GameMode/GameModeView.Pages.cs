@@ -27,7 +27,7 @@ public sealed partial class GameModeView
         head.Children.Add(ui.H1("Presets", 1.4));
         head.Children.Add(ui.P("Your defaults for new installs. Review games to apply them to existing packages.", .78));
         page.Children.Add(head);
-        var fields = new StackPanel { Spacing = t.Px(16), Padding = new Thickness(t.Px(4), t.Px(4), t.Px(4), t.Px(8)) };
+        var fields = new StackPanel { Spacing = t.Px(24), Padding = new Thickness(t.Px(4), t.Px(4), t.Px(4), t.Px(8)) };
         Action? refreshFooter = null;
         var (rows, value) = PresetRows(shell.Settings.Presets, legacy: shell.Settings.RuntimeProvider != "skynizz", changed: () => refreshFooter?.Invoke(),
             dynamicSupported: shell.Settings.DynamicMfgSupported);
@@ -101,8 +101,8 @@ public sealed partial class GameModeView
         void UpdateReview()
         {
             review.IsEnabled = selected.Count > 0;
-            review.Background = GmTheme.B(review.IsEnabled ? GmTheme.Accent : t.Disabled);
-            review.Foreground = GmTheme.B(review.IsEnabled ? GmTheme.AccentInk : t.DisabledFg);
+            review.Background = GmTheme.B(review.IsEnabled ? ui.Accent : t.Disabled);
+            review.Foreground = GmTheme.B(review.IsEnabled ? ui.AccentInk : t.DisabledFg);
         }
         foreach (var game in games)
         {
@@ -283,10 +283,6 @@ public sealed partial class GameModeView
         {
             "Graphics" =>
             [
-                new("Packages", "One package for games with DLSS; Feeder NR for games without DLSS.",
-                [
-                    ui.RowButton("Package for DLSS games", ProviderName(), () => _ = ShowPackagesAsync(), description: "Choose the package installed in games with native DLSS. Restore a game's original files before switching its package."),
-                ]),
                 new("Install defaults", "Applied to new installs; game changes are reviewed first.",
                 [
                     Choice("Default mode", "Features selected when rtxForge starts.", modes, modes.Select(mode => mode switch { "nr-only" => "NR Only", "nr-mfg" => "NR + MFG", _ => "MFG Only" }).ToArray(),

@@ -15,7 +15,6 @@ public sealed partial class GameModeView
     Game? detailsGame;
     string detailsSection = "Overview";
     string? libraryFocusKey;
-    bool presetsExpanded;
     /// <summary>Unsaved Test Result choice on the Notes section (Choice re-renders the page).</summary>
     string? notesStatus;
     string? notesDraft;
@@ -26,7 +25,6 @@ public sealed partial class GameModeView
         libraryFocusKey = FocusKey(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject);
         detailsGame = game;
         detailsSection = "Overview";
-        presetsExpanded = false;
         notesStatus = null;
         notesDraft = null;
 
@@ -316,106 +314,75 @@ public sealed partial class GameModeView
     {
         switch (detailsSection)
         {
+            // Each section mirrors the desktop's Game Details (Views/GamePage.xaml.cs):
+            // the same groups, order, wording and glyphs, with controller-sized controls.
             case "Features":
+                SectionTitle(content, "Features", g.IsFeeder ? null
+                    : "Tuning values for this game. Reset restores your library presets. Apply saves them for this game.");
                 if (g.IsFeeder)
                 {
-                    SectionTitle(content, "Feeder NR", "Your existing tuning is preserved. Use ReShade's NR panel in the running game to adjust passes, resolution, tone and structure. Frame generation is unavailable for this route.");
-                    var feederActions = DetailColumns();
-                    foreach (var action in new[] {
-                        ui.RowButton("Update Feeder NR", null, () => _ = RunOperationAsync("install", [g]), glyph: "\uE896", enabled: !g.Blocked || g.AdoptionAvailable),
-                        ui.RowButton("Restore Original Files", null, () => _ = RunOperationAsync("uninstall", [g]), danger: true, glyph: "\uE7A7", enabled: g.Installed),
-                    }) feederActions.Children.Add(ui.Group([action], t.Card));
-                    content.Children.Add(feederActions);
+                    content.Children.Add(DetailFact("Feeder NR settings", "Your existing tuning is preserved. Use ReShade's NR panel in the running game to adjust passes, resolution, tone and structure.", glyph: ""));
                     break;
                 }
-                SectionTitle(content, "Features", g.InstalledOnLinux
-                    ? $"Saved: {g.Profile ?? "Configured"}. Installed with rtxForge on Linux; it already loads on Windows. Set Up for Windows hands it to rtxForge here to repair, retune or restore."
-                    : g.Installed
-                    ? $"Saved: {g.Profile ?? "Configured"}. The rendered effect still needs an in-game check."
-                    : g.Blocked ? g.BlockedReason ?? "This game is not supported." : "Not installed. Review every file change before installing.");
-                var expander = ui.Button(new Grid().With(row =>
-                {
-                    row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                    row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                    row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                    row.ColumnSpacing = t.Px(16);
-                    row.Children.Add(ui.Icon(presetsExpanded ? "" : "", 0.7));
-                    var label = ui.Text("Presets", 1, weight: FontWeights.SemiBold);
-                    Grid.SetColumn(label, 1);
-                    row.Children.Add(label);
-                    var state = ui.Text(presetsExpanded ? "Expanded" : "Collapsed", 0.7, t.Muted);
-                    Grid.SetColumn(state, 2);
-                    row.Children.Add(state);
-                }), () => { presetsExpanded = !presetsExpanded; Render(keepFocus: true); }, GmKind.Transparent, 1, radius: 12,
-                    padding: new Thickness(t.Px(18)), minHeight: 0);
-                expander.HorizontalAlignment = HorizontalAlignment.Stretch;
-                expander.HorizontalContentAlignment = HorizontalAlignment.Stretch;
-                Key(expander, "presets-expander");
-                content.Children.Add(expander);
-                if (presetsExpanded)
-                {
-                    var tuning = shell.GameTuning(g);
-                    var (rows, value) = PresetRows(tuning, g.Installed && !g.Blocked, g.RuntimeProvider != "skynizz", embedded: true,
-                        dynamicSupported: g.DynamicMfgAvailable);
-                    content.Children.Add(ui.P("Only this game changes. Review the changes before applying."));
-                    foreach (var row in rows) content.Children.Add(row);
-                    var apply = ui.Button("Apply to this game", () => _ = RunOperationAsync("apply", [g], value()), GmKind.Primary, 0.85,
-                        enabled: g.Installed && !g.Blocked);
-                    content.Children.Add(apply.With(b => b.HorizontalAlignment = HorizontalAlignment.Right));
-                }
-                SectionTitle(content, "Installation");
-                var installActions = DetailColumns(3);
-                foreach (var action in new[] {
-                    ui.RowButton(g.InstallLabel, null, () => _ = RunOperationAsync("install", [g]), glyph: "\uE896", enabled: !g.Blocked),
-                    ui.RowButton("Repair Feature Files", null, () => _ = RunOperationAsync("install", [g]), glyph: "\uE90F", enabled: g.Installed && !g.Blocked),
-                    ui.RowButton("Restore Original Files", null, () => _ = RunOperationAsync("uninstall", [g]), danger: true, glyph: "\uE7A7", enabled: g.Installed),
-                }) installActions.Children.Add(ui.Group([action], t.Card));
-                content.Children.Add(installActions);
+                var (presetRows, value) = PresetRows(shell.GameTuning(g), g.Installed && !g.Blocked, g.RuntimeProvider != "skynizz",
+                    dynamicSupported: g.DynamicMfgAvailable);
+                foreach (var row in presetRows) content.Children.Add(row);
+                var featureActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12), HorizontalAlignment = HorizontalAlignment.Right };
+                featureActions.Children.Add(ui.Button("Use library defaults", () => _ = RunOperationAsync("reset", [g]), GmKind.Card, 0.85,
+                    enabled: g.Installed && !g.Blocked).With(b => Key(b, "features-reset")));
+                featureActions.Children.Add(ui.Button("Apply to this game", () => _ = RunOperationAsync("apply", [g], value()), GmKind.Primary, 0.85,
+                    enabled: g.Installed && !g.Blocked).With(b => Key(b, "features-apply")));
+                content.Children.Add(featureActions);
                 break;
 
             case "DLSS Files":
-                SectionTitle(content, "DLSS Files", "Updater backups are previous copies, not proof of the version currently shipped by the game.");
-                content.Children.Add(DetailFact("Installed DLSS version", g.DlssVersion ?? "Checked during update", glyph: "\uE8A5"));
                 SectionTitle(content, "File Management");
-                var restoreDlss = ui.RowButton("Restore original DLSS files", null, () => _ = RestoreDlssAsync(g), danger: true, glyph: "\uE7A7", enabled: !g.Blocked);
                 var fileActions = DetailColumns();
-                foreach (var action in new[] {
-                    ui.RowButton("Update DLSS files", null, () => _ = RunOperationAsync("update-dlss", [g]), glyph: "\uE8AB", enabled: !g.Blocked),
-                    restoreDlss,
-                }) fileActions.Children.Add(ui.Group([action], t.Card));
+                fileActions.Children.Add(DetailFact("Update DLSS", "Update older DLSS files. Backups are kept for restoration.",
+                    ui.Button("Update", () => _ = RunOperationAsync("update-dlss", [g]), GmKind.Card, .8, enabled: !g.Blocked), ""));
+                var restoreDlss = ui.Button("Restore", () => _ = RestoreDlssAsync(g), GmKind.Card, .8, enabled: false);
+                var backupFact = DetailFact("Restore original DLSS files", "Checking for backups…", restoreDlss, "");
+                fileActions.Children.Add(backupFact);
                 content.Children.Add(fileActions);
+                SectionTitle(content, "Installed DLSS Files");
                 var inventory = new StackPanel { Spacing = t.Px(16) };
                 content.Children.Add(inventory);
-                _ = FillDlssInventoryAsync(g, inventory, restoreDlss);
+                _ = FillDlssInventoryAsync(g, inventory, restoreDlss, backupFact);
                 break;
 
             case "Tools":
-                SectionTitle(content, "Tools", "Check NR or add ReShade to this game. Existing graphics files are kept safe.");
-                var tools = DetailColumns();
-                foreach (var (glyph, label, enabled, action) in new (string, string, bool, Action)[]
+                SectionTitle(content, "Tools");
+                var locationTools = DetailColumns();
+                locationTools.Children.Add(DetailFact("Game Folder", g.Location, ui.Button("Open", () => _ = shell.OpenGameFolderAsync(g), GmKind.Card, .8,
+                    enabled: !shell.Service.IsPreview && Directory.Exists(g.Location)), ""));
+                locationTools.Children.Add(DetailFact("Copy Location", "Copy the install path to the clipboard.", ui.Button("Copy", () =>
                 {
-                    ("", "Diagnose NR", g.Installed, () => _ = DiagnoseAsync(g)),
-                    ("", "Install ReShade", !shell.Service.IsPreview && !g.Blocked, () => _ = InstallExtraAsync(g, "reshade")),
-                    ("", "Install Add-on", !shell.Service.IsPreview && !g.Blocked, () => _ = InstallExtraAsync(g, "addon")),
-                    ("", "ReShade Downloads", true, () => MainWindow.OpenUri("https://reshade.me/")),
+                    var data = new global::Windows.ApplicationModel.DataTransfer.DataPackage();
+                    data.SetText(g.Location);
+                    global::Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
+                    Toast("Location copied.");
+                }, GmKind.Card, .8), ""));
+                content.Children.Add(locationTools);
+                SectionTitle(content, "Graphics Tools", "Check NR or add ReShade to this game. Existing graphics files are kept safe.");
+                var graphicsTools = DetailColumns();
+                var installs = !shell.Service.IsPreview && !g.Blocked;
+                foreach (var (title, description, caption, glyph, enabled, action) in new (string, string, string, string, bool, Action)[]
+                {
+                    ("Diagnose NR", "Read the saved NR settings, runtime hashes and log evidence.", "Diagnose", "", true, () => _ = DiagnoseAsync(g)),
+                    ("Install ReShade", "Choose an extracted x64 ReShade DLL. DirectX 10–12 games load it as dxgi.dll.", "Choose", "", installs, () => _ = InstallExtraAsync(g, "reshade")),
+                    ("Install Add-on", "Choose an .addon64 file (including RenoDX). Install ReShade first.", "Choose", "", installs, () => _ = InstallExtraAsync(g, "addon")),
+                    ("ReShade Downloads", "Get ReShade from its official site.", "Open", "", true, () => MainWindow.OpenUri("https://reshade.me/")),
                 })
-                {
-                    var tile = new StackPanel { Spacing = t.Px(10), HorizontalAlignment = HorizontalAlignment.Center };
-                    tile.Children.Add(ui.Icon(glyph, 1.05).With(i => i.HorizontalAlignment = HorizontalAlignment.Center));
-                    tile.Children.Add(ui.Text(label, 1, weight: FontWeights.SemiBold).With(x => x.HorizontalAlignment = HorizontalAlignment.Center));
-                    var button = ui.Button(tile, action, GmKind.Card, 1, enabled, radius: 14, minHeight: t.Compact ? 90 : 116);
-                    button.HorizontalAlignment = HorizontalAlignment.Stretch;
-                    tools.Children.Add(button);
-                }
-                content.Children.Add(tools);
-                content.Children.Add(ui.P("Use an extracted x64 ReShade DLL or .addon64 file from a source you trust. Each install is reviewed first and can be restored.", 0.83));
+                    graphicsTools.Children.Add(DetailFact(title, description, ui.Button(caption, action, GmKind.Card, .8, enabled), glyph));
+                content.Children.Add(graphicsTools);
+                content.Children.Add(ui.P("Use an extracted x64 ReShade DLL or .addon64 file from a source you trust. Shader packs and presets remain yours to manage.", 0.83));
                 var installed = new StackPanel { Spacing = t.Px(16) };
                 content.Children.Add(installed);
                 _ = FillExtraRecordsAsync(g, installed);
                 break;
 
             case "Notes":
-                SectionTitle(content, "Notes", "Kept with this game in rtxForge.");
+                SectionTitle(content, "Your Notes", "Kept with this game in rtxForge. Included in support reports when you choose.");
                 var notes = new TextBox
                 {
                     Text = notesDraft ?? g.Notes, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = t.Px(160),
@@ -427,9 +394,8 @@ public sealed partial class GameModeView
                 ui.Focusable(notes);
                 Key(notes, "notes");
                 var noteCards = DetailColumns();
-                noteCards.Children.Add(new StackPanel { Spacing = t.Px(16), Children = { DetailHeading("Notes", "\uE70B"), notes } });
+                noteCards.Children.Add(notes);
                 var testSettings = new StackPanel { Spacing = t.Px(20) };
-                testSettings.Children.Add(DetailHeading("Testing", "\uE9D9"));
                 // game_notes: the test result and notes are saved with this game (shared with Desktop UI).
                 notesStatus ??= g.TestStatus;
                 testSettings.Children.Add(ui.Group(
@@ -449,7 +415,7 @@ public sealed partial class GameModeView
             case "Appearance":
                 SectionTitle(content, "Accent Color", "Pick a suggestion from this game's artwork. Your own picks are kept.");
                 var current = shell.Settings.GameAccents.GetValueOrDefault(g.Id);
-                content.Children.Add(DetailFact("Game Accent", current?.ToUpperInvariant() ?? "Automatic · from artwork", glyph: "\uE790"));
+                content.Children.Add(DetailFact("Game Accent", current is null ? "Artwork-derived" : "Custom · " + current.ToUpperInvariant(), glyph: "\uE790"));
                 var swatches = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(16) };
                 content.Children.Add(swatches);
                 _ = FillSwatchesAsync(g, swatches, current);
@@ -459,6 +425,20 @@ public sealed partial class GameModeView
                     shell.Settings.Save();
                     shell.NotifyGamesChanged();
                 }, GmKind.Card, 0.85, enabled: current is not null).With(b => b.HorizontalAlignment = HorizontalAlignment.Left));
+                // Hero Focus, as on the desktop. Choosing a point needs a pointer, so it is set
+                // in Desktop UI; here it shows and can return to automatic.
+                if ((g.HeroPath ?? g.CapsulePath) is not null)
+                {
+                    SectionTitle(content, "Hero Focus", "The part of the hero art kept in view as the window narrows.");
+                    var chosen = Controls.FadedImage.Stored(shell.Settings.GameHeroFocus, g.Id) is not null;
+                    content.Children.Add(DetailFact("Focal Point", chosen ? "Chosen for this game · set it in Desktop UI" : "Automatic · follows the subject",
+                        ui.Button("Automatic", () =>
+                        {
+                            shell.Settings.GameHeroFocus.Remove(g.Id);
+                            shell.Settings.Save();
+                            Render(keepFocus: true);
+                        }, GmKind.Card, .8, enabled: chosen), ""));
+                }
                 CustomArtworkSection(g, content);
                 break;
 
@@ -759,15 +739,16 @@ public sealed partial class GameModeView
             return ([main, more], () => FeatureControlSchema.Tuning(values));
         }
         var rows = new List<UIElement> { MfgControls() };
-        var primary = new Controls.PresetColumns(t.Px(560), 2) { ColumnSpacing = t.Px(28), RowSpacing = t.Px(28) };
-        // As on the desktop: DLSS presets, then Neural rendering, under MFG.
-        var first = new StackPanel { Spacing = t.Px(16) };
-        first.Children.Add(Card("DLSS presets", ui.P("Applies when the game next starts DLSS. Game default keeps the game's own choice.", .72),
-            Pair(Field(Definition("dlss_preset")), Field(Definition("rr_preset")))));
+        var primary = new Controls.PresetColumns(t.Px(560), 2) { ColumnSpacing = t.Px(24), RowSpacing = t.Px(24) };
+        // As on the desktop: Neural rendering, then DLSS presets, under MFG. Cards are
+        // 24px apart in both directions, like the page's own sections.
+        var first = new StackPanel { Spacing = t.Px(24) };
         first.Children.Add(Card("Neural rendering", Field(Definition("enabled")), Choices("style"), Field(Definition("intensity")),
             Pair(Field(Definition("preset")), Field(Definition("passes")))));
+        first.Children.Add(Card("DLSS presets", ui.P("Applies when the game next starts DLSS. Game default keeps the game's own choice.", .72),
+            Pair(Field(Definition("dlss_preset")), Field(Definition("rr_preset")))));
         primary.Children.Add(first);
-        var secondary = new StackPanel { Spacing = t.Px(16) };
+        var secondary = new StackPanel { Spacing = t.Px(24) };
         secondary.Children.Add(Card("Image tuning", Pair(Field(Definition("detail")), Field(Definition("colour"))),
             Disclosure("Fine tuning", Pair(Field(Definition("structure")), Field(Definition("tone"))), Pair(Field(Definition("skin")), Field(Definition("auto_mask"))))));
         secondary.Children.Add(Card("", Disclosure("Sharpening", Field(Definition("sharpen")),

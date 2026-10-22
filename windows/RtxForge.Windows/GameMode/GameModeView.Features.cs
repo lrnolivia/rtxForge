@@ -82,8 +82,8 @@ public sealed partial class GameModeView
     void SetPrimaryEnabled(Button button, bool on)
     {
         button.IsEnabled = on;
-        button.Background = GmTheme.B(on ? GmTheme.Accent : t.Disabled);
-        button.Foreground = GmTheme.B(on ? GmTheme.AccentInk : t.DisabledFg);
+        button.Background = GmTheme.B(on ? ui.Accent : t.Disabled);
+        button.Foreground = GmTheme.B(on ? ui.AccentInk : t.DisabledFg);
     }
 
     static string Shorten(string text) => text.Length > 240 ? text[..240].TrimEnd() + "…" : text;
@@ -389,7 +389,7 @@ public sealed partial class GameModeView
         try { records = await shell.Service.ExtraRecordsAsync(g); }
         catch (InvalidOperationException) { return; }
         if (records.Count == 0 || detailsGame != g || detailsSection != "Tools") return;
-        host.Children.Add(ui.H2("Installed Tools", 1.06));
+        SectionTitle(host, "Installed Tools", "Restore puts the game's original files back.");
         host.Children.Add(ui.Group(records.Select(r => (UIElement)ui.RowButton(r.Title, "Restore", async () =>
         {
             await RunReviewAsync("Restore Tool", () => shell.Service.ReviewExtraRestoreAsync(r));
@@ -399,19 +399,29 @@ public sealed partial class GameModeView
 
     // ---------- Details › DLSS Files ----------
 
-    async Task FillDlssInventoryAsync(Game g, StackPanel host, Button restore)
+    async Task FillDlssInventoryAsync(Game g, StackPanel host, Button restore, Border backupFact)
     {
+        // As on the desktop: nvngx_dlss.dll first, then each file found, with the latest
+        // backup shown on the Restore card.
+        var rows = new List<UIElement> { ui.PreferenceRow("nvngx_dlss.dll", g.DlssVersion is null ? "Not detected" : "Version " + g.DlssVersion, null) };
+        void Show() { host.Children.Clear(); host.Children.Add(ui.Group(rows)); }
+        Show();
         DlssInventory inventory;
         try { inventory = await shell.Service.DlssInventoryAsync(g); }
-        catch (InvalidOperationException error) { host.Children.Add(ui.P(error.Message)); return; }
+        catch (InvalidOperationException error) { SetFactValue(backupFact, error.Message); return; }
         if (detailsGame != g || detailsSection != "DLSS Files") return;
-        var rows = new List<UIElement>();
         if (inventory.Blocked.Length > 0) rows.Add(ui.PreferenceRow("File management unavailable", inventory.Blocked, null));
         foreach (var file in inventory.Files)
-            rows.Add(ui.PreferenceRow(file.Title, file.Path + " · " + file.Provenance, ui.Text(file.Current, 0.85, t.Muted)));
-        rows.Add(ui.PreferenceRow("Latest backup", null, ui.Text(inventory.LatestBackup ?? "None", 0.85, t.Muted)));
-        host.Children.Add(ui.Group(rows));
+            rows.Add(ui.PreferenceRow(file.Title, $"{file.Path} · {file.Current} · {file.Provenance}", null));
+        Show();
+        SetFactValue(backupFact, inventory.LatestBackup is { } date ? "Latest backup " + date : "No DLSS file backups for this game.");
         restore.IsEnabled = inventory.LatestBackup is not null;
+    }
+
+    /// <summary>The value line of a DetailFact card.</summary>
+    static void SetFactValue(Border fact, string text)
+    {
+        if (fact.Child is StackPanel { Children.Count: > 1 } lines && lines.Children[1] is TextBlock value) value.Text = text;
     }
 
     async Task RestoreDlssAsync(Game g)
@@ -446,10 +456,6 @@ public sealed partial class GameModeView
 
     IReadOnlyList<SettingsGroup> RecoveryGroups() =>
     [
-        new("App storage", null,
-        [ui.RowButton("Storage usage", "View", () => _ = AppStorageAsync(), description: "Review download cleanup. Restore backups and settings are kept.", glyph: "")]),
-        new("Restore", "Review a backup before restoring game files.",
-        [ui.RowButton("Previous changes", null, () => _ = PreviousChangesAsync(), description: "Browse available recovery records.", glyph: "")]),
         new("Cleanup", null,
         [ui.RowButton("Old NR files", null, async () =>
         {
@@ -509,58 +515,6 @@ public sealed partial class GameModeView
         if (result?.Path is not { } installer || result.Errors.Count > 0) return;
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(installer) { UseShellExecute = true });
         shell.Close();
-    }
-
-    // ---------- Main menu › Packages ----------
-
-    async Task ShowPackagesAsync()
-    {
-        CloseAllModals();
-        PackageCatalog catalog;
-        try { catalog = await shell.Service.PackagesAsync(); }
-        catch (InvalidOperationException error) { ShowDone(false, "Packages", error.Message); return; }
-        // As on the desktop: NR packages, the MFG packages that pair with Skynizz NR, unified packages, your own.
-        var content = new StackPanel { Spacing = t.Px(18) };
-        content.Children.Add(ui.P(catalog.Status + ". Every game change is reviewed before it is applied."));
-        static string Tested(IReadOnlyList<string>? verified) => verified is { Count: > 0 }
-            ? " Tested in games on " + string.Join(" and ", verified.Select(CrossOs.Name)) + "." : " Not yet tested in games.";
-        UIElement UseRow(PackageOption item)
-        {
-            var current = shell.Settings.RuntimeProvider == item.Id;
-            return ui.RowButton(item.Name, current ? "In use" : item.Available ? "Use for DLSS games" : "Unavailable", () =>
-            {
-                CloseModal();
-                shell.SelectPackage(item.Id);
-                Toast("Package selected for DLSS games. Select games, then choose Install Features.");
-            }, description: item.Version + " · " + (item.Available ? item.Summary : item.Reason) + Tested(item.Verified), enabled: item.Available && !current);
-        }
-        var pairs = Views.PackagesPage.PairsWithMfg.Contains(shell.Settings.RuntimeProvider);
-        var nr = catalog.Packages.Where(p => Views.PackagesPage.PairsWithMfg.Contains(p.Id)).Select(UseRow).ToList();
-        nr.AddRange(catalog.Packages.Where(p => Views.PackagesPage.WithoutDlss.Contains(p.Id)).Select(item => (UIElement)ui.RowButton(item.Name,
-            "Used automatically", () => { }, description: item.Version + " · Games without DLSS. " + item.Summary + Tested(item.Verified), enabled: false)));
-        var mfg = Views.PackagesPage.MfgPackages.Select(package =>
-        {
-            var current = pairs && shell.Settings.MfgProvider == package.Id;
-            return (UIElement)ui.RowButton(package.Name, current ? "In use" : pairs ? "Use with Skynizz NR" : "Needs Skynizz NR", () =>
-            {
-                shell.Settings.MfgProvider = package.Id; shell.SaveSettings();
-                _ = ShowPackagesAsync();
-            }, description: package.Version + " · " + package.Summary + Tested(package.Verified), enabled: pairs && !current);
-        }).ToList();
-        var unified = catalog.Packages.Where(p => !Views.PackagesPage.WithoutDlss.Contains(p.Id) && !Views.PackagesPage.PairsWithMfg.Contains(p.Id))
-            .Select(UseRow).ToList();
-        unified.Add(ui.RowButton("Your own package", "Coming soon", () => { },
-            description: "Inspect a ZIP archive and review its settings before using it.", enabled: false));
-        var groups = new StackPanel { Spacing = t.Px(14) };
-        groups.Children.Add(ui.P("NR packages", .9));
-        groups.Children.Add(ui.Group(nr, t.Card));
-        groups.Children.Add(ui.P(pairs ? "MFG packages · native NVIDIA frame generation for Skynizz NR" : "MFG packages · these pair with Skynizz NR", .9));
-        groups.Children.Add(ui.Group(mfg, t.Card));
-        groups.Children.Add(ui.P("Unified packages · NR and frame generation together", .9));
-        groups.Children.Add(ui.Group(unified, t.Card));
-        content.Children.Add(new ScrollViewer { Content = groups, MaxHeight = t.Px(t.Compact ? 320 : 480) });
-        var back = ui.Button("Back", CloseModal, GmKind.Card, 0.92);
-        ShowModal("Packages", content, [back], CloseModal, 1100);
     }
 
     async Task InspectPackageAsync()

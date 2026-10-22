@@ -34,6 +34,8 @@ public sealed partial class GameModeView
             targets = targets.Where(g => !g.AdoptionAvailable).ToArray();
             if (targets.Count == 0) return;
         }
+        // One game: its accent on every screen of the flow, as in its Details.
+        await UseGameAccentAsync(Controls.AccentResources.Single(targets));
         if (operation == "install" && values is null)
         {
             values = await AskPresetsAsync(targets.Count == 1 ? shell.GameTuning(targets[0]) : shell.Settings.Presets);
@@ -64,6 +66,20 @@ public sealed partial class GameModeView
         { shell.Service.DiscardOperation(review); return; }   // cancelled while checking
         CloseModal();
         ShowReview(operation, review);
+    }
+
+    Services.AccentPalette? modalPalette;
+
+    async Task UseGameAccentAsync(Game? game) =>
+        UseGameAccent(game is null ? null : await ArtAccent.ForGameAsync(game));
+
+    /// <summary>Primary buttons, toggles and WinUI accent controls follow this palette; null restores the theme's.</summary>
+    void UseGameAccent(Services.AccentPalette? palette)
+    {
+        modalPalette = palette;
+        if (palette is null) { (ui.Accent, ui.AccentInk) = (GmTheme.Accent, GmTheme.AccentInk); return; }
+        var colors = t.GameColors(palette);
+        (ui.Accent, ui.AccentInk) = (colors.Accent, colors.Ink);
     }
 
     static string ReviewTitle(string operation) => operation switch

@@ -303,7 +303,7 @@ public sealed partial class MainWindow : Window
 
         if (operation == "install" && values is null)
         {
-            values = await OperationDialog.AskPresetsAsync(this, targets.Count == 1 ? GameTuning(targets[0]) : Settings.Presets);
+            values = await OperationDialog.AskPresetsAsync(this, targets.Count == 1 ? GameTuning(targets[0]) : Settings.Presets, AccentResources.Single(targets));
             if (values is null) return false;
         }
         return await OperationDialog.ShowAsync(this, operation, targets, values ?? Settings.Presets);

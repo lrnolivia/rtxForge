@@ -121,7 +121,13 @@ public sealed partial class MainWindow
     void OnCompactRestore(object sender, RoutedEventArgs e) => CompactActionInvoked?.Invoke("uninstall");
     void OnCompactUpdateDlss(object sender, RoutedEventArgs e) => CompactActionInvoked?.Invoke("update-dlss");
 
-    void OnCompactBarSizeChanged(object sender, SizeChangedEventArgs e) => UpdateTitleBarRegions();
+    void OnCompactBarSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        // The back and pane buttons share a centre line with the sidebar's compact icons.
+        if (sender is Button { ActualWidth: > 0 } button && (button == TitleBack || button == TitlePaneToggle))
+            button.Margin = new Thickness(Math.Max(0, Nav.CompactPaneLength / 2 - button.ActualWidth / 2), 0, 6, 0);
+        UpdateTitleBarRegions();
+    }
 
     // Widths seen in each presentation, so a choice never depends on its own result.
     readonly Dictionary<string, double> compactWidths = [];

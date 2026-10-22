@@ -1,95 +1,5 @@
-diff --git a/OptiScaler/menu/menu_common.cpp b/OptiScaler/menu/menu_common.cpp
-index b4d37e6..48f18c3 100644
---- a/OptiScaler/menu/menu_common.cpp
-+++ b/OptiScaler/menu/menu_common.cpp
-@@ -8,6 +8,7 @@
- #include <dlssnr/DlssNr.h>
- 
- #include "input/input_system.h"
-+#include "ForgePanel.h"
- 
- #include "font/Hack_Compressed.h"
- 
-@@ -63,6 +64,7 @@ static bool _hdrTonemapApplied = false;
- static ImVec4 SdrColors[ImGuiCol_COUNT];
- 
- static bool inputMenu = false;
-+static bool inputForge = false;
- static bool inputFG = false;
- static bool inputFps = false;
- static bool inputFpsCycle = false;
-@@ -418,8 +420,9 @@ void MenuCommon::UpdateManualInput(HWND targetHwnd)
-     const auto currentTick = GetTickCount64();
-     const bool canAcceptInputs = lastInputTick + debounceThreshold < currentTick;
- 
--    if (!capturingKey && canAcceptInputs)
-+    if (!capturingKey && canAcceptInputs && !ForgePanel::CapturingShortcut())
-     {
-+        if (ForgePanel::ShortcutReleased()) inputForge = true;
-         CheckShortcut(config->ShortcutKey.value_or_default(), inputMenu, "Menu key pressed, will be switching menu");
-         CheckShortcut(config->FpsShortcutKey.value_or_default(), inputFps, "Menu key pressed, will be switching FPS");
-         CheckShortcut(config->FGShortcutKey.value_or_default(), inputFG, "Menu key pressed, will be switching FG mode");
-@@ -1611,6 +1614,22 @@ void MenuCommon::HandleMenuShortcuts(RenderMenuContext& ctx)
-     auto config = ctx.config;
-     auto& io = ctx.io;
- 
-+    if (inputForge)
-+    {
-+        inputForge = false;
-+        if (ForgePanel::nrAllowed || ForgePanel::mfgAllowed)
-+        {
-+            if (!ForgePanel::selected) _isVisible = false;
-+            ForgePanel::selected = true;
-+            inputMenu = true;
-+        }
-+    }
-+    else if (inputMenu)
-+    {
-+        if (ForgePanel::selected) _isVisible = false;
-+        ForgePanel::selected = false;
-+    }
-+
-     // Handle Inputs
-     {
-         if (inputFG)
-@@ -1803,7 +1822,7 @@ void MenuCommon::BeginMenuFrameIfNeeded(RenderMenuContext& ctx)
-                                DlssNr::ExposureScan::Where() != DlssNr::ExposureScan::Verdict::Off;
- 
-     if ((!config->DisableSplash.value_or_default() && now > splashStart && now < splashLimit) ||
--        config->ShowFps.value_or_default() || _isVisible || ImGui::notifications.size() > 0 || scanIndicator ||
-+        config->ShowFps.value_or_default() || _isVisible || ForgePanel::Animating() || ImGui::notifications.size() > 0 || scanIndicator ||
-         DlssNr::OverlayWanted() ||
-         (config->DlssNrCompare.value_or_default() != 0 && config->DlssNrCompareTags.value_or_default()))
-     {
-@@ -8982,7 +9001,9 @@ bool MenuCommon::RenderMenu()
-     DlssNr::RenderOverlay(ctx.config->FpsOverlayAlpha.value_or_default());
- 
-     // 4) Draw the full settings menu last so popups and child windows keep their existing behavior.
--    RenderMainMenuWindow(ctx);
-+    ForgePanelChannel::Visible(ForgePanel::selected && _isVisible);
-+    if (!ForgePanel::selected) RenderMainMenuWindow(ctx);
-+    else if (ctx.newFrame) ForgePanel::Draw(_isVisible, ctx.menuResScale);
- 
-     if (ctx.newFrame)
-         ImGui::EndFrame();
-@@ -9074,6 +9095,8 @@ void MenuCommon::Init(HWND InHwnd, bool isUWP)
-         }
-     }
- 
-+    ForgePanel::Init(InHwnd);
-+
-     if (!Config::Instance()->OverlayMenu.value_or_default())
-     {
-         _hdrTonemapApplied = false;
-@@ -9116,6 +9139,7 @@ void MenuCommon::Shutdown()
-     else
-         ImGui_ImplUwp_Shutdown();
- 
-+    ForgePanelChannel::Shutdown();
-     ImGui::DestroyContext();
- 
-     _handle = nullptr;
 diff --git a/OptiScaler/framegen/dlssg/Companion.h b/OptiScaler/framegen/dlssg/Companion.h
+index f57b05a..efebac2 100644
 --- a/OptiScaler/framegen/dlssg/Companion.h
 +++ b/OptiScaler/framegen/dlssg/Companion.h
 @@ -51,13 +51,24 @@ struct Mailbox
@@ -182,3 +92,94 @@ diff --git a/OptiScaler/framegen/dlssg/Companion.h b/OptiScaler/framegen/dlssg/C
      mailbox->lastGenerated = observedGenerated;
      mailbox->fgSuccesses = observedFgSuccesses;
      mailbox->nativeStatus = nativeStatus;
+diff --git a/OptiScaler/menu/menu_common.cpp b/OptiScaler/menu/menu_common.cpp
+index 669450a..d6c0e73 100644
+--- a/OptiScaler/menu/menu_common.cpp
++++ b/OptiScaler/menu/menu_common.cpp
+@@ -8,6 +8,7 @@
+ #include <dlssnr/DlssNr.h>
+ 
+ #include "input/input_system.h"
++#include "ForgePanel.h"
+ 
+ #include "font/Hack_Compressed.h"
+ 
+@@ -63,6 +64,7 @@ static bool _hdrTonemapApplied = false;
+ static ImVec4 SdrColors[ImGuiCol_COUNT];
+ 
+ static bool inputMenu = false;
++static bool inputForge = false;
+ static bool inputFG = false;
+ static bool inputFps = false;
+ static bool inputFpsCycle = false;
+@@ -418,8 +420,9 @@ void MenuCommon::UpdateManualInput(HWND targetHwnd)
+     const auto currentTick = GetTickCount64();
+     const bool canAcceptInputs = lastInputTick + debounceThreshold < currentTick;
+ 
+-    if (!capturingKey && canAcceptInputs)
++    if (!capturingKey && canAcceptInputs && !ForgePanel::CapturingShortcut())
+     {
++        if (ForgePanel::ShortcutReleased()) inputForge = true;
+         CheckShortcut(config->ShortcutKey.value_or_default(), inputMenu, "Menu key pressed, will be switching menu");
+         CheckShortcut(config->FpsShortcutKey.value_or_default(), inputFps, "Menu key pressed, will be switching FPS");
+         CheckShortcut(config->FGShortcutKey.value_or_default(), inputFG, "Menu key pressed, will be switching FG mode");
+@@ -1611,6 +1614,22 @@ void MenuCommon::HandleMenuShortcuts(RenderMenuContext& ctx)
+     auto config = ctx.config;
+     auto& io = ctx.io;
+ 
++    if (inputForge)
++    {
++        inputForge = false;
++        if (ForgePanel::nrAllowed || ForgePanel::mfgAllowed)
++        {
++            if (!ForgePanel::selected) _isVisible = false;
++            ForgePanel::selected = true;
++            inputMenu = true;
++        }
++    }
++    else if (inputMenu)
++    {
++        if (ForgePanel::selected) _isVisible = false;
++        ForgePanel::selected = false;
++    }
++
+     // Handle Inputs
+     {
+         if (inputFG)
+@@ -1803,7 +1822,7 @@ void MenuCommon::BeginMenuFrameIfNeeded(RenderMenuContext& ctx)
+                                DlssNr::ExposureScan::Where() != DlssNr::ExposureScan::Verdict::Off;
+ 
+     if ((!config->DisableSplash.value_or_default() && now > splashStart && now < splashLimit) ||
+-        config->ShowFps.value_or_default() || _isVisible || ImGui::notifications.size() > 0 || scanIndicator ||
++        config->ShowFps.value_or_default() || _isVisible || ForgePanel::Animating() || ImGui::notifications.size() > 0 || scanIndicator ||
+         DlssNr::OverlayWanted() ||
+         (config->DlssNrCompare.value_or_default() != 0 && config->DlssNrCompareTags.value_or_default()))
+     {
+@@ -9047,7 +9066,9 @@ bool MenuCommon::RenderMenu()
+     DlssNr::RenderOverlay(ctx.config->FpsOverlayAlpha.value_or_default());
+ 
+     // 4) Draw the full settings menu last so popups and child windows keep their existing behavior.
+-    RenderMainMenuWindow(ctx);
++    ForgePanelChannel::Visible(ForgePanel::selected && _isVisible);
++    if (!ForgePanel::selected) RenderMainMenuWindow(ctx);
++    else if (ctx.newFrame) ForgePanel::Draw(_isVisible, ctx.menuResScale);
+ 
+     if (ctx.newFrame)
+         ImGui::EndFrame();
+@@ -9139,6 +9160,8 @@ void MenuCommon::Init(HWND InHwnd, bool isUWP)
+         }
+     }
+ 
++    ForgePanel::Init(InHwnd);
++
+     if (!Config::Instance()->OverlayMenu.value_or_default())
+     {
+         _hdrTonemapApplied = false;
+@@ -9181,6 +9204,7 @@ void MenuCommon::Shutdown()
+     else
+         ImGui_ImplUwp_Shutdown();
+ 
++    ForgePanelChannel::Shutdown();
+     ImGui::DestroyContext();
+ 
+     _handle = nullptr;

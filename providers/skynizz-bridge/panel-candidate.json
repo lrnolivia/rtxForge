@@ -4,7 +4,7 @@
   "base_bridge_id": "skynizz-ada-mfg-9-placement-candidate",
   "patch": "panel-candidate.patch",
   "sources": {
-    "providers/skynizz-bridge/panel-candidate.patch": "c27099d8640c1d54800e7a52451f87397ea66b615648daa9442f79bd537d42e3",
+    "providers/skynizz-bridge/panel-candidate.patch": "1d8538e4f67dde235d9ccf9c27beab22c7a858ee812e29d4ab5abaf2977ea094",
     "providers/skynizz-bridge/ForgePanel.h": "20db356fd39caf306799f38df5bcf52d55eea0d667497d765f109cd879a2265f",
     "providers/skynizz-bridge/Generate-Panel.ps1": "a51f4b22d0981ed9a4d5642159c4b4ad4bf3d90b8ff77eb17c125803ce0978d2",
     "providers/skynizz-bridge/controls.json": "11dc5fa793b39c254b7209017fd5fcf5364b223746630c8389c80f7c3c280feb",

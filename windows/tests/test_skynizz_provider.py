@@ -430,7 +430,7 @@ ada_mfg_provider.load_payload=lambda config,record:dict(external_payload)
 external_settings=settings | {'mfg_provider':'mfg-unlock','mfg_multiplier':4,'nr_preset':2,'reshade_ui':False,'reshade_intro':False}
 review=service.prepare([scan(external)],'nr-mfg','install',visual_settings=external_settings)
 assert files(external)==external_before
-assert 'MFG Unlock 1.4.4' in review['rows'][0]['detail']
+assert 'MFG Unlock 1.4.5' in review['rows'][0]['detail']
 # Native DLL preparation loads another engine after the provider review. It
 # must not replace the pending operation's provider/configuration context.
 later_engine=module(service.config,'y4my')
@@ -450,7 +450,7 @@ reshade.write_text(tuned)
 run(service.prepare([scan(external)],'nr-mfg','repair',visual_settings=settings | {'mfg_provider':'integrated'}))
 assert reshade.read_text()==tuned,'repair reset the addon preset or changed MFG owner'
 assert scan(external)['mfg_multiplier']==3
-assert baseline(external)['mfg_provider']['version']=='1.4.4'
+assert baseline(external)['mfg_provider']['version']=='1.4.5'
 run(service.prepare([scan(external)],'nr-mfg','repair',visual_settings=settings | {'mfg_provider':'integrated','reshade_ui':True,'reshade_intro':True}))
 tuned=reshade.read_text()
 assert 'KeyOverlay=36,0,0,0' in tuned and 'TutorialProgress=0' in tuned

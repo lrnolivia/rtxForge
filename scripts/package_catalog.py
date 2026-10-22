@@ -62,7 +62,8 @@ def catalog(host=None):
                        host.get('reason') or 'Verify a supported NVIDIA system first'),
             'summary': ('Native MFG path; NR needs per-game verification' if key == 'dlss-unlocked'
                         else 'Alternative OptiScaler package; a local NR model may be needed'),
-            'recommended': key == 'dlss-unlocked' and supported,
+            # On Windows, Skynizz + Universal MFG is the flagship. Linux has not tested it yet.
+            'recommended': key == 'dlss-unlocked' and supported and host.get('system') != 'Windows',
         })
     if host.get('system')=='Windows':
         rows.append({'id': 'feeder', 'name': 'Feeder NR', 'version': '1.19.0 / RenoDX 8.5.0-rc5',
@@ -78,11 +79,12 @@ def catalog(host=None):
             bridge_ready=archive.is_file()
         except (OSError,ValueError,t.Refusal):
             bridge_ready=False
-        rows.append({'id':'skynizz','name':'Skynizz NR + Ada MFG bridge','version':record['tag']+' bridge · preview',
+        rows.append({'id':'skynizz','name':'Skynizz NR + Universal MFG','version':record['tag']+' bridge · Universal MFG 1.6.1',
                      'url':'https://github.com/'+record['repo'],'sha256':(bridge or record)['sha256'],
                      'available':supported and bridge_ready,
-                     'reason':('Requires a compatible local RTX40 NR model, D3D12/DLSS and native FG; target runtime QA pending.' if bridge_ready else 'The combined NR + MFG bridge is not included in this app build.') if supported else host.get('reason') or 'Verify a supported NVIDIA system first',
-                     'summary':'Single-loader NR + Ada MFG · requires a compiled bridge build · runtime QA pending','recommended':False})
+                     'reason':('Requires a compatible local NR model, DirectX 12 with DLSS, and native DLSS Frame Generation for MFG.' if bridge_ready else 'The combined NR + MFG bridge is not included in this app build.') if supported else host.get('reason') or 'Verify a supported NVIDIA system first',
+                     'summary':'Recommended. Neural rendering with Universal MFG 1.6.1 frame generation in DirectX 12 games with DLSS.',
+                     'recommended':supported and bridge_ready})
     return rows
 
 

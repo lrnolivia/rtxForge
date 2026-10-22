@@ -271,9 +271,9 @@ public sealed class PreviewForgeService : IForgeService
         Task.FromResult(new FeederStorage(null, null, null, 0));
     public Task<PackageCatalog> PackagesAsync() =>Task.FromResult(new PackageCatalog("Preview system · NVIDIA RTX 4070 · no game writes",
     [
-        new("skynizz", "Skynizz NR + Ada MFG bridge", "v1.2.1 bridge · preview", "Neural rendering and multi-frame generation for DirectX 12 games with native DLSS Frame Generation.", true,
-            "Preview package · no game writes", false, "https://github.com/Skynizz/optiscaler-dlss5"),
-        new("dlss-unlocked", "DLSS-Unlocked", "Preview", "Native MFG path; NR needs per-game verification", true, "Ready to review for your system", true, "https://github.com/ShyVortex/dlss-unlocked"),
+        new("skynizz", "Skynizz NR + Universal MFG", "v1.2.1 bridge · Universal MFG 1.6.1", "Recommended. Neural rendering with Universal MFG 1.6.1 frame generation in DirectX 12 games with DLSS.", true,
+            "Preview package · no game writes", true, "https://github.com/Skynizz/optiscaler-dlss5"),
+        new("dlss-unlocked", "DLSS-Unlocked", "Preview", "Native MFG path; NR needs per-game verification", true, "Ready to review for your system", false, "https://github.com/ShyVortex/dlss-unlocked"),
         new("y4my", "y4my Multipass", "nightly", "Alternative OptiScaler package; a local NR model may be needed", true, "Ready to review for your system", false,
             "https://github.com/y4my4my4m/OptiScaler_DLSSNR_Multipass_MFG"),
         new("feeder", "Feeder NR", "Preview", "Neural rendering for DirectX 11 games through ReShade. NR only.", true,

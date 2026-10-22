@@ -224,15 +224,16 @@ class SkynizzPolicyTest(unittest.TestCase):
             provider.resolve('../../nightly')
         fetch.assert_not_called()
 
-    def test_windows_catalog_keeps_existing_default_and_linux_excludes_skynizz(self):
+    def test_windows_catalog_recommends_skynizz_and_linux_excludes_it(self):
         release=bridge_fixture(self.archive)
         with patch.object(provider,'bundled_bridge',return_value=(release,self.archive)):
             windows=package_catalog.catalog({'system':'Windows','architecture':'AMD64','ready':True})
         self.assertTrue(next(row for row in windows if row['id']=='skynizz')['available'])
-        self.assertFalse(next(row for row in windows if row['id']=='skynizz')['recommended'])
-        self.assertTrue(next(row for row in windows if row['id']=='dlss-unlocked')['recommended'])
+        # Skynizz + Universal MFG is the Windows flagship; Linux has not tested it yet.
+        self.assertEqual([row['id'] for row in windows if row['recommended']], ['skynizz'])
         linux=package_catalog.catalog({'system':'Linux','architecture':'x86_64','ready':True})
         self.assertEqual([row['id'] for row in linux], ['dlss-unlocked','y4my'])
+        self.assertTrue(next(row for row in linux if row['id']=='dlss-unlocked')['recommended'])
 
     def test_unsupported_modes_and_linux_refuse_before_resolution(self):
         provider.require_mode('windows', 'nr-only')

@@ -209,7 +209,8 @@ public sealed record HardwareInfo(string Gpu, string Driver, string Vram, string
 /// </summary>
 public sealed class ForgeSettings
 {
-    string runtimeProvider = "y4my";
+    // Skynizz + Universal MFG is the Windows flagship.
+    string runtimeProvider = "skynizz";
     /// <summary>
     /// The package for games with DLSS. Games without DLSS use Feeder NR automatically, so the
     /// retired Feeder-only choice ("feeder") reads as Skynizz, the Feeder route's DLSS partner.

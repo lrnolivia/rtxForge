@@ -18,6 +18,7 @@ from operation_scope import operation_targets, ScopeError
 import mfg_choice
 import overview_facts
 import overlay_shortcut
+import breakpoints
 from feature_presets import FeaturePresets
 
 class EmbeddedDetails(Gtk.Box):
@@ -1882,6 +1883,9 @@ spinbutton.tuning-number-input text {
 .forge-main-sidebar .settings-navigation row:selected label { font-weight: 400; }
 .forge-main-sidebar .settings-navigation row:selected image { color: @window_fg_color; }
 .forge-nav-footer { padding-top: 0; padding-bottom: 12px; }
+/* Windows compact navigation rail (641-1007 px): icons only. */
+.nav-compact .forge-main-sidebar .settings-sidebar-header { padding-left: 12px; padding-right: 12px; }
+.nav-compact .forge-main-sidebar .settings-navigation { padding-left: 6px; padding-right: 6px; }
 
 .settings-footer {
     padding: 14px 18px;
@@ -4353,6 +4357,9 @@ class Window(Adw.ApplicationWindow):
             self.refresh_action
         )
 
+        select_view=Gio.SimpleAction.new('select-all-view',None)
+        select_view.connect('activate',lambda *_:self.select_all(not bool(self.selected_game_ids)))
+        self.add_action(select_view)
         remove_selected=Gio.SimpleAction.new('remove-selected',None)
         remove_selected.connect('activate',lambda *_:self.confirm_remove_games(self.selected_games()))
         self.add_action(remove_selected)
@@ -4491,8 +4498,10 @@ class Window(Adw.ApplicationWindow):
         # bottom-align its two children to one another. This puts the
         # bulk-action buttons flush with the last line of hero metadata
         # instead of floating at the top of the hero.
-        hero_copy_actions=Gtk.Box(
-            spacing=12,
+        # Windows WrapRow: the actions wrap under the text when the page narrows.
+        hero_copy_actions=Adw.WrapBox(
+            child_spacing=12,
+            line_spacing=12,
             hexpand=True,
             valign=Gtk.Align.CENTER,
         )
@@ -4529,6 +4538,7 @@ class Window(Adw.ApplicationWindow):
             'dim-label',
         )
         self.stats.set_margin_top(3)
+        self.stats.set_wrap(True);self.stats.set_xalign(0)
         title.append(
             self.stats
         )
@@ -4539,12 +4549,14 @@ class Window(Adw.ApplicationWindow):
             else 'Checking system hardware…',
             'card-meta',
         )
+        self.hardware_label.set_wrap(True);self.hardware_label.set_xalign(0)
         title.append(
             self.hardware_label
         )
 
-        bulk=Gtk.Box(
-            spacing=12,
+        bulk=Adw.WrapBox(
+            child_spacing=12,
+            line_spacing=8,
             valign=Gtk.Align.END,
             halign=Gtk.Align.END,
         )
@@ -4927,7 +4939,7 @@ class Window(Adw.ApplicationWindow):
         # center is crowded; never let that truncate the mode labels.
         self.sticky_profile_group.set_size_request(self.sticky_profile_group.measure(Gtk.Orientation.HORIZONTAL,-1)[1],-1)
 
-        self.sidebar_button=Gtk.ToggleButton(icon_name='sidebar-show-symbolic',visible=False)
+        self.sidebar_button=Gtk.ToggleButton(icon_name='open-menu-symbolic',visible=False)  # Windows TitlePaneToggle
         self.sidebar_button.set_tooltip_text('Show Sidebar')
         self.sidebar_button.update_property([Gtk.AccessibleProperty.LABEL],['Show Sidebar'])
         self.split.bind_property('show-sidebar',self.sidebar_button,'active',GObject.BindingFlags.BIDIRECTIONAL|GObject.BindingFlags.SYNC_CREATE)
@@ -4959,9 +4971,6 @@ class Window(Adw.ApplicationWindow):
             self.connect(prop,lambda *_:GLib.idle_add(self._header_density))
         self._header_density()
         GLib.idle_add(self._header_density)
-        narrow=Adw.Breakpoint.new(Adw.BreakpointCondition.parse('max-width: 860sp'))
-        narrow.add_setter(self.split,'collapsed',True)
-        self.add_breakpoint(narrow)
 
         # Presets is its own page (sidebar), not part of the dashboard.
         self.page_stack.add_named(self.build_presets_page(tuning),'presets')
@@ -5124,6 +5133,8 @@ class Window(Adw.ApplicationWindow):
         for widget in (self.select_toggle,refresh,add_folder):widget.add_css_class('flat');widget.add_css_class('library-command')
         self.library_commands=(self.select_toggle,refresh,add_folder)
         more_menu=Gio.Menu()
+        more_menu.append('Select all','win.select-all-view')
+        more_menu.append('Rescan','win.refresh-library')
         more_menu.append('Add library folder','win.add-game-folder')
         more_menu.append('Remove selected entries','win.remove-selected')
         more_menu.append('Removed games','win.removed-games')
@@ -5153,6 +5164,14 @@ class Window(Adw.ApplicationWindow):
         # light Library top     = 16px
         viewbar.set_margin_bottom(12)
         controls_surface.append(viewbar)
+        # Windows LibraryTools: below 1000 px the filters, view, size and commands
+        # move to a second row under the title and search.
+        self.library_tools_row=Adw.WrapBox(child_spacing=8,line_spacing=8,visible=False)
+        self.library_tools_row.add_css_class('library-tools-row')
+        for edge in ('start','end'):getattr(self.library_tools_row,'set_margin_'+edge)(16)
+        self.library_tools_row.set_margin_bottom(12)
+        controls_surface.append(self.library_tools_row)
+        self._library_layout=0
 
         # List mode uses a real Gtk.ColumnView. Its built-in
         # headers own sorting, resizing and column drag/reordering.
@@ -5369,6 +5388,7 @@ class Window(Adw.ApplicationWindow):
         self.size_button=self.art_scale
         for widget in (self.size_button,self.select_toggle,refresh,add_folder,library_more):
             viewbar.append(widget)
+        self.library_filterbox=filterbox;self.library_viewbox=viewbox;self.library_more=library_more
 
 
         # Add the floating operation/status layer only after every normal
@@ -5508,7 +5528,8 @@ class Window(Adw.ApplicationWindow):
             row.page=key
             content=Gtk.Box(spacing=12)
             content.append(Gtk.Image(icon_name=icon))
-            content.append(Gtk.Label(label=title_text,xalign=0,hexpand=True))
+            nav_label=Gtk.Label(label=title_text,xalign=0,hexpand=True);content.append(nav_label)
+            self.nav_labels=getattr(self,'nav_labels',[])+[nav_label];row.set_tooltip_text(title_text)
             row.set_child(content)
             self.nav_list.append(row)
             self.nav_rows[key]=row
@@ -5524,26 +5545,69 @@ class Window(Adw.ApplicationWindow):
             row=Gtk.ListBoxRow(activatable=True);row.action=action
             content=Gtk.Box(spacing=12)
             content.append(Gtk.Image(icon_name=icon))
-            content.append(Gtk.Label(label=title_text,xalign=0,hexpand=True))
+            nav_label=Gtk.Label(label=title_text,xalign=0,hexpand=True);content.append(nav_label)
+            self.nav_labels=getattr(self,'nav_labels',[])+[nav_label];row.set_tooltip_text(title_text)
             row.set_child(content);footer.append(row)
         footer.connect('row-activated',lambda _list,row:self.activate_action(row.action,None))
         sidebar.append(footer)
         return sidebar
 
     def _header_density(self,*_):
-        width=self.get_width() or self.get_default_size()[0]
+        """Windows breakpoints (gui/breakpoints.py): navigation pane, header and Library toolbar."""
+        # The requested width (what a resize asks for), not the current allocation:
+        # a layout's own minimum width must never stop the window from shrinking into the next one.
+        width=self.get_default_size()[0] if self.get_default_size()[0]>0 else self.get_width()
+        if self.is_maximized() or self.is_fullscreen():width=self.get_width() or width
         scale=Gtk.Settings.get_default().get_property('gtk-xft-dpi')/(96*1024) if Gtk.Settings.get_default() else 1
         unit=max(1.0,scale)
-        labels=width>=1180*unit
+        logical=width/unit
+        # Navigation: expanded pane, compact icon rail, or hidden behind the menu button.
+        mode=breakpoints.nav_mode(logical)
+        if getattr(self,'_nav_mode',None)!=mode and hasattr(self,'split'):
+            self._nav_mode=mode
+            self.split.set_collapsed(mode=='minimal')
+            compact=mode=='compact'
+            self.split.add_css_class('nav-compact') if compact else self.split.remove_css_class('nav-compact')
+            self.split.set_min_sidebar_width(64 if compact else 196);self.split.set_max_sidebar_width(64 if compact else 236)
+            # Compact rail: icons only (tooltips keep the names), no wordmark.
+            for nav_label in getattr(self,'nav_labels',()):nav_label.set_visible(not compact)
+            if hasattr(self,'sidebar_brand'):self.sidebar_brand.set_visible(not compact)
+        labels=logical>=1180
         for widget in (self.sticky_install_all,self.sticky_remove_all,self.sticky_update_dlss):
             if widget.text_label.get_visible()!=labels:widget.text_label.set_visible(labels)
-        # Library toolbar: Windows keeps labels while there is room, then icons,
-        # and never lets the toolbar set the window's minimum width.
-        commands=width>=1460*unit
+        # Library toolbar follows the page width, as LibraryPage.ApplyLayout does.
+        sidebar={'expanded':236,'compact':64}.get(getattr(self,'_nav_mode','expanded'),0)
+        page=logical-sidebar
+        commands=breakpoints.library_labels(page)
         for widget in getattr(self,'library_commands',()):
             if widget.text_label.get_visible()!=commands:widget.text_label.set_visible(commands)
-        if hasattr(self,'art_scale'):self.art_scale.set_visible(width>=1250*unit)
-        if hasattr(self,'search'):self.search.set_size_request(180 if commands else 120,-1)
+        layout=breakpoints.library_layout(page)
+        if hasattr(self,'library_tools_row') and layout!=self._library_layout:
+            moving=(self.library_filterbox,self.library_viewbox,self.art_scale,*self.library_commands,self.library_more)
+            target=self.library_tools_row if layout>0 else self.library_viewbar
+            for widget in moving:
+                parent=widget.get_parent()
+                if parent is not None and parent is not target:parent.remove(widget);target.append(widget)
+            self.library_tools_row.set_visible(layout>0)
+            self._library_layout=layout
+        if hasattr(self,'art_scale'):
+            self.art_scale.set_visible(layout<2)
+            self.art_scale.set_size_request(100 if layout==1 else 120,-1)
+        if hasattr(self,'search'):self.search.set_size_request(160 if layout==0 else 0,-1)
+        hero=getattr(self,'detail_hero_layout',None)
+        if hero is not None and hero[2].get_root() is self:
+            identity,heading,actions=hero
+            narrow=breakpoints.details_narrow(page)
+            if narrow!=self._detail_narrow:
+                self._detail_narrow=narrow
+                actions.get_parent().remove(actions)
+                (heading if narrow else identity).append(actions)
+                actions.set_halign(Gtk.Align.START if narrow else Gtk.Align.END)
+                actions.set_margin_top(12 if narrow else 0)
+        # Phone: the dashboard drops the large mark and leads with the title.
+        if hasattr(self,'dashboard_icon'):self.dashboard_icon.set_visible(layout<2)
+        # Phone: only More stays; Select all / Rescan / Add folder are in its menu.
+        for widget in getattr(self,'library_commands',()):widget.set_visible(layout<2)
         return False
 
     def current_page(self):
@@ -12511,6 +12575,10 @@ class Window(Adw.ApplicationWindow):
             action=Gio.SimpleAction.new(name,None);action.connect('activate',callback);self.add_action(action)
         for widget in (hero_install,hero_restore,hero_more):hero_actions.append(widget)
         identity.append(hero_actions)
+        # Windows GamePage: below 980 px the actions drop under the text, left-aligned.
+        self.detail_hero_layout=(identity,heading,hero_actions)
+        self._detail_narrow=None
+        GLib.idle_add(self._header_density)
 
         banner.add_overlay(
             identity

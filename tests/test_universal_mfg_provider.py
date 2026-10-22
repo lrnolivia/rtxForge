@@ -128,6 +128,7 @@ class UniversalMfgTest(unittest.TestCase):
             target = Path(directory)
             e = SimpleNamespace(Y4MY_PROVIDER={'mfg_component': provider.pinned()})
             (target / 'RTXMFG-halocampaignevolved-B3DAE402A7B7D259.log').write_text('run')
+            (target / 'RTXMFG-halocampaignevolved-B3DAE402A7B7D259-intervals.csv').write_text('ms\n8.3\n')
             (target / provider.STATUS).write_text('{}')
             provider.check_target(e, SimpleNamespace(target_dir=target), None)
 

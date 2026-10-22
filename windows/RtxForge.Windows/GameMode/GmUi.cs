@@ -66,8 +66,7 @@ public sealed partial class GmUi(GmTheme t)
         {
             Style = Style("GmButtonStyle"),
             Content = content is string s ? Label(s, kind) : content,
-            Background = enabled && bg.A > 0 ? t.Surface(bg, control: true) : GmTheme.B(bg),
-            BorderBrush = enabled && bg.A > 0 ? t.SurfaceEdge() : GmTheme.B(Microsoft.UI.Colors.Transparent),
+            Background = GmTheme.B(bg),
             Foreground = GmTheme.B(fg),
             FontSize = t.Em(em),
             FontWeight = kind == GmKind.Primary ? new FontWeight(650) : new FontWeight(550),
@@ -203,7 +202,7 @@ public sealed partial class GmUi(GmTheme t)
         return new Border
         {
             MinWidth = t.Px(32), MinHeight = t.Px(32), CornerRadius = new CornerRadius(t.Px(6)),
-            Background = t.Surface(t.Card, control: true), Padding = new Thickness(t.Px(10), t.Px(4), t.Px(10), t.Px(4)),
+            Background = GmTheme.B(t.Card), Padding = new Thickness(t.Px(10), t.Px(4), t.Px(10), t.Px(4)),
             VerticalAlignment = VerticalAlignment.Center,
             Child = new TextBlock
             {
@@ -241,7 +240,7 @@ public sealed partial class GmUi(GmTheme t)
             stack.Children.Add(list[i]);
             if (i < list.Count - 1) stack.Children.Add(new Border { Height = 1, Background = GmTheme.B(t.Line) });
         }
-        return new Border { Background = t.Surface(background ?? t.Panel), CornerRadius = new CornerRadius(t.Px(16)), Child = stack };
+        return new Border { Background = GmTheme.B(background ?? t.Panel), CornerRadius = new CornerRadius(t.Px(16)), Child = stack };
     }
 
     /// <summary>.rf-preference: title (+ description) with a value or control on the right.</summary>
@@ -306,7 +305,7 @@ public sealed partial class GmUi(GmTheme t)
         if (!danger)
         {
             MenuFocus(button);
-            button.GotFocus += (_, _) => { if (button.FocusState != FocusState.Pointer) titleText.Foreground = GmTheme.B(t.ActiveFg); };
+            button.GotFocus += (_, _) => { if (button.FocusState != FocusState.Pointer) titleText.Foreground = button.Foreground; };
             button.LostFocus += (_, _) => titleText.Foreground = GmTheme.B(enabled ? t.Fg : t.DisabledFg);
         }
         return button;
@@ -433,11 +432,11 @@ public sealed partial class GmUi(GmTheme t)
             var on = key == selected;
             var button = Capsule(Button(label, () => pick(key), GmKind.Transparent, em, enabled, radius: 8,
                 padding: new Thickness(t.Px(22), t.Px(10), t.Px(22), t.Px(10)), minHeight: t.Compact ? 40 : 54));
-            if (on) { button.Background = t.Surface(t.SegmentSelected, control: true); button.BorderBrush = t.SurfaceEdge(); button.Foreground = GmTheme.B(t.ActiveFg); }
+            if (on) { button.Background = GmTheme.B(t.SegmentSelected); button.Foreground = GmTheme.B(t.ActiveFg); }
             Focusable(button, -6);
             line.Children.Add(button);
         }
-        return Capsule(new Border { Background = t.Surface(t.Card), CornerRadius = new CornerRadius(t.Px(12)), Padding = new Thickness(t.Px(4)), Child = line });
+        return Capsule(new Border { Background = GmTheme.B(t.Card), CornerRadius = new CornerRadius(t.Px(12)), Padding = new Thickness(t.Px(4)), Child = line });
     }
 
     public static Border Spacer(double height) => new() { Height = height };

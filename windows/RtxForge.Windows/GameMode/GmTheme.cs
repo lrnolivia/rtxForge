@@ -72,12 +72,12 @@ public sealed class GmTheme
     static GmTheme Dark() => new()
     {
         Name = "dark",
-        Window = Hex("#171d21"), View = Hex("#20272c"), Panel = Hex("#293238"), Card = Hex("#364149"),
-        Fg = Hex("#f0f4f5"), Muted = Hex("#d8e1e6"), Focus = Hex("#b9c8cf"),
-        Danger = Hex("#ffc6cc"), DangerBg = Hex("#4b2932"), Line = Hex("#4a5962"),
-        Active = Hex("#41515b"), ActiveFg = Hex("#ffffff"), SegmentSelected = Hex("#465965"), RowFocus = Hex("#3a474f"),
-        Disabled = Hex("#2d373e"), DisabledFg = Hex("#96a6af"),
-        DlssSurface = Hex("#3b4b55"), DlssInk = Hex("#f0f4f5"), DlssBorder = Hex("#899fae"),
+        Window = Hex("#181818"), View = Hex("#222222"), Panel = Hex("#2b2b2b"), Card = Hex("#363636"),
+        Fg = Hex("#f5f5f5"), Muted = Hex("#c3c3c3"), Focus = Hex("#c4c4c4"),
+        Danger = Hex("#ffc6cc"), DangerBg = Hex("#4b2932"), Line = Hex("#494949"),
+        Active = Hex("#ededed"), ActiveFg = Hex("#171717"), SegmentSelected = Hex("#e0e0e0"), RowFocus = Hex("#424242"),
+        Disabled = Hex("#303030"), DisabledFg = Hex("#a3a3a3"),
+        DlssSurface = Hex("#343434"), DlssInk = Hex("#ededed"), DlssBorder = Hex("#5a5a5a"),
     };
 
     static GmTheme Night() => new()
@@ -104,30 +104,6 @@ public sealed class GmTheme
 
     public static Color Hex(string hex) => ArtAccent.TryParse(hex, out var c) ? c : Microsoft.UI.Colors.Magenta;
     public static SolidColorBrush B(Color c, double opacity = 1) => new(c) { Opacity = opacity };
-
-    /// <summary>A shallow satin finish; the underlying role color stays dominant.</summary>
-    public LinearGradientBrush Surface(Color color, bool control = false) => new()
-    {
-        StartPoint = new(0, 0), EndPoint = new(0, 1),
-        GradientStops =
-        {
-            new GradientStop { Color = ArtAccent.Mix(Microsoft.UI.Colors.White, color, control ? .06 : IsLight ? .24 : .035), Offset = 0 },
-            new GradientStop { Color = color, Offset = .55 },
-            new GradientStop { Color = ArtAccent.Mix(Microsoft.UI.Colors.Black, color, IsLight ? .018 : .035), Offset = 1 },
-        },
-    };
-
-    /// <summary>Inset edge lighting, drawn by the template without affecting button measurement.</summary>
-    public LinearGradientBrush SurfaceEdge() => new()
-    {
-        StartPoint = new(0, 0), EndPoint = new(0, 1),
-        GradientStops =
-        {
-            new GradientStop { Color = Color.FromArgb(IsLight ? (byte)166 : (byte)66, 255, 255, 255), Offset = 0 },
-            new GradientStop { Color = Color.FromArgb(IsLight ? (byte)16 : (byte)23, 255, 255, 255), Offset = .55 },
-            new GradientStop { Color = Color.FromArgb(IsLight ? (byte)46 : (byte)61, 0, 0, 0), Offset = 1 },
-        },
-    };
 
     /// <summary>Per-game roles (--game-accent, --game-title, --game-tint, --game-pill, --game-ink).</summary>
     public GameColors GameColors(AccentPalette? palette)

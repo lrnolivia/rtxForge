@@ -4,20 +4,20 @@
 
     <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Light">
-            <SolidColorBrush x:Key="GmHoverBrush" Color="#192B20" />
+            <SolidColorBrush x:Key="GmHoverBrush" Color="Black" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="Dark">
-            <SolidColorBrush x:Key="GmHoverBrush" Color="#EDF5FA" />
+            <SolidColorBrush x:Key="GmHoverBrush" Color="White" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="Default">
-            <SolidColorBrush x:Key="GmHoverBrush" Color="#EDF5FA" />
+            <SolidColorBrush x:Key="GmHoverBrush" Color="White" />
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 
     <!--
         Game Mode button (prototype .rf-button). Colors, radius, padding and
         font size are set per control by GameModeView from the Night / Dark /
-        Light palette. The inset edge adds finish without changing geometry;
+        Light palette. Flat fills keep the artwork and selected controls prominent;
         hover respects the theme and focus follows the current game accent.
     -->
     <Style x:Key="GmButtonStyle" TargetType="Button">
@@ -30,8 +30,6 @@
                 <ControlTemplate TargetType="Button">
                     <Grid x:Name="Root" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
                           BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}">
-                        <Border BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
-                                CornerRadius="{TemplateBinding CornerRadius}" IsHitTestVisible="False" />
                         <Border x:Name="Hover" Background="{ThemeResource GmHoverBrush}" CornerRadius="{TemplateBinding CornerRadius}" Opacity="0" IsHitTestVisible="False" />
                         <Border x:Name="Press" Background="Black" CornerRadius="{TemplateBinding CornerRadius}" Opacity="0" IsHitTestVisible="False" />
                         <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}"
@@ -59,7 +57,7 @@
                                 <VisualState x:Name="Normal" />
                                 <VisualState x:Name="PointerOver">
                                     <VisualState.Setters>
-                                        <Setter Target="Hover.Opacity" Value="0.07" />
+                                        <Setter Target="Hover.Opacity" Value="0.05" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Pressed">

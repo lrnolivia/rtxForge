@@ -212,9 +212,20 @@ def _read_ini(path):
 
 def inspect(e, row, cached=True):
     _, _, directory = target(row)
-    stack(directory, cached, installed=True)
-    nr = model(directory / MODEL)
     record = state(e, directory)
+    if record and record.get('adopted') and record.get('installed_hashes'):
+        # An adopted setup may be any Feeder version: its record, checked below,
+        # is the recipe. Installing over it replaces it with the pinned stack.
+        for name in CONFIGS:
+            _read_ini(t.safe(directory / name))
+        try:
+            nr = model(directory / MODEL)
+        except t.Refusal:
+            nr = record.get('nr_runtime') or {}
+            t.need(nr.get('sha256') and digest(directory / MODEL, cached) == nr['sha256'], 'The adopted NR model changed')
+    else:
+        stack(directory, cached, installed=True)
+        nr = model(directory / MODEL)
     if record:
         t.need(record.get('status') == 'active', 'The Feeder installation needs recovery')
         for name, expected in record['installed_hashes'].items():
@@ -312,6 +323,15 @@ def expand_rows(e, rows, selected=False):
                                  blocked='')
                 except (t.Refusal, OSError, ValueError, configparser.Error) as error:
                     child.update(blocked=str(error), feeder_detected=True)
+                    try:
+                        unmanaged = state(e, exe.parent) is None
+                    except (t.Refusal, OSError, ValueError):
+                        unmanaged = False
+                    if unmanaged:
+                        # Another Feeder version: Adoption takes it as found or
+                        # replaces it with the pinned stack.
+                        child.update(blocked='', installed=True, runtime_provider='feeder', feature_mode='nr-only',
+                                     profile='NR Only', feeder_managed=False, installed_on=None, mfg_enabled=False, mfg_multiplier=0)
             elif selected or not child.get('native_dlss') or skynizz_provider.native_nr_refusal(child.get('exe'), child.get('appid')):
                 try:
                     # Capability is independent of the package selected for native

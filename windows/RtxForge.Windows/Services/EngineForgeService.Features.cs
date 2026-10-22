@@ -182,7 +182,8 @@ public sealed partial class EngineForgeService
         var status = $"{S(r?["host"], "gpu") ?? "System"} · {S(r?["host"], "reason") ?? ""}";
         var packages = Objects(r?["catalog"]).Select(p => new PackageOption(S(p, "id") ?? "", S(p, "name") ?? "", S(p, "version") ?? "",
             S(p, "summary") ?? "", B(p, "available"), S(p, "reason") ?? "", B(p, "recommended"), S(p, "url") ?? "",
-            (p["verified"] as JsonArray)?.Select(os => os?.ToString() ?? "").Where(os => os.Length > 0).ToArray())).ToList();
+            (p["verified"] as JsonArray)?.Select(os => os?.ToString() ?? "").Where(os => os.Length > 0).ToArray(),
+            (p["mfg_versions"] as JsonObject)?.ToDictionary(v => v.Key, v => v.Value?.ToString() ?? ""))).ToList();
         var community = Objects(r?["community"]).Select(c => new CommunitySource(S(c, "name") ?? "", S(c, "url") ?? "", S(c, "note") ?? "")).ToList();
         return new PackageCatalog(status, packages, community, S(r?["custom"], "name"));
     }

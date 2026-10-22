@@ -164,7 +164,7 @@ def windows_hardware() -> dict:
         chosen = (supported or rows)[0]
         info.update({"gpu": chosen[0].strip(), "driver": chosen[1].strip(), "vram": chosen[2].strip() + " MiB"})
         if not supported:
-            info["reason"] = "This native NVIDIA package targets GeForce RTX 40-series GPUs. This GPU is not validated."
+            info["reason"] = f"{info['gpu']} hasn't been validated with these packages yet."
             return info
     except (OSError, subprocess.SubprocessError, IndexError):
         info["reason"] = "Cannot verify an NVIDIA GPU and working NVIDIA driver. Install is unavailable; restore remains available."

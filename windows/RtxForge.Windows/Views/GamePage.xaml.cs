@@ -229,7 +229,7 @@ public sealed partial class GamePage : Page
                 {
                     var (packageKeys, packageCaptions) = shell.Settings.GamePackageOptions();
                     var chosen = shell.Settings.GamePackage(g);
-                    var (packageRow, packageCombo) = Prefs.ComboRow("Package", ForgeSettings.GamePackageNote(g), packageCaptions,
+                    var (packageRow, packageCombo) = Prefs.ComboRow("Package", shell.Settings.GamePackageNote(g), packageCaptions,
                         Math.Max(0, Array.IndexOf(packageKeys, chosen)), "");
                     packageCombo.IsEnabled = !shell.Busy && !shell.Service.IsPreview;
                     packageCombo.SelectionChanged += (_, _) =>

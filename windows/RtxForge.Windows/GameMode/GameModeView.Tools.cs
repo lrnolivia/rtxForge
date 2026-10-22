@@ -50,7 +50,8 @@ public sealed partial class GameModeView
         Border UseCard(PackageOption item)
         {
             var current = shell.Settings.RuntimeProvider == item.Id;
-            return PackageCard(item.Name, item.Version, item.Available ? item.Summary : item.Reason, item.Verified,
+            var (name, version) = Views.PackagesPage.CardTitle(item, shell.Settings);
+            return PackageCard(name, version, item.Available ? item.Summary : item.Reason, item.Verified,
                 ui.Button(current ? "In use" : "Use for DLSS games", () =>
                 {
                     shell.SelectPackage(item.Id);
@@ -61,18 +62,20 @@ public sealed partial class GameModeView
         var pairs = Views.PackagesPage.PairsWithMfg.Contains(shell.Settings.RuntimeProvider);
         var columns = new Controls.PresetColumns(t.Px(560), 2) { ColumnSpacing = t.Px(24), RowSpacing = t.Px(24) };
         var nr = new StackPanel { Spacing = t.Px(16) };
-        SectionTitle(nr, "NR packages", "Neural rendering. Choose one for games with DLSS; Feeder NR covers games without DLSS automatically.");
+        var automatic = catalog.Packages.FirstOrDefault(p => Views.PackagesPage.WithoutDlss.Contains(p.Id))?.Name;
+        SectionTitle(nr, "NR packages", "Neural rendering. Choose one for games with DLSS" + (automatic is null ? "." : $"; {automatic} covers games without DLSS automatically."));
         foreach (var item in catalog.Packages.Where(p => Views.PackagesPage.PairsWithMfg.Contains(p.Id))) nr.Children.Add(UseCard(item));
         foreach (var item in catalog.Packages.Where(p => Views.PackagesPage.WithoutDlss.Contains(p.Id)))
             nr.Children.Add(PackageCard(item.Name, item.Version, item.Summary, item.Verified,
                 ui.Button(item.Available ? "Used automatically" : "Unavailable", () => { }, GmKind.Card, .8, false)));
         var mfg = new StackPanel { Spacing = t.Px(16) };
-        SectionTitle(mfg, "MFG packages", pairs ? "Native NVIDIA frame generation for Skynizz NR." : "These pair with Skynizz NR.");
+        var pairName = Views.PackagesPage.PairName(catalog);
+        SectionTitle(mfg, "MFG packages", pairs ? $"Native NVIDIA frame generation for {pairName}." : $"These pair with {pairName}.");
         foreach (var package in Views.PackagesPage.MfgPackages)
         {
             var current = pairs && shell.Settings.MfgProvider == package.Id;
-            mfg.Children.Add(PackageCard(package.Name, package.Version, package.Summary, package.Verified,
-                ui.Button(current ? "In use" : "Use with Skynizz NR", () =>
+            mfg.Children.Add(PackageCard(package.Name, Views.PackagesPage.MfgVersion(package.Id, package.Kind, catalog), package.Summary, package.Verified,
+                ui.Button(current ? "In use" : "Use with " + pairName, () =>
                 {
                     shell.Settings.MfgProvider = package.Id; shell.SaveSettings();
                     Render(keepFocus: true);
@@ -81,7 +84,7 @@ public sealed partial class GameModeView
         columns.Children.Add(nr); columns.Children.Add(mfg);
         body.Children.Add(columns);
 
-        SectionTitle(body, "Unified packages", "NR and frame generation in one package, for games with DLSS. Choosing one replaces Skynizz NR for those games.");
+        SectionTitle(body, "Unified packages", "NR and frame generation in one package, for games with DLSS. Choosing one replaces your NR package for those games.");
         var unified = DetailColumns();
         foreach (var item in catalog.Packages.Where(p => !Views.PackagesPage.WithoutDlss.Contains(p.Id) && !Views.PackagesPage.PairsWithMfg.Contains(p.Id)))
             unified.Children.Add(UseCard(item));

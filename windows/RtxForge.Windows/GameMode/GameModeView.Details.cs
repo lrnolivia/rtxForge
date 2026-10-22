@@ -339,7 +339,7 @@ public sealed partial class GameModeView
                 if (!g.UsesFeeder && !shell.Service.IsPreview)
                 {
                     var (packageKeys, packageCaptions) = shell.Settings.GamePackageOptions();
-                    content.Children.Add(ui.Group([Choice("Package", ForgeSettings.GamePackageNote(g), packageKeys, packageCaptions,
+                    content.Children.Add(ui.Group([Choice("Package", shell.Settings.GamePackageNote(g), packageKeys, packageCaptions,
                         () => shell.Settings.GamePackage(g), v => _ = shell.SelectGamePackageAsync(g, v), "")]));
                 }
                 var (presetRows, value) = PresetRows(shell.GameTuning(g), g.Installed && !g.Blocked, g.RuntimeProvider != "skynizz",

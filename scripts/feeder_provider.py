@@ -105,7 +105,7 @@ def model(path):
     value = digest(path)
     spec = lock()['models'].get(value)
     t.need(spec is not None and path.stat().st_size == spec['size'],
-           'Choose a verified RTX 40 compatible NR model in Settings')
+           'Choose a verified NR model for your GPU in Settings')
     t.executable_check(path)
     return {'path': str(path), 'sha256': value, **spec}
 
@@ -614,7 +614,7 @@ def prepare(config, rows, mode, operation, settings, e):
                     source = (Path(desired) if desired else Path(current['nr_runtime']['cache']['path']) if current else
                               directory / MODEL)
                 else:
-                    t.need(MODEL in files, 'Choose a verified RTX 40 compatible NR model in Settings')
+                    t.need(MODEL in files, 'Choose a verified NR model for your GPU in Settings')
                     source = Path(files[MODEL]['path'])
                 selected = model(source)
                 inputs[MODEL] = cache(e, source)

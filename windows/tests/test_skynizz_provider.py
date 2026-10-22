@@ -393,7 +393,7 @@ checks.append('bridge update refuses unowned installs, mode changes and preset r
 inzoi=game('inZOI');(inzoi/'Game.exe').rename(inzoi/'inZOI-Win64-Shipping.exe')
 (inzoi/'nvngx_dlssg.dll').write_bytes(fixtures.pe());inzoi_before=files(inzoi)
 review=service.prepare([scan(inzoi)],'nr-mfg','install',visual_settings=settings)
-assert 'overlay disabled for inZOI startup' in review['rows'][0]['detail']
+assert 'overlay disabled so this game starts' in review['rows'][0]['detail']
 run(review)
 ini=inzoi/'OptiScaler.ini'
 assert 'OverlayMenu=false' in ini.read_text() and 'Enabled=true' in ini.read_text()

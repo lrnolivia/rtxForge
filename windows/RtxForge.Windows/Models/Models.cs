@@ -185,7 +185,7 @@ public sealed record DlssInventory(IReadOnlyList<DlssFile> Files, string Blocked
 
 /// <summary>A package. Verified lists the OSes ("windows", "linux") where it has been tested in a game.</summary>
 public sealed record PackageOption(string Id, string Name, string Version, string Summary, bool Available, string Reason, bool Recommended, string Url,
-    IReadOnlyList<string>? Verified = null);
+    IReadOnlyList<string>? Verified = null, IReadOnlyDictionary<string, string>? MfgVersions = null);
 
 public sealed record CommunitySource(string Name, string Url, string Note);
 
@@ -227,15 +227,21 @@ public sealed class ForgeSettings
     /// <summary>A game's own package for games with DLSS, by game folder; absent games use RuntimeProvider.</summary>
     [JsonPropertyName("game_packages")] public Dictionary<string, string> GamePackages { get; set; } = [];
     /// <summary>Packages a game can choose on Windows. Feeder NR stays automatic for DX11 games without DLSS.</summary>
-    public static readonly (string Key, string Name)[] GamePackageChoices = [("skynizz", "Skynizz NR + Universal MFG"), ("dlss-unlocked", "DLSS-Unlocked")];
-    public static string PackageName(string key) => GamePackageChoices.FirstOrDefault(c => c.Key == key).Name ?? key;
+    public static readonly (string Key, string Name)[] GamePackageChoices = [("skynizz", "Skynizz NR"), ("dlss-unlocked", "DLSS-Unlocked")];
+    /// <summary>MFG packages that pair with Skynizz NR, as MfgProvider values.</summary>
+    public static readonly (string Key, string Name)[] MfgPackageNames =
+        [("universal", "Universal MFG"), ("integrated", "Integrated MFG unlock"), ("mfg-unlock", "MFG Unlock")];
+    public static string MfgName(string key) => MfgPackageNames.FirstOrDefault(c => c.Key == key).Name ?? key;
+    /// <summary>A package's name as installed now: Skynizz NR is named with the MFG package it pairs with.</summary>
+    public string PackageName(string key) => key == "skynizz" ? "Skynizz NR + " + MfgName(MfgProvider)
+        : GamePackageChoices.FirstOrDefault(c => c.Key == key).Name ?? key;
     /// <summary>A game's package choices for both UIs: "" follows the library package.</summary>
     public (string[] Keys, string[] Captions) GamePackageOptions() =>
-        (["", .. GamePackageChoices.Select(c => c.Key)], ["Library package · " + PackageName(RuntimeProvider), .. GamePackageChoices.Select(c => c.Name)]);
+        (["", .. GamePackageChoices.Select(c => c.Key)], ["Library package · " + PackageName(RuntimeProvider), .. GamePackageChoices.Select(c => PackageName(c.Key))]);
     public string GamePackage(Game game) => GamePackages.GetValueOrDefault(game.Id, "");
-    public static string GamePackageNote(Game game) => game.Installed && game.RuntimeProvider is { } installed
+    public string GamePackageNote(Game game) => game.Installed && game.RuntimeProvider is { } installed
         ? $"Installed with {PackageName(installed)}. Another package applies after you restore this game."
-        : "Used when you install features on this game. Games without DLSS use Feeder NR.";
+        : "Used when you install features on this game. Games without DLSS get their NR package automatically.";
     /// <summary>The package a review prepares this game with: Feeder games keep their route, repairs keep the installed package.</summary>
     public string PackageFor(Game game, string operation)
     {

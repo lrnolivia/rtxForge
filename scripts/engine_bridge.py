@@ -482,7 +482,7 @@ def prepare(config,rows,mode,operation,settings):
                         if runtime:=target_meta.get(component):
                             preview['launch_options']+=f" · production {label} {runtime['version']} · SHA-256 {runtime['sha256']}"
                     if skynizz_provider.startup_overlay_disabled(g):
-                        preview['launch_options']+=' · OptiScaler swapchain overlay disabled for inZOI startup'
+                        preview['launch_options']+=' · OptiScaler swapchain overlay disabled so this game starts'
                 if interrupted_install(baseline):
                     preview=dict(preview,launch_options='Finishes an install that was interrupted · '+preview['launch_options'])
             if prefix:preview=dict(preview,launch_options="Proton setting saved in this game's prefix · Steam can stay open")

@@ -20,7 +20,7 @@ public sealed class OverlayUiReviewView : StackPanel
     public OverlayUiReviewView(EngineForgeService engine, bool packages = false)
     {
         service = engine; this.packages = packages; Spacing = 12; action.Content = ReviewLabel;
-        Children.Add(new TextBlock { Text = packages ? "Update the in-game overlay in managed Skynizz games. Your tuning, NR model and original restore backups are kept. Other package types are listed separately."
+        Children.Add(new TextBlock { Text = packages ? "Update the in-game overlay in games that carry the rtxForge Overlay. Your tuning, NR model and original restore backups are kept. Other package types are listed separately."
             : "Saved choices are used for future installs. Review installed games to update their menus and intro messages too.", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
         Children.Add(rows); Children.Add(status); Children.Add(action);
         action.Click += async (_, _) => await Run();

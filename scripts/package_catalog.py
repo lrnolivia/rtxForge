@@ -72,7 +72,8 @@ def catalog(host=None):
             'recommended': key == 'dlss-unlocked' and supported and host.get('system') != 'Windows',
         })
     if host.get('system')=='Windows':
-        rows.append({'id': 'feeder', 'name': 'Feeder NR', 'version': '1.19.0 / RenoDX 8.5.0-rc10',
+        feeder = json.loads((ROOT / 'providers/feeder.json').read_text(encoding='utf-8'))
+        rows.append({'id': 'feeder', 'name': feeder['name'], 'version': feeder['version'].removeprefix('Feeder '),
                      'url': 'https://github.com/jlrouzies-fr/DLSS5-Feeder', 'sha256': '',
                      'available': supported, 'recommended': False,
                      'reason': 'Requires a local Feeder stack and a compatible NR model' if supported else host.get('reason', 'Unsupported system'),
@@ -85,11 +86,16 @@ def catalog(host=None):
             bridge_ready=archive.is_file()
         except (OSError,ValueError,t.Refusal):
             bridge_ready=False
-        rows.append({'id':'skynizz','name':'Skynizz NR + Universal MFG','version':(bridge or record)['tag']+' bridge · Universal MFG 1.6.1',
+        # The MFG packages that pair with this bridge, at their pinned versions; the app names
+        # the card after the one selected.
+        import universal_mfg_provider
+        mfg = {'universal': universal_mfg_provider.pinned()['version'], 'integrated': (bridge or record)['tag'],
+               'mfg-unlock': locks['mfg-unlock']['version']}
+        rows.append({'id':'skynizz','name':'Skynizz NR','version':(bridge or record)['tag']+' bridge','mfg_versions':mfg,
                      'url':'https://github.com/'+record['repo'],'sha256':(bridge or record)['sha256'],
                      'available':supported and bridge_ready,
                      'reason':('Requires a compatible local NR model, DirectX 12 with DLSS, and native DLSS Frame Generation for MFG.' if bridge_ready else 'The combined NR + MFG bridge is not included in this app build.') if supported else host.get('reason') or 'Verify a supported NVIDIA system first',
-                     'summary':'Recommended. Neural rendering with Universal MFG 1.6.1 frame generation in DirectX 12 games with DLSS.',
+                     'summary':'Recommended. Neural rendering in DirectX 12 games with DLSS, with frame generation from the MFG package you choose.',
                      'recommended':supported and bridge_ready})
     for row in rows:
         row['verified'] = list(VERIFIED.get(row['id'], ()))

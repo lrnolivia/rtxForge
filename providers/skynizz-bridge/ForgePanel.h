@@ -131,10 +131,15 @@ inline const ImFontLoader* WindowsText()
     options.FontBuilderFlags = ImGuiFreeTypeBuilderFlags_LightHinting; options.FontLoader = WindowsText();
     font = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(forgeInter, sizeof(forgeInter), 18.f, &options);
     bold = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(forgeInterSemiBold, sizeof(forgeInterSemiBold), 18.f, &options);
+    LOG_INFO("rtxForge panel fonts: {}", font != nullptr && bold != nullptr);
     key = int(Preference(L"PanelKey", VK_DELETE)); modifiers = int(Preference(L"PanelModifiers", 0));
     advanced = Preference(L"Advanced", 0) != 0;
-    wchar_t caption[256] {}; GetWindowTextW(window, caption, 256);
+    // Init runs on the render thread. GetWindowTextW sends WM_GETTEXT to the
+    // window's own thread and waits; games whose window thread waits on the
+    // render thread (Starfield) then deadlock. Read the caption directly.
+    wchar_t caption[256] {}; InternalGetWindowText(window, caption, 256);
     title = wstring_to_string(caption);
+    LOG_INFO("rtxForge panel caption read");
     try
     {
         // MainDllPath is the configurable DLSS search directory (often the

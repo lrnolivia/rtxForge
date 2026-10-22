@@ -2,9 +2,9 @@
   "schema": 1,
   "id": "bg3fgvk-vulkan-dlssg",
   "name": "BG3 Vulkan DLSS Frame Generation",
-  "status": "integration-candidate",
+  "status": "experimental-standalone-provider",
   "experimental": true,
-  "deployable": false,
+  "deployable": true,
   "runtime_verified": false,
   "default_promoted": false,
   "upstream": {
@@ -37,13 +37,34 @@
     "rtxforge_qualified_platforms": []
   },
   "loader": {
-    "name": "BG3 Native Mod Loader",
-    "bundled_in_archive": false,
+    "name": "rtxForge BG3 startup proxy",
+    "source": "loader/loader.cpp",
+    "build": "loader/Build-Loader.ps1",
     "upstream_proxy": "bink2w64.dll",
     "upstream_module_path": "NativeMods/fgvk.dll",
-    "required_hook_timing": "Before Vulkan instance/device/swapchain creation",
-    "ownership_review_complete": false,
-    "redistribution_review_complete": false
+    "original_name": "bink2w64_rtxforge_original.dll",
+    "required_hook_timing": "Before game entry and Vulkan initialization",
+    "ownership_review_complete": true,
+    "redistribution_review_complete": true,
+    "binary": {
+      "size": 112640,
+      "sha256": "4e68707f923271dfed0b2a080bd60ffa572c0043f186b304e75104d90e8f22f9"
+    },
+    "game_original": {
+      "size": 411136,
+      "sha256": "7c3ac825eb7fe769c3831540e108282dd90f6275b0f61dec8beeea0a6615b0c1",
+      "distribution": "Copied only from the selected local game; never redistributed"
+    },
+    "exports_source": {
+      "repository": "gottyduke/NativeModLoader",
+      "commit": "8b66575e23b1bf7fa5fba11a9b2382a9cc14c4c9",
+      "license": "MIT",
+      "paths": [
+        "include/exports.def",
+        "include/jmp.asm"
+      ]
+    },
+    "exports_notice_sha256": "120e325c620362ebd057f32dd424db3e55ab52347f5dde2d954e50d3af1d980b"
   },
   "runtime": {
     "streamline_version": "2.12.0",
@@ -149,5 +170,6 @@
       "size": 9812,
       "sha256": "7b6a362734526f0c9a8aa3b920abd79b0316cf348d9b99d4a6bedb9d6599836c"
     }
-  }
+  },
+  "adapter": "scripts/vulkan_dlssg_provider.py"
 }

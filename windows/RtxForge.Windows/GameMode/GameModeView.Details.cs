@@ -268,9 +268,12 @@ public sealed partial class GameModeView
     {
         glyph ??= title switch
         {
-            "Features" or "Feeder NR" or "Neural rendering" => "\uE9E9",
-            "Installation" or "File Management" => "\uE896", "DLSS Files" => "\uE8A5",
-            "Tools" => "\uE90F", "Notes" => "\uE70B", "Appearance" or "Custom Artwork" => "\uE790",
+            "Features" or "Feeder NR" or "Neural rendering" or "NR packages" => "\uE9E9",
+            "Installation" or "File Management" => "\uE896", "DLSS Files" or "Installed DLSS Files" => "\uE8A5",
+            "Tools" or "Installed Tools" => "\uE90F", "Graphics Tools" => "\uE7F8",
+            "Notes" or "Your Notes" => "\uE70B", "Appearance" or "Custom Artwork" or "Accent Color" => "\uE790",
+            "Hero Focus" => "\uE8B3", "MFG packages" => "\uE7F4", "Unified packages" => "\uE8F1",
+            "Other community projects" => "\uE774",
             "Performance" => "\uE9D9", "Sharpening" => "\uE7AD", "Multi-Frame Generation" => "\uE7F4",
             _ => "\uE713",
         };
@@ -298,15 +301,24 @@ public sealed partial class GameModeView
 
     Border DetailFact(string title, string value, Button? action = null, string? glyph = null)
     {
-        var lines = new StackPanel { Spacing = t.Px(16) };
+        // Heading, value, then the action pinned to the bottom, so buttons line up when
+        // cards in one row stretch to the same height.
+        var lines = new Grid { RowSpacing = t.Px(16) };
+        lines.RowDefinitions.Add(new() { Height = GridLength.Auto });
+        lines.RowDefinitions.Add(new() { Height = new GridLength(1, GridUnitType.Star) });
+        lines.RowDefinitions.Add(new() { Height = GridLength.Auto });
         var heading = new Grid { ColumnSpacing = t.Px(12) };
         heading.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         heading.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
         if (glyph is not null) heading.Children.Add(ui.Icon(glyph, 1.05).With(icon => icon.VerticalAlignment = VerticalAlignment.Center));
         var label = ui.Text(title, .88, weight: FontWeights.SemiBold, wrap: true);
         Grid.SetColumn(label, 1); heading.Children.Add(label); lines.Children.Add(heading);
-        lines.Children.Add(ui.P(value, .8));
-        if (action is not null) { action.HorizontalAlignment = HorizontalAlignment.Right; lines.Children.Add(action); }
+        var text = ui.P(value, .8); Grid.SetRow(text, 1); lines.Children.Add(text);
+        if (action is not null)
+        {
+            action.HorizontalAlignment = HorizontalAlignment.Right; action.VerticalAlignment = VerticalAlignment.Bottom;
+            Grid.SetRow(action, 2); lines.Children.Add(action);
+        }
         return DetailPlate(lines).With(card => card.VerticalAlignment = VerticalAlignment.Top);
     }
 
@@ -605,8 +617,7 @@ public sealed partial class GameModeView
             var fieldColumn = new StackPanel { Spacing = t.Px(8) };
             fieldColumn.Children.Add(ui.Text(label, .84, available ? t.Fg : t.DisabledFg, FontWeights.SemiBold, wrap: true));
             fieldColumn.Children.Add(button);
-            if (!available) fieldColumn.Children.Add(ui.P("Unavailable for this package.", .66));
-            else if (field.Key == "skin") fieldColumn.Children.Add(ui.P("−1 follows local structure.", .66));
+            if (available && field.Key == "skin") fieldColumn.Children.Add(ui.P("−1 follows local structure.", .66));
             return fieldColumn;
         }
         UIElement Choices(string key)
@@ -687,7 +698,9 @@ public sealed partial class GameModeView
                     Selection(ratios[i], state.Multiplier == MfgPreset.Multipliers[i], allowed && state.Enabled, MfgPreset.Multipliers[i] + "×");
                 ratioGroup.Visibility = state.Enabled && state.Mode != 0 ? Visibility.Visible : Visibility.Collapsed;
                 caption.Text = state.Mode == 2 ? "Maximum multiplier" : "Multiplier";
-                description.Text = allowed ? state.Description : "Unavailable for this package.";
+                // Unavailable controls simply grey out; no caption explains it.
+                description.Text = allowed ? state.Description : "";
+                description.Visibility = description.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
             }
             void Change(Action change) { change(); state.Store(values); Refresh(); changed?.Invoke(); }
             UIElement Segments(string[] captions, List<Button> buttons, Action<int> select, string key)

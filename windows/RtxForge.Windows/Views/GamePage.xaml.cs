@@ -295,7 +295,9 @@ public sealed partial class GamePage : Page
                     Prefs.ActionButton("Open", (_, _) => MainWindow.OpenUri("https://reshade.me/")), ""));
                 extras.Add(graphicsTools);
                 PageHost.Children.Add(extras);
-                PageHost.Children.Add(Prefs.Label("Use an extracted x64 ReShade DLL or .addon64 file from a source you trust. Shader packs and presets remain yours to manage.", "ForgeCaptionDimTextStyle"));
+                var trustNote = Prefs.Label("Use an extracted x64 ReShade DLL or .addon64 file from a source you trust. Shader packs and presets remain yours to manage.", "ForgeCaptionDimTextStyle");
+                trustNote.Margin = new Thickness(0, 12, 0, 0);
+                PageHost.Children.Add(trustNote);
                 _ = FillExtraRecordsAsync(g);
                 break;
 

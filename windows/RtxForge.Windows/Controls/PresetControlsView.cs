@@ -192,8 +192,10 @@ public sealed class PresetControlsView : UserControl
                 { ratios[i].IsChecked = mfgPreset.Multiplier == MfgPreset.Multipliers[i]; ratios[i].IsEnabled = enabled && mfgPreset.Enabled; }
                 ratioGroup.Visibility = mfgPreset.Mode != 0 && mfgPreset.Enabled ? Visibility.Visible : Visibility.Collapsed;
                 caption.Text = mfgPreset.Mode == 2 ? "Maximum multiplier" : "Multiplier";
-                description.Text = !enabled ? "Unavailable for this package."
+                // Unavailable controls simply grey out; no caption explains it.
+                description.Text = !enabled ? ""
                     : mfgPreset.Description + (mfgPreset.Enabled && !dynamicSupported && dynamicDetail != "" ? "\nDynamic: " + dynamicDetail : "");
+                description.Visibility = description.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
             }
             finally { refreshing = false; }
         };
@@ -333,6 +335,11 @@ internal sealed class PresetColumns : Grid
         for (var i = 0; i < count; i++) ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
         for (var i = 0; i < (Children.Count + count - 1) / count; i++) RowDefinitions.Add(new() { Height = GridLength.Auto });
         for (var i = 0; i < Children.Count; i++)
-            if (Children[i] is FrameworkElement child) { SetRow(child, i / count); SetColumn(child, i % count); }
+            if (Children[i] is FrameworkElement child)
+            {
+                SetRow(child, i / count); SetColumn(child, i % count);
+                // Cards sharing a row are the same height. Fields and panels keep their own size.
+                if (child is Border or Button) child.VerticalAlignment = VerticalAlignment.Stretch;
+            }
     }
 }

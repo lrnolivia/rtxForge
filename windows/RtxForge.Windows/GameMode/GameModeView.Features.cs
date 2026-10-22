@@ -404,7 +404,12 @@ public sealed partial class GameModeView
         // As on the desktop: nvngx_dlss.dll first, then each file found, with the latest
         // backup shown on the Restore card.
         var rows = new List<UIElement> { ui.PreferenceRow("nvngx_dlss.dll", g.DlssVersion is null ? "Not detected" : "Version " + g.DlssVersion, null) };
-        void Show() { host.Children.Clear(); host.Children.Add(ui.Group(rows)); }
+        void Show()
+        {
+            // The rows move to a new group, so release them from the old one first.
+            if (host.Children.FirstOrDefault() is Border { Child: StackPanel old }) old.Children.Clear();
+            host.Children.Clear(); host.Children.Add(ui.Group(rows));
+        }
         Show();
         DlssInventory inventory;
         try { inventory = await shell.Service.DlssInventoryAsync(g); }
@@ -421,7 +426,7 @@ public sealed partial class GameModeView
     /// <summary>The value line of a DetailFact card.</summary>
     static void SetFactValue(Border fact, string text)
     {
-        if (fact.Child is StackPanel { Children.Count: > 1 } lines && lines.Children[1] is TextBlock value) value.Text = text;
+        if (fact.Child is Panel { Children.Count: > 1 } lines && lines.Children[1] is TextBlock value) value.Text = text;
     }
 
     async Task RestoreDlssAsync(Game g)

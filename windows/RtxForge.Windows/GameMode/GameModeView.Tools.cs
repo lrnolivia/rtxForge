@@ -44,53 +44,95 @@ public sealed partial class GameModeView
         catch (InvalidOperationException error) { body.Children.Clear(); body.Children.Add(ui.P(error.Message)); return; }
         if (page != "packages") return;
         body.Children.Clear();
-        // As on the desktop: NR packages, the MFG packages that pair with Skynizz NR, unified packages, your own.
+        // The desktop layout: NR and MFG packages side by side, then unified packages,
+        // then your own package beside the community projects.
         body.Children.Add(ui.P(catalog.Status + ".", .85));
-        static string Tested(IReadOnlyList<string>? verified) => verified is { Count: > 0 }
-            ? " Tested in games on " + string.Join(" and ", verified.Select(CrossOs.Name)) + "." : " Experimental.";
-        UIElement UseRow(PackageOption item)
+        Border UseCard(PackageOption item)
         {
             var current = shell.Settings.RuntimeProvider == item.Id;
-            return ui.RowButton(item.Name, current ? "In use" : item.Available ? "Use for DLSS games" : "Unavailable", () =>
-            {
-                shell.SelectPackage(item.Id);
-                Toast("Package selected for DLSS games. Select games, then choose Install Features.");
-                Render(keepFocus: true);
-            }, description: item.Version + " · " + (item.Available ? item.Summary : item.Reason) + Tested(item.Verified), enabled: item.Available && !current);
+            return PackageCard(item.Name, item.Version, item.Available ? item.Summary : item.Reason, item.Verified,
+                ui.Button(current ? "In use" : "Use for DLSS games", () =>
+                {
+                    shell.SelectPackage(item.Id);
+                    Toast("Package selected for DLSS games. Select games, then choose Install Features.");
+                    Render(keepFocus: true);
+                }, GmKind.Card, .8, item.Available && !current));
         }
         var pairs = Views.PackagesPage.PairsWithMfg.Contains(shell.Settings.RuntimeProvider);
-        var nr = catalog.Packages.Where(p => Views.PackagesPage.PairsWithMfg.Contains(p.Id)).Select(UseRow).ToList();
-        nr.AddRange(catalog.Packages.Where(p => Views.PackagesPage.WithoutDlss.Contains(p.Id)).Select(item => (UIElement)ui.RowButton(item.Name,
-            "Used automatically", () => { }, description: item.Version + " · Games without DLSS. " + item.Summary + Tested(item.Verified), enabled: false)));
-        var mfg = Views.PackagesPage.MfgPackages.Select(package =>
+        var columns = new Controls.PresetColumns(t.Px(560), 2) { ColumnSpacing = t.Px(24), RowSpacing = t.Px(24) };
+        var nr = new StackPanel { Spacing = t.Px(16) };
+        SectionTitle(nr, "NR packages", "Neural rendering. Choose one for games with DLSS; Feeder NR covers games without DLSS automatically.");
+        foreach (var item in catalog.Packages.Where(p => Views.PackagesPage.PairsWithMfg.Contains(p.Id))) nr.Children.Add(UseCard(item));
+        foreach (var item in catalog.Packages.Where(p => Views.PackagesPage.WithoutDlss.Contains(p.Id)))
+            nr.Children.Add(PackageCard(item.Name, item.Version, item.Summary, item.Verified,
+                ui.Button(item.Available ? "Used automatically" : "Unavailable", () => { }, GmKind.Card, .8, false)));
+        var mfg = new StackPanel { Spacing = t.Px(16) };
+        SectionTitle(mfg, "MFG packages", pairs ? "Native NVIDIA frame generation for Skynizz NR." : "These pair with Skynizz NR.");
+        foreach (var package in Views.PackagesPage.MfgPackages)
         {
             var current = pairs && shell.Settings.MfgProvider == package.Id;
-            return (UIElement)ui.RowButton(package.Name, current ? "In use" : pairs ? "Use with Skynizz NR" : "Needs Skynizz NR", () =>
-            {
-                shell.Settings.MfgProvider = package.Id; shell.SaveSettings();
-                Render(keepFocus: true);
-            }, description: package.Version + " · " + package.Summary + Tested(package.Verified), enabled: pairs && !current);
-        }).ToList();
-        var unified = catalog.Packages.Where(p => !Views.PackagesPage.WithoutDlss.Contains(p.Id) && !Views.PackagesPage.PairsWithMfg.Contains(p.Id))
-            .Select(UseRow).ToList();
-        unified.Add(ui.RowButton("Your own package", "Coming soon", () => { },
-            description: "Inspect a ZIP archive and review its settings before using it.", enabled: false));
-        foreach (var (title, lead, rows) in new (string, string, List<UIElement>)[]
-        {
-            ("NR packages", "Neural rendering. Choose one for games with DLSS; Feeder NR covers games without DLSS automatically.", nr),
-            ("MFG packages", pairs ? "Native NVIDIA frame generation for Skynizz NR." : "These pair with Skynizz NR.", mfg),
-            ("Unified packages", "NR and frame generation in one package, for games with DLSS.", unified),
-        })
-        {
-            SectionTitle(body, title, lead);
-            body.Children.Add(ui.Group(rows, t.Card));
+            mfg.Children.Add(PackageCard(package.Name, package.Version, package.Summary, package.Verified,
+                ui.Button(current ? "In use" : "Use with Skynizz NR", () =>
+                {
+                    shell.Settings.MfgProvider = package.Id; shell.SaveSettings();
+                    Render(keepFocus: true);
+                }, GmKind.Card, .8, pairs && !current)));
         }
+        columns.Children.Add(nr); columns.Children.Add(mfg);
+        body.Children.Add(columns);
+
+        SectionTitle(body, "Unified packages", "NR and frame generation in one package, for games with DLSS. Choosing one replaces Skynizz NR for those games.");
+        var unified = DetailColumns();
+        foreach (var item in catalog.Packages.Where(p => !Views.PackagesPage.WithoutDlss.Contains(p.Id) && !Views.PackagesPage.PairsWithMfg.Contains(p.Id)))
+            unified.Children.Add(UseCard(item));
+        body.Children.Add(unified);
+
+        var more = DetailColumns();
+        more.Children.Add(DetailFact("Your own package · Coming soon", "Inspect a ZIP archive and review its settings before using it. Instructions are never run.",
+            ui.Button("Choose archive", () => { }, GmKind.Card, .8, false), "").With(card => card.Opacity = .55));
         if (catalog.Community.Count > 0)
         {
-            SectionTitle(body, "Other community projects", "Explore other projects. These sources aren't curated install options.");
-            body.Children.Add(ui.Group(catalog.Community.Select(source => (UIElement)ui.RowButton(source.Name, "Open",
-                () => MainWindow.OpenUri(source.Url), description: source.Note)).ToList(), t.Card));
+            var community = new StackPanel { Spacing = t.Px(16) };
+            community.Children.Add(DetailHeading("Other community projects", ""));
+            community.Children.Add(ui.P("Explore other projects. These sources aren't curated install options.", .8));
+            community.Children.Add(ui.Group(catalog.Community.Select(source => (UIElement)ui.RowButton(source.Name, "Open",
+                () => MainWindow.OpenUri(source.Url), description: source.Note)).ToList(), t.Panel));
+            more.Children.Add(DetailPlate(community));
         }
+        body.Children.Add(more);
+    }
+
+    /// <summary>A package card as on the desktop: name, version, summary, then tested-OS badges and its action.</summary>
+    Border PackageCard(string name, string version, string summary, IReadOnlyList<string>? verified, Button action)
+    {
+        var card = new Grid { RowSpacing = t.Px(12) };
+        card.RowDefinitions.Add(new() { Height = GridLength.Auto });
+        card.RowDefinitions.Add(new() { Height = new GridLength(1, GridUnitType.Star) });
+        card.RowDefinitions.Add(new() { Height = GridLength.Auto });
+        var heading = new StackPanel { Spacing = t.Px(4) };
+        heading.Children.Add(ui.Text(name, .92, weight: Microsoft.UI.Text.FontWeights.SemiBold, wrap: true));
+        heading.Children.Add(ui.Text(version, .74, t.Muted, wrap: true));
+        card.Children.Add(heading);
+        var text = ui.P(summary, .8); Grid.SetRow(text, 1); card.Children.Add(text);
+        var footer = new Grid { ColumnSpacing = t.Px(12) };
+        footer.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+        footer.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        var badges = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(8), VerticalAlignment = VerticalAlignment.Center };
+        if (verified is { Count: > 0 })
+            foreach (var os in verified)
+            {
+                // The OS this PC runs is filled with the accent, as on the desktop.
+                var here = os == "windows";
+                var badge = ui.Badge(CrossOs.Name(os).ToUpperInvariant(), here ? GmTheme.Accent : t.Card, here ? GmTheme.AccentInk : t.Fg, .58);
+                ((StackPanel)badge.Child).Children.Insert(0, Controls.OsMark.Create(os, t.Em(.58), GmTheme.B(here ? GmTheme.AccentInk : t.Fg)));
+                badges.Children.Add(badge);
+            }
+        else badges.Children.Add(ui.Badge("EXPERIMENTAL", t.Card, t.Muted, .58));
+        footer.Children.Add(badges);
+        action.HorizontalAlignment = HorizontalAlignment.Right; action.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(action, 1); footer.Children.Add(action);
+        Grid.SetRow(footer, 2); card.Children.Add(footer);
+        return DetailPlate(card);
     }
 
     // ---------- Extras ----------

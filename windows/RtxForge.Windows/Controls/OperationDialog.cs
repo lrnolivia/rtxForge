@@ -174,6 +174,17 @@ public sealed class OperationDialog
         dialog.PrimaryButtonText = review.Supported.Count > 0 ? "Continue" : ActionVerb();
         dialog.IsPrimaryButtonEnabled = count > 0 || review.Supported.Count > 0;
         dialog.CloseButtonText = "Cancel";
+        AccentPrimary();
+    }
+
+    /// <summary>
+    /// The primary button in the accent style. The dialog opened while checking, already
+    /// with Primary as its default button; setting the same value again doesn't restyle
+    /// the now-enabled button, so step through None.
+    /// </summary>
+    void AccentPrimary()
+    {
+        dialog.DefaultButton = ContentDialogButton.None;
         dialog.DefaultButton = ContentDialogButton.Primary;
     }
 
@@ -392,6 +403,6 @@ public sealed class OperationDialog
         dialog.CloseButtonText = "";
         dialog.PrimaryButtonText = "Done";
         dialog.IsPrimaryButtonEnabled = true;
-        dialog.DefaultButton = ContentDialogButton.Primary;
+        AccentPrimary();
     }
 }

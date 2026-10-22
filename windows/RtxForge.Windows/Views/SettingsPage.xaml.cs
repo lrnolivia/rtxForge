@@ -12,7 +12,8 @@ namespace RtxForge.Windows.Views;
 /// </summary>
 public sealed partial class SettingsPage : Page
 {
-    static readonly string[] ProviderKeys = ["y4my", "dlss-unlocked", "custom", "skynizz", "feeder"];
+    // The package for games with DLSS; games without DLSS use Feeder automatically.
+    static readonly string[] ProviderKeys = ["skynizz", "dlss-unlocked", "y4my"];
     static readonly string[] Modes = ["nr-only", "mfg-only", "nr-mfg"];
     static readonly string[] Views = ["posters", "capsules", "list"];
 
@@ -59,8 +60,8 @@ public sealed partial class SettingsPage : Page
     {
         // ----- Graphics -----
         var graphics = new PreferencesGroup("Package", "Restore original files before switching providers.");
-        var (row, provider) = Prefs.ComboRow("Provider", "Package that supplies NR and MFG.",
-            ["y4my Multipass", "DLSS-Unlocked", "Custom package", "Skynizz NR + MFG bridge (preview)", "Feeder NR (DirectX 11)"], Math.Max(0, Array.IndexOf(ProviderKeys, Settings.RuntimeProvider)), "");
+        var (row, provider) = Prefs.ComboRow("Package for DLSS games", "Supplies NR and MFG in games with native DLSS. Games without DLSS use Feeder NR automatically.",
+            ["Skynizz NR + MFG bridge", "DLSS-Unlocked", "y4my Multipass"], Array.IndexOf(ProviderKeys, Settings.RuntimeProvider), "");
         graphics.Add(row);
         (row, var nrPath) = Prefs.EntryRow("Local NR model DLL", "Compatible nvngx_dlssnr.dll. Required for Skynizz unless a suitable model is already beside the game executable.",
             Settings.NrRuntime, @"C:\path\to\nvngx_dlssnr.dll", "");
@@ -86,7 +87,7 @@ public sealed partial class SettingsPage : Page
 
         void ValidateProvider()
         {
-            var selectedProvider = ProviderKeys[Math.Max(0, provider.SelectedIndex)];
+            var selectedProvider = provider.SelectedIndex >= 0 ? ProviderKeys[provider.SelectedIndex] : Settings.RuntimeProvider;
             var selectedMode = Modes[Math.Max(0, profile.SelectedIndex)];
             if (selectedProvider == "feeder" && selectedMode != "nr-only")
             {

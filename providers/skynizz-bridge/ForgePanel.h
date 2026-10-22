@@ -180,9 +180,14 @@ inline bool CapturingShortcut()
     if(OptiInput::IsKeyReleased(bindingRelease) || !OptiInput::IsKeyDown(bindingRelease)) bindingRelease = 0;
     return true;
 }
+// The key the panel opens on, or 0. OptiScaler keeps it from the game.
+inline int ShortcutKey()
+{
+    return enabled && key > 0 && key < 256 && key != VK_INSERT && key != VK_END && key != VK_F12 ? key : 0;
+}
 inline bool ShortcutReleased()
 {
-    if (!enabled || !OptiInput::IsFocused() || key <= 0 || key >= 256 || key == VK_INSERT || key == VK_END || key == VK_F12) return false;
+    if (ShortcutKey() == 0 || !OptiInput::IsFocused()) return false;
     const int held = (OptiInput::IsKeyDown(VK_MENU) ? 1 : 0) | (OptiInput::IsKeyDown(VK_CONTROL) ? 2 : 0) | (OptiInput::IsKeyDown(VK_SHIFT) ? 4 : 0);
     // Pause keyboards can omit key-up. Use its existing input press event;
     // all other keys retain release behavior. No native shortcut is consumed.

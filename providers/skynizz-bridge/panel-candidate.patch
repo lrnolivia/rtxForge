@@ -92,8 +92,232 @@ index f57b05a8..efebac25 100644
      mailbox->lastGenerated = observedGenerated;
      mailbox->fgSuccesses = observedFgSuccesses;
      mailbox->nativeStatus = nativeStatus;
+diff --git a/OptiScaler/menu/input/input_system.cpp b/OptiScaler/menu/input/input_system.cpp
+index 891f9fa1..8b26c308 100644
+--- a/OptiScaler/menu/input/input_system.cpp
++++ b/OptiScaler/menu/input/input_system.cpp
+@@ -67,6 +67,47 @@ bool ShouldApplyBlockingPolicyLocked() { return bypassHookDepth == 0 && _state.M
+ 
+ bool ShouldBlockKeyboardInputLocked() { return ShouldApplyBlockingPolicyLocked() && _state.BlockKeyboard; }
+ 
++// The reserved shortcut opens an overlay, so the game must not also act on it
++// (Starfield opens its console on the same key). A press counts only with the
++// shortcut's modifiers; the key stays hidden until it is released.
++bool IsReservedKeyPressLocked(int vk)
++{
++    if (bypassHookDepth != 0 || !_state.Focused || vk <= 0 || vk != _state.ReservedKey)
++        return false;
++
++    if (_state.ReservedKeyHeld)
++        return true;
++
++    const int held = ((RealGetAsyncKeyStateSafe(VK_MENU) & 0x8000) ? 1 : 0) |
++                     ((RealGetAsyncKeyStateSafe(VK_CONTROL) & 0x8000) ? 2 : 0) |
++                     ((RealGetAsyncKeyStateSafe(VK_SHIFT) & 0x8000) ? 4 : 0);
++
++    _state.ReservedKeyHeld = held == _state.ReservedModifiers;
++    return _state.ReservedKeyHeld;
++}
++
++bool IsReservedKeyHeldLocked(int vk)
++{
++    return bypassHookDepth == 0 && vk > 0 && vk == _state.ReservedKey && _state.ReservedKeyHeld;
++}
++
++// The character TranslateMessage made from a hidden press of the reserved key.
++bool IsReservedCharLocked(LPARAM lParam)
++{
++    const int vk = _state.ReservedKey;
++
++    if (bypassHookDepth != 0 || vk <= 0 || !_state.Keys[vk].BlockedDown)
++        return false;
++
++    return ((static_cast<UINT>(lParam) >> 16) & 0xFF) == MapVirtualKeyW(static_cast<UINT>(vk), MAPVK_VK_TO_VSC);
++}
++
++void ReleaseReservedKeyLocked(int vk)
++{
++    if (vk == _state.ReservedKey)
++        _state.ReservedKeyHeld = false;
++}
++
+ bool ShouldBlockMouseInputLocked() { return ShouldApplyBlockingPolicyLocked() && _state.BlockMouse; }
+ 
+ bool ShouldBlockCursorInputLocked() { return ShouldApplyBlockingPolicyLocked() && _state.BlockCursor; }
+@@ -412,6 +453,9 @@ void PollVirtualKeyLocked(int vk, DWORD time)
+ 
+     if (down)
+     {
++        if (!_state.Keys[vk].Down)
++            IsReservedKeyPressLocked(vk);
++
+         SetKeyDown(vk, time, ShouldBlockKeyboardInputLocked());
+         return;
+     }
+@@ -1484,9 +1528,26 @@ bool ShouldBlockVirtualKey(int vk)
+     if (IsMouseVirtualKey(vk))
+         return ShouldBlockMouseInputLocked();
+ 
++    if (vk == _state.ReservedKey && (RealGetAsyncKeyStateSafe(vk) & 0x8000) != 0 && IsReservedKeyPressLocked(vk))
++        return true;
++
+     return ShouldBlockKeyboardInputLocked();
+ }
+ 
++void SetReservedKey(int vk, int modifiers)
++{
++    std::unique_lock lock(_state.Mutex);
++
++    vk = vk > 0 && vk < 256 ? vk : 0;
++
++    if (vk == _state.ReservedKey && modifiers == _state.ReservedModifiers)
++        return;
++
++    _state.ReservedKey = vk;
++    _state.ReservedModifiers = modifiers;
++    _state.ReservedKeyHeld = false;
++}
++
+ DebugState GetDebugState()
+ {
+     std::unique_lock lock(_state.Mutex);
+diff --git a/OptiScaler/menu/input/input_system.h b/OptiScaler/menu/input/input_system.h
+index 26b212d0..7c0bb752 100644
+--- a/OptiScaler/menu/input/input_system.h
++++ b/OptiScaler/menu/input/input_system.h
+@@ -227,6 +227,10 @@ bool ShouldBlockKeyboard();
+ bool ShouldBlockCursor();
+ bool ShouldBlockVirtualKey(int vk);
+ 
++// Keeps one shortcut (vk 0 = none; modifiers Alt=1, Ctrl=2, Shift=4) from the game
++// while the menu is closed. Its presses still reach IsKeyPressed/IsKeyReleased.
++void SetReservedKey(int vk, int modifiers);
++
+ bool IsExternalVirtualMouseAuthoritative();
+ InputAcquisitionMode GetInputAcquisitionMode();
+ 
+diff --git a/OptiScaler/menu/input/input_system_internal.h b/OptiScaler/menu/input/input_system_internal.h
+index 223460ac..00892d7a 100644
+--- a/OptiScaler/menu/input/input_system_internal.h
++++ b/OptiScaler/menu/input/input_system_internal.h
+@@ -198,6 +198,11 @@ struct InputState
+     std::array<bool, 256> RawKeyboardBlockedDown {};
+     std::array<bool, 5> RawMouseBlockedDown {};
+ 
++    // A shortcut kept from the game while the menu is closed (Alt=1, Ctrl=2, Shift=4).
++    int ReservedKey = 0;
++    int ReservedModifiers = 0;
++    bool ReservedKeyHeld = false;
++
+     std::array<RawInputSanitizeDecision, MaxRawInputSanitizeCacheEntries> RawInputSanitizeCache {};
+     std::size_t RawInputSanitizeCacheWriteIndex = 0;
+ 
+@@ -536,6 +541,10 @@ void ResetRawInputBlockStateLocked();
+ void ResetRawInputSanitizeCacheLocked();
+ bool ShouldApplyBlockingPolicyLocked();
+ bool ShouldBlockKeyboardInputLocked();
++bool IsReservedKeyPressLocked(int vk);
++bool IsReservedKeyHeldLocked(int vk);
++bool IsReservedCharLocked(LPARAM lParam);
++void ReleaseReservedKeyLocked(int vk);
+ bool ShouldBlockMouseInputLocked();
+ bool ShouldBlockCursorInputLocked();
+ void HandleBlockingFocusGainLocked();
+diff --git a/OptiScaler/menu/input/input_system_messages.cpp b/OptiScaler/menu/input/input_system_messages.cpp
+index 90806a8f..10a0e6bc 100644
+--- a/OptiScaler/menu/input/input_system_messages.cpp
++++ b/OptiScaler/menu/input/input_system_messages.cpp
+@@ -20,6 +20,7 @@ void SetKeyUpStateOnly(int vk, DWORD messageTime)
+ 
+     key.Down = false;
+     key.LastMessageTime = messageTime;
++    ReleaseReservedKeyLocked(vk);
+ 
+     // Do not clear key.BlockedDown here.
+     // Polling/raw input are internal state producers. The game-facing
+@@ -246,6 +247,7 @@ bool SetKeyUp(int vk, DWORD messageTime)
+     key.Down = false;
+     key.BlockedDown = false;
+     key.LastMessageTime = messageTime;
++    ReleaseReservedKeyLocked(vk);
+ 
+     SyncAggregateModifierStateLocked();
+ 
+@@ -570,10 +572,16 @@ bool HandleWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, Inpu
+     case WM_SYSKEYDOWN:
+     {
+         const int vk = NormalizeModifierVirtualKey(static_cast<int>(wParam), lParam);
+-        SetKeyDown(vk, GetMessageTime(), blockKeyboard);
+-        OPTIINPUT_LOG_VERBOSE("key down vk:{} blocked:{}", vk, blockKeyboard ? 1 : 0);
++        const bool reserved = !blockKeyboard && IsReservedKeyPressLocked(vk);
++        SetKeyDown(vk, GetMessageTime(), blockKeyboard || reserved);
+ 
+-        shouldBlock = blockKeyboard;
++        // Polling may have recorded the press first; the game still owes nothing for it.
++        if (reserved)
++            _state.Keys[vk].BlockedDown = true;
++
++        OPTIINPUT_LOG_VERBOSE("key down vk:{} blocked:{}", vk, blockKeyboard || reserved ? 1 : 0);
++
++        shouldBlock = blockKeyboard || reserved;
+         break;
+     }
+ 
+@@ -595,7 +603,7 @@ bool HandleWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, Inpu
+         if (wParam >= 0x20 && wParam <= 0xFFFF)
+             _state.TextInput.push_back(static_cast<wchar_t>(wParam));
+ 
+-        shouldBlock = blockKeyboard;
++        shouldBlock = blockKeyboard || IsReservedCharLocked(lParam);
+         break;
+     }
+ 
+@@ -1097,6 +1105,9 @@ BOOL WINAPI hkGetKeyboardState(PBYTE keyState)
+     const bool shouldBlockKeyboard = ShouldBlockKeyboardInputLocked();
+     const bool shouldBlockMouse = ShouldBlockMouseInputLocked();
+ 
++    if (IsReservedKeyHeldLocked(_state.ReservedKey))
++        keyState[_state.ReservedKey] = 0;
++
+     if (!shouldBlockKeyboard && !shouldBlockMouse)
+         return result;
+ 
+diff --git a/OptiScaler/menu/input/input_system_raw.cpp b/OptiScaler/menu/input/input_system_raw.cpp
+index 2a549c03..6e04e5e5 100644
+--- a/OptiScaler/menu/input/input_system_raw.cpp
++++ b/OptiScaler/menu/input/input_system_raw.cpp
+@@ -257,7 +257,28 @@ void ResetRawInputSanitizeCacheLocked()
+ RawSanitizeAction GetRawKeyboardSanitizeActionLocked(const RAWKEYBOARD& keyboard)
+ {
+     if (!ShouldBlockKeyboardInputLocked())
+-        return RawSanitizeAction::Pass;
++    {
++        // Menu closed: hide only the reserved shortcut, press through release.
++        const int vk = NormalizeRawKeyboardVirtualKey(keyboard);
++
++        if (vk <= 0 || vk >= 256)
++            return RawSanitizeAction::Pass;
++
++        if ((keyboard.Flags & RI_KEY_BREAK) == 0)
++        {
++            if (!IsReservedKeyPressLocked(vk))
++                return RawSanitizeAction::Pass;
++
++            _state.RawKeyboardBlockedDown[vk] = true;
++            return RawSanitizeAction::SanitizeAll;
++        }
++
++        if (vk != _state.ReservedKey || !_state.RawKeyboardBlockedDown[vk])
++            return RawSanitizeAction::Pass;
++
++        _state.RawKeyboardBlockedDown[vk] = false;
++        return RawSanitizeAction::SanitizeAll;
++    }
+ 
+     const int vk = NormalizeRawKeyboardVirtualKey(keyboard);
+ 
 diff --git a/OptiScaler/menu/menu_common.cpp b/OptiScaler/menu/menu_common.cpp
-index 669450ab..d6c0e736 100644
+index 669450ab..26523776 100644
 --- a/OptiScaler/menu/menu_common.cpp
 +++ b/OptiScaler/menu/menu_common.cpp
 @@ -8,6 +8,7 @@
@@ -112,18 +336,21 @@ index 669450ab..d6c0e736 100644
  static bool inputFG = false;
  static bool inputFps = false;
  static bool inputFpsCycle = false;
-@@ -418,8 +420,9 @@ void MenuCommon::UpdateManualInput(HWND targetHwnd)
+@@ -418,8 +420,12 @@ void MenuCommon::UpdateManualInput(HWND targetHwnd)
      const auto currentTick = GetTickCount64();
      const bool canAcceptInputs = lastInputTick + debounceThreshold < currentTick;
  
 -    if (!capturingKey && canAcceptInputs)
++    // The panel's shortcut opens the panel only; games like Starfield bind it too.
++    OptiInput::SetReservedKey(ForgePanel::ShortcutKey(), ForgePanel::modifiers);
++
 +    if (!capturingKey && canAcceptInputs && !ForgePanel::CapturingShortcut())
      {
 +        if (ForgePanel::ShortcutReleased()) inputForge = true;
          CheckShortcut(config->ShortcutKey.value_or_default(), inputMenu, "Menu key pressed, will be switching menu");
          CheckShortcut(config->FpsShortcutKey.value_or_default(), inputFps, "Menu key pressed, will be switching FPS");
          CheckShortcut(config->FGShortcutKey.value_or_default(), inputFG, "Menu key pressed, will be switching FG mode");
-@@ -1611,6 +1614,22 @@ void MenuCommon::HandleMenuShortcuts(RenderMenuContext& ctx)
+@@ -1611,6 +1617,22 @@ void MenuCommon::HandleMenuShortcuts(RenderMenuContext& ctx)
      auto config = ctx.config;
      auto& io = ctx.io;
  
@@ -146,7 +373,7 @@ index 669450ab..d6c0e736 100644
      // Handle Inputs
      {
          if (inputFG)
-@@ -1803,7 +1822,7 @@ void MenuCommon::BeginMenuFrameIfNeeded(RenderMenuContext& ctx)
+@@ -1803,7 +1825,7 @@ void MenuCommon::BeginMenuFrameIfNeeded(RenderMenuContext& ctx)
                                 DlssNr::ExposureScan::Where() != DlssNr::ExposureScan::Verdict::Off;
  
      if ((!config->DisableSplash.value_or_default() && now > splashStart && now < splashLimit) ||
@@ -155,7 +382,7 @@ index 669450ab..d6c0e736 100644
          DlssNr::OverlayWanted() ||
          (config->DlssNrCompare.value_or_default() != 0 && config->DlssNrCompareTags.value_or_default()))
      {
-@@ -9047,7 +9066,9 @@ bool MenuCommon::RenderMenu()
+@@ -9047,7 +9069,9 @@ bool MenuCommon::RenderMenu()
      DlssNr::RenderOverlay(ctx.config->FpsOverlayAlpha.value_or_default());
  
      // 4) Draw the full settings menu last so popups and child windows keep their existing behavior.
@@ -166,7 +393,7 @@ index 669450ab..d6c0e736 100644
  
      if (ctx.newFrame)
          ImGui::EndFrame();
-@@ -9139,6 +9160,8 @@ void MenuCommon::Init(HWND InHwnd, bool isUWP)
+@@ -9139,6 +9163,8 @@ void MenuCommon::Init(HWND InHwnd, bool isUWP)
          }
      }
  
@@ -175,7 +402,7 @@ index 669450ab..d6c0e736 100644
      if (!Config::Instance()->OverlayMenu.value_or_default())
      {
          _hdrTonemapApplied = false;
-@@ -9181,6 +9204,7 @@ void MenuCommon::Shutdown()
+@@ -9181,6 +9207,7 @@ void MenuCommon::Shutdown()
      else
          ImGui_ImplUwp_Shutdown();
  

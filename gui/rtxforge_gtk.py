@@ -3269,8 +3269,11 @@ def action_icon(text):
     for words,icon in (
         (('diagnos','check','verify'),'system-search-symbolic'),
         (('restore','undo','recovery'),'edit-undo-symbolic'),
-        (('install','apply','save'),'document-save-symbolic'),
-        (('download','update'),'folder-download-symbolic'),
+        (('update dlss','update'),'network-transmit-receive-symbolic'),
+        (('select all','select games','choose games'),'selection-mode-symbolic'),
+        (('install','download'),'folder-download-symbolic'),
+        (('apply',),'object-select-symbolic'),
+        (('save',),'document-save-symbolic'),
         (('refresh','retry'),'view-refresh-symbolic'),
         (('details',),'help-about-symbolic'),
         (('folder','browse','open'),'folder-open-symbolic'),
@@ -3280,7 +3283,7 @@ def action_icon(text):
         (('clear','remove','delete'),'edit-clear-symbolic'),
         (('settings','preset','configure'),'emblem-system-symbolic'),
         (('play',),'media-playback-start-symbolic'),
-        (('tools',),'applications-utilities-symbolic'),
+        (('tools',),'preferences-system-symbolic'),
         (('report','activity','log','copy'),'text-x-generic-symbolic'),
         (('back','previous'),'go-previous-symbolic'),
     ):
@@ -4547,7 +4550,7 @@ class Window(Adw.ApplicationWindow):
 
         self.install_all=icon_button(
             'Install Features',
-            'document-save-symbolic',
+            'folder-download-symbolic',
             lambda *_:self.launch_scoped('install'),
             'forge-primary',
         )
@@ -4555,12 +4558,12 @@ class Window(Adw.ApplicationWindow):
 
         self.uninstall_all=icon_button(
             'Restore Original Files',
-            'document-revert-symbolic',
+            'edit-undo-symbolic',
             lambda *_:self.launch_scoped('uninstall'),
             'bulk-remove',
         )
         bulk.append(self.uninstall_all)
-        update_dlss=button('Update DLSS',lambda *_:self.update_dlss_games(self.selected_or_library()),'dlss-outline')
+        update_dlss=icon_button('Update DLSS','network-transmit-receive-symbolic',lambda *_:self.update_dlss_games(self.selected_or_library()),'dlss-outline')
         self.update_dlss_button=update_dlss
         update_dlss.set_tooltip_text('Update older DLSS files in the selected games, or across the library')
         bulk.append(update_dlss)
@@ -4765,14 +4768,14 @@ class Window(Adw.ApplicationWindow):
 
         self.sticky_install_all=icon_button(
             'Install Features',
-            'document-save-symbolic',
+            'folder-download-symbolic',
             lambda *_:self.launch_scoped('install'),
             'forge-primary',
         )
 
         self.sticky_remove_all=icon_button(
             'Restore Original Files',
-            'document-revert-symbolic',
+            'edit-undo-symbolic',
             lambda *_:self.launch_scoped('uninstall'),
             'bulk-remove',
         )
@@ -4803,7 +4806,7 @@ class Window(Adw.ApplicationWindow):
         )
 
 
-        self.sticky_update_dlss=button('Update DLSS',lambda *_:self.update_dlss_games(self.selected_or_library()),'dlss-outline')
+        self.sticky_update_dlss=icon_button('Update DLSS','network-transmit-receive-symbolic',lambda *_:self.update_dlss_games(self.selected_or_library()),'dlss-outline')
         self.sticky_update_dlss.set_tooltip_text('Update older DLSS files in the selected games, or across the library')
         sticky_actions.append(self.sticky_update_dlss)
 
@@ -4944,7 +4947,9 @@ class Window(Adw.ApplicationWindow):
         # tooltips keep the full names), then the sidebar folds away. The
         # labels follow the width directly: a breakpoint would also close
         # any open popover each time it applies.
-        self.connect('notify::default-width',self._header_density)
+        # Re-measure after the resize has been allocated (and on maximize/fullscreen).
+        for prop in ('notify::default-width','notify::maximized','notify::fullscreened'):
+            self.connect(prop,lambda *_:GLib.idle_add(self._header_density))
         self._header_density()
         GLib.idle_add(self._header_density)
         narrow=Adw.Breakpoint.new(Adw.BreakpointCondition.parse('max-width: 860sp'))
@@ -5097,7 +5102,7 @@ class Window(Adw.ApplicationWindow):
 
         self.select_toggle=icon_button(
             'Select all',
-            'object-select-symbolic',
+            'selection-mode-symbolic',
             lambda *_:self.select_all(not bool(self.selected_game_ids)),
         )
         self.select_toggle.set_tooltip_text('Select every game in this view')
@@ -5454,10 +5459,10 @@ class Window(Adw.ApplicationWindow):
 
     PAGES_WITH_TITLES=('presets',)
     PAGES=(
-        ('library','Library','applications-games-symbolic'),
-        ('presets','Presets','preferences-color-symbolic'),
-        ('packages','Packages','package-x-generic-symbolic'),
-        ('extras','Extras','applications-utilities-symbolic'),
+        ('library','Library','input-gaming-symbolic'),
+        ('presets','Presets','system-run-symbolic'),
+        ('packages','Packages','drive-multidisk-symbolic'),
+        ('extras','Extras','preferences-system-symbolic'),
     )
 
     def build_sidebar(self,menu):
@@ -5760,7 +5765,7 @@ class Window(Adw.ApplicationWindow):
     def show_controller_menu(self,*_):
         if self.busy and self.task_kind!='art':return
         d,b,f=self.open_panel('Menu',width=380,height=420)
-        for title,icon,fn in [('Refresh Library','view-refresh-symbolic',self.scan),('Add Game Folder','folder-new-symbolic',self.choose_folder),('Packages','package-x-generic-symbolic',self.show_packages),('Extras','applications-utilities-symbolic',self.show_extras),('Settings','emblem-system-symbolic',self.show_settings)]:
+        for title,icon,fn in [('Refresh Library','view-refresh-symbolic',self.scan),('Add Game Folder','folder-new-symbolic',self.choose_folder),('Packages','drive-multidisk-symbolic',self.show_packages),('Extras','preferences-system-symbolic',self.show_extras),('Settings','emblem-system-symbolic',self.show_settings)]:
             def invoke(*_,fn=fn):
                 d.close();GLib.idle_add(lambda:(fn(),False)[1])
             b.append(icon_button(title,icon,invoke))
@@ -10739,7 +10744,7 @@ class Window(Adw.ApplicationWindow):
 
         icons={
             'Graphics':'video-display-symbolic',
-            'Library':'applications-games-symbolic',
+            'Library':'input-gaming-symbolic',
             'Gaming Mode':'input-gaming-symbolic',
             'Appearance':'applications-graphics-symbolic',
             'System':'computer-symbolic',
@@ -12572,7 +12577,7 @@ class Window(Adw.ApplicationWindow):
             'Overview':'dialog-information-symbolic',
             'Features':'applications-system-symbolic',
             'DLSS Files':'folder-symbolic',
-            'Tools':'applications-utilities-symbolic',
+            'Tools':'preferences-system-symbolic',
             'Notes':'document-edit-symbolic',
             'Appearance':'applications-graphics-symbolic',
         }
@@ -16052,9 +16057,10 @@ class Application(Adw.Application):
             # An isolated HOME (portable builds and smoke sessions) can retain
             # the desktop's theme name without its user-installed theme files.
             # Fall back within this process; never change desktop preferences.
-            theme=Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
-            if not any(theme.has_icon(icon) for _,_,icon in Window.PAGES):
-                Gtk.Settings.get_default().set_property('gtk-icon-theme-name','Adwaita')
+            # rtxForge's glyphs are chosen from Adwaita to match the Windows build;
+            # pin them in this process so every machine shows the same set.
+            # The desktop's icon theme is left unchanged.
+            Gtk.Settings.get_default().set_property('gtk-icon-theme-name','Adwaita')
             Gtk.Window.set_default_icon_name(
                 'io.github.lrnolivia.RTXForge'
             )

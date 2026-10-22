@@ -931,7 +931,7 @@ class GameMode(Gtk.Overlay):
         heading.append(titles)
         provider = Gtk.Box(spacing=t.px(10), valign=Gtk.Align.CENTER)
         provider.add_css_class('gm-pill')
-        provider.append(self.icon('package-x-generic-symbolic', t.px(16)))
+        provider.append(self.icon('drive-multidisk-symbolic', t.px(16)))
         provider.append(self.label(self.provider_name()))
         heading.append(provider)
         main.append(heading)
@@ -1023,7 +1023,7 @@ class GameMode(Gtk.Overlay):
         t = self.theme
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(24), halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
         page.set_margin_top(t.px(60))
-        page.append(self.icon('applications-games-symbolic', t.px(60)))
+        page.append(self.icon('input-gaming-symbolic', t.px(60)))
         page.append(self.label('No games found' if not self.owner.games else 'No games match this filter', 'gm-h2', xalign=0.5))
         page.append(self.label('Refresh the library, or add a game folder in Desktop UI.' if not self.owner.games
                                else 'Choose a different filter to see more of your library.', 'gm-p', wrap=True, xalign=0.5))
@@ -1853,7 +1853,7 @@ class GameMode(Gtk.Overlay):
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(20))
         content.append(self.label('Adjust your presets or continue. You can change these settings later in OptiScaler.', 'gm-p', wrap=True))
         line = Gtk.Box(spacing=t.px(12))
-        line.append(self.icon('package-x-generic-symbolic', t.px(16)))
+        line.append(self.icon('drive-multidisk-symbolic', t.px(16)))
         line.append(self.label(self.provider_name()))
         content.append(line)
         content.append(self.group(rows, True))

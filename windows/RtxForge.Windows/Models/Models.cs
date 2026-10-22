@@ -209,7 +209,16 @@ public sealed record HardwareInfo(string Gpu, string Driver, string Vram, string
 /// </summary>
 public sealed class ForgeSettings
 {
-    [JsonPropertyName("runtime_provider")] public string RuntimeProvider { get; set; } = "y4my";
+    string runtimeProvider = "y4my";
+    /// <summary>
+    /// The package for games with DLSS. Games without DLSS use Feeder NR automatically, so the
+    /// retired Feeder-only choice ("feeder") reads as Skynizz, the Feeder route's DLSS partner.
+    /// </summary>
+    [JsonPropertyName("runtime_provider")] public string RuntimeProvider
+    {
+        get => runtimeProvider;
+        set => runtimeProvider = value == "feeder" ? "skynizz" : value;
+    }
     [JsonPropertyName("nr_runtime")] public string NrRuntime { get; set; } = "";
     [JsonPropertyName("skynizz_version")] public string SkynizzVersion { get; set; } = "latest";
     [JsonPropertyName("mfg_provider")] public string MfgProvider { get; set; } = "universal";

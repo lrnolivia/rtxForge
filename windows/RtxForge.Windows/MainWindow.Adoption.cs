@@ -8,6 +8,10 @@ namespace RtxForge.Windows;
 
 public sealed partial class MainWindow
 {
+    /// <summary>Restore skips setups another tool made; adopting them is a choice in each game's Details.</summary>
+    public static string AdoptionSkipped(int count) =>
+        $"Skipped {count} game{(count == 1 ? "" : "s")} set up by another tool. Adopt from Game Details to manage or restore {(count == 1 ? "it" : "them")} with rtxForge.";
+
     public async Task ReviewAdoptionAsync(IReadOnlyList<Game> candidates)
     {
         if (Busy || candidates.Count == 0) return;

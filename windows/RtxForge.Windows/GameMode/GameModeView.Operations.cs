@@ -16,14 +16,21 @@ namespace RtxForge.Windows.GameMode;
 /// </summary>
 public sealed partial class GameModeView
 {
-    async Task RunOperationAsync(string operation, IReadOnlyList<Game> targets, Tuning? values = null)
+    /// <summary>Runs after the reviewed operation completes; each operation sets or clears it.</summary>
+    Action? whenCompleted;
+
+    async Task RunOperationAsync(string operation, IReadOnlyList<Game> targets, Tuning? values = null, Action? completed = null)
     {
+        whenCompleted = completed;
         if (shell.Busy) { Toast("Another operation is running."); return; }
         ArgumentNullException.ThrowIfNull(targets);
         if (targets.Count == 0) { Toast("No eligible games."); return; }
         if ((operation is "install" or "uninstall") && targets.Any(g => g.AdoptionAvailable))
         {
-            await shell.ReviewAdoptionAsync(targets.Where(g => g.AdoptionAvailable).ToArray());
+            // Another tool's setup: Install offers Adoption; Restore has nothing of rtxForge's to undo.
+            var adoptable = targets.Where(g => g.AdoptionAvailable).ToArray();
+            if (operation == "install") await shell.ReviewAdoptionAsync(adoptable);
+            else Toast(MainWindow.AdoptionSkipped(adoptable.Length));
             targets = targets.Where(g => !g.AdoptionAvailable).ToArray();
             if (targets.Count == 0) return;
         }
@@ -233,6 +240,7 @@ public sealed partial class GameModeView
             var count = await shell.ExecuteAsync(review, progress, cts.Token);
             step.Complete();
             CloseModal();
+            whenCompleted?.Invoke();
             ShowDone(true, "Done", $"{count} game{(count == 1 ? "" : "s")} updated.");
         }
         catch (OperationCanceledException)
@@ -245,7 +253,7 @@ public sealed partial class GameModeView
             CloseModal();
             ShowDone(false, "Could not finish", error.Message);
         }
-        finally { shell.Service.DiscardOperation(review); }
+        finally { whenCompleted = null; shell.Service.DiscardOperation(review); }
     }
 
     void ShowDone(bool success, string title, string message)

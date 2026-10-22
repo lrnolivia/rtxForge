@@ -43,11 +43,11 @@ for (int mask = 0; mask < 16; mask++)
     var original = new ForgeSettings { OptiScalerUi = (mask & 1) != 0, OptiScalerIntro = (mask & 2) != 0,
         ReShadeUi = (mask & 4) != 0, ReShadeIntro = (mask & 8) != 0, NrStrength = 1.25 };
     var saved = JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(original))!;
-    var other = new ForgeSettings { NrStrength = .75, RuntimeProvider = "feeder" };
+    var other = new ForgeSettings { NrStrength = .75, RuntimeProvider = "dlss-unlocked" };
     other.CopyOverlayFrom(saved);
     if (other.OptiScalerUi != original.OptiScalerUi || other.OptiScalerIntro != original.OptiScalerIntro
         || other.ReShadeUi != original.ReShadeUi || other.ReShadeIntro != original.ReShadeIntro
-        || other.NrStrength != .75 || other.RuntimeProvider != "feeder")
+        || other.NrStrength != .75 || other.RuntimeProvider != "dlss-unlocked")
         throw new Exception("Menu/intro settings were coupled or reset rendering settings");
 }
 Console.WriteLine("PASS: all 16 independent game-menu/welcome combinations round trip and merge without changing tuning.");
@@ -93,11 +93,13 @@ foreach (var renderer in new[] { "game", "optiscaler" })
 {
     var original = new ForgeSettings { OverlayControls = controls, OverlayRenderer = renderer, OptiScalerHotkey = "F8", NrStrength = 1.25 };
     var saved = JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(original))!;
-    var manager = new ForgeSettings { NrStrength = .75, RuntimeProvider = "feeder" };
+    var manager = new ForgeSettings { NrStrength = .75, RuntimeProvider = "dlss-unlocked" };
     manager.CopyOverlayFrom(saved);
     if (manager.OverlayControls != controls || manager.OverlayRenderer != renderer || manager.OptiScalerHotkey != "F8"
-        || manager.NrStrength != .75 || manager.RuntimeProvider != "feeder") throw new Exception("Overlay preferences changed game tuning");
+        || manager.NrStrength != .75 || manager.RuntimeProvider != "dlss-unlocked") throw new Exception("Overlay preferences changed game tuning");
 }
+if (JsonSerializer.Deserialize<ForgeSettings>("{\"runtime_provider\":\"feeder\"}")!.RuntimeProvider != "skynizz")
+    throw new Exception("The retired Feeder-only package choice did not migrate to a DLSS package");
 if (JsonSerializer.Deserialize<ForgeSettings>("{\"overlay_renderer\":\"rtxforge\"}")!.OverlayRenderer != "game")
     throw new Exception("The retired desktop overlay did not migrate to the in-game panel");
 Console.WriteLine("PASS: renderer/layout/native shortcut persistence and overlay-only merge preserve tuning; the retired desktop overlay reads as the in-game panel.");

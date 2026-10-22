@@ -519,21 +519,29 @@ public sealed partial class GameModeView
         PackageCatalog catalog;
         try { catalog = await shell.Service.PackagesAsync(); }
         catch (InvalidOperationException error) { ShowDone(false, "Packages", error.Message); return; }
+        // As on the desktop: one package for games with DLSS, chosen here; Feeder NR for games without, used automatically.
         var content = new StackPanel { Spacing = t.Px(18) };
-        content.Children.Add(ui.P(catalog.Status + ". Every game change is reviewed before it is applied."));
-        var rows = catalog.Packages.Select(item =>
+        content.Children.Add(ui.P(catalog.Status + ". rtxForge uses one package for games with DLSS and one for games without it."));
+        var dlss = catalog.Packages.Where(p => p.Id != "feeder").Select(item =>
         {
             var current = shell.Settings.RuntimeProvider == item.Id;
-            return (UIElement)ui.RowButton(item.Name, current ? "In use" : item.Available ? "Use" : "Unavailable", () =>
+            return (UIElement)ui.RowButton(item.Name, current ? "In use" : item.Available ? "Use for DLSS games" : "Unavailable", () =>
             {
                 CloseModal();
                 shell.SelectPackage(item.Id);
-                Toast("Package selected. Select games, then choose Install Features.");
+                Toast("Package selected for DLSS games. Select games, then choose Install Features.");
             }, description: item.Version + " · " + (item.Available ? item.Summary : item.Reason), enabled: item.Available && !current);
         }).ToList();
-        rows.Add(ui.RowButton("Add custom package", catalog.CustomName, () => _ = InspectPackageAsync(),
-            description: "ZIP archives. Files and instructions are inspected without running them.", enabled: !shell.Service.IsPreview));
-        content.Children.Add(new ScrollViewer { Content = ui.Group(rows, t.Card), MaxHeight = t.Px(t.Compact ? 320 : 480) });
+        var groups = new StackPanel { Spacing = t.Px(14) };
+        groups.Children.Add(ui.P("Games with DLSS", .9));
+        groups.Children.Add(ui.Group(dlss, t.Card));
+        groups.Children.Add(ui.P("Games without DLSS", .9));
+        var without = catalog.Packages.Where(p => p.Id == "feeder").Select(item => (UIElement)ui.RowButton(item.Name, "Used automatically", () => { },
+            description: item.Version + " · " + item.Summary + " More packages are planned.", enabled: false)).ToList();
+        without.Add(ui.RowButton("Your own package", "Coming soon", () => { },
+            description: "Inspect a ZIP archive and review its settings before using it.", enabled: false));
+        groups.Children.Add(ui.Group(without, t.Card));
+        content.Children.Add(new ScrollViewer { Content = groups, MaxHeight = t.Px(t.Compact ? 320 : 480) });
         var back = ui.Button("Back", CloseModal, GmKind.Card, 0.92);
         ShowModal("Packages", content, [back], CloseModal, 1100);
     }

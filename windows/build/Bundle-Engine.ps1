@@ -109,5 +109,17 @@ if ($RuntimeIdentifier -eq 'win-x64' -and (Test-Path -LiteralPath $bridgeReceipt
     Copy-Item -LiteralPath $bridgeReceipt -Destination $target
     Copy-Item -LiteralPath $archive -Destination $target
 }
+# rtxForge's in-game panel for Feeder NR games (Build-FeederPanel.ps1). Builds
+# without it install Feeder NR with ReShade's own menu only.
+$panelRoot = Join-Path $repo 'windows\out\feeder-panel'
+$panelReceipt = Join-Path $panelRoot 'package.json'
+if ($RuntimeIdentifier -eq 'win-x64' -and (Test-Path -LiteralPath $panelReceipt)) {
+    $receipt = Get-Content -LiteralPath $panelReceipt -Raw | ConvertFrom-Json
+    $addon = Join-Path $panelRoot 'rtxforge-panel.addon64'
+    if ($receipt.name -ne 'rtxforge-panel.addon64' -or (Get-Sha256 $addon) -ne $receipt.sha256) { throw 'Feeder panel changed after its build' }
+    $target = Join-Path $engine 'providers\feeder-panel'
+    New-Item -ItemType Directory -Force -Path $target | Out-Null
+    Copy-Item -LiteralPath $panelReceipt, $addon -Destination $target
+}
 $count = (Get-ChildItem $engine -Recurse -File).Count
 Write-Host "Engine ($count files) -> $engine"

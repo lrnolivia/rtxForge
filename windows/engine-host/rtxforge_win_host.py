@@ -381,6 +381,11 @@ def scan(params):
 
 
 def prepare(params):
+    rows = params.get('rows') or []
+    if params.get('operation') == 'apply' and rows and all(row.get('runtime_provider') == 'feeder' for row in rows):
+        # Installed Feeder games keep their presets in their own ReShade.ini,
+        # whichever package is selected for new installs.
+        params = dict(params, mode='nr-only', settings=dict(params.get('settings') or {}, runtime_provider='feeder'))
     if (params.get('settings') or {}).get('runtime_provider') == 'skynizz':
         import skynizz_provider
         # Presentation flags belong to the requested mode. Fresh engine game

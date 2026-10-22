@@ -472,6 +472,78 @@ class FeederTest(unittest.TestCase):
         self.assertTrue(report['log']['predates_current_files'])
         self.assertIn('No matching NR evaluation', ' '.join(report['observations']))
 
+    def test_ea_wrapped_executable_delay_loading_d3d11_is_eligible(self):
+        # Mass Effect LE: the normal import table names only EA's activation DLL.
+        data = bytearray(0x600)
+        data[:2] = b'MZ'
+        struct.pack_into('<I', data, 60, 64)
+        data[64:68] = b'PE\0\0'
+        struct.pack_into('<HH', data, 68, 0x8664, 1)
+        struct.pack_into('<H', data, 84, 240)
+        struct.pack_into('<H', data, 88, 0x20B)
+        struct.pack_into('<II', data, 88 + 112 + 13 * 8, 0x1000, 64)
+        struct.pack_into('<IIII', data, 88 + 240 + 8, 0x200, 0x1000, 0x200, 0x400)
+        struct.pack_into('<II', data, 0x400, 1, 0x1100)
+        data[0x500:0x50A] = b'd3d11.dll\0'
+        row = self.game('mass-effect')
+        (Path(row['game']) / 'game.exe').write_bytes(bytes(data))
+        self.assertEqual(feeder.delay_imported_dlls(Path(row['game']) / 'game.exe'), {'d3d11.dll'})
+        self.e.pe_imported_dlls = lambda exe: {'Core/Activation64.dll'}
+        self.assertTrue(feeder.expand_rows(self.e, [row])[0]['feeder_available'])
+        (Path(row['game']) / 'game.exe').write_bytes(pe())
+        self.assertNotIn('feeder_available', feeder.expand_rows(self.e, [row])[0])
+
+    def test_install_again_after_the_game_folder_was_replaced(self):
+        row = self.game()
+        before = self.files(row)
+        self.apply(self.prepare(row))
+        # Steam verification restores the game's own files and removes Feeder's.
+        for name in self.files(row):
+            if name not in before:
+                (Path(row['game']) / name).unlink()
+        self.assertEqual(feeder.state(self.e, Path(row['game']))['status'], 'active')
+        self.apply(self.prepare(row))
+        self.assertTrue(feeder.inspect(self.e, row)['managed'])
+        self.apply(self.prepare(row, 'uninstall'))
+        self.assertEqual(self.files(row), before)
+
+    def test_presets_apply_to_the_games_reshade_ini_and_refuse_while_running(self):
+        row = self.game()
+        self.apply(self.prepare(row))
+        presets = {'nr_on_launch': False, 'nr_strength': 1.2,
+                   'feature_controls': {'intensity': 1.5, 'passes': 2, 'work_scale': 1.4, 'preset': 2, 'unknown': 9}}
+        review = self.prepare(row, 'apply', **presets)
+        self.assertEqual(set(review['plans'][0]['writes']), {'ReShade.ini'})
+        self.apply(review)
+        values = feeder._read_ini(Path(row['game']) / 'ReShade.ini')['RenoDX.DLSS5']
+        self.assertEqual((values['NeuralUplift'], values['NRIntensity'], values['NRPasses'], values['NRResolutionScale'], values['NRPreset']),
+                         ('0', '1.50', '2', '1.00', '2'))
+        self.assertEqual(values['NRLocalTone'], '2')
+        self.assertIn('already uses', self.prepare(row, 'apply', **presets)['blocked'][0]['reason'])
+        self.e._running_processes_under_root = lambda root: ['game.exe']
+        self.assertIn('Close this game', self.prepare(row, 'apply', nr_strength=.5)['blocked'][0]['reason'])
+
+    def test_panel_is_owned_and_replaces_the_manual_quiet_startup_addon(self):
+        addon, quiet = pe(b'rtxforge panel'), pe(b'quiet startup')
+        source = self.root / feeder.PANEL
+        source.write_bytes(addon)
+        row = self.game(installed=True)
+        directory = Path(row['game'])
+        (directory / 'quiet-startup.addon64').write_bytes(quiet)
+        before = self.files(row)
+        with patch.object(feeder, 'panel', lambda e: feeder.cache(e, source)), \
+                patch.dict(feeder.RETIRED, {'quiet-startup.addon64': t.sha(quiet)}):
+            review = self.prepare(row, reshade_intro=False)
+            self.assertEqual(review['plans'][0]['writes']['quiet-startup.addon64'], None)
+            self.apply(review)
+            self.assertEqual((directory / feeder.PANEL).read_bytes(), addon)
+            self.assertFalse((directory / 'quiet-startup.addon64').exists())
+            self.assertTrue(feeder.inspect(self.e, row)['managed'])
+            self.apply(self.prepare(row, 'repair', reshade_intro=True))
+            self.assertEqual(feeder._read_ini(directory / 'ReShade.ini')['rtxForge.UI']['QuietStartup'], '0')
+            self.apply(self.prepare(row, 'uninstall'))
+        self.assertEqual(self.files(row), {name: before[name] for name in ('game.exe', 'save.dat', 'quiet-startup.addon64')})
+
 
 if __name__ == '__main__':
     unittest.main()

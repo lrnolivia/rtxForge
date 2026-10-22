@@ -107,6 +107,10 @@ jobs:
           name: skynizz-in-game-panel-candidate
           path: windows/out/skynizz-bridge
 
+      - name: Build the Feeder NR in-game panel
+        if: matrix.platform == 'x64'
+        run: ./windows/build/Build-FeederPanel.ps1 -Compiler msvc
+
       - name: Set up .NET 10
         uses: actions/setup-dotnet@v4
         with:

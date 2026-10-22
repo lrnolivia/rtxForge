@@ -239,7 +239,6 @@ public sealed partial class GameModeView : UserControl
             var active = page == key || (key == "library" && page == "details");
             var tab = ui.Button(label, () => Open(key), active ? GmKind.Active : GmKind.Transparent, 1, radius: 32,
                 padding: new Thickness(t.Px(26), t.Px(8), t.Px(26), t.Px(8)), minHeight: 54);
-            GmUi.Capsule(tab);
             Key(tab, "tab-" + key);
             tabButtons.Add(tab);
             line.Children.Add(tab);

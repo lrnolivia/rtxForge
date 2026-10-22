@@ -13,16 +13,19 @@ namespace {
 unsigned char saved[14];
 unsigned char* entry;
 wchar_t modulePath[32768];
+wchar_t logPath[32768];
+wchar_t fgvkPath[32768];
+wchar_t originalPath[32768];
+wchar_t executablePath[32768];
 bool armed;
 
 void Log(const char* message) {
     OutputDebugStringA(message);
-    wchar_t path[32768];
-    wcscpy_s(path, modulePath);
-    auto slash = wcsrchr(path, L'\\');
+    wcscpy_s(logPath, modulePath);
+    auto slash = wcsrchr(logPath, L'\\');
     if (!slash) return;
-    wcscpy_s(slash + 1, 32768 - (slash + 1 - path), L"NativeMods\\rtxforge-bg3-loader.log");
-    HANDLE file = CreateFileW(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
+    wcscpy_s(slash + 1, 32768 - (slash + 1 - logPath), L"NativeMods\\rtxforge-bg3-loader.log");
+    HANDLE file = CreateFileW(logPath, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
                               nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file != INVALID_HANDLE_VALUE) {
         DWORD written;
@@ -42,7 +45,6 @@ void WINAPI Start() {
     DWORD ignored;
     VirtualProtect(entry, sizeof(saved), protect, &ignored);
     armed = false;
-    wchar_t fgvkPath[32768];
     wcscpy_s(fgvkPath, modulePath);
     auto slash = wcsrchr(fgvkPath, L'\\');
     if (slash) {
@@ -87,12 +89,11 @@ bool Arm(HMODULE self) {
 
 bool Forward(HMODULE self) {
     if (!GetModuleFileNameW(self, modulePath, 32768)) return false;
-    wchar_t original[32768];
-    wcscpy_s(original, modulePath);
-    auto slash = wcsrchr(original, L'\\');
+    wcscpy_s(originalPath, modulePath);
+    auto slash = wcsrchr(originalPath, L'\\');
     if (!slash) return false;
-    wcscpy_s(slash + 1, 32768 - (slash + 1 - original), L"bink2w64_rtxforge_original.dll");
-    HMODULE bink = LoadLibraryExW(original, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+    wcscpy_s(slash + 1, 32768 - (slash + 1 - originalPath), L"bink2w64_rtxforge_original.dll");
+    HMODULE bink = LoadLibraryExW(originalPath, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
     if (!bink) return false;
     for (size_t i = 0; i < sizeof(exportNames) / sizeof(exportNames[0]); ++i) {
         ImportFuncTbl[i] = GetProcAddress(bink, exportNames[i]);
@@ -106,9 +107,10 @@ BOOL WINAPI DllMain(HMODULE self, DWORD reason, LPVOID) {
     if (reason == DLL_PROCESS_ATTACH) {
         if (!Forward(self)) return FALSE;
         // This proxy is intentionally scoped to the Vulkan executable.
-        wchar_t exe[32768];
-        if (!GetModuleFileNameW(nullptr, exe, 32768)) return FALSE;
-        auto slash = wcsrchr(exe, L'\\');
+        // DllMain also runs on game worker threads with small reserved stacks.
+        // Keep path buffers static so even THREAD_ATTACH has a small stack frame.
+        if (!GetModuleFileNameW(nullptr, executablePath, 32768)) return FALSE;
+        auto slash = wcsrchr(executablePath, L'\\');
         if (!slash || _wcsicmp(slash + 1, L"bg3.exe")) return TRUE;
         return Arm(self) ? TRUE : FALSE;
     }

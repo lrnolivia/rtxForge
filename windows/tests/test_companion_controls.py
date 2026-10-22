@@ -405,6 +405,36 @@ class ControlsTest(unittest.TestCase):
         self.assertFalse(control.Controls(self.root / 'state').presets)
 
 
+    def test_feeder_panel_saves_and_resets_reshade_ini(self):
+        target = self.root / 'feeder' / 'Win64'
+        target.mkdir(parents=True)
+        (target / 'Feeder.exe').write_bytes(b'game')
+        (target / 'nvngx_dlssnr.dll').write_bytes(b'model')
+        ini = target / 'ReShade.ini'
+        ini.write_text('[GENERAL]\nNoReloadOnInit=0\n\n[RenoDX.DLSS5]\nNeuralUplift=0\nNRPasses=2\nNRResolutionScale=0.65\n')
+        state = self.root / 'engine-state' / 'feeder-targets' / hashlib.sha256(str(target).casefold().encode()).hexdigest()
+        state.mkdir(parents=True)
+        (state / 'baseline.json').write_text(json.dumps({'schema': 1, 'provider_id': 'feeder', 'status': 'active',
+            'target': str(target), 'game': str(target), 'exe': 'Feeder.exe', 'name': 'Feeder fixture'}))
+        rows = self.controls.targets()
+        row = next(item for item in rows if item['name'] == 'Feeder fixture')
+        status = self.controls.status({'row': row})
+        self.assertEqual((status['state'], status['can_edit'], status['can_save'], status['can_mfg']), ('waiting', False, True, False))
+        self.assertEqual((status['values']['passes'], status['values']['enabled']), (2, 0))
+        self.assertEqual(status['pipelines']['NR']['state'], 'managed')
+        self.controls.save({'row': row, 'changes': {'enabled': 1, 'intensity': 1.4, 'passes': 3, 'preset': 2}})
+        saved = t.ini(ini.read_text())['RenoDX.DLSS5']
+        self.assertEqual((saved['NeuralUplift'], saved['NRIntensity'], saved['NRPasses'], saved['NRPreset']), ('1', '1.40', '3', '2'))
+        self.assertIn('NoReloadOnInit=0', ini.read_text())
+        with self.assertRaisesRegex(t.Refusal, 'Save a preset'):
+            self.controls.apply({'row': row, 'changes': {'intensity': 1.0}})
+        self.controls.reset({'row': row, 'pid': 1})
+        reset = t.ini(ini.read_text())['RenoDX.DLSS5']
+        self.assertEqual((reset['NeuralUplift'], reset['NRIntensity'], reset['NRPasses'], reset['NRPreset']), ('1', '1.00', '1', '0'))
+        # Other games keep the Skynizz route.
+        self.assertIsNone(self.controls._feeder({'row': self.row}))
+
+
 @unittest.skipUnless(os.name == 'nt', 'Windows named mapping')
 class WindowsProtocolTest(unittest.TestCase):
     def test_actual_mapping_ack_and_backend_ceiling(self):

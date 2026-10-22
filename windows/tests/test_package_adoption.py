@@ -97,6 +97,17 @@ assert t.ini((target/'OptiScaler.ini').read_text()).get('DlssNr','Enabled')=='fa
 for key,value in {'WorkingScale':.65,'LocalStructure':1.0,'SkinStructure':1.0}.items():
     assert t.ini((target/'OptiScaler.ini').read_text()).getfloat('DlssNr',key)==value
 e=module(host.service.config);e.restore_target(b.game(e,row));assert files(target)==before
+# An unrecognized OptiScaler build, under another loader name with its own extras,
+# can't be kept as is; Back up and clean install replaces it and Restore returns it.
+row,target=game('Foreign');(target/'dxgi.dll').unlink()
+(target/'winhttp.dll').write_bytes(fixture.pe()+b'OptiScaler foreign build');(target/'OptiScaler/libxess_fg.dll').write_bytes(fixture.pe()+b'old extra')
+r=a.prepare(host.service.config,[row],'adopt',settings)
+assert not r['plans'] and 'recognize' in r['blocked'][0]['reason'],r
+before=files(target);a.execute(review(row,True))
+assert not (target/'OptiScaler/libxess_fg.dll').exists()
+loaders=[n for n in ('dxgi.dll','winhttp.dll','wininet.dll','winmm.dll','version.dll','dbghelp.dll','d3d12.dll') if (target/n).is_file()]
+assert len(loaders)==1 and (target/loaders[0]).read_bytes()==payload['dxgi.dll'],loaders
+e=module(host.service.config);e.restore_target(b.game(e,row));assert files(target)==before
 # New install default and explicit opt-in are independent of MFG.
 row,target=game('NewInstall');e=module(host.service.config);g=b.game(e,row)
 # Remove the manually staged package, retaining the native game DLLs and saves.
@@ -164,6 +175,22 @@ try:
     for key,value in {'NRResolutionScale':.65,'NRLocalStructure':1.0,'NRSkinStructure':1.0}.items():
         assert float(values[key])==value
     assert values['NRLocalTone']=='2'
+    r=a.feeder.prepare(host.service.config,[row],'nr-only','uninstall',case.settings,module(host.service.config))
+    assert r['plans'],r['blocked']
+    a.feeder.execute(r);assert files(target)==before
+    # Any Feeder version is adoptable as found, still scans afterwards, and a clean
+    # install replaces it with the pinned stack.
+    row=case.game('FeedOther',installed=True);row['runtime_provider']='feeder'
+    target=Path(row['game']);(target/'renodx-dlss5.addon64').write_bytes(b'another RenoDX build');before=files(target)
+    r=a.prepare(host.service.config,[row],'adopt',case.settings)
+    assert r['plans'],r['blocked']
+    a.execute(r);assert files(target)==before
+    assert a.feeder.inspect(module(host.service.config),row)['managed']
+    row=case.game('FeedOtherClean',installed=True);row['runtime_provider']='feeder'
+    target=Path(row['game']);(target/'renodx-dlss5.addon64').write_bytes(b'another RenoDX build');before=files(target)
+    r=a.prepare(host.service.config,[row],'adopt-clean',case.settings|{'runtime_provider':'feeder','nr_on_launch':False})
+    assert r['plans'],r['blocked']
+    a.execute(r);assert (target/'renodx-dlss5.addon64').read_bytes()!=b'another RenoDX build'
     r=a.feeder.prepare(host.service.config,[row],'nr-only','uninstall',case.settings,module(host.service.config))
     assert r['plans'],r['blocked']
     a.feeder.execute(r);assert files(target)==before

@@ -131,10 +131,15 @@ inline const ImFontLoader* WindowsText()
     options.FontBuilderFlags = ImGuiFreeTypeBuilderFlags_LightHinting; options.FontLoader = WindowsText();
     font = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(forgeInter, sizeof(forgeInter), 18.f, &options);
     bold = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(forgeInterSemiBold, sizeof(forgeInterSemiBold), 18.f, &options);
+    LOG_INFO("rtxForge panel fonts: {}", font != nullptr && bold != nullptr);
     key = int(Preference(L"PanelKey", VK_DELETE)); modifiers = int(Preference(L"PanelModifiers", 0));
     advanced = Preference(L"Advanced", 0) != 0;
-    wchar_t caption[256] {}; GetWindowTextW(window, caption, 256);
+    // Init runs on the render thread. GetWindowTextW sends WM_GETTEXT to the
+    // window's own thread and waits; games whose window thread waits on the
+    // render thread (Starfield) then deadlock. Read the caption directly.
+    wchar_t caption[256] {}; InternalGetWindowText(window, caption, 256);
     title = wstring_to_string(caption);
+    LOG_INFO("rtxForge panel caption read");
     try
     {
         // MainDllPath is the configurable DLSS search directory (often the
@@ -175,9 +180,14 @@ inline bool CapturingShortcut()
     if(OptiInput::IsKeyReleased(bindingRelease) || !OptiInput::IsKeyDown(bindingRelease)) bindingRelease = 0;
     return true;
 }
+// The key the panel opens on, or 0. OptiScaler keeps it from the game.
+inline int ShortcutKey()
+{
+    return enabled && key > 0 && key < 256 && key != VK_INSERT && key != VK_END && key != VK_F12 ? key : 0;
+}
 inline bool ShortcutReleased()
 {
-    if (!enabled || !OptiInput::IsFocused() || key <= 0 || key >= 256 || key == VK_INSERT || key == VK_END || key == VK_F12) return false;
+    if (ShortcutKey() == 0 || !OptiInput::IsFocused()) return false;
     const int held = (OptiInput::IsKeyDown(VK_MENU) ? 1 : 0) | (OptiInput::IsKeyDown(VK_CONTROL) ? 2 : 0) | (OptiInput::IsKeyDown(VK_SHIFT) ? 4 : 0);
     // Pause keyboards can omit key-up. Use its existing input press event;
     // all other keys retain release behavior. No native shortcut is consumed.
@@ -568,7 +578,8 @@ inline bool ChoiceList(const char* label, int* current, const char* const items[
             }
             else
             {
-                const bool percent = !advanced || std::strcmp(field.key,"work_scale") == 0;
+                // Strengths read 0.00-2.00 as in Presets; only model resolution is a percentage.
+                const bool percent = std::strcmp(field.key,"work_scale") == 0;
                 auto shown = percent ? value * 100.f : value;
                 std::snprintf(text, sizeof(text), percent ? "%.0f%%" : "%.2f", shown); SliderBegin(text);
                 if(ImGui::SliderFloat("##value", &shown, percent ? field.low*100 : field.low, percent ? field.high*100 : field.high, "", ImGuiSliderFlags_AlwaysClamp))
@@ -657,6 +668,25 @@ inline void GlobalControls()
     ImGui::EndDisabled(); ImGui::EndDisabled();
     ReviewedChanges();
 }
+// The shortcut's name as the app writes it (OverlayShortcut.cs), for when the helper has not
+// sent panel_hotkey: the panel then names the key it read from the registry, not a default.
+inline std::string ShortcutLabel()
+{
+    if(ForgePanelChannel::settings.contains("panel_hotkey")) return ForgePanelChannel::settings.value("panel_hotkey",std::string());
+    static const std::pair<int,const char*> names[]={{0x23,"End"},{0x24,"Home"},{0x21,"PageUp"},{0x22,"PageDown"},{0x25,"Left"},{0x26,"Up"},
+        {0x27,"Right"},{0x28,"Down"},{0x13,"Pause"},{0x91,"ScrollLock"},{0x2E,"Delete"},{0x2D,"Insert"},{8,"Backspace"},{13,"Enter"},{0x20,"Space"},
+        {0x6A,"NumMultiply"},{0x6B,"NumAdd"},{0x6D,"NumSubtract"},{0x6E,"NumDecimal"},{0x6F,"NumDivide"},{0xBA,"Semicolon"},{0xBB,"Equals"},
+        {0xBC,"Comma"},{0xBD,"Minus"},{0xBE,"Period"},{0xBF,"Slash"},{0xC0,"Backtick"},{0xDB,"LeftBracket"},{0xDC,"Backslash"},
+        {0xDD,"RightBracket"},{0xDE,"Quote"}};
+    if(key == 0) return "Disabled";
+    std::string name;
+    for(const auto& [code,text] : names) if(code == key) name = text;
+    if(name.empty() && ((key >= 0x30 && key <= 0x39) || (key >= 0x41 && key <= 0x5A))) name = std::string(1,char(key));
+    if(name.empty() && key >= 0x60 && key <= 0x69) name = "Num" + std::to_string(key - 0x60);
+    if(name.empty() && key >= 0x70 && key <= 0x87) name = "F" + std::to_string(key - 0x6F);
+    if(name.empty()) name = "Key " + std::to_string(key);
+    return std::string((modifiers & 2) ? "Ctrl+" : "") + ((modifiers & 1) ? "Alt+" : "") + ((modifiers & 4) ? "Shift+" : "") + name;
+}
 inline void SettingsControls()
 {
     using ForgePanelChannel::pending; using ForgePanelChannel::helperReady; using ForgePanelChannel::Send;
@@ -671,7 +701,7 @@ inline void SettingsControls()
     int selectedRenderer=renderer=="optiscaler" ? 1 : 0;
     ImGui::SetNextItemWidth(-1);
     if(ChoiceList("Primary overlay",&selectedRenderer,rendererItems,2)) Preference("overlay_renderer",selectedRenderer==1 ? "optiscaler" : "game");
-    const auto shortcut=prefs.value("panel_hotkey",std::string("ScrollLock"));
+    const auto shortcut=ShortcutLabel();
     if(ImGui::Button(binding ? "Press a key..." : ("Shortcut: "+shortcut).c_str(),ImVec2(-1,0))) binding=true;
     if(binding)
     {
@@ -750,7 +780,7 @@ inline bool Draw(bool& visible, float scale)
     const ImVec4 neutral(.91f,.91f,.91f,1), dark(.20f,.20f,.20f,1), well(.22f,.22f,.22f,1);
     const auto ink = TitleColor();
     const auto alpha = [](ImVec4 color, float a) { color.w = a; return color; };
-    PushColor(ImGuiCol_WindowBg,ImVec4(.06f,.06f,.06f,.85f));
+    PushColor(ImGuiCol_WindowBg,ImVec4(.06f,.06f,.06f,.92f));
     PushColor(ImGuiCol_TextDisabled,ImVec4(.62f,.62f,.62f,1));
     PushColor(ImGuiCol_Border,ImVec4(1,1,1,.08f));
     PushColor(ImGuiCol_Text,neutral);
@@ -847,13 +877,13 @@ inline bool Draw(bool& visible, float scale)
         Send({{"op","save"},{"changes",changes}});
     }
     ImGui::PopStyleColor(2); ImGui::SameLine();
-    PushColor(ImGuiCol_Button,Mix(dark,ImVec4(1,1,1,1),.10f));
+    PushColor(ImGuiCol_Button,Mix(ImVec4(1,1,1,1),dark,.10f));
     PushColor(ImGuiCol_Text,ImVec4(.94f,.94f,.94f,1));
     if(ImGui::Button("Reset",ImVec2(-1,42.f*scale)))
     { Send({{"op","reset"}}); }
     ImGui::PopStyleColor(2); ImGui::EndDisabled();
     }
-    ImGui::TextDisabled("%s",(ForgePanelChannel::settings.value("panel_hotkey",std::string("ScrollLock"))+" - show or hide").c_str());
+    ImGui::TextDisabled("%s",(ShortcutLabel()+" - show or hide").c_str());
     if(ImGui::IsKeyPressed(ImGuiKey_Escape,false)) visible = false;
     ImGui::End(); ImGui::PopStyleColor(24); ImGui::PopStyleVar(13); ImGui::PopFont();
     cpuMs = std::chrono::duration<float,std::milli>(std::chrono::steady_clock::now()-start).count();

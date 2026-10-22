@@ -1,4 +1,4 @@
-# Bazzite / RTX 4070 setup
+﻿# Bazzite / RTX 4070 setup
 
 This package installs the existing rtxForge application and prepares its pinned
 graphics runtime. It targets Bazzite GNOME on x86_64 with an NVIDIA RTX 40-series
@@ -18,7 +18,7 @@ Setup verifies the included AppImage, checks the host and free space, verifies
 the selected provider download and payload, and installs the application in
 your launcher. The setup entry point works without a FUSE mount.
 
-A new installation selects **DLSS-Unlocked / MFG Only**, 2× requested MFG,
+A new installation selects **DLSS-Unlocked / MFG Only**, 2Ã— requested MFG,
 NR strength 2.0 and sharpening 0.5. Existing app preferences remain unchanged.
 To explicitly choose a DLSS-Unlocked profile, use one of:
 
@@ -35,9 +35,9 @@ changing that game's provider or profile.
 
 | Profile | Pinned package | Behavior |
 | --- | --- | --- |
-| MFG Only | DLSS-Unlocked NR-v0.9.33 | Native game DLSS-G with Ada unlock; NR components omitted |
-| NR Only | DLSS-Unlocked NR-v0.9.33 | NR available; keep in-game FG off |
-| NR + MFG | DLSS-Unlocked NR-v0.9.33 | Experimental combination; verify one game before expanding |
+| MFG Only | DLSS-Unlocked NR-v0.9.71 | Native game DLSS-G with Ada unlock; NR components omitted |
+| NR Only | DLSS-Unlocked NR-v0.9.71 | NR available; keep in-game FG off |
+| NR + MFG | DLSS-Unlocked NR-v0.9.71 | Experimental combination; verify one game before expanding |
 
 The source archives are approximately 469 MB (one verified archive shared by all three profiles). Setup
 downloads only the selected package and verifies its pinned SHA-256. The

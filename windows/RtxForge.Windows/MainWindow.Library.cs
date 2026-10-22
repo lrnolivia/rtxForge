@@ -8,6 +8,18 @@ namespace RtxForge.Windows;
 
 public sealed partial class MainWindow
 {
+    /// <summary>Saves this game's own package (null follows the library package) and refreshes its verdict.</summary>
+    public async Task SelectGamePackageAsync(Game game, string? package)
+    {
+        if (Busy) { ShowToast("Wait for the current operation to finish."); return; }
+        if (package is null or "") Settings.GamePackages.Remove(game.Id);
+        else Settings.GamePackages[game.Id] = package;
+        SaveSettings();
+        ShowToast(package is null or "" ? $"{game.Name} uses the library package." : $"{game.Name} uses {ForgeSettings.PackageName(package)}.");
+        try { await ScanAsync(); }
+        catch (InvalidOperationException error) { ShowToast("Could not refresh your library: " + error.Message); }
+    }
+
     public async Task<bool> RescanLibraryAsync()
     {
         if (Busy) { ShowToast("Wait for the current operation before rescanning."); return false; }
@@ -18,8 +30,9 @@ public sealed partial class MainWindow
             Query = "";
             SaveSettings();
             await ScanAsync();
-            ShowToast($"Library rescanned · {Games.Count} games found.");
-            await ReviewAdoptionAsync(Games.Where(g => g.AdoptionAvailable).ToArray());
+            var adoptable = Games.Count(g => g.AdoptionAvailable);
+            ShowToast($"Library rescanned · {Games.Count} games found."
+                + (adoptable > 0 ? $" {adoptable} can be adopted from Game Details." : ""));
             return true;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)

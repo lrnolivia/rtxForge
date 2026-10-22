@@ -1,5 +1,5 @@
 diff --git a/OptiScaler/Config.cpp b/OptiScaler/Config.cpp
-index 967731c1..3062ff17 100644
+index 2c8fe6c8..3f460b21 100644
 --- a/OptiScaler/Config.cpp
 +++ b/OptiScaler/Config.cpp
 @@ -194,6 +194,8 @@ bool Config::Reload(std::filesystem::path iniPath)
@@ -9,12 +9,12 @@ index 967731c1..3062ff17 100644
 +            FGDLSSGAdaMfgUnlock.set_from_config(readBool("DLSSG", "AdaMfgUnlock"));
 +            FGDLSSGAdaBlackwellKernels.set_from_config(readBool("DLSSG", "AdaBlackwellKernels"));
              FGDLSSGInterpolationCount.set_from_config(readInt("DLSSG", "InterpolationCount"));
-             if (FGDLSSGInterpolationCount.has_value() &&
-                 (FGDLSSGInterpolationCount.value() < 1 || FGDLSSGInterpolationCount.value() > 6))
-@@ -1068,6 +1070,10 @@ bool Config::SaveIni()
-     }
- 
-     {
+             FGSyncedFrames.set_from_config(readUInt("FrameGen", "SyncedFrames"));
+             FGSyncedDebug.set_from_config(readBool("FrameGen", "SyncedDebug"));
+@@ -1111,6 +1113,10 @@ bool Config::SaveIni()
+                      GetBoolValue(Instance()->FGAutoMultiplier.value_for_config()).c_str());
+         ini.SetValue("FrameGen", "AutoMultiplierTarget",
+                      GetFloatValue(Instance()->FGAutoMultiplierTarget.value_for_config()).c_str());
 +        ini.SetValue("DLSSG", "AdaMfgUnlock",
 +                     GetBoolValue(Instance()->FGDLSSGAdaMfgUnlock.value_for_config()).c_str());
 +        ini.SetValue("DLSSG", "AdaBlackwellKernels",
@@ -23,7 +23,7 @@ index 967731c1..3062ff17 100644
                       GetIntValue(Instance()->FGDLSSGInterpolationCount.value_for_config()).c_str());
          ini.SetValue("DLSSG", "UseGamesReflexMarkers",
 diff --git a/OptiScaler/Config.h b/OptiScaler/Config.h
-index e7ce081a..0d19959e 100644
+index 3b1600ee..19effc64 100644
 --- a/OptiScaler/Config.h
 +++ b/OptiScaler/Config.h
 @@ -1,4 +1,4 @@
@@ -32,17 +32,17 @@ index e7ce081a..0d19959e 100644
  
  #include "SysUtils.h"
  #include "State.h"
-@@ -1010,6 +1010,8 @@ class Config
+@@ -1054,6 +1054,8 @@ class Config
      CustomOptional<bool> FGXeFGForceBorderless { false };
  
      // DLSSG
 +    CustomOptional<bool> FGDLSSGAdaMfgUnlock { false };
 +    CustomOptional<bool> FGDLSSGAdaBlackwellKernels { false };
      CustomOptional<int> FGDLSSGInterpolationCount { 1 }; // For Opti's own SL instance
-     CustomOptional<bool> FGDLSSGUseGamesReflexMarkers { true };
-     CustomOptional<int, NoDefault>
+ 
+     // Synced FG (FGOutput=synced): frames generated between two real frames (1 = 2x, 2 = 3x, 3 = 4x), and a
 diff --git a/OptiScaler/OptiScaler.vcxproj b/OptiScaler/OptiScaler.vcxproj
-index 00369a32..cf411588 100644
+index 01c67b1c..0cd5b91a 100644
 --- a/OptiScaler/OptiScaler.vcxproj
 +++ b/OptiScaler/OptiScaler.vcxproj
 @@ -1,4 +1,4 @@
@@ -59,7 +59,7 @@ index 00369a32..cf411588 100644
      <ClInclude Include="framegen\ffx\FSRFG_Dx12.h" />
      <ClInclude Include="framegen\IFGFeature.h" />
      <ClInclude Include="framegen\IFGFeature_Dx12.h" />
-@@ -628,6 +629,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
+@@ -642,6 +643,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
      <ClCompile Include="gpu_time\GpuTime_Dx12.cpp" />
      <ClCompile Include="hooks\Amdxc64_Hooks.cpp" />
      <ClCompile Include="framegen\dlssg\DLSSG_Dx12.cpp" />
@@ -69,7 +69,7 @@ index 00369a32..cf411588 100644
      <ClCompile Include="framegen\IFGFeature_Dx12.cpp" />
 diff --git a/OptiScaler/framegen/dlssg/Companion.h b/OptiScaler/framegen/dlssg/Companion.h
 new file mode 100644
-index 00000000..ab89b246
+index 00000000..a00c0317
 --- /dev/null
 +++ b/OptiScaler/framegen/dlssg/Companion.h
 @@ -0,0 +1,245 @@
@@ -801,7 +801,7 @@ index 00000000..7f877204
 +unsigned int UnlockedMax();
 +} // namespace MfgUnlock
 diff --git a/OptiScaler/hooks/LibraryLoad_Hooks.cpp b/OptiScaler/hooks/LibraryLoad_Hooks.cpp
-index 142037d7..b41d413a 100644
+index 73d826be..74bbbd76 100644
 --- a/OptiScaler/hooks/LibraryLoad_Hooks.cpp
 +++ b/OptiScaler/hooks/LibraryLoad_Hooks.cpp
 @@ -1,4 +1,5 @@
@@ -835,7 +835,7 @@ index 142037d7..b41d413a 100644
      // Try to catch something like this:
      // c:\programdata/nvidia/ngx/models//dlss/versions/20316673/files/160_e658700.bin
 diff --git a/OptiScaler/hooks/Streamline_Hooks.cpp b/OptiScaler/hooks/Streamline_Hooks.cpp
-index 176dab06..38b3842e 100644
+index f966bc16..2977fae7 100644
 --- a/OptiScaler/hooks/Streamline_Hooks.cpp
 +++ b/OptiScaler/hooks/Streamline_Hooks.cpp
 @@ -1,4 +1,6 @@
@@ -845,7 +845,7 @@ index 176dab06..38b3842e 100644
  
  #include "Streamline_Hooks.h"
  
-@@ -1303,21 +1305,39 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
+@@ -1342,21 +1344,39 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
  
      if (dlssgPotentiallyActive && state.streamlineVersion >= feature_version { 2, 7, 1 })
      {
@@ -893,7 +893,7 @@ index 176dab06..38b3842e 100644
                  }
              }
          }
-@@ -1335,7 +1355,10 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
+@@ -1374,7 +1394,10 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
  
      state.dlssgLastSetMode = newOptions.mode;
  
@@ -905,7 +905,7 @@ index 176dab06..38b3842e 100644
  }
  
  sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport, sl::DLSSGState& state,
-@@ -1344,6 +1367,9 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
+@@ -1383,6 +1406,9 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
      if (o_slDLSSGGetState == nullptr)
          return sl::Result::eErrorFeatureMissing;
  
@@ -915,7 +915,7 @@ index 176dab06..38b3842e 100644
      sl::Result result {};
  
      const auto originalStructVersion = state.structVersion;
-@@ -1353,6 +1379,8 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
+@@ -1392,6 +1418,8 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
  
          // We might be feeding a newer struct to an older SL but that seems to work just fine for this Get function
          result = o_slDLSSGGetState(viewport, dynamic_cast<sl::DLSSGState&>(newState), options);
@@ -924,7 +924,7 @@ index 176dab06..38b3842e 100644
  
          // Copy back data to game's struct
          memcpy(&state, &newState, 56); // struct ver 1 size
-@@ -1363,6 +1391,12 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
+@@ -1402,6 +1430,12 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
              state.numFramesToGenerateMax = newState.numFramesToGenerateMax;
              state.bReserved4 = newState.bReserved4;
              state.bIsVsyncSupportAvailable = newState.bIsVsyncSupportAvailable;
@@ -937,7 +937,7 @@ index 176dab06..38b3842e 100644
          }
  
          if (originalStructVersion >= 3)
-@@ -1377,7 +1411,13 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
+@@ -1416,7 +1450,13 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
      else
      {
          result = o_slDLSSGGetState(viewport, state, options);
@@ -951,7 +951,7 @@ index 176dab06..38b3842e 100644
      }
  
      if (!State::Instance().dlssgGameDMFGSupported)
-@@ -1389,20 +1429,32 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
+@@ -1428,20 +1468,32 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
  
      if (optiState.streamlineVersion >= feature_version { 2, 7, 1 })
      {
@@ -993,10 +993,10 @@ index 176dab06..38b3842e 100644
              }
          }
 diff --git a/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp b/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
-index 0b25fbe5..e38af953 100644
+index 854926e0..75e7ef35 100644
 --- a/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
 +++ b/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
-@@ -14,6 +14,8 @@
+@@ -16,6 +16,8 @@
  #include "upscalers/dlss/DLSSFeature_Dx12.h"
  
  #include <framegen/nvngx/Nvngx_FG.h>
@@ -1005,7 +1005,7 @@ index 0b25fbe5..e38af953 100644
  #include "FG/FSR3_Dx12_FG.h"
  #include "FG/Upscaler_Inputs_Dx12.h"
  
-@@ -53,6 +55,7 @@ class ScopedInitDx12
+@@ -55,6 +57,7 @@ class ScopedInitDx12
  
  static void UpdateInitPaths(NVSDK_NGX_FeatureCommonInfo* InFeatureInfo)
  {
@@ -1013,7 +1013,7 @@ index 0b25fbe5..e38af953 100644
      State::Instance().NVNGX_FeatureInfo_Paths.clear();
  
      if (InFeatureInfo != nullptr)
-@@ -1118,6 +1121,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
+@@ -1120,6 +1123,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
  
      const uint32_t handleId = InFeatureHandle->Id;
      LOG_DEBUG("EvaluateFeature - Handle: {}, CmdList: {:p}", handleId, (void*) InCmdList);
@@ -1021,7 +1021,7 @@ index 0b25fbe5..e38af953 100644
  
      const State& state = State::Instance();
      const Config& cfg = *Config::Instance();
-@@ -1134,6 +1138,16 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
+@@ -1136,6 +1140,16 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
      {
          evalWithoutFG = 0;
  
@@ -1038,7 +1038,7 @@ index 0b25fbe5..e38af953 100644
          int frameCount = 0;
          InParameters->Get("DLSSG.MultiFrameCount", &frameCount);
          State::Instance().dlssgDetectedInterpolationCount = frameCount;
-@@ -1179,6 +1193,8 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
+@@ -1181,6 +1195,8 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
              if (result == NVSDK_NGX_Result_Success && feature != NVSDK_NGX_Feature_FrameGeneration)
                  DlssNr::EvaluateAfterUpscale(InCmdList, InParameters);
  
@@ -1047,7 +1047,7 @@ index 0b25fbe5..e38af953 100644
              return result;
          }
  
-@@ -1190,7 +1206,9 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
+@@ -1192,7 +1208,9 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
      if (State::Instance().activeFgNvngx != FGNvngxReplacement::None && handleId >= NVNGX_PROVIDER_ID_OFFSET)
      {
          LOG_DEBUG("Passthrough to DLSSG Replacement's EvaluateFeature for handle {}", handleId);
@@ -1058,7 +1058,7 @@ index 0b25fbe5..e38af953 100644
      }
  
      if (lastDlssgCameraNear.has_value())
-@@ -1206,6 +1224,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
+@@ -1221,6 +1239,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
  
      // OptiScaler internal handling
      const NVSDK_NGX_Result optiResult = TryEvaluateOptiFeature(InCmdList, InFeatureHandle, InParameters, InCallback);

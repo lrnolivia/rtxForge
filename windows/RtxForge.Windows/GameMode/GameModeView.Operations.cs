@@ -16,17 +16,26 @@ namespace RtxForge.Windows.GameMode;
 /// </summary>
 public sealed partial class GameModeView
 {
-    async Task RunOperationAsync(string operation, IReadOnlyList<Game> targets, Tuning? values = null)
+    /// <summary>Runs after the reviewed operation completes; each operation sets or clears it.</summary>
+    Action? whenCompleted;
+
+    async Task RunOperationAsync(string operation, IReadOnlyList<Game> targets, Tuning? values = null, Action? completed = null)
     {
+        whenCompleted = completed;
         if (shell.Busy) { Toast("Another operation is running."); return; }
         ArgumentNullException.ThrowIfNull(targets);
         if (targets.Count == 0) { Toast("No eligible games."); return; }
         if ((operation is "install" or "uninstall") && targets.Any(g => g.AdoptionAvailable))
         {
-            await shell.ReviewAdoptionAsync(targets.Where(g => g.AdoptionAvailable).ToArray());
+            // Another tool's setup: Install offers Adoption; Restore has nothing of rtxForge's to undo.
+            var adoptable = targets.Where(g => g.AdoptionAvailable).ToArray();
+            if (operation == "install") await shell.ReviewAdoptionAsync(adoptable);
+            else Toast(MainWindow.AdoptionSkipped(adoptable.Length));
             targets = targets.Where(g => !g.AdoptionAvailable).ToArray();
             if (targets.Count == 0) return;
         }
+        // One game: its accent on every screen of the flow, as in its Details.
+        await UseGameAccentAsync(Controls.AccentResources.Single(targets));
         if (operation == "install" && values is null)
         {
             values = await AskPresetsAsync(targets.Count == 1 ? shell.GameTuning(targets[0]) : shell.Settings.Presets);
@@ -57,6 +66,20 @@ public sealed partial class GameModeView
         { shell.Service.DiscardOperation(review); return; }   // cancelled while checking
         CloseModal();
         ShowReview(operation, review);
+    }
+
+    Services.AccentPalette? modalPalette;
+
+    async Task UseGameAccentAsync(Game? game) =>
+        UseGameAccent(game is null ? null : await ArtAccent.ForGameAsync(game));
+
+    /// <summary>Primary buttons, toggles and WinUI accent controls follow this palette; null restores the theme's.</summary>
+    void UseGameAccent(Services.AccentPalette? palette)
+    {
+        modalPalette = palette;
+        if (palette is null) { (ui.Accent, ui.AccentInk) = (GmTheme.Accent, GmTheme.AccentInk); return; }
+        var colors = t.GameColors(palette);
+        (ui.Accent, ui.AccentInk) = (colors.Accent, colors.Ink);
     }
 
     static string ReviewTitle(string operation) => operation switch
@@ -233,6 +256,7 @@ public sealed partial class GameModeView
             var count = await shell.ExecuteAsync(review, progress, cts.Token);
             step.Complete();
             CloseModal();
+            whenCompleted?.Invoke();
             ShowDone(true, "Done", $"{count} game{(count == 1 ? "" : "s")} updated.");
         }
         catch (OperationCanceledException)
@@ -245,7 +269,7 @@ public sealed partial class GameModeView
             CloseModal();
             ShowDone(false, "Could not finish", error.Message);
         }
-        finally { shell.Service.DiscardOperation(review); }
+        finally { whenCompleted = null; shell.Service.DiscardOperation(review); }
     }
 
     void ShowDone(bool success, string title, string message)

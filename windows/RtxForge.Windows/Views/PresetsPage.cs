@@ -8,15 +8,13 @@ namespace RtxForge.Windows.Views;
 
 /// <summary>
 /// Presets: the library presets (NR Strength, Sharpening, MFG) on their own page, as in
-/// Game Mode. Save defaults separately from reviewed changes to all or chosen configured games.
+/// Game Mode. The footer matches Linux: Reset, Select games and Apply to all.
 /// </summary>
 public sealed partial class PresetsPage : Page
 {
     readonly MainWindow shell = App.Main!;
     readonly PresetControlsView tuning;
-    readonly Button applyAll;
-    readonly HyperlinkButton reset;
-    readonly MenuFlyoutItem allGames;
+    readonly Button reset, selectGames, applyAll;
     readonly TextBlock changed = Prefs.Label("", "ForgeCaptionDimTextStyle");
 
     public PresetsPage()
@@ -37,27 +35,21 @@ public sealed partial class PresetsPage : Page
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(0, 0, 4, 4) };
         Grid.SetRow(scroll, 1); page.Children.Add(scroll);
 
-        var footer = new StackPanel { Spacing = 8 };
+        var footer = new Grid { ColumnSpacing = 12 };
+        footer.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+        footer.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        changed.VerticalAlignment = VerticalAlignment.Center;
+        changed.TextWrapping = TextWrapping.WrapWholeWords;
+        footer.Children.Add(changed);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right };
-        applyAll = new Button { Content = Prefs.Content("Apply to games…", "") };
-        var menu = new MenuFlyout();
-        allGames = new MenuFlyoutItem { Text = "All installed games" };
-        allGames.Click += async (_, _) => await ApplyAllAsync();
-        var choose = new MenuFlyoutItem { Text = "Choose games…" };
-        choose.Click += async (_, _) => await ChooseGamesAsync();
-        menu.Items.Add(allGames); menu.Items.Add(choose); applyAll.Flyout = menu;
-        actions.Children.Add(Prefs.ActionButton("Save defaults", (_, _) => Save(), accent: true, glyph: ""));
-        actions.Children.Add(applyAll);
-        reset = new HyperlinkButton { Content = "Discard changes", HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Center };
-        reset.Click += (_, _) => { tuning.Value = shell.Settings.Presets; Refresh(); };
+        reset = Prefs.ActionButton("Reset", (_, _) => { tuning.Value = shell.Settings.Presets; Refresh(); }, glyph: "");
         ToolTipService.SetToolTip(reset, "Discard unsaved preset changes.");
-        foreach (var action in actions.Children.OfType<Button>()) action.Width = 200;
-        var actionRow = new Grid { ColumnSpacing = 12 };
-        actionRow.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
-        actionRow.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
-        actionRow.Children.Add(reset); Grid.SetColumn(actions, 1); actionRow.Children.Add(actions);
-        footer.Children.Add(changed); footer.Children.Add(actionRow);
+        selectGames = Prefs.ActionButton("Select games", (_, _) => SelectGames(), glyph: "");
+        ToolTipService.SetToolTip(selectGames, "Choose games in the Library to apply these presets to.");
+        applyAll = Prefs.ActionButton("Apply to all", async (_, _) => await ApplyAllAsync(), accent: true, glyph: "");
+        ToolTipService.SetToolTip(applyAll, "Review these presets for every configured game, and keep them as your defaults.");
+        actions.Children.Add(reset); actions.Children.Add(selectGames); actions.Children.Add(applyAll);
+        Grid.SetColumn(actions, 1); footer.Children.Add(actions);
         Grid.SetRow(footer, 2); page.Children.Add(footer); Content = page;
         // One centered column, as every page (Controls/PageMargins).
         SizeChanged += (_, e) => page.Padding = PageMargins.For(e.NewSize.Width, bottom: 24);
@@ -78,17 +70,17 @@ public sealed partial class PresetsPage : Page
     void Refresh()
     {
         var count = Configured().Count;
-        allGames.Text = $"All installed games ({count})";
-        applyAll.IsEnabled = count > 0 && !shell.Busy;
         var dirty = tuning.HasChanges(shell.Settings.Presets);
-        reset.IsEnabled = dirty;
-        reset.Visibility = dirty ? Visibility.Visible : Visibility.Collapsed;
-        changed.Text = (dirty ? "Unsaved changes. " : "") + "Save defaults for new installs, or apply these settings to configured games after review.";
+        reset.IsEnabled = dirty && !shell.Busy;
+        selectGames.IsEnabled = count > 0 && !shell.Busy;
+        applyAll.IsEnabled = !shell.Busy;
+        changed.Text = (dirty ? "Unsaved changes. " : "")
+            + (count > 0 ? $"Apply to all reviews {count} configured game{(count == 1 ? "" : "s")} and keeps these as your defaults."
+                         : "No games have features installed yet. Apply to all saves these as your defaults for new installs.");
     }
 
-    void Save()
+    void Save(Tuning value)
     {
-        var value = tuning.Value;
         shell.Settings.NrStrength = value.NrStrength;
         shell.Settings.SharpeningStrength = value.SharpeningStrength;
         shell.Settings.MfgMultiplier = value.MfgMultiplier;
@@ -98,29 +90,20 @@ public sealed partial class PresetsPage : Page
         Refresh();
     }
 
-    async Task ApplyAllAsync()
+    /// <summary>Library presets mode applies the saved defaults, so unsaved edits are kept first.</summary>
+    void SelectGames()
     {
-        await shell.LaunchAction("apply", Configured(), tuning.Value);
-        Refresh();
+        if (tuning.HasChanges(shell.Settings.Presets)) Save(tuning.Value);
+        shell.BeginPresetSelection();
     }
 
-    async Task ChooseGamesAsync()
+    /// <summary>Reviewed apply to every configured game; the presets become the defaults once it completes.</summary>
+    async Task ApplyAllAsync()
     {
-        var selected = new HashSet<Game>();
-        var choices = new StackPanel { Spacing = 8 };
-        choices.Children.Add(Prefs.Label("Select games, then review the changes before applying."));
-        var dialog = new ContentDialog { Title = "Choose games", PrimaryButtonText = "Review changes", CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary, XamlRoot = XamlRoot, RequestedTheme = ActualTheme, IsPrimaryButtonEnabled = false,
-            Content = new ScrollViewer { Content = choices, MaxHeight = 360 } };
-        foreach (var game in Configured())
-        {
-            var check = new CheckBox { Content = game.Name };
-            check.Checked += (_, _) => { selected.Add(game); dialog.IsPrimaryButtonEnabled = selected.Count > 0; };
-            check.Unchecked += (_, _) => { selected.Remove(game); dialog.IsPrimaryButtonEnabled = selected.Count > 0; };
-            choices.Children.Add(check);
-        }
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
-            await shell.LaunchAction("apply", Configured().Where(selected.Contains).ToList(), tuning.Value);
+        var value = tuning.Value;
+        var targets = Configured();
+        if (targets.Count == 0) { Save(value); shell.ShowToast("Saved as your defaults for new installs."); return; }
+        if (await shell.LaunchAction("apply", targets, value)) Save(value);
         Refresh();
     }
 }

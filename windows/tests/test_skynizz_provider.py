@@ -87,14 +87,15 @@ checks.append('Control Ultimate Edition keeps the same DX12 executable in discov
 bg3=game('Baldurs Gate 3')
 (bg3/'Game.exe').rename(bg3/'bg3.exe')
 bg3_before=files(bg3);bg3_row=scan(bg3)
-assert 'DirectX 11 or Vulkan' in bg3_row['blocked'],bg3_row
-bg3_row['blocked']=''
+assert not bg3_row['blocked'] and 'Experimental' in bg3_row['nr_route_note'],bg3_row
 bg3_review=service.prepare([bg3_row],'nr-only','install',visual_settings=settings)
-assert not bg3_review['rows'] and 'DirectX 11 or Vulkan' in bg3_review['blocked'][0]['reason'],bg3_review
+assert bg3_review['rows'] and not bg3_review['blocked'],bg3_review
 assert files(bg3)==bg3_before
-checks.append('DX11/Vulkan-only BG3 cannot enter native NR through scan or a stale review row')
+checks.append('BG3 (DX11/Vulkan) is offered native NR as experimental instead of refused')
 fresh=game('Fresh');before=files(fresh)
 assert scan(fresh)['blocked']=='' and 'DLSS-G' in scan(fresh,'y4my')['blocked']
+# Per-game packages: every scan carries both verdicts, whichever package is selected.
+assert scan(fresh,'y4my')['skynizz_blocked']=='' and 'DLSS-G' in scan(fresh)['package_blocked']
 review=prepare(fresh);assert files(fresh)==before
 assert release['sha256'] in review['rows'][0]['detail'] and str(model) in review['rows'][0]['detail']
 run(review)
@@ -140,7 +141,7 @@ assert 'ShortcutKey=0' in menu_off and 'DisableSplash=false' in menu_off
 assert 'WorkingScale=0.5' in menu_off and 'CacheInterval=8' in menu_off and 'OverlayMenu=true' in menu_off
 run(prepare(fresh,'repair',{'optiscaler_ui':True,'optiscaler_intro':False}))
 assert (fresh/'OptiScaler.ini').read_text()==ini,'menu options failed to restore original settings independently'
-assert baseline(fresh)['archive']['release']['tag']=='v1.2.1'
+assert baseline(fresh)['archive']['release']['tag']=='v1.3.0'
 reset=prepare(fresh,'reset');run(reset)
 reset_ini=(fresh/'OptiScaler.ini').read_text()
 assert 'CacheInterval=1' in reset_ini and 'WorkingScale=0.65' in reset_ini and 'LocalStructure=1.0' in reset_ini and 'SkinStructure=1.0' in reset_ini and 'DisableSplash=true' in reset_ini and 'DualFeature=' not in reset_ini
@@ -430,7 +431,7 @@ ada_mfg_provider.load_payload=lambda config,record:dict(external_payload)
 external_settings=settings | {'mfg_provider':'mfg-unlock','mfg_multiplier':4,'nr_preset':2,'reshade_ui':False,'reshade_intro':False}
 review=service.prepare([scan(external)],'nr-mfg','install',visual_settings=external_settings)
 assert files(external)==external_before
-assert 'MFG Unlock 1.4.4' in review['rows'][0]['detail']
+assert 'MFG Unlock 1.4.5' in review['rows'][0]['detail']
 # Native DLL preparation loads another engine after the provider review. It
 # must not replace the pending operation's provider/configuration context.
 later_engine=module(service.config,'y4my')
@@ -450,7 +451,7 @@ reshade.write_text(tuned)
 run(service.prepare([scan(external)],'nr-mfg','repair',visual_settings=settings | {'mfg_provider':'integrated'}))
 assert reshade.read_text()==tuned,'repair reset the addon preset or changed MFG owner'
 assert scan(external)['mfg_multiplier']==3
-assert baseline(external)['mfg_provider']['version']=='1.4.4'
+assert baseline(external)['mfg_provider']['version']=='1.4.5'
 run(service.prepare([scan(external)],'nr-mfg','repair',visual_settings=settings | {'mfg_provider':'integrated','reshade_ui':True,'reshade_intro':True}))
 tuned=reshade.read_text()
 assert 'KeyOverlay=36,0,0,0' in tuned and 'TutorialProgress=0' in tuned

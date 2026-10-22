@@ -107,10 +107,10 @@
                                 <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE7A7;" FontSize="14" Foreground="{ThemeResource ForgeRemoveBrush}" /><TextBlock x:Name="RestoreText" Text="Restore Original Files" /></StackPanel>
                             </Button>
                             <Button x:Name="MoreButton" AutomationProperties.Name="More options" ToolTipService.ToolTip="More options">
-                                <FontIcon Glyph="&#xE712;" FontSize="14" />
+                                <!-- A hidden text line gives it the same height as the labelled buttons beside it. -->
+                                <Grid><TextBlock Text=" " Opacity="0" AutomationProperties.AccessibilityView="Raw" /><FontIcon Glyph="&#xE712;" FontSize="14" /></Grid>
                                 <Button.Flyout>
                                     <MenuFlyout Placement="BottomEdgeAlignedRight">
-                                        <MenuFlyoutItem Text="Live NR + MFG controls" Click="OnCompanion"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE713;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
                                         <MenuFlyoutItem x:Name="UpdateDlssItem" Text="Update DLSS" Click="OnUpdateDlss"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8AB;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
                                         <MenuFlyoutItem x:Name="AdoptionItem" Text="Adopt with rtxForge" Click="OnAdoption" />
                                         <MenuFlyoutItem x:Name="OfflineLaunchItem" Text="Launch offline" Click="OnLaunchOffline" />
@@ -141,12 +141,13 @@
             <ScrollViewer x:Name="SectionsScroll" HorizontalScrollMode="Enabled" HorizontalScrollBarVisibility="Hidden"
                           VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled">
                 <SelectorBar x:Name="Sections" Margin="28,8,36,0" SelectionChanged="OnSectionChanged">
-                    <SelectorBarItem Text="Overview" Tag="Overview" />
-                    <SelectorBarItem Text="Presets" Tag="Presets" />
-                    <SelectorBarItem Text="DLSS Files" Tag="DLSS Files" />
-                    <SelectorBarItem Text="Tools" Tag="Tools" />
-                    <SelectorBarItem Text="Appearance" Tag="Appearance" />
-                    <SelectorBarItem Text="Notes" Tag="Notes" />
+                    <!-- Same names and glyphs as Game Mode's Details (Models/GameSections.cs). -->
+                    <SelectorBarItem Text="Overview" Tag="Overview"><SelectorBarItem.Icon><FontIcon Glyph="&#xE80F;" /></SelectorBarItem.Icon></SelectorBarItem>
+                    <SelectorBarItem Text="Features" Tag="Features"><SelectorBarItem.Icon><FontIcon Glyph="&#xE9E9;" /></SelectorBarItem.Icon></SelectorBarItem>
+                    <SelectorBarItem Text="DLSS Files" Tag="DLSS Files"><SelectorBarItem.Icon><FontIcon Glyph="&#xE8A5;" /></SelectorBarItem.Icon></SelectorBarItem>
+                    <SelectorBarItem Text="Tools" Tag="Tools"><SelectorBarItem.Icon><FontIcon Glyph="&#xE90F;" /></SelectorBarItem.Icon></SelectorBarItem>
+                    <SelectorBarItem Text="Appearance" Tag="Appearance"><SelectorBarItem.Icon><FontIcon Glyph="&#xE790;" /></SelectorBarItem.Icon></SelectorBarItem>
+                    <SelectorBarItem Text="Notes" Tag="Notes"><SelectorBarItem.Icon><FontIcon Glyph="&#xE70B;" /></SelectorBarItem.Icon></SelectorBarItem>
                 </SelectorBar>
             </ScrollViewer>
 

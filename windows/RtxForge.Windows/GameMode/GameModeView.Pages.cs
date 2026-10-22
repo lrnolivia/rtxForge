@@ -25,9 +25,9 @@ public sealed partial class GameModeView
         page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         var head = new StackPanel { Spacing = t.Px(10) };
         head.Children.Add(ui.H1("Presets", 1.4));
-        head.Children.Add(ui.P("Save defaults for new installs, or review changes for configured games.", .78));
+        head.Children.Add(ui.P("Your defaults for new installs. Review games to apply them to existing packages.", .78));
         page.Children.Add(head);
-        var fields = new StackPanel { Spacing = t.Px(16), Padding = new Thickness(t.Px(4), t.Px(4), t.Px(4), t.Px(8)) };
+        var fields = new StackPanel { Spacing = t.Px(24), Padding = new Thickness(t.Px(4), t.Px(4), t.Px(4), t.Px(8)) };
         Action? refreshFooter = null;
         var (rows, value) = PresetRows(shell.Settings.Presets, legacy: shell.Settings.RuntimeProvider != "skynizz", changed: () => refreshFooter?.Invoke(),
             dynamicSupported: shell.Settings.DynamicMfgSupported);
@@ -35,43 +35,41 @@ public sealed partial class GameModeView
         foreach (var row in rows) fields.Children.Add(row);
         var scroll = new ScrollViewer { Content = fields, HorizontalScrollMode = ScrollMode.Disabled };
         Grid.SetRow(scroll, 1); page.Children.Add(scroll);
-        var footer = new StackPanel { Spacing = t.Px(12) };
-        footer.Children.Add(ui.P("Save defaults for new installs, or apply these settings to configured games after review.", .72));
+        // The desktop footer: Reset · Select games · Apply to all.
         var configured = shell.Games.Where(g => g.Installed && !g.Blocked).ToList();
+        var caption = ui.P("", .72);
+        caption.VerticalAlignment = VerticalAlignment.Center;
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12), HorizontalAlignment = HorizontalAlignment.Right };
-        actions.Children.Add(ui.Button("Save defaults", () => { SavePresets(); refreshFooter?.Invoke(); Toast("Defaults saved for new installs"); }, GmKind.Primary, .85));
-        actions.Children.Add(ui.Button("Apply to games…", () =>
-        {
-            var targets = new UIElement[]
-            {
-                ui.RowButton("All installed games", configured.Count.ToString(), () => { CloseModal(); ApplyPresets(configured); },
-                    description: "Review changes for every configured game."),
-                ui.RowButton("Choose games", null, () => { CloseModal(); ChoosePresetGames(configured); },
-                    description: "Pick which games to update."),
-            };
-            ShowModal("Apply to games", ui.Group(targets, t.Card), [ui.Button("Cancel", CloseModal, GmKind.Card, .85)], CloseModal, 860);
-        }, GmKind.Card, .85, enabled: configured.Count > 0).With(b => Key(b, "presets-apply")));
-        var reset = ui.Button("Discard changes", () => Render(), GmKind.Transparent, .76,
-            radius: 10, minHeight: 40, padding: new Thickness(t.Px(8)));
+        var reset = ui.Button("Reset", () => Render(), GmKind.Card, .85).With(b => Key(b, "presets-discard"));
         ToolTipService.SetToolTip(reset, "Discard unsaved preset changes.");
-        reset.HorizontalAlignment = HorizontalAlignment.Left;
-        reset.VerticalAlignment = VerticalAlignment.Center;
-        Key(reset, "presets-discard");
-        refreshFooter = () => reset.Visibility = System.Text.Json.Nodes.JsonNode.DeepEquals(
-            FeatureControlSchema.Resolve(value()), FeatureControlSchema.Resolve(shell.Settings.Presets)) ? Visibility.Collapsed : Visibility.Visible;
+        actions.Children.Add(reset);
+        actions.Children.Add(ui.Button("Select games", () => ChoosePresetGames(configured), GmKind.Card, .85, enabled: configured.Count > 0)
+            .With(b => Key(b, "presets-select")));
+        actions.Children.Add(ui.Button("Apply to all", () =>
+        {
+            if (configured.Count == 0) { SavePresets(); Render(); Toast("Saved as your defaults for new installs"); return; }
+            ApplyPresets(configured, () => { SavePresets(); Render(); });
+        }, GmKind.Primary, .85).With(b => Key(b, "presets-apply")));
+        refreshFooter = () =>
+        {
+            var dirty = !System.Text.Json.Nodes.JsonNode.DeepEquals(FeatureControlSchema.Resolve(value()), FeatureControlSchema.Resolve(shell.Settings.Presets));
+            reset.IsEnabled = dirty;
+            caption.Text = (dirty ? "Unsaved changes. " : "") + (configured.Count > 0
+                ? $"Apply to all reviews {configured.Count} configured game{(configured.Count == 1 ? "" : "s")} and keeps these as your defaults."
+                : "No games have features installed yet. Apply to all saves these as your defaults for new installs.");
+        };
         refreshFooter();
         foreach (var action in actions.Children.OfType<Button>())
         {
-            action.Width = t.Px(260);
+            action.Width = t.Px(220);
             action.CornerRadius = new CornerRadius(t.Px(10));
             action.MinHeight = t.Px(48);
             GmUi.NoLift(action);
         }
-        var actionRow = new Grid { ColumnSpacing = t.Px(12) };
-        actionRow.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
-        actionRow.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
-        actionRow.Children.Add(reset); Grid.SetColumn(actions, 1); actionRow.Children.Add(actions);
-        footer.Children.Add(actionRow);
+        var footer = new Grid { ColumnSpacing = t.Px(12) };
+        footer.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+        footer.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        footer.Children.Add(caption); Grid.SetColumn(actions, 1); footer.Children.Add(actions);
         Grid.SetRow(footer, 2); page.Children.Add(footer);
         return page;
     }
@@ -88,9 +86,9 @@ public sealed partial class GameModeView
         shell.Settings.Save();
     }
 
-    void ApplyPresets(List<Game> games)
+    void ApplyPresets(List<Game> games, Action? completed = null)
     {
-        if (presetValue is { } value) _ = RunOperationAsync("apply", games, value());
+        if (presetValue is { } value) _ = RunOperationAsync("apply", games, value(), completed);
     }
 
     void ChoosePresetGames(List<Game> games)
@@ -103,8 +101,8 @@ public sealed partial class GameModeView
         void UpdateReview()
         {
             review.IsEnabled = selected.Count > 0;
-            review.Background = GmTheme.B(review.IsEnabled ? GmTheme.Accent : t.Disabled);
-            review.Foreground = GmTheme.B(review.IsEnabled ? GmTheme.AccentInk : t.DisabledFg);
+            review.Background = GmTheme.B(review.IsEnabled ? ui.Accent : t.Disabled);
+            review.Foreground = GmTheme.B(review.IsEnabled ? ui.AccentInk : t.DisabledFg);
         }
         foreach (var game in games)
         {
@@ -285,10 +283,6 @@ public sealed partial class GameModeView
         {
             "Graphics" =>
             [
-                new("Package", "Feature provider and default selection.",
-                [
-                    ui.RowButton("Provider", ProviderName(), () => _ = ShowPackagesAsync(), description: "Review curated packages. Restore original files before switching providers."),
-                ]),
                 new("Install defaults", "Applied to new installs; game changes are reviewed first.",
                 [
                     Choice("Default mode", "Features selected when rtxForge starts.", modes, modes.Select(mode => mode switch { "nr-only" => "NR Only", "nr-mfg" => "NR + MFG", _ => "MFG Only" }).ToArray(),

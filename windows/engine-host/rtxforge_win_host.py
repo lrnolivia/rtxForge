@@ -357,9 +357,15 @@ def scan(params):
                                       selected=params.get('runtime_provider') == 'feeder')
     import package_adoption
     package_adoption.decorate(engine_bridge.module(service.config), rows)
-    if params.get('runtime_provider')=='skynizz':
-        import skynizz_provider
-        skynizz_provider.scan_rows(rows,params.get('feature_mode','nr-only'))
+    import skynizz_provider
+    # Games may choose their own package, so keep both verdicts; the selected
+    # package's verdict is the row's.
+    checked = skynizz_provider.scan_rows([dict(row) for row in rows], params.get('feature_mode', 'nr-only'))
+    for row, verdict in zip(rows, checked):
+        row['package_blocked'] = row.get('blocked', '')
+        row['skynizz_blocked'] = verdict.get('blocked', '')
+        if params.get('runtime_provider') == 'skynizz':
+            row.update(verdict)
     # Linux LibraryMedia.steam_art: the signed-in account's custom grid
     # (Non-Steam games matched through shortcuts.vdf), then Steam's cache.
     media = library_media.LibraryMedia(service.config, dict(library_media.DEFAULTS))
@@ -381,11 +387,20 @@ def scan(params):
 
 
 def prepare(params):
+    rows = params.get('rows') or []
+    if params.get('operation') == 'apply' and rows and all(row.get('runtime_provider') == 'feeder' for row in rows):
+        # Installed Feeder games keep their presets in their own ReShade.ini,
+        # whichever package is selected for new installs.
+        params = dict(params, mode='nr-only', settings=dict(params.get('settings') or {}, runtime_provider='feeder'))
     if (params.get('settings') or {}).get('runtime_provider') == 'skynizz':
         import skynizz_provider
         # Presentation flags belong to the requested mode. Fresh engine game
         # inspection still owns all capability/ownership and anti-cheat checks.
         params = dict(params, rows=skynizz_provider.scan_rows([dict(row) for row in params['rows']], params['mode']))
+    else:
+        # Another package: the scan's verdict before Skynizz's own checks.
+        params = dict(params, rows=[dict(row, blocked=row['package_blocked']) if 'package_blocked' in row else row
+                                    for row in params['rows']])
     review = service.prepare(params["rows"], params["mode"], params["operation"],
                              visual_settings=params.get("settings"), save_defaults=params.get("save_defaults", False))
     if review.get("kind") == "engine":

@@ -6,8 +6,8 @@ using RtxForge.Windows.Models;
 namespace RtxForge.Windows.Views;
 
 /// <summary>
-/// Packages: one package for games with DLSS, chosen here, and one for games without
-/// DLSS, used automatically (Feeder NR today). Custom packages are coming soon.
+/// Packages: NR packages beside the MFG packages that pair with them, unified packages
+/// (NR and MFG together), then your own package (coming soon) and community projects.
 /// </summary>
 public sealed partial class PackagesPage : Page
 {
@@ -29,8 +29,23 @@ public sealed partial class PackagesPage : Page
     }
 
     /// <summary>Packages for games without DLSS; the engine uses them automatically, whatever DLSS package is chosen.</summary>
-    static readonly string[] WithoutDlss = ["feeder"];
-    bool DlssPackageChosen(PackageCatalog catalog) => catalog.Packages.Any(p => p.Id == shell.Settings.RuntimeProvider && !WithoutDlss.Contains(p.Id));
+    internal static readonly string[] WithoutDlss = ["feeder"];
+    /// <summary>NR packages that pair with a separate MFG package. Every other DLSS package brings its own MFG (unified).</summary>
+    internal static readonly string[] PairsWithMfg = ["skynizz"];
+
+    /// <summary>
+    /// MFG packages for Skynizz NR, as Settings.MfgProvider values. All three use NVIDIA's own DLSS Frame
+    /// Generation; each presented 4 generated frames in Halo on an RTX 4070 (Forge Lab, 2026-10-22).
+    /// </summary>
+    internal static readonly (string Id, string Name, string Version, string Summary, string[] Verified)[] MfgPackages =
+    [
+        ("universal", "Universal MFG", "1.6.1 · OptiScaler plugin",
+            "Recommended. Keeps NVIDIA's DLSS Frame Generation and unlocks 3x to 6x on RTX 40. The multiplier and Dynamic MFG stay in the rtxForge Overlay.", ["windows"]),
+        ("integrated", "Integrated Ada unlock", "Built into the Skynizz bridge",
+            "Patches NVIDIA's DLSS Frame Generation for 3x to 6x on RTX 40, with no extra plugin.", ["windows"]),
+        ("mfg-unlock", "MFG Unlock", "1.4.4 · ReShade add-on",
+            "Raises NVIDIA's DLSS Frame Generation multiplier through ReShade. The rtxForge Overlay can't change its multiplier while you play, and it hangs inZOI at startup.", ["windows"]),
+    ];
 
     async Task LoadAsync()
     {
@@ -39,63 +54,45 @@ public sealed partial class PackagesPage : Page
         catch (InvalidOperationException error) { status.Text = error.Message; return; }
         status.Text = catalog.Status;
         body.Children.Clear();
+        var pairs = PairsWithMfg.Contains(shell.Settings.RuntimeProvider);
 
-        var dlss = new StackPanel { Spacing = 12, Margin = new Thickness(0, 12, 0, 0) };
-        dlss.Children.Add(Heading("Games with DLSS", DlssPackageChosen(catalog)
-            ? "Installs neural rendering and frame generation in games with native DLSS. Restore a game's original files before switching its package."
-            : "Choose the package rtxForge installs in games with native DLSS."));
-        var packages = new PresetColumns(360, 2) { ColumnSpacing = 12, RowSpacing = 12 };
-        foreach (var item in catalog.Packages.Where(p => !WithoutDlss.Contains(p.Id))
-                     .OrderByDescending(p => p.Id == shell.Settings.RuntimeProvider).ThenByDescending(p => p.Recommended))
-            packages.Children.Add(PackageCard(item));
-        dlss.Children.Add(packages);
-        body.Children.Add(dlss);
-        if (shell.Settings.RuntimeProvider == "skynizz") body.Children.Add(SkynizzComponents(catalog));
-
-        var other = new StackPanel { Spacing = 12, Margin = new Thickness(0, 12, 0, 0) };
-        other.Children.Add(Heading("Games without DLSS", "Used automatically for supported games without native DLSS, alongside your DLSS package. More packages are planned."));
-        foreach (var item in catalog.Packages.Where(p => WithoutDlss.Contains(p.Id))) other.Children.Add(AutomaticCard(item));
-        body.Children.Add(other);
-        if (catalog.Packages.Any(p => p.Id == "feeder"))
+        // NR packages beside the MFG packages that pair with them.
+        var columns = new PresetColumns(420, 2) { ColumnSpacing = 16, RowSpacing = 20, Margin = new Thickness(0, 12, 0, 0) };
+        var nr = new StackPanel { Spacing = 12 };
+        nr.Children.Add(Heading("NR packages", "Neural rendering. Choose one for games with DLSS; Feeder NR covers games without DLSS automatically."));
+        foreach (var item in catalog.Packages.Where(p => PairsWithMfg.Contains(p.Id)))
         {
-            var feeder = Section("Feeder setup", "Choose your local stack once; rtxForge keeps a verified copy, and installation copies ReShade, Feeder, RenoDX and shaders for you.");
-            var paths = new PresetColumns(360, 2) { ColumnSpacing = 16, RowSpacing = 12 };
-            paths.Children.Add(FolderField("Local stack folder", "Your ReShade, Feeder, RenoDX and shader files. Only needed until rtxForge keeps a copy.",
-                shell.Settings.FeederSource, path => shell.Settings.FeederSource = path));
-            paths.Children.Add(FolderField("Original backups folder", "Original manifests and backups used to recognize existing setups. rtxForge keeps verified copies.",
-                shell.Settings.FeederBackups, path => shell.Settings.FeederBackups = path));
-            feeder.Children.Add(paths);
-            var kept = Prefs.Label("Checking stored Feeder files…", "ForgeCaptionDimTextStyle");
-            var keep = new Button { Content = "Keep a copy in rtxForge", HorizontalAlignment = HorizontalAlignment.Left };
-            ToolTipService.SetToolTip(keep, "Verify both folders and store their files with rtxForge. Game files are not changed.");
-            async Task ShowKeptAsync(bool import)
+            nr.Children.Add(PackageCard(item));
+            if (shell.Settings.RuntimeProvider == item.Id) nr.Children.Add(new Expander
             {
-                keep.IsEnabled = false;
-                try
-                {
-                    var storage = await shell.Service.FeederStorageAsync(import ? NonEmpty(shell.Settings.FeederSource) : null,
-                        import ? NonEmpty(shell.Settings.FeederBackups) : null);
-                    kept.Text = (storage.Recipe is null ? "No stack stored yet" : "Stored stack · " + storage.Recipe
-                        + (storage.NrVersion is null ? "" : " · NR model " + storage.NrVersion))
-                        + $" · {storage.Backups} original backup{(storage.Backups == 1 ? "" : "s")} kept";
-                }
-                catch (InvalidOperationException error) { kept.Text = error.Message; }
-                finally { keep.IsEnabled = true; }
-            }
-            static string? NonEmpty(string value) => string.IsNullOrWhiteSpace(value) ? null : value;
-            keep.Click += async (_, _) => await ShowKeptAsync(true);
-            feeder.Children.Add(kept);
-            feeder.Children.Add(keep);
-            _ = ShowKeptAsync(false);
-            other.Children.Add(new Expander
-            {
-                Header = "Feeder setup", Content = feeder, HorizontalAlignment = HorizontalAlignment.Stretch,
+                Header = "Skynizz settings", Content = SkynizzSettings(catalog), HorizontalAlignment = HorizontalAlignment.Stretch,
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
             });
         }
+        foreach (var item in catalog.Packages.Where(p => WithoutDlss.Contains(p.Id))) nr.Children.Add(AutomaticCard(item));
+        if (catalog.Packages.Any(p => p.Id == "feeder")) nr.Children.Add(FeederSetup());
+        columns.Children.Add(nr);
 
-        // Custom packages are not supported yet: shown, greyed out.
-        var sources = new PresetColumns(400, catalog.Community.Count > 0 ? 2 : 1) { ColumnSpacing = 12, RowSpacing = 12 };
+        var mfg = new StackPanel { Spacing = 12 };
+        mfg.Children.Add(Heading("MFG packages", pairs
+            ? "Native NVIDIA frame generation for Skynizz NR, in games with DLSS Frame Generation. Applies to new installs; restore a game before switching its MFG package."
+            : "These pair with Skynizz NR. Your package for DLSS games brings its own frame generation."));
+        foreach (var package in MfgPackages) mfg.Children.Add(MfgCard(package, pairs));
+        columns.Children.Add(mfg);
+        body.Children.Add(columns);
+
+        // Whole packages: NR and MFG together.
+        var unified = new StackPanel { Spacing = 12, Margin = new Thickness(0, 12, 0, 0) };
+        unified.Children.Add(Heading("Unified packages", "NR and frame generation in one package, for games with DLSS. Choosing one replaces Skynizz NR for those games."));
+        var unifiedCards = new PresetColumns(360, 2) { ColumnSpacing = 16, RowSpacing = 16 };
+        foreach (var item in catalog.Packages.Where(p => !WithoutDlss.Contains(p.Id) && !PairsWithMfg.Contains(p.Id))
+                     .OrderByDescending(p => p.Id == shell.Settings.RuntimeProvider))
+            unifiedCards.Children.Add(PackageCard(item));
+        unified.Children.Add(unifiedCards);
+        body.Children.Add(unified);
+
+        // Your own package (not supported yet) beside community projects.
+        var sources = new PresetColumns(400, 2) { ColumnSpacing = 16, RowSpacing = 16, Margin = new Thickness(0, 12, 0, 0) };
         var custom = Section("Your own package · Coming soon", "Inspect a ZIP archive and review its settings before using it. Instructions are never run.");
         var pick = Prefs.ActionButton("Choose archive", (_, _) => { }, glyph: "");
         pick.IsEnabled = false;
@@ -103,7 +100,6 @@ public sealed partial class PackagesPage : Page
         custom.Children.Add(pick);
         var customCard = Card(custom); customCard.Opacity = .55; customCard.IsHitTestVisible = false;
         sources.Children.Add(customCard);
-
         if (catalog.Community.Count > 0)
         {
             var community = Section("Other community projects", "Explore other projects. These sources aren't curated install options.");
@@ -119,35 +115,63 @@ public sealed partial class PackagesPage : Page
         body.Children.Add(sources);
     }
 
-    UIElement SkynizzComponents(PackageCatalog catalog)
+    Expander FeederSetup()
     {
-            var components = new PresetColumns(400, 2) { ColumnSpacing = 12, RowSpacing = 12 };
-            var nr = Section("NR package", "Skynizz for DirectX 12 games with DLSS. A compatible local NR model is required.");
-            var release = catalog.Packages.FirstOrDefault(p => p.Id == "skynizz")?.Version.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-            var releases = new List<string> { "latest" };
-            var captions = new List<string> { "Latest supported (recommended)" };
-            if (release is not null && release.StartsWith('v') && Version.TryParse(release[1..], out _))
+        var feeder = Section("Feeder setup", "Choose your local stack once; rtxForge keeps a verified copy, and installation copies ReShade, Feeder, RenoDX and shaders for you.");
+        var paths = new PresetColumns(360, 2) { ColumnSpacing = 16, RowSpacing = 12 };
+        paths.Children.Add(FolderField("Local stack folder", "Your ReShade, Feeder, RenoDX and shader files. Only needed until rtxForge keeps a copy.",
+            shell.Settings.FeederSource, path => shell.Settings.FeederSource = path));
+        paths.Children.Add(FolderField("Original backups folder", "Original manifests and backups used to recognize existing setups. rtxForge keeps verified copies.",
+            shell.Settings.FeederBackups, path => shell.Settings.FeederBackups = path));
+        feeder.Children.Add(paths);
+        var kept = Prefs.Label("Checking stored Feeder files…", "ForgeCaptionDimTextStyle");
+        var keep = new Button { Content = "Keep a copy in rtxForge", HorizontalAlignment = HorizontalAlignment.Left };
+        ToolTipService.SetToolTip(keep, "Verify both folders and store their files with rtxForge. Game files are not changed.");
+        async Task ShowKeptAsync(bool import)
+        {
+            keep.IsEnabled = false;
+            try
             {
-                releases.Add(release); captions.Add(release + " · keep this release");
+                var storage = await shell.Service.FeederStorageAsync(import ? NonEmpty(shell.Settings.FeederSource) : null,
+                    import ? NonEmpty(shell.Settings.FeederBackups) : null);
+                kept.Text = (storage.Recipe is null ? "No stack stored yet" : "Stored stack · " + storage.Recipe
+                    + (storage.NrVersion is null ? "" : " · NR model " + storage.NrVersion))
+                    + $" · {storage.Backups} original backup{(storage.Backups == 1 ? "" : "s")} kept";
             }
-            var saved = shell.Settings.SkynizzVersion;
-            var savedOnly = !releases.Contains(saved);
-            if (savedOnly) { releases.Add(saved); captions.Add("Saved release · " + saved); }
-            nr.Children.Add(Choice("Release", "Repairs keep each game's installed release. New installs use this selection.", captions,
-                releases.IndexOf(saved), index => shell.Settings.SkynizzVersion = releases[index], savedOnly ? captions.Count - 1 : -1));
-            nr.Children.Add(Choice("NR model preset", "Performance (B) uses preset 2 with compatible 310.9.16 models.",
-                ["Automatic", "Legacy (A)", "Performance (B)"], Math.Clamp(shell.Settings.NrPreset ?? 0, 0, 2),
-                index => shell.Settings.NrPreset = index));
-            components.Children.Add(Card(nr));
-            var mfg = Section("MFG package", "For NR + MFG installs in games with native DLSS Frame Generation.");
-            string[] mfgComponents = ["universal", "integrated", "mfg-unlock"];
-            mfg.Children.Add(Choice("MFG component", "Applies to new installs. Restore an existing package before switching components.",
-                ["Universal MFG 1.6.1 (recommended)", "Integrated Ada bridge", "MFG Unlock 1.4.4 (preview)"],
-                Math.Max(0, Array.IndexOf(mfgComponents, shell.Settings.MfgProvider)),
-                index => shell.Settings.MfgProvider = mfgComponents[index]));
-            mfg.Children.Add(Prefs.Label("Universal loads as an OptiScaler plugin and replaces the integrated unlock; OptiScaler keeps the multiplier and Dynamic controls. Upstream lists RTX 30 and 40 support (RTX 20 experimental); rtxForge has not yet validated it in games. MFG Unlock uses ReShade and remains a preview.", "ForgeCaptionDimTextStyle"));
-            components.Children.Add(Card(mfg));
-            return components;
+            catch (InvalidOperationException error) { kept.Text = error.Message; }
+            finally { keep.IsEnabled = true; }
+        }
+        static string? NonEmpty(string value) => string.IsNullOrWhiteSpace(value) ? null : value;
+        keep.Click += async (_, _) => await ShowKeptAsync(true);
+        feeder.Children.Add(kept);
+        feeder.Children.Add(keep);
+        _ = ShowKeptAsync(false);
+        return new Expander
+        {
+            Header = "Feeder setup", Content = feeder, HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+        };
+    }
+
+    StackPanel SkynizzSettings(PackageCatalog catalog)
+    {
+        var settings = new StackPanel { Spacing = 12 };
+        var release = catalog.Packages.FirstOrDefault(p => p.Id == "skynizz")?.Version.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        var releases = new List<string> { "latest" };
+        var captions = new List<string> { "Latest supported (recommended)" };
+        if (release is not null && release.StartsWith('v') && Version.TryParse(release[1..], out _))
+        {
+            releases.Add(release); captions.Add(release + " · keep this release");
+        }
+        var saved = shell.Settings.SkynizzVersion;
+        var savedOnly = !releases.Contains(saved);
+        if (savedOnly) { releases.Add(saved); captions.Add("Saved release · " + saved); }
+        settings.Children.Add(Choice("Release", "Repairs keep each game's installed release. New installs use this selection.", captions,
+            releases.IndexOf(saved), index => shell.Settings.SkynizzVersion = releases[index], savedOnly ? captions.Count - 1 : -1));
+        settings.Children.Add(Choice("NR model preset", "Performance (B) uses preset 2 with compatible 310.9.16 models.",
+            ["Automatic", "Legacy (A)", "Performance (B)"], Math.Clamp(shell.Settings.NrPreset ?? 0, 0, 2),
+            index => shell.Settings.NrPreset = index));
+        return settings;
     }
 
     Border PackageCard(PackageOption item)
@@ -165,19 +189,59 @@ public sealed partial class PackagesPage : Page
         var use = Prefs.ActionButton(current ? "In use" : "Use for DLSS games", (_, _) => { shell.SelectPackage(item.Id); _ = LoadAsync(); },
             accent: item.Recommended && !current);
         use.IsEnabled = item.Available && !current && !shell.Busy;
-        use.HorizontalAlignment = HorizontalAlignment.Right;
         ToolTipService.SetToolTip(use, item.Reason);
-        Grid.SetRow(use, 2); content.Children.Add(use);
+        var footer = Footer(item.Verified, use);
+        Grid.SetRow(footer, 2); content.Children.Add(footer);
         return Card(content);
     }
 
+    Border MfgCard((string Id, string Name, string Version, string Summary, string[] Verified) package, bool pairs)
+    {
+        var current = pairs && shell.Settings.MfgProvider == package.Id;
+        var content = Section(package.Name, package.Version);
+        content.Children.Add(Prefs.Label(package.Summary));
+        var use = Prefs.ActionButton(current ? "In use" : "Use with Skynizz NR", (_, _) =>
+        {
+            shell.Settings.MfgProvider = package.Id; shell.SaveSettings(); _ = LoadAsync();
+        }, accent: package.Id == "universal" && pairs && !current);
+        use.IsEnabled = pairs && !current && !shell.Busy;
+        content.Children.Add(Footer(package.Verified, use));
+        var card = Card(content);
+        if (!pairs) card.Opacity = .55;
+        return card;
+    }
+
     /// <summary>A package for games without DLSS: always on, so it has no Use button.</summary>
-    static Border AutomaticCard(PackageOption item)
+    Border AutomaticCard(PackageOption item)
     {
         var content = Section(item.Name, item.Version);
         content.Children.Add(Prefs.Label(item.Summary));
-        content.Children.Add(Prefs.Label(item.Available ? "Used automatically" : item.Reason, "ForgeCaptionDimTextStyle"));
+        content.Children.Add(Footer(item.Verified, Prefs.Label(item.Available ? "Used automatically" : item.Reason, "ForgeCaptionDimTextStyle")));
         return Card(content);
+    }
+
+    /// <summary>The OSes a package was tested on in games, left; its action, right.</summary>
+    static Grid Footer(IReadOnlyList<string>? verified, FrameworkElement action)
+    {
+        var footer = new Grid { ColumnSpacing = 12 };
+        footer.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+        footer.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        var marks = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
+        var brush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
+        foreach (var os in verified ?? [])
+        {
+            var pill = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+            pill.Children.Add(OsMark.Create(os, 12, brush));
+            pill.Children.Add(Prefs.Label(CrossOs.Name(os), "ForgeCaptionDimTextStyle"));
+            var tip = "Tested in games on " + CrossOs.Name(os);
+            ToolTipService.SetToolTip(pill, tip); Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(pill, tip);
+            marks.Children.Add(pill);
+        }
+        if (marks.Children.Count == 0) marks.Children.Add(Prefs.Label("Not yet tested in games", "ForgeCaptionDimTextStyle"));
+        footer.Children.Add(marks);
+        action.HorizontalAlignment = HorizontalAlignment.Right; action.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(action, 1); footer.Children.Add(action);
+        return footer;
     }
 
     static StackPanel Heading(string title, string description)

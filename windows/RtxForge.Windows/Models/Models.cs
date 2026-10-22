@@ -183,7 +183,9 @@ public sealed record DlssFile(string Title, string Path, string Current, string 
 /// <summary>runtime_updates.inspect + game_recoveries for one game.</summary>
 public sealed record DlssInventory(IReadOnlyList<DlssFile> Files, string Blocked, string? LatestBackup);
 
-public sealed record PackageOption(string Id, string Name, string Version, string Summary, bool Available, string Reason, bool Recommended, string Url);
+/// <summary>A package. Verified lists the OSes ("windows", "linux") where it has been tested in a game.</summary>
+public sealed record PackageOption(string Id, string Name, string Version, string Summary, bool Available, string Reason, bool Recommended, string Url,
+    IReadOnlyList<string>? Verified = null);
 
 public sealed record CommunitySource(string Name, string Url, string Note);
 

@@ -45,6 +45,11 @@ def relative(name):
     return p
 
 
+# Where each package has been tested in a game, for the OS marks on Packages. Add an OS only after
+# an in-game run on it (Skynizz + Universal: Halo and Control; Feeder: Mass Effect 2, 2026-10-21).
+VERIFIED = {'skynizz': ('windows',), 'feeder': ('windows',)}
+
+
 def catalog(host=None):
     host = host or {'system': platform.system(), 'architecture': platform.machine(), 'ready': False}
     locks = json.loads((ROOT / 'providers/lock.json').read_text())
@@ -85,6 +90,8 @@ def catalog(host=None):
                      'reason':('Requires a compatible local NR model, DirectX 12 with DLSS, and native DLSS Frame Generation for MFG.' if bridge_ready else 'The combined NR + MFG bridge is not included in this app build.') if supported else host.get('reason') or 'Verify a supported NVIDIA system first',
                      'summary':'Recommended. Neural rendering with Universal MFG 1.6.1 frame generation in DirectX 12 games with DLSS.',
                      'recommended':supported and bridge_ready})
+    for row in rows:
+        row['verified'] = list(VERIFIED.get(row['id'], ()))
     return rows
 
 

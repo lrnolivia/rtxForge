@@ -658,6 +658,25 @@ inline void GlobalControls()
     ImGui::EndDisabled(); ImGui::EndDisabled();
     ReviewedChanges();
 }
+// The shortcut's name as the app writes it (OverlayShortcut.cs), for when the helper has not
+// sent panel_hotkey: the panel then names the key it read from the registry, not a default.
+inline std::string ShortcutLabel()
+{
+    if(ForgePanelChannel::settings.contains("panel_hotkey")) return ForgePanelChannel::settings.value("panel_hotkey",std::string());
+    static const std::pair<int,const char*> names[]={{0x23,"End"},{0x24,"Home"},{0x21,"PageUp"},{0x22,"PageDown"},{0x25,"Left"},{0x26,"Up"},
+        {0x27,"Right"},{0x28,"Down"},{0x13,"Pause"},{0x91,"ScrollLock"},{0x2E,"Delete"},{0x2D,"Insert"},{8,"Backspace"},{13,"Enter"},{0x20,"Space"},
+        {0x6A,"NumMultiply"},{0x6B,"NumAdd"},{0x6D,"NumSubtract"},{0x6E,"NumDecimal"},{0x6F,"NumDivide"},{0xBA,"Semicolon"},{0xBB,"Equals"},
+        {0xBC,"Comma"},{0xBD,"Minus"},{0xBE,"Period"},{0xBF,"Slash"},{0xC0,"Backtick"},{0xDB,"LeftBracket"},{0xDC,"Backslash"},
+        {0xDD,"RightBracket"},{0xDE,"Quote"}};
+    if(key == 0) return "Disabled";
+    std::string name;
+    for(const auto& [code,text] : names) if(code == key) name = text;
+    if(name.empty() && ((key >= 0x30 && key <= 0x39) || (key >= 0x41 && key <= 0x5A))) name = std::string(1,char(key));
+    if(name.empty() && key >= 0x60 && key <= 0x69) name = "Num" + std::to_string(key - 0x60);
+    if(name.empty() && key >= 0x70 && key <= 0x87) name = "F" + std::to_string(key - 0x6F);
+    if(name.empty()) name = "Key " + std::to_string(key);
+    return std::string((modifiers & 2) ? "Ctrl+" : "") + ((modifiers & 1) ? "Alt+" : "") + ((modifiers & 4) ? "Shift+" : "") + name;
+}
 inline void SettingsControls()
 {
     using ForgePanelChannel::pending; using ForgePanelChannel::helperReady; using ForgePanelChannel::Send;
@@ -672,7 +691,7 @@ inline void SettingsControls()
     int selectedRenderer=renderer=="optiscaler" ? 1 : 0;
     ImGui::SetNextItemWidth(-1);
     if(ChoiceList("Primary overlay",&selectedRenderer,rendererItems,2)) Preference("overlay_renderer",selectedRenderer==1 ? "optiscaler" : "game");
-    const auto shortcut=prefs.value("panel_hotkey",std::string("ScrollLock"));
+    const auto shortcut=ShortcutLabel();
     if(ImGui::Button(binding ? "Press a key..." : ("Shortcut: "+shortcut).c_str(),ImVec2(-1,0))) binding=true;
     if(binding)
     {
@@ -854,7 +873,7 @@ inline bool Draw(bool& visible, float scale)
     { Send({{"op","reset"}}); }
     ImGui::PopStyleColor(2); ImGui::EndDisabled();
     }
-    ImGui::TextDisabled("%s",(ForgePanelChannel::settings.value("panel_hotkey",std::string("ScrollLock"))+" - show or hide").c_str());
+    ImGui::TextDisabled("%s",(ShortcutLabel()+" - show or hide").c_str());
     if(ImGui::IsKeyPressed(ImGuiKey_Escape,false)) visible = false;
     ImGui::End(); ImGui::PopStyleColor(24); ImGui::PopStyleVar(13); ImGui::PopFont();
     cpuMs = std::chrono::duration<float,std::milli>(std::chrono::steady_clock::now()-start).count();

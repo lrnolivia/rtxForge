@@ -570,6 +570,8 @@ def artwork_accent(path,color=None,muted=False):
 
         provider.load_from_data((
             f'.review-game.{name} .review-bezel {{ border-color: {color}; }} '
+            f'.{name} button.hero-install {{ background: {color}; color: {accent_dark}; }} '
+            f'.{name} button.hero-install:hover {{ background: mix({color},white,0.08); }} '
             f'.artwork-editor.{name} .artwork-preview {{ border-color: {color}; }} '
             f'.review-game.{name} .review-badge {{ color: {ui_colors.readable(color,palette["card"])}; background: {ui_colors.mix(color,palette["card"],0.10)}; }} '
             f'columnview row.{name}.game-selected {{ background: {color}; color: {accent_dark}; }} '
@@ -2800,7 +2802,10 @@ button.dlss-outline:active { background: alpha(@window_fg_color,0.25); }
 .subset-badge { border-radius: 999px; padding: 2px 8px; }
 .subset-badge.available { background: alpha(@success_color,0.18); color: @success_color; }
 .subset-badge.unavailable { background: alpha(currentColor,0.08); color: alpha(currentColor,0.6); }
-.overview-fact { background: alpha(currentColor,0.05); border-radius: 12px; padding: 12px 14px; }
+.overview-fact-icon { margin-right: 6px; }
+button.hero-restore image { color: #ff928c; }
+.overview-facts flowboxchild { padding: 0; }
+.overview-banner { border-radius: 8px; }
 .overview-fact-value { font-weight: 600; }
 .poster-os-badge { min-width: 22px; min-height: 22px; background: alpha(black,0.35); border: 1px solid alpha(white,0.22); border-radius: 6px; }
 .poster-os-badge image { color: white; }
@@ -10016,33 +10021,40 @@ class Window(Adw.ApplicationWindow):
         return values
 
     def overview_facts(self,game):
-        """Short facts on responsive rows, then the full game folder (Windows shared Overview)."""
+        """Windows GamePage Overview: notices, glyph fact rows in columns, then the game folder."""
         box=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12)
-        facts=overview_facts.compact_facts(game)
+        def fact_row(title,value,icon,suffix=None):
+            listing=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE,valign=Gtk.Align.START)
+            listing.add_css_class('boxed-list');listing.add_css_class('overview-fact-card')
+            row=Adw.ActionRow(title=title,subtitle=str(value),subtitle_selectable=True)
+            image=Gtk.Image(icon_name=icon,pixel_size=20);image.add_css_class('overview-fact-icon')
+            row.add_prefix(image)
+            if suffix is not None:row.add_suffix(suffix)
+            listing.append(row)
+            return listing
+        if game.get('offline_only'):
+            offline=Adw.PreferencesGroup(title='Offline-only features',description=overview_facts.OFFLINE_NOTE)
+            box.append(offline)
+        if self.adoptable(game):
+            review=button('Review Adoption',lambda *_:self.choose_adoption([game]));review.set_valign(Gtk.Align.CENTER)
+            box.append(fact_row('Adoption available',overview_facts.ADOPTION_NOTE,'emblem-important-symbolic',review))
+        if not game.get('blocked') and game.get('installed') and game.get('installed_on')=='windows':
+            banner=Adw.Banner(title=overview_facts.WINDOWS_NOTE,revealed=True)
+            banner.add_css_class('overview-banner');box.append(banner)
+        facts=overview_facts.facts(game)
         if facts:
             flow=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,homogeneous=True,column_spacing=12,row_spacing=12,
-                             min_children_per_line=1,max_children_per_line=min(3,len(facts)))
+                             min_children_per_line=1,max_children_per_line=4 if len(facts)>3 else 3,valign=Gtk.Align.START)
             flow.add_css_class('overview-facts')
-            for title,value in facts:
-                card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4)
-                card.add_css_class('overview-fact')
-                caption=label(title,'caption');caption.add_css_class('dim-label');caption.set_xalign(0)
-                text=label(str(value),'overview-fact-value');text.set_xalign(0);text.set_wrap(True)
-                card.append(caption);card.append(text)
+            for title,value,icon in facts:
+                card=fact_row(title,value,icon);card.set_size_request(280,-1)
                 flow.append(card)
             box.append(flow)
         path=overview_facts.folder(game)
         if path:
-            row_box=Gtk.Box(spacing=12)
-            row_box.add_css_class('overview-fact')
-            text=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4,hexpand=True)
-            caption=label('Game folder','caption');caption.add_css_class('dim-label');caption.set_xalign(0)
-            value=label(str(path),'overview-fact-value');value.set_xalign(0);value.set_wrap(True);value.set_wrap_mode(Pango.WrapMode.WORD_CHAR);value.set_selectable(True)
-            text.append(caption);text.append(value);row_box.append(text)
-            open_button=button('Open Folder',lambda *_:Gio.AppInfo.launch_default_for_uri(Path(path).as_uri(),None))
-            open_button.set_valign(Gtk.Align.CENTER);open_button.set_sensitive(not self.options.demo)
-            row_box.append(open_button)
-            box.append(row_box)
+            open_button=button('Open folder',lambda *_:Gio.AppInfo.launch_default_for_uri(Path(path).as_uri(),None))
+            open_button.set_valign(Gtk.Align.CENTER);open_button.set_sensitive(not self.options.demo and Path(path).is_dir())
+            box.append(fact_row('Game folder',path,overview_facts.ICONS['folder'],open_button))
         return box
 
     def save_overlay_preference(self,key,value):
@@ -12289,8 +12301,14 @@ class Window(Adw.ApplicationWindow):
         )
 
         # Feature/status tag ABOVE the game name.
+        # Windows GamePage StatusBadge wording.
+        feeder=game.get('runtime_provider')=='feeder' or (game.get('install_provider')=='feeder' and game.get('feeder_available'))
         mode_name=(
+            'Installed · Adoption available' if self.adoptable(game) else
+            'Installed · Offline only' if game.get('offline_only') else
             'Unsupported' if game.get('blocked') else
+            ('Feeder NR' if game.get('installed') else 'Available · Feeder NR') if feeder else
+            'Installed on Windows' if game.get('installed') and game.get('installed_on')=='windows' else
             game.get('profile') if game.get('installed')
             else 'Ready for Features'
         )
@@ -12446,6 +12464,29 @@ class Window(Adw.ApplicationWindow):
         identity.append(
             heading
         )
+        # Windows GamePage HeroActions: Install (game accent), Restore, More.
+        hero_actions=Gtk.Box(spacing=8,valign=Gtk.Align.END,halign=Gtk.Align.END)
+        hero_actions.add_css_class('detail-hero-actions')
+        install_label='Set Up for Linux' if self.needs_linux_setup(game) else 'Install Features'
+        hero_install=icon_button(install_label,'folder-download-symbolic',lambda *_:self.launch_action('install',targets=[game]),'hero-install')
+        hero_install.set_sensitive(not game.get('blocked') and not self.busy and not self.options.demo)
+        hero_restore=icon_button('Restore Original Files','edit-undo-symbolic',lambda *_:self.launch_action('uninstall',targets=[game]),'hero-restore')
+        hero_restore.set_sensitive(bool(game.get('installed')) and not self.busy and not self.options.demo)
+        more=Gio.Menu()
+        more.append('Update DLSS','win.detail-update-dlss')
+        if self.adoptable(game):more.append('Adopt with rtxForge','win.detail-adopt')
+        more.append('Open Folder','win.detail-open-folder')
+        danger=Gio.Menu();danger.append('Remove from library','win.detail-remove');more.append_section(None,danger)
+        hero_more=Gtk.MenuButton(icon_name='view-more-horizontal-symbolic',menu_model=more,valign=Gtk.Align.CENTER)
+        hero_more.set_tooltip_text('More options');hero_more.update_property([Gtk.AccessibleProperty.LABEL],['More options'])
+        for name,callback in (('detail-update-dlss',lambda *_:self.update_dlss_games([game])),
+                              ('detail-adopt',lambda *_:self.choose_adoption([game])),
+                              ('detail-open-folder',lambda *_:Gio.AppInfo.launch_default_for_uri(Path(game['game']).as_uri(),None)),
+                              ('detail-remove',lambda *_:self.confirm_remove_game(game))):
+            self.remove_action(name)
+            action=Gio.SimpleAction.new(name,None);action.connect('activate',callback);self.add_action(action)
+        for widget in (hero_install,hero_restore,hero_more):hero_actions.append(widget)
+        identity.append(hero_actions)
 
         banner.add_overlay(
             identity

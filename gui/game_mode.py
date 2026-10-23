@@ -318,6 +318,7 @@ class GameMode(Gtk.Overlay, GameModeTools):
         self.pending_focus = None
         self.library_virtual = None
         self.modals = []
+        self.shortcut_recorder = None
         self.prompt_spec = None
         self.render_source = 0
 
@@ -2074,6 +2075,37 @@ class GameMode(Gtk.Overlay, GameModeTools):
             rows.append(row)
         return rows
 
+    def record_shortcut(self, current, store, done):
+        """Record the in-game panel shortcut from a keyboard; Reset and Disable also work from a controller."""
+        t = self.theme
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(16))
+        shown = self.label(overlay_shortcut.display(current), 'gm-h2')
+        hint = self.label('Press the new shortcut on a keyboard. Escape cancels. Insert stays with OptiScaler\u2019s own menu.', 'gm-p', wrap=True)
+        content.append(shown);content.append(hint)
+        modal = None
+        def finish(value=None):
+            self.shortcut_recorder = None
+            if value is not None:store(value)
+            self.close_modal(modal);done()
+        def pressed(keyval, state):
+            if not self.modals or self.modals[-1] is not modal:
+                self.shortcut_recorder = None;return False
+            name = Gdk.keyval_name(keyval) or ''
+            if name == 'Escape':finish();return True
+            if name in ('Tab', 'ISO_Left_Tab'):return False
+            try:
+                value = overlay_shortcut.compose(name, bool(state & Gdk.ModifierType.CONTROL_MASK),
+                                                 bool(state & Gdk.ModifierType.ALT_MASK), bool(state & Gdk.ModifierType.SHIFT_MASK))
+            except overlay_shortcut.ShortcutError as error:
+                hint.set_text(str(error));return True
+            if value is not None:finish(value)
+            return True
+        actions = [self.button('Reset', lambda: finish(overlay_shortcut.DEFAULT)),
+                   self.button('Disable', lambda: finish('Disabled')),
+                   self.button('Cancel', finish)]
+        modal = self.show_modal('Panel shortcut', content, actions, finish, width=760)
+        self.shortcut_recorder = pressed
+
     def open_game_overlay(self, game):
         import overlay_settings
         s=overlay_settings.effective(self.owner.settings,game['game'])
@@ -2096,6 +2128,10 @@ class GameMode(Gtk.Overlay, GameModeTools):
                                        ('Controls','overlay_controls',['unified','classic'],['Unified','Advanced']),
                                        ('OptiScaler shortcut','optiscaler_hotkey',['Insert','F8','Disabled'],['Insert','F8','Disabled'])]:
             options.append(self.choice(title,None,keys,captions,lambda k=key:s[k],lambda v,k=key:save(k,v)))
+        options.append(self.row_button('Panel shortcut',overlay_shortcut.display(s.get('panel_hotkey')),
+                                       lambda:self.record_shortcut(s.get('panel_hotkey'),lambda v:save('panel_hotkey',v),
+                                                                   lambda:(self.close_modal(),self.open_game_overlay(game))),
+                                       description='Opens the rtxForge panel in this game.'))
         for widget in options:widget.set_sensitive(not inherited())
         rows.extend(options)
         content=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=self.theme.px(16))
@@ -2160,7 +2196,9 @@ class GameMode(Gtk.Overlay, GameModeTools):
                             lambda: s.get('overlay_welcome_position','top-center'), lambda v: s.update(overlay_welcome_position=v)),
                 self.choice('Live feature statistics', None, *on_off, lambda: bool(s.get('overlay_live_stats', True)), lambda v: s.update(overlay_live_stats=v)),
                 self.row_button('Panel shortcut', overlay_shortcut.display(s.get('panel_hotkey')),
-                                lambda: self.toast('Record a new shortcut in Desktop Settings \u203a Overlay.'), description='Opens the rtxForge panel in game.'),
+                                lambda: self.record_shortcut(s.get('panel_hotkey'), lambda v: (s.update(panel_hotkey=v), self.save_settings()),
+                                                             lambda: self.render(keep_focus=True)),
+                                description='Opens the rtxForge panel in game.'),
                 self.choice('OptiScaler menu', 'Hiding it never turns off NR or MFG.', *on_off,
                             lambda: bool(s.get('optiscaler_ui', True)), lambda v: s.update(optiscaler_ui=v)),
                 self.choice('OptiScaler intro', None, *on_off, lambda: bool(s.get('optiscaler_intro', False)), lambda v: s.update(optiscaler_intro=v)),

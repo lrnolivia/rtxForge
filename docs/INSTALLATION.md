@@ -5,6 +5,11 @@ graphics runtime. It targets Bazzite GNOME on x86_64 with an NVIDIA RTX 40-serie
 GPU and a working NVIDIA driver. It uses host Python, GTK4 and libadwaita with
 `Adw.ToggleGroup`. Run it as your normal desktop user, without sudo.
 
+Other distributions work too. CachyOS and Arch need `python-gobject`, `gtk4` and
+`libadwaita` from pacman. SteamOS, and distributions whose libadwaita is older
+than 1.7, open the app in a distrobox: run the AppImage with `--container` once.
+See [linux/distros.md](linux/distros.md).
+
 ## Install
 
 Extract the downloaded `.tar.gz`, open a terminal in the extracted directory,

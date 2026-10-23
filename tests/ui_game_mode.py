@@ -136,6 +136,22 @@ def menu():
  c=app.window.couch
  c.navigate('menu');assert c.modals and 'Exit App' in labels(c.modal_layer)
  c.navigate('back');assert not c.modals and c.page_box.get_sensitive()
+def panel_shortcut():
+ w=app.window;c=w.couch
+ def record(scope):
+  row=next(x for x in descendants(scope) if isinstance(x,Gtk.Button) and 'Panel shortcut' in labels(x))
+  row.emit('clicked');assert c.modals and c.shortcut_recorder
+ c.open('settings');c.open_settings_section('Overlay');record(c.body)
+ w.keyboard_input(None,Gdk.KEY_Insert,0,0);assert c.modals and any('OptiScaler' in t for t in labels(c.modal_layer))
+ w.keyboard_input(None,Gdk.KEY_F9,0,Gdk.ModifierType.CONTROL_MASK)
+ assert not c.modals and c.shortcut_recorder is None and w.settings['panel_hotkey']=='Ctrl+F9',w.settings.get('panel_hotkey')
+ game=c.filtered_games()[0];w.settings.setdefault('game_overlay_settings',{})[game['game']]={}
+ c.open_game_overlay(game);record(c.modal_layer)
+ w.keyboard_input(None,Gdk.KEY_F7,0,0)
+ assert w.settings['game_overlay_settings'][game['game']]['panel_hotkey']=='F7' and len(c.modals)==1
+ record(c.modal_layer);w.keyboard_input(None,Gdk.KEY_Escape,0,0)
+ assert w.settings['game_overlay_settings'][game['game']]['panel_hotkey']=='F7' and len(c.modals)==1
+ c.close_modal();w.settings['game_overlay_settings'].pop(game['game']);w.settings['panel_hotkey']='Delete';c.open('library')
 def details():
  w=app.window;c=w.couch
  # Demo artwork can be missing (offline CI): any installed game will do.
@@ -224,7 +240,7 @@ def review_close():
  assert not w.couch.modals and w.operation_flow is None
 def size(width,height):
  app.window.set_default_size(width,height);app.window.couch.resize(width,height)
-steps=[setup,keyboard,menu,glyphs,lambda:theme('light'),lambda:capture('gm-library-light.png'),lambda:theme('night'),
+steps=[setup,keyboard,panel_shortcut,menu,glyphs,lambda:theme('light'),lambda:capture('gm-library-light.png'),lambda:theme('night'),
        lambda:app.window.couch.open('packages'),lambda:capture('gm-packages.png'),
        lambda:app.window.couch.open('extras'),lambda:capture('gm-extras.png'),
        lambda:app.window.couch.open('library'),menu,lambda:app.window.couch.open_main_menu(),lambda:capture('gm-main-menu.png'),close_modal,
@@ -248,7 +264,7 @@ for width,height in ((1280,820),(1920,1080),(1000,700)):
  steps+=[wait_review,lambda tag=tag:capture(f'gm-review-{tag}.png'),confirm,lambda tag=tag:capture(f'gm-progress-{tag}.png'),finish,lambda tag=tag:capture(f'gm-done-{tag}.png'),wait_done]
 
 if os.environ.get('RTXFORGE_GAME_MODE_MOTION_ONLY'):
- steps=[setup,rapid_navigation,virtual_library,section_motion,deferred_desktop_layout,action_wording,menu,details,back_to_library]
+ steps=[setup,rapid_navigation,virtual_library,section_motion,deferred_desktop_layout,action_wording,panel_shortcut,menu,details,back_to_library]
 def step():
  try:
   if steps:steps.pop(0)();GLib.timeout_add(500,step)

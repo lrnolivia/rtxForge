@@ -192,20 +192,26 @@ static void InstallCreateDeviceExportHook(){
 // resolve runs inside the game's vkGetInstanceProcAddr which holds the Vulkan loader lock, and
 // slInit's plugin LoadLibrary -> DllMain needs that same lock = deadlock (the slInit hang, no
 // sl.log). The create CALL runs in normal execution, lock released.
-static void EnsureSlAndInterposer(){
-  static bool inited=false; if(inited) return; inited=true;
+static bool EnsureSlAndInterposer(){
+  static bool inited=false, ready=false; if(inited) return ready; inited=true;
   Reentry _; GlobalReal _g;   // interposer load + slInit forward to the real loader (all threads)
   PrepareUniversalMfg();
   ip_GIPA = (PFN_vkGetInstanceProcAddr)SlProxyFn("vkGetInstanceProcAddr");
   ip_GDPA = (PFN_vkGetDeviceProcAddr)SlProxyFn("vkGetDeviceProcAddr");
-  EnsureStreamlineInit();   // slInit
+  ready = EnsureStreamlineInit() && ip_GIPA && ip_GDPA;
+  if (!ready) { ip_GIPA = nullptr; ip_GDPA = nullptr; NrRequest(false); }
   Log("SL init in w_CreateInstance: ip_GIPA=%p ip_GDPA=%p", (void*)ip_GIPA,(void*)ip_GDPA);
+  return ready;
 }
 
 static VKAPI_ATTR VkResult VKAPI_CALL w_CreateInstance(
     const VkInstanceCreateInfo* ci, const VkAllocationCallbacks* a, VkInstance* out){
   InstallCreateDeviceExportHook();   // late attach: after other mods' load-time hooks, so ours is outermost
-  EnsureSlAndInterposer();   // slInit here (loader lock released), NOT in the GIPA resolve
+  if (!EnsureSlAndInterposer()) {
+    Reentry guard;
+    Log("w_CreateInstance: optional provider unavailable; creating native instance");
+    return o_CreateInstance_export(ci, a, out);
+  }   // slInit here (loader lock released), NOT in the GIPA resolve
   // Resolve the interposer's vkCreateInstance now that SL is initialized.
   if(!t_CreateInstance){ Reentry _; t_CreateInstance = (PFN_vkCreateInstance)(ip_GIPA ? ip_GIPA(nullptr,"vkCreateInstance") : nullptr); }
   if(!t_CreateInstance){ Log("w_CreateInstance: no interposer vkCreateInstance"); return VK_ERROR_INITIALIZATION_FAILED; }
@@ -473,6 +479,7 @@ static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL h_GetInstanceProcAddr(VkInstance
   if(ip_GIPA){ Reentry _; ip = ip_GIPA(inst, name); }
   if(!ip) ip = o_GIPA ? o_GIPA(inst, name) : nullptr;
   if(!ip) return nullptr;
+  if (!ip_GIPA) return ip;
   if(!strcmp(name,"vkGetInstanceProcAddr")) return (PFN_vkVoidFunction)h_GetInstanceProcAddr;
   if(!strcmp(name,"vkCreateDevice"))    { t_CreateDevice   = (PFN_vkCreateDevice)ip;   return (PFN_vkVoidFunction)w_CreateDevice; }
   if (!strcmp(name, "vkEnumerateDeviceExtensionProperties")) return reinterpret_cast<PFN_vkVoidFunction>(GameExtensions);

@@ -8,6 +8,7 @@
 #include "log.h"
 #include "imgui.h"
 #include "imgui_impl_win32.h"
+#include "game_viewport.h"
 #include <windows.h>
 #include <atomic>
 #include <mutex>
@@ -123,6 +124,7 @@ bool MenuInitializeUI() {
         return stats;
     };
     if (!ImGui_ImplWin32_Init(game)) { ImGui::DestroyContext(); return false; }
+    UseGameViewport();
     SetLastError(0);
     original = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(game, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(WindowProc)));
     if (!original) {

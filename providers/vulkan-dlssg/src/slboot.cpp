@@ -8,6 +8,7 @@
 #include "profile.h"
 #include "menu.h"
 #include "component.h"
+#include "latency_imports.h"
 
 #include <sl.h>
 #include <sl_helpers_vk.h>
@@ -45,6 +46,31 @@ static PFun_slDLSSGGetState* p_slDLSSGGetState{};
 // first release build resolved the proxy functions through a plain LoadLibraryA("sl.interposer.dll")
 // before this ran, found nothing next to bg3.exe, and the game failed to create its instance.
 static wchar_t s_slDir[MAX_PATH]{};
+static bool BindBundledLatency() {
+  if (!s_slDir[0]) { Log("Latency binding refused: private Streamline directory unavailable"); return false; }
+  wchar_t path[MAX_PATH]{}; swprintf(path, MAX_PATH, L"%s\\NvLowLatencyVk.dll", s_slDir);
+  HMODULE latency = LoadLibraryExW(path, nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+  wchar_t loaded[MAX_PATH]{}; if (latency) GetModuleFileNameW(latency, loaded, MAX_PATH);
+  if (!latency || _wcsicmp(path, loaded) || !GetProcAddress(latency, "NvLL_VK_NotifyOutOfBandQueue")) {
+    Log("Bundled latency binding refused: expected=%S loaded=%S error=%lu", path, loaded, GetLastError()); return false;
+  }
+  unsigned total{};
+  for (auto name : {L"sl.common.dll", L"sl.reflex.dll", L"sl.dlss_g.dll", L"sl.pcl.dll"}) {
+    const auto plugin = GetModuleHandleW(name);
+    wchar_t pluginPath[MAX_PATH]{}, expected[MAX_PATH]{};
+    if (plugin) GetModuleFileNameW(plugin, pluginPath, MAX_PATH);
+    swprintf(expected, MAX_PATH, L"%s\\%s", s_slDir, name);
+    if (!plugin || _wcsicmp(expected, pluginPath)) { Log("Latency binding refused: mixed or missing plugin %S", name); return false; }
+    LatencyBinding binding{};
+    if (!BindLatencyImports(plugin, latency, binding)) {
+      Log("Bundled latency binding failed: plugin=%S reason=%s", name, binding.error ? binding.error : "unknown"); return false;
+    }
+    total += binding.imports;
+  }
+  if (!total) { Log("Bundled latency binding refused: no matching delay imports"); return false; }
+  Log("Streamline latency imports pinned to %S; imports=%u; game latency module unchanged", loaded, total);
+  return true;
+}
 static HMODULE LoadInterposer(){
   if(g_sl) return g_sl;
   g_sl = GetModuleHandleA("sl.interposer.dll");
@@ -120,6 +146,11 @@ static bool EnsureSlInit(){
   sl::Result r = p_slInit(p, sl::kSDKVersion);
   Log("slInit -> %d", (int)r);
   s_armed = (r == sl::Result::eOk);
+  if (s_armed && !BindBundledLatency()) {
+    if (auto shutdown = reinterpret_cast<PFun_slShutdown*>(GetProcAddress(g_sl, "slShutdown"))) shutdown();
+    s_armed = false;
+    Log("Streamline dependency binding unavailable; native Vulkan fallback");
+  }
   return s_armed;
 }
 

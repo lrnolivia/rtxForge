@@ -6,6 +6,7 @@
 #include "runtime_errors.h"
 #include "imgui.h"
 #include "imgui_impl_vulkan.h"
+#include "game_viewport.h"
 #include <windows.h>
 #include <vector>
 #include <array>
@@ -130,6 +131,7 @@ static bool Initialize(VkQueue queue){
   if(!ImGui_ImplVulkan_LoadFunctions(VK_API_VERSION_1_1,LoadFunction))return false;
   ImGui_ImplVulkan_InitInfo info{};info.ApiVersion=VK_API_VERSION_1_1;info.Instance=instance;info.PhysicalDevice=physical;info.Device=device;info.QueueFamily=family;info.Queue=queue;info.PipelineInfoMain.RenderPass=renderPass;info.MinImageCount=count;info.ImageCount=count;info.PipelineInfoMain.MSAASamples=VK_SAMPLE_COUNT_1_BIT;info.DescriptorPoolSize=32;info.CheckVkResultFn=BackendError;
   if(!ImGui_ImplVulkan_Init(&info) || backendResult!=VK_SUCCESS)return false;
+  UseGameViewport();
   rendererReady=true;initFailures=0;RuntimeErrors::ClearError(RuntimeErrors::Code::MenuInit);MenuRendererAvailable(true);Log("Vulkan menu renderer initialized: %u game images",count);return true;
 }
 static bool RenderOverlay(VkQueue queue,const VkPresentInfoKHR* original,VkPresentInfoKHR& modified,bool& submitted){

@@ -79,6 +79,7 @@ if ($panel) {
         Copy-Item -LiteralPath (Join-Path $specRoot $name) -Destination $payload
     }
     Copy-Item -LiteralPath (Join-Path $repo 'windows\RtxForge.Windows\Assets\Fonts\OFL-Inter.txt') -Destination $payload
+    Copy-Item -LiteralPath (Join-Path $repo 'gui\fonts\OFL-BakbakOne.txt') -Destination $payload
 }
 $productHead = (& git -C $repo rev-parse HEAD).Trim()
 $receipt = [ordered]@{

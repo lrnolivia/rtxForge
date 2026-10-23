@@ -80,12 +80,24 @@ int main(int argc, char** argv) {
     info.PhysicalDevice = physical; info.Device = device; info.QueueFamily = family; info.Queue = queue;
     info.PipelineInfoMain.RenderPass = renderPass; info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
     info.MinImageCount = info.ImageCount = 3; info.DescriptorPoolSize = 32; info.CheckVkResultFn = Check;
-    Require(ImGui_ImplVulkan_Init(&info), "initialize actual Vulkan renderer");
-    fgvk::UseGameViewport();
-    ImGui_ImplVulkan_Shutdown(); ImGui_ImplWin32_Shutdown(); ImGui::DestroyContext(); DestroyWindow(window);
+    const bool recreateRegression = argc > 1 && !std::strcmp(argv[1], "--recreate-regression");
+    for (int cycle = 0; cycle < 3; ++cycle) {
+        if (cycle && !recreateRegression) {
+            Require(ImGui::GetMainViewport()->PlatformUserData == nullptr, "renderer shutdown clears main platform data");
+            ImGui_ImplWin32_Shutdown();
+            Require(ImGui_ImplWin32_Init(window), "restore Win32 for renderer recreation");
+            fgvk::UseGameViewport();
+        }
+        Require(ImGui_ImplVulkan_Init(&info), "initialize actual Vulkan renderer");
+        fgvk::UseGameViewport();
+        ImGui_ImplVulkan_NewFrame(); ImGui_ImplWin32_NewFrame();
+        ImGui::NewFrame(); ImGui::EndFrame();
+        ImGui_ImplVulkan_Shutdown();
+    }
+    ImGui_ImplWin32_Shutdown(); ImGui::DestroyContext(); DestroyWindow(window);
     reinterpret_cast<PFN_vkDestroyRenderPass>(gdpa(device, "vkDestroyRenderPass"))(device, renderPass, nullptr);
     reinterpret_cast<PFN_vkDestroyDevice>(gdpa(device, "vkDestroyDevice"))(device, nullptr);
     reinterpret_cast<PFN_vkDestroyInstance>(gipa(instance, "vkDestroyInstance"))(instance, nullptr);
     FreeLibrary(library);
-    puts("Actual Win32/Vulkan backend startup and shutdown on the game-surface policy: PASS");
+    puts("Actual Win32/Vulkan backend startup, renderer recreation and NewFrame DPI callback: PASS");
 }

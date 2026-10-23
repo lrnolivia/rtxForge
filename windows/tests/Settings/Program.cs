@@ -196,3 +196,11 @@ var copiedStats = new ForgeSettings(); copiedStats.CopyOverlayFrom(hiddenStats);
 if (copiedStats.OverlayLiveStats || JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(hiddenStats))!.OverlayLiveStats
     || hiddenStats.GameAccents["sample"] != "#97c2bb") throw new Exception("Live-stat preference did not survive copy/persistence");
 Console.WriteLine("PASS: live statistics default on, persist off and copy without altering saved accents.");
+if(!defaultStats.OverlayWelcome || defaultStats.VulkanMfgNativeMenu)
+    throw new Exception("Welcome/native MFG UI defaults changed");
+var quiet = JsonSerializer.Deserialize<ForgeSettings>("{\"overlay_welcome\":false,\"vulkan_mfg_native_menu\":true}")!;
+var quietCopy = new ForgeSettings(); quietCopy.CopyOverlayFrom(quiet);
+var quietSaved = JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(quietCopy))!;
+if(quietSaved.OverlayWelcome || !quietSaved.VulkanMfgNativeMenu)
+    throw new Exception("Welcome and native MFG menu preferences are not independent/persistent");
+Console.WriteLine("PASS: shared welcome on/native MFG menu off defaults, independent copy and persistence.");

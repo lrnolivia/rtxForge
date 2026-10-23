@@ -24,6 +24,10 @@ public sealed class OverlayPreferencesView : StackPanel
             "Use the rtxForge panel in compatible packages, or the original menus provided by OptiScaler, Feeder or ReShade.", glyph: "\uE7F4");
         var layout = Choice("Controls", ["Unified", "Advanced"], current.OverlayControls == "classic" ? 1 : 0,
             "Unified uses simple labels. Advanced uses the package’s labels and original units.", glyph: "\uE713");
+        var liveStats = Switch("Live feature statistics", current.OverlayLiveStats,
+            "Show measured activity and performance beside NR and frame generation controls, when the injector supplies them.", glyph: "\uE9D9");
+        var welcome = Switch("Welcome message", current.OverlayWelcome,
+            "Show the rtxForge logo and the assigned overlay shortcut briefly when the game starts.", glyph: "\uE8F2");
         Heading("Shortcuts and helper");
         var key = new OverlayShortcutPicker(current.PanelHotkey, settingsRow: groupCards);
         AddControl(key);
@@ -41,6 +45,9 @@ public sealed class OverlayPreferencesView : StackPanel
         var reshadeUi = Switch("In-game menu", current.ReShadeUi, glyph: "\uE700");
         var reshadeIntro = Switch("Welcome messages", current.ReShadeIntro,
             "Controls the ReShade guide and RenoDX welcome dialog. Loading notices are separate. Feeder NR and effects stay running.", glyph: "\uE8F2");
+        Heading("Vulkan MFG overlay");
+        var vulkanMenu = Switch("Native MFG menu and hint", current.VulkanMfgNativeMenu,
+            "Optional advanced MFG Unlocker panel. Off by default; frame generation keeps running. The rtxForge welcome message has its own setting.", glyph: "\uE700");
         Heading("Apply to games");
         OverlayUiReviewView? gameReview = null;
         if (engine is not null) { gameReview = new(engine); AddControl(gameReview); }
@@ -71,6 +78,9 @@ public sealed class OverlayPreferencesView : StackPanel
         }
         renderer.SelectionChanged += (_, _) => Save(s => s.OverlayRenderer = renderer.SelectedIndex == 1 ? "optiscaler" : "game");
         layout.SelectionChanged += (_, _) => Save(s => s.OverlayControls = layout.SelectedIndex == 1 ? "classic" : "unified");
+        liveStats.Toggled += (_, _) => Save(s => s.OverlayLiveStats = liveStats.IsOn);
+        welcome.Toggled += (_, _) => Save(s => s.OverlayWelcome = welcome.IsOn);
+        vulkanMenu.Toggled += (_, _) => Save(s => s.VulkanMfgNativeMenu = vulkanMenu.IsOn);
         key.SaveBinding = value => Save(s => s.PanelHotkey = value);
         nativeKey.SelectionChanged += (_, _) => Save(s => s.OptiScalerHotkey = nativeKey.SelectedIndex == 1 ? "F8" : nativeKey.SelectedIndex == 2 ? "Disabled" : "Insert");
         helper.Toggled += (_, _) => Save(s => s.OverlayHelper = helper.IsOn);

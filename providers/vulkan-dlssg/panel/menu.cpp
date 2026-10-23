@@ -95,7 +95,20 @@ bool MenuColorSpace(VkColorSpaceKHR space, VkFormat format) {
         && (format == VK_FORMAT_B8G8R8A8_UNORM || format == VK_FORMAT_R8G8B8A8_UNORM);
 }
 bool MenuInitializeUI() {
-    if (ImGui::GetCurrentContext()) return true;
+    if (ImGui::GetCurrentContext()) {
+        // The docking Vulkan backend destroys platform viewport data during
+        // Shutdown, including the borrowed main window. A swapchain rebuild
+        // keeps our context, fonts and helper mapping, but must rebind Win32
+        // before NewFrame calls its DPI callback again.
+        if (!ImGui::GetMainViewport()->PlatformUserData) {
+            ImGui_ImplWin32_Shutdown();
+            const bool restored = ImGui_ImplWin32_Init(game);
+            UseGameViewport();
+            Log("Vulkan menu: Win32 main viewport restored after renderer recreation: %d", restored);
+            return restored;
+        }
+        return true;
+    }
     HWND selected{}; EnumWindows(FindWindow, reinterpret_cast<LPARAM>(&selected));
     if (!selected) return false;
     game = selected;
@@ -104,6 +117,7 @@ bool MenuInitializeUI() {
     ForgePanel::Init(game);
     ForgePanel::selected = ForgePanel::enabled;
     ForgePanel::nrAllowed = true; ForgePanel::mfgAllowed = true;
+    ForgePanel::nativeMfgMenuSupported = true;
     ForgePanel::title = Profile().title;
     ForgePanel::controlSupported = [](const ForgePanel::Control& field) {
         for(const auto* key : {"multiplier","enabled","style","intensity","preset","detail","colour","structure","tone","skin","auto_mask","work_scale"})
@@ -140,11 +154,11 @@ void MenuResetUI() {
         SetWindowLongPtrW(game, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(original));
     if (ImGui::GetCurrentContext()) { ImGui_ImplWin32_Shutdown(); ImGui::DestroyContext(); }
     ForgePanelChannel::Shutdown();
-    ForgePanel::font = ForgePanel::bold = nullptr; ForgePanel::animation = 0;
+    ForgePanel::font = ForgePanel::bold = ForgePanel::brandFont = nullptr; ForgePanel::animation = 0;
     game = nullptr; original = nullptr;
     std::lock_guard<std::mutex> guard(inputMutex); messages.clear();
 }
-bool MenuHasDrawing() { return ForgePanel::selected && (opened.load() || ForgePanel::Animating()); }
+bool MenuHasDrawing() { return ForgePanel::selected && (opened.load() || ForgePanel::Animating() || ForgePanel::WelcomePending()); }
 void MenuBuildUI(uint32_t width, uint32_t height) {
     std::vector<Message> pending;
     { std::lock_guard<std::mutex> guard(inputMutex); pending.swap(messages); }
@@ -172,12 +186,18 @@ void MenuBuildUI(uint32_t width, uint32_t height) {
     ImGui::NewFrame();
     NrWithSettings([] {
         bool visible = opened.load();
+        ForgePanelChannel::Visible(visible);
+        ForgePanel::Welcome(visible);
         ForgePanel::Draw(visible, 1.f);
+        ForgePanelChannel::Visible(visible);
         opened = visible;
         // Preserve the shared panel's save/review protocol; an unconnected
         // helper leaves those buttons disabled rather than saving elsewhere.
     });
     shortcut = ForgePanel::ShortcutKey(); shortcutModifiers = ForgePanel::modifiers;
+    const auto& prefs=ForgePanelChannel::settings;
+    UniversalMfgNativeMenu(prefs.contains("vulkan_mfg_native_menu") && prefs["vulkan_mfg_native_menu"].is_boolean()
+        && prefs["vulkan_mfg_native_menu"].get<bool>());
     const auto& cfg = *::Config::Instance();
     const int count = cfg.FGDLSSGOverrideInterpolationCount.has_value() ? cfg.FGDLSSGOverrideInterpolationCount.value() : int(Cfg().dlssgFrames);
     if((count == 0) != Rt().fgUserOff) request.Set(count != 0);

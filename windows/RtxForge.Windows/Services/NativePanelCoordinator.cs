@@ -88,6 +88,7 @@ internal sealed class NativePanelCoordinator : IDisposable
         {
             ["overlay_controls"] = s.OverlayControls, ["overlay_renderer"] = s.OverlayRenderer,
             ["overlay_live_stats"] = s.OverlayLiveStats,
+            ["overlay_welcome"] = s.OverlayWelcome, ["vulkan_mfg_native_menu"] = s.VulkanMfgNativeMenu,
             ["panel_hotkey"] = s.PanelHotkey, ["panel_key"] = (int)binding.Key, ["panel_modifiers"] = (int)binding.Modifiers,
             ["overlay_helper"] = s.OverlayHelper, ["overlay_start_with_windows"] = s.OverlayStartWithWindows,
             ["optiscaler_ui"] = s.OptiScalerUi, ["optiscaler_intro"] = s.OptiScalerIntro,
@@ -115,7 +116,15 @@ internal sealed class NativePanelCoordinator : IDisposable
             case "hello":
             case "status":
                 var state = await engine.CompanionAsync("status", game!);
-                return new JsonObject { ["op"] = action, ["settings"] = SettingsSnapshot(), ["status"] = state };
+                var preferences = SettingsSnapshot();
+                // A launcher may present a different HKCU view to the game.
+                // Deliver identity with the same verified per-process reply as
+                // the file states instead of depending on that registry cache.
+                var palette = await OverlayAccent.ForGameAsync(game!);
+                var color = palette.Color;
+                preferences["game_title"] = game!.Name;
+                preferences["game_accent"] = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+                return new JsonObject { ["op"] = action, ["settings"] = preferences, ["status"] = state };
             case "save":
                 var changes = message["changes"] as JsonObject ?? throw new InvalidOperationException("Choose a preset to save.");
                 foreach (var pair in changes)
@@ -166,6 +175,8 @@ internal sealed class NativePanelCoordinator : IDisposable
             {
                 case "overlay_controls": s.OverlayControls = value.GetValue<bool>() ? "classic" : "unified"; break;
                 case "overlay_live_stats": s.OverlayLiveStats = value.GetValue<bool>(); break;
+                case "overlay_welcome": s.OverlayWelcome = value.GetValue<bool>(); break;
+                case "vulkan_mfg_native_menu": s.VulkanMfgNativeMenu = value.GetValue<bool>(); break;
                 case "overlay_renderer":
                     var renderer = value.GetValue<string>();
                     if (renderer is not ("game" or "optiscaler")) throw new InvalidOperationException("Choose an available overlay.");

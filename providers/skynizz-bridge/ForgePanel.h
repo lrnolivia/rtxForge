@@ -31,7 +31,7 @@ struct Control
 };
 #include "ForgePanelBindings.h"
 #include "ForgePanelFont.h"
-inline ImFont* font = nullptr; inline ImFont* bold = nullptr;
+inline ImFont* font = nullptr; inline ImFont* bold = nullptr; inline ImFont* brandFont = nullptr;
 inline bool selected = false, settings = false, global = false, advanced = false, nrAllowed = false, mfgAllowed = false, enabled = false, binding = false, initialized = false;
 inline int key = VK_DELETE, modifiers = 0, bindingRelease = 0;
 inline float animation = 0, cpuMs = 0;
@@ -88,6 +88,9 @@ inline DWORD Preference(const wchar_t* name, DWORD fallback)
 inline const ImFontLoader* PanelFontLoader() { return ImFontAtlasGetFontLoaderForStbTruetype(); }
 inline float dpiScale = 1.f;
 inline bool showLiveStats = true;
+inline bool showWelcome = true, welcomeDismissed = false;
+inline ULONGLONG welcomeStarted = 0;
+inline bool nativeMfgMenuSupported = false;
 struct LiveStats {
     bool nrKnown{}, nrRunning{}, nrFramesKnown{}, fgKnown{}, fgRunning{}, framesKnown{}, nrWarming{};
     unsigned long long nrFrames{};
@@ -106,6 +109,17 @@ inline float PanelScale() {
 }
 inline void LoadGameIdentity()
 {
+    const auto& prefs = ForgePanelChannel::settings;
+    if(prefs.contains("game_title") && prefs["game_title"].is_string()
+        && prefs.contains("game_accent") && prefs["game_accent"].is_string()) {
+        const auto color = prefs["game_accent"].get<std::string>();
+        if(color.size()==7 && color[0]=='#' && color.substr(1).find_first_not_of("0123456789abcdefABCDEF")==std::string::npos) {
+            const auto rgb = std::stoul(color.substr(1),nullptr,16);
+            accent = ImVec4(float((rgb>>16)&255)/255,float((rgb>>8)&255)/255,float(rgb&255)/255,1);
+            title = prefs["game_title"].get<std::string>();
+            return;
+        }
+    }
     // The helper refreshes this cache outside the game. Read only at startup
     // and after a helper reply, never on each rendered frame.
     wchar_t exe[32768] {}, identity[1024] {}; GetModuleFileNameW(nullptr, exe, 32768);
@@ -132,10 +146,12 @@ inline void Init(HWND window)
     dpiScale = std::clamp(float(GetDpiForWindow(window))/96.f, .75f, 3.f);
     font = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(forgeInter, sizeof(forgeInter), 18.f, &options);
     bold = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(forgeInterSemiBold, sizeof(forgeInterSemiBold), 18.f, &options);
+    brandFont = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(forgeBakbak, sizeof(forgeBakbak), 24.f, &options);
     LOG_INFO("rtxForge panel fonts: {}", font != nullptr && bold != nullptr);
     key = int(Preference(L"PanelKey", VK_DELETE)); modifiers = int(Preference(L"PanelModifiers", 0));
     advanced = Preference(L"Advanced", 0) != 0;
     showLiveStats = Preference(L"ShowLiveStats", 1) != 0;
+    showWelcome = Preference(L"ShowWelcome", 1) != 0;
     // Init runs on the render thread. GetWindowTextW sends WM_GETTEXT to the
     // window's own thread and waits; games whose window thread waits on the
     // render thread (Starfield) then deadlock. Read the caption directly.
@@ -680,6 +696,85 @@ inline std::string ShortcutLabel()
     if(name.empty()) name = "Key " + std::to_string(key);
     return std::string((modifiers & 2) ? "Ctrl+" : "") + ((modifiers & 1) ? "Alt+" : "") + ((modifiers & 4) ? "Shift+" : "") + name;
 }
+inline bool WelcomePending()
+{
+    const auto& prefs = ForgePanelChannel::settings;
+    const bool show = prefs.contains("overlay_welcome") && prefs["overlay_welcome"].is_boolean()
+        ? prefs["overlay_welcome"].get<bool>() : showWelcome;
+    if(!enabled || !show || welcomeDismissed || !ShortcutKey()) return false;
+    if(!welcomeStarted) welcomeStarted=GetTickCount64();
+    return GetTickCount64()-welcomeStarted < 7000;
+}
+inline void Hero(const char* text, float size, ImVec4 color)
+{
+    ImGui::PushFont(brandFont ? brandFont : bold,size);
+    PushColor(ImGuiCol_Text,color);
+    ImGui::PushTextWrapPos(0); ImGui::TextUnformatted(text); ImGui::PopTextWrapPos();
+    ImGui::PopStyleColor(); ImGui::PopFont();
+}
+inline std::string KeyFace()
+{
+    std::string face;
+    if(key==VK_OEM_3) face="`";
+    else if(key==VK_DELETE) face="Del";
+    else if(key==VK_INSERT) face="Ins";
+    else if(key==VK_BACK) face="<";
+    else if(key==VK_RETURN) face="Enter";
+    else if(key>=0x70 && key<=0x87) face="F"+std::to_string(key-0x6f);
+    else if((key>=0x30 && key<=0x39)||(key>=0x41 && key<=0x5a)) face=char(key);
+    else face="Key";
+    return face;
+}
+inline void KeyGlyph(float scale)
+{
+    const auto face=KeyFace();
+    const auto origin=ImGui::GetCursorScreenPos();
+    const float height=20.f*scale;
+    ImGui::PushFont(font,11.f*scale);
+    const auto text=ImGui::CalcTextSize(face.c_str());
+    const float width=std::max(22.f*scale,text.x+10.f*scale);
+    auto* draw=ImGui::GetWindowDrawList();
+    draw->AddRectFilled(origin,ImVec2(origin.x+width,origin.y+height),Colour(ImVec4(.19f,.19f,.19f,1)),4.f*scale);
+    draw->AddRect(origin,ImVec2(origin.x+width,origin.y+height),Colour(ImVec4(.65f,.65f,.65f,1)),4.f*scale);
+    draw->AddLine(ImVec2(origin.x+4.f*scale,origin.y+height-3.f*scale),ImVec2(origin.x+width-4.f*scale,origin.y+height-3.f*scale),Colour(ImVec4(.4f,.4f,.4f,1)),scale);
+    draw->AddText(ImVec2(origin.x+(width-text.x)*.5f,origin.y+(height-text.y)*.5f-scale),Colour(ImVec4(.94f,.94f,.94f,1)),face.c_str());
+    ImGui::PopFont(); ImGui::Dummy(ImVec2(width,height));
+}
+inline void Welcome(bool panelVisible)
+{
+    if(panelVisible) welcomeDismissed=true;
+    if(!WelcomePending() || !OptiInput::IsFocused()) return;
+    const float scale=PanelScale();
+    const auto display=ImGui::GetIO().DisplaySize;
+    const auto label=ShortcutLabel()+" to open the overlay";
+    ImGui::PushFont(font,14.f*scale);
+    const float words=ImGui::CalcTextSize("Press").x+ImGui::CalcTextSize(label.c_str()).x+14.f*scale;
+    ImGui::PopFont(); ImGui::PushFont(font,11.f*scale);
+    const float cap=std::max(22.f*scale,ImGui::CalcTextSize(KeyFace().c_str()).x+10.f*scale);
+    ImGui::PopFont(); ImGui::PushFont(brandFont ? brandFont : bold,25.f*scale);
+    const float wordmark=ImGui::CalcTextSize("rtxForge").x;
+    ImGui::PopFont();
+    const float width=48.f*scale+43.2f*scale/forgeIconHeight+18.f*scale+std::max(wordmark,words+cap);
+    ImGui::SetNextWindowPos(ImVec2(display.x*.5f,56.f*scale),ImGuiCond_Always,ImVec2(.5f,0));
+    ImGui::SetNextWindowSize(ImVec2(width,89.f*scale),ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,ImVec2(24.f*scale,18.f*scale));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding,16.f*scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize,scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,ImVec2(8.f*scale,6.f*scale));
+    PushColor(ImGuiCol_WindowBg,ImVec4(.045f,.045f,.045f,.94f));
+    PushColor(ImGuiCol_Border,ImVec4(1,1,1,.14f));
+    PushColor(ImGuiCol_Text,ImVec4(.9f,.9f,.9f,1));
+    ImGui::Begin("rtxForge##welcome",nullptr,ImGuiWindowFlags_NoDecoration
+        |ImGuiWindowFlags_NoInputs|ImGuiWindowFlags_NoNav|ImGuiWindowFlags_NoSavedSettings);
+    Brand(scale*2.4f); ImGui::SameLine(0,18.f*scale);
+    ImGui::BeginGroup(); Hero("rtxForge",25.f*scale,ImVec4(.94f,.94f,.94f,1));
+    ImGui::PushFont(font,14.f*scale);
+    ImGui::TextUnformatted("Press"); ImGui::SameLine(0,7.f*scale);
+    KeyGlyph(scale); ImGui::SameLine(0,7.f*scale);
+    ImGui::Text("%s to open the overlay",ShortcutLabel().c_str());
+    ImGui::PopFont(); ImGui::EndGroup();
+    ImGui::End(); ImGui::PopStyleColor(3); ImGui::PopStyleVar(4);
+}
 inline void SettingsControls()
 {
     using ForgePanelChannel::pending; using ForgePanelChannel::helperReady; using ForgePanelChannel::Send;
@@ -690,6 +785,8 @@ inline void SettingsControls()
     if(SwitchRow("Advanced controls", &advancedChoice))
     { if(Preference("overlay_controls",advancedChoice)) prefs["overlay_controls"] = advancedChoice ? "classic" : "unified"; }
     PreferenceToggle("Show live statistics","overlay_live_stats",showLiveStats);
+    PreferenceToggle("Welcome message","overlay_welcome",showWelcome);
+    if(nativeMfgMenuSupported) PreferenceToggle("Native MFG menu and hint","vulkan_mfg_native_menu",false);
     const char* rendererItems[]={"rtxForge","Native"};
     const auto renderer=prefs.value("overlay_renderer",std::string("game"));
     int selectedRenderer=renderer=="optiscaler" ? 1 : 0;
@@ -830,11 +927,11 @@ inline bool Draw(bool& visible, float scale)
     PushColor(ImGuiCol_NavCursor,ink);
     PushColor(ImGuiCol_TextSelectedBg,alpha(Mix(accent,dark,.4f),.5f));
     ImGui::Begin("rtxForge##ingame",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoSavedSettings|ImGuiWindowFlags_NoScrollWithMouse|ImGuiWindowFlags_NoScrollbar);
-    Brand(scale); ImGui::PushFont(ImGui::GetFont(), 15.f*scale); BoldWrapped("rtxForge",ImVec4(.90f,.90f,.90f,1),scale); ImGui::PopFont(); ImGui::SameLine(ImGui::GetWindowWidth()-ImGui::GetStyle().WindowPadding.x-110.f*scale);
+    Brand(scale); Hero("rtxForge",19.f*scale,ImVec4(.90f,.90f,.90f,1)); ImGui::SameLine(ImGui::GetWindowWidth()-ImGui::GetStyle().WindowPadding.x-110.f*scale);
     if(IconButton("Global controls",2,scale)) { global = !global; settings = false; ForgePanelChannel::DiscardReview(); }
     ImGui::SameLine(); if(IconButton("Overlay settings",1,scale)) { settings = !settings; global = false; ForgePanelChannel::DiscardReview(); }
     ImGui::SameLine(); if(IconButton("Close panel",0,scale)) visible = false;
-    ImGui::PushFont(ImGui::GetFont(), 23.f*scale); BoldWrapped(global ? "All installed games" : title.c_str(), global ? neutral : TitleColor(), scale); ImGui::PopFont();
+    Hero(global ? "All installed games" : title.c_str(),25.f*scale,global ? neutral : TitleColor());
     if(global) ImGui::TextDisabled("One-time changes - review before applying");
     else Pipelines(scale);
     ImGui::Spacing();

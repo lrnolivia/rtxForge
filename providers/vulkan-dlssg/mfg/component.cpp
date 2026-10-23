@@ -1,5 +1,6 @@
 #include "component.h"
 #include "log.h"
+#include "quiet_ui.h"
 #include <windows.h>
 #include <cstdint>
 #include <atomic>
@@ -19,6 +20,7 @@ struct ModuleStatus {
 static_assert(sizeof(ModuleStatus) == 64);
 }
 bool UniversalMfgLoaded() { return loaded.load(); }
+void UniversalMfgNativeMenu(bool enabled) { mfg_ui::nativeMenu.store(enabled); }
 bool PrepareUniversalMfg() {
     std::call_once(once, [] {
         HMODULE self{}; wchar_t buffer[MAX_PATH]{};
@@ -50,6 +52,11 @@ bool PrepareUniversalMfg() {
         if (!query || !query(&state) || !state.backendOwner || state.duplicateSuppressed) {
             Log("Universal MFG: backend ownership unavailable or a competing unlock was detected"); return;
         }
+        if (!mfg_ui::Install(module)) {
+            Log("Universal MFG: pinned UI guard differs or could not be installed; quiet UI policy unavailable");
+            return;
+        }
+        Log("Universal MFG: standalone welcome/menu/input disabled; backend ownership retained");
         loaded.store(true);
         Log("Universal MFG Unlocker 1.6.1 loaded from %ls; capability and actual output remain runtime evidence", path.c_str());
     });

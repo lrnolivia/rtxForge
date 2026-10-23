@@ -63,7 +63,8 @@ def package(args):
             raise ValueError('Universal MFG release DLL differs')
         data['NativeMods/MFG/MFGUnlocker.dll'] = raw
     # Follow the shared provider's requested count; its panel owns the ordinary
-    # multiplier control. The advanced Universal MFG panel remains on Backspace.
+    # multiplier control. Its pinned standalone menu/input is gated off by our
+    # runtime by default; the MFG backend and original vendor file stay intact.
     data['NativeMods/MFG/RTXMFG-Universal.json'] = (
         b'{"followGame":true,"multiplier":2,"dynamic":false,"dlssgPreset":0}\n')
     data['RTX40MFG-UI.ini'] = b'[Overlay]\nFirstLaunchMenuShown=1\n'
@@ -80,10 +81,16 @@ def package(args):
     # The ImGui renderer and backend come from the pinned RDR source tree.
     data[notices + 'ImGui-MIT.txt'] = (args.build / 'source/rdr/vendor/imgui/LICENSE.txt').read_bytes()
     data[notices + 'Inter-OFL.txt'] = (ROOT.parents[1] / 'windows/RtxForge.Windows/Assets/Fonts/OFL-Inter.txt').read_bytes()
+    data[notices + 'Inter-OFL.txt'] += b'\n\nBakbak One (rtxForge wordmark and game headings)\n\n' + (ROOT.parents[1] / 'gui/fonts/OFL-BakbakOne.txt').read_bytes()
     data[notices + 'Detours-MIT.txt'] = (args.build / 'source/Detours/LICENSE.md').read_bytes()
     receipt = (args.build / 'source-receipt.json').read_bytes()
     data[notices + 'source-receipt.json'] = receipt
     output.mkdir(parents=True)
+    fixture = output / 'mfg-ui-fixture'
+    fixture.mkdir()
+    (fixture / 'MFGUnlocker.dll').write_bytes(data['NativeMods/MFG/MFGUnlocker.dll'])
+    (fixture / 'RTXMFG-Universal.json').write_bytes(data['NativeMods/MFG/RTXMFG-Universal.json'])
+    subprocess.run([str((args.build / 'test-mfg-ui.exe').resolve()), str((fixture / 'MFGUnlocker.dll').resolve())], cwd=fixture, check=True)
     archive_path = output / 'rtxForge-Vulkan-NR-UniversalMFG-local.zip'
     with zipfile.ZipFile(archive_path, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
         for name, raw in sorted(data.items()):

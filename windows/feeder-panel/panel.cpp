@@ -106,7 +106,7 @@ bool Draw(const Frame &frame)
         statistics.gameFps = (++measuredPresents)/measuredSeconds; measuredSeconds=0; measuredPresents=0;
     } else ++measuredPresents;
     last = now;
-    if (!visible && !ForgePanel::Animating()) return false;
+    if (!visible && !ForgePanel::Animating() && !ForgePanel::WelcomePending()) return false;
 
     io.DisplaySize = ImVec2(frame.width, frame.height);
     io.AddMousePosEvent(frame.mouse_x, frame.mouse_y);
@@ -119,6 +119,7 @@ bool Draw(const Frame &frame)
     ImGui_ImplDX11_NewFrame();
     ImGui::NewFrame();
     next_launch_message();
+    ForgePanel::Welcome(visible);
     ForgePanel::Draw(visible, frame.height / 1080.0f);
     ImGui::Render();
 

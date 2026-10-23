@@ -59,6 +59,7 @@ public static class OverlayHelper
         overlay.SetValue("PanelModifiers", valid ? (int)binding.Modifiers : 0, RegistryValueKind.DWord);
         overlay.SetValue("Advanced", settings.OverlayControls == "classic" ? 1 : 0, RegistryValueKind.DWord);
         overlay.SetValue("ShowLiveStats", settings.OverlayLiveStats ? 1 : 0, RegistryValueKind.DWord);
+        overlay.SetValue("ShowWelcome", settings.OverlayWelcome ? 1 : 0, RegistryValueKind.DWord);
         overlay.SetValue("InGamePanel", settings.OverlayRenderer == "game" ? 1 : 0, RegistryValueKind.DWord);
     }
 

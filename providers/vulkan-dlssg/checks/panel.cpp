@@ -27,6 +27,7 @@ int main() {
         return stats;
     };
     assert(ForgePanel::font && ForgePanel::bold && ForgePanel::font != ForgePanel::bold);
+    assert(ForgePanel::brandFont && ForgePanel::brandFont != ForgePanel::font);
     assert(!strcmp(ForgePanel::PanelFontLoader()->Name,"stb_truetype"));
     for(int test=0;test<3;++test) {
         io.DisplaySize = test==0 ? ImVec2(1920,1080) : test==1 ? ImVec2(3840,2160) : ImVec2(1920,1080);
@@ -46,6 +47,24 @@ int main() {
             assert(draw && draw->TotalVtxCount>0 && draw->TotalIdxCount>0);
         }
     }
+    // Welcome uses its own shared preference and measured top-center layout;
+    // it never needs a fabricated helper connection to draw the saved shortcut.
+    ForgePanel::welcomeStarted=0; ForgePanel::welcomeDismissed=false;
+    ForgePanel::key=VK_OEM_3; ForgePanel::modifiers=2;
+    ForgePanelChannel::settings["overlay_welcome"]=true;
+    io.DisplaySize=ImVec2(1920,1080); io.DisplayFramebufferScale=ImVec2(1,1);
+    State::Instance().outputColorSpace={};
+    for(int frame=0;frame<4;++frame) {
+        ImGui::NewFrame();
+        for(auto* texture:io.Fonts->TexList) {texture->SetTexID(1);texture->SetStatus(ImTextureStatus_OK);}
+        ForgePanel::Welcome(false); ImGui::Render();
+        auto window=ImGui::FindWindowByName("rtxForge##welcome");
+        assert(window && std::abs(window->Pos.x+window->Size.x*.5f-960)<2 && window->Pos.y>=55);
+        assert(ImGui::GetDrawData()->TotalVtxCount>0);
+    }
+    ForgePanelChannel::settings["overlay_welcome"]=false; assert(!ForgePanel::WelcomePending());
+    ForgePanelChannel::settings["overlay_welcome"]=true;
+    ForgePanel::Welcome(true); assert(!ForgePanel::WelcomePending());
     ForgePanelChannel::Shutdown();
     ImGui::DestroyContext();
     puts("Canonical panel, Inter fonts, live-stat callback, SDR/HDR and framebuffer/DPI scaling: PASS");

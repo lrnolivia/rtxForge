@@ -123,6 +123,8 @@ $font = [IO.File]::ReadAllBytes((Join-Path $repo 'windows\RtxForge.Windows\Asset
 $semiBold = [IO.File]::ReadAllBytes((Join-Path $bridge 'Inter-SemiBold.ttf'))
 $fontCode = 'inline unsigned char forgeInter[] = {' + (($font | ForEach-Object { $_.ToString() }) -join ',') + '};' + "`n" +
             'inline unsigned char forgeInterSemiBold[] = {' + (($semiBold | ForEach-Object { $_.ToString() }) -join ',') + '};'
+$brandFont = [IO.File]::ReadAllBytes((Join-Path $repo 'gui\fonts\BakbakOne-Regular.ttf'))
+$fontCode += "`n" + 'inline unsigned char forgeBakbak[] = {' + (($brandFont | ForEach-Object { $_.ToString() }) -join ',') + '};'
 [IO.File]::WriteAllText((Join-Path $gen 'ForgePanelFont.h'), $fontCode, [Text.UTF8Encoding]::new($false))
 
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
@@ -155,6 +157,10 @@ $receipt = [ordered]@{
 }
 foreach ($addon in $panel, $quiet) {
     $receipt.files[(Split-Path $addon -Leaf)] = [ordered]@{ sha256 = (Get-Sha256 $addon); size = (Get-Item $addon).Length }
+}
+foreach ($license in @('windows\RtxForge.Windows\Assets\Fonts\OFL-Inter.txt','gui\fonts\OFL-BakbakOne.txt')) {
+    $target=Join-Path $Output (Split-Path $license -Leaf)
+    Copy-Item -LiteralPath (Join-Path $repo $license) -Destination $target
 }
 [IO.File]::WriteAllText((Join-Path $Output 'package.json'), ($receipt | ConvertTo-Json -Depth 4) + "`n", (New-Object Text.UTF8Encoding $false))
 foreach ($name in $receipt.files.Keys) { Write-Host "$name $($receipt.files[$name].size) bytes $($receipt.files[$name].sha256)" }

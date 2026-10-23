@@ -380,16 +380,17 @@ index 669450ab..26523776 100644
  
      if ((!config->DisableSplash.value_or_default() && now > splashStart && now < splashLimit) ||
 -        config->ShowFps.value_or_default() || _isVisible || ImGui::notifications.size() > 0 || scanIndicator ||
-+        config->ShowFps.value_or_default() || _isVisible || ForgePanel::Animating() || ImGui::notifications.size() > 0 || scanIndicator ||
++        config->ShowFps.value_or_default() || _isVisible || ForgePanel::Animating() || ForgePanel::WelcomePending() || ImGui::notifications.size() > 0 || scanIndicator ||
          DlssNr::OverlayWanted() ||
          (config->DlssNrCompare.value_or_default() != 0 && config->DlssNrCompareTags.value_or_default()))
      {
-@@ -9047,7 +9069,9 @@ bool MenuCommon::RenderMenu()
+@@ -9047,7 +9069,10 @@ bool MenuCommon::RenderMenu()
      DlssNr::RenderOverlay(ctx.config->FpsOverlayAlpha.value_or_default());
  
      // 4) Draw the full settings menu last so popups and child windows keep their existing behavior.
 -    RenderMainMenuWindow(ctx);
 +    ForgePanelChannel::Visible(ForgePanel::selected && _isVisible);
++    if (ctx.newFrame) ForgePanel::Welcome(ForgePanel::selected && _isVisible);
 +    if (!ForgePanel::selected) RenderMainMenuWindow(ctx);
 +    else if (ctx.newFrame) ForgePanel::Draw(_isVisible, ctx.menuResScale);
  

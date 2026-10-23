@@ -79,6 +79,7 @@ def package(args):
         data[notices + 'MFG-Unlocker-' + path] = raw
     # The ImGui renderer and backend come from the pinned RDR source tree.
     data[notices + 'ImGui-MIT.txt'] = (args.build / 'source/rdr/vendor/imgui/LICENSE.txt').read_bytes()
+    data[notices + 'Inter-OFL.txt'] = (ROOT.parents[1] / 'windows/RtxForge.Windows/Assets/Fonts/OFL-Inter.txt').read_bytes()
     data[notices + 'Detours-MIT.txt'] = (args.build / 'source/Detours/LICENSE.md').read_bytes()
     receipt = (args.build / 'source-receipt.json').read_bytes()
     data[notices + 'source-receipt.json'] = receipt

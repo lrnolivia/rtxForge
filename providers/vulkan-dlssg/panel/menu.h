@@ -4,7 +4,7 @@
 namespace fgvk {
 bool MenuInitializeUI();
 bool MenuHasDrawing();
-void MenuBuildUI();
+void MenuBuildUI(uint32_t width, uint32_t height);
 void MenuResetUI();
 void MenuRendererAvailable(bool);
 void MenuError(const char*);

@@ -1,6 +1,6 @@
 #include "menu.h"
 #include "state.h"
-#include "color.h"
+#include "ForgePanel.h"
 #include "config.h"
 #include "profile.h"
 #include "bridge.h"
@@ -13,11 +13,15 @@
 #include <mutex>
 #include <vector>
 #include <string>
+#include <array>
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 namespace fgvk {
 namespace {
 std::atomic<bool> opened{false}, available{false};
+std::atomic<int> shortcut{VK_DELETE}, shortcutModifiers{0};
+std::array<bool,256> pressed{}, released{};
+int lastPressed{};
 panel::Request request;
 std::atomic<int> frameRequest{0};
 panel::Meter meter;
@@ -37,10 +41,12 @@ double Seconds() {
 }
 LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM w, LPARAM l) {
     if (message == WM_KILLFOCUS) opened = false;
-    if (message == WM_KEYDOWN && w == VK_DELETE && !(l & (1ll << 30)) && available) {
+    const auto key = shortcut.load();
+    const int mods = ((GetKeyState(VK_MENU)&0x8000) ? 1:0) | ((GetKeyState(VK_CONTROL)&0x8000) ? 2:0) | ((GetKeyState(VK_SHIFT)&0x8000) ? 4:0);
+    if (message == WM_KEYUP && key > 0 && w == key && mods == shortcutModifiers && available) {
         opened = !opened; return 0;
     }
-    if (message == WM_KEYUP && w == VK_DELETE) return 0;
+    if (message == WM_KEYDOWN && key > 0 && w == key && mods == shortcutModifiers && available) return 0;
     if (opened && message == WM_KEYDOWN && w == VK_ESCAPE) { opened = false; return 0; }
     const bool input = message == WM_MOUSEMOVE || (message >= WM_LBUTTONDOWN && message <= WM_MOUSEHWHEEL)
         || message == WM_KEYDOWN || message == WM_KEYUP || message == WM_CHAR
@@ -94,23 +100,35 @@ bool MenuInitializeUI() {
     game = selected;
     ImGui::CreateContext();
     auto& io = ImGui::GetIO(); io.IniFilename = nullptr; io.LogFilename = nullptr;
-    const float scale = float(GetDpiForWindow(game)) / 96.f;
-    ImFontConfig font{}; font.SizePixels = 18.f * (scale < 1 ? 1 : scale);
-    io.Fonts->AddFontDefault(&font);
-    ImGui::StyleColorsDark();
-    auto& style = ImGui::GetStyle(); style.WindowRounding = 14; style.FrameRounding = 6;
-    style.WindowPadding = {20, 18}; style.ItemSpacing = {10, 12};
-    style.Colors[ImGuiCol_CheckMark] = {0.64f, .88f, .06f, 1};
-    style.Colors[ImGuiCol_Button] = {.25f, .31f, .10f, 1};
-    style.Colors[ImGuiCol_ButtonHovered] = {.37f, .47f, .12f, 1};
-    style.ScaleAllSizes(scale < 1 ? 1 : scale);
+    ForgePanel::Init(game);
+    ForgePanel::selected = ForgePanel::enabled;
+    ForgePanel::nrAllowed = true; ForgePanel::mfgAllowed = true;
+    ForgePanel::title = Profile().title;
+    ForgePanel::controlSupported = [](const ForgePanel::Control& field) {
+        for(const auto* key : {"multiplier","enabled","style","intensity","preset","detail","colour","structure","tone","skin","auto_mask","work_scale"})
+            if(!strcmp(key,field.key)) return true;
+        return false;
+    };
+    shortcut = ForgePanel::ShortcutKey(); shortcutModifiers = ForgePanel::modifiers;
+    ::Config::Instance()->FGDLSSGOverrideInterpolationCount = int(Rt().frames);
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags &= ~ImGuiConfigFlags_ViewportsEnable;
+    ForgePanel::readLiveStats = [] {
+        const auto nr = NrReadStatus();
+        ForgePanel::LiveStats stats;
+        stats.nrKnown = true; stats.nrRunning = nr.running; stats.nrFramesKnown = true; stats.nrFrames = nr.frames;
+        stats.nrGpuMs = nr.gpuMs; stats.fgKnown = true; stats.fgRunning = active;
+        stats.framesKnown = meter.valid;
+        if(meter.valid) { stats.gameFps=meter.gameFPS; stats.displayedFps=meter.outputFPS; stats.measuredRatio=meter.ratio; }
+        return stats;
+    };
     if (!ImGui_ImplWin32_Init(game)) { ImGui::DestroyContext(); return false; }
     SetLastError(0);
     original = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(game, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(WindowProc)));
     if (!original) {
         ImGui_ImplWin32_Shutdown(); ImGui::DestroyContext(); game = nullptr; return false;
     }
-    Log("rtxForge Vulkan panel initialized: window=%p Delete opens panel", game);
+    Log("rtxForge canonical ForgePanel initialized: window=%p shortcut=%x", game, shortcut.load());
     return true;
 }
 void MenuResetUI() {
@@ -118,53 +136,56 @@ void MenuResetUI() {
     if (game && original && reinterpret_cast<WNDPROC>(GetWindowLongPtrW(game, GWLP_WNDPROC)) == WindowProc)
         SetWindowLongPtrW(game, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(original));
     if (ImGui::GetCurrentContext()) { ImGui_ImplWin32_Shutdown(); ImGui::DestroyContext(); }
+    ForgePanelChannel::Shutdown();
+    ForgePanel::font = ForgePanel::bold = nullptr; ForgePanel::animation = 0;
     game = nullptr; original = nullptr;
     std::lock_guard<std::mutex> guard(inputMutex); messages.clear();
 }
-bool MenuHasDrawing() { return opened.load(); }
-void MenuBuildUI() {
+bool MenuHasDrawing() { return ForgePanel::selected && (opened.load() || ForgePanel::Animating()); }
+void MenuBuildUI(uint32_t width, uint32_t height) {
     std::vector<Message> pending;
     { std::lock_guard<std::mutex> guard(inputMutex); pending.swap(messages); }
-    for (auto message : pending) ImGui_ImplWin32_WndProcHandler(game, message.id, message.w, message.l);
-    ImGui_ImplWin32_NewFrame(); ImGui::GetIO().MouseDrawCursor = opened;
+    pressed.fill(false); released.fill(false);
+    for(auto message : pending) {
+        if(message.w < 256 && (message.id == WM_KEYDOWN || message.id == WM_SYSKEYDOWN)) {
+            pressed[message.w] = true; lastPressed = int(message.w);
+        }
+        if(message.w < 256 && (message.id == WM_KEYUP || message.id == WM_SYSKEYUP)) released[message.w] = true;
+        // MFG queues mouse events too: no cross-thread SetCapture from present.
+        const int button = message.id == WM_LBUTTONDOWN || message.id == WM_LBUTTONUP ? 0 :
+            message.id == WM_RBUTTONDOWN || message.id == WM_RBUTTONUP ? 1 :
+            message.id == WM_MBUTTONDOWN || message.id == WM_MBUTTONUP ? 2 : -1;
+        if(button >= 0) ImGui::GetIO().AddMouseButtonEvent(button, message.id == WM_LBUTTONDOWN || message.id == WM_RBUTTONDOWN || message.id == WM_MBUTTONDOWN);
+        else ImGui_ImplWin32_WndProcHandler(game, message.id, message.w, message.l);
+    }
+    ImGui_ImplWin32_NewFrame();
+    auto& io = ImGui::GetIO();
+    if(io.DisplaySize.x > 0 && io.DisplaySize.y > 0)
+        io.DisplayFramebufferScale = {width/io.DisplaySize.x, height/io.DisplaySize.y};
+    io.MouseDrawCursor = opened;
+    State::Instance().outputColorSpace = hdr10 ? OutputColorSpace{ColorTransfer::PQ, ColorPrimaries::Rec2020, ColorModel::RGB, true} : OutputColorSpace{};
+    State::Instance().hdrOutputActive = hdr10;
+    State::Instance().dlssgMfgMax = std::min(int(maximum), 3);
     ImGui::NewFrame();
-    if (opened) {
-        ImGui::SetNextWindowSize({560, 0}, ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowPos({130, 100}, ImGuiCond_FirstUseEver);
-        bool visible = true;
-        ImGui::Begin("rtxForge", &visible, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse);
-        ImGui::Text("%s / Vulkan", Profile().title);
-        ImGui::TextDisabled("Universal Experimental"); ImGui::Separator();
-        bool enabled = !Rt().fgUserOff;
-        if (ImGui::Checkbox("NVIDIA Frame Generation", &enabled)) request.Set(enabled);
-        ImGui::Text("Requested: %s   Active: %s", enabled ? "On" : "Off", active ? "On" : "Off");
-        int multiplier = static_cast<int>(Rt().frames) - 1;
-        if (ImGui::Combo("Output multiplier", &multiplier, "2x\0" "3x\0" "4x\0")) frameRequest.store(multiplier + 1);
-        ImGui::Text("Universal MFG Unlocker: %s", UniversalMfgLoaded() ? "Loaded" : "Unavailable");
-        ImGui::TextDisabled("Requested %ux; measured output appears below.", Rt().frames + 1);
-        const auto nr = NrReadStatus();
-        bool nrEnabled = nr.requested;
-        if (ImGui::Checkbox("Neural Rendering", &nrEnabled)) NrRequest(nrEnabled);
-        ImGui::Text("NR %s / %llu evaluations composed", nr.running ? "Running" : "Idle", static_cast<unsigned long long>(nr.frames));
-        if (nr.gpuMs >= 0) ImGui::Text("NR GPU %.2f ms", nr.gpuMs);
-        ImGui::Separator();
-        if (meter.valid) {
-            ImGui::Text("Game %.1f FPS   Displayed %.1f FPS", meter.gameFPS, meter.outputFPS);
-            ImGui::Text("Measured output %.2fx", meter.ratio);
-        } else ImGui::TextUnformatted("Waiting for presented-frame telemetry...");
-        ImGui::Text("NVIDIA status %u   Runtime capacity %u generated", status, maximum);
-        ImGui::TextDisabled("%s / session-only controls", hdr10 ? "HDR10, 203 nit panel white" : "SDR");
-        std::string error;
-        { std::lock_guard<std::mutex> guard(errorMutex); error = lastError; }
-        if (!error.empty()) ImGui::TextWrapped("Panel diagnostic: %s", error.c_str());
-        ImGui::Separator(); ImGui::TextDisabled("Delete closes the panel");
-        ImGui::End(); if (!visible) opened = false;
-    }
+    NrWithSettings([] {
+        bool visible = opened.load();
+        ForgePanel::Draw(visible, 1.f);
+        opened = visible;
+        // Preserve the shared panel's save/review protocol; an unconnected
+        // helper leaves those buttons disabled rather than saving elsewhere.
+    });
+    shortcut = ForgePanel::ShortcutKey(); shortcutModifiers = ForgePanel::modifiers;
+    const auto& cfg = *::Config::Instance();
+    const int count = cfg.FGDLSSGOverrideInterpolationCount.has_value() ? cfg.FGDLSSGOverrideInterpolationCount.value() : int(Cfg().dlssgFrames);
+    if((count == 0) != Rt().fgUserOff) request.Set(count != 0);
+    if(count > 0 && count != int(Rt().frames)) frameRequest = std::clamp(count,1,3);
     ImGui::Render();
-    if (hdr10) {
-        auto* draw = ImGui::GetDrawData();
-        for (int n = 0; draw && n < draw->CmdListsCount; ++n)
-            for (auto& vertex : draw->CmdLists[n]->VtxBuffer) vertex.col = panel::HDR10(vertex.col);
-    }
 }
+}
+namespace OptiInput {
+bool IsFocused() { return GetForegroundWindow() == fgvk::game; }
+bool IsKeyDown(int key) { return key > 0 && key < 256 && (GetAsyncKeyState(key)&0x8000); }
+bool IsKeyPressed(int key) { return key > 0 && key < 256 && fgvk::pressed[key]; }
+bool IsKeyReleased(int key) { return key > 0 && key < 256 && fgvk::released[key]; }
+int GetLastPressedKey() { return fgvk::lastPressed; }
 }

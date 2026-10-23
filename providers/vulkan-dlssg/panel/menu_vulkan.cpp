@@ -128,7 +128,7 @@ static bool Initialize(VkQueue queue){
     VkSemaphoreCreateInfo sem{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};if(!Check(vk.CreateSemaphore(device,&sem,nullptr,&f.ready),"semaphore"))return false;
   }
   if(!ImGui_ImplVulkan_LoadFunctions(VK_API_VERSION_1_1,LoadFunction))return false;
-  ImGui_ImplVulkan_InitInfo info{};info.ApiVersion=VK_API_VERSION_1_1;info.Instance=instance;info.PhysicalDevice=physical;info.Device=device;info.QueueFamily=family;info.Queue=queue;info.RenderPass=renderPass;info.MinImageCount=count;info.ImageCount=count;info.MSAASamples=VK_SAMPLE_COUNT_1_BIT;info.DescriptorPoolSize=32;info.CheckVkResultFn=BackendError;
+  ImGui_ImplVulkan_InitInfo info{};info.ApiVersion=VK_API_VERSION_1_1;info.Instance=instance;info.PhysicalDevice=physical;info.Device=device;info.QueueFamily=family;info.Queue=queue;info.PipelineInfoMain.RenderPass=renderPass;info.MinImageCount=count;info.ImageCount=count;info.PipelineInfoMain.MSAASamples=VK_SAMPLE_COUNT_1_BIT;info.DescriptorPoolSize=32;info.CheckVkResultFn=BackendError;
   if(!ImGui_ImplVulkan_Init(&info) || backendResult!=VK_SUCCESS)return false;
   rendererReady=true;initFailures=0;RuntimeErrors::ClearError(RuntimeErrors::Code::MenuInit);MenuRendererAvailable(true);Log("Vulkan menu renderer initialized: %u game images",count);return true;
 }
@@ -157,7 +157,7 @@ static bool RenderOverlay(VkQueue queue,const VkPresentInfoKHR* original,VkPrese
   uint32_t index=original->pImageIndices[0];if(index>=frames.size()){RuntimeErrors::ReportError(RuntimeErrors::Code::MenuRender,"Presented image index is outside captured swapchain images",(int)index);return false;}auto& f=frames[index];
   // UI is optional: skip a busy image instead of stalling the game's present thread.
   auto fenceStatus=vk.GetFenceStatus(device,f.fence);if(fenceStatus==VK_NOT_READY)return false;if(!Check(fenceStatus,"frame fence status"))return false;
-  backendResult=VK_SUCCESS;ImGui_ImplVulkan_NewFrame();if(backendResult!=VK_SUCCESS)return false;MenuBuildUI();auto* draw=ImGui::GetDrawData();if(!draw || !draw->TotalVtxCount)return false;
+  backendResult=VK_SUCCESS;ImGui_ImplVulkan_NewFrame();if(backendResult!=VK_SUCCESS)return false;MenuBuildUI(extent.width,extent.height);auto* draw=ImGui::GetDrawData();if(!draw || !draw->TotalVtxCount)return false;
   if(!Check(vk.ResetCommandBuffer(f.cmd,0),"reset command"))return false;
   VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};begin.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
   if(!Check(vk.BeginCommandBuffer(f.cmd,&begin),"begin command"))return false;

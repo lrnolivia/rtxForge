@@ -78,20 +78,27 @@ void NrConfigure(const char* ini) {
         const float read = strtof(value, nullptr);
         return std::isfinite(read) ? std::clamp(read, lo, hi) : fallback;
     };
-    cfg.DlssNrWorkingScale.value = number("WorkingScale", 1.f, .25f, 2.f);
-    cfg.DlssNrIntensity.value = number("Intensity", 1.f, 0.f, 2.f);
-    cfg.DlssNrTransferStrength.value = number("DetailStrength", 1.f, 0.f, 2.f);
-    cfg.DlssNrColourStrength.value = number("ColourStrength", 1.f, 0.f, 4.f);
-    cfg.DlssNrWhitePointScale.value = number("WhitePoint", 1.f, .01f, 4096.f);
+    cfg.DlssNrWorkingScale = number("WorkingScale", 1.f, .25f, 2.f);
+    cfg.DlssNrIntensity = number("Intensity", 1.f, 0.f, 2.f);
+    cfg.DlssNrTransferStrength = number("DetailStrength", 1.f, 0.f, 2.f);
+    cfg.DlssNrColourStrength = number("ColourStrength", 1.f, 0.f, 4.f);
+    cfg.DlssNrWhitePointScale = number("WhitePoint", 1.f, .01f, 4096.f);
     // Exposure-image access needs a measured layout for each game. The initial
     // shared route uses the explicit white point and never binds an unknown image.
-    cfg.DlssNrWhitePointSource.value = 0;
+    cfg.DlssNrWhitePointSource = 0;
     const auto directory = Util::DllPath().parent_path();
     State::Instance().NVNGX_ApplicationDataPath = directory.wstring();
-    Log("NR configuration: requested=%d workingScale=%.2f native Vulkan backend", requested.load(), cfg.DlssNrWorkingScale.value);
+    Log("NR configuration: requested=%d workingScale=%.2f native Vulkan backend", requested.load(), cfg.DlssNrWorkingScale.value_or_default());
 }
 bool NrRequested() { return requested.load(); }
 void NrRequest(bool enabled) { requested.store(enabled); }
+void NrWithSettings(void (*draw)()) {
+    std::lock_guard<std::mutex> lock(evaluation);
+    auto& cfg = *::Config::Instance();
+    cfg.DlssNrEnabled = requested.load();
+    draw();
+    requested.store(cfg.DlssNrEnabled.value_or_default());
+}
 NrStatus NrReadStatus() { return {requested.load(), running.load(), composed.load(), gpuMs.load()}; }
 void NrSetNgxModule(HMODULE module) {
     std::lock_guard<std::mutex> lock(evaluation);
@@ -108,9 +115,9 @@ bool NrSetDevice(PFN_vkGetInstanceProcAddr gipa, PFN_vkGetDeviceProcAddr gdpa, V
 void NrEvaluate(VkCommandBuffer command, void* native, const NrGetters& getters, int flags) {
     std::lock_guard<std::mutex> lock(evaluation);
     auto& cfg = *::Config::Instance();
-    if (!requested.load()) { cfg.DlssNrEnabled.value = false; running.store(false); resetNext = true; return; }
+    if (!requested.load()) { cfg.DlssNrEnabled = false; running.store(false); resetNext = true; return; }
     if (!dispatchReady || !allocateParameters || !destroyParameters || flags < 0) return;
-    cfg.DlssNrEnabled.value = true;
+    cfg.DlssNrEnabled = true;
     FrameParameters frame(native, getters, flags, resetNext);
     extern VkInstance gInstance;
     extern VkPhysicalDevice gPhysicalDevice;

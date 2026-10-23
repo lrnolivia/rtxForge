@@ -2,6 +2,20 @@
 #include <windows.h>
 #include <filesystem>
 #include <optional>
+inline std::string wstring_to_string(const std::wstring& text) {
+    if(text.empty()) return {};
+    const int count = WideCharToMultiByte(CP_UTF8, 0, text.data(), int(text.size()), nullptr, 0, nullptr, nullptr);
+    std::string result(count, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, text.data(), int(text.size()), result.data(), count, nullptr, nullptr);
+    return result;
+}
+namespace OptiInput {
+bool IsFocused();
+bool IsKeyDown(int);
+bool IsKeyPressed(int);
+bool IsKeyReleased(int);
+int GetLastPressedKey();
+}
 namespace Util {
 inline std::filesystem::path DllPath() {
     HMODULE module{}; wchar_t path[32768]{};

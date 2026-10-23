@@ -41,6 +41,11 @@
       "repository": "microsoft/Detours",
       "commit": "1dbd4ea281d73d478aa8d09a8b83fbd265f715f7",
       "license": "MIT"
+    },
+    "imgui-mfg": {
+      "repository": "ocornut/imgui",
+      "commit": "3912b3d9a9c1b3f17431aebafd86d2f40ee6e59c",
+      "license": "MIT"
     }
   },
   "neural_rendering": {
@@ -155,5 +160,16 @@
       "route": "NR installation and overlay; native NVIDIA MFG controls, no hardware unlock",
       "games_without_fg": "shared Vulkan integration still supplies the missing game integration"
     }
+  },
+  "loader_startup": {
+    "strategy": "same union Bink proxy; named Vulkan loader lookup from game import table; executable entry bytes preserved",
+    "tls_guard": "loader-lock ownership and executable TLS callback unwind ranges; rejected calls pass through",
+    "reference": {
+      "repository": "ThirteenAG/Ultimate-ASI-Loader",
+      "commit": "01eb152fc5bd659985b722d95cb4ce72c0a1f65d",
+      "license": "MIT",
+      "notice": "loader/LICENSE.exports.txt"
+    },
+    "limitations": "Only profiled executables; requires a game GetProcAddress import and subsequent Vulkan loader lookup. Missing startup trigger leaves original forwarding active. Exact gameplay qualification required."
   }
 }

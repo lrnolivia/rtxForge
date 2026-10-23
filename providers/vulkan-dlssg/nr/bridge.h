@@ -13,6 +13,7 @@ struct NrStatus { bool requested, running; uint64_t frames; double gpuMs; };
 void NrConfigure(const char* ini);
 bool NrRequested();
 void NrRequest(bool enabled);
+void NrWithSettings(void (*draw)());
 NrStatus NrReadStatus();
 void NrSetNgxModule(HMODULE module);
 bool NrSetDevice(PFN_vkGetInstanceProcAddr, PFN_vkGetDeviceProcAddr, VkInstance, VkPhysicalDevice, VkDevice);

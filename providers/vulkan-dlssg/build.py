@@ -57,13 +57,24 @@ def stage(deps: Path, output: Path, vcvars: Path) -> None:
         shutil.copytree(ROOT / name, stage_dir / name)
     shutil.copyfile(ROOT / "LICENSE", stage_dir / "LICENSE")
     pin = manifest["dependencies"]
-    rdr = deps / "rdr2-vulkan-frame-generation"
     imgui_files = ["imgui.cpp", "imgui_draw.cpp", "imgui_tables.cpp", "imgui_widgets.cpp",
                    "imgui.h", "imgui_internal.h", "imconfig.h", "imstb_rectpack.h",
                    "imstb_textedit.h", "imstb_truetype.h", "LICENSE.txt",
-                   "imgui_impl_win32.cpp", "imgui_impl_win32.h",
-                   "imgui_impl_vulkan.cpp", "imgui_impl_vulkan.h"]
-    archive(rdr, pin[rdr.name]["commit"], stage_dir / "rdr", ["vendor/imgui/" + f for f in imgui_files] + ["LICENSE.txt"])
+                   "backends/imgui_impl_win32.cpp", "backends/imgui_impl_win32.h",
+                   "backends/imgui_impl_vulkan.cpp", "backends/imgui_impl_vulkan.h"]
+    imgui = stage_dir / "rdr/vendor/imgui"
+    archive(deps / "imgui-mfg", pin["imgui-mfg"]["commit"], imgui, imgui_files)
+    # Upload buffers follow the acquired game image, whose fence we checked.
+    # A cyclic frame index can reuse a still-busy buffer after skipped presents.
+    replace_once(imgui / "backends/imgui_impl_vulkan.cpp",
+                 "VkCommandBuffer command_buffer, VkPipeline pipeline)\n{",
+                 "VkCommandBuffer command_buffer, VkPipeline pipeline, uint32_t image_index)\n{")
+    replace_once(imgui / "backends/imgui_impl_vulkan.h",
+                 "VkPipeline pipeline = VK_NULL_HANDLE);",
+                 "VkPipeline pipeline = VK_NULL_HANDLE, uint32_t image_index = UINT32_MAX);")
+    replace_once(imgui / "backends/imgui_impl_vulkan.cpp",
+                 "wrb->Index = (wrb->Index + 1) % wrb->Count;",
+                 "IM_ASSERT(image_index == UINT32_MAX || image_index < wrb->Count);\n    wrb->Index = image_index == UINT32_MAX ? (wrb->Index + 1) % wrb->Count : image_index;")
     nr_source = deps / "optiscaler-dlss5"
     archive(nr_source, pin[nr_source.name]["commit"], stage_dir / "nr-source", [
         "OptiScaler/dlssnr/DlssNrFeature_Vk.cpp", "OptiScaler/dlssnr/DlssNrFeature_Vk.h",
@@ -71,8 +82,16 @@ def stage(deps: Path, output: Path, vcvars: Path) -> None:
         "OptiScaler/shaders/Shader_Vk.h", "OptiScaler/shaders/dlssnr/DlssNr_Vk.cpp",
         "OptiScaler/shaders/dlssnr/DlssNr_Vk.h", "OptiScaler/shaders/dlssnr/DlssNr_Common.h",
         "OptiScaler/shaders/dlssnr/precompile", "OptiScaler/shaders/output_scaling",
-        "external/nvngx_dlss_sdk", "LICENSE"])
+        "external/nvngx_dlss_sdk", "external/nlohmann/json.hpp", "LICENSE"])
     nr_root = stage_dir / "nr-source/OptiScaler"
+    # Generate and compile the canonical panel, including its exact Inter assets.
+    (nr_root / "menu").mkdir(parents=True)
+    subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                    str(product / "providers/skynizz-bridge/Generate-Panel.ps1"),
+                    "-SourceRoot", str(stage_dir / "nr-source")], check=True, capture_output=True)
+    for path in (nr_root / "menu").iterdir():
+        shutil.copyfile(path, stage_dir / "panel" / path.name)
+
     backend = nr_root / "dlssnr/DlssNrFeature_Vk.cpp"
     # Count completed composition recording, never an attempted/refused model call.
     replace_once(backend, "    g_vk.frames++;\n", "")
@@ -116,10 +135,10 @@ def stage(deps: Path, output: Path, vcvars: Path) -> None:
         archive(deps / name, pin[name]["commit"], stage_dir / name, paths)
     imgui = stage_dir / "rdr/vendor/imgui"
     includes = [stage_dir / p for p in ("src", "panel", "nr", "mfg", "Vulkan-Headers/include", "Streamline-2.12/include", "Detours/src")]
-    includes += [imgui, imgui / "backends", nr_root, stage_dir / "nr-source/external/nvngx_dlss_sdk"]
+    includes += [imgui, imgui.parent, imgui / "backends", nr_root, stage_dir / "nr-source/external/nvngx_dlss_sdk", stage_dir / "nr-source/external/nlohmann"]
     source_files = sorted((stage_dir / "src").glob("*.cpp"))
     source_files += [stage_dir / "panel/menu.cpp", stage_dir / "panel/menu_vulkan.cpp", stage_dir / "nr/bridge.cpp"]
-    source_files += [imgui / f for f in ("imgui.cpp", "imgui_draw.cpp", "imgui_tables.cpp", "imgui_widgets.cpp", "imgui_impl_win32.cpp", "imgui_impl_vulkan.cpp")]
+    source_files += [imgui / f for f in ("imgui.cpp", "imgui_draw.cpp", "imgui_tables.cpp", "imgui_widgets.cpp", "backends/imgui_impl_win32.cpp", "backends/imgui_impl_vulkan.cpp")]
     source_files += nr_cpp
     source_files += [stage_dir / "mfg/component.cpp"]
     for path in [output, vcvars, *source_files, *includes]:
@@ -132,7 +151,7 @@ def stage(deps: Path, output: Path, vcvars: Path) -> None:
              f'cd /d "{stage_dir / "Detours/src"}"', "nmake /nologo > build.log 2>&1", "if errorlevel 1 goto detours_failed",
              f'cd /d "{output}"',
              # Vulkan backend uses the RDR fork's image-indexed upload buffers.
-             f'cl /nologo /std:c++20 /O2 /MT /EHsc /Brepro /DWIN32_LEAN_AND_MEAN /DNOMINMAX /DVK_NO_PROTOTYPES /DIMGUI_IMPL_VULKAN_NO_PROTOTYPES {inc} {sources} /LD /Fe:fgvk.dll /link /Brepro "{detours_lib}" user32.lib gdi32.lib dwmapi.lib imm32.lib version.lib > compile.log 2>&1',
+             f'cl /nologo /std:c++20 /O2 /MT /EHsc /Brepro /DWIN32_LEAN_AND_MEAN /DNOMINMAX /DVK_NO_PROTOTYPES /DIMGUI_IMPL_VULKAN_NO_PROTOTYPES {inc} {sources} /LD /Fe:fgvk.dll /link /Brepro "{detours_lib}" user32.lib gdi32.lib dwmapi.lib imm32.lib version.lib advapi32.lib > compile.log 2>&1',
              "if errorlevel 1 goto compile_failed",
              f'cl /nologo /std:c++17 /O2 /MT /EHsc /Brepro "{nr_root / "dlssnr/forwarder/dlssnr_forwarder.cpp"}" /LD /Fe:nvngx.dll_dlssnr.dll /link /Brepro d3d12.lib > forwarder.log 2>&1',
              "if errorlevel 1 goto forwarder_failed",
@@ -140,6 +159,8 @@ def stage(deps: Path, output: Path, vcvars: Path) -> None:
              "if errorlevel 1 goto tests_failed", "test-panel.exe", "if errorlevel 1 exit /b 1",
              f'cl /nologo /std:c++20 /O2 /MT /EHsc /DNOMINMAX {inc} "{stage_dir / "checks/contracts.cpp"}" /Fe:test-contracts.exe >> tests.log 2>&1',
              "if errorlevel 1 goto tests_failed", "test-contracts.exe", "if errorlevel 1 exit /b 1",
+             f'cl /nologo /std:c++20 /O2 /MT /EHsc /DNOMINMAX /DVK_NO_PROTOTYPES {inc} "{stage_dir / "checks/panel.cpp"}" "{imgui / "imgui.cpp"}" "{imgui / "imgui_draw.cpp"}" "{imgui / "imgui_tables.cpp"}" "{imgui / "imgui_widgets.cpp"}" /Fe:test-canonical-panel.exe /link user32.lib advapi32.lib >> tests.log 2>&1',
+             "if errorlevel 1 goto tests_failed", "test-canonical-panel.exe", "if errorlevel 1 exit /b 1",
              "exit /b 0",
              ":detours_failed", "type build.log", "exit /b 1",
              ":compile_failed", "type compile.log", "exit /b 1",

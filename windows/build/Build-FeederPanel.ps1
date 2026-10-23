@@ -135,7 +135,7 @@ $imgui = Join-Path $SourceRoot 'OptiScaler\include\imgui'
 $freetype = Join-Path $SourceRoot 'external\freetype'
 $obj = Join-Path $Output 'obj'
 New-Item -ItemType Directory -Force (Join-Path $obj 'panel'), (Join-Path $obj 'quiet') | Out-Null
-$common = '/nologo /O2 /std:c++latest /utf-8 /EHsc /MT /LD /W3 /DNOMINMAX /DUNICODE /D_UNICODE'
+$common = '/nologo /O2 /std:c++latest /utf-8 /EHsc /MT /LD /W3 /DNOMINMAX /DUNICODE /D_UNICODE /DIMGUI_ENABLE_STB_TRUETYPE'
 function Invoke-Cl([string] $arguments, [string] $addon) {
     if (Test-Path $addon) { Remove-Item $addon }
     cmd /c "`"$vcvars`" >nul 2>nul && cl $common $arguments"

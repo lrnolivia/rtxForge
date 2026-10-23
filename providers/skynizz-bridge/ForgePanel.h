@@ -3,7 +3,6 @@
 #include <Logger.h>
 #include <Util.h>
 #include <imgui/imgui.h>
-#include <imgui/misc/freetype/imgui_freetype.h>
 #include <imgui/imgui_internal.h>
 #include <json.hpp>
 #include <fstream>
@@ -84,40 +83,27 @@ inline DWORD Preference(const wchar_t* name, DWORD fallback)
     if(result != ERROR_SUCCESS) LOG_WARN("rtxForge panel preference read failed: {}, using default {}", result, fallback);
     return result == ERROR_SUCCESS ? value : fallback;
 }
-// Windows-like text from the FreeType rasterizer built into the bridge, so it
-// renders the same natively and under Proton: light (vertical-only) hinting,
-// then DirectWrite's grayscale enhanced-contrast curve c(k+1)/(ck+1), k = 1,
-// applied once to each glyph's coverage when it is first rasterized.
-inline bool WindowsGlyph(ImFontAtlas* atlas, ImFontConfig* src, ImFontBaked* baked, void* data, ImWchar codepoint, ImFontGlyph* glyph)
-{
-    if(!ImGuiFreeType::GetFontLoader()->FontBakedLoadGlyph(atlas, src, baked, data, codepoint, glyph)) return false;
-    if(!glyph->Visible || glyph->Colored) return true;
-    ImTextureData* tex = atlas->TexData; const ImTextureRect* r = ImFontAtlasPackGetRect(atlas, glyph->PackId);
-    const bool rgba = tex->Format == ImTextureFormat_RGBA32;
-    for(int y = 0; y < r->h; ++y)
-    {
-        auto* row = static_cast<unsigned char*>(tex->GetPixelsAt(r->x, r->y + y));
-        for(int x = 0; x < r->w; ++x)
-        {
-            unsigned char& alpha = row[rgba ? x*4 + 3 : x];
-            const float coverage = alpha/255.f;
-            alpha = static_cast<unsigned char>(std::lround(255.f*coverage*2.f/(coverage + 1.f)));
-        }
-    }
-    ImFontAtlasTextureBlockQueueUpload(atlas, tex, r->x, r->y, r->w, r->h);
-    return true;
+// Use the same stb_truetype grayscale rasterizer and dynamic font textures as
+// Universal MFG. Keep the real panel's Inter faces and weights.
+inline const ImFontLoader* PanelFontLoader() { return ImFontAtlasGetFontLoaderForStbTruetype(); }
+inline float dpiScale = 1.f;
+struct LiveStats {
+    bool nrKnown{}, nrRunning{}, nrFramesKnown{}, fgKnown{}, fgRunning{}, framesKnown{};
+    unsigned long long nrFrames{};
+    double nrGpuMs{-1}, gameFps{-1}, displayedFps{-1}, measuredRatio{-1};
+};
+inline LiveStats (*readLiveStats)() = nullptr;
+inline bool (*controlSupported)(const Control&) = nullptr;
+// Render at output pixel density. Never enlarge a low-resolution font atlas.
+// This follows MFG's DPI/output/client relationship without double scaling.
+inline float PanelScale() {
+    const auto& io = ImGui::GetIO();
+    const auto fb = io.DisplayFramebufferScale;
+    const float sx = std::clamp(fb.x, .125f, 8.f), sy = std::clamp(fb.y, .125f, 8.f);
+    const float resolution = std::min(io.DisplaySize.x*sx/1920.f, io.DisplaySize.y*sy/1080.f);
+    return std::clamp(std::max(dpiScale, resolution), 1.f, 4.f)/sy;
 }
-// Per-font loaders must leave LoaderInit/Shutdown to the atlas's FreeType loader.
-inline const ImFontLoader* WindowsText()
-{
-    static const ImFontLoader loader = [] {
-        ImFontLoader copy = *ImGuiFreeType::GetFontLoader();
-        copy.Name = "rtxForge FreeType"; copy.LoaderInit = nullptr; copy.LoaderShutdown = nullptr;
-        copy.FontBakedLoadGlyph = WindowsGlyph;
-        return copy;
-    }();
-    return &loader;
-}inline void Init(HWND window)
+inline void Init(HWND window)
 {
     if(!initialized)
     {
@@ -128,7 +114,8 @@ inline const ImFontLoader* WindowsText()
     ForgePanelChannel::Init();
     LOG_INFO("rtxForge panel channel: ready {}", ForgePanelChannel::channel != nullptr);
     ImFontConfig options; options.FontDataOwnedByAtlas = false;
-    options.FontBuilderFlags = ImGuiFreeTypeBuilderFlags_LightHinting; options.FontLoader = WindowsText();
+    options.FontLoader = PanelFontLoader();
+    dpiScale = std::clamp(float(GetDpiForWindow(window))/96.f, .75f, 3.f);
     font = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(forgeInter, sizeof(forgeInter), 18.f, &options);
     bold = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(forgeInterSemiBold, sizeof(forgeInterSemiBold), 18.f, &options);
     LOG_INFO("rtxForge panel fonts: {}", font != nullptr && bold != nullptr);
@@ -246,6 +233,7 @@ inline ImVec4 TitleColor()
 }
 inline bool Available(const Control& field)
 {
+    if(controlSupported && !controlSupported(field)) return false;
     if (std::strcmp(field.key,"multiplier") == 0) return mfgAllowed;
     return std::strcmp(field.group,"Upscaling") == 0 || std::strcmp(field.group,"Sharpening") == 0 || std::strcmp(field.group,"Motion sharpening") == 0 || nrAllowed;
 }
@@ -384,7 +372,7 @@ inline void BoldWrapped(const char* text, ImVec4 colour, float scale)
 inline void Section(const char* text)
 {
     const float size = ImGui::GetFontSize()*18.f/14.f;
-    ImGui::Spacing(); ImGui::PushFontSize(size); BoldWrapped(text, ImVec4(.90f,.90f,.90f,1), size/18.f); ImGui::PopFontSize();
+    ImGui::Spacing(); ImGui::PushFont(ImGui::GetFont(), size); BoldWrapped(text, ImVec4(.90f,.90f,.90f,1), size/18.f); ImGui::PopFont();
 }
 // The sidebar's ToggleSwitch: a pill track filled with the accent when on.
 inline bool Switch(const char* id, bool* on)
@@ -419,7 +407,7 @@ inline bool HeaderToggle(const char* text, bool* on, bool enabled)
     const float scale = ImGui::GetFontSize()/14.f, size = 18.f*scale, width = 40.f*scale, height = 20.f*scale;
     ImGui::Spacing();
     const float left = ImGui::GetCursorPosX(), available = ImGui::GetContentRegionAvail().x, top = ImGui::GetCursorPosY();
-    ImGui::PushFontSize(size); BoldWrapped(text, ImVec4(.90f,.90f,.90f,1), scale); const float line = ImGui::GetFontSize(); ImGui::PopFontSize();
+    ImGui::PushFont(ImGui::GetFont(), size); BoldWrapped(text, ImVec4(.90f,.90f,.90f,1), scale); const float line = ImGui::GetFontSize(); ImGui::PopFont();
     ImGui::SameLine(left + available - width); ImGui::SetCursorPosY(top + (line - height)*.5f);
     ImGui::BeginDisabled(!enabled); ImGui::PushID(text);
     const bool changed = Switch("##header", on);
@@ -596,7 +584,7 @@ inline void Pipelines(float scale)
 {
     const auto& status = ForgePanelChannel::status;
     // The label is drawn centred on the 22 px pill row without moving the line.
-    ImGui::PushFontSize(11.f*scale);
+    ImGui::PushFont(ImGui::GetFont(), 11.f*scale);
     const auto start = ImGui::GetCursorScreenPos(); const auto label = ImGui::CalcTextSize("DLSS files");
     ImGui::GetWindowDrawList()->AddText(ImVec2(start.x, start.y + (22.f*scale - label.y)*.5f), Colour(ImVec4(1,1,1,.75f)), "DLSS files");
     ImGui::Dummy(ImVec2(label.x, 22.f*scale)); ImGui::SameLine();
@@ -614,7 +602,7 @@ inline void Pipelines(float scale)
         if(ImGui::IsItemHovered()) ImGui::SetTooltip("%s",info.value("detail",std::string("File ownership is unavailable. This does not indicate live activity.")).c_str());
         if(std::strcmp(name,"FG") != 0) ImGui::SameLine();
     }
-    ImGui::PopFontSize();
+    ImGui::PopFont();
 }
 inline bool Preference(const char* name, nlohmann::json value)
 {
@@ -739,9 +727,26 @@ inline void SettingsControls()
     if(ImGui::CollapsingHeader("Performance"))
     { ImGui::Text("Panel CPU submit: %.3f ms",cpuMs); ImGui::TextWrapped("Translucent surface. No additional blur pass. Live controls work without the helper; saving and reviews need it."); }
 }
+inline void Statistics() {
+    if(!readLiveStats) return;
+    const auto stats = readLiveStats();
+    Section("Live statistics");
+    if(stats.nrKnown) ImGui::Text("Neural rendering: %s", stats.nrRunning ? "Running" : "Idle");
+    else ImGui::TextDisabled("NR activity: unavailable from this injector");
+    if(stats.nrFramesKnown) ImGui::Text("NR compositions: %llu", stats.nrFrames);
+    if(stats.nrGpuMs >= 0 && std::isfinite(stats.nrGpuMs)) ImGui::Text("NR GPU: %.2f ms",stats.nrGpuMs);
+    else ImGui::TextDisabled("NR GPU time: unavailable");
+    if(stats.gameFps >= 0 && std::isfinite(stats.gameFps)) ImGui::Text("Game: %.1f FPS",stats.gameFps);
+    if(stats.framesKnown && stats.displayedFps >= 0 && std::isfinite(stats.displayedFps)) {
+        ImGui::Text("Displayed: %.1f FPS",stats.displayedFps);
+        ImGui::Text("Measured frame output: %.2fx",stats.measuredRatio);
+    } else ImGui::TextDisabled("Displayed-frame telemetry: unavailable");
+    if(stats.fgKnown) ImGui::Text("Frame generation: %s",stats.fgRunning ? "Active" : "Idle");
+}
 inline bool Draw(bool& visible, float scale)
 {
     if (!selected) return false;
+    scale = std::max(scale, PanelScale());
     Flush(*Config::Instance());
     if (!OptiInput::IsFocused()) { visible = false; animation = 0; ForgePanelChannel::Visible(false); return false; }
     const auto start = std::chrono::steady_clock::now();
@@ -805,11 +810,11 @@ inline bool Draw(bool& visible, float scale)
     PushColor(ImGuiCol_NavCursor,ink);
     PushColor(ImGuiCol_TextSelectedBg,alpha(Mix(accent,dark,.4f),.5f));
     ImGui::Begin("rtxForge##ingame",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoSavedSettings|ImGuiWindowFlags_NoScrollWithMouse|ImGuiWindowFlags_NoScrollbar);
-    Brand(scale); ImGui::PushFontSize(15.f*scale); BoldWrapped("rtxForge",ImVec4(.90f,.90f,.90f,1),scale); ImGui::PopFontSize(); ImGui::SameLine(ImGui::GetWindowWidth()-ImGui::GetStyle().WindowPadding.x-110.f*scale);
+    Brand(scale); ImGui::PushFont(ImGui::GetFont(), 15.f*scale); BoldWrapped("rtxForge",ImVec4(.90f,.90f,.90f,1),scale); ImGui::PopFont(); ImGui::SameLine(ImGui::GetWindowWidth()-ImGui::GetStyle().WindowPadding.x-110.f*scale);
     if(IconButton("Global controls",2,scale)) { global = !global; settings = false; ForgePanelChannel::DiscardReview(); }
     ImGui::SameLine(); if(IconButton("Overlay settings",1,scale)) { settings = !settings; global = false; ForgePanelChannel::DiscardReview(); }
     ImGui::SameLine(); if(IconButton("Close panel",0,scale)) visible = false;
-    ImGui::PushFontSize(23.f*scale); BoldWrapped(global ? "All installed games" : title.c_str(), global ? neutral : TitleColor(), scale); ImGui::PopFontSize();
+    ImGui::PushFont(ImGui::GetFont(), 23.f*scale); BoldWrapped(global ? "All installed games" : title.c_str(), global ? neutral : TitleColor(), scale); ImGui::PopFont();
     if(global) ImGui::TextDisabled("One-time changes - review before applying");
     else Pipelines(scale);
     ImGui::Spacing();
@@ -849,6 +854,7 @@ inline bool Draw(bool& visible, float scale)
         }
     }
     if(settings || global) ImGui::PopStyleVar();
+    if(!settings && !global) Statistics();
     ImGui::EndChild(); ImGui::EndChild();
     if(!message.empty())
     { ImGui::BeginChild("feedback",ImVec2(0,feedbackHeight),ImGuiChildFlags_None,ImGuiWindowFlags_NoBackground); ImGui::TextWrapped("%s",message.c_str()); ImGui::EndChild(); }

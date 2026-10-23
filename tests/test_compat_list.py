@@ -102,6 +102,32 @@ class CompatListTest(unittest.TestCase):
         self.assertIn('Crashed in [WINDOWS PATH]', with_notes['body'])
         self.assertNotIn('Users', with_notes['body'])
 
+    def exe(self, *dlls):
+        path = Path(self.row['game']) / self.row['exe']
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b'MZ' + b'\0' * 64 + b'\0'.join(dll.encode() for dll in dlls))
+
+    def test_try_anyway_is_not_offered_on_a_renderer_the_package_cant_hook(self):
+        self.exe('vulkan-1.dll')
+        row = compat_list.apply(self.config, [dict(self.row)])[0]
+        self.assertEqual(row['graphics_apis'], ['vulkan'])
+        self.assertEqual(row['blocked'], "This game renders with Vulkan, which this package doesn't support yet.")
+        self.assertEqual(row['soft_reasons'], [])
+        with self.assertRaises(t.Refusal):
+            compat_list.set_try_anyway(self.config, self.row['game'], True, row['blocked'])
+
+    def test_a_package_that_hooks_vulkan_still_offers_try_anyway(self):
+        self.exe('vulkan-1.dll')
+        row = compat_list.apply(self.config, [dict(self.row, blocked='No native DLSS-G detected', package_blocked='No native DLSS-G detected')])[0]
+        self.assertEqual(row['blocked'], 'No native DLSS-G detected')
+        self.assertIn('No native DLSS-G detected', row['soft_reasons'])
+
+    def test_try_anyway_stays_when_the_renderer_matches_or_is_unknown(self):
+        self.exe('d3d12.dll', 'vulkan-1.dll')
+        self.assertEqual(compat_list.apply(self.config, [dict(self.row)])[0]['soft_reasons'], [NO_DLSS])
+        (Path(self.row['game']) / self.row['exe']).write_bytes(b'MZ')
+        self.assertEqual(compat_list.apply(self.config, [dict(self.row)])[0]['soft_reasons'], [NO_DLSS])
+
     def test_shipped_list_is_valid(self):
         data = json.loads((compat_list.ROOT / 'providers/compatibility.json').read_text(encoding='utf-8'))
         self.assertEqual(data['schema'], 1)

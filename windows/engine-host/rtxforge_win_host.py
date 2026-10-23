@@ -378,7 +378,7 @@ def scan(params):
     win_features.decorate(rows)
     # Soft blocks you chose to try anyway, and each game's known result.
     import compat_list
-    compat_list.apply(win_features._config(), rows)
+    compat_list.apply(win_features._config(), rows, engine_bridge.module(service.config))
     import skynizz_provider
     import transactions
     for row in rows:
@@ -405,7 +405,7 @@ def prepare(params):
                                     for row in params['rows']])
     # The re-check above restores capability blocks; lift the ones you chose to try anyway.
     import compat_list
-    params = dict(params, rows=compat_list.apply(win_features._config(), [dict(row) for row in params['rows']]))
+    params = dict(params, rows=compat_list.apply(win_features._config(), [dict(row) for row in params["rows"]], engine_bridge.module(service.config)))
     review = service.prepare(params["rows"], params["mode"], params["operation"],
                              visual_settings=params.get("settings"), save_defaults=params.get("save_defaults", False))
     if review.get("kind") == "engine":

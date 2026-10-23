@@ -5,7 +5,7 @@ capability checks (a game without the DLSS route a package expects); missing
 executables, anti-cheat and installs that need attention stay blocked. A shared
 result is a prefilled issue the user reviews and posts in their browser.
 """
-import json,re,urllib.parse
+import json,os,re,urllib.parse
 from pathlib import Path
 import transactions as t
 import game_notes
@@ -22,9 +22,48 @@ SOFT=(
 )
 
 
+# Graphics APIs each soft check's package hooks. Try anyway is offered only when the
+# game renders with one of them: an unsupported renderer would never engage.
+RENDERERS={'d3d9':'d3d9.dll','d3d11':'d3d11.dll','d3d12':'d3d12.dll','vulkan':'vulkan-1.dll','opengl':'opengl32.dll'}
+LABELS={'d3d9':'DirectX 9','d3d11':'DirectX 11','d3d12':'DirectX 12','vulkan':'Vulkan','opengl':'OpenGL'}
+PACKAGE_APIS={
+    'No native DLSS-G detected':('d3d11','d3d12','vulkan'),
+    'Skynizz needs a native DLSS Super Resolution route':('d3d12',),
+    'The combined NR + MFG bridge requires game-native DLSS Frame Generation':('d3d12',),
+}
+
+
 def soft(reason):
     reason=str(reason or '')
     return bool(reason) and any(reason.startswith(prefix) for prefix in SOFT)
+
+
+def renderers(exe,e=None,limit=2*1024**3):
+    """The graphics APIs an executable loads; empty when unknown.
+
+    Import and delay-import tables first. Packed executables hide their imports
+    until launch, so fall back to the DLL names the file mentions."""
+    import feeder_provider
+    exe=Path(exe)
+    names={name.lower() for name in (*(e.pe_imported_dlls(exe) if e else ()),*feeder_provider.delay_imported_dlls(exe))}
+    found={api for api,dll in RENDERERS.items() if dll in names}
+    if found:return found
+    import mmap
+    try:
+        with open(exe,'rb') as file:
+            if not 0<os.fstat(file.fileno()).st_size<=limit:return set()
+            with mmap.mmap(file.fileno(),0,access=mmap.ACCESS_READ) as data:
+                return {api for api,dll in RENDERERS.items() if re.search(rb'(?i)'+re.escape(dll.encode()),data)}
+    except (OSError,ValueError):
+        return set()
+
+
+def renderer_refusal(reason,apis):
+    """A hard block when the game renders only with APIs this soft check's package can't hook."""
+    supported=next((value for prefix,value in PACKAGE_APIS.items() if str(reason or '').startswith(prefix)),None)
+    if not apis or supported is None or apis & set(supported):return ''
+    names=' and '.join(LABELS[api] for api in sorted(apis))
+    return f"This game renders with {names}, which this package doesn't support yet."
 
 
 def shipped():
@@ -61,10 +100,16 @@ def set_try_anyway(config,game,on,reason=''):
     game_notes.save(config,game,record);return record
 
 
-def apply(config,rows):
+def apply(config,rows,e=None):
     """Mark soft blocks, lift the ones you chose to try anyway, and attach each verdict."""
     listed=shipped()
     for row in rows:
+        # A soft check on a renderer its package can't hook would never engage: block it.
+        if any(soft(row.get(key)) for key in BLOCK_KEYS) and row.get('exe'):
+            apis=renderers(Path(row['game'])/row['exe'],e)
+            row['graphics_apis']=sorted(apis)
+            for key in BLOCK_KEYS:
+                if soft(row.get(key)) and (refusal:=renderer_refusal(row[key],apis)):row[key]=refusal
         # Fresh from disk: a review must see a Try anyway choice made after the scan.
         record=game_notes.load(config,row['game'])
         row['test_record']=record

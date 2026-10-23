@@ -28,7 +28,9 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
     public ForgeSettings Settings { get; } = ForgeSettings.Load();
     public string EngineRoot { get; }
     static string SnapshotPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rtxForge", "state", "library-snapshot.json");
-    string SnapshotKey() => LibrarySnapshot.Key(Settings.RuntimeProvider, Settings.GameFolders, Settings.LibraryFolders);
+    // Each build keys its own snapshot, so an update never shows the previous build's verdicts.
+    static readonly string Build = typeof(EngineForgeService).Assembly.ManifestModule.ModuleVersionId.ToString("N");
+    string SnapshotKey() => LibrarySnapshot.Key(Settings.RuntimeProvider + "|" + Build, Settings.GameFolders, Settings.LibraryFolders);
     public IReadOnlyList<Game> CachedLibrary()
     {
         try { return LibraryGames(LibrarySnapshot.Read(SnapshotPath, SnapshotKey())); }

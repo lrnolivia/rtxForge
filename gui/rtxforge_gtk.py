@@ -14505,19 +14505,19 @@ class Window(Adw.ApplicationWindow):
     def show_activity(self,*_):
         d,b,f=self.open_panel('Activity');text=Gtk.TextView(editable=False,monospace=True,wrap_mode=Gtk.WrapMode.WORD_CHAR);text.get_buffer().set_text('\n'.join(self.log) or 'No activity yet.');b.append(text);f.append(button('Close',lambda *_:d.close()))
     def show_settings(self,*_):
-        d,b,f=self.open_panel(
-            'Settings',
-            width=940,
-            height=660,
-            resizable=True,
-        )
-        graphics=Adw.PreferencesGroup(title='Graphics Provider',description='Restore original files before switching providers.')
+        # libadwaita's native preferences dialog: section tabs on top, search,
+        # adaptive on narrow windows. Changes apply immediately, as on Windows.
+        if self.dialog:self.dialog.force_close() if hasattr(self.dialog,'force_close') else self.dialog.close()
+        d=Adw.PreferencesDialog(title='Settings',search_enabled=True,content_width=940,content_height=660)
+        d.add_css_class('forge-settings')
+        self.dialog=d
+        graphics=Adw.PreferencesGroup(title='Package',description='Restore original files before switching providers.')
         provider_keys=['y4my','dlss-unlocked','custom'];provider=safe_combo_row(title='Provider',model=Gtk.StringList.new(['y4my Multipass','DLSS-Unlocked','Custom package']),selected=provider_keys.index(self.settings.get('runtime_provider','y4my')));graphics.add(provider)
         nr_path=Adw.EntryRow(title='Local NR DLL for y4my');nr_path.set_text(self.settings.get('nr_runtime',''));graphics.add(nr_path)
         # Adopting only: the Windows install's own files load through a Proton DLL override. Not yet runtime-verified.
         skynizz_proton=Adw.SwitchRow(title='Skynizz on Proton (experimental)',subtitle='Set up Skynizz + Universal MFG installs made on Windows to run here. Unverified under Proton.',active=self.settings.get('skynizz_proton',False) is True)
         graphics.add(skynizz_proton)
-        defaults=Adw.PreferencesGroup(title='Installation')
+        defaults=Adw.PreferencesGroup(title='Install defaults',description='Changes to game files are reviewed before applying.')
         manage_files=Adw.SwitchRow(title='DLSS Files',subtitle='Update older DLSS files when installing features. Backups are kept for restoration.',active=self.settings.get('manage_dlss_files',True))
         defaults.add(manage_files)
         modes=['nr-only','mfg-only','nr-mfg'];profile=safe_combo_row(title='Default Mode',model=Gtk.StringList.new(['NR Only','MFG Only','NR + MFG']),selected=modes.index(self.settings.get('default_profile','mfg-only')));defaults.add(profile)
@@ -14530,7 +14530,7 @@ class Window(Adw.ApplicationWindow):
             if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
         detached.connect('notify::active',details_preference)
         window_style.add(detached)
-        library_layout=Adw.PreferencesGroup(title='Library Layout',description='Choose how your desktop game collection is displayed.')
+        library_layout=Adw.PreferencesGroup(title='Library view',description='Choose how your desktop game collection is displayed.')
         compact=Adw.SwitchRow(title='Compact Header',subtitle='Keep more room for your games.',active=self.settings.get('compact_header',True))
         compact.connect('notify::active',lambda widget,*_: self.toggle_compact_header() if widget.get_active()!=self.settings.get('compact_header',True) else None)
         views=[
@@ -14593,6 +14593,7 @@ class Window(Adw.ApplicationWindow):
             control=self.view_buttons[key]
             control.set_active(True)
             self.view_changed(control,key)
+            apply_soon()
 
             self.show_games(
                 self.games,
@@ -14629,7 +14630,7 @@ class Window(Adw.ApplicationWindow):
         self.steam_shortcut_row=steam_shortcut;self.steam_shortcut_button=steam_action
         controls=Adw.PreferencesGroup(title='Interface',description='Choose the experience for Gaming Mode.')
         controller_options=Adw.PreferencesGroup(title='Controller',description='Navigation prompts in Gaming Mode.')
-        scale_navigation=Adw.PreferencesGroup(title='Scale and Navigation',description='Size, navigation and button labels for both interfaces.')
+        scale_navigation=Adw.PreferencesGroup(title='Navigation',description='Size, navigation and button labels for both interfaces.')
         big_picture=safe_combo_row(title='Interface',subtitle='Choose Desktop or Big Picture UI. Keyboard, mouse and controller input keep your choice.',model=Gtk.StringList.new(['Desktop','Big Picture UI']),selected=1 if self.input_stack.get_visible_child_name()=='couch' else 0)
         big_picture.connect('notify::selected',lambda widget,*_:self.set_big_picture_ui(widget.get_selected()==1))
         controls.add(big_picture)
@@ -14720,22 +14721,22 @@ class Window(Adw.ApplicationWindow):
                 library_media.save_settings(self.service.config,saved)
             if hasattr(self,'couch'):self.couch.apply_navigation_preferences()
         glyphs.connect('notify::active',change_glyphs);appearance.add(glyphs)
-        artwork=Adw.PreferencesGroup(title='Artwork',description='Your Steam poster, capsule, and hero images take priority.')
+        artwork=Adw.PreferencesGroup(title='Artwork and game information',description='Your Steam poster, capsule, and hero images take priority.')
         art=Adw.SwitchRow(title='Download Missing Artwork',subtitle='Use SteamGridDB and Steam when local images are unavailable.',active=self.settings['online_art']);artwork.add(art)
         metadata=Adw.SwitchRow(title='Download Game Information',subtitle='Descriptions, developers, and release dates from Steam.',active=self.settings['steam_metadata']);artwork.add(metadata)
         refresh=row('Refresh Artwork','Cached images remain available offline.');refresh_button=button('Refresh',lambda *_:self.fetch_media(True));refresh_button.set_valign(Gtk.Align.CENTER);refresh.add_suffix(refresh_button);artwork.add(refresh)
         timeout=Gtk.SpinButton.new_with_range(5,30,1);timeout.set_value(self.settings.get('network_timeout',10));timeout.set_valign(Gtk.Align.CENTER);item=row('Download Timeout','Seconds per request');item.add_suffix(timeout);artwork.add(item)
-        steam_artwork=Adw.PreferencesGroup(title='Steam Artwork',description='Choose the Steam account and manage artwork for your game library.')
+        steam_artwork=Adw.PreferencesGroup(title='Steam integration',description='Choose the Steam account and manage artwork for your game library.')
         for title,subtitle,caption,fn in [
             ('Steam Artwork Profile','Choose which local Steam account receives artwork.','Choose',self.choose_steam_artwork_profile),
             ('Sync Artwork to Steam','Review and sync artwork for your library.','Sync',self.sync_steam_artwork),
             ('SteamGridDB','Connect your account to browse custom artwork.','Connect',self.show_steamgrid_connection)]:
             item=row(title,subtitle);action=button(caption,fn);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);steam_artwork.add(item)
-        system=Adw.PreferencesGroup(title='System');host=self.hardware_info or {}
+        system=Adw.PreferencesGroup(title='Hardware');host=self.hardware_info or {}
         for title,key in [('Graphics Card','gpu'),('Driver','driver'),('Video Memory','vram'),('Processor','cpu'),('Architecture','architecture')]:
             if host.get(key):system.add(row(title,host[key]))
         system.add(row('Compatibility',host.get('reason','Not checked')))
-        app=Adw.PreferencesGroup(title='Application');app.add(row('rtxForge',f'Version {APP_VERSION}'))
+        app=Adw.PreferencesGroup(title='App and updates');app.add(row('rtxForge',f'Version {APP_VERSION}'))
 
         if os.environ.get('APPIMAGE'):
             item=row(
@@ -14763,11 +14764,11 @@ class Window(Adw.ApplicationWindow):
             app.add(item)
         overlay_groups=self.overlay_settings_groups()
         global_groups=self.global_settings_groups()
-        app_storage=Adw.PreferencesGroup(title='App Storage',description='Downloads and restore backups kept by rtxForge.')
+        app_storage=Adw.PreferencesGroup(title='App storage',description='Downloads and restore backups kept by rtxForge.')
         item=row('Clean Up Downloads','Review unused package and DLSS downloads. Restore backups and settings are never removed.')
         action=button('Review',lambda *_:self.review_storage());action.set_valign(Gtk.Align.CENTER);action.set_sensitive(self.runtime_api() is not None)
         item.add_suffix(action);app_storage.add(item)
-        recovery=Adw.PreferencesGroup(title='Recovery',description='Restore original files and clean up older installs.')
+        recovery=Adw.PreferencesGroup(title='Restore',description='Restore original files and clean up older installs.')
         library_reports=Adw.PreferencesGroup(title='Reports')
         removed_count=len(self.settings.get('removed_games') or [])
         item=row('Removed Games',f'{removed_count} game'+('s' if removed_count!=1 else '')+' hidden from the library. Their files were never changed.')
@@ -14776,10 +14777,21 @@ class Window(Adw.ApplicationWindow):
         item=row('Library Reports','View test notes and export a support report.');action=button('Open',self.show_reports);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);library_reports.add(item)
         for title,subtitle,caption,fn in [('Previous Changes','Browse available recovery records.','Browse',lambda *_:self.show_undo()),('Old NR Files','Review legacy files before removal.','Review',lambda *_:self.show_cleanup())]:
             item=row(title,subtitle);action=button(caption,fn);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);recovery.add(item)
-        self.organize_pages(b,[('Graphics',[graphics,defaults]),('Appearance',[appearance,scale_navigation,window_style]),('Overlay',overlay_groups),('Library',[library_layout,artwork,steam_artwork,library_reports]),('Gaming Mode',[controls,controller_options,steam_launcher]),('Global',global_groups),('System',[system]),('Recovery',[recovery,app_storage]),('About',[app])])
+        # Windows SettingsPage section order.
+        icons={'Graphics':'video-display-symbolic','Overlay':'view-reveal-symbolic','Global':'emblem-system-symbolic',
+               'Appearance':'applications-graphics-symbolic','Library':'input-gaming-symbolic','Gaming Mode':'input-gaming-symbolic',
+               'System':'computer-symbolic','Recovery':'edit-undo-symbolic','About':'help-about-symbolic'}
+        sections=[('Graphics',[graphics,defaults]),('Overlay',overlay_groups),('Global',global_groups),
+                  ('Appearance',[appearance,scale_navigation,window_style]),('Library',[library_layout,artwork,steam_artwork,library_reports]),
+                  ('Gaming Mode',[controls,controller_options,steam_launcher]),('System',[system]),('Recovery',[app_storage,recovery]),('About',[app])]
+        self.settings_pages={}
+        for section,groups in sections:
+            page=Adw.PreferencesPage(title=section,icon_name=icons[section],name=section)
+            for group in groups:page.add(group)
+            d.add(page);self.settings_pages[section]=page
         def save(*_):
             selected_provider=provider_keys[provider.get_selected()];selected_mode=modes[profile.get_selected()]
-            if selected_provider=='y4my' and selected_mode=='nr-only':self.toast('NR Only requires DLSS-Unlocked.');return
+            if selected_provider=='y4my' and selected_mode=='nr-only':self.toast('NR Only requires DLSS-Unlocked.');return False
             settings_saved['value']=True
             self.settings.update(manage_dlss_files=manage_files.get_active(),runtime_provider=selected_provider,nr_runtime=nr_path.get_text().strip(),default_profile=selected_mode,library_view=pending_library_view['value'],dark=theme_selector.get_active_name()!='light',online_art=art.get_active(),steam_metadata=metadata.get_active(),network_timeout=timeout.get_value_as_int(),recognize_previous=adopt.get_active(),skynizz_proton=skynizz_proton.get_active())
             self.nr_only.set_enabled(selected_provider in ('dlss-unlocked','custom'))
@@ -14787,33 +14799,30 @@ class Window(Adw.ApplicationWindow):
             Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)
             apply_neutral_palette()
             self.view_buttons[self.settings['library_view']].set_active(True)
-            if self.options.demo:d.close();self.show_games(self.games,False);return
-            self.start('Saving settings',lambda:library_media.save_settings(self.service.config,self.settings),lambda _:(d.close(),self.show_games(self.games,False),self.fetch_media()))
-        save_button=button(
-            'Save Settings',
-            save,
-            'suggested-action',
-        )
-
-        # Settings now has a true full-height sidebar, so the footer
-        # belongs entirely to the right content pane.
-        f.set_halign(Gtk.Align.FILL)
-        f.set_spacing(10)
-
-        f.set_margin_top(0)
-        f.set_margin_bottom(0)
-        f.set_margin_start(0)
-        f.set_margin_end(0)
-
-        footer_spacer=Gtk.Box(
-            hexpand=True,
-        )
-        f.append(
-            footer_spacer
-        )
-        f.append(
-            save_button
-        )
+            if self.options.demo:self.show_games(self.games,False);return False
+            art_changed=(saved_art['online'],saved_art['metadata'])!=(art.get_active(),metadata.get_active())
+            saved_art.update(online=art.get_active(),metadata=metadata.get_active())
+            library_media.save_settings(self.service.config,self.settings)
+            self.show_games(self.games,False)
+            if art_changed:self.fetch_media()
+            return False
+        saved_art={'online':art.get_active(),'metadata':metadata.get_active()}
+        pending_apply={'id':0}
+        def apply_soon(*_):
+            # Coalesce quick changes (typing a path, spinning a value) into one save.
+            if pending_apply['id']:GLib.source_remove(pending_apply['id'])
+            def run():
+                pending_apply['id']=0;save();return False
+            pending_apply['id']=GLib.timeout_add(350,run)
+        for widget,signal in ((provider,'notify::selected'),(profile,'notify::selected'),(nr_path,'changed'),(manage_files,'notify::active'),
+                              (adopt,'notify::active'),(art,'notify::active'),(metadata,'notify::active'),(timeout,'value-changed'),
+                              (skynizz_proton,'notify::active')):
+            widget.connect(signal,apply_soon)
+        def closed(*_):
+            if pending_apply['id']:GLib.source_remove(pending_apply['id']);pending_apply['id']=0;save()
+            if self.dialog is d:self.dialog=None
+        d.connect('closed',closed)
+        d.present(self)
     def check_app_update(self,*_):
         import app_update
         self.start(

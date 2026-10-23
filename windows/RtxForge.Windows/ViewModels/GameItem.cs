@@ -113,13 +113,13 @@ public sealed class GameItem : INotifyPropertyChanged
 
     // Poster / wide capsule card (.game-card): the ring is the card's own grey, or its fill while selected.
     public Brush CardRing => selected && Accent(p => p.Color) is { } ring ? ring : Resource("CardBackgroundFillColorDefaultBrush");
-    // .gallery-artwork-ring, painted over the art's edge: a faint ink stroke at rest, the accent on hover,
-    // and the accent lightened by the frame's alpha(white,0.44) while selected.
+    // .gallery-artwork-ring, painted over the art's edge: the accent on hover and the accent lightened by
+    // the frame's alpha(white,0.44) while selected. Artwork at rest has no stroke.
     public Brush ArtRing =>
         selected && Accent(p => ArtAccent.Mix(Color.FromArgb(255, 255, 255, 255), p.Color, 0.44)) is { } s ? s
         : hovered && Accent(p => p.Color) is { } h ? h
-        : Resource("TextFillColorPrimaryBrush") is SolidColorBrush ink ? new SolidColorBrush(ink.Color) { Opacity = 0.12 } : Transparent;
-    public Thickness ArtRingThickness => new(selected ? 2 : hovered ? 3 : 1);
+        : Transparent;
+    public Thickness ArtRingThickness => new(selected ? 2 : hovered ? 3 : 0);
     public Brush CardFill => selected && Accent(p => p.Color) is { } fill ? fill : Transparent;
     public Brush CardTitle =>
         selected && Accent(p => p.SelectedTitle) is { } s ? s

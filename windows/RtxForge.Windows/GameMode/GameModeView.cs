@@ -203,6 +203,7 @@ public sealed partial class GameModeView : UserControl
             "settings" => BuildSettings(),
             _ => BuildLibrary(),
         };
+        content.Loaded += (_, _) => { foreach (var scroll in Descendants(content).OfType<ScrollViewer>()) GmScrollFade.Attach(scroll, t.S); };
         (ui.Accent, ui.AccentInk) = (accent, accentInk);
         var scene = new Grid();
         scene.Children.Add(pageLight.Artwork); scene.Children.Add(content); scene.Children.Add(pageLight);
@@ -584,6 +585,7 @@ public sealed partial class GameModeView : UserControl
         var dialogLight = new ArtworkLightLayer();
         dialogScene.Children.Add(dialogLight.Artwork); dialogScene.Children.Add(dialog); dialogScene.Children.Add(dialogLight);
         foreach (var button in Descendants(dialog).OfType<Button>()) GmGlow.Layer(button, dialogLight);
+        dialog.Loaded += (_, _) => { foreach (var scroll in Descendants(dialog).OfType<ScrollViewer>()) GmScrollFade.Attach(scroll, t.S); };
         layer.Children.Add(dialogScene);
         GmMotion.Dialog(dialogScene, t.S);
         layer.TabFocusNavigation = KeyboardNavigationMode.Cycle;

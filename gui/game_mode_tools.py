@@ -18,7 +18,7 @@ class GameModeTools:
         heading.append(self.label(lead, 'gm-p', wrap=True))
         page.append(heading)
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(24))
-        scroll = Gtk.ScrolledWindow(vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER)
+        scroll = self.scroller(vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER)
         scroll.set_child(body)
         page.append(scroll)
         return page, body

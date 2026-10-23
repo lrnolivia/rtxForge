@@ -5,10 +5,65 @@ import weakref
 import gi
 gi.require_version('Adw', '1')
 from gi.repository import Adw, Gdk, GLib, Graphene, Gsk, Gtk
-from game_mode_contract import MOTION
+from game_mode_contract import MOTION, scroll_fade, scroll_fade_alpha
 
 PRESS_MS, FOCUS_MS, SURFACE_MS, FADE_MS = (MOTION[k] for k in ('press_ms', 'focus_ms', 'surface_ms', 'fade_ms'))
 CARD_SCALE, CARD_LIFT = MOTION['card_scale'], MOTION['card_lift']
+
+
+class FadedScrolledWindow(Gtk.ScrolledWindow):
+    """Native scrolling with broad alpha edges, keeping native scrollbar opacity."""
+    __gtype_name__ = 'RtxForgeFadedScrolledWindow'
+
+    def __init__(self, *, fade_unit=1, **kwargs):
+        super().__init__(**kwargs)
+        self._fade_unit = fade_unit
+        self._fade_key = None
+        self._fade_stops = []
+        for adjustment in (self.get_vadjustment(), self.get_hadjustment()):
+            adjustment.connect('value-changed', self._scroll_changed)
+            adjustment.connect('changed', self._scroll_changed)
+
+    def _scroll_changed(self, *_):
+        self.queue_draw()
+
+    def do_snapshot(self, snapshot):
+        width, height = self.get_width(), self.get_height()
+        adjustment = self.get_vadjustment()
+        extent = max(0, adjustment.get_upper() - adjustment.get_page_size() - adjustment.get_lower())
+        depth, top, bottom = scroll_fade(height, adjustment.get_value() - adjustment.get_lower(), extent, self._fade_unit)
+        if width <= 0 or depth <= 0 or (top == 0 and bottom == 0):
+            Gtk.ScrolledWindow.do_snapshot(self, snapshot)
+            return
+        key = (height, depth, top, bottom)
+        if self._fade_key != key:
+            samples = int(MOTION['scroll_fade_samples'])
+            positions = ([depth * i / samples for i in range(samples + 1)]
+                         + [height - depth + depth * i / samples for i in range(samples + 1)])
+            self._fade_stops = []
+            for y in positions:
+                stop = Gsk.ColorStop()
+                stop.offset = y / height
+                color = Gdk.RGBA()
+                color.red = color.green = color.blue = 1
+                color.alpha = scroll_fade_alpha(y, height, depth, top, bottom)
+                stop.color = color
+                self._fade_stops.append(stop)
+            self._fade_key = key
+        bounds = Graphene.Rect().init(0, 0, width, height)
+        snapshot.push_mask(Gsk.MaskMode.ALPHA)
+        snapshot.append_linear_gradient(bounds, Graphene.Point().init(0, 0),
+                                        Graphene.Point().init(0, height), self._fade_stops)
+        white = Gdk.RGBA()
+        white.red = white.green = white.blue = white.alpha = 1
+        for bar in (self.get_vscrollbar(), self.get_hscrollbar()):
+            if bar and bar.get_mapped():
+                valid, rect = bar.compute_bounds(self)
+                if valid:
+                    snapshot.append_color(white, rect)
+        snapshot.pop()
+        Gtk.ScrolledWindow.do_snapshot(self, snapshot)
+        snapshot.pop()
 
 
 def enabled(widget, preferences):

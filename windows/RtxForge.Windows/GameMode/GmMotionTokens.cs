@@ -23,6 +23,10 @@ static class GmMotionTokens
     public static float DialogScale => (float)Number("dialog_scale");
     public static float DialogTravel => (float)Number("dialog_travel");
     public static double ArtworkStroke => Number("artwork_stroke");
+    public static double ScrollFadeDepth => Number("scroll_fade_depth");
+    public static double ScrollFadeRatio => Number("scroll_fade_ratio");
+    public static double ScrollFadeRamp => Number("scroll_fade_ramp");
+    public static int ScrollFadeSamples => (int)Number("scroll_fade_samples");
     public static (float Travel, int Period) Region(int index)
     {
         var regions = contract.RootElement.GetProperty("page_regions");

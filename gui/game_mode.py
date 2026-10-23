@@ -500,6 +500,9 @@ class GameMode(Gtk.Overlay, GameModeTools):
         widget._gm_key = name
         return widget
 
+    def scroller(self, **kwargs):
+        return motion.FadedScrolledWindow(fade_unit=self.theme.unit / 26, **kwargs)
+
     def button(self, text, action, kind='card', icon=None, enabled=True, key=None, halign=None):
         child = text if isinstance(text, Gtk.Widget) else self.content(text, icon)
         widget = motion.MotionButton(preferences=self.owner.settings, child=child, sensitive=enabled)
@@ -988,7 +991,7 @@ class GameMode(Gtk.Overlay, GameModeTools):
         dialog.set_size_request(min(t.px(width), max(320, self.layout_width - t.px(96))), -1)
         if title:
             dialog.append(self.label(title, 'gm-h2'))
-        scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, propagate_natural_height=True,
+        scroll = self.scroller(hscrollbar_policy=Gtk.PolicyType.NEVER, propagate_natural_height=True,
                                     max_content_height=max(240, self.layout_height - t.px(320)))
         scroll.set_child(content)
         dialog.append(scroll)
@@ -1201,7 +1204,7 @@ class GameMode(Gtk.Overlay, GameModeTools):
         subbar.append(selection)
         main.append(subbar)
 
-        scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True)
+        scroll = self.scroller(hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True)
         available = max(320, self.layout_width - inset * 2 - t.px(34))
         if not games:
             scroll.set_child(self.empty_library())
@@ -1608,7 +1611,7 @@ class GameMode(Gtk.Overlay, GameModeTools):
             button.connect('clicked', lambda *_, section=section: self.open_section(section))
             self.key(button, 'section-' + section)
             nav.append(button)
-        nav_scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
+        nav_scroll = self.scroller(hscrollbar_policy=Gtk.PolicyType.NEVER)
         nav_scroll.set_size_request(nav_width + side, -1)
         nav_scroll.set_child(nav)
         nav_scroll.add_css_class('gm-details-rail')
@@ -1617,7 +1620,7 @@ class GameMode(Gtk.Overlay, GameModeTools):
         for side_name, value in (('start', 24), ('end', 24), ('top', 12), ('bottom', 12)):
             getattr(content, 'set_margin_' + side_name)(t.px(value))
         self.build_section(g, content)
-        scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, hexpand=True)
+        scroll = self.scroller(hscrollbar_policy=Gtk.PolicyType.NEVER, hexpand=True)
         scroll.set_margin_end(side)
         scroll.set_child(self.section_scene(content, 'details:' + g['game'], self.section))
         scroll.set_vexpand(True)
@@ -1892,7 +1895,7 @@ class GameMode(Gtk.Overlay, GameModeTools):
         fields = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(24))
         for row in rows:
             fields.append(row)
-        scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True)
+        scroll = self.scroller(hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True)
         scroll.set_child(fields)
         page.append(scroll)
         configured = [g for g in owner.games if g.get('installed') and not g.get('blocked')]
@@ -1975,7 +1978,7 @@ class GameMode(Gtk.Overlay, GameModeTools):
                 fields.append(row)
             group.append(fields)
             content.append(group)
-        scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, hexpand=True)
+        scroll = self.scroller(hscrollbar_policy=Gtk.PolicyType.NEVER, hexpand=True)
         scroll.set_child(self.section_scene(content, 'settings', self.settings_section))
         lower.append(scroll)
         grid.append(lower)

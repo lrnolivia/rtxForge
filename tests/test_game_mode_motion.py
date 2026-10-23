@@ -13,6 +13,18 @@ import library_media
 
 
 class MotionContractTests(unittest.TestCase):
+    def test_scroll_fade_boundaries_and_smoothness(self):
+        for unit in (.7, 1, 1.3):
+            for offset, extent, ends in ((0, 0, (1, 1)), (0, 1000, (1, 0)),
+                                         (1000, 1000, (0, 1)), (500, 1000, (0, 0))):
+                profile = contract.scroll_fade(700, offset, extent, unit)
+                self.assertEqual(contract.scroll_fade_alpha(0, 700, *profile), ends[0])
+                self.assertEqual(contract.scroll_fade_alpha(700, 700, *profile), ends[1])
+                self.assertEqual(contract.scroll_fade_alpha(350, 700, *profile), 1)
+            depth, top, bottom = contract.scroll_fade(700, 500, 1000, unit)
+            values = [contract.scroll_fade_alpha(depth * i / 100, 700, depth, top, bottom) for i in range(101)]
+            self.assertEqual(values, sorted(values))
+
     def test_profiles_are_bounded_and_regions_never_zoom(self):
         motion = contract.MOTION
         self.assertEqual(motion['schema'], 1)

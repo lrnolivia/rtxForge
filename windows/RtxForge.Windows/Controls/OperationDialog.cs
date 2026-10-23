@@ -24,7 +24,7 @@ public sealed class OperationDialog
     readonly ContentDialog dialog;
     Stage stage = Stage.Review;
     CancellationTokenSource? cancel;
-    bool closed;
+    bool closed, completed;
 
     // One step layout for checking and progress (OperationStepPanel).
     readonly OperationStepPanel checkingPanel = new();
@@ -56,32 +56,38 @@ public sealed class OperationDialog
         };
     }
 
-    /// <summary>Review, then run with progress, then report. Returns when the dialog closes.</summary>
-    public static async Task ShowAsync(MainWindow shell, string operation, IReadOnlyList<Game> targets, Tuning values)
+    /// <summary>Review, then run with progress, then report. Returns when the dialog closes: true when the reviewed run completed.</summary>
+    public static async Task<bool> ShowAsync(MainWindow shell, string operation, IReadOnlyList<Game> targets, Tuning values)
     {
         var flow = new OperationDialog(shell, operation, targets, values);
         flow.ShowChecking();
+        // One game: its accent from the first screen, as in its Details.
+        await AccentResources.ApplyAsync(flow.dialog.Resources, AccentResources.Single(targets));
         var shown = flow.dialog.ShowAsync();
         await flow.PrepareAsync();
         await shown;
+        return flow.completed;
     }
 
     /// <summary>"Install Features" presets step that precedes the review (Linux: _presets_confirmed).</summary>
-    public static async Task<Tuning?> AskPresetsAsync(MainWindow shell, Tuning initial)
+    public static async Task<Tuning?> AskPresetsAsync(MainWindow shell, Tuning initial, Game? game = null, IReadOnlyList<Game>? targets = null)
     {
+        // Show only what these games can get: NR only when none of them has an MFG route.
+        var mode = targets is { Count: > 0 } ? GameOverview.Mode(targets, shell.Mode) : shell.Mode;
         var dialog = shell.NewDialog();
+        await AccentResources.ApplyAsync(dialog.Resources, game);
         dialog.Title = "Install Features";
         var editorWidth = Math.Max(280, Math.Min(760, ((shell.Content as FrameworkElement)?.XamlRoot?.Size.Width ?? 1120) - 120));
         dialog.Resources["ContentDialogMaxWidth"] = 840.0;
         var tuning = new PresetControlsView(initial, shell.Settings.OverlayControls == "classic", embedded: true, installation: true) { Width = editorWidth };
-        tuning.SetMode(shell.Mode, legacy: shell.Settings.RuntimeProvider != "skynizz", dynamicSupported: shell.Settings.DynamicMfgSupported);
+        tuning.SetMode(mode, legacy: shell.Settings.RuntimeProvider != "skynizz", dynamicSupported: shell.Settings.DynamicMfgSupported);
         var body = new StackPanel { Spacing = 16 };
         body.Children.Add(Prefs.Label("Choose startup settings. You can adjust them later."));
         var feeder = shell.Settings.RuntimeProvider == "feeder";
         if (!feeder) body.Children.Add(tuning);
         var startup = new CheckBox { Content = "Enable NR on launch", IsChecked = shell.Settings.NrOnLaunch };
         var separateStartup = shell.Settings.RuntimeProvider != "skynizz";
-        if (separateStartup && shell.Mode != "mfg-only") body.Children.Add(startup);
+        if (separateStartup && mode != "mfg-only") body.Children.Add(startup);
         dialog.Content = new ScrollViewer { Content = body, HorizontalScrollMode = ScrollMode.Disabled,
             MaxHeight = Math.Max(280, ((shell.Content as FrameworkElement)?.XamlRoot?.Size.Height ?? 900) - 280) };
         dialog.PrimaryButtonText = "Review games";
@@ -170,6 +176,17 @@ public sealed class OperationDialog
         dialog.PrimaryButtonText = review.Supported.Count > 0 ? "Continue" : ActionVerb();
         dialog.IsPrimaryButtonEnabled = count > 0 || review.Supported.Count > 0;
         dialog.CloseButtonText = "Cancel";
+        AccentPrimary();
+    }
+
+    /// <summary>
+    /// The primary button in the accent style. The dialog opened while checking, already
+    /// with Primary as its default button; setting the same value again doesn't restyle
+    /// the now-enabled button, so step through None.
+    /// </summary>
+    void AccentPrimary()
+    {
+        dialog.DefaultButton = ContentDialogButton.None;
         dialog.DefaultButton = ContentDialogButton.Primary;
     }
 
@@ -329,6 +346,7 @@ public sealed class OperationDialog
         try
         {
             var count = await shell.ExecuteAsync(review!, progress, cancel.Token);
+            completed = true;
             progressPanel.Complete();
             ShowDone(true, $"{count} game{(count == 1 ? "" : "s")} updated.");
         }
@@ -387,6 +405,6 @@ public sealed class OperationDialog
         dialog.CloseButtonText = "";
         dialog.PrimaryButtonText = "Done";
         dialog.IsPrimaryButtonEnabled = true;
-        dialog.DefaultButton = ContentDialogButton.Primary;
+        AccentPrimary();
     }
 }

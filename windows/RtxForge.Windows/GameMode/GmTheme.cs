@@ -12,6 +12,7 @@ namespace RtxForge.Windows.GameMode;
 /// </summary>
 public sealed class GmTheme
 {
+    public static double ArtworkStroke => GmMotionTokens.ArtworkStroke;
     public required string Name { get; init; }
     public required Color Window { get; init; }
     public required Color View { get; init; }
@@ -44,7 +45,7 @@ public sealed class GmTheme
     /// <summary>The prototype's short-window compaction (max-height 800, max-width 2000).</summary>
     public bool Compact { get; private set; }
 
-    /// <summary>Settings › UI scale: "auto" follows the breakpoints; a percentage scales from 150% = unit 26.</summary>
+    /// <summary>Settings â€º UI scale: "auto" follows the breakpoints; a percentage scales from 150% = unit 26.</summary>
     public string Scale { get; set; } = "auto";
 
     public bool Resize(double width, double height)
@@ -72,36 +73,34 @@ public sealed class GmTheme
     static GmTheme Dark() => new()
     {
         Name = "dark",
-        Window = Hex("#242424"), View = Hex("#2a2a2a"), Panel = Hex("#303030"), Card = Hex("#383838"),
-        Fg = Hex("#f2f2f2"), Muted = Hex("#c5c5c5"), Focus = Hex("#a4a4a4"),
-        Danger = Hex("#ffc1c6"), DangerBg = Hex("#4b2328"), Line = Hex("#454545"),
-        Active = Hex("#505050"), ActiveFg = Hex("#ffffff"), SegmentSelected = Hex("#575757"), RowFocus = Hex("#414141"),
-        // The prototype's disabled #2a2a2a equals Dark's --view; one step up keeps disabled controls visible.
-        Disabled = Hex("#333333"), DisabledFg = Hex("#9fa2a8"),
-        DlssSurface = Hex("#474747"), DlssInk = Hex("#ffffff"), DlssBorder = Hex("#999999"),
+        Window = Hex("#181818"), View = Hex("#222222"), Panel = Hex("#2b2b2b"), Card = Hex("#363636"),
+        Fg = Hex("#f5f5f5"), Muted = Hex("#c3c3c3"), Focus = Hex("#c4c4c4"),
+        Danger = Hex("#ffc6cc"), DangerBg = Hex("#4b2932"), Line = Hex("#494949"),
+        Active = Hex("#ededed"), ActiveFg = Hex("#171717"), SegmentSelected = Hex("#e0e0e0"), RowFocus = Hex("#424242"),
+        Disabled = Hex("#303030"), DisabledFg = Hex("#a3a3a3"),
+        DlssSurface = Hex("#343434"), DlssInk = Hex("#ededed"), DlssBorder = Hex("#5a5a5a"),
     };
 
     static GmTheme Night() => new()
     {
         Name = "night",
-        // --view: color-mix(window 50%, panel)
-        Window = Hex("#080808"), View = Hex("#0f0f0f"), Panel = Hex("#171717"), Card = Hex("#252525"),
-        Fg = Hex("#f2f2f2"), Muted = Hex("#c5c5c5"), Focus = Hex("#a4a4a4"),
-        Danger = Hex("#ffc1c6"), DangerBg = Hex("#4b2328"), Line = Hex("#454545"),
-        Active = Hex("#505050"), ActiveFg = Hex("#ffffff"), SegmentSelected = Hex("#575757"), RowFocus = Hex("#414141"),
-        Disabled = Hex("#2a2a2a"), DisabledFg = Hex("#9fa2a8"),
-        DlssSurface = Hex("#363636"), DlssInk = Hex("#f2f2f2"), DlssBorder = Hex("#888888"),
+        Window = Hex("#050505"), View = Hex("#0b0b0b"), Panel = Hex("#131313"), Card = Hex("#1c1c1c"),
+        Fg = Hex("#dedede"), Muted = Hex("#b5b5b5"), Focus = Hex("#b0b0b0"),
+        Danger = Hex("#f7bbc2"), DangerBg = Hex("#2e1920"), Line = Hex("#303030"),
+        Active = Hex("#c9c9c9"), ActiveFg = Hex("#101010"), SegmentSelected = Hex("#bdbdbd"), RowFocus = Hex("#292929"),
+        Disabled = Hex("#181818"), DisabledFg = Hex("#959595"),
+        DlssSurface = Hex("#1b1b1b"), DlssInk = Hex("#dfdfdf"), DlssBorder = Hex("#444444"),
     };
 
     static GmTheme Light() => new()
     {
         Name = "light",
-        Window = Hex("#f5f5f5"), View = Hex("#fafafa"), Panel = Hex("#ebebeb"), Card = Hex("#ffffff"),
-        Fg = Hex("#222222"), Muted = Hex("#555555"), Focus = Hex("#81898c"),
-        Danger = Hex("#8b2029"), DangerBg = Hex("#f6dce0"), Line = Hex("#cecece"),
-        Active = Hex("#d2d2d2"), ActiveFg = Hex("#222222"), SegmentSelected = Hex("#d4d4d4"), RowFocus = Hex("#dedede"),
-        Disabled = Hex("#e5e5e5"), DisabledFg = Hex("#666666"),
-        DlssSurface = Hex("#ffffff"), DlssInk = Hex("#222222"), DlssBorder = Hex("#707070"),
+        Window = Hex("#e5e5e5"), View = Hex("#f4f4f4"), Panel = Hex("#e9e9e9"), Card = Hex("#ffffff"),
+        Fg = Hex("#242424"), Muted = Hex("#535353"), Focus = Hex("#5c5c5c"),
+        Danger = Hex("#7b2030"), DangerBg = Hex("#f5dfe3"), Line = Hex("#c6c6c6"),
+        Active = Hex("#d1d1d1"), ActiveFg = Hex("#202020"), SegmentSelected = Hex("#d7d7d7"), RowFocus = Hex("#dddddd"),
+        Disabled = Hex("#e3e3e3"), DisabledFg = Hex("#737373"),
+        DlssSurface = Hex("#fafafa"), DlssInk = Hex("#343434"), DlssBorder = Hex("#7f7f7f"),
     };
 
     public static Color Hex(string hex) => ArtAccent.TryParse(hex, out var c) ? c : Microsoft.UI.Colors.Magenta;

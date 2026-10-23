@@ -63,6 +63,9 @@ public interface IForgeService
     Task StartTestAsync(Game game);
     Task FinishTestAsync(Game game);
     Task<EngineReview> PreviewReportAsync(IReadOnlyList<Game> games, bool logs, bool notes);
+    // Compatibility (compat_list): skip a capability check, and share a result as a prefilled issue.
+    Task SetTryAnywayAsync(Game game, bool on);
+    Task<CompatShare> CompatShareAsync(Game game, string package, bool notes);
 
     // Tools: NR diagnosis (runtime_diagnostics) and ReShade / add-ons (extra_tools).
     Task<NrDiagnosis> DiagnoseAsync(Game game);
@@ -256,6 +259,8 @@ public sealed class PreviewForgeService : IForgeService
     public Task StartTestAsync(Game game) => Disabled("Test records");
     public Task FinishTestAsync(Game game) => Disabled("Test records");
     public Task<EngineReview> PreviewReportAsync(IReadOnlyList<Game> games, bool logs, bool notes) => Disabled<EngineReview>("Support reports");
+    public Task SetTryAnywayAsync(Game game, bool on) => Disabled("Try anyway");
+    public Task<CompatShare> CompatShareAsync(Game game, string package, bool notes) => Disabled<CompatShare>("Sharing results");
 
     public Task<NrDiagnosis> DiagnoseAsync(Game game) => Task.FromResult(new NrDiagnosis(
         ["Preview: diagnosis reads the selected game’s settings, exact runtime hashes, and bounded log tail."], "Not tested", ""));
@@ -271,13 +276,11 @@ public sealed class PreviewForgeService : IForgeService
         Task.FromResult(new FeederStorage(null, null, null, 0));
     public Task<PackageCatalog> PackagesAsync() =>Task.FromResult(new PackageCatalog("Preview system · NVIDIA RTX 4070 · no game writes",
     [
-        new("skynizz", "Skynizz NR + Ada MFG bridge", "v1.2.1 bridge · preview", "Neural rendering and multi-frame generation for DirectX 12 games with native DLSS Frame Generation.", true,
-            "Preview package · no game writes", false, "https://github.com/Skynizz/optiscaler-dlss5"),
-        new("dlss-unlocked", "DLSS-Unlocked", "Preview", "Native MFG path; NR needs per-game verification", true, "Ready to review for your system", true, "https://github.com/ShyVortex/dlss-unlocked"),
-        new("y4my", "y4my Multipass", "nightly", "Alternative OptiScaler package; a local NR model may be needed", true, "Ready to review for your system", false,
-            "https://github.com/y4my4my4m/OptiScaler_DLSSNR_Multipass_MFG"),
-        new("feeder", "Feeder NR", "Preview", "Neural rendering for DirectX 11 games through ReShade. NR only.", true,
-            "Preview package · no game writes", false, "https://github.com/jlrouzies-fr/DLSS5-Feeder"),
+        new("skynizz", "Skynizz NR + Universal MFG", "v1.3.0 bridge · Universal MFG 1.6.1", "Recommended. Neural rendering with Universal MFG 1.6.1 frame generation in DirectX 12 games with DLSS.", true,
+            "Preview package · no game writes", true, "https://github.com/Skynizz/optiscaler-dlss5", ["windows"]),
+        new("dlss-unlocked", "DLSS-Unlocked", "Preview", "NR and native MFG in one OptiScaler package", true, "Ready to review for your system", false, "https://github.com/ShyVortex/dlss-unlocked"),
+        new("feeder", "Feeder NR", "Preview", "Neural rendering through ReShade for DirectX 11 games, and DirectX 12 games without DLSS. NR only.", true,
+            "Preview package · no game writes", false, "https://github.com/jlrouzies-fr/DLSS5-Feeder", ["windows"]),
     ], [], null));
 
     public Task<PackageInspection> InspectPackageAsync(string path) => Disabled<PackageInspection>("Custom packages");

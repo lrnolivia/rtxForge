@@ -1,17 +1,17 @@
 {
   "schema": 1,
-  "id": "skynizz-ada-mfg-10-panel-candidate",
-  "base_bridge_id": "skynizz-ada-mfg-9-placement-candidate",
+  "id": "skynizz-ada-mfg-13-panel-candidate",
+  "base_bridge_id": "skynizz-ada-mfg-12-placement-candidate",
   "patch": "panel-candidate.patch",
   "sources": {
-    "providers/skynizz-bridge/panel-candidate.patch": "c27099d8640c1d54800e7a52451f87397ea66b615648daa9442f79bd537d42e3",
-    "providers/skynizz-bridge/ForgePanel.h": "32d2f19ffcb81a6f2be5713c16a5fea1abb7706a85c8bf5865870c61565216c9",
-    "providers/skynizz-bridge/Generate-Panel.ps1": "6b2d943bb023551a6ea9800455ca239bc1f7f53c34eab8eb5f6e8e520becd0eb",
+    "providers/skynizz-bridge/panel-candidate.patch": "92d90e9a57884f22c3516b6aca790fe51da3e1fad5617f5c3543a8a287d966e5",
+    "providers/skynizz-bridge/ForgePanel.h": "09dcc378991565be4390c535454a3baafc94cb1623aee48632be234f0152d4f8",
+    "providers/skynizz-bridge/Generate-Panel.ps1": "a51f4b22d0981ed9a4d5642159c4b4ad4bf3d90b8ff77eb17c125803ce0978d2",
     "providers/skynizz-bridge/controls.json": "11dc5fa793b39c254b7209017fd5fcf5364b223746630c8389c80f7c3c280feb",
     "windows/RtxForge.Windows/Assets/Fonts/InterVariable.ttf": "4989b125924991b90d05b2d16e0e388c48f7d5bb8b30539bbf9c755278d0ccaf",
     "providers/skynizz-bridge/Inter-SemiBold.ttf": "78a843fade9d4612a5567302fb595b56976eb5fcebf4fea5a5912d638bafcde3",
     "providers/skynizz-bridge/ForgePanelIcon.h": "a6037b066c03146b3cb766afd69ea694a247699b7e66cd7f346fd7e4aae799e7",
-    "providers/skynizz-bridge/ForgePanelChannel.h": "4db644a9a8d696659b7cd2b40c24d4e8559685453e5c3b35205b181d55936809"
+    "providers/skynizz-bridge/ForgePanelChannel.h": "432d6290164401207f7b08264ba189189bd89b8bf83abf0cca517e2775ba1350"
   },
   "candidate_only": true,
   "runtime_verified": false,

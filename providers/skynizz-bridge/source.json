@@ -1,10 +1,10 @@
 {
   "schema": 1,
-  "id": "skynizz-ada-mfg-8",
+  "id": "skynizz-ada-mfg-11",
   "upstream": {
     "repository": "Skynizz/optiscaler-dlss5",
-    "tag": "v1.2.1",
-    "commit": "6bfc4389c25054ef6747df6e6b1b470e9541c4da"
+    "tag": "v1.3.0",
+    "commit": "fc702f8ca22f97b01bd6a02f3386bffb3484fc35"
   },
   "mfg_source": {
     "repository": "y4my4my4m/OptiScaler_DLSSNR_Multipass_MFG",
@@ -19,7 +19,7 @@
     ]
   },
   "patch": "ada-mfg.patch",
-  "patch_sha256": "c4f179856aabae24f3f9559f7d093027296d33f7298f524888174859c1c67f7c",
+  "patch_sha256": "7b54e0867b6b6110d86fdcb9c4b00dc316d112cc33399eef2aefebfe1adf5db6",
   "license": "GPL-3.0-only",
   "runtime_verified": false,
   "default_promoted": false,

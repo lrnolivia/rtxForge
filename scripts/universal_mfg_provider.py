@@ -116,7 +116,7 @@ def check_target(e, game, baseline):
     for path in target.iterdir():
         name = path.name.casefold()
         # The plugin's own run reports outlive a restore; they are not an install.
-        if name.startswith('rtxmfg-') and name.endswith(('.log', '.status.json')):
+        if name.startswith('rtxmfg-') and name.endswith(('.log', '.status.json', '-intervals.csv')):
             continue
         t.need(not name.startswith(FOREIGN_PREFIXES),
                'An unmanaged MFG Unlocker install is present (' + path.name + '); remove it before installing.')

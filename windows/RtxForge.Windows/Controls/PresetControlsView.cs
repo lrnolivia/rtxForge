@@ -69,16 +69,22 @@ public sealed class PresetControlsView : UserControl
             var root = new StackPanel { Spacing = 24 };
             root.Children.Add(Card(MfgControls()));
             var primary = new PresetColumns(560, 2) { ColumnSpacing = 24, RowSpacing = 24 };
+            // Left column: Neural rendering, then DLSS presets. Stacked, the order reads
+            // MFG, Neural rendering, DLSS presets, Image tuning, Sharpening, Performance.
+            var first = new StackPanel { Spacing = 24 };
             var nr = Section("Neural rendering");
             nr.Children.Add(Field("enabled")); nr.Children.Add(Field("style")); nr.Children.Add(Field("intensity"));
-            nr.Children.Add(Pair(Field("preset"), Field("passes"))); primary.Children.Add(Card(nr));
+            nr.Children.Add(Pair(Field("preset"), Field("passes"))); first.Children.Add(Card(nr));
+            var upscaling = Section("DLSS presets", "Applies when the game next starts DLSS. Game default keeps the game's own choice.");
+            upscaling.Children.Add(Pair(Field("dlss_preset"), Field("rr_preset"))); first.Children.Add(Card(upscaling)); primary.Children.Add(first);
             var image = Section("Image tuning");
             image.Children.Add(Pair(Field("detail"), Field("colour")));
             var fine = new StackPanel { Spacing = 16 };
             fine.Children.Add(Pair(Field("structure"), Field("tone")));
             fine.Children.Add(Pair(Field("skin"), Field("auto_mask")));
             image.Children.Add(Disclosure("Fine tuning", fine));
-            var secondary = new StackPanel { Spacing = 12 }; secondary.Children.Add(Card(image));
+            // Same gap as between the columns and the left column's cards, so spacing reads 1:1.
+            var secondary = new StackPanel { Spacing = 24 }; secondary.Children.Add(Card(image));
             var sharp = new StackPanel { Spacing = 16 };
             sharp.Children.Add(Field("sharpen")); sharp.Children.Add(Pair(Field("sharpen_shader"), Field("sharp_override")));
             sharp.Children.Add(Field("sharpness"));
@@ -91,8 +97,6 @@ public sealed class PresetControlsView : UserControl
                 performance.Children.Add(i + 1 < fields.Length ? Pair(Field(fields[i]), Field(fields[i + 1])) : Field(fields[i]));
             secondary.Children.Add(Card(Disclosure("Performance", performance)));
             primary.Children.Add(secondary); root.Children.Add(primary);
-            var upscaling = Section("DLSS presets", "Applies when the game next starts DLSS. Game default keeps the game's own choice.");
-            upscaling.Children.Add(Pair(Field("dlss_preset"), Field("rr_preset"))); root.Children.Add(Card(upscaling));
             Content = root;
         }
         RefreshAvailability();
@@ -188,8 +192,10 @@ public sealed class PresetControlsView : UserControl
                 { ratios[i].IsChecked = mfgPreset.Multiplier == MfgPreset.Multipliers[i]; ratios[i].IsEnabled = enabled && mfgPreset.Enabled; }
                 ratioGroup.Visibility = mfgPreset.Mode != 0 && mfgPreset.Enabled ? Visibility.Visible : Visibility.Collapsed;
                 caption.Text = mfgPreset.Mode == 2 ? "Maximum multiplier" : "Multiplier";
-                description.Text = !enabled ? "Unavailable for this package."
+                // Unavailable controls simply grey out; no caption explains it.
+                description.Text = !enabled ? ""
                     : mfgPreset.Description + (mfgPreset.Enabled && !dynamicSupported && dynamicDetail != "" ? "\nDynamic: " + dynamicDetail : "");
+                description.Visibility = description.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
             }
             finally { refreshing = false; }
         };
@@ -329,6 +335,11 @@ internal sealed class PresetColumns : Grid
         for (var i = 0; i < count; i++) ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
         for (var i = 0; i < (Children.Count + count - 1) / count; i++) RowDefinitions.Add(new() { Height = GridLength.Auto });
         for (var i = 0; i < Children.Count; i++)
-            if (Children[i] is FrameworkElement child) { SetRow(child, i / count); SetColumn(child, i % count); }
+            if (Children[i] is FrameworkElement child)
+            {
+                SetRow(child, i / count); SetColumn(child, i % count);
+                // Cards sharing a row are the same height. Fields and panels keep their own size.
+                if (child is Border or Button) child.VerticalAlignment = VerticalAlignment.Stretch;
+            }
     }
 }

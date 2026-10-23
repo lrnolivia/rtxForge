@@ -15,6 +15,7 @@ import offline_routes
 import cross_os
 import ui
 from operation_session import Session, Cancelled
+from storage import storage
 
 
 def decorate(e, rows):
@@ -46,9 +47,92 @@ def decorate(e, rows):
     return rows
 
 
-def _native(config, row, settings, cache=None):
-    selected = settings.get('runtime_provider', 'y4my')
-    t.need(selected != 'feeder', 'Select this installation’s OptiScaler package in Graphics before adopting it.')
+def _loader(e, target):
+    """The setup's OptiScaler loader, under any name OptiScaler loads as. ReShade
+    or another tool may own a second proxy name beside it."""
+    present = [name for name in e.PROXY_NAMES if (target / name).is_file()]
+    # OptiScaler names itself in its loader; ReShade and other proxies don't.
+    found = [name for name in present if b'OptiScaler' in t.safe(target / name).read_bytes()] or present
+    t.need(found, 'No OptiScaler loader was found beside the game.')
+    t.need(len(found) == 1, 'Several OptiScaler loaders were found: ' + ', '.join(found) + '. Remove the extra one first.')
+    return found[0]
+
+
+def _release(config, provider, settings):
+    """The newest pin of a package family."""
+    if provider == 'skynizz':
+        # A bundled bridge is a distinct recipe, including its private NVIDIA
+        # runtimes. Never identify it solely by a filename or version string.
+        return skynizz_provider.bundled_bridge()[0]
+    if provider == 'custom':
+        custom = settings.get('custom_package')
+        t.need(isinstance(custom, dict), 'Choose and review a custom package before adopting it.')
+        return custom
+    return bridge.providers()[provider]
+
+
+def _older_releases(config, pin):
+    """Earlier releases of a family still in the package cache, so a setup an
+    older pin installed is recognized. Each is re-verified by hash when loaded."""
+    tag, archive = pin.get('tag'), pin.get('archive', '')
+    if not tag or tag not in archive or tag not in pin.get('url', ''):
+        return []
+    prefix, suffix = archive.split(tag, 1)
+    found = []
+    root = storage(config) / 'packages'
+    for path in sorted(root.glob('*/' + prefix + '*' + suffix)) if root.is_dir() else []:
+        older = path.name[len(prefix):len(path.name) - len(suffix)]
+        if older == tag or path.parent.name == pin['sha256'] or len(path.parent.name) != 64:
+            continue
+        found.append({**pin, 'tag': older, 'archive': path.name, 'sha256': path.parent.name, 'release_size': path.stat().st_size,
+                      'url': pin['url'].replace(tag, older), 'asset_id': None, 'verified_at': None})
+    return found
+
+
+def _payload(e, config, release, mode, cache):
+    key = (release.get('sha256'), mode)
+    if cache is not None and key in cache:
+        return cache[key]
+    e.Y4MY_PROVIDER = release
+    result = bridge.payload(e, config, mode)
+    if cache is not None:
+        cache[key] = result
+    return result
+
+
+def _recognize(config, settings, row, loader_sha, mode, cache):
+    """The package and release that installed this setup: the selected package
+    first, then the other families, newest pin first, then older cached releases.
+    Only releases available without a download are compared."""
+    selected = settings.get('runtime_provider', 'skynizz')
+    families = [selected] + [p for p in ('skynizz', 'dlss-unlocked', 'y4my') if p != selected]
+    for provider in families:
+        if provider in ('feeder', 'custom') and provider != selected:
+            continue
+        try:
+            pin = _release(config, provider, settings)
+        except (t.Refusal, KeyError, OSError, ValueError):
+            continue
+        for release in [pin, *_older_releases(config, pin)]:
+            local = provider in ('skynizz', 'custom') or (storage(config) / 'packages' / release['sha256'] / release['archive']).is_file()
+            if not local:
+                continue
+            e = bridge.module(config, 'y4my' if provider == 'custom' else provider)
+            bridge.desktop_mode(e)
+            try:
+                payload, meta = _payload(e, config, release, mode, cache)
+            except (t.Refusal, OSError, ValueError, KeyError, RuntimeError):
+                continue
+            if payload.get('dxgi.dll') is not None and t.sha(payload['dxgi.dll']) == loader_sha:
+                e.Y4MY_PROVIDER = release
+                e.Y4MY_CACHE_DIR = storage(config) / 'packages' / release['sha256']
+                return e, release, payload, meta
+    return None
+
+
+def _native(config, row, settings, cache=None, clean=False):
+    selected = settings.get('runtime_provider', 'skynizz')
+    t.need(selected != 'feeder', 'Select a package for games with DLSS in Packages before adopting this setup.')
     e = bridge.module(config, 'y4my' if selected == 'custom' else selected)
     bridge.desktop_mode(e)
     game = bridge.game(e, row)
@@ -60,66 +144,66 @@ def _native(config, row, settings, cache=None):
     t.ini(text)
     has_nr = (target / 'nvngx_dlssnr.dll').is_file()
     mode = 'nr-mfg' if has_nr and game.dlssg else 'nr-only' if has_nr else 'mfg-only'
-    if selected == 'skynizz':
-        # A bundled bridge is a distinct recipe, including its private NVIDIA
-        # runtimes. Never identify it solely by a filename or version string.
-        release, _ = skynizz_provider.bundled_bridge()
-        e.Y4MY_PROVIDER = release
-    elif selected == 'custom':
-        custom = settings.get('custom_package')
-        t.need(isinstance(custom, dict), 'Choose and review a custom package before adopting it.')
-        e.Y4MY_PROVIDER = custom
-    key = (e.Y4MY_PROVIDER.get('sha256'), mode)
-    if cache is not None and key in cache:
-        payload, meta = cache[key]
-    else:
-        payload, meta = bridge.payload(e, config, mode)
-        if cache is not None:
-            cache[key] = payload, meta
-    loader = payload.get('dxgi.dll')
-    t.need(loader is not None, 'This package does not support Adoption yet.')
-    proxies = [name for name in t.SUPPORTED_PROXIES if (target / name).is_file() and t.digest(t.safe(target / name)) == t.sha(loader)]
-    t.need(len(proxies) == 1, 'The detected loader does not match the selected package. Choose its package in Graphics, or restore the existing setup first.')
-    proxy = proxies[0]
-    expected = {proxy if name == 'dxgi.dll' else name: data for name, data in payload.items()}
-    hashes = {}
-    for name, data in expected.items():
-        path = t.safe(target / t.relative(name))
-        t.need(path.is_file(), 'The detected package is incomplete: ' + name)
-        actual = t.digest(path)
-        t.need(name.lower().endswith('.ini') or actual == t.sha(data), 'An existing package file is unrecognized or changed: ' + name)
-        hashes[name] = actual
-    # No claiming an unknown companion DLL/addon by recursively owning a tree.
-    if (target / 'OptiScaler').exists():
-        for name in t.files(target / 'OptiScaler').values():
-            t.need('OptiScaler/' + name in expected or not name.lower().endswith(('.dll', '.addon64', '.exe')),
-                   'Another graphics runtime is present: OptiScaler/' + name)
+    proxy = _loader(e, target)
+    loader_sha = t.digest(t.safe(target / proxy))
     t.need(not any((target / name).exists() for name in ('renodx-dlss5.addon64', 'dlss5-feed.addon64', 'renodx-mfgunlock.addon64')),
            'Another NR/MFG hook is present. Resolve it before Adoption.')
+    known = None if clean else _recognize(config, settings, row, loader_sha, mode, cache)
+    if clean:
+        # Back up whatever is here, then install the selected package's newest pin.
+        # The setup found today needs no recipe: Restore returns to its backup.
+        release = _release(config, selected, settings)
+        payload, meta = _payload(e, config, release, mode, cache)
+        e.Y4MY_PROVIDER = release
+        hashes = {proxy: loader_sha, 'OptiScaler.ini': t.digest(ini)}
+        # Record the whole found tree so the fresh install may replace it.
+        if (target / 'OptiScaler').is_dir():
+            for name in t.files(target / 'OptiScaler').values():
+                hashes['OptiScaler/' + name] = t.digest(t.safe(target / 'OptiScaler' / t.relative(name)))
+    else:
+        t.need(known is not None, 'rtxForge doesn\'t recognize this OptiScaler build, so it can\'t keep it as is. '
+                                  'Back up and clean install replaces it with the newest package; Restore brings this setup back.')
+        e, release, payload, meta = known
+        expected = {proxy if name == 'dxgi.dll' else name: data for name, data in payload.items()}
+        hashes = {}
+        for name, data in expected.items():
+            path = t.safe(target / t.relative(name))
+            t.need(path.is_file(), 'The detected package is incomplete: ' + name)
+            actual = t.digest(path)
+            t.need(name.lower().endswith('.ini') or actual == t.sha(data), 'An existing package file is unrecognized or changed: ' + name)
+            hashes[name] = actual
+        # No claiming an unknown companion DLL/addon by recursively owning a tree.
+        if (target / 'OptiScaler').exists():
+            for name in t.files(target / 'OptiScaler').values():
+                t.need('OptiScaler/' + name in expected or not name.lower().endswith(('.dll', '.addon64', '.exe')),
+                       'Another graphics runtime is present: OptiScaler/' + name)
     nr, nrmeta = (None, None)
     if has_nr:
         nr, nrmeta = e.load_user_nr_runtime(str(t.safe(target / 'nvngx_dlssnr.dll')), family=None)
         t.need(nr is not None, 'The existing NR model could not be verified.')
         hashes['nvngx_dlssnr.dll'] = t.sha(nr)
     return dict(engine=e, game=game, row=dict(row), target=target, mode=mode, proxy=proxy,
-                hashes=hashes, payload=payload, meta=meta, nr=nr, nrmeta=nrmeta, provider=dict(e.Y4MY_PROVIDER))
+                hashes=hashes, payload=payload, meta=meta, nr=nr, nrmeta=nrmeta, provider=dict(release))
 
 
 def _feeder(config, row, settings):
+    """Any Feeder NR setup, whatever its Feeder, RenoDX or model version. Keeping
+    it records the files found; a clean install replaces them with the pinned stack."""
     e = bridge.module(config)
     root, exe, target = feeder.eligible(e, row, existing=True)
     t.need(e.scan_game_files(root)[2] is None, 'Anti-cheat detected; no Feeder offline profile is available.')
     t.need(feeder.state(e, target) is None, 'This Feeder setup already has a management record.')
-    found = feeder.inspect(e, row, cached=False)
+    t.need((target / 'dlss5-feed.addon64').is_file() and (target / 'ReShade.ini').is_file(), 'No Feeder NR setup was found.')
     names = [*feeder.lock()['assets'], *feeder.CONFIGS, feeder.MODEL]
-    hashes = {name: t.digest(t.safe(target / t.relative(name))) for name in names}
+    hashes = {name: feeder.digest(target / t.relative(name)) for name in names}
     return dict(engine=e, row=dict(row), target=target, root=root, exe=exe, mode='nr-only',
-                hashes=hashes, found=found, feeder=True, provider={'id': 'feeder', 'name': 'Feeder NR'})
+                hashes=hashes, feeder=True, provider={'id': 'feeder', 'name': 'Feeder NR'})
 
 
 def _checks(plan):
     e, target = plan['engine'], plan['target']
-    hashes = {name: t.digest(t.safe(target / t.relative(name))) for name in plan['hashes']}
+    # Absent files stay absent: an adopted Feeder setup may lack a recipe file.
+    hashes = {name: feeder.digest(target / t.relative(name)) for name in plan['hashes']}
     root = t.safe(plan['row']['game'])
     exe = t.safe(root / t.relative(plan['row']['exe']))
     return {'hashes': hashes, 'exe': t.digest(exe), 'baseline': bridge.fingerprint(e, plan['game']) if not plan.get('feeder')
@@ -134,7 +218,7 @@ def prepare(config, rows, operation, settings):
         ui.progress('Reviewing Adoption', game=row['name'], checked=index-1, total=len(rows))
         try:
             plan = (_feeder(config, row, settings) if row.get('runtime_provider') == 'feeder'
-                    else _native(config, row, settings, cache))
+                    else _native(config, row, settings, cache, clean=operation == 'adopt-clean'))
             e, target = plan['engine'], plan['target']
             t.need(str(target).casefold() not in seen, 'The same installation was selected twice.')
             seen.add(str(target).casefold())
@@ -143,8 +227,6 @@ def prepare(config, rows, operation, settings):
                 plan['offline'] = offline_routes.receipt(row)
                 t.need(not offline_routes.protected_running(), 'Close protected games before reviewing the offline-only exception.')
             if operation == 'adopt-clean':
-                t.need(settings.get('runtime_provider') == plan['provider']['id'] or (settings.get('runtime_provider') == 'custom' and plan['provider'].get('custom')),
-                       'Clean install requires the matching package. Adopt first, then restore before switching package families.')
                 if plan.get('feeder'):
                     files = feeder.stack_files(plan['engine'], settings)
                     plan['clean_payload'] = {}
@@ -152,7 +234,7 @@ def prepare(config, rows, operation, settings):
                         data = feeder.cached_input(plan['engine'], files[name]).read_bytes()
                         t.need(t.sha(data) == files[name]['sha256'], 'The stored Feeder stack changed: ' + name)
                         plan['clean_payload'][name] = data
-                    t.need(settings.get('nr_runtime') or feeder.MODEL in files, 'Choose a verified RTX 40 compatible NR model in Settings')
+                    t.need(settings.get('nr_runtime') or feeder.MODEL in files, 'Choose a verified NR model for your GPU in Settings')
                     model = t.safe(settings.get('nr_runtime') or files[feeder.MODEL]['path'])
                     feeder.model(model)
                     plan['clean_payload'][feeder.MODEL] = model.read_bytes()
@@ -164,8 +246,10 @@ def prepare(config, rows, operation, settings):
             plan['checks'] = _checks(plan)
             plan['settings'] = dict(settings)
             plans.append(plan)
-            summary = ('Back up this setup and install a fresh ' + plan['provider']['name'] + ' package.' if operation == 'adopt-clean'
-                       else 'Keep the current files and settings. Let rtxForge manage this setup.')
+            release = plan['provider'].get('tag') or plan['provider'].get('version') or ''
+            package = (plan['provider']['name'] + ' ' + release).strip()
+            summary = ('Back up this setup and install ' + package + '.' if operation == 'adopt-clean'
+                       else 'Keep the current files and settings (' + package + '). Let rtxForge manage this setup.')
             summary += ' Restore returns to the setup found today.'
             if plan.get('offline'):
                 summary += ' Offline only · launch from rtxForge. Online play is unavailable with this package.'
@@ -216,13 +300,24 @@ def _register_native(plan):
     bridge.share_install(e, game, {'mode': plan['mode']})
 
 
+def _feeder_model(target, cached):
+    """The NR model found in an adopted Feeder setup; an unlisted model is kept as found."""
+    if cached is None:
+        return None
+    try:
+        nr = feeder.model(target / feeder.MODEL)
+    except t.Refusal:
+        nr = {'path': str(target / feeder.MODEL), 'sha256': cached['sha256'], 'version': None, 'verified': False}
+    return {**nr, 'cache': cached}
+
+
 def _register_feeder(plan):
     e, target, row = plan['engine'], plan['target'], plan['row']
-    originals = {name: feeder.cache(e, target / name) for name in plan['hashes']}
-    nr = feeder.model(target / feeder.MODEL)
+    originals = {name: feeder.cache(e, target / name) if plan['hashes'][name] else None for name in plan['hashes']}
     record = dict(schema=1, provider_id='feeder', status='active', target=str(target), game=row['game'], exe=row['exe'],
                   name=row['name'], originals=originals, adopted=True, created_utc=t.now(),
-                  restore_boundary='before-adoption', nr_runtime={**nr, 'cache': originals[feeder.MODEL]}, installed_hashes=plan['hashes'])
+                  restore_boundary='before-adoption', nr_runtime=_feeder_model(target, originals[feeder.MODEL]),
+                  installed_hashes={name: value for name, value in plan['hashes'].items() if value})
     if plan['clean']:
         data = dict(plan['clean_payload'])
         text = data['ReShade.ini'].decode('utf-8-sig')
@@ -257,7 +352,10 @@ def execute(review):
                 paths = [feeder.state_dir(pe, target) if plan.get('feeder') else pe.state_dir_for(target)]
                 paths += [target / cross_os.MARKER, target / cross_os.SHARED]
                 if plan['clean']:
-                    paths += [target / name for name in plan['hashes']]
+                    # The fresh package may use another loader name and other root files.
+                    roots = {*plan['hashes'], *getattr(pe, 'PROXY_NAMES', ())}
+                    roots.update(name for name in plan.get('payload') or {} if '/' not in name and name != 'dxgi.dll')
+                    paths += [target / name for name in sorted(roots, key=str.casefold)]
                     paths += [target / 'OptiScaler']
                 checkpoint = session.capture(paths, label=plan['row']['name'])
                 ui.progress('Adopting package', game=plan['row']['name'], current=index, total=len(plans))

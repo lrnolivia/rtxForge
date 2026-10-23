@@ -98,13 +98,10 @@ public sealed class OverlayHelperWindow : Window
     readonly CancellationTokenSource stopping = new();
     readonly Subclass callback;
     readonly nint handle;
-    readonly Microsoft.UI.Dispatching.DispatcherQueueTimer captureTimeout;
     EngineForgeService? engine;
-    CompanionWindow? panel;
     NativePanelCoordinator? nativePanel;
     string? problem;
-    bool showWhenReady, closing, trayAdded;
-    const int HotkeyId = 0x5254;
+    bool closing, trayAdded;
     const uint TrayMessage = 0x8001;
 
     public OverlayHelperWindow(Mutex ownership)
@@ -114,9 +111,6 @@ public sealed class OverlayHelperWindow : Window
         Content = new Grid();
         AppWindow.IsShownInSwitchers = false;
         handle = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        captureTimeout = DispatcherQueue.CreateTimer();
-        captureTimeout.IsRepeating = false; captureTimeout.Interval = TimeSpan.FromSeconds(30);
-        captureTimeout.Tick += (_, _) => ConfigureShortcut();
         callback = WindowProc;
         SetWindowSubclass(handle, callback, 0x5255, 0);
         AppWindow.Hide();
@@ -135,32 +129,25 @@ public sealed class OverlayHelperWindow : Window
             if (closing) { result.Service?.Dispose(); return; }
             engine = result.Service;
             if (engine is null) { problem = result.Problem ?? "The overlay engine couldn't start."; return; }
-            panel = new CompanionWindow(engine, () => problem, ConfigureShortcut);
             nativePanel = new NativePanelCoordinator(engine, DispatcherQueue, ConfigureShortcut, Close);
-            if (showWhenReady) panel.Present();
         }
         catch (Exception error) { problem = error.Message; }
     }
 
+    // The panel lives in the game (OptiScaler or ReShade); the game reads its
+    // shortcut from the registry, so the helper registers no desktop hotkey.
     void ConfigureShortcut()
     {
-        captureTimeout.Stop();
         var settings = ForgeSettings.Load();
         if (settings.PanelHotkeyMigrated) settings = ForgeSettings.EditOverlay(s => s.PanelHotkey = s.PanelHotkey);
         OverlayHelper.ConfigurePanel(settings);
         Tray(true);
-        if (engine is not null)
-        {
-            engine.Settings.CopyOverlayFrom(settings);
-        }
-        panel?.ApplyPreferences();
-        UnregisterHotKey(handle, HotkeyId);
-        if (settings.OverlayRenderer is "optiscaler" or "game" || nativePanel?.OwnsShortcut == true || !settings.OverlayHelper) { problem = null; return; }
-        if (!OverlayShortcut.TryParse(settings.PanelHotkey, out _, out var shortcut, out var error)) { problem = error; return; }
-        var (modifiers, key) = shortcut;
-        problem = key != 0 && !RegisterHotKey(handle, HotkeyId, modifiers | 0x4000, key)
-            ? "Shortcut in use. Choose another in Settings → Overlay." : null;
+        engine?.Settings.CopyOverlayFrom(settings);
+        problem = OverlayShortcut.TryParse(settings.PanelHotkey, out _, out _, out var error) ? null : error;
     }
+
+    static void OpenSettings() =>
+        Process.Start(new ProcessStartInfo(Environment.ProcessPath!, "--overlay-settings") { UseShellExecute = false });
 
     async Task ListenAsync()
     {
@@ -174,13 +161,7 @@ public sealed class OverlayHelperWindow : Window
                 using var reader = new StreamReader(pipe, leaveOpen: true);
                 using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
                 var command = await reader.ReadLineAsync(stopping.Token).AsTask().WaitAsync(TimeSpan.FromSeconds(3));
-                if (command == "show") { showWhenReady = true; panel?.Present(); }
-                else if (command == "reload") ConfigureShortcut();
-                else if (command == "suspend-shortcut")
-                {
-                    UnregisterHotKey(handle, HotkeyId);
-                    captureTimeout.Start();
-                }
+                if (command == "reload") ConfigureShortcut();
                 else if (command == "reload-presets" && engine is not null) await engine.ReloadCompanionPresetsAsync();
                 else if (command == "refresh-targets" && nativePanel is not null) await nativePanel.ReloadTargetsAsync();
                 if (command == "exit" && nativePanel?.Applying == true)
@@ -195,15 +176,10 @@ public sealed class OverlayHelperWindow : Window
 
     nint WindowProc(nint hwnd, uint message, nuint wParam, nint lParam, nuint id, nuint data)
     {
-        if (message == 0x0312 && (int)wParam == HotkeyId)
-        {
-            if (panel?.IsShown == true) panel.HidePanel(); else { showWhenReady = true; panel?.Present(); }
-            return 0;
-        }
         if (message == TrayMessage)
         {
             var action = (uint)lParam & 0xffff;
-            if (action == 0x0202) { showWhenReady = true; panel?.Present(); }
+            if (action == 0x0202) OpenSettings();
             else if (action == 0x0205) ShowTrayMenu();
             return 0;
         }
@@ -215,18 +191,13 @@ public sealed class OverlayHelperWindow : Window
         var menu = CreatePopupMenu();
         try
         {
-            AppendMenuW(menu, 0, 1, "Open overlay");
             AppendMenuW(menu, 0, 2, "Overlay settings");
             AppendMenuW(menu, 0x800, 0, "");
             AppendMenuW(menu, 0, 3, "Exit overlay helper");
             GetCursorPos(out var point);
             SetForegroundWindow(handle);
             var selected = TrackPopupMenu(menu, 0x100, point.X, point.Y, 0, handle, 0);
-            if (selected == 1) { showWhenReady = true; panel?.Present(); }
-            if (selected == 2)
-            {
-                showWhenReady = true; panel?.OpenSettings();
-            }
+            if (selected == 2) OpenSettings();
             if (selected == 3) Close();
         }
         finally { DestroyMenu(menu); }
@@ -246,10 +217,9 @@ public sealed class OverlayHelperWindow : Window
     void Cleanup()
     {
         if (closing) return;
-        closing = true; stopping.Cancel(); captureTimeout.Stop(); Tray(false);
-        UnregisterHotKey(handle, HotkeyId);
+        closing = true; stopping.Cancel(); Tray(false);
         RemoveWindowSubclass(handle, callback, 0x5255);
-        nativePanel?.Dispose(); panel?.Shutdown(); engine?.Dispose();
+        nativePanel?.Dispose(); engine?.Dispose();
         instance.ReleaseMutex(); instance.Dispose();
     }
 
@@ -268,8 +238,6 @@ public sealed class OverlayHelperWindow : Window
     [DllImport("comctl32.dll")] static extern bool SetWindowSubclass(nint hwnd, Subclass proc, nuint id, nuint data);
     [DllImport("comctl32.dll")] static extern bool RemoveWindowSubclass(nint hwnd, Subclass proc, nuint id);
     [DllImport("comctl32.dll")] static extern nint DefSubclassProc(nint hwnd, uint message, nuint wParam, nint lParam);
-    [DllImport("user32.dll")] static extern bool RegisterHotKey(nint hwnd, int id, uint modifiers, uint key);
-    [DllImport("user32.dll")] static extern bool UnregisterHotKey(nint hwnd, int id);
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)] static extern bool Shell_NotifyIconW(uint message, ref NotifyIcon value);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern nint LoadImageW(nint instance, string name, uint type, int width, int height, uint flags);
     [DllImport("user32.dll")] static extern bool DestroyIcon(nint icon);

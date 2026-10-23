@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "about": "Reviewed per-game results shipped with rtxForge. A user's own Working or Problem result always comes first. Entries come from shared results: match by Steam appid, or by executable name for non-Steam games. verdict is Working or Problem; package is a lock.json or feeder.json id; note is generic, with no hardware or library specifics.",
+  "games": [
+    {
+      "appid": "2208920",
+      "exe": "ACValhalla.exe",
+      "package": "feeder",
+      "verdict": "Working",
+      "note": "Feeder NR on DirectX 12"
+    }
+  ]
+}

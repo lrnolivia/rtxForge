@@ -154,7 +154,7 @@ class FeederTest(unittest.TestCase):
         self.assertFalse(review['rows'])
         self.assertIn('Close this game', review['blocked'][0]['reason'])
 
-    def test_known_dx11_native_nr_refusal_can_use_feeder(self):
+    def test_known_dx11_native_nr_hint_can_use_feeder(self):
         row = self.game('bg3-dx11') | {'appid': '1086940', 'native_dlss': True}
         found = feeder.expand_rows(self.e, [row])[0]
         import skynizz_provider
@@ -178,10 +178,32 @@ class FeederTest(unittest.TestCase):
         row['anti_cheat'] = True
         self.assertNotIn('feeder_available', feeder.expand_rows(self.e, [row])[0])
         row['anti_cheat'] = False
-        self.e.pe_imported_dlls = lambda exe: {'d3d12.dll'}
+        self.e.pe_imported_dlls = lambda exe: {'vulkan-1.dll'}
         found = feeder.expand_rows(self.e, [row])[0]
         self.assertNotIn('feeder_available', found)
         self.assertEqual(found['blocked'], 'Original reason')
+
+    def test_directx12_games_without_dlss_get_an_unverified_feeder_route(self):
+        row = self.game('dx12') | {'blocked': 'Original reason', 'native_dlss': False}
+        self.e.pe_imported_dlls = lambda exe: {'d3d12.dll', 'dxgi.dll'}
+        found = feeder.expand_rows(self.e, [row])[0]
+        self.assertTrue(found['feeder_available'])
+        self.assertEqual(found['nr_route_note'], 'Feeder NR · DirectX 12 · not verified · NR only')
+        self.assertEqual(found['blocked'], '')
+        # Feeder's DirectX 12 session refuses a second DLSS runtime on the game's device.
+        found = feeder.expand_rows(self.e, [row | {'native_dlss': True}])[0]
+        self.assertNotIn('feeder_available', found)
+
+    def test_packed_executables_are_read_for_the_dlls_they_mention(self):
+        row = self.game('packed')
+        exe = Path(row['game']) / row['exe']
+        exe.write_bytes(pe(b'\0LoadLibrary\0D3D12.dll\0'))
+        self.e.pe_imported_dlls = lambda exe: {'Activation64.dll'}
+        self.assertEqual(feeder.graphics_apis(self.e, exe), {'d3d12'})
+        exe.write_bytes(pe(b'\0d3d11.dll\0d3d12.dll\0'))
+        self.assertEqual(feeder.graphics_apis(self.e, exe), {'d3d11', 'd3d12'})
+        exe.write_bytes(pe())
+        self.assertEqual(feeder.graphics_apis(self.e, exe), set())
 
     def test_nr_starts_off_unless_enabled_on_launch(self):
         row = self.game('startup-default')
@@ -285,6 +307,21 @@ class FeederTest(unittest.TestCase):
         self.assertEqual((directory / feeder.MODEL).read_bytes(), self.new)
         self.assertEqual((directory / 'ReShade.ini').read_bytes(), settings)
 
+    def test_previous_renodx_keeps_installed_games_working_but_is_not_imported(self):
+        earlier = pe(b'earlier renodx')
+        self.spec['previous_assets'] = {'renodx-dlss5.addon64': [{'version': 'earlier', 'sha256': t.sha(earlier), 'size': len(earlier)}]}
+        current, self.assets['renodx-dlss5.addon64'] = self.assets['renodx-dlss5.addon64'], earlier
+        row = self.game(installed=True)
+        old_source = self.root / 'old-source'
+        old_source.mkdir()
+        self.write_stack(old_source)
+        self.assets['renodx-dlss5.addon64'] = current
+        self.apply(self.prepare(row))
+        self.apply(self.prepare(row, 'uninstall'))
+        self.assertFalse((Path(row['game']) / 'renodx-dlss5.addon64').exists())
+        with self.assertRaisesRegex(t.Refusal, 'Feeder files are missing or changed: renodx-dlss5.addon64'):
+            feeder.import_stack(self.e, old_source)
+
     def test_wrong_stack_or_model_refused_without_game_changes(self):
         row = self.game(installed=True)
         before = self.files(row)
@@ -333,8 +370,10 @@ class FeederTest(unittest.TestCase):
         self.e._running_processes_under_root = lambda root: ['game.exe']
         self.assertFalse(self.prepare(row)['rows'])
         self.e._running_processes_under_root = lambda root: []
-        self.e.pe_imported_dlls = lambda exe: {'d3d12.dll'}
+        self.e.pe_imported_dlls = lambda exe: {'vulkan-1.dll'}
         self.assertFalse(self.prepare(row)['rows'])
+        self.e.pe_imported_dlls = lambda exe: {'d3d12.dll'}
+        self.assertFalse(self.prepare(row | {'native_dlss': True})['rows'])
         self.e.pe_imported_dlls = lambda exe: {'d3d11.dll'}
         (Path(row['game']) / 'OptiScaler.ini').write_text('[Other]\nkeep=true\n')
         self.assertFalse(self.prepare(row)['rows'])
@@ -471,6 +510,80 @@ class FeederTest(unittest.TestCase):
         self.assertFalse(report['log']['matches_current_model_version'])
         self.assertTrue(report['log']['predates_current_files'])
         self.assertIn('No matching NR evaluation', ' '.join(report['observations']))
+
+    def test_ea_wrapped_executable_delay_loading_d3d11_is_eligible(self):
+        # Mass Effect LE: the normal import table names only EA's activation DLL.
+        data = bytearray(0x600)
+        data[:2] = b'MZ'
+        struct.pack_into('<I', data, 60, 64)
+        data[64:68] = b'PE\0\0'
+        struct.pack_into('<HH', data, 68, 0x8664, 1)
+        struct.pack_into('<H', data, 84, 240)
+        struct.pack_into('<H', data, 88, 0x20B)
+        struct.pack_into('<II', data, 88 + 112 + 13 * 8, 0x1000, 64)
+        struct.pack_into('<IIII', data, 88 + 240 + 8, 0x200, 0x1000, 0x200, 0x400)
+        struct.pack_into('<II', data, 0x400, 1, 0x1100)
+        data[0x500:0x50A] = b'd3d11.dll\0'
+        row = self.game('mass-effect')
+        (Path(row['game']) / 'game.exe').write_bytes(bytes(data))
+        self.assertEqual(feeder.delay_imported_dlls(Path(row['game']) / 'game.exe'), {'d3d11.dll'})
+        self.e.pe_imported_dlls = lambda exe: {'Core/Activation64.dll'}
+        self.assertTrue(feeder.expand_rows(self.e, [row])[0]['feeder_available'])
+        (Path(row['game']) / 'game.exe').write_bytes(pe())
+        self.assertNotIn('feeder_available', feeder.expand_rows(self.e, [row])[0])
+
+    def test_install_again_after_the_game_folder_was_replaced(self):
+        row = self.game()
+        before = self.files(row)
+        self.apply(self.prepare(row))
+        # Steam verification restores the game's own files and removes Feeder's.
+        for name in self.files(row):
+            if name not in before:
+                (Path(row['game']) / name).unlink()
+        self.assertEqual(feeder.state(self.e, Path(row['game']))['status'], 'active')
+        self.apply(self.prepare(row))
+        self.assertTrue(feeder.inspect(self.e, row)['managed'])
+        self.apply(self.prepare(row, 'uninstall'))
+        self.assertEqual(self.files(row), before)
+
+    def test_presets_apply_to_the_games_reshade_ini_and_refuse_while_running(self):
+        row = self.game()
+        self.apply(self.prepare(row))
+        presets = {'nr_on_launch': False, 'nr_strength': 1.2,
+                   'feature_controls': {'intensity': 1.5, 'passes': 2, 'work_scale': 1.4, 'preset': 2, 'unknown': 9}}
+        review = self.prepare(row, 'apply', **presets)
+        self.assertEqual(set(review['plans'][0]['writes']), {'ReShade.ini'})
+        self.apply(review)
+        values = feeder._read_ini(Path(row['game']) / 'ReShade.ini')['RenoDX.DLSS5']
+        self.assertEqual((values['NeuralUplift'], values['NRIntensity'], values['NRPasses'], values['NRResolutionScale'], values['NRPreset']),
+                         ('0', '1.50', '2', '1.00', '2'))
+        self.assertEqual(values['NRLocalTone'], '2')
+        self.assertIn('already uses', self.prepare(row, 'apply', **presets)['blocked'][0]['reason'])
+        self.e._running_processes_under_root = lambda root: ['game.exe']
+        self.assertIn('Close this game', self.prepare(row, 'apply', nr_strength=.5)['blocked'][0]['reason'])
+
+    def test_panel_is_owned_and_replaces_the_manual_quiet_startup_addon(self):
+        quiet = pe(b'quiet startup')
+        addons = {name: pe(name.encode()) for name in feeder.PANELS}
+        for name, data in addons.items():
+            (self.root / name).write_bytes(data)
+        row = self.game(installed=True)
+        directory = Path(row['game'])
+        (directory / 'quiet-startup.addon64').write_bytes(quiet)
+        before = self.files(row)
+        with patch.object(feeder, 'panel', lambda e: {name: feeder.cache(e, self.root / name) for name in feeder.PANELS}), \
+                patch.dict(feeder.RETIRED, {'quiet-startup.addon64': t.sha(quiet)}):
+            review = self.prepare(row, reshade_intro=False)
+            self.assertEqual(review['plans'][0]['writes']['quiet-startup.addon64'], None)
+            self.apply(review)
+            for name, data in addons.items():
+                self.assertEqual((directory / name).read_bytes(), data)
+            self.assertFalse((directory / 'quiet-startup.addon64').exists())
+            self.assertTrue(feeder.inspect(self.e, row)['managed'])
+            self.apply(self.prepare(row, 'repair', reshade_intro=True))
+            self.assertEqual(feeder._read_ini(directory / 'ReShade.ini')['rtxForge.UI']['QuietStartup'], '0')
+            self.apply(self.prepare(row, 'uninstall'))
+        self.assertEqual(self.files(row), {name: before[name] for name in ('game.exe', 'save.dat', 'quiet-startup.addon64')})
 
 
 if __name__ == '__main__':

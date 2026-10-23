@@ -29,6 +29,9 @@ public sealed partial class GameModeView : UserControl
     GmUi ui;
 
     readonly Grid root = new();
+    readonly AppHeroBackdrop appHero = new();
+    readonly ArtworkLightLayer artworkLight = new();
+    ArtworkLightLayer pageLight = new();
     readonly Grid pageGrid = new();
     readonly ContentControl pageHost = new()
     {
@@ -42,7 +45,7 @@ public sealed partial class GameModeView : UserControl
     readonly Border toastHost = new() { Visibility = Visibility.Collapsed, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom };
     readonly Microsoft.UI.Dispatching.DispatcherQueueTimer toastTimer;
 
-    string page = "library";          // library · presets · settings · details
+    string page = "library";          // library · presets · packages · extras · settings · details
     string inputKind = "keyboard";    // keyboard · controller: drives hint glyphs
     string family = "xbox";
     string detectedFamily = "xbox";
@@ -59,9 +62,11 @@ public sealed partial class GameModeView : UserControl
     public GameModeView(MainWindow shell)
     {
         this.shell = shell;
-        t = GmTheme.For(shell.Settings.Theme);
+        GmMotion.ReducedMotion = () => shell.Settings.ReduceMotion;
+        FontFamily = GmUi.BodyFont;
+        t = GmTheme.For(shell.Settings.ResolvedGameModeTheme);
         t.Scale = shell.Settings.UiScaleKey;
-        ui = new GmUi(t);
+        ui = new GmUi(t) { ArtworkLight = artworkLight };
         Content = root;
         // Page (header, body, bottom navigation) sits in one ContentControl so a
         // dialog can disable it as a whole: the focus trap behind modals.
@@ -76,11 +81,17 @@ public sealed partial class GameModeView : UserControl
         pageHost.Content = pageGrid;
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        Grid.SetRowSpan(appHero, 2);
+        root.Children.Add(appHero);
+        Grid.SetRowSpan(artworkLight.Artwork, 2);
+        root.Children.Add(artworkLight.Artwork);
         root.Children.Add(pageHost);
+        Grid.SetRowSpan(artworkLight, 2);
         // Controller/keyboard hint bar stays (A Select · B Back · Y Library); dialogs sit above it.
         Grid.SetRow(footer, 1);
         root.Children.Add(footer);
         root.Children.Add(modalLayer);
+        root.Children.Add(artworkLight);
         root.Children.Add(toastHost);
 
         // Arrow keys move focus spatially, exactly like the D-pad.
@@ -105,15 +116,26 @@ public sealed partial class GameModeView : UserControl
                 SetInput("keyboard");
         };
         PointerPressed += (_, _) => SetInput("keyboard");
-        SizeChanged += (_, e) => { if (t.Resize(e.NewSize.Width, e.NewSize.Height)) Render(keepFocus: true); };
+        SizeChanged += (_, e) =>
+        {
+            appHero.Apply(t, page != "details", e.NewSize.Width, e.NewSize.Height);
+            if (t.Resize(e.NewSize.Width, e.NewSize.Height)) Render(keepFocus: true);
+        };
 
         toastTimer = DispatcherQueue.CreateTimer();
         toastTimer.Interval = TimeSpan.FromSeconds(4);
         toastTimer.Tick += (_, _) => { toastTimer.Stop(); toastHost.Visibility = Visibility.Collapsed; };
 
+        var stopObservingMotion = GmMotion.ObservePreferences(this);
         shell.GamesChanged += OnGamesChanged;
-        Unloaded += (_, _) => { shell.GamesChanged -= OnGamesChanged; Application.Current.FocusVisualKind = desktopFocusKind; };
-        Loaded += (_, _) => { Application.Current.FocusVisualKind = FocusVisualKind.Reveal; t.Resize(ActualWidth, ActualHeight); Render(); };
+        Unloaded += (_, _) => { stopObservingMotion(); shell.GamesChanged -= OnGamesChanged; Application.Current.FocusVisualKind = desktopFocusKind; };
+        Loaded += (_, _) =>
+        {
+            Application.Current.FocusVisualKind = FocusVisualKind.Reveal; t.Resize(ActualWidth, ActualHeight); Render();
+#if DEBUG
+            StartMotionReview();
+#endif
+        };
     }
 
     void OnGamesChanged()
@@ -131,45 +153,82 @@ public sealed partial class GameModeView : UserControl
     public void ApplySettings()
     {
         var size = (ActualWidth, ActualHeight);
-        t = GmTheme.For(shell.Settings.Theme);
+        t = GmTheme.For(shell.Settings.ResolvedGameModeTheme);
         t.Scale = shell.Settings.UiScaleKey;
         t.Resize(size.ActualWidth, size.ActualHeight);
-        ui = new GmUi(t);
+        ui = new GmUi(t) { ArtworkLight = artworkLight };
         Render(keepFocus: true);
     }
 
     // ---------- Rendering ----------
 
+    int renderRevision;
+    string? lastLibraryLayout;
     void Render(bool keepFocus = false)
     {
+        var revision = ++renderRevision;
+        var previousPage = lastRenderedPage;
+        var changingPage = previousPage is not null && previousPage != page;
+        var changingLayout = page == "library" && previousPage == "library" && lastLibraryLayout != shell.Settings.LibraryView;
+        var changingContent = changingPage || changingLayout;
+        lastLibraryLayout = shell.Settings.LibraryView;
+        lastRenderedPage = page;
         var focusedName = keepFocus ? FocusKey(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject) : null;
+        var requestedFocus = pendingFocusKey;
+        pendingFocusKey = null;
+        initialFocus = null;
         root.RequestedTheme = t.IsLight ? ElementTheme.Light : ElementTheme.Dark;
         ui.FocusBrush.Color = t.Focus;
-        root.Background = GmTheme.B(t.Window);
+        root.Background = GmTheme.B(page == "details" ? t.Window : t.View);
+        appHero.Apply(t, page != "details", ActualWidth, ActualHeight);
+        // Pages keep the theme's accent, even while a flow about one game is open.
+        var (accent, accentInk) = (ui.Accent, ui.AccentInk);
+        (ui.Accent, ui.AccentInk) = (GmTheme.Accent, GmTheme.AccentInk);
+        ui.ArtworkLight = artworkLight;
         RenderHeader();
-        body.Children.Clear();
-        body.Background = GmTheme.B(t.View);
+        // Retain at most one outgoing surface. New controls receive focus immediately.
+        while (body.Children.Count > 1) body.Children.RemoveAt(0);
+        var departing = changingContent && GmMotion.Enabled ? body.Children.LastOrDefault() as FrameworkElement : null;
+        if (departing is null) body.Children.Clear();
+        else { departing.IsHitTestVisible = false; foreach (var oldControl in Descendants(departing).OfType<Control>()) oldControl.IsEnabled = false; }
+        pageLight = new ArtworkLightLayer();
+        ui.ArtworkLight = pageLight;
+        body.Background = page == "details" ? GmTheme.B(t.View) : null;
         var content = page switch
         {
             "details" when detailsGame is not null => BuildDetails(detailsGame),
             "presets" => BuildPresets(),
+            "packages" => BuildPackages(),
+            "extras" => BuildExtras(),
             "settings" => BuildSettings(),
             _ => BuildLibrary(),
         };
-        body.Children.Add(content);
+        (ui.Accent, ui.AccentInk) = (accent, accentInk);
+        var scene = new Grid();
+        scene.Children.Add(pageLight.Artwork); scene.Children.Add(content); scene.Children.Add(pageLight);
+        body.Children.Add(scene);
+        ui.ArtworkLight = artworkLight;
+        if (departing is not null) GmMotion.Exit(departing, t.S, () => { if (body.Children.Contains(departing)) body.Children.Remove(departing); });
+        if (changingContent)
+        {
+            if (page == "details" || previousPage == "details") GmMotion.Dissolve(scene);
+            else GmMotion.Page(content, t.S, changingLayout);
+        }
         RenderFooter();
         // Focus: keep the same control when re-rendering, else the page's first target.
         DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
-            if (modals.Count > 0) return;
+            if (revision != renderRevision || modals.Count > 0) return;
             // Library: restore the scroll position first, so focusing only nudges it into view.
             if (page == "library" && libraryScroller is { } scroller) { scroller.UpdateLayout(); scroller.ChangeView(null, libraryScroll, null, true); }
-            var target =(focusedName is not null ? FindByKey(body, focusedName) ?? FindByKey(header, focusedName) : null)
-                         ?? (pendingFocusKey is not null ? FindByKey(pageGrid, pendingFocusKey) : null)
-                         ?? initialFocus ?? FirstFocusable(body);
+            Control? Current(string key) => FindByKey(scene, key) ?? FindByKey(header, key) ?? FindByKey(bottomNav, key);
+            var target = (requestedFocus is not null ? Current(requestedFocus) : null)
+                         ?? (focusedName is not null ? Current(focusedName) : null)
+                         ?? initialFocus ?? FirstFocusable(scene) ?? tabButtons.FirstOrDefault(b => b.Name == "gm_tab-" + page);
             initialFocus = null;
-            pendingFocusKey = null;
             (target as Control)?.Focus(FocusState.Keyboard);
+            artworkLight.RefreshPositions();
+            pageLight.RefreshPositions();
         });
     }
 
@@ -178,13 +237,21 @@ public sealed partial class GameModeView : UserControl
     string? pendingFocusKey;
 
     readonly List<Button> tabButtons = [];
+    string? lastRenderedPage;
+    readonly Dictionary<string, string> renderedSections = [];
+    void AnimateSection(string area, string key, FrameworkElement content)
+    {
+        if (renderedSections.TryGetValue(area, out var previous) && previous != key)
+            GmMotion.Dissolve(content);
+        renderedSections[area] = key;
+    }
 
     void RenderHeader()
     {
         header.Children.Clear();
         header.ColumnDefinitions.Clear();
-        header.Background = GmTheme.B(t.Window);
-        header.Height = t.Px(t.Compact ? 80 : 104);
+        header.Background = page == "details" ? GmTheme.B(t.Window) : null;
+        header.Height = t.Px(t.Compact ? 92 : 114);
         header.Padding = new Thickness(t.Px(56), t.Px(t.Compact ? 10 : 14), t.Px(56), t.Px(t.Compact ? 10 : 14));
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -217,7 +284,7 @@ public sealed partial class GameModeView : UserControl
         if (shell.Settings.NavigationPosition == "bottom")
         {
             bottomNav.Children.Clear();
-            bottomNav.Background = GmTheme.B(t.View);
+            bottomNav.Background = page == "details" ? GmTheme.B(t.View) : null;
             bottomNav.Padding = new Thickness(0, t.Px(8), 0, t.Px(18));
             bottomNav.Children.Add(tabs);
             bottomNav.Visibility = Visibility.Visible;
@@ -233,21 +300,24 @@ public sealed partial class GameModeView : UserControl
     Border BuildTabs()
     {
         tabButtons.Clear();
-        var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(8) };
-        foreach (var (key, label) in new[] { ("library", "Library"), ("presets", "Presets"), ("settings", "Settings") })
+        var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12) };
+        foreach (var (key, label, glyph) in new[] { ("library", "Library", "\uE7FC"), ("presets", "Presets", "\uE9F5"),
+            ("packages", "Packages", "\uE7B8"), ("extras", "Extras", "\uE90F"), ("settings", "Settings", "\uE713") })
         {
             var active = page == key || (key == "library" && page == "details");
-            var tab = ui.Button(label, () => Open(key), active ? GmKind.Active : GmKind.Transparent, 1, radius: 32,
-                padding: new Thickness(t.Px(26), t.Px(8), t.Px(26), t.Px(8)), minHeight: 54);
-            GmUi.Capsule(tab);
+            var caption = ui.IconLabel(glyph, label, 12);
+            var icon = (FontIcon)caption.Children[0];
+            icon.FontSize = t.Em(1.08); icon.Width = t.Px(28);
+            var tab = ui.Button(caption, () => Open(key), active ? GmKind.Active : GmKind.Transparent, .92, radius: 32,
+                padding: new Thickness(t.Px(24), t.Px(12), t.Px(24), t.Px(12)), minHeight: t.Compact ? 52 : 60);
             Key(tab, "tab-" + key);
             tabButtons.Add(tab);
             line.Children.Add(tab);
         }
         return GmUi.Capsule(new Border
         {
-            Background = GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(40)), Padding = new Thickness(t.Px(8)),
-            Child = line, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+            Background = GmTheme.B(t.Panel, page == "details" ? 1 : .72), CornerRadius = new CornerRadius(t.Px(40)), Padding = new Thickness(t.Px(t.Compact ? 8 : 10)),
+            Child = ui.Selection("navigation", line, tabButtons.First(b => b.Name == "gm_tab-" + (page == "details" ? "library" : page)), true), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
         });
     }
 
@@ -284,6 +354,9 @@ public sealed partial class GameModeView : UserControl
             pair.Children.Add(keyboard ? ui.Key(key) : ui.ControllerKey(family, action));
             pair.Children.Add(ui.Text(label, 0.85).With(x => x.VerticalAlignment = VerticalAlignment.Center));
             var hint = ui.Button(pair, () => Handle(action), GmKind.Transparent, 1, radius: 8, padding: new Thickness(t.Px(2)), minHeight: 0);
+            hint.Background = GmTheme.B(Microsoft.UI.Colors.Transparent);
+            hint.BorderThickness = new Thickness(0);
+            hint.Style = (Style)Application.Current.Resources["GmBareButtonStyle"];
             hint.IsTabStop = false;
             hintsPanel.Children.Add(hint);
         }
@@ -317,10 +390,10 @@ public sealed partial class GameModeView : UserControl
 
     void CycleTab(int direction)
     {
-        string[] order = ["library", "presets", "settings"];
+        string[] order = ["library", "presets", "packages", "extras", "settings"];
         var current = Array.IndexOf(order, page == "details" ? "library" : page);
-        Open(order[(current + direction + order.Length) % order.Length]);
         pendingFocusKey = "gm_tab-" + order[(current + direction + order.Length) % order.Length];
+        Open(order[(current + direction + order.Length) % order.Length]);
     }
 
     void Back()
@@ -329,7 +402,7 @@ public sealed partial class GameModeView : UserControl
         switch (page)
         {
             case "details": CloseDetails(); break;
-            case "presets" or "settings": Open("library"); break;
+            case "presets" or "packages" or "extras" or "settings": Open("library"); break;
             default: break;   // root B stays in Library; Exit App is an explicit menu action
         }
     }
@@ -346,11 +419,13 @@ public sealed partial class GameModeView : UserControl
         switch (action)
         {
             case "up" or "down" or "left" or "right":
+                NavigationMotion();
                 if (action is "left" or "right" && (focused as FrameworkElement)?.Tag is Adjustable adjustable)
                 {
                     adjustable.Adjust(action == "right" ? 1 : -1);
                     return;
                 }
+                if (action is "up" or "down" && MoveVirtualRow(focused, action == "down" ? 1 : -1)) return;
                 var direction = action switch
                 {
                     "up" => FocusNavigationDirection.Up, "down" => FocusNavigationDirection.Down,
@@ -403,9 +478,17 @@ public sealed partial class GameModeView : UserControl
         if (e.Key >= VirtualKey.GamepadA && e.Key <= VirtualKey.GamepadRightThumbstickLeft)
         { ControllerActivity(); e.Handled = true; return; }
         SetInput("keyboard");
+        if (e.Key is VirtualKey.Up or VirtualKey.Down or VirtualKey.Left or VirtualKey.Right) NavigationMotion();
         var ctrl = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
             .HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down);
         if (FocusManager.GetFocusedElement(XamlRoot) is TextBox or PasswordBox && e.Key != VirtualKey.Escape) return;
+        if (e.Key is VirtualKey.Up or VirtualKey.Down && MoveVirtualRow(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject, e.Key == VirtualKey.Down ? 1 : -1))
+        { e.Handled = true; return; }
+        if (e.Key == VirtualKey.Tab)
+        {
+            var backwards = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift).HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down);
+            if (MoveVirtualRow(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject, backwards ? -1 : 1)) { e.Handled = true; return; }
+        }
         switch (e.Key)
         {
             case VirtualKey.Escape or VirtualKey.Back or VirtualKey.GamepadB: Back(); e.Handled = true; break;
@@ -415,7 +498,9 @@ public sealed partial class GameModeView : UserControl
             case (VirtualKey)188 when ctrl: Open("settings"); e.Handled = true; break;   // Ctrl+,
             case VirtualKey.Number1 when ctrl: Open("library"); e.Handled = true; break;
             case VirtualKey.Number2 when ctrl: Open("presets"); e.Handled = true; break;
-            case VirtualKey.Number3 when ctrl: Open("settings"); e.Handled = true; break;
+            case VirtualKey.Number3 when ctrl: Open("packages"); e.Handled = true; break;
+            case VirtualKey.Number4 when ctrl: Open("extras"); e.Handled = true; break;
+            case VirtualKey.Number5 when ctrl: Open("settings"); e.Handled = true; break;
             case VirtualKey.F10: OpenMainMenu(); e.Handled = true; break;
             case VirtualKey.X: Handle("select"); e.Handled = true; break;
             case VirtualKey.PageUp: CycleTab(-1); e.Handled = true; break;
@@ -429,6 +514,7 @@ public sealed partial class GameModeView : UserControl
         switch (focused)
         {
             case Button button when button.IsEnabled:
+                GmMotion.Acknowledge(button);
                 (FrameworkElementAutomationPeer.CreatePeerForElement(button) as IInvokeProvider)?.Invoke();
                 break;
             case ToggleButton toggle when toggle.IsEnabled:
@@ -492,7 +578,14 @@ public sealed partial class GameModeView : UserControl
             Shadow = new ThemeShadow(), Translation = new System.Numerics.Vector3(0, 0, t.IsLight ? 12 : 32),
         };
         var layer = new Grid { Background = GmTheme.B(Microsoft.UI.Colors.Black, t.IsLight ? .18 : .60), Padding = new Thickness(t.Px(48)) };
-        layer.Children.Add(dialog);
+        // A screen about one game also tints its sliders and switches with that game's accent.
+        if (modalPalette is not null) Controls.AccentResources.Apply(dialog.Resources, modalPalette);
+        var dialogScene = new Grid { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        var dialogLight = new ArtworkLightLayer();
+        dialogScene.Children.Add(dialogLight.Artwork); dialogScene.Children.Add(dialog); dialogScene.Children.Add(dialogLight);
+        foreach (var button in Descendants(dialog).OfType<Button>()) GmGlow.Layer(button, dialogLight);
+        layer.Children.Add(dialogScene);
+        GmMotion.Dialog(dialogScene, t.S);
         layer.TabFocusNavigation = KeyboardNavigationMode.Cycle;
         layer.XYFocusKeyboardNavigation = XYFocusKeyboardNavigationMode.Enabled;
         modalLayer.Children.Add(layer);
@@ -503,8 +596,11 @@ public sealed partial class GameModeView : UserControl
         RenderFooter();
         DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
+            if (modals.Count == 0 || !ReferenceEquals(modals.Peek().Element, layer)) return;
             var target = focus ?? FirstFocusable(layer) as Control;
             target?.Focus(FocusState.Keyboard);
+            artworkLight.RefreshPositions();
+            pageLight.RefreshPositions();
 
         });
     }
@@ -518,6 +614,12 @@ public sealed partial class GameModeView : UserControl
         {
             modalLayer.Visibility = Visibility.Collapsed;
             pageHost.IsEnabled = true;
+            // A flow about one game usually opens its next screen straight away; the
+            // accent returns to the theme's once nothing replaces the closed modal.
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            {
+                if (modals.Count == 0 && !shell.Busy) UseGameAccent(null);
+            });
         }
         RenderFooter();
         if (modal.Restore is Control control && control.XamlRoot is not null) control.Focus(FocusState.Keyboard);
@@ -538,6 +640,7 @@ public sealed partial class GameModeView : UserControl
         };
         toastHost.Margin = new Thickness(0, 0, 0, t.Px(24));
         toastHost.Visibility = Visibility.Visible;
+        GmMotion.Feedback(toastHost);
         toastTimer.Stop();
         toastTimer.Start();
     }
@@ -550,7 +653,6 @@ public sealed partial class GameModeView : UserControl
         var rows = new List<UIElement>
         {
             ui.RowButton("Library", null, () => { CloseModal(); Open("library"); }),
-            ui.RowButton("Packages", null, () => _ = ShowPackagesAsync()),
             ui.RowButton("Rescan library", "F5", () => { CloseModal(); _ = RefreshAsync(); }, glyph: ""),
             ui.RowButton("Library options", null, () => { CloseModal(); OpenLibraryOptions(); }),
             ui.RowButton("Desktop UI", null, () => { CloseModal(); ExitRequested?.Invoke(); }),

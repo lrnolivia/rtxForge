@@ -1,6 +1,6 @@
 """Serialized desktop adapter for the RC1.38-derived transaction engine."""
 from pathlib import Path
-import importlib.util,sys,json,hashlib,zipfile,os,contextlib
+import importlib.util,sys,json,hashlib,zipfile,os,contextlib,functools
 import transactions as t,packages,ui,package_catalog,proton_prefix,cross_os,skynizz_provider,ada_mfg_provider,proton_mfg
 from operation_session import Session,Cancelled
 from storage import storage
@@ -357,6 +357,14 @@ def proton_gate(e,g,settings,mode):
     return proton_mfg.gate(settings,mode,settings.get('mfg_provider','universal'),prefix,
                            native_dlssg=bool(getattr(g,'dlssg',None)) if mode!='nr-only' else None)
 
+@functools.lru_cache(maxsize=1)
+def gpu_family():
+    """The detected RTX family (checked once per app run); None when detection is unavailable."""
+    import hardware
+    try:return hardware.detect().get('family')
+    except (OSError,ValueError):return None
+
+
 def prepare(config,rows,mode,operation,settings):
     if not (rows==[] and operation=='reset' and settings.get('defaults_only') is True):
         check_scope(rows,settings.get('operation_scope'))
@@ -404,9 +412,6 @@ def prepare(config,rows,mode,operation,settings):
         try:
             e.Y4MY_PROVIDER=dict(selected_provider)
             g=game(e,row)
-            if selected=='skynizz' and mode in ('nr-only','nr-mfg') and operation in ('install','repair'):
-                reason=skynizz_provider.native_nr_refusal(g.exe,g.appid)
-                t.need(not reason,reason)
             t.need(not any(g.root.resolve().is_relative_to(p) or p.is_relative_to(g.root.resolve()) for p in seen),'Duplicate or overlapping game selection; refresh the library')
             seen.append(g.root.resolve())
             baseline=e.load_baseline(g.target_dir)
@@ -441,7 +446,7 @@ def prepare(config,rows,mode,operation,settings):
                     release=dict(skynizz_provider.bundled_bridge(previous['tag'])[0])
                     # Explicitly update only the bridge. Keep the component owner,
                     # preset and production runtime identities selected for this game.
-                    for key in ('mfg_component','nr_preset',*skynizz_provider.PRODUCTION_RUNTIMES):
+                    for key in ('mfg_component','mfg_native','nr_preset',*skynizz_provider.PRODUCTION_RUNTIMES):
                         if key in previous:release[key]=previous[key]
                     release=skynizz_provider.validate_release(release)
                 selection=settings.get('skynizz_version','latest')
@@ -452,7 +457,16 @@ def prepare(config,rows,mode,operation,settings):
                     release=dict(releases[selection])
                     mfg_provider=settings.get('mfg_provider','universal')
                     t.need(mfg_provider in ('universal','integrated','mfg-unlock'),'Choose a supported MFG component.')
-                    if mfg_provider=='mfg-unlock':
+                    if mode in ('nr-mfg','mfg-only'):
+                        # RTX 50 has MFG of its own; the integrated and MFG Unlock patches target RTX 40.
+                        gpu=gpu_family()
+                        if gpu=='blackwell':mfg_provider='native'
+                        else:t.need(gpu in (None,'ada') or mfg_provider=='universal',
+                                    'This MFG package targets RTX 40. Choose Universal MFG for your GPU in Packages.')
+                    if mfg_provider=='native':
+                        # The game's own DLSS-G multiplier; no unlock is installed or enabled.
+                        release['mfg_native']=True
+                    elif mfg_provider=='mfg-unlock':
                         t.need(mode=='nr-mfg','MFG Unlock requires the combined native FG route.')
                         release['mfg_component']=ada_mfg_provider.pinned()
                     elif mfg_provider=='universal' and mode in ('nr-mfg','mfg-only'):
@@ -549,7 +563,7 @@ def prepare(config,rows,mode,operation,settings):
                         if runtime:=target_meta.get(component):
                             preview['launch_options']+=f" · production {label} {runtime['version']} · SHA-256 {runtime['sha256']}"
                     if skynizz_provider.startup_overlay_disabled(g):
-                        preview['launch_options']+=' · OptiScaler swapchain overlay disabled for inZOI startup'
+                        preview['launch_options']+=' · OptiScaler swapchain overlay disabled so this game starts'
                     if stack:
                         preview['launch_options']=proton_mfg.LABEL+' · '+preview['launch_options']
                         preview['proton']={'checks':stack['checks'],'tool':stack['tool'],'components':stack['components'],'gpu':stack['gpu']}

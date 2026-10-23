@@ -44,7 +44,6 @@ public sealed class OverlayPreferencesView : StackPanel
         Heading("Apply to games");
         OverlayUiReviewView? gameReview = null;
         if (engine is not null) { gameReview = new(engine); AddControl(gameReview); }
-        if (engine is not null) { Heading("In-game overlay updates"); AddControl(new OverlayUiReviewView(engine, packages: true)); }
         AddControl(feedback);
         void Availability()
         {

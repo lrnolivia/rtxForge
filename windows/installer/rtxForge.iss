@@ -72,13 +72,14 @@ Name: "gamemodeicon"; Description: "Add an ""rtxForge Game Mode"" shortcut (full
 ; newer engine dropped can never be imported by mistake.
 Type: filesandordirs; Name: "{app}\engine"
 Type: filesandordirs; Name: "{app}\python"
+; The rtxForge Overlay lives in each game; the desktop overlay window is retired.
+Type: files; Name: "{autoprograms}\rtxForge Overlay.lnk"
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\rtxForge"; Filename: "{app}\rtxForge.exe"
-Name: "{autoprograms}\rtxForge Overlay"; Filename: "{app}\rtxForge.exe"; Parameters: "--controls"
 Name: "{autoprograms}\rtxForge Game Mode"; Filename: "{app}\rtxForge.exe"; Parameters: "--game-mode"; Tasks: gamemodeicon
 Name: "{autodesktop}\rtxForge"; Filename: "{app}\rtxForge.exe"; Tasks: desktopicon
 
@@ -95,3 +96,23 @@ Type: filesandordirs; Name: "{app}\python"
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "rtxForge Overlay"; Flags: uninsdeletevalue
 
 Root: HKCU; Subkey: "Software\rtxForge\Overlay"; Flags: uninsdeletekey
+[Code]
+// [InstallDelete] removes the old engine and Python before files are copied. If a
+// running rtxForge (the app, its overlay helper or its engine) then locks a file,
+// Setup aborts and its rollback cannot bring those folders back. End every process
+// running from the install folder first, so an update never leaves the app without
+// its engine.
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ResultCode: Integer;
+  Folder: String;
+begin
+  Result := '';
+  Folder := ExpandConstant('{app}');
+  if DirExists(Folder) then
+    Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$f = ''' + Folder + '\''; ' +
+      'Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($f, [StringComparison]::OrdinalIgnoreCase) } | ' +
+      'ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; Start-Sleep -Milliseconds 800"',
+      '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;

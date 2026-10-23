@@ -45,6 +45,11 @@ def relative(name):
     return p
 
 
+# Where each package has been tested in a game, for the OS marks on Packages. Add an OS only after
+# an in-game run on it (Skynizz + Universal: Halo and Control; Feeder: Mass Effect 2, 2026-10-21).
+VERIFIED = {'skynizz': ('windows',), 'feeder': ('windows',)}
+
+
 def catalog(host=None):
     host = host or {'system': platform.system(), 'architecture': platform.machine(), 'ready': False}
     locks = json.loads((ROOT / 'providers/lock.json').read_text())
@@ -52,7 +57,8 @@ def catalog(host=None):
                  and host.get('architecture', '').lower() in ('x86_64', 'amd64')
                  and host.get('ready') is True)
     rows = []
-    for key in ('dlss-unlocked', 'y4my'):
+    # y4my's MFG stays at 2x on RTX 40 under Windows; DLSS-Unlocked is the alternative there.
+    for key in ('dlss-unlocked',) if host.get('system') == 'Windows' else ('dlss-unlocked', 'y4my'):
         record = locks[key]
         rows.append({
             'id': key, 'name': record['name'], 'version': record['tag'],
@@ -60,9 +66,10 @@ def catalog(host=None):
             'sha256': record['sha256'], 'available': supported,
             'reason': ('Ready to review for your system' if supported else
                        host.get('reason') or 'Verify a supported NVIDIA system first'),
-            'summary': ('Native MFG path; NR needs per-game verification' if key == 'dlss-unlocked'
+            'summary': ('NR and native MFG in one OptiScaler package' if key == 'dlss-unlocked'
                         else 'Alternative OptiScaler package; a local NR model may be needed'),
-            'recommended': key == 'dlss-unlocked' and supported,
+            # On Windows, Skynizz + Universal MFG is the flagship. Linux has not tested it yet.
+            'recommended': key == 'dlss-unlocked' and supported and host.get('system') != 'Windows',
         })
     if host.get('system')=='Linux':
         # Listed as on Windows, with honest Linux availability: Feeder is detected
@@ -86,11 +93,12 @@ def catalog(host=None):
                                if supported else host.get('reason') or 'Verify a supported NVIDIA system first',
                      'summary':'Single-loader NR + Ada MFG · requires a compiled bridge build · runtime QA pending'})
     if host.get('system')=='Windows':
-        rows.append({'id': 'feeder', 'name': 'Feeder NR', 'version': '1.19.0 / RenoDX 8.5.0-rc5',
+        feeder = json.loads((ROOT / 'providers/feeder.json').read_text(encoding='utf-8'))
+        rows.append({'id': 'feeder', 'name': feeder['name'], 'version': feeder['version'].removeprefix('Feeder '),
                      'url': 'https://github.com/jlrouzies-fr/DLSS5-Feeder', 'sha256': '',
                      'available': supported, 'recommended': False,
                      'reason': 'Requires a local Feeder stack and a compatible NR model' if supported else host.get('reason', 'Unsupported system'),
-                     'summary': 'NR for DirectX 11 games through ReShade. Recognize existing setups or use your local stack. NR Only.'})
+                     'summary': 'NR through ReShade for DirectX 11 games, and DirectX 12 games without DLSS (not verified yet). Recognize existing setups or use your local stack. NR Only.'})
         import skynizz_provider
         record=locks['skynizz']
         bridge=None
@@ -99,11 +107,19 @@ def catalog(host=None):
             bridge_ready=archive.is_file()
         except (OSError,ValueError,t.Refusal):
             bridge_ready=False
-        rows.append({'id':'skynizz','name':'Skynizz NR + Ada MFG bridge','version':record['tag']+' bridge · preview',
+        # The MFG packages that pair with this bridge, at their pinned versions; the app names
+        # the card after the one selected.
+        import universal_mfg_provider
+        mfg = {'universal': universal_mfg_provider.pinned()['version'], 'integrated': (bridge or record)['tag'],
+               'mfg-unlock': locks['mfg-unlock']['version']}
+        rows.append({'id':'skynizz','name':'Skynizz NR','version':(bridge or record)['tag']+' bridge','mfg_versions':mfg,
                      'url':'https://github.com/'+record['repo'],'sha256':(bridge or record)['sha256'],
                      'available':supported and bridge_ready,
-                     'reason':('Requires a compatible local RTX40 NR model, D3D12/DLSS and native FG; target runtime QA pending.' if bridge_ready else 'The combined NR + MFG bridge is not included in this app build.') if supported else host.get('reason') or 'Verify a supported NVIDIA system first',
-                     'summary':'Single-loader NR + Ada MFG · requires a compiled bridge build · runtime QA pending','recommended':False})
+                     'reason':('Requires a compatible local NR model, DirectX 12 with DLSS, and native DLSS Frame Generation for MFG.' if bridge_ready else 'The combined NR + MFG bridge is not included in this app build.') if supported else host.get('reason') or 'Verify a supported NVIDIA system first',
+                     'summary':'Recommended. Neural rendering in DirectX 12 games with DLSS, with frame generation from the MFG package you choose.',
+                     'recommended':supported and bridge_ready})
+    for row in rows:
+        row['verified'] = list(VERIFIED.get(row['id'], ()))
     return rows
 
 
@@ -277,12 +293,10 @@ def load_custom_payload(record):
 
 
 def community_sources():
-    """Discovery links, explicitly separate from tested deployment adapters."""
+    """Discovery links for projects rtxForge doesn't install. Packages it installs are not listed here."""
     return [
-        {'name':'Universal MFG Unlocker 1.6.1','url':'https://github.com/dashdogy/MFG-Unlocker/releases/tag/v1.6.1',
-         'note':'Pinned integration candidate. Upstream RTX 30/40 support; RTX 20 and the RTX 30 OptiScaler DLSSG route remain experimental. Requires OptiScaler 10; no deployment adapter yet.'},
         {'name':'wilsjo2 · NR Pre-SR Multipass','url':'https://github.com/wilsjo2/OptiScaler-DLSSNR-PreSR-Multipass',
-         'note':'Experimental NR for RTX 20–50. Upstream support is not rtxForge runtime validation; custom-layout review required.'},
+         'note':'Experimental NR for RTX 20–50. rtxForge hasn\'t tested it and can\'t install it.'},
         {'name':'Dagherbou · OptiScaler DLSSNR','url':'https://github.com/Dagherbou/OptiScaler_DLSSNR',
-         'note':'Alternative NR branch. Proton behavior depends on the exact build; no deployment adapter is claimed.'},
+         'note':'Another OptiScaler NR branch. rtxForge hasn\'t tested it and can\'t install it.'},
     ]

@@ -28,7 +28,9 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
     public ForgeSettings Settings { get; } = ForgeSettings.Load();
     public string EngineRoot { get; }
     static string SnapshotPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rtxForge", "state", "library-snapshot.json");
-    string SnapshotKey() => LibrarySnapshot.Key(Settings.RuntimeProvider, Settings.GameFolders, Settings.LibraryFolders);
+    // Each build keys its own snapshot, so an update never shows the previous build's verdicts.
+    static readonly string Build = typeof(EngineForgeService).Assembly.ManifestModule.ModuleVersionId.ToString("N");
+    string SnapshotKey() => LibrarySnapshot.Key(Settings.RuntimeProvider + "|" + Build, Settings.GameFolders, Settings.LibraryFolders);
     public IReadOnlyList<Game> CachedLibrary()
     {
         try { return LibraryGames(LibrarySnapshot.Read(SnapshotPath, SnapshotKey())); }
@@ -198,7 +200,16 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
     IReadOnlyList<Game> LibraryGames(JsonArray rows)
     {
         var art = new SteamArtwork(Settings.OnlineArt);
-        return LibraryLocations.Visible(rows.OfType<JsonObject>().Select(row => ToGame(row, art)), Settings.RemovedGames);
+        return LibraryLocations.Visible(rows.OfType<JsonObject>().Select(row => ToGame(OwnPackage(row), art)), Settings.RemovedGames);
+    }
+
+    /// <summary>A game with its own package shows that package's verdict (the scan keeps both).</summary>
+    JsonObject OwnPackage(JsonObject row)
+    {
+        if (row["game"]?.ToString() is not { } id || !Settings.GamePackages.TryGetValue(id, out var package) || package == Settings.RuntimeProvider
+            || row[package == "skynizz" ? "skynizz_blocked" : "package_blocked"] is not JsonValue verdict) return row;
+        row["blocked"] = verdict.DeepClone();
+        return row;
     }
 
     static Game ToGame(JsonObject row, SteamArtwork art)
@@ -259,8 +270,32 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         PrepareCoreAsync(operation, targets, tuning, mode, progress, cancel, false);
 
     async Task<OperationReview> PrepareCoreAsync(string operation, IReadOnlyList<Game> targets, Tuning tuning, string mode,
-        IProgress<PrepareProgress>? progress, CancellationToken cancel, bool supportedSubset)
+        IProgress<PrepareProgress>? progress, CancellationToken cancel, bool supportedSubset, string? provider = null)
     {
+        if (provider is null && operation is "install" or "repair" or "uninstall" or "reset" or "apply")
+        {
+            // Feeder games take their own route and games may choose their own package:
+            // one review, prepared per route and run in turn.
+            string Route(Game g) => g.UsesFeeder ? "feeder" : operation is "install" or "repair" ? Settings.PackageFor(g, operation) : Settings.RuntimeProvider;
+            var packages = targets.GroupBy(Route).ToArray();
+            // The engine sends a selection of only Feeder games down the Feeder route; the package setting stays.
+            string Provider(string route) => route == "feeder" ? Settings.RuntimeProvider : route;
+            if (packages.Length > 1)
+            {
+                var parts = new List<OperationReview>();
+                foreach (var package in packages)
+                    parts.Add(await PrepareCoreAsync(operation, package.ToArray(), tuning, mode, progress, cancel, supportedSubset, Provider(package.Key)));
+                foreach (var empty in parts.Where(p => p.Ready.Count == 0)) DiscardOperation(empty with { Supported = [] });
+                return new OperationReview(operation, "", parts.SelectMany(p => p.Ready).ToArray(), parts.SelectMany(p => p.Blocked).ToArray(),
+                    parts.SelectMany(p => p.Warnings).ToArray())
+                {
+                    Steps = parts.Where(p => p.Ready.Count > 0).Select(p => p with { Supported = [] }).ToArray(),
+                    Supported = parts.SelectMany(p => p.Supported).ToArray(),
+                };
+            }
+            provider = packages.FirstOrDefault() is { } only ? Provider(only.Key) : null;
+        }
+        provider ??= Settings.RuntimeProvider;
         var rows = new JsonArray(targets.Where(g => g.EngineRow is not null).Select(g => (JsonNode)g.EngineRow!.DeepClone()).ToArray());
         if (operation == "update-dlss")
         {
@@ -281,7 +316,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         var engineOperation = operation switch { "install" => "install", "uninstall" => "uninstall", "adopt" => "adopt", "adopt-clean" => "adopt-clean", _ => "reset" };
         var settings = new JsonObject
         {
-            ["runtime_provider"] = Settings.RuntimeProvider,
+            ["runtime_provider"] = provider,
             ["nr_on_launch"] = tuning.NrOnLaunch ?? Settings.NrOnLaunch,
             ["prefer_bundled_nr_only"] = supportedSubset && mode == "nr-only",
             ["manage_dlss_files"] = Settings.ManageDlssFiles,
@@ -320,7 +355,10 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         var readyRows = (result?["rows"] as JsonArray ?? []).OfType<JsonObject>()
             .Select(r => (Game: Match(r["name"]?.ToString(), r["game"]?.ToString()), Detail: r["detail"]?.ToString() ?? "", Summary: r["summary"]?.ToString()))
             .Where(r => r.Game is not null).Select(r => new OperationGameReview(r.Game!, r.Detail,
-                r.Summary ?? "Review the technical details before continuing.")).ToList();
+                (r.Summary ?? "Review the technical details before continuing.")
+                // Games can use different packages in one review, so each says which.
+                + (operation is "install" or "repair" && !r.Game!.UsesFeeder && ForgeSettings.GamePackageChoices.Any(c => c.Key == provider)
+                    ? "\nPackage: " + Settings.PackageName(provider) : ""))).ToList();
         var blocked = (result?["blocked"] as JsonArray ?? []).OfType<JsonObject>()
             .Select(b => new ReviewBlock(Match(b["name"]?.ToString()), b["name"]?.ToString() ?? "", b["reason"]?.ToString() ?? "", b["summary"]?.ToString())).ToList();
         var warnings = (result?["warnings"] as JsonArray ?? []).OfType<JsonObject>()
@@ -337,14 +375,14 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             var candidates = targets.Where(g => !readyRows.Any(r => r.Game.Id == g.Id)
                 && !g.AntiCheatDetected && g.EngineRow?["exe"] is not null).ToArray();
             var feeder = candidates.Where(g => g.UsesFeeder).ToArray();
-            var nrOnly = candidates.Where(g => mode == "nr-mfg" && !g.UsesFeeder && Settings.RuntimeProvider == "skynizz"
+            var nrOnly = candidates.Where(g => mode == "nr-mfg" && !g.UsesFeeder && provider == "skynizz"
                 && g.EngineRow?["native_dlss"]?.GetValue<bool>() == true
                 && g.EngineRow?["native_dlssg"]?.GetValue<bool>() != true).ToArray();
             foreach (var group in new[] { feeder, nrOnly })
             {
                 if (group.Length == 0) continue;
                 OperationReview supported;
-                try { supported = await PrepareCoreAsync(operation, group, tuning, "nr-only", progress, cancel, true); }
+                try { supported = await PrepareCoreAsync(operation, group, tuning, "nr-only", progress, cancel, true, provider); }
                 catch (EngineException) { continue; } // Keep the original refusal; no partial recipe was admitted.
                 // Keep route-specific setup problems even when other Feeder
                 // targets in this group can proceed.
@@ -359,7 +397,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
                         : "Use DirectX 12 and enable DLSS in the game for NR. Native frame generation is unavailable."));
                 else DiscardOperation(supported);
             }
-            var mfgOnly = candidates.Where(g => mode == "nr-mfg" && !g.UsesFeeder && Settings.RuntimeProvider == "skynizz"
+            var mfgOnly = candidates.Where(g => mode == "nr-mfg" && !g.UsesFeeder && provider == "skynizz"
                 && !available.SelectMany(p => p.Review.Ready).Any(p => p.Game.Id == g.Id)
                 && g.EngineRow?["native_dlssg"]?.GetValue<bool>() == true
                 && blocked.Any(b => b.Game?.Id == g.Id && (b.Reason.Contains("NR runtime", StringComparison.OrdinalIgnoreCase)
@@ -368,7 +406,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             {
                 try
                 {
-                    var supported = await PrepareAsync(operation, mfgOnly, tuning, "mfg-only", progress, cancel);
+                    var supported = await PrepareCoreAsync(operation, mfgOnly, tuning, "mfg-only", progress, cancel, false, provider);
                     if (supported.Ready.Count > 0)
                         available.Add(new(supported, false, true, "Frame generation is supported. Neural rendering could not be prepared with the selected NR runtime."));
                     else DiscardOperation(supported);

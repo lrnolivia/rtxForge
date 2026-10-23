@@ -13,14 +13,6 @@ public sealed partial class MainWindow
         if (!Service.IsPreview) ConfigureCompanionShortcut();
     }
 
-    public async void OpenCompanion(Game? game = null)
-    {
-        if (Service.IsPreview) { ShowToast("Live controls require the installed engine."); return; }
-        if (Settings.OverlayRenderer == "game") { ShowToast("Press " + Settings.PanelHotkey + " inside a game with the in-game renderer package."); return; }
-        try { await OverlayHelper.CommandAsync("show"); }
-        catch (Exception error) { ShowToast(error.Message); }
-    }
-
     public async void ConfigureCompanionShortcut()
     {
         if (Service.IsPreview) return;

@@ -51,7 +51,7 @@ public sealed partial class GameModeView
         list.Children.Add(ui.Group(review.Items.Select(i => (UIElement)ReviewRow(Find(i), i.Title, i.Detail, true, i.Details)), t.Card));
         if (review.Blocked.Count > 0)
         {
-            list.Children.Add(ui.Text($"Skipped · {review.Blocked.Count}", 0.88, weight: FontWeights.SemiBold));
+            list.Children.Add(ui.Heading($"Skipped · {review.Blocked.Count}", 0.88));
             list.Children.Add(ui.Group(review.Blocked.Select(b => (UIElement)ReviewRow(Find(b), b.Title, b.Detail, false, b.Details)), t.Card));
         }
         content.Children.Add(new ScrollViewer { Content = list, MaxHeight = t.Px(t.Compact ? 260 : 380), HorizontalScrollMode = ScrollMode.Disabled });
@@ -82,8 +82,8 @@ public sealed partial class GameModeView
     void SetPrimaryEnabled(Button button, bool on)
     {
         button.IsEnabled = on;
-        button.Background = GmTheme.B(on ? GmTheme.Accent : t.Disabled);
-        button.Foreground = GmTheme.B(on ? GmTheme.AccentInk : t.DisabledFg);
+        button.Background = GmTheme.B(on ? ui.Accent : t.Disabled);
+        button.Foreground = GmTheme.B(on ? ui.AccentInk : t.DisabledFg);
     }
 
     static string Shorten(string text) => text.Length > 240 ? text[..240].TrimEnd() + "…" : text;
@@ -389,7 +389,7 @@ public sealed partial class GameModeView
         try { records = await shell.Service.ExtraRecordsAsync(g); }
         catch (InvalidOperationException) { return; }
         if (records.Count == 0 || detailsGame != g || detailsSection != "Tools") return;
-        host.Children.Add(ui.H2("Installed Tools", 1.06));
+        SectionTitle(host, "Installed Tools", "Restore puts the game's original files back.");
         host.Children.Add(ui.Group(records.Select(r => (UIElement)ui.RowButton(r.Title, "Restore", async () =>
         {
             await RunReviewAsync("Restore Tool", () => shell.Service.ReviewExtraRestoreAsync(r));
@@ -399,19 +399,34 @@ public sealed partial class GameModeView
 
     // ---------- Details › DLSS Files ----------
 
-    async Task FillDlssInventoryAsync(Game g, StackPanel host, Button restore)
+    async Task FillDlssInventoryAsync(Game g, StackPanel host, Button restore, Border backupFact)
     {
+        // As on the desktop: nvngx_dlss.dll first, then each file found, with the latest
+        // backup shown on the Restore card.
+        var rows = new List<UIElement> { ui.PreferenceRow("nvngx_dlss.dll", g.DlssVersion is null ? "Not detected" : "Version " + g.DlssVersion, null) };
+        void Show()
+        {
+            // The rows move to a new group, so release them from the old one first.
+            if (host.Children.FirstOrDefault() is Border { Child: StackPanel old }) old.Children.Clear();
+            host.Children.Clear(); host.Children.Add(ui.Group(rows));
+        }
+        Show();
         DlssInventory inventory;
         try { inventory = await shell.Service.DlssInventoryAsync(g); }
-        catch (InvalidOperationException error) { host.Children.Add(ui.P(error.Message)); return; }
+        catch (InvalidOperationException error) { SetFactValue(backupFact, error.Message); return; }
         if (detailsGame != g || detailsSection != "DLSS Files") return;
-        var rows = new List<UIElement>();
         if (inventory.Blocked.Length > 0) rows.Add(ui.PreferenceRow("File management unavailable", inventory.Blocked, null));
         foreach (var file in inventory.Files)
-            rows.Add(ui.PreferenceRow(file.Title, file.Path + " · " + file.Provenance, ui.Text(file.Current, 0.85, t.Muted)));
-        rows.Add(ui.PreferenceRow("Latest backup", null, ui.Text(inventory.LatestBackup ?? "None", 0.85, t.Muted)));
-        host.Children.Add(ui.Group(rows));
+            rows.Add(ui.PreferenceRow(file.Title, $"{file.Path} · {file.Current} · {file.Provenance}", null));
+        Show();
+        SetFactValue(backupFact, inventory.LatestBackup is { } date ? "Latest backup " + date : "No DLSS file backups for this game.");
         restore.IsEnabled = inventory.LatestBackup is not null;
+    }
+
+    /// <summary>The value line of a DetailFact card.</summary>
+    static void SetFactValue(Border fact, string text)
+    {
+        if (fact.Child is Panel { Children.Count: > 1 } lines && lines.Children[1] is TextBlock value) value.Text = text;
     }
 
     async Task RestoreDlssAsync(Game g)
@@ -426,6 +441,34 @@ public sealed partial class GameModeView
     {
         try { await shell.Service.SaveNotesAsync(g, status, notes); Toast("Notes saved."); }
         catch (InvalidOperationException error) { ShowDone(false, "Save notes", error.Message); }
+    }
+
+    async Task TryAnywayAsync(Game g, bool on)
+    {
+        try { await shell.Service.SetTryAnywayAsync(g, on); }
+        catch (InvalidOperationException error) { ShowDone(false, "Try anyway", error.Message); return; }
+        Toast(on ? $"{g.Name} can be installed now. Review the install before applying it." : $"{g.Name} is checked normally again.");
+        await shell.ScanAsync();
+    }
+
+    /// <summary>Preview the exact issue text, then open it in the browser. Nothing is sent from rtxForge.</summary>
+    async Task ShareResultAsync(Game g, bool notes = false)
+    {
+        CompatShare share;
+        try { share = await shell.Service.CompatShareAsync(g, shell.SharePackage(g), notes); }
+        catch (InvalidOperationException error) { ShowDone(false, "Share result", error.Message); return; }
+        var content = new StackPanel { Spacing = t.Px(14) };
+        content.Children.Add(ui.P("This opens a prefilled issue in your browser. Nothing is sent until you post it there.", 0.9));
+        content.Children.Add(new ScrollViewer
+        {
+            MaxHeight = t.Px(t.Compact ? 220 : 340),
+            Content = new TextBlock { Text = share.Body, FontFamily = new FontFamily("Cascadia Mono, Consolas"), FontSize = t.Em(0.7), Foreground = GmTheme.B(t.Muted), TextWrapping = TextWrapping.Wrap },
+        }.With(s => { s.IsTabStop = true; ui.Focusable(s); }));
+        var toggle = ui.Button(notes ? "Leave out my notes" : "Include my notes", () => { CloseModal(); _ = ShareResultAsync(g, !notes); }, GmKind.Card, 0.92,
+            enabled: notes || g.Notes.Trim().Length > 0);
+        var cancel = ui.Button("Cancel", CloseModal, GmKind.Card, 0.92);
+        var open = ui.Button("Open in browser", () => { CloseModal(); if (share.Url.Length > 0) MainWindow.OpenUri(share.Url); }, GmKind.Primary, 0.92);
+        ShowModal("Share result · " + g.Name, content, [toggle, cancel, open], CloseModal, 1200, open);
     }
 
     async Task RecordTestAsync(Game g)
@@ -446,10 +489,6 @@ public sealed partial class GameModeView
 
     IReadOnlyList<SettingsGroup> RecoveryGroups() =>
     [
-        new("App storage", null,
-        [ui.RowButton("Storage usage", "View", () => _ = AppStorageAsync(), description: "Review download cleanup. Restore backups and settings are kept.", glyph: "")]),
-        new("Restore", "Review a backup before restoring game files.",
-        [ui.RowButton("Previous changes", null, () => _ = PreviousChangesAsync(), description: "Browse available recovery records.", glyph: "")]),
         new("Cleanup", null,
         [ui.RowButton("Old NR files", null, async () =>
         {
@@ -509,33 +548,6 @@ public sealed partial class GameModeView
         if (result?.Path is not { } installer || result.Errors.Count > 0) return;
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(installer) { UseShellExecute = true });
         shell.Close();
-    }
-
-    // ---------- Main menu › Packages ----------
-
-    async Task ShowPackagesAsync()
-    {
-        CloseAllModals();
-        PackageCatalog catalog;
-        try { catalog = await shell.Service.PackagesAsync(); }
-        catch (InvalidOperationException error) { ShowDone(false, "Packages", error.Message); return; }
-        var content = new StackPanel { Spacing = t.Px(18) };
-        content.Children.Add(ui.P(catalog.Status + ". Every game change is reviewed before it is applied."));
-        var rows = catalog.Packages.Select(item =>
-        {
-            var current = shell.Settings.RuntimeProvider == item.Id;
-            return (UIElement)ui.RowButton(item.Name, current ? "In use" : item.Available ? "Use" : "Unavailable", () =>
-            {
-                CloseModal();
-                shell.SelectPackage(item.Id);
-                Toast("Package selected. Select games, then choose Install Features.");
-            }, description: item.Version + " · " + (item.Available ? item.Summary : item.Reason), enabled: item.Available && !current);
-        }).ToList();
-        rows.Add(ui.RowButton("Add custom package", catalog.CustomName, () => _ = InspectPackageAsync(),
-            description: "ZIP archives. Files and instructions are inspected without running them.", enabled: !shell.Service.IsPreview));
-        content.Children.Add(new ScrollViewer { Content = ui.Group(rows, t.Card), MaxHeight = t.Px(t.Compact ? 320 : 480) });
-        var back = ui.Button("Back", CloseModal, GmKind.Card, 0.92);
-        ShowModal("Packages", content, [back], CloseModal, 1100);
     }
 
     async Task InspectPackageAsync()

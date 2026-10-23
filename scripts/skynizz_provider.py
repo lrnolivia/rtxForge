@@ -333,7 +333,8 @@ def configure(e, source, saved=None, mode='nr-only', mfg_multiplier='auto', game
         if (preset := getattr(e, 'Y4MY_PROVIDER', {}).get('nr_preset')) is not None:
             text = e.set_ini_value(text, 'DlssNr', 'Preset', str(preset))
     if mode in ('nr-mfg', 'mfg-only'):
-        unlock = 'false' if component else 'true'
+        # A component owns the unlock; RTX 50 needs none (its own MFG).
+        unlock = 'false' if component or getattr(e, 'Y4MY_PROVIDER', {}).get('mfg_native') else 'true'
         for section, values in {'DLSSG':{'AdaMfgUnlock':unlock,'AdaBlackwellKernels':unlock,'AmpereMfgUnlock':'false'},
                                 'FrameGen':{'Enabled':'false','FGInput':'nofg','FGOutput':'nofg','FGNvngxReplacement':'None'}}.items():
             for key, value in values.items():
@@ -439,8 +440,10 @@ def check_target(e, game, baseline):
 def native_nr_refusal(exe, appid=None):
     # Larian documents DX11/Vulkan only; neither reaches this D3D12 NR hook.
     # https://larian.com/support/faqs/graphical-issues_83
+    # A routing hint (Feeder NR covers the DX11 build), never a block: other
+    # routes reach these games, so the install review stays the user's call.
     if str(appid) == '1086940' or Path(exe or '').name.casefold() in {'bg3.exe', 'bg3_dx11.exe'}:
-        return 'Native NR needs DirectX 12. Baldur’s Gate 3 uses DirectX 11 or Vulkan; this package cannot provide NR here.'
+        return 'Experimental: this game runs DirectX 11 or Vulkan, and this NR hook was tested on DirectX 12.'
     return ''
 
 
@@ -452,8 +455,6 @@ def scan_rows(rows, mode='nr-only'):
             row['blocked'] = 'No Windows executable found'
         elif row.get('anti_cheat') and not row.get('offline_only'):
             row['blocked'] = 'Anti-cheat detected'
-        elif mode != 'mfg-only' and native_nr_refusal(row.get('exe'), row.get('appid')):
-            row['blocked'] = native_nr_refusal(row.get('exe'), row.get('appid'))
         elif not row.get('native_dlss'):
             row['blocked'] = 'Skynizz needs a native DLSS Super Resolution route; D3D12/DLSS must be used in game.'
         elif mode == 'nr-mfg' and not row.get('native_dlssg'):
@@ -461,4 +462,6 @@ def scan_rows(rows, mode='nr-only'):
         else:
             row['blocked'] = ''
         row['nr_route_note'] = 'Requires D3D12 with DLSS enabled · combined-build runtime validation pending' if mode == 'nr-mfg' else 'NR Only · requires D3D12 with DLSS enabled'
+        if mode != 'mfg-only' and native_nr_refusal(row.get('exe'), row.get('appid')):
+            row['nr_route_note'] = native_nr_refusal(row.get('exe'), row.get('appid'))
     return rows

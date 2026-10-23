@@ -38,7 +38,7 @@ class AdaMfgTest(unittest.TestCase):
                                ('manual', 'BlueClient/Binaries/Win64/inZOI-Win64-Shipping.exe'),
                                ('manual', 'BlueClient\\Binaries\\Win64\\inZOI-Win64-Shipping.exe')]:
                 game = SimpleNamespace(appid=appid, exe=exe, target_dir=target)
-                with self.subTest(appid=appid, exe=exe), self.assertRaisesRegex(t.Refusal, 'Choose Integrated Ada MFG'):
+                with self.subTest(appid=appid, exe=exe), self.assertRaisesRegex(t.Refusal, "isn't supported in this game"):
                     provider.check_target(e, game, None)
                 self.assertEqual(list(target.iterdir()), [])
             provider.check_target(e, SimpleNamespace(appid='other', exe='game.exe', target_dir=target), None)
@@ -47,7 +47,7 @@ class AdaMfgTest(unittest.TestCase):
         pinned = provider.pinned()
         self.assertEqual(provider.validate(pinned), pinned)
         for key, value in [('url', 'https://example.org/other.addon64'), ('sha256', 'a' * 64),
-                           ('commit', 'a' * 40), ('version', '1.4.5'), ('release_size', 1)]:
+                           ('commit', 'a' * 40), ('version', '1.4.4'), ('version', '9.9.9'), ('release_size', 1)]:
             with self.subTest(key=key), self.assertRaises(t.Refusal):
                 provider.validate(pinned | {key: value})
         for key in ('sha256', 'dll_sha256', 'url'):
@@ -87,7 +87,7 @@ class AdaMfgTest(unittest.TestCase):
                     self.assertEqual(url.get_header('User-agent'), 'rtxForge/1.0')
                     url = url.full_url
                 return setup if url == host['url'] else addon if url == record['url'] else notice
-            with patch.object(provider, 'KNOWN', {'1.4.4': (record['commit'], record['sha256'], len(dll))}), \
+            with patch.object(provider, 'KNOWN', {record['version']: (record['commit'], record['sha256'], len(dll))}), \
                  patch.object(provider, 'HOST', (host['sha256'], host['release_size'], host['dll_sha256'], len(dll))), \
                  patch.object(provider, 'storage', return_value=folder), patch.object(provider.packages, 'download', side_effect=download):
                 data = provider.load_payload({}, record)

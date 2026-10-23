@@ -16,20 +16,29 @@ namespace RtxForge.Windows.GameMode;
 /// </summary>
 public sealed partial class GameModeView
 {
-    async Task RunOperationAsync(string operation, IReadOnlyList<Game> targets, Tuning? values = null)
+    /// <summary>Runs after the reviewed operation completes; each operation sets or clears it.</summary>
+    Action? whenCompleted;
+
+    async Task RunOperationAsync(string operation, IReadOnlyList<Game> targets, Tuning? values = null, Action? completed = null)
     {
+        whenCompleted = completed;
         if (shell.Busy) { Toast("Another operation is running."); return; }
         ArgumentNullException.ThrowIfNull(targets);
         if (targets.Count == 0) { Toast("No eligible games."); return; }
         if ((operation is "install" or "uninstall") && targets.Any(g => g.AdoptionAvailable))
         {
-            await shell.ReviewAdoptionAsync(targets.Where(g => g.AdoptionAvailable).ToArray());
+            // Another tool's setup: Install offers Adoption; Restore has nothing of rtxForge's to undo.
+            var adoptable = targets.Where(g => g.AdoptionAvailable).ToArray();
+            if (operation == "install") await shell.ReviewAdoptionAsync(adoptable);
+            else Toast(MainWindow.AdoptionSkipped(adoptable.Length));
             targets = targets.Where(g => !g.AdoptionAvailable).ToArray();
             if (targets.Count == 0) return;
         }
+        // One game: its accent on every screen of the flow, as in its Details.
+        await UseGameAccentAsync(Controls.AccentResources.Single(targets));
         if (operation == "install" && values is null)
         {
-            values = await AskPresetsAsync(targets.Count == 1 ? shell.GameTuning(targets[0]) : shell.Settings.Presets);
+            values = await AskPresetsAsync(targets.Count == 1 ? shell.GameTuning(targets[0]) : shell.Settings.Presets, GameOverview.Mode(targets, shell.Mode));
             if (values is null) return;
         }
         values ??= shell.Settings.Presets;
@@ -59,6 +68,20 @@ public sealed partial class GameModeView
         ShowReview(operation, review);
     }
 
+    Services.AccentPalette? modalPalette;
+
+    async Task UseGameAccentAsync(Game? game) =>
+        UseGameAccent(game is null ? null : await ArtAccent.ForGameAsync(game));
+
+    /// <summary>Primary buttons, toggles and WinUI accent controls follow this palette; null restores the theme's.</summary>
+    void UseGameAccent(Services.AccentPalette? palette)
+    {
+        modalPalette = palette;
+        if (palette is null) { (ui.Accent, ui.AccentInk) = (GmTheme.Accent, GmTheme.AccentInk); return; }
+        var colors = t.GameColors(palette);
+        (ui.Accent, ui.AccentInk) = (colors.Accent, colors.Ink);
+    }
+
     static string ReviewTitle(string operation) => operation switch
     {
         "install" => "Review Installation",
@@ -77,11 +100,11 @@ public sealed partial class GameModeView
         "install" => "Installing", "uninstall" => "Restoring", "update-dlss" => "Updating", _ => "Applying",
     };
 
-    Task<Tuning?> AskPresetsAsync(Tuning initial)
+    Task<Tuning?> AskPresetsAsync(Tuning initial, string mode)
     {
         var done = new TaskCompletionSource<Tuning?>();
         var (rows, value) = PresetRows(initial, legacy: shell.Settings.RuntimeProvider != "skynizz", embedded: true,
-            dynamicSupported: shell.Settings.DynamicMfgSupported, installation: true);
+            dynamicSupported: shell.Settings.DynamicMfgSupported, installation: true, mode: mode);
         var content = new StackPanel { Spacing = t.Px(20) };
         content.Children.Add(ui.P($"{ProviderName()} · Choose startup settings. You can adjust them later.", 0.8));
         if (shell.Settings.RuntimeProvider != "feeder")
@@ -92,7 +115,7 @@ public sealed partial class GameModeView
         }
         var startup = new CheckBox { Content = "Enable NR on launch", IsChecked = shell.Settings.NrOnLaunch };
         var separateStartup = shell.Settings.RuntimeProvider != "skynizz";
-        if (separateStartup && shell.Mode != "mfg-only") content.Children.Add(startup);
+        if (separateStartup && mode != "mfg-only") content.Children.Add(startup);
         void Cancel() { CloseModal(); done.TrySetResult(null); }
         var cancel = ui.Button("Cancel", Cancel, GmKind.Card, 0.92);
         var next = ui.Button("Review games", () => { CloseModal(); done.TrySetResult(separateStartup ? value() with { NrOnLaunch = startup.IsChecked == true } : value()); }, GmKind.Primary, 0.92);
@@ -118,13 +141,13 @@ public sealed partial class GameModeView
         foreach (var warning in review.Warnings)
         {
             var note = new StackPanel { Spacing = t.Px(6), Margin = new Thickness(0, t.Px(18), 0, 0) };
-            note.Children.Add(ui.Text("Warning · " + warning.Name, 0.82, t.Danger, FontWeights.SemiBold));
+            note.Children.Add(ui.Heading("Warning · " + warning.Name, 0.82, t.Danger));
             note.Children.Add(ui.Text(warning.Reason, 0.74, t.Fg, wrap: true));
             list.Children.Add(note);
         }
         if (review.Blocked.Count > 0)
         {
-            list.Children.Add(ui.Text($"Skipped · {review.Blocked.Count}", 0.88, weight: FontWeights.SemiBold).With(x => x.Margin = new Thickness(0, t.Px(26), 0, t.Px(14))));
+            list.Children.Add(ui.Heading($"Skipped · {review.Blocked.Count}", 0.88).With(x => x.Margin = new Thickness(0, t.Px(26), 0, t.Px(14))));
             list.Children.Add(ui.Group(review.Blocked.Select(b => (UIElement)ReviewRow(b.Game, b.Name, b.Summary ?? b.Reason, false,
                 b.Summary is null ? null : b.Reason)), t.Card));
         }
@@ -184,7 +207,7 @@ public sealed partial class GameModeView
             thumb.Child = new Border { CornerRadius = new CornerRadius(t.Px(7)), Background = new ImageBrush { ImageSource = image, Stretch = Stretch.UniformToFill } };
         row.Children.Add(thumb);
         var text = new StackPanel { Spacing = t.Px(6), VerticalAlignment = VerticalAlignment.Center };
-        var title = ui.Text(name, 0.9, t.Fg, FontWeights.SemiBold);
+        var title = ui.Heading(name, 0.9, t.Fg);
         text.Children.Add(title);
         text.Children.Add(ui.Text(detail, 0.72, t.Muted, wrap: true));
         if (!string.IsNullOrWhiteSpace(technical))
@@ -233,6 +256,7 @@ public sealed partial class GameModeView
             var count = await shell.ExecuteAsync(review, progress, cts.Token);
             step.Complete();
             CloseModal();
+            whenCompleted?.Invoke();
             ShowDone(true, "Done", $"{count} game{(count == 1 ? "" : "s")} updated.");
         }
         catch (OperationCanceledException)
@@ -245,7 +269,7 @@ public sealed partial class GameModeView
             CloseModal();
             ShowDone(false, "Could not finish", error.Message);
         }
-        finally { shell.Service.DiscardOperation(review); }
+        finally { whenCompleted = null; shell.Service.DiscardOperation(review); }
     }
 
     void ShowDone(bool success, string title, string message)
@@ -292,7 +316,7 @@ public sealed partial class GameModeView
             Root.Children.Add(poster);
             var right = new StackPanel { Spacing = t.Px(12), VerticalAlignment = VerticalAlignment.Center };
             counter = ui.Text("Preparing…", 0.85, t.Muted);
-            title = ui.Text("", 1.3, t.Fg, FontWeights.SemiBold);
+            title = ui.Heading("", 1.3, t.Fg);
             phase = ui.Text("", 0.85, t.Muted);
             bar.MinHeight = t.Px(12);
             bar.Background = GmTheme.B(t.Card);

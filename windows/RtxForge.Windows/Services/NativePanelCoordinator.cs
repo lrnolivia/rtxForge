@@ -114,11 +114,12 @@ internal sealed class NativePanelCoordinator : IDisposable
                         ?? throw new InvalidOperationException("Unsupported preset control.");
                     var validated = new JsonObject(); FeatureControlSchema.Put(validated, field, FeatureControlSchema.Read(pair.Value));
                 }
-                await engine.CompanionAsync("save", game!, changes, pid);
-                return Done("Preset saved for this game");
+                // Feeder games load tuning at launch; the engine says so in panel_message.
+                var saved = await engine.CompanionAsync("save", game!, changes, pid);
+                return Done(saved["panel_message"]?.GetValue<string>() ?? "Preset saved for this game");
             case "reset":
-                await engine.CompanionAsync("reset", game!, pid: pid);
-                return Done("Reset to this game's installed settings");
+                var reset = await engine.CompanionAsync("reset", game!, pid: pid);
+                return Done(reset["panel_message"]?.GetValue<string>() ?? "Reset to this game's installed settings");
             case "set-setting":
                 SetPreference(message);
                 return Done("Saved · game-menu changes take effect after restarting the game");
@@ -156,7 +157,7 @@ internal sealed class NativePanelCoordinator : IDisposable
                 case "overlay_controls": s.OverlayControls = value.GetValue<bool>() ? "classic" : "unified"; break;
                 case "overlay_renderer":
                     var renderer = value.GetValue<string>();
-                    if (renderer is not ("game" or "rtxforge" or "optiscaler")) throw new InvalidOperationException("Choose an available overlay.");
+                    if (renderer is not ("game" or "optiscaler")) throw new InvalidOperationException("Choose an available overlay.");
                     s.OverlayRenderer = renderer; break;
                 case "panel_binding":
                     var code = value["key"]?.GetValue<int>() ?? -1; var modifiers = value["modifiers"]?.GetValue<int>() ?? -1;

@@ -7,7 +7,7 @@ supplies the Windows adapters it needs:
   storage      state under %LOCALAPPDATA%\\rtxForge instead of ~/.local/state
   fcntl        the writer lock via msvcrt byte-range locking
   discovery    Steam roots from the registry and the default install folders
-  hardware     nvidia-smi from the NVIDIA driver; RTX 40-series rule kept
+  hardware     nvidia-smi from the NVIDIA driver; RTX 20 to 50 by family (hardware.family)
   launch       no Proton launch options: Windows loads OptiScaler's proxy DLL
                from the game folder natively, so Steam's config is untouched
   processes    running-game check through the Windows process list
@@ -160,18 +160,17 @@ def windows_hardware() -> dict:
         result = subprocess.run(["nvidia-smi", "--query-gpu=name,driver_version,memory.total", "--format=csv,noheader,nounits"],
                                 text=True, capture_output=True, timeout=10, check=True, creationflags=NO_WINDOW)
         rows = [line.split(",") for line in result.stdout.strip().splitlines() if line.count(",") >= 2]
-        supported = [r for r in rows if re.search(r"RTX\s+40\d{2}", r[0])]
-        chosen = (supported or rows)[0]
-        info.update({"gpu": chosen[0].strip(), "driver": chosen[1].strip(), "vram": chosen[2].strip() + " MiB"})
+        supported = [r for r in rows if hardware.family(r[0])]
+        chosen = (sorted(supported, key=lambda r: hardware.FAMILIES.index(hardware.family(r[0])))[-1:] or rows)[0]
+        info.update({"gpu": chosen[0].strip(), "driver": chosen[1].strip(), "vram": chosen[2].strip() + " MiB",
+                     "family": hardware.family(chosen[0])})
         if not supported:
-            info["reason"] = "This native NVIDIA package targets GeForce RTX 40-series GPUs. This GPU is not validated."
+            info["reason"] = f"{info['gpu']} isn't an RTX GPU these packages can run on."
             return info
     except (OSError, subprocess.SubprocessError, IndexError):
         info["reason"] = "Cannot verify an NVIDIA GPU and working NVIDIA driver. Install is unavailable; restore remains available."
         return info
-    info["ready"] = True
-    info["reason"] = "Basic hardware and dependencies passed. Per-game compatibility still requires verification."
-    return info
+    return hardware.ready(info)
 
 
 def _cpu_name() -> str:
@@ -357,9 +356,15 @@ def scan(params):
                                       selected=params.get('runtime_provider') == 'feeder')
     import package_adoption
     package_adoption.decorate(engine_bridge.module(service.config), rows)
-    if params.get('runtime_provider')=='skynizz':
-        import skynizz_provider
-        skynizz_provider.scan_rows(rows,params.get('feature_mode','nr-only'))
+    import skynizz_provider
+    # Games may choose their own package, so keep both verdicts; the selected
+    # package's verdict is the row's.
+    checked = skynizz_provider.scan_rows([dict(row) for row in rows], params.get('feature_mode', 'nr-only'))
+    for row, verdict in zip(rows, checked):
+        row['package_blocked'] = row.get('blocked', '')
+        row['skynizz_blocked'] = verdict.get('blocked', '')
+        if params.get('runtime_provider') == 'skynizz':
+            row.update(verdict)
     # Linux LibraryMedia.steam_art: the signed-in account's custom grid
     # (Non-Steam games matched through shortcuts.vdf), then Steam's cache.
     media = library_media.LibraryMedia(service.config, dict(library_media.DEFAULTS))
@@ -371,6 +376,9 @@ def scan(params):
             traceback.print_exc()
     # Your chosen artwork over Steam's, and each game's saved notes (Linux details()).
     win_features.decorate(rows)
+    # Soft blocks you chose to try anyway, and each game's known result.
+    import compat_list
+    compat_list.apply(win_features._config(), rows, engine_bridge.module(service.config))
     import skynizz_provider
     import transactions
     for row in rows:
@@ -381,11 +389,23 @@ def scan(params):
 
 
 def prepare(params):
+    rows = params.get('rows') or []
+    if params.get('operation') == 'apply' and rows and all(row.get('runtime_provider') == 'feeder' for row in rows):
+        # Installed Feeder games keep their presets in their own ReShade.ini,
+        # whichever package is selected for new installs.
+        params = dict(params, mode='nr-only', settings=dict(params.get('settings') or {}, runtime_provider='feeder'))
     if (params.get('settings') or {}).get('runtime_provider') == 'skynizz':
         import skynizz_provider
         # Presentation flags belong to the requested mode. Fresh engine game
         # inspection still owns all capability/ownership and anti-cheat checks.
         params = dict(params, rows=skynizz_provider.scan_rows([dict(row) for row in params['rows']], params['mode']))
+    else:
+        # Another package: the scan's verdict before Skynizz's own checks.
+        params = dict(params, rows=[dict(row, blocked=row['package_blocked']) if 'package_blocked' in row else row
+                                    for row in params['rows']])
+    # The re-check above restores capability blocks; lift the ones you chose to try anyway.
+    import compat_list
+    params = dict(params, rows=compat_list.apply(win_features._config(), [dict(row) for row in params["rows"]], engine_bridge.module(service.config)))
     review = service.prepare(params["rows"], params["mode"], params["operation"],
                              visual_settings=params.get("settings"), save_defaults=params.get("save_defaults", False))
     if review.get("kind") == "engine":

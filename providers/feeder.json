@@ -2,7 +2,7 @@
   "schema": 1,
   "id": "feeder",
   "name": "Feeder NR",
-  "version": "Feeder 1.19.0 / RenoDX 8.5.0-rc5",
+  "version": "Feeder 1.19.0 / RenoDX 8.5.0-rc10",
   "platform": "windows-x64-d3d11",
   "distribution": "Import locally supplied runtime files; this app does not redistribute the third-party binary stack or NR model.",
   "assets": {
@@ -15,8 +15,8 @@
       "size": 343552
     },
     "renodx-dlss5.addon64": {
-      "sha256": "f0ed0bf424ac29c2c83212e259e89d3de5fb995317c34d1bd2c76bea157253cb",
-      "size": 3039744
+      "sha256": "dcd93881e976ad033d83c2bb01f4bc3e4ddc59c15fe0dd4ca165bc5fc7d1ac68",
+      "size": 3141632
     },
     "nvngx_dlss.dll": {
       "sha256": "d00b5b0ab29c3ca101b70c3a5ecb3a01b7ef33766a3383a28a18623083e6123e",
@@ -51,6 +51,15 @@
       "size": 4250
     }
   },
+  "previous_assets": {
+    "renodx-dlss5.addon64": [
+      {
+        "version": "8.5.0-rc5",
+        "sha256": "f0ed0bf424ac29c2c83212e259e89d3de5fb995317c34d1bd2c76bea157253cb",
+        "size": 3039744
+      }
+    ]
+  },
   "models": {
     "e67dee209320cdafe0e93e45675d7aa34323a53acc57a72b2e40a181581c989a": {
       "version": "310.8.0.0",
@@ -71,8 +80,8 @@
     },
     {
       "name": "RenoDX DLSS5",
-      "version": "8.5.0-rc5",
-      "url": "https://github.com/RankFTW/rhi-repo/releases/tag/renodx-dlss5-8.5.0-rc5",
+      "version": "8.5.0-rc10",
+      "url": "https://github.com/RankFTW/rhi-repo/releases/tag/renodx-dlss5-8.5.0-rc10",
       "distribution": "User-supplied binary only; not bundled or downloaded by this provider."
     },
     {

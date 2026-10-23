@@ -803,11 +803,13 @@ class GameMode(Gtk.Overlay, GameModeTools):
 
     first_focus = None
 
+    def focusable_widgets(self, scope):
+        return (widget for widget in descendants(scope)
+                if isinstance(widget, (Gtk.Button, Gtk.TextView)) and widget.is_sensitive()
+                and widget.get_focusable() and widget.get_visible() and widget.get_mapped())
+
     def first_focusable(self, scope):
-        for widget in descendants(scope):
-            if isinstance(widget, (Gtk.Button, Gtk.TextView)) and widget.is_sensitive() and widget.get_focusable() and widget.get_visible() and widget.get_mapped():
-                return widget
-        return None
+        return next(self.focusable_widgets(scope), None)
 
     def render_header(self):
         t = self.theme
@@ -920,10 +922,14 @@ class GameMode(Gtk.Overlay, GameModeTools):
             incoming = scope if self.modals else self.body.current
             if not moved and incoming is not None:
                 in_incoming = focus is not None and focus.is_sensitive() and (focus is incoming or focus.is_ancestor(incoming))
-                # Mapping precedes allocation. Native spatial focus has no rectangles
-                # yet, but tab order already works: consume every input immediately.
+                # Mapping precedes allocation. Spatial focus has no rectangles yet;
+                # use the live controls' native order without delaying an input.
                 if incoming.get_width() == 0 and in_incoming:
-                    incoming.child_focus(Gtk.DirectionType.TAB_BACKWARD if action in ('up', 'left') else Gtk.DirectionType.TAB_FORWARD)
+                    targets = list(self.focusable_widgets(incoming))
+                    index = next((i for i, item in enumerate(targets) if focus is item or focus.is_ancestor(item)), -1)
+                    following = index + (-1 if action in ('up', 'left') else 1)
+                    if index >= 0 and 0 <= following < len(targets):
+                        targets[following].grab_focus()
                 elif not inside or (incoming.get_width() == 0 and not in_incoming):
                     target = self.first_focusable(incoming) or self.first_focusable(scope)
                     if target:

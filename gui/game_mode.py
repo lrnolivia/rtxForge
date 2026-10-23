@@ -917,21 +917,22 @@ class GameMode(Gtk.Overlay, GameModeTools):
             scope = self.modals[-1]['dialog'] if self.modals else self.page_box
             direction = {'up': Gtk.DirectionType.UP, 'down': Gtk.DirectionType.DOWN,
                          'left': Gtk.DirectionType.LEFT, 'right': Gtk.DirectionType.RIGHT}[action]
-            inside = focus is not None and focus.is_sensitive() and (focus is scope or focus.is_ancestor(scope))
-            moved = scope.child_focus(direction) if inside else False
             incoming = scope if self.modals else self.body.current
-            if not moved and incoming is not None:
-                in_incoming = focus is not None and focus.is_sensitive() and (focus is incoming or focus.is_ancestor(incoming))
-                # Mapping precedes allocation. Spatial focus has no rectangles yet;
-                # use the live controls' native order without delaying an input.
-                if incoming.get_width() == 0 and in_incoming:
-                    targets = list(self.focusable_widgets(incoming))
-                    index = next((i for i, item in enumerate(targets) if focus is item or focus.is_ancestor(item)), -1)
-                    following = index + (-1 if action in ('up', 'left') else 1)
-                    if index >= 0 and 0 <= following < len(targets):
-                        targets[following].grab_focus()
-                elif not inside or (incoming.get_width() == 0 and not in_incoming):
-                    target = self.first_focusable(incoming) or self.first_focusable(scope)
+            if incoming is not None and incoming.get_width() == 0:
+                # Mapped controls can take native focus before their first layout.
+                # Spatial focus may report success with coincident zero-sized bounds;
+                # use control order for this frame, including immediate reversals.
+                targets = list(self.focusable_widgets(incoming))
+                index = next((i for i, item in enumerate(targets) if focus is item or (focus is not None and focus.is_ancestor(item))), -1)
+                following = index + (-1 if action in ('up', 'left') else 1) if index >= 0 else 0
+                if 0 <= following < len(targets):
+                    targets[following].grab_focus()
+                return
+            inside = focus is not None and focus.is_sensitive() and (focus is scope or focus.is_ancestor(scope))
+            if not inside or not scope.child_focus(direction):
+                if not inside:
+                    target = self.first_focusable(incoming) if incoming is not None else None
+                    target = target or self.first_focusable(scope)
                     if target:
                         target.grab_focus()
             return

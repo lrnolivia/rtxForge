@@ -252,7 +252,7 @@ if os.environ.get('RTXFORGE_GAME_MODE_MOTION_ONLY'):
 def step():
  try:
   if steps:steps.pop(0)();GLib.timeout_add(500,step)
-  else:print('PASS: Game Mode pages, details sections, modals, keyboard, selection and the review Ã¢â€ â€™ done flow\n'+'\n'.join(images),flush=True);app.quit()
+  else:print('PASS: Game Mode pages, details sections, modals, keyboard, selection and the review to done flow\n'+'\n'.join(images),flush=True);app.quit()
  except Exception:traceback.print_exc();app.exit_code=1;app.quit()
  return False
 GLib.timeout_add(1800,step);app.run([]);raise SystemExit(app.exit_code)

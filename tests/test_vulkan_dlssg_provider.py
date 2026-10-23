@@ -361,6 +361,45 @@ class SharedBg3Tests(ProviderTests):
         for name, raw in changes.items():
             self.assertEqual(evidence[name], v._hash(raw))
 
+    def test_restored_candidate_can_change_inventory_without_losing_evidence(self):
+        self.install()
+        setting = b'[nr]\nEnabled=0\n'
+        (self.game / v.CONFIG).write_bytes(setting)
+        self.restore()
+        state = v.state_path(self.game, self.state)
+        previous = (state / 'baseline.json').read_bytes()
+        self.members['NativeMods/rtxForge-vulkan/new-notice.txt'] = b'new pinned notice\n'
+        self.repack()
+        v.execute(self.plan())
+        record = v._record(self.game, state)
+        self.assertEqual(record['prior_record_sha256'], v._hash(previous))
+        archived = json.loads((state / 'objects' / record['prior_record_sha256']).read_bytes())
+        evidence = {item['path']: item['sha256'] for item in archived['observed_runtime']}
+        self.assertEqual((state / 'objects' / evidence[v.CONFIG]).read_bytes(), setting)
+        self.restore()
+        self.assertEqual(self.original, self.files())
+
+    def test_active_candidate_inventory_change_is_refused(self):
+        self.install()
+        self.members['NativeMods/rtxForge-vulkan/new-notice.txt'] = b'new pinned notice\n'
+        self.repack()
+        with self.assertRaisesRegex(v.t.Refusal, 'inventory differs'):
+            self.plan()
+
+    def test_changed_old_inventory_is_not_abandoned_after_restore(self):
+        extra = 'NativeMods/rtxForge-vulkan/old-notice.txt'
+        self.members[extra] = b'old pinned notice\n'
+        self.repack()
+        self.install()
+        self.restore()
+        (self.game / extra).parent.mkdir(parents=True, exist_ok=True)
+        (self.game / extra).write_bytes(b'concurrent file\n')
+        del self.members[extra]
+        self.repack()
+        with self.assertRaisesRegex(v.t.Refusal, 'Restored inventory changed'):
+            self.plan()
+        self.assertEqual((self.game / extra).read_bytes(), b'concurrent file\n')
+
 
 class SharedRdr2Tests(SharedBg3Tests):
     profile_name = 'rdr2'

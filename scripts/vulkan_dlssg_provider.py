@@ -236,11 +236,14 @@ def _record(root, state):
     t.need(path.stat().st_size < 1024**2, 'Invalid recovery record size')
     record = t.read_json(path)
     t.need(record.get('schema') == 1 and record.get('provider_id') == _provider_id()
-           and record.get('target') == str(root) and set(record.get('originals', {})) == _names(pin()),
+           and record.get('target') == str(root),
            'Recovery identity/path inventory differs')
     t.need(record.get('status') in ('applying', 'active', 'interrupted', 'restoring', 'restored'),
            'Unknown recovery state')
-    t.need(set(record.get('installed', {})) == _names(pin()) - set(_logs()), 'Incomplete installed inventory')
+    recorded_names = set(record.get('originals', {}))
+    changed_inventory = recorded_names != _names(pin())
+    t.need(not changed_inventory or record['status'] == 'restored', 'Recovery identity/path inventory differs')
+    t.need(set(record.get('installed', {})) == recorded_names - set(_logs()), 'Incomplete installed inventory')
     for name in record['originals']:
         t.relative(name)
         item = record['originals'][name]
@@ -251,6 +254,14 @@ def _record(root, state):
             t.need(blob.is_file() and _digest(blob) == item['sha256'], 'Backup is missing or damaged: ' + name)
     t.need(all(isinstance(h, str) and re.fullmatch('[0-9a-f]{64}', h)
                for h in record['installed'].values()), 'Invalid installed digest')
+    prior = record.get('prior_record_sha256')
+    if prior is not None:
+        t.need(isinstance(prior, str) and re.fullmatch('[0-9a-f]{64}', prior), 'Invalid prior recovery record')
+        blob = t.safe(state / 'objects' / prior)
+        t.need(blob.is_file() and _digest(blob) == prior, 'Prior recovery record is missing or damaged')
+    if changed_inventory:
+        expected = {name: (value or {}).get('sha256') for name, value in record['originals'].items()}
+        t.need(_snapshot(root, recorded_names) == expected, 'Restored inventory changed before candidate replacement')
     return record
 
 
@@ -406,6 +417,9 @@ def execute(plan, *, cancelled=lambda: False):
         if plan['operation'] != 'restore':
             data = payload(plan['archive'], plan['loader'])
             if not record or record['status'] == 'restored':
+                # Retain old manifests, settings and runtime-evidence references
+                # when a restored candidate is replaced by another inventory.
+                prior_record = _cache(state, (state / 'baseline.json').read_bytes()) if record else None
                 total = sum((root / name).stat().st_size for name, digest in plan['checks'].items() if digest)
                 t.need(total <= MAX_BACKUP, 'Original files exceed the recovery size bound')
                 originals = {}
@@ -422,6 +436,8 @@ def execute(plan, *, cancelled=lambda: False):
                           'created_utc': t.now(), 'originals': originals,
                           'directories_before': sorted(d for d in directories if (root / d).exists()),
                           'directories': sorted(directories), 'observed_runtime': [], 'installed': plan['after']}
+                if prior_record is not None:
+                    record['prior_record_sha256'] = prior_record
             data[ORIGINAL] = (state / 'objects' / record['originals'][PROXY]['sha256']).read_bytes()
             data[CONFIG] = ((root / CONFIG).read_bytes() if plan['checks'][CONFIG] else
                             _default_config())

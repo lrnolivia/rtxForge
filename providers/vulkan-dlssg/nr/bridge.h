@@ -9,7 +9,7 @@ struct NrGetters {
     int (__cdecl* integer)(void*, const char*, unsigned*);
     int (__cdecl* signedInteger)(void*, const char*, int*);
 };
-struct NrStatus { bool requested, running; uint64_t frames; double gpuMs; };
+struct NrStatus { bool requested, running; uint64_t frames; double gpuMs; bool warming; };
 void NrConfigure(const char* ini);
 bool NrRequested();
 void NrRequest(bool enabled);
@@ -18,5 +18,6 @@ NrStatus NrReadStatus();
 void NrSetNgxModule(HMODULE module);
 bool NrSetDevice(PFN_vkGetInstanceProcAddr, PFN_vkGetDeviceProcAddr, VkInstance, VkPhysicalDevice, VkDevice);
 void NrEvaluate(VkCommandBuffer, void* parameters, const NrGetters&, int createFlags);
+void NrPresented(bool success);
 void NrShutdown(bool deviceAlive);
 }

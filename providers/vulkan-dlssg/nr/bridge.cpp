@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "bridge.h"
+#include "startup.h"
 #include "Util.h"
 #include <dlssnr/DlssNrFeature_Vk.h>
 #include <nvsdk_ngx_vk.h>
@@ -8,6 +9,9 @@
 
 namespace {
 std::mutex evaluation;
+std::mutex startupMutex;
+fgvk::NrStartup startup;
+std::atomic<bool> startupReady{false}, nativeEvaluationSeen{false};
 std::atomic<bool> requested{false};
 std::atomic<uint64_t> composed{0};
 std::atomic<bool> running{false};
@@ -99,7 +103,15 @@ void NrWithSettings(void (*draw)()) {
     draw();
     requested.store(cfg.DlssNrEnabled.value_or_default());
 }
-NrStatus NrReadStatus() { return {requested.load(), running.load(), composed.load(), gpuMs.load()}; }
+NrStatus NrReadStatus() { return {requested.load(), running.load(), composed.load(), gpuMs.load(), requested.load() && !startupReady.load()}; }
+void NrPresented(bool success) {
+    std::lock_guard<std::mutex> lock(startupMutex);
+    const bool before = startup.ready;
+    startup.Presented(nativeEvaluationSeen.exchange(false), success, GetTickCount64() / 1000.);
+    startupReady.store(startup.ready);
+    if (!before && startup.ready) Log("NR startup: native DLSS presentation warm-up complete; requested NR may activate");
+    else if (before && !startup.ready) Log("NR startup: native presentation interrupted; warm-up reset");
+}
 void NrSetNgxModule(HMODULE module) {
     std::lock_guard<std::mutex> lock(evaluation);
     const auto allocate = reinterpret_cast<Allocate>(GetProcAddress(module, "NVSDK_NGX_VULKAN_AllocateParameters"));
@@ -109,13 +121,16 @@ void NrSetNgxModule(HMODULE module) {
 bool NrSetDevice(PFN_vkGetInstanceProcAddr gipa, PFN_vkGetDeviceProcAddr gdpa, VkInstance instance,
                  VkPhysicalDevice, VkDevice device) {
     std::lock_guard<std::mutex> lock(evaluation);
+    { std::lock_guard<std::mutex> startLock(startupMutex); startup.Reset(); startupReady = false; nativeEvaluationSeen = false; }
     dispatchReady = NrBindDispatch(gipa, gdpa, instance, device);
     return dispatchReady;
 }
 void NrEvaluate(VkCommandBuffer command, void* native, const NrGetters& getters, int flags) {
+    nativeEvaluationSeen.store(true); // Called only after an identified native SR success.
     std::lock_guard<std::mutex> lock(evaluation);
     auto& cfg = *::Config::Instance();
     if (!requested.load()) { cfg.DlssNrEnabled = false; running.store(false); resetNext = true; return; }
+    if (!startupReady.load()) { running.store(false); resetNext = true; return; }
     if (!dispatchReady || !allocateParameters || !destroyParameters || flags < 0) return;
     cfg.DlssNrEnabled = true;
     FrameParameters frame(native, getters, flags, resetNext);
@@ -134,6 +149,7 @@ void NrEvaluate(VkCommandBuffer command, void* native, const NrGetters& getters,
 }
 void NrShutdown(bool deviceAlive) {
     std::lock_guard<std::mutex> lock(evaluation);
+    { std::lock_guard<std::mutex> startLock(startupMutex); startup.Reset(); startupReady = false; nativeEvaluationSeen = false; }
     DlssNr::ShutdownVk(deviceAlive);
     dispatchReady = false; running.store(false); resetNext = true;
 }

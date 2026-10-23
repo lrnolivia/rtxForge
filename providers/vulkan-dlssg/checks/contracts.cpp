@@ -1,10 +1,22 @@
 #include "feature_registry.h"
 #include "profile.h"
 #include "extension_filter.h"
+#include "startup.h"
+#include "acquire_bridge.h"
 #include <cassert>
 namespace {
 bool legacyOnly{};
 VkResult nativeFailure = VK_SUCCESS;
+unsigned proxyAcquires{}, nativeAcquires{};
+VkDevice acquiredDevice{};
+VkAcquireNextImageInfoKHR acquired{};
+VkResult VKAPI_CALL ProxyAcquire(VkDevice device, VkSwapchainKHR sc, uint64_t timeout, VkSemaphore semaphore, VkFence fence, uint32_t* index) {
+    acquiredDevice = device; acquired.swapchain = sc; acquired.timeout = timeout; acquired.semaphore = semaphore; acquired.fence = fence;
+    *index = proxyAcquires++ % 3; return VK_SUBOPTIMAL_KHR;
+}
+VkResult VKAPI_CALL NativeAcquire(VkDevice, const VkAcquireNextImageInfoKHR*, uint32_t* index) {
+    *index = nativeAcquires++ % 6; return VK_SUCCESS;
+}
 VkResult VKAPI_CALL Enumerate(VkPhysicalDevice, const char*, uint32_t* count, VkExtensionProperties* output) {
     if (nativeFailure != VK_SUCCESS) return nativeFailure;
     const char* names[] = {VK_EXT_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME, VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME};
@@ -43,4 +55,34 @@ int main() {
     assert(!std::strcmp(output[0].extensionName, VK_EXT_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME));
     nativeFailure = VK_ERROR_DEVICE_LOST;
     assert(fgvk::EnumerateCoreBufferAddress(Enumerate, {}, nullptr, &count, output) == VK_ERROR_DEVICE_LOST);
+    fgvk::NrStartup startup;
+    // Frame count alone at high FPS cannot start NR during an initial burst.
+    for (uint32_t i = 0; i < 200; ++i) startup.Presented(true, true, i / 240.);
+    assert(!startup.ready);
+    startup.Presented(true, true, 3.); assert(startup.ready);
+    for (uint32_t i = 0; i < 29; ++i) startup.Presented(false, true, 4. + i / 60.);
+    assert(startup.ready);
+    startup.Presented(false, true, 5.); assert(!startup.ready);
+    // A warm-up cannot accumulate across loading screens or failed presents.
+    for (uint32_t i = 0; i < 100; ++i) startup.Presented(true, true, 6. + i / 30.);
+    assert(!startup.ready);
+    startup.Presented(false, true, 10.); assert(startup.frames == 0);
+    for (uint32_t i = 0; i < 120; ++i) startup.Presented(true, true, 11. + i / 30.);
+    assert(startup.ready);
+    startup.Presented(true, false, 16.); assert(!startup.ready);
+    VkAcquireNextImageInfoKHR acquire{VK_STRUCTURE_TYPE_ACQUIRE_NEXT_IMAGE_INFO_KHR};
+    acquire.deviceMask = 1; acquire.swapchain = reinterpret_cast<VkSwapchainKHR>(0x20);
+    acquire.timeout = 123; acquire.semaphore = reinterpret_cast<VkSemaphore>(0x30); acquire.fence = reinterpret_cast<VkFence>(0x40);
+    const auto device = reinterpret_cast<VkDevice>(0x10);
+    // Cross more than one backing-buffer rotation: only proxy image indices
+    // may reach the three-image game view, with all sync fields preserved.
+    for (uint32_t i = 0; i < 18; ++i) {
+        uint32_t index = UINT32_MAX;
+        assert(fgvk::AcquireGameImage(ProxyAcquire, NativeAcquire, device, &acquire, &index) == VK_SUBOPTIMAL_KHR);
+        assert(index == i % 3);
+    }
+    assert(proxyAcquires == 18 && nativeAcquires == 0 && acquiredDevice == device);
+    assert(acquired.swapchain == acquire.swapchain && acquired.timeout == 123 && acquired.semaphore == acquire.semaphore && acquired.fence == acquire.fence);
+    uint32_t index{}; acquire.deviceMask = 2;
+    assert(fgvk::AcquireGameImage(ProxyAcquire, NativeAcquire, device, &acquire, &index) == VK_SUCCESS && nativeAcquires == 1);
 }

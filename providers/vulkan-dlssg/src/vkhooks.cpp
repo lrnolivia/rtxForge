@@ -14,6 +14,7 @@
 #include "swapchain_lock.h"
 #include "resource_state.h"
 #include "extension_filter.h"
+#include "acquire_bridge.h"
 #include <vector>
 #include <windows.h>
 #include <detours.h>
@@ -360,6 +361,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL w_QueuePresentKHR(VkQueue q, const VkPrese
   { Reentry guard; if (MenuRender(q, pi, modified)) presentation = &modified; }
   { PosScope _q(2); Reentry _; r = t_QueuePresentKHR(q, presentation); }
   MenuPresentCompleted(evaluated, r);   // interposer present = DLSS-G generation
+  NrPresented(r == VK_SUCCESS || r == VK_SUBOPTIMAL_KHR);
   static int badLogged=0; if(r!=VK_SUCCESS && badLogged<10){ badLogged++; Log("present -> %d", (int)r); }
   { PosScope _m(3); PresentMarkersEnd(); }   // PresentEnd, then next frame: new token + Reflex sleep + SimulationStart
   return r;
@@ -367,6 +369,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL w_QueuePresentKHR(VkQueue q, const VkPrese
 
 // ---- stall attribution: thin pass-through wrappers on every call the game can block in ------
 static PFN_vkAcquireNextImageKHR t_AcquireNextImageKHR{};
+static PFN_vkAcquireNextImage2KHR t_AcquireNextImage2KHR{};
 static PFN_vkWaitForFences       t_WaitForFences{};
 static PFN_vkQueueSubmit         t_QueueSubmit{};
 static PFN_vkQueueSubmit2        t_QueueSubmit2{};      // vkQueueSubmit2 and vkQueueSubmit2KHR share the prototype
@@ -381,6 +384,16 @@ static VKAPI_ATTR VkResult VKAPI_CALL w_AcquireNextImageKHR(VkDevice d, VkSwapch
 }
 static VKAPI_ATTR VkResult VKAPI_CALL w_WaitForFences(VkDevice d, uint32_t n, const VkFence* f, VkBool32 all, uint64_t timeout){
   PosScope _(5); return t_WaitForFences(d,n,f,all,timeout);
+}
+static VKAPI_ATTR VkResult VKAPI_CALL w_AcquireNextImage2KHR(VkDevice d, const VkAcquireNextImageInfoKHR* info, uint32_t* index) {
+  Reentry guard;
+  const auto proxy = (ip_GDPA && d == gDevice) ? reinterpret_cast<PFN_vkAcquireNextImageKHR>(ip_GDPA(d, "vkAcquireNextImageKHR")) : nullptr;
+  static bool logged = false;
+  if (proxy && info && info->deviceMask == 1 && !info->pNext && !logged) {
+    logged = true; Log("game acquire2 bridged through Streamline acquire1; deviceMask=1");
+  }
+  PosScope position(4);
+  return AcquireGameImage(proxy, t_AcquireNextImage2KHR, d, info, index);
 }
 static VKAPI_ATTR VkResult VKAPI_CALL w_QueueSubmit(VkQueue q, uint32_t n, const VkSubmitInfo* s, VkFence f){
   PosScope _(6); const auto result = t_QueueSubmit(q,n,s,f);
@@ -428,6 +441,7 @@ static PFN_vkVoidFunction WrapDeviceFn(const char* name, PFN_vkVoidFunction ip){
   if (!strcmp(name,"vkDestroySwapchainKHR")) { t_DestroySwapchain = reinterpret_cast<PFN_vkDestroySwapchainKHR>(ip); return reinterpret_cast<PFN_vkVoidFunction>(w_DestroySwapchain); }
   if (!strcmp(name,"vkDestroyDevice")) { t_DestroyDevice = reinterpret_cast<PFN_vkDestroyDevice>(ip); return reinterpret_cast<PFN_vkVoidFunction>(w_DestroyDevice); }
   if(!strcmp(name,"vkAcquireNextImageKHR")){ t_AcquireNextImageKHR=(PFN_vkAcquireNextImageKHR)ip; return (PFN_vkVoidFunction)w_AcquireNextImageKHR; }
+  if(!strcmp(name,"vkAcquireNextImage2KHR")){ t_AcquireNextImage2KHR=(PFN_vkAcquireNextImage2KHR)ip; return (PFN_vkVoidFunction)w_AcquireNextImage2KHR; }
   if(!strcmp(name,"vkWaitForFences"))      { t_WaitForFences=(PFN_vkWaitForFences)ip;             return (PFN_vkVoidFunction)w_WaitForFences; }
   if(!strcmp(name,"vkQueueSubmit"))        { t_QueueSubmit=(PFN_vkQueueSubmit)ip;                 return (PFN_vkVoidFunction)w_QueueSubmit; }
   if(!strcmp(name,"vkQueueSubmit2") || !strcmp(name,"vkQueueSubmit2KHR")){ t_QueueSubmit2=(PFN_vkQueueSubmit2)ip; return (PFN_vkVoidFunction)w_QueueSubmit2; }
@@ -518,6 +532,7 @@ static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL h_GetDeviceProcAddrExport(VkDevi
 }
 static PFN_vkGetSwapchainImagesKHR o_GetSwapchainImagesKHR_export{};
 static PFN_vkAcquireNextImageKHR   o_AcquireNextImageKHR_export{};
+static PFN_vkAcquireNextImage2KHR o_AcquireNextImage2KHR_export{};
 static PFN_vkQueuePresentKHR       o_QueuePresentKHR_export{};
 static PFN_vkCreateSwapchainKHR o_CreateSwapchainKHR_export{};
 static PFN_vkDestroySwapchainKHR o_DestroySwapchainKHR_export{};
@@ -553,6 +568,11 @@ static VKAPI_ATTR VkResult VKAPI_CALL h_AcquireNextImageKHRExport(VkDevice d, Vk
 static VKAPI_ATTR VkResult VKAPI_CALL h_QueuePresentKHRExport(VkQueue q, const VkPresentInfoKHR* pi){
   static PFN_vkQueuePresentKHR gv{}; PFN_vkQueuePresentKHR f = (ForceReal() || !gDevice || CallerIsStreamline(_ReturnAddress())) ? nullptr : GameView("vkQueuePresentKHR", gv, gDevice);
   return f ? f(q,pi) : o_QueuePresentKHR_export(q,pi);
+}
+static VKAPI_ATTR VkResult VKAPI_CALL h_AcquireNextImage2KHRExport(VkDevice d, const VkAcquireNextImageInfoKHR* info, uint32_t* index) {
+  static PFN_vkAcquireNextImage2KHR game{};
+  const auto fn = (ForceReal() || !gDevice || CallerIsStreamline(_ReturnAddress())) ? nullptr : GameView("vkAcquireNextImage2KHR", game, d);
+  return fn ? fn(d, info, index) : o_AcquireNextImage2KHR_export(d, info, index);
 }
 static VKAPI_ATTR VkResult VKAPI_CALL h_CreateSwapchainKHRExport(VkDevice d, const VkSwapchainCreateInfoKHR* ci,
     const VkAllocationCallbacks* a, VkSwapchainKHR* out) {
@@ -633,6 +653,7 @@ void InstallVkHooks(){
   o_GDPA_real = (PFN_vkGetDeviceProcAddr)GetProcAddress(vk, "vkGetDeviceProcAddr");
   o_GetSwapchainImagesKHR_export = (PFN_vkGetSwapchainImagesKHR)GetProcAddress(vk, "vkGetSwapchainImagesKHR");
   o_AcquireNextImageKHR_export   = (PFN_vkAcquireNextImageKHR)GetProcAddress(vk, "vkAcquireNextImageKHR");
+  o_AcquireNextImage2KHR_export = reinterpret_cast<PFN_vkAcquireNextImage2KHR>(GetProcAddress(vk, "vkAcquireNextImage2KHR"));
   o_QueuePresentKHR_export       = (PFN_vkQueuePresentKHR)GetProcAddress(vk, "vkQueuePresentKHR");
   o_CreateSwapchainKHR_export = reinterpret_cast<PFN_vkCreateSwapchainKHR>(GetProcAddress(vk, "vkCreateSwapchainKHR"));
   o_DestroySwapchainKHR_export = reinterpret_cast<PFN_vkDestroySwapchainKHR>(GetProcAddress(vk, "vkDestroySwapchainKHR"));
@@ -645,6 +666,7 @@ void InstallVkHooks(){
   DetourAttach(&(PVOID&)o_GDPA_real,(PVOID)h_GetDeviceProcAddrExport);
   if(o_GetSwapchainImagesKHR_export) DetourAttach(&(PVOID&)o_GetSwapchainImagesKHR_export,(PVOID)h_GetSwapchainImagesKHRExport);
   if(o_AcquireNextImageKHR_export)   DetourAttach(&(PVOID&)o_AcquireNextImageKHR_export,(PVOID)h_AcquireNextImageKHRExport);
+  if(o_AcquireNextImage2KHR_export) DetourAttach(&(PVOID&)o_AcquireNextImage2KHR_export,(PVOID)h_AcquireNextImage2KHRExport);
   if(o_QueuePresentKHR_export)       DetourAttach(&(PVOID&)o_QueuePresentKHR_export,(PVOID)h_QueuePresentKHRExport);
   if (o_CreateSwapchainKHR_export) DetourAttach(&(PVOID&)o_CreateSwapchainKHR_export, (PVOID)h_CreateSwapchainKHRExport);
   if (o_DestroySwapchainKHR_export) DetourAttach(&(PVOID&)o_DestroySwapchainKHR_export, (PVOID)h_DestroySwapchainKHRExport);
@@ -672,6 +694,7 @@ void RemoveVkHooks(){
   DetourDetach(&(PVOID&)o_GDPA_real,(PVOID)h_GetDeviceProcAddrExport);
   if(o_GetSwapchainImagesKHR_export) DetourDetach(&(PVOID&)o_GetSwapchainImagesKHR_export,(PVOID)h_GetSwapchainImagesKHRExport);
   if(o_AcquireNextImageKHR_export)   DetourDetach(&(PVOID&)o_AcquireNextImageKHR_export,(PVOID)h_AcquireNextImageKHRExport);
+  if(o_AcquireNextImage2KHR_export) DetourDetach(&(PVOID&)o_AcquireNextImage2KHR_export,(PVOID)h_AcquireNextImage2KHRExport);
   if(o_QueuePresentKHR_export)       DetourDetach(&(PVOID&)o_QueuePresentKHR_export,(PVOID)h_QueuePresentKHRExport);
   if(o_CreateDevice_export)          DetourDetach(&(PVOID&)o_CreateDevice_export,(PVOID)h_CreateDeviceExport);
   if (o_CreateSwapchainKHR_export) DetourDetach(&(PVOID&)o_CreateSwapchainKHR_export, (PVOID)h_CreateSwapchainKHRExport);

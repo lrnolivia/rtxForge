@@ -398,7 +398,7 @@ def prepare(config,rows,mode,operation,settings):
                         gpu=gpu_family()
                         if gpu=='blackwell':mfg_provider='native'
                         else:t.need(gpu in (None,'ada') or mfg_provider=='universal',
-                                    'This MFG package targets RTX 40. Choose Universal MFG for your GPU in Packages.')
+                                    "This MFG package doesn't support your GPU. Choose one that does in Packages.")
                     if mfg_provider=='native':
                         # The game's own DLSS-G multiplier; no unlock is installed or enabled.
                         release['mfg_native']=True
@@ -484,7 +484,7 @@ def prepare(config,rows,mode,operation,settings):
                     preview=e.install_target(g,target_data,target_meta,'ada',nr_runtime_payload=nr,nr_runtime_meta=nrmeta,feature_mode=mode,enable_effects=True,nr_on_launch=settings.get('nr_on_launch',False) if operation=='install' else None,native_mfg_fallback=bool(settings.get('native_mfg_fallback',False)),nr_strength=strength,mfg_multiplier=multiplier,sharpening_strength=sharpening,feature_controls=controls,preserve_visual_settings=not settings.get("apply_requested_presets",False),dry_run=True)
                 if selected=='skynizz':
                     model=preview.get('nr_runtime') or {}
-                    route='Combined NR + Ada MFG bridge · target runtime validation pending' if mode=='nr-mfg' else 'MFG Only · neural rendering disabled' if mode=='mfg-only' else 'NR Only · requires D3D12/DLSS'
+                    route='Combined NR + MFG bridge · target runtime validation pending' if mode=='nr-mfg' else 'MFG Only · neural rendering disabled' if mode=='mfg-only' else 'NR Only · requires D3D12/DLSS'
                     if (component:=release.get('mfg_component')) and component.get('id')=='universal':
                         lead='NR + ' if mode=='nr-mfg' else 'MFG Only · '
                         route=f"{lead}Universal MFG {component['version']} · OptiScaler plugin · SHA-256 {component['dll']['sha256']} · game-native DLSS-G · internal unlock disabled · target runtime validation pending"

@@ -296,6 +296,7 @@ public sealed class ForgeSettings
     [JsonPropertyName("overlay_start_with_windows")] public bool OverlayStartWithWindows { get; set; } = true;
     [JsonPropertyName("overlay_material")] public string OverlayMaterial { get; set; } = "acrylic";
     [JsonPropertyName("overlay_controls")] public string OverlayControls { get; set; } = "unified";
+    [JsonPropertyName("overlay_live_stats")] public bool OverlayLiveStats { get; set; } = true;
     string overlayRenderer = "game";
     /// <summary>"game" (the rtxForge in-game panel) or "optiscaler". The retired desktop window ("rtxforge") reads as "game".</summary>
     [JsonPropertyName("overlay_renderer")] public string OverlayRenderer
@@ -320,6 +321,7 @@ public sealed class ForgeSettings
         PanelHotkey = source.PanelHotkey; OverlayHelper = source.OverlayHelper;
         OverlayStartWithWindows = source.OverlayStartWithWindows; OverlayMaterial = source.OverlayMaterial;
         OverlayControls = source.OverlayControls; OverlayRenderer = source.OverlayRenderer;
+        OverlayLiveStats = source.OverlayLiveStats;
         OptiScalerHotkey = source.OptiScalerHotkey;
         OptiScalerUi = source.OptiScalerUi; OptiScalerIntro = source.OptiScalerIntro;
         ReShadeUi = source.ReShadeUi; ReShadeIntro = source.ReShadeIntro;

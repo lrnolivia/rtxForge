@@ -30,7 +30,16 @@ internal sealed class NativePanelCoordinator : IDisposable
         _ = ReloadTargetsAsync(); timer.Start();
     }
     public async Task ReloadTargetsAsync()
-    { try { targets = await engine.CompanionTargetsAsync(); } catch (Exception) { targets = []; } }
+    {
+        try
+        {
+            targets = await engine.CompanionTargetsAsync();
+            // Experimental Vulkan installs have external journals and may not
+            // be marked installed in the manager's ordinary provider scan.
+            await OverlayHelper.CacheGameIdentitiesAsync(targets);
+        }
+        catch (Exception) { targets = []; }
+    }
 
     async Task PollAsync()
     {
@@ -78,6 +87,7 @@ internal sealed class NativePanelCoordinator : IDisposable
         return new JsonObject
         {
             ["overlay_controls"] = s.OverlayControls, ["overlay_renderer"] = s.OverlayRenderer,
+            ["overlay_live_stats"] = s.OverlayLiveStats,
             ["panel_hotkey"] = s.PanelHotkey, ["panel_key"] = (int)binding.Key, ["panel_modifiers"] = (int)binding.Modifiers,
             ["overlay_helper"] = s.OverlayHelper, ["overlay_start_with_windows"] = s.OverlayStartWithWindows,
             ["optiscaler_ui"] = s.OptiScalerUi, ["optiscaler_intro"] = s.OptiScalerIntro,
@@ -155,6 +165,7 @@ internal sealed class NativePanelCoordinator : IDisposable
             switch (setting)
             {
                 case "overlay_controls": s.OverlayControls = value.GetValue<bool>() ? "classic" : "unified"; break;
+                case "overlay_live_stats": s.OverlayLiveStats = value.GetValue<bool>(); break;
                 case "overlay_renderer":
                     var renderer = value.GetValue<string>();
                     if (renderer is not ("game" or "optiscaler")) throw new InvalidOperationException("Choose an available overlay.");

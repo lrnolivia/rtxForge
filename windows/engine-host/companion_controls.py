@@ -251,6 +251,7 @@ class Controls:
         self.state = Path(state) / 'runtime-presets'
         self.installations = Path(os.environ.get('RTXFORGE_DLSS_UNLOCKED_STATE') or Path(state).parent / 'engine-state') / 'targets'
         self.feeder = self.installations.parent / 'feeder-targets'
+        self.vulkan = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData/Local')) / 'rtxForge/vulkan-native/targets'
         self.lock = threading.RLock()
         self.verified, self.previous, self.last_pid, self.preset_errors = {}, {}, {}, {}
         self.process_cache, self.process_time = {}, 0
@@ -293,7 +294,65 @@ class Controls:
                 rows.append({'game': str(root), 'exe': exe.relative_to(root).as_posix(),
                              'name': record.get('name') or exe.stem, 'appid': record.get('appid')})
             except (OSError, ValueError, KeyError, TypeError, AttributeError, t.Refusal): continue
+        for path in sorted(self.vulkan.glob('*/baseline.json'))[:500]:
+            try:
+                game = self._vulkan_record(path)
+                if game: rows.append(game['row'])
+            except (OSError, ValueError, KeyError, TypeError, t.Refusal): continue
         return rows + feeder_controls.targets(self.feeder)
+
+    def _vulkan_record(self, path):
+        """Read the external adapter journal; never infer ownership from DLL presence."""
+        path = t.safe(path)
+        t.need(path.is_file() and path.stat().st_size < 1024**2, 'Invalid Vulkan recovery record.')
+        record = t.read_json(path)
+        t.need(isinstance(record, dict) and record.get('schema') == 1, 'Invalid Vulkan recovery record.')
+        profiles = {'rtxforge-vulkan-native:bg3': ('bg3.exe', "Baldur's Gate 3", '1086940'),
+                    'rtxforge-vulkan-native:rdr2': ('RDR2.exe', 'Red Dead Redemption 2', '1174180')}
+        profile = profiles.get(record.get('provider_id'))
+        if record.get('status') != 'active' or not profile: return None
+        t.need(isinstance(record.get('target'), str) and Path(record['target']).is_absolute(), 'Invalid Vulkan target path.')
+        target = t.safe(record['target'])
+        t.need(target.is_absolute() and target.is_dir(), 'The Vulkan game directory is unavailable.')
+        identity = hashlib.sha256(str(target).casefold().encode()).hexdigest()
+        t.need(path.parent == t.safe(self.vulkan / identity), 'Vulkan recovery identity differs.')
+        files = record.get('installed')
+        t.need(isinstance(files, dict) and len(files) <= 200, 'Invalid Vulkan installed inventory.')
+        for name, digest in files.items():
+            t.relative(name)
+            t.need(isinstance(digest, str) and len(digest) == 64 and all(c in '0123456789abcdef' for c in digest),
+                   'Invalid Vulkan installed hash.')
+        exe = t.safe(target / profile[0])
+        t.need(exe.is_file(), 'The Vulkan game executable is unavailable.')
+        for name in ('bink2w64.dll', 'NativeMods/fgvk.dll'):
+            expected = files.get(name)
+            installed = t.safe(target / name)
+            t.need(expected and installed.is_file(), 'Repair the missing Vulkan loader or provider.')
+            signature = (installed.stat().st_size, installed.stat().st_mtime_ns, expected)
+            if self.verified.get(str(installed)) != signature:
+                t.need(t.digest(installed) == expected, 'The Vulkan loader or provider changed; repair this game.')
+                self.verified[str(installed)] = signature
+        return {'row': {'game': str(target), 'exe': profile[0], 'name': profile[1], 'appid': profile[2],
+                        'runtime_provider': 'vulkan-native'}, 'exe': exe, 'target': target, 'files': files}
+
+    def _vulkan(self, params):
+        row = params.get('row')
+        if not isinstance(row, dict) or row.get('runtime_provider') != 'vulkan-native': return None
+        t.need(isinstance(row.get('game'), str), 'Choose an installed Vulkan game.')
+        root = t.safe(row['game'])
+        identity = hashlib.sha256(str(root).casefold().encode()).hexdigest()
+        game = self._vulkan_record(self.vulkan / identity / 'baseline.json')
+        t.need(game and row.get('exe') == game['row']['exe'] and root == game['target'],
+               'The Vulkan game identity changed. Refresh the helper targets.')
+        return game
+
+    def _vulkan_status(self, game, pid):
+        # Runtime NR/FG telemetry comes directly from the Vulkan panel. This
+        # channel reports file ownership only until the preset route is available.
+        return {'state': 'running' if pid else 'waiting', 'pid': pid,
+                'detail': 'Vulkan panel file status connected.' if pid else 'Start this game to open its Vulkan panel.',
+                'can_edit': False, 'can_save': False, 'can_nr': True, 'can_mfg': True,
+                'native_fresh': False, 'values': {}, 'pipelines': self.pipelines(game)}
 
     def _feeder(self, params):
         """Feeder NR games have no live mailbox; their panel saves to ReShade.ini."""
@@ -472,6 +531,8 @@ class Controls:
     def status(self, params):
         with self.lock:
             try:
+                vulkan = self._vulkan(params)
+                if vulkan: return self._vulkan_status(vulkan, feeder_controls.running(vulkan, self._processes()))
                 feeder = self._feeder(params)
                 if feeder: return feeder_controls.status(feeder, feeder_controls.running(feeder, self._processes()))
                 game = self._game(params)
@@ -506,6 +567,13 @@ class Controls:
                 if not isinstance(row, dict) or not isinstance(row.get('exe'), str): continue
                 if Path(row['exe']).name.casefold() not in processes: continue
                 try:
+                    vulkan = self._vulkan({'row': row})
+                    if vulkan:
+                        pid = feeder_controls.running(vulkan, processes)
+                        if pid and str(vulkan['exe']) not in seen:
+                            seen.add(str(vulkan['exe']))
+                            candidates.append({'row': vulkan['row'], **self._vulkan_status(vulkan, pid)})
+                        continue
                     feeder = self._feeder({'row': row})
                     if feeder:
                         pid = feeder_controls.running(feeder, processes)
@@ -533,6 +601,7 @@ class Controls:
 
     def apply(self, params):
         with self.lock:
+            t.need(not self._vulkan(params), 'Use the Vulkan in-game panel for live changes. Vulkan helper presets are not available yet.')
             t.need(not self._feeder(params), 'Feeder NR loads its tuning when the game starts. Save a preset instead.')
             game = self._game(params)
             changes = validate_changes(params.get('changes'))
@@ -550,6 +619,7 @@ class Controls:
 
     def save(self, params):
         with self.lock:
+            t.need(not self._vulkan(params), 'Vulkan helper presets are not available yet. Current in-game changes remain active.')
             feeder = self._feeder(params)
             if feeder:
                 feeder_controls.write(feeder, validate_changes(params.get('changes')))
@@ -603,6 +673,7 @@ class Controls:
 
     def reset(self, params):
         with self.lock:
+            t.need(not self._vulkan(params), 'Vulkan helper preset reset is not available yet.')
             feeder = self._feeder(params)
             if feeder:
                 feeder_controls.reset(feeder)

@@ -118,6 +118,7 @@ bool MenuInitializeUI() {
         const auto nr = NrReadStatus();
         ForgePanel::LiveStats stats;
         stats.nrKnown = true; stats.nrRunning = nr.running; stats.nrFramesKnown = true; stats.nrFrames = nr.frames;
+        stats.nrWarming = nr.warming;
         stats.nrGpuMs = nr.gpuMs; stats.fgKnown = true; stats.fgRunning = active;
         stats.framesKnown = meter.valid;
         if(meter.valid) { stats.gameFps=meter.gameFPS; stats.displayedFps=meter.outputFPS; stats.measuredRatio=meter.ratio; }

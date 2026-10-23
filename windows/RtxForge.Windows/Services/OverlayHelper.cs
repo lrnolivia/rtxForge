@@ -20,7 +20,7 @@ public static class OverlayHelper
         try
         {
             using var identities = Registry.CurrentUser.CreateSubKey(@"Software\rtxForge\Overlay\Games");
-            foreach (var game in games.Where(g => g.Installed && g.EngineRow?["exe"] is not null))
+            foreach (var game in games.Where(g => g.EngineRow?["exe"] is not null))
             {
                 var relative = game.EngineRow!["exe"]!.ToString();
                 var exe = Path.GetFullPath(Path.Combine(game.Location, relative));
@@ -58,6 +58,7 @@ public static class OverlayHelper
         overlay.SetValue("PanelKey", valid ? (int)binding.Key : 0, RegistryValueKind.DWord);
         overlay.SetValue("PanelModifiers", valid ? (int)binding.Modifiers : 0, RegistryValueKind.DWord);
         overlay.SetValue("Advanced", settings.OverlayControls == "classic" ? 1 : 0, RegistryValueKind.DWord);
+        overlay.SetValue("ShowLiveStats", settings.OverlayLiveStats ? 1 : 0, RegistryValueKind.DWord);
         overlay.SetValue("InGamePanel", settings.OverlayRenderer == "game" ? 1 : 0, RegistryValueKind.DWord);
     }
 

@@ -188,3 +188,11 @@ foreach (var (stored, expected) in new[] { ("{\"mfg_provider\":\"integrated\"}",
         throw new Exception("The Universal default migration ran twice");
 }
 Console.WriteLine("PASS: the old integrated default moves to Universal once; later choices stay.");
+
+var defaultStats = JsonSerializer.Deserialize<ForgeSettings>("{}")!;
+if (!defaultStats.OverlayLiveStats) throw new Exception("Legacy settings lost default live-stat visibility");
+var hiddenStats = JsonSerializer.Deserialize<ForgeSettings>("{\"overlay_live_stats\":false,\"game_accents\":{\"sample\":\"#97c2bb\"}}")!;
+var copiedStats = new ForgeSettings(); copiedStats.CopyOverlayFrom(hiddenStats);
+if (copiedStats.OverlayLiveStats || JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(hiddenStats))!.OverlayLiveStats
+    || hiddenStats.GameAccents["sample"] != "#97c2bb") throw new Exception("Live-stat preference did not survive copy/persistence");
+Console.WriteLine("PASS: live statistics default on, persist off and copy without altering saved accents.");

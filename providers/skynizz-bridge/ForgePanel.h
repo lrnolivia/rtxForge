@@ -87,8 +87,9 @@ inline DWORD Preference(const wchar_t* name, DWORD fallback)
 // Universal MFG. Keep the real panel's Inter faces and weights.
 inline const ImFontLoader* PanelFontLoader() { return ImFontAtlasGetFontLoaderForStbTruetype(); }
 inline float dpiScale = 1.f;
+inline bool showLiveStats = true;
 struct LiveStats {
-    bool nrKnown{}, nrRunning{}, nrFramesKnown{}, fgKnown{}, fgRunning{}, framesKnown{};
+    bool nrKnown{}, nrRunning{}, nrFramesKnown{}, fgKnown{}, fgRunning{}, framesKnown{}, nrWarming{};
     unsigned long long nrFrames{};
     double nrGpuMs{-1}, gameFps{-1}, displayedFps{-1}, measuredRatio{-1};
 };
@@ -102,6 +103,19 @@ inline float PanelScale() {
     const float sx = std::clamp(fb.x, .125f, 8.f), sy = std::clamp(fb.y, .125f, 8.f);
     const float resolution = std::min(io.DisplaySize.x*sx/1920.f, io.DisplaySize.y*sy/1080.f);
     return std::clamp(std::max(dpiScale, resolution), 1.f, 4.f)/sy;
+}
+inline void LoadGameIdentity()
+{
+    // The helper refreshes this cache outside the game. Read only at startup
+    // and after a helper reply, never on each rendered frame.
+    wchar_t exe[32768] {}, identity[1024] {}; GetModuleFileNameW(nullptr, exe, 32768);
+    if (ReadUser(L"Software\\rtxForge\\Overlay\\Games", exe, RRF_RT_REG_SZ, identity, sizeof(identity)) != ERROR_SUCCESS) return;
+    const auto text = wstring_to_string(identity);
+    if(text.size() <= 8 || text[0] != '#' || text[7] != '|') return;
+    if(text.substr(1,6).find_first_not_of("0123456789abcdefABCDEF") != std::string::npos) return;
+    const auto rgb = std::stoul(text.substr(1,6), nullptr, 16);
+    accent = ImVec4(float((rgb >> 16) & 255)/255, float((rgb >> 8) & 255)/255, float(rgb & 255)/255, 1);
+    title = text.substr(8);
 }
 inline void Init(HWND window)
 {
@@ -121,6 +135,7 @@ inline void Init(HWND window)
     LOG_INFO("rtxForge panel fonts: {}", font != nullptr && bold != nullptr);
     key = int(Preference(L"PanelKey", VK_DELETE)); modifiers = int(Preference(L"PanelModifiers", 0));
     advanced = Preference(L"Advanced", 0) != 0;
+    showLiveStats = Preference(L"ShowLiveStats", 1) != 0;
     // Init runs on the render thread. GetWindowTextW sends WM_GETTEXT to the
     // window's own thread and waits; games whose window thread waits on the
     // render thread (Starfield) then deadlock. Read the caption directly.
@@ -148,17 +163,7 @@ inline void Init(HWND window)
     LOG_INFO("rtxForge panel features: NR {}, MFG {}", nrAllowed, mfgAllowed);
     // Identity is cached by the helper/manager before launch. Never load artwork
     // or walk a library from the game's render thread.
-    wchar_t exe[32768] {}, identity[1024] {}; GetModuleFileNameW(nullptr, exe, 32768);
-    if (ReadUser(L"Software\\rtxForge\\Overlay\\Games", exe, RRF_RT_REG_SZ, identity, sizeof(identity)) == ERROR_SUCCESS)
-    {
-        const auto text = wstring_to_string(identity);
-        if(text.size() > 8 && text[0] == '#' && text[7] == '|')
-        {
-            try { const auto rgb = std::stoul(text.substr(1,6), nullptr, 16);
-                accent = ImVec4(float((rgb >> 16) & 255)/255, float((rgb >> 8) & 255)/255, float(rgb & 255)/255, 1);
-                title = text.substr(8); } catch (...) { }
-        }
-    }
+    LoadGameIdentity();
 }
 inline bool CapturingShortcut()
 {
@@ -684,6 +689,7 @@ inline void SettingsControls()
     bool advancedChoice=advanced;
     if(SwitchRow("Advanced controls", &advancedChoice))
     { if(Preference("overlay_controls",advancedChoice)) prefs["overlay_controls"] = advancedChoice ? "classic" : "unified"; }
+    PreferenceToggle("Show live statistics","overlay_live_stats",showLiveStats);
     const char* rendererItems[]={"rtxForge","Native"};
     const auto renderer=prefs.value("overlay_renderer",std::string("game"));
     int selectedRenderer=renderer=="optiscaler" ? 1 : 0;
@@ -727,21 +733,33 @@ inline void SettingsControls()
     if(ImGui::CollapsingHeader("Performance"))
     { ImGui::Text("Panel CPU submit: %.3f ms",cpuMs); ImGui::TextWrapped("Translucent surface. No additional blur pass. Live controls work without the helper; saving and reviews need it."); }
 }
-inline void Statistics() {
-    if(!readLiveStats) return;
+inline void FeatureStatistics(bool neural, float scale) {
+    if(!readLiveStats || !ForgePanelChannel::settings.value("overlay_live_stats",showLiveStats)) return;
     const auto stats = readLiveStats();
-    Section("Live statistics");
-    if(stats.nrKnown) ImGui::Text("Neural rendering: %s", stats.nrRunning ? "Running" : "Idle");
-    else ImGui::TextDisabled("NR activity: unavailable from this injector");
-    if(stats.nrFramesKnown) ImGui::Text("NR compositions: %llu", stats.nrFrames);
-    if(stats.nrGpuMs >= 0 && std::isfinite(stats.nrGpuMs)) ImGui::Text("NR GPU: %.2f ms",stats.nrGpuMs);
-    else ImGui::TextDisabled("NR GPU time: unavailable");
-    if(stats.gameFps >= 0 && std::isfinite(stats.gameFps)) ImGui::Text("Game: %.1f FPS",stats.gameFps);
-    if(stats.framesKnown && stats.displayedFps >= 0 && std::isfinite(stats.displayedFps)) {
-        ImGui::Text("Displayed: %.1f FPS",stats.displayedFps);
-        ImGui::Text("Measured frame output: %.2fx",stats.measuredRatio);
-    } else ImGui::TextDisabled("Displayed-frame telemetry: unavailable");
-    if(stats.fgKnown) ImGui::Text("Frame generation: %s",stats.fgRunning ? "Active" : "Idle");
+    ImGui::PushFont(font,12.f*scale);
+    if(neural) {
+        if(!stats.nrKnown) ImGui::TextDisabled("Activity unavailable from this injector");
+        else {
+            const bool timed = stats.nrRunning && stats.nrGpuMs >= 0 && std::isfinite(stats.nrGpuMs);
+            const char* state = stats.nrWarming ? "Warming up" : stats.nrRunning ? "Active" : "Idle";
+            if(timed) {
+                PushColor(ImGuiCol_Text,TitleColor()); ImGui::Text("%.2f ms",stats.nrGpuMs); ImGui::PopStyleColor();
+                ImGui::SameLine(); ImGui::TextDisabled("GPU  /  %s",state);
+            } else ImGui::TextDisabled("%s",state);
+            if(ImGui::IsItemHovered()) {
+                if(stats.nrFramesKnown) ImGui::SetTooltip("%llu model frames composed",stats.nrFrames);
+                else ImGui::SetTooltip("Model-frame count unavailable from this injector");
+            }
+        }
+    } else if(stats.framesKnown && stats.gameFps >= 0 && stats.displayedFps >= 0 && stats.measuredRatio >= 0
+              && std::isfinite(stats.gameFps) && std::isfinite(stats.displayedFps) && std::isfinite(stats.measuredRatio)) {
+        PushColor(ImGuiCol_Text,TitleColor()); ImGui::Text("%.0f > %.0f FPS",stats.gameFps,stats.displayedFps); ImGui::PopStyleColor();
+        ImGui::SameLine(); ImGui::TextDisabled("/  %.2fx",stats.measuredRatio);
+        if(ImGui::IsItemHovered()) ImGui::SetTooltip("Measured rendered and displayed frames; independent of the requested multiplier");
+    } else if(stats.gameFps >= 0 && std::isfinite(stats.gameFps)) {
+        ImGui::TextDisabled("%.0f FPS rendered / output unavailable",stats.gameFps);
+    } else ImGui::TextDisabled("Waiting for displayed-frame data");
+    ImGui::PopFont();
 }
 inline bool Draw(bool& visible, float scale)
 {
@@ -757,7 +775,9 @@ inline bool Draw(bool& visible, float scale)
     const auto display = ImGui::GetIO().DisplaySize;
     using ForgePanelChannel::Send; using ForgePanelChannel::Poll; using ForgePanelChannel::pending;
     using ForgePanelChannel::needsHello; using ForgePanelChannel::helperReady; using ForgePanelChannel::message;
+    const auto previousReply = ForgePanelChannel::lastRevision;
     Poll();
+    if(helperReady && ForgePanelChannel::lastRevision != previousReply) LoadGameIdentity();
     if(!pending && needsHello && Send({{"op","hello"}})) needsHello = false;
     if(ForgePanelChannel::settings.contains("overlay_controls")) advanced = ForgePanelChannel::settings.value("overlay_controls",std::string()) == "classic";
     if(ForgePanelChannel::settings.contains("panel_key")) key = ForgePanelChannel::settings.value("panel_key",int(VK_SCROLL));
@@ -839,7 +859,12 @@ inline bool Draw(bool& visible, float scale)
             {
                 group = field.group; ImGui::Spacing();
                 const bool primary = std::strcmp(group,"Frame generation") == 0 || std::strcmp(group,"Neural rendering") == 0 || std::strcmp(group,"Image tuning") == 0;
-                if(primary) { if(std::strcmp(group,"Neural rendering") == 0) HeaderSwitch(group,"enabled",cfg); else if(std::strcmp(group,"Frame generation") == 0) FrameGeneration(cfg); else Section(group); open = true; }
+                if(primary) {
+                    if(std::strcmp(group,"Neural rendering") == 0) { HeaderSwitch(group,"enabled",cfg); FeatureStatistics(true,scale); }
+                    else if(std::strcmp(group,"Frame generation") == 0) { FrameGeneration(cfg); FeatureStatistics(false,scale); }
+                    else Section(group);
+                    open = true;
+                }
                 else open = ImGui::CollapsingHeader(group);
             }
             if(!open) continue;
@@ -854,7 +879,6 @@ inline bool Draw(bool& visible, float scale)
         }
     }
     if(settings || global) ImGui::PopStyleVar();
-    if(!settings && !global) Statistics();
     ImGui::EndChild(); ImGui::EndChild();
     if(!message.empty())
     { ImGui::BeginChild("feedback",ImVec2(0,feedbackHeight),ImGuiChildFlags_None,ImGuiWindowFlags_NoBackground); ImGui::TextWrapped("%s",message.c_str()); ImGui::EndChild(); }
@@ -863,7 +887,8 @@ inline bool Draw(bool& visible, float scale)
     {
     const auto saveColor=Mix(accent,dark,.45f);
     PushColor(ImGuiCol_Button,saveColor); PushColor(ImGuiCol_Text,OnColor(saveColor));
-    ImGui::BeginDisabled(pending || !helperReady || !ForgePanelChannel::settings.value("overlay_helper",true));
+    ImGui::BeginDisabled(pending || !helperReady || !ForgePanelChannel::settings.value("overlay_helper",true)
+        || !ForgePanelChannel::status.value("can_save",true));
     ImGui::PushFont(bold ? bold : font, ImGui::GetFontSize());
     const bool saveClicked = ImGui::Button("Save preset",ImVec2((available-gap)*.66f,42.f*scale));
     ImGui::PopFont();

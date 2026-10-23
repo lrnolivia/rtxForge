@@ -5878,6 +5878,8 @@ class Window(Adw.ApplicationWindow):
         if self.input_stack.get_visible_child_name()!='couch' and keyval==Gdk.KEY_Left and state&Gdk.ModifierType.ALT_MASK:
             return self.navigate_back()
         if keyval is None or self.input_stack.get_visible_child_name()!='couch':return False
+        recorder=getattr(self.couch,'shortcut_recorder',None)
+        if recorder:return recorder(keyval,state)
         dialog=self.get_visible_dialog()
         if dialog:
             if keyval==Gdk.KEY_Escape:

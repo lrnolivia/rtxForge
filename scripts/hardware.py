@@ -11,17 +11,34 @@ def detect():
     if info['system']!='Linux' or info['architecture'].lower() not in ('x86_64','amd64'):
         info['reason']='This package requires 64-bit x86 Linux.';return info
     try:
-        result=subprocess.run(['nvidia-smi','--query-gpu=name,driver_version,memory.total','--format=csv,noheader,nounits'],text=True,capture_output=True,timeout=10,check=True)
-        rows=[line.split(',') for line in result.stdout.strip().splitlines() if line.count(',')>=2]
+        try:
+            result=subprocess.run(['nvidia-smi','--query-gpu=name,driver_version,memory.total','--format=csv,noheader,nounits'],text=True,capture_output=True,timeout=10,check=True)
+            rows=[line.split(',') for line in result.stdout.strip().splitlines() if line.count(',')>=2]
+        except (OSError,subprocess.SubprocessError):
+            # Some distros and containers ship the NVIDIA kernel driver without nvidia-smi.
+            rows=proc_gpus()
+            if not rows:raise
         supported=[r for r in rows if family(r[0])]
         chosen=(sorted(supported,key=lambda r:FAMILIES.index(family(r[0])))[-1:] or rows)[0]
-        info.update({'gpu':chosen[0].strip(),'driver':chosen[1].strip(),'vram':chosen[2].strip()+' MiB','family':family(chosen[0])})
+        info.update({'gpu':chosen[0].strip(),'driver':chosen[1].strip(),'vram':chosen[2].strip()+' MiB' if chosen[2].strip().isdigit() else 'Unknown','family':family(chosen[0])})
         if not supported:info['reason']=f"{info['gpu']} isn't an RTX GPU these packages can run on.";return info
     except (OSError,subprocess.SubprocessError,IndexError):
         info['reason']='Cannot verify an NVIDIA GPU and working NVIDIA driver. Install/repair is unavailable; uninstall remains available.';return info
     # Extraction is provider-specific. DLSS-Unlocked uses Python's ZIP reader;
     # the y4my engine can use libarchive even without a 7-Zip executable.
     return ready(info)
+
+
+def proc_gpus(root=Path('/proc/driver/nvidia')):
+    """[name, driver, VRAM] rows from the loaded NVIDIA kernel driver."""
+    try:
+        driver=re.search(r'Kernel Module.*?\s(\d+\.\d+(?:\.\d+)?)\s',(root/'version').read_text())
+        rows=[]
+        for info in sorted((root/'gpus').glob('*/information')):
+            model=re.search(r'^Model:\s*(.+)$',info.read_text(),re.M)
+            if model:rows.append([model[1].strip(),driver[1] if driver else 'Unknown','Unknown'])
+        return rows
+    except OSError:return []
 
 
 # RTX generations by GeForce model number. Only Ada (RTX 40) has been checked in game.

@@ -30,6 +30,9 @@ The Windows app reached the 1.0 Beta RC on 2026-10-21. This page tracks what the
 | `linux_runtime.storage_inventory(app_root, engine_root)`, `storage_review(...)` → `storage_cleanup(..., plan)` | App Storage. |
 | `linux_runtime.mfg_observation(row)`, `record_runtime_evidence(e, row, report, observed, confirmed_by)` | Plugin status as an observation, and human-confirmed evidence. |
 
+- **Other distributions** (`rtxforge/linux-ui-parity-20261021`, 2026-10-23). CachyOS/Arch run the app with pacman's GTK4 and libadwaita. SteamOS and hosts with libadwaita older than 1.7 open it in a `rtxforge` distrobox (`--container`), and setup accepts that route. The GPU check falls back to `/proc/driver/nvidia` when `nvidia-smi` is missing or unusable. Fixture-tested Steam layouts cover SteamOS internal and SD card libraries, `~/.steam` symlinks and Flatpak Steam. See [linux/distros.md](linux/distros.md).
+- **Game Mode panel shortcut.** Game Mode records the in-game panel shortcut, app-wide and per game, as Windows Game Mode does.
+
 ## Smoke test (on Linux)
 
 1. Install NR + MFG (Universal) on Windows in a game on the shared drive, then boot Linux.

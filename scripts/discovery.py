@@ -259,7 +259,12 @@ def candidate_libraries(explicit: Optional[Path]=None) -> list[Path]:
             continue
         if not (rp / 'steamapps/common').is_dir():
             continue
-        key = str(rp)
+        # The same folder can be reachable twice through bind mounts (/home and /var/home in a container).
+        try:
+            st = rp.stat()
+            key = (st.st_dev, st.st_ino)
+        except OSError:
+            key = str(rp)
         if key not in seen:
             seen.add(key)
             out.append(rp)

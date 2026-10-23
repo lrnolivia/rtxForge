@@ -5,8 +5,10 @@ import json
 import os
 from pathlib import Path
 import platform
+import shutil
 import sys
 
+import desktop_frontend
 import desktop_install
 import discovery
 import engine_bridge
@@ -56,15 +58,16 @@ def host_report(config):
     add('64-bit Linux', sys.platform == 'linux' and platform.machine() == 'x86_64', platform.machine())
     gpu = hardware.detect()
     add('NVIDIA RTX 40-series driver', gpu['ready'], f"{gpu['gpu']} · {gpu['driver']} · {gpu['reason']}")
-    try:
-        import gi
-        gi.require_version('Gtk', '4.0')
-        gi.require_version('Adw', '1')
+    missing = desktop_frontend.gtk_missing()
+    if not missing:
         from gi.repository import Adw, Gtk
-        add('GTK/libadwaita', hasattr(Adw, 'ToggleGroup'),
+        add('GTK/libadwaita', True,
             f"GTK {Gtk.get_major_version()}.{Gtk.get_minor_version()}, libadwaita {Adw.get_major_version()}.{Adw.get_minor_version()}")
-    except (ImportError, ValueError) as exc:
-        add('GTK/libadwaita', False, f'Host Python GTK4/libadwaita required: {exc}')
+    elif shutil.which('distrobox'):
+        # SteamOS and other hosts without the libraries open the app in a distrobox.
+        add('GTK/libadwaita', True, missing + ' The app opens in the rtxforge distrobox; the first launch with --container sets it up.')
+    else:
+        add('GTK/libadwaita', False, missing + ' Install GTK4 and libadwaita 1.7+ with Python bindings, or distrobox.')
     steam = discovery.steam_roots()
     add('Steam installation', bool(steam), ', '.join(map(str, steam)) or 'Open Steam once, then rerun setup.')
     try:

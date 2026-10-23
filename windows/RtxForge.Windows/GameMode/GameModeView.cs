@@ -318,7 +318,7 @@ public sealed partial class GameModeView : UserControl
         }
         return GmUi.Capsule(new Border
         {
-            Background = GmTheme.B(t.Panel, page == "details" ? 1 : .72), CornerRadius = new CornerRadius(t.Px(40)), Padding = new Thickness(t.Px(t.Compact ? 8 : 10)),
+            Background = GmTheme.B(t.Panel, page == "details" ? 1 : .80), CornerRadius = new CornerRadius(t.Px(40)), Padding = new Thickness(t.Px(t.Compact ? 8 : 10)),
             Child = ui.Selection("navigation", line, tabButtons.First(b => b.Name == "gm_tab-" + (page == "details" ? "library" : page)), true), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
         });
     }

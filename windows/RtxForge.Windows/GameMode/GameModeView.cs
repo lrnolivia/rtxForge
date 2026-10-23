@@ -203,7 +203,8 @@ public sealed partial class GameModeView : UserControl
             "settings" => BuildSettings(),
             _ => BuildLibrary(),
         };
-        content.Loaded += (_, _) => { foreach (var scroll in Descendants(content).OfType<ScrollViewer>()) GmScrollFade.Attach(scroll, t.S); };
+        if (content is FrameworkElement contentElement)
+            contentElement.Loaded += (_, _) => { foreach (var scroll in Descendants(content).OfType<ScrollViewer>()) GmScrollFade.Attach(scroll, t.S); };
         (ui.Accent, ui.AccentInk) = (accent, accentInk);
         var scene = new Grid();
         scene.Children.Add(pageLight.Artwork); scene.Children.Add(content); scene.Children.Add(pageLight);

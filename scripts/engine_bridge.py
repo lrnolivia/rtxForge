@@ -733,8 +733,10 @@ def execute(review):
                     if item.get('proton_stack'):
                         # Re-check at execute time: a Proton or driver change since review refuses.
                         e.PROTON_STACK=proton_gate(e,g,item['settings'],review['mode'])
-                    import overlay_settings
-                    e.OVERLAY_UI = overlay_settings.effective(item.get('settings') or {},item['row']['game'])
+                    import overlay_settings, overlay_policy
+                    reviewed_settings = item.get('settings') or {}
+                    e.OVERLAY_UI = (overlay_settings.effective(reviewed_settings, str(g.root))
+                                    if overlay_policy.explicit(reviewed_settings) else None)
                     record=e.install_target(g,item.get('payload',review['payload']),item.get('meta',review['meta']),'ada',nr_runtime_payload=item.get('nr',review['nr']),nr_runtime_meta=item.get('nrmeta',review['nrmeta']),feature_mode=review['mode'],enable_effects=review['enable_effects'],nr_on_launch=review.get('nr_on_launch'),native_mfg_fallback=review.get('native_mfg_fallback',False),nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'],feature_controls=review.get('feature_controls'),preserve_visual_settings=not review.get('apply_requested_presets',False))
                     report('Saving launch settings',0.85)
                     if item.get('prefix'):

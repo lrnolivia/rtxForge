@@ -5866,6 +5866,11 @@ class Window(Adw.ApplicationWindow):
         self.controller_hud.set_visible(False)
         if couch:self.couch.refresh()
         self.add_css_class('controller-active') if couch else self.remove_css_class('controller-active')
+        # Game Mode fills the screen, as on Windows; leaving it restores only what it changed.
+        if couch and not self.is_fullscreen():
+            self._game_mode_fullscreen=True;self.fullscreen()
+        elif not couch and getattr(self,'_game_mode_fullscreen',False) and not gamescope_session():
+            self._game_mode_fullscreen=False;self.unfullscreen()
 
     def set_input_kind(self,kind):
         if getattr(self,'input_kind',None)==kind:return

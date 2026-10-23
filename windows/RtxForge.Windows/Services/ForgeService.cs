@@ -279,7 +279,7 @@ public sealed class PreviewForgeService : IForgeService
         new("skynizz", "Skynizz NR + Universal MFG", "v1.3.0 bridge · Universal MFG 1.6.1", "Recommended. Neural rendering with Universal MFG 1.6.1 frame generation in DirectX 12 games with DLSS.", true,
             "Preview package · no game writes", true, "https://github.com/Skynizz/optiscaler-dlss5", ["windows"]),
         new("dlss-unlocked", "DLSS-Unlocked", "Preview", "NR and native MFG in one OptiScaler package", true, "Ready to review for your system", false, "https://github.com/ShyVortex/dlss-unlocked"),
-        new("feeder", "Feeder NR", "Preview", "Neural rendering for DirectX 11 games through ReShade. NR only.", true,
+        new("feeder", "Feeder NR", "Preview", "Neural rendering through ReShade for DirectX 11 games, and DirectX 12 games without DLSS. NR only.", true,
             "Preview package · no game writes", false, "https://github.com/jlrouzies-fr/DLSS5-Feeder", ["windows"]),
     ], [], null));
 

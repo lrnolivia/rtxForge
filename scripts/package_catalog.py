@@ -77,7 +77,7 @@ def catalog(host=None):
                      'url': 'https://github.com/jlrouzies-fr/DLSS5-Feeder', 'sha256': '',
                      'available': supported, 'recommended': False,
                      'reason': 'Requires a local Feeder stack and a compatible NR model' if supported else host.get('reason', 'Unsupported system'),
-                     'summary': 'NR for DirectX 11 games through ReShade. Recognize existing setups or use your local stack. NR Only.'})
+                     'summary': 'NR through ReShade for DirectX 11 games, and DirectX 12 games without DLSS (not verified yet). Recognize existing setups or use your local stack. NR Only.'})
         import skynizz_provider
         record=locks['skynizz']
         bridge=None

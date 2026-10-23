@@ -37,7 +37,7 @@ public sealed class Game
     public string? Profile { get; init; }
     public string? RuntimeProvider { get; init; }
     public bool IsFeeder => RuntimeProvider == "feeder";
-    /// <summary>A detected installation or a fresh DX11 target admitted to the separate Feeder route.</summary>
+    /// <summary>A detected installation or a fresh DX11 or DX12 (no DLSS) target admitted to the separate Feeder route.</summary>
     public bool UsesFeeder => IsFeeder || EngineRow?["install_provider"]?.ToString() == "feeder"
         && EngineRow?["feeder_available"] is JsonValue flag && flag.TryGetValue<bool>(out var supported) && supported;
     /// <summary>Which rtxForge installed the features: "windows", "linux" (shared .rtxforge-install.json), or null.</summary>
@@ -236,7 +236,7 @@ public sealed class ForgeSettings
     }
     /// <summary>A game's own package for games with DLSS, by game folder; absent games use RuntimeProvider.</summary>
     [JsonPropertyName("game_packages")] public Dictionary<string, string> GamePackages { get; set; } = [];
-    /// <summary>Packages a game can choose on Windows. Feeder NR stays automatic for DX11 games without DLSS.</summary>
+    /// <summary>Packages a game can choose on Windows. Feeder NR stays automatic for DX11 games and DX12 games without DLSS.</summary>
     public static readonly (string Key, string Name)[] GamePackageChoices = [("skynizz", "Skynizz NR"), ("dlss-unlocked", "DLSS-Unlocked")];
     /// <summary>MFG packages that pair with Skynizz NR, as MfgProvider values.</summary>
     public static readonly (string Key, string Name)[] MfgPackageNames =

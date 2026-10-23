@@ -245,15 +245,56 @@ def eligible(e, row, existing=False, check_running=True):
     t.need(not any((directory / name).exists() for name in ('nvngx.dll_dlssnr.dll', 'dlss5-feed-helper.addon64',
                                                          'dlss5-bridge.addon64', 'renodx-mfgunlock.addon64')),
            'Another NR or frame-generation hook is present. Restore it before using this Feeder recipe')
-    t.need(existing or directx11(e, exe), 'This Feeder recipe requires an x64 DirectX 11 executable')
+    if not existing:
+        apis = graphics_apis(e, exe)
+        t.need(apis, 'This Feeder recipe requires an x64 DirectX 11 or DirectX 12 executable')
+        # Feeder's DirectX 12 session shares the game's device and refuses a second DLSS
+        # runtime there; a DirectX 12 game with its own DLSS uses that DLSS route instead.
+        t.need(apis != {'d3d12'} or not row.get('native_dlss'),
+               'This DirectX 12 game ships DLSS; use its DLSS route instead of Feeder NR')
     return root, exe, directory
 
 
-def directx11(e, exe):
-    """Normal or delay-load d3d11 import; EA-wrapped Mass Effect LE delay-loads it."""
+def graphics_apis(e, exe):
+    """The Direct3D versions an x64 executable loads: {'d3d11'}, {'d3d12'}, both, or none.
+
+    Normal and delay-load imports first (EA-wrapped Mass Effect LE delay-loads d3d11).
+    Packed executables hide their imports until launch, so fall back to the DLL names
+    the file mentions.
+    """
     if exe.name.lower() in REVIEWED_DX11:
-        return True
-    return 'd3d11.dll' in {name.lower() for name in (*e.pe_imported_dlls(exe), *delay_imported_dlls(exe))}
+        return {'d3d11'}
+    names = {name.lower() for name in (*e.pe_imported_dlls(exe), *delay_imported_dlls(exe))}
+    found = {api for api in ('d3d11', 'd3d12') if api + '.dll' in names}
+    return found or mentioned_apis(exe)
+
+
+def mentioned_apis(exe, limit=2 * 1024**3):
+    import mmap
+    try:
+        with open(exe, 'rb') as file:
+            if not 0 < os.fstat(file.fileno()).st_size <= limit:
+                return set()
+            with mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as data:
+                return {api for api in ('d3d11', 'd3d12')
+                        if re.search(rb'(?i)' + api.encode() + rb'\.dll', data)}
+    except (OSError, ValueError):
+        return set()
+
+
+def directx11(e, exe):
+    return 'd3d11' in graphics_apis(e, exe)
+
+
+def route_note(e, row):
+    """The Feeder route a fresh game gets. DirectX 12 has not been checked in game yet."""
+    try:
+        apis = graphics_apis(e, target(row)[1])
+    except (t.Refusal, OSError, ValueError):
+        apis = set()
+    if apis == {'d3d12'}:
+        return 'Feeder NR · DirectX 12 · not verified · NR only'
+    return 'Feeder NR · DirectX 11 · NR only'
 
 
 def delay_imported_dlls(exe):
@@ -338,7 +379,7 @@ def expand_rows(e, rows, selected=False):
                     # DLSS games. Mutation checks still run again during review.
                     eligible(e, child, check_running=False)
                     child.update(blocked='', feeder_available=True, install_provider='feeder',
-                                 nr_route_note='Feeder NR · DirectX 11 · NR only')
+                                 nr_route_note=route_note(e, child))
                 except (t.Refusal, e.Stop, OSError, ValueError) as error:
                     child.pop('feeder_available', None)
                     if child.get('install_provider') == 'feeder':

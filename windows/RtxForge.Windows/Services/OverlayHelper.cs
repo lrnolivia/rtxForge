@@ -163,6 +163,22 @@ public sealed class OverlayHelperWindow : Window
                 using var reader = new StreamReader(pipe, leaveOpen: true);
                 using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
                 var command = await reader.ReadLineAsync(stopping.Token).AsTask().WaitAsync(TimeSpan.FromSeconds(3));
+                if (command == "status")
+                {
+                    var status = nativePanel?.DiagnosticSnapshot() ?? new System.Text.Json.Nodes.JsonObject();
+                    status["helper_pid"] = Environment.ProcessId;
+                    status["app_build"] = typeof(OverlayHelper).Assembly.ManifestModule.ModuleVersionId.ToString("N");
+                    status["engine_root"] = engine?.EngineRoot;
+                    status["problem"] = problem;
+                    if (engine is not null)
+                    {
+                        var script = Path.Combine(engine.EngineRoot, "windows", "engine-host", "companion_controls.py");
+                        using var stream = File.OpenRead(script);
+                        status["companion_sha256"] = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(stream));
+                    }
+                    await writer.WriteLineAsync(status.ToJsonString());
+                    continue;
+                }
                 if (command == "reload") ConfigureShortcut();
                 else if (command == "reload-presets" && engine is not null) await engine.ReloadCompanionPresetsAsync();
                 else if (command == "refresh-targets" && nativePanel is not null) await nativePanel.ReloadTargetsAsync();

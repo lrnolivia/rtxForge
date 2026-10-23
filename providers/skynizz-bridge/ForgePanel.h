@@ -376,7 +376,7 @@ inline bool Dropdown(const char* preview)
 inline bool DropdownItem(const char* label, bool selected)
 { return ImGui::Selectable(label, selected, 0, ImVec2(0, 32.f*ImGui::GetFontSize()/14.f)); }
 inline void DropdownEnd() { ImGui::PopStyleVar(2); ImGui::EndCombo(); }
-// Titles, headings and emphasis use Inter SemiBold, as in the rtxForge sidebar.
+// Smaller labels and emphasis retain Inter SemiBold.
 inline void BoldWrapped(const char* text, ImVec4 colour, float scale)
 {
     const float wrap = ImGui::GetContentRegionAvail().x;
@@ -389,11 +389,18 @@ inline void BoldWrapped(const char* text, ImVec4 colour, float scale)
     ImGui::PopFont();
     ImGui::Dummy(ImVec2(std::max(size.x, weighted.x), std::max(size.y, weighted.y)));
 }
-// Section headings at the sidebar's 18 px SemiBold step.
+// Main feature and Settings headings share the official brand typeface.
+inline void Hero(const char* text, float size, ImVec4 color)
+{
+    ImGui::PushFont(brandFont ? brandFont : bold,size);
+    PushColor(ImGuiCol_Text,color);
+    ImGui::PushTextWrapPos(0); ImGui::TextUnformatted(text); ImGui::PopTextWrapPos();
+    ImGui::PopStyleColor(); ImGui::PopFont();
+}
 inline void Section(const char* text)
 {
     const float size = ImGui::GetFontSize()*18.f/14.f;
-    ImGui::Spacing(); ImGui::PushFont(ImGui::GetFont(), size); BoldWrapped(text, ImVec4(.90f,.90f,.90f,1), size/18.f); ImGui::PopFont();
+    ImGui::Spacing(); Hero(text, size, ImVec4(.90f,.90f,.90f,1));
 }
 // The sidebar's ToggleSwitch: a pill track filled with the accent when on.
 inline bool Switch(const char* id, bool* on)
@@ -428,8 +435,8 @@ inline bool HeaderToggle(const char* text, bool* on, bool enabled)
     const float scale = ImGui::GetFontSize()/14.f, size = 18.f*scale, width = 40.f*scale, height = 20.f*scale;
     ImGui::Spacing();
     const float left = ImGui::GetCursorPosX(), available = ImGui::GetContentRegionAvail().x, top = ImGui::GetCursorPosY();
-    ImGui::PushFont(ImGui::GetFont(), size); BoldWrapped(text, ImVec4(.90f,.90f,.90f,1), scale); const float line = ImGui::GetFontSize(); ImGui::PopFont();
-    ImGui::SameLine(left + available - width); ImGui::SetCursorPosY(top + (line - height)*.5f);
+    Hero(text, size, ImVec4(.90f,.90f,.90f,1));
+    ImGui::SameLine(left + available - width); ImGui::SetCursorPosY(top + (size - height)*.5f);
     ImGui::BeginDisabled(!enabled); ImGui::PushID(text);
     const bool changed = Switch("##header", on);
     ImGui::PopID(); ImGui::EndDisabled();
@@ -705,13 +712,6 @@ inline bool WelcomePending()
     if(!welcomeStarted) welcomeStarted=GetTickCount64();
     return GetTickCount64()-welcomeStarted < 7000;
 }
-inline void Hero(const char* text, float size, ImVec4 color)
-{
-    ImGui::PushFont(brandFont ? brandFont : bold,size);
-    PushColor(ImGuiCol_Text,color);
-    ImGui::PushTextWrapPos(0); ImGui::TextUnformatted(text); ImGui::PopTextWrapPos();
-    ImGui::PopStyleColor(); ImGui::PopFont();
-}
 inline std::string KeyFace()
 {
     std::string face;
@@ -751,14 +751,14 @@ inline void Welcome(bool panelVisible)
     const float words=ImGui::CalcTextSize("Press").x+ImGui::CalcTextSize(label.c_str()).x+14.f*scale;
     ImGui::PopFont(); ImGui::PushFont(font,11.f*scale);
     const float cap=std::max(22.f*scale,ImGui::CalcTextSize(KeyFace().c_str()).x+10.f*scale);
-    ImGui::PopFont(); ImGui::PushFont(brandFont ? brandFont : bold,25.f*scale);
+    ImGui::PopFont(); ImGui::PushFont(brandFont ? brandFont : bold,20.f*scale);
     const float wordmark=ImGui::CalcTextSize("rtxForge").x;
     ImGui::PopFont();
-    const float width=48.f*scale+43.2f*scale/forgeIconHeight+18.f*scale+std::max(wordmark,words+cap);
+    const float width=40.f*scale+24.f*scale*forgeIconWidth/forgeIconHeight+10.f*scale+wordmark+16.f*scale+words+cap;
     ImGui::SetNextWindowPos(ImVec2(display.x*.5f,56.f*scale),ImGuiCond_Always,ImVec2(.5f,0));
-    ImGui::SetNextWindowSize(ImVec2(width,89.f*scale),ImGuiCond_Always);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,ImVec2(24.f*scale,18.f*scale));
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding,16.f*scale);
+    ImGui::SetNextWindowSize(ImVec2(width,48.f*scale),ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,ImVec2(20.f*scale,12.f*scale));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding,12.f*scale);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize,scale);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,ImVec2(8.f*scale,6.f*scale));
     PushColor(ImGuiCol_WindowBg,ImVec4(.045f,.045f,.045f,.94f));
@@ -766,13 +766,16 @@ inline void Welcome(bool panelVisible)
     PushColor(ImGuiCol_Text,ImVec4(.9f,.9f,.9f,1));
     ImGui::Begin("rtxForge##welcome",nullptr,ImGuiWindowFlags_NoDecoration
         |ImGuiWindowFlags_NoInputs|ImGuiWindowFlags_NoNav|ImGuiWindowFlags_NoSavedSettings);
-    Brand(scale*2.4f); ImGui::SameLine(0,18.f*scale);
-    ImGui::BeginGroup(); Hero("rtxForge",25.f*scale,ImVec4(.94f,.94f,.94f,1));
+    const float rowTop=ImGui::GetCursorPosY();
+    Brand(scale*4.f/3.f); ImGui::SameLine(0,10.f*scale);
+    ImGui::SetCursorPosY(rowTop+2.f*scale); Hero("rtxForge",20.f*scale,ImVec4(.94f,.94f,.94f,1));
+    ImGui::SameLine(0,16.f*scale); ImGui::SetCursorPosY(rowTop+5.f*scale);
     ImGui::PushFont(font,14.f*scale);
     ImGui::TextUnformatted("Press"); ImGui::SameLine(0,7.f*scale);
-    KeyGlyph(scale); ImGui::SameLine(0,7.f*scale);
+    ImGui::SetCursorPosY(rowTop+2.f*scale); KeyGlyph(scale); ImGui::SameLine(0,7.f*scale);
+    ImGui::SetCursorPosY(rowTop+5.f*scale);
     ImGui::Text("%s to open the overlay",ShortcutLabel().c_str());
-    ImGui::PopFont(); ImGui::EndGroup();
+    ImGui::PopFont();
     ImGui::End(); ImGui::PopStyleColor(3); ImGui::PopStyleVar(4);
 }
 inline void SettingsControls()

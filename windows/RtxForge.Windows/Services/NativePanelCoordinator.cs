@@ -19,6 +19,7 @@ internal sealed class NativePanelCoordinator : IDisposable
     int pid, reviewId;
     EngineReview? review;
     bool busy, disposed, exitRequested;
+    string? targetProblem, pollProblem;
     public bool OwnsShortcut => channel?.OwnsShortcut == true;
     public bool Applying { get; private set; }
 
@@ -34,12 +35,24 @@ internal sealed class NativePanelCoordinator : IDisposable
         try
         {
             targets = await engine.CompanionTargetsAsync();
+            targetProblem = null;
             // Experimental Vulkan installs have external journals and may not
             // be marked installed in the manager's ordinary provider scan.
             await OverlayHelper.CacheGameIdentitiesAsync(targets);
         }
-        catch (Exception) { targets = []; }
+        catch (Exception error) { targets = []; targetProblem = error.Message; }
     }
+
+    // Read-only helper diagnostics expose discovery separately from live NR/FG.
+    // A running helper alone does not establish an attached game panel.
+    internal JsonObject DiagnosticSnapshot() => new()
+    {
+        ["targets"] = new JsonArray(targets.Select(g => (JsonNode)new JsonObject
+        { ["name"] = g.Name, ["game"] = g.Location, ["provider"] = g.RuntimeProvider }).ToArray()),
+        ["pid"] = pid, ["channel_valid"] = channel?.IsValid == true,
+        ["panel_visible"] = channel?.Visible == true,
+        ["target_error"] = targetProblem, ["poll_error"] = pollProblem,
+    };
 
     async Task PollAsync()
     {
@@ -48,6 +61,7 @@ internal sealed class NativePanelCoordinator : IDisposable
         try
         {
             var active = await engine.ActiveCompanionAsync(targets, MainWindow.ForegroundProcessId(), pid);
+            pollProblem = null;
             var foundPid = active["pid"]?.GetValue<int>() ?? 0;
             var location = active["row"]?["game"]?.ToString();
             var found = targets.FirstOrDefault(g => g.Id.Equals(location, StringComparison.OrdinalIgnoreCase));
@@ -71,6 +85,7 @@ internal sealed class NativePanelCoordinator : IDisposable
         }
         catch (Exception error)
         {
+            pollProblem = error.Message;
             if (!Applying) ClearReview();
             if (request > 0 && channel is not null && !disposed)
             {

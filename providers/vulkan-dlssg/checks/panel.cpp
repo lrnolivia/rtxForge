@@ -52,14 +52,22 @@ int main() {
     ForgePanel::welcomeStarted=0; ForgePanel::welcomeDismissed=false;
     ForgePanel::key=VK_OEM_3; ForgePanel::modifiers=2;
     ForgePanelChannel::settings["overlay_welcome"]=true;
-    io.DisplaySize=ImVec2(1920,1080); io.DisplayFramebufferScale=ImVec2(1,1);
+    io.DisplayFramebufferScale=ImVec2(1,1);
     State::Instance().outputColorSpace={};
-    for(int frame=0;frame<4;++frame) {
+    for(int density=1;density<=2;++density) for(int frame=0;frame<4;++frame) {
+        io.DisplaySize=ImVec2(1920.f*density,1080.f*density);
         ImGui::NewFrame();
         for(auto* texture:io.Fonts->TexList) {texture->SetTexID(1);texture->SetStatus(ImTextureStatus_OK);}
         ForgePanel::Welcome(false); ImGui::Render();
         auto window=ImGui::FindWindowByName("rtxForge##welcome");
-        assert(window && std::abs(window->Pos.x+window->Size.x*.5f-960)<2 && window->Pos.y>=55);
+        assert(window && std::abs(window->Pos.x+window->Size.x*.5f-io.DisplaySize.x*.5f)<2);
+        assert(window->Pos.y>=55.f*density && window->Size.y<=49.f*density);
+        // The mark, wordmark and full shortcut fit one row without clipping
+        // at both supported output densities.
+        if(frame>0) {
+            assert(window->ContentSize.y<=25.f*density);
+            assert(window->ContentSize.x<=window->Size.x-39.f*density);
+        }
         assert(ImGui::GetDrawData()->TotalVtxCount>0);
     }
     ForgePanelChannel::settings["overlay_welcome"]=false; assert(!ForgePanel::WelcomePending());

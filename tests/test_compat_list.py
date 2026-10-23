@@ -128,6 +128,18 @@ class CompatListTest(unittest.TestCase):
         (Path(self.row['game']) / self.row['exe']).write_bytes(b'MZ')
         self.assertEqual(compat_list.apply(self.config, [dict(self.row)])[0]['soft_reasons'], [NO_DLSS])
 
+    def test_features_say_what_a_game_can_get_before_review(self):
+        def got(**row):
+            return compat_list.features(dict(blocked='', package_blocked='', skynizz_blocked='') | row)
+        self.assertEqual(got(feeder_available=True), {'nr': True, 'mfg': False})
+        self.assertEqual(got(feeder_available=True, feeder_mfg=True), {'nr': True, 'mfg': True})
+        self.assertEqual(got(native_dlss=True), {'nr': True, 'mfg': False})
+        self.assertEqual(got(native_dlss=True, native_dlssg=True), {'nr': True, 'mfg': True})
+        self.assertEqual(got(blocked='Anti-cheat detected'), {'nr': False, 'mfg': False})
+        self.assertEqual(got(try_anyway=NO_DLSS), {'nr': True, 'mfg': True})
+        self.assertEqual(got(installed=True, profile='NR Only'), {'nr': True, 'mfg': False})
+        self.assertEqual(compat_list.apply(self.config, [dict(self.row)])[0]['features'], {'nr': False, 'mfg': False})
+
     def test_shipped_list_is_valid(self):
         data = json.loads((compat_list.ROOT / 'providers/compatibility.json').read_text(encoding='utf-8'))
         self.assertEqual(data['schema'], 1)

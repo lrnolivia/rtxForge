@@ -343,7 +343,7 @@ public sealed partial class GameModeView
                         () => shell.Settings.GamePackage(g), v => _ = shell.SelectGamePackageAsync(g, v), "")]));
                 }
                 var (presetRows, value) = PresetRows(shell.GameTuning(g), g.Installed && !g.Blocked, g.RuntimeProvider != "skynizz",
-                    dynamicSupported: g.DynamicMfgAvailable);
+                    dynamicSupported: g.DynamicMfgAvailable, mode: g.Installed ? null : GameOverview.Mode(g, shell.Mode));
                 foreach (var row in presetRows) content.Children.Add(row);
                 var featureActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12), HorizontalAlignment = HorizontalAlignment.Right };
                 featureActions.Children.Add(ui.Button("Use library defaults", () => _ = RunOperationAsync("reset", [g]), GmKind.Card, 0.85,
@@ -538,8 +538,10 @@ public sealed partial class GameModeView
     }
 
     /// <summary>Compact controller cards retain the overlay vocabulary and original values.</summary>
-    (List<UIElement> Rows, Func<Tuning> Value) PresetRows(Tuning initial, bool enabled = true, bool legacy = false, Action? changed = null, bool embedded = false, bool dynamicSupported = true, bool installation = false)
+    (List<UIElement> Rows, Func<Tuning> Value) PresetRows(Tuning initial, bool enabled = true, bool legacy = false, Action? changed = null, bool embedded = false, bool dynamicSupported = true, bool installation = false, string? mode = null)
     {
+        // A game's own features narrow the library mode (GameOverview.Mode).
+        var shownMode = mode ?? shell.Mode;
         var values = FeatureControlSchema.Resolve(initial);
         var advanced = shell.Settings.OverlayControls == "classic";
         var controls = FeatureControlSchema.Shared.Controls;
@@ -558,7 +560,7 @@ public sealed partial class GameModeView
         }
         UIElement Field(FeatureControl field)
         {
-            var available = enabled && FeatureControlSchema.Available(field, shell.Mode, legacy);
+            var available = enabled && FeatureControlSchema.Available(field, shownMode, legacy);
             var label = field.Key == "enabled" ? "Enable NR on launch" : field.Caption(advanced);
             var shown = ui.Text("", .78, available ? t.Fg : t.DisabledFg);
             shown.HorizontalAlignment = HorizontalAlignment.Center;
@@ -654,7 +656,7 @@ public sealed partial class GameModeView
             {
                 var number = definition.Values[i];
                 var button = ui.Button(definition.Choices[i], () => Select(number), GmKind.Card, .85,
-                    enabled && FeatureControlSchema.Available(definition, shell.Mode, legacy), radius: 8,
+                    enabled && FeatureControlSchema.Available(definition, shownMode, legacy), radius: 8,
                     padding: new Thickness(t.Px(10)), minHeight: 42);
                 button.HorizontalAlignment = HorizontalAlignment.Stretch;
                 Key(button, "preset-" + key + "-" + i); buttons.Add(button); line.Children.Add(button);
@@ -684,7 +686,7 @@ public sealed partial class GameModeView
         UIElement MfgControls()
         {
             var state = new MfgPreset(values);
-            var allowed = enabled && shell.Mode != "nr-only";
+            var allowed = enabled && shownMode != "nr-only";
             var header = new Grid { ColumnSpacing = t.Px(20) };
             header.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
             header.ColumnDefinitions.Add(new() { Width = GridLength.Auto });

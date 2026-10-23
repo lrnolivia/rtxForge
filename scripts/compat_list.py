@@ -126,7 +126,27 @@ def apply(config,rows,e=None):
             row['nr_route_note']='Not verified · '+row['try_anyway']
             row['soft_reasons']=[]
         row['compat']=verdict(row,record,listed)
+        row['features']=features(row)
     return rows
+
+
+def features(row):
+    """What this game can get before any review: {'nr': bool, 'mfg': bool}.
+
+    A Feeder route offers MFG only when its provider says so (feeder_mfg); other
+    routes need the game's own DLSS for NR and its own DLSS Frame Generation for
+    MFG. Try anyway offers both, unverified. Installed games keep their profile.
+    """
+    if row.get('installed'):
+        profile=str(row.get('profile') or '').casefold()
+        return {'nr':'mfg only' not in profile,'mfg':'nr only' not in profile}
+    if row.get('blocked'):
+        return {'nr':False,'mfg':False}
+    if row.get('try_anyway'):
+        return {'nr':True,'mfg':True}
+    if row.get('feeder_available') is True or row.get('runtime_provider')=='feeder':
+        return {'nr':True,'mfg':row.get('feeder_mfg') is True}
+    return {'nr':row.get('native_dlss') is True,'mfg':row.get('native_dlssg') is True}
 
 
 def share(row,record,package,host,version,include_notes=False):

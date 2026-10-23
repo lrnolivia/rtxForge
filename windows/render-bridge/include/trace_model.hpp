@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <compare>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -29,15 +30,31 @@ struct Slot {
 // Missing descriptors overwrite old entries; overlapping copies use a source snapshot.
 class Ledger {
 public:
-    static constexpr std::size_t resource_limit = 65536;
-    static constexpr std::size_t view_limit = 65536;
-    static constexpr std::size_t descriptor_limit = 262144;
+    static constexpr std::size_t resource_limit = 131072;
+    static constexpr std::size_t view_limit = 262144;
+    static constexpr std::size_t descriptor_limit = 1048576;
     std::map<Handle, std::uint64_t> live;
     std::map<std::uint64_t, Resource> resources;
     std::map<Handle, std::uint64_t> views;
     std::map<Slot, Descriptor> descriptors;
     std::uint64_t dropped = 0;
     std::uint64_t resource_drops = 0, view_drops = 0, descriptor_drops = 0, copy_drops = 0, slot_drops = 0;
+    std::uint64_t collections = 0, reclaimed_resources = 0, reclaimed_views = 0, reclaimed_descriptors = 0;
+
+    void collect(const std::set<std::uint64_t> &pinned) {
+        // Keep captured lifetime metadata until the report is written. Bindings to
+        // dead resources can be forgotten, but never rebound to a recycled handle.
+        for (auto it = views.begin(); it != views.end();) {
+            if (!alive(it->second)) { it = views.erase(it); ++reclaimed_views; } else ++it;
+        }
+        for (auto it = descriptors.begin(); it != descriptors.end();) {
+            if (!alive(it->second.resource_id)) { it = descriptors.erase(it); ++reclaimed_descriptors; } else ++it;
+        }
+        for (auto it = resources.begin(); it != resources.end();) {
+            if (!it->second.alive && !pinned.contains(it->first)) { it = resources.erase(it); ++reclaimed_resources; } else ++it;
+        }
+        ++collections;
+    }
 
     std::uint64_t create(Handle handle, std::uint64_t width, std::uint32_t height,
                          std::uint32_t format, std::uint32_t usage) {

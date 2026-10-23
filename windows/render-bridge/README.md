@@ -34,6 +34,10 @@ ranges are sampled to 64 entries and truncation is reported. Resource, pipeline,
 descriptor and event budgets are finite. Missing inputs remain missing.
 Empty descriptor banks do not consume the view/descriptor budgets. Reports
 include catalog sizes, individual drop reasons and constant sample truncation.
+Dead resource history and bindings are collected every 120 presents, while
+metadata referenced by an active capture stays pinned. Budgets are 131,072
+resource lifetimes, 262,144 views and 1,048,576 descriptors; live content can still
+exceed them, so reported drops must be checked before using a capture.
 
 Use `python windows/render-bridge/analyze_capture.py <capture.json>` to inspect
 coverage and the observed texture/shader binding graph. This reports attachment
@@ -44,6 +48,11 @@ The controlled D3D12 harness accepts `--descriptor-stress` to initialize 262,145
 null SRVs before its scene views. Validate its actual capture with
 `python windows/render-bridge/tests/verify_harness_capture.py <capture.json>`.
 The same scene/motion/depth graph must survive null initialization with zero drops.
+`--live-descriptor-stress` checks 65,537 actual texture views and 262,145 copied
+GPU descriptors before creating the scene's input bindings.
+`--copied-attachment-stress` uses native RTV and DSV descriptor copies. The
+recorder resolves their current resources at bind time because those copies do
+not produce ReShade add-on descriptor-copy or view-creation events.
 
 For an isolated failure reproduction, `[Diagnostics] LogExceptions=1` enables
 bounded, local first-chance fault observations in `exceptions.txt` beside the

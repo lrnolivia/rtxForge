@@ -72,11 +72,13 @@ int main(int argc, char **argv) {
             D3D12_DESCRIPTOR_HEAP_DESC d{}; d.Type=type; d.NumDescriptors=count; d.Flags=visible?D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE:D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
             ComPtr<ID3D12DescriptorHeap> result; check(device->CreateDescriptorHeap(&d,IID_PPV_ARGS(&result))); return result;
         };
-        auto rtv=heap(D3D12_DESCRIPTOR_HEAP_TYPE_RTV,4,false), dsv=heap(D3D12_DESCRIPTOR_HEAP_TYPE_DSV,1,false), srv=heap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,3,true);
+        auto rtv=heap(D3D12_DESCRIPTOR_HEAP_TYPE_RTV,4,false), dsv=heap(D3D12_DESCRIPTOR_HEAP_TYPE_DSV,2,false), srv=heap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,3,true);
         // Real games initialize large banks of null descriptors before creating scene views.
         // Keep that heap alive so this reproduces catalog pressure rather than heap reuse.
         ComPtr<ID3D12DescriptorHeap> null_bank;
         const bool stress = argc > 1 && std::string(argv[1]) == "--descriptor-stress";
+        const bool live_stress = argc > 1 && std::string(argv[1]) == "--live-descriptor-stress";
+        const bool copied_attachments = argc > 1 && std::string(argv[1]) == "--copied-attachment-stress";
         if (stress) {
             constexpr unsigned null_count = 262145;
             null_bank = heap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, null_count, false);
@@ -97,10 +99,31 @@ int main(int argc, char **argv) {
         auto color=texture(DXGI_FORMAT_R16G16B16A16_FLOAT,D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET,D3D12_RESOURCE_STATE_RENDER_TARGET);
         auto motion=texture(DXGI_FORMAT_R16G16_FLOAT,D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET,D3D12_RESOURCE_STATE_RENDER_TARGET);
         auto depth=texture(DXGI_FORMAT_D32_FLOAT,D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL,D3D12_RESOURCE_STATE_DEPTH_WRITE);
-        device->CreateRenderTargetView(color.Get(),nullptr,at(device.Get(),rtv.Get(),D3D12_DESCRIPTOR_HEAP_TYPE_RTV,2));
+        ComPtr<ID3D12DescriptorHeap> live_bank, copied_bank;
+        if (live_stress) {
+            // Beyond the original 65,536-view / 262,144-descriptor budgets. These
+            // are real views of a live texture plus CPU-to-GPU descriptor copies.
+            live_bank=heap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,65537,false);
+            copied_bank=heap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,262145,true);
+            D3D12_SHADER_RESOURCE_VIEW_DESC view{}; view.Format=DXGI_FORMAT_R16G16B16A16_FLOAT;
+            view.ViewDimension=D3D12_SRV_DIMENSION_TEXTURE2D; view.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING; view.Texture2D.MipLevels=1;
+            for (unsigned i=0;i<65537;++i)
+                device->CreateShaderResourceView(color.Get(),&view,at(device.Get(),live_bank.Get(),D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,i));
+            for (unsigned i=0;i<262145;i+=4096)
+                device->CopyDescriptorsSimple(std::min(4096u,262145-i),at(device.Get(),copied_bank.Get(),D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,i),
+                    live_bank->GetCPUDescriptorHandleForHeapStart(),D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        }
+        ComPtr<ID3D12DescriptorHeap> attachment_source;
+        if (copied_attachments) {
+            attachment_source=heap(D3D12_DESCRIPTOR_HEAP_TYPE_RTV,1,false);
+            device->CreateRenderTargetView(color.Get(),nullptr,attachment_source->GetCPUDescriptorHandleForHeapStart());
+            device->CopyDescriptorsSimple(1,at(device.Get(),rtv.Get(),D3D12_DESCRIPTOR_HEAP_TYPE_RTV,2),attachment_source->GetCPUDescriptorHandleForHeapStart(),D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+        } else device->CreateRenderTargetView(color.Get(),nullptr,at(device.Get(),rtv.Get(),D3D12_DESCRIPTOR_HEAP_TYPE_RTV,2));
         device->CreateRenderTargetView(motion.Get(),nullptr,at(device.Get(),rtv.Get(),D3D12_DESCRIPTOR_HEAP_TYPE_RTV,3));
         D3D12_DEPTH_STENCIL_VIEW_DESC depth_desc{}; depth_desc.Format=DXGI_FORMAT_D32_FLOAT; depth_desc.ViewDimension=D3D12_DSV_DIMENSION_TEXTURE2D;
-        device->CreateDepthStencilView(depth.Get(),&depth_desc,dsv->GetCPUDescriptorHandleForHeapStart());
+        device->CreateDepthStencilView(depth.Get(),&depth_desc,at(device.Get(),dsv.Get(),D3D12_DESCRIPTOR_HEAP_TYPE_DSV,copied_attachments?1:0));
+        if (copied_attachments)
+            device->CopyDescriptorsSimple(1,dsv->GetCPUDescriptorHandleForHeapStart(),at(device.Get(),dsv.Get(),D3D12_DESCRIPTOR_HEAP_TYPE_DSV,1),D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
         std::array<ID3D12Resource*,3> inputs{color.Get(),motion.Get(),depth.Get()};
         const std::array<DXGI_FORMAT,3> formats{DXGI_FORMAT_R16G16B16A16_FLOAT,DXGI_FORMAT_R16G16_FLOAT,DXGI_FORMAT_R32_FLOAT};
         for(unsigned i=0;i<3;++i) { D3D12_SHADER_RESOURCE_VIEW_DESC v{}; v.Format=formats[i]; v.ViewDimension=D3D12_SRV_DIMENSION_TEXTURE2D; v.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING; v.Texture2D.MipLevels=1;
@@ -148,7 +171,7 @@ int main(int argc, char **argv) {
             check(queue->Signal(fence.Get(),frame+1)); check(fence->SetEventOnCompletion(frame+1,fence_event)); if(WaitForSingleObject(fence_event,10000)!=WAIT_OBJECT_0) throw std::runtime_error("GPU fence timeout"); Sleep(2);
         }
         constants->Unmap(0,nullptr); CloseHandle(fence_event); DestroyWindow(window);
-        std::cout << "PASS: 220 D3D12 frames; scene MRT, motion/depth SRVs and alternating camera constants; descriptor_stress=" << stress << '\n';
+        std::cout << "PASS: 220 D3D12 frames; scene MRT, motion/depth SRVs and alternating camera constants; descriptor_stress=" << stress << " live_descriptor_stress=" << live_stress << " copied_attachments=" << copied_attachments << '\n';
         return 0;
     } catch(const std::exception &e) {
         if(fence_event) CloseHandle(fence_event); if(window) DestroyWindow(window); std::cerr << e.what() << '\n'; return 1;

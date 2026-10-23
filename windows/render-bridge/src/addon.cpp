@@ -197,7 +197,10 @@ void write_capture(const Device &d) {
       << ",\"copy_ranges\":" << d.ledger.copy_drops << ",\"unresolved_heaps\":" << d.ledger.slot_drops
       << ",\"other\":" << (d.ledger.dropped - d.ledger.resource_drops - d.ledger.view_drops - d.ledger.descriptor_drops - d.ledger.copy_drops - d.ledger.slot_drops) << '}'
       << ",\"catalog_sizes\":{\"resource_lifetimes\":" << d.ledger.resources.size() << ",\"views\":" << d.ledger.views.size()
+      << ",\"live_resources\":" << d.ledger.live.size()
       << ",\"descriptors\":" << d.ledger.descriptors.size() << ",\"pipelines\":" << d.pipelines.size() << ",\"command_lists\":" << d.commands.size() << '}'
+      << ",\"catalog_collections\":{\"count\":" << d.ledger.collections << ",\"resources\":" << d.ledger.reclaimed_resources
+      << ",\"views\":" << d.ledger.reclaimed_views << ",\"descriptors\":" << d.ledger.reclaimed_descriptors << '}'
       << ",\"constant_buffer_samples_truncated\":" << (d.constants_truncated ? "true" : "false")
       << ",\"sampled_descriptor_ranges\":" << d.range_samples << ",\"resources\":[";
     bool first = true;
@@ -249,16 +252,19 @@ void on_resource(api::device *device, const api::resource_desc &r, const api::su
         r.type == api::resource_type::buffer ? 0 : r.texture.height, r.type == api::resource_type::buffer ? 0 : static_cast<unsigned>(r.texture.format), static_cast<unsigned>(r.usage)); });
 }
 void on_destroy_resource(api::device *device, api::resource r) { observe(device, [&](Device &d) { d.ledger.destroy(r.handle); d.mapped.erase(r.handle); }); }
+std::uint64_t ensure_resource(api::device *device, Device &d, api::resource r) {
+    if (!r.handle) return 0;
+    if (const auto id = d.ledger.resolve(r.handle)) return id;
+    const auto desc = device->get_resource_desc(r);
+    return d.ledger.create(r.handle, desc.type == api::resource_type::buffer ? desc.buffer.size : desc.texture.width,
+        desc.type == api::resource_type::buffer ? 0 : desc.texture.height,
+        desc.type == api::resource_type::buffer ? 0 : static_cast<unsigned>(desc.texture.format), static_cast<unsigned>(desc.usage));
+}
 void on_view(api::device *device, api::resource r, api::resource_usage, const api::resource_view_desc &, api::resource_view v) {
     observe(device, [&](Device &d) {
         // Swapchain resources need not emit init_resource. A view is independent evidence
         // that this resource is alive; add it without inventing a creation observation.
-        if (r.handle && !d.ledger.resolve(r.handle)) {
-            const auto desc = device->get_resource_desc(r);
-            d.ledger.create(r.handle, desc.type == api::resource_type::buffer ? desc.buffer.size : desc.texture.width,
-                desc.type == api::resource_type::buffer ? 0 : desc.texture.height,
-                desc.type == api::resource_type::buffer ? 0 : static_cast<unsigned>(desc.texture.format), static_cast<unsigned>(desc.usage));
-        }
+        ensure_resource(device, d, r);
         d.ledger.view(v.handle, r.handle);
     });
 }
@@ -314,12 +320,18 @@ void on_bind_pipeline(api::command_list *cmd, api::pipeline_stage stages, api::p
         if (static_cast<unsigned>(stages & api::pipeline_stage::compute_shader)) ci->second.compute.shader = it == d.pipelines.end() ? "" : it->second.compute;
     });
 }
-void targets(Device &d, Command &c, unsigned count, const api::resource_view *views, api::resource_view depth) {
-    c.targets.clear(); for (unsigned i = 0; i < std::min(count, 8u); ++i) c.targets.push_back(d.ledger.resolve_view(views[i].handle));
-    c.depth = d.ledger.resolve_view(depth.handle);
+void targets(api::device *device, Device &d, Command &c, unsigned count, const api::resource_view *views, api::resource_view depth) {
+    // D3D12 RTV/DSV copies update ReShade's view catalog without an add-on
+    // init_resource_view/copy_descriptor_tables event. Query the current binding
+    // instead of trusting the descriptor's earlier creation observation.
+    const auto current = [&](api::resource_view view) {
+        return view.handle ? ensure_resource(device, d, device->get_resource_from_view(view)) : 0;
+    };
+    c.targets.clear(); for (unsigned i = 0; i < std::min(count, 8u); ++i) c.targets.push_back(current(views[i]));
+    c.depth = current(depth);
 }
 void on_targets(api::command_list *cmd, unsigned count, const api::resource_view *views, api::resource_view depth) {
-    observe(cmd->get_device(), [&](Device &d) { if (auto it = d.commands.find(cmd); it != d.commands.end()) targets(d, it->second, count, views, depth); });
+    observe(cmd->get_device(), [&](Device &d) { if (auto it = d.commands.find(cmd); it != d.commands.end()) targets(cmd->get_device(), d, it->second, count, views, depth); });
 }
 bool on_render_pass(api::command_list *cmd, unsigned count, const api::render_pass_render_target_desc *rt, const api::render_pass_depth_stencil_desc *ds, api::render_pass_flags) {
     std::array<api::resource_view, 8> views{}; for (unsigned i = 0; i < std::min(count, 8u); ++i) views[i] = rt[i].view;
@@ -391,6 +403,7 @@ void on_present(api::command_queue *queue, api::swapchain *swapchain, const api:
             d.auto_done = true; d.capturing = true; d.remaining = capture_frames;
             d.capture_start = d.frame; ++d.serial; d.dropped = 0; d.range_samples = 0; d.constants_truncated = false;
         }
+        if (d.frame % 120 == 0) d.ledger.collect(d.referenced);
     });
 }
 

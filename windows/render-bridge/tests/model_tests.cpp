@@ -8,7 +8,9 @@ int main() {
         Ledger l;
         const auto first = l.create(10, 1920, 1080, 34, 8);
         l.view(20, 10);
+        l.view(21, 10);
         l.put({30, 0}, {first, 0, 256, 1});
+        l.put({30, 4}, {first, 0, 256, 1});
         l.destroy(10);
         const auto second = l.create(10, 1280, 720, 34, 8);
         require(first != second && !l.alive(first) && l.alive(second), "Native handle reuse aliased resource lifetimes");
@@ -27,6 +29,15 @@ int main() {
         require(l.resolve_view(20) == 0, "A null view retained a stale resource");
         l.put({30, 0}, {});
         require(l.get({30, 0}).resource_id == 0, "A null update retained a stale descriptor");
+        l.collect({first});
+        require(l.resources.contains(first) && !l.alive(first), "Collection lost pinned capture metadata");
+        require(l.get({30, 4}).resource_id == 0 && l.resolve_view(21) == 0, "Collection retained dead bindings");
+        l.collect({});
+        require(!l.resources.contains(first) && l.alive(second), "Collection lost live metadata or retained dead history");
+        l.destroy(10);
+        l.collect({});
+        const auto third = l.create(10, 640, 360, 34, 8);
+        require(third > second && l.resolve_view(20) == 0, "Collection aliased a recycled resource handle");
         Ledger pressure;
         for (std::uint32_t i = 0; i < Ledger::descriptor_limit + 1; ++i) {
             pressure.view(1000 + i, 0);

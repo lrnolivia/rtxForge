@@ -45,6 +45,14 @@ null SRVs before its scene views. Validate its actual capture with
 `python windows/render-bridge/tests/verify_harness_capture.py <capture.json>`.
 The same scene/motion/depth graph must survive null initialization with zero drops.
 
+For an isolated failure reproduction, `[Diagnostics] LogExceptions=1` enables
+bounded, local first-chance fault observations in `exceptions.txt` beside the
+capture reports. It records native addresses, stack frames and a module catalog;
+it preserves the application's exception handling. An observed exception may be
+handled normally and does not alone prove a crash. Logging is off by default.
+The harness `--exception-probe` raises and handles a synthetic access violation
+to verify that observation leaves the application's handler and rendering intact.
+
 The next stages are GPU readback/visual verification of candidates, a Valhalla
 TAA/upscale adapter, SR evaluation, then native 2x FG and the existing rtxForge
 Universal MFG component. Source/build success does not satisfy those stages.

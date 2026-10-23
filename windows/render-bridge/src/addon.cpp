@@ -1,6 +1,7 @@
 #include <reshade.hpp>
 #include <bcrypt.h>
 #include "trace_model.hpp"
+#include "exception_trace.hpp"
 #include <array>
 #include <filesystem>
 #include <fstream>
@@ -47,7 +48,7 @@ struct Device {
     std::set<std::tuple<std::uint64_t, std::uint64_t, std::uint64_t>> sampled;
     std::uint64_t frame = 0, capture_start = 0, serial = 0, dropped = 0, range_samples = 0;
     std::uint32_t width = 0, height = 0, remaining = 0;
-    bool capturing = false, auto_done = false, key_down = false, constants_truncated = false;
+    bool capturing = false, auto_done = false, key_down = false, constants_truncated = false, modules_logged = false;
 };
 std::mutex devices_mutex;
 std::unordered_map<api::device *, std::shared_ptr<Device>> devices;
@@ -228,6 +229,16 @@ void on_device(api::device *device) {
         auto_frame = GetPrivateProfileIntW(L"Capture", L"AutoFrame", 180, config_path.c_str());
         capture_frames = std::clamp(GetPrivateProfileIntW(L"Capture", L"Frames", 2, config_path.c_str()), 1u, 4u);
         max_events = std::clamp(GetPrivateProfileIntW(L"Capture", L"MaxEvents", 4096, config_path.c_str()), 64u, 8192u);
+        if (GetPrivateProfileIntW(L"Diagnostics", L"LogExceptions", 0, config_path.c_str())) {
+            wchar_t folder[32768]{};
+            const auto length = GetEnvironmentVariableW(L"LOCALAPPDATA", folder, static_cast<DWORD>(std::size(folder)));
+            if (length && length < std::size(folder)) {
+                const auto output = std::filesystem::path(folder) / L"rtxForge" / L"diagnostics" / L"render-bridge" / std::to_wstring(GetCurrentProcessId());
+                std::filesystem::create_directories(output);
+                if (forge::diagnostics::start((output / L"exceptions.txt").c_str()))
+                    reshade::log::message(reshade::log::level::info, "rtxForge opt-in exception observation enabled; application exception handling is preserved.");
+            }
+        }
     });
     std::lock_guard lock(devices_mutex); devices[device] = std::make_shared<Device>();
     reshade::log::message(reshade::log::level::info, "rtxForge independent D3D12 diagnostic attached. SR/FG are not implemented.");
@@ -364,6 +375,7 @@ void on_destroy_swapchain(api::swapchain *swapchain, bool) {
 }
 void on_present(api::command_queue *queue, api::swapchain *swapchain, const api::rect *, const api::rect *, unsigned, const api::rect *) {
     observe(queue->get_device(), [&](Device &d) {
+        if (!d.modules_logged) { forge::diagnostics::modules(); d.modules_logged = true; }
         ++d.frame;
         const auto back = queue->get_device()->get_resource_desc(swapchain->get_current_back_buffer());
         d.width = back.texture.width; d.height = back.texture.height;
@@ -403,13 +415,14 @@ void registration(bool add) {
 
 extern "C" __declspec(dllexport) const char *NAME = "rtxForge Renderer Diagnostics";
 extern "C" __declspec(dllexport) const char *DESCRIPTION = "Independent pass-through D3D12 input diagnostics. SR and FG are not implemented.";
-BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID) {
+BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID reserved) {
     if (reason == DLL_PROCESS_ATTACH) {
         addon_module = module;
         DisableThreadLibraryCalls(module);
         if (!reshade::register_addon(module)) return FALSE;
         registration(true);
     } else if (reason == DLL_PROCESS_DETACH) {
+        forge::diagnostics::stop(reserved != nullptr);
         registration(false); reshade::unregister_addon(module);
     }
     return TRUE;

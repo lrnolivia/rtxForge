@@ -26,6 +26,14 @@ static LONG WINAPI crash(EXCEPTION_POINTERS *p) {
     CloseHandle(out); return EXCEPTION_CONTINUE_SEARCH;
 }
 static void check(HRESULT hr) { if (FAILED(hr)) throw std::runtime_error("D3D12 harness HRESULT=" + std::to_string(static_cast<unsigned>(hr))); }
+static void exception_probe() {
+    for (unsigned i = 0; i < 20; ++i) {
+        __try { RaiseException(EXCEPTION_ILLEGAL_INSTRUCTION, 0, 0, nullptr); }
+        __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {}
+    }
+    __try { ULONG_PTR parameters[] = {0, 0x1234}; RaiseException(EXCEPTION_ACCESS_VIOLATION, 0, 2, parameters); }
+    __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {}
+}
 static D3D12_CPU_DESCRIPTOR_HANDLE at(ID3D12Device *d, ID3D12DescriptorHeap *heap, D3D12_DESCRIPTOR_HEAP_TYPE type, unsigned n) {
     auto h = heap->GetCPUDescriptorHandleForHeapStart(); h.ptr += d->GetDescriptorHandleIncrementSize(type) * n; return h;
 }
@@ -54,6 +62,7 @@ int main(int argc, char **argv) {
         if (!window) throw std::runtime_error("Could not create test surface");
         ComPtr<IDXGIFactory4> factory; check(CreateDXGIFactory1(IID_PPV_ARGS(&factory)));
         ComPtr<ID3D12Device> device; check(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&device)));
+        if (argc > 1 && std::string(argv[1]) == "--exception-probe") exception_probe();
         D3D12_COMMAND_QUEUE_DESC qd{}; ComPtr<ID3D12CommandQueue> queue; check(device->CreateCommandQueue(&qd, IID_PPV_ARGS(&queue)));
         DXGI_SWAP_CHAIN_DESC1 sd{}; sd.Width=640; sd.Height=360; sd.Format=DXGI_FORMAT_R8G8B8A8_UNORM; sd.SampleDesc.Count=1;
         sd.BufferUsage=DXGI_USAGE_RENDER_TARGET_OUTPUT; sd.BufferCount=2; sd.SwapEffect=DXGI_SWAP_EFFECT_FLIP_DISCARD;

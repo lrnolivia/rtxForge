@@ -13,6 +13,7 @@
 #include "menu.h"
 #include "swapchain_lock.h"
 #include "resource_state.h"
+#include "extension_filter.h"
 #include <vector>
 #include <windows.h>
 #include <detours.h>
@@ -157,8 +158,21 @@ static inline bool ForceReal(){ return g_reentry || g_globalReal.load(std::memor
 static thread_local int g_loaderCreateDevice = 0;
 static thread_local int g_loaderCreateReentry = 0;   // our re-entry depth when the window opened
 static PFN_vkCreateDevice o_CreateDevice_export{};
+static PFN_vkCreateInstance o_CreateInstance_export{};
+static PFN_vkEnumerateDeviceExtensionProperties o_EnumerateExtensions{};
+static inline bool CallerIsStreamline(void*);
+static VkResult VKAPI_CALL GameExtensions(VkPhysicalDevice pd, const char* layer, uint32_t* count, VkExtensionProperties* output) {
+  if (!Profile().preferCoreBufferAddress || ForceReal() || CallerIsStreamline(_ReturnAddress()))
+    return o_EnumerateExtensions(pd, layer, count, output);
+  return EnumerateCoreBufferAddress(o_EnumerateExtensions, pd, layer, count, output);
+}
+static VKAPI_ATTR VkResult VKAPI_CALL w_CreateDevice(VkPhysicalDevice, const VkDeviceCreateInfo*, const VkAllocationCallbacks*, VkDevice*);
 static VKAPI_ATTR VkResult VKAPI_CALL h_CreateDeviceExport(VkPhysicalDevice pd, const VkDeviceCreateInfo* ci,
     const VkAllocationCallbacks* a, VkDevice* out){
+  if (!ForceReal() && ip_GIPA && gInstance) {
+    if (!t_CreateDevice) { Reentry guard; t_CreateDevice = reinterpret_cast<PFN_vkCreateDevice>(ip_GIPA(gInstance, "vkCreateDevice")); }
+    if (t_CreateDevice) return w_CreateDevice(pd, ci, a, out);
+  }
   int prevReentry = g_loaderCreateReentry; g_loaderCreateReentry = g_reentry;
   ++g_loaderCreateDevice; VkResult r = o_CreateDevice_export(pd, ci, a, out); --g_loaderCreateDevice;
   g_loaderCreateReentry = prevReentry; return r;
@@ -199,12 +213,35 @@ static VKAPI_ATTR VkResult VKAPI_CALL w_CreateInstance(
   if (r == VK_SUCCESS){ gInstance = *out; Log("w_CreateInstance ok instance=%p", (void*)gInstance); }
   return r;
 }
+static VKAPI_ATTR VkResult VKAPI_CALL h_CreateInstanceExport(
+    const VkInstanceCreateInfo* ci, const VkAllocationCallbacks* a, VkInstance* out) {
+  return ForceReal() ? o_CreateInstance_export(ci, a, out) : w_CreateInstance(ci, a, out);
+}
 
 static void ResolvePacer(VkDevice dev);
 static VKAPI_ATTR VkResult VKAPI_CALL w_CreateDevice(
     VkPhysicalDevice pd, const VkDeviceCreateInfo* ci,
     const VkAllocationCallbacks* a, VkDevice* out){
   // Interposer owns the device (its own surgery/queues). We only capture + kick off SL setup.
+  // Direct loader enumeration bypasses SL's physical-device/instance map.
+  // Prime it through the interposer before the game creates its device.
+  if (ip_GIPA && gInstance) {
+    Reentry guard;
+    const auto enumerate = reinterpret_cast<PFN_vkEnumeratePhysicalDevices>(ip_GIPA(gInstance, "vkEnumeratePhysicalDevices"));
+    uint32_t count{}; bool matched = false;
+    if (enumerate && enumerate(gInstance, &count, nullptr) == VK_SUCCESS && count && count <= 64) {
+      std::vector<VkPhysicalDevice> devices(count);
+      const auto listed = enumerate(gInstance, &count, devices.data());
+      if (listed == VK_SUCCESS || listed == VK_INCOMPLETE)
+        for (uint32_t i = 0; i < count && i < devices.size(); ++i) if (devices[i] == pd) matched = true;
+    }
+    if (!matched) {
+      Log("SL physical-device association missing; preserving native device creation without NR/FG");
+      NrRequest(false); ip_GIPA = nullptr; ip_GDPA = nullptr;
+      return o_CreateDevice_export(pd, ci, a, out);
+    }
+    Log("SL physical-device association primed: instance=%p physical=%p", (void*)gInstance, (void*)pd);
+  }
   VkDeviceCreateInfo local = *ci;
   std::vector<const char*> extensions;
   if (ci->enabledExtensionCount) extensions.assign(ci->ppEnabledExtensionNames, ci->ppEnabledExtensionNames + ci->enabledExtensionCount);
@@ -438,6 +475,7 @@ static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL h_GetInstanceProcAddr(VkInstance
   if(!ip) return nullptr;
   if(!strcmp(name,"vkGetInstanceProcAddr")) return (PFN_vkVoidFunction)h_GetInstanceProcAddr;
   if(!strcmp(name,"vkCreateDevice"))    { t_CreateDevice   = (PFN_vkCreateDevice)ip;   return (PFN_vkVoidFunction)w_CreateDevice; }
+  if (!strcmp(name, "vkEnumerateDeviceExtensionProperties")) return reinterpret_cast<PFN_vkVoidFunction>(GameExtensions);
   if(!strcmp(name,"vkGetDeviceProcAddr")) return (PFN_vkVoidFunction)w_GetDeviceProcAddr;
   if(!strcmp(name,"vkQueuePresentKHR"))   { t_QueuePresentKHR   = (PFN_vkQueuePresentKHR)ip;   return (PFN_vkVoidFunction)w_QueuePresentKHR; }
   if(!strcmp(name,"vkCreateSwapchainKHR")){ t_CreateSwapchainKHR= (PFN_vkCreateSwapchainKHR)ip; return (PFN_vkVoidFunction)w_CreateSwapchainKHR; }
@@ -474,6 +512,9 @@ static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL h_GetDeviceProcAddrExport(VkDevi
 static PFN_vkGetSwapchainImagesKHR o_GetSwapchainImagesKHR_export{};
 static PFN_vkAcquireNextImageKHR   o_AcquireNextImageKHR_export{};
 static PFN_vkQueuePresentKHR       o_QueuePresentKHR_export{};
+static PFN_vkCreateSwapchainKHR o_CreateSwapchainKHR_export{};
+static PFN_vkDestroySwapchainKHR o_DestroySwapchainKHR_export{};
+static PFN_vkDestroyDevice o_DestroyDevice_export{};
 // Resolve the game-view function once per name via our own GDPA wrapper (interposer + wrappers).
 template <typename F> static F GameView(const char* name, F& cache, VkDevice dev){
   if(!cache && ip_GDPA){ cache = (F)w_GetDeviceProcAddr(dev, name); }
@@ -506,23 +547,111 @@ static VKAPI_ATTR VkResult VKAPI_CALL h_QueuePresentKHRExport(VkQueue q, const V
   static PFN_vkQueuePresentKHR gv{}; PFN_vkQueuePresentKHR f = (ForceReal() || !gDevice || CallerIsStreamline(_ReturnAddress())) ? nullptr : GameView("vkQueuePresentKHR", gv, gDevice);
   return f ? f(q,pi) : o_QueuePresentKHR_export(q,pi);
 }
+static VKAPI_ATTR VkResult VKAPI_CALL h_CreateSwapchainKHRExport(VkDevice d, const VkSwapchainCreateInfoKHR* ci,
+    const VkAllocationCallbacks* a, VkSwapchainKHR* out) {
+  static PFN_vkCreateSwapchainKHR game{};
+  auto fn = (ForceReal() || !gDevice || CallerIsStreamline(_ReturnAddress())) ? nullptr : GameView("vkCreateSwapchainKHR", game, d);
+  return fn ? fn(d, ci, a, out) : o_CreateSwapchainKHR_export(d, ci, a, out);
+}
+static VKAPI_ATTR void VKAPI_CALL h_DestroySwapchainKHRExport(VkDevice d, VkSwapchainKHR sc, const VkAllocationCallbacks* a) {
+  if (ForceReal() || !gDevice || CallerIsStreamline(_ReturnAddress())) { o_DestroySwapchainKHR_export(d, sc, a); return; }
+  const auto fn = reinterpret_cast<PFN_vkDestroySwapchainKHR>(w_GetDeviceProcAddr(d, "vkDestroySwapchainKHR"));
+  if (fn) fn(d, sc, a); else o_DestroySwapchainKHR_export(d, sc, a);
+}
+static VKAPI_ATTR void VKAPI_CALL h_DestroyDeviceExport(VkDevice d, const VkAllocationCallbacks* a) {
+  if (ForceReal() || d != gDevice || CallerIsStreamline(_ReturnAddress())) { o_DestroyDevice_export(d, a); return; }
+  const auto fn = reinterpret_cast<PFN_vkDestroyDevice>(w_GetDeviceProcAddr(d, "vkDestroyDevice"));
+  if (fn) fn(d, a); else o_DestroyDevice_export(d, a);
+}
+
+// RDR2 resolves loader exports directly as well as through GIPA/GDPA. Keep
+// raw trampolines separate from proc-address targets: a wrapped function may
+// itself call an export, which must never recurse through its own wrapper.
+static PFN_vkCreateImage raw_CreateImage{};
+static PFN_vkDestroyImage raw_DestroyImage{};
+static PFN_vkCmdPipelineBarrier raw_Barrier{};
+static PFN_vkBeginCommandBuffer raw_Begin{};
+static PFN_vkResetCommandBuffer raw_Reset{};
+static PFN_vkQueueSubmit raw_Submit{};
+static PFN_vkQueueSubmit2 raw_Submit2{};
+static PFN_vkCmdExecuteCommands raw_Execute{};
+static VkResult VKAPI_CALL CaptureCreateImage(VkDevice d, const VkImageCreateInfo* ci, const VkAllocationCallbacks* a, VkImage* image) {
+  const auto result = raw_CreateImage(d, ci, a, image);
+  if (result == VK_SUCCESS && ci && image && !ForceReal()) {
+    std::lock_guard<std::mutex> lock(resource_detail::mutex);
+    resource_detail::images[*image] = {ci->initialLayout, ci->usage, ci->format, ci->extent.width, ci->extent.height};
+  }
+  return result;
+}
+static void VKAPI_CALL CaptureDestroyImage(VkDevice d, VkImage image, const VkAllocationCallbacks* a) {
+  { std::lock_guard<std::mutex> lock(resource_detail::mutex);
+    resource_detail::images.erase(image); resource_detail::submitted.erase(image);
+    for (auto& state : resource_detail::commands) state.second.erase(image); }
+  raw_DestroyImage(d, image, a);
+}
+static void VKAPI_CALL CaptureBarrier(VkCommandBuffer c, VkPipelineStageFlags src, VkPipelineStageFlags dst,
+    VkDependencyFlags flags, uint32_t nm, const VkMemoryBarrier* m, uint32_t nb, const VkBufferMemoryBarrier* b,
+    uint32_t ni, const VkImageMemoryBarrier* images) {
+  raw_Barrier(c, src, dst, flags, nm, m, nb, b, ni, images);
+  if (!ForceReal()) for (uint32_t i = 0; i < ni; ++i) ObserveBarrier(c, images[i].image, images[i].newLayout, images[i].subresourceRange);
+}
+static VkResult VKAPI_CALL CaptureBegin(VkCommandBuffer c, const VkCommandBufferBeginInfo* info) {
+  if (!ForceReal()) ForgetCommand(c); return raw_Begin(c, info);
+}
+static VkResult VKAPI_CALL CaptureReset(VkCommandBuffer c, VkCommandBufferResetFlags flags) {
+  if (!ForceReal()) ForgetCommand(c); return raw_Reset(c, flags);
+}
+static VkResult VKAPI_CALL CaptureSubmit(VkQueue q, uint32_t n, const VkSubmitInfo* infos, VkFence fence) {
+  const auto result = raw_Submit(q, n, infos, fence);
+  if (result == VK_SUCCESS && !ForceReal()) for (uint32_t i = 0; i < n; ++i) CommitCommands(infos[i].commandBufferCount, infos[i].pCommandBuffers);
+  return result;
+}
+static VkResult VKAPI_CALL CaptureSubmit2(VkQueue q, uint32_t n, const VkSubmitInfo2* infos, VkFence fence) {
+  const auto result = raw_Submit2(q, n, infos, fence);
+  if (result == VK_SUCCESS && !ForceReal()) for (uint32_t i = 0; i < n; ++i)
+    for (uint32_t j = 0; j < infos[i].commandBufferInfoCount; ++j) CommitCommands(1, &infos[i].pCommandBufferInfos[j].commandBuffer);
+  return result;
+}
+static void VKAPI_CALL CaptureExecute(VkCommandBuffer c, uint32_t n, const VkCommandBuffer* secondary) {
+  if (!ForceReal()) ForgetCommand(c); raw_Execute(c, n, secondary); if (!ForceReal()) ForgetCommand(c);
+}
 
 void InstallVkHooks(){
   HMODULE vk = GetModuleHandleA("vulkan-1.dll");
   if(!vk) vk = LoadLibraryA("vulkan-1.dll");
   if(!vk){ Log("InstallVkHooks: vulkan-1.dll not found"); return; }
   o_GIPA = (PFN_vkGetInstanceProcAddr)GetProcAddress(vk, "vkGetInstanceProcAddr");
+  o_CreateInstance_export = reinterpret_cast<PFN_vkCreateInstance>(GetProcAddress(vk, "vkCreateInstance"));
+  o_EnumerateExtensions = reinterpret_cast<PFN_vkEnumerateDeviceExtensionProperties>(GetProcAddress(vk, "vkEnumerateDeviceExtensionProperties"));
   o_GDPA_real = (PFN_vkGetDeviceProcAddr)GetProcAddress(vk, "vkGetDeviceProcAddr");
   o_GetSwapchainImagesKHR_export = (PFN_vkGetSwapchainImagesKHR)GetProcAddress(vk, "vkGetSwapchainImagesKHR");
   o_AcquireNextImageKHR_export   = (PFN_vkAcquireNextImageKHR)GetProcAddress(vk, "vkAcquireNextImageKHR");
   o_QueuePresentKHR_export       = (PFN_vkQueuePresentKHR)GetProcAddress(vk, "vkQueuePresentKHR");
+  o_CreateSwapchainKHR_export = reinterpret_cast<PFN_vkCreateSwapchainKHR>(GetProcAddress(vk, "vkCreateSwapchainKHR"));
+  o_DestroySwapchainKHR_export = reinterpret_cast<PFN_vkDestroySwapchainKHR>(GetProcAddress(vk, "vkDestroySwapchainKHR"));
+  o_DestroyDevice_export = reinterpret_cast<PFN_vkDestroyDevice>(GetProcAddress(vk, "vkDestroyDevice"));
   if(!o_GIPA || !o_GDPA_real){ Log("InstallVkHooks: vkGet*ProcAddr export missing"); return; }
   DetourTransactionBegin(); DetourUpdateThread(GetCurrentThread());
   DetourAttach(&(PVOID&)o_GIPA,(PVOID)h_GetInstanceProcAddr);
+  if (o_CreateInstance_export) DetourAttach(&(PVOID&)o_CreateInstance_export, (PVOID)h_CreateInstanceExport);
+  if (o_EnumerateExtensions) DetourAttach(&(PVOID&)o_EnumerateExtensions, (PVOID)GameExtensions);
   DetourAttach(&(PVOID&)o_GDPA_real,(PVOID)h_GetDeviceProcAddrExport);
   if(o_GetSwapchainImagesKHR_export) DetourAttach(&(PVOID&)o_GetSwapchainImagesKHR_export,(PVOID)h_GetSwapchainImagesKHRExport);
   if(o_AcquireNextImageKHR_export)   DetourAttach(&(PVOID&)o_AcquireNextImageKHR_export,(PVOID)h_AcquireNextImageKHRExport);
   if(o_QueuePresentKHR_export)       DetourAttach(&(PVOID&)o_QueuePresentKHR_export,(PVOID)h_QueuePresentKHRExport);
+  if (o_CreateSwapchainKHR_export) DetourAttach(&(PVOID&)o_CreateSwapchainKHR_export, (PVOID)h_CreateSwapchainKHRExport);
+  if (o_DestroySwapchainKHR_export) DetourAttach(&(PVOID&)o_DestroySwapchainKHR_export, (PVOID)h_DestroySwapchainKHRExport);
+  if (o_DestroyDevice_export) DetourAttach(&(PVOID&)o_DestroyDevice_export, (PVOID)h_DestroyDeviceExport);
+#define CAPTURE_EXPORT(name, target, wrapper) target = reinterpret_cast<decltype(target)>(GetProcAddress(vk, name)); if (target) DetourAttach(reinterpret_cast<PVOID*>(&target), reinterpret_cast<PVOID>(wrapper));
+  CAPTURE_EXPORT("vkCreateImage", raw_CreateImage, CaptureCreateImage)
+  CAPTURE_EXPORT("vkDestroyImage", raw_DestroyImage, CaptureDestroyImage)
+  CAPTURE_EXPORT("vkCmdPipelineBarrier", raw_Barrier, CaptureBarrier)
+  CAPTURE_EXPORT("vkBeginCommandBuffer", raw_Begin, CaptureBegin)
+  CAPTURE_EXPORT("vkResetCommandBuffer", raw_Reset, CaptureReset)
+  CAPTURE_EXPORT("vkQueueSubmit", raw_Submit, CaptureSubmit)
+  CAPTURE_EXPORT("vkQueueSubmit2", raw_Submit2, CaptureSubmit2)
+  CAPTURE_EXPORT("vkCmdExecuteCommands", raw_Execute, CaptureExecute)
+#undef CAPTURE_EXPORT
   LONG r = DetourTransactionCommit();
   Log("InstallVkHooks: exports hooked commit=%ld (GIPA=%p GDPA=%p getImages=%p acquire=%p present=%p)", r,
       (void*)o_GIPA,(void*)o_GDPA_real,(void*)o_GetSwapchainImagesKHR_export,(void*)o_AcquireNextImageKHR_export,(void*)o_QueuePresentKHR_export);
@@ -531,11 +660,26 @@ void InstallVkHooks(){
 void RemoveVkHooks(){
   DetourTransactionBegin(); DetourUpdateThread(GetCurrentThread());
   DetourDetach(&(PVOID&)o_GIPA,(PVOID)h_GetInstanceProcAddr);
+  if (o_CreateInstance_export) DetourDetach(&(PVOID&)o_CreateInstance_export, (PVOID)h_CreateInstanceExport);
+  if (o_EnumerateExtensions) DetourDetach(&(PVOID&)o_EnumerateExtensions, (PVOID)GameExtensions);
   DetourDetach(&(PVOID&)o_GDPA_real,(PVOID)h_GetDeviceProcAddrExport);
   if(o_GetSwapchainImagesKHR_export) DetourDetach(&(PVOID&)o_GetSwapchainImagesKHR_export,(PVOID)h_GetSwapchainImagesKHRExport);
   if(o_AcquireNextImageKHR_export)   DetourDetach(&(PVOID&)o_AcquireNextImageKHR_export,(PVOID)h_AcquireNextImageKHRExport);
   if(o_QueuePresentKHR_export)       DetourDetach(&(PVOID&)o_QueuePresentKHR_export,(PVOID)h_QueuePresentKHRExport);
   if(o_CreateDevice_export)          DetourDetach(&(PVOID&)o_CreateDevice_export,(PVOID)h_CreateDeviceExport);
+  if (o_CreateSwapchainKHR_export) DetourDetach(&(PVOID&)o_CreateSwapchainKHR_export, (PVOID)h_CreateSwapchainKHRExport);
+  if (o_DestroySwapchainKHR_export) DetourDetach(&(PVOID&)o_DestroySwapchainKHR_export, (PVOID)h_DestroySwapchainKHRExport);
+  if (o_DestroyDevice_export) DetourDetach(&(PVOID&)o_DestroyDevice_export, (PVOID)h_DestroyDeviceExport);
+#define DETACH_CAPTURE(target, wrapper) if (target) DetourDetach(reinterpret_cast<PVOID*>(&target), reinterpret_cast<PVOID>(wrapper));
+  DETACH_CAPTURE(raw_CreateImage, CaptureCreateImage)
+  DETACH_CAPTURE(raw_DestroyImage, CaptureDestroyImage)
+  DETACH_CAPTURE(raw_Barrier, CaptureBarrier)
+  DETACH_CAPTURE(raw_Begin, CaptureBegin)
+  DETACH_CAPTURE(raw_Reset, CaptureReset)
+  DETACH_CAPTURE(raw_Submit, CaptureSubmit)
+  DETACH_CAPTURE(raw_Submit2, CaptureSubmit2)
+  DETACH_CAPTURE(raw_Execute, CaptureExecute)
+#undef DETACH_CAPTURE
   DetourTransactionCommit();
 }
 }

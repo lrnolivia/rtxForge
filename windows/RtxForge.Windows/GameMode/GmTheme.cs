@@ -44,6 +44,7 @@ public sealed class GmTheme
     public double S => Unit / 26;
     /// <summary>The prototype's short-window compaction (max-height 800, max-width 2000).</summary>
     public bool Compact { get; private set; }
+    public int HeaderDensity { get; private set; }
 
     /// <summary>Settings â€º UI scale: "auto" follows the breakpoints; a percentage scales from 150% = unit 26.</summary>
     public string Scale { get; set; } = "auto";
@@ -54,9 +55,12 @@ public sealed class GmTheme
             ? Math.Round(26.0 * percent / 150, 1)
             : Math.Round((width >= 3000 ? 46 : width <= 1050 ? 20 : width <= 1500 ? 22 : 26) * 130.0 / 150, 1);
         var compact = height <= 800 && width <= 2000;
-        if (unit == Unit && compact == Compact) return false;
+        var designWidth = width * 26 / unit;
+        var density = designWidth < 1320 ? 2 : designWidth < 1700 ? 1 : 0;
+        if (unit == Unit && compact == Compact && density == HeaderDensity) return false;
         Unit = unit;
         Compact = compact;
+        HeaderDensity = density;
         return true;
     }
 

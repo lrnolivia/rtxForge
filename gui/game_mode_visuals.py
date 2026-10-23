@@ -5,7 +5,7 @@ import ctypes.util
 import math
 import weakref
 
-from gi.repository import Gdk, Graphene, Gtk, PangoCairo
+from gi.repository import Gdk, Graphene, Gsk, Gtk, PangoCairo
 
 from game_mode_contract import MOTION
 
@@ -143,31 +143,48 @@ def register_fonts():
         pass
 
 
-class Backdrop(Gtk.Overlay):
+class Backdrop(Gtk.Widget):
     __gtype_name__ = 'RtxForgeGameBackdrop'
 
     def __init__(self):
         super().__init__(can_target=False, hexpand=True, vexpand=True)
-        surface = Gtk.Box(hexpand=True, vexpand=True)
-        surface.add_css_class('gm-backdrop')
-        self.set_child(surface)
-        self.picture = Gtk.Picture.new_for_filename(str(ROOT / 'packaging/steam-artwork/exports/rtxforge-steam-hero.png'))
-        self.picture.set_content_fit(Gtk.ContentFit.COVER)
-        self.picture.set_can_shrink(True)
-        self.picture.set_valign(Gtk.Align.START)
-        self.picture.set_can_target(False)
-        self.add_overlay(self.picture)
-        self.scrim = Gtk.Box(valign=Gtk.Align.START, can_target=False, hexpand=True)
-        self.scrim.add_css_class('gm-app-scrim')
-        self.add_overlay(self.scrim)
+        self.texture = Gdk.Texture.new_from_filename(str(ROOT / 'packaging/steam-artwork/exports/rtxforge-steam-hero.png'))
+        self.color = Gdk.RGBA()
+        self.stops = []
+        self.opacity, self.details = 1, False
 
     def apply(self, theme, width, height, details):
-        reach = round(min(width * 1240 / 3840, height * .78))
-        self.picture.set_size_request(-1, reach)
-        self.scrim.set_size_request(-1, reach)
-        self.picture.set_opacity(.24 if theme.light else .40 if theme.name == 'night' else .94)
-        self.picture.set_visible(not details)
-        self.scrim.set_visible(not details)
+        self.color.parse(theme.c['view'])
+        self.opacity = .24 if theme.light else .40 if theme.name == 'night' else .94
+        self.details = details
+        self.stops = []
+        for offset, alpha in ((0, .08), (.2, .10), (.42, .25), (.65, .63), (.84, .91), (1, 1)):
+            stop = Gsk.ColorStop()
+            stop.offset = offset
+            color = Gdk.RGBA()
+            color.parse(theme.c['view'])
+            color.alpha = alpha
+            stop.color = color
+            self.stops.append(stop)
+        self.queue_draw()
+
+    def do_snapshot(self, snapshot):
+        width, height = self.get_width(), self.get_height()
+        snapshot.append_color(self.color, Graphene.Rect().init(0, 0, width, height))
+        if self.details or width <= 0 or height <= 0:
+            return
+        # Image, fade and solid surface share one coordinate system. Independent
+        # Picture/Box natural heights can leave an unfaded strip below the scrim.
+        reach = min(width * 1240 / 3840, height * .78)
+        bounds = Graphene.Rect().init(0, 0, width, reach)
+        snapshot.push_clip(bounds)
+        cover = max(width / self.texture.get_width(), reach / self.texture.get_height())
+        iw, ih = self.texture.get_width() * cover, self.texture.get_height() * cover
+        snapshot.push_opacity(self.opacity)
+        snapshot.append_texture(self.texture, Graphene.Rect().init((width-iw)/2, (reach-ih)/2, iw, ih))
+        snapshot.pop()
+        snapshot.append_linear_gradient(bounds, Graphene.Point().init(0, 0), Graphene.Point().init(0, reach), self.stops)
+        snapshot.pop()
 
 
 class ArtworkLight(Gtk.Widget):

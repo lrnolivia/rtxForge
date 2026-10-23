@@ -42,18 +42,18 @@ public sealed class LibrarySkeleton : UserControl
         };
         var root = new Grid(); root.Children.Add(grid); root.Children.Add(status); Content = root;
         Rebuild();
-        Loaded += (_, _) => ArrangeCards(ActualWidth);
+        Loaded += (_, _) => ArrangeCards(ActualWidth, ActualHeight);
         SizeChanged += (_, e) =>
         {
             Clip = new RectangleGeometry { Rect = new global::Windows.Foundation.Rect(0, 0, e.NewSize.Width, e.NewSize.Height) };
-            ArrangeCards(e.NewSize.Width);
+            ArrangeCards(e.NewSize.Width, e.NewSize.Height);
         };
     }
 
     public void Configure(string layout, double size = 1)
     {
         if (view == layout && Math.Abs(artScale - size) < .001) return;
-        view = layout; artScale = size; Rebuild(); ArrangeCards(ActualWidth);
+        view = layout; artScale = size; Rebuild(); ArrangeCards(ActualWidth, ActualHeight);
     }
 
     void Rebuild()
@@ -73,7 +73,7 @@ public sealed class LibrarySkeleton : UserControl
             grid.Children.Add(new Border { Child = body, Background = fill, CornerRadius = new CornerRadius(12 * scale) });
         }
     }
-    void ArrangeCards(double width)
+    void ArrangeCards(double width, double height)
     {
         var preferred = (view == "capsules" ? 300 : 212) * scale * artScale;
         var columns = view == "list" ? 1 : Math.Clamp((int)((width + grid.ColumnSpacing) / (preferred + grid.ColumnSpacing)), 1, 8);
@@ -84,17 +84,23 @@ public sealed class LibrarySkeleton : UserControl
             for (var i = 0; i < columns; i++) grid.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
             for (var i = 0; i < (grid.Children.Count + columns - 1) / columns; i++) grid.RowDefinitions.Add(new() { Height = GridLength.Auto });
         }
+        var cardWidth = Math.Max(0, (width - grid.ColumnSpacing * (columns - 1)) / columns);
+        var artHeight = view == "list" ? 0 : cardWidth * (view == "posters" ? 1.5 : 215.0 / 460);
+        var cardHeight = artHeight + (view == "list" ? 53 : 63) * scale;
+        var fullRows = Math.Max(0, (int)((height + grid.RowSpacing) / (cardHeight + grid.RowSpacing)));
         for (var i = 0; i < grid.Children.Count; i++)
         {
             var card = (Border)grid.Children[i];
-            var cardWidth = Math.Max(0, (width - grid.ColumnSpacing * (columns - 1)) / columns);
+            // Placeholders are a static loading preview, not scrollable content.
+            // Show complete rows instead of cutting a card through its artwork.
+            card.Visibility = i / columns < fullRows ? Visibility.Visible : Visibility.Collapsed;
             var body = (StackPanel)card.Child;
             var lines = (StackPanel)body.Children[^1];
             ((Border)lines.Children[0]).Width = Math.Min(120 * scale, Math.Max(0, cardWidth - 24 * scale));
             ((Border)lines.Children[1]).Width = Math.Min(66 * scale, Math.Max(0, cardWidth - 24 * scale));
             Grid.SetRow(card, i / columns); Grid.SetColumn(card, i % columns);
             if (view != "list" && body.Children[0] is Border art)
-                art.Height = cardWidth * (view == "posters" ? 1.5 : 215.0 / 460);
+                art.Height = artHeight;
         }
     }
 }

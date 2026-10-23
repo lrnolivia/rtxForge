@@ -53,6 +53,7 @@ class Theme:
         self.scale = str(scale)
         self.unit = 26
         self.compact = False
+        self.header_density = 0
 
     @property
     def light(self):
@@ -62,8 +63,11 @@ class Theme:
         unit = 46 if width >= 3000 else 20 if width <= 1050 else 22 if width <= 1500 else 26
         unit = round(26 * int(self.scale) / 150, 1) if self.scale.isdigit() else round(unit * 130 / 150, 1)
         compact = height <= 800 and width <= 2000
-        changed = (unit, compact) != (self.unit, self.compact)
+        design_width = width * 26 / unit
+        density = 2 if design_width < 1320 else 1 if design_width < 1700 else 0
+        changed = (unit, compact, density) != (self.unit, self.compact, self.header_density)
         self.unit, self.compact = unit, compact
+        self.header_density = density
         return changed
 
     def px(self, value):
@@ -102,6 +106,7 @@ def stylesheet(t):
 .gm .gm-small {{ color: {c['muted']}; font-size: {em(0.77)}px; }}
 .gm .gm-strong {{ font-weight: 600; font-size: {em(0.96)}px; }}
 .gm .gm-brand-title {{ font-family: "Bakbak One"; font-size: {em(1.4 if t.compact else 1.62)}px; }}
+.gm .gm-brand-title.gm-brand-small {{ font-size: {em(1.2)}px; }}
 .gm button {{ background: none; box-shadow: none; border: none; color: {c['fg']}; min-height: 0; min-width: 0; padding: 0;
   outline-color: {c['focus']}; outline-style: solid; outline-width: 0; transition: none; }}
 .gm button:focus-visible {{ outline-width: {max(1,px(1.75))}px; outline-offset: {px(2)}px; }}
@@ -121,6 +126,7 @@ def stylesheet(t):
 .gm .gm-tabs {{ background: alpha({c['panel']},.80); border-radius: 999px; padding: {px(8 if t.compact else 10)}px; }}
 .gm.gm-details .gm-tabs {{ background: {c['panel']}; }}
 .gm .gm-tabs button.gm-btn {{ padding: {px(14)}px {px(26)}px; min-height: {px(56 if t.compact else 64) - px(28)}px; font-size: {em(0.92)}px; }}
+.gm .gm-tabs button.gm-btn.gm-tab-tight {{ padding-left: {px(16)}px; padding-right: {px(16)}px; }}
 .gm .gm-segments {{ background: {c['card']}; border-radius: 999px; padding: {px(4)}px; }}
 .gm .gm-segments.gm-panel {{ background: {c['panel']}; }}
 .gm .gm-segments button {{ border-radius: 999px; padding: {px(10)}px {px(22)}px; min-height: {px(54 if not t.compact else 40) - px(20)}px; font-size: {em(0.85)}px; font-weight: 600; }}
@@ -477,12 +483,9 @@ class GameMode(Gtk.Overlay, GameModeTools):
 
     def icon(self, name, size=None):
         name = {
-            'input-gaming-symbolic':'rtx-gm-gamepad-symbolic', 'preferences-other-symbolic':'rtx-gm-presets-symbolic',
-            'drive-multidisk-symbolic':'rtx-gm-package-symbolic', 'applications-utilities-symbolic':'rtx-gm-tools-symbolic',
-            'emblem-system-symbolic':'rtx-gm-settings-symbolic', 'view-filter-symbolic':'rtx-gm-filter-symbolic',
-            'view-refresh-symbolic':'rtx-gm-refresh-symbolic', 'emblem-synchronizing-symbolic':'rtx-gm-refresh-symbolic',
-            'applications-graphics-symbolic':'rtx-gm-palette-symbolic', 'go-home-symbolic':'rtx-gm-home-symbolic',
-            'accessories-text-editor-symbolic':'rtx-gm-notes-symbolic',
+            'view-filter-symbolic': 'funnel-symbolic',
+            'emblem-synchronizing-symbolic': 'view-refresh-symbolic',
+            'emblem-system-symbolic': 'preferences-system-symbolic',
         }.get(name, name)
         image = Gtk.Image.new_from_icon_name(name)
         image.set_pixel_size(size or self.theme.px(20))
@@ -499,9 +502,11 @@ class GameMode(Gtk.Overlay, GameModeTools):
         return box
 
     def sidebar_content(self, text, fallback):
-        names = {'Graphics': 'monitor', 'Overlay': 'overlay', 'Library': 'library',
-                 'System': 'system', 'Recovery': 'recovery', 'About': 'info', 'DLSS Files': 'file'}
-        icon = 'rtx-gm-' + names[text] + '-symbolic' if text in names else fallback
+        names = {'Graphics': 'video-display-symbolic', 'Overlay': 'view-dual-symbolic',
+                 'Library': 'folder-symbolic', 'System': 'preferences-system-devices-symbolic',
+                 'Recovery': 'document-revert-symbolic', 'About': 'dialog-information-symbolic',
+                 'DLSS Files': 'text-x-generic-symbolic'}
+        icon = names.get(text, fallback)
         content = self.content(text, icon)
         image = content.get_first_child()
         if isinstance(image, Gtk.Image):
@@ -830,14 +835,18 @@ class GameMode(Gtk.Overlay, GameModeTools):
 
     def render_header(self):
         t = self.theme
+        tight = t.header_density > 0
         self.header.set_size_request(-1, t.px(92 if t.compact else 114))
         self.header.set_margin_top(t.px(12))
         for side in ('start', 'end'):
             getattr(self.header, 'set_margin_' + side)(t.px(56))
-        brand = Gtk.Box(spacing=t.px(16))
-        mark = self.h.make_brand_icon(t.px(48 if t.compact else 64))
+        brand = Gtk.Box(spacing=t.px(10 if tight else 16))
+        mark = self.h.make_brand_icon(t.px(40 if tight else 48 if t.compact else 64))
         brand.append(mark)
-        brand.append(self.label('rtxForge', 'gm-brand-title'))
+        if t.header_density < 2:
+            title = self.label('rtxForge', 'gm-brand-title')
+            if tight: title.add_css_class('gm-brand-small')
+            brand.append(title)
         brand_button = self.button(brand, None, 'ghost', key='brand')
         brand_button.set_can_target(False)
         brand_button.set_focusable(False)
@@ -848,14 +857,16 @@ class GameMode(Gtk.Overlay, GameModeTools):
         menu.update_property([Gtk.AccessibleProperty.LABEL], ['Main menu'])
         menu.set_valign(Gtk.Align.CENTER)
         self.header.set_end_widget(menu)
-        tabs = Gtk.Box(spacing=t.px(12), halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        tabs = Gtk.Box(spacing=t.px(8 if tight else 12), halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
         tabs.add_css_class('gm-tabs')
         for key, title in PAGES:
             active = self.page == key or (key == 'library' and self.page == 'details')
             caption = self.content(title, {'library':'input-gaming-symbolic', 'presets':'preferences-other-symbolic', 'packages':'drive-multidisk-symbolic', 'extras':'applications-utilities-symbolic', 'settings':'emblem-system-symbolic'}[key])
             if isinstance(caption.get_first_child(), Gtk.Image):
                 caption.get_first_child().set_pixel_size(t.px(26))
-            tabs.append(self.button(caption, lambda key=key: self.open(key), 'active' if active else 'ghost', key='tab-' + key))
+            tab = self.button(caption, lambda key=key: self.open(key), 'active' if active else 'ghost', key='tab-' + key)
+            if tight: tab.add_css_class('gm-tab-tight')
+            tabs.append(tab)
         tabs = motion.selection(self.selection_states, 'navigation', tabs,
                                 next(c for c in children(tabs) if getattr(c, '_gm_key', '') == 'tab-' + ('library' if self.page == 'details' else self.page)),
                                 self.owner.settings, t.c['active'], t.c['card'])

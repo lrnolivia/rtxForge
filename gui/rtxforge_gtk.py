@@ -648,6 +648,8 @@ def artwork_accent(path,color=None,muted=False):
             # Poster / Wide Capsule Details button is neutral at rest;
             # it becomes accent-filled only while the card is selected.
             f'.game-card.{name}.selected .gallery-artwork-frame {{ background: alpha(white,0.44); }} '
+            f'.game-card.{name}:hover .gallery-artwork-ring {{ border-width: 3px; border-color: {color}; }} '
+            f'.game-card.{name}.selected .gallery-artwork-ring {{ border-width: 2px; border-color: mix(white,{color},0.44); }} '
             f'.game-card.{name}.selected .game-details {{ '
             f'background: alpha(white,0.44); '
             f'color: {button_fg}; '
@@ -3012,7 +3014,7 @@ columnview.library-column-view header button {
  * rounded inset artwork, title + status on the card surface.
  * ---------------------------------------------------------- */
 .game-card { border-radius: 12px; }
-.game-card .gallery-artwork-ring { border-width: 0; border-color: transparent; }
+.game-card .gallery-artwork-ring { border: 1px solid alpha(@window_fg_color,0.12); }
 .game-card .poster-button, .game-card .poster,
 .game-card .gallery-artwork-frame, .game-card .gallery-artwork-frame .poster-button,
 .game-card .gallery-artwork-frame .poster { border-radius: 14px; }
@@ -10150,12 +10152,25 @@ class Window(Adw.ApplicationWindow):
             banner.add_css_class('overview-banner');box.append(banner)
         facts=overview_facts.facts(game)
         if facts:
-            flow=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,homogeneous=True,column_spacing=12,row_spacing=12,
-                             min_children_per_line=1,max_children_per_line=4 if len(facts)>3 else 3,valign=Gtk.Align.START)
+            flow=Gtk.Grid(column_spacing=12,row_spacing=12,column_homogeneous=True,hexpand=True,valign=Gtk.Align.START)
             flow.add_css_class('overview-facts')
+            cards=[]
             for title,value,icon in facts:
                 card=fact_row(title,value,icon);card.set_size_request(280,-1)
-                flow.append(card)
+                card.set_hexpand(True);cards.append(card)
+            layout={'columns':0}
+            def arrange_facts(widget,_clock):
+                count=min(len(cards),4,max(1,(widget.get_width()+12)//292))
+                if len(cards)>3 and count==3:count=2
+                if count!=layout['columns']:
+                    layout['columns']=count
+                    for card in cards:
+                        if card.get_parent() is widget:widget.remove(card)
+                    for index,card in enumerate(cards):
+                        alone=index==len(cards)-1 and index%count==0
+                        widget.attach(card,index%count,index//count,count if alone else 1,1)
+                return True
+            flow.add_tick_callback(arrange_facts)
             box.append(flow)
         path=overview_facts.folder(game)
         if path:

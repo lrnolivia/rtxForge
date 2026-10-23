@@ -119,8 +119,7 @@ public sealed class GameItem : INotifyPropertyChanged
         selected && Accent(p => ArtAccent.Mix(Color.FromArgb(255, 255, 255, 255), p.Color, 0.44)) is { } s ? s
         : hovered && Accent(p => p.Color) is { } h ? h
         : Resource("TextFillColorPrimaryBrush") is SolidColorBrush ink ? new SolidColorBrush(ink.Color) { Opacity = 0.12 } : Transparent;
-    // The selected band reads thinner on Linux than the 3px rest/hover ring.
-    public Thickness ArtRingThickness => new(selected ? 2 : 3);
+    public Thickness ArtRingThickness => new(selected ? 2 : hovered ? 3 : 1);
     public Brush CardFill => selected && Accent(p => p.Color) is { } fill ? fill : Transparent;
     public Brush CardTitle =>
         selected && Accent(p => p.SelectedTitle) is { } s ? s

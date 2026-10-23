@@ -1,0 +1,175 @@
+{
+  "schema": 1,
+  "id": "bg3fgvk-vulkan-dlssg",
+  "name": "BG3 Vulkan DLSS Frame Generation",
+  "status": "experimental-standalone-provider",
+  "experimental": true,
+  "deployable": true,
+  "runtime_verified": false,
+  "default_promoted": false,
+  "upstream": {
+    "repository": "thierbig/bg3fgvk",
+    "tag": "v1.2.0",
+    "tag_object": "6f8bfe6255f34a94e2963223d7045097f369edc5",
+    "commit": "66082e6f691fba1c48e319b688a25fa5ae196e56",
+    "license": "MIT",
+    "source_url": "https://github.com/thierbig/bg3fgvk/tree/66082e6f691fba1c48e319b688a25fa5ae196e56",
+    "release_url": "https://github.com/thierbig/bg3fgvk/releases/tag/v1.2.0"
+  },
+  "archive": {
+    "name": "bg3fgvk-v1.2.0.zip",
+    "asset_id": 603771339,
+    "url": "https://github.com/thierbig/bg3fgvk/releases/download/v1.2.0/bg3fgvk-v1.2.0.zip",
+    "size": 5055411,
+    "sha256": "f5ffa33f51990cfd929e356085ced4a7b4746c3249094f1433e1639819d15e89",
+    "verified_at": "2026-10-22",
+    "path_separator": "backslash",
+    "inventory_paths": "Canonical forward-slash names; these are upstream archive paths, not approved deployment destinations."
+  },
+  "target": {
+    "steam_appid": "1086940",
+    "executable": "bg3.exe",
+    "renderer": "vulkan",
+    "architecture": "x64",
+    "requires_native_dlss_sr_or_dlaa": true,
+    "requires_native_dlssg": false,
+    "provides_neural_rendering": false,
+    "rtxforge_qualified_platforms": []
+  },
+  "loader": {
+    "name": "rtxForge BG3 startup proxy",
+    "source": "loader/loader.cpp",
+    "build": "loader/Build-Loader.ps1",
+    "upstream_proxy": "bink2w64.dll",
+    "upstream_module_path": "NativeMods/fgvk.dll",
+    "original_name": "bink2w64_rtxforge_original.dll",
+    "required_hook_timing": "Before game entry and Vulkan initialization",
+    "ownership_review_complete": true,
+    "redistribution_review_complete": true,
+    "binary": {
+      "size": 112640,
+      "sha256": "6e5e7457ed87da58b3a2e691294c650f41c0009001e327cca07e84eb5511a5f2"
+    },
+    "game_original": {
+      "size": 411136,
+      "sha256": "7c3ac825eb7fe769c3831540e108282dd90f6275b0f61dec8beeea0a6615b0c1",
+      "distribution": "Copied only from the selected local game; never redistributed"
+    },
+    "exports_source": {
+      "repository": "gottyduke/NativeModLoader",
+      "commit": "8b66575e23b1bf7fa5fba11a9b2382a9cc14c4c9",
+      "license": "MIT",
+      "paths": [
+        "include/exports.def",
+        "include/jmp.asm"
+      ]
+    },
+    "exports_notice_sha256": "120e325c620362ebd057f32dd424db3e55ab52347f5dde2d954e50d3af1d980b"
+  },
+  "runtime": {
+    "streamline_version": "2.12.0",
+    "dlssg_file_version": "310.7.0.0",
+    "upstream_directory": "NativeMods/Streamline",
+    "replace_as_unit": true,
+    "dlls": [
+      "NvLowLatencyVk.dll",
+      "nvngx_dlssg.dll",
+      "sl.common.dll",
+      "sl.dlss_g.dll",
+      "sl.interposer.dll",
+      "sl.pcl.dll",
+      "sl.reflex.dll"
+    ],
+    "required_notice_paths": [
+      "LICENSE.txt",
+      "NativeMods/Streamline/STREAMLINE-LICENSE.txt"
+    ]
+  },
+  "qualification": {
+    "initial_gpu": "RTX 40",
+    "initial_display_multiplier": 2,
+    "requires_hardware_accelerated_gpu_scheduling_on_windows": true,
+    "requires_working_reflex": true,
+    "ada_mfg_unlock_included": false,
+    "other_gpus_and_proton": "Separate qualification required; upstream reports are not rtxForge runtime evidence.",
+    "nr_coexistence": "Separate Vulkan-capable NR provider and exact-stack validation required."
+  },
+  "upstream_defaults": {
+    "DLSSGFrames": 3,
+    "ReflexMode": 2,
+    "ReflexSleep": true,
+    "TagHUDLess": false,
+    "TagUI": false,
+    "PresentPacing": true,
+    "OnAfterEvalFrames": 60,
+    "OffAfterIdleFrames": 30
+  },
+  "portability_constraints": {
+    "application_id": "0xE658703",
+    "camera_fov_radians": 0.84,
+    "camera_near": 0.05,
+    "camera_far": 10000.0,
+    "reprojection": "identity matrices",
+    "depth_layout": "VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL",
+    "motion_vector_layout": "VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL",
+    "tag_lifetime": "eOnlyValidNow",
+    "viewport": 0,
+    "menu_detection": "DLSS activity heuristic; does not identify semantic game/menu states",
+    "hud": "No game HUD extraction; the optional UI tag uses a transparent image."
+  },
+  "files": {
+    "NativeMods/fgvk.dll": {
+      "size": 81408,
+      "sha256": "8aeb0b591e46fd0ab0eacec49eee6b2c113df38a3d95e2cd33c4d8233c756ae1"
+    },
+    "NativeMods/Streamline/NvLowLatencyVk.dll": {
+      "size": 57840,
+      "sha256": "2a77dc3e1c724b7eea5755be0ae7423752e79a2459fae72181a9f00e3507e5d6"
+    },
+    "NativeMods/Streamline/nvngx_dlssg.dll": {
+      "size": 7519856,
+      "sha256": "135eaf0733c1e37381a8c28abcf7a862404a54132b81787c04e35d09efc5e36f"
+    },
+    "NativeMods/Streamline/README-STREAMLINE.txt": {
+      "size": 726,
+      "sha256": "fdff0e1a2c77ea1911053579782bbfcc5ce7be445b4a5903e66697b190d51dac"
+    },
+    "NativeMods/Streamline/sl.common.dll": {
+      "size": 830080,
+      "sha256": "c57930ef5a8a3fe9be85efdf71a61d8107c1148e8a6aed456464547128f7f4ae"
+    },
+    "NativeMods/Streamline/sl.dlss_g.dll": {
+      "size": 612992,
+      "sha256": "1fec3f8fdfc59d78c4445c276c1a0fb798bf251985f348597dc2b44d0c995e52"
+    },
+    "NativeMods/Streamline/sl.interposer.dll": {
+      "size": 647808,
+      "sha256": "2a79db6857ae8c75bbd871a9489c48bc6a39f7fcc88b9b02afd53d0376cbec66"
+    },
+    "NativeMods/Streamline/sl.pcl.dll": {
+      "size": 359552,
+      "sha256": "699ab461e64e95189a7fe6a21c79ad237cf56b60ea748cb6c840cd5431ba91d1"
+    },
+    "NativeMods/Streamline/sl.reflex.dll": {
+      "size": 382080,
+      "sha256": "7e6e4ccc4b561bd449fb0da90709d9b96b08c3f6f4697362caaa359e72a58a67"
+    },
+    "NativeMods/Streamline/STREAMLINE-LICENSE.txt": {
+      "size": 1591,
+      "sha256": "7b6f23e7d6f3ad6292f9308d2b42cdc3d82ae4e9b2abb55f230279d83bedd43d"
+    },
+    "INSTALL.txt": {
+      "size": 1140,
+      "sha256": "14c095fdbde37c204de6ae802defd6b5be3677db973ccaa6ed3589411bb79719"
+    },
+    "LICENSE.txt": {
+      "size": 1065,
+      "sha256": "bf89230aad7cebb30a4b064bfcd26d4285e7c239394d4d2f56d579dc2b04f53a"
+    },
+    "README.md": {
+      "size": 9812,
+      "sha256": "7b6a362734526f0c9a8aa3b920abd79b0316cf348d9b99d4a6bedb9d6599836c"
+    }
+  },
+  "adapter": "scripts/vulkan_dlssg_provider.py"
+}

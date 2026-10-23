@@ -14,6 +14,8 @@ ID3D11Device *device = nullptr;
 ID3D11DeviceContext *immediate = nullptr;
 bool visible = false, backend = false;
 LARGE_INTEGER frequency {}, last {};
+ForgePanel::LiveStats statistics;
+double measuredSeconds{}; unsigned measuredPresents{};
 // RenoDX loads tuning at launch; say so in the panel's own message line.
 constexpr const char *NextLaunch = "Saved. Model changes apply the next time the game starts. Neural rendering switches now.";
 const char *const Keys[] = {"NRIntensity", "NRPasses", "NRResolutionScale", "NRPreset", "NRStyle", "NRLocalStructure"};
@@ -72,6 +74,7 @@ bool Init(ID3D11Device *game, HWND window)
     io.LogFilename = nullptr;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     ForgePanel::Init(window);
+    ForgePanel::readLiveStats = [] { return statistics; };
     // Feeder installs are NR only, so the panel never offers frame generation.
     ForgePanel::selected = ForgePanel::enabled;
     ForgePanel::nrAllowed = true;
@@ -96,9 +99,14 @@ bool Draw(const Frame &frame)
     LARGE_INTEGER now;
     QueryPerformanceCounter(&now);
     auto &io = ImGui::GetIO();
-    io.DeltaTime = std::clamp(float(now.QuadPart - last.QuadPart) / float(frequency.QuadPart), 1.0f / 1000.0f, 0.1f);
+    const double delta = double(now.QuadPart - last.QuadPart)/double(frequency.QuadPart);
+    io.DeltaTime = std::clamp(float(delta), 1.0f / 1000.0f, 0.1f);
+    if(delta <= 0 || delta > .5) { measuredSeconds=0; measuredPresents=0; statistics.gameFps=-1; }
+    else if((measuredSeconds += delta) >= .5) {
+        statistics.gameFps = (++measuredPresents)/measuredSeconds; measuredSeconds=0; measuredPresents=0;
+    } else ++measuredPresents;
     last = now;
-    if (!visible && !ForgePanel::Animating()) return false;
+    if (!visible && !ForgePanel::Animating() && !ForgePanel::WelcomePending()) return false;
 
     io.DisplaySize = ImVec2(frame.width, frame.height);
     io.AddMousePosEvent(frame.mouse_x, frame.mouse_y);
@@ -111,6 +119,7 @@ bool Draw(const Frame &frame)
     ImGui_ImplDX11_NewFrame();
     ImGui::NewFrame();
     next_launch_message();
+    ForgePanel::Welcome(visible);
     ForgePanel::Draw(visible, frame.height / 1080.0f);
     ImGui::Render();
 

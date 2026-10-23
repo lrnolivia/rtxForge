@@ -19,6 +19,7 @@ internal sealed class NativePanelCoordinator : IDisposable
     int pid, reviewId;
     EngineReview? review;
     bool busy, disposed, exitRequested;
+    string? targetProblem, pollProblem;
     public bool OwnsShortcut => channel?.OwnsShortcut == true;
     public bool Applying { get; private set; }
 
@@ -30,7 +31,28 @@ internal sealed class NativePanelCoordinator : IDisposable
         _ = ReloadTargetsAsync(); timer.Start();
     }
     public async Task ReloadTargetsAsync()
-    { try { targets = await engine.CompanionTargetsAsync(); } catch (Exception) { targets = []; } }
+    {
+        try
+        {
+            targets = await engine.CompanionTargetsAsync();
+            targetProblem = null;
+            // Experimental Vulkan installs have external journals and may not
+            // be marked installed in the manager's ordinary provider scan.
+            await OverlayHelper.CacheGameIdentitiesAsync(targets);
+        }
+        catch (Exception error) { targets = []; targetProblem = error.Message; }
+    }
+
+    // Read-only helper diagnostics expose discovery separately from live NR/FG.
+    // A running helper alone does not establish an attached game panel.
+    internal JsonObject DiagnosticSnapshot() => new()
+    {
+        ["targets"] = new JsonArray(targets.Select(g => (JsonNode)new JsonObject
+        { ["name"] = g.Name, ["game"] = g.Location, ["provider"] = g.RuntimeProvider }).ToArray()),
+        ["pid"] = pid, ["channel_valid"] = channel?.IsValid == true,
+        ["panel_visible"] = channel?.Visible == true,
+        ["target_error"] = targetProblem, ["poll_error"] = pollProblem,
+    };
 
     async Task PollAsync()
     {
@@ -39,6 +61,7 @@ internal sealed class NativePanelCoordinator : IDisposable
         try
         {
             var active = await engine.ActiveCompanionAsync(targets, MainWindow.ForegroundProcessId(), pid);
+            pollProblem = null;
             var foundPid = active["pid"]?.GetValue<int>() ?? 0;
             var location = active["row"]?["game"]?.ToString();
             var found = targets.FirstOrDefault(g => g.Id.Equals(location, StringComparison.OrdinalIgnoreCase));
@@ -55,13 +78,19 @@ internal sealed class NativePanelCoordinator : IDisposable
                 try { channel = new NativePanelChannel(pid); preferencesChanged(); }
                 catch (FileNotFoundException) { return; }
             }
-            if (!channel.Visible) { ClearReview(); return; }
+            var visible = channel.Visible;
+            if (!visible) ClearReview();
             if (!channel.TryRead(out request, out var message)) return;
+            // Startup welcome preferences need a read-only handshake even
+            // while the panel is closed. Actions still require an open panel.
+            if (!visible && message?["op"]?.ToString() is not ("hello" or "status"))
+                throw new InvalidOperationException("Open the overlay before changing game settings.");
             var result = await HandleAsync(message!, request);
             if (!disposed) channel?.Reply(request, result);
         }
         catch (Exception error)
         {
+            pollProblem = error.Message;
             if (!Applying) ClearReview();
             if (request > 0 && channel is not null && !disposed)
             {
@@ -78,6 +107,9 @@ internal sealed class NativePanelCoordinator : IDisposable
         return new JsonObject
         {
             ["overlay_controls"] = s.OverlayControls, ["overlay_renderer"] = s.OverlayRenderer,
+            ["overlay_live_stats"] = s.OverlayLiveStats,
+            ["overlay_welcome"] = s.OverlayWelcome, ["vulkan_mfg_native_menu"] = s.VulkanMfgNativeMenu,
+            ["overlay_welcome_position"] = s.OverlayWelcomePosition,
             ["panel_hotkey"] = s.PanelHotkey, ["panel_key"] = (int)binding.Key, ["panel_modifiers"] = (int)binding.Modifiers,
             ["overlay_helper"] = s.OverlayHelper, ["overlay_start_with_windows"] = s.OverlayStartWithWindows,
             ["optiscaler_ui"] = s.OptiScalerUi, ["optiscaler_intro"] = s.OptiScalerIntro,
@@ -105,7 +137,15 @@ internal sealed class NativePanelCoordinator : IDisposable
             case "hello":
             case "status":
                 var state = await engine.CompanionAsync("status", game!);
-                return new JsonObject { ["op"] = action, ["settings"] = SettingsSnapshot(), ["status"] = state };
+                var preferences = SettingsSnapshot();
+                // A launcher may present a different HKCU view to the game.
+                // Deliver identity with the same verified per-process reply as
+                // the file states instead of depending on that registry cache.
+                var palette = await OverlayAccent.ForGameAsync(game!);
+                var color = palette.Color;
+                preferences["game_title"] = game!.Name;
+                preferences["game_accent"] = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+                return new JsonObject { ["op"] = action, ["settings"] = preferences, ["status"] = state };
             case "save":
                 var changes = message["changes"] as JsonObject ?? throw new InvalidOperationException("Choose a preset to save.");
                 foreach (var pair in changes)
@@ -155,6 +195,13 @@ internal sealed class NativePanelCoordinator : IDisposable
             switch (setting)
             {
                 case "overlay_controls": s.OverlayControls = value.GetValue<bool>() ? "classic" : "unified"; break;
+                case "overlay_live_stats": s.OverlayLiveStats = value.GetValue<bool>(); break;
+                case "overlay_welcome": s.OverlayWelcome = value.GetValue<bool>(); break;
+                case "overlay_welcome_position":
+                    var position = value.GetValue<string>();
+                    if (!ForgeSettings.WelcomePositions.Contains(position)) throw new InvalidOperationException("Choose an available welcome position.");
+                    s.OverlayWelcomePosition = position; break;
+                case "vulkan_mfg_native_menu": s.VulkanMfgNativeMenu = value.GetValue<bool>(); break;
                 case "overlay_renderer":
                     var renderer = value.GetValue<string>();
                     if (renderer is not ("game" or "optiscaler")) throw new InvalidOperationException("Choose an available overlay.");

@@ -1,0 +1,302 @@
+{
+  "schema": 1,
+  "profile": "rdr2",
+  "game_original": {
+    "size": 390640,
+    "sha256": "a1f0859ddb076633a4109272f247158d560bcf95f0f0c3dba72ee00f3bfa55af"
+  },
+  "exports": [
+    {
+      "name": "BinkAllocateFrameBuffers",
+      "ordinal": 1
+    },
+    {
+      "name": "BinkClose",
+      "ordinal": 2
+    },
+    {
+      "name": "BinkCloseTrack",
+      "ordinal": 3
+    },
+    {
+      "name": "BinkControlBackgroundIO",
+      "ordinal": 4
+    },
+    {
+      "name": "BinkCopyToBuffer",
+      "ordinal": 5
+    },
+    {
+      "name": "BinkCopyToBufferRect",
+      "ordinal": 6
+    },
+    {
+      "name": "BinkDoFrame",
+      "ordinal": 7
+    },
+    {
+      "name": "BinkDoFrameAsync",
+      "ordinal": 8
+    },
+    {
+      "name": "BinkDoFrameAsyncMulti",
+      "ordinal": 9
+    },
+    {
+      "name": "BinkDoFrameAsyncWait",
+      "ordinal": 10
+    },
+    {
+      "name": "BinkDoFramePlane",
+      "ordinal": 11
+    },
+    {
+      "name": "BinkFreeGlobals",
+      "ordinal": 12
+    },
+    {
+      "name": "BinkGetError",
+      "ordinal": 13
+    },
+    {
+      "name": "BinkGetFrameBuffersInfo",
+      "ordinal": 14
+    },
+    {
+      "name": "BinkGetGPUDataBuffersInfo",
+      "ordinal": 15
+    },
+    {
+      "name": "BinkGetKeyFrame",
+      "ordinal": 16
+    },
+    {
+      "name": "BinkGetPlatformInfo",
+      "ordinal": 17
+    },
+    {
+      "name": "BinkGetRealtime",
+      "ordinal": 18
+    },
+    {
+      "name": "BinkGetRects",
+      "ordinal": 19
+    },
+    {
+      "name": "BinkGetSummary",
+      "ordinal": 20
+    },
+    {
+      "name": "BinkGetTrackData",
+      "ordinal": 21
+    },
+    {
+      "name": "BinkGetTrackID",
+      "ordinal": 22
+    },
+    {
+      "name": "BinkGetTrackMaxSize",
+      "ordinal": 23
+    },
+    {
+      "name": "BinkGetTrackType",
+      "ordinal": 24
+    },
+    {
+      "name": "BinkGoto",
+      "ordinal": 25
+    },
+    {
+      "name": "BinkLogoAddress",
+      "ordinal": 26
+    },
+    {
+      "name": "BinkNextFrame",
+      "ordinal": 27
+    },
+    {
+      "name": "BinkOpen",
+      "ordinal": 28
+    },
+    {
+      "name": "BinkOpenDirectSound",
+      "ordinal": 29
+    },
+    {
+      "name": "BinkOpenMiles",
+      "ordinal": 30
+    },
+    {
+      "name": "BinkOpenTrack",
+      "ordinal": 31
+    },
+    {
+      "name": "BinkOpenWaveOut",
+      "ordinal": 32
+    },
+    {
+      "name": "BinkOpenWithOptions",
+      "ordinal": 33
+    },
+    {
+      "name": "BinkOpenXAudio2",
+      "ordinal": 34
+    },
+    {
+      "name": "BinkOpenXAudio27",
+      "ordinal": 35
+    },
+    {
+      "name": "BinkOpenXAudio28",
+      "ordinal": 36
+    },
+    {
+      "name": "BinkPause",
+      "ordinal": 37
+    },
+    {
+      "name": "BinkRegisterFrameBuffers",
+      "ordinal": 38
+    },
+    {
+      "name": "BinkRegisterGPUDataBuffers",
+      "ordinal": 39
+    },
+    {
+      "name": "BinkRequestStopAsyncThread",
+      "ordinal": 40
+    },
+    {
+      "name": "BinkRequestStopAsyncThreadsMulti",
+      "ordinal": 41
+    },
+    {
+      "name": "BinkService",
+      "ordinal": 42
+    },
+    {
+      "name": "BinkSetError",
+      "ordinal": 43
+    },
+    {
+      "name": "BinkSetFileOffset",
+      "ordinal": 44
+    },
+    {
+      "name": "BinkSetFrameRate",
+      "ordinal": 45
+    },
+    {
+      "name": "BinkSetIO",
+      "ordinal": 46
+    },
+    {
+      "name": "BinkSetIOSize",
+      "ordinal": 47
+    },
+    {
+      "name": "BinkSetMemory",
+      "ordinal": 48
+    },
+    {
+      "name": "BinkSetOSFileCallbacks",
+      "ordinal": 49
+    },
+    {
+      "name": "BinkSetPan",
+      "ordinal": 50
+    },
+    {
+      "name": "BinkSetSimulate",
+      "ordinal": 51
+    },
+    {
+      "name": "BinkSetSoundOnOff",
+      "ordinal": 52
+    },
+    {
+      "name": "BinkSetSoundSystem",
+      "ordinal": 53
+    },
+    {
+      "name": "BinkSetSoundSystem2",
+      "ordinal": 54
+    },
+    {
+      "name": "BinkSetSoundTrack",
+      "ordinal": 55
+    },
+    {
+      "name": "BinkSetSpeakerVolumes",
+      "ordinal": 56
+    },
+    {
+      "name": "BinkSetVideoOnOff",
+      "ordinal": 57
+    },
+    {
+      "name": "BinkSetVolume",
+      "ordinal": 58
+    },
+    {
+      "name": "BinkSetWillLoop",
+      "ordinal": 59
+    },
+    {
+      "name": "BinkShouldSkip",
+      "ordinal": 60
+    },
+    {
+      "name": "BinkStartAsyncThread",
+      "ordinal": 61
+    },
+    {
+      "name": "BinkUtilCPUs",
+      "ordinal": 62
+    },
+    {
+      "name": "BinkUtilFree",
+      "ordinal": 63
+    },
+    {
+      "name": "BinkUtilMalloc",
+      "ordinal": 64
+    },
+    {
+      "name": "BinkUtilMutexCreate",
+      "ordinal": 65
+    },
+    {
+      "name": "BinkUtilMutexDestroy",
+      "ordinal": 66
+    },
+    {
+      "name": "BinkUtilMutexLock",
+      "ordinal": 67
+    },
+    {
+      "name": "BinkUtilMutexLockTimeOut",
+      "ordinal": 68
+    },
+    {
+      "name": "BinkUtilMutexUnlock",
+      "ordinal": 69
+    },
+    {
+      "name": "BinkWait",
+      "ordinal": 70
+    },
+    {
+      "name": "BinkWaitStopAsyncThread",
+      "ordinal": 71
+    },
+    {
+      "name": "BinkWaitStopAsyncThreadsMulti",
+      "ordinal": 72
+    },
+    {
+      "name": "RADTimerRead",
+      "ordinal": 73
+    }
+  ]
+}

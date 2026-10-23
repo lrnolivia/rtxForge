@@ -536,4 +536,90 @@ class WindowsProtocolTest(unittest.TestCase):
             k.UnmapViewOfFile(view); k.CloseHandle(handle)
 
 
+class VulkanHelperTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name).resolve()
+        patcher = patch.dict(os.environ, LOCALAPPDATA=str(self.root / 'appdata'))
+        patcher.start(); self.addCleanup(patcher.stop)
+        with patch.object(control.Controls, '_start_watcher'):
+            self.controls = control.Controls(self.root / 'state')
+
+    def install(self, profile='bg3'):
+        target = self.root / profile
+        target.mkdir()
+        exe = 'bg3.exe' if profile == 'bg3' else 'RDR2.exe'
+        (target / exe).write_bytes(b'game')
+        (target / 'nvngx_dlss.dll').write_bytes(b'native SR')
+        files = {}
+        for name in ('bink2w64.dll', 'NativeMods/fgvk.dll', 'NativeMods/nvngx_dlssnr.dll',
+                     'NativeMods/Streamline/nvngx_dlssg.dll'):
+            path = target / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            data = name.encode()
+            path.write_bytes(data)
+            files[name] = hashlib.sha256(data).hexdigest()
+        identity = hashlib.sha256(str(target).casefold().encode()).hexdigest()
+        journal = self.controls.vulkan / identity / 'baseline.json'
+        journal.parent.mkdir(parents=True)
+        record = {'schema': 1, 'provider_id': 'rtxforge-vulkan-native:' + profile, 'status': 'active',
+                  'target': str(target), 'installed': files}
+        journal.write_text(json.dumps(record))
+        return target, journal, record
+
+    def test_both_profiles_are_discovered_without_optiscaler_metadata(self):
+        self.install('bg3'); self.install('rdr2')
+        rows = self.controls.targets()
+        self.assertEqual({r['exe'] for r in rows}, {'bg3.exe', 'RDR2.exe'})
+        self.assertEqual({r['appid'] for r in rows}, {'1086940', '1174180'})
+        self.assertTrue(all(r['runtime_provider'] == 'vulkan-native' for r in rows))
+
+    def test_file_lights_keep_native_owned_changed_and_absent_distinct(self):
+        target, _, _ = self.install()
+        row = self.controls.targets()[0]
+        with patch.object(self.controls, '_processes', return_value={}):
+            state = self.controls.status({'row': row})
+            self.assertEqual({k: v['state'] for k, v in state['pipelines'].items()},
+                             {'SR': 'other', 'RR': 'absent', 'NR': 'managed', 'FG': 'managed'})
+            (target / 'NativeMods/nvngx_dlssnr.dll').write_bytes(b'changed model')
+            self.assertEqual(self.controls.status({'row': row})['pipelines']['NR']['state'], 'changed')
+        self.assertFalse(state['native_fresh'])
+        self.assertFalse(state['can_edit']); self.assertFalse(state['can_save'])
+        self.assertNotIn('nr_running', state)
+
+    def test_active_selection_verifies_full_process_path_and_does_not_claim_live_telemetry(self):
+        target, _, _ = self.install()
+        row = self.controls.targets()[0]
+        with patch.object(self.controls, '_processes', return_value={'bg3.exe': [77]}), \
+             patch.object(control.feeder_controls, '_image', return_value=self.root / 'other/bg3.exe'):
+            self.assertIsNone(self.controls.active({'rows': [row], 'foreground_pid': 77})['row'])
+        with patch.object(self.controls, '_processes', return_value={'bg3.exe': [77]}), \
+             patch.object(control.feeder_controls, '_image', return_value=target / 'bg3.exe'):
+            found = self.controls.active({'rows': [row], 'foreground_pid': 77})
+            self.assertEqual(found['pid'], 77)
+            self.assertEqual(found['row'], row)
+            self.assertFalse(found['native_fresh'])
+
+    def test_changed_loader_restored_journal_and_forged_identity_are_refused(self):
+        target, journal, record = self.install()
+        row = self.controls.targets()[0]
+        with self.assertRaises(t.Refusal): self.controls._vulkan({'row': row | {'exe': 'other.exe'}})
+        record['status'] = 'restored'; journal.write_text(json.dumps(record))
+        self.assertEqual(self.controls.targets(), [])
+        record['status'] = 'active'; journal.write_text(json.dumps(record))
+        (target / 'bink2w64.dll').write_bytes(b'changed loader')
+        self.assertEqual(self.controls.targets(), [])
+        self.assertEqual(self.controls.status({'row': row})['state'], 'unavailable')
+
+    def test_unsupported_preset_operations_are_explicit_and_leave_game_untouched(self):
+        target, _, _ = self.install()
+        row = self.controls.targets()[0]
+        before = {p.relative_to(target): p.read_bytes() for p in target.rglob('*') if p.is_file()}
+        for method in ('apply', 'save', 'reset'):
+            with self.subTest(method=method), self.assertRaisesRegex(t.Refusal, 'Vulkan'):
+                getattr(self.controls, method)({'row': row, 'changes': {'enabled': 0}})
+        self.assertEqual(before, {p.relative_to(target): p.read_bytes() for p in target.rglob('*') if p.is_file()})
+
+
 if __name__ == '__main__': unittest.main()

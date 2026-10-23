@@ -26,6 +26,11 @@ public sealed partial class GameModeView
                 ["game", "optiscaler"], ["rtxForge", "Native"], () => shell.Settings.OverlayRenderer == "optiscaler" ? "optiscaler" : "game", value => SetOverlay(s => s.OverlayRenderer = value), glyph: "\uE7F4"),
             Choice("Controls", "Advanced uses the package’s labels and original units.", ["unified", "classic"], ["Unified", "Advanced"],
                 () => shell.Settings.OverlayControls, value => SetOverlay(s => s.OverlayControls = value), glyph: "\uE713"),
+            OverlayToggle("Live feature statistics", "Measured activity beside NR and frame generation controls.", () => shell.Settings.OverlayLiveStats, (s, value) => s.OverlayLiveStats = value, glyph: "\uE9D9"),
+            OverlayToggle("Welcome message", "Show the rtxForge logo and assigned shortcut at game startup.", () => shell.Settings.OverlayWelcome, (s, value) => s.OverlayWelcome = value, glyph: "\uE8F2"),
+            Choice("Welcome position", "Applies when the game starts.", ForgeSettings.WelcomePositions,
+                ["Top center", "Top left", "Top right", "Bottom left", "Bottom right"], () => shell.Settings.OverlayWelcomePosition,
+                value => SetOverlay(s => s.OverlayWelcomePosition = value), glyph: "\uE8B9"),
         ]),
         new("Shortcuts and helper", null,
         [
@@ -43,6 +48,10 @@ public sealed partial class GameModeView
         [
             OverlayToggle("ReShade menu", "Feeder NR and effects keep running when this is off.", () => shell.Settings.ReShadeUi, (s, value) => s.ReShadeUi = value, glyph: "\uE700"),
             OverlayToggle("ReShade welcome", "ReShade guide and RenoDX welcome dialog. Loading notices are separate.", () => shell.Settings.ReShadeIntro, (s, value) => s.ReShadeIntro = value, glyph: "\uE8F2"),
+        ]),
+        new("Vulkan MFG overlay", null,
+        [
+            OverlayToggle("Native MFG menu and hint", "Optional advanced menu. Frame generation keeps running when it is off.", () => shell.Settings.VulkanMfgNativeMenu, (s, value) => s.VulkanMfgNativeMenu = value, glyph: "\uE700"),
         ]),
         new("Apply to games", "Menu and welcome changes take effect next launch.",
         [

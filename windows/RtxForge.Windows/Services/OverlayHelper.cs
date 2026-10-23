@@ -20,7 +20,7 @@ public static class OverlayHelper
         try
         {
             using var identities = Registry.CurrentUser.CreateSubKey(@"Software\rtxForge\Overlay\Games");
-            foreach (var game in games.Where(g => g.Installed && g.EngineRow?["exe"] is not null))
+            foreach (var game in games.Where(g => g.EngineRow?["exe"] is not null))
             {
                 var relative = game.EngineRow!["exe"]!.ToString();
                 var exe = Path.GetFullPath(Path.Combine(game.Location, relative));
@@ -58,6 +58,9 @@ public static class OverlayHelper
         overlay.SetValue("PanelKey", valid ? (int)binding.Key : 0, RegistryValueKind.DWord);
         overlay.SetValue("PanelModifiers", valid ? (int)binding.Modifiers : 0, RegistryValueKind.DWord);
         overlay.SetValue("Advanced", settings.OverlayControls == "classic" ? 1 : 0, RegistryValueKind.DWord);
+        overlay.SetValue("ShowLiveStats", settings.OverlayLiveStats ? 1 : 0, RegistryValueKind.DWord);
+        overlay.SetValue("ShowWelcome", settings.OverlayWelcome ? 1 : 0, RegistryValueKind.DWord);
+        overlay.SetValue("WelcomePosition", Array.IndexOf(ForgeSettings.WelcomePositions, settings.OverlayWelcomePosition), RegistryValueKind.DWord);
         overlay.SetValue("InGamePanel", settings.OverlayRenderer == "game" ? 1 : 0, RegistryValueKind.DWord);
     }
 
@@ -161,6 +164,22 @@ public sealed class OverlayHelperWindow : Window
                 using var reader = new StreamReader(pipe, leaveOpen: true);
                 using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
                 var command = await reader.ReadLineAsync(stopping.Token).AsTask().WaitAsync(TimeSpan.FromSeconds(3));
+                if (command == "status")
+                {
+                    var status = nativePanel?.DiagnosticSnapshot() ?? new System.Text.Json.Nodes.JsonObject();
+                    status["helper_pid"] = Environment.ProcessId;
+                    status["app_build"] = typeof(OverlayHelper).Assembly.ManifestModule.ModuleVersionId.ToString("N");
+                    status["engine_root"] = engine?.EngineRoot;
+                    status["problem"] = problem;
+                    if (engine is not null)
+                    {
+                        var script = Path.Combine(engine.EngineRoot, "windows", "engine-host", "companion_controls.py");
+                        using var stream = File.OpenRead(script);
+                        status["companion_sha256"] = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(stream));
+                    }
+                    await writer.WriteLineAsync(status.ToJsonString());
+                    continue;
+                }
                 if (command == "reload") ConfigureShortcut();
                 else if (command == "reload-presets" && engine is not null) await engine.ReloadCompanionPresetsAsync();
                 else if (command == "refresh-targets" && nativePanel is not null) await nativePanel.ReloadTargetsAsync();
@@ -176,6 +195,7 @@ public sealed class OverlayHelperWindow : Window
 
     nint WindowProc(nint hwnd, uint message, nuint wParam, nint lParam, nuint id, nuint data)
     {
+        if (message == 0x02E0 && trayAdded) Tray(true); // WM_DPICHANGED
         if (message == TrayMessage)
         {
             var action = (uint)lParam & 0xffff;
@@ -205,7 +225,11 @@ public sealed class OverlayHelperWindow : Window
 
     void Tray(bool add)
     {
-        var icon = LoadImageW(0, Path.Combine(AppContext.BaseDirectory, "Assets", "rtxforge.ico"), 1, 16, 16, 0x10);
+        var dpi = GetDpiForWindow(handle);
+        var edge = GetSystemMetricsForDpi(49, dpi == 0 ? 96u : dpi); // SM_CXSMICON
+        // Select the matching frame from the official multi-size ICO instead
+        // of handing the tray a 16px image to enlarge on high-DPI displays.
+        var icon = LoadImageW(0, Path.Combine(AppContext.BaseDirectory, "Assets", "rtxforge.ico"), 1, edge, edge, 0x10);
         var value = new NotifyIcon { Size = Marshal.SizeOf<NotifyIcon>(), Window = handle, Id = 1, Flags = 7,
             Callback = TrayMessage, Icon = icon, Tip = "rtxForge Overlay · " + ForgeSettings.Load().PanelHotkey,
             Info = "", InfoTitle = "" };
@@ -241,6 +265,8 @@ public sealed class OverlayHelperWindow : Window
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)] static extern bool Shell_NotifyIconW(uint message, ref NotifyIcon value);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern nint LoadImageW(nint instance, string name, uint type, int width, int height, uint flags);
     [DllImport("user32.dll")] static extern bool DestroyIcon(nint icon);
+    [DllImport("user32.dll")] static extern uint GetDpiForWindow(nint window);
+    [DllImport("user32.dll")] static extern int GetSystemMetricsForDpi(int index, uint dpi);
     [DllImport("user32.dll")] static extern nint CreatePopupMenu();
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool AppendMenuW(nint menu, uint flags, nuint id, string text);
     [DllImport("user32.dll")] static extern uint TrackPopupMenu(nint menu, uint flags, int x, int y, int reserved, nint hwnd, nint rect);

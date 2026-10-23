@@ -123,6 +123,8 @@ $font = [IO.File]::ReadAllBytes((Join-Path $repo 'windows\RtxForge.Windows\Asset
 $semiBold = [IO.File]::ReadAllBytes((Join-Path $bridge 'Inter-SemiBold.ttf'))
 $fontCode = 'inline unsigned char forgeInter[] = {' + (($font | ForEach-Object { $_.ToString() }) -join ',') + '};' + "`n" +
             'inline unsigned char forgeInterSemiBold[] = {' + (($semiBold | ForEach-Object { $_.ToString() }) -join ',') + '};'
+$brandFont = [IO.File]::ReadAllBytes((Join-Path $repo 'gui\fonts\BakbakOne-Regular.ttf'))
+$fontCode += "`n" + 'inline unsigned char forgeBakbak[] = {' + (($brandFont | ForEach-Object { $_.ToString() }) -join ',') + '};'
 [IO.File]::WriteAllText((Join-Path $gen 'ForgePanelFont.h'), $fontCode, [Text.UTF8Encoding]::new($false))
 
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
@@ -135,7 +137,7 @@ $imgui = Join-Path $SourceRoot 'OptiScaler\include\imgui'
 $freetype = Join-Path $SourceRoot 'external\freetype'
 $obj = Join-Path $Output 'obj'
 New-Item -ItemType Directory -Force (Join-Path $obj 'panel'), (Join-Path $obj 'quiet') | Out-Null
-$common = '/nologo /O2 /std:c++latest /utf-8 /EHsc /MT /LD /W3 /DNOMINMAX /DUNICODE /D_UNICODE'
+$common = '/nologo /O2 /std:c++latest /utf-8 /EHsc /MT /LD /W3 /DNOMINMAX /DUNICODE /D_UNICODE /DIMGUI_ENABLE_STB_TRUETYPE'
 function Invoke-Cl([string] $arguments, [string] $addon) {
     if (Test-Path $addon) { Remove-Item $addon }
     cmd /c "`"$vcvars`" >nul 2>nul && cl $common $arguments"
@@ -155,6 +157,10 @@ $receipt = [ordered]@{
 }
 foreach ($addon in $panel, $quiet) {
     $receipt.files[(Split-Path $addon -Leaf)] = [ordered]@{ sha256 = (Get-Sha256 $addon); size = (Get-Item $addon).Length }
+}
+foreach ($license in @('windows\RtxForge.Windows\Assets\Fonts\OFL-Inter.txt','gui\fonts\OFL-BakbakOne.txt')) {
+    $target=Join-Path $Output (Split-Path $license -Leaf)
+    Copy-Item -LiteralPath (Join-Path $repo $license) -Destination $target
 }
 [IO.File]::WriteAllText((Join-Path $Output 'package.json'), ($receipt | ConvertTo-Json -Depth 4) + "`n", (New-Object Text.UTF8Encoding $false))
 foreach ($name in $receipt.files.Keys) { Write-Host "$name $($receipt.files[$name].size) bytes $($receipt.files[$name].sha256)" }

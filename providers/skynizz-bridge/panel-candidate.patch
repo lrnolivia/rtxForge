@@ -320,11 +320,13 @@ diff --git a/OptiScaler/menu/menu_common.cpp b/OptiScaler/menu/menu_common.cpp
 index 669450ab..26523776 100644
 --- a/OptiScaler/menu/menu_common.cpp
 +++ b/OptiScaler/menu/menu_common.cpp
-@@ -8,6 +8,7 @@
+@@ -8,6 +8,9 @@
  #include <dlssnr/DlssNr.h>
  
  #include "input/input_system.h"
 +#include "ForgePanel.h"
++#include <framegen/IFGFeature_Dx12.h>
++#include <proxies/Streamline_Proxy.h>
  
  #include "font/Hack_Compressed.h"
  
@@ -378,26 +380,47 @@ index 669450ab..26523776 100644
  
      if ((!config->DisableSplash.value_or_default() && now > splashStart && now < splashLimit) ||
 -        config->ShowFps.value_or_default() || _isVisible || ImGui::notifications.size() > 0 || scanIndicator ||
-+        config->ShowFps.value_or_default() || _isVisible || ForgePanel::Animating() || ImGui::notifications.size() > 0 || scanIndicator ||
++        config->ShowFps.value_or_default() || _isVisible || ForgePanel::Animating() || ForgePanel::WelcomePending() || ImGui::notifications.size() > 0 || scanIndicator ||
          DlssNr::OverlayWanted() ||
          (config->DlssNrCompare.value_or_default() != 0 && config->DlssNrCompareTags.value_or_default()))
      {
-@@ -9047,7 +9069,9 @@ bool MenuCommon::RenderMenu()
+@@ -9047,7 +9069,10 @@ bool MenuCommon::RenderMenu()
      DlssNr::RenderOverlay(ctx.config->FpsOverlayAlpha.value_or_default());
  
      // 4) Draw the full settings menu last so popups and child windows keep their existing behavior.
 -    RenderMainMenuWindow(ctx);
 +    ForgePanelChannel::Visible(ForgePanel::selected && _isVisible);
++    if (ctx.newFrame) ForgePanel::Welcome(ForgePanel::selected && _isVisible);
 +    if (!ForgePanel::selected) RenderMainMenuWindow(ctx);
 +    else if (ctx.newFrame) ForgePanel::Draw(_isVisible, ctx.menuResScale);
  
      if (ctx.newFrame)
          ImGui::EndFrame();
-@@ -9139,6 +9163,8 @@ void MenuCommon::Init(HWND InHwnd, bool isUWP)
+@@ -9139,6 +9163,28 @@ void MenuCommon::Init(HWND InHwnd, bool isUWP)
          }
      }
  
 +    ForgePanel::Init(InHwnd);
++    ForgePanel::readLiveStats = [] {
++        ForgePanel::LiveStats result;
++        const auto nr = DlssNr::GetLiveStats();
++        result.nrKnown = true; result.nrRunning = DlssNr::IsRunning();
++        result.nrGpuMs = DlssNr::LastGpuTime().value_or(-1);
++        if(nr.valid && nr.renderedFps > 0) result.gameFps = nr.renderedFps;
++        const auto feature = State::Instance().currentFG;
++        // Viewport 0 belongs to OptiScaler's own DLSS-G feature. Never query a
++        // guessed viewport for native game FG or present a requested ratio as measured.
++        if(feature && std::strcmp(feature->Name(),"DLSSG") == 0) {
++            result.fgKnown = true; result.fgRunning = feature->IsActive() && !feature->IsPaused();
++            const auto get = StreamlineProxy::DLSSGGetState();
++            sl::DLSSGState state{};
++            if(get && get(sl::ViewportHandle(0),state,nullptr) == sl::Result::eOk && state.numFramesActuallyPresented > 0 && state.numFramesActuallyPresented <= 8) {
++                result.measuredRatio = state.numFramesActuallyPresented;
++                if(result.gameFps > 0) { result.displayedFps = result.gameFps*result.measuredRatio; result.framesKnown = true; }
++            }
++        }
++        return result;
++    };
 +
      if (!Config::Instance()->OverlayMenu.value_or_default())
      {
@@ -410,3 +433,14 @@ index 669450ab..26523776 100644
      ImGui::DestroyContext();
  
      _handle = nullptr;
+diff --git a/OptiScaler/include/imgui/imconfig.h b/OptiScaler/include/imgui/imconfig.h
+--- a/OptiScaler/include/imgui/imconfig.h
++++ b/OptiScaler/include/imgui/imconfig.h
+@@ -85,6 +85,7 @@
+ // Requires FreeType headers to be available in the include path. Requires program to be compiled with 'misc/freetype/imgui_freetype.cpp' (in this repository) + the FreeType library (not provided).
+ // On Windows you may use vcpkg with 'vcpkg install freetype --triplet=x64-windows' + 'vcpkg integrate install'.
+ #define IMGUI_ENABLE_FREETYPE
++#define IMGUI_ENABLE_STB_TRUETYPE
+ 
+ //---- Use FreeType + plutosvg or lunasvg to render OpenType SVG fonts (SVGinOT)
+ // Only works in combination with IMGUI_ENABLE_FREETYPE.

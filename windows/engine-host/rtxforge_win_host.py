@@ -7,7 +7,7 @@ supplies the Windows adapters it needs:
   storage      state under %LOCALAPPDATA%\\rtxForge instead of ~/.local/state
   fcntl        the writer lock via msvcrt byte-range locking
   discovery    Steam roots from the registry and the default install folders
-  hardware     nvidia-smi from the NVIDIA driver; RTX 40-series rule kept
+  hardware     nvidia-smi from the NVIDIA driver; RTX 20 to 50 by family (hardware.family)
   launch       no Proton launch options: Windows loads OptiScaler's proxy DLL
                from the game folder natively, so Steam's config is untouched
   processes    running-game check through the Windows process list
@@ -160,18 +160,17 @@ def windows_hardware() -> dict:
         result = subprocess.run(["nvidia-smi", "--query-gpu=name,driver_version,memory.total", "--format=csv,noheader,nounits"],
                                 text=True, capture_output=True, timeout=10, check=True, creationflags=NO_WINDOW)
         rows = [line.split(",") for line in result.stdout.strip().splitlines() if line.count(",") >= 2]
-        supported = [r for r in rows if re.search(r"RTX\s+40\d{2}", r[0])]
-        chosen = (supported or rows)[0]
-        info.update({"gpu": chosen[0].strip(), "driver": chosen[1].strip(), "vram": chosen[2].strip() + " MiB"})
+        supported = [r for r in rows if hardware.family(r[0])]
+        chosen = (sorted(supported, key=lambda r: hardware.FAMILIES.index(hardware.family(r[0])))[-1:] or rows)[0]
+        info.update({"gpu": chosen[0].strip(), "driver": chosen[1].strip(), "vram": chosen[2].strip() + " MiB",
+                     "family": hardware.family(chosen[0])})
         if not supported:
-            info["reason"] = f"{info['gpu']} hasn't been validated with these packages yet."
+            info["reason"] = f"{info['gpu']} isn't an RTX GPU these packages can run on."
             return info
     except (OSError, subprocess.SubprocessError, IndexError):
         info["reason"] = "Cannot verify an NVIDIA GPU and working NVIDIA driver. Install is unavailable; restore remains available."
         return info
-    info["ready"] = True
-    info["reason"] = "Basic hardware and dependencies passed. Per-game compatibility still requires verification."
-    return info
+    return hardware.ready(info)
 
 
 def _cpu_name() -> str:

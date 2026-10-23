@@ -1,6 +1,6 @@
 """Serialized desktop adapter for the RC1.38-derived transaction engine."""
 from pathlib import Path
-import importlib.util,sys,json,hashlib,zipfile,os,contextlib
+import importlib.util,sys,json,hashlib,zipfile,os,contextlib,functools
 import transactions as t,packages,ui,package_catalog,proton_prefix,cross_os,skynizz_provider,ada_mfg_provider
 from operation_session import Session,Cancelled
 from storage import storage
@@ -302,6 +302,14 @@ def proton_setup(e,g,record):
     t.need(names,'The Windows install does not name its proxy DLL; restore it on Windows and install again here')
     return prefix,names
 
+@functools.lru_cache(maxsize=1)
+def gpu_family():
+    """The detected RTX family (checked once per app run); None when detection is unavailable."""
+    import hardware
+    try:return hardware.detect().get('family')
+    except (OSError,ValueError):return None
+
+
 def prepare(config,rows,mode,operation,settings):
     selected=settings.get('runtime_provider','y4my')
     prefer_bundled_nr_only=settings.get('prefer_bundled_nr_only',False)
@@ -374,7 +382,7 @@ def prepare(config,rows,mode,operation,settings):
                     release=dict(skynizz_provider.bundled_bridge(previous['tag'])[0])
                     # Explicitly update only the bridge. Keep the component owner,
                     # preset and production runtime identities selected for this game.
-                    for key in ('mfg_component','nr_preset',*skynizz_provider.PRODUCTION_RUNTIMES):
+                    for key in ('mfg_component','mfg_native','nr_preset',*skynizz_provider.PRODUCTION_RUNTIMES):
                         if key in previous:release[key]=previous[key]
                     release=skynizz_provider.validate_release(release)
                 selection=settings.get('skynizz_version','latest')
@@ -385,7 +393,16 @@ def prepare(config,rows,mode,operation,settings):
                     release=dict(releases[selection])
                     mfg_provider=settings.get('mfg_provider','universal')
                     t.need(mfg_provider in ('universal','integrated','mfg-unlock'),'Choose a supported MFG component.')
-                    if mfg_provider=='mfg-unlock':
+                    if mode in ('nr-mfg','mfg-only'):
+                        # RTX 50 has MFG of its own; the integrated and MFG Unlock patches target RTX 40.
+                        gpu=gpu_family()
+                        if gpu=='blackwell':mfg_provider='native'
+                        else:t.need(gpu in (None,'ada') or mfg_provider=='universal',
+                                    'This MFG package targets RTX 40. Choose Universal MFG for your GPU in Packages.')
+                    if mfg_provider=='native':
+                        # The game's own DLSS-G multiplier; no unlock is installed or enabled.
+                        release['mfg_native']=True
+                    elif mfg_provider=='mfg-unlock':
                         t.need(mode=='nr-mfg','MFG Unlock requires the combined native FG route.')
                         release['mfg_component']=ada_mfg_provider.pinned()
                     elif mfg_provider=='universal' and mode in ('nr-mfg','mfg-only'):

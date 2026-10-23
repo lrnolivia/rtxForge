@@ -328,7 +328,8 @@ def configure(e, source, saved=None, mode='nr-only', mfg_multiplier='auto', game
         if (preset := getattr(e, 'Y4MY_PROVIDER', {}).get('nr_preset')) is not None:
             text = e.set_ini_value(text, 'DlssNr', 'Preset', str(preset))
     if mode in ('nr-mfg', 'mfg-only'):
-        unlock = 'false' if component else 'true'
+        # A component owns the unlock; RTX 50 needs none (its own MFG).
+        unlock = 'false' if component or getattr(e, 'Y4MY_PROVIDER', {}).get('mfg_native') else 'true'
         for section, values in {'DLSSG':{'AdaMfgUnlock':unlock,'AdaBlackwellKernels':unlock,'AmpereMfgUnlock':'false'},
                                 'FrameGen':{'Enabled':'false','FGInput':'nofg','FGOutput':'nofg','FGNvngxReplacement':'None'}}.items():
             for key, value in values.items():

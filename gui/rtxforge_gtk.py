@@ -3788,6 +3788,7 @@ OPERATION_WORDS={
     'adopt-clean':('Review Adoption','Adopt and Reinstall','Reinstalling'),
     'global':('Review Library Change','Apply','Applying'),
     'menus':('Review Game Menus','Apply','Applying'),
+    'update-overlays':('Update Overlays','Update Overlays','Updating'),
     'storage':('Review App Storage','Clear','Clearing'),
 }
 
@@ -9551,6 +9552,17 @@ class Window(Adw.ApplicationWindow):
         self.bulk_review('menus',lambda e:runtime.menus_review(e,params),runtime.apply_review,
                          ['Apply','Game settings files only','NR, MFG and effects stay on'])
 
+    def overlay_packages_review(self,game=None):
+        runtime=self.runtime_api()
+        if runtime is None or self.options.demo:
+            self.toast('Overlay updates are unavailable in this preview.');return
+        import copy,overlay_settings
+        params=overlay_settings.options(self.settings)
+        params['game_overlay_settings']=copy.deepcopy(self.settings.get('game_overlay_settings',{}))
+        if game is not None:params['target_games']=[game['game']]
+        self.bulk_review('update-overlays',lambda e:runtime.overlay_packages_review(e,params),runtime.apply_review,
+                         ['Update Overlays','Review packages, menus and welcome choices','Original backups and feature tuning are preserved'])
+
     def bulk_review(self,operation,prepare_raw,apply,details):
         """Shared Checking → Review → Apply for the reviewed bulk changes (plans, blocked, skipped)."""
         import engine_bridge
@@ -9559,7 +9571,8 @@ class Window(Adw.ApplicationWindow):
             raw['review']=prepare_raw(engine_bridge.module(self.service.config))
             review=raw['review']
             return {'operation':operation,'kind':operation,
-                    'rows':[{'name':p['name'],'detail':p.get('summary','')} for p in review.get('plans',[])],
+                    'rows':[{'name':p['name'],'game':p.get('game'),'summary':p.get('summary',''),
+                             'detail':p.get('note',p.get('summary',''))} for p in review.get('plans',[])],
                     'blocked':[{'name':b.get('title',''),'reason':b.get('detail','')} for b in review.get('blocked',[])],
                     'skipped':review.get('skipped',[])}
         def run(_shown):
@@ -10183,21 +10196,32 @@ class Window(Adw.ApplicationWindow):
         self.settings[key]=value
         if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
 
-    def overlay_settings_groups(self):
+    def overlay_settings_groups(self,game=None):
         """Overlay preferences shared with Windows; games pick them up on their next reviewed install or repair."""
-        s=self.settings
+        import overlay_settings
+        s=overlay_settings.effective(self.settings,game['game'] if game else None)
+        def save(key,value):
+            s[key]=value
+            if game:
+                overrides=self.settings.setdefault('game_overlay_settings',{})
+                overrides.setdefault(game['game'],{k:v for k,v in s.items() if k!='overlay_renderer'})[key]=value
+                if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
+            else:self.save_overlay_preference(key,value)
         def choice(title,subtitle,keys,captions,key,group):
             current=s.get(key,keys[0])
             widget=safe_combo_row(title=title,subtitle=subtitle,model=Gtk.StringList.new(captions),selected=keys.index(current) if current in keys else 0)
-            widget.connect('notify::selected',lambda w,*_:self.save_overlay_preference(key,keys[w.get_selected()]))
+            widget.connect('notify::selected',lambda w,*_:save(key,keys[w.get_selected()]))
             group.add(widget);return widget
         def switch(title,subtitle,key,group):
             widget=Adw.SwitchRow(title=title,subtitle=subtitle,active=bool(s.get(key,library_media.DEFAULTS[key])))
-            widget.connect('notify::active',lambda w,*_:self.save_overlay_preference(key,w.get_active()))
+            widget.connect('notify::active',lambda w,*_:save(key,w.get_active()))
             group.add(widget);return widget
         panel=Adw.PreferencesGroup(title='rtxForge Panel',description='NR and MFG controls drawn inside the game. Saved here, then written to each game on its next reviewed install or repair.')
-        choice('Panel','Where rtxForge\u2019s controls appear while you play.',['game','optiscaler'],['In the game','OptiScaler menu only'],'overlay_renderer',panel)
+        if not game:choice('Panel','Where rtxForge\u2019s controls appear while you play.',['game','optiscaler'],['In the game','OptiScaler menu only'],'overlay_renderer',panel)
         choice('Controls','Unified uses simple values; Advanced shows OptiScaler\u2019s own variables and units.',['unified','classic'],['Unified','Advanced'],'overlay_controls',panel)
+        switch('Welcome message','Show the rtxForge message at startup.','overlay_welcome',panel)
+        choice('Welcome position',None,list(overlay_settings.POSITIONS),['Top center','Top left','Top right','Bottom left','Bottom right'],'overlay_welcome_position',panel)
+        switch('Live feature statistics',None,'overlay_live_stats',panel)
         shortcut=Adw.PreferencesGroup(title='Shortcut',description='Opens the rtxForge panel in game. Insert stays with OptiScaler\u2019s own menu.')
         shortcut_row=Adw.ActionRow(title='Panel shortcut',subtitle=overlay_shortcut.display(s.get('panel_hotkey')))
         record=Gtk.Button(label='Record',valign=Gtk.Align.CENTER)
@@ -10206,7 +10230,7 @@ class Window(Adw.ApplicationWindow):
         for widget in (record,reset,disable):shortcut_row.add_suffix(widget)
         shortcut.add(shortcut_row)
         def store(value):
-            self.save_overlay_preference('panel_hotkey',value)
+            save('panel_hotkey',value)
             shortcut_row.set_subtitle(overlay_shortcut.display(value))
             record.set_label('Record')
         keys=Gtk.EventControllerKey();keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
@@ -10234,11 +10258,33 @@ class Window(Adw.ApplicationWindow):
         reshade=Adw.PreferencesGroup(title='ReShade',description='For games set up with the Feeder route.')
         switch('ReShade Menu','Allow the ReShade overlay and gamepad navigation.','reshade_ui',reshade)
         switch('ReShade Welcome','Show ReShade\u2019s first-run guide. Its short loading banner can\u2019t be turned off.','reshade_intro',reshade)
-        installed=Adw.PreferencesGroup(title='Installed Games')
-        item=row('Apply to Installed Games','Review the menu and intro choices above for games that are already set up. Only their settings files change.')
-        action=button('Review',lambda *_:self.menus_review());action.set_valign(Gtk.Align.CENTER);action.set_sensitive(self.runtime_api() is not None)
+        vulkan=Adw.PreferencesGroup(title='Vulkan MFG overlay')
+        switch('Native MFG menu and hint','Optional advanced menu; frame generation keeps running when hidden.','vulkan_mfg_native_menu',vulkan)
+        installed=Adw.PreferencesGroup(title='Update Overlays')
+        item=row('Update Overlays','Review overlay package updates and the effective menu, welcome and shortcut choices for each installed game.')
+        action=button('Update Overlays',lambda *_:self.overlay_packages_review(game));action.set_valign(Gtk.Align.CENTER);action.set_sensitive(self.runtime_api() is not None and not self.options.demo and (not game or game.get('installed',False)))
         item.add_suffix(action);installed.add(item)
-        return [panel,shortcut,optiscaler,reshade,installed]
+        return [panel,shortcut,optiscaler,reshade,vulkan,installed]
+
+    def game_overlay_card(self,game):
+        card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True)
+        inherited=game['game'] not in self.settings.get('game_overlay_settings',{})
+        defaults=Adw.SwitchRow(title='Use app overlay settings',subtitle='Turn off to choose menu and welcome settings for this game.',active=inherited)
+        group=Adw.PreferencesGroup();group.add(defaults);card.append(group)
+        options=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16,sensitive=not inherited)
+        sections=self.overlay_settings_groups(game)
+        for section in sections[:-1]:options.append(section)
+        card.append(options)
+        card.append(sections[-1])
+        def inherit(widget,*_):
+            import overlay_settings
+            values=self.settings.setdefault('game_overlay_settings',{})
+            if widget.get_active():values.pop(game['game'],None)
+            else:values[game['game']]={k:v for k,v in overlay_settings.effective(self.settings).items() if k!='overlay_renderer'}
+            options.set_sensitive(not widget.get_active())
+            if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
+        defaults.connect('notify::active',inherit)
+        return card
 
     def global_settings_groups(self):
         """One-time NR/MFG change for every installed game, reviewed first (Windows Global)."""
@@ -12825,6 +12871,8 @@ class Window(Adw.ApplicationWindow):
         if game.get('blocked'):overview.append(self.unsupported_notice(game))
         overview.append(self.overview_facts(game))
         features=content['Features'];installed=game.get('installed',False)
+        overlay=Gtk.Expander(label='Overlay',hexpand=True)
+        overlay.set_child(self.game_overlay_card(game));features.append(overlay)
         if installed:
             features.append(label('Saved NR: '+('enabled' if game.get('nr_enabled') else 'disabled')+' · runtime and visual results require diagnosis.','dim-label'))
         tuning,widgets=self.tuning_controls(game)
@@ -12863,6 +12911,9 @@ class Window(Adw.ApplicationWindow):
         def changed(*_):apply.set_sensitive(installed and not unknown_presets and self.tuning_differs(widgets,game))
         for key,w in widgets.items():w.connect('changed' if key=='mfg_multiplier' else 'value-changed',changed)
         changed();self.detail_tuning_widgets=widgets;self.detail_apply_settings=apply
+        if game.get('runtime_provider')=='vulkan-native':
+            tuning.set_sensitive(False);preset_actions.set_sensitive(False)
+            presets_body.append(label('Adjust Vulkan NR and MFG in the running game’s rtxForge overlay. The OptiScaler preset editor does not apply to this package.','dim-label'))
         if self.adoptable(game):
             adoption=Adw.PreferencesGroup(title='Existing Setup',description='rtxForge found NR or MFG files it didn\u2019t install.')
             item=row('Adopt Existing Setup','Keep it as is, or back it up and reinstall a clean copy. Restore returns to before Adoption.')
@@ -14547,8 +14598,10 @@ class Window(Adw.ApplicationWindow):
         d.add_css_class('forge-settings')
         self.dialog=d
         graphics=Adw.PreferencesGroup(title='Package',description='Restore original files before switching providers.')
-        provider_keys=['skynizz','dlss-unlocked','y4my','feeder','custom'];provider=safe_combo_row(title='Provider',model=Gtk.StringList.new(['Skynizz NR','DLSS-Unlocked','y4my Multipass','Feeder NR','Custom package']),selected=provider_keys.index(self.settings.get('runtime_provider','y4my')) if self.settings.get('runtime_provider','y4my') in provider_keys else 0);graphics.add(provider)
-        nr_path=Adw.EntryRow(title='Local NR DLL for y4my');nr_path.set_text(self.settings.get('nr_runtime',''));graphics.add(nr_path)
+        provider_keys=['skynizz','dlss-unlocked','y4my','feeder','vulkan-native','custom'];provider=safe_combo_row(title='Provider',model=Gtk.StringList.new(['Skynizz NR','DLSS-Unlocked','y4my Multipass','Feeder NR','Vulkan NR + Universal MFG · Experimental','Custom package']),selected=provider_keys.index(self.settings.get('runtime_provider','y4my')) if self.settings.get('runtime_provider','y4my') in provider_keys else 0);graphics.add(provider)
+        nr_path=Adw.EntryRow(title='Use your own NR DLL (optional)');nr_path.set_text(self.settings.get('nr_runtime',''));graphics.add(nr_path)
+        experimental_vulkan=Adw.SwitchRow(title='Universal Experimental Vulkan',subtitle='Opt in to the profiled BG3/RDR2 native Vulkan package. Gameplay qualification remains experimental.',active=bool(self.settings.get('vulkan_experimental',False)))
+        experimental_vulkan.connect('notify::active',lambda w,*_:self.save_overlay_preference('vulkan_experimental',w.get_active()));graphics.add(experimental_vulkan)
         # Adopting only: the Windows install's own files load through a Proton DLL override. Not yet runtime-verified.
         skynizz_proton=Adw.SwitchRow(title='Skynizz on Proton (experimental)',subtitle='Allow reviewed Skynizz NR and Universal MFG setup under Proton. Each game’s prerequisites are checked; runtime QA is pending.',active=self.settings.get('skynizz_proton',False) is True)
         graphics.add(skynizz_proton)

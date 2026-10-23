@@ -333,6 +333,13 @@ public sealed partial class GameModeView
             // Each section mirrors the desktop's Game Details (Views/GamePage.xaml.cs):
             // the same groups, order, wording and glyphs, with controller-sized controls.
             case "Features":
+                content.Children.Add(DetailFact("Overlay", "Use app settings, or choose menu, welcome and shortcut settings for this game.",
+                    ui.Button("Settings", () => OpenGameOverlay(g), GmKind.Card, .85), "\uE7F4"));
+                if (g.RuntimeProvider == "vulkan-native")
+                {
+                    content.Children.Add(DetailFact("Vulkan controls", "Adjust Vulkan NR and MFG in the running game’s rtxForge overlay. The OptiScaler preset editor does not apply to this package.", glyph: ""));
+                    break;
+                }
                 SectionTitle(content, "Features", g.IsFeeder ? null
                     : "Tuning values for this game. Reset restores your library presets. Apply saves them for this game.");
                 if (g.IsFeeder)

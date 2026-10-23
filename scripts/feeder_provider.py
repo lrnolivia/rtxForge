@@ -564,9 +564,14 @@ def prepare(config, rows, mode, operation, settings, e):
     t.need(mode == 'nr-only' or operation == 'uninstall', 'Feeder provides NR Only. Frame generation is not available for this route')
     t.need(operation in ('install', 'repair', 'uninstall', 'reset', 'apply'), 'Unsupported Feeder operation')
     ready, blocked, plans, seen = [], [], [], set()
+    base_settings = dict(settings)
     for index, row in enumerate(rows):
         ui.progress('Checking Feeder files', game=row['name'], checked=index, total=len(rows))
         try:
+            import overlay_settings
+            import overlay_policy
+            settings = (base_settings | overlay_settings.effective(base_settings, row['game'])
+                        if overlay_policy.explicit(base_settings) or row['game'] in base_settings.get('game_overlay_settings', {}) else base_settings)
             _, _, directory = target(row)
             t.need(str(directory).casefold() not in seen, 'The same Feeder executable was selected twice')
             seen.add(str(directory).casefold())

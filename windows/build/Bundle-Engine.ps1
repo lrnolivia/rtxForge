@@ -109,6 +109,18 @@ if ($RuntimeIdentifier -eq 'win-x64' -and (Test-Path -LiteralPath $bridgeReceipt
     Copy-Item -LiteralPath $bridgeReceipt -Destination $target
     Copy-Item -LiteralPath $archive -Destination $target
 }
+$vulkanRoot = Join-Path $repo 'windows\out\vulkan-provider'
+if ($RuntimeIdentifier -eq 'win-x64' -and (Test-Path -LiteralPath (Join-Path $vulkanRoot 'candidate.json'))) {
+    $vulkanPin = Get-Content -LiteralPath (Join-Path $repo 'providers\vulkan-dlssg\bundle.json') -Raw | ConvertFrom-Json
+    $vulkanTarget = Join-Path $engine 'providers\vulkan-dlssg\runtime'
+    foreach ($entry in $vulkanPin.files.PSObject.Properties) {
+        $file = Join-Path $vulkanRoot $entry.Name
+        if ((Get-Sha256 $file) -ne $entry.Value.sha256) { throw "Vulkan bundle changed: $($entry.Name)" }
+        $destination = Join-Path $vulkanTarget $entry.Name
+        New-Item -ItemType Directory -Force -Path (Split-Path $destination) | Out-Null
+        Copy-Item -LiteralPath $file -Destination $destination
+    }
+}
 # rtxForge's in-game panel for Feeder NR games (Build-FeederPanel.ps1). Builds
 # without it install Feeder NR with ReShade's own menu only.
 $panelRoot = Join-Path $repo 'windows\out\feeder-panel'

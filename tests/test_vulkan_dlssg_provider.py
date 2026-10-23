@@ -26,7 +26,7 @@ class ProviderTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.base = Path(self.tmp.name)
+        self.base = Path(self.tmp.name).resolve()  # expand 8.3 names (C:\Users\RUNNER~1) the alias guard refuses
         self.game = self.base / 'BG3/bin'; self.game.mkdir(parents=True)
         self.state = self.base / 'state'
         (self.game / 'bg3.exe').write_bytes(pe(b'game'))
@@ -46,6 +46,7 @@ class ProviderTests(unittest.TestCase):
         self.pin_path.parent.mkdir()
         (self.pin_path.parent / 'loader').mkdir()
         notice = (v.PIN.parent / 'loader/LICENSE.exports.txt').read_bytes()
+        self.spec['loader']['exports_notice_sha256'] = v._hash(notice)
         (self.pin_path.parent / 'loader/LICENSE.exports.txt').write_bytes(notice)
         self.spec['loader']['binary'] = {'size': self.loader.stat().st_size, 'sha256': v._digest(self.loader)}
         self.spec['loader']['game_original'] = {'size': (self.game / v.PROXY).stat().st_size,

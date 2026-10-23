@@ -32,6 +32,16 @@ NOTICES = 'NativeMods/rtxForge-bg3/'
 LOGS = ('fgvk.log', 'sl.log', 'NativeMods/rtxforge-bg3-loader.log')
 MAX_BACKUP = 128 * 1024**2
 _selection = contextvars.ContextVar('vulkan_provider_selection', default=None)
+_process_guard = contextvars.ContextVar('vulkan_process_guard', default=None)
+
+
+@contextlib.contextmanager
+def process_guard(check):
+    token = _process_guard.set(check)
+    try:
+        yield
+    finally:
+        _process_guard.reset(token)
 
 
 @contextlib.contextmanager
@@ -178,6 +188,8 @@ def target(game):
 
 def running(root):
     """Refuse either BG3 renderer; fail closed for an unreadable BG3 process."""
+    if _process_guard.get() is not None:
+        return bool(_process_guard.get()())
     if os.name != 'nt':
         return False  # Non-Windows hosts exercise synthetic fixture directories only.
     from ctypes import wintypes as w
@@ -285,7 +297,7 @@ def _default_config():
     return data.encode()
 
 
-def plan_install(game, archive, loader, state_root, *, experimental=False):
+def plan_install(game, archive, loader, state_root, *, experimental=False, nr_on_launch=None):
     t.need(experimental, 'The BG3 Vulkan route requires explicit Experimental opt-in')
     root = target(game)
     t.need(not running(root), 'Close ' + _game_name() + ' before changing its provider')
@@ -321,6 +333,9 @@ def plan_install(game, archive, loader, state_root, *, experimental=False):
     data[ORIGINAL] = bink
     data[CONFIG] = (t.safe(root / CONFIG).read_bytes() if active and checks[CONFIG] else
                    _default_config())
+    if nr_on_launch is not None and not active:
+        t.need(type(nr_on_launch) is bool and _selection.get() is not None, 'Invalid Vulkan NR startup choice')
+        data[CONFIG] = t.setvalue(data[CONFIG].decode(), 'nr', 'Enabled', '1' if nr_on_launch else '0').encode()
     if active:
         for name in _mutable() - {CONFIG}:
             if name in data and checks.get(name):
@@ -330,7 +345,7 @@ def plan_install(game, archive, loader, state_root, *, experimental=False):
                   'record_before': _digest(state / 'baseline.json'),
                   'inputs': {str(t.safe(p)): _digest(p) for p in (archive, loader, _pin_path(),
                              _pin_path().parent / 'loader/LICENSE.exports.txt', root / _executables()[0], root / 'nvngx_dlss.dll')},
-                  'archive': str(t.safe(archive)), 'loader': str(t.safe(loader)),
+                  'archive': str(t.safe(archive)), 'loader': str(t.safe(loader)), 'nr_on_launch': nr_on_launch,
                   'after': {name: _hash(value) for name, value in data.items()}})
 
 
@@ -441,6 +456,8 @@ def execute(plan, *, cancelled=lambda: False):
             data[ORIGINAL] = (state / 'objects' / record['originals'][PROXY]['sha256']).read_bytes()
             data[CONFIG] = ((root / CONFIG).read_bytes() if plan['checks'][CONFIG] else
                             _default_config())
+            if plan.get('nr_on_launch') is not None and not plan['checks'][CONFIG]:
+                data[CONFIG] = t.setvalue(data[CONFIG].decode(), 'nr', 'Enabled', '1' if plan['nr_on_launch'] else '0').encode()
             for name in _mutable() - {CONFIG}:
                 if name in data and plan['checks'].get(name):
                     data[name] = t.safe(root / name).read_bytes()

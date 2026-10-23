@@ -240,6 +240,15 @@ public sealed partial class GamePage : Page
                 break;
 
             case "Features":
+                PageHost.Children.Add(new Expander { Header = "Overlay", Content = new GameOverlayPreferencesView(shell, g),
+                    HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch });
+                if (g.RuntimeProvider == "vulkan-native")
+                {
+                    var vulkanControls = new PreferencesGroup("Vulkan controls");
+                    vulkanControls.Add(Prefs.Row("Native NR and frame generation", "Adjust Vulkan NR and MFG in the running game’s rtxForge overlay. The OptiScaler preset editor does not apply to this package.", glyph: ""));
+                    PageHost.Children.Add(vulkanControls);
+                    break;
+                }
                 if (g.IsFeeder)
                 {
                     var feederTuning = new PreferencesGroup("Tuning");

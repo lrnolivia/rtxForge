@@ -356,6 +356,8 @@ def scan(params):
                                       selected=params.get('runtime_provider') == 'feeder')
     import package_adoption
     package_adoption.decorate(engine_bridge.module(service.config), rows)
+    import vulkan_app
+    vulkan_app.decorate(rows, service.config, selected=params.get('runtime_provider')=='vulkan-native')
     import skynizz_provider
     # Games may choose their own package, so keep both verdicts; the selected
     # package's verdict is the row's.
@@ -417,7 +419,7 @@ def prepare(params):
         import review_copy
         review_copy.attach(review)
         review["cancel_event"] = threading.Event()
-    elif review.get('kind') in ('feeder', 'adoption'):
+    elif review.get('kind') in ('feeder', 'adoption', 'vulkan-native'):
         review['cancel_event'] = threading.Event()
     token = uuid.uuid4().hex
     reviews[token] = review

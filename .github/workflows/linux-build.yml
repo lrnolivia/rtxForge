@@ -66,6 +66,8 @@ jobs:
         run: |
           set -euo pipefail
 
+          /usr/bin/python3 providers/vulkan-dlssg/distribution.py --output windows/out/vulkan-provider
+
           /usr/bin/python3 -m py_compile \
             engine/rtxengine.py \
             scripts/engine_bridge.py \
@@ -84,6 +86,7 @@ jobs:
           /usr/bin/python3 -m unittest \
             engine.tests.test_v13_core_hardening \
             tests.test_game_mode_motion
+          /usr/bin/python3 -m unittest tests.test_overlay_settings tests.test_vulkan_app_routes
 
           /usr/bin/python3 -m unittest discover -s tests -p test_runtime_updates.py
           /usr/bin/python3 -m unittest discover -s tests -p test_ui_colors.py

@@ -55,7 +55,7 @@ public sealed partial class GameModeView
         ]),
         new("Apply to games", "Menu and welcome changes take effect next launch.",
         [
-            ui.RowButton("Review installed games", null, () => _ = ReviewOverlayGames(), description: "Apply saved choices with backups. Running games are skipped.", glyph: "\uE9D9"),
+            ui.RowButton("Update Overlays", null, () => _ = ReviewOverlayPackages(), description: "Review overlay packages, menus, welcome messages and shortcuts for every installed game.", glyph: "\uE9D9"),
         ]),
     ];
 
@@ -80,6 +80,57 @@ public sealed partial class GameModeView
     async Task ReviewOverlayPackages()
     {
         if (shell.Service is not EngineForgeService engine) { Toast("Overlay updates require the installed app."); return; }
-        await RunReviewAsync("Update in-game overlays", () => engine.ReviewOverlayPackagesAsync());
+        await RunReviewAsync("Update Overlays", () => engine.ReviewOverlayPackagesAsync());
+    }
+
+    void OpenGameOverlay(Game g)
+    {
+        var inherited = !shell.Settings.GameOverlaySettings.ContainsKey(g.Id);
+        System.Text.Json.Nodes.JsonObject Values() => shell.Settings.GameOverlayOptions(g);
+        void Save(Action<System.Text.Json.Nodes.JsonObject>? edit)
+        {
+            var fresh = ForgeSettings.EditGameOverlay(g, edit);
+            shell.Settings.CopyOverlayFrom(fresh);
+            shell.ConfigureCompanionShortcut();
+        }
+        var body = new StackPanel { Spacing = t.Px(12) };
+        body.Children.Add(ui.P("The primary overlay follows the app setting. These menu and welcome choices apply only to this game."));
+        body.Children.Add(Choice("Use app overlay settings", null, ["on", "off"], ["On", "Off"],
+            () => inherited ? "on" : "off", value =>
+            {
+                Save(value == "on" ? null : _ => { });
+                CloseModal(); OpenGameOverlay(g);
+            }));
+        Button Toggle(string title, string key) => Choice(title, null, ["on", "off"], ["On", "Off"],
+            () => Values()[key]!.GetValue<bool>() ? "on" : "off", value => Save(v => v[key] = value == "on"));
+        var rows = new List<UIElement>
+        {
+            Toggle("Welcome message", "overlay_welcome"),
+            Choice("Welcome position", null, ForgeSettings.WelcomePositions,
+                ["Top center", "Top left", "Top right", "Bottom left", "Bottom right"],
+                () => Values()["overlay_welcome_position"]!.ToString(), value => Save(v => v["overlay_welcome_position"] = value)),
+            Toggle("Live feature statistics", "overlay_live_stats"),
+            Choice("Controls", null, ["unified", "classic"], ["Unified", "Advanced"],
+                () => Values()["overlay_controls"]!.ToString(), value => Save(v => v["overlay_controls"] = value)),
+            Toggle("OptiScaler menu", "optiscaler_ui"), Toggle("OptiScaler intro", "optiscaler_intro"),
+            Choice("OptiScaler shortcut", null, ["Insert", "F8", "Disabled"], ["Insert", "F8", "Disabled"],
+                () => Values()["optiscaler_hotkey"]!.ToString(), value => Save(v => v["optiscaler_hotkey"] = value)),
+            Toggle("ReShade menu", "reshade_ui"), Toggle("ReShade welcome", "reshade_intro"),
+            Toggle("Native Vulkan MFG menu and hint", "vulkan_mfg_native_menu"),
+        };
+        var shortcut = new OverlayShortcutPicker(Values()["panel_hotkey"]!.ToString());
+        shortcut.SaveBinding = value => { try { Save(v => v["panel_hotkey"] = value); return true; } catch (Exception error) { Toast(error.Message); return false; } };
+        rows.Add(shortcut);
+        foreach (var row in rows) if (row is Control control) control.IsEnabled = !inherited;
+        var choices = ui.Group(rows);
+        choices.IsHitTestVisible = !inherited; choices.Opacity = inherited ? .55 : 1;
+        body.Children.Add(new ScrollViewer { Content = choices, MaxHeight = t.Px(640), HorizontalScrollMode = ScrollMode.Disabled });
+        var done = ui.Button("Back", CloseModal, GmKind.Card, .85);
+        var update = ui.Button("Update Overlays", () =>
+        {
+            CloseModal();
+            if (shell.Service is EngineForgeService engine) _ = RunReviewAsync("Update Overlays", () => engine.ReviewOverlayPackagesAsync(games: [g.Id]));
+        }, GmKind.Primary, .85, enabled: g.Installed && shell.Service is EngineForgeService);
+        ShowModal("Overlay", body, [update, done], CloseModal, 1000);
     }
 }

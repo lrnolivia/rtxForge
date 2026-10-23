@@ -61,12 +61,15 @@ if not build_sha:
 
 for name in ['gui','scripts','providers']:
  shutil.copytree(root/name,payload/name,ignore=shutil.ignore_patterns('__pycache__'))
+vulkan = root/'windows/out/vulkan-provider'
+if (vulkan/'candidate.json').is_file():
+ shutil.copytree(vulkan,payload/'providers/vulkan-dlssg/runtime',ignore=shutil.ignore_patterns('*.part'),dirs_exist_ok=True)
 shutil.copytree(root/'assets/game-mode',payload/'assets/game-mode')
 for name in ['provider.json','README.md']:shutil.copyfile(root/name,payload/name)
 (payload/'engine').mkdir()
 # Reviewed Global and game-menu bulk changes share the Windows host's platform-neutral modules.
 (payload/'windows/engine-host').mkdir(parents=True)
-for name in ('global_controls.py','overlay_ui.py','app_storage.py','companion_controls.py'):
+for name in ('global_controls.py','overlay_ui.py','overlay_packages.py','overlay_package_routes.py','app_storage.py','companion_controls.py'):
  shutil.copyfile(root/'windows/engine-host'/name,payload/'windows/engine-host'/name)
 shutil.copyfile(root/'engine/rtxengine.py',payload/'engine/rtxengine.py')
 bundle_steam_artwork(root, payload)

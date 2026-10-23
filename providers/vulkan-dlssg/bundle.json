@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "id": "rtxforge-vulkan-native",
+  "source_commit": "13e5de743440fd3ee6e903ef8b88493764363c4b",
+  "archive": "rtxForge-Vulkan-RC1-bundle.zip",
+  "url": "https://github.com/lrnolivia/rtxForge/releases/download/vulkan-runtime-1.0.0-rc.1/rtxForge-Vulkan-RC1-bundle.zip",
+  "size": 123498021,
+  "sha256": "663bd10a35bdd31130a6d2b6a594a76e7c5e98ab4481f5c4606c239027047902",
+  "files": {
+    "candidate.json": {
+      "size": 11306,
+      "sha256": "ddfd4bbedd5bf0f13fa97d94bf2e770ea95e08c3bd2fda4c2960d7fc1cacaf95"
+    },
+    "rtxForge-Vulkan-NR-UniversalMFG-local.zip": {
+      "size": 123251421,
+      "sha256": "f32fcb1c87752780b38b6c8477a4adfc4bffa681361c93b890b72b2b89c07113"
+    },
+    "loader/LICENSE.exports.txt": {
+      "size": 2188,
+      "sha256": "1dddd1f0b6bc23968130ded343190a0eb40973f5adf27d96edafd32ff9874ade"
+    },
+    "loader-bg3/bink2w64.dll": {
+      "size": 116224,
+      "sha256": "a1d1462cf662d45449ea3a483190c258c8d426824d4062bb21b93885f12ff0d4"
+    },
+    "loader-rdr2/bink2w64.dll": {
+      "size": 116224,
+      "sha256": "a1d1462cf662d45449ea3a483190c258c8d426824d4062bb21b93885f12ff0d4"
+    }
+  },
+  "model": {
+    "size": 165840496,
+    "sha256": "4b8d19bc3eff58a084f5eca7489c921501c203450169fb82ff4f649a4482ba05"
+  },
+  "runtime_verified": false,
+  "default_promoted": false
+}

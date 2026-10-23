@@ -121,6 +121,10 @@ jobs:
         if: matrix.platform == 'x64'
         run: ./windows/build/Build-FeederPanel.ps1 -SourceRoot windows/out/skynizz-source
 
+      - name: Bundle the reviewed native Vulkan package and NR model
+        if: matrix.platform == 'x64'
+        run: ./windows/build/Build-VulkanProvider.ps1
+
       - name: Set up .NET 10
         uses: actions/setup-dotnet@v4
         with:
@@ -157,6 +161,8 @@ jobs:
           python -X utf8 -m unittest discover -s tests -p test_overlay_policy.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s windows/tests -p test_overlay_ui.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest tests.test_overlay_settings tests.test_vulkan_app_routes
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s windows/tests -p test_global_controls.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }

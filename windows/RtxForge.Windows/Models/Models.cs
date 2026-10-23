@@ -192,7 +192,7 @@ public sealed record DlssInventory(IReadOnlyList<DlssFile> Files, string Blocked
 
 /// <summary>A package. Verified lists the OSes ("windows", "linux") where it has been tested in a game.</summary>
 public sealed record PackageOption(string Id, string Name, string Version, string Summary, bool Available, string Reason, bool Recommended, string Url,
-    IReadOnlyList<string>? Verified = null, IReadOnlyDictionary<string, string>? MfgVersions = null);
+    IReadOnlyList<string>? Verified = null, IReadOnlyDictionary<string, string>? MfgVersions = null, IReadOnlyList<string>? GraphicsApis = null);
 
 public sealed record CommunitySource(string Name, string Url, string Note);
 
@@ -237,7 +237,7 @@ public sealed class ForgeSettings
     /// <summary>A game's own package for games with DLSS, by game folder; absent games use RuntimeProvider.</summary>
     [JsonPropertyName("game_packages")] public Dictionary<string, string> GamePackages { get; set; } = [];
     /// <summary>Packages a game can choose on Windows. Feeder NR stays automatic for DX11 games and DX12 games without DLSS.</summary>
-    public static readonly (string Key, string Name)[] GamePackageChoices = [("skynizz", "Skynizz NR"), ("dlss-unlocked", "DLSS-Unlocked")];
+    public static readonly (string Key, string Name)[] GamePackageChoices = [("skynizz", "Skynizz NR"), ("dlss-unlocked", "DLSS-Unlocked"), ("vulkan-native", "Vulkan NR + Universal MFG · Experimental")];
     /// <summary>MFG packages that pair with Skynizz NR, as MfgProvider values.</summary>
     public static readonly (string Key, string Name)[] MfgPackageNames =
         [("universal", "Universal MFG"), ("integrated", "Integrated MFG unlock"), ("mfg-unlock", "MFG Unlock")];
@@ -256,11 +256,14 @@ public sealed class ForgeSettings
     public string PackageFor(Game game, string operation)
     {
         static bool Known(string? key) => GamePackageChoices.Any(c => c.Key == key);
+        if (game.RuntimeProvider == "vulkan-native" && game.Installed) return "vulkan-native";
+        if (GamePackages.TryGetValue(game.Id, out var explicitPackage) && explicitPackage == "vulkan-native") return explicitPackage;
         if (game.UsesFeeder) return RuntimeProvider;
         if (operation == "repair" && game.Installed && Known(game.RuntimeProvider)) return game.RuntimeProvider!;
         return GamePackages.TryGetValue(game.Id, out var chosen) && Known(chosen) ? chosen : RuntimeProvider;
     }
     [JsonPropertyName("nr_runtime")] public string NrRuntime { get; set; } = "";
+    [JsonPropertyName("vulkan_experimental")] public bool VulkanExperimental { get; set; }
     /// <summary>
     /// The app ships one compiled Skynizz bridge, so new installs always use it; a release saved by an
     /// earlier app reads as "latest". Repairs keep each game's recorded release.
@@ -325,6 +328,44 @@ public sealed class ForgeSettings
         ["optiscaler_hotkey"] = OptiScalerHotkey,
     };
 
+    [JsonPropertyName("game_overlay_settings")] public Dictionary<string, JsonObject> GameOverlaySettings { get; set; } = [];
+
+    public JsonObject GameOverlayOptions(Game? game = null)
+    {
+        var values = GameUiOptions();
+        values["overlay_renderer"] = OverlayRenderer;
+        values["overlay_controls"] = OverlayControls;
+        values["overlay_live_stats"] = OverlayLiveStats;
+        values["overlay_welcome"] = OverlayWelcome;
+        values["overlay_welcome_position"] = OverlayWelcomePosition;
+        values["panel_hotkey"] = PanelHotkey;
+        values["vulkan_mfg_native_menu"] = VulkanMfgNativeMenu;
+        if (game is not null && GameOverlaySettings.TryGetValue(game.Id, out var perGame))
+            foreach (var (key, value) in perGame)
+                if (key != "overlay_renderer" && values.ContainsKey(key)) values[key] = value?.DeepClone();
+        return values;
+    }
+
+    public JsonObject OverlayReviewOptions(IEnumerable<string>? games = null)
+    {
+        var values = GameOverlayOptions();
+        values["game_overlay_settings"] = JsonSerializer.SerializeToNode(GameOverlaySettings, Json);
+        if (games is not null) values["target_games"] = new JsonArray(games.Select(g => (JsonNode)JsonValue.Create(g)!).ToArray());
+        return values;
+    }
+
+    public static ForgeSettings EditGameOverlay(Game game, Action<JsonObject>? edit) => EditOverlay(settings =>
+    {
+        if (edit is null) { settings.GameOverlaySettings.Remove(game.Id); return; }
+        if (!settings.GameOverlaySettings.TryGetValue(game.Id, out var values))
+        {
+            values = settings.GameOverlayOptions(game);
+            values.Remove("overlay_renderer");
+            settings.GameOverlaySettings[game.Id] = values;
+        }
+        edit(values);
+    });
+
     public void CopyOverlayFrom(ForgeSettings source)
     {
         PanelHotkey = source.PanelHotkey; OverlayHelper = source.OverlayHelper;
@@ -333,6 +374,7 @@ public sealed class ForgeSettings
         OverlayLiveStats = source.OverlayLiveStats;
         OverlayWelcome = source.OverlayWelcome; VulkanMfgNativeMenu = source.VulkanMfgNativeMenu;
         OverlayWelcomePosition = source.OverlayWelcomePosition;
+        GameOverlaySettings = source.GameOverlaySettings.ToDictionary(p => p.Key, p => (JsonObject)p.Value.DeepClone());
         OptiScalerHotkey = source.OptiScalerHotkey;
         OptiScalerUi = source.OptiScalerUi; OptiScalerIntro = source.OptiScalerIntro;
         ReShadeUi = source.ReShadeUi; ReShadeIntro = source.ReShadeIntro;

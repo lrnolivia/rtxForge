@@ -310,12 +310,12 @@ def overlay_ui_review(params):
 
 def overlay_package_review(params):
     import overlay_packages
-    plan = overlay_packages.prepare(engine_bridge.module(_config()), LOCAL / 'state')
-    return _review('overlay-packages', 'Update in-game overlays',
-                   [_item(p['name'], p['summary'], details=p['note']) for p in plan['plans']],
-                   blocked=plan['blocked'], skipped=plan['skipped'], payload=plan, action='Update overlays',
+    plan = overlay_packages.prepare(engine_bridge.module(_config()), LOCAL / 'state', params)
+    return _review('overlay-packages', 'Update Overlays',
+                   [_item(p['name'], p['summary'], game=p.get('game'), details=p['note']) for p in plan['plans']],
+                   blocked=plan['blocked'], skipped=plan['skipped'], payload=plan, action='Update Overlays',
                    summary=f"{len(plan['plans'])} games ready. Changes take effect next launch.",
-                   note='Game settings and original restore backups are preserved. Other package types are listed separately.')
+                   note='Review each game’s overlay, menus and welcome choices. Original restore backups and feature tuning are preserved.')
 
 
 # ---------- library rows: custom artwork and test records ----------

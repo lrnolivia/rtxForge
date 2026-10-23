@@ -70,6 +70,9 @@ public sealed partial class SettingsPage : Page
         (row, var startupNr) = Prefs.SwitchRow("Enable NR on launch", "Default for new and clean installs. Leave off to enable NR later from the overlay.", Settings.NrOnLaunch, "");
         startupNr.Toggled += (_, _) => { Settings.NrOnLaunch = startupNr.IsOn; Save(); };
         installDefaults.Add(row);
+        (row, var experimentalVulkan) = Prefs.SwitchRow("Universal Experimental Vulkan", "Opt in to the profiled BG3/RDR2 native Vulkan package. Hardware and gameplay qualification remain experimental.", Settings.VulkanExperimental, "");
+        experimentalVulkan.Toggled += (_, _) => { Settings.VulkanExperimental = experimentalVulkan.IsOn; Save(); };
+        installDefaults.Add(row);
         var existingFeatures = new PreferencesGroup("Existing features", "Register compatible feature packages already installed.");
         (row, var adopt) = Prefs.SwitchRow("Recognize Existing Features", "Allow updates to compatible installations from other tools.",
             Settings.RecognizePrevious, "");

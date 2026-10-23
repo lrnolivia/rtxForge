@@ -122,7 +122,7 @@ def build_packages(owner, fixture=None, on_selected=None, alive=None, header=Fal
             def use():
                 select(item['id'])
                 if alive['value']:render_catalog(host)
-            return package_card(title,version,item['summary'] if item['available'] else item['reason'],
+            return package_card(title,version,(item['summary'] if item['available'] else item['reason'])+'\nGraphics API: '+' · '.join(item.get('graphics_apis',[])),
                                 item.get('verified'), 'In use' if selected else 'Use for DLSS games',use,item['available'] and not selected)
         columns=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=20,homogeneous=False)
         nr=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True,valign=Gtk.Align.START)
@@ -130,7 +130,7 @@ def build_packages(owner, fixture=None, on_selected=None, alive=None, header=Fal
         nr.append(heading('NR packages','Neural rendering for games with DLSS.'))
         if pair:nr.append(curated(pair))
         if feeder:
-            nr.append(package_card(feeder['name'],feeder['version'],feeder['summary'] if feeder['available'] else feeder['reason'],
+            nr.append(package_card(feeder['name'],feeder['version'],(feeder['summary'] if feeder['available'] else feeder['reason'])+'\nGraphics API: '+' · '.join(feeder.get('graphics_apis',[])),
                                    feeder.get('verified'),'Used automatically' if feeder['available'] else 'Unavailable',None,False))
         pair_name=pair['name'] if pair else 'the paired NR package'
         mfg.append(heading('MFG packages','Native NVIDIA frame generation for '+pair_name+'.'))
@@ -145,7 +145,7 @@ def build_packages(owner, fixture=None, on_selected=None, alive=None, header=Fal
             def choose(value=key):
                 owner.save_overlay_preference('mfg_provider',value)
                 render_catalog(host)
-            description=summaries[key]+(' Not available under Proton in this build.' if not supported else '')
+            description=summaries[key]+(' Not available under Proton in this build.' if not supported else '')+'\nGraphics API: DirectX 12'
             version=(pair or {}).get('mfg_versions',{}).get(key) or ('Built into the bridge' if key=='integrated' else 'OptiScaler plugin' if key=='universal' else 'ReShade add-on')
             mfg.append(package_card(name,version,description,['windows'],
                                    'In use' if selected else 'Use with '+pair_name if supported else 'Unavailable',choose,paired and not selected and supported))

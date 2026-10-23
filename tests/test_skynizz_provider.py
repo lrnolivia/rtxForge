@@ -236,7 +236,7 @@ class SkynizzPolicyTest(unittest.TestCase):
         # Linux bridge must keep its Skynizz and Feeder cards unavailable.
         with patch.object(provider,'bundled_bridge',side_effect=FileNotFoundError('No Linux bridge bundled')):
             linux=package_catalog.catalog({'system':'Linux','architecture':'x86_64','ready':True})
-        self.assertEqual([row['id'] for row in linux], ['dlss-unlocked','y4my','feeder','skynizz'])
+        self.assertEqual([row['id'] for row in linux], ['dlss-unlocked','y4my','feeder','skynizz','vulkan-native'])
         for row in linux:
             if row['id'] in ('feeder','skynizz'):
                 self.assertFalse(row['available'])

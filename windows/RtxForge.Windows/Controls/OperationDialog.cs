@@ -21,6 +21,7 @@ public sealed class OperationDialog
     readonly IReadOnlyList<Game> targets;
     readonly Tuning values;
     OperationReview? review;
+    EngineReview? preparedReview;
     readonly ContentDialog dialog;
     Stage stage = Stage.Review;
     CancellationTokenSource? cancel;
@@ -52,7 +53,8 @@ public sealed class OperationDialog
         dialog.Closed += (_, _) =>
         {
             closed = true;
-            if (review is not null) shell.Service.DiscardOperation(review);
+            if (preparedReview is not null) shell.Service.DiscardReview(preparedReview);
+            else if (review is not null) shell.Service.DiscardOperation(review);
         };
     }
 
@@ -65,6 +67,39 @@ public sealed class OperationDialog
         await AccentResources.ApplyAsync(flow.dialog.Resources, AccentResources.Single(targets));
         var shown = flow.dialog.ShowAsync();
         await flow.PrepareAsync();
+        await shown;
+        return flow.completed;
+    }
+
+    /// <summary>Use the installation review, artwork, progress and completion UI for a prepared library update.</summary>
+    public static async Task<bool> ShowPreparedAsync(MainWindow shell, string operation,
+        Func<IProgress<PrepareProgress>, Task<EngineReview>> prepare)
+    {
+        var flow = new OperationDialog(shell, operation, shell.Games, shell.Settings.Presets);
+        flow.ShowChecking();
+        var shown = flow.dialog.ShowAsync();
+        try
+        {
+            var progress = new Progress<PrepareProgress>(step => flow.checkingPanel.Show("Checking",
+                shell.Games.FirstOrDefault(g => g.Name == step.Game), step.Checked, step.Total > 0 ? step.Total : null, step.Label));
+            var checkedReview = await prepare(progress);
+            if (flow.closed) shell.Service.DiscardReview(checkedReview);
+            else
+            {
+                flow.preparedReview = checkedReview;
+                Game GameFor(ReviewItem item) => shell.Games.FirstOrDefault(g => g.Id == item.GameId || g.Name == item.Title)
+                    ?? new Game { Id = item.GameId ?? item.Title, Name = item.Title, Location = "" };
+                flow.review = new OperationReview(operation, checkedReview.Token,
+                    checkedReview.Items.Select(item => new OperationGameReview(GameFor(item), item.Details ?? item.Detail, item.Detail)).ToArray(),
+                    checkedReview.Blocked.Concat(checkedReview.Skipped).Select(item =>
+                        new ReviewBlock(shell.Games.FirstOrDefault(g => g.Id == item.GameId || g.Name == item.Title), item.Title, item.Details ?? item.Detail, item.Detail)).ToArray());
+                flow.ShowReview(flow.review);
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            flow.ShowDone(false, error.Message);
+        }
         await shown;
         return flow.completed;
     }
@@ -130,6 +165,7 @@ public sealed class OperationDialog
         "install" => "Review Installation",
         "uninstall" => "Review Restoration",
         "update-dlss" => "Review DLSS Update",
+        "update-overlays" => "Update Overlays",
         "adopt" or "adopt-clean" => "Review Adoption",
         _ => "Review Presets",
     };
@@ -175,6 +211,14 @@ public sealed class OperationDialog
         dialog.Content = body;
         dialog.PrimaryButtonText = review.Supported.Count > 0 ? "Continue" : ActionVerb();
         dialog.IsPrimaryButtonEnabled = count > 0 || review.Supported.Count > 0;
+        if (preparedReview?.Trust is { Length: > 0 } trust)
+        {
+            var consent = new CheckBox { Content = new TextBlock { Text = trust, TextWrapping = TextWrapping.Wrap } };
+            dialog.IsPrimaryButtonEnabled = false;
+            consent.Checked += (_, _) => dialog.IsPrimaryButtonEnabled = count > 0;
+            consent.Unchecked += (_, _) => dialog.IsPrimaryButtonEnabled = false;
+            body.Children.Add(consent);
+        }
         dialog.CloseButtonText = "Cancel";
         AccentPrimary();
     }
@@ -210,6 +254,7 @@ public sealed class OperationDialog
         "install" => "Install",
         "uninstall" => "Restore",
         "update-dlss" => "Update",
+        "update-overlays" => "Update Overlays",
         "adopt" => "Adopt with rtxForge",
         "adopt-clean" => "Adopt and clean install",
         _ => "Apply presets",
@@ -217,6 +262,12 @@ public sealed class OperationDialog
 
     IEnumerable<string> Details()
     {
+        if (preparedReview is not null)
+        {
+            yield return preparedReview.Summary;
+            if (preparedReview.Note is { Length: > 0 } note) yield return note;
+            yield break;
+        }
         if (operation == "install" && (shell.Settings.RuntimeProvider == "feeder" || targets.All(g => g.IsFeeder)))
         {
             yield return "NR Only";
@@ -331,7 +382,7 @@ public sealed class OperationDialog
         dialog.Title = null;
         dialog.PrimaryButtonText = "";
         dialog.SecondaryButtonText = "";
-        dialog.CloseButtonText = "Cancel";
+        dialog.CloseButtonText = preparedReview is null ? "Cancel" : "";
         progressPanel.AccentChanged += TintButtons;
         progressPanel.Show(ProgressVerb(), review!.Ready.FirstOrDefault()?.Game, 0, review.Ready.Count, "Starting");
         dialog.Content = progressPanel.Root;
@@ -345,6 +396,18 @@ public sealed class OperationDialog
 
         try
         {
+            if (preparedReview is { } pending)
+            {
+                var steps = new Progress<PrepareProgress>(step => progressPanel.Show(ProgressVerb(),
+                    review.Ready.FirstOrDefault(item => item.Game.Name == step.Game)?.Game,
+                    step.Checked, step.Total > 0 ? step.Total : review.Ready.Count, step.Label));
+                var result = await shell.Service.RunReviewAsync(pending, steps);
+                preparedReview = null;
+                completed = result.Errors.Count == 0;
+                progressPanel.Complete();
+                ShowDone(completed, result.Message + (result.Errors.Count > 0 ? "\n\n" + string.Join("\n", result.Errors) : ""));
+                return;
+            }
             var count = await shell.ExecuteAsync(review!, progress, cancel.Token);
             completed = true;
             progressPanel.Complete();
@@ -365,6 +428,7 @@ public sealed class OperationDialog
         "install" => "Installing",
         "uninstall" => "Restoring",
         "update-dlss" => "Updating",
+        "update-overlays" => "Updating",
         _ => "Applying",
     };
 

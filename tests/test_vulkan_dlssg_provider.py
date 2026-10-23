@@ -46,6 +46,7 @@ class ProviderTests(unittest.TestCase):
         self.pin_path.parent.mkdir()
         (self.pin_path.parent / 'loader').mkdir()
         notice = (v.PIN.parent / 'loader/LICENSE.exports.txt').read_bytes()
+        self.spec['loader']['exports_notice_sha256'] = v._hash(notice)
         (self.pin_path.parent / 'loader/LICENSE.exports.txt').write_bytes(notice)
         self.spec['loader']['binary'] = {'size': self.loader.stat().st_size, 'sha256': v._digest(self.loader)}
         self.spec['loader']['game_original'] = {'size': (self.game / v.PROXY).stat().st_size,

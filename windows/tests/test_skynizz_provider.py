@@ -256,7 +256,9 @@ assert not review['rows'] and 'unmanaged' in review['blocked'][0]['reason']
 assert files(unknown)==unknown_before
 checks.append('exact inactive restored support tree can be backed up and restored; active loaders, unknown folders and review drift still refuse')
 missing=game('Missing');missing_before=files(missing)
-review=prepare(missing,values={'nr_runtime':''})
+import vulkan_app
+with patch.object(vulkan_app,'bundled_model',side_effect=vulkan_app.t.Refusal('No bundled model in source-only build')):
+    review=prepare(missing,values={'nr_runtime':''})
 assert not review['rows'] and 'required' in review['blocked'][0]['reason']
 assert files(missing)==missing_before
 try:provider.require_mode('windows','mfg-only')

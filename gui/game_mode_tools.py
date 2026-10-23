@@ -87,13 +87,13 @@ class GameModeTools:
                     selected = names.get(self.owner.settings.get('mfg_provider', 'universal'), 'Universal MFG')
                     name += ' + ' + selected
                     version += ' · ' + selected
-                return self.package_card(name, version, item['summary'] if item['available'] else item['reason'],
+                return self.package_card(name, version, (item['summary'] if item['available'] else item['reason'])+'\nGraphics API: '+' · '.join(item.get('graphics_apis',[])),
                     item.get('verified', []), self.button('In use' if current else 'Use for DLSS games', use,
                     enabled=bool(item['available'] and not current), key='package-' + item['id']))
             if paired:
                 nr.append(use_card(paired))
             if feeder:
-                nr.append(self.package_card(feeder['name'], feeder['version'], feeder['summary'] if feeder['available'] else feeder['reason'],
+                nr.append(self.package_card(feeder['name'], feeder['version'], (feeder['summary'] if feeder['available'] else feeder['reason'])+'\nGraphics API: '+' · '.join(feeder.get('graphics_apis',[])),
                     feeder.get('verified', []), self.button('Used automatically' if feeder['available'] else 'Unavailable', None, enabled=False)))
             pair_name = paired['name'] if paired else 'the paired NR package'
             self.section_title(mfg, 'MFG packages', ('Native NVIDIA frame generation for ' if pairs else 'These pair with ') + pair_name + '.')
@@ -110,7 +110,7 @@ class GameModeTools:
                     self.render(keep_focus=True)
                 versions = (paired or {}).get('mfg_versions', {})
                 version = versions.get(key) or ('Built into the bridge' if key == 'integrated' else 'OptiScaler plugin' if key == 'universal' else 'ReShade add-on')
-                mfg.append(self.package_card(name, version, summaries[key] + (' Not available under Proton in this build.' if key != 'universal' else ''), ['windows'],
+                mfg.append(self.package_card(name, version, summaries[key] + (' Not available under Proton in this build.' if key != 'universal' else '')+'\nGraphics API: DirectX 12', ['windows'],
                     self.button('In use' if current else 'Use with ' + pair_name if key == 'universal' else 'Unavailable', select_mfg,
                     enabled=bool(pairs and not current and key == 'universal'), key='mfg-package-' + key)))
             columns.attach(nr, 0, 0, 1, 1)
@@ -166,8 +166,8 @@ class GameModeTools:
             return Gtk.Grid(column_spacing=t.px(24), row_spacing=t.px(24), column_homogeneous=True), (count if self.layout_width >= t.px(1120) else 1)
         actions, count = columns(3)
         specs = [
-            ('Update the rtxForge Overlay', 'Bring the in-game overlay in your installed games up to date. This Linux build does not yet provide a reviewed bulk overlay update.',
-             self.button('Review overlay updates', None, enabled=False)),
+            ('Update Overlays', 'Review overlay package updates, menus, welcome messages and shortcuts in installed games.',
+             self.button('Update Overlays', self.owner.overlay_packages_review, enabled=live)),
             ('Update DLSS files', 'Replace older DLSS files across your library. Originals are backed up.',
              self.button('Review games', lambda: self.run_operation('update-dlss', [g for g in self.owner.games if not g.get('blocked')]), enabled=live)),
             ('Undo previous changes', 'Restore the files from an earlier install, update or restore.',

@@ -103,18 +103,13 @@ internal sealed class NativePanelCoordinator : IDisposable
     JsonObject SettingsSnapshot()
     {
         var s = ForgeSettings.Load();
-        OverlayShortcut.TryParse(s.PanelHotkey, out _, out var binding, out _);
-        return new JsonObject
-        {
-            ["overlay_controls"] = s.OverlayControls, ["overlay_renderer"] = s.OverlayRenderer,
-            ["overlay_live_stats"] = s.OverlayLiveStats,
-            ["overlay_welcome"] = s.OverlayWelcome, ["vulkan_mfg_native_menu"] = s.VulkanMfgNativeMenu,
-            ["overlay_welcome_position"] = s.OverlayWelcomePosition,
-            ["panel_hotkey"] = s.PanelHotkey, ["panel_key"] = (int)binding.Key, ["panel_modifiers"] = (int)binding.Modifiers,
-            ["overlay_helper"] = s.OverlayHelper, ["overlay_start_with_windows"] = s.OverlayStartWithWindows,
-            ["optiscaler_ui"] = s.OptiScalerUi, ["optiscaler_intro"] = s.OptiScalerIntro,
-            ["optiscaler_hotkey"] = s.OptiScalerHotkey, ["reshade_ui"] = s.ReShadeUi, ["reshade_intro"] = s.ReShadeIntro,
-        };
+        var values = s.GameOverlayOptions(game);
+        OverlayShortcut.TryParse(values["panel_hotkey"]?.ToString(), out _, out var binding, out _);
+        values["panel_key"] = (int)binding.Key;
+        values["panel_modifiers"] = (int)binding.Modifiers;
+        values["overlay_helper"] = s.OverlayHelper;
+        values["overlay_start_with_windows"] = s.OverlayStartWithWindows;
+        return values;
     }
     static JsonArray Entries(IEnumerable<ReviewItem> entries) => new(entries.Select(item => (JsonNode)new JsonObject
     { ["title"] = item.Title, ["detail"] = item.Detail }).ToArray());

@@ -449,6 +449,10 @@ def settings_snapshot(settings):
     return {
         'overlay_controls': settings.get('overlay_controls', 'unified'),
         'overlay_renderer': settings.get('overlay_renderer', 'game'),
+        'overlay_live_stats': bool(settings.get('overlay_live_stats', True)),
+        'overlay_welcome': bool(settings.get('overlay_welcome', True)),
+        'overlay_welcome_position': settings.get('overlay_welcome_position', 'top-center'),
+        'vulkan_mfg_native_menu': bool(settings.get('vulkan_mfg_native_menu', False)),
         'panel_hotkey': settings.get('panel_hotkey', DEFAULT_SHORTCUT),
         'panel_key': key, 'panel_modifiers': modifiers,
         'overlay_helper': bool(settings.get('overlay_helper', True)),

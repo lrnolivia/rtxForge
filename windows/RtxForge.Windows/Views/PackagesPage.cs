@@ -113,6 +113,8 @@ public sealed partial class PackagesPage : Page
                      .OrderByDescending(p => p.Id == shell.Settings.RuntimeProvider))
             unifiedCards.Children.Add(PackageCard(item));
         unified.Children.Add(unifiedCards);
+        unified.Children.Add(new Expander { Header = "NR model", Content = SkynizzSettings(catalog),
+            HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch });
         body.Children.Add(unified);
 
         // Your own package (not supported yet) beside community projects.
@@ -183,7 +185,7 @@ public sealed partial class PackagesPage : Page
         settings.Children.Add(Choice("NR model preset", "Performance (B) uses preset 2 with compatible NR models.",
             ["Automatic", "Legacy (A)", "Performance (B)"], Math.Clamp(shell.Settings.NrPreset ?? 0, 0, 2),
             index => shell.Settings.NrPreset = index));
-        settings.Children.Add(PathField("Local NR model DLL", "Compatible nvngx_dlssnr.dll. Needed unless a suitable model is already beside the game executable.",
+        settings.Children.Add(PathField("Use your own NR DLL (optional)", "Leave blank to use the bundled NR model. A local override is validated and identified in the install review.",
             shell.Settings.NrRuntime, value => shell.Settings.NrRuntime = value));
         return settings;
     }
@@ -199,6 +201,7 @@ public sealed partial class PackagesPage : Page
         content.Children.Add(Section(name, version));
         var description = new StackPanel { Spacing = 8 };
         description.Children.Add(Prefs.Label(item.Summary));
+        description.Children.Add(Prefs.Label("Graphics API: " + string.Join(" · ", item.GraphicsApis ?? []), "ForgeCaptionDimTextStyle"));
         if (!item.Available) description.Children.Add(Prefs.Label(item.Reason, "ForgeCaptionDimTextStyle"));
         Grid.SetRow(description, 1); content.Children.Add(description);
         var use = Prefs.ActionButton(current ? "In use" : "Use for DLSS games", (_, _) => { shell.SelectPackage(item.Id); _ = LoadAsync(); },
@@ -215,6 +218,7 @@ public sealed partial class PackagesPage : Page
         var current = pairs && shell.Settings.MfgProvider == package.Id;
         var content = Section(package.Name, MfgVersion(package.Id, package.Kind, catalog));
         content.Children.Add(Prefs.Label(package.Summary));
+        content.Children.Add(Prefs.Label("Graphics API: DirectX 12", "ForgeCaptionDimTextStyle"));
         var use = Prefs.ActionButton(current ? "In use" : "Use with " + PairName(catalog), (_, _) =>
         {
             shell.Settings.MfgProvider = package.Id; shell.SaveSettings(); _ = LoadAsync();
@@ -231,6 +235,7 @@ public sealed partial class PackagesPage : Page
     {
         var content = Section(item.Name, item.Version);
         content.Children.Add(Prefs.Label(item.Summary));
+        content.Children.Add(Prefs.Label("Graphics API: " + string.Join(" · ", item.GraphicsApis ?? []), "ForgeCaptionDimTextStyle"));
         content.Children.Add(Footer(item.Verified, Prefs.Label(item.Available ? "Used automatically" : item.Reason, "ForgeCaptionDimTextStyle")));
         return Card(content);
     }

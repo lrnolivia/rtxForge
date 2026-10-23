@@ -1681,6 +1681,11 @@ class GameMode(Gtk.Overlay, GameModeTools):
         owner = self.owner
         section = self.section
         if section == 'Features':
+            content.append(self.row_button('Overlay', 'Settings', lambda: self.open_game_overlay(g),
+                                           description='Menu, welcome and shortcut choices for this game.', icon='view-dual-symbolic'))
+            if g.get('runtime_provider')=='vulkan-native':
+                self.section_title(content,'Vulkan controls','Adjust Vulkan NR and MFG in the running game’s rtxForge overlay. The OptiScaler preset editor does not apply to this package.')
+                return
             setup = owner.needs_linux_setup(g)
             legacy = g.get('installed_on') == 'windows' and not g.get('adaptable')
             if g.get('installed_on') == 'windows' and g.get('adaptable'):
@@ -2069,6 +2074,36 @@ class GameMode(Gtk.Overlay, GameModeTools):
             rows.append(row)
         return rows
 
+    def open_game_overlay(self, game):
+        import overlay_settings
+        s=overlay_settings.effective(self.owner.settings,game['game'])
+        def inherited():return game['game'] not in self.owner.settings.get('game_overlay_settings',{})
+        def defaults(value):
+            mapping=self.owner.settings.setdefault('game_overlay_settings',{})
+            if value:mapping.pop(game['game'],None)
+            else:mapping[game['game']]={k:v for k,v in overlay_settings.effective(self.owner.settings).items() if k!='overlay_renderer'}
+            self.save_settings();self.close_modal();self.open_game_overlay(game)
+        def save(key,value):
+            self.owner.settings.setdefault('game_overlay_settings',{}).setdefault(game['game'],{})[key]=value
+            s[key]=value;self.save_settings()
+        rows=[self.choice('Use app overlay settings','Turn off to choose settings for this game.',[False,True],['Off','On'],inherited,defaults)]
+        options=[]
+        for title,key in [('Welcome message','overlay_welcome'),('Live feature statistics','overlay_live_stats'),
+                          ('OptiScaler menu','optiscaler_ui'),('OptiScaler intro','optiscaler_intro'),
+                          ('ReShade menu','reshade_ui'),('ReShade welcome','reshade_intro'),('Native Vulkan MFG menu and hint','vulkan_mfg_native_menu')]:
+            options.append(self.choice(title,None,[False,True],['Off','On'],lambda k=key:s[k],lambda v,k=key:save(k,v)))
+        for title,key,keys,captions in [('Welcome position','overlay_welcome_position',list(overlay_settings.POSITIONS),['Top center','Top left','Top right','Bottom left','Bottom right']),
+                                       ('Controls','overlay_controls',['unified','classic'],['Unified','Advanced']),
+                                       ('OptiScaler shortcut','optiscaler_hotkey',['Insert','F8','Disabled'],['Insert','F8','Disabled'])]:
+            options.append(self.choice(title,None,keys,captions,lambda k=key:s[k],lambda v,k=key:save(k,v)))
+        for widget in options:widget.set_sensitive(not inherited())
+        rows.extend(options)
+        content=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=self.theme.px(16))
+        content.append(self.label('The primary overlay follows the app setting. Menu and welcome choices can differ for this game.','gm-p',wrap=True))
+        content.append(self.group(rows,True))
+        update=self.button('Update Overlays',lambda:(self.close_modal(),self.owner.overlay_packages_review(game)),enabled=bool(game.get('installed') and not self.owner.options.demo))
+        self.show_modal(game['name']+' · Overlay',content,[update,self.button('Back',self.close_modal)],self.close_modal)
+
     def settings_rows(self, section):
         owner = self.owner
         s = owner.settings
@@ -2087,6 +2122,8 @@ class GameMode(Gtk.Overlay, GameModeTools):
                             ['NR Only', 'MFG Only', 'NR + MFG'], lambda: s.get('default_profile', 'mfg-only'), default_mode),
                 self.choice('Enable NR on launch', 'Leave off to enable NR later from the overlay.', [False, True], ['Off', 'On'],
                             lambda: bool(s.get('nr_on_launch', False)), lambda v: s.update(nr_on_launch=v)),
+                self.choice('Universal Experimental Vulkan','Opt in to the profiled BG3/RDR2 native Vulkan package. Gameplay qualification remains experimental.',[False,True],['Off','On'],
+                            lambda: bool(s.get('vulkan_experimental',False)),lambda v:s.update(vulkan_experimental=v)),
                 self.choice('Update DLSS files', 'Keep backups when updating older DLSS files.', [False, True], ['Off', 'On'],
                             lambda: bool(s.get('manage_dlss_files', True)), lambda v: s.update(manage_dlss_files=v)),
                 self.choice('Recognize existing features', 'Allow updates to compatible installations from other tools.', [False, True], ['Off', 'On'],
@@ -2117,6 +2154,11 @@ class GameMode(Gtk.Overlay, GameModeTools):
                             lambda: s.get('overlay_renderer', 'game'), lambda v: s.update(overlay_renderer=v)),
                 self.choice('Controls', 'Advanced shows OptiScaler\u2019s own variables and units.', ['unified', 'classic'], ['Unified', 'Advanced'],
                             lambda: s.get('overlay_controls', 'unified'), lambda v: s.update(overlay_controls=v)),
+                self.choice('Welcome message', None, *on_off, lambda: bool(s.get('overlay_welcome', True)), lambda v: s.update(overlay_welcome=v)),
+                self.choice('Welcome position', None, ['top-center','top-left','top-right','bottom-left','bottom-right'],
+                            ['Top center','Top left','Top right','Bottom left','Bottom right'],
+                            lambda: s.get('overlay_welcome_position','top-center'), lambda v: s.update(overlay_welcome_position=v)),
+                self.choice('Live feature statistics', None, *on_off, lambda: bool(s.get('overlay_live_stats', True)), lambda v: s.update(overlay_live_stats=v)),
                 self.row_button('Panel shortcut', overlay_shortcut.display(s.get('panel_hotkey')),
                                 lambda: self.toast('Record a new shortcut in Desktop Settings \u203a Overlay.'), description='Opens the rtxForge panel in game.'),
                 self.choice('OptiScaler menu', 'Hiding it never turns off NR or MFG.', *on_off,
@@ -2127,6 +2169,9 @@ class GameMode(Gtk.Overlay, GameModeTools):
                 self.choice('ReShade menu', 'For games set up with the Feeder route.', *on_off,
                             lambda: bool(s.get('reshade_ui', True)), lambda v: s.update(reshade_ui=v)),
                 self.choice('ReShade welcome', None, *on_off, lambda: bool(s.get('reshade_intro', False)), lambda v: s.update(reshade_intro=v)),
+                self.choice('Native Vulkan MFG menu and hint', None, *on_off, lambda: bool(s.get('vulkan_mfg_native_menu', False)), lambda v: s.update(vulkan_mfg_native_menu=v)),
+                self.row_button('Update Overlays', 'Review', owner.overlay_packages_review,
+                                description='Review package updates and the effective choices for each installed game.'),
             ]
         if section == 'Library':
             return 'Manage the library layout and artwork sources.', [

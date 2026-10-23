@@ -51,7 +51,7 @@
   "neural_rendering": {
     "backend": "native Vulkan",
     "model": "nvngx_dlssnr.dll",
-    "model_distribution": "user-supplied; excluded from builds",
+    "model_distribution": "Approved bundled model with optional locally supplied replacement",
     "placement": "after a successful, identified native DLSS-SR evaluation, before game post-processing and HUD",
     "required_device_extensions": [
       "VK_NVX_binary_import",

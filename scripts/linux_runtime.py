@@ -101,6 +101,11 @@ def menus_review(e, params):
     return _shared('overlay_ui').prepare(e, params)
 
 
+def overlay_packages_review(e, params):
+    """The same owned package/menu update review used by the Windows app."""
+    return _shared('overlay_packages').prepare(e, e.STATE_ROOT, params)
+
+
 def apply_review(review):
     """Apply a global_review or menus_review result; every file is re-checked first."""
     return _shared('global_controls').execute(review)

@@ -16,6 +16,8 @@ DEFAULTS['mfg_default_revision']=MFG_DEFAULT_REVISION
 DEFAULTS['skynizz_proton']=False
 DEFAULTS['feature_controls']={}
 DEFAULTS['separate_game_details']=False
+DEFAULTS.update(game_overlay_settings={}, overlay_live_stats=True, overlay_welcome=True,
+                overlay_welcome_position='top-center', vulkan_mfg_native_menu=False, vulkan_experimental=False)
 
 LEGACY_NR_STRENGTH={
     'off':0.0,

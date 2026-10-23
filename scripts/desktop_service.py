@@ -133,6 +133,8 @@ class DesktopService:
             rows.append(row)
         import package_adoption
         package_adoption.decorate(engine,rows)
+        import vulkan_app
+        vulkan_app.decorate(rows,self.config,selected=library_media.load_settings(self.config).get('runtime_provider')=='vulkan-native')
         return sorted(rows,key=lambda r:r['name'].casefold())
 
     def scan_all(self,extra=()):
@@ -163,6 +165,9 @@ class DesktopService:
             import package_adoption
             return package_adoption.prepare(self.config, rows, operation, settings)
         settings['apply_requested_presets']=operation=='install' and visual_settings is not None
+        if settings.get('runtime_provider')=='vulkan-native' or (rows and all(row.get('runtime_provider')=='vulkan-native' for row in rows)):
+            import vulkan_app
+            return vulkan_app.prepare(self.config,rows,mode,operation,settings,engine_bridge.module(self.config))
         feeder = settings.get('runtime_provider') == 'feeder'
         # Restoring an installed Feeder setup must use its actual ownership,
         # regardless of the package currently selected for new installations.
@@ -316,6 +321,9 @@ class DesktopService:
     def execute(self,review):
         # The desktop must pass the exact in-memory review shown to the user.
         kind=review['kind']
+        if kind=='vulkan-native':
+            import vulkan_app
+            return vulkan_app.execute(review)
         if kind=='adoption':
             import package_adoption
             return package_adoption.execute(review)

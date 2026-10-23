@@ -68,6 +68,40 @@ with patch.object(t,'atomic_file',broken):
     try:bulk.execute(review);raise AssertionError('write failure ignored')
     except t.Refusal:pass
 assert failed[0] and files()==before,'rollback did not restore exact pre-update files'
+import feeder_provider as feeder,overlay_settings
+spec=importlib.util.spec_from_file_location('feeder_fixtures',repo/'tests/test_feeder_provider.py')
+ff=importlib.util.module_from_spec(spec);spec.loader.exec_module(ff)
+case=ff.FeederTest();case.setUp();case.e=e
+try:
+    row=case.game('Feeder',installed=True)
+    def panel(revision):
+        result={}
+        for name in feeder.PANELS:
+            raw=ff.pe(name.encode()+revision);cache=e.STATE_ROOT/'feeder-cache'/t.sha(raw)
+            t.atomic_file(cache,raw,0o600);result[name]={'path':str(cache),'sha256':t.sha(raw)}
+        return result
+    old=panel(b'old');new=panel(b'new')
+    with patch.object(feeder,'panel',return_value=old):
+        feeder.execute(feeder.prepare(h.service.config,[row],'nr-only','install',case.settings,e))
+    game=Path(row['game']);original=feeder.state(e,game)['originals']
+    model=(game/'nvngx_dlssnr.dll').read_bytes();ini=t.ini((game/'ReShade.ini').read_text())
+    tuning=ini['RenoDX.DLSS5']['NRResolutionScale'];native_before=files()
+    params=overlay_settings.options({})|{'reshade_ui':False,'target_games':[str(game)],
+        'game_overlay_settings':{str(game):{'overlay_welcome':False,'panel_hotkey':'F8'}}}
+    with patch.object(feeder,'panel',return_value=new):
+        review=overlays.prepare(e,h.LOCAL/'state',params)
+        assert len(review['plans'])==1 and not review['blocked'],review
+        assert 'Welcome message: Off' in review['plans'][0]['note'] and 'shortcut: F8' in review['plans'][0]['note']
+        assert (game/feeder.PANELS[0]).read_bytes()==Path(old[feeder.PANELS[0]]['path']).read_bytes(),'review wrote a panel'
+        bulk.execute(review)
+    assert (game/feeder.PANELS[0]).read_bytes()==Path(new[feeder.PANELS[0]]['path']).read_bytes()
+    assert (game/'nvngx_dlssnr.dll').read_bytes()==model and feeder.state(e,game)['originals']==original
+    updated=t.ini((game/'ReShade.ini').read_text());assert updated['INPUT']['KeyOverlay']=='0,0,0,0'
+    assert updated['RenoDX.DLSS5']['NRResolutionScale']==tuning
+    assert files()==native_before,'scoped Feeder update changed another game'
+    try:overlays.prepare(e,h.LOCAL/'state',params|{'target_games':[]});raise AssertionError('empty scope widened')
+    except t.Refusal:pass
+finally:case.doCleanups()
 print('PASS: native-overlay review is read-only; loader, state and marker update atomically; tuning/originals preserved; idempotence, drift/running guards and exact rollback.')
 '''
 

@@ -217,3 +217,15 @@ foreach(var value in new[] { "unknown", "", "TOP-RIGHT" })
     if(JsonSerializer.Deserialize<ForgeSettings>("{\"overlay_welcome_position\":\"" + value + "\"}")!.OverlayWelcomePosition != "top-center")
         throw new Exception("Unknown welcome position lost the safe default");
 Console.WriteLine("PASS: all five welcome positions persist and copy; legacy/unknown values retain top center.");
+var perGame = JsonSerializer.Deserialize<ForgeSettings>("{\"vulkan_experimental\":true,\"runtime_provider\":\"vulkan-native\",\"game_overlay_settings\":{\"one\":{\"overlay_welcome\":false,\"panel_hotkey\":\"F8\"}}}")!;
+var gameOne = new Game { Id = "one", Name = "One", Location = "one" };
+var gameTwo = new Game { Id = "two", Name = "Two", Location = "two" };
+if (perGame.GameOverlayOptions(gameOne)["overlay_welcome"]!.GetValue<bool>() || !perGame.GameOverlayOptions(gameTwo)["overlay_welcome"]!.GetValue<bool>())
+    throw new Exception("A per-game overlay choice leaked into another game.");
+var copied = new ForgeSettings(); copied.CopyOverlayFrom(perGame);
+copied.GameOverlaySettings["one"]["panel_hotkey"] = "Delete";
+if (perGame.GameOverlaySettings["one"]["panel_hotkey"]!.ToString() != "F8" || !perGame.VulkanExperimental || perGame.RuntimeProvider != "vulkan-native")
+    throw new Exception("Per-game overlay persistence or Vulkan opt-in was lost.");
+if (perGame.OverlayReviewOptions(["one"])["target_games"]!.AsArray().Count != 1)
+    throw new Exception("Overlay update review lost its explicit game scope.");
+Console.WriteLine("PASS: per-game overlay isolation, independent copies, exact update scope and Vulkan opt-in.");

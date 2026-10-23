@@ -11,6 +11,8 @@ import packages
 import skynizz_provider as provider
 import transactions as t
 import ui
+import overlay_package_routes as routes
+import overlay_settings
 
 
 def recipe(files, mode):
@@ -19,14 +21,11 @@ def recipe(files, mode):
     return t.sha(json.dumps({'files': immutable, 'mode': mode}, sort_keys=True).encode())
 
 
-def prepare(e, state):
-    release, archive = provider.bundled_bridge()
-    t.need(release.get('panel_renderer') == 'in-game', 'This build is missing the native overlay bridge.')
-    payload, metadata = provider.load_payload(archive, release)
-    # The saved recipe must remain repairable after a future app update.
-    cache = Path(state) / 'packages' / release['sha256'] / release['archive']
-    cached = packages.download(archive.resolve().as_uri(), cache, expected=release['sha256'], size=release['release_size'])
-    metadata['path'] = str(cached)
+def prepare(e, state, params=None):
+    if params is not None:
+        overlay_settings.options(params)
+        routes.selected(params)  # Validate an explicitly scoped, nonempty selection.
+    bundled = None
     plans, blocked, skipped, seen = [], [], [], set()
     candidates = sorted((e.STATE_ROOT / 'targets').glob('*/baseline.json'))
     candidates += sorted((e.STATE_ROOT / 'feeder-targets').glob('*/baseline.json'))
@@ -38,6 +37,11 @@ def prepare(e, state):
             original = bulk._read(path); record = json.loads(original)
             if record.get('status') != 'active': continue
             name = record.get('name') or name
+            if record.get('provider_id') == 'feeder':
+                plan, unchanged = routes.feeder_plan(e, path, params, running)
+                if plan: plans.append(plan)
+                if unchanged: skipped.append(unchanged)
+                continue
             current = record.get('current') or {}
             if current.get('provider_id') != 'skynizz':
                 skipped.append({'title': name, 'detail': 'Uses Feeder/ReShade.' if record.get('provider_id') == 'feeder'
@@ -49,6 +53,16 @@ def prepare(e, state):
             root = target
             for parent in (target, *target.parents):
                 if parent.parent.name.casefold() in ('common', 'pinnedbuilds'): root = parent; break
+            if not routes.selected(params, root, target): continue
+            if bundled is None:
+                release, archive = provider.bundled_bridge()
+                t.need(release.get('panel_renderer') == 'in-game', 'This build is missing the native overlay bridge.')
+                payload, metadata = provider.load_payload(archive, release)
+                cache = Path(state) / 'packages' / release['sha256'] / release['archive']
+                cached = packages.download(archive.resolve().as_uri(), cache, expected=release['sha256'], size=release['release_size'])
+                metadata['path'] = str(cached)
+                bundled = release, payload, metadata, cached
+            release, payload, metadata, cached = bundled
             t.need(not running(root), 'Close this game, then review again.')
             ui.progress('Checking overlay packages', game=name, current=index, total=len(candidates))
             old_release = provider.validate_release(current['archive']['release'])
@@ -64,6 +78,8 @@ def prepare(e, state):
                    'Installation ownership changed; repair this game first.')
             checks = {str(path): t.sha(original), str(marker_path): t.sha(marker_raw), str(cached): release['sha256']}
             writes = {}; baseline = copy.deepcopy(record)
+            values = routes.preferences(params, record, root)
+            details = ('\n\n' + overlay_settings.describe(values)) if values is not None else ''
             for filename, data in ((proxy, payload['dxgi.dll']), ('nvngx.dll_dlssnr.dll', payload['nvngx.dll_dlssnr.dll'])):
                 destination = t.safe(target / filename)
                 expected = owned.get(filename)
@@ -71,8 +87,15 @@ def prepare(e, state):
                 checks[str(destination)] = expected
                 if t.sha(data) != expected: writes[str(destination)] = data
                 baseline['current']['installed_hashes'][filename] = marker['files'][filename] = t.sha(data)
+            routes.menus(e, target, values, baseline['current']['installed_hashes'], checks, writes)
+            marker['files'] = dict(baseline['current']['installed_hashes'])
             if not writes and old_release.get('sha256') == release['sha256']:
-                skipped.append({'title': name, 'detail': 'Native overlay is up to date.', 'details': ''}); continue
+                skipped.append({'title': name, 'detail': 'Overlay packages and menus are up to date.', 'details': details}); continue
+            for filename, expected in owned.items():
+                if filename.casefold().endswith(('.ini', '.log')): continue
+                destination = t.safe(target / t.relative(filename))
+                t.need(t.digest(destination) == expected, 'Package files changed; repair this game first: ' + filename)
+                checks[str(destination)] = expected
             updated_release = dict(release)
             for key in ('mfg_component', 'nr_preset', *provider.PRODUCTION_RUNTIMES):
                 if key in old_release: updated_release[key] = old_release[key]
@@ -96,10 +119,12 @@ def prepare(e, state):
                 portable = cross_os.portable(baseline, path.parent, target); portable.pop('steam_launch', None)
                 checks[str(shared)] = t.sha(raw); writes[str(shared)] = bulk._json(portable)
             writes[str(path)] = bulk._json(baseline); writes[str(marker_path)] = bulk._json(marker)
-            plan = {'name': name, 'root': str(root), 'target': str(target), 'checks': checks, 'writes': writes,
-                    'summary': 'Update in-game overlay', 'note': 'NR, MFG, tuning and original restore backups are preserved.'}
+            plan = {'name': name, 'game': str(root), 'root': str(root), 'target': str(target), 'checks': checks, 'writes': writes,
+                    'summary': 'Update overlay packages and menu settings',
+                    'note': 'OptiScaler · DirectX 12. NR, MFG, tuning and original restore backups are preserved.' + details}
             bulk._check(e, plan)
             plans.append(plan)
         except (t.Refusal, e.Stop, OSError, ValueError, KeyError, TypeError) as error:
             blocked.append({'title': name, 'detail': str(error), 'details': ''})
-    return {'engine': e, 'plans': plans, 'blocked': blocked, 'skipped': skipped}
+    more, failures, unchanged = routes.vulkan_plans(e, params, running)
+    return {'engine': e, 'plans': plans + more, 'blocked': blocked + failures, 'skipped': skipped + unchanged}

@@ -51,7 +51,7 @@ public sealed partial class GameModeView
         {
             var current = shell.Settings.RuntimeProvider == item.Id;
             var (name, version) = Views.PackagesPage.CardTitle(item, shell.Settings);
-            return PackageCard(name, version, item.Available ? item.Summary : item.Reason, item.Verified,
+            return PackageCard(name, version, (item.Available ? item.Summary : item.Reason) + "\nGraphics API: " + string.Join(" · ", item.GraphicsApis ?? []), item.Verified,
                 ui.Button(current ? "In use" : "Use for DLSS games", () =>
                 {
                     shell.SelectPackage(item.Id);
@@ -66,7 +66,7 @@ public sealed partial class GameModeView
         SectionTitle(nr, "NR packages", "Neural rendering. Choose one for games with DLSS" + (automatic is null ? "." : $"; {automatic} covers games without DLSS automatically."));
         foreach (var item in catalog.Packages.Where(p => Views.PackagesPage.PairsWithMfg.Contains(p.Id))) nr.Children.Add(UseCard(item));
         foreach (var item in catalog.Packages.Where(p => Views.PackagesPage.WithoutDlss.Contains(p.Id)))
-            nr.Children.Add(PackageCard(item.Name, item.Version, item.Summary, item.Verified,
+            nr.Children.Add(PackageCard(item.Name, item.Version, item.Summary + "\nGraphics API: " + string.Join(" · ", item.GraphicsApis ?? []), item.Verified,
                 ui.Button(item.Available ? "Used automatically" : "Unavailable", () => { }, GmKind.Card, .8, false)));
         var mfg = new StackPanel { Spacing = t.Px(16) };
         var pairName = Views.PackagesPage.PairName(catalog);
@@ -74,7 +74,7 @@ public sealed partial class GameModeView
         foreach (var package in Views.PackagesPage.MfgPackages)
         {
             var current = pairs && shell.Settings.MfgProvider == package.Id;
-            mfg.Children.Add(PackageCard(package.Name, Views.PackagesPage.MfgVersion(package.Id, package.Kind, catalog), package.Summary, package.Verified,
+            mfg.Children.Add(PackageCard(package.Name, Views.PackagesPage.MfgVersion(package.Id, package.Kind, catalog), package.Summary + "\nGraphics API: DirectX 12", package.Verified,
                 ui.Button(current ? "In use" : "Use with " + pairName, () =>
                 {
                     shell.Settings.MfgProvider = package.Id; shell.SaveSettings();

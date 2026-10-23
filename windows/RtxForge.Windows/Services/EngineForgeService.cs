@@ -276,7 +276,9 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         {
             // Feeder games take their own route and games may choose their own package:
             // one review, prepared per route and run in turn.
-            string Route(Game g) => g.UsesFeeder ? "feeder" : operation is "install" or "repair" ? Settings.PackageFor(g, operation) : Settings.RuntimeProvider;
+            string Route(Game g) => g.RuntimeProvider == "vulkan-native" && g.Installed ? "vulkan-native"
+                : operation is "install" or "repair" && Settings.PackageFor(g, operation) == "vulkan-native" ? "vulkan-native"
+                : g.UsesFeeder ? "feeder" : operation is "install" or "repair" ? Settings.PackageFor(g, operation) : Settings.RuntimeProvider;
             var packages = targets.GroupBy(Route).ToArray();
             // The engine sends a selection of only Feeder games down the Feeder route; the package setting stays.
             string Provider(string route) => route == "feeder" ? Settings.RuntimeProvider : route;
@@ -321,6 +323,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             ["prefer_bundled_nr_only"] = supportedSubset && mode == "nr-only",
             ["manage_dlss_files"] = Settings.ManageDlssFiles,
             ["nr_runtime"] = Settings.NrRuntime,
+            ["vulkan_experimental"] = Settings.VulkanExperimental,
             ["skynizz_version"] = Settings.SkynizzVersion,
             ["mfg_provider"] = Settings.MfgProvider,
             ["nr_preset"] = Settings.NrPreset,
@@ -332,7 +335,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             ["mfg_multiplier"] = tuning.MfgMultiplier == "auto" ? "auto" : int.Parse(tuning.MfgMultiplier),
             ["feature_controls"] = tuning.FeatureControls?.DeepClone(),
         };
-        foreach (var item in ForgeSettings.Load().GameUiOptions()) settings[item.Key] = item.Value?.DeepClone();
+        foreach (var item in ForgeSettings.Load().OverlayReviewOptions()) settings[item.Key] = item.Value?.DeepClone();
         var overlay = ForgeSettings.Load();
         settings["overlay_helper"] = overlay.OverlayHelper;
         settings["overlay_renderer"] = overlay.OverlayRenderer;

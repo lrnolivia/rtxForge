@@ -384,6 +384,14 @@ def prepare(config,rows,mode,operation,settings):
     custom=settings.get('custom_package') if selected=='custom' else None
     t.need(selected!='custom' or isinstance(custom,dict),'Choose and review a custom package first.')
     e=module(config,custom['family'] if custom else selected,mode);data={};meta={};nr=None;nrmeta=None
+    bundled_nr = None
+    if operation in ('install','repair') and mode != 'mfg-only' and not settings.get('nr_runtime'):
+        import vulkan_app
+        try:
+            bundled_nr=str(vulkan_app.bundled_model(e.STATE_ROOT))
+        except t.Refusal:
+            # Source-only/dev builds retain their existing explicit/local model resolver.
+            pass
     e.SKYNIZZ_PROTON=proton
     import overlay_policy
     e.OVERLAY_UI = dict(settings) if overlay_policy.explicit(settings) else None
@@ -410,8 +418,13 @@ def prepare(config,rows,mode,operation,settings):
     for index,row in enumerate(rows,1):
         ui.progress('Checking game files',phase='review-check',game=row['name'],checked=index-1,total=len(rows))
         try:
+            import overlay_settings
+            e.OVERLAY_UI = overlay_settings.effective(settings,row['game']) if overlay_policy.explicit(settings) else None
             e.Y4MY_PROVIDER=dict(selected_provider)
             g=game(e,row)
+            if selected!='skynizz' and operation in ('install','repair') and mode!='mfg-only' and not settings.get('nr_runtime'):
+                local_nr=g.target_dir/'nvngx_dlssnr.dll'
+                nr,nrmeta=e.load_user_nr_runtime(str(local_nr) if local_nr.is_file() else bundled_nr,family=None)
             t.need(not any(g.root.resolve().is_relative_to(p) or p.is_relative_to(g.root.resolve()) for p in seen),'Duplicate or overlapping game selection; refresh the library')
             seen.append(g.root.resolve())
             baseline=e.load_baseline(g.target_dir)
@@ -490,7 +503,8 @@ def prepare(config,rows,mode,operation,settings):
                     t.need(expected and nrmeta.get('sha256')==expected,
                            'The installed NR model changed; repair its recorded model before updating the bridge.')
                 elif mode != 'mfg-only':
-                    model_key=settings.get('nr_runtime') or None
+                    local_nr=g.target_dir/'nvngx_dlssnr.dll'
+                    model_key=settings.get('nr_runtime') or (str(local_nr) if local_nr.is_file() else bundled_nr)
                     if model_key not in model_cache:model_cache[model_key]=e.load_user_nr_runtime(model_key,family=None)
                     nr,nrmeta=model_cache[model_key]
             if baseline:
@@ -578,7 +592,7 @@ def prepare(config,rows,mode,operation,settings):
             steam_route=operation in ('install','repair') and not prefix or operation=='uninstall' and bool(baseline and isinstance(baseline.get('steam_launch'),dict))
             ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g),'prefix':str(prefix) if prefix else None,'steam_route':steam_route,'retire':retired,
                           'provider':dict(e.Y4MY_PROVIDER),'payload':target_data,'meta':target_meta,'nr':nr,'nrmeta':nrmeta,
-                          'proton_stack':stack,'settings':{k:settings.get(k) for k in ('skynizz_proton','mfg_provider')} if stack else None})
+                          'proton_stack':stack,'settings':dict(settings)})
         except (e.Stop,t.Refusal,OSError,ValueError) as ex:blocked.append({'name':row['name'],'reason':str(ex)})
         ui.progress('Game checked',phase='review-check',game=row['name'],checked=index,total=len(rows))
     return {'kind':'engine','operation':operation,'title':'Update NR + MFG bridge' if upgrade else operation.title(),'rows':[{'name':p['row']['name'],'detail':p['preview']['launch_options'] if operation=='reset' else f"{e.Y4MY_PROVIDER['name']} · {len(p['preview']['files'])} managed files · "+p['preview']['launch_options']} for p in ready],
@@ -719,6 +733,8 @@ def execute(review):
                     if item.get('proton_stack'):
                         # Re-check at execute time: a Proton or driver change since review refuses.
                         e.PROTON_STACK=proton_gate(e,g,item['settings'],review['mode'])
+                    import overlay_settings
+                    e.OVERLAY_UI = overlay_settings.effective(item.get('settings') or {},item['row']['game'])
                     record=e.install_target(g,item.get('payload',review['payload']),item.get('meta',review['meta']),'ada',nr_runtime_payload=item.get('nr',review['nr']),nr_runtime_meta=item.get('nrmeta',review['nrmeta']),feature_mode=review['mode'],enable_effects=review['enable_effects'],nr_on_launch=review.get('nr_on_launch'),native_mfg_fallback=review.get('native_mfg_fallback',False),nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'],feature_controls=review.get('feature_controls'),preserve_visual_settings=not review.get('apply_requested_presets',False))
                     report('Saving launch settings',0.85)
                     if item.get('prefix'):

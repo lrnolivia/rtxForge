@@ -81,5 +81,5 @@
           EnvironmentVariables="$(WindowsPowerShellEnvironment)" />
   </Target>
 
-  <ItemGroup><EmbeddedResource Include="../../gui/game-mode/motion.json" LogicalName="RtxForge.GameMode.Motion.json" /></ItemGroup>
+  <ItemGroup><EmbeddedResource Include="../../assets/game-mode/motion.json" LogicalName="RtxForge.GameMode.Motion.json" /></ItemGroup>
 </Project>

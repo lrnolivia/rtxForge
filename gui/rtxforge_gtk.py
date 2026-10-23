@@ -827,10 +827,6 @@ def _library_icon_name(*candidates):
     return candidates[-1]
 
 
-TRY_ANYWAY_NOTE=("rtxForge hasn't verified this game with this package, so the features may not engage. "
-                 'Installs are still reviewed first, and Restore puts the original files back.')
-
-
 def library_display_test_status(game):
     if (
         not game.get('installed')
@@ -12038,10 +12034,8 @@ class Window(Adw.ApplicationWindow):
         self.populate_tools(content['Tools'],game)
         overview=content['Overview']
         if game.get('blocked'):overview.append(self.unsupported_notice(game))
-        if game.get('try_anyway') or game.get('blocked') and game['blocked'] in game.get('soft_reasons',[]):
-            overview.append(self.try_anyway_notice(game))
         info=Adw.PreferencesGroup(title='Game Information');overview.append(info)
-        for title,value in [('Library',game.get('library')),('Location',game['game']),('Compatibility',self.compat_detail(game)),('Metadata Source',game.get('metadata_source')),('Developer',game.get('developers')),('Release',game.get('release'))]:
+        for title,value in [('Library',game.get('library')),('Location',game['game']),('Compatibility',None if game.get('blocked') else 'Supported'),('Metadata Source',game.get('metadata_source')),('Developer',game.get('developers')),('Release',game.get('release'))]:
             if value:info.add(row(title,value))
         features=content['Features'];installed=game.get('installed',False)
         if installed:
@@ -12232,7 +12226,6 @@ class Window(Adw.ApplicationWindow):
             buf=notes.get_buffer();current=dict(record);current.update(status=list(game_notes.STATES)[choice.get_selected()],notes=buf.get_text(buf.get_start_iter(),buf.get_end_iter(),True))
             if not self.options.demo:game_notes.save(self.service.config,game['game'],current)
             game['test_record']=current;self.toast('Notes saved')
-            share_button.set_sensitive(not self.options.demo and current['status'] in ('Working','Problem'))
         save_notes_button=button(
             'Save Notes',
             save_notes,
@@ -12262,10 +12255,6 @@ class Window(Adw.ApplicationWindow):
         detail_action_rows['Notes'].append(
             test
         )
-        # Shares the saved result: save a Working or Problem result first.
-        share_button=button('Share Result',lambda *_:self.share_result(game))
-        share_button.set_sensitive(not self.options.demo and record.get('status') in ('Working','Problem'))
-        detail_action_rows['Notes'].append(share_button)
         appearance=content['Appearance']
         appearance.append(self.artwork_preferences(game))
 
@@ -12937,83 +12926,18 @@ class Window(Adw.ApplicationWindow):
             self.toast('Logs captured. Record your result and save notes.' if finish else 'Test started. Launch your game normally, then return here to finish.')
         self.start('Collecting test logs' if finish else 'Starting test record',lambda:(game_notes.finish if finish else game_notes.start)(self.service.config,game),done)
     def show_reports(self,*_):
-        d,b,f=self.open_panel('Compatibility & Reports')
+        d,b,f=self.open_panel('Library status & reports')
         totals=Counter(g.get('test_record',{}).get('status','Untested') for g in self.games)
         b.append(label(' · '.join(f'{totals[state]} {state.lower()}' for state in game_notes.STATES),'heading'))
-        b.append(label("Each game's known result: yours first, then rtxForge's list. Share opens a prefilled issue you review before posting; nothing is sent automatically.",'dim-label'))
+        b.append(label('Diagnostics separate saved settings from captured runtime evidence. Nothing is uploaded.','dim-label'))
         for game in self.games:
-            item=row(game['name'],self.compat_line(game))
-            actions=[]
-            if game.get('blocked') and game['blocked'] in game.get('soft_reasons',[]):
-                actions.append(button('Try Anyway',lambda _,g=game:self.set_try_anyway(g,True)))
-            elif game.get('try_anyway'):
-                actions.append(button('Stop Trying',lambda _,g=game:self.set_try_anyway(g,False)))
-            if game.get('test_record',{}).get('status') in ('Working','Problem'):
-                actions.append(button('Share',lambda _,g=game:self.share_result(g)))
-            actions.append(button('Diagnose',lambda _,g=game:self.show_diagnostics(g)))
-            box=Gtk.Box(spacing=8,valign=Gtk.Align.CENTER)
-            for action in actions:
-                action.set_sensitive(not self.options.demo);box.append(action)
-            item.add_suffix(box);b.append(item)
+            record=game.get('test_record',{});item=row(game['name'],record.get('status','Untested')+(' · test in progress' if record.get('active') else ''))
+            item.add_suffix(button('Diagnose',lambda _,g=game:self.show_diagnostics(g)));b.append(item)
         logs=Gtk.CheckButton(label='Include redacted logs from the latest captured test',active=False)
         notes=Gtk.CheckButton(label='Include my notes',active=False)
         b.append(logs);b.append(notes)
         export=button('Preview Support Report',lambda *_:self.start('Preparing redacted preview',lambda:game_notes.preview(self.service.config,self.games,logs.get_active(),notes.get_active()),self.preview_report),'forge-primary')
         export.set_sensitive(not self.options.demo);f.append(export)
-
-    def compat_line(self,game):
-        """One line per game for the compatibility list: block, Try anyway, or the known result."""
-        record=game.get('test_record',{});compat=game.get('compat') or {}
-        if game.get('blocked'):
-            return ('Not verified · ' if game['blocked'] in game.get('soft_reasons',[]) else 'Blocked · ')+str(game['blocked'])
-        if game.get('try_anyway'):return 'Trying anyway · '+str(game['try_anyway'])
-        if compat.get('verdict'):return compat['verdict']+(' · rtxForge list' if compat.get('source')=='list' else ' · your result')
-        return record.get('status','Untested')+(' · test in progress' if record.get('active') else '')
-
-    def compat_detail(self,game):
-        compat=game.get('compat') or {}
-        if game.get('blocked'):return None
-        if game.get('try_anyway'):return 'Not verified · trying anyway'
-        if compat.get('verdict'):return compat['verdict']+(' · rtxForge list' if compat.get('source')=='list' else ' · your result')
-        return 'Supported'
-
-    def try_anyway_notice(self,game):
-        """Skip a capability check. Anti-cheat and missing executables are never offered."""
-        trying=bool(game.get('try_anyway'))
-        item=row('Trying anyway' if trying else 'Not verified with this package',
-                 (str(game['try_anyway'])+' ' if trying else '')+TRY_ANYWAY_NOTE)
-        action=button('Stop Trying' if trying else 'Try Anyway',lambda *_:self.set_try_anyway(game,not trying))
-        action.set_valign(Gtk.Align.CENTER);action.set_sensitive(not self.options.demo and not self.busy)
-        item.add_suffix(action)
-        group=Adw.PreferencesGroup();group.add(item);return group
-
-    def set_try_anyway(self,game,on):
-        import compat_list
-        def done(_record):
-            self.toast(f"{game['name']} can be installed now. Review the install before applying it." if on else f"{game['name']} is checked normally again.")
-            self.scan()
-        self.start('Saving your choice',lambda:compat_list.set_try_anyway(self.service.config,game['game'],on,game.get('blocked','')),done)
-
-    def share_result(self,game,notes=False):
-        """Preview the exact issue text, then open it in the browser. Nothing is sent from rtxForge."""
-        import compat_list
-        key=game.get('runtime_provider') if game.get('installed') and game.get('runtime_provider') else self.settings.get('runtime_provider','y4my')
-        def show(share):
-            d,b,f=self.open_panel('Share Result')
-            b.append(label('This opens a prefilled issue in your browser. Nothing is sent until you post it there.','dim-label'))
-            view=Gtk.TextView(editable=False,monospace=True,wrap_mode=Gtk.WrapMode.WORD_CHAR)
-            view.get_buffer().set_text(share['body'])
-            scroller=Gtk.ScrolledWindow(min_content_height=240,vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER)
-            scroller.set_child(view);b.append(scroller)
-            include=Gtk.CheckButton(label='Include my notes (paths and common secrets are redacted)',active=notes)
-            include.set_sensitive(notes or bool(str(game.get('test_record',{}).get('notes','')).strip()))
-            include.connect('toggled',lambda w:self.share_result(game,w.get_active()))
-            b.append(include)
-            def open_issue(*_):
-                Gio.AppInfo.launch_default_for_uri(share['url'],None);d.force_close()
-            f.append(button('Open in Browser',open_issue,'forge-primary'))
-        self.start('Preparing your result',lambda:compat_list.share(game,game_notes.load(self.service.config,game['game']),compat_list.package_label(key),
-                                                                     self.service.hardware(),compat_list.version(),notes),show)
 
     def preview_report(self,files):
         """The exact redacted text, reviewed before it is saved locally."""
@@ -14038,7 +13962,7 @@ class Window(Adw.ApplicationWindow):
             item.add_suffix(action)
             app.add(item)
         recovery=Adw.PreferencesGroup(title='Recovery')
-        for title,subtitle,caption,fn in [('Previous Changes','Browse available recovery records.','Browse',lambda *_:self.show_undo()),('Old NR Files','Review legacy files before removal.','Review',lambda *_:self.show_cleanup()),('Compatibility & Reports',"See each game's result, try unverified games, share a result, or export a support report.",'Open',self.show_reports)]:
+        for title,subtitle,caption,fn in [('Previous Changes','Browse available recovery records.','Browse',lambda *_:self.show_undo()),('Old NR Files','Review legacy files before removal.','Review',lambda *_:self.show_cleanup()),('Library Reports','View test notes and export a support report.','Open',self.show_reports)]:
             item=row(title,subtitle);action=button(caption,fn);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);recovery.add(item)
         self.organize_pages(b,[('Graphics',[graphics,defaults]),('Appearance',[appearance,window_style,library_layout]),('Library',[artwork,steam_artwork]),('Gaming Mode',[steam_launcher,controls,controller_options]),('System',[system,app]),('Recovery',[recovery])])
         def save(*_):

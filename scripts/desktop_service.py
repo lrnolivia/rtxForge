@@ -128,9 +128,6 @@ class DesktopService:
                 if row['game'] not in seen:rows.append(row);seen.add(row['game'])
         for row in self.scan(None,extra):
             if row['game'] not in seen:rows.append(row);seen.add(row['game'])
-        # Soft blocks you chose to try anyway, and each game's known result.
-        import compat_list
-        compat_list.apply(self.config,rows)
         return sorted(rows,key=lambda r:r['name'].casefold())
 
     def prepare(self,rows,mode,operation,adopt=False,visual_settings=None,save_defaults=False):

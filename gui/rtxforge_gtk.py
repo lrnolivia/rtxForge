@@ -2975,7 +2975,8 @@ columnview.library-column-view header button {
 
 .game-card .gallery-artwork-ring {
     border-radius: 14px;
-    border: 3px solid mix(@forge_library_card_a,@window_fg_color,0.12);
+    /* No stroke at rest; the game color shows on hover and the lighter band when selected. */
+    border: 3px solid transparent;
     box-shadow: none;
     background: transparent;
 }
@@ -3014,7 +3015,7 @@ columnview.library-column-view header button {
  * rounded inset artwork, title + status on the card surface.
  * ---------------------------------------------------------- */
 .game-card { border-radius: 12px; }
-.game-card .gallery-artwork-ring { border: 1px solid alpha(@window_fg_color,0.12); }
+.game-card .gallery-artwork-ring { border: 1px solid transparent; }
 .game-card .poster-button, .game-card .poster,
 .game-card .gallery-artwork-frame, .game-card .gallery-artwork-frame .poster-button,
 .game-card .gallery-artwork-frame .poster { border-radius: 14px; }

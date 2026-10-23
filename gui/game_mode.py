@@ -22,6 +22,7 @@ import library_media
 import ui_colors
 import user_messages
 import game_mode_contract as contract
+import action_labels
 import game_mode_motion as motion
 import game_mode_visuals as visuals
 from game_mode_tools import GameModeTools
@@ -117,8 +118,8 @@ def stylesheet(t):
 .gm button.gm-btn:hover {{ background-image: image(alpha(currentColor,0.08)); }}
 .gm button.gm-btn:disabled, .gm button.gm-rowbtn:disabled, .gm button.gm-tile:disabled {{ background: {c['disabled']}; color: {c['disabled_fg']}; border-color: transparent; }}
 .gm button.gm-btn.gm-quiet:disabled, .gm button.gm-btn.gm-ghost:disabled {{ background: none; }}
-.gm .gm-tabs {{ background: {c['panel']}; border-radius: 999px; padding: {px(8)}px; }}
-.gm .gm-tabs button.gm-btn {{ padding: {px(12)}px {px(24)}px; min-height: {px(52 if t.compact else 60) - px(24)}px; font-size: {em(0.92)}px; }}
+.gm .gm-tabs {{ background: {c['panel']}; border-radius: 999px; padding: {px(8 if t.compact else 10)}px; }}
+.gm .gm-tabs button.gm-btn {{ padding: {px(14)}px {px(26)}px; min-height: {px(56 if t.compact else 64) - px(28)}px; font-size: {em(0.92)}px; }}
 .gm .gm-segments {{ background: {c['card']}; border-radius: 999px; padding: {px(4)}px; }}
 .gm .gm-segments.gm-panel {{ background: {c['panel']}; }}
 .gm .gm-segments button {{ border-radius: 999px; padding: {px(10)}px {px(22)}px; min-height: {px(54 if not t.compact else 40) - px(20)}px; font-size: {em(0.85)}px; font-weight: 600; }}
@@ -827,9 +828,9 @@ class GameMode(Gtk.Overlay, GameModeTools):
         tabs.add_css_class('gm-tabs')
         for key, title in PAGES:
             active = self.page == key or (key == 'library' and self.page == 'details')
-            caption = self.content(title, {'library':'input-gaming-symbolic', 'presets':'preferences-other-symbolic', 'packages':'package-x-generic-symbolic', 'extras':'applications-utilities-symbolic', 'settings':'emblem-system-symbolic'}[key])
+            caption = self.content(title, {'library':'input-gaming-symbolic', 'presets':'preferences-other-symbolic', 'packages':'drive-multidisk-symbolic', 'extras':'applications-utilities-symbolic', 'settings':'emblem-system-symbolic'}[key])
             if isinstance(caption.get_first_child(), Gtk.Image):
-                caption.get_first_child().set_pixel_size(t.px(28))
+                caption.get_first_child().set_pixel_size(t.px(22))
             tabs.append(self.button(caption, lambda key=key: self.open(key), 'active' if active else 'ghost', key='tab-' + key))
         tabs = motion.selection(self.selection_states, 'navigation', tabs,
                                 next(c for c in children(tabs) if getattr(c, '_gm_key', '') == 'tab-' + ('library' if self.page == 'details' else self.page)),
@@ -1143,12 +1144,13 @@ class GameMode(Gtk.Overlay, GameModeTools):
         inner.append(mode)
         pool = self.selected_games() if self.selecting else games
         actions = Gtk.Box(spacing=t.px(12), valign=Gtk.Align.CENTER, halign=Gtk.Align.START)
-        actions.append(self.button(f'Install selected ({len(self.selected)})' if self.selecting else 'Install Features',
+        install_label, restore_label, update_label = action_labels.library(len(self.selected) if self.selecting else 0)
+        actions.append(self.button(install_label,
                                    lambda: self.run_operation('install', self.scoped_targets()), 'primary', 'folder-download-symbolic',
                                    enabled=any(not g.get('blocked') for g in pool), key='lib-install'))
-        actions.append(self.button('Restore', lambda: self.run_operation('uninstall', [g for g in self.scoped_targets() if g.get('installed')]),
+        actions.append(self.button(restore_label, lambda: self.run_operation('uninstall', [g for g in self.scoped_targets() if g.get('installed')]),
                                    'danger', 'edit-undo-symbolic', enabled=any(g.get('installed') for g in pool), key='lib-restore'))
-        actions.append(self.button('Update DLSS', lambda: self.run_operation('update-dlss', self.scoped_targets()), 'dlss', 'emblem-synchronizing-symbolic',
+        actions.append(self.button(update_label, lambda: self.run_operation('update-dlss', self.scoped_targets()), 'dlss', 'emblem-synchronizing-symbolic',
                                    enabled=any(not g.get('blocked') for g in pool), key='lib-update'))
         inner.append(actions)
         main.append(toolbar)
@@ -1544,13 +1546,14 @@ class GameMode(Gtk.Overlay, GameModeTools):
         identity.append(text)
         actions = Gtk.Box(spacing=t.px(12), valign=Gtk.Align.END)
         setup = self.owner.needs_linux_setup(g)
-        actions.append(self.button(('Set Up' if setup else 'Repair' if g.get('installed') else 'Install') if tight else
-                                   'Set Up for Linux' if setup else 'Repair Features' if g.get('installed') else 'Install Features',
+        actions.append(self.button('Set Up for Linux' if setup else action_labels.INSTALL,
                                    lambda: self.run_operation('install', [g]), 'primary', 'folder-download-symbolic', enabled=not g.get('blocked'), key='hero-install'))
-        actions.append(self.button('Restore' if tight else 'Restore Original Files', lambda: self.run_operation('uninstall', [g]), 'danger', 'edit-undo-symbolic',
+        actions.append(self.button(action_labels.RESTORE, lambda: self.run_operation('uninstall', [g]), 'danger', 'edit-undo-symbolic',
                                    enabled=bool(g.get('installed')), key='hero-restore'))
         actions.append(self.button('Update DLSS', lambda: self.run_operation('update-dlss', [g]), 'dlss', 'emblem-synchronizing-symbolic',
                                    enabled=not g.get('blocked'), key='hero-update'))
+        if width <= 1050:
+            actions.set_orientation(Gtk.Orientation.VERTICAL)
         if tight:
             # Narrow windows drop the actions under the summary.
             lower_row.set_orientation(Gtk.Orientation.VERTICAL)

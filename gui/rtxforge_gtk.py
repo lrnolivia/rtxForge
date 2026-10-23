@@ -16,6 +16,7 @@ from native_shell import new_shell
 from ui_scaling import ScaledContent, content_scale, SCALES
 from operation_scope import operation_targets, ScopeError
 import mfg_choice
+import action_labels
 import overview_facts
 import overlay_shortcut
 import breakpoints
@@ -3008,13 +3009,13 @@ columnview.library-column-view header button {
 
 /* ----------------------------------------------------------
  * Windows card (ForgeGameCardGridStyle): 2px ring, art full width with
- * square bottom edge, title + status on the card surface.
+ * rounded inset artwork, title + status on the card surface.
  * ---------------------------------------------------------- */
 .game-card { border-radius: 12px; }
 .game-card .gallery-artwork-ring { border-width: 0; border-color: transparent; }
 .game-card .poster-button, .game-card .poster,
 .game-card .gallery-artwork-frame, .game-card .gallery-artwork-frame .poster-button,
-.game-card .gallery-artwork-frame .poster { border-radius: 10px 10px 0 0; }
+.game-card .gallery-artwork-frame .poster { border-radius: 14px; }
 .game-card .gallery-artwork-frame { background: alpha(@window_fg_color,0.06); }
 .game-card .card-footer { background: transparent; padding: 0 12px 12px; border-radius: 0 0 10px 10px; }
 .game-card .card-title, .game-card .card-title.art-title-xs, .game-card .card-title.art-title-sm,
@@ -4236,21 +4237,13 @@ class LibraryGameItem(GObject.Object):
 
 class Window(Adw.ApplicationWindow):
     def apply_display_preferences(self):
-        surface=self.get_surface()
-        monitor=self.get_display().get_monitor_at_surface(surface) if surface else None
-        if monitor:
-            geometry=monitor.get_geometry()
-            system_scale=monitor.get_scale_factor()
-            width,height=geometry.width*system_scale,geometry.height*system_scale
-        else:width,height,system_scale=1280,820,1
-        in_couch=hasattr(self,'input_stack') and self.input_stack.get_visible_child_name()=='couch'
-        factor=content_scale(self.settings.get('ui_scale','auto'),width,height,system_scale) if in_couch else 1.0
-        self.presentation_scale=factor
-        if getattr(self,'couch_content',None):self.couch_content.set_factor(factor)
+        self.presentation_scale=1.0
+        if getattr(self,'couch_content',None):self.couch_content.set_factor(1.0)
         dialog=getattr(self,'dialog',None)
-        if getattr(dialog,'_scaled_child',None):dialog._scaled_child.set_factor(factor)
+        if getattr(dialog,'_scaled_child',None):dialog._scaled_child.set_factor(1.0)
         if hasattr(self,'couch'):
-            self.couch.resize(round(self.get_width()/factor),round(self.get_height()/factor))
+            self.couch.theme.scale=str(self.settings.get('ui_scale','auto'))
+            self.couch.resize(self.get_width(),self.get_height())
             self.couch.apply_navigation_preferences()
 
     def set_big_picture_ui(self,enabled):
@@ -5726,7 +5719,7 @@ class Window(Adw.ApplicationWindow):
 
         footer=Gtk.Box(spacing=12,halign=Gtk.Align.END)
         margins(footer,16)
-        self.reset_all=button('Discard changes',self.discard_preset_changes)
+        self.reset_all=button('Reset',self.discard_preset_changes)
         choose=button('Select games',lambda *_:self.begin_preset_selection())
         self.apply_presets=button('Apply to all',lambda *_:self.apply_presets_to(self.configured_games(),entire=True),'suggested-action')
         footer.append(self.reset_all);footer.append(choose);footer.append(self.apply_presets)
@@ -9765,10 +9758,10 @@ class Window(Adw.ApplicationWindow):
             self.reset_all.text_label.set_text('Reset')
         for name in ('install_all','sticky_install_all'):
             widget=getattr(self,name,None)
-            if widget:widget.set_label(f'Install Selected ({count})' if count else 'Install Features')
+            if widget:widget.set_label(action_labels.library(count)[0])
         for name in ('uninstall_all','sticky_remove_all'):
             widget=getattr(self,name,None)
-            if widget:widget.set_label(f'Restore Selected ({count})' if count else 'Restore Original Files')
+            if widget:widget.set_label(action_labels.library(count)[1])
         # Icon-only at narrow widths: the tooltip names the action and its scope.
         if hasattr(self,'sticky_install_all'):
             self.sticky_install_all.set_tooltip_text(self.sticky_install_all.get_label()+(' · selected games' if count else ' · whole library'))
@@ -16045,6 +16038,9 @@ class Window(Adw.ApplicationWindow):
 
                 if key=='mfg_multiplier':
                     widget.switch.set_active(not widget.switch.get_active())
+                elif key=='feature_controls':
+                    changed=dict(original);changed['detail']=0 if original.get('detail') else 1
+                    widget.set_value(changed)
                 else:
                     widget.set_value(0)
 

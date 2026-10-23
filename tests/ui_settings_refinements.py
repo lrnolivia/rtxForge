@@ -116,7 +116,8 @@ def details_check():
     w.test_close.emit('clicked')
 def game_mode():
     w=app.window;w.set_input_surface(True);w.set_display_preference('ui_scale',150)
-    assert w.presentation_scale==1.5
+    assert w.presentation_scale==1
+    assert w.couch.theme.unit==26.0
     w.couch.open('settings');w.couch.navigate('right')
     w.set_input_surface(False)
     assert w.presentation_scale==1

@@ -13,7 +13,7 @@ app=ui.Application(options)
 
 def start():
     w=app.window
-    w.settings['controller_glyphs']='xbox'
+    w.settings.update(controller_glyphs='xbox',ui_scale=130)
     w.set_default_size(3840,2160)
     w.set_input_surface(True)
     assert w.couch.page=='library'
@@ -24,8 +24,9 @@ def start():
 def native_scale():
     w=app.window;c=w.couch
     if os.environ.get('RTXFORGE_QA_FULLSCREEN'):assert w.is_fullscreen()
-    assert w.presentation_scale==1.3
-    assert c.get_width()==round(w.get_width()/1.3)
+    assert w.presentation_scale==1.0
+    assert c.theme.unit==22.5
+    assert c.get_width()==w.get_width()
     assert c.layout_width==c.get_width()
     assert w.capture('layout-4k-wide-top.png')
     c.set_library_view('posters')

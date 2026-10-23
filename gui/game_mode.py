@@ -498,6 +498,18 @@ class GameMode(Gtk.Overlay, GameModeTools):
         box.append(caption)
         return box
 
+    def sidebar_content(self, text, fallback):
+        names = {'Graphics': 'monitor', 'Overlay': 'overlay', 'Library': 'library',
+                 'System': 'system', 'Recovery': 'recovery', 'About': 'info', 'DLSS Files': 'file'}
+        icon = 'rtx-gm-' + names[text] + '-symbolic' if text in names else fallback
+        content = self.content(text, icon)
+        image = content.get_first_child()
+        if isinstance(image, Gtk.Image):
+            size = self.theme.px(26)
+            image.set_pixel_size(size)
+            image.set_size_request(size, size)
+        return content
+
     def key(self, widget, name):
         widget._gm_key = name
         return widget
@@ -1604,7 +1616,7 @@ class GameMode(Gtk.Overlay, GameModeTools):
         nav.append(heading)
         first = None
         for section in SECTIONS:
-            caption = self.content(section, {'Overview':'go-home-symbolic','Features':'preferences-other-symbolic','DLSS Files':'text-x-generic-symbolic','Tools':'applications-utilities-symbolic','Appearance':'applications-graphics-symbolic','Notes':'accessories-text-editor-symbolic'}.get(section, 'emblem-system-symbolic'))
+            caption = self.sidebar_content(section, {'Overview':'go-home-symbolic','Features':'preferences-other-symbolic','DLSS Files':'text-x-generic-symbolic','Tools':'applications-utilities-symbolic','Appearance':'applications-graphics-symbolic','Notes':'accessories-text-editor-symbolic'}.get(section, 'emblem-system-symbolic'))
             caption.set_halign(Gtk.Align.START)
             button = motion.MotionButton(preferences=self.owner.settings, child=caption)
             button.add_css_class('gm-navbtn')
@@ -1954,7 +1966,7 @@ class GameMode(Gtk.Overlay, GameModeTools):
                    'Library':'input-gaming-symbolic', 'Gaming Mode':'input-gaming-symbolic', 'System':'emblem-system-symbolic',
                    'Recovery':'document-revert-symbolic', 'About':'dialog-information-symbolic'}
         for section in SETTINGS_SECTIONS:
-            caption = self.content(section, symbols[section])
+            caption = self.sidebar_content(section, symbols[section])
             caption.set_halign(Gtk.Align.START)
             button = motion.MotionButton(preferences=self.owner.settings, child=caption)
             button.add_css_class('gm-navbtn')
@@ -2080,10 +2092,10 @@ class GameMode(Gtk.Overlay, GameModeTools):
             ]
         if section == 'Appearance':
             return 'Color and motion for Game Mode.', [
-                self.choice(contract.THEME_LINK_LABEL, 'Turn off to choose each interface’s theme separately.', [False, True], ['Off', 'On'],
-                            lambda: bool(s.get('game_mode_theme_linked', True)), lambda v: (contract.link_themes(s, v), GLib.idle_add(lambda: (self.apply_theme(), self.render(keep_focus=True), False)[-1]))),
                 self.choice('Color theme', 'Choose Game Mode’s appearance.', ['night', 'dark', 'light'], ['Night', 'Dark', 'Light'],
                             lambda: contract.theme_name(s), set_theme),
+                self.choice(contract.THEME_LINK_LABEL, 'Turn off to choose each interface’s theme separately.', [False, True], ['Off', 'On'],
+                            lambda: bool(s.get('game_mode_theme_linked', True)), lambda v: (contract.link_themes(s, v), GLib.idle_add(lambda: (self.apply_theme(), self.render(keep_focus=True), False)[-1]))),
                 self.choice('Reduce motion', 'Keep strong focus cues with less movement. System accessibility settings are always respected.', [False, True], ['Off', 'On'],
                             lambda: bool(s.get('reduce_motion', False)), lambda v: s.update(reduce_motion=v)),
             ]

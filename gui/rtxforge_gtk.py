@@ -14715,7 +14715,7 @@ class Window(Adw.ApplicationWindow):
             if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
         corners.connect('notify::selected',change_corners);window_style.add(corners);window_style.add(compact)
 
-        theme_row=row('App Theme','Changes only rtxForge. Saved immediately.')
+        theme_row=row('Color theme','Changes only rtxForge. Saved immediately.')
         theme_selector=Adw.ToggleGroup(valign=Gtk.Align.CENTER)
         for key,caption in [('light','Light'),('dark','Dark'),('night','Night')]:
             theme_selector.add(Adw.Toggle(name=key,label=caption))

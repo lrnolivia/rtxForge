@@ -299,11 +299,11 @@ public sealed partial class GameModeView
             [
                 new("Theme", null,
                 [
-                    SettingToggle("Use the same color theme in Desktop and Game Mode", "Turn off to choose each interface’s theme separately.",
-                        () => shell.Settings.GameModeThemeLinked, value => { shell.Settings.LinkGameModeTheme(value); DispatcherQueue.TryEnqueue(ApplySettings); }),
                     Choice("Color theme", "Choose Game Mode’s appearance.", ["night", "dark", "light"], ["Night", "Dark", "Light"],
                         () => shell.Settings.ResolvedGameModeTheme is "light" or "dark" ? shell.Settings.ResolvedGameModeTheme : "night",
                         value => { shell.Settings.SetGameModeTheme(value); DispatcherQueue.TryEnqueue(ApplySettings); }),
+                    SettingToggle("Use the same color theme in Desktop and Game Mode", "Turn off to choose each interface’s theme separately.",
+                        () => shell.Settings.GameModeThemeLinked, value => { shell.Settings.LinkGameModeTheme(value); DispatcherQueue.TryEnqueue(ApplySettings); }),
                     SettingToggle("Reduce motion", "Keep strong focus cues with less movement. Windows accessibility settings are always respected.",
                         () => shell.Settings.ReduceMotion, value => { shell.Settings.ReduceMotion = value; DispatcherQueue.TryEnqueue(ApplySettings); }),
                 ]),

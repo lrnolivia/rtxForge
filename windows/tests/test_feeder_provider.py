@@ -9,7 +9,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKER = r'''
-import importlib.util,json,sys
+import configparser,importlib.util,json,sys
 from pathlib import Path
 root=Path(sys.argv[1]);repo=Path(sys.argv[2])
 sys.path[:0]=[str(repo/'scripts'),str(repo/'windows/engine-host')]
@@ -30,6 +30,8 @@ try:
     case.e=module(host.service.config)
     host.service.hardware=lambda:{'ready':True,'system':'Windows','architecture':'AMD64','reason':'fixture'}
     row=case.game(installed=True);before=case.files(row)
+    original_ini=configparser.ConfigParser()
+    original_ini.read(Path(row['game'])/'ReShade.ini',encoding='utf-8-sig')
     def scan():
         return next(r for r in host.scan({'folders':[row['game']],'runtime_provider':'skynizz'}) if r['game']==row['game'])
     selected=scan()
@@ -41,7 +43,14 @@ try:
     assert case.files(row)==before,'review changed game files'
     host.execute({'token':checked['token']})
     after=case.files(row)
-    assert {name for name in before if before[name]!=after[name]}=={feeder_provider.MODEL}
+    # The host includes reviewed overlay preferences with the model update.
+    # Existing NR/depth tuning must survive that UI configuration change.
+    assert {name for name in before if before[name]!=after[name]}=={feeder_provider.MODEL,'ReShade.ini'}
+    updated_ini=configparser.ConfigParser()
+    updated_ini.read(Path(row['game'])/'ReShade.ini',encoding='utf-8-sig')
+    for section in original_ini.sections():
+        for name,value in original_ini.items(section):
+            assert updated_ini.get(section,name)==value,(section,name,value)
     assert feeder_provider.state(case.e,Path(row['game']))['provider_id']=='feeder'
     assert case.e.load_baseline(Path(row['game'])) is None,'forged native provider baseline'
     assert runtime_updates._owned(case.e,Path(row['game']),Path(row['game'])/'nvngx_dlss.dll')

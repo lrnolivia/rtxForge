@@ -68,6 +68,14 @@ def settings():
     for section,titles in expected.items():
         c.open_settings_section(section)
         assert titles <= {x.get_text() for x in descendants(c.body) if isinstance(x,ui.Gtk.Label)},section
+        nav = [x for x in descendants(c.body.current) if isinstance(x, ui.Gtk.Button) and x.has_css_class('gm-navbtn')]
+        for button in nav:
+            images = [x for x in descendants(button) if isinstance(x, ui.Gtk.Image)]
+            assert all(image.get_pixel_size() == c.theme.px(26) for image in images), section
+        if section == 'Appearance':
+            choices = [x for x in descendants(c.body.current) if isinstance(x, ui.Gtk.Button)
+                       and getattr(x, '_gm_key', '').startswith('choice-')]
+            assert choices[0]._gm_key == 'choice-Color theme', 'Color theme must be first'
     c.open_settings_section('System')
 
 def settings_capture():

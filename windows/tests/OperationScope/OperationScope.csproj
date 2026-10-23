@@ -11,5 +11,6 @@
     <Compile Include="../../RtxForge.Windows/Models/LibraryScope.cs" Link="LibraryScope.cs" />
     <Compile Include="../../RtxForge.Windows/Models/LibraryLocations.cs" Link="LibraryLocations.cs" />
     <Compile Include="../../RtxForge.Windows/Services/ForgeService.cs" Link="ForgeService.cs" />
+    <Compile Include="../../RtxForge.Windows/Services/OverlayShortcut.cs" Link="OverlayShortcut.cs" />
   </ItemGroup>
 </Project>

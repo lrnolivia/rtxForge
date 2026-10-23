@@ -51,7 +51,7 @@ public sealed partial class GameModeView
         list.Children.Add(ui.Group(review.Items.Select(i => (UIElement)ReviewRow(Find(i), i.Title, i.Detail, true, i.Details)), t.Card));
         if (review.Blocked.Count > 0)
         {
-            list.Children.Add(ui.Text($"Skipped · {review.Blocked.Count}", 0.88, weight: FontWeights.SemiBold));
+            list.Children.Add(ui.Heading($"Skipped · {review.Blocked.Count}", 0.88));
             list.Children.Add(ui.Group(review.Blocked.Select(b => (UIElement)ReviewRow(Find(b), b.Title, b.Detail, false, b.Details)), t.Card));
         }
         content.Children.Add(new ScrollViewer { Content = list, MaxHeight = t.Px(t.Compact ? 260 : 380), HorizontalScrollMode = ScrollMode.Disabled });

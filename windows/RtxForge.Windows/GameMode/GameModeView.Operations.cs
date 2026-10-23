@@ -141,13 +141,13 @@ public sealed partial class GameModeView
         foreach (var warning in review.Warnings)
         {
             var note = new StackPanel { Spacing = t.Px(6), Margin = new Thickness(0, t.Px(18), 0, 0) };
-            note.Children.Add(ui.Text("Warning · " + warning.Name, 0.82, t.Danger, FontWeights.SemiBold));
+            note.Children.Add(ui.Heading("Warning · " + warning.Name, 0.82, t.Danger));
             note.Children.Add(ui.Text(warning.Reason, 0.74, t.Fg, wrap: true));
             list.Children.Add(note);
         }
         if (review.Blocked.Count > 0)
         {
-            list.Children.Add(ui.Text($"Skipped · {review.Blocked.Count}", 0.88, weight: FontWeights.SemiBold).With(x => x.Margin = new Thickness(0, t.Px(26), 0, t.Px(14))));
+            list.Children.Add(ui.Heading($"Skipped · {review.Blocked.Count}", 0.88).With(x => x.Margin = new Thickness(0, t.Px(26), 0, t.Px(14))));
             list.Children.Add(ui.Group(review.Blocked.Select(b => (UIElement)ReviewRow(b.Game, b.Name, b.Summary ?? b.Reason, false,
                 b.Summary is null ? null : b.Reason)), t.Card));
         }
@@ -207,7 +207,7 @@ public sealed partial class GameModeView
             thumb.Child = new Border { CornerRadius = new CornerRadius(t.Px(7)), Background = new ImageBrush { ImageSource = image, Stretch = Stretch.UniformToFill } };
         row.Children.Add(thumb);
         var text = new StackPanel { Spacing = t.Px(6), VerticalAlignment = VerticalAlignment.Center };
-        var title = ui.Text(name, 0.9, t.Fg, FontWeights.SemiBold);
+        var title = ui.Heading(name, 0.9, t.Fg);
         text.Children.Add(title);
         text.Children.Add(ui.Text(detail, 0.72, t.Muted, wrap: true));
         if (!string.IsNullOrWhiteSpace(technical))
@@ -316,7 +316,7 @@ public sealed partial class GameModeView
             Root.Children.Add(poster);
             var right = new StackPanel { Spacing = t.Px(12), VerticalAlignment = VerticalAlignment.Center };
             counter = ui.Text("Preparing…", 0.85, t.Muted);
-            title = ui.Text("", 1.3, t.Fg, FontWeights.SemiBold);
+            title = ui.Heading("", 1.3, t.Fg);
             phase = ui.Text("", 0.85, t.Muted);
             bar.MinHeight = t.Px(12);
             bar.Background = GmTheme.B(t.Card);

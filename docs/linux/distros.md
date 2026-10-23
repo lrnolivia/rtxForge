@@ -28,6 +28,6 @@ The container shares your home folder, `/run/media`, `/mnt` and `/var/mnt` (SD c
 - **GPU check.** `nvidia-smi` is used when it works. Otherwise the model and driver version come from `/proc/driver/nvidia`, which is all a container or a minimal driver install provides.
 - **Archives.** DLSS-Unlocked and Skynizz packages are ZIPs read by Python. The y4my `.7z` package uses libarchive, `7z`/`7zz` or `bsdtar`. Arch-based systems, SteamOS included, have `bsdtar` because pacman depends on libarchive.
 - **AppImage without FUSE.** Setup (`install.py`) extracts instead of mounting. To run the AppImage itself on a host with no FUSE, set `APPIMAGE_EXTRACT_AND_RUN=1`.
-- **SteamOS Game Mode.** Closing Steam there ends the session, so use Desktop Mode for installs that need Steam closed, or the Steam-open route, which writes the DLL override into the game's prefix instead of Steam's launch options.
+- **Game Mode (SteamOS, CachyOS, Bazzite).** Installs, repairs and restores work while Steam's Game Mode is running. With Steam open, rtxForge writes the game's DLL override into its own Proton prefix instead of Steam's launch options. The game needs to have run once with Proton, and must not be running. Only non-Steam shortcuts, and restoring a setting an earlier Steam-closed install saved in Steam's launch options, need Steam closed.
 
 None of this establishes NR or MFG in a game on these distributions. Runtime results stay per game and per OS, as in [proton-prerequisites.md](proton-prerequisites.md).

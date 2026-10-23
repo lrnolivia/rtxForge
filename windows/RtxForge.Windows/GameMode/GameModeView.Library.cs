@@ -55,7 +55,7 @@ public sealed partial class GameModeView
         toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var mode = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(28), VerticalAlignment = VerticalAlignment.Center };
-        mode.Children.Add(ui.Text("Features", 0.92, weight: FontWeights.SemiBold).With(x => x.VerticalAlignment = VerticalAlignment.Center));
+        mode.Children.Add(ui.Heading("Features", 0.92).With(x => x.VerticalAlignment = VerticalAlignment.Center));
         mode.Children.Add(ui.Segments(
             [("nr-only", "NR Only", shell.NrOnlyAvailable), ("mfg-only", "MFG Only", shell.Settings.RuntimeProvider != "feeder"), ("nr-mfg", "NR + MFG", shell.Settings.RuntimeProvider != "feeder")],
             shell.Mode, key => { shell.Mode = key; Render(keepFocus: true); }));
@@ -102,14 +102,16 @@ public sealed partial class GameModeView
         foreach (var (key, label) in new[] { ("posters", "Posters"), ("capsules", "Wide Capsule"), ("list", "List") })
         {
             var on = shell.Settings.LibraryView == key;
-            var view = ui.Button(on ? Glyph("", label) : label, () => SetLibraryView(key), on ? GmKind.Card : GmKind.Transparent, 0.8,
+            var labelContent = Glyph("", label);
+            if (!on && labelContent is StackPanel caption && caption.Children.FirstOrDefault() is FontIcon check) check.Opacity = 0;
+            var view = ui.Button(labelContent, () => SetLibraryView(key), on ? GmKind.Active : GmKind.Transparent, 0.8,
                 radius: 8, padding: new Thickness(t.Px(16), t.Px(10), t.Px(16), t.Px(10)), minHeight: t.Compact ? 40 : 48);
             GmUi.Capsule(view);
             ui.Focusable(view, -6);
             Key(view, "view-" + key);
             views.Children.Add(view);
         }
-        var viewSurface = GmUi.Capsule(new Border { Background = GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(12)), Padding = new Thickness(t.Px(4)), Child = views });
+        var viewSurface = GmUi.Capsule(new Border { Background = GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(12)), Padding = new Thickness(t.Px(4)), Child = ui.Selection("library-layout", views, views.Children.OfType<Button>().First(b => b.Name == "gm_view-" + shell.Settings.LibraryView)) });
         Grid.SetColumn(viewSurface, 1);
         subbar.Children.Add(viewSurface);
         var selection = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(4), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
@@ -132,6 +134,7 @@ public sealed partial class GameModeView
 
         // Games.
         var scroller = new ScrollViewer { HorizontalScrollMode = ScrollMode.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        PolishScroll(scroller);
         var available = Math.Max(320, ActualWidth - PageInset * 2 - t.Px(34));
         scroller.Content = games.Count == 0
             ? EmptyLibrary()
@@ -162,6 +165,7 @@ public sealed partial class GameModeView
         subbar.GotFocus += (_, _) => ShowFilters(true);
         scroller.ViewChanged += (_, _) =>
         {
+            if (!ReferenceEquals(libraryScroller, scroller)) return;
             var offset = scroller.VerticalOffset;
             var delta = offset - previousOffset;
             if (changingFilterLayout) { previousOffset = offset; libraryScroll = offset; return; }
@@ -207,13 +211,13 @@ public sealed partial class GameModeView
 
     List<Game> SelectedGames() => shell.Games.Where(g => selectedIds.Contains(g.Id)).ToList();
 
-    void SetLibraryView(string key)
+    void SetLibraryView(string key, bool persist = true)
     {
         shell.Settings.LibraryView = key;
-        shell.Settings.Save();
+        if (persist) shell.Settings.Save();
         libraryScroll = 0;
-        Render();
         pendingFocusKey = "gm_view-" + key;
+        Render();
     }
 
     // ---------- Cards (posters / wide capsules) ----------
@@ -246,13 +250,13 @@ public sealed partial class GameModeView
         var artHeight = wide ? width * 430 / 920 : width * 1.5;
         var art = new Border
         {
-            Width = width, Height = artHeight, CornerRadius = new CornerRadius(t.Px(12)), BorderThickness = new Thickness(t.Px(2)),
+            Width = width, Height = artHeight, CornerRadius = new CornerRadius(t.Px(12)), BorderThickness = new Thickness(t.Px(GmTheme.ArtworkStroke)),
             BorderBrush = GmTheme.B(t.Line), Background = GmTheme.B(t.Card),
         };
         var source = wide ? game.CapsulePath ?? game.PosterPath : game.PosterPath ?? game.CapsulePath;
         var image = GameItem.Image(source);
         art.Child = image is not null
-            ? new Border { CornerRadius = new CornerRadius(t.Px(10)), Background = new ImageBrush { ImageSource = image, Stretch = Stretch.UniformToFill } }
+            ? new Border { CornerRadius = new CornerRadius(t.Px(12 - GmTheme.ArtworkStroke)), Background = new ImageBrush { ImageSource = image, Stretch = Stretch.UniformToFill } }
             : ui.Text(game.Name, 0.8, t.Muted, FontWeights.SemiBold, wrap: true).With(x => { x.HorizontalAlignment = HorizontalAlignment.Center; x.VerticalAlignment = VerticalAlignment.Center; x.TextAlignment = TextAlignment.Center; x.Margin = new Thickness(t.Px(12)); });
         var overlay = new Grid();
         overlay.Children.Add(art);
@@ -276,11 +280,12 @@ public sealed partial class GameModeView
         card.UseSystemFocusVisuals = false;
         card.FocusVisualMargin = new Thickness(-t.Px(5), -t.Px(5), -t.Px(5), title.MinHeight + column.Spacing - t.Px(5));
         card.IsTabStop = true;
-        GmUi.NoLift(card);
-        Drift(card, art);
+        GmMotion.Card(card, t.S);
+        card.Tag = art;
+        if (libraryFocusKey == "gm_game-" + game.Id.GetHashCode().ToString("x")) ReceiveArtwork(art);
         if (!enabled) art.Opacity = 0.5;
         Key(card, "game-" + game.Id.GetHashCode().ToString("x"));
-        _ = DecorateAsync(game, card, art, title, null);
+        _ = DecorateAsync(game, card, art, title, null, source);
         return card;
     }
 
@@ -298,11 +303,14 @@ public sealed partial class GameModeView
     }
 
     /// <summary>Accent only on focus / selection: art stroke and title (neutral when idle).</summary>
-    async Task DecorateAsync(Game game, Control target, Border art, TextBlock title, Border? row)
+    async Task DecorateAsync(Game game, Control target, Border art, TextBlock title, Border? row, string? source)
     {
+        var selected = selecting && selectedIds.Contains(game.Id);
+        if (target is Button button) GmGlow.Selected(button, selected);
+        // Hover must be wired before asynchronous palette analysis; the image light does not need its result.
+        GmGlow.Artwork(target, art, t.GameColors(null).Accent, selected, t, source, ui.ArtworkLight);
         var palette = await ArtAccent.ForGameAsync(game);
         var colors = t.GameColors(palette);
-        var selected = selecting && selectedIds.Contains(game.Id);
         // List rows use the desktop list's accent states exactly (GameItem RowFill / RowTitle / RowText):
         // selected = accent fill with dark accent ink; focused = desktop row-hover title on the normal surface.
         if (row is not null && palette is not null && selected)
@@ -341,45 +349,6 @@ public sealed partial class GameModeView
             check.BorderBrush = GmTheme.B(colors.Accent);
             if (check.Child is FontIcon icon) icon.Foreground = GmTheme.B(colors.Ink);
         }
-    }
-
-    /// <summary>
-    /// Ambient parallax on the focused card: the art drifts slowly inside its
-    /// rounded frame (the brush is slightly over-scaled so no edge ever shows).
-    /// Two periods (6.5 s and 9 s) keep the motion organic. Off with reduced motion.
-    /// </summary>
-    static void Drift(Control card, Border art)
-    {
-        if (art.Child is not Border { Background: ImageBrush brush }) return;
-        var transform = new Microsoft.UI.Xaml.Media.CompositeTransform { CenterX = 0.5, CenterY = 0.5, ScaleX = 1.07, ScaleY = 1.07 };
-        brush.RelativeTransform = transform;
-        Microsoft.UI.Xaml.Media.Animation.Storyboard? story = null;
-        Microsoft.UI.Xaml.Media.Animation.DoubleAnimation Axis(string property, double reach, double seconds)
-        {
-            var animation = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
-            {
-                From = -reach, To = reach, Duration = TimeSpan.FromSeconds(seconds), AutoReverse = true,
-                RepeatBehavior = Microsoft.UI.Xaml.Media.Animation.RepeatBehavior.Forever, EnableDependentAnimation = true,
-                EasingFunction = new Microsoft.UI.Xaml.Media.Animation.SineEase { EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseInOut },
-            };
-            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(animation, transform);
-            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(animation, property);
-            return animation;
-        }
-        card.GotFocus += (_, _) =>
-        {
-            if (card.FocusState == FocusState.Pointer || !GmUi.Animations) return;
-            story = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
-            story.Children.Add(Axis("TranslateX", 0.025, 6.5));
-            story.Children.Add(Axis("TranslateY", 0.018, 9));
-            story.Begin();
-        };
-        card.LostFocus += (_, _) =>
-        {
-            story?.Stop();
-            story = null;
-            transform.TranslateX = transform.TranslateY = 0;
-        };
     }
 
     static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
@@ -447,7 +416,9 @@ public sealed partial class GameModeView
             artCell.Children.Add(check);
             grid.ColumnDefinitions[0].Width = new GridLength(t.Px(144 + 48));
         }
-        artCell.Children.Add(art);
+        var artLight = new Grid { Width = art.Width, Height = art.Height, VerticalAlignment = VerticalAlignment.Center };
+        artLight.Children.Add(art);
+        artCell.Children.Add(artLight);
         grid.Children.Add(artCell);
 
         var title = ui.Text(game.Name, 1.04, t.Fg, FontWeights.SemiBold);
@@ -501,7 +472,7 @@ public sealed partial class GameModeView
         ui.Focusable(row, -6);
         GmUi.NoLift(row);
         Key(row, "game-" + game.Id.GetHashCode().ToString("x"));
-        _ = DecorateAsync(game, row, art, title, surface);
+        _ = DecorateAsync(game, row, art, title, surface, game.CapsulePath ?? game.PosterPath);
         return row;
     }
 

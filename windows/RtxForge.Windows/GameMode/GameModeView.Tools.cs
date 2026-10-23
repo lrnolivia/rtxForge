@@ -113,7 +113,7 @@ public sealed partial class GameModeView
         card.RowDefinitions.Add(new() { Height = new GridLength(1, GridUnitType.Star) });
         card.RowDefinitions.Add(new() { Height = GridLength.Auto });
         var heading = new StackPanel { Spacing = t.Px(4) };
-        heading.Children.Add(ui.Text(name, .92, weight: Microsoft.UI.Text.FontWeights.SemiBold, wrap: true));
+        heading.Children.Add(ui.Heading(name, .92, wrap: true));
         heading.Children.Add(ui.Text(version, .74, t.Muted, wrap: true));
         card.Children.Add(heading);
         var text = ui.P(summary, .8); Grid.SetRow(text, 1); card.Children.Add(text);

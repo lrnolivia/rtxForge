@@ -18,6 +18,21 @@ public enum GmKind { Card, Primary, Danger, Quiet, Transparent, Active, Dlss }
 public sealed partial class GmUi(GmTheme t)
 {
     public GmTheme T => t;
+    readonly Dictionary<string, GmSelection> indicators = [];
+    internal Grid Selection(string key, StackPanel line, Button selected, bool navigation = false)
+    {
+        if (!indicators.TryGetValue(key, out var indicator)) indicators[key] = indicator = new GmSelection();
+        foreach (var button in line.Children.OfType<Button>())
+        {
+            GmGlow.Indicator(button);
+            button.Background = GmTheme.B(Microsoft.UI.Colors.Transparent);
+        }
+        return indicator.Place(line, selected, t, navigation);
+    }
+
+    internal ArtworkLightLayer? ArtworkLight { get; set; }
+    public static FontFamily BodyFont { get; } = new("ms-appx:///Assets/Fonts/RobotoVariable.ttf#Roboto");
+    static FontFamily HeadingFont => (FontFamily)Application.Current.Resources["ForgeHeroFontFamily"];
     public SolidColorBrush FocusBrush { get; } = GmTheme.B(t.Focus);
     static Style Style(string key) => (Style)Application.Current.Resources[key];
 
@@ -25,7 +40,7 @@ public sealed partial class GmUi(GmTheme t)
     {
         var block = new TextBlock
         {
-            Text = text, FontSize = t.Em(em), Foreground = GmTheme.B(color ?? t.Fg),
+            Text = text, FontFamily = BodyFont, FontSize = t.Em(em), Foreground = GmTheme.B(color ?? t.Fg),
             TextWrapping = wrap ? TextWrapping.WrapWholeWords : TextWrapping.NoWrap,
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
@@ -34,10 +49,10 @@ public sealed partial class GmUi(GmTheme t)
         return block;
     }
 
-    public TextBlock H1(string text, double em = 1.62) =>
-        Text(text, em, weight: FontWeights.Bold).With(b => b.CharacterSpacing = -25);
-    public TextBlock H2(string text, double em = 1.27) =>
-        Text(text, em, weight: FontWeights.SemiBold).With(b => b.CharacterSpacing = -20);
+    public TextBlock Heading(string text, double em = 1, Color? color = null, bool wrap = false, int maxLines = 0) =>
+        Text(text, em, color, FontWeights.Normal, wrap, maxLines).With(b => b.FontFamily = HeadingFont);
+    public TextBlock H1(string text, double em = 1.62) => Heading(text, em);
+    public TextBlock H2(string text, double em = 1.27) => Heading(text, em, wrap: true);
     public TextBlock P(string text, double em = 0.85) => Text(text, em, t.Muted, wrap: true);
 
     public FontIcon Icon(string glyph, double em = 1, Color? color = null)
@@ -60,12 +75,12 @@ public sealed partial class GmUi(GmTheme t)
         {
             GmKind.Primary => (Accent, AccentInk),
             GmKind.Danger => (t.DangerBg, t.Danger),
-            GmKind.Quiet or GmKind.Transparent => (Microsoft.UI.Colors.Transparent, t.Fg),
+            GmKind.Quiet or GmKind.Transparent => (t.Card, t.Fg),
             GmKind.Active => (t.Active, t.ActiveFg),
             GmKind.Dlss => (t.DlssSurface, t.DlssInk),
             _ => (t.Card, t.Fg),
         };
-        if (!enabled) (bg, fg) = (kind is GmKind.Quiet or GmKind.Transparent ? Microsoft.UI.Colors.Transparent : t.Disabled, t.DisabledFg);
+        if (!enabled) (bg, fg) = (t.Disabled, t.DisabledFg);
         var button = new Button
         {
             Style = Style("GmButtonStyle"),
@@ -73,6 +88,7 @@ public sealed partial class GmUi(GmTheme t)
             Background = GmTheme.B(bg),
             Foreground = GmTheme.B(fg),
             FontSize = t.Em(em),
+            FontFamily = BodyFont,
             FontWeight = kind == GmKind.Primary ? new FontWeight(650) : new FontWeight(550),
             CornerRadius = new CornerRadius(t.Px(radius)),
             Padding = padding ?? new Thickness(t.Px(kind == GmKind.Quiet ? 16 : 24), t.Px(kind == GmKind.Quiet ? 12 : 14),
@@ -87,7 +103,10 @@ public sealed partial class GmUi(GmTheme t)
             button.BorderBrush = GmTheme.B(t.DlssBorder);
             button.BorderThickness = new Thickness(t.Px(2));
         }
+        if (radius == 32) Capsule(button);
         Focusable(button);
+        GmMotion.Attach(button);
+        GmGlow.Attach(button, t, FocusBrush, kind == GmKind.Active, ArtworkLight);
         if (click is not null) button.Click += (_, _) => click();
         if (name is not null) Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, name);
         return button;
@@ -109,7 +128,7 @@ public sealed partial class GmUi(GmTheme t)
     /// </summary>
     public static TextBlock PillText(string text) => new()
     {
-        Text = text, TextTrimming = TextTrimming.CharacterEllipsis, TextLineBounds = TextLineBounds.Tight, VerticalAlignment = VerticalAlignment.Center,
+        Text = text, FontFamily = BodyFont, TextTrimming = TextTrimming.CharacterEllipsis, TextLineBounds = TextLineBounds.Tight, VerticalAlignment = VerticalAlignment.Center,
     };
 
     static object Label(string text, GmKind kind) => PillText(text);
@@ -130,53 +149,30 @@ public sealed partial class GmUi(GmTheme t)
         control.FocusVisualPrimaryBrush = FocusBrush;
         control.FocusVisualPrimaryThickness = new Thickness(t.Px(t.IsLight ? 1.25 : 1.75));
         control.FocusVisualSecondaryThickness = new Thickness(0);
-        control.FocusVisualMargin = new Thickness(-t.Px(offset + 2));
+        control.FocusVisualMargin = new Thickness(control is Microsoft.UI.Xaml.Controls.Button ? t.Px(2) : -t.Px(offset + 2));
         control.IsTabStop = true;
     }
 
     /// <summary>Whether Windows animations are on (Settings › Accessibility › Visual effects).</summary>
-    public static bool Animations => new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
-
-    /// <summary>
-    /// Controller/keyboard focus lifts the element: it grows (prototype
-    /// scale(1.025), cards more) and casts a shadow. Pointer focus does not
-    /// lift; reduced motion keeps only the shadow.
-    /// </summary>
-    public void Lift(UIElement element, double scale = 1.025, float depth = 24)
-    {
-        element.ScaleTransition = new Vector3Transition { Duration = TimeSpan.FromMilliseconds(150) };
-        element.TranslationTransition = new Vector3Transition { Duration = TimeSpan.FromMilliseconds(150) };
-        if (!t.IsLight) element.Shadow ??= new ThemeShadow();
-        void Set(bool on)
-        {
-            if (element is FrameworkElement fe) element.CenterPoint = new System.Numerics.Vector3((float)fe.ActualWidth / 2, (float)fe.ActualHeight / 2, 0);
-            var grow = on && Animations ? (float)scale : 1f;
-            element.Scale = new System.Numerics.Vector3(grow, grow, 1);
-            element.Translation = new System.Numerics.Vector3(0, 0, on ? t.IsLight ? Math.Min(depth, 8) : depth : 0);
-        }
-        element.GotFocus += (_, _) => Set(element is Control c && c.FocusState != FocusState.Pointer);
-        element.LostFocus += (_, _) => Set(false);
-    }
+    public static bool Animations => GmMotion.Enabled;
 
     /// <summary>No grow or shadow on focus (rows that sit edge to edge).</summary>
     public static void NoLift(UIElement element)
     {
-        element.ScaleTransition = null;
-        element.TranslationTransition = null;
+        GmMotion.Flat(element);
         element.Shadow = null;
-        element.GotFocus += (_, _) => { element.Scale = System.Numerics.Vector3.One; element.Translation = System.Numerics.Vector3.Zero; };
     }
 
     /// <summary>Rows inside a rounded group: inner, rounded focus ring; no lift (would overlap neighbours).</summary>
     public void RowFocus(Button button)
     {
+        GmMotion.Flat(button);
         Focusable(button, -8);
         // Square: rows sit edge to edge, and the group's own corners frame the list.
         button.CornerRadius = new CornerRadius(0);
-        button.ScaleTransition = null;
-        button.TranslationTransition = null;
+        button.FocusVisualMargin = new Thickness(t.Px(6));
+        button.FocusVisualPrimaryThickness = new Thickness(t.Px(1));
         button.Shadow = null;
-        button.GotFocus += (_, _) => { button.Scale = System.Numerics.Vector3.One; button.Translation = System.Numerics.Vector3.Zero; };
     }
 
     /// <summary>Menu focus adds a surface and brighter ink; selection colours remain owned by the page.</summary>
@@ -239,12 +235,20 @@ public sealed partial class GmUi(GmTheme t)
     {
         var stack = new StackPanel();
         var list = rows.ToList();
+        var entries = new List<UIElement>();
         for (var i = 0; i < list.Count; i++)
         {
-            stack.Children.Add(list[i]);
-            if (i < list.Count - 1) stack.Children.Add(new Border { Height = 1, Background = GmTheme.B(t.Line) });
+            if (list[i] is Microsoft.UI.Xaml.Controls.Button row && row.CornerRadius.Equals(new CornerRadius(0)))
+                row.CornerRadius = new CornerRadius(i == 0 ? t.Px(16) : 0, i == 0 ? t.Px(16) : 0,
+                    i == list.Count - 1 ? t.Px(16) : 0, i == list.Count - 1 ? t.Px(16) : 0);
+            entries.Add(list[i]);
+            if (i < list.Count - 1) entries.Add(new Border { Height = 1, Background = GmTheme.B(t.Line) });
         }
-        return new Border { Background = GmTheme.B(background ?? t.Panel), CornerRadius = new CornerRadius(t.Px(16)), Child = stack };
+        UIElement content;
+        if (list.Count > 40)
+            content = new ItemsRepeater { ItemsSource = entries, ItemTemplate = new GmElementFactory(), Layout = new StackLayout(), VerticalCacheLength = .5 };
+        else { foreach (var entry in entries) stack.Children.Add(entry); content = stack; }
+        return new Border { Background = GmTheme.B(background ?? t.Panel), CornerRadius = new CornerRadius(t.Px(16)), Child = content };
     }
 
     /// <summary>.rf-preference: title (+ description) with a value or control on the right.</summary>
@@ -304,12 +308,11 @@ public sealed partial class GmUi(GmTheme t)
             minHeight: t.Compact ? minHeight * 0.8 : minHeight);
         button.HorizontalAlignment = HorizontalAlignment.Stretch;
         button.HorizontalContentAlignment = HorizontalAlignment.Stretch;
-        if (!enabled) button.Background = GmTheme.B(Microsoft.UI.Colors.Transparent);
         RowFocus(button);   // ring inside the row: rows sit edge to edge in a rounded group
         if (!danger)
         {
             MenuFocus(button);
-            button.GotFocus += (_, _) => { if (button.FocusState != FocusState.Pointer) titleText.Foreground = GmTheme.B(t.ActiveFg); };
+            button.GotFocus += (_, _) => { if (button.FocusState != FocusState.Pointer) titleText.Foreground = button.Foreground; };
             button.LostFocus += (_, _) => titleText.Foreground = GmTheme.B(enabled ? t.Fg : t.DisabledFg);
         }
         return button;
@@ -440,26 +443,38 @@ public sealed partial class GmUi(GmTheme t)
             Focusable(button, -6);
             line.Children.Add(button);
         }
-        return Capsule(new Border { Background = GmTheme.B(t.Card), CornerRadius = new CornerRadius(t.Px(12)), Padding = new Thickness(t.Px(4)), Child = line });
+        return Capsule(new Border { Background = GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(12)), Padding = new Thickness(t.Px(4)), Child = Selection("segments:" + string.Join("/", items.Select(i => i.Key)), line, line.Children.OfType<Button>().ElementAt(Math.Max(0, items.ToList().FindIndex(i => i.Key == selected)))) });
     }
 
     public static Border Spacer(double height) => new() { Height = height };
 
     /// <summary>
-    /// A true pill (.rf-badge, .rf-segments): corners always half the element's height, so the
-    /// ends stay round at every UI scale instead of a fixed radius turning into a rounded rectangle.
+    /// A true pill: equal circular end caps, sized after layout at every UI scale.
+    /// An explicit corner override by the caller keeps its own shape.
     /// </summary>
     public static T Capsule<T>(T element) where T : FrameworkElement
     {
-        void Round(double height)
+        CornerRadius CurrentRadius() => element switch
         {
-            var radius = new CornerRadius(Math.Max(0, height / 2));
+            Border border => border.CornerRadius,
+            Control control => control.CornerRadius,
+            _ => new CornerRadius(0),
+        };
+        var appliedRadius = CurrentRadius();
+        void Round(double width, double height)
+        {
+            if (width <= 0 || height <= 0 || !CurrentRadius().Equals(appliedRadius)) return;
+            var radius = new CornerRadius(Math.Min(width, height) / 2);
             if (element is Border border) border.CornerRadius = radius;
             else if (element is Control control) control.CornerRadius = radius;
+            appliedRadius = radius;
         }
-        element.SizeChanged += (_, e) => Round(e.NewSize.Height);
+        element.SizeChanged += (_, e) => Round(e.NewSize.Width, e.NewSize.Height);
+        Round(element.ActualWidth, element.ActualHeight);
         return element;
     }
+
+
 }
 
 /// <summary>A focus target Left/Right adjusts instead of moving focus.</summary>

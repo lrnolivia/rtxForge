@@ -91,6 +91,20 @@ def section_motion():
  c.open('library')
 
 
+def action_wording():
+ w=app.window;c=w.couch
+ c.open('library');w.select_all(False);w.controls()
+ def compare():
+  for desktop,game_mode in ((w.install_all,'lib-install'),(w.uninstall_all,'lib-restore')):
+   assert desktop.text_label.get_text() in labels(key(game_mode)),(desktop.text_label.get_text(),labels(key(game_mode)))
+ compare()
+ game=next(g for g in c.filtered_games() if not g.get('blocked'))
+ w.selected_game_ids={game['game']};w.controls()
+ c.selecting=True;c.selected={game['game']};c.render()
+ compare()
+ c.selecting=False;c.selected.clear();w.select_all(False);c.render()
+
+
 def menu():
  c=app.window.couch
  c.navigate('menu');assert c.modals and 'Exit App' in labels(c.modal_layer)
@@ -207,7 +221,7 @@ for width,height in ((1280,820),(1920,1080),(1000,700)):
  steps+=[wait_review,lambda tag=tag:capture(f'gm-review-{tag}.png'),confirm,lambda tag=tag:capture(f'gm-progress-{tag}.png'),finish,lambda tag=tag:capture(f'gm-done-{tag}.png'),wait_done]
 
 if os.environ.get('RTXFORGE_GAME_MODE_MOTION_ONLY'):
- steps=[setup,rapid_navigation,virtual_library,section_motion,menu,details,back_to_library]
+ steps=[setup,rapid_navigation,virtual_library,section_motion,action_wording,menu,details,back_to_library]
 def step():
  try:
   if steps:steps.pop(0)();GLib.timeout_add(500,step)

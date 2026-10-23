@@ -12824,7 +12824,8 @@ class Window(Adw.ApplicationWindow):
         apply.set_valign(
             Gtk.Align.CENTER
         )
-        unknown_presets=[key for key in widgets if game.get(key) is None and widgets[key].get_sensitive()]
+        unknown_presets=[key for key in widgets if game.get(key) is None and widgets[key].get_sensitive()
+                         and not (key=='feature_controls' and widgets[key].legacy)]
         if installed and unknown_presets:
             presets_body.append(label('Custom or unreadable preset values found. Reset explicitly to library defaults before editing; existing values are preserved.','dim-label'))
         preset_actions.append(apply)

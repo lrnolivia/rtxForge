@@ -38,7 +38,7 @@ class AdaMfgTest(unittest.TestCase):
                                ('manual', 'BlueClient/Binaries/Win64/inZOI-Win64-Shipping.exe'),
                                ('manual', 'BlueClient\\Binaries\\Win64\\inZOI-Win64-Shipping.exe')]:
                 game = SimpleNamespace(appid=appid, exe=exe, target_dir=target)
-                with self.subTest(appid=appid, exe=exe), self.assertRaisesRegex(t.Refusal, "isn't safe in inZOI"):
+                with self.subTest(appid=appid, exe=exe), self.assertRaisesRegex(t.Refusal, "isn't supported in this game"):
                     provider.check_target(e, game, None)
                 self.assertEqual(list(target.iterdir()), [])
             provider.check_target(e, SimpleNamespace(appid='other', exe='game.exe', target_dir=target), None)

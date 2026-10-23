@@ -328,7 +328,8 @@ def configure(e, source, saved=None, mode='nr-only', mfg_multiplier='auto', game
         if (preset := getattr(e, 'Y4MY_PROVIDER', {}).get('nr_preset')) is not None:
             text = e.set_ini_value(text, 'DlssNr', 'Preset', str(preset))
     if mode in ('nr-mfg', 'mfg-only'):
-        unlock = 'false' if component else 'true'
+        # A component owns the unlock; RTX 50 needs none (its own MFG).
+        unlock = 'false' if component or getattr(e, 'Y4MY_PROVIDER', {}).get('mfg_native') else 'true'
         for section, values in {'DLSSG':{'AdaMfgUnlock':unlock,'AdaBlackwellKernels':unlock,'AmpereMfgUnlock':'false'},
                                 'FrameGen':{'Enabled':'false','FGInput':'nofg','FGOutput':'nofg','FGNvngxReplacement':'None'}}.items():
             for key, value in values.items():
@@ -437,7 +438,7 @@ def native_nr_refusal(exe, appid=None):
     # A routing hint (Feeder NR covers the DX11 build), never a block: other
     # routes reach these games, so the install review stays the user's call.
     if str(appid) == '1086940' or Path(exe or '').name.casefold() in {'bg3.exe', 'bg3_dx11.exe'}:
-        return 'Experimental here: Baldur’s Gate 3 runs DirectX 11 or Vulkan, and this NR hook was tested on DirectX 12.'
+        return 'Experimental: this game runs DirectX 11 or Vulkan, and this NR hook was tested on DirectX 12.'
     return ''
 
 

@@ -70,22 +70,24 @@ public sealed class OperationDialog
     }
 
     /// <summary>"Install Features" presets step that precedes the review (Linux: _presets_confirmed).</summary>
-    public static async Task<Tuning?> AskPresetsAsync(MainWindow shell, Tuning initial, Game? game = null)
+    public static async Task<Tuning?> AskPresetsAsync(MainWindow shell, Tuning initial, Game? game = null, IReadOnlyList<Game>? targets = null)
     {
+        // Show only what these games can get: NR only when none of them has an MFG route.
+        var mode = targets is { Count: > 0 } ? GameOverview.Mode(targets, shell.Mode) : shell.Mode;
         var dialog = shell.NewDialog();
         await AccentResources.ApplyAsync(dialog.Resources, game);
         dialog.Title = "Install Features";
         var editorWidth = Math.Max(280, Math.Min(760, ((shell.Content as FrameworkElement)?.XamlRoot?.Size.Width ?? 1120) - 120));
         dialog.Resources["ContentDialogMaxWidth"] = 840.0;
         var tuning = new PresetControlsView(initial, shell.Settings.OverlayControls == "classic", embedded: true, installation: true) { Width = editorWidth };
-        tuning.SetMode(shell.Mode, legacy: shell.Settings.RuntimeProvider != "skynizz", dynamicSupported: shell.Settings.DynamicMfgSupported);
+        tuning.SetMode(mode, legacy: shell.Settings.RuntimeProvider != "skynizz", dynamicSupported: shell.Settings.DynamicMfgSupported);
         var body = new StackPanel { Spacing = 16 };
         body.Children.Add(Prefs.Label("Choose startup settings. You can adjust them later."));
         var feeder = shell.Settings.RuntimeProvider == "feeder";
         if (!feeder) body.Children.Add(tuning);
         var startup = new CheckBox { Content = "Enable NR on launch", IsChecked = shell.Settings.NrOnLaunch };
         var separateStartup = shell.Settings.RuntimeProvider != "skynizz";
-        if (separateStartup && shell.Mode != "mfg-only") body.Children.Add(startup);
+        if (separateStartup && mode != "mfg-only") body.Children.Add(startup);
         dialog.Content = new ScrollViewer { Content = body, HorizontalScrollMode = ScrollMode.Disabled,
             MaxHeight = Math.Max(280, ((shell.Content as FrameworkElement)?.XamlRoot?.Size.Height ?? 900) - 280) };
         dialog.PrimaryButtonText = "Review games";

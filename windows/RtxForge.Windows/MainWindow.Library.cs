@@ -15,7 +15,7 @@ public sealed partial class MainWindow
         if (package is null or "") Settings.GamePackages.Remove(game.Id);
         else Settings.GamePackages[game.Id] = package;
         SaveSettings();
-        ShowToast(package is null or "" ? $"{game.Name} uses the library package." : $"{game.Name} uses {ForgeSettings.PackageName(package)}.");
+        ShowToast(package is null or "" ? $"{game.Name} uses the library package." : $"{game.Name} uses {Settings.PackageName(package)}.");
         try { await ScanAsync(); }
         catch (InvalidOperationException error) { ShowToast("Could not refresh your library: " + error.Message); }
     }

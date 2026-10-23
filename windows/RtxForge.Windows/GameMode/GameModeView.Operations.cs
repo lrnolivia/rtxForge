@@ -38,7 +38,7 @@ public sealed partial class GameModeView
         await UseGameAccentAsync(Controls.AccentResources.Single(targets));
         if (operation == "install" && values is null)
         {
-            values = await AskPresetsAsync(targets.Count == 1 ? shell.GameTuning(targets[0]) : shell.Settings.Presets);
+            values = await AskPresetsAsync(targets.Count == 1 ? shell.GameTuning(targets[0]) : shell.Settings.Presets, GameOverview.Mode(targets, shell.Mode));
             if (values is null) return;
         }
         values ??= shell.Settings.Presets;
@@ -100,11 +100,11 @@ public sealed partial class GameModeView
         "install" => "Installing", "uninstall" => "Restoring", "update-dlss" => "Updating", _ => "Applying",
     };
 
-    Task<Tuning?> AskPresetsAsync(Tuning initial)
+    Task<Tuning?> AskPresetsAsync(Tuning initial, string mode)
     {
         var done = new TaskCompletionSource<Tuning?>();
         var (rows, value) = PresetRows(initial, legacy: shell.Settings.RuntimeProvider != "skynizz", embedded: true,
-            dynamicSupported: shell.Settings.DynamicMfgSupported, installation: true);
+            dynamicSupported: shell.Settings.DynamicMfgSupported, installation: true, mode: mode);
         var content = new StackPanel { Spacing = t.Px(20) };
         content.Children.Add(ui.P($"{ProviderName()} · Choose startup settings. You can adjust them later.", 0.8));
         if (shell.Settings.RuntimeProvider != "feeder")
@@ -115,7 +115,7 @@ public sealed partial class GameModeView
         }
         var startup = new CheckBox { Content = "Enable NR on launch", IsChecked = shell.Settings.NrOnLaunch };
         var separateStartup = shell.Settings.RuntimeProvider != "skynizz";
-        if (separateStartup && shell.Mode != "mfg-only") content.Children.Add(startup);
+        if (separateStartup && mode != "mfg-only") content.Children.Add(startup);
         void Cancel() { CloseModal(); done.TrySetResult(null); }
         var cancel = ui.Button("Cancel", Cancel, GmKind.Card, 0.92);
         var next = ui.Button("Review games", () => { CloseModal(); done.TrySetResult(separateStartup ? value() with { NrOnLaunch = startup.IsChecked == true } : value()); }, GmKind.Primary, 0.92);

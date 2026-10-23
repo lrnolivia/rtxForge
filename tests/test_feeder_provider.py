@@ -178,10 +178,32 @@ class FeederTest(unittest.TestCase):
         row['anti_cheat'] = True
         self.assertNotIn('feeder_available', feeder.expand_rows(self.e, [row])[0])
         row['anti_cheat'] = False
-        self.e.pe_imported_dlls = lambda exe: {'d3d12.dll'}
+        self.e.pe_imported_dlls = lambda exe: {'vulkan-1.dll'}
         found = feeder.expand_rows(self.e, [row])[0]
         self.assertNotIn('feeder_available', found)
         self.assertEqual(found['blocked'], 'Original reason')
+
+    def test_directx12_games_without_dlss_get_an_unverified_feeder_route(self):
+        row = self.game('dx12') | {'blocked': 'Original reason', 'native_dlss': False}
+        self.e.pe_imported_dlls = lambda exe: {'d3d12.dll', 'dxgi.dll'}
+        found = feeder.expand_rows(self.e, [row])[0]
+        self.assertTrue(found['feeder_available'])
+        self.assertEqual(found['nr_route_note'], 'Feeder NR · DirectX 12 · not verified · NR only')
+        self.assertEqual(found['blocked'], '')
+        # Feeder's DirectX 12 session refuses a second DLSS runtime on the game's device.
+        found = feeder.expand_rows(self.e, [row | {'native_dlss': True}])[0]
+        self.assertNotIn('feeder_available', found)
+
+    def test_packed_executables_are_read_for_the_dlls_they_mention(self):
+        row = self.game('packed')
+        exe = Path(row['game']) / row['exe']
+        exe.write_bytes(pe(b'\0LoadLibrary\0D3D12.dll\0'))
+        self.e.pe_imported_dlls = lambda exe: {'Activation64.dll'}
+        self.assertEqual(feeder.graphics_apis(self.e, exe), {'d3d12'})
+        exe.write_bytes(pe(b'\0d3d11.dll\0d3d12.dll\0'))
+        self.assertEqual(feeder.graphics_apis(self.e, exe), {'d3d11', 'd3d12'})
+        exe.write_bytes(pe())
+        self.assertEqual(feeder.graphics_apis(self.e, exe), set())
 
     def test_nr_starts_off_unless_enabled_on_launch(self):
         row = self.game('startup-default')
@@ -348,8 +370,10 @@ class FeederTest(unittest.TestCase):
         self.e._running_processes_under_root = lambda root: ['game.exe']
         self.assertFalse(self.prepare(row)['rows'])
         self.e._running_processes_under_root = lambda root: []
-        self.e.pe_imported_dlls = lambda exe: {'d3d12.dll'}
+        self.e.pe_imported_dlls = lambda exe: {'vulkan-1.dll'}
         self.assertFalse(self.prepare(row)['rows'])
+        self.e.pe_imported_dlls = lambda exe: {'d3d12.dll'}
+        self.assertFalse(self.prepare(row | {'native_dlss': True})['rows'])
         self.e.pe_imported_dlls = lambda exe: {'d3d11.dll'}
         (Path(row['game']) / 'OptiScaler.ini').write_text('[Other]\nkeep=true\n')
         self.assertFalse(self.prepare(row)['rows'])

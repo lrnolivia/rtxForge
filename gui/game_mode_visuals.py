@@ -240,6 +240,15 @@ class ArtworkLight(Gtk.Widget):
         scale = 1 + (.022 * focus if owner._card else 0) - (0 if owner._flat else .018) * press
         lift = -3 * unit * focus if owner._card else 0
         cx, cy = owner_bounds.get_x() + owner.get_width() / 2, owner_bounds.get_y() + owner.get_height() / 2
+        clips = 0
+        ancestor = owner.get_parent()
+        while ancestor is not None:
+            if isinstance(ancestor, Gtk.ScrolledWindow):
+                valid, viewport = ancestor.compute_bounds(self)
+                if valid:
+                    snapshot.push_clip(viewport)
+                    clips += 1
+            ancestor = ancestor.get_parent()
         snapshot.save()
         snapshot.translate(Graphene.Point().init(cx, cy + lift))
         snapshot.scale(scale, scale)
@@ -247,3 +256,5 @@ class ArtworkLight(Gtk.Widget):
         snapshot.translate(Graphene.Point().init(bounds.get_x() - cx - bleed, bounds.get_y() - cy - bleed))
         self._node.snapshot(snapshot, width + 2 * bleed, height + 2 * bleed)
         snapshot.restore()
+        for _ in range(clips):
+            snapshot.pop()

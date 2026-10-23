@@ -254,6 +254,7 @@ public sealed partial class GameModeView : UserControl
         header.ColumnDefinitions.Clear();
         header.Background = page == "details" ? GmTheme.B(t.Window) : null;
         header.Height = t.Px(t.Compact ? 92 : 114);
+        header.Margin = new Thickness(0, t.Px(12), 0, 0);
         header.Padding = new Thickness(t.Px(56), t.Px(t.Compact ? 10 : 14), t.Px(56), t.Px(t.Compact ? 10 : 14));
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });

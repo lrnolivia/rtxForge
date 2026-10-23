@@ -28,6 +28,7 @@ sealed class ArtworkLightLayer : Canvas
     int generation;
     Vector2 lastSize;
     float level = -1;
+    Microsoft.UI.Xaml.Media.RectangleGeometry? viewportClip;
 
     public ArtworkLightLayer()
     {
@@ -204,6 +205,7 @@ sealed class ArtworkLightLayer : Canvas
         if (current is not { } entry || image is null) return;
         var art = entry.Artwork;
         if (!art.IsLoaded || art.ActualWidth <= 0 || art.ActualHeight <= 0) return;
+        ClipToViewport(entry.Target);
         var owner = RestPoint(entry.Target);
         var local = art.TransformToVisual(entry.Target).TransformPoint(new(0, 0));
         var point = new global::Windows.Foundation.Point(owner.X + local.X, owner.Y + local.Y);
@@ -218,6 +220,39 @@ sealed class ArtworkLightLayer : Canvas
             GmMotion.Follow(entry.Target, light, offset,
                 new((float)owner.X + (float)entry.Target.ActualWidth / 2 - offset.X,
                     (float)owner.Y + (float)entry.Target.ActualHeight / 2 - offset.Y, 0));
+        }
+    }
+
+    void ClipToViewport(FrameworkElement target)
+    {
+        global::Windows.Foundation.Rect? clip = null;
+        for (DependencyObject? parent = target; parent is not null; parent = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(parent))
+        {
+            if (parent is not ScrollViewer scroll) continue;
+            var viewport = Presenter(scroll) as FrameworkElement ?? scroll;
+            var rect = viewport.TransformToVisual(Artwork).TransformBounds(new(0, 0, viewport.ActualWidth, viewport.ActualHeight));
+            if (clip is { } previous)
+            {
+                var left = Math.Max(previous.X, rect.X); var top = Math.Max(previous.Y, rect.Y);
+                rect = new(left, top, Math.Max(0, Math.Min(previous.Right, rect.Right) - left),
+                    Math.Max(0, Math.Min(previous.Bottom, rect.Bottom) - top));
+            }
+            clip = rect;
+        }
+        if (clip is not { } bounds) { Artwork.Clip = null; return; }
+        viewportClip ??= new Microsoft.UI.Xaml.Media.RectangleGeometry();
+        if (viewportClip.Rect != bounds) viewportClip.Rect = bounds;
+        if (!ReferenceEquals(Artwork.Clip, viewportClip)) Artwork.Clip = viewportClip;
+
+        static ScrollContentPresenter? Presenter(DependencyObject root)
+        {
+            for (var i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(root); i++)
+            {
+                var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(root, i);
+                if (child is ScrollContentPresenter presenter) return presenter;
+                if (Presenter(child) is { } nested) return nested;
+            }
+            return null;
         }
     }
 

@@ -176,7 +176,8 @@ def stylesheet(t):
 .gm .gm-poster {{ border: {px(visuals.ARTWORK_STROKE)}px solid {c['line']}; border-radius: {px(10)}px; background: {c['card']}; }}
 .gm .gm-gametitle {{ font-family: "Bakbak One"; font-size: {em(1.35 if t.compact else 1.65)}px; }}
 .gm button.gm-back {{ background: alpha(#121212,0.86); color: white; border-radius: {px(12)}px; padding: {px(10)}px {px(18)}px; font-size: {em(0.78)}px; }}
-.gm button.gm-navbtn {{ background: {c['card']}; border-radius: {px(12)}px; padding: {px(18)}px {px(24)}px; font-size: {em(0.92)}px; }}
+.gm button.gm-navbtn {{ background: transparent; border-radius: {px(12)}px; padding: {px(18)}px {px(24)}px; font-size: {em(0.92)}px; }}
+.gm button.gm-navbtn:hover, .gm button.gm-navbtn:focus-visible {{ background: {c['card']}; }}
 .gm button.gm-navbtn.on {{ background: {c['card']}; }}
 .gm .gm-details-rail button.gm-navbtn {{ padding: {px(12)}px {px(18)}px; min-height: {px(46 if t.compact else 60) - px(24)}px; font-size: {em(.88)}px; }}
 .gm button.gm-tile {{ background: {c['card']}; border-radius: {px(14)}px; padding: {px(20)}px; min-height: {px(116 if not t.compact else 90) - px(40)}px; }}
@@ -818,6 +819,7 @@ class GameMode(Gtk.Overlay, GameModeTools):
     def render_header(self):
         t = self.theme
         self.header.set_size_request(-1, t.px(92 if t.compact else 114))
+        self.header.set_margin_top(t.px(12))
         for side in ('start', 'end'):
             getattr(self.header, 'set_margin_' + side)(t.px(56))
         brand = Gtk.Box(spacing=t.px(16))

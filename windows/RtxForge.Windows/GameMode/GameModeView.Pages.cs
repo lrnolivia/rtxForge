@@ -159,7 +159,7 @@ public sealed partial class GameModeView
                 minHeight: t.Compact ? 56 : 70);
             button.HorizontalAlignment = HorizontalAlignment.Stretch;
             button.HorizontalContentAlignment = HorizontalAlignment.Left;
-            ui.MenuFocus(button);
+            ui.Sidebar(button, active);
             GmGlow.Selected(button, active);
             Key(button, "set-" + section);
             if (active && initialFocus is null) initialFocus = button;

@@ -105,7 +105,26 @@ def compact():
     assert c.hints.get_opacity()==1
     assert w.capture('layout-compact-top.png')
 
+
+def header_size(width, height):
+    app.window.set_display_preference('ui_scale', 130)
+    app.window.set_default_size(width, height)
+
+
+def header_clearance():
+    c = app.window.couch
+    brand, tabs, menu = c.header.get_start_widget(), c.header.get_center_widget(), c.header.get_end_widget()
+    bounds = [widget.compute_bounds(c.header) for widget in (brand, tabs, menu)]
+    assert all(valid for valid, _ in bounds)
+    left, nav, right = [rect for _, rect in bounds]
+    gap = c.theme.px(20)
+    assert left.get_x() + left.get_width() + gap <= nav.get_x(), ('brand/nav collision', c.layout_width, c.theme.header_density)
+    assert nav.get_x() + nav.get_width() + gap <= right.get_x(), ('nav/menu collision', c.layout_width, c.theme.header_density)
+    assert len([x for x in c.focusable_widgets(tabs) if getattr(x, '_gm_key', '').startswith('tab-')]) == 5
+
 steps=[start,native_scale,poster,poster_capture,bottom,bottom_capture,settings,settings_capture,panel,compact]
+for width, height in ((960, 540), (1280, 720), (1920, 1080)):
+    steps.extend([lambda w=width, h=height: header_size(w, h), header_clearance])
 def step():
     try:
         if steps:steps.pop(0)();GLib.timeout_add(1800,step)

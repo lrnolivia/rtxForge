@@ -250,6 +250,7 @@ public sealed partial class GameModeView : UserControl
 
     void RenderHeader()
     {
+        var tight = t.HeaderDensity > 0;
         header.Children.Clear();
         header.ColumnDefinitions.Clear();
         header.Background = page == "details" ? GmTheme.B(t.Window) : null;
@@ -261,16 +262,16 @@ public sealed partial class GameModeView : UserControl
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
         // Branding is informational. The menu has its own explicit control.
-        var brand = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(16),
+        var brand = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(tight ? 10 : 16),
             HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false };
         brand.Children.Add(new Image
         {
             Source = new Microsoft.UI.Xaml.Media.Imaging.SvgImageSource(new Uri("ms-appx:///Assets/rtxforge-mark.svg")),
-            Width = t.Px(t.Compact ? 48 : 64), Height = t.Px(t.Compact ? 48 : 64),
+            Width = t.Px(tight ? 40 : t.Compact ? 48 : 64), Height = t.Px(tight ? 40 : t.Compact ? 48 : 64),
         });
-        brand.Children.Add(new TextBlock
+        if (t.HeaderDensity < 2) brand.Children.Add(new TextBlock
         {
-            Text = "rtxForge", FontSize = t.Em(t.Compact ? 1.4 : 1.62), VerticalAlignment = VerticalAlignment.Center,
+            Text = "rtxForge", FontSize = t.Em(tight ? 1.2 : t.Compact ? 1.4 : 1.62), VerticalAlignment = VerticalAlignment.Center,
             FontFamily = (FontFamily)Application.Current.Resources["ForgeHeroFontFamily"], Foreground = GmTheme.B(t.Fg),
         });
         header.Children.Add(brand);
@@ -303,7 +304,8 @@ public sealed partial class GameModeView : UserControl
     Border BuildTabs()
     {
         tabButtons.Clear();
-        var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12) };
+        var tight = t.HeaderDensity > 0;
+        var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(tight ? 8 : 12) };
         foreach (var (key, label, glyph) in new[] { ("library", "Library", "\uE7FC"), ("presets", "Presets", "\uE9F5"),
             ("packages", "Packages", "\uE7B8"), ("extras", "Extras", "\uE90F"), ("settings", "Settings", "\uE713") })
         {
@@ -312,7 +314,7 @@ public sealed partial class GameModeView : UserControl
             var icon = (FontIcon)caption.Children[0];
             icon.FontSize = t.Em(1.08); icon.Width = t.Px(28);
             var tab = ui.Button(caption, () => Open(key), active ? GmKind.Active : GmKind.Transparent, .92, radius: 32,
-                padding: new Thickness(t.Px(24), t.Px(12), t.Px(24), t.Px(12)), minHeight: t.Compact ? 52 : 60);
+                padding: new Thickness(t.Px(tight ? 16 : 24), t.Px(12), t.Px(tight ? 16 : 24), t.Px(12)), minHeight: t.Compact ? 52 : 60);
             Key(tab, "tab-" + key);
             tabButtons.Add(tab);
             line.Children.Add(tab);

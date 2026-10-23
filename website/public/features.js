@@ -21,6 +21,7 @@ export function setFeaturePlatform(os) {
     if (slot === 'install' && capture) capture = [capture, ...(capture.sequence || [])][installStep] || capture;
     const image = byId(`feature-${slot}-image`);
     byId(`feature-${slot}-media`).hidden = !capture;
+    byId(`feature-${slot}-media`).dataset.os = SCREENSHOTS[os]?.[key] ? os : 'windows';
     if (capture) {
       image.src = capture.src; image.alt = capture.alt; image.width = capture.width; image.height = capture.height;
       image.style.borderRadius = captureCornerRadius(capture);

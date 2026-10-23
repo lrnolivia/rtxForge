@@ -443,6 +443,34 @@ public sealed partial class GameModeView
         catch (InvalidOperationException error) { ShowDone(false, "Save notes", error.Message); }
     }
 
+    async Task TryAnywayAsync(Game g, bool on)
+    {
+        try { await shell.Service.SetTryAnywayAsync(g, on); }
+        catch (InvalidOperationException error) { ShowDone(false, "Try anyway", error.Message); return; }
+        Toast(on ? $"{g.Name} can be installed now. Review the install before applying it." : $"{g.Name} is checked normally again.");
+        await shell.ScanAsync();
+    }
+
+    /// <summary>Preview the exact issue text, then open it in the browser. Nothing is sent from rtxForge.</summary>
+    async Task ShareResultAsync(Game g, bool notes = false)
+    {
+        CompatShare share;
+        try { share = await shell.Service.CompatShareAsync(g, shell.SharePackage(g), notes); }
+        catch (InvalidOperationException error) { ShowDone(false, "Share result", error.Message); return; }
+        var content = new StackPanel { Spacing = t.Px(14) };
+        content.Children.Add(ui.P("This opens a prefilled issue in your browser. Nothing is sent until you post it there.", 0.9));
+        content.Children.Add(new ScrollViewer
+        {
+            MaxHeight = t.Px(t.Compact ? 220 : 340),
+            Content = new TextBlock { Text = share.Body, FontFamily = new FontFamily("Cascadia Mono, Consolas"), FontSize = t.Em(0.7), Foreground = GmTheme.B(t.Muted), TextWrapping = TextWrapping.Wrap },
+        }.With(s => { s.IsTabStop = true; ui.Focusable(s); }));
+        var toggle = ui.Button(notes ? "Leave out my notes" : "Include my notes", () => { CloseModal(); _ = ShareResultAsync(g, !notes); }, GmKind.Card, 0.92,
+            enabled: notes || g.Notes.Trim().Length > 0);
+        var cancel = ui.Button("Cancel", CloseModal, GmKind.Card, 0.92);
+        var open = ui.Button("Open in browser", () => { CloseModal(); if (share.Url.Length > 0) MainWindow.OpenUri(share.Url); }, GmKind.Primary, 0.92);
+        ShowModal("Share result · " + g.Name, content, [toggle, cancel, open], CloseModal, 1200, open);
+    }
+
     async Task RecordTestAsync(Game g)
     {
         var finish = g.TestActive;

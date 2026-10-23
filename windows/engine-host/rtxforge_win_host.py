@@ -377,6 +377,9 @@ def scan(params):
             traceback.print_exc()
     # Your chosen artwork over Steam's, and each game's saved notes (Linux details()).
     win_features.decorate(rows)
+    # Soft blocks you chose to try anyway, and each game's known result.
+    import compat_list
+    compat_list.apply(win_features._config(), rows)
     import skynizz_provider
     import transactions
     for row in rows:
@@ -401,6 +404,9 @@ def prepare(params):
         # Another package: the scan's verdict before Skynizz's own checks.
         params = dict(params, rows=[dict(row, blocked=row['package_blocked']) if 'package_blocked' in row else row
                                     for row in params['rows']])
+    # The re-check above restores capability blocks; lift the ones you chose to try anyway.
+    import compat_list
+    params = dict(params, rows=compat_list.apply(win_features._config(), [dict(row) for row in params['rows']]))
     review = service.prepare(params["rows"], params["mode"], params["operation"],
                              visual_settings=params.get("settings"), save_defaults=params.get("save_defaults", False))
     if review.get("kind") == "engine":

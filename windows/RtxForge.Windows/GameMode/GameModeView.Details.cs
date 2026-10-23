@@ -425,6 +425,9 @@ public sealed partial class GameModeView
                 var noteActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12), HorizontalAlignment = HorizontalAlignment.Right };
                 noteActions.Children.Add(ui.Button(g.TestActive ? "Finish Test" : "Start Test", () => _ = RecordTestAsync(g), GmKind.Card, 0.85,
                     enabled: !shell.Service.IsPreview).With(b => Key(b, "notes-test")));
+                // Shares the saved result: save a Working or Problem result first.
+                noteActions.Children.Add(ui.Button("Share result", () => _ = ShareResultAsync(g), GmKind.Card, 0.85,
+                    enabled: !shell.Service.IsPreview && g.TestStatus is "Working" or "Problem").With(b => Key(b, "notes-share")));
                 noteActions.Children.Add(ui.Button("Save Notes", () => _ = SaveNotesAsync(g, notesStatus ?? g.TestStatus, notes.Text), GmKind.Primary, 0.85).With(b => Key(b, "notes-save")));
                 testSettings.Children.Add(noteActions);
                 noteCards.Children.Add(DetailPlate(testSettings)); content.Children.Add(noteCards);
@@ -465,7 +468,12 @@ public sealed partial class GameModeView
                     ui.Button("Review Adoption", () => _ = shell.ReviewAdoptionAsync([g]), GmKind.Card, .8), "\uE930"));
                 if (g.OfflineOnly) content.Children.Add(DetailFact("Offline-only features", GameOverview.OfflineNote,
                     ui.Button("Launch offline", () => _ = shell.LaunchOfflineAsync(g), GmKind.Card, .8), "\uE72E"));
-                if (g.Blocked) content.Children.Add(DetailFact("rtxForge will not modify this game", g.BlockedReason ?? "Unsupported", glyph: "\uE7BA"));
+                // A capability check can be skipped; anti-cheat and missing executables cannot.
+                if (g.BlockedSoft) content.Children.Add(DetailFact("Not verified with this package", (g.BlockedReason ?? "") + " " + GameOverview.TryAnywayNote,
+                    ui.Button("Try anyway", () => _ = TryAnywayAsync(g, true), GmKind.Card, .8, enabled: !shell.Busy && !shell.Service.IsPreview), "\uE7BA"));
+                else if (g.Blocked) content.Children.Add(DetailFact("rtxForge will not modify this game", g.BlockedReason ?? "Unsupported", glyph: "\uE7BA"));
+                else if (g.TryAnyway is { } skipped) content.Children.Add(DetailFact("Trying anyway", skipped + " " + GameOverview.TryAnywayNote,
+                    ui.Button("Stop trying", () => _ = TryAnywayAsync(g, false), GmKind.Card, .8, enabled: !shell.Busy && !shell.Service.IsPreview), "\uE7BA"));
                 else if (g.InstalledOnLinux) content.Children.Add(DetailFact("Installed on Linux", GameOverview.LinuxNote, glyph: "\uE946"));
                 var overviewFacts = GameOverview.Facts(g);
                 var info = DetailColumns(overviewFacts.Count > 3 ? 4 : 3);

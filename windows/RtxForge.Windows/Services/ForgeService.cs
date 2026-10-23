@@ -63,6 +63,9 @@ public interface IForgeService
     Task StartTestAsync(Game game);
     Task FinishTestAsync(Game game);
     Task<EngineReview> PreviewReportAsync(IReadOnlyList<Game> games, bool logs, bool notes);
+    // Compatibility (compat_list): skip a capability check, and share a result as a prefilled issue.
+    Task SetTryAnywayAsync(Game game, bool on);
+    Task<CompatShare> CompatShareAsync(Game game, string package, bool notes);
 
     // Tools: NR diagnosis (runtime_diagnostics) and ReShade / add-ons (extra_tools).
     Task<NrDiagnosis> DiagnoseAsync(Game game);
@@ -256,6 +259,8 @@ public sealed class PreviewForgeService : IForgeService
     public Task StartTestAsync(Game game) => Disabled("Test records");
     public Task FinishTestAsync(Game game) => Disabled("Test records");
     public Task<EngineReview> PreviewReportAsync(IReadOnlyList<Game> games, bool logs, bool notes) => Disabled<EngineReview>("Support reports");
+    public Task SetTryAnywayAsync(Game game, bool on) => Disabled("Try anyway");
+    public Task<CompatShare> CompatShareAsync(Game game, string package, bool notes) => Disabled<CompatShare>("Sharing results");
 
     public Task<NrDiagnosis> DiagnoseAsync(Game game) => Task.FromResult(new NrDiagnosis(
         ["Preview: diagnosis reads the selected game’s settings, exact runtime hashes, and bounded log tail."], "Not tested", ""));

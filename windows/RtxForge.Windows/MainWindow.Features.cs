@@ -322,17 +322,29 @@ public sealed partial class MainWindow
     public async Task ShowReportsAsync()
     {
         var dialog = NewDialog();
-        dialog.Title = "Library status & reports";
+        dialog.Title = "Compatibility & reports";
         var body = new StackPanel { Spacing = 10, MinWidth = 560 };
         var totals = Games.GroupBy(g => g.TestStatus).ToDictionary(g => g.Key, g => g.Count());
         body.Children.Add(Prefs.Label(string.Join(" · ", new[] { "Untested", "Working", "Problem", "Bench" }
             .Select(s => $"{totals.GetValueOrDefault(s)} {s.ToLowerInvariant()}")), "ForgeHeadingTextStyle"));
-        body.Children.Add(Prefs.Label("Diagnostics separate saved settings from captured runtime evidence. Nothing is uploaded."));
+        body.Children.Add(Prefs.Label("Each game's known result: yours first, then rtxForge's list. Share opens a prefilled issue you review before posting; nothing is sent automatically."));
         var list = new StackPanel { Spacing = 4 };
-        Game? diagnose = null;
+        Func<Task>? next = null;
         foreach (var game in Games)
-            list.Children.Add(Prefs.Row(game.Name, game.TestStatus + (game.TestActive ? " · test in progress" : ""),
-                Prefs.ActionButton("Diagnose", (_, _) => { diagnose = game; dialog.Hide(); })));
+        {
+            var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            void Add(string text, Func<Task> run, bool enabled = true)
+            {
+                var button = Prefs.ActionButton(text, (_, _) => { next = run; dialog.Hide(); });
+                button.IsEnabled = enabled && !Service.IsPreview;
+                actions.Children.Add(button);
+            }
+            if (game.BlockedSoft) Add("Try anyway", () => TryAnywayAsync(game, true), !Busy);
+            else if (game.TryAnyway is not null) Add("Stop trying", () => TryAnywayAsync(game, false), !Busy);
+            if (game.TestStatus is "Working" or "Problem") Add("Share", () => ShareResultAsync(game));
+            Add("Diagnose", () => DiagnoseAsync(game), !game.Blocked);
+            list.Children.Add(Prefs.Row(game.Name, CompatDetail(game), actions));
+        }
         body.Children.Add(new ScrollViewer { Content = list, MaxHeight = 320 });
         var logs = new CheckBox { Content = "Include redacted logs from the latest captured test" };
         var notes = new CheckBox { Content = "Include my notes" };
@@ -344,11 +356,59 @@ public sealed partial class MainWindow
         dialog.CloseButtonText = "Close";
         dialog.DefaultButton = ContentDialogButton.Primary;
         var choice = await dialog.ShowAsync();
-        if (diagnose is not null) { await DiagnoseAsync(diagnose); return; }
+        if (next is not null) { await next(); return; }
         if (choice != ContentDialogResult.Primary) return;
         bool withLogs = logs.IsChecked == true, withNotes = notes.IsChecked == true;
         var result = await ReviewDialog.ShowAsync(this, "Review Support Report", () => Service.PreviewReportAsync(Games, withLogs, withNotes));
         if (result?.Path is { } path) ShowToast("Saved " + path);
+    }
+
+    /// <summary>One line per game for the compatibility list: block, Try anyway, or the known result.</summary>
+    public static string CompatDetail(Game game) =>
+        game.BlockedSoft ? "Not verified · " + game.BlockedReason
+        : game.Blocked ? "Blocked · " + game.BlockedReason
+        : game.TryAnyway is { } skipped ? "Trying anyway · " + skipped
+        : game.CompatVerdict is { } verdict ? verdict + (game.CompatFromList ? " · rtxForge list" : " · your result")
+        : game.TestStatus + (game.TestActive ? " · test in progress" : "");
+
+    /// <summary>Skip (or stop skipping) a capability check. Installs still go through review, and Restore undoes them.</summary>
+    public async Task TryAnywayAsync(Game game, bool on)
+    {
+        try { await Service.SetTryAnywayAsync(game, on); }
+        catch (InvalidOperationException error) { await Message("Try anyway", error.Message); return; }
+        ShowToast(on ? $"{game.Name} can be installed now. Review the install before applying it." : $"{game.Name} is checked normally again.");
+        await ScanAsync();
+    }
+
+    /// <summary>The package named in a shared result: what is installed, else what an install would use.</summary>
+    public string SharePackage(Game game) => game.UsesFeeder ? "Feeder NR"
+        : Settings.PackageName(game.Installed && game.RuntimeProvider is { } installed ? installed : Settings.PackageFor(game, "install"));
+
+    /// <summary>Preview the exact issue text, then open it in the browser. Nothing is sent from rtxForge.</summary>
+    public async Task ShareResultAsync(Game game)
+    {
+        CompatShare share;
+        try { share = await Service.CompatShareAsync(game, SharePackage(game), false); }
+        catch (InvalidOperationException error) { await Message("Share result", error.Message); return; }
+        var dialog = NewDialog();
+        dialog.Title = "Share result";
+        var body = new StackPanel { Spacing = 10, MinWidth = 520 };
+        body.Children.Add(Prefs.Label("This opens a prefilled issue in your browser. Nothing is sent until you post it there."));
+        var text = new TextBox { Text = share.Body, IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MaxHeight = 280,
+            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas") };
+        var withNotes = new CheckBox { Content = "Include my notes (paths and common secrets are redacted)", IsEnabled = game.Notes.Trim().Length > 0 };
+        withNotes.Click += async (_, _) =>
+        {
+            try { share = await Service.CompatShareAsync(game, SharePackage(game), withNotes.IsChecked == true); text.Text = share.Body; }
+            catch (InvalidOperationException error) { text.Text = error.Message; }
+        };
+        body.Children.Add(text);
+        body.Children.Add(withNotes);
+        dialog.Content = body;
+        dialog.PrimaryButtonText = "Open in browser";
+        dialog.CloseButtonText = "Cancel";
+        dialog.DefaultButton = ContentDialogButton.Primary;
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary && share.Url.Length > 0) OpenUri(share.Url);
     }
 
     // ---------- Application updates (check_app_update) ----------

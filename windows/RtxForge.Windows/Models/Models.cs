@@ -45,6 +45,13 @@ public sealed class Game
     /// <summary>A Feeder setup is installed but needs attention (BlockedReason says why); not an unsupported game.</summary>
     public bool FeederNeedsAttention => Blocked && EngineRow?["feeder_detected"] is JsonValue detected
         && detected.TryGetValue<bool>(out var found) && found;
+    /// <summary>The block is a capability check Try anyway can skip; anti-cheat and missing executables never are.</summary>
+    public bool BlockedSoft => Blocked && EngineRow?["soft_reasons"] is JsonArray reasons && reasons.Any(r => r?.ToString() == BlockedReason);
+    /// <summary>The capability check skipped with Try anyway, when it is on for this game.</summary>
+    public string? TryAnyway => EngineRow?["try_anyway"] is JsonValue v && v.TryGetValue<string>(out var r) && r.Length > 0 ? r : null;
+    /// <summary>Known result (Working or Problem): your own first, then the shipped compatibility list.</summary>
+    public string? CompatVerdict => EngineRow?["compat"]?["verdict"]?.ToString();
+    public bool CompatFromList => EngineRow?["compat"]?["source"]?.ToString() == "list";
     /// <summary>"Unsupported", or the Feeder status for an installed setup that needs attention.</summary>
     public string BlockedStatus => FeederNeedsAttention ? "Needs Attention" : "Unsupported";
     /// <summary>Installed with rtxForge on Linux: Windows loads it natively; Set Up for Windows adapts it here.</summary>
@@ -188,6 +195,9 @@ public sealed record PackageOption(string Id, string Name, string Version, strin
     IReadOnlyList<string>? Verified = null, IReadOnlyDictionary<string, string>? MfgVersions = null);
 
 public sealed record CommunitySource(string Name, string Url, string Note);
+
+/// <summary>A game's result as a prefilled issue: the exact text, and the URL the browser opens.</summary>
+public sealed record CompatShare(string Title, string Body, string Url);
 
 public sealed record PackageCatalog(string Status, IReadOnlyList<PackageOption> Packages, IReadOnlyList<CommunitySource> Community, string? CustomName);
 

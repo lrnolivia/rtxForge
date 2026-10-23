@@ -57,6 +57,7 @@ if not hasattr(os, "O_NOFOLLOW"):
     os.open = _windows_open
 
 import artwork_overrides  # noqa: E402
+import compat_list  # noqa: E402
 import desktop_service  # noqa: E402
 import engine_bridge  # noqa: E402
 import extra_tools  # noqa: E402
@@ -612,6 +613,18 @@ def test_finish(params):
     return game_notes.finish(_config(), params["row"])
 
 
+def try_anyway(params):
+    """Skip (or stop skipping) a game's capability check; installs still go through review."""
+    return compat_list.set_try_anyway(_config(), params["game"], bool(params.get("on")), params.get("reason") or "")
+
+
+def compat_share(params):
+    """The prefilled issue for one game's result. The app opens it; nothing is sent from here."""
+    row = params["row"]
+    return compat_list.share(row, game_notes.load(_config(), row["game"]), params.get("package") or "",
+                             service.hardware(), compat_list.version(), bool(params.get("notes")))
+
+
 def report_preview(params):
     files = game_notes.preview(_config(), params.get("rows") or [], bool(params.get("logs")), bool(params.get("notes")))
     items = [_item(name, "Review the exact report contents", "Report", details=text) for name, text in files.items()]
@@ -819,6 +832,7 @@ METHODS = {
     "sgdb_search": sgdb_search, "sgdb_artwork": sgdb_artwork, "sgdb_download": sgdb_download,
     "diagnose": diagnose, "dlss_inventory": dlss_inventory, "dlss_restore_review": dlss_restore_review,
     "notes_save": notes_save, "test_start": test_start, "test_finish": test_finish, "report_preview": report_preview,
+    "try_anyway": try_anyway, "compat_share": compat_share,
     "recoveries": recoveries, "recovery_review": recovery_review, "cleanup_review": cleanup_review,
     "extras_list": extras_list, "extra_review": extra_review, "extra_restore_review": extra_restore_review,
     "packages": packages, "package_inspect": package_inspect, "package_use": package_use,

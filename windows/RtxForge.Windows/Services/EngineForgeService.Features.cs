@@ -143,6 +143,15 @@ public sealed partial class EngineForgeService
     public async Task<EngineReview> PreviewReportAsync(IReadOnlyList<Game> games, bool logs, bool notes) =>
         ToReview(await CallAsync("report_preview", new JsonObject { ["rows"] = Rows(games), ["logs"] = logs, ["notes"] = notes }));
 
+    public async Task SetTryAnywayAsync(Game game, bool on) =>
+        Apply(game, await CallAsync("try_anyway", new { game = game.Id, on, reason = game.BlockedReason ?? "" }));
+
+    public async Task<CompatShare> CompatShareAsync(Game game, string package, bool notes)
+    {
+        var r = await CallAsync("compat_share", new JsonObject { ["row"] = Row(game), ["package"] = package, ["notes"] = notes });
+        return new CompatShare(S(r, "title") ?? "", S(r, "body") ?? "", S(r, "url") ?? "");
+    }
+
     // ---------- tools ----------
 
     public async Task<NrDiagnosis> DiagnoseAsync(Game game)

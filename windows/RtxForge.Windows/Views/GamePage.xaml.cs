@@ -117,6 +117,14 @@ public sealed partial class GamePage : Page
         Resources["SelectorBarItemForegroundSelected"] = palette.Brush(light ? ink : palette.NavAccent);
     }
 
+    Button TryAnywayButton(Game g, bool on)
+    {
+        var button = new Button { Content = on ? "Try anyway" : "Stop trying" };
+        button.IsEnabled = !shell.Busy && !shell.Service.IsPreview;
+        button.Click += async (_, _) => await shell.TryAnywayAsync(g, on);
+        return button;
+    }
+
     void Refresh()
     {
         StatusBadge.Text = game.AdoptionAvailable ? "Installed · Adoption available" : game.OfflineOnly ? "Installed · Offline only" : game.Blocked ? game.BlockedStatus
@@ -191,10 +199,22 @@ public sealed partial class GamePage : Page
                 if (g.AdoptionAvailable)
                     PageHost.Children.Add(Prefs.Row("Adoption available", GameOverview.AdoptionNote, Prefs.ActionButton("Review Adoption", (_, _) => _ = shell.ReviewAdoptionAsync([g]))));
                 if (g.Blocked)
-                    PageHost.Children.Add(new InfoBar
+                {
+                    // A capability check can be skipped; anti-cheat and missing executables cannot.
+                    var blocked = new InfoBar
                     {
                         IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Warning, Margin = new Thickness(0, 24, 0, 0),
-                        Title = "rtxForge will not modify this game", Message = g.BlockedReason ?? "",
+                        Title = g.BlockedSoft ? "Not verified with this package" : "rtxForge will not modify this game",
+                        Message = g.BlockedSoft ? (g.BlockedReason ?? "") + " " + GameOverview.TryAnywayNote : g.BlockedReason ?? "",
+                    };
+                    if (g.BlockedSoft) blocked.ActionButton = TryAnywayButton(g, true);
+                    PageHost.Children.Add(blocked);
+                }
+                else if (g.TryAnyway is { } skipped)
+                    PageHost.Children.Add(new InfoBar
+                    {
+                        IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Informational, Margin = new Thickness(0, 24, 0, 0),
+                        Title = "Trying anyway", Message = skipped + " " + GameOverview.TryAnywayNote, ActionButton = TryAnywayButton(g, false),
                     });
                 else if (g.InstalledOnLinux)
                     PageHost.Children.Add(new InfoBar
@@ -331,6 +351,10 @@ public sealed partial class GamePage : Page
                 var test = Prefs.ActionButton(g.TestActive ? "Finish Test" : "Start Test", async (_, _) => await shell.RecordTestAsync(g));
                 test.IsEnabled = !shell.Service.IsPreview;
                 noteActions.Children.Add(test);
+                // Shares the saved result: save a Working or Problem result first.
+                var shareResult = Prefs.ActionButton("Share result", async (_, _) => await shell.ShareResultAsync(g));
+                shareResult.IsEnabled = !shell.Service.IsPreview && g.TestStatus is "Working" or "Problem";
+                noteActions.Children.Add(shareResult);
                 noteActions.Children.Add(Prefs.ActionButton("Save Notes", async (_, _) => await shell.SaveNotesAsync(g, states[Math.Max(0, status.SelectedIndex)], text.Text), accent: true));
                 testCard.Children.Add(noteActions);
                 noteCards.Children.Add(DetailSurface(testCard));

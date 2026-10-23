@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "id": "independent-render-bridge",
+  "stage": "diagnostic",
+  "default_promoted": false,
+  "runtime_verified": false,
+  "sr_implemented": false,
+  "fg_implemented": false,
+  "api": "d3d12",
+  "source": "windows/render-bridge",
+  "sdk": {
+    "repository": "crosire/reshade",
+    "tag": "v6.8.0",
+    "commit": "18deaa52de0c425a78b329e9cb3c497281cd00ec",
+    "api_version": 20,
+    "license": "BSD-3-Clause"
+  },
+  "initial_target": {
+    "executable": "ACValhalla.exe",
+    "observed_sha256": "27dc43ba0102c06d4ee92ba8e2396d31b9da6064fdc77f217bfe0bf0423c8cd0",
+    "status": "unprofiled",
+    "shader_signatures": [],
+    "motion_vectors_verified": false,
+    "jitter_verified": false,
+    "hud_boundary_verified": false
+  }
+}

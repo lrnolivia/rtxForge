@@ -49,7 +49,7 @@ class ScrollFadePixels(unittest.TestCase):
         try:
             self.drain()
             adjustment = scroll.get_vadjustment()
-            def pixel(y):
+            def pixel(y, x=200):
                 paintable = Gtk.WidgetPaintable.new(box)
                 snapshot = Gtk.Snapshot()
                 paintable.snapshot(snapshot, box.get_width(), box.get_height())
@@ -59,13 +59,16 @@ class ScrollFadePixels(unittest.TestCase):
                 loader.write(bytes(texture.save_to_png_bytes().get_data()))
                 loader.close()
                 pixbuf = loader.get_pixbuf()
-                at = y * pixbuf.get_rowstride() + 200 * pixbuf.get_n_channels()
+                at = y * pixbuf.get_rowstride() + x * pixbuf.get_n_channels()
                 return tuple(pixbuf.get_pixels()[at:at + 3])
             adjustment.set_value(500)
             self.drain()
             height = box.get_height()
             self.assertGreater(pixel(1)[1], 240)
             self.assertGreater(pixel(height - 2)[1], 240)
+            for x in (1, box.get_width() - 2):
+                self.assertGreater(pixel(1, x)[1], 240)
+                self.assertGreater(pixel(height - 2, x)[1], 240)
             self.assertGreater(pixel(height // 2)[0], 240)
             self.assertTrue(40 < pixel(44)[0] < 230, pixel(44))
             adjustment.set_value(0)

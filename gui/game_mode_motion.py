@@ -12,7 +12,7 @@ CARD_SCALE, CARD_LIFT = MOTION['card_scale'], MOTION['card_lift']
 
 
 class FadedScrolledWindow(Gtk.ScrolledWindow):
-    """Native scrolling with broad alpha edges, keeping native scrollbar opacity."""
+    """Native scrolling with broad alpha edges across the complete viewport."""
     __gtype_name__ = 'RtxForgeFadedScrolledWindow'
 
     def __init__(self, *, fade_unit=1, **kwargs):
@@ -54,13 +54,6 @@ class FadedScrolledWindow(Gtk.ScrolledWindow):
         snapshot.push_mask(Gsk.MaskMode.ALPHA)
         snapshot.append_linear_gradient(bounds, Graphene.Point().init(0, 0),
                                         Graphene.Point().init(0, height), self._fade_stops)
-        white = Gdk.RGBA()
-        white.red = white.green = white.blue = white.alpha = 1
-        for bar in (self.get_vscrollbar(), self.get_hscrollbar()):
-            if bar and bar.get_mapped():
-                valid, rect = bar.compute_bounds(self)
-                if valid:
-                    snapshot.append_color(white, rect)
         snapshot.pop()
         Gtk.ScrolledWindow.do_snapshot(self, snapshot)
         snapshot.pop()

@@ -42,7 +42,7 @@ public sealed partial class GameModeView : UserControl
     readonly Border toastHost = new() { Visibility = Visibility.Collapsed, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom };
     readonly Microsoft.UI.Dispatching.DispatcherQueueTimer toastTimer;
 
-    string page = "library";          // library · presets · settings · details
+    string page = "library";          // library · presets · packages · extras · settings · details
     string inputKind = "keyboard";    // keyboard · controller: drives hint glyphs
     string family = "xbox";
     string detectedFamily = "xbox";
@@ -146,6 +146,9 @@ public sealed partial class GameModeView : UserControl
         root.RequestedTheme = t.IsLight ? ElementTheme.Light : ElementTheme.Dark;
         ui.FocusBrush.Color = t.Focus;
         root.Background = GmTheme.B(t.Window);
+        // Pages keep the theme's accent, even while a flow about one game is open.
+        var (accent, accentInk) = (ui.Accent, ui.AccentInk);
+        (ui.Accent, ui.AccentInk) = (GmTheme.Accent, GmTheme.AccentInk);
         RenderHeader();
         body.Children.Clear();
         body.Background = GmTheme.B(t.View);
@@ -153,9 +156,12 @@ public sealed partial class GameModeView : UserControl
         {
             "details" when detailsGame is not null => BuildDetails(detailsGame),
             "presets" => BuildPresets(),
+            "packages" => BuildPackages(),
+            "extras" => BuildExtras(),
             "settings" => BuildSettings(),
             _ => BuildLibrary(),
         };
+        (ui.Accent, ui.AccentInk) = (accent, accentInk);
         body.Children.Add(content);
         RenderFooter();
         // Focus: keep the same control when re-rendering, else the page's first target.
@@ -234,7 +240,7 @@ public sealed partial class GameModeView : UserControl
     {
         tabButtons.Clear();
         var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(8) };
-        foreach (var (key, label) in new[] { ("library", "Library"), ("presets", "Presets"), ("settings", "Settings") })
+        foreach (var (key, label) in new[] { ("library", "Library"), ("presets", "Presets"), ("packages", "Packages"), ("extras", "Extras"), ("settings", "Settings") })
         {
             var active = page == key || (key == "library" && page == "details");
             var tab = ui.Button(label, () => Open(key), active ? GmKind.Active : GmKind.Transparent, 1, radius: 32,
@@ -317,7 +323,7 @@ public sealed partial class GameModeView : UserControl
 
     void CycleTab(int direction)
     {
-        string[] order = ["library", "presets", "settings"];
+        string[] order = ["library", "presets", "packages", "extras", "settings"];
         var current = Array.IndexOf(order, page == "details" ? "library" : page);
         Open(order[(current + direction + order.Length) % order.Length]);
         pendingFocusKey = "gm_tab-" + order[(current + direction + order.Length) % order.Length];
@@ -329,7 +335,7 @@ public sealed partial class GameModeView : UserControl
         switch (page)
         {
             case "details": CloseDetails(); break;
-            case "presets" or "settings": Open("library"); break;
+            case "presets" or "packages" or "extras" or "settings": Open("library"); break;
             default: break;   // root B stays in Library; Exit App is an explicit menu action
         }
     }
@@ -415,7 +421,9 @@ public sealed partial class GameModeView : UserControl
             case (VirtualKey)188 when ctrl: Open("settings"); e.Handled = true; break;   // Ctrl+,
             case VirtualKey.Number1 when ctrl: Open("library"); e.Handled = true; break;
             case VirtualKey.Number2 when ctrl: Open("presets"); e.Handled = true; break;
-            case VirtualKey.Number3 when ctrl: Open("settings"); e.Handled = true; break;
+            case VirtualKey.Number3 when ctrl: Open("packages"); e.Handled = true; break;
+            case VirtualKey.Number4 when ctrl: Open("extras"); e.Handled = true; break;
+            case VirtualKey.Number5 when ctrl: Open("settings"); e.Handled = true; break;
             case VirtualKey.F10: OpenMainMenu(); e.Handled = true; break;
             case VirtualKey.X: Handle("select"); e.Handled = true; break;
             case VirtualKey.PageUp: CycleTab(-1); e.Handled = true; break;
@@ -492,6 +500,8 @@ public sealed partial class GameModeView : UserControl
             Shadow = new ThemeShadow(), Translation = new System.Numerics.Vector3(0, 0, t.IsLight ? 12 : 32),
         };
         var layer = new Grid { Background = GmTheme.B(Microsoft.UI.Colors.Black, t.IsLight ? .18 : .60), Padding = new Thickness(t.Px(48)) };
+        // A screen about one game also tints its sliders and switches with that game's accent.
+        if (modalPalette is not null) Controls.AccentResources.Apply(dialog.Resources, modalPalette);
         layer.Children.Add(dialog);
         layer.TabFocusNavigation = KeyboardNavigationMode.Cycle;
         layer.XYFocusKeyboardNavigation = XYFocusKeyboardNavigationMode.Enabled;
@@ -518,6 +528,12 @@ public sealed partial class GameModeView : UserControl
         {
             modalLayer.Visibility = Visibility.Collapsed;
             pageHost.IsEnabled = true;
+            // A flow about one game usually opens its next screen straight away; the
+            // accent returns to the theme's once nothing replaces the closed modal.
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            {
+                if (modals.Count == 0 && !shell.Busy) UseGameAccent(null);
+            });
         }
         RenderFooter();
         if (modal.Restore is Control control && control.XamlRoot is not null) control.Focus(FocusState.Keyboard);
@@ -550,7 +566,6 @@ public sealed partial class GameModeView : UserControl
         var rows = new List<UIElement>
         {
             ui.RowButton("Library", null, () => { CloseModal(); Open("library"); }),
-            ui.RowButton("Packages", null, () => _ = ShowPackagesAsync()),
             ui.RowButton("Rescan library", "F5", () => { CloseModal(); _ = RefreshAsync(); }, glyph: ""),
             ui.RowButton("Library options", null, () => { CloseModal(); OpenLibraryOptions(); }),
             ui.RowButton("Desktop UI", null, () => { CloseModal(); ExitRequested?.Invoke(); }),

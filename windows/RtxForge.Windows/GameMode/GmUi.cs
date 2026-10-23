@@ -48,13 +48,17 @@ public sealed partial class GmUi(GmTheme t)
         return icon;
     }
 
+    /// <summary>Primary and toggle colours. A screen about one game uses that game's accent.</summary>
+    public Color Accent { get; set; } = GmTheme.Accent;
+    public Color AccentInk { get; set; } = GmTheme.AccentInk;
+
     /// <summary>Native button with a restrained, visible controller focus indicator.</summary>
     public Button Button(object content, Action? click, GmKind kind = GmKind.Card, double em = 1, bool enabled = true,
         double radius = 32, Thickness? padding = null, double minHeight = 60, string? name = null)
     {
         var (bg, fg) = kind switch
         {
-            GmKind.Primary => (GmTheme.Accent, GmTheme.AccentInk),
+            GmKind.Primary => (Accent, AccentInk),
             GmKind.Danger => (t.DangerBg, t.Danger),
             GmKind.Quiet or GmKind.Transparent => (Microsoft.UI.Colors.Transparent, t.Fg),
             GmKind.Active => (t.Active, t.ActiveFg),
@@ -167,7 +171,8 @@ public sealed partial class GmUi(GmTheme t)
     public void RowFocus(Button button)
     {
         Focusable(button, -8);
-        button.CornerRadius = new CornerRadius(t.Px(12));
+        // Square: rows sit edge to edge, and the group's own corners frame the list.
+        button.CornerRadius = new CornerRadius(0);
         button.ScaleTransition = null;
         button.TranslationTransition = null;
         button.Shadow = null;

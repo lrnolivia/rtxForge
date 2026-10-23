@@ -345,9 +345,6 @@ def prepare(config,rows,mode,operation,settings):
         try:
             e.Y4MY_PROVIDER=dict(selected_provider)
             g=game(e,row)
-            if selected=='skynizz' and mode in ('nr-only','nr-mfg') and operation in ('install','repair'):
-                reason=skynizz_provider.native_nr_refusal(g.exe,g.appid)
-                t.need(not reason,reason)
             t.need(not any(g.root.resolve().is_relative_to(p) or p.is_relative_to(g.root.resolve()) for p in seen),'Duplicate or overlapping game selection; refresh the library')
             seen.append(g.root.resolve())
             baseline=e.load_baseline(g.target_dir)

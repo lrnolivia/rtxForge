@@ -122,11 +122,6 @@ public sealed partial class MainWindow : Window
         try
         {
             await ScanAsync();
-            var arguments = Environment.GetCommandLineArgs();
-            if (arguments.Contains("--controls", StringComparer.OrdinalIgnoreCase))
-            {
-                OpenCompanion();
-            }
         }
         catch (InvalidOperationException error)
         {
@@ -289,26 +284,29 @@ public sealed partial class MainWindow : Window
 
     /// <summary>
     /// Install / uninstall / update-dlss / reset / apply through the Linux
-    /// modal flow: presets (install) → review → progress → done.
+    /// modal flow: presets (install) → review → progress → done. True when the reviewed run completed.
     /// </summary>
-    public async Task LaunchAction(string operation, IReadOnlyList<Game> targets, Tuning? values = null)
+    public async Task<bool> LaunchAction(string operation, IReadOnlyList<Game> targets, Tuning? values = null)
     {
-        if (Busy) { ShowToast("Another operation is running."); return; }
+        if (Busy) { ShowToast("Another operation is running."); return false; }
         ArgumentNullException.ThrowIfNull(targets);
-        if (targets.Count == 0) { ShowToast("No eligible games selected."); return; }
-        if ((operation is "install" or "uninstall") && targets.Any(g => g.AdoptionAvailable))
+        if (targets.Count == 0) { ShowToast("No eligible games selected."); return false; }
+        if (targets.Any(g => g.AdoptionAvailable))
         {
-            await ReviewAdoptionAsync(targets.Where(g => g.AdoptionAvailable).ToArray());
-            targets = targets.Where(g => !g.AdoptionAvailable).ToArray();
-            if (targets.Count == 0) return;
+            // Another tool's setup: Install offers Adoption; Restore has nothing of rtxForge's to undo.
+            var adoptable = targets.Where(g => g.AdoptionAvailable).ToArray();
+            if (operation == "install") await ReviewAdoptionAsync(adoptable);
+            else if (operation == "uninstall") ShowToast(AdoptionSkipped(adoptable.Length));
+            if (operation is "install" or "uninstall") targets = targets.Where(g => !g.AdoptionAvailable).ToArray();
+            if (targets.Count == 0) return false;
         }
 
         if (operation == "install" && values is null)
         {
-            values = await OperationDialog.AskPresetsAsync(this, targets.Count == 1 ? GameTuning(targets[0]) : Settings.Presets);
-            if (values is null) return;
+            values = await OperationDialog.AskPresetsAsync(this, targets.Count == 1 ? GameTuning(targets[0]) : Settings.Presets, AccentResources.Single(targets));
+            if (values is null) return false;
         }
-        await OperationDialog.ShowAsync(this, operation, targets, values ?? Settings.Presets);
+        return await OperationDialog.ShowAsync(this, operation, targets, values ?? Settings.Presets);
     }
 
     /// <summary>Runs one reviewed operation against the engine; used by the progress stage of the modal.</summary>

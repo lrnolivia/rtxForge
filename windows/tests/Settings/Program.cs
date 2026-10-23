@@ -43,11 +43,11 @@ for (int mask = 0; mask < 16; mask++)
     var original = new ForgeSettings { OptiScalerUi = (mask & 1) != 0, OptiScalerIntro = (mask & 2) != 0,
         ReShadeUi = (mask & 4) != 0, ReShadeIntro = (mask & 8) != 0, NrStrength = 1.25 };
     var saved = JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(original))!;
-    var other = new ForgeSettings { NrStrength = .75, RuntimeProvider = "feeder" };
+    var other = new ForgeSettings { NrStrength = .75, RuntimeProvider = "dlss-unlocked" };
     other.CopyOverlayFrom(saved);
     if (other.OptiScalerUi != original.OptiScalerUi || other.OptiScalerIntro != original.OptiScalerIntro
         || other.ReShadeUi != original.ReShadeUi || other.ReShadeIntro != original.ReShadeIntro
-        || other.NrStrength != .75 || other.RuntimeProvider != "feeder")
+        || other.NrStrength != .75 || other.RuntimeProvider != "dlss-unlocked")
         throw new Exception("Menu/intro settings were coupled or reset rendering settings");
 }
 Console.WriteLine("PASS: all 16 independent game-menu/welcome combinations round trip and merge without changing tuning.");
@@ -89,16 +89,33 @@ for (uint modifiers = 0; modifiers < 16; modifiers++)
 }
 Console.WriteLine($"PASS: Delete default, retired Insert/End migration, unchanged other overlays and {shortcutCount} custom binding round trips; reserved/malformed shortcuts refused.");
 foreach (var controls in new[] { "unified", "classic" })
-foreach (var renderer in new[] { "rtxforge", "optiscaler" })
+foreach (var renderer in new[] { "game", "optiscaler" })
 {
     var original = new ForgeSettings { OverlayControls = controls, OverlayRenderer = renderer, OptiScalerHotkey = "F8", NrStrength = 1.25 };
     var saved = JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(original))!;
-    var manager = new ForgeSettings { NrStrength = .75, RuntimeProvider = "feeder" };
+    var manager = new ForgeSettings { NrStrength = .75, RuntimeProvider = "dlss-unlocked" };
     manager.CopyOverlayFrom(saved);
     if (manager.OverlayControls != controls || manager.OverlayRenderer != renderer || manager.OptiScalerHotkey != "F8"
-        || manager.NrStrength != .75 || manager.RuntimeProvider != "feeder") throw new Exception("Overlay preferences changed game tuning");
+        || manager.NrStrength != .75 || manager.RuntimeProvider != "dlss-unlocked") throw new Exception("Overlay preferences changed game tuning");
 }
-Console.WriteLine("PASS: renderer/layout/native shortcut persistence and overlay-only merge preserve tuning.");
+if (JsonSerializer.Deserialize<ForgeSettings>("{\"runtime_provider\":\"feeder\"}")!.RuntimeProvider != "skynizz")
+    throw new Exception("The retired Feeder-only package choice did not migrate to a DLSS package");
+if (JsonSerializer.Deserialize<ForgeSettings>("{\"runtime_provider\":\"y4my\"}")!.RuntimeProvider != "skynizz")
+    throw new Exception("The hidden y4my package choice did not migrate to Skynizz on Windows");
+{
+    // A game's own package survives a save, repairs keep the installed package, and unknown keys fall back.
+    var mixed = JsonSerializer.Deserialize<ForgeSettings>("{\"game_packages\":{\"C:\\\\Games\\\\A\":\"dlss-unlocked\",\"C:\\\\Games\\\\B\":\"custom-x\"}}")!;
+    var a = new Game { Id = @"C:\Games\A", Name = "A" };
+    var b = new Game { Id = @"C:\Games\B", Name = "B" };
+    var installed = new Game { Id = @"C:\Games\A", Name = "A", Installed = true, RuntimeProvider = "skynizz" };
+    if (mixed.PackageFor(a, "install") != "dlss-unlocked" || mixed.PackageFor(b, "install") != "skynizz"
+        || mixed.PackageFor(installed, "repair") != "skynizz" || mixed.PackageFor(installed, "install") != "dlss-unlocked"
+        || JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(mixed))!.GamePackage(a) != "dlss-unlocked")
+        throw new Exception("Per-game package choices did not resolve");
+}
+if (JsonSerializer.Deserialize<ForgeSettings>("{\"overlay_renderer\":\"rtxforge\"}")!.OverlayRenderer != "game")
+    throw new Exception("The retired desktop overlay did not migrate to the in-game panel");
+Console.WriteLine("PASS: renderer/layout/native shortcut persistence and overlay-only merge preserve tuning; the retired desktop overlay reads as the in-game panel.");
 
 var firstGame = new Game { Id = "full", Name = "Full" };
 var otherGame = new Game { Id = "partial", Name = "Partial" };

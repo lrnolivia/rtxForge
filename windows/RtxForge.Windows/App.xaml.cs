@@ -46,8 +46,6 @@ public partial class App : Application
         }
         if (arguments.Contains("--overlay-exit", StringComparer.OrdinalIgnoreCase))
         { await OverlayHelper.CommandAsync("exit", false); Exit(); return; }
-        if (arguments.Contains("--controls", StringComparer.OrdinalIgnoreCase))
-        { await OverlayHelper.CommandAsync("show"); Exit(); return; }
         if (arguments.Contains("--overlay-settings", StringComparer.OrdinalIgnoreCase))
             Views.SettingsPage.OpenOverlaySection = true;
         // The real engine (bundled Python host) unless --preview is passed or

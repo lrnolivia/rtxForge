@@ -9,6 +9,7 @@ import copy
 import configparser
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -23,6 +24,22 @@ CONFIGS = ('ReShade.ini', 'ReShadePreset.ini')
 MODEL = 'nvngx_dlssnr.dll'
 INSTALL_DEFAULTS = {'NRFollowInputRes': '0', 'NRResolutionScale': '0.65',
                     'NRLocalStructure': '1.0', 'NRSkinStructure': '1.0'}
+# Files only a Feeder install adds. When none remain, a game update or Steam
+# verification replaced the folder and the old install record is obsolete.
+FEEDER_ONLY = ('dlss5-feed.addon64', 'renodx-dlss5.addon64', 'ReShade.ini')
+# EA's activation wrapper hides these executables' imports until it decrypts
+# them at launch. Each was reviewed as an x64 DirectX 11 game.
+REVIEWED_DX11 = {'ts4_x64.exe'}
+# rtxForge's in-game panel and banner hider (windows/feeder-panel), bundled by Build-FeederPanel.ps1.
+PANELS = ('rtxforge-panel.addon64', 'rtxforge-quiet.addon64')
+# Added by hand before rtxforge-quiet existed.
+RETIRED = {'quiet-startup.addon64': 'a33e97b437a6410d01d4dafc1ae770afa9c1e37a84bdbbe87926e24b5735f0a4'}
+OWNED = (*PANELS, *RETIRED)
+# rtxForge preset controls and the RenoDX keys they set. RenoDX reads these
+# once, when the game starts; the in-game panel writes the same keys.
+TUNING = {'intensity': ('NRIntensity', 0.0, 2.0), 'passes': ('NRPasses', 1, 4),
+          'work_scale': ('NRResolutionScale', 0.25, 1.0), 'preset': ('NRPreset', 0, 3),
+          'style': ('NRStyle', 0, 2), 'structure': ('NRLocalStructure', 0.0, 2.0)}
 _hashes = {}
 
 
@@ -57,7 +74,8 @@ def state(e, target):
            and isinstance(record.get('target'), str) and Path(record['target']).resolve() == t.safe(target),
            'Feeder install record identity differs')
     names = {*lock()['assets'], *CONFIGS, MODEL}
-    t.need(isinstance(record.get('originals'), dict) and set(record['originals']) == names
+    # Records made before the panel shipped do not own it yet.
+    t.need(isinstance(record.get('originals'), dict) and names <= set(record['originals']) <= names | set(OWNED)
            and isinstance(record.get('installed_hashes'), dict), 'Feeder ownership record is incomplete')
     for item in record['originals'].values():
         if item is not None:
@@ -92,12 +110,21 @@ def model(path):
     return {'path': str(path), 'sha256': value, **spec}
 
 
-def stack(directory, cached=False):
+def accepted(spec, name, installed):
+    """(sha256, size) pairs a file may have. Games installed with an earlier
+    recipe keep repairing and restoring; imports and new installs use the pin."""
+    pairs = {(spec['assets'][name]['sha256'], spec['assets'][name]['size'])}
+    if installed:
+        pairs |= {(item['sha256'], item['size']) for item in spec.get('previous_assets', {}).get(name, [])}
+    return pairs
+
+
+def stack(directory, cached=False, installed=False):
     directory = t.safe(directory)
     spec = lock()
-    for name, expected in spec['assets'].items():
+    for name in spec['assets']:
         path = t.safe(directory / t.relative(name))
-        t.need(path.is_file() and path.stat().st_size == expected['size'] and digest(path, cached) == expected['sha256'],
+        t.need(path.is_file() and (digest(path, cached), path.stat().st_size) in accepted(spec, name, installed),
                'Feeder files are missing or changed: ' + name)
     for name in CONFIGS:
         path = t.safe(directory / name)
@@ -127,6 +154,56 @@ def configure_new_install(text, nr_on_launch=False):
     return t.setvalue(text, 'RenoDX.DLSS5', 'NeuralUplift', '1' if nr_on_launch else '0')
 
 
+def tuning(settings):
+    """rtxForge preset values as [RenoDX.DLSS5] keys, clamped to RenoDX's ranges."""
+    controls = settings.get('feature_controls') or {}
+    t.need(isinstance(controls, dict), 'Preset controls are invalid')
+    values = {}
+    if type(settings.get('nr_on_launch')) is bool:
+        values['NeuralUplift'] = '1' if settings['nr_on_launch'] else '0'
+    for key, (ini, low, high) in TUNING.items():
+        value = controls.get(key, settings.get('nr_strength') if key == 'intensity' else None)
+        if type(value) not in (int, float) or not math.isfinite(value):
+            continue
+        value = min(max(value, low), high)
+        values[ini] = str(round(value)) if type(low) is int else f'{value:.2f}'
+    return values
+
+
+def tuning_changes(text, settings):
+    """Preset keys whose saved value differs; 1 and 1.00 are the same setting."""
+    parsed, changes = t.ini(text), {}
+    for key, value in tuning(settings).items():
+        saved = parsed.get('RenoDX.DLSS5', key, fallback=None)
+        try:
+            same = saved is not None and math.isclose(float(saved), float(value), abs_tol=0.005)
+        except ValueError:
+            same = False
+        if not same:
+            changes[key] = (saved, value)
+    return changes
+
+
+def apply_tuning(text, settings):
+    for key, (_, value) in tuning_changes(text, settings).items():
+        text = t.setvalue(text, 'RenoDX.DLSS5', key, value)
+    return text
+
+
+def panel(e):
+    """The bundled in-game panel add-ons, verified against their build receipt; empty in builds without them."""
+    folder = ROOT / 'providers/feeder-panel'
+    receipt = folder / 'package.json'
+    if not receipt.is_file():
+        return {}
+    spec = t.read_json(t.safe(receipt))
+    files = spec.get('files') if isinstance(spec, dict) else None
+    t.need(isinstance(files, dict) and set(files) == set(PANELS)
+           and all(digest(folder / name) == files[name].get('sha256') for name in PANELS),
+           'The bundled rtxForge panel changed. Reinstall rtxForge')
+    return {name: cache(e, folder / name) for name in PANELS}
+
+
 def _read_ini(path):
     text = path.read_text(encoding='utf-8-sig')
     # ReShade presets also support unsectioned global keys.
@@ -135,9 +212,20 @@ def _read_ini(path):
 
 def inspect(e, row, cached=True):
     _, _, directory = target(row)
-    stack(directory, cached)
-    nr = model(directory / MODEL)
     record = state(e, directory)
+    if record and record.get('adopted') and record.get('installed_hashes'):
+        # An adopted setup may be any Feeder version: its record, checked below,
+        # is the recipe. Installing over it replaces it with the pinned stack.
+        for name in CONFIGS:
+            _read_ini(t.safe(directory / name))
+        try:
+            nr = model(directory / MODEL)
+        except t.Refusal:
+            nr = record.get('nr_runtime') or {}
+            t.need(nr.get('sha256') and digest(directory / MODEL, cached) == nr['sha256'], 'The adopted NR model changed')
+    else:
+        stack(directory, cached, installed=True)
+        nr = model(directory / MODEL)
     if record:
         t.need(record.get('status') == 'active', 'The Feeder installation needs recovery')
         for name, expected in record['installed_hashes'].items():
@@ -157,9 +245,49 @@ def eligible(e, row, existing=False, check_running=True):
     t.need(not any((directory / name).exists() for name in ('nvngx.dll_dlssnr.dll', 'dlss5-feed-helper.addon64',
                                                          'dlss5-bridge.addon64', 'renodx-mfgunlock.addon64')),
            'Another NR or frame-generation hook is present. Restore it before using this Feeder recipe')
-    t.need(existing or 'd3d11.dll' in {name.lower() for name in e.pe_imported_dlls(exe)},
-           'This Feeder recipe requires an x64 DirectX 11 executable')
+    t.need(existing or directx11(e, exe), 'This Feeder recipe requires an x64 DirectX 11 executable')
     return root, exe, directory
+
+
+def directx11(e, exe):
+    """Normal or delay-load d3d11 import; EA-wrapped Mass Effect LE delay-loads it."""
+    if exe.name.lower() in REVIEWED_DX11:
+        return True
+    return 'd3d11.dll' in {name.lower() for name in (*e.pe_imported_dlls(exe), *delay_imported_dlls(exe))}
+
+
+def delay_imported_dlls(exe):
+    """Names in a PE32+ delay-load import directory; empty when absent or unreadable."""
+    import struct
+    try:
+        data = Path(exe).read_bytes()
+        pe = struct.unpack_from('<I', data, 0x3C)[0]
+        if data[:2] != b'MZ' or data[pe:pe + 4] != b'PE\0\0':
+            return set()
+        sections, optional = struct.unpack_from('<H', data, pe + 6)[0], struct.unpack_from('<H', data, pe + 20)[0]
+        opt = pe + 24
+        if struct.unpack_from('<H', data, opt)[0] != 0x20B or optional < 112 + 14 * 8:
+            return set()
+        rva = struct.unpack_from('<I', data, opt + 112 + 13 * 8)[0]
+        table = [struct.unpack_from('<IIII', data, opt + optional + i * 40 + 8) for i in range(sections)]
+
+        def offset(value):
+            for size, address, raw_size, raw in table:
+                if address <= value < address + max(size, raw_size):
+                    return value - address + raw
+            raise ValueError('RVA outside sections')
+
+        names, cursor = set(), offset(rva) if rva else None
+        while cursor is not None and len(names) < 256:
+            entry = data[cursor:cursor + 32]
+            if len(entry) < 32 or not any(entry):
+                break
+            start = offset(struct.unpack_from('<I', entry, 4)[0])
+            names.add(data[start:data.index(b'\0', start)].decode('ascii'))
+            cursor += 32
+        return names
+    except (OSError, ValueError, struct.error, UnicodeDecodeError):
+        return set()
 
 
 def expand_rows(e, rows, selected=False):
@@ -195,6 +323,15 @@ def expand_rows(e, rows, selected=False):
                                  blocked='')
                 except (t.Refusal, OSError, ValueError, configparser.Error) as error:
                     child.update(blocked=str(error), feeder_detected=True)
+                    try:
+                        unmanaged = state(e, exe.parent) is None
+                    except (t.Refusal, OSError, ValueError):
+                        unmanaged = False
+                    if unmanaged:
+                        # Another Feeder version: Adoption takes it as found or
+                        # replaces it with the pinned stack.
+                        child.update(blocked='', installed=True, runtime_provider='feeder', feature_mode='nr-only',
+                                     profile='NR Only', feeder_managed=False, installed_on=None, mfg_enabled=False, mfg_multiplier=0)
             elif selected or not child.get('native_dlss') or skynizz_provider.native_nr_refusal(child.get('exe'), child.get('appid')):
                 try:
                     # Capability is independent of the package selected for native
@@ -384,7 +521,7 @@ def _check(e, plan):
 
 def prepare(config, rows, mode, operation, settings, e):
     t.need(mode == 'nr-only' or operation == 'uninstall', 'Feeder provides NR Only. Frame generation is not available for this route')
-    t.need(operation in ('install', 'repair', 'uninstall', 'reset'), 'Unsupported Feeder operation')
+    t.need(operation in ('install', 'repair', 'uninstall', 'reset', 'apply'), 'Unsupported Feeder operation')
     ready, blocked, plans, seen = [], [], [], set()
     for index, row in enumerate(rows):
         ui.progress('Checking Feeder files', game=row['name'], checked=index, total=len(rows))
@@ -393,15 +530,19 @@ def prepare(config, rows, mode, operation, settings, e):
             t.need(str(directory).casefold() not in seen, 'The same Feeder executable was selected twice')
             seen.add(str(directory).casefold())
             current = state(e, directory)
+            existing = (directory / 'dlss5-feed.addon64').is_file()
             if current and current.get('status') == 'restored':
                 current = None
-            existing = (directory / 'dlss5-feed.addon64').is_file()
+            elif current and operation == 'install' and not any((directory / name).exists() for name in FEEDER_ONLY):
+                # The game folder was replaced; its pre-Feeder originals are now
+                # the current files, so install again from a fresh record.
+                current = None
             eligible(e, row, existing)
-            spec = stack(directory) if existing else lock()
+            spec = stack(directory, installed=True) if existing else lock()
             names = list(spec['assets']) + [*CONFIGS, MODEL]
             inputs, writes = {}, {}
             baseline = copy.deepcopy(current)
-            if operation in ('uninstall', 'reset', 'repair'):
+            if operation in ('uninstall', 'reset', 'repair', 'apply'):
                 t.need(current is not None, 'Recognize this Feeder installation with its original backups first')
             if current or existing:
                 found = inspect(e, row, cached=False)
@@ -413,6 +554,19 @@ def prepare(config, rows, mode, operation, settings, e):
                 summary = 'Restore the original files recorded for this Feeder setup.'
             elif operation == 'reset':
                 t.need(False, 'Edit Feeder NR settings in its ReShade panel. Your saved tuning has been kept')
+            elif operation == 'apply':
+                # The in-game panel saves to the same keys; RenoDX loads them at launch.
+                t.need(existing, 'Repair this Feeder installation before applying presets')
+                source_ini = (directory / 'ReShade.ini').read_bytes().decode('utf-8-sig')
+                changes = tuning_changes(source_ini, settings)
+                t.need(changes, 'This game already uses these settings')
+                changed = apply_tuning(source_ini, settings)
+                dest = t.safe(e.STATE_ROOT / 'feeder-cache' / t.sha(changed.encode()))
+                if not dest.exists(): t.atomic_file(dest, changed.encode(), 0o600)
+                inputs['preset-ini'] = writes['ReShade.ini'] = {'path': str(dest), 'sha256': t.sha(changed.encode())}
+                summary = 'Save presets to ReShade.ini: ' + ', '.join(
+                    f"{key} {saved or 'unset'} → {value}" for key, (saved, value) in changes.items()) + \
+                    '. They apply the next time the game starts.'
             else:
                 if not existing:
                     t.need(not any((directory / name).exists() for name in (*t.PROXIES, 'ReShade.ini', 'renodx-dlss5.addon64')),
@@ -431,7 +585,7 @@ def prepare(config, rows, mode, operation, settings, e):
                             t.need(name in old, 'The original backup does not cover: ' + name)
                             installed = old[name].get('after')
                             if name in spec['assets']:
-                                expected = {spec['assets'][name]['sha256']}
+                                expected = {sha for sha, _ in accepted(spec, name, installed=True)}
                                 if name == 'nvngx_dlss.dll':
                                     # Earlier manual installs were subsequently
                                     # upgraded to the verified production SR.
@@ -487,7 +641,10 @@ def prepare(config, rows, mode, operation, settings, e):
                     changed = configure_new_install(source_ini, settings.get('nr_on_launch', False))
                 else:
                     changed = source_ini if t.ini(source_ini).get('RenoDX.DLSS5', 'NeuralUplift', fallback='0') == desired_startup else t.setvalue(source_ini, 'RenoDX.DLSS5', 'NeuralUplift', desired_startup)
-                dest = t.safe(e.STATE_ROOT / 'feeder-cache' / t.sha(changed.encode()))
+                if settings.get('apply_requested_presets') and not existing:
+                    # Existing setups keep their tuning; Presets › Apply changes it.
+                    changed = apply_tuning(changed, settings)
+                dest =t.safe(e.STATE_ROOT / 'feeder-cache' / t.sha(changed.encode()))
                 if not dest.exists(): t.atomic_file(dest, changed.encode(), 0o600)
                 if changed != source_ini or 'ReShade.ini' in writes:
                     inputs['startup-ini'] = writes['ReShade.ini'] = {'path': str(dest), 'sha256': t.sha(changed.encode())}
@@ -497,12 +654,31 @@ def prepare(config, rows, mode, operation, settings, e):
                 if overlay_policy.explicit(settings):
                     source_ui = (Path(writes['ReShade.ini']['path']) if 'ReShade.ini' in writes else directory / 'ReShade.ini').read_text(encoding='utf-8-sig')
                     updated_ui = overlay_policy.reshade(source_ui, settings)
+                    # The rtxForge panel hides ReShade's startup banner unless welcomes are on.
+                    quiet = '0' if overlay_policy.options(settings)['reshade_intro'] else '1'
+                    if t.ini(updated_ui).get('rtxForge.UI', 'QuietStartup', fallback='1') != quiet:
+                        updated_ui = t.setvalue(updated_ui, 'rtxForge.UI', 'QuietStartup', quiet)
                     if updated_ui != source_ui:
                         ui_file = t.safe(e.STATE_ROOT / 'feeder-cache' / t.sha(updated_ui.encode()))
                         if not ui_file.exists(): t.atomic_file(ui_file, updated_ui.encode(), 0o600)
                         inputs['ui-ini'] = writes['ReShade.ini'] = {'path': str(ui_file), 'sha256': t.sha(updated_ui.encode())}
                     summary += ' Menu access and welcome messages follow Overlay settings.'
-            checks = _checks(directory, names)
+                bundled = {name: item for name, item in panel(e).items() if digest(directory / name) != item['sha256']}
+                for name, item in bundled.items():
+                    inputs[name] = writes[name] = item
+                if bundled:
+                    summary += ' Add the rtxForge in-game panel.'
+                for name, retired in RETIRED.items():
+                    if digest(directory / name) == retired:
+                        writes[name] = None
+                for name in OWNED:
+                    # Restore puts back whatever was here before rtxForge first owned it.
+                    if name in writes and name not in baseline['originals']:
+                        original = cache(e, directory / name) if (directory / name).exists() else None
+                        baseline['originals'][name] = original
+                        if original:
+                            inputs['original:' + name] = original
+            checks = _checks(directory, [*names, *(name for name in writes if name not in names)])
             plan = dict(row=dict(row), target=str(directory), existing=existing, checks=checks,
                         baseline_before=digest(state_dir(e, directory) / 'baseline.json'), baseline=baseline,
                         inputs=inputs, writes=writes, operation=operation)
@@ -562,7 +738,7 @@ def execute(review):
                         baseline = copy.deepcopy(plan['baseline'])
                         baseline['status'] = 'active'
                         baseline['installed_hashes'] = _checks(directory, plan['checks'])
-                        stack(directory)
+                        stack(directory, installed=True)
                     t.atomic_file(state_dir(e, directory) / 'baseline.json', (json.dumps(baseline, indent=2) + '\n').encode(), 0o600)
                     session.seal(checkpoint)
                     results.append({'name': plan['row']['name'], 'game': plan['row']['game'], 'status': 'complete'})

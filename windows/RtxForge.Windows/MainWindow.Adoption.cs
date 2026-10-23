@@ -8,6 +8,10 @@ namespace RtxForge.Windows;
 
 public sealed partial class MainWindow
 {
+    /// <summary>Restore skips setups another tool made; adopting them is a choice in each game's Details.</summary>
+    public static string AdoptionSkipped(int count) =>
+        $"Skipped {count} game{(count == 1 ? "" : "s")} set up by another tool. Adopt from Game Details to manage or restore {(count == 1 ? "it" : "them")} with rtxForge.";
+
     public async Task ReviewAdoptionAsync(IReadOnlyList<Game> candidates)
     {
         if (Busy || candidates.Count == 0) return;
@@ -29,9 +33,9 @@ public sealed partial class MainWindow
         var keep = new RadioButton { Content = "Adopt existing setup", GroupName = "AdoptionAction", IsChecked = true };
         var clean = new RadioButton { Content = "Back up and clean install", GroupName = "AdoptionAction" };
         body.Children.Add(keep);
-        body.Children.Add(Prefs.Label("Keep current files and settings. Enable management in rtxForge.", "ForgeCaptionDimTextStyle"));
+        body.Children.Add(Prefs.Label("Keep current files and settings, when rtxForge recognizes the package. Enable management in rtxForge.", "ForgeCaptionDimTextStyle"));
         body.Children.Add(clean);
-        body.Children.Add(Prefs.Label("Install the matching package selected in Graphics with fresh settings. Restore can return to today’s setup.", "ForgeCaptionDimTextStyle"));
+        body.Children.Add(Prefs.Label("Works with any setup found: install the newest version of the package chosen in Packages, with fresh settings. Restore can return to today’s setup.", "ForgeCaptionDimTextStyle"));
         var startup = new CheckBox { Content = "Enable NR on launch", IsChecked = Settings.NrOnLaunch, IsEnabled = false };
         clean.Checked += (_, _) => startup.IsEnabled = true;
         keep.Checked += (_, _) => startup.IsEnabled = false;

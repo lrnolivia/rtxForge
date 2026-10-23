@@ -99,23 +99,7 @@ public sealed partial class GamePage : Page
 
         // .{art} button.suggested-action, toggle:checked, scale highlight, progressbar,
         // .game-detail-nav row:selected (alpha 0.10 fill, nav_accent label)
-        var accent = palette.AccentBrush;
-        var hover = palette.Brush(palette.Color, 0.9);
-        var pressed = palette.Brush(palette.Color, 0.8);
-        var accentFg = palette.Brush(palette.AccentFg);
-        foreach (var (key, brush) in new (string, Microsoft.UI.Xaml.Media.Brush)[]
-        {
-            ("AccentFillColorDefaultBrush", accent),
-            ("AccentButtonBackground", accent), ("AccentButtonBackgroundPointerOver", hover), ("AccentButtonBackgroundPressed", pressed),
-            ("AccentButtonForeground", accentFg), ("AccentButtonForegroundPointerOver", accentFg), ("AccentButtonForegroundPressed", accentFg),
-            ("SliderTrackValueFill", accent), ("SliderTrackValueFillPointerOver", hover), ("SliderTrackValueFillPressed", pressed),
-            ("SliderThumbBackground", accent), ("SliderThumbBackgroundPointerOver", hover), ("SliderThumbBackgroundPressed", pressed),
-            ("ToggleSwitchFillOn", accent), ("ToggleSwitchFillOnPointerOver", hover), ("ToggleSwitchFillOnPressed", pressed),
-            ("ToggleSwitchKnobFillOn", accentFg), ("ProgressBarForeground", accent),
-            ("SelectorBarItemPillFill", accent),
-            ("SelectorBarItemBackgroundSelected", palette.Brush(palette.Color, 0.10)),
-        })
-            Resources[key] = brush;
+        AccentResources.Apply(Resources, palette);
 
         // Re-resolve ThemeResource lookups against the new page-level overrides.
         RequestedTheme = ActualTheme == ElementTheme.Dark ? ElementTheme.Light : ElementTheme.Dark;
@@ -184,7 +168,6 @@ public sealed partial class GamePage : Page
     void OnInstall(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("install", [game]);
     void OnRestore(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("uninstall", [game]);
     void OnUpdateDlss(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("update-dlss", [game]);
-    void OnCompanion(object sender, RoutedEventArgs e) => shell.OpenCompanion(game);
     void OnAdoption(object sender, RoutedEventArgs e) => _ = shell.ReviewAdoptionAsync([game]);
     void OnLaunchOffline(object sender, RoutedEventArgs e) => _ = shell.LaunchOfflineAsync(game);
     void OnRemoveFromLibrary(object sender, RoutedEventArgs e) => _ = shell.ConfirmRemoveLibraryEntriesAsync([game]);
@@ -236,15 +219,31 @@ public sealed partial class GamePage : Page
                 PageHost.Children.Add(folder);
                 break;
 
-            case "Presets":
+            case "Features":
                 if (g.IsFeeder)
                 {
                     PageHost.Children.Add(Prefs.Row("Feeder NR settings", "Your existing tuning is preserved. Use ReShade's NR panel in the running game to adjust passes, resolution, tone and structure.", glyph: ""));
                     break;
                 }
+                if (!g.UsesFeeder)
+                {
+                    var (packageKeys, packageCaptions) = shell.Settings.GamePackageOptions();
+                    var chosen = shell.Settings.GamePackage(g);
+                    var (packageRow, packageCombo) = Prefs.ComboRow("Package", ForgeSettings.GamePackageNote(g), packageCaptions,
+                        Math.Max(0, Array.IndexOf(packageKeys, chosen)), "");
+                    packageCombo.IsEnabled = !shell.Busy && !shell.Service.IsPreview;
+                    packageCombo.SelectionChanged += (_, _) =>
+                    {
+                        if (packageCombo.SelectedIndex >= 0 && packageKeys[packageCombo.SelectedIndex] != chosen)
+                            _ = shell.SelectGamePackageAsync(g, packageKeys[packageCombo.SelectedIndex]);
+                    };
+                    var package = new PreferencesGroup(null);
+                    package.Add(packageRow);
+                    PageHost.Children.Add(package);
+                }
                 var features = new PreferencesGroup(null,
                     "Tuning values for this game. Reset restores your library presets. Apply saves them for this game.");
-                var tuning = new PresetControlsView(shell.GameTuning(g), shell.Settings.OverlayControls == "classic", embedded: true);
+                var tuning = new PresetControlsView(shell.GameTuning(g), shell.Settings.OverlayControls == "classic");
                 tuning.SetMode(g.Profile?.Contains("Only", StringComparison.OrdinalIgnoreCase) == true
                     ? g.Profile.StartsWith("NR", StringComparison.OrdinalIgnoreCase) ? "nr-only" : "mfg-only" : shell.Mode,
                     g.Installed, g.RuntimeProvider != "skynizz", dynamicSupported: g.DynamicMfgAvailable, dynamicDetail: g.DynamicMfgDetail);
@@ -312,7 +311,9 @@ public sealed partial class GamePage : Page
                     Prefs.ActionButton("Open", (_, _) => MainWindow.OpenUri("https://reshade.me/")), ""));
                 extras.Add(graphicsTools);
                 PageHost.Children.Add(extras);
-                PageHost.Children.Add(Prefs.Label("Use an extracted x64 ReShade DLL or .addon64 file from a source you trust. Shader packs and presets remain yours to manage.", "ForgeCaptionDimTextStyle"));
+                var trustNote = Prefs.Label("Use an extracted x64 ReShade DLL or .addon64 file from a source you trust. Shader packs and presets remain yours to manage.", "ForgeCaptionDimTextStyle");
+                trustNote.Margin = new Thickness(0, 12, 0, 0);
+                PageHost.Children.Add(trustNote);
                 _ = FillExtraRecordsAsync(g);
                 break;
 
@@ -346,17 +347,10 @@ public sealed partial class GamePage : Page
     static Border DetailSurface(UIElement content) => new()
     { Style = Prefs.GetStyle("ForgeControlPodStyle"), Child = content, VerticalAlignment = VerticalAlignment.Top };
 
-    static Border DetailActionCard(string title, string description, Button action, string glyph)
-    {
-        var card = Prefs.Row(title, description, action, glyph);
-        var layout = (Grid)card.Child;
-        layout.RowDefinitions.Add(new() { Height = GridLength.Auto });
-        layout.RowDefinitions.Add(new() { Height = GridLength.Auto });
-        layout.RowSpacing = 12;
-        Grid.SetRow(action, 1); Grid.SetColumn(action, 1);
-        action.HorizontalAlignment = HorizontalAlignment.Right;
-        return card;
-    }
+    // Prefs.Row already moves the button under the text when the card is narrow;
+    // extra rows here only left empty space at the bottom of each card.
+    static Border DetailActionCard(string title, string description, Button action, string glyph) =>
+        Prefs.Row(title, description, action, glyph);
 
     /// <summary>DLSS Files: the native files found outside the feature stack, and the latest updater backup.</summary>
     async Task FillDlssInventoryAsync(Game g, PreferencesGroup files, Border backupRow, Button restore)

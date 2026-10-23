@@ -45,8 +45,9 @@ def fixture(path, extra=None, omit=None):
 def bridge_fixture(path, sr_path=None):
     fixture(path)
     spec=json.loads((ROOT/'providers/skynizz-bridge/source.json').read_text())
-    record={'variant':'nr-mfg-bridge','repo':'lrnolivia/rtxForge','tag':'v1.2.1','commit':'b'*40,
-            'archive':'rtxForge-Skynizz-v1.2.1-MFG.zip','url':'bundled:providers/skynizz-bridge/rtxForge-Skynizz-v1.2.1-MFG.zip',
+    tag=spec['upstream']['tag']
+    record={'variant':'nr-mfg-bridge','repo':'lrnolivia/rtxForge','tag':tag,'commit':'b'*40,
+            'archive':f'rtxForge-Skynizz-{tag}-MFG.zip','url':f'bundled:providers/skynizz-bridge/rtxForge-Skynizz-{tag}-MFG.zip',
             'upstream':spec['upstream'],'mfg_source':spec['mfg_source'],'patch_sha256':spec['patch_sha256'],
             'bridge_id':spec['id'],'runtime_verified':False}
     if sr_path is not None:
@@ -224,15 +225,16 @@ class SkynizzPolicyTest(unittest.TestCase):
             provider.resolve('../../nightly')
         fetch.assert_not_called()
 
-    def test_windows_catalog_keeps_existing_default_and_linux_excludes_skynizz(self):
+    def test_windows_catalog_recommends_skynizz_and_linux_excludes_it(self):
         release=bridge_fixture(self.archive)
         with patch.object(provider,'bundled_bridge',return_value=(release,self.archive)):
             windows=package_catalog.catalog({'system':'Windows','architecture':'AMD64','ready':True})
         self.assertTrue(next(row for row in windows if row['id']=='skynizz')['available'])
-        self.assertFalse(next(row for row in windows if row['id']=='skynizz')['recommended'])
-        self.assertTrue(next(row for row in windows if row['id']=='dlss-unlocked')['recommended'])
+        # Skynizz + Universal MFG is the Windows flagship; Linux has not tested it yet.
+        self.assertEqual([row['id'] for row in windows if row['recommended']], ['skynizz'])
         linux=package_catalog.catalog({'system':'Linux','architecture':'x86_64','ready':True})
         self.assertEqual([row['id'] for row in linux], ['dlss-unlocked','y4my'])
+        self.assertTrue(next(row for row in linux if row['id']=='dlss-unlocked')['recommended'])
 
     def test_unsupported_modes_and_linux_refuse_before_resolution(self):
         provider.require_mode('windows', 'nr-only')

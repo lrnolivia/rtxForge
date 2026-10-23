@@ -181,7 +181,8 @@ public sealed partial class EngineForgeService
         var r = await CallAsync("packages");
         var status = $"{S(r?["host"], "gpu") ?? "System"} · {S(r?["host"], "reason") ?? ""}";
         var packages = Objects(r?["catalog"]).Select(p => new PackageOption(S(p, "id") ?? "", S(p, "name") ?? "", S(p, "version") ?? "",
-            S(p, "summary") ?? "", B(p, "available"), S(p, "reason") ?? "", B(p, "recommended"), S(p, "url") ?? "")).ToList();
+            S(p, "summary") ?? "", B(p, "available"), S(p, "reason") ?? "", B(p, "recommended"), S(p, "url") ?? "",
+            (p["verified"] as JsonArray)?.Select(os => os?.ToString() ?? "").Where(os => os.Length > 0).ToArray())).ToList();
         var community = Objects(r?["community"]).Select(c => new CommunitySource(S(c, "name") ?? "", S(c, "url") ?? "", S(c, "note") ?? "")).ToList();
         return new PackageCatalog(status, packages, community, S(r?["custom"], "name"));
     }

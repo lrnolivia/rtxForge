@@ -16,10 +16,15 @@ ROOT = Path(__file__).resolve().parents[1]
 ID = 'mfg-unlock'
 REPO = 'mavismmg/MFGAdaUnlock-RenoDx'
 SECTION = 'RenoDX.MFGUnlock'
+# 1.4.5 is pinned for new installs; 1.4.4 stays known so existing installs repair and restore.
 KNOWN = {
     '1.4.4': ('3e898157fd59ed9eef65c181619060ddb305c6bd',
               '5a193d86c6f60a7f0f275799d66eef7f14bd0946cdbefd48a3237506c747d5cd', 1199104),
+    '1.4.5': ('0fe65579d287581107babe267ee3e48c9135bf8a',
+              '9715987f6323a2699dd5b7636412258a6b97a180a4d70c0f79d286714e2972e2', 1229312),
 }
+# Versions not yet run in inZOI. 1.4.4 + ReShade 6.8 hung there; 1.4.5 is untested.
+INZOI_UNSAFE = ('1.4.4', '1.4.5')
 HOST = ('afe4c8f13048306307983b8b3d41d5bf00a86820440b0e57dea10950e1176445', 4318424,
         '0cee63f9c9f13f3ac909c5b4903f4dbb4b719a7ab3b4f13b0deaf83c814b94f7', 5592064)
 
@@ -153,9 +158,9 @@ def check_target(e, game, baseline):
     inzoi = (str(getattr(game, 'appid', '')) == '2456740'
              or str(getattr(game, 'exe', '')).replace('\\', '/').rsplit('/', 1)[-1].casefold()
              == 'inzoi-win64-shipping.exe')
-    t.need(not (record['version'] == '1.4.4' and inzoi),
-           'MFG Unlock 1.4.4 with Skynizz NR currently fails inZOI startup. '
-           'Choose Integrated Ada MFG for this game; restore first if already installed.')
+    t.need(not (record['version'] in INZOI_UNSAFE and inzoi),
+           f"MFG Unlock {record['version']} with Skynizz NR isn't safe in inZOI yet (1.4.4 hung at startup). "
+           'Choose Universal MFG or the integrated Ada unlock for this game; restore first if already installed.')
     current = (baseline or {}).get('current') or {}
     installed = ((current.get('archive') or {}).get('release') or {}).get('mfg_component')
     t.need(not current or installed == record, 'Restore before changing MFG components.')

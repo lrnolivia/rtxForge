@@ -116,7 +116,7 @@ public sealed partial class GameModeView
         ShowModal("Choose games", choices, [ui.Button("Cancel", CloseModal, GmKind.Card, .85), review], CloseModal, 920);
     }
 
-    // ---------- Settings (the same preferences, sized for the couch) ----------
+    // ---------- Settings ----------
 
     static readonly string[] SettingsSections = ["Graphics", "Overlay", "Appearance", "Library", "Gaming Mode", "System", "Recovery", "About"];
     sealed record SettingsGroup(string Title, string? Description, IReadOnlyList<UIElement> Rows);
@@ -147,7 +147,6 @@ public sealed partial class GameModeView
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         var head = new StackPanel { Spacing = t.Px(10) };
         head.Children.Add(ui.H1("Settings"));
-        head.Children.Add(ui.P("The same rtxForge preferences, sized for the couch."));
         Grid.SetColumnSpan(head, 2);
         grid.Children.Add(head);
 

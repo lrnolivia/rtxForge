@@ -55,12 +55,12 @@ def rapid_navigation():
  c.navigate('down')
  first=app.window.get_focus();assert first is not None and first.get_focusable()
  assert first.is_ancestor(c.body.current),'new page input went to the header'
- c.navigate('right')
+ c.navigate('down')
  target=app.window.get_focus()
  assert target is not None and target.is_sensitive()
  assert target is not first,'input before allocation did not advance native focus'
- c.navigate('left');assert app.window.get_focus() is first,'immediate reversal lost focus'
- c.navigate('right');assert app.window.get_focus() is target
+ c.navigate('up');assert app.window.get_focus() is first,'immediate reversal lost focus'
+ c.navigate('down');assert app.window.get_focus() is target
  settle()
  assert app.window.get_focus() is target,'delayed restoration replaced newer input'
  c.open('library');settle()
@@ -252,7 +252,7 @@ if os.environ.get('RTXFORGE_GAME_MODE_MOTION_ONLY'):
 def step():
  try:
   if steps:steps.pop(0)();GLib.timeout_add(500,step)
-  else:print('PASS: Game Mode pages, details sections, modals, keyboard, selection and the review â†’ done flow\n'+'\n'.join(images),flush=True);app.quit()
+  else:print('PASS: Game Mode pages, details sections, modals, keyboard, selection and the review Ã¢â€ â€™ done flow\n'+'\n'.join(images),flush=True);app.quit()
  except Exception:traceback.print_exc();app.exit_code=1;app.quit()
  return False
 GLib.timeout_add(1800,step);app.run([]);raise SystemExit(app.exit_code)

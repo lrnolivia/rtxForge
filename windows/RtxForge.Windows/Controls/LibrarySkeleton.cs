@@ -6,7 +6,7 @@ using Microsoft.UI.Xaml.Media;
 
 namespace RtxForge.Windows.Controls;
 
-/// <summary>Static layout-matched card placeholders with a centered loading label.</summary>
+/// <summary>Static layout-matched card placeholders with a loading toast at the bottom.</summary>
 public sealed class LibrarySkeleton : UserControl
 {
     readonly Grid grid = new();
@@ -26,13 +26,20 @@ public sealed class LibrarySkeleton : UserControl
         ink = (Brush)Application.Current.Resources["ControlFillColorTertiaryBrush"];
         grid.Opacity = .45;
         grid.VerticalAlignment = VerticalAlignment.Top;
-        var title = new TextBlock { Text = "Finding your games", FontSize = 24 * scale,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextAlignment = TextAlignment.Center,
-            TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Center };
+        // A toast at the bottom (MainWindow's ToastHost surface), not a title over the cards.
+        var title = new TextBlock { Text = "Finding your games…", FontSize = 14 * scale, VerticalAlignment = VerticalAlignment.Center };
         AutomationProperties.SetLiveSetting(title, AutomationLiveSetting.Polite);
-        var status = new StackPanel { Spacing = 16 * scale, HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(24 * scale) };
-        status.Children.Add(title);
+        var message = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 * scale };
+        message.Children.Add(new ProgressRing { IsActive = true, Width = 16 * scale, Height = 16 * scale });
+        message.Children.Add(title);
+        var status = new Border
+        {
+            Child = message, Padding = new Thickness(16 * scale, 10 * scale, 18 * scale, 10 * scale),
+            Background = (Brush)Application.Current.Resources["SolidBackgroundFillColorTertiaryBrush"],
+            CornerRadius = (CornerRadius)Application.Current.Resources["OverlayCornerRadius"],
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(24 * scale), Translation = new System.Numerics.Vector3(0, 0, 32), Shadow = new ThemeShadow(),
+        };
         var root = new Grid(); root.Children.Add(grid); root.Children.Add(status); Content = root;
         Rebuild();
         Loaded += (_, _) => ArrangeCards(ActualWidth);

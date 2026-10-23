@@ -3,7 +3,6 @@
 #include <dxgi1_4.h>
 #include <d3dcompiler.h>
 #include <wrl/client.h>
-#include <dbghelp.h>
 #include <array>
 #include <cstring>
 #include <iostream>
@@ -44,7 +43,7 @@ M scene(V i) { M o; o.color=float4(i.uv,.25,1); o.motion=jitter.xy; return o; }
 Texture2D<float4> colorIn:register(t0); Texture2D<float2> motionIn:register(t1); Texture2D<float> depthIn:register(t2);
 float4 post(V i):SV_Target { int3 p=int3(clamp(i.uv*float2(320,180),0,float2(319,179)),0); return float4(colorIn.Load(p).rg,motionIn.Load(p).x+depthIn.Load(p)*.1,1); }
 )";
-int main() {
+int main(int argc, char **argv) {
     ULONG guarantee=65536; SetThreadStackGuarantee(&guarantee); AddVectoredExceptionHandler(1,crash);
     HWND window = nullptr; HANDLE fence_event = nullptr;
     try {
@@ -65,6 +64,19 @@ int main() {
             ComPtr<ID3D12DescriptorHeap> result; check(device->CreateDescriptorHeap(&d,IID_PPV_ARGS(&result))); return result;
         };
         auto rtv=heap(D3D12_DESCRIPTOR_HEAP_TYPE_RTV,4,false), dsv=heap(D3D12_DESCRIPTOR_HEAP_TYPE_DSV,1,false), srv=heap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,3,true);
+        // Real games initialize large banks of null descriptors before creating scene views.
+        // Keep that heap alive so this reproduces catalog pressure rather than heap reuse.
+        ComPtr<ID3D12DescriptorHeap> null_bank;
+        const bool stress = argc > 1 && std::string(argv[1]) == "--descriptor-stress";
+        if (stress) {
+            constexpr unsigned null_count = 262145;
+            null_bank = heap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, null_count, false);
+            D3D12_SHADER_RESOURCE_VIEW_DESC empty{};
+            empty.Format=DXGI_FORMAT_R8G8B8A8_UNORM; empty.ViewDimension=D3D12_SRV_DIMENSION_TEXTURE2D;
+            empty.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING; empty.Texture2D.MipLevels=1;
+            for (unsigned i=0; i<null_count; ++i)
+                device->CreateShaderResourceView(nullptr,&empty,at(device.Get(),null_bank.Get(),D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,i));
+        }
         std::array<ComPtr<ID3D12Resource>,2> back;
         for(unsigned i=0;i<2;++i) { check(swap->GetBuffer(i,IID_PPV_ARGS(&back[i]))); device->CreateRenderTargetView(back[i].Get(),nullptr,at(device.Get(),rtv.Get(),D3D12_DESCRIPTOR_HEAP_TYPE_RTV,i)); }
         auto texture = [&](DXGI_FORMAT format, D3D12_RESOURCE_FLAGS flags, D3D12_RESOURCE_STATES state) {
@@ -127,7 +139,7 @@ int main() {
             check(queue->Signal(fence.Get(),frame+1)); check(fence->SetEventOnCompletion(frame+1,fence_event)); if(WaitForSingleObject(fence_event,10000)!=WAIT_OBJECT_0) throw std::runtime_error("GPU fence timeout"); Sleep(2);
         }
         constants->Unmap(0,nullptr); CloseHandle(fence_event); DestroyWindow(window);
-        std::cout << "PASS: 220 D3D12 frames; scene MRT, motion/depth SRVs and alternating camera constants\n";
+        std::cout << "PASS: 220 D3D12 frames; scene MRT, motion/depth SRVs and alternating camera constants; descriptor_stress=" << stress << '\n';
         return 0;
     } catch(const std::exception &e) {
         if(fence_event) CloseHandle(fence_event); if(window) DestroyWindow(window); std::cerr << e.what() << '\n'; return 1;

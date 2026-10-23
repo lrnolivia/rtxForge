@@ -11,7 +11,7 @@ if ($LASTEXITCODE -ne 0 -or $rtxSdkCommit -ne $rtxReceipt.sdk.commit) { throw 'R
 $rtxSdkChanges = & git -C $rtxSdk status --porcelain -- include LICENSE.md
 if ($rtxSdkChanges) { throw 'Pinned ReShade SDK headers or license have local changes' }
 $rtxOutput = [IO.Path]::GetFullPath($Output)
-if ($rtxOutput.StartsWith($rtxRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw 'Use an output directory outside the source checkout' }
+if ($rtxOutput.Equals($rtxRoot, [StringComparison]::OrdinalIgnoreCase) -or $rtxOutput.StartsWith($rtxRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw 'Use an output directory outside the source checkout' }
 New-Item -ItemType Directory -Path $rtxOutput -Force | Out-Null
 $rtxBuild = Join-Path $rtxOutput 'build'
 & cmake -S (Join-Path $rtxRoot 'windows\render-bridge') -B $rtxBuild -G 'Visual Studio 17 2022' -A x64 "-DRESHADE_SDK_DIR=$rtxSdk/include"

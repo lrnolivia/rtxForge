@@ -22,8 +22,32 @@ int main() {
         require(l.get({30, 1}).resource_id == 0, "Missing source retained a stale destination");
         l.copy({30, UINT32_MAX}, {30, 0}, 2);
         require(l.dropped == 1, "Overflowing descriptor range was not refused");
+        require(l.copy_drops == 1, "Copy range drop reason was lost");
+        l.view(20, 0);
+        require(l.resolve_view(20) == 0, "A null view retained a stale resource");
+        l.put({30, 0}, {});
+        require(l.get({30, 0}).resource_id == 0, "A null update retained a stale descriptor");
+        Ledger pressure;
+        for (std::uint32_t i = 0; i < Ledger::descriptor_limit + 1; ++i) {
+            pressure.view(1000 + i, 0);
+            pressure.put({1, i}, {});
+        }
+        require(pressure.views.empty() && pressure.descriptors.empty() && pressure.dropped == 0,
+                "Null descriptor initialization exhausted the live catalog");
+        const auto scene = pressure.create(10, 320, 180, 10, 8);
+        for (std::uint32_t i = 0; i < Ledger::view_limit; ++i) pressure.view(1000 + i, 10);
+        pressure.view(1000, 10);
+        require(pressure.dropped == 0, "A view replacement was refused at capacity");
+        pressure.view(999, 10);
+        require(pressure.view_drops == 1, "A view capacity drop was not classified");
+        for (std::uint32_t i = 0; i < Ledger::descriptor_limit; ++i) pressure.put({1, i}, {scene, 0, 0, 2});
+        pressure.put({1, 0}, {scene, 128, 0, 2});
+        require(pressure.get({1, 0}).offset == 128 && pressure.descriptor_drops == 0,
+                "A descriptor replacement was refused at capacity");
+        pressure.put({1, static_cast<std::uint32_t>(Ledger::descriptor_limit)}, {scene, 0, 0, 2});
+        require(pressure.descriptor_drops == 1, "A descriptor capacity drop was not classified");
         require(quote("a\"\\\n\x01") == "\"a\\\"\\\\\\u000a\\u0001\"", "JSON control/path escaping failed");
-        std::cout << "PASS: lifetime reuse, stale views, descriptor overlap, missing sources, bounds, JSON escaping\n";
+        std::cout << "PASS: lifetime reuse, stale views, descriptor overlap, null pressure, capacity replacement, bounds, JSON escaping\n";
         return 0;
     } catch (const std::exception &e) { std::cerr << e.what() << '\n'; return 1; }
 }

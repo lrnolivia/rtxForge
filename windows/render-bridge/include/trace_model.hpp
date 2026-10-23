@@ -30,17 +30,19 @@ struct Slot {
 class Ledger {
 public:
     static constexpr std::size_t resource_limit = 65536;
+    static constexpr std::size_t view_limit = 65536;
     static constexpr std::size_t descriptor_limit = 262144;
     std::map<Handle, std::uint64_t> live;
     std::map<std::uint64_t, Resource> resources;
     std::map<Handle, std::uint64_t> views;
     std::map<Slot, Descriptor> descriptors;
     std::uint64_t dropped = 0;
+    std::uint64_t resource_drops = 0, view_drops = 0, descriptor_drops = 0, copy_drops = 0, slot_drops = 0;
 
     std::uint64_t create(Handle handle, std::uint64_t width, std::uint32_t height,
                          std::uint32_t format, std::uint32_t usage) {
         destroy(handle);
-        if (resources.size() >= resource_limit) { ++dropped; return 0; }
+        if (resources.size() >= resource_limit) { ++dropped; ++resource_drops; return 0; }
         const auto id = ++next_id;
         resources.emplace(id, Resource{id, handle, width, height, format, usage, true});
         live[handle] = id;
@@ -56,7 +58,14 @@ public:
         const auto it = live.find(handle);
         return it == live.end() ? 0 : it->second;
     }
-    void view(Handle handle, Handle resource) { views[handle] = resolve(resource); }
+    void view(Handle handle, Handle resource) {
+        const auto id = resolve(resource);
+        // D3D12 permits null views. Huge preinitialized banks must not consume the
+        // live catalog; overwriting a real view with null still invalidates it.
+        if (!id) { views.erase(handle); return; }
+        if (views.size() >= view_limit && !views.contains(handle)) { ++dropped; ++view_drops; return; }
+        views[handle] = id;
+    }
     std::uint64_t resolve_view(Handle handle) const {
         const auto it = views.find(handle);
         return it == views.end() ? 0 : it->second;
@@ -66,7 +75,11 @@ public:
         return it != resources.end() && it->second.alive;
     }
     void put(Slot slot, Descriptor descriptor) {
-        if (descriptors.size() >= descriptor_limit && !descriptors.contains(slot)) { ++dropped; return; }
+        if (!slot.heap) { ++dropped; ++slot_drops; return; }
+        // Empty/unknown input clears the destination, including copied nulls.
+        // Keeping an entry per null descriptor exhausted budgets before scene creation.
+        if (!descriptor.resource_id) { descriptors.erase(slot); return; }
+        if (descriptors.size() >= descriptor_limit && !descriptors.contains(slot)) { ++dropped; ++descriptor_drops; return; }
         descriptors[slot] = descriptor;
     }
     Descriptor get(Slot slot) const {
@@ -75,7 +88,7 @@ public:
     }
     void copy(Slot source, Slot destination, std::uint32_t count) {
         if (count > 4096 || source.offset > UINT32_MAX - count || destination.offset > UINT32_MAX - count) {
-            ++dropped; return;
+            ++dropped; ++copy_drops; return;
         }
         std::vector<Descriptor> snapshot;
         snapshot.reserve(count);

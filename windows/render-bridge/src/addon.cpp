@@ -47,7 +47,7 @@ struct Device {
     std::set<std::tuple<std::uint64_t, std::uint64_t, std::uint64_t>> sampled;
     std::uint64_t frame = 0, capture_start = 0, serial = 0, dropped = 0, range_samples = 0;
     std::uint32_t width = 0, height = 0, remaining = 0;
-    bool capturing = false, auto_done = false, key_down = false;
+    bool capturing = false, auto_done = false, key_down = false, constants_truncated = false;
 };
 std::mutex devices_mutex;
 std::unordered_map<api::device *, std::shared_ptr<Device>> devices;
@@ -94,6 +94,8 @@ Descriptor descriptor(Device &d, const api::descriptor_table_update &u, std::uin
     switch (u.type) {
     case api::descriptor_type::shader_resource_view:
     case api::descriptor_type::unordered_access_view:
+    case api::descriptor_type::buffer_shader_resource_view:
+    case api::descriptor_type::buffer_unordered_access_view:
         result.resource_id = d.ledger.resolve_view(static_cast<const api::resource_view *>(u.descriptors)[i].handle); break;
     case api::descriptor_type::sampler_with_resource_view:
         result.resource_id = d.ledger.resolve_view(static_cast<const api::sampler_with_resource_view *>(u.descriptors)[i].view.handle); break;
@@ -106,25 +108,31 @@ Descriptor descriptor(Device &d, const api::descriptor_table_update &u, std::uin
     return result;
 }
 void sample_constants(Device &d, const Descriptor &b) {
-    if (b.type != static_cast<unsigned>(api::descriptor_type::constant_buffer) || !d.ledger.alive(b.resource_id)
-        || d.constants.size() >= 128 || !d.sampled.emplace(d.frame, b.resource_id, b.offset).second) return;
+    if (b.type != static_cast<unsigned>(api::descriptor_type::constant_buffer) || !d.ledger.alive(b.resource_id)) return;
+    const auto key = std::make_tuple(d.frame, b.resource_id, b.offset);
+    if (d.sampled.contains(key)) return;
     const auto &r = d.ledger.resources.at(b.resource_id);
     const auto it = d.mapped.find(r.handle);
     if (it == d.mapped.end() || b.offset < it->second.offset || b.offset >= r.width) return;
     const auto relative = b.offset - it->second.offset;
     if (relative >= it->second.size) return;
     const auto bytes = std::min<std::uint64_t>({1024, b.size, r.width - b.offset, it->second.size - relative});
+    if (!bytes) return;
+    if (d.constants.size() >= 128) { d.constants_truncated = true; return; }
     std::array<unsigned char, 1024> data{}; SIZE_T read = 0;
-    if (!bytes || !ReadProcessMemory(GetCurrentProcess(), it->second.data + relative, data.data(), static_cast<SIZE_T>(bytes), &read) || read != bytes) return;
+    if (!ReadProcessMemory(GetCurrentProcess(), it->second.data + relative, data.data(), static_cast<SIZE_T>(bytes), &read) || read != bytes) return;
+    d.sampled.insert(key);
     constexpr char chars[] = "0123456789abcdef";
     std::string encoded;
     for (SIZE_T i = 0; i < read; ++i) { encoded += chars[data[i] >> 4]; encoded += chars[data[i] & 15]; }
     d.constants.push_back("{\"resource\":" + std::to_string(b.resource_id) + ",\"offset\":" + std::to_string(b.offset)
         + ",\"frame\":" + std::to_string(d.frame) + ",\"bytes_hex\":" + quote(encoded) + "}");
 }
-void emit_descriptor(Device &d, std::ostringstream &s, const Descriptor &b, unsigned param, unsigned binding, bool &first) {
+void emit_descriptor(Device &d, std::ostringstream &s, const Descriptor &b, unsigned param, unsigned binding, bool &first,
+                     unsigned expected_type, unsigned reg = UINT32_MAX, unsigned space = 0) {
     if (!first) s << ','; first = false;
     s << "{\"param\":" << param << ",\"binding\":" << binding << ",\"type\":" << b.type
+      << ",\"expected_type\":" << expected_type << ",\"dx_register\":" << reg << ",\"dx_space\":" << space
       << ",\"resource\":" << b.resource_id << ",\"alive\":" << (d.ledger.alive(b.resource_id) ? "true" : "false")
       << ",\"offset\":" << b.offset << ",\"size\":" << quote(std::to_string(b.size)) << '}';
     if (b.resource_id) d.referenced.insert(b.resource_id);
@@ -143,7 +151,7 @@ void record(api::command_list *cmd, const char *kind, bool compute) {
         for (std::size_t i = 0; i < c.targets.size(); ++i) { if (i) s << ','; s << c.targets[i]; d.referenced.insert(c.targets[i]); }
         d.referenced.insert(c.depth); s << "],\"descriptors\":[";
         bool first = true;
-        for (const auto &[key, value] : b.pushed) emit_descriptor(d, s, value, key.first, key.second, first);
+        for (const auto &[key, value] : b.pushed) emit_descriptor(d, s, value, key.first, key.second, first, value.type);
         const auto layout = d.layouts.find(b.layout);
         unsigned emitted = 0;
         if (layout != d.layouts.end()) for (const auto &[param, table] : b.tables) {
@@ -154,7 +162,8 @@ void record(api::command_list *cmd, const char *kind, bool compute) {
                 for (unsigned i = 0; i < count && emitted < 128; ++i, ++emitted) {
                     if (range.binding > UINT32_MAX - i) break;
                     const auto value = d.ledger.get(slot(cmd->get_device(), {table}, range.binding + i));
-                    emit_descriptor(d, s, value, param, range.binding + i, first);
+                    emit_descriptor(d, s, value, param, range.binding + i, first, range.type,
+                                    range.reg > UINT32_MAX - i ? UINT32_MAX : range.reg + i, range.space);
                 }
                 if (emitted >= 128) { ++d.range_samples; break; }
             }
@@ -182,6 +191,13 @@ void write_capture(const Device &d) {
       << ",\"capture_start\":" << d.capture_start << ",\"capture_end\":" << d.frame
       << ",\"output_width\":" << d.width << ",\"output_height\":" << d.height
       << ",\"dropped_events\":" << d.dropped << ",\"catalog_drops\":" << d.ledger.dropped
+      << ",\"catalog_drop_reasons\":{\"resources\":" << d.ledger.resource_drops
+      << ",\"views\":" << d.ledger.view_drops << ",\"descriptors\":" << d.ledger.descriptor_drops
+      << ",\"copy_ranges\":" << d.ledger.copy_drops << ",\"unresolved_heaps\":" << d.ledger.slot_drops
+      << ",\"other\":" << (d.ledger.dropped - d.ledger.resource_drops - d.ledger.view_drops - d.ledger.descriptor_drops - d.ledger.copy_drops - d.ledger.slot_drops) << '}'
+      << ",\"catalog_sizes\":{\"resource_lifetimes\":" << d.ledger.resources.size() << ",\"views\":" << d.ledger.views.size()
+      << ",\"descriptors\":" << d.ledger.descriptors.size() << ",\"pipelines\":" << d.pipelines.size() << ",\"command_lists\":" << d.commands.size() << '}'
+      << ",\"constant_buffer_samples_truncated\":" << (d.constants_truncated ? "true" : "false")
       << ",\"sampled_descriptor_ranges\":" << d.range_samples << ",\"resources\":[";
     bool first = true;
     for (const auto id : d.referenced) {
@@ -232,7 +248,7 @@ void on_view(api::device *device, api::resource r, api::resource_usage, const ap
                 desc.type == api::resource_type::buffer ? 0 : desc.texture.height,
                 desc.type == api::resource_type::buffer ? 0 : static_cast<unsigned>(desc.texture.format), static_cast<unsigned>(desc.usage));
         }
-        if (d.ledger.views.size() < max_objects) d.ledger.view(v.handle, r.handle); else ++d.ledger.dropped;
+        d.ledger.view(v.handle, r.handle);
     });
 }
 void on_destroy_view(api::device *device, api::resource_view v) { observe(device, [&](Device &d) { d.ledger.views.erase(v.handle); }); }
@@ -361,7 +377,7 @@ void on_present(api::command_queue *queue, api::swapchain *swapchain, const api:
         }
         if (!d.capturing && request) {
             d.auto_done = true; d.capturing = true; d.remaining = capture_frames;
-            d.capture_start = d.frame; ++d.serial; d.dropped = 0; d.range_samples = 0;
+            d.capture_start = d.frame; ++d.serial; d.dropped = 0; d.range_samples = 0; d.constants_truncated = false;
         }
     });
 }

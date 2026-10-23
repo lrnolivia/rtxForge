@@ -32,6 +32,18 @@ Reports explicitly use CPU command-recording order. Submission observations link
 command lists; they do not establish GPU execution order. Unbounded descriptor
 ranges are sampled to 64 entries and truncation is reported. Resource, pipeline,
 descriptor and event budgets are finite. Missing inputs remain missing.
+Empty descriptor banks do not consume the view/descriptor budgets. Reports
+include catalog sizes, individual drop reasons and constant sample truncation.
+
+Use `python windows/render-bridge/analyze_capture.py <capture.json>` to inspect
+coverage and the observed texture/shader binding graph. This reports attachment
+and descriptor observations, not semantic input identification or GPU order.
+Older captures without expected descriptor types have incomplete coverage counts.
+
+The controlled D3D12 harness accepts `--descriptor-stress` to initialize 262,145
+null SRVs before its scene views. Validate its actual capture with
+`python windows/render-bridge/tests/verify_harness_capture.py <capture.json>`.
+The same scene/motion/depth graph must survive null initialization with zero drops.
 
 The next stages are GPU readback/visual verification of candidates, a Valhalla
 TAA/upscale adapter, SR evaluation, then native 2x FG and the existing rtxForge

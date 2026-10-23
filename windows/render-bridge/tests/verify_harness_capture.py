@@ -16,6 +16,9 @@ def verify(path):
     assert data["jitter_verified"] is False and data["motion_vectors_verified"] is False
     assert data["dropped_events"] == 0 and data["catalog_drops"] == 0
     assert data["sampled_descriptor_ranges"] == 0
+    if "catalog_drop_reasons" in data:
+        assert all(v == 0 for v in data["catalog_drop_reasons"].values())
+        assert data["constant_buffer_samples_truncated"] is False
     resources = {r["id"]: r for r in data["resources"]}
     draws = [e for e in data["events"] if e["kind"] == "draw"]
     frames = sorted({e["frame"] for e in draws})

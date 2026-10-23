@@ -26,8 +26,8 @@ import action_labels
 import game_mode_motion as motion
 import game_mode_visuals as visuals
 from game_mode_tools import GameModeTools
+from game_mode_presets import GameModePresets
 from operation_scope import operation_targets, ScopeError
-import mfg_choice
 import overview_facts
 import overlay_shortcut
 
@@ -40,6 +40,22 @@ THEMES = {'night': {'window': '#050505', 'view': '#0b0b0b', 'panel': '#131313', 
 
 PAGES = (('library', 'Library'), ('presets', 'Presets'), ('packages', 'Packages'), ('extras', 'Extras'), ('settings', 'Settings'))
 SECTIONS = ('Overview', 'Features', 'DLSS Files', 'Tools', 'Appearance', 'Notes')
+# Windows DetailHeading glyphs (Segoe Fluent code in comments) drawn with the Game Mode icon set.
+HEADING_GLYPHS = {
+    **dict.fromkeys(('Features', 'Feeder NR', 'Neural rendering', 'NR packages'), 'rtx-gm-presets-symbolic'),  # E9E9
+    **dict.fromkeys(('Installation', 'File Management'), 'folder-download-symbolic'),                         # E896
+    **dict.fromkeys(('DLSS Files', 'Installed DLSS Files'), 'rtx-gm-file-symbolic'),                          # E8A5
+    **dict.fromkeys(('Tools', 'Installed Tools'), 'rtx-gm-tools-symbolic'),                                   # E90F
+    'Graphics Tools': 'rtx-gm-monitor-symbolic',                                                              # E7F8
+    **dict.fromkeys(('Notes', 'Your Notes'), 'rtx-gm-notes-symbolic'),                                        # E70B
+    **dict.fromkeys(('Appearance', 'Custom Artwork', 'Accent Color'), 'rtx-gm-palette-symbolic'),             # E790
+    'Hero Focus': 'zoom-fit-best-symbolic',                                                                   # E8B3
+    **dict.fromkeys(('MFG packages', 'Multi-Frame Generation'), 'rtx-gm-monitor-symbolic'),                   # E7F4
+    'Unified packages': 'rtx-gm-library-symbolic',                                                            # E8F1
+    'Other community projects': 'web-browser-symbolic',                                                       # E774
+    'Performance': 'rtx-gm-system-symbolic',                                                                  # E9D9
+    'Sharpening': 'rtx-brush-symbolic',                                                                       # E7AD
+}
 SETTINGS_SECTIONS = ('Graphics', 'Overlay', 'Appearance', 'Library', 'Gaming Mode', 'System', 'Recovery', 'About')
 MULTIPLIERS = ('auto', 0, 2, 3, 4, 5, 6)
 
@@ -285,7 +301,7 @@ def descendants(widget):
         child = child.get_next_sibling()
 
 
-class GameMode(Gtk.Overlay, GameModeTools):
+class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
     def __init__(self, owner, helpers):
         super().__init__()
         self.owner = owner
@@ -570,10 +586,15 @@ class GameMode(Gtk.Overlay, GameModeTools):
             box.append(row)
         return box
 
-    def preference(self, title, description=None, right=None, inset=True):
+    def preference(self, title, description=None, right=None, inset=True, icon=None):
         """A row's content; inset=False inside a row button, which brings its own padding."""
         t = self.theme
         line = Gtk.Box(spacing=t.px(28))
+        if icon:
+            # Fact rows lead with a glyph, as DetailFact does on Windows.
+            glyph = self.icon(icon, t.px(20))
+            glyph.set_valign(Gtk.Align.CENTER)
+            line.append(glyph)
         if inset:
             line.set_margin_start(t.px(30))
             line.set_margin_end(t.px(30))
@@ -1670,9 +1691,18 @@ class GameMode(Gtk.Overlay, GameModeTools):
         scene.set_child(content)
         return scene
 
-    def section_title(self, content, title, description=None):
+    def heading(self, title, icon=None):
+        """A section heading with its leading glyph (DetailHeading on Windows)."""
+        row = Gtk.Box(spacing=self.theme.px(14))
+        image = self.icon(icon or HEADING_GLYPHS.get(title, 'rtx-gm-settings-symbolic'), self.theme.px(26))
+        image.set_valign(Gtk.Align.CENTER)
+        row.append(image)
+        row.append(self.label(title, 'gm-h2', wrap=True))
+        return row
+
+    def section_title(self, content, title, description=None, icon=None):
         block = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=self.theme.px(10))
-        block.append(self.label(title, 'gm-h2'))
+        block.append(self.heading(title, icon))
         if description:
             block.append(self.label(description, 'gm-p', wrap=True))
         content.append(block)
@@ -1714,23 +1744,29 @@ class GameMode(Gtk.Overlay, GameModeTools):
             if self.presets_expanded:
                 rows, value = self.preset_rows(g, g.get('installed') and not g.get('blocked'))
                 content.append(self.label('Only this game changes. Review the changes before applying.', 'gm-p'))
-                content.append(self.group(rows))
+                for row in rows:
+                    content.append(row)
                 content.append(self.button('Apply to this game', lambda: self.run_operation('reset', [g], value()), 'primary',
                                            enabled=bool(g.get('installed') and not g.get('blocked')), halign=Gtk.Align.START))
             self.section_title(content, 'Installation')
             content.append(self.group([
-                self.row_button('Set Up for Linux' if setup else 'Install Features', action=lambda: self.run_operation('install', [g]), enabled=not g.get('blocked')),
-                self.row_button('Repair Feature Files', action=lambda: self.run_operation('install', [g]), enabled=bool(g.get('installed') and not g.get('blocked') and not setup)),
+                self.row_button('Set Up for Linux' if setup else 'Install Features', action=lambda: self.run_operation('install', [g]), enabled=not g.get('blocked'),
+                                icon='folder-download-symbolic'),
+                self.row_button('Repair Feature Files', action=lambda: self.run_operation('install', [g]), enabled=bool(g.get('installed') and not g.get('blocked') and not setup),
+                                icon='rtx-gm-tools-symbolic'),
                 self.row_button('Remove Linux Setup' if legacy else 'Restore Original Files',
-                                action=lambda: self.run_operation('uninstall', [g]), danger=True, enabled=bool(g.get('installed'))),
+                                action=lambda: self.run_operation('uninstall', [g]), danger=True, enabled=bool(g.get('installed')), icon='edit-undo-symbolic'),
             ]))
         elif section == 'DLSS Files':
             self.section_title(content, 'DLSS Files', 'Updater backups are previous copies, not proof of the version currently shipped by the game.')
-            content.append(self.group([self.preference('Installed DLSS version', None, self.label(g.get('dlss_version') or 'Checked during update', 'gm-value'))]))
+            content.append(self.group([self.preference('Installed DLSS version', None, self.label(g.get('dlss_version') or 'Checked during update', 'gm-value'),
+                                                       icon='rtx-gm-file-symbolic')]))
             self.section_title(content, 'File Management')
             content.append(self.group([
-                self.row_button('Update DLSS files', action=lambda: self.run_operation('update-dlss', [g]), enabled=not g.get('blocked')),
-                self.row_button('Restore original DLSS files', action=lambda: owner.manage_dlss_files(g, restore=True), danger=True, enabled=not g.get('blocked')),
+                self.row_button('Update DLSS files', action=lambda: self.run_operation('update-dlss', [g]), enabled=not g.get('blocked'),
+                                icon='network-transmit-receive-symbolic'),
+                self.row_button('Restore original DLSS files', action=lambda: owner.manage_dlss_files(g, restore=True), danger=True, enabled=not g.get('blocked'),
+                                icon='edit-undo-symbolic'),
             ]))
         elif section == 'Tools':
             self.section_title(content, 'Tools', 'Check NR or add ReShade to this game. Existing graphics files are kept safe.')
@@ -1779,7 +1815,8 @@ class GameMode(Gtk.Overlay, GameModeTools):
         elif section == 'Appearance':
             self.section_title(content, 'Accent Color', "Pick a suggestion from this game's artwork. Your own picks are kept.")
             current = owner.settings.get('game_accents', {}).get(g['game'])
-            content.append(self.group([self.preference('Game Accent', 'Custom' if current else 'Artwork-derived', self.label((current or 'Automatic').upper(), 'gm-value'))]))
+            content.append(self.group([self.preference('Game Accent', 'Custom' if current else 'Artwork-derived', self.label((current or 'Automatic').upper(), 'gm-value'),
+                                                       icon='rtx-gm-palette-symbolic')]))
             swatches = Gtk.Box(spacing=t.px(16))
             source = self.h.accent_source(g)
             try:
@@ -1862,56 +1899,6 @@ class GameMode(Gtk.Overlay, GameModeTools):
         if entry:
             self.owner.paint_card(entry)
         self.render(keep_focus=True)
-
-    def preset_rows(self, game, enabled=True):
-        owner = self.owner
-        source = game if game is not None else owner.settings
-        state = {'nr': float(source.get('nr_strength', owner.settings.get('nr_strength', 2.0)) or 0),
-                 'sharp': float(source.get('sharpening_strength', owner.settings.get('sharpening_strength', 0.5)) or 0),
-                 }
-        saved = dict(owner.settings)
-        saved.update({k: source[k] for k in ('mfg_multiplier', 'dynamic_mfg', 'mfg_saved_mode', 'mfg_saved_multiplier') if source.get(k) is not None})
-        dynamic_available = bool(game.get('dynamic_mfg_available')) if game is not None else owner.settings.get('runtime_provider') == 'skynizz'
-        state['mfg_on'], state['mfg_mode'], state['mfg_ratio'] = mfg_choice.from_values(saved)
-        if state['mfg_mode'] == mfg_choice.DYNAMIC and not dynamic_available:
-            state['mfg_mode'] = mfg_choice.CUSTOM
-        modes = [m for m in mfg_choice.MODES if m != mfg_choice.DYNAMIC or dynamic_available]
-        def mode_step(delta):
-            state['mfg_mode'] = modes[max(0, min(len(modes) - 1, modes.index(state['mfg_mode']) + delta))]
-        def ratio_step(delta):
-            state['mfg_ratio'] = max(2, min(6, state['mfg_ratio'] + delta))
-        mfg_enabled = enabled and owner.mode != 'nr-only'
-        rows = [
-            self.stepper('NR Strength', '0.0 turns the effect off.', lambda: f"{state['nr']:.1f}",
-                         lambda d: state.update(nr=max(0.0, min(2.0, round(state['nr'] + d * 0.1, 1)))), enabled and owner.mode != 'mfg-only', key='step-nr'),
-            self.stepper('Sharpening', '0.0 turns sharpening off.', lambda: f"{state['sharp']:.1f}",
-                         lambda d: state.update(sharp=max(0.0, min(1.0, round(state['sharp'] + d * 0.1, 1)))), enabled, key='step-sharp'),
-            self.stepper('Multi-Frame Generation', 'Enable frame generation in the game as well.', lambda: 'On' if state['mfg_on'] else 'Off',
-                         lambda d: state.update(mfg_on=d > 0), mfg_enabled, key='step-mfg'),
-            self.stepper('MFG mode', 'Auto follows the game · Custom is fixed · Dynamic is a maximum where supported.',
-                         lambda: mfg_choice.MODE_NAMES[state['mfg_mode']], mode_step, mfg_enabled, key='step-mfg-mode'),
-            self.stepper('MFG ratio', 'Used by Custom and Dynamic.', lambda: f"{state['mfg_ratio']}×", ratio_step, mfg_enabled, key='step-mfg-ratio'),
-        ]
-        features={}
-        if source.get('runtime_provider',owner.settings.get('runtime_provider'))=='skynizz':
-            from feature_presets import definitions, normalized
-            features=normalized(source.get('feature_controls',owner.settings.get('feature_controls',{})))
-            for item in definitions():
-                k=item['key']
-                choices=item.get('values')
-                def step(delta,k=k,item=item,choices=choices):
-                    if choices:
-                        index=choices.index(features[k]) if features[k] in choices else 0
-                        features[k]=choices[max(0,min(len(choices)-1,index+delta))]
-                    else:features[k]=round(max(item['min'],min(item['max'],features[k]+delta*item.get('step',1))),2)
-                def caption(k=k,item=item,choices=choices):
-                    if choices:return item['choices'][choices.index(features[k])]
-                    if item['kind']=='toggle':return 'On' if features[k] else 'Off'
-                    return str(features[k])
-                editable=enabled and not (item['section']=='DlssNr' and source.get('feature_mode',owner.mode)=='mfg-only')
-                rows.append(self.stepper(item['label'].replace('Colour','Color'),item['group'],caption,step,editable,key='preset-'+k))
-        return rows, lambda: {**({'feature_controls':dict(features)} if features else {}), 'nr_strength': state['nr'], 'sharpening_strength': state['sharp'],
-                              **mfg_choice.to_values(state['mfg_on'], state['mfg_mode'], state['mfg_ratio'], dynamic_available)}
 
     # ---------------- presets ----------------
 
@@ -2170,11 +2157,11 @@ class GameMode(Gtk.Overlay, GameModeTools):
         if section == 'Recovery':
             return 'Review earlier changes and original-file recovery.', [
                 self.row_button('Previous changes', None, owner.show_undo, description='Browse available recovery records.', icon='document-revert-symbolic'),
-                self.row_button('Old NR files', None, owner.show_cleanup, description='Find NR files left by older tools.'),
+                self.row_button('Old NR files', None, owner.show_cleanup, description='Find NR files left by older tools.', icon='user-trash-symbolic'),
             ]
         if section == 'About':
             return 'rtxForge ' + self.h.app_version, [
-                self.row_button('Check for updates', None, owner.check_app_update, description='Download, verify and install the newest build.'),
+                self.row_button('Check for updates', None, owner.check_app_update, description='Download, verify and install the newest build.', icon='rtx-gm-refresh-symbolic'),
             ]
         if section == 'Appearance':
             return 'Color and motion for Game Mode.', [
@@ -2223,8 +2210,8 @@ class GameMode(Gtk.Overlay, GameModeTools):
                             lambda: bool(s.get('steam_metadata', True)), lambda v: s.update(steam_metadata=v)),
                 self.row_button('Refresh artwork', 'Refresh', lambda: (self.toast('Refreshing artwork…'), owner.fetch_media(True)), icon='view-refresh-symbolic'),
                 self.row_button('Sync artwork to Steam', None, lambda: owner.sync_steam_artwork(), description='Review and sync artwork for your library.', icon='rtx-steam-symbolic'),
-                self.row_button('Steam artwork profile', None, owner.choose_steam_artwork_profile, description='Choose which local Steam account receives artwork.'),
-                self.row_button('Connect SteamGridDB', None, owner.show_steamgrid_connection, description='Connect your account to browse custom artwork.'),
+                self.row_button('Steam artwork profile', None, owner.choose_steam_artwork_profile, description='Choose which local Steam account receives artwork.', icon='avatar-default-symbolic'),
+                self.row_button('Connect SteamGridDB', None, owner.show_steamgrid_connection, description='Connect your account to browse custom artwork.', icon='insert-link-symbolic'),
             ]
         if section == 'Controller':
             return 'Keep button labels and hints consistent with your controller.', [
@@ -2295,14 +2282,15 @@ class GameMode(Gtk.Overlay, GameModeTools):
 
     def ask_presets(self, targets, proceed):
         t = self.theme
-        rows, value = self.preset_rows(targets[0] if len(targets) == 1 else None)
+        rows, value = self.preset_rows(targets[0] if len(targets) == 1 else None, installation=True)
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(20))
         content.append(self.label('Adjust your presets or continue. You can change these settings later in OptiScaler.', 'gm-p', wrap=True))
         line = Gtk.Box(spacing=t.px(12))
         line.append(self.icon('drive-multidisk-symbolic', t.px(16)))
         line.append(self.label(self.provider_name()))
         content.append(line)
-        content.append(self.group(rows, True))
+        for row in rows:
+            content.append(row)
         cancel = self.button('Cancel', self.close_modal)
         go = self.button('Continue', lambda: (self.close_modal(), proceed(value())), 'primary')
         self.show_modal('Install Features', content, [cancel, go], self.close_modal, 1100, cancel)

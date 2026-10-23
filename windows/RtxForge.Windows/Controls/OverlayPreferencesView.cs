@@ -40,7 +40,7 @@ public sealed class OverlayPreferencesView : StackPanel
         Heading("ReShade");
         var reshadeUi = Switch("In-game menu", current.ReShadeUi, glyph: "\uE700");
         var reshadeIntro = Switch("Welcome messages", current.ReShadeIntro,
-            "Controls the ReShade guide and RenoDX welcome dialog. Loading notices are separate. Feeder NR and effects stay running.", glyph: "\uE8F2");
+            "Controls the ReShade guide and RenoDX welcome dialog, matching the TS4 and Mass Effect setup. Loading notices are separate. Feeder NR and effects stay running.", glyph: "\uE8F2");
         Heading("Apply to games");
         OverlayUiReviewView? gameReview = null;
         if (engine is not null) { gameReview = new(engine); AddControl(gameReview); }

@@ -116,11 +116,11 @@ class CompatListTest(unittest.TestCase):
         with self.assertRaises(t.Refusal):
             compat_list.set_try_anyway(self.config, self.row['game'], True, row['blocked'])
 
-    def test_a_package_that_hooks_vulkan_still_offers_try_anyway(self):
-        self.exe('vulkan-1.dll')
+    def test_every_soft_check_needs_directx_12(self):
+        self.exe('d3d11.dll')
         row = compat_list.apply(self.config, [dict(self.row, blocked='No native DLSS-G detected', package_blocked='No native DLSS-G detected')])[0]
-        self.assertEqual(row['blocked'], 'No native DLSS-G detected')
-        self.assertIn('No native DLSS-G detected', row['soft_reasons'])
+        self.assertEqual(row['blocked'], "This game renders with DirectX 11, which this package doesn't support yet.")
+        self.assertEqual(row['soft_reasons'], [])
 
     def test_try_anyway_stays_when_the_renderer_matches_or_is_unknown(self):
         self.exe('d3d12.dll', 'vulkan-1.dll')

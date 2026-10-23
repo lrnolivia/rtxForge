@@ -26,8 +26,12 @@ SOFT=(
 # game renders with one of them: an unsupported renderer would never engage.
 RENDERERS={'d3d9':'d3d9.dll','d3d11':'d3d11.dll','d3d12':'d3d12.dll','vulkan':'vulkan-1.dll','opengl':'opengl32.dll'}
 LABELS={'d3d9':'DirectX 9','d3d11':'DirectX 11','d3d12':'DirectX 12','vulkan':'Vulkan','opengl':'OpenGL'}
+# Every NR package behind these checks hooks DirectX 12 only (upstream, 2026-10-23).
+# Universal MFG and MFG Unlock have experimental Vulkan paths, but only beside one of
+# them. Feeder NR's upstream also covers Vulkan; the pinned recipe loads as dxgi.dll,
+# so DirectX 11 and 12 only (feeder_provider.eligible).
 PACKAGE_APIS={
-    'No native DLSS-G detected':('d3d11','d3d12','vulkan'),
+    'No native DLSS-G detected':('d3d12',),
     'Skynizz needs a native DLSS Super Resolution route':('d3d12',),
     'The combined NR + MFG bridge requires game-native DLSS Frame Generation':('d3d12',),
 }

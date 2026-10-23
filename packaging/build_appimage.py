@@ -61,6 +61,7 @@ if not build_sha:
 
 for name in ['gui','scripts','providers']:
  shutil.copytree(root/name,payload/name,ignore=shutil.ignore_patterns('__pycache__'))
+shutil.copytree(root/'assets/game-mode',payload/'assets/game-mode')
 for name in ['provider.json','README.md']:shutil.copyfile(root/name,payload/name)
 (payload/'engine').mkdir()
 # Reviewed Global and game-menu bulk changes share the Windows host's platform-neutral modules.
@@ -70,7 +71,7 @@ for name in ('global_controls.py','overlay_ui.py','app_storage.py','companion_co
 shutil.copyfile(root/'engine/rtxengine.py',payload/'engine/rtxengine.py')
 bundle_steam_artwork(root, payload)
 # Provider archives are verified at preparation; no stale custom loader is bundled.
-shutil.copyfile(root/'packaging/AppRun',app/'AppRun');(app/'AppRun').chmod(0o755)
+(app/'AppRun').write_bytes((root/'packaging/AppRun').read_bytes().replace(b'\r\n',b'\n'));(app/'AppRun').chmod(0o755)
 icon='io.github.lrnolivia.RTXForge'
 shutil.copyfile(root/f'gui/icons/hicolor/scalable/apps/{icon}.svg',app/f'{icon}.svg')
 (app/f'{icon}.desktop').write_text(f'[Desktop Entry]\nType=Application\nName=RTXForge\nExec=AppRun\nIcon={icon}\nCategories=Game;Utility;\nTerminal=false\n')

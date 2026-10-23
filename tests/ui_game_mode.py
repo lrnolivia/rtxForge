@@ -1,5 +1,5 @@
 """Game Mode (the Windows design in GTK): pages, details, modals, focus and the install flow; write-disabled."""
-import argparse,os,sys,traceback
+import argparse,os,sys,time,traceback
 from pathlib import Path
 os.environ['GSETTINGS_BACKEND']='memory'
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'gui'))
@@ -25,11 +25,72 @@ def keyboard():
  w.keyboard_input(None,Gdk.KEY_comma,0,Gdk.ModifierType.CONTROL_MASK);assert c.page=='settings'
  w.keyboard_input(None,Gdk.KEY_Escape,0,0);assert c.page=='library'
  w.keyboard_input(None,Gdk.KEY_2,0,Gdk.ModifierType.CONTROL_MASK);assert c.page=='presets'
+ c.navigate('next');assert c.page=='packages'
+ c.navigate('next');assert c.page=='extras'
  c.navigate('next');assert c.page=='settings'
  c.navigate('next');assert c.page=='library'
+ for keyval,target in ((Gdk.KEY_3,'packages'),(Gdk.KEY_4,'extras'),(Gdk.KEY_5,'settings')):
+  w.keyboard_input(None,keyval,0,Gdk.ModifierType.CONTROL_MASK);assert c.page==target
+ c.open('library')
  w.set_input_kind('keyboard');assert 'Esc' in labels(c.footer)
  w.set_input_kind('controller');assert 'Esc' not in labels(c.footer)
  w.set_input_kind('keyboard')
+
+def rapid_navigation():
+ c=app.window.couch
+ def settle():
+  end=time.monotonic()+.035
+  while time.monotonic()<end:
+   while GLib.MainContext.default().pending():GLib.MainContext.default().iteration(False)
+   time.sleep(.001)
+ for page in ('extras','presets','settings','packages','library'):
+  c.open(page);settle()
+  focus=app.window.get_focus()
+  assert focus is not None and focus.is_sensitive(),page
+  node=focus
+  while node is not None and node not in (c.body.current,c.header,c.bottom_nav):node=node.get_parent()
+  assert node is not None,('focus belongs to outgoing scene',page)
+ for layout in ('capsules','list','posters'):
+  c.set_library_view(layout);settle()
+  assert c.focus_key()=='seg-'+layout,(layout,c.focus_key())
+  assert app.window.get_focus().is_sensitive()
+
+def virtual_library():
+ c=app.window.couch;w=app.window;original=w.games
+ def settle(ms=40):
+  end=time.monotonic()+ms/1000
+  while time.monotonic()<end:
+   while GLib.MainContext.default().pending():GLib.MainContext.default().iteration(False)
+   time.sleep(.001)
+ try:
+  w.games=[dict(g,game=g['game']+'-motion-'+str(i)) for i in range(10) for g in original]
+  c.open('library');settle()
+  assert c.library_virtual is not None
+  cards=lambda:[x for x in descendants(c.body.current) if isinstance(x,Gtk.Button) and x.has_css_class('gm-gamecard')]
+  assert len(cards())<70,len(cards())
+  first=c.library_virtual.ensure('game-'+c.filtered_games()[0]['game']);first.grab_focus()
+  for _ in range(18):c.navigate('down');settle(8)
+  focused=c.focus_key();offset=c.library_scroll.get_vadjustment().get_value()
+  game=next(g for g in c.filtered_games() if 'game-'+g['game']==focused)
+  assert offset>0
+  c.open_details(game);settle();c.navigate('back');settle(80)
+  assert c.focus_key()==focused,(c.focus_key(),focused)
+  assert abs(c.library_scroll.get_vadjustment().get_value()-offset)<3
+  c.set_library_view('list');settle()
+  assert c.library_virtual is not None
+  assert len([x for x in descendants(c.body.current) if isinstance(x,Gtk.Button) and x.has_css_class('gm-listrow')])<40
+ finally:
+  w.games=original;c.set_library_view('posters');settle()
+def section_motion():
+ c=app.window.couch
+ c.open('settings');c.open_settings_section('Appearance')
+ assert not any('sized for the couch' in text.lower() for text in labels(c.body.current))
+ assert any(isinstance(x,Gtk.Switch) for x in descendants(c.body.current))
+ c.open_settings_section('Gaming Mode')
+ assert c.body.outgoing is not None
+ c.open('library')
+
+
 def menu():
  c=app.window.couch
  c.navigate('menu');assert c.modals and 'Exit App' in labels(c.modal_layer)
@@ -123,6 +184,9 @@ def review_close():
 def size(width,height):
  app.window.set_default_size(width,height);app.window.couch.resize(width,height)
 steps=[setup,keyboard,menu,glyphs,lambda:theme('light'),lambda:capture('gm-library-light.png'),lambda:theme('night'),
+       lambda:app.window.couch.open('packages'),lambda:capture('gm-packages.png'),
+       lambda:app.window.couch.open('extras'),lambda:capture('gm-extras.png'),
+       lambda:app.window.couch.open('library'),menu,lambda:app.window.couch.open_main_menu(),lambda:capture('gm-main-menu.png'),close_modal,
        lambda:review_op('uninstall'),review_ready,lambda:capture('gm-review-restore.png'),review_close,
        lambda:review_op('update-dlss'),review_ready,lambda:capture('gm-review-update-dlss.png'),review_close]
 for width,height in ((1280,820),(1920,1080),(1000,700)):
@@ -137,10 +201,13 @@ for width,height in ((1280,820),(1920,1080),(1000,700)):
   steps+=[lambda name=name:section(name),lambda name=name,tag=tag:capture(f'gm-details-{name.lower().replace(" ","-")}-{tag}.png')]
  steps+=[stepper,lambda tag=tag:capture(f'gm-details-presets-{tag}.png'),back_to_library,
          lambda:app.window.couch.open('presets'),lambda tag=tag:capture(f'gm-presets-{tag}.png')]
- for name in ('Gaming Mode','Appearance','Controller','System'):
+ for name in ('Graphics','Overlay','Appearance','Library','Gaming Mode','System','Recovery','About'):
   steps+=[lambda name=name:settings(name),lambda name=name,tag=tag:capture(f'gm-settings-{name.lower().replace(" ","-")}-{tag}.png')]
  steps+=[lambda:app.window.couch.open('library'),select,install]
  steps+=[wait_review,lambda tag=tag:capture(f'gm-review-{tag}.png'),confirm,lambda tag=tag:capture(f'gm-progress-{tag}.png'),finish,lambda tag=tag:capture(f'gm-done-{tag}.png'),wait_done]
+
+if os.environ.get('RTXFORGE_GAME_MODE_MOTION_ONLY'):
+ steps=[setup,rapid_navigation,virtual_library,section_motion,menu,details,back_to_library]
 def step():
  try:
   if steps:steps.pop(0)();GLib.timeout_add(500,step)

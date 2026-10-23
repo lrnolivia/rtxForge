@@ -8,6 +8,10 @@ from gi.repository import Gtk,Adw,GLib
 options=argparse.Namespace(provider=None,demo=True,resize_smoke=False,smoke_test=False,live_smoke=False,library_state_smoke=False,ui_mode='classic')
 app=ui.Application(options);results=[];native={}
 
+def detached_details():
+    app.window.settings['separate_game_details']=True
+    app.window.details(app.window.games[0])
+
 def palette():
     context=Gtk.Label().get_style_context()
     return {name:context.lookup_color(name)[1].to_string() for name in ('window_bg_color','view_bg_color','sidebar_bg_color','card_bg_color')}
@@ -46,7 +50,7 @@ def couch():
     row.choice.set_selected(1);assert row.get_selected()==1 and seen==[1]
     app.window.show_settings()
 
-steps=[lambda:theme('light'),lambda:capture('completion-light.png'),lambda:theme('night'),lambda:capture('completion-night.png'),lambda:theme('dark'),lambda:app.window.show_settings(),lambda:capture('completion-settings.png'),reduced_motion,lambda:app.window.dialog.close(),lambda:app.window.details(app.window.games[0]),lambda:app.window.detail_pages.set_visible_child_name('Tools'),lambda:capture('completion-tools.png'),lambda:app.window.show_diagnostics(app.window.games[0]),lambda:capture('completion-diagnostics.png'),lambda:app.window.show_reports(),lambda:capture('completion-reports.png'),lambda:app.window.preview_report({'library.json':'{"name":"Demo", "visual_result":"Not established"}'}),lambda:capture('completion-report-preview.png'),lambda:app.window.show_controller_menu(),lambda:capture('completion-controller-menu.png'),couch,lambda:capture('completion-couch-settings.png'),lambda:app.window.details(app.window.games[0]),lambda:app.window.detail_pages.set_visible_child_name('Tools'),lambda:capture('completion-couch-tools.png'),lambda:app.window.dialog.close(),lambda:app.window.toggle_compact_header(),lambda:capture('completion-couch-library.png')]
+steps=[lambda:theme('light'),lambda:capture('completion-light.png'),lambda:theme('night'),lambda:capture('completion-night.png'),lambda:theme('dark'),lambda:app.window.show_settings(),lambda:capture('completion-settings.png'),reduced_motion,lambda:app.window.dialog.close(),detached_details,lambda:app.window.detail_pages.set_visible_child_name('Tools'),lambda:capture('completion-tools.png'),lambda:app.window.show_diagnostics(app.window.games[0]),lambda:capture('completion-diagnostics.png'),lambda:app.window.show_reports(),lambda:capture('completion-reports.png'),lambda:app.window.preview_report({'library.json':'{"name":"Demo", "visual_result":"Not established"}'}),lambda:capture('completion-report-preview.png'),lambda:app.window.show_controller_menu(),lambda:capture('completion-controller-menu.png'),couch,lambda:capture('completion-couch-settings.png'),detached_details,lambda:app.window.detail_pages.set_visible_child_name('Tools'),lambda:capture('completion-couch-tools.png'),lambda:app.window.dialog.close(),lambda:app.window.toggle_compact_header(),lambda:capture('completion-couch-library.png')]
 
 capture_deadline=None
 def step():

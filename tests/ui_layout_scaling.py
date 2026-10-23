@@ -62,8 +62,8 @@ def settings():
     w=app.window;c=w.couch
     from game_mode import descendants
     assert c.bottom_nav.get_visible()
-    expected={'Gaming Mode':{'Interface'},'System':{'UI scale','Navigation'},
-              'Library':{'Library layout'},'Controller':{'Controller hints'}}
+    expected={'Gaming Mode':{'Interface','Controller hints','Game Mode scale','Navigation placement'},'System':{'Hardware information'},
+              'Library':{'Library layout'},'Appearance':{'Color theme','Reduce motion'}}
     for section,titles in expected.items():
         c.open_settings_section(section)
         assert titles <= {x.get_text() for x in descendants(c.body) if isinstance(x,ui.Gtk.Label)},section
@@ -76,8 +76,9 @@ def settings_capture():
 
 def panel():
     w=app.window
-    assert isinstance(w.dialog,ui.PresentationDialog)
-    assert w.dialog._scaled_child.factor==1.3
+    from gi.repository import Adw
+    assert isinstance(w.dialog,Adw.PreferencesDialog)
+    assert not hasattr(w.dialog,'_scaled_child')  # Desktop preferences keep native DPI in either interface.
     assert w.capture('layout-4k-settings-panel.png')
     w.dialog.force_close() if hasattr(w.dialog,'force_close') else w.dialog.close()
     w.couch.open('library')

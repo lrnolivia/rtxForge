@@ -51,14 +51,9 @@ def build_packages(owner, fixture=None, on_selected=None, alive=None, header=Fal
     intro.add_css_class('dim-label'); box.append(intro)
     status = Gtk.Label(label='Checking your system…', xalign=0, wrap=True)
     box.append(status)
-    recommended = Adw.PreferencesGroup(title='Curated Packages')
-    cards = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
-                        min_children_per_line=1, max_children_per_line=1,
-                        column_spacing=12, row_spacing=12)
+    recommended = Adw.PreferencesGroup()
+    cards = Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=24)
     recommended.add(cards)
-    def fit_cards(adjustment,*_):
-        cards.set_max_children_per_line(2 if adjustment.get_page_size()>=1000 else 1)
-    scroll.get_hadjustment().connect('notify::page-size',fit_cards)
     box.append(recommended)
     custom = Adw.PreferencesGroup(title='Your own package', description='ZIP archives. Files and instructions are inspected without running them.')
     choose = Adw.ActionRow(title='Add custom package', subtitle='Detect the layout and review suggested settings')
@@ -81,36 +76,92 @@ def build_packages(owner, fixture=None, on_selected=None, alive=None, header=Fal
 
     def render_catalog(host):
         if not alive['value']:return False
+        if getattr(cards,'_resize_handler',None):
+            scroll.get_hadjustment().disconnect(cards._resize_handler);cards._resize_handler=None
         while cards.get_first_child():cards.remove(cards.get_first_child())
         current=owner.settings.get('runtime_provider','dlss-unlocked')
         catalog=sorted(packages.catalog(host),key=lambda item:(item['id']!=current,not item['recommended']))
         active=next((item['name'] for item in catalog if item['id']==current),current)
         system='Preview system · NVIDIA RTX 4070 · no game writes' if owner.options.demo else host.get('gpu','System')+' · '+host.get('reason','')
         status.set_text(system+' · In use: '+active)
-        for item in catalog:
+        def heading(title, description=None):
+            block=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6)
+            label=Gtk.Label(label=title,xalign=0,wrap=True);label.add_css_class('title-3');block.append(label)
+            if description:
+                lead=Gtk.Label(label=description,xalign=0,wrap=True);lead.add_css_class('dim-label');block.append(lead)
+            return block
+        def package_card(title, version, summary, verified, caption, action, enabled=True):
             card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True)
             card.add_css_class('card')
-            body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True)
-            margins(body,20);card.append(body)
-            heading=Gtk.Label(label=item['name'],xalign=0,wrap=True)
-            heading.add_css_class('heading');body.append(heading)
-            version=Gtk.Label(label=item['version'],xalign=0,wrap=True)
-            version.add_css_class('dim-label');body.append(version)
-            description=Gtk.Label(label=item['summary'],xalign=0,wrap=True,vexpand=True,valign=Gtk.Align.START)
-            description.set_max_width_chars(45);body.append(description)
-            if not item['available']:
-                reason=Gtk.Label(label=item['reason'],xalign=0,wrap=True)  # catalog reasons are already written for people
-                reason.set_max_width_chars(45);reason.add_css_class('dim-label');body.append(reason)
+            content=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True);margins(content,20);card.append(content)
+            name=Gtk.Label(label=title,xalign=0,wrap=True);name.add_css_class('heading');content.append(name)
+            stamp=Gtk.Label(label=version,xalign=0,wrap=True);stamp.add_css_class('dim-label');content.append(stamp)
+            text=Gtk.Label(label=summary,xalign=0,wrap=True,hexpand=True,vexpand=True,valign=Gtk.Align.START)
+            text.set_max_width_chars(45);content.append(text)
+            footer=Gtk.Box(spacing=12)
+            marks=Gtk.Box(spacing=8,hexpand=True,valign=Gtk.Align.CENTER)
+            for system in verified or ['experimental']:
+                mark=Gtk.Box(spacing=5)
+                if system!='experimental':mark.append(Gtk.Image(icon_name='rtx-os-'+system+'-symbolic',pixel_size=14))
+                caption_label=Gtk.Label(label=system.upper());caption_label.add_css_class('caption');mark.append(caption_label)
+                marks.append(mark)
+            footer.append(marks)
+            control=owner.make_action_button(caption,lambda *_:action() if action else None)
+            control.set_sensitive(enabled);control.set_halign(Gtk.Align.END);footer.append(control);content.append(footer)
+            return card
+        names={'universal':'Universal MFG','integrated':'Integrated MFG unlock','mfg-unlock':'MFG Unlock'}
+        pair=next((item for item in catalog if item['id']=='skynizz'),None)
+        feeder=next((item for item in catalog if item['id']=='feeder'),None)
+        paired=current=='skynizz'
+        def curated(item):
             selected=item['id']==current
-            def use(_,key=item['id']):
-                select(key)
+            title=item['name'];version=item['version']
+            if item['id']=='skynizz':
+                component=names.get(owner.settings.get('mfg_provider','universal'),'Universal MFG')
+                title+=' + '+component;version+=' · '+component
+            def use():
+                select(item['id'])
                 if alive['value']:render_catalog(host)
-            action=owner.make_action_button('In use' if selected else 'Use package',use)
-            action.set_sensitive(item['available'] and not selected)
-            action.set_halign(Gtk.Align.END)
-            action.set_tooltip_text(item['reason'])
-            if item['recommended'] and not selected:action.add_css_class('suggested-action')
-            body.append(action);cards.append(card)
+            return package_card(title,version,item['summary'] if item['available'] else item['reason'],
+                                item.get('verified'), 'In use' if selected else 'Use for DLSS games',use,item['available'] and not selected)
+        columns=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=20,homogeneous=False)
+        nr=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True,valign=Gtk.Align.START)
+        mfg=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True,valign=Gtk.Align.START)
+        nr.append(heading('NR packages','Neural rendering for games with DLSS.'))
+        if pair:nr.append(curated(pair))
+        if feeder:
+            nr.append(package_card(feeder['name'],feeder['version'],feeder['summary'] if feeder['available'] else feeder['reason'],
+                                   feeder.get('verified'),'Used automatically' if feeder['available'] else 'Unavailable',None,False))
+        pair_name=pair['name'] if pair else 'the paired NR package'
+        mfg.append(heading('MFG packages','Native NVIDIA frame generation for '+pair_name+'.'))
+        summaries={
+            'universal':"Keeps NVIDIA’s DLSS Frame Generation and unlocks 3x to 6x where the driver allows 2x. The multiplier and Dynamic MFG stay in the rtxForge Overlay.",
+            'integrated':"Patches NVIDIA’s DLSS Frame Generation for 3x to 6x with no extra plugin.",
+            'mfg-unlock':"Raises NVIDIA’s DLSS Frame Generation multiplier through ReShade. The rtxForge Overlay can’t change its multiplier while you play.",
+        }
+        for key,name in names.items():
+            selected=paired and owner.settings.get('mfg_provider','universal')==key
+            supported=key=='universal'
+            def choose(value=key):
+                owner.save_overlay_preference('mfg_provider',value)
+                render_catalog(host)
+            description=summaries[key]+(' Not available under Proton in this build.' if not supported else '')
+            version=(pair or {}).get('mfg_versions',{}).get(key) or ('Built into the bridge' if key=='integrated' else 'OptiScaler plugin' if key=='universal' else 'ReShade add-on')
+            mfg.append(package_card(name,version,description,['windows'],
+                                   'In use' if selected else 'Use with '+pair_name if supported else 'Unavailable',choose,paired and not selected and supported))
+        columns.append(nr);columns.append(mfg)
+        def resize_columns(adjustment,*_):
+            horizontal=adjustment.get_page_size()>=1000
+            columns.set_orientation(Gtk.Orientation.HORIZONTAL if horizontal else Gtk.Orientation.VERTICAL)
+            columns.set_homogeneous(horizontal)
+        cards._resize_handler=scroll.get_hadjustment().connect('notify::page-size',resize_columns)
+        resize_columns(scroll.get_hadjustment())
+        cards.append(columns)
+        unified=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12)
+        unified.append(heading('Unified packages','NR and frame generation in one package, for games with DLSS.'))
+        for item in catalog:
+            if item['id'] not in ('skynizz','feeder'):unified.append(curated(item))
+        cards.append(unified)
         return False
 
     def render_inspection(result):

@@ -807,7 +807,7 @@ def apply_corner_style(value):
     if CORNER_PROVIDER is None:
         CORNER_PROVIDER=Gtk.CssProvider()
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(),CORNER_PROVIDER,Gtk.STYLE_PROVIDER_PRIORITY_USER)
-    css='* { border-radius: 0; border-top-left-radius: 0; border-top-right-radius: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; } window, dialog { --window-radius: 0px; --dialog-radius: 0px; }' if CORNER_STYLE=='square' else ''
+    css='.forge-desktop, .forge-desktop * { border-radius: 0; border-top-left-radius: 0; border-top-right-radius: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; } window, dialog { --window-radius: 0px; --dialog-radius: 0px; }' if CORNER_STYLE=='square' else ''
     if CORNER_STYLE=='rounded':css='window.background { border-radius: 12px; }'
     # Game Mode navigation remains a pill, including with square cards.
     css+=' .couch-tabs, .couch-tabs .couch-tab { border-radius: 999px; border-top-left-radius: 999px; border-top-right-radius: 999px; border-bottom-left-radius: 999px; border-bottom-right-radius: 999px; }'
@@ -4641,7 +4641,7 @@ class Window(Adw.ApplicationWindow):
         self.profile_group.add_css_class('mode-selector')
         for mode,title in [('nr-only','NR Only'),('mfg-only','MFG Only'),('nr-mfg','NR + MFG')]:
             toggle=Adw.Toggle(name=mode,label=title,child=profile_label(mode,title));self.profile_group.add(toggle)
-            if mode=='nr-only':self.nr_only=toggle;toggle.set_enabled(self.settings.get('runtime_provider','y4my') in ('dlss-unlocked','custom'))
+            if mode=='nr-only':self.nr_only=toggle;toggle.set_enabled(self.settings.get('runtime_provider','y4my') in ('skynizz','dlss-unlocked','custom'))
         controls.append(self.profile_group)
         self.profile_group.connect('notify::active-name',self.profile_changed)
         self.profile_group.set_active_name(self.settings.get('default_profile','mfg-only'));self.profile_changed(self.profile_group)
@@ -5459,6 +5459,7 @@ class Window(Adw.ApplicationWindow):
         self.controller_source=GLib.timeout_add(40,self.poll_controller)
         from game_mode import GameMode
         classic_child=self.overlay.get_child();self.overlay.set_child(None)
+        classic_child.add_css_class('forge-desktop')
         self.input_stack=Gtk.Stack(hhomogeneous=False,vhomogeneous=False)
         self.input_stack.add_named(classic_child,'desktop')
         self.couch=GameMode(self,SimpleNamespace(make_brand_icon=make_brand_icon,poster_art_path=poster_art_path,capsule_art_path=capsule_art_path,
@@ -5884,10 +5885,11 @@ class Window(Adw.ApplicationWindow):
         if keyval==Gdk.KEY_Escape:self.couch.navigate('back');return True
         if editing:return False
         control=bool(state&Gdk.ModifierType.CONTROL_MASK)
-        if control and keyval in (Gdk.KEY_comma,Gdk.KEY_l,Gdk.KEY_L,Gdk.KEY_1,Gdk.KEY_2,Gdk.KEY_3):
-            target={Gdk.KEY_comma:'settings',Gdk.KEY_l:'library',Gdk.KEY_L:'library',Gdk.KEY_1:'library',Gdk.KEY_2:'presets',Gdk.KEY_3:'dlss'}[keyval]
+        if control and keyval in (Gdk.KEY_comma,Gdk.KEY_l,Gdk.KEY_L,Gdk.KEY_1,Gdk.KEY_2,Gdk.KEY_3,Gdk.KEY_4,Gdk.KEY_5):
+            target={Gdk.KEY_comma:'settings',Gdk.KEY_l:'library',Gdk.KEY_L:'library',Gdk.KEY_1:'library',Gdk.KEY_2:'presets',Gdk.KEY_3:'packages',Gdk.KEY_4:'extras',Gdk.KEY_5:'settings'}[keyval]
             self.couch.open(target);return True
         if keyval==Gdk.KEY_F10:self.couch.open('menu');return True
+        if keyval==Gdk.KEY_F5:self.couch.refresh_library();return True
         if isinstance(focus,(Gtk.Scale,Gtk.DropDown)):return False
         if keyval in (Gdk.KEY_Return,Gdk.KEY_KP_Enter) and isinstance(focus,Gtk.Button):
             # Tab and mouse focus must activate that native control, including Settings.
@@ -6710,7 +6712,7 @@ class Window(Adw.ApplicationWindow):
     def select_package(self,provider,values):
         if self.busy:raise ValueError('Wait for the current operation to finish.')
         self.settings.update(values);self.settings['runtime_provider']=provider
-        self.nr_only.set_enabled(provider in ('dlss-unlocked','custom'))
+        self.nr_only.set_enabled(provider in ('skynizz','dlss-unlocked','custom'))
         def ready(*_):
             if self.selected_game_ids:self.launch_action('install',visual_settings=dict(self.settings))
             else:self.toast('Package selected. Select games, then choose Install Features.')
@@ -9520,6 +9522,15 @@ class Window(Adw.ApplicationWindow):
                                details=['Adopt','Keeps current files and tuning' if operation=='adopt' else 'Backs up, then installs a clean copy','Restore returns to before Adoption'],
                                done=lambda _:'Adoption finished. Restore now returns to the setup from before Adoption.')
         if flow is not None:flow.rescan=True
+
+    def apply_color_theme(self):
+        global THEME_MODE
+        THEME_MODE=self.settings.get('theme') or 'night'
+        dark=THEME_MODE!='light'
+        self.settings['dark']=dark
+        Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if dark else Adw.ColorScheme.FORCE_LIGHT)
+        apply_neutral_palette()
+        if hasattr(self,'couch'):self.couch.apply_theme()
 
     def global_review(self,nr,mfg):
         """One-time reviewed NR/MFG change for installed games; never a lasting override."""
@@ -14512,14 +14523,17 @@ class Window(Adw.ApplicationWindow):
         d.add_css_class('forge-settings')
         self.dialog=d
         graphics=Adw.PreferencesGroup(title='Package',description='Restore original files before switching providers.')
-        provider_keys=['y4my','dlss-unlocked','custom'];provider=safe_combo_row(title='Provider',model=Gtk.StringList.new(['y4my Multipass','DLSS-Unlocked','Custom package']),selected=provider_keys.index(self.settings.get('runtime_provider','y4my')));graphics.add(provider)
+        provider_keys=['skynizz','dlss-unlocked','y4my','feeder','custom'];provider=safe_combo_row(title='Provider',model=Gtk.StringList.new(['Skynizz NR','DLSS-Unlocked','y4my Multipass','Feeder NR','Custom package']),selected=provider_keys.index(self.settings.get('runtime_provider','y4my')) if self.settings.get('runtime_provider','y4my') in provider_keys else 0);graphics.add(provider)
         nr_path=Adw.EntryRow(title='Local NR DLL for y4my');nr_path.set_text(self.settings.get('nr_runtime',''));graphics.add(nr_path)
         # Adopting only: the Windows install's own files load through a Proton DLL override. Not yet runtime-verified.
-        skynizz_proton=Adw.SwitchRow(title='Skynizz on Proton (experimental)',subtitle='Set up Skynizz + Universal MFG installs made on Windows to run here. Unverified under Proton.',active=self.settings.get('skynizz_proton',False) is True)
+        skynizz_proton=Adw.SwitchRow(title='Skynizz on Proton (experimental)',subtitle='Allow reviewed Skynizz NR and Universal MFG setup under Proton. Each game’s prerequisites are checked; runtime QA is pending.',active=self.settings.get('skynizz_proton',False) is True)
         graphics.add(skynizz_proton)
         defaults=Adw.PreferencesGroup(title='Install defaults',description='Changes to game files are reviewed before applying.')
         manage_files=Adw.SwitchRow(title='DLSS Files',subtitle='Update older DLSS files when installing features. Backups are kept for restoration.',active=self.settings.get('manage_dlss_files',True))
         defaults.add(manage_files)
+        nr_launch=Adw.SwitchRow(title='Enable NR on launch',subtitle='Leave off to enable NR later from the overlay.',active=bool(self.settings.get('nr_on_launch',False)))
+        nr_launch.connect('notify::active',lambda widget,*_:self.save_overlay_preference('nr_on_launch',widget.get_active()))
+        defaults.add(nr_launch)
         modes=['nr-only','mfg-only','nr-mfg'];profile=safe_combo_row(title='Default Mode',model=Gtk.StringList.new(['NR Only','MFG Only','NR + MFG']),selected=modes.index(self.settings.get('default_profile','mfg-only')));defaults.add(profile)
         adopt=Adw.SwitchRow(title='Recognize Existing Features',subtitle='Allow updates to compatible installations from other tools.',active=self.settings['recognize_previous']);defaults.add(adopt)
         appearance=Adw.PreferencesGroup(title='Theme',description='Choose the look of rtxForge.')
@@ -14711,8 +14725,20 @@ class Window(Adw.ApplicationWindow):
                 saved['theme']=THEME_MODE
                 library_media.save_settings(self.service.config,saved)
         theme_selector.connect('notify::active-name',change_theme)
+        theme_selector.connect('notify::active-name',lambda *_: self.couch.apply_theme() if hasattr(self,'couch') else None)
         theme_row.add_suffix(theme_selector)
         appearance.add(theme_row)
+        import game_mode_contract
+        linked_theme=Adw.SwitchRow(title=game_mode_contract.THEME_LINK_LABEL,
+            subtitle='Turn off to choose each interface’s theme separately.',active=self.settings.get('game_mode_theme_linked',True))
+        def change_theme_link(widget,*_):
+            game_mode_contract.link_themes(self.settings,widget.get_active())
+            if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
+            if hasattr(self,'couch'):
+                self.couch.apply_theme()
+                if self.couch.get_mapped():self.couch.render(keep_focus=True)
+        linked_theme.connect('notify::active',change_theme_link);appearance.add(linked_theme)
+
         glyphs=Adw.SwitchRow(title='Button Icons',subtitle='Show action icons beside button labels.',active=self.settings.get('button_glyphs',True))
         def change_glyphs(widget,*_):
             value=widget.get_active();self.settings['button_glyphs']=value;set_button_glyphs(value)
@@ -14794,7 +14820,7 @@ class Window(Adw.ApplicationWindow):
             if selected_provider=='y4my' and selected_mode=='nr-only':self.toast('NR Only requires DLSS-Unlocked.');return False
             settings_saved['value']=True
             self.settings.update(manage_dlss_files=manage_files.get_active(),runtime_provider=selected_provider,nr_runtime=nr_path.get_text().strip(),default_profile=selected_mode,library_view=pending_library_view['value'],dark=theme_selector.get_active_name()!='light',online_art=art.get_active(),steam_metadata=metadata.get_active(),network_timeout=timeout.get_value_as_int(),recognize_previous=adopt.get_active(),skynizz_proton=skynizz_proton.get_active())
-            self.nr_only.set_enabled(selected_provider in ('dlss-unlocked','custom'))
+            self.nr_only.set_enabled(selected_provider in ('skynizz','dlss-unlocked','custom'))
             self.profile_group.set_active_name(selected_mode)
             Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)
             apply_neutral_palette()

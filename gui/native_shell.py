@@ -19,7 +19,7 @@ def new_shell(owner, library):
     stack.add_named(library,'library')
     home=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=24)
     for side in ('top','bottom','start','end'):getattr(home,'set_margin_'+side)(32)
-    heading=Gtk.Label(label='Ready when you are',xalign=0);heading.add_css_class('title-1');home.append(heading)
+    heading=Gtk.Label(label='Home',xalign=0);heading.add_css_class('title-1');home.append(heading)
     summary=Gtk.Label(label=f'{len(owner.games)} games in your library',xalign=0);summary.add_css_class('dim-label');home.append(summary)
     actions=Adw.PreferencesGroup(title='Get straight to it')
     for title,subtitle,caption,callback in [

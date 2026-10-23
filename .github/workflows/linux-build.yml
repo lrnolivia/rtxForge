@@ -82,7 +82,8 @@ jobs:
             gui/rtxforge_gtk.py
 
           /usr/bin/python3 -m unittest \
-            engine.tests.test_v13_core_hardening
+            engine.tests.test_v13_core_hardening \
+            tests.test_game_mode_motion
 
           /usr/bin/python3 -m unittest discover -s tests -p test_runtime_updates.py
           /usr/bin/python3 -m unittest discover -s tests -p test_ui_colors.py
@@ -147,6 +148,15 @@ jobs:
           cat /etc/fedora-release
           echo "Building rtxForge $(cat VERSION)"
           git rev-parse HEAD
+
+      - name: Verify native Game Mode motion
+        env:
+          GSK_RENDERER: cairo
+          GTK_A11Y: none
+          GSETTINGS_BACKEND: memory
+          PYTHONWARNINGS: ignore
+        run: |
+          xvfb-run -a -s '-screen 0 1920x1080x24' dbus-run-session -- python3 -m unittest tests.linux_ui.test_game_mode_motion_native
 
       - name: Build AppImage
         run: |

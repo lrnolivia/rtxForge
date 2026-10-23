@@ -75,7 +75,8 @@ def catalog(host=None):
         # Listed as on Windows, with honest Linux availability: Feeder is detected
         # but not offered under Proton yet, and Skynizz needs the compiled bridge
         # (Windows-built) plus the experimental Proton opt-in per game.
-        rows.append({'id': 'feeder', 'name': 'Feeder NR', 'version': '1.19.0 / RenoDX 8.5.0-rc5',
+        feeder = json.loads((ROOT / 'providers/feeder.json').read_text(encoding='utf-8'))
+        rows.append({'id': 'feeder', 'name': 'Feeder NR', 'version': feeder['version'].removeprefix('Feeder '),
                      'url': 'https://github.com/jlrouzies-fr/DLSS5-Feeder', 'sha256': '', 'available': False, 'recommended': False,
                      'reason': 'Not offered on Linux yet: ReShade under Proton has not been validated. Existing setups are detected.',
                      'summary': 'NR for DirectX 11 games through ReShade. NR Only.'})
@@ -85,7 +86,7 @@ def catalog(host=None):
             bridge,archive=skynizz_provider.bundled_bridge();bridge_ready=archive.is_file()
         except (OSError,ValueError,t.Refusal):
             bridge,bridge_ready=None,False
-        rows.append({'id':'skynizz','name':'Skynizz NR + Ada MFG bridge','version':record['tag']+' bridge · preview',
+        rows.append({'id':'skynizz','name':'Skynizz NR','version':record['tag']+' bridge · preview',
                      'url':'https://github.com/'+record['repo'],'sha256':(bridge or record)['sha256'],
                      'available':supported and bridge_ready,'recommended':False,
                      'reason':('Experimental under Proton: turn on Skynizz on Proton in Settings › Graphics; each game is checked for its Proton prerequisites. Runtime QA pending.'

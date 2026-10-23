@@ -155,12 +155,13 @@ public sealed partial class GameModeView
         foreach (var section in SettingsSections)
         {
             var active = section == settingsSection;
-            var button = ui.Button(ui.IconLabel(SettingsCategory.Glyph(section), section), () => { settingsSection = section; Render(); pendingFocusKey = "gm_set-" + section; },
+            var button = ui.Button(ui.IconLabel(SettingsCategory.Glyph(section), section), () => { settingsSection = section; pendingFocusKey = "gm_set-" + section; Render(); },
                 active ? GmKind.Card : GmKind.Transparent, 0.92, radius: 12, padding: new Thickness(t.Px(24), t.Px(18), t.Px(24), t.Px(18)),
                 minHeight: t.Compact ? 56 : 70);
             button.HorizontalAlignment = HorizontalAlignment.Stretch;
             button.HorizontalContentAlignment = HorizontalAlignment.Left;
             ui.MenuFocus(button);
+            GmGlow.Selected(button, active);
             Key(button, "set-" + section);
             if (active && initialFocus is null) initialFocus = button;
             nav.Children.Add(button);
@@ -175,6 +176,7 @@ public sealed partial class GameModeView
         title.Children.Add(ui.H2(settingsSection));
         content.Children.Add(title);
         var definitions = SettingsGroups(settingsSection);
+        AnimateSection("settings", settingsSection, content);
         var sections = new List<StackPanel>();
         foreach (var group in definitions)
         {
@@ -298,9 +300,13 @@ public sealed partial class GameModeView
             [
                 new("Theme", null,
                 [
-                    Choice("Theme", "Night is the Game Mode default.", ["night", "dark", "light"], ["Night", "Dark", "Light"],
-                        () => shell.Settings.Theme is "light" or "dark" ? shell.Settings.Theme : "night",
-                        value => { shell.Settings.Theme = value; DispatcherQueue.TryEnqueue(ApplySettings); }),
+                    SettingToggle("Use the same color theme in Desktop and Game Mode", "Turn off to choose each interface’s theme separately.",
+                        () => shell.Settings.GameModeThemeLinked, value => { shell.Settings.LinkGameModeTheme(value); DispatcherQueue.TryEnqueue(ApplySettings); }),
+                    Choice("Color theme", "Choose Game Mode’s appearance.", ["night", "dark", "light"], ["Night", "Dark", "Light"],
+                        () => shell.Settings.ResolvedGameModeTheme is "light" or "dark" ? shell.Settings.ResolvedGameModeTheme : "night",
+                        value => { shell.Settings.SetGameModeTheme(value); DispatcherQueue.TryEnqueue(ApplySettings); }),
+                    SettingToggle("Reduce motion", "Keep strong focus cues with less movement. Windows accessibility settings are always respected.",
+                        () => shell.Settings.ReduceMotion, value => { shell.Settings.ReduceMotion = value; DispatcherQueue.TryEnqueue(ApplySettings); }),
                 ]),
             ],
             "Library" =>

@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "press_ms": 100,
+  "focus_ms": 170,
+  "surface_ms": 240,
+  "fade_ms": 140,
+  "feedback_ms": 180,
+  "exit_ms": 110,
+  "focus_damping": 0.92,
+  "press_damping": 1,
+  "scene_damping": 0.96,
+  "card_scale": 0.022,
+  "card_lift": -3,
+  "card_compression": 0.018,
+  "button_compression": 0.028,
+  "dialog_scale": 0.978,
+  "dialog_travel": 12,
+  "artwork_stroke": 3,
+  "page_regions": [
+    {
+      "travel": 6,
+      "period_ms": 150
+    },
+    {
+      "travel": 9,
+      "period_ms": 170
+    },
+    {
+      "travel": 9,
+      "period_ms": 190
+    },
+    {
+      "travel": 14,
+      "period_ms": 210
+    }
+  ]
+}

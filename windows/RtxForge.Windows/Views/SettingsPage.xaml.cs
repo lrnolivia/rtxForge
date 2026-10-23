@@ -1,4 +1,4 @@
-﻿using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using RtxForge.Windows.Controls;
 using RtxForge.Windows.Models;
@@ -115,6 +115,9 @@ public sealed partial class SettingsPage : Page
         (row, var theme) = Prefs.ComboRow("App theme", "Changes only rtxForge.", ThemeController.Captions,
             Math.Max(0, Array.IndexOf(ThemeController.Keys, Settings.Theme)), "");
         theme.SelectionChanged += (_, _) => { Settings.Theme = ThemeController.Keys[theme.SelectedIndex]; Save(); };
+        appearance.Add(row);
+        (row, var linkedTheme) = Prefs.SwitchRow("Use the same color theme in Desktop and Game Mode", "Turn off to choose each interface’s theme separately.", Settings.GameModeThemeLinked, "");
+        linkedTheme.Toggled += (_, _) => { Settings.LinkGameModeTheme(linkedTheme.IsOn); Save(); };
         appearance.Add(row);
         (row, var layout) = Prefs.ComboRow("Library layout", "Choose how your game collection is displayed.",
             ["Poster", "Wide Capsule", "List"], Math.Max(0, Array.IndexOf(Views, Settings.LibraryView)), "");

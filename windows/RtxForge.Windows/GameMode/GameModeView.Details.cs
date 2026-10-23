@@ -22,6 +22,7 @@ public sealed partial class GameModeView
 
     void OpenDetails(Game game)
     {
+        PrepareArtwork((FocusManager.GetFocusedElement(XamlRoot) as FrameworkElement)?.Tag as Border);
         libraryFocusKey = FocusKey(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject);
         detailsGame = game;
         detailsSection = "Overview";
@@ -35,11 +36,10 @@ public sealed partial class GameModeView
     /// <summary>Back from Details restores the Library view, scroll and the card that opened it.</summary>
     void CloseDetails()
     {
+        PrepareArtwork(detailsPoster);
+        pendingFocusKey = libraryFocusKey;
         page = "library";
         Render();
-        if (libraryFocusKey is { } key)
-            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-                FindByKey(body, key)?.Focus(FocusState.Keyboard));
     }
 
     UIElement BuildDetails(Game g)
@@ -74,12 +74,14 @@ public sealed partial class GameModeView
         var poster = new Border
         {
             Height = posterHeight, Width = Math.Round(posterHeight * 2 / 3), CornerRadius = new CornerRadius(t.Px(10)),
-            BorderThickness = new Thickness(t.Px(2)), BorderBrush = GmTheme.B(t.Line), Background = GmTheme.B(t.Card),
+            BorderThickness = new Thickness(t.Px(GmTheme.ArtworkStroke)), BorderBrush = GmTheme.B(t.Line), Background = GmTheme.B(t.Card),
             VerticalAlignment = VerticalAlignment.Bottom,
             Visibility = g.PosterPath is null ? Visibility.Collapsed : Visibility.Visible,
         };
         if (GameItem.Image(g.PosterPath) is { } posterImage)
             poster.Child = new Border { CornerRadius = new CornerRadius(t.Px(7)), Background = new ImageBrush { ImageSource = posterImage, Stretch = Stretch.UniformToFill } };
+        detailsPoster = poster;
+        ReceiveArtwork(poster);
         identity.Children.Add(poster);
         var heroBody = new Grid { ColumnSpacing = t.Px(24), RowSpacing = t.Px(10), VerticalAlignment = VerticalAlignment.Bottom };
         heroBody.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
@@ -161,16 +163,17 @@ public sealed partial class GameModeView
         // ----- Section navigation -----
         var nav = new StackPanel { Spacing = t.Px(8), Padding = new Thickness(t.Px(20), t.Px(20), t.Px(20), t.Px(20)) };
         nav.Children.Add(back);
-        nav.Children.Add(ui.Text("Game Details", 1.06, weight: FontWeights.SemiBold).With(h => h.Margin = new Thickness(t.Px(16), t.Px(8), 0, t.Px(t.Compact ? 12 : 20))));
+        nav.Children.Add(ui.Heading("Game Details", 1.06).With(h => h.Margin = new Thickness(t.Px(16), t.Px(8), 0, t.Px(t.Compact ? 12 : 20))));
         var navButtons = new List<(Button Button, string Section)>();
         foreach (var section in Sections)
         {
             var active = section == detailsSection;
-            var button = ui.Button(ui.IconLabel(GameSections.Glyph(section), section), () => { detailsSection = section; Render(); pendingFocusKey = "gm_section-" + section; },
+            var button = ui.Button(ui.IconLabel(GameSections.Glyph(section), section), () => { detailsSection = section; pendingFocusKey = "gm_section-" + section; Render(); },
                 GmKind.Transparent, 0.88, radius: 12, padding: new Thickness(t.Px(18), t.Px(12), t.Px(18), t.Px(12)), minHeight: t.Compact ? 46 : 60);
             button.HorizontalAlignment = HorizontalAlignment.Stretch;
             button.HorizontalContentAlignment = HorizontalAlignment.Left;
             ui.MenuFocus(button);
+            GmGlow.Selected(button, active);
             Key(button, "section-" + section);
             navButtons.Add((button, section));
             nav.Children.Add(button);
@@ -182,6 +185,7 @@ public sealed partial class GameModeView
         // ----- Section body -----
         var content = new StackPanel { Spacing = t.Px(24), Padding = new Thickness(t.Px(32), t.Px(16), side, t.Px(20)) };
         BuildSection(g, content);
+        AnimateSection("details-" + g.Id, detailsSection, content);
         var workspace = new StackPanel();
         var heroSpacer = new Border();
         workspace.Children.Add(heroSpacer); workspace.Children.Add(content);
@@ -281,7 +285,7 @@ public sealed partial class GameModeView
         row.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
         row.Children.Add(ui.Icon(glyph, 1.05).With(icon => icon.VerticalAlignment = VerticalAlignment.Center));
-        var label = ui.Text(title, .96, weight: FontWeights.SemiBold, wrap: true);
+        var label = ui.Heading(title, .96, wrap: true);
         Grid.SetColumn(label, 1); row.Children.Add(label); return row;
     }
 
@@ -672,11 +676,12 @@ public sealed partial class GameModeView
             foreach (var child in children) body.Children.Add(child);
             var icon = ui.Icon("", .7);
             var heading = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12) };
-            heading.Children.Add(icon); heading.Children.Add(ui.Text(title, .9, weight: FontWeights.SemiBold));
+            heading.Children.Add(icon); heading.Children.Add(ui.Heading(title, .9));
             Button? button = null;
             button = ui.Button(heading, () =>
             {
                 body.Visibility = body.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+                if (body.Visibility == Visibility.Visible) GmMotion.Feedback(body);
                 icon.Glyph = body.Visibility == Visibility.Visible ? "" : "";
                 Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button!, title + (body.Visibility == Visibility.Visible ? " expanded" : " collapsed"));
             }, GmKind.Transparent, radius: 8, padding: new Thickness(t.Px(8)), minHeight: 42, name: title + " collapsed");
@@ -690,7 +695,7 @@ public sealed partial class GameModeView
             var header = new Grid { ColumnSpacing = t.Px(20) };
             header.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
             header.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
-            var title = ui.Text("Multi-Frame Generation", .96, weight: FontWeights.SemiBold, wrap: true);
+            var title = ui.Heading("Multi-Frame Generation", .96, wrap: true);
             title.VerticalAlignment = VerticalAlignment.Center; header.Children.Add(title);
             var toggle = new ToggleSwitch { OnContent = "On", OffContent = "Off", MinWidth = 0,
                 IsOn = state.Enabled, IsEnabled = allowed, Foreground = GmTheme.B(t.Fg), FontSize = t.Em(.8) };

@@ -330,10 +330,24 @@ public sealed class ForgeSettings
     [JsonPropertyName("library_view")] public string LibraryView { get; set; } = "posters";
     [JsonPropertyName("library_filter")] public string LibraryFilter { get; set; } = "all";
     [JsonPropertyName("theme")] public string Theme { get; set; } = "system";
+    [JsonPropertyName("game_mode_theme_linked")] public bool GameModeThemeLinked { get; set; } = true;
+    [JsonPropertyName("game_mode_theme")] public string GameModeTheme { get; set; } = "night";
+    [JsonIgnore] public string ResolvedGameModeTheme => GameModeThemeLinked ? Theme : GameModeTheme;
+    public void LinkGameModeTheme(bool linked)
+    {
+        if (!linked && GameModeThemeLinked) GameModeTheme = ResolvedGameModeTheme;
+        GameModeThemeLinked = linked;
+    }
+    public void SetGameModeTheme(string value)
+    {
+        if (GameModeThemeLinked) Theme = value; else GameModeTheme = value;
+    }
+
     /// <summary>Compact is the default: the dashboard stays collapsed and the titlebar carries the brand, Features and actions.</summary>
     [JsonPropertyName("compact_header")] public bool CompactHeader { get; set; } = true;
     [JsonPropertyName("separate_game_details")] public bool SeparateGameDetails { get; set; }
     [JsonPropertyName("button_glyphs")] public bool ButtonGlyphs { get; set; } = true;
+    [JsonPropertyName("reduce_motion")] public bool ReduceMotion { get; set; }
     [JsonPropertyName("online_art")] public bool OnlineArt { get; set; } = true;
     [JsonPropertyName("steam_metadata")] public bool SteamMetadata { get; set; } = true;
     [JsonPropertyName("network_timeout")] public int NetworkTimeout { get; set; } = 10;

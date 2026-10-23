@@ -35,10 +35,10 @@
                         <RowDefinition Height="*" />
                         <RowDefinition Height="88" />
                     </Grid.RowDefinitions>
-                    <!-- Inside the 2px ring, so 10 = the art's corners; square corners would poke past the ring.
+                    <!-- Inset 3px inside the 2px ring (Linux .gallery-artwork-frame margins), with 10px corners.
                          The art is rounded at the bottom too, so a selected card's fill frames it (Linux .gallery-artwork). -->
                     <Border Grid.RowSpan="2" Background="{Binding CardFill}" CornerRadius="10" />
-                    <Grid Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="10">
+                    <Grid Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="10" Margin="3,3,3,0">
                         <TextBlock Text="{Binding Name}" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center"
                                    VerticalAlignment="Center" Margin="12" FontSize="14" FontWeight="SemiBold" />
                         <Image Source="{Binding Poster}" Stretch="UniformToFill" Visibility="{Binding PosterVisibility}" />
@@ -85,7 +85,7 @@
                         <RowDefinition Height="68" />
                     </Grid.RowDefinitions>
                     <Border Grid.RowSpan="2" Background="{Binding CardFill}" CornerRadius="10" />
-                    <Grid Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="10">
+                    <Grid Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="10" Margin="3,3,3,0">
                         <TextBlock Text="{Binding Name}" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center"
                                    VerticalAlignment="Center" Margin="12" FontSize="14" FontWeight="SemiBold" />
                         <Image Source="{Binding Capsule}" Stretch="UniformToFill" Visibility="{Binding CapsuleVisibility}" />

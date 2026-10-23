@@ -42,8 +42,8 @@
                         <TextBlock Text="{Binding Name}" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center"
                                    VerticalAlignment="Center" Margin="12" FontSize="14" FontWeight="SemiBold" />
                         <Image Source="{Binding Poster}" Stretch="UniformToFill" Visibility="{Binding PosterVisibility}" />
-                        <!-- .gallery-artwork-ring: a 3px stroke over the art's edge. -->
-                        <Border BorderThickness="3" CornerRadius="10" BorderBrush="{Binding ArtRing}" IsHitTestVisible="False" />
+                        <!-- .gallery-artwork-ring: a stroke over the art's edge (3px, 2px while selected). -->
+                        <Border BorderThickness="{Binding ArtRingThickness}" CornerRadius="10" BorderBrush="{Binding ArtRing}" IsHitTestVisible="False" />
                         <Border Style="{StaticResource ForgePosterBadgeStyle}" Visibility="{Binding OsMarkVisibility}"
                                 ToolTipService.ToolTip="{Binding OsMarkTooltip}" AutomationProperties.Name="{Binding OsMarkTooltip}">
                             <Viewbox Width="12" Height="12">
@@ -89,8 +89,8 @@
                         <TextBlock Text="{Binding Name}" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center"
                                    VerticalAlignment="Center" Margin="12" FontSize="14" FontWeight="SemiBold" />
                         <Image Source="{Binding Capsule}" Stretch="UniformToFill" Visibility="{Binding CapsuleVisibility}" />
-                        <!-- .gallery-artwork-ring: a 3px stroke over the art's edge. -->
-                        <Border BorderThickness="3" CornerRadius="10" BorderBrush="{Binding ArtRing}" IsHitTestVisible="False" />
+                        <!-- .gallery-artwork-ring: a stroke over the art's edge (3px, 2px while selected). -->
+                        <Border BorderThickness="{Binding ArtRingThickness}" CornerRadius="10" BorderBrush="{Binding ArtRing}" IsHitTestVisible="False" />
                         <Border Style="{StaticResource ForgePosterBadgeStyle}" Visibility="{Binding OsMarkVisibility}"
                                 ToolTipService.ToolTip="{Binding OsMarkTooltip}" AutomationProperties.Name="{Binding OsMarkTooltip}">
                             <Viewbox Width="12" Height="12">

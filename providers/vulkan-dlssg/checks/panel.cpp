@@ -51,6 +51,7 @@ int main() {
     // it never needs a fabricated helper connection to draw the saved shortcut.
     ForgePanel::welcomeStarted=0; ForgePanel::welcomeDismissed=false;
     ForgePanel::key=VK_OEM_3; ForgePanel::modifiers=2;
+    ForgePanelChannel::pending=false; // Isolate drawing from the startup helper timeout.
     ForgePanelChannel::settings["overlay_welcome"]=true;
     io.DisplayFramebufferScale=ImVec2(1,1);
     State::Instance().outputColorSpace={};

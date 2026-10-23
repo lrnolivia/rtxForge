@@ -719,12 +719,18 @@ inline std::string ShortcutLabel()
     if(name.empty()) name = "Key " + std::to_string(key);
     return std::string((modifiers & 2) ? "Ctrl+" : "") + ((modifiers & 1) ? "Alt+" : "") + ((modifiers & 4) ? "Shift+" : "") + name;
 }
+inline bool WelcomeSyncing()
+{
+    return !ForgePanelChannel::helperReady && ForgePanelChannel::pending
+        && GetTickCount64()-ForgePanelChannel::requestedAt<1500;
+}
 inline bool WelcomePending()
 {
     const auto& prefs = ForgePanelChannel::settings;
     const bool show = prefs.contains("overlay_welcome") && prefs["overlay_welcome"].is_boolean()
         ? prefs["overlay_welcome"].get<bool>() : showWelcome;
     if(!enabled || !show || welcomeDismissed || !ShortcutKey()) return false;
+    if(WelcomeSyncing()) return true;
     if(!welcomeStarted) welcomeStarted=GetTickCount64();
     return GetTickCount64()-welcomeStarted < 7000;
 }
@@ -768,6 +774,7 @@ inline void Welcome(bool panelVisible)
 {
     PollHelper();
     if(panelVisible) welcomeDismissed=true;
+    if(WelcomeSyncing()) return;
     if(!WelcomePending() || !OptiInput::IsFocused()) return;
     const float scale=PanelScale();
     const auto display=ImGui::GetIO().DisplaySize;

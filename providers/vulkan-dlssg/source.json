@@ -1,0 +1,175 @@
+{
+  "schema": 1,
+  "id": "rtxforge-vulkan-native",
+  "name": "rtxForge Vulkan NR + NVIDIA Frame Generation",
+  "experimental": true,
+  "deployable": false,
+  "runtime_verified": false,
+  "default_promoted": false,
+  "license": "GPL-3.0-only",
+  "profiles": [
+    "bg3.exe",
+    "RDR2.exe"
+  ],
+  "dependencies": {
+    "bg3fgvk": {
+      "repository": "thierbig/bg3fgvk",
+      "commit": "66082e6f691fba1c48e319b688a25fa5ae196e56",
+      "license": "MIT"
+    },
+    "rdr2-vulkan-frame-generation": {
+      "repository": "mor3a/rdr2-vulkan-frame-generation",
+      "commit": "bc853d0b4a9e7ba23ee1fe00c2c107092ccd596d",
+      "license": "MIT"
+    },
+    "optiscaler-dlss5": {
+      "repository": "Skynizz/optiscaler-dlss5",
+      "commit": "6bfc4389c25054ef6747df6e6b1b470e9541c4da",
+      "license": "GPL-3.0-only"
+    },
+    "Streamline-2.12": {
+      "repository": "NVIDIAGameWorks/Streamline",
+      "commit": "e8aaa6eaac968711fb62473d4ae8256dde20919b",
+      "license": "NVIDIA Streamline SDK license"
+    },
+    "Vulkan-Headers": {
+      "repository": "KhronosGroup/Vulkan-Headers",
+      "commit": "ee3b5caaa7e372715873c7b9c390ee1c3ca5db25",
+      "license": "Apache-2.0 OR MIT"
+    },
+    "Detours": {
+      "repository": "microsoft/Detours",
+      "commit": "1dbd4ea281d73d478aa8d09a8b83fbd265f715f7",
+      "license": "MIT"
+    },
+    "imgui-mfg": {
+      "repository": "ocornut/imgui",
+      "commit": "3912b3d9a9c1b3f17431aebafd86d2f40ee6e59c",
+      "license": "MIT"
+    }
+  },
+  "neural_rendering": {
+    "backend": "native Vulkan",
+    "model": "nvngx_dlssnr.dll",
+    "model_distribution": "user-supplied; excluded from builds",
+    "placement": "after a successful, identified native DLSS-SR evaluation, before game post-processing and HUD",
+    "required_device_extensions": [
+      "VK_NVX_binary_import",
+      "VK_NVX_image_view_handle",
+      "VK_KHR_push_descriptor",
+      "VK_KHR_buffer_device_address"
+    ],
+    "exposure": "explicit white point; no unknown-layout exposure-image access"
+  },
+  "frame_generation": {
+    "backend": "native NVIDIA Streamline Vulkan DLSS-G",
+    "initial_display_multiplier": 2,
+    "ada_mfg_unlock_included": true,
+    "qualification": "Same runtime binary must be verified in both profiles; NR evaluation counters and actual displayed-frame counts are separate evidence."
+  },
+  "mfg_component": {
+    "schema": 1,
+    "id": "mfg-unlocker",
+    "name": "Universal MFG Unlocker",
+    "version": "1.6.1",
+    "repo": "dashdogy/MFG-Unlocker",
+    "tag": "v1.6.1",
+    "commit": "29504cdd5d209a25e3b91e809a7e0d6f9db8cbdc",
+    "url": "https://github.com/dashdogy/MFG-Unlocker/releases/download/v1.6.1/MFGUnlocker-v1.6.1.zip",
+    "archive": "MFGUnlocker-v1.6.1.zip",
+    "release_size": 2713094,
+    "sha256": "abe4d6ae7eab1ea4cacc4775b05521c459516ed72f434784e4420080571e87c5",
+    "files": {
+      "MFGUnlocker.dll": {
+        "size": 7353344,
+        "sha256": "24e3e6a8c07639fd9cbd79274e4eb21cc65a13f0453e1157720620c3d6286b33",
+        "architecture": "windows-x64"
+      }
+    },
+    "notices": {
+      "LICENSE": {
+        "size": 1071,
+        "sha256": "433da96087fd9b91afd44c6350ca92da53167c9636a0a71e428f71036d8c372f"
+      },
+      "NOTICE.md": {
+        "size": 886,
+        "sha256": "65e6472efe0eb3e499dd9cb86152544b20a15f040c0bbaf09d8602abdb7bb44b"
+      }
+    },
+    "upstream_gpu_support": {
+      "rtx20": "experimental",
+      "rtx30": "supported",
+      "rtx40": "supported",
+      "rtx50": "native-controls"
+    },
+    "optiscaler": {
+      "minimum_major": 10,
+      "plugin": "OptiScaler/plugins/MFGUnlocker.asi",
+      "settings": {
+        "Plugins": {
+          "LoadAsiPlugins": "true"
+        },
+        "FrameGen": {
+          "FGOutput": "DLSSG"
+        }
+      },
+      "rtx30_dlssg_output": "experimental"
+    },
+    "integration_status": "default",
+    "installable": true,
+    "runtime_verified": true,
+    "runtime_evidence": [
+      {
+        "date": "2026-10-21",
+        "gpu": "RTX 4070",
+        "game": "Halo: Campaign Evolved",
+        "route": "native-dlssg-universal-plugin",
+        "observed": "plugin loaded by OptiScaler; DLSS-G created; native NGX ceiling 1 raised to 3 generated; 4 frames presented per real frame; Dynamic not reported by the game"
+      },
+      {
+        "date": "2026-10-21",
+        "gpu": "RTX 4070",
+        "game": "CONTROL Resonant",
+        "route": "native-dlssg-universal-plugin",
+        "observed": "plugin loaded by OptiScaler; 4 frames presented per real frame; Dynamic reported supported"
+      }
+    ],
+    "default_promoted": true,
+    "runtime_verified_for_this_route": false
+  },
+  "compatibility_label": "Universal Experimental",
+  "hardware_qualification": {
+    "rtx20": {
+      "available": "experimental-opt-in",
+      "rtxforge_verified": false,
+      "route": "NR + Universal MFG experimental trial; exact Vulkan/provider support unverified"
+    },
+    "rtx30": {
+      "available": "experimental-opt-in",
+      "rtxforge_verified": false,
+      "route": "NR + Universal MFG experimental Vulkan path"
+    },
+    "rtx40": {
+      "available": "experimental-opt-in",
+      "rtxforge_verified": false,
+      "route": "NR + native NVIDIA FG + Universal MFG unlock"
+    },
+    "rtx50": {
+      "available": "experimental-opt-in",
+      "rtxforge_verified": false,
+      "route": "NR installation and overlay; native NVIDIA MFG controls, no hardware unlock",
+      "games_without_fg": "shared Vulkan integration still supplies the missing game integration"
+    }
+  },
+  "loader_startup": {
+    "strategy": "same union Bink proxy; named Vulkan loader lookup from game import table; executable entry bytes preserved",
+    "tls_guard": "loader-lock ownership and executable TLS callback unwind ranges; rejected calls pass through",
+    "reference": {
+      "repository": "ThirteenAG/Ultimate-ASI-Loader",
+      "commit": "01eb152fc5bd659985b722d95cb4ce72c0a1f65d",
+      "license": "MIT",
+      "notice": "loader/LICENSE.exports.txt"
+    },
+    "limitations": "Only profiled executables; requires a game GetProcAddress import and subsequent Vulkan loader lookup. Missing startup trigger leaves original forwarding active. Exact gameplay qualification required."
+  }
+}

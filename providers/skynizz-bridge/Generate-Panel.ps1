@@ -48,6 +48,8 @@ $font = [IO.File]::ReadAllBytes((Join-Path $repo 'windows\RtxForge.Windows\Asset
 $fontCode = 'inline unsigned char forgeInter[] = {' + (($font | ForEach-Object { $_.ToString() }) -join ',') + '};'
 $semiBold = [IO.File]::ReadAllBytes((Join-Path $PSScriptRoot 'Inter-SemiBold.ttf'))
 $fontCode += "`n" + 'inline unsigned char forgeInterSemiBold[] = {' + (($semiBold | ForEach-Object { $_.ToString() }) -join ',') + '};'
+$brandFont = [IO.File]::ReadAllBytes((Join-Path $repo 'gui\fonts\BakbakOne-Regular.ttf'))
+$fontCode += "`n" + 'inline unsigned char forgeBakbak[] = {' + (($brandFont | ForEach-Object { $_.ToString() }) -join ',') + '};'
 [IO.File]::WriteAllText((Join-Path $menu 'ForgePanelFont.h'), $fontCode, [Text.UTF8Encoding]::new($false))
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'ForgePanel.h') -Destination $menu
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'ForgePanelChannel.h') -Destination $menu

@@ -18,7 +18,7 @@ public sealed partial class EngineForgeService
         return rows.OfType<JsonObject>().Select(row => new Game
         {
             Id = row["game"]!.GetValue<string>(), Location = row["game"]!.GetValue<string>(),
-            Name = row["name"]?.GetValue<string>() ?? "Game", RuntimeProvider = "skynizz",
+            Name = row["name"]?.GetValue<string>() ?? "Game", RuntimeProvider = row["runtime_provider"]?.GetValue<string>() ?? "skynizz",
             AppId = row["appid"]?.GetValue<string>(),
             Installed = true, EngineRow = row,
         }).ToArray();

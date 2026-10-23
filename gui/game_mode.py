@@ -1402,7 +1402,7 @@ class GameMode(Gtk.Overlay, GameModeTools):
         if game.get('installed'):
             dot.add_css_class('on')
         state.append(dot)
-        state.append(self.label('Unsupported' if game.get('blocked') else 'Installed' if game.get('installed') else 'Available', 'gm-p'))
+        state.append(self.label('Unsupported' if game.get('blocked') and not self.owner.adoptable(game) else 'Installed' if game.get('installed') else 'Available', 'gm-p'))
         if game.get('installed') and game.get('installed_on') in ('linux', 'windows'):
             mark = self.icon('rtx-os-' + game['installed_on'] + '-symbolic', t.px(14))
             mark.set_tooltip_text('Installed with rtxForge on ' + game['installed_on'].title())
@@ -1818,7 +1818,9 @@ class GameMode(Gtk.Overlay, GameModeTools):
                 content.append(self.tool_card('Adoption available', overview_facts.ADOPTION_NOTE, None))
             if g.get('installed_on') == 'windows':
                 content.append(self.tool_card('Installed on Windows', overview_facts.WINDOWS_NOTE, None))
-            if g.get('blocked'):
+            if g.get('blocked') and self.owner.adoptable(g):
+                content.append(self.tool_card('Anti-cheat · offline only', overview_facts.OFFLINE_ADOPTION_NOTE, None))
+            elif g.get('blocked'):
                 content.append(self.tool_card('rtxForge will not modify this game', str(g['blocked']), None))
             facts = overview_facts.facts(g)
             columns, count = self.tool_columns(min(4, max(1, len(facts))))

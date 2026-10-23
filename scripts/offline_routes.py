@@ -54,9 +54,24 @@ def verify(route, cache=None):
     return spec
 
 
-def protected_running():
+PROTECTED_NAMES = ('easyanticheat', 'start_protected_game')
+
+
+def protected_running(proc=Path('/proc')):
     if os.name != 'nt':
-        return True  # These profiles have only been verified on Windows.
+        # Proton runs Windows processes as ordinary host processes; their command lines name the executable.
+        for entry in proc.iterdir() if proc.is_dir() else ():
+            if not entry.name.isdigit():
+                continue
+            try:
+                args = (entry / 'cmdline').read_bytes().split(b'\0')
+            except OSError:
+                continue
+            for arg in args:
+                name = arg.decode('utf-8', 'replace').replace('\\', '/').rsplit('/', 1)[-1].casefold()
+                if name and (name.startswith(PROTECTED_NAMES[1]) or PROTECTED_NAMES[0] in name):
+                    return True
+        return False
     import win_processes
     return any('easyanticheat' in name.casefold() or name.casefold().startswith('start_protected_game')
                for _, name, _, _ in win_processes._inventory())

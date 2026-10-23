@@ -37,7 +37,7 @@ public sealed class Game
     public string? Profile { get; init; }
     public string? RuntimeProvider { get; init; }
     public bool IsFeeder => RuntimeProvider == "feeder";
-    /// <summary>A detected installation or a fresh DX11 target admitted to the separate Feeder route.</summary>
+    /// <summary>A detected installation or a fresh DX11 or DX12 (no DLSS) target admitted to the separate Feeder route.</summary>
     public bool UsesFeeder => IsFeeder || EngineRow?["install_provider"]?.ToString() == "feeder"
         && EngineRow?["feeder_available"] is JsonValue flag && flag.TryGetValue<bool>(out var supported) && supported;
     /// <summary>Which rtxForge installed the features: "windows", "linux" (shared .rtxforge-install.json), or null.</summary>
@@ -45,6 +45,13 @@ public sealed class Game
     /// <summary>A Feeder setup is installed but needs attention (BlockedReason says why); not an unsupported game.</summary>
     public bool FeederNeedsAttention => Blocked && EngineRow?["feeder_detected"] is JsonValue detected
         && detected.TryGetValue<bool>(out var found) && found;
+    /// <summary>The block is a capability check Try anyway can skip; anti-cheat and missing executables never are.</summary>
+    public bool BlockedSoft => Blocked && EngineRow?["soft_reasons"] is JsonArray reasons && reasons.Any(r => r?.ToString() == BlockedReason);
+    /// <summary>The capability check skipped with Try anyway, when it is on for this game.</summary>
+    public string? TryAnyway => EngineRow?["try_anyway"] is JsonValue v && v.TryGetValue<string>(out var r) && r.Length > 0 ? r : null;
+    /// <summary>Known result (Working or Problem): your own first, then the shipped compatibility list.</summary>
+    public string? CompatVerdict => EngineRow?["compat"]?["verdict"]?.ToString();
+    public bool CompatFromList => EngineRow?["compat"]?["source"]?.ToString() == "list";
     /// <summary>"Unsupported", or the Feeder status for an installed setup that needs attention.</summary>
     public string BlockedStatus => FeederNeedsAttention ? "Needs Attention" : "Unsupported";
     /// <summary>Installed with rtxForge on Linux: Windows loads it natively; Set Up for Windows adapts it here.</summary>
@@ -185,9 +192,12 @@ public sealed record DlssInventory(IReadOnlyList<DlssFile> Files, string Blocked
 
 /// <summary>A package. Verified lists the OSes ("windows", "linux") where it has been tested in a game.</summary>
 public sealed record PackageOption(string Id, string Name, string Version, string Summary, bool Available, string Reason, bool Recommended, string Url,
-    IReadOnlyList<string>? Verified = null);
+    IReadOnlyList<string>? Verified = null, IReadOnlyDictionary<string, string>? MfgVersions = null);
 
 public sealed record CommunitySource(string Name, string Url, string Note);
+
+/// <summary>A game's result as a prefilled issue: the exact text, and the URL the browser opens.</summary>
+public sealed record CompatShare(string Title, string Body, string Url);
 
 public sealed record PackageCatalog(string Status, IReadOnlyList<PackageOption> Packages, IReadOnlyList<CommunitySource> Community, string? CustomName);
 
@@ -226,16 +236,22 @@ public sealed class ForgeSettings
     }
     /// <summary>A game's own package for games with DLSS, by game folder; absent games use RuntimeProvider.</summary>
     [JsonPropertyName("game_packages")] public Dictionary<string, string> GamePackages { get; set; } = [];
-    /// <summary>Packages a game can choose on Windows. Feeder NR stays automatic for DX11 games without DLSS.</summary>
-    public static readonly (string Key, string Name)[] GamePackageChoices = [("skynizz", "Skynizz NR + Universal MFG"), ("dlss-unlocked", "DLSS-Unlocked")];
-    public static string PackageName(string key) => GamePackageChoices.FirstOrDefault(c => c.Key == key).Name ?? key;
+    /// <summary>Packages a game can choose on Windows. Feeder NR stays automatic for DX11 games and DX12 games without DLSS.</summary>
+    public static readonly (string Key, string Name)[] GamePackageChoices = [("skynizz", "Skynizz NR"), ("dlss-unlocked", "DLSS-Unlocked")];
+    /// <summary>MFG packages that pair with Skynizz NR, as MfgProvider values.</summary>
+    public static readonly (string Key, string Name)[] MfgPackageNames =
+        [("universal", "Universal MFG"), ("integrated", "Integrated MFG unlock"), ("mfg-unlock", "MFG Unlock")];
+    public static string MfgName(string key) => MfgPackageNames.FirstOrDefault(c => c.Key == key).Name ?? key;
+    /// <summary>A package's name as installed now: Skynizz NR is named with the MFG package it pairs with.</summary>
+    public string PackageName(string key) => key == "skynizz" ? "Skynizz NR + " + MfgName(MfgProvider)
+        : GamePackageChoices.FirstOrDefault(c => c.Key == key).Name ?? key;
     /// <summary>A game's package choices for both UIs: "" follows the library package.</summary>
     public (string[] Keys, string[] Captions) GamePackageOptions() =>
-        (["", .. GamePackageChoices.Select(c => c.Key)], ["Library package · " + PackageName(RuntimeProvider), .. GamePackageChoices.Select(c => c.Name)]);
+        (["", .. GamePackageChoices.Select(c => c.Key)], ["Library package · " + PackageName(RuntimeProvider), .. GamePackageChoices.Select(c => PackageName(c.Key))]);
     public string GamePackage(Game game) => GamePackages.GetValueOrDefault(game.Id, "");
-    public static string GamePackageNote(Game game) => game.Installed && game.RuntimeProvider is { } installed
+    public string GamePackageNote(Game game) => game.Installed && game.RuntimeProvider is { } installed
         ? $"Installed with {PackageName(installed)}. Another package applies after you restore this game."
-        : "Used when you install features on this game. Games without DLSS use Feeder NR.";
+        : "Used when you install features on this game. Games without DLSS get their NR package automatically.";
     /// <summary>The package a review prepares this game with: Feeder games keep their route, repairs keep the installed package.</summary>
     public string PackageFor(Game game, string operation)
     {

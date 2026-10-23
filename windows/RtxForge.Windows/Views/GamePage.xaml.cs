@@ -117,6 +117,14 @@ public sealed partial class GamePage : Page
         Resources["SelectorBarItemForegroundSelected"] = palette.Brush(light ? ink : palette.NavAccent);
     }
 
+    Button TryAnywayButton(Game g, bool on)
+    {
+        var button = new Button { Content = on ? "Try anyway" : "Stop trying" };
+        button.IsEnabled = !shell.Busy && !shell.Service.IsPreview;
+        button.Click += async (_, _) => await shell.TryAnywayAsync(g, on);
+        return button;
+    }
+
     void Refresh()
     {
         StatusBadge.Text = game.AdoptionAvailable ? "Installed · Adoption available" : game.OfflineOnly ? "Installed · Offline only" : game.Blocked ? game.BlockedStatus
@@ -191,10 +199,22 @@ public sealed partial class GamePage : Page
                 if (g.AdoptionAvailable)
                     PageHost.Children.Add(Prefs.Row("Adoption available", GameOverview.AdoptionNote, Prefs.ActionButton("Review Adoption", (_, _) => _ = shell.ReviewAdoptionAsync([g]))));
                 if (g.Blocked)
-                    PageHost.Children.Add(new InfoBar
+                {
+                    // A capability check can be skipped; anti-cheat and missing executables cannot.
+                    var blocked = new InfoBar
                     {
                         IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Warning, Margin = new Thickness(0, 24, 0, 0),
-                        Title = "rtxForge will not modify this game", Message = g.BlockedReason ?? "",
+                        Title = g.BlockedSoft ? "Not verified with this package" : "rtxForge will not modify this game",
+                        Message = g.BlockedSoft ? (g.BlockedReason ?? "") + " " + GameOverview.TryAnywayNote : g.BlockedReason ?? "",
+                    };
+                    if (g.BlockedSoft) blocked.ActionButton = TryAnywayButton(g, true);
+                    PageHost.Children.Add(blocked);
+                }
+                else if (g.TryAnyway is { } skipped)
+                    PageHost.Children.Add(new InfoBar
+                    {
+                        IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Informational, Margin = new Thickness(0, 24, 0, 0),
+                        Title = "Trying anyway", Message = skipped + " " + GameOverview.TryAnywayNote, ActionButton = TryAnywayButton(g, false),
                     });
                 else if (g.InstalledOnLinux)
                     PageHost.Children.Add(new InfoBar
@@ -222,14 +242,16 @@ public sealed partial class GamePage : Page
             case "Features":
                 if (g.IsFeeder)
                 {
-                    PageHost.Children.Add(Prefs.Row("Feeder NR settings", "Your existing tuning is preserved. Use ReShade's NR panel in the running game to adjust passes, resolution, tone and structure.", glyph: ""));
+                    var feederTuning = new PreferencesGroup("Tuning");
+                    feederTuning.Add(Prefs.Row("Feeder NR settings", "Your existing tuning is preserved. Use ReShade's NR panel in the running game to adjust passes, resolution, tone and structure.", glyph: ""));
+                    PageHost.Children.Add(feederTuning);
                     break;
                 }
                 if (!g.UsesFeeder)
                 {
                     var (packageKeys, packageCaptions) = shell.Settings.GamePackageOptions();
                     var chosen = shell.Settings.GamePackage(g);
-                    var (packageRow, packageCombo) = Prefs.ComboRow("Package", ForgeSettings.GamePackageNote(g), packageCaptions,
+                    var (packageRow, packageCombo) = Prefs.ComboRow("Feature package", shell.Settings.GamePackageNote(g), packageCaptions,
                         Math.Max(0, Array.IndexOf(packageKeys, chosen)), "");
                     packageCombo.IsEnabled = !shell.Busy && !shell.Service.IsPreview;
                     packageCombo.SelectionChanged += (_, _) =>
@@ -237,15 +259,15 @@ public sealed partial class GamePage : Page
                         if (packageCombo.SelectedIndex >= 0 && packageKeys[packageCombo.SelectedIndex] != chosen)
                             _ = shell.SelectGamePackageAsync(g, packageKeys[packageCombo.SelectedIndex]);
                     };
-                    var package = new PreferencesGroup(null);
+                    var package = new PreferencesGroup("Package");
                     package.Add(packageRow);
                     PageHost.Children.Add(package);
                 }
-                var features = new PreferencesGroup(null,
+                var features = new PreferencesGroup("Tuning",
                     "Tuning values for this game. Reset restores your library presets. Apply saves them for this game.");
                 var tuning = new PresetControlsView(shell.GameTuning(g), shell.Settings.OverlayControls == "classic");
                 tuning.SetMode(g.Profile?.Contains("Only", StringComparison.OrdinalIgnoreCase) == true
-                    ? g.Profile.StartsWith("NR", StringComparison.OrdinalIgnoreCase) ? "nr-only" : "mfg-only" : shell.Mode,
+                    ? g.Profile.StartsWith("NR", StringComparison.OrdinalIgnoreCase) ? "nr-only" : "mfg-only" : GameOverview.Mode(g, shell.Mode),
                     g.Installed, g.RuntimeProvider != "skynizz", dynamicSupported: g.DynamicMfgAvailable, dynamicDetail: g.DynamicMfgDetail);
                 // 16px gaps (the pods' own spacing): group spacing 4 + margin 12.
                 if (g.Installed) tuning.Margin = new Thickness(0, 12, 0, 0);
@@ -331,6 +353,10 @@ public sealed partial class GamePage : Page
                 var test = Prefs.ActionButton(g.TestActive ? "Finish Test" : "Start Test", async (_, _) => await shell.RecordTestAsync(g));
                 test.IsEnabled = !shell.Service.IsPreview;
                 noteActions.Children.Add(test);
+                // Shares the saved result: save a Working or Problem result first.
+                var shareResult = Prefs.ActionButton("Share result", async (_, _) => await shell.ShareResultAsync(g));
+                shareResult.IsEnabled = !shell.Service.IsPreview && g.TestStatus is "Working" or "Problem";
+                noteActions.Children.Add(shareResult);
                 noteActions.Children.Add(Prefs.ActionButton("Save Notes", async (_, _) => await shell.SaveNotesAsync(g, states[Math.Max(0, status.SelectedIndex)], text.Text), accent: true));
                 testCard.Children.Add(noteActions);
                 noteCards.Children.Add(DetailSurface(testCard));

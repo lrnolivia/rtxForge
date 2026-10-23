@@ -34,18 +34,40 @@ public sealed partial class PackagesPage : Page
     internal static readonly string[] PairsWithMfg = ["skynizz"];
 
     /// <summary>
-    /// MFG packages for Skynizz NR, as Settings.MfgProvider values. All three use NVIDIA's own DLSS Frame
-    /// Generation; each presented 4 generated frames in Halo on an RTX 4070 (Forge Lab, 2026-10-22).
+    /// MFG packages for Skynizz NR, as Settings.MfgProvider values; all three use NVIDIA's own DLSS Frame
+    /// Generation. Version reads the pinned release from the catalog (Kind follows it).
     /// </summary>
-    internal static readonly (string Id, string Name, string Version, string Summary, string[] Verified)[] MfgPackages =
+    internal static readonly (string Id, string Name, string Kind, string Summary, string[] Verified)[] MfgPackages =
     [
-        ("universal", "Universal MFG", "1.6.1 · OptiScaler plugin",
-            "Recommended. Keeps NVIDIA's DLSS Frame Generation and unlocks 3x to 6x on RTX 40. The multiplier and Dynamic MFG stay in the rtxForge Overlay.", ["windows"]),
-        ("integrated", "Integrated Ada unlock", "Built into the Skynizz bridge",
-            "Patches NVIDIA's DLSS Frame Generation for 3x to 6x on RTX 40, with no extra plugin.", ["windows"]),
-        ("mfg-unlock", "MFG Unlock", "1.4.5 · ReShade add-on",
-            "Raises NVIDIA's DLSS Frame Generation multiplier through ReShade. The rtxForge Overlay can't change its multiplier while you play, and it isn't offered for inZOI yet.",["windows"]),
+        ("universal", ForgeSettings.MfgName("universal"), "OptiScaler plugin",
+            "Recommended. Keeps NVIDIA's DLSS Frame Generation and unlocks 3x to 6x where the driver allows 2x. The multiplier and Dynamic MFG stay in the rtxForge Overlay.", ["windows"]),
+        ("integrated", ForgeSettings.MfgName("integrated"), "",
+            "Patches NVIDIA's DLSS Frame Generation for 3x to 6x where the driver allows 2x, with no extra plugin.", ["windows"]),
+        ("mfg-unlock", ForgeSettings.MfgName("mfg-unlock"), "ReShade add-on",
+            "Raises NVIDIA's DLSS Frame Generation multiplier through ReShade. The rtxForge Overlay can't change its multiplier while you play.",["windows"]),
     ];
+
+    /// <summary>The NR package MFG packages pair with, as the catalog names it.</summary>
+    internal static string PairName(PackageCatalog catalog) => catalog.Packages.FirstOrDefault(p => PairsWithMfg.Contains(p.Id))?.Name ?? "the paired NR package";
+
+    /// <summary>An MFG package's pinned version, from the paired NR package's catalog entry.</summary>
+    internal static string MfgVersion(string id, string kind, PackageCatalog catalog)
+    {
+        var pair = catalog.Packages.FirstOrDefault(p => PairsWithMfg.Contains(p.Id));
+        var version = pair?.MfgVersions?.GetValueOrDefault(id);
+        if (id == "integrated") return pair is null ? "Built into the bridge" : $"Built into the {pair.Name} {version} bridge".Replace("  ", " ");
+        return string.IsNullOrEmpty(version) ? kind : $"{version} · {kind}";
+    }
+
+    /// <summary>A package card's name and version: an NR package that pairs with MFG is named with the selected MFG package.</summary>
+    internal static (string Name, string Version) CardTitle(PackageOption item, ForgeSettings settings)
+    {
+        if (!PairsWithMfg.Contains(item.Id)) return (item.Name, item.Version);
+        var mfg = MfgPackages.FirstOrDefault(p => p.Id == settings.MfgProvider);
+        if (mfg.Id is null) return (item.Name, item.Version);
+        var version = mfg.Id == "integrated" ? "" : item.MfgVersions?.GetValueOrDefault(mfg.Id) ?? "";
+        return ($"{item.Name} + {mfg.Name}", $"{item.Version} · {mfg.Name} {version}".TrimEnd());
+    }
 
     async Task LoadAsync()
     {
@@ -59,13 +81,14 @@ public sealed partial class PackagesPage : Page
         // NR packages beside the MFG packages that pair with them.
         var columns = new PresetColumns(420, 2) { ColumnSpacing = 16, RowSpacing = 20, Margin = new Thickness(0, 12, 0, 0) };
         var nr = new StackPanel { Spacing = 12 };
-        nr.Children.Add(Heading("NR packages", "Neural rendering. Choose one for games with DLSS; Feeder NR covers games without DLSS automatically."));
+        var automatic = catalog.Packages.FirstOrDefault(p => WithoutDlss.Contains(p.Id))?.Name;
+        nr.Children.Add(Heading("NR packages", "Neural rendering. Choose one for games with DLSS" + (automatic is null ? "." : $"; {automatic} covers games without DLSS automatically.")));
         foreach (var item in catalog.Packages.Where(p => PairsWithMfg.Contains(p.Id)))
         {
             nr.Children.Add(PackageCard(item));
             if (shell.Settings.RuntimeProvider == item.Id) nr.Children.Add(new Expander
             {
-                Header = "Skynizz settings", Content = SkynizzSettings(catalog), HorizontalAlignment = HorizontalAlignment.Stretch,
+                Header = item.Name + " settings", Content = SkynizzSettings(catalog), HorizontalAlignment = HorizontalAlignment.Stretch,
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
             });
         }
@@ -74,16 +97,17 @@ public sealed partial class PackagesPage : Page
         columns.Children.Add(nr);
 
         var mfg = new StackPanel { Spacing = 12 };
+        var pairName = PairName(catalog);
         mfg.Children.Add(Heading("MFG packages", pairs
-            ? "Native NVIDIA frame generation for Skynizz NR, in games with DLSS Frame Generation. Applies to new installs; restore a game before switching its MFG package."
-            : "These pair with Skynizz NR. Your package for DLSS games brings its own frame generation."));
-        foreach (var package in MfgPackages) mfg.Children.Add(MfgCard(package, pairs));
+            ? $"Native NVIDIA frame generation for {pairName}, in games with DLSS Frame Generation. Applies to new installs; restore a game before switching its MFG package."
+            : $"These pair with {pairName}. Your package for DLSS games brings its own frame generation."));
+        foreach (var package in MfgPackages) mfg.Children.Add(MfgCard(package, pairs, catalog));
         columns.Children.Add(mfg);
         body.Children.Add(columns);
 
         // Whole packages: NR and MFG together.
         var unified = new StackPanel { Spacing = 12, Margin = new Thickness(0, 12, 0, 0) };
-        unified.Children.Add(Heading("Unified packages", "NR and frame generation in one package, for games with DLSS. Choosing one replaces Skynizz NR for those games."));
+        unified.Children.Add(Heading("Unified packages", "NR and frame generation in one package, for games with DLSS. Choosing one replaces your NR package for those games."));
         var unifiedCards = new PresetColumns(360, 2) { ColumnSpacing = 16, RowSpacing = 16 };
         foreach (var item in catalog.Packages.Where(p => !WithoutDlss.Contains(p.Id) && !PairsWithMfg.Contains(p.Id))
                      .OrderByDescending(p => p.Id == shell.Settings.RuntimeProvider))
@@ -156,7 +180,7 @@ public sealed partial class PackagesPage : Page
     StackPanel SkynizzSettings(PackageCatalog catalog)
     {
         var settings = new StackPanel { Spacing = 12 };
-        settings.Children.Add(Choice("NR model preset", "Performance (B) uses preset 2 with compatible 310.9.16 models.",
+        settings.Children.Add(Choice("NR model preset", "Performance (B) uses preset 2 with compatible NR models.",
             ["Automatic", "Legacy (A)", "Performance (B)"], Math.Clamp(shell.Settings.NrPreset ?? 0, 0, 2),
             index => shell.Settings.NrPreset = index));
         settings.Children.Add(PathField("Local NR model DLL", "Compatible nvngx_dlssnr.dll. Needed unless a suitable model is already beside the game executable.",
@@ -171,7 +195,8 @@ public sealed partial class PackagesPage : Page
         content.RowDefinitions.Add(new() { Height = GridLength.Auto });
         content.RowDefinitions.Add(new() { Height = new GridLength(1, GridUnitType.Star) });
         content.RowDefinitions.Add(new() { Height = GridLength.Auto });
-        content.Children.Add(Section(item.Name, item.Version));
+        var (name, version) = CardTitle(item, shell.Settings);
+        content.Children.Add(Section(name, version));
         var description = new StackPanel { Spacing = 8 };
         description.Children.Add(Prefs.Label(item.Summary));
         if (!item.Available) description.Children.Add(Prefs.Label(item.Reason, "ForgeCaptionDimTextStyle"));
@@ -185,12 +210,12 @@ public sealed partial class PackagesPage : Page
         return Card(content);
     }
 
-    Border MfgCard((string Id, string Name, string Version, string Summary, string[] Verified) package, bool pairs)
+    Border MfgCard((string Id, string Name, string Kind, string Summary, string[] Verified) package, bool pairs, PackageCatalog catalog)
     {
         var current = pairs && shell.Settings.MfgProvider == package.Id;
-        var content = Section(package.Name, package.Version);
+        var content = Section(package.Name, MfgVersion(package.Id, package.Kind, catalog));
         content.Children.Add(Prefs.Label(package.Summary));
-        var use = Prefs.ActionButton(current ? "In use" : "Use with Skynizz NR", (_, _) =>
+        var use = Prefs.ActionButton(current ? "In use" : "Use with " + PairName(catalog), (_, _) =>
         {
             shell.Settings.MfgProvider = package.Id; shell.SaveSettings(); _ = LoadAsync();
         }, accent: package.Id == "universal" && pairs && !current);

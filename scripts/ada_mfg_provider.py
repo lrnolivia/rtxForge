@@ -159,7 +159,7 @@ def check_target(e, game, baseline):
              or str(getattr(game, 'exe', '')).replace('\\', '/').rsplit('/', 1)[-1].casefold()
              == 'inzoi-win64-shipping.exe')
     t.need(not (record['version'] in INZOI_UNSAFE and inzoi),
-           f"MFG Unlock {record['version']} with Skynizz NR isn't safe in inZOI yet (1.4.4 hung at startup). "
+           f"MFG Unlock {record['version']} with Skynizz NR isn't supported in this game yet; it can hang at startup. "
            'Choose Universal MFG or the integrated Ada unlock for this game; restore first if already installed.')
     current = (baseline or {}).get('current') or {}
     installed = ((current.get('archive') or {}).get('release') or {}).get('mfg_component')

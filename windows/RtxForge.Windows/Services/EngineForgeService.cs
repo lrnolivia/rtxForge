@@ -28,7 +28,9 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
     public ForgeSettings Settings { get; } = ForgeSettings.Load();
     public string EngineRoot { get; }
     static string SnapshotPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rtxForge", "state", "library-snapshot.json");
-    string SnapshotKey() => LibrarySnapshot.Key(Settings.RuntimeProvider, Settings.GameFolders, Settings.LibraryFolders);
+    // Each build keys its own snapshot, so an update never shows the previous build's verdicts.
+    static readonly string Build = typeof(EngineForgeService).Assembly.ManifestModule.ModuleVersionId.ToString("N");
+    string SnapshotKey() => LibrarySnapshot.Key(Settings.RuntimeProvider + "|" + Build, Settings.GameFolders, Settings.LibraryFolders);
     public IReadOnlyList<Game> CachedLibrary()
     {
         try { return LibraryGames(LibrarySnapshot.Read(SnapshotPath, SnapshotKey())); }
@@ -270,15 +272,19 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
     async Task<OperationReview> PrepareCoreAsync(string operation, IReadOnlyList<Game> targets, Tuning tuning, string mode,
         IProgress<PrepareProgress>? progress, CancellationToken cancel, bool supportedSubset, string? provider = null)
     {
-        if (provider is null && operation is "install" or "repair")
+        if (provider is null && operation is "install" or "repair" or "uninstall" or "reset" or "apply")
         {
-            // Games may choose their own package: one review, prepared per package and run in turn.
-            var packages = targets.GroupBy(g => Settings.PackageFor(g, operation)).ToArray();
+            // Feeder games take their own route and games may choose their own package:
+            // one review, prepared per route and run in turn.
+            string Route(Game g) => g.UsesFeeder ? "feeder" : operation is "install" or "repair" ? Settings.PackageFor(g, operation) : Settings.RuntimeProvider;
+            var packages = targets.GroupBy(Route).ToArray();
+            // The engine sends a selection of only Feeder games down the Feeder route; the package setting stays.
+            string Provider(string route) => route == "feeder" ? Settings.RuntimeProvider : route;
             if (packages.Length > 1)
             {
                 var parts = new List<OperationReview>();
                 foreach (var package in packages)
-                    parts.Add(await PrepareCoreAsync(operation, package.ToArray(), tuning, mode, progress, cancel, supportedSubset, package.Key));
+                    parts.Add(await PrepareCoreAsync(operation, package.ToArray(), tuning, mode, progress, cancel, supportedSubset, Provider(package.Key)));
                 foreach (var empty in parts.Where(p => p.Ready.Count == 0)) DiscardOperation(empty with { Supported = [] });
                 return new OperationReview(operation, "", parts.SelectMany(p => p.Ready).ToArray(), parts.SelectMany(p => p.Blocked).ToArray(),
                     parts.SelectMany(p => p.Warnings).ToArray())
@@ -287,7 +293,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
                     Supported = parts.SelectMany(p => p.Supported).ToArray(),
                 };
             }
-            provider = packages.FirstOrDefault()?.Key;
+            provider = packages.FirstOrDefault() is { } only ? Provider(only.Key) : null;
         }
         provider ??= Settings.RuntimeProvider;
         var rows = new JsonArray(targets.Where(g => g.EngineRow is not null).Select(g => (JsonNode)g.EngineRow!.DeepClone()).ToArray());
@@ -352,7 +358,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
                 (r.Summary ?? "Review the technical details before continuing.")
                 // Games can use different packages in one review, so each says which.
                 + (operation is "install" or "repair" && !r.Game!.UsesFeeder && ForgeSettings.GamePackageChoices.Any(c => c.Key == provider)
-                    ? "\nPackage: " + ForgeSettings.PackageName(provider) : ""))).ToList();
+                    ? "\nPackage: " + Settings.PackageName(provider) : ""))).ToList();
         var blocked = (result?["blocked"] as JsonArray ?? []).OfType<JsonObject>()
             .Select(b => new ReviewBlock(Match(b["name"]?.ToString()), b["name"]?.ToString() ?? "", b["reason"]?.ToString() ?? "", b["summary"]?.ToString())).ToList();
         var warnings = (result?["warnings"] as JsonArray ?? []).OfType<JsonObject>()

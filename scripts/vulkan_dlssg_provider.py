@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import contextvars
 import ctypes
 import hashlib
 import json
@@ -30,6 +31,62 @@ CONFIG = 'NativeMods/fgvk.ini'
 NOTICES = 'NativeMods/rtxForge-bg3/'
 LOGS = ('fgvk.log', 'sl.log', 'NativeMods/rtxforge-bg3-loader.log')
 MAX_BACKUP = 128 * 1024**2
+_selection = contextvars.ContextVar('vulkan_provider_selection', default=None)
+
+
+@contextlib.contextmanager
+def profile(name, manifest):
+    """Bind one exact shared-provider recipe without altering the legacy route."""
+    t.need(name in ('bg3', 'rdr2'), 'Unknown Vulkan game profile')
+    path = t.safe(manifest)
+    token = _selection.set((name, path))
+    try:
+        pin()
+        yield
+    finally:
+        _selection.reset(token)
+
+
+def _pin_path():
+    return _selection.get()[1] if _selection.get() else PIN
+
+
+def _provider_id():
+    return 'rtxforge-vulkan-native:' + _selection.get()[0] if _selection.get() else ID
+
+
+def _executables():
+    return ('RDR2.exe', 'PlayRDR2.exe') if _selection.get() and _selection.get()[0] == 'rdr2' else ('bg3.exe', 'bg3_dx11.exe')
+
+
+def _game_name():
+    return 'RDR2' if _selection.get() and _selection.get()[0] == 'rdr2' else 'BG3'
+
+
+def _notices():
+    return 'NativeMods/rtxForge-vulkan/' if _selection.get() else NOTICES
+
+
+def _logs():
+    return ('fgvk.log', 'sl.log', 'NativeMods/rtxforge-vulkan-loader.log',
+            'NativeMods/MFG/RTXMFG-Universal.status.json') if _selection.get() else LOGS
+
+
+def _mutable():
+    return {CONFIG, 'RTX40MFG-UI.ini', 'NativeMods/MFG/RTXMFG-Universal.json'} if _selection.get() else {CONFIG}
+
+
+def _destination(name):
+    if name.startswith('NativeMods/') or (_selection.get() and name == 'RTX40MFG-UI.ini'):
+        return name
+    notices = {'LICENSE.txt': 'bg3fgvk-LICENSE.txt', 'README.md': 'UPSTREAM-README.md',
+               'INSTALL.txt': 'UPSTREAM-INSTALL.txt'}
+    t.need(name in notices, 'Unsupported provider destination: ' + name)
+    return _notices() + notices[name]
+
+
+def _identity():
+    return {'id': _provider_id(), 'manifest': str(_pin_path()), 'profile': _selection.get()[0] if _selection.get() else 'legacy-bg3'}
 
 
 class Cancelled(t.Refusal):
@@ -37,7 +94,18 @@ class Cancelled(t.Refusal):
 
 
 def pin():
-    data = t.read_json(PIN)
+    data = t.read_json(_pin_path())
+    if _selection.get():
+        name = _selection.get()[0]
+        t.need(data.get('id') == 'rtxforge-vulkan-native' and data.get('experimental') is True
+               and data.get('deployable') is True, 'Shared Vulkan candidate is not deployable')
+        selected = data.get('profiles', {}).get(name)
+        t.need(isinstance(selected, dict) and selected.get('executable') == _executables()[0],
+               'Shared provider profile identity differs')
+        t.need(data.get('runtime_verified') is False and data.get('default_promoted') is False,
+               'Standalone candidate must retain Experimental provenance')
+        data['loader'] = selected['loader']
+        return data
     t.need(data.get('id') == ID and data.get('upstream', {}).get('tag') == 'v1.2.0',
            'Unsupported Vulkan provider identity')
     return data
@@ -85,16 +153,14 @@ def payload(archive, loader):
             t.need(_hash(data) == expected['sha256'], 'Archive member hash mismatch: ' + name)
             if name.lower().endswith('.dll'):
                 t.need(_pe(data), 'Payload is not an x64 Windows DLL: ' + name)
-            dest = name if name.startswith('NativeMods/') else NOTICES + {
-                'LICENSE.txt': 'bg3fgvk-LICENSE.txt', 'README.md': 'UPSTREAM-README.md',
-                'INSTALL.txt': 'UPSTREAM-INSTALL.txt'}[name]
+            dest = _destination(name)
             result[dest] = data
     t.need(seen == {name.casefold() for name in spec['files']}, 'Incomplete archive')
     result[PROXY] = loader.read_bytes()
     t.need(_pe(result[PROXY]), 'Loader is not an x64 DLL')
-    license_path = PIN.parent / 'loader/LICENSE.exports.txt'
-    result[NOTICES + 'loader-exports-LICENSE.txt'] = license_path.read_bytes()
-    t.need(_hash(result[NOTICES + 'loader-exports-LICENSE.txt']) == spec['loader']['exports_notice_sha256'],
+    license_path = _pin_path().parent / 'loader/LICENSE.exports.txt'
+    result[_notices() + 'loader-exports-LICENSE.txt'] = license_path.read_bytes()
+    t.need(_hash(result[_notices() + 'loader-exports-LICENSE.txt']) == spec['loader']['exports_notice_sha256'],
            'Loader export notice changed')
     return result
 
@@ -103,8 +169,9 @@ def target(game):
     root = t.safe(game)
     if (root / 'bin/bg3.exe').is_file():
         root = t.safe(root / 'bin')
-    t.need(root.is_dir() and (root / 'bg3.exe').is_file(), 'Select BG3 or its bin directory')
-    t.executable_check(t.safe(root / 'bg3.exe'))
+    executable = _executables()[0]
+    t.need(root.is_dir() and (root / executable).is_file(), 'Select the reviewed Vulkan game directory: ' + executable)
+    t.executable_check(t.safe(root / executable))
     t.need(t.safe(root / 'nvngx_dlss.dll').is_file(), 'Native Vulkan DLSS-SR runtime is missing')
     return root
 
@@ -132,7 +199,7 @@ def running(root):
     try:
         ok = k.Process32FirstW(snapshot, ctypes.byref(item))
         while ok:
-            if item.exe.casefold() in ('bg3.exe', 'bg3_dx11.exe'):
+            if item.exe.casefold() in tuple(name.casefold() for name in _executables()):
                 handle = k.OpenProcess(0x1000, False, item.pid)
                 if not handle:
                     return True
@@ -158,10 +225,8 @@ def state_path(root, state_root):
 
 
 def _names(spec):
-    names = {p if p.startswith('NativeMods/') else NOTICES + {
-        'LICENSE.txt': 'bg3fgvk-LICENSE.txt', 'README.md': 'UPSTREAM-README.md',
-        'INSTALL.txt': 'UPSTREAM-INSTALL.txt'}[p] for p in spec['files']}
-    return names | {PROXY, ORIGINAL, CONFIG, NOTICES + 'loader-exports-LICENSE.txt', *LOGS}
+    names = {_destination(p) for p in spec['files']}
+    return names | {PROXY, ORIGINAL, CONFIG, _notices() + 'loader-exports-LICENSE.txt', *_logs()}
 
 
 def _record(root, state):
@@ -170,12 +235,12 @@ def _record(root, state):
         return None
     t.need(path.stat().st_size < 1024**2, 'Invalid recovery record size')
     record = t.read_json(path)
-    t.need(record.get('schema') == 1 and record.get('provider_id') == ID
+    t.need(record.get('schema') == 1 and record.get('provider_id') == _provider_id()
            and record.get('target') == str(root) and set(record.get('originals', {})) == _names(pin()),
            'Recovery identity/path inventory differs')
     t.need(record.get('status') in ('applying', 'active', 'interrupted', 'restoring', 'restored'),
            'Unknown recovery state')
-    t.need(set(record.get('installed', {})) == _names(pin()) - set(LOGS), 'Incomplete installed inventory')
+    t.need(set(record.get('installed', {})) == _names(pin()) - set(_logs()), 'Incomplete installed inventory')
     for name in record['originals']:
         t.relative(name)
         item = record['originals'][name]
@@ -198,10 +263,21 @@ def _seal(plan):
     return plan
 
 
+def _default_config():
+    shared = _selection.get()
+    sleep = 0 if shared and shared[0] == 'rdr2' else 1
+    data = ('[fgvk]\nConfigVersion=2\nDLSSGFrames=1\nReflexMode=2\nReflexSleep=%d\n'
+            'TagHUDLess=0\nTagUI=0\nPresentPacing=1\nMvecScaleNormalized=1\n'
+            'OnAfterEvalFrames=60\nOffAfterIdleFrames=30\nKeyToggleFG=0x6A\nKeyCycleFrames=0x23\n') % sleep
+    if shared:
+        data += '[nr]\nEnabled=1\nWorkingScale=0.5\nWhitePoint=1\nDetailStrength=1\nColourStrength=1\n'
+    return data.encode()
+
+
 def plan_install(game, archive, loader, state_root, *, experimental=False):
     t.need(experimental, 'The BG3 Vulkan route requires explicit Experimental opt-in')
     root = target(game)
-    t.need(not running(root), 'Close BG3 before changing its provider')
+    t.need(not running(root), 'Close ' + _game_name() + ' before changing its provider')
     state = state_path(root, state_root)
     spec, data = pin(), payload(archive, loader)
     current = _record(root, state)
@@ -213,7 +289,7 @@ def plan_install(game, archive, loader, state_root, *, experimental=False):
         t.need(original is not None, 'Bink backup is missing')
         bink = (state / 'objects' / original['sha256']).read_bytes()
         for name, installed in current['installed'].items():
-            if name == CONFIG:
+            if name in _mutable():
                 continue
             before = (current['originals'][name] or {}).get('sha256')
             t.need(checks[name] in (installed, before, None), 'Managed file changed; refusing repair: ' + name)
@@ -222,7 +298,7 @@ def plan_install(game, archive, loader, state_root, *, experimental=False):
         stock = spec['loader']['game_original']
         t.need(len(bink) == stock['size'] and _hash(bink) == stock['sha256'],
                'Unknown Bink/loader: ownership must be reviewed before replacement')
-        for name in names - {PROXY, *LOGS}:
+        for name in names - {PROXY, *_logs()}:
             t.need(checks[name] is None, 'Unmanaged provider file already exists: ' + name)
     for name in ('sl.interposer.dll', 'OptiScaler.ini'):
         t.need(not t.safe(root / name).exists(), 'A separate runtime requires coexistence review: ' + name)
@@ -233,31 +309,33 @@ def plan_install(game, archive, loader, state_root, *, experimental=False):
                                           for p in runtime_dir.iterdir()), 'Mixed private Streamline directory')
     data[ORIGINAL] = bink
     data[CONFIG] = (t.safe(root / CONFIG).read_bytes() if active and checks[CONFIG] else
-                   b'[fgvk]\nConfigVersion=2\nDLSSGFrames=1\nReflexMode=2\nReflexSleep=1\n'
-                   b'TagHUDLess=0\nTagUI=0\nPresentPacing=1\nMvecScaleNormalized=1\n'
-                   b'OnAfterEvalFrames=60\nOffAfterIdleFrames=30\nKeyToggleFG=0x6A\nKeyCycleFrames=0x23\n')
-    return _seal({'schema': 1, 'operation': 'repair' if active else 'install', 'target': str(root),
+                   _default_config())
+    if active:
+        for name in _mutable() - {CONFIG}:
+            if name in data and checks.get(name):
+                data[name] = t.safe(root / name).read_bytes()
+    return _seal({'schema': 1, 'recipe': _identity(), 'operation': 'repair' if active else 'install', 'target': str(root),
                   'state': str(state), 'state_root': str(t.safe(state_root)), 'checks': checks,
                   'record_before': _digest(state / 'baseline.json'),
-                  'inputs': {str(t.safe(p)): _digest(p) for p in (archive, loader, PIN,
-                             PIN.parent / 'loader/LICENSE.exports.txt', root / 'bg3.exe', root / 'nvngx_dlss.dll')},
+                  'inputs': {str(t.safe(p)): _digest(p) for p in (archive, loader, _pin_path(),
+                             _pin_path().parent / 'loader/LICENSE.exports.txt', root / _executables()[0], root / 'nvngx_dlss.dll')},
                   'archive': str(t.safe(archive)), 'loader': str(t.safe(loader)),
                   'after': {name: _hash(value) for name, value in data.items()}})
 
 
 def plan_restore(game, state_root):
     root = target(game)
-    t.need(not running(root), 'Close BG3 before restoring its provider')
+    t.need(not running(root), 'Close ' + _game_name() + ' before restoring its provider')
     state = state_path(root, state_root)
     record = _record(root, state)
     t.need(record is not None and record['status'] != 'restored', 'No active BG3 Vulkan install to restore')
     checks = _snapshot(root, record['originals'])
     for name, installed in record['installed'].items():
-        if name == CONFIG:
+        if name in _mutable():
             continue
         before = (record['originals'][name] or {}).get('sha256')
         t.need(checks[name] in (installed, before, None), 'Restore refuses changed managed file: ' + name)
-    return _seal({'schema': 1, 'operation': 'restore', 'target': str(root), 'state': str(state),
+    return _seal({'schema': 1, 'recipe': _identity(), 'operation': 'restore', 'target': str(root), 'state': str(state),
                   'state_root': str(t.safe(state_root)), 'checks': checks,
                   'record_before': _digest(state / 'baseline.json'),
                   'after': {name: (value or {}).get('sha256') for name, value in record['originals'].items()}})
@@ -307,11 +385,12 @@ def _cache(state, data):
 def _check(plan):
     value = dict(plan); seal = value.pop('plan_sha256', None)
     t.need(seal == _hash(json.dumps(value, sort_keys=True).encode()), 'Review integrity mismatch')
+    t.need(plan.get('recipe') == _identity(), 'Reviewed provider/game profile differs')
     root = target(plan['target'])
     state = state_path(root, plan['state_root'])
     t.need(str(state) == plan['state'] and set(plan['checks']) == _names(pin()), 'Review scope differs')
     t.need(plan['operation'] in ('install', 'repair', 'restore'), 'Unknown operation')
-    t.need(not running(root), 'Close BG3 before changing its provider')
+    t.need(not running(root), 'Close ' + _game_name() + ' before changing its provider')
     t.need(_digest(state / 'baseline.json') == plan['record_before'], 'Recovery state changed after review')
     t.need(_snapshot(root, plan['checks']) == plan['checks'], 'Game files changed after review')
     for path, digest in plan.get('inputs', {}).items():
@@ -339,15 +418,16 @@ def execute(plan, *, cancelled=lambda: False):
                         originals[name] = None
                 directories = {parent.relative_to(root).as_posix() for name in originals
                                for parent in (root / name).parents if parent != root and parent.is_relative_to(root)}
-                record = {'schema': 1, 'provider_id': ID, 'target': str(root), 'status': 'applying',
+                record = {'schema': 1, 'provider_id': _provider_id(), 'target': str(root), 'status': 'applying',
                           'created_utc': t.now(), 'originals': originals,
                           'directories_before': sorted(d for d in directories if (root / d).exists()),
                           'directories': sorted(directories), 'observed_runtime': [], 'installed': plan['after']}
             data[ORIGINAL] = (state / 'objects' / record['originals'][PROXY]['sha256']).read_bytes()
             data[CONFIG] = ((root / CONFIG).read_bytes() if plan['checks'][CONFIG] else
-                            b'[fgvk]\nConfigVersion=2\nDLSSGFrames=1\nReflexMode=2\nReflexSleep=1\n'
-                            b'TagHUDLess=0\nTagUI=0\nPresentPacing=1\nMvecScaleNormalized=1\n'
-                            b'OnAfterEvalFrames=60\nOffAfterIdleFrames=30\nKeyToggleFG=0x6A\nKeyCycleFrames=0x23\n')
+                            _default_config())
+            for name in _mutable() - {CONFIG}:
+                if name in data and plan['checks'].get(name):
+                    data[name] = t.safe(root / name).read_bytes()
             t.need({name: _hash(raw) for name, raw in data.items()} == plan['after'], 'Prepared payload differs')
             record['installed'] = plan['after']
             order = [ORIGINAL, *sorted(set(data) - {ORIGINAL, PROXY}), PROXY]
@@ -357,7 +437,7 @@ def execute(plan, *, cancelled=lambda: False):
                    'Restore destinations differ from original backups')
             data = {name: ((state / 'objects' / original['sha256']).read_bytes() if original else None)
                     for name, original in record['originals'].items()}
-            for name in (*LOGS, CONFIG):
+            for name in set(_logs()) | _mutable():
                 if plan['checks'][name]:
                     raw = (root / name).read_bytes()
                     t.need(len(raw) <= MAX_BACKUP, 'Runtime diagnostics exceed the recovery bound')
@@ -394,7 +474,7 @@ def execute(plan, *, cancelled=lambda: False):
                 path = t.safe(root / t.relative(name))
                 if path.is_dir() and not any(path.iterdir()):
                     path.rmdir()
-        return {'provider_id': ID, 'operation': plan['operation'], 'status': record['status'],
+        return {'provider_id': _provider_id(), 'operation': plan['operation'], 'status': record['status'],
                 'target': str(root), 'journal': str(state / 'baseline.json'), 'runtime_verified': False}
 
 
@@ -413,16 +493,26 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('operation', choices=('review-install', 'install', 'repair', 'review-restore', 'restore', 'status', 'diagnose'))
     parser.add_argument('--game', required=True)
-    parser.add_argument('--state-root', default=str(Path(os.environ.get('LOCALAPPDATA', Path.home())) / 'rtxForge/bg3-vulkan'))
+    parser.add_argument('--state-root')
     parser.add_argument('--archive'); parser.add_argument('--loader')
+    parser.add_argument('--profile', choices=('bg3', 'rdr2'))
+    parser.add_argument('--manifest')
     parser.add_argument('--experimental', action='store_true')
     args = parser.parse_args(argv)
+    if args.state_root is None:
+        args.state_root = str(Path(os.environ.get('LOCALAPPDATA', Path.home())) / 'rtxForge' /
+                              ('vulkan-native' if args.profile else 'bg3-vulkan'))
+    selection_token = None
     try:
+        if args.profile:
+            t.need(args.manifest, 'Provide the exact shared-provider --manifest')
+            selection_token = _selection.set((args.profile, t.safe(args.manifest)))
+            pin()
         if args.operation == 'diagnose':
             result = diagnose(args.game)
         elif args.operation == 'status':
             root = target(args.game); record = _record(root, state_path(root, args.state_root))
-            result = {'provider_id': ID, 'status': record['status'] if record else 'absent', 'runtime_verified': False}
+            result = {'provider_id': _provider_id(), 'status': record['status'] if record else 'absent', 'runtime_verified': False}
         else:
             if args.operation in ('restore', 'review-restore'):
                 plan = plan_restore(args.game, args.state_root)
@@ -436,6 +526,9 @@ def main(argv=None):
     except (t.Refusal, OSError, ValueError, zipfile.BadZipFile) as error:
         print(json.dumps({'status': 'refused', 'reason': str(error)}), file=sys.stderr)
         return 2
+    finally:
+        if selection_token is not None:
+            _selection.reset(selection_token)
 
 
 if __name__ == '__main__':

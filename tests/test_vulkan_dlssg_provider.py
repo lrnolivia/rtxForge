@@ -119,13 +119,13 @@ class ProviderTests(unittest.TestCase):
 
     def test_running_game_preflight(self):
         with patch.object(v, 'running', return_value=True):
-            with self.assertRaisesRegex(v.t.Refusal, 'Close BG3'):
+            with self.assertRaisesRegex(v.t.Refusal, 'Close ' + v._game_name()):
                 self.plan()
 
     def test_started_after_review(self):
         plan = self.plan()
         with patch.object(v, 'running', return_value=True):
-            with self.assertRaisesRegex(v.t.Refusal, 'Close BG3'):
+            with self.assertRaisesRegex(v.t.Refusal, 'Close ' + v._game_name()):
                 v.execute(plan)
         self.assertEqual(self.original, self.files())
 
@@ -146,7 +146,7 @@ class ProviderTests(unittest.TestCase):
             v.execute(plan)
 
     def test_game_update_after_review(self):
-        plan = self.plan(); (self.game / 'bg3.exe').write_bytes(pe(b'updated game'))
+        plan = self.plan(); (self.game / v._executables()[0]).write_bytes(pe(b'updated game'))
         with self.assertRaisesRegex(v.t.Refusal, 'Payload changed'):
             v.execute(plan)
 
@@ -293,6 +293,77 @@ class ProviderTests(unittest.TestCase):
         self.assertTrue(report['inputs_submitted'])
         self.assertEqual(report['stats'][0]['ratio'], 2.0)
         self.assertFalse(report['runtime_verified'])
+
+
+class SharedBg3Tests(ProviderTests):
+    profile_name = 'bg3'
+
+    def setUp(self):
+        super().setUp()
+        self.spec['id'] = 'rtxforge-vulkan-native'
+        self.spec['deployable'] = True
+        self.spec['experimental'] = True
+        self.spec['runtime_verified'] = False
+        self.spec['default_promoted'] = False
+        self.spec['profiles'] = {
+            'bg3': {'executable': 'bg3.exe', 'loader': copy.deepcopy(self.spec['loader'])},
+            'rdr2': {'executable': 'RDR2.exe', 'loader': copy.deepcopy(self.spec['loader'])},
+        }
+        if self.profile_name == 'rdr2':
+            (self.game / 'bg3.exe').rename(self.game / 'RDR2.exe')
+        self.original = self.files()
+        self.members['NativeMods/nvngx_dlssnr.dll'] = pe(b'user supplied NR model')
+        self.members['NativeMods/nvngx.dll_dlssnr.dll'] = pe(b'NR forwarder')
+        self.members['NativeMods/MFG/MFGUnlocker.dll'] = pe(b'Universal MFG')
+        self.members['NativeMods/MFG/RTXMFG-Universal.json'] = b'{"followGame":true}\n'
+        self.members['RTX40MFG-UI.ini'] = b'[Overlay]\nFirstLaunchMenuShown=1\n'
+        self.repack()
+        selection = v.profile(self.profile_name, self.pin_path)
+        selection.__enter__()
+        self.addCleanup(selection.__exit__, None, None, None)
+
+    def test_profile_change_after_review_is_refused(self):
+        plan = self.plan()
+        other = 'bg3' if self.profile_name == 'rdr2' else 'rdr2'
+        with v.profile(other, self.pin_path):
+            with self.assertRaisesRegex(v.t.Refusal, 'profile differs'):
+                v.execute(plan)
+        self.assertEqual(self.original, self.files())
+
+    def test_nr_model_drift_blocks_restore(self):
+        self.install()
+        (self.game / 'NativeMods/nvngx_dlssnr.dll').write_bytes(b'changed NR model')
+        with self.assertRaisesRegex(v.t.Refusal, 'changed'):
+            v.plan_restore(self.game, self.state)
+
+    def test_shared_defaults_enable_native_nr(self):
+        self.install()
+        ini = (self.game / v.CONFIG).read_bytes()
+        self.assertIn(b'[nr]\nEnabled=1', ini)
+        self.assertIn(b'ReflexSleep=0' if self.profile_name == 'rdr2' else b'ReflexSleep=1', ini)
+        self.assertEqual(v._record(self.game, v.state_path(self.game, self.state))['provider_id'],
+                         'rtxforge-vulkan-native:' + self.profile_name)
+
+    def test_mfg_preferences_survive_repair_and_restore_as_evidence(self):
+        self.install()
+        changes = {'NativeMods/MFG/RTXMFG-Universal.json': b'{"followGame":false,"multiplier":4}\n',
+                   'RTX40MFG-UI.ini': b'[Overlay]\nFirstLaunchMenuShown=1\nLanguage=en\n'}
+        for name, raw in changes.items():
+            (self.game / name).write_bytes(raw)
+        (self.game / 'NativeMods/fgvk.dll').unlink()
+        v.execute(self.plan())
+        for name, raw in changes.items():
+            self.assertEqual((self.game / name).read_bytes(), raw)
+        self.restore()
+        self.assertEqual(self.original, self.files())
+        record = v._record(self.game, v.state_path(self.game, self.state))
+        evidence = {item['path']: item['sha256'] for item in record['observed_runtime']}
+        for name, raw in changes.items():
+            self.assertEqual(evidence[name], v._hash(raw))
+
+
+class SharedRdr2Tests(SharedBg3Tests):
+    profile_name = 'rdr2'
 
 
 if __name__ == '__main__':

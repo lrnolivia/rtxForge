@@ -703,6 +703,7 @@ class GameMode(Gtk.Overlay, GameModeTools):
             self.library_offset = self.library_scroll.get_vadjustment().get_value()
         focus_key = self.focus_key() if keep_focus else None
         self.library_virtual = None
+        self.first_focus = None
         self.art_light = visuals.ArtworkLight()
         self.add_css_class('gm-details') if self.page == 'details' else self.remove_css_class('gm-details')
         self.backdrop.apply(self.theme, self.layout_width, self.layout_height, self.page == 'details')
@@ -804,7 +805,7 @@ class GameMode(Gtk.Overlay, GameModeTools):
 
     def first_focusable(self, scope):
         for widget in descendants(scope):
-            if isinstance(widget, (Gtk.Button, Gtk.TextView)) and widget.is_sensitive() and widget.get_visible() and widget.get_mapped():
+            if isinstance(widget, (Gtk.Button, Gtk.TextView)) and widget.is_sensitive() and widget.get_focusable() and widget.get_visible() and widget.get_mapped():
                 return widget
         return None
 
@@ -833,7 +834,7 @@ class GameMode(Gtk.Overlay, GameModeTools):
             active = self.page == key or (key == 'library' and self.page == 'details')
             caption = self.content(title, {'library':'input-gaming-symbolic', 'presets':'preferences-other-symbolic', 'packages':'drive-multidisk-symbolic', 'extras':'applications-utilities-symbolic', 'settings':'emblem-system-symbolic'}[key])
             if isinstance(caption.get_first_child(), Gtk.Image):
-                caption.get_first_child().set_pixel_size(t.px(22))
+                caption.get_first_child().set_pixel_size(t.px(26))
             tabs.append(self.button(caption, lambda key=key: self.open(key), 'active' if active else 'ghost', key='tab-' + key))
         tabs = motion.selection(self.selection_states, 'navigation', tabs,
                                 next(c for c in children(tabs) if getattr(c, '_gm_key', '') == 'tab-' + ('library' if self.page == 'details' else self.page)),
@@ -914,10 +915,17 @@ class GameMode(Gtk.Overlay, GameModeTools):
             scope = self.modals[-1]['dialog'] if self.modals else self.page_box
             direction = {'up': Gtk.DirectionType.UP, 'down': Gtk.DirectionType.DOWN,
                          'left': Gtk.DirectionType.LEFT, 'right': Gtk.DirectionType.RIGHT}[action]
-            inside = focus is not None and (focus is scope or focus.is_ancestor(scope))
-            if not inside or not scope.child_focus(direction):
-                if not inside:
-                    target = self.first_focusable(scope)
+            inside = focus is not None and focus.is_sensitive() and (focus is scope or focus.is_ancestor(scope))
+            moved = scope.child_focus(direction) if inside else False
+            incoming = scope if self.modals else self.body.current
+            if not moved and incoming is not None:
+                in_incoming = focus is not None and focus.is_sensitive() and (focus is incoming or focus.is_ancestor(incoming))
+                # Mapping precedes allocation. Native spatial focus has no rectangles
+                # yet, but tab order already works: consume every input immediately.
+                if incoming.get_width() == 0 and in_incoming:
+                    incoming.child_focus(Gtk.DirectionType.TAB_BACKWARD if action in ('up', 'left') else Gtk.DirectionType.TAB_FORWARD)
+                elif not inside or (incoming.get_width() == 0 and not in_incoming):
+                    target = self.first_focusable(incoming) or self.first_focusable(scope)
                     if target:
                         target.grab_focus()
             return
@@ -1003,6 +1011,9 @@ class GameMode(Gtk.Overlay, GameModeTools):
         self.update_prompts()
         def first():
             if not self.modals or self.modals[-1] is not modal:
+                return False
+            current = self.owner.get_focus()
+            if current is not None and current.is_sensitive() and current.is_ancestor(dialog):
                 return False
             target = focus if focus is not None and focus.get_sensitive() else self.first_focusable(dialog)
             if target is not None:

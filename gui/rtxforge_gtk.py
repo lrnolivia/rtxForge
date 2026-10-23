@@ -5851,6 +5851,13 @@ class Window(Adw.ApplicationWindow):
         couch=couch and self.settings.get('big_picture_ui',True)
         self._pointer_origin=None
         self.input_stack.set_visible_child_name('couch' if couch else 'desktop')
+        if not couch and getattr(self,'_deferred_desktop_library_view',None):
+            key=self._deferred_desktop_library_view
+            self._deferred_desktop_library_view=None
+            control=getattr(self,'view_buttons',{}).get(key)
+            if control is not None:
+                control.set_active(True)
+                self.view_changed(control,key,force=True)
         self.apply_display_preferences()
         self.controller_hud.set_visible(False)
         if couch:self.couch.refresh()
@@ -9819,15 +9826,23 @@ class Window(Adw.ApplicationWindow):
             )
 
 
-    def view_changed(self,toggle,key):
+    def view_changed(self,toggle,key,force=False):
         if (
             not toggle.get_active()
-            or self.settings.get(
+            or (not force and self.settings.get(
                 'library_view'
-            )==key
+            )==key)
         ):
             return
 
+        if self.input_stack.get_visible_child_name()=='couch':
+            # Keep the preference shared, without repainting a hidden gallery.
+            # Returning to Desktop applies this choice through the normal path.
+            self.settings['library_view']=key
+            self._deferred_desktop_library_view=key
+            if not self.options.demo:
+                library_media.save_settings(self.service.config,self.settings)
+            return
         self._switching_library_view=True
         self.library_scroll.get_vadjustment().set_value(0)
         self.column_scroll.get_vadjustment().set_value(0)

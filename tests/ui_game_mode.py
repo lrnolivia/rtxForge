@@ -52,9 +52,13 @@ def rapid_navigation():
   assert node is not None,('focus belongs to outgoing scene',page)
  # A navigation input arriving before the scheduled page focus restore wins.
  c.open('extras')
- c.navigate('down');c.navigate('right')
+ c.navigate('down')
+ first=app.window.get_focus();assert first is not None and first.get_focusable()
+ assert first.is_ancestor(c.body.current),'new page input went to the header'
+ c.navigate('right')
  target=app.window.get_focus()
  assert target is not None and target.is_sensitive()
+ assert target is not first,'input before allocation did not advance native focus'
  settle()
  assert app.window.get_focus() is target,'delayed restoration replaced newer input'
  c.open('library');settle()
@@ -99,6 +103,19 @@ def section_motion():
  c.open('library')
 
 
+def deferred_desktop_layout():
+ w=app.window;c=w.couch
+ c.set_library_view('posters')
+ w.set_input_surface(False)
+ assert w.library_stack.get_visible_child_name()=='gallery'
+ w.set_input_surface(True)
+ c.set_library_view('list')
+ assert w.settings['library_view']=='list'
+ assert w.library_stack.get_visible_child_name()=='gallery','hidden Desktop was rebuilt'
+ w.set_input_surface(False)
+ assert w.library_stack.get_visible_child_name()=='list','Desktop did not restore the chosen view'
+ w.set_input_surface(True);c.set_library_view('posters')
+
 def action_wording():
  w=app.window;c=w.couch
  c.open('library');w.select_all(False);w.controls()
@@ -107,7 +124,7 @@ def action_wording():
    assert desktop.text_label.get_text() in labels(key(game_mode)),(desktop.text_label.get_text(),labels(key(game_mode)))
  compare()
  game=next(g for g in c.filtered_games() if not g.get('blocked'))
- w.selected_game_ids={game['game']};w.controls()
+ w.cards[game['game']]['check'].set_active(True)
  c.selecting=True;c.selected={game['game']};c.render()
  compare()
  c.selecting=False;c.selected.clear();w.select_all(False);c.render()
@@ -229,7 +246,7 @@ for width,height in ((1280,820),(1920,1080),(1000,700)):
  steps+=[wait_review,lambda tag=tag:capture(f'gm-review-{tag}.png'),confirm,lambda tag=tag:capture(f'gm-progress-{tag}.png'),finish,lambda tag=tag:capture(f'gm-done-{tag}.png'),wait_done]
 
 if os.environ.get('RTXFORGE_GAME_MODE_MOTION_ONLY'):
- steps=[setup,rapid_navigation,virtual_library,section_motion,action_wording,menu,details,back_to_library]
+ steps=[setup,rapid_navigation,virtual_library,section_motion,deferred_desktop_layout,action_wording,menu,details,back_to_library]
 def step():
  try:
   if steps:steps.pop(0)();GLib.timeout_add(500,step)

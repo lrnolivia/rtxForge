@@ -69,8 +69,18 @@ for name in ['provider.json','README.md']:shutil.copyfile(root/name,payload/name
 (payload/'engine').mkdir()
 # Reviewed Global and game-menu bulk changes share the Windows host's platform-neutral modules.
 (payload/'windows/engine-host').mkdir(parents=True)
-for name in ('global_controls.py','overlay_ui.py','overlay_packages.py','overlay_package_routes.py','app_storage.py','companion_controls.py'):
+for name in ('global_controls.py','overlay_ui.py','overlay_packages.py','overlay_package_routes.py','app_storage.py','companion_controls.py','feeder_controls.py'):
  shutil.copyfile(root/'windows/engine-host'/name,payload/'windows/engine-host'/name)
+# A shared module importing another host module the bundle lacks only fails at runtime (the panel helper), so refuse the build.
+import ast,sys
+local={p.stem for d in ('scripts','windows/engine-host','gui') for p in (payload/d).glob('*.py')}
+for module in (payload/'windows/engine-host').glob('*.py'):
+ for node in ast.walk(ast.parse(module.read_text(encoding='utf-8'))):
+  names=[a.name for a in node.names] if isinstance(node,ast.Import) else [node.module] if isinstance(node,ast.ImportFrom) and node.module and not node.level else []
+  for name in names:
+   top=name.split('.')[0]
+   if top not in local and top not in sys.stdlib_module_names and (root/'windows/engine-host'/(top+'.py')).is_file():
+    raise RuntimeError(f'{module.name} imports {top}, which the AppImage does not bundle')
 shutil.copyfile(root/'engine/rtxengine.py',payload/'engine/rtxengine.py')
 bundle_steam_artwork(root, payload)
 # Provider archives are verified at preparation; no stale custom loader is bundled.

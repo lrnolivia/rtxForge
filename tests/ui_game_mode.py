@@ -50,6 +50,14 @@ def rapid_navigation():
   node=focus
   while node is not None and node not in (c.body.current,c.header,c.bottom_nav):node=node.get_parent()
   assert node is not None,('focus belongs to outgoing scene',page)
+ # A navigation input arriving before the scheduled page focus restore wins.
+ c.open('extras')
+ c.navigate('down');c.navigate('right')
+ target=app.window.get_focus()
+ assert target is not None and target.is_sensitive()
+ settle()
+ assert app.window.get_focus() is target,'delayed restoration replaced newer input'
+ c.open('library');settle()
  for layout in ('capsules','list','posters'):
   c.set_library_view(layout);settle()
   assert c.focus_key()=='seg-'+layout,(layout,c.focus_key())

@@ -305,6 +305,7 @@ class GameMode(Gtk.Overlay, GameModeTools):
         self.library_focus = None
         self.library_offset = 0
         self.render_revision = 0
+        self.input_revision = 0
         self._rendered_page = None
         self.pending_focus = None
         self.library_virtual = None
@@ -762,7 +763,7 @@ class GameMode(Gtk.Overlay, GameModeTools):
         self.update_prompts(force=True)
         target = self.pending_focus or focus_key
         self.pending_focus = None
-        GLib.idle_add(self.restore_focus, target, revision)
+        GLib.idle_add(self.restore_focus, target, revision, self.input_revision)
 
     def focus_key(self):
         widget = self.owner.get_focus()
@@ -778,7 +779,9 @@ class GameMode(Gtk.Overlay, GameModeTools):
                 return widget
         return None
 
-    def restore_focus(self, key, revision=None):
+    def restore_focus(self, key, revision=None, input_revision=None):
+        if input_revision is not None and input_revision != self.input_revision:
+            return False
         if (revision is not None and revision != self.render_revision) or self.modals:
             return False
         current = self.body.current
@@ -897,6 +900,7 @@ class GameMode(Gtk.Overlay, GameModeTools):
     # ---------------- input ----------------
 
     def navigate(self, action):
+        self.input_revision += 1
         self.wake_hints()
         self.owner.set_focus_visible(True)
         focus = self.owner.get_focus()

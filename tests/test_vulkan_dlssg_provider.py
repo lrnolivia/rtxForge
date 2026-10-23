@@ -26,7 +26,7 @@ class ProviderTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.base = Path(self.tmp.name)
+        self.base = Path(self.tmp.name).resolve()  # expand 8.3 names (C:\Users\RUNNER~1) the alias guard refuses
         self.game = self.base / 'BG3/bin'; self.game.mkdir(parents=True)
         self.state = self.base / 'state'
         (self.game / 'bg3.exe').write_bytes(pe(b'game'))

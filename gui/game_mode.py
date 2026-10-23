@@ -118,7 +118,8 @@ def stylesheet(t):
 .gm button.gm-btn:hover {{ background-image: image(alpha(currentColor,0.08)); }}
 .gm button.gm-btn:disabled, .gm button.gm-rowbtn:disabled, .gm button.gm-tile:disabled {{ background: {c['disabled']}; color: {c['disabled_fg']}; border-color: transparent; }}
 .gm button.gm-btn.gm-quiet:disabled, .gm button.gm-btn.gm-ghost:disabled {{ background: none; }}
-.gm .gm-tabs {{ background: {c['panel']}; border-radius: 999px; padding: {px(8 if t.compact else 10)}px; }}
+.gm .gm-tabs {{ background: alpha({c['panel']},.72); border-radius: 999px; padding: {px(8 if t.compact else 10)}px; }}
+.gm.gm-details .gm-tabs {{ background: {c['panel']}; }}
 .gm .gm-tabs button.gm-btn {{ padding: {px(14)}px {px(26)}px; min-height: {px(56 if t.compact else 64) - px(28)}px; font-size: {em(0.92)}px; }}
 .gm .gm-segments {{ background: {c['card']}; border-radius: 999px; padding: {px(4)}px; }}
 .gm .gm-segments.gm-panel {{ background: {c['panel']}; }}

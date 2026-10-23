@@ -160,7 +160,7 @@ def check_target(e, game, baseline):
              == 'inzoi-win64-shipping.exe')
     t.need(not (record['version'] in INZOI_UNSAFE and inzoi),
            f"MFG Unlock {record['version']} with Skynizz NR isn't supported in this game yet; it can hang at startup. "
-           'Choose Universal MFG or the integrated Ada unlock for this game; restore first if already installed.')
+           'Choose another MFG package for this game; restore first if already installed.')
     current = (baseline or {}).get('current') or {}
     installed = ((current.get('archive') or {}).get('release') or {}).get('mfg_component')
     t.need(not current or installed == record, 'Restore before changing MFG components.')

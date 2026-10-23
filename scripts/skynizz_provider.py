@@ -94,7 +94,7 @@ def mfg_component_module(record):
 def validate_release(record):
     """Also validate saved releases before repair; never turn state into arbitrary URLs."""
     tag = record.get('tag', '')
-    t.need(bool(re.fullmatch(r'v\d+\.\d+\.\d+', tag)), 'Choose latest or a stable Skynizz version such as v1.2.1.')
+    t.need(bool(re.fullmatch(r'v\d+\.\d+\.\d+', tag)), 'Choose latest or a stable Skynizz version tag (vX.Y.Z).')
     if record.get('variant') == 'nr-mfg-bridge':
         if record.get('mfg_component'):
             mfg_component_module(record['mfg_component']).validate(record['mfg_component'])
@@ -115,7 +115,7 @@ def validate_release(record):
                and re.fullmatch(r'[0-9a-f]{40}', record.get('commit', ''))
                and type(record.get('release_size')) is int and 0 < record['release_size'] <= MAX_ARCHIVE,
                'Combined bridge archive provenance is incomplete')
-        return dict(record, id='skynizz', family='skynizz', name='Skynizz NR + Ada MFG bridge', runtime_verified=False)
+        return dict(record, id='skynizz', family='skynizz', name='Skynizz NR + MFG bridge', runtime_verified=False)
     name = 'OptiScaler-DLSS5-' + tag[1:] + '-win-x64.zip'
     t.need(record.get('repo') == REPO and record.get('archive') == name
            and record.get('url') == f'https://github.com/{REPO}/releases/download/{tag}/{name}',
@@ -160,7 +160,7 @@ def bundled_bridge(selection='latest'):
 
 def resolve(selection='latest'):
     t.need(isinstance(selection, str) and (selection == 'latest' or re.fullmatch(r'v\d+\.\d+\.\d+', selection)),
-           'Choose latest or a stable Skynizz version such as v1.2.1.')
+           'Choose latest or a stable Skynizz version tag (vX.Y.Z).')
     release = get_json(API + ('/releases/latest' if selection == 'latest' else '/releases/tags/' + selection))
     tag = release.get('tag_name', '')
     t.need(not release.get('draft') and not release.get('prerelease')

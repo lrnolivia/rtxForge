@@ -28,6 +28,8 @@ public sealed class OverlayPreferencesView : StackPanel
             "Show measured activity and performance beside NR and frame generation controls, when the injector supplies them.", glyph: "\uE9D9");
         var welcome = Switch("Welcome message", current.OverlayWelcome,
             "Show the rtxForge logo and the assigned overlay shortcut briefly when the game starts.", glyph: "\uE8F2");
+        var welcomePosition = Choice("Welcome position", ["Top center", "Top left", "Top right", "Bottom left", "Bottom right"],
+            Array.IndexOf(ForgeSettings.WelcomePositions, current.OverlayWelcomePosition), "Applies when the game starts.", glyph: "\uE8B9");
         Heading("Shortcuts and helper");
         var key = new OverlayShortcutPicker(current.PanelHotkey, settingsRow: groupCards);
         AddControl(key);
@@ -80,6 +82,8 @@ public sealed class OverlayPreferencesView : StackPanel
         layout.SelectionChanged += (_, _) => Save(s => s.OverlayControls = layout.SelectedIndex == 1 ? "classic" : "unified");
         liveStats.Toggled += (_, _) => Save(s => s.OverlayLiveStats = liveStats.IsOn);
         welcome.Toggled += (_, _) => Save(s => s.OverlayWelcome = welcome.IsOn);
+        welcomePosition.SelectionChanged += (_, _) =>
+        { if (welcomePosition.SelectedIndex >= 0) Save(s => s.OverlayWelcomePosition = ForgeSettings.WelcomePositions[welcomePosition.SelectedIndex]); };
         vulkanMenu.Toggled += (_, _) => Save(s => s.VulkanMfgNativeMenu = vulkanMenu.IsOn);
         key.SaveBinding = value => Save(s => s.PanelHotkey = value);
         nativeKey.SelectionChanged += (_, _) => Save(s => s.OptiScalerHotkey = nativeKey.SelectedIndex == 1 ? "F8" : nativeKey.SelectedIndex == 2 ? "Disabled" : "Insert");

@@ -78,8 +78,13 @@ internal sealed class NativePanelCoordinator : IDisposable
                 try { channel = new NativePanelChannel(pid); preferencesChanged(); }
                 catch (FileNotFoundException) { return; }
             }
-            if (!channel.Visible) { ClearReview(); return; }
+            var visible = channel.Visible;
+            if (!visible) ClearReview();
             if (!channel.TryRead(out request, out var message)) return;
+            // Startup welcome preferences need a read-only handshake even
+            // while the panel is closed. Actions still require an open panel.
+            if (!visible && message?["op"]?.ToString() is not ("hello" or "status"))
+                throw new InvalidOperationException("Open the overlay before changing game settings.");
             var result = await HandleAsync(message!, request);
             if (!disposed) channel?.Reply(request, result);
         }
@@ -104,6 +109,7 @@ internal sealed class NativePanelCoordinator : IDisposable
             ["overlay_controls"] = s.OverlayControls, ["overlay_renderer"] = s.OverlayRenderer,
             ["overlay_live_stats"] = s.OverlayLiveStats,
             ["overlay_welcome"] = s.OverlayWelcome, ["vulkan_mfg_native_menu"] = s.VulkanMfgNativeMenu,
+            ["overlay_welcome_position"] = s.OverlayWelcomePosition,
             ["panel_hotkey"] = s.PanelHotkey, ["panel_key"] = (int)binding.Key, ["panel_modifiers"] = (int)binding.Modifiers,
             ["overlay_helper"] = s.OverlayHelper, ["overlay_start_with_windows"] = s.OverlayStartWithWindows,
             ["optiscaler_ui"] = s.OptiScalerUi, ["optiscaler_intro"] = s.OptiScalerIntro,
@@ -191,6 +197,10 @@ internal sealed class NativePanelCoordinator : IDisposable
                 case "overlay_controls": s.OverlayControls = value.GetValue<bool>() ? "classic" : "unified"; break;
                 case "overlay_live_stats": s.OverlayLiveStats = value.GetValue<bool>(); break;
                 case "overlay_welcome": s.OverlayWelcome = value.GetValue<bool>(); break;
+                case "overlay_welcome_position":
+                    var position = value.GetValue<string>();
+                    if (!ForgeSettings.WelcomePositions.Contains(position)) throw new InvalidOperationException("Choose an available welcome position.");
+                    s.OverlayWelcomePosition = position; break;
                 case "vulkan_mfg_native_menu": s.VulkanMfgNativeMenu = value.GetValue<bool>(); break;
                 case "overlay_renderer":
                     var renderer = value.GetValue<string>();

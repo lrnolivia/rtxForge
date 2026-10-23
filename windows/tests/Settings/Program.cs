@@ -204,3 +204,16 @@ var quietSaved = JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serial
 if(quietSaved.OverlayWelcome || !quietSaved.VulkanMfgNativeMenu)
     throw new Exception("Welcome and native MFG menu preferences are not independent/persistent");
 Console.WriteLine("PASS: shared welcome on/native MFG menu off defaults, independent copy and persistence.");
+if(defaultStats.OverlayWelcomePosition != "top-center") throw new Exception("Approved welcome default moved");
+foreach(var position in ForgeSettings.WelcomePositions)
+{
+    var stored = JsonSerializer.Deserialize<ForgeSettings>("{\"overlay_welcome_position\":\"" + position + "\",\"overlay_welcome\":false}")!;
+    var copy = new ForgeSettings(); copy.CopyOverlayFrom(stored);
+    var roundTrip = JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(copy))!;
+    if(roundTrip.OverlayWelcomePosition != position || roundTrip.OverlayWelcome)
+        throw new Exception("Welcome position did not survive independent copy/persistence");
+}
+foreach(var value in new[] { "unknown", "", "TOP-RIGHT" })
+    if(JsonSerializer.Deserialize<ForgeSettings>("{\"overlay_welcome_position\":\"" + value + "\"}")!.OverlayWelcomePosition != "top-center")
+        throw new Exception("Unknown welcome position lost the safe default");
+Console.WriteLine("PASS: all five welcome positions persist and copy; legacy/unknown values retain top center.");

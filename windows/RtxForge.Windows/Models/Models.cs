@@ -298,6 +298,13 @@ public sealed class ForgeSettings
     [JsonPropertyName("overlay_controls")] public string OverlayControls { get; set; } = "unified";
     [JsonPropertyName("overlay_live_stats")] public bool OverlayLiveStats { get; set; } = true;
     [JsonPropertyName("overlay_welcome")] public bool OverlayWelcome { get; set; } = true;
+    public static readonly string[] WelcomePositions = ["top-center", "top-left", "top-right", "bottom-left", "bottom-right"];
+    string overlayWelcomePosition = "top-center";
+    [JsonPropertyName("overlay_welcome_position")] public string OverlayWelcomePosition
+    {
+        get => overlayWelcomePosition;
+        set => overlayWelcomePosition = WelcomePositions.Contains(value) ? value : "top-center";
+    }
     [JsonPropertyName("vulkan_mfg_native_menu")] public bool VulkanMfgNativeMenu { get; set; }
     string overlayRenderer = "game";
     /// <summary>"game" (the rtxForge in-game panel) or "optiscaler". The retired desktop window ("rtxforge") reads as "game".</summary>
@@ -325,6 +332,7 @@ public sealed class ForgeSettings
         OverlayControls = source.OverlayControls; OverlayRenderer = source.OverlayRenderer;
         OverlayLiveStats = source.OverlayLiveStats;
         OverlayWelcome = source.OverlayWelcome; VulkanMfgNativeMenu = source.VulkanMfgNativeMenu;
+        OverlayWelcomePosition = source.OverlayWelcomePosition;
         OptiScalerHotkey = source.OptiScalerHotkey;
         OptiScalerUi = source.OptiScalerUi; OptiScalerIntro = source.OptiScalerIntro;
         ReShadeUi = source.ReShadeUi; ReShadeIntro = source.ReShadeIntro;

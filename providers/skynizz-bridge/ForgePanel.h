@@ -89,6 +89,8 @@ inline const ImFontLoader* PanelFontLoader() { return ImFontAtlasGetFontLoaderFo
 inline float dpiScale = 1.f;
 inline bool showLiveStats = true;
 inline bool showWelcome = true, welcomeDismissed = false;
+inline DWORD welcomePosition = 0;
+inline const std::array<const char*,5> welcomePositions = {"top-center","top-left","top-right","bottom-left","bottom-right"};
 inline ULONGLONG welcomeStarted = 0;
 inline bool nativeMfgMenuSupported = false;
 struct LiveStats {
@@ -131,6 +133,16 @@ inline void LoadGameIdentity()
     accent = ImVec4(float((rgb >> 16) & 255)/255, float((rgb >> 8) & 255)/255, float(rgb & 255)/255, 1);
     title = text.substr(8);
 }
+inline void PollHelper()
+{
+    const auto previous=ForgePanelChannel::lastRevision;
+    ForgePanelChannel::Poll();
+    if(ForgePanelChannel::helperReady && ForgePanelChannel::lastRevision!=previous) LoadGameIdentity();
+    const auto& prefs=ForgePanelChannel::settings;
+    if(prefs.contains("overlay_controls")) advanced=prefs.value("overlay_controls",std::string())=="classic";
+    if(prefs.contains("panel_key")) key=prefs.value("panel_key",int(VK_DELETE));
+    if(prefs.contains("panel_modifiers")) modifiers=prefs.value("panel_modifiers",0);
+}
 inline void Init(HWND window)
 {
     if(!initialized)
@@ -152,6 +164,7 @@ inline void Init(HWND window)
     advanced = Preference(L"Advanced", 0) != 0;
     showLiveStats = Preference(L"ShowLiveStats", 1) != 0;
     showWelcome = Preference(L"ShowWelcome", 1) != 0;
+    welcomePosition = Preference(L"WelcomePosition", 0);
     // Init runs on the render thread. GetWindowTextW sends WM_GETTEXT to the
     // window's own thread and waits; games whose window thread waits on the
     // render thread (Starfield) then deadlock. Read the caption directly.
@@ -180,6 +193,9 @@ inline void Init(HWND window)
     // Identity is cached by the helper/manager before launch. Never load artwork
     // or walk a library from the game's render thread.
     LoadGameIdentity();
+    // The game can see an older HKCU view than its launcher. Fetch saved
+    // welcome/shortcut preferences without requiring the panel to be opened.
+    if(ForgePanelChannel::Send({{"op","hello"}})) ForgePanelChannel::needsHello=false;
 }
 inline bool CapturingShortcut()
 {
@@ -620,8 +636,8 @@ inline void Pipelines(float scale)
     {
         const auto info = status.contains("pipelines") && status["pipelines"].contains(name) ? status["pipelines"][name] : nlohmann::json::object();
         const auto state = info.value("state",std::string());
-        const auto color = state == "managed" ? ImVec4(.59f,.84f,.41f,1) : state == "other" ? ImVec4(.96f,.78f,.38f,1)
-            : state == "changed" || state == "absent" ? ImVec4(1,.53f,.56f,1) : ImVec4(.67f,.67f,.67f,1);
+        const auto color = state == "managed" ? ImVec4(.59f,.84f,.41f,1) : state == "other" ? ImVec4(.76f,.91f,.62f,1)
+            : state == "changed" ? ImVec4(.96f,.78f,.38f,1) : state == "absent" ? ImVec4(.48f,.50f,.53f,1) : ImVec4(.67f,.67f,.67f,1);
         const auto pos = ImGui::GetCursorScreenPos(); const auto size = ImVec2(42.f*scale,22.f*scale);
         ImGui::InvisibleButton(name,size); auto* draw=ImGui::GetWindowDrawList();
         draw->AddRectFilled(pos,ImVec2(pos.x+size.x,pos.y+size.y),Colour(ImVec4(color.x,color.y,color.z,.10f)),11*scale);
@@ -712,6 +728,14 @@ inline bool WelcomePending()
     if(!welcomeStarted) welcomeStarted=GetTickCount64();
     return GetTickCount64()-welcomeStarted < 7000;
 }
+inline int WelcomePosition()
+{
+    const auto& prefs=ForgePanelChannel::settings;
+    if(prefs.contains("overlay_welcome_position") && prefs["overlay_welcome_position"].is_string())
+        for(int i=0;i<int(welcomePositions.size());++i)
+            if(prefs["overlay_welcome_position"]==welcomePositions[i]) return i;
+    return welcomePosition<welcomePositions.size() ? int(welcomePosition) : 0;
+}
 inline std::string KeyFace()
 {
     std::string face;
@@ -742,6 +766,7 @@ inline void KeyGlyph(float scale)
 }
 inline void Welcome(bool panelVisible)
 {
+    PollHelper();
     if(panelVisible) welcomeDismissed=true;
     if(!WelcomePending() || !OptiInput::IsFocused()) return;
     const float scale=PanelScale();
@@ -755,7 +780,11 @@ inline void Welcome(bool panelVisible)
     const float wordmark=ImGui::CalcTextSize("rtxForge").x;
     ImGui::PopFont();
     const float width=40.f*scale+24.f*scale*forgeIconWidth/forgeIconHeight+10.f*scale+wordmark+16.f*scale+words+cap;
-    ImGui::SetNextWindowPos(ImVec2(display.x*.5f,56.f*scale),ImGuiCond_Always,ImVec2(.5f,0));
+    const int placement=WelcomePosition();
+    const bool bottom=placement>=3, right=placement==2 || placement==4;
+    const float x=placement==0 ? display.x*.5f : right ? display.x-24.f*scale : 24.f*scale;
+    ImGui::SetNextWindowPos(ImVec2(x,bottom ? display.y-24.f*scale : 56.f*scale),ImGuiCond_Always,
+        ImVec2(placement==0 ? .5f : right ? 1.f : 0.f,bottom ? 1.f : 0.f));
     ImGui::SetNextWindowSize(ImVec2(width,48.f*scale),ImGuiCond_Always);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,ImVec2(20.f*scale,12.f*scale));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding,12.f*scale);
@@ -789,6 +818,10 @@ inline void SettingsControls()
     { if(Preference("overlay_controls",advancedChoice)) prefs["overlay_controls"] = advancedChoice ? "classic" : "unified"; }
     PreferenceToggle("Show live statistics","overlay_live_stats",showLiveStats);
     PreferenceToggle("Welcome message","overlay_welcome",showWelcome);
+    const char* welcomeItems[]={"Top center","Top left","Top right","Bottom left","Bottom right"};
+    int selectedWelcome=WelcomePosition();
+    ImGui::SetNextItemWidth(-1);
+    if(ChoiceList("Welcome position",&selectedWelcome,welcomeItems,5)) Preference("overlay_welcome_position",welcomePositions[selectedWelcome]);
     if(nativeMfgMenuSupported) PreferenceToggle("Native MFG menu and hint","vulkan_mfg_native_menu",false);
     const char* rendererItems[]={"rtxForge","Native"};
     const auto renderer=prefs.value("overlay_renderer",std::string("game"));
@@ -833,6 +866,23 @@ inline void SettingsControls()
     if(ImGui::CollapsingHeader("Performance"))
     { ImGui::Text("Panel CPU submit: %.3f ms",cpuMs); ImGui::TextWrapped("Translucent surface. No additional blur pass. Live controls work without the helper; saving and reviews need it."); }
 }
+// Keep each digit in an equal-width Inter cell and reserve the whole numeric
+// field. Crossing 9.99/10.00 never moves its decimal point or the following label.
+inline void MetricNumber(double value, int integers, int decimals)
+{
+    char text[64]; std::snprintf(text,sizeof(text),"%*.*f",integers+(decimals ? decimals+1 : 0),decimals,value);
+    float cell=0;
+    for(char digit='0';digit<='9';++digit) { const char glyph[]={digit,0}; cell=std::max(cell,ImGui::CalcTextSize(glyph).x); }
+    const auto origin=ImGui::GetCursorScreenPos(); float x=origin.x;
+    auto* draw=ImGui::GetWindowDrawList();
+    for(const char* at=text;*at;++at) {
+        const char glyph[]={*at,0}; const auto size=ImGui::CalcTextSize(glyph);
+        const float width=*at=='.' ? size.x : cell;
+        if(*at!=' ') draw->AddText(ImVec2(x+(width-size.x)*.5f,origin.y),ImGui::GetColorU32(ImGuiCol_Text),glyph);
+        x+=width;
+    }
+    ImGui::Dummy(ImVec2(x-origin.x,ImGui::GetFontSize()));
+}
 inline void FeatureStatistics(bool neural, float scale) {
     if(!readLiveStats || !ForgePanelChannel::settings.value("overlay_live_stats",showLiveStats)) return;
     const auto stats = readLiveStats();
@@ -843,8 +893,9 @@ inline void FeatureStatistics(bool neural, float scale) {
             const bool timed = stats.nrRunning && stats.nrGpuMs >= 0 && std::isfinite(stats.nrGpuMs);
             const char* state = stats.nrWarming ? "Warming up" : stats.nrRunning ? "Active" : "Idle";
             if(timed) {
-                PushColor(ImGuiCol_Text,TitleColor()); ImGui::Text("%.2f ms",stats.nrGpuMs); ImGui::PopStyleColor();
-                ImGui::SameLine(); ImGui::TextDisabled("GPU  /  %s",state);
+                ImGui::BeginGroup(); PushColor(ImGuiCol_Text,TitleColor()); MetricNumber(stats.nrGpuMs,4,2);
+                ImGui::SameLine(0,3.f*scale); ImGui::TextUnformatted("ms"); ImGui::PopStyleColor();
+                ImGui::SameLine(0,10.f*scale); ImGui::TextDisabled("GPU  /  %s",state); ImGui::EndGroup();
             } else ImGui::TextDisabled("%s",state);
             if(ImGui::IsItemHovered()) {
                 if(stats.nrFramesKnown) ImGui::SetTooltip("%llu model frames composed",stats.nrFrames);
@@ -853,8 +904,12 @@ inline void FeatureStatistics(bool neural, float scale) {
         }
     } else if(stats.framesKnown && stats.gameFps >= 0 && stats.displayedFps >= 0 && stats.measuredRatio >= 0
               && std::isfinite(stats.gameFps) && std::isfinite(stats.displayedFps) && std::isfinite(stats.measuredRatio)) {
-        PushColor(ImGuiCol_Text,TitleColor()); ImGui::Text("%.0f > %.0f FPS",stats.gameFps,stats.displayedFps); ImGui::PopStyleColor();
-        ImGui::SameLine(); ImGui::TextDisabled("/  %.2fx",stats.measuredRatio);
+        ImGui::BeginGroup(); PushColor(ImGuiCol_Text,TitleColor()); MetricNumber(stats.gameFps,4,0);
+        ImGui::SameLine(0,5.f*scale); ImGui::TextUnformatted(">"); ImGui::SameLine(0,5.f*scale); MetricNumber(stats.displayedFps,4,0);
+        ImGui::SameLine(0,3.f*scale); ImGui::TextUnformatted("FPS"); ImGui::PopStyleColor();
+        ImGui::SameLine(0,10.f*scale); ImGui::TextDisabled("/"); ImGui::SameLine(0,5.f*scale);
+        ImGui::PushStyleColor(ImGuiCol_Text,ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled)); MetricNumber(stats.measuredRatio,2,2); ImGui::PopStyleColor();
+        ImGui::SameLine(0,2.f*scale); ImGui::TextDisabled("x"); ImGui::EndGroup();
         if(ImGui::IsItemHovered()) ImGui::SetTooltip("Measured rendered and displayed frames; independent of the requested multiplier");
     } else if(stats.gameFps >= 0 && std::isfinite(stats.gameFps)) {
         ImGui::TextDisabled("%.0f FPS rendered / output unavailable",stats.gameFps);
@@ -875,13 +930,8 @@ inline bool Draw(bool& visible, float scale)
     const auto display = ImGui::GetIO().DisplaySize;
     using ForgePanelChannel::Send; using ForgePanelChannel::Poll; using ForgePanelChannel::pending;
     using ForgePanelChannel::needsHello; using ForgePanelChannel::helperReady; using ForgePanelChannel::message;
-    const auto previousReply = ForgePanelChannel::lastRevision;
-    Poll();
-    if(helperReady && ForgePanelChannel::lastRevision != previousReply) LoadGameIdentity();
+    PollHelper();
     if(!pending && needsHello && Send({{"op","hello"}})) needsHello = false;
-    if(ForgePanelChannel::settings.contains("overlay_controls")) advanced = ForgePanelChannel::settings.value("overlay_controls",std::string()) == "classic";
-    if(ForgePanelChannel::settings.contains("panel_key")) key = ForgePanelChannel::settings.value("panel_key",int(VK_SCROLL));
-    if(ForgePanelChannel::settings.contains("panel_modifiers")) modifiers = ForgePanelChannel::settings.value("panel_modifiers",0);
     const auto edge = 24.f*scale, width = std::min(420.f*scale, display.x-edge*2);
     const auto height = display.y-edge*2;
     // Translucent surface with a hairline edge. No shadow quads, texture,

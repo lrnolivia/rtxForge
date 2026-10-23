@@ -60,6 +60,7 @@ public static class OverlayHelper
         overlay.SetValue("Advanced", settings.OverlayControls == "classic" ? 1 : 0, RegistryValueKind.DWord);
         overlay.SetValue("ShowLiveStats", settings.OverlayLiveStats ? 1 : 0, RegistryValueKind.DWord);
         overlay.SetValue("ShowWelcome", settings.OverlayWelcome ? 1 : 0, RegistryValueKind.DWord);
+        overlay.SetValue("WelcomePosition", Array.IndexOf(ForgeSettings.WelcomePositions, settings.OverlayWelcomePosition), RegistryValueKind.DWord);
         overlay.SetValue("InGamePanel", settings.OverlayRenderer == "game" ? 1 : 0, RegistryValueKind.DWord);
     }
 
@@ -194,6 +195,7 @@ public sealed class OverlayHelperWindow : Window
 
     nint WindowProc(nint hwnd, uint message, nuint wParam, nint lParam, nuint id, nuint data)
     {
+        if (message == 0x02E0 && trayAdded) Tray(true); // WM_DPICHANGED
         if (message == TrayMessage)
         {
             var action = (uint)lParam & 0xffff;
@@ -223,7 +225,11 @@ public sealed class OverlayHelperWindow : Window
 
     void Tray(bool add)
     {
-        var icon = LoadImageW(0, Path.Combine(AppContext.BaseDirectory, "Assets", "rtxforge.ico"), 1, 16, 16, 0x10);
+        var dpi = GetDpiForWindow(handle);
+        var edge = GetSystemMetricsForDpi(49, dpi == 0 ? 96u : dpi); // SM_CXSMICON
+        // Select the matching frame from the official multi-size ICO instead
+        // of handing the tray a 16px image to enlarge on high-DPI displays.
+        var icon = LoadImageW(0, Path.Combine(AppContext.BaseDirectory, "Assets", "rtxforge.ico"), 1, edge, edge, 0x10);
         var value = new NotifyIcon { Size = Marshal.SizeOf<NotifyIcon>(), Window = handle, Id = 1, Flags = 7,
             Callback = TrayMessage, Icon = icon, Tip = "rtxForge Overlay · " + ForgeSettings.Load().PanelHotkey,
             Info = "", InfoTitle = "" };
@@ -259,6 +265,8 @@ public sealed class OverlayHelperWindow : Window
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)] static extern bool Shell_NotifyIconW(uint message, ref NotifyIcon value);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern nint LoadImageW(nint instance, string name, uint type, int width, int height, uint flags);
     [DllImport("user32.dll")] static extern bool DestroyIcon(nint icon);
+    [DllImport("user32.dll")] static extern uint GetDpiForWindow(nint window);
+    [DllImport("user32.dll")] static extern int GetSystemMetricsForDpi(int index, uint dpi);
     [DllImport("user32.dll")] static extern nint CreatePopupMenu();
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool AppendMenuW(nint menu, uint flags, nuint id, string text);
     [DllImport("user32.dll")] static extern uint TrackPopupMenu(nint menu, uint flags, int x, int y, int reserved, nint hwnd, nint rect);

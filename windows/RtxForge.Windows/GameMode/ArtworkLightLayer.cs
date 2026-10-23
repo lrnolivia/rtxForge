@@ -67,6 +67,14 @@ sealed class ArtworkLightLayer : Canvas
         var point = RestPoint(target);
         if (GetLeft(host) != point.X) SetLeft(host, point.X);
         if (GetTop(host) != point.Y) SetTop(host, point.Y);
+        if (ScrollClip(target, this) is { } bounds)
+        {
+            var clip = host.Clip as Microsoft.UI.Xaml.Media.RectangleGeometry ?? new Microsoft.UI.Xaml.Media.RectangleGeometry();
+            var local = new global::Windows.Foundation.Rect(bounds.X - point.X, bounds.Y - point.Y, bounds.Width, bounds.Height);
+            if (clip.Rect != local) clip.Rect = local;
+            if (!ReferenceEquals(host.Clip, clip)) host.Clip = clip;
+        }
+        else host.Clip = null;
         if (ElementCompositionPreview.GetElementChildVisual(host) is { } haloVisual)
             GmMotion.Follow(target, haloVisual, Vector3.Zero,
                 new((float)target.ActualWidth / 2, (float)target.ActualHeight / 2, 0), true);
@@ -225,12 +233,20 @@ sealed class ArtworkLightLayer : Canvas
 
     void ClipToViewport(FrameworkElement target)
     {
+        if (ScrollClip(target, Artwork) is not { } bounds) { Artwork.Clip = null; return; }
+        viewportClip ??= new Microsoft.UI.Xaml.Media.RectangleGeometry();
+        if (viewportClip.Rect != bounds) viewportClip.Rect = bounds;
+        if (!ReferenceEquals(Artwork.Clip, viewportClip)) Artwork.Clip = viewportClip;
+    }
+
+    static global::Windows.Foundation.Rect? ScrollClip(FrameworkElement target, UIElement relativeTo)
+    {
         global::Windows.Foundation.Rect? clip = null;
         for (DependencyObject? parent = target; parent is not null; parent = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(parent))
         {
             if (parent is not ScrollViewer scroll) continue;
             var viewport = Presenter(scroll) as FrameworkElement ?? scroll;
-            var rect = viewport.TransformToVisual(Artwork).TransformBounds(new(0, 0, viewport.ActualWidth, viewport.ActualHeight));
+            var rect = viewport.TransformToVisual(relativeTo).TransformBounds(new(0, 0, viewport.ActualWidth, viewport.ActualHeight));
             if (clip is { } previous)
             {
                 var left = Math.Max(previous.X, rect.X); var top = Math.Max(previous.Y, rect.Y);
@@ -239,10 +255,7 @@ sealed class ArtworkLightLayer : Canvas
             }
             clip = rect;
         }
-        if (clip is not { } bounds) { Artwork.Clip = null; return; }
-        viewportClip ??= new Microsoft.UI.Xaml.Media.RectangleGeometry();
-        if (viewportClip.Rect != bounds) viewportClip.Rect = bounds;
-        if (!ReferenceEquals(Artwork.Clip, viewportClip)) Artwork.Clip = viewportClip;
+        return clip;
 
         static ScrollContentPresenter? Presenter(DependencyObject root)
         {

@@ -13,7 +13,7 @@ app=ui.Application(options)
 
 def start():
     w=app.window
-    w.settings['controller_glyphs']='xbox'
+    w.settings.update(controller_glyphs='xbox',ui_scale=130)
     w.set_default_size(3840,2160)
     w.set_input_surface(True)
     assert w.couch.page=='library'
@@ -24,8 +24,9 @@ def start():
 def native_scale():
     w=app.window;c=w.couch
     if os.environ.get('RTXFORGE_QA_FULLSCREEN'):assert w.is_fullscreen()
-    assert w.presentation_scale==1.5
-    assert c.get_width()==round(w.get_width()/1.5)
+    assert w.presentation_scale==1.0
+    assert c.theme.unit==22.5
+    assert c.get_width()==w.get_width()
     assert c.layout_width==c.get_width()
     assert w.capture('layout-4k-wide-top.png')
     c.set_library_view('posters')
@@ -62,11 +63,19 @@ def settings():
     w=app.window;c=w.couch
     from game_mode import descendants
     assert c.bottom_nav.get_visible()
-    expected={'Gaming Mode':{'Interface'},'System':{'UI scale','Navigation'},
-              'Library':{'Library layout'},'Controller':{'Controller hints'}}
+    expected={'Gaming Mode':{'Interface','Controller hints','Game Mode scale','Navigation placement'},'System':{'Hardware information'},
+              'Library':{'Library layout'},'Appearance':{'Color theme','Reduce motion'}}
     for section,titles in expected.items():
         c.open_settings_section(section)
         assert titles <= {x.get_text() for x in descendants(c.body) if isinstance(x,ui.Gtk.Label)},section
+        nav = [x for x in descendants(c.body.current) if isinstance(x, ui.Gtk.Button) and x.has_css_class('gm-navbtn')]
+        for button in nav:
+            images = [x for x in descendants(button) if isinstance(x, ui.Gtk.Image)]
+            assert all(image.get_pixel_size() == c.theme.px(26) for image in images), section
+        if section == 'Appearance':
+            choices = [x for x in descendants(c.body.current) if isinstance(x, ui.Gtk.Button)
+                       and getattr(x, '_gm_key', '').startswith('choice-')]
+            assert choices[0]._gm_key == 'choice-Color theme', 'Color theme must be first'
     c.open_settings_section('System')
 
 def settings_capture():
@@ -76,8 +85,9 @@ def settings_capture():
 
 def panel():
     w=app.window
-    assert isinstance(w.dialog,ui.PresentationDialog)
-    assert w.dialog._scaled_child.factor==1.5
+    from gi.repository import Adw
+    assert isinstance(w.dialog,Adw.PreferencesDialog)
+    assert not hasattr(w.dialog,'_scaled_child')  # Desktop preferences keep native DPI in either interface.
     assert w.capture('layout-4k-settings-panel.png')
     w.dialog.force_close() if hasattr(w.dialog,'force_close') else w.dialog.close()
     w.couch.open('library')

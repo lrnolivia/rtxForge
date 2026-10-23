@@ -13,15 +13,19 @@ sealed class GmSelection
     readonly GmSpring width = new(GmMotionTokens.Focus / 1000d, GmMotionTokens.FocusDamping);
     bool placed;
     int revision;
+    public double MeasuredHeight { get; private set; }
 
     public Grid Place(StackPanel line, Button selected, GmTheme theme, bool navigation = false)
     {
         var currentRevision = ++revision;
+        MeasuredHeight = 0;
         var canvas = new Canvas { IsHitTestVisible = false };
         var plates = line.Children.OfType<Button>().Select(button => (Button: button,
             Plate: new Border { Background = GmTheme.B(button.IsEnabled ? theme.Card : theme.Disabled), IsHitTestVisible = false })).ToList();
         foreach (var entry in plates) canvas.Children.Add(entry.Plate);
         var group = new Grid(); group.Children.Add(canvas); group.Children.Add(line);
+        bool measured = false;
+        double measuredHeight = 0;
         CompositionPropertySet? pose = null;
         ShapeVisual? pill = null, mask = null;
         ContainerVisual? root = null;
@@ -40,7 +44,7 @@ sealed class GmSelection
         }
         void Update()
         {
-            if (currentRevision != revision || !selected.IsLoaded || selected.ActualHeight <= 0 || pose is null) return;
+            if (currentRevision != revision || selected.ActualHeight <= 0 || selected.ActualWidth <= 0 || pose is null) return;
             var left = selected.ActualOffset.X;
             var targetWidth = (float)selected.ActualWidth;
             var now = GmMotion.Now;
@@ -48,6 +52,8 @@ sealed class GmSelection
             var a = x.Retarget(left, now, immediate);
             var b = width.Retarget(targetWidth, now, immediate);
             pose.InsertScalar("Height", (float)selected.ActualHeight);
+            measured = true; measuredHeight = selected.ActualHeight;
+            MeasuredHeight = measuredHeight;
             Animate("X", a, left); Animate("Width", b, targetWidth); placed = true;
             void Animate(string key, (double Value, double Velocity) start, float target)
             {
@@ -98,8 +104,8 @@ sealed class GmSelection
             LayoutPlates(); Update();
         };
         selected.Loaded += (_, _) => Update();
-        group.LayoutUpdated += (_, _) => { LayoutPlates(); if (pose is not null && (x.Target != selected.ActualOffset.X || width.Target != selected.ActualWidth)) Update(); };
-        selected.SizeChanged += (_, _) => { if (x.Target != selected.ActualOffset.X || width.Target != selected.ActualWidth) Update(); };
+        group.LayoutUpdated += (_, _) => { LayoutPlates(); if (pose is not null && (!measured || measuredHeight != selected.ActualHeight || x.Target != selected.ActualOffset.X || width.Target != selected.ActualWidth)) Update(); };
+        selected.SizeChanged += (_, _) => { if (!measured || measuredHeight != selected.ActualHeight || x.Target != selected.ActualOffset.X || width.Target != selected.ActualWidth) Update(); };
         group.Unloaded += (_, _) =>
         {
             GmMotion.Forget(group);

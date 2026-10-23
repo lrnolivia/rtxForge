@@ -57,7 +57,8 @@ def module(*a,**kw):
     return e
 engine_bridge.module=module
 model=root/'model.dll';model.write_bytes(fixtures.pe()+b'0'*(32*1024**2))
-settings={'runtime_provider':'skynizz','skynizz_version':'latest','nr_runtime':str(model),'manage_dlss_files':False,'nr_on_launch':True,'mfg_provider':'integrated'}
+# This fixture starts with the stock NR release; compiled bridge cases opt in below.
+settings={'overlay_helper':False,'runtime_provider':'skynizz','skynizz_version':'latest','nr_runtime':str(model),'manage_dlss_files':False,'nr_on_launch':True,'mfg_provider':'integrated'}
 def game(name):
     folder=root/name;folder.mkdir()
     (folder/'Game.exe').write_bytes(fixtures.pe())
@@ -67,6 +68,9 @@ def game(name):
 def scan(folder,selected='skynizz'):
     return host.scan({'folders':[str(folder)],'runtime_provider':selected})[0]
 def prepare(folder,operation='install',values=None):
+    # None requests a full legacy reset; an explicit controls map preserves its values.
+    if operation=='reset' and values is None:
+        values={'feature_controls':None}
     return service.prepare([scan(folder)],'nr-only',operation,visual_settings=settings | (values or {}))
 def run(review,allow_blocked=False):
     assert review['rows'] and (allow_blocked or not review['blocked']),review.get('blocked')
@@ -448,7 +452,7 @@ assert 'ForceMultiplier=4' in reshade.read_text() and 'DynamicMFG=0' in reshade.
 assert 'KeyOverlay=0,0,0,0' in reshade.read_text() and 'TutorialProgress=4' in reshade.read_text()
 tuned=reshade.read_text().replace('ForceMultiplier=4','ForceMultiplier=3')+'\n; user preset\n'
 reshade.write_text(tuned)
-run(service.prepare([scan(external)],'nr-mfg','repair',visual_settings=settings | {'mfg_provider':'integrated'}))
+run(service.prepare([scan(external)],'nr-mfg','repair',visual_settings=settings | {'mfg_provider':'integrated','reshade_ui':False,'reshade_intro':False}))
 assert reshade.read_text()==tuned,'repair reset the addon preset or changed MFG owner'
 assert scan(external)['mfg_multiplier']==3
 assert baseline(external)['mfg_provider']['version']=='1.4.5'
@@ -457,7 +461,7 @@ tuned=reshade.read_text()
 assert 'KeyOverlay=36,0,0,0' in tuned and 'TutorialProgress=0' in tuned
 assert 'ForceMultiplier=3' in tuned and '; user preset' in tuned
 external_ini=(external/'OptiScaler.ini').read_text()
-run(service.prepare([scan(external)],'nr-mfg','repair',visual_settings=upgrade_settings | {'mfg_provider':'integrated'}))
+run(service.prepare([scan(external)],'nr-mfg','repair',visual_settings=upgrade_settings | {'mfg_provider':'integrated','reshade_ui':True,'reshade_intro':True}))
 assert baseline(external)['archive']['release']['mfg_component']==record['archive']['release']['mfg_component']
 assert (external/'OptiScaler.ini').read_text()==external_ini and reshade.read_text()==tuned
 assert scan(external)['mfg_provider']=='mfg-unlock' and scan(external)['mfg_multiplier']==3

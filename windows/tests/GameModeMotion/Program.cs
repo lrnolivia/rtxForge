@@ -26,3 +26,18 @@ foreach (var profile in new[] { (.17, .92), (.10, 1d) })
     Assert(reduced.Value == 0 && reduced.Velocity == 0, "Reduced motion cancels velocity");
 }
 Console.WriteLine($"PASS: {checks} spring continuity, rapid reversal, bounds, settling and reduced-motion checks");
+
+foreach (var unit in new[] { .7, 1d, 1.3 })
+{
+    var plain = ScrollFadeProfile.Create(700, 0, 0, unit);
+    Assert(plain.Alpha(0) == 1 && plain.Alpha(700) == 1, "No overflow remains opaque");
+    var start = ScrollFadeProfile.Create(700, 0, 1000, unit);
+    Assert(start.Alpha(0) == 1 && start.Alpha(700) == 0, "Real top stays visible");
+    var end = ScrollFadeProfile.Create(700, 1000, 1000, unit);
+    Assert(end.Alpha(0) == 0 && end.Alpha(700) == 1, "Real bottom stays visible");
+    var middle = ScrollFadeProfile.Create(700, 500, 1000, unit);
+    Assert(middle.Alpha(0) == 0 && middle.Alpha(700) == 0 && middle.Alpha(350) == 1, "Both edges reach zero, center stays opaque");
+    for (var i = 0; i < 100; i++)
+        Assert(middle.Alpha(i * middle.Depth / 100) <= middle.Alpha((i + 1) * middle.Depth / 100), "Smooth monotonic edge");
+}
+Console.WriteLine($"PASS: {checks} motion and scroll fade checks");

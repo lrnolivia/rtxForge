@@ -16,6 +16,10 @@
   "dialog_scale": 0.978,
   "dialog_travel": 12,
   "artwork_stroke": 3,
+  "scroll_fade_depth": 96,
+  "scroll_fade_ratio": 0.22,
+  "scroll_fade_ramp": 24,
+  "scroll_fade_samples": 16,
   "page_regions": [
     {
       "travel": 6,

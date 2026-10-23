@@ -1,6 +1,12 @@
 #!/bin/sh
 set -eu
 root="${APPDIR:?}/usr/share/rtxforge"
+# Bazzite/Silverblue: /home is a symlink to /var/home. rtxForge refuses
+# symlinked state paths, so use the canonical home for every entry point.
+if [ -n "${HOME:-}" ] && real_home=$(readlink -f -- "$HOME" 2>/dev/null) && [ -n "$real_home" ]; then
+    HOME=$real_home
+    export HOME
+fi
 if [ "${1:-}" = --setup ]; then
     shift
     exec /usr/bin/python3 -B "$root/scripts/setup.py" "$@"

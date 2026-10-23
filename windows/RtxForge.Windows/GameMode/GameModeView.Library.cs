@@ -64,10 +64,10 @@ public sealed partial class GameModeView
         var installTargets = targets.Where(g => !g.Blocked).ToList();
         var restoreTargets = targets.Where(g => g.Installed).ToList();
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12), VerticalAlignment = VerticalAlignment.Center };
-        var install = ui.Button(Glyph("", selecting ? $"Install selected ({selectedIds.Count})" : "Install Features"),
+        var install = ui.Button(Glyph("", selectedIds.Count > 0 ? $"Install Selected ({selectedIds.Count})" : "Install Features"),
             () => _ = RunOperationAsync("install", installTargets), GmKind.Primary, 0.85, enabled: installTargets.Count > 0, minHeight: t.Compact ? 48 : 60);
         Key(install, "lib-install");
-        var restore = ui.Button(Glyph("", "Restore"),
+        var restore = ui.Button(Glyph("", selectedIds.Count > 0 ? $"Restore Selected ({selectedIds.Count})" : "Restore Original Files"),
             () => _ = RunOperationAsync("uninstall", restoreTargets), GmKind.Danger, 0.85,
             enabled: restoreTargets.Count > 0, minHeight: t.Compact ? 48 : 60);
         Key(restore, "lib-restore");

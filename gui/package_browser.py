@@ -45,13 +45,15 @@ def build_packages(owner, fixture=None, on_selected=None, alive=None, header=Fal
         scroll.get_hadjustment().connect('notify::page-size', resized)
     if not header:
         back.set_halign(Gtk.Align.START); back.add_css_class('flat'); box.append(back)
-    title = Gtk.Label(label='Choose your graphics package', xalign=0)
+    title = Gtk.Label(label='Packages', xalign=0)
     title.add_css_class('title-1'); box.append(title)
     intro = Gtk.Label(label='Use a supported package or inspect your own. Every game change is reviewed before it is applied.', xalign=0, wrap=True)
     intro.add_css_class('dim-label'); box.append(intro)
     status = Gtk.Label(label='Checking your system…', xalign=0, wrap=True)
     box.append(status)
-    recommended = Adw.PreferencesGroup(title='Available packages')
+    recommended = Adw.PreferencesGroup()
+    cards = Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=24)
+    recommended.add(cards)
     box.append(recommended)
     custom = Adw.PreferencesGroup(title='Your own package', description='ZIP archives. Files and instructions are inspected without running them.')
     choose = Adw.ActionRow(title='Add custom package', subtitle='Detect the layout and review suggested settings')
@@ -74,14 +76,92 @@ def build_packages(owner, fixture=None, on_selected=None, alive=None, header=Fal
 
     def render_catalog(host):
         if not alive['value']:return False
-        status.set_text('Preview system · NVIDIA RTX 4070 · no game writes' if owner.options.demo else host.get('gpu','System') + ' · ' + host.get('reason',''))
-        for item in packages.catalog(host):
-            row = Adw.ActionRow(title=item['name'], subtitle=item['version'] + ' · ' + item['summary'])
-            button = owner.make_action_button('Use package',lambda _, key=item['id']:select(key))
-            button.set_sensitive(item['available'])
-            button.set_tooltip_text(user_messages.friendly_error(item['reason']) if not item['available'] else item['reason'])
-            if item['recommended']:button.add_css_class('suggested-action')
-            row.add_suffix(button);recommended.add(row)
+        if getattr(cards,'_resize_handler',None):
+            scroll.get_hadjustment().disconnect(cards._resize_handler);cards._resize_handler=None
+        while cards.get_first_child():cards.remove(cards.get_first_child())
+        current=owner.settings.get('runtime_provider','dlss-unlocked')
+        catalog=sorted(packages.catalog(host),key=lambda item:(item['id']!=current,not item['recommended']))
+        active=next((item['name'] for item in catalog if item['id']==current),current)
+        system='Preview system · NVIDIA RTX 4070 · no game writes' if owner.options.demo else host.get('gpu','System')+' · '+host.get('reason','')
+        status.set_text(system+' · In use: '+active)
+        def heading(title, description=None):
+            block=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6)
+            label=Gtk.Label(label=title,xalign=0,wrap=True);label.add_css_class('title-3');block.append(label)
+            if description:
+                lead=Gtk.Label(label=description,xalign=0,wrap=True);lead.add_css_class('dim-label');block.append(lead)
+            return block
+        def package_card(title, version, summary, verified, caption, action, enabled=True):
+            card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True)
+            card.add_css_class('card')
+            content=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True);margins(content,20);card.append(content)
+            name=Gtk.Label(label=title,xalign=0,wrap=True);name.add_css_class('heading');content.append(name)
+            stamp=Gtk.Label(label=version,xalign=0,wrap=True);stamp.add_css_class('dim-label');content.append(stamp)
+            text=Gtk.Label(label=summary,xalign=0,wrap=True,hexpand=True,vexpand=True,valign=Gtk.Align.START)
+            text.set_max_width_chars(45);content.append(text)
+            footer=Gtk.Box(spacing=12)
+            marks=Gtk.Box(spacing=8,hexpand=True,valign=Gtk.Align.CENTER)
+            for system in verified or ['experimental']:
+                mark=Gtk.Box(spacing=5)
+                if system!='experimental':mark.append(Gtk.Image(icon_name='rtx-os-'+system+'-symbolic',pixel_size=14))
+                caption_label=Gtk.Label(label=system.upper());caption_label.add_css_class('caption');mark.append(caption_label)
+                marks.append(mark)
+            footer.append(marks)
+            control=owner.make_action_button(caption,lambda *_:action() if action else None)
+            control.set_sensitive(enabled);control.set_halign(Gtk.Align.END);footer.append(control);content.append(footer)
+            return card
+        names={'universal':'Universal MFG','integrated':'Integrated MFG unlock','mfg-unlock':'MFG Unlock'}
+        pair=next((item for item in catalog if item['id']=='skynizz'),None)
+        feeder=next((item for item in catalog if item['id']=='feeder'),None)
+        paired=current=='skynizz'
+        def curated(item):
+            selected=item['id']==current
+            title=item['name'];version=item['version']
+            if item['id']=='skynizz':
+                component=names.get(owner.settings.get('mfg_provider','universal'),'Universal MFG')
+                title+=' + '+component;version+=' · '+component
+            def use():
+                select(item['id'])
+                if alive['value']:render_catalog(host)
+            return package_card(title,version,item['summary'] if item['available'] else item['reason'],
+                                item.get('verified'), 'In use' if selected else 'Use for DLSS games',use,item['available'] and not selected)
+        columns=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=20,homogeneous=False)
+        nr=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True,valign=Gtk.Align.START)
+        mfg=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True,valign=Gtk.Align.START)
+        nr.append(heading('NR packages','Neural rendering for games with DLSS.'))
+        if pair:nr.append(curated(pair))
+        if feeder:
+            nr.append(package_card(feeder['name'],feeder['version'],feeder['summary'] if feeder['available'] else feeder['reason'],
+                                   feeder.get('verified'),'Used automatically' if feeder['available'] else 'Unavailable',None,False))
+        pair_name=pair['name'] if pair else 'the paired NR package'
+        mfg.append(heading('MFG packages','Native NVIDIA frame generation for '+pair_name+'.'))
+        summaries={
+            'universal':"Keeps NVIDIA’s DLSS Frame Generation and unlocks 3x to 6x where the driver allows 2x. The multiplier and Dynamic MFG stay in the rtxForge Overlay.",
+            'integrated':"Patches NVIDIA’s DLSS Frame Generation for 3x to 6x with no extra plugin.",
+            'mfg-unlock':"Raises NVIDIA’s DLSS Frame Generation multiplier through ReShade. The rtxForge Overlay can’t change its multiplier while you play.",
+        }
+        for key,name in names.items():
+            selected=paired and owner.settings.get('mfg_provider','universal')==key
+            supported=key=='universal'
+            def choose(value=key):
+                owner.save_overlay_preference('mfg_provider',value)
+                render_catalog(host)
+            description=summaries[key]+(' Not available under Proton in this build.' if not supported else '')
+            version=(pair or {}).get('mfg_versions',{}).get(key) or ('Built into the bridge' if key=='integrated' else 'OptiScaler plugin' if key=='universal' else 'ReShade add-on')
+            mfg.append(package_card(name,version,description,['windows'],
+                                   'In use' if selected else 'Use with '+pair_name if supported else 'Unavailable',choose,paired and not selected and supported))
+        columns.append(nr);columns.append(mfg)
+        def resize_columns(adjustment,*_):
+            horizontal=adjustment.get_page_size()>=1000
+            columns.set_orientation(Gtk.Orientation.HORIZONTAL if horizontal else Gtk.Orientation.VERTICAL)
+            columns.set_homogeneous(horizontal)
+        cards._resize_handler=scroll.get_hadjustment().connect('notify::page-size',resize_columns)
+        resize_columns(scroll.get_hadjustment())
+        cards.append(columns)
+        unified=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12)
+        unified.append(heading('Unified packages','NR and frame generation in one package, for games with DLSS.'))
+        for item in catalog:
+            if item['id'] not in ('skynizz','feeder'):unified.append(curated(item))
+        cards.append(unified)
         return False
 
     def render_inspection(result):
@@ -150,7 +230,7 @@ def build_packages(owner, fixture=None, on_selected=None, alive=None, header=Fal
     def catalog_again(*_):
         footer.set_visible(False)
         detail.set_visible(False);recommended.set_visible(True);custom.set_visible(True);community.set_visible(True);intro.set_visible(True)
-        title.set_text('Choose your graphics package');back.set_visible(False)
+        title.set_text('Packages');back.set_visible(False)
         status.set_text('Choose a package to review. No game files have changed.')
     back.connect('clicked',catalog_again)
 

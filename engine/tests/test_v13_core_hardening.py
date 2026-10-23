@@ -344,8 +344,10 @@ class CoreHardeningTests(unittest.TestCase):
              patch.object(desktop_service.engine_bridge,'prepare',side_effect=preview), \
              patch.object(desktop_service.engine_bridge,'execute',return_value='report'), \
              patch.object(service,'save_visual_defaults') as save:
-            game_review=service.prepare([],'nr-mfg','reset',visual_settings=values)
-            service.execute(game_review);save.assert_not_called()
+            # An empty game selection never reaches the engine; only a defaults-only apply may name no games.
+            with self.assertRaisesRegex(Exception,'No games are selected'):
+                service.prepare([],'nr-mfg','reset',visual_settings=values)
+            save.assert_not_called()
             library_review=service.prepare([],'nr-mfg','reset',visual_settings=values,save_defaults=True)
             service.execute(library_review);save.assert_called_once_with(values)
 

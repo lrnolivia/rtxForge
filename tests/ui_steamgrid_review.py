@@ -74,7 +74,9 @@ class FixtureFileDialog:
 
 def details_for_picker():
     global game
-    game=app.window.games[0];app.window.details(game)
+    game=app.window.games[0]
+    app.window.settings['separate_game_details']=True
+    app.window.details(game)
 
 def verify_picker_parent():
     original=ui.Gtk.FileDialog
@@ -83,6 +85,7 @@ def verify_picker_parent():
         parent=app.window.dialog
         assert isinstance(parent,ui.ResizablePanelWindow)
         assert parent.get_visible()
+        assert parent.get_transient_for() is app.window
         app.window.choose_game_artwork(game,'poster')
         chooser=picker_calls[-1]
         assert chooser.parent is parent and chooser.modal
@@ -99,7 +102,8 @@ def verify_picker_parent():
     finally:ui.Gtk.FileDialog=original
 
 def embedded_for_picker():
-    app.window.open_panel('Embedded artwork',width=600,height=400)
+    app.window.settings['separate_game_details']=False
+    app.window.details(game)
 
 def verify_embedded_picker_parent():
     original=ui.Gtk.FileDialog

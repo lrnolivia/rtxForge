@@ -13,38 +13,34 @@ speaks the same interface as the desktop operation dialog), so nothing is
 written before the review is confirmed.
 """
 from pathlib import Path
-import time
 
-from gi.repository import Gdk, GLib, Gtk, Pango
+from gi.repository import Gdk, Gio, GLib, Gtk, Pango
 
 import controller_input
 import game_notes
 import library_media
 import ui_colors
 import user_messages
+import game_mode_contract as contract
+import action_labels
+import game_mode_motion as motion
+import game_mode_visuals as visuals
+from game_mode_tools import GameModeTools
+from operation_scope import operation_targets, ScopeError
+import mfg_choice
+import overview_facts
+import overlay_shortcut
 
 ACCENT = '#76b900'
 ACCENT_INK = '#151c07'
 NO_ACCENT = '#b4b4b4'
 
 # Prototype tokens (.rf-prototype). Night is the Game Mode default.
-THEMES = {
-    'night': dict(window='#080808', view='#0f0f0f', panel='#171717', card='#252525', fg='#f2f2f2', muted='#c5c5c5',
-                  focus='#fafafa', danger='#ffc1c6', danger_bg='#4b2328', line='#454545', active='#505050',
-                  active_fg='#ffffff', segment='#575757', row_focus='#414141', disabled='#2a2a2a',
-                  disabled_fg='#9fa2a8', dlss='#363636', dlss_ink='#f2f2f2', dlss_border='#888888'),
-    'dark': dict(window='#242424', view='#2a2a2a', panel='#303030', card='#383838', fg='#f2f2f2', muted='#c5c5c5',
-                 focus='#fafafa', danger='#ffc1c6', danger_bg='#4b2328', line='#454545', active='#505050',
-                 active_fg='#ffffff', segment='#575757', row_focus='#414141', disabled='#333333',
-                 disabled_fg='#9fa2a8', dlss='#474747', dlss_ink='#ffffff', dlss_border='#999999'),
-    'light': dict(window='#f5f5f5', view='#fafafa', panel='#ebebeb', card='#ffffff', fg='#222222', muted='#555555',
-                  focus='#222222', danger='#8b2029', danger_bg='#f6dce0', line='#cecece', active='#d2d2d2',
-                  active_fg='#222222', segment='#d4d4d4', row_focus='#dedede', disabled='#e5e5e5',
-                  disabled_fg='#666666', dlss='#ffffff', dlss_ink='#222222', dlss_border='#707070'),
-}
-PAGES = (('library', 'Library'), ('presets', 'Presets'), ('settings', 'Settings'))
+THEMES = {'night': {'window': '#050505', 'view': '#0b0b0b', 'panel': '#131313', 'card': '#1c1c1c', 'fg': '#dedede', 'muted': '#b5b5b5', 'focus': '#b0b0b0', 'danger': '#f7bbc2', 'danger_bg': '#2e1920', 'line': '#303030', 'active': '#c9c9c9', 'active_fg': '#101010', 'segment': '#bdbdbd', 'row_focus': '#292929', 'disabled': '#181818', 'disabled_fg': '#959595', 'dlss': '#1b1b1b', 'dlss_ink': '#dfdfdf', 'dlss_border': '#444444'}, 'dark': {'window': '#181818', 'view': '#222222', 'panel': '#2b2b2b', 'card': '#363636', 'fg': '#f5f5f5', 'muted': '#c3c3c3', 'focus': '#c4c4c4', 'danger': '#ffc6cc', 'danger_bg': '#4b2932', 'line': '#494949', 'active': '#ededed', 'active_fg': '#171717', 'segment': '#e0e0e0', 'row_focus': '#424242', 'disabled': '#303030', 'disabled_fg': '#a3a3a3', 'dlss': '#343434', 'dlss_ink': '#ededed', 'dlss_border': '#5a5a5a'}, 'light': {'window': '#e5e5e5', 'view': '#f4f4f4', 'panel': '#e9e9e9', 'card': '#ffffff', 'fg': '#242424', 'muted': '#535353', 'focus': '#5c5c5c', 'danger': '#7b2030', 'danger_bg': '#f5dfe3', 'line': '#c6c6c6', 'active': '#d1d1d1', 'active_fg': '#202020', 'segment': '#d7d7d7', 'row_focus': '#dddddd', 'disabled': '#e3e3e3', 'disabled_fg': '#737373', 'dlss': '#fafafa', 'dlss_ink': '#343434', 'dlss_border': '#7f7f7f'}}
+
+PAGES = (('library', 'Library'), ('presets', 'Presets'), ('packages', 'Packages'), ('extras', 'Extras'), ('settings', 'Settings'))
 SECTIONS = ('Overview', 'Features', 'DLSS Files', 'Tools', 'Appearance', 'Notes')
-SETTINGS_SECTIONS = ('Gaming Mode', 'Appearance', 'Library', 'Controller', 'Keyboard', 'System')
+SETTINGS_SECTIONS = ('Graphics', 'Overlay', 'Appearance', 'Library', 'Gaming Mode', 'System', 'Recovery', 'About')
 MULTIPLIERS = ('auto', 0, 2, 3, 4, 5, 6)
 
 
@@ -54,7 +50,7 @@ class Theme:
     def __init__(self, name, scale='auto'):
         self.name = name if name in THEMES else 'night'
         self.c = THEMES[self.name]
-        self.scale = scale
+        self.scale = str(scale)
         self.unit = 26
         self.compact = False
 
@@ -64,6 +60,7 @@ class Theme:
 
     def resize(self, width, height):
         unit = 46 if width >= 3000 else 20 if width <= 1050 else 22 if width <= 1500 else 26
+        unit = round(26 * int(self.scale) / 150, 1) if self.scale.isdigit() else round(unit * 130 / 150, 1)
         compact = height <= 800 and width <= 2000
         changed = (unit, compact) != (self.unit, self.compact)
         self.unit, self.compact = unit, compact
@@ -89,49 +86,64 @@ def stylesheet(t):
     """Everything is scoped under .gm so the desktop is never restyled."""
     c, px, em = t.c, t.px, t.em
     return f'''
-.gm {{ background: {c['window']}; color: {c['fg']}; font-size: {em(0.85)}px; }}
+.gm {{ font-family: 'Roboto'; background: {c['window']}; color: {c['fg']}; font-size: {em(0.85)}px; }}
 .gm label {{ color: inherit; }}
-.gm .gm-view {{ background: {c['view']}; }}
-.gm .gm-header, .gm .gm-footer {{ background: {c['window']}; }}
-.gm .gm-h1 {{ font-size: {em(1.62)}px; font-weight: 700; letter-spacing: -0.5px; }}
+.gm .gm-view {{ background: transparent; }}
+.gm.gm-details .gm-view {{ background: {c['view']}; }}
+.gm .gm-backdrop {{ background: {c['view']}; }}
+.gm .gm-app-scrim {{ background-image: linear-gradient(to bottom, alpha({c['view']},.08), alpha({c['view']},.10) 20%, alpha({c['view']},.25) 42%, alpha({c['view']},.63) 65%, alpha({c['view']},.91) 84%, {c['view']}); }}
+.gm .gm-header {{ background: transparent; }}
+.gm.gm-details .gm-header, .gm .gm-footer {{ background: {c['window']}; }}
+.gm .gm-h1 {{ font-family: "Bakbak One"; font-size: {em(1.62)}px; font-weight: 400; letter-spacing: -0.5px; }}
 .gm .gm-h1.compact {{ font-size: {em(1.18)}px; }}
-.gm .gm-h2 {{ font-size: {em(1.27)}px; font-weight: 600; letter-spacing: -0.3px; }}
-.gm .gm-h3 {{ font-size: {em(1.06)}px; font-weight: 600; }}
+.gm .gm-h2 {{ font-family: "Bakbak One"; font-size: {em(1.27)}px; font-weight: 400; letter-spacing: -0.3px; }}
+.gm .gm-h3 {{ font-family: "Bakbak One"; font-size: {em(1.06)}px; font-weight: 400; }}
 .gm .gm-p {{ color: {c['muted']}; font-size: {em(0.85)}px; }}
 .gm .gm-small {{ color: {c['muted']}; font-size: {em(0.77)}px; }}
 .gm .gm-strong {{ font-weight: 600; font-size: {em(0.96)}px; }}
 .gm .gm-brand-title {{ font-family: "Bakbak One"; font-size: {em(1.4 if t.compact else 1.62)}px; }}
 .gm button {{ background: none; box-shadow: none; border: none; color: {c['fg']}; min-height: 0; min-width: 0; padding: 0;
   outline-color: {c['focus']}; outline-style: solid; outline-width: 0; transition: none; }}
-.gm button:focus-visible {{ outline-width: {px(4)}px; outline-offset: {px(4)}px; }}
+.gm button:focus-visible {{ outline-width: {max(1,px(1.75))}px; outline-offset: {px(2)}px; }}
 .gm button.gm-btn {{ border-radius: 999px; padding: {px(14)}px {px(24)}px; min-height: {px(60 if not t.compact else 48) - px(28)}px;
-  font-size: {em(0.85)}px; font-weight: 550; background: {c['card']}; color: {c['fg']}; }}
+  font-size: {em(0.85)}px; font-weight: 600; background: {c['card']}; color: {c['fg']}; }}
 .gm button.gm-btn.gm-primary {{ background: {ACCENT}; color: {ACCENT_INK}; font-weight: 650; }}
 .gm button.gm-btn.gm-danger {{ background: {c['danger_bg']}; color: {c['danger']}; }}
 .gm button.gm-btn.gm-dlss {{ background: {c['dlss']}; color: {c['dlss_ink']}; border: {px(2)}px solid {c['dlss_border']}; }}
-.gm button.gm-btn.gm-quiet {{ background: none; padding: {px(12)}px {px(16)}px; }}
+.gm button.gm-btn.gm-quiet {{ background: {c['card']}; padding: {px(12)}px {px(16)}px; }}
 .gm button.gm-btn.gm-active {{ background: {c['active']}; color: {c['active_fg']}; }}
-.gm button.gm-btn.gm-ghost {{ background: none; }}
+.gm button.gm-btn.gm-ghost {{ background: {c['card']}; }}
+.gm button.gm-btn.gm-brand, .gm .gm-footer button {{ background: transparent; box-shadow: none; }}
+.gm button.gm-brand {{ padding: 0; min-height: 0; }}
 .gm button.gm-btn:hover {{ background-image: image(alpha(currentColor,0.08)); }}
 .gm button.gm-btn:disabled, .gm button.gm-rowbtn:disabled, .gm button.gm-tile:disabled {{ background: {c['disabled']}; color: {c['disabled_fg']}; border-color: transparent; }}
 .gm button.gm-btn.gm-quiet:disabled, .gm button.gm-btn.gm-ghost:disabled {{ background: none; }}
-.gm .gm-tabs {{ background: {c['panel']}; border-radius: 999px; padding: {px(8)}px; }}
-.gm .gm-tabs button.gm-btn {{ padding: {px(8)}px {px(26)}px; min-height: {px(54) - px(16)}px; font-size: {em(0.92)}px; }}
+.gm .gm-tabs {{ background: alpha({c['panel']},.80); border-radius: 999px; padding: {px(8 if t.compact else 10)}px; }}
+.gm.gm-details .gm-tabs {{ background: {c['panel']}; }}
+.gm .gm-tabs button.gm-btn {{ padding: {px(14)}px {px(26)}px; min-height: {px(56 if t.compact else 64) - px(28)}px; font-size: {em(0.92)}px; }}
 .gm .gm-segments {{ background: {c['card']}; border-radius: 999px; padding: {px(4)}px; }}
 .gm .gm-segments.gm-panel {{ background: {c['panel']}; }}
-.gm .gm-segments button {{ border-radius: 999px; padding: {px(10)}px {px(22)}px; min-height: {px(54 if not t.compact else 40) - px(20)}px; font-size: {em(0.85)}px; font-weight: 550; }}
+.gm .gm-segments button {{ border-radius: 999px; padding: {px(10)}px {px(22)}px; min-height: {px(54 if not t.compact else 40) - px(20)}px; font-size: {em(0.85)}px; font-weight: 600; }}
 .gm .gm-segments button:focus-visible {{ outline-offset: -{px(6)}px; }}
 .gm .gm-segments button.on {{ background: {c['segment']}; color: {c['active_fg']}; }}
 .gm .gm-segments.gm-panel button.on {{ background: {c['card']}; }}
+.gm .gm-slider.gm-tabs button.gm-btn,
+.gm .gm-slider.gm-segments button,
+.gm .gm-slider.gm-segments.gm-panel button.on {{ background: transparent; }}
+.gm button.gm-settings-row {{ border-radius: {px(12)}px; background: {c['panel']}; padding: {px(22)}px {px(28)}px; min-height: {px(40)}px; }}
 .gm .gm-surface {{ background: {c['panel']}; border-radius: {px(16)}px; }}
 .gm .gm-pill {{ background: {c['panel']}; border-radius: 999px; padding: {px(10 if not t.compact else 7)}px {px(20)}px; font-size: {em(0.85)}px; }}
 .gm .gm-group {{ background: {c['panel']}; border-radius: {px(16)}px; }}
+.gm .gm-group > button:first-child {{ border-top-left-radius: {px(16)}px; border-top-right-radius: {px(16)}px; }}
+.gm .gm-group > button:last-child {{ border-bottom-left-radius: {px(16)}px; border-bottom-right-radius: {px(16)}px; }}
 .gm .gm-group.gm-on-card {{ background: {c['card']}; }}
 .gm .gm-sep {{ background: {c['line']}; min-height: 1px; }}
-.gm button.gm-rowbtn {{ border-radius: {px(12)}px; padding: {px(24 if not t.compact else 16)}px {px(30)}px; }}
-.gm button.gm-rowbtn:focus-visible {{ outline-offset: -{px(8)}px; background: {c['row_focus']}; }}
+.gm button.gm-rowbtn {{ border-radius: 0; padding: {px(24 if not t.compact else 16)}px {px(30)}px; }}
+.gm button.gm-rowbtn:focus-visible {{ outline-offset: -{px(2)}px; background: {c['row_focus']}; }}
 .gm button.gm-rowbtn.gm-danger-row {{ color: {c['danger']}; }}
 .gm button.gm-rowbtn:disabled {{ background: none; }}
+.gm button.gm-rowbtn.gm-settings-row {{ border-radius: {px(12)}px; background: {c['panel']}; }}
+.gm button.gm-rowbtn.gm-standalone {{ border-radius: {px(12)}px; background: {c['panel']}; }}
 .gm .gm-value {{ color: {c['muted']}; font-size: {em(0.85)}px; }}
 .gm .gm-stepper-value {{ font-size: {em(1.18)}px; font-weight: 700; }}
 .gm .gm-step {{ background: {c['card']}; border-radius: {px(8)}px; padding: {px(8)}px; }}
@@ -147,8 +159,8 @@ def stylesheet(t):
 .gm .gm-chip.gm-plain {{ border-color: {c['card']}; }}
 .gm button.gm-gamecard {{ border-radius: {px(14)}px; }}
 .gm button.gm-gamecard:focus-visible {{ outline-width: 0; }}
-.gm .gm-art {{ border: {px(2)}px solid {c['line']}; border-radius: {px(12)}px; background: {c['card']}; }}
-.gm button.gm-gamecard:focus-visible .gm-art {{ outline: {px(4)}px solid {c['focus']}; outline-offset: {px(5)}px; }}
+.gm .gm-art {{ border: {px(visuals.ARTWORK_STROKE)}px solid {c['line']}; border-radius: {px(12)}px; background: {c['card']}; }}
+.gm button.gm-gamecard:focus-visible .gm-art {{ outline: {max(1,px(1.75))}px solid {c['focus']}; outline-offset: {px(5)}px; }}
 .gm .gm-art-fallback {{ color: {c['muted']}; font-weight: 600; font-size: {em(0.8)}px; }}
 .gm .gm-cardtitle {{ font-weight: 600; font-size: {em(0.93)}px; }}
 .gm .gm-check {{ border: {px(2)}px solid {c['focus']}; background: {c['window']}; border-radius: {px(6)}px; min-width: {px(28)}px; min-height: {px(28)}px; }}
@@ -161,11 +173,13 @@ def stylesheet(t):
 .gm .gm-dot.on {{ background: {ACCENT}; border-color: {ACCENT}; }}
 .gm .gm-hero-scrim {{ background-image: linear-gradient(to right, alpha({c['view']},0.82), alpha({c['view']},0.55) 38%, alpha({c['view']},0) 72%),
   linear-gradient(to bottom, alpha({c['view']},0) 30%, {c['view']}); }}
-.gm .gm-poster {{ border: {px(3)}px solid {c['line']}; border-radius: {px(10)}px; background: {c['card']}; }}
+.gm .gm-poster {{ border: {px(visuals.ARTWORK_STROKE)}px solid {c['line']}; border-radius: {px(10)}px; background: {c['card']}; }}
 .gm .gm-gametitle {{ font-family: "Bakbak One"; font-size: {em(1.35 if t.compact else 1.65)}px; }}
 .gm button.gm-back {{ background: alpha(#121212,0.86); color: white; border-radius: {px(12)}px; padding: {px(10)}px {px(18)}px; font-size: {em(0.78)}px; }}
-.gm button.gm-navbtn {{ border-radius: {px(12)}px; padding: {px(12)}px {px(18)}px; font-size: {em(0.88)}px; }}
+.gm button.gm-navbtn {{ background: transparent; border-radius: {px(12)}px; padding: {px(18)}px {px(24)}px; font-size: {em(0.92)}px; }}
+.gm button.gm-navbtn:hover, .gm button.gm-navbtn:focus-visible {{ background: {c['card']}; }}
 .gm button.gm-navbtn.on {{ background: {c['card']}; }}
+.gm .gm-details-rail button.gm-navbtn {{ padding: {px(12)}px {px(18)}px; min-height: {px(46 if t.compact else 60) - px(24)}px; font-size: {em(.88)}px; }}
 .gm button.gm-tile {{ background: {c['card']}; border-radius: {px(14)}px; padding: {px(20)}px; min-height: {px(116 if not t.compact else 90) - px(40)}px; }}
 .gm .gm-swatch {{ border-radius: 999px; border: {px(3)}px solid transparent; padding: {px(4)}px; }}
 .gm .gm-swatch.on {{ border-color: {c['focus']}; }}
@@ -185,6 +199,20 @@ def stylesheet(t):
 .gm .gm-mark.on {{ background: {ACCENT}; border-color: {ACCENT}; color: {ACCENT_INK}; }}
 .gm .gm-done-icon {{ color: {c['fg']}; }}
 .gm .gm-done-icon.failed {{ color: {c['danger']}; }}
+ .gm button.gm-btn:focus-visible, .gm button.gm-btn.gm-active, .gm .gm-segments button.on {{ box-shadow: 0 {px(2)}px {px(24)}px alpha(white,.32), 0 {px(3)}px {px(42)}px alpha(white,.16); }}
+.gm button.gm-btn.gm-primary:focus-visible, .gm button.gm-btn.gm-primary:hover {{ box-shadow: 0 {px(2)}px {px(26)}px alpha({ACCENT},.55); }}
+.gm button.gm-btn.gm-danger:focus-visible, .gm button.gm-btn.gm-danger:hover {{ box-shadow: 0 {px(2)}px {px(26)}px alpha({c['danger']},.40); }}
+.gm .gm-tabs button.gm-btn {{ font-size: {em(.92)}px; }}
+.gm .gm-tool-card {{ background: {c['panel']}; border-radius: {px(16)}px; padding: {px(28)}px; }}
+.gm .gm-native-package preferencesgroup {{ background: {c['panel']}; }}
+.gm .gm-native-package row {{ background: {c['card']}; color: {c['fg']}; }}
+.gm .gm-tabs image {{ -gtk-icon-size: {px(22)}px; }}
+.gm .gm-cardtitle {{ font-family: 'Roboto'; }}
+.gm .gm-footer .gm-controller-key {{ background: none; padding: 0; color: inherit; min-width: {px(32)}px; min-height: {px(32)}px; border-radius: 999px; }}
+.gm .gm-footer .gm-controller-key.xbox-a {{ color: #89e375; border: 1px solid #89e375; }}
+.gm .gm-footer .gm-controller-key.xbox-b {{ color: #ff7d88; border: 1px solid #ff7d88; }}
+.gm .gm-footer .gm-controller-key.xbox-y {{ color: #ffdf64; border: 1px solid #ffdf64; }}
+.gm .gm-details-rail {{ background: {c['panel']}; }}
 .gm scrollbar {{ opacity: 0.6; }}
 '''
 
@@ -209,6 +237,8 @@ def accent_css(t, hexcolor):
 .gm .{name} .gm-gametitle, .gm .{name} .gm-step-title, .gm .{name}.gm-review-row .gm-rowtitle {{ color: {g['title']}; }}
 .gm .{name} .gm-badge-source {{ background: {g['pill']}; color: {g['ink']}; }}
 .gm .{name} button.gm-navbtn.on {{ background: {g['tint']}; color: {g['tint_text']}; }}
+.gm .{name} button.gm-primary {{ background: {g['accent']}; color: {g['ink']}; }}
+.gm .{name} button.gm-primary:focus-visible {{ box-shadow: 0 {t.px(2)}px {t.px(26)}px alpha({g['accent']},.5); }}
 .gm .{name} progressbar progress {{ background: {g['accent']}; }}
 .gm .{name}.gm-review-row .gm-badge-ready {{ background: {g['tint']}; color: {g['tint_text']}; }}
 '''
@@ -234,6 +264,13 @@ def clear(box):
         child = nxt
 
 
+def children(widget):
+    child = widget.get_first_child()
+    while child is not None:
+        yield child
+        child = child.get_next_sibling()
+
+
 def descendants(widget):
     child = widget.get_first_child()
     while child is not None:
@@ -242,13 +279,14 @@ def descendants(widget):
         child = child.get_next_sibling()
 
 
-class GameMode(Gtk.Overlay):
+class GameMode(Gtk.Overlay, GameModeTools):
     def __init__(self, owner, helpers):
         super().__init__()
         self.owner = owner
+        visuals.register_fonts()
         self.h = helpers
         self.add_css_class('gm')
-        self.theme = Theme(owner.settings.get('theme') or 'night', owner.settings.get('ui_scale', 'auto'))
+        self.theme = Theme(contract.theme_name(owner.settings), owner.settings.get('ui_scale', 'auto'))
         self.provider = Gtk.CssProvider()
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), self.provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 20)
         self.accent_providers = {}
@@ -260,26 +298,40 @@ class GameMode(Gtk.Overlay):
         self.hint_timer = 0
         self.details_game = None
         self.section = 'Overview'
-        self.settings_section = 'Gaming Mode'
+        self.settings_section = 'Graphics'
         self.selecting = False
         self.selected = set()
         self.presets_expanded = False
         self.notes_status = None
         self.notes_draft = None
         self.library_focus = None
+        self.library_offset = 0
+        self.render_revision = 0
+        self.input_revision = 0
+        self._rendered_page = None
         self.pending_focus = None
+        self.library_virtual = None
         self.modals = []
         self.prompt_spec = None
         self.render_source = 0
 
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.set_child(root)
+        self.scene = Gtk.Overlay()
+        self.backdrop = visuals.Backdrop()
+        self.scene.set_child(self.backdrop)
+        self.art_light = visuals.ArtworkLight()
+        self.scene.add_overlay(root)
+        self.scene.set_measure_overlay(root, True)
+        self.set_child(self.scene)
         self.page_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, vexpand=True)
         root.append(self.page_box)
         self.header = Gtk.CenterBox()
         self.header.add_css_class('gm-header')
         self.page_box.append(self.header)
-        self.body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, vexpand=True, hexpand=True)
+        self.selection_states = {}
+        self.section_states = {}
+        self._rendered_section = None
+        self.body = motion.MotionDeck()
         self.body.add_css_class('gm-view')
         self.page_box.append(self.body)
         self.bottom_nav = Gtk.Box(halign=Gtk.Align.CENTER, visible=False)
@@ -308,7 +360,7 @@ class GameMode(Gtk.Overlay):
     # ---------------- theme ----------------
 
     def apply_theme(self):
-        self.theme = Theme(self.owner.settings.get('theme') or 'night', self.owner.settings.get('ui_scale', 'auto'))
+        self.theme = Theme(contract.theme_name(self.owner.settings), self.owner.settings.get('ui_scale', 'auto'))
         self.theme.resize(self.layout_width, self.layout_height)
         self.provider.load_from_data(stylesheet(self.theme).encode())
         for provider in self.accent_providers.values():
@@ -383,6 +435,8 @@ class GameMode(Gtk.Overlay):
         if target == 'menu':
             self.open_main_menu()
             return
+        if self.page == 'library' and self.library_virtual is None and getattr(self, 'library_scroll', None) is not None:
+            self.library_offset = self.library_scroll.get_vadjustment().get_value()
         target = {'dlss': 'settings', 'dashboard': 'library'}.get(target, target)
         self.close_all_modals()
         self.page = target
@@ -396,6 +450,7 @@ class GameMode(Gtk.Overlay):
 
     def toast(self, text):
         self.toast_label.set_text(str(text))
+        self.toast_box.set_transition_duration(motion.FADE_MS if motion.enabled(self, self.owner.settings) else 0)
         self.toast_box.set_margin_bottom(self.theme.px(24) + self.footer.get_height())
         self.toast_box.set_reveal_child(True)
         if self.toast_source:
@@ -421,6 +476,14 @@ class GameMode(Gtk.Overlay):
         return widget
 
     def icon(self, name, size=None):
+        name = {
+            'input-gaming-symbolic':'rtx-gm-gamepad-symbolic', 'preferences-other-symbolic':'rtx-gm-presets-symbolic',
+            'drive-multidisk-symbolic':'rtx-gm-package-symbolic', 'applications-utilities-symbolic':'rtx-gm-tools-symbolic',
+            'emblem-system-symbolic':'rtx-gm-settings-symbolic', 'view-filter-symbolic':'rtx-gm-filter-symbolic',
+            'view-refresh-symbolic':'rtx-gm-refresh-symbolic', 'emblem-synchronizing-symbolic':'rtx-gm-refresh-symbolic',
+            'applications-graphics-symbolic':'rtx-gm-palette-symbolic', 'go-home-symbolic':'rtx-gm-home-symbolic',
+            'accessories-text-editor-symbolic':'rtx-gm-notes-symbolic',
+        }.get(name, name)
         image = Gtk.Image.new_from_icon_name(name)
         image.set_pixel_size(size or self.theme.px(20))
         return image
@@ -435,13 +498,28 @@ class GameMode(Gtk.Overlay):
         box.append(caption)
         return box
 
+    def sidebar_content(self, text, fallback):
+        names = {'Graphics': 'monitor', 'Overlay': 'overlay', 'Library': 'library',
+                 'System': 'system', 'Recovery': 'recovery', 'About': 'info', 'DLSS Files': 'file'}
+        icon = 'rtx-gm-' + names[text] + '-symbolic' if text in names else fallback
+        content = self.content(text, icon)
+        image = content.get_first_child()
+        if isinstance(image, Gtk.Image):
+            size = self.theme.px(26)
+            image.set_pixel_size(size)
+            image.set_size_request(size, size)
+        return content
+
     def key(self, widget, name):
         widget._gm_key = name
         return widget
 
+    def scroller(self, **kwargs):
+        return motion.FadedScrolledWindow(fade_unit=self.theme.unit / 26, **kwargs)
+
     def button(self, text, action, kind='card', icon=None, enabled=True, key=None, halign=None):
         child = text if isinstance(text, Gtk.Widget) else self.content(text, icon)
-        widget = Gtk.Button(child=child, sensitive=enabled)
+        widget = motion.MotionButton(preferences=self.owner.settings, child=child, sensitive=enabled)
         widget.add_css_class('gm-btn')
         if kind != 'card':
             widget.add_css_class('gm-' + kind)
@@ -463,13 +541,15 @@ class GameMode(Gtk.Overlay):
             child = item[3] if len(item) > 3 else self.label(text)
             if isinstance(child, Gtk.Label):
                 child.set_ellipsize(Pango.EllipsizeMode.NONE)
-            control = Gtk.Button(child=child, sensitive=enabled)
+            control = motion.MotionButton(preferences=self.owner.settings, child=child, sensitive=enabled)
             if key == selected:
                 control.add_css_class('on')
             control.connect('clicked', lambda *_, key=key: pick(key))
             self.key(control, 'seg-' + str(key))
             box.append(control)
-        return box
+        return motion.selection(self.selection_states, 'segments:' + '/'.join(str(item[0]) for item in items),
+                                box, next(c for c in children(box) if getattr(c, '_gm_key', '') == 'seg-' + str(selected)),
+                                self.owner.settings, self.theme.c['segment'], self.theme.c['card'])
 
     def group(self, rows, on_card=False):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -521,7 +601,8 @@ class GameMode(Gtk.Overlay):
             line.append(shown)
             line._value = shown
         line.append(self.icon('go-next-symbolic', t.px(16)))
-        widget = Gtk.Button(child=line, sensitive=enabled, hexpand=True)
+        widget = motion.MotionButton(preferences=self.owner.settings, child=line, sensitive=enabled, hexpand=True)
+        widget._flat = True
         widget.add_css_class('gm-rowbtn')
         if danger:
             widget.add_css_class('gm-danger-row')
@@ -539,6 +620,7 @@ class GameMode(Gtk.Overlay):
         def step(delta):
             adjust(delta)
             shown.set_text(value())
+            motion.reveal(shown, self.owner.settings, motion.FADE_MS, .65)
         controls = Gtk.Box(spacing=t.px(28), valign=Gtk.Align.CENTER)
         for icon, delta in (('list-remove-symbolic', -1), ('list-add-symbolic', 1)):
             box = Gtk.Box(valign=Gtk.Align.CENTER)
@@ -552,7 +634,8 @@ class GameMode(Gtk.Overlay):
             if delta < 0:
                 controls.append(shown)
         row = self.preference(title, description, controls, inset=False)
-        widget = Gtk.Button(child=row, sensitive=enabled, hexpand=True)
+        widget = motion.MotionButton(preferences=self.owner.settings, child=row, sensitive=enabled, hexpand=True)
+        widget._flat = True
         widget.add_css_class('gm-rowbtn')
         widget.set_margin_start(0)
         widget._gm_adjust = step
@@ -561,18 +644,30 @@ class GameMode(Gtk.Overlay):
         return widget
 
     def choice(self, title, description, keys, captions, get, setter):
-        """A choice row: Select cycles forward, Left/Right step through the choices."""
+        """Selection opens a Game Mode menu; Left/Right adjusts without a wait."""
+        if len(keys) == 2 and all(type(value) is bool for value in keys):
+            return self.setting_toggle(title, description, get, setter)
         def caption():
             value = get()
             return captions[keys.index(value)] if value in keys else captions[0]
-        def step(delta):
-            value = get()
-            index = (keys.index(value) if value in keys else 0) + delta
-            setter(keys[index % len(keys)])
+        def commit(value, close=False):
+            setter(value)
             self.save_settings()
+            if close:
+                self.close_modal()
             self.render(keep_focus=True)
-        row = self.row_button(title, caption(), lambda: step(1), description=description, key='choice-' + title)
-        row._gm_adjust = step
+        def choose():
+            options = []
+            current = None
+            for value, label in zip(keys, captions):
+                row = self.row_button(label, '✓' if get() == value else None,
+                                      lambda value=value: commit(value, True))
+                if get() == value:
+                    current = row
+                options.append(row)
+            self.show_modal(title, self.group(options), [self.button('Back', self.close_modal)], self.close_modal, 900, current)
+        row = self.row_button(title, caption(), choose, description=description, key='choice-' + title)
+        row._gm_adjust = lambda delta: commit(keys[((keys.index(get()) if get() in keys else 0) + delta) % len(keys)])
         return row
 
     def keycap(self, text):
@@ -597,7 +692,7 @@ class GameMode(Gtk.Overlay):
         frame.add_css_class(css)
         frame.set_overflow(Gtk.Overflow.HIDDEN)
         # The frame's border sits inside the requested size.
-        border = 2 * self.theme.px({'gm-art': 2, 'gm-poster': 3, 'gm-step-poster': 3}.get(css, 0))
+        border = 2 * self.theme.px({'gm-art': visuals.ARTWORK_STROKE, 'gm-poster': visuals.ARTWORK_STROKE, 'gm-step-poster': visuals.ARTWORK_STROKE}.get(css, 0))
         picture = ArtPicture(None if width is None else max(1, width - border), max(1, height - border))
         picture.set_hexpand(width is None)
         if path:
@@ -612,9 +707,24 @@ class GameMode(Gtk.Overlay):
     # ---------------- rendering ----------------
 
     def render(self, index=None, keep_focus=False):
+        self.render_revision += 1
+        revision = self.render_revision
+        previous_page = self._rendered_page
+        section_key = (self.page, self.section if self.page == 'details' else self.settings_section if self.page == 'settings' else None)
+        changing_section = previous_page == self.page and self._rendered_section != section_key
+        self._rendered_section = section_key
+        changing_page = previous_page is not None and previous_page != self.page
+        changing_layout = self.page == 'library' and previous_page == 'library' and getattr(self, '_last_layout', None) != self.owner.settings.get('library_view')
+        self._rendered_page = self.page
+        if previous_page == 'library' and self.page == 'library' and getattr(self, 'library_scroll', None) is not None:
+            self.library_offset = self.library_scroll.get_vadjustment().get_value()
         focus_key = self.focus_key() if keep_focus else None
+        self.library_virtual = None
+        self.first_focus = None
+        self.art_light = visuals.ArtworkLight()
+        self.add_css_class('gm-details') if self.page == 'details' else self.remove_css_class('gm-details')
+        self.backdrop.apply(self.theme, self.layout_width, self.layout_height, self.page == 'details')
         self.render_header()
-        clear(self.body)
         page = self.page
         if page == 'details' and self.details_game:
             content = self.build_details(self.details_game)
@@ -622,14 +732,56 @@ class GameMode(Gtk.Overlay):
             content = self.build_presets()
         elif page == 'settings':
             content = self.build_settings()
+        elif page == 'packages':
+            content = self.build_packages()
+        elif page == 'extras':
+            content = self.build_extras()
         else:
             self.page = 'library'
             content = self.build_library()
-        self.body.append(content)
+        for widget in descendants(content):
+            if isinstance(widget, Gtk.Button) and widget.has_css_class('gm-rowbtn'):
+                parent = widget.get_parent()
+                if parent is not None and not parent.has_css_class('gm-group'):
+                    widget.add_css_class('gm-standalone')
+        if (changing_page or changing_layout) and self.page != 'details' and previous_page != 'details' and isinstance(content, Gtk.Box):
+            regions = list(children(content))
+            if len(regions) <= 6:
+                for item in regions:
+                    content.remove(item)
+                for index, item in enumerate(regions):
+                    scene = motion.MotionScene(self.owner.settings, self.theme.unit / 26, region=index)
+                    if changing_layout and index < len(regions) - 1:
+                        scene.preferences = dict(self.owner.settings, reduce_motion=True)
+                    scene.set_hexpand(item.get_hexpand())
+                    scene.set_vexpand(item.get_vexpand())
+                    scene.set_child(Gtk.Box(hexpand=True, vexpand=True))
+                    light = visuals.ArtworkLight()
+                    scene.add_overlay(light)
+                    scene.add_overlay(item)
+                    scene.set_measure_overlay(item, True)
+                    for button in descendants(item):
+                        if hasattr(button, '_light_layer'):
+                            button._light_layer = light
+                    content.append(scene)
+        scene = motion.MotionScene(self.owner.settings, self.theme.unit / 26, spatial=False)
+        scene.set_child(Gtk.Box(hexpand=True, vexpand=True))
+        scene.add_overlay(self.art_light)
+        scene.add_overlay(content)
+        scene.set_measure_overlay(content, True)
+        # Region arrivals own ordinary page motion; Details uses a short coherent dissolve.
+        if not changing_page or (self.page != 'details' and previous_page != 'details'):
+            scene.preferences = dict(self.owner.settings, reduce_motion=True)
+        self.body.show_scene(scene, changing_page or changing_layout or changing_section, self.owner.settings)
+        self._last_layout = self.owner.settings.get("library_view")
+        # Covers native buttons created by nested Settings/Packages/flow builders too.
+        for button in descendants(content):
+            if isinstance(button, Gtk.Revealer):
+                button.set_transition_duration(motion.FADE_MS if motion.enabled(button, self.owner.settings) else 0)
         self.update_prompts(force=True)
         target = self.pending_focus or focus_key
         self.pending_focus = None
-        GLib.idle_add(self.restore_focus, target)
+        GLib.idle_add(self.restore_focus, target, revision, self.input_revision)
 
     def focus_key(self):
         widget = self.owner.get_focus()
@@ -645,12 +797,22 @@ class GameMode(Gtk.Overlay):
                 return widget
         return None
 
-    def restore_focus(self, key):
-        if self.modals:
+    def restore_focus(self, key, revision=None, input_revision=None):
+        if input_revision is not None and input_revision != self.input_revision:
             return False
-        target = self.find_key(self.page_box, key) if key else None
-        if target is None or not target.get_sensitive():
-            target = self.first_focus or self.first_focusable(self.body)
+        if (revision is not None and revision != self.render_revision) or self.modals:
+            return False
+        current = self.body.current
+        virtual_target = None
+        if self.page == 'library' and self.library_virtual is not None:
+            self.library_virtual.restore(self.library_offset)
+            virtual_target = self.library_virtual.ensure(key) if key else None
+        target = virtual_target or ((self.find_key(current, key) if current else None)
+                  or self.find_key(self.header, key) or self.find_key(self.bottom_nav, key)) if key else None
+        if target is None or not target.is_sensitive():
+            target = self.first_focus or self.first_focusable(current or self.body)
+        if self.page == 'library' and self.library_virtual is None and getattr(self, 'library_scroll', None) is not None:
+            self.library_scroll.get_vadjustment().set_value(self.library_offset)
         if target is not None:
             target.grab_focus()
         self.first_focus = None
@@ -658,30 +820,45 @@ class GameMode(Gtk.Overlay):
 
     first_focus = None
 
+    def focusable_widgets(self, scope):
+        return (widget for widget in descendants(scope)
+                if isinstance(widget, (Gtk.Button, Gtk.TextView)) and widget.is_sensitive()
+                and widget.get_focusable() and widget.get_visible() and widget.get_mapped())
+
     def first_focusable(self, scope):
-        for widget in descendants(scope):
-            if isinstance(widget, (Gtk.Button, Gtk.TextView)) and widget.get_sensitive() and widget.get_visible() and widget.get_mapped():
-                return widget
-        return None
+        return next(self.focusable_widgets(scope), None)
 
     def render_header(self):
         t = self.theme
-        self.header.set_size_request(-1, t.px(80 if t.compact else 104))
+        self.header.set_size_request(-1, t.px(92 if t.compact else 114))
+        self.header.set_margin_top(t.px(12))
         for side in ('start', 'end'):
             getattr(self.header, 'set_margin_' + side)(t.px(56))
         brand = Gtk.Box(spacing=t.px(16))
         mark = self.h.make_brand_icon(t.px(48 if t.compact else 64))
         brand.append(mark)
         brand.append(self.label('rtxForge', 'gm-brand-title'))
-        brand_button = self.button(brand, self.open_main_menu, 'ghost', key='brand')
-        brand_button.update_property([Gtk.AccessibleProperty.LABEL], ['rtxForge main menu'])
+        brand_button = self.button(brand, None, 'ghost', key='brand')
+        brand_button.set_can_target(False)
+        brand_button.set_focusable(False)
+        brand_button.add_css_class('gm-brand')
         brand_button.set_valign(Gtk.Align.CENTER)
         self.header.set_start_widget(brand_button)
-        tabs = Gtk.Box(spacing=t.px(8), halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        menu = self.button('⋯', self.open_main_menu, 'quiet', key='menu')
+        menu.update_property([Gtk.AccessibleProperty.LABEL], ['Main menu'])
+        menu.set_valign(Gtk.Align.CENTER)
+        self.header.set_end_widget(menu)
+        tabs = Gtk.Box(spacing=t.px(12), halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
         tabs.add_css_class('gm-tabs')
         for key, title in PAGES:
             active = self.page == key or (key == 'library' and self.page == 'details')
-            tabs.append(self.button(title, lambda key=key: self.open(key), 'active' if active else 'ghost', key='tab-' + key))
+            caption = self.content(title, {'library':'input-gaming-symbolic', 'presets':'preferences-other-symbolic', 'packages':'drive-multidisk-symbolic', 'extras':'applications-utilities-symbolic', 'settings':'emblem-system-symbolic'}[key])
+            if isinstance(caption.get_first_child(), Gtk.Image):
+                caption.get_first_child().set_pixel_size(t.px(26))
+            tabs.append(self.button(caption, lambda key=key: self.open(key), 'active' if active else 'ghost', key='tab-' + key))
+        tabs = motion.selection(self.selection_states, 'navigation', tabs,
+                                next(c for c in children(tabs) if getattr(c, '_gm_key', '') == 'tab-' + ('library' if self.page == 'details' else self.page)),
+                                self.owner.settings, t.c['active'], t.c['card'])
         bottom = self.owner.settings.get('navigation_position', 'top') == 'bottom'
         clear(self.bottom_nav)
         self.bottom_nav.set_visible(bottom)
@@ -707,7 +884,7 @@ class GameMode(Gtk.Overlay):
         self.prompt_spec = spec
         clear(self.hints)
         self.hints.set_spacing(t.px(30))
-        self.footer.set_size_request(-1, t.px(64 if t.compact else 90))
+        self.footer.set_size_request(-1, t.px(48 if t.compact else 58))
         for side in ('start', 'end'):
             getattr(self.hints, 'set_margin_' + side)(t.px(56))
         entries = [(('Enter' if keyboard else glyphs[0]), accept_label, 'accept'), (('Esc' if keyboard else glyphs[1]), 'Back', 'back')]
@@ -715,9 +892,15 @@ class GameMode(Gtk.Overlay):
             entries.append((('Ctrl+L' if keyboard else glyphs[2]), 'Library', 'search'))
         for key, text, action in entries:
             pair = Gtk.Box(spacing=t.px(10))
-            pair.append(self.keycap(key))
+            keycap = self.keycap(key)
+            if not keyboard:
+                keycap.remove_css_class('gm-key')
+                keycap.add_css_class('gm-controller-key')
+                if family in ('xbox', 'steam'):
+                    keycap.add_css_class({'A':'xbox-a','B':'xbox-b','Y':'xbox-y'}.get(key, 'generic'))
+            pair.append(keycap)
             pair.append(self.label(text))
-            hint = Gtk.Button(child=pair, focusable=False)
+            hint = motion.MotionButton(preferences=self.owner.settings, child=pair, focusable=False)
             hint.connect('clicked', lambda *_, action=action: self.navigate(action))
             self.hints.append(hint)
         self.wake_hints()
@@ -738,10 +921,13 @@ class GameMode(Gtk.Overlay):
     # ---------------- input ----------------
 
     def navigate(self, action):
+        self.input_revision += 1
         self.wake_hints()
         self.owner.set_focus_visible(True)
         focus = self.owner.get_focus()
         if action in ('up', 'down', 'left', 'right'):
+            if not self.modals and self.page == 'library' and self.library_virtual is not None and self.library_virtual.move(focus, action):
+                return
             adjust = getattr(focus, '_gm_adjust', None)
             if action in ('left', 'right') and adjust:
                 adjust(1 if action == 'right' else -1)
@@ -749,10 +935,22 @@ class GameMode(Gtk.Overlay):
             scope = self.modals[-1]['dialog'] if self.modals else self.page_box
             direction = {'up': Gtk.DirectionType.UP, 'down': Gtk.DirectionType.DOWN,
                          'left': Gtk.DirectionType.LEFT, 'right': Gtk.DirectionType.RIGHT}[action]
-            inside = focus is not None and (focus is scope or focus.is_ancestor(scope))
+            incoming = scope if self.modals else self.body.current
+            if incoming is not None and incoming.get_width() == 0:
+                # Mapped controls can take native focus before their first layout.
+                # Spatial focus may report success with coincident zero-sized bounds;
+                # use control order for this frame, including immediate reversals.
+                targets = list(self.focusable_widgets(incoming))
+                index = next((i for i, item in enumerate(targets) if focus is item or (focus is not None and focus.is_ancestor(item))), -1)
+                following = index + (-1 if action in ('up', 'left') else 1) if index >= 0 else 0
+                if 0 <= following < len(targets):
+                    targets[following].grab_focus()
+                return
+            inside = focus is not None and focus.is_sensitive() and (focus is scope or focus.is_ancestor(scope))
             if not inside or not scope.child_focus(direction):
                 if not inside:
-                    target = self.first_focusable(scope)
+                    target = self.first_focusable(incoming) if incoming is not None else None
+                    target = target or self.first_focusable(scope)
                     if target:
                         target.grab_focus()
             return
@@ -788,7 +986,7 @@ class GameMode(Gtk.Overlay):
             return
         if self.page == 'details':
             self.close_details()
-        elif self.page in ('presets', 'settings'):
+        elif self.page in ('presets', 'packages', 'extras', 'settings'):
             self.open('library')
         elif self.selecting:
             self.selecting = False
@@ -803,10 +1001,12 @@ class GameMode(Gtk.Overlay):
         dialog = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(18 if t.compact else 26),
                          halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
         dialog.add_css_class('gm-dialog')
+        if self.page == 'details' and self.details_game:
+            dialog.add_css_class(self.accent_class(self.details_game))
         dialog.set_size_request(min(t.px(width), max(320, self.layout_width - t.px(96))), -1)
         if title:
             dialog.append(self.label(title, 'gm-h2'))
-        scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, propagate_natural_height=True,
+        scroll = self.scroller(hscrollbar_policy=Gtk.PolicyType.NEVER, propagate_natural_height=True,
                                     max_content_height=max(240, self.layout_height - t.px(320)))
         scroll.set_child(content)
         dialog.append(scroll)
@@ -819,17 +1019,27 @@ class GameMode(Gtk.Overlay):
         for side in ('top', 'bottom', 'start', 'end'):
             getattr(layer, 'set_margin_' + side)(t.px(48))
         center = Gtk.CenterBox(orientation=Gtk.Orientation.VERTICAL, hexpand=True, vexpand=True)
-        center.set_center_widget(dialog)
+        dialog_scene = motion.MotionScene(self.owner.settings, self.theme.unit / 26, dialog=True)
+        dialog_scene.set_hexpand(False)
+        dialog_scene.set_vexpand(False)
+        dialog_scene.set_child(dialog)
+        center.set_center_widget(dialog_scene)
         layer.append(center)
         modal = {'layer': layer, 'dialog': dialog, 'on_back': on_back, 'restore': restore, 'actions': row, 'scroll': scroll}
         if self.modals:
             self.modals[-1]['layer'].set_visible(False)
         self.modal_layer.append(layer)
         self.modal_layer.set_visible(True)
+        self.art_light.set_visible(False)
         self.page_box.set_sensitive(False)
         self.modals.append(modal)
         self.update_prompts()
         def first():
+            if not self.modals or self.modals[-1] is not modal:
+                return False
+            current = self.owner.get_focus()
+            if current is not None and current.is_sensitive() and current.is_ancestor(dialog):
+                return False
             target = focus if focus is not None and focus.get_sensitive() else self.first_focusable(dialog)
             if target is not None:
                 target.grab_focus()
@@ -850,6 +1060,7 @@ class GameMode(Gtk.Overlay):
         else:
             self.modal_layer.set_visible(False)
             self.page_box.set_sensitive(True)
+            self.art_light.set_visible(True)
         self.update_prompts()
         restore = modal['restore']
         if restore is not None and restore.get_root() is not None and restore.get_sensitive():
@@ -870,12 +1081,31 @@ class GameMode(Gtk.Overlay):
             return
         rows = [
             self.row_button('Library', action=lambda: (self.close_modal(), self.open('library'))),
-            self.row_button('Packages', action=lambda: (self.close_modal(), self.owner.show_packages())),
-            self.row_button('Refresh library', action=lambda: (self.close_modal(), self.refresh_library()), icon='view-refresh-symbolic'),
+            self.row_button('Rescan library', 'F5', action=lambda: (self.close_modal(), self.refresh_library()), icon='view-refresh-symbolic'),
+            self.row_button('Library options', action=lambda: (self.close_modal(), self.open_library_options())),
             self.row_button('Desktop UI', action=lambda: (self.close_modal(), self.owner.set_input_surface(False))),
             self.row_button('Exit App', action=self.confirm_exit, danger=True),
         ]
         self.show_modal('rtxForge', self.group(rows, True), [self.button('Back', self.close_modal)], self.close_modal, 900)
+
+    def open_library_options(self):
+        rows = [
+            self.row_button('Rescan library', 'F5', lambda: (self.close_modal(), self.refresh_library()), icon='view-refresh-symbolic'),
+            self.row_button('Add game folder', None, lambda: (self.close_modal(), self.owner.choose_folder()), description='Choose one game’s folder.', icon='folder-new-symbolic'),
+            self.row_button('Add library folder', None, lambda: (self.close_modal(), self.owner.choose_folder()), description='Scan the games inside a folder, including new additions.', icon='folder-new-symbolic'),
+            self.row_button('Removed games', str(len(self.owner.settings.get('removed_games') or [])), self.open_removed_games),
+        ]
+        back = self.button('Back', self.close_modal)
+        self.show_modal('Library options', self.group(rows, True), [back], self.close_modal, 1000, back)
+
+    def open_removed_games(self):
+        removed = self.owner.settings.get('removed_games') or []
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=self.theme.px(20))
+        content.append(self.label('These entries are hidden. Their game files and restore backups are kept.', 'gm-p', wrap=True))
+        for path in removed:
+            content.append(self.label(path, 'gm-p', wrap=True))
+        restore = self.button('Restore all entries', lambda: (self.close_modal(), self.owner.restore_removed_games()), enabled=bool(removed))
+        self.show_modal('Removed games', content, [self.button('Back', self.close_modal), restore], self.close_modal, 1000)
 
     def confirm_exit(self):
         stay = self.button('Stay', self.close_modal)
@@ -903,13 +1133,14 @@ class GameMode(Gtk.Overlay):
         return {'installed': 'Installed', 'all': 'All'}.get(key, 'Available')
 
     def provider_name(self):
-        return {'dlss-unlocked': 'DLSS-Unlocked', 'custom': 'Custom package'}.get(self.owner.settings.get('runtime_provider'), 'y4my Multipass')
+        return {'dlss-unlocked': 'DLSS-Unlocked', 'custom': 'Custom package', 'skynizz': 'Skynizz', 'feeder': 'Feeder NR'}.get(self.owner.settings.get('runtime_provider'), 'y4my Multipass')
 
     def build_library(self):
         t = self.theme
         main = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(12 if t.compact else 14), vexpand=True)
-        main.set_margin_start(t.px(56))
-        main.set_margin_end(t.px(56))
+        inset = t.px(32 if self.layout_width <= 1050 else 48 if self.layout_width <= 1500 else 64)
+        main.set_margin_start(inset)
+        main.set_margin_end(inset)
         main.set_margin_top(t.px(16 if t.compact else 24))
         games = self.filtered_games()
         owner = self.owner
@@ -927,7 +1158,7 @@ class GameMode(Gtk.Overlay):
         heading.append(titles)
         provider = Gtk.Box(spacing=t.px(10), valign=Gtk.Align.CENTER)
         provider.add_css_class('gm-pill')
-        provider.append(self.icon('package-x-generic-symbolic', t.px(16)))
+        provider.append(self.icon('drive-multidisk-symbolic', t.px(16)))
         provider.append(self.label(self.provider_name()))
         heading.append(provider)
         main.append(heading)
@@ -947,19 +1178,19 @@ class GameMode(Gtk.Overlay):
             inner.set_spacing(t.px(12))
         mode = Gtk.Box(spacing=t.px(28), hexpand=True, valign=Gtk.Align.CENTER)
         mode.append(self.label('Features', 'gm-strong'))
-        nr_available = owner.settings.get('runtime_provider', 'y4my') in ('dlss-unlocked', 'custom')
+        nr_available = owner.settings.get('runtime_provider', 'y4my') in ('dlss-unlocked', 'custom', 'skynizz', 'feeder')
         mode.append(self.segments([('nr-only', 'NR Only', nr_available), ('mfg-only', 'MFG Only'), ('nr-mfg', 'NR + MFG')],
                                   owner.mode, self.set_mode))
         inner.append(mode)
-        targets = self.selected_games() if self.selecting else None
-        pool = targets if self.selecting else owner.games
+        pool = self.selected_games() if self.selecting else games
         actions = Gtk.Box(spacing=t.px(12), valign=Gtk.Align.CENTER, halign=Gtk.Align.START)
-        actions.append(self.button(f'Install selected ({len(self.selected)})' if self.selecting else 'Install to all',
-                                   lambda: self.run_operation('install', targets), 'primary', 'folder-download-symbolic',
+        install_label, restore_label, update_label = action_labels.library(len(self.selected) if self.selecting else 0)
+        actions.append(self.button(install_label,
+                                   lambda: self.run_operation('install', self.scoped_targets()), 'primary', 'folder-download-symbolic',
                                    enabled=any(not g.get('blocked') for g in pool), key='lib-install'))
-        actions.append(self.button('Restore', lambda: self.run_operation('uninstall', [g for g in (targets or owner.games) if g.get('installed')]),
+        actions.append(self.button(restore_label, lambda: self.run_operation('uninstall', [g for g in self.scoped_targets() if g.get('installed')]),
                                    'danger', 'edit-undo-symbolic', enabled=any(g.get('installed') for g in pool), key='lib-restore'))
-        actions.append(self.button('Update DLSS', lambda: self.run_operation('update-dlss', targets), 'dlss', 'emblem-synchronizing-symbolic',
+        actions.append(self.button(update_label, lambda: self.run_operation('update-dlss', self.scoped_targets()), 'dlss', 'emblem-synchronizing-symbolic',
                                    enabled=any(not g.get('blocked') for g in pool), key='lib-update'))
         inner.append(actions)
         main.append(toolbar)
@@ -981,13 +1212,15 @@ class GameMode(Gtk.Overlay):
             selection.append(self.button('Clear', lambda: (self.selected.clear(), self.render(keep_focus=True)), 'quiet', enabled=bool(self.selected), key='sel-clear'))
             selection.append(self.button('Done', self.stop_selecting, key='sel-done'))
         else:
+            selection.append(self.button('Rescan', self.refresh_library, 'quiet', 'view-refresh-symbolic', key='lib-rescan'))
+            selection.append(self.button('⋯', self.open_library_options, 'quiet', key='lib-options'))
             selection.append(self.button('Select games', self.start_selecting, 'quiet', 'object-select-symbolic', key='sel-start'))
         subbar.append(Gtk.Box(hexpand=True))
         subbar.append(selection)
         main.append(subbar)
 
-        scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True)
-        available = max(320, self.layout_width - t.px(56) * 2 - t.px(40))
+        scroll = self.scroller(hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True)
+        available = max(320, self.layout_width - inset * 2 - t.px(34))
         if not games:
             scroll.set_child(self.empty_library())
         elif view == 'list':
@@ -996,6 +1229,12 @@ class GameMode(Gtk.Overlay):
             scroll.set_child(self.card_layout(games, available, view == 'capsules'))
         main.append(scroll)
         self.library_scroll = scroll
+        gallery = scroll.get_child()
+        if isinstance(gallery, Gtk.Viewport):
+            gallery = gallery.get_child()
+        self.library_virtual = getattr(gallery, '_gm_virtual', None)
+        if self.library_virtual is not None:
+            self.library_virtual.attach(scroll)
         return main
 
     def set_mode(self, key):
@@ -1020,7 +1259,7 @@ class GameMode(Gtk.Overlay):
         t = self.theme
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(24), halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
         page.set_margin_top(t.px(60))
-        page.append(self.icon('applications-games-symbolic', t.px(60)))
+        page.append(self.icon('input-gaming-symbolic', t.px(60)))
         page.append(self.label('No games found' if not self.owner.games else 'No games match this filter', 'gm-h2', xalign=0.5))
         page.append(self.label('Refresh the library, or add a game folder in Desktop UI.' if not self.owner.games
                                else 'Choose a different filter to see more of your library.', 'gm-p', wrap=True, xalign=0.5))
@@ -1038,6 +1277,14 @@ class GameMode(Gtk.Overlay):
             columns = 4 if t.compact else 2 if self.layout_width <= 1050 else 3 if self.layout_width <= 1500 else 4
         gap = t.px(18 if t.compact else 24)
         cell = int((width - gap * (columns - 1)) // columns)
+        if len(games) > 56:
+            art_height = round(cell * 430 / 920) if wide else round(cell * 1.5)
+            row_height = art_height + t.px(8 if t.compact else 14) + round(t.em(.93) * 2.6) + gap
+            window = visuals.LibraryWindow(games, columns, width, row_height, gap,
+                lambda game, _index: self.game_card(game, cell, wide), self.owner.get_focus)
+            for side, value in (('start', 12), ('end', 22), ('top', 18), ('bottom', 18)):
+                getattr(window.widget, 'set_margin_' + side)(t.px(value))
+            return window.widget
         grid = Gtk.Grid(column_spacing=gap, row_spacing=t.px(18 if t.compact else 24), halign=Gtk.Align.START, valign=Gtk.Align.START)
         for side, value in (('start', 12), ('end', 22), ('top', 18), ('bottom', 18)):
             getattr(grid, 'set_margin_' + side)(t.px(value))
@@ -1069,7 +1316,9 @@ class GameMode(Gtk.Overlay):
         title.set_width_chars(1)
         column.append(title)
         enabled = not self.selecting or not game.get('blocked')
-        card = Gtk.Button(child=column, sensitive=enabled)
+        card = motion.MotionButton(preferences=self.owner.settings, motion_card=True, motion_unit=t.unit / 26, child=column, sensitive=enabled)
+        card._light_layer = self.art_light
+        card._light_art = frame
         card.add_css_class('gm-gamecard')
         card.add_css_class(self.accent_class(game))
         if self.selecting and game['game'] in self.selected:
@@ -1094,6 +1343,15 @@ class GameMode(Gtk.Overlay):
 
     def list_layout(self, games):
         t = self.theme
+        if len(games) > 56:
+            inset = t.px(32 if self.layout_width <= 1050 else 48 if self.layout_width <= 1500 else 64)
+            width = max(320, self.layout_width - inset * 2 - t.px(34))
+            height = t.px(max(84 if t.compact else 112, 68 + 32) + 2)
+            window = visuals.LibraryWindow(games, 1, width, height, 0,
+                lambda game, index: self.list_row(game, index == 0, index == len(games) - 1), self.owner.get_focus)
+            for side, value in (('start', 12), ('end', 22), ('top', 18), ('bottom', 18)):
+                getattr(window.widget, 'set_margin_' + side)(t.px(value))
+            return window.widget
         stack = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(2))
         for side, value in (('start', 12), ('end', 22), ('top', 18), ('bottom', 18)):
             getattr(stack, 'set_margin_' + side)(t.px(value))
@@ -1113,7 +1371,8 @@ class GameMode(Gtk.Overlay):
                 getattr(check, 'set_margin_' + side)(0)
             check.set_valign(Gtk.Align.CENTER)
             art_cell.append(check)
-        art_cell.append(self.picture(self.h.capsule_art_path(game) or self.h.poster_art_path(game), t.px(144), t.px(68)))
+        art = self.picture(self.h.capsule_art_path(game) or self.h.poster_art_path(game), t.px(144), t.px(68))
+        art_cell.append(art)
         surface.append(art_cell)
         names = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(4), hexpand=True, valign=Gtk.Align.CENTER)
         title = self.label(game['name'], 'gm-strong', 'gm-rowtitle')
@@ -1141,7 +1400,10 @@ class GameMode(Gtk.Overlay):
         details.set_valign(Gtk.Align.CENTER)
         surface.append(details)
         enabled = not self.selecting or not game.get('blocked')
-        row = Gtk.Button(child=surface, sensitive=enabled, hexpand=True)
+        row = motion.MotionButton(preferences=self.owner.settings, child=surface, sensitive=enabled, hexpand=True)
+        row._flat = True
+        row._light_layer = self.art_light
+        row._light_art = art
         row.add_css_class('gm-listrow')
         row.add_css_class(self.accent_class(game))
         if first:
@@ -1156,6 +1418,19 @@ class GameMode(Gtk.Overlay):
 
     def selected_games(self):
         return [g for g in self.owner.games if g['game'] in self.selected]
+
+    def scoped_targets(self):
+        """Explicit selection wins, else the current filter; never the whole library by default."""
+        if self.selecting and not self.selected:
+            self.toast('No games selected.')
+            return []
+        visible = {g['game'] for g in self.filtered_games()}
+        try:
+            return operation_targets(self.owner.games, self.selected if self.selecting else set(),
+                                     lambda g: g['game'] in visible)
+        except ScopeError as error:
+            self.toast(str(error))
+            return []
 
     def start_selecting(self):
         self.selecting = True
@@ -1216,7 +1491,7 @@ class GameMode(Gtk.Overlay):
             name.set_hexpand(True)
             line.append(name)
             line.append(self.label(description, 'gm-p'))
-            option = Gtk.Button(child=line, hexpand=True)
+            option = motion.MotionButton(preferences=self.owner.settings, child=line, hexpand=True)
             option.add_css_class('gm-btn')
             option.connect('clicked', lambda *_, key=key: (state.update(pending=key), refresh()))
             buttons[key] = option
@@ -1239,6 +1514,8 @@ class GameMode(Gtk.Overlay):
 
     def open_details(self, game):
         self.library_focus = self.focus_key()
+        if getattr(self, 'library_scroll', None) is not None:
+            self.library_offset = self.library_scroll.get_vadjustment().get_value()
         self.details_game = self.game = game
         self.section = 'Overview'
         self.presets_expanded = False
@@ -1255,11 +1532,12 @@ class GameMode(Gtk.Overlay):
     def build_details(self, g):
         t = self.theme
         width = self.layout_width
-        hero_height = t.px(240 if t.compact else 280 if width <= 1500 else 320)
-        nav_width = t.px(184 if width <= 1050 else 246 if width <= 1500 else 254)
-        side = t.px(24 if width <= 1050 else 36 if width <= 1500 else 56)
+        nav_width = t.px(220 if width <= 1050 else 254 if width <= 1500 else 268)
+        side = t.px(32 if width <= 1050 else 48 if width <= 1500 else 64)
+        hero_width = max(t.px(420), width - nav_width - side)
+        hero_height = round(max(t.px(360), min(t.px(620), hero_width * .38)))
         accent = self.accent_class(g)
-        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(12 if t.compact else 22), vexpand=True)
+        page = Gtk.Grid(row_spacing=t.px(12 if t.compact else 22), vexpand=True)
         page.add_css_class(accent)
 
         hero = Gtk.Overlay()
@@ -1273,7 +1551,7 @@ class GameMode(Gtk.Overlay):
         identity = Gtk.Box(spacing=t.px(30), valign=Gtk.Align.END)
         for side_name, value in (('start', side), ('end', side), ('bottom', t.px(18 if t.compact else 26))):
             getattr(identity, 'set_margin_' + side_name)(value)
-        poster_height = t.px(156 if t.compact else 184 if width <= 1500 else 210)
+        poster_height = round(max(t.px(120), min(t.px(260), hero_height * .48)))
         poster = self.picture(self.h.poster_art_path(g) or self.h.capsule_art_path(g), round(poster_height * 2 / 3), poster_height, css='gm-poster')
         poster.set_valign(Gtk.Align.END)
         identity.append(poster)
@@ -1289,42 +1567,58 @@ class GameMode(Gtk.Overlay):
         tested = (g.get('test_record') or {}).get('status', 'Untested') not in ('Untested', '')
         badges.append(self.badge('Tested' if tested else 'Untested', 'gm-badge-tested', 'object-select-symbolic' if tested else 'applications-science-symbolic', big=True))
         if g.get('installed') and g.get('installed_on') in ('linux', 'windows'):
-            badges.append(self.badge('Installed on ' + g['installed_on'].title(), 'gm-badge-source', 'rtx-os-' + g['installed_on'] + '-symbolic', big=True))
+            badges.append(self.badge(g['installed_on'].title(), 'gm-badge-source', 'rtx-os-' + g['installed_on'] + '-symbolic', big=True))
         text.append(badges)
-        state = 'Configured' if g.get('installed') else 'Unsupported' if g.get('blocked') else 'Available'
-        text.append(self.label(' · '.join((source, state, self.provider_name())), 'gm-small'))
+        # Windows hero: title and badges own the full width; developer ·
+        # release and summary sit beside the actions underneath.
+        lower_row = Gtk.Box(spacing=t.px(24))
+        about = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(6), hexpand=True, valign=Gtk.Align.END)
+        meta = ' · '.join(str(g[k]) for k in ('developers', 'release') if g.get(k))
+        if meta:
+            about.append(self.label(meta, 'gm-small'))
+        if g.get('description'):
+            summary = self.label(g['description'], 'gm-p', wrap=True, lines=2)
+            summary.set_max_width_chars(80)
+            summary.set_ellipsize(Pango.EllipsizeMode.END)
+            about.append(summary)
+        lower_row.append(about)
+        text.append(lower_row)
         identity.append(text)
         actions = Gtk.Box(spacing=t.px(12), valign=Gtk.Align.END)
         setup = self.owner.needs_linux_setup(g)
-        actions.append(self.button(('Set Up' if setup else 'Repair' if g.get('installed') else 'Install') if tight else
-                                   'Set Up for Linux' if setup else 'Repair Features' if g.get('installed') else 'Install Features',
+        actions.append(self.button('Set Up for Linux' if setup else action_labels.INSTALL,
                                    lambda: self.run_operation('install', [g]), 'primary', 'folder-download-symbolic', enabled=not g.get('blocked'), key='hero-install'))
-        actions.append(self.button('Restore' if tight else 'Restore Original Files', lambda: self.run_operation('uninstall', [g]), 'danger', 'edit-undo-symbolic',
+        actions.append(self.button(action_labels.RESTORE, lambda: self.run_operation('uninstall', [g]), 'danger', 'edit-undo-symbolic',
                                    enabled=bool(g.get('installed')), key='hero-restore'))
         actions.append(self.button('Update DLSS', lambda: self.run_operation('update-dlss', [g]), 'dlss', 'emblem-synchronizing-symbolic',
                                    enabled=not g.get('blocked'), key='hero-update'))
-        identity.append(actions)
+        if width <= 1050:
+            actions.set_orientation(Gtk.Orientation.VERTICAL)
+        if tight:
+            # Narrow windows drop the actions under the summary.
+            lower_row.set_orientation(Gtk.Orientation.VERTICAL)
+        lower_row.append(actions)
         hero.add_overlay(identity)
-        back = Gtk.Button(child=self.content('Back to Library', 'go-previous-symbolic'), halign=Gtk.Align.START, valign=Gtk.Align.START)
+        back = motion.MotionButton(preferences=self.owner.settings, child=self.content('Back to Library', 'go-previous-symbolic'), halign=Gtk.Align.START, valign=Gtk.Align.START)
         back.add_css_class('gm-back')
-        back.set_margin_start(side)
-        back.set_margin_top(t.px(12 if t.compact else 18))
         back.connect('clicked', lambda *_: self.close_details())
         self.key(back, 'details-back')
-        hero.add_overlay(back)
-        page.append(hero)
+        page.attach(hero, 1, 0, 1, 1)
 
-        lower = Gtk.Box(spacing=t.px(26), vexpand=True)
-        nav = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(6 if t.compact else 12))
-        nav.set_size_request(nav_width, -1)
-        nav.set_margin_start(side)
+        nav = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(8))
+        nav.set_margin_start(t.px(20))
+        nav.set_margin_end(t.px(20))
+        nav.set_margin_top(t.px(20))
+        nav.append(back)
         heading = self.label('Game Details', 'gm-h3', wrap=True)
         heading.set_margin_start(t.px(16))
         heading.set_margin_bottom(t.px(12 if t.compact else 20))
         nav.append(heading)
         first = None
         for section in SECTIONS:
-            button = Gtk.Button(child=self.label(section))
+            caption = self.sidebar_content(section, {'Overview':'go-home-symbolic','Features':'preferences-other-symbolic','DLSS Files':'text-x-generic-symbolic','Tools':'applications-utilities-symbolic','Appearance':'applications-graphics-symbolic','Notes':'accessories-text-editor-symbolic'}.get(section, 'emblem-system-symbolic'))
+            caption.set_halign(Gtk.Align.START)
+            button = motion.MotionButton(preferences=self.owner.settings, child=caption)
             button.add_css_class('gm-navbtn')
             if section == self.section:
                 button.add_css_class('on')
@@ -1332,18 +1626,20 @@ class GameMode(Gtk.Overlay):
             button.connect('clicked', lambda *_, section=section: self.open_section(section))
             self.key(button, 'section-' + section)
             nav.append(button)
-        nav_scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
+        nav_scroll = self.scroller(hscrollbar_policy=Gtk.PolicyType.NEVER)
+        nav_scroll.set_size_request(nav_width + side, -1)
         nav_scroll.set_child(nav)
-        lower.append(nav_scroll)
+        nav_scroll.add_css_class('gm-details-rail')
+        page.attach(nav_scroll, 0, 0, 1, 2)
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(24))
         for side_name, value in (('start', 24), ('end', 24), ('top', 12), ('bottom', 12)):
             getattr(content, 'set_margin_' + side_name)(t.px(value))
         self.build_section(g, content)
-        scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, hexpand=True)
+        scroll = self.scroller(hscrollbar_policy=Gtk.PolicyType.NEVER, hexpand=True)
         scroll.set_margin_end(side)
-        scroll.set_child(content)
-        lower.append(scroll)
-        page.append(lower)
+        scroll.set_child(self.section_scene(content, 'details:' + g['game'], self.section))
+        scroll.set_vexpand(True)
+        page.attach(scroll, 1, 1, 1, 1)
         if first is not None and not self.pending_focus:
             self.first_focus = first
         return page
@@ -1352,6 +1648,15 @@ class GameMode(Gtk.Overlay):
         self.section = section
         self.pending_focus = 'section-' + section
         self.render()
+
+    def section_scene(self, content, key, value):
+        previous = self.section_states.get(key)
+        self.section_states[key] = value
+        if previous == value:
+            return content
+        scene = motion.MotionScene(self.owner.settings, self.theme.unit / 26, region=2)
+        scene.set_child(content)
+        return scene
 
     def section_title(self, content, title, description=None):
         block = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=self.theme.px(10))
@@ -1384,7 +1689,7 @@ class GameMode(Gtk.Overlay):
             caption.set_hexpand(True)
             expander.append(caption)
             expander.append(self.label('Expanded' if self.presets_expanded else 'Collapsed', 'gm-small'))
-            toggle = Gtk.Button(child=expander, hexpand=True)
+            toggle = motion.MotionButton(preferences=self.owner.settings, child=expander, hexpand=True)
             toggle.add_css_class('gm-rowbtn')
             toggle.connect('clicked', lambda *_: self.toggle_presets())
             self.key(toggle, 'presets-expander')
@@ -1422,7 +1727,7 @@ class GameMode(Gtk.Overlay):
                 tile = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(10), halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
                 tile.append(self.icon(icon, t.px(22)))
                 tile.append(self.label(title, 'gm-strong', xalign=0.5))
-                widget = Gtk.Button(child=tile, sensitive=enabled, hexpand=True)
+                widget = motion.MotionButton(preferences=self.owner.settings, child=tile, sensitive=enabled, hexpand=True)
                 widget.add_css_class('gm-tile')
                 widget.connect('clicked', lambda *_, action=action: action())
                 self.key(widget, 'tool-' + title)
@@ -1483,7 +1788,7 @@ class GameMode(Gtk.Overlay):
                 ring.append(dot)
                 cell.append(ring)
                 cell.append(self.label(name, 'gm-small', xalign=0.5))
-                swatch = Gtk.Button(child=cell)
+                swatch = motion.MotionButton(preferences=self.owner.settings, child=cell)
                 swatch.add_css_class('gm-swatch-button')
                 swatch.update_property([Gtk.AccessibleProperty.LABEL], [f'{name} {color}'])
                 swatch.connect('clicked', lambda *_, color=color: self.set_accent(g, color))
@@ -1492,28 +1797,25 @@ class GameMode(Gtk.Overlay):
             content.append(swatches)
             content.append(self.button('Use artwork color', lambda: self.set_accent(g, None), enabled=bool(current), halign=Gtk.Align.START))
         else:
-            self.section_title(content, 'Overview')
-            if g.get('description'):
-                content.append(self.label('About', 'gm-h3'))
-                about = self.label(g['description'], 'gm-p', wrap=True)
-                about.set_max_width_chars(90)
-                content.append(about)
-            content.append(self.label('Game Information', 'gm-h3'))
-            rows = []
-            for title, key in (('Developer', 'developers'), ('Release', 'release')):
-                if g.get(key):
-                    rows.append(self.preference(title, None, self.label(g[key], 'gm-value')))
-            location = self.label(g.get('game', ''), 'gm-value', wrap=True, xalign=1.0)
-            location.set_max_width_chars(48)
-            rows += [
-                self.preference('Library', None, self.label(g.get('library') or g.get('source') or '', 'gm-value')),
-                self.preference('Location', None, location),
-                self.preference('Compatibility', None, self.label(g.get('blocked') or 'Supported', 'gm-value')),
-                self.preference('Metadata Source', None, self.label(g.get('metadata_source') or g.get('source') or '', 'gm-value')),
-            ]
-            if g.get('installed') and g.get('installed_on') in ('linux', 'windows'):
-                rows.append(self.preference('Installed with', None, self.label('rtxForge on ' + g['installed_on'].title(), 'gm-value')))
-            content.append(self.group(rows))
+            if g.get('adoption_available'):
+                content.append(self.tool_card('Adoption available', overview_facts.ADOPTION_NOTE, None))
+            if g.get('installed_on') == 'windows':
+                content.append(self.tool_card('Installed on Windows', overview_facts.WINDOWS_NOTE, None))
+            if g.get('blocked'):
+                content.append(self.tool_card('rtxForge will not modify this game', str(g['blocked']), None))
+            facts = overview_facts.facts(g)
+            columns, count = self.tool_columns(min(4, max(1, len(facts))))
+            for index, (title, value, icon) in enumerate(facts):
+                card = self.tool_card(title, value, None)
+                columns.attach(card, index % count, index // count, 1, 1)
+            content.append(columns)
+            folder = overview_facts.folder(g)
+            if folder:
+                open_folder = self.button('Open folder', lambda: Gio.AppInfo.launch_default_for_uri(Path(folder).as_uri(), None),
+                                          enabled=not self.owner.options.demo, key='details-open-folder')
+                content.append(self.tool_card('Game folder', folder, open_folder))
+            content.append(self.button('Remove from library', lambda: self.owner.confirm_remove_game(g), enabled=not self.owner.busy,
+                                       key='details-remove', halign=Gtk.Align.START))
 
     def toggle_presets(self):
         self.presets_expanded = not self.presets_expanded
@@ -1547,62 +1849,86 @@ class GameMode(Gtk.Overlay):
         source = game if game is not None else owner.settings
         state = {'nr': float(source.get('nr_strength', owner.settings.get('nr_strength', 2.0)) or 0),
                  'sharp': float(source.get('sharpening_strength', owner.settings.get('sharpening_strength', 0.5)) or 0),
-                 'mfg': source.get('mfg_multiplier', owner.settings.get('mfg_multiplier', 'auto'))}
-        if state['mfg'] not in MULTIPLIERS:
-            state['mfg'] = 'auto'
-        def mfg_text():
-            value = state['mfg']
-            return 'In game' if value == 'auto' else 'Off' if value == 0 else f'{value}×'
-        def mfg_step(delta):
-            order = [0, 2, 3, 4, 5, 6, 'auto']
-            state['mfg'] = order[max(0, min(len(order) - 1, order.index(state['mfg']) + delta))]
+                 }
+        saved = dict(owner.settings)
+        saved.update({k: source[k] for k in ('mfg_multiplier', 'dynamic_mfg', 'mfg_saved_mode', 'mfg_saved_multiplier') if source.get(k) is not None})
+        dynamic_available = bool(game.get('dynamic_mfg_available')) if game is not None else owner.settings.get('runtime_provider') == 'skynizz'
+        state['mfg_on'], state['mfg_mode'], state['mfg_ratio'] = mfg_choice.from_values(saved)
+        if state['mfg_mode'] == mfg_choice.DYNAMIC and not dynamic_available:
+            state['mfg_mode'] = mfg_choice.CUSTOM
+        modes = [m for m in mfg_choice.MODES if m != mfg_choice.DYNAMIC or dynamic_available]
+        def mode_step(delta):
+            state['mfg_mode'] = modes[max(0, min(len(modes) - 1, modes.index(state['mfg_mode']) + delta))]
+        def ratio_step(delta):
+            state['mfg_ratio'] = max(2, min(6, state['mfg_ratio'] + delta))
+        mfg_enabled = enabled and owner.mode != 'nr-only'
         rows = [
             self.stepper('NR Strength', '0.0 turns the effect off.', lambda: f"{state['nr']:.1f}",
                          lambda d: state.update(nr=max(0.0, min(2.0, round(state['nr'] + d * 0.1, 1)))), enabled and owner.mode != 'mfg-only', key='step-nr'),
             self.stepper('Sharpening', '0.0 turns sharpening off.', lambda: f"{state['sharp']:.1f}",
                          lambda d: state.update(sharp=max(0.0, min(1.0, round(state['sharp'] + d * 0.1, 1)))), enabled, key='step-sharp'),
-            self.stepper('Frame generation', 'MFG multiplier · enable frame generation in the game.', mfg_text, mfg_step,
-                         enabled and owner.mode != 'nr-only', key='step-mfg'),
+            self.stepper('Multi-Frame Generation', 'Enable frame generation in the game as well.', lambda: 'On' if state['mfg_on'] else 'Off',
+                         lambda d: state.update(mfg_on=d > 0), mfg_enabled, key='step-mfg'),
+            self.stepper('MFG mode', 'Auto follows the game · Custom is fixed · Dynamic is a maximum where supported.',
+                         lambda: mfg_choice.MODE_NAMES[state['mfg_mode']], mode_step, mfg_enabled, key='step-mfg-mode'),
+            self.stepper('MFG ratio', 'Used by Custom and Dynamic.', lambda: f"{state['mfg_ratio']}×", ratio_step, mfg_enabled, key='step-mfg-ratio'),
         ]
-        return rows, lambda: {'nr_strength': state['nr'], 'sharpening_strength': state['sharp'], 'mfg_multiplier': state['mfg']}
+        features={}
+        if source.get('runtime_provider',owner.settings.get('runtime_provider'))=='skynizz':
+            from feature_presets import definitions, normalized
+            features=normalized(source.get('feature_controls',owner.settings.get('feature_controls',{})))
+            for item in definitions():
+                k=item['key']
+                choices=item.get('values')
+                def step(delta,k=k,item=item,choices=choices):
+                    if choices:
+                        index=choices.index(features[k]) if features[k] in choices else 0
+                        features[k]=choices[max(0,min(len(choices)-1,index+delta))]
+                    else:features[k]=round(max(item['min'],min(item['max'],features[k]+delta*item.get('step',1))),2)
+                def caption(k=k,item=item,choices=choices):
+                    if choices:return item['choices'][choices.index(features[k])]
+                    if item['kind']=='toggle':return 'On' if features[k] else 'Off'
+                    return str(features[k])
+                editable=enabled and not (item['section']=='DlssNr' and source.get('feature_mode',owner.mode)=='mfg-only')
+                rows.append(self.stepper(item['label'].replace('Colour','Color'),item['group'],caption,step,editable,key='preset-'+k))
+        return rows, lambda: {**({'feature_controls':dict(features)} if features else {}), 'nr_strength': state['nr'], 'sharpening_strength': state['sharp'],
+                              **mfg_choice.to_values(state['mfg_on'], state['mfg_mode'], state['mfg_ratio'], dynamic_available)}
 
     # ---------------- presets ----------------
 
     def build_presets(self):
-        t = self.theme
-        owner = self.owner
-        column = min(t.px(1600), max(0, self.layout_width - t.px(56) * 2))
-        side = max(t.px(56), (self.layout_width - column) // 2)
-        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(24))
-        for name, value in (('start', side), ('end', side), ('top', t.px(32)), ('bottom', t.px(24))):
-            getattr(page, 'set_margin_' + name)(value)
+        t, owner = self.theme, self.owner
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(20), vexpand=True)
+        inset = t.px(32 if self.layout_width <= 1050 else 48 if self.layout_width <= 1500 else 64)
+        for edge, value in (('start', inset), ('end', inset), ('top', t.px(24)), ('bottom', t.px(20))):
+            getattr(page, 'set_margin_' + edge)(value)
         head = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(10))
-        head.append(self.label('Library presets', 'gm-h1'))
-        head.append(self.label('Apply to your configured games. Unmanaged games are skipped.', 'gm-p'))
+        head.append(self.label('Presets', 'gm-h1'))
+        head.append(self.label('Your defaults for new installs. Review games to apply them to existing packages.', 'gm-p', wrap=True))
         page.append(head)
-        rows, value = self.preset_rows(None)
-        self.preset_value = value
-        page.append(self.group(rows))
-        note = Gtk.Box(spacing=t.px(12))
-        note.append(self.icon('dialog-information-symbolic', t.px(18)))
-        note.append(self.label('Saved settings take effect on the next game launch. They do not verify the rendered effect.', 'gm-p', wrap=True))
-        page.append(note)
+        rows, self.preset_value = self.preset_rows(None)
+        fields = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(24))
+        for row in rows:
+            fields.append(row)
+        scroll = self.scroller(hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True)
+        scroll.set_child(fields)
+        page.append(scroll)
         configured = [g for g in owner.games if g.get('installed') and not g.get('blocked')]
-        actions = Gtk.Box(spacing=t.px(16))
-        actions.append(self.button(f'Apply to all configured games ({len(configured)})', lambda: self.apply_presets(configured), 'primary',
-                                   enabled=bool(configured), key='presets-apply'))
+        footer = Gtk.Box(spacing=t.px(24))
+        footer.append(Gtk.Box(hexpand=True))
+        actions = Gtk.Box(spacing=t.px(12), halign=Gtk.Align.END)
+        actions.append(self.button('Reset', lambda: self.render(), key='presets-discard'))
         def choose():
             self.save_presets()
             self.selecting = True
             self.selected.clear()
             self.open('library')
-            self.toast('Select games, then Install selected or use Presets › Apply.')
-        actions.append(self.button('Select games to apply', choose, enabled=bool(configured)))
-        actions.append(self.button('Reset Presets', lambda: self.render()))
-        page.append(actions)
-        scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True)
-        scroll.set_child(page)
-        return scroll
+            self.toast('Select games, then choose Install Features to review your presets.')
+        actions.append(self.button('Select games', choose, enabled=bool(configured), key='presets-select'))
+        actions.append(self.button('Apply to all', lambda: self.apply_presets(configured), 'primary', enabled=bool(configured), key='presets-apply'))
+        footer.append(actions)
+        page.append(footer)
+        return page
 
     def save_presets(self):
         values = self.preset_value() if getattr(self, 'preset_value', None) else None
@@ -1611,14 +1937,15 @@ class GameMode(Gtk.Overlay):
         self.owner.settings.update(values)
         for key, widget in self.owner.tuning_widgets.items():
             if key == 'mfg_multiplier':
-                widget.set_selected(self.owner.multiplier_values.index(values[key]))
+                widget.set_values(values)
             else:
                 widget.set_value(values[key])
         self.save_settings()
 
     def apply_presets(self, games):
         self.save_presets()
-        self.run_operation('reset', games, {k: self.owner.settings[k] for k in ('nr_strength', 'sharpening_strength', 'mfg_multiplier')})
+        keys = ('nr_strength', 'sharpening_strength', 'mfg_multiplier', 'dynamic_mfg', 'mfg_saved_mode', 'mfg_saved_multiplier', 'feature_controls')
+        self.run_operation('reset', games, {k: self.owner.settings[k] for k in keys if k in self.owner.settings})
 
     # ---------------- settings ----------------
 
@@ -1626,17 +1953,22 @@ class GameMode(Gtk.Overlay):
         t = self.theme
         width = self.layout_width
         grid = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(22), vexpand=True)
-        for name, value in (('start', 56), ('end', 56), ('top', 32)):
+        side = 32 if width <= 1050 else 48 if width <= 1500 else 64
+        for name, value in (('start', side), ('end', side), ('top', 32)):
             getattr(grid, 'set_margin_' + name)(t.px(value))
         head = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(10))
         head.append(self.label('Settings', 'gm-h1'))
-        head.append(self.label('The same rtxForge preferences, sized for the couch.', 'gm-p'))
         grid.append(head)
-        lower = Gtk.Box(spacing=t.px(40), vexpand=True)
+        lower = Gtk.Box(spacing=t.px(24), vexpand=True)
         nav = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(12))
-        nav.set_size_request(t.px(180 if width <= 1050 else 220 if width <= 1500 else 270), -1)
+        nav.set_size_request(t.px(220 if width <= 1050 else 264), -1)
+        symbols = {'Graphics':'video-display-symbolic', 'Overlay':'view-reveal-symbolic', 'Appearance':'applications-graphics-symbolic',
+                   'Library':'input-gaming-symbolic', 'Gaming Mode':'input-gaming-symbolic', 'System':'emblem-system-symbolic',
+                   'Recovery':'document-revert-symbolic', 'About':'dialog-information-symbolic'}
         for section in SETTINGS_SECTIONS:
-            button = Gtk.Button(child=self.label(section))
+            caption = self.sidebar_content(section, symbols[section])
+            caption.set_halign(Gtk.Align.START)
+            button = motion.MotionButton(preferences=self.owner.settings, child=caption)
             button.add_css_class('gm-navbtn')
             if section == self.settings_section:
                 button.add_css_class('on')
@@ -1647,26 +1979,58 @@ class GameMode(Gtk.Overlay):
             nav.append(button)
         lower.append(nav)
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(24))
-        description, rows = self.settings_rows(self.settings_section)
-        title = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(10))
-        title.append(self.label(self.settings_section, 'gm-h2'))
-        title.append(self.label(description, 'gm-p', wrap=True))
-        content.append(title)
-        content.append(self.group(rows))
-        if self.settings_section == 'Controller':
-            buttons = self.label('Buttons', 'gm-h3')
-            buttons.set_margin_top(t.px(12))
-            content.append(buttons)
-            content.append(self.group(self.guide_rows('controller')))
-        note = Gtk.Box(spacing=t.px(12))
-        note.append(self.icon('dialog-information-symbolic', t.px(18)))
-        note.append(self.label('Mouse or keyboard input keeps your chosen interface.', 'gm-p'))
-        content.append(note)
-        scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, hexpand=True)
-        scroll.set_child(content)
+        _description, rows = self.settings_rows(self.settings_section)
+        content.append(self.label(self.settings_section, 'gm-h2'))
+        groups = self.settings_groups(self.settings_section, rows)
+        for heading, description, entries in groups:
+            group = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(12))
+            group.append(self.label(heading, 'gm-h3'))
+            if description:
+                group.append(self.label(description, 'gm-p', wrap=True))
+            fields = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(8))
+            for row in entries:
+                row.add_css_class('gm-settings-row' if isinstance(row, Gtk.Button) else 'gm-surface')
+                fields.append(row)
+            group.append(fields)
+            content.append(group)
+        scroll = self.scroller(hscrollbar_policy=Gtk.PolicyType.NEVER, hexpand=True)
+        scroll.set_child(self.section_scene(content, 'settings', self.settings_section))
         lower.append(scroll)
         grid.append(lower)
         return grid
+
+    def settings_groups(self, section, rows):
+        if section == 'Graphics':
+            return [('Install defaults', 'Applied to new installs; game changes are reviewed first.', rows[:3]),
+                    ('Existing features', 'Register compatible feature packages already installed.', rows[3:])]
+        if section == 'Appearance':
+            return [('Theme', None, rows)]
+        if section == 'Library':
+            return [('Library view', None, rows[:1]), ('Artwork and game information', None, rows[1:4]),
+                    ('Steam integration', None, rows[4:])]
+        if section == 'Gaming Mode':
+            return [('Interface', 'Mouse, keyboard, and controller input keep your chosen interface.', rows[:1]),
+                    ('Layout and labels', None, rows[1:4]), ('Controller', None, rows[4:])]
+        if section == 'Overlay':
+            return [('rtxForge Panel', 'In-game controls. Games pick these up on their next reviewed install or repair.', rows[:3]),
+                    ('OptiScaler', None, rows[3:6]), ('ReShade', None, rows[6:])]
+        return [({'System':'Hardware', 'Recovery':'Previous changes', 'About':'App and updates'}.get(section, section), None, rows)]
+
+    def setting_toggle(self, title, description, get, setter):
+        switch = Gtk.Switch(active=bool(get()), can_target=False, focusable=False, valign=Gtk.Align.CENTER)
+        switch.update_property([Gtk.AccessibleProperty.LABEL], [title])
+        row = motion.MotionButton(preferences=self.owner.settings,
+            child=self.preference(title, description, switch, inset=False), hexpand=True)
+        row._flat = True
+        row.add_css_class('gm-rowbtn')
+        def commit(value):
+            setter(value)
+            switch.set_active(bool(get()))
+            self.save_settings()
+        row.connect('clicked', lambda *_: commit(not get()))
+        row._gm_adjust = lambda delta: commit(delta > 0)
+        self.key(row, 'choice-' + title)
+        return row
 
     def open_settings_section(self, section):
         self.settings_section = section
@@ -1689,7 +2053,7 @@ class GameMode(Gtk.Overlay):
                        ('Main menu', 'F10'), ('Move focus in order', 'Tab / Shift+Tab')]
         rows = []
         for action, key in entries:
-            row = Gtk.Button(child=self.preference(action, None, self.keycap(key), inset=False), hexpand=True)
+            row = motion.MotionButton(preferences=self.owner.settings, child=self.preference(action, None, self.keycap(key), inset=False), hexpand=True)
             row.add_css_class('gm-rowbtn')
             rows.append(row)
         return rows
@@ -1698,20 +2062,69 @@ class GameMode(Gtk.Overlay):
         owner = self.owner
         s = owner.settings
         def set_theme(value):
-            s['theme'] = value
-            s['dark'] = value != 'light'
+            contract.set_theme(s, value)
+            if s.get('game_mode_theme_linked', True):
+                owner.apply_color_theme()
             GLib.idle_add(lambda: (self.apply_theme(), self.render(keep_focus=True), False)[-1])
+        if section == 'Graphics':
+            def default_mode(value):
+                s['default_profile'] = value
+                owner.profile_group.set_active_name(value)
+                owner.mode = value
+            return 'Install defaults. Game changes are reviewed first.', [
+                self.choice('Default mode', 'Features selected when rtxForge starts.', ['nr-only', 'mfg-only', 'nr-mfg'],
+                            ['NR Only', 'MFG Only', 'NR + MFG'], lambda: s.get('default_profile', 'mfg-only'), default_mode),
+                self.choice('Enable NR on launch', 'Leave off to enable NR later from the overlay.', [False, True], ['Off', 'On'],
+                            lambda: bool(s.get('nr_on_launch', False)), lambda v: s.update(nr_on_launch=v)),
+                self.choice('Update DLSS files', 'Keep backups when updating older DLSS files.', [False, True], ['Off', 'On'],
+                            lambda: bool(s.get('manage_dlss_files', True)), lambda v: s.update(manage_dlss_files=v)),
+                self.choice('Recognize existing features', 'Allow updates to compatible installations from other tools.', [False, True], ['Off', 'On'],
+                            lambda: bool(s.get('recognize_previous', False)), lambda v: s.update(recognize_previous=v)),
+            ]
+        if section == 'Recovery':
+            return 'Review earlier changes and original-file recovery.', [
+                self.row_button('Previous changes', None, owner.show_undo, description='Browse available recovery records.', icon='document-revert-symbolic'),
+                self.row_button('Old NR files', None, owner.show_cleanup, description='Find NR files left by older tools.'),
+            ]
+        if section == 'About':
+            return 'rtxForge ' + self.h.app_version, [
+                self.row_button('Check for updates', None, owner.check_app_update, description='Download, verify and install the newest build.'),
+            ]
         if section == 'Appearance':
-            return 'Shared desktop appearance. Gaming Mode keeps a clear focus ring.', [
-                self.choice('Theme', 'Night is the Game Mode default.', ['night', 'dark', 'light'], ['Night', 'Dark', 'Light'],
-                            lambda: s.get('theme') if s.get('theme') in ('light', 'dark') else 'night', set_theme),
-                self.choice('Button glyphs', 'Icons beside action labels; selection and package identity stay visible.', [True, False], ['On', 'Off'],
-                            lambda: bool(s.get('button_glyphs', True)), lambda v: s.update(button_glyphs=v)),
+            return 'Color and motion for Game Mode.', [
+                self.choice('Color theme', 'Choose Game Mode’s appearance.', ['night', 'dark', 'light'], ['Night', 'Dark', 'Light'],
+                            lambda: contract.theme_name(s), set_theme),
+                self.choice(contract.THEME_LINK_LABEL, 'Turn off to choose each interface’s theme separately.', [False, True], ['Off', 'On'],
+                            lambda: bool(s.get('game_mode_theme_linked', True)), lambda v: (contract.link_themes(s, v), GLib.idle_add(lambda: (self.apply_theme(), self.render(keep_focus=True), False)[-1]))),
+                self.choice('Reduce motion', 'Keep strong focus cues with less movement. System accessibility settings are always respected.', [False, True], ['Off', 'On'],
+                            lambda: bool(s.get('reduce_motion', False)), lambda v: s.update(reduce_motion=v)),
+            ]
+        if section == 'Overlay':
+            on_off = ([True, False], ['On', 'Off'])
+            return 'In-game controls. Games pick these up on their next reviewed install or repair.', [
+                self.choice('Panel', None, ['game', 'optiscaler'], ['In the game', 'OptiScaler menu only'],
+                            lambda: s.get('overlay_renderer', 'game'), lambda v: s.update(overlay_renderer=v)),
+                self.choice('Controls', 'Advanced shows OptiScaler\u2019s own variables and units.', ['unified', 'classic'], ['Unified', 'Advanced'],
+                            lambda: s.get('overlay_controls', 'unified'), lambda v: s.update(overlay_controls=v)),
+                self.row_button('Panel shortcut', overlay_shortcut.display(s.get('panel_hotkey')),
+                                lambda: self.toast('Record a new shortcut in Desktop Settings \u203a Overlay.'), description='Opens the rtxForge panel in game.'),
+                self.choice('OptiScaler menu', 'Hiding it never turns off NR or MFG.', *on_off,
+                            lambda: bool(s.get('optiscaler_ui', True)), lambda v: s.update(optiscaler_ui=v)),
+                self.choice('OptiScaler intro', None, *on_off, lambda: bool(s.get('optiscaler_intro', False)), lambda v: s.update(optiscaler_intro=v)),
+                self.choice('OptiScaler shortcut', None, ['Insert', 'F8', 'Disabled'], ['Insert', 'F8', 'Disabled'],
+                            lambda: s.get('optiscaler_hotkey', 'Insert'), lambda v: s.update(optiscaler_hotkey=v)),
+                self.choice('ReShade menu', 'For games set up with the Feeder route.', *on_off,
+                            lambda: bool(s.get('reshade_ui', True)), lambda v: s.update(reshade_ui=v)),
+                self.choice('ReShade welcome', None, *on_off, lambda: bool(s.get('reshade_intro', False)), lambda v: s.update(reshade_intro=v)),
             ]
         if section == 'Library':
             return 'Manage the library layout and artwork sources.', [
                 self.choice('Library layout', None, ['posters', 'capsules', 'list'], ['Posters', 'Wide Capsule', 'List'],
                             lambda: s.get('library_view', 'posters'), lambda v: s.update(library_view=v)),
+                self.choice('Download missing artwork', 'Cached images stay available offline.', [False, True], ['Off', 'On'],
+                            lambda: bool(s.get('online_art', True)), lambda v: s.update(online_art=v)),
+                self.choice('Download game information', 'Descriptions, developers, and release dates from Steam.', [False, True], ['Off', 'On'],
+                            lambda: bool(s.get('steam_metadata', True)), lambda v: s.update(steam_metadata=v)),
                 self.row_button('Refresh artwork', 'Refresh', lambda: (self.toast('Refreshing artwork…'), owner.fetch_media(True)), icon='view-refresh-symbolic'),
                 self.row_button('Sync artwork to Steam', None, lambda: owner.sync_steam_artwork(), description='Review and sync artwork for your library.', icon='rtx-steam-symbolic'),
                 self.row_button('Steam artwork profile', None, owner.choose_steam_artwork_profile, description='Choose which local Steam account receives artwork.'),
@@ -1727,17 +2140,32 @@ class GameMode(Gtk.Overlay):
         if section == 'Keyboard':
             return 'Every keyboard shortcut in Gaming Mode.', self.guide_rows('keyboard')
         if section == 'System':
-            def set_scale(value):
-                s['ui_scale'] = value
+            host = getattr(owner, 'hardware', None)
+            if not isinstance(host, dict):
+                host = getattr(owner, 'host', None)
+            if isinstance(host, dict):
+                return 'Hardware', [self.preference('Graphics card', None, self.label(str(host.get('gpu') or 'Unavailable'), 'gm-value')),
+                                    self.preference('Driver', None, self.label(str(host.get('driver') or 'Unavailable'), 'gm-value'))]
+            return 'Hardware', [self.preference('Hardware information', 'Unavailable in this session.')]
+        if section == 'Gaming Mode':
+            def scale(value):
+                s['ui_scale'] = value if value == 'auto' else int(value)
                 owner.apply_display_preferences()
                 GLib.idle_add(lambda: (self.apply_theme(), self.render(keep_focus=True), False)[-1])
-            return 'Display scaling, navigation, recovery and updates.', [
-                self.choice('UI scale', 'Automatic follows the window size (150% at 4K).', ['auto', '100', '125', '150', '175', '200'],
-                            ['Automatic', '100%', '125%', '150%', '175%', '200%'], lambda: str(s.get('ui_scale', 'auto')), set_scale),
-                self.choice('Navigation', None, ['top', 'bottom'], ['Top', 'Bottom'], lambda: s.get('navigation_position', 'top'), lambda v: s.update(navigation_position=v)),
-                self.row_button('Previous changes', None, owner.show_undo, description='Browse available recovery records.', icon='document-revert-symbolic'),
-                self.row_button('Old NR files', None, owner.show_cleanup, description='Find NR files left by older tools.'),
-                self.row_button('Check for updates', None, owner.check_app_update, description='rtxForge ' + self.h.app_version + ' · download, verify and install.'),
+            def guide(kind):
+                self.show_modal('Controller buttons' if kind == 'controller' else 'Keyboard shortcuts', self.group(self.guide_rows(kind)),
+                                [self.button('Close', self.close_modal)], self.close_modal, 1000)
+            return 'Mouse, keyboard and controller input keep your chosen interface.', [
+                self.choice('Interface', None, ['game', 'desktop'], ['Gaming Mode', 'Desktop'], lambda: 'game',
+                            lambda v: GLib.idle_add(lambda: (owner.set_input_surface(False), False)[1]) if v == 'desktop' else None),
+                self.choice('Game Mode scale', 'Automatic uses a 130% reference at 4K and adapts to the window.', ['auto', 100, 125, 130, 150, 175, 200],
+                            ['Automatic', '100%', '125%', '130%', '150%', '175%', '200%'], lambda: s.get('ui_scale', 'auto'), scale),
+                self.choice('Navigation placement', None, ['top', 'bottom'], ['Top', 'Bottom'], lambda: s.get('navigation_position', 'top'), lambda v: s.update(navigation_position=v)),
+                self.choice('Button glyphs', 'Icons beside action labels; selection and package identity stay visible.', [True, False], ['On', 'Off'],
+                            lambda: bool(s.get('button_glyphs', True)), lambda v: s.update(button_glyphs=v)),
+                *self.settings_rows('Controller')[1],
+                self.row_button('Controller buttons', None, lambda: guide('controller')),
+                self.row_button('Keyboard shortcuts', None, lambda: guide('keyboard')),
             ]
         steam_added = owner.steam_shortcut_added() if hasattr(owner, 'steam_shortcut_added') else False
         return 'Open rtxForge from your existing gaming environment.', [
@@ -1756,7 +2184,8 @@ class GameMode(Gtk.Overlay):
             self.toast('Another operation is running.')
             return
         if targets is None:
-            targets = [g for g in owner.games if g.get('installed')] if operation == 'uninstall' else [g for g in owner.games if not g.get('blocked')]
+            targets = self.scoped_targets()
+            targets = [g for g in targets if g.get('installed')] if operation == 'uninstall' else [g for g in targets if not g.get('blocked')]
         if not targets:
             self.toast('No eligible games.')
             return
@@ -1774,7 +2203,7 @@ class GameMode(Gtk.Overlay):
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(20))
         content.append(self.label('Adjust your presets or continue. You can change these settings later in OptiScaler.', 'gm-p', wrap=True))
         line = Gtk.Box(spacing=t.px(12))
-        line.append(self.icon('package-x-generic-symbolic', t.px(16)))
+        line.append(self.icon('drive-multidisk-symbolic', t.px(16)))
         line.append(self.label(self.provider_name()))
         content.append(line)
         content.append(self.group(rows, True))
@@ -1807,11 +2236,11 @@ class GameModeFlow:
         self.total = 0
         self.dialog = None
         # Plain labelled buttons: the desktop window relabels them (set_label).
-        self.primary = Gtk.Button(label=self.verb)
+        self.primary = motion.MotionButton(preferences=self.owner.settings, label=self.verb)
         self.primary.add_css_class('gm-btn')
         self.primary.add_css_class('gm-primary')
         self.primary.connect('clicked', lambda *_: self._primary())
-        self.cancel_button = Gtk.Button(label='Cancel')
+        self.cancel_button = motion.MotionButton(preferences=self.owner.settings, label='Cancel')
         self.cancel_button.add_css_class('gm-btn')
         self.cancel_button.connect('clicked', lambda *_: self.cancel())
         owner.operation_flow = self

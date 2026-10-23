@@ -112,7 +112,7 @@ public sealed partial class SettingsPage : Page
         detailsWindow.SelectionChanged += (_, _) => { Settings.SeparateGameDetails = detailsWindow.SelectedIndex == 1; Save(); };
         details.Add(row);
         var libraryView = new PreferencesGroup("Library view");
-        (row, var theme) = Prefs.ComboRow("App theme", "Changes only rtxForge.", ThemeController.Captions,
+        (row, var theme) = Prefs.ComboRow("Color theme", "Changes only rtxForge.", ThemeController.Captions,
             Math.Max(0, Array.IndexOf(ThemeController.Keys, Settings.Theme)), "");
         theme.SelectionChanged += (_, _) => { Settings.Theme = ThemeController.Keys[theme.SelectedIndex]; Save(); };
         appearance.Add(row);

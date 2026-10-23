@@ -19,6 +19,7 @@ public sealed partial class GmUi(GmTheme t)
 {
     public GmTheme T => t;
     readonly Dictionary<string, GmSelection> indicators = [];
+    internal bool SelectionSurfacesMeasured => indicators.Values.All(indicator => indicator.MeasuredHeight > 0);
     internal Grid Selection(string key, StackPanel line, Button selected, bool navigation = false)
     {
         if (!indicators.TryGetValue(key, out var indicator)) indicators[key] = indicator = new GmSelection();
@@ -176,6 +177,12 @@ public sealed partial class GmUi(GmTheme t)
     }
 
     /// <summary>Menu focus adds a surface and brighter ink; selection colours remain owned by the page.</summary>
+    public void Sidebar(Button button, bool active)
+    {
+        if (!active) button.Background = GmTheme.B(Microsoft.UI.Colors.Transparent);
+        MenuFocus(button);
+    }
+
     public void MenuFocus(Button button)
     {
         Brush? priorBackground = null, priorForeground = null;

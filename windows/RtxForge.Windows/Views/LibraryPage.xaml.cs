@@ -458,6 +458,7 @@ public sealed partial class LibraryPage : Page
     {
         var count = SelectedGames().Count;
         InstallText.Text = count > 0 ? $"Install Selected ({count})" : "Install Features";
+        RestoreText.Text = count > 0 ? $"Restore Selected ({count})" : "Restore Original Files";
         shell.SyncCompactDashboard(shell.Mode, ModeNrOnly.IsEnabled, InstallText.Text);
         shell.SyncCompactPresets(count);
         SelectAllButton.Label = count > 0 ? "Clear" : "Select all";

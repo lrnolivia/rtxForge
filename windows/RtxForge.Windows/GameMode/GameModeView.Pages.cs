@@ -116,7 +116,7 @@ public sealed partial class GameModeView
         ShowModal("Choose games", choices, [ui.Button("Cancel", CloseModal, GmKind.Card, .85), review], CloseModal, 920);
     }
 
-    // ---------- Settings (the same preferences, sized for the couch) ----------
+    // ---------- Settings ----------
 
     static readonly string[] SettingsSections = ["Graphics", "Overlay", "Appearance", "Library", "Gaming Mode", "System", "Recovery", "About"];
     sealed record SettingsGroup(string Title, string? Description, IReadOnlyList<UIElement> Rows);
@@ -147,7 +147,6 @@ public sealed partial class GameModeView
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         var head = new StackPanel { Spacing = t.Px(10) };
         head.Children.Add(ui.H1("Settings"));
-        head.Children.Add(ui.P("The same rtxForge preferences, sized for the couch."));
         Grid.SetColumnSpan(head, 2);
         grid.Children.Add(head);
 
@@ -160,7 +159,7 @@ public sealed partial class GameModeView
                 minHeight: t.Compact ? 56 : 70);
             button.HorizontalAlignment = HorizontalAlignment.Stretch;
             button.HorizontalContentAlignment = HorizontalAlignment.Left;
-            ui.MenuFocus(button);
+            ui.Sidebar(button, active);
             GmGlow.Selected(button, active);
             Key(button, "set-" + section);
             if (active && initialFocus is null) initialFocus = button;
@@ -300,11 +299,11 @@ public sealed partial class GameModeView
             [
                 new("Theme", null,
                 [
-                    SettingToggle("Use the same color theme in Desktop and Game Mode", "Turn off to choose each interface’s theme separately.",
-                        () => shell.Settings.GameModeThemeLinked, value => { shell.Settings.LinkGameModeTheme(value); DispatcherQueue.TryEnqueue(ApplySettings); }),
                     Choice("Color theme", "Choose Game Mode’s appearance.", ["night", "dark", "light"], ["Night", "Dark", "Light"],
                         () => shell.Settings.ResolvedGameModeTheme is "light" or "dark" ? shell.Settings.ResolvedGameModeTheme : "night",
                         value => { shell.Settings.SetGameModeTheme(value); DispatcherQueue.TryEnqueue(ApplySettings); }),
+                    SettingToggle("Use the same color theme in Desktop and Game Mode", "Turn off to choose each interface’s theme separately.",
+                        () => shell.Settings.GameModeThemeLinked, value => { shell.Settings.LinkGameModeTheme(value); DispatcherQueue.TryEnqueue(ApplySettings); }),
                     SettingToggle("Reduce motion", "Keep strong focus cues with less movement. Windows accessibility settings are always respected.",
                         () => shell.Settings.ReduceMotion, value => { shell.Settings.ReduceMotion = value; DispatcherQueue.TryEnqueue(ApplySettings); }),
                 ]),

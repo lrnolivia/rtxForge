@@ -70,6 +70,16 @@ class DesktopService:
                     count=int(raw) if raw.lower() != 'auto' else None
                     row['mfg_multiplier']='auto' if count is None else 0 if count==0 else count+1 if count in range(1,6) else None
                 except ValueError:row['mfg_multiplier']=None
+                # The shared MFG preset replays from the INI: Dynamic plus the dormant saved choice.
+                try:
+                    force=ini.get('DLSSG',{}).get('OverrideForceDMFG','false').split(';',1)[0].strip().lower()
+                    row['dynamic_mfg']=1 if force in ('true','1') else 0
+                    saved=ini.get('rtxForge.Presets',{})
+                    mode=int(saved.get('MfgMode','').split(';',1)[0].strip() or -1)
+                    ratio=int(saved.get('MfgMultiplier','').split(';',1)[0].strip() or -1)
+                    if mode in (0,1,2):row['mfg_saved_mode']=mode
+                    if ratio in range(2,7):row['mfg_saved_multiplier']=ratio
+                except (ValueError,AttributeError):pass
                 try:
                     baseline=engine.load_baseline(config.parent)
                     current=(baseline or {}).get('current') or {}
@@ -77,6 +87,9 @@ class DesktopService:
                         row['feature_mode']=current['feature_mode']
                         row['profile']={'nr-mfg':'NR + MFG','nr-only':'NR Only','mfg-only':'MFG Only'}.get(current['feature_mode'],'Unknown')
                         row['runtime_provider']=current.get('provider_id','y4my')
+                        if row['runtime_provider']=='skynizz':
+                            import skynizz_provider
+                            row['feature_controls']=skynizz_provider.read_controls(config)
                         component=((current.get('archive') or {}).get('release') or {}).get('mfg_component')
                         universal=bool(component) and component.get('id')=='universal'
                         row['dynamic_mfg_available']=current.get('provider_id')=='skynizz' and not component
@@ -118,6 +131,8 @@ class DesktopService:
             if record and record['os']=='windows' and cross_os.THIS_OS=='linux':
                 row['linux_ready']=bool(proton_prefix.load_record(engine_bridge.prefix_state(engine,SimpleNamespace(target_dir=target))))
             rows.append(row)
+        import package_adoption
+        package_adoption.decorate(engine,rows)
         return sorted(rows,key=lambda r:r['name'].casefold())
 
     def scan_all(self,extra=()):
@@ -130,13 +145,20 @@ class DesktopService:
             if row['game'] not in seen:rows.append(row);seen.add(row['game'])
         return sorted(rows,key=lambda r:r['name'].casefold())
 
-    def prepare(self,rows,mode,operation,adopt=False,visual_settings=None,save_defaults=False):
+    def prepare(self,rows,mode,operation,adopt=False,visual_settings=None,save_defaults=False,scope=None):
         import ui
+        # Every route (engine, Feeder, Adoption) acts only on the reviewed games:
+        # an empty or stale selection refuses instead of widening to the library.
+        # Saving library defaults with no games selected changes no game.
+        defaults_only=rows==[] and operation=='reset' and bool(save_defaults) and scope is None
+        if not defaults_only:engine_bridge.check_scope(rows,scope)
         if operation in ('install','repair','adopt-clean'):
             host=self.hardware()
             if not host['ready']:return {'kind':'batch','operation':operation,'title':operation.title(),'plans':[],'rows':[],'blocked':[{'name':'Hardware check','reason':host['reason']}]}
         settings=library_media.load_settings(self.config)
         if visual_settings is not None:settings.update(visual_settings)
+        if scope is not None:settings['operation_scope']=scope
+        settings['defaults_only']=defaults_only
         if operation in ('adopt', 'adopt-clean'):
             import package_adoption
             return package_adoption.prepare(self.config, rows, operation, settings)
@@ -151,7 +173,57 @@ class DesktopService:
             return feeder_provider.prepare(self.config, rows, 'nr-only' if not feeder and mode != 'mfg-only' else mode, operation,
                                            settings, engine_bridge.module(self.config))
         review=engine_bridge.prepare(self.config,rows,mode,operation,settings)
-        if save_defaults and operation=='reset':review['save_defaults']={k:settings[k] for k in ('nr_strength','sharpening_strength','mfg_multiplier')}
+        if save_defaults and operation=='reset':review['save_defaults']={k:settings[k] for k in ('nr_strength','sharpening_strength','mfg_multiplier','dynamic_mfg','mfg_saved_mode','mfg_saved_multiplier','feature_controls') if k in settings}
+        return review
+
+    # Second-review offers when a game supports only part of NR + MFG (reason code -> user text).
+    SUBSET_REASONS={
+        'feeder-nr-only':'Feeder provides neural rendering. Frame generation is unavailable for this route.',
+        'no-native-dlssg':'Use DirectX 12 and enable DLSS in the game for NR. Native frame generation is unavailable.',
+        'nr-runtime-unavailable':'Frame generation is supported. Neural rendering could not be prepared with the selected NR runtime.',
+    }
+
+    def prepare_supported(self,rows,mode,operation,adopt=False,visual_settings=None,scope=None):
+        """The requested review plus separate, opt-in reviews for games that support only NR or only MFG.
+
+        Mirrors the Windows rule (EngineForgeService.PrepareCoreAsync). Hard
+        blockers (anti-cheat, no executable) are never offered. Each offer is
+        its own review over exactly its games, so applying it needs an explicit
+        choice and its own scope; nothing is merged into the main review.
+        """
+        review=self.prepare(rows,mode,operation,adopt,visual_settings=visual_settings,scope=scope)
+        review['supported']=[]
+        if operation!='install' or mode not in ('nr-mfg','nr-only'):return review
+        settings=dict(library_media.load_settings(self.config),**(visual_settings or {}))
+        skynizz=settings.get('runtime_provider')=='skynizz'
+        planned=lambda result:{(p.get('row') or {}).get('game') for p in result.get('plans',[])}-{None}
+        ready=planned(review)
+        feeder=lambda r:r.get('runtime_provider')=='feeder' or r.get('install_provider')=='feeder' and r.get('feeder_available') is True
+        candidates=[r for r in rows if r.get('game') not in ready and not r.get('anti_cheat') and r.get('exe')]
+        blocked={b.get('name'):b.get('reason','') for b in review.get('blocked',[])}
+        groups=[('feeder-nr-only','nr-only',[r for r in candidates if feeder(r)])]
+        if mode=='nr-mfg' and skynizz:
+            groups.append(('no-native-dlssg','nr-only',[r for r in candidates if not feeder(r) and r.get('native_dlss') and not r.get('native_dlssg')]))
+            nr_missing=lambda reason:any(word in reason.casefold() for word in ('nr runtime','nr model','nvngx_dlssnr'))
+            groups.append(('nr-runtime-unavailable','mfg-only',[r for r in candidates if not feeder(r) and r.get('native_dlssg') and nr_missing(blocked.get(r.get('name'),''))]))
+        offered=set()
+        for code,subset_mode,group in groups:
+            group=[r for r in group if r.get('game') not in offered]
+            if not group:continue
+            values=dict(visual_settings or {},prefer_bundled_nr_only=subset_mode=='nr-only')
+            try:
+                supported=self.prepare(group,subset_mode,operation,adopt,visual_settings=values,
+                                       scope={'kind':'selected','games':[r['game'] for r in group]})
+            except (t.Refusal,ValueError,OSError):continue
+            games=sorted(planned(supported))
+            if not games:continue
+            offered.update(games)
+            review['supported'].append({'reason_code':code,'reason':self.SUBSET_REASONS[code],'mode':subset_mode,
+                                        'nr':subset_mode!='mfg-only','mfg':subset_mode!='nr-only','games':[g for g in games if g],
+                                        'review':supported})
+        if offered:
+            names={r.get('name') for r in rows if r.get('game') in offered}
+            review['blocked']=[b for b in review.get('blocked',[]) if b.get('name') not in names]
         return review
 
     def save_visual_defaults(self,values):
@@ -172,12 +244,17 @@ class DesktopService:
             'Invalid MFG multiplier',
         )
 
+        preset=engine_bridge.mfg_preset(values)
         settings=library_media.load_settings(self.config)
         settings.update(
             nr_strength=round(float(nr),1),
             sharpening_strength=round(float(sharp),1),
             mfg_multiplier=values['mfg_multiplier'],
         )
+        if preset:settings.update(preset)
+        if 'feature_controls' in values:
+            import skynizz_provider
+            settings['feature_controls']=skynizz_provider.validate_controls(values['feature_controls'])
         library_media.save_settings(self.config,settings)
 
     def recoveries(self):

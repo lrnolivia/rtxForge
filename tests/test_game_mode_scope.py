@@ -15,6 +15,7 @@ class Harness:
     run_operation = game_mode.GameMode.run_operation
     filtered_games = game_mode.GameMode.filtered_games
     selected_games = game_mode.GameMode.selected_games
+    scoped_targets = game_mode.GameMode.scoped_targets
     select_all_visible = game_mode.GameMode.select_all_visible
     activate_game = game_mode.GameMode.activate_game
     apply_presets = game_mode.GameMode.apply_presets
@@ -61,10 +62,27 @@ class GameModeScopeTest(unittest.TestCase):
         self.assertEqual(h.calls[-1][0], 'install')
         self.assertTrue(h.calls[-1][1]['_presets_confirmed'])
 
-    def test_restore_targets_installed_games_only(self):
+    def test_restore_targets_installed_games_in_the_current_filter(self):
         h = Harness()
         h.run_operation('uninstall')
+        self.assertEqual(h.names(), ['a', 'b', 'w'], 'the Available filter hides protected D')
+        h.owner.settings['library_filter'] = 'all'
+        h.run_operation('uninstall')
         self.assertEqual(h.names(), ['a', 'b', 'd', 'w'])
+
+    def test_explicit_selection_wins_over_the_filter(self):
+        h = Harness()
+        h.selecting, h.selected = True, {'b'}
+        h.run_operation('uninstall', [g for g in h.scoped_targets() if g.get('installed')])
+        self.assertEqual(h.names(), ['b'])
+
+    def test_stale_or_empty_selection_never_expands_to_the_library(self):
+        for selected in (set(), {'gone'}):
+            h = Harness()
+            h.selecting, h.selected = True, selected
+            self.assertEqual(h.scoped_targets(), [])
+            h.run_operation('install', h.scoped_targets())
+            self.assertEqual((h.calls, h.asked), ([], []))
 
     def test_update_dlss_goes_through_its_own_review(self):
         h = Harness()

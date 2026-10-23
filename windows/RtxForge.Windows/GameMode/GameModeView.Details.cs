@@ -172,7 +172,7 @@ public sealed partial class GameModeView
                 GmKind.Transparent, 0.88, radius: 12, padding: new Thickness(t.Px(18), t.Px(12), t.Px(18), t.Px(12)), minHeight: t.Compact ? 46 : 60);
             button.HorizontalAlignment = HorizontalAlignment.Stretch;
             button.HorizontalContentAlignment = HorizontalAlignment.Left;
-            ui.MenuFocus(button);
+            ui.Sidebar(button, active);
             GmGlow.Selected(button, active);
             Key(button, "section-" + section);
             navButtons.Add((button, section));

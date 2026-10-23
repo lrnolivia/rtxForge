@@ -203,6 +203,8 @@ public sealed partial class GameModeView : UserControl
             "settings" => BuildSettings(),
             _ => BuildLibrary(),
         };
+        if (content is FrameworkElement contentElement)
+            contentElement.Loaded += (_, _) => { foreach (var scroll in Descendants(content).OfType<ScrollViewer>()) GmScrollFade.Attach(scroll, t.S); };
         (ui.Accent, ui.AccentInk) = (accent, accentInk);
         var scene = new Grid();
         scene.Children.Add(pageLight.Artwork); scene.Children.Add(content); scene.Children.Add(pageLight);
@@ -252,6 +254,7 @@ public sealed partial class GameModeView : UserControl
         header.ColumnDefinitions.Clear();
         header.Background = page == "details" ? GmTheme.B(t.Window) : null;
         header.Height = t.Px(t.Compact ? 92 : 114);
+        header.Margin = new Thickness(0, t.Px(12), 0, 0);
         header.Padding = new Thickness(t.Px(56), t.Px(t.Compact ? 10 : 14), t.Px(56), t.Px(t.Compact ? 10 : 14));
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -316,7 +319,7 @@ public sealed partial class GameModeView : UserControl
         }
         return GmUi.Capsule(new Border
         {
-            Background = GmTheme.B(t.Panel, page == "details" ? 1 : .72), CornerRadius = new CornerRadius(t.Px(40)), Padding = new Thickness(t.Px(t.Compact ? 8 : 10)),
+            Background = GmTheme.B(t.Panel, page == "details" ? 1 : .80), CornerRadius = new CornerRadius(t.Px(40)), Padding = new Thickness(t.Px(t.Compact ? 8 : 10)),
             Child = ui.Selection("navigation", line, tabButtons.First(b => b.Name == "gm_tab-" + (page == "details" ? "library" : page)), true), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
         });
     }
@@ -584,6 +587,7 @@ public sealed partial class GameModeView : UserControl
         var dialogLight = new ArtworkLightLayer();
         dialogScene.Children.Add(dialogLight.Artwork); dialogScene.Children.Add(dialog); dialogScene.Children.Add(dialogLight);
         foreach (var button in Descendants(dialog).OfType<Button>()) GmGlow.Layer(button, dialogLight);
+        dialog.Loaded += (_, _) => { foreach (var scroll in Descendants(dialog).OfType<ScrollViewer>()) GmScrollFade.Attach(scroll, t.S); };
         layer.Children.Add(dialogScene);
         GmMotion.Dialog(dialogScene, t.S);
         layer.TabFocusNavigation = KeyboardNavigationMode.Cycle;

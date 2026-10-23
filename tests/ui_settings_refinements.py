@@ -27,29 +27,33 @@ def start():
     w=app.window
     w.set_input_surface(False);w.set_display_preference('ui_scale',200)
     assert w.presentation_scale==1 and not isinstance(w.get_content(),ui.ScaledContent)
+    w.settings['runtime_provider']='skynizz'
     w.show_settings()
-    assert w.dialog._scaled_child is None
+    assert isinstance(w.dialog,Adw.PreferencesDialog)
+    assert w.dialog.get_search_enabled()
+    assert not hasattr(w.dialog,'_scaled_child')
     widgets=list(children(w.dialog.get_child()))
     rows={x.get_title():x for x in widgets if isinstance(x,Adw.ComboRow)}
     assert 'UI Scale' in rows
     rows['UI Scale'].emit('activated')
     rows['UI Scale'].set_selected(3)
     assert w.presentation_scale==1
-    w.settings_stack=next(x for x in widgets if isinstance(x,Gtk.Stack) and x.get_child_by_name('Appearance'))
-    next(x for x in widgets if isinstance(x,Gtk.ListBoxRow) and getattr(x,'page_name',None)=='Appearance').get_parent().select_row(next(x for x in widgets if isinstance(x,Gtk.ListBoxRow) and getattr(x,'page_name',None)=='Appearance'))
-    assert next(x for x in children(w.settings_stack.get_visible_child()) if isinstance(x,Adw.PreferencesGroup)).get_title()=='Theme'
+    w.dialog.set_visible_page_name('Appearance')
+    w.appearance_group=next(x for x in children(w.settings_pages['Appearance']) if isinstance(x,Adw.PreferencesGroup))
+    assert w.appearance_group.get_title()=='Theme'
     w.theme_control=next(x for x in widgets if isinstance(x,Adw.ToggleGroup) and x.get_active_name() in ('dark','light','night'))
 def theme():
     w=app.window;w.theme_control.set_active_name('light')
     w.text_probe=ui.button('Continue',lambda *_:None,'suggested-action')
-    w.dialog.get_child().append(w.text_probe)
+    w.probe_row=Adw.ActionRow(title='Action contrast fixture')
+    w.probe_row.add_suffix(w.text_probe);w.appearance_group.add(w.probe_row)
 def appearance():
     assert_brand(True)
     w=app.window
     text=next(x for x in children(w.text_probe) if isinstance(x,Gtk.Label))
     color=text.get_style_context().get_color()
     assert max(color.red,color.green,color.blue)<0.5
-    w.dialog.get_child().remove(w.text_probe)
+    w.appearance_group.remove(w.probe_row)
     choices=next(x for x in children(w.dialog.get_child()) if isinstance(x,Adw.ComboRow) and x.get_title()=='Corners')
     choices.emit('activated');w.corner_choice=choices
     next(x for x in children(choices) if isinstance(x,Gtk.Popover)).popup()
@@ -63,16 +67,12 @@ def choice_sizes():
     assert max(heights)-min(heights)<=1 and max(heights)<=44, heights
     assert w.capture('settings-uniform-choice.png')
     popup.popdown()
-    rows=list(children(w.dialog.get_child()))
-    target=next(x for x in rows if isinstance(x,Gtk.ListBoxRow) and getattr(x,'page_name',None)=='Gaming Mode')
-    target.get_parent().select_row(target)
+    w.dialog.set_visible_page_name('Gaming Mode')
 
 def gaming():
     w=app.window
     assert w.capture('settings-refined-gaming-mode.png')
-    scroll=w.settings_stack.get_visible_child().get_child()
-    adj=scroll.get_vadjustment();adj.set_value(adj.get_upper()-adj.get_page_size())
-    assert w.settings_stack.get_visible_child().bottom_fade.get_opacity()==0
+    assert w.dialog.get_visible_page_name()=='Gaming Mode'
     w.theme_control.set_active_name('night')
     assert_brand(False)
     w.theme_control.set_active_name('dark')
@@ -81,6 +81,20 @@ def gaming():
     assert w.input_stack.get_visible_child_name()=='desktop'
     w.set_big_picture_ui(True)
     w.dialog.close()
+def independent_themes():
+    w=app.window;w.show_settings()
+    switch=next(x for x in children(w.settings_pages['Appearance']) if isinstance(x,Adw.SwitchRow) and x.get_title()=='Use the same color theme in Desktop and Game Mode')
+    assert switch.get_active()
+    before=w.couch.theme.name
+    switch.set_active(False)
+    w.theme_control=next(x for x in children(w.settings_pages['Appearance']) if isinstance(x,Adw.ToggleGroup) and x.get_active_name() in ('dark','light','night'))
+    w.theme_control.set_active_name('light' if before!='light' else 'dark')
+    assert w.couch.theme.name==before
+    switch.set_active(True)
+    assert w.couch.theme.name==w.settings['theme']
+    w.dialog.close()
+
+
 def extras_open():
     app.window.show_extras()
 def extras():
@@ -92,7 +106,7 @@ def extras():
     assert w.capture('settings-refined-extras.png')
     w.show_page('library')
 def details_open():
-    w=app.window;w.details(w.games[0])
+    w=app.window;w.settings['separate_game_details']=True;w.details(w.games[0])
     close=next(x for x in children(w.dialog.get_child()) if x.has_css_class('game-detail-close'))
     close.add_css_class('light');w.test_close=close
 def details_check():
@@ -102,7 +116,8 @@ def details_check():
     w.test_close.emit('clicked')
 def game_mode():
     w=app.window;w.set_input_surface(True);w.set_display_preference('ui_scale',150)
-    assert w.presentation_scale==1.5
+    assert w.presentation_scale==1
+    assert w.couch.theme.unit==26.0
     w.couch.open('settings');w.couch.navigate('right')
     w.set_input_surface(False)
     assert w.presentation_scale==1
@@ -113,7 +128,7 @@ def system_theme():
 def system_brand():
     assert_brand(not Adw.StyleManager.get_default().get_dark())
 
-steps=[start,theme,appearance,choice_sizes,gaming,extras_open,extras,details_open,details_check,game_mode,system_theme,system_brand]
+steps=[start,theme,appearance,choice_sizes,gaming,independent_themes,extras_open,extras,details_open,details_check,game_mode,system_theme,system_brand]
 def step():
     try:
         if steps:steps.pop(0)();GLib.timeout_add(800,step)

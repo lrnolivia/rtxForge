@@ -51,6 +51,12 @@ public sealed partial class GameModeView
             await Settle(700);
             phase = "first-visit-card-focus";
             shell.Settings.LibraryView = "posters"; Open("library"); await Settle();
+            Check("initial_selection_surfaces_measured", ui.SelectionSurfacesMeasured);
+            for (var rebuild = 0; rebuild < 3; rebuild++)
+            {
+                Render(keepFocus: true); await Settle(90);
+                Check("same_geometry_rebuild_keeps_selection_surface", ui.SelectionSurfacesMeasured, rebuild);
+            }
             var first = Descendants(body).OfType<Button>().First(b => b.Name.StartsWith("gm_game-"));
             first.Focus(FocusState.Keyboard); await Settle(200);
             Check("native_contact_initialized", GmMotion.Initialized(first));

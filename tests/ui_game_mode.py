@@ -152,6 +152,17 @@ def panel_shortcut():
  record(c.modal_layer);w.keyboard_input(None,Gdk.KEY_Escape,0,0)
  assert w.settings['game_overlay_settings'][game['game']]['panel_hotkey']=='F7' and len(c.modals)==1
  c.close_modal();w.settings['game_overlay_settings'].pop(game['game']);w.settings['panel_hotkey']='Delete';c.open('library')
+def presets_page():
+ c=app.window.couch;c.open('presets');assert c.page=='presets'
+ text=labels(c.body)
+ for heading in ('Multi-Frame Generation','Neural rendering','DLSS presets','Image tuning'):assert heading in text,heading
+ for name in ('preset-mfg-enabled-1','preset-mfg-mode-1','preset-mfg-ratio-2'):
+  button=key(name);assert button is not None,name
+  if button.get_sensitive():button.emit('clicked')
+ value=c.preset_value()
+ assert {'nr_strength','sharpening_strength','mfg_multiplier','dynamic_mfg','mfg_saved_mode','mfg_saved_multiplier'}<=set(value),value
+ assert value['mfg_multiplier'] in ('auto',0,4) and value['mfg_saved_multiplier']==4,value
+ c.open('library')
 def details():
  w=app.window;c=w.couch
  # Demo artwork can be missing (offline CI): any installed game will do.
@@ -164,7 +175,16 @@ def section(name):
  assert name in labels(c.body)
 def stepper():
  c=app.window.couch;c.open_section('Features');c.toggle_presets()
- row=key('step-sharp');assert row is not None and row.get_sensitive()
+ # Windows layout: Sharpening is a disclosure on the Image tuning side.
+ here=lambda name:c.find_key(c.body.current,name)
+ opener=here('preset-disclosure-Sharpening');assert opener is not None
+ # Disclosures stay open across renders, and this step runs once per window size.
+ if 'Sharpening' not in getattr(c,'preset_disclosures',set()):opener.emit('clicked')
+ end=time.monotonic()+.3
+ while time.monotonic()<end:
+  while GLib.MainContext.default().pending():GLib.MainContext.default().iteration(False)
+  time.sleep(.005)
+ row=here('preset-field-sharpness');assert row is not None,'sharpness field';assert row.get_sensitive(),'sharpness disabled';assert row.get_mapped(),'sharpness not shown'
  value=lambda:next(w.get_text() for w in descendants(row) if isinstance(w,Gtk.Label) and w.has_css_class('gm-stepper-value'))
  before=value()
  row.grab_focus();c.navigate('right')
@@ -240,7 +260,7 @@ def review_close():
  assert not w.couch.modals and w.operation_flow is None
 def size(width,height):
  app.window.set_default_size(width,height);app.window.couch.resize(width,height)
-steps=[setup,keyboard,panel_shortcut,menu,glyphs,lambda:theme('light'),lambda:capture('gm-library-light.png'),lambda:theme('night'),
+steps=[setup,keyboard,panel_shortcut,presets_page,menu,glyphs,lambda:theme('light'),lambda:capture('gm-library-light.png'),lambda:theme('night'),
        lambda:app.window.couch.open('packages'),lambda:capture('gm-packages.png'),
        lambda:app.window.couch.open('extras'),lambda:capture('gm-extras.png'),
        lambda:app.window.couch.open('library'),menu,lambda:app.window.couch.open_main_menu(),lambda:capture('gm-main-menu.png'),close_modal,
@@ -264,7 +284,7 @@ for width,height in ((1280,820),(1920,1080),(1000,700)):
  steps+=[wait_review,lambda tag=tag:capture(f'gm-review-{tag}.png'),confirm,lambda tag=tag:capture(f'gm-progress-{tag}.png'),finish,lambda tag=tag:capture(f'gm-done-{tag}.png'),wait_done]
 
 if os.environ.get('RTXFORGE_GAME_MODE_MOTION_ONLY'):
- steps=[setup,rapid_navigation,virtual_library,section_motion,deferred_desktop_layout,action_wording,panel_shortcut,menu,details,back_to_library]
+ steps=[setup,rapid_navigation,virtual_library,section_motion,deferred_desktop_layout,action_wording,panel_shortcut,presets_page,menu,details,back_to_library]
 def step():
  try:
   if steps:steps.pop(0)();GLib.timeout_add(500,step)

@@ -27,6 +27,11 @@ ADOPTION_NOTE = ('This package is installed. Adopt its current setup or back it 
                  'from rtxForge.')
 OFFLINE_NOTE = ('Launch here to use the reviewed offline route. The normal Steam launch is unchanged. '
                 'Online play requires removing these feature files. Adoption restore returns the previous modded setup.')
+# Linux has no launch-offline action yet: the Windows route starts the executable directly, which Proton does not.
+LINUX_OFFLINE_NOTE = ('These features work offline only. Start the game in its offline mode as you do now. '
+                      'Online play requires removing these feature files. Adoption restore returns the previous modded setup.')
+OFFLINE_ADOPTION_NOTE = ('This game uses anti-cheat. Its verified offline-only route lets rtxForge adopt and manage '
+                         'the setup already here. Play it offline; online play requires removing these feature files.')
 WINDOWS_NOTE = ('These features were installed with rtxForge on Windows. Set Up for Linux hands them to '
                 'rtxForge here, so you can repair, retune or restore them from Linux.')
 

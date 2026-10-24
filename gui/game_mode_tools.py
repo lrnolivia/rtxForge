@@ -23,11 +23,11 @@ class GameModeTools:
         page.append(scroll)
         return page, body
 
-    def tool_card(self, title, description, action, version=None):
+    def tool_card(self, title, description, action, version=None, icon=None):
         t = self.theme
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(16), hexpand=True)
         box.add_css_class('gm-tool-card')
-        box.append(self.label(title, 'gm-h2', wrap=True))
+        box.append(self.heading(title, icon) if icon else self.label(title, 'gm-h2', wrap=True))
         if version:
             box.append(self.label(version, 'gm-small'))
         box.append(self.label(description, 'gm-p', wrap=True))
@@ -123,7 +123,8 @@ class GameModeTools:
             body.append(unified)
             more, count = self.tool_columns(2)
             own = self.button('Inspect package', self.open_custom_package, key='custom-package')
-            more.attach(self.tool_card('Your own package', 'Inspect a ZIP archive, its settings and original instructions before choosing it.', own), 0, 0, 1, 1)
+            more.attach(self.tool_card('Your own package', 'Inspect a ZIP archive, its settings and original instructions before choosing it.', own,
+                                       icon='folder-symbolic'), 0, 0, 1, 1)
             community = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=self.theme.px(16))
             community.add_css_class('gm-tool-card')
             self.section_title(community, 'Other community projects', "Explore other projects. These sources aren’t curated install options.")
@@ -165,23 +166,25 @@ class GameModeTools:
         def columns(count):
             return Gtk.Grid(column_spacing=t.px(24), row_spacing=t.px(24), column_homogeneous=True), (count if self.layout_width >= t.px(1120) else 1)
         actions, count = columns(3)
+        # Glyphs as on Windows Extras: E777 overlay update, E8AB DLSS update, E7A7 undo.
         specs = [
             ('Update Overlays', 'Review overlay package updates, menus, welcome messages and shortcuts in installed games.',
-             self.button('Update Overlays', self.owner.overlay_packages_review, enabled=live)),
+             self.button('Update Overlays', self.owner.overlay_packages_review, enabled=live), 'rtx-gm-overlay-symbolic'),
             ('Update DLSS files', 'Replace older DLSS files across your library. Originals are backed up.',
-             self.button('Review games', lambda: self.run_operation('update-dlss', [g for g in self.owner.games if not g.get('blocked')]), enabled=live)),
+             self.button('Review games', lambda: self.run_operation('update-dlss', [g for g in self.owner.games if not g.get('blocked')]), enabled=live),
+             'network-transmit-receive-symbolic'),
             ('Undo previous changes', 'Restore the files from an earlier install, update or restore.',
-             self.button('Show changes', self.owner.show_undo)),
+             self.button('Show changes', self.owner.show_undo), 'edit-undo-symbolic'),
         ]
-        for index, (title, description, action) in enumerate(specs):
-            actions.attach(self.tool_card(title, description, action), index % count, index // count, 1, 1)
+        for index, (title, description, action, icon) in enumerate(specs):
+            actions.attach(self.tool_card(title, description, action, icon=icon), index % count, index // count, 1, 1)
         body.append(actions)
         tools, count = columns(2)
         self.global_nr = getattr(self, 'global_nr', None)
         self.global_mfg = getattr(self, 'global_mfg', None)
         once = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(20), hexpand=True)
         once.add_css_class('gm-tool-card')
-        once.append(self.label('One-time changes', 'gm-h2'))
+        once.append(self.heading('One-time changes', 'rtx-gm-gamepad-symbolic'))
         once.append(self.label('Turn neural rendering or frame generation on or off, or set the multiplier, in every game with a package installed.', 'gm-p', wrap=True))
         once.append(self.group([
             self.choice('Neural rendering', 'Choose only the setting to change across installed games.',
@@ -195,7 +198,7 @@ class GameModeTools:
         once.append(action)
         tools.attach(once, 0, 0, 1, 1)
         tools.attach(self.tool_card('App storage', 'Downloads, backups and caches rtxForge keeps. Clean up what no game needs.',
-                                   self.button('View usage', self.owner.review_storage, enabled=live)), 1 % count, 1 // count, 1, 1)
+                                   self.button('View usage', self.owner.review_storage, enabled=live), icon='drive-multidisk-symbolic'), 1 % count, 1 // count, 1, 1)
         body.append(tools)
         return page
 

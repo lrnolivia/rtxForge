@@ -5866,6 +5866,11 @@ class Window(Adw.ApplicationWindow):
         self.controller_hud.set_visible(False)
         if couch:self.couch.refresh()
         self.add_css_class('controller-active') if couch else self.remove_css_class('controller-active')
+        # Game Mode fills the screen, as on Windows; leaving it restores only what it changed.
+        if couch and not self.is_fullscreen():
+            self._game_mode_fullscreen=True;self.fullscreen()
+        elif not couch and getattr(self,'_game_mode_fullscreen',False) and not gamescope_session():
+            self._game_mode_fullscreen=False;self.unfullscreen()
 
     def set_input_kind(self,kind):
         if getattr(self,'input_kind',None)==kind:return
@@ -5945,12 +5950,13 @@ class Window(Adw.ApplicationWindow):
 
     def support_reason(self,game):
         reason=str(game.get('blocked',''))
+        if reason=='Anti-cheat detected' and self.adoptable(game):return overview_facts.OFFLINE_ADOPTION_NOTE
         return {'No Windows executable found':'This game does not have a Windows launch file that rtxForge can use.',
                 'Anti-cheat detected':'This game uses anti-cheat software. rtxForge does not install graphics tools into anti-cheat protected games.',
                 'No native DLSS-G detected':'This game does not include the native NVIDIA frame-generation files required by the tools rtxForge currently supports.'}.get(reason,user_messages.friendly_error(reason))
 
     def decorate_support_artwork(self,artwork,picture,game,path):
-        unsupported=bool(game.get('blocked'))
+        unsupported=bool(game.get('blocked')) and not self.adoptable(game)
         picture.set_opacity(0.45 if unsupported else 1.0)
         picture.support_desaturated=unsupported
         if unsupported and path and Path(path).is_file():
@@ -9501,7 +9507,9 @@ class Window(Adw.ApplicationWindow):
             return None
 
     def adoptable(self,game):
-        return bool(game.get('adoption_available')) and not game.get('blocked')
+        # Anti-cheat titles with a verified offline-only route adopt through that reviewed exception, as on Windows.
+        offline=game.get('blocked')=='Anti-cheat detected' and game.get('offline_available')
+        return bool(game.get('adoption_available')) and (not game.get('blocked') or bool(offline))
 
     def choose_adoption(self,games):
         """Adopt keeps the detected files and tuning; Adopt and Reinstall puts in a fresh copy. Both can be restored to before Adoption."""
@@ -10158,7 +10166,7 @@ class Window(Adw.ApplicationWindow):
             listing.append(row)
             return listing
         if game.get('offline_only'):
-            offline=Adw.PreferencesGroup(title='Offline-only features',description=overview_facts.OFFLINE_NOTE)
+            offline=Adw.PreferencesGroup(title='Offline-only features',description=overview_facts.LINUX_OFFLINE_NOTE)
             box.append(offline)
         if self.adoptable(game):
             review=button('Review Adoption',lambda *_:self.choose_adoption([game]));review.set_valign(Gtk.Align.CENTER)

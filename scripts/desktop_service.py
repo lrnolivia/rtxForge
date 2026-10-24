@@ -131,10 +131,14 @@ class DesktopService:
             if record and record['os']=='windows' and cross_os.THIS_OS=='linux':
                 row['linux_ready']=bool(proton_prefix.load_record(engine_bridge.prefix_state(engine,SimpleNamespace(target_dir=target))))
             rows.append(row)
+        settings=library_media.load_settings(self.config)
+        # Feeder NR installs (and Mass Effect LE's three games) are recognised the same way as on Windows.
+        import feeder_provider
+        rows=feeder_provider.expand_rows(engine,rows,selected=settings.get('runtime_provider')=='feeder')
         import package_adoption
         package_adoption.decorate(engine,rows)
         import vulkan_app
-        vulkan_app.decorate(rows,self.config,selected=library_media.load_settings(self.config).get('runtime_provider')=='vulkan-native')
+        vulkan_app.decorate(rows,self.config,selected=settings.get('runtime_provider')=='vulkan-native')
         return sorted(rows,key=lambda r:r['name'].casefold())
 
     def scan_all(self,extra=()):

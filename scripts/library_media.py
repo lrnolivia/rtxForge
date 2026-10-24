@@ -162,7 +162,9 @@ class LibraryMedia:
         if record.exists():
             try:
                 saved=json.loads(record.read_text());result=saved['data']
-                if not refresh and time.time()-saved.get('time',0)<max(1,int(self.settings.get('cache_days',7)))*86400:return {**result,**local}
+                # A lookup that found no artwork (offline, or a service was down) is retried within hours, not days.
+                fresh=max(1,int(self.settings.get('cache_days',7)))*86400 if result.get('poster') or not self.settings['online_art'] else 6*3600
+                if not refresh and time.time()-saved.get('time',0)<fresh:return {**result,**local}
             except (OSError,ValueError,KeyError):result={}
         appid=str(row.get('appid') or '')
         if not appid.isdigit():appid=''
@@ -221,6 +223,11 @@ class LibraryMedia:
                 if wide_url:
                     data=request(wide_url,limit=8*1024**2,timeout=timeout);path=self.root/(ident+'.wide');t.atomic_file(path,data,0o600);result['capsule']=str(path)
             except Exception:pass
+            if not result.get('capsule') and result.get('capsule_url'):
+                # Newer Steam apps only publish hashed image URLs, which the store metadata names.
+                try:
+                    data=request(result['capsule_url'],limit=8*1024**2,timeout=timeout);path=self.root/(ident+'.wide');t.atomic_file(path,data,0o600);result['capsule']=str(path)
+                except Exception:pass
         hero_candidates=[]
         if result.get('sgdb_game_id'):
             try:

@@ -10326,6 +10326,14 @@ class Window(Adw.ApplicationWindow):
     def chosen_strength(self):return self.tuning_values(self.tuning_widgets)['nr_strength']
     def defaults_changed(self):
         saved=dict(self.settings);saved.update(mfg_choice.to_values(*mfg_choice.from_values(self.settings)))
+        # Compare the controls the editor starts from (tuning_controls), not the raw setting: a fresh
+        # install saves no feature controls, and the editor fills them from the saved NR and sharpening.
+        features=saved.get('feature_controls') or {}
+        if not features or saved.get('runtime_provider')!='skynizz':
+            features={**features,'intensity':round(float(saved.get('nr_strength',2.0)),1),
+                      'sharpness':round(float(saved.get('sharpening_strength',0.5)),1),
+                      'enabled':int(bool(saved.get('nr_on_launch',False)))}
+        saved['feature_controls']=FeaturePresets.normalized(features)
         return any(saved.get(k)!=v for k,v in self.tuning_values(self.tuning_widgets).items())
     def strength_changed(self,*_):
         self.reset_all.text_label.set_text('Reset')
@@ -14500,7 +14508,7 @@ class Window(Adw.ApplicationWindow):
         details=[OPERATION_WORDS.get(operation,OPERATION_WORDS['reset'])[1]]
         if operation in ('install','repair','reset'):
             provider=self.settings.get('runtime_provider','dlss-unlocked')
-            details.append({'dlss-unlocked':'DLSS-Unlocked','y4my':'y4my','custom':'Custom package'}.get(provider,provider))
+            details.append(action_labels.provider_name(provider))
             mfg=review.get('mfg_multiplier')
             if mfg is not None:details.append('MFG '+('Auto' if mfg=='auto' else 'Off' if mfg==0 else str(mfg)+'×'))
         return details

@@ -1166,7 +1166,7 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         return {'installed': 'Installed', 'all': 'All'}.get(key, 'Available')
 
     def provider_name(self):
-        return {'dlss-unlocked': 'DLSS-Unlocked', 'custom': 'Custom package', 'skynizz': 'Skynizz', 'feeder': 'Feeder NR'}.get(self.owner.settings.get('runtime_provider'), 'y4my Multipass')
+        return action_labels.provider_name(self.owner.settings.get('runtime_provider'), short=False)
 
     def build_library(self):
         t = self.theme

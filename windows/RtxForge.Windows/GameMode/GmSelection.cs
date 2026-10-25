@@ -6,22 +6,20 @@ using Microsoft.UI.Xaml.Hosting;
 
 namespace RtxForge.Windows.GameMode;
 
-/// <summary>Native selection fills with a moving glow that survives rebuilt page controls.</summary>
+/// <summary>Native selection fills with a stationary glow on the shared light layer.</summary>
 sealed class GmSelection
 {
-    readonly GmSpring x = new(GmMotionTokens.Focus / 1000d, GmMotionTokens.FocusDamping);
-    readonly GmSpring width = new(GmMotionTokens.Focus / 1000d, GmMotionTokens.FocusDamping);
-    bool placed;
     int revision;
     public double MeasuredHeight { get; private set; }
 
-    public Grid Place(StackPanel line, Button selected, GmTheme theme, bool navigation = false)
+    public Grid Place(StackPanel line, Button selected, GmTheme theme, bool navigation = false, int glowDelay = 0)
     {
         var currentRevision = ++revision;
         MeasuredHeight = 0;
-        var canvas = new Canvas { IsHitTestVisible = false };
+        Canvas? canvas = null;
+        ArtworkLightLayer? layer = null;
         var buttons = line.Children.OfType<Button>().ToList();
-        var group = new Grid(); group.Children.Add(canvas); group.Children.Add(line);
+        var group = new Grid(); group.Children.Add(line);
         // The fill belongs to the button for its entire lifetime. Animation
         // timing, unload/reload and compositor failure cannot strand dark ink.
         foreach (var button in buttons)
@@ -30,6 +28,7 @@ sealed class GmSelection
                 : button.IsEnabled ? theme.Card : theme.Disabled);
         bool measured = false;
         double measuredHeight = 0;
+        double measuredLeft = -1, measuredWidth = -1;
         CompositionPropertySet? pose = null;
         ShapeVisual? mask = null;
         ContainerVisual? root = null;
@@ -42,31 +41,20 @@ sealed class GmSelection
             if (currentRevision != revision || selected.ActualHeight <= 0 || selected.ActualWidth <= 0 || pose is null) return;
             var left = selected.ActualOffset.X;
             var targetWidth = (float)selected.ActualWidth;
-            var now = GmMotion.Now;
-            var immediate = !placed || !GmMotion.Enabled;
-            var a = x.Retarget(left, now, immediate);
-            var b = width.Retarget(targetWidth, now, immediate);
+            measuredLeft = left; measuredWidth = targetWidth;
+            pose.InsertScalar("X", (float)left); pose.InsertScalar("Width", targetWidth);
             pose.InsertScalar("Height", (float)selected.ActualHeight);
             measured = true; measuredHeight = selected.ActualHeight;
             MeasuredHeight = measuredHeight;
-            Animate("X", a, left); Animate("Width", b, targetWidth); placed = true;
-            void Animate(string key, (double Value, double Velocity) start, float target)
-            {
-                pose.StopAnimation(key); pose.InsertScalar(key, (float)start.Value);
-                if (immediate) return;
-                using var spring = pose.Compositor.CreateSpringScalarAnimation();
-                spring.Period = TimeSpan.FromMilliseconds(GmMotionTokens.Focus);
-                spring.DampingRatio = GmMotionTokens.FocusDamping;
-                spring.InitialValue = (float)start.Value; spring.InitialVelocity = (float)start.Velocity; spring.FinalValue = target;
-                pose.StartAnimation(key, spring);
-            }
         }
         group.Loaded += (_, _) =>
         {
+            layer = GmGlow.Destination(selected);
+            canvas = layer?.AddControl(line, behind: true) ?? new Canvas { IsHitTestVisible = false };
+            if (layer is null) group.Children.Insert(0, canvas);
             var compositor = Microsoft.UI.Xaml.Media.CompositionTarget.GetCompositorForCurrentThread();
             pose = compositor.CreatePropertySet();
-            pose.InsertScalar("X", (float)x.Sample(GmMotion.Now).Value);
-            pose.InsertScalar("Width", (float)width.Sample(GmMotion.Now).Value); pose.InsertScalar("Height", 0);
+            pose.InsertScalar("X", 0); pose.InsertScalar("Width", 0); pose.InsertScalar("Height", 0);
             var geometry = compositor.CreateRoundedRectangleGeometry();
             ExpressionAnimation Expression(string text)
             {
@@ -92,14 +80,16 @@ sealed class GmSelection
             ElementCompositionPreview.SetElementChildVisual(canvas, root);
             GmMotion.PreferenceChanged(group, Update);
             Update();
+            GmMotion.GlowArrival(canvas, glowDelay);
         };
         selected.Loaded += (_, _) => Update();
-        group.LayoutUpdated += (_, _) => { if (pose is not null && (!measured || measuredHeight != selected.ActualHeight || x.Target != selected.ActualOffset.X || width.Target != selected.ActualWidth)) Update(); };
-        selected.SizeChanged += (_, _) => { if (!measured || measuredHeight != selected.ActualHeight || x.Target != selected.ActualOffset.X || width.Target != selected.ActualWidth) Update(); };
+        group.LayoutUpdated += (_, _) => { if (pose is not null && (!measured || measuredHeight != selected.ActualHeight || measuredLeft != selected.ActualOffset.X || measuredWidth != selected.ActualWidth)) Update(); };
+        selected.SizeChanged += (_, _) => { if (!measured || measuredHeight != selected.ActualHeight || measuredLeft != selected.ActualOffset.X || measuredWidth != selected.ActualWidth) Update(); };
         group.Unloaded += (_, _) =>
         {
             GmMotion.Forget(group);
-            ElementCompositionPreview.SetElementChildVisual(canvas, null);
+            if (canvas is not null) ElementCompositionPreview.SetElementChildVisual(canvas, null);
+            layer?.RemoveControl(line);
             root?.Dispose(); root = null; glow?.Dispose(); shadow?.Dispose(); maskBrush?.Dispose(); surface?.Dispose(); mask?.Dispose();
             pose?.Dispose(); pose = null;
         };

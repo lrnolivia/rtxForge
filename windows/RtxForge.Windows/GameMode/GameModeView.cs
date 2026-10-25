@@ -104,6 +104,11 @@ public sealed partial class GameModeView : UserControl
         // GamepadInput that moved focus twice and skipped rows. One source only.
         PreviewKeyDown += (_, e) =>
         {
+            if (e.Key is VirtualKey.GamepadRightThumbstickUp or VirtualKey.GamepadRightThumbstickDown)
+            {
+                shell.NativeRightStick(e.Key == VirtualKey.GamepadRightThumbstickUp, true);
+                ControllerActivity(); e.Handled = true; return;
+            }
             if (e.Key is VirtualKey.GoBack or VirtualKey.GoForward && shell.ControllerLegacyInputActive)
             { Handle(e.Key == VirtualKey.GoBack ? "previous" : "next", true); e.Handled = true; return; }
             if (e.Key >= VirtualKey.GamepadA && e.Key <= VirtualKey.GamepadRightThumbstickLeft)
@@ -116,6 +121,11 @@ public sealed partial class GameModeView : UserControl
                 }
                 e.Handled = true;
             }
+        };
+        PreviewKeyUp += (_, e) =>
+        {
+            if (e.Key is not (VirtualKey.GamepadRightThumbstickUp or VirtualKey.GamepadRightThumbstickDown)) return;
+            shell.NativeRightStick(e.Key == VirtualKey.GamepadRightThumbstickUp, false); e.Handled = true;
         };
         XYFocusUpNavigationStrategy = XYFocusDownNavigationStrategy = XYFocusLeftNavigationStrategy = XYFocusRightNavigationStrategy =
             XYFocusNavigationStrategy.Projection;
@@ -140,7 +150,7 @@ public sealed partial class GameModeView : UserControl
 
         var stopObservingMotion = GmMotion.ObservePreferences(this);
         shell.GamesChanged += OnGamesChanged;
-        Unloaded += (_, _) => { stopObservingMotion(); shell.GamesChanged -= OnGamesChanged; Application.Current.FocusVisualKind = desktopFocusKind; };
+        Unloaded += (_, _) => { shell.NativeRightStick(true, false); shell.NativeRightStick(false, false); stopObservingMotion(); shell.GamesChanged -= OnGamesChanged; Application.Current.FocusVisualKind = desktopFocusKind; };
         Loaded += (_, _) =>
         {
             Application.Current.FocusVisualKind = FocusVisualKind.Reveal; t.Resize(ActualWidth, ActualHeight); Render();
@@ -181,6 +191,30 @@ public sealed partial class GameModeView : UserControl
     bool entranceThisRender;
     bool changingPageThisRender;
     string? lastLibraryLayout;
+    sealed class PageSurface : Grid
+    {
+        public Grid Motion { get; } = new();
+        public ArtworkLightLayer Light { get; }
+        public PageSurface(Grid scene, ArtworkLightLayer light)
+        {
+            Light = light; Motion.Children.Add(scene);
+            Children.Add(light.Artwork); Children.Add(Motion); Children.Add(light);
+        }
+        public void HideLight() { Light.Opacity = 0; Light.Artwork.Opacity = 0; }
+    }
+
+    void SlideSurface(Grid surface, ArtworkLightLayer light, int direction)
+    {
+        var revision = renderRevision;
+        light.Opacity = 0; light.Artwork.Opacity = 0;
+        GmMotion.Horizontal(surface, direction, t.S, completed: () =>
+        {
+            if (revision != renderRevision || !light.IsLoaded) return;
+            light.RefreshPositions();
+            GmMotion.GlowArrival(light.Artwork); GmMotion.GlowArrival(light);
+        });
+    }
+
     void Render(bool keepFocus = false)
     {
         var revision = ++renderRevision;
@@ -210,13 +244,14 @@ public sealed partial class GameModeView : UserControl
         var (accent, accentInk) = (ui.Accent, ui.AccentInk);
         (ui.Accent, ui.AccentInk) = (GmTheme.Accent, GmTheme.AccentInk);
         ui.ArtworkLight = artworkLight;
+        ui.SelectionGlowDelay = changingContent ? GmMotion.SlideArrival : 0;
         RenderHeader();
         // Retain at most one outgoing surface. New controls receive focus immediately.
         while (body.Children.Count > 1) body.Children.RemoveAt(0);
         var departing = changingContent && GmMotion.Enabled ? body.Children.LastOrDefault() as FrameworkElement : null;
         if (departing is null) body.Children.Clear();
         else { departing.IsHitTestVisible = false; foreach (var oldControl in Descendants(departing).OfType<Control>()) oldControl.IsEnabled = false; }
-        pageLight = new ArtworkLightLayer();
+        pageLight = new ArtworkLightLayer { ControllerFocus = inputKind == "controller" };
         ui.ArtworkLight = pageLight;
         mainScroller = null;
         body.Background = page == "details" ? GmTheme.B(t.View) : null;
@@ -233,14 +268,18 @@ public sealed partial class GameModeView : UserControl
             contentElement.Loaded += (_, _) => { foreach (var scroll in Descendants(content).OfType<ScrollViewer>()) GmScrollFade.Attach(scroll, t.S); };
         (ui.Accent, ui.AccentInk) = (accent, accentInk);
         var scene = new Grid();
-        scene.Children.Add(pageLight.Artwork); scene.Children.Add(content); scene.Children.Add(pageLight);
-        var transition = new Grid(); transition.Children.Add(scene); body.Children.Add(transition);
+        scene.Children.Add(content);
+        var surface = new PageSurface(scene, pageLight); body.Children.Add(surface);
         ui.ArtworkLight = artworkLight;
-        if (departing is Grid oldScene) GmMotion.Horizontal(oldScene, direction, t.S, outgoing: true,
-            completed: () => { if (body.Children.Contains(oldScene)) body.Children.Remove(oldScene); });
+        if (departing is PageSurface oldSurface)
+        {
+            oldSurface.HideLight();
+            GmMotion.Horizontal(oldSurface.Motion, direction, t.S, outgoing: true,
+                completed: () => { if (body.Children.Contains(oldSurface)) body.Children.Remove(oldSurface); });
+        }
         if (changingContent)
         {
-            GmMotion.Horizontal(transition, direction, t.S);
+            SlideSurface(surface.Motion, surface.Light, direction);
         }
         else if (entranceThisRender)
         {
@@ -281,7 +320,7 @@ public sealed partial class GameModeView : UserControl
         {
             var order = area == "settings" ? SettingsSections : Sections;
             var direction = Array.IndexOf(order, key) < Array.IndexOf(order, previous) ? -1 : 1;
-            GmMotion.Horizontal(wrapper, direction, t.S);
+            SlideSurface(wrapper, pageLight, direction);
         }
         renderedSections[area] = key;
         return wrapper;
@@ -451,7 +490,9 @@ public sealed partial class GameModeView : UserControl
             : mainScroller;
         if (scroll is null || scroll.XamlRoot is null) return;
         ControllerActivity();
-        scroll.ChangeView(null, Math.Clamp(scroll.VerticalOffset + t.Px(delta), 0, scroll.ScrollableHeight), null, true);
+        var requested = Math.Clamp(scroll.VerticalOffset + t.Px(delta), 0, scroll.ScrollableHeight);
+        ControllerDiagnostics.View(page, scroll.VerticalOffset, requested, scroll.ScrollableHeight);
+        scroll.ChangeView(null, requested, null, true);
     }
 
     void Back()
@@ -523,6 +564,7 @@ public sealed partial class GameModeView : UserControl
         if (kind == "keyboard" && shell.ControllerLegacyInputActive) { ControllerActivity(); return; }
         if (inputKind == kind) return;
         inputKind = kind;
+        foreach (var light in Descendants(root).OfType<ArtworkLightLayer>()) light.ControllerFocus = kind == "controller";
         RenderFooter();
     }
 
@@ -650,7 +692,7 @@ public sealed partial class GameModeView : UserControl
         // A screen about one game also tints its sliders and switches with that game's accent.
         if (modalPalette is not null) Controls.AccentResources.Apply(dialog.Resources, modalPalette);
         var dialogScene = new Grid { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        var dialogLight = new ArtworkLightLayer();
+        var dialogLight = new ArtworkLightLayer { ControllerFocus = inputKind == "controller" };
         dialogScene.Children.Add(dialogLight.Artwork); dialogScene.Children.Add(dialog); dialogScene.Children.Add(dialogLight);
         foreach (var button in Descendants(dialog).OfType<Button>()) GmGlow.Layer(button, dialogLight);
         dialog.Loaded += (_, _) => { foreach (var scroll in Descendants(dialog).OfType<ScrollViewer>()) GmScrollFade.Attach(scroll, t.S); };

@@ -7,10 +7,10 @@ import transactions as t
 
 POSITIONS = ('top-center', 'top-left', 'top-right', 'bottom-left', 'bottom-right')
 DEFAULTS = dict(overlay_policy.DEFAULTS, optiscaler_hotkey='Insert', overlay_renderer='game',
-                overlay_controls='unified', overlay_live_stats=True, overlay_welcome=True,
+                overlay_controls='unified', overlay_theme='dark', overlay_live_stats=True, overlay_welcome=True,
                 overlay_welcome_position='top-center', panel_hotkey='Delete', vulkan_mfg_native_menu=False)
 ENUMS = {'optiscaler_hotkey': ('Insert', 'F8', 'Disabled'), 'overlay_renderer': ('game', 'optiscaler'),
-         'overlay_controls': ('unified', 'classic'), 'overlay_welcome_position': POSITIONS}
+         'overlay_controls': ('unified', 'classic'), 'overlay_theme': ('dark', 'light', 'app'), 'overlay_welcome_position': POSITIONS}
 
 
 def options(values):
@@ -47,6 +47,7 @@ def describe(values):
     return '\n'.join((
         'Overlay: ' + ('rtxForge' if values['overlay_renderer'] == 'game' else 'Native'),
         'Controls: ' + ('Advanced' if values['overlay_controls'] == 'classic' else 'Unified'),
+        'Appearance: ' + ('Follow app' if values['overlay_theme'] == 'app' else values['overlay_theme'].capitalize()),
         'Live feature statistics: ' + state('overlay_live_stats'),
         'Welcome message: ' + state('overlay_welcome'),
         'Welcome position: ' + values['overlay_welcome_position'].replace('-', ' ').capitalize(),

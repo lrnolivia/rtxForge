@@ -105,9 +105,12 @@ static class GmGlow
         Shape? mask;
         Rectangle? fill;
         Microsoft.UI.Xaml.Shapes.Path? contour;
-        Border? edge, focusRing, focusWash;
+        Border? edge, focusRing, focusWash, hover;
+        ContentPresenter? contentPresenter;
+        readonly SolidColorBrush hoverInk = new();
+        readonly List<(DependencyObject Target, DependencyProperty Property, object Original)> hoverLabels = [];
         GlowHalo? halo;
-        long backgroundToken, accentToken, radiusToken, enabledToken, borderToken, thicknessToken, marginToken;
+        long backgroundToken, foregroundToken, accentToken, radiusToken, enabledToken, borderToken, thicknessToken, marginToken;
         Vector2 outlineSize;
         CornerRadius outlineCorners;
         bool pointer, loaded, inViewport = true;
@@ -148,9 +151,12 @@ static class GmGlow
             edge = Find<Border>(button, "GlowEdge");
             focusRing = Find<Border>(button, "FocusRing");
             focusWash = Find<Border>(button, "FocusWash");
+            hover = Find<Border>(button, "Hover");
+            contentPresenter = Find<ContentPresenter>(button, "ContentPresenter");
             if (templateHost is null || mask is null) return;
             loaded = true;
             backgroundToken = button.RegisterPropertyChangedCallback(Control.BackgroundProperty, (_, _) => Update());
+            foregroundToken = button.RegisterPropertyChangedCallback(Control.ForegroundProperty, (_, _) => Update());
             radiusToken = button.RegisterPropertyChangedCallback(Control.CornerRadiusProperty, (_, _) => Resize());
             enabledToken = button.RegisterPropertyChangedCallback(Control.IsEnabledProperty, (_, _) => Update());
             accentToken = accent.RegisterPropertyChangedCallback(SolidColorBrush.ColorProperty, (_, _) => Update());
@@ -165,6 +171,7 @@ static class GmGlow
             if (!loaded) return;
             loaded = false; pointer = false;
             button.UnregisterPropertyChangedCallback(Control.BackgroundProperty, backgroundToken);
+            button.UnregisterPropertyChangedCallback(Control.ForegroundProperty, foregroundToken);
             button.UnregisterPropertyChangedCallback(Control.CornerRadiusProperty, radiusToken);
             button.UnregisterPropertyChangedCallback(Control.IsEnabledProperty, enabledToken);
             accent.UnregisterPropertyChangedCallback(SolidColorBrush.ColorProperty, accentToken);
@@ -174,8 +181,9 @@ static class GmGlow
             if (host is not null) ElementCompositionPreview.SetElementChildVisual(host, null);
             layer?.RemoveControl(button);
             halo?.Dispose();
+            RestoreHoverInk();
             if (edge is not null) ElementCompositionPreview.GetElementVisual(edge).StopAnimation("Opacity");
-            halo = null; mask = null; fill = null; contour = null; host = null; edge = null; focusRing = null; focusWash = null; edgeLevel = -1;
+            halo = null; mask = null; fill = null; contour = null; host = null; edge = null; focusRing = null; focusWash = null; hover = null; contentPresenter = null; edgeLevel = -1;
             outlineSize = default; outlineCorners = default;
         }
 
@@ -217,6 +225,7 @@ static class GmGlow
         public void Update()
         {
             if (!loaded || mask is null) return;
+            var hoverColor = UpdateHover();
             if (ExternalSurface)
             {
                 mask.Fill = button.Background;
@@ -237,7 +246,7 @@ static class GmGlow
             mask.Fill = on && button.Background is SolidColorBrush { Color.A: 0 }
                 ? GmTheme.B(theme.RowFocus)
                 : button.Background;
-            var color = (button.Content is Border contentSurface ? Surface(contentSurface.Background) : null)
+            var color = hoverColor ?? (button.Content is Border contentSurface ? Surface(contentSurface.Background) : null)
                 ?? Surface(button.Background)
                 ?? Surface(mask.Fill) ?? theme.Card;
             var opacity = !on ? 0f : focused ? .85f : selected ? .72f : .64f;
@@ -246,6 +255,37 @@ static class GmGlow
             var needsEdge = on && !focused && !HasStroke(button.BorderBrush, button.BorderThickness)
                 && !(button.Content is Border content && HasStroke(content.BorderBrush, content.BorderThickness));
             SetEdge(color, needsEdge ? theme.IsLight ? .27f : .21f : 0);
+        }
+
+        global::Windows.UI.Color? UpdateHover()
+        {
+            if (hover is null || contentPresenter is null) return null;
+            var fillColor = Surface(button.Background);
+            var active = pointer && button.IsEnabled && fillColor is not null;
+            var colors = GmTheme.HoverColors(fillColor ?? theme.RowFocus);
+            hover.Background = fillColor is null ? GmTheme.B(theme.RowFocus, .08) : GmTheme.B(colors.Surface);
+            hoverInk.Color = colors.Ink;
+            contentPresenter.Foreground = active ? hoverInk : button.Foreground;
+            if (active && hoverLabels.Count == 0 && button.Content is DependencyObject content) ApplyHoverInk(content);
+            else if (!active) RestoreHoverInk();
+            return active ? colors.Surface : null;
+        }
+
+        void ApplyHoverInk(DependencyObject node)
+        {
+            // A nested field/badge keeps its own surface and contrast colors.
+            if (node is Border { Background: { } background } && Surface(background) is not null) return;
+            var property = node is TextBlock ? TextBlock.ForegroundProperty : node is IconElement ? IconElement.ForegroundProperty : null;
+            if (property is not null && node.ReadLocalValue(property) is Brush original)
+            { hoverLabels.Add((node, property, original)); node.SetValue(property, hoverInk); }
+            for (var i = 0; i < VisualTreeHelper.GetChildrenCount(node); i++) ApplyHoverInk(VisualTreeHelper.GetChild(node, i));
+        }
+
+        void RestoreHoverInk()
+        {
+            foreach (var (target, property, original) in hoverLabels)
+                if (ReferenceEquals(target.GetValue(property), hoverInk)) target.SetValue(property, original);
+            hoverLabels.Clear();
         }
 
         void SetEdge(global::Windows.UI.Color color, float opacity)

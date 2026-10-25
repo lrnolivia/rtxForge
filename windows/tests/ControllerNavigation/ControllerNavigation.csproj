@@ -3,5 +3,6 @@
   <ItemGroup>
     <Compile Include="../../RtxForge.Windows/GameMode/ControllerNavigation.cs" Link="ControllerNavigation.cs" />
     <Compile Include="../../RtxForge.Windows/GameMode/ControllerDevice.cs" Link="ControllerDevice.cs" />
+    <Compile Include="../../RtxForge.Windows/GameMode/SteamControllerReport.cs" Link="SteamControllerReport.cs" />
   </ItemGroup>
 </Project>

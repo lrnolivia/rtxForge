@@ -17,6 +17,10 @@ internal static class ControllerNavigation
     }
 
     // Rescale outside the deadzone so slow scrolling starts without a jump.
+    internal static double ScrollAxis(double axis, bool nativeUp, bool nativeDown) =>
+        double.IsFinite(axis) && Math.Abs(axis) > .18 ? Math.Clamp(axis, -1, 1)
+        : nativeUp == nativeDown ? 0 : nativeUp ? 1 : -1;
+
     internal static double ScrollDelta(double axis, double seconds)
     {
         if (!double.IsFinite(axis) || !double.IsFinite(seconds)) return 0;

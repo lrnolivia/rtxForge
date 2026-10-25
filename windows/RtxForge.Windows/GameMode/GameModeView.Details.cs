@@ -140,18 +140,26 @@ public sealed partial class GameModeView
             radius: 10, padding: new Thickness(t.Px(14)), minHeight: 46, name: "More game options");
         Key(more, "hero-more"); ToolTipService.SetToolTip(more, "More options"); actions.Children.Add(more);
         Grid.SetRow(actions, 1); Grid.SetColumn(actions, 1); heroBody.Children.Add(actions);
-        heroBody.SizeChanged += (_, e) =>
+        var collapsedIdentity = false;
+        void LayoutHeroActions(double width)
         {
             foreach (var button in actions.Children) button.Measure(new global::Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
             var actionWidth = actions.Children.Cast<FrameworkElement>().Sum(button => button.DesiredSize.Width) + actions.Spacing * (actions.Children.Count - 1);
-            var stack = e.NewSize.Width < actionWidth;
+            var stack = width < actionWidth;
             actions.Orientation = stack ? Orientation.Vertical : Orientation.Horizontal;
             foreach (var button in actions.Children.OfType<Button>()) button.HorizontalAlignment = stack ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
-            var narrow = e.NewSize.Width < actionWidth + t.Px(364);
-            Grid.SetRow(actions, narrow ? 2 : 1); Grid.SetColumn(actions, narrow ? 0 : 1);
+            var narrow = width < actionWidth + t.Px(364);
+            var inlineIdentity = collapsedIdentity && !narrow;
+            Grid.SetColumnSpan(head, inlineIdentity ? 1 : 2);
+            Grid.SetRowSpan(head, inlineIdentity ? 3 : 1);
+            head.VerticalAlignment = inlineIdentity ? VerticalAlignment.Center : VerticalAlignment.Top;
+            Grid.SetRow(actions, inlineIdentity ? 0 : narrow ? 2 : 1); Grid.SetColumn(actions, narrow ? 0 : 1);
+            Grid.SetRowSpan(actions, inlineIdentity ? 3 : 1);
             Grid.SetColumnSpan(actions, narrow ? 2 : 1);
+            actions.VerticalAlignment = inlineIdentity ? VerticalAlignment.Center : VerticalAlignment.Bottom;
             actions.HorizontalAlignment = stack ? HorizontalAlignment.Stretch : narrow ? HorizontalAlignment.Left : HorizontalAlignment.Right;
-        };
+        }
+        heroBody.SizeChanged += (_, e) => LayoutHeroActions(e.NewSize.Width);
         Grid.SetColumn(heroBody, 1); identity.Children.Add(heroBody);
         hero.Children.Add(identity);
         var back = ui.Button(Glyph("", "Back to Library"), CloseDetails, GmKind.Transparent, 0.78, radius: 12,
@@ -206,10 +214,19 @@ public sealed partial class GameModeView
             poster.Height = fullPoster + (t.Px(100) - fullPoster) * progress;
             poster.Width = Math.Round(poster.Height * 2 / 3);
             var fullTitle = Math.Clamp(expandedWidth / t.S / 26, 32, 64) * t.S * (g.Name.Length > 28 ? .78 : 1);
-            title.FontSize = fullTitle + (Math.Min(fullTitle, t.Px(32)) - fullTitle) * progress;
+            var compactTitle = t.Px(g.Name.Length > 42 ? 38 : 46);
+            title.FontSize = fullTitle + (compactTitle - fullTitle) * progress;
             title.LineHeight = title.FontSize * 1.1;
             text.Opacity = 1 - progress;
             text.Visibility = progress >= .75 ? Visibility.Collapsed : Visibility.Visible;
+            heroBody.MinHeight = poster.Height * progress;
+            poster.VerticalAlignment = progress >= .75 ? VerticalAlignment.Center : VerticalAlignment.Bottom;
+            heroBody.VerticalAlignment = progress >= .75 ? VerticalAlignment.Center : VerticalAlignment.Bottom;
+            if (collapsedIdentity != (progress >= .75))
+            {
+                collapsedIdentity = progress >= .75;
+                LayoutHeroActions(heroBody.ActualWidth);
+            }
         });
         void ResizeHero(double width)
         {
@@ -264,7 +281,7 @@ public sealed partial class GameModeView
         foreach (var (button, section) in nav)
             if (section == detailsSection)
             {
-                var highlight = t.Highlight(colors.Accent);
+                var highlight = t.Highlight(colors.Accent, fixedTint: true);
                 button.Background = highlight.Surface;
                 button.Foreground = highlight.Ink;
             }

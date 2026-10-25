@@ -70,6 +70,7 @@ public sealed class GameOverlayPreferencesView : StackPanel
             options.Children.Add(row);
         }
         Toggle("Welcome message", "overlay_welcome");
+        Choice("Appearance", "overlay_theme", ForgeSettings.OverlayThemes, ["Dark", "Light", "Follow app"]);
         Choice("Welcome position", "overlay_welcome_position", ForgeSettings.WelcomePositions,
             ["Top center", "Top left", "Top right", "Bottom left", "Bottom right"]);
         Toggle("Live feature statistics", "overlay_live_stats");

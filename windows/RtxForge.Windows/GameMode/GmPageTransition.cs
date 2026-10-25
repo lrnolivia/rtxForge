@@ -9,13 +9,20 @@ namespace RtxForge.Windows.GameMode;
 
 static partial class GmMotion
 {
+    public const int SlideArrival = 340;
+    public static void GlowArrival(FrameworkElement element, int delay = 0)
+    {
+        element.Opacity = 1;
+        Enter(element, 0, 1, 180, 0, delay);
+    }
+
     // Native content remains interactive. The short-lived blur copy is removed
     // when the slide finishes; it never becomes the permanent page surface.
     public static void Horizontal(Grid host, int direction, double unit, bool outgoing = false, Action? completed = null) => OnLoaded(host, () =>
     {
         if (!Enabled) { completed?.Invoke(); return; }
         var compositor = Microsoft.UI.Xaml.Media.CompositionTarget.GetCompositorForCurrentThread();
-        var duration = TimeSpan.FromMilliseconds(outgoing ? 280 : 340);
+        var duration = TimeSpan.FromMilliseconds(outgoing ? 280 : SlideArrival);
         var distance = (float)(Math.Min(240 * unit, Math.Max(80, host.ActualWidth * .16)) * (direction < 0 ? -1 : 1));
         using var ease = compositor.CreateCubicBezierEasingFunction(new(.25f, .1f), new(.25f, 1));
         var travel = compositor.CreateVector3KeyFrameAnimation(); travel.Target = "Translation";

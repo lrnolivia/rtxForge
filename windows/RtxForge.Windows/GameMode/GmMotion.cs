@@ -29,9 +29,7 @@ static partial class GmMotion
             Grid.SetRow(scene, Grid.GetRow(frame)); Grid.SetColumn(scene, Grid.GetColumn(frame));
             Grid.SetRowSpan(scene, Grid.GetRowSpan(frame)); Grid.SetColumnSpan(scene, Grid.GetColumnSpan(frame));
             Canvas.SetZIndex(scene, Canvas.GetZIndex(region));
-            var light = new ArtworkLightLayer();
-            scene.Children.Add(light.Artwork); scene.Children.Add(region); scene.Children.Add(light); panel.Children.Add(scene);
-            foreach (var button in Buttons(region)) GmGlow.Layer(button, light);
+            scene.Children.Add(region); panel.Children.Add(scene);
             if (contentOnly && i < regions.Length - 1) continue;
             var profile = GmMotionTokens.Region(i);
             Reveal(scene, i, unit);

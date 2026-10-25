@@ -19,6 +19,7 @@ public sealed partial class GmUi(GmTheme t)
 {
     public GmTheme T => t;
     readonly Dictionary<string, GmSelection> indicators = [];
+    internal int SelectionGlowDelay { get; set; }
     internal bool SelectionSurfacesMeasured => indicators.Values.All(indicator => indicator.MeasuredHeight > 0);
     internal Grid Selection(string key, StackPanel line, Button selected, bool navigation = false)
     {
@@ -27,7 +28,7 @@ public sealed partial class GmUi(GmTheme t)
         {
             GmGlow.Indicator(button);
         }
-        return indicator.Place(line, selected, t, navigation);
+        return indicator.Place(line, selected, t, navigation, navigation ? SelectionGlowDelay : 0);
     }
 
     internal ArtworkLightLayer? ArtworkLight { get; set; }
@@ -96,7 +97,7 @@ public sealed partial class GmUi(GmTheme t)
             MinHeight = t.Px(minHeight),
             IsEnabled = enabled,
         };
-        if ((kind is GmKind.Card or GmKind.Active or GmKind.Primary or GmKind.Danger) && button.Content is UIElement contentElement)
+        if (kind != GmKind.Transparent && button.Content is UIElement contentElement)
             InheritButtonInk(contentElement);
         if (kind == GmKind.Dlss)
         {
@@ -178,18 +179,25 @@ public sealed partial class GmUi(GmTheme t)
     /// <summary>Menu focus adds a surface and brighter ink; selection colours remain owned by the page.</summary>
     public void Sidebar(Button button, bool active)
     {
-        button.Background = active ? t.Surface(t.Card) : GmTheme.B(Microsoft.UI.Colors.Transparent);
-        MenuFocus(button);
+        var highlight = t.Highlight(FocusBrush.Color, fixedTint: true);
+        button.Background = active ? highlight.Surface : GmTheme.B(Microsoft.UI.Colors.Transparent);
+        if (active) button.Foreground = highlight.Ink;
+        else
+        {
+            // Focus previews a destination; activation alone owns the accent.
+            button.FocusVisualPrimaryBrush = GmTheme.B(t.Focus);
+            MenuFocus(button, fixedTint: true, neutral: true);
+        }
     }
 
-    public void MenuFocus(Button button)
+    public void MenuFocus(Button button, bool fixedTint = false, bool neutral = false)
     {
         Brush? priorBackground = null, priorForeground = null;
-        var (focusedBackground, focusedForeground) = t.Highlight(FocusBrush.Color);
+        var (focusedBackground, focusedForeground) = t.Highlight(neutral ? t.Focus : FocusBrush.Color, fixedTint);
         button.GotFocus += (_, _) =>
         {
             if (button.FocusState == FocusState.Pointer) return;
-            focusedBackground.TintColor = GlowHalo.Richer(FocusBrush.Color);
+            focusedBackground.TintColor = GlowHalo.Richer(neutral ? t.Focus : FocusBrush.Color);
             priorBackground = button.Background; priorForeground = button.Foreground;
             button.Background = focusedBackground; button.Foreground = focusedForeground;
         };

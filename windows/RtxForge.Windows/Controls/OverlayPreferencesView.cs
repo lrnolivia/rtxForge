@@ -24,6 +24,7 @@ public sealed class OverlayPreferencesView : StackPanel
             "Use the rtxForge panel in compatible packages, or the original menus provided by OptiScaler, Feeder or ReShade.", glyph: "\uE7F4");
         var layout = Choice("Controls", ["Unified", "Advanced"], current.OverlayControls == "classic" ? 1 : 0,
             "Unified uses simple labels. Advanced uses the package’s labels and original units.", glyph: "\uE713");
+        var theme = Choice("Appearance", ["Dark", "Light", "Follow app"], Array.IndexOf(ForgeSettings.OverlayThemes, current.OverlayTheme), glyph: "\uE790");
         var liveStats = Switch("Live feature statistics", current.OverlayLiveStats,
             "Show measured activity and performance beside NR and frame generation controls, when the injector supplies them.", glyph: "\uE9D9");
         var welcome = Switch("Welcome message", current.OverlayWelcome,
@@ -58,6 +59,7 @@ public sealed class OverlayPreferencesView : StackPanel
         {
             var native = renderer.SelectedIndex == 1;
             layout.IsEnabled = key.IsEnabled = !native;
+            theme.IsEnabled = !native;
             helper.IsEnabled = startup.IsEnabled = !native;
             nativeKey.IsEnabled = optiUi.IsOn;
         }
@@ -80,6 +82,7 @@ public sealed class OverlayPreferencesView : StackPanel
         }
         renderer.SelectionChanged += (_, _) => Save(s => s.OverlayRenderer = renderer.SelectedIndex == 1 ? "optiscaler" : "game");
         layout.SelectionChanged += (_, _) => Save(s => s.OverlayControls = layout.SelectedIndex == 1 ? "classic" : "unified");
+        theme.SelectionChanged += (_, _) => { if (theme.SelectedIndex >= 0) Save(s => s.OverlayTheme = ForgeSettings.OverlayThemes[theme.SelectedIndex]); };
         liveStats.Toggled += (_, _) => Save(s => s.OverlayLiveStats = liveStats.IsOn);
         welcome.Toggled += (_, _) => Save(s => s.OverlayWelcome = welcome.IsOn);
         welcomePosition.SelectionChanged += (_, _) =>

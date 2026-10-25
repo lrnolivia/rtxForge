@@ -6,6 +6,26 @@ void Check(bool condition, string message)
     checks++;
     if (!condition) throw new Exception(message);
 }
+Check(ControllerNavigation.ScrollAxis(0, false, true) == -1, "Native right-stick down must scroll without mapped axes");
+Check(ControllerNavigation.ScrollAxis(0, true, false) == 1, "Native right-stick up must scroll without mapped axes");
+Check(ControllerNavigation.ScrollAxis(-.5, false, true) == -.5, "Native fallback must not double mapped analog input");
+Check(ControllerNavigation.ScrollAxis(0, false, false) == 0 && ControllerNavigation.ScrollAxis(0, true, true) == 0, "Released or opposing native directions must stop scrolling");
+foreach (var id in new byte[] { 0x42, 0x45, 0x47 })
+{
+    var packet = new byte[64]; packet[0] = id;
+    System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(packet.AsSpan(16), -16384);
+    Check(SteamControllerReport.TryRightStick(packet, out var value) && value == -.5,
+        "Steam USB/BLE/timestamp report lost signed right-stick input");
+    Check(ControllerNavigation.ScrollDelta(value, .016) > 0, "Physical Steam right-stick down must scroll down");
+    packet[16] = packet[17] = 0;
+    Check(SteamControllerReport.TryRightStick(packet, out value) && value == 0, "Center report must stop physical scrolling");
+    Check(!SteamControllerReport.TryRightStick(packet.AsSpan(0, 17), out _), "Truncated Steam report must not read past the payload");
+}
+foreach (var id in new byte[] { 0, 1, 0x43, 0x46, 0x79 })
+{
+    var packet = new byte[64]; packet[0] = id;
+    Check(!SteamControllerReport.TryRightStick(packet, out _), "Battery/wireless/legacy report was mistaken for stick input");
+}
 foreach (var axis in new[] { -.18, -.01, 0, .01, .18, double.NaN, double.PositiveInfinity })
     Check(ControllerNavigation.ScrollDelta(axis, .016) == 0, "Stick drift or invalid input scrolled content");
 Check(ControllerNavigation.ScrollDelta(1, .016) < 0, "Stick up must scroll up");

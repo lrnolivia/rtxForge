@@ -12,6 +12,13 @@ internal sealed class ControllerRawInput : IDisposable
     readonly Dictionary<nint, (string Family, int? Slot)?> devices = [];
     readonly Dictionary<int, string> slots = [];
     readonly Func<bool> foreground;
+    double rightStickY;
+    long rightStickAt;
+    public bool TryRightStick(out double axis)
+    {
+        axis = rightStickY;
+        return rightStickAt != 0 && System.Diagnostics.Stopwatch.GetElapsedTime(rightStickAt).TotalMilliseconds < 250;
+    }
     // Legacy key messages and WM_INPUT arrive separately, with no fixed order.
     // Keep the source until another physical keyboard/mouse is actually used.
     public bool LegacyInputActive { get; private set; }
@@ -25,7 +32,7 @@ internal sealed class ControllerRawInput : IDisposable
         if (!SetWindowSubclass(window, callback, 0x52584643, 0)) return;
         // No INPUTSINK or NOLEGACY: input remains local to the focused app and
         // Windows still delivers normal keyboard/mouse messages to its controls.
-        RawDevice[] registrations = [new(1, 6, 0x2000, window), new(1, 2, 0x2000, window)];
+        RawDevice[] registrations = [new(1, 6, 0x2000, window), new(1, 2, 0x2000, window), new(0xff00, 1, 0x2000, window)];
         RegisterRawInputDevices(registrations, (uint)registrations.Length, (uint)Marshal.SizeOf<RawDevice>());
         RefreshSlots();
     }
@@ -54,7 +61,7 @@ internal sealed class ControllerRawInput : IDisposable
         if (GetRawInputDeviceList(list, ref count, (uint)Marshal.SizeOf<DeviceList>()) == uint.MaxValue) return;
         foreach (var device in list.Take((int)count))
             if (Device(device.Handle, device.Type) is { Family: "steam" }) SteamConnected = true;
-        if (!SteamConnected) LegacyInputActive = false;
+        if (!SteamConnected) { LegacyInputActive = false; rightStickAt = 0; }
         else if (!previouslyConnected) activity("steam");
     }
 
@@ -73,6 +80,22 @@ internal sealed class ControllerRawInput : IDisposable
                     {
                         var header = Marshal.PtrToStructure<Header>(buffer);
                         var body = buffer + (int)headerSize;
+                        if (header.Type == 2 && size >= headerSize + 8 && Device(header.Device, header.Type) is { Family: "steam" })
+                        {
+                            var reportSize = (uint)Marshal.ReadInt32(body);
+                            var reports = (uint)Marshal.ReadInt32(body, 4);
+                            if (reportSize is >= 46 and <= 1024 && reports > 0 && (ulong)reportSize * reports <= size - headerSize - 8)
+                            {
+                                var bytes = new byte[reportSize];
+                                for (var i = 0u; i < reports; i++)
+                                {
+                                    Marshal.Copy(body + 8 + (int)(i * reportSize), bytes, 0, bytes.Length);
+                                    if (!SteamControllerReport.TryRightStick(bytes, out var axis)) continue;
+                                    rightStickY = axis; rightStickAt = System.Diagnostics.Stopwatch.GetTimestamp();
+                                    if (Math.Abs(axis) > .18) { LegacyInputActive = true; activity("steam"); }
+                                }
+                            }
+                        }
                         // Key make only; mouse clicks/wheel or meaningful motion.
                         bool used = header.Type == 1 && size >= headerSize + 16 && (Marshal.ReadInt16(body, 2) & 1) == 0
                             || header.Type == 0 && size >= headerSize + 24 && (Marshal.ReadInt16(body, 4) != 0
@@ -98,7 +121,7 @@ internal sealed class ControllerRawInput : IDisposable
     public void Dispose()
     {
         RemoveWindowSubclass(window, callback, 0x52584643);
-        RawDevice[] remove = [new(1, 6, 1, 0), new(1, 2, 1, 0)];
+        RawDevice[] remove = [new(1, 6, 1, 0), new(1, 2, 1, 0), new(0xff00, 1, 1, 0)];
         RegisterRawInputDevices(remove, (uint)remove.Length, (uint)Marshal.SizeOf<RawDevice>());
     }
 

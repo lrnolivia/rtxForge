@@ -33,7 +33,7 @@ public sealed partial class GameModeView
             previous = now;
         }
         void Check(string criterion, bool pass, object? detail = null) => assertions.Add(new { criterion, pass, detail });
-        async Task Settle(int milliseconds = 300) => await Task.Delay(milliseconds);
+        async Task Settle(int milliseconds = 560) => await Task.Delay(milliseconds);
         async Task Move(string direction, int count, int interval)
         {
             for (var i = 0; i < count; i++)
@@ -59,12 +59,22 @@ public sealed partial class GameModeView
             t.SetCardOpacity(65);
             Check("card_material_updates_live_with_navbar_offset", cardMaterial.Opacity == 1 && navigationMaterial.Opacity == 1
                 && cardMaterial.TintOpacity == .65 && navigationMaterial.TintOpacity == .5);
+            var sidebarHighlight = t.Highlight(GmTheme.Accent, fixedTint: true);
+            t.SetCardOpacity(10);
+            Check("sidebar_highlight_is_independent_of_card_slider", sidebarHighlight.Surface.TintOpacity == .5 && sidebarHighlight.Surface.Opacity == 1);
             t.SetCardOpacity(originalOpacity);
             var selectionLine = new StackPanel { Orientation = Orientation.Horizontal };
             var selectedButton = ui.Button("Selected", null, GmKind.Active);
             selectionLine.Children.Add(selectedButton);
             new GmUi(t).Selection("review-first-frame", selectionLine, selectedButton, true);
             Check("selection_has_fill_before_first_layout", selectedButton.Background is SolidColorBrush { Color.A: > 0 });
+            foreach (var theme in new[] { "night", "dark", "light" }.Select(GmTheme.For))
+                foreach (var color in new[] { theme.Card, theme.Active, theme.DangerBg, GmTheme.Accent, GmTheme.Hex("#2d6eb0") })
+                {
+                    var hover = GmTheme.HoverColors(color);
+                    Check("hover_fill_and_ink_have_readable_contrast", Services.ArtAccent.Contrast(hover.Surface, hover.Ink) >= 4.5,
+                        new { theme.Name, color, hover });
+                }
             phase = "first-visit-card-focus";
             shell.Settings.LibraryView = "posters"; Open("library"); await Settle();
             Check("initial_selection_surfaces_measured", ui.SelectionSurfacesMeasured);
@@ -90,7 +100,13 @@ public sealed partial class GameModeView
             phase = "tabs";
             foreach (var target in new[] { "presets", "packages", "extras", "settings", "library" })
             {
-                Open(target); await Settle(180);
+                Open(target); await Settle(80);
+                var moving = body.Children.OfType<PageSurface>().Last();
+                Check("glows_stay_outside_slide_capture", !Descendants(moving.Motion).OfType<ArtworkLightLayer>().Any()
+                    && ReferenceEquals(moving.Light.Parent, moving) && ReferenceEquals(moving.Light.Artwork.Parent, moving));
+                Check("new_glows_wait_for_surface_to_settle", moving.Light.Opacity == 0 && moving.Light.Artwork.Opacity == 0);
+                await Settle(480);
+                Check("glows_return_after_surface_settles", moving.Light.Opacity == 1 && moving.Light.Artwork.Opacity == 1);
                 Check("page_has_live_focus", FocusManager.GetFocusedElement(XamlRoot) is Control, target);
             }
             phase = "controller-content-and-tabs";
@@ -129,7 +145,7 @@ public sealed partial class GameModeView
                 Check("outgoing_surfaces_are_bounded", body.Children.Count <= 2);
                 Check("rapid_tab_focus_is_live", FocusManager.GetFocusedElement(XamlRoot) is Control { IsEnabled: true });
             }
-            await Settle(180);
+            await Settle(560);
             Check("outgoing_surface_is_released", body.Children.Count == 1);
             phase = "menu-rows-and-trap";
             OpenMainMenu(); await Settle(180);

@@ -216,6 +216,7 @@ public sealed partial class GameModeView
         shell.Settings.LibraryView = key;
         if (persist) shell.Settings.Save();
         libraryScroll = 0;
+        libraryFilterHidden = false;
         pendingFocusKey = "gm_view-" + key;
         Render();
     }

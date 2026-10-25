@@ -36,6 +36,7 @@ public sealed partial class MainWindow
     internal bool ControllerLegacyInputActive => gamepad?.LegacyInputActive == true;
     internal bool ControllerPollingAvailable => gamepad?.PollingAvailable == true;
     internal bool ControllerInputForeground => ForegroundProcessId() == Environment.ProcessId;
+    internal void NativeRightStick(bool up, bool pressed) => gamepad?.NativeRightStick(up, pressed);
 
     void OnGamepadAction(string action)
     {

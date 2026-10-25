@@ -33,8 +33,10 @@ foreach (var unit in new[] { .7, 1d, 1.3 })
     Assert(plain.Alpha(0) == 1 && plain.Alpha(700) == 1, "No overflow remains opaque");
     var start = ScrollFadeProfile.Create(700, 0, 1000, unit);
     Assert(start.Alpha(0) == 1 && start.Alpha(700) == 0, "Real top stays visible");
+    Assert(start.Alpha(-200) == 1 && start.Alpha(900) == 0, "Blur can bleed past the real top but stays masked past the scrolling bottom");
     var end = ScrollFadeProfile.Create(700, 1000, 1000, unit);
     Assert(end.Alpha(0) == 0 && end.Alpha(700) == 1, "Real bottom stays visible");
+    Assert(end.Alpha(-200) == 0 && end.Alpha(900) == 1, "Blur can bleed past the real bottom but stays masked past the scrolling top");
     var middle = ScrollFadeProfile.Create(700, 500, 1000, unit);
     Assert(middle.Alpha(0) == 0 && middle.Alpha(700) == 0 && middle.Alpha(350) == 1, "Both edges reach zero, center stays opaque");
     for (var i = 0; i < 100; i++)

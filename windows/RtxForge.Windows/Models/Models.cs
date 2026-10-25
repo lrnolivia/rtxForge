@@ -315,6 +315,13 @@ public sealed class ForgeSettings
     [JsonPropertyName("overlay_start_with_windows")] public bool OverlayStartWithWindows { get; set; } = true;
     [JsonPropertyName("overlay_material")] public string OverlayMaterial { get; set; } = "acrylic";
     [JsonPropertyName("overlay_controls")] public string OverlayControls { get; set; } = "unified";
+    public static readonly string[] OverlayThemes = ["dark", "light", "app"];
+    string overlayTheme = "dark";
+    [JsonPropertyName("overlay_theme")] public string OverlayTheme
+    {
+        get => overlayTheme;
+        set => overlayTheme = OverlayThemes.Contains(value) ? value : "dark";
+    }
     [JsonPropertyName("overlay_live_stats")] public bool OverlayLiveStats { get; set; } = true;
     [JsonPropertyName("overlay_welcome")] public bool OverlayWelcome { get; set; } = true;
     public static readonly string[] WelcomePositions = ["top-center", "top-left", "top-right", "bottom-left", "bottom-right"];
@@ -351,6 +358,7 @@ public sealed class ForgeSettings
         var values = GameUiOptions();
         values["overlay_renderer"] = OverlayRenderer;
         values["overlay_controls"] = OverlayControls;
+        values["overlay_theme"] = OverlayTheme;
         values["overlay_live_stats"] = OverlayLiveStats;
         values["overlay_welcome"] = OverlayWelcome;
         values["overlay_welcome_position"] = OverlayWelcomePosition;
@@ -387,6 +395,7 @@ public sealed class ForgeSettings
         PanelHotkey = source.PanelHotkey; OverlayHelper = source.OverlayHelper;
         OverlayStartWithWindows = source.OverlayStartWithWindows; OverlayMaterial = source.OverlayMaterial;
         OverlayControls = source.OverlayControls; OverlayRenderer = source.OverlayRenderer;
+        OverlayTheme = source.OverlayTheme;
         OverlayLiveStats = source.OverlayLiveStats;
         OverlayWelcome = source.OverlayWelcome; VulkanMfgNativeMenu = source.VulkanMfgNativeMenu;
         OverlayWelcomePosition = source.OverlayWelcomePosition;

@@ -262,7 +262,7 @@ public sealed class ForgeSettings
     public string PackageFor(Game game, string operation)
     {
         static bool Known(string? key) => GamePackageChoices.Any(c => c.Key == key);
-        if (game.UsesVulkan) return "vulkan-native";
+        if (game.UsesVulkan && game.Installed) return "vulkan-native";
         if (game.UsesFeeder) return RuntimeProvider;
         if (operation == "repair" && game.Installed && Known(game.RuntimeProvider)) return game.RuntimeProvider!;
         return GamePackages.TryGetValue(game.Id, out var chosen) && Known(chosen) ? chosen : RuntimeProvider;

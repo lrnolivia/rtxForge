@@ -277,7 +277,8 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             // Feeder games take their own route and games may choose their own package:
             // one review, prepared per route and run in turn.
             // Confirmed Vulkan games take the Vulkan package automatically, as Feeder games take Feeder NR.
-            string Route(Game g) => g.UsesVulkan ? "vulkan-native"
+            // It always brings frame generation, so NR Only installs keep the DLSS package's route.
+            string Route(Game g) => g.UsesVulkan && (g.Installed || mode != "nr-only") ? "vulkan-native"
                 : g.UsesFeeder ? "feeder" : operation is "install" or "repair" ? Settings.PackageFor(g, operation) : Settings.RuntimeProvider;
             var packages = targets.GroupBy(Route).ToArray();
             // The engine sends a selection of only Feeder games down the Feeder route; the package setting stays.

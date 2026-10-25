@@ -169,9 +169,10 @@ class DesktopService:
             import package_adoption
             return package_adoption.prepare(self.config, rows, operation, settings)
         settings['apply_requested_presets']=operation=='install' and visual_settings is not None
-        # Profiled Vulkan games use the Vulkan package automatically, as Feeder games use Feeder NR.
+        # Confirmed Vulkan games use the Vulkan package automatically, as Feeder games use Feeder NR.
+        # It always brings frame generation, so NR Only keeps the DLSS package's own route.
         if settings.get('runtime_provider')=='vulkan-native' or (rows and all(row.get('runtime_provider')=='vulkan-native'
-                or row.get('install_provider')=='vulkan-native' and row.get('vulkan_available') is True for row in rows)):
+                or mode in ('nr-mfg','mfg-only') and row.get('install_provider')=='vulkan-native' and row.get('vulkan_available') is True for row in rows)):
             import vulkan_app
             return vulkan_app.prepare(self.config,rows,mode,operation,settings,engine_bridge.module(self.config))
         feeder = settings.get('runtime_provider') == 'feeder'

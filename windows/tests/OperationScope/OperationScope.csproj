@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../RtxForge.Windows/Models/Models.cs" Link="Models.cs" />
+    <Compile Include="../../RtxForge.Windows/Models/OperationRoutes.cs" Link="OperationRoutes.cs" />
     <Compile Include="../../RtxForge.Windows/Models/LibraryScope.cs" Link="LibraryScope.cs" />
     <Compile Include="../../RtxForge.Windows/Models/LibraryLocations.cs" Link="LibraryLocations.cs" />
     <Compile Include="../../RtxForge.Windows/Services/ForgeService.cs" Link="ForgeService.cs" />

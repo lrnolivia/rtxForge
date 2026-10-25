@@ -48,7 +48,23 @@ public sealed partial class GameModeView
         CompositionTarget.Rendering += Frame;
         try
         {
-            await Settle(700);
+            await Settle(1800);
+            for (var attempt = 0; attempt < 100 && !shell.ControllerInputForeground; attempt++) await Settle(100);
+            if (!shell.ControllerInputForeground) throw new InvalidOperationException("Native review requires the preview window in the foreground.");
+            var rowEdge = ui.RowButton("Boundary check", null, () => { });
+            Check("row_focus_stroke_on_surface_edge", rowEdge.FocusVisualMargin.Equals(new Thickness(0)));
+            var cardMaterial = t.Surface(t.Card);
+            var navigationMaterial = t.Surface(t.Panel, navigation: true);
+            var originalOpacity = t.CardOpacity;
+            t.SetCardOpacity(65);
+            Check("card_material_updates_live_with_navbar_offset", cardMaterial.Opacity == 1 && navigationMaterial.Opacity == 1
+                && cardMaterial.TintOpacity == .65 && navigationMaterial.TintOpacity == .5);
+            t.SetCardOpacity(originalOpacity);
+            var selectionLine = new StackPanel { Orientation = Orientation.Horizontal };
+            var selectedButton = ui.Button("Selected", null, GmKind.Active);
+            selectionLine.Children.Add(selectedButton);
+            new GmUi(t).Selection("review-first-frame", selectionLine, selectedButton, true);
+            Check("selection_has_fill_before_first_layout", selectedButton.Background is SolidColorBrush { Color.A: > 0 });
             phase = "first-visit-card-focus";
             shell.Settings.LibraryView = "posters"; Open("library"); await Settle();
             Check("initial_selection_surfaces_measured", ui.SelectionSurfacesMeasured);
@@ -77,6 +93,34 @@ public sealed partial class GameModeView
                 Open(target); await Settle(180);
                 Check("page_has_live_focus", FocusManager.GetFocusedElement(XamlRoot) is Control, target);
             }
+            phase = "controller-content-and-tabs";
+            Open("library"); await Settle();
+            Check("library_is_explicit_scroll_target", ReferenceEquals(mainScroller, libraryScroller));
+            foreach (var target in new[] { "presets", "packages", "extras", "settings", "library" })
+            {
+                Handle("next", true); await Settle(180);
+                Check("bumper_cycles_main_tabs", page == target, new { target, page });
+            }
+            Handle("previous", true); await Settle();
+            Check("left_bumper_wraps_main_tabs", page == "settings");
+            Open("library"); await Settle();
+            first = Descendants(body).OfType<Button>().First(b => b.Name.StartsWith("gm_game-"));
+            first.Focus(FocusState.Keyboard); Activate(first); await Settle();
+            var detailScroll = mainScroller;
+            var sideScroll = Descendants(body).OfType<ScrollViewer>().FirstOrDefault(s => !ReferenceEquals(s, detailScroll) && s.Content is StackPanel);
+            var beforeSide = sideScroll?.VerticalOffset;
+            var beforeFocus = FocusManager.GetFocusedElement(XamlRoot);
+            var beforeContent = detailScroll?.VerticalOffset ?? 0;
+            ScrollMainView(300); await Settle(100);
+            Check("right_stick_scrolls_details_content", detailScroll is { ScrollableHeight: > 0 } && detailScroll.VerticalOffset > beforeContent);
+            Check("right_stick_leaves_sidebar_and_focus", beforeSide == sideScroll?.VerticalOffset && ReferenceEquals(beforeFocus, FocusManager.GetFocusedElement(XamlRoot)));
+            Handle("next", true); await Settle();
+            Check("details_bumper_leaves_for_presets", page == "presets");
+            OpenMainMenu(); await Settle();
+            Handle("next", true); ScrollMainView(200); await Settle();
+            Check("modal_blocks_background_tab_and_scroll", page == "presets" && modals.Count == 1);
+            CloseModal();
+            Open("library"); await Settle();
             phase = "rapid-tab-handoff";
             foreach (var target in new[] { "extras", "presets", "library", "settings", "packages", "library" })
             {
@@ -125,6 +169,13 @@ public sealed partial class GameModeView
             foreach (var theme in new[] { "night", "dark", "light" })
             {
                 shell.Settings.Theme = theme; ApplySettings(); await Settle(200);
+                foreach (var layout in new[] { "posters", "capsules", "list" })
+                {
+                    SetLibraryView(layout, persist: false); await Settle(80);
+                    var selectedLayout = FindByKey(body, "gm_view-" + layout) as Button;
+                    Check("selected_layout_keeps_native_fill", selectedLayout?.Background is SolidColorBrush { Color.A: 255 }, new { theme, layout });
+                    Check("selected_tab_keeps_native_fill", tabButtons.First(b => b.Name == "gm_tab-library").Background is SolidColorBrush { Color.A: 255 }, theme);
+                }
                 await Move("right", 3, 40);
                 Check("reduced_motion_keeps_focus", !GmMotion.Enabled && FocusManager.GetFocusedElement(XamlRoot) is Control, theme);
             }

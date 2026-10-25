@@ -23,6 +23,7 @@ public sealed partial class GameModeView
         page.Children.Add(head);
         var body = new StackPanel { Spacing = t.Px(24), Padding = new Thickness(t.Px(4), t.Px(4), t.Px(4), t.Px(8)) };
         var scroll = new ScrollViewer { Content = body, HorizontalScrollMode = ScrollMode.Disabled };
+        mainScroller = scroll;
         Grid.SetRow(scroll, 1); page.Children.Add(scroll);
         return (page, body);
     }

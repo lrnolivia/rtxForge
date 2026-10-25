@@ -404,6 +404,10 @@ public sealed class ForgeSettings
     [JsonPropertyName("game_mode_theme_linked")] public bool GameModeThemeLinked { get; set; } = true;
     [JsonPropertyName("game_mode_theme")] public string GameModeTheme { get; set; } = "night";
     [JsonIgnore] public string ResolvedGameModeTheme => GameModeThemeLinked ? Theme : GameModeTheme;
+    int gameModeCardOpacity = 10;
+    [JsonPropertyName("game_mode_card_opacity")]
+    public int GameModeCardOpacity { get => gameModeCardOpacity; set => gameModeCardOpacity = Math.Clamp(value, 0, 100); }
+    [JsonIgnore] public int GameModeNavbarOpacity => Math.Max(0, GameModeCardOpacity - 15);
     public void LinkGameModeTheme(bool linked)
     {
         if (!linked && GameModeThemeLinked) GameModeTheme = ResolvedGameModeTheme;

@@ -74,7 +74,7 @@ public sealed partial class GameModeView
         var poster = new Border
         {
             Height = posterHeight, Width = Math.Round(posterHeight * 2 / 3), CornerRadius = new CornerRadius(t.Px(10)),
-            BorderThickness = new Thickness(t.Px(GmTheme.ArtworkStroke)), BorderBrush = GmTheme.B(t.Line), Background = GmTheme.B(t.Card),
+            BorderThickness = new Thickness(t.Px(GmTheme.ArtworkStroke)), BorderBrush = GmTheme.B(t.Line), Background = t.Surface(t.Card),
             VerticalAlignment = VerticalAlignment.Bottom,
             Visibility = g.PosterPath is null ? Visibility.Collapsed : Visibility.Visible,
         };
@@ -178,22 +178,23 @@ public sealed partial class GameModeView
             navButtons.Add((button, section));
             nav.Children.Add(button);
         }
-        var navScroll = new ScrollViewer { Content = nav, Background = GmTheme.B(t.Panel), HorizontalScrollMode = ScrollMode.Disabled };
+        var navScroll = new ScrollViewer { Content = nav, Background = t.Surface(t.Panel), HorizontalScrollMode = ScrollMode.Disabled };
         Grid.SetRowSpan(navScroll, 2);
         grid.Children.Add(navScroll);
 
         // ----- Section body -----
         var content = new StackPanel { Spacing = t.Px(24), Padding = new Thickness(t.Px(32), t.Px(16), side, t.Px(20)) };
         BuildSection(g, content);
-        AnimateSection("details-" + g.Id, detailsSection, content);
+        var sectionView = AnimateSection("details-" + g.Id, detailsSection, content);
         var workspace = new StackPanel();
         var heroSpacer = new Border();
-        workspace.Children.Add(heroSpacer); workspace.Children.Add(content);
+        workspace.Children.Add(heroSpacer); workspace.Children.Add(sectionView);
         var scroll = new ScrollViewer
         {
             Content = workspace, HorizontalScrollMode = ScrollMode.Disabled,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
         };
+        mainScroller = scroll;
         Grid.SetRowSpan(scroll, 2); Grid.SetColumn(scroll, 1); grid.Children.Add(scroll);
         grid.Children.Remove(hero);
         Grid.SetRowSpan(hero, 2); hero.VerticalAlignment = VerticalAlignment.Top;
@@ -263,8 +264,9 @@ public sealed partial class GameModeView
         foreach (var (button, section) in nav)
             if (section == detailsSection)
             {
-                button.Background = GmTheme.B(colors.Tint);
-                button.Foreground = GmTheme.B(colors.TintText);
+                var highlight = t.Highlight(colors.Accent);
+                button.Background = highlight.Surface;
+                button.Foreground = highlight.Ink;
             }
     }
 
@@ -301,7 +303,7 @@ public sealed partial class GameModeView
     { ColumnSpacing = t.Px(16), RowSpacing = t.Px(16) };
 
     Border DetailPlate(UIElement content) => new()
-    { Background = GmTheme.B(t.Card), CornerRadius = new CornerRadius(t.Px(16)), Padding = new Thickness(t.Px(28)), Child = content };
+    { Background = t.Surface(t.Card), CornerRadius = new CornerRadius(t.Px(16)), Padding = new Thickness(t.Px(28)), Child = content };
 
     Border DetailFact(string title, string value, Button? action = null, string? glyph = null)
     {
@@ -416,7 +418,7 @@ public sealed partial class GameModeView
                 {
                     Text = notesDraft ?? g.Notes, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = t.Px(160),
                     FontSize = t.Em(0.9), PlaceholderText = "What worked, what didn't, settings you used",
-                    Background = GmTheme.B(t.Panel), Foreground = GmTheme.B(t.Fg), BorderBrush = GmTheme.B(t.Line),
+                    Background = t.Surface(t.Panel), Foreground = GmTheme.B(t.Fg), BorderBrush = GmTheme.B(t.Line),
                     CornerRadius = new CornerRadius(t.Px(12)), Padding = new Thickness(t.Px(20)),
                 };
                 notes.TextChanged += (_, _) => notesDraft = notes.Text;
@@ -567,7 +569,7 @@ public sealed partial class GameModeView
             var section = new StackPanel { Spacing = t.Px(20), Padding = new Thickness(embedded ? 0 : t.Px(28)) };
             if (title.Length > 0) section.Children.Add(DetailHeading(title));
             foreach (var child in children) section.Children.Add(child);
-            return new Border { Child = section, Background = embedded ? null : GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(16)), VerticalAlignment = VerticalAlignment.Top };
+            return new Border { Child = section, Background = embedded ? null : t.Surface(t.Panel), CornerRadius = new CornerRadius(t.Px(16)), VerticalAlignment = VerticalAlignment.Top };
         }
         UIElement Field(FeatureControl field)
         {
@@ -674,7 +676,7 @@ public sealed partial class GameModeView
             }
             foreach (var button in buttons) { GmUi.NoLift(button); ui.Focusable(button, -4); }
             Select(FeatureControlSchema.Number(values, definition));
-            return new Border { Child = line, Background = GmTheme.B(t.Card), BorderBrush = GmTheme.B(t.Line),
+            return new Border { Child = line, Background = t.Surface(t.Card), BorderBrush = GmTheme.B(t.Line),
                 BorderThickness = new Thickness(t.Px(1)), CornerRadius = new CornerRadius(t.Px(12)), Padding = new Thickness(t.Px(4)) };
         }
         UIElement Disclosure(string title, params UIElement[] children)
@@ -743,7 +745,7 @@ public sealed partial class GameModeView
                     Key(button, "preset-mfg-" + key + "-" + i); GmUi.NoLift(button); ui.Focusable(button, -4);
                     buttons.Add(button); line.Children.Add(button);
                 }
-                return new Border { Child = line, Background = GmTheme.B(t.Card), BorderBrush = GmTheme.B(t.Line),
+                return new Border { Child = line, Background = t.Surface(t.Card), BorderBrush = GmTheme.B(t.Line),
                     BorderThickness = new Thickness(t.Px(1)), CornerRadius = new CornerRadius(t.Px(12)), Padding = new Thickness(t.Px(4)) };
             }
             var modes = Segments(MfgPreset.Modes, tabs, state.SetMode, "mode");

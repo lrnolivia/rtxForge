@@ -34,6 +34,7 @@ public sealed partial class GameModeView
         presetValue = value;
         foreach (var row in rows) fields.Children.Add(row);
         var scroll = new ScrollViewer { Content = fields, HorizontalScrollMode = ScrollMode.Disabled };
+        mainScroller = scroll;
         Grid.SetRow(scroll, 1); page.Children.Add(scroll);
         // The desktop footer: Reset · Select games · Apply to all.
         var configured = shell.Games.Where(g => g.Installed && !g.Blocked).ToList();
@@ -175,7 +176,6 @@ public sealed partial class GameModeView
         title.Children.Add(ui.H2(settingsSection));
         content.Children.Add(title);
         var definitions = SettingsGroups(settingsSection);
-        AnimateSection("settings", settingsSection, content);
         var sections = new List<StackPanel>();
         foreach (var group in definitions)
         {
@@ -186,14 +186,15 @@ public sealed partial class GameModeView
             foreach (var row in group.Rows)
             {
                 if (row is Button button) { ui.StyleSettingsRow(button); rows.Children.Add(button); }
-                else rows.Children.Add(new Border { Background = GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(12)), Child = row });
+                else rows.Children.Add(new Border { Background = t.Surface(t.Panel), CornerRadius = new CornerRadius(t.Px(12)), Child = row });
             }
             section.Children.Add(rows); sections.Add(section);
         }
         var groups = new StackPanel { Spacing = t.Px(32), HorizontalAlignment = HorizontalAlignment.Stretch };
         foreach (var section in sections) groups.Children.Add(section);
         content.Children.Add(groups);
-        var scroll = new ScrollViewer { Content = content, HorizontalScrollMode = ScrollMode.Disabled, Padding = new Thickness(0, 0, t.Px(12), 0) };
+        var scroll = new ScrollViewer { Content = AnimateSection("settings", settingsSection, content), HorizontalScrollMode = ScrollMode.Disabled, Padding = new Thickness(0, 0, t.Px(12), 0) };
+        mainScroller = scroll;
         Grid.SetRow(scroll, 1);
         Grid.SetColumn(scroll, 1);
         grid.Children.Add(scroll);
@@ -236,7 +237,7 @@ public sealed partial class GameModeView
         (string Action, string Key)[] entries = view == "controller"
             ?
             [
-                ("Move between items", "D-pad / Left stick"), ("Select", accept), ("Back, or close a dialog", back),
+                ("Move between items", "D-pad / Left stick"), ("Scroll main content", "Right stick"), ("Select", accept), ("Back, or close a dialog", back),
                 ("Library", library), ("Select games", select), ("Switch pages", bumpers),
                 ("Adjust a value", "D-pad left / right"), ("Settings", settingsKey), ("Main menu", menu),
             ]
@@ -268,6 +269,31 @@ public sealed partial class GameModeView
     };
     Button SettingToggle(string title, string description, Func<bool> get, Action<bool> set) =>
         Choice(title, description, ["on", "off"], ["On", "Off"], () => get() ? "on" : "off", value => set(value == "on"));
+
+    UIElement CardOpacitySetting()
+    {
+        var slider = new Slider { Minimum = 0, Maximum = 100, StepFrequency = 1, SmallChange = 1, LargeChange = 5,
+            Value = shell.Settings.GameModeCardOpacity, IsThumbToolTipEnabled = false, HorizontalAlignment = HorizontalAlignment.Stretch };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(slider, "Card translucency");
+        ui.Focusable(slider);
+        Key(slider, "card-opacity");
+        slider.Tag = new Adjustable(delta => slider.Value = Math.Clamp(slider.Value + delta, slider.Minimum, slider.Maximum));
+        slider.ValueChanged += (_, e) =>
+        {
+            shell.Settings.GameModeCardOpacity = (int)Math.Round(e.NewValue);
+            t.SetCardOpacity(shell.Settings.GameModeCardOpacity);
+            shell.Settings.Save(preserveOverlay: true);
+        };
+        var content = new StackPanel { Spacing = t.Px(10), Padding = new Thickness(t.Px(28), t.Px(22), t.Px(28), t.Px(22)) };
+        content.Children.Add(ui.PreferenceRow("Card translucency", "Reveal more or less of the blurred background.", null,
+            minHeight: 0, padding: new Thickness(0)));
+        content.Children.Add(slider);
+        var endpoints = new Grid();
+        endpoints.Children.Add(ui.P("Clearer", .74));
+        endpoints.Children.Add(ui.P("More solid", .74).With(label => label.HorizontalAlignment = HorizontalAlignment.Right));
+        content.Children.Add(endpoints);
+        return content;
+    }
 
     void OpenInputGuide(string input)
     {
@@ -307,6 +333,7 @@ public sealed partial class GameModeView
                     SettingToggle("Reduce motion", "Keep strong focus cues with less movement. Windows accessibility settings are always respected.",
                         () => shell.Settings.ReduceMotion, value => { shell.Settings.ReduceMotion = value; DispatcherQueue.TryEnqueue(ApplySettings); }),
                 ]),
+                new("Card surfaces", "Frosted Game Mode cards update immediately.", [CardOpacitySetting()]),
             ],
             "Library" =>
             [

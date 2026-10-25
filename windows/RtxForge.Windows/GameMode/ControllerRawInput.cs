@@ -12,8 +12,10 @@ internal sealed class ControllerRawInput : IDisposable
     readonly Dictionary<nint, (string Family, int? Slot)?> devices = [];
     readonly Dictionary<int, string> slots = [];
     readonly Func<bool> foreground;
-    public bool LegacyInputActive => Environment.TickCount64 < legacyUntil;
-    long legacyUntil;
+    // Legacy key messages and WM_INPUT arrive separately, with no fixed order.
+    // Keep the source until another physical keyboard/mouse is actually used.
+    public bool LegacyInputActive { get; private set; }
+    public bool SteamConnected { get; private set; }
     public string? SlotFamily(int slot) => slots.GetValueOrDefault(slot);
 
     public ControllerRawInput(nint window, Func<bool> foreground, Action<string> activity)
@@ -43,12 +45,17 @@ internal sealed class ControllerRawInput : IDisposable
 
     void RefreshSlots()
     {
+        var previouslyConnected = SteamConnected;
         devices.Clear(); slots.Clear();
+        SteamConnected = false;
         uint count = 0;
         if (GetRawInputDeviceList(null, ref count, (uint)Marshal.SizeOf<DeviceList>()) == uint.MaxValue || count > 512) return;
         var list = new DeviceList[count];
         if (GetRawInputDeviceList(list, ref count, (uint)Marshal.SizeOf<DeviceList>()) == uint.MaxValue) return;
-        foreach (var device in list.Take((int)count)) Device(device.Handle, device.Type);
+        foreach (var device in list.Take((int)count))
+            if (Device(device.Handle, device.Type) is { Family: "steam" }) SteamConnected = true;
+        if (!SteamConnected) LegacyInputActive = false;
+        else if (!previouslyConnected) activity("steam");
     }
 
     nint WindowProc(nint hwnd, uint message, nuint wparam, nint lparam, nuint id, nuint data)
@@ -70,10 +77,15 @@ internal sealed class ControllerRawInput : IDisposable
                         bool used = header.Type == 1 && size >= headerSize + 16 && (Marshal.ReadInt16(body, 2) & 1) == 0
                             || header.Type == 0 && size >= headerSize + 24 && (Marshal.ReadInt16(body, 4) != 0
                                 || Math.Abs((long)Marshal.ReadInt32(body, 12)) + Math.Abs((long)Marshal.ReadInt32(body, 16)) >= 3);
-                        if (used && Device(header.Device, header.Type) is { } identity)
+                        if (used)
                         {
-                            legacyUntil = Environment.TickCount64 + 500;
-                            activity(identity.Family);
+                            var identity = Device(header.Device, header.Type);
+                            // Steam's desktop layout can inject legacy events
+                            // with no hDevice. Use the enumerated Valve device
+                            // as the fallback; real keyboard/mouse handles win.
+                            if (header.Device == 0 && SteamConnected) identity = ("steam", null);
+                            LegacyInputActive = identity is not null;
+                            if (identity is { } controller) activity(controller.Family);
                         }
                     }
                 }

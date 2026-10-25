@@ -21,6 +21,8 @@ sealed class ArtworkLightLayer : Canvas
     CompositionGraphicsDevice? graphics;
     CompositionDrawingSurface? surface;
     CompositionSurfaceBrush? source;
+    CompositionMaskBrush? fadeMask;
+    CompositionLinearGradientBrush? fadeGradient;
     SpriteVisual? light;
     CanvasBitmap? image;
     readonly Dictionary<string, CanvasBitmap> bitmapCache = [];
@@ -225,10 +227,34 @@ sealed class ArtworkLightLayer : Canvas
         {
             var offset = new Vector3((float)point.X - bleed, (float)point.Y - bleed, 0);
             light.Offset = offset;
+            FadeToViewport(entry, offset.Y);
             GmMotion.Follow(entry.Target, light, offset,
                 new((float)owner.X + (float)entry.Target.ActualWidth / 2 - offset.X,
                     (float)owner.Y + (float)entry.Target.ActualHeight / 2 - offset.Y, 0));
         }
+    }
+
+    void FadeToViewport(Entry entry, float lightTop)
+    {
+        if (light is null || source is null) return;
+        ScrollViewer? scroll = null;
+        for (DependencyObject? node = entry.Target; node is not null; node = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(node))
+            if (node is ScrollViewer found) { scroll = found; break; }
+        if (scroll is null) { light.Brush = source; return; }
+        var viewport = Presenter(scroll) as FrameworkElement ?? scroll;
+        if (viewport.ActualHeight <= 0) return;
+        var origin = viewport.TransformToVisual(Artwork).TransformPoint(new(0, 0));
+        fadeGradient ??= GmScrollFade.CreateGradient(light.Compositor);
+        // The blur extends past the card. Anchor its alpha in viewport space,
+        // so the glow and scroll content use the very same fade at each pixel.
+        fadeGradient.MappingMode = CompositionMappingMode.Absolute;
+        fadeGradient.StartPoint = new(0, (float)origin.Y - lightTop);
+        fadeGradient.EndPoint = new(0, (float)(origin.Y + viewport.ActualHeight) - lightTop);
+        GmScrollFade.UpdateGradient(fadeGradient, ScrollFadeProfile.Create(viewport.ActualHeight,
+            scroll.VerticalOffset, scroll.ScrollableHeight, entry.Theme.S));
+        fadeMask ??= light.Compositor.CreateMaskBrush();
+        fadeMask.Source = source; fadeMask.Mask = fadeGradient;
+        light.Brush = fadeMask;
     }
 
     void ClipToViewport(FrameworkElement target)
@@ -245,6 +271,9 @@ sealed class ArtworkLightLayer : Canvas
         for (DependencyObject? parent = target; parent is not null; parent = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(parent))
         {
             if (parent is not ScrollViewer scroll) continue;
+            // A sizing ScrollViewer (common in dialogs) is not a viewport
+            // boundary until it actually scrolls. Let halos bleed past it.
+            if (scroll.ScrollableHeight <= 0 && scroll.ScrollableWidth <= 0) continue;
             var viewport = Presenter(scroll) as FrameworkElement ?? scroll;
             var rect = viewport.TransformToVisual(relativeTo).TransformBounds(new(0, 0, viewport.ActualWidth, viewport.ActualHeight));
             if (clip is { } previous)
@@ -256,17 +285,17 @@ sealed class ArtworkLightLayer : Canvas
             clip = rect;
         }
         return clip;
+    }
 
-        static ScrollContentPresenter? Presenter(DependencyObject root)
+    static ScrollContentPresenter? Presenter(DependencyObject root)
+    {
+        for (var i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(root); i++)
         {
-            for (var i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(root); i++)
-            {
-                var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(root, i);
-                if (child is ScrollContentPresenter presenter) return presenter;
-                if (Presenter(child) is { } nested) return nested;
-            }
-            return null;
+            var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is ScrollContentPresenter presenter) return presenter;
+            if (Presenter(child) is { } nested) return nested;
         }
+        return null;
     }
 
     void SetOpacity(float opacity)
@@ -284,7 +313,8 @@ sealed class ArtworkLightLayer : Canvas
     {
         generation++;
         ElementCompositionPreview.SetElementChildVisual(Artwork, null);
-        light?.Dispose(); source?.Dispose(); surface?.Dispose();
+        light?.Dispose(); fadeMask?.Dispose(); fadeGradient?.Dispose(); source?.Dispose(); surface?.Dispose();
+        fadeMask = null; fadeGradient = null;
         light = null; source = null; surface = null; image = null;
         lastSize = default; level = -1;
     }

@@ -270,7 +270,12 @@ static class GmGlow
         && (brush is not SolidColorBrush solid || solid.Color.A > 0)
         && (thickness.Left > 0 || thickness.Top > 0 || thickness.Right > 0 || thickness.Bottom > 0);
 
-    static global::Windows.UI.Color? Surface(Brush? brush) => brush is SolidColorBrush solid && solid.Color.A > 0 && solid.Opacity > 0 ? solid.Color : null;
+    static global::Windows.UI.Color? Surface(Brush? brush) => brush switch
+    {
+        SolidColorBrush solid when solid.Color.A > 0 && solid.Opacity > 0 => solid.Color,
+        AcrylicBrush acrylic when acrylic.Opacity > 0 => acrylic.TintColor,
+        _ => null,
+    };
 
     static bool InViewport(FrameworkElement element, global::Windows.Foundation.Rect viewport) =>
         viewport.Width > 0 && viewport.Height > 0 && viewport.X < element.ActualWidth && viewport.Y < element.ActualHeight

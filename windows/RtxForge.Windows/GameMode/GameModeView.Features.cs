@@ -164,7 +164,7 @@ public sealed partial class GameModeView
         var entry = new PasswordBox
         {
             PlaceholderText = "Paste your SteamGridDB API key", FontSize = t.Em(0.9), IsEnabled = !shell.Service.IsPreview,
-            Background = GmTheme.B(t.Card), Foreground = GmTheme.B(t.Fg), BorderBrush = GmTheme.B(t.Line), CornerRadius = new CornerRadius(t.Px(12)),
+            Background = t.Surface(t.Card), Foreground = GmTheme.B(t.Fg), BorderBrush = GmTheme.B(t.Line), CornerRadius = new CornerRadius(t.Px(12)),
             Padding = new Thickness(t.Px(18)),
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(entry, "SteamGridDB API key");
@@ -218,7 +218,7 @@ public sealed partial class GameModeView
             var thumb = new Border
             {
                 Width = t.Px(role == "poster" ? 60 : 128), Height = t.Px(role == "poster" ? 90 : 60), CornerRadius = new CornerRadius(t.Px(8)),
-                Background = GmTheme.B(t.Card),
+                Background = t.Surface(t.Card),
             };
             if (GameItem.Image(path) is { } image) thumb.Child = new Border { CornerRadius = new CornerRadius(t.Px(8)), Background = new ImageBrush { ImageSource = image, Stretch = Stretch.UniformToFill } };
             thumb.HorizontalAlignment = HorizontalAlignment.Center;

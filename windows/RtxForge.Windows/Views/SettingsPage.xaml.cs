@@ -119,6 +119,21 @@ public sealed partial class SettingsPage : Page
         (row, var linkedTheme) = Prefs.SwitchRow("Use the same color theme in Desktop and Game Mode", "Turn off to choose each interface’s theme separately.", Settings.GameModeThemeLinked, "");
         linkedTheme.Toggled += (_, _) => { Settings.LinkGameModeTheme(linkedTheme.IsOn); Save(); };
         appearance.Add(row);
+        var cardOpacity = new Slider { Minimum = 0, Maximum = 100, StepFrequency = 1, SmallChange = 1, LargeChange = 5,
+            Value = Settings.GameModeCardOpacity, IsThumbToolTipEnabled = false, MinWidth = 200 };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(cardOpacity, "Game Mode card translucency");
+        var opacityEnds = new Grid();
+        opacityEnds.Children.Add(Prefs.Label("Clearer"));
+        var moreSolid = Prefs.Label("More solid"); moreSolid.HorizontalAlignment = HorizontalAlignment.Right;
+        opacityEnds.Children.Add(moreSolid);
+        var opacityControls = new StackPanel { Spacing = 4 };
+        opacityControls.Children.Add(cardOpacity); opacityControls.Children.Add(opacityEnds);
+        appearance.Add(Prefs.Row("Game Mode card translucency", "Frosted cards with blur.", opacityControls, "\uE790"));
+        cardOpacity.ValueChanged += (_, e) =>
+        {
+            Settings.GameModeCardOpacity = (int)Math.Round(e.NewValue);
+            Save();
+        };
         (row, var layout) = Prefs.ComboRow("Library layout", "Choose how your game collection is displayed.",
             ["Poster", "Wide Capsule", "List"], Math.Max(0, Array.IndexOf(Views, Settings.LibraryView)), "");
         layout.SelectionChanged += (_, _) => { Settings.LibraryView = Views[layout.SelectedIndex]; Save(); };

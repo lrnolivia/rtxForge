@@ -30,7 +30,7 @@
                 <ControlTemplate TargetType="Button">
                     <Grid x:Name="Root">
                         <Canvas x:Name="GlowHost" IsHitTestVisible="False" />
-                        <Grid BorderBrush="{TemplateBinding BorderBrush}"
+                        <Grid Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
                               BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}">
                         <Rectangle x:Name="GlowMask" Fill="{TemplateBinding Background}" IsHitTestVisible="False" />
                         <Path x:Name="GlowContour" Stretch="Fill" Fill="{TemplateBinding Background}" Visibility="Collapsed" IsHitTestVisible="False" />

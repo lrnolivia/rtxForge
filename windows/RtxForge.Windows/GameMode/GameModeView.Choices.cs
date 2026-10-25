@@ -19,7 +19,7 @@ public sealed partial class GameModeView
         list.Children.Add(ui.P(title, .74).With(x => x.Margin = new Thickness(t.Px(12), t.Px(4), t.Px(12), t.Px(10))));
         var popup = new Flyout { Content = list, Placement = FlyoutPlacementMode.BottomEdgeAlignedRight };
         var presenter = new Style(typeof(FlyoutPresenter));
-        presenter.Setters.Add(new Setter(Control.BackgroundProperty, GmTheme.B(t.Panel)));
+        presenter.Setters.Add(new Setter(Control.BackgroundProperty, t.Surface(t.Panel)));
         presenter.Setters.Add(new Setter(Control.ForegroundProperty, GmTheme.B(t.Fg)));
         presenter.Setters.Add(new Setter(Control.CornerRadiusProperty, new CornerRadius(t.Px(16))));
         presenter.Setters.Add(new Setter(FrameworkElement.RequestedThemeProperty, t.IsLight ? ElementTheme.Light : ElementTheme.Dark));

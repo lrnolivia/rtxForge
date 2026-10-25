@@ -282,7 +282,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         {
             int count;
             lock (seen) { if (step.Game is { Length: > 0 } game && step.Checked > 0) seen.Add(game); count = seen.Count; }
-            target.Report(new PrepareProgress("Checking game files", step.Game, count, total));
+            target.Report(new PrepareProgress(string.IsNullOrWhiteSpace(step.Label) ? "Preparing game files" : step.Label, step.Game, count, total));
         }
     }
 
@@ -302,16 +302,16 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             // The engine sends a selection of only Feeder games down the Feeder route; the package setting stays.
             string Provider(string route) => route is "feeder" or "adopt" ? Settings.RuntimeProvider : route;
             string Operation(string route) => route == "adopt" ? "adopt" : operation;
-            // Several games: each is checked on its own route in name order, whatever its package, so
-            // checking (and later installing) goes down the list as shown. The engine shares the expensive
-            // work between these checks, so this costs no more than checking each package at once.
+            // The host's verified payload/model caches live within a prepare call.
+            // Batch consecutive games on the same route so those expensive checks
+            // are shared, retaining name order and separate provider review tokens.
             if (targets.Count > 1)
             {
                 var parts = new List<OperationReview>();
-                foreach (var game in targets)
+                foreach (var batch in OperationRoutes.Consecutive(targets, Route))
                 {
-                    var route = Route(game);
-                    parts.Add(await PrepareCoreAsync(Operation(route), [game], tuning, mode, progress, cancel, supportedSubset, Provider(route)));
+                    cancel.ThrowIfCancellationRequested();
+                    parts.Add(await PrepareCoreAsync(Operation(batch.Route), batch.Games, tuning, mode, progress, cancel, supportedSubset, Provider(batch.Route)));
                 }
                 // A part whose games all get only some features keeps its token in Supported; discard only unused ones.
                 var supportedTokens = parts.SelectMany(p => p.Supported).Select(s => s.Review.Token).ToHashSet();
@@ -389,8 +389,8 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             .Where(r => r.Game is not null).Select(r => new OperationGameReview(r.Game!, r.Detail,
                 (r.Summary ?? "Review the technical details before continuing.")
                 // Games can use different packages in one review, so each says which.
-                + (operation is "install" or "repair" && !r.Game!.UsesFeeder && ForgeSettings.GamePackageChoices.Any(c => c.Key == provider)
-                    ? "\nPackage: " + Settings.PackageName(provider) : ""))).ToList();
+                + (operation is "install" or "repair"
+                    ? "\nPackage: " + (r.Game!.UsesFeeder ? "Feeder NR" : Settings.PackageName(provider)) : ""))).ToList();
         var blocked = (result?["blocked"] as JsonArray ?? []).OfType<JsonObject>()
             .Select(b => new ReviewBlock(Match(b["name"]?.ToString()), b["name"]?.ToString() ?? "", b["reason"]?.ToString() ?? "", b["summary"]?.ToString())).ToList();
         var warnings = (result?["warnings"] as JsonArray ?? []).OfType<JsonObject>()

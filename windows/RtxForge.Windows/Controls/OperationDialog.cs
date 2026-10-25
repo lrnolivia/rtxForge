@@ -73,7 +73,7 @@ public sealed class OperationDialog
         var shown = flow.dialog.ShowAsync();
         try
         {
-            var progress = new Progress<PrepareProgress>(step => flow.checkingPanel.Show("Checking",
+            var progress = new Progress<PrepareProgress>(step => flow.checkingPanel.Show("Preparing",
                 shell.Games.FirstOrDefault(g => g.Name == step.Game), step.Checked, step.Total > 0 ? step.Total : null, step.Label));
             var checkedReview = await prepare(progress);
             if (flow.closed) shell.Service.DiscardReview(checkedReview);
@@ -127,62 +127,23 @@ public sealed class OperationDialog
 
     // ---------- Checking (engine prepare: every target verified, nothing written) ----------
 
-    // Checking and review are one screen: every game's row is listed at once and fills in as it is checked.
-    readonly Dictionary<string, (TextBlock Detail, TextBlock State)> checkingRows = new(StringComparer.OrdinalIgnoreCase);
-    readonly TextBlock checkingTitle = new() { FontSize = 20, FontWeight = FontWeights.SemiBold };
-    string? checkingGame;
-
     void ShowChecking(bool listGames = true)
     {
-        dialog.Title = Title();
-        dialog.PrimaryButtonText = ActionVerb();
+        dialog.Title = "Preparing";
+        dialog.PrimaryButtonText = "";
         dialog.IsPrimaryButtonEnabled = false;
         dialog.CloseButtonText = "Cancel";
         dialog.DefaultButton = ContentDialogButton.Primary;
-        if (!listGames || targets.Count == 0)
-        {
-            checkingPanel.Show("Checking", targets.FirstOrDefault(), 0, null, "Checking game files");
-            dialog.Content = checkingPanel.Root;
-            return;
-        }
-        // As wide as the review it becomes.
-        var body = new StackPanel { Spacing = 16, MinWidth = ReviewWidth };
-        var summary = new StackPanel { Spacing = 4 };
-        checkingTitle.Text = $"Checking {targets.Count} game{(targets.Count == 1 ? "" : "s")}";
-        summary.Children.Add(checkingTitle);
-        summary.Children.Add(Prefs.Label("Each game is checked before anything changes.", "ForgeDimTextStyle"));
-        body.Children.Add(summary);
-        var list = new StackPanel { Spacing = 4 };
-        foreach (var game in targets.OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase))
-        {
-            list.Children.Add(ReviewRow(game, game.Name, "Waiting to be checked", "Waiting", true, null, out var detail, out var state, ""));
-            checkingRows[game.Name] = (detail, state);
-        }
-        body.Children.Add(new ScrollViewer { Content = list, MaxHeight = 380, HorizontalScrollMode = ScrollMode.Disabled });
-        body.Children.Add(Prefs.Label("Your files will only change after you review and confirm.", "ForgeCaptionDimTextStyle"));
-        dialog.Content = body;
+        checkingPanel.Show("Preparing", targets.FirstOrDefault(), 0, listGames && targets.Count > 0 ? targets.Count : null, "Preparing game files");
+        dialog.Content = checkingPanel.Root;
     }
 
     /// <summary>The game being checked now; the one before it is done.</summary>
     void ShowChecked(PrepareProgress step)
     {
-        if (checkingRows.Count == 0)
-        {
-            checkingPanel.Show("Checking", targets.FirstOrDefault(g => g.Name == step.Game), step.Checked, step.Total > 0 ? step.Total : null, step.Label);
-            return;
-        }
-        if (step.Total > 0) checkingTitle.Text = $"Checking {Math.Min(step.Checked + 1, step.Total)} of {step.Total}";
-        if (step.Game is not { Length: > 0 } game || game == checkingGame || !checkingRows.TryGetValue(game, out var row)) return;
-        if (checkingGame is not null && checkingRows.TryGetValue(checkingGame, out var previous))
-            MarkChecking(previous, "Checked", "Checked", "");
-        MarkChecking(row, "Checking game files…", "Checking", "");
-        checkingGame = game;
-    }
-
-    static void MarkChecking((TextBlock Detail, TextBlock State) row, string detail, string state, string glyph)
-    {
-        (row.Detail.Text, row.State.Text) = (detail, state.ToUpperInvariant());
-        if (row.State.Parent is StackPanel line && line.Children.OfType<FontIcon>().FirstOrDefault() is { } icon) icon.Glyph = glyph;
+        if (closed || stage != Stage.Review) return;
+        checkingPanel.Show("Preparing", targets.FirstOrDefault(g => g.Name == step.Game), step.Checked,
+            step.Total > 0 ? step.Total : null, step.Label);
     }
 
     async Task PrepareAsync()
@@ -192,6 +153,7 @@ public sealed class OperationDialog
         {
             review = await shell.Service.PrepareAsync(operation, targets, values, shell.Mode, progress);
             if (closed) { shell.Service.DiscardOperation(review); return; }
+            checkingPanel.Complete();
             ShowReview(review);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)

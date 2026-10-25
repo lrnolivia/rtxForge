@@ -23,18 +23,22 @@ public sealed class GamepadInput : IDisposable
     readonly EventHandler<Gamepad> removed;
     readonly Func<bool> foreground;
     readonly ControllerRawInput raw;
+    long lastPoll = System.Diagnostics.Stopwatch.GetTimestamp();
     bool xinputConnected;
     public bool LegacyInputActive => raw.LegacyInputActive;
+    public bool SteamConnected => raw.SteamConnected;
+    public bool PollingAvailable => pad is not null || xinputConnected;
 
     /// <summary>One action per press (and per repeat for directions).</summary>
     public event Action<string>? Action;
     /// <summary>The connected controller changed (attach, detach or a new family).</summary>
     public event Action? Changed;
     public event Action? Activity;
+    public event Action<double>? Scroll;
 
     /// <summary>xbox, playstation, nintendo, steam or generic: drives button labels.</summary>
     public string Family { get; private set; } = "xbox";
-    public bool Connected => pad is not null || xinputConnected || raw.LegacyInputActive;
+    public bool Connected => pad is not null || xinputConnected || raw.SteamConnected;
 
     public GamepadInput(DispatcherQueue queue, nint window, Func<bool> foreground)
     {
@@ -52,6 +56,7 @@ public sealed class GamepadInput : IDisposable
         timer.Interval = TimeSpan.FromMilliseconds(16);
         timer.Tick += (_, _) => Poll();
         Refresh();
+        if (raw.SteamConnected) SetFamily("steam");
         timer.Start();
     }
 
@@ -95,6 +100,9 @@ public sealed class GamepadInput : IDisposable
 
     void Poll()
     {
+        var nowTick = System.Diagnostics.Stopwatch.GetTimestamp();
+        var seconds = System.Diagnostics.Stopwatch.GetElapsedTime(lastPoll, nowTick).TotalSeconds;
+        lastPoll = nowTick;
         if (!foreground()) { previous.Clear(); repeats.Clear(); lastReading = default; return; }
         GamepadReading reading;
         if (pad is not null)
@@ -111,6 +119,8 @@ public sealed class GamepadInput : IDisposable
             || reading.RightTrigger > .2 && lastReading.RightTrigger <= .2)
             Activity?.Invoke();
         lastReading = reading;
+        var scroll = ControllerNavigation.ScrollDelta(reading.RightThumbstickY, seconds);
+        if (scroll != 0) { Activity?.Invoke(); Scroll?.Invoke(scroll); }
 
         var pressed = new HashSet<string>();
         void Map(GamepadButtons button, string action) { if ((reading.Buttons & button) != 0) pressed.Add(action); }
@@ -164,7 +174,7 @@ public sealed class GamepadInput : IDisposable
             var value = state.Pad;
             if (value.Buttons == 0 && Math.Abs((int)value.X) < 12000 && Math.Abs((int)value.Y) < 12000
                 && Math.Abs((int)value.RX) < 12000 && Math.Abs((int)value.RY) < 12000 && value.LT < 50 && value.RT < 50) continue;
-            SetFamily(raw.SlotFamily((int)slot) ?? "xbox");
+            SetFamily(raw.SlotFamily((int)slot) ?? (raw.SteamConnected ? "steam" : "xbox"));
             GamepadButtons buttons = 0;
             void Map(ushort bit, GamepadButtons button) { if ((value.Buttons & bit) != 0) buttons |= button; }
             Map(0x1000, GamepadButtons.A); Map(0x2000, GamepadButtons.B); Map(0x4000, GamepadButtons.X); Map(0x8000, GamepadButtons.Y);

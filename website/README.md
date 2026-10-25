@@ -1,8 +1,8 @@
 # rtxForge Beta website
 
-Static Linux/Windows landing page served by the `rtxforge` Cloudflare Worker at https://rtxforge.loew.fi.
+Static Linux/Windows landing page served by the `rtxforge` Cloudflare Worker at https://loew.fi/rtxforge/. The former https://rtxforge.loew.fi domain redirects to that path, preserving paths and query strings.
 
-Use `npm ci`, `npm run check`, and `npm run deploy` from this directory. Wrangler manages the custom domain, TLS and static assets. There is no server build.
+Use `npm ci`, `npm run check`, and `npm run deploy` from this directory. Wrangler manages the custom domain, TLS and static assets. The build copies public assets into the matching `.site/rtxforge/` directory. A small Worker redirects the old subdomain and delegates primary-path requests to static assets. The `loew.fi/rtxforge*` route covers bare and nested URLs including query strings. The Worker serves only the exact `/rtxforge` path and its slash-delimited descendants; similarly named paths pass through to the existing loew.fi origin. The homepage remains with its existing site.
 
 ## Installation guide
 

@@ -62,11 +62,11 @@ public sealed partial class GameModeView
         var pairs = Views.PackagesPage.PairsWithMfg.Contains(shell.Settings.RuntimeProvider);
         var columns = new Controls.PresetColumns(t.Px(560), 2) { ColumnSpacing = t.Px(24), RowSpacing = t.Px(24) };
         var nr = new StackPanel { Spacing = t.Px(16) };
-        var automatic = catalog.Packages.FirstOrDefault(p => Views.PackagesPage.WithoutDlss.Contains(p.Id))?.Name;
-        SectionTitle(nr, "NR packages", "Neural rendering. Choose one for games with DLSS" + (automatic is null ? "." : $"; {automatic} covers games without DLSS automatically."));
+        SectionTitle(nr, "NR packages", Views.PackagesPage.NrDescription(catalog));
         foreach (var item in catalog.Packages.Where(p => Views.PackagesPage.PairsWithMfg.Contains(p.Id))) nr.Children.Add(UseCard(item));
-        foreach (var item in catalog.Packages.Where(p => Views.PackagesPage.WithoutDlss.Contains(p.Id)))
-            nr.Children.Add(PackageCard(item.Name, item.Version, item.Summary + "\nGraphics API: " + string.Join(" · ", item.GraphicsApis ?? []), item.Verified,
+        foreach (var item in catalog.Packages.Where(p => Views.PackagesPage.Automatic.Contains(p.Id)))
+            nr.Children.Add(PackageCard(item.Name, item.Version, item.Summary + "\nGraphics API: " + string.Join(" · ", item.GraphicsApis ?? [])
+                + (Views.PackagesPage.ConfirmedGames(item) is { } confirmed ? "\n" + confirmed : ""), item.Verified,
                 ui.Button(item.Available ? "Used automatically" : "Unavailable", () => { }, GmKind.Card, .8, false)));
         var mfg = new StackPanel { Spacing = t.Px(16) };
         var pairName = Views.PackagesPage.PairName(catalog);
@@ -86,7 +86,7 @@ public sealed partial class GameModeView
 
         SectionTitle(body, "Unified packages", "NR and frame generation in one package, for games with DLSS. Choosing one replaces your NR package for those games.");
         var unified = DetailColumns();
-        foreach (var item in catalog.Packages.Where(p => !Views.PackagesPage.WithoutDlss.Contains(p.Id) && !Views.PackagesPage.PairsWithMfg.Contains(p.Id)))
+        foreach (var item in catalog.Packages.Where(p => !Views.PackagesPage.Automatic.Contains(p.Id) && !Views.PackagesPage.PairsWithMfg.Contains(p.Id)))
             unified.Children.Add(UseCard(item));
         body.Children.Add(unified);
 

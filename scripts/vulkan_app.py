@@ -67,18 +67,31 @@ def owned(row, config=None):
     return data if data.get('status') != 'restored' else None
 
 
+def confirmed():
+    """The games this package has a reviewed profile for, by name."""
+    return [name for _, name in PROFILES.values()]
+
+
 def decorate(rows, config=None, selected=False):
+    # Like Feeder NR, profiled Vulkan games take this package automatically whenever the
+    # build bundles it, beside whichever package is chosen for other DLSS games.
+    try:
+        bundled()
+        available = True
+    except (t.Refusal, OSError, ValueError, KeyError):
+        available = False
     for row in rows:
         try:
             key, target = profile_for(row)
             if key is None:
                 if selected and not row.get('installed'):
-                    row['blocked']='The selected Vulkan package supports only the profiled BG3 and RDR2 executables.'
+                    row['blocked']='The Vulkan package supports only its confirmed games.'
                 continue
             row['vulkan_profile'] = key
             record = owned(row, config)
-            if selected and not record and not row.get('installed'):
-                row.update(install_provider=ID,graphics_apis=['Vulkan'],blocked='Anti-cheat detected; this game is excluded.' if row.get('anti_cheat') else '')
+            if (available or selected) and not record and not row.get('installed'):
+                row.update(install_provider=ID,vulkan_available=available,graphics_apis=['Vulkan'],
+                           blocked='Anti-cheat detected; this game is excluded.' if row.get('anti_cheat') else '')
             if record:
                 row.update(installed=True, runtime_provider=ID, install_provider=ID,
                            feature_mode='nr-mfg', profile='NR + MFG', graphics_apis=['Vulkan'],
@@ -148,13 +161,12 @@ def prepare(config, rows, mode, operation, settings, e):
     t.need(operation in ('install', 'repair', 'uninstall'), 'Use the Vulkan in-game overlay for presets; install, repair and restore are reviewed here.')
     if operation != 'uninstall':
         t.need(mode in ('nr-mfg', 'mfg-only'), 'This Vulkan package includes frame generation. Choose NR + MFG or MFG Only.')
-        t.need(settings.get('vulkan_experimental') is True, 'Enable Universal Experimental Vulkan in Settings › Graphics before reviewing this package.')
     folder, manifest, archive, data = local_model(settings.get('nr_runtime') if operation != 'uninstall' else None, e, e.STATE_ROOT)
     ready, blocked, plans, seen = [], [], [], set()
     for index, row in enumerate(rows):
         try:
             key, target = profile_for(row)
-            t.need(key is not None, 'This Experimental Vulkan package supports only the profiled BG3 and RDR2 executables.')
+            t.need(key is not None, 'The Vulkan package supports only its confirmed games.')
             t.need(target not in seen, 'Duplicate Vulkan game selection.'); seen.add(target)
             t.need(not row.get('anti_cheat'), 'Anti-cheat detected; this game is excluded.')
             t.need(not e._running_processes_under_root(Path(row['game'])), 'Close this game, then review again.')
@@ -171,7 +183,7 @@ def prepare(config, rows, mode, operation, settings, e):
             model = data['files']['NativeMods/nvngx_dlssnr.dll']
             detail = ('Restore recorded originals.' if operation == 'uninstall' else
                       f"Vulkan · Universal Experimental\nNR model: {'Local override' if settings.get('nr_runtime') else 'Bundled'} · SHA-256 {model['sha256']}\n"
-                      'BG3/RDR2 profile only. RTX 20/30/40 Vulkan support remains experimental; RTX 50 uses native NVIDIA MFG.\n')
+                      f"Confirmed profile: {PROFILES[key][1]}. Frame generation uses native NVIDIA MFG where the GPU supports it.\n")
             ready.append({'name': row['name'], 'game': row['game'], 'summary': 'Restore Vulkan original files' if operation == 'uninstall' else TITLE,
                           'detail': detail + '\n' + overlay_settings.describe(values)})
             ui.progress('Game checked', phase='review-check', game=row['name'], checked=index+1, total=len(rows))

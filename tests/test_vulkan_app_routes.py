@@ -25,7 +25,7 @@ class AppRoutes(unittest.TestCase):
         self.state=patch.dict(os.environ,{'RTXFORGE_VULKAN_STATE':str(f.state)});self.state.start();self.addCleanup(self.state.stop)
         self.e=types.SimpleNamespace(STATE_ROOT=f.base/'engine',Stop=t.Refusal,_running_processes_under_root=lambda _:[],mutation_lock=contextlib.nullcontext)
         self.row={'game':str(f.game.parent),'name':'BG3','exe':'bin/bg3.exe','appid':'1086940','anti_cheat':False}
-        self.settings={'runtime_provider':'vulkan-native','vulkan_experimental':True,'nr_on_launch':False}
+        self.settings={'runtime_provider':'skynizz','nr_on_launch':False}
 
     def prepare(self,operation='install',mode='nr-mfg',**settings):
         return app.prepare({},[self.row],mode,operation,self.settings|settings,self.e)
@@ -44,8 +44,12 @@ class AppRoutes(unittest.TestCase):
         restore=self.prepare('uninstall');self.assertFalse(restore['blocked']);app.execute(restore)
         self.assertEqual(before,self.fixture.files())
 
-    def test_opt_in_known_profile_and_model_refusals(self):
-        with self.assertRaises(t.Refusal):self.prepare(vulkan_experimental=False)
+    def test_automatic_route_known_profile_and_model_refusals(self):
+        # On by default: no opt-in, and a profiled game is routed here whatever DLSS package is chosen.
+        self.assertTrue(self.prepare(vulkan_experimental=False)['plans'])
+        rows=app.decorate([dict(self.row)],{},selected=False)
+        self.assertEqual((rows[0]['install_provider'],rows[0]['vulkan_available'],rows[0]['blocked']),('vulkan-native',True,''))
+        self.assertIn("Baldur’s Gate 3",app.confirmed())
         with self.assertRaises(t.Refusal):self.prepare(mode='nr-only')
         foreign=self.fixture.base/'Unknown';foreign.mkdir();(foreign/'Game.exe').write_bytes(pe())
         result=app.prepare({},[dict(self.row,game=str(foreign))],'nr-mfg','install',self.settings,self.e)

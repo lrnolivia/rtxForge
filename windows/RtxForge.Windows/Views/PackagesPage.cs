@@ -28,8 +28,21 @@ public sealed partial class PackagesPage : Page
         Loaded += async (_, _) => await LoadAsync();
     }
 
-    /// <summary>Packages for games without DLSS; the engine uses them automatically, whatever DLSS package is chosen.</summary>
-    internal static readonly string[] WithoutDlss = ["feeder"];
+    /// <summary>Packages the engine uses automatically for the games they cover, whatever DLSS package is chosen:
+    /// Feeder NR for games without DLSS, the Vulkan package for its confirmed Vulkan games.</summary>
+    internal static readonly string[] Automatic = ["feeder", "vulkan-native"];
+
+    /// <summary>The NR packages heading: the DLSS choice, then the automatic packages by catalog name.</summary>
+    internal static string NrDescription(PackageCatalog catalog)
+    {
+        var names = catalog.Packages.Where(p => Automatic.Contains(p.Id)).Select(p => p.Name).ToArray();
+        return "Neural rendering. Choose one for games with DLSS" + (names.Length == 0 ? "."
+            : $"; {string.Join(" and ", names)} {(names.Length == 1 ? "is" : "are")} used automatically for the games {(names.Length == 1 ? "it covers" : "they cover")}.");
+    }
+
+    /// <summary>The games a package is confirmed in, from the catalog, or null when it lists none.</summary>
+    internal static string? ConfirmedGames(PackageOption item) =>
+        item.Confirmed is { Count: > 0 } games ? "Confirmed games: " + string.Join(" · ", games) : null;
     /// <summary>NR packages that pair with a separate MFG package. Every other DLSS package brings its own MFG (unified).</summary>
     internal static readonly string[] PairsWithMfg = ["skynizz"];
 
@@ -81,8 +94,7 @@ public sealed partial class PackagesPage : Page
         // NR packages beside the MFG packages that pair with them.
         var columns = new PresetColumns(420, 2) { ColumnSpacing = 16, RowSpacing = 20, Margin = new Thickness(0, 12, 0, 0) };
         var nr = new StackPanel { Spacing = 12 };
-        var automatic = catalog.Packages.FirstOrDefault(p => WithoutDlss.Contains(p.Id))?.Name;
-        nr.Children.Add(Heading("NR packages", "Neural rendering. Choose one for games with DLSS" + (automatic is null ? "." : $"; {automatic} covers games without DLSS automatically.")));
+        nr.Children.Add(Heading("NR packages", NrDescription(catalog)));
         foreach (var item in catalog.Packages.Where(p => PairsWithMfg.Contains(p.Id)))
         {
             nr.Children.Add(PackageCard(item));
@@ -92,7 +104,7 @@ public sealed partial class PackagesPage : Page
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
             });
         }
-        foreach (var item in catalog.Packages.Where(p => WithoutDlss.Contains(p.Id))) nr.Children.Add(AutomaticCard(item));
+        foreach (var item in catalog.Packages.Where(p => Automatic.Contains(p.Id))) nr.Children.Add(AutomaticCard(item));
         if (catalog.Packages.Any(p => p.Id == "feeder")) nr.Children.Add(FeederSetup());
         columns.Children.Add(nr);
 
@@ -109,7 +121,7 @@ public sealed partial class PackagesPage : Page
         var unified = new StackPanel { Spacing = 12, Margin = new Thickness(0, 12, 0, 0) };
         unified.Children.Add(Heading("Unified packages", "NR and frame generation in one package, for games with DLSS. Choosing one replaces your NR package for those games."));
         var unifiedCards = new PresetColumns(360, 2) { ColumnSpacing = 16, RowSpacing = 16 };
-        foreach (var item in catalog.Packages.Where(p => !WithoutDlss.Contains(p.Id) && !PairsWithMfg.Contains(p.Id))
+        foreach (var item in catalog.Packages.Where(p => !Automatic.Contains(p.Id) && !PairsWithMfg.Contains(p.Id))
                      .OrderByDescending(p => p.Id == shell.Settings.RuntimeProvider))
             unifiedCards.Children.Add(PackageCard(item));
         unified.Children.Add(unifiedCards);
@@ -230,12 +242,13 @@ public sealed partial class PackagesPage : Page
         return card;
     }
 
-    /// <summary>A package for games without DLSS: always on, so it has no Use button.</summary>
+    /// <summary>An automatic package: always on for the games it covers, so it has no Use button.</summary>
     Border AutomaticCard(PackageOption item)
     {
         var content = Section(item.Name, item.Version);
         content.Children.Add(Prefs.Label(item.Summary));
         content.Children.Add(Prefs.Label("Graphics API: " + string.Join(" · ", item.GraphicsApis ?? []), "ForgeCaptionDimTextStyle"));
+        if (ConfirmedGames(item) is { } confirmed) content.Children.Add(Prefs.Label(confirmed, "ForgeCaptionDimTextStyle"));
         content.Children.Add(Footer(item.Verified, Prefs.Label(item.Available ? "Used automatically" : item.Reason, "ForgeCaptionDimTextStyle")));
         return Card(content);
     }

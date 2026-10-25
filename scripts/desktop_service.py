@@ -169,7 +169,9 @@ class DesktopService:
             import package_adoption
             return package_adoption.prepare(self.config, rows, operation, settings)
         settings['apply_requested_presets']=operation=='install' and visual_settings is not None
-        if settings.get('runtime_provider')=='vulkan-native' or (rows and all(row.get('runtime_provider')=='vulkan-native' for row in rows)):
+        # Profiled Vulkan games use the Vulkan package automatically, as Feeder games use Feeder NR.
+        if settings.get('runtime_provider')=='vulkan-native' or (rows and all(row.get('runtime_provider')=='vulkan-native'
+                or row.get('install_provider')=='vulkan-native' and row.get('vulkan_available') is True for row in rows)):
             import vulkan_app
             return vulkan_app.prepare(self.config,rows,mode,operation,settings,engine_bridge.module(self.config))
         feeder = settings.get('runtime_provider') == 'feeder'

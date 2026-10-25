@@ -276,8 +276,8 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         {
             // Feeder games take their own route and games may choose their own package:
             // one review, prepared per route and run in turn.
-            string Route(Game g) => g.RuntimeProvider == "vulkan-native" && g.Installed ? "vulkan-native"
-                : operation is "install" or "repair" && Settings.PackageFor(g, operation) == "vulkan-native" ? "vulkan-native"
+            // Confirmed Vulkan games take the Vulkan package automatically, as Feeder games take Feeder NR.
+            string Route(Game g) => g.UsesVulkan ? "vulkan-native"
                 : g.UsesFeeder ? "feeder" : operation is "install" or "repair" ? Settings.PackageFor(g, operation) : Settings.RuntimeProvider;
             var packages = targets.GroupBy(Route).ToArray();
             // The engine sends a selection of only Feeder games down the Feeder route; the package setting stays.
@@ -323,7 +323,6 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             ["prefer_bundled_nr_only"] = supportedSubset && mode == "nr-only",
             ["manage_dlss_files"] = Settings.ManageDlssFiles,
             ["nr_runtime"] = Settings.NrRuntime,
-            ["vulkan_experimental"] = Settings.VulkanExperimental,
             ["skynizz_version"] = Settings.SkynizzVersion,
             ["mfg_provider"] = Settings.MfgProvider,
             ["nr_preset"] = Settings.NrPreset,

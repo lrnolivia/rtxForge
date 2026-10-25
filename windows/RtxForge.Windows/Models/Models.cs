@@ -40,6 +40,9 @@ public sealed class Game
     /// <summary>A detected installation or a fresh DX11 or DX12 (no DLSS) target admitted to the separate Feeder route.</summary>
     public bool UsesFeeder => IsFeeder || EngineRow?["install_provider"]?.ToString() == "feeder"
         && EngineRow?["feeder_available"] is JsonValue flag && flag.TryGetValue<bool>(out var supported) && supported;
+    /// <summary>A Vulkan installation, or a confirmed Vulkan game the engine routes to the bundled Vulkan package, like Feeder.</summary>
+    public bool UsesVulkan => RuntimeProvider == "vulkan-native" && Installed || EngineRow?["install_provider"]?.ToString() == "vulkan-native"
+        && EngineRow?["vulkan_available"] is JsonValue flag && flag.TryGetValue<bool>(out var available) && available;
     /// <summary>Which rtxForge installed the features: "windows", "linux" (shared .rtxforge-install.json), or null.</summary>
     public string? InstalledOn { get; set; }
     /// <summary>A Feeder setup is installed but needs attention (BlockedReason says why); not an unsupported game.</summary>
@@ -192,7 +195,8 @@ public sealed record DlssInventory(IReadOnlyList<DlssFile> Files, string Blocked
 
 /// <summary>A package. Verified lists the OSes ("windows", "linux") where it has been tested in a game.</summary>
 public sealed record PackageOption(string Id, string Name, string Version, string Summary, bool Available, string Reason, bool Recommended, string Url,
-    IReadOnlyList<string>? Verified = null, IReadOnlyDictionary<string, string>? MfgVersions = null, IReadOnlyList<string>? GraphicsApis = null);
+    IReadOnlyList<string>? Verified = null, IReadOnlyDictionary<string, string>? MfgVersions = null, IReadOnlyList<string>? GraphicsApis = null,
+    IReadOnlyList<string>? Confirmed = null);
 
 public sealed record CommunitySource(string Name, string Url, string Note);
 
@@ -228,23 +232,25 @@ public sealed class ForgeSettings
     /// retired Feeder-only choice ("feeder") reads as Skynizz, the Feeder route's DLSS partner.
     /// y4my is no longer offered on Windows (its MFG stays at 2x on RTX 40), so it reads as Skynizz
     /// too; games already installed with y4my keep repairing and restoring from their records.
+    /// The Vulkan package is automatic for its confirmed games, so a saved "vulkan-native" choice reads as Skynizz.
     /// </summary>
     [JsonPropertyName("runtime_provider")] public string RuntimeProvider
     {
         get => runtimeProvider;
-        set => runtimeProvider = value is "feeder" or "y4my" ? "skynizz" : value;
+        set => runtimeProvider = value is "feeder" or "y4my" or "vulkan-native" ? "skynizz" : value;
     }
     /// <summary>A game's own package for games with DLSS, by game folder; absent games use RuntimeProvider.</summary>
     [JsonPropertyName("game_packages")] public Dictionary<string, string> GamePackages { get; set; } = [];
-    /// <summary>Packages a game can choose on Windows. Feeder NR stays automatic for DX11 games and DX12 games without DLSS.</summary>
-    public static readonly (string Key, string Name)[] GamePackageChoices = [("skynizz", "Skynizz NR"), ("dlss-unlocked", "DLSS-Unlocked"), ("vulkan-native", "Vulkan NR + Universal MFG · Experimental")];
+    /// <summary>Packages a game can choose on Windows. Feeder NR stays automatic for DX11 games and DX12 games without DLSS,
+    /// and confirmed Vulkan games use the Vulkan package automatically.</summary>
+    public static readonly (string Key, string Name)[] GamePackageChoices = [("skynizz", "Skynizz NR"), ("dlss-unlocked", "DLSS-Unlocked")];
     /// <summary>MFG packages that pair with Skynizz NR, as MfgProvider values.</summary>
     public static readonly (string Key, string Name)[] MfgPackageNames =
         [("universal", "Universal MFG"), ("integrated", "Integrated MFG unlock"), ("mfg-unlock", "MFG Unlock")];
     public static string MfgName(string key) => MfgPackageNames.FirstOrDefault(c => c.Key == key).Name ?? key;
     /// <summary>A package's name as installed now: Skynizz NR is named with the MFG package it pairs with.</summary>
     public string PackageName(string key) => key == "skynizz" ? "Skynizz NR + " + MfgName(MfgProvider)
-        : GamePackageChoices.FirstOrDefault(c => c.Key == key).Name ?? key;
+        : key == "vulkan-native" ? "Vulkan NR + Universal MFG" : GamePackageChoices.FirstOrDefault(c => c.Key == key).Name ?? key;
     /// <summary>A game's package choices for both UIs: "" follows the library package.</summary>
     public (string[] Keys, string[] Captions) GamePackageOptions() =>
         (["", .. GamePackageChoices.Select(c => c.Key)], ["Library package · " + PackageName(RuntimeProvider), .. GamePackageChoices.Select(c => PackageName(c.Key))]);
@@ -256,14 +262,12 @@ public sealed class ForgeSettings
     public string PackageFor(Game game, string operation)
     {
         static bool Known(string? key) => GamePackageChoices.Any(c => c.Key == key);
-        if (game.RuntimeProvider == "vulkan-native" && game.Installed) return "vulkan-native";
-        if (GamePackages.TryGetValue(game.Id, out var explicitPackage) && explicitPackage == "vulkan-native") return explicitPackage;
+        if (game.UsesVulkan) return "vulkan-native";
         if (game.UsesFeeder) return RuntimeProvider;
         if (operation == "repair" && game.Installed && Known(game.RuntimeProvider)) return game.RuntimeProvider!;
         return GamePackages.TryGetValue(game.Id, out var chosen) && Known(chosen) ? chosen : RuntimeProvider;
     }
     [JsonPropertyName("nr_runtime")] public string NrRuntime { get; set; } = "";
-    [JsonPropertyName("vulkan_experimental")] public bool VulkanExperimental { get; set; }
     /// <summary>
     /// The app ships one compiled Skynizz bridge, so new installs always use it; a release saved by an
     /// earlier app reads as "latest". Repairs keep each game's recorded release.

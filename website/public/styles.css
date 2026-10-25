@@ -154,10 +154,6 @@ body{position:relative;isolation:isolate}.page{position:relative;z-index:1}.hero
 
 /* One selected native Library anchors the hero, fading only at the bottom. */
 body:not(.install-page){overflow-x:clip}
-body:not(.install-page) .header{color:var(--text)}
-body:not(.install-page) .header .beta{color:var(--secondary)}
-body:not(.install-page) .header .theme-toggle{background:var(--surface)}
-[data-theme=light] body:not(.install-page) .header .theme-toggle img{filter:brightness(0);opacity:.75}
 body:not(.install-page) .platform-picker{margin:12px 0 40px}
 .hero{position:relative;isolation:isolate;min-height:480px;grid-template-columns:1fr 1fr;gap:32px}
 .hero-copy{position:relative;z-index:1;padding:30px 0 54px}

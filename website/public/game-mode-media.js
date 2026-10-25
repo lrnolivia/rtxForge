@@ -10,12 +10,7 @@ let paused = reducedMotion.matches, initialized = false, current;
 const byId = id => document.getElementById(id);
 function schedule() {
   clearTimeout(timer);
-  if (!paused && visible && !interacting && !document.hidden) timer = setTimeout(() => show((index + 1) % frames.length), 6000);
-}
-function updateButton() {
-  const button = byId('game-mode-pause');
-  button.textContent = paused ? 'Play' : 'Pause';
-  button.setAttribute('aria-label', `${paused ? 'Play' : 'Pause'} Game Mode previews`);
+  if (!paused && visible && !interacting && !document.hidden) timer = setTimeout(() => show((index + 1) % frames.length), 8000);
 }
 async function show(nextIndex) {
   clearTimeout(timer);
@@ -29,7 +24,11 @@ async function show(nextIndex) {
   try { await image.decode(); }
   catch { if (revision === generation) schedule(); return; }
   if (revision !== generation) return;
-  if (current) { current.classList.remove('is-current'); current.alt = ''; current.setAttribute('aria-hidden', 'true'); }
+  const previous = current;
+  if (previous) { previous.alt = ''; previous.setAttribute('aria-hidden', 'true'); previous.style.zIndex = '0'; }
+  image.style.zIndex = '1';
+  // Keep the old frame opaque below the incoming frame to avoid a dark dip.
+  setTimeout(() => { if (previous && previous !== current) previous.classList.remove('is-current'); }, reducedMotion.matches ? 0 : 1650);
   image.alt = frame.alt; image.removeAttribute('aria-hidden'); image.classList.add('is-current');
   current = image; index = nextIndex;
   const container = byId('feature-game-mode-media');
@@ -37,7 +36,6 @@ async function show(nextIndex) {
   byId('feature-game-mode-original').href = frame.src;
   byId('feature-game-mode-original').setAttribute('aria-label', `View Game Mode ${labels[index].toLowerCase()} full size`);
   byId('feature-game-mode-provenance').textContent = frame.provenance;
-  byId('game-mode-state').textContent = labels[index];
   schedule();
 }
 export function setGameModeTheme(nextTheme) {
@@ -50,10 +48,8 @@ export function setGameModeTheme(nextTheme) {
     container.addEventListener('mouseleave', () => { interacting = false; schedule(); });
     container.addEventListener('focusin', () => { interacting = true; schedule(); });
     container.addEventListener('focusout', event => { if (!container.contains(event.relatedTarget)) { interacting = false; schedule(); } });
-    byId('game-mode-pause').addEventListener('click', () => { paused = !paused; updateButton(); schedule(); });
     document.addEventListener('visibilitychange', schedule);
-    reducedMotion.addEventListener('change', () => { paused = reducedMotion.matches; updateButton(); schedule(); });
-    updateButton();
+    reducedMotion.addEventListener('change', () => { paused = reducedMotion.matches; schedule(); });
   }
   if (theme === nextTheme && current) return;
   theme = nextTheme;

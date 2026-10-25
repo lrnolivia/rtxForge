@@ -28,7 +28,6 @@
   <script type="module" src="app.js"></script>
 </head>
 <body>
-  <div class="hero-art" aria-hidden="true"><img src="assets/steam-hero.webp" width="3840" height="1240" alt="" fetchpriority="high"></div>
   <a class="skip-link" href="#main">Skip to content</a>
   <div class="page">
     <header class="header">
@@ -61,7 +60,16 @@
           <a class="text-link" id="guide-link" href="install.html?os=windows">Read the installation guide</a>
         </div>
 
-        <div class="download-panel" id="downloads">
+        <figure class="hero-library" id="hero-library-media">
+          <a id="hero-library-original" href="assets/screenshots/windows-desktop-library-dark.webp" target="_blank" rel="noopener" aria-label="View the Library screenshot full size">
+            <img id="hero-library-image" src="assets/screenshots/windows-desktop-library-dark.webp" width="2985" height="1781" alt="Windows desktop Library with the expanded sidebar and game artwork." fetchpriority="high">
+          </a>
+          <figcaption class="sr-only" id="hero-library-provenance"></figcaption>
+        </figure>
+      </section>
+
+      <section class="download-panel" id="downloads" aria-label="Download rtxForge">
+        <div class="download-summary">
           <div class="download-heading">
             <h2>Get rtxForge<br>for <span id="platform-name">Windows</span></h2>
             <span class="download-os" id="download-os" aria-hidden="true"></span>
@@ -75,6 +83,8 @@
             <p>NR for compatible RTX cards.<br>MFG for RTX 20, 30 and 40 series.</p>
             <a class="text-link" id="requirements-link" href="#requirements-details">Check game and GPU requirements</a>
           </div>
+        </div>
+        <div class="download-options">
           <a class="download-button" id="download-link" aria-disabled="true" tabindex="-1">
             <span id="download-label">Beta coming soon</span><span class="download-arrow" aria-hidden="true">↓</span>
           </a>
@@ -86,39 +96,6 @@
           </div>
           <a class="secondary-download" id="secondary-link" aria-disabled="true" tabindex="-1" target="_blank" rel="noopener"><span id="secondary-label">Development coming soon</span><span aria-hidden="true">↗</span></a>
           <p class="channel-note" id="channel-note">Development follows the latest changes and may be less stable than Beta.</p>
-        </div>
-      </section>
-
-      <section class="app-gallery" aria-labelledby="gallery-heading" aria-roledescription="carousel">
-        <div class="gallery-heading">
-          <h2 id="gallery-heading">Inside rtxForge</h2>
-          <div class="gallery-interface" role="tablist" aria-label="Choose an app interface">
-            <button id="gallery-desktop" class="gallery-interface-tab" type="button" role="tab" aria-selected="true" aria-controls="gallery-content">Desktop</button>
-            <button id="gallery-game-mode" class="gallery-interface-tab" type="button" role="tab" aria-selected="false" aria-controls="gallery-content" tabindex="-1">Game Mode</button>
-          </div>
-        </div>
-        <div id="gallery-content" role="tabpanel" aria-labelledby="gallery-desktop">
-        <figure id="gallery-panel" role="group" aria-roledescription="slide" aria-label="App screenshot">
-          <div class="gallery-stage" id="gallery-stage" aria-busy="false">
-            <img id="gallery-previous" hidden alt="" aria-hidden="true" decoding="async">
-            <img id="gallery-image" hidden alt="" decoding="async">
-            <div class="gallery-message" id="gallery-message" hidden>
-              <p id="gallery-message-title">App screenshots are on the way.</p>
-              <p id="gallery-message-copy">Library and game details, on desktop and in Game Mode.</p>
-              <button class="text-link retry-button" id="gallery-retry" type="button" hidden>Retry screenshot</button>
-            </div>
-          </div>
-          <figcaption class="gallery-caption">
-            <p id="gallery-title"></p>
-            <div class="media-sequence" id="gallery-sequence" role="group" aria-label="Installation steps" hidden></div>
-            <div class="gallery-controls" id="gallery-controls" hidden>
-              <div class="gallery-dots" id="gallery-dots" role="group" aria-label="Choose an app screenshot"></div>
-              <button class="gallery-rotation" id="gallery-rotation" type="button" aria-label="Pause screenshot carousel"><img id="gallery-rotation-icon" src="assets/player-pause.svg" width="17" height="17" alt=""></button>
-            </div>
-            <a class="text-link" id="gallery-original" target="_blank" rel="noopener" hidden>View full size <span aria-hidden="true">↗</span></a>
-          </figcaption>
-        </figure>
-        <p class="sr-only" id="gallery-status" role="status" aria-live="polite"></p>
         </div>
       </section>
 
@@ -142,7 +119,9 @@
               <p>Set NR strength, sharpening and frame-generation presets. Use library defaults, then fine-tune individual games.</p>
             </div>
             <figure class="feature-media" id="feature-presets-media" hidden>
+              <a id="feature-presets-original" target="_blank" rel="noopener">
               <img id="feature-presets-image" alt="" loading="lazy" decoding="async">
+              </a>
               <figcaption class="sr-only" id="feature-presets-provenance"></figcaption>
             </figure>
           </li>
@@ -160,13 +139,12 @@
                 </article>
               </div>
             </div>
-            <figure class="feature-media" id="feature-install-media" hidden>
-              <img id="feature-install-image" alt="" loading="lazy" decoding="async">
-              <figcaption>
-                <div class="media-sequence" id="feature-install-steps" role="group" aria-label="Installation screenshots"></div>
-                <span class="sr-only" id="feature-install-provenance"></span>
-              </figcaption>
-            </figure>
+            <div class="install-story" id="feature-install-media" aria-label="Installation from review to completion">
+              <figure><a id="feature-install-review-original" target="_blank" rel="noopener"><img id="feature-install-review-image" alt="" loading="lazy" decoding="async"></a><figcaption><span>1</span> Review</figcaption></figure>
+              <figure><a id="feature-install-progress-original" target="_blank" rel="noopener"><img id="feature-install-progress-image" alt="" loading="lazy" decoding="async"></a><figcaption><span>2</span> Install</figcaption></figure>
+              <figure><a id="feature-install-done-original" target="_blank" rel="noopener"><img id="feature-install-done-image" alt="" loading="lazy" decoding="async"></a><figcaption><span>3</span> Done</figcaption></figure>
+              <p class="sr-only" id="feature-install-provenance"></p>
+            </div>
           </li>
           <li class="feature-panel feature-play">
             <div class="feature-copy">
@@ -179,8 +157,8 @@
                   </div>
                   <p>Browse your library, open game details and tune presets with a controller.</p>
                   <figure class="feature-media" id="feature-game-mode-media" hidden>
-                    <img id="feature-game-mode-image" alt="" loading="lazy" decoding="async">
-                    <figcaption class="sr-only" id="feature-game-mode-provenance"></figcaption>
+                    <a id="feature-game-mode-original" target="_blank" rel="noopener"><img id="feature-game-mode-image" alt="" loading="lazy" decoding="async">
+                    </a><figcaption class="sr-only" id="feature-game-mode-provenance"></figcaption>
                   </figure>
                 </article>
                 <article class="feature-subcard">
@@ -190,8 +168,8 @@
                   </div>
                   <p id="feature-overlay-copy">The in-game NR and MFG overlay is in development for Windows.</p>
                   <figure class="feature-media" id="feature-overlay-media" hidden>
-                    <img id="feature-overlay-image" alt="" loading="lazy" decoding="async">
-                    <figcaption class="sr-only" id="feature-overlay-provenance"></figcaption>
+                    <a id="feature-overlay-original" target="_blank" rel="noopener"><img id="feature-overlay-image" alt="" loading="lazy" decoding="async">
+                    </a><figcaption class="sr-only" id="feature-overlay-provenance"></figcaption>
                   </figure>
                 </article>
               </div>

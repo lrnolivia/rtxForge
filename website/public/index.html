@@ -139,12 +139,16 @@
                 </article>
               </div>
             </div>
-            <div class="install-story" id="feature-install-media" aria-label="Installation from review to completion">
-              <figure><a id="feature-install-review-original" target="_blank" rel="noopener"><img id="feature-install-review-image" alt="" loading="lazy" decoding="async"></a><figcaption><span>1</span> Review</figcaption></figure>
-              <figure><a id="feature-install-progress-original" target="_blank" rel="noopener"><img id="feature-install-progress-image" alt="" loading="lazy" decoding="async"></a><figcaption><span>2</span> Installing</figcaption></figure>
-              <figure><a id="feature-install-done-original" target="_blank" rel="noopener"><img id="feature-install-done-image" alt="" loading="lazy" decoding="async"></a><figcaption><span>3</span> Done</figcaption></figure>
-              <p class="sr-only" id="feature-install-provenance"></p>
-            </div>
+            <figure class="feature-media install-story" id="feature-install-media" hidden>
+              <a id="feature-install-original" class="card-media-stage install-stage" target="_blank" rel="noopener">
+                <img id="feature-install-image" alt="" decoding="async">
+                <img id="feature-install-alternate" alt="" decoding="async" aria-hidden="true">
+              </a>
+              <figcaption>
+                <div id="feature-install-pagination" class="media-pagination" role="group" aria-label="Installation screenshots"></div>
+                <span class="sr-only" id="feature-install-provenance"></span>
+              </figcaption>
+            </figure>
           </li>
           <li class="feature-panel feature-play">
             <div class="feature-copy">
@@ -157,11 +161,14 @@
                   </div>
                   <p>Browse your library, open game details and tune presets with a controller.</p>
                   <figure class="feature-media" id="feature-game-mode-media" hidden>
-                    <a id="feature-game-mode-original" target="_blank" rel="noopener" class="game-mode-stage">
+                    <a id="feature-game-mode-original" target="_blank" rel="noopener" class="card-media-stage game-mode-stage">
                       <img id="feature-game-mode-image" alt="" decoding="async">
                       <img id="feature-game-mode-alternate" alt="" decoding="async" aria-hidden="true">
                     </a>
-                    <figcaption class="sr-only" id="feature-game-mode-provenance"></figcaption>
+                    <figcaption>
+                      <div id="feature-game-mode-pagination" class="media-pagination" role="group" aria-label="Game Mode screenshots"></div>
+                      <span class="sr-only" id="feature-game-mode-provenance"></span>
+                    </figcaption>
                   </figure>
                 </article>
                 <article class="feature-subcard">

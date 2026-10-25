@@ -159,6 +159,17 @@ public sealed class PreviewForgeService : IForgeService
         var blocked = targets.Where(g => g.Blocked).Select(g => new ReviewBlock(g, g.Name, g.BlockedReason ?? "Not supported")).ToList();
         var token = operation + ":" + Guid.NewGuid().ToString("N");
         reviewed[token] = tuning;
+        // Sample a mixed install: every third game gets NR only, as games on an NR-only route do.
+        if (operation == "install" && mode == "nr-mfg" && ready.Count > 2)
+        {
+            var partial = ready.Where((_, index) => index % 3 == 2).ToList();
+            var partToken = operation + ":" + Guid.NewGuid().ToString("N");
+            reviewed[partToken] = tuning;
+            return new OperationReview(operation, token, ready.Except(partial).ToList(), blocked)
+            {
+                Supported = [new(new OperationReview(operation, partToken, partial, []), true, false, "Frame generation is unavailable for this route.")],
+            };
+        }
         return new OperationReview(operation, token, ready, blocked);
     }
 

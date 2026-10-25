@@ -129,9 +129,18 @@ public sealed record OperationReview(string Operation, string Token, IReadOnlyLi
             .Concat(Supported.Select(p => p.Review)).ToArray();
         return this with { Ready = steps.SelectMany(r => r.Ready).ToArray(), Steps = steps, Supported = [] };
     }
+    /// <summary>Every game the review changes, whatever its package: the full selection and partly supported games in one list, by name.</summary>
+    public IReadOnlyList<(OperationGameReview Item, SupportedOperationReview? Part)> AllGames =>
+        Ready.Select(item => (item, (SupportedOperationReview?)null))
+            .Concat(Supported.SelectMany(part => part.Review.Ready.Select(item => (item, (SupportedOperationReview?)part))))
+            .OrderBy(entry => entry.item.Game.Name, StringComparer.CurrentCultureIgnoreCase).ToArray();
 }
 
-public sealed record SupportedOperationReview(OperationReview Review, bool Nr, bool Mfg, string Reason);
+public sealed record SupportedOperationReview(OperationReview Review, bool Nr, bool Mfg, string Reason)
+{
+    /// <summary>The review badge for a partly supported game.</summary>
+    public string Badge => Nr && !Mfg ? "NR Only" : Mfg && !Nr ? "MFG Only" : "Ready";
+}
 
 /// <summary>Whether this rtxForge installation is in Steam; Token carries the checked state into Remove.</summary>
 public sealed record SteamShortcutStatus(bool Added, string Token);

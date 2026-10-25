@@ -127,16 +127,19 @@ public sealed partial class GameModeView
     {
         var content = new StackPanel { Spacing = t.Px(20) };
         var summary = new StackPanel { Spacing = t.Px(10) };
-        var count = review.Ready.Count;
-        summary.Children.Add(ui.H2(count > 0 ? $"{count} game{(count == 1 ? "" : "s")} ready"
-            : review.Supported.Count > 0 ? "Supported features available" : "Nothing ready yet", 1.3));
-        if (operation == "install") summary.Children.Add(ui.P(shell.Settings.RuntimeProvider == "feeder" || (count > 0 && review.Ready.All(r => r.Game.IsFeeder))
-            ? "NR Only · Feeder NR" : $"{ModeLabel()} · {ProviderName()}"));
+        // One list for every package: games that get only part of the selection show what they get.
+        var games = review.AllGames;
+        var count = games.Count;
+        var mixed = review.Steps.Count > 1 || review.Supported.Count > 0;
+        summary.Children.Add(ui.H2(count > 0 ? $"{count} game{(count == 1 ? "" : "s")} ready" : "Nothing ready yet", 1.3));
+        if (operation == "install") summary.Children.Add(ui.P(shell.Settings.RuntimeProvider == "feeder" || (count > 0 && !mixed && review.Ready.All(r => r.Game.IsFeeder))
+            ? "NR Only · Feeder NR" : mixed ? ModeLabel() : $"{ModeLabel()} · {ProviderName()}"));
         content.Children.Add(summary);
 
         var list = new StackPanel();
         var group = new List<UIElement>();
-        foreach (var item in review.Ready) group.Add(ReviewRow(item.Game, item.Game.Name, item.Summary, true, item.Detail));
+        foreach (var (item, part) in games)
+            group.Add(ReviewRow(item.Game, item.Game.Name, part is null ? item.Summary : item.Summary + "\n" + part.Reason, true, item.Detail, part?.Badge));
         if (group.Count > 0) list.Children.Add(ui.Group(group, t.Card));
         foreach (var warning in review.Warnings)
         {
@@ -156,43 +159,17 @@ public sealed partial class GameModeView
         content.Children.Add(ui.P("Your files only change after you confirm.", 0.8));
         void Dismiss() { shell.Service.DiscardOperation(review); CloseModal(); }
         var cancel = ui.Button("Cancel", Dismiss, GmKind.Card, 0.92);
-        var go = ui.Button(review.Supported.Count > 0 ? "Continue" : Verb(operation), () =>
+        var go = ui.Button(Verb(operation), () =>
         {
             CloseModal();
-            if (review.Supported.Count > 0) ShowSupportedFeatures(operation, review);
-            else _ = ExecuteAsync(operation, review);
-        }, GmKind.Primary, 0.92, enabled: count > 0 || review.Supported.Count > 0);
+            _ = ExecuteAsync(operation, review.Supported.Count > 0 ? review.IncludeSupported() : review);
+        }, GmKind.Primary, 0.92, enabled: count > 0);
         ShowModal(ReviewTitle(operation), content, [cancel, go], Dismiss, 1100, cancel);
-    }
-
-    void ShowSupportedFeatures(string operation, OperationReview review)
-    {
-        var content = new StackPanel { Spacing = t.Px(20) };
-        content.Children.Add(ui.H2("These games support part of your selection", 1.2));
-        var list = new StackPanel { Spacing = t.Px(10) };
-        foreach (var group in review.Supported)
-        foreach (var item in group.Review.Ready)
-        {
-            var card = RtxForge.Windows.Controls.SupportedFeatureCard.Create(item, group.Nr, group.Mfg, group.Reason, t.Px(1));
-            list.Children.Add(card);
-        }
-        content.Children.Add(new ScrollViewer { Content = list, MaxHeight = t.Px(440), HorizontalScrollMode = ScrollMode.Disabled });
-        content.Children.Add(ui.P("Install the supported features shown above, along with the games on the previous review.", .85));
-        var back = ui.Button("Back", () => { CloseModal(); ShowReview(operation, review); }, GmKind.Card, .92);
-        var skip = ui.Button("Skip these games", () =>
-        {
-            CloseModal();
-            foreach (var part in review.Supported) shell.Service.DiscardOperation(part.Review);
-            if (review.Ready.Count > 0) _ = ExecuteAsync(operation, review with { Supported = [] });
-            else ShowDone(false, "Nothing selected", "No games were changed.");
-        }, GmKind.Card, .92);
-        var install = ui.Button("Install supported features", () => { CloseModal(); _ = ExecuteAsync(operation, review.IncludeSupported()); }, GmKind.Primary, .92);
-        ShowModal("Install the supported features", content, [back, skip, install], () => { shell.Service.DiscardOperation(review); CloseModal(); }, 1100, back);
     }
 
     string ModeLabel() => shell.Mode switch { "nr-only" => "NR Only", "nr-mfg" => "NR + MFG", _ => "MFG Only" };
 
-    Grid ReviewRow(Game? game, string name, string detail, bool ready, string? technical = null)
+    Grid ReviewRow(Game? game, string name, string detail, bool ready, string? technical = null, string? state = null)
     {
         var row = new Grid { ColumnSpacing = t.Px(22), Padding = new Thickness(t.Px(22), t.Px(18), t.Px(22), t.Px(18)) };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -224,7 +201,7 @@ public sealed partial class GameModeView
         }
         Grid.SetColumn(text, 1);
         row.Children.Add(text);
-        var badge = ui.Badge(ready ? "Ready" : "Skipped", t.Panel, ready ? t.Fg : t.Danger, 0.7);
+        var badge = ui.Badge(state ?? (ready ? "Ready" : "Skipped"), t.Panel, ready ? t.Fg : t.Danger, 0.7);
         Grid.SetColumn(badge, 2);
         row.Children.Add(badge);
         if (ready && game is not null) _ = ReviewAccentAsync(game, thumb, title, badge);

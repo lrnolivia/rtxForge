@@ -14,7 +14,7 @@ namespace RtxForge.Windows.Controls;
 /// </summary>
 public sealed class OperationDialog
 {
-    enum Stage { Review, Supported, Progress, Done }
+    enum Stage { Review, Progress, Done }
 
     readonly MainWindow shell;
     readonly string operation;
@@ -40,14 +40,6 @@ public sealed class OperationDialog
         dialog = shell.NewDialog();
         dialog.Resources["ContentDialogMaxWidth"] = 760.0;
         dialog.PrimaryButtonClick += OnPrimary;
-        dialog.SecondaryButtonClick += (sender, args) =>
-        {
-            if (stage != Stage.Supported || review is null) return;
-            args.Cancel = true;
-            foreach (var part in review.Supported) shell.Service.DiscardOperation(part.Review);
-            if (review.Ready.Count == 0) { ShowDone(false, "No games selected."); return; }
-            review = review with { Supported = [] }; _ = RunAsync();
-        };
         dialog.CloseButtonClick += OnClose;
         dialog.Closing += (_, e) => { if (stage == Stage.Progress) e.Cancel = true; };
         dialog.Closed += (_, _) =>
@@ -176,11 +168,13 @@ public sealed class OperationDialog
     {
         dialog.Title = Title();
         var body = new StackPanel { Spacing = 16 };
-        var count = review.Ready.Count;
+        // One list for every package: games that get only part of the selection show what they get.
+        var games = review.AllGames;
+        var count = games.Count;
         var summary = new StackPanel { Spacing = 4 };
         summary.Children.Add(new TextBlock
         {
-            Text = count > 0 ? $"{count} game{(count == 1 ? "" : "s")} ready" : review.Supported.Count > 0 ? "Supported features available" : "Nothing ready yet",
+            Text = count > 0 ? $"{count} game{(count == 1 ? "" : "s")} ready" : "Nothing ready yet",
             FontSize = 20, FontWeight = FontWeights.SemiBold,
         });
         var description = string.Join(" · ", Details());
@@ -188,8 +182,9 @@ public sealed class OperationDialog
         body.Children.Add(summary);
 
         var list = new StackPanel { Spacing = 4 };
-        foreach (var item in review.Ready)
-            list.Children.Add(ReviewRow(item.Game, item.Game.Name, item.Summary, "Ready", true, item.Detail));
+        foreach (var (item, part) in games)
+            list.Children.Add(ReviewRow(item.Game, item.Game.Name, part is null ? item.Summary : item.Summary + "\n" + part.Reason,
+                part?.Badge ?? "Ready", true, item.Detail));
         foreach (var warning in review.Warnings)
             list.Children.Add(new InfoBar
             {
@@ -209,8 +204,8 @@ public sealed class OperationDialog
         body.Children.Add(Prefs.Label("Your files will only change after you review and confirm.", "ForgeCaptionDimTextStyle"));
 
         dialog.Content = body;
-        dialog.PrimaryButtonText = review.Supported.Count > 0 ? "Continue" : ActionVerb();
-        dialog.IsPrimaryButtonEnabled = count > 0 || review.Supported.Count > 0;
+        dialog.PrimaryButtonText = ActionVerb();
+        dialog.IsPrimaryButtonEnabled = count > 0;
         if (preparedReview?.Trust is { Length: > 0 } trust)
         {
             var consent = new CheckBox { Content = new TextBlock { Text = trust, TextWrapping = TextWrapping.Wrap } };
@@ -232,21 +227,6 @@ public sealed class OperationDialog
     {
         dialog.DefaultButton = ContentDialogButton.None;
         dialog.DefaultButton = ContentDialogButton.Primary;
-    }
-
-    void ShowSupportedReview()
-    {
-        stage = Stage.Supported; dialog.Title = "Install the supported features";
-        var body = new StackPanel { Spacing = 16 };
-        body.Children.Add(new TextBlock { Text = "These games support part of your selection", FontSize = 20, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
-        var list = new StackPanel { Spacing = 8 };
-        foreach (var group in review!.Supported)
-        foreach (var item in group.Review.Ready)
-            list.Children.Add(SupportedFeatureCard.Create(item, group.Nr, group.Mfg, group.Reason));
-        body.Children.Add(new ScrollViewer { Content = list, MaxHeight = 420, HorizontalScrollMode = ScrollMode.Disabled });
-        body.Children.Add(Prefs.Label($"{review.Ready.Count} games will receive your full selection. Include these additional games with the features shown above.", "ForgeCaptionDimTextStyle"));
-        dialog.Content = body; dialog.PrimaryButtonText = "Install supported features"; dialog.IsPrimaryButtonEnabled = true;
-        dialog.SecondaryButtonText = "Skip these games"; dialog.CloseButtonText = "Cancel";
     }
 
     string ActionVerb() => operation switch
@@ -277,6 +257,8 @@ public sealed class OperationDialog
         if (operation == "install" && shell.Settings.RuntimeProvider != "feeder")
         {
             yield return shell.Mode switch { "nr-only" => "NR Only", "nr-mfg" => "NR + MFG", _ => "MFG Only" };
+            // Several packages: each game's row names its own.
+            if (review is { } mixed && (mixed.Steps.Count > 1 || mixed.Supported.Count > 0)) yield break;
             yield return shell.Settings.RuntimeProvider switch
             {
                 "skynizz" => "Skynizz",
@@ -355,15 +337,9 @@ public sealed class OperationDialog
 
     void OnPrimary(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
-        if (stage == Stage.Supported && review is not null)
-        {
-            args.Cancel = true;
-            review = review.IncludeSupported();
-            _ = RunAsync(); return;
-        }
         if (stage != Stage.Review || review is null) return; // Done closes normally
         args.Cancel = true;
-        if (review.Supported.Count > 0) { ShowSupportedReview(); return; }
+        if (review.Supported.Count > 0) review = review.IncludeSupported();
         _ = RunAsync();
     }
 

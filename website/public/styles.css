@@ -162,7 +162,7 @@ body:not(.install-page) .platform-picker{margin:12px 0 40px}
 .hero{position:relative;isolation:isolate;min-height:480px;grid-template-columns:1fr 1fr;gap:32px}
 .hero-copy{position:relative;z-index:1;padding:30px 0 54px}
 .hero-library{--native-radius-ratio:.00536;position:relative;margin:0;height:auto;aspect-ratio:2985/1781;min-width:0;align-self:center;filter:drop-shadow(0 9px 16px rgb(0 0 0 / .18))}
-.hero-library a{display:block;width:100%;height:100%;overflow:hidden;border-radius:calc(100% * var(--native-radius-ratio)) / calc(100% * var(--native-radius-ratio) * 2985 / 1781);mask-image:linear-gradient(to bottom,#000 75%,transparent 100%)}
+.hero-library a{display:block;width:100%;height:100%;overflow:hidden;border-radius:calc(100% * var(--native-radius-ratio)) / calc(100% * var(--native-radius-ratio) * 2985 / 1781);mask-image:linear-gradient(to bottom,#000 40%,transparent 85%)}
 .hero-library img{display:block;width:100%;max-width:100%;height:auto}
 .hero-library a:focus-visible{outline-offset:-5px}
 .hero-library[hidden],.feature-media[hidden],.install-story[hidden]{display:none}

@@ -50,6 +50,8 @@ public sealed partial class MainWindow
         GameModeHost.Visibility = Visibility.Visible;
         // The desktop title bar region would otherwise catch clicks over the Game Mode header.
         SetTitleBar(null);
+        // The extended title bar keeps its caption buttons even full screen; Game Mode has its own exit.
+        AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Collapsed;
         AppWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
     }
 
@@ -60,6 +62,7 @@ public sealed partial class MainWindow
         GameModeHost.Visibility = Visibility.Collapsed;
         gameMode = null;
         AppWindow.SetPresenter(AppWindowPresenterKind.Overlapped);
+        SizeCaptionButtons();
         SetTitleBar(AppTitleBar);
         GamesChanged?.Invoke();
     }

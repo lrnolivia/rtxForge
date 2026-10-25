@@ -586,5 +586,37 @@ class FeederTest(unittest.TestCase):
         self.assertEqual(self.files(row), {name: before[name] for name in ('game.exe', 'save.dat', 'quiet-startup.addon64')})
 
 
+class ExecutableProbeCacheTest(unittest.TestCase):
+    """Library scans reuse a renderer answer until the executable itself changes."""
+
+    def test_probe_is_reused_until_the_file_changes_and_survives_a_restart(self):
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder)
+            exe, store = base / 'game.exe', base / 'probes.json'
+            exe.write_bytes(b'one')
+            calls = []
+            def probe():
+                calls.append(1)
+                return {'d3d11'}
+            with patch.dict('os.environ', {'RTXFORGE_PROBE_CACHE': str(store)}), patch.object(feeder, '_PROBES', None):
+                self.assertEqual(feeder.cached_probe('direct3d', exe, probe), {'d3d11'})
+                self.assertEqual(feeder.cached_probe('direct3d', exe, probe), {'d3d11'})
+                self.assertEqual(len(calls), 1)
+                # A different kind of probe is a separate answer.
+                feeder.cached_probe('renderers', exe, lambda: {'vulkan'})
+                self.assertEqual(feeder.cached_probe('renderers', exe, probe), {'vulkan'})
+                # An updated executable is probed again.
+                exe.write_bytes(b'longer')
+                self.assertEqual(feeder.cached_probe('direct3d', exe, lambda: {'d3d12'}), {'d3d12'})
+            # A new process reads the answers kept on disk.
+            with patch.dict('os.environ', {'RTXFORGE_PROBE_CACHE': str(store)}), patch.object(feeder, '_PROBES', None):
+                self.assertEqual(feeder.cached_probe('direct3d', exe, probe), {'d3d12'})
+                self.assertEqual(len(calls), 1)
+            # A missing file is never cached.
+            missing = base / 'missing.exe'
+            with patch.dict('os.environ', {'RTXFORGE_PROBE_CACHE': ''}), patch.object(feeder, '_PROBES', None):
+                self.assertEqual(feeder.cached_probe('direct3d', missing, lambda: set()), set())
+
+
 if __name__ == '__main__':
     unittest.main()

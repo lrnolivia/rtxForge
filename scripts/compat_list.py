@@ -49,17 +49,20 @@ def renderers(exe,e=None,limit=2*1024**3):
     until launch, so fall back to the DLL names the file mentions."""
     import feeder_provider
     exe=Path(exe)
-    names={name.lower() for name in (*(e.pe_imported_dlls(exe) if e else ()),*feeder_provider.delay_imported_dlls(exe))}
-    found={api for api,dll in RENDERERS.items() if dll in names}
-    if found:return found
-    import mmap
-    try:
-        with open(exe,'rb') as file:
-            if not 0<os.fstat(file.fileno()).st_size<=limit:return set()
-            with mmap.mmap(file.fileno(),0,access=mmap.ACCESS_READ) as data:
-                return {api for api,dll in RENDERERS.items() if re.search(rb'(?i)'+re.escape(dll.encode()),data)}
-    except (OSError,ValueError):
-        return set()
+    def probe():
+        names={name.lower() for name in (*(e.pe_imported_dlls(exe) if e else ()),*feeder_provider.delay_imported_dlls(exe))}
+        found={api for api,dll in RENDERERS.items() if dll in names}
+        if found:return found
+        import mmap
+        try:
+            with open(exe,'rb') as file:
+                if not 0<os.fstat(file.fileno()).st_size<=limit:return set()
+                with mmap.mmap(file.fileno(),0,access=mmap.ACCESS_READ) as data:
+                    return {api for api,dll in RENDERERS.items() if re.search(rb'(?i)'+re.escape(dll.encode()),data)}
+        except (OSError,ValueError):
+            return set()
+    # Unchanged executables keep their answer between library scans.
+    return feeder_provider.cached_probe('renderers' if e else 'renderers-delay',exe,probe)
 
 
 def renderer_refusal(reason,apis):

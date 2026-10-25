@@ -1,32 +1,42 @@
 import { SCREENSHOTS, captureForTheme, captureCornerRadius } from './screenshots.mjs';
 
-let currentPlatform = 'windows', installStep = 1;
 export function setFeaturePlatform(os) {
   const byId = id => document.getElementById(id);
-  currentPlatform = os;
-  const windows = os === 'windows';
-  byId('feature-overlay-copy').textContent = windows
+  const captures = SCREENSHOTS[os] || SCREENSHOTS.windows;
+  const theme = document.documentElement.dataset.theme;
+  function render(slot, capture, container) {
+    const image = byId(`${slot}-image`), link = byId(`${slot}-original`);
+    container.hidden = !capture;
+    if (!capture) { image.removeAttribute('src'); link.removeAttribute('href'); return; }
+    image.onerror = () => { container.hidden = true; };
+    image.onload = () => { container.hidden = false; };
+    image.src = capture.src; image.alt = capture.alt;
+    image.width = capture.width; image.height = capture.height;
+    image.style.borderRadius = captureCornerRadius(capture);
+    link.href = capture.src;
+    link.setAttribute('aria-label', `View ${capture.label.toLowerCase()} full size`);
+  }
+  const library = captureForTheme(captures['desktop-library'], theme);
+  render('hero-library', library, byId('hero-library-media'));
+  byId('hero-library-provenance').textContent = library.provenance;
+  byId('feature-overlay-copy').textContent = os === 'windows'
     ? 'Adjust neural rendering and multi-frame generation while keeping your game in view.'
     : 'The in-game NR and MFG overlay is in development for Windows.';
-  const steps = byId('feature-install-steps');
-  if (!steps.children.length) ['Review', 'Installing', 'Done'].forEach((label, i) => {
-    const button = document.createElement('button'); button.type = 'button';
-    button.textContent = label; button.setAttribute('aria-controls', 'feature-install-image');
-    button.addEventListener('click', () => { installStep = i; setFeaturePlatform(currentPlatform); });
-    steps.append(button);
-  });
-  [...steps.children].forEach((button, i) => button.setAttribute('aria-pressed', String(i === installStep)));
-  for (const [slot, key] of [['presets', 'presets'], ['install', 'desktop-install'], ['game-mode', 'game-mode-library'], ['overlay', 'overlay']]) {
-    let capture = captureForTheme(SCREENSHOTS[os]?.[key] || SCREENSHOTS.windows[key], document.documentElement.dataset.theme);
-    if (slot === 'install' && capture) capture = [capture, ...(capture.sequence || [])][installStep] || capture;
-    const image = byId(`feature-${slot}-image`);
-    byId(`feature-${slot}-media`).hidden = !capture;
-    byId(`feature-${slot}-media`).dataset.os = SCREENSHOTS[os]?.[key] ? os : 'windows';
-    if (capture) {
-      image.src = capture.src; image.alt = capture.alt; image.width = capture.width; image.height = capture.height;
-      image.style.borderRadius = captureCornerRadius(capture);
-      byId(`feature-${slot}-provenance`).textContent = capture.provenance;
-      image.onerror = () => { byId(`feature-${slot}-media`).hidden = true; };
-    } else { image.removeAttribute('src'); image.alt = ''; }
+  for (const [slot, key] of [['presets', 'presets'], ['game-mode', 'game-mode-details'], ['overlay', 'overlay']]) {
+    const capture = captureForTheme(captures[key], theme);
+    const container = byId(`feature-${slot}-media`);
+    container.dataset.os = os;
+    render(`feature-${slot}`, capture, container);
+    byId(`feature-${slot}-provenance`).textContent = capture?.provenance || '';
+  }
+  const install = captureForTheme(captures['desktop-install'], theme);
+  byId('feature-install-media').hidden = !install;
+  if (install) {
+    const frames = [install, ...(install.sequence || [])];
+    ['review', 'progress', 'done'].forEach((step, i) => {
+      const image = byId(`feature-install-${step}-image`);
+      render(`feature-install-${step}`, frames[i], image.closest('figure'));
+    });
+    byId('feature-install-provenance').textContent = install.provenance;
   }
 }

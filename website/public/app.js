@@ -1,16 +1,13 @@
 import { REPOSITORY as repo, CHANNELS, selectDownloads } from './releases.mjs';
-import { createGallery } from './gallery.js';
 import { setFeaturePlatform } from './features.js';
 import { platforms, storage } from './platforms.mjs';
 import { initTheme } from './theme.mjs';
 
 const root = document.documentElement;
 const byId = id => document.getElementById(id);
-const gallery = createGallery();
 const tabs = [...document.querySelectorAll('[data-platform]')];
 initTheme();
 new MutationObserver(() => {
-  gallery.setPlatform(root.dataset.os);
   setFeaturePlatform(root.dataset.os);
 }).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
 function platformForPage() {
@@ -83,7 +80,7 @@ async function loadRelease(channel) {
 }
 function setPlatform(os, { updateUrl = false, announce = false } = {}) {
   if (!Object.hasOwn(platforms, os)) os = 'linux';
-  const data = platforms[os]; root.dataset.os = os; gallery.setPlatform(os); setFeaturePlatform(os);
+  const data = platforms[os]; root.dataset.os = os; setFeaturePlatform(os);
   document.title = `rtxForge Beta for ${data.name}`;
   byId('platform-name').textContent = data.name; byId('platform-copy').textContent = data.copy;
   byId('guide-link').href = data.guide;

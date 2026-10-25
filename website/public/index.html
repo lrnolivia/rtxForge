@@ -61,8 +61,8 @@
         </div>
 
         <figure class="hero-library" id="hero-library-media">
-          <a id="hero-library-original" href="assets/screenshots/windows-desktop-library-dark.webp" target="_blank" rel="noopener" aria-label="View the Library screenshot full size">
-            <img id="hero-library-image" src="assets/screenshots/windows-desktop-library-dark.webp" width="2985" height="1781" alt="Windows desktop Library with the expanded sidebar and game artwork." fetchpriority="high">
+          <a id="hero-library-original" href="assets/screenshots/windows-desktop-library-selected-dark.webp" target="_blank" rel="noopener" aria-label="View the Library screenshot full size">
+            <img id="hero-library-image" src="assets/screenshots/windows-desktop-library-selected-dark.webp" width="2985" height="1781" alt="Windows desktop Library with six games selected and the expanded sidebar." fetchpriority="high">
           </a>
           <figcaption class="sr-only" id="hero-library-provenance"></figcaption>
         </figure>
@@ -141,7 +141,7 @@
             </div>
             <div class="install-story" id="feature-install-media" aria-label="Installation from review to completion">
               <figure><a id="feature-install-review-original" target="_blank" rel="noopener"><img id="feature-install-review-image" alt="" loading="lazy" decoding="async"></a><figcaption><span>1</span> Review</figcaption></figure>
-              <figure><a id="feature-install-progress-original" target="_blank" rel="noopener"><img id="feature-install-progress-image" alt="" loading="lazy" decoding="async"></a><figcaption><span>2</span> Install</figcaption></figure>
+              <figure><a id="feature-install-progress-original" target="_blank" rel="noopener"><img id="feature-install-progress-image" alt="" loading="lazy" decoding="async"></a><figcaption><span>2</span> Installing</figcaption></figure>
               <figure><a id="feature-install-done-original" target="_blank" rel="noopener"><img id="feature-install-done-image" alt="" loading="lazy" decoding="async"></a><figcaption><span>3</span> Done</figcaption></figure>
               <p class="sr-only" id="feature-install-provenance"></p>
             </div>
@@ -157,8 +157,15 @@
                   </div>
                   <p>Browse your library, open game details and tune presets with a controller.</p>
                   <figure class="feature-media" id="feature-game-mode-media" hidden>
-                    <a id="feature-game-mode-original" target="_blank" rel="noopener"><img id="feature-game-mode-image" alt="" loading="lazy" decoding="async">
-                    </a><figcaption class="sr-only" id="feature-game-mode-provenance"></figcaption>
+                    <a id="feature-game-mode-original" target="_blank" rel="noopener" class="game-mode-stage">
+                      <img id="feature-game-mode-image" alt="" decoding="async">
+                      <img id="feature-game-mode-alternate" alt="" decoding="async" aria-hidden="true">
+                    </a>
+                    <figcaption class="game-mode-caption">
+                      <span id="game-mode-state">Selected Library</span>
+                      <button id="game-mode-pause" type="button" aria-label="Pause Game Mode previews">Pause</button>
+                      <span class="sr-only" id="feature-game-mode-provenance"></span>
+                    </figcaption>
                   </figure>
                 </article>
                 <article class="feature-subcard">

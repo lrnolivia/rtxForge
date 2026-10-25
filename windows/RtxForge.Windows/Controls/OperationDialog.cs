@@ -68,7 +68,8 @@ public sealed class OperationDialog
         Func<IProgress<PrepareProgress>, Task<EngineReview>> prepare)
     {
         var flow = new OperationDialog(shell, operation, shell.Games, shell.Settings.Presets);
-        flow.ShowChecking();
+        // The engine chooses which games a prepared update covers, so nothing is listed until it answers.
+        flow.ShowChecking(listGames: false);
         var shown = flow.dialog.ShowAsync();
         try
         {
@@ -126,21 +127,60 @@ public sealed class OperationDialog
 
     // ---------- Checking (engine prepare: every target verified, nothing written) ----------
 
-    void ShowChecking()
+    // Checking and review are one screen: every game's row is listed at once and fills in as it is checked.
+    readonly Dictionary<string, (TextBlock Detail, TextBlock State)> checkingRows = new(StringComparer.OrdinalIgnoreCase);
+    readonly TextBlock checkingTitle = new() { FontSize = 20, FontWeight = FontWeights.SemiBold };
+    string? checkingGame;
+
+    void ShowChecking(bool listGames = true)
     {
         dialog.Title = Title();
-        checkingPanel.Show("Checking", targets.FirstOrDefault(), 0, null, "Checking game files");
-        dialog.Content = checkingPanel.Root;
         dialog.PrimaryButtonText = ActionVerb();
         dialog.IsPrimaryButtonEnabled = false;
         dialog.CloseButtonText = "Cancel";
         dialog.DefaultButton = ContentDialogButton.Primary;
+        if (!listGames || targets.Count == 0)
+        {
+            checkingPanel.Show("Checking", targets.FirstOrDefault(), 0, null, "Checking game files");
+            dialog.Content = checkingPanel.Root;
+            return;
+        }
+        var body = new StackPanel { Spacing = 16 };
+        var summary = new StackPanel { Spacing = 4 };
+        checkingTitle.Text = $"Checking {targets.Count} game{(targets.Count == 1 ? "" : "s")}";
+        summary.Children.Add(checkingTitle);
+        summary.Children.Add(Prefs.Label("Each game is checked before anything changes.", "ForgeDimTextStyle"));
+        body.Children.Add(summary);
+        var list = new StackPanel { Spacing = 4 };
+        foreach (var game in targets.OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase))
+        {
+            list.Children.Add(ReviewRow(game, game.Name, "Waiting to be checked", "Waiting", true, null, out var detail, out var state));
+            checkingRows[game.Name] = (detail, state);
+        }
+        body.Children.Add(new ScrollViewer { Content = list, MaxHeight = 380, HorizontalScrollMode = ScrollMode.Disabled });
+        body.Children.Add(Prefs.Label("Your files will only change after you review and confirm.", "ForgeCaptionDimTextStyle"));
+        dialog.Content = body;
+    }
+
+    /// <summary>The game being checked now; the one before it is done.</summary>
+    void ShowChecked(PrepareProgress step)
+    {
+        if (checkingRows.Count == 0)
+        {
+            checkingPanel.Show("Checking", targets.FirstOrDefault(g => g.Name == step.Game), step.Checked, step.Total > 0 ? step.Total : null, step.Label);
+            return;
+        }
+        if (step.Total > 0) checkingTitle.Text = $"Checking {Math.Min(step.Checked + 1, step.Total)} of {step.Total}";
+        if (step.Game is not { Length: > 0 } game || game == checkingGame || !checkingRows.TryGetValue(game, out var row)) return;
+        if (checkingGame is not null && checkingRows.TryGetValue(checkingGame, out var previous))
+            (previous.Detail.Text, previous.State.Text) = ("Checked", "CHECKED");
+        (row.Detail.Text, row.State.Text) = ("Checking game files…", "CHECKING");
+        checkingGame = game;
     }
 
     async Task PrepareAsync()
     {
-        var progress = new Progress<PrepareProgress>(step => checkingPanel.Show("Checking",
-            targets.FirstOrDefault(g => g.Name == step.Game), step.Checked, step.Total > 0 ? step.Total : null, step.Label));
+        var progress = new Progress<PrepareProgress>(ShowChecked);
         try
         {
             review = await shell.Service.PrepareAsync(operation, targets, values, shell.Mode, progress);
@@ -270,7 +310,11 @@ public sealed class OperationDialog
         }
     }
 
-    static Border ReviewRow(Game? game, string name, string detail, string state, bool ready, string? technical = null)
+    static Border ReviewRow(Game? game, string name, string detail, string state, bool ready, string? technical = null) =>
+        ReviewRow(game, name, detail, state, ready, technical, out _, out _);
+
+    static Border ReviewRow(Game? game, string name, string detail, string state, bool ready, string? technical,
+        out TextBlock detailText, out TextBlock stateText)
     {
         var grid = new Grid { ColumnSpacing = 12 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -290,7 +334,8 @@ public sealed class OperationDialog
 
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = 1 };
         text.Children.Add(new TextBlock { Text = name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
-        text.Children.Add(Prefs.Label(detail, "ForgeCaptionDimTextStyle"));
+        detailText = Prefs.Label(detail, "ForgeCaptionDimTextStyle");
+        text.Children.Add(detailText);
         if (!string.IsNullOrWhiteSpace(technical))
         {
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -306,7 +351,8 @@ public sealed class OperationDialog
             Glyph = ready ? "" : "", FontSize = 10,
             Foreground = (Brush)Application.Current.Resources[ready ? "ForgePillTestedBrush" : "ForgeRemoveBrush"],
         });
-        pillLine.Children.Add(new TextBlock { Text = state.ToUpperInvariant(), FontSize = 9, FontWeight = FontWeights.Bold, CharacterSpacing = 42 });
+        stateText = new TextBlock { Text = state.ToUpperInvariant(), FontSize = 9, FontWeight = FontWeights.Bold, CharacterSpacing = 42 };
+        pillLine.Children.Add(stateText);
         pill.Child = pillLine;
         Grid.SetColumn(pill, 2);
         grid.Children.Add(pill);

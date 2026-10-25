@@ -148,8 +148,13 @@ public sealed class PreviewForgeService : IForgeService
     public async Task<OperationReview> PrepareAsync(string operation, IReadOnlyList<Game> targets, Tuning tuning, string mode,
         IProgress<PrepareProgress>? progress = null, CancellationToken cancel = default)
     {
-        progress?.Report(new PrepareProgress("Checking game files", targets.FirstOrDefault()?.Name, 0, targets.Count));
-        await Task.Delay(400, cancel);
+        // One game at a time, alphabetically, as the engine reports its checks.
+        var ordered = targets.OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        for (var index = 0; index < ordered.Count; index++)
+        {
+            progress?.Report(new PrepareProgress("Checking game files", ordered[index].Name, index, ordered.Count));
+            await Task.Delay(250, cancel);
+        }
         // As engine_bridge.adopt_plan: a Linux install is adapted for Windows, not reinstalled.
         var ready = targets.Where(g => !g.Blocked && (operation is not ("uninstall" or "reset") || g.Installed))
             .Select(g => new OperationGameReview(g, g.InstalledOnLinux

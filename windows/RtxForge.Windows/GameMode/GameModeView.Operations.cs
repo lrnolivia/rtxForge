@@ -44,17 +44,47 @@ public sealed partial class GameModeView
         }
         values ??= shell.Settings.Presets;
 
-        // Checking: the engine verifies every target; nothing is written.
-        var step = new GmStep(this);
+        // Checking and review are one screen: every game's row is listed at once and fills in as the
+        // engine checks it. Nothing is written.
+        var content = new StackPanel { Spacing = t.Px(20) };
+        var summary = new StackPanel { Spacing = t.Px(10) };
+        var heading = ui.H2($"Checking {targets.Count} game{(targets.Count == 1 ? "" : "s")}", 1.3);
+        summary.Children.Add(heading);
+        summary.Children.Add(ui.P("Each game is checked before anything changes."));
+        content.Children.Add(summary);
+        var rows = new Dictionary<string, (TextBlock Detail, Border Badge)>(StringComparer.OrdinalIgnoreCase);
+        var group = new List<UIElement>();
+        foreach (var game in targets.OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase))
+        {
+            group.Add(ReviewRow(game, game.Name, "Waiting to be checked", true, null, "Waiting", out var detail, out var badge));
+            rows[game.Name] = (detail, badge);
+        }
+        var list = new StackPanel();
+        list.Children.Add(ui.Group(group, t.Card));
+        content.Children.Add(new ScrollViewer { Content = list, MaxHeight = t.Px(t.Compact ? 260 : 380), HorizontalScrollMode = ScrollMode.Disabled });
+        content.Children.Add(ui.P("Your files only change after you confirm.", 0.8));
         var cancelChecking = ui.Button("Cancel", CloseModal, GmKind.Card, 0.92);
-        ShowModal(ReviewTitle(operation), step.Root, [cancelChecking], CloseModal, 1100, cancelChecking);
+        var waiting = ui.Button(Verb(operation), () => { }, GmKind.Primary, 0.92, enabled: false);
+        ShowModal(ReviewTitle(operation), content, [cancelChecking, waiting], CloseModal, 1100, cancelChecking);
         var checkingModal = modals.Peek();
-        step.Show("Checking", targets[0], 0, null, "Checking game files");
+        string? current = null;
+        void Mark(string name, string detail, string state)
+        {
+            if (!rows.TryGetValue(name, out var row)) return;
+            row.Detail.Text = detail;
+            if (row.Badge.Child is StackPanel line) foreach (var label in line.Children.OfType<TextBlock>()) label.Text = state.ToUpperInvariant();
+        }
         OperationReview review;
         try
         {
-            var progress = new Progress<PrepareProgress>(p => step.Show("Checking",
-                targets.FirstOrDefault(g => g.Name == p.Game), p.Checked, p.Total > 0 ? p.Total : null, p.Label));
+            var progress = new Progress<PrepareProgress>(p =>
+            {
+                if (p.Total > 0) heading.Text = $"Checking {Math.Min(p.Checked + 1, p.Total)} of {p.Total}";
+                if (p.Game is not { Length: > 0 } game || game == current) return;
+                if (current is not null) Mark(current, "Checked", "Checked");
+                Mark(game, "Checking game files…", "Checking");
+                current = game;
+            });
             review = await shell.Service.PrepareAsync(operation, targets, values, shell.Mode, progress);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
@@ -171,7 +201,11 @@ public sealed partial class GameModeView
 
     string ModeLabel() => shell.Mode switch { "nr-only" => "NR Only", "nr-mfg" => "NR + MFG", _ => "MFG Only" };
 
-    Grid ReviewRow(Game? game, string name, string detail, bool ready, string? technical = null, string? state = null)
+    Grid ReviewRow(Game? game, string name, string detail, bool ready, string? technical = null, string? state = null) =>
+        ReviewRow(game, name, detail, ready, technical, state, out _, out _);
+
+    Grid ReviewRow(Game? game, string name, string detail, bool ready, string? technical, string? state,
+        out TextBlock detailText, out Border badgeBorder)
     {
         var row = new Grid { ColumnSpacing = t.Px(22), Padding = new Thickness(t.Px(22), t.Px(18), t.Px(22), t.Px(18)) };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -188,7 +222,8 @@ public sealed partial class GameModeView
         var text = new StackPanel { Spacing = t.Px(6), VerticalAlignment = VerticalAlignment.Center };
         var title = ui.Heading(name, 0.9, t.Fg);
         text.Children.Add(title);
-        text.Children.Add(ui.Text(detail, 0.72, t.Muted, wrap: true));
+        detailText = ui.Text(detail, 0.72, t.Muted, wrap: true);
+        text.Children.Add(detailText);
         if (!string.IsNullOrWhiteSpace(technical))
         {
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -204,6 +239,7 @@ public sealed partial class GameModeView
         Grid.SetColumn(text, 1);
         row.Children.Add(text);
         var badge = ui.Badge(state ?? (ready ? "Ready" : "Skipped"), t.Panel, ready ? t.Fg : t.Danger, 0.7);
+        badgeBorder = badge;
         Grid.SetColumn(badge, 2);
         row.Children.Add(badge);
         if (ready && game is not null) _ = ReviewAccentAsync(game, thumb, title, badge);

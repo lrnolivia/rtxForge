@@ -292,22 +292,27 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         if (provider is null && operation is "install" or "repair" or "uninstall" or "reset" or "apply")
         {
             // Feeder games take their own route and games may choose their own package:
-            // one review, prepared per route and run in turn.
+            // one review, prepared game by game on each one's route and run in turn.
             // Confirmed Vulkan games take the Vulkan package automatically, as Feeder games take Feeder NR.
             // It always brings frame generation, so NR Only installs keep the DLSS package's route.
             // Another tool's setup in an install is adopted as it is, in the same review and run.
             string Route(Game g) => operation == "install" && g.AdoptionAvailable ? "adopt"
                 : g.UsesVulkan && (g.Installed || mode != "nr-only") ? "vulkan-native"
                 : g.UsesFeeder ? "feeder" : operation is "install" or "repair" ? Settings.PackageFor(g, operation) : Settings.RuntimeProvider;
-            var packages = targets.GroupBy(Route).ToArray();
             // The engine sends a selection of only Feeder games down the Feeder route; the package setting stays.
             string Provider(string route) => route is "feeder" or "adopt" ? Settings.RuntimeProvider : route;
             string Operation(string route) => route == "adopt" ? "adopt" : operation;
-            if (packages.Length > 1)
+            // Several games: each is checked on its own route in name order, whatever its package, so
+            // checking (and later installing) goes down the list as shown. The engine shares the expensive
+            // work between these checks, so this costs no more than checking each package at once.
+            if (targets.Count > 1)
             {
                 var parts = new List<OperationReview>();
-                foreach (var package in packages)
-                    parts.Add(await PrepareCoreAsync(Operation(package.Key), package.ToArray(), tuning, mode, progress, cancel, supportedSubset, Provider(package.Key)));
+                foreach (var game in targets)
+                {
+                    var route = Route(game);
+                    parts.Add(await PrepareCoreAsync(Operation(route), [game], tuning, mode, progress, cancel, supportedSubset, Provider(route)));
+                }
                 // A part whose games all get only some features keeps its token in Supported; discard only unused ones.
                 var supportedTokens = parts.SelectMany(p => p.Supported).Select(s => s.Review.Token).ToHashSet();
                 foreach (var empty in parts.Where(p => p.Ready.Count == 0 && !supportedTokens.Contains(p.Token))) DiscardOperation(empty with { Supported = [] });
@@ -315,12 +320,12 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
                 return new OperationReview(operation, "", parts.SelectMany(p => p.Ready).OrderBy(r => r.Game.Name, byName).ToArray(),
                     parts.SelectMany(p => p.Blocked).OrderBy(b => b.Name, byName).ToArray(), parts.SelectMany(p => p.Warnings).ToArray())
                 {
-                    // Packages run in turn, in the order of their first game by name.
+                    // Games run in turn, by name.
                     Steps = parts.Where(p => p.Ready.Count > 0).OrderBy(p => p.Ready.Select(r => r.Game.Name).Min(byName), byName).Select(p => p with { Supported = [] }).ToArray(),
                     Supported = parts.SelectMany(p => p.Supported).ToArray(),
                 };
             }
-            if (packages.FirstOrDefault() is { } only) (provider, operation) = (Provider(only.Key), Operation(only.Key));
+            if (targets.FirstOrDefault() is { } only) (provider, operation) = (Provider(Route(only)), Operation(Route(only)));
         }
         provider ??= Settings.RuntimeProvider;
         var rows = new JsonArray(targets.Where(g => g.EngineRow is not null).Select(g => (JsonNode)g.EngineRow!.DeepClone()).ToArray());

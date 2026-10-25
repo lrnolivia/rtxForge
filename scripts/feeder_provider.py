@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import re
 import threading
+import time
 
 import transactions as t
 import ui
@@ -43,15 +44,31 @@ TUNING = {'intensity': ('NRIntensity', 0.0, 2.0), 'passes': ('NRPasses', 1, 4),
           'work_scale': ('NRResolutionScale', 0.25, 1.0), 'preset': ('NRPreset', 0, 3),
           'style': ('NRStyle', 0, 2), 'structure': ('NRLocalStructure', 0.0, 2.0)}
 _hashes = {}
-# One review's shared work, on this thread only: each file stamp is hashed once and one process
-# inventory serves every game. Execution never runs inside a review, so it always checks afresh.
+# Reviews share work, on the reviewing thread only: each file stamp (size, mtime, ctime) is hashed
+# once across reviews, so games checked one at a time cost no more than one batch, and one process
+# inventory serves every game in a review. Execution never runs inside a review, so it always checks afresh.
 _review = threading.local()
+_review_hashes = {}
+# Reviews checked one game after another share a process inventory for a few seconds; executing
+# always takes its own.
+_review_inventory = [0.0, None]
+
+
+def _inventory(e):
+    shared = getattr(e._running_processes_under_root, 'snapshot', None)
+    if shared is None:
+        return None
+    taken, running = _review_inventory
+    if running is None or time.monotonic() - taken > 5:
+        _review_inventory[:] = [time.monotonic(), shared()]
+    return _review_inventory[1]
 
 
 @contextlib.contextmanager
 def review_session(e):
-    shared = getattr(e._running_processes_under_root, 'snapshot', None)
-    _review.hashes, _review.running = {}, shared() if shared else None
+    if len(_review_hashes) > 50000:
+        _review_hashes.clear()
+    _review.hashes, _review.running = _review_hashes, _inventory(e)
     try:
         yield
     finally:

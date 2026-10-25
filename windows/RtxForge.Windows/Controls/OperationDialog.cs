@@ -145,7 +145,8 @@ public sealed class OperationDialog
             dialog.Content = checkingPanel.Root;
             return;
         }
-        var body = new StackPanel { Spacing = 16 };
+        // As wide as the review it becomes.
+        var body = new StackPanel { Spacing = 16, MinWidth = ReviewWidth };
         var summary = new StackPanel { Spacing = 4 };
         checkingTitle.Text = $"Checking {targets.Count} game{(targets.Count == 1 ? "" : "s")}";
         summary.Children.Add(checkingTitle);
@@ -154,7 +155,7 @@ public sealed class OperationDialog
         var list = new StackPanel { Spacing = 4 };
         foreach (var game in targets.OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase))
         {
-            list.Children.Add(ReviewRow(game, game.Name, "Waiting to be checked", "Waiting", true, null, out var detail, out var state));
+            list.Children.Add(ReviewRow(game, game.Name, "Waiting to be checked", "Waiting", true, null, out var detail, out var state, ""));
             checkingRows[game.Name] = (detail, state);
         }
         body.Children.Add(new ScrollViewer { Content = list, MaxHeight = 380, HorizontalScrollMode = ScrollMode.Disabled });
@@ -173,9 +174,15 @@ public sealed class OperationDialog
         if (step.Total > 0) checkingTitle.Text = $"Checking {Math.Min(step.Checked + 1, step.Total)} of {step.Total}";
         if (step.Game is not { Length: > 0 } game || game == checkingGame || !checkingRows.TryGetValue(game, out var row)) return;
         if (checkingGame is not null && checkingRows.TryGetValue(checkingGame, out var previous))
-            (previous.Detail.Text, previous.State.Text) = ("Checked", "CHECKED");
-        (row.Detail.Text, row.State.Text) = ("Checking game files…", "CHECKING");
+            MarkChecking(previous, "Checked", "Checked", "");
+        MarkChecking(row, "Checking game files…", "Checking", "");
         checkingGame = game;
+    }
+
+    static void MarkChecking((TextBlock Detail, TextBlock State) row, string detail, string state, string glyph)
+    {
+        (row.Detail.Text, row.State.Text) = (detail, state.ToUpperInvariant());
+        if (row.State.Parent is StackPanel line && line.Children.OfType<FontIcon>().FirstOrDefault() is { } icon) icon.Glyph = glyph;
     }
 
     async Task PrepareAsync()
@@ -204,10 +211,12 @@ public sealed class OperationDialog
 
     // ---------- Review (action_ready) ----------
 
+    const double ReviewWidth = 640;
+
     void ShowReview(OperationReview review)
     {
         dialog.Title = Title();
-        var body = new StackPanel { Spacing = 16 };
+        var body = new StackPanel { Spacing = 16, MinWidth = ReviewWidth };
         // One list for every package: games that get only part of the selection show what they get.
         var games = review.AllGames;
         var count = games.Count;
@@ -314,7 +323,7 @@ public sealed class OperationDialog
         ReviewRow(game, name, detail, state, ready, technical, out _, out _);
 
     static Border ReviewRow(Game? game, string name, string detail, string state, bool ready, string? technical,
-        out TextBlock detailText, out TextBlock stateText)
+        out TextBlock detailText, out TextBlock stateText, string? glyph = null)
     {
         var grid = new Grid { ColumnSpacing = 12 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -348,7 +357,7 @@ public sealed class OperationDialog
         var pillLine = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
         pillLine.Children.Add(new FontIcon
         {
-            Glyph = ready ? "" : "", FontSize = 10,
+            Glyph = glyph ?? (ready ? "" : ""), FontSize = 10,
             Foreground = (Brush)Application.Current.Resources[ready ? "ForgePillTestedBrush" : "ForgeRemoveBrush"],
         });
         stateText = new TextBlock { Text = state.ToUpperInvariant(), FontSize = 9, FontWeight = FontWeights.Bold, CharacterSpacing = 42 };

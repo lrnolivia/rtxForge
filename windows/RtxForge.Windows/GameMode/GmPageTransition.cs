@@ -13,7 +13,27 @@ static partial class GmMotion
     public static void GlowArrival(FrameworkElement element, int delay = 0)
     {
         element.Opacity = 1;
-        Enter(element, 0, 1, 180, 0, delay);
+        OnLoaded(element, () =>
+        {
+            if (!Enabled) return;
+            var compositor = Microsoft.UI.Xaml.Media.CompositionTarget.GetCompositorForCurrentThread();
+            var fade = compositor.CreateScalarKeyFrameAnimation(); fade.Target = "Opacity";
+            fade.InsertKeyFrame(0, 0); fade.InsertKeyFrame(1, 1);
+            fade.Duration = TimeSpan.FromMilliseconds(180); fade.DelayTime = TimeSpan.FromMilliseconds(delay);
+            element.Opacity = 0; element.StartAnimation(fade);
+            var timer = element.DispatcherQueue.CreateTimer(); timer.IsRepeating = false;
+            timer.Interval = fade.Duration + fade.DelayTime;
+            var stopped = false;
+            void Stop()
+            {
+                if (stopped) return;
+                stopped = true; timer.Stop(); element.Unloaded -= Unloaded; scenes.Remove(element);
+                element.StopAnimation(fade); element.Opacity = 1; fade.Dispose();
+            }
+            void Unloaded(object sender, RoutedEventArgs args) => Stop();
+            element.Unloaded += Unloaded; scenes.Remove(element); scenes.Add(element, Stop);
+            timer.Tick += (_, _) => Stop(); timer.Start();
+        });
     }
 
     // Native content remains interactive. The short-lived blur copy is removed

@@ -191,7 +191,7 @@ sealed class ArtworkLightLayer : Canvas
         var width = (float)entry.Artwork.ActualWidth;
         var height = (float)entry.Artwork.ActualHeight;
         if (width <= 0 || height <= 0) return;
-        var compositor = ElementCompositionPreview.GetElementVisual(Artwork).Compositor;
+        var compositor = Microsoft.UI.Xaml.Media.CompositionTarget.GetCompositorForCurrentThread();
         graphics ??= CanvasComposition.CreateCompositionGraphicsDevice(compositor, image.Device);
         using var rendered = ArtworkGlowRenderer.Render(image, width, height, (float)entry.Artwork.CornerRadius.TopLeft,
             (float)entry.Theme.Px(24), (float)entry.Theme.Px(16));

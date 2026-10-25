@@ -290,9 +290,10 @@ public sealed partial class GameModeView : UserControl
         }
         RenderFooter();
         // Focus: keep the same control when re-rendering, else the page's first target.
-        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        void RestorePageFocus()
         {
             if (revision != renderRevision || modals.Count > 0) return;
+            surface.UpdateLayout();
             // Library: restore the scroll position first, so focusing only nudges it into view.
             if (page == "library" && libraryScroller is { } scroller) { scroller.UpdateLayout(); scroller.ChangeView(null, libraryScroll, null, true); }
             Control? Current(string key) => FindByKey(scene, key) ?? FindByKey(header, key) ?? FindByKey(bottomNav, key);
@@ -303,7 +304,14 @@ public sealed partial class GameModeView : UserControl
             (target as Control)?.Focus(FocusState.Keyboard);
             artworkLight.RefreshPositions();
             pageLight.RefreshPositions();
-        });
+        }
+        void Ready(object sender, RoutedEventArgs args)
+        {
+            surface.Loaded -= Ready;
+            DispatcherQueue.TryEnqueue(RestorePageFocus);
+        }
+        if (surface.IsLoaded) DispatcherQueue.TryEnqueue(RestorePageFocus);
+        else surface.Loaded += Ready;
     }
 
     Control? initialFocus;
@@ -709,7 +717,8 @@ public sealed partial class GameModeView : UserControl
         DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
             if (modals.Count == 0 || !ReferenceEquals(modals.Peek().Element, layer)) return;
-            var target = focus ?? FirstFocusable(layer) as Control;
+            layer.UpdateLayout();
+            var target = focus ?? FirstFocusable(content) as Control ?? FirstFocusable(layer) as Control;
             target?.Focus(FocusState.Keyboard);
             artworkLight.RefreshPositions();
             pageLight.RefreshPositions();

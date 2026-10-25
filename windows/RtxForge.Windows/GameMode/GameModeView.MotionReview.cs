@@ -32,7 +32,16 @@ public sealed partial class GameModeView
             if (previous > 0) frames.Add(new { phase, at_ms = now, interval_ms = now - previous });
             previous = now;
         }
-        void Check(string criterion, bool pass, object? detail = null) => assertions.Add(new { criterion, pass, detail });
+        void Check(string criterion, bool pass, object? detail = null)
+        {
+            assertions.Add(new { criterion, pass, detail });
+            File.WriteAllText(destination + ".progress.json", JsonSerializer.Serialize(new { process_id = Environment.ProcessId, phase, criterion, count = assertions.Count }));
+        }
+        void ExceptionTrace(object? sender, System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs e)
+        {
+            if (e.Exception.HResult != unchecked((int)0x80070005)) return;
+            File.AppendAllText(destination + ".exceptions.log", phase + Environment.NewLine + e.Exception + Environment.NewLine);
+        }
         async Task Settle(int milliseconds = 560) => await Task.Delay(milliseconds);
         async Task Move(string direction, int count, int interval)
         {
@@ -46,6 +55,7 @@ public sealed partial class GameModeView
             }
         }
         CompositionTarget.Rendering += Frame;
+        AppDomain.CurrentDomain.FirstChanceException += ExceptionTrace;
         try
         {
             await Settle(1800);
@@ -168,7 +178,9 @@ public sealed partial class GameModeView
             foreach (var layout in new[] { "capsules", "list", "posters" })
             {
                 SetLibraryView(layout, persist: false); await Settle(35);
-                Check("layout_selector_restores_live_incoming_control", FocusManager.GetFocusedElement(XamlRoot) is Button { IsEnabled: true } live && live.Name == "gm_view-" + layout);
+                Check("layout_selector_restores_live_incoming_control", FocusManager.GetFocusedElement(XamlRoot) is Button { IsEnabled: true } live && live.Name == "gm_view-" + layout,
+                    new { layout, page, actual = (FocusManager.GetFocusedElement(XamlRoot) as FrameworkElement)?.Name,
+                        target = (FindByKey(body, "gm_view-" + layout) as Control)?.IsLoaded });
                 await Settle(165);
                 await Move("down", 3, 55); SetInput("keyboard"); await Settle(100); ControllerActivity();
                 Check("input_change_keeps_focus", FocusManager.GetFocusedElement(XamlRoot) is Control, layout);
@@ -202,6 +214,7 @@ public sealed partial class GameModeView
         finally
         {
             CompositionTarget.Rendering -= Frame;
+            AppDomain.CurrentDomain.FirstChanceException -= ExceptionTrace;
             shell.Settings.LibraryView = originalView; shell.Settings.ReduceMotion = originalMotion; shell.Settings.Theme = originalTheme; shell.Settings.GameModeTheme = originalGameTheme; shell.Settings.GameModeThemeLinked = originalThemeLink;
             CloseAllModals(); page = "library"; ApplySettings();
             var report = new { generated_at = DateTimeOffset.UtcNow, process_id = Environment.ProcessId,

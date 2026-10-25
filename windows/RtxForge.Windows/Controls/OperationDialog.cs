@@ -184,7 +184,7 @@ public sealed class OperationDialog
         var list = new StackPanel { Spacing = 4 };
         foreach (var (item, part) in games)
             list.Children.Add(ReviewRow(item.Game, item.Game.Name, part is null ? item.Summary : item.Summary + "\n" + part.Reason,
-                part?.Badge ?? "Ready", true, item.Detail));
+                part?.Badge ?? (operation == "install" && item.Game.AdoptionAvailable ? "Adopt" : "Ready"), true, item.Detail));
         foreach (var warning in review.Warnings)
             list.Children.Add(new InfoBar
             {

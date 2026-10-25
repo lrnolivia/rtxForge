@@ -25,9 +25,10 @@ public sealed partial class GameModeView
         if (shell.Busy) { Toast("Another operation is running."); return; }
         ArgumentNullException.ThrowIfNull(targets);
         if (targets.Count == 0) { Toast("No eligible games."); return; }
-        if ((operation is "install" or "uninstall") && targets.Any(g => g.AdoptionAvailable))
+        if ((operation == "uninstall" || operation == "install" && targets.All(g => g.AdoptionAvailable)) && targets.Any(g => g.AdoptionAvailable))
         {
-            // Another tool's setup: Install offers Adoption; Restore has nothing of rtxForge's to undo.
+            // Another tool's setup: installing only such games offers Adoption's choices; in a group install
+            // the engine adopts them in the same review. Restore has nothing of rtxForge's to undo.
             var adoptable = targets.Where(g => g.AdoptionAvailable).ToArray();
             if (operation == "install") await shell.ReviewAdoptionAsync(adoptable);
             else Toast(MainWindow.AdoptionSkipped(adoptable.Length));
@@ -139,7 +140,8 @@ public sealed partial class GameModeView
         var list = new StackPanel();
         var group = new List<UIElement>();
         foreach (var (item, part) in games)
-            group.Add(ReviewRow(item.Game, item.Game.Name, part is null ? item.Summary : item.Summary + "\n" + part.Reason, true, item.Detail, part?.Badge));
+            group.Add(ReviewRow(item.Game, item.Game.Name, part is null ? item.Summary : item.Summary + "\n" + part.Reason, true, item.Detail,
+                part?.Badge ?? (operation == "install" && item.Game.AdoptionAvailable ? "Adopt" : null)));
         if (group.Count > 0) list.Children.Add(ui.Group(group, t.Card));
         foreach (var warning in review.Warnings)
         {

@@ -703,7 +703,11 @@ public sealed partial class GameModeView : UserControl
         var dialogLight = new ArtworkLightLayer { ControllerFocus = inputKind == "controller" };
         dialogScene.Children.Add(dialogLight.Artwork); dialogScene.Children.Add(dialog); dialogScene.Children.Add(dialogLight);
         foreach (var button in Descendants(dialog).OfType<Button>()) GmGlow.Layer(button, dialogLight);
-        dialog.Loaded += (_, _) => { foreach (var scroll in Descendants(dialog).OfType<ScrollViewer>()) GmScrollFade.Attach(scroll, t.S); };
+        dialog.Loaded += (_, _) =>
+        {
+            foreach (var scroll in Descendants(dialog).OfType<ScrollViewer>())
+            { scroll.IsTabStop = false; GmScrollFade.Attach(scroll, t.S); }
+        };
         layer.Children.Add(dialogScene);
         GmMotion.Dialog(dialogScene, t.S);
         layer.TabFocusNavigation = KeyboardNavigationMode.Cycle;

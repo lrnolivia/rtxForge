@@ -19,6 +19,7 @@ public sealed partial class GameModeView
         var frames = new List<object>();
         var actionTimes = new List<object>();
         var phase = "startup";
+        var modalOnly = Environment.GetEnvironmentVariable("RTXFORGE_MODAL_FOCUS_REVIEW") == "1";
         var timer = Stopwatch.StartNew();
         double previous = 0;
         var originalView = shell.Settings.LibraryView;
@@ -61,6 +62,8 @@ public sealed partial class GameModeView
             await Settle(1800);
             for (var attempt = 0; attempt < 100 && !shell.ControllerInputForeground; attempt++) await Settle(100);
             if (!shell.ControllerInputForeground) throw new InvalidOperationException("Native review requires the preview window in the foreground.");
+            if (!modalOnly)
+            {
             var rowEdge = ui.RowButton("Boundary check", null, () => { });
             Check("row_focus_stroke_on_surface_edge", rowEdge.FocusVisualMargin.Equals(new Thickness(0)));
             var cardMaterial = t.Surface(t.Card);
@@ -163,17 +166,22 @@ public sealed partial class GameModeView
             Check("modal_traps_focus", modals.Count == 1 && !pageHost.IsEnabled);
             CloseModal(); await Settle(180);
             Check("modal_releases_focus", modals.Count == 0 && pageHost.IsEnabled);
+            }
             phase = "long-list";
             var rows = Enumerable.Range(0, 240).Select(i => (UIElement)ui.RowButton($"Review row {i + 1}", null, () => { })).ToList();
             var scroll = new ScrollViewer { Content = ui.Group(rows), MaxHeight = t.Px(500), HorizontalScrollMode = ScrollMode.Disabled };
             PolishScroll(scroll);
             ShowModal("Motion regression", scroll, [ui.Button("Back", CloseModal)], CloseModal);
             await Settle(220);
+            Check("long_list_starts_on_a_row", FocusManager.GetFocusedElement(XamlRoot) is Button focusedRow
+                && Descendants(scroll).Contains(focusedRow),
+                new { focus = FocusManager.GetFocusedElement(XamlRoot)?.GetType().Name, rows = Descendants(scroll).OfType<Button>().Count() });
             Check("long_list_virtualizes_native_templates", Descendants(scroll).OfType<Button>().Count() < 60);
             await Move("down", 45, 25); await Move("up", 24, 25);
             Check("long_list_keeps_focus", FocusManager.GetFocusedElement(XamlRoot) is Control);
             Check("long_list_scrolled", scroll.VerticalOffset > 0, scroll.VerticalOffset);
             CloseModal(); await Settle();
+            if (modalOnly) return;
             phase = "layouts-and-input-methods";
             foreach (var layout in new[] { "capsules", "list", "posters" })
             {

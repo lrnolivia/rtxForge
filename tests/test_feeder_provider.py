@@ -631,14 +631,22 @@ class ReviewSessionTest(unittest.TestCase):
                 return []
             running.snapshot = lambda: inventories.append(1) or (lambda root: [])
             e = SimpleNamespace(_running_processes_under_root=running)
-            with patch.object(t, 'digest', wraps=t.digest) as hashed:
+            with patch.object(t, 'digest', wraps=t.digest) as hashed, patch.object(feeder, '_review_inventory', [0.0, None]):
                 with feeder.review_session(e):
                     for _ in range(3):
                         feeder.digest(path)
                         feeder.running_under(e, path.parent)
                 self.assertEqual((hashed.call_count, len(inventories)), (1, 1))
+                # Games checked one after another reuse the hash and the recent inventory.
+                with feeder.review_session(e):
+                    feeder.digest(path)
+                self.assertEqual((hashed.call_count, len(inventories)), (1, 1))
+                # A changed file is hashed again; execution outside a review always hashes afresh.
+                path.write_bytes(b'stack, updated')
+                with feeder.review_session(e):
+                    feeder.digest(path)
                 feeder.digest(path)
-                self.assertEqual(hashed.call_count, 2)
+                self.assertEqual(hashed.call_count, 3)
 
 
 if __name__ == '__main__':

@@ -6,9 +6,14 @@ from operation_session import Session,Cancelled
 from storage import storage
 ROOT=Path(__file__).resolve().parents[1]
 def providers():return json.loads((ROOT/'providers/lock.json').read_text())
+_compiled={}
 def module(config,provider='y4my',mode=None):
-    name='rtxengine_desktop';spec=importlib.util.spec_from_file_location(name,ROOT/'engine/rtxengine.py')
-    e=importlib.util.module_from_spec(spec);sys.modules[name]=e;spec.loader.exec_module(e)
+    name='rtxengine_desktop';path=ROOT/'engine/rtxengine.py';spec=importlib.util.spec_from_file_location(name,path)
+    e=importlib.util.module_from_spec(spec);sys.modules[name]=e
+    # Each call still gets a fresh module; only the compile is shared, since the app runs without .pyc files.
+    stamp=path.stat();key=(stamp.st_size,stamp.st_mtime_ns)
+    if key not in _compiled:_compiled.clear();_compiled[key]=compile(path.read_bytes(),str(path),'exec')
+    exec(_compiled[key],e.__dict__)
     e.Y4MY_PROVIDER=providers()[provider]
     e.Y4MY_PROVIDER=e.Y4MY_PROVIDER.get('profile_pins',{}).get(mode,e.Y4MY_PROVIDER)
     e.DESKTOP_PLATFORM=cross_os.THIS_OS

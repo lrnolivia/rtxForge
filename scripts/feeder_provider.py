@@ -264,9 +264,59 @@ def graphics_apis(e, exe):
     """
     if exe.name.lower() in REVIEWED_DX11:
         return {'d3d11'}
-    names = {name.lower() for name in (*e.pe_imported_dlls(exe), *delay_imported_dlls(exe))}
-    found = {api for api in ('d3d11', 'd3d12') if api + '.dll' in names}
-    return found or mentioned_apis(exe)
+    def probe():
+        names = {name.lower() for name in (*e.pe_imported_dlls(exe), *delay_imported_dlls(exe))}
+        found = {api for api in ('d3d11', 'd3d12') if api + '.dll' in names}
+        return found or mentioned_apis(exe)
+    return cached_probe('direct3d', exe, probe)
+
+
+_PROBES: dict | None = None
+
+
+def _probe_path():
+    if os.environ.get('RTXFORGE_PROBE_CACHE') is not None:
+        return Path(os.environ['RTXFORGE_PROBE_CACHE']) if os.environ['RTXFORGE_PROBE_CACHE'] else None
+    base = os.environ.get('LOCALAPPDATA') or os.environ.get('XDG_CACHE_HOME') or str(Path.home() / '.cache')
+    return Path(base) / 'rtxForge' / 'exe-probes.json'
+
+
+def cached_probe(kind, exe, compute):
+    """A per-executable answer that changes only when the file does (path, size, modified time).
+
+    Every library scan otherwise re-reads multi-gigabyte game executables to detect their
+    renderer; an empty RTXFORGE_PROBE_CACHE keeps the answers in memory only."""
+    global _PROBES
+    exe = Path(exe)
+    try:
+        stat = exe.stat()
+    except OSError:
+        return compute()
+    path = _probe_path()
+    if _PROBES is None:
+        _PROBES = {}
+        if path and path.is_file():
+            try:
+                loaded = json.loads(path.read_text(encoding='utf-8'))
+                _PROBES = loaded if isinstance(loaded, dict) else {}
+            except (OSError, ValueError):
+                _PROBES = {}
+    key = f'{kind}|{os.path.normcase(str(exe))}'
+    stamp = [stat.st_size, stat.st_mtime_ns]
+    hit = _PROBES.get(key)
+    if isinstance(hit, dict) and hit.get('stamp') == stamp and isinstance(hit.get('value'), list):
+        return set(hit['value'])
+    value = set(compute())
+    _PROBES[key] = {'stamp': stamp, 'value': sorted(value)}
+    if path:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temp = path.with_name(path.name + '.tmp')
+            temp.write_text(json.dumps(_PROBES), encoding='utf-8')
+            os.replace(temp, path)
+        except OSError:
+            pass  # a cache miss next time, never a failed scan
+    return value
 
 
 def mentioned_apis(exe, limit=2 * 1024**3):

@@ -281,6 +281,9 @@ public sealed class PreviewForgeService : IForgeService
         new("dlss-unlocked", "DLSS-Unlocked", "Preview", "NR and native MFG in one OptiScaler package", true, "Ready to review for your system", false, "https://github.com/ShyVortex/dlss-unlocked"),
         new("feeder", "Feeder NR", "Preview", "Neural rendering through ReShade for DirectX 11 games, and DirectX 12 games without DLSS. NR only.", true,
             "Preview package · no game writes", false, "https://github.com/jlrouzies-fr/DLSS5-Feeder", ["windows"]),
+        new("vulkan-native", "Vulkan NR + Universal MFG", "Preview", "Native Vulkan NR and NVIDIA frame generation, used automatically for confirmed Vulkan games.", true,
+            "Preview package · no game writes", false, "https://github.com/lrnolivia/rtxForge", GraphicsApis: ["Vulkan"],
+            Confirmed: ["Sample Vulkan Game", "Another Vulkan Game"]),
     ], [], null));
 
     public Task<PackageInspection> InspectPackageAsync(string path) => Disabled<PackageInspection>("Custom packages");

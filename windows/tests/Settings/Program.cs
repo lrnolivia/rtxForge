@@ -224,8 +224,8 @@ if (perGame.GameOverlayOptions(gameOne)["overlay_welcome"]!.GetValue<bool>() || 
     throw new Exception("A per-game overlay choice leaked into another game.");
 var copied = new ForgeSettings(); copied.CopyOverlayFrom(perGame);
 copied.GameOverlaySettings["one"]["panel_hotkey"] = "Delete";
-if (perGame.GameOverlaySettings["one"]["panel_hotkey"]!.ToString() != "F8" || !perGame.VulkanExperimental || perGame.RuntimeProvider != "vulkan-native")
-    throw new Exception("Per-game overlay persistence or Vulkan opt-in was lost.");
+if (perGame.GameOverlaySettings["one"]["panel_hotkey"]!.ToString() != "F8" || perGame.RuntimeProvider != "skynizz")
+    throw new Exception("Per-game overlay persistence was lost, or a saved Vulkan package choice did not read as automatic.");
 if (perGame.OverlayReviewOptions(["one"])["target_games"]!.AsArray().Count != 1)
     throw new Exception("Overlay update review lost its explicit game scope.");
-Console.WriteLine("PASS: per-game overlay isolation, independent copies, exact update scope and Vulkan opt-in.");
+Console.WriteLine("PASS: per-game overlay isolation, independent copies, exact update scope and automatic Vulkan package.");

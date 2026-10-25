@@ -125,10 +125,12 @@ def catalog(host=None):
         vulkan_ready = supported
     except (t.Refusal, OSError, ValueError):
         vulkan_ready = False
-    rows.append({'id':'vulkan-native','name':'Vulkan NR + Universal MFG','version':'1.0 Beta RC · Universal Experimental',
-                 'summary':'Native Vulkan NR and NVIDIA frame generation for the profiled BG3 and RDR2 executables. Includes the bundled NR model; a local model override is optional.',
+    # Automatic like Feeder NR: confirmed Vulkan games take this package beside the chosen DLSS package.
+    rows.append({'id':'vulkan-native','name':'Vulkan NR + Universal MFG','version':'1.0 Beta RC',
+                 'summary':'Native Vulkan NR and NVIDIA frame generation, used automatically for confirmed Vulkan games. Includes the bundled NR model; a local model override is optional.',
                  'url':'https://github.com/lrnolivia/rtxForge','available':vulkan_ready,'recommended':False,
-                 'reason':'Requires Universal Experimental Vulkan opt-in. RTX 20/30/40 gameplay remains experimental; RTX 50 retains native NVIDIA MFG.' if vulkan_ready else 'This build does not include the verified Vulkan package or a supported NVIDIA system.'})
+                 'automatic':True,'confirmed':vulkan_app.confirmed(),
+                 'reason':'Used automatically for confirmed Vulkan games.' if vulkan_ready else 'This build does not include the verified Vulkan package or a supported NVIDIA system.'})
     for row in rows:
         row['verified'] = list(VERIFIED.get(row['id'], ()))
         row['graphics_apis'] = ['Vulkan'] if row['id']=='vulkan-native' else ['DirectX 11','DirectX 12'] if row['id']=='feeder' else ['DirectX 12']

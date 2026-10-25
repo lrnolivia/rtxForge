@@ -267,7 +267,9 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
 
     public Task<OperationReview> PrepareAsync(string operation, IReadOnlyList<Game> targets, Tuning tuning, string mode,
         IProgress<PrepareProgress>? progress = null, CancellationToken cancel = default) =>
-        PrepareCoreAsync(operation, targets, tuning, mode, progress is null ? null : new OneCount(progress, targets.Count), cancel, false);
+        // Alphabetical throughout: checking, the review, and each package's run.
+        PrepareCoreAsync(operation, targets.OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase).ToArray(), tuning, mode,
+            progress is null ? null : new OneCount(progress, targets.Count), cancel, false);
 
     /// <summary>
     /// Checking progress as one pass over the selection: each package's route and each
@@ -309,10 +311,12 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
                 // A part whose games all get only some features keeps its token in Supported; discard only unused ones.
                 var supportedTokens = parts.SelectMany(p => p.Supported).Select(s => s.Review.Token).ToHashSet();
                 foreach (var empty in parts.Where(p => p.Ready.Count == 0 && !supportedTokens.Contains(p.Token))) DiscardOperation(empty with { Supported = [] });
-                return new OperationReview(operation, "", parts.SelectMany(p => p.Ready).ToArray(), parts.SelectMany(p => p.Blocked).ToArray(),
-                    parts.SelectMany(p => p.Warnings).ToArray())
+                var byName = StringComparer.CurrentCultureIgnoreCase;
+                return new OperationReview(operation, "", parts.SelectMany(p => p.Ready).OrderBy(r => r.Game.Name, byName).ToArray(),
+                    parts.SelectMany(p => p.Blocked).OrderBy(b => b.Name, byName).ToArray(), parts.SelectMany(p => p.Warnings).ToArray())
                 {
-                    Steps = parts.Where(p => p.Ready.Count > 0).Select(p => p with { Supported = [] }).ToArray(),
+                    // Packages run in turn, in the order of their first game by name.
+                    Steps = parts.Where(p => p.Ready.Count > 0).OrderBy(p => p.Ready.Select(r => r.Game.Name).Min(byName), byName).Select(p => p with { Supported = [] }).ToArray(),
                     Supported = parts.SelectMany(p => p.Supported).ToArray(),
                 };
             }

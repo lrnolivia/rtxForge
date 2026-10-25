@@ -148,8 +148,13 @@ public sealed class PreviewForgeService : IForgeService
     public async Task<OperationReview> PrepareAsync(string operation, IReadOnlyList<Game> targets, Tuning tuning, string mode,
         IProgress<PrepareProgress>? progress = null, CancellationToken cancel = default)
     {
-        progress?.Report(new PrepareProgress("Checking game files", targets.FirstOrDefault()?.Name, 0, targets.Count));
-        await Task.Delay(400, cancel);
+        // One game at a time, alphabetically, as the engine reports its checks.
+        var ordered = targets.OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        for (var index = 0; index < ordered.Count; index++)
+        {
+            progress?.Report(new PrepareProgress("Checking game files", ordered[index].Name, index, ordered.Count));
+            await Task.Delay(250, cancel);
+        }
         // As engine_bridge.adopt_plan: a Linux install is adapted for Windows, not reinstalled.
         var ready = targets.Where(g => !g.Blocked && (operation is not ("uninstall" or "reset") || g.Installed))
             .Select(g => new OperationGameReview(g, g.InstalledOnLinux
@@ -159,6 +164,17 @@ public sealed class PreviewForgeService : IForgeService
         var blocked = targets.Where(g => g.Blocked).Select(g => new ReviewBlock(g, g.Name, g.BlockedReason ?? "Not supported")).ToList();
         var token = operation + ":" + Guid.NewGuid().ToString("N");
         reviewed[token] = tuning;
+        // Sample a mixed install: every third game gets NR only, as games on an NR-only route do.
+        if (operation == "install" && mode == "nr-mfg" && ready.Count > 2)
+        {
+            var partial = ready.Where((_, index) => index % 3 == 2).ToList();
+            var partToken = operation + ":" + Guid.NewGuid().ToString("N");
+            reviewed[partToken] = tuning;
+            return new OperationReview(operation, token, ready.Except(partial).ToList(), blocked)
+            {
+                Supported = [new(new OperationReview(operation, partToken, partial, []), true, false, "Frame generation is unavailable for this route.")],
+            };
+        }
         return new OperationReview(operation, token, ready, blocked);
     }
 

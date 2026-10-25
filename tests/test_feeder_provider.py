@@ -618,5 +618,28 @@ class ExecutableProbeCacheTest(unittest.TestCase):
                 self.assertEqual(feeder.cached_probe('direct3d', missing, lambda: set()), set())
 
 
+class ReviewSessionTest(unittest.TestCase):
+    """A review hashes each shared file once and takes one process inventory; execution checks afresh."""
+
+    def test_review_shares_hashes_and_inventory_only_while_it_runs(self):
+        with tempfile.TemporaryDirectory() as folder:
+            # Resolved: the runner's temp folder is an 8.3 alias the path guard refuses.
+            path = Path(folder).resolve() / 'ReShade64.dll'
+            path.write_bytes(b'stack')
+            inventories = []
+            def running(root):
+                return []
+            running.snapshot = lambda: inventories.append(1) or (lambda root: [])
+            e = SimpleNamespace(_running_processes_under_root=running)
+            with patch.object(t, 'digest', wraps=t.digest) as hashed:
+                with feeder.review_session(e):
+                    for _ in range(3):
+                        feeder.digest(path)
+                        feeder.running_under(e, path.parent)
+                self.assertEqual((hashed.call_count, len(inventories)), (1, 1))
+                feeder.digest(path)
+                self.assertEqual(hashed.call_count, 2)
+
+
 if __name__ == '__main__':
     unittest.main()

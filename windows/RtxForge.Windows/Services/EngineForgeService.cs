@@ -267,7 +267,24 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
 
     public Task<OperationReview> PrepareAsync(string operation, IReadOnlyList<Game> targets, Tuning tuning, string mode,
         IProgress<PrepareProgress>? progress = null, CancellationToken cancel = default) =>
-        PrepareCoreAsync(operation, targets, tuning, mode, progress, cancel, false);
+        // Alphabetical throughout: checking, the review, and each package's run.
+        PrepareCoreAsync(operation, targets.OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase).ToArray(), tuning, mode,
+            progress is null ? null : new OneCount(progress, targets.Count), cancel, false);
+
+    /// <summary>
+    /// Checking progress as one pass over the selection: each package's route and each
+    /// supported-features check report into one count, and every game counts once.
+    /// </summary>
+    sealed class OneCount(IProgress<PrepareProgress> target, int total) : IProgress<PrepareProgress>
+    {
+        readonly HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+        public void Report(PrepareProgress step)
+        {
+            int count;
+            lock (seen) { if (step.Game is { Length: > 0 } game && step.Checked > 0) seen.Add(game); count = seen.Count; }
+            target.Report(new PrepareProgress("Checking game files", step.Game, count, total));
+        }
+    }
 
     async Task<OperationReview> PrepareCoreAsync(string operation, IReadOnlyList<Game> targets, Tuning tuning, string mode,
         IProgress<PrepareProgress>? progress, CancellationToken cancel, bool supportedSubset, string? provider = null)
@@ -278,25 +295,32 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             // one review, prepared per route and run in turn.
             // Confirmed Vulkan games take the Vulkan package automatically, as Feeder games take Feeder NR.
             // It always brings frame generation, so NR Only installs keep the DLSS package's route.
-            string Route(Game g) => g.UsesVulkan && (g.Installed || mode != "nr-only") ? "vulkan-native"
+            // Another tool's setup in an install is adopted as it is, in the same review and run.
+            string Route(Game g) => operation == "install" && g.AdoptionAvailable ? "adopt"
+                : g.UsesVulkan && (g.Installed || mode != "nr-only") ? "vulkan-native"
                 : g.UsesFeeder ? "feeder" : operation is "install" or "repair" ? Settings.PackageFor(g, operation) : Settings.RuntimeProvider;
             var packages = targets.GroupBy(Route).ToArray();
             // The engine sends a selection of only Feeder games down the Feeder route; the package setting stays.
-            string Provider(string route) => route == "feeder" ? Settings.RuntimeProvider : route;
+            string Provider(string route) => route is "feeder" or "adopt" ? Settings.RuntimeProvider : route;
+            string Operation(string route) => route == "adopt" ? "adopt" : operation;
             if (packages.Length > 1)
             {
                 var parts = new List<OperationReview>();
                 foreach (var package in packages)
-                    parts.Add(await PrepareCoreAsync(operation, package.ToArray(), tuning, mode, progress, cancel, supportedSubset, Provider(package.Key)));
-                foreach (var empty in parts.Where(p => p.Ready.Count == 0)) DiscardOperation(empty with { Supported = [] });
-                return new OperationReview(operation, "", parts.SelectMany(p => p.Ready).ToArray(), parts.SelectMany(p => p.Blocked).ToArray(),
-                    parts.SelectMany(p => p.Warnings).ToArray())
+                    parts.Add(await PrepareCoreAsync(Operation(package.Key), package.ToArray(), tuning, mode, progress, cancel, supportedSubset, Provider(package.Key)));
+                // A part whose games all get only some features keeps its token in Supported; discard only unused ones.
+                var supportedTokens = parts.SelectMany(p => p.Supported).Select(s => s.Review.Token).ToHashSet();
+                foreach (var empty in parts.Where(p => p.Ready.Count == 0 && !supportedTokens.Contains(p.Token))) DiscardOperation(empty with { Supported = [] });
+                var byName = StringComparer.CurrentCultureIgnoreCase;
+                return new OperationReview(operation, "", parts.SelectMany(p => p.Ready).OrderBy(r => r.Game.Name, byName).ToArray(),
+                    parts.SelectMany(p => p.Blocked).OrderBy(b => b.Name, byName).ToArray(), parts.SelectMany(p => p.Warnings).ToArray())
                 {
-                    Steps = parts.Where(p => p.Ready.Count > 0).Select(p => p with { Supported = [] }).ToArray(),
+                    // Packages run in turn, in the order of their first game by name.
+                    Steps = parts.Where(p => p.Ready.Count > 0).OrderBy(p => p.Ready.Select(r => r.Game.Name).Min(byName), byName).Select(p => p with { Supported = [] }).ToArray(),
                     Supported = parts.SelectMany(p => p.Supported).ToArray(),
                 };
             }
-            provider = packages.FirstOrDefault() is { } only ? Provider(only.Key) : null;
+            if (packages.FirstOrDefault() is { } only) (provider, operation) = (Provider(only.Key), Operation(only.Key));
         }
         provider ??= Settings.RuntimeProvider;
         var rows = new JsonArray(targets.Where(g => g.EngineRow is not null).Select(g => (JsonNode)g.EngineRow!.DeepClone()).ToArray());

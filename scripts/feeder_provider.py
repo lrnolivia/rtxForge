@@ -5,6 +5,7 @@ does not run their installer scripts or manufacture native OptiScaler ownership.
 """
 from __future__ import annotations
 
+import contextlib
 import copy
 import configparser
 import hashlib
@@ -13,6 +14,7 @@ import math
 import os
 from pathlib import Path
 import re
+import threading
 
 import transactions as t
 import ui
@@ -41,6 +43,24 @@ TUNING = {'intensity': ('NRIntensity', 0.0, 2.0), 'passes': ('NRPasses', 1, 4),
           'work_scale': ('NRResolutionScale', 0.25, 1.0), 'preset': ('NRPreset', 0, 3),
           'style': ('NRStyle', 0, 2), 'structure': ('NRLocalStructure', 0.0, 2.0)}
 _hashes = {}
+# One review's shared work, on this thread only: each file stamp is hashed once and one process
+# inventory serves every game. Execution never runs inside a review, so it always checks afresh.
+_review = threading.local()
+
+
+@contextlib.contextmanager
+def review_session(e):
+    shared = getattr(e._running_processes_under_root, 'snapshot', None)
+    _review.hashes, _review.running = {}, shared() if shared else None
+    try:
+        yield
+    finally:
+        _review.hashes = _review.running = None
+
+
+def running_under(e, root):
+    running = getattr(_review, 'running', None)
+    return (running or e._running_processes_under_root)(root)
 
 
 def lock():
@@ -54,8 +74,13 @@ def digest(path, cached=False):
     t.need(path.is_file(), 'Expected a regular file: ' + str(path))
     info = path.stat()
     key = (str(path), info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+    session = getattr(_review, 'hashes', None)
+    if session is not None and key in session:
+        return session[key]
     if not cached or key not in _hashes:
         _hashes[key] = t.digest(path)
+    if session is not None:
+        session[key] = _hashes[key]
     return _hashes[key]
 
 
@@ -239,7 +264,7 @@ def eligible(e, row, existing=False, check_running=True):
     t.need(getattr(e, 'DESKTOP_PLATFORM', 'windows' if os.name == 'nt' else 'linux') == 'windows',
            'Feeder installation is available on Windows only in this release')
     t.need(not row.get('anti_cheat'), 'Anti-cheat detected; Feeder is unavailable for this game')
-    t.need(not check_running or not e._running_processes_under_root(root), 'Close this game before changing Feeder files')
+    t.need(not check_running or not running_under(e, root), 'Close this game before changing Feeder files')
     t.need(not e.load_baseline(directory, readonly=True) and not (directory / 'OptiScaler.ini').exists(),
            'Restore the existing OptiScaler package before installing Feeder NR')
     t.need(not any((directory / name).exists() for name in ('nvngx.dll_dlssnr.dll', 'dlss5-feed-helper.addon64',
@@ -611,6 +636,11 @@ def _check(e, plan):
 
 
 def prepare(config, rows, mode, operation, settings, e):
+    with review_session(e):
+        return _prepare(config, rows, mode, operation, settings, e)
+
+
+def _prepare(config, rows, mode, operation, settings, e):
     t.need(mode == 'nr-only' or operation == 'uninstall', 'Feeder provides NR Only. Frame generation is not available for this route')
     t.need(operation in ('install', 'repair', 'uninstall', 'reset', 'apply'), 'Unsupported Feeder operation')
     ready, blocked, plans, seen = [], [], [], set()

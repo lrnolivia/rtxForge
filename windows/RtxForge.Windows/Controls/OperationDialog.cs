@@ -14,7 +14,7 @@ namespace RtxForge.Windows.Controls;
 /// </summary>
 public sealed class OperationDialog
 {
-    enum Stage { Review, Supported, Progress, Done }
+    enum Stage { Review, Progress, Done }
 
     readonly MainWindow shell;
     readonly string operation;
@@ -40,14 +40,6 @@ public sealed class OperationDialog
         dialog = shell.NewDialog();
         dialog.Resources["ContentDialogMaxWidth"] = 760.0;
         dialog.PrimaryButtonClick += OnPrimary;
-        dialog.SecondaryButtonClick += (sender, args) =>
-        {
-            if (stage != Stage.Supported || review is null) return;
-            args.Cancel = true;
-            foreach (var part in review.Supported) shell.Service.DiscardOperation(part.Review);
-            if (review.Ready.Count == 0) { ShowDone(false, "No games selected."); return; }
-            review = review with { Supported = [] }; _ = RunAsync();
-        };
         dialog.CloseButtonClick += OnClose;
         dialog.Closing += (_, e) => { if (stage == Stage.Progress) e.Cancel = true; };
         dialog.Closed += (_, _) =>
@@ -76,7 +68,8 @@ public sealed class OperationDialog
         Func<IProgress<PrepareProgress>, Task<EngineReview>> prepare)
     {
         var flow = new OperationDialog(shell, operation, shell.Games, shell.Settings.Presets);
-        flow.ShowChecking();
+        // The engine chooses which games a prepared update covers, so nothing is listed until it answers.
+        flow.ShowChecking(listGames: false);
         var shown = flow.dialog.ShowAsync();
         try
         {
@@ -134,21 +127,67 @@ public sealed class OperationDialog
 
     // ---------- Checking (engine prepare: every target verified, nothing written) ----------
 
-    void ShowChecking()
+    // Checking and review are one screen: every game's row is listed at once and fills in as it is checked.
+    readonly Dictionary<string, (TextBlock Detail, TextBlock State)> checkingRows = new(StringComparer.OrdinalIgnoreCase);
+    readonly TextBlock checkingTitle = new() { FontSize = 20, FontWeight = FontWeights.SemiBold };
+    string? checkingGame;
+
+    void ShowChecking(bool listGames = true)
     {
         dialog.Title = Title();
-        checkingPanel.Show("Checking", targets.FirstOrDefault(), 0, null, "Checking game files");
-        dialog.Content = checkingPanel.Root;
         dialog.PrimaryButtonText = ActionVerb();
         dialog.IsPrimaryButtonEnabled = false;
         dialog.CloseButtonText = "Cancel";
         dialog.DefaultButton = ContentDialogButton.Primary;
+        if (!listGames || targets.Count == 0)
+        {
+            checkingPanel.Show("Checking", targets.FirstOrDefault(), 0, null, "Checking game files");
+            dialog.Content = checkingPanel.Root;
+            return;
+        }
+        // As wide as the review it becomes.
+        var body = new StackPanel { Spacing = 16, MinWidth = ReviewWidth };
+        var summary = new StackPanel { Spacing = 4 };
+        checkingTitle.Text = $"Checking {targets.Count} game{(targets.Count == 1 ? "" : "s")}";
+        summary.Children.Add(checkingTitle);
+        summary.Children.Add(Prefs.Label("Each game is checked before anything changes.", "ForgeDimTextStyle"));
+        body.Children.Add(summary);
+        var list = new StackPanel { Spacing = 4 };
+        foreach (var game in targets.OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase))
+        {
+            list.Children.Add(ReviewRow(game, game.Name, "Waiting to be checked", "Waiting", true, null, out var detail, out var state, ""));
+            checkingRows[game.Name] = (detail, state);
+        }
+        body.Children.Add(new ScrollViewer { Content = list, MaxHeight = 380, HorizontalScrollMode = ScrollMode.Disabled });
+        body.Children.Add(Prefs.Label("Your files will only change after you review and confirm.", "ForgeCaptionDimTextStyle"));
+        dialog.Content = body;
+    }
+
+    /// <summary>The game being checked now; the one before it is done.</summary>
+    void ShowChecked(PrepareProgress step)
+    {
+        if (checkingRows.Count == 0)
+        {
+            checkingPanel.Show("Checking", targets.FirstOrDefault(g => g.Name == step.Game), step.Checked, step.Total > 0 ? step.Total : null, step.Label);
+            return;
+        }
+        if (step.Total > 0) checkingTitle.Text = $"Checking {Math.Min(step.Checked + 1, step.Total)} of {step.Total}";
+        if (step.Game is not { Length: > 0 } game || game == checkingGame || !checkingRows.TryGetValue(game, out var row)) return;
+        if (checkingGame is not null && checkingRows.TryGetValue(checkingGame, out var previous))
+            MarkChecking(previous, "Checked", "Checked", "");
+        MarkChecking(row, "Checking game files…", "Checking", "");
+        checkingGame = game;
+    }
+
+    static void MarkChecking((TextBlock Detail, TextBlock State) row, string detail, string state, string glyph)
+    {
+        (row.Detail.Text, row.State.Text) = (detail, state.ToUpperInvariant());
+        if (row.State.Parent is StackPanel line && line.Children.OfType<FontIcon>().FirstOrDefault() is { } icon) icon.Glyph = glyph;
     }
 
     async Task PrepareAsync()
     {
-        var progress = new Progress<PrepareProgress>(step => checkingPanel.Show("Checking",
-            targets.FirstOrDefault(g => g.Name == step.Game), step.Checked, step.Total > 0 ? step.Total : null, step.Label));
+        var progress = new Progress<PrepareProgress>(ShowChecked);
         try
         {
             review = await shell.Service.PrepareAsync(operation, targets, values, shell.Mode, progress);
@@ -172,15 +211,19 @@ public sealed class OperationDialog
 
     // ---------- Review (action_ready) ----------
 
+    const double ReviewWidth = 640;
+
     void ShowReview(OperationReview review)
     {
         dialog.Title = Title();
-        var body = new StackPanel { Spacing = 16 };
-        var count = review.Ready.Count;
+        var body = new StackPanel { Spacing = 16, MinWidth = ReviewWidth };
+        // One list for every package: games that get only part of the selection show what they get.
+        var games = review.AllGames;
+        var count = games.Count;
         var summary = new StackPanel { Spacing = 4 };
         summary.Children.Add(new TextBlock
         {
-            Text = count > 0 ? $"{count} game{(count == 1 ? "" : "s")} ready" : review.Supported.Count > 0 ? "Supported features available" : "Nothing ready yet",
+            Text = count > 0 ? $"{count} game{(count == 1 ? "" : "s")} ready" : "Nothing ready yet",
             FontSize = 20, FontWeight = FontWeights.SemiBold,
         });
         var description = string.Join(" · ", Details());
@@ -188,8 +231,9 @@ public sealed class OperationDialog
         body.Children.Add(summary);
 
         var list = new StackPanel { Spacing = 4 };
-        foreach (var item in review.Ready)
-            list.Children.Add(ReviewRow(item.Game, item.Game.Name, item.Summary, "Ready", true, item.Detail));
+        foreach (var (item, part) in games)
+            list.Children.Add(ReviewRow(item.Game, item.Game.Name, part is null ? item.Summary : item.Summary + "\n" + part.Reason,
+                part?.Badge ?? (operation == "install" && item.Game.AdoptionAvailable ? "Adopt" : "Ready"), true, item.Detail));
         foreach (var warning in review.Warnings)
             list.Children.Add(new InfoBar
             {
@@ -209,8 +253,8 @@ public sealed class OperationDialog
         body.Children.Add(Prefs.Label("Your files will only change after you review and confirm.", "ForgeCaptionDimTextStyle"));
 
         dialog.Content = body;
-        dialog.PrimaryButtonText = review.Supported.Count > 0 ? "Continue" : ActionVerb();
-        dialog.IsPrimaryButtonEnabled = count > 0 || review.Supported.Count > 0;
+        dialog.PrimaryButtonText = ActionVerb();
+        dialog.IsPrimaryButtonEnabled = count > 0;
         if (preparedReview?.Trust is { Length: > 0 } trust)
         {
             var consent = new CheckBox { Content = new TextBlock { Text = trust, TextWrapping = TextWrapping.Wrap } };
@@ -232,21 +276,6 @@ public sealed class OperationDialog
     {
         dialog.DefaultButton = ContentDialogButton.None;
         dialog.DefaultButton = ContentDialogButton.Primary;
-    }
-
-    void ShowSupportedReview()
-    {
-        stage = Stage.Supported; dialog.Title = "Install the supported features";
-        var body = new StackPanel { Spacing = 16 };
-        body.Children.Add(new TextBlock { Text = "These games support part of your selection", FontSize = 20, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
-        var list = new StackPanel { Spacing = 8 };
-        foreach (var group in review!.Supported)
-        foreach (var item in group.Review.Ready)
-            list.Children.Add(SupportedFeatureCard.Create(item, group.Nr, group.Mfg, group.Reason));
-        body.Children.Add(new ScrollViewer { Content = list, MaxHeight = 420, HorizontalScrollMode = ScrollMode.Disabled });
-        body.Children.Add(Prefs.Label($"{review.Ready.Count} games will receive your full selection. Include these additional games with the features shown above.", "ForgeCaptionDimTextStyle"));
-        dialog.Content = body; dialog.PrimaryButtonText = "Install supported features"; dialog.IsPrimaryButtonEnabled = true;
-        dialog.SecondaryButtonText = "Skip these games"; dialog.CloseButtonText = "Cancel";
     }
 
     string ActionVerb() => operation switch
@@ -277,6 +306,8 @@ public sealed class OperationDialog
         if (operation == "install" && shell.Settings.RuntimeProvider != "feeder")
         {
             yield return shell.Mode switch { "nr-only" => "NR Only", "nr-mfg" => "NR + MFG", _ => "MFG Only" };
+            // Several packages: each game's row names its own.
+            if (review is { } mixed && (mixed.Steps.Count > 1 || mixed.Supported.Count > 0)) yield break;
             yield return shell.Settings.RuntimeProvider switch
             {
                 "skynizz" => "Skynizz",
@@ -288,7 +319,11 @@ public sealed class OperationDialog
         }
     }
 
-    static Border ReviewRow(Game? game, string name, string detail, string state, bool ready, string? technical = null)
+    static Border ReviewRow(Game? game, string name, string detail, string state, bool ready, string? technical = null) =>
+        ReviewRow(game, name, detail, state, ready, technical, out _, out _);
+
+    static Border ReviewRow(Game? game, string name, string detail, string state, bool ready, string? technical,
+        out TextBlock detailText, out TextBlock stateText, string? glyph = null)
     {
         var grid = new Grid { ColumnSpacing = 12 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -308,7 +343,8 @@ public sealed class OperationDialog
 
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = 1 };
         text.Children.Add(new TextBlock { Text = name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
-        text.Children.Add(Prefs.Label(detail, "ForgeCaptionDimTextStyle"));
+        detailText = Prefs.Label(detail, "ForgeCaptionDimTextStyle");
+        text.Children.Add(detailText);
         if (!string.IsNullOrWhiteSpace(technical))
         {
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -321,10 +357,11 @@ public sealed class OperationDialog
         var pillLine = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
         pillLine.Children.Add(new FontIcon
         {
-            Glyph = ready ? "" : "", FontSize = 10,
+            Glyph = glyph ?? (ready ? "" : ""), FontSize = 10,
             Foreground = (Brush)Application.Current.Resources[ready ? "ForgePillTestedBrush" : "ForgeRemoveBrush"],
         });
-        pillLine.Children.Add(new TextBlock { Text = state.ToUpperInvariant(), FontSize = 9, FontWeight = FontWeights.Bold, CharacterSpacing = 42 });
+        stateText = new TextBlock { Text = state.ToUpperInvariant(), FontSize = 9, FontWeight = FontWeights.Bold, CharacterSpacing = 42 };
+        pillLine.Children.Add(stateText);
         pill.Child = pillLine;
         Grid.SetColumn(pill, 2);
         grid.Children.Add(pill);
@@ -355,15 +392,9 @@ public sealed class OperationDialog
 
     void OnPrimary(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
-        if (stage == Stage.Supported && review is not null)
-        {
-            args.Cancel = true;
-            review = review.IncludeSupported();
-            _ = RunAsync(); return;
-        }
         if (stage != Stage.Review || review is null) return; // Done closes normally
         args.Cancel = true;
-        if (review.Supported.Count > 0) { ShowSupportedReview(); return; }
+        if (review.Supported.Count > 0) review = review.IncludeSupported();
         _ = RunAsync();
     }
 

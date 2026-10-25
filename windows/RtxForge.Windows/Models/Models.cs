@@ -125,13 +125,25 @@ public sealed record OperationReview(string Operation, string Token, IReadOnlyLi
     public IReadOnlyList<OperationReview> Steps { get; init; } = [];
     public OperationReview IncludeSupported()
     {
-        var steps = new[] { this with { Supported = [] } }.Where(r => r.Ready.Count > 0)
-            .Concat(Supported.Select(p => p.Review)).ToArray();
-        return this with { Ready = steps.SelectMany(r => r.Ready).ToArray(), Steps = steps, Supported = [] };
+        // A combined review contributes its own package steps, so every package's run can be ordered by name.
+        var byName = StringComparer.CurrentCultureIgnoreCase;
+        var own = Steps.Count > 0 ? Steps : new[] { this with { Supported = [] } }.Where(r => r.Ready.Count > 0);
+        var steps = own.Concat(Supported.Select(p => p.Review))
+            .OrderBy(r => r.Ready.Select(item => item.Game.Name).Min(byName), byName).ToArray();
+        return this with { Ready = steps.SelectMany(r => r.Ready).OrderBy(r => r.Game.Name, byName).ToArray(), Steps = steps, Supported = [] };
     }
+    /// <summary>Every game the review changes, whatever its package: the full selection and partly supported games in one list, by name.</summary>
+    public IReadOnlyList<(OperationGameReview Item, SupportedOperationReview? Part)> AllGames =>
+        Ready.Select(item => (item, (SupportedOperationReview?)null))
+            .Concat(Supported.SelectMany(part => part.Review.Ready.Select(item => (item, (SupportedOperationReview?)part))))
+            .OrderBy(entry => entry.item.Game.Name, StringComparer.CurrentCultureIgnoreCase).ToArray();
 }
 
-public sealed record SupportedOperationReview(OperationReview Review, bool Nr, bool Mfg, string Reason);
+public sealed record SupportedOperationReview(OperationReview Review, bool Nr, bool Mfg, string Reason)
+{
+    /// <summary>The review badge for a partly supported game.</summary>
+    public string Badge => Nr && !Mfg ? "NR Only" : Mfg && !Nr ? "MFG Only" : "Ready";
+}
 
 /// <summary>Whether this rtxForge installation is in Steam; Token carries the checked state into Remove.</summary>
 public sealed record SteamShortcutStatus(bool Added, string Token);

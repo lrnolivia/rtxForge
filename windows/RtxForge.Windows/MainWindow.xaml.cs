@@ -291,9 +291,10 @@ public sealed partial class MainWindow : Window
         if (Busy) { ShowToast("Another operation is running."); return false; }
         ArgumentNullException.ThrowIfNull(targets);
         if (targets.Count == 0) { ShowToast("No eligible games selected."); return false; }
-        if (targets.Any(g => g.AdoptionAvailable))
+        // Another tool's setup: installing only such games offers Adoption's choices; in a group install
+        // the engine adopts them in the same review. Restore has nothing of rtxForge's to undo.
+        if (targets.Any(g => g.AdoptionAvailable) && (operation != "install" || targets.All(g => g.AdoptionAvailable)))
         {
-            // Another tool's setup: Install offers Adoption; Restore has nothing of rtxForge's to undo.
             var adoptable = targets.Where(g => g.AdoptionAvailable).ToArray();
             if (operation == "install") await ReviewAdoptionAsync(adoptable);
             else if (operation == "uninstall") ShowToast(AdoptionSkipped(adoptable.Length));

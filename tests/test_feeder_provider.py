@@ -623,7 +623,8 @@ class ReviewSessionTest(unittest.TestCase):
 
     def test_review_shares_hashes_and_inventory_only_while_it_runs(self):
         with tempfile.TemporaryDirectory() as folder:
-            path = Path(folder) / 'ReShade64.dll'
+            # Resolved: the runner's temp folder is an 8.3 alias the path guard refuses.
+            path = Path(folder).resolve() / 'ReShade64.dll'
             path.write_bytes(b'stack')
             inventories = []
             def running(root):
@@ -634,7 +635,7 @@ class ReviewSessionTest(unittest.TestCase):
                 with feeder.review_session(e):
                     for _ in range(3):
                         feeder.digest(path)
-                        feeder.running_under(e, Path(folder))
+                        feeder.running_under(e, path.parent)
                 self.assertEqual((hashed.call_count, len(inventories)), (1, 1))
                 feeder.digest(path)
                 self.assertEqual(hashed.call_count, 2)

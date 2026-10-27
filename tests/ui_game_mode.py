@@ -166,7 +166,8 @@ def presets_page():
 def details():
  w=app.window;c=w.couch
  # Demo artwork can be missing (offline CI): any installed game will do.
- games=c.filtered_games()
+ # Available excludes installed games (Windows LibraryScope); pick from the library.
+ games=sorted(w.games,key=lambda g:g['name'].casefold())
  game=next((g for g in games if g.get('poster') and g.get('installed')),None) or next((g for g in games if g.get('installed')),None) or games[0]
  c.open_details(game);assert c.page=='details' and c.details_game is game
  assert game['name'] in labels(c.body)

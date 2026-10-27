@@ -290,10 +290,17 @@ class GameModeChoice(Gtk.Box):
         self.value_label=Gtk.Label(
             xalign=0.5,
         )
+        # As wide as the longest option, with room either side, so a long
+        # name never presses against the arrows or changes width while cycling.
         self.value_label.set_size_request(
             72,
             -1,
         )
+        self.value_label.set_width_chars(
+            max((len(item) for item in self.items),default=1)
+        )
+        self.value_label.set_margin_start(12)
+        self.value_label.set_margin_end(12)
 
         following=Gtk.Button(
             icon_name='go-next-symbolic',
@@ -567,6 +574,11 @@ def artwork_accent(path,color=None,muted=False):
     hero_accent=ui_colors.vibrant_readable(color,palette['window'],3.0)
 
     name='art-'+color[1:]
+    # A grey accent (no artwork yet) would make the primary action look
+    # disabled; it keeps the brand green instead.
+    rgb=[int(color[i:i+2],16) for i in (1,3,5)]
+    neutral=max(rgb)-min(rgb)<24
+    install_bg,install_fg=('#76b900','#173000') if neutral else (color,accent_dark)
 
     ACCENT_SOURCES[name]=(path,color)
     if name not in ACCENT_PROVIDERS:
@@ -575,8 +587,9 @@ def artwork_accent(path,color=None,muted=False):
         provider.load_from_data((
             f'.review-game.{name} .review-bezel {{ border-color: {color}; }} '
             f'.extras-row.{name} .extras-art {{ border-color: {color}; }} '
-            f'.{name} button.hero-install {{ background: {color}; color: {accent_dark}; }} '
-            f'.{name} button.hero-install:hover {{ background: mix({color},white,0.08); }} '
+            f'.{name} button.hero-install {{ background: {install_bg}; color: {install_fg}; }} '
+            f'.{name} button.hero-install:hover {{ background: mix({install_bg},white,0.08); }} '
+            f'.{name} button.hero-install:disabled {{ background: alpha(@window_fg_color,0.08); color: alpha(@window_fg_color,0.45); }} '
             f'.artwork-editor.{name} .artwork-preview {{ border-color: {color}; }} '
             f'.review-game.{name} .review-badge {{ color: {ui_colors.readable(color,palette["card"])}; background: {ui_colors.mix(color,palette["card"],0.10)}; }} '
             f'columnview row.{name}.game-selected {{ background: {color}; color: {accent_dark}; }} '
@@ -1683,8 +1696,6 @@ CSS=b'''
 /* Game Details tabs (Windows GamePage pivot) */
 .detail-tab-bar { background: transparent; margin: 8px 24px 0 4px; }
 .detail-tabs toggle { padding: 4px 12px 6px; min-height: 0; border-radius: 6px; font-weight: 400; font-size: 14px; }
-/* Selected tab: full-strength text on a light wash, not grey on grey. */
-.detail-tabs toggle:checked { background: alpha(@window_fg_color,0.12); color: @window_fg_color; font-weight: 600; }
 button.library-command { padding: 4px 10px; font-weight: 400; }
 button.library-command label { font-weight: 400; }
 .dim-label { opacity: 0.78; }
@@ -2430,6 +2441,8 @@ columnview.library-column-view listview row:nth-child(even):hover {
 .game-banner-title {
     color: @window_fg_color;
     font-family: "Bakbak One";
+    /* Windows GamePage: LineHeight = 1.1 x font size. */
+    line-height: 1.1;
     font-size: 42px;
     font-weight: 400;
     letter-spacing: -0.8px;
@@ -3254,7 +3267,11 @@ columnview.library-column-view header button:first-child { padding-left: 52px; }
 .forge-window-surface, .forge-top-surface, .forge-library-surface,
 .game-detail-root, .game-banner, .game-detail-main, .detail-tab-bar { background: @forge_layer_bg; }
 .banner-shade {
-    background: linear-gradient(to bottom,
+    /* Side fade under the poster and title (as Game Mode's scrim), so an
+     * accent-coloured title never sits on same-coloured artwork. */
+    background-image:
+        linear-gradient(to right, alpha(@forge_layer_bg,0.86) 0%, alpha(@forge_layer_bg,0.62) 42%, alpha(@forge_layer_bg,0) 74%),
+        linear-gradient(to bottom,
         alpha(@forge_layer_bg,0.08) 0%, alpha(@forge_layer_bg,0.30) 28%,
         alpha(@forge_layer_bg,0.72) 52%, alpha(@forge_layer_bg,0.94) 76%, @forge_layer_bg 100%);
 }
@@ -5580,16 +5597,7 @@ class Window(Adw.ApplicationWindow):
             self.art_scale.set_visible(layout<2)
             self.art_scale.set_size_request(100 if layout==1 else 120,-1)
         if hasattr(self,'search'):self.search.set_size_request(160 if layout==0 else 0,-1)
-        hero=getattr(self,'detail_hero_layout',None)
-        if hero is not None and hero[2].get_root() is self:
-            identity,heading,actions=hero
-            narrow=breakpoints.details_narrow(page)
-            if narrow!=self._detail_narrow:
-                self._detail_narrow=narrow
-                actions.get_parent().remove(actions)
-                (heading if narrow else identity).append(actions)
-                actions.set_halign(Gtk.Align.START if narrow else Gtk.Align.END)
-                actions.set_margin_top(12 if narrow else 0)
+        # Details hero actions follow the hero's own width (fit_hero_actions).
         # Phone: the dashboard drops the large mark and leads with the title.
         if hasattr(self,'dashboard_icon'):self.dashboard_icon.set_visible(layout<2)
         # Phone: only More stays; Select all / Rescan / Add folder are in its menu.
@@ -5832,7 +5840,7 @@ class Window(Adw.ApplicationWindow):
 
     def show_controller_menu(self,*_):
         if self.busy and self.task_kind!='art':return
-        d,b,f=self.open_panel('Menu',width=380,height=420)
+        d,b,f=self.open_panel('Menu',width=380,height=-1)
         for title,icon,fn in [('Refresh Library','view-refresh-symbolic',self.scan),('Add Game Folder','folder-new-symbolic',self.choose_folder),('Packages','drive-multidisk-symbolic',self.show_packages),('Extras','preferences-system-symbolic',self.show_extras),('Settings','emblem-system-symbolic',self.show_settings)]:
             def invoke(*_,fn=fn):
                 d.close();GLib.idle_add(lambda:(fn(),False)[1])
@@ -6076,7 +6084,10 @@ class Window(Adw.ApplicationWindow):
             control.set_sensitive(not self.options.demo);actions.append(control)
         actions.append(button('ReShade Downloads',lambda *_:Gio.AppInfo.launch_default_for_uri('https://reshade.me/',None)))
         body.append(action_tiles(actions))
-        body.append(label('Use an extracted x64 ReShade DLL or .addon64 file from a source you trust. Shader packs and presets remain yours to manage. DirectX 10–12 installs use dxgi.dll; Proton may require dxgi=n,b in the existing DLL overrides.','dim-label'))
+        note=label('Use an extracted x64 ReShade DLL or .addon64 file from a source you trust. Shader packs and presets remain yours to manage. DirectX 10–12 installs use dxgi.dll; Proton may require dxgi=n,b in the existing DLL overrides.','dim-label')
+        # A capped natural width makes the page reserve every wrapped line
+        # (uncapped, it measured one long line and clipped the rest).
+        note.set_max_width_chars(70);body.append(note)
         if not self.options.demo:
             import extra_tools
             for record in extra_tools.recoveries(self.service.config,game):
@@ -10756,6 +10767,8 @@ class Window(Adw.ApplicationWindow):
         scroll=Gtk.ScrolledWindow(
             vexpand=True,
             hscrollbar_policy=Gtk.PolicyType.NEVER,
+            # height -1: the panel is as tall as its content.
+            propagate_natural_height=height<0,
         )
         box.append(scroll)
 
@@ -11948,27 +11961,8 @@ class Window(Adw.ApplicationWindow):
         for entry in self.cards.values():
             game=entry['data']
 
-            visible=(
-                text
-                in game[
-                    'name'
-                ].casefold()
-                and (
-                    self.filter=='all'
-                    or (
-                        self.filter=='installed'
-                        and game.get(
-                            'installed'
-                        )
-                    )
-                    or (
-                        self.filter=='available'
-                        and not game.get(
-                            'blocked'
-                        )
-                    )
-                )
-            )
+            # One rule for every view (game_matches_view, Windows LibraryScope).
+            visible=self.game_matches_view(game)
 
             entry[
                 'wrapper'
@@ -12629,7 +12623,8 @@ class Window(Adw.ApplicationWindow):
             heading
         )
         # Windows GamePage HeroActions: Install (game accent), Restore, More.
-        hero_actions=Gtk.Box(spacing=8,valign=Gtk.Align.END,halign=Gtk.Align.END)
+        # Wraps instead of running off a narrow details window (Adw ≥ 1.7).
+        hero_actions=Adw.WrapBox(child_spacing=8,line_spacing=8,align=1.0,valign=Gtk.Align.END,halign=Gtk.Align.END)
         hero_actions.add_css_class('detail-hero-actions')
         install_label='Set Up for Linux' if self.needs_linux_setup(game) else 'Install Features'
         hero_install=icon_button(install_label,'folder-download-symbolic',lambda *_:self.launch_action('install',targets=[game]),'hero-install')
@@ -12656,6 +12651,21 @@ class Window(Adw.ApplicationWindow):
         self.detail_hero_layout=(identity,heading,hero_actions)
         self._detail_narrow=None
         GLib.idle_add(self._header_density)
+        # Windows GamePage drops the actions under the title on narrow pages.
+        # Follow the hero's own width: details open in the window, in a
+        # dialog or in a Game Mode panel, and only this width is common.
+        def fit_hero_actions(widget,_clock):
+            if widget.get_width()<=0:return True
+            narrow=widget.get_width()<860
+            if narrow!=getattr(widget,'_narrow',None):
+                widget._narrow=narrow
+                hero_actions.get_parent().remove(hero_actions)
+                (heading if narrow else identity).append(hero_actions)
+                hero_actions.set_halign(Gtk.Align.START if narrow else Gtk.Align.END)
+                hero_actions.set_align(0.0 if narrow else 1.0)
+                hero_actions.set_margin_top(12 if narrow else 0)
+            return True
+        identity.add_tick_callback(fit_hero_actions)
 
         banner.add_overlay(
             identity

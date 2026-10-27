@@ -207,8 +207,15 @@ def steam_open_route(e,g,operation,baseline):
     return None
 
 def windows_install(e,g,baseline):
-    """An intact schema-1 install (no shared state) made by rtxForge on the other OS, with no local baseline."""
+    """An install made by rtxForge on the other OS that this OS only sets up (no local baseline):
+    an intact schema-1 install with no shared state, or on Linux any Windows install it cannot
+    take over. Windows' Update DLSS swaps runtimes without rewriting the record, and Set Up for
+    Linux only adds the Proton setting, so it never needs the files to match."""
     if baseline:return None
+    if cross_os.THIS_OS=='linux':
+        record=cross_os.read(g.target_dir)
+        if not record or record['os']!='windows' or cross_os.adoptable(g.target_dir,cross_os.THIS_OS):return None
+        return record
     record=cross_os.other_install(g.target_dir,cross_os.THIS_OS)
     return None if record and record.get('shared_state') else record
 

@@ -276,10 +276,16 @@ def inspect(e, row, cached=True):
     return {'managed': record is not None, 'nr_runtime': nr, **configured(directory)}
 
 
+def _windows(e):
+    return getattr(e, 'DESKTOP_PLATFORM', 'windows' if os.name == 'nt' else 'linux') == 'windows'
+
+
 def eligible(e, row, existing=False, check_running=True):
     root, exe, directory = target(row)
-    t.need(getattr(e, 'DESKTOP_PLATFORM', 'windows' if os.name == 'nt' else 'linux') == 'windows',
-           'Feeder installation is available on Windows only in this release')
+    t.need(_windows(e) or not existing or row.get('installed_on') != 'windows',
+           'Installed with rtxForge on Windows. Set Up for Linux is not available for Feeder NR yet; '
+           'it still works on Windows. Nothing was changed.')
+    t.need(_windows(e), 'Feeder installation is available on Windows only in this release')
     t.need(not row.get('anti_cheat'), 'Anti-cheat detected; Feeder is unavailable for this game')
     t.need(not check_running or not running_under(e, root), 'Close this game before changing Feeder files')
     t.need(not e.load_baseline(directory, readonly=True) and not (directory / 'OptiScaler.ini').exists(),
@@ -451,7 +457,9 @@ def expand_rows(e, rows, selected=False):
                     found = inspect(e, child)
                     child.update(installed=True, runtime_provider='feeder', feature_mode='nr-only', profile='NR Only',
                                  feeder_managed=found['managed'], nr_enabled=found['nr_enabled'], nr_runtime=found['nr_runtime'],
-                                 mfg_enabled=False, mfg_multiplier=0, installed_on='windows' if found['managed'] else None,
+                                 # Feeder installs only on Windows, so on Linux a verified stack is a dual-boot install.
+                                 mfg_enabled=False, mfg_multiplier=0,
+                                 installed_on='windows' if found['managed'] or not _windows(e) else None,
                                  feeder_settings={k: found[k] for k in ('passes', 'scale', 'preset')},
                                  blocked='')
                 except (t.Refusal, OSError, ValueError, configparser.Error) as error:

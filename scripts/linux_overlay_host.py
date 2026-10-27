@@ -6,6 +6,7 @@ uses the game's acknowledged control mailbox, never a running game's INI.
 """
 from pathlib import Path
 import ctypes
+import fcntl
 import mmap
 import os
 import struct
@@ -18,6 +19,21 @@ import proton_prefix
 import transactions as t
 
 controls = linux_runtime._shared('companion_controls')
+
+
+def lock_path():
+    runtime=os.environ.get('XDG_RUNTIME_DIR','')
+    base=Path(runtime) if runtime and Path(runtime).is_absolute() else Path('/tmp')
+    return base/f'rtxforge-panel-host-{os.getuid()}.lock'
+
+
+def host_lock(path=None):
+    """One panel host per user (the app window's or the helper's): the held fd, or None while another holds it."""
+    fd=os.open(path or lock_path(),os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW|os.O_CLOEXEC,0o600)
+    try:fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(fd);return None
+    return fd
 
 
 def mapped_process(prefix, exe, channel, proc=Path('/proc')):
@@ -273,11 +289,18 @@ class Host:
             if path not in active:
                 self.channels.pop(path)[1].close()
 
-    def run(self):
+    def run(self,lock=None):
+        # The second host waits instead of answering the same channels twice,
+        # and takes over when the first one exits.
+        held=None
         try:
             while not self.stop.is_set():
+                if held is None:held=host_lock(lock)
+                if held is None:
+                    self.stop.wait(1);continue
                 self.poll();self.stop.wait(.25)
         finally:
+            if held is not None:os.close(held)
             self.controls.stop.set()
             if self.controls.watcher is not None:
                 self.controls.watcher.join(timeout=3)

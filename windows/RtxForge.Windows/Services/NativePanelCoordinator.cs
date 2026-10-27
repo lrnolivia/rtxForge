@@ -109,6 +109,7 @@ internal sealed class NativePanelCoordinator : IDisposable
         values["panel_modifiers"] = (int)binding.Modifiers;
         values["overlay_helper"] = s.OverlayHelper;
         values["overlay_start_with_windows"] = s.OverlayStartWithWindows;
+        values["overlay_light"] = OverlayHelper.LightTheme(s, values["overlay_theme"]?.ToString());
         return values;
     }
     static JsonArray Entries(IEnumerable<ReviewItem> entries) => new(entries.Select(item => (JsonNode)new JsonObject
@@ -157,7 +158,7 @@ internal sealed class NativePanelCoordinator : IDisposable
                 return Done(reset["panel_message"]?.GetValue<string>() ?? "Reset to this game's installed settings");
             case "set-setting":
                 SetPreference(message);
-                return Done("Saved · game-menu changes take effect after restarting the game");
+                return Done(message["key"]?.ToString() == "overlay_theme" ? "Saved" : "Saved · game-menu changes take effect after restarting the game");
             case "discard-review":
                 ClearReview(); return Done("");
             case "global-review":
@@ -190,6 +191,10 @@ internal sealed class NativePanelCoordinator : IDisposable
             switch (setting)
             {
                 case "overlay_controls": s.OverlayControls = value.GetValue<bool>() ? "classic" : "unified"; break;
+                case "overlay_theme":
+                    var theme = value.GetValue<string>();
+                    if (!ForgeSettings.OverlayThemes.Contains(theme)) throw new InvalidOperationException("Choose an available overlay theme.");
+                    s.OverlayTheme = theme; break;
                 case "overlay_live_stats": s.OverlayLiveStats = value.GetValue<bool>(); break;
                 case "overlay_welcome": s.OverlayWelcome = value.GetValue<bool>(); break;
                 case "overlay_welcome_position":

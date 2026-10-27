@@ -44,46 +44,20 @@ public sealed partial class GameModeView
         }
         values ??= shell.Settings.Presets;
 
-        // Checking and review are one screen: every game's row is listed at once and fills in as the
-        // engine checks it. Nothing is written.
-        var content = new StackPanel { Spacing = t.Px(20) };
-        var summary = new StackPanel { Spacing = t.Px(10) };
-        var heading = ui.H2($"Checking {targets.Count} game{(targets.Count == 1 ? "" : "s")}", 1.3);
-        summary.Children.Add(heading);
-        summary.Children.Add(ui.P("Each game is checked before anything changes."));
-        content.Children.Add(summary);
-        var rows = new Dictionary<string, (TextBlock Detail, Border Badge)>(StringComparer.OrdinalIgnoreCase);
-        var group = new List<UIElement>();
-        foreach (var game in targets.OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase))
-        {
-            group.Add(ReviewRow(game, game.Name, "Waiting to be checked", true, null, "Waiting", out var detail, out var badge));
-            rows[game.Name] = (detail, badge);
-        }
-        var list = new StackPanel();
-        list.Children.Add(ui.Group(group, t.Card));
-        content.Children.Add(new ScrollViewer { Content = list, MaxHeight = t.Px(t.Compact ? 260 : 380), HorizontalScrollMode = ScrollMode.Disabled });
-        content.Children.Add(ui.P("Your files only change after you confirm.", 0.8));
+        // Preparation has its own progress screen; the completed review stays static.
+        var step = new GmStep(this);
+        step.Show("Preparing", targets.FirstOrDefault(), 0, targets.Count, "Downloading packages/files…");
         var cancelChecking = ui.Button("Cancel", CloseModal, GmKind.Card, 0.92);
-        var waiting = ui.Button(Verb(operation), () => { }, GmKind.Primary, 0.92, enabled: false);
-        ShowModal(ReviewTitle(operation), content, [cancelChecking, waiting], CloseModal, 1100, cancelChecking);
+        ShowModal("Preparing", step.Root, [cancelChecking], CloseModal, 1100, cancelChecking);
         var checkingModal = modals.Peek();
-        string? current = null;
-        void Mark(string name, string detail, string state)
-        {
-            if (!rows.TryGetValue(name, out var row)) return;
-            row.Detail.Text = detail;
-            if (row.Badge.Child is StackPanel line) foreach (var label in line.Children.OfType<TextBlock>()) label.Text = state.ToUpperInvariant();
-        }
         OperationReview review;
         try
         {
             var progress = new Progress<PrepareProgress>(p =>
             {
-                if (p.Total > 0) heading.Text = $"Checking {Math.Min(p.Checked + 1, p.Total)} of {p.Total}";
-                if (p.Game is not { Length: > 0 } game || game == current) return;
-                if (current is not null) Mark(current, "Checked", "Checked");
-                Mark(game, "Checking game files…", "Checking");
-                current = game;
+                if (modals.Count == 0 || !ReferenceEquals(modals.Peek(), checkingModal)) return;
+                step.Show("Preparing", targets.FirstOrDefault(game => game.Name == p.Game), p.Checked,
+                    p.Total > 0 ? p.Total : null, "Downloading packages/files…");
             });
             review = await shell.Service.PrepareAsync(operation, targets, values, shell.Mode, progress);
         }
@@ -95,6 +69,7 @@ public sealed partial class GameModeView
         }
         if (modals.Count == 0 || !ReferenceEquals(modals.Peek(), checkingModal))
         { shell.Service.DiscardOperation(review); return; }   // cancelled while checking
+        step.Complete();
         CloseModal();
         ShowReview(operation, review);
     }
@@ -214,7 +189,7 @@ public sealed partial class GameModeView
         var thumb = new Border
         {
             Width = t.Px(128), Height = t.Px(60), CornerRadius = new CornerRadius(t.Px(9)), BorderThickness = new Thickness(t.Px(2)),
-            BorderBrush = GmTheme.B(t.Line), Background = GmTheme.B(t.Panel),
+            BorderBrush = GmTheme.B(t.Line), Background = t.Surface(t.Panel),
         };
         if (game is not null && GameItem.Image(game.CapsulePath ?? game.PosterPath) is { } image)
             thumb.Child = new Border { CornerRadius = new CornerRadius(t.Px(7)), Background = new ImageBrush { ImageSource = image, Stretch = Stretch.UniformToFill } };
@@ -327,14 +302,14 @@ public sealed partial class GameModeView
             poster.CornerRadius = new CornerRadius(t.Px(12));
             poster.BorderThickness = new Thickness(t.Px(3));
             poster.BorderBrush = GmTheme.B(t.Line);
-            poster.Background = GmTheme.B(t.Card);
+            poster.Background = t.Surface(t.Card);
             Root.Children.Add(poster);
             var right = new StackPanel { Spacing = t.Px(12), VerticalAlignment = VerticalAlignment.Center };
             counter = ui.Text("Preparing…", 0.85, t.Muted);
             title = ui.Heading("", 1.3, t.Fg);
             phase = ui.Text("", 0.85, t.Muted);
             bar.MinHeight = t.Px(12);
-            bar.Background = GmTheme.B(t.Card);
+            bar.Background = t.Surface(t.Card);
             bar.Foreground = GmTheme.B(GmTheme.Accent);
             bar.CornerRadius = new CornerRadius(t.Px(8));
             bar.Margin = new Thickness(0, t.Px(18), 0, t.Px(10));

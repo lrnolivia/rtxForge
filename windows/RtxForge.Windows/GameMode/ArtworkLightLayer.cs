@@ -21,6 +21,8 @@ sealed class ArtworkLightLayer : Canvas
     CompositionGraphicsDevice? graphics;
     CompositionDrawingSurface? surface;
     CompositionSurfaceBrush? source;
+    CompositionMaskBrush? fadeMask;
+    CompositionLinearGradientBrush? fadeGradient;
     SpriteVisual? light;
     CanvasBitmap? image;
     readonly Dictionary<string, CanvasBitmap> bitmapCache = [];
@@ -29,6 +31,12 @@ sealed class ArtworkLightLayer : Canvas
     Vector2 lastSize;
     float level = -1;
     Microsoft.UI.Xaml.Media.RectangleGeometry? viewportClip;
+    bool controllerFocus;
+    public bool ControllerFocus
+    {
+        get => controllerFocus;
+        set { if (controllerFocus == value) return; controllerFocus = value; Display(Owner()); }
+    }
 
     public ArtworkLightLayer()
     {
@@ -37,17 +45,18 @@ sealed class ArtworkLightLayer : Canvas
         Unloaded += (_, _) => { active.Clear(); current = null; Release(); foreach (var bitmap in bitmapCache.Values) bitmap.Dispose(); bitmapCache.Clear(); bitmapOrder.Clear(); graphics?.Dispose(); graphics = null; };
     }
 
-    public Canvas AddControl(FrameworkElement target)
+    public Canvas AddControl(FrameworkElement target, bool behind = false)
     {
         var host = new Canvas { IsHitTestVisible = false };
-        controls.Add(target, host); Children.Add(host);
+        controls.Add(target, host);
+        (behind ? Artwork.Children : Children).Add(host);
         Position(target, host);
         return host;
     }
 
     public void RemoveControl(FrameworkElement target)
     {
-        if (controls.Remove(target, out var host)) Children.Remove(host);
+        if (controls.Remove(target, out var host) && host.Parent is Panel parent) parent.Children.Remove(host);
     }
 
     public void RefreshPositions()
@@ -132,7 +141,8 @@ sealed class ArtworkLightLayer : Canvas
         Display(Owner());
     }
 
-    Entry? Owner() => active.Values.LastOrDefault(entry => entry.Hovered) ?? active.Values.LastOrDefault();
+    Entry? Owner() => (controllerFocus ? active.Values.LastOrDefault(entry => entry.Target.FocusState is FocusState.Keyboard or FocusState.Programmatic) : null)
+        ?? active.Values.LastOrDefault(entry => entry.Hovered) ?? active.Values.LastOrDefault();
 
     void Display(Entry? entry)
     {
@@ -181,7 +191,7 @@ sealed class ArtworkLightLayer : Canvas
         var width = (float)entry.Artwork.ActualWidth;
         var height = (float)entry.Artwork.ActualHeight;
         if (width <= 0 || height <= 0) return;
-        var compositor = ElementCompositionPreview.GetElementVisual(Artwork).Compositor;
+        var compositor = Microsoft.UI.Xaml.Media.CompositionTarget.GetCompositorForCurrentThread();
         graphics ??= CanvasComposition.CreateCompositionGraphicsDevice(compositor, image.Device);
         using var rendered = ArtworkGlowRenderer.Render(image, width, height, (float)entry.Artwork.CornerRadius.TopLeft,
             (float)entry.Theme.Px(24), (float)entry.Theme.Px(16));
@@ -213,7 +223,6 @@ sealed class ArtworkLightLayer : Canvas
         if (current is not { } entry || image is null) return;
         var art = entry.Artwork;
         if (!art.IsLoaded || art.ActualWidth <= 0 || art.ActualHeight <= 0) return;
-        ClipToViewport(entry.Target);
         var owner = RestPoint(entry.Target);
         var local = art.TransformToVisual(entry.Target).TransformPoint(new(0, 0));
         var point = new global::Windows.Foundation.Point(owner.X + local.X, owner.Y + local.Y);
@@ -221,32 +230,63 @@ sealed class ArtworkLightLayer : Canvas
         var size = new Vector2(width, height);
         if (lastSize != size) Draw(entry);
         var bleed = ArtworkGlowRenderer.Bleed((float)entry.Theme.Px(24), (float)entry.Theme.Px(16));
+        ClipToViewport(entry.Target, bleed);
         if (light is not null)
         {
             var offset = new Vector3((float)point.X - bleed, (float)point.Y - bleed, 0);
             light.Offset = offset;
+            FadeToViewport(entry, offset.Y);
             GmMotion.Follow(entry.Target, light, offset,
                 new((float)owner.X + (float)entry.Target.ActualWidth / 2 - offset.X,
                     (float)owner.Y + (float)entry.Target.ActualHeight / 2 - offset.Y, 0));
         }
     }
 
-    void ClipToViewport(FrameworkElement target)
+    void FadeToViewport(Entry entry, float lightTop)
     {
-        if (ScrollClip(target, Artwork) is not { } bounds) { Artwork.Clip = null; return; }
+        if (light is null || source is null) return;
+        ScrollViewer? scroll = null;
+        for (DependencyObject? node = entry.Target; node is not null; node = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(node))
+            if (node is ScrollViewer found) { scroll = found; break; }
+        if (scroll is null) { light.Brush = source; return; }
+        var viewport = Presenter(scroll) as FrameworkElement ?? scroll;
+        if (viewport.ActualHeight <= 0) return;
+        var origin = viewport.TransformToVisual(Artwork).TransformPoint(new(0, 0));
+        fadeGradient ??= GmScrollFade.CreateGradient(light.Compositor);
+        // The blur extends past the card. Anchor its alpha in viewport space,
+        // so the glow and scroll content use the very same fade at each pixel.
+        fadeGradient.MappingMode = CompositionMappingMode.Absolute;
+        fadeGradient.StartPoint = new(0, (float)origin.Y - lightTop);
+        fadeGradient.EndPoint = new(0, (float)(origin.Y + viewport.ActualHeight) - lightTop);
+        GmScrollFade.UpdateGradient(fadeGradient, ScrollFadeProfile.Create(viewport.ActualHeight,
+            scroll.VerticalOffset, scroll.ScrollableHeight, entry.Theme.S));
+        fadeMask ??= light.Compositor.CreateMaskBrush();
+        fadeMask.Source = source; fadeMask.Mask = fadeGradient;
+        light.Brush = fadeMask;
+    }
+
+    void ClipToViewport(FrameworkElement target, float bleed)
+    {
+        if (ScrollClip(target, Artwork, bleed) is not { } bounds) { Artwork.Clip = null; return; }
         viewportClip ??= new Microsoft.UI.Xaml.Media.RectangleGeometry();
         if (viewportClip.Rect != bounds) viewportClip.Rect = bounds;
         if (!ReferenceEquals(Artwork.Clip, viewportClip)) Artwork.Clip = viewportClip;
     }
 
-    static global::Windows.Foundation.Rect? ScrollClip(FrameworkElement target, UIElement relativeTo)
+    static global::Windows.Foundation.Rect? ScrollClip(FrameworkElement target, UIElement relativeTo, double bleed = 0)
     {
         global::Windows.Foundation.Rect? clip = null;
         for (DependencyObject? parent = target; parent is not null; parent = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(parent))
         {
             if (parent is not ScrollViewer scroll) continue;
+            // A sizing ScrollViewer (common in dialogs) is not a viewport
+            // boundary until it actually scrolls. Let halos bleed past it.
+            if (scroll.ScrollableHeight <= 0 && scroll.ScrollableWidth <= 0) continue;
             var viewport = Presenter(scroll) as FrameworkElement ?? scroll;
             var rect = viewport.TransformToVisual(relativeTo).TransformBounds(new(0, 0, viewport.ActualWidth, viewport.ActualHeight));
+            // The mask owns the vertical fade. A hard viewport clip must leave
+            // room for the blur at unfaded edges and along the sides.
+            rect = new(rect.X - bleed, rect.Y - bleed, rect.Width + bleed * 2, rect.Height + bleed * 2);
             if (clip is { } previous)
             {
                 var left = Math.Max(previous.X, rect.X); var top = Math.Max(previous.Y, rect.Y);
@@ -256,17 +296,17 @@ sealed class ArtworkLightLayer : Canvas
             clip = rect;
         }
         return clip;
+    }
 
-        static ScrollContentPresenter? Presenter(DependencyObject root)
+    static ScrollContentPresenter? Presenter(DependencyObject root)
+    {
+        for (var i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(root); i++)
         {
-            for (var i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(root); i++)
-            {
-                var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(root, i);
-                if (child is ScrollContentPresenter presenter) return presenter;
-                if (Presenter(child) is { } nested) return nested;
-            }
-            return null;
+            var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is ScrollContentPresenter presenter) return presenter;
+            if (Presenter(child) is { } nested) return nested;
         }
+        return null;
     }
 
     void SetOpacity(float opacity)
@@ -284,7 +324,8 @@ sealed class ArtworkLightLayer : Canvas
     {
         generation++;
         ElementCompositionPreview.SetElementChildVisual(Artwork, null);
-        light?.Dispose(); source?.Dispose(); surface?.Dispose();
+        light?.Dispose(); fadeMask?.Dispose(); fadeGradient?.Dispose(); source?.Dispose(); surface?.Dispose();
+        fadeMask = null; fadeGradient = null;
         light = null; source = null; surface = null; image = null;
         lastSize = default; level = -1;
     }

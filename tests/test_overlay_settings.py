@@ -19,7 +19,7 @@ class OverlaySettingsTest(unittest.TestCase):
 
     def test_invalid_choices_refuse(self):
         for changes in ({'overlay_welcome': 1}, {'overlay_renderer': 'unknown'},
-                        {'overlay_welcome_position': 'outside'}, {'panel_hotkey': 'Ctrl+Alt+Delete'}):
+                        {'overlay_welcome_position': 'outside'}, {'overlay_theme': 'unknown'}, {'panel_hotkey': 'Ctrl+Alt+Delete'}):
             with self.subTest(changes=changes), self.assertRaises((t.Refusal, ValueError)):
                 overlay.options(changes)
 
@@ -28,6 +28,14 @@ class OverlaySettingsTest(unittest.TestCase):
         for label in ('Overlay:', 'Welcome message:', 'Welcome position:', 'rtxForge shortcut:',
                       'OptiScaler menu:', 'ReShade welcome:', 'Native Vulkan MFG menu:'):
             self.assertIn(label, text)
+
+    def test_overlay_theme_is_reviewed_and_isolated_per_game(self):
+        first, second = str(Path('one').resolve()), str(Path('two').resolve())
+        for theme in ('dark', 'light', 'app'):
+            settings = {'game_overlay_settings': {first: {'overlay_theme': theme}}}
+            self.assertEqual(overlay.effective(settings, first)['overlay_theme'], theme)
+            self.assertEqual(overlay.effective(settings, second)['overlay_theme'], 'dark')
+            self.assertIn('Appearance:', overlay.describe(overlay.effective(settings, first)))
 
 
 if __name__ == '__main__':

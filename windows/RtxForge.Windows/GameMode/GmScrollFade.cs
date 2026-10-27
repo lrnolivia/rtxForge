@@ -15,6 +15,28 @@ static class GmScrollFade
     public static void Attach(ScrollViewer scroll, double unit) =>
         attachments.GetValue(scroll, key => new Attachment(key, unit));
 
+    internal static CompositionLinearGradientBrush CreateGradient(Compositor compositor)
+    {
+        var gradient = compositor.CreateLinearGradientBrush();
+        gradient.StartPoint = Vector2.Zero; gradient.EndPoint = new Vector2(0, 1);
+        for (var i = 0; i < 2 * (GmMotionTokens.ScrollFadeSamples + 1); i++)
+            gradient.ColorStops.Add(compositor.CreateColorGradientStop(0, Microsoft.UI.Colors.White));
+        return gradient;
+    }
+
+    internal static void UpdateGradient(CompositionLinearGradientBrush gradient, ScrollFadeProfile profile)
+    {
+        if (profile.Height <= 0) return;
+        var samples = GmMotionTokens.ScrollFadeSamples;
+        for (var i = 0; i < gradient.ColorStops.Count; i++)
+        {
+            var y = i <= samples ? profile.Depth * i / samples
+                : profile.Height - profile.Depth + profile.Depth * (i - samples - 1) / samples;
+            gradient.ColorStops[i].Offset = (float)(y / profile.Height);
+            gradient.ColorStops[i].Color = global::Windows.UI.Color.FromArgb((byte)Math.Round(255 * profile.Alpha(y)), 255, 255, 255);
+        }
+    }
+
     sealed class Attachment
     {
         readonly ScrollViewer scroll;
@@ -64,10 +86,7 @@ static class GmScrollFade
                 surface = compositor.CreateVisualSurface();
                 surface.SourceVisual = sourceVisual;
                 source = compositor.CreateSurfaceBrush(surface);
-                gradient = compositor.CreateLinearGradientBrush();
-                gradient.StartPoint = Vector2.Zero; gradient.EndPoint = new Vector2(0, 1);
-                for (var i = 0; i < 2 * (GmMotionTokens.ScrollFadeSamples + 1); i++)
-                    gradient.ColorStops.Add(compositor.CreateColorGradientStop(0, Microsoft.UI.Colors.White));
+                gradient = CreateGradient(compositor);
                 mask = compositor.CreateMaskBrush(); mask.Source = source; mask.Mask = gradient;
                 sprite = compositor.CreateSpriteVisual(); sprite.Brush = mask;
                 ElementCompositionPreview.SetElementChildVisual(scroll, sprite);
@@ -92,14 +111,7 @@ static class GmScrollFade
             surface!.SourceSize = sprite.Size = size;
             var origin = presenter.TransformToVisual(scroll).TransformPoint(new global::Windows.Foundation.Point());
             sprite.Offset = new Vector3((float)origin.X, (float)origin.Y, 0);
-            var samples = GmMotionTokens.ScrollFadeSamples;
-            for (var i = 0; i < gradient!.ColorStops.Count; i++)
-            {
-                var y = i <= samples ? profile.Depth * i / samples
-                    : height - profile.Depth + profile.Depth * (i - samples - 1) / samples;
-                gradient.ColorStops[i].Offset = (float)(y / height);
-                gradient.ColorStops[i].Color = global::Windows.UI.Color.FromArgb((byte)Math.Round(255 * profile.Alpha(y)), 255, 255, 255);
-            }
+            UpdateGradient(gradient!, profile);
         }
 
         void Disconnect()

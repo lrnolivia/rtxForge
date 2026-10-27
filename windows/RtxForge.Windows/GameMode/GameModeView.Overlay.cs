@@ -26,6 +26,8 @@ public sealed partial class GameModeView
                 ["game", "optiscaler"], ["rtxForge", "Native"], () => shell.Settings.OverlayRenderer == "optiscaler" ? "optiscaler" : "game", value => SetOverlay(s => s.OverlayRenderer = value), glyph: "\uE7F4"),
             Choice("Controls", "Advanced uses the package’s labels and original units.", ["unified", "classic"], ["Unified", "Advanced"],
                 () => shell.Settings.OverlayControls, value => SetOverlay(s => s.OverlayControls = value), glyph: "\uE713"),
+            Choice("Appearance", null, ForgeSettings.OverlayThemes, ["Dark", "Light", "Follow app"],
+                () => shell.Settings.OverlayTheme, value => SetOverlay(s => s.OverlayTheme = value), glyph: "\uE790"),
             OverlayToggle("Live feature statistics", "Measured activity beside NR and frame generation controls.", () => shell.Settings.OverlayLiveStats, (s, value) => s.OverlayLiveStats = value, glyph: "\uE9D9"),
             OverlayToggle("Welcome message", "Show the rtxForge logo and assigned shortcut at game startup.", () => shell.Settings.OverlayWelcome, (s, value) => s.OverlayWelcome = value, glyph: "\uE8F2"),
             Choice("Welcome position", "Applies when the game starts.", ForgeSettings.WelcomePositions,
@@ -105,6 +107,8 @@ public sealed partial class GameModeView
             () => Values()[key]!.GetValue<bool>() ? "on" : "off", value => Save(v => v[key] = value == "on"));
         var rows = new List<UIElement>
         {
+            Choice("Appearance", null, ForgeSettings.OverlayThemes, ["Dark", "Light", "Follow app"],
+                () => Values()["overlay_theme"]!.ToString(), value => Save(v => v["overlay_theme"] = value)),
             Toggle("Welcome message", "overlay_welcome"),
             Choice("Welcome position", null, ForgeSettings.WelcomePositions,
                 ["Top center", "Top left", "Top right", "Bottom left", "Bottom right"],

@@ -14,6 +14,7 @@ public sealed partial class GameModeView
     readonly HashSet<string> selectedIds = [];
     double libraryScroll;
     ScrollViewer? libraryScroller;
+    bool libraryCardsEntrancePending = true;
     bool libraryFilterHidden;
 
     IEnumerable<Game> FilteredGames() => LibraryScope.Filter(shell.Games, shell.Settings.LibraryFilter);
@@ -42,7 +43,7 @@ public sealed partial class GameModeView
         heading.Children.Add(titles);
         var provider = GmUi.Capsule(new Border
         {
-            Background = GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(24)), VerticalAlignment = VerticalAlignment.Center,
+            Background = t.Surface(t.Panel), CornerRadius = new CornerRadius(t.Px(24)), VerticalAlignment = VerticalAlignment.Center,
             Padding = new Thickness(t.Px(20), t.Px(t.Compact ? 7 : 10), t.Px(20), t.Px(t.Compact ? 7 : 10)),
             Child = ui.IconLabel("", ProviderName()).With(p => { foreach (var c in p.Children) if (c is TextBlock tb) tb.FontSize = t.Em(0.85); }),
         });
@@ -81,7 +82,7 @@ public sealed partial class GameModeView
         toolbar.Children.Add(actions);
         var toolbarSurface = new Border
         {
-            Background = GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(16)), Child = toolbar,
+            Background = t.Surface(t.Panel), CornerRadius = new CornerRadius(t.Px(16)), Child = toolbar,
             Padding = new Thickness(t.Px(24), t.Px(t.Compact ? 8 : 20), t.Px(24), t.Px(t.Compact ? 8 : 20)),
         };
         Grid.SetRow(toolbarSurface, 1);
@@ -102,16 +103,14 @@ public sealed partial class GameModeView
         foreach (var (key, label) in new[] { ("posters", "Posters"), ("capsules", "Wide Capsule"), ("list", "List") })
         {
             var on = shell.Settings.LibraryView == key;
-            var labelContent = Glyph("", label);
-            if (!on && labelContent is StackPanel caption && caption.Children.FirstOrDefault() is FontIcon check) check.Opacity = 0;
-            var view = ui.Button(labelContent, () => SetLibraryView(key), on ? GmKind.Active : GmKind.Transparent, 0.8,
+            var view = ui.Button(label, () => SetLibraryView(key), on ? GmKind.Active : GmKind.Transparent, 0.8,
                 radius: 8, padding: new Thickness(t.Px(16), t.Px(10), t.Px(16), t.Px(10)), minHeight: t.Compact ? 40 : 48);
             GmUi.Capsule(view);
             ui.Focusable(view, -6);
             Key(view, "view-" + key);
             views.Children.Add(view);
         }
-        var viewSurface = GmUi.Capsule(new Border { Background = GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(12)), Padding = new Thickness(t.Px(4)), Child = ui.Selection("library-layout", views, views.Children.OfType<Button>().First(b => b.Name == "gm_view-" + shell.Settings.LibraryView)) });
+        var viewSurface = GmUi.Capsule(new Border { Background = t.Surface(t.Panel), CornerRadius = new CornerRadius(t.Px(12)), Padding = new Thickness(t.Px(4)), Child = ui.Selection("library-layout", views, views.Children.OfType<Button>().First(b => b.Name == "gm_view-" + shell.Settings.LibraryView)) });
         Grid.SetColumn(viewSurface, 1);
         subbar.Children.Add(viewSurface);
         var selection = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(4), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
@@ -174,6 +173,7 @@ public sealed partial class GameModeView
             previousOffset = offset; libraryScroll = offset;
         };
         libraryScroller = scroller;   // Render restores libraryScroll before focusing (see RestoreScroll)
+        mainScroller = scroller;
         FrameworkElement viewport = shell.Games.Count == 0 && shell.LibraryRefreshing
             ? new Controls.LibrarySkeleton(shell.Settings.LibraryView, GmTheme.B(t.Panel), t.Px(1)) : scroller;
         Grid.SetRow(viewport, 3);
@@ -216,6 +216,7 @@ public sealed partial class GameModeView
         shell.Settings.LibraryView = key;
         if (persist) shell.Settings.Save();
         libraryScroll = 0;
+        libraryFilterHidden = false;
         pendingFocusKey = "gm_view-" + key;
         Render();
     }
@@ -233,15 +234,23 @@ public sealed partial class GameModeView
         var gap = t.Px(t.Compact ? 18 : 24);
         var cell = Math.Floor((width - gap * (columns - 1)) / columns);
         var grid = new Grid { ColumnSpacing = gap, RowSpacing = t.Px(t.Compact ? 18 : 24), Padding = new Thickness(t.Px(12), t.Px(18), t.Px(22), t.Px(18)) };
+        var revealCards = IsLoaded && libraryCardsEntrancePending;
         for (var c = 0; c < columns; c++) grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(cell) });
         for (var i = 0; i < games.Count; i++)
         {
             if (i % columns == 0) grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             var card = GameCard(games[i], cell, wide);
-            Grid.SetRow(card, i / columns);
-            Grid.SetColumn(card, i % columns);
-            grid.Children.Add(card);
+            FrameworkElement target = card;
+            if (revealCards && i < columns * 3)
+            {
+                var reveal = new Grid(); reveal.Children.Add(card); target = reveal;
+                GmMotion.Reveal(reveal, i + 3, t.S);
+            }
+            Grid.SetRow(target, i / columns);
+            Grid.SetColumn(target, i % columns);
+            grid.Children.Add(target);
         }
+        if (revealCards) libraryCardsEntrancePending = false;
         return grid;
     }
 
@@ -251,7 +260,7 @@ public sealed partial class GameModeView
         var art = new Border
         {
             Width = width, Height = artHeight, CornerRadius = new CornerRadius(t.Px(12)), BorderThickness = new Thickness(t.Px(GmTheme.ArtworkStroke)),
-            BorderBrush = GmTheme.B(t.Line), Background = GmTheme.B(t.Card),
+            BorderBrush = GmTheme.B(t.Line), Background = t.Surface(t.Card),
         };
         var source = wide ? game.CapsulePath ?? game.PosterPath : game.PosterPath ?? game.CapsulePath;
         var image = GameItem.Image(source);
@@ -333,7 +342,7 @@ public sealed partial class GameModeView
                 title.Foreground = GmTheme.B(on ? colors.Title : t.Fg);
                 return;
             }
-            row.Background = selected && palette is not null ? palette.AccentBrush : GmTheme.B(t.Panel);
+            row.Background = selected && palette is not null ? palette.AccentBrush : t.Surface(t.Panel);
             title.Foreground = selected && palette is not null ? palette.Brush(palette.AccentDark)
                 : focused && palette is not null ? palette.Brush(palette.RowHoverTitle)
                 : GmTheme.B(t.Fg);
@@ -403,7 +412,7 @@ public sealed partial class GameModeView
         var art = new Border
         {
             Width = t.Px(144), Height = t.Px(68), CornerRadius = new CornerRadius(t.Px(8)), BorderThickness = new Thickness(t.Px(2)),
-            BorderBrush = GmTheme.B(t.Line), Background = GmTheme.B(t.Card), VerticalAlignment = VerticalAlignment.Center,
+            BorderBrush = GmTheme.B(t.Line), Background = t.Surface(t.Card), VerticalAlignment = VerticalAlignment.Center,
         };
         if (GameItem.Image(game.CapsulePath ?? game.PosterPath) is { } image)
             art.Child = new Border { CornerRadius = new CornerRadius(t.Px(6)), Background = new ImageBrush { ImageSource = image, Stretch = Stretch.UniformToFill } };
@@ -430,7 +439,7 @@ public sealed partial class GameModeView
 
         var feature = GmUi.Capsule(new Border
         {
-            Background = GmTheme.B(t.Card), BorderBrush = GmTheme.B(t.Line), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(t.Px(18)),
+            Background = t.Surface(t.Card), BorderBrush = GmTheme.B(t.Line), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(t.Px(18)),
             Padding = new Thickness(t.Px(18), t.Px(12), t.Px(18), t.Px(12)), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center,
             Child = ui.Text(game.Installed ? game.Profile ?? "Configured" : "Not configured", 0.76, t.Fg, new global::Windows.UI.Text.FontWeight(650)).With(x => x.TextLineBounds = TextLineBounds.Tight),
             Tag = "chip",
@@ -450,7 +459,7 @@ public sealed partial class GameModeView
         // Same height and padding as the feature chip beside it.
         var details = GmUi.Capsule(new Border
         {
-            Background = GmTheme.B(t.Card), BorderBrush = GmTheme.B(t.Card), BorderThickness = new Thickness(1),
+            Background = t.Surface(t.Card), BorderBrush = GmTheme.B(t.Card), BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(t.Px(32)), Padding = new Thickness(t.Px(18), t.Px(12), t.Px(18), t.Px(12)),
             HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
             Child = ui.Text(selecting ? "Select" : "Details", 0.76, t.Fg, FontWeights.SemiBold).With(x => x.TextLineBounds = TextLineBounds.Tight),
@@ -461,7 +470,7 @@ public sealed partial class GameModeView
 
         var surface = new Border
         {
-            Background = GmTheme.B(t.Panel), Child = grid, Padding = new Thickness(t.Px(24), t.Px(16), t.Px(24), t.Px(16)),
+            Background = t.Surface(t.Panel), Child = grid, Padding = new Thickness(t.Px(24), t.Px(16), t.Px(24), t.Px(16)),
             CornerRadius = new CornerRadius(first ? t.Px(16) : 0, first ? t.Px(16) : 0, last ? t.Px(16) : 0, last ? t.Px(16) : 0),
         };
         var enabled = !selecting || !game.Blocked;

@@ -4,12 +4,15 @@ Catalog adapters are independent of the feature provider. No game writes occur
 until apply(); only existing native SR/RR/FG files are eligible.
 """
 from pathlib import Path
+import copy
 import hashlib
 import json
 import mmap
 import re
 import shutil
 import struct
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
@@ -27,6 +30,28 @@ COMPONENTS = {
     'nvngx_dlssg.dll': 'Frame Generation',
 }
 MAX_DLL = 256 * 1024 * 1024
+CATALOG_TTL = 3600
+_CATALOG_CACHE = {}
+_catalog_retry_at = 0
+
+
+class CatalogRateLimit(t.Refusal):
+    """The catalog cannot currently be refreshed; existing files remain usable."""
+
+
+def _handle_rate_limit(error):
+    global _catalog_retry_at
+    headers = error.headers or {}
+    if error.code == 429 or error.code == 403 and (headers.get('X-RateLimit-Remaining') == '0' or 'rate limit' in str(error).lower()):
+        now = time.time()
+        try:
+            reset = float(headers.get('X-RateLimit-Reset', now + 60))
+            retry = float(headers.get('Retry-After', 60))
+        except (TypeError, ValueError):
+            reset, retry = now + 60, 60
+        _catalog_retry_at = now + min(3600, max(60, reset - now, retry))
+        error.close()
+        raise CatalogRateLimit('GitHub is temporarily rate-limiting DLSS downloads. Try again later.') from error
 
 
 def version(path):
@@ -42,9 +67,17 @@ def version(path):
 
 
 def _json(url):
+    api = urllib.parse.urlparse(url).hostname == 'api.github.com'
+    if api and time.time() < _catalog_retry_at:
+        raise CatalogRateLimit('GitHub is temporarily rate-limiting the DLSS catalog. Try again later.')
     request = urllib.request.Request(url, headers={'User-Agent': 'rtxForge-runtime-updates'})
-    with urllib.request.urlopen(request, timeout=30) as response:
-        data = response.read(4 * 1024 * 1024 + 1)
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            data = response.read(4 * 1024 * 1024 + 1)
+    except urllib.error.HTTPError as error:
+        if api:
+            _handle_rate_limit(error)
+        raise
     t.need(len(data) <= 4 * 1024 * 1024, 'Runtime catalog exceeds size limit')
     return json.loads(data)
 
@@ -52,6 +85,18 @@ def _json(url):
 def catalog(config):
     """Resolve one immutable Git snapshot, including content IDs for each DLL."""
     source = config.get('runtime_source') or t.read_json(ROOT / 'providers/runtime_sources.json')
+    key = json.dumps(source, sort_keys=True)
+    cached = _CATALOG_CACHE.get(key)
+    if cached and 0 <= time.monotonic() - cached[0] < CATALOG_TTL:
+        return copy.deepcopy(cached[1])
+    snapshot = _fetch_catalog(source)
+    if len(_CATALOG_CACHE) >= 16 and key not in _CATALOG_CACHE:
+        del _CATALOG_CACHE[min(_CATALOG_CACHE, key=lambda item: _CATALOG_CACHE[item][0])]
+    _CATALOG_CACHE[key] = (time.monotonic(), copy.deepcopy(snapshot))
+    return snapshot
+
+
+def _fetch_catalog(source):
     repo = source['repository']
     t.need(re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repo), 'Invalid runtime repository')
     ref = urllib.parse.quote(source.get('ref', 'main'), safe='')
@@ -97,6 +142,8 @@ def download(config, entry):
     if target.exists():
         verify(target)
         return target
+    if time.time() < _catalog_retry_at:
+        raise CatalogRateLimit('GitHub is temporarily rate-limiting DLSS downloads. Try again later.')
     stage = t.safe(cache / ('.download-' + uuid.uuid4().hex))
     try:
         request = urllib.request.Request(entry['url'], headers={'User-Agent': 'rtxForge-runtime-updates'})
@@ -108,6 +155,9 @@ def download(config, entry):
                 out.write(block)
         verify(stage)
         stage.replace(target)
+    except urllib.error.HTTPError as error:
+        _handle_rate_limit(error)
+        raise
     finally:
         stage.unlink(missing_ok=True)
     return target

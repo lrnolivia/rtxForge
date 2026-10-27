@@ -39,6 +39,7 @@ public sealed partial class GameModeView : UserControl
     };
     readonly Grid header = new();
     readonly Grid body = new();
+    ScrollViewer? mainScroller;
     readonly Grid footer = new();
     readonly Grid bottomNav = new();
     readonly Grid modalLayer = new() { Visibility = Visibility.Collapsed };
@@ -65,6 +66,7 @@ public sealed partial class GameModeView : UserControl
         GmMotion.ReducedMotion = () => shell.Settings.ReduceMotion;
         FontFamily = GmUi.BodyFont;
         t = GmTheme.For(shell.Settings.ResolvedGameModeTheme);
+        t.SetCardOpacity(shell.Settings.GameModeCardOpacity);
         t.Scale = shell.Settings.UiScaleKey;
         ui = new GmUi(t) { ArtworkLight = artworkLight };
         Content = root;
@@ -102,8 +104,28 @@ public sealed partial class GameModeView : UserControl
         // GamepadInput that moved focus twice and skipped rows. One source only.
         PreviewKeyDown += (_, e) =>
         {
+            if (e.Key is VirtualKey.GamepadRightThumbstickUp or VirtualKey.GamepadRightThumbstickDown)
+            {
+                shell.NativeRightStick(e.Key == VirtualKey.GamepadRightThumbstickUp, true);
+                ControllerActivity(); e.Handled = true; return;
+            }
+            if (e.Key is VirtualKey.GoBack or VirtualKey.GoForward && shell.ControllerLegacyInputActive)
+            { Handle(e.Key == VirtualKey.GoBack ? "previous" : "next", true); e.Handled = true; return; }
             if (e.Key >= VirtualKey.GamepadA && e.Key <= VirtualKey.GamepadRightThumbstickLeft)
-            { ControllerActivity(); e.Handled = true; }
+            {
+                ControllerActivity();
+                if (!shell.ControllerPollingAvailable)
+                {
+                    if (e.Key == VirtualKey.GamepadLeftShoulder) Handle("previous", true);
+                    if (e.Key == VirtualKey.GamepadRightShoulder) Handle("next", true);
+                }
+                e.Handled = true;
+            }
+        };
+        PreviewKeyUp += (_, e) =>
+        {
+            if (e.Key is not (VirtualKey.GamepadRightThumbstickUp or VirtualKey.GamepadRightThumbstickDown)) return;
+            shell.NativeRightStick(e.Key == VirtualKey.GamepadRightThumbstickUp, false); e.Handled = true;
         };
         XYFocusUpNavigationStrategy = XYFocusDownNavigationStrategy = XYFocusLeftNavigationStrategy = XYFocusRightNavigationStrategy =
             XYFocusNavigationStrategy.Projection;
@@ -128,12 +150,13 @@ public sealed partial class GameModeView : UserControl
 
         var stopObservingMotion = GmMotion.ObservePreferences(this);
         shell.GamesChanged += OnGamesChanged;
-        Unloaded += (_, _) => { stopObservingMotion(); shell.GamesChanged -= OnGamesChanged; Application.Current.FocusVisualKind = desktopFocusKind; };
+        Unloaded += (_, _) => { shell.NativeRightStick(true, false); shell.NativeRightStick(false, false); stopObservingMotion(); shell.GamesChanged -= OnGamesChanged; Application.Current.FocusVisualKind = desktopFocusKind; };
         Loaded += (_, _) =>
         {
             Application.Current.FocusVisualKind = FocusVisualKind.Reveal; t.Resize(ActualWidth, ActualHeight); Render();
 #if DEBUG
             StartMotionReview();
+            StartPointerReview();
 #endif
         };
     }
@@ -154,6 +177,7 @@ public sealed partial class GameModeView : UserControl
     {
         var size = (ActualWidth, ActualHeight);
         t = GmTheme.For(shell.Settings.ResolvedGameModeTheme);
+        t.SetCardOpacity(shell.Settings.GameModeCardOpacity);
         t.Scale = shell.Settings.UiScaleKey;
         t.Resize(size.ActualWidth, size.ActualHeight);
         ui = new GmUi(t) { ArtworkLight = artworkLight };
@@ -163,13 +187,48 @@ public sealed partial class GameModeView : UserControl
     // ---------- Rendering ----------
 
     int renderRevision;
+    bool entrancePending = true;
+    bool entranceThisRender;
+    bool changingPageThisRender;
     string? lastLibraryLayout;
+    sealed class PageSurface : Grid
+    {
+        public Grid Motion { get; } = new();
+        public ArtworkLightLayer Light { get; }
+        public PageSurface(Grid scene, ArtworkLightLayer light)
+        {
+            Light = light; Motion.Children.Add(scene);
+            Children.Add(light.Artwork); Children.Add(Motion); Children.Add(light);
+        }
+        public void HideLight() { Light.Opacity = 0; Light.Artwork.Opacity = 0; }
+    }
+
+    void SlideSurface(Grid surface, ArtworkLightLayer light, int direction)
+    {
+        var revision = renderRevision;
+        light.Opacity = 0; light.Artwork.Opacity = 0;
+        GmMotion.Horizontal(surface, direction, t.S, completed: () =>
+        {
+            if (revision != renderRevision || !light.IsLoaded) return;
+            light.RefreshPositions();
+            GmMotion.GlowArrival(light.Artwork); GmMotion.GlowArrival(light);
+        });
+    }
+
     void Render(bool keepFocus = false)
     {
         var revision = ++renderRevision;
         var previousPage = lastRenderedPage;
         var changingPage = previousPage is not null && previousPage != page;
+        changingPageThisRender = changingPage;
+        entranceThisRender = entrancePending && IsLoaded;
+        var direction = ControllerNavigation.PageDirection(previousPage, page);
         var changingLayout = page == "library" && previousPage == "library" && lastLibraryLayout != shell.Settings.LibraryView;
+        if (changingLayout)
+        {
+            string[] layouts = ["posters", "capsules", "list"];
+            direction = Array.IndexOf(layouts, shell.Settings.LibraryView) < Array.IndexOf(layouts, lastLibraryLayout) ? -1 : 1;
+        }
         var changingContent = changingPage || changingLayout;
         lastLibraryLayout = shell.Settings.LibraryView;
         lastRenderedPage = page;
@@ -185,14 +244,16 @@ public sealed partial class GameModeView : UserControl
         var (accent, accentInk) = (ui.Accent, ui.AccentInk);
         (ui.Accent, ui.AccentInk) = (GmTheme.Accent, GmTheme.AccentInk);
         ui.ArtworkLight = artworkLight;
+        ui.SelectionGlowDelay = changingContent ? GmMotion.SlideArrival : 0;
         RenderHeader();
         // Retain at most one outgoing surface. New controls receive focus immediately.
         while (body.Children.Count > 1) body.Children.RemoveAt(0);
         var departing = changingContent && GmMotion.Enabled ? body.Children.LastOrDefault() as FrameworkElement : null;
         if (departing is null) body.Children.Clear();
         else { departing.IsHitTestVisible = false; foreach (var oldControl in Descendants(departing).OfType<Control>()) oldControl.IsEnabled = false; }
-        pageLight = new ArtworkLightLayer();
+        pageLight = new ArtworkLightLayer { ControllerFocus = inputKind == "controller" };
         ui.ArtworkLight = pageLight;
+        mainScroller = null;
         body.Background = page == "details" ? GmTheme.B(t.View) : null;
         var content = page switch
         {
@@ -207,20 +268,32 @@ public sealed partial class GameModeView : UserControl
             contentElement.Loaded += (_, _) => { foreach (var scroll in Descendants(content).OfType<ScrollViewer>()) GmScrollFade.Attach(scroll, t.S); };
         (ui.Accent, ui.AccentInk) = (accent, accentInk);
         var scene = new Grid();
-        scene.Children.Add(pageLight.Artwork); scene.Children.Add(content); scene.Children.Add(pageLight);
-        body.Children.Add(scene);
+        scene.Children.Add(content);
+        var surface = new PageSurface(scene, pageLight); body.Children.Add(surface);
         ui.ArtworkLight = artworkLight;
-        if (departing is not null) GmMotion.Exit(departing, t.S, () => { if (body.Children.Contains(departing)) body.Children.Remove(departing); });
+        if (departing is PageSurface oldSurface)
+        {
+            oldSurface.HideLight();
+            GmMotion.Horizontal(oldSurface.Motion, direction, t.S, outgoing: true,
+                completed: () => { if (body.Children.Contains(oldSurface)) body.Children.Remove(oldSurface); });
+        }
         if (changingContent)
         {
-            if (page == "details" || previousPage == "details") GmMotion.Dissolve(scene);
-            else GmMotion.Page(content, t.S, changingLayout);
+            SlideSurface(surface.Motion, surface.Light, direction);
+        }
+        else if (entranceThisRender)
+        {
+            GmMotion.Reveal(header, 0, t.S);
+            GmMotion.Page(content, t.S);
+            GmMotion.Reveal(footer, 5, t.S);
+            entrancePending = false;
         }
         RenderFooter();
         // Focus: keep the same control when re-rendering, else the page's first target.
-        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        void RestorePageFocus()
         {
             if (revision != renderRevision || modals.Count > 0) return;
+            surface.UpdateLayout();
             // Library: restore the scroll position first, so focusing only nudges it into view.
             if (page == "library" && libraryScroller is { } scroller) { scroller.UpdateLayout(); scroller.ChangeView(null, libraryScroll, null, true); }
             Control? Current(string key) => FindByKey(scene, key) ?? FindByKey(header, key) ?? FindByKey(bottomNav, key);
@@ -231,7 +304,14 @@ public sealed partial class GameModeView : UserControl
             (target as Control)?.Focus(FocusState.Keyboard);
             artworkLight.RefreshPositions();
             pageLight.RefreshPositions();
-        });
+        }
+        void Ready(object sender, RoutedEventArgs args)
+        {
+            surface.Loaded -= Ready;
+            DispatcherQueue.TryEnqueue(RestorePageFocus);
+        }
+        if (surface.IsLoaded) DispatcherQueue.TryEnqueue(RestorePageFocus);
+        else surface.Loaded += Ready;
     }
 
     Control? initialFocus;
@@ -241,12 +321,20 @@ public sealed partial class GameModeView : UserControl
     readonly List<Button> tabButtons = [];
     string? lastRenderedPage;
     readonly Dictionary<string, string> renderedSections = [];
-    void AnimateSection(string area, string key, FrameworkElement content)
+    FrameworkElement AnimateSection(string area, string key, FrameworkElement content)
     {
-        if (renderedSections.TryGetValue(area, out var previous) && previous != key)
-            GmMotion.Dissolve(content);
+        var wrapper = new Grid(); wrapper.Children.Add(content);
+        if (!changingPageThisRender && renderedSections.TryGetValue(area, out var previous) && previous != key)
+        {
+            var order = area == "settings" ? SettingsSections : Sections;
+            var direction = Array.IndexOf(order, key) < Array.IndexOf(order, previous) ? -1 : 1;
+            SlideSurface(wrapper, pageLight, direction);
+        }
         renderedSections[area] = key;
+        return wrapper;
     }
+
+    public void AnimateExit(Action completed) => GmMotion.Exit(root, t.S, completed);
 
     void RenderHeader()
     {
@@ -321,7 +409,7 @@ public sealed partial class GameModeView : UserControl
         }
         return GmUi.Capsule(new Border
         {
-            Background = GmTheme.B(t.Panel, page == "details" ? 1 : .80), CornerRadius = new CornerRadius(t.Px(40)), Padding = new Thickness(t.Px(t.Compact ? 8 : 10)),
+            Background = t.Surface(t.Panel, navigation: true), CornerRadius = new CornerRadius(t.Px(40)), Padding = new Thickness(t.Px(t.Compact ? 8 : 10)),
             Child = ui.Selection("navigation", line, tabButtons.First(b => b.Name == "gm_tab-" + (page == "details" ? "library" : page)), true), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
         });
     }
@@ -395,10 +483,24 @@ public sealed partial class GameModeView : UserControl
 
     void CycleTab(int direction)
     {
-        string[] order = ["library", "presets", "packages", "extras", "settings"];
-        var current = Array.IndexOf(order, page == "details" ? "library" : page);
-        pendingFocusKey = "gm_tab-" + order[(current + direction + order.Length) % order.Length];
-        Open(order[(current + direction + order.Length) % order.Length]);
+        if (modals.Count > 0 || choiceMenu is not null) return;
+        var target = ControllerNavigation.NextTab(page, direction);
+        pendingFocusKey = "gm_tab-" + target;
+        Open(target);
+    }
+
+    /// <summary>Scroll the active content, regardless of header or sidebar focus.</summary>
+    public void ScrollMainView(double delta)
+    {
+        if (choiceMenu is not null || !double.IsFinite(delta)) return;
+        var scroll = modals.Count > 0
+            ? Descendants(modals.Peek().Element).OfType<ScrollViewer>().FirstOrDefault(s => s.ScrollableHeight > 0)
+            : mainScroller;
+        if (scroll is null || scroll.XamlRoot is null) return;
+        ControllerActivity();
+        var requested = Math.Clamp(scroll.VerticalOffset + t.Px(delta), 0, scroll.ScrollableHeight);
+        ControllerDiagnostics.View(page, scroll.VerticalOffset, requested, scroll.ScrollableHeight);
+        scroll.ChangeView(null, requested, null, true);
     }
 
     void Back()
@@ -456,9 +558,21 @@ public sealed partial class GameModeView : UserControl
 
     void SetInput(string kind)
     {
+        if (kind == "keyboard")
+        {
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+                ApplyInput(shell.ControllerLegacyInputActive ? "controller" : "keyboard"));
+            return;
+        }
+        ApplyInput(kind);
+    }
+
+    void ApplyInput(string kind)
+    {
         if (kind == "keyboard" && shell.ControllerLegacyInputActive) { ControllerActivity(); return; }
         if (inputKind == kind) return;
         inputKind = kind;
+        foreach (var light in Descendants(root).OfType<ArtworkLightLayer>()) light.ControllerFocus = kind == "controller";
         RenderFooter();
     }
 
@@ -575,7 +689,7 @@ public sealed partial class GameModeView : UserControl
         if (row.Children.Count > 0) panel.Children.Add(row);
         var dialog = new Border
         {
-            Background = GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(20)),
+            Background = t.Surface(t.Panel), CornerRadius = new CornerRadius(t.Px(20)),
             Padding = new Thickness(t.Px(t.Compact ? 24 : 40)), Width = Math.Min(t.Px(width), Math.Max(320, ActualWidth - t.Px(96))),
             MaxHeight = Math.Max(240, ActualHeight - footer.ActualHeight - t.Px(96)),
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
@@ -586,10 +700,14 @@ public sealed partial class GameModeView : UserControl
         // A screen about one game also tints its sliders and switches with that game's accent.
         if (modalPalette is not null) Controls.AccentResources.Apply(dialog.Resources, modalPalette);
         var dialogScene = new Grid { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        var dialogLight = new ArtworkLightLayer();
+        var dialogLight = new ArtworkLightLayer { ControllerFocus = inputKind == "controller" };
         dialogScene.Children.Add(dialogLight.Artwork); dialogScene.Children.Add(dialog); dialogScene.Children.Add(dialogLight);
         foreach (var button in Descendants(dialog).OfType<Button>()) GmGlow.Layer(button, dialogLight);
-        dialog.Loaded += (_, _) => { foreach (var scroll in Descendants(dialog).OfType<ScrollViewer>()) GmScrollFade.Attach(scroll, t.S); };
+        dialog.Loaded += (_, _) =>
+        {
+            foreach (var scroll in Descendants(dialog).OfType<ScrollViewer>())
+            { scroll.IsTabStop = false; GmScrollFade.Attach(scroll, t.S); }
+        };
         layer.Children.Add(dialogScene);
         GmMotion.Dialog(dialogScene, t.S);
         layer.TabFocusNavigation = KeyboardNavigationMode.Cycle;
@@ -603,7 +721,8 @@ public sealed partial class GameModeView : UserControl
         DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
             if (modals.Count == 0 || !ReferenceEquals(modals.Peek().Element, layer)) return;
-            var target = focus ?? FirstFocusable(layer) as Control;
+            layer.UpdateLayout();
+            var target = focus ?? FirstFocusable(content) as Control ?? FirstFocusable(layer) as Control;
             target?.Focus(FocusState.Keyboard);
             artworkLight.RefreshPositions();
             pageLight.RefreshPositions();
@@ -641,7 +760,7 @@ public sealed partial class GameModeView : UserControl
     {
         toastHost.Child = new Border
         {
-            Background = GmTheme.B(t.Card), CornerRadius = new CornerRadius(t.Px(16)), Padding = new Thickness(t.Px(24), t.Px(14), t.Px(24), t.Px(14)),
+            Background = t.Surface(t.Card), CornerRadius = new CornerRadius(t.Px(16)), Padding = new Thickness(t.Px(24), t.Px(14), t.Px(24), t.Px(14)),
             Child = ui.Text(text, 0.85, wrap: true), MaxWidth = t.Px(900),
         };
         toastHost.Margin = new Thickness(0, 0, 0, t.Px(24));

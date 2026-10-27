@@ -19,6 +19,7 @@ public sealed partial class GmUi(GmTheme t)
 {
     public GmTheme T => t;
     readonly Dictionary<string, GmSelection> indicators = [];
+    internal int SelectionGlowDelay { get; set; }
     internal bool SelectionSurfacesMeasured => indicators.Values.All(indicator => indicator.MeasuredHeight > 0);
     internal Grid Selection(string key, StackPanel line, Button selected, bool navigation = false)
     {
@@ -26,9 +27,8 @@ public sealed partial class GmUi(GmTheme t)
         foreach (var button in line.Children.OfType<Button>())
         {
             GmGlow.Indicator(button);
-            button.Background = GmTheme.B(Microsoft.UI.Colors.Transparent);
         }
-        return indicator.Place(line, selected, t, navigation);
+        return indicator.Place(line, selected, t, navigation, navigation ? SelectionGlowDelay : 0);
     }
 
     internal ArtworkLightLayer? ArtworkLight { get; set; }
@@ -97,7 +97,7 @@ public sealed partial class GmUi(GmTheme t)
             MinHeight = t.Px(minHeight),
             IsEnabled = enabled,
         };
-        if ((kind is GmKind.Card or GmKind.Active or GmKind.Primary or GmKind.Danger) && button.Content is UIElement contentElement)
+        if (kind != GmKind.Transparent && button.Content is UIElement contentElement)
             InheritButtonInk(contentElement);
         if (kind == GmKind.Dlss)
         {
@@ -164,14 +164,14 @@ public sealed partial class GmUi(GmTheme t)
         element.Shadow = null;
     }
 
-    /// <summary>Rows inside a rounded group: inner, rounded focus ring; no lift (would overlap neighbours).</summary>
+    /// <summary>Rows inside a rounded group: focus follows the row boundary without lift.</summary>
     public void RowFocus(Button button)
     {
         GmMotion.Flat(button);
-        Focusable(button, -8);
+        Focusable(button);
         // Square: rows sit edge to edge, and the group's own corners frame the list.
         button.CornerRadius = new CornerRadius(0);
-        button.FocusVisualMargin = new Thickness(t.Px(6));
+        button.FocusVisualMargin = new Thickness(0);
         button.FocusVisualPrimaryThickness = new Thickness(t.Px(1));
         button.Shadow = null;
     }
@@ -179,20 +179,25 @@ public sealed partial class GmUi(GmTheme t)
     /// <summary>Menu focus adds a surface and brighter ink; selection colours remain owned by the page.</summary>
     public void Sidebar(Button button, bool active)
     {
-        if (!active) button.Background = GmTheme.B(Microsoft.UI.Colors.Transparent);
-        MenuFocus(button);
+        var highlight = t.Highlight(FocusBrush.Color, fixedTint: true);
+        button.Background = active ? highlight.Surface : GmTheme.B(Microsoft.UI.Colors.Transparent);
+        if (active) button.Foreground = highlight.Ink;
+        else
+        {
+            // Focus previews a destination; activation alone owns the accent.
+            button.FocusVisualPrimaryBrush = GmTheme.B(t.Focus);
+            MenuFocus(button, fixedTint: true, neutral: true);
+        }
     }
 
-    public void MenuFocus(Button button)
+    public void MenuFocus(Button button, bool fixedTint = false, bool neutral = false)
     {
         Brush? priorBackground = null, priorForeground = null;
-        var focusedBackground = GmTheme.B(t.RowFocus);
-        var focusedForeground = GmTheme.B(t.ActiveFg);
+        var (focusedBackground, focusedForeground) = t.Highlight(neutral ? t.Focus : FocusBrush.Color, fixedTint);
         button.GotFocus += (_, _) =>
         {
             if (button.FocusState == FocusState.Pointer) return;
-            focusedBackground.Color = ArtAccent.Mix(FocusBrush.Color, t.Panel, t.IsLight ? .10 : .18);
-            focusedForeground.Color = ArtAccent.Readable(FocusBrush.Color, focusedBackground.Color);
+            focusedBackground.TintColor = GlowHalo.Richer(neutral ? t.Focus : FocusBrush.Color);
             priorBackground = button.Background; priorForeground = button.Foreground;
             button.Background = focusedBackground; button.Foreground = focusedForeground;
         };
@@ -209,7 +214,7 @@ public sealed partial class GmUi(GmTheme t)
         return new Border
         {
             MinWidth = t.Px(32), MinHeight = t.Px(32), CornerRadius = new CornerRadius(t.Px(6)),
-            Background = GmTheme.B(t.Card), Padding = new Thickness(t.Px(10), t.Px(4), t.Px(10), t.Px(4)),
+            Background = t.Surface(t.Card), Padding = new Thickness(t.Px(10), t.Px(4), t.Px(10), t.Px(4)),
             VerticalAlignment = VerticalAlignment.Center,
             Child = new TextBlock
             {
@@ -255,7 +260,7 @@ public sealed partial class GmUi(GmTheme t)
         if (list.Count > 40)
             content = new ItemsRepeater { ItemsSource = entries, ItemTemplate = new GmElementFactory(), Layout = new StackLayout(), VerticalCacheLength = .5 };
         else { foreach (var entry in entries) stack.Children.Add(entry); content = stack; }
-        return new Border { Background = GmTheme.B(background ?? t.Panel), CornerRadius = new CornerRadius(t.Px(16)), Child = content };
+        return new Border { Background = t.Surface(background ?? t.Panel), CornerRadius = new CornerRadius(t.Px(16)), Child = content };
     }
 
     /// <summary>.rf-preference: title (+ description) with a value or control on the right.</summary>
@@ -315,7 +320,8 @@ public sealed partial class GmUi(GmTheme t)
             minHeight: t.Compact ? minHeight * 0.8 : minHeight);
         button.HorizontalAlignment = HorizontalAlignment.Stretch;
         button.HorizontalContentAlignment = HorizontalAlignment.Stretch;
-        RowFocus(button);   // ring inside the row: rows sit edge to edge in a rounded group
+        RowFocus(button);   // edge stroke follows the group's first/last row corners
+        button.Background = GmTheme.B(Microsoft.UI.Colors.Transparent);
         if (!danger)
         {
             MenuFocus(button);
@@ -329,7 +335,7 @@ public sealed partial class GmUi(GmTheme t)
     public void StyleSettingsRow(Button button)
     {
         if (button.Content is not Grid grid || grid.Children.FirstOrDefault() is not StackPanel text) return;
-        button.Background = GmTheme.B(t.Panel);
+        button.Background = t.Surface(t.Panel);
         button.CornerRadius = new CornerRadius(t.Px(12));
         button.Padding = new Thickness(t.Px(28), t.Px(22), t.Px(28), t.Px(22));
         button.MinHeight = t.Px(84);
@@ -362,7 +368,7 @@ public sealed partial class GmUi(GmTheme t)
         value.TextAlignment = TextAlignment.Center;
         var field = new Border
         {
-            Background = GmTheme.B(t.Card), CornerRadius = new CornerRadius(t.Px(9)),
+            Background = t.Surface(t.Card), CornerRadius = new CornerRadius(t.Px(9)),
             Padding = new Thickness(t.Px(12), t.Px(10), t.Px(12), t.Px(10)),
             MinWidth = t.Px(160), MaxWidth = t.Px(280), Child = value,
             HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
@@ -409,7 +415,7 @@ public sealed partial class GmUi(GmTheme t)
         {
             var border = new Border
             {
-                Background = GmTheme.B(t.Card), CornerRadius = new CornerRadius(t.Px(8)), Padding = new Thickness(t.Px(8)),
+                Background = t.Surface(t.Card), CornerRadius = new CornerRadius(t.Px(8)), Padding = new Thickness(t.Px(8)),
                 Child = Icon(glyph, 0.7, enabled ? t.Fg : t.DisabledFg),
             };
             if (enabled) border.Tapped += (_, e) => { adjust(delta); shown.Text = value(); e.Handled = true; };
@@ -450,7 +456,7 @@ public sealed partial class GmUi(GmTheme t)
             Focusable(button, -6);
             line.Children.Add(button);
         }
-        return Capsule(new Border { Background = GmTheme.B(t.Panel), CornerRadius = new CornerRadius(t.Px(12)), Padding = new Thickness(t.Px(4)), Child = Selection("segments:" + string.Join("/", items.Select(i => i.Key)), line, line.Children.OfType<Button>().ElementAt(Math.Max(0, items.ToList().FindIndex(i => i.Key == selected)))) });
+        return Capsule(new Border { Background = t.Surface(t.Panel), CornerRadius = new CornerRadius(t.Px(12)), Padding = new Thickness(t.Px(4)), Child = Selection("segments:" + string.Join("/", items.Select(i => i.Key)), line, line.Children.OfType<Button>().ElementAt(Math.Max(0, items.ToList().FindIndex(i => i.Key == selected)))) });
     }
 
     public static Border Spacer(double height) => new() { Height = height };

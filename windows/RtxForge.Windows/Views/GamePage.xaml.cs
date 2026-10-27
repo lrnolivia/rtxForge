@@ -39,7 +39,7 @@ public sealed partial class GamePage : Page
             var fullPoster = Math.Round(Math.Clamp(heroExpandedHeight * .48, 120, 260));
             PosterFrame.Height = fullPoster + (100 - fullPoster) * progress;
             PosterFrame.Width = Math.Round(PosterFrame.Height * 2 / 3);
-            var fullTitle = Math.Clamp(heroLayoutWidth / 26, 26, 64) * (game?.Name.Length > 28 ? .78 : 1);
+            var fullTitle = Math.Clamp(heroLayoutWidth / 26, 26, 48) * (game?.Name.Length > 28 ? .78 : 1);
             TitleText.FontSize = fullTitle + (Math.Min(fullTitle, 32) - fullTitle) * progress;
             TitleText.LineHeight = TitleText.FontSize * 1.1;
             heroProgress = progress;
@@ -48,7 +48,8 @@ public sealed partial class GamePage : Page
             HeroImage.Opacity = 1 - .6 * progress;
         }, Sections);
         ActualThemeChanged += (_, _) => ApplyAccentText();
-        ContentScroll.SizeChanged += (_, e) => ApplyLayout(e.NewSize.Width);
+        HeroHost.SizeChanged += (_, e) => ApplyLayout(e.NewSize.Width);
+        Loaded += (_, _) => ApplyLayout(HeroHost.ActualWidth);
         shell.GamesChanged += Refresh;
         Unloaded += (_, _) => shell.GamesChanged -= Refresh;
     }
@@ -75,7 +76,8 @@ public sealed partial class GamePage : Page
         HeroImage.ChosenFocus = FadedImage.Stored(shell.Settings.GameHeroFocus, game.Id);
         PosterImage.Source = ViewModels.GameItem.Image(game.PosterPath);
         PosterFrame.Visibility = game.PosterPath is null || phoneLayout ? Visibility.Collapsed : Visibility.Visible;
-        ApplyLayout(ActualWidth);
+        ApplyLayout(HeroHost.ActualWidth);
+        DispatcherQueue.TryEnqueue(() => ContentScroll.ChangeView(null, 0, null, true));
         _ = ApplyAccentAsync();
         SelectSection(request.Section);
         Refresh();
@@ -466,7 +468,7 @@ public sealed partial class GamePage : Page
         PosterFrame.Visibility = phone || game?.PosterPath is null ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    void OnPageSizeChanged(object sender, SizeChangedEventArgs e) => ApplyLayout(ContentScroll.ActualWidth > 0 ? ContentScroll.ActualWidth : e.NewSize.Width);
+    void OnPageSizeChanged(object sender, SizeChangedEventArgs e) => ApplyLayout(HeroHost.ActualWidth);
 
     /// <summary>
     /// Scales the hero, poster, title and margins with the window, and moves
@@ -481,7 +483,7 @@ public sealed partial class GamePage : Page
         if (phone != phoneLayout) UsePhoneLayout(phone);
         if (!phone)
         {
-            heroExpandedHeight = Math.Round(Math.Clamp(width * .38, 360, 620));
+            heroExpandedHeight = Math.Round(Math.Clamp(width * .30, 320, 440));
             collapsingHero.SetRange(heroExpandedHeight, width < 700 ? 220 : 180);
         }
         // Phone: the art shows above the identity, which sits over its faded lower part.

@@ -29,12 +29,10 @@ static partial class GmMotion
             Grid.SetRow(scene, Grid.GetRow(frame)); Grid.SetColumn(scene, Grid.GetColumn(frame));
             Grid.SetRowSpan(scene, Grid.GetRowSpan(frame)); Grid.SetColumnSpan(scene, Grid.GetColumnSpan(frame));
             Canvas.SetZIndex(scene, Canvas.GetZIndex(region));
-            var light = new ArtworkLightLayer();
-            scene.Children.Add(light.Artwork); scene.Children.Add(region); scene.Children.Add(light); panel.Children.Add(scene);
-            foreach (var button in Buttons(region)) GmGlow.Layer(button, light);
+            scene.Children.Add(region); panel.Children.Add(scene);
             if (contentOnly && i < regions.Length - 1) continue;
             var profile = GmMotionTokens.Region(i);
-            Enter(scene, (float)(profile.Travel * unit), 1, profile.Period, .92f);
+            Reveal(scene, i, unit);
         }
     }
 
@@ -60,50 +58,68 @@ static partial class GmMotion
     {
         if (!Enabled) { finished(); return; }
         var compositor = Microsoft.UI.Xaml.Media.CompositionTarget.GetCompositorForCurrentThread();
-        using var opacity = compositor.CreateScalarKeyFrameAnimation(); opacity.Target = "Opacity";
-        opacity.InsertKeyFrame(1, 0); opacity.Duration = TimeSpan.FromMilliseconds(GmMotionTokens.Exit);
+        var opacity = compositor.CreateScalarKeyFrameAnimation(); opacity.Target = "Opacity";
+        opacity.InsertKeyFrame(1, 0); opacity.Duration = TimeSpan.FromMilliseconds(180);
         element.StartAnimation(opacity);
-        using var travel = compositor.CreateSpringVector3Animation(); travel.Target = "Translation";
-        travel.FinalValue = new(0, (float)(-6 * unit), 0); travel.DampingRatio = 1;
-        travel.Period = TimeSpan.FromMilliseconds(GmMotionTokens.Focus); element.StartAnimation(travel);
+        var scale = compositor.CreateVector3KeyFrameAnimation(); scale.Target = "Scale";
+        scale.InsertKeyFrame(0, Vector3.One); scale.InsertKeyFrame(1, new(.985f, .985f, 1));
+        scale.Duration = opacity.Duration;
+        element.CenterPoint = new((float)element.ActualWidth / 2, (float)element.ActualHeight / 2, 0);
+        element.StartAnimation(scale);
         var timer = element.DispatcherQueue.CreateTimer(); timer.IsRepeating = false;
-        timer.Interval = TimeSpan.FromMilliseconds(GmMotionTokens.Exit);
-        timer.Tick += (_, _) => { timer.Stop(); finished(); };
+        timer.Interval = opacity.Duration;
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop(); element.StopAnimation(opacity); element.StopAnimation(scale);
+            opacity.Dispose(); scale.Dispose(); finished();
+        };
         timer.Start();
     }
 
-    public static void Dialog(FrameworkElement element, double unit = 1) => Enter(element, (float)(GmMotionTokens.DialogTravel * unit), GmMotionTokens.DialogScale, GmMotionTokens.Surface, .90f);
+    public static void Dialog(FrameworkElement element, double unit = 1) => Enter(element, 0, GmMotionTokens.DialogScale, 140, 0);
 
     public static void Dissolve(FrameworkElement element) => OnLoaded(element, () =>
     {
         if (Enabled) Fade(element, .78f, GmMotionTokens.Fade);
     });
 
-    static void Enter(FrameworkElement element, float distance, float fromScale, int period, float fromOpacity) => OnLoaded(element, () =>
+    static void Enter(FrameworkElement element, float distance, float fromScale, int period, float fromOpacity, int delay = 0) => OnLoaded(element, () =>
     {
         if (!Enabled) return;
         var compositor = Microsoft.UI.Xaml.Media.CompositionTarget.GetCompositorForCurrentThread();
         element.CenterPoint = new((float)element.ActualWidth / 2, (float)element.ActualHeight / 2, 0);
-        var slide = compositor.CreateSpringVector3Animation(); slide.Target = "Translation";
-        slide.InitialValue = new(0, distance, 0); slide.FinalValue = Vector3.Zero;
-        slide.DampingRatio = GmMotionTokens.SceneDamping; slide.Period = TimeSpan.FromMilliseconds(period);
-        var scale = compositor.CreateSpringVector3Animation(); scale.Target = "Scale";
-        scale.InitialValue = new(fromScale, fromScale, 1); scale.FinalValue = Vector3.One;
-        scale.DampingRatio = GmMotionTokens.SceneDamping; scale.Period = TimeSpan.FromMilliseconds(period);
+        using var ease = Ease(compositor);
+        var slide = compositor.CreateVector3KeyFrameAnimation(); slide.Target = "Translation";
+        slide.InsertKeyFrame(0, new(0, distance, 0)); slide.InsertKeyFrame(1, Vector3.Zero, ease);
+        slide.Duration = TimeSpan.FromMilliseconds(period); slide.DelayTime = TimeSpan.FromMilliseconds(delay);
+        var scale = compositor.CreateVector3KeyFrameAnimation(); scale.Target = "Scale";
+        scale.InsertKeyFrame(0, new(fromScale, fromScale, 1)); scale.InsertKeyFrame(1, Vector3.One, ease);
+        scale.Duration = slide.Duration; scale.DelayTime = slide.DelayTime;
+        var opacity = compositor.CreateScalarKeyFrameAnimation(); opacity.Target = "Opacity";
+        opacity.InsertKeyFrame(0, fromOpacity); opacity.InsertKeyFrame(1, 1, ease);
+        opacity.Duration = slide.Duration; opacity.DelayTime = slide.DelayTime;
+        element.Opacity = fromOpacity;
         element.StartAnimation(slide);
         if (fromScale != 1) element.StartAnimation(scale);
-        Fade(element, fromOpacity, GmMotionTokens.Fade);
+        element.StartAnimation(opacity);
+        var timer = element.DispatcherQueue.CreateTimer(); timer.IsRepeating = false;
+        timer.Interval = TimeSpan.FromMilliseconds(period + delay);
+        bool stopped = false;
         scenes.Remove(element); scenes.Add(element, Stop);
         element.Unloaded += Unloaded;
+        timer.Tick += (_, _) => Stop(); timer.Start();
         void Unloaded(object sender, RoutedEventArgs args)
         {
             element.Unloaded -= Unloaded;
-            Stop(); scenes.Remove(element); slide.Dispose(); scale.Dispose();
+            Stop();
         }
         void Stop()
         {
-            element.StopAnimation(slide); element.StopAnimation(scale);
+            if (stopped) return;
+            stopped = true; timer.Stop(); element.Unloaded -= Unloaded; scenes.Remove(element);
+            element.StopAnimation(slide); element.StopAnimation(scale); element.StopAnimation(opacity);
             element.Scale = Vector3.One; element.Translation = Vector3.Zero; element.Opacity = 1;
+            slide.Dispose(); scale.Dispose(); opacity.Dispose();
         }
     });
 

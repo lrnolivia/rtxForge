@@ -265,11 +265,39 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         return credits;
     }
 
-    public Task<OperationReview> PrepareAsync(string operation, IReadOnlyList<Game> targets, Tuning tuning, string mode,
-        IProgress<PrepareProgress>? progress = null, CancellationToken cancel = default) =>
-        // Alphabetical throughout: checking, the review, and each package's run.
-        PrepareCoreAsync(operation, targets.OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase).ToArray(), tuning, mode,
-            progress is null ? null : new OneCount(progress, targets.Count), cancel, false);
+    public async Task<OperationReview> PrepareAsync(string operation, IReadOnlyList<Game> targets, Tuning tuning, string mode,
+        IProgress<PrepareProgress>? progress = null, CancellationToken cancel = default)
+    {
+        var ordered = targets.OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase).ToArray();
+        var counted = progress is null ? null : new OneCount(progress, targets.Count);
+        if (operation is "install" or "repair" && ordered.Length > 0)
+        {
+            var batches = new JsonArray();
+            foreach (var route in ordered.Select(g => RouteFor(g, operation, mode)).Distinct())
+            {
+                if (route == "adopt") continue;
+                batches.Add(new JsonObject
+                {
+                    ["mode"] = mode,
+                    ["settings"] = PrepareSettings(route, tuning, mode, false),
+                });
+            }
+            if (batches.Count > 0)
+            {
+                counted?.Report(new PrepareProgress("Downloading packages/files", null, 0, 0));
+                await CallAsync("prefetch_install", new JsonObject
+                {
+                    ["batches"] = batches,
+                    ["manage_dlss_files"] = Settings.ManageDlssFiles,
+                }, _ => counted?.Report(new PrepareProgress("Downloading packages/files", null, 0, 0)), cancel);
+            }
+        }
+        return await PrepareCoreAsync(operation, ordered, tuning, mode, counted, cancel, false);
+    }
+
+    string RouteFor(Game g, string operation, string mode) => operation == "install" && g.AdoptionAvailable ? "adopt"
+        : g.UsesVulkan && (g.Installed || mode != "nr-only") ? "vulkan-native"
+        : g.UsesFeeder ? "feeder" : operation is "install" or "repair" ? Settings.PackageFor(g, operation) : Settings.RuntimeProvider;
 
     /// <summary>
     /// Checking progress as one pass over the selection: each package's route and each
@@ -280,10 +308,38 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         readonly HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
         public void Report(PrepareProgress step)
         {
+            if (step.Game is null && step.Total == 0) { target.Report(step); return; }
             int count;
             lock (seen) { if (step.Game is { Length: > 0 } game && step.Checked > 0) seen.Add(game); count = seen.Count; }
-            target.Report(new PrepareProgress("Checking game files", step.Game, count, total));
+            target.Report(new PrepareProgress(string.IsNullOrWhiteSpace(step.Label) ? "Preparing game files" : step.Label, step.Game, count, total));
         }
+    }
+
+    JsonObject PrepareSettings(string provider, Tuning tuning, string mode, bool supportedSubset)
+    {
+        var settings = new JsonObject
+        {
+            ["runtime_provider"] = provider,
+            ["nr_on_launch"] = tuning.NrOnLaunch ?? Settings.NrOnLaunch,
+            ["prefer_bundled_nr_only"] = supportedSubset && mode == "nr-only",
+            ["manage_dlss_files"] = Settings.ManageDlssFiles,
+            ["nr_runtime"] = Settings.NrRuntime,
+            ["skynizz_version"] = Settings.SkynizzVersion,
+            ["mfg_provider"] = Settings.MfgProvider,
+            ["nr_preset"] = Settings.NrPreset,
+            ["feeder_source"] = Settings.FeederSource,
+            ["feeder_backups"] = Settings.FeederBackups,
+            ["borderless_4k"] = Settings.Borderless4K,
+            ["nr_strength"] = Math.Round(tuning.NrStrength, 1),
+            ["sharpening_strength"] = Math.Round(tuning.SharpeningStrength, 1),
+            ["mfg_multiplier"] = tuning.MfgMultiplier == "auto" ? "auto" : int.Parse(tuning.MfgMultiplier),
+            ["feature_controls"] = tuning.FeatureControls?.DeepClone(),
+        };
+        foreach (var item in ForgeSettings.Load().OverlayReviewOptions()) settings[item.Key] = item.Value?.DeepClone();
+        var overlay = ForgeSettings.Load();
+        settings["overlay_helper"] = overlay.OverlayHelper;
+        settings["overlay_renderer"] = overlay.OverlayRenderer;
+        return settings;
     }
 
     async Task<OperationReview> PrepareCoreAsync(string operation, IReadOnlyList<Game> targets, Tuning tuning, string mode,
@@ -296,22 +352,20 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             // Confirmed Vulkan games take the Vulkan package automatically, as Feeder games take Feeder NR.
             // It always brings frame generation, so NR Only installs keep the DLSS package's route.
             // Another tool's setup in an install is adopted as it is, in the same review and run.
-            string Route(Game g) => operation == "install" && g.AdoptionAvailable ? "adopt"
-                : g.UsesVulkan && (g.Installed || mode != "nr-only") ? "vulkan-native"
-                : g.UsesFeeder ? "feeder" : operation is "install" or "repair" ? Settings.PackageFor(g, operation) : Settings.RuntimeProvider;
+            string Route(Game g) => RouteFor(g, operation, mode);
             // The engine sends a selection of only Feeder games down the Feeder route; the package setting stays.
             string Provider(string route) => route is "feeder" or "adopt" ? Settings.RuntimeProvider : route;
             string Operation(string route) => route == "adopt" ? "adopt" : operation;
-            // Several games: each is checked on its own route in name order, whatever its package, so
-            // checking (and later installing) goes down the list as shown. The engine shares the expensive
-            // work between these checks, so this costs no more than checking each package at once.
+            // The host's verified payload/model caches live within a prepare call.
+            // Batch consecutive games on the same route so those expensive checks
+            // are shared, retaining name order and separate provider review tokens.
             if (targets.Count > 1)
             {
                 var parts = new List<OperationReview>();
-                foreach (var game in targets)
+                foreach (var batch in OperationRoutes.Consecutive(targets, Route))
                 {
-                    var route = Route(game);
-                    parts.Add(await PrepareCoreAsync(Operation(route), [game], tuning, mode, progress, cancel, supportedSubset, Provider(route)));
+                    cancel.ThrowIfCancellationRequested();
+                    parts.Add(await PrepareCoreAsync(Operation(batch.Route), batch.Games, tuning, mode, progress, cancel, supportedSubset, Provider(batch.Route)));
                 }
                 // A part whose games all get only some features keeps its token in Supported; discard only unused ones.
                 var supportedTokens = parts.SelectMany(p => p.Supported).Select(s => s.Review.Token).ToHashSet();
@@ -346,28 +400,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             return new OperationReview(operation, checkedFiles?["token"]?.ToString() ?? "", ready, skipped);
         }
         var engineOperation = operation switch { "install" => "install", "uninstall" => "uninstall", "adopt" => "adopt", "adopt-clean" => "adopt-clean", _ => "reset" };
-        var settings = new JsonObject
-        {
-            ["runtime_provider"] = provider,
-            ["nr_on_launch"] = tuning.NrOnLaunch ?? Settings.NrOnLaunch,
-            ["prefer_bundled_nr_only"] = supportedSubset && mode == "nr-only",
-            ["manage_dlss_files"] = Settings.ManageDlssFiles,
-            ["nr_runtime"] = Settings.NrRuntime,
-            ["skynizz_version"] = Settings.SkynizzVersion,
-            ["mfg_provider"] = Settings.MfgProvider,
-            ["nr_preset"] = Settings.NrPreset,
-            ["feeder_source"] = Settings.FeederSource,
-            ["feeder_backups"] = Settings.FeederBackups,
-            ["borderless_4k"] = Settings.Borderless4K,
-            ["nr_strength"] = Math.Round(tuning.NrStrength, 1),
-            ["sharpening_strength"] = Math.Round(tuning.SharpeningStrength, 1),
-            ["mfg_multiplier"] = tuning.MfgMultiplier == "auto" ? "auto" : int.Parse(tuning.MfgMultiplier),
-            ["feature_controls"] = tuning.FeatureControls?.DeepClone(),
-        };
-        foreach (var item in ForgeSettings.Load().OverlayReviewOptions()) settings[item.Key] = item.Value?.DeepClone();
-        var overlay = ForgeSettings.Load();
-        settings["overlay_helper"] = overlay.OverlayHelper;
-        settings["overlay_renderer"] = overlay.OverlayRenderer;
+        var settings = PrepareSettings(provider, tuning, mode, supportedSubset);
         var result = await CallAsync("prepare", new JsonObject
         {
             ["rows"] = rows,
@@ -389,8 +422,8 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             .Where(r => r.Game is not null).Select(r => new OperationGameReview(r.Game!, r.Detail,
                 (r.Summary ?? "Review the technical details before continuing.")
                 // Games can use different packages in one review, so each says which.
-                + (operation is "install" or "repair" && !r.Game!.UsesFeeder && ForgeSettings.GamePackageChoices.Any(c => c.Key == provider)
-                    ? "\nPackage: " + Settings.PackageName(provider) : ""))).ToList();
+                + (operation is "install" or "repair"
+                    ? "\nPackage: " + (r.Game!.UsesFeeder ? "Feeder NR" : Settings.PackageName(provider)) : ""))).ToList();
         var blocked = (result?["blocked"] as JsonArray ?? []).OfType<JsonObject>()
             .Select(b => new ReviewBlock(Match(b["name"]?.ToString()), b["name"]?.ToString() ?? "", b["reason"]?.ToString() ?? "", b["summary"]?.ToString())).ToList();
         var warnings = (result?["warnings"] as JsonArray ?? []).OfType<JsonObject>()

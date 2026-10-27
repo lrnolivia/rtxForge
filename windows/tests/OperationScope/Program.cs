@@ -78,6 +78,18 @@ if (librarySettings.RemovedGames.Count != 1) throw new Exception("Duplicate remo
 tests++;
 Console.WriteLine($"PASS: {tests} scope and library visibility checks (no game writes).");
 
+var routeGames = Enumerable.Range(0, 48).Select(i => new Game { Id = i.ToString(), Name = $"Game {i:00}" }).ToArray();
+var sameRoute = OperationRoutes.Consecutive(routeGames, _ => "skynizz");
+if (sameRoute.Count != 1 || sameRoute[0].Games.Count != 48 || !sameRoute[0].Games.SequenceEqual(routeGames))
+    throw new Exception("A shared route must prepare once without losing or reordering games.");
+var mixedRoutes = OperationRoutes.Consecutive(routeGames, game => int.Parse(game.Id) is >= 10 and < 20 ? "feeder" : "skynizz");
+if (mixedRoutes.Count != 3 || mixedRoutes[0].Route != "skynizz" || mixedRoutes[1].Route != "feeder"
+    || mixedRoutes[2].Route != "skynizz" || !mixedRoutes.SelectMany(g => g.Games).SequenceEqual(routeGames))
+    throw new Exception("Batching crossed route boundaries or changed alphabetical execution order.");
+if (OperationRoutes.Consecutive([], _ => "skynizz").Count != 0)
+    throw new Exception("An empty scope must not create preparation work.");
+Console.WriteLine("PASS: 48 same-route games use one preparation batch; mixed providers retain exact scope and order.");
+
 sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
 {
     public void Report(T value) => report(value);

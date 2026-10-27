@@ -11,7 +11,7 @@ the Windows adapters they need:
   images         dimensions read from PNG / JPEG / WebP headers (no GdkPixbuf);
                  the app converts WebP to PNG before storing it
   packages       the catalog's support rule accepts 64-bit Windows
-  updates        GitHub releases tagged windows-v<VERSION> (Inno Setup installer)
+  updates        GitHub Beta and windows-v<VERSION> releases (Inno Setup installer)
 
 Every write is reviewed first: a review is kept here by token and `run`
 executes exactly that review once.
@@ -745,11 +745,11 @@ DOWNLOAD_PREFIX = "https://github.com/lrnolivia/rtxForge/releases/download/"
 
 
 def _version_key(value):
-    match = re.fullmatch(r"(\d+(?:\.\d+)*)(?:-rc\.(\d+))?", str(value).strip().lstrip("v"))
+    match = re.fullmatch(r"(\d+(?:\.\d+)*)(?:-(beta|rc)\.(\d+))?", str(value).strip().lstrip("v"))
     t.need(match, f"Invalid application version: {value}")
     core = tuple(int(p) for p in match[1].split("."))
     core += (0,) * max(0, 3 - len(core))
-    return core, (0, int(match[2])) if match[2] is not None else (1, 0)
+    return core, ((-1 if match[2] == 'beta' else 0), int(match[3])) if match[2] is not None else (1, 0)
 
 
 def _get(url, limit=4 * 1024**2):
@@ -766,19 +766,27 @@ def update_check(params):
     best = None
     for release in json.loads(_get(RELEASES)):
         tag = str(release.get("tag_name", ""))
-        if release.get("draft") or not tag.startswith("windows-v"):
+        if release.get("draft") or not (tag.startswith("windows-v") or tag == "beta"):
             continue
+        if tag == "beta":
+            versions = {match[1] for asset in release.get('assets', [])
+                        if (match := re.fullmatch(r'rtxForge-Setup-(\d+\.\d+\.\d+(?:-(?:beta|rc)\.\d+)?)-' + arch + r'\.exe', str(asset.get('name', ''))))}
+            if len(versions) != 1:
+                continue
+            version = next(iter(versions))
+        else:
+            version = tag.removeprefix("windows-v")
         try:
-            key = _version_key(tag.removeprefix("windows-v"))
+            key = _version_key(version)
         except t.Refusal:
             continue
         if best is None or key > best[0]:
-            best = (key, release)
+            best = (key, release, version)
     current_key = _version_key(current) if current != "dev" else ((0, 0, 0), (0, 0))
     if best is None or best[0] <= current_key:
         return _review("update", "rtxForge is up to date", [], summary=f"rtxForge {current} is up to date.", action="Install update")
     release = best[1]
-    version = release["tag_name"].removeprefix("windows-v")
+    version = best[2]
     assets = {a["name"]: a for a in release.get("assets", [])}
     name = f"rtxForge-Setup-{version}-{arch}.exe"
     setup, digest = assets.get(name), assets.get(name + ".sha256")

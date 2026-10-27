@@ -1,12 +1,42 @@
 """Serialized desktop adapter for the RC1.38-derived transaction engine."""
 from pathlib import Path
-import importlib.util,sys,json,hashlib,zipfile,os,contextlib,functools
+import importlib.util,sys,json,hashlib,zipfile,os,contextlib,functools,time,copy
 import transactions as t,packages,ui,package_catalog,proton_prefix,cross_os,skynizz_provider,ada_mfg_provider,proton_mfg
 from operation_session import Session,Cancelled
 from storage import storage
 ROOT=Path(__file__).resolve().parents[1]
 def providers():return json.loads((ROOT/'providers/lock.json').read_text())
 _compiled={}
+_release_cache={}
+
+def selected_skynizz_release(settings,mode):
+    selection=settings.get('skynizz_version','latest')
+    bundled=mode in ('nr-mfg','mfg-only') or settings.get('prefer_bundled_nr_only',False) or (settings.get('overlay_helper',True) and settings.get('overlay_renderer')=='game')
+    key=(selection,bundled)
+    cached=_release_cache.get(key)
+    if cached and time.monotonic()-cached[0]<3600:
+        release=copy.deepcopy(cached[1])
+    else:
+        release=(skynizz_provider.bundled_bridge(selection)[0] if bundled else ui.work('Resolving Skynizz release',skynizz_provider.resolve,selection))
+        _release_cache[key]=(time.monotonic(),copy.deepcopy(release))
+        if len(_release_cache)>16:del _release_cache[next(iter(_release_cache))]
+    mfg_provider=settings.get('mfg_provider','universal')
+    t.need(mfg_provider in ('universal','integrated','mfg-unlock'),'Choose a supported MFG component.')
+    if mode in ('nr-mfg','mfg-only'):
+        gpu=gpu_family()
+        if gpu=='blackwell':mfg_provider='native'
+        else:t.need(gpu in (None,'ada') or mfg_provider=='universal',"This MFG package doesn't support your GPU. Choose one that does in Packages.")
+    if mfg_provider=='native':release['mfg_native']=True
+    elif mfg_provider=='mfg-unlock':
+        t.need(mode=='nr-mfg','MFG Unlock requires the combined native FG route.')
+        release['mfg_component']=ada_mfg_provider.pinned()
+    elif mfg_provider=='universal' and mode in ('nr-mfg','mfg-only'):
+        import universal_mfg_provider
+        release['mfg_component']=universal_mfg_provider.pinned()
+    if settings.get('nr_preset') is not None:
+        t.need(type(settings['nr_preset']) is int and settings['nr_preset'] in (0,1,2),'Choose a supported NR preset.')
+        release['nr_preset']=settings['nr_preset']
+    return release
 def module(config,provider='y4my',mode=None):
     name='rtxengine_desktop';path=ROOT/'engine/rtxengine.py';spec=importlib.util.spec_from_file_location(name,path)
     e=importlib.util.module_from_spec(spec);sys.modules[name]=e
@@ -470,30 +500,8 @@ def prepare(config,rows,mode,operation,settings):
                 selection=settings.get('skynizz_version','latest')
                 if release is None:
                     if selection not in releases:
-                        native_panel = settings.get('overlay_helper', True) and settings.get('overlay_renderer') == 'game'
-                        releases[selection]=(skynizz_provider.bundled_bridge(selection)[0] if mode in ('nr-mfg','mfg-only') or prefer_bundled_nr_only or native_panel else ui.work('Resolving Skynizz release',skynizz_provider.resolve,selection))
+                        releases[selection]=selected_skynizz_release(settings,mode)
                     release=dict(releases[selection])
-                    mfg_provider=settings.get('mfg_provider','universal')
-                    t.need(mfg_provider in ('universal','integrated','mfg-unlock'),'Choose a supported MFG component.')
-                    if mode in ('nr-mfg','mfg-only'):
-                        # RTX 50 has MFG of its own; the integrated and MFG Unlock patches target RTX 40.
-                        gpu=gpu_family()
-                        if gpu=='blackwell':mfg_provider='native'
-                        else:t.need(gpu in (None,'ada') or mfg_provider=='universal',
-                                    "This MFG package doesn't support your GPU. Choose one that does in Packages.")
-                    if mfg_provider=='native':
-                        # The game's own DLSS-G multiplier; no unlock is installed or enabled.
-                        release['mfg_native']=True
-                    elif mfg_provider=='mfg-unlock':
-                        t.need(mode=='nr-mfg','MFG Unlock requires the combined native FG route.')
-                        release['mfg_component']=ada_mfg_provider.pinned()
-                    elif mfg_provider=='universal' and mode in ('nr-mfg','mfg-only'):
-                        # OptiScaler loads the Universal plugin; the game's own DLSS-G stays the FG path.
-                        import universal_mfg_provider
-                        release['mfg_component']=universal_mfg_provider.pinned()
-                    if settings.get('nr_preset') is not None:
-                        t.need(type(settings['nr_preset']) is int and settings['nr_preset'] in (0,1,2),'Choose a supported NR preset.')
-                        release['nr_preset']=settings['nr_preset']
                 t.need(mode not in ('nr-mfg','mfg-only') or release.get('variant')=='nr-mfg-bridge','NR + MFG requires the combined bridge; restore the stock NR-only package first.')
                 e.Y4MY_PROVIDER=release
                 payload_key=json.dumps(release,sort_keys=True)

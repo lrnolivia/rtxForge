@@ -229,3 +229,15 @@ if (perGame.GameOverlaySettings["one"]["panel_hotkey"]!.ToString() != "F8" || pe
 if (perGame.OverlayReviewOptions(["one"])["target_games"]!.AsArray().Count != 1)
     throw new Exception("Overlay update review lost its explicit game scope.");
 Console.WriteLine("PASS: per-game overlay isolation, independent copies, exact update scope and automatic Vulkan package.");
+
+foreach (var theme in ForgeSettings.OverlayThemes)
+{
+    var settings = JsonSerializer.Deserialize<ForgeSettings>("{\"overlay_theme\":\"" + theme + "\"}")!;
+    var copy = new ForgeSettings(); copy.CopyOverlayFrom(settings);
+    if (JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(copy))!.OverlayTheme != theme
+        || copy.GameOverlayOptions()["overlay_theme"]!.ToString() != theme)
+        throw new Exception("Overlay theme did not survive copy, persistence and helper settings");
+}
+if (JsonSerializer.Deserialize<ForgeSettings>("{\"overlay_theme\":\"unknown\"}")!.OverlayTheme != "dark")
+    throw new Exception("Unknown overlay theme must preserve the existing dark default");
+Console.WriteLine("PASS: Dark, Light and Follow app overlay themes persist and reach the helper; unknown themes retain Dark.");

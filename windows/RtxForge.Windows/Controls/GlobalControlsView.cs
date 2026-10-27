@@ -14,7 +14,8 @@ public sealed class GlobalControlsView : StackPanel
     readonly ComboBox mfg = new() { Header = "Multi-Frame Generation", ItemsSource = new[] { "Leave as is", "Off", "2×", "3×", "4×", "5×", "6×", "Follow game" }, SelectedIndex = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
     readonly StackPanel entries = new() { Spacing = 12 };
     readonly TextBlock feedback = new() { TextWrapping = TextWrapping.Wrap };
-    readonly Button apply = new() { Content = "Review changes", HorizontalAlignment = HorizontalAlignment.Stretch, Height = 44 };
+    readonly Button apply = new() { Content = "Review changes", HorizontalAlignment = HorizontalAlignment.Right,
+        MinHeight = 32, Padding = new Thickness(12, 6, 12, 6) };
     readonly ProgressBar progress = new() { IsIndeterminate = true, Visibility = Visibility.Collapsed };
     readonly Border? reviewCard;
     EngineReview? review;

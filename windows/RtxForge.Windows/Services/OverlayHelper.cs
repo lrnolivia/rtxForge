@@ -12,6 +12,14 @@ namespace RtxForge.Windows.Services;
 /// <summary>A per-session helper; no manager window, artwork or library scan.</summary>
 public static class OverlayHelper
 {
+    internal static bool LightTheme(ForgeSettings settings, string? theme = null)
+    {
+        theme ??= settings.OverlayTheme;
+        if (theme != "app") return theme == "light";
+        if (settings.Theme != "system") return settings.Theme == "light";
+        using var personalize = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+        return personalize?.GetValue("AppsUseLightTheme") is not int value || value != 0;
+    }
     internal static string PipeName => "rtxForge.Overlay." + Process.GetCurrentProcess().SessionId;
     public static string StartupCommand(string executable) => $"\"{executable}\" --overlay-helper";
 
@@ -58,6 +66,7 @@ public static class OverlayHelper
         overlay.SetValue("PanelKey", valid ? (int)binding.Key : 0, RegistryValueKind.DWord);
         overlay.SetValue("PanelModifiers", valid ? (int)binding.Modifiers : 0, RegistryValueKind.DWord);
         overlay.SetValue("Advanced", settings.OverlayControls == "classic" ? 1 : 0, RegistryValueKind.DWord);
+        overlay.SetValue("LightTheme", LightTheme(settings) ? 1 : 0, RegistryValueKind.DWord);
         overlay.SetValue("ShowLiveStats", settings.OverlayLiveStats ? 1 : 0, RegistryValueKind.DWord);
         overlay.SetValue("ShowWelcome", settings.OverlayWelcome ? 1 : 0, RegistryValueKind.DWord);
         overlay.SetValue("WelcomePosition", Array.IndexOf(ForgeSettings.WelcomePositions, settings.OverlayWelcomePosition), RegistryValueKind.DWord);

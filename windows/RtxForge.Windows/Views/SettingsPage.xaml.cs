@@ -105,6 +105,7 @@ public sealed partial class SettingsPage : Page
         }, shell.Service as EngineForgeService, groupCards: true);
 
         var appearance = new PreferencesGroup("Theme");
+        var gameModeAppearance = new PreferencesGroup("Theme");
         var navigation = new PreferencesGroup("Navigation");
         var details = new PreferencesGroup("Game Details", "Choose how Game Details opens in Desktop Mode.");
         (row, var detailsWindow) = Prefs.ComboRow("Open Game Details", "Use tabs in the app, or a sidebar in a separate window.",
@@ -114,11 +115,49 @@ public sealed partial class SettingsPage : Page
         var libraryView = new PreferencesGroup("Library view");
         (row, var theme) = Prefs.ComboRow("Color theme", "Changes only rtxForge.", ThemeController.Captions,
             Math.Max(0, Array.IndexOf(ThemeController.Keys, Settings.Theme)), "");
-        theme.SelectionChanged += (_, _) => { Settings.Theme = ThemeController.Keys[theme.SelectedIndex]; Save(); };
         appearance.Add(row);
+        (row, var gameModeTheme) = Prefs.ComboRow("Color theme", "Choose the theme for Game Mode.", ThemeController.Captions,
+            Math.Max(0, Array.IndexOf(ThemeController.Keys, Settings.ResolvedGameModeTheme)), "");
+        gameModeAppearance.Add(row);
+        theme.SelectionChanged += (_, _) =>
+        {
+            if (theme.SelectedIndex < 0) return;
+            Settings.Theme = ThemeController.Keys[theme.SelectedIndex];
+            if (Settings.GameModeThemeLinked) gameModeTheme.SelectedIndex = theme.SelectedIndex;
+            Save();
+        };
+        gameModeTheme.SelectionChanged += (_, _) =>
+        {
+            if (gameModeTheme.SelectedIndex < 0) return;
+            var selectedTheme = ThemeController.Keys[gameModeTheme.SelectedIndex];
+            if (selectedTheme == Settings.ResolvedGameModeTheme) return;
+            Settings.SetGameModeTheme(selectedTheme);
+            if (Settings.GameModeThemeLinked) theme.SelectedIndex = gameModeTheme.SelectedIndex;
+            Save();
+        };
         (row, var linkedTheme) = Prefs.SwitchRow("Use the same color theme in Desktop and Game Mode", "Turn off to choose each interface’s theme separately.", Settings.GameModeThemeLinked, "");
-        linkedTheme.Toggled += (_, _) => { Settings.LinkGameModeTheme(linkedTheme.IsOn); Save(); };
-        appearance.Add(row);
+        linkedTheme.Toggled += (_, _) =>
+        {
+            Settings.LinkGameModeTheme(linkedTheme.IsOn);
+            gameModeTheme.SelectedIndex = Math.Max(0, Array.IndexOf(ThemeController.Keys, Settings.ResolvedGameModeTheme));
+            Save();
+        };
+        gameModeAppearance.Add(row);
+        var cardOpacity = new Slider { Minimum = 0, Maximum = 100, StepFrequency = 1, SmallChange = 1, LargeChange = 5,
+            Value = Settings.GameModeCardOpacity, IsThumbToolTipEnabled = false, MinWidth = 200 };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(cardOpacity, "Game Mode card translucency");
+        var opacityEnds = new Grid();
+        opacityEnds.Children.Add(Prefs.Label("Clearer"));
+        var moreSolid = Prefs.Label("More solid"); moreSolid.HorizontalAlignment = HorizontalAlignment.Right;
+        opacityEnds.Children.Add(moreSolid);
+        var opacityControls = new StackPanel { Spacing = 4 };
+        opacityControls.Children.Add(cardOpacity); opacityControls.Children.Add(opacityEnds);
+        gameModeAppearance.Add(Prefs.Row("Game Mode card translucency", "Frosted cards with blur.", opacityControls, "\uE790"));
+        cardOpacity.ValueChanged += (_, e) =>
+        {
+            Settings.GameModeCardOpacity = (int)Math.Round(e.NewValue);
+            Save();
+        };
         (row, var layout) = Prefs.ComboRow("Library layout", "Choose how your game collection is displayed.",
             ["Poster", "Wide Capsule", "List"], Math.Max(0, Array.IndexOf(Views, Settings.LibraryView)), "");
         layout.SelectionChanged += (_, _) => { Settings.LibraryView = Views[layout.SelectedIndex]; Save(); };
@@ -250,7 +289,7 @@ public sealed partial class SettingsPage : Page
         sections["Overlay"] = overlay.Groups.ToArray();
         sections["Appearance"] = [appearance, navigation, details];
         sections["Library"] = [libraryView, library, steamLibrary, reports];
-        sections["Gaming Mode"] = [interfaceGroup, gameModeLayout, controller];
+        sections["Gaming Mode"] = [interfaceGroup, gameModeAppearance, gameModeLayout, controller];
         sections["System"] = [system];
         sections["Recovery"] = [cleanup];
         sections["About"] = [about];

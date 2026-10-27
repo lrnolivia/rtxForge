@@ -7,6 +7,14 @@ on:
         description: Attach the installers to a DRAFT GitHub release (nothing is published until a maintainer publishes the draft)
         type: boolean
         default: false
+      publish_beta:
+        description: Publish 1.0 Beta with installers and portable (reviewed main only)
+        type: boolean
+        default: false
+      expected_sha:
+        description: Exact reviewed main commit required when publishing Beta
+        type: string
+        default: ''
   push:
     branches:
       - main
@@ -47,6 +55,16 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 35
     steps:
+      - name: Validate explicit Beta publication
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_beta
+        shell: pwsh
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          DRAFT_RELEASE: ${{ inputs.draft_release }}
+        run: |
+          if ($env:GITHUB_REF -ne 'refs/heads/main') { throw 'Beta publication requires reviewed main' }
+          if ($env:EXPECTED_SHA -ne $env:GITHUB_SHA) { throw 'Main changed; review its exact commit before publishing' }
+          if ($env:DRAFT_RELEASE -eq 'true') { throw 'Choose either draft_release or publish_beta' }
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
@@ -92,9 +110,9 @@ jobs:
       PROJECT: windows/RtxForge.Windows/RtxForge.Windows.csproj
       DOTNET_NOLOGO: "1"
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
-      # Release runs (manual, draft_release) are signed through SignPath once it is
+      # Explicit manual release runs are signed through SignPath once it is
       # configured (see windows/README.md); every other run stays unsigned.
-      SIGN: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' && github.event_name == 'workflow_dispatch' && inputs.draft_release }}
+      SIGN: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' && github.event_name == 'workflow_dispatch' && (inputs.draft_release || inputs.publish_beta) }}
 
     steps:
       - name: Checkout rtxForge
@@ -180,6 +198,14 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
             python -X utf8 -m unittest discover -s windows/tests -p test_dlss_updates.py
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest discover -s windows/tests -p test_install_prefetch.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 tests/test_runtime_updates.py CatalogReuseTest
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest discover -s windows/tests -p test_app_update.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 tests/test_app_update.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s windows/tests -p test_skynizz_provider.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s windows/tests -p test_overlay_packages.py
@@ -368,4 +394,63 @@ jobs:
               --target "$GITHUB_SHA" \
               --title "rtxForge for Windows $VERSION" \
               --notes "rtxForge for Windows $VERSION ($GITHUB_SHA). Download rtxForge-Setup-$VERSION-x64.exe (or -arm64 for Windows on Arm). Python and the rtxForge engine are bundled; nothing else to install. $SIGNING SHA-256 checksums are attached."
+
+  publish-beta:
+    name: Publish Windows Beta
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_beta && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download verified installers
+        uses: actions/download-artifact@v4
+        with:
+          pattern: rtxForge-Setup-windows-*
+          merge-multiple: true
+          path: release
+      - name: Download portable app
+        uses: actions/download-artifact@v4
+        with:
+          name: rtxForge-windows-x64
+          path: portable/rtxForge-windows-x64
+      - name: Package and publish exact build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          SIGNED: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$EXPECTED_SHA"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)" = "$GITHUB_SHA"
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          test "$VERSION" = "1.0.0-beta.1"
+          test -f "release/rtxForge-Setup-$VERSION-x64.exe"
+          test -f "release/rtxForge-Setup-$VERSION-arm64.exe"
+          test -f portable/rtxForge-windows-x64/rtxForge.exe
+          test -f portable/rtxForge-windows-x64/python/python.exe
+          test -f portable/rtxForge-windows-x64/engine/windows/engine-host/rtxforge_win_host.py
+          (cd release && sha256sum -c ./*.sha256)
+          ROOT="$PWD"
+          (cd portable && zip -q -r "$ROOT/release/rtxForge-windows-$VERSION-x64.zip" rtxForge-windows-x64)
+          (cd release && sha256sum "rtxForge-windows-$VERSION-x64.zip" > "rtxForge-windows-$VERSION-x64.zip.sha256")
+          cp docs/releases/1.0-beta.md "$RUNNER_TEMP/beta-notes.md"
+          if [ "$SIGNED" = "true" ]; then
+            printf '\nWindows binaries are signed through SignPath.\n' >> "$RUNNER_TEMP/beta-notes.md"
+          else
+            printf '\nThis build is unsigned. Windows SmartScreen may ask for confirmation.\n' >> "$RUNNER_TEMP/beta-notes.md"
+          fi
+          printf '\nVersion: `%s` · Source: `%s` · [Build](https://github.com/%s/actions/runs/%s)\n' "$VERSION" "$GITHUB_SHA" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" >> "$RUNNER_TEMP/beta-notes.md"
+          # Never replace a published channel or its rollback assets implicitly.
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/beta" > "$RUNNER_TEMP/existing-beta.json" 2> "$RUNNER_TEMP/beta-lookup-error"; then
+            echo 'Beta already exists; refusing to overwrite it.' >&2
+            exit 1
+          elif ! grep -q 'HTTP 404' "$RUNNER_TEMP/beta-lookup-error"; then
+            cat "$RUNNER_TEMP/beta-lookup-error" >&2
+            exit 1
+          fi
+          gh release create beta release/* --draft --prerelease --target "$GITHUB_SHA" --title 'rtxForge 1.0 Beta' --notes-file "$RUNNER_TEMP/beta-notes.md"
+          test "$(gh release view beta --json assets --jq '.assets | length')" = 6
+          gh release edit beta --draft=false --prerelease --latest=false
           fi

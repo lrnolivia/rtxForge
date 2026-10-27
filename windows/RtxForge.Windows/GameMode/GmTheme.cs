@@ -109,6 +109,52 @@ public sealed class GmTheme
 
     public static Color Hex(string hex) => ArtAccent.TryParse(hex, out var c) ? c : Microsoft.UI.Colors.Magenta;
     public static SolidColorBrush B(Color c, double opacity = 1) => new(c) { Opacity = opacity };
+    internal static (Color Surface, Color Ink) HoverColors(Color color)
+    {
+        var high = Math.Max(color.R, Math.Max(color.G, color.B));
+        var low = Math.Min(color.R, Math.Min(color.G, color.B));
+        if (high == 0 || (high - low) / (double)high < .12)
+            return (ArtAccent.Mix(Microsoft.UI.Colors.White, color, .62), Hex("#383838"));
+        // Preserve the hue and add saturation, with enough depth for white ink.
+        return (ArtAccent.Readable(GlowHalo.Richer(color), Microsoft.UI.Colors.White), Microsoft.UI.Colors.White);
+    }
+
+    /// <summary>Frosted card material; text and child controls remain fully opaque.</summary>
+    readonly List<(WeakReference<AcrylicBrush> Brush, bool Navigation)> surfaces = [];
+    public int CardOpacity { get; private set; } = 10;
+    public int NavbarOpacity => Math.Max(0, CardOpacity - 15);
+    public AcrylicBrush Surface(Color color, bool navigation = false)
+    {
+        var brush = new AcrylicBrush { TintColor = color,
+            TintOpacity = (navigation ? NavbarOpacity : CardOpacity) / 100d, Opacity = 1, FallbackColor = color };
+        surfaces.Add((new(brush), navigation));
+        return brush;
+    }
+
+    public void SetCardOpacity(int percent)
+    {
+        CardOpacity = Math.Clamp(percent, 0, 100);
+        for (var i = surfaces.Count - 1; i >= 0; i--)
+        {
+            if (surfaces[i].Brush.TryGetTarget(out var brush))
+                brush.TintOpacity = (surfaces[i].Navigation ? NavbarOpacity : CardOpacity) / 100d;
+            else surfaces.RemoveAt(i);
+        }
+    }
+
+    public (AcrylicBrush Surface, SolidColorBrush Ink) Highlight(Color accent, bool fixedTint = false)
+    {
+        var tint = GlowHalo.Richer(accent);
+        var surface = fixedTint
+            ? new AcrylicBrush { TintColor = tint, TintOpacity = .5, Opacity = 1, FallbackColor = tint }
+            : Surface(tint);
+        var ink = B(Fg);
+        void Refresh() => ink.Color = ArtAccent.Readable(Fg, ArtAccent.Mix(surface.TintColor, Panel, surface.Opacity * surface.TintOpacity));
+        surface.RegisterPropertyChangedCallback(AcrylicBrush.TintOpacityProperty, (_, _) => Refresh());
+        surface.RegisterPropertyChangedCallback(AcrylicBrush.TintColorProperty, (_, _) => Refresh());
+        Refresh();
+        return (surface, ink);
+    }
 
     /// <summary>Per-game roles (--game-accent, --game-title, --game-tint, --game-pill, --game-ink).</summary>
     public GameColors GameColors(AccentPalette? palette)

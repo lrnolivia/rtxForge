@@ -17,22 +17,55 @@ static_assert(offsetof(Header,requestData) == 64);
 static_assert(offsetof(Header,responseData) == 64+Capacity);
 static_assert(sizeof(Header) == 64+Capacity*2);
 inline Header* channel = nullptr;
-inline HANDLE mapping = nullptr;
+inline HANDLE mapping = nullptr, file = nullptr;
 inline LONG lastRevision = 0;
 inline bool pending = false, helperReady = false, needsHello = true;
 inline nlohmann::json settings = nlohmann::json::object(), status = nlohmann::json::object(), review = nlohmann::json::object();
 inline std::string message;
 inline ULONGLONG requestedAt = 0;
 
+inline bool OnWine()
+{
+    const auto ntdll = GetModuleHandleW(L"ntdll.dll");
+    return ntdll && GetProcAddress(ntdll,"wine_get_version");
+}
+// A native Linux host cannot open a Wine named section, so under Wine the same
+// header lives in %LOCALAPPDATA%\rtxForge\panel.<pid>.map (C:\users\steamuser\...
+// in the prefix), which the host maps too. Exclusive creation never adopts a stale
+// or planted file; delete-on-close removes it when the game exits.
+inline HANDLE CreateWineMapping()
+{
+    wchar_t base[MAX_PATH];
+    const auto length = GetEnvironmentVariableW(L"LOCALAPPDATA",base,MAX_PATH);
+    if(length == 0 || length >= MAX_PATH) return nullptr;
+    const auto folder = std::wstring(base,length) + L"\\rtxForge";
+    if(!CreateDirectoryW(folder.c_str(),nullptr) && GetLastError() != ERROR_ALREADY_EXISTS) return nullptr;
+    const auto path = folder + L"\\panel." + std::to_wstring(GetCurrentProcessId()) + L".map";
+    file = CreateFileW(path.c_str(),GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,
+                       CREATE_NEW,FILE_ATTRIBUTE_TEMPORARY|FILE_FLAG_DELETE_ON_CLOSE,nullptr);
+    if(file == INVALID_HANDLE_VALUE) { file = nullptr; return nullptr; }
+    const auto section = CreateFileMappingW(file,nullptr,PAGE_READWRITE,0,sizeof(Header),nullptr);
+    if(!section) { CloseHandle(file); file = nullptr; }
+    return section;
+}
 inline void Init()
 {
     // Device/ImGui resets must not replace a mapping the helper still holds.
     if(channel) { InterlockedExchange(&channel->visible,0); needsHello = true; return; }
-    const auto name = L"Local\\rtxForge.panel." + std::to_wstring(GetCurrentProcessId());
-    mapping = CreateFileMappingW(INVALID_HANDLE_VALUE,nullptr,PAGE_READWRITE,0,sizeof(Header),name.c_str());
-    if(mapping && GetLastError() != ERROR_ALREADY_EXISTS)
-        channel = static_cast<Header*>(MapViewOfFile(mapping,FILE_MAP_ALL_ACCESS,0,0,sizeof(Header)));
-    if(!channel) { if(mapping) CloseHandle(mapping); mapping = nullptr; return; }
+    if(OnWine()) mapping = CreateWineMapping();
+    else
+    {
+        const auto name = L"Local\\rtxForge.panel." + std::to_wstring(GetCurrentProcessId());
+        mapping = CreateFileMappingW(INVALID_HANDLE_VALUE,nullptr,PAGE_READWRITE,0,sizeof(Header),name.c_str());
+        if(mapping && GetLastError() == ERROR_ALREADY_EXISTS) { CloseHandle(mapping); mapping = nullptr; }
+    }
+    if(mapping) channel = static_cast<Header*>(MapViewOfFile(mapping,FILE_MAP_ALL_ACCESS,0,0,sizeof(Header)));
+    if(!channel)
+    {
+        if(mapping) CloseHandle(mapping);
+        if(file) CloseHandle(file);
+        mapping = nullptr; file = nullptr; return;
+    }
     *channel = {}; channel->version = 1; channel->pid = GetCurrentProcessId(); channel->ownsShortcut = 1;
     MemoryBarrier(); InterlockedExchange(&channel->magic,Magic);
 }
@@ -126,7 +159,8 @@ struct Lifetime
     {
         if(channel) { InterlockedExchange(&channel->visible,0); InterlockedExchange(&channel->magic,0); UnmapViewOfFile(channel); }
         if(mapping) CloseHandle(mapping);
-        channel = nullptr; mapping = nullptr;
+        if(file) CloseHandle(file);
+        channel = nullptr; mapping = nullptr; file = nullptr;
     }
 };
 inline Lifetime lifetime;

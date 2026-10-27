@@ -178,12 +178,13 @@ def prefix_files(prefix):
 
 
 def detect(prefix, mode='nr-mfg', launch_options='', native_dlssg=None, system='linux',
-           driver_root=None, driver_dirs=None):
+           driver_root=None, driver_dirs=None, cuda_planned=False):
     """Read-only prerequisite report for native NR/MFG in one game's Proton prefix.
 
     prefix        -- <library>/steamapps/compatdata/<appid>/pfx, or None if never run
     mode          -- 'nr-only', 'nr-mfg' or 'mfg-only'
     native_dlssg  -- the library scan's game-native DLSS-G flag (None = unknown)
+    cuda_planned  -- the same review writes the build's user_settings.py (proton_cuda)
     """
     checks = []
 
@@ -234,7 +235,8 @@ def detect(prefix, mode='nr-mfg', launch_options='', native_dlssg=None, system='
         check('ngx-prefix', files['nvngx.dll'] and files['_nvngx.dll'], 'ngx-not-in-prefix')
         if mode in ('nr-mfg', 'mfg-only') and tool['lib_dir'] is not None:
             if check('nvcuda', (Path(tool['lib_dir']) / NVCUDA).is_file(), 'cuda-missing'):
-                check('cuda-enabled', prefix_cuda(prefix) or cuda_requested(tool['lib_dir'], env), 'cuda-off')
+                check('cuda-enabled', cuda_planned or prefix_cuda(prefix) or cuda_requested(tool['lib_dir'], env),
+                      'cuda-off')
     return _finish(checks, tool, components, card)
 
 

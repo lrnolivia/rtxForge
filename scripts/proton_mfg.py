@@ -69,7 +69,7 @@ def competing(target, managed=()):
 
 
 def gate(settings, mode, mfg_provider, prefix, native_dlssg=None, launch_options='',
-         driver_root=None, driver_dirs=None):
+         driver_root=None, driver_dirs=None, cuda_planned=False):
     """Per-game permission for a fresh Skynizz (+ Universal MFG) install under Proton.
 
     Returns the proton_stack report with 'opt_in' added; raises a Refusal
@@ -82,7 +82,7 @@ def gate(settings, mode, mfg_provider, prefix, native_dlssg=None, launch_options
     if mode != 'nr-only' and mfg_provider != 'universal':
         _refuse('component-unsupported-linux')
     report = proton_stack.detect(prefix, mode, launch_options, native_dlssg,
-                                 driver_root=driver_root, driver_dirs=driver_dirs)
+                                 driver_root=driver_root, driver_dirs=driver_dirs, cuda_planned=cuda_planned)
     if not report['prerequisites_met']:
         raise t.Refusal(' '.join(dict.fromkeys(proton_stack.REASONS[code] for code in report['reasons'])))
     report['opt_in'] = True

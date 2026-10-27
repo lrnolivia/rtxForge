@@ -427,6 +427,14 @@ def prepare(params):
             "warnings": _override_warnings(review)}
 
 
+def prefetch_install(params):
+    import install_prefetch
+    hardware = service.hardware()
+    if not hardware['ready']:
+        return {'skipped': hardware['reason']}
+    return install_prefetch.prepare(service.config, params.get('batches', []), params.get('manage_dlss_files', True))
+
+
 def _override_warnings(review) -> list[dict]:
     """NVIDIA App DLSS Override vs the reviewed provider's Streamline: warning rows, never blocks."""
     if review.get("operation") not in ("install", "repair") or not review.get("payload"):
@@ -552,6 +560,7 @@ def steam_remove(params):
 
 running: dict[str, dict] = {}
 METHODS = {"hello": hello, "hardware": lambda _p: service.hardware(), "scan": scan, "prepare": prepare,
+           "prefetch_install": prefetch_install,
            "execute": execute, "cancel": cancel, "discard_operation": discard_operation, "save_defaults": save_defaults,
            "prepare_dlss": prepare_dlss, "update_dlss": update_dlss,
            "steam_status": steam_status, "steam_review": steam_review, "steam_install": steam_install,
@@ -588,7 +597,7 @@ METHODS.update(companion_controls.methods(STATE))
 
 
 _download_gate = threading.RLock()
-_DOWNLOAD_METHODS = {'prepare', 'execute', 'prepare_dlss', 'update_dlss', 'run', 'storage_review', 'feeder_storage'}
+_DOWNLOAD_METHODS = {'prefetch_install', 'prepare', 'execute', 'prepare_dlss', 'update_dlss', 'run', 'storage_review', 'feeder_storage'}
 
 
 def handle(request: dict) -> None:

@@ -46,7 +46,7 @@ public sealed partial class GameModeView
 
         // Preparation has its own progress screen; the completed review stays static.
         var step = new GmStep(this);
-        step.Show("Preparing", targets.FirstOrDefault(), 0, targets.Count, "Preparing game files");
+        step.Show("Preparing", targets.FirstOrDefault(), 0, targets.Count, "Downloading packages/files…");
         var cancelChecking = ui.Button("Cancel", CloseModal, GmKind.Card, 0.92);
         ShowModal("Preparing", step.Root, [cancelChecking], CloseModal, 1100, cancelChecking);
         var checkingModal = modals.Peek();
@@ -57,7 +57,7 @@ public sealed partial class GameModeView
             {
                 if (modals.Count == 0 || !ReferenceEquals(modals.Peek(), checkingModal)) return;
                 step.Show("Preparing", targets.FirstOrDefault(game => game.Name == p.Game), p.Checked,
-                    p.Total > 0 ? p.Total : null, p.Label);
+                    p.Total > 0 ? p.Total : null, "Downloading packages/files…");
             });
             review = await shell.Service.PrepareAsync(operation, targets, values, shell.Mode, progress);
         }

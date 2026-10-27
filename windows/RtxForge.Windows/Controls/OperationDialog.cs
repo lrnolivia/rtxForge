@@ -74,7 +74,7 @@ public sealed class OperationDialog
         try
         {
             var progress = new Progress<PrepareProgress>(step => flow.checkingPanel.Show("Preparing",
-                shell.Games.FirstOrDefault(g => g.Name == step.Game), step.Checked, step.Total > 0 ? step.Total : null, step.Label));
+                shell.Games.FirstOrDefault(g => g.Name == step.Game), step.Checked, step.Total > 0 ? step.Total : null, "Downloading packages/files…"));
             var checkedReview = await prepare(progress);
             if (flow.closed) shell.Service.DiscardReview(checkedReview);
             else
@@ -134,7 +134,7 @@ public sealed class OperationDialog
         dialog.IsPrimaryButtonEnabled = false;
         dialog.CloseButtonText = "Cancel";
         dialog.DefaultButton = ContentDialogButton.Primary;
-        checkingPanel.Show("Preparing", targets.FirstOrDefault(), 0, listGames && targets.Count > 0 ? targets.Count : null, "Preparing game files");
+        checkingPanel.Show("Preparing", targets.FirstOrDefault(), 0, listGames && targets.Count > 0 ? targets.Count : null, "Downloading packages/files…");
         dialog.Content = checkingPanel.Root;
     }
 
@@ -143,7 +143,7 @@ public sealed class OperationDialog
     {
         if (closed || stage != Stage.Review) return;
         checkingPanel.Show("Preparing", targets.FirstOrDefault(g => g.Name == step.Game), step.Checked,
-            step.Total > 0 ? step.Total : null, step.Label);
+            step.Total > 0 ? step.Total : null, "Downloading packages/files…");
     }
 
     async Task PrepareAsync()

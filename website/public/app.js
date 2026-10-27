@@ -39,8 +39,8 @@ function renderDownloads() {
   const betaFiles = selectDownloads(beta.release, os), devFiles = selectDownloads(dev.release, os);
   byId('beta-launch').hidden = Boolean(betaFiles);
   linkState(byId('download-link'), betaFiles?.primary.url);
-  byId('download-label').textContent = betaFiles ? 'Download Beta' : beta.status === 'loading' ? 'Checking Beta downloads…' : beta.status === 'error' ? 'Beta downloads unavailable' : 'Beta coming soon';
-  byId('package-meta').textContent = betaFiles ? `Beta · ${betaFiles.primary.format} · ${platform.arch}` : `Beta · ${platform.name} ${platform.arch}`;
+  byId('download-label').textContent = betaFiles ? 'Download 1.0 Beta' : beta.status === 'loading' ? 'Checking Beta downloads…' : beta.status === 'error' ? 'Beta downloads unavailable' : 'Beta coming soon';
+  byId('package-meta').textContent = betaFiles ? `1.0 Beta · ${betaFiles.primary.format} · ${platform.arch}` : `Beta · ${platform.name} ${platform.arch}`;
   byId('install-copy').textContent = betaFiles ? installInstructions(betaFiles.primary.format) : beta.status === 'loading' ? 'Checking the published Beta release.' : beta.status === 'error' ? 'Release information could not be loaded. Try again or check the releases on GitHub.' : `The ${platform.name} Beta download will appear here when it is published.`;
   linkState(byId('secondary-link'), devFiles?.primary.url);
   byId('secondary-label').textContent = devFiles ? 'Download Development' : dev.status === 'loading' ? 'Checking Development…' : dev.status === 'error' ? 'Development unavailable' : 'Development coming soon';
@@ -81,7 +81,7 @@ async function loadRelease(channel) {
 function setPlatform(os, { updateUrl = false, announce = false } = {}) {
   if (!Object.hasOwn(platforms, os)) os = 'linux';
   const data = platforms[os]; root.dataset.os = os; setFeaturePlatform(os);
-  document.title = `rtxForge Beta for ${data.name}`;
+  document.title = `rtxForge 1.0 Beta for ${data.name}`;
   byId('platform-name').textContent = data.name; byId('platform-copy').textContent = data.copy;
   byId('guide-link').href = data.guide;
   byId('guide-link').textContent = data.guideLabel;

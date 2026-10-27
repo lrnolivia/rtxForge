@@ -99,7 +99,7 @@ public static class Prefs
                 grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
                 var alignment = suffix.HorizontalAlignment;
                 var minimum = suffix.MinWidth;
-                var stretch = suffix is ComboBox or TextBox or AutoSuggestBox or Button;
+                var stretch = suffix is ComboBox or TextBox or AutoSuggestBox;
                 grid.SizeChanged += (_, e) =>
                 {
                     var stacked = e.NewSize.Width < StackWidth;
@@ -107,7 +107,8 @@ public static class Prefs
                     Grid.SetColumn(suffix, stacked ? 1 : 2);
                     Grid.SetColumnSpan(suffix, stacked ? 2 : 1);
                     suffix.Margin = new Thickness(0, stacked ? 10 : 0, 0, 0);
-                    suffix.HorizontalAlignment = stacked ? stretch ? HorizontalAlignment.Stretch : HorizontalAlignment.Left : alignment;
+                    suffix.HorizontalAlignment = suffix is Button ? HorizontalAlignment.Right
+                        : stacked ? stretch ? HorizontalAlignment.Stretch : HorizontalAlignment.Left : alignment;
                     suffix.MinWidth = stacked ? 0 : minimum;
                     // A row of buttons shares the full width under the text; swatches and
                     // other fixed pieces keep their size.
@@ -154,7 +155,8 @@ public static class Prefs
 
     public static Button ActionButton(string text, RoutedEventHandler click, bool accent = false, string? glyph = null)
     {
-        var button = new Button { Content = Content(text, glyph) };
+        var button = new Button { Content = Content(text, glyph), HorizontalAlignment = HorizontalAlignment.Right,
+            MinHeight = 32, Padding = new Thickness(12, 6, 12, 6) };
         if (accent) button.Style = GetStyle("AccentButtonStyle");
         button.Click += click;
         return button;

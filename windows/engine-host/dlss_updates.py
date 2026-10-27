@@ -9,6 +9,9 @@ import ui
 def prepare(config, games):
     """Resolve and download exact replacements without writing any game files."""
     snapshot = runtime.catalog(config)
+    # Stage each current component once before inspecting individual games.
+    for entry in snapshot['entries'].values():
+        runtime.download(config, entry)
     selected, blocked = [], []
     seen = set()
     for index, game in enumerate(games):
@@ -74,7 +77,15 @@ def attach_install(config, review, enabled=True):
     """Include native updates in an install's existing review and recovery session."""
     if not enabled or review.get('operation') not in ('install', 'repair') or not review.get('plans'):
         return
-    updates = prepare(config, [item['row'] for item in review['plans']])
+    try:
+        updates = prepare(config, [item['row'] for item in review['plans']])
+    except runtime.CatalogRateLimit:
+        # This optional update must not prevent reviewing the feature installation.
+        # The final review makes the omitted native-file changes explicit.
+        for row in review['rows']:
+            row['native_summary'] = 'Keep existing DLSS files. GitHub is temporarily rate-limiting update checks.'
+            row['detail'] += '\nNative DLSS: update check unavailable (GitHub rate limit). Existing files will be kept.'
+        return
     plans = {plan['game']: plan for plan in updates['plans']}
     details = {row['game']: row['detail'] for row in updates['rows']}
     skipped = {row['game']: row['reason'] for row in updates['blocked']}

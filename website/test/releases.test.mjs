@@ -29,3 +29,15 @@ test('Beta and moving Development have separate release tags', () => {
   assert.equal(CHANNELS.beta.tag, 'beta'); assert.equal(CHANNELS.development.tag, 'development');
   assert.notEqual(CHANNELS.beta.tag, CHANNELS.development.tag);
 });
+
+test('1.0 Beta exposes its installer and portable ZIP with checksums excluded', () => {
+  const selected = selectDownloads(release([
+    asset('rtxForge-Setup-1.0.0-beta.1-arm64.exe'),
+    asset('rtxForge-Setup-1.0.0-beta.1-x64.exe.sha256'),
+    asset('rtxForge-Setup-1.0.0-beta.1-x64.exe'),
+    asset('rtxForge-windows-1.0.0-beta.1-x64.zip.sha256'),
+    asset('rtxForge-windows-1.0.0-beta.1-x64.zip')
+  ]), 'windows');
+  assert.equal(selected.primary.name, 'rtxForge-Setup-1.0.0-beta.1-x64.exe');
+  assert.equal(selected.portable.name, 'rtxForge-windows-1.0.0-beta.1-x64.zip');
+});

@@ -156,6 +156,23 @@ class DlssUpdatesTest(unittest.TestCase):
         self.assertEqual(dll.read_bytes(), pe(2))
         self.assertEqual(len(runtime.game_recoveries({}, game['game'])), 1)
 
+    def test_rate_limited_optional_update_keeps_feature_review_and_native_files(self):
+        game, dll = self.game('RateLimited')
+        review = self.install_review([game])
+        with patch.object(updates, 'prepare', side_effect=runtime.CatalogRateLimit('GitHub rate limit')):
+            updates.attach_install({}, review)
+        self.assertEqual(len(review['plans']), 1)
+        self.assertNotIn('before_game', review['plans'][0])
+        self.assertIn('Keep existing DLSS files', review['rows'][0]['native_summary'])
+        self.assertEqual(dll.read_bytes(), pe(1))
+
+    def test_optional_update_does_not_swallow_validation_failures(self):
+        game, dll = self.game('InvalidDownload')
+        with patch.object(updates, 'prepare', side_effect=t.Refusal('Runtime source content mismatch')):
+            with self.assertRaisesRegex(t.Refusal, 'content mismatch'):
+                updates.attach_install({}, self.install_review([game]))
+        self.assertEqual(dll.read_bytes(), pe(1))
+
     @staticmethod
     def copy_for_session(args, **kwargs):
         src, dst = map(Path, args[-2:])

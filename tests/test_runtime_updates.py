@@ -5,6 +5,7 @@ from pathlib import Path
 import struct
 import sys
 import tempfile
+import urllib.error
 import unittest
 from unittest.mock import patch
 
@@ -172,6 +173,47 @@ class RuntimeUpdatesTest(unittest.TestCase):
         self.dll.write_bytes(pe(2))
         self.assertEqual(runtime.inspect(self.config, self.games, self.snapshot)[0]['files'][0]['status'], 'Same version')
         self.assertFalse(self.plans())
+
+
+class CatalogReuseTest(unittest.TestCase):
+    def setUp(self):
+        runtime._CATALOG_CACHE.clear()
+        runtime._catalog_retry_at = 0
+        self.addCleanup(runtime._CATALOG_CACHE.clear)
+        self.addCleanup(setattr, runtime, '_catalog_retry_at', 0)
+        self.config = {'runtime_source': {'repository': 'fixture/source', 'ref': 'main'}}
+
+    def test_games_and_repeated_reviews_share_one_snapshot_until_expiry(self):
+        snapshot = {'repository': 'fixture/source', 'commit': 'a' * 40, 'entries': {'dll': {'version': '2'}}}
+        with patch.object(runtime, '_fetch_catalog', return_value=snapshot) as fetch, patch.object(runtime.time, 'monotonic', return_value=100):
+            first = runtime.catalog(self.config)
+            first['entries']['dll']['version'] = 'changed by caller'
+            self.assertEqual(runtime.catalog(self.config)['entries']['dll']['version'], '2')
+            self.assertEqual(fetch.call_count, 1)
+            runtime.catalog({'runtime_source': {'repository': 'other/source', 'ref': 'main'}})
+            self.assertEqual(fetch.call_count, 2)
+        with patch.object(runtime, '_fetch_catalog', return_value=snapshot) as fetch, patch.object(runtime.time, 'monotonic', return_value=100 + runtime.CATALOG_TTL):
+            runtime.catalog(self.config)
+            fetch.assert_called_once()
+
+    def test_rate_limit_stops_requests_until_retry_window(self):
+        error = urllib.error.HTTPError('https://api.github.com/test', 403, 'rate limit exceeded',
+                                       {'X-RateLimit-Remaining': '0', 'Retry-After': '120'}, None)
+        with patch.object(runtime.urllib.request, 'urlopen', side_effect=error) as fetch, patch.object(runtime.time, 'time', return_value=1000):
+            for _ in range(3):
+                with self.assertRaises(runtime.CatalogRateLimit):
+                    runtime._json('https://api.github.com/test')
+            self.assertEqual(fetch.call_count, 1)
+        with patch.object(runtime.urllib.request, 'urlopen', side_effect=error) as fetch, patch.object(runtime.time, 'time', return_value=1121):
+            with self.assertRaises(runtime.CatalogRateLimit):
+                runtime._json('https://api.github.com/test')
+            fetch.assert_called_once()
+
+    def test_unrelated_forbidden_response_is_not_treated_as_rate_limit(self):
+        error = urllib.error.HTTPError('https://api.github.com/test', 403, 'Forbidden', {}, None)
+        with patch.object(runtime.urllib.request, 'urlopen', side_effect=error):
+            with self.assertRaises(urllib.error.HTTPError):
+                runtime._json('https://api.github.com/test')
 
 
 if __name__ == '__main__':

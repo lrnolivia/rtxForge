@@ -8,13 +8,14 @@ namespace RtxForge.Windows.Controls;
 public sealed class OverlayUiReviewView : StackPanel
 {
     readonly EngineForgeService service;
-    readonly Button action = new() { Content = "Update Overlays", HorizontalAlignment = HorizontalAlignment.Stretch, MinHeight = 44 };
+    readonly Button action;
     readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
     bool busy;
 
     public OverlayUiReviewView(EngineForgeService engine, bool packages = false)
     {
         service = engine;
+        action = Prefs.ActionButton("Update Overlays", async (_, _) => await Run());
         Spacing = 12;
         Children.Add(new TextBlock
         {
@@ -23,7 +24,6 @@ public sealed class OverlayUiReviewView : StackPanel
         });
         Children.Add(status);
         Children.Add(action);
-        action.Click += async (_, _) => await Run();
     }
 
     public void Invalidate() => status.Text = "";

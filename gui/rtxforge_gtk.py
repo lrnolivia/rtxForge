@@ -1703,8 +1703,8 @@ button.library-command label { font-weight: 400; }
  */
 @define-color forge_top_bg @view_bg_color;
 @define-color forge_lower_bg @window_bg_color;
-/* Windows shell (Mica: title bar + navigation) and content layer. Every page,
-   hero fade and bottom fade uses the layer color, so gradients stay seamless. */
+/* Windows shell (Mica: title bar + navigation) and content layer. Every page
+   and the hero fade use the layer color, so gradients stay seamless. */
 @define-color forge_shell_bg mix(@window_bg_color,black,0.12);
 @define-color forge_layer_bg mix(@window_bg_color,@window_fg_color,0.025);
 @define-color forge_panel_bg alpha(@window_fg_color,0.12);
@@ -1722,14 +1722,7 @@ button.library-command label { font-weight: 400; }
 .forge-library-surface {
     background: @forge_lower_bg;
 }
-.library-bottom-fade, .settings-bottom-fade { border: none; box-shadow: none; }
 scrolledwindow undershoot, scrolledwindow overshoot { background: none; border: none; box-shadow: none; }
-.library-bottom-fade {
-    background-image: linear-gradient(to bottom, alpha(@forge_lower_bg,0), @forge_lower_bg 90%, @forge_lower_bg);
-}
-.settings-bottom-fade {
-    background-image: linear-gradient(to bottom, alpha(@window_bg_color,0), @window_bg_color 90%, @window_bg_color);
-}
 
 
 .library-sticky-header.stuck {
@@ -3249,7 +3242,6 @@ columnview.library-column-view header button:first-child { padding-left: 52px; }
         alpha(@forge_layer_bg,0.08) 0%, alpha(@forge_layer_bg,0.30) 28%,
         alpha(@forge_layer_bg,0.72) 52%, alpha(@forge_layer_bg,0.94) 76%, @forge_layer_bg 100%);
 }
-.library-bottom-fade { background-image: linear-gradient(to bottom, alpha(@forge_layer_bg,0), @forge_layer_bg 90%, @forge_layer_bg); border-top: none; }
 .game-card, .game-card.library-stripe-a, .game-card.library-stripe-b { background: mix(@forge_layer_bg,@window_fg_color,0.06); }
 
 .game-detail-root .settings-footer { background: @forge_layer_bg; border-top: none; box-shadow: none; }
@@ -3363,20 +3355,6 @@ def action_tiles(actions):
 
 def margins(w,n=16):
     for edge in ('start','end','top','bottom'):getattr(w,'set_margin_'+edge)(n)
-def scroll_bottom_fade(scroll,css='settings-bottom-fade'):
-    overlay=Gtk.Overlay(child=scroll)
-    fade=Gtk.Box(height_request=28,valign=Gtk.Align.END,hexpand=True,can_target=False)
-    fade.add_css_class(css)
-    overlay.add_overlay(fade)
-    def update(adj,*_):
-        remaining=max(0,adj.get_upper()-adj.get_page_size()-adj.get_value())
-        fade.set_opacity(1 if remaining>0.5 else 0)
-        fade.set_size_request(-1,max(1,min(28,__import__('math').ceil(remaining))))
-    adj=scroll.get_vadjustment()
-    adj.connect('changed',update);adj.connect('value-changed',update)
-    update(adj)
-    overlay.bottom_fade=fade
-    return overlay
 
 def clear(box):
     while box.get_first_child():box.remove(box.get_first_child())
@@ -5257,22 +5235,6 @@ class Window(Adw.ApplicationWindow):
         library_surface.append(
             library_stage
         )
-        bottom_gutter=Gtk.Box(height_request=28,valign=Gtk.Align.END,hexpand=True)
-        bottom_gutter.add_css_class('library-bottom-fade')
-        bottom_gutter.set_can_target(False)
-        library_stage.add_overlay(bottom_gutter)
-        self.library_bottom_fade=bottom_gutter
-        def update_library_fade(*_):
-            active=self.column_scroll if self.library_stack.get_visible_child_name()=='list' else self.library_scroll
-            adj=active.get_vadjustment()
-            remaining=max(0,adj.get_upper()-adj.get_page_size()-adj.get_value())
-            bottom_gutter.set_opacity(1 if remaining>0.5 else 0)
-            bottom_gutter.set_size_request(-1,max(1,min(28,__import__('math').ceil(remaining))))
-        for viewport in (self.library_scroll,self.column_scroll):
-            viewport.get_vadjustment().connect('changed',update_library_fade)
-            viewport.get_vadjustment().connect('value-changed',update_library_fade)
-        self.library_stack.connect('notify::visible-child-name',update_library_fade)
-        update_library_fade()
         self.controller_hud=Gtk.Label(label='',visible=False,margin_top=6,margin_bottom=8)
         self.controller_hud.add_css_class('dim-label')
         library_surface.append(self.controller_hud)
@@ -6111,16 +6073,11 @@ class Window(Adw.ApplicationWindow):
         if isinstance(body,Gtk.Viewport):body=body.get_child()
         dialog=self.dialog
         if dialog is None or not hasattr(dialog,'set_content_height'):return False
-        container=scroll.get_parent()
-        if isinstance(container,Gtk.Overlay):container=container.get_parent()
-        if container is not dialog.get_child():return False
-        shell=container
+        shell=scroll.get_parent()
+        if shell is not dialog.get_child():return False
         footer=shell.get_last_child()
         footer.set_margin_top(28)
         footer.remove_css_class('progress-footer')
-        if scroll.get_parent() is shell:
-            shell.remove(scroll)
-            shell.insert_child_after(scroll_bottom_fade(scroll),shell.get_first_child())
         width=max(320,body.get_width() or dialog.get_content_width()-48)
         natural=body.measure(Gtk.Orientation.VERTICAL,width)[1]
         rows=[]
@@ -6138,10 +6095,9 @@ class Window(Adw.ApplicationWindow):
         if len(rows)>5:
             ok,bounds=rows[4].compute_bounds(scroll)
             visible=round(bounds.get_y()+bounds.get_height()+scroll.get_vadjustment().get_value()) if ok else natural-sum(heights[5:])
-        scroll_container=scroll.get_parent()
         chrome=0;child=shell.get_first_child()
         while child:
-            if child is not scroll_container:chrome+=child.measure(Gtk.Orientation.VERTICAL,width)[1]
+            if child is not scroll:chrome+=child.measure(Gtk.Orientation.VERTICAL,width)[1]
             child=child.get_next_sibling()
         available=max(320,self.get_height()-48-chrome)
         if visible>available:
@@ -10958,7 +10914,7 @@ class Window(Adw.ApplicationWindow):
             scroll.set_child(clamp)
 
             stack.add_titled(
-                scroll_bottom_fade(scroll),
+                scroll,
                 title,
                 title,
             )

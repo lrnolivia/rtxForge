@@ -122,7 +122,7 @@ def game_mode():
     w.set_input_surface(False)
     assert w.presentation_scale==1
     adj=w.library_scroll.get_vadjustment();adj.set_value(adj.get_upper()-adj.get_page_size())
-    assert w.library_bottom_fade.get_opacity()==0
+    assert not any(x.has_css_class('library-bottom-fade') for x in children(w))
 def system_theme():
     Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.DEFAULT)
 def system_brand():

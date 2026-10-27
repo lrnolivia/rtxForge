@@ -1178,7 +1178,7 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
     def filtered_games(self):
         mode = self.owner.settings.get('library_filter', 'available')
         games = [g for g in self.owner.games
-                 if mode == 'all' or (mode == 'installed' and g.get('installed')) or (mode not in ('all', 'installed') and not g.get('blocked'))]
+                 if mode == 'all' or (mode == 'installed' and g.get('installed')) or (mode not in ('all', 'installed') and not g.get('blocked') and not g.get('installed'))]
         return sorted(games, key=lambda g: g['name'].casefold())
 
     @staticmethod
@@ -1534,7 +1534,7 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
                 if on:
                     mark.append(self.icon('object-select-symbolic', t.px(16)))
             status.set_text(f"Current: {self.filter_label(current)} · Pending: {self.filter_label(state['pending'])} · Up/down move · Select changes the choice.")
-        for key, title, description in (('available', 'Available', 'Supported game folders'), ('installed', 'Installed', 'Games with managed features'), ('all', 'All', 'Every discovered game')):
+        for key, title, description in (('available', 'Available', 'Supported games without managed features'), ('installed', 'Installed', 'Games with managed features'), ('all', 'All', 'Every discovered game')):
             mark = Gtk.Box(valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER)
             mark.add_css_class('gm-mark')
             marks[key] = mark

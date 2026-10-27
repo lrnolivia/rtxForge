@@ -210,6 +210,7 @@ def apply_neutral_palette():
         .bulk-remove { color: #9b3028; }
         .library-list-chip.active, .library-list-status-dot.installed { color: #437500; }
         .operation-complete, .operation-bubble .operation-complete { color: #376b18; }
+        .operation-done .icon { color: #437500; }
         .operation-bubble .operation-error { color: #a02d25; }
         .eyebrow { color: #437500; }
         .game-banner-title { text-shadow: none; }
@@ -1680,8 +1681,10 @@ CSS=b'''
 .library-page-title { font-size: 20px; font-weight: 600; }
 .forge-page-title { font-size: 28px; font-weight: 600; }
 /* Game Details tabs (Windows GamePage pivot) */
-.detail-tab-bar { background: transparent; margin: 8px 24px 0; }
+.detail-tab-bar { background: transparent; margin: 8px 24px 0 4px; }
 .detail-tabs toggle { padding: 4px 12px 6px; min-height: 0; border-radius: 6px; font-weight: 400; font-size: 14px; }
+/* Selected tab: full-strength text on a light wash, not grey on grey. */
+.detail-tabs toggle:checked { background: alpha(@window_fg_color,0.12); color: @window_fg_color; font-weight: 600; }
 button.library-command { padding: 4px 10px; font-weight: 400; }
 button.library-command label { font-weight: 400; }
 .dim-label { opacity: 0.78; }
@@ -2520,7 +2523,7 @@ columnview.library-column-view listview row:nth-child(even):hover {
 .operation-step .job-title {
     font-size: 20px;
 }
-.operation-done .icon { color: @success_color; }
+.operation-done .icon { color: #76b900; }
 .operation-failed .icon { color: @warning_color; }
 
 .result-success {
@@ -8234,7 +8237,8 @@ class Window(Adw.ApplicationWindow):
         query=self.search.get_text().casefold() if hasattr(self,'search') else ''
         if query and query not in str(game.get('name','')).casefold():return False
         if self.filter=='installed':return bool(game.get('installed'))
-        if self.filter=='available':return not bool(game.get('blocked'))
+        # Windows LibraryScope: Available is what can still be installed.
+        if self.filter=='available':return not game.get('blocked') and not game.get('installed')
         return True
 
     def _column_filter_match(
@@ -8273,11 +8277,7 @@ class Window(Adw.ApplicationWindow):
             )
 
         if self.filter=='available':
-            return not bool(
-                game.get(
-                    'blocked'
-                )
-            )
+            return not game.get('blocked') and not game.get('installed')
 
         return True
 
@@ -9914,7 +9914,7 @@ class Window(Adw.ApplicationWindow):
             flow.show_progress(len(targets));flow.rescan=True
             flow.cancel_button.set_sensitive(False)
             def finished(result):
-                message=str(result['updated_games'])+' games updated.'
+                message=str(result['updated_games'])+(' game updated.' if result['updated_games']==1 else ' games updated.')
                 if result['skipped']:message+=' '+str(len(result['skipped']))+' games skipped; see Activity.'
                 self.log.extend(result['skipped'])
                 self.finish_progress(True,message)
@@ -12633,9 +12633,10 @@ class Window(Adw.ApplicationWindow):
         hero_actions.add_css_class('detail-hero-actions')
         install_label='Set Up for Linux' if self.needs_linux_setup(game) else 'Install Features'
         hero_install=icon_button(install_label,'folder-download-symbolic',lambda *_:self.launch_action('install',targets=[game]),'hero-install')
-        hero_install.set_sensitive(not game.get('blocked') and not self.busy and not self.options.demo)
+        # Same rule as the Installation rows below (demo reviews never write).
+        hero_install.set_sensitive(not game.get('blocked') and not self.busy and bool(self.hardware_info and self.hardware_info['ready']))
         hero_restore=icon_button('Restore Original Files','edit-undo-symbolic',lambda *_:self.launch_action('uninstall',targets=[game]),'hero-restore')
-        hero_restore.set_sensitive(bool(game.get('installed')) and not self.busy and not self.options.demo)
+        hero_restore.set_sensitive(bool(game.get('installed')) and not self.busy)
         more=Gio.Menu()
         more.append('Update DLSS','win.detail-update-dlss')
         if self.adoptable(game):more.append('Adopt with rtxForge','win.detail-adopt')
@@ -12868,9 +12869,11 @@ class Window(Adw.ApplicationWindow):
         overview.append(self.overview_facts(game))
         features=content['Features'];installed=game.get('installed',False)
         overlay=Gtk.Expander(label='Overlay',hexpand=True)
+        overlay.add_css_class('presets-header')
         overlay.set_child(self.game_overlay_card(game));features.append(overlay)
         if installed:
-            features.append(label('Saved NR: '+('enabled' if game.get('nr_enabled') else 'disabled')+' · runtime and visual results require diagnosis.','dim-label'))
+            # Same wording as Game Mode's Features section.
+            features.append(label('Saved: '+(game.get('profile') or 'Configured')+'. The rendered effect still needs an in-game check.','dim-label'))
         tuning,widgets=self.tuning_controls(game)
         presets=Gtk.Expander(label='Presets',expanded=False)
         presets.add_css_class('presets-header')
@@ -12961,6 +12964,7 @@ class Window(Adw.ApplicationWindow):
             )
 
             action.set_sensitive(
+                not self.busy and (
                 installed
                 if op in (
                     'reset',
@@ -12973,7 +12977,7 @@ class Window(Adw.ApplicationWindow):
                         and self.hardware_info['ready']
                     )
                 )
-            )
+            ))
 
             if op=='uninstall':
                 action.add_css_class(

@@ -8,12 +8,19 @@
     {
       "pattern": "rtxforge.loew.fi",
       "custom_domain": true
+    },
+    {
+      "pattern": "loew.fi/rtxforge*",
+      "zone_name": "loew.fi"
     }
   ],
   "assets": {
-    "directory": "./public"
+    "directory": "./.site",
+    "binding": "ASSETS",
+    "run_worker_first": true
   },
   "observability": {
     "enabled": true
-  }
+  },
+  "main": "worker/index.mjs"
 }

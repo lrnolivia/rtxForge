@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Install rtxForge on Linux or Windows. Choose Beta or Development, select your packages, tune presets, install features and keep a way back.">
-  <link rel="canonical" href="https://rtxforge.loew.fi/install">
+  <link rel="canonical" href="https://loew.fi/rtxforge/install">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="rtxForge">
   <meta property="og:title" content="Install rtxForge — Linux and Windows">
   <meta property="og:description" content="Choose Beta or Development, set up rtxForge, select your packages, tune presets and install features with a way back.">
-  <meta property="og:url" content="https://rtxforge.loew.fi/install">
-  <meta property="og:image" content="https://rtxforge.loew.fi/assets/rtxforge-banner.png">
-  <meta property="og:image:secure_url" content="https://rtxforge.loew.fi/assets/rtxforge-banner.png">
+  <meta property="og:url" content="https://loew.fi/rtxforge/install">
+  <meta property="og:image" content="https://loew.fi/rtxforge/assets/rtxforge-banner.png">
+  <meta property="og:image:secure_url" content="https://loew.fi/rtxforge/assets/rtxforge-banner.png">
   <meta property="og:image:type" content="image/png">
   <meta property="og:image:width" content="1600">
   <meta property="og:image:height" content="517">
@@ -19,7 +19,7 @@
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Install rtxForge — Linux and Windows">
   <meta name="twitter:description" content="Choose Beta or Development, set up rtxForge, select your packages, tune presets and install features with a way back.">
-  <meta name="twitter:image" content="https://rtxforge.loew.fi/assets/rtxforge-banner.png">
+  <meta name="twitter:image" content="https://loew.fi/rtxforge/assets/rtxforge-banner.png">
   <meta name="twitter:image:alt" content="rtxForge — new tricks for old cards. The rtxForge icon and wordmark beside a graphics card fan.">
   <meta name="color-scheme" content="dark light">
   <title>Install rtxForge — Linux and Windows</title>
@@ -75,7 +75,7 @@
                 <li>In your file manager, open its properties and allow it to run as a program. Open the AppImage.</li>
                 <li>Keep it somewhere permanent if you add a launcher or Steam shortcut. Moving it later can break that shortcut.</li>
               </ol>
-              <p>The current AppImage uses host Python 3, GTK4, libadwaita 1.7+ and PyGObject. If it will not open, check those dependencies and any FUSE error. A Bazzite filename identifies the build; the app checks host capabilities rather than just the distribution name.</p>
+              <p>The current AppImage uses host Python 3, GTK4, libadwaita 1.7+, and PyGObject. If it will not open, check those dependencies and any FUSE error. A Bazzite filename identifies the build; the app checks host capabilities rather than just the distribution name.</p>
               <h3>Flatpak, when available</h3>
               <p>If the release lists a <code>.flatpakref</code> or <code>.flatpak</code>, open it with your software installer and follow its prompts. Only use a Flatpak actually attached to the selected release. It is not a Flathub listing.</p>
               <p>Keep space for runtime downloads and original-file backups. Linux runtime preparation needs at least 4 GiB free at the app’s state location.</p>
@@ -88,7 +88,7 @@
                 <li>Open rtxForge from the Start menu. Packaged builds include the app runtimes and Python; no development SDK is needed.</li>
               </ol>
               <h3>Portable</h3>
-              <p>Download the portable Windows ZIP, extract the <em>entire</em> archive, then open <code>rtxForge.exe</code>. Keep its companion files together. Portable skips app installation, but preferences, downloaded runtimes and recovery records can still live outside that folder.</p>
+              <p>Download the portable Windows ZIP, extract the <em>entire</em> archive, then open <code>rtxForge.exe</code>. Keep its companion files together. Portable skips app installation, but preferences, downloaded runtimes, and recovery records can still live outside that folder.</p>
               <p>Check the release’s signing and build notes. Development previews may be unsigned. Use the package from the official release and compare its checksum when one is supplied.</p>
             </div>
             <a class="guide-download" href="./?os=linux#downloads" data-downloads-link>Choose a download</a>
@@ -96,17 +96,17 @@
           <section id="packages">
             <h2>Choose your packages.</h2>
             <p>Open the Library, rescan your games, and start with one compatible title. If a game is missing, check your library locations in Settings or add its folder.</p>
-            <p>Choose a supported package in <strong>Packages</strong>, or inspect a custom ZIP. Select <strong>NR Only</strong>, <strong>MFG Only</strong> or <strong>NR + MFG</strong>, then choose a compatible provider. Available packages and combinations depend on your build and operating system.</p>
+            <p>Choose a supported package in <strong>Packages</strong>, or inspect a custom ZIP. Select <strong>NR Only</strong>, <strong>MFG Only</strong>, or <strong>NR + MFG</strong>, then choose a compatible provider. Available packages and combinations depend on your build and operating system.</p>
             <ul>
               <li><strong>Neural rendering:</strong> experimental, for compatible RTX cards and supported game/provider routes. Some packages need a separate compatible model file; the review tells you what is missing.</li>
-              <li><strong>Multi-frame generation:</strong> supports RTX 20, 30 and 40 series on compatible routes. A selected multiplier is a request, not a promise of the same multiplier in net FPS.</li>
+              <li><strong>Multi-frame generation:</strong> supports RTX 20, 30, and 40 series on compatible routes. A selected multiplier is a request, not a promise of the same multiplier in net FPS.</li>
               <li><strong>Custom packages:</strong> inspect the source and proposed files. A checksum verifies the download’s integrity, not its safety or game compatibility.</li>
             </ul>
             <p>Already have a managed install? Use its repair or restore controls before switching provider or feature mode. If your build offers <strong>Adoption</strong> for an existing manual install, review exactly what it recognizes before letting rtxForge manage it. Unknown files should not be overwritten.</p>
           </section>
           <section id="presets">
             <h2>Tune presets.</h2>
-            <p>Use the <strong>Presets</strong> sidebar for library defaults, then adjust an individual game from its details. Choose the NR strength, sharpening and frame-generation settings supported by your selected package.</p>
+            <p>Use the <strong>Presets</strong> sidebar for library defaults, then adjust an individual game from its details. Choose the NR strength, sharpening, and frame-generation settings supported by your selected package.</p>
             <p>Save or apply the preset as shown in your build. A saved value does not prove a feature is running. Existing games may need a reviewed settings update or a restart; check the operation summary rather than assuming a library default changed every installed game.</p>
           </section>
           <section id="install-games">
@@ -124,12 +124,12 @@
           <section id="play">
             <h2>Play.</h2>
             <p>Launch the game and enable the DLSS and frame-generation options required by your package. Start with its supported defaults, check the image and frame pacing, then tune one setting at a time.</p>
-            <p>NR startup behavior and shortcuts depend on the provider. Follow the package’s notes and the controls shown in your build. A green installed badge, saved preset or log entry alone does not establish a visible NR effect.</p>
-            <p data-guide-platform="linux">Open <strong>Settings → Gaming Mode</strong> for the controller interface and Add to Steam options available in your build. Controller behavior, HDR and VRR also depend on your desktop, Gamescope and Proton setup.</p>
+            <p>NR startup behavior and shortcuts depend on the provider. Follow the package’s notes and the controls shown in your build. A green installed badge, saved preset, or log entry alone does not establish a visible NR effect.</p>
+            <p data-guide-platform="linux">Open <strong>Settings → Gaming Mode</strong> for the controller interface and Add to Steam options available in your build. Controller behavior, HDR, and VRR also depend on your desktop, Gamescope, and Proton setup.</p>
             <p data-guide-platform="windows" hidden>The Windows in-game overlay is in development. On builds that include it, <strong>Settings → Overlay</strong> shows its shortcut and supported controls; newer development builds use End by default. Check the build’s notes before relying on overlay behavior.</p>
           </section>
           <section id="restore">
-            <h2>Update, repair or restore.</h2>
+            <h2>Update, repair, or restore.</h2>
             <dl class="guide-recovery">
               <div><dt>Update rtxForge</dt><dd>Use the updater offered by your build or download a newer package from the same channel. An app update does not automatically reinstall game features.</dd></div>
               <div><dt>Repair Feature Files</dt><dd>Repair a managed installation while keeping its recorded tuning. Review the changes first.</dd></div>
@@ -140,10 +140,10 @@
           </section>
           <section id="help">
             <h2>Something not working?</h2>
-            <details><summary>The app will not open</summary><p data-guide-platform="linux">Check executable permission, the AppImage’s host dependencies and any FUSE message. For a Flatpak, check the error in your software installer and that the package came from the selected release.</p><p data-guide-platform="windows" hidden>Extract every file from a portable or setup ZIP. Keep companion files beside the executable. Check the release’s runtime and signing notes, then report the exact message if it still fails.</p></details>
-            <details><summary>A game is missing or an operation is blocked</summary><p>Open Steam once, rescan the Library and check library folders in Settings. Close the game. Read the exact conflict or missing requirement in the review; close Steam if that route asks for it. Do not replace files that the app cannot safely identify.</p></details>
-            <details><summary>NR or MFG has no visible effect</summary><p>Check the installed provider, feature mode, game/API support and in-game DLSS/FG settings. Use <strong>Game Details → Tools → Diagnose NR</strong> when available. Check current package notes; installing files and evaluating a feature in a running game are different things.</p></details>
-            <details><summary>Report a bug</summary><p>Open <strong>Settings → Recovery → Library Reports → Preview Support Report</strong>. Review and export the report, then attach it to a <a href="https://github.com/lrnolivia/rtxForge/issues/new" target="_blank" rel="noopener">GitHub bug report</a>. Include your OS, app build, GPU/driver, game, provider and steps to reproduce. The report stays local until you share it. Check it for personal information before posting.</p></details>
+            <details><summary>The app will not open</summary><p data-guide-platform="linux">Check executable permission, the AppImage’s host dependencies, and any FUSE message. For a Flatpak, check the error in your software installer and that the package came from the selected release.</p><p data-guide-platform="windows" hidden>Extract every file from a portable or setup ZIP. Keep companion files beside the executable. Check the release’s runtime and signing notes, then report the exact message if it still fails.</p></details>
+            <details><summary>A game is missing or an operation is blocked</summary><p>Open Steam once, rescan the Library, and check library folders in Settings. Close the game. Read the exact conflict or missing requirement in the review; close Steam if that route asks for it. Do not replace files that the app cannot safely identify.</p></details>
+            <details><summary>NR or MFG has no visible effect</summary><p>Check the installed provider, feature mode, game/API support, and in-game DLSS/FG settings. Use <strong>Game Details → Tools → Diagnose NR</strong> when available. Check current package notes; installing files and evaluating a feature in a running game are different things.</p></details>
+            <details><summary>Report a bug</summary><p>Open <strong>Settings → Recovery → Library Reports → Preview Support Report</strong>. Review and export the report, then attach it to a <a href="https://github.com/lrnolivia/rtxForge/issues/new" target="_blank" rel="noopener">GitHub bug report</a>. Include your OS, app build, GPU/driver, game, provider, and steps to reproduce. The report stays local until you share it. Check it for personal information before posting.</p></details>
           </section>
         </div>
       </div>

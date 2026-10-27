@@ -1,5 +1,5 @@
 import { SCREENSHOTS, captureForTheme, captureCornerRadius } from './screenshots.mjs';
-import { setGameModeTheme } from './game-mode-media.js';
+import { setCardMedia } from './card-media.js';
 
 export function setFeaturePlatform(os) {
   const byId = id => document.getElementById(id);
@@ -31,15 +31,5 @@ export function setFeaturePlatform(os) {
     render(`feature-${slot}`, capture, container);
     byId(`feature-${slot}-provenance`).textContent = capture?.provenance || '';
   }
-  setGameModeTheme(theme);
-  const install = captureForTheme(captures['desktop-install'], theme);
-  byId('feature-install-media').hidden = !install;
-  if (install) {
-    const frames = [install, ...(install.sequence || [])];
-    ['review', 'progress', 'done'].forEach((step, i) => {
-      const image = byId(`feature-install-${step}-image`);
-      render(`feature-install-${step}`, frames[i], image.closest('figure'));
-    });
-    byId('feature-install-provenance').textContent = install.provenance;
-  }
+  setCardMedia(os, theme);
 }

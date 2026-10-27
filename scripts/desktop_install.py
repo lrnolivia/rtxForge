@@ -95,6 +95,14 @@ def register(target=None):
             capture_output=True,
         )
 
+    # The in-game panel helper starts at login, in Desktop and Game Mode.
+    import linux_overlay_helper
+    linux_overlay_helper.install_service(
+        target,
+        data / 'systemd/user',
+        shutil.which('systemctl'),
+    )
+
     return str(target)
 
 

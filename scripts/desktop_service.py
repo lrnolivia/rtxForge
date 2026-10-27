@@ -6,6 +6,9 @@ import re,datetime,hardware,engine_bridge,library_media,cross_os,proton_prefix,o
 from types import SimpleNamespace
 from storage import storage
 
+UNREADABLE_RECORD=('This game was set up with rtxForge on another system, but its files are not readable here '
+                   '(owned by another user). Make them yours, then refresh: sudo chown -R "$USER" "{folder}"')
+
 class DesktopService:
     def __init__(self,provider=None):
         self.config=app.load_provider(provider)
@@ -123,6 +126,11 @@ class DesktopService:
             target=Path(g.exe).parent if g.exe else root
             record=cross_os.read(target)
             row['installed_on']=record['os'] if record else (cross_os.THIS_OS if installed else None)
+            if not record and cross_os.unreadable(target):
+                # Written by the other OS with permissions this user cannot read. Never offer
+                # Adoption over it; the game cannot read those files under Proton either.
+                row.update(installed=True,installed_on=None,record_unreadable=True,
+                           blocked=UNREADABLE_RECORD.format(folder=target))
             if record and record['os']!=cross_os.THIS_OS:
                 # Set Up (adapt) takes the other OS's install over instead of reinstalling it.
                 try:local=engine.load_baseline(target)

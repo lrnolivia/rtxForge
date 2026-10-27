@@ -26,8 +26,10 @@ def decorate(e, rows):
             target = t.safe(Path(row['game']) / t.relative(row['exe'])).parent
             baseline = e.load_baseline(target, readonly=True)
             fstate = feeder.state(e, target) if (target / 'dlss5-feed.addon64').is_file() else None
+            # A dual-boot install made by rtxForge on the other OS is Set Up here, never adopted.
+            other = row.get('installed_on') == cross_os.OTHER_OS or row.get('record_unreadable')
             managed = bool(baseline and baseline.get('status') == 'active' or fstate and fstate.get('status') == 'active'
-                           or row.get('adaptable'))
+                           or row.get('adaptable') or other)
             detected = (target / 'OptiScaler.ini').is_file() or (target / 'dlss5-feed.addon64').is_file()
             row.update(package_detected=detected, managed=managed, adoption_available=detected and not managed)
             if detected:
@@ -217,6 +219,8 @@ def prepare(config, rows, operation, settings):
     for index, row in enumerate(rows, 1):
         ui.progress('Reviewing Adoption', game=row['name'], checked=index-1, total=len(rows))
         try:
+            t.need(row.get('installed_on') != cross_os.OTHER_OS and not row.get('record_unreadable'),
+                   'Installed with rtxForge on ' + cross_os.OTHER_OS.title() + '. Use Set Up instead of Adoption.')
             plan = (_feeder(config, row, settings) if row.get('runtime_provider') == 'feeder'
                     else _native(config, row, settings, cache, clean=operation == 'adopt-clean'))
             e, target = plan['engine'], plan['target']

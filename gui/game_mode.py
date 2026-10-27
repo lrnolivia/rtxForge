@@ -138,7 +138,9 @@ def stylesheet(t):
 .gm button.gm-brand {{ padding: 0; min-height: 0; }}
 .gm button.gm-btn:hover {{ background-image: image(alpha(currentColor,0.08)); }}
 .gm button.gm-btn:disabled, .gm button.gm-rowbtn:disabled, .gm button.gm-tile:disabled {{ background: {c['disabled']}; color: {c['disabled_fg']}; border-color: transparent; }}
-.gm button.gm-btn.gm-quiet:disabled, .gm button.gm-btn.gm-ghost:disabled {{ background: none; }}
+/* A disabled button keeps its shape: a fill with dimmed text, never bare text that reads as a label. */
+.gm button.gm-btn:disabled {{ background: {c['card']}; box-shadow: none; }}
+.gm .gm-dialog button.gm-btn:disabled, .gm .gm-tool-card button.gm-btn:disabled, .gm .gm-surface button.gm-btn:disabled {{ background: alpha({c['fg']},0.07); }}
 .gm .gm-tabs {{ background: alpha({c['panel']},.80); border-radius: 999px; padding: {px(8 if t.compact else 10)}px; }}
 .gm.gm-details .gm-tabs {{ background: {c['panel']}; }}
 .gm .gm-tabs button.gm-btn {{ padding: {px(14)}px {px(26)}px; min-height: {px(56 if t.compact else 64) - px(28)}px; font-size: {em(0.92)}px; }}
@@ -182,7 +184,7 @@ def stylesheet(t):
 .gm button.gm-gamecard:focus-visible {{ background-image: none; }}
 .gm .gm-art {{ border: {px(visuals.ARTWORK_STROKE)}px solid {c['line']}; border-radius: {px(12)}px; background: {c['card']}; }}
 .gm button.gm-gamecard:focus-visible .gm-art {{ outline: {max(1,px(1.75))}px solid {c['focus']}; outline-offset: {px(5)}px; }}
-.gm .gm-art-fallback {{ color: {c['muted']}; font-weight: 600; font-size: {em(0.8)}px; }}
+.gm .gm-art-fallback {{ font-family: "Bakbak One"; color: alpha({c['fg']},0.62); font-size: {em(1.15)}px; }}
 .gm .gm-cardtitle {{ font-weight: 600; font-size: {em(0.93)}px; }}
 .gm .gm-check {{ border: {px(2)}px solid {c['focus']}; background: {c['window']}; border-radius: {px(6)}px; min-width: {px(28)}px; min-height: {px(28)}px; }}
 .gm button.gm-listrow {{ border-radius: 0; }}
@@ -1601,6 +1603,10 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         hero.set_overflow(Gtk.Overflow.HIDDEN)
         art = self.picture(g.get('hero') or self.h.capsule_art_path(g), None, hero_height, css='gm-hero')
         art.set_hexpand(True)
+        # Fill whatever height the collapsing hero has instead of asking for one.
+        art._picture.size = (None, None)
+        art._picture.set_vexpand(True)
+        art.set_valign(Gtk.Align.FILL)
         hero.set_child(art)
         scrim = Gtk.Box(can_target=False)
         scrim.add_css_class('gm-hero-scrim')
@@ -1641,7 +1647,8 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         lower_row.append(about)
         text.append(lower_row)
         identity.append(text)
-        actions = Gtk.Box(spacing=t.px(12), valign=Gtk.Align.END)
+        # Pinned right, so they stay put when the summary hides as the hero collapses.
+        actions = Gtk.Box(spacing=t.px(12), valign=Gtk.Align.END, hexpand=True, halign=Gtk.Align.END)
         setup = self.owner.needs_linux_setup(g)
         actions.append(self.button('Set Up for Linux' if setup else action_labels.INSTALL,
                                    lambda: self.run_operation('install', [g]), 'primary', 'folder-download-symbolic', enabled=not g.get('blocked'), key='hero-install'))
@@ -1649,8 +1656,6 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
                                    enabled=bool(g.get('installed')), key='hero-restore'))
         actions.append(self.button('Update DLSS', lambda: self.run_operation('update-dlss', [g]), 'dlss', 'emblem-synchronizing-symbolic',
                                    enabled=not g.get('blocked'), key='hero-update'))
-        if width <= 1050:
-            actions.set_orientation(Gtk.Orientation.VERTICAL)
         if tight:
             # Narrow windows drop the actions under the summary.
             lower_row.set_orientation(Gtk.Orientation.VERTICAL)
@@ -1660,7 +1665,7 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         back.add_css_class('gm-back')
         back.connect('clicked', lambda *_: self.close_details())
         self.key(back, 'details-back')
-        page.attach(hero, 1, 0, 1, 1)
+        hero.set_valign(Gtk.Align.START)
 
         nav = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(8))
         nav.set_margin_start(t.px(20))
@@ -1687,7 +1692,7 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         nav_scroll.set_size_request(nav_width + side, -1)
         nav_scroll.set_child(nav)
         nav_scroll.add_css_class('gm-details-rail')
-        page.attach(nav_scroll, 0, 0, 1, 2)
+        page.attach(nav_scroll, 0, 0, 1, 1)
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(24))
         for side_name, value in (('start', 24), ('end', 24), ('top', 12), ('bottom', 12)):
             getattr(content, 'set_margin_' + side_name)(t.px(value))
@@ -1696,7 +1701,36 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         scroll.set_margin_end(side)
         scroll.set_child(self.section_scene(content, 'details:' + g['game'], self.section))
         scroll.set_vexpand(True)
-        page.attach(scroll, 1, 1, 1, 1)
+        # Collapsing hero (Windows CollapsingHero): the hero overlays the top of
+        # the scroller, which starts below its compact height; a spacer in the
+        # content supplies the collapsible part, so scrolling never resizes the
+        # scroller and the range cannot feed back on itself.
+        compact = min(hero_height, t.px(236))
+        stage = Gtk.Overlay(hexpand=True, vexpand=True)
+        scroll.set_margin_top(compact)
+        stage.set_child(scroll)
+        stage.add_overlay(hero)
+        spacer = Gtk.Box()
+        spacer.set_size_request(-1, hero_height - compact)
+        content.prepend(spacer)
+        about.set_visible(True)
+        def collapse(adjustment, *_):
+            viewport = adjustment.get_page_size()
+            if viewport > 0:
+                # A short section must still scroll the whole range, or the hero stalls half-collapsed.
+                content.set_size_request(-1, round(viewport + hero_height - compact))
+            removed = round(min(max(adjustment.get_value(), 0), hero_height - compact))
+            if getattr(hero, '_removed', None) == removed:
+                return
+            hero._removed = removed
+            hero.set_size_request(-1, hero_height - removed)
+            progress = removed / (hero_height - compact) if hero_height > compact else 0
+            about.set_visible(progress < .3)
+            poster.set_visible(progress < .65)
+        adjustment = scroll.get_vadjustment()
+        adjustment.connect('value-changed', collapse)
+        adjustment.connect('changed', collapse)
+        page.attach(stage, 1, 0, 1, 1)
         if first is not None and not self.pending_focus:
             self.first_focus = first
         return page
@@ -2525,7 +2559,10 @@ class GameModeFlow:
         row = Gtk.Box(spacing=t.px(22))
         for side, value in (('start', 22), ('end', 22), ('top', 18), ('bottom', 18)):
             getattr(row, 'set_margin_' + side)(t.px(value))
-        row.append(view.picture((view.h.capsule_art_path(game) or view.h.poster_art_path(game)) if game else None, t.px(128), t.px(60)))
+        art = (view.h.capsule_art_path(game) or view.h.poster_art_path(game)) if game else None
+        if art:
+            # No artwork: no empty outlined box; the text starts at the edge.
+            row.append(view.picture(art, t.px(128), t.px(60)))
         text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(6), hexpand=True, valign=Gtk.Align.CENTER)
         text.append(view.label(name, 'gm-strong', 'gm-rowtitle'))
         text.append(view.label(detail, 'gm-small', wrap=True, lines=2))

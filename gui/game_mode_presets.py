@@ -94,7 +94,13 @@ class GameModePresets:
             item = schema[key]
             label = 'Enable NR on launch' if key == 'enabled' else us_label(item['advanced'] if advanced else item['label'])
             editable = enabled and available(item, mode, legacy)
-            choices = [0, 1] if item['kind'] == 'toggle' else item.get('values')
+            if item['kind'] == 'toggle':
+                # A switch, as in Settings, not an Off/On chooser.
+                widget = self.setting_toggle(label, None, lambda: values[key], lambda value: values.__setitem__(key, int(bool(value))))
+                widget.set_sensitive(editable)
+                self.key(widget, 'preset-field-' + key)
+                return widget
+            choices = item.get('values')
             if choices:
                 captions = ['Off', 'On'] if item['kind'] == 'toggle' else item['choices']
                 def put(value, row=None):

@@ -20,10 +20,13 @@ class ScaleLayout(Gtk.LayoutManager):
 
     def do_measure(self, widget, orientation, for_size):
         logical = math.floor(for_size / widget.factor) if for_size >= 0 else -1
-        minimum, natural, _, _ = widget.child.measure(orientation, logical)
         # A child that lays itself out for its width (Game Mode) reports the
         # narrowest width it supports, not its current layout's minimum.
         floor = getattr(widget.child, 'MIN_WIDTH', None)
+        if floor is not None and orientation == Gtk.Orientation.VERTICAL and logical >= 0:
+            # Its height is measured at the width it will be given (allocate clips).
+            logical = max(logical, widget.child.measure(Gtk.Orientation.HORIZONTAL, -1)[0])
+        minimum, natural, _, _ = widget.child.measure(orientation, logical)
         if floor is not None and orientation == Gtk.Orientation.HORIZONTAL:
             minimum = min(minimum, floor)
             natural = max(minimum, natural)

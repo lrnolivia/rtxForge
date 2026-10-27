@@ -226,6 +226,7 @@ def apply_neutral_palette():
     '''
     if not Adw.StyleManager.get_default().get_dark():
         theme_css+='button.forge-primary, button.suggested-action { background: #deebc9; color: #345b00; } button.forge-primary label, button.suggested-action label, button.forge-primary image, button.suggested-action image { color: #345b00; }'
+        theme_css+='button.forge-primary:disabled, button.suggested-action:disabled { background: alpha(@window_fg_color,0.08); } button.forge-primary:disabled label, button.forge-primary:disabled image, button.suggested-action:disabled label, button.suggested-action:disabled image { color: alpha(@window_fg_color,0.45); }'
     NEUTRAL_PROVIDER.load_from_data(theme_css.encode())
     sources=list(ACCENT_SOURCES.values())
     for provider in ACCENT_PROVIDERS.values():
@@ -2726,6 +2727,18 @@ button.dlss-outline:active { background: alpha(@window_fg_color,0.25); }
 .forge-primary:hover label {
     color: #102600;
 }
+
+/* Disabled primary actions read as disabled, not as green with dark text. */
+.forge-primary:disabled,
+.forge-primary:disabled:hover {
+    background: alpha(@window_fg_color,0.08);
+    color: alpha(@window_fg_color,0.45);
+}
+
+.forge-primary:disabled label,
+.forge-primary:disabled image {
+    color: alpha(@window_fg_color,0.45);
+}
 .bulk-remove { color: #ff928c; padding: 10px 16px; }
 .pill { border-radius: 99px; padding: 5px 10px; background: alpha(@window_fg_color,0.07); font-size: 11px; }
 .game-card {
@@ -3273,6 +3286,8 @@ def set_button_glyphs(active):
 
 def action_icon(text):
     text=text.lower()
+    # Whole word: "Presets" contains "reset".
+    if text.split()[:1]==['reset']:return 'document-revert-symbolic'
     for words,icon in (
         (('diagnos','check','verify'),'system-search-symbolic'),
         (('restore','undo','recovery'),'edit-undo-symbolic'),
@@ -3293,9 +3308,15 @@ def action_icon(text):
         (('tools',),'preferences-system-symbolic'),
         (('report','activity','log','copy'),'text-x-generic-symbolic'),
         (('back','previous'),'go-previous-symbolic'),
+        (('repair',),'applications-utilities-symbolic'),
+        (('search','find'),'system-search-symbolic'),
+        (('load more','show more'),'view-more-horizontal-symbolic'),
+        (('use for','use with'),'object-select-symbolic'),
     ):
         if any(word in text for word in words):return icon
-    return 'go-next-symbolic'
+    # States such as "In use" or "Unavailable" are not actions: no glyph,
+    # rather than a chevron that suggests navigation.
+    return None
 
 class ActionButton(Gtk.Button):
     """Keep the Button label API while displaying an optional action icon."""
@@ -3826,6 +3847,8 @@ class OperationStep(Gtk.Box):
             path=poster_art_path(game) or capsule_art_path(game)
             try:self.poster.set_paintable(Gdk.Texture.new_from_filename(path) if path else None)
             except Exception:self.poster.set_paintable(None)
+            # No artwork: no empty outlined box; the text takes the room.
+            self.frame.set_visible(self.poster.get_paintable() is not None)
             return True
         return False
 
@@ -6134,8 +6157,9 @@ class Window(Adw.ApplicationWindow):
             bezel.picture.set_content_fit(Gtk.ContentFit.CONTAIN)
             bezel.button.set_can_target(False);bezel.button.set_focusable(False)
         else:
-            bezel=Gtk.Frame(width_request=100,height_request=49,valign=Gtk.Align.CENTER)
-            bezel.set_child(Gtk.Image(icon_name=icon,pixel_size=18,halign=Gtk.Align.CENTER,valign=Gtk.Align.CENTER))
+            # Not a game: a square icon tile, not an empty capsule-sized frame.
+            bezel=Gtk.Frame(width_request=49,height_request=49,valign=Gtk.Align.CENTER)
+            bezel.set_child(Gtk.Image(icon_name=icon,pixel_size=24,halign=Gtk.Align.CENTER,valign=Gtk.Align.CENTER))
         bezel.add_css_class('review-bezel');bezel.set_overflow(Gtk.Overflow.HIDDEN)
         entry.add_prefix(bezel)
         if badge:
@@ -6636,10 +6660,12 @@ class Window(Adw.ApplicationWindow):
             d,b,f=self.open_panel(game['name']+' · NR Diagnosis')
             for observation in report['observations']:b.append(label(observation))
             b.append(label('Visible result: '+report['visual_result'],'heading'))
-            view=Gtk.TextView(editable=False,monospace=True,wrap_mode=Gtk.WrapMode.WORD_CHAR)
-            view.get_buffer().set_text(json.dumps(report,indent=2))
+            # The raw evidence is for support: collapsed, read-only, real characters.
+            view=Gtk.TextView(editable=False,cursor_visible=False,monospace=True,wrap_mode=Gtk.WrapMode.WORD_CHAR)
+            view.get_buffer().set_text(json.dumps(report,indent=2,ensure_ascii=False))
             scroller=Gtk.ScrolledWindow(min_content_height=240,vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER)
-            scroller.set_child(view);b.append(scroller)
+            scroller.set_child(view)
+            details=Gtk.Expander(label='Technical details');details.set_child(scroller);b.append(details)
             f.append(button('Refresh',lambda *_:self.show_diagnostics(game)))
         if self.options.demo:
             ready({'observations':['Demo: diagnosis reads the selected game’s settings, exact runtime hashes, and bounded log tail.'],'visual_result':'Not tested'})
@@ -9257,8 +9283,10 @@ class Window(Adw.ApplicationWindow):
 
         caption=self.list_primary_caption(game)
         content=Gtk.Box(spacing=10,halign=Gtk.Align.CENTER,valign=Gtk.Align.CENTER)
-        image=Gtk.Image.new_from_icon_name(action_icon(caption))
-        image.set_visible(BUTTON_GLYPHS);BUTTON_IMAGES.add(image)
+        glyph=action_icon(caption)
+        image=Gtk.Image.new_from_icon_name(glyph)
+        image.set_visible(BUTTON_GLYPHS and glyph is not None)
+        if glyph:BUTTON_IMAGES.add(image)
         content.append(image);content.append(label(caption))
         root._primary.set_child(content)
         root._primary.set_tooltip_text(None)
@@ -11305,9 +11333,9 @@ class Window(Adw.ApplicationWindow):
         )
 
         self.stats.set_text(
-            f'{len(games)} games · '
-            f'{libs} locations · '
-            f'{count} OptiScaler installs detected'
+            f'{len(games)} game{"" if len(games)==1 else "s"} · '
+            f'{libs} location{"" if libs==1 else "s"} · '
+            f'{count} OptiScaler install{"" if count==1 else "s"} detected'
         )
 
         self.filter_games()
@@ -11579,29 +11607,21 @@ class Window(Adw.ApplicationWindow):
             game['name'],
             'poster-fallback',
         )
+        # Missing art shows the name across the artwork. Fill the frame (a
+        # centred label is allocated its tiny natural width and showed "…");
+        # measure_overlay stays off, so the text never sizes the card.
         fallback.set_halign(
-            Gtk.Align.CENTER
+            Gtk.Align.FILL
         )
         fallback.set_valign(
             Gtk.Align.CENTER
         )
-
-        # Missing-art text must never establish the artwork/card size.
-        fallback.set_wrap(
-            False
-        )
-        fallback.set_lines(
-            1
-        )
-        fallback.set_single_line_mode(
-            True
-        )
-        fallback.set_width_chars(
-            1
-        )
-        fallback.set_max_width_chars(
-            1
-        )
+        fallback.set_xalign(0.5)
+        fallback.set_justify(Gtk.Justification.CENTER)
+        fallback.set_wrap(True)
+        fallback.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
+        fallback.set_lines(3)
+        fallback.set_width_chars(1)
         fallback.set_ellipsize(
             Pango.EllipsizeMode.END
         )
@@ -12482,8 +12502,9 @@ class Window(Adw.ApplicationWindow):
         detail_title.set_wrap(
             True
         )
+        # Whole words only: WORD_CHAR let a squeezed hero split "Cyberp-unk".
         detail_title.set_wrap_mode(
-            Pango.WrapMode.WORD_CHAR
+            Pango.WrapMode.WORD
         )
         detail_title.set_single_line_mode(
             False
@@ -13737,7 +13758,8 @@ class Window(Adw.ApplicationWindow):
     def show_reports(self,*_):
         d,b,f=self.open_panel('Library status & reports')
         totals=Counter(g.get('test_record',{}).get('status','Untested') for g in self.games)
-        b.append(label(' · '.join(f'{totals[state]} {state.lower()}' for state in game_notes.STATES),'heading'))
+        # Same words as the status pills ("Bench" shows as N/A).
+        b.append(label(' · '.join(f'{totals[state]} {"not applicable" if state=="Bench" else state.lower()}' for state in game_notes.STATES),'heading'))
         b.append(label('Diagnostics separate saved settings from captured runtime evidence. Nothing is uploaded.','dim-label'))
         for game in self.games:
             record=game.get('test_record',{});item=row(game['name'],record.get('status','Untested')+(' · test in progress' if record.get('active') else ''))
@@ -14566,6 +14588,10 @@ class Window(Adw.ApplicationWindow):
     def show_activity(self,*_):
         d,b,f=self.open_panel('Activity');text=Gtk.TextView(editable=False,monospace=True,wrap_mode=Gtk.WrapMode.WORD_CHAR);text.get_buffer().set_text('\n'.join(self.log) or 'No activity yet.');b.append(text);f.append(button('Close',lambda *_:d.close()))
     def show_settings(self,*_):
+        # Game Mode has its own Settings page; the desktop dialog keeps native
+        # DPI and would open tiny over a scaled couch layout.
+        if hasattr(self,'couch') and self.input_stack.get_visible_child_name()=='couch':
+            self.couch.open('settings');return
         # libadwaita's native preferences dialog: section tabs on top, search,
         # adaptive on narrow windows. Changes apply immediately, as on Windows.
         if self.dialog:self.dialog.force_close() if hasattr(self.dialog,'force_close') else self.dialog.close()

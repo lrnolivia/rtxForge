@@ -236,7 +236,7 @@ public sealed partial class GameModeView
         var step = new GmStep(this);
         var cts = new CancellationTokenSource();
         Button? cancel = null;
-        cancel = ui.Button("Cancel", () => { cts.Cancel(); cancel!.IsEnabled = false; step.Show(Doing(operation), null, 0, null, "Cancelling and undoing changes"); }, GmKind.Card, 0.92);
+        cancel = ui.Button("Cancel", () => { cts.Cancel(); cancel!.IsEnabled = false; step.Busy("Cancelling and undoing changes"); }, GmKind.Card, 0.92);
         // Busy-operation protection: Back does not dismiss a running operation.
         ShowModal(null, step.Root, [cancel], () => { }, 1100, cancel);
         step.Show(Doing(operation), review.Ready.FirstOrDefault()?.Game, 0, review.Ready.Count, "Starting");
@@ -284,6 +284,7 @@ public sealed partial class GameModeView
         readonly Border poster = new();
         readonly TextBlock counter, title, phase;
         readonly ProgressBar bar = new() { Minimum = 0, Maximum = 1, IsIndeterminate = true };
+        readonly Controls.StepCount count = new();
         Game? current;
         public Grid Root { get; } = new();
 
@@ -308,6 +309,12 @@ public sealed partial class GameModeView
             counter = ui.Text("Preparing…", 0.85, t.Muted);
             title = ui.Heading("", 1.3, t.Fg);
             phase = ui.Text("", 0.85, t.Muted);
+            // One line each: a long game title is trimmed, never wrapped or widened.
+            foreach (var line in new[] { title, phase })
+            {
+                line.TextWrapping = TextWrapping.NoWrap;
+                line.TextTrimming = TextTrimming.CharacterEllipsis;
+            }
             bar.MinHeight = t.Px(12);
             bar.Background = t.Surface(t.Card);
             bar.Foreground = GmTheme.B(GmTheme.Accent);
@@ -323,10 +330,18 @@ public sealed partial class GameModeView
 
         public void Show(string verb, Game? game, int index, int? total, string phaseText, double? fraction = null)
         {
-            counter.Text = total is > 0 ? $"{verb} {Math.Min(index + 1, total.Value)} of {total}" : "Preparing…";
             if (!string.IsNullOrEmpty(phaseText)) phase.Text = phaseText.TrimEnd('.', '…') + "…";
-            if (total is > 0) { bar.IsIndeterminate = false; bar.Value = Math.Clamp(fraction ?? (double)index / total.Value, 0, 1); }
-            else bar.IsIndeterminate = true;
+            if (count.Next(verb, index, total, fraction) is { } shown)
+            {
+                counter.Text = $"{verb} {shown.At} of {shown.Of}";
+                bar.IsIndeterminate = false;
+                bar.Value = shown.Value;
+            }
+            else
+            {
+                counter.Text = "Preparing…";
+                bar.IsIndeterminate = true;
+            }
             if (game is null || ReferenceEquals(game, current)) return;
             current = game;
             title.Text = game.Name;
@@ -337,6 +352,13 @@ public sealed partial class GameModeView
         }
 
         public void Complete() { bar.IsIndeterminate = false; bar.Value = 1; }
+
+        public void Busy(string phaseText)
+        {
+            count.Reset();
+            phase.Text = phaseText.TrimEnd('.', '…') + "…";
+            bar.IsIndeterminate = true;
+        }
 
         async Task AccentAsync(Game game)
         {

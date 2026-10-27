@@ -391,9 +391,10 @@ public sealed class OperationDialog
         {
             if (preparedReview is { } pending)
             {
+                // Uncounted engine steps keep the panel's last count (see StepCount).
                 var steps = new Progress<PrepareProgress>(step => progressPanel.Show(ProgressVerb(),
                     review.Ready.FirstOrDefault(item => item.Game.Name == step.Game)?.Game,
-                    step.Checked, step.Total > 0 ? step.Total : review.Ready.Count, step.Label));
+                    step.Checked, step.Total > 0 ? step.Total : null, step.Label));
                 var result = await shell.Service.RunReviewAsync(pending, steps);
                 preparedReview = null;
                 completed = result.Errors.Count == 0;

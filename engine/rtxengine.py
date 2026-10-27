@@ -47,6 +47,7 @@ import fcntl
 import functools
 import hashlib
 import json
+import mmap
 import os
 import re
 import shutil
@@ -57,6 +58,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import weakref
 import zipfile
 import urllib.request
 from contextlib import contextmanager
@@ -405,7 +407,151 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 def sha256_bytes(data: bytes) -> str:
+    if isinstance(data, FileBlob):
+        return data.sha256
     return hashlib.sha256(data).hexdigest()
+
+# Review-time hashes: a file is read once per run while its size, timestamps
+# and file identity are unchanged. Mutations and recovery keep hashing afresh.
+_HASH_CACHE: dict[tuple, str] = {}
+
+def _hash_key(path: Path) -> tuple:
+    st = path.stat()
+    return (os.path.normcase(str(path.resolve())), st.st_size, st.st_mtime_ns, st.st_ctime_ns, st.st_ino)
+
+def sha256_file_cached(path: Path) -> str:
+    key = _hash_key(path)
+    digest = _HASH_CACHE.get(key)
+    if digest is None:
+        digest = sha256_file(path)
+        if _hash_key(path) == key:  # only remember a file that did not change while it was read
+            if len(_HASH_CACHE) >= 50000:
+                _HASH_CACHE.clear()
+            _HASH_CACHE[key] = digest
+    return digest
+
+# Payload files at least this large stay on disk instead of in memory.
+BLOB_MIN_BYTES = 1024 * 1024
+
+class FileBlob:
+    """A large payload file kept on disk instead of in memory.
+
+    Its SHA-256 is taken once, when the file is captured from a verified source.
+    Every full read streams the file and refuses bytes that no longer match that
+    digest, so a backing file changed after verification is never written.
+    """
+    __slots__ = ("path", "size", "sha256", "_owner")
+
+    def __init__(self, path: Path, size: int, sha256: str, owner: object = None):
+        self.path = Path(path)
+        self.size = size
+        self.sha256 = sha256
+        self._owner = owner  # keeps a temporary extraction folder alive
+
+    @classmethod
+    def capture(cls, path: Path, *, owner: object = None, digest=None) -> "FileBlob":
+        path = Path(path)
+        require(path.is_file() and not path.is_symlink(), f"Payload file missing or linked: {path}")
+        return cls(path, path.stat().st_size, (digest or sha256_file)(path), owner)
+
+    def chunks(self, size: int = 1024 * 1024):
+        h = hashlib.sha256()
+        total = 0
+        with self.path.open("rb") as f:
+            for block in iter(lambda: f.read(size), b""):
+                h.update(block)
+                total += len(block)
+                yield block
+        require(total == self.size and h.hexdigest() == self.sha256,
+                f"Payload file changed after it was verified: {self.path.name}")
+
+    def read(self) -> bytes:
+        return b"".join(self.chunks())
+
+    def __bytes__(self) -> bytes:
+        return self.read()
+
+    def decode(self, *args, **kwargs) -> str:
+        return self.read().decode(*args, **kwargs)
+
+    def __len__(self) -> int:
+        return self.size
+
+    def __getitem__(self, key):
+        # Header probes (data[:2] == b"MZ") read only the bytes they ask for.
+        if not isinstance(key, slice) or key.step not in (None, 1):
+            return self.read()[key]
+        start, stop, _ = key.indices(self.size)
+        if stop <= start:
+            return b""
+        with self.path.open("rb") as f:
+            f.seek(start)
+            return f.read(stop - start)
+
+    def __eq__(self, other):
+        if isinstance(other, FileBlob):
+            return self.size == other.size and self.sha256 == other.sha256
+        if isinstance(other, (bytes, bytearray, memoryview)):
+            return len(other) == self.size and hashlib.sha256(other).hexdigest() == self.sha256
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash((self.size, self.sha256))
+
+    def __repr__(self) -> str:
+        return f"FileBlob({self.path.name!r}, {self.size} bytes, sha256={self.sha256[:12]})"
+
+
+class _PayloadDir:
+    """Owns one extraction folder; it is removed once no FileBlob refers to it."""
+    __slots__ = ("root", "__weakref__")
+
+    def __init__(self, root: Path):
+        self.root = root
+        weakref.finalize(self, shutil.rmtree, str(root), True)
+
+_PAYLOAD_PREFIX = "rtxengine-payload-"
+_payload_dirs_pruned = False
+
+def _payload_workdir() -> _PayloadDir:
+    global _payload_dirs_pruned
+    base = Path(tempfile.gettempdir())
+    if not _payload_dirs_pruned:
+        # Folders left by a run that was killed before it could clean up.
+        _payload_dirs_pruned = True
+        cutoff = time.time() - 24 * 3600
+        for old in base.glob(_PAYLOAD_PREFIX + "*"):
+            try:
+                if old.is_dir() and not old.is_symlink() and old.stat().st_mtime < cutoff:
+                    shutil.rmtree(old, ignore_errors=True)
+            except OSError:
+                pass
+    return _PayloadDir(Path(tempfile.mkdtemp(prefix=_PAYLOAD_PREFIX)))
+
+def _collect_extracted_tree(workdir: _PayloadDir) -> dict[str, bytes]:
+    """Payload map for an extracted provider tree: large files stay on disk."""
+    root = workdir.root
+    payload: dict[str, bytes] = {}
+    seen: set[str] = set()
+    total = 0
+    for current, dirs, files in os.walk(root, followlinks=False):
+        base = Path(current)
+        for d in list(dirs):
+            p = base / d
+            require(not p.is_symlink(), f"Provider archive symlink refused: {p.relative_to(root)}")
+        for name in files:
+            p = base / name
+            require(p.is_file() and not p.is_symlink(), f"Provider archive non-regular file refused: {p.relative_to(root)}")
+            rel = safe_rel(p.relative_to(root).as_posix())
+            key = rel.casefold()
+            require(key not in seen, f"Case-colliding provider path: {rel}")
+            seen.add(key)
+            size = p.stat().st_size
+            total += size
+            require(total <= 2 * 1024 * 1024 * 1024, "Provider archive expands beyond the safety limit")
+            require(len(payload) < 20000, "Provider archive contains too many files")
+            payload[rel] = FileBlob.capture(p, owner=workdir) if size >= BLOB_MIN_BYTES else p.read_bytes()
+    return payload
 
 def human_size(n: int) -> str:
     n = float(n)
@@ -593,10 +739,18 @@ def atomic_write(path: Path, data: bytes, mode: int = 0o644) -> None:
     tmp = path.with_name(f".{path.name}.rtxforge-new")
     if tmp.exists():
         tmp.unlink()
-    with tmp.open("xb") as f:
-        f.write(data)
-        f.flush()
-        os.fsync(f.fileno())
+    try:
+        with tmp.open("xb") as f:
+            if isinstance(data, FileBlob):
+                for block in data.chunks():
+                    f.write(block)
+            else:
+                f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
     os.chmod(tmp, mode)
     durable_replace(tmp, path)
 
@@ -1292,6 +1446,7 @@ def _archive_payload_libarchive(archive: Path) -> dict[str, bytes]:
     require(bool(a), "libarchive could not allocate a reader")
     payload: dict[str, bytes] = {}
     total = 0
+    workdir: Optional[_PayloadDir] = None
     try:
         lib.archive_read_support_filter_all(a)
         lib.archive_read_support_format_all(a)
@@ -1317,24 +1472,42 @@ def _archive_payload_libarchive(archive: Path) -> dict[str, bytes]:
             require(ftype == stat.S_IFREG, f"Provider archive non-regular entry refused: {rel}")
             size = int(lib.archive_entry_size(ent))
             require(0 <= size <= 1024 * 1024 * 1024, f"Provider archive entry has unsafe size: {rel}")
-            chunks: list[bytes] = []
-            remaining = size
-            while remaining > 0:
-                nbuf = min(1024 * 1024, remaining)
-                buf = ctypes.create_string_buffer(nbuf)
-                got = int(lib.archive_read_data(a, buf, nbuf))
-                if got < 0:
-                    err = lib.archive_error_string(a)
-                    raise Stop(f"Provider archive data read failed for {rel}: {(err or b'unknown error').decode(errors='replace')}")
-                if got == 0:
-                    break
-                chunks.append(buf.raw[:got])
-                remaining -= got
-            data = b"".join(chunks)
-            require(len(data) == size, f"Provider archive entry truncated: {rel}")
             key = rel.casefold()
             require(key not in {x.casefold() for x in payload}, f"Case-colliding provider path: {rel}")
-            payload[rel] = data
+            # Large entries stream to a private folder and stay there as FileBlobs.
+            sink = None
+            if size >= BLOB_MIN_BYTES:
+                workdir = workdir or _payload_workdir()
+                dest = workdir.root.joinpath(*PurePosixPath(rel).parts)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                sink = dest.open("xb")
+                digest = hashlib.sha256()
+            chunks: list[bytes] = []
+            got_total = 0
+            try:
+                remaining = size
+                while remaining > 0:
+                    nbuf = min(1024 * 1024, remaining)
+                    buf = ctypes.create_string_buffer(nbuf)
+                    got = int(lib.archive_read_data(a, buf, nbuf))
+                    if got < 0:
+                        err = lib.archive_error_string(a)
+                        raise Stop(f"Provider archive data read failed for {rel}: {(err or b'unknown error').decode(errors='replace')}")
+                    if got == 0:
+                        break
+                    block = buf.raw[:got]
+                    if sink:
+                        sink.write(block)
+                        digest.update(block)
+                    else:
+                        chunks.append(block)
+                    got_total += got
+                    remaining -= got
+            finally:
+                if sink:
+                    sink.close()
+            require(got_total == size, f"Provider archive entry truncated: {rel}")
+            payload[rel] = FileBlob(dest, size, digest.hexdigest(), workdir) if sink else b"".join(chunks)
             total += size
             require(total <= 2 * 1024 * 1024 * 1024, "Provider archive expands beyond the safety limit")
             require(len(payload) <= 20000, "Provider archive contains too many files")
@@ -1346,28 +1519,16 @@ def _archive_payload_libarchive(archive: Path) -> dict[str, bytes]:
 def _archive_payload_cli(archive: Path) -> dict[str, bytes]:
     tool = shutil.which("7zz") or shutil.which("7z") or shutil.which("bsdtar")
     require(tool is not None, "Neither libarchive nor 7z/7zz/bsdtar is available to extract the y4my .7z provider")
-    with tempfile.TemporaryDirectory(prefix="rtxengine-y4my-") as td:
-        root = Path(td)
-        if Path(tool).name == "bsdtar":
-            cmd = [tool, "-xf", str(archive), "-C", str(root)]
-        else:
-            cmd = [tool, "x", "-y", f"-o{root}", str(archive)]
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        require(proc.returncode == 0, f"Provider extraction failed: {proc.stdout[-1200:]}")
-        payload: dict[str, bytes] = {}
-        for current, dirs, files in os.walk(root, followlinks=False):
-            base = Path(current)
-            for d in list(dirs):
-                p = base / d
-                require(not p.is_symlink(), f"Provider archive symlink refused: {p.relative_to(root)}")
-            for name in files:
-                p = base / name
-                require(p.is_file() and not p.is_symlink(), f"Provider archive non-regular file refused: {p.relative_to(root)}")
-                rel = safe_rel(p.relative_to(root).as_posix())
-                key = rel.casefold()
-                require(key not in {x.casefold() for x in payload}, f"Case-colliding provider path: {rel}")
-                payload[rel] = p.read_bytes()
-        return payload
+    # The extracted folder backs the payload's large files and is removed with them.
+    workdir = _payload_workdir()
+    root = workdir.root
+    if Path(tool).name == "bsdtar":
+        cmd = [tool, "-xf", str(archive), "-C", str(root)]
+    else:
+        cmd = [tool, "x", "-y", f"-o{root}", str(archive)]
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    require(proc.returncode == 0, f"Provider extraction failed: {proc.stdout[-1200:]}")
+    return _collect_extracted_tree(workdir)
 
 
 def _read_provider_archive(archive: Path) -> dict[str, bytes]:
@@ -1397,8 +1558,10 @@ def _load_validated_archive(archive: Path) -> tuple[dict[str, bytes], dict]:
 
     Hashing a pathname and then reopening it for extraction creates a TOCTOU
     window: another process can replace/modify that file after the pinned hash
-    check.  Keep the extracted payload in memory and re-hash the archive before
-    trusting those bytes.  This also avoids decompressing the 117 MB provider
+    check.  Extract once, record every file's digest while the archive is
+    pinned, and re-hash the archive before trusting those bytes.  Small files
+    stay in memory; large ones are FileBlobs whose later reads must still match
+    the recorded digest.  This also avoids decompressing the 117 MB provider
     twice on every install.
     """
     require(archive.is_file() and not archive.is_symlink(), f"Provider archive not found/unsafe: {archive}")
@@ -1621,7 +1784,8 @@ def load_user_nr_runtime(
                 raise Stop(f"NR runtime not found/unsafe: {path}")
             continue
         try:
-            data = path.read_bytes()
+            # Kept on disk: each game used to hold its own 160-260 MB copy.
+            data = FileBlob.capture(path, digest=sha256_file_cached)
         except OSError as exc:
             if is_explicit:
                 raise Stop(f"Could not read NR runtime {path}: {exc}") from exc
@@ -1641,7 +1805,7 @@ def load_user_nr_runtime(
         return data, {
             "name": NR_RUNTIME_NAME,
             "path": str(path.resolve()),
-            "sha256": sha256_bytes(data),
+            "sha256": data.sha256,
             "ownership": "user-supplied NVIDIA runtime",
             "explicit_override": is_explicit,
             "skipped_auto_candidates": diagnostics,
@@ -1787,10 +1951,13 @@ def pe_imported_dlls(exe: Path) -> set[str]:
     We use the target EXE's normal import table only. A supported proxy is
     considered safe for automatic RTXMFG deployment only when the EXE actually
     imports that DLL and the game directory does not already own the filename.
+    The EXE is mapped, not read: only the header and import pages are touched,
+    which matters for multi-hundred-MB game executables.
     """
     try:
-        data = exe.read_bytes()
-    except OSError:
+        with exe.open("rb") as f:
+            data = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
+    except (OSError, ValueError):  # ValueError: empty file
         return set()
 
     try:
@@ -1850,6 +2017,8 @@ def pe_imported_dlls(exe: Path) -> set[str]:
         return names
     except Exception:
         return set()
+    finally:
+        data.close()
 
 
 def choose_rtxmfg_proxy(
@@ -2825,8 +2994,9 @@ def _validate_restore_recovery_dir(target: Path, raw: str, *, require_exists: bo
     return cur
 
 
-def _tree_manifest_data(root: Path) -> dict:
+def _tree_manifest_data(root: Path, file_digest=None) -> dict:
     require(root.is_dir() and not root.is_symlink(), f"Unsafe baseline tree: {root}")
+    file_digest = file_digest or sha256_file
     rows = []
     total = 0
     digest = hashlib.sha256()
@@ -2835,7 +3005,7 @@ def _tree_manifest_data(root: Path) -> dict:
         if not path.is_file():
             continue
         rel = path.relative_to(root).as_posix()
-        sha = sha256_file(path)
+        sha = file_digest(path)
         size = path.stat().st_size
         total += size
         rows.append({"path": rel, "bytes": size, "sha256": sha})
@@ -2865,7 +3035,7 @@ def _write_tree_manifest(backup_root: Path, name: str, tree: Path) -> dict:
         "bytes": manifest["bytes"],
     }
 
-def _verify_tree_manifest(target: Path, info: dict, tree: Path) -> None:
+def _verify_tree_manifest(target: Path, info: dict, tree: Path, digest=None) -> None:
     manifest_path = _baseline_backup_member(target, info.get("manifest", ""))
     require(manifest_path.is_file(), f"Baseline tree manifest missing: {manifest_path}")
     require(sha256_file(manifest_path) == info.get("manifest_sha256"), "Baseline tree manifest hash mismatch")
@@ -2873,7 +3043,7 @@ def _verify_tree_manifest(target: Path, info: dict, tree: Path) -> None:
         expected = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise Stop(f"Baseline tree manifest is corrupt: {manifest_path}: {exc}") from exc
-    actual = _tree_manifest_data(tree)
+    actual = _tree_manifest_data(tree, digest)
     require(actual.get("tree_sha256") == expected.get("tree_sha256") == info.get("tree_sha256"), "Baseline tree integrity mismatch")
     require(actual.get("file_count") == expected.get("file_count"), "Baseline tree file-count mismatch")
 
@@ -2971,8 +3141,12 @@ def _adopt_legacy_integrity_metadata(target: Path, baseline: dict) -> bool:
         save_json_atomic(baseline_path(target), baseline)
     return changed
 
-def verify_baseline_integrity(target: Path, baseline: dict, *, adopt_legacy: bool = True) -> None:
-    """Validate the complete persisted restore plan before any live game mutation."""
+def verify_baseline_integrity(target: Path, baseline: dict, *, adopt_legacy: bool = True, digest=None) -> None:
+    """Validate the complete persisted restore plan before any live game mutation.
+
+    ``digest`` lets a review reuse hashes of unchanged backups; mutations hash afresh.
+    """
+    digest = digest or sha256_file
     require(isinstance(baseline, dict), "Baseline state is not an object")
     require(Path(baseline.get("target_dir", "")).resolve() == target.resolve(), "State target mismatch")
     originals = baseline.get("originals")
@@ -3050,12 +3224,12 @@ def verify_baseline_integrity(target: Path, baseline: dict, *, adopt_legacy: boo
                 type(mode) is int and 0 <= mode <= 0o7777,
                 f"Baseline file mode invalid: {rel}",
             )
-            require(sha256_file(backup) == info["sha256"], f"Baseline file hash mismatch: {rel}")
+            require(digest(backup) == info["sha256"], f"Baseline file hash mismatch: {rel}")
         elif kind == "tree":
             require(backup.is_dir() and not backup.is_symlink(), f"Baseline tree missing: {rel}")
-            _verify_tree_manifest(target, info, backup)
+            _verify_tree_manifest(target, info, backup, digest)
         elif kind == "tar_file":
-            require(sha256_file(backup) == info.get("archive_sha256"), f"Baseline tar hash mismatch: {rel}")
+            require(digest(backup) == info.get("archive_sha256"), f"Baseline tar hash mismatch: {rel}")
             member = _normalize_state_rel(info.get("member", ""), allow_dir_marker=False)
             restore_parent = info.get("restore_parent", ".")
             if restore_parent == ".":
@@ -3071,7 +3245,7 @@ def verify_baseline_integrity(target: Path, baseline: dict, *, adopt_legacy: boo
             )
             _validate_tar_archive(backup, expected_top=member, exact_file=True)
         elif kind == "tar_tree":
-            require(sha256_file(backup) == info.get("archive_sha256"), f"Baseline tar hash mismatch: {rel}")
+            require(digest(backup) == info.get("archive_sha256"), f"Baseline tar hash mismatch: {rel}")
             expected = _normalize_state_rel(rel).rstrip("/")
             _validate_tar_archive(backup, expected_top=expected, exact_file=False)
 
@@ -3952,13 +4126,14 @@ def _refresh_expected_file_hashes(baseline: dict) -> dict[str, set[str]]:
                 out.setdefault(rel.casefold(), set()).add(digest)
     return out
 
-def _verify_optiscaler_tree_refresh_safe(target: Path, baseline: dict) -> None:
+def _verify_optiscaler_tree_refresh_safe(target: Path, baseline: dict, digest=None) -> None:
     """Refuse refresh if the managed OptiScaler binary tree acquired drift.
 
     Refresh intentionally replaces this whole provider-owned subtree. Anything
     not provably written by the current/prior rtxEngine install is therefore an
     ownership conflict, not something an ordinary refresh may erase.
     """
+    digest = digest or sha256_file
     tree = target / "OptiScaler"
     if not tree.exists() and not tree.is_symlink():
         return
@@ -3976,7 +4151,7 @@ def _verify_optiscaler_tree_refresh_safe(target: Path, baseline: dict) -> None:
         original = (baseline.get("originals") or {}).get("OptiScaler/")
         if isinstance(original, dict) and original.get("existed") and original.get("kind") == "tree":
             expected_tree = original.get("tree_sha256")
-            if isinstance(expected_tree, str) and _tree_manifest_data(tree).get("tree_sha256") == expected_tree:
+            if isinstance(expected_tree, str) and _tree_manifest_data(tree, digest).get("tree_sha256") == expected_tree:
                 return
 
     expected = _refresh_expected_file_hashes(baseline)
@@ -3987,15 +4162,16 @@ def _verify_optiscaler_tree_refresh_safe(target: Path, baseline: dict) -> None:
         rel = path.relative_to(target).as_posix()
         allowed = expected.get(rel.casefold())
         require(allowed, f"Unexpected file inside managed OptiScaler tree; refusing refresh: {rel}")
-        require(sha256_file(path) in allowed, f"Managed OptiScaler tree file changed externally; refusing refresh: {rel}")
+        require(digest(path) in allowed, f"Managed OptiScaler tree file changed externally; refusing refresh: {rel}")
 
-def _verify_root_payload_refresh_safe(target: Path, baseline: dict, payload: dict[str, bytes], ini_key: str) -> None:
+def _verify_root_payload_refresh_safe(target: Path, baseline: dict, payload: dict[str, bytes], ini_key: str, digest=None) -> None:
     """Refuse to overwrite externally changed files rtxEngine already owns.
 
     OptiScaler.ini is intentionally excluded because it is a user-editable
     config and is merged separately. New payload paths are also excluded here:
     baseline extension captures any pre-existing bytes before first ownership.
     """
+    digest = digest or sha256_file
     expected = _refresh_expected_file_hashes(baseline)
     for rel in sorted(payload, key=str.casefold):
         if rel.casefold().startswith("optiscaler/") or rel.casefold() == ini_key.casefold():
@@ -4017,7 +4193,7 @@ def _verify_root_payload_refresh_safe(target: Path, baseline: dict, payload: dic
                 updated = overlay_policy.reshade(live.decode('utf-8-sig'), _ENGINE_MODULE.OVERLAY_UI).encode('utf-8')
                 if updated == payload[rel]: continue
         require(
-            sha256_file(path) in allowed,
+            digest(path) in allowed,
             f"Managed payload file changed externally; refusing refresh: {rel}",
         )
 
@@ -4428,6 +4604,8 @@ def install_target(
     dry_run: bool = False,
 ) -> dict:
     visual_defaults(nr_strength, mfg_multiplier, sharpening_strength)  # Validate before any mutation.
+    # A review reuses hashes of unchanged files; the real install hashes everything afresh.
+    digest = sha256_file_cached if dry_run else sha256_file
     is_skynizz = Y4MY_PROVIDER.get("id") == "skynizz"
     is_skynizz_bridge = is_skynizz and Y4MY_PROVIDER.get("variant") == "nr-mfg-bridge"
     mfg_component = Y4MY_PROVIDER.get("mfg_component") if is_skynizz_bridge else None
@@ -4458,8 +4636,8 @@ def install_target(
             f"Previous restore/uninstall is still pending for {game.name}. "
             "Retry restore/uninstall before installing again.",
         )
-        verify_baseline_integrity(target, existing_baseline, adopt_legacy=not dry_run)
-        _verify_optiscaler_tree_refresh_safe(target, existing_baseline)
+        verify_baseline_integrity(target, existing_baseline, adopt_legacy=not dry_run, digest=digest)
+        _verify_optiscaler_tree_refresh_safe(target, existing_baseline, digest)
     if existing_baseline and Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) == "dlss-unlocked":
         prior_mode = (existing_baseline.get("current") or {}).get("feature_mode")
         require(prior_mode in (None, feature_mode), "Uninstall before changing DLSS-Unlocked pipelines")
@@ -4487,7 +4665,7 @@ def install_target(
                 )
             if (
                 prior_path.is_file()
-                and sha256_file(prior_path) != prior_hash
+                and digest(prior_path) != prior_hash
                 and not reshade.get("detected")
             ):
                 raise Stop(
@@ -4520,7 +4698,7 @@ def install_target(
         prior_hash = (prior.get("installed_hashes") or {}).get(prior_proxy) if prior_proxy else None
         if prior_proxy == chosen_proxy and prior_hash:
             prior_path = target / prior_proxy
-            if prior_path.is_file() and sha256_file(prior_path) != prior_hash:
+            if prior_path.is_file() and digest(prior_path) != prior_hash:
                 raise Stop(
                     f"Managed OptiScaler proxy changed externally: {prior_path}. "
                     "rtxEngine refuses to overwrite it; uninstall/restore or resolve that proxy first."
@@ -4545,7 +4723,7 @@ def install_target(
                     prior_path.is_file() and not prior_path.is_symlink(),
                     f"Managed RTXMFG proxy changed filesystem type externally: {prior_path}",
                 )
-            if prior_hash and prior_path.is_file() and sha256_file(prior_path) == prior_hash:
+            if prior_hash and prior_path.is_file() and digest(prior_path) == prior_hash:
                 managed_existing_mfg.add(previous_mfg_proxy)
 
     if family == "ada":
@@ -4599,13 +4777,13 @@ def install_target(
             }
         live_nr = target / NR_RUNTIME_NAME
         if live_nr.is_file() and not live_nr.is_symlink() and Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) != "dlss-unlocked" and not (selected_nr_meta or {}).get("explicit_override"):
-            live_bytes = live_nr.read_bytes()
+            live_bytes = FileBlob.capture(live_nr, digest=digest)
             require(len(live_bytes) > NR_RUNTIME_MIN_BYTES and live_bytes[:2] == b"MZ", f"Existing {NR_RUNTIME_NAME} is invalid")
             selected_nr_payload = live_bytes
             selected_nr_meta = {
                 "name": NR_RUNTIME_NAME,
                 "path": str(live_nr),
-                "sha256": sha256_bytes(live_bytes),
+                "sha256": live_bytes.sha256,
                 "ownership": "existing game-local NVIDIA runtime",
             }
         require(
@@ -4732,7 +4910,7 @@ def install_target(
         payload[mfg_proxy] = rtxmfg_payload
 
     if existing_baseline:
-        _verify_root_payload_refresh_safe(target, existing_baseline, payload, ini_key)
+        _verify_root_payload_refresh_safe(target, existing_baseline, payload, ini_key, digest)
 
     if dry_run:
         stale = stale_owned_proxies(target, chosen_proxy, reshade)
@@ -4865,6 +5043,11 @@ def install_target(
         for rel, data in sorted(payload.items(), key=lambda item: item[0].casefold()):
             dst = target / rel
             dst.resolve().relative_to(target.resolve())
+            # A file already holding these exact bytes (a refresh, or the game's
+            # own NR model) is verified in place instead of rewritten.
+            if (dst.is_file() and not dst.is_symlink() and dst.stat().st_size == len(data)
+                    and sha256_file(dst) == installed_hashes[rel]):
+                continue
             atomic_write(dst, data, 0o644)
             require(sha256_file(dst) == installed_hashes[rel], f"Write verification failed: {rel}")
 

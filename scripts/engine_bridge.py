@@ -145,14 +145,18 @@ def game(e,row):
     return g
 
 def fingerprint(e,g):
-    # Snapshot only installer inputs, not the whole game or saves.
+    # Snapshot only installer inputs, not the whole game or saves. Taken at review
+    # and again before install: an unchanged file (same size, times and identity)
+    # is hashed once per run, so the second snapshot costs no game-sized reads.
     target=g.target_dir;result={}
+    cached=getattr(e,'sha256_file_cached',None)
+    digest=cached or e.sha256_file
     for p in target.iterdir():
         if p.name.lower() in set(e.PROXY_NAMES)|{'optiscaler.ini','nvngx_dlssnr.dll','reshade.ini','reshade64.dll','renodx-mfgunlock.addon64'} or p==g.exe:
             t.need(not p.is_symlink(),'Linked installer input refused: '+str(p))
-            if p.is_file():result[p.name]=e.sha256_file(p)
+            if p.is_file():result[p.name]=digest(p)
     opti=target/'OptiScaler'
-    if opti.exists():result['OptiScaler/']=e._tree_manifest_data(opti)
+    if opti.exists():result['OptiScaler/']=e._tree_manifest_data(opti,cached) if cached else e._tree_manifest_data(opti)
     bp=e.baseline_path(target)
     result['baseline']=e.sha256_file(bp) if bp.is_file() else None
     return result
@@ -459,7 +463,9 @@ def prepare(config,rows,mode,operation,settings):
             g=game(e,row)
             if selected!='skynizz' and operation in ('install','repair') and mode!='mfg-only' and not settings.get('nr_runtime'):
                 local_nr=g.target_dir/'nvngx_dlssnr.dll'
-                nr,nrmeta=e.load_user_nr_runtime(str(local_nr) if local_nr.is_file() else bundled_nr,family=None)
+                model_key=str(local_nr) if local_nr.is_file() else bundled_nr
+                if model_key not in model_cache:model_cache[model_key]=e.load_user_nr_runtime(model_key,family=None)
+                nr,nrmeta=model_cache[model_key]
             t.need(not any(g.root.resolve().is_relative_to(p) or p.is_relative_to(g.root.resolve()) for p in seen),'Duplicate or overlapping game selection; refresh the library')
             seen.append(g.root.resolve())
             baseline=e.load_baseline(g.target_dir)

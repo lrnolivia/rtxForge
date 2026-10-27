@@ -125,7 +125,7 @@ def stylesheet(t):
 .gm .gm-brand-title.gm-brand-small {{ font-size: {em(1.2)}px; }}
 .gm button {{ background: none; box-shadow: none; border: none; color: {c['fg']}; min-height: 0; min-width: 0; padding: 0;
   outline-color: {c['focus']}; outline-style: solid; outline-width: 0; transition: none; }}
-.gm button:focus-visible {{ outline-width: {max(1,px(1.75))}px; outline-offset: {px(2)}px; }}
+.gm button:focus-visible {{ background-image: image(alpha(currentColor,0.10)); }}
 .gm button.gm-btn {{ border-radius: 999px; padding: {px(14)}px {px(24)}px; min-height: {px(60 if not t.compact else 48) - px(28)}px;
   font-size: {em(0.85)}px; font-weight: 600; background: {c['card']}; color: {c['fg']}; }}
 .gm button.gm-btn.gm-primary {{ background: {ACCENT}; color: {ACCENT_INK}; font-weight: 650; }}
@@ -146,7 +146,6 @@ def stylesheet(t):
 .gm .gm-segments {{ background: {c['card']}; border-radius: 999px; padding: {px(4)}px; }}
 .gm .gm-segments.gm-panel {{ background: {c['panel']}; }}
 .gm .gm-segments button {{ border-radius: 999px; padding: {px(10)}px {px(22)}px; min-height: {px(54 if not t.compact else 40) - px(20)}px; font-size: {em(0.85)}px; font-weight: 600; }}
-.gm .gm-segments button:focus-visible {{ outline-offset: -{px(6)}px; }}
 .gm .gm-segments button.on {{ background: {c['segment']}; color: {c['active_fg']}; }}
 .gm .gm-segments.gm-panel button.on {{ background: {c['card']}; }}
 .gm .gm-slider.gm-tabs button.gm-btn,
@@ -161,7 +160,7 @@ def stylesheet(t):
 .gm .gm-group.gm-on-card {{ background: {c['card']}; }}
 .gm .gm-sep {{ background: {c['line']}; min-height: 1px; }}
 .gm button.gm-rowbtn {{ border-radius: 0; padding: {px(24 if not t.compact else 16)}px {px(30)}px; }}
-.gm button.gm-rowbtn:focus-visible {{ outline-offset: -{px(2)}px; background: {c['row_focus']}; }}
+.gm button.gm-rowbtn:focus-visible {{ background: {c['row_focus']}; }}
 .gm button.gm-rowbtn.gm-danger-row {{ color: {c['danger']}; }}
 .gm button.gm-rowbtn:disabled {{ background: none; }}
 .gm button.gm-rowbtn.gm-settings-row {{ border-radius: {px(12)}px; background: {c['panel']}; }}
@@ -180,7 +179,7 @@ def stylesheet(t):
 .gm .gm-chip {{ background: {c['card']}; border: 1px solid {c['line']}; border-radius: 999px; padding: {px(12)}px {px(18)}px; font-size: {em(0.76)}px; font-weight: 650; }}
 .gm .gm-chip.gm-plain {{ border-color: {c['card']}; }}
 .gm button.gm-gamecard {{ border-radius: {px(14)}px; }}
-.gm button.gm-gamecard:focus-visible {{ outline-width: 0; }}
+.gm button.gm-gamecard:focus-visible {{ background-image: none; }}
 .gm .gm-art {{ border: {px(visuals.ARTWORK_STROKE)}px solid {c['line']}; border-radius: {px(12)}px; background: {c['card']}; }}
 .gm button.gm-gamecard:focus-visible .gm-art {{ outline: {max(1,px(1.75))}px solid {c['focus']}; outline-offset: {px(5)}px; }}
 .gm .gm-art-fallback {{ color: {c['muted']}; font-weight: 600; font-size: {em(0.8)}px; }}
@@ -189,12 +188,12 @@ def stylesheet(t):
 .gm button.gm-listrow {{ border-radius: 0; }}
 .gm button.gm-listrow.first, .gm button.gm-listrow.first .gm-listsurface {{ border-top-left-radius: {px(16)}px; border-top-right-radius: {px(16)}px; }}
 .gm button.gm-listrow.last, .gm button.gm-listrow.last .gm-listsurface {{ border-bottom-left-radius: {px(16)}px; border-bottom-right-radius: {px(16)}px; }}
-.gm button.gm-listrow:focus-visible {{ outline-offset: -{px(6)}px; }}
+.gm button.gm-listrow:focus-visible .gm-listsurface {{ background: {c['row_focus']}; }}
 .gm .gm-listsurface {{ background: {c['panel']}; padding: {px(16)}px {px(24)}px; }}
 .gm .gm-dot {{ min-width: {px(8)}px; min-height: {px(8)}px; border-radius: 999px; border: 1.5px solid {c['muted']}; }}
 .gm .gm-dot.on {{ background: {ACCENT}; border-color: {ACCENT}; }}
 .gm .gm-hero-scrim {{ background-image: linear-gradient(to right, alpha({c['view']},0.82), alpha({c['view']},0.55) 38%, alpha({c['view']},0) 72%),
-  linear-gradient(to bottom, alpha({c['view']},0) 30%, {c['view']}); }}
+  linear-gradient(to bottom, alpha({c['view']},0) 30%, {c['view']} 96%); }}
 .gm .gm-poster {{ border: {px(visuals.ARTWORK_STROKE)}px solid {c['line']}; border-radius: {px(10)}px; background: {c['card']}; }}
 .gm .gm-gametitle {{ font-family: "Bakbak One"; font-size: {em(1.35 if t.compact else 1.65)}px; }}
 .gm button.gm-back {{ background: alpha(#121212,0.86); color: white; border-radius: {px(12)}px; padding: {px(10)}px {px(18)}px; font-size: {em(0.78)}px; }}
@@ -404,6 +403,21 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
 
     # ---------------- owner hooks ----------------
 
+    # Every page is laid out for the current width, so its minimum width is
+    # that layout's. The host (ScaledContent) reports this instead, so the
+    # window can shrink, and calls follow_allocation() to lay out again.
+    MIN_WIDTH = 720
+
+    def follow_allocation(self, width, height):
+        self._allocated = (width, height)
+        if (width, height) == (self.layout_width, self.layout_height) or getattr(self, '_resize_source', 0):
+            return
+        def follow():
+            self._resize_source = 0
+            self.resize(*self._allocated)
+            return False
+        self._resize_source = GLib.idle_add(follow)
+
     def resize(self, width, height=None):
         if width < 400:
             return
@@ -537,6 +551,10 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         return widget
 
     def scroller(self, **kwargs):
+        # NEVER makes the window as wide as the last layout and blocks every
+        # narrower one; EXTERNAL hides the bar and lets resize() lay out again.
+        if kwargs.get('hscrollbar_policy') == Gtk.PolicyType.NEVER:
+            kwargs['hscrollbar_policy'] = Gtk.PolicyType.EXTERNAL
         return motion.FadedScrolledWindow(fade_unit=self.theme.unit / 26, **kwargs)
 
     def button(self, text, action, kind='card', icon=None, enabled=True, key=None, halign=None):
@@ -1568,13 +1586,19 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         nav_width = t.px(220 if width <= 1050 else 254 if width <= 1500 else 268)
         side = t.px(32 if width <= 1050 else 48 if width <= 1500 else 64)
         hero_width = max(t.px(420), width - nav_width - side)
-        hero_height = round(max(t.px(360), min(t.px(620), hero_width * .38)))
+        # The hero shares the height with the section below it: on short
+        # windows it gives way so the section keeps most of the screen.
+        hero_height = round(max(t.px(220), min(t.px(620), hero_width * .38, self.layout_height * .4)))
         accent = self.accent_class(g)
-        page = Gtk.Grid(row_spacing=t.px(12 if t.compact else 22), vexpand=True)
+        # No row gap: the scrim fades straight into the section, as on Windows.
+        page = Gtk.Grid(vexpand=True)
         page.add_css_class(accent)
 
         hero = Gtk.Overlay()
         hero.set_size_request(-1, hero_height)
+        # Cover-cropped art can overdraw its frame by a row; clip it so no
+        # unscrimmed line shows under the fade.
+        hero.set_overflow(Gtk.Overflow.HIDDEN)
         art = self.picture(g.get('hero') or self.h.capsule_art_path(g), None, hero_height, css='gm-hero')
         art.set_hexpand(True)
         hero.set_child(art)
@@ -1584,7 +1608,7 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         identity = Gtk.Box(spacing=t.px(30), valign=Gtk.Align.END)
         for side_name, value in (('start', side), ('end', side), ('bottom', t.px(18 if t.compact else 26))):
             getattr(identity, 'set_margin_' + side_name)(value)
-        poster_height = round(max(t.px(120), min(t.px(260), hero_height * .48)))
+        poster_height = round(max(t.px(96), min(t.px(260), hero_height * .48)))
         poster = self.picture(self.h.poster_art_path(g) or self.h.capsule_art_path(g), round(poster_height * 2 / 3), poster_height, css='gm-poster')
         poster.set_valign(Gtk.Align.END)
         identity.append(poster)

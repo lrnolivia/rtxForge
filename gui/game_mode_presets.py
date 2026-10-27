@@ -88,7 +88,7 @@ class GameModePresets:
             return box
 
         def pair(*keys):
-            return responsive(*(field(key) for key in keys), minimum=270)
+            return responsive(*(field(key) for key in keys), minimum=360)
 
         def field(key):
             item = schema[key]

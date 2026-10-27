@@ -21,10 +21,21 @@ class ScaleLayout(Gtk.LayoutManager):
     def do_measure(self, widget, orientation, for_size):
         logical = math.floor(for_size / widget.factor) if for_size >= 0 else -1
         minimum, natural, _, _ = widget.child.measure(orientation, logical)
+        # A child that lays itself out for its width (Game Mode) reports the
+        # narrowest width it supports, not its current layout's minimum.
+        floor = getattr(widget.child, 'MIN_WIDTH', None)
+        if floor is not None and orientation == Gtk.Orientation.HORIZONTAL:
+            minimum = min(minimum, floor)
+            natural = max(minimum, natural)
         return math.ceil(minimum * widget.factor), math.ceil(natural * widget.factor), -1, -1
 
     def do_allocate(self, widget, width, height, baseline):
-        widget.child.allocate(max(1, round(width / widget.factor)), max(1, round(height / widget.factor)), -1, Gsk.Transform.new().scale(widget.factor, widget.factor))
+        logical_width, logical_height = max(1, round(width / widget.factor)), max(1, round(height / widget.factor))
+        if getattr(widget.child, 'MIN_WIDTH', None) is not None:
+            # Until the new layout lands the old one may be wider: clip it.
+            logical_width = max(logical_width, widget.child.measure(Gtk.Orientation.HORIZONTAL, -1)[0])
+            widget.child.follow_allocation(max(1, round(width / widget.factor)), logical_height)
+        widget.child.allocate(logical_width, logical_height, -1, Gsk.Transform.new().scale(widget.factor, widget.factor))
 
 class ScaledContent(Gtk.Widget):
     """Scale allocation and input coordinates together, rather than bitmap zoom."""

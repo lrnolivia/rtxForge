@@ -39,7 +39,8 @@ class FileBlobTest(unittest.TestCase):
 
     def test_writes_stream_and_refuse_a_changed_source(self):
         with tempfile.TemporaryDirectory() as directory:
-            folder = Path(directory)
+            # Resolved: CI temp folders can be 8.3 aliases, which transactions.safe refuses.
+            folder = Path(directory).resolve()
             blob = _blob(folder, 'source.dll', b'MZ verified bytes')
             target = folder / 'game' / 'dxgi.dll'
             rtxengine.atomic_write(target, blob)

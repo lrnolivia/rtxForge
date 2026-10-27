@@ -149,13 +149,14 @@ def fingerprint(e,g):
     # and again before install: an unchanged file (same size, times and identity)
     # is hashed once per run, so the second snapshot costs no game-sized reads.
     target=g.target_dir;result={}
-    digest=getattr(e,'sha256_file_cached',e.sha256_file)
+    cached=getattr(e,'sha256_file_cached',None)
+    digest=cached or e.sha256_file
     for p in target.iterdir():
         if p.name.lower() in set(e.PROXY_NAMES)|{'optiscaler.ini','nvngx_dlssnr.dll','reshade.ini','reshade64.dll','renodx-mfgunlock.addon64'} or p==g.exe:
             t.need(not p.is_symlink(),'Linked installer input refused: '+str(p))
             if p.is_file():result[p.name]=digest(p)
     opti=target/'OptiScaler'
-    if opti.exists():result['OptiScaler/']=e._tree_manifest_data(opti,digest)
+    if opti.exists():result['OptiScaler/']=e._tree_manifest_data(opti,cached) if cached else e._tree_manifest_data(opti)
     bp=e.baseline_path(target)
     result['baseline']=e.sha256_file(bp) if bp.is_file() else None
     return result

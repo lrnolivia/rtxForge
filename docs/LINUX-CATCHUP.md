@@ -40,6 +40,11 @@ The Windows app reached the 1.0 Beta RC on 2026-10-21. This page tracks what the
 3. Launch through Steam with Proton. In the game folder, `RTXMFG-Universal.status.json` and `RTXMFG-<game>.log` should show the plugin loaded and DLSS state samples reporting 4 frames presented. DLSS-G under Proton needs NVAPI; rtxForge never changes those flags.
 4. Restore from Linux, then check that Windows sees the install as restored.
 
+## 1.0 Beta release (rtxforge-linux-beta-parity-20261027)
+
+- **Release plumbing — done.** `linux-build.yml` can publish the AppImage to the shared `beta` release (`publish_beta` + `expected_sha`, reviewed `main` only) beside the Windows assets, and each OS now only touches its own files. See [linux/BETA-RELEASE.md](linux/BETA-RELEASE.md). Nothing has been published for Linux yet.
+- **Before the first Linux Beta publication:** the parity work below, the Beta 1/Beta 2 UI items, the updater following `rtxforge-beta-linux.json`, the website download, a Linux section in `docs/releases/1.0-beta.md`, and Lauren's sign-off on a real-hardware Proton smoke test.
+
 ## Still to port
 
 1. **Presets on the shared control schema.** The GTK Presets page still uses the old three values (NR strength, sharpening, MFG). Build it from `providers/skynizz-bridge/controls.json` plus `providers/mfg-unlocker/preset-controls.json`, the same vocabulary that drives the Windows editors and the in-game panel: Auto/Custom/Dynamic MFG, NR, image tuning, sharpening, performance and DLSS presets. Send them as `feature_controls`, as Windows does.

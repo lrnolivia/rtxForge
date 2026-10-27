@@ -161,7 +161,13 @@ def runtime_report(target):
         return None
     if not isinstance(status, dict):
         return None
-    return {'observed': True, 'verified': False, 'modified': modified,
-            'dynamic_supported': universal.dynamic_support(target),
-            'keys': sorted(str(key) for key in status)[:64],
-            'note': 'Written by the plugin during a game session. Confirm in game before recording it as evidence.'}
+    report = {'observed': True, 'verified': False, 'modified': modified,
+              'dynamic_supported': universal.dynamic_support(target),
+              'keys': sorted(str(key) for key in status)[:64],
+              'note': 'Written by the plugin during a game session. Confirm in game before recording it as evidence.'}
+    # The plugin found no GPU it can verify: under Proton that is the
+    # placeholder nvcuda.dll, since it identifies the GPU through CUDA.
+    if status.get('gpuFamily') == 0 and status.get('gpuSelectionFailure'):
+        report['gpu_selection_failure'] = status['gpuSelectionFailure']
+        report['hint'] = proton_stack.REASONS['cuda-off']
+    return report

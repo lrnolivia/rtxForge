@@ -60,6 +60,17 @@ class WindowsBetaUpdateTests(unittest.TestCase):
         result = self.check([self.release(tag='windows-v1.0.0-rc.2', version='1.0.0-rc.2')], current='1.0.0-rc.1')
         self.assertIn('rtxForge-Setup-1.0.0-rc.2-x64.exe', str(result))
 
+    def test_rollback_copies_in_an_updated_beta_are_ignored(self):
+        # Publishing beta.2 keeps beta.1 in the same release under .previous-<commit> names.
+        release = self.release()
+        rollback = self.release(version='1.0.0-beta.1')['assets']
+        for asset in rollback:
+            asset['name'] += '.previous-9bf40c6b54ec'
+        release['assets'] += rollback
+        result = self.check([release])
+        self.assertIn('rtxForge-Setup-1.0.0-beta.2-x64.exe', str(result))
+        self.assertNotIn('.previous', str(result))
+
     def test_checksum_is_still_required(self):
         release = self.release()
         release['assets'] = release['assets'][:1]

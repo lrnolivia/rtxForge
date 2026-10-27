@@ -278,27 +278,17 @@ def _steam_config_engine(e):
 
 
 def _extract_with_windows_tar(e, archive: Path) -> dict[str, bytes]:
-    """The engine's CLI extraction with Windows' bundled bsdtar (System32\\tar.exe, libarchive + liblzma)."""
-    import tempfile
+    """The engine's CLI extraction with Windows' bundled bsdtar (System32\\tar.exe, libarchive + liblzma).
+
+    Large files stay in the extraction folder as the engine's FileBlobs; the
+    folder is removed once the review that uses them is gone."""
     tool = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "tar.exe"
     e.require(tool.is_file(), "Windows tar.exe (bsdtar) is not available to extract the y4my .7z provider")
-    with tempfile.TemporaryDirectory(prefix="rtxengine-y4my-") as td:
-        root = Path(td)
-        proc = subprocess.run([str(tool), "-xf", str(archive), "-C", str(root)], stdout=subprocess.PIPE,
-                              stderr=subprocess.STDOUT, text=True, creationflags=NO_WINDOW)
-        e.require(proc.returncode == 0, f"Provider extraction failed: {proc.stdout[-1200:]}")
-        payload: dict[str, bytes] = {}
-        for current, dirs, files in os.walk(root, followlinks=False):
-            base = Path(current)
-            for d in dirs:
-                e.require(not (base / d).is_symlink(), f"Provider archive symlink refused: {(base / d).relative_to(root)}")
-            for name in files:
-                p = base / name
-                e.require(p.is_file() and not p.is_symlink(), f"Provider archive non-regular file refused: {p.relative_to(root)}")
-                rel = e.safe_rel(p.relative_to(root).as_posix())
-                e.require(rel.casefold() not in {x.casefold() for x in payload}, f"Case-colliding provider path: {rel}")
-                payload[rel] = p.read_bytes()
-        return payload
+    workdir = e._payload_workdir()
+    proc = subprocess.run([str(tool), "-xf", str(archive), "-C", str(workdir.root)], stdout=subprocess.PIPE,
+                          stderr=subprocess.STDOUT, text=True, creationflags=NO_WINDOW)
+    e.require(proc.returncode == 0, f"Provider extraction failed: {proc.stdout[-1200:]}")
+    return e._collect_extracted_tree(workdir)
 
 
 class _WindowsCopy:

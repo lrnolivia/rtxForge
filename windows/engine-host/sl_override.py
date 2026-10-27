@@ -75,7 +75,10 @@ def provider_streamline(directory: Path, payload: dict | None = None) -> str | N
     for name in _PLUGINS:
         if payload is not None:
             data = payload.get("OptiScaler/streamline/" + name)
-            found = pe_version(data) if isinstance(data, (bytes, bytearray)) else None
+            if isinstance(data, (bytes, bytearray)):
+                found = pe_version(data)
+            else:  # a large provider file the engine keeps on disk (FileBlob)
+                found = file_version(data.path) if isinstance(getattr(data, "path", None), Path) else None
         else:
             found = file_version(directory / "OptiScaler" / "streamline" / name)
         if found:

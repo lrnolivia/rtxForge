@@ -20,6 +20,9 @@ def now():
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 def sha(data):
+    # The engine keeps large payload files on disk with their verified digest.
+    if isinstance(getattr(data, 'sha256', None), str):
+        return data.sha256
     return hashlib.sha256(data).hexdigest()
 
 def digest(p):
@@ -133,10 +136,15 @@ def atomic_file(path, data, mode):
     path = safe(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = safe(path.with_name('.opti-' + uuid.uuid4().hex + '.tmp'))
-    with tmp.open('xb') as f:
-        f.write(data)
-        f.flush()
-        os.fsync(f.fileno())
+    try:
+        with tmp.open('xb') as f:
+            for block in data.chunks() if hasattr(data, 'chunks') else (data,):
+                f.write(block)
+            f.flush()
+            os.fsync(f.fileno())
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
     os.chmod(tmp, mode)
     os.replace(tmp, path)
 

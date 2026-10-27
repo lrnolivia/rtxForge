@@ -26,4 +26,10 @@ class ApplicationUpdateTest(unittest.TestCase):
         self.assertEqual(app_update._version_key('v1.0'),app_update._version_key('1.0.0'))
         with self.assertRaises(ValueError):app_update._version_key('1.0.0-rc.bad')
 
+    def test_beta_versions_update_forward_and_remain_before_release_candidates(self):
+        self.assertLess(app_update._version_key('1.0.0-beta.1'), app_update._version_key('1.0.0-beta.2'))
+        self.assertLess(app_update._version_key('1.0.0-beta.99'), app_update._version_key('1.0.0-rc.1'))
+        self.assertLess(app_update._version_key('1.0.0-beta.1'), app_update._version_key('1.0.0'))
+        with self.assertRaises(ValueError):app_update._version_key('1.0.0-beta.bad')
+
 if __name__=='__main__':unittest.main()

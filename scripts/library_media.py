@@ -1,6 +1,6 @@
 """Optional library artwork/metadata. Never participates in an installation decision."""
 from pathlib import Path
-import copy,json,urllib.request,urllib.parse,urllib.error,re,time,hashlib,html,math
+import copy,json,os,urllib.request,urllib.parse,urllib.error,re,time,hashlib,html,math
 import transactions as t
 from storage import storage
 DEFAULTS={'nr_on_launch':False,'game_artwork':{},'steam_artwork_profile':None,'steam_artwork_pending':{},'button_glyphs':True,'big_picture_ui':True,'ui_scale':'auto','dashboard_view':'capsules','dashboard_row_count':5,'navigation_position':'top','controller_hints':'always','input_mode':'auto','controller_glyphs':'auto','corner_style':'system','ui_mode':'classic','start_page':'library','compact_header':True,'custom_package':None,'theme':None,'library_columns':7,'presets_hint_seen':False,'manage_dlss_files':True,'game_accents':{},'sharpening_strength':0.5,'overlay_renderer':'game','overlay_controls':'unified','panel_hotkey':'Delete','overlay_helper':True,'optiscaler_ui':True,'optiscaler_intro':False,'optiscaler_hotkey':'Insert','reshade_ui':True,'reshade_intro':False,'mfg_multiplier':'auto','dynamic_mfg':0,'mfg_saved_mode':0,'mfg_saved_multiplier':2,'nr_strength':2.0,'runtime_provider':'y4my','skynizz_version':'latest','enable_effects':True,'nr_runtime':'','dark':True,'library_view':'posters','art_scale':80,'cache_days':7,'network_timeout':10,'default_profile':'mfg-only','online_art':True,'steam_metadata':True,'recognize_previous':False,'extra_folders':[],'removed_games':[]}
@@ -16,6 +16,11 @@ DEFAULTS['mfg_default_revision']=MFG_DEFAULT_REVISION
 DEFAULTS['skynizz_proton']=False
 DEFAULTS['feature_controls']={}
 DEFAULTS['separate_game_details']=False
+# Linux starts on DLSS-Unlocked, the provider verified there; Windows keeps y4my.
+# Saved settings keep whatever provider they name.
+def default_provider(os_name=None):
+    return 'y4my' if (os_name or os.name)=='nt' else 'dlss-unlocked'
+DEFAULTS['runtime_provider']=default_provider()
 DEFAULTS.update(game_overlay_settings={}, overlay_live_stats=True, overlay_welcome=True,
                 overlay_welcome_position='top-center', vulkan_mfg_native_menu=False, vulkan_experimental=False)
 

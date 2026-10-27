@@ -4616,7 +4616,7 @@ class Window(Adw.ApplicationWindow):
         self.profile_group.add_css_class('mode-selector')
         for mode,title in [('nr-only','NR Only'),('mfg-only','MFG Only'),('nr-mfg','NR + MFG')]:
             toggle=Adw.Toggle(name=mode,label=title,child=profile_label(mode,title));self.profile_group.add(toggle)
-            if mode=='nr-only':self.nr_only=toggle;toggle.set_enabled(self.settings.get('runtime_provider','y4my') in ('skynizz','dlss-unlocked','custom'))
+            if mode=='nr-only':self.nr_only=toggle;toggle.set_enabled(self.settings.get('runtime_provider',library_media.default_provider()) in ('skynizz','dlss-unlocked','custom'))
         controls.append(self.profile_group)
         self.profile_group.connect('notify::active-name',self.profile_changed)
         self.profile_group.set_active_name(self.settings.get('default_profile','mfg-only'));self.profile_changed(self.profile_group)
@@ -4686,7 +4686,7 @@ class Window(Adw.ApplicationWindow):
                 compact_toggle.set_enabled(
                     self.settings.get(
                         'runtime_provider',
-                        'y4my',
+                        library_media.default_provider(),
                     )=='dlss-unlocked'
                 )
 
@@ -14463,7 +14463,7 @@ class Window(Adw.ApplicationWindow):
         operation=review.get('operation','install')
         details=[OPERATION_WORDS.get(operation,OPERATION_WORDS['reset'])[1]]
         if operation in ('install','repair','reset'):
-            provider=self.settings.get('runtime_provider','dlss-unlocked')
+            provider=self.settings.get('runtime_provider',library_media.default_provider())
             details.append(action_labels.provider_name(provider))
             mfg=review.get('mfg_multiplier')
             if mfg is not None:details.append('MFG '+('Auto' if mfg=='auto' else 'Off' if mfg==0 else str(mfg)+'×'))
@@ -14573,7 +14573,7 @@ class Window(Adw.ApplicationWindow):
         d.add_css_class('forge-settings')
         self.dialog=d
         graphics=Adw.PreferencesGroup(title='Package',description='Restore original files before switching providers.')
-        provider_keys=['skynizz','dlss-unlocked','y4my','feeder','vulkan-native','custom'];provider=safe_combo_row(title='Provider',model=Gtk.StringList.new(['Skynizz NR','DLSS-Unlocked','y4my Multipass','Feeder NR','Vulkan NR + Universal MFG · Experimental','Custom package']),selected=provider_keys.index(self.settings.get('runtime_provider','y4my')) if self.settings.get('runtime_provider','y4my') in provider_keys else 0);graphics.add(provider)
+        provider_keys=['skynizz','dlss-unlocked','y4my','feeder','vulkan-native','custom'];provider=safe_combo_row(title='Provider',model=Gtk.StringList.new(['Skynizz NR','DLSS-Unlocked','y4my Multipass','Feeder NR','Vulkan NR + Universal MFG · Experimental','Custom package']),selected=provider_keys.index(self.settings.get('runtime_provider',library_media.default_provider())) if self.settings.get('runtime_provider',library_media.default_provider()) in provider_keys else 0);graphics.add(provider)
         nr_path=Adw.EntryRow(title='Use your own NR DLL (optional)');nr_path.set_text(self.settings.get('nr_runtime',''));graphics.add(nr_path)
         experimental_vulkan=Adw.SwitchRow(title='Universal Experimental Vulkan',subtitle='Opt in to the profiled BG3/RDR2 native Vulkan package. Gameplay qualification remains experimental.',active=bool(self.settings.get('vulkan_experimental',False)))
         experimental_vulkan.connect('notify::active',lambda w,*_:self.save_overlay_preference('vulkan_experimental',w.get_active()));graphics.add(experimental_vulkan)

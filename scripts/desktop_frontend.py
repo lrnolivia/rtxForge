@@ -147,7 +147,12 @@ def main(argv=None):
     parser.add_argument('--frontend',choices=('gtk','qt'),default='gtk')
     parser.add_argument('--frontend-doctor',action='store_true')
     parser.add_argument('--container',action='store_true')
+    parser.add_argument('--overlay-helper',action='store_true')
     args,remaining=parser.parse_known_args(argv)
+    if args.overlay_helper:
+        # Headless and host-side: no toolkit, no container.
+        import linux_overlay_helper
+        return linux_overlay_helper.main()
     if args.frontend_doctor:
         release=os_release()
         print(json.dumps({'system':platform.system(),'architecture':platform.machine(),

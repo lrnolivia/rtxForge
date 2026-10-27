@@ -135,6 +135,16 @@ def remove(target, os_name):
     return False
 
 
+def unreadable(target):
+    """True when a record is present but this user cannot read it.
+
+    Windows' btrfs driver can leave files it wrote owned by nobody with mode 0600,
+    so Linux sees the record exist without being able to open it.
+    """
+    path = Path(target) / MARKER
+    return path.is_file() and not path.is_symlink() and not os.access(path, os.R_OK)
+
+
 def other_install(target, this_os):
     """The other OS's intact install in this folder, or None."""
     record = read(target)

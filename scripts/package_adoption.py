@@ -220,7 +220,8 @@ def prepare(config, rows, operation, settings):
         ui.progress('Reviewing Adoption', game=row['name'], checked=index-1, total=len(rows))
         try:
             t.need(row.get('installed_on') != cross_os.OTHER_OS and not row.get('record_unreadable'),
-                   'Installed with rtxForge on ' + cross_os.OTHER_OS.title() + '. Use Set Up instead of Adoption.')
+                   'Installed with rtxForge on ' + cross_os.OTHER_OS.title() + '. Use '
+                   + ('Adapt to Linux' if cross_os.THIS_OS == 'linux' else 'Install') + ' instead of Adoption.')
             plan = (_feeder(config, row, settings) if row.get('runtime_provider') == 'feeder'
                     else _native(config, row, settings, cache, clean=operation == 'adopt-clean'))
             e, target = plan['engine'], plan['target']

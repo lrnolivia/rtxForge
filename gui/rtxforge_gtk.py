@@ -9432,7 +9432,7 @@ class Window(Adw.ApplicationWindow):
 
     def list_primary_caption(self,game):
         if getattr(self,'preset_selecting',False):return 'Apply'
-        if self.needs_linux_setup(game):return 'Set Up'
+        if self.needs_linux_setup(game):return 'Adapt'
         return 'Restore' if game.get('installed') else 'Install'
 
     def list_primary_enabled(self,game,compatible):
@@ -9469,11 +9469,11 @@ class Window(Adw.ApplicationWindow):
         add('DLSS Files',files)
         if game.get('installed_on')=='windows' and not game.get('adaptable'):
             # Older Windows record without shared state: Linux only adds or removes its Proton setting.
-            if self.needs_linux_setup(game):add('Set Up for Linux',lambda:self.launch_action('install',targets=[game]),not self.busy)
-            else:add('Remove Linux Setup',lambda:self.launch_action('uninstall',targets=[game]),not self.busy)
+            if self.needs_linux_setup(game):add(action_labels.ADAPT,lambda:self.launch_action('install',targets=[game]),not self.busy)
+            else:add(action_labels.REMOVE_ADAPT,lambda:self.launch_action('uninstall',targets=[game]),not self.busy)
         else:
             # A Windows install with shared state is adapted for Linux (Set Up) or restored right here.
-            add('Set Up for Linux' if self.needs_linux_setup(game) else 'Install Features',lambda:self.launch_action('install',targets=[game]),not game.get('blocked') and not self.busy)
+            add(action_labels.game(self.needs_linux_setup(game))[0],lambda:self.launch_action('install',targets=[game]),not game.get('blocked') and not self.busy)
             add('Restore Original Files',lambda:self.launch_action('uninstall',targets=[game]),bool(game.get('installed')) and not self.busy)
         add('Open Folder',lambda:Gio.AppInfo.launch_default_for_uri(Path(game['game']).as_uri(),None),not self.options.demo)
         if self.adoptable(game):add('Adopt Existing Setup…',lambda:self.choose_adoption([game]),not self.busy)
@@ -9784,12 +9784,15 @@ class Window(Adw.ApplicationWindow):
         )
         if hasattr(self,'reset_all') and not self.defaults_changed():
             self.reset_all.text_label.set_text('Reset')
+        # Every targeted game installed with rtxForge on Windows: Install adapts them, Restore removes that.
+        pool=self.selected_games() if count else self.games
+        adapt=bool(pool) and all(game.get('installed_on')=='windows' for game in pool)
         for name in ('install_all','sticky_install_all'):
             widget=getattr(self,name,None)
-            if widget:widget.set_label(action_labels.library(count)[0])
+            if widget:widget.set_label(action_labels.library(count,adapt)[0])
         for name in ('uninstall_all','sticky_remove_all'):
             widget=getattr(self,name,None)
-            if widget:widget.set_label(action_labels.library(count)[1])
+            if widget:widget.set_label(action_labels.library(count,adapt)[1])
         # Icon-only at narrow widths: the tooltip names the action and its scope.
         if hasattr(self,'sticky_install_all'):
             self.sticky_install_all.set_tooltip_text(self.sticky_install_all.get_label()+(' · selected games' if count else ' · whole library'))
@@ -12626,7 +12629,7 @@ class Window(Adw.ApplicationWindow):
         # Wraps instead of running off a narrow details window (Adw ≥ 1.7).
         hero_actions=Adw.WrapBox(child_spacing=8,line_spacing=8,align=1.0,valign=Gtk.Align.END,halign=Gtk.Align.END)
         hero_actions.add_css_class('detail-hero-actions')
-        install_label='Set Up for Linux' if self.needs_linux_setup(game) else 'Install Features'
+        install_label=action_labels.game(self.needs_linux_setup(game))[0]
         hero_install=icon_button(install_label,'folder-download-symbolic',lambda *_:self.launch_action('install',targets=[game]),'hero-install')
         # Same rule as the Installation rows below (demo reviews never write).
         hero_install.set_sensitive(not game.get('blocked') and not self.busy and bool(self.hardware_info and self.hardware_info['ready']))

@@ -34,6 +34,12 @@ DEFAULTS = {
                'LocalStructure': '1.0', 'SkinStructure': '1.0',
                'CacheRefreshBlend': '1.0', 'WhitePointSource': '3'},
 }
+# Upstream binds F6 to the comparison key, whose first press runs the model on
+# every frame at output resolution after the upscaler. Under Proton that took
+# CONTROL Resonant to two-second frames. F6 toggles NR instead and the
+# comparison stays reachable from OptiScaler's Keybinds. Applied only while a
+# key is still auto, so a binding chosen in OptiScaler survives Repair.
+HOTKEYS = {'ToggleKey': '0x75', 'CompareKey': '-1'}
 
 
 def require_mode(system, mode, fallback=False, bridge=False, proton=None):
@@ -290,6 +296,18 @@ def apply_controls(e, text, values, mode='nr-mfg', external_mfg=False):
     return text
 
 
+def apply_hotkeys(e, text):
+    parser = configparser.ConfigParser(interpolation=None, strict=False, inline_comment_prefixes=(';', '#'))
+    try:
+        parser.read_string(text)
+    except configparser.Error:
+        return text  # configure() refuses the unparsable INI below
+    for key, value in HOTKEYS.items():
+        if parser.get('DlssNr', key, fallback='auto').strip().casefold() == 'auto':
+            text = e.set_ini_value(text, 'DlssNr', key, value)
+    return text
+
+
 def read_controls(path):
     path = Path(path)
     t.need(path.is_file() and not path.is_symlink() and path.stat().st_size < 2 * 1024**2, 'Game settings need repair.')
@@ -365,6 +383,8 @@ def configure(e, source, saved=None, mode='nr-only', mfg_multiplier='auto', game
     # Skynizz bypasses the generic OptiScaler INI policy. Suppress its startup
     # splash on fresh installs and repairs without disabling the manual menu.
     text = e.set_ini_value(text, 'Menu', 'DisableSplash', 'true')
+    if mode != 'mfg-only':
+        text = apply_hotkeys(e, text)
     if getattr(e, 'OVERLAY_UI', None) is not None:
         import overlay_policy
         text = overlay_policy.optiscaler(text, e.OVERLAY_UI, e.set_ini_value)

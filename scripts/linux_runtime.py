@@ -65,6 +65,100 @@ def mfg_observation(row):
     return proton_mfg.runtime_report(_target(row))
 
 
+# --- What Set Up for Linux writes besides the DLL override ---------------------------------
+
+def _poster_pixels(path, size=64):
+    """RGBA samples of a poster, sampled as the GTK app samples it (rtxforge_gtk.artwork_pixels)."""
+    import gi
+    gi.require_version('GdkPixbuf', '2.0')
+    from gi.repository import GdkPixbuf
+    pix = GdkPixbuf.Pixbuf.new_from_file_at_scale(str(path), size, size, False)
+    if not pix.get_has_alpha():
+        pix = pix.add_alpha(False, 0, 0, 0)
+    data, stride = pix.get_pixels(), pix.get_rowstride()
+    return [tuple(data[y * stride + x * 4:y * stride + x * 4 + 4]) for y in range(pix.get_height()) for x in range(pix.get_width())]
+
+
+def game_accent(config, row, settings):
+    """The accent the app shows for this game: the user's pick, else the Steam poster's signature colour."""
+    import ui_colors
+    custom = (settings.get('game_accents') or {}).get(row.get('game'))
+    if custom:
+        return custom
+    try:
+        import library_media
+        poster = row.get('poster') or library_media.LibraryMedia(config, settings).steam_art(row).get('poster')
+        return (poster and ui_colors.signature_color(_poster_pixels(poster))) or ui_colors.NO_ARTWORK
+    except Exception:  # no GdkPixbuf, no poster or an unreadable image: the panel still opens, in grey
+        return ui_colors.NO_ARTWORK
+
+
+def cuda_state(e):
+    return e.STATE_ROOT / 'proton-cuda'
+
+
+def _overlay_state(e, target_dir):
+    return e.STATE_ROOT / 'prefix-overlay' / e.target_key(target_dir)
+
+
+def setup_review(config, row, settings, prefix, exe, mode, universal_mfg=None):
+    """Reviewed plans for what makes Skynizz work under Proton beyond the proxy override.
+
+    MFG modes with the Universal plugin get Proton's working CUDA library (see
+    proton_cuda); every setup gets the in-game panel preferences and the game's
+    identity (accent and title) in its prefix. Nothing is written here.
+    universal_mfg -- the install carries the Universal plugin; None reads the game folder.
+
+    setup_apply must run before anything else writes the prefix's user.reg:
+    the panel plan refuses a registry that changed since review.
+    """
+    import proton_cuda
+    import universal_mfg_provider as universal
+    plans, notes = {}, []
+    exe = Path(exe)
+    if universal_mfg is None:
+        universal_mfg = (exe.parent / universal.PLUGIN).is_file()
+    if mode in ('nr-mfg', 'mfg-only') and universal_mfg:
+        tool = proton_stack.compat_tool(Path(prefix).parent)
+        plans['cuda'] = proton_cuda.plan(tool['lib_dir'])
+        notes.append(plans['cuda']['summary'])
+    overlay = proton_overlay.plan(prefix, settings, exe, row.get('name'), game_accent(config, row, settings))
+    if not overlay['unchanged']:
+        plans['overlay'] = overlay
+        notes.append(overlay['summary'])
+    return plans, notes
+
+
+def setup_paths(e, target_dir, plans):
+    """Everything setup_apply or setup_restore may write, for the operation's undo checkpoint."""
+    import proton_cuda
+    paths = [cuda_state(e), _overlay_state(e, target_dir)]
+    paths.extend(Path(plan[key]) for plan, key in ((plans.get('cuda'), 'path'), (plans.get('overlay'), 'registry')) if plan)
+    record = cuda_state(e) / proton_cuda.RECORD_NAME
+    if record.is_file():
+        paths.extend(Path(name) for name, entry in json.loads(record.read_text(encoding='utf-8')).items()
+                     if e.target_key(target_dir) in entry['games'])
+    return paths
+
+
+def setup_apply(e, target_dir, plans):
+    import proton_cuda
+    result = {}
+    if plans.get('cuda'):
+        result['cuda'] = proton_cuda.apply(plans['cuda'], cuda_state(e), e.target_key(target_dir))
+    if plans.get('overlay'):
+        proton_overlay.apply(plans['overlay'], _overlay_state(e, target_dir))
+        result['overlay'] = 'written'
+    return result
+
+
+def setup_restore(e, target_dir):
+    """Undo setup_apply for one game; values and files edited since are kept."""
+    import proton_cuda
+    return {'cuda': proton_cuda.restore(cuda_state(e), e.target_key(target_dir)),
+            'overlay': proton_overlay.restore(_overlay_state(e, target_dir))}
+
+
 def record_runtime_evidence(e, row, report, observed, confirmed_by):
     """Store a human-confirmed real in-game session for this exact game/Proton build/GPU/component."""
     component = report.get('component') or {}

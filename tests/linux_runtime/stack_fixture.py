@@ -28,9 +28,14 @@ def driver(root, model='NVIDIA GeForce RTX 4070', version='615.71.09'):
     return proc, wine
 
 
-def proton(root, name='Proton 10.0', components=('dxvk', 'vkd3d-proton', 'nvapi')):
+def proton(root, name='Proton 10.0', components=('dxvk', 'vkd3d-proton', 'nvapi'), nvcuda=True):
     """A Proton build's files/lib/wine layout with component version files."""
     lib = Path(root) / 'common' / name / 'files' / 'lib'
+    if nvcuda:
+        # The working CUDA library, which Proton installs only on request.
+        folder = lib / 'wine' / 'nvidia-libs' / 'nvcuda' / 'x86_64-windows'
+        folder.mkdir(parents=True)
+        (folder / 'nvcuda.dll.so').write_bytes(b'\x7fELF cuInit cuDeviceGetLuid')
     layouts = {'dxvk': ('dxgi.dll', 'd3d11.dll'), 'vkd3d-proton': ('d3d12.dll', 'd3d12core.dll'),
                'nvapi': ('nvapi64.dll', 'nvofapi64.dll')}
     versions = {'dxvk': 'dxvk (v2.6.2)', 'vkd3d-proton': 'vkd3d-proton (vkd3d-1.1-4904)', 'nvapi': 'dxvk-nvapi (v0.9.0)'}
@@ -43,7 +48,7 @@ def proton(root, name='Proton 10.0', components=('dxvk', 'vkd3d-proton', 'nvapi'
     return lib
 
 
-def prefix(library, appid, lib, version='10.0-200', nvapi=True, ngx=True):
+def prefix(library, appid, lib, version='10.0-200', nvapi=True, ngx=True, cuda=True):
     """<library>/steamapps/compatdata/<appid>/pfx as Proton leaves it after one run."""
     compat = Path(library) / 'steamapps' / 'compatdata' / str(appid)
     pfx = compat / 'pfx'
@@ -57,6 +62,8 @@ def prefix(library, appid, lib, version='10.0-200', nvapi=True, ngx=True):
     if ngx:
         for name in ('nvngx.dll', '_nvngx.dll'):
             (system32 / name).write_bytes(b'ngx')
+    # Proton's placeholder exports nothing; the working library exports cu*.
+    (system32 / 'nvcuda.dll').write_bytes(b'\x7fELF cuInit cuDeviceGetLuid' if cuda else b'MZ placeholder')
     devices = pfx / 'dosdevices'
     devices.mkdir()
     os.symlink('../drive_c', devices / 'c:')

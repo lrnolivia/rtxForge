@@ -98,6 +98,22 @@ class UniversalMfgTest(unittest.TestCase):
         # The game's own DLSS-G stays the FG path; OptiScaler keeps the requested count.
         self.assertRegex(text, r'(?m)^FGOutput=\s*nofg\b')
         self.assertRegex(text, r'(?m)^OverrideInterpolationCount=\s*3\b')
+
+    def test_f6_toggles_nr_and_unbinds_the_full_resolution_comparison(self):
+        e = SimpleNamespace(set_ini_value=set_ini_value, Y4MY_PROVIDER={'mfg_component': provider.pinned()},
+                            visual_defaults=lambda nr, mfg, sharp: {'DLSSG': {}})
+        source = b'[DlssNr]\nEnabled=true\nToggleKey=auto\nCompareKey=auto\n'
+        text, _ = skynizz_provider.configure(e, source, mode='nr-mfg')
+        self.assertRegex(text, r'(?m)^ToggleKey=\s*0x75\b')
+        self.assertRegex(text, r'(?m)^CompareKey=\s*-1\b')
+        # Repair keeps a binding the user chose in OptiScaler's Keybinds.
+        saved = b'[DlssNr]\nEnabled=true\nToggleKey=0x7A\nCompareKey=0x77\n'
+        text, _ = skynizz_provider.configure(e, source, saved=saved, mode='nr-mfg')
+        self.assertRegex(text, r'(?m)^ToggleKey=\s*0x7A\b')
+        self.assertRegex(text, r'(?m)^CompareKey=\s*0x77\b')
+        # MFG Only has no NR pass to toggle.
+        text, _ = skynizz_provider.configure(e, source, mode='mfg-only')
+        self.assertRegex(text, r'(?m)^ToggleKey=\s*auto\b')
         self.assertNotRegex(text, r'(?m)^LoadReShade=\s*true\b')
 
     def test_refuses_manual_unlocker_installs_and_component_switches(self):

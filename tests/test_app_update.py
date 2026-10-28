@@ -34,6 +34,7 @@ class ApplicationUpdateTest(unittest.TestCase):
         with self.assertRaises(ValueError):app_update._version_key('1.0.0-beta.bad')
 
 
+@unittest.skipIf(os.name=='nt','The AppImage updater and its installer are Linux-only')
 class UpdateChannelTest(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory()

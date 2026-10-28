@@ -5916,9 +5916,12 @@ class Window(Adw.ApplicationWindow):
         panel=self.dialog if isinstance(self.dialog,ResizablePanelWindow) and self.dialog.get_mapped() else None
         active_panel=panel if panel and panel.is_active() else None
         if not self.is_active() and not active_panel:return True
-        if actions:
+        scroll=self.controller.scroll if not active_panel and not self.get_visible_dialog() else 0
+        if actions or scroll:
             self.last_controller_input=time.monotonic();self._pointer_origin=None
             self.set_input_kind('controller')
+        if scroll and self.settings.get('big_picture_ui',True) and self.input_stack.get_visible_child_name()=='couch':
+            self.couch.scroll_main_view(scroll)
         for action in actions:
             dialog=active_panel or self.get_visible_dialog()
             if not dialog:
@@ -14750,7 +14753,7 @@ class Window(Adw.ApplicationWindow):
         big_picture.connect('notify::selected',lambda widget,*_:self.set_big_picture_ui(widget.get_selected()==1))
         controls.add(big_picture)
         for key,title,keys,captions in [
-            ('controller_glyphs','Controller Labels',['auto','xbox','playstation','nintendo','generic'],['Automatic','Xbox','PlayStation','Nintendo','Generic'])]:
+            ('controller_glyphs','Controller Labels',['auto','xbox','playstation','nintendo','steam','generic'],['Automatic','Xbox','PlayStation','Nintendo','Steam Controller','Generic'])]:
             choice=safe_combo_row(title=title,model=Gtk.StringList.new(captions),selected=keys.index(self.settings.get(key,'auto')))
             def change_input(widget,*_,key=key,keys=keys):
                 global COUCH_MODE

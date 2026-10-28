@@ -2,6 +2,7 @@
 import ctypes as C
 from pathlib import Path
 import sys
+import time
 import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from controller_input import Controller
@@ -17,7 +18,8 @@ class NativeControllerTest(unittest.TestCase):
             ('SDL_JoystickDetachVirtual',[C.c_int],C.c_int),
             ('SDL_JoystickOpen',[C.c_int],C.c_void_p),
             ('SDL_JoystickClose',[C.c_void_p],None),
-            ('SDL_JoystickSetVirtualButton',[C.c_void_p,C.c_int,C.c_uint8],C.c_int)]:
+            ('SDL_JoystickSetVirtualButton',[C.c_void_p,C.c_int,C.c_uint8],C.c_int),
+            ('SDL_JoystickSetVirtualAxis',[C.c_void_p,C.c_int,C.c_int16],C.c_int)]:
             if not hasattr(sdl,name):self.skipTest('SDL version lacks virtual-controller testing')
             fn=getattr(sdl,name);fn.argtypes=args;fn.restype=result
         index=sdl.SDL_JoystickAttachVirtual(1,6,15,0)
@@ -31,6 +33,10 @@ class NativeControllerTest(unittest.TestCase):
             sdl.SDL_JoystickSetVirtualButton(joystick,6,1);self.assertIn('menu',controller.poll())
             sdl.SDL_JoystickSetVirtualButton(joystick,6,0);controller.poll()
             sdl.SDL_JoystickSetVirtualButton(joystick,4,1);self.assertIn('settings',controller.poll())
+            # Right stick up scrolls up, with no navigation action.
+            sdl.SDL_JoystickSetVirtualAxis(joystick,3,-32768);time.sleep(.02)
+            self.assertEqual([a for a in controller.poll() if a in ('up','down')],[]);self.assertLess(controller.scroll,0)
+            sdl.SDL_JoystickSetVirtualAxis(joystick,3,0);controller.poll();self.assertEqual(controller.scroll,0)
             sdl.SDL_JoystickDetachVirtual(index);controller.poll();self.assertIsNone(controller.handle)
         finally:
             sdl.SDL_JoystickClose(joystick)

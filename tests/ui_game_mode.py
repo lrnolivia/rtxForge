@@ -238,13 +238,33 @@ def fits():
 def capture(name):
  fits()
  path=app.window.capture(name);assert path and path.is_file();images.append(str(path))
+def prompts(scope):
+ return [w._gm_prompt for w in descendants(scope) if hasattr(w,'_gm_prompt')]
 def glyphs():
  w=app.window;c=w.couch;w.set_input_kind('controller')
- for family in ('xbox','playstation','nintendo','generic'):
+ expected={'xbox':('A','text'),'playstation':('Cross','cross'),'nintendo':('B','text'),'steam':('A','text'),'generic':('South','position0')}
+ for family,first in expected.items():
   w.settings['controller_glyphs']=family;c.update_prompts(force=True)
-  import controller_input
-  assert controller_input.GLYPHS[family][0] in labels(c.footer),family
+  assert prompts(c.footer)[0]==first,(family,prompts(c.footer))
+  assert 'Enter' not in labels(c.footer)
  w.settings['controller_glyphs']='xbox';w.set_input_kind('keyboard')
+def controller_guide(family):
+ w=app.window;c=w.couch;w.settings['controller_glyphs']=family;w.set_input_kind('controller')
+ c.open('settings');c.open_settings_section('Gaming Mode')
+ row=next(b for b in descendants(c.body) if isinstance(b,Gtk.Button) and 'Controller buttons' in labels(b))
+ row.emit('clicked');assert c.modals
+ shown=[label for label,_ in prompts(c.modals[-1]['dialog'])]
+ bumpers={'playstation':['L1','R1'],'nintendo':['L','R']}.get(family,['LB','RB'])
+ assert shown[:2]==['D-pad',{'playstation':'Cross','nintendo':'B'}.get(family,'A')] and all(b in shown for b in bumpers),shown
+ assert 'Right stick' in labels(c.modals[-1]['dialog'])
+def guide_close():
+ w=app.window;w.couch.close_modal();w.settings['controller_glyphs']='xbox';w.set_input_kind('keyboard')
+def right_stick():
+ c=app.window.couch
+ assert c.scroll_main_view(400),'the settings page scrolls'
+ scroll=max((x for x in descendants(c.body.current) if isinstance(x,Gtk.ScrolledWindow) and x.get_mapped()),key=lambda x:x.get_width()*x.get_height())
+ moved=scroll.get_vadjustment().get_value();assert moved>0,moved
+ c.scroll_main_view(-10000);assert scroll.get_vadjustment().get_value()==scroll.get_vadjustment().get_lower()
 def theme(name):
  w=app.window;c=w.couch;w.settings['theme']=name;c.apply_theme();c.render()
  assert c.theme.name==name
@@ -261,7 +281,13 @@ def review_close():
  assert not w.couch.modals and w.operation_flow is None
 def size(width,height):
  app.window.set_default_size(width,height);app.window.couch.resize(width,height)
-steps=[setup,keyboard,panel_shortcut,presets_page,menu,glyphs,lambda:theme('light'),lambda:capture('gm-library-light.png'),lambda:theme('night'),
+steps=[setup,keyboard,panel_shortcut,presets_page,menu,glyphs,
+       lambda:controller_guide('xbox'),lambda:capture('gm-controller-guide-xbox.png'),guide_close,
+       lambda:controller_guide('playstation'),lambda:capture('gm-controller-guide-playstation.png'),guide_close,
+       lambda:controller_guide('steam'),lambda:capture('gm-controller-guide-steam.png'),guide_close,
+       lambda:(app.window.couch.open('settings'),app.window.couch.open_settings_section('Gaming Mode')),right_stick,lambda:app.window.couch.open('library'),
+       lambda:(app.window.set_input_kind('controller'),app.window.couch.update_prompts(force=True)),lambda:capture('gm-footer-controller.png'),
+       lambda:app.window.set_input_kind('keyboard'),lambda:theme('light'),lambda:capture('gm-library-light.png'),lambda:theme('night'),
        lambda:app.window.couch.open('packages'),lambda:capture('gm-packages.png'),
        lambda:app.window.couch.open('extras'),lambda:capture('gm-extras.png'),
        lambda:app.window.couch.open('library'),menu,lambda:app.window.couch.open_main_menu(),lambda:capture('gm-main-menu.png'),close_modal,

@@ -207,9 +207,14 @@ class DesktopService:
         import feeder_provider
         feeder=[row for row in rows if row.get('runtime_provider')=='feeder']
         others=[row for row in rows if row.get('runtime_provider')!='feeder']
-        companion=feeder_provider.prepare(self.config,feeder,'nr-only','install',settings,engine_bridge.module(self.config)) if feeder else None
+        def part(subset):
+            # The whole reviewed set already matched the selection; each part checks its own games.
+            scope=settings.get('operation_scope')
+            if not isinstance(scope,dict) or not subset:return settings
+            return dict(settings,operation_scope=dict(scope,games=[row['game'] for row in subset]))
+        companion=feeder_provider.prepare(self.config,feeder,'nr-only','install',part(feeder),engine_bridge.module(self.config)) if feeder else None
         if not others:return companion
-        review=engine_bridge.prepare(self.config,others,mode,'install',settings)
+        review=engine_bridge.prepare(self.config,others,mode,'install',part(others))
         if companion:
             review['companions']=[companion]
             review['rows']=review['rows']+companion.get('rows',[])

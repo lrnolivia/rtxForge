@@ -623,8 +623,8 @@ def artwork_accent(path,color=None,muted=False):
             f'color: white; '
             f'}} '
 
-            f'.game-card.{name}:hover, '
-            f'.game-card.{name}:focus-within, '
+            # As on Windows (GameItem.CardRing): the card's own ring turns accent only
+            # when selected; hover and keyboard focus ring the artwork instead.
             f'.game-card.{name}.selected {{ '
             f'border-color: {color}; '
             f'}} '
@@ -664,7 +664,7 @@ def artwork_accent(path,color=None,muted=False):
             # Poster / Wide Capsule Details button is neutral at rest;
             # it becomes accent-filled only while the card is selected.
             f'.game-card.{name}.selected .gallery-artwork-frame {{ background: alpha(white,0.44); }} '
-            f'.game-card.{name}:hover .gallery-artwork-ring {{ border-width: 3px; border-color: {color}; }} '
+            f'.game-card.{name}:hover .gallery-artwork-ring, .game-card.{name}:focus-within .gallery-artwork-ring {{ border-width: 3px; border-color: {color}; }} '
             f'.game-card.{name}.selected .gallery-artwork-ring {{ border-width: 2px; border-color: mix(white,{color},0.44); }} '
             f'.game-card.{name}.selected .game-details {{ '
             f'background: alpha(white,0.44); '

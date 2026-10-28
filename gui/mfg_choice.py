@@ -62,3 +62,19 @@ def summary(values):
     if mode == AUTO:
         return 'Auto'
     return f'{ratio}×' if mode == CUSTOM else f'Dynamic up to {ratio}×'
+
+
+def dynamic_supported(settings, game=None):
+    """Whether Dynamic can be chosen: Windows Settings.DynamicMfgSupported for the
+    library defaults, the scan row's dynamic_mfg_available for one game. Packages
+    without the shared controls (legacy) never offer it."""
+    if game is not None:
+        return bool(game.get('dynamic_mfg_available'))
+    return (settings.get('runtime_provider') == 'skynizz'
+            and settings.get('mfg_provider', 'universal') in ('universal', 'integrated'))
+
+
+def dynamic_reason(available, game=None):
+    """The line under the modes when Dynamic can't be chosen (PresetControlsView)."""
+    detail = (game or {}).get('dynamic_mfg_detail') or ''
+    return '' if available or not detail else 'Dynamic: ' + detail

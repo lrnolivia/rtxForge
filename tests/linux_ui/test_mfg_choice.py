@@ -43,6 +43,22 @@ class MfgChoiceTest(unittest.TestCase):
         self.assertEqual(m.summary(m.to_values(True, m.DYNAMIC, 4)), 'Dynamic up to 4×')
         self.assertEqual(m.summary({'mfg_multiplier': 0}), 'Off')
 
+    def test_dynamic_follows_windows_support(self):
+        # Library defaults: Skynizz with the Universal or Integrated component (DynamicMfgSupported).
+        self.assertTrue(m.dynamic_supported({'runtime_provider': 'skynizz'}))
+        self.assertTrue(m.dynamic_supported({'runtime_provider': 'skynizz', 'mfg_provider': 'integrated'}))
+        self.assertFalse(m.dynamic_supported({'runtime_provider': 'skynizz', 'mfg_provider': 'mfg-unlock'}))
+        self.assertFalse(m.dynamic_supported({'runtime_provider': 'dlss-unlocked'}))
+        # One game: the scan row decides, whatever the library defaults say.
+        self.assertFalse(m.dynamic_supported({'runtime_provider': 'skynizz'}, {'dynamic_mfg_available': False}))
+        self.assertTrue(m.dynamic_supported({}, {'dynamic_mfg_available': True}))
+
+    def test_dynamic_reason_names_the_game_detail(self):
+        game = {'dynamic_mfg_detail': 'Launch the game once to check Dynamic support'}
+        self.assertEqual(m.dynamic_reason(False, game), 'Dynamic: Launch the game once to check Dynamic support')
+        self.assertEqual(m.dynamic_reason(True, game), '')
+        self.assertEqual(m.dynamic_reason(False), '')
+
 
 if __name__ == '__main__':
     unittest.main()

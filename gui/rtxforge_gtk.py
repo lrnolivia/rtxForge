@@ -937,10 +937,12 @@ def _size_label(size):
 class MfgControl(Gtk.Box):
     """Multi-Frame Generation: On/Off, Auto/Custom/Dynamic, and 2×–6× ratios."""
     __gsignals__={'changed':(GObject.SignalFlags.RUN_FIRST,None,())}
-    def __init__(self,values,dynamic_available=True,on_change=None):
+    def __init__(self,values,dynamic_available=True,on_change=None,dynamic_reason=''):
         super().__init__(orientation=Gtk.Orientation.VERTICAL,spacing=16,valign=Gtk.Align.CENTER)
         self.add_css_class('mfg-control')
         self.dynamic_available=dynamic_available
+        # Windows PresetControlsView: an unavailable Dynamic says why under the modes.
+        self.dynamic_reason=dynamic_reason
         self._on_change=on_change
         self._syncing=False
         header=Gtk.Box(spacing=12)
@@ -955,7 +957,7 @@ class MfgControl(Gtk.Box):
             toggle=Adw.Toggle(name=str(index),label=name)
             if index==mfg_choice.DYNAMIC and not dynamic_available:
                 toggle.set_enabled(False)
-                toggle.set_tooltip('Not supported by this game or package')
+                toggle.set_tooltip(dynamic_reason or 'Not supported by this game or package')
             self.modes.add(toggle)
         self.append(self.modes)
         self.ratios=Adw.ToggleGroup(homogeneous=True)
@@ -989,10 +991,11 @@ class MfgControl(Gtk.Box):
         enabled=self.switch.get_active();mode=int(self.modes.get_active_name() or 0)
         self.modes.set_sensitive(enabled)
         self.ratios.set_visible(enabled and mode!=mfg_choice.AUTO)
-        self.caption.set_text('Off' if not enabled else
-                              'Follows the game\'s own frame generation setting' if mode==mfg_choice.AUTO else
-                              'Fixed ratio' if mode==mfg_choice.CUSTOM else
-                              'Maximum ratio · only where the game and driver support it')
+        caption=('Off' if not enabled else
+                 'Follows the game\'s own frame generation setting' if mode==mfg_choice.AUTO else
+                 'Fixed ratio' if mode==mfg_choice.CUSTOM else
+                 'Maximum ratio · only where the game and driver support it')
+        self.caption.set_text(caption+('\n'+self.dynamic_reason if enabled and self.dynamic_reason else ''))
 
     def _changed(self,*_):
         if self._syncing:return
@@ -10098,12 +10101,15 @@ class Window(Adw.ApplicationWindow):
         outer.append(pod)
         source=dict(self.settings)
         source.update({k:v for k,v in initial.items() if k in ('mfg_multiplier','dynamic_mfg','mfg_saved_mode','mfg_saved_multiplier') and v is not None})
-        dynamic=bool(initial.get('dynamic_mfg_available')) if 'dynamic_mfg_available' in initial else self.settings.get('runtime_provider')=='skynizz'
-        multiplier=MfgControl(source,dynamic_available=dynamic)
+        # A scan row (has 'game') decides for itself; the Presets page and multi-game
+        # reviews use the library rule (Windows Settings.DynamicMfgSupported).
+        game=initial if 'game' in initial else None
+        legacy=initial.get('runtime_provider',self.settings.get('runtime_provider'))!='skynizz'
+        dynamic=mfg_choice.dynamic_supported(self.settings,game) and not legacy
+        multiplier=MfgControl(source,dynamic_available=dynamic,dynamic_reason=mfg_choice.dynamic_reason(dynamic,game))
         pod.append(multiplier)
         widgets['mfg_multiplier']=multiplier
 
-        legacy=initial.get('runtime_provider',self.settings.get('runtime_provider'))!='skynizz'
         values=initial.get('feature_controls',self.settings.get('feature_controls',{})) or {}
         if not values or legacy:
             values={**values,'intensity':widgets['nr_strength'].get_value(),

@@ -57,8 +57,8 @@ class GameModePresets:
         mfg_source = dict(owner.settings)
         mfg_source.update({k: source[k] for k in ('mfg_multiplier', 'dynamic_mfg', 'mfg_saved_mode', 'mfg_saved_multiplier')
                            if source.get(k) is not None})
-        dynamic_available = (bool(game.get('dynamic_mfg_available')) if game is not None
-                             else owner.settings.get('runtime_provider') == 'skynizz') and not legacy
+        dynamic_available = mfg_choice.dynamic_supported(owner.settings, game) and not legacy
+        dynamic_reason = mfg_choice.dynamic_reason(dynamic_available, game)
         mfg = dict(zip(('on', 'mode', 'ratio'), mfg_choice.from_values(mfg_source)))
         if mfg['mode'] == mfg_choice.DYNAMIC and not dynamic_available:
             mfg['mode'] = mfg_choice.CUSTOM
@@ -186,7 +186,8 @@ class GameModePresets:
                     part._refresh()
                 ratios.set_visible(mfg['on'] and mfg['mode'] != mfg_choice.AUTO)
                 ratio_label.set_text('Maximum multiplier' if mfg['mode'] == mfg_choice.DYNAMIC else 'Multiplier')
-                description.set_text((MFG_DESCRIPTIONS[mfg['mode']] if mfg['on'] else 'Multi-Frame Generation is off.') if allowed else '')
+                text = (MFG_DESCRIPTIONS[mfg['mode']] if mfg['on'] else 'Multi-Frame Generation is off.') if allowed else ''
+                description.set_text(text + ('\n' + dynamic_reason if text and mfg['on'] and dynamic_reason else ''))
                 description.set_visible(bool(description.get_text()))
             def switch(index):
                 mfg['on'] = bool(index)
@@ -203,7 +204,7 @@ class GameModePresets:
                 for button in children(part):
                     button.connect('clicked', lambda *_: changed())
             if not dynamic_available:
-                modes.get_last_child().set_tooltip_text('Requires the integrated MFG package and a compatible game and driver.')
+                modes.get_last_child().set_tooltip_text(dynamic_reason or 'Requires the integrated MFG package and a compatible game and driver.')
             header = Gtk.Box(spacing=t.px(20))
             header.append(self.label('Multi-Frame Generation', 'gm-h2', wrap=True))
             header.append(Gtk.Box(hexpand=True))

@@ -32,6 +32,9 @@ PLUGIN = fixtures.pe() + b'universal mfg fixture plugin'
 
 class LinuxUniversalLifecycleTest(unittest.TestCase):
     def setUp(self):
+        # The app keeps resolved Skynizz releases for an hour; each test has its own temp release.
+        engine_bridge._release_cache.clear()
+        self.addCleanup(engine_bridge._release_cache.clear)
         self.tmp = tempfile.TemporaryDirectory()
         root = Path(self.tmp.name).resolve()
         self.root = root

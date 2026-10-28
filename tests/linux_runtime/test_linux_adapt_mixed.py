@@ -22,15 +22,18 @@ class AdaptMixedLibraryTest(unittest.TestCase):
         self.service.config = {}
         self.service.hardware = lambda: {'ready': True}
         self.calls = []
+        check_scope = engine_bridge.check_scope
         def engine_prepare(config, rows, mode, operation, settings):
+            # The real engine checks its rows against the scope it is given.
+            check_scope(rows, settings.get('operation_scope'))
             self.calls.append(('engine', [r['name'] for r in rows], mode))
             return {'kind': 'engine', 'operation': operation, 'rows': [{'name': r['name']} for r in rows], 'blocked': [], 'plans': []}
         def feeder_prepare(config, rows, mode, operation, settings, e):
+            check_scope(rows, settings.get('operation_scope'))
             self.calls.append(('feeder', [r['name'] for r in rows], mode))
             return {'kind': 'feeder', 'operation': operation, 'rows': [{'name': r['name']} for r in rows], 'blocked': [], 'plans': []}
         patches = [patch.object(cross_os, 'THIS_OS', 'linux'), patch.object(engine_bridge, 'prepare', engine_prepare),
                    patch.object(feeder_provider, 'prepare', feeder_prepare), patch.object(engine_bridge, 'module', lambda config: None),
-                   patch.object(engine_bridge, 'check_scope', lambda rows, scope: None),
                    patch.object(library_media, 'load_settings', lambda config: {'runtime_provider': 'dlss-unlocked'})]
         for item in patches:
             item.start()
@@ -43,6 +46,15 @@ class AdaptMixedLibraryTest(unittest.TestCase):
         self.assertEqual(review['kind'], 'engine')
         self.assertEqual([r['name'] for r in review['rows']], ['007', 'Hogwarts', 'Mass Effect'])
         self.assertEqual(review['companions'][0]['kind'], 'feeder')
+
+    def test_each_part_checks_only_its_own_games_against_the_selection(self):
+        rows = [row('007'), row('Mass Effect', 'feeder'), row('Hogwarts')]
+        scope = {'kind': 'filtered', 'games': [r['game'] for r in rows]}
+        review = self.service.prepare(rows, 'mfg-only', 'install', scope=scope)
+        self.assertEqual(len(review['rows']), 3)
+        # A selection that drifted from the reviewed games still refuses up front.
+        with self.assertRaisesRegex(Exception, 'no longer match'):
+            self.service.prepare(rows, 'mfg-only', 'install', scope=dict(scope, games=scope['games'][:2]))
 
     def test_feeder_only_adapt_ignores_the_toolbar_mode(self):
         review = self.service.prepare([row('Mass Effect', 'feeder')], 'mfg-only', 'install')

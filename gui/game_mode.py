@@ -34,6 +34,7 @@ import overlay_shortcut
 ACCENT = '#76b900'
 ACCENT_INK = '#151c07'
 NO_ACCENT = '#b4b4b4'
+PREPARING_CAPTION = 'Downloading packages/files…'
 
 # Prototype tokens (.rf-prototype). Night is the Game Mode default.
 THEMES = {'night': {'window': '#050505', 'view': '#0b0b0b', 'panel': '#131313', 'card': '#1c1c1c', 'fg': '#dedede', 'muted': '#b5b5b5', 'focus': '#b0b0b0', 'danger': '#f7bbc2', 'danger_bg': '#2e1920', 'line': '#303030', 'active': '#c9c9c9', 'active_fg': '#101010', 'segment': '#bdbdbd', 'row_focus': '#292929', 'disabled': '#181818', 'disabled_fg': '#959595', 'dlss': '#1b1b1b', 'dlss_ink': '#dfdfdf', 'dlss_border': '#444444'}, 'dark': {'window': '#181818', 'view': '#222222', 'panel': '#2b2b2b', 'card': '#363636', 'fg': '#f5f5f5', 'muted': '#c3c3c3', 'focus': '#c4c4c4', 'danger': '#ffc6cc', 'danger_bg': '#4b2932', 'line': '#494949', 'active': '#ededed', 'active_fg': '#171717', 'segment': '#e0e0e0', 'row_focus': '#424242', 'disabled': '#303030', 'disabled_fg': '#a3a3a3', 'dlss': '#343434', 'dlss_ink': '#ededed', 'dlss_border': '#5a5a5a'}, 'light': {'window': '#e5e5e5', 'view': '#f4f4f4', 'panel': '#e9e9e9', 'card': '#ffffff', 'fg': '#242424', 'muted': '#535353', 'focus': '#5c5c5c', 'danger': '#7b2030', 'danger_bg': '#f5dfe3', 'line': '#c6c6c6', 'active': '#d1d1d1', 'active_fg': '#202020', 'segment': '#d7d7d7', 'row_focus': '#dddddd', 'disabled': '#e3e3e3', 'disabled_fg': '#737373', 'dlss': '#fafafa', 'dlss_ink': '#343434', 'dlss_border': '#7f7f7f'}}
@@ -2671,24 +2672,25 @@ class GameModeFlow:
         on_continue()
 
     def show_checking(self):
+        # Windows GameModeView.Operations: preparation has its own progress screen; the review stays static.
         self.stage = 'checking'
         self.step = self._step_layout()
-        self._step_show('Checking', self.games[0] if self.games else None, 0, 0, 'Checking game files')
+        self._step_show('Preparing', self.games[0] if self.games else None, 0, len(self.games), PREPARING_CAPTION, 0)
         self.cancel_button.set_visible(True)
-        self._show(self.review_title, self.step['root'], [self.cancel_button])
+        self._show('Preparing', self.step['root'], [self.cancel_button])
 
     def checking_event(self, event):
         if event.get('phase') != 'review-check':
-            if event.get('label'):
-                self.step['phase'].set_text(user_messages.friendly_status(event['label']).rstrip('.…') + '…')
             return
         game = next((g for g in self.games if g['name'] == event.get('game')), None)
         total = event.get('total') or len(self.games)
-        self._step_show('Checking', game, max(0, event.get('checked', 0) - 1), total, user_messages.friendly_status(event.get('label', '')),
+        self._step_show('Preparing', game, max(0, event.get('checked', 0) - 1), total, PREPARING_CAPTION,
                         event.get('checked', 0) / max(1, total))
 
     def show_review(self, review, on_confirm, details=None, enabled=True, trust=None, note=None, extra=None):
         view, t, owner = self.view, self.view.theme, self.owner
+        if self.stage == 'checking' and getattr(self, 'step', None):
+            self.step['bar'].set_fraction(1.0)
         self.stage = 'review'
         self.review = review
         self.on_confirm = on_confirm

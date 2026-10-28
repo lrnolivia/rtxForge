@@ -43,7 +43,9 @@ def mapped_process(prefix, exe, channel, proc=Path('/proc')):
         if not entry.name.isdigit(): continue
         try:
             env=(entry/'environ').read_bytes().split(b'\0')
-            if b'WINEPREFIX='+prefix.encode() not in env: continue
+            wine=next((item[11:] for item in env if item.startswith(b'WINEPREFIX=')),None)
+            # Proton exports the prefix with a trailing slash ('.../pfx/').
+            if not wine or str(Path(os.fsdecode(wine)).resolve())!=prefix: continue
             paths={line.split(None,5)[5].replace('\\040',' ') for line in (entry/'maps').read_text().splitlines() if len(line.split(None,5))==6}
             if exe in paths and channel in paths:
                 return int(entry.name)

@@ -36,12 +36,12 @@ class LinuxSkynizzAdoptionTest(unittest.TestCase):
             self.assertIsNotNone(record)
             return engine_bridge.adopt_plan(e, g, {'name': 'Game'}, record, operation, mode)
 
-    def test_adopting_is_not_a_provider_switch_but_the_profile_must_match(self):
+    def test_adapting_keeps_the_windows_install_whatever_is_selected_here(self):
+        # Adapt to Linux changes no game files, so the toolbar's mode and package never refuse it.
         self.install_skynizz_on_windows()
-        plan = self.plan(True, 'install', 'mfg-only')
-        self.assertIn('adds the Proton setting', plan['preview']['launch_options'])
-        with self.assertRaisesRegex(t.Refusal, 'changing feature profiles'):
-            self.plan(True, 'install', 'nr-mfg')
+        for mode in ('mfg-only', 'nr-mfg', 'nr-only'):
+            plan = self.plan(True, 'install', mode)
+            self.assertIn('adds the Proton setting', plan['preview']['launch_options'])
 
     def test_refused_by_default_and_allowed_with_the_opt_in(self):
         self.install_skynizz_on_windows()

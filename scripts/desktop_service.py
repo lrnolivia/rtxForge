@@ -177,6 +177,8 @@ class DesktopService:
             import package_adoption
             return package_adoption.prepare(self.config, rows, operation, settings)
         settings['apply_requested_presets']=operation=='install' and visual_settings is not None
+        if operation=='install' and rows and all(row.get('installed_on')=='windows' for row in rows) and cross_os.THIS_OS=='linux':
+            return self.prepare_adapt(rows,mode,settings)
         # Confirmed Vulkan games use the Vulkan package automatically, as Feeder games use Feeder NR.
         # It always brings frame generation, so NR Only keeps the DLSS package's own route.
         if settings.get('runtime_provider')=='vulkan-native' or (rows and all(row.get('runtime_provider')=='vulkan-native'
@@ -194,6 +196,24 @@ class DesktopService:
                                            settings, engine_bridge.module(self.config))
         review=engine_bridge.prepare(self.config,rows,mode,operation,settings)
         if save_defaults and operation=='reset':review['save_defaults']={k:settings[k] for k in ('nr_strength','sharpening_strength','mfg_multiplier','dynamic_mfg','mfg_saved_mode','mfg_saved_multiplier','feature_controls') if k in settings}
+        return review
+
+    def prepare_adapt(self,rows,mode,settings):
+        """Adapt to Linux: every game keeps the route Windows installed it with, whatever is selected here.
+
+        Feeder installs take Feeder's Linux setup (always NR Only); the rest take the
+        engine's adoption. A mixed library is one review: the Feeder part rides along
+        as a companion that runs after the engine part."""
+        import feeder_provider
+        feeder=[row for row in rows if row.get('runtime_provider')=='feeder']
+        others=[row for row in rows if row.get('runtime_provider')!='feeder']
+        companion=feeder_provider.prepare(self.config,feeder,'nr-only','install',settings,engine_bridge.module(self.config)) if feeder else None
+        if not others:return companion
+        review=engine_bridge.prepare(self.config,others,mode,'install',settings)
+        if companion:
+            review['companions']=[companion]
+            review['rows']=review['rows']+companion.get('rows',[])
+            review['blocked']=review['blocked']+companion.get('blocked',[])
         return review
 
     # Second-review offers when a game supports only part of NR + MFG (reason code -> user text).
@@ -348,6 +368,11 @@ class DesktopService:
         if kind=='engine':
             result=engine_bridge.execute(review)
             if review.get('save_defaults'):self.save_visual_defaults(review['save_defaults'])
+            for companion in review.get('companions') or []:
+                # Adapt to Linux: the Feeder games of the same review.
+                cancel=review.get('cancel_event')
+                if cancel is not None and cancel.is_set():break
+                if companion.get('rows'):result=self.execute(companion) or result
             return result
         if kind=='batch':return str(app.apply_batch(self.config,review['plans']))
         if kind=='cleanup':return str(cleanup.apply(self.config,review['items']))

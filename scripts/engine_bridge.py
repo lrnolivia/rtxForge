@@ -300,7 +300,7 @@ def steam_owned(path):
 # Experimental: Linux may adopt a Windows Skynizz install under Proton (DLL override
 # only, no game files change). Fresh Skynizz installs on Linux stay Windows-only.
 LINUX_SKYNIZZ_REFUSAL=('Skynizz installation/adoption is not available on Linux in this release. '
-                       'To try a Windows install under Proton, turn on Skynizz on Proton (experimental) in Settings.')
+                       'To use a Windows install under Proton, turn on Skynizz on Proton in Settings.')
 
 def skynizz_proton(settings):
     return cross_os.THIS_OS=='linux' and settings.get('skynizz_proton') is True
@@ -318,11 +318,10 @@ def adopt_plan(e,g,row,record,operation,mode):
     view={'steam_launch':mine['steam_launch']} if isinstance(mine.get('steam_launch'),dict) else None
     prefix=None;steam_route=False
     if operation in ('install','repair'):
-        if current.get('provider_id')=='skynizz' and getattr(e,'SKYNIZZ_PROTON',False):
-            # Adopting the same Windows install is not a provider switch; Linux selects no Skynizz package.
-            t.need(current.get('feature_mode',mode)==mode,'Uninstall before changing feature profiles so original runtime files are restored')
-        else:
+        if cross_os.THIS_OS!='linux':
             check_switch(e,current or None,mode)
+        # Adapt to Linux takes the install as Windows made it, with its own package and mode,
+        # whatever is selected here: adopting changes no game files, so it is never a switch.
         if cross_os.THIS_OS=='linux':
             prefix=steam_open_route(e,g,operation,view)
             if not prefix:

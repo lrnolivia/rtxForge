@@ -30,7 +30,7 @@ import proton_stack
 import universal_mfg_provider as universal
 
 REASONS = {
-    'opt-in-required': 'Turn on Skynizz on Proton (experimental) in Settings to try this under Proton.',
+    'opt-in-required': 'Turn on Skynizz on Proton in Settings to use this under Proton.',
     'component-unsupported-linux': 'Only the Universal MFG Unlocker is offered under Proton. Choose Universal MFG.',
     'mode-unsupported': 'Choose NR + MFG, MFG Only or NR Only.',
     'competing-unlock': 'Another MFG unlock is installed in this game. Remove it first so only one component owns MFG.',

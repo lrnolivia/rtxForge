@@ -283,8 +283,8 @@ def _windows(e):
 def eligible(e, row, existing=False, check_running=True):
     root, exe, directory = target(row)
     t.need(_windows(e) or not existing or row.get('installed_on') != 'windows',
-           'Installed with rtxForge on Windows. Set Up for Linux is not available for Feeder NR yet; '
-           'it still works on Windows. Nothing was changed.')
+           'Installed with rtxForge on Windows. Use Adapt to Linux for this game; it still works on Windows. '
+           'Nothing was changed.')
     t.need(_windows(e), 'Feeder installation is available on Windows only in this release')
     t.need(not row.get('anti_cheat'), 'Anti-cheat detected; Feeder is unavailable for this game')
     t.need(not check_running or not running_under(e, root), 'Close this game before changing Feeder files')
@@ -460,6 +460,7 @@ def expand_rows(e, rows, selected=False):
                                  # Feeder installs only on Windows, so on Linux a verified stack is a dual-boot install.
                                  mfg_enabled=False, mfg_multiplier=0,
                                  installed_on='windows' if found['managed'] or not _windows(e) else None,
+                                 linux_ready=not _windows(e) and linux_ready(e, child),
                                  feeder_settings={k: found[k] for k in ('passes', 'scale', 'preset')},
                                  blocked='')
                 except (t.Refusal, OSError, ValueError, configparser.Error) as error:
@@ -660,6 +661,99 @@ def _check(e, plan):
         t.need(digest(cached_input(e, item)) == item['sha256'], 'Feeder source or original backup changed since review')
 
 
+# --- Adapt to Linux: a Feeder install made on Windows, run under Proton ----------------------
+#
+# ReShade loads as dxgi.dll beside the game. Under Proton that only needs the prefix to load
+# the native dxgi.dll first, so this adds that one DLL override and nothing else: no game file,
+# Feeder record or Windows backup changes, and Windows keeps working as it was. Remove Linux
+# Setup puts the prefix back. Mass Effect LE's three games share one Steam prefix, so the
+# record is kept per Steam game, not per executable.
+
+LINUX_OVERRIDES = ('dxgi',)
+
+
+def linux_setup_state(e, row):
+    return e.STATE_ROOT / 'prefix-overrides' / e.target_key(Path(row.get('collection_game') or row['game']))
+
+
+def linux_ready(e, row):
+    import proton_prefix
+    try:
+        return bool(proton_prefix.load_record(linux_setup_state(e, row)))
+    except (OSError, ValueError):
+        return False
+
+
+def _linux_setup(e, row, operation):
+    """Review entry for Adapt to Linux / Remove Linux Setup of a Windows Feeder install."""
+    import proton_prefix
+    root, _, directory = target(row)
+    t.need(not running_under(e, root), 'Close this game before changing its Linux setup')
+    state = linux_setup_state(e, row)
+    shared = ' Its prefix is shared by every Mass Effect game in this collection.' if row.get('collection_game') else ''
+    if operation == 'uninstall':
+        record = proton_prefix.load_record(state)
+        t.need(record, 'Installed with rtxForge on Windows. Restore its original files in rtxForge on Windows, '
+                       'where they are backed up.')
+        prefix = record['prefix']
+        summary = ('Remove Linux Setup · removes the Proton setting (dxgi) from this game\'s prefix.' + shared +
+                   ' The Windows install is not touched; restore its original files in rtxForge on Windows.')
+    else:
+        inspect(e, row, cached=False)  # a verified Feeder stack, exactly as Windows left it
+        try:
+            prefix = proton_prefix.find_prefix(row.get('collection_game') or row['game'], row.get('appid'))
+        except proton_prefix.PrefixError as error:
+            raise t.Refusal(str(error)) from error
+        t.need(not proton_prefix.prefix_in_use(prefix), 'This game is running. Quit it, then try again.')
+        summary = ('Adapt to Linux · adds the Proton setting (dxgi) in this game\'s prefix so ReShade and Feeder NR '
+                   'load under Proton.' + shared + ' Nothing in the game folder changes and the Windows install is not touched.')
+    plan = dict(row=dict(row), target=str(directory), operation=operation, linux_setup=list(LINUX_OVERRIDES),
+                prefix=str(prefix), state=str(state))
+    detail = json.dumps({'target': str(directory), 'operation': operation, 'prefix': str(prefix),
+                         'overrides': list(LINUX_OVERRIDES), 'writes': {}}, indent=2)
+    return plan, {'name': row['name'], 'game': row['game'], 'summary': summary, 'detail': detail}
+
+
+def _execute_linux(review):
+    """Apply or remove reviewed Linux setups; each game's prefix change is undone if it fails."""
+    import proton_prefix
+    e, results = review['engine'], []
+    with e.mutation_lock():
+        session = Session(e.STATE_ROOT / 'desktop-operations')
+        try:
+            for index, plan in enumerate(review['plans'], 1):
+                ui.progress('Saving the Proton setting', game=plan['row']['name'], current=index, total=len(review['plans']))
+                t.need(not running_under(e, Path(plan['row']['game'])), 'Close this game before changing its Linux setup')
+                record = proton_prefix.load_record(plan['state'])
+                registry = Path(record['registry']) if record else Path(plan['prefix']) / 'user.reg'
+                checkpoint = session.capture([registry, Path(plan['state'])], label=plan['row']['name'])
+                try:
+                    if plan['operation'] == 'uninstall':
+                        proton_prefix.restore(plan['state'])
+                    else:
+                        proton_prefix.apply(Path(plan['prefix']), plan['linux_setup'], plan['state'])
+                    session.seal(checkpoint)
+                except BaseException:
+                    session.seal(checkpoint)
+                    session.undo(checkpoint)
+                    session.seal(checkpoint)
+                    raise
+                results.append({'name': plan['row']['name'], 'game': plan['row']['game'], 'status': 'complete'})
+            session.complete()
+        except BaseException as error:
+            if session.interrupted() is None:
+                session.close('failed')
+            if isinstance(error, Exception):
+                raise t.Refusal(f'Stopped after {len(results)} completed game(s). Completed games keep their Linux '
+                                f'setup; the rest are as they were. {error}') from error
+            raise
+        finally:
+            operation_session.LIVE.discard(str(session.root))
+    path = e.STATE_ROOT / ('desktop-feeder-' + e.now_stamp() + '.json')
+    e.save_json_atomic(path, {'results': results})
+    return str(path)
+
+
 def prepare(config, rows, mode, operation, settings, e):
     with review_session(e):
         return _prepare(config, rows, mode, operation, settings, e)
@@ -688,6 +782,13 @@ def _prepare(config, rows, mode, operation, settings, e):
                 # The game folder was replaced; its pre-Feeder originals are now
                 # the current files, so install again from a fresh record.
                 current = None
+            if not _windows(e) and existing and row.get('installed_on') == 'windows':
+                t.need(operation in ('install', 'repair', 'uninstall'),
+                       'Installed with rtxForge on Windows. Change its Feeder settings in rtxForge on Windows.')
+                plan, entry = _linux_setup(e, row, operation)
+                plans.append(plan)
+                ready.append(entry)
+                continue
             eligible(e, row, existing)
             spec = stack(directory, installed=True) if existing else lock()
             names = list(spec['assets']) + [*CONFIGS, MODEL]
@@ -849,6 +950,9 @@ def _prepare(config, rows, mode, operation, settings, e):
 def execute(review):
     e, results = review['engine'], []
     t.need(review['plans'], 'No Feeder changes were reviewed')
+    if any(plan.get('linux_setup') for plan in review['plans']):
+        t.need(all(plan.get('linux_setup') for plan in review['plans']), 'Review the Linux setup on its own')
+        return _execute_linux(review)
     cancel = review.get('cancel_event')
     with e.mutation_lock():
         # Reject drift anywhere in the reviewed selection before the first write.

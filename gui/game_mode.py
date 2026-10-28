@@ -1237,7 +1237,9 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         inner.append(mode)
         pool = self.selected_games() if self.selecting else games
         actions = Gtk.Box(spacing=t.px(12), valign=Gtk.Align.CENTER, halign=Gtk.Align.START)
-        install_label, restore_label, update_label = action_labels.library(len(self.selected) if self.selecting else 0)
+        # Every targeted game installed with rtxForge on Windows: Install adapts them, Restore removes that.
+        adapt = bool(pool) and all(g.get('installed_on') == 'windows' for g in pool)
+        install_label, restore_label, update_label = action_labels.library(len(self.selected) if self.selecting else 0, adapt)
         actions.append(self.button(install_label,
                                    lambda: self.run_operation('install', self.scoped_targets()), 'primary', 'folder-download-symbolic',
                                    enabled=any(not g.get('blocked') for g in pool), key='lib-install'))
@@ -1650,10 +1652,11 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         # Pinned right, so they stay put when the summary hides as the hero collapses.
         actions = Gtk.Box(spacing=t.px(12), valign=Gtk.Align.END, hexpand=True, halign=Gtk.Align.END)
         setup = self.owner.needs_linux_setup(g)
-        actions.append(self.button('Set Up for Linux' if setup else action_labels.INSTALL,
+        actions.append(self.button(action_labels.game(setup)[0],
                                    lambda: self.run_operation('install', [g]), 'primary', 'folder-download-symbolic', enabled=not g.get('blocked'), key='hero-install'))
-        actions.append(self.button(action_labels.RESTORE, lambda: self.run_operation('uninstall', [g]), 'danger', 'edit-undo-symbolic',
-                                   enabled=bool(g.get('installed')), key='hero-restore'))
+        legacy = g.get('installed_on') == 'windows' and not g.get('adaptable')
+        actions.append(self.button(action_labels.REMOVE_ADAPT if legacy else action_labels.RESTORE, lambda: self.run_operation('uninstall', [g]),
+                                   'danger', 'edit-undo-symbolic', enabled=bool(g.get('installed')), key='hero-restore'))
         actions.append(self.button('Update DLSS', lambda: self.run_operation('update-dlss', [g]), 'dlss', 'emblem-synchronizing-symbolic',
                                    enabled=not g.get('blocked'), key='hero-update'))
         if tight:
@@ -1778,11 +1781,12 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
             setup = owner.needs_linux_setup(g)
             legacy = g.get('installed_on') == 'windows' and not g.get('adaptable')
             if g.get('installed_on') == 'windows' and g.get('adaptable'):
-                description = ('Installed with rtxForge on Windows. Set Up for Linux hands it to rtxForge here and adds the Proton setting; '
+                description = ('Installed with rtxForge on Windows. Adapt to Linux hands it to rtxForge here and adds the Proton setting; '
                                'the game files stay as Windows installed them. Restore Original Files works from here too.')
             elif legacy:
-                description = ('Installed with rtxForge on Windows. Set Up for Linux adds only the Proton setting; the game files stay as Windows installed them.'
-                               if setup else 'Installed with rtxForge on Windows and set up for Linux. Restore its original files in rtxForge on Windows.')
+                description = ('Installed with rtxForge on Windows. Adapt to Linux sets this game up for Proton outside the game folder; '
+                               'the Windows install is not touched.'
+                               if setup else 'Installed with rtxForge on Windows and adapted to Linux. Restore its original files in rtxForge on Windows.')
             elif g.get('installed'):
                 description = f"Saved: {g.get('profile') or 'Configured'}. The rendered effect still needs an in-game check."
             else:
@@ -1808,11 +1812,11 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
                                            enabled=bool(g.get('installed') and not g.get('blocked')), halign=Gtk.Align.START))
             self.section_title(content, 'Installation')
             content.append(self.group([
-                self.row_button('Set Up for Linux' if setup else 'Install Features', action=lambda: self.run_operation('install', [g]), enabled=not g.get('blocked'),
+                self.row_button(action_labels.game(setup)[0], action=lambda: self.run_operation('install', [g]), enabled=not g.get('blocked'),
                                 icon='folder-download-symbolic'),
                 self.row_button('Repair Feature Files', action=lambda: self.run_operation('install', [g]), enabled=bool(g.get('installed') and not g.get('blocked') and not setup),
                                 icon='rtx-gm-tools-symbolic'),
-                self.row_button('Remove Linux Setup' if legacy else 'Restore Original Files',
+                self.row_button(action_labels.REMOVE_ADAPT if legacy else action_labels.RESTORE,
                                 action=lambda: self.run_operation('uninstall', [g]), danger=True, enabled=bool(g.get('installed')), icon='edit-undo-symbolic'),
             ]))
         elif section == 'DLSS Files':

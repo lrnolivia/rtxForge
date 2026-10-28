@@ -67,7 +67,8 @@ def artwork():
     assert set(group.artwork_controls)=={'poster','capsule','hero'}
     for controls in group.artwork_controls.values():
         assert all(not controls[key].get_sensitive() for key in ('choose','search','reset'))
-    w.dialog.set_default_size(1100,900)
+    # Game details are embedded in the window now; a separate dialog can still be sized.
+    if hasattr(w.dialog,'set_default_size'):w.dialog.set_default_size(1100,900)
     w.detail_pages.set_visible_child_name('Appearance')
 def artwork_capture():
     group=app.window.detail_pages.get_child_by_name('Appearance').get_first_child()
@@ -88,20 +89,24 @@ def details():
     assert any(isinstance(x,Gtk.Image) and x.get_paintable() is not None for x in children(notice))
     assert not any(isinstance(x,Adw.ExpanderRow) and x.get_title()=='Technical details' for x in children(overview))
     assert w.capture('unsupported-top-notice.png')
-    # One dialog moves through Checking → Review → Progress → Done.
+    # One dialog moves through Preparing → Review → Progress → Done (Windows 1.0 Beta).
     w.operation_games=w.games;w.operation_cancel=__import__('threading').Event()
     flow=ui.OperationFlow(w,'install',w.games);flow.show_checking()
     w.event({'kind':'progress','label':'Verifying feature package'})
 def package():
     w=app.window;flow=w.operation_flow
-    assert flow.stage=='checking' and flow.step.counter.get_text()=='Preparing…' and not flow.step.determinate
-    assert flow.step.phase.get_text()=='Verifying feature package…',flow.step.phase.get_text()
-    assert not flow.primary.get_sensitive() and flow.primary.get_label()=='Install'
+    total=len(w.games)
+    assert flow.stage=='checking' and flow.step.counter.get_text()==f'Preparing 1 of {total}' and flow.step.determinate
+    assert flow.dialog.get_title()=='Preparing'
+    # One generic caption while packages are staged; engine step labels don't replace it.
+    assert flow.step.phase.get_text()=='Downloading packages/files…',flow.step.phase.get_text()
+    assert not flow.primary.get_visible() and flow.cancel_button.get_visible()
     assert w.capture('review-check-package.png')
     w.event({'kind':'progress','phase':'review-check','label':'Game checked','game':w.games[1]['name'],'checked':2,'total':3})
 def checking():
     w=app.window;flow=w.operation_flow
-    assert flow.step.counter.get_text()=='Checking 2 of 3',flow.step.counter.get_text()
+    assert flow.step.counter.get_text()=='Preparing 2 of 3',flow.step.counter.get_text()
+    assert flow.step.phase.get_text()=='Downloading packages/files…'
     assert abs(flow.step.bar.get_fraction()-2/3)<0.01
     assert flow.step.title.get_text()==w.games[1]['name']
     assert flow.step.frame.has_css_class('progress-poster-frame')
@@ -110,6 +115,7 @@ def checking():
     dialog=flow.dialog
     w.action_ready({'operation':'install','rows':[{'name':g['name'],'detail':'Fixture changes'} for g in w.games[1:]],'blocked':[]})
     assert w.operation_flow is flow and flow.dialog is dialog and flow.stage=='review'
+    assert flow.step.bar.get_fraction()==1.0 and flow.primary.get_visible() and flow.dialog.get_title()!='Preparing'
 def large_review():
     w=app.window
     w.operation_games=w.games

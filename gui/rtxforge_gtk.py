@@ -3816,6 +3816,9 @@ OPERATION_WORDS={
 }
 
 
+# Windows OperationDialog: one generic caption while packages are staged and games are checked.
+PREPARING_CAPTION='Downloading packages/files…'
+
 class OperationStep(Gtk.Box):
     """One layout for every per-game step (checking and progress).
 
@@ -3854,6 +3857,9 @@ class OperationStep(Gtk.Box):
         if self.get_root() is None and self.game is not None:return False
         if not self.determinate:self.bar.pulse()
         return True
+
+    def complete(self):
+        self.determinate=True;self.bar.set_fraction(1.0)
 
     def show(self,verb,game,index,total,phase,fraction=None):
         """A step; without a total the bar stays indeterminate."""
@@ -4046,32 +4052,28 @@ class OperationFlow:
         GLib.timeout_add(100,refit)
 
     def show_checking(self):
-        """The engine prepares every target; nothing is written yet."""
-        self._title(self.review_title)
+        """Preparing, as on Windows: shared packages are staged and every target is checked; nothing is written yet."""
+        self._title('Preparing')
         body=self._body()
         self.step=OperationStep()
-        self.step.show('Checking',self.games[0] if self.games else None,0,0,'Checking game files')
+        self.step.show('Preparing',self.games[0] if self.games else None,0,len(self.games),PREPARING_CAPTION,0)
         self._set_accent(self.step.game)
         body.append(self.step)
-        note=label('Your files will only change after you review and confirm.','dim-label')
-        note.add_css_class('caption')
-        body.append(note)
-        self.primary.set_label(self.verb)
-        self.primary.set_sensitive(False)
+        self.primary.set_visible(False)
         self.cancel_button.set_visible(True)
         self._page('checking',body)
 
     def checking_event(self,event):
-        if event.get('phase')!='review-check':
-            if event.get('label'):self.step.phase.set_text(user_messages.friendly_status(event['label']).rstrip('.…')+'…')
-            return
+        if event.get('phase')!='review-check':return
         game=next((g for g in self.games if g['name']==event.get('game')),None)
         total=event.get('total') or len(self.games)
-        if self.step.show('Checking',game,max(0,event.get('checked',0)-1),total,user_messages.friendly_status(event.get('label','')),event.get('checked',0)/max(1,total)):
+        if self.step.show('Preparing',game,max(0,event.get('checked',0)-1),total,PREPARING_CAPTION,event.get('checked',0)/max(1,total)):
             self._set_accent(game)
 
     def show_review(self,review,on_confirm,details=None,enabled=True,trust=None,note=None,extra=None):
         """N games ready, Needs attention · N, then the verb."""
+        if self.stage=='checking' and getattr(self,'step',None) is not None:self.step.complete()
+        self.primary.set_visible(True)
         self.review=review
         self.on_confirm=on_confirm
         owner=self.owner

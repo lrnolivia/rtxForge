@@ -268,6 +268,19 @@ def frost(percent):
 def frosted_drawn():
  c=app.window.couch;area=__import__('gi.repository.Graphene',fromlist=['Graphene']).Rect().init(0,0,c.backdrop.get_width(),c.backdrop.get_height())
  assert c.backdrop.frosted_regions(area),'frosted surfaces over the artwork'
+def preparing():
+ w=app.window;c=w.couch
+ flow=GameModeFlow(c,w,'install',w.games[:3],('Review install','Install','Installing'));flow.show_checking()
+ flow.checking_event({'phase':'review-check','label':'Game checked','game':w.games[1]['name'],'checked':2,'total':3})
+ flow.checking_event({'kind':'progress','label':'Verifying feature package'})
+ assert flow.step['counter'].get_text()=='Preparing 2 of 3',flow.step['counter'].get_text()
+ assert flow.step['phase'].get_text()=='Downloading packages/files…' and flow.step['title'].get_text()==w.games[1]['name']
+ assert 'Preparing' in labels(c.modals[-1]['dialog']) and not any(isinstance(b,Gtk.Button) and 'Install' in labels(b) for b in descendants(c.modals[-1]['dialog']))
+ w._preparing=flow
+def preparing_close():
+ w=app.window;w._preparing.show_review({'rows':[{'name':w.games[1]['name'],'detail':'Fixture changes'}]},lambda:None)
+ assert w._preparing.step['bar'].get_fraction()==1.0 and w._preparing.stage=='review'
+ w.couch.close_modal();assert not w.couch.modals
 def guide_close():
  w=app.window;w.couch.close_modal();w.settings['controller_glyphs']='xbox';w.set_input_kind('keyboard')
 def right_stick():
@@ -299,7 +312,7 @@ steps=[setup,keyboard,panel_shortcut,presets_page,menu,glyphs,
        lambda:(app.window.couch.open('settings'),app.window.couch.open_settings_section('Gaming Mode')),right_stick,
        lambda:(app.window.couch.open('settings'),app.window.couch.open_settings_section('Appearance')),card_surfaces,lambda:capture('gm-settings-card-surfaces.png'),
        lambda:frost(0),frosted_drawn,lambda:capture('gm-frost-0.png'),lambda:frost(100),lambda:capture('gm-frost-100.png'),
-       lambda:frost(10),lambda:capture('gm-frost-10.png'),lambda:app.window.couch.open('library'),
+       lambda:frost(10),lambda:capture('gm-frost-10.png'),preparing,lambda:capture('gm-preparing.png'),preparing_close,lambda:app.window.couch.open('library'),
        lambda:(app.window.set_input_kind('controller'),app.window.couch.update_prompts(force=True)),lambda:capture('gm-footer-controller.png'),
        lambda:app.window.set_input_kind('keyboard'),lambda:theme('light'),lambda:capture('gm-library-light.png'),lambda:theme('night'),
        lambda:app.window.couch.open('packages'),lambda:capture('gm-packages.png'),

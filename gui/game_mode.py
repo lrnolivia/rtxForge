@@ -2311,6 +2311,8 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
                 *self.settings_rows('Controller')[1],
                 self.row_button('Controller buttons', None, lambda: guide('controller')),
                 self.row_button('Keyboard shortcuts', None, lambda: guide('keyboard')),
+                self.row_button('Remove rtxForge from Steam' if hasattr(owner, 'steam_shortcut_added') and owner.steam_shortcut_added()
+                                else 'Add rtxForge to Steam', None, owner.toggle_rtxforge_in_steam, icon='rtx-steam-symbolic', key='steam-shortcut'),
             ]
         steam_added = owner.steam_shortcut_added() if hasattr(owner, 'steam_shortcut_added') else False
         return 'Open rtxForge from your existing gaming environment.', [

@@ -363,8 +363,11 @@ class MotionSelection(Gtk.Overlay):
     """A selection pill below the foreground; retained channel state survives page rebuilds."""
     __gtype_name__ = 'RtxForgeMotionSelection'
 
-    def __init__(self, state, line, selected, preferences, color, surface=None):
+    def __init__(self, state, line, selected, preferences, color, surface=None, glow=()):
         super().__init__(halign=line.get_halign(), valign=line.get_valign())
+        # (alpha, dy, blur) white glows under the pill, drawn here unscaled: as a button
+        # box-shadow it rendered through the button's motion transform with a seam at mid-height.
+        self.glow = tuple(glow)
         self.set_overflow(Gtk.Overflow.VISIBLE)
         self.state, self.selected, self.preferences = state, selected, preferences
         self.color = Gdk.RGBA()
@@ -459,11 +462,25 @@ class MotionSelection(Gtk.Overlay):
             rect = Graphene.Rect().init(self.state.get('x', 0), self._y, max(0, self.state.get('width', 0)), self._height)
             rounded = Gsk.RoundedRect()
             rounded.init_from_rect(rect, self._height / 2)
+            for alpha, dy, blur in self.glow:
+                # A blurred copy of the pill, not append_outset_shadow: GSK draws a capsule's
+                # outset shadow in nine slices that leave a bright seam at mid-height.
+                shade = Gdk.RGBA()
+                shade.parse('white')
+                shade.alpha = alpha
+                glow = Gsk.RoundedRect()
+                glow.init_from_rect(Graphene.Rect().init(rect.get_x(), rect.get_y() + dy, rect.get_width(), rect.get_height()),
+                                    self._height / 2)
+                snapshot.push_blur(blur / 2)
+                snapshot.push_rounded_clip(glow)
+                snapshot.append_color(shade, glow.bounds)
+                snapshot.pop()
+                snapshot.pop()
             snapshot.push_rounded_clip(rounded)
             snapshot.append_color(self.color, rect)
             snapshot.pop()
         Gtk.Overlay.do_snapshot(self, snapshot)
 
 
-def selection(states, key, line, selected, preferences, color, surface=None):
-    return MotionSelection(states.setdefault(key, {}), line, selected, preferences, color, surface)
+def selection(states, key, line, selected, preferences, color, surface=None, glow=()):
+    return MotionSelection(states.setdefault(key, {}), line, selected, preferences, color, surface, glow)

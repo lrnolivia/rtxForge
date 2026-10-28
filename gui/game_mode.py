@@ -225,6 +225,7 @@ def stylesheet(t):
 .gm .gm-done-icon {{ color: {c['fg']}; }}
 .gm .gm-done-icon.failed {{ color: {c['danger']}; }}
  .gm button.gm-btn:focus-visible, .gm button.gm-btn.gm-active, .gm .gm-segments button.on {{ box-shadow: 0 {px(2)}px {px(24)}px alpha(white,.32), 0 {px(3)}px {px(42)}px alpha(white,.16); }}
+.gm .gm-slider button.gm-btn.gm-active, .gm .gm-slider button.on, .gm .gm-slider.gm-segments button.on {{ box-shadow: none; }}
 .gm button.gm-btn.gm-primary:focus-visible, .gm button.gm-btn.gm-primary:hover {{ box-shadow: 0 {px(2)}px {px(26)}px alpha({ACCENT},.55); }}
 .gm button.gm-btn.gm-danger:focus-visible, .gm button.gm-btn.gm-danger:hover {{ box-shadow: 0 {px(2)}px {px(26)}px alpha({c['danger']},.40); }}
 .gm .gm-tabs button.gm-btn {{ font-size: {em(.92)}px; }}
@@ -434,6 +435,11 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         for provider in self.accent_providers.values():
             Gtk.StyleContext.remove_provider_for_display(Gdk.Display.get_default(), provider)
         self.accent_providers = {}
+
+    def selection_glow(self):
+        """The active-button glow (stylesheet), drawn by the selection pill itself."""
+        px = self.theme.px
+        return ((.32, px(2), px(24)), (.16, px(3), px(42)))
 
     def card_opacity(self):
         value = self.owner.settings.get('game_mode_card_opacity', 10)
@@ -649,7 +655,7 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
             box.append(control)
         return motion.selection(self.selection_states, 'segments:' + '/'.join(str(item[0]) for item in items),
                                 box, next(c for c in children(box) if getattr(c, '_gm_key', '') == 'seg-' + str(selected)),
-                                self.owner.settings, self.theme.c['segment'], self.theme.c['card'])
+                                self.owner.settings, self.theme.c['segment'], self.theme.c['card'], self.selection_glow())
 
     def group(self, rows, on_card=False):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -1094,7 +1100,7 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
             tabs.append(tab)
         tabs = motion.selection(self.selection_states, 'navigation', tabs,
                                 next(c for c in children(tabs) if getattr(c, '_gm_key', '') == 'tab-' + ('library' if self.page == 'details' else self.page)),
-                                self.owner.settings, t.c['active'], t.c['card'])
+                                self.owner.settings, t.c['active'], t.c['card'], self.selection_glow())
         bottom = self.owner.settings.get('navigation_position', 'top') == 'bottom'
         clear(self.bottom_nav)
         self.bottom_nav.set_visible(bottom)

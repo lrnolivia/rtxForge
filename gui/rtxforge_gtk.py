@@ -14646,7 +14646,7 @@ class Window(Adw.ApplicationWindow):
         experimental_vulkan=Adw.SwitchRow(title='Universal Experimental Vulkan',subtitle='Opt in to the profiled BG3/RDR2 native Vulkan package. Gameplay qualification remains experimental.',active=bool(self.settings.get('vulkan_experimental',False)))
         experimental_vulkan.connect('notify::active',lambda w,*_:self.save_overlay_preference('vulkan_experimental',w.get_active()));graphics.add(experimental_vulkan)
         # Adopting only: the Windows install's own files load through a Proton DLL override. Not yet runtime-verified.
-        skynizz_proton=Adw.SwitchRow(title='Skynizz on Proton (experimental)',subtitle='Allow reviewed Skynizz NR and Universal MFG setup under Proton. Each game’s prerequisites are checked; runtime QA is pending.',active=self.settings.get('skynizz_proton',False) is True)
+        skynizz_proton=Adw.SwitchRow(title='Skynizz on Proton',subtitle='Skynizz NR and Universal MFG under Proton, and Adapt to Linux for games installed on Windows. Each game’s prerequisites are checked first.',active=self.settings.get('skynizz_proton',True) is True)
         graphics.add(skynizz_proton)
         defaults=Adw.PreferencesGroup(title='Install defaults',description='Changes to game files are reviewed before applying.')
         manage_files=Adw.SwitchRow(title='DLSS Files',subtitle='Update older DLSS files when installing features. Backups are kept for restoration.',active=self.settings.get('manage_dlss_files',True))

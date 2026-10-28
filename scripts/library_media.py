@@ -14,14 +14,15 @@ DEFAULTS.update(mfg_provider='universal', nr_preset=None, feeder_source='', feed
 # Revision 1: Universal MFG replaced the integrated bridge as the default.
 MFG_DEFAULT_REVISION=1
 DEFAULTS['mfg_default_revision']=MFG_DEFAULT_REVISION
-# Experimental, Linux only: adopt a Windows Skynizz install under Proton.
-DEFAULTS['skynizz_proton']=False
+# Linux only: Skynizz under Proton (fresh installs and Windows installs adapted to Linux).
+# On by default since the bridge works under Proton; Settings can still turn it off.
+DEFAULTS['skynizz_proton']=True
 DEFAULTS['feature_controls']={}
 DEFAULTS['separate_game_details']=False
-# Linux starts on DLSS-Unlocked, the provider verified there; Windows keeps y4my.
+# Linux starts on Skynizz now that it runs under Proton; Windows keeps y4my.
 # Saved settings keep whatever provider they name.
 def default_provider(os_name=None):
-    return 'y4my' if (os_name or os.name)=='nt' else 'dlss-unlocked'
+    return 'y4my' if (os_name or os.name)=='nt' else 'skynizz'
 DEFAULTS['runtime_provider']=default_provider()
 DEFAULTS.update(game_overlay_settings={}, overlay_theme='dark', overlay_live_stats=True, overlay_welcome=True,
                 overlay_welcome_position='top-center', vulkan_mfg_native_menu=False, vulkan_experimental=False)

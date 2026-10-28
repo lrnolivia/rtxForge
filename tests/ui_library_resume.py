@@ -6,7 +6,7 @@ ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'gui'))
 import rtxforge_gtk as ui
 from gi.repository import GLib
 app=ui.Application(argparse.Namespace(provider=None,demo=True,resize_smoke=False,smoke_test=False,live_smoke=False,library_state_smoke=False,ui_mode='classic'))
-from game_mode import descendants
+from game_mode import descendants,SETTINGS_SECTIONS
 def texts(widget):
     return {x.get_text() for x in descendants(widget) if isinstance(x,ui.Gtk.Label)}
 def start():
@@ -21,13 +21,18 @@ def start():
     assert not any(key(name).get_sensitive() for name in ('lib-install','lib-restore','lib-update'))
     assert 'No games match this filter' in texts(c.body)
     w.games[0]['blocked']='';w.games[0]['installed']=True
-    c.render()
+    # Available means not installed and not blocked (Windows LibraryScope),
+    # so the installed game's library actions are reached from Installed.
+    w.settings['library_filter']='installed';c.render()
     assert '3 games · 1 configured' in texts(c.body)
     assert all(key(name).get_sensitive() for name in ('lib-install','lib-restore','lib-update'))
     calls=[];w.launch_action=lambda *args,**kwargs:calls.append(('restore',args,kwargs));w.update_dlss_games=lambda rows:calls.append(('update',rows))
     key('lib-restore').emit('clicked');key('lib-update').emit('clicked')
     assert [call[0] for call in calls]==['restore','update']
     assert calls[0][2]['targets']==[w.games[0]] and calls[1][1]==[w.games[0]]
+    # Hand the fixture back: Available needs uninstalled, unblocked games.
+    for game in w.games:game['blocked']=''
+    w.settings['library_filter']='available'
 def layout_and_settings():
     w=app.window;couch=w.couch
     for view in ('posters','capsules'):
@@ -39,24 +44,29 @@ def layout_and_settings():
         couch.set_library_view(view)
         couch.open('library')
         assert w.settings['library_view']==view
-        assert w.library_stack.get_visible_child_name()=='gallery'
+        # Game Mode keeps the hidden desktop gallery as it is and applies the
+        # choice when the desktop returns (view_changed's deferred path).
+        assert getattr(w,'_deferred_desktop_library_view',None)==view
     couch.open('menu')
     titles=texts(couch.modal_layer)
     assert 'Exit App' in titles and 'Desktop UI' in titles and 'Dashboard' not in titles
     couch.close_all_modals()
     couch.open('dashboard')
     assert couch.page=='library'
-    moved={'Add rtxForge to Steam','Sync artwork to Steam','Steam artwork profile','Connect SteamGridDB','UI scale','Navigation','Controller hints'}
+    moved={'Add rtxForge to Steam','Sync artwork to Steam','Steam artwork profile','Connect SteamGridDB','Game Mode scale','Navigation placement','Controller hints'}
     assert not titles & moved
     couch.open('settings')
     settings_entries=set()
-    for section in ('Gaming Mode','Library','Controller','System'):
+    for section in SETTINGS_SECTIONS:
         couch.open_settings_section(section)
         settings_entries.update(texts(couch.body))
     assert moved <= settings_entries,moved-settings_entries
     assert couch.find_key(couch,'tab-settings').get_visible()
     couch.open_settings_section('Gaming Mode')
     couch.open('library')
+    # In Game Mode, show_settings opens Game Mode's Settings page; these checks
+    # cover the desktop Settings dialog, so look at it from desktop input.
+    w.input_stack.set_visible_child_name('desktop')
     w.show_settings()
     def descendants(widget):
         yield widget
@@ -65,12 +75,13 @@ def layout_and_settings():
             yield from descendants(child)
             child=child.get_next_sibling()
     groups=list(descendants(w.dialog))
-    assert {'Steam Library','Steam Artwork','Application'} <= {item.get_title() for item in groups if isinstance(item,ui.Adw.PreferencesGroup)}
+    assert {'Steam Library','Steam integration','App and updates'} <= {item.get_title() for item in groups if isinstance(item,ui.Adw.PreferencesGroup)}
     captions={item.get_label() for item in groups if isinstance(item,ui.ActionButton)}
     assert {'Add to Steam','Sync','Connect','Choose'} <= captions
     interface=next(item for item in groups if isinstance(item,ui.Adw.ComboRow) and item.get_title()=='Interface')
     assert interface.get_model().get_n_items()==2
     assert not any(isinstance(item,ui.Adw.ComboRow) and item.get_title()=='Startup Interface' for item in groups)
+    w.input_stack.set_visible_child_name('couch')
     w.keyboard_input();assert w.input_stack.get_visible_child_name()=='couch'
     steam_group=next(item for item in groups if isinstance(item,ui.Adw.PreferencesGroup) and item.get_title()=='Steam Library')
     assert steam_group.get_parent() is not None
@@ -81,6 +92,7 @@ def layout_and_settings():
     w.show_about()
     assert w.dialog.get_content_width()==420
     w.dialog.close()
+    w.input_stack.set_visible_child_name('desktop')
     w.show_settings()
     groups=list(descendants(w.dialog))
     selector=next(item for item in groups if isinstance(item,ui.Adw.ToggleGroup) and item.get_active_name() in ('posters','capsules','list'))
@@ -88,7 +100,10 @@ def layout_and_settings():
     selector.set_active_name('list')
     assert w.view_buttons['list'].get_active() and w.settings['library_view']=='list'
     w.dialog.close()
-    assert w.settings['library_view']==original and w.view_buttons[original].get_active()
+    # Settings apply immediately, as on Windows: closing keeps the choice.
+    assert w.settings['library_view']=='list' and w.view_buttons['list'].get_active()
+    w.view_buttons[original].set_active(True)
+    w.input_stack.set_visible_child_name('couch')
 def switch_to_desktop():
     app.window.set_big_picture_ui(False)
 def desktop_selected():
@@ -103,9 +118,11 @@ def big_picture_selected():
     w.keyboard_input()
     assert w.input_stack.get_visible_child_name()=='couch'
 def branding():
-    # The brand opens the main menu, as in the Windows Game Mode.
+    # The brand is artwork only; the header's ⋯ button opens the main menu.
     couch=app.window.couch
-    couch.find_key(couch,'brand').emit('clicked');assert couch.modals
+    brand=couch.find_key(couch,'brand')
+    assert not brand.get_can_target() and not brand.get_focusable()
+    couch.find_key(couch,'menu').emit('clicked');assert couch.modals
     couch.navigate('back');assert not couch.modals
 def capture():
     assert app.window.capture('resume-library-first.png').is_file()

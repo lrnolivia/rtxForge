@@ -16,7 +16,7 @@ MFG_DEFAULT_REVISION=1
 DEFAULTS['mfg_default_revision']=MFG_DEFAULT_REVISION
 # Linux only: Skynizz under Proton (fresh installs and Windows installs adapted to Linux).
 # On by default since the bridge works under Proton; Settings can still turn it off.
-DEFAULTS['skynizz_proton']=True
+DEFAULTS['skynizz_proton']=os.name!='nt'
 DEFAULTS['feature_controls']={}
 DEFAULTS['separate_game_details']=False
 # Linux starts on Skynizz now that it runs under Proton; Windows keeps y4my.

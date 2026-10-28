@@ -236,6 +236,34 @@ def stylesheet(t):
 '''
 
 
+# Windows GmTheme.Surface: frosted cards whose tint follows Card translucency;
+# navigation is 15 points clearer. Text and child controls stay opaque.
+FROSTED = {'gm-group': 16, 'gm-surface': 16, 'gm-tool-card': 16, 'gm-settings-row': 12, 'gm-standalone': 12,
+           'gm-tile': 14, 'gm-dialog': 20, 'gm-tabs': 999, 'gm-pill': 999, 'gm-listsurface': 0}
+
+
+def card_alpha(percent, navigation=False):
+    """Tint alpha over the blurred backdrop; even 0% keeps a readable frosted layer."""
+    percent = max(0, min(100, percent - (15 if navigation else 0)))
+    return round(.45 + .55 * percent / 100, 3)
+
+
+def frost_css(t, percent):
+    """Translucent overrides for the opaque surfaces in stylesheet(); same selectors, so focus rules keep winning."""
+    c = t.c
+    card, nav = card_alpha(percent), card_alpha(percent, navigation=True)
+    def panel(alpha=card):
+        return f"alpha({c['panel']},{alpha})"
+    def surface(alpha=card):
+        return f"alpha({c['card']},{alpha})"
+    return f'''
+.gm .gm-tabs {{ background: {panel(nav)}; }}
+.gm button.gm-settings-row, .gm .gm-surface, .gm .gm-pill, .gm .gm-group, .gm .gm-listsurface, .gm .gm-tool-card,
+.gm button.gm-rowbtn.gm-settings-row, .gm button.gm-rowbtn.gm-standalone, .gm .gm-dialog {{ background: {panel()}; }}
+.gm .gm-group.gm-on-card, .gm button.gm-tile, .gm .gm-dialog .gm-group {{ background: {surface()}; }}
+'''
+
+
 def accent_css(t, hexcolor):
     """Per-game states: accent only on focus or selection (neutral when idle)."""
     g = t.game_colors(hexcolor)
@@ -338,6 +366,7 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.scene = Gtk.Overlay()
         self.backdrop = visuals.Backdrop()
+        self.backdrop.frost(self.scene, FROSTED)
         self.scene.set_child(self.backdrop)
         self.art_light = visuals.ArtworkLight()
         self.scene.add_overlay(root)
@@ -382,10 +411,24 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
     def apply_theme(self):
         self.theme = Theme(contract.theme_name(self.owner.settings), self.owner.settings.get('ui_scale', 'auto'))
         self.theme.resize(self.layout_width, self.layout_height)
-        self.provider.load_from_data(stylesheet(self.theme).encode())
+        self.load_stylesheet()
         for provider in self.accent_providers.values():
             Gtk.StyleContext.remove_provider_for_display(Gdk.Display.get_default(), provider)
         self.accent_providers = {}
+
+    def card_opacity(self):
+        value = self.owner.settings.get('game_mode_card_opacity', 10)
+        return max(0, min(100, int(value))) if type(value) in (int, float) else 10
+
+    def load_stylesheet(self):
+        self.provider.load_from_data((stylesheet(self.theme) + frost_css(self.theme, self.card_opacity())).encode())
+        if getattr(self, 'backdrop', None) is not None:
+            self.backdrop.queue_draw()
+
+    def set_card_opacity(self, percent):
+        """Card translucency updates immediately, as on Windows."""
+        self.owner.settings['game_mode_card_opacity'] = max(0, min(100, int(round(percent))))
+        self.load_stylesheet()
 
     def accent_class(self, game):
         """The CSS class carrying this game's accent roles (artwork-derived or custom)."""
@@ -423,7 +466,7 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         changed = (width, height) != (self.layout_width, self.layout_height)
         self.layout_width, self.layout_height = width, height
         if self.theme.resize(width, height):
-            self.provider.load_from_data(stylesheet(self.theme).encode())
+            self.load_stylesheet()
             for provider in self.accent_providers.values():
                 Gtk.StyleContext.remove_provider_for_display(Gdk.Display.get_default(), provider)
             self.accent_providers = {}
@@ -685,6 +728,43 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         if key:
             self.key(widget, key)
         return widget
+
+    def card_opacity_row(self):
+        """Windows CardOpacitySetting: a slider from Clearer to More solid; Left/Right step by 5."""
+        t = self.theme
+        scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
+        scale.set_draw_value(False)
+        scale.set_hexpand(True)
+        scale.set_focusable(False)
+        scale.set_value(self.card_opacity())
+        scale.update_property([Gtk.AccessibleProperty.LABEL], ['Card translucency'])
+        saving = {'source': 0}
+
+        def save():
+            saving['source'] = 0
+            self.save_settings()
+            return False
+
+        def changed(*_):
+            self.set_card_opacity(scale.get_value())
+            if saving['source']:
+                GLib.source_remove(saving['source'])
+            saving['source'] = GLib.timeout_add(400, save)
+        scale.connect('value-changed', changed)
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(10), hexpand=True)
+        content.append(self.preference('Card translucency', 'Reveal more or less of the blurred background.', None, inset=False))
+        content.append(scale)
+        ends = Gtk.CenterBox()
+        ends.set_start_widget(self.label('Clearer', 'gm-p'))
+        ends.set_end_widget(self.label('More solid', 'gm-p'))
+        content.append(ends)
+        row = motion.MotionButton(preferences=self.owner.settings, child=content, hexpand=True)
+        row._flat = True
+        row.add_css_class('gm-rowbtn')
+        row._gm_adjust = lambda delta: scale.set_value(max(0, min(100, scale.get_value() + 5 * delta)))
+        row._gm_scale = scale
+        self.key(row, 'card-opacity')
+        return row
 
     def choice(self, title, description, keys, captions, get, setter):
         """Selection opens a Game Mode menu; Left/Right adjusts without a wait."""
@@ -2162,7 +2242,7 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
             return [('Install defaults', 'Applied to new installs; game changes are reviewed first.', rows[:3]),
                     ('Existing features', 'Register compatible feature packages already installed.', rows[3:])]
         if section == 'Appearance':
-            return [('Theme', None, rows)]
+            return [('Theme', None, rows[:3]), ('Card surfaces', 'Frosted Game Mode cards update immediately.', rows[3:])]
         if section == 'Library':
             return [('Library view', None, rows[:1]), ('Artwork and game information', None, rows[1:4]),
                     ('Steam integration', None, rows[4:])]
@@ -2326,6 +2406,7 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
                             lambda: bool(s.get('game_mode_theme_linked', True)), lambda v: (contract.link_themes(s, v), GLib.idle_add(lambda: (self.apply_theme(), self.render(keep_focus=True), False)[-1]))),
                 self.choice('Reduce motion', 'Keep strong focus cues with less movement. System accessibility settings are always respected.', [False, True], ['Off', 'On'],
                             lambda: bool(s.get('reduce_motion', False)), lambda v: s.update(reduce_motion=v)),
+                self.card_opacity_row(),
             ]
         if section == 'Overlay':
             on_off = ([True, False], ['On', 'Off'])

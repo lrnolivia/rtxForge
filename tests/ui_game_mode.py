@@ -257,6 +257,17 @@ def controller_guide(family):
  bumpers={'playstation':['L1','R1'],'nintendo':['L','R']}.get(family,['LB','RB'])
  assert shown[:2]==['D-pad',{'playstation':'Cross','nintendo':'B'}.get(family,'A')] and all(b in shown for b in bumpers),shown
  assert 'Right stick' in labels(c.modals[-1]['dialog'])
+def card_surfaces():
+ w=app.window;c=w.couch
+ row=c.find_key(c.body,'card-opacity');assert row is not None and 'Card surfaces' in labels(c.body)
+ assert row._gm_scale.get_value()==10==w.settings['game_mode_card_opacity']
+ row.grab_focus();c.navigate('right');assert w.settings['game_mode_card_opacity']==15
+ c.navigate('left');assert w.settings['game_mode_card_opacity']==10
+def frost(percent):
+ w=app.window;c=w.couch;c.set_card_opacity(percent);c.open('library')
+def frosted_drawn():
+ c=app.window.couch;area=__import__('gi.repository.Graphene',fromlist=['Graphene']).Rect().init(0,0,c.backdrop.get_width(),c.backdrop.get_height())
+ assert c.backdrop.frosted_regions(area),'frosted surfaces over the artwork'
 def guide_close():
  w=app.window;w.couch.close_modal();w.settings['controller_glyphs']='xbox';w.set_input_kind('keyboard')
 def right_stick():
@@ -285,7 +296,10 @@ steps=[setup,keyboard,panel_shortcut,presets_page,menu,glyphs,
        lambda:controller_guide('xbox'),lambda:capture('gm-controller-guide-xbox.png'),guide_close,
        lambda:controller_guide('playstation'),lambda:capture('gm-controller-guide-playstation.png'),guide_close,
        lambda:controller_guide('steam'),lambda:capture('gm-controller-guide-steam.png'),guide_close,
-       lambda:(app.window.couch.open('settings'),app.window.couch.open_settings_section('Gaming Mode')),right_stick,lambda:app.window.couch.open('library'),
+       lambda:(app.window.couch.open('settings'),app.window.couch.open_settings_section('Gaming Mode')),right_stick,
+       lambda:(app.window.couch.open('settings'),app.window.couch.open_settings_section('Appearance')),card_surfaces,lambda:capture('gm-settings-card-surfaces.png'),
+       lambda:frost(0),frosted_drawn,lambda:capture('gm-frost-0.png'),lambda:frost(100),lambda:capture('gm-frost-100.png'),
+       lambda:frost(10),lambda:capture('gm-frost-10.png'),lambda:app.window.couch.open('library'),
        lambda:(app.window.set_input_kind('controller'),app.window.couch.update_prompts(force=True)),lambda:capture('gm-footer-controller.png'),
        lambda:app.window.set_input_kind('keyboard'),lambda:theme('light'),lambda:capture('gm-library-light.png'),lambda:theme('night'),
        lambda:app.window.couch.open('packages'),lambda:capture('gm-packages.png'),

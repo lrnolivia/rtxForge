@@ -3,6 +3,8 @@ import ctypes as C
 import ctypes.util
 import time
 
+import controller_prompt
+
 GLYPHS={
     'xbox':('A','B','Y','Menu'),
     'steam':('A','B','Y','Menu'),
@@ -11,8 +13,10 @@ GLYPHS={
     'generic':('South','East','North','Start'),
 }
 
-def family(kind, name=''):
-    if 'steam' in str(name).casefold():return 'steam'
+STEAM_VENDOR=0x28DE
+
+def family(kind, name='', vendor=0):
+    if vendor==STEAM_VENDOR or 'steam' in str(name).casefold():return 'steam'
     return 'playstation' if kind in (3,4,7) else 'nintendo' if kind in (5,11,12,13) else 'xbox' if kind in (1,2) else 'generic'
 
 class Edges:
@@ -32,6 +36,7 @@ class Edges:
 class Controller:
     def __init__(self):
         self.handle=None;self.sdl=None;self.error='';self.family='generic';self.edges=Edges();self.next_scan=0
+        self.scroll=0.0;self.last_poll=None
         try:
             self.sdl=C.CDLL(ctypes.util.find_library('SDL2') or 'libSDL2-2.0.so.0')
             signatures={
@@ -44,6 +49,7 @@ class Controller:
                 'SDL_GameControllerClose':([C.c_void_p],None),
                 'SDL_GameControllerGetAttached':([C.c_void_p],C.c_int),
                 'SDL_GameControllerGetType':([C.c_void_p],C.c_int),
+                'SDL_GameControllerGetVendor':([C.c_void_p],C.c_uint16),
                 'SDL_GameControllerName':([C.c_void_p],C.c_char_p),
                 'SDL_GameControllerGetButton':([C.c_void_p,C.c_int],C.c_uint8),
                 'SDL_GameControllerGetAxis':([C.c_void_p,C.c_int],C.c_int16),
@@ -59,6 +65,8 @@ class Controller:
             self.error=str(exc);self.sdl=None
 
     def poll(self):
+        now=time.monotonic();seconds=0 if self.last_poll is None else now-self.last_poll
+        self.last_poll=now;self.scroll=0.0
         if not self.sdl:return []
         self.sdl.SDL_PumpEvents();self.sdl.SDL_GameControllerUpdate()
         self.sdl.SDL_FlushEvents(0x600,0x6ff)
@@ -72,7 +80,8 @@ class Controller:
                     if self.handle:break
             if self.handle:
                 name=self.sdl.SDL_GameControllerName(self.handle) or b''
-                self.family=family(self.sdl.SDL_GameControllerGetType(self.handle),name.decode('utf-8',errors='replace'))
+                self.family=family(self.sdl.SDL_GameControllerGetType(self.handle),name.decode('utf-8',errors='replace'),
+                                   self.sdl.SDL_GameControllerGetVendor(self.handle))
         if not self.handle:return []
         mapping={0:'accept',1:'back',2:'select',3:'search',4:'settings',6:'menu',9:'previous',10:'next',11:'up',12:'down',13:'left',14:'right'}
         pressed={action for index,action in mapping.items() if self.sdl.SDL_GameControllerGetButton(self.handle,index)}
@@ -80,6 +89,8 @@ class Controller:
             value=self.sdl.SDL_GameControllerGetAxis(self.handle,axis)
             if value < -18000:pressed.add(negative)
             elif value > 18000:pressed.add(positive)
+        # Right stick scrolls the active page, as on Windows (pixels this frame).
+        self.scroll=controller_prompt.scroll_delta(self.sdl.SDL_GameControllerGetAxis(self.handle,3)/32768,seconds)
         return self.edges.update(pressed)
 
     def close(self):

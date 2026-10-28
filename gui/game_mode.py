@@ -14,9 +14,9 @@ written before the review is confirmed.
 """
 from pathlib import Path
 
-from gi.repository import Gdk, Gio, GLib, Gtk, Pango
+from gi.repository import Gdk, Gio, GLib, Gtk, Pango, PangoCairo
 
-import controller_input
+import controller_prompt
 import game_notes
 import library_media
 import ui_colors
@@ -231,10 +231,6 @@ def stylesheet(t):
 .gm .gm-native-package row {{ background: {c['card']}; color: {c['fg']}; }}
 .gm .gm-tabs image {{ -gtk-icon-size: {px(22)}px; }}
 .gm .gm-cardtitle {{ font-family: 'Roboto'; }}
-.gm .gm-footer .gm-controller-key {{ background: none; padding: 0; color: inherit; min-width: {px(32)}px; min-height: {px(32)}px; border-radius: 999px; }}
-.gm .gm-footer .gm-controller-key.xbox-a {{ color: #89e375; border: 1px solid #89e375; }}
-.gm .gm-footer .gm-controller-key.xbox-b {{ color: #ff7d88; border: 1px solid #ff7d88; }}
-.gm .gm-footer .gm-controller-key.xbox-y {{ color: #ffdf64; border: 1px solid #ffdf64; }}
 .gm .gm-details-rail {{ background: {c['panel']}; }}
 .gm scrollbar {{ opacity: 0.6; }}
 '''
@@ -722,6 +718,91 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         cap.set_valign(Gtk.Align.CENTER)
         return cap
 
+    def controller_family(self):
+        family = self.owner.settings.get('controller_glyphs', 'auto')
+        if family == 'auto':
+            family = getattr(getattr(self.owner, 'controller', None), 'family', 'xbox') or 'xbox'
+        return family
+
+    def controller_key(self, family, action, em=.85):
+        """A drawn controller button, as Windows GmUi.ControllerKey draws it."""
+        if action == 'shoulders':
+            pair = Gtk.Box(spacing=self.theme.px(6), valign=Gtk.Align.CENTER)
+            pair.append(self.controller_key(family, 'previous', em))
+            pair.append(self.controller_key(family, 'next', em))
+            return pair
+        label, color, shape = controller_prompt.prompt(family, action)
+        size = self.theme.px(32 * em / .85)
+        area = Gtk.DrawingArea(content_width=size, content_height=size, valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER)
+        area.set_tooltip_text(label)
+        area.update_property([Gtk.AccessibleProperty.LABEL], [f'{family}: {label}'])
+        area.add_css_class('gm-glyph')
+        area._gm_prompt = (label, shape)
+        ink = Gdk.RGBA()
+        ink.parse(color)
+
+        def draw(_area, cr, width, height):
+            scale = min(width, height) / 32
+            cr.scale(scale, scale)
+            cr.arc(16, 16, 15, 0, 6.2832)
+            cr.set_source_rgb(0x24 / 255, 0x27 / 255, 0x2c / 255)
+            cr.fill_preserve()
+            cr.set_source_rgba(ink.red, ink.green, ink.blue, ink.alpha)
+            cr.set_line_width(1.6)
+            cr.stroke()
+            cr.set_line_cap(1)  # round
+
+            def line(*points):
+                cr.set_line_width(2)
+                for x1, y1, x2, y2 in points:
+                    cr.move_to(x1, y1)
+                    cr.line_to(x2, y2)
+                cr.stroke()
+
+            def box(x, y, w, h):
+                cr.set_line_width(1.8)
+                cr.rectangle(x, y, w, h)
+                cr.stroke()
+            if shape == 'cross':
+                line((10, 10, 22, 22), (22, 10, 10, 22))
+            elif shape == 'circle':
+                cr.set_line_width(2)
+                cr.arc(16, 16, 8, 0, 6.2832)
+                cr.stroke()
+            elif shape == 'square':
+                box(9, 9, 14, 14)
+            elif shape == 'triangle':
+                line((16, 8, 25, 23), (25, 23, 7, 23), (7, 23, 16, 8))
+            elif shape == 'menu':
+                line((10, 11, 22, 11), (10, 16, 22, 16), (10, 21, 22, 21))
+            elif shape == 'view':
+                box(9, 10, 10, 9)
+                box(13, 14, 10, 9)
+            elif shape == 'plus':
+                line((16, 9, 16, 23), (9, 16, 23, 16))
+            elif shape == 'minus':
+                line((9, 16, 23, 16))
+            elif shape == 'dpad':
+                line((16, 8, 16, 24), (8, 16, 24, 16))
+            elif shape.startswith('position'):
+                selected = int(shape[-1])
+                cr.set_line_width(1)
+                for index, (x, y) in enumerate(((16, 23), (23, 16), (9, 16), (16, 9))):
+                    cr.arc(x, y, 2.5, 0, 6.2832)
+                    if index == selected:
+                        cr.fill_preserve()
+                    cr.stroke()
+            else:
+                layout = area.create_pango_layout(label)
+                font = Pango.FontDescription.from_string('Sans Semi-Bold')
+                font.set_absolute_size((11 if shape == 'shoulder' else 17) * Pango.SCALE)
+                layout.set_font_description(font)
+                w, h = layout.get_pixel_size()
+                cr.move_to(16 - w / 2, 16 - h / 2)
+                PangoCairo.show_layout(cr, layout)
+        area.set_draw_func(draw)
+        return area
+
     def badge(self, text, css, icon=None, big=False):
         box = Gtk.Box(spacing=self.theme.px(6), halign=Gtk.Align.START, valign=Gtk.Align.CENTER)
         box.add_css_class('gm-badge')
@@ -926,10 +1007,7 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
     def update_prompts(self, force=False):
         t = self.theme
         keyboard = getattr(self.owner, 'input_kind', 'keyboard') != 'controller'
-        family = self.owner.settings.get('controller_glyphs', 'auto')
-        if family == 'auto':
-            family = getattr(getattr(self.owner, 'controller', None), 'family', 'xbox') or 'xbox'
-        glyphs = controller_input.GLYPHS.get(family, controller_input.GLYPHS['generic'])
+        family = self.controller_family()
         accept_label = 'Game Details' if self.page == 'library' and not self.modals and not self.selecting else 'Select'
         spec = (keyboard, family, accept_label, bool(self.modals), t.unit)
         if spec == self.prompt_spec and not force:
@@ -940,18 +1018,12 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         self.footer.set_size_request(-1, t.px(48 if t.compact else 58))
         for side in ('start', 'end'):
             getattr(self.hints, 'set_margin_' + side)(t.px(56))
-        entries = [(('Enter' if keyboard else glyphs[0]), accept_label, 'accept'), (('Esc' if keyboard else glyphs[1]), 'Back', 'back')]
+        entries = [('Enter', accept_label, 'accept'), ('Esc', 'Back', 'back')]
         if not self.modals:
-            entries.append((('Ctrl+L' if keyboard else glyphs[2]), 'Library', 'search'))
+            entries.append(('Ctrl+L', 'Library', 'search'))
         for key, text, action in entries:
             pair = Gtk.Box(spacing=t.px(10))
-            keycap = self.keycap(key)
-            if not keyboard:
-                keycap.remove_css_class('gm-key')
-                keycap.add_css_class('gm-controller-key')
-                if family in ('xbox', 'steam'):
-                    keycap.add_css_class({'A':'xbox-a','B':'xbox-b','Y':'xbox-y'}.get(key, 'generic'))
-            pair.append(keycap)
+            pair.append(self.keycap(key) if keyboard else self.controller_key(family, action))
             pair.append(self.label(text))
             hint = motion.MotionButton(preferences=self.owner.settings, child=pair, focusable=False)
             hint.connect('clicked', lambda *_, action=action: self.navigate(action))
@@ -1025,6 +1097,24 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
             self.cycle_tab(-1 if action == 'previous' else 1)
         elif action == 'select':
             self.toggle_select_focused(focus)
+
+    def scroll_main_view(self, delta):
+        """Right stick: scroll the active content, regardless of header or sidebar focus."""
+        if not delta:
+            return False
+        scope = self.modals[-1]['dialog'] if self.modals else self.body.current
+        if scope is None:
+            return False
+        scrollers = [w for w in [scope, *descendants(scope)] if isinstance(w, Gtk.ScrolledWindow) and w.get_mapped()
+                     and w.get_vadjustment().get_upper() - w.get_vadjustment().get_page_size() > 0]
+        if not scrollers:
+            return False
+        scroll = max(scrollers, key=lambda w: w.get_width() * w.get_height())
+        adjustment = scroll.get_vadjustment()
+        top = adjustment.get_upper() - adjustment.get_page_size()
+        adjustment.set_value(max(adjustment.get_lower(), min(top, adjustment.get_value() + self.theme.px(delta))))
+        self.wake_hints()
+        return True
 
     def cycle_tab(self, direction):
         order = [key for key, _ in PAGES]
@@ -2106,22 +2196,25 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         self.render()
 
     def guide_rows(self, view):
-        family = self.owner.settings.get('controller_glyphs', 'auto')
-        if family == 'auto':
-            family = getattr(getattr(self.owner, 'controller', None), 'family', 'xbox') or 'xbox'
-        accept, back, library, menu = controller_input.GLYPHS.get(family, controller_input.GLYPHS['generic'])
-        select, settings_key, bumpers = {'playstation': ('□', 'Create', 'L1 / R1'), 'nintendo': ('Y', '−', 'L / R'),
-                                         'generic': ('West', 'Back', 'Left / Right shoulder')}.get(family, ('X', 'View', 'LB / RB'))
+        family = self.controller_family()
         if view == 'controller':
-            entries = [('Move between items', 'D-pad / Left stick'), ('Select', accept), ('Back, or close a dialog', back), ('Library', library),
-                       ('Select games', select), ('Switch pages', bumpers), ('Adjust a value', 'D-pad left / right'), ('Settings', settings_key), ('Main menu', menu)]
+            # Windows GuideAction: each row draws its button.
+            entries = [('Move between items', 'move'), ('Select', 'accept'), ('Back, or close a dialog', 'back'), ('Library', 'search'),
+                       ('Select games', 'select'), ('Switch pages', 'shoulders'), ('Scroll the page', 'scroll'), ('Adjust a value', 'adjust'),
+                       ('Settings', 'settings'), ('Main menu', 'menu')]
         else:
             entries = [('Move between items', 'Arrow keys'), ('Select', 'Enter'), ('Back, or close a dialog', 'Esc'), ('Library', 'Ctrl+L'),
                        ('Select games', 'X'), ('Switch pages', 'Page Up / Page Down'), ('Adjust a value', 'Left / Right'), ('Settings', 'Ctrl+,'),
                        ('Main menu', 'F10'), ('Move focus in order', 'Tab / Shift+Tab')]
         rows = []
         for action, key in entries:
-            row = motion.MotionButton(preferences=self.owner.settings, child=self.preference(action, None, self.keycap(key), inset=False), hexpand=True)
+            if view != 'controller':
+                right = self.keycap(key)
+            elif key == 'scroll':
+                right = self.keycap('Right stick')
+            else:
+                right = self.controller_key(family, key)
+            row = motion.MotionButton(preferences=self.owner.settings, child=self.preference(action, None, right, inset=False), hexpand=True)
             row.add_css_class('gm-rowbtn')
             rows.append(row)
         return rows
@@ -2277,8 +2370,8 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
             ]
         if section == 'Controller':
             return 'Keep button labels and hints consistent with your controller.', [
-                self.choice('Button labels', 'Match your controller family.', ['auto', 'xbox', 'playstation', 'nintendo', 'generic'],
-                            ['Automatic', 'Xbox', 'PlayStation', 'Nintendo', 'Generic'], lambda: s.get('controller_glyphs', 'auto'), lambda v: s.update(controller_glyphs=v)),
+                self.choice('Button labels', 'Match your controller family.', ['auto', 'xbox', 'playstation', 'nintendo', 'steam', 'generic'],
+                            ['Automatic', 'Xbox', 'PlayStation', 'Nintendo', 'Steam Controller', 'Generic'], lambda: s.get('controller_glyphs', 'auto'), lambda v: s.update(controller_glyphs=v)),
                 self.choice('Controller hints', None, ['always', 'auto'], ['Always visible', 'Hide when idle'],
                             lambda: s.get('controller_hints', 'always'), lambda v: s.update(controller_hints=v)),
             ]

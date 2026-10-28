@@ -185,6 +185,16 @@ jobs:
         run: |
           xvfb-run -a -s '-screen 0 1920x1080x24' dbus-run-session -- python3 -m unittest tests.linux_ui.test_game_mode_motion_native
 
+      - name: Verify Library-first resume
+        env:
+          GSK_RENDERER: cairo
+          GTK_A11Y: none
+          GSETTINGS_BACKEND: memory
+          PYTHONWARNINGS: ignore
+        run: |
+          xvfb-run -a -s '-screen 0 1920x1080x24' dbus-run-session -- python3 tests/ui_library_resume.py
+          test -s dist/resume-library-first.png
+
       - name: Build AppImage
         run: |
           python3 packaging/build_appimage.py

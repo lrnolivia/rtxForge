@@ -52,6 +52,10 @@ class GameModeScopeTest(unittest.TestCase):
     def test_install_asks_for_presets_and_skips_blocked_games(self):
         h = Harness()
         h.run_operation('install')
+        # As Windows LibraryScope: Available is games without managed features.
+        self.assertEqual([g['game'] for g in h.asked[-1]], ['c'])
+        h.owner.settings['library_filter'] = 'all'
+        h.run_operation('install')
         self.assertEqual([g['game'] for g in h.asked[-1]], ['a', 'b', 'c', 'w'])
         self.assertEqual(h.calls, [], 'nothing runs before the presets step')
 
@@ -65,7 +69,10 @@ class GameModeScopeTest(unittest.TestCase):
     def test_restore_targets_installed_games_in_the_current_filter(self):
         h = Harness()
         h.run_operation('uninstall')
-        self.assertEqual(h.names(), ['a', 'b', 'w'], 'the Available filter hides protected D')
+        self.assertEqual((h.calls, h.toasts), ([], ['No eligible games.']), 'Available shows no installed games')
+        h.owner.settings['library_filter'] = 'installed'
+        h.run_operation('uninstall')
+        self.assertEqual(h.names(), ['a', 'b', 'd', 'w'])
         h.owner.settings['library_filter'] = 'all'
         h.run_operation('uninstall')
         self.assertEqual(h.names(), ['a', 'b', 'd', 'w'])
@@ -86,9 +93,10 @@ class GameModeScopeTest(unittest.TestCase):
 
     def test_update_dlss_goes_through_its_own_review(self):
         h = Harness()
+        h.owner.settings['library_filter'] = 'all'
         h.run_operation('update-dlss')
         self.assertEqual(h.calls[-1][0], 'update-dlss')
-        self.assertEqual(h.names(), ['a', 'b', 'c', 'w'])
+        self.assertEqual(h.names(), ['a', 'b', 'c', 'w'], 'blocked D is skipped')
 
     def test_presets_apply_with_the_chosen_values(self):
         h = Harness()

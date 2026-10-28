@@ -14842,6 +14842,19 @@ class Window(Adw.ApplicationWindow):
                 self.couch.apply_theme()
                 if self.couch.get_mapped():self.couch.render(keep_focus=True)
         linked_theme.connect('notify::active',change_theme_link);appearance.add(linked_theme)
+        # Windows SettingsPage: "Game Mode card translucency", frosted cards with blur.
+        card_opacity=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,0,100,1)
+        card_opacity.set_value(self.settings.get('game_mode_card_opacity',10));card_opacity.set_draw_value(False)
+        card_opacity.set_size_request(200,-1);card_opacity.set_valign(Gtk.Align.CENTER)
+        card_opacity.update_property([Gtk.AccessibleProperty.LABEL],['Game Mode card translucency'])
+        card_opacity_row=row('Game Mode Card Translucency','Frosted cards with blur. Left is clearer, right is more solid.')
+        card_opacity_row.add_suffix(card_opacity)
+        def change_card_opacity(widget,*_):
+            value=int(round(widget.get_value()))
+            if hasattr(self,'couch'):self.couch.set_card_opacity(value)
+            else:self.settings['game_mode_card_opacity']=value
+            if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
+        card_opacity.connect('value-changed',change_card_opacity);appearance.add(card_opacity_row)
 
         glyphs=Adw.SwitchRow(title='Button Icons',subtitle='Show action icons beside button labels.',active=self.settings.get('button_glyphs',True))
         def change_glyphs(widget,*_):

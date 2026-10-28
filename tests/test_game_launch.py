@@ -78,4 +78,16 @@ class LaunchTests(unittest.TestCase):
         self.assertEqual(family(7,'DualSense'),'playstation')
         self.assertEqual(family(999),'generic')
 
+    def test_steam_labels_and_card_opacity_survive_reload(self):
+        import json, library_media
+        with TemporaryDirectory() as root:
+            config={'storage':{'root':root}}
+            for stored,opacity in ((60,60),(140,100),(-5,0),(True,10),('x',10),(float('nan'),10)):
+                path=library_media.settings_path(config);path.parent.mkdir(parents=True,exist_ok=True)
+                path.write_text(json.dumps({'controller_glyphs':'steam','game_mode_card_opacity':stored}))
+                settings=library_media.load_settings(config)
+                self.assertEqual((settings['controller_glyphs'],settings['game_mode_card_opacity']),('steam',opacity),stored)
+            library_media.save_settings(config,settings)
+            self.assertEqual(json.loads(library_media.settings_path(config).read_text())['game_mode_card_opacity'],10)
+
 if __name__=='__main__':unittest.main()

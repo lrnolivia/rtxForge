@@ -152,8 +152,33 @@ class Backdrop(Gtk.Widget):
         self.color = Gdk.RGBA()
         self.stops = []
         self.opacity, self.details = 1, False
+        # Frosted surfaces: widget classes (with corner radii) inside scope get a blurred backdrop.
+        self.scope = None
+        self.frosted = {}
+        self.px = lambda value: value
+        self._blurred = self._blurred_key = None
+        self._clock = None
+        self.connect('realize', self._follow_layout)
+        self.connect('unrealize', self._unfollow_layout)
+
+    def _follow_layout(self, *_):
+        # Scrolling, page changes, dialogs and resizes all lay out again; frosted regions follow.
+        clock = self.get_frame_clock()
+        if clock is not None:
+            self._clock = (clock, clock.connect('layout', lambda *_: self.queue_draw() if self.frosted else None))
+
+    def _unfollow_layout(self, *_):
+        if self._clock:
+            clock, handler = self._clock
+            clock.disconnect(handler)
+            self._clock = None
+
+    def frost(self, scope, frosted):
+        self.scope = weakref.ref(scope)
+        self.frosted = dict(frosted)
 
     def apply(self, theme, width, height, details):
+        self.px = getattr(theme, 'px', self.px)
         self.color.parse(theme.c['view'])
         self.opacity = .24 if theme.light else .40 if theme.name == 'night' else .94
         self.details = details
@@ -180,11 +205,78 @@ class Backdrop(Gtk.Widget):
         snapshot.push_clip(bounds)
         cover = max(width / self.texture.get_width(), reach / self.texture.get_height())
         iw, ih = self.texture.get_width() * cover, self.texture.get_height() * cover
+        art = Graphene.Rect().init((width-iw)/2, (reach-ih)/2, iw, ih)
         snapshot.push_opacity(self.opacity)
-        snapshot.append_texture(self.texture, Graphene.Rect().init((width-iw)/2, (reach-ih)/2, iw, ih))
+        snapshot.append_texture(self.texture, art)
         snapshot.pop()
+        regions = self.frosted_regions(bounds)
+        if regions:
+            key = (width, reach, self.px(32))
+            if self._blurred_key != key:
+                drawing = Gtk.Snapshot.new()
+                drawing.push_blur(self.px(32))
+                drawing.append_texture(self.texture, art)
+                drawing.pop()
+                self._blurred, self._blurred_key = drawing.to_node(), key
+            for region in regions:
+                # The surface shows only the blurred artwork, never the sharp copy beneath it.
+                snapshot.push_rounded_clip(region)
+                snapshot.append_color(self.color, region.bounds)
+                snapshot.push_opacity(self.opacity)
+                snapshot.append_node(self._blurred)
+                snapshot.pop()
+                snapshot.pop()
         snapshot.append_linear_gradient(bounds, Graphene.Point().init(0, 0), Graphene.Point().init(0, reach), self.stops)
         snapshot.pop()
+
+    def frosted_regions(self, area):
+        """Rounded bounds of visible frosted surfaces over the artwork (outermost only, clipped to their scrollers)."""
+        scope = self.scope() if self.scope else None
+        if scope is None or not self.frosted:
+            return []
+        regions = []
+
+        def visit(widget):
+            child = widget.get_first_child()
+            while child is not None:
+                if child is not self and child.get_visible() and child.get_mapped() and child.get_opacity() > 0:
+                    radius = next((self.frosted[name] for name in child.get_css_classes() if name in self.frosted), None)
+                    if radius is None:
+                        visit(child)
+                    else:
+                        region = self.region(child, radius, area)
+                        if region is not None:
+                            regions.append(region)
+                child = child.get_next_sibling()
+        visit(scope)
+        return regions
+
+    def region(self, widget, radius, area):
+        ok, bounds = widget.compute_bounds(self)
+        if not ok or bounds.get_width() <= 0 or bounds.get_height() <= 0:
+            return None
+        visible = bounds
+        ancestor = widget.get_parent()
+        while ancestor is not None and visible is not None:
+            if isinstance(ancestor, Gtk.ScrolledWindow):
+                valid, viewport = ancestor.compute_bounds(self)
+                if valid:
+                    inside, visible = visible.intersection(viewport)
+                    if not inside:
+                        return None
+            ancestor = ancestor.get_parent()
+        inside, _ = visible.intersection(area)
+        if not inside:
+            return None
+        rounded = Gsk.RoundedRect()
+        corner = min(self.px(radius), bounds.get_width() / 2, bounds.get_height() / 2)
+        rounded.init_from_rect(bounds, corner)
+        if visible.equal(bounds):
+            return rounded
+        # Partly scrolled out: square edges where the scroller cuts the surface.
+        clipped = Gsk.RoundedRect()
+        clipped.init_from_rect(visible, 0)
+        return clipped
 
 
 class ArtworkLight(Gtk.Widget):

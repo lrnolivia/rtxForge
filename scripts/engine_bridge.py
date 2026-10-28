@@ -1,7 +1,7 @@
 """Serialized desktop adapter for the RC1.38-derived transaction engine."""
 from pathlib import Path
 import importlib.util,sys,json,hashlib,zipfile,os,contextlib,functools,time,copy
-import transactions as t,packages,ui,package_catalog,proton_prefix,cross_os,skynizz_provider,ada_mfg_provider,proton_mfg
+import transactions as t,packages,ui,package_catalog,proton_prefix,cross_os,skynizz_provider,ada_mfg_provider,proton_mfg,proton_cuda,proton_stack,linux_runtime
 from operation_session import Session,Cancelled
 from storage import storage
 ROOT=Path(__file__).resolve().parents[1]
@@ -401,7 +401,21 @@ def proton_gate(e,g,settings,mode):
     try:prefix=proton_prefix.find_prefix(g.root,g.appid)
     except proton_prefix.PrefixError:prefix=None
     return proton_mfg.gate(settings,mode,settings.get('mfg_provider','universal'),prefix,
-                           native_dlssg=bool(getattr(g,'dlssg',None)) if mode!='nr-only' else None)
+                           native_dlssg=bool(getattr(g,'dlssg',None)) if mode!='nr-only' else None,
+                           cuda_planned=mode!='nr-only' and cuda_writable(prefix))
+
+def cuda_writable(prefix):
+    """Whether this review can turn on Proton's CUDA library itself (proton_cuda) for the game's build."""
+    if not prefix:return False
+    try:return proton_cuda.plan(proton_stack.compat_tool(Path(prefix).parent)['lib_dir'])['action']=='write'
+    except (proton_cuda.CudaError,OSError):return False
+
+def linux_extras(config,g,row,settings,prefix,mode,universal_mfg=None):
+    """CUDA, panel preferences and identity for a Linux Skynizz setup (linux_runtime.setup_review)."""
+    if not prefix:
+        try:prefix=proton_prefix.find_prefix(g.root,g.appid)
+        except proton_prefix.PrefixError:return {},[]
+    return linux_runtime.setup_review(config,row,settings,prefix,g.exe,mode,universal_mfg)
 
 @functools.lru_cache(maxsize=1)
 def gpu_family():
@@ -558,12 +572,15 @@ def prepare(config,rows,mode,operation,settings):
                 # Installed with rtxForge on Windows: adapt it for Linux instead of reinstalling.
                 if operation=='uninstall':
                     t.need(proton_prefix.load_record(prefix_state(e,g)),"Installed with rtxForge on Windows. Restore its original files in rtxForge on Windows, where they are backed up.")
-                    preview={'files':[],'launch_options':'Removes the Linux setting only · restore the original files in rtxForge on Windows'}
+                    preview={'files':[],'launch_options':'Remove Linux Setup · undoes the Proton setting, panel preferences and CUDA setting rtxForge made here · '
+                             'the Windows install is not touched; restore its original files in rtxForge on Windows'}
                     ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g),'prefix':None,'steam_route':False,'linux_setup_remove':True})
                 else:
                     prefix,names=proton_setup(e,g,windows)
-                    preview={'files':[],'launch_options':'Installed with rtxForge on Windows · adds the Proton setting only ('+', '.join(names)+')'}
-                    ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g),'prefix':str(prefix),'steam_route':False,'linux_setup':names})
+                    extras,notes=linux_extras(config,g,row,settings,prefix,windows.get('feature_mode',''))
+                    preview={'files':[],'launch_options':'Adapt to Linux · adds the Proton setting ('+', '.join(names)+')'+''.join(' · '+n for n in notes)
+                             +' · nothing in the game folder changes and the Windows install is not touched'}
+                    ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g),'prefix':str(prefix),'steam_route':False,'linux_setup':names,'linux_extras':extras})
                 ui.progress('Game checked',phase='review-check',game=row['name'],checked=index,total=len(rows))
                 continue
             prefix=steam_open_route(e,g,operation,baseline)
@@ -609,14 +626,19 @@ def prepare(config,rows,mode,operation,settings):
                         preview['proton']={'checks':stack['checks'],'tool':stack['tool'],'components':stack['components'],'gpu':stack['gpu']}
                 if interrupted_install(baseline):
                     preview=dict(preview,launch_options='Finishes an install that was interrupted · '+preview['launch_options'])
+            extras={}
+            if stack:
+                # Fresh Linux Skynizz: the same CUDA, panel and identity writes as Set Up for Linux.
+                extras,notes=linux_extras(config,g,row,settings,prefix,mode,(release.get('mfg_component') or {}).get('id')=='universal')
+                if notes:preview=dict(preview,launch_options=preview['launch_options']+''.join(' · '+n for n in notes))
             if prefix and stack:
                 # Fresh Linux Skynizz: keep the experimental label and route in user language.
                 lead=proton_mfg.LABEL+' · '+('Universal MFG '+release['mfg_component']['version']+' · ' if (release.get('mfg_component') or {}).get('id')=='universal' else '')
-                preview=dict(preview,launch_options=lead+"Proton setting saved in this game's prefix · Steam can stay open")
+                preview=dict(preview,launch_options=lead+"Proton setting saved in this game's prefix · Steam can stay open"+''.join(' · '+n for n in notes))
             elif prefix:preview=dict(preview,launch_options="Proton setting saved in this game's prefix · Steam can stay open")
             # Which Steam-side state this game touches: its prefix, Steam's launch settings, or neither.
             steam_route=operation in ('install','repair') and not prefix or operation=='uninstall' and bool(baseline and isinstance(baseline.get('steam_launch'),dict))
-            ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g),'prefix':str(prefix) if prefix else None,'steam_route':steam_route,'retire':retired,
+            ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g),'prefix':str(prefix) if prefix else None,'steam_route':steam_route,'retire':retired,'linux_extras':extras,
                           'provider':dict(e.Y4MY_PROVIDER),'payload':target_data,'meta':target_meta,'nr':nr,'nrmeta':nrmeta,
                           'proton_stack':stack,'settings':dict(settings)})
         except (e.Stop,t.Refusal,OSError,ValueError) as ex:blocked.append({'name':row['name'],'reason':str(ex)})
@@ -706,6 +728,9 @@ def execute(review):
                         paths.append(overlay_state(e,g))
                         for registry in {item.get('prefix') and str(Path(item['prefix'])/'user.reg'),prefix_record and prefix_record.get('registry'),overlay_record and overlay_record.get('registry')}:
                             if registry:paths.append(Path(registry))
+                        if cross_os.THIS_OS=='linux':
+                            # The Proton build's user_settings.py and its record, when this game writes or releases it.
+                            paths.extend(linux_runtime.setup_paths(e,g.target_dir,item.get('linux_extras') or {}))
                     report('Backing up your current files',0.15)
                     checkpoint=session.capture(paths,label=g.name)
                 if item.get('before_game'):
@@ -735,11 +760,14 @@ def execute(review):
                     record={'adopted':item['adopt']['os']}
                 elif item.get('linux_setup'):
                     report('Saving the Proton setting',0.6)
+                    # Before the override: the reviewed panel plan refuses a user.reg that changed since review.
+                    extras=linux_runtime.setup_apply(e,g.target_dir,item.get('linux_extras') or {})
                     proton_prefix.apply(Path(item['prefix']),item['linux_setup'],prefix_state(e,g))
-                    record={'linux_setup':item['linux_setup']}
+                    record={'linux_setup':item['linux_setup'],**extras}
                 elif item.get('linux_setup_remove'):
                     report('Removing the Proton setting',0.6)
-                    record=proton_prefix.restore(prefix_state(e,g))
+                    extras=linux_runtime.setup_restore(e,g.target_dir)
+                    record={**proton_prefix.restore(prefix_state(e,g)),**extras}
                 elif review['operation']=='reset':
                     record=e.reset_visual_settings(g,nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'],feature_controls=review.get('feature_controls'))
                     # OptiScaler.ini changed: share it again so the other OS still trusts the install.
@@ -748,9 +776,8 @@ def execute(review):
                     owned=e.load_baseline(g.target_dir)
                     e.verify_native_restore(owned)
                     proton_prefix.restore(prefix_state(e,g))
-                    # Panel preferences rtxForge put in the prefix go back too (user edits since are kept).
-                    import proton_overlay
-                    proton_overlay.restore(overlay_state(e,g))
+                    # Panel preferences and the CUDA setting rtxForge made go back too (user edits since are kept).
+                    linux_runtime.setup_restore(e,g.target_dir)
                     e.restore_launch_options_batch([g],assume_yes=True)
                     record=e.restore_target(g)
                     release_install(g,owned)
@@ -765,6 +792,9 @@ def execute(review):
                                     if overlay_policy.explicit(reviewed_settings) else None)
                     record=e.install_target(g,item.get('payload',review['payload']),item.get('meta',review['meta']),'ada',nr_runtime_payload=item.get('nr',review['nr']),nr_runtime_meta=item.get('nrmeta',review['nrmeta']),feature_mode=review['mode'],enable_effects=review['enable_effects'],nr_on_launch=review.get('nr_on_launch'),native_mfg_fallback=review.get('native_mfg_fallback',False),nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'],feature_controls=review.get('feature_controls'),preserve_visual_settings=not review.get('apply_requested_presets',False))
                     report('Saving launch settings',0.85)
+                    if item.get('linux_extras'):
+                        # Before the override: the reviewed panel plan refuses a user.reg that changed since review.
+                        record['linux_extras']=linux_runtime.setup_apply(e,g.target_dir,item['linux_extras'])
                     if item.get('prefix'):
                         launch=e._launch_record_for_game(g)
                         names=proton_prefix.override_names((launch or {}).get('required') or record.get('launch_options',''))

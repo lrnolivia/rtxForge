@@ -101,14 +101,14 @@ class DualBootTests(unittest.TestCase):
         with patch.object(cross_os, 'OTHER_OS', 'windows'):
             review = package_adoption.prepare(None, [self.row(installed_on='windows')], 'adopt', {})
         self.assertFalse(review.get('plans'))
-        self.assertIn('Set Up', str(review))
+        self.assertIn('instead of Adoption', str(review))
 
-    def test_feeder_set_up_on_linux_explains_instead_of_installing(self):
+    def test_feeder_eligibility_on_linux_points_to_adapt_instead_of_installing(self):
         e = SimpleNamespace(DESKTOP_PLATFORM='linux')
         with patch.object(feeder_provider, 'target', lambda row: (self.target, self.target / 'Game.exe', self.target)), \
                 self.assertRaises(t.Refusal) as caught:
             feeder_provider.eligible(e, self.row(installed_on='windows'), existing=True, check_running=False)
-        self.assertIn('Set Up for Linux is not available for Feeder NR yet', str(caught.exception))
+        self.assertIn('Use Adapt to Linux for this game', str(caught.exception))
 
 
 if __name__ == '__main__':

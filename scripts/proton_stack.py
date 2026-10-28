@@ -36,6 +36,10 @@ REASONS = {
     'nvapi-disabled': 'NVAPI is turned off for this game (PROTON_DISABLE_NVAPI, or Proton disables it for this title). DLSS cannot start.',
     'nvapi-not-in-prefix': "NVAPI was not set up in this game's prefix on its last run. Play it once with Proton, quit, then check again.",
     'ngx-not-in-prefix': "Proton did not copy the NVIDIA NGX files into this game's prefix on its last run. Play it once, quit, then check again.",
+    'cuda-missing': "This Proton build has no working CUDA library (nvidia-libs nvcuda), so the MFG Unlocker cannot identify the GPU.",
+    'cuda-off': ("Proton gave this game its placeholder CUDA library on the last run, so the MFG Unlocker cannot "
+                 "identify the GPU and MFG stays off. Set PROTON_NVIDIA_NVCUDA=1 for this game (in its launch "
+                 "options or the Proton build's user_settings.py), play it once, quit, then check again."),
     'native-dlssg-missing': "MFG needs the game's own DLSS Frame Generation; this game does not ship it.",
     'dxvk-missing': 'This Proton build has no DXVK, so DirectX 11 games cannot use ReShade and the Feeder.',
     'feeder-linux-unverified': 'The Feeder route (ReShade + RenoDX) is Windows-only until it is shown working in a moving scene under Proton.',
@@ -47,6 +51,12 @@ COMPONENTS = {
     'vkd3d-proton': ('vkd3d-proton', ('d3d12.dll', 'd3d12core.dll')),
     'dxvk-nvapi': ('nvapi', ('nvapi64.dll',)),
 }
+# Proton's default nvcuda.dll is an empty placeholder. The working one wraps
+# libcuda and is installed only when PROTON_NVIDIA_NVCUDA or PROTON_NVIDIA_LIBS
+# is on. The MFG Unlocker picks the GPU through cuDeviceGetLuid and
+# cuDeviceComputeCapability, so without it gpuSelectionFailure stays 200.
+NVCUDA = Path('wine') / 'nvidia-libs' / 'nvcuda' / 'x86_64-windows' / 'nvcuda.dll.so'
+NVCUDA_SWITCHES = ('PROTON_NVIDIA_NVCUDA', 'PROTON_NVIDIA_LIBS', 'PROTON_NVIDIA_NVENC', 'PROTON_NVIDIA_NVOPTIX')
 DRIVER_WINE_DIRS = ('/usr/lib64/nvidia/wine', '/usr/lib/nvidia/wine', '/usr/lib/x86_64-linux-gnu/nvidia/wine')
 DRIVER_ROOT = Path('/proc/driver/nvidia')
 MIN_DRIVER = 570
@@ -142,18 +152,39 @@ def _truthy(value):
     return value is not None and value.strip() not in ('', '0')
 
 
+def cuda_requested(lib_dir, env):
+    """Whether Proton will install its working nvcuda: launch options or the build's user_settings.py."""
+    if any(_truthy(env.get(name)) for name in NVCUDA_SWITCHES):
+        return True
+    settings = _read(Path(lib_dir).parent.parent / 'user_settings.py') if lib_dir else None
+    return bool(settings) and re.search(r'''['"](%s)['"]\s*:\s*['"]?[1-9]''' % '|'.join(NVCUDA_SWITCHES),
+                                        settings) is not None
+
+
+def prefix_cuda(prefix):
+    """Whether the prefix's nvcuda.dll from the last run exports the CUDA driver API."""
+    path = Path(prefix) / 'drive_c' / 'windows' / 'system32' / 'nvcuda.dll'
+    try:
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > 16 * 1024 ** 2:
+            return False
+        return b'cuDeviceGetLuid' in path.read_bytes()
+    except OSError:
+        return False
+
+
 def prefix_files(prefix):
     system32 = Path(prefix) / 'drive_c' / 'windows' / 'system32'
     return {name: (system32 / name).is_file() for name in ('nvapi64.dll', 'nvngx.dll', '_nvngx.dll')}
 
 
 def detect(prefix, mode='nr-mfg', launch_options='', native_dlssg=None, system='linux',
-           driver_root=None, driver_dirs=None):
+           driver_root=None, driver_dirs=None, cuda_planned=False):
     """Read-only prerequisite report for native NR/MFG in one game's Proton prefix.
 
     prefix        -- <library>/steamapps/compatdata/<appid>/pfx, or None if never run
     mode          -- 'nr-only', 'nr-mfg' or 'mfg-only'
     native_dlssg  -- the library scan's game-native DLSS-G flag (None = unknown)
+    cuda_planned  -- the same review writes the build's user_settings.py (proton_cuda)
     """
     checks = []
 
@@ -202,6 +233,10 @@ def detect(prefix, mode='nr-mfg', launch_options='', native_dlssg=None, system='
         # deletes it where it is disabled, so its presence reflects the last run.
         check('nvapi-prefix', files['nvapi64.dll'], 'nvapi-not-in-prefix')
         check('ngx-prefix', files['nvngx.dll'] and files['_nvngx.dll'], 'ngx-not-in-prefix')
+        if mode in ('nr-mfg', 'mfg-only') and tool['lib_dir'] is not None:
+            if check('nvcuda', (Path(tool['lib_dir']) / NVCUDA).is_file(), 'cuda-missing'):
+                check('cuda-enabled', cuda_planned or prefix_cuda(prefix) or cuda_requested(tool['lib_dir'], env),
+                      'cuda-off')
     return _finish(checks, tool, components, card)
 
 

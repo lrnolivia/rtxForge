@@ -127,6 +127,13 @@ class ProtonMfgTest(unittest.TestCase):
         self.assertTrue(report['observed'])
         self.assertFalse(report['verified'])
         self.assertTrue(report['dynamic_supported'])
+        self.assertNotIn('hint', report)
+        # What CONTROL Resonant wrote under Proton with the placeholder nvcuda.dll.
+        (self.target / universal.STATUS).write_text(json.dumps({'gpuFamily': 0, 'gpuSelectionFailure': 200}))
+        report = proton_mfg.runtime_report(self.target)
+        self.assertEqual(report['gpu_selection_failure'], 200)
+        self.assertIn('PROTON_NVIDIA_NVCUDA=1', report['hint'])
+        self.assertFalse(report['verified'])
         (self.target / universal.STATUS).write_text('not json')
         self.assertIsNone(proton_mfg.runtime_report(self.target))
 

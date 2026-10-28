@@ -28,6 +28,11 @@ class IntegrationContracts(unittest.TestCase):
             self.assertEqual(host.mapped_process(prefix,exe,channel,proc),42)
             self.assertIsNone(host.mapped_process(root/'other',exe,channel,proc))
             self.assertIsNone(host.mapped_process(prefix,root/'other.exe',channel,proc))
+            # Proton exports WINEPREFIX with a trailing slash.
+            (p/'environ').write_bytes(b'WINEPREFIX='+str(prefix).encode()+b'/\0')
+            self.assertEqual(host.mapped_process(prefix,exe,channel,proc),42)
+            (p/'environ').write_bytes(b'WINEPREFIX='+str(root/'prefix2').encode()+b'/\0')
+            self.assertIsNone(host.mapped_process(prefix,exe,channel,proc))
 
     def test_mapping_refuses_links_and_wrong_size(self):
         with tempfile.TemporaryDirectory() as directory:

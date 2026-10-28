@@ -165,6 +165,15 @@ def _bounds(lines, key):
     return None
 
 
+def drop_empty(text, key):
+    """Remove one key that holds no values (its header, #time line and blank tail); the rest stays byte for byte."""
+    lines = text.splitlines(keepends=True)
+    bounds = _bounds(lines, key)
+    if bounds is None or any(_LINE.match(line.rstrip('\r\n')) for line in lines[bounds[0] + 1:bounds[1]]):
+        return text
+    return ''.join(lines[:bounds[0]] + lines[bounds[1]:])
+
+
 def read_values(text, key):
     """{name (as written): raw encoded value} for one registry key."""
     lines = text.splitlines(keepends=True)
@@ -340,6 +349,8 @@ def restore(state_dir, proc=Path('/proc')):
             else:
                 kept.append(name)
         after = edit_values(after, key, changes)
+        if not any(value is not None for value in record['original'].get(key, {}).values()):
+            after = drop_empty(after, key)  # rtxForge created this key; leave none of it behind
     if after != text:
         proton_prefix._write_atomic(registry, after)
     record_path.unlink()

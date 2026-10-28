@@ -51,6 +51,32 @@ class ProtonStackTest(unittest.TestCase):
                 self.assertEqual(report['reasons'], [reason])
                 self.assertTrue(proton_stack.REASONS[reason])
 
+    def test_mfg_needs_protons_working_cuda_library(self):
+        # Proton's default nvcuda.dll exports nothing, so the MFG Unlocker
+        # cannot identify the GPU (gpuSelectionFailure 200).
+        pfx = fx.prefix(self.root / 'stub', 31, self.lib, cuda=False)
+        report = self.detect(pfx, native_dlssg=True)
+        self.assertEqual(report['reasons'], ['cuda-off'])
+        self.assertIn('PROTON_NVIDIA_NVCUDA=1', proton_stack.REASONS['cuda-off'])
+        # NR alone never asks for CUDA.
+        self.assertTrue(self.detect(pfx, 'nr-only')['prerequisites_met'])
+        # Requested for the next run: in the launch options or the build's user_settings.py.
+        for switch in ('PROTON_NVIDIA_NVCUDA=1', 'PROTON_NVIDIA_LIBS=1'):
+            with self.subTest(switch=switch):
+                self.assertTrue(self.detect(pfx, native_dlssg=True, launch_options=switch + ' %command%')['prerequisites_met'])
+        self.assertFalse(self.detect(pfx, native_dlssg=True,
+                                     launch_options='PROTON_NVIDIA_NVCUDA=0 %command%')['prerequisites_met'])
+        settings = self.lib.parent.parent / 'user_settings.py'
+        settings.write_text('user_settings = {\n    "PROTON_NVIDIA_NVCUDA": "1",\n}\n')
+        self.assertTrue(self.detect(pfx, native_dlssg=True)['prerequisites_met'])
+        settings.write_text('user_settings = {"PROTON_NVIDIA_NVCUDA": "0"}\n')
+        self.assertEqual(self.detect(pfx, native_dlssg=True)['reasons'], ['cuda-off'])
+        # A build without nvidia-libs cannot provide it at all.
+        lib = fx.proton(self.root / 'plain', nvcuda=False)
+        pfx = fx.prefix(self.root / 'plainlib', 32, lib, cuda=False)
+        self.assertEqual(self.detect(pfx, native_dlssg=True,
+                                     launch_options='PROTON_NVIDIA_NVCUDA=1 %command%')['reasons'], ['cuda-missing'])
+
     def test_unlaunched_game_and_unreadable_tool(self):
         report = self.detect(None)
         self.assertIn('prefix-missing', report['reasons'])

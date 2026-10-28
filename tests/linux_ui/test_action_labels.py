@@ -16,5 +16,14 @@ class ProviderNameTest(unittest.TestCase):
         self.assertEqual(action_labels.provider_name(None, short=False), 'y4my Multipass')
 
 
+class AdaptLabelTest(unittest.TestCase):
+    def test_windows_installs_take_over_install_and_restore(self):
+        self.assertEqual(action_labels.game(windows_install=True), ('Adapt to Linux', 'Remove Linux Setup'))
+        self.assertEqual(action_labels.game(), (action_labels.INSTALL, action_labels.RESTORE))
+        self.assertEqual(action_labels.library(adapt=True)[:2], ('Adapt to Linux', 'Remove Linux Setup'))
+        self.assertEqual(action_labels.library(3, adapt=True)[:2], ('Adapt Selected (3)', 'Remove Linux Setup (3)'))
+        self.assertEqual(action_labels.library(3)[:2], ('Install Selected (3)', 'Restore Selected (3)'))
+
+
 if __name__ == '__main__':
     unittest.main()

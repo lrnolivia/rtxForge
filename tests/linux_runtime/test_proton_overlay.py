@@ -36,15 +36,32 @@ class ShortcutTest(unittest.TestCase):
         values = overlay.preferences({'overlay_renderer': 'game', 'panel_hotkey': 'Backtick', 'overlay_controls': 'classic',
                                       'optiscaler_ui': True, 'optiscaler_hotkey': 'F8'})
         self.assertEqual(values, {'InGamePanel': 1, 'PanelKey': 192, 'PanelModifiers': 0, 'Advanced': 1,
-                                  'UseOptiScaler': 1, 'ShortcutKey': 0x77})
+                                  'UseOptiScaler': 1, 'ShortcutKey': 0x77, 'LightTheme': 0, 'ShowLiveStats': 1,
+                                  'ShowWelcome': 1, 'WelcomePosition': 0})
         off = overlay.preferences({'overlay_renderer': 'standalone', 'optiscaler_ui': False, 'optiscaler_hotkey': 'Disabled'})
         self.assertEqual((off['InGamePanel'], off['UseOptiScaler'], off['ShortcutKey']), (0, 0, 0))
-        for bad in ({'overlay_renderer': 'vulkan'}, {'optiscaler_ui': 'yes'}, {'optiscaler_hotkey': 'Home'}):
+        for bad in ({'overlay_renderer': 'vulkan'}, {'optiscaler_ui': 'yes'}, {'optiscaler_hotkey': 'Home'},
+                    {'overlay_theme': 'sepia'}, {'overlay_welcome': 'yes'}, {'overlay_welcome_position': 'middle'}):
             with self.assertRaises(overlay.OverlayError):
                 overlay.preferences(bad)
         bridge = (ROOT / 'providers/skynizz-bridge/ForgePanel.h').read_text()
-        for name in ('InGamePanel', 'PanelKey', 'PanelModifiers', 'Advanced'):
+        for name in ('InGamePanel', 'PanelKey', 'PanelModifiers', 'Advanced', 'LightTheme', 'ShowLiveStats',
+                     'ShowWelcome', 'WelcomePosition'):
             self.assertIn(f'Preference(L"{name}"', bridge)
+
+    def test_theme_welcome_and_stats_reach_the_panel(self):
+        # OverlayHelper.ConfigurePanel and NativePanelCoordinator.SettingsSnapshot.
+        values = overlay.preferences({'overlay_theme': 'light', 'overlay_live_stats': False, 'overlay_welcome': False,
+                                      'overlay_welcome_position': 'bottom-right'})
+        self.assertEqual((values['LightTheme'], values['ShowLiveStats'], values['ShowWelcome'], values['WelcomePosition']), (1, 0, 0, 4))
+        self.assertEqual(overlay.preferences({'overlay_theme': 'app', 'theme': 'light'})['LightTheme'], 1)
+        self.assertEqual(overlay.preferences({'overlay_theme': 'app', 'theme': 'night'})['LightTheme'], 0)
+        snapshot = overlay.settings_snapshot({'overlay_theme': 'app'}, 'light')
+        self.assertEqual((snapshot['overlay_theme'], snapshot['overlay_light']), ('app', True))
+        self.assertFalse(overlay.settings_snapshot({'overlay_theme': 'dark'}, 'light')['overlay_light'])
+        bridge = (ROOT / 'providers/skynizz-bridge/ForgePanel.h').read_text()
+        self.assertIn('prefs.value("overlay_light"', bridge)
+        self.assertEqual(overlay.WELCOME_POSITIONS, __import__('overlay_settings').POSITIONS)
 
 
 class RegistryTest(unittest.TestCase):

@@ -124,9 +124,31 @@ def branding():
     assert not brand.get_can_target() and not brand.get_focusable()
     couch.find_key(couch,'menu').emit('clicked');assert couch.modals
     couch.navigate('back');assert not couch.modals
+def gaming_theme():
+    # Windows 1.0 Beta: Settings > Gaming Mode > Theme, with linked pickers.
+    w=app.window;couch=w.couch
+    w.input_stack.set_visible_child_name('desktop');w.show_settings()
+    page=w.settings_pages['Gaming Mode'];w.dialog.set_visible_page(page)
+    c=w.gaming_theme_controls
+    group=c['theme'].get_ancestor(ui.Adw.PreferencesGroup)
+    assert group.get_title()=='Theme' and group.get_ancestor(ui.Adw.PreferencesPage) is page
+    assert c['linked'].get_ancestor(ui.Adw.PreferencesGroup) is group and c['opacity'].get_ancestor(ui.Adw.PreferencesGroup) is group
+    w._theme_before=(w.settings.get('theme'),w.settings.get('game_mode_theme_linked',True))
+    assert c['linked'].get_active()
+    c['theme'].set_active_name('light')
+    assert w.settings['theme']=='light' and couch.theme.name=='light','linked: one theme for both'
+    c['linked'].set_active(False);c['theme'].set_active_name('dark')
+    assert w.settings['theme']=='light' and w.settings['game_mode_theme']=='dark' and couch.theme.name=='dark','unlinked: Game Mode only'
+    c['opacity'].set_value(40);assert w.settings['game_mode_card_opacity']==40
+def gaming_theme_restore():
+    w=app.window;c=w.gaming_theme_controls;theme,linked=w._theme_before
+    c['opacity'].set_value(10);c['linked'].set_active(True);c['theme'].set_active_name(theme or 'night')
+    assert w.couch.theme.name==(theme or 'night')
+    w.dialog.close();w.input_stack.set_visible_child_name('couch')
 def capture():
     assert app.window.capture('resume-library-first.png').is_file()
-steps=[start,layout_and_settings,switch_to_desktop,desktop_selected,big_picture_selected,branding,capture]
+steps=[start,layout_and_settings,switch_to_desktop,desktop_selected,big_picture_selected,branding,capture,
+       gaming_theme,lambda:app.window.capture('settings-gaming-theme.png'),gaming_theme_restore]
 def step():
     try:
         if steps:steps.pop(0)();GLib.timeout_add(800,step)

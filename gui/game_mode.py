@@ -17,6 +17,7 @@ from pathlib import Path
 from gi.repository import Gdk, Gio, GLib, Gtk, Pango, PangoCairo
 
 import controller_prompt
+from step_count import StepCount
 import game_notes
 import library_media
 import ui_colors
@@ -317,6 +318,19 @@ def children(widget):
     while child is not None:
         yield child
         child = child.get_next_sibling()
+
+
+def page_direction(previous, current, previous_layout=None, layout=None):
+    """Windows ControllerNavigation.PageDirection: toward the tab order; Details enters forward."""
+    if previous == current == 'library' and previous_layout != layout:
+        order = ('posters', 'capsules', 'list')
+        return -1 if layout in order and previous_layout in order and order.index(layout) < order.index(previous_layout) else 1
+    if current == 'details':
+        return 1
+    if previous == 'details':
+        return -1
+    tabs = [key for key, _ in PAGES]
+    return -1 if current in tabs and (previous or 'library') in tabs and tabs.index(current) < tabs.index(previous or 'library') else 1
 
 
 def descendants(widget):
@@ -981,7 +995,10 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         # Region arrivals own ordinary page motion; Details uses a short coherent dissolve.
         if not changing_page or (self.page != 'details' and previous_page != 'details'):
             scene.preferences = dict(self.owner.settings, reduce_motion=True)
-        self.body.show_scene(scene, changing_page or changing_layout or changing_section, self.owner.settings)
+        self.body.unit = self.theme.unit / 26
+        self.body.show_scene(scene, changing_page or changing_layout or changing_section, self.owner.settings,
+                             page_direction(previous_page, self.page, getattr(self, '_last_layout', None),
+                                            self.owner.settings.get('library_view')) if (changing_page or changing_layout) else 0)
         self._last_layout = self.owner.settings.get("library_view")
         # Covers native buttons created by nested Settings/Packages/flow builders too.
         for button in descendants(content):
@@ -2251,8 +2268,9 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
             return [('Interface', 'Mouse, keyboard, and controller input keep your chosen interface.', rows[:1]),
                     ('Layout and labels', None, rows[1:4]), ('Controller', None, rows[4:])]
         if section == 'Overlay':
-            return [('rtxForge Panel', 'In-game controls. Games pick these up on their next reviewed install or repair.', rows[:3]),
-                    ('OptiScaler', None, rows[3:6]), ('ReShade', None, rows[6:])]
+            # Panel through shortcut, then OptiScaler's three, then ReShade, Vulkan and updates.
+            return [('rtxForge Panel', 'In-game controls. Games pick these up on their next reviewed install or repair.', rows[:7]),
+                    ('OptiScaler', None, rows[7:10]), ('ReShade', None, rows[10:])]
         return [({'System':'Hardware', 'Recovery':'Previous changes', 'About':'App and updates'}.get(section, section), None, rows)]
 
     def setting_toggle(self, title, description, get, setter):
@@ -2416,6 +2434,8 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
                             lambda: s.get('overlay_renderer', 'game'), lambda v: s.update(overlay_renderer=v)),
                 self.choice('Controls', 'Advanced shows OptiScaler\u2019s own variables and units.', ['unified', 'classic'], ['Unified', 'Advanced'],
                             lambda: s.get('overlay_controls', 'unified'), lambda v: s.update(overlay_controls=v)),
+                self.choice('Appearance', None, ['dark', 'light', 'app'], ['Dark', 'Light', 'Follow app'],
+                            lambda: s.get('overlay_theme', 'dark'), lambda v: s.update(overlay_theme=v)),
                 self.choice('Welcome message', None, *on_off, lambda: bool(s.get('overlay_welcome', True)), lambda v: s.update(overlay_welcome=v)),
                 self.choice('Welcome position', None, ['top-center','top-left','top-right','bottom-left','bottom-right'],
                             ['Top center','Top left','Top right','Bottom left','Bottom right'],
@@ -2631,7 +2651,7 @@ class GameModeFlow:
         for widget in (counter, title, phase, bar):
             right.append(widget)
         root.append(right)
-        step = {'root': root, 'poster': poster_slot, 'height': height, 'counter': counter, 'title': title, 'phase': phase, 'bar': bar,
+        step = {'root': root, 'poster': poster_slot, 'height': height, 'counter': counter, 'title': title, 'phase': phase, 'bar': bar, 'count': StepCount(),
                 'game': None, 'determinate': False, 'accent': None}
         def pulse():
             if self.step is not step or self.closed:
@@ -2644,12 +2664,14 @@ class GameModeFlow:
 
     def _step_show(self, verb, game, index, total, phase, fraction=None):
         step = self.step
-        step['counter'].set_text(f'{verb} {min(index + 1, total)} of {total}' if total else 'Preparing…')
+        # Windows StepCount: uncounted sub-steps keep the count; the bar never moves backwards.
+        shown = step['count'].next(verb, index, total, fraction)
+        step['counter'].set_text(f'{verb} {shown[0]} of {shown[1]}' if shown else 'Preparing…')
         if phase:
             step['phase'].set_text(str(phase).rstrip('.…') + '…')
-        if total:
+        if shown:
             step['determinate'] = True
-            step['bar'].set_fraction(max(0.0, min(1.0, fraction if fraction is not None else index / total)))
+            step['bar'].set_fraction(shown[2])
         else:
             step['determinate'] = False
         if game is not None and game is not step['game']:

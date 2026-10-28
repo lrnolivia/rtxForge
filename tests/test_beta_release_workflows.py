@@ -114,7 +114,13 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn('publish_preview', first['run'].lower())
 
     def test_push_never_cancels_a_manual_publication(self):
-        self.assertEqual(self.linux['concurrency']['group'], 'rtxforge-linux-${{ github.event_name }}')
+        # Groups are per event, so pushes and pull requests never share one with a manual run,
+        # and manual runs are never cancelled.
+        concurrency = self.linux['concurrency']
+        self.assertTrue(concurrency['group'].startswith('rtxforge-linux-${{ github.event_name }}'))
+        self.assertEqual(concurrency['cancel-in-progress'], "${{ github.event_name != 'workflow_dispatch' }}")
+        triggers = self.linux.get('on', self.linux.get(True))  # YAML 1.1 reads 'on' as true
+        self.assertNotIn('publish', str(triggers['pull_request']))
 
     def test_continuous_channel_is_unchanged(self):
         steps = {s.get('name'): s for s in self.linux['jobs']['build-appimage']['steps']}

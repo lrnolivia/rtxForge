@@ -217,7 +217,8 @@ class Host:
     def handle(self,message,row,pid,session=None):
         op=message.get('op') if isinstance(message,dict) else ''
         import overlay_settings
-        response={'op':op,'settings':proton_overlay.settings_snapshot(overlay_settings.effective(self.settings(),row['game']))}
+        settings=self.settings()
+        response={'op':op,'settings':proton_overlay.settings_snapshot(overlay_settings.effective(settings,row['game']),settings.get('theme'))}
         try:
             params={'row':row,'pid':pid}
             if op in ('hello','status'):response['status']=self.controls.status(params)

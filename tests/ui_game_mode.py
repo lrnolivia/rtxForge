@@ -237,7 +237,13 @@ def fits():
  assert c.body.get_width()<=w.get_width()+1,(c.body.get_width(),w.get_width())
 def capture(name):
  fits()
- path=app.window.capture(name);assert path and path.is_file();images.append(str(path))
+ # Slow software renderers (CI) can still be finishing a resize or page slide; let
+ # pending frames run before failing, for at most about two seconds.
+ import time
+ path=app.window.capture(name);deadline=time.monotonic()+2
+ while not path and time.monotonic()<deadline:
+  GLib.MainContext.default().iteration(False);time.sleep(.02);path=app.window.capture(name)
+ assert path and path.is_file(),(name,app.window.get_mapped(),app.window.get_width(),app.window.get_height());images.append(str(path))
 def prompts(scope):
  return [w._gm_prompt for w in descendants(scope) if hasattr(w,'_gm_prompt')]
 def glyphs():
@@ -281,6 +287,19 @@ def preparing_close():
  w=app.window;w._preparing.show_review({'rows':[{'name':w.games[1]['name'],'detail':'Fixture changes'}]},lambda:None)
  assert w._preparing.step['bar'].get_fraction()==1.0 and w._preparing.stage=='review'
  w.couch.close_modal();assert not w.couch.modals
+def overlay_section():
+ c=app.window.couch;c.open('settings');c.open_settings_section('Overlay')
+def overlay_appearance():
+ c=app.window.couch;text=labels(c.body)
+ assert 'Appearance' in text and 'Dark' in text,'overlay Appearance choice'
+ # Panel rows sit under rtxForge Panel, not OptiScaler (Windows grouping).
+ order=[x for x in text if x in ('rtxForge Panel','Live feature statistics','Panel shortcut','OptiScaler','OptiScaler menu')]
+ assert order.index('Panel shortcut')<order.index('OptiScaler')<order.index('OptiScaler menu'),order
+def slide_start():
+ c=app.window.couch;c.open('library');app.window._slide_from=c.body.current;c.open('presets')
+ assert c.body.current is not app.window._slide_from and getattr(c.body.current,'_gm_offset',0)>0,'presets enters from the right'
+def slide_settled():
+ c=app.window.couch;assert getattr(c.body.current,'_gm_offset',0)==0 and c.body.current.get_opacity()==1
 def guide_close():
  w=app.window;w.couch.close_modal();w.settings['controller_glyphs']='xbox';w.set_input_kind('keyboard')
 def right_stick():
@@ -312,7 +331,7 @@ steps=[setup,keyboard,panel_shortcut,presets_page,menu,glyphs,
        lambda:(app.window.couch.open('settings'),app.window.couch.open_settings_section('Gaming Mode')),right_stick,
        lambda:(app.window.couch.open('settings'),app.window.couch.open_settings_section('Appearance')),card_surfaces,lambda:capture('gm-settings-card-surfaces.png'),
        lambda:frost(0),frosted_drawn,lambda:capture('gm-frost-0.png'),lambda:frost(100),lambda:capture('gm-frost-100.png'),
-       lambda:frost(10),lambda:capture('gm-frost-10.png'),preparing,lambda:capture('gm-preparing.png'),preparing_close,lambda:app.window.couch.open('library'),
+       lambda:frost(10),lambda:capture('gm-frost-10.png'),preparing,lambda:capture('gm-preparing.png'),preparing_close,overlay_section,overlay_appearance,lambda:capture('gm-settings-overlay-appearance.png'),slide_start,slide_settled,lambda:app.window.couch.open('library'),
        lambda:(app.window.set_input_kind('controller'),app.window.couch.update_prompts(force=True)),lambda:capture('gm-footer-controller.png'),
        lambda:app.window.set_input_kind('keyboard'),lambda:theme('light'),lambda:capture('gm-library-light.png'),lambda:theme('night'),
        lambda:app.window.couch.open('packages'),lambda:capture('gm-packages.png'),

@@ -28,6 +28,7 @@ on:
       - gui/fonts/**
       - gui/icons/**
       - VERSION
+      - packaging/beta_release.py
       - .github/workflows/windows-build.yml
   pull_request:
     paths:
@@ -40,6 +41,7 @@ on:
       - gui/fonts/**
       - gui/icons/**
       - VERSION
+      - packaging/beta_release.py
       - .github/workflows/windows-build.yml
 
 permissions:
@@ -213,6 +215,8 @@ jobs:
           python -X utf8 -m unittest discover -s windows/tests -p test_durable_restore.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s windows/tests -p test_payload_memory.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest discover -s tests -p test_beta_release_workflows.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
       - name: Restore
@@ -404,6 +408,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    # Shared with Linux publish-beta: both write the same 'beta' release.
+    # Each OS owns only its own assets and notes line (docs/linux/BETA-RELEASE.md).
+    concurrency:
+      group: rtxforge-beta-release
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - name: Download verified installers
@@ -437,55 +446,68 @@ jobs:
           ROOT="$PWD"
           (cd portable && zip -q -r "$ROOT/release/rtxForge-windows-$VERSION-x64.zip" rtxForge-windows-x64)
           (cd release && sha256sum "rtxForge-windows-$VERSION-x64.zip" > "rtxForge-windows-$VERSION-x64.zip.sha256")
-          cp docs/releases/1.0-beta.md "$RUNNER_TEMP/beta-notes.md"
           if [ "$SIGNED" = "true" ]; then
-            printf '\nWindows binaries are signed through SignPath.\n' >> "$RUNNER_TEMP/beta-notes.md"
+            SIGNING='Windows binaries are signed through SignPath.'
           else
-            printf '\nThis build is unsigned. Windows SmartScreen may ask for confirmation.\n' >> "$RUNNER_TEMP/beta-notes.md"
+            SIGNING='This build is unsigned. Windows SmartScreen may ask for confirmation.'
           fi
-          printf '\nVersion: `%s` · Source: `%s` · [Build](https://github.com/%s/actions/runs/%s)\n' "$VERSION" "$GITHUB_SHA" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" >> "$RUNNER_TEMP/beta-notes.md"
+          BUILD_URL="https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           test "$(ls release | wc -l)" = 6
           if gh api "repos/$GITHUB_REPOSITORY/releases/tags/beta" > "$RUNNER_TEMP/existing-beta.json" 2> "$RUNNER_TEMP/beta-lookup-error"; then
             # Update the published Beta in place, never implicitly downgrading or
             # discarding it: the build it replaces stays in the release as rollback
             # copies named *.previous-<commit>, which the website and the in-app
-            # updater both ignore.
-            CURRENT="$(jq -r '.assets[].name | select(contains(".previous-") | not)' "$RUNNER_TEMP/existing-beta.json")"
-            OLD_VERSION="$(sed -nE 's/^rtxForge-Setup-(1\.0\.0-beta\.[0-9]+)-x64\.exe$/\1/p' <<< "$CURRENT")"
-            test -n "$OLD_VERSION" && test "$(wc -l <<< "$OLD_VERSION")" = 1
-            test "${OLD_VERSION##*.}" -lt "${VERSION##*.}"
-            while read -r NAME; do
-              [[ "$NAME" == rtxForge-*-"$OLD_VERSION"-* ]] || { echo "Unexpected Beta asset: $NAME" >&2; exit 1; }
-            done <<< "$CURRENT"
-            test "$(wc -l <<< "$CURRENT")" = 6
-            OLD_SHA="$(jq -r .target_commitish "$RUNNER_TEMP/existing-beta.json")"
-            [[ "$OLD_SHA" =~ ^[0-9a-f]{40}$ ]]
-            SUFFIX=".previous-${OLD_SHA:0:12}"
-            mkdir -p "$RUNNER_TEMP/previous" "$RUNNER_TEMP/existing"
-            gh release download beta --dir "$RUNNER_TEMP/previous" --pattern "rtxForge-*-$OLD_VERSION-*"
-            (cd "$RUNNER_TEMP/previous" && test "$(ls | wc -l)" = 6 && sha256sum -c ./*.sha256)
-            for FILE in "$RUNNER_TEMP/previous"/*; do
-              NAME="$(basename "$FILE")$SUFFIX"
-              mv "$FILE" "$RUNNER_TEMP/previous/$NAME"
-              if jq -e --arg n "$NAME" 'any(.assets[]; .name == $n)' "$RUNNER_TEMP/existing-beta.json" > /dev/null; then
-                gh release download beta --dir "$RUNNER_TEMP/existing" --pattern "$NAME"
-                cmp "$RUNNER_TEMP/previous/$NAME" "$RUNNER_TEMP/existing/$NAME"
-              else
-                gh release upload beta "$RUNNER_TEMP/previous/$NAME"
-              fi
-            done
-            # New build first, then retire the old names, so an installer is always listed.
-            gh release upload beta release/*
-            while read -r NAME; do gh release delete-asset beta "$NAME" -y; done <<< "$CURRENT"
+            # updater both ignore. Linux assets in the same release are left alone.
+            LINUX_BEFORE="$(python3 packaging/beta_release.py owned linux "$RUNNER_TEMP/existing-beta.json")"
+            CURRENT="$(python3 packaging/beta_release.py owned windows "$RUNNER_TEMP/existing-beta.json")"
+            if [ -n "$CURRENT" ]; then
+              OLD_VERSION="$(sed -nE 's/^rtxForge-Setup-(1\.0\.0-beta\.[0-9]+)-x64\.exe$/\1/p' <<< "$CURRENT")"
+              test -n "$OLD_VERSION" && test "$(wc -l <<< "$OLD_VERSION")" = 1
+              test "${OLD_VERSION##*.}" -lt "${VERSION##*.}"
+              while read -r NAME; do
+                [[ "$NAME" == rtxForge-*-"$OLD_VERSION"-* ]] || { echo "Unexpected Beta asset: $NAME" >&2; exit 1; }
+              done <<< "$CURRENT"
+              test "$(wc -l <<< "$CURRENT")" = 6
+              # The release target follows whichever OS published last, so the
+              # Windows build's commit comes from its own line in the notes.
+              OLD_SHA="$(python3 packaging/beta_release.py source windows "$RUNNER_TEMP/existing-beta.json")"
+              SUFFIX=".previous-${OLD_SHA:0:12}"
+              mkdir -p "$RUNNER_TEMP/previous" "$RUNNER_TEMP/existing"
+              while read -r NAME; do gh release download beta --dir "$RUNNER_TEMP/previous" --pattern "$NAME"; done <<< "$CURRENT"
+              (cd "$RUNNER_TEMP/previous" && test "$(ls | wc -l)" = 6 && sha256sum -c ./*.sha256)
+              for FILE in "$RUNNER_TEMP/previous"/*; do
+                NAME="$(basename "$FILE")$SUFFIX"
+                mv "$FILE" "$RUNNER_TEMP/previous/$NAME"
+                if jq -e --arg n "$NAME" 'any(.assets[]; .name == $n)' "$RUNNER_TEMP/existing-beta.json" > /dev/null; then
+                  gh release download beta --dir "$RUNNER_TEMP/existing" --pattern "$NAME"
+                  cmp "$RUNNER_TEMP/previous/$NAME" "$RUNNER_TEMP/existing/$NAME"
+                else
+                  gh release upload beta "$RUNNER_TEMP/previous/$NAME"
+                fi
+              done
+              # New build first, then retire the old names, so an installer is always listed.
+              gh release upload beta release/*
+              while read -r NAME; do gh release delete-asset beta "$NAME" -y; done <<< "$CURRENT"
+            else
+              gh release upload beta release/*
+            fi
+            python3 packaging/beta_release.py notes windows docs/releases/1.0-beta.md "$RUNNER_TEMP/existing-beta.json" \
+              "$VERSION" "$GITHUB_SHA" "$BUILD_URL" "$SIGNING" > "$RUNNER_TEMP/beta-notes.md"
             git tag -f beta "$GITHUB_SHA"
             git push -f origin refs/tags/beta
             gh release edit beta --draft=false --prerelease --latest=false --title 'rtxForge 1.0 Beta' --notes-file "$RUNNER_TEMP/beta-notes.md"
           elif grep -q 'HTTP 404' "$RUNNER_TEMP/beta-lookup-error"; then
+            LINUX_BEFORE=''
+            python3 packaging/beta_release.py notes windows docs/releases/1.0-beta.md - \
+              "$VERSION" "$GITHUB_SHA" "$BUILD_URL" "$SIGNING" > "$RUNNER_TEMP/beta-notes.md"
             gh release create beta release/* --draft --prerelease --target "$GITHUB_SHA" --title 'rtxForge 1.0 Beta' --notes-file "$RUNNER_TEMP/beta-notes.md"
             gh release edit beta --draft=false --prerelease --latest=false
           else
             cat "$RUNNER_TEMP/beta-lookup-error" >&2
             exit 1
           fi
-          test "$(gh release view beta --json assets --jq "[.assets[].name | select(contains(\".previous-\") | not)] | length")" = 6
-          test "$(gh release view beta --json assets --jq "[.assets[].name | select(startswith(\"rtxForge-Setup-$VERSION-\"))] | length")" = 4
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/beta" > "$RUNNER_TEMP/published-beta.json"
+          test "$(python3 packaging/beta_release.py owned windows "$RUNNER_TEMP/published-beta.json" | wc -l)" = 6
+          test "$(python3 packaging/beta_release.py owned windows "$RUNNER_TEMP/published-beta.json" | grep -c "^rtxForge-Setup-$VERSION-")" = 4
+          test "$(python3 packaging/beta_release.py owned linux "$RUNNER_TEMP/published-beta.json")" = "$LINUX_BEFORE"
+          test "$(python3 packaging/beta_release.py source windows "$RUNNER_TEMP/published-beta.json")" = "$GITHUB_SHA"

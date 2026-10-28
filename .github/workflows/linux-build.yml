@@ -7,6 +7,14 @@ on:
         description: Publish this reviewed branch to the continuous preview updater
         type: boolean
         default: false
+      publish_beta:
+        description: Publish the Linux AppImage to 1.0 Beta (reviewed main only)
+        type: boolean
+        default: false
+      expected_sha:
+        description: Exact reviewed main commit required when publishing Beta
+        type: string
+        default: ''
 
   push:
     branches:
@@ -15,9 +23,10 @@ on:
 permissions:
   contents: write
 
+# Pushes cancel older pushes only; a new push never cancels a manual publication.
 concurrency:
-  group: rtxforge-linux-main
-  cancel-in-progress: true
+  group: rtxforge-linux-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 jobs:
   build-appimage:
@@ -31,6 +40,17 @@ jobs:
         shell: bash
 
     steps:
+      - name: Validate explicit Beta publication
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_beta
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          PUBLISH_PREVIEW: ${{ inputs.publish_preview }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main || { echo 'Beta publication requires reviewed main' >&2; exit 1; }
+          test "$EXPECTED_SHA" = "$GITHUB_SHA" || { echo 'Main changed; review its exact commit before publishing' >&2; exit 1; }
+          test "$PUBLISH_PREVIEW" != true || { echo 'Choose either publish_preview or publish_beta' >&2; exit 1; }
+
       - name: Install Fedora 44 build and validation dependencies
         run: |
           set -euo pipefail
@@ -40,6 +60,7 @@ jobs:
             gh \
             python3 \
             python3-gobject \
+            python3-pyyaml \
             gobject-introspection \
             gtk4 \
             libadwaita \
@@ -96,6 +117,7 @@ jobs:
           /usr/bin/python3 -m unittest discover -s tests -p test_package_download.py
 
           /usr/bin/python3 -m unittest discover -s tests -p test_release_backup.py
+          /usr/bin/python3 -m unittest discover -s tests -p test_beta_release_workflows.py
           /usr/bin/python3 -m unittest discover -s tests -p test_cross_os_adapt.py
           /usr/bin/python3 -m unittest discover -s tests -p test_linux_skynizz_adoption.py
           /usr/bin/python3 -m unittest discover -s tests -p test_cross_distro.py
@@ -232,6 +254,42 @@ jobs:
           sha256sum -c rtxForge-Bazzite-x86_64.AppImage.sha256
           cat rtxforge-update.json
 
+      - name: Create Beta assets
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_beta
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          [[ "$VERSION" =~ ^1\.0\.0-beta\.[0-9]+$ ]]
+          APPIMAGE="rtxForge-${VERSION}-x86_64.AppImage"
+          mkdir -p dist/beta
+          cp "dist/RTXForge-${VERSION}-Bazzite-x86_64.AppImage" "dist/beta/$APPIMAGE"
+          chmod +x "dist/beta/$APPIMAGE"
+          (cd dist/beta && sha256sum "$APPIMAGE" > "$APPIMAGE.sha256")
+
+          # Same schema as the continuous rtxforge-update.json, on the beta channel.
+          python3 - "$VERSION" "$APPIMAGE" <<'PY'
+          import hashlib
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          version, name = sys.argv[1:]
+          data = Path('dist/beta', name).read_bytes()
+          manifest = {
+              'channel': 'beta',
+              'version': version,
+              'commit': os.environ['GITHUB_SHA'],
+              'appimage': name,
+              'sha256': hashlib.sha256(data).hexdigest(),
+              'size': len(data),
+          }
+          Path('dist/beta/rtxforge-beta-linux.json').write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + '\n'
+          )
+          PY
+          ls -l dist/beta
+
       - name: Upload Actions artifact
         uses: actions/upload-artifact@v4
         with:
@@ -246,6 +304,7 @@ jobs:
             dist/rtxforge-update.json
             dist/rtxForge-Bazzite-RTX4070-*.tar.gz
             dist/rtxForge-Bazzite-RTX4070-*.tar.gz.sha256
+            dist/beta/
 
       - name: Publish continuous updater release
         if: github.event_name == 'workflow_dispatch' && inputs.publish_preview && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/rtxforge/shared-package-ui-20261002')
@@ -284,3 +343,98 @@ jobs:
             dist/rtxForge-Bazzite-x86_64.AppImage.sha256 \
             dist/rtxforge-update.json \
             --clobber
+
+  # Shares one concurrency group with the Windows publish-beta job: the two
+  # workflows write to the same 'beta' release and must never interleave.
+  # Policy: docs/linux/BETA-RELEASE.md.
+  publish-beta:
+    name: Publish Linux Beta
+    needs: build-appimage
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_beta && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: rtxforge-beta-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download verified AppImage
+        uses: actions/download-artifact@v4
+        with:
+          name: rtxForge-Bazzite-x86_64
+          path: artifact
+
+      - name: Publish exact build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$EXPECTED_SHA"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)" = "$GITHUB_SHA"
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          [[ "$VERSION" =~ ^1\.0\.0-beta\.[0-9]+$ ]]
+          APPIMAGE="rtxForge-$VERSION-x86_64.AppImage"
+          BUILD_URL="https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          mkdir release
+          cp artifact/beta/* release/
+          (cd release && test "$(ls | wc -l)" = 3 && sha256sum -c "$APPIMAGE.sha256")
+          jq -e --arg sha "$GITHUB_SHA" --arg v "$VERSION" --arg a "$APPIMAGE" \
+            '.channel == "beta" and .commit == $sha and .version == $v and .appimage == $a' \
+            release/rtxforge-beta-linux.json
+
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/beta" > "$RUNNER_TEMP/existing-beta.json" 2> "$RUNNER_TEMP/beta-lookup-error"; then
+            WINDOWS_BEFORE="$(python3 packaging/beta_release.py owned windows "$RUNNER_TEMP/existing-beta.json")"
+            CURRENT="$(python3 packaging/beta_release.py owned linux "$RUNNER_TEMP/existing-beta.json")"
+            if [ -n "$CURRENT" ]; then
+              # Keep the Linux build being replaced as *.previous-<commit> rollback
+              # copies, exactly as Windows does; the website and updaters ignore them.
+              OLD_VERSION="$(sed -nE 's/^rtxForge-(1\.0\.0-beta\.[0-9]+)-x86_64\.AppImage$/\1/p' <<< "$CURRENT")"
+              test -n "$OLD_VERSION" && test "$(wc -l <<< "$OLD_VERSION")" = 1
+              test "${OLD_VERSION##*.}" -lt "${VERSION##*.}"
+              test "$(wc -l <<< "$CURRENT")" = 3
+              OLD_SHA="$(python3 packaging/beta_release.py source linux "$RUNNER_TEMP/existing-beta.json")"
+              SUFFIX=".previous-${OLD_SHA:0:12}"
+              mkdir -p "$RUNNER_TEMP/previous" "$RUNNER_TEMP/existing"
+              while read -r NAME; do gh release download beta --dir "$RUNNER_TEMP/previous" --pattern "$NAME"; done <<< "$CURRENT"
+              (cd "$RUNNER_TEMP/previous" && sha256sum -c "rtxForge-$OLD_VERSION-x86_64.AppImage.sha256")
+              jq -e --arg sha "$OLD_SHA" '.commit == $sha' "$RUNNER_TEMP/previous/rtxforge-beta-linux.json"
+              for FILE in "$RUNNER_TEMP/previous"/*; do
+                NAME="$(basename "$FILE")$SUFFIX"
+                mv "$FILE" "$RUNNER_TEMP/previous/$NAME"
+                if jq -e --arg n "$NAME" 'any(.assets[]; .name == $n)' "$RUNNER_TEMP/existing-beta.json" > /dev/null; then
+                  gh release download beta --dir "$RUNNER_TEMP/existing" --pattern "$NAME"
+                  cmp "$RUNNER_TEMP/previous/$NAME" "$RUNNER_TEMP/existing/$NAME"
+                else
+                  gh release upload beta "$RUNNER_TEMP/previous/$NAME"
+                fi
+              done
+              # New AppImage first, then the manifest that points at it, then retire the old names.
+              gh release upload beta "release/$APPIMAGE" "release/$APPIMAGE.sha256"
+              gh release upload beta release/rtxforge-beta-linux.json --clobber
+              while read -r NAME; do
+                [ "$NAME" = rtxforge-beta-linux.json ] || gh release delete-asset beta "$NAME" -y
+              done <<< "$CURRENT"
+            else
+              gh release upload beta release/*
+            fi
+            python3 packaging/beta_release.py notes linux docs/releases/1.0-beta.md "$RUNNER_TEMP/existing-beta.json" \
+              "$VERSION" "$GITHUB_SHA" "$BUILD_URL" > "$RUNNER_TEMP/beta-notes.md"
+            git tag -f beta "$GITHUB_SHA"
+            git push -f origin refs/tags/beta
+            gh release edit beta --draft=false --prerelease --latest=false --title 'rtxForge 1.0 Beta' --notes-file "$RUNNER_TEMP/beta-notes.md"
+          elif grep -q 'HTTP 404' "$RUNNER_TEMP/beta-lookup-error"; then
+            WINDOWS_BEFORE=''
+            python3 packaging/beta_release.py notes linux docs/releases/1.0-beta.md - \
+              "$VERSION" "$GITHUB_SHA" "$BUILD_URL" > "$RUNNER_TEMP/beta-notes.md"
+            gh release create beta release/* --draft --prerelease --target "$GITHUB_SHA" --title 'rtxForge 1.0 Beta' --notes-file "$RUNNER_TEMP/beta-notes.md"
+            gh release edit beta --draft=false --prerelease --latest=false
+          else
+            cat "$RUNNER_TEMP/beta-lookup-error" >&2
+            exit 1
+          fi
+
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/beta" > "$RUNNER_TEMP/published-beta.json"
+          test "$(python3 packaging/beta_release.py owned linux "$RUNNER_TEMP/published-beta.json" | sort)" = "$(printf '%s\n' "$APPIMAGE" "$APPIMAGE.sha256" rtxforge-beta-linux.json | sort)"
+          test "$(python3 packaging/beta_release.py owned windows "$RUNNER_TEMP/published-beta.json")" = "$WINDOWS_BEFORE"
+          test "$(python3 packaging/beta_release.py source linux "$RUNNER_TEMP/published-beta.json")" = "$GITHUB_SHA"

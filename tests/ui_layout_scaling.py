@@ -85,11 +85,9 @@ def settings_capture():
 
 def panel():
     w=app.window
-    from gi.repository import Adw
-    assert isinstance(w.dialog,Adw.PreferencesDialog)
-    assert not hasattr(w.dialog,'_scaled_child')  # Desktop preferences keep native DPI in either interface.
+    # In Game Mode, Settings opens Game Mode's own page, never the native-DPI desktop dialog.
+    assert not w.dialog and w.couch.page=='settings'
     assert w.capture('layout-4k-settings-panel.png')
-    w.dialog.force_close() if hasattr(w.dialog,'force_close') else w.dialog.close()
     w.couch.open('library')
     w.set_display_preference('navigation_position','top')
     w.set_display_preference('ui_scale',100)

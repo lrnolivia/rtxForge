@@ -67,9 +67,7 @@ class LinuxSetupEngineTest(unittest.TestCase):
         remove = dict(plan, prefix=None, linux_setup=None, linux_extras=None, linux_setup_remove=True)
         engine_bridge.execute(self.review('uninstall', remove))
         self.assertFalse(self.settings_file.exists())
-        after = (self.prefix / 'user.reg').read_text()
-        self.assertEqual(proton_prefix.read_overrides(after), proton_prefix.read_overrides(self.registry))
-        self.assertEqual(proton_overlay.read_values(after, proton_overlay.GAMES_KEY), {})
+        self.assertEqual((self.prefix / 'user.reg').read_text(), self.registry, 'the prefix is exactly as it was')
 
     def test_a_failure_after_the_cuda_write_puts_it_back(self):
         plan, _ = self.plan()

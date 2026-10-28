@@ -241,7 +241,9 @@ def stylesheet(t):
 # Windows GmTheme.Surface: frosted cards whose tint follows Card translucency;
 # navigation is 15 points clearer. Text and child controls stay opaque.
 FROSTED = {'gm-group': 16, 'gm-surface': 16, 'gm-tool-card': 16, 'gm-settings-row': 12, 'gm-standalone': 12,
-           'gm-tile': 14, 'gm-dialog': 20, 'gm-tabs': 999, 'gm-pill': 999, 'gm-listsurface': 0}
+           'gm-tile': 14, 'gm-tabs': 999, 'gm-pill': 999, 'gm-listsurface': 0}
+# Dialogs sit over live page content the backdrop blur cannot reach: nearly opaque.
+DIALOG_ALPHA = .95
 
 
 def card_alpha(percent, navigation=False):
@@ -261,8 +263,10 @@ def frost_css(t, percent):
     return f'''
 .gm .gm-tabs {{ background: {panel(nav)}; }}
 .gm button.gm-settings-row, .gm .gm-surface, .gm .gm-pill, .gm .gm-group, .gm .gm-listsurface, .gm .gm-tool-card,
-.gm button.gm-rowbtn.gm-settings-row, .gm button.gm-rowbtn.gm-standalone, .gm .gm-dialog {{ background: {panel()}; }}
-.gm .gm-group.gm-on-card, .gm button.gm-tile, .gm .gm-dialog .gm-group {{ background: {surface()}; }}
+.gm button.gm-rowbtn.gm-settings-row, .gm button.gm-rowbtn.gm-standalone {{ background: {panel()}; }}
+.gm .gm-group.gm-on-card, .gm button.gm-tile {{ background: {surface()}; }}
+.gm .gm-dialog {{ background: {panel(DIALOG_ALPHA)}; }}
+.gm .gm-dialog .gm-group {{ background: {surface(DIALOG_ALPHA)}; }}
 '''
 
 
@@ -1636,9 +1640,10 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
             dot.add_css_class('on')
         state.append(dot)
         state.append(self.label('Unsupported' if game.get('blocked') and not self.owner.adoptable(game) else 'Installed' if game.get('installed') else 'Available', 'gm-p'))
-        if game.get('installed') and game.get('installed_on') in ('linux', 'windows'):
-            mark = self.icon('rtx-os-' + game['installed_on'] + '-symbolic', t.px(14))
-            mark.set_tooltip_text('Installed with rtxForge on ' + game['installed_on'].title())
+        oses = overview_facts.installed_oses(game)
+        for name in oses:
+            mark = self.icon('rtx-os-' + name + '-symbolic', t.px(14))
+            mark.set_tooltip_text(overview_facts.os_tooltip(oses))
             state.append(mark)
         surface.append(state)
         details = self.label('Select' if self.selecting else 'Details', 'gm-chip', 'gm-plain', xalign=0.5)
@@ -1821,8 +1826,8 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         badges.append(self.badge(source, 'gm-badge-source', 'rtx-steam-symbolic' if source == 'Steam' else None, big=True))
         tested = (g.get('test_record') or {}).get('status', 'Untested') not in ('Untested', '')
         badges.append(self.badge('Tested' if tested else 'Untested', 'gm-badge-tested', 'object-select-symbolic' if tested else 'applications-science-symbolic', big=True))
-        if g.get('installed') and g.get('installed_on') in ('linux', 'windows'):
-            badges.append(self.badge(g['installed_on'].title(), 'gm-badge-source', 'rtx-os-' + g['installed_on'] + '-symbolic', big=True))
+        for name in overview_facts.installed_oses(g):
+            badges.append(self.badge(name.title(), 'gm-badge-source', 'rtx-os-' + name + '-symbolic', big=True))
         text.append(badges)
         # Windows hero: title and badges own the full width; developer ·
         # release and summary sit beside the actions underneath.

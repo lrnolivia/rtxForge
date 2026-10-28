@@ -101,13 +101,14 @@ def _overlay_state(e, target_dir):
     return e.STATE_ROOT / 'prefix-overlay' / e.target_key(target_dir)
 
 
-def setup_review(config, row, settings, prefix, exe, mode, universal_mfg=None):
+def setup_review(config, row, settings, prefix, exe, mode, universal_mfg=None, panel=True):
     """Reviewed plans for what makes Skynizz work under Proton beyond the proxy override.
 
     MFG modes with the Universal plugin get Proton's working CUDA library (see
     proton_cuda); every setup gets the in-game panel preferences and the game's
     identity (accent and title) in its prefix. Nothing is written here.
     universal_mfg -- the install carries the Universal plugin; None reads the game folder.
+    panel -- False for packages with their own in-game panel (Vulkan NR + Universal MFG).
 
     setup_apply must run before anything else writes the prefix's user.reg:
     the panel plan refuses a registry that changed since review.
@@ -122,6 +123,8 @@ def setup_review(config, row, settings, prefix, exe, mode, universal_mfg=None):
         tool = proton_stack.compat_tool(Path(prefix).parent)
         plans['cuda'] = proton_cuda.plan(tool['lib_dir'])
         notes.append(plans['cuda']['summary'])
+    if not panel:
+        return plans, notes
     overlay = proton_overlay.plan(prefix, settings, exe, row.get('name'), game_accent(config, row, settings))
     if not overlay['unchanged']:
         plans['overlay'] = overlay

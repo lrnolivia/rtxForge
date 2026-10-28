@@ -36,5 +36,29 @@ class OverviewFactsTest(unittest.TestCase):
         self.assertEqual(o.folder({'game': '/g/Control'}), '/g/Control')
 
 
+
+class InstalledOsMarksTest(unittest.TestCase):
+    def test_one_mark_per_os_the_install_is_set_up_for(self):
+        self.assertEqual(o.installed_oses({'installed': True, 'installed_on': 'windows'}), ['windows'])
+        # A Windows install adapted for Linux (adopted or set up here) carries both.
+        self.assertEqual(o.installed_oses({'installed': True, 'installed_on': 'linux', 'installed_oses': ['windows', 'linux']}),
+                         ['windows', 'linux'])
+        self.assertEqual(o.installed_oses({'installed': False, 'installed_oses': ['windows']}), [])
+        self.assertEqual(o.os_tooltip(['windows', 'linux']), 'Set up for Windows and Linux')
+        self.assertEqual(o.os_tooltip(['linux']), 'Installed with rtxForge on Linux')
+
+    def test_the_scan_reads_every_os_from_the_shared_state(self):
+        import json, tempfile
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'scripts'))
+        import cross_os, desktop_service
+        with tempfile.TemporaryDirectory() as root:
+            state = cross_os.shared_state(root)
+            state.mkdir(parents=True)
+            (state / 'baseline.json').write_text(json.dumps({'cross_os_extras': {'linux': {}, 'windows': {}}}))
+            self.assertEqual(desktop_service.installed_oses_from_state(root), ['windows', 'linux'])
+            (state / 'baseline.json').write_text('not json')
+            self.assertEqual(desktop_service.installed_oses_from_state(root), [])
+
+
 if __name__ == '__main__':
     unittest.main()

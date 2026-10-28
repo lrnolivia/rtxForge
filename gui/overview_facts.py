@@ -66,3 +66,18 @@ def compact_facts(game):
 
 def folder(game):
     return game.get('game') or game.get('path')
+
+
+def installed_oses(game):
+    """Which rtxForge installs this game is set up for: ['windows'], ['linux'] or both."""
+    if not game.get('installed'):
+        return []
+    oses = [name for name in game.get('installed_oses') or [] if name in ('windows', 'linux')]
+    if not oses and game.get('installed_on') in ('windows', 'linux'):
+        oses = [game['installed_on']]
+    return oses
+
+
+def os_tooltip(oses):
+    names = ' and '.join(name.title() for name in oses)
+    return 'Installed with rtxForge on ' + names if len(oses) == 1 else 'Set up for ' + names

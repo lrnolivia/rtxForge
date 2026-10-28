@@ -237,7 +237,13 @@ def fits():
  assert c.body.get_width()<=w.get_width()+1,(c.body.get_width(),w.get_width())
 def capture(name):
  fits()
- path=app.window.capture(name);assert path and path.is_file();images.append(str(path))
+ # Slow software renderers (CI) can still be finishing a resize or page slide; let
+ # pending frames run before failing, for at most about two seconds.
+ import time
+ path=app.window.capture(name);deadline=time.monotonic()+2
+ while not path and time.monotonic()<deadline:
+  GLib.MainContext.default().iteration(False);time.sleep(.02);path=app.window.capture(name)
+ assert path and path.is_file(),(name,app.window.get_mapped(),app.window.get_width(),app.window.get_height());images.append(str(path))
 def prompts(scope):
  return [w._gm_prompt for w in descendants(scope) if hasattr(w,'_gm_prompt')]
 def glyphs():

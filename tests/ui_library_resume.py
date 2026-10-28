@@ -145,10 +145,28 @@ def gaming_theme_restore():
     c['opacity'].set_value(10);c['linked'].set_active(True);c['theme'].set_active_name(theme or 'night')
     assert w.couch.theme.name==(theme or 'night')
     w.dialog.close();w.input_stack.set_visible_child_name('couch')
+def adapt_library():
+    # Windows installs still needing Linux setup take over the library Install button,
+    # whatever the filter (Available hides installed games).
+    w=app.window;couch=w.couch
+    marked=[g for g in w.games if not g.get('blocked')][:2]
+    w._adapt_saved=[(g,{k:g.get(k) for k in ('installed','installed_on','adaptable','linux_ready')}) for g in marked]
+    for g in marked:g.update(installed=True,installed_on='windows',adaptable=True,linux_ready=False)
+    w.select_all(False);w.filter_games()
+    assert w.install_all.get_label()==f'Adapt to Linux ({len(marked)})',w.install_all.get_label()
+    launched=[];w.launch_action=lambda operation,entire,targets=None,**_:launched.append((operation,entire,[g['game'] for g in targets]))
+    w.launch_scoped('install')
+    assert launched==[('install',False,[g['game'] for g in marked])],launched
+    couch.open('library');couch.render()
+    button=couch.find_key(couch,'lib-install')
+    assert f'Adapt to Linux ({len(marked)})' in texts(button),texts(button)
+    for g,values in w._adapt_saved:g.update(values)
+    del w.launch_action;w.filter_games()
+    assert not w.install_all.get_label().startswith('Adapt to Linux')
 def capture():
     assert app.window.capture('resume-library-first.png').is_file()
 steps=[start,layout_and_settings,switch_to_desktop,desktop_selected,big_picture_selected,branding,capture,
-       gaming_theme,lambda:app.window.capture('settings-gaming-theme.png'),gaming_theme_restore]
+       gaming_theme,lambda:app.window.capture('settings-gaming-theme.png'),gaming_theme_restore,adapt_library]
 def step():
     try:
         if steps:steps.pop(0)();GLib.timeout_add(800,step)

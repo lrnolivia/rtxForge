@@ -9,12 +9,17 @@ ADAPT = 'Adapt to Linux'
 REMOVE_ADAPT = 'Remove Linux Setup'
 
 
-def library(selected_count=0, adapt=False):
-    """Install, Restore and Update DLSS; adapt when every game they act on was installed on Windows."""
+def library(selected_count=0, adapt=False, pending=0):
+    """Install, Restore and Update DLSS; adapt when every game they act on was installed on Windows.
+
+    With nothing selected, games installed with rtxForge on Windows that still need
+    Linux setup take over Install as "Adapt to Linux (N)", whatever the filter."""
     install, restore = (ADAPT, REMOVE_ADAPT) if adapt else (INSTALL, RESTORE)
     if selected_count:
         install, restore = ((f'Adapt Selected ({selected_count})', f'Remove Linux Setup ({selected_count})') if adapt else
                             (f'Install Selected ({selected_count})', f'Restore Selected ({selected_count})'))
+    elif pending:
+        install = f'{ADAPT} ({pending})'
     return install, restore, UPDATE_DLSS
 
 

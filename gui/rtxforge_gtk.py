@@ -16258,12 +16258,23 @@ class Window(Adw.ApplicationWindow):
             assert all(self.cards[g['game']]['check'].get_active() for g in chosen if g['game'] in self.cards)
             self.profile_group.set_active_name('nr-mfg');assert self.mode=='nr-mfg'
             game={**self.games[0],'feature_mode':'nr-mfg','profile':'NR + MFG','nr_strength':2.0,'sharpening_strength':0.5,'mfg_multiplier':2}
+            # A Skynizz game carries its shared controls; without them the editor refuses to guess.
+            controls=self.tuning_values(self.tuning_widgets).get('feature_controls')
+            if controls is not None:game['feature_controls']=controls
             self.details(game)
             assert not self.detail_apply_settings.get_sensitive()
             assert hasattr(self,'detail_fit_page')
-            self.detail_tuning_widgets['sharpening_strength'].set_value(0)
+            # Change a control the default package offers: Skynizz replaces the legacy
+            # sliders with its shared controls, so use the MFG ratio there.
+            sharpening=self.detail_tuning_widgets['sharpening_strength']
+            if sharpening.get_sensitive():
+                sharpening.set_value(0)
+                assert self.tuning_values(self.tuning_widgets)['sharpening_strength']==0.5
+            else:
+                before=self.tuning_values(self.tuning_widgets)['mfg_multiplier']
+                self.detail_tuning_widgets['mfg_multiplier'].ratios.set_active_name('4')
+                assert self.tuning_values(self.tuning_widgets)['mfg_multiplier']==before,'the library editor is untouched'
             assert self.detail_apply_settings.get_sensitive()
-            assert self.tuning_values(self.tuning_widgets)['sharpening_strength']==0.5
             GLib.timeout_add(700,self.smoke_action)
         except Exception:traceback.print_exc();self.get_application().exit_code=1;self.get_application().quit()
         return False

@@ -12,6 +12,8 @@ def children(widget):
     while child:yield from children(child);child=child.get_next_sibling()
 def start():
     w=app.window;w.scan=lambda *args:None;w.set_default_size(1440,960)
+    # The fixture games are installed; the Library opens on Available, so show All.
+    w.filter_buttons['all'].set_active(True)
     w.games=w.games[:3];w.show_games(w.games,False);w.view_buttons['list'].set_active(True)
 def library():
     w=app.window;w._column_sync_selection_widgets()
@@ -20,7 +22,7 @@ def library():
         row=root.get_parent()
         while row and row.get_css_name()!='row':row=row.get_parent()
         if row:rows.append(row)
-    assert len(rows)==3
+    assert len(rows)==3,(len(rows),len(w.list_name_cells),w.settings.get('library_filter'),[g.get('installed') for g in w.games])
     assert sum(x.has_css_class('joined-first') for x in rows)==1
     assert sum(x.has_css_class('joined-last') for x in rows)==1
     for i,row in enumerate(rows):
@@ -116,8 +118,11 @@ def report():
     w.dialog.close();w.show_diagnostics(w.games[0])
 def diagnosis():
     w=app.window
+    # Raw evidence is collapsed under Technical details; GTK attaches it when expanded.
+    details=next(x for x in children(w.dialog.get_child()) if isinstance(x,Gtk.Expander))
+    assert not details.get_expanded();details.set_expanded(True)
     assert len([x for x in children(w.dialog.get_child()) if isinstance(x,Gtk.TextView)])==1
-    w.dialog.close();w.set_input_surface(True);w.couch.open('library');w.couch.set_library_view('list')
+    w.dialog.close();w.settings['library_filter']='all';w.set_input_surface(True);w.couch.open('library');w.couch.set_library_view('list')
 def couch():
     w=app.window;c=w.couch
     from game_mode import descendants

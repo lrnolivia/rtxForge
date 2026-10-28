@@ -19,14 +19,18 @@ on:
   push:
     branches:
       - main
+  # Reviews run the same validation and AppImage build; publishing stays manual.
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
 
-# Pushes cancel older pushes only; a new push never cancels a manual publication.
+# Pushes and pull requests cancel their own older runs; nothing cancels a manual publication.
 concurrency:
-  group: rtxforge-linux-${{ github.event_name }}
-  cancel-in-progress: ${{ github.event_name == 'push' }}
+  group: rtxforge-linux-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.head_ref || 'main' }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
   build-appimage:

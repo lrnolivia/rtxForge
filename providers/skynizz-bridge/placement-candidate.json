@@ -2,7 +2,7 @@
   "schema": 1,
   "id": "skynizz-ada-mfg-12-placement-candidate",
   "base_bridge_id": "skynizz-ada-mfg-11",
-  "base_patch_sha256": "7b54e0867b6b6110d86fdcb9c4b00dc316d112cc33399eef2aefebfe1adf5db6",
+  "base_patch_sha256": "2fba011895a891a7b8f6faf0d0f9f0e2852eb7a0eba152e628f5bbf0167ea284",
   "patch": "nr-placement.patch",
   "patch_sha256": "e240724ae73b3468c263b9786724b19cb59614ea2e2042880a5151cf76c5be7c",
   "header": "ForgeNrRoute.h",

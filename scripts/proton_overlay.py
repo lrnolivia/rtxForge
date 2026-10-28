@@ -44,7 +44,20 @@ import proton_prefix
 OVERLAY_KEY = 'Software\\rtxForge\\Overlay'
 GAMES_KEY = 'Software\\rtxForge\\Overlay\\Games'
 RECORD_NAME = 'prefix-overlay.json'
-PANEL_VALUES = ('InGamePanel', 'PanelKey', 'PanelModifiers', 'Advanced', 'UseOptiScaler', 'ShortcutKey')
+PANEL_VALUES = ('InGamePanel', 'PanelKey', 'PanelModifiers', 'Advanced', 'UseOptiScaler', 'ShortcutKey',
+                'LightTheme', 'ShowLiveStats', 'ShowWelcome', 'WelcomePosition')
+# overlay_settings.POSITIONS / ForgeSettings.WelcomePositions; the bridge stores the index.
+WELCOME_POSITIONS = ('top-center', 'top-left', 'top-right', 'bottom-left', 'bottom-right')
+
+
+def light_theme(settings, app_theme=None):
+    """OverlayHelper.LightTheme: Dark, Light, or Follow app (rtxForge's own theme on Linux)."""
+    theme = settings.get('overlay_theme', 'dark')
+    if theme not in ('dark', 'light', 'app'):
+        raise OverlayError('Choose Dark, Light or Follow app for the overlay.')
+    if theme != 'app':
+        return theme == 'light'
+    return (app_theme if app_theme is not None else settings.get('theme')) == 'light'
 
 # Windows virtual-key names accepted for the panel shortcut (OverlayShortcut.cs).
 _KEYS = {'End': 0x23, 'Home': 0x24, 'PageUp': 0x21, 'PageDown': 0x22, 'Left': 0x25, 'Up': 0x26,
@@ -107,6 +120,9 @@ def preferences(settings):
     hotkey = settings.get('optiscaler_hotkey', 'Insert')
     if hotkey not in ('Insert', 'F8', 'Disabled'):
         raise OverlayError('Choose a supported OptiScaler shortcut.')
+    position = settings.get('overlay_welcome_position', 'top-center')
+    if position not in WELCOME_POSITIONS:
+        raise OverlayError('Choose a supported welcome position.')
     _, modifiers, key = parse_shortcut(settings.get('panel_hotkey', DEFAULT_SHORTCUT))
     return {
         'InGamePanel': 1 if renderer == 'game' else 0,
@@ -114,6 +130,11 @@ def preferences(settings):
         'Advanced': 1 if controls == 'classic' else 0,
         'UseOptiScaler': 1 if flag('optiscaler_ui', True) else 0,
         'ShortcutKey': 0x77 if hotkey == 'F8' else 0 if hotkey == 'Disabled' else 0x2D,
+        # OverlayHelper.ConfigurePanel: read once at game start; the helper updates them live.
+        'LightTheme': 1 if light_theme(settings) else 0,
+        'ShowLiveStats': 1 if flag('overlay_live_stats', True) else 0,
+        'ShowWelcome': 1 if flag('overlay_welcome', True) else 0,
+        'WelcomePosition': WELCOME_POSITIONS.index(position),
     }
 
 
@@ -455,10 +476,13 @@ def handle(message, settings):
             'message': 'Use rtxForge on Linux for this. The Linux panel helper is not finished yet.'}
 
 
-def settings_snapshot(settings):
+def settings_snapshot(settings, app_theme=None):
     _, modifiers, key = parse_shortcut(settings.get('panel_hotkey', DEFAULT_SHORTCUT))
     return {
         'overlay_controls': settings.get('overlay_controls', 'unified'),
+        # NativePanelCoordinator.SettingsSnapshot: the choice plus its resolved light/dark.
+        'overlay_theme': settings.get('overlay_theme', 'dark'),
+        'overlay_light': light_theme(settings, app_theme),
         'overlay_renderer': settings.get('overlay_renderer', 'game'),
         'overlay_live_stats': bool(settings.get('overlay_live_stats', True)),
         'overlay_welcome': bool(settings.get('overlay_welcome', True)),

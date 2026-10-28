@@ -84,9 +84,9 @@ class LaunchTests(unittest.TestCase):
             config={'storage':{'root':root}}
             for stored,opacity in ((60,60),(140,100),(-5,0),(True,10),('x',10),(float('nan'),10)):
                 path=library_media.settings_path(config);path.parent.mkdir(parents=True,exist_ok=True)
-                path.write_text(json.dumps({'controller_glyphs':'steam','game_mode_card_opacity':stored}))
+                path.write_text(json.dumps({'controller_glyphs':'steam','game_mode_card_opacity':stored,'overlay_theme':'app'}))
                 settings=library_media.load_settings(config)
-                self.assertEqual((settings['controller_glyphs'],settings['game_mode_card_opacity']),('steam',opacity),stored)
+                self.assertEqual((settings['controller_glyphs'],settings['game_mode_card_opacity'],settings['overlay_theme']),('steam',opacity,'app'),stored)
             library_media.save_settings(config,settings)
             self.assertEqual(json.loads(library_media.settings_path(config).read_text())['game_mode_card_opacity'],10)
 

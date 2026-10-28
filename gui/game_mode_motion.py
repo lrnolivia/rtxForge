@@ -266,33 +266,76 @@ class MotionScene(Gtk.Overlay):
         snapshot.restore()
 
 
+# Windows GmMotion.Horizontal (1.0 Beta): pages slide toward their tab order.
+SLIDE_IN_MS, SLIDE_OUT_MS = 340, 280
+
+
+def slide_distance(width, unit, direction):
+    """GmMotion.Horizontal: 16% of the page, at least 80 px and at most 240 units."""
+    return min(240 * unit, max(80, width * .16)) * (-1 if direction < 0 else 1)
+
+
 class MotionDeck(Gtk.Overlay):
-    """One live scene plus one short, inert outgoing scene. Never queues navigation."""
+    """One live scene plus one short, inert outgoing scene. Never queues navigation.
+
+    Rendering only: a slide translates each scene's snapshot, so allocation,
+    focus and hit-testing stay with the native widgets."""
     __gtype_name__ = 'RtxForgeMotionDeck'
 
     def __init__(self):
         super().__init__(hexpand=True, vexpand=True)
+        self.set_overflow(Gtk.Overflow.HIDDEN)
         self.current = None
         self.outgoing = None
         self._exit = None
+        self._enter = None
+        self.unit = 1
 
-    def show_scene(self, scene, animate, preferences):
+    def do_snapshot(self, snapshot):
+        child = self.get_first_child()
+        while child is not None:
+            offset = getattr(child, '_gm_offset', 0)
+            if offset:
+                snapshot.save()
+                snapshot.translate(Graphene.Point().init(offset, 0))
+                self.snapshot_child(child, snapshot)
+                snapshot.restore()
+            else:
+                self.snapshot_child(child, snapshot)
+            child = child.get_next_sibling()
+
+    def _settle(self, scene):
+        scene._gm_offset = 0
+        scene.set_opacity(1)
+        self.queue_draw()
+
+    def show_scene(self, scene, animate, preferences, direction=0):
         if self._exit:
             self._exit.pause()
             self._exit = None
+        if self._enter:
+            self._enter.pause()
+            self._enter = None
+            if self.current is not None:
+                self._settle(self.current)
         if self.outgoing:
             self.remove_overlay(self.outgoing)
             self.outgoing = None
         previous = self.current
         self.current = scene
-        if previous and animate and enabled(scene, preferences):
+        moving = previous and animate and enabled(scene, preferences)
+        distance = slide_distance(max(self.get_width(), 1), self.unit, direction) if moving and direction else 0
+        if moving:
             previous.set_sensitive(False)
             previous.set_can_target(False)
             self.outgoing = previous
-            def opacity(value):
-                previous.set_opacity(value)
-            self._exit = Adw.TimedAnimation.new(self, 1, 0, MOTION['exit_ms'], Adw.CallbackAnimationTarget.new(opacity))
-            self._exit.set_easing(Adw.Easing.EASE_OUT_QUAD)
+            def leave(value):
+                previous.set_opacity(1 - value)
+                previous._gm_offset = -distance * value
+                self.queue_draw()
+            self._exit = Adw.TimedAnimation.new(self, 0, 1, SLIDE_OUT_MS if distance else MOTION['exit_ms'],
+                                                Adw.CallbackAnimationTarget.new(leave))
+            self._exit.set_easing(Adw.Easing.EASE_OUT_CUBIC if distance else Adw.Easing.EASE_OUT_QUAD)
             def done(*_):
                 if self.outgoing is previous:
                     self.remove_overlay(previous)
@@ -304,6 +347,16 @@ class MotionDeck(Gtk.Overlay):
             self.remove_overlay(previous)
         self.add_overlay(scene)
         self.set_measure_overlay(scene, True)
+        if distance:
+            def arrive(value):
+                scene.set_opacity(.35 + .65 * value)
+                scene._gm_offset = distance * (1 - value)
+                self.queue_draw()
+            arrive(0)
+            self._enter = Adw.TimedAnimation.new(self, 0, 1, SLIDE_IN_MS, Adw.CallbackAnimationTarget.new(arrive))
+            self._enter.set_easing(Adw.Easing.EASE_OUT_CUBIC)
+            self._enter.connect('done', lambda *_: (self._settle(scene), setattr(self, '_enter', None)))
+            self._enter.play()
 
 
 class MotionSelection(Gtk.Overlay):

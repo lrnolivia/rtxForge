@@ -83,7 +83,8 @@ def gaming():
     w.dialog.close()
 def independent_themes():
     w=app.window;w.show_settings()
-    switch=next(x for x in children(w.settings_pages['Appearance']) if isinstance(x,Adw.SwitchRow) and x.get_title()=='Use the same color theme in Desktop and Game Mode')
+    # Windows 1.0 Beta keeps the shared-theme switch with Game Mode's Theme controls.
+    switch=next(x for x in children(w.settings_pages['Gaming Mode']) if isinstance(x,Adw.SwitchRow) and x.get_title()=='Use the same color theme in Desktop and Game Mode')
     assert switch.get_active()
     before=w.couch.theme.name
     switch.set_active(False)
@@ -92,7 +93,7 @@ def independent_themes():
     assert w.couch.theme.name==before
     switch.set_active(True)
     assert w.couch.theme.name==w.settings['theme']
-    w.dialog.close()
+    if w.dialog:w.dialog.close()
 
 
 def extras_open():

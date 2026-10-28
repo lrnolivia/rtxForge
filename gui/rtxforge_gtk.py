@@ -16,6 +16,7 @@ from native_shell import new_shell
 from ui_scaling import ScaledContent, content_scale, SCALES
 from operation_scope import operation_targets, ScopeError
 import mfg_choice
+from step_count import StepCount
 import action_labels
 import overview_facts
 import overlay_shortcut
@@ -3841,6 +3842,7 @@ class OperationStep(Gtk.Box):
         text=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4,hexpand=True,valign=Gtk.Align.CENTER)
         self.counter=label('Preparing…','dim-label')
         self.counter.add_css_class('caption')
+        self.count=StepCount()
         self.title=label('','job-title')
         self.title.add_css_class('title-3')
         self.title.set_wrap(False);self.title.set_ellipsize(Pango.EllipsizeMode.END)
@@ -3862,12 +3864,13 @@ class OperationStep(Gtk.Box):
         self.determinate=True;self.bar.set_fraction(1.0)
 
     def show(self,verb,game,index,total,phase,fraction=None):
-        """A step; without a total the bar stays indeterminate."""
-        self.counter.set_text(f'{verb} {min(index+1,total)} of {total}' if total else 'Preparing…')
+        """A step; until it is counted the bar stays indeterminate, then uncounted sub-steps only update the phase."""
+        shown=self.count.next(verb,index,total,fraction)
+        self.counter.set_text(f'{verb} {shown[0]} of {shown[1]}' if shown else 'Preparing…')
         if phase:self.phase.set_text(str(phase).rstrip('.…')+'…')
-        if total:
+        if shown:
             self.determinate=True
-            self.bar.set_fraction(max(0.0,min(1.0,fraction if fraction is not None else index/total)))
+            self.bar.set_fraction(shown[2])
         else:
             self.determinate=False
         if game is not None and game is not self.game:
@@ -10239,6 +10242,7 @@ class Window(Adw.ApplicationWindow):
         panel=Adw.PreferencesGroup(title='rtxForge Panel',description='NR and MFG controls drawn inside the game. Saved here, then written to each game on its next reviewed install or repair.')
         if not game:choice('Panel','Where rtxForge\u2019s controls appear while you play.',['game','optiscaler'],['In the game','OptiScaler menu only'],'overlay_renderer',panel)
         choice('Controls','Unified uses simple values; Advanced shows OptiScaler\u2019s own variables and units.',['unified','classic'],['Unified','Advanced'],'overlay_controls',panel)
+        choice('Appearance','Follow app uses rtxForge’s light or dark theme.',['dark','light','app'],['Dark','Light','Follow app'],'overlay_theme',panel)
         switch('Welcome message','Show the rtxForge message at startup.','overlay_welcome',panel)
         choice('Welcome position',None,list(overlay_settings.POSITIONS),['Top center','Top left','Top right','Bottom left','Bottom right'],'overlay_welcome_position',panel)
         switch('Live feature statistics',None,'overlay_live_stats',panel)

@@ -34,6 +34,9 @@ jobs:
           dbus-run-session -- xvfb-run -a -s '-screen 0 1920x1080x24' python3 tests/ui_app_completion.py
           dbus-run-session -- xvfb-run -a -s '-screen 0 1920x1080x24' python3 tests/ui_steamgrid_review.py
           dbus-run-session -- xvfb-run -a -s '-screen 0 1920x1080x24' python3 tests/ui_game_mode.py
+          dbus-run-session -- xvfb-run -a -s '-screen 0 1920x1080x24' python3 tests/ui_support_checks.py
+          dbus-run-session -- xvfb-run -a -s '-screen 0 1920x1080x24' python3 tests/ui_settings_refinements.py
+          dbus-run-session -- xvfb-run -a -s '-screen 0 1920x1080x24' python3 tests/ui_joined_reviews.py
           dbus-run-session -- xvfb-run -a -s '-screen 0 3840x2160x24' python3 tests/ui_layout_scaling.py
       - name: Build isolated review AppImage
         run: |

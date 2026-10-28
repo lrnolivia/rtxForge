@@ -72,7 +72,7 @@ new file mode 100644
 index 00000000..a00c0317
 --- /dev/null
 +++ b/OptiScaler/framegen/dlssg/Companion.h
-@@ -0,0 +1,245 @@
+@@ -0,0 +1,276 @@
 +#pragma once
 +
 +#include <Config.h>
@@ -134,7 +134,34 @@ index 00000000..a00c0317
 +inline std::recursive_mutex guard;
 +inline Mailbox* mailbox = nullptr;
 +inline HANDLE mapping = nullptr;
++inline HANDLE file = nullptr;
 +inline bool attempted = false;
++
++// A native Linux host cannot open a Wine named section, so under Wine the
++// mailbox lives in %LOCALAPPDATA%\rtxForge\controls.<pid>.map inside the
++// prefix (as ForgePanelChannel does). Exclusive creation never adopts a stale or
++// planted file; delete-on-close removes it when the game exits.
++inline bool OnWine()
++{
++    const auto ntdll = GetModuleHandleW(L"ntdll.dll");
++    return ntdll && GetProcAddress(ntdll, "wine_get_version");
++}
++
++inline HANDLE CreateWineMapping()
++{
++    wchar_t base[MAX_PATH];
++    const auto length = GetEnvironmentVariableW(L"LOCALAPPDATA", base, MAX_PATH);
++    if (length == 0 || length >= MAX_PATH) return nullptr;
++    const auto folder = std::wstring(base, length) + L"\\rtxForge";
++    if (!CreateDirectoryW(folder.c_str(), nullptr) && GetLastError() != ERROR_ALREADY_EXISTS) return nullptr;
++    const auto path = folder + L"\\controls." + std::to_wstring(GetCurrentProcessId()) + L".map";
++    file = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
++                       CREATE_NEW, FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, nullptr);
++    if (file == INVALID_HANDLE_VALUE) { file = nullptr; return nullptr; }
++    const auto section = CreateFileMappingW(file, nullptr, PAGE_READWRITE, 0, sizeof(Mailbox), nullptr);
++    if (!section) { CloseHandle(file); file = nullptr; }
++    return section;
++}
 +inline LONG observedFgSuccesses = 0;
 +inline LONG observedGenerated = 0;
 +inline LONG nativeStatus = -1, nativePresented = 0, stateSamples = 0, stateTick = 0;
@@ -176,14 +203,18 @@ index 00000000..a00c0317
 +    {
 +        attempted = true;
 +        const auto name = L"Local\\rtxForge.controls." + std::to_wstring(GetCurrentProcessId());
-+        mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(Mailbox), name.c_str());
++        const bool wine = OnWine();
++        if (wine) mapping = CreateWineMapping();
++        else mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(Mailbox), name.c_str());
 +        // Never consume a pre-existing mailbox supplied by another process.
-+        if (mapping && GetLastError() != ERROR_ALREADY_EXISTS)
++        if (mapping && (wine || GetLastError() != ERROR_ALREADY_EXISTS))
 +            mailbox = static_cast<Mailbox*>(MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(Mailbox)));
 +        if (!mailbox)
 +        {
 +            if (mapping) CloseHandle(mapping);
++            if (file) CloseHandle(file);
 +            mapping = nullptr;
++            file = nullptr;
 +            return;
 +        }
 +        *mailbox = {};

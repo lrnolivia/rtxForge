@@ -1,12 +1,17 @@
 """Persistent AppImage installation and atomic replacement."""
 from pathlib import Path
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 
 APP_ID = 'io.github.lrnolivia.RTXForge'
 APP_NAME = 'RTXForge.AppImage'
+CHANNEL_FILE = 'update-channel'
+# Download names that say which update channel an install came from.
+BETA_APPIMAGE = re.compile(r'rtxForge-\d+\.\d+\.\d+-beta\.\d+-x86_64\.AppImage')
+CONTINUOUS_APPIMAGE = 'rtxForge-Bazzite-x86_64.AppImage'
 
 
 def data_root():
@@ -23,6 +28,29 @@ def data_root():
 
 def installed_path():
     return data_root() / 'rtxforge/application' / APP_NAME
+
+
+def installed_channel():
+    """The update channel recorded for the installed AppImage, or None."""
+    try:
+        value = (installed_path().parent / CHANNEL_FILE).read_text(encoding='utf-8').strip()
+    except OSError:
+        return None
+    return value if value in ('beta', 'continuous') else None
+
+
+def record_channel(channel):
+    if channel not in ('beta', 'continuous'):
+        raise ValueError(f'Unknown update channel: {channel}')
+    root = installed_path().parent
+    root.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix='.rtxforge-channel-', dir=root)
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as handle:
+            handle.write(channel + '\n')
+        os.replace(temporary, root / CHANNEL_FILE)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
 
 
 def _fsync_file(path):
@@ -149,6 +177,13 @@ def install_from(source):
 
         finally:
             stage.unlink(missing_ok=True)
+
+    # A first install from a downloaded release records its channel; updates
+    # and rollbacks (staged or previous copies) keep the recorded one.
+    if BETA_APPIMAGE.fullmatch(source.name):
+        record_channel('beta')
+    elif source.name == CONTINUOUS_APPIMAGE:
+        record_channel('continuous')
 
     register(target)
     return str(target)

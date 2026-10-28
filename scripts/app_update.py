@@ -18,6 +18,15 @@ RELEASE_API = (
 )
 
 MANIFEST_NAME = 'rtxforge-update.json'
+
+# Each channel is one GitHub release with its own manifest (same schema).
+CHANNELS = {
+    'continuous': (RELEASE_API, MANIFEST_NAME),
+    'beta': (
+        'https://api.github.com/repos/lrnolivia/rtxForge/releases/tags/beta',
+        'rtxforge-beta-linux.json',
+    ),
+}
 USER_AGENT = 'rtxForge-AppUpdater/1'
 
 
@@ -78,18 +87,35 @@ def current_build():
     }
 
 
+def channel():
+    """The channel this install follows: an explicit override, the Beta
+    download being run, then what the install recorded; continuous otherwise."""
+    override = os.environ.get('RTXFORGE_UPDATE_CHANNEL', '').strip().lower()
+    if override:
+        if override not in CHANNELS:
+            raise RuntimeError(f'Unknown update channel: {override}')
+        return override
+    if desktop_install.BETA_APPIMAGE.fullmatch(Path(os.environ.get('APPIMAGE', '')).name):
+        return 'beta'
+    return desktop_install.installed_channel() or 'continuous'
+
+
 def check():
-    release = _json(RELEASE_API)
+    selected = channel()
+    release_api, manifest_name = CHANNELS[selected]
+    release = _json(release_api)
 
     assets = {
         asset['name']: asset
         for asset in release.get('assets', [])
     }
 
-    manifest_asset = assets.get(MANIFEST_NAME)
+    manifest_asset = assets.get(manifest_name)
     if not manifest_asset:
         raise RuntimeError(
-            'The rtxForge update release has no update manifest.'
+            'The rtxForge Beta release has no Linux build yet.'
+            if selected == 'beta'
+            else 'The rtxForge update release has no update manifest.'
         )
 
     manifest = _json(manifest_asset['browser_download_url'])
@@ -138,6 +164,7 @@ def check():
         'current_version': current['version'],
         'current_commit': current['commit'],
         'download_url': download_url,
+        'update_channel': selected,
         'published_at': release.get('published_at'),
     }
 
@@ -218,7 +245,10 @@ def install(info, progress=None):
         if progress:
             progress(1.0, received, expected_size)
 
-        return desktop_install.install_from(stage)
+        installed = desktop_install.install_from(stage)
+        if info.get('update_channel') in CHANNELS:
+            desktop_install.record_channel(info['update_channel'])
+        return installed
 
     finally:
         stage.unlink(missing_ok=True)

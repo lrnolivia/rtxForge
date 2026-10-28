@@ -3,12 +3,24 @@ INSTALL = 'Install Features'
 RESTORE = 'Restore Original Files'
 UPDATE_DLSS = 'Update DLSS'
 REPAIR = 'Repair Feature Files'
+# On Linux, games installed with rtxForge on Windows: Install sets them up for Proton
+# without touching the game folder or the Windows install, and Restore undoes only that.
+ADAPT = 'Adapt to Linux'
+REMOVE_ADAPT = 'Remove Linux Setup'
 
 
-def library(selected_count=0):
-    return (f'Install Selected ({selected_count})' if selected_count else INSTALL,
-            f'Restore Selected ({selected_count})' if selected_count else RESTORE,
-            UPDATE_DLSS)
+def library(selected_count=0, adapt=False):
+    """Install, Restore and Update DLSS; adapt when every game they act on was installed on Windows."""
+    install, restore = (ADAPT, REMOVE_ADAPT) if adapt else (INSTALL, RESTORE)
+    if selected_count:
+        install, restore = ((f'Adapt Selected ({selected_count})', f'Remove Linux Setup ({selected_count})') if adapt else
+                            (f'Install Selected ({selected_count})', f'Restore Selected ({selected_count})'))
+    return install, restore, UPDATE_DLSS
+
+
+def game(windows_install=False):
+    """One game's Install and Restore labels."""
+    return (ADAPT, REMOVE_ADAPT) if windows_install else (INSTALL, RESTORE)
 
 
 # Package names in reviews and the Game Mode header, as on Windows (OperationDialog, GameModeView.ProviderName).

@@ -572,12 +572,14 @@ def prepare(config,rows,mode,operation,settings):
                 # Installed with rtxForge on Windows: adapt it for Linux instead of reinstalling.
                 if operation=='uninstall':
                     t.need(proton_prefix.load_record(prefix_state(e,g)),"Installed with rtxForge on Windows. Restore its original files in rtxForge on Windows, where they are backed up.")
-                    preview={'files':[],'launch_options':'Removes the Linux setting only · restore the original files in rtxForge on Windows'}
+                    preview={'files':[],'launch_options':'Remove Linux Setup · undoes the Proton setting, panel preferences and CUDA setting rtxForge made here · '
+                             'the Windows install is not touched; restore its original files in rtxForge on Windows'}
                     ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g),'prefix':None,'steam_route':False,'linux_setup_remove':True})
                 else:
                     prefix,names=proton_setup(e,g,windows)
                     extras,notes=linux_extras(config,g,row,settings,prefix,windows.get('feature_mode',''))
-                    preview={'files':[],'launch_options':'Installed with rtxForge on Windows · adds the Proton setting ('+', '.join(names)+')'+''.join(' · '+n for n in notes)}
+                    preview={'files':[],'launch_options':'Adapt to Linux · adds the Proton setting ('+', '.join(names)+')'+''.join(' · '+n for n in notes)
+                             +' · nothing in the game folder changes and the Windows install is not touched'}
                     ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g),'prefix':str(prefix),'steam_route':False,'linux_setup':names,'linux_extras':extras})
                 ui.progress('Game checked',phase='review-check',game=row['name'],checked=index,total=len(rows))
                 continue

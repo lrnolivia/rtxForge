@@ -9441,6 +9441,10 @@ class Window(Adw.ApplicationWindow):
         """Installed with rtxForge on Windows, not yet set up (adapted) to run under Proton."""
         return game.get('installed_on')=='windows' and bool(game.get('adaptable') or not game.get('linux_ready'))
 
+    def pending_linux_setup(self):
+        """Every game installed with rtxForge on Windows that still needs Linux setup, whatever the filter."""
+        return [game for game in self.games if not game.get('blocked') and self.needs_linux_setup(game)]
+
     def list_primary_caption(self,game):
         if getattr(self,'preset_selecting',False):return 'Apply'
         if self.needs_linux_setup(game):return 'Adapt'
@@ -9798,9 +9802,10 @@ class Window(Adw.ApplicationWindow):
         # Every targeted game installed with rtxForge on Windows: Install adapts them, Restore removes that.
         pool=self.selected_games() if count else self.games
         adapt=bool(pool) and all(game.get('installed_on')=='windows' for game in pool)
+        pending=0 if count else len(self.pending_linux_setup())
         for name in ('install_all','sticky_install_all'):
             widget=getattr(self,name,None)
-            if widget:widget.set_label(action_labels.library(count,adapt)[0])
+            if widget:widget.set_label(action_labels.library(count,adapt,pending)[0])
         for name in ('uninstall_all','sticky_remove_all'):
             widget=getattr(self,name,None)
             if widget:widget.set_label(action_labels.library(count,adapt)[1])
@@ -9918,6 +9923,11 @@ class Window(Adw.ApplicationWindow):
 
     def launch_scoped(self,operation,**kwargs):
         """Toolbar actions: never widen past the selection or current view."""
+        if operation=='install' and not self.selected_game_ids:
+            # "Adapt to Linux (N)": the Windows installs still needing setup, wherever the filter is.
+            pending=self.pending_linux_setup()
+            if pending:
+                self.launch_action('install',False,targets=pending,**kwargs);return
         targets=self.selected_or_library()
         if not targets:return
         self.launch_action(operation,not bool(self.selected_game_ids),targets=targets,**kwargs)

@@ -1427,10 +1427,12 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         actions = Gtk.Box(spacing=t.px(12), valign=Gtk.Align.CENTER, halign=Gtk.Align.START)
         # Every targeted game installed with rtxForge on Windows: Install adapts them, Restore removes that.
         adapt = bool(pool) and all(g.get('installed_on') == 'windows' for g in pool)
-        install_label, restore_label, update_label = action_labels.library(len(self.selected) if self.selecting else 0, adapt)
+        # Windows installs still needing Linux setup take over Install, whatever the filter.
+        pending = [] if self.selecting else (owner.pending_linux_setup() if hasattr(owner, 'pending_linux_setup') else [])
+        install_label, restore_label, update_label = action_labels.library(len(self.selected) if self.selecting else 0, adapt, len(pending))
         actions.append(self.button(install_label,
-                                   lambda: self.run_operation('install', self.scoped_targets()), 'primary', 'folder-download-symbolic',
-                                   enabled=any(not g.get('blocked') for g in pool), key='lib-install'))
+                                   lambda: self.run_operation('install', pending or self.scoped_targets()), 'primary', 'folder-download-symbolic',
+                                   enabled=bool(pending) or any(not g.get('blocked') for g in pool), key='lib-install'))
         actions.append(self.button(restore_label, lambda: self.run_operation('uninstall', [g for g in self.scoped_targets() if g.get('installed')]),
                                    'danger', 'edit-undo-symbolic', enabled=any(g.get('installed') for g in pool), key='lib-restore'))
         actions.append(self.button(update_label, lambda: self.run_operation('update-dlss', self.scoped_targets()), 'dlss', 'emblem-synchronizing-symbolic',

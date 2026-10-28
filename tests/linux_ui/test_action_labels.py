@@ -24,6 +24,12 @@ class AdaptLabelTest(unittest.TestCase):
         self.assertEqual(action_labels.library(3, adapt=True)[:2], ('Adapt Selected (3)', 'Remove Linux Setup (3)'))
         self.assertEqual(action_labels.library(3)[:2], ('Install Selected (3)', 'Restore Selected (3)'))
 
+    def test_pending_windows_installs_take_over_the_library_install(self):
+        self.assertEqual(action_labels.library(pending=12)[:2], ('Adapt to Linux (12)', action_labels.RESTORE))
+        # A selection is explicit and keeps its own wording.
+        self.assertEqual(action_labels.library(2, pending=12)[0], 'Install Selected (2)')
+        self.assertEqual(action_labels.library(pending=0)[0], action_labels.INSTALL)
+
 
 if __name__ == '__main__':
     unittest.main()

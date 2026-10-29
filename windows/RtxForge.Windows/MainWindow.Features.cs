@@ -332,7 +332,7 @@ public sealed partial class MainWindow
             .Select(s => $"{totals.GetValueOrDefault(s)} {s.ToLowerInvariant()}")), "ForgeHeadingTextStyle"));
         body.Children.Add(Prefs.Label(issue is { } number
             ? $"Choose the games whose logs belong with issue #{number}. You review everything before it's saved; nothing is uploaded."
-            : "Choose one, a few or all games for a beta report. You review everything before it's saved; nothing is uploaded."));
+            : "Choose one, a few or all games for a bug report. You review everything before it's saved; nothing is uploaded."));
         var included = new HashSet<Game>(Games);
         var selections = new List<CheckBox>();
         var selectionActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
@@ -345,7 +345,7 @@ public sealed partial class MainWindow
         {
             var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
             var include = new CheckBox { Content = "Include", IsChecked = true };
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(include, "Include " + game.Name + " in the beta report");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(include, "Include " + game.Name + " in the bug report");
             include.Checked += (_, _) => { included.Add(game); dialog.IsPrimaryButtonEnabled = !Service.IsPreview && included.Count > 0; };
             include.Unchecked += (_, _) => { included.Remove(game); dialog.IsPrimaryButtonEnabled = !Service.IsPreview && included.Count > 0; };
             selections.Add(include); actions.Children.Add(include);
@@ -363,7 +363,7 @@ public sealed partial class MainWindow
         }
         body.Children.Add(new ScrollViewer { Content = list, MaxHeight = 320 });
         dialog.Content = body;
-        dialog.PrimaryButtonText = "Prepare Beta Report";
+        dialog.PrimaryButtonText = "Bug Report";
         dialog.IsPrimaryButtonEnabled = !Service.IsPreview && Games.Count > 0;
         dialog.CloseButtonText = "Close";
         dialog.DefaultButton = ContentDialogButton.Primary;
@@ -393,15 +393,15 @@ public sealed partial class MainWindow
     public async Task PrepareBetaReportsAsync(IReadOnlyList<Game> games, int? issue = null)
     {
         if (games.Count == 0) return;
-        if (Service.IsPreview) { ShowToast("Beta reports are disabled in preview mode."); return; }
+        if (Service.IsPreview) { ShowToast("Bug reports are disabled in preview mode."); return; }
         BetaReportDraft draft;
         try { draft = await Service.DraftReportsAsync(games, InstallFormat(), ""); }
-        catch (InvalidOperationException error) { await Message("Prepare Beta Report", error.Message); return; }
+        catch (InvalidOperationException error) { await Message("Bug Report", error.Message); return; }
 
         var edits = draft.Reports.ToDictionary(r => r.Id, _ => new Dictionary<string, string>());
         var values = draft.Reports.ToDictionary(r => r.Id, r => r.Fields.ToDictionary(f => f.Key, f => f.Value));
         var dialog = NewDialog();
-        dialog.Title = "Prepare Beta Report";
+        dialog.Title = "Bug Report";
         var body = new StackPanel { Spacing = 12, MinWidth = 600 };
         body.Children.Add(Prefs.Label("rtxForge filled in what it could check on this PC. Correct anything that's wrong, then say what you saw in game. Installed files don't show whether NR or MFG worked."));
         var statuses = new Dictionary<string, TextBlock>();
@@ -481,7 +481,7 @@ public sealed partial class MainWindow
         }
         var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
         bool withLogs = logs.IsChecked == true, withNotes = notes.IsChecked == true;
-        var result = await ReviewDialog.ShowAsync(this, "Review Beta Report",
+        var result = await ReviewDialog.ShowAsync(this, "Review Bug Report",
             () => Service.PreviewReportAsync(ids, edits, withLogs, withNotes, documents));
         if (result?.Path is { } path && result.Errors.Count == 0) await ShowSavedReportAsync(ids, path, issueText);
     }
@@ -491,9 +491,9 @@ public sealed partial class MainWindow
     {
         BetaReportLinks links;
         try { links = await Service.ReportLinksAsync(ids, issue, path); }
-        catch (InvalidOperationException error) { await Message("Beta report saved", path + "\n\n" + error.Message); return; }
+        catch (InvalidOperationException error) { await Message("Bug report saved", path + "\n\n" + error.Message); return; }
         var dialog = NewDialog();
-        dialog.Title = "Beta report saved";
+        dialog.Title = "Bug report saved";
         var body = new StackPanel { Spacing = 12, MinWidth = 560 };
         var size = new FileInfo(path).Length / 1024.0 / 1024.0;
         body.Children.Add(Prefs.Label($"{Path.GetFileName(path)} · {size:0.0} MB · in {Path.GetDirectoryName(path)}"));
@@ -520,7 +520,7 @@ public sealed partial class MainWindow
                     if (!link.Complete) CopyText(link.Text, "The report was too long for the link. The full text is copied: paste it into the form.");
                     OpenUri(link.Url);
                 }));
-                body.Children.Add(Prefs.Row(link.Name, "Opens a prefilled beta report. Attach the ZIP there before you submit.", actions));
+                body.Children.Add(Prefs.Row(link.Name, "Opens a prefilled bug report. Attach the ZIP there before you submit.", actions));
             }
         }
         body.Children.Add(Prefs.Label("Attaching a file on GitHub uploads it right away, and files on this repository are public. The ZIP stays in your Reports folder either way.", "ForgeCaptionDimTextStyle"));
@@ -690,12 +690,12 @@ public sealed partial class MainWindow
 
     // ---------- Notes and test records ----------
 
-    public async Task SaveNotesAsync(Game game, string status, string notes)
+    public async Task SaveNotesAsync(Game game, string status, string notes, string saved = "Notes saved")
     {
         try
         {
             await Service.SaveNotesAsync(game, status, notes);
-            ShowToast("Notes saved");
+            ShowToast(saved);
         }
         catch (InvalidOperationException error) { await Message("Save notes", error.Message); }
     }
@@ -710,7 +710,7 @@ public sealed partial class MainWindow
         }
         catch (InvalidOperationException error) { await Message(finish ? "Finish Test" : "Start Test", error.Message); return; }
         if (!finish && game.Library == "Steam" && game.AppId is { } appid && appid.All(char.IsDigit)) OpenUri("steam://rungameid/" + appid);
-        ShowToast(finish ? "Logs captured. Record your result and save notes." : "Test started. Launch your game normally, then return here to finish.");
+        ShowToast(finish ? "Logs captured. Set the test result, or send a bug report if something went wrong." : "Test started. Launch your game normally, then return here to finish.");
         NotifyGamesChanged();
     }
 

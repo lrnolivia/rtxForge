@@ -197,14 +197,18 @@ public sealed partial class SettingsPage : Page
             if (title == "Refresh artwork") library.Add(artworkRow); else steamLibrary.Add(artworkRow);
         }
 
-        // ----- Gaming Mode (Linux: Steam Library · Interface · Controller) -----
-        var steamButton = Prefs.ActionButton("Add to Steam", async (_, _) => await shell.ToggleSteamShortcutAsync());
-        var steamRow = Prefs.Row("Add rtxForge to Steam", "Manage this app’s shortcut in your selected Steam profile.", steamButton, "");
-        steamLibrary.Add(steamRow);
+        // ----- Gaming Mode (Linux: Play from Steam · Interface · Controller) -----
+        // First in Gaming Mode, in the accent color until rtxForge is in Steam: that's how Gaming Mode opens it with a controller.
+        var playFromSteam = new PreferencesGroup("Play from Steam", "Add rtxForge to your Steam library to open it from Gaming Mode with a controller.");
+        var steamButton = Prefs.ActionButton("Add to Steam", async (_, _) => await shell.ToggleSteamShortcutAsync(), accent: true);
+        var accentStyle = steamButton.Style;
+        var steamRow = Prefs.Row("Add rtxForge to Steam", "You review the shortcut and artwork first.", steamButton, "");
+        playFromSteam.Add(steamRow);
         async void RefreshSteamRow()
         {
             var added = await shell.SteamShortcutAddedAsync();
             steamButton.Content = Prefs.Content(added ? "Manage" : "Add to Steam", null);
+            if (added) steamButton.ClearValue(FrameworkElement.StyleProperty); else steamButton.Style = accentStyle;
             if (FindTitle(steamRow) is { } title) title.Text = added ? "rtxForge is in Steam" : "Add rtxForge to Steam";
         }
         shell.SteamShortcutChanged += RefreshSteamRow;
@@ -271,7 +275,7 @@ public sealed partial class SettingsPage : Page
         foreach (var (title, subtitle, caption, glyph, action) in new (string, string, string, string, Func<Task>)[]
         {
             ("Old NR files", "Review legacy files before removal.", "Review", "", shell.ReviewOldNrFilesAsync),
-            ("Compatibility & reports", "See each game's result, try unverified games, share a result, or prepare a beta report.", "Open", "", shell.ShowReportsAsync),
+            ("Compatibility & reports", "See each game's result, try unverified games, share a result, or send a bug report.", "Open", "", shell.ShowReportsAsync),
         })
         {
             var actionRow = Prefs.Row(title, subtitle, Prefs.ActionButton(caption, async (_, _) => await action()), glyph);
@@ -284,12 +288,15 @@ public sealed partial class SettingsPage : Page
         about.Add(Prefs.Row("Updates", "Download, verify, and install the newest rtxForge build.",
             Prefs.ActionButton("Check for updates", async (_, _) => await shell.CheckForUpdatesAsync()), ""));
 
+        about.Add(Prefs.Row("Report a bug", "Choose games, say what happened and review a redacted ZIP before anything is saved.",
+            Prefs.ActionButton("Bug Report", async (_, _) => await shell.ShowReportsAsync()), ""));
+
         // Linux organize_pages(): one page per section. Windows shows them as SelectorBar tabs.
         sections["Graphics"] = [installDefaults, existingFeatures];
         sections["Overlay"] = overlay.Groups.ToArray();
         sections["Appearance"] = [appearance, navigation, details];
         sections["Library"] = [libraryView, library, steamLibrary, reports];
-        sections["Gaming Mode"] = [interfaceGroup, gameModeAppearance, gameModeLayout, controller];
+        sections["Gaming Mode"] = [playFromSteam, interfaceGroup, gameModeAppearance, gameModeLayout, controller];
         sections["System"] = [system];
         sections["Recovery"] = [cleanup];
         sections["About"] = [about];

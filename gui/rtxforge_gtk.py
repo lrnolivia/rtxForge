@@ -6338,6 +6338,7 @@ class Window(Adw.ApplicationWindow):
         if getattr(self,'steam_shortcut_row',None):
             self.steam_shortcut_row.set_title('rtxForge is in Steam' if added else 'Add rtxForge to Steam')
             self.steam_shortcut_button.set_label('Remove from Steam' if added else 'Add to Steam')
+            (self.steam_shortcut_button.remove_css_class if added else self.steam_shortcut_button.add_css_class)('suggested-action')
         if self.couch.page=='settings':self.couch.render()
 
     def add_rtxforge_to_steam(self,*_):
@@ -12687,7 +12688,7 @@ class Window(Adw.ApplicationWindow):
         identity.append(
             heading
         )
-        # Windows GamePage HeroActions: Install (game accent), Restore, More.
+        # Windows GamePage HeroActions: Install (game accent), Restore, Bug Report, More.
         # Wraps instead of running off a narrow details window (Adw ≥ 1.7).
         hero_actions=Adw.WrapBox(child_spacing=8,line_spacing=8,align=1.0,valign=Gtk.Align.END,halign=Gtk.Align.END)
         hero_actions.add_css_class('detail-hero-actions')
@@ -12697,6 +12698,8 @@ class Window(Adw.ApplicationWindow):
         hero_install.set_sensitive(not game.get('blocked') and not self.busy and bool(self.hardware_info and self.hardware_info['ready']))
         hero_restore=icon_button('Restore Original Files','edit-undo-symbolic',lambda *_:self.launch_action('uninstall',targets=[game]),'hero-restore')
         hero_restore.set_sensitive(bool(game.get('installed')) and not self.busy)
+        hero_report=icon_button('Bug Report','dialog-warning-symbolic',lambda *_:self.prepare_beta_reports([game]),'hero-report')
+        hero_report.set_tooltip_text('Report a problem with this game');hero_report.set_sensitive(not self.options.demo)
         more=Gio.Menu()
         more.append('Update DLSS','win.detail-update-dlss')
         if self.adoptable(game):more.append('Adopt with rtxForge','win.detail-adopt')
@@ -12710,7 +12713,7 @@ class Window(Adw.ApplicationWindow):
                               ('detail-remove',lambda *_:self.confirm_remove_game(game))):
             self.remove_action(name)
             action=Gio.SimpleAction.new(name,None);action.connect('activate',callback);self.add_action(action)
-        for widget in (hero_install,hero_restore,hero_more):hero_actions.append(widget)
+        for widget in (hero_install,hero_restore,hero_report,hero_more):hero_actions.append(widget)
         identity.append(hero_actions)
         # Windows GamePage: below 980 px the actions drop under the text, left-aligned.
         self.detail_hero_layout=(identity,heading,hero_actions)
@@ -13128,8 +13131,29 @@ class Window(Adw.ApplicationWindow):
             return False
         pages.connect('notify::visible-child-name',load_inventory)
 
-        notes_page=content['Notes'];record=game.get('test_record',{'status':'Untested','notes':''});choice=safe_dropdown(list(game_notes.STATES));choice.set_selected(list(game_notes.STATES).index(record.get('status','Untested')));choice.set_valign(Gtk.Align.CENTER)
-        group=Adw.PreferencesGroup(title='Your Notes');notes_page.append(group);item=row('Test Result','Bench excludes this game from bulk installation and repair.');item.add_suffix(choice);group.add(item)
+        # Overview › Testing: the result, a logged test session and a bug report. Notes holds only your notes.
+        record=game.get('test_record',{'status':'Untested','notes':''})
+        def save_record(toast,**changes):
+            current=dict(game.get('test_record') or record);current.update(changes)
+            if not self.options.demo:game_notes.save(self.service.config,game['game'],current)
+            game['test_record']=current;self.toast(toast)
+        testing=Adw.PreferencesGroup(title='Testing',description='How this game runs with rtxForge. Something wrong? Send a bug report.')
+        overview.append(testing)
+        choice=safe_dropdown(list(game_notes.STATES));choice.set_selected(list(game_notes.STATES).index(record.get('status','Untested')));choice.set_valign(Gtk.Align.CENTER)
+        choice.set_sensitive(not self.options.demo)
+        choice.connect('notify::selected',lambda widget,*_:list(game_notes.STATES)[widget.get_selected()]!=(game.get('test_record') or record).get('status','Untested')
+                       and save_record('Test result saved',status=list(game_notes.STATES)[widget.get_selected()]))
+        item=row('Test result','Bench keeps this game out of bulk installs and repairs.');item.add_suffix(choice);testing.add(item)
+        active=bool(record.get('active'))
+        test=button('Finish Test' if active else 'Start Test',lambda *_:self.record_test(game,active))
+        test.set_sensitive(not self.options.demo);test.set_valign(Gtk.Align.CENTER)
+        report=icon_button('Bug Report','dialog-warning-symbolic',lambda *_:self.prepare_beta_reports([game]),'overview-report')
+        report.set_valign(Gtk.Align.CENTER)
+        item=row('Test running' if active else 'Test session',
+                 'Play, then finish the test here to capture its logs.' if active else 'Start a test, play the game, then finish it to capture logs for a bug report.')
+        item.add_suffix(test);item.add_suffix(report);testing.add(item)
+        notes_page=content['Notes']
+        group=Adw.PreferencesGroup(title='Your Notes',description='Kept with this game in rtxForge. Included in bug reports when you choose.');notes_page.append(group)
         notes=Gtk.TextView(
             wrap_mode=Gtk.WrapMode.WORD_CHAR,
             height_request=82,
@@ -13142,9 +13166,7 @@ class Window(Adw.ApplicationWindow):
             notes
         )
         def save_notes(*_):
-            buf=notes.get_buffer();current=dict(record);current.update(status=list(game_notes.STATES)[choice.get_selected()],notes=buf.get_text(buf.get_start_iter(),buf.get_end_iter(),True))
-            if not self.options.demo:game_notes.save(self.service.config,game['game'],current)
-            game['test_record']=current;self.toast('Notes saved')
+            buf=notes.get_buffer();save_record('Notes saved',notes=buf.get_text(buf.get_start_iter(),buf.get_end_iter(),True))
         save_notes_button=button(
             'Save Notes',
             save_notes,
@@ -13152,30 +13174,6 @@ class Window(Adw.ApplicationWindow):
         )
         detail_action_rows['Notes'].append(
             save_notes_button
-        )
-
-        active=bool(
-            record.get('active')
-        )
-
-        test=button(
-            'Finish Test'
-            if active
-            else 'Start Test',
-            lambda *_:self.record_test(
-                game,
-                active,
-            ),
-        )
-        test.set_sensitive(
-            not self.options.demo
-        )
-
-        detail_action_rows['Notes'].append(
-            test
-        )
-        detail_action_rows['Notes'].append(
-            button('Prepare Beta Report',lambda *_:self.prepare_beta_reports([game]))
         )
         appearance=content['Appearance']
         appearance.append(self.artwork_preferences(game))
@@ -13835,7 +13833,7 @@ class Window(Adw.ApplicationWindow):
             game['test_record']=record;self.details(game)
             if not finish and game.get('source')=='Steam' and str(game.get('appid','')).isdigit():
                 Gio.AppInfo.launch_default_for_uri('steam://rungameid/'+str(game['appid']),None)
-            self.toast('Logs captured. Record your result and save notes.' if finish else 'Test started. Launch your game normally, then return here to finish.')
+            self.toast('Logs captured. Set the test result, or send a bug report if something went wrong.' if finish else 'Test started. Launch your game normally, then return here to finish.')
         self.start('Collecting test logs' if finish else 'Starting test record',lambda:(game_notes.finish if finish else game_notes.start)(self.service.config,game),done)
     def show_reports(self,*_,issue=None):
         d,b,f=self.open_panel('Library status & reports')
@@ -13845,13 +13843,13 @@ class Window(Adw.ApplicationWindow):
         b.append(label('Diagnostics separate saved settings from captured runtime evidence. Nothing is uploaded.','dim-label'))
         # Beta reports: one game, a few, or all of them, each its own report.
         picks=[];syncing={'busy':False}
-        everything=Gtk.CheckButton(label='Select all games for a beta report')
-        prepare=Gtk.Button(label='Prepare Beta Report',sensitive=False)
+        everything=Gtk.CheckButton(label='Select all games for a bug report')
+        prepare=Gtk.Button(label='Bug Report',sensitive=False)
         prepare.add_css_class('suggested-action')
         prepare.connect('clicked',lambda *_:self.prepare_beta_reports([g for p,g in picks if p.get_active()],issue))
         def counted(*_):
             chosen=sum(p.get_active() for p,_ in picks)
-            prepare.set_label(f'Prepare Beta Report · {chosen} game{"s" if chosen!=1 else ""}' if chosen else 'Prepare Beta Report')
+            prepare.set_label(f'Bug Report · {chosen} game{"s" if chosen!=1 else ""}' if chosen else 'Bug Report')
             prepare.set_sensitive(bool(chosen))
             if not syncing['busy']:
                 syncing['busy']=True;everything.set_active(bool(picks) and chosen==len(picks));syncing['busy']=False
@@ -13865,7 +13863,7 @@ class Window(Adw.ApplicationWindow):
         for game in self.games:
             record=game.get('test_record',{});item=row(game['name'],record.get('status','Untested')+(' · test in progress' if record.get('active') else ''))
             pick=Gtk.CheckButton(valign=Gtk.Align.CENTER)
-            pick.update_property([Gtk.AccessibleProperty.LABEL],['Include '+game['name']+' in the beta report'])
+            pick.update_property([Gtk.AccessibleProperty.LABEL],['Include '+game['name']+' in the bug report'])
             pick.connect('toggled',counted);item.add_prefix(pick);item.set_activatable_widget(pick);picks.append((pick,game))
             item.add_suffix(button('Diagnose',lambda _,g=game:self.show_diagnostics(g)));b.append(item)
         if issue:b.append(label(f'Choose the games whose logs belong with issue #{issue}.','dim-label'))
@@ -13922,14 +13920,14 @@ class Window(Adw.ApplicationWindow):
             shared=beta_report.context(getattr(self,'hardware_info',None) or {},APP_VERSION,channel,selected)
             # Reading install records hashes the managed files: off the main thread.
             return [beta_report.draft(game,shared,game.get('test_record')) for game in games]
-        flow=OperationFlow(self,'report',games,'Prepare Beta Report')
+        flow=OperationFlow(self,'report',games,'Bug Report')
         flow.show_working('Checking this computer and each game’s install record…')
-        self.start('Preparing beta reports',facts,lambda reports:self.beta_report_editor(flow,games,reports,issue))
+        self.start('Preparing bug reports',facts,lambda reports:self.beta_report_editor(flow,games,reports,issue))
 
     def beta_report_editor(self,flow,games,reports,issue=None):
         import beta_report
         if flow.closed:return
-        flow._title('Prepare Beta Report')
+        flow._title('Bug Report')
         body=flow._body()
         body.append(label('rtxForge filled in what it could check on this computer. Correct anything that’s wrong, '
                           'then choose what you saw in game. Installed files don’t show whether NR or MFG worked.','dim-label'))
@@ -14050,9 +14048,9 @@ class Window(Adw.ApplicationWindow):
             def work():
                 try:return beta_report.export(preview,beta_report.folder(self.service.config,documents))
                 except Exception as error:return {'error':str(error)}
-            self.start('Saving beta report',work,lambda result:self.beta_report_saved(flow,reports,result,issue))
+            self.start('Saving bug report',work,lambda result:self.beta_report_saved(flow,reports,result,issue))
         flow.on_confirm=save
-        flow._title('Review Beta Report')
+        flow._title('Review Bug Report')
         flow.primary.set_visible(True);flow.primary.set_label('Save Report');flow.primary.set_sensitive(not self.options.demo)
         flow._page('review',scroll,width=760)
 
@@ -14084,7 +14082,7 @@ class Window(Adw.ApplicationWindow):
                     if not link['complete']:
                         self.copy_text(beta_report.text(report),'The report was too long for the link. The full text is copied: paste it into the form.')
                     Gio.AppInfo.launch_default_for_uri(link['url'],None)
-                item=row(report['fields'].get('game') or report['name'],'Opens a prefilled beta report. Attach the ZIP there before you submit.')
+                item=row(report['fields'].get('game') or report['name'],'Opens a prefilled bug report. Attach the ZIP there before you submit.')
                 item.add_suffix(button('Copy Text',lambda *_,r=report:self.copy_text(beta_report.text(r),'Report copied')))
                 item.add_suffix(button('Open Form',opened))
                 share.add(item)
@@ -14093,7 +14091,7 @@ class Window(Adw.ApplicationWindow):
                           'The ZIP stays in your Reports folder either way.','dim-label'))
         scroll=Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,vexpand=True);scroll.set_child(body)
         flow.dialog.set_can_close(True)
-        flow._title('Beta Report')
+        flow._title('Bug Report')
         flow.cancel_button.set_visible(False)
         flow.primary.set_visible(True);flow.primary.set_label('Done');flow.primary.set_sensitive(True)
         flow._page('done',scroll,width=640)
@@ -14111,7 +14109,7 @@ class Window(Adw.ApplicationWindow):
         Gtk.FileLauncher.new(Gio.File.new_for_path(str(path))).open_containing_folder(self,None,opened)
 
     def save_report_copy(self,path):
-        chooser=Gtk.FileDialog(title='Save Beta Report',initial_name=path.name)
+        chooser=Gtk.FileDialog(title='Save Bug Report',initial_name=path.name)
         def chosen(dialog,result):
             try:target=dialog.save_finish(result)
             except GLib.Error:return
@@ -15044,10 +15042,11 @@ class Window(Adw.ApplicationWindow):
             layout_row
         )
 
-        steam_launcher=Adw.PreferencesGroup(title='Steam Library')
+        # First in Gaming Mode, in the accent color until rtxForge is in Steam: that's how Gaming Mode opens it with a controller.
+        steam_launcher=Adw.PreferencesGroup(title='Play from Steam',description='Add rtxForge to your Steam library to open it from Gaming Mode with a controller.')
         added=self.steam_shortcut_added()
-        steam_shortcut=row('rtxForge is in Steam' if added else 'Add rtxForge to Steam','Manage this app’s shortcut in your selected Steam profile.')
-        steam_action=button('Remove from Steam' if added else 'Add to Steam',self.toggle_rtxforge_in_steam)
+        steam_shortcut=row('rtxForge is in Steam' if added else 'Add rtxForge to Steam','You review the shortcut and artwork first.')
+        steam_action=button('Remove from Steam' if added else 'Add to Steam',self.toggle_rtxforge_in_steam,None if added else 'suggested-action')
         steam_action.set_sensitive(not self.options.demo);steam_action.set_valign(Gtk.Align.CENTER)
         steam_shortcut.add_suffix(steam_action);steam_launcher.add(steam_shortcut)
         self.steam_shortcut_row=steam_shortcut;self.steam_shortcut_button=steam_action
@@ -15209,6 +15208,8 @@ class Window(Adw.ApplicationWindow):
             if host.get(key):system.add(row(title,host[key]))
         system.add(row('Compatibility',host.get('reason','Not checked')))
         app=Adw.PreferencesGroup(title='App and updates');app.add(row('rtxForge',f'Version {APP_VERSION}'))
+        item=row('Report a bug','Choose games, say what happened and review a redacted ZIP before anything is saved.')
+        action=icon_button('Bug Report','dialog-warning-symbolic',self.show_reports);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);app.add(item)
 
         if os.environ.get('APPIMAGE'):
             item=row(
@@ -15255,7 +15256,7 @@ class Window(Adw.ApplicationWindow):
                'System':'computer-symbolic','Recovery':'edit-undo-symbolic','About':'help-about-symbolic'}
         sections=[('Graphics',[graphics,defaults]),('Overlay',overlay_groups),('Global',global_groups),
                   ('Appearance',[appearance,scale_navigation,window_style]),('Library',[library_layout,artwork,steam_artwork,library_reports]),
-                  ('Gaming Mode',[controls,gaming_theme,controller_options,steam_launcher]),('System',[system]),('Recovery',[app_storage,recovery]),('About',[app])]
+                  ('Gaming Mode',[steam_launcher,controls,gaming_theme,controller_options]),('System',[system]),('Recovery',[app_storage,recovery]),('About',[app])]
         self.settings_pages={}
         for section,groups in sections:
             page=Adw.PreferencesPage(title=section,icon_name=icons[section],name=section)
@@ -16708,7 +16709,7 @@ def main():
     parser.add_argument(
         'link',
         nargs='?',
-        help='rtxforge://support/logs from the website: opens beta reports.',
+        help='rtxforge://support/logs from the website: opens bug reports.',
     )
     options=parser.parse_args()
     # Links come from web pages: only the exact report link is acted on.

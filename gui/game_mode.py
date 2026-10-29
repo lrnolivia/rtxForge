@@ -2269,7 +2269,7 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         return grid
 
     def featured_steam(self):
-        """First in Settings, in the accent color, until rtxForge is in Steam: that's how Gaming Mode opens it with a controller."""
+        """First in Settings › Gaming Mode, in the accent color, until rtxForge is in Steam: that's how Gaming Mode opens it with a controller."""
         owner = self.owner
         if getattr(owner.options, 'demo', False) or not hasattr(owner, 'steam_shortcut_added') or owner.steam_shortcut_added():
             return []
@@ -2282,8 +2282,7 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
 
     def settings_groups(self, section, rows):
         if section == 'Graphics':
-            return [*self.featured_steam(),
-                    ('Install defaults', 'Applied to new installs; game changes are reviewed first.', rows[:3]),
+            return [('Install defaults', 'Applied to new installs; game changes are reviewed first.', rows[:3]),
                     ('Existing features', 'Register compatible feature packages already installed.', rows[3:])]
         if section == 'Appearance':
             return [('Theme', None, rows[:3]), ('Card surfaces', 'Frosted Game Mode cards update immediately.', rows[3:])]
@@ -2291,7 +2290,8 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
             return [('Library view', None, rows[:1]), ('Artwork and game information', None, rows[1:4]),
                     ('Steam integration', None, rows[4:])]
         if section == 'Gaming Mode':
-            return [('Interface', 'Mouse, keyboard, and controller input keep your chosen interface.', rows[:1]),
+            return [*self.featured_steam(),
+                    ('Interface', 'Mouse, keyboard, and controller input keep your chosen interface.', rows[:1]),
                     ('Layout and labels', None, rows[1:4]), ('Controller', None, rows[4:])]
         if section == 'Overlay':
             # Panel through shortcut, then OptiScaler's three, then ReShade, Vulkan and updates.

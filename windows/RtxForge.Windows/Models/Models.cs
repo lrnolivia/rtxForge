@@ -71,8 +71,24 @@ public sealed class Game
     public bool Managed => EngineRow?["managed"]?.GetValue<bool>() == true;
     public bool OfflineOnly => EngineRow?["offline_only"]?.GetValue<bool>() == true;
     public bool OfflineLaunchAvailable => EngineRow?["offline_launch_available"]?.GetValue<bool>() == true;
-    public string ProviderCandidatesText => string.Join("\n", (EngineRow?["provider_candidates"] as JsonArray ?? [])
-        .OfType<JsonObject>().Select(p => $"{p["name"]}: {p["reason"]}"));
+    /// <summary>The package route this game uses (or would install with), then any other compatible routes. Incompatible ones aren't listed.</summary>
+    public string ProviderCandidatesText
+    {
+        get
+        {
+            var all = (EngineRow?["provider_candidates"] as JsonArray ?? []).OfType<JsonObject>().ToList();
+            static bool Flag(JsonObject p, string key) => p[key] is JsonValue v && v.TryGetValue<bool>(out var on) && on;
+            var switchFirst = Installed && Managed;
+            var id = switchFirst ? RuntimeProvider : EngineRow?["install_provider"]?.ToString() ?? EngineRow?["recommended_provider"]?.ToString();
+            var used = all.FirstOrDefault(p => p["id"]?.ToString() == id) ?? all.FirstOrDefault(p => Flag(p, "compatible") && Flag(p, "ready"));
+            if (used is null) return "";
+            var others = all.Where(p => p != used && Flag(p, "compatible")).Select(p => p["name"]?.ToString() ?? "").ToList();
+            var text = $"{used["name"]}: {used["reason"]}";
+            if (others.Count == 0) return text;
+            var names = others.Count == 1 ? others[0] : string.Join(", ", others.SkipLast(1)) + " and " + others[^1];
+            return text + "\nAlso compatible: " + names + (switchFirst ? ". Restore Original Files first to switch." : ".");
+        }
+    }
     public bool DynamicMfgAvailable => RuntimeProvider == "skynizz" && EngineRow?["dynamic_mfg_available"] is JsonValue flag
         && flag.TryGetValue<bool>(out var available) && available;
     public string DynamicMfgDetail => EngineRow?["dynamic_mfg_detail"] is JsonValue detail && detail.TryGetValue<string>(out var text) ? text : "";

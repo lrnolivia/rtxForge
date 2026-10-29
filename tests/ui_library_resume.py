@@ -75,7 +75,7 @@ def layout_and_settings():
             yield from descendants(child)
             child=child.get_next_sibling()
     groups=list(descendants(w.dialog))
-    assert {'Steam Library','Steam integration','App and updates'} <= {item.get_title() for item in groups if isinstance(item,ui.Adw.PreferencesGroup)}
+    assert {'Play from Steam','Steam integration','App and updates'} <= {item.get_title() for item in groups if isinstance(item,ui.Adw.PreferencesGroup)}
     captions={item.get_label() for item in groups if isinstance(item,ui.ActionButton)}
     assert {'Add to Steam','Sync','Connect','Choose'} <= captions
     interface=next(item for item in groups if isinstance(item,ui.Adw.ComboRow) and item.get_title()=='Interface')
@@ -83,11 +83,15 @@ def layout_and_settings():
     assert not any(isinstance(item,ui.Adw.ComboRow) and item.get_title()=='Startup Interface' for item in groups)
     w.input_stack.set_visible_child_name('couch')
     w.keyboard_input();assert w.input_stack.get_visible_child_name()=='couch'
-    steam_group=next(item for item in groups if isinstance(item,ui.Adw.PreferencesGroup) and item.get_title()=='Steam Library')
+    steam_group=next(item for item in groups if isinstance(item,ui.Adw.PreferencesGroup) and item.get_title()=='Play from Steam')
     assert steam_group.get_parent() is not None
     w.steam_shortcut_added=lambda:True
     w.refresh_steam_shortcut_action()
     assert w.steam_shortcut_button.get_label()=='Remove from Steam'
+    assert not w.steam_shortcut_button.has_css_class('suggested-action')
+    w.steam_shortcut_added=lambda:False
+    w.refresh_steam_shortcut_action()
+    assert w.steam_shortcut_button.has_css_class('suggested-action')
     w.steam_shortcut_added=lambda:False
     w.show_about()
     assert w.dialog.get_content_width()==420

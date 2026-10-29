@@ -149,6 +149,7 @@ public sealed partial class GamePage : Page
         }
         InstallButton.IsEnabled = (!game.Blocked || game.AdoptionAvailable) && !shell.Busy;
         RestoreButton.IsEnabled = game.Installed && !game.AdoptionAvailable && !shell.Busy;
+        BugReportButton.IsEnabled = !shell.Service.IsPreview;
         AdoptionItem.Visibility = game.AdoptionAvailable ? Visibility.Visible : Visibility.Collapsed;
         OfflineLaunchItem.Visibility = game.OfflineLaunchAvailable ? Visibility.Visible : Visibility.Collapsed;
         UpdateDlssItem.IsEnabled = !game.Blocked;
@@ -178,6 +179,7 @@ public sealed partial class GamePage : Page
 
     void OnInstall(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("install", [game]);
     void OnRestore(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("uninstall", [game]);
+    void OnBugReport(object sender, RoutedEventArgs e) => _ = shell.PrepareBetaReportsAsync([game]);
     void OnUpdateDlss(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("update-dlss", [game]);
     void OnAdoption(object sender, RoutedEventArgs e) => _ = shell.ReviewAdoptionAsync([game]);
     void OnLaunchOffline(object sender, RoutedEventArgs e) => _ = shell.LaunchOfflineAsync(game);
@@ -228,7 +230,8 @@ public sealed partial class GamePage : Page
                     });
                 var overviewFacts = GameOverview.Facts(g);
                 if (g.ProviderCandidatesText.Length > 0)
-                    PageHost.Children.Add(Prefs.Row("Install routes", g.ProviderCandidatesText));
+                    PageHost.Children.Add(Prefs.Row("Install route", g.ProviderCandidatesText));
+                PageHost.Children.Add(TestingGroup(g));
                 var facts = new PresetColumns(280, overviewFacts.Count > 3 ? 4 : 3) { ColumnSpacing = 12, RowSpacing = 12, Margin = new Thickness(0, 20, 0, 0) };
                 foreach (var fact in overviewFacts)
                 {
@@ -366,27 +369,13 @@ public sealed partial class GamePage : Page
                 break;
 
             case "Notes":
-                var notes = new PreferencesGroup("Your Notes", "Kept with this game in rtxForge. Included in beta reports when you choose.");
-                var noteCards = new PresetColumns(420, 2) { ColumnSpacing = 12, RowSpacing = 12 };
-                var testCard = new StackPanel { Spacing = 12 };
-                string[] states = ["Untested", "Working", "Problem", "Bench"];
-                var (statusRow, status) = Prefs.ComboRow("Test Result", "Bench excludes this game from bulk installation and repair.", states,
-                    Math.Max(0, Array.IndexOf(states, g.TestStatus)), "");
-                testCard.Children.Add(statusRow);
+                // Only your notes: testing and bug reports live on Overview and in the header.
+                var notes = new PreferencesGroup("Your Notes", "Kept with this game in rtxForge. Included in bug reports when you choose.");
                 var text = new TextBox { Text = g.Notes, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 180, PlaceholderText = "What worked, what didn't, settings you used" };
-                noteCards.Children.Add(DetailSurface(text));
+                notes.Add(DetailSurface(text));
                 var noteActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
-                var test = Prefs.ActionButton(g.TestActive ? "Finish Test" : "Start Test", async (_, _) => await shell.RecordTestAsync(g));
-                test.IsEnabled = !shell.Service.IsPreview;
-                noteActions.Children.Add(test);
-                // The shared beta report (as on Linux): untested games and failed installs can be reported too.
-                var report = Prefs.ActionButton("Prepare Beta Report", async (_, _) => await shell.PrepareBetaReportsAsync([g]));
-                report.IsEnabled = !shell.Service.IsPreview;
-                noteActions.Children.Add(report);
-                noteActions.Children.Add(Prefs.ActionButton("Save Notes", async (_, _) => await shell.SaveNotesAsync(g, states[Math.Max(0, status.SelectedIndex)], text.Text), accent: true));
-                testCard.Children.Add(noteActions);
-                noteCards.Children.Add(DetailSurface(testCard));
-                notes.Add(noteCards);
+                noteActions.Children.Add(Prefs.ActionButton("Save Notes", async (_, _) => await shell.SaveNotesAsync(g, g.TestStatus, text.Text), accent: true));
+                notes.Add(noteActions);
                 PageHost.Children.Add(notes);
                 break;
 
@@ -394,6 +383,33 @@ public sealed partial class GamePage : Page
                 BuildAppearance(g);
                 break;
         }
+    }
+
+    /// <summary>Overview's testing card: the result, a logged test session and a bug report (the shared beta_report flow, as on Linux).</summary>
+    PreferencesGroup TestingGroup(Game g)
+    {
+        var testing = new PreferencesGroup("Testing", "How this game runs with rtxForge. Something wrong? Send a bug report.");
+        string[] states = ["Untested", "Working", "Problem", "Bench"];
+        var (statusRow, status) = Prefs.ComboRow("Test result", "Bench keeps this game out of bulk installs and repairs.", states,
+            Math.Max(0, Array.IndexOf(states, g.TestStatus)), "");
+        status.IsEnabled = !shell.Service.IsPreview;
+        status.SelectionChanged += async (_, _) =>
+        {
+            if (states[Math.Max(0, status.SelectedIndex)] is var chosen && chosen != g.TestStatus)
+                await shell.SaveNotesAsync(g, chosen, g.Notes, "Test result saved");
+        };
+        testing.Add(statusRow);
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        var test = Prefs.ActionButton(g.TestActive ? "Finish Test" : "Start Test", async (_, _) => await shell.RecordTestAsync(g));
+        test.IsEnabled = !shell.Service.IsPreview;
+        actions.Children.Add(test);
+        var report = Prefs.ActionButton("Bug Report", async (_, _) => await shell.PrepareBetaReportsAsync([g]), glyph: "");
+        report.IsEnabled = !shell.Service.IsPreview;
+        actions.Children.Add(report);
+        testing.Add(Prefs.Row(g.TestActive ? "Test running" : "Test session",
+            g.TestActive ? "Play, then finish the test here to capture its logs." : "Start a test, play the game, then finish it to capture logs for a bug report.",
+            actions, ""));
+        return testing;
     }
 
     static Border DetailSurface(UIElement content) => new()
@@ -508,10 +524,11 @@ public sealed partial class GamePage : Page
         // padding on both sides (no spacing for an empty poster or actions column).
         Identity.ColumnSpacing = phone ? 0 : 20;
         HeroBody.ColumnSpacing = width < 980 ? 0 : 20;
-        // Phone: Install Features and Restore Files share the row equally beside a square More.
-        var half = phone ? Math.Max(0, Math.Floor((width - side * 2 - Identity.ColumnSpacing - HeroBody.ColumnSpacing - 48 - HeroActions.Spacing * 2 - 2) / 2)) : double.NaN;
+        // Phone: Install Features and Restore Files share the row equally beside square Bug Report and More.
+        var half = phone ? Math.Max(0, Math.Floor((width - side * 2 - Identity.ColumnSpacing - HeroBody.ColumnSpacing - 48 * 2 - HeroActions.Spacing * 3 - 2) / 2)) : double.NaN;
         InstallButton.Width = RestoreButton.Width = half;
-        MoreButton.Width = phone ? 48 : double.NaN;
+        MoreButton.Width = BugReportButton.Width = phone ? 48 : double.NaN;
+        BugReportText.Visibility = phone ? Visibility.Collapsed : Visibility.Visible;
         Sections.Margin = new Thickness(side - 8, 8, side, 0);
         PageHost.Padding = new Thickness(side, 0, side, 0);
 

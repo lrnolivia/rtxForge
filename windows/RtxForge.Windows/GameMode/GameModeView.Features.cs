@@ -359,7 +359,7 @@ public sealed partial class GameModeView
         games ??= shell.Games;
         var included = new HashSet<Game>(games);
         var content = new StackPanel { Spacing = t.Px(12) };
-        content.Children.Add(ui.P("Choose one, a few or all games for a beta report. You review everything before it's saved. Nothing is uploaded."));
+        content.Children.Add(ui.P("Choose one, a few or all games for a bug report. You review everything before it's saved. Nothing is uploaded."));
         var rows = new StackPanel { Spacing = t.Px(8) };
         var choices = new List<(Game Game, Button Button)>();
         bool logs = false, notes = false;
@@ -397,16 +397,16 @@ public sealed partial class GameModeView
         notesButton = ui.Button("Include notes: Off", () => { notes = !notes; notesButton!.Content = "Include notes: " + (notes ? "On" : "Off"); }, GmKind.Card, .85);
         content.Children.Add(logsButton); content.Children.Add(notesButton);
         var close = ui.Button("Cancel", CloseModal, GmKind.Card, .9);
-        ShowModal("Prepare beta report", content, [review, close], CloseModal, 1100, close);
+        ShowModal("Bug Report", content, [review, close], CloseModal, 1100, close);
     }
 
     /// <summary>The shared beta report (scripts/beta_report.py) with controller-sized fields: choices cycle, text uses the on-screen keyboard.</summary>
     async Task EditBetaReportsAsync(IReadOnlyList<Game> selected, bool logs, bool notes)
     {
-        if (shell.Service.IsPreview) { Toast("Beta reports are disabled in preview mode."); return; }
+        if (shell.Service.IsPreview) { Toast("Bug reports are disabled in preview mode."); return; }
         BetaReportDraft draft;
         try { draft = await shell.Service.DraftReportsAsync(selected, MainWindow.InstallFormat(), ""); }
-        catch (InvalidOperationException error) { ShowDone(false, "Prepare beta report", error.Message); return; }
+        catch (InvalidOperationException error) { ShowDone(false, "Bug Report", error.Message); return; }
         var ids = draft.Reports.Select(r => r.Id).ToList();
         var edits = draft.Reports.ToDictionary(r => r.Id, _ => new Dictionary<string, string>());
         var values = draft.Reports.ToDictionary(r => r.Id, r => r.Fields.ToDictionary(f => f.Key, f => f.Value));
@@ -454,20 +454,20 @@ public sealed partial class GameModeView
         preview = ui.Button("Preview report", async () =>
         {
             CloseModal();
-            var result = await RunReviewAsync("Review Beta Report", () => shell.Service.PreviewReportAsync(ids, edits, logs, notes, documents));
+            var result = await RunReviewAsync("Review Bug Report", () => shell.Service.PreviewReportAsync(ids, edits, logs, notes, documents));
             if (result?.Path is { } path && result.Errors.Count == 0) await ShowSavedBetaReportAsync(ids, path);
         }, GmKind.Primary, .9);
         Refresh();
         var cancel = ui.Button("Cancel", CloseModal, GmKind.Card, .9);
         var scroll = new ScrollViewer { Content = content, MaxHeight = t.Px(t.Compact ? 420 : 640) }.With(s => { s.IsTabStop = true; ui.Focusable(s); });
-        ShowModal("Prepare beta report", scroll, [preview, cancel], CloseModal, 1200, preview);
+        ShowModal("Bug Report", scroll, [preview, cancel], CloseModal, 1200, preview);
     }
 
     async Task ShowSavedBetaReportAsync(IReadOnlyList<string> ids, string path)
     {
         BetaReportLinks links;
         try { links = await shell.Service.ReportLinksAsync(ids, null, path); }
-        catch (InvalidOperationException error) { ShowDone(false, "Beta report saved", path + "\n" + error.Message); return; }
+        catch (InvalidOperationException error) { ShowDone(false, "Bug report saved", path + "\n" + error.Message); return; }
         var content = new StackPanel { Spacing = t.Px(12) };
         content.Children.Add(ui.P("Saved " + path + ". Open a prefilled form and attach the ZIP there before you submit. Attaching uploads it, and files on this repository are public.", 0.9));
         foreach (var link in links.Links)
@@ -478,7 +478,7 @@ public sealed partial class GameModeView
             }, GmKind.Card, .85));
         var folder = ui.Button("Open folder", () => System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{path}\""), GmKind.Card, .9);
         var done = ui.Button("Done", CloseModal, GmKind.Primary, .9);
-        ShowModal("Beta report saved", content, [folder, done], CloseModal, 1100, done);
+        ShowModal("Bug report saved", content, [folder, done], CloseModal, 1100, done);
     }
 
     async Task DiagnoseAsync(Game g)
@@ -564,9 +564,9 @@ public sealed partial class GameModeView
 
     // ---------- Details › Notes ----------
 
-    async Task SaveNotesAsync(Game g, string status, string notes)
+    async Task SaveNotesAsync(Game g, string status, string notes, string saved = "Notes saved.")
     {
-        try { await shell.Service.SaveNotesAsync(g, status, notes); Toast("Notes saved."); }
+        try { await shell.Service.SaveNotesAsync(g, status, notes); Toast(saved); }
         catch (InvalidOperationException error) { ShowDone(false, "Save notes", error.Message); }
     }
 
@@ -608,7 +608,7 @@ public sealed partial class GameModeView
         }
         catch (InvalidOperationException error) { ShowDone(false, finish ? "Finish Test" : "Start Test", error.Message); return; }
         if (!finish && g.Library == "Steam" && g.AppId is { } appid && appid.All(char.IsDigit)) MainWindow.OpenUri("steam://rungameid/" + appid);
-        Toast(finish ? "Logs captured. Record your result and save notes." : "Test started. Launch your game normally, then return here to finish.");
+        Toast(finish ? "Logs captured. Set the test result, or send a bug report if something went wrong." : "Test started. Launch your game normally, then return here to finish.");
         Render(keepFocus: true);
     }
 

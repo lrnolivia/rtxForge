@@ -157,7 +157,16 @@ def bundled_bridge(selection='latest'):
     if record.get('panel_candidate'):
         panel = json.loads((ROOT / 'providers/skynizz-bridge/panel-candidate.json').read_text(encoding='utf-8'))
         placement = json.loads((ROOT / 'providers/skynizz-bridge/placement-candidate.json').read_text(encoding='utf-8'))
-        matches = (record.get('bridge_id') == panel['id'] and record.get('base_bridge_id') == spec['id']
+        bridge_id, base_id = panel['id'], spec['id']
+        scoped = True
+        if record.get('inzoi_late_overlay'):
+            inzoi = json.loads((ROOT / 'providers/skynizz-bridge/inzoi-overlay-candidate.json').read_text(encoding='utf-8'))
+            bridge_id, base_id = inzoi['id'], panel['id']
+            scoped = (inzoi['base_bridge_id'] == panel['id'] and inzoi.get('default_enabled') is True
+                      and record.get('inzoi_overlay_scope') == inzoi['executable']
+                      and record.get('inzoi_patch_sha256') == inzoi['patch_sha256']
+                      and record.get('inzoi_runtime_fallback') == inzoi['runtime_fallback'])
+        matches = (scoped and record.get('bridge_id') == bridge_id and record.get('base_bridge_id') == base_id
                    and record.get('base_patch_sha256') == spec['patch_sha256']
                    and panel['base_bridge_id'] == placement['id']
                    and record['patch_sha256'] == placement['patch_sha256']
@@ -229,7 +238,8 @@ def load_payload(archive, record):
             marker = source.read('DLSS5-Optimised/rtxforge-bridge.json')
             t.need(len(marker) < 128 * 1024, 'Bridge receipt exceeds the limit')
             receipt = json.loads(marker.decode('utf-8-sig'))
-            t.need(all(receipt.get(key) == record.get(key) for key in ('commit','patch_sha256','upstream','mfg_source','bridge_id')),
+            t.need(all(receipt.get(key) == record.get(key) for key in ('commit','patch_sha256','upstream','mfg_source','bridge_id',
+                       'inzoi_late_overlay','inzoi_overlay_scope','inzoi_patch_sha256','inzoi_runtime_fallback')),
                    'Combined bridge payload/source receipt mismatch')
     t.need(set(found) == set(FILES), 'Unrecognized Skynizz payload layout; required loader, INI and NR forwarder must be present')
     t.need(amd64(found['OptiScaler.dll']) and amd64(found['nvngx.dll_dlssnr.dll']), 'Skynizz requires AMD64 PE payloads')
@@ -242,9 +252,10 @@ def load_payload(archive, record):
     }
 
 
-def startup_overlay_disabled(game):
+def startup_overlay_disabled(game, release=None):
     return game is not None and (str(game.appid) == '2456740'
-                                 or Path(game.exe or '').name.casefold() == 'inzoi-win64-shipping.exe')
+                                 or Path(game.exe or '').name.casefold() == 'inzoi-win64-shipping.exe') \
+           and not (release or {}).get('inzoi_late_overlay')
 
 
 # DLSS render presets: OptiScaler applies RenderPresetForAll only with RenderPresetOverride on.
@@ -388,7 +399,10 @@ def configure(e, source, saved=None, mode='nr-only', mfg_multiplier='auto', game
     if getattr(e, 'OVERLAY_UI', None) is not None:
         import overlay_policy
         text = overlay_policy.optiscaler(text, e.OVERLAY_UI, e.set_ini_value)
-    if startup_overlay_disabled(game):
+    release = getattr(e, 'Y4MY_PROVIDER', {})
+    if startup_overlay_disabled(game) and release.get('inzoi_late_overlay'):
+        text = e.set_ini_value(text, 'Menu', 'OverlayMenu', 'true')
+    elif startup_overlay_disabled(game, release):
         # The swapchain overlay hangs inZOI before NR evaluation. The classic
         # menu path allows startup and leaves the native FG and NR routes on.
         text = e.set_ini_value(text, 'Menu', 'OverlayMenu', 'false')

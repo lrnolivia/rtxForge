@@ -1,17 +1,24 @@
 diff --git a/OptiScaler/dllmain.cpp b/OptiScaler/dllmain.cpp
 --- a/OptiScaler/dllmain.cpp
 +++ b/OptiScaler/dllmain.cpp
-@@ -1527,6 +1527,15 @@
+@@ -8,6 +8,7 @@
+ #include "DllNames.h"
+ #include "BuildInfo.h"
+ #include "misc/GameConfigs.h"
++#include "ForgeInzoiOverlay.h"
+ 
+ #include "proxies/Dxgi_Proxy.h"
+ #include "proxies/Kernel32_Proxy.h"
+@@ -1527,6 +1528,14 @@
  
          PrepareLogger();
  
-+        // Isolated inZOI candidate: opt in for this launch only; never persist the fallback change.
-+        wchar_t lateOverlay[2] = {};
-+        if (GetEnvironmentVariableW(L"RTXFORGE_INZOI_LATE_OVERLAY", lateOverlay, 2) == 1 && lateOverlay[0] == L'1' &&
-+            _wcsicmp(Util::ExePath().filename().c_str(), L"inZOI-Win64-Shipping.exe") == 0)
++        const auto panelMode = ForgeInzoiOverlay::Current(Util::ExePath().filename().wstring());
++        if (panelMode != ForgeInzoiOverlay::Mode::Unchanged)
 +        {
-+            Config::Instance()->OverlayMenu.set_volatile_value(true);
-+            LOG_INFO("rtxForge inZOI late-overlay candidate enabled for this launch");
++            const bool late = panelMode == ForgeInzoiOverlay::Mode::LateFrame;
++            Config::Instance()->OverlayMenu.set_volatile_value(late);
++            LOG_INFO("rtxForge inZOI panel: {0}", late ? "automatic late frame" : "compatibility fallback");
 +        }
 +
          spdlog::warn("{0} loaded", BuildInfo::ProductName());
@@ -20,17 +27,23 @@ diff --git a/OptiScaler/dllmain.cpp b/OptiScaler/dllmain.cpp
 diff --git a/OptiScaler/menu/menu_overlay_dx.cpp b/OptiScaler/menu/menu_overlay_dx.cpp
 --- a/OptiScaler/menu/menu_overlay_dx.cpp
 +++ b/OptiScaler/menu/menu_overlay_dx.cpp
-@@ -27,6 +27,9 @@
+@@ -5,6 +5,7 @@
+ #include <Util.h>
+ #include <Logger.h>
+ #include <Config.h>
++#include "../ForgeInzoiOverlay.h"
+ 
+ #include <imgui/imgui_impl_dx11.h>
+ #include <imgui/imgui_impl_dx12.h>
+@@ -27,6 +28,7 @@
  static ID3D12DescriptorHeap* g_pd3dSrvDescHeap = nullptr;
  static DescriptorHeapAllocator g_pd3dSrvDescHeapAlloc;
  static ID3D12CommandQueue* g_pd3dCommandQueue = nullptr;
-+// Texture creation waits for its upload to finish. Keep those waits off the game queue:
-+// Present can be called while the game queue itself is waiting for presentation.
 +static ID3D12CommandQueue* g_fontUploadQueue = nullptr;
  static ID3D12GraphicsCommandList* g_pd3dCommandList = nullptr;
  static ID3D12CommandAllocator* g_commandAllocators[NUM_BACK_BUFFERS] = {};
  static ID3D12Resource* g_mainRenderTargetResource[NUM_BACK_BUFFERS] = {};
-@@ -144,6 +147,7 @@
+@@ -144,6 +146,7 @@
          }
  
          SAFE_RELEASE(g_pd3dCommandList);
@@ -38,26 +51,31 @@ diff --git a/OptiScaler/menu/menu_overlay_dx.cpp b/OptiScaler/menu/menu_overlay_
  
          if (g_pd3dCommandQueue != nullptr)
              g_pd3dCommandQueue = nullptr;
-@@ -396,9 +400,21 @@
+@@ -396,9 +399,26 @@
          DXGI_SWAP_CHAIN_DESC scDesc;
          pSwapChain->GetDesc(&scDesc);
  
-+        D3D12_COMMAND_QUEUE_DESC uploadDesc = {};
-+        uploadDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-+        result = device->CreateCommandQueue(&uploadDesc, IID_PPV_ARGS(&g_fontUploadQueue));
-+        if (FAILED(result))
++        // inZOI can wait for Present on its game queue. Upload its ImGui
++        // textures separately; every other executable keeps the original queue.
++        if (ForgeInzoiOverlay::Current(Util::ExePath().filename().wstring()) == ForgeInzoiOverlay::Mode::LateFrame)
 +        {
-+            LOG_ERROR("CreateCommandQueue(font upload): {0:X}", (unsigned long) result);
-+            MenuOverlayBase::HideMenu();
-+            CleanupRenderTargetDx12(true);
-+            pSwapChain->Release();
-+            return;
++            D3D12_COMMAND_QUEUE_DESC uploadDesc = {};
++            uploadDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
++            result = device->CreateCommandQueue(&uploadDesc, IID_PPV_ARGS(&g_fontUploadQueue));
++            if (FAILED(result))
++            {
++                LOG_ERROR("CreateCommandQueue(inZOI font upload): {0:X}", (unsigned long) result);
++                MenuOverlayBase::HideMenu();
++                CleanupRenderTargetDx12(true);
++                pSwapChain->Release();
++                return;
++            }
 +        }
 +
          ImGui_ImplDX12_InitInfo initInfo {};
          initInfo.Device = device;
 -        initInfo.CommandQueue = (ID3D12CommandQueue*) currentSCCommandQueue;
-+        initInfo.CommandQueue = g_fontUploadQueue;
++        initInfo.CommandQueue = g_fontUploadQueue ? g_fontUploadQueue : (ID3D12CommandQueue*) currentSCCommandQueue;
          initInfo.NumFramesInFlight = NUM_BACK_BUFFERS;
          initInfo.RTVFormat = scDesc.BufferDesc.Format;
          initInfo.DSVFormat = DXGI_FORMAT_UNKNOWN;

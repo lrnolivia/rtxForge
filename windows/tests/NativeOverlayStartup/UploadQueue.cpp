@@ -4,6 +4,7 @@
 #include <wrl/client.h>
 #include <iostream>
 #include <stdexcept>
+#include "../../../providers/skynizz-bridge/ForgeInzoiOverlay.h"
 
 using Microsoft::WRL::ComPtr;
 void Need(HRESULT hr) { if (FAILED(hr)) throw std::runtime_error("Direct3D call failed"); }
@@ -13,6 +14,16 @@ int main()
     ComPtr<ID3D12Fence> blocked;
     try
     {
+        using Mode = ForgeInzoiOverlay::Mode;
+        if (ForgeInzoiOverlay::Choose(L"inZOI-Win64-Shipping.exe", false) != Mode::LateFrame
+            || ForgeInzoiOverlay::Choose(L"INZOI-WIN64-SHIPPING.EXE", false) != Mode::LateFrame
+            || ForgeInzoiOverlay::Choose(L"inZOI-Win64-Shipping.exe", true) != Mode::Compatibility)
+            throw std::runtime_error("inZOI automatic/fallback policy failed");
+        for (const auto name : {L"Control_DX12.exe", L"Game-Win64-Shipping.exe", L"FarCry5.exe", L"inZOI.exe"})
+            for (const bool compatibility : {false, true})
+                if (ForgeInzoiOverlay::Choose(name, compatibility) != Mode::Unchanged)
+                    throw std::runtime_error("Another game was assigned the inZOI renderer policy");
+        std::cout << "PASS: automatic late-frame and explicit compatibility modes are scoped only to inZOI.\n";
         ComPtr<ID3D12Device> device;
         Need(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&device)));
         D3D12_COMMAND_QUEUE_DESC desc = {};

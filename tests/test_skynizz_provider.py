@@ -154,6 +154,57 @@ class SkynizzPolicyTest(unittest.TestCase):
         with self.assertRaisesRegex(transactions.Refusal,'receipt mismatch'):
             provider.load_payload(self.archive,record | {'patch_sha256':'c'*64})
 
+    def test_inzoi_capability_cannot_be_added_to_an_older_archive(self):
+        record=bridge_fixture(self.archive)
+        for key,value in {'inzoi_late_overlay':True, 'inzoi_overlay_scope':'inZOI-Win64-Shipping.exe',
+                          'inzoi_patch_sha256':'d'*64, 'inzoi_runtime_fallback':'RTXFORGE_INZOI_LATE_OVERLAY=0'}.items():
+            with self.subTest(key=key), self.assertRaisesRegex(transactions.Refusal,'receipt mismatch'):
+                provider.load_payload(self.archive,record | {key:value})
+
+    def test_normal_panel_bundle_requires_the_exact_inzoi_scope(self):
+        import shutil
+        folder=Path(self.temp.name).resolve()/'bundle'
+        shutil.copytree(ROOT/'providers',folder/'providers')
+        spec=json.loads((folder/'providers/skynizz-bridge/source.json').read_text())
+        panel=json.loads((folder/'providers/skynizz-bridge/panel-candidate.json').read_text())
+        placement=json.loads((folder/'providers/skynizz-bridge/placement-candidate.json').read_text())
+        inzoi=json.loads((folder/'providers/skynizz-bridge/inzoi-overlay-candidate.json').read_text())
+        record=bridge_fixture(self.archive) | {'panel_candidate':True, 'panel_renderer':'in-game',
+            'bridge_id':inzoi['id'], 'base_bridge_id':panel['id'], 'base_patch_sha256':spec['patch_sha256'],
+            'patch_sha256':placement['patch_sha256'], 'route_header_sha256':placement['header_sha256'],
+            'panel_sources':panel['sources'], 'inzoi_late_overlay':True,
+            'inzoi_overlay_scope':inzoi['executable'], 'inzoi_patch_sha256':inzoi['patch_sha256'],
+            'inzoi_runtime_fallback':inzoi['runtime_fallback']}
+        path=folder/'providers/skynizz-bridge/package.json'
+        with patch.object(provider,'ROOT',folder):
+            path.write_text(json.dumps(record))
+            admitted,_=provider.bundled_bridge()
+            self.assertTrue(admitted['inzoi_late_overlay'])
+            for edit in ({'inzoi_overlay_scope':'Game-Win64-Shipping.exe'}, {'inzoi_late_overlay':False},
+                         {'inzoi_patch_sha256':'e'*64}, {'inzoi_runtime_fallback':''}):
+                path.write_text(json.dumps(record | edit))
+                with self.subTest(edit=edit), self.assertRaises(transactions.Refusal):
+                    provider.bundled_bridge()
+
+    def test_inzoi_install_and_repair_enable_only_the_capable_package(self):
+        from types import SimpleNamespace
+        import configparser
+        import importlib.util
+        spec=importlib.util.spec_from_file_location('inzoi_ini_engine',ROOT/'engine/rtxengine.py')
+        engine=importlib.util.module_from_spec(spec);sys.modules[spec.name]=engine
+        if sys.platform=='win32':
+            with patch.dict(sys.modules,{'fcntl':SimpleNamespace()}):spec.loader.exec_module(engine)
+        else:spec.loader.exec_module(engine)
+        inzoi=SimpleNamespace(appid='2456740',exe=Path('inZOI-Win64-Shipping.exe'))
+        control=SimpleNamespace(appid='870780',exe=Path('Control_DX12.exe'))
+        for capable in (False,True):
+            engine.Y4MY_PROVIDER={'inzoi_late_overlay':capable}
+            for saved in (None,TEMPLATE+b'[Menu]\nOverlayMenu=false\n'):
+                for game,expected in ((inzoi,capable),(control,False)):
+                    text,_=provider.configure(engine,TEMPLATE+b'[Menu]\nOverlayMenu=false\n',saved=saved,game=game)
+                    parser=configparser.ConfigParser();parser.read_string(text)
+                    self.assertEqual(parser.getboolean('Menu','OverlayMenu'),expected)
+
     def test_production_sr_is_pinned_to_official_release_path_and_exact_bytes(self):
         path=Path(self.temp.name).resolve()/'nvngx_dlss.dll'
         record=bridge_fixture(self.archive,path)['sr_runtime']

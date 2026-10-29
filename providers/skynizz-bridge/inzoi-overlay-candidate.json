@@ -1,12 +1,15 @@
 {
   "schema": 1,
-  "id": "skynizz-inzoi-late-overlay-candidate-1",
+  "id": "skynizz-ada-mfg-14-inzoi-overlay",
   "base_bridge_id": "skynizz-ada-mfg-13-panel-candidate",
   "patch": "inzoi-overlay-candidate.patch",
-  "patch_sha256": "34a0db1de7d06a2ba3752e9dc3a11ce9c97a4754484a23d38257a8c4cb118fee",
-  "runtime_opt_in": "RTXFORGE_INZOI_LATE_OVERLAY=1",
-  "candidate_only": true,
+  "patch_sha256": "61175127601815f69174e7d78ba078cf103f3e2361ddbf1bf0a8d0c18fa05b11",
+  "candidate_only": false,
   "runtime_verified": false,
   "performance_verified": false,
-  "default_promoted": false
+  "default_promoted": false,
+  "header": "providers/skynizz-bridge/ForgeInzoiOverlay.h",
+  "executable": "inZOI-Win64-Shipping.exe",
+  "default_enabled": true,
+  "runtime_fallback": "RTXFORGE_INZOI_LATE_OVERLAY=0"
 }

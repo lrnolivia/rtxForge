@@ -630,7 +630,9 @@ def prepare(config,rows,mode,operation,settings):
                     for component,(_,label) in skynizz_provider.PRODUCTION_RUNTIMES.items():
                         if runtime:=target_meta.get(component):
                             preview['launch_options']+=f" · production {label} {runtime['version']} · SHA-256 {runtime['sha256']}"
-                    if skynizz_provider.startup_overlay_disabled(g):
+                    if skynizz_provider.startup_overlay_disabled(g) and release.get('inzoi_late_overlay'):
+                        preview['launch_options']+=' · Automatic inZOI late-frame panel with startup-safe texture upload'
+                    elif skynizz_provider.startup_overlay_disabled(g):
                         preview['launch_options']+=' · OptiScaler swapchain overlay disabled so this game starts'
                     if stack:
                         preview['launch_options']=proton_mfg.LABEL+' · '+preview['launch_options']

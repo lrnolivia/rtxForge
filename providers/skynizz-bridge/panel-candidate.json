@@ -13,7 +13,8 @@
     "providers/skynizz-bridge/ForgePanelIcon.h": "a6037b066c03146b3cb766afd69ea694a247699b7e66cd7f346fd7e4aae799e7",
     "providers/skynizz-bridge/ForgePanelChannel.h": "3a35b4a025f285f16cdc656c223958e680999bb71e1f07c0eb7fdfd1410e4ad2",
     "gui/fonts/BakbakOne-Regular.ttf": "238dd2cf76f0fa33e02ea67c2f9697731378ad567503ca6b1f778778093ff84f",
-    "gui/fonts/OFL-BakbakOne.txt": "9460ba7f17aef60cfba3d770a18c47ebda40ec5957daf81c6f4179528557ce83"
+    "gui/fonts/OFL-BakbakOne.txt": "9460ba7f17aef60cfba3d770a18c47ebda40ec5957daf81c6f4179528557ce83",
+    "providers/skynizz-bridge/ForgeInzoiOverlay.h": "16f4774f8df4ea337b74ce72b3a6cb57379f3f1fdd82684debead5fd62cfa45e"
   },
   "candidate_only": true,
   "runtime_verified": false,

@@ -50,8 +50,10 @@ if ($PanelCandidate) {
     & (Join-Path $specRoot 'Generate-Panel.ps1') -SourceRoot $source
 }
 $inzoi = $null
-if ($InzoiOverlayCandidate) {
-    if (-not $PSBoundParameters.ContainsKey('Output')) { $Output = Join-Path $PSScriptRoot '..\out\skynizz-inzoi-overlay-candidate' }
+if ($PanelCandidate) {
+    # The former isolated switch remains a build alias. Every normal panel
+    # package now carries the automatic, executable-scoped inZOI policy.
+    if ($InzoiOverlayCandidate -and -not $PSBoundParameters.ContainsKey('Output')) { $Output = Join-Path $PSScriptRoot '..\out\skynizz-inzoi-overlay-candidate' }
     $inzoi = Get-Content -Raw -LiteralPath (Join-Path $specRoot 'inzoi-overlay-candidate.json') | ConvertFrom-Json
     if ($inzoi.base_bridge_id -ne $panel.id) { throw 'inZOI candidate has a different panel bridge' }
     $inzoiPatch = Join-Path $specRoot $inzoi.patch
@@ -60,6 +62,7 @@ if ($InzoiOverlayCandidate) {
     if ($LASTEXITCODE -ne 0) { throw 'inZOI candidate does not apply to the admitted source' }
     & git -C $source apply -- $inzoiPatch
     if ($LASTEXITCODE -ne 0) { throw 'inZOI candidate patch failed' }
+    Copy-Item -LiteralPath (Join-Path $repo $inzoi.header) -Destination (Join-Path $source 'OptiScaler\ForgeInzoiOverlay.h')
 }
 $msbuild = (Get-Command MSBuild.exe -ErrorAction SilentlyContinue).Source
 if (-not $msbuild) {
@@ -97,6 +100,7 @@ if ($panel) {
 }
 if ($inzoi) {
     Copy-Item -LiteralPath (Join-Path $specRoot $inzoi.patch) -Destination $payload
+    Copy-Item -LiteralPath (Join-Path $repo $inzoi.header) -Destination $payload
     Copy-Item -LiteralPath (Join-Path $specRoot 'inzoi-overlay-candidate.json') -Destination $payload
 }
 $productHead = (& git -C $repo rev-parse HEAD).Trim()
@@ -126,9 +130,11 @@ if ($panel) {
 if ($inzoi) {
     $receipt.base_bridge_id = $panel.id
     $receipt.bridge_id = $inzoi.id
-    $receipt.inzoi_overlay_candidate = $true
+    $receipt.inzoi_overlay_candidate = $false
+    $receipt.inzoi_late_overlay = $true
+    $receipt.inzoi_overlay_scope = $inzoi.executable
     $receipt.inzoi_patch_sha256 = $inzoi.patch_sha256
-    $receipt.inzoi_runtime_opt_in = $inzoi.runtime_opt_in
+    $receipt.inzoi_runtime_fallback = $inzoi.runtime_fallback
     $receipt.runtime_verified = $false
     $receipt.performance_verified = $false
 }

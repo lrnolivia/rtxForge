@@ -85,7 +85,6 @@ def prepare(e, state, params=None):
                 if parent.parent.name.casefold() in ('common', 'pinnedbuilds'): root = parent; break
             if not routes.selected(params, root, target): continue
             if not target.is_dir() or not exe.is_file():
-                skipped.append({'title': name, 'detail': 'Game no longer found at this saved location.', 'details': str(target)})
                 continue
             if current.get('provider_id') != 'skynizz':
                 skipped.append({'title': name, 'detail': 'Uses Feeder/ReShade.' if record.get('provider_id') == 'feeder'
@@ -117,7 +116,8 @@ def prepare(e, state, params=None):
             for filename, data in ((proxy, payload['dxgi.dll']), ('nvngx.dll_dlssnr.dll', payload['nvngx.dll_dlssnr.dll'])):
                 destination = t.safe(target / filename)
                 expected = owned.get(filename)
-                t.need(expected and t.digest(destination) == expected, 'The installed bridge changed: ' + filename)
+                t.need(expected and destination.is_file() and t.digest(destination) == expected,
+                       'The installed bridge is missing or changed. Use Repair Features: ' + filename)
                 checks[str(destination)] = expected
                 if t.sha(data) != expected: writes[str(destination)] = data
                 baseline['current']['installed_hashes'][filename] = marker['files'][filename] = t.sha(data)
@@ -128,7 +128,7 @@ def prepare(e, state, params=None):
             for filename, expected in owned.items():
                 if filename.casefold().endswith(('.ini', '.log')): continue
                 destination = t.safe(target / t.relative(filename))
-                t.need(t.digest(destination) == expected, 'Package files changed; repair this game first: ' + filename)
+                t.need(destination.is_file() and t.digest(destination) == expected, 'Package files changed; repair this game first: ' + filename)
                 checks[str(destination)] = expected
             updated_release = dict(release)
             for key in ('mfg_component', 'nr_preset', *provider.PRODUCTION_RUNTIMES):

@@ -53,11 +53,12 @@ def feeder_plan(e, path, params, running):
     target = t.safe(record['target']); root = t.safe(record['game'])
     if not selected(params, root, target):
         return None, None
-    if record.get('legacy_recipe'):
-        return None, {'title': record.get('name') or root.name,
-                      'detail': 'Uses the experimental DX9/DX10 Feeder recipe. Update it from Game Details.',
-                      'details': 'The helper and translation layer are kept with this game\'s reviewed Feeder installation.'}
+    exe = root / record['exe']
+    if not root.is_dir() or not exe.is_file():
+        return None, None
     t.need(path.parent == feeder.state_dir(e, target), 'Feeder record location differs.')
+    if record.get('legacy_recipe'):
+        return legacy_feeder_plan(e, path, raw, record, params, running)
     t.need(not running(root), 'Close this game, then review again.')
     values = preferences(params, record, target)
     baseline = copy.deepcopy(record)
@@ -95,6 +96,51 @@ def feeder_plan(e, path, params, running):
     writes[str(path)] = bulk._json(baseline)
     plan = {'name': name, 'game': str(root), 'root': str(root), 'target': str(target),
             'checks': checks, 'writes': writes, 'summary': 'Update Feeder overlay and menu settings', 'note': note}
+    bulk._check(e, plan)
+    return plan, None
+
+
+def legacy_feeder_plan(e, path, raw, record, params, running):
+    import feeder_legacy as legacy
+    target = t.safe(record['target']); root = t.safe(record['game'])
+    legacy.validate_state(e, target, record)
+    t.need(not running(root), 'Close this game, then review again.')
+    baseline = copy.deepcopy(record); owned = baseline['installed_hashes']
+    checks = {str(path): t.sha(raw)}; writes = {}
+    for name, expected in owned.items():
+        if name in legacy.config_names(record['legacy_recipe']): continue
+        destination = t.safe(target / t.relative(name))
+        t.need(feeder.digest(destination, cached=False) == expected, 'Feeder files changed; repair first: ' + name)
+        checks[str(destination)] = expected
+    available = feeder.panel(e)
+    for name, source in legacy.panel_names(record['legacy_recipe']).items():
+        if source not in available: continue
+        destination = t.safe(target / name); actual = feeder.digest(destination, cached=False)
+        if name not in baseline['originals']:
+            t.need(actual is None, 'An unowned panel is present: ' + name)
+            baseline['originals'][name] = None
+        item = available[source]; data = t.safe(item['path']).read_bytes()
+        t.need(t.sha(data) == item['sha256'], 'Bundled Feeder panel changed.')
+        checks[str(destination)] = actual; checks[item['path']] = item['sha256']
+        if actual != item['sha256']: writes[str(destination)] = data
+        owned[name] = item['sha256']
+    values = preferences(params, record, root)
+    if values is not None:
+        for name in legacy.config_names(record['legacy_recipe']):
+            if not name.endswith('/ReShade.ini') and name != 'ReShade.ini': continue
+            destination = t.safe(target / name); original = bulk._read(destination)
+            changed = overlay_policy.reshade(original.decode('utf-8-sig'), values).encode('utf-8')
+            checks[str(destination)] = t.sha(original)
+            if changed != original: writes[str(destination)] = changed
+            owned[name] = t.sha(changed)
+    name = record.get('name') or root.name
+    note = ('Feeder NR · ' + record['legacy_recipe'] + ' · experimental. '
+            'Translation layer, helper, NR model, tuning and original restore backups are preserved.')
+    if values is not None: note += '\n\n' + overlay_settings.describe(values)
+    if not writes: return None, {'title': name, 'detail': 'Overlay packages and menus are up to date.', 'details': note}
+    writes[str(path)] = bulk._json(baseline)
+    plan = {'name': name, 'game': str(root), 'root': str(root), 'target': str(target),
+            'checks': checks, 'writes': writes, 'summary': 'Update legacy Feeder overlay and menu settings', 'note': note}
     bulk._check(e, plan)
     return plan, None
 

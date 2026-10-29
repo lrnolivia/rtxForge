@@ -107,6 +107,49 @@ class LegacyFeederTest(unittest.TestCase):
             feeder.execute(review)
         self.assertEqual(set(self.case.files(row)), set(before))
 
+    def test_overlay_updates_every_recipe_without_replacing_helper_or_translation(self):
+        sys.path.insert(0,str(ROOT/'windows/engine-host'))
+        import overlay_package_routes as routes
+        import global_controls as bulk
+        for recipe in sorted(legacy.RECIPES):
+            with self.subTest(recipe=recipe):
+                row=self.game(recipe);directory=Path(row['game']);before=self.case.files(row)
+                feeder.execute(self.prepare(row))
+                path=feeder.state_dir(self.e,directory)/'baseline.json'
+                record=t.read_json(path)
+                # Simulate an installation from before legacy panel ownership.
+                for name in legacy.panel_names(recipe):
+                    record['originals'].pop(name,None);record['installed_hashes'].pop(name,None)
+                t.atomic_file(path,json.dumps(record).encode(),0o600)
+                originals=copy.deepcopy(record['originals']);installed=self.case.files(row)
+                bundled={}
+                for name in feeder.PANELS:
+                    contents=pe(0x8664,b'updated '+name.encode())
+                    item=self.case.root/('panel-'+name);item.write_bytes(contents)
+                    bundled[name]={'path':str(item),'sha256':t.sha(contents)}
+                params={'target_games':[str(directory)],'overlay_theme':'light','overlay_welcome':False}
+                with patch.object(feeder,'panel',return_value=bundled),patch.object(bulk,'anti_cheat',return_value=None):
+                    plan,_=routes.feeder_plan(self.e,path,params,lambda _:False)
+                    self.assertEqual(self.case.files(row),installed,'review changed game')
+                    self.assertIsNotNone(plan)
+                    bulk.execute({'engine':self.e,'plans':[plan]})
+                changed=self.case.files(row)
+                allowed=set(legacy.panel_names(recipe))|{'ReShade.ini','host64/ReShade.ini'}
+                for name,data in installed.items():
+                    if name not in allowed:self.assertEqual(changed[name],data,name)
+                for name in legacy.panel_names(recipe):
+                    self.assertEqual(legacy.machine(directory/name),0x8664)
+                updated=feeder.state(self.e,directory)
+                self.assertEqual({k:v for k,v in updated['originals'].items() if k in originals},originals)
+                # A replaced panel is refused; it never becomes an original.
+                panel=directory/next(iter(legacy.panel_names(recipe)));saved=panel.read_bytes()
+                panel.write_bytes(b'foreign')
+                with patch.object(feeder,'panel',return_value=bundled),self.assertRaises(t.Refusal):
+                    routes.feeder_plan(self.e,path,params,lambda _:False)
+                panel.write_bytes(saved)
+                feeder.execute(self.prepare(row,'uninstall'))
+                self.assertEqual(self.case.files(row),before,'restore left legacy panel files')
+
     def test_manual_exe_rechecks_feeder_when_other_binaries_ship_dlss(self):
         row = self.game('x86-d3d9') | {'native_dlss': True, 'executable_selected': True}
         found = feeder.expand_rows(self.e, [row])[0]

@@ -96,7 +96,13 @@ def model_name(recipe):
 
 
 def names(recipe):
-    return set(layout(recipe)) | config_names(recipe) | {model_name(recipe)}
+    return set(layout(recipe)) | config_names(recipe) | {model_name(recipe)} | set(panel_names(recipe))
+
+
+def panel_names(recipe):
+    import feeder_provider as f
+    prefix = 'host64/' if helper(recipe) else ''
+    return {prefix + name: name for name in f.PANELS}
 
 
 def spec_for(name):
@@ -204,6 +210,8 @@ def inputs(e, settings, recipe):
         t.need(f.digest(cached) == spec['sha256'] and cached.stat().st_size == spec['size'],
                'Stored Feeder component changed: ' + name)
         result[dest] = item
+    result.update({dest: item for dest, name in panel_names(recipe).items()
+                   if (item := f.panel(e).get(name)) is not None})
     if recipe.endswith('d3d9'):
         item = record['files'].get('dgVoodoo.conf')
         t.need(item is not None and f.digest(f.cached_input(e, item)) == lock()['assets']['dgVoodoo.conf']['sha256'],
@@ -221,9 +229,10 @@ def validate_state(e, directory, record):
     parents = {p.as_posix() for name in allowed for p in Path(name).parents if p.as_posix() != '.'}
     t.need(isinstance(record.get('created_directories', []), list)
            and set(record.get('created_directories', [])) <= parents, 'Legacy Feeder directory ownership is invalid')
-    t.need(isinstance(record.get('originals'), dict) and set(record['originals']) == allowed
+    t.need(isinstance(record.get('originals'), dict)
+           and allowed - set(panel_names(recipe)) <= set(record['originals']) <= allowed
            and isinstance(record.get('installed_hashes'), dict)
-           and set(record['installed_hashes']) <= allowed, 'Legacy Feeder ownership record is incomplete')
+           and set(record['installed_hashes']) <= set(record['originals']), 'Legacy Feeder ownership record is incomplete')
     for item in record['originals'].values():
         if item is not None:
             f.cached_input(e, item)
@@ -382,6 +391,10 @@ def prepare(e, row, mode, operation, settings, recipe):
                             created_directories=sorted(missing_dirs))
         else:
             payload.pop('dgVoodoo.conf', None)  # preserve the user's translation and depth tuning
+            for name in panel_names(recipe):
+                if name in payload and name not in baseline['originals']:
+                    t.need(not (directory / name).exists(), 'An unowned panel is present: ' + name)
+                    baseline['originals'][name] = None
             if operation == 'install' and type(settings.get('nr_on_launch')) is bool:
                 control_name = ('host64/' if helper(recipe) else '') + 'ReShade.ini'
                 text = (directory / control_name).read_text(encoding='utf-8-sig')

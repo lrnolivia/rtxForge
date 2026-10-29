@@ -530,6 +530,15 @@ def expand_rows(e, rows, selected=False):
                                  linux_ready=not _windows(e) and linux_ready(e, child),
                                  feeder_settings={k: found[k] for k in ('passes', 'scale', 'preset')},
                                  blocked='')
+                    import cross_os
+                    marker = cross_os.read(exe.parent)
+                    oses = set(child.get('installed_oses') or [])
+                    if child.get('installed_on') == 'windows': oses.add('windows')
+                    if child.get('linux_ready'): oses.add('linux')
+                    if marker and marker.get('provider', {}).get('id') == 'feeder':
+                        oses.add(marker['os'])
+                        oses.update(name for name in marker.get('installed_oses', []) if name in cross_os.OPERATING_SYSTEMS)
+                    child['installed_oses'] = [name for name in ('windows','linux') if name in oses]
                 except (t.Refusal, OSError, ValueError, configparser.Error) as error:
                     child.update(blocked=str(error), feeder_detected=True)
                     try:
@@ -760,6 +769,22 @@ def linux_ready(e, row):
         return False
 
 
+def publish_linux_history(row, ready):
+    """Keep Feeder's per-OS setup history beside its shared game files."""
+    import cross_os
+    _, _, directory = target(row)
+    previous = cross_os.read(directory)
+    t.need(previous is None or previous.get('provider', {}).get('id') == 'feeder',
+           'A different package owns this game\'s shared record.')
+    names = [*lock()['assets'], *CONFIGS, MODEL, *PANELS]
+    record = cross_os.write(directory, 'linux' if ready else 'windows', names,
+                            {'id':'feeder','name':'Feeder NR','version':lock()['version']},
+                            'nr-only','dxgi.dll',('dxgi',))
+    record['installed_oses'] = ['windows','linux'] if ready else ['windows']
+    t.atomic_file(directory / cross_os.MARKER, (json.dumps(record,indent=1)+'\n').encode(),0o600)
+    return record
+
+
 def _linux_setup(e, row, operation):
     """Review entry for Adapt to Linux / Remove Linux Setup of a Windows Feeder install."""
     import proton_prefix
@@ -802,12 +827,15 @@ def _execute_linux(review):
                 t.need(not running_under(e, Path(plan['row']['game'])), 'Close this game before changing its Linux setup')
                 record = proton_prefix.load_record(plan['state'])
                 registry = Path(record['registry']) if record else Path(plan['prefix']) / 'user.reg'
-                checkpoint = session.capture([registry, Path(plan['state'])], label=plan['row']['name'])
+                import cross_os
+                marker_path = Path(plan['target']) / cross_os.MARKER
+                checkpoint = session.capture([registry, Path(plan['state']), marker_path], label=plan['row']['name'])
                 try:
                     if plan['operation'] == 'uninstall':
                         proton_prefix.restore(plan['state'])
                     else:
                         proton_prefix.apply(Path(plan['prefix']), plan['linux_setup'], plan['state'])
+                    publish_linux_history(plan['row'], plan['operation'] != 'uninstall')
                     session.seal(checkpoint)
                 except BaseException:
                     session.seal(checkpoint)
@@ -1067,7 +1095,9 @@ def execute(review):
                 directory = Path(plan['target'])
                 _check(e, plan)
                 ui.progress('Backing up Feeder files', game=plan['row']['name'], current=index, total=len(review['plans']))
-                checkpoint = session.capture([directory / name for name in plan['writes']] + [state_dir(e, directory)], label=plan['row']['name'])
+                import cross_os
+                shared_marker = directory / cross_os.MARKER
+                checkpoint = session.capture([directory / name for name in plan['writes']] + [state_dir(e, directory), shared_marker], label=plan['row']['name'])
                 try:
                     # A durable baseline precedes any model replacement.
                     if plan['operation'] != 'uninstall':
@@ -1100,6 +1130,9 @@ def execute(review):
                         else:
                             stack(directory, installed=True)
                     t.atomic_file(state_dir(e, directory) / 'baseline.json', (json.dumps(baseline, indent=2) + '\n').encode(), 0o600)
+                    if plan['operation'] == 'uninstall':
+                        shared = cross_os.read(directory)
+                        if shared and shared.get('provider', {}).get('id') == 'feeder': shared_marker.unlink()
                     if plan.get('legacy_recipe') and plan['operation'] == 'uninstall':
                         import feeder_legacy
                         feeder_legacy.cleanup_directories(directory, baseline)

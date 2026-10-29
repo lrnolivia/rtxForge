@@ -41,6 +41,7 @@ def scan(service, game_folders=(), library_folders=()):
     result, seen = [], set()
     def add(rows):
         for row in rows:
+            if not Path(row['game']).is_dir(): continue
             executable_selection.decorate(row)
             identity = key(row['game'])
             if identity not in seen:

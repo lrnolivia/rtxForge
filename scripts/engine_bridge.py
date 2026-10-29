@@ -670,8 +670,12 @@ def share_install(e,g,review):
         installed_provider = current.get('provider_id')
         shared_provider = dict(getattr(e,'Y4MY_PROVIDER',{}) or {})
         if installed_provider == 'skynizz':
-            shared_provider = skynizz_provider.validate_release(current['archive']['release'])
-            shared_provider['version'] = shared_provider['tag']
+            release = (current.get('archive') or {}).get('release')
+            if release is not None:
+                shared_provider = skynizz_provider.validate_release(release)
+                shared_provider['version'] = shared_provider['tag']
+            else:
+                shared_provider = {'id':'skynizz','name':'Skynizz NR + MFG bridge','version':''}
         elif installed_provider:
             shared_provider = dict(shared_provider, id=installed_provider)
         launch=e._launch_record_for_game(g) or {}

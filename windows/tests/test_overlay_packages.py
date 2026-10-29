@@ -73,7 +73,7 @@ old_record=copy.deepcopy(record);old_record.update(target_dir=str(absent),exe=st
 old_record['current']['provider_id']='dlss-unlocked'
 t.atomic_file(e.baseline_path(absent),json.dumps(old_record).encode(),0o600)
 skipped=overlays.prepare(e,h.LOCAL/'state')['skipped']
-assert any(x['title']=='Old location' and 'no longer found' in x['detail'] for x in skipped)
+assert all(x['title']!='Old location' for x in skipped),'ghost location leaked into review'
 scoped=overlays.prepare(e,h.LOCAL/'state',{'target_games':[str(root)]})
 assert all(x['title']!='Old location' for x in scoped['skipped'])
 e.baseline_path(absent).unlink()

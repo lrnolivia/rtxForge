@@ -187,7 +187,11 @@ _catalog = package_catalog.catalog
 
 def _windows_catalog(host=None):
     host = dict(host or {"system": platform.system(), "architecture": platform.machine(), "ready": False})
-    return _catalog(host)
+    rows = _catalog(host)
+    for row in rows:
+        if row['id'] == 'feeder':
+            row['graphics_apis'] = ['DirectX 9', 'DirectX 10', 'DirectX 11', 'DirectX 12']
+    return rows
 
 
 package_catalog.catalog = _windows_catalog

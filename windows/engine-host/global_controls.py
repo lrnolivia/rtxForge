@@ -100,7 +100,11 @@ def prepare(e, state, params):
                 if mfg is not None: notes.append('MFG unavailable in Feeder; NR can still change.')
                 if nr is None:
                     skipped.append({'title': name, 'detail': 'Feeder provides NR only; MFG is unavailable.', 'details': str(root)}); continue
-                config = target / 'ReShade.ini'
+                runtime = target
+                if record.get('legacy_recipe'):
+                    import feeder_legacy
+                    runtime = feeder_legacy.runtime(target, record['legacy_recipe'])
+                config = runtime / 'ReShade.ini'
                 original = _read(config)
                 if nr:
                     # Do not enable a disabled or unrelated ReShade technique.
@@ -110,7 +114,7 @@ def prepare(e, state, params):
                            'Enable the Feeder technique in ReShade first.')
                     checks[str(target / 'ReShadePreset.ini')] = t.sha(preset)
                 text = e.set_ini_value(original.decode('utf-8-sig'), 'RenoDX.DLSS5', 'NeuralUplift', '1' if nr else '0')
-                baseline['installed_hashes']['ReShade.ini'] = t.sha(text.encode('utf-8'))
+                baseline['installed_hashes'][config.relative_to(target).as_posix()] = t.sha(text.encode('utf-8'))
                 actual['enabled'] = int(nr)
             else:
                 current = record.get('current') or {}
@@ -184,7 +188,11 @@ def prepare(e, state, params):
             if is_feeder:
                 found = feeder.inspect(e, row, cached=False)
                 t.need(found['managed'], 'Recognize this Feeder installation first.')
-                owned_files = {str(t.safe(target / t.relative(n))): h for n, h in record['installed_hashes'].items() if n not in feeder.CONFIGS}
+                configs = set(feeder.CONFIGS)
+                if record.get('legacy_recipe'):
+                    import feeder_legacy
+                    configs |= feeder_legacy.config_names(record['legacy_recipe'])
+                owned_files = {str(t.safe(target / t.relative(n))): h for n, h in record['installed_hashes'].items() if n not in configs}
             for filename, digest in owned_files.items():
                 t.need(t.digest(filename) == digest, 'Package files changed; repair this game first.')
                 checks[filename] = digest

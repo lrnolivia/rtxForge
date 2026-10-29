@@ -174,6 +174,8 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s windows/tests -p test_library_scan.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest tests.test_discovery_candidates tests.test_offline_routes windows.tests.test_executable_selection windows.tests.test_provider_candidates
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s windows/tests -p test_discovery_inventory.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s windows/tests -p test_companion_controls.py
@@ -195,6 +197,8 @@ jobs:
             python -X utf8 -m unittest discover -s windows/tests -p test_review_copy.py
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s tests -p test_feeder_provider.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest tests.test_feeder_legacy
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s windows/tests -p test_feeder_provider.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }

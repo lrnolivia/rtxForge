@@ -12,6 +12,8 @@ public interface IForgeService
     bool IsPreview { get; }
     ForgeSettings Settings { get; }
     Task<IReadOnlyList<Game>> ScanAsync(CancellationToken cancel = default);
+    /// <summary>Checks a game EXE choice (null resets detection); never modifies game files.</summary>
+    Task<string> ValidateExecutableAsync(Game game, string? path) => throw new InvalidOperationException("Executable selection is unavailable in preview.");
     Task<HardwareInfo> DetectHardwareAsync(CancellationToken cancel = default);
     /// <summary>Checks every target and returns what would change; nothing is written.</summary>
     Task<OperationReview> PrepareAsync(string operation, IReadOnlyList<Game> targets, Tuning tuning, string mode,
@@ -81,7 +83,7 @@ public interface IForgeService
     // Packages (package_catalog).
     Task<PackageCatalog> PackagesAsync();
     /// <summary>Imports the given Feeder folders into app-owned storage (when set), then reports what is kept.</summary>
-    Task<FeederStorage> FeederStorageAsync(string? source = null, string? backups = null);
+    Task<FeederStorage> FeederStorageAsync(string? source = null, string? backups = null, bool legacy = false);
     Task<PackageInspection> InspectPackageAsync(string path);
     Task<PackageChoice> UseCustomPackageAsync(PackageInspection inspection, IReadOnlyDictionary<string, string> values, bool trusted, string notes);
 
@@ -295,7 +297,7 @@ public sealed class PreviewForgeService : IForgeService
         Task.FromResult(new DlssInventory([], "Preview mode · file versions appear here for your installed games.", null));
     public Task<EngineReview> ReviewDlssRestoreAsync(Game game) => Disabled<EngineReview>("Restoring DLSS files");
 
-    public Task<FeederStorage> FeederStorageAsync(string? source = null, string? backups = null) =>
+    public Task<FeederStorage> FeederStorageAsync(string? source = null, string? backups = null, bool legacy = false) =>
         Task.FromResult(new FeederStorage(null, null, null, 0));
     public Task<PackageCatalog> PackagesAsync() =>Task.FromResult(new PackageCatalog("Preview system · NVIDIA RTX 4070 · no game writes",
     [

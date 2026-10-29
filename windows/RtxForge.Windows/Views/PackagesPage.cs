@@ -164,25 +164,30 @@ public sealed partial class PackagesPage : Page
         feeder.Children.Add(paths);
         var kept = Prefs.Label("Checking stored Feeder files…", "ForgeCaptionDimTextStyle");
         var keep = new Button { Content = "Keep a copy in rtxForge", HorizontalAlignment = HorizontalAlignment.Left };
+        var legacy = new Button { Content = "Get DX9/DX10 support", HorizontalAlignment = HorizontalAlignment.Left, IsEnabled = !shell.Service.IsPreview };
         ToolTipService.SetToolTip(keep, "Verify both folders and store their files with rtxForge. Game files are not changed.");
-        async Task ShowKeptAsync(bool import)
+        async Task ShowKeptAsync(bool import, bool downloadLegacy = false)
         {
-            keep.IsEnabled = false;
+            keep.IsEnabled = legacy.IsEnabled = false;
             try
             {
                 var storage = await shell.Service.FeederStorageAsync(import ? NonEmpty(shell.Settings.FeederSource) : null,
-                    import ? NonEmpty(shell.Settings.FeederBackups) : null);
+                    import ? NonEmpty(shell.Settings.FeederBackups) : null, legacy: downloadLegacy);
                 kept.Text = (storage.Recipe is null ? "No stack stored yet" : "Stored stack · " + storage.Recipe
                     + (storage.NrVersion is null ? "" : " · NR model " + storage.NrVersion))
-                    + $" · {storage.Backups} original backup{(storage.Backups == 1 ? "" : "s")} kept";
+                    + $" · {storage.Backups} original backup{(storage.Backups == 1 ? "" : "s")} kept"
+                    + (storage.LegacyReady ? " · DX9/DX10 support ready" : "");
             }
             catch (InvalidOperationException error) { kept.Text = error.Message; }
-            finally { keep.IsEnabled = true; }
+            finally { keep.IsEnabled = true; legacy.IsEnabled = !shell.Service.IsPreview; }
         }
         static string? NonEmpty(string value) => string.IsNullOrWhiteSpace(value) ? null : value;
         keep.Click += async (_, _) => await ShowKeptAsync(true);
         feeder.Children.Add(kept);
         feeder.Children.Add(keep);
+        feeder.Children.Add(Prefs.Label("For DirectX 9, DirectX 10 and 32-bit games, get the verified Feeder helper, ReShade and dgVoodoo2 files. This downloads support files only; game changes still go through installation review.", "ForgeCaptionDimTextStyle"));
+        legacy.Click += async (_, _) => await ShowKeptAsync(false, downloadLegacy: true);
+        feeder.Children.Add(legacy);
         _ = ShowKeptAsync(false);
         return new Expander
         {

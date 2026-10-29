@@ -227,6 +227,8 @@ def windows_steam_running() -> bool:
 
 def adapt_engine(e):
     """Windows-native loading: no Proton overrides, so Steam's config is never written."""
+    import executable_selection
+    executable_selection.adapt_engine(e, lambda: library_media.load_settings(service.config).get('game_executables', {}))
     # Steam's own folders (registry and default installs) instead of the Linux candidates.
     e.STEAM_ROOT_CANDIDATES = windows_steam_roots()
     # Add rtxForge to Steam uses the real account choice and a real running check.
@@ -339,6 +341,12 @@ def hello(_params):
 
 
 def scan(params):
+    import executable_selection
+    with executable_selection.choices(params.get('game_executables')):
+        return _scan(params)
+
+
+def _scan(params):
     import library_scan
     rows = library_scan.scan(service, params.get('folders', []), params.get('library_folders', []))
     import feeder_provider
@@ -361,6 +369,9 @@ def scan(params):
     # (Non-Steam games matched through shortcuts.vdf), then Steam's cache.
     media = library_media.LibraryMedia(service.config, dict(library_media.DEFAULTS))
     for row in rows:
+        if row.get('executable_error'):
+            row['blocked'] = row['package_blocked'] = row['skynizz_blocked'] = row['executable_error']
+            row.pop('feeder_available', None)
         try:
             art_row = dict(row, appid=row['metadata_appid']) if row.get('metadata_appid') else row
             row["art"] = media.steam_art(art_row)
@@ -371,6 +382,8 @@ def scan(params):
     # Soft blocks you chose to try anyway, and each game's known result.
     import compat_list
     compat_list.apply(win_features._config(), rows, engine_bridge.module(service.config))
+    import provider_candidates
+    provider_candidates.decorate(engine_bridge.module(service.config), rows)
     import skynizz_provider
     import transactions
     for row in rows:
@@ -381,7 +394,42 @@ def scan(params):
 
 
 def prepare(params):
+    import executable_selection
+    import offline_routes
+    with executable_selection.choices((params.get('settings') or {}).get('game_executables')):
+        routes = []
+        if params.get('operation') in ('install', 'repair', 'reset', 'apply', 'adopt', 'adopt-clean', 'uninstall'):
+            for row in params.get('rows') or []:
+                # Reinspect, rather than accepting the scan's anti-cheat boolean.
+                game = engine_bridge.game(engine_bridge.module(service.config), row)
+                if game.anti_cheat:
+                    routes.append(offline_routes.receipt(row, manual=True))
+        params = dict(params, rows=[dict(row, offline_only=True, blocked='' if row.get('blocked') == 'Anti-cheat detected' else row.get('blocked', ''))
+                                   if any(str(Path(row['game']).resolve()).casefold() == str(Path(route['root']).resolve()).casefold() for route in routes)
+                                   else row for row in params.get('rows') or []])
+        with offline_routes.reviewed(routes):
+            result = _prepare_request(params)
+    review = reviews[result['token']]
+    ready_roots = {str(Path(plan.get('row', {}).get('game', '')).resolve()).casefold() for plan in review.get('plans', [])}
+    routes = [route for route in routes if str(Path(route['root']).resolve()).casefold() in ready_roots]
+    if routes:
+        review['offline_routes'] = routes
+        if params.get('operation') != 'uninstall':
+            review['offline_ack_required'] = True
+            result['trust'] = offline_routes.NOTICE
+        for plan in review.get('plans', []):
+            route = next((r for r in routes if str(Path(r['root']).resolve()).casefold() == str(Path(plan.get('row', {}).get('game', '')).resolve()).casefold()), None)
+            if route and plan.get('baseline'):
+                plan['baseline']['offline_route'] = route
+        for row in result['rows']:
+            row['summary'] = (row.get('summary') or row.get('detail') or '') + ' Offline only. Restore original files before online play.'
+    return result
+
+
+def _prepare_request(params):
     rows = params.get('rows') or []
+    for row in rows:
+        t.need(not row.get('executable_error'), row.get('executable_error') or '')
     if params.get('operation') == 'apply' and rows and all(row.get('runtime_provider') == 'feeder' for row in rows):
         # Installed Feeder games keep their presets in their own ReShade.ini,
         # whichever package is selected for new installs.
@@ -443,8 +491,14 @@ def _override_warnings(review) -> list[dict]:
 
 
 def execute(params):
-    review = reviews.pop(params["token"])
-    return {"report": service.execute(review)}
+    review = reviews[params['token']]
+    import offline_routes
+    routes = review.get('offline_routes', [])
+    t.need(not review.get('offline_ack_required') or params.get('offline_acknowledged') is True,
+           'Acknowledge offline-only use before continuing.')
+    with offline_routes.reviewed(routes):
+        reviews.pop(params['token'])
+        return {"report": service.execute(review)}
 
 
 def cancel(params):
@@ -556,6 +610,9 @@ METHODS = {"hello": hello, "hardware": lambda _p: service.hardware(), "scan": sc
            "steam_status": steam_status, "steam_review": steam_review, "steam_install": steam_install,
            "steam_remove": steam_remove}
 
+import executable_selection
+METHODS['validate_executable'] = lambda p: executable_selection.review(engine_bridge.module(service.config), p['row'], p.get('path'))
+
 # Artwork, SteamGridDB, recovery, reports, notes, extras, packages, diagnosis,
 # DLSS restore and updates: windows/engine-host/win_features.py.
 import win_features  # noqa: E402
@@ -570,14 +627,19 @@ def feeder_storage(params):
     """Packages › Feeder NR: import the chosen folders into app-owned storage, then report what is kept."""
     import feeder_provider
     e = engine_bridge.module(service.config)
+    import feeder_legacy
+    if params.get('legacy') is True:
+        feeder_legacy.download_assets(e)
     if params.get('source'):
         feeder_provider.import_stack(e, params['source'])
     if params.get('backups'):
         feeder_provider.import_backups(e, params['backups'])
     owned = feeder_provider.owned_stack(e)
     kept = feeder_provider.originals_root(e)
+    legacy = feeder_legacy.owned_assets(e)
     return {'stack': None if owned is None else {k: owned.get(k) for k in ('recipe', 'imported_from', 'imported_utc', 'nr_version')},
-            'backups': len(list(kept.glob('*/manifest.json'))) if kept.is_dir() else 0}
+            'backups': len(list(kept.glob('*/manifest.json'))) if kept.is_dir() else 0,
+            'legacy_ready': legacy is not None and set(legacy['files']) == set(feeder_legacy.lock()['assets'])}
 
 
 METHODS['feeder_storage'] = feeder_storage

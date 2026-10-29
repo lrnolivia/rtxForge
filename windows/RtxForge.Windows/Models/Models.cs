@@ -63,13 +63,16 @@ public sealed class Game
     public string? CompatVerdict => EngineRow?["compat"]?["verdict"]?.ToString();
     public bool CompatFromList => EngineRow?["compat"]?["source"]?.ToString() == "list";
     /// <summary>"Unsupported", or the Feeder status for an installed setup that needs attention.</summary>
-    public string BlockedStatus => FeederNeedsAttention ? "Needs Attention" : "Unsupported";
+    public string BlockedStatus => FeederNeedsAttention || EngineRow?["feeder_restore_first"]?.GetValue<bool>() == true ? "Needs Attention" : "Unsupported";
     /// <summary>Installed with rtxForge on Linux: Windows loads it natively; Set Up for Windows adapts it here.</summary>
     public bool InstalledOnLinux => InstalledOses.SequenceEqual(["linux"]);
     /// <summary>The library's install action: Set Up for Windows adapts a Linux install instead of reinstalling it.</summary>
     public bool AdoptionAvailable => EngineRow?["adoption_available"]?.GetValue<bool>() == true;
     public bool Managed => EngineRow?["managed"]?.GetValue<bool>() == true;
     public bool OfflineOnly => EngineRow?["offline_only"]?.GetValue<bool>() == true;
+    public bool OfflineLaunchAvailable => EngineRow?["offline_launch_available"]?.GetValue<bool>() == true;
+    public string ProviderCandidatesText => string.Join("\n", (EngineRow?["provider_candidates"] as JsonArray ?? [])
+        .OfType<JsonObject>().Select(p => $"{p["name"]}: {p["reason"]}"));
     public bool DynamicMfgAvailable => RuntimeProvider == "skynizz" && EngineRow?["dynamic_mfg_available"] is JsonValue flag
         && flag.TryGetValue<bool>(out var available) && available;
     public string DynamicMfgDetail => EngineRow?["dynamic_mfg_detail"] is JsonValue detail && detail.TryGetValue<string>(out var text) ? text : "";
@@ -139,6 +142,16 @@ public sealed record OperationReview(string Operation, string Token, IReadOnlyLi
     public IReadOnlyList<ReviewBlock> Warnings { get; init; } = Warnings ?? [];
     public IReadOnlyList<SupportedOperationReview> Supported { get; init; } = [];
     public IReadOnlyList<OperationReview> Steps { get; init; } = [];
+    public string? OfflineNotice { get; init; }
+    public bool OfflineAcknowledged { get; init; }
+    public string? RequiredTrust => OfflineNotice ?? Steps.Select(p => p.RequiredTrust).FirstOrDefault(t => t is not null)
+        ?? Supported.Select(p => p.Review.RequiredTrust).FirstOrDefault(t => t is not null);
+    public OperationReview AcknowledgeOffline(bool acknowledged) => this with
+    {
+        OfflineAcknowledged = acknowledged,
+        Steps = Steps.Select(p => p.AcknowledgeOffline(acknowledged)).ToArray(),
+        Supported = Supported.Select(p => p with { Review = p.Review.AcknowledgeOffline(acknowledged) }).ToArray(),
+    };
     public OperationReview IncludeSupported()
     {
         // A combined review contributes its own package steps, so every package's run can be ordered by name.
@@ -234,7 +247,7 @@ public sealed record CompatShare(string Title, string Body, string Url);
 public sealed record PackageCatalog(string Status, IReadOnlyList<PackageOption> Packages, IReadOnlyList<CommunitySource> Community, string? CustomName);
 
 /// <summary>Feeder NR files rtxForge keeps itself: the verified stack (null when none) and original backups.</summary>
-public sealed record FeederStorage(string? Recipe, string? ImportedFrom, string? NrVersion, int Backups);
+public sealed record FeederStorage(string? Recipe, string? ImportedFrom, string? NrVersion, int Backups, bool LegacyReady = false);
 
 public sealed record PackageParameter(string Key, string Label, string Value, string Origin);
 
@@ -458,6 +471,8 @@ public sealed class ForgeSettings
     public string MfgMultiplier { get; set; } = "auto";
     [JsonPropertyName("feature_controls")] public JsonObject? FeatureControls { get; set; }
     [JsonPropertyName("game_folders")] public List<string> GameFolders { get; set; } = [];
+    [JsonPropertyName("game_executables")] public Dictionary<string, string> GameExecutables { get; set; } = [];
+    [JsonIgnore] public string ExecutableSelectionKey => JsonSerializer.Serialize(GameExecutables.OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase));
     [JsonPropertyName("library_folders")] public List<string> LibraryFolders { get; set; } = [];
     [JsonPropertyName("removed_games")] public List<string> RemovedGames { get; set; } = [];
     [JsonPropertyName("game_accents")] public Dictionary<string, string> GameAccents { get; set; } = [];

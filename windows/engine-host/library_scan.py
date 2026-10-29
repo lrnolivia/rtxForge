@@ -2,6 +2,7 @@
 from pathlib import Path
 import re
 import discovery
+import executable_selection
 
 
 def key(path):
@@ -40,6 +41,7 @@ def scan(service, game_folders=(), library_folders=()):
     result, seen = [], set()
     def add(rows):
         for row in rows:
+            executable_selection.decorate(row)
             identity = key(row['game'])
             if identity not in seen:
                 seen.add(identity)

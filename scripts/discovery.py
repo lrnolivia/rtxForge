@@ -76,7 +76,7 @@ _ANTI_CHEAT_FILE_RE = re.compile('|'.join(fnmatch.translate(pattern) for pattern
 ANTI_CHEAT_DIR_NAMES = {'easyanticheat', 'battleye', 'eaanticheat', 'anticheatexpert'}
 UPSCALE_NAMES = {'nvngx_dlss.dll', 'nvngx_dlssg.dll', 'nvngx_dlssd.dll', 'libxess.dll', 'libxess_fg.dll', 'amd_fidelityfx_dx12.dll', 'ffx_fsr2_api_dx12_x64.dll', 'ffx_fsr3upscaler_x64.dll'}
 IGNORE_DIR_NAMES = {'.git', '.svn', '__pycache__', 'redist', 'redistributables', '_commonredist', 'crashpad', 'crashreportclient', 'digitalextras'}
-EXE_BAD_RE = re.compile('(vc_redist|vcredist|redistribut|crashreport|crashpad|unins|setup|installer|bootstrap|start_protected_game|easyanticheat|eanticheat|battleye|beservice)', re.I)
+EXE_BAD_RE = re.compile('(vc_redist|vcredist|redistribut|crashreport|crashpad|unins|setup|installer|bootstrap|start_protected_game|easyanticheat|eanticheat|battleye|beservice|dlss5-feed-host64)', re.I)
 LEGACY_FILE_RE = re.compile('(?:dlss5|rtx40mfg|mfg[-_ ]?unlock|renodx[-_ ]?dlss5|dlss5[-_ ]?feed|multipass.*mfg)', re.I)
 OPTISCALER_FILE_RE = re.compile('^optiscaler\\.(?:ini|log|asi|dll)$', re.I)
 RESH_FILE_RE = re.compile('^reshade', re.I)
@@ -354,7 +354,12 @@ def scan_files(root: Path) -> tuple[list[Path], list[Path], Optional[Path]]:
         name = filename.lower()
         if name in UPSCALE_NAMES or name.startswith('sl.dlss_g'):
             upscalers.append(parent / filename)
-        if len(name) > 4 and name.endswith('.exe') and (not EXE_BAD_RE.search(name)):
+        # A prerequisite can outweigh a tiny game launcher (Far Cry 5's .NET
+        # installer is 67 MB; its actual EXE forwards into FC_m64.dll).
+        relative_dirs = parent.relative_to(root).parts
+        prerequisite = any(re.fullmatch(r'(?i)(?:microsoftnetframework(?:[ ._-].*)?|vcredist|directx|_commonredist|redistributables?)', part)
+                           for part in relative_dirs)
+        if len(name) > 4 and name.endswith('.exe') and not EXE_BAD_RE.search(name) and not prerequisite:
             exes.append(parent / filename)
         if anti is None:
             if parent is not prior_parent:
@@ -413,6 +418,13 @@ def choose_exe(root: Path, name: str, upscalers: list[Path], exes: list[Path]) -
             return max(halo_exes, key=lambda e: score_exe(e, upscalers))
     if not exes:
         return None
+    # Exact title matches beat a bundled editor/launcher when the engine lives
+    # in DLLs. Keep renderer/upscaler and Win64 shipping evidence first.
+    title = re.sub(r'[^a-z0-9]', '', name.casefold())
+    folder = re.sub(r'[^a-z0-9]', '', root.name.casefold())
+    matching = [exe for exe in exes if re.sub(r'[^a-z0-9]', '', exe.stem.casefold()) in {title, folder}]
+    if matching and max(score_exe(exe, upscalers) for exe in exes) < 1000:
+        return max(matching, key=lambda exe: score_exe(exe, upscalers))
     return max(exes, key=lambda e: score_exe(e, upscalers))
 
 def inspect_game(game: Game) -> Game:

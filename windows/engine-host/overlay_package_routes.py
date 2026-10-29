@@ -53,6 +53,10 @@ def feeder_plan(e, path, params, running):
     target = t.safe(record['target']); root = t.safe(record['game'])
     if not selected(params, root, target):
         return None, None
+    if record.get('legacy_recipe'):
+        return None, {'title': record.get('name') or root.name,
+                      'detail': 'Uses the experimental DX9/DX10 Feeder recipe. Update it from Game Details.',
+                      'details': 'The helper and translation layer are kept with this game\'s reviewed Feeder installation.'}
     t.need(path.parent == feeder.state_dir(e, target), 'Feeder record location differs.')
     t.need(not running(root), 'Close this game, then review again.')
     values = preferences(params, record, target)

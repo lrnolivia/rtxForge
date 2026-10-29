@@ -91,7 +91,7 @@ public sealed partial class GameModeView
         heroBody.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         for (var row = 0; row < 3; row++) heroBody.RowDefinitions.Add(new() { Height = GridLength.Auto });
         var head = new StackPanel { Spacing = t.Px(6) };
-        var status = g.AdoptionAvailable ? "Installed · Adoption available" : g.OfflineOnly ? "Installed · Offline only"
+        var status = g.AdoptionAvailable ? "Installed · Adoption available" : g.OfflineOnly && !g.Blocked ? g.Installed ? "Installed · Offline only" : "Offline only"
             : g.Blocked ? g.BlockedStatus : g.UsesFeeder ? g.Installed ? "Feeder NR" : "Available · Feeder NR"
             : g.InstalledOnLinux ? "Installed on Linux" : g.Installed ? g.Profile ?? "Configured" : "Ready for Features";
         head.Children.Add(ui.Badge(status, t.Card, t.Fg, .62));
@@ -261,7 +261,7 @@ public sealed partial class GameModeView
             ui.RowButton("Update DLSS", null, () => { CloseModal(); _ = RunOperationAsync("update-dlss", [g]); }, enabled: !g.Blocked),
         };
         if (g.AdoptionAvailable) rows.Add(ui.RowButton("Adopt with rtxForge", null, () => { CloseModal(); _ = shell.ReviewAdoptionAsync([g]); }));
-        if (g.OfflineOnly) rows.Add(ui.RowButton("Launch offline", null, () => { CloseModal(); _ = shell.LaunchOfflineAsync(g); }));
+        if (g.OfflineLaunchAvailable) rows.Add(ui.RowButton("Launch offline", null, () => { CloseModal(); _ = shell.LaunchOfflineAsync(g); }));
         rows.Add(ui.RowButton("Open Folder", null, () => { CloseModal(); _ = shell.OpenGameFolderAsync(g); }, enabled: !shell.Service.IsPreview && Directory.Exists(g.Location)));
         rows.Add(ui.RowButton("Remove from library", null, () => { CloseModal(); ConfirmRemoveGames([g]); }, danger: true));
         ShowModal("Game options", ui.Group(rows), [ui.Button("Back", CloseModal, GmKind.Card, .85)], CloseModal, 900);
@@ -498,10 +498,11 @@ public sealed partial class GameModeView
                 break;
 
             default:
+                if (g.ProviderCandidatesText.Length > 0) content.Children.Add(DetailFact("Install routes", g.ProviderCandidatesText));
                 if (g.AdoptionAvailable) content.Children.Add(DetailFact("Adoption available", GameOverview.AdoptionNote,
                     ui.Button("Review Adoption", () => _ = shell.ReviewAdoptionAsync([g]), GmKind.Card, .8), "\uE930"));
                 if (g.OfflineOnly) content.Children.Add(DetailFact("Offline-only features", GameOverview.OfflineNote,
-                    ui.Button("Launch offline", () => _ = shell.LaunchOfflineAsync(g), GmKind.Card, .8), "\uE72E"));
+                    g.OfflineLaunchAvailable ? ui.Button("Launch offline", () => _ = shell.LaunchOfflineAsync(g), GmKind.Card, .8) : null, "\uE72E"));
                 // A capability check can be skipped; anti-cheat and missing executables cannot.
                 if (g.BlockedSoft) content.Children.Add(DetailFact("Not verified with this package", (g.BlockedReason ?? "") + " " + GameOverview.TryAnywayNote,
                     ui.Button("Try anyway", () => _ = TryAnywayAsync(g, true), GmKind.Card, .8, enabled: !shell.Busy && !shell.Service.IsPreview), "\uE7BA"));
@@ -515,6 +516,15 @@ public sealed partial class GameModeView
                 content.Children.Add(info);
                 content.Children.Add(DetailFact("Game folder", g.Location, ui.Button("Open folder", () => _ = shell.OpenGameFolderAsync(g),
                     GmKind.Card, .8, enabled: !shell.Service.IsPreview && Directory.Exists(g.Location)), "\uE838"));
+                var exeActions = new WrapRow { Spacing = t.Px(8) };
+                exeActions.Children.Add(ui.Button("Choose EXE…", () => _ = shell.SelectGameExecutableAsync(g), GmKind.Card, .8,
+                    enabled: !shell.Busy && !shell.Service.IsPreview));
+                if (shell.Settings.GameExecutables.ContainsKey(g.Id))
+                    exeActions.Children.Add(ui.Button("Use detected", () => _ = shell.SelectGameExecutableAsync(g, detected: true), GmKind.Card, .8,
+                        enabled: !shell.Busy && !shell.Service.IsPreview));
+                content.Children.Add(DetailFact("Game executable", (g.EngineRow?["exe"]?.ToString() is { Length: > 0 } exe ? exe : "No EXE detected")
+                    + " · " + (shell.Settings.GameExecutables.ContainsKey(g.Id) ? "Selected by you" : "Detected automatically"), glyph: "\uE7C3"));
+                content.Children.Add(exeActions);
                 break;
         }
     }

@@ -198,11 +198,11 @@ public sealed partial class EngineForgeService
         return new PackageCatalog(status, packages, community, S(r?["custom"], "name"));
     }
 
-    public async Task<FeederStorage> FeederStorageAsync(string? source = null, string? backups = null)
+    public async Task<FeederStorage> FeederStorageAsync(string? source = null, string? backups = null, bool legacy = false)
     {
-        var r = await CallAsync("feeder_storage", new JsonObject { ["source"] = source, ["backups"] = backups });
+        var r = await CallAsync("feeder_storage", new JsonObject { ["source"] = source, ["backups"] = backups, ["legacy"] = legacy });
         var kept = r?["stack"] as JsonObject;
-        return new FeederStorage(S(kept, "recipe"), S(kept, "imported_from"), S(kept, "nr_version"), I(r, "backups"));
+        return new FeederStorage(S(kept, "recipe"), S(kept, "imported_from"), S(kept, "nr_version"), I(r, "backups"), B(r, "legacy_ready"));
     }
 
     public async Task<PackageInspection> InspectPackageAsync(string path)

@@ -77,7 +77,7 @@ def running(game, processes):
 
 
 def _ini(game):
-    path = t.safe(game['target'] / 'ReShade.ini')
+    path = t.safe(game.get('runtime', game['target']) / 'ReShade.ini')
     t.need(path.is_file() and not path.is_symlink() and path.stat().st_size <= 256 * 1024,
            'Repair this Feeder installation; its ReShade.ini is missing.')
     return path, path.read_bytes().decode('utf-8-sig')
@@ -124,8 +124,12 @@ def game(installations, row):
     if not (exe.is_file() and exe.is_relative_to(root)):
         return None
     found = record(installations, exe.parent)
+    runtime = exe.parent
+    if found and found.get('legacy_recipe'):
+        import feeder_legacy
+        runtime = feeder_legacy.runtime(exe.parent, found['legacy_recipe'])
     return found and {'row': {k: row.get(k) for k in ('game', 'exe', 'appid', 'name')}, 'exe': exe,
-                      'target': exe.parent, 'model': (exe.parent / feeder.MODEL).is_file()}
+                      'target': exe.parent, 'runtime': runtime, 'model': (runtime / feeder.MODEL).is_file()}
 
 
 def status(game, pid):

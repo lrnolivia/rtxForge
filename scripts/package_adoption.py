@@ -6,6 +6,7 @@ review time; registration never treats modded bytes as vanilla game originals.
 from __future__ import annotations
 import copy
 import json
+import os
 from pathlib import Path
 import transactions as t
 import engine_bridge as bridge
@@ -43,7 +44,16 @@ def decorate(e, rows):
                 row['offline_only'] = bool(game.anti_cheat and offline_routes.allowed(e, game))
                 if row['offline_only'] and row.get('blocked') == 'Anti-cheat detected':
                     row['blocked'] = ''
+            row['offline_launch_available'] = bool(row.get('installed') and row.get('offline_only') and offline_routes.profile(row))
             row['offline_available'] = offline_routes.profile(row) is not None
+            if os.name == 'nt' and row.get('anti_cheat'):
+                try:
+                    offline_routes.receipt(row, manual=True)
+                    row.update(offline_available=True, offline_only=True)
+                    if row.get('blocked') == 'Anti-cheat detected':
+                        row['blocked'] = ''
+                except (t.Refusal, OSError, ValueError, KeyError):
+                    pass
         except (t.Refusal, e.Stop, OSError, ValueError, KeyError):
             row['adoption_available'] = False
     return rows
@@ -193,7 +203,8 @@ def _feeder(config, row, settings):
     it records the files found; a clean install replaces them with the pinned stack."""
     e = bridge.module(config)
     root, exe, target = feeder.eligible(e, row, existing=True)
-    t.need(e.scan_game_files(root)[2] is None, 'Anti-cheat detected; no Feeder offline profile is available.')
+    t.need(e.scan_game_files(root)[2] is None or offline_routes.reviewed_route(row) is not None,
+           'Review and acknowledge offline-only use before adopting this anti-cheat game.')
     t.need(feeder.state(e, target) is None, 'This Feeder setup already has a management record.')
     t.need((target / 'dlss5-feed.addon64').is_file() and (target / 'ReShade.ini').is_file(), 'No Feeder NR setup was found.')
     names = [*feeder.lock()['assets'], *feeder.CONFIGS, feeder.MODEL]
@@ -210,7 +221,7 @@ def _checks(plan):
     exe = t.safe(root / t.relative(plan['row']['exe']))
     return {'hashes': hashes, 'exe': t.digest(exe), 'baseline': bridge.fingerprint(e, plan['game']) if not plan.get('feeder')
             else feeder.digest(feeder.state_dir(e, target) / 'baseline.json'),
-            'offline': offline_routes.receipt(plan['row']) if plan.get('offline') else None}
+            'offline': offline_routes.receipt(plan['row'], manual=True) if plan.get('offline') else None}
 
 
 def prepare(config, rows, operation, settings):
@@ -225,11 +236,13 @@ def prepare(config, rows, operation, settings):
             plan = (_feeder(config, row, settings) if row.get('runtime_provider') == 'feeder'
                     else _native(config, row, settings, cache, clean=operation == 'adopt-clean'))
             e, target = plan['engine'], plan['target']
+            if route := offline_routes.reviewed_route(row):
+                plan['offline'] = route
             t.need(str(target).casefold() not in seen, 'The same installation was selected twice.')
             seen.add(str(target).casefold())
             t.need(not e._running_processes_under_root(Path(row['game'])), 'Close this game before Adoption.')
             if not plan.get('feeder') and plan['game'].anti_cheat:
-                plan['offline'] = offline_routes.receipt(row)
+                plan['offline'] = offline_routes.reviewed_route(row) or offline_routes.receipt(row)
                 t.need(not offline_routes.protected_running(), 'Close protected games before reviewing the offline-only exception.')
             if operation == 'adopt-clean':
                 if plan.get('feeder'):
@@ -323,6 +336,8 @@ def _register_feeder(plan):
                   name=row['name'], originals=originals, adopted=True, created_utc=t.now(),
                   restore_boundary='before-adoption', nr_runtime=_feeder_model(target, originals[feeder.MODEL]),
                   installed_hashes={name: value for name, value in plan['hashes'].items() if value})
+    if plan.get('offline'):
+        record['offline_route'] = plan['offline']
     if plan['clean']:
         data = dict(plan['clean_payload'])
         text = data['ReShade.ini'].decode('utf-8-sig')

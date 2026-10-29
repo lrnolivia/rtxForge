@@ -241,3 +241,21 @@ foreach (var theme in ForgeSettings.OverlayThemes)
 if (JsonSerializer.Deserialize<ForgeSettings>("{\"overlay_theme\":\"unknown\"}")!.OverlayTheme != "dark")
     throw new Exception("Unknown overlay theme must preserve the existing dark default");
 Console.WriteLine("PASS: Dark, Light and Follow app overlay themes persist and reach the helper; unknown themes retain Dark.");
+
+var executableSettings = new ForgeSettings { GameExecutables = new() { ["G:/Games/One"] = "bin/game.exe" } };
+var executableCopy = executableSettings.Clone();
+if (executableCopy.GameExecutables["G:/Games/One"] != "bin/game.exe") throw new Exception("Executable choice was not persisted.");
+var oldChoiceKey = executableSettings.ExecutableSelectionKey;
+executableCopy.GameExecutables["G:/Games/One"] = "other.exe";
+if (executableSettings.ExecutableSelectionKey != oldChoiceKey || executableCopy.ExecutableSelectionKey == oldChoiceKey)
+    throw new Exception("Executable choices share storage or do not invalidate cached support.");
+Console.WriteLine("PASS: per-game executable choices persist, clone independently and invalidate cached support.");
+var offlinePart = new OperationReview("install", "offline-token", [], []) { OfflineNotice = "Offline only" };
+var mixedReview = new OperationReview("install", "", [], []) { Steps = [offlinePart] };
+if (mixedReview.RequiredTrust != "Offline only" || mixedReview.OfflineAcknowledged || mixedReview.Steps[0].OfflineAcknowledged)
+    throw new Exception("Offline acknowledgement was missing or preselected.");
+var acceptedOffline = mixedReview.AcknowledgeOffline(true);
+if (!acceptedOffline.Steps[0].OfflineAcknowledged || mixedReview.Steps[0].OfflineAcknowledged
+    || acceptedOffline.AcknowledgeOffline(false).Steps[0].OfflineAcknowledged)
+    throw new Exception("Offline acknowledgement did not follow the exact operation steps independently.");
+Console.WriteLine("PASS: offline acknowledgement starts unchecked and follows mixed-package review steps.");

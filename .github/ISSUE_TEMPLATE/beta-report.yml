@@ -99,3 +99,11 @@ body:
     attributes:
       value: |
         Optional: export a support report from **Settings → Recovery → Library Reports → Preview Support Report**, review it, and attach it above. Keep the GitHub issue link with any Reddit or discussion follow-up so the results stay together.
+  - type: upload
+    id: support-archive
+    attributes:
+      label: Reviewed support report / logs (optional)
+      description: Attach your redacted ZIP here (under 25 MB). Files upload when attached and are public in this repository, so check their contents first.
+    validations:
+      required: false
+      accept: ".zip,.log,.txt,.json"

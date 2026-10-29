@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "id": "skynizz-inzoi-late-overlay-candidate-1",
+  "base_bridge_id": "skynizz-ada-mfg-13-panel-candidate",
+  "patch": "inzoi-overlay-candidate.patch",
+  "patch_sha256": "34a0db1de7d06a2ba3752e9dc3a11ce9c97a4754484a23d38257a8c4cb118fee",
+  "runtime_opt_in": "RTXFORGE_INZOI_LATE_OVERLAY=1",
+  "candidate_only": true,
+  "runtime_verified": false,
+  "performance_verified": false,
+  "default_promoted": false
+}

@@ -73,6 +73,23 @@ class SelectionTest(unittest.TestCase):
         with self.assertRaises(t.Refusal):
             engine.choose_game_exe(self.root, 'game', [self.old], [])
 
+    def test_automatic_review_uses_the_same_fresh_discovery_as_library(self):
+        actual = pe(self.root / 'bin/FarCry5.exe')
+        prerequisite = pe(self.root / 'Support/MicrosoftNetFramework4/dotNetFx.exe')
+        with prerequisite.open('r+b') as stream:
+            stream.truncate(67 * 1024**2)
+        helper = pe(self.root / 'host64/dlss5-feed-host64.exe')
+        engine = SimpleNamespace(choose_game_exe=lambda *args: prerequisite)
+        selection.adapt_engine(engine, lambda: {})
+        upscalers, exes, _ = discovery.scan_files(self.root)
+        expected = discovery.choose_exe(self.root, 'Far Cry 5', upscalers, exes)
+        self.assertEqual(expected, actual)
+        self.assertEqual(engine.choose_game_exe(self.root, 'Far Cry 5', [prerequisite, helper], []), actual)
+        actual.unlink()
+        # A disappeared choice is freshly re-detected, rather than accepted
+        # from the row or the original engine's stale candidate list.
+        self.assertNotEqual(engine.choose_game_exe(self.root, 'Far Cry 5', [actual], []), actual)
+
 
 if __name__ == '__main__':
     unittest.main()

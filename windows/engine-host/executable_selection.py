@@ -1,6 +1,6 @@
 """Per-game executable choices, applied before discovery inspects install ownership.
 
-Choices affect discovery only. Install reviews still check their own target,
+Discovery and install review share the same chooser. Reviews check their target,
 processes, file hashes and ownership. Invalid saved choices stay visible and
 blocked rather than silently installing beside a different executable.
 """
@@ -75,7 +75,13 @@ def adapt_engine(e, saved_choices):
         if not selected:
             values = saved_choices() or {}
             selected = {key(folder): value for folder, value in values.items()}.get(key(root))
-        return validate(root, selected) if selected else detected(root, name, exes, evidence)
+        if selected:
+            return validate(root, selected)
+        # Re-scan with the same prerequisite/helper filters and scoring as the
+        # library. The engine's older chooser can pick a redistributable or a
+        # helper here even though the library selected the actual game.
+        upscalers, candidates, _ = discovery.scan_files(root)
+        return _detected(root, name, upscalers, candidates)
     e.choose_game_exe = engine_choose
 
 

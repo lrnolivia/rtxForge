@@ -165,7 +165,8 @@ def compact(found, now):
             'place': found.get('nr_placement') if found.get('nr_placement_verified') else None,
             'fps': number('rendered_fps'), 'fresh': found.get('native_fresh') is True,
             'status': number('native_status'), 'presented': number('native_presented'),
-            'generated': number('native_generated'), 'mode': number('native_mode'), 'fg': number('fg_successes'),
+            # native_generated is the game's requested option, not a measured frame count.
+            'configured_generated': number('native_generated'), 'mode': number('native_mode'), 'fg': number('fg_successes'),
             'failure': str(found.get('failure') or (found.get('detail') if found.get('state')=='unavailable' else '') or '')[:160], 'nr_on': values.get('enabled'),
             'helper': found.get('helper') or {},
             'intensity': values.get('intensity'), 'mult': values.get('multiplier'),
@@ -190,7 +191,7 @@ def summarize(samples):
     progressing = [b for a,b in zip(live,live[1:]) if a.get('pid')==b.get('pid') and a.get('sequence') is not None and b.get('sequence') is not None and a['sequence']!=b['sequence']]
     nr = [s for s in progressing if s.get('nr') is True and (s.get('nr_ms') or 0) > 0]
     fresh = [s for s in live if s.get('fresh') and s.get('presented') is not None]
-    fg = [s for s in fresh if (s.get('mode') or 0) > 0 and (s.get('generated') or 0) > 0 and (s.get('presented') or 0) >= 2]
+    fg = [s for s in fresh if (s.get('mode') or 0) > 0 and (s.get('presented') or 0) >= 2]
     statuses = 0
     for s in fresh:
         if type(s.get('status')) is int and s['status'] > 0: statuses |= s['status']
@@ -200,8 +201,9 @@ def summarize(samples):
     return {'samples': len(samples), 'connected': len(bridge), 'live': len(live), 'stalled': len(bridge) - len(live),
             'nr_active': len(nr), 'nr_ms': _median(s.get('nr_ms') for s in nr),
             'reports_nr': any(s.get('nr') is not None for s in live), 'reports_mfg': any(s.get('presented') is not None for s in live),
-            'fresh_mfg': len(fresh), 'framegen': len(fg), 'presented': _median(s.get('presented') for s in fg),
-            'generated': _median(s.get('generated') for s in fg), 'streamline': statuses, 'fg_calls': calls,
+            'fresh_mfg': len(fresh), 'framegen': len(fg), 'presented': _median(s.get('presented') for s in fresh),
+            'generated': _median(max(0,s['presented']-1) for s in fresh if (s.get('mode') or 0)>0),
+            'configured_generated': _median(s.get('configured_generated') for s in live), 'streamline': statuses, 'fg_calls': calls,
             'settings_changed': len({(s.get('mult'), s.get('dynamic')) for s in live}) > 1,
             'placements': dict(Counter(PLACEMENTS.get(s['place'], 'unknown') for s in live if s.get('place') is not None)),
             'fps': _median(s.get('fps') for s in live), 'pids': sorted({s['pid'] for s in bridge if s.get('pid')}),
@@ -300,14 +302,19 @@ def evaluate(summary, logs=None, helper=None, pipelines=None, checks=None):
         add('mfg', NOT_TESTED, 'MFG was disabled.', fix='Enable frame generation in the game, then choose a multiplier.')
     elif summary['framegen'] or vulkan and vulkan[1] > vulkan[0] and vulkan[3] == 0:
         shown = summary['presented'] if summary['framegen'] else vulkan[2]
-        low = type(requested) in (int, float) and requested > 1 and shown < requested and not summary['dynamic']
+        low = shown < 2 or type(requested) in (int, float) and requested > 1 and shown < requested and not summary['dynamic']
+        flags = [STREAMLINE[b] for b in STREAMLINE if summary['streamline'] & b]
+        low = low or bool(summary['streamline'])
         add('mfg', PROBLEM if low else WORKING, f'MFG presented {shown:g}x' + ('; below the requested multiplier.' if low else '.'),
             [f'Requested: {requested}x.' if requested is not None else 'Requested multiplier: not reported.',
              f"Successful FG calls increased by {summary['fg_calls']}.",
-             f"Generated frames per present: {summary['generated']}." if summary['generated'] is not None else '',
+             f"Observed extra presentations per native report: {summary['generated']}." if summary['generated'] is not None else '',
+             f"Game requested generated frames: {summary['configured_generated']}." if summary['configured_generated'] is not None else '',
+             f"Extra presentations on {summary['framegen']} of {summary['fresh_mfg']} fresh checks." if summary['fresh_mfg'] else '',
+             *[reason for reason,_ in flags],
              f"Rendered FPS: {summary['fps']:.0f}." if summary['fps'] else '',
              'Dynamic MFG support: ' + str(summary['dynamic_supported'])],
-            'Try a lower multiplier and check frame caps / V-Sync.' if low else None)
+            flags[0][1] if flags else 'Try a lower multiplier and check frame caps / V-Sync.' if low else None)
     elif summary['fresh_mfg'] or vulkan:
         status = summary['streamline'] or (vulkan[3] if vulkan else 0)
         flags = [STREAMLINE[b] for b in STREAMLINE if status & b]

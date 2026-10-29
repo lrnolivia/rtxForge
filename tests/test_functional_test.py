@@ -69,6 +69,17 @@ class FunctionalEvidenceTests(unittest.TestCase):
         self.assertEqual(result['state'], ft.PROBLEM)
         self.assertIn('game’s own settings', result['fix'])
 
+    def test_requested_generated_count_is_never_reported_as_measured_frames(self):
+        found=ft.compact(snapshot(native_generated=5,native_presented=2),1)
+        summary=ft.summarize([found])
+        self.assertEqual(summary['configured_generated'],5)
+        self.assertEqual(summary['generated'],1)
+
+    def test_brief_success_does_not_hide_mostly_failed_or_refused_generation(self):
+        found=[ft.compact(snapshot(native_presented=1),i) for i in range(8)]+[ft.compact(snapshot(),9)]
+        self.assertEqual(self.results(found)['mfg']['state'],ft.PROBLEM)
+        self.assertEqual(self.results([ft.compact(snapshot(native_status=2),1)])['mfg']['state'],ft.PROBLEM)
+
     def test_mfg_settings_changes_do_not_compare_different_requests(self):
         a = snapshot(sequence=2); b = snapshot(values=dict(a['values'], multiplier=2))
         self.assertEqual(self.results([ft.compact(a, 1), ft.compact(b, 2)])['mfg']['state'], ft.NOT_TESTED)
@@ -101,6 +112,16 @@ class FunctionalEvidenceTests(unittest.TestCase):
         self.assertEqual(results['nr']['state'], ft.NOT_REPORTED)
         logs['fgvk.log'] = 'FG stats: 300 presents -> 300 frames displayed (x1.00) status=2'
         self.assertEqual(self.results([], logs, 'vulkan-native')['mfg']['state'], ft.PROBLEM)
+
+    def test_vulkan_nr_uses_completed_evaluations_and_positive_timing(self):
+        for ms,state in [('1.25',ft.WORKING),('0.00',ft.NOT_REPORTED)]:
+            result=self.results([],{'fgvk.log':f'NR stats: 120 native Vulkan evaluations composed, GPU {ms}ms'},'vulkan-native')['nr']
+            self.assertEqual(result['state'],state)
+
+    def test_zero_feeder_evaluations_and_zero_gpu_windows_are_not_passes(self):
+        for route,logs in [('feeder',{'ReShade.log':'feature 18 evaluation succeeded (count=0)'}),
+                           ('y4my',{'OptiScaler.log':'DLSS-NR GPU window: 0 samples'})]:
+            self.assertNotEqual(self.results([],logs,route)['nr']['state'],ft.WORKING)
 
     def test_every_catalog_package_gets_all_parts_and_unknown_never_passes(self):
         catalog = json.loads((Path(__file__).resolve().parents[1] / 'providers/lock.json').read_text())

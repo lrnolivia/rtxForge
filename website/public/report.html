@@ -17,7 +17,7 @@
   <div class="page">
     <header class="header">
       <a class="brand" href="./" data-report-home aria-label="rtxForge Beta home"><img class="brand-mark" src="assets/rtxforge.svg" width="52" height="52" alt=""><span class="brand-name">rtxForge</span><span class="beta">Beta</span></a>
-      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light appearance"><img id="theme-icon" src="assets/sun.svg" width="20" height="20" alt=""></button>
+      <div class="header-links"><a class="header-report" href="#beta-report">Report a bug <span aria-hidden="true">↓</span></a><button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light appearance"><img id="theme-icon" src="assets/sun.svg" width="20" height="20" alt=""></button></div>
     </header>
     <main id="main" tabindex="-1">
       <div class="guide-intro">
@@ -40,18 +40,18 @@
           <p><a id="report-guide" href="install.html?os=linux">Read the installation guide</a></p>
         </aside>
         <div class="report-content">
-          <form id="beta-report" action="https://github.com/lrnolivia/rtxForge/issues/new" method="get" aria-describedby="report-instructions">
+          <form id="beta-report" action="https://github.com/lrnolivia/rtxForge/issues/new" method="get" aria-describedby="report-instructions" tabindex="-1">
             <input type="hidden" name="template" value="beta-report.yml">
             <input type="hidden" id="report-title" name="title" value="[Beta report] ">
             <p id="report-instructions" class="report-instructions">All fields are required. If startup failed, enter “Not reached” for the game or package. Use “Not sure” for anything you cannot verify.</p>
+            <div class="report-field report-os"><label for="platform">Which operating system are you reporting?</label><select id="platform" name="platform" required aria-describedby="os-hint"><option value="">Choose your operating system</option><option value="Linux">Linux</option><option value="Windows">Windows</option></select><p id="os-hint">Choose an OS to see its setup fields.</p></div>
             <fieldset>
               <legend>Your setup</legend>
               <div class="report-fields">
-                <div class="report-field"><label for="platform">Operating system</label><select id="platform" name="platform" required><option value="Linux">Linux</option><option value="Windows">Windows</option></select></div>
-                <div class="report-field"><label for="distribution">Distro / OS version</label><input id="distribution" name="distribution" list="distros" placeholder="e.g. Bazzite 44" maxlength="100" required><datalist id="distros"><option value="SteamOS"><option value="Bazzite"><option value="CachyOS"><option value="Windows 11"></datalist></div>
+                <div class="report-field report-wide"><label for="distribution" id="distribution-label">Distro / OS version</label><input id="distribution" name="distribution" list="distros" placeholder="Distro or Windows version" maxlength="100" required><datalist id="distros"><option value="SteamOS"><option value="Bazzite"><option value="CachyOS"></datalist><datalist id="windows-versions"><option value="Windows 11"><option value="Windows 10"></datalist></div>
                 <div class="report-field"><label for="gpu-series">RTX series</label><select id="gpu-series" name="gpu-series" required><option value="">Choose a series</option><option>RTX 20</option><option>RTX 30</option><option>RTX 40</option><option>RTX 50</option><option>Other / Not sure</option></select></div>
                 <div class="report-field"><label for="gpu">GPU model and driver</label><input id="gpu" name="gpu" placeholder="e.g. RTX 3080 · driver version" maxlength="150" required></div>
-                <div class="report-field"><label for="app-format">rtxForge app format</label><select id="app-format" name="app-format" required><option value="">Choose a format</option><option>Flatpak</option><option>AppImage</option><option>Windows installer</option><option>Windows portable ZIP</option><option>Source / Other / Not sure</option></select></div>
+                <div class="report-field"><label for="app-format">rtxForge app format</label><select id="app-format" name="app-format" required><option value="">Choose a format</option><option data-format-os="linux">Flatpak</option><option data-format-os="linux">AppImage</option><option data-format-os="windows">Windows installer</option><option data-format-os="windows">Windows portable ZIP</option><option>Source / Other / Not sure</option></select></div>
                 <div class="report-field"><label for="app-build">rtxForge version / channel</label><input id="app-build" name="app-build" placeholder="Version and Beta or Development" maxlength="150" required></div>
               </div>
             </fieldset>
@@ -69,7 +69,7 @@
               <div class="report-fields">
                 <div class="report-field"><label for="nr-result">Neural rendering (NR)</label><select id="nr-result" name="nr-result" required><option value="">Choose a result</option><option>Working in-game</option><option>Not working in-game</option><option>Installed, not tested</option><option>Could not install</option><option>Not installed</option><option>Not sure</option></select></div>
                 <div class="report-field"><label for="mfg-result">Multi-frame generation (MFG)</label><select id="mfg-result" name="mfg-result" required><option value="">Choose a result</option><option>Working in-game</option><option>Not working in-game</option><option>Installed, not tested</option><option>Could not install</option><option>Not installed</option><option>Not sure</option></select></div>
-                <div class="report-field report-wide"><label for="observations">Steps, expected result, and observed result</label><textarea id="observations" name="observations" rows="6" maxlength="1500" required aria-describedby="observations-hint" placeholder="What did you do, and what did you see? Include exact errors or how you verified a working feature."></textarea><p id="observations-hint">Include Proton version and game API if known. Add longer logs or reviewed support-report attachments on GitHub.</p></div>
+                <div class="report-field report-wide"><label for="observations">Steps, expected result, and observed result</label><textarea id="observations" name="observations" rows="6" maxlength="1500" required aria-describedby="observations-hint" placeholder="What did you do, and what did you see? Include exact errors or how you verified a working feature."></textarea><p id="observations-hint">Include your game API if known. Add longer logs or reviewed support-report attachments on GitHub.</p></div>
               </div>
             </fieldset>
             <div class="report-actions"><button class="guide-download" type="submit">Review on GitHub <span aria-hidden="true">↗</span></button><button id="copy-report" class="report-copy" type="button" hidden>Copy report template</button></div>

@@ -205,6 +205,8 @@ body:not(.install-page) .platform-picker{margin:12px 0 40px}
 .download-alternative[hidden]{display:none}
 
 /* Beta reports reuse the guide's typography and native form controls. */
+.header-report{gap:8px;padding:10px 14px;border:1px solid #a5a5ae;border-radius:12px;color:#f2f3f4;background:rgba(17,17,19,.68)}
+.header-report:hover{background:#35353a}
 .beta-report-callout{display:flex;align-items:center;justify-content:space-between;gap:32px;margin-top:64px;padding:28px 0;border-top:1px solid var(--raised);border-bottom:1px solid var(--raised)}
 .beta-report-callout h2{font-size:30px;margin:0 0 8px}
 .beta-report-callout p{color:var(--secondary);margin:0;max-width:650px}
@@ -226,6 +228,8 @@ body:not(.install-page) .platform-picker{margin:12px 0 40px}
 .report-field{min-width:0}
 .report-field label{display:block;font-size:14px;font-weight:550;margin-bottom:8px}
 .report-wide{grid-column:1/-1}
+.report-os{margin-top:28px}
+.report-page main:focus,.report-page form:focus{outline:none}
 .report-content input:not([type=hidden]),.report-content select,.report-content textarea{display:block;width:100%;min-width:0;min-height:48px;border:1px solid var(--hover);border-radius:10px;padding:12px;background:var(--surface);color:var(--text);font:inherit;font-size:16px;line-height:1.5}
 .report-content textarea{resize:vertical}
 .report-content input::placeholder,.report-content textarea::placeholder{color:var(--muted);opacity:1}
@@ -234,6 +238,7 @@ body:not(.install-page) .platform-picker{margin:12px 0 40px}
 .report-field p{margin:8px 0 0}
 .report-actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:0 0 20px}
 .report-actions .guide-download{margin:0;gap:12px}
+.report-actions .guide-download:disabled{background:var(--raised);color:var(--muted);cursor:default}
 .report-copy{min-height:48px;padding:10px 20px;background:var(--surface);border-radius:12px;font-size:14px;font-weight:550}
 .report-copy:hover{background:var(--hover)}
 #report-status{font-size:14px;line-height:1.7;color:var(--text);overflow-wrap:anywhere}
@@ -248,4 +253,10 @@ body:not(.install-page) .platform-picker{margin:12px 0 40px}
   .beta-report-callout{display:block;margin-top:40px;padding:24px 0}.beta-report-callout h2{font-size:26px}.beta-report-callout>a{margin-top:20px}
   .report-layout{grid-template-columns:1fr;gap:28px}.report-help{font-size:14px}.report-help h2{font-size:26px}.report-help p{margin-bottom:16px}
   .report-fields{grid-template-columns:1fr;gap:20px}.report-content fieldset{padding-top:20px}.report-note{margin:20px 0}
+}
+@media(max-width:600px){
+  .header{display:grid;grid-template-columns:minmax(0,1fr) 44px;height:auto;min-height:136px;gap:8px 12px;padding:20px 0}
+  .header-links{display:contents}.header .theme-toggle{grid-column:2;grid-row:1}
+  .header-report{grid-column:1/-1;grid-row:2;width:fit-content}
+  .report-layout{display:flex;flex-direction:column}.report-content{width:100%;order:-1}
 }

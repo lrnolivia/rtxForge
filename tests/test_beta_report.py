@@ -172,6 +172,14 @@ class BetaReportTest(unittest.TestCase):
                       'rtxforge://support/logs?' + 'a' * 300, '', None):
             self.assertIsNone(beta_report.parse_link(value), value)
 
+    def test_desktop_entries_register_the_app_link(self):
+        flatpak = (Path(__file__).resolve().parents[1] / 'packaging/flatpak/io.github.lrnolivia.RTXForge.desktop').read_text()
+        self.assertIn('Exec=rtxforge %u\n', flatpak)
+        self.assertIn('MimeType=x-scheme-handler/rtxforge;\n', flatpak)
+        installer = (Path(__file__).resolve().parents[1] / 'scripts/desktop_install.py').read_text()
+        self.assertIn("'MimeType=x-scheme-handler/rtxforge;\\n'", installer)
+        self.assertIn('%u', installer)
+
     # ---------- logs ----------
 
     def log(self, name, data, when=None):

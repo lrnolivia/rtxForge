@@ -1,6 +1,6 @@
 """User-recorded test results. Never deploys, launches, or modifies game files."""
 from pathlib import Path
-import hashlib,json,zipfile,datetime,stat
+import hashlib,json,zipfile,datetime
 import transactions as t
 import engine_bridge,library_media
 from storage import storage

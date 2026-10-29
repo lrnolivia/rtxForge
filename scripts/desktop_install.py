@@ -97,16 +97,25 @@ def register(target=None):
         'Type=Application\n'
         'Name=rtxForge\n'
         'Comment=GeForce tools for Linux\n'
-        f'Exec="{quoted}"\n'
+        f'Exec="{quoted}" %u\n'
         f'Icon={icon}\n'
         'Terminal=false\n'
         'Categories=Game;Utility;\n'
         f'StartupWMClass={APP_ID}\n'
+        # The website's "open in rtxForge" link (rtxforge://support/logs).
+        'MimeType=x-scheme-handler/rtxforge;\n'
     )
 
     if shutil.which('update-desktop-database'):
         subprocess.run(
             ['update-desktop-database', str(apps)],
+            check=False,
+            capture_output=True,
+        )
+
+    if shutil.which('xdg-mime'):
+        subprocess.run(
+            ['xdg-mime', 'default', desktop.name, 'x-scheme-handler/rtxforge'],
             check=False,
             capture_output=True,
         )

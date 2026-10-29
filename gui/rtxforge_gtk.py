@@ -11102,6 +11102,7 @@ class Window(Adw.ApplicationWindow):
         detected=[g for g in self.games if self.adoptable(g)]
         if detected:
             self.toast(f'{len(detected)} existing setup'+('s' if len(detected)!=1 else '')+' detected. Open a game marked Detected to adopt it.')
+        self.open_support_link()
     def choose_folder(self,*_):
         if gamescope_session():
             dialog=Adw.Dialog(
@@ -13173,6 +13174,9 @@ class Window(Adw.ApplicationWindow):
         detail_action_rows['Notes'].append(
             test
         )
+        detail_action_rows['Notes'].append(
+            button('Prepare Beta Report',lambda *_:self.prepare_beta_reports([game]))
+        )
         appearance=content['Appearance']
         appearance.append(self.artwork_preferences(game))
 
@@ -13833,15 +13837,39 @@ class Window(Adw.ApplicationWindow):
                 Gio.AppInfo.launch_default_for_uri('steam://rungameid/'+str(game['appid']),None)
             self.toast('Logs captured. Record your result and save notes.' if finish else 'Test started. Launch your game normally, then return here to finish.')
         self.start('Collecting test logs' if finish else 'Starting test record',lambda:(game_notes.finish if finish else game_notes.start)(self.service.config,game),done)
-    def show_reports(self,*_):
+    def show_reports(self,*_,issue=None):
         d,b,f=self.open_panel('Library status & reports')
         totals=Counter(g.get('test_record',{}).get('status','Untested') for g in self.games)
         # Same words as the status pills ("Bench" shows as N/A).
         b.append(label(' · '.join(f'{totals[state]} {"not applicable" if state=="Bench" else state.lower()}' for state in game_notes.STATES),'heading'))
         b.append(label('Diagnostics separate saved settings from captured runtime evidence. Nothing is uploaded.','dim-label'))
+        # Beta reports: one game, a few, or all of them, each its own report.
+        picks=[];syncing={'busy':False}
+        everything=Gtk.CheckButton(label='Select all games for a beta report')
+        prepare=Gtk.Button(label='Prepare Beta Report',sensitive=False)
+        prepare.add_css_class('suggested-action')
+        prepare.connect('clicked',lambda *_:self.prepare_beta_reports([g for p,g in picks if p.get_active()],issue))
+        def counted(*_):
+            chosen=sum(p.get_active() for p,_ in picks)
+            prepare.set_label(f'Prepare Beta Report · {chosen} game{"s" if chosen!=1 else ""}' if chosen else 'Prepare Beta Report')
+            prepare.set_sensitive(bool(chosen))
+            if not syncing['busy']:
+                syncing['busy']=True;everything.set_active(bool(picks) and chosen==len(picks));syncing['busy']=False
+        def all_toggled(box):
+            if syncing['busy']:return
+            syncing['busy']=True
+            for pick,_ in picks:pick.set_active(box.get_active())
+            syncing['busy']=False;counted()
+        everything.connect('toggled',all_toggled)
+        b.append(everything)
         for game in self.games:
             record=game.get('test_record',{});item=row(game['name'],record.get('status','Untested')+(' · test in progress' if record.get('active') else ''))
+            pick=Gtk.CheckButton(valign=Gtk.Align.CENTER)
+            pick.update_property([Gtk.AccessibleProperty.LABEL],['Include '+game['name']+' in the beta report'])
+            pick.connect('toggled',counted);item.add_prefix(pick);item.set_activatable_widget(pick);picks.append((pick,game))
             item.add_suffix(button('Diagnose',lambda _,g=game:self.show_diagnostics(g)));b.append(item)
+        if issue:b.append(label(f'Choose the games whose logs belong with issue #{issue}.','dim-label'))
+        f.append(prepare)
         logs=Gtk.CheckButton(label='Include redacted logs from the latest captured test',active=False)
         notes=Gtk.CheckButton(label='Include my notes',active=False)
         b.append(logs);b.append(notes)
@@ -13875,6 +13903,231 @@ class Window(Adw.ApplicationWindow):
         flow.primary.set_label('Export')
         flow.primary.set_sensitive(not self.options.demo)
         flow._page('review',scroll,width=760)
+
+    # ---------- beta reports (scripts/beta_report.py) ----------
+
+    def prepare_beta_reports(self,games,issue=None):
+        """Draft one report per game from what this computer verifies, then let the user correct it."""
+        import beta_report,compat_list
+        games=list(games)
+        if not games:return
+        if self.busy and self.task_kind!='art':
+            self.toast('Wait for the current task to finish, then prepare the report.');return
+        def facts():
+            try:
+                import app_update
+                channel=app_update.channel()
+            except Exception:channel=''
+            selected=compat_list.package_label(self.settings.get('runtime_provider',''))
+            shared=beta_report.context(getattr(self,'hardware_info',None) or {},APP_VERSION,channel,selected)
+            # Reading install records hashes the managed files: off the main thread.
+            return [beta_report.draft(game,shared,game.get('test_record')) for game in games]
+        flow=OperationFlow(self,'report',games,'Prepare Beta Report')
+        flow.show_working('Checking this computer and each game’s install record…')
+        self.start('Preparing beta reports',facts,lambda reports:self.beta_report_editor(flow,games,reports,issue))
+
+    def beta_report_editor(self,flow,games,reports,issue=None):
+        import beta_report
+        if flow.closed:return
+        flow._title('Prepare Beta Report')
+        body=flow._body()
+        body.append(label('rtxForge filled in what it could check on this computer. Correct anything that’s wrong, '
+                          'then choose what you saw in game. Installed files don’t show whether NR or MFG worked.','dim-label'))
+        listing=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        listing.add_css_class('boxed-list')
+        expanders=[]
+        def refresh(*_):
+            ready=True
+            for report,expander in zip(reports,expanders):
+                missing=beta_report.problems(report)
+                ready=ready and not missing
+                expander.set_subtitle('Ready' if not missing else f'{len(missing)} answer{"s" if len(missing)!=1 else ""} needed · '+missing[0])
+            flow.primary.set_sensitive(ready)
+        for report,game in zip(reports,games):
+            expander=Adw.ExpanderRow(title=report['name'] or game['name'],expanded=len(reports)==1)
+            expander.set_use_markup(False);expander.set_subtitle_lines(2)
+            for key,name in beta_report.FIELDS:
+                expander.add_row(self.beta_report_field(report,key,name,refresh))
+            listing.append(expander);expanders.append(expander)
+        body.append(listing)
+        logs=Gtk.CheckButton(label='Include logs from each game’s folder (redacted, and shown to you before saving)')
+        notes=Gtk.CheckButton(label='Include my saved notes')
+        body.append(logs);body.append(notes)
+        existing=Adw.EntryRow(title='Adding to a report on GitHub? Issue link or number (optional)')
+        if issue:existing.set_text(f'#{issue}')
+        options=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE);options.add_css_class('boxed-list');options.append(existing)
+        body.append(options)
+        problem=label('','error');problem.set_visible(False);body.append(problem)
+        hint=label('Nothing is uploaded. You review everything on GitHub before posting.','dim-label');hint.add_css_class('caption')
+        body.append(hint)
+        scroll=Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,vexpand=True);scroll.set_child(body)
+        def preview(_review):
+            target=None
+            if existing.get_text().strip():
+                try:target=beta_report.existing_issue(existing.get_text())
+                except Exception as error:
+                    problem.set_text(str(error));problem.set_visible(True);return
+            if self.busy:
+                problem.set_text('Wait for the current task to finish, then preview again.');problem.set_visible(True);return
+            include_logs,include_notes=logs.get_active(),notes.get_active()
+            flow.show_working('Reading logs and preparing a redacted preview…' if include_logs else 'Preparing a redacted preview…')
+            def work():
+                try:
+                    collected={r['id']:beta_report.collect(g,g.get('test_record')) for r,g in zip(reports,games)} if include_logs else None
+                    saved={r['id']:(g.get('test_record') or {}).get('notes','') for r,g in zip(reports,games)} if include_notes else None
+                    return beta_report.bundle(reports,collected,saved)
+                except Exception as error:return {'error':str(error)}
+            self.start('Preparing redacted preview',work,lambda result:self.beta_report_preview(flow,reports,result,target))
+        flow.review={'operation':'report','rows':[{'name':r['name']} for r in reports],'blocked':[]}
+        flow.on_confirm=preview
+        flow.primary.set_visible(True);flow.primary.set_label('Preview')
+        flow.cancel_button.set_visible(True);flow.cancel_button.set_label('Cancel')
+        flow._page('review',scroll,width=760)
+        refresh()
+
+    def beta_report_field(self,report,key,name,changed):
+        """One field, its value, and where that value came from."""
+        import beta_report
+        source=beta_report.SOURCES.get(report['sources'].get(key),'')
+        value=report['fields'].get(key) or ''
+        if key in beta_report.CHOICES:
+            choices=list(beta_report.CHOICES[key])
+            field=Adw.ComboRow(title=name,subtitle=source,model=Gtk.StringList.new(['Choose…',*choices]))
+            field.set_selected(choices.index(value)+1 if value in choices else 0)
+            def picked(row,_):
+                index=row.get_selected()
+                beta_report.correct(report,key,choices[index-1] if index>0 else '')
+                row.set_subtitle(beta_report.SOURCES['yours']);changed()
+            field.connect('notify::selected',picked)
+            return field
+        if key=='observations':
+            box=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6);margins(box,12)
+            box.append(label(name,'heading'))
+            box.append(label('What you did, what you expected, and what you saw. Include exact errors, or how you checked that a feature worked.','dim-label'))
+            view=Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR,height_request=96,accepts_tab=False)
+            view.add_css_class('game-notes');view.get_buffer().set_text(value)
+            view.update_property([Gtk.AccessibleProperty.LABEL],[name])
+            def typed(buffer):
+                beta_report.correct(report,key,buffer.get_text(buffer.get_start_iter(),buffer.get_end_iter(),True));changed()
+            view.get_buffer().connect('changed',typed)
+            box.append(view)
+            return box
+        field=Adw.EntryRow(title=f'{name} · {source}' if source else name)
+        field.set_text(value)
+        field.connect('changed',lambda row:(beta_report.correct(report,key,row.get_text()),changed()))
+        return field
+
+    def beta_report_preview(self,flow,reports,preview,issue):
+        """The exact redacted files, frozen: Save writes these bytes and reads nothing again."""
+        import beta_report
+        if flow.closed:return
+        if 'error' in preview:
+            flow.show_done(False,preview['error'],title='Could not prepare the report');return
+        body=flow._body()
+        manifest=preview['manifest']
+        body.append(label(f"{len(manifest['files'])} log{'s' if len(manifest['files'])!=1 else ''} included · {len(manifest['skipped'])} not included",'heading'))
+        body.append(label('Review the exact text below. Redaction is best effort: check for anything personal before you share it. '
+                          'Logs show what ran, not what NR or MFG looked like.','dim-label'))
+        listing=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        listing.add_css_class('boxed-list');listing.add_css_class('review-list')
+        for name,text in preview['files'].items():
+            entry=next((item for item in manifest['files'] if item['path']==name),None)
+            subtitle=(f"{entry['session']} · {entry['modified'][:16].replace('T',' ')} UTC"+(' · newest part only' if entry['truncated'] else '')) if entry else 'Review the exact contents'
+            view=Gtk.TextView(editable=False,monospace=True,wrap_mode=Gtk.WrapMode.WORD_CHAR)
+            view.get_buffer().set_text(text)
+            scroller=Gtk.ScrolledWindow(min_content_height=240,vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER)
+            scroller.set_child(view)
+            listing.append(self.review_entry(name,subtitle,badge='Log' if entry else 'Report',details=scroller))
+        for item in manifest['skipped']:
+            listing.append(self.review_entry(item['name'],item['reason'],badge='Skipped',icon='dialog-information-symbolic'))
+        body.append(listing)
+        scroll=Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,vexpand=True);scroll.set_child(body)
+        def save(_review):
+            if self.busy:
+                self.toast('Wait for the current task to finish, then save again.');return
+            flow.show_working('Saving…')
+            documents=GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOCUMENTS)
+            def work():
+                try:return beta_report.export(preview,beta_report.folder(self.service.config,documents))
+                except Exception as error:return {'error':str(error)}
+            self.start('Saving beta report',work,lambda result:self.beta_report_saved(flow,reports,result,issue))
+        flow.on_confirm=save
+        flow._title('Review Beta Report')
+        flow.primary.set_visible(True);flow.primary.set_label('Save Report');flow.primary.set_sensitive(not self.options.demo)
+        flow._page('review',scroll,width=760)
+
+    def beta_report_saved(self,flow,reports,result,issue):
+        """Where the ZIP is, what it holds, and the browser steps that share it."""
+        import beta_report
+        if flow.closed:return
+        if 'error' in result:
+            flow.show_done(False,result['error'],title='Could not save the report');return
+        path=Path(result['path'])
+        body=flow._body()
+        body.append(label('Report saved','title-2'))
+        body.append(label(f"{result['name']} · {result['size']/1024**2:.1f} MB · {len(result['included'])} log{'s' if len(result['included'])!=1 else ''} included · {len(result['skipped'])} not included",'dim-label'))
+        files=Gtk.Box(spacing=8)
+        files.append(button('Open Folder',lambda *_:self.open_report_folder(path)))
+        files.append(button('Copy Path',lambda *_:self.copy_text(str(path),'Path copied')))
+        files.append(button('Save As…',lambda *_:self.save_report_copy(path)))
+        body.append(files)
+        share=Adw.PreferencesGroup(title='Share it on GitHub')
+        if issue:
+            text=beta_report.comment(reports,path,issue)
+            item=row(f"Add to issue #{issue['number']}",'Opens the issue and copies a short note. Paste it in a new comment, then drag the ZIP into the comment box.')
+            item.add_suffix(button('Open Issue',lambda *_:(self.copy_text(text,'Note copied'),Gio.AppInfo.launch_default_for_uri(issue['url'],None))))
+            share.add(item)
+        else:
+            for report in reports:
+                link=beta_report.issue_url(report)
+                def opened(_button,report=report,link=link):
+                    if not link['complete']:
+                        self.copy_text(beta_report.text(report),'The report was too long for the link. The full text is copied: paste it into the form.')
+                    Gio.AppInfo.launch_default_for_uri(link['url'],None)
+                item=row(report['fields'].get('game') or report['name'],'Opens a prefilled beta report. Attach the ZIP there before you submit.')
+                item.add_suffix(button('Copy Text',lambda *_,r=report:self.copy_text(beta_report.text(r),'Report copied')))
+                item.add_suffix(button('Open Form',opened))
+                share.add(item)
+        body.append(share)
+        body.append(label('Attaching a file on GitHub uploads it right away, and files on this repository are public. '
+                          'The ZIP stays in your Reports folder either way.','dim-label'))
+        scroll=Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,vexpand=True);scroll.set_child(body)
+        flow.dialog.set_can_close(True)
+        flow._title('Beta Report')
+        flow.cancel_button.set_visible(False)
+        flow.primary.set_visible(True);flow.primary.set_label('Done');flow.primary.set_sensitive(True)
+        flow._page('done',scroll,width=640)
+
+    def copy_text(self,text,done='Copied'):
+        """Copy to the clipboard; when it's unavailable, say where the same text can be found."""
+        try:self.get_clipboard().set(str(text))
+        except Exception:self.toast('Couldn’t copy. The same text is in report.md inside the saved ZIP.');return
+        self.toast(done)
+
+    def open_report_folder(self,path):
+        def opened(launcher,result):
+            try:launcher.open_containing_folder_finish(result)
+            except GLib.Error:self.toast('Couldn’t open the folder. Use Copy Path instead.')
+        Gtk.FileLauncher.new(Gio.File.new_for_path(str(path))).open_containing_folder(self,None,opened)
+
+    def save_report_copy(self,path):
+        chooser=Gtk.FileDialog(title='Save Beta Report',initial_name=path.name)
+        def chosen(dialog,result):
+            try:target=dialog.save_finish(result)
+            except GLib.Error:return
+            if target is None or not target.get_path():return
+            try:
+                import shutil
+                shutil.copyfile(path,target.get_path());self.toast('Saved a copy')
+            except OSError as error:self.error(str(error))
+        chooser.save(self,None,chosen)
+
+    def open_support_link(self):
+        """An rtxforge://support/logs link opens the report panel once the library is scanned."""
+        link,self.options.link=getattr(self.options,'link',None),None
+        if getattr(self.options,'link_refused',False):
+            self.options.link_refused=False;self.toast('Ignored a link rtxForge doesn’t recognise.')
+        if link:self.show_reports(issue=link['issue'])
 
     def new_operation_flow(self,operation,games,title=None):
         """The operation dialog for the visible interface: Game Mode draws its own."""
@@ -16452,7 +16705,16 @@ def main():
             'every status/action state.'
         ),
     )
+    parser.add_argument(
+        'link',
+        nargs='?',
+        help='rtxforge://support/logs from the website: opens beta reports.',
+    )
     options=parser.parse_args()
+    # Links come from web pages: only the exact report link is acted on.
+    import beta_report
+    raw,options.link=options.link,beta_report.parse_link(options.link) if options.link else None
+    options.link_refused=bool(raw) and options.link is None
 
     if (
         options.resize_smoke

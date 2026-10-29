@@ -1,12 +1,12 @@
 export const platforms = Object.freeze({
   linux: {
-    name: 'Linux', copy: 'A native app for your Linux desktop.', arch: 'x86_64',
-    requirements: 'Linux x86_64 with a working NVIDIA driver. Package-specific requirements are listed with each release.',
+    name: 'Linux', copy: 'For Linux desktops and Game Mode.', arch: 'x86_64',
+    requirements: 'Linux x86_64 and a working NVIDIA driver. Check the release notes for your package.',
     guide: 'install.html?os=linux', guideLabel: 'Read the installation guide'
   },
   windows: {
-    name: 'Windows', copy: 'A native app for your Windows desktop.', arch: 'x64',
-    requirements: 'Windows 10 version 2004 or later, x64, with a working NVIDIA driver. Packaged builds include the app runtimes.',
+    name: 'Windows', copy: 'For your Windows games.', arch: 'x64',
+    requirements: 'Windows 10 (version 2004 or later) or Windows 11, x64, and a working NVIDIA driver.',
     guide: 'install.html?os=windows', guideLabel: 'Read the installation guide'
   }
 });

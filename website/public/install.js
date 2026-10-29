@@ -3,6 +3,13 @@ import { initTheme } from './theme.mjs';
 
 initTheme();
 const tabs = [...document.querySelectorAll('[data-platform]')];
+function revealHelp() {
+  let target;
+  try { target = document.getElementById(decodeURIComponent(location.hash.slice(1))); } catch { return; }
+  if (!target) return;
+  for (let detail = target.closest('details'); detail; detail = detail.parentElement?.closest('details')) detail.open = true;
+  if (!target.closest('[hidden]')) target.scrollIntoView({ block: 'start' });
+}
 function setPlatform(os, { updateUrl = false, announce = false } = {}) {
   if (!Object.hasOwn(platforms, os)) os = 'linux';
   const platform = platforms[os];
@@ -24,6 +31,7 @@ function setPlatform(os, { updateUrl = false, announce = false } = {}) {
     history.replaceState({ os }, '', url); storage.set('rtxforge-platform', os);
   }
   if (announce) document.getElementById('platform-status').textContent = `Showing the ${platform.name} installation guide.`;
+  if (location.hash) revealHelp();
 }
 for (const tab of tabs) {
   tab.addEventListener('click', () => setPlatform(tab.dataset.platform, { updateUrl: true, announce: true }));
@@ -37,3 +45,4 @@ for (const tab of tabs) {
 }
 setPlatform(platformFromLocation());
 addEventListener('popstate', () => setPlatform(platformFromLocation()));
+addEventListener('hashchange', revealHelp);

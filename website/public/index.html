@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Deploy experimental neural rendering, bring multi-frame generation to RTX 20, 30, and 40 series, and update DLSS in compatible games. Native apps for Linux and Windows.">
+  <meta name="description" content="Neural rendering, multi-frame generation, and DLSS updates for compatible games. One library, with apps for Linux and Windows.">
   <link rel="canonical" href="https://loew.fi/rtxforge/">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="rtxForge">
@@ -57,8 +57,8 @@
       <section id="platform-content" class="hero" role="tabpanel" aria-labelledby="tab-linux" tabindex="0">
         <div class="hero-copy">
           <h1>New tricks for<br> old cards.</h1>
-          <p class="intro">Deploy neural rendering across your game library, bring multi-frame generation to RTX 20, 30, and 40 series, and keep DLSS up to date.</p>
-          <p class="platform-copy" id="platform-copy">A native app for your Linux desktop.</p>
+          <p class="intro">Add neural rendering, multi-frame generation, and DLSS updates to compatible games. Manage it all from your library.</p>
+          <p class="platform-copy" id="platform-copy">For Linux desktops and Game Mode.</p>
         </div>
 
         <figure class="hero-library" id="hero-library-media">
@@ -82,46 +82,41 @@
           <p class="package-meta" id="package-meta">Beta 1 · Linux x86_64</p>
           <div class="download-compatibility">
             <p>NR for compatible RTX cards.<br>MFG for RTX 20, 30, and 40 series.</p>
-            <a class="text-link" id="requirements-link" href="#requirements-details">Check game and GPU requirements</a>
+            <a class="text-link" id="requirements-link" href="#requirements-details">Check compatibility</a>
           </div>
         </div>
         <div class="download-options">
           <a class="download-button" id="download-link" aria-disabled="true" tabindex="-1">
-            <span id="download-label">Beta coming soon</span><span class="download-arrow" aria-hidden="true">↓</span>
+            <span id="download-label">Finding your download…</span><span class="download-arrow" aria-hidden="true">↓</span>
           </a>
           <a class="text-link portable-link" id="portable-link" hidden>Portable Beta <span aria-hidden="true">↗</span></a>
           <a class="text-link download-guide" id="guide-link" href="install.html?os=linux">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v15M12 5C9 3 5 3 2 4v15c3-1 7-1 10 1 3-2 7-2 10-1V4c-3-1-7-1-10 1Z"/></svg>
-            <span>Installation guide</span><span class="guide-arrow" aria-hidden="true">→</span>
+            <span>Setup guide</span><span class="guide-arrow" aria-hidden="true">→</span>
           </a>
-          <p class="install-copy" id="install-copy" role="status">The Linux Beta download will appear here when it is published.</p>
+          <p class="install-copy" id="install-copy" role="status">Checking the latest Beta.</p>
           <div class="release-actions" id="release-actions">
             <a class="text-link" id="release-github" href="https://github.com/lrnolivia/rtxForge/releases" target="_blank" rel="noopener">View releases on GitHub <span aria-hidden="true">↗</span></a>
             <button class="text-link retry-button" id="release-retry" type="button" hidden>Try again</button>
           </div>
-          <a class="secondary-download" id="secondary-link" aria-disabled="true" tabindex="-1" target="_blank" rel="noopener"><span id="secondary-label">Development coming soon</span><span aria-hidden="true">↗</span></a>
-          <p class="channel-note" id="channel-note">Development follows the latest changes and may be less stable than Beta.</p>
+          <details class="download-more"><summary>Development builds</summary><a class="secondary-download" id="secondary-link" aria-disabled="true" tabindex="-1" target="_blank" rel="noopener"><span id="secondary-label">Checking Development…</span><span aria-hidden="true">↗</span></a>
+          <p class="channel-note" id="channel-note">Newer changes. Less tested. Choose Beta if you’re unsure.</p></details>
         </div>
       </section>
 
       <section class="features" aria-labelledby="features-heading">
-        <h2 id="features-heading">Neural rendering.<br> <span>Across your library.</span></h2>
-        <p class="features-intro">Select your games and deploy NR in one pass, on compatible RTX cards.</p>
-        <div class="feature-mfg">
-          <h3>Multi-frame generation.<br> <span>RTX 20, 30, and 40 series.</span></h3>
-          <p>Choose MFG, tune your presets, then deploy across your compatible games.</p>
-        </div>
+        <h2 id="features-heading">Inside rtxForge.</h2>
         <ol class="feature-flow" aria-label="From package to play">
           <li class="feature-panel feature-packages">
             <div class="feature-copy">
-              <h3>Choose your<br> packages.</h3>
-              <p>Choose a supported package or inspect your own ZIP. Pick NR, MFG, or both for compatible games.</p>
+              <h3>Choose a package.</h3>
+              <p>Install neural rendering (NR), multi-frame generation (MFG), or both. The app shows what your game supports.</p>
             </div>
           </li>
           <li class="feature-panel">
             <div class="feature-copy">
               <h3>Tune presets.</h3>
-              <p>Set NR strength, sharpening, and frame-generation presets. Use library defaults, then fine-tune individual games.</p>
+              <p>Set defaults for your library. Fine-tune each game when you want to.</p>
             </div>
             <figure class="feature-media" id="feature-presets-media" hidden>
               <a id="feature-presets-original" target="_blank" rel="noopener">
@@ -134,7 +129,7 @@
             <div class="feature-copy">
               <h3>Install.</h3>
               <div>
-                <p>Review your game and package before installing. Follow the progress, then see when your features are ready. Your original files stay backed up for restore.</p>
+                <p>See what will change before you install. Your original files stay backed up.</p>
               </div>
             </div>
             <figure class="feature-media install-story" id="feature-install-media" hidden>
@@ -152,9 +147,8 @@
             <div class="feature-copy">
               <div class="feature-subheading">
                 <h3>Dual boot.</h3>
-                <span class="feature-status"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span aria-hidden="true">WIP</span><span class="sr-only">Work in progress</span></span>
               </div>
-              <p>Install your package on either OS, then adapt the same games on the other in one click.</p>
+              <p>Use Adapt to Linux for supported games already set up on Windows. Keep the same game files.</p>
             </div>
           </li>
           <li class="feature-panel feature-play">
@@ -164,9 +158,8 @@
                 <article class="feature-subcard">
                   <div class="feature-subheading">
                     <h4>Game Mode</h4>
-                    <span class="feature-status"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span aria-hidden="true">WIP</span><span class="sr-only">Work in progress</span></span>
                   </div>
-                  <p>Browse your library, open game details, and tune presets with a controller.</p>
+                  <p>Browse your library and change settings with a controller.</p>
                   <figure class="feature-media" id="feature-game-mode-media" hidden>
                     <a id="feature-game-mode-original" target="_blank" rel="noopener" class="card-media-stage game-mode-stage">
                       <img id="feature-game-mode-image" alt="" decoding="async">
@@ -181,9 +174,8 @@
                 <article class="feature-subcard">
                   <div class="feature-subheading">
                     <h4>Overlay</h4>
-                    <span class="feature-status"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span aria-hidden="true">WIP</span><span class="sr-only">Work in progress</span></span>
                   </div>
-                  <p id="feature-overlay-copy">The in-game NR and MFG overlay is in development for Windows.</p>
+                  <p id="feature-overlay-copy">Adjust NR and MFG while you play.</p>
                   <figure class="feature-media" id="feature-overlay-media" hidden>
                     <a id="feature-overlay-original" target="_blank" rel="noopener"><img id="feature-overlay-image" alt="" loading="lazy" decoding="async">
                     </a><figcaption class="sr-only" id="feature-overlay-provenance"></figcaption>
@@ -193,78 +185,24 @@
             </div>
           </li>
         </ol>
-        <p class="feature-footnote">Game and GPU support depends on the installed provider. Neural rendering is experimental.</p>
+        <p class="feature-footnote">This is a beta. Support varies by game and package. Neural rendering is experimental.</p>
       </section>
 
       <section class="beta-report-callout" aria-labelledby="beta-report-heading">
-        <div><h2 id="beta-report-heading">Help map what works.</h2><p>Tested a game? Share your GPU, distro, app format, package, and NR / MFG results. Working setups and failed tests both help.</p></div>
-        <a class="guide-download" href="report.html?os=windows" data-report-link>Share a beta report <span aria-hidden="true">→</span></a>
+        <div><h2 id="beta-report-heading">Help improve the beta.</h2><p>Tell us what worked, or what didn’t.</p></div>
+        <a class="guide-download" href="report.html?os=windows" data-report-link>Share a report <span aria-hidden="true">→</span></a>
       </section>
 
-      <section class="faq" aria-labelledby="faq-heading">
-        <h2 id="faq-heading">Frequently asked<br> questions.</h2>
-        <div class="faq-questions">
-        <details id="requirements-details">
-          <summary><span>Which GPUs and games work?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary>
-          <div class="details-body">
-            <p id="requirements-copy">Linux x86_64 with a working NVIDIA driver. Package-specific requirements are listed with each release.</p>
-            <p>NR works with compatible RTX cards. MFG supports RTX 20, 30, and 40 series. Check compatibility for your game and installed provider. Neural rendering is experimental.</p>
-            <p>Start with one game. Close it before making changes, review the files, and keep the original-file backups. Avoid protected online games and anti-cheat.</p>
-          </div>
-        </details>
-        <details>
-          <summary><span>Should I choose Beta or Development?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary>
-          <div class="details-body">
-            <p><strong>Start with Beta</strong>, the regular public testing release. Development is a moving release with the latest changes and unfinished features.</p>
-            <p>If a channel says <strong>coming soon</strong>, its release or a package for your OS has not been published yet. You can also download published packages from <a href="https://github.com/lrnolivia/rtxForge/releases" target="_blank" rel="noopener">GitHub Releases</a> under Assets.</p>
-          </div>
-        </details>
-        <details>
-          <summary><span>How do I get started?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary>
-          <div class="details-body">
-            <p>Download the app package for your OS and channel. In rtxForge, find one compatible game, choose your packages, tune presets, then review and install the features with the game closed.</p>
-            <a id="faq-guide-link" class="text-link" href="install.html?os=linux">Follow the installation guide <span aria-hidden="true">→</span></a>
-          </div>
-        </details>
-        <details>
-          <summary><span>Can I undo an installation?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary>
-          <div class="details-body">
-            <p><strong>Restore Original Files</strong> uses your feature-install backups to remove a managed installation. Native DLL updates made through <strong>DLSS Files</strong> have their own restore controls.</p>
-            <p>Keep your backups and recovery records. If a game update or another mod has changed the files, review any restore conflict before replacing them.</p>
-          </div>
-        </details>
-        <details>
-          <summary><span>Can I use the same games in a dual-boot setup?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary>
-          <div class="details-body">
-            <p>That is the goal: install a package on either OS, then adapt the same games on the other in one click. <strong>Dual-boot adaptation is a work in progress.</strong> Use the adaptation review offered by your build; launch settings differ between Linux and Windows.</p>
-          </div>
-        </details>
-        <details>
-          <summary><span>Having issues with Game Mode or the Overlay?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary>
-          <div class="details-body">
-            <p>Check the release notes for your OS and build; available controls can differ between versions. For the Windows overlay, open <strong>Settings → Overlay</strong> to check the shortcut and supported controls.</p>
-            <p>If the issue persists, include your OS, app build, controller (if relevant), and steps to reproduce in a bug report. Use the support-report steps under <strong>Found a bug?</strong> below to collect the details.</p>
-          </div>
-        </details>
-        <details id="support-details">
-          <summary><span>Found a bug?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary>
-          <div class="details-body">
-            <p>Open <strong>Settings → Recovery → Library Reports → Preview Support Report</strong> in rtxForge. Review the report, export it, then attach it to your bug report.</p>
-            <p>Use the beta report template for your GPU, distro / OS, app format, feature package, game, and separate NR / MFG results. Check the export before sharing; redaction can miss personal information.</p>
-            <a id="support-issue-link" class="text-link" href="report.html?os=windows" data-report-link>Prepare a beta report <span aria-hidden="true">→</span></a>
-          </div>
-        </details>
-        </div>
-      </section>
+      <section class="faq" aria-labelledby="faq-heading"><h2 id="faq-heading">Questions.</h2><div class="faq-questions"><details id="requirements-details"><summary><span>Will it work with my setup?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary><div class="details-body"><p id="requirements-copy">Linux x86_64 with a working NVIDIA driver.</p><p>NR needs a compatible RTX card and game package. MFG supports RTX 20, 30, and 40 series on supported games. Start with one game, and avoid protected online games and anti-cheat.</p></div></details><details><summary><span>How do I get started?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary><div class="details-body"><p>Install the app, choose a game and package, then review the install.</p><a id="faq-guide-link" class="text-link" href="install.html?os=linux">Follow the setup guide <span aria-hidden="true">→</span></a></div></details><details><summary><span>Can I undo it?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary><div class="details-body"><p>Yes. Use <strong>Restore Original Files</strong> to return to the files rtxForge backed up. Keep those backups. Updates made through <strong>DLSS Files</strong> have their own restore controls.</p></div></details><details><summary><span>Can I use my games on Windows and Linux?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary><div class="details-body"><p>For supported Windows installs on a shared drive, use <strong>Adapt to Linux</strong> in the Linux app. It sets up the Proton side and leaves your Windows setup alone.</p></div></details><details><summary><span>Where are the overlay controls?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary><div class="details-body"><p>Open <strong>Settings → Overlay</strong> in the app. Check the shortcut shown there, and use <strong>Update Overlays</strong> for installed games. The setup guide walks through it.</p></div></details><details id="support-details"><summary><span>Found a bug?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary><div class="details-body"><p>Tell us what happened. You can add logs later.</p><a id="support-issue-link" class="text-link" href="report.html?os=linux" data-report-link>Report a bug <span aria-hidden="true">→</span></a></div></details></div></section>
       <noscript><p class="noscript"><a href="https://github.com/lrnolivia/rtxForge/releases">Check Beta and Development releases on GitHub</a>.</p></noscript>
     </main>
 
     <footer class="footer">
       <a class="loew" href="https://loew.fi" target="_blank" rel="noopener">loew.fi</a>
       <div class="footer-links">
-        <a id="footer-guide-link" href="install.html?os=linux">Install guide</a>
+        <a id="footer-guide-link" href="install.html?os=linux">Setup guide</a>
         <a href="https://github.com/lrnolivia/rtxForge" target="_blank" rel="noopener">GitHub <span aria-hidden="true">↗</span></a>
-        <a id="report-link" href="report.html?os=windows" data-report-link>Beta reports</a>
+        <a id="report-link" href="report.html?os=windows" data-report-link>Report a bug</a>
         <a href="https://github.com/lrnolivia/rtxForge/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
       </div>
     </footer>

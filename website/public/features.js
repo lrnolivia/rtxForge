@@ -22,8 +22,8 @@ export function setFeaturePlatform(os) {
   render('hero-library', library, byId('hero-library-media'));
   byId('hero-library-provenance').textContent = library.provenance;
   byId('feature-overlay-copy').textContent = os === 'windows'
-    ? 'Adjust neural rendering and multi-frame generation while keeping your game in view.'
-    : 'Adjust neural rendering and multi-frame generation while keeping your game in view. Shown on Windows.';
+    ? 'Adjust NR and MFG while you play.'
+    : 'Adjust NR and MFG while you play. Windows screenshot shown.';
   for (const [slot, key] of [['presets', 'presets'], ['overlay', 'overlay']]) {
     const capture = captureForTheme(captures[key] || (key === 'overlay' ? SCREENSHOTS.windows.overlay : null), theme);
     const container = byId(`feature-${slot}-media`);

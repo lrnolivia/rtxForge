@@ -28,6 +28,7 @@ import game_mode_motion as motion
 import game_mode_visuals as visuals
 from game_mode_tools import GameModeTools
 from game_mode_presets import GameModePresets
+from game_mode_reports import GameModeReports
 from operation_scope import operation_targets, ScopeError
 import overview_facts
 import overlay_shortcut
@@ -346,7 +347,7 @@ def descendants(widget):
         child = child.get_next_sibling()
 
 
-class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
+class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
     def __init__(self, owner, helpers):
         super().__init__()
         self.owner = owner
@@ -369,7 +370,6 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         self.selecting = False
         self.selected = set()
         self.presets_expanded = False
-        self.notes_status = None
         self.notes_draft = None
         self.library_focus = None
         self.library_offset = 0
@@ -1775,7 +1775,6 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         self.details_game = self.game = game
         self.section = 'Overview'
         self.presets_expanded = False
-        self.notes_status = None
         self.notes_draft = None
         self.page = 'details'
         self.render()
@@ -1858,6 +1857,7 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         legacy = g.get('installed_on') == 'windows' and not g.get('adaptable')
         actions.append(self.button(action_labels.REMOVE_ADAPT if legacy else action_labels.RESTORE, lambda: self.run_operation('uninstall', [g]),
                                    'danger', 'edit-undo-symbolic', enabled=bool(g.get('installed')), key='hero-restore'))
+        actions.append(self.button('Bug Report', lambda: self.bug_report([g]), icon='dialog-warning-symbolic', key='hero-report'))
         actions.append(self.button('Update DLSS', lambda: self.run_operation('update-dlss', [g]), 'dlss', 'emblem-synchronizing-symbolic',
                                    enabled=not g.get('blocked'), key='hero-update'))
         if tight:
@@ -2051,7 +2051,8 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
             content.append(tools)
             content.append(self.label('Use an extracted x64 ReShade DLL or .addon64 file from a source you trust. Each install is reviewed first and can be restored.', 'gm-p', wrap=True))
         elif section == 'Notes':
-            self.section_title(content, 'Notes', 'Kept with this game in rtxForge.')
+            # Only your notes: testing and bug reports live on Overview and in the header.
+            self.section_title(content, 'Notes', 'Kept with this game in rtxForge. Included in bug reports when you choose.')
             record = g.get('test_record') or {'status': 'Untested', 'notes': ''}
             notes = Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR, height_request=t.px(160))
             notes.add_css_class('gm-notes')
@@ -2059,22 +2060,8 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
             notes.get_buffer().connect('changed', lambda buf: setattr(self, 'notes_draft', buf.get_text(buf.get_start_iter(), buf.get_end_iter(), True)))
             self.key(notes, 'notes')
             content.append(notes)
-            if self.notes_status is None:
-                self.notes_status = record.get('status', 'Untested')
-            states = list(game_notes.STATES)
-            row = self.row_button('Test Result', self.notes_status, None, description='Bench excludes this game from bulk installation and repair.', key='choice-test')
-            def step(delta):
-                self.notes_status = states[(states.index(self.notes_status) + delta) % len(states)]
-                row.get_child()._value.set_text(self.notes_status)
-            row.connect('clicked', lambda *_: step(1))
-            row._gm_adjust = step
-            content.append(self.group([row]))
             content.append(self.label("Controller text entry uses Steam's on-screen keyboard (Steam + X).", 'gm-p', wrap=True))
-            actions = Gtk.Box(spacing=t.px(16))
-            actions.append(self.button('Save Notes', lambda: self.save_notes(g, notes), 'primary', key='notes-save'))
-            actions.append(self.button('Finish Test' if record.get('active') else 'Start Test', lambda: owner.record_test(g, bool(record.get('active'))),
-                                       enabled=not owner.options.demo, key='notes-test'))
-            content.append(actions)
+            content.append(self.button('Save Notes', lambda: self.save_notes(g, notes), 'primary', key='notes-save', halign=Gtk.Align.START))
         elif section == 'Appearance':
             self.section_title(content, 'Accent Color', "Pick a suggestion from this game's artwork. Your own picks are kept.")
             current = owner.settings.get('game_accents', {}).get(g['game'])
@@ -2122,6 +2109,7 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
                 content.append(self.tool_card('Anti-cheat · offline only', overview_facts.OFFLINE_ADOPTION_NOTE, None))
             elif g.get('blocked'):
                 content.append(self.tool_card('rtxForge will not modify this game', str(g['blocked']), None))
+            self.testing_section(g, content)
             facts = overview_facts.facts(g)
             columns, count = self.tool_columns(min(4, max(1, len(facts))))
             for index, (title, value, icon) in enumerate(facts):
@@ -2140,15 +2128,44 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         self.presets_expanded = not self.presets_expanded
         self.render(keep_focus=True)
 
-    def save_notes(self, g, view):
-        buffer = view.get_buffer()
+    def testing_section(self, g, content):
+        """Overview's testing group: the result (saved as it changes), a logged test session and a bug report."""
+        owner = self.owner
+        record = g.get('test_record') or {'status': 'Untested', 'notes': ''}
+        self.section_title(content, 'Testing', 'How this game runs with rtxForge. Something wrong? Send a bug report.')
+        states = list(game_notes.STATES)
+        status = record.get('status', 'Untested')
+        row = self.row_button('Test result', status, None, description='Bench keeps this game out of bulk installs and repairs.',
+                              enabled=not owner.options.demo, key='choice-test')
+        def step(delta):
+            current = (g.get('test_record') or record).get('status', 'Untested')
+            picked = states[((states.index(current) if current in states else 0) + delta) % len(states)]
+            self.save_test_record(g, 'Test result saved', status=picked)
+            row.get_child()._value.set_text(picked)
+        row.connect('clicked', lambda *_: step(1))
+        row._gm_adjust = step
+        active = bool(record.get('active'))
+        session = self.row_button('Finish Test' if active else 'Start Test', None, lambda: owner.record_test(g, active),
+                                  description='Play, then finish the test here to capture its logs.' if active
+                                  else 'Start a test, play the game, then finish it to capture logs for a bug report.',
+                                  enabled=not owner.options.demo, key='overview-test')
+        report = self.row_button('Bug Report', None, lambda: self.bug_report([g]), icon='dialog-warning-symbolic',
+                                 description='Say what happened and review a redacted ZIP before anything is saved.', key='overview-report')
+        content.append(self.group([row, session, report]))
+
+    def save_test_record(self, g, toast, **changes):
         record = dict(g.get('test_record') or {})
-        record.update(status=self.notes_status or record.get('status', 'Untested'), notes=buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), True))
+        record.setdefault('status', 'Untested')
+        record.update(changes)
         if not self.owner.options.demo:
             game_notes.save(self.owner.service.config, g['game'], record)
         g['test_record'] = record
+        self.toast(toast)
+
+    def save_notes(self, g, view):
+        buffer = view.get_buffer()
+        self.save_test_record(g, 'Notes saved', notes=buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), True))
         self.notes_draft = None
-        self.toast('Notes saved')
 
     def set_accent(self, g, color):
         accents = self.owner.settings.setdefault('game_accents', {})
@@ -2442,6 +2459,8 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         if section == 'About':
             return 'rtxForge ' + self.h.app_version, [
                 self.row_button('Check for updates', None, owner.check_app_update, description='Download, verify and install the newest build.', icon='rtx-gm-refresh-symbolic'),
+                self.row_button('Report a bug', None, self.bug_report, description='Choose games, say what happened and review a redacted ZIP before anything is saved.',
+                                icon='dialog-warning-symbolic', key='settings-report'),
             ]
         if section == 'Appearance':
             return 'Color and motion for Game Mode.', [

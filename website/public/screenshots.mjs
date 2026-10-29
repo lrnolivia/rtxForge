@@ -89,7 +89,13 @@ export const SCREENSHOTS = {
       src: 'assets/screenshots/windows-control-overlay-sdr.webp', width: 1920, height: 1080, radius: 16,
       alt: 'rtxForge overlay open during actual CONTROL Resonant gameplay, beside a close-up of the character.',
       label: 'Windows gameplay overlay', caption: 'Overlay', carousel: false,
-      provenance: 'Native Windows overlay over actual CONTROL Resonant gameplay · SDR capture · October 28, 2026. Cursor and its glow removed; captured appearance otherwise preserved.'
+      provenance: 'Native Windows overlay over actual CONTROL Resonant gameplay · SDR capture · October 28, 2026. Cursor and its glow removed; captured appearance otherwise preserved.',
+      light: {
+        src: 'assets/screenshots/windows-inzoi-overlay-sdr-light.webp', width: 1920, height: 1080,
+        alt: 'rtxForge Light overlay in front of inZOI gameplay with two Zois, showing active neural rendering and 21 → 85 FPS at 4.00×.',
+        label: 'Windows Light gameplay overlay',
+        provenance: 'Native Windows Light overlay over actual inZOI gameplay · SDR capture · October 29, 2026. Captured pixels and displayed metrics are unchanged.'
+      }
     }
   }
 };

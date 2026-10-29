@@ -1,7 +1,7 @@
 """Serialized desktop adapter for the RC1.38-derived transaction engine."""
 from pathlib import Path
 import importlib.util,sys,json,hashlib,zipfile,os,contextlib,functools,time,copy
-import transactions as t,packages,ui,package_catalog,proton_prefix,cross_os,skynizz_provider,ada_mfg_provider,proton_mfg,proton_cuda,proton_stack,linux_runtime
+import transactions as t,flatpak_host,packages,ui,package_catalog,proton_prefix,cross_os,skynizz_provider,ada_mfg_provider,proton_mfg,proton_cuda,proton_stack,linux_runtime
 from operation_session import Session,Cancelled
 from storage import storage
 ROOT=Path(__file__).resolve().parents[1]
@@ -51,7 +51,8 @@ def module(config,provider='y4my',mode=None):
     e.STATE_ROOT=Path(os.environ.get('RTXFORGE_DLSS_UNLOCKED_STATE',str(Path.home()/'.local/state/rtxforge-dlss-unlocked')))
     e.Y4MY_CACHE_DIR=storage(config)/'packages'/e.Y4MY_PROVIDER['sha256']
     e.USE_COLOR=False
-    return e
+    # Flatpak: the engine's process checks run on the host, never on the sandbox's /proc.
+    return flatpak_host.adopt(e)
 
 def payload(e,config,mode,archive=None):
     p=e.Y4MY_PROVIDER

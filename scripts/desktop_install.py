@@ -209,7 +209,11 @@ def refresh_launcher_icon(dark):
     Never create a launcher just because a development checkout was opened.
     """
     import re
+    import flatpak_host
     import transactions as t
+    if flatpak_host.sandboxed():
+        # Flatpak exports its own launcher; never edit an AppImage's.
+        return False
     data = data_root()
     desktop = t.safe(data / 'applications' / f'{APP_ID}.desktop')
     if not desktop.is_file():

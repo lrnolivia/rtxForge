@@ -59,6 +59,10 @@ PROTECTED_NAMES = ('easyanticheat', 'start_protected_game')
 
 def protected_running(proc=Path('/proc')):
     if os.name != 'nt':
+        if proc == Path('/proc'):
+            import flatpak_host
+            if flatpak_host.sandboxed():
+                return bool(flatpak_host.probe('protected-running'))
         # Proton runs Windows processes as ordinary host processes; their command lines name the executable.
         for entry in proc.iterdir() if proc.is_dir() else ():
             if not entry.name.isdigit():

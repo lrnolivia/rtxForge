@@ -29,74 +29,73 @@ def bundle_steam_artwork(source_root, payload_root):
             raise RuntimeError('Steam artwork copy verification failed: ' + source.name)
     return destination
 
-root=Path(__file__).resolve().parents[1]
-dist=root/'dist'
-version=(root/'VERSION').read_text(encoding='utf-8').strip()
-if not version:
-    raise RuntimeError('VERSION is empty')
-stage=dist/'AppImage-build';stage.mkdir(parents=True, exist_ok=True)
-app=stage/'RTXForge.AppDir'
-if app.exists():shutil.rmtree(app)
-app.mkdir();payload=app/'usr/share/rtxforge';payload.mkdir(parents=True)
+def stage_payload(root, payload):
+    """The application payload shared by the AppImage and the Flatpak (usr/share/rtxforge, /app/share/rtxforge)."""
+    import ast,sys
+    version=(root/'VERSION').read_text(encoding='utf-8').strip()
+    if not version:
+        raise RuntimeError('VERSION is empty')
+    payload.mkdir(parents=True)
+    shutil.copyfile(root/'VERSION',payload/'VERSION')
+    build_sha=os.environ.get('GITHUB_SHA','').strip()
+    if not build_sha:
+        try:
+            build_sha=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()
+        except Exception:
+            build_sha='unknown'
+    (payload/'BUILD_INFO.json').write_text(json.dumps({'version':version,'commit':build_sha},sort_keys=True)+'\n')
+    for name in ['gui','scripts','providers']:
+        shutil.copytree(root/name,payload/name,ignore=shutil.ignore_patterns('__pycache__'))
+    vulkan = root/'windows/out/vulkan-provider'
+    if (vulkan/'candidate.json').is_file():
+        shutil.copytree(vulkan,payload/'providers/vulkan-dlssg/runtime',ignore=shutil.ignore_patterns('*.part'),dirs_exist_ok=True)
+    shutil.copytree(root/'assets/game-mode',payload/'assets/game-mode')
+    for name in ['provider.json','README.md']:shutil.copyfile(root/name,payload/name)
+    (payload/'engine').mkdir()
+    # Reviewed Global and game-menu bulk changes share the Windows host's platform-neutral modules.
+    (payload/'windows/engine-host').mkdir(parents=True)
+    for name in ('global_controls.py','overlay_ui.py','overlay_packages.py','overlay_package_routes.py','app_storage.py','companion_controls.py','feeder_controls.py'):
+        shutil.copyfile(root/'windows/engine-host'/name,payload/'windows/engine-host'/name)
+    # A shared module importing another host module the bundle lacks only fails at runtime (the panel helper), so refuse the build.
+    local={p.stem for d in ('scripts','windows/engine-host','gui') for p in (payload/d).glob('*.py')}
+    for module in (payload/'windows/engine-host').glob('*.py'):
+        for node in ast.walk(ast.parse(module.read_text(encoding='utf-8'))):
+            names=[a.name for a in node.names] if isinstance(node,ast.Import) else [node.module] if isinstance(node,ast.ImportFrom) and node.module and not node.level else []
+            for name in names:
+                top=name.split('.')[0]
+                if top not in local and top not in sys.stdlib_module_names and (root/'windows/engine-host'/(top+'.py')).is_file():
+                    raise RuntimeError(f'{module.name} imports {top}, which the bundle does not include')
+    shutil.copyfile(root/'engine/rtxengine.py',payload/'engine/rtxengine.py')
+    bundle_steam_artwork(root, payload)
+    return version
 
-shutil.copyfile(root/'VERSION',payload/'VERSION')
 
-build_sha=os.environ.get('GITHUB_SHA','').strip()
-if not build_sha:
-    try:
-        build_sha=subprocess.check_output(
-            ['git','rev-parse','HEAD'],
-            cwd=root,
-            text=True,
-        ).strip()
-    except Exception:
-        build_sha='unknown'
+def main():
+    root=Path(__file__).resolve().parents[1]
+    dist=root/'dist'
+    stage=dist/'AppImage-build';stage.mkdir(parents=True, exist_ok=True)
+    app=stage/'RTXForge.AppDir'
+    if app.exists():shutil.rmtree(app)
+    app.mkdir()
+    version=stage_payload(root,app/'usr/share/rtxforge')
+    # Provider archives are verified at preparation; no stale custom loader is bundled.
+    (app/'AppRun').write_bytes((root/'packaging/AppRun').read_bytes().replace(b'\r\n',b'\n'));(app/'AppRun').chmod(0o755)
+    icon='io.github.lrnolivia.RTXForge'
+    shutil.copyfile(root/f'gui/icons/hicolor/scalable/apps/{icon}.svg',app/f'{icon}.svg')
+    (app/f'{icon}.desktop').write_text(f'[Desktop Entry]\nType=Application\nName=RTXForge\nExec=AppRun\nIcon={icon}\nCategories=Game;Utility;\nTerminal=false\n')
+    meta=json.loads((root/'packaging/runtime.json').read_text());runtime=dist/'appimage-runtime'
+    if not runtime.exists():runtime.write_bytes(urllib.request.urlopen(meta['url']).read())
+    assert hashlib.sha256(runtime.read_bytes()).hexdigest()==meta['sha256']
+    squash=stage/'payload.squashfs';squash.unlink(missing_ok=True)
+    cmd=['mksquashfs',str(app),str(squash),'-noappend','-comp','gzip','-all-root','-processors','1','-quiet']
+    if not shutil.which('mksquashfs'):cmd.insert(0,'distrobox-host-exec')
+    subprocess.run(cmd,check=True)
+    out=dist/f'RTXForge-{version}-Bazzite-x86_64.AppImage'
+    with out.open('wb') as f:
+        for source in (runtime,squash):
+            with source.open('rb') as src:shutil.copyfileobj(src,f)
+    out.chmod(0o755);out.with_suffix('.AppImage.sha256').write_text(hashlib.sha256(out.read_bytes()).hexdigest()+'  '+out.name+'\n');print(out)
 
-(payload/'BUILD_INFO.json').write_text(
-    json.dumps(
-        {'version':version,'commit':build_sha},
-        sort_keys=True,
-    )+'\n'
-)
 
-for name in ['gui','scripts','providers']:
- shutil.copytree(root/name,payload/name,ignore=shutil.ignore_patterns('__pycache__'))
-vulkan = root/'windows/out/vulkan-provider'
-if (vulkan/'candidate.json').is_file():
- shutil.copytree(vulkan,payload/'providers/vulkan-dlssg/runtime',ignore=shutil.ignore_patterns('*.part'),dirs_exist_ok=True)
-shutil.copytree(root/'assets/game-mode',payload/'assets/game-mode')
-for name in ['provider.json','README.md']:shutil.copyfile(root/name,payload/name)
-(payload/'engine').mkdir()
-# Reviewed Global and game-menu bulk changes share the Windows host's platform-neutral modules.
-(payload/'windows/engine-host').mkdir(parents=True)
-for name in ('global_controls.py','overlay_ui.py','overlay_packages.py','overlay_package_routes.py','app_storage.py','companion_controls.py','feeder_controls.py'):
- shutil.copyfile(root/'windows/engine-host'/name,payload/'windows/engine-host'/name)
-# A shared module importing another host module the bundle lacks only fails at runtime (the panel helper), so refuse the build.
-import ast,sys
-local={p.stem for d in ('scripts','windows/engine-host','gui') for p in (payload/d).glob('*.py')}
-for module in (payload/'windows/engine-host').glob('*.py'):
- for node in ast.walk(ast.parse(module.read_text(encoding='utf-8'))):
-  names=[a.name for a in node.names] if isinstance(node,ast.Import) else [node.module] if isinstance(node,ast.ImportFrom) and node.module and not node.level else []
-  for name in names:
-   top=name.split('.')[0]
-   if top not in local and top not in sys.stdlib_module_names and (root/'windows/engine-host'/(top+'.py')).is_file():
-    raise RuntimeError(f'{module.name} imports {top}, which the AppImage does not bundle')
-shutil.copyfile(root/'engine/rtxengine.py',payload/'engine/rtxengine.py')
-bundle_steam_artwork(root, payload)
-# Provider archives are verified at preparation; no stale custom loader is bundled.
-(app/'AppRun').write_bytes((root/'packaging/AppRun').read_bytes().replace(b'\r\n',b'\n'));(app/'AppRun').chmod(0o755)
-icon='io.github.lrnolivia.RTXForge'
-shutil.copyfile(root/f'gui/icons/hicolor/scalable/apps/{icon}.svg',app/f'{icon}.svg')
-(app/f'{icon}.desktop').write_text(f'[Desktop Entry]\nType=Application\nName=RTXForge\nExec=AppRun\nIcon={icon}\nCategories=Game;Utility;\nTerminal=false\n')
-meta=json.loads((root/'packaging/runtime.json').read_text());runtime=dist/'appimage-runtime'
-if not runtime.exists():runtime.write_bytes(urllib.request.urlopen(meta['url']).read())
-assert hashlib.sha256(runtime.read_bytes()).hexdigest()==meta['sha256']
-squash=stage/'payload.squashfs';squash.unlink(missing_ok=True)
-cmd=['mksquashfs',str(app),str(squash),'-noappend','-comp','gzip','-all-root','-processors','1','-quiet']
-if not shutil.which('mksquashfs'):cmd.insert(0,'distrobox-host-exec')
-subprocess.run(cmd,check=True)
-out=dist/f'RTXForge-{version}-Bazzite-x86_64.AppImage'
-with out.open('wb') as f:
- for source in (runtime,squash):
-  with source.open('rb') as src:shutil.copyfileobj(src,f)
-out.chmod(0o755);out.with_suffix('.AppImage.sha256').write_text(hashlib.sha256(out.read_bytes()).hexdigest()+'  '+out.name+'\n');print(out)
+if __name__=='__main__':
+    main()

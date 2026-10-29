@@ -20,8 +20,11 @@ WINDOWS = [
 ]
 LINUX = [
     'rtxForge-1.0.0-beta.2-x86_64.AppImage', 'rtxForge-1.0.0-beta.2-x86_64.AppImage.sha256',
+    'rtxForge-1.0.0-beta.2-x86_64.flatpak', 'rtxForge-1.0.0-beta.2-x86_64.flatpak.sha256',
     'rtxforge-beta-linux.json',
 ]
+# Published before the Flatpak joined the release.
+LINUX_APPIMAGE_ONLY = [name for name in LINUX if '.flatpak' not in name]
 PREVIOUS = ['rtxForge-Setup-1.0.0-beta.1-x64.exe.previous-cccccccccccc', 'rtxforge-beta-linux.json.previous-dddddddddddd']
 LEGACY_BODY = ('rtxForge 1.0 Beta notes.\n\nThis build is unsigned.\n\n'
                f'Version: `1.0.0-beta.2` · Source: `{WIN_SHA}` · [Build](https://example/1)\n')
@@ -36,6 +39,13 @@ class OwnershipTests(unittest.TestCase):
         mixed = release(WINDOWS + LINUX + PREVIOUS)
         self.assertEqual(beta.owned('windows', mixed), WINDOWS)
         self.assertEqual(beta.owned('linux', mixed), LINUX)
+
+    def test_a_release_from_before_the_flatpak_is_still_linux(self):
+        self.assertEqual(beta.owned('linux', release(WINDOWS + LINUX_APPIMAGE_ONLY)), LINUX_APPIMAGE_ONLY)
+
+    def test_flatpak_rollback_copies_belong_to_neither(self):
+        self.assertIsNone(beta.owner('rtxForge-1.0.0-beta.2-x86_64.flatpak.previous-bbbbbbbbbbbb'))
+        self.assertIsNone(beta.owner('rtxForge-1.0.0-beta.2-x86_64.flatpakref'))
 
     def test_unknown_and_continuous_assets_belong_to_neither(self):
         for name in ['rtxForge-Bazzite-x86_64.AppImage', 'rtxforge-update.json', 'notes.txt',
@@ -121,6 +131,24 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(concurrency['cancel-in-progress'], "${{ github.event_name != 'workflow_dispatch' }}")
         triggers = self.linux.get('on', self.linux.get(True))  # YAML 1.1 reads 'on' as true
         self.assertNotIn('publish', str(triggers['pull_request']))
+
+    def test_flatpak_builds_on_every_review_and_joins_the_beta(self):
+        job = self.linux['jobs']['build-flatpak']
+        self.assertNotIn('if', job, 'pull requests and main pushes build the Flatpak too')
+        steps = {s.get('name'): s for s in job['steps']}
+        self.assertIn('packaging/build_flatpak.py', steps['Build Flatpak bundle']['run'])
+        self.assertIn('verify_bundle.py', steps['Verify the installed Flatpak']['run'])
+        self.assertIn('inputs.publish_beta', steps['Create Beta Flatpak assets']['if'])
+        self.assertIn('dist/beta-flatpak/', steps['Upload Actions artifact']['with']['path'])
+        publish = self.linux['jobs']['publish-beta']
+        self.assertEqual(sorted(publish['needs']), ['build-appimage', 'build-flatpak'])
+        script = publish['steps'][-1]['run']
+        self.assertIn('test "$(ls | wc -l)" = 5', script)
+        self.assertIn('sha256sum -c "$FLATPAK.sha256"', script)
+        # A release from before the Flatpak (3 Linux files) is replaced with rollback copies too.
+        self.assertIn('test "$CURRENT_COUNT" = 3', script)
+        self.assertIn('x86_64.flatpak.sha256")', script)
+        self.assertIn('"$FLATPAK" "$FLATPAK.sha256" rtxforge-beta-linux.json', script)
 
     def test_continuous_channel_is_unchanged(self):
         steps = {s.get('name'): s for s in self.linux['jobs']['build-appimage']['steps']}

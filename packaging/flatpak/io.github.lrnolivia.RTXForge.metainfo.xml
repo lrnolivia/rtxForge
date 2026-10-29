@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.lrnolivia.RTXForge</id>
+  <name>rtxForge</name>
+  <summary>Install NVIDIA neural rendering and frame generation into games</summary>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="fi.loew">
+    <name>loew.fi</name>
+  </developer>
+  <description>
+    <p>
+      rtxForge installs NVIDIA neural rendering (NR) and multi-frame generation (MFG)
+      into your Steam and Proton games, reviews every change first and can restore
+      the original files.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.lrnolivia.RTXForge.desktop</launchable>
+  <url type="homepage">https://loew.fi/rtxforge/</url>
+  <url type="bugtracker">https://github.com/lrnolivia/rtxForge/issues</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="1.0.0-beta.2" date="2026-10-29" type="development"/>
+  </releases>
+</component>

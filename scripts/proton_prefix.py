@@ -62,6 +62,10 @@ def find_prefix(game_root, appid):
 
 def prefix_in_use(prefix, proc=Path('/proc')):
     """True while any process runs in this prefix (the game, its launcher or wineserver)."""
+    if proc == Path('/proc'):
+        import flatpak_host
+        if flatpak_host.sandboxed():
+            return bool(flatpak_host.probe('prefix-in-use', Path(prefix).resolve()))
     prefix = str(Path(prefix).resolve())
     compat = str(Path(prefix).parent)
     for entry in proc.iterdir() if proc.is_dir() else ():

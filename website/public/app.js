@@ -25,8 +25,8 @@ function linkState(element, url) {
 function installInstructions(format) {
   return {
     AppImage: 'Allow the AppImage to run in file properties, then open it. AppImage builds need host Python 3, GTK4, libadwaita 1.7+, and PyGObject.',
-    Flatpak: 'Open the Flatpak reference with your software installer and follow its prompts.',
-    'Flatpak bundle': 'Open the Flatpak bundle with your software installer and follow its prompts.',
+    Flatpak: 'Recommended for SteamOS and any system without GTK4 and libadwaita. Open the Flatpak reference with your software installer and follow its prompts.',
+    'Flatpak bundle': 'Recommended for SteamOS and any system without GTK4 and libadwaita. Open the bundle with Discover or GNOME Software. On Bazzite and CachyOS, the AppImage also works.',
     Installer: 'Run the installer. The app includes its runtimes.',
     'Installer ZIP': 'Extract the setup ZIP, then run the installer. The app includes its runtimes.',
     Portable: 'Extract the entire ZIP and open rtxForge.exe. Keep its companion files together.'
@@ -49,9 +49,11 @@ function renderDownloads() {
   byId('release-retry').hidden = !retryingReleases && ![beta, dev].some(release => release.status === 'error');
   byId('release-retry').setAttribute('aria-disabled', String(retryingReleases));
   byId('release-retry').textContent = retryingReleases ? 'Checking…' : 'Try again';
-  const portable = betaFiles?.portable;
-  byId('portable-link').hidden = !portable;
-  linkState(byId('portable-link'), portable?.url);
+  // Windows: the portable ZIP. Linux: the AppImage beside a Flatpak.
+  const extra = betaFiles?.alternative || betaFiles?.portable;
+  byId('portable-link').hidden = !extra;
+  linkState(byId('portable-link'), extra?.url);
+  byId('portable-link').firstChild.nodeValue = extra && extra === betaFiles.alternative ? 'AppImage for Bazzite and CachyOS ' : 'Portable Beta ';
   byId('requirements-copy').textContent = platform.requirements;
 }
 async function loadRelease(channel) {

@@ -69,15 +69,20 @@
             <p>A channel may say <strong>coming soon</strong> until its release and your OS package are published. The old <code>continuous</code> release remains for existing Linux updater compatibility; it is separate from the new Beta and Development channels.</p>
             <p class="guide-requirements" id="guide-requirements">Linux x86_64 with a working NVIDIA driver. Package-specific requirements are listed with each release.</p>
             <div data-guide-platform="linux">
-              <h3>AppImage</h3>
+              <h3>Flatpak (recommended for SteamOS)</h3>
+              <ol>
+                <li>Download the <code>.flatpak</code> from the selected release.</li>
+                <li>Open it with Discover or GNOME Software, or run <code>flatpak install --user</code> with the downloaded file. Flathub provides the GNOME runtime it needs.</li>
+                <li>Open rtxForge from your app menu.</li>
+              </ol>
+              <p>The Flatpak brings its own GTK4 and libadwaita, so it works on SteamOS and any system without them. It still checks running games, Steam and anti-cheat on your system through Flatpak’s host access and the system’s Python 3, and refuses changes if it cannot. It is attached to the release, not listed on Flathub.</p>
+              <h3>AppImage (Bazzite and CachyOS)</h3>
               <ol>
                 <li>Download the AppImage from the selected release.</li>
                 <li>In your file manager, open its properties and allow it to run as a program. Open the AppImage.</li>
                 <li>Keep it somewhere permanent if you add a launcher or Steam shortcut. Moving it later can break that shortcut.</li>
               </ol>
-              <p>The current AppImage uses host Python 3, GTK4, libadwaita 1.7+, and PyGObject. If it will not open, check those dependencies and any FUSE error. A Bazzite filename identifies the build; the app checks host capabilities rather than just the distribution name.</p>
-              <h3>Flatpak, when available</h3>
-              <p>If the release lists a <code>.flatpakref</code> or <code>.flatpak</code>, open it with your software installer and follow its prompts. Only use a Flatpak actually attached to the selected release. It is not a Flathub listing.</p>
+              <p>The AppImage uses host Python 3, GTK4, libadwaita 1.7+, and PyGObject. If it will not open, check those dependencies and any FUSE error. A Bazzite filename identifies the build; the app checks host capabilities rather than just the distribution name.</p>
               <p>Keep space for runtime downloads and original-file backups. Linux runtime preparation needs at least 4 GiB free at the app’s state location.</p>
             </div>
             <div data-guide-platform="windows" hidden>

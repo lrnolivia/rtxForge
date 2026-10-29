@@ -39,6 +39,10 @@ def host_lock(path=None):
 def mapped_process(prefix, exe, channel, proc=Path('/proc')):
     """Bind both the Windows executable and channel to one actual Linux process."""
     prefix, exe, channel = (str(Path(p).resolve()) for p in (prefix, exe, channel))
+    if proc == Path('/proc'):
+        import flatpak_host
+        if flatpak_host.sandboxed():
+            return flatpak_host.probe('mapped-process', prefix, exe, channel)
     for entry in proc.iterdir():
         if not entry.name.isdigit(): continue
         try:
@@ -51,6 +55,24 @@ def mapped_process(prefix, exe, channel, proc=Path('/proc')):
                 return int(entry.name)
         except OSError: continue
     return None
+
+
+def exe_processes(proc=Path('/proc')):
+    """{executable name: [pids]} for every process with a mapped Windows .exe."""
+    if proc == Path('/proc'):
+        import flatpak_host
+        if flatpak_host.sandboxed():
+            return {name: [int(pid) for pid in pids] for name, pids in flatpak_host.probe('exe-processes').items()}
+    found={}
+    for entry in proc.iterdir():
+        if not entry.name.isdigit():continue
+        try:
+            for line in (entry/'maps').read_text().splitlines():
+                parts=line.split(None,5)
+                if len(parts)==6 and parts[5].lower().endswith('.exe'):
+                    found.setdefault(Path(parts[5].replace('\\040',' ')).name.casefold(),[]).append(int(entry.name))
+        except OSError:continue
+    return found
 
 
 def open_mapping(path, size):
@@ -173,16 +195,7 @@ class LinuxControls(controls.Controls):
                         self.preset_errors[key]=str(error)
 
     def _processes(self):
-        found={}
-        for entry in Path('/proc').iterdir():
-            if not entry.name.isdigit():continue
-            try:
-                for line in (entry/'maps').read_text().splitlines():
-                    parts=line.split(None,5)
-                    if len(parts)==6 and parts[5].lower().endswith('.exe'):
-                        found.setdefault(Path(parts[5].replace('\\040',' ')).name.casefold(),[]).append(int(entry.name))
-            except OSError:continue
-        return found
+        return exe_processes()
 
     def _open(self,game,write=False):
         row=game['row']

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=rtxForge
+Comment=Install NVIDIA neural rendering and multi-frame generation into your games
+Exec=rtxforge
+Icon=io.github.lrnolivia.RTXForge
+Terminal=false
+Categories=Game;Utility;
+Keywords=NVIDIA;DLSS;Proton;Steam;
+StartupWMClass=io.github.lrnolivia.RTXForge

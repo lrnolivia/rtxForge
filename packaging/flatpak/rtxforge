@@ -1,0 +1,25 @@
+#!/bin/sh
+# Flatpak entry (/app/bin/rtxforge). The window runs in the sandbox with the GNOME
+# runtime's Python, GTK4 and libadwaita; process checks run on the host
+# (scripts/flatpak_host.py).
+set -eu
+root=/app/share/rtxforge
+# Bazzite/Silverblue: /home is a symlink to /var/home. rtxForge refuses
+# symlinked state paths, so use the canonical home for every entry point.
+if [ -n "${HOME:-}" ] && real_home=$(readlink -f -- "$HOME" 2>/dev/null) && [ -n "$real_home" ]; then
+    HOME=$real_home
+    export HOME
+fi
+# Flatpak points the XDG directories at ~/.var/app/<id>. Use the host's instead,
+# so the Flatpak, the AppImage and the host-side panel helper share one set of
+# settings, recovery records and backups.
+XDG_CONFIG_HOME=${HOST_XDG_CONFIG_HOME:-$HOME/.config}
+XDG_DATA_HOME=${HOST_XDG_DATA_HOME:-$HOME/.local/share}
+XDG_STATE_HOME=${HOST_XDG_STATE_HOME:-$HOME/.local/state}
+XDG_CACHE_HOME=${HOST_XDG_CACHE_HOME:-$HOME/.cache}
+export XDG_CONFIG_HOME XDG_DATA_HOME XDG_STATE_HOME XDG_CACHE_HOME
+if [ "${1:-}" = --cli ]; then
+    shift
+    exec python3 -B "$root/scripts/engine_cli.py" "$@"
+fi
+exec python3 -B "$root/scripts/desktop_frontend.py" "$@"

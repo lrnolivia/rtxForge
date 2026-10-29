@@ -17,8 +17,12 @@ export function selectDownloads(release, platform) {
   const first = pattern => assets.find(asset => pattern.test(asset.name));
   const file = (asset, format) => asset ? { url: asset.browser_download_url, name: asset.name, format } : null;
   if (platform === 'linux') {
-    const primary = file(first(/\.flatpakref$/i), 'Flatpak') || file(first(/\.flatpak$/i), 'Flatpak bundle') || file(first(/\.AppImage$/i), 'AppImage');
-    return primary ? { primary, portable: null } : null;
+    // Flatpak first: it brings its own GTK4 and libadwaita (SteamOS has none). The
+    // AppImage stays offered beside it for systems that have them (Bazzite, CachyOS).
+    const flatpak = file(first(/\.flatpakref$/i), 'Flatpak') || file(first(/\.flatpak$/i), 'Flatpak bundle');
+    const appimage = file(first(/\.AppImage$/i), 'AppImage');
+    const primary = flatpak || appimage;
+    return primary ? { primary, portable: null, alternative: flatpak ? appimage : null } : null;
   }
   if (platform !== 'windows') return null;
   const setup = first(/(?:setup|install).*\.exe$/i);
@@ -26,5 +30,5 @@ export function selectDownloads(release, platform) {
   const portableAsset = assets.find(asset => /(?:windows|win).*\.zip$/i.test(asset.name) && !/(?:setup|install)/i.test(asset.name));
   const portable = file(portableAsset, 'Portable');
   const primary = file(setup, 'Installer') || file(setupZip, 'Installer ZIP') || portable;
-  return primary ? { primary, portable: portable && portable !== primary ? portable : null } : null;
+  return primary ? { primary, portable: portable && portable !== primary ? portable : null, alternative: null } : null;
 }

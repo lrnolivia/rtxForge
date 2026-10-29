@@ -106,6 +106,9 @@ jobs:
             scripts/proton_mfg.py \
             scripts/proton_overlay.py \
             scripts/linux_runtime.py \
+            scripts/flatpak_host.py \
+            scripts/host_probe.py \
+            packaging/build_flatpak.py \
             gui/rtxforge_gtk.py
 
           /usr/bin/python3 -m unittest \
@@ -359,12 +362,87 @@ jobs:
             dist/rtxforge-update.json \
             --clobber
 
+  # The Flatpak (SteamOS, and any system without GTK4/libadwaita) from the same
+  # payload as the AppImage. Runs on the VM, not in a container: bubblewrap needs
+  # user namespaces, and the checks below run the installed app like a user's system.
+  build-flatpak:
+    name: Flatpak x86_64 bundle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout rtxForge
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Flatpak tooling and the GNOME 51 runtime
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder xvfb imagemagick
+          # Ubuntu 24.04 restricts unprivileged user namespaces, which bubblewrap needs.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive flathub org.gnome.Platform//51 org.gnome.Sdk//51
+
+      - name: Fetch the verified Vulkan provider
+        run: python3 providers/vulkan-dlssg/distribution.py --output windows/out/vulkan-provider
+
+      - name: Build Flatpak bundle
+        run: |
+          set -euo pipefail
+          python3 packaging/build_flatpak.py
+          python3 - <<'PYBUILD'
+          import json, os
+          from pathlib import Path
+          info=json.loads(Path('dist/flatpak-build/source/payload/BUILD_INFO.json').read_text())
+          assert info['commit']==os.environ['GITHUB_SHA'], info
+          PYBUILD
+          cd dist
+          sha256sum -c rtxForge-*-x86_64.flatpak.sha256
+
+      - name: Verify the installed Flatpak
+        run: |
+          set -euo pipefail
+          export XDG_RUNTIME_DIR="$RUNNER_TEMP/xdg-runtime"
+          mkdir -m 700 -p "$XDG_RUNTIME_DIR"
+          flatpak install --user -y --noninteractive dist/rtxForge-*-x86_64.flatpak
+          dbus-run-session -- python3 packaging/flatpak/verify_bundle.py --screenshot dist/flatpak-window.png
+
+      - name: Create Beta Flatpak assets
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_beta
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          [[ "$VERSION" =~ ^1\.0\.0-beta\.[0-9]+$ ]]
+          FLATPAK="rtxForge-${VERSION}-x86_64.flatpak"
+          mkdir -p dist/beta-flatpak
+          cp "dist/$FLATPAK" "dist/beta-flatpak/$FLATPAK"
+          (cd dist/beta-flatpak && sha256sum "$FLATPAK" > "$FLATPAK.sha256")
+          ls -l dist/beta-flatpak
+
+      - name: Upload Actions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rtxForge-Flatpak-x86_64
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dist/rtxForge-*-x86_64.flatpak
+            dist/rtxForge-*-x86_64.flatpak.sha256
+            dist/flatpak-window.png
+            dist/beta-flatpak/
+
   # Shares one concurrency group with the Windows publish-beta job: the two
   # workflows write to the same 'beta' release and must never interleave.
   # Policy: docs/linux/BETA-RELEASE.md.
   publish-beta:
     name: Publish Linux Beta
-    needs: build-appimage
+    needs: [build-appimage, build-flatpak]
     if: github.event_name == 'workflow_dispatch' && inputs.publish_beta && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     concurrency:
@@ -379,6 +457,12 @@ jobs:
           name: rtxForge-Bazzite-x86_64
           path: artifact
 
+      - name: Download verified Flatpak
+        uses: actions/download-artifact@v4
+        with:
+          name: rtxForge-Flatpak-x86_64
+          path: flatpak-artifact
+
       - name: Publish exact build
         env:
           GH_TOKEN: ${{ github.token }}
@@ -390,10 +474,11 @@ jobs:
           VERSION="$(tr -d '[:space:]' < VERSION)"
           [[ "$VERSION" =~ ^1\.0\.0-beta\.[0-9]+$ ]]
           APPIMAGE="rtxForge-$VERSION-x86_64.AppImage"
+          FLATPAK="rtxForge-$VERSION-x86_64.flatpak"
           BUILD_URL="https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           mkdir release
-          cp artifact/beta/* release/
-          (cd release && test "$(ls | wc -l)" = 3 && sha256sum -c "$APPIMAGE.sha256")
+          cp artifact/beta/* flatpak-artifact/beta-flatpak/* release/
+          (cd release && test "$(ls | wc -l)" = 5 && sha256sum -c "$APPIMAGE.sha256" && sha256sum -c "$FLATPAK.sha256")
           jq -e --arg sha "$GITHUB_SHA" --arg v "$VERSION" --arg a "$APPIMAGE" \
             '.channel == "beta" and .commit == $sha and .version == $v and .appimage == $a' \
             release/rtxforge-beta-linux.json
@@ -407,12 +492,22 @@ jobs:
               OLD_VERSION="$(sed -nE 's/^rtxForge-(1\.0\.0-beta\.[0-9]+)-x86_64\.AppImage$/\1/p' <<< "$CURRENT")"
               test -n "$OLD_VERSION" && test "$(wc -l <<< "$OLD_VERSION")" = 1
               test "${OLD_VERSION##*.}" -lt "${VERSION##*.}"
-              test "$(wc -l <<< "$CURRENT")" = 3
+              # 3 files before the Flatpak joined the release, 5 since.
+              CURRENT_COUNT="$(wc -l <<< "$CURRENT")"
+              if [ "$CURRENT_COUNT" = 5 ]; then
+                grep -qxF "rtxForge-$OLD_VERSION-x86_64.flatpak" <<< "$CURRENT"
+                grep -qxF "rtxForge-$OLD_VERSION-x86_64.flatpak.sha256" <<< "$CURRENT"
+              else
+                test "$CURRENT_COUNT" = 3
+              fi
               OLD_SHA="$(python3 packaging/beta_release.py source linux "$RUNNER_TEMP/existing-beta.json")"
               SUFFIX=".previous-${OLD_SHA:0:12}"
               mkdir -p "$RUNNER_TEMP/previous" "$RUNNER_TEMP/existing"
               while read -r NAME; do gh release download beta --dir "$RUNNER_TEMP/previous" --pattern "$NAME"; done <<< "$CURRENT"
               (cd "$RUNNER_TEMP/previous" && sha256sum -c "rtxForge-$OLD_VERSION-x86_64.AppImage.sha256")
+              if [ "$CURRENT_COUNT" = 5 ]; then
+                (cd "$RUNNER_TEMP/previous" && sha256sum -c "rtxForge-$OLD_VERSION-x86_64.flatpak.sha256")
+              fi
               jq -e --arg sha "$OLD_SHA" '.commit == $sha' "$RUNNER_TEMP/previous/rtxforge-beta-linux.json"
               for FILE in "$RUNNER_TEMP/previous"/*; do
                 NAME="$(basename "$FILE")$SUFFIX"
@@ -424,8 +519,8 @@ jobs:
                   gh release upload beta "$RUNNER_TEMP/previous/$NAME"
                 fi
               done
-              # New AppImage first, then the manifest that points at it, then retire the old names.
-              gh release upload beta "release/$APPIMAGE" "release/$APPIMAGE.sha256"
+              # New packages first, then the manifest that points at the AppImage, then retire the old names.
+              gh release upload beta "release/$APPIMAGE" "release/$APPIMAGE.sha256" "release/$FLATPAK" "release/$FLATPAK.sha256"
               gh release upload beta release/rtxforge-beta-linux.json --clobber
               while read -r NAME; do
                 [ "$NAME" = rtxforge-beta-linux.json ] || gh release delete-asset beta "$NAME" -y
@@ -450,6 +545,6 @@ jobs:
           fi
 
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/beta" > "$RUNNER_TEMP/published-beta.json"
-          test "$(python3 packaging/beta_release.py owned linux "$RUNNER_TEMP/published-beta.json" | sort)" = "$(printf '%s\n' "$APPIMAGE" "$APPIMAGE.sha256" rtxforge-beta-linux.json | sort)"
+          test "$(python3 packaging/beta_release.py owned linux "$RUNNER_TEMP/published-beta.json" | sort)" = "$(printf '%s\n' "$APPIMAGE" "$APPIMAGE.sha256" "$FLATPAK" "$FLATPAK.sha256" rtxforge-beta-linux.json | sort)"
           test "$(python3 packaging/beta_release.py owned windows "$RUNNER_TEMP/published-beta.json")" = "$WINDOWS_BEFORE"
           test "$(python3 packaging/beta_release.py source linux "$RUNNER_TEMP/published-beta.json")" = "$GITHUB_SHA"

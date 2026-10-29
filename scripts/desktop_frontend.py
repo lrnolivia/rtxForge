@@ -151,6 +151,13 @@ def main(argv=None):
     args,remaining=parser.parse_known_args(argv)
     if args.overlay_helper:
         # Headless and host-side: no toolkit, no container.
+        import flatpak_host
+        if flatpak_host.sandboxed():
+            # Inside the sandbox it could not see the game it serves. The Flatpak
+            # app installs a host service instead (flatpak_host.install_helper).
+            print('The in-game panel helper runs on the host, not inside the Flatpak. '
+                  'Open rtxForge once to install it as a user service.',file=sys.stderr)
+            return 1
         import linux_overlay_helper
         return linux_overlay_helper.main()
     if args.frontend_doctor:

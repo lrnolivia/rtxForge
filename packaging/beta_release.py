@@ -19,7 +19,7 @@ LABELS = {'windows': 'Windows', 'linux': 'Linux'}
 PREVIOUS = '.previous-'
 OWNED = {
     'windows': re.compile(r'^rtxForge-(?:Setup|windows)-1\.0\.0-beta\.\d+-'),
-    'linux': re.compile(r'^(?:rtxForge-1\.0\.0-beta\.\d+-x86_64\.AppImage(?:\.sha256)?|rtxforge-beta-linux\.json)$'),
+    'linux': re.compile(r'^(?:rtxForge-1\.0\.0-beta\.\d+-x86_64\.(?:AppImage|flatpak)(?:\.sha256)?|rtxforge-beta-linux\.json)$'),
 }
 LINE = re.compile(r'^(Windows|Linux): version `([^`]+)` · source `([0-9a-f]{40})`')
 # Windows Beta 1 and 2 were published with one unlabelled provenance line.

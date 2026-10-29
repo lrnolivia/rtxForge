@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Install and use rtxForge on Linux or Windows: packages, presets, in-game overlays, shortcuts, OptiScaler and ReShade menus, Game Mode, updates and recovery.">
+  <meta name="description" content="Get rtxForge running, try your first game, and set up the overlay. A simple guide for Linux and Windows.">
   <link rel="canonical" href="https://loew.fi/rtxforge/install">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="rtxForge">
@@ -38,11 +38,11 @@
       </a>
       <div class="header-links"><a class="header-report" href="report.html" data-report-link>Report a bug <span aria-hidden="true">→</span></a><button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light appearance"><img id="theme-icon" src="assets/sun.svg" width="20" height="20" alt=""></button></div>
     </header>
-    <main id="main">
+    <main id="main" tabindex="-1">
       <div class="guide-intro">
         <a class="text-link guide-back" href="./?os=linux" data-home-link>Back to rtxForge</a>
-        <h1>Set up and use rtxForge.</h1>
-        <p class="guide-lead">From your first install to NR and MFG controls in-game: packages, overlays, shortcuts, and a way back.</p>
+        <h1>Let’s get you playing.</h1>
+        <p class="guide-lead">Install the app. Try one game. Fine-tune from there.</p>
         <div class="platform-picker" role="tablist" aria-label="Choose your operating system">
           <button id="tab-linux" class="platform-tab" role="tab" aria-selected="true" aria-controls="platform-content" type="button" data-platform="linux"><img class="os-icon" src="assets/linux.svg" width="21" height="21" alt=""> Linux</button>
           <button id="tab-windows" class="platform-tab" role="tab" aria-selected="false" aria-controls="platform-content" tabindex="-1" type="button" data-platform="windows"><img class="os-icon" src="assets/windows.svg" width="20" height="20" alt=""> Windows</button>
@@ -50,155 +50,74 @@
       </div>
       <div class="guide-layout">
         <nav class="guide-nav" aria-label="In this guide">
-          <a href="#get-the-app">Get the app</a>
-          <a href="#packages">Choose your packages</a>
-          <a href="#presets">Tune presets</a>
-          <a href="#install-games">Install into games</a>
-          <a href="#play">Play</a>
-          <a href="#overlays">Set up the overlay</a>
-          <a href="#game-menus">OptiScaler &amp; ReShade menus</a>
-          <a href="#game-mode">Game Mode</a>
-          <a href="#global-settings">Change installed games</a>
-          <a href="#restore">Update and restore</a>
-          <a href="#help">Troubleshooting</a>
+          <a href="#get-the-app">Install the app</a>
+          <a href="#packages">Try a game</a>
+          <a href="#overlays">Use the overlay</a>
+          <a href="#more">More options</a>
+          <a href="#help">Get help</a>
         </nav>
         <div class="guide-article" id="platform-content" role="tabpanel" aria-labelledby="tab-linux" tabindex="0">
           <section id="get-the-app">
-            <h2>Get the app for <span id="guide-platform-name">Linux</span>.</h2>
-            <p>Choose your operating system on the <a href="./?os=linux#downloads" data-downloads-link>downloads page</a>. It shows the packages actually published for each channel.</p>
-            <dl class="guide-channels">
-              <div><dt>Beta</dt><dd>The regular public testing release. Start here.</dd></div>
-              <div><dt>Development</dt><dd>A moving release with the latest changes. Expect more frequent updates and unfinished features.</dd></div>
-            </dl>
-            <p>A channel may say <strong>coming soon</strong> until its release and your OS package are published. The old <code>continuous</code> release remains for existing Linux updater compatibility; it is separate from the new Beta and Development channels.</p>
-            <p class="guide-requirements" id="guide-requirements">Linux x86_64 with a working NVIDIA driver. Package-specific requirements are listed with each release.</p>
+            <h2>Install on <span id="guide-platform-name">Linux</span>.</h2>
+            <p>Choose <strong>Beta</strong> on the <a href="./?os=linux#downloads" data-downloads-link>downloads page</a>. It’s the version to start with.</p>
             <div data-guide-platform="linux">
-              <h3>Flatpak (recommended for SteamOS)</h3>
-              <ol>
-                <li>Download the <code>.flatpak</code> from the selected release.</li>
-                <li>Open it with Discover or GNOME Software, or run <code>flatpak install --user</code> with the downloaded file. Flathub provides the GNOME runtime it needs.</li>
-                <li>Open rtxForge from your app menu.</li>
-              </ol>
-              <p>The Flatpak brings its own GTK4 and libadwaita, so it works on SteamOS and any system without them. It still checks running games, Steam and anti-cheat on your system through Flatpak’s host access and the system’s Python 3, and refuses changes if it cannot. It is attached to the release, not listed on Flathub.</p>
-              <h3 id="appimage">AppImage (Bazzite and CachyOS)</h3>
-              <ol>
-                <li>Download the AppImage from the selected release.</li>
-                <li>In your file manager, open its properties and allow it to run as a program. Open the AppImage.</li>
-                <li>Keep it somewhere permanent if you add a launcher or Steam shortcut. Moving it later can break that shortcut.</li>
-              </ol>
-              <p>The AppImage uses host Python 3, GTK4, libadwaita 1.7+, and PyGObject. If it will not open, check those dependencies and any FUSE error. A Bazzite filename identifies the build; the app checks host capabilities rather than just the distribution name.</p>
-              <p>Keep space for runtime downloads and original-file backups. Linux runtime preparation needs at least 4 GiB free at the app’s state location.</p>
+              <h3>Flatpak</h3>
+              <p>The easiest choice on SteamOS. It also works on Bazzite and CachyOS.</p>
+              <ol><li>Download the Flatpak.</li><li>Open it in Discover or GNOME Software and follow the prompts.</li><li>Launch rtxForge from your app menu.</li></ol>
+              <details><summary>Installing from a terminal?</summary><p>Run <code>flatpak install --user /path/to/rtxForge.flatpak</code>, using your downloaded filename. You’ll need Flathub’s GNOME runtime and host Python 3. This is a release download, not a Flathub listing.</p></details>
+              <h3>AppImage</h3>
+              <p>Another option for Bazzite and CachyOS. Allow the file to run as a program in its properties, then open it. Keep it in a permanent folder if you add a shortcut.</p>
+              <details id="appimage"><summary>AppImage won’t open?</summary><p>It needs your system’s Python 3, GTK4, libadwaita 1.7+, and PyGObject. On CachyOS, check <code>python-gobject</code> and <code>libadwaita</code>. Also check executable permission and any FUSE error. SteamOS users should choose Flatpak.</p></details>
             </div>
             <div data-guide-platform="windows" hidden>
               <h3>Installer</h3>
-              <ol>
-                <li>Download the x64 installer. If it arrives as a setup ZIP, extract it first.</li>
-                <li>Run the setup <code>.exe</code> and follow its prompts.</li>
-                <li>Open rtxForge from the Start menu. Packaged builds include the app runtimes and Python; no development SDK is needed.</li>
-              </ol>
-              <h3>Portable</h3>
-              <p>Download the portable Windows ZIP, extract the <em>entire</em> archive, then open <code>rtxForge.exe</code>. Keep its companion files together. Portable skips app installation, but preferences, downloaded runtimes, and recovery records can still live outside that folder.</p>
-              <p>Check the release’s signing and build notes. Development previews may be unsigned. Use the package from the official release and compare its checksum when one is supplied.</p>
+              <p>Download and run the installer, then open rtxForge from the Start menu. If it comes in a ZIP, extract it first. The app runtimes are included.</p>
+              <details><summary>Prefer the portable version?</summary><p>Extract the entire portable ZIP and open <code>rtxForge.exe</code>. Keep the files together. Settings and backups may still be stored outside that folder.</p></details>
             </div>
-            <a class="guide-download" href="./?os=linux#downloads" data-downloads-link>Choose a download</a>
+            <details><summary>Requirements and other builds</summary><p id="guide-requirements">Linux x86_64 with a working NVIDIA driver.</p><p data-guide-platform="linux">Keep at least 4 GiB free for runtime setup, plus room for downloads and backups.</p><p>Development builds contain newer changes and may be less stable. Check the <a href="https://github.com/lrnolivia/rtxForge/releases" target="_blank" rel="noopener">release notes</a> for package requirements, signing notes, and testing limits.</p></details>
           </section>
           <section id="packages">
-            <h2>Choose your packages.</h2>
-            <p>Open the Library, rescan your games, and start with one compatible title. If a game is missing, check your library locations in Settings or add its folder.</p>
-            <p>Choose a supported package in <strong>Packages</strong>, or inspect a custom ZIP. Select <strong>NR Only</strong>, <strong>MFG Only</strong>, or <strong>NR + MFG</strong>, then choose a compatible provider. Available packages and combinations depend on your build and operating system.</p>
-            <ul>
-              <li><strong>Neural rendering:</strong> experimental, for compatible RTX cards and supported game/provider routes. Some packages need a separate compatible model file; the review tells you what is missing.</li>
-              <li><strong>Multi-frame generation:</strong> supports RTX 20, 30, and 40 series on compatible routes. A selected multiplier is a request, not a promise of the same multiplier in net FPS.</li>
-              <li><strong>Custom packages:</strong> inspect the source and proposed files. A checksum verifies the download’s integrity, not its safety or game compatibility.</li>
-            </ul>
-            <p>Already have a managed install? Use its repair or restore controls before switching provider or feature mode. If your build offers <strong>Adoption</strong> for an existing manual install, review exactly what it recognizes before letting rtxForge manage it. Unknown files should not be overwritten.</p>
-          </section>
-          <section id="presets">
-            <h2>Tune presets.</h2>
-            <p>Use the <strong>Presets</strong> sidebar for library defaults, then adjust an individual game from its details. Choose the NR strength, sharpening, and frame-generation settings supported by your selected package.</p>
-            <p>Save or apply the preset as shown in your build. A saved value does not prove a feature is running. Existing games may need a reviewed settings update or a restart; check the operation summary rather than assuming a library default changed every installed game.</p>
-            <p>NR starts off on new and clean installs. Choose <strong>Enable NR on launch</strong> in the install review when you want it to start enabled; its default is in <strong>Settings → Graphics</strong>. Adoption and repair preserve the recorded startup choice. You can also enable NR from the supported in-game controls.</p>
-          </section>
-          <section id="install-games">
-            <h2>Install into your games.</h2>
-            <ol>
-              <li><strong>Close the selected game.</strong> Avoid protected online games and anti-cheat. Keep your original-file backups.</li>
-              <li><strong>Select your games and choose Install Features.</strong> Read the provider, feature mode, downloads, file changes and any launch-setting changes in the review.</li>
-              <li><strong>Apply the reviewed operation.</strong> Let it finish, then check the result for each game. If a game is blocked, follow the reason shown instead of forcing an overwrite.</li>
+            <h2>Try one game first.</h2>
+            <ol class="guide-steps">
+              <li><strong>Find your game.</strong> Rescan the Library. If it’s missing, add its folder in Settings.</li>
+              <li><strong>Choose what to install.</strong> Pick a package in <strong>Packages</strong>, then NR, MFG, or both. The app shows which options the game supports.</li>
+              <li id="presets"><strong>Set your presets.</strong> Start with the defaults. NR starts off on a clean install; choose <strong>Enable NR on launch</strong> in the review if you want it on.</li>
+              <li id="install-games"><strong>Close the game and install.</strong> Choose <strong>Install Features</strong>, read the changes, and confirm. Keep the original-file backups. Avoid protected online games and anti-cheat.</li>
+              <li id="play"><strong>Play.</strong> Turn on the game’s DLSS and frame-generation options as required by your package. Check how it looks and feels before adding more games.</li>
             </ol>
-            <p data-guide-platform="linux">Steam can stay open for supported installation routes. If the review needs to change a Steam-managed setting or reports a running-client conflict, close Steam and review again. Keep the Proton route shown for that game.</p>
-            <p data-guide-platform="windows" hidden>Windows games load the selected runtime from their game files. Follow the exact executable and game/API requirements shown in the review; a launcher and the actual game executable may be different.</p>
-            <h3>Built for dual boot</h3>
-            <p data-guide-platform="linux">For supported games already set up with rtxForge on Windows on a shared drive, use <strong>Adapt to Linux</strong> for one game or the library. It prepares the Linux side without changing the Windows installation or game folder. Use a Proton build with NVIDIA CUDA support, such as Proton-GE, for frame generation; launch the game once with that Proton build, then quit before adapting.</p>
-            <p data-guide-platform="windows" hidden>Games on a drive shared with Linux can be adapted from the Linux app using <strong>Adapt to Linux</strong>. Keep the Windows install and recovery records; let the Linux app review its own Proton setup rather than copying launch settings between OSes.</p>
-          </section>
-          <section id="play">
-            <h2>Play.</h2>
-            <p>Launch the game and enable the DLSS and frame-generation options required by your package. Start with its supported defaults, check the image and frame pacing, then tune one setting at a time.</p>
-            <p>NR startup behavior and shortcuts depend on the provider. Follow the package’s notes and the controls shown in your build. A green installed badge, saved preset, or log entry alone does not establish a visible NR effect.</p>
-            <p>Beta 1 includes the in-game overlay/panel. Set it up below before relying on a shortcut from another build. Controls and package support can differ between Beta and Development.</p>
+            <p data-guide-platform="linux">For frame generation, use a Proton build with NVIDIA CUDA support, such as Proton-GE. Run the game once with that build, then quit before setup. Follow the review if it asks you to close Steam.</p>
+            <details><summary>Packages, presets, and existing mods</summary><p>A package supplies the game files; a preset holds your tuning. Some NR packages also need a model file. The install review tells you what’s missing.</p><p>For an existing manual setup, use <strong>Adoption</strong> when offered and read what it recognizes. For a managed setup, use repair or restore before switching packages. Unknown files should not be overwritten.</p><p>NR is experimental. MFG supports RTX 20, 30, and 40 series on compatible game/package combinations. Selecting 4× does not guarantee four times the measured FPS.</p></details>
           </section>
           <section id="overlays">
-            <h2>Set up the in-game overlay.</h2>
-            <p>The rtxForge panel gives you NR and MFG controls while a compatible game is running. The game needs a supported rtxForge feature package installed first; changing an app preference alone does not install the panel.</p>
+            <h2>Make changes while you play.</h2>
+            <p>The overlay puts NR and MFG controls inside a compatible game.</p>
             <ol>
-              <li><strong>Open Settings → Overlay.</strong> Choose the rtxForge panel as your primary overlay. On Linux this choice is labelled <strong>In the game</strong>; on Windows choose <strong>rtxForge</strong>. The native-menu alternative is covered in the next section.</li>
-              <li><strong>Check Panel shortcut.</strong> Use the key displayed by your installed build. Choose <strong>Record</strong> to set a key or a Ctrl/Alt/Shift combination; <strong>Reset</strong> restores that build’s default and <strong>Disable</strong> removes the binding. Keep it separate from the game’s controls and OptiScaler’s shortcut.</li>
-              <li><strong>Choose the controls and appearance.</strong> Unified uses simple labels; Advanced uses the package’s original labels and units. Choose Dark, Light, or Follow app. The welcome message, its position, and live feature statistics have separate settings.</li>
-              <li><strong>Apply changes to installed games.</strong> Close the affected games, choose <strong>Update Overlays</strong>, inspect the per-game package, menu and shortcut changes, then apply. Restart the game to use startup and native-menu changes. On older builds without this action, follow the package’s reviewed install or repair flow.</li>
-              <li><strong>Launch one game and press your panel shortcut.</strong> Adjust supported NR/MFG controls, then use <strong>Save preset</strong> when you want to keep the tuning. Check the result in the game before moving on to other titles.</li>
+              <li>Open <strong>Settings → Overlay</strong>. Choose <strong data-guide-platform="linux">In the game</strong><strong data-guide-platform="windows" hidden>rtxForge</strong> as the primary overlay.</li>
+              <li>Check <strong>Panel shortcut</strong>. Use <strong>Record</strong> to choose your own key. Use the shortcut shown in your build; it can differ between versions.</li>
+              <li>For an installed game, close it, choose <strong>Update Overlays</strong>, review, and apply. Restart the game, then press your shortcut.</li>
             </ol>
-            <p data-guide-platform="windows" hidden>Enable <strong>Background overlay helper</strong> to keep saved presets and panel settings available after closing the manager. <strong>Start with Windows</strong> starts the helper, not the full manager. The overlay follows the compatible game you are playing. In builds that expose them, its gear opens Overlay settings and its globe opens a reviewed Global change.</p>
-            <p data-guide-platform="linux">Keep rtxForge running while using its background helper. Overlay preferences are written into the game’s Proton setup through a reviewed operation while the game is closed. The panel draws inside the game, so its shortcut does not need a desktop-wide key binding in Wayland or Gamescope.</p>
-            <p>For a different setup in one title, open the game’s <strong>Overlay</strong> controls and turn off <strong>Use app overlay settings</strong>. Review <strong>Update Overlays</strong> for that game. Turn inheritance back on to use the app-wide choices again.</p>
-            <p>Live statistics appear only when the installed runtime supplies them. A requested MFG multiplier, a saved preset, or a log entry is not proof of the same gain in measured FPS or visible NR quality.</p>
+            <p>Start with <strong>Unified</strong> controls. Adjust what you need and choose <strong>Save preset</strong> to keep it.</p>
+            <p data-guide-platform="windows" hidden>Enable <strong>Background overlay helper</strong> if you want the controls available after closing the manager. <strong>Start with Windows</strong> starts just that helper.</p>
+            <p data-guide-platform="linux">Keep rtxForge running for the helper. In Steam Game Mode, use this in-game panel; it doesn’t need a desktop-wide shortcut.</p>
+            <details><summary>Appearance, shortcuts, and per-game settings</summary><p>Overlay settings include Dark, Light, Follow app, welcome messages, and live statistics when the runtime provides them. Advanced controls use the package’s own labels and units.</p><p>To change one game, open its <strong>Overlay</strong> controls and turn off <strong>Use app overlay settings</strong>. Review <strong>Update Overlays</strong> for that game, then restart it. Older builds may use their install or repair review instead.</p><p>Keep the panel key separate from game controls and OptiScaler’s key. Reset restores your build’s default; Disable removes the binding. A saved setting or log entry alone doesn’t prove a visible NR effect.</p></details>
           </section>
-          <section id="game-menus">
-            <h2>OptiScaler and ReShade menus.</h2>
-            <p>These are the menus provided by the installed game package. They are separate from the rtxForge panel and from the game’s own graphics menu.</p>
-            <dl class="guide-recovery">
-              <div><dt>OptiScaler</dt><dd>In <strong>Settings → Overlay → OptiScaler</strong>, enable its in-game menu and choose <strong>Insert</strong>, <strong>F8</strong>, or <strong>Disabled</strong> for its shortcut. Its intro message is a separate toggle. The original menu requires a compatible current game package and a game restart.</dd></div>
-              <div><dt>ReShade / Feeder</dt><dd>The ReShade section controls menu access separately from its welcome messages. Those welcome choices cover the ReShade guide and RenoDX welcome dialog; short loading notices are separate. Use the shortcut shown by your installed ReShade configuration.</dd></div>
-              <div><dt>Native MFG menu</dt><dd>On routes that expose it, <strong>Native MFG menu and hint</strong> enables the package’s optional advanced menu. Hiding it keeps frame generation installed and running.</dd></div>
-            </dl>
-            <p>Hiding a menu or its intro does not uninstall NR, MFG, or Feeder effects. You can keep native menu access alongside the rtxForge panel, or choose <strong>Native</strong> on Windows / <strong>OptiScaler menu only</strong> on Linux as the primary overlay. Review <strong>Update Overlays</strong> and restart the game after changing these choices.</p>
-          </section>
-          <section id="game-mode">
-            <h2>Use Game Mode.</h2>
-            <p>Game Mode is rtxForge’s controller interface for browsing your library, changing presets, choosing packages, and reviewing installations. The in-game overlay is a separate surface for controls while you play.</p>
-            <p>Open <strong>Settings → Gaming Mode</strong> to choose the interface, controller prompts and glyphs, scaling, and appearance. Follow the on-screen button hints when selecting games and moving through review, progress, and result screens. Close a game before applying operations that change its files.</p>
-            <p data-guide-platform="linux">Use <strong>Settings → Gaming Mode → Add to Steam</strong> to add rtxForge to your Steam library, then launch that shortcut from Steam’s Game Mode. Follow any request to close Steam for shortcut changes. In Gamescope, use the panel drawn inside the game; a standalone desktop companion is not a replacement for that surface.</p>
-            <p data-guide-platform="windows" hidden>Game Mode uses the same library, package choices, and recovery records as Desktop. Switching the interface does not install features into a game; use <strong>Install Features</strong> and its review as usual. Configure the in-game panel separately under <strong>Settings → Overlay</strong>.</p>
-            <p>Controller behavior, HDR, and VRR also depend on your hardware and display setup. Long controller-driven modal lists can have scrolling issues in Beta 1. Linux Vulkan/Proton routes and the Light overlay still have testing limits; check the <a href="https://github.com/lrnolivia/rtxForge/releases/tag/beta" target="_blank" rel="noopener">release notes</a> for your build.</p>
-          </section>
-          <section id="global-settings">
-            <h2>Change installed games together.</h2>
-            <p><strong>Settings → Global</strong> offers a one-time NR/MFG change across installed games. Choose what to change, leave unrelated settings as they are, then review the eligible games before applying. Running games, unsupported routes, and conflicting files are excluded.</p>
-            <p>This is useful when you want to turn NR on or change MFG across existing installs. It keeps their unrelated tuning and original-file backups. New installations continue to use your <strong>Presets</strong> and install-review choices.</p>
-          </section>
-          <section id="restore">
-            <h2>Update, repair, or restore.</h2>
-            <dl class="guide-recovery">
-              <div><dt>Update rtxForge</dt><dd>Use the updater offered by your build or download a newer package from the same channel. An app update does not automatically reinstall game features.</dd></div>
-              <div><dt>Repair Feature Files</dt><dd>Repair a managed installation while keeping its recorded tuning. Review the changes first.</dd></div>
-              <div><dt>Restore Original Files</dt><dd>Remove the managed feature installation using its backups. Use restore before changing the installed provider or feature mode.</dd></div>
-              <div><dt>DLSS Files</dt><dd>Native DLSS DLL updates have separate backup and restore controls. See the <a href="https://github.com/lrnolivia/rtxForge/blob/main/docs/DLSS-FILES.md" target="_blank" rel="noopener">DLSS file guide</a> for those operations.</dd></div>
-            </dl>
-            <p>Keep recovery records and backups, including when using Portable or reinstalling the app. A game update or another mod may change files after installation. If restore reports a conflict, review it before replacing anything.</p>
+          <section id="more">
+            <h2>When you need more.</h2>
+            <details id="game-menus"><summary>OptiScaler and ReShade menus</summary><p>In <strong>Settings → Overlay</strong>, menu access and welcome messages are separate choices. OptiScaler offers Insert, F8, or Disabled for its menu key. ReShade uses the key in its own configuration.</p><p>You can keep these menus alongside the rtxForge panel, or choose <strong data-guide-platform="windows" hidden>Native</strong><strong data-guide-platform="linux">OptiScaler menu only</strong> as the primary overlay. Review <strong>Update Overlays</strong> and restart the game.</p><p>Hiding a menu or intro keeps NR, MFG, and Feeder effects installed. ReShade/RenoDX loading notices are separate from welcome messages. The native MFG menu is optional on packages that support it.</p></details>
+            <details id="game-mode"><summary>Play from the couch with Game Mode</summary><p>Game Mode is the controller-friendly version of the app. It uses the same library, packages, and backups as Desktop. It’s separate from the in-game overlay.</p><p>Open <strong>Settings → Gaming Mode</strong> for interface, controller, scale, and theme choices.</p><p data-guide-platform="linux">Choose <strong>Add to Steam</strong> there, then launch the shortcut from Steam’s Game Mode. Close Steam if asked when changing the shortcut.</p><p>Follow the on-screen button hints. Long review lists can have controller-scrolling issues in Beta 1.</p></details>
+            <details id="global-settings"><summary>Change several installed games at once</summary><p>Open <strong>Settings → Global</strong>, choose the NR/MFG change, and review the games before applying. Leave anything else as it is. Running games and unsupported or conflicting setups are skipped.</p><p>This is a one-time change to existing installs. New installs still use your presets. Unrelated tuning and original-file backups are kept.</p></details>
+            <details id="dual-boot"><summary>Use a shared Windows/Linux library</summary><p>On Linux, <strong>Adapt to Linux</strong> sets up supported games already installed with rtxForge on Windows. Use it for one game or the whole library. It leaves the game folder and Windows setup alone.</p><p>Start the game once with your chosen Proton build, quit, then review the adaptation. Don’t copy Windows launch settings into Proton by hand.</p></details>
+            <details id="restore"><summary>Update, repair, or undo an install</summary><p><strong>Repair Feature Files</strong> repairs a managed setup while keeping its recorded tuning. <strong>Restore Original Files</strong> removes it using your backups.</p><p><strong>DLSS Files</strong> has its own restore controls for native DLL updates. Keep backups and recovery records. If another mod or a game update changed a file, read the conflict before restoring.</p><p>Updating the app doesn’t automatically update every game’s feature package. Use the app updater or download the newer build, then review any game changes separately. See the <a href="https://github.com/lrnolivia/rtxForge/blob/main/docs/DLSS-FILES.md" target="_blank" rel="noopener">DLSS file guide</a> for more.</p></details>
           </section>
           <section id="help">
             <h2>Something not working?</h2>
-            <details><summary>The app will not open</summary><p data-guide-platform="linux">Check executable permission, the AppImage’s host dependencies, and any FUSE message. For a Flatpak, check the error in your software installer and that the package came from the selected release.</p><p data-guide-platform="windows" hidden>Extract every file from a portable or setup ZIP. Keep companion files beside the executable. Check the release’s runtime and signing notes, then report the exact message if it still fails.</p></details>
-            <details><summary>A game is missing or an operation is blocked</summary><p>Open Steam once, rescan the Library, and check library folders in Settings. Close the game. Read the exact conflict or missing requirement in the review; close Steam if that route asks for it. Do not replace files that the app cannot safely identify.</p></details>
-            <details><summary>NR or MFG has no visible effect</summary><p>Check the installed provider, feature mode, game/API support, and in-game DLSS/FG settings. Use <strong>Game Details → Tools → Diagnose NR</strong> when available. Check current package notes; installing files and evaluating a feature in a running game are different things.</p></details>
-            <details><summary>The panel shortcut does nothing</summary><p>Check the actual binding in <strong>Settings → Overlay</strong>, that it is not Disabled, and that the rtxForge panel is selected. Confirm a compatible package is installed into this game. Close the game, review <strong>Update Overlays</strong>, then relaunch and test that binding. Check for a conflicting game or native-menu shortcut.</p><p data-guide-platform="windows" hidden>Check that <strong>Background overlay helper</strong> is enabled when you want it to work after closing the manager.</p><p data-guide-platform="linux">Keep rtxForge open. Confirm this game has a Proton prefix from a previous launch and that the overlay review could apply its preferences while the game was closed. Use the in-game panel in Steam Game Mode rather than a desktop overlay window.</p></details>
-            <details><summary>The panel opens but says it is waiting for the helper</summary><p>Start rtxForge again and check the package and build used by this game. A visible panel can have a different bridge version from the app’s helper. Review the available overlay update, restart the game, and report the exact waiting message if it persists.</p><p data-guide-platform="linux">The Linux Beta’s preset saving/replay needs the matching game-side bridge from the release’s Windows build. Linux Vulkan games have not yet been verified under Proton; include your game API and Proton version in a report.</p></details>
-            <details><summary>Menu or welcome changes did not reach an installed game</summary><p>Saving an Overlay preference and applying it to a game are separate steps. Close the game, use <strong>Update Overlays</strong> for it, read the effective choices in the review, apply, then restart. Check whether that game has its own Overlay override instead of inheriting app settings. Loading banners are separate from welcome/intro toggles.</p></details>
-            <details><summary>Share a beta report</summary><p>Use the <a href="report.html?os=linux" data-report-link>beta report template</a> for your GPU, distro / OS, app format and version, feature package, game, and separate NR / MFG results. Working setups help too.</p><p>Open <strong>Settings → Recovery → Library Reports → Preview Support Report</strong>. Review and export it, then attach it on GitHub. Check for personal information before sharing.</p></details>
+            <details><summary>The game or a feature won’t work</summary><p>Check the package, feature mode, and the game’s DLSS/FG settings. For NR, try <strong>Game Details → Tools → Diagnose NR</strong>. Include any error exactly as shown.</p><p>Game support varies by package. Linux Vulkan/Proton games and the Light overlay still have testing limits—check your <a href="https://github.com/lrnolivia/rtxForge/releases/tag/beta" target="_blank" rel="noopener">release notes</a>.</p></details>
+            <details><summary>The overlay won’t open or save</summary><p>Check the panel choice and shortcut in <strong>Settings → Overlay</strong>. Confirm a compatible package is installed. Close the game, review <strong>Update Overlays</strong>, and restart.</p><p data-guide-platform="windows" hidden>Check that the background helper is enabled if the manager is closed.</p><p data-guide-platform="linux">Keep rtxForge open. Saving and replaying presets needs the matching game-side bridge from this release’s Windows build. If it says it’s waiting for the helper, include that message in your report.</p></details>
+            <p>Still stuck? <a href="report.html?os=linux" data-report-link>Report a bug</a>. Tell us what happened and what you’re using. You can attach logs later.</p>
           </section>
         </div>
       </div>
-      <noscript><p class="noscript">Showing Linux instructions. <a href="https://github.com/lrnolivia/rtxForge#your-first-game">The README</a> has a short guide for both platforms.</p></noscript>
+      <noscript><p class="noscript">Showing Linux instructions. <a href="https://github.com/lrnolivia/rtxForge#your-first-game">The README</a> also covers Windows.</p></noscript>
     </main>
     <footer class="footer"><a class="loew" href="https://loew.fi" target="_blank" rel="noopener">loew.fi</a><div class="footer-links"><a href="./?os=linux" data-home-link>rtxForge</a><a href="https://github.com/lrnolivia/rtxForge" target="_blank" rel="noopener">GitHub <span aria-hidden="true">↗</span></a><a href="https://github.com/lrnolivia/rtxForge/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a></div></footer>
   </div>

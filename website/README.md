@@ -8,15 +8,17 @@ Use `npm ci`, `npm run check`, and `npm run deploy` from this directory. Wrangle
 
 `public/install.html` serves the richer OS-aware guide at `/install` in production. The landing page and guide share platform requirements and appearance preferences through `platforms.mjs` and `theme.mjs`. Guide downloads return to the selected OS on the landing page, where availability is resolved from real releases. Package-specific and development-only capabilities remain qualified.
 
-The guide also covers overlay setup and shortcut recording, native OptiScaler/ReShade menus and welcome messages, per-game overrides, reviewed overlay updates and restarts, the Windows/Linux helper differences, Game Mode, one-time Global changes, and Adapt to Linux. These sections follow the selected OS and use the shortcut shown by the installed build rather than a universal hard-coded key.
+The guide starts with installing the app, trying one game, and opening the overlay. Optional topics use native disclosures: package details, native menus, per-game overrides, Game Mode, Global changes, dual boot, updates and recovery. Existing help anchors open their containing disclosure. Instructions follow the selected OS and use the shortcut shown by the installed build.
 
 The landing page places an outlined Installation guide link with a book glyph directly below the package downloads. Linux shows separate Download Flatpak and Download AppImage buttons when both packages are published. It follows the selected OS and remains available while release information loads or fails. The Linux guide covers both the Flatpak bundle and AppImage.
 
 ## Beta reports
 
-`public/report.html` serves `/report`, linked from the homepage and installation guide. It collects the OS/distro, RTX series and model/driver, app format/build, game, feature package/version, attempted mode, and separate NR/MFG outcomes. It opens a prefilled `beta-report.yml` GitHub issue form for review; the form also works without JavaScript. The copyable template includes the installation guide and AppImage host-dependency link for discussion follow-ups. Report details stay in the page until the visitor chooses to copy them or review them on GitHub.
+`public/report.html` serves `/report`, linked from every page. Only the OS and description are required; visitors can share the setup details they know. GPU series is derived from a recognized RTX model, with Not sure otherwise. App build and separate NR/MFG results are available under More details. The page opens a matching `beta-report.yml` GitHub issue form for review, with optional ZIP attachments on GitHub and a copyable text fallback. It also works without JavaScript. Details stay in the page until the visitor chooses to copy them or continue to GitHub.
 
 Every page has a header Report a bug link. The report asks visitors to choose their OS explicitly before revealing setup fields. Linux offers distro versions, Flatpak/AppImage formats and Proton guidance; Windows offers Windows versions and installer/portable formats. Switching OS clears incompatible distro/format choices. AppImage dependency help appears when that format is selected.
+
+The homepage keeps Beta downloads prominent and places Development under a disclosure. Feature copy is brief, native app screenshots remain the visual focus, and the same compatibility caveats are explained once in the help most relevant to them.
 
 ## Release channels
 

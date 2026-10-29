@@ -24,8 +24,10 @@ function updateReport() {
   for (const section of form.querySelectorAll('fieldset')) { section.hidden = !os; section.disabled = !os; }
   for (const option of document.querySelectorAll('[data-format-os]')) {
     option.hidden = option.disabled = option.dataset.formatOs !== os;
-    if (option.disabled && option.selected) document.getElementById('app-format').value = '';
+    if (option.disabled && option.selected) document.getElementById('app-format').value = 'Not sure';
   }
+  const family = document.getElementById('gpu').value.match(/\bRTX\s*(20|30|40|50)\d{2}/i);
+  document.getElementById('gpu-series').value = os && family ? `RTX ${family[1]}` : 'Not sure';
   const data = new FormData(form);
   const value = id => String(data.get(id) || '').trim();
   document.documentElement.dataset.os = os;
@@ -36,8 +38,8 @@ function updateReport() {
   document.getElementById('distribution-label').textContent = os === 'windows' ? 'Windows version' : 'Linux distro and version';
   distribution.placeholder = os === 'windows' ? 'e.g. Windows 11 25H2' : 'e.g. Bazzite 44';
   distribution.setAttribute('list', os === 'windows' ? 'windows-versions' : 'distros');
-  document.getElementById('observations-hint').textContent = (os === 'linux' ? 'Include Proton version and game API if known. ' : 'Include your DirectX / game API version if known. ') + 'Add longer logs or reviewed support-report attachments on GitHub.';
-  document.getElementById('os-hint').textContent = os ? `Showing ${platform.value} setup fields.` : 'Choose an OS to see its setup fields.';
+  document.getElementById('observations-hint').textContent = os === 'linux' ? 'An error message or Proton version can help. Add logs later on GitHub.' : 'An error message can help. Add logs later on GitHub.';
+  document.getElementById('os-hint').hidden = Boolean(os);
   form.querySelector('[type=submit]').disabled = !os;
   const appImage = data.get('app-format') === 'AppImage';
   document.getElementById('appimage-help').hidden = !appImage;
@@ -48,7 +50,7 @@ function updateReport() {
     + `Installation guide: https://loew.fi/rtxforge/install${os ? `?os=${os}` : ''}\n`
     + (appImage ? 'AppImage host dependencies: https://loew.fi/rtxforge/install?os=linux#appimage\n' : '')
     + '\nAttach a reviewed support report on GitHub if available.\n';
-  copy.textContent = fields.some(([id]) => id !== 'platform' && value(id)) || value('observations') ? 'Copy report' : 'Copy report template';
+  copy.textContent = os ? 'Copy report' : 'Copy blank template';
 }
 copy.hidden = false;
 preview.hidden = false;
@@ -58,11 +60,11 @@ copy.addEventListener('click', async () => {
   const text = report.value;
   try {
     await navigator.clipboard.writeText(text);
-    status.textContent = 'Report copied. Paste it into GitHub or your discussion.';
+    status.textContent = 'Copied. Paste it wherever you’re discussing the issue.';
   } catch {
     preview.open = true;
     report.focus(); report.select();
-    status.textContent = 'Automatic copying is unavailable. The report text is selected; copy it with your browser’s Copy command.';
+    status.textContent = 'Copy didn’t work. The text is selected. Use your browser’s Copy command.';
   }
 });
 form.addEventListener('submit', event => {
@@ -74,7 +76,7 @@ form.addEventListener('submit', event => {
     event.preventDefault();
     preview.open = true;
     report.focus(); report.select();
-    status.replaceChildren('This report is too long for a GitHub link. Copy the selected text, then ');
+    status.replaceChildren('This is too long for a link. Copy the selected text, then ');
     const link = document.createElement('a');
     link.href = `${form.action}?template=beta-report.yml`;
     link.textContent = 'open the GitHub issue form';

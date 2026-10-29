@@ -24,11 +24,11 @@ function linkState(element, url) {
 }
 function installInstructions(format) {
   return {
-    AppImage: 'Allow the AppImage to run in file properties, then open it. AppImage builds need host Python 3, GTK4, libadwaita 1.7+, and PyGObject.',
-    Flatpak: 'Recommended for SteamOS and any system without GTK4 and libadwaita. Open the Flatpak reference with your software installer and follow its prompts.',
-    'Flatpak bundle': 'Recommended for SteamOS and any system without GTK4 and libadwaita. Open the bundle with Discover or GNOME Software. On Bazzite and CachyOS, the AppImage also works.',
-    Installer: 'Run the installer. The app includes its runtimes.',
-    'Installer ZIP': 'Extract the setup ZIP, then run the installer. The app includes its runtimes.',
+    AppImage: 'Allow the file to run, then open it. Check the setup guide for system dependencies.',
+    Flatpak: 'Start here on SteamOS. Open it with your software installer.',
+    'Flatpak bundle': 'Start here on SteamOS. Open it in Discover or GNOME Software.',
+    Installer: 'Run the installer, then open rtxForge from the Start menu.',
+    'Installer ZIP': 'Extract the ZIP, then run the installer.',
     Portable: 'Extract the entire ZIP and open rtxForge.exe. Keep its companion files together.'
   }[format];
 }
@@ -41,10 +41,10 @@ function renderDownloads() {
   linkState(byId('download-link'), betaFiles?.primary.url);
   byId('download-label').textContent = betaFiles ? (os === 'linux' ? `Download ${betaFiles.primary.format.startsWith('Flatpak') ? 'Flatpak' : 'AppImage'}` : 'Download Beta 1') : beta.status === 'loading' ? 'Checking Beta downloads…' : beta.status === 'error' ? 'Beta downloads unavailable' : 'Beta coming soon';
   byId('package-meta').textContent = betaFiles ? `Beta 1 · ${os === 'linux' && betaFiles.alternative ? 'Flatpak & AppImage' : betaFiles.primary.format} · ${platform.arch}` : `Beta · ${platform.name} ${platform.arch}`;
-  byId('install-copy').textContent = betaFiles ? installInstructions(betaFiles.primary.format) : beta.status === 'loading' ? 'Checking the published Beta release.' : beta.status === 'error' ? 'Release information could not be loaded. Try again or check the releases on GitHub.' : `The ${platform.name} Beta download will appear here when it is published.`;
+  byId('install-copy').textContent = betaFiles ? installInstructions(betaFiles.primary.format) : beta.status === 'loading' ? 'Finding your download…' : beta.status === 'error' ? 'We couldn’t load the downloads. Try again or open GitHub Releases.' : `The ${platform.name} Beta will appear here when it’s ready.`;
   linkState(byId('secondary-link'), devFiles?.primary.url);
   byId('secondary-label').textContent = devFiles ? 'Download Development' : dev.status === 'loading' ? 'Checking Development…' : dev.status === 'error' ? 'Development unavailable' : 'Development coming soon';
-  byId('channel-note').textContent = 'Development follows the latest changes and may be less stable than Beta.';
+  byId('channel-note').textContent = 'Newer changes. Less tested. Choose Beta if you’re unsure.';
   byId('release-actions').hidden = Boolean(betaFiles && dev.status !== 'error' && !retryingReleases);
   byId('release-retry').hidden = !retryingReleases && ![beta, dev].some(release => release.status === 'error');
   byId('release-retry').setAttribute('aria-disabled', String(retryingReleases));

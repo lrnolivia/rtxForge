@@ -3,9 +3,10 @@
 Never deploys, launches, sends, or modifies game files. Try anyway only lifts
 capability checks (a game without the DLSS route a package expects); missing
 executables, anti-cheat and installs that need attention stay blocked. A shared
-result is a prefilled issue the user reviews and posts in their browser.
+result is a prefilled beta-report issue the user reviews and posts in their browser;
+reviewed reports join the shipped list through `add-report` (docs/COMPATIBILITY.md).
 """
-import json,os,re,urllib.parse
+import json,os,re
 from pathlib import Path
 import transactions as t
 import game_notes
@@ -73,11 +74,76 @@ def renderer_refusal(reason,apis):
     return f"This game renders with {names}, which this package doesn't support yet."
 
 
+LIST=ROOT/'providers/compatibility.json'
+SCHEMAS=(1,2)
+# What a listed report keeps from a beta report: setup and results, never a GPU model,
+# driver, path or note that could identify someone's machine or library.
+REPORT_FIELDS={'platform':'os','distribution':'distribution','gpu-series':'gpu_series','app-build':'app',
+               'feature-package':'package','features':'features','nr-result':'nr','mfg-result':'mfg'}
+
+
 def shipped():
     """Reviewed results shipped with rtxForge, keyed by Steam app id or exe name."""
-    try:data=json.loads((ROOT/'providers/compatibility.json').read_text(encoding='utf-8'))
+    try:data=json.loads(LIST.read_text(encoding='utf-8'))
     except (OSError,ValueError):return []
+    if data.get('schema') not in SCHEMAS:return []
     return [entry for entry in data.get('games',[]) if isinstance(entry,dict) and entry.get('verdict') in VERDICTS]
+
+
+def reports(row,listed=None):
+    """The reviewed beta reports behind this game's listed verdict, newest first."""
+    entry=next((entry for entry in (shipped() if listed is None else listed) if _match(entry,row)),None)
+    return sorted((entry or {}).get('reports') or [],key=lambda r:str(r.get('date','')),reverse=True)
+
+
+def summary(entry):
+    """One line per OS: how many reviewed reports saw NR and MFG working."""
+    lines=[]
+    for system in ('Linux','Windows'):
+        rows=[r for r in entry.get('reports') or [] if r.get('os')==system]
+        if not rows:continue
+        parts=[f"{name} working in {sum(r.get(key)=='Working in-game' for r in rows)} of {len(rows)}"
+               for key,name in (('nr','NR'),('mfg','MFG')) if any(r.get(key) not in ('Not installed','',None) for r in rows)]
+        lines.append(f"{system}: "+(' · '.join(parts) or f"{len(rows)} report{'s' if len(rows)!=1 else ''}"))
+    return lines
+
+
+def parse_issue(body):
+    """Beta-report fields from an issue body as GitHub renders its form ('### Label' then the answer)."""
+    import beta_report
+    ids={name.casefold():key for key,name in beta_report.FIELDS}
+    fields={}
+    for heading,value in re.findall(r'(?m)^###[ \t]+(.+?)[ \t]*\n(.*?)(?=^###[ \t]|\Z)',str(body),re.S):
+        key=ids.get(heading.strip().casefold())
+        if key:fields[key]='' if value.strip()=='_No response_' else value.strip()
+    return fields
+
+
+def add_report(data,fields,issue,verdict,appid='',exe='',name='',note='',date=None):
+    """Add one reviewed beta report to the list. A curator chooses the verdict; reports never set it."""
+    import beta_report
+    t.need(verdict in VERDICTS,'Verdict must be Working or Problem.')
+    t.need(isinstance(issue,int) and issue>0,'Name the GitHub issue the report came from.')
+    t.need(str(appid).isdigit() or exe,'Name the game by Steam app id or executable.')
+    # The form asks only for the OS and what happened; a listed report also needs a result.
+    t.need(fields.get('platform') in beta_report.CHOICES['platform'],'The issue does not name Linux or Windows.')
+    t.need(any(fields.get(key) not in ('',None,beta_report.UNKNOWN) for key in ('nr-result','mfg-result')),
+           'The issue has no NR or MFG result to list. Ask the reporter, or leave it off the list.')
+    answers={key:str(fields.get(key) or '').strip() or beta_report.UNKNOWN for key in REPORT_FIELDS}
+    row={'appid':str(appid) if str(appid).isdigit() else '','exe':Path(str(exe)).name}
+    data['schema']=2
+    games=data.setdefault('games',[])
+    entry=next((entry for entry in games if _match(entry,row)),None)
+    if entry is None:
+        entry={key:value for key,value in row.items() if value};games.append(entry)
+    entry.update(verdict=verdict,name=name or entry.get('name') or str(fields.get('game','')).split(' · ')[0])
+    if note:entry['note']=note
+    listed=entry.setdefault('reports',[])
+    t.need(all(r.get('issue')!=issue for r in listed),f'Issue #{issue} is already listed.')
+    report={'issue':issue,'date':date or t.now()[:10]}
+    report.update({out:answers[key][:120] for key,out in REPORT_FIELDS.items()})
+    listed.append(report)
+    return entry
 
 
 def _match(entry,row):
@@ -152,31 +218,19 @@ def features(row):
     return {'nr':row.get('native_dlss') is True,'mfg':row.get('native_dlssg') is True}
 
 
-def share(row,record,package,host,version,include_notes=False):
-    """The exact issue text and the prefilled URL. Nothing is sent from here."""
-    status=record.get('status','Untested')
-    t.need(status in VERDICTS,'Record Working or Problem for this game first.')
-    appid=str(row.get('appid') or '')
-    lines=[
-        f"**Game:** {row.get('name','')}",
-        f"**Steam app ID:** {appid if appid.isdigit() else 'Non-Steam'}",
-        f"**Executable:** {Path(str(row.get('exe') or '')).name or 'Unknown'}",
-        f"**Result:** {status}",
-        f"**Package:** {package or 'Unknown'}",
-        f"**Mode:** {row.get('profile') or row.get('feature_mode') or 'Unknown'}",
-    ]
-    if record.get('try_anyway'):lines.append(f"**Tried anyway:** {record['try_anyway'].get('reason','')}")
-    lines+=[
-        f"**GPU:** {host.get('gpu','Unknown')} · driver {host.get('driver','Unknown')}",
-        f"**OS:** {host.get('system','Unknown')}",
-        f"**rtxForge:** {version}",
-    ]
-    notes=game_notes.redact(str(record.get('notes','')).strip())[:1500] if include_notes else ''
-    if notes:lines+=['','**Notes**','',notes]
-    body='\n'.join(lines)+'\n'
-    title=f"[Compatibility] {row.get('name','')} · {status}"
-    url=ISSUES+'?'+urllib.parse.urlencode({'title':title,'body':body,'labels':'compatibility'})
-    return {'title':title,'body':body,'url':url}
+def share(row,record,package,host,version,include_notes=False,channel=''):
+    """A beta report for this game: the issue text and the prefilled form. Nothing is sent from here.
+
+    Untested games and failed installs can be shared too; the results stay the user's to choose."""
+    import beta_report
+    system='Windows' if str(host.get('system',''))=='Windows' else None
+    report=beta_report.draft(row,beta_report.context(host,version,channel,package,system=system),record)
+    if include_notes:
+        notes=game_notes.redact(str(record.get('notes','')).strip())[:beta_report.LENGTHS['observations']]
+        if notes:beta_report.correct(report,'observations',notes)
+    link=beta_report.issue_url(report)
+    return {'title':beta_report.title(report),'body':beta_report.text(report),'url':link['url'],
+            'complete':link['complete'],'report':report}
 
 
 def package_label(key):
@@ -192,3 +246,26 @@ def package_label(key):
 def version():
     try:return (ROOT/'VERSION').read_text(encoding='utf-8').strip()
     except OSError:return 'Unknown'
+
+
+def main(argv=None):
+    """Curators add a reviewed GitHub beta report to the shipped list (docs/COMPATIBILITY.md)."""
+    import argparse
+    parser=argparse.ArgumentParser(description=main.__doc__)
+    sub=parser.add_subparsers(dest='command',required=True)
+    add=sub.add_parser('add-report',help='Add one reviewed beta-report issue to providers/compatibility.json.')
+    add.add_argument('--issue',type=int,required=True,help='GitHub issue number')
+    add.add_argument('--body',type=Path,required=True,help='File holding the issue body (gh issue view N --json body -q .body)')
+    add.add_argument('--verdict',choices=VERDICTS,required=True)
+    add.add_argument('--appid',default='');add.add_argument('--exe',default='')
+    add.add_argument('--name',default='');add.add_argument('--note',default='',help='Generic note; no hardware or library specifics')
+    args=parser.parse_args(argv)
+    data=json.loads(LIST.read_text(encoding='utf-8'))
+    entry=add_report(data,parse_issue(args.body.read_text(encoding='utf-8')),args.issue,args.verdict,
+                     args.appid,args.exe,args.name,args.note)
+    LIST.write_text(json.dumps(data,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+    print(f"{entry['name']}: {entry['verdict']} · {len(entry['reports'])} report{'s' if len(entry['reports'])!=1 else ''}")
+    return 0
+
+
+if __name__=='__main__':raise SystemExit(main())

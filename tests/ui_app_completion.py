@@ -50,9 +50,34 @@ def couch():
     row.choice.set_selected(1);assert row.get_selected()==1 and seen==[1]
     app.window.show_settings()
 
+
+def functional_desktop():
+    import functional_test
+    from game_mode import descendants
+    window=app.window;window.set_input_surface(False)
+    game=window.games[0]
+    results=functional_test.evaluate(functional_test.summarize([]),checks={'route':'feeder','platform':'linux'},helper={'start':False,'finish':False})
+    game['test_record']={'status':'Untested','sessions':[{'functional':{'results':results,'suggestion':'Problem','text':functional_test.result_text({'results':results})}}]}
+    window.show_functional_test(game)
+    texts=[w.get_text() for w in descendants(window.dialog) if isinstance(w,Gtk.Label)]
+    for _,title in functional_test.PARTS:assert any(title in text for text in texts),(title,texts)
+    assert any('Suggested fix' in text for text in texts),texts
+
+
+def functional_couch():
+    import functional_test
+    from game_mode import descendants
+    window=app.window;window.set_input_surface(True)
+    window.couch.show_functional_test(window.games[0])
+    texts=[w.get_text() for w in descendants(window.couch.modal) if isinstance(w,Gtk.Label)]
+    for _,title in functional_test.PARTS:assert any(title in text for text in texts),(title,texts)
+    assert any(w.get_focusable() and w.get_sensitive() for w in descendants(window.couch.modal)),'Functional results must support controller focus'
+
 steps=[lambda:theme('light'),lambda:capture('completion-light.png'),lambda:theme('night'),lambda:capture('completion-night.png'),lambda:theme('dark'),lambda:app.window.show_settings(),lambda:capture('completion-settings.png'),reduced_motion,lambda:app.window.dialog.close(),detached_details,lambda:app.window.detail_pages.set_visible_child_name('Tools'),lambda:capture('completion-tools.png'),lambda:app.window.show_diagnostics(app.window.games[0]),lambda:capture('completion-diagnostics.png'),lambda:app.window.show_reports(),lambda:capture('completion-reports.png'),lambda:app.window.preview_report({'library.json':'{"name":"Demo", "visual_result":"Not established"}'}),lambda:capture('completion-report-preview.png'),lambda:app.window.show_controller_menu(),lambda:capture('completion-controller-menu.png'),couch,lambda:capture('completion-couch-settings.png'),detached_details,lambda:app.window.detail_pages.set_visible_child_name('Tools'),lambda:capture('completion-couch-tools.png'),lambda:app.window.dialog.close(),lambda:app.window.toggle_compact_header(),lambda:capture('completion-couch-library.png')]
 
 capture_deadline=None
+steps.extend([functional_desktop,lambda:capture('completion-functional-desktop.png'),lambda:app.window.dialog.close(),
+              functional_couch,lambda:capture('completion-functional-couch.png'),lambda:app.window.couch.close_modal()])
 def step():
     global capture_deadline
     try:

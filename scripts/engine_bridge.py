@@ -630,7 +630,9 @@ def prepare(config,rows,mode,operation,settings):
                     for component,(_,label) in skynizz_provider.PRODUCTION_RUNTIMES.items():
                         if runtime:=target_meta.get(component):
                             preview['launch_options']+=f" · production {label} {runtime['version']} · SHA-256 {runtime['sha256']}"
-                    if skynizz_provider.startup_overlay_disabled(g):
+                    if skynizz_provider.startup_overlay_disabled(g) and release.get('inzoi_late_overlay'):
+                        preview['launch_options']+=' · Automatic inZOI late-frame panel with startup-safe texture upload'
+                    elif skynizz_provider.startup_overlay_disabled(g):
                         preview['launch_options']+=' · OptiScaler swapchain overlay disabled so this game starts'
                     if stack:
                         preview['launch_options']=proton_mfg.LABEL+' · '+preview['launch_options']
@@ -663,6 +665,19 @@ def share_install(e,g,review):
         target=g.target_dir
         baseline=e.load_baseline(target) or {}
         current=baseline.get('current') or {}
+        # Adapt/overlay operations can use an engine whose default provider is
+        # different from this game's installed recipe. Share the recipe identity.
+        installed_provider = current.get('provider_id')
+        shared_provider = dict(getattr(e,'Y4MY_PROVIDER',{}) or {})
+        if installed_provider == 'skynizz':
+            release = (current.get('archive') or {}).get('release')
+            if release is not None:
+                shared_provider = skynizz_provider.validate_release(release)
+                shared_provider['version'] = shared_provider['tag']
+            else:
+                shared_provider = {'id':'skynizz','name':'Skynizz NR + MFG bridge','version':''}
+        elif installed_provider:
+            shared_provider = dict(shared_provider, id=installed_provider)
         launch=e._launch_record_for_game(g) or {}
         revision=cross_os.new_revision()
         portable=baseline.get('status')=='active' and not baseline.get('pending_install') and \
@@ -673,7 +688,7 @@ def share_install(e,g,review):
             cross_os.export_state(target,e.state_dir_for(target),baseline,revision,extras)
             baseline['cross_os_extras']=extras;baseline['cross_os_revision']=revision
             e.save_json_atomic(e.baseline_path(target),baseline)
-        marker=cross_os.write(target,cross_os.THIS_OS,baseline.get('managed_paths',[]),dict(getattr(e,'Y4MY_PROVIDER',{}) or {}),
+        marker=cross_os.write(target,cross_os.THIS_OS,baseline.get('managed_paths',[]),shared_provider,
             current.get('feature_mode') or review.get('mode',''),current.get('proxy',''),proton_prefix.override_names(launch.get('required','')),
             app_version=getattr(e,'APP_VERSION',''),revision=revision,shared_state=portable)
         if type(current.get('nr_on_launch')) is bool:
@@ -802,6 +817,11 @@ def execute(review):
                     e.OVERLAY_UI = (overlay_settings.effective(reviewed_settings, str(g.root))
                                     if overlay_policy.explicit(reviewed_settings) else None)
                     record=e.install_target(g,item.get('payload',review['payload']),item.get('meta',review['meta']),'ada',nr_runtime_payload=item.get('nr',review['nr']),nr_runtime_meta=item.get('nrmeta',review['nrmeta']),feature_mode=review['mode'],enable_effects=review['enable_effects'],nr_on_launch=review.get('nr_on_launch'),native_mfg_fallback=review.get('native_mfg_fallback',False),nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'],feature_controls=review.get('feature_controls'),preserve_visual_settings=not review.get('apply_requested_presets',False))
+                    import offline_routes
+                    if route := offline_routes.reviewed_route(item['row']):
+                        baseline=e.load_baseline(g.target_dir)
+                        baseline['offline_route']=route
+                        e.save_json_atomic(e.baseline_path(g.target_dir),baseline)
                     report('Saving launch settings',0.85)
                     if item.get('linux_extras'):
                         # Before the override: the reviewed panel plan refuses a user.reg that changed since review.

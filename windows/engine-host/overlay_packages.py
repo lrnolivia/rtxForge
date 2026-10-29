@@ -21,6 +21,41 @@ def recipe(files, mode):
     return t.sha(json.dumps({'files': immutable, 'mode': mode}, sort_keys=True).encode())
 
 
+def ownership(e, path, record):
+    """Bind the local recipe to its shared inventory, allowing metadata-only drift."""
+    target = t.safe(record['target_dir'])
+    current = record['current']
+    marker_path = target / cross_os.MARKER
+    marker_raw = bulk._read(marker_path)
+    marker = json.loads(marker_raw)
+    shared = cross_os.shared_state(target) / 'baseline.json'
+    shared_raw = bulk._read(shared) if shared.is_file() else None
+    shared_record = json.loads(shared_raw) if shared_raw is not None else None
+    t.need(marker.get('proxy') == current['proxy'] and marker.get('files') == current['installed_hashes'],
+           'Installation ownership changed; repair this game first.')
+    reconciled = (marker.get('provider', {}).get('id') != 'skynizz'
+                  or marker.get('revision') != record.get('cross_os_revision'))
+    if reconciled:
+        portable = cross_os.portable(record, path.parent, target)
+        t.need(marker.get('schema') == cross_os.SCHEMA and marker.get('shared_state') is True
+               and marker.get('os') in cross_os.OPERATING_SYSTEMS
+               and marker.get('provider', {}).get('id') in ('skynizz', 'dlss-unlocked')
+               and marker.get('feature_mode') == current['feature_mode']
+               and isinstance(shared_record, dict) and bool(marker.get('revision'))
+               and shared_record.get('cross_os_revision') == marker['revision']
+               and all(portable.get(key) == shared_record.get(key) for key in
+                       ('schema', 'status', 'target_dir', 'exe', 'originals', 'managed_paths', 'appid'))
+               and all(portable['current'].get(key) == (shared_record.get('current') or {}).get(key) for key in
+                       ('provider_id', 'proxy', 'feature_mode', 'installed_hashes', 'mfg_provider'))
+               and portable['current']['archive']['release'] == shared_record.get('current', {}).get('archive', {}).get('release'),
+               'Shared installation differs from the local recipe; review Adapt or Repair first.')
+        e.verify_baseline_integrity(target, record, adopt_legacy=False)
+    elif shared_record is not None:
+        t.need(shared_record.get('cross_os_revision') == record.get('cross_os_revision'),
+               'Shared installation state changed; review again.')
+    return marker_path, marker_raw, marker, shared, shared_raw, shared_record, reconciled
+
+
 def prepare(e, state, params=None):
     if params is not None:
         overlay_settings.options(params)
@@ -43,17 +78,19 @@ def prepare(e, state, params=None):
                 if unchanged: skipped.append(unchanged)
                 continue
             current = record.get('current') or {}
-            if current.get('provider_id') != 'skynizz':
-                skipped.append({'title': name, 'detail': 'Uses Feeder/ReShade.' if record.get('provider_id') == 'feeder'
-                                else 'Uses a different MFG package.', 'details': 'The native overlay requires the Skynizz bridge; this loader is preserved.'})
-                continue
             target = t.safe(record['target_dir']); exe = t.safe(record['exe'])
-            t.need(path.parent == e.state_dir_for(target) and exe.parent == target and exe.is_file(), 'Installation identity differs.')
-            t.need(target not in seen, 'Duplicate game record.'); seen.add(target)
+            t.need(path.parent == e.state_dir_for(target) and exe.parent == target, 'Installation identity differs.')
             root = target
             for parent in (target, *target.parents):
                 if parent.parent.name.casefold() in ('common', 'pinnedbuilds'): root = parent; break
             if not routes.selected(params, root, target): continue
+            if not target.is_dir() or not exe.is_file():
+                continue
+            if current.get('provider_id') != 'skynizz':
+                skipped.append({'title': name, 'detail': 'Uses Feeder/ReShade.' if record.get('provider_id') == 'feeder'
+                                else 'Uses a different MFG package.', 'details': 'The native overlay requires the Skynizz bridge; this loader is preserved.'})
+                continue
+            t.need(target not in seen, 'Duplicate game record.'); seen.add(target)
             if bundled is None:
                 release, archive = provider.bundled_bridge()
                 t.need(release.get('panel_renderer') == 'in-game', 'This build is missing the native overlay bridge.')
@@ -71,11 +108,7 @@ def prepare(e, state, params=None):
             t.need(mode in ('nr-only', 'mfg-only', 'nr-mfg') and str(t.relative(proxy)) == proxy and '/' not in proxy,
                    'The installed loader identity is invalid.')
             owned = current['installed_hashes']
-            marker_path = target / cross_os.MARKER
-            marker_raw = bulk._read(marker_path); marker = json.loads(marker_raw)
-            t.need(marker.get('provider', {}).get('id') == 'skynizz' and marker.get('proxy') == proxy
-                   and marker.get('files') == owned and marker.get('revision') == record.get('cross_os_revision'),
-                   'Installation ownership changed; repair this game first.')
+            marker_path, marker_raw, marker, shared, shared_raw, shared_record, reconciled = ownership(e, path, record)
             checks = {str(path): t.sha(original), str(marker_path): t.sha(marker_raw), str(cached): release['sha256']}
             writes = {}; baseline = copy.deepcopy(record)
             values = routes.preferences(params, record, root)
@@ -83,18 +116,19 @@ def prepare(e, state, params=None):
             for filename, data in ((proxy, payload['dxgi.dll']), ('nvngx.dll_dlssnr.dll', payload['nvngx.dll_dlssnr.dll'])):
                 destination = t.safe(target / filename)
                 expected = owned.get(filename)
-                t.need(expected and t.digest(destination) == expected, 'The installed bridge changed: ' + filename)
+                t.need(expected and destination.is_file() and t.digest(destination) == expected,
+                       'The installed bridge is missing or changed. Use Repair Features: ' + filename)
                 checks[str(destination)] = expected
                 if t.sha(data) != expected: writes[str(destination)] = data
                 baseline['current']['installed_hashes'][filename] = marker['files'][filename] = t.sha(data)
             routes.menus(e, target, values, baseline['current']['installed_hashes'], checks, writes)
             marker['files'] = dict(baseline['current']['installed_hashes'])
-            if not writes and old_release.get('sha256') == release['sha256']:
+            if not writes and old_release.get('sha256') == release['sha256'] and not reconciled:
                 skipped.append({'title': name, 'detail': 'Overlay packages and menus are up to date.', 'details': details}); continue
             for filename, expected in owned.items():
                 if filename.casefold().endswith(('.ini', '.log')): continue
                 destination = t.safe(target / t.relative(filename))
-                t.need(t.digest(destination) == expected, 'Package files changed; repair this game first: ' + filename)
+                t.need(destination.is_file() and t.digest(destination) == expected, 'Package files changed; repair this game first: ' + filename)
                 checks[str(destination)] = expected
             updated_release = dict(release)
             for key in ('mfg_component', 'nr_preset', *provider.PRODUCTION_RUNTIMES):
@@ -112,16 +146,17 @@ def prepare(e, state, params=None):
                     checks[str(preset_path)] = t.sha(raw); writes[str(preset_path)] = bulk._json(saved)
             revision = cross_os.new_revision()
             baseline['cross_os_revision'] = marker['revision'] = revision
-            shared = cross_os.shared_state(target) / 'baseline.json'
-            if shared.is_file():
-                raw = bulk._read(shared)
-                t.need(json.loads(raw).get('cross_os_revision') == record.get('cross_os_revision'), 'Shared installation state changed.')
+            if shared_raw is not None:
+                checks[str(shared)] = t.sha(shared_raw)
+                if shared_record.get('cross_os_extras') is not None:
+                    baseline['cross_os_extras'] = shared_record['cross_os_extras']
                 portable = cross_os.portable(baseline, path.parent, target); portable.pop('steam_launch', None)
-                checks[str(shared)] = t.sha(raw); writes[str(shared)] = bulk._json(portable)
+                writes[str(shared)] = bulk._json(portable)
             writes[str(path)] = bulk._json(baseline); writes[str(marker_path)] = bulk._json(marker)
             plan = {'name': name, 'game': str(root), 'root': str(root), 'target': str(target), 'checks': checks, 'writes': writes,
                     'summary': 'Update overlay packages and menu settings',
-                    'note': 'OptiScaler · DirectX 12. NR, MFG, tuning and original restore backups are preserved.' + details}
+                    'note': 'OptiScaler · DirectX 12. NR, MFG, tuning and original restore backups are preserved.'
+                    + (' Shared package identity will be synchronized.' if reconciled else '') + details}
             bulk._check(e, plan)
             plans.append(plan)
         except (t.Refusal, e.Stop, OSError, ValueError, KeyError, TypeError) as error:

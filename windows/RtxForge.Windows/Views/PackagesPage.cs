@@ -21,6 +21,7 @@ public sealed partial class PackagesPage : Page
         var page = new StackPanel { Spacing = 8, Padding = new Thickness(36, 12, 36, 48) };
         page.Children.Add(new TextBlock { Text = "Packages", Style = Prefs.GetStyle("ForgePageTitleTextStyle") });
         page.Children.Add(Prefs.Label("rtxForge uses one package for games with DLSS and one for games without it. Every game change is reviewed before it is applied."));
+        page.Children.Add(Prefs.Label(GpuSupport, "ForgeCaptionDimTextStyle"));
         page.Children.Add(status);
         page.Children.Add(body);
         Content = new ScrollViewer { Content = page, HorizontalScrollMode = ScrollMode.Disabled };
@@ -31,6 +32,7 @@ public sealed partial class PackagesPage : Page
     /// <summary>Packages the engine uses automatically for the games they cover, whatever DLSS package is chosen:
     /// Feeder NR for games without DLSS, the Vulkan package for its confirmed Vulkan games.</summary>
     internal static readonly string[] Automatic = ["feeder", "vulkan-native"];
+    internal const string GpuSupport = "RTX 20–50 series can install supported packages. RTX 50 uses native MFG without an unlock package. Feature availability depends on the game, package and GPU.";
 
     /// <summary>The NR packages heading: the DLSS choice, then the automatic packages by catalog name.</summary>
     internal static string NrDescription(PackageCatalog catalog)
@@ -155,34 +157,40 @@ public sealed partial class PackagesPage : Page
 
     Expander FeederSetup()
     {
-        var feeder = Section("Feeder setup", "Choose your local stack once; rtxForge keeps a verified copy, and installation copies ReShade, Feeder, RenoDX and shaders for you.");
+        var feeder = Section("Feeder setup", "Import your local stack once. New installs use the verified copy kept by rtxForge. The paths below are saved import locations on this PC.");
         var paths = new PresetColumns(360, 2) { ColumnSpacing = 16, RowSpacing = 12 };
-        paths.Children.Add(PathField("Local stack folder", "Your ReShade, Feeder, RenoDX and shader files. Only needed until rtxForge keeps a copy.",
+        paths.Children.Add(PathField("Stack import folder", "Your ReShade, Feeder, RenoDX and shader files. A game folder here is an import source, not the installation destination.",
             shell.Settings.FeederSource, path => shell.Settings.FeederSource = path));
-        paths.Children.Add(PathField("Original backups folder", "Original manifests and backups used to recognize existing setups. rtxForge keeps verified copies.",
+        paths.Children.Add(PathField("Manual-install backups (optional)", "Needed to adopt an existing manual Feeder setup. Fresh installations create their own restore backups.",
             shell.Settings.FeederBackups, path => shell.Settings.FeederBackups = path));
         feeder.Children.Add(paths);
         var kept = Prefs.Label("Checking stored Feeder files…", "ForgeCaptionDimTextStyle");
         var keep = new Button { Content = "Keep a copy in rtxForge", HorizontalAlignment = HorizontalAlignment.Left };
+        var legacy = new Button { Content = "Get DX9/DX10 support", HorizontalAlignment = HorizontalAlignment.Left, IsEnabled = !shell.Service.IsPreview };
         ToolTipService.SetToolTip(keep, "Verify both folders and store their files with rtxForge. Game files are not changed.");
-        async Task ShowKeptAsync(bool import)
+        async Task ShowKeptAsync(bool import, bool downloadLegacy = false)
         {
-            keep.IsEnabled = false;
+            keep.IsEnabled = legacy.IsEnabled = false;
             try
             {
                 var storage = await shell.Service.FeederStorageAsync(import ? NonEmpty(shell.Settings.FeederSource) : null,
-                    import ? NonEmpty(shell.Settings.FeederBackups) : null);
+                    import ? NonEmpty(shell.Settings.FeederBackups) : null, legacy: downloadLegacy);
                 kept.Text = (storage.Recipe is null ? "No stack stored yet" : "Stored stack · " + storage.Recipe
                     + (storage.NrVersion is null ? "" : " · NR model " + storage.NrVersion))
-                    + $" · {storage.Backups} original backup{(storage.Backups == 1 ? "" : "s")} kept";
+                    + $" · {storage.Backups} original backup{(storage.Backups == 1 ? "" : "s")} kept"
+                    + (storage.LegacyReady ? " · DX9/DX10 support ready" : "")
+                    + (storage.Recipe is null ? "" : ". Ready for new installs; the old import location is not required.");
             }
             catch (InvalidOperationException error) { kept.Text = error.Message; }
-            finally { keep.IsEnabled = true; }
+            finally { keep.IsEnabled = true; legacy.IsEnabled = !shell.Service.IsPreview; }
         }
         static string? NonEmpty(string value) => string.IsNullOrWhiteSpace(value) ? null : value;
         keep.Click += async (_, _) => await ShowKeptAsync(true);
         feeder.Children.Add(kept);
         feeder.Children.Add(keep);
+        feeder.Children.Add(Prefs.Label("For DirectX 9, DirectX 10 and 32-bit games, get the verified Feeder helper, ReShade and dgVoodoo2 files. This downloads support files only; game changes still go through installation review.", "ForgeCaptionDimTextStyle"));
+        legacy.Click += async (_, _) => await ShowKeptAsync(false, downloadLegacy: true);
+        feeder.Children.Add(legacy);
         _ = ShowKeptAsync(false);
         return new Expander
         {

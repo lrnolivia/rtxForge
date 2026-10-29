@@ -25,8 +25,16 @@ PROTON_OVERRIDES = ('bink2w64',)
 
 def write_record(target):
     import cross_os
-    return cross_os.write(target, cross_os.THIS_OS, RECORD_NAMES, {'id': ID, 'name': TITLE, 'version': ''},
-                          'nr-mfg', PROXY, PROTON_OVERRIDES)
+    previous = cross_os.read(target)
+    record = cross_os.write(target, cross_os.THIS_OS, RECORD_NAMES, {'id': ID, 'name': TITLE, 'version': ''},
+                            'nr-mfg', PROXY, PROTON_OVERRIDES)
+    oses = {cross_os.THIS_OS}
+    if previous and previous.get('provider', {}).get('id') == ID and previous.get('proxy') == PROXY:
+        oses.add(previous['os'])
+        oses.update(name for name in previous.get('installed_oses', []) if name in cross_os.OPERATING_SYSTEMS)
+    record['installed_oses'] = [name for name in ('windows','linux') if name in oses]
+    t.atomic_file(Path(target) / cross_os.MARKER, (json.dumps(record, indent=1) + '\n').encode(), 0o600)
+    return record
 
 
 def windows_record(target):
@@ -118,12 +126,25 @@ def decorate(rows, config=None, selected=False):
                 continue
             row['vulkan_profile'] = key
             record = owned(row, config)
+            import cross_os
+            shared = cross_os.read(target)
+            shared = shared if shared and shared.get('provider', {}).get('id') == ID else None
+            oses = set(row.get('installed_oses') or [])
+            if shared:
+                oses.add(shared['os'])
+                oses.update(name for name in shared.get('installed_oses', []) if name in cross_os.OPERATING_SYSTEMS)
+            if record:
+                oses.add(cross_os.THIS_OS)
+            if record or shared:
+                row['installed_on'] = shared['os'] if shared else cross_os.THIS_OS
+                row['installed_oses'] = [name for name in ('windows','linux') if name in oses]
             windows = None if record else windows_record(target)
             if windows:
                 # Installed with rtxForge on Windows: Adapt to Linux sets it up for Proton.
                 row.update(installed=True, installed_on='windows', runtime_provider=ID, install_provider=ID,
                            feature_mode='nr-mfg', profile='NR + MFG', graphics_apis=['Vulkan'], blocked='',
                            mfg_route='Native Vulkan DLSS-G · Universal Experimental', dynamic_mfg_available=False)
+                row['installed_oses'] = [name for name in ('windows','linux') if name in oses | {'windows'}]
                 row['exe'] = (target / PROFILES[key][0]).relative_to(Path(row['game'])).as_posix()
                 row['vulkan_windows'] = True
                 continue

@@ -2,12 +2,14 @@ param(
     [Parameter(Mandatory)][string]$SourceRoot,
     [string]$Output = (Join-Path $PSScriptRoot '..\out\skynizz-bridge'),
     [switch]$PlacementCandidate,
-    [switch]$PanelCandidate
+    [switch]$PanelCandidate,
+    [switch]$InzoiOverlayCandidate
 )
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $source = (Resolve-Path -LiteralPath $SourceRoot).Path
 $specRoot = Join-Path $repo 'providers\skynizz-bridge'
+if ($InzoiOverlayCandidate) { $PanelCandidate = $true }
 if ($PanelCandidate) { $PlacementCandidate = $true }
 $spec = Get-Content -LiteralPath (Join-Path $specRoot 'source.json') -Raw | ConvertFrom-Json
 $patch = Join-Path $specRoot $spec.patch
@@ -47,6 +49,21 @@ if ($PanelCandidate) {
     if ($LASTEXITCODE -ne 0) { throw 'Panel candidate patch failed' }
     & (Join-Path $specRoot 'Generate-Panel.ps1') -SourceRoot $source
 }
+$inzoi = $null
+if ($PanelCandidate) {
+    # The former isolated switch remains a build alias. Every normal panel
+    # package now carries the automatic, executable-scoped inZOI policy.
+    if ($InzoiOverlayCandidate -and -not $PSBoundParameters.ContainsKey('Output')) { $Output = Join-Path $PSScriptRoot '..\out\skynizz-inzoi-overlay-candidate' }
+    $inzoi = Get-Content -Raw -LiteralPath (Join-Path $specRoot 'inzoi-overlay-candidate.json') | ConvertFrom-Json
+    if ($inzoi.base_bridge_id -ne $panel.id) { throw 'inZOI candidate has a different panel bridge' }
+    $inzoiPatch = Join-Path $specRoot $inzoi.patch
+    if ((Get-FileHash -LiteralPath $inzoiPatch -Algorithm SHA256).Hash.ToLowerInvariant() -ne $inzoi.patch_sha256) { throw 'inZOI candidate source digest mismatch' }
+    & git -C $source apply --check -- $inzoiPatch
+    if ($LASTEXITCODE -ne 0) { throw 'inZOI candidate does not apply to the admitted source' }
+    & git -C $source apply -- $inzoiPatch
+    if ($LASTEXITCODE -ne 0) { throw 'inZOI candidate patch failed' }
+    Copy-Item -LiteralPath (Join-Path $repo $inzoi.header) -Destination (Join-Path $source 'OptiScaler\ForgeInzoiOverlay.h')
+}
 $msbuild = (Get-Command MSBuild.exe -ErrorAction SilentlyContinue).Source
 if (-not $msbuild) {
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
@@ -81,6 +98,11 @@ if ($panel) {
     Copy-Item -LiteralPath (Join-Path $repo 'windows\RtxForge.Windows\Assets\Fonts\OFL-Inter.txt') -Destination $payload
     Copy-Item -LiteralPath (Join-Path $repo 'gui\fonts\OFL-BakbakOne.txt') -Destination $payload
 }
+if ($inzoi) {
+    Copy-Item -LiteralPath (Join-Path $specRoot $inzoi.patch) -Destination $payload
+    Copy-Item -LiteralPath (Join-Path $repo $inzoi.header) -Destination $payload
+    Copy-Item -LiteralPath (Join-Path $specRoot 'inzoi-overlay-candidate.json') -Destination $payload
+}
 $productHead = (& git -C $repo rev-parse HEAD).Trim()
 $receipt = [ordered]@{
     schema = 1; variant = 'nr-mfg-bridge'; id = 'skynizz'; family = 'skynizz'; name = 'Skynizz NR + Ada MFG bridge'
@@ -103,6 +125,17 @@ if ($panel) {
     $receipt.panel_sources = $panel.sources
     $receipt.panel_candidate = $true
     $receipt.panel_renderer = 'in-game'
+    $receipt.performance_verified = $false
+}
+if ($inzoi) {
+    $receipt.base_bridge_id = $panel.id
+    $receipt.bridge_id = $inzoi.id
+    $receipt.inzoi_overlay_candidate = $false
+    $receipt.inzoi_late_overlay = $true
+    $receipt.inzoi_overlay_scope = $inzoi.executable
+    $receipt.inzoi_patch_sha256 = $inzoi.patch_sha256
+    $receipt.inzoi_runtime_fallback = $inzoi.runtime_fallback
+    $receipt.runtime_verified = $false
     $receipt.performance_verified = $false
 }
 $receipt | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $payload 'rtxforge-bridge.json') -Encoding utf8

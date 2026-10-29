@@ -87,7 +87,40 @@ try:
     try:host.prepare({'rows':[selected],'mode':'mfg-only','operation':'install','settings':settings})
     except Exception as error:assert 'Feeder provides NR Only' in str(error),error
     else:raise AssertionError('MFG-only request silently installed NR')
-    print(json.dumps({'checks':12,'result':'existing adoption plus fresh Skynizz-selected DX11 detection, exact-token full ReShade/Feeder/RenoDX/shader/model deployment, NR-off default, managed refresh, MFG-only refusal and original restore passed'}))
+    # The library's new discovery and the engine's independent reinspection
+    # must agree without a saved EXE override, including tiny EXE/DLL games.
+    fc=case.game('FarCry5');fcroot=Path(fc['game'])
+    (fcroot/'bin').mkdir();(fcroot/'game.exe').rename(fcroot/'bin/FarCry5.exe')
+    prerequisite=fcroot/'Support/MicrosoftNetFramework4/dotNetFx.exe'
+    prerequisite.parent.mkdir(parents=True);prerequisite.write_bytes(fixtures.pe())
+    with prerequisite.open('r+b') as stream:stream.truncate(67*1024**2)
+    before=case.files(fc)
+    selected=next(r for r in host.scan({'folders':[fc['game']],'runtime_provider':'skynizz'}) if r['game']==fc['game'])
+    assert selected['exe']=='bin/FarCry5.exe',selected
+    checked=host.prepare({'rows':[selected],'mode':'nr-mfg','operation':'install','settings':settings})
+    assert checked['rows'] and not checked['blocked'],checked
+    assert case.files(fc)==before,'automatic EXE review wrote game files'
+    host.reviews.pop(checked['token'])
+    import offline_routes as off,transactions as t
+    off.protected_running=lambda:False
+    ac=case.game('offline-dx11');target=Path(ac['game'])
+    (target/'BattlEye').mkdir();(target/'BattlEye/BEService.exe').write_bytes(b'anti-cheat evidence')
+    clean=case.files(ac)
+    selected=next(r for r in host.scan({'folders':[ac['game']],'runtime_provider':'skynizz'}) if r['game']==ac['game'])
+    assert selected['anti_cheat'] and selected['offline_only'] and selected['feeder_available'] and not selected['blocked'],selected
+    request={'rows':[selected],'mode':'nr-mfg','operation':'install','settings':settings}
+    checked=host.prepare(request)
+    assert checked['rows'] and checked['trust'] and not checked['blocked'],checked
+    try:host.execute({'token':checked['token']});raise AssertionError('Feeder skipped offline acknowledgement')
+    except t.Refusal:pass
+    assert case.files(ac)==clean
+    host.execute({'token':checked['token'],'offline_acknowledged':True})
+    assert feeder_provider.state(case.e,target)['offline_route']['id']=='manual-offline'
+    selected=next(r for r in host.scan({'folders':[ac['game']],'runtime_provider':'skynizz'}) if r['game']==ac['game'])
+    checked=host.prepare(request|{'rows':[selected],'operation':'uninstall'})
+    host.execute({'token':checked['token']})
+    assert case.files(ac)==clean,'offline Feeder restore changed originals'
+    print(json.dumps({'checks':14,'result':'existing adoption, fresh DX11 detection, automatic EXE consistency, full reviewed deployment, offline-only anti-cheat consent and exact original restore passed'}))
 finally:case.doCleanups()
 '''
 
@@ -105,7 +138,7 @@ class WindowsFeederTest(unittest.TestCase):
                                     env=env,capture_output=True,text=True,timeout=120)
             self.assertEqual(result.returncode,0,result.stderr[-10000:]+result.stdout[-3000:])
             receipt=json.loads(result.stdout.strip().splitlines()[-1])
-            self.assertEqual(receipt['checks'],12)
+            self.assertEqual(receipt['checks'],14)
             print('PASS: '+receipt['result'])
 
 

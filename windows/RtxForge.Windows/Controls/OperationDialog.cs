@@ -26,6 +26,7 @@ public sealed class OperationDialog
     Stage stage = Stage.Review;
     CancellationTokenSource? cancel;
     bool closed, completed;
+    bool offlineAcknowledged;
 
     // One step layout for checking and progress (OperationStepPanel).
     readonly OperationStepPanel checkingPanel = new();
@@ -217,12 +218,13 @@ public sealed class OperationDialog
         dialog.Content = body;
         dialog.PrimaryButtonText = ActionVerb();
         dialog.IsPrimaryButtonEnabled = count > 0;
-        if (preparedReview?.Trust is { Length: > 0 } trust)
+        offlineAcknowledged = false;
+        if ((preparedReview?.Trust ?? review.RequiredTrust) is { Length: > 0 } trust)
         {
             var consent = new CheckBox { Content = new TextBlock { Text = trust, TextWrapping = TextWrapping.Wrap } };
             dialog.IsPrimaryButtonEnabled = false;
-            consent.Checked += (_, _) => dialog.IsPrimaryButtonEnabled = count > 0;
-            consent.Unchecked += (_, _) => dialog.IsPrimaryButtonEnabled = false;
+            consent.Checked += (_, _) => { offlineAcknowledged = true; dialog.IsPrimaryButtonEnabled = count > 0; };
+            consent.Unchecked += (_, _) => { offlineAcknowledged = false; dialog.IsPrimaryButtonEnabled = false; };
             body.Children.Add(consent);
         }
         dialog.CloseButtonText = "Cancel";
@@ -402,7 +404,7 @@ public sealed class OperationDialog
                 ShowDone(completed, result.Message + (result.Errors.Count > 0 ? "\n\n" + string.Join("\n", result.Errors) : ""));
                 return;
             }
-            var count = await shell.ExecuteAsync(review!, progress, cancel.Token);
+            var count = await shell.ExecuteAsync(review!.AcknowledgeOffline(offlineAcknowledged), progress, cancel.Token);
             completed = true;
             progressPanel.Complete();
             ShowDone(true, $"{count} game{(count == 1 ? "" : "s")} updated.");

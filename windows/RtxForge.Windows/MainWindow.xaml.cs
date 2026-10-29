@@ -129,6 +129,9 @@ public sealed partial class MainWindow : Window
             ShowToast("Could not read your library: " + error.Message);
         }
         await hardware;
+#if DEBUG
+        StartCrossOsReview();
+#endif
     }
 
     /// <summary>Re-render pages after per-game changes (for example a custom accent).</summary>
@@ -136,7 +139,7 @@ public sealed partial class MainWindow : Window
 
     public async Task ScanAsync()
     {
-        string CurrentKey() => LibrarySnapshot.Key(Settings.RuntimeProvider, Settings.GameFolders, Settings.LibraryFolders);
+        string CurrentKey() => LibrarySnapshot.Key(Settings.RuntimeProvider + "|" + Settings.ExecutableSelectionKey, Settings.GameFolders, Settings.LibraryFolders);
         while (true)
         {
             if (libraryScan is not { IsCompleted: false })

@@ -187,11 +187,11 @@ public sealed class GameItem : INotifyPropertyChanged
 
     // Cross-OS installs: the OS mark (Linux rtx-os-*-symbolic) on a translucent badge over the card art,
     // and beside the status in list rows.
-    Geometry? osMark;
-    bool HasOsMark => Game.Installed && Game.InstalledOn is "linux" or "windows";
-    public Geometry? OsMark => HasOsMark ? osMark ??= Controls.OsMark.Data(Game.InstalledOn) : null;
+    bool HasOsMark => Game.InstalledOses.Count > 0;
+    public IReadOnlyList<string> InstalledOses => Game.InstalledOses;
+    public double OsBadgeWidth => InstalledOses.Count > 1 ? 43 : 22;
     public Visibility OsMarkVisibility => HasOsMark ? Visibility.Visible : Visibility.Collapsed;
-    public string? OsMarkTooltip => HasOsMark ? Controls.OsMark.Tooltip(Game.InstalledOn) : null;
+    public string? OsMarkTooltip => HasOsMark ? CrossOs.Tooltip(InstalledOses) : null;
 
     // Responsive list columns
     public GridLength LocationWidth { get; }

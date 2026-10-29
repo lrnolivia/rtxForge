@@ -99,6 +99,11 @@ class LibraryScanTest(unittest.TestCase):
         (root / 'Game.exe').unlink()
         self.assertEqual(library_scan.scan(self.service, [root]), [])
 
+    def test_cached_missing_location_does_not_reappear(self):
+        missing=self.root/'RemovedGame'
+        self.service.scan=lambda *args:[{'name':'Removed game','game':str(missing),'exe':'Game.exe'}]
+        self.assertEqual(library_scan.scan(self.service),[])
+
 
 if __name__ == '__main__':
     unittest.main()

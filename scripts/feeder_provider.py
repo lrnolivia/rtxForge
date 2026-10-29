@@ -29,7 +29,7 @@ INSTALL_DEFAULTS = {'NRFollowInputRes': '0', 'NRResolutionScale': '0.65',
                     'NRLocalStructure': '1.0', 'NRSkinStructure': '1.0'}
 # Files only a Feeder install adds. When none remain, a game update or Steam
 # verification replaced the folder and the old install record is obsolete.
-FEEDER_ONLY = ('dlss5-feed.addon64', 'renodx-dlss5.addon64', 'ReShade.ini')
+FEEDER_ONLY = ('dlss5-feed.addon64', 'dlss5-feed.addon32', 'dlss5-feed-helper.addon64', 'renodx-dlss5.addon64', 'ReShade.ini')
 # EA's activation wrapper hides these executables' imports until it decrypts
 # them at launch. Each was reviewed as an x64 DirectX 11 game.
 REVIEWED_DX11 = {'ts4_x64.exe'}
@@ -38,6 +38,9 @@ PANELS = ('rtxforge-panel.addon64', 'rtxforge-quiet.addon64')
 # Added by hand before rtxforge-quiet existed.
 RETIRED = {'quiet-startup.addon64': 'a33e97b437a6410d01d4dafc1ae770afa9c1e37a84bdbbe87926e24b5735f0a4'}
 OWNED = (*PANELS, *RETIRED)
+# Verified Microsoft Windows Image Helper shipped with games. DbgHelp can
+# also be a proxy name, so only these exact stock bytes are exempted.
+STOCK_LIBRARIES = {'dbghelp.dll': {'abd6a38e9d73b0ed73372e80819eca9134534c17722ced453e5e1cbffef03ec2'}}
 # rtxForge preset controls and the RenoDX keys they set. RenoDX reads these
 # once, when the game starts; the in-game panel writes the same keys.
 TUNING = {'intensity': ('NRIntensity', 0.0, 2.0), 'passes': ('NRPasses', 1, 4),
@@ -112,6 +115,9 @@ def state(e, target):
         return None
     t.need(path.stat().st_size <= 1024 * 1024, 'Feeder install record is too large')
     record = t.read_json(t.safe(path))
+    if isinstance(record, dict) and record.get('legacy_recipe'):
+        import feeder_legacy
+        return feeder_legacy.validate_state(e, target, record)
     t.need(isinstance(record, dict) and record.get('schema') == 1 and record.get('provider_id') == 'feeder'
            and isinstance(record.get('target'), str) and Path(record['target']).resolve() == t.safe(target),
            'Feeder install record identity differs')
@@ -138,7 +144,8 @@ def target(row):
     root = t.safe(row['game'])
     exe = t.safe(root / t.relative(row['exe']))
     t.need(exe.is_relative_to(root) and exe.is_file(), 'The selected game executable is unavailable')
-    t.executable_check(exe)
+    import feeder_legacy
+    feeder_legacy.machine(exe)
     return root, exe, exe.parent
 
 
@@ -175,14 +182,15 @@ def stack(directory, cached=False, installed=False):
     return spec
 
 
-def configured(directory):
+def configured(directory, preset_directory=None):
+    preset_directory = preset_directory or directory
     values = _read_ini(directory / 'ReShade.ini')
     nr = values['RenoDX.DLSS5'] if values.has_section('RenoDX.DLSS5') else {}
-    preset = _read_ini(directory / 'ReShadePreset.ini')
+    preset = _read_ini(preset_directory / 'ReShadePreset.ini')
     techniques = preset.get('DEFAULT', 'Techniques', fallback='')
     # ReShade preset globals precede sections; ConfigParser needs a header.
     if not techniques:
-        text = (directory / 'ReShadePreset.ini').read_text(encoding='utf-8-sig')
+        text = (preset_directory / 'ReShadePreset.ini').read_text(encoding='utf-8-sig')
         found = re.search(r'(?m)^Techniques=(.*)$', text)
         techniques = found[1] if found else ''
     return {'nr_enabled': nr.get('NeuralUplift', '0') == '1' and 'DLSS5_Feed' in techniques,
@@ -255,6 +263,9 @@ def _read_ini(path):
 def inspect(e, row, cached=True):
     _, _, directory = target(row)
     record = state(e, directory)
+    if record and record.get('legacy_recipe'):
+        import feeder_legacy
+        return feeder_legacy.inspect(e, row, record, cached)
     if record and record.get('adopted') and record.get('installed_hashes'):
         # An adopted setup may be any Feeder version: its record, checked below,
         # is the recipe. Installing over it replaces it with the pinned stack.
@@ -286,16 +297,33 @@ def eligible(e, row, existing=False, check_running=True):
            'Installed with rtxForge on Windows. Use Adapt to Linux for this game; it still works on Windows. '
            'Nothing was changed.')
     t.need(_windows(e), 'Feeder installation is available on Windows only in this release')
-    t.need(not row.get('anti_cheat'), 'Anti-cheat detected; Feeder is unavailable for this game')
+    import offline_routes
+    if row.get('anti_cheat'):
+        # Scan can expose the otherwise-compatible route; mutation needs the
+        # hash-bound offline review held by the host, never a row's boolean.
+        if not check_running:
+            offline_routes.receipt(row, manual=True)
+        else:
+            t.need(offline_routes.reviewed_route(row) is not None,
+                   'Review and acknowledge offline-only use before changing this anti-cheat game.')
     t.need(not check_running or not running_under(e, root), 'Close this game before changing Feeder files')
     t.need(not e.load_baseline(directory, readonly=True) and not (directory / 'OptiScaler.ini').exists(),
            'Restore the existing OptiScaler package before installing Feeder NR')
+    if not existing:
+        conflicts = foreign_graphics_files(directory)
+        t.need(not conflicts, 'Other graphics hooks/settings are present: ' + ', '.join(conflicts)
+               + '. Restore them before installing Feeder NR')
+    owned = state(e, directory)
     t.need(not any((directory / name).exists() for name in ('nvngx.dll_dlssnr.dll', 'dlss5-feed-helper.addon64',
-                                                         'dlss5-bridge.addon64', 'renodx-mfgunlock.addon64')),
+                                                         'dlss5-bridge.addon64', 'renodx-mfgunlock.addon64')
+                   if not (name == 'dlss5-feed-helper.addon64' and owned and owned.get('legacy_recipe'))),
            'Another NR or frame-generation hook is present. Restore it before using this Feeder recipe')
     if not existing:
         apis = graphics_apis(e, exe)
-        t.need(apis, 'This Feeder recipe requires an x64 DirectX 11 or DirectX 12 executable')
+        import feeder_legacy
+        legacy = feeder_legacy.route(e, row)
+        t.need(apis and (legacy or feeder_legacy.machine(exe) == 0x8664 and apis & {'d3d11', 'd3d12'}),
+               'This Feeder recipe requires DirectX 9, 10, 11 or 12 with a supported x86/x64 route')
         # Feeder's DirectX 12 session shares the game's device and refuses a second DLSS
         # runtime there; a DirectX 12 game with its own DLSS uses that DLSS route instead.
         t.need(apis != {'d3d12'} or not row.get('native_dlss'),
@@ -303,8 +331,20 @@ def eligible(e, row, existing=False, check_running=True):
     return root, exe, directory
 
 
+def foreign_graphics_files(directory):
+    conflicts = []
+    for name in sorted({*t.PROXIES, 'ReShade.ini', 'renodx-dlss5.addon64'}):
+        path = directory / name
+        if not path.exists():
+            continue
+        if name in STOCK_LIBRARIES and digest(path) in STOCK_LIBRARIES[name]:
+            continue
+        conflicts.append(name)
+    return conflicts
+
+
 def graphics_apis(e, exe):
-    """The Direct3D versions an x64 executable loads: {'d3d11'}, {'d3d12'}, both, or none.
+    """Direct3D versions loaded by an x86/x64 game or its adjacent engine DLLs.
 
     Normal and delay-load imports first (EA-wrapped Mass Effect LE delay-loads d3d11).
     Packed executables hide their imports until launch, so fall back to the DLL names
@@ -312,11 +352,27 @@ def graphics_apis(e, exe):
     """
     if exe.name.lower() in REVIEWED_DX11:
         return {'d3d11'}
-    def probe():
-        names = {name.lower() for name in (*e.pe_imported_dlls(exe), *delay_imported_dlls(exe))}
-        found = {api for api in ('d3d11', 'd3d12') if api + '.dll' in names}
-        return found or mentioned_apis(exe)
-    return cached_probe('direct3d', exe, probe)
+    apis, visited, pending = set(), set(), [(exe, 0)]
+    while pending and len(visited) < 24:
+        binary, depth = pending.pop(0)
+        if binary in visited:
+            continue
+        visited.add(binary)
+        names = {name.lower() for name in e.pe_imported_dlls(binary)}
+        def probe():
+            imported = names | {name.lower() for name in delay_imported_dlls(binary)}
+            found = {api for api in ('d3d9', 'd3d10', 'd3d10_1', 'd3d11', 'd3d12') if api + '.dll' in imported}
+            return found or mentioned_apis(binary)
+        apis |= cached_probe('direct3d-local-v2', binary, probe)
+        # Some games have a tiny EXE and keep their renderer in an imported
+        # adjacent engine DLL (Far Cry 5: FC_m64.dll). Never load the DLL or
+        # inspect unrelated files elsewhere in the game tree.
+        if depth < 2 and not apis:
+            for name in sorted(names):
+                dependency = binary.parent / name
+                if Path(name).name == name and name.endswith('.dll') and dependency.is_file() and not dependency.is_symlink():
+                    pending.append((dependency, depth + 1))
+    return apis
 
 
 _PROBES: dict | None = None
@@ -374,7 +430,7 @@ def mentioned_apis(exe, limit=2 * 1024**3):
             if not 0 < os.fstat(file.fileno()).st_size <= limit:
                 return set()
             with mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as data:
-                return {api for api in ('d3d11', 'd3d12')
+                return {api for api in ('d3d9', 'd3d10', 'd3d10_1', 'd3d11', 'd3d12')
                         if re.search(rb'(?i)' + api.encode() + rb'\.dll', data)}
     except (OSError, ValueError):
         return set()
@@ -385,8 +441,13 @@ def directx11(e, exe):
 
 
 def route_note(e, row):
-    """The Feeder route a fresh game gets. DirectX 12 has not been checked in game yet."""
+    """The Feeder route a fresh game gets, including experimental legacy recipes."""
     try:
+        import feeder_legacy
+        legacy = feeder_legacy.route(e, row)
+        if legacy:
+            bits, api = legacy.split('-', 1)
+            return f'Feeder NR · {api.replace("d3d", "DirectX ")} · {bits} · experimental · NR only'
         apis = graphics_apis(e, target(row)[1])
     except (t.Refusal, OSError, ValueError):
         apis = set()
@@ -433,17 +494,23 @@ def expand_rows(e, rows, selected=False):
     import skynizz_provider
     result = []
     for original in rows:
+        if original.get('executable_error'):
+            result.append(original)
+            continue
         root = Path(original['game'])
         candidates = []
         # ME Legendary Edition has one Steam entry and three actual targets.
         for index in (1, 2, 3):
+            if original.get('executable_selected'):
+                break
             exe = root / f'Game/ME{index}/Binaries/Win64/MassEffect{index}.exe'
             if exe.is_file():
                 candidates.append((exe, f"{original['name']} · Mass Effect {index}"))
         if not candidates and original.get('exe'):
             exe = root / original['exe']
             # Some collections pick a launcher. Prefer its adjacent DX11 game.
-            if exe.name.lower() in ('ts4_launcher_x64.exe', 'ts4_dx9_x64.exe') and (exe.parent / 'TS4_x64.exe').is_file():
+            if (not original.get('executable_selected') and exe.name.lower() in ('ts4_launcher_x64.exe', 'ts4_dx9_x64.exe')
+                    and (exe.parent / 'TS4_x64.exe').is_file()):
                 exe = exe.parent / 'TS4_x64.exe'
             candidates = [(exe, original['name'])]
         for exe, name in candidates:
@@ -452,7 +519,7 @@ def expand_rows(e, rows, selected=False):
                 child.update(game=str(exe.parent), exe=exe.name, collection_game=str(root), name=name)
             else:
                 child['exe'] = exe.relative_to(root).as_posix()
-            if (exe.parent / 'dlss5-feed.addon64').is_file():
+            if any((exe.parent / name).is_file() for name in ('dlss5-feed.addon64', 'dlss5-feed.addon32', 'dlss5-feed-helper.addon64')):
                 try:
                     found = inspect(e, child)
                     child.update(installed=True, runtime_provider='feeder', feature_mode='nr-only', profile='NR Only',
@@ -463,6 +530,15 @@ def expand_rows(e, rows, selected=False):
                                  linux_ready=not _windows(e) and linux_ready(e, child),
                                  feeder_settings={k: found[k] for k in ('passes', 'scale', 'preset')},
                                  blocked='')
+                    import cross_os
+                    marker = cross_os.read(exe.parent)
+                    oses = set(child.get('installed_oses') or [])
+                    if child.get('installed_on') == 'windows': oses.add('windows')
+                    if child.get('linux_ready'): oses.add('linux')
+                    if marker and marker.get('provider', {}).get('id') == 'feeder':
+                        oses.add(marker['os'])
+                        oses.update(name for name in marker.get('installed_oses', []) if name in cross_os.OPERATING_SYSTEMS)
+                    child['installed_oses'] = [name for name in ('windows','linux') if name in oses]
                 except (t.Refusal, OSError, ValueError, configparser.Error) as error:
                     child.update(blocked=str(error), feeder_detected=True)
                     try:
@@ -474,7 +550,8 @@ def expand_rows(e, rows, selected=False):
                         # replaces it with the pinned stack.
                         child.update(blocked='', installed=True, runtime_provider='feeder', feature_mode='nr-only',
                                      profile='NR Only', feeder_managed=False, installed_on=None, mfg_enabled=False, mfg_multiplier=0)
-            elif selected or not child.get('native_dlss') or skynizz_provider.native_nr_refusal(child.get('exe'), child.get('appid')):
+            elif (selected or original.get('executable_selected') or not child.get('native_dlss')
+                  or skynizz_provider.native_nr_refusal(child.get('exe'), child.get('appid'))):
                 try:
                     # Capability is independent of the package selected for native
                     # DLSS games. Mutation checks still run again during review.
@@ -539,6 +616,8 @@ def import_stack(e, source):
     """Copy a verified reusable stack (and its NR model, when verified) into app-owned storage."""
     source = t.safe(source)
     spec = stack(source)
+    import feeder_legacy
+    feeder_legacy.import_assets(e, source)
     files = {name: cache(e, source / t.relative(name)) for name in [*spec['assets'], *CONFIGS]}
     nr = None
     try:
@@ -652,6 +731,12 @@ def _checks(directory, names):
 
 
 def _check(e, plan):
+    import offline_routes
+    if hasattr(e, 'scan_game_files') and e.scan_game_files(Path(plan['row']['game']))[2] is not None:
+        t.need(offline_routes.reviewed_route(plan['row']) is not None, 'Anti-cheat appeared after review; review offline-only use again.')
+    if plan.get('legacy_recipe'):
+        import feeder_legacy
+        return feeder_legacy.check(e, plan)
     eligible(e, plan['row'], existing=plan['existing'])
     directory = Path(plan['target'])
     t.need(_checks(directory, plan['checks']) == plan['checks'], 'Feeder files changed since review; review again')
@@ -682,6 +767,22 @@ def linux_ready(e, row):
         return bool(proton_prefix.load_record(linux_setup_state(e, row)))
     except (OSError, ValueError):
         return False
+
+
+def publish_linux_history(row, ready):
+    """Keep Feeder's per-OS setup history beside its shared game files."""
+    import cross_os
+    _, _, directory = target(row)
+    previous = cross_os.read(directory)
+    t.need(previous is None or previous.get('provider', {}).get('id') == 'feeder',
+           'A different package owns this game\'s shared record.')
+    names = [*lock()['assets'], *CONFIGS, MODEL, *PANELS]
+    record = cross_os.write(directory, 'linux' if ready else 'windows', names,
+                            {'id':'feeder','name':'Feeder NR','version':lock()['version']},
+                            'nr-only','dxgi.dll',('dxgi',))
+    record['installed_oses'] = ['windows','linux'] if ready else ['windows']
+    t.atomic_file(directory / cross_os.MARKER, (json.dumps(record,indent=1)+'\n').encode(),0o600)
+    return record
 
 
 def _linux_setup(e, row, operation):
@@ -726,12 +827,15 @@ def _execute_linux(review):
                 t.need(not running_under(e, Path(plan['row']['game'])), 'Close this game before changing its Linux setup')
                 record = proton_prefix.load_record(plan['state'])
                 registry = Path(record['registry']) if record else Path(plan['prefix']) / 'user.reg'
-                checkpoint = session.capture([registry, Path(plan['state'])], label=plan['row']['name'])
+                import cross_os
+                marker_path = Path(plan['target']) / cross_os.MARKER
+                checkpoint = session.capture([registry, Path(plan['state']), marker_path], label=plan['row']['name'])
                 try:
                     if plan['operation'] == 'uninstall':
                         proton_prefix.restore(plan['state'])
                     else:
                         proton_prefix.apply(Path(plan['prefix']), plan['linux_setup'], plan['state'])
+                    publish_linux_history(plan['row'], plan['operation'] != 'uninstall')
                     session.seal(checkpoint)
                 except BaseException:
                     session.seal(checkpoint)
@@ -756,6 +860,33 @@ def _execute_linux(review):
 
 def prepare(config, rows, mode, operation, settings, e):
     with review_session(e):
+        import feeder_legacy
+        def legacy_route(row):
+            try:
+                eligible(e, row, existing=any((Path(row['game']) / row['exe']).parent.joinpath(name).is_file()
+                         for name in ('dlss5-feed.addon64', 'dlss5-feed.addon32', 'dlss5-feed-helper.addon64')))
+                return feeder_legacy.route(e, row)
+            except (t.Refusal, e.Stop, OSError, ValueError, KeyError):
+                return None
+        if _windows(e) and any(legacy_route(row) for row in rows):
+            ready, blocked, plans, seen = [], [], [], set()
+            for row in rows:
+                try:
+                    directory = target(row)[2]
+                    t.need(str(directory).casefold() not in seen, 'The same Feeder executable was selected twice')
+                    seen.add(str(directory).casefold())
+                    recipe = feeder_legacy.route(e, row)
+                    if recipe:
+                        import overlay_settings
+                        effective = settings | overlay_settings.effective(settings, row['game'])
+                        plan, entry = feeder_legacy.prepare(e, row, mode, operation, effective, recipe)
+                        plans.append(plan); ready.append(entry)
+                    else:
+                        part = _prepare(config, [row], mode, operation, settings, e)
+                        plans.extend(part['plans']); ready.extend(part['rows']); blocked.extend(part['blocked'])
+                except (t.Refusal, e.Stop, OSError, ValueError, configparser.Error) as error:
+                    blocked.append({'name': row['name'], 'game': row['game'], 'reason': str(error)})
+            return dict(kind='feeder', operation=operation, title='Feeder NR', rows=ready, blocked=blocked, plans=plans, engine=e)
         return _prepare(config, rows, mode, operation, settings, e)
 
 
@@ -821,8 +952,6 @@ def _prepare(config, rows, mode, operation, settings, e):
                     '. They apply the next time the game starts.'
             else:
                 if not existing:
-                    t.need(not any((directory / name).exists() for name in (*t.PROXIES, 'ReShade.ini', 'renodx-dlss5.addon64')),
-                           'Other graphics mods are present. Restore them before installing Feeder NR')
                     files = stack_files(e, settings)
                     for name in [*spec['assets'], *CONFIGS]:
                         inputs[name] = writes[name] = files[name]
@@ -966,7 +1095,9 @@ def execute(review):
                 directory = Path(plan['target'])
                 _check(e, plan)
                 ui.progress('Backing up Feeder files', game=plan['row']['name'], current=index, total=len(review['plans']))
-                checkpoint = session.capture([directory / name for name in plan['writes']] + [state_dir(e, directory)], label=plan['row']['name'])
+                import cross_os
+                shared_marker = directory / cross_os.MARKER
+                checkpoint = session.capture([directory / name for name in plan['writes']] + [state_dir(e, directory), shared_marker], label=plan['row']['name'])
                 try:
                     # A durable baseline precedes any model replacement.
                     if plan['operation'] != 'uninstall':
@@ -993,8 +1124,18 @@ def execute(review):
                         baseline = copy.deepcopy(plan['baseline'])
                         baseline['status'] = 'active'
                         baseline['installed_hashes'] = _checks(directory, plan['checks'])
-                        stack(directory, installed=True)
+                        if plan.get('legacy_recipe'):
+                            import feeder_legacy
+                            feeder_legacy.verify_written(directory, plan['legacy_recipe'])
+                        else:
+                            stack(directory, installed=True)
                     t.atomic_file(state_dir(e, directory) / 'baseline.json', (json.dumps(baseline, indent=2) + '\n').encode(), 0o600)
+                    if plan['operation'] == 'uninstall':
+                        shared = cross_os.read(directory)
+                        if shared and shared.get('provider', {}).get('id') == 'feeder': shared_marker.unlink()
+                    if plan.get('legacy_recipe') and plan['operation'] == 'uninstall':
+                        import feeder_legacy
+                        feeder_legacy.cleanup_directories(directory, baseline)
                     session.seal(checkpoint)
                     results.append({'name': plan['row']['name'], 'game': plan['row']['game'], 'status': 'complete'})
                 except BaseException:
@@ -1050,8 +1191,11 @@ def parse_logs(feed, reshade):
 def diagnose(row):
     from runtime_diagnostics import read_regular
     _, _, directory = target(row)
+    feed_directory = directory
+    if any((directory / name).is_file() for name in ('dlss5-feed.addon32', 'dlss5-feed-helper.addon64')):
+        directory = directory / 'host64'
     nr = model(directory / MODEL)
-    saved = configured(directory)
+    saved = configured(directory, feed_directory)
     report = {'name': row['name'], 'provider': 'feeder', 'settings': saved, 'files': {MODEL: nr},
               'observations': ['Feeder NR is installed. Saved NR is ' + ('enabled.' if saved['nr_enabled'] else 'disabled.'),
                                'NR runtime: ' + nr['version'] + '.', 'Frame generation is unavailable for this route.'],
@@ -1059,7 +1203,7 @@ def diagnose(row):
     logs, times = {}, {}
     for name in ('dlss5-feed.log', 'ReShade.log'):
         try:
-            data, info = read_regular(directory / name, tail=True)
+            data, info = read_regular((feed_directory if name == 'dlss5-feed.log' else directory) / name, tail=True)
             logs[name] = data.decode('utf-8', errors='replace')
             times[name] = info.st_mtime_ns
         except (OSError, ValueError):

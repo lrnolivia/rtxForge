@@ -327,12 +327,23 @@ public sealed partial class MainWindow
         var totals = Games.GroupBy(g => g.TestStatus).ToDictionary(g => g.Key, g => g.Count());
         body.Children.Add(Prefs.Label(string.Join(" · ", new[] { "Untested", "Working", "Problem", "Bench" }
             .Select(s => $"{totals.GetValueOrDefault(s)} {s.ToLowerInvariant()}")), "ForgeHeadingTextStyle"));
-        body.Children.Add(Prefs.Label("Each game's known result: yours first, then rtxForge's list. Share opens a prefilled issue you review before posting; nothing is sent automatically."));
+        body.Children.Add(Prefs.Label("Choose one, a few or all games. Logs are scanned only when selected below. Review the exact redacted report before exporting; nothing is uploaded."));
+        var included = new HashSet<Game>(Games);
+        var selections = new List<CheckBox>();
+        var selectionActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        selectionActions.Children.Add(Prefs.ActionButton("Select all", (_, _) => { foreach (var box in selections) box.IsChecked = true; }));
+        selectionActions.Children.Add(Prefs.ActionButton("Clear selection", (_, _) => { foreach (var box in selections) box.IsChecked = false; }));
+        body.Children.Add(selectionActions);
         var list = new StackPanel { Spacing = 4 };
         Func<Task>? next = null;
         foreach (var game in Games)
         {
             var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            var include = new CheckBox { Content = "Include", IsChecked = true };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(include, "Include " + game.Name + " in support report");
+            include.Checked += (_, _) => { included.Add(game); dialog.IsPrimaryButtonEnabled = !Service.IsPreview && included.Count > 0; };
+            include.Unchecked += (_, _) => { included.Remove(game); dialog.IsPrimaryButtonEnabled = !Service.IsPreview && included.Count > 0; };
+            selections.Add(include); actions.Children.Add(include);
             void Add(string text, Func<Task> run, bool enabled = true)
             {
                 var button = Prefs.ActionButton(text, (_, _) => { next = run; dialog.Hide(); });
@@ -346,7 +357,7 @@ public sealed partial class MainWindow
             list.Children.Add(Prefs.Row(game.Name, CompatDetail(game), actions));
         }
         body.Children.Add(new ScrollViewer { Content = list, MaxHeight = 320 });
-        var logs = new CheckBox { Content = "Include redacted logs from the latest captured test" };
+        var logs = new CheckBox { Content = "Scan current game and app logs (redacted; older sessions are identified)" };
         var notes = new CheckBox { Content = "Include my notes" };
         body.Children.Add(logs);
         body.Children.Add(notes);
@@ -359,8 +370,22 @@ public sealed partial class MainWindow
         if (next is not null) { await next(); return; }
         if (choice != ContentDialogResult.Primary) return;
         bool withLogs = logs.IsChecked == true, withNotes = notes.IsChecked == true;
-        var result = await ReviewDialog.ShowAsync(this, "Review Support Report", () => Service.PreviewReportAsync(Games, withLogs, withNotes));
-        if (result?.Path is { } path) ShowToast("Saved " + path);
+        var chosen = Games.Where(included.Contains).ToList();
+        var result = await ReviewDialog.ShowAsync(this, "Review Support Report", () => Service.PreviewReportAsync(chosen, withLogs, withNotes));
+        if (result?.Path is { } path)
+        {
+            var saved = NewDialog();
+            saved.Title = "Support report saved";
+            saved.Content = Prefs.Label(path + "\n\nTo add logs to an existing bug report, attach this ZIP to a comment on that GitHub issue.");
+            saved.PrimaryButtonText = "Open folder"; saved.SecondaryButtonText = "Copy path"; saved.CloseButtonText = "Done";
+            var action = await saved.ShowAsync();
+            if (action == ContentDialogResult.Primary) Process.Start(new ProcessStartInfo(Path.GetDirectoryName(path)!) { UseShellExecute = true });
+            if (action == ContentDialogResult.Secondary)
+            {
+                var data = new global::Windows.ApplicationModel.DataTransfer.DataPackage(); data.SetText(path);
+                global::Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
+            }
+        }
     }
 
     /// <summary>One line per game for the compatibility list: block, Try anyway, or the known result.</summary>

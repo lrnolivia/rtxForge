@@ -129,7 +129,8 @@ public sealed partial class GamePage : Page
 
     void Refresh()
     {
-        StatusBadge.Text = game.AdoptionAvailable ? "Installed · Adoption available" : game.OfflineOnly ? "Installed · Offline only" : game.Blocked ? game.BlockedStatus
+        game = shell.Games.FirstOrDefault(item => item.Id == game.Id) ?? game;
+        StatusBadge.Text = game.AdoptionAvailable ? "Installed · Adoption available" : game.OfflineOnly && !game.Blocked ? game.Installed ? "Installed · Offline only" : "Offline only" : game.Blocked ? game.BlockedStatus
             : game.UsesFeeder ? game.Installed ? "Feeder NR" : "Available · Feeder NR"
             : game.InstalledOnLinux ? "Installed on Linux"
             : game.Installed ? shell.Mode switch { "nr-only" => "NR Only", "nr-mfg" => "NR + MFG", _ => "MFG Only" }
@@ -137,19 +138,19 @@ public sealed partial class GamePage : Page
         // Installed with rtxForge on Linux: Set Up for Windows adapts that install instead of reinstalling it.
         InstallText.Text = game.InstallLabel;
         // Metadata pill beside STEAM / TESTED: which rtxForge installed the features.
-        var os = game.Installed && game.InstalledOn is "linux" or "windows" ? game.InstalledOn : null;
-        OsBadge.Visibility = os is null ? Visibility.Collapsed : Visibility.Visible;
-        if (os is not null)
+        var oses = game.InstalledOses;
+        OsBadge.Visibility = oses.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        OsBadgeIcons.Oses = oses;
+        if (oses.Count > 0)
         {
-            OsBadgeIcon.Data = OsMark.Data(os);
-            OsBadgeText.Text = CrossOs.Name(os).ToUpperInvariant();
-            ToolTipService.SetToolTip(OsBadge, OsMark.Tooltip(os));
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(OsBadge, OsMark.Tooltip(os));
+            OsBadgeText.Text = CrossOs.Names(oses).ToUpperInvariant();
+            ToolTipService.SetToolTip(OsBadge, CrossOs.Tooltip(oses));
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(OsBadge, CrossOs.Tooltip(oses));
         }
         InstallButton.IsEnabled = (!game.Blocked || game.AdoptionAvailable) && !shell.Busy;
         RestoreButton.IsEnabled = game.Installed && !game.AdoptionAvailable && !shell.Busy;
         AdoptionItem.Visibility = game.AdoptionAvailable ? Visibility.Visible : Visibility.Collapsed;
-        OfflineLaunchItem.Visibility = game.OfflineOnly ? Visibility.Visible : Visibility.Collapsed;
+        OfflineLaunchItem.Visibility = game.OfflineLaunchAvailable ? Visibility.Visible : Visibility.Collapsed;
         UpdateDlssItem.IsEnabled = !game.Blocked;
         OpenFolderItem.IsEnabled = !shell.Service.IsPreview && Directory.Exists(game.Location);
         Build(section);
@@ -195,7 +196,7 @@ public sealed partial class GamePage : Page
                 if (g.OfflineOnly)
                 {
                     var offline = new PreferencesGroup("Offline-only features", GameOverview.OfflineNote);
-                    offline.Add(Prefs.ActionButton("Launch offline", (_, _) => _ = shell.LaunchOfflineAsync(g), accent: true));
+                    if (g.OfflineLaunchAvailable) offline.Add(Prefs.ActionButton("Launch offline", (_, _) => _ = shell.LaunchOfflineAsync(g), accent: true));
                     PageHost.Children.Add(offline);
                 }
                 if (g.AdoptionAvailable)
@@ -206,7 +207,7 @@ public sealed partial class GamePage : Page
                     var blocked = new InfoBar
                     {
                         IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Warning, Margin = new Thickness(0, 24, 0, 0),
-                        Title = g.BlockedSoft ? "Not verified with this package" : "rtxForge will not modify this game",
+                        Title = g.EngineRow?["feeder_restore_first"]?.GetValue<bool>() == true ? "Switch to Feeder NR" : g.BlockedSoft ? "Not verified with this package" : "rtxForge will not modify this game",
                         Message = g.BlockedSoft ? (g.BlockedReason ?? "") + " " + GameOverview.TryAnywayNote : g.BlockedReason ?? "",
                     };
                     if (g.BlockedSoft) blocked.ActionButton = TryAnywayButton(g, true);
@@ -226,6 +227,8 @@ public sealed partial class GamePage : Page
                         Message = GameOverview.LinuxNote,
                     });
                 var overviewFacts = GameOverview.Facts(g);
+                if (g.ProviderCandidatesText.Length > 0)
+                    PageHost.Children.Add(Prefs.Row("Install routes", g.ProviderCandidatesText));
                 var facts = new PresetColumns(280, overviewFacts.Count > 3 ? 4 : 3) { ColumnSpacing = 12, RowSpacing = 12, Margin = new Thickness(0, 20, 0, 0) };
                 foreach (var fact in overviewFacts)
                 {
@@ -239,6 +242,18 @@ public sealed partial class GamePage : Page
                 var folder = Prefs.Row("Game folder", g.Location, openFolder, "\uE838");
                 folder.Margin = new Thickness(0, 12, 0, 0);
                 PageHost.Children.Add(folder);
+                var exeActions = new WrapRow { Spacing = 8 };
+                var chooseExe = Prefs.ActionButton("Choose EXE…", (_, _) => _ = shell.SelectGameExecutableAsync(g));
+                chooseExe.IsEnabled = !shell.Busy && !shell.Service.IsPreview;
+                exeActions.Children.Add(chooseExe);
+                if (shell.Settings.GameExecutables.ContainsKey(g.Id))
+                {
+                    var detectExe = Prefs.ActionButton("Use detected", (_, _) => _ = shell.SelectGameExecutableAsync(g, detected: true));
+                    detectExe.IsEnabled = chooseExe.IsEnabled;
+                    exeActions.Children.Add(detectExe);
+                }
+                PageHost.Children.Add(Prefs.Row("Game executable", (g.EngineRow?["exe"]?.ToString() is { Length: > 0 } exe ? exe : "No EXE detected")
+                    + " · " + (shell.Settings.GameExecutables.ContainsKey(g.Id) ? "Selected by you" : "Detected automatically"), exeActions, "\uE7C3"));
                 break;
 
             case "Features":

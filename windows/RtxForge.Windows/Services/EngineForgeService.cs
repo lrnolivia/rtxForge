@@ -30,7 +30,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
     static string SnapshotPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rtxForge", "state", "library-snapshot.json");
     // Each build keys its own snapshot, so an update never shows the previous build's verdicts.
     static readonly string Build = typeof(EngineForgeService).Assembly.ManifestModule.ModuleVersionId.ToString("N");
-    string SnapshotKey() => LibrarySnapshot.Key(Settings.RuntimeProvider + "|" + Build, Settings.GameFolders, Settings.LibraryFolders);
+    string SnapshotKey() => LibrarySnapshot.Key(Settings.RuntimeProvider + "|" + Build + "|" + Settings.ExecutableSelectionKey, Settings.GameFolders, Settings.LibraryFolders);
     public IReadOnlyList<Game> CachedLibrary()
     {
         try { return LibraryGames(LibrarySnapshot.Read(SnapshotPath, SnapshotKey())); }
@@ -192,9 +192,15 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
     {
         var key = SnapshotKey();
         // The library serves every mode; the installation review checks native FG for NR + MFG.
-        var rows = await CallAsync("scan", new { folders = Settings.GameFolders, library_folders = Settings.LibraryFolders, runtime_provider = Settings.RuntimeProvider }, cancel: cancel) as JsonArray ?? [];
+        var rows = await CallAsync("scan", new { folders = Settings.GameFolders, library_folders = Settings.LibraryFolders, runtime_provider = Settings.RuntimeProvider, game_executables = Settings.GameExecutables }, cancel: cancel) as JsonArray ?? [];
         LibrarySnapshot.Write(SnapshotPath, key, rows);
         return LibraryGames(rows);
+    }
+
+    public async Task<string> ValidateExecutableAsync(Game game, string? path)
+    {
+        var result = await CallAsync("validate_executable", new { row = Row(game), path });
+        return result?["exe"]?.GetValue<string>() ?? throw new EngineException("The game EXE could not be verified.");
     }
 
     IReadOnlyList<Game> LibraryGames(JsonArray rows)
@@ -239,6 +245,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             Profile = S("profile"),
             RuntimeProvider = S("runtime_provider"),
             InstalledOn = S("installed_on") is "linux" or "windows" ? S("installed_on") : null,
+            InstalledOses = CrossOs.Read(row["installed_oses"]),
             NrStrength = D("nr_strength"),
             SharpeningStrength = D("sharpening_strength"),
             MfgMultiplier = multiplier,
@@ -335,6 +342,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             ["mfg_multiplier"] = tuning.MfgMultiplier == "auto" ? "auto" : int.Parse(tuning.MfgMultiplier),
             ["feature_controls"] = tuning.FeatureControls?.DeepClone(),
         };
+        settings["game_executables"] = JsonSerializer.SerializeToNode(Settings.GameExecutables);
         foreach (var item in ForgeSettings.Load().OverlayReviewOptions()) settings[item.Key] = item.Value?.DeepClone();
         var overlay = ForgeSettings.Load();
         settings["overlay_helper"] = overlay.OverlayHelper;
@@ -428,7 +436,8 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             .Select(b => new ReviewBlock(Match(b["name"]?.ToString()), b["name"]?.ToString() ?? "", b["reason"]?.ToString() ?? "", b["summary"]?.ToString())).ToList();
         var warnings = (result?["warnings"] as JsonArray ?? []).OfType<JsonObject>()
             .Select(w => new ReviewBlock(Match(w["name"]?.ToString()), w["name"]?.ToString() ?? "", w["reason"]?.ToString() ?? "")).ToList();
-        var prepared = new OperationReview(operation, result?["token"]?.ToString() ?? "", readyRows, blocked, warnings);
+        var prepared = new OperationReview(operation, result?["token"]?.ToString() ?? "", readyRows, blocked, warnings)
+        { OfflineNotice = result?["trust"]?.ToString() };
         if (operation == "install" && !supportedSubset && (mode is "nr-mfg" or "nr-only"))
         {
             var available = new List<SupportedOperationReview>();
@@ -539,7 +548,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         using var registration = cancel.Register(() => _ = CallAsync("cancel", new { token = review.Token }));
         try
         {
-            await CallAsync("execute", new { token = review.Token }, Report);
+            await CallAsync("execute", new { token = review.Token, offline_acknowledged = review.OfflineAcknowledged }, Report);
         }
         catch (EngineException error) when (error.Message.Contains("Changes undone", StringComparison.Ordinal))
         {

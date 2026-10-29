@@ -558,6 +558,34 @@ except Exception:
 else:raise AssertionError('injected write failure was ignored')
 assert files(failure)==failure_before,files(failure)
 checks.append('injected failure rolls back every game change')
+# Fresh anti-cheat installations use the same actual engine checks, but require
+# explicit consent on the retained review token before the first game write.
+import offline_routes as off,transactions as t
+off.protected_running=lambda:False
+offline=game('OfflineExample');(offline/'EasyAntiCheat').mkdir()
+(offline/'EasyAntiCheat/Settings.json').write_text('{}')
+row=scan(offline)
+assert row['anti_cheat'] and row['offline_only'] and not row['blocked'],row
+before=files(offline)
+request={'rows':[row],'mode':'nr-only','operation':'install','settings':settings|{'manage_dlss_files':False}}
+checked=host.prepare(request)
+assert checked['rows'] and checked.get('trust') and not checked['blocked'],checked
+assert files(offline)==before,'offline review wrote game files'
+try:host.execute({'token':checked['token']});raise AssertionError('missing acknowledgement accepted')
+except t.Refusal:pass
+assert files(offline)==before and checked['token'] in host.reviews
+host.execute({'token':checked['token'],'offline_acknowledged':True})
+assert module(service.config).load_baseline(offline)['offline_route']['id']=='manual-offline'
+row=scan(offline);checked=host.prepare(request|{'rows':[row],'operation':'uninstall'})
+host.execute({'token':checked['token']})
+assert files(offline)==before,'offline restore did not preserve exact originals'
+checked=host.prepare(request|{'rows':[scan(offline)]})
+(offline/'EasyAntiCheat/Settings.json').write_text('{"updated":true}')
+drift=files(offline)
+try:host.execute({'token':checked['token'],'offline_acknowledged':True});raise AssertionError('offline drift accepted')
+except t.Refusal:pass
+assert files(offline)==drift
+checks.append('fresh anti-cheat install requires token-bound offline consent, restores exactly and refuses route drift')
 saved=library_media.load_settings(service.config);saved['skynizz_version']='v1.2.1';saved['runtime_provider']='skynizz'
 library_media.save_settings(service.config,saved)
 assert library_media.load_settings(service.config)['skynizz_version']=='v1.2.1'
@@ -585,7 +613,7 @@ class WindowsSkynizzTest(unittest.TestCase):
                                     env=env, capture_output=True, text=True, timeout=180)
             self.assertEqual(result.returncode, 0, result.stderr[-12000:] + result.stdout[-3000:])
             receipt = json.loads(result.stdout.strip().splitlines()[-1])
-            self.assertEqual(receipt['count'], 31)
+            self.assertEqual(receipt['count'], 32)
             print('PASS: ' + '; '.join(receipt['checks']))
 
 

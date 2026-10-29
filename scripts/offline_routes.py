@@ -1,14 +1,44 @@
-"""Reviewed, per-title offline launch profiles. Anti-cheat evidence stays visible.
+"""Offline-only install consent and optional per-title offline launch profiles.
 
-Profiles describe a verified vendor-supported offline route, never a general
-anti-cheat bypass. Consent is bound to the actual executable and EAC settings.
+Anti-cheat evidence stays visible. Generic consent permits installation only;
+it supplies no bypass or automatic launcher. Receipts bind the reviewed files.
 """
 from __future__ import annotations
 import os
 import subprocess
+import contextlib
+import contextvars
 from pathlib import Path
 from types import SimpleNamespace
 import transactions as t
+
+NOTICE = ('I understand these anti-cheat games are supported only in offline mode. '
+          'I will use the game’s offline mode and restore the original files before online play. '
+          'rtxForge does not disable anti-cheat or make online play supported.')
+_reviewed = contextvars.ContextVar('offline_reviewed', default=())
+
+
+@contextlib.contextmanager
+def reviewed(routes):
+    routes = tuple(routes)
+    for route in routes:
+        verify(route)
+    t.need(not routes or not protected_running(), 'Close protected games before reviewing or changing offline-only features.')
+    token = _reviewed.set(routes)
+    try:
+        yield
+    finally:
+        _reviewed.reset(token)
+
+
+def reviewed_route(row):
+    for route in _reviewed.get():
+        spec = verify(route)
+        if (t.safe(row['game']) == t.safe(route['root'])
+                and str(row.get('exe', '')).replace('\\', '/').casefold() == spec['exe'].casefold()):
+            t.need(not protected_running(), 'Close protected games before changing offline-only features.')
+            return route
+    return None
 
 PROFILES = {
     'gears-eday-offline': {
@@ -27,8 +57,22 @@ def profile(row):
     return None
 
 
-def receipt(row, cache=None):
+def receipt(row, cache=None, manual=False):
     key = profile(row)
+    if key is None and manual:
+        root = t.safe(row['game'])
+        name = t.relative(row['exe']).as_posix()
+        exe = t.safe(root / name)
+        t.need(exe.is_file() and exe.suffix.casefold() == '.exe', 'Choose a valid game executable first.')
+        # Acknowledgement permits an ordinary offline installation. It grants no
+        # launcher bypass, command-line switch, or anti-cheat modification.
+        import discovery
+        evidence = discovery.scan_files(root)[2]
+        t.need(evidence is not None, 'Anti-cheat evidence changed; scan this game again.')
+        evidence = t.safe(evidence)
+        marker = evidence.relative_to(root).as_posix()
+        return {'id': 'manual-offline', 'version': 1, 'root': str(root), 'appid': str(row.get('appid') or ''),
+                'exe': name, 'files': {path: t.digest(t.safe(root / path)) for path in dict.fromkeys((name, marker))}}
     t.need(key is not None, 'No verified offline launch route is available for this title.')
     spec, root = PROFILES[key], t.safe(row['game'])
     files = [spec['exe'], *spec['markers']]
@@ -47,6 +91,10 @@ def receipt(row, cache=None):
 
 
 def verify(route, cache=None):
+    if isinstance(route, dict) and route.get('id') == 'manual-offline':
+        row = {'game': route.get('root'), 'exe': route.get('exe'), 'appid': route.get('appid')}
+        t.need(receipt(row, cache, manual=True) == route, 'The offline route changed. Review this game again before managing its features.')
+        return {'exe': route['exe'], 'appid': route['appid'], 'environment': {}}
     t.need(isinstance(route, dict) and route.get('id') in PROFILES, 'Review the offline-only exception again.')
     spec = PROFILES[route['id']]
     row = {'game': route.get('root'), 'exe': spec['exe'], 'appid': route.get('appid')}
@@ -85,6 +133,9 @@ def allowed(e, game):
     if not game.anti_cheat:
         return True
     try:
+        row = {'game': str(game.root), 'exe': Path(game.exe).relative_to(game.root).as_posix()}
+        if reviewed_route(row):
+            return True
         baseline = e.load_baseline(game.target_dir, readonly=True) or {}
         route = baseline.get('offline_route')
         spec = verify(route)
@@ -117,6 +168,7 @@ def launch(e, row):
         if not name.lower().endswith(('.ini', '.log')):
             t.need(t.digest(t.safe(game.target_dir / t.relative(name))) == digest, 'Package files changed; repair before launching offline.')
     spec = verify(record['offline_route'])
+    t.need(record['offline_route']['id'] != 'manual-offline', 'Use this game’s own offline launch mode. No automatic offline launcher is available.')
     child_env = dict(os.environ, **spec['environment'])
     child = subprocess.Popen([str(game.exe)], cwd=str(game.target_dir), env=child_env,
                              creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))

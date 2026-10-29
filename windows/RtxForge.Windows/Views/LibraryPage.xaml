@@ -44,11 +44,9 @@
                         <Image Source="{Binding Poster}" Stretch="UniformToFill" Visibility="{Binding PosterVisibility}" />
                         <!-- .gallery-artwork-ring: a stroke over the art's edge on hover (3px) and while selected (2px); none at rest. -->
                         <Border BorderThickness="{Binding ArtRingThickness}" CornerRadius="10" BorderBrush="{Binding ArtRing}" IsHitTestVisible="False" />
-                        <Border Style="{StaticResource ForgePosterBadgeStyle}" Visibility="{Binding OsMarkVisibility}"
+                        <Border Style="{StaticResource ForgePosterBadgeStyle}" Width="{Binding OsBadgeWidth}" Visibility="{Binding OsMarkVisibility}"
                                 ToolTipService.ToolTip="{Binding OsMarkTooltip}" AutomationProperties.Name="{Binding OsMarkTooltip}">
-                            <Viewbox Width="12" Height="12">
-                                <PathIcon Width="16" Height="16" Data="{Binding OsMark}" Foreground="White" />
-                            </Viewbox>
+                            <controls:OsMarks Oses="{Binding InstalledOses}" MarkSize="12" Foreground="White" HorizontalAlignment="Center" />
                         </Border>
                         <Border Tag="check" Style="{StaticResource ForgeCheckStyle}" Visibility="{Binding SelectVisibility}"
                                 HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" Background="{Binding CheckFill}" BorderBrush="{Binding CheckBorder}"
@@ -91,11 +89,9 @@
                         <Image Source="{Binding Capsule}" Stretch="UniformToFill" Visibility="{Binding CapsuleVisibility}" />
                         <!-- .gallery-artwork-ring: a stroke over the art's edge on hover (3px) and while selected (2px); none at rest. -->
                         <Border BorderThickness="{Binding ArtRingThickness}" CornerRadius="10" BorderBrush="{Binding ArtRing}" IsHitTestVisible="False" />
-                        <Border Style="{StaticResource ForgePosterBadgeStyle}" Visibility="{Binding OsMarkVisibility}"
+                        <Border Style="{StaticResource ForgePosterBadgeStyle}" Width="{Binding OsBadgeWidth}" Visibility="{Binding OsMarkVisibility}"
                                 ToolTipService.ToolTip="{Binding OsMarkTooltip}" AutomationProperties.Name="{Binding OsMarkTooltip}">
-                            <Viewbox Width="12" Height="12">
-                                <PathIcon Width="16" Height="16" Data="{Binding OsMark}" Foreground="White" />
-                            </Viewbox>
+                            <controls:OsMarks Oses="{Binding InstalledOses}" MarkSize="12" Foreground="White" HorizontalAlignment="Center" />
                         </Border>
                         <Border Tag="check" Style="{StaticResource ForgeCheckStyle}" Visibility="{Binding SelectVisibility}"
                                 HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" Background="{Binding CheckFill}" BorderBrush="{Binding CheckBorder}"
@@ -163,10 +159,7 @@
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <Ellipse Width="8" Height="8" Fill="{Binding StatusDot}" VerticalAlignment="Center" />
                             <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" Foreground="{Binding RowText}" />
-                            <Viewbox Width="10" Height="10" VerticalAlignment="Center" Visibility="{Binding OsMarkVisibility}"
-                                     ToolTipService.ToolTip="{Binding OsMarkTooltip}" AutomationProperties.Name="{Binding OsMarkTooltip}">
-                                <PathIcon Width="16" Height="16" Data="{Binding OsMark}" Foreground="{Binding RowText}" />
-                            </Viewbox>
+                            <controls:OsMarks Oses="{Binding InstalledOses}" MarkSize="10" Foreground="{Binding RowText}" />
                         </StackPanel>
                         <Border Style="{StaticResource ForgePillStyle}" Background="{Binding RowChipFill}" HorizontalAlignment="Left" Visibility="{Binding TestedVisibility}">
                             <StackPanel Orientation="Horizontal" Spacing="4">

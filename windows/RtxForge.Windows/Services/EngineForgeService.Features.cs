@@ -141,7 +141,8 @@ public sealed partial class EngineForgeService
     public async Task FinishTestAsync(Game game) => Apply(game, await CallAsync("test_finish", new JsonObject { ["row"] = Row(game) }));
 
     public async Task<EngineReview> PreviewReportAsync(IReadOnlyList<Game> games, bool logs, bool notes) =>
-        ToReview(await CallAsync("report_preview", new JsonObject { ["rows"] = Rows(games), ["logs"] = logs, ["notes"] = notes }));
+        ToReview(await CallAsync("report_preview", new JsonObject { ["rows"] = Rows(games), ["logs"] = logs, ["notes"] = notes,
+            ["build"] = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(App).Assembly)?.InformationalVersion }));
 
     public async Task SetTryAnywayAsync(Game game, bool on) =>
         Apply(game, await CallAsync("try_anyway", new { game = game.Id, on, reason = game.BlockedReason ?? "" }));
@@ -198,11 +199,11 @@ public sealed partial class EngineForgeService
         return new PackageCatalog(status, packages, community, S(r?["custom"], "name"));
     }
 
-    public async Task<FeederStorage> FeederStorageAsync(string? source = null, string? backups = null)
+    public async Task<FeederStorage> FeederStorageAsync(string? source = null, string? backups = null, bool legacy = false)
     {
-        var r = await CallAsync("feeder_storage", new JsonObject { ["source"] = source, ["backups"] = backups });
+        var r = await CallAsync("feeder_storage", new JsonObject { ["source"] = source, ["backups"] = backups, ["legacy"] = legacy });
         var kept = r?["stack"] as JsonObject;
-        return new FeederStorage(S(kept, "recipe"), S(kept, "imported_from"), S(kept, "nr_version"), I(r, "backups"));
+        return new FeederStorage(S(kept, "recipe"), S(kept, "imported_from"), S(kept, "nr_version"), I(r, "backups"), B(r, "legacy_ready"));
     }
 
     public async Task<PackageInspection> InspectPackageAsync(string path)

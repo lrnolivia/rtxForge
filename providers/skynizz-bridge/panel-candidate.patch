@@ -320,17 +320,18 @@ diff --git a/OptiScaler/menu/menu_common.cpp b/OptiScaler/menu/menu_common.cpp
 index 669450ab..26523776 100644
 --- a/OptiScaler/menu/menu_common.cpp
 +++ b/OptiScaler/menu/menu_common.cpp
-@@ -8,6 +8,9 @@
+@@ -8,6 +8,10 @@
  #include <dlssnr/DlssNr.h>
  
  #include "input/input_system.h"
 +#include "ForgePanel.h"
 +#include <framegen/IFGFeature_Dx12.h>
 +#include <proxies/Streamline_Proxy.h>
++#include <framegen/dlssg/Companion.h>
  
  #include "font/Hack_Compressed.h"
  
-@@ -63,6 +64,7 @@ static bool _hdrTonemapApplied = false;
+@@ -63,6 +67,7 @@ static bool _hdrTonemapApplied = false;
  static ImVec4 SdrColors[ImGuiCol_COUNT];
  
  static bool inputMenu = false;
@@ -338,7 +339,7 @@ index 669450ab..26523776 100644
  static bool inputFG = false;
  static bool inputFps = false;
  static bool inputFpsCycle = false;
-@@ -418,8 +420,12 @@ void MenuCommon::UpdateManualInput(HWND targetHwnd)
+@@ -418,8 +423,12 @@ void MenuCommon::UpdateManualInput(HWND targetHwnd)
      const auto currentTick = GetTickCount64();
      const bool canAcceptInputs = lastInputTick + debounceThreshold < currentTick;
  
@@ -352,7 +353,7 @@ index 669450ab..26523776 100644
          CheckShortcut(config->ShortcutKey.value_or_default(), inputMenu, "Menu key pressed, will be switching menu");
          CheckShortcut(config->FpsShortcutKey.value_or_default(), inputFps, "Menu key pressed, will be switching FPS");
          CheckShortcut(config->FGShortcutKey.value_or_default(), inputFG, "Menu key pressed, will be switching FG mode");
-@@ -1611,6 +1617,22 @@ void MenuCommon::HandleMenuShortcuts(RenderMenuContext& ctx)
+@@ -1611,6 +1620,22 @@ void MenuCommon::HandleMenuShortcuts(RenderMenuContext& ctx)
      auto config = ctx.config;
      auto& io = ctx.io;
  
@@ -375,7 +376,7 @@ index 669450ab..26523776 100644
      // Handle Inputs
      {
          if (inputFG)
-@@ -1803,7 +1825,7 @@ void MenuCommon::BeginMenuFrameIfNeeded(RenderMenuContext& ctx)
+@@ -1803,7 +1828,7 @@ void MenuCommon::BeginMenuFrameIfNeeded(RenderMenuContext& ctx)
                                 DlssNr::ExposureScan::Where() != DlssNr::ExposureScan::Verdict::Off;
  
      if ((!config->DisableSplash.value_or_default() && now > splashStart && now < splashLimit) ||
@@ -384,7 +385,7 @@ index 669450ab..26523776 100644
          DlssNr::OverlayWanted() ||
          (config->DlssNrCompare.value_or_default() != 0 && config->DlssNrCompareTags.value_or_default()))
      {
-@@ -9047,7 +9069,10 @@ bool MenuCommon::RenderMenu()
+@@ -9047,7 +9072,10 @@ bool MenuCommon::RenderMenu()
      DlssNr::RenderOverlay(ctx.config->FpsOverlayAlpha.value_or_default());
  
      // 4) Draw the full settings menu last so popups and child windows keep their existing behavior.
@@ -396,7 +397,7 @@ index 669450ab..26523776 100644
  
      if (ctx.newFrame)
          ImGui::EndFrame();
-@@ -9139,6 +9163,28 @@ void MenuCommon::Init(HWND InHwnd, bool isUWP)
+@@ -9139,6 +9167,42 @@ void MenuCommon::Init(HWND InHwnd, bool isUWP)
          }
      }
  
@@ -407,10 +408,24 @@ index 669450ab..26523776 100644
 +        result.nrKnown = true; result.nrRunning = DlssNr::IsRunning();
 +        result.nrGpuMs = DlssNr::LastGpuTime().value_or(-1);
 +        if(nr.valid && nr.renderedFps > 0) result.gameFps = nr.renderedFps;
++        // Game-native DLSS-G never populates currentFG. Its hooks already
++        // retain the real Streamline result before compatibility reporting.
++        // Read one coherent, recent sample; the requested ratio is not evidence.
++        {
++            std::lock_guard lock(ForgeCompanion::guard);
++            const auto age = GetTickCount() - static_cast<DWORD>(ForgeCompanion::stateTick);
++            const auto count = ForgeCompanion::nativePresented;
++            if(ForgeCompanion::stateSamples > 0 && age <= 1500 && ForgeCompanion::nativeStatus == 0
++               && count > 0 && count <= 8) {
++                result.fgKnown = true; result.fgRunning = count > 1;
++                result.measuredRatio = count;
++                if(result.gameFps > 0) { result.displayedFps = result.gameFps*count; result.framesKnown = true; }
++            }
++        }
 +        const auto feature = State::Instance().currentFG;
 +        // Viewport 0 belongs to OptiScaler's own DLSS-G feature. Never query a
 +        // guessed viewport for native game FG or present a requested ratio as measured.
-+        if(feature && std::strcmp(feature->Name(),"DLSSG") == 0) {
++        if(!result.framesKnown && feature && std::strcmp(feature->Name(),"DLSSG") == 0) {
 +            result.fgKnown = true; result.fgRunning = feature->IsActive() && !feature->IsPaused();
 +            const auto get = StreamlineProxy::DLSSGGetState();
 +            sl::DLSSGState state{};
@@ -425,7 +440,7 @@ index 669450ab..26523776 100644
      if (!Config::Instance()->OverlayMenu.value_or_default())
      {
          _hdrTonemapApplied = false;
-@@ -9181,6 +9207,7 @@ void MenuCommon::Shutdown()
+@@ -9181,6 +9245,7 @@ void MenuCommon::Shutdown()
      else
          ImGui_ImplUwp_Shutdown();
  

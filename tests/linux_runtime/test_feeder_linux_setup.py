@@ -14,6 +14,7 @@ import stack_fixture as fx
 import feeder_provider as feeder
 import proton_prefix
 import transactions as t
+import cross_os
 
 
 class FakeEngine:
@@ -65,7 +66,7 @@ class FeederLinuxSetupTest(unittest.TestCase):
         return feeder._prepare({}, [self.row], 'nr-only', operation, {}, self.e)
 
     def game_files(self):
-        return {p.name: p.read_bytes() for p in self.game.iterdir()}
+        return {p.name: p.read_bytes() for p in self.game.iterdir() if p.name != cross_os.MARKER}
 
     def test_adapt_adds_only_the_dxgi_override_and_remove_puts_the_prefix_back(self):
         review = self.prepare('install')
@@ -77,12 +78,15 @@ class FeederLinuxSetupTest(unittest.TestCase):
         self.assertEqual(proton_prefix.read_overrides((self.prefix / 'user.reg').read_text())['dxgi'], 'native,builtin')
         self.assertEqual(self.game_files(), self.files, 'nothing in the game folder changes')
         self.assertTrue(feeder.linux_ready(self.e, self.row))
+        self.assertEqual(cross_os.read(self.game)['installed_oses'], ['windows','linux'])
+        self.assertEqual(cross_os.read(self.game)['provider']['id'], 'feeder')
         review = self.prepare('uninstall')
         self.assertIn('Remove Linux Setup', review['rows'][0]['summary'])
         feeder.execute(review)
         self.assertEqual((self.prefix / 'user.reg').read_text(), self.registry)
         self.assertFalse(feeder.linux_ready(self.e, self.row))
         self.assertEqual(self.game_files(), self.files)
+        self.assertEqual(cross_os.read(self.game)['installed_oses'], ['windows'])
 
     def test_remove_without_a_linux_setup_points_to_windows(self):
         review = self.prepare('uninstall')
@@ -113,6 +117,7 @@ class FeederLinuxSetupTest(unittest.TestCase):
             feeder.execute(review)
         self.assertEqual((self.prefix / 'user.reg').read_text(), self.registry)
         self.assertFalse(feeder.linux_ready(self.e, self.row))
+        self.assertFalse((self.game/cross_os.MARKER).exists(), 'failed Linux setup published history')
 
     def test_windows_keeps_its_own_route(self):
         self.e.DESKTOP_PLATFORM = 'windows'

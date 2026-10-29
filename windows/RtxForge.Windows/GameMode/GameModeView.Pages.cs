@@ -390,6 +390,7 @@ public sealed partial class GameModeView
                 new("App and updates", null,
                 [
                     ui.RowButton("Check for updates", null, () => _ = CheckForUpdatesAsync(), description: $"rtxForge {MainWindow.AppVersion} · download, verify and install the newest build.", glyph: ""),
+                    ui.RowButton("Prepare support report", null, () => ChooseSupportReportGames(), description: "Select games, scan current logs and review a redacted ZIP before saving.", glyph: ""),
                 ]),
             ],
         };

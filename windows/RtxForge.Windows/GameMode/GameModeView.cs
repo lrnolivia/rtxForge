@@ -689,7 +689,7 @@ public sealed partial class GameModeView : UserControl
         if (row.Children.Count > 0) panel.Children.Add(row);
         var dialog = new Border
         {
-            Background = t.Surface(t.Panel), CornerRadius = new CornerRadius(t.Px(20)),
+            Background = t.DialogSurface(), CornerRadius = new CornerRadius(t.Px(20)),
             Padding = new Thickness(t.Px(t.Compact ? 24 : 40)), Width = Math.Min(t.Px(width), Math.Max(320, ActualWidth - t.Px(96))),
             MaxHeight = Math.Max(240, ActualHeight - footer.ActualHeight - t.Px(96)),
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,

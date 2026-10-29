@@ -71,6 +71,7 @@ $copy = @(
     @{ From = 'providers\skynizz-bridge\source.json' }
     @{ From = 'providers\skynizz-bridge\placement-candidate.json' }
     @{ From = 'providers\skynizz-bridge\panel-candidate.json' }
+    @{ From = 'providers\skynizz-bridge\inzoi-overlay-candidate.json' }
     @{ From = 'provider.json' }
     @{ From = 'VERSION' }
     @{ From = 'windows\engine-host'; Filter = '*.py' }

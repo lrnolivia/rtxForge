@@ -2,6 +2,7 @@ using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using RtxForge.Windows.Controls;
 using RtxForge.Windows.Models;
 using RtxForge.Windows.Services;
 using RtxForge.Windows.ViewModels;
@@ -269,6 +270,17 @@ public sealed partial class GameModeView
             : ui.Text(game.Name, 0.8, t.Muted, FontWeights.SemiBold, wrap: true).With(x => { x.HorizontalAlignment = HorizontalAlignment.Center; x.VerticalAlignment = VerticalAlignment.Center; x.TextAlignment = TextAlignment.Center; x.Margin = new Thickness(t.Px(12)); });
         var overlay = new Grid();
         overlay.Children.Add(art);
+        if (game.InstalledOses.Count > 0)
+        {
+            overlay.Children.Add(new Border
+            {
+                Height = t.Px(22), Width = t.Px(game.InstalledOses.Count > 1 ? 43 : 22),
+                HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(t.Px(8)), Background = GmTheme.B(Microsoft.UI.Colors.Black, .35),
+                BorderBrush = GmTheme.B(Microsoft.UI.Colors.White, .22), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(t.Px(4)),
+                Child = new OsMarks { Oses = game.InstalledOses, MarkSize = t.Px(12), Spacing = t.Px(7), HorizontalAlignment = HorizontalAlignment.Center, Foreground = GmTheme.B(Microsoft.UI.Colors.White) },
+            });
+        }
         var check = SelectionCheck(game);
         if (check is not null) overlay.Children.Add(check);
 
@@ -453,6 +465,8 @@ public sealed partial class GameModeView
         else { dot.Stroke = GmTheme.B(t.Muted); dot.StrokeThickness = 1.5; }
         state.Children.Add(dot);
         state.Children.Add(ui.Text(game.Blocked ? game.BlockedStatus : game.Installed ? "Installed" : game.UsesFeeder ? "Available · Feeder NR" : "Available", 0.85, t.Muted));
+        if (game.InstalledOses.Count > 0)
+            state.Children.Add(new OsMarks { Oses = game.InstalledOses, MarkSize = t.Em(.58), Foreground = GmTheme.B(t.Muted) });
         Grid.SetColumn(state, 3);
         grid.Children.Add(state);
 

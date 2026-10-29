@@ -40,9 +40,26 @@ class AppRoutes(unittest.TestCase):
         self.assertIn('Enabled=0',(self.fixture.game/'NativeMods/fgvk.ini').read_text())
         rows=app.decorate([dict(self.row)],{})
         self.assertEqual(rows[0]['runtime_provider'],'vulkan-native');self.assertEqual(rows[0]['graphics_apis'],['Vulkan'])
+        import cross_os
+        self.assertIn(cross_os.THIS_OS,rows[0]['installed_oses'])
         repair=self.prepare('repair');self.assertFalse(repair['blocked']);app.execute(repair)
         restore=self.prepare('uninstall');self.assertFalse(restore['blocked']);app.execute(restore)
         self.assertEqual(before,self.fixture.files())
+
+    def test_vulkan_badges_preserve_both_operating_systems(self):
+        import cross_os
+        app.execute(self.prepare())
+        with patch.object(cross_os,'THIS_OS','windows'):app.write_record(self.fixture.game)
+        with patch.object(cross_os,'THIS_OS','linux'):app.write_record(self.fixture.game)
+        with patch.object(cross_os,'THIS_OS','windows'):
+            row=app.decorate([dict(self.row,installed_oses=[])],{})[0]
+        self.assertEqual(row['installed_oses'],['windows','linux'])
+        self.assertEqual(row['installed_on'],'linux')
+        # Older local installations may predate the portable marker.
+        (self.fixture.game/cross_os.MARKER).unlink()
+        with patch.object(cross_os,'THIS_OS','windows'):
+            row=app.decorate([dict(self.row,installed_on=None,installed_oses=[])],{})[0]
+        self.assertEqual(row['installed_oses'],['windows'])
 
     def test_automatic_route_known_profile_and_model_refusals(self):
         # On by default: no opt-in, and a profiled game is routed here whatever DLSS package is chosen.

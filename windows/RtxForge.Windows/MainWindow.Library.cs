@@ -8,6 +8,25 @@ namespace RtxForge.Windows;
 
 public sealed partial class MainWindow
 {
+    public async Task SelectGameExecutableAsync(Game game, bool detected = false)
+    {
+        if (Busy || Service.IsPreview) return;
+        try
+        {
+            var path = detected ? null : await PickFileAsync(".exe");
+            if (!detected && path is null) return;
+            var relative = await Service.ValidateExecutableAsync(game, path);
+            if (detected) Settings.GameExecutables.Remove(game.Id);
+            else Settings.GameExecutables[game.Id] = relative;
+            SaveSettings();
+            ShowToast("Rescanning support for " + game.Name + "…");
+            await ScanAsync();
+            ShowToast(detected ? "Using the detected game EXE." : "Game EXE selected. Support has been rescanned.");
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or System.Runtime.InteropServices.COMException)
+        { ShowToast("Could not select that EXE: " + error.Message); }
+    }
+
     /// <summary>Saves this game's own package (null follows the library package) and refreshes its verdict.</summary>
     public async Task SelectGamePackageAsync(Game game, string? package)
     {

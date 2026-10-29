@@ -332,15 +332,16 @@ def modal_key(name):
  c=app.window.couch;return c.find_key(c.modals[-1]['dialog'],name) if c.modals else None
 def report_entry_points():
  # Bug Report sits in the header and in Overview's Testing group; Notes is notes only.
- w=app.window;c=w.couch;details()
- assert key('hero-report') and key('overview-report') and key('choice-test') and key('overview-test')
- assert 'Testing' in labels(c.body)
- c.open_section('Notes');assert key('notes-save') and not key('choice-test') and not key('overview-test')
+ # The outgoing scene stays mapped while it slides away: look in the current one.
+ w=app.window;c=w.couch;details();here=lambda name:c.find_key(c.body.current,name)
+ assert here('hero-report') and here('overview-report') and here('choice-test') and here('overview-test')
+ assert 'Testing' in labels(c.body.current)
+ c.open_section('Notes');assert here('notes-save') and not here('choice-test') and not here('overview-test')
  c.open_section('Overview')
 def report_flow():
  # Pick → draft → answer → redacted preview; preview mode never saves.
- w=app.window;c=w.couch;game=c.details_game
- key('hero-report').emit('clicked');assert modal_key('report-continue') and modal_key('report-game-0')
+ w=app.window;c=w.couch
+ c.find_key(c.body.current,'hero-report').emit('clicked');assert modal_key('report-continue') and modal_key('report-game-0')
  modal_key('report-continue').emit('clicked')
  assert pump_until(lambda:modal_key('report-preview') is not None),labels(c.modals[-1]['dialog']) if c.modals else 'no modal'
  view=modal_key('report-0-observations');assert isinstance(view,Gtk.TextView)
@@ -355,8 +356,8 @@ def report_flow():
 def report_close():
  c=app.window.couch;c.close_all_modals();assert not c.modals
 def report_settings():
- settings('About');assert key('settings-report')
- key('settings-report').emit('clicked');assert modal_key('report-continue') and modal_key('report-logs')
+ c=app.window.couch;settings('About');row=c.find_key(c.body.current,'settings-report');assert row
+ row.emit('clicked');assert modal_key('report-continue') and modal_key('report-logs')
  app.window.couch.close_modal();assert not app.window.couch.modals
 def size(width,height):
  app.window.set_default_size(width,height);app.window.couch.resize(width,height)

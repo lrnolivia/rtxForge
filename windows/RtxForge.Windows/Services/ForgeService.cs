@@ -69,6 +69,9 @@ public interface IForgeService
     Task<EngineReview> PreviewReportAsync(IReadOnlyList<string> ids, IReadOnlyDictionary<string, Dictionary<string, string>> edits,
         bool logs, bool notes, string documents);
     Task<BetaReportLinks> ReportLinksAsync(IReadOnlyList<string> ids, string? issue, string? archive);
+    // One report sent through the loew.fi report service, which files the GitHub issue; logs stay private.
+    Task<ReportOutline> OutlineReportAsync(string id, IReadOnlyDictionary<string, string> edits, bool logs);
+    Task<ReportSent> SendReportAsync(string id, IReadOnlyDictionary<string, string> edits, bool logs, string documents);
     // Compatibility (compat_list): skip a capability check, and share a result as a prefilled issue.
     Task SetTryAnywayAsync(Game game, bool on);
     Task<CompatShare> CompatShareAsync(Game game, string package, bool notes);
@@ -291,6 +294,8 @@ public sealed class PreviewForgeService : IForgeService
     public Task<EngineReview> PreviewReportAsync(IReadOnlyList<string> ids, IReadOnlyDictionary<string, Dictionary<string, string>> edits,
         bool logs, bool notes, string documents) => Disabled<EngineReview>("Bug reports");
     public Task<BetaReportLinks> ReportLinksAsync(IReadOnlyList<string> ids, string? issue, string? archive) => Disabled<BetaReportLinks>("Bug reports");
+    public Task<ReportOutline> OutlineReportAsync(string id, IReadOnlyDictionary<string, string> edits, bool logs) => Disabled<ReportOutline>("Bug reports");
+    public Task<ReportSent> SendReportAsync(string id, IReadOnlyDictionary<string, string> edits, bool logs, string documents) => Disabled<ReportSent>("Bug reports");
     public Task SetTryAnywayAsync(Game game, bool on) => Disabled("Try anyway");
     public Task<CompatShare> CompatShareAsync(Game game, string package, bool notes) => Disabled<CompatShare>("Sharing results");
 

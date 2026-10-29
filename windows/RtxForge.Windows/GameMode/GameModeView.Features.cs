@@ -352,133 +352,157 @@ public sealed partial class GameModeView
         catch (InvalidOperationException error) { line.Text = error.Message; }
     }
 
-    // ---------- Details › Tools ----------
+    // ---------- Bug Report (the desktop's report, with controller-sized controls) ----------
 
+    static readonly string[] ResultChoices = ["Worked", "Didn't work", "Didn't test"];
+
+    /// <summary>A report is about one game; with several to choose from, ask which.</summary>
     void ChooseSupportReportGames(IReadOnlyList<Game>? games = null)
     {
         games ??= shell.Games;
-        var included = new HashSet<Game>(games);
-        var content = new StackPanel { Spacing = t.Px(12) };
-        content.Children.Add(ui.P("Choose one, a few or all games for a bug report. You review everything before it's saved. Nothing is uploaded."));
+        if (games.Count == 1) { _ = ReportGameAsync(games[0]); return; }
         var rows = new StackPanel { Spacing = t.Px(8) };
-        var choices = new List<(Game Game, Button Button)>();
-        bool logs = false, notes = false;
-        var review = ui.Button("Prepare report", () =>
-        {
-            var selected = games.Where(included.Contains).ToList();
-            CloseModal();
-            _ = EditBetaReportsAsync(selected, logs, notes);
-        }, GmKind.Primary, .9, enabled: games.Count > 0);
         foreach (var game in games)
-        {
-            Button? button = null;
-            button = ui.Button(game.Name + " · Included", () =>
-            {
-                if (!included.Add(game)) included.Remove(game);
-                button!.Content = game.Name + (included.Contains(game) ? " · Included" : " · Excluded");
-                review.IsEnabled = included.Count > 0;
-            });
-            choices.Add((game, button)); rows.Children.Add(button);
-        }
-        void Select(bool all)
-        {
-            included.Clear(); if (all) included.UnionWith(games);
-            foreach (var (game, button) in choices)
-                button.Content = game.Name + (all ? " · Included" : " · Excluded");
-            review.IsEnabled = included.Count > 0;
-        }
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12) };
-        actions.Children.Add(ui.Button("Select all", () => Select(true), GmKind.Card, .85));
-        actions.Children.Add(ui.Button("Clear selection", () => Select(false), GmKind.Card, .85));
-        content.Children.Add(actions);
-        content.Children.Add(new ScrollViewer { Content = rows, MaxHeight = t.Px(t.Compact ? 220 : 360) }.With(s => { s.IsTabStop = true; ui.Focusable(s); }));
-        Button? logsButton = null, notesButton = null;
-        logsButton = ui.Button("Include logs: Off", () => { logs = !logs; logsButton!.Content = "Include logs: " + (logs ? "On" : "Off"); }, GmKind.Card, .85);
-        notesButton = ui.Button("Include notes: Off", () => { notes = !notes; notesButton!.Content = "Include notes: " + (notes ? "On" : "Off"); }, GmKind.Card, .85);
-        content.Children.Add(logsButton); content.Children.Add(notesButton);
-        var close = ui.Button("Cancel", CloseModal, GmKind.Card, .9);
-        ShowModal("Bug Report", content, [review, close], CloseModal, 1100, close);
+            rows.Children.Add(ui.Button(game.Name, () => { CloseModal(); _ = ReportGameAsync(game); }));
+        var content = new StackPanel { Spacing = t.Px(12) };
+        content.Children.Add(ui.P("Which game is it about?"));
+        content.Children.Add(new ScrollViewer { Content = rows, MaxHeight = t.Px(t.Compact ? 320 : 520) }.With(s => { s.IsTabStop = true; ui.Focusable(s); }));
+        ShowModal("Bug Report", content, [ui.Button("Cancel", CloseModal, GmKind.Card, .9)], CloseModal, 1000);
     }
 
-    /// <summary>The shared beta report (scripts/beta_report.py) with controller-sized fields: choices cycle, text uses the on-screen keyboard.</summary>
-    async Task EditBetaReportsAsync(IReadOnlyList<Game> selected, bool logs, bool notes)
+    /// <summary>
+    /// One game: "What happened?" first, NR and MFG in three words each, logs on, and Send.
+    /// What rtxForge detected is folded under "Details we'll include". Choices change with A or
+    /// Left/Right; text uses the on-screen keyboard. A copy is saved on this PC either way.
+    /// </summary>
+    async Task ReportGameAsync(Game game)
     {
         if (shell.Service.IsPreview) { Toast("Bug reports are disabled in preview mode."); return; }
         BetaReportDraft draft;
-        try { draft = await shell.Service.DraftReportsAsync(selected, MainWindow.InstallFormat(), ""); }
+        try { draft = await shell.Service.DraftReportsAsync([game], MainWindow.InstallFormat(), ""); }
         catch (InvalidOperationException error) { ShowDone(false, "Bug Report", error.Message); return; }
-        var ids = draft.Reports.Select(r => r.Id).ToList();
-        var edits = draft.Reports.ToDictionary(r => r.Id, _ => new Dictionary<string, string>());
-        var values = draft.Reports.ToDictionary(r => r.Id, r => r.Fields.ToDictionary(f => f.Key, f => f.Value));
-        Button? preview = null;
-        void Refresh()
+        var report = draft.Reports[0];
+        var values = report.Fields.ToDictionary(p => p.Key, p => p.Value);
+        var edits = new Dictionary<string, string>();
+        void Set(string key, string value) { values[key] = value; edits[key] = value; }
+        var logs = true;
+        Button? send = null;
+        void Refresh() { if (send is not null) send.IsEnabled = !string.IsNullOrWhiteSpace(values.GetValueOrDefault("observations")) && !string.IsNullOrWhiteSpace(values.GetValueOrDefault("platform")); }
+
+        var content = new StackPanel { Spacing = t.Px(16) };
+        content.Children.Add(ui.P("Goes to rtxForge's issues on GitHub. What you write and the details below are public; logs stay private.", 0.8));
+        var observations = draft.Fields.First(f => f.Id == "observations");
+        var what = new TextBox { Header = observations.Label, Text = values.GetValueOrDefault("observations") ?? "", AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap, MinHeight = t.Px(140), MaxLength = observations.Max,
+            PlaceholderText = "What you did, what you expected, and what you saw." };
+        what.TextChanged += (_, _) => { Set("observations", what.Text); Refresh(); };
+        ui.Focusable(what);
+        content.Children.Add(what);
+
+        Button Cycle(string label, Func<string> caption, Action step)
         {
-            if (preview is null) return;
-            preview.IsEnabled = draft.Reports.All(r => draft.Fields.All(f => !f.Required || !string.IsNullOrWhiteSpace(values[r.Id].GetValueOrDefault(f.Id))));
+            Button? button = null;
+            button = ui.Button(label + ": " + caption(), () => { step(); button!.Content = label + ": " + caption(); Refresh(); }, GmKind.Card, .85);
+            return button;
         }
-        var content = new StackPanel { Spacing = t.Px(12) };
-        content.Children.Add(ui.P("rtxForge filled in what it could check. Change any answer, then say what you saw in game. Installed files don't show whether NR or MFG worked.", 0.9));
-        foreach (var report in draft.Reports)
+        foreach (var (key, label) in new[] { ("nr-result", "NR"), ("mfg-result", "MFG") })
         {
-            content.Children.Add(ui.Text(report.Name, 1.0, weight: FontWeights.SemiBold, wrap: true));
-            foreach (var field in draft.Fields)
+            var original = values.GetValueOrDefault(key) ?? "";
+            var index = original switch { "Working in-game" => 0, "Not working in-game" => 1, _ => 2 };
+            content.Children.Add(Cycle(label, () => ResultChoices[index], () =>
             {
-                var source = report.Sources.GetValueOrDefault(field.Id) ?? "";
-                if (field.Choices.Count > 0)
+                index = (index + 1) % ResultChoices.Length;
+                Set(key, index switch
                 {
-                    var options = field.Choices.ToList();
-                    string Caption() => field.Label + ": " + (values[report.Id].GetValueOrDefault(field.Id) is { Length: > 0 } v ? v : "Choose");
-                    Button? cycle = null;
-                    cycle = ui.Button(Caption(), () =>
-                    {
-                        var current = options.IndexOf(values[report.Id].GetValueOrDefault(field.Id) ?? "");
-                        var next = options[(current + 1) % options.Count];
-                        values[report.Id][field.Id] = next; edits[report.Id][field.Id] = next;
-                        cycle!.Content = Caption(); Refresh();
-                    }, GmKind.Card, .85);
-                    content.Children.Add(cycle);
-                }
-                else
-                {
-                    var multi = field.Id == "observations";
-                    var box = new TextBox { Header = field.Label + (field.Required ? " (required)" : ""), Text = values[report.Id].GetValueOrDefault(field.Id) ?? "",
-                        AcceptsReturn = multi, TextWrapping = multi ? TextWrapping.Wrap : TextWrapping.NoWrap, MinHeight = multi ? t.Px(120) : 0,
-                        MaxLength = field.Max > 0 ? field.Max : 0 };
-                    box.TextChanged += (_, _) => { values[report.Id][field.Id] = box.Text; edits[report.Id][field.Id] = box.Text; Refresh(); };
-                    content.Children.Add(box);
-                }
-                if (source.Length > 0) content.Children.Add(ui.P(source, 0.7));
+                    0 => "Working in-game",
+                    1 => "Not working in-game",
+                    _ => original is "Working in-game" or "Not working in-game" or "" ? "Installed, not tested" : original,
+                });
+            }));
+        }
+        content.Children.Add(Cycle("Include logs (private)", () => logs ? "On" : "Off", () => logs = !logs));
+
+        var details = new StackPanel { Spacing = t.Px(12), Visibility = Visibility.Collapsed };
+        foreach (var field in draft.Fields.Where(f => f.Id is not ("observations" or "nr-result" or "mfg-result")))
+        {
+            if (field.Choices.Count > 0)
+            {
+                var options = field.Choices.ToList();
+                details.Children.Add(Cycle(field.Label, () => values.GetValueOrDefault(field.Id) is { Length: > 0 } v ? v : "Choose", () =>
+                    Set(field.Id, options[(options.IndexOf(values.GetValueOrDefault(field.Id) ?? "") + 1) % options.Count])));
+            }
+            else
+            {
+                var box = new TextBox { Header = field.Label, Text = values.GetValueOrDefault(field.Id) ?? "", MaxLength = field.Max > 0 ? field.Max : 0 };
+                box.TextChanged += (_, _) => { Set(field.Id, box.Text); Refresh(); };
+                ui.Focusable(box);
+                details.Children.Add(box);
             }
         }
-        var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-        preview = ui.Button("Preview report", async () =>
+        string Summary() => string.Join(" · ", new[] { "platform", "gpu", "feature-package" }
+            .Select(k => values.GetValueOrDefault(k)).Where(v => !string.IsNullOrWhiteSpace(v)));
+        Button? fold = null;
+        fold = ui.Button("Details we'll include · " + Summary(), () =>
         {
-            CloseModal();
-            var result = await RunReviewAsync("Review Bug Report", () => shell.Service.PreviewReportAsync(ids, edits, logs, notes, documents));
-            if (result?.Path is { } path && result.Errors.Count == 0) await ShowSavedBetaReportAsync(ids, path);
-        }, GmKind.Primary, .9);
+            details.Visibility = details.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+        }, GmKind.Card, .8);
+        content.Children.Add(fold);
+        content.Children.Add(details);
+        content.Children.Add(ui.P("Text entry uses the Windows touch keyboard or Steam's keyboard.", 0.75));
+
+        var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        send = ui.Button("Send Report", () => _ = SendGameReportAsync(report.Id, edits, logs, documents), GmKind.Primary, .9);
+        var outline = ui.Button("See what's sent", () => _ = ShowReportOutlineAsync(report.Id, edits, logs), GmKind.Card, .9);
         Refresh();
-        var cancel = ui.Button("Cancel", CloseModal, GmKind.Card, .9);
-        var scroll = new ScrollViewer { Content = content, MaxHeight = t.Px(t.Compact ? 420 : 640) }.With(s => { s.IsTabStop = true; ui.Focusable(s); });
-        ShowModal("Bug Report", scroll, [preview, cancel], CloseModal, 1200, preview);
+        ShowModal("Report a problem · " + report.Name, content, [send, outline, ui.Button("Cancel", CloseModal, GmKind.Card, .9)], CloseModal, 1200, what);
     }
 
-    async Task ShowSavedBetaReportAsync(IReadOnlyList<string> ids, string path)
+    async Task SendGameReportAsync(string id, IReadOnlyDictionary<string, string> edits, bool logs, string documents)
     {
-        BetaReportLinks links;
-        try { links = await shell.Service.ReportLinksAsync(ids, null, path); }
-        catch (InvalidOperationException error) { ShowDone(false, "Bug report saved", path + "\n" + error.Message); return; }
+        ShowModal("Sending your report…", ui.P(logs ? "Reading and redacting logs, then sending." : "Sending."), [], () => { }, 900);
+        ReportSent sent;
+        try { sent = await shell.Service.SendReportAsync(id, edits, logs, documents); }
+        catch (InvalidOperationException error) { CloseModal(); ShowDone(false, "Bug Report", error.Message); return; }
+        CloseModal();
         var content = new StackPanel { Spacing = t.Px(12) };
-        content.Children.Add(ui.P("Saved " + path + ". Open a prefilled form and attach the ZIP there before you submit. Attaching uploads it, and files on this repository are public.", 0.9));
-        foreach (var link in links.Links)
-            content.Children.Add(ui.Button("Open form · " + link.Name, () =>
-            {
-                if (!link.Complete) shell.CopyText(link.Text, "The report was too long for the link. The full text is copied: paste it into the form.");
-                MainWindow.OpenUri(link.Url);
-            }, GmKind.Card, .85));
-        var folder = ui.Button("Open folder", () => System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{path}\""), GmKind.Card, .9);
-        var done = ui.Button("Done", CloseModal, GmKind.Primary, .9);
-        ShowModal("Bug report saved", content, [folder, done], CloseModal, 1100, done);
+        if (sent.Sent)
+        {
+            CloseModal();
+            content.Children.Add(ui.Text($"Thanks! It's issue #{sent.Number} on GitHub.", 1.0, wrap: true));
+            content.Children.Add(ui.P("A copy is saved in " + Path.GetDirectoryName(sent.Path) + ".", 0.75));
+            var done = ui.Button("Done", CloseModal, GmKind.Primary, .9);
+            ShowModal("Report sent", content, [ui.Button("View on GitHub", () => { if (sent.Url is { } url) MainWindow.OpenUri(url); }, GmKind.Card, .9), done], CloseModal, 1000, done);
+            return;
+        }
+        content.Children.Add(ui.Text(sent.Error ?? "The report service didn't answer.", 1.0, wrap: true));
+        content.Children.Add(ui.P("Saved on this PC: " + sent.Path, 0.75));
+        // Back to the form, answers kept, for another try.
+        var retry = ui.Button("Try again", CloseModal, GmKind.Primary, .9);
+        ShowModal("Couldn't send the report", content,
+            [retry, ui.Button("Open folder", () => System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{sent.Path}\""), GmKind.Card, .9)], CloseModal, 1000, retry);
+    }
+
+    async Task ShowReportOutlineAsync(string id, IReadOnlyDictionary<string, string> edits, bool logs)
+    {
+        ReportOutline outline;
+        try { outline = await shell.Service.OutlineReportAsync(id, edits, logs); }
+        catch (InvalidOperationException error) { ShowDone(false, "What's sent", error.Message); return; }
+        var mono = new FontFamily("Cascadia Mono, Consolas");
+        var content = new StackPanel { Spacing = t.Px(14) };
+        content.Children.Add(ui.Text("Public on GitHub", 1.0, weight: FontWeights.SemiBold));
+        content.Children.Add(ui.Text(outline.Title, .85, wrap: true));
+        content.Children.Add(new TextBlock { Text = outline.Text, FontFamily = mono, FontSize = t.Em(0.7), Foreground = GmTheme.B(t.Muted), TextWrapping = TextWrapping.Wrap });
+        content.Children.Add(ui.Text(logs ? "Private: only the rtxForge maintainers" : "Logs: not included", 1.0, weight: FontWeights.SemiBold));
+        foreach (var log in outline.Logs)
+        {
+            content.Children.Add(ui.Text($"{log.Name} · {log.Detail}", .8, wrap: true));
+            content.Children.Add(new TextBlock { Text = log.Text.Length > 8000 ? "…" + log.Text[^8000..] : log.Text, FontFamily = mono, FontSize = t.Em(0.65),
+                Foreground = GmTheme.B(t.Muted), TextWrapping = TextWrapping.Wrap });
+        }
+        foreach (var skipped in outline.Skipped) content.Children.Add(ui.P("Not included: " + skipped, 0.75));
+        var scroll = new ScrollViewer { Content = content, MaxHeight = t.Px(t.Compact ? 420 : 640) }.With(s => { s.IsTabStop = true; ui.Focusable(s); });
+        var back = ui.Button("Back", CloseModal, GmKind.Primary, .9);
+        ShowModal("What's sent", scroll, [back], CloseModal, 1200, back);
     }
 
     async Task DiagnoseAsync(Game g)

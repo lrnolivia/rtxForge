@@ -275,6 +275,15 @@ public sealed record BetaReportLink(string Name, string Url, bool Complete, stri
 /// <summary>Links for new reports, or the existing issue and the note to paste beside the attached ZIP.</summary>
 public sealed record BetaReportLinks(IReadOnlyList<BetaReportLink> Links, string? IssueUrl, int IssueNumber, string Comment);
 
+/// <summary>One private log as it will be sent: redacted, newest part only when long.</summary>
+public sealed record ReportLog(string Name, string Detail, string Text);
+
+/// <summary>"See what's sent": the public issue as it will read, and the logs that go privately.</summary>
+public sealed record ReportOutline(string Title, string Text, IReadOnlyList<ReportLog> Logs, IReadOnlyList<string> Skipped);
+
+/// <summary>The issue a report became, or why it couldn't be sent. A copy stays in Documents/rtxForge Reports either way.</summary>
+public sealed record ReportSent(bool Sent, int Number, string? Url, string Path, string? Error);
+
 public sealed record PackageCatalog(string Status, IReadOnlyList<PackageOption> Packages, IReadOnlyList<CommunitySource> Community, string? CustomName);
 
 /// <summary>Feeder NR files rtxForge keeps itself: the verified stack (null when none) and original backups.</summary>

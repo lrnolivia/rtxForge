@@ -257,6 +257,50 @@ def issue_url(report):
     return {'url':build(cut+' […]'),'complete':False}
 
 
+ENDPOINT='https://loew.fi/rtxforge/api/report'
+SEND_TIMEOUT=90
+
+
+def payload(report,archive=None):
+    """What the report service receives: the answers, rtxForge's own details and, if chosen, the redacted ZIP."""
+    import base64
+    fields={key:str(report['fields'].get(key) or '').strip() for key,_ in FIELDS}
+    fields={key:value if key in CHOICES else game_notes.redact(value) for key,value in fields.items()}
+    lines=[game_notes.redact(line)[:300] for line in details(report) if not line.startswith('Report ID: ')]
+    data={'schema':1,'report_id':report['id'],'fields':fields,'details':lines[:20]}
+    if archive is not None:
+        content=Path(archive).read_bytes()
+        t.need(len(content)<=ZIP_LIMIT,'The logs are larger than 20 MB. Send the report without logs.')
+        data['logs']=base64.b64encode(content).decode('ascii')
+    return data
+
+
+def submit(report,archive=None,endpoint=ENDPOINT,opener=None):
+    """Send one report to the rtxForge report service, which files it as a GitHub issue.
+
+    Only called when the user presses Send. The issue text is public; the ZIP is kept
+    private by the service. Returns the issue number and link.
+    """
+    import urllib.error,urllib.request
+    missing=problems(report);t.need(not missing,' '.join(missing))
+    request=urllib.request.Request(endpoint,data=json.dumps(payload(report,archive)).encode(),method='POST',
+                                   headers={'Content-Type':'application/json','User-Agent':'rtxForge'})
+    try:
+        with (opener or urllib.request.urlopen)(request,timeout=SEND_TIMEOUT) as response:
+            result=json.loads(response.read(64*1024))
+    except urllib.error.HTTPError as error:
+        try:message=json.loads(error.read(64*1024)).get('error')
+        except (ValueError,AttributeError,OSError):message=None
+        finally:error.close()
+        raise t.Refusal(str(message)[:300] if message else f'The report service answered {error.code}. Your report is saved on this computer.')
+    except (urllib.error.URLError,OSError,ValueError):
+        raise t.Refusal('Couldn’t reach the report service. Check your connection; your report is saved on this computer.')
+    number=result.get('number') if isinstance(result,dict) else None
+    url=str(result.get('url') or '') if isinstance(result,dict) else ''
+    t.need(isinstance(number,int) and number>0 and url==f'{ISSUES}/{number}','The report service gave an unexpected answer.')
+    return {'number':number,'url':url,'logs':bool(result.get('logs'))}
+
+
 def existing_issue(value):
     """A rtxForge issue to add logs to: '#123', '123' or its GitHub link. Anything else is refused."""
     value=str(value or '').strip()
@@ -429,3 +473,22 @@ def export(preview,destination):
     manifest=preview['manifest']
     return {'path':str(path),'name':path.name,'size':path.stat().st_size,
             'included':[item['path'] for item in manifest['files']],'skipped':manifest['skipped']}
+
+
+def outline(report,preview):
+    """'See exactly what's sent': the public issue text, and the private log files by name."""
+    entries={item['path']:item for item in preview['manifest']['files']}
+    logs=[{'name':name,'detail':f"{entries[name]['session']} · {entries[name]['modified'][:16].replace('T',' ')} UTC"
+           +(' · newest part only' if entries[name]['truncated'] else ''),'text':content}
+          for name,content in preview['files'].items() if name in entries]
+    return {'title':title(report),'text':text(report),'logs':logs,'skipped':preview['manifest']['skipped']}
+
+
+def deliver(report,preview,destination,with_logs,opener=None,endpoint=ENDPOINT):
+    """Keep a copy on this computer, then send. The ZIP goes along only when logs were chosen.
+
+    Returns where the copy is and the issue, or why it couldn't be sent: the copy stays either way."""
+    saved=export(preview,destination)
+    try:issue=submit(report,saved['path'] if with_logs else None,endpoint=endpoint,opener=opener)
+    except t.Refusal as error:return {'sent':False,'error':str(error),'path':saved['path']}
+    return {'sent':True,'path':saved['path'],**issue}

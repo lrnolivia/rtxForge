@@ -721,6 +721,40 @@ def _run_report(payload):
     return {"message": f"Saved {result['name']}", "path": result["path"]}
 
 
+def _report_one(params):
+    """One draft with the user's answers applied and its redacted files, ready to show or send."""
+    import beta_report
+    report_id = params.get("id")
+    t.need(report_id in _report_drafts, "This report has expired. Prepare it again.")
+    entry = _report_drafts[report_id]
+    for key, value in (params.get("edits") or {}).items():
+        beta_report.correct(entry["report"], key, value)
+    report = entry["report"]
+    missing = beta_report.problems(report)
+    t.need(not missing, " ".join(missing))
+    logs = app_logs = None
+    if params.get("logs"):
+        ui.progress("Reading logs", game=report["name"], current=1, total=1)
+        logs = {report_id: beta_report.collect(entry["row"], game_notes.load(_config(), entry["row"]["game"]))}
+        app_logs = beta_report.collect_app([LOCAL / "engine.log", LOCAL / "crash.log"])
+    return report, beta_report.bundle([report], logs, None, app_logs)
+
+
+def report_outline(params):
+    """'See exactly what's sent': the public issue text and the private logs, as they will go."""
+    import beta_report
+    report, preview = _report_one(params)
+    return beta_report.outline(report, preview)
+
+
+def report_send(params):
+    """Send one report: a copy stays in Documents/rtxForge Reports whether or not it goes through."""
+    import beta_report
+    report, preview = _report_one(params)
+    ui.progress("Sending the report", game=report["name"], current=1, total=1)
+    return beta_report.deliver(report, preview, beta_report.folder(_config(), params.get("documents")), bool(params.get("logs")))
+
+
 def report_links(params):
     """After saving: the prefilled GitHub form per game, or the note for an issue that already exists."""
     import beta_report
@@ -940,6 +974,7 @@ METHODS = {
     "diagnose": diagnose, "dlss_inventory": dlss_inventory, "dlss_restore_review": dlss_restore_review,
     "notes_save": notes_save, "test_start": test_start, "test_finish": test_finish,
     "report_draft": report_draft, "report_preview": report_preview, "report_links": report_links,
+    "report_outline": report_outline, "report_send": report_send,
     "try_anyway": try_anyway, "compat_share": compat_share,
     "recoveries": recoveries, "recovery_review": recovery_review, "cleanup_review": cleanup_review,
     "extras_list": extras_list, "extra_review": extra_review, "extra_restore_review": extra_restore_review,

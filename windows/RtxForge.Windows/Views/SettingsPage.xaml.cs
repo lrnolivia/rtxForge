@@ -288,8 +288,8 @@ public sealed partial class SettingsPage : Page
         about.Add(Prefs.Row("Updates", "Download, verify, and install the newest rtxForge build.",
             Prefs.ActionButton("Check for updates", async (_, _) => await shell.CheckForUpdatesAsync()), ""));
 
-        about.Add(Prefs.Row("Report a bug", "Choose games, say what happened and review a redacted ZIP before anything is saved.",
-            Prefs.ActionButton("Bug Report", async (_, _) => await shell.ShowReportsAsync()), ""));
+        about.Add(Prefs.Row("Report a bug", "Pick the game, say what happened and send it. Logs go privately.",
+            Prefs.ActionButton("Bug Report", async (_, _) => await shell.PrepareBetaReportsAsync(shell.Games)), ""));
 
         // Linux organize_pages(): one page per section. Windows shows them as SelectorBar tabs.
         sections["Graphics"] = [installDefaults, existingFeatures];

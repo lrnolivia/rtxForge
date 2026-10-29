@@ -170,6 +170,23 @@ public sealed partial class EngineForgeService
         return new BetaReportLinks(links, S(r?["issue"], "url"), I(r?["issue"], "number"), S(r, "comment") ?? "");
     }
 
+    static JsonObject ReportEdits(IReadOnlyDictionary<string, string> edits) =>
+        new(edits.Select(f => KeyValuePair.Create(f.Key, (JsonNode?)f.Value)));
+
+    public async Task<ReportOutline> OutlineReportAsync(string id, IReadOnlyDictionary<string, string> edits, bool logs)
+    {
+        var r = await CallAsync("report_outline", new JsonObject { ["id"] = id, ["edits"] = ReportEdits(edits), ["logs"] = logs });
+        return new ReportOutline(S(r, "title") ?? "", S(r, "text") ?? "",
+            Objects(r?["logs"]).Select(o => new ReportLog(S(o, "name") ?? "", S(o, "detail") ?? "", S(o, "text") ?? "")).ToList(),
+            Objects(r?["skipped"]).Select(o => $"{S(o, "name")} · {S(o, "reason")}").ToList());
+    }
+
+    public async Task<ReportSent> SendReportAsync(string id, IReadOnlyDictionary<string, string> edits, bool logs, string documents)
+    {
+        var r = await CallAsync("report_send", new JsonObject { ["id"] = id, ["edits"] = ReportEdits(edits), ["logs"] = logs, ["documents"] = documents });
+        return new ReportSent(B(r, "sent"), I(r, "number"), S(r, "url"), S(r, "path") ?? "", S(r, "error"));
+    }
+
     public async Task SetTryAnywayAsync(Game game, bool on) =>
         Apply(game, await CallAsync("try_anyway", new { game = game.Id, on, reason = game.BlockedReason ?? "" }));
 

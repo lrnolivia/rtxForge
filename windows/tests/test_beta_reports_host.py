@@ -74,7 +74,26 @@ assert archive.name in existing['comment'],existing['comment']
 try:host.METHODS['report_links']({'ids':[report['id']],'issue':'https://example.com/lrnolivia/rtxForge/issues/42'})
 except Exception as error:assert 'github.com' in str(error),error
 else:raise AssertionError('an issue outside rtxForge was accepted')
-print('host beta report draft, validation, redacted game and app logs, frozen export and issue links passed')
+# Send: one report, a local copy first, the ZIP only with logs; the network call is stubbed.
+import beta_report
+sent=[]
+beta_report.submit=lambda report,archive=None,**_:(sent.append(archive),{'number':5,'url':'https://github.com/lrnolivia/rtxForge/issues/5','logs':archive is not None})[1]
+draft=host.METHODS['report_draft']({'rows':[row],'format':'Windows installer'})
+rid=draft['reports'][0]['id']
+try:host.METHODS['report_send']({'id':rid})
+except Exception as error:assert 'What happened?' in str(error),error
+else:raise AssertionError('an unanswered report was sent')
+answers={'observations':'MFG stays at 1x','mfg-result':'Not working in-game'}
+outline=host.METHODS['report_outline']({'id':rid,'edits':answers,'logs':True})
+assert outline['title'].startswith('[Beta report] Example Game') and '### What happened?' in outline['text'],outline['title']
+assert any(item['name'].endswith('logs/OptiScaler.log') for item in outline['logs']),[i['name'] for i in outline['logs']]
+assert 'private-value' not in ''.join(item['text'] for item in outline['logs'])
+done=host.METHODS['report_send']({'id':rid,'logs':True,'documents':str(documents)})
+assert done['sent'] and done['number']==5 and sent[-1]==done['path'] and Path(done['path']).parent==documents/'rtxForge Reports',done
+plain=host.METHODS['report_draft']({'rows':[row]})['reports'][0]['id']
+done=host.METHODS['report_send']({'id':plain,'edits':answers,'documents':str(documents)})
+assert done['sent'] and sent[-1] is None and Path(done['path']).is_file(),'without logs only the text is sent; the copy stays'
+print('host beta report draft, validation, redacted game and app logs, frozen export, issue links, outline and send passed')
 '''
 
 

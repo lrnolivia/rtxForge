@@ -1,10 +1,11 @@
-"""Game Mode bug reports: Windows Game Mode's flow over the shared scripts/beta_report.py.
+"""Game Mode bug reports: the desktop's report, with controller-sized controls.
 
-Choose games → answer the fields → review the redacted preview → save the ZIP →
-open the prefilled GitHub form. The desktop window drafts, bundles and exports
-(beta_report_drafts / beta_report_files / beta_report_export), so a report reads
-the same from either interface. Choices cycle with A or Left/Right; text uses
-Steam's on-screen keyboard. Nothing is uploaded.
+One game: "What happened?" first, NR and MFG in three words each, logs on, then
+Send. What rtxForge detected is folded under "Details we'll include". Choices
+change with A or Left/Right; text uses Steam's on-screen keyboard. The desktop
+window drafts and bundles (beta_report_drafts / beta_report_files), and
+beta_report.deliver keeps a copy on this computer before the loew.fi report
+service files the GitHub issue. Logs stay private.
 """
 from pathlib import Path
 
@@ -12,59 +13,42 @@ from gi.repository import Gio, GLib, Gtk
 
 import beta_report
 
+RESULTS = (('Working in-game', 'Worked'), ('Not working in-game', 'Didn’t work'), (None, 'Didn’t test'))
+
 
 class GameModeReports:
     def bug_report(self, games=None):
-        """Pick one, a few or all games, and whether logs and notes go in the ZIP."""
-        owner = self.owner
-        games = list(games if games is not None else owner.games)
+        """A report is about one game; with several to choose from, ask which."""
+        games = list(games if games is not None else self.owner.games)
         if not games:
             return
-        included = set(range(len(games)))
-        options = {'logs': False, 'notes': False}
-        rows = []
-        go = self.button('Continue', lambda: (self.close_modal(), self.draft_reports([g for i, g in enumerate(games) if i in included], **options)),
-                         'primary', key='report-continue')
-        def toggle(index, row):
-            included.symmetric_difference_update({index})
-            row.get_child()._value.set_text('Included' if index in included else 'Excluded')
-            go.set_sensitive(bool(included))
-        for index, game in enumerate(games):
-            row = self.row_button(game['name'], 'Included', None, key=f'report-game-{index}')
-            row.connect('clicked', lambda button, index=index: toggle(index, button))
-            rows.append(row)
-        def flip(name, row):
-            options[name] = not options[name]
-            row.get_child()._value.set_text('On' if options[name] else 'Off')
-        logs = self.row_button('Include logs', 'Off', None, description='Redacted, from each game’s latest test. You review them before saving.', key='report-logs')
-        logs.connect('clicked', lambda button: flip('logs', button))
-        notes = self.row_button('Include my notes', 'Off', None, key='report-notes')
-        notes.connect('clicked', lambda button: flip('notes', button))
+        if len(games) == 1:
+            self.draft_report(games[0])
+            return
+        rows = [self.row_button(game['name'], None, lambda game=game: (self.close_modal(), self.draft_report(game)), key=f'report-game-{index}')
+                for index, game in enumerate(games)]
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=self.theme.px(16))
-        content.append(self.label('Choose one, a few or all games for a bug report. You review everything before it’s saved. Nothing is uploaded.', 'gm-p', wrap=True))
+        content.append(self.label('Which game is it about?', 'gm-p'))
         content.append(self.group(rows))
-        content.append(self.group([logs, notes]))
-        self.show_modal('Bug Report', content, [self.button('Cancel', self.close_modal), go], self.close_modal, 1100, go)
+        self.show_modal('Bug Report', content, [self.button('Cancel', self.close_modal, key='report-cancel')], self.close_modal, 1000)
 
-    def draft_reports(self, games, logs=False, notes=False):
+    def draft_report(self, game):
         owner = self.owner
-        if not games:
-            return
         if owner.busy and owner.task_kind != 'art':
             self.toast('Wait for the current task to finish, then prepare the report.')
             return
-        self.report_working('Checking this computer and each game’s install record…')
-        owner.start('Preparing bug reports', lambda: owner.beta_report_drafts(games),
-                    lambda reports: self.edit_reports(games, reports, logs, notes))
+        self.report_working('Checking this computer and the game’s install record…')
+        owner.start('Preparing the bug report', lambda: owner.beta_report_drafts([game]),
+                    lambda reports: self.close_report_working() and self.edit_report(game, reports[0], {'logs': True}))
 
     def report_working(self, text):
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=self.theme.px(16))
-        spinner = Gtk.Spinner(spinning=True, halign=Gtk.Align.START)
-        content.append(spinner)
+        content.append(Gtk.Spinner(spinning=True, halign=Gtk.Align.START))
         content.append(self.label(text, 'gm-p', wrap=True))
         self._report_modal = self.show_modal('Bug Report', content, [], self.close_modal, 900)
 
     def close_report_working(self):
+        """True when the working screen was still open: the user didn't back out meanwhile."""
         modal = getattr(self, '_report_modal', None)
         self._report_modal = None
         if modal is not None and modal in self.modals:
@@ -72,138 +56,174 @@ class GameModeReports:
             return True
         return False
 
-    def edit_reports(self, games, reports, logs, notes):
-        """Every field for every game; the preview opens once each report has its required answers."""
-        if not self.close_report_working():
-            return
+    def edit_report(self, game, report, options):
         t = self.theme
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(16))
-        content.append(self.label('rtxForge filled in what it could check. Change any answer, then say what you saw in game. '
-                                  'Installed files don’t show whether NR or MFG worked.', 'gm-p', wrap=True))
-        preview = self.button('Preview report', lambda: self.preview_reports(games, reports, logs, notes), 'primary', key='report-preview')
-        def refresh():
-            preview.set_sensitive(all(not beta_report.problems(report) for report in reports))
-        for index, report in enumerate(reports):
-            content.append(self.label(report['name'] or games[index]['name'], 'gm-strong', wrap=True))
-            rows = []
-            for key, name in beta_report.FIELDS:
-                rows.append(self.report_field(index, report, key, name, refresh))
-            content.append(self.group(rows))
+        content.append(self.label('Goes to rtxForge’s issues on GitHub. What you write and the details below are public; logs stay private.', 'gm-p', wrap=True))
+        send = self.button('Send Report', lambda: self.send_report(game, report, options), 'primary', key='report-send')
+        def ready():
+            # Preview mode shows the whole flow but never sends.
+            send.set_sensitive(not beta_report.problems(report) and not self.owner.options.demo)
+        content.append(self.report_text(report, 'observations', 'What happened?', ready, height=140,
+                                        hint='What you did, what you expected, and what you saw. Include exact errors.'))
+        rows = []
+        for key, name in (('nr-result', 'NR'), ('mfg-result', 'MFG')):
+            rows.append(self.report_result(report, key, name))
+        logs = self.row_button('Include logs', 'On' if options['logs'] else 'Off', None,
+                               description='Sent privately to the rtxForge maintainers.', key='report-logs')
+        def flip(row):
+            options['logs'] = not options['logs']
+            row.get_child()._value.set_text('On' if options['logs'] else 'Off')
+        logs.connect('clicked', flip)
+        rows.append(logs)
+        content.append(self.group(rows))
+        details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(12), visible=False)
+        detail_rows = []
+        for key, name in beta_report.FIELDS:
+            if key in ('observations', 'nr-result', 'mfg-result'):
+                continue
+            if key in beta_report.CHOICES:
+                detail_rows.append(self.report_choice(report, key, name, ready))
+            else:
+                details.append(self.report_text(report, key, name, ready))
+        if detail_rows:
+            details.prepend(self.group(detail_rows))
+        summary = ' · '.join(v for v in (report['fields'].get(k) for k in ('platform', 'gpu', 'feature-package')) if v)
+        fold = self.row_button('Details we’ll include', None, lambda: details.set_visible(not details.get_visible()),
+                               description=summary or None, key='report-details')
+        content.append(self.group([fold]))
+        content.append(details)
         content.append(self.label("Controller text entry uses Steam's on-screen keyboard (Steam + X).", 'gm-p', wrap=True))
-        refresh()
-        self.show_modal('Bug Report', content, [self.button('Cancel', self.close_modal), preview], self.close_modal, 1200, preview)
+        outline = self.button('See what’s sent', lambda: self.report_outline(game, report, options), key='report-outline')
+        ready()
+        self.show_modal('Report a problem · ' + (report['name'] or game['name']), content,
+                        [self.button('Cancel', self.close_modal), outline, send], self.close_modal, 1200)
 
-    def report_field(self, index, report, key, name, changed):
+    def report_result(self, report, key, name):
+        """Worked / Didn't work / Didn't test. 'Didn't test' keeps what the install record said."""
+        original = report['fields'].get(key) or ''
+        def caption():
+            current = report['fields'].get(key) or ''
+            return next((text for value, text in RESULTS if value == current), 'Didn’t test')
+        row = self.row_button(name, caption(), None, key=f'report-{key}')
+        def step(delta):
+            index = next((i for i, (value, _) in enumerate(RESULTS) if value == report['fields'].get(key)), 2)
+            value = RESULTS[(index + delta) % len(RESULTS)][0]
+            if value is None:
+                value = original if original not in ('Working in-game', 'Not working in-game', '') else 'Installed, not tested'
+            beta_report.correct(report, key, value)
+            row.get_child()._value.set_text(caption())
+        row.connect('clicked', lambda *_: step(1))
+        row._gm_adjust = step
+        return row
+
+    def report_choice(self, report, key, name, changed):
+        choices = list(beta_report.CHOICES[key])
+        row = self.row_button(name, report['fields'].get(key) or 'Choose', None, key=f'report-{key}')
+        def step(delta):
+            current = report['fields'].get(key) or ''
+            picked = choices[((choices.index(current) if current in choices else -1) + delta) % len(choices)]
+            beta_report.correct(report, key, picked)
+            row.get_child()._value.set_text(picked)
+            changed()
+        row.connect('clicked', lambda *_: step(1))
+        row._gm_adjust = step
+        return row
+
+    def report_text(self, report, key, name, changed, height=44, hint=None):
         t = self.theme
-        source = beta_report.SOURCES.get(report['sources'].get(key), '')
-        value = report['fields'].get(key) or ''
-        if key in beta_report.CHOICES:
-            choices = list(beta_report.CHOICES[key])
-            row = self.row_button(name, value or 'Choose', None, description=source or None, key=f'report-{index}-{key}')
-            def step(delta):
-                current = report['fields'].get(key) or ''
-                picked = choices[((choices.index(current) if current in choices else -1) + delta) % len(choices)]
-                beta_report.correct(report, key, picked)
-                row.get_child()._value.set_text(picked)
-                changed()
-            row.connect('clicked', lambda *_: step(1))
-            row._gm_adjust = step
-            return row
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(8))
-        for side in ('start', 'end', 'top', 'bottom'):
-            getattr(box, 'set_margin_' + side)(t.px(20))
-        required = key in beta_report.REQUIRED
-        box.append(self.label(name + (' (required)' if required else ''), 'gm-strong'))
-        if key == 'observations':
-            box.append(self.label('What you did, what you expected, and what you saw. Include exact errors, or how you checked that a feature worked.', 'gm-p', wrap=True))
-        elif source:
-            box.append(self.label(source, 'gm-p', wrap=True))
-        view = Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR, accepts_tab=False, height_request=t.px(120 if key == 'observations' else 44))
+        box.append(self.label(name, 'gm-strong'))
+        if hint:
+            box.append(self.label(hint, 'gm-p', wrap=True))
+        view = Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR, accepts_tab=False, height_request=t.px(height))
         view.add_css_class('gm-notes')
-        view.get_buffer().set_text(value)
+        view.get_buffer().set_text(report['fields'].get(key) or '')
         view.update_property([Gtk.AccessibleProperty.LABEL], [name])
         def typed(buffer):
             beta_report.correct(report, key, buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), True))
             changed()
         view.get_buffer().connect('changed', typed)
-        self.key(view, f'report-{index}-{key}')
+        self.key(view, f'report-{key}')
         box.append(view)
         return box
 
-    def preview_reports(self, games, reports, logs, notes):
+    def report_outline(self, game, report, options):
+        """'See what's sent', from the same redacted files Send uses. Back returns to the form."""
         owner = self.owner
         if owner.busy:
-            self.toast('Wait for the current task to finish, then preview again.')
+            self.toast('Wait for the current task to finish, then try again.')
             return
-        self.close_modal()
-        self.report_working('Reading logs and preparing a redacted preview…' if logs else 'Preparing a redacted preview…')
-        owner.start('Preparing redacted preview', lambda: owner.beta_report_files(reports, games, logs, notes),
-                    lambda preview: self.review_reports(reports, preview))
+        include = options['logs']
+        def work():
+            preview = owner.beta_report_files([report], [game], include, False)
+            return preview if 'error' in preview else beta_report.outline(report, preview)
+        self.report_working('Reading logs and preparing what’s sent…' if include else 'Preparing what’s sent…')
+        owner.start('Preparing what’s sent', work, lambda outline: self.close_report_working() and self.show_report_outline(outline, include))
 
-    def review_reports(self, reports, preview):
-        """The exact redacted files: Save writes these bytes and reads nothing again."""
-        if not self.close_report_working():
-            return
-        owner = self.owner
-        if 'error' in preview:
-            self.report_message('Could not prepare the report', preview['error'])
+    def show_report_outline(self, outline, include):
+        if 'error' in outline:
+            self.report_message('Could not prepare the report', outline['error'])
             return
         t = self.theme
-        manifest = preview['manifest']
-        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(16))
-        count = len(manifest['files'])
-        content.append(self.label(f"{count} log{'s' if count != 1 else ''} included · {len(manifest['skipped'])} not included", 'gm-strong'))
-        content.append(self.label('Review the exact text below. Redaction is best effort: check for anything personal before you share it. '
-                                  'Logs show what ran, not what NR or MFG looked like.', 'gm-p', wrap=True))
-        for name, text in preview['files'].items():
-            entry = next((item for item in manifest['files'] if item['path'] == name), None)
-            content.append(self.label(name, 'gm-strong', wrap=True))
-            if entry:
-                content.append(self.label(f"{entry['session']} · {entry['modified'][:16].replace('T', ' ')} UTC" + (' · newest part only' if entry['truncated'] else ''), 'gm-p'))
-            view = Gtk.TextView(editable=False, monospace=True, wrap_mode=Gtk.WrapMode.WORD_CHAR, cursor_visible=False)
-            view.add_css_class('gm-notes')
-            view.get_buffer().set_text(text)
-            content.append(view)
-        for item in manifest['skipped']:
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(14))
+        content.append(self.label('Public on GitHub', 'gm-strong'))
+        content.append(self.label(outline['title'], 'gm-p', wrap=True))
+        content.append(self.report_view(outline['text']))
+        content.append(self.label('Private: only the rtxForge maintainers' if include else 'Logs: not included', 'gm-strong'))
+        for log in outline['logs']:
+            content.append(self.label(f"{log['name']} · {log['detail']}", 'gm-p', wrap=True))
+            content.append(self.report_view(log['text'] if len(log['text']) <= 8000 else '…' + log['text'][-8000:]))
+        for item in outline['skipped']:
             content.append(self.label(f"Not included: {item['name']} · {item['reason']}", 'gm-p', wrap=True))
-        documents = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOCUMENTS)
-        def save():
-            if owner.busy:
-                self.toast('Wait for the current task to finish, then save again.')
-                return
-            self.close_modal()
-            self.report_working('Saving…')
-            owner.start('Saving bug report', lambda: owner.beta_report_export(preview, documents), lambda result: self.saved_reports(reports, result))
-        save_button = self.button('Save Report', save, 'primary', enabled=not owner.options.demo, key='report-save')
-        self.show_modal('Review Bug Report', content, [self.button('Cancel', self.close_modal), save_button], self.close_modal, 1200, save_button)
+        back = self.button('Back', self.close_modal, 'primary', key='report-back')
+        self.show_modal('What’s sent', content, [back], self.close_modal, 1200, back)
 
-    def saved_reports(self, reports, result):
-        """Where the ZIP is, and a prefilled form per game to attach it to."""
-        if not self.close_report_working():
-            return
+    def report_view(self, text):
+        view = Gtk.TextView(editable=False, monospace=True, wrap_mode=Gtk.WrapMode.WORD_CHAR, cursor_visible=False)
+        view.add_css_class('gm-notes')
+        view.get_buffer().set_text(text)
+        return view
+
+    def send_report(self, game, report, options):
         owner = self.owner
-        if 'error' in result:
-            self.report_message('Could not save the report', result['error'])
+        if owner.busy:
+            self.toast('Wait for the current task to finish, then send again.')
             return
-        path = Path(result['path'])
+        if beta_report.problems(report) or owner.options.demo:
+            return
+        include = options['logs']
+        documents = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOCUMENTS)
+        def work():
+            preview = owner.beta_report_files([report], [game], include, False)
+            if 'error' in preview:
+                return {'sent': False, 'error': preview['error'], 'path': ''}
+            try:
+                return beta_report.deliver(report, preview, beta_report.folder(owner.service.config, documents), include)
+            except Exception as error:
+                return {'sent': False, 'error': str(error), 'path': ''}
+        self.report_working('Reading and redacting logs, then sending…' if include else 'Sending…')
+        owner.start('Sending the bug report', work, lambda result: self.close_report_working() and self.report_sent(result))
+
+    def report_sent(self, result):
+        """The issue number, or why it couldn't go. Try again returns to the form, answers kept."""
+        owner = self.owner
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=self.theme.px(16))
-        included = len(result['included'])
-        content.append(self.label(f"{result['name']} · {result['size'] / 1024 ** 2:.1f} MB · {included} log{'s' if included != 1 else ''} included", 'gm-p', wrap=True))
-        content.append(self.label('Open the prefilled form and attach the ZIP there before you submit. Attaching uploads it, and files on this repository are public.',
-                                  'gm-p', wrap=True))
-        rows = []
-        for index, report in enumerate(reports):
-            link = beta_report.issue_url(report)
-            def opened(report=report, link=link):
-                if not link['complete']:
-                    owner.copy_text(beta_report.text(report), 'The report was too long for the link. The full text is copied: paste it into the form.')
-                Gio.AppInfo.launch_default_for_uri(link['url'], None)
-            rows.append(self.row_button('Open form · ' + (report['fields'].get('game') or report['name']), None, opened, key=f'report-form-{index}'))
-        rows.append(self.row_button('Copy Path', str(path), lambda: owner.copy_text(str(path), 'Path copied'), key='report-copy-path'))
-        rows.append(self.row_button('Open Folder', None, lambda: owner.open_report_folder(path), key='report-folder'))
-        content.append(self.group(rows))
-        done = self.button('Done', self.close_modal, 'primary', key='report-done')
-        self.show_modal('Bug report saved', content, [done], self.close_modal, 1100, done)
+        if result.get('sent'):
+            self.close_modal()
+            content.append(self.label(f"Thanks! It’s issue #{result['number']} on GitHub.", 'gm-strong', wrap=True))
+            content.append(self.label(f"A copy is saved in {Path(result['path']).parent}.", 'gm-p', wrap=True))
+            done = self.button('Done', self.close_modal, 'primary', key='report-done')
+            view = self.button('View on GitHub', lambda: Gio.AppInfo.launch_default_for_uri(result['url'], None), key='report-view')
+            self.show_modal('Report sent', content, [view, done], self.close_modal, 1000, done)
+            return
+        content.append(self.label(result.get('error') or 'The report service didn’t answer.', 'gm-strong', wrap=True))
+        actions = []
+        if result.get('path'):
+            content.append(self.label('Saved on this computer: ' + result['path'], 'gm-p', wrap=True))
+            actions.append(self.button('Open Folder', lambda: owner.open_report_folder(Path(result['path'])), key='report-folder'))
+        retry = self.button('Try again', self.close_modal, 'primary', key='report-retry')
+        self.show_modal('Couldn’t send the report', content, [*actions, retry], self.close_modal, 1000, retry)
 
     def report_message(self, title, text):
         done = self.button('Close', self.close_modal, 'primary')

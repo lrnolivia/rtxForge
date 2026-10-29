@@ -321,34 +321,21 @@ public sealed partial class MainWindow
 
     public async Task ShowReportsAsync() => await ShowReportsAsync(null);
 
-    /// <summary>Compatibility and beta reports. issue: from an rtxforge://support/logs?issue=N link.</summary>
+    /// <summary>Compatibility and bug reports. issue: from an rtxforge://support/logs?issue=N link.</summary>
     public async Task ShowReportsAsync(int? issue)
     {
+        if (issue is not null) { await PrepareBetaReportsAsync(Games, issue); return; }
         var dialog = NewDialog();
         dialog.Title = "Compatibility & reports";
         var body = new StackPanel { Spacing = 10, MinWidth = 560 };
         var totals = Games.GroupBy(g => g.TestStatus).ToDictionary(g => g.Key, g => g.Count());
         body.Children.Add(Prefs.Label(string.Join(" · ", new[] { "Untested", "Working", "Problem", "Bench" }
             .Select(s => $"{totals.GetValueOrDefault(s)} {s.ToLowerInvariant()}")), "ForgeHeadingTextStyle"));
-        body.Children.Add(Prefs.Label(issue is { } number
-            ? $"Choose the games whose logs belong with issue #{number}. You review everything before it's saved; nothing is uploaded."
-            : "Choose one, a few or all games for a bug report. You review everything before it's saved; nothing is uploaded."));
-        var included = new HashSet<Game>(Games);
-        var selections = new List<CheckBox>();
-        var selectionActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        selectionActions.Children.Add(Prefs.ActionButton("Select all", (_, _) => { foreach (var box in selections) box.IsChecked = true; }));
-        selectionActions.Children.Add(Prefs.ActionButton("Clear selection", (_, _) => { foreach (var box in selections) box.IsChecked = false; }));
-        body.Children.Add(selectionActions);
         var list = new StackPanel { Spacing = 4 };
         Func<Task>? next = null;
         foreach (var game in Games)
         {
             var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            var include = new CheckBox { Content = "Include", IsChecked = true };
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(include, "Include " + game.Name + " in the bug report");
-            include.Checked += (_, _) => { included.Add(game); dialog.IsPrimaryButtonEnabled = !Service.IsPreview && included.Count > 0; };
-            include.Unchecked += (_, _) => { included.Remove(game); dialog.IsPrimaryButtonEnabled = !Service.IsPreview && included.Count > 0; };
-            selections.Add(include); actions.Children.Add(include);
             void Add(string text, Func<Task> run, bool enabled = true)
             {
                 var button = Prefs.ActionButton(text, (_, _) => { next = run; dialog.Hide(); });
@@ -359,21 +346,17 @@ public sealed partial class MainWindow
             else if (game.TryAnyway is not null) Add("Stop trying", () => TryAnywayAsync(game, false), !Busy);
             if (game.TestStatus is "Working" or "Problem") Add("Share", () => ShareResultAsync(game));
             Add("Diagnose", () => DiagnoseAsync(game), !game.Blocked);
+            Add("Bug Report", () => PrepareBetaReportsAsync([game]));
             list.Children.Add(Prefs.Row(game.Name, CompatDetail(game), actions));
         }
-        body.Children.Add(new ScrollViewer { Content = list, MaxHeight = 320 });
+        body.Children.Add(new ScrollViewer { Content = list, MaxHeight = 360 });
         dialog.Content = body;
-        dialog.PrimaryButtonText = "Bug Report";
-        dialog.IsPrimaryButtonEnabled = !Service.IsPreview && Games.Count > 0;
         dialog.CloseButtonText = "Close";
-        dialog.DefaultButton = ContentDialogButton.Primary;
-        var choice = await dialog.ShowAsync();
-        if (next is not null) { await next(); return; }
-        if (choice != ContentDialogResult.Primary) return;
-        await PrepareBetaReportsAsync(Games.Where(included.Contains).ToList(), issue);
+        await dialog.ShowAsync();
+        if (next is not null) await next();
     }
 
-    // ---------- Beta reports (scripts/beta_report.py, the same flow as the Linux app) ----------
+    // ---------- Bug reports (scripts/beta_report.py, the same report as the Linux app) ----------
 
     /// <summary>"Windows installer" only when Setup's own uninstall entry points at this folder; otherwise the report says Not sure.</summary>
     public static string? InstallFormat()
@@ -389,144 +372,199 @@ public sealed partial class MainWindow
         return null;
     }
 
-    /// <summary>Draft one report per game from what this PC verifies, let the user correct it, then review and save.</summary>
+    static readonly string[] ResultChoices = ["Worked", "Didn't work", "Didn't test"];
+
+    /// <summary>A report is about one game; with several to choose from, ask which.</summary>
+    async Task<Game?> PickReportGameAsync(IReadOnlyList<Game> games)
+    {
+        var dialog = NewDialog();
+        dialog.Title = "Which game is it about?";
+        Game? chosen = null;
+        var search = new AutoSuggestBox { PlaceholderText = "Search your library", QueryIcon = new SymbolIcon(Symbol.Find) };
+        var list = new ListView { SelectionMode = ListViewSelectionMode.None, IsItemClickEnabled = true, MaxHeight = 360,
+            ItemsSource = games.Select(g => g.Name).ToList() };
+        search.TextChanged += (_, _) => list.ItemsSource = games.Where(g => g.Name.Contains(search.Text.Trim(), StringComparison.OrdinalIgnoreCase)).Select(g => g.Name).ToList();
+        list.ItemClick += (_, e) => { chosen = games.FirstOrDefault(g => g.Name == (string)e.ClickedItem); dialog.Hide(); };
+        var body = new StackPanel { Spacing = 12, MinWidth = 480 };
+        body.Children.Add(search); body.Children.Add(list);
+        dialog.Content = body;
+        dialog.CloseButtonText = "Cancel";
+        await dialog.ShowAsync();
+        return chosen;
+    }
+
+    /// <summary>
+    /// Bug Report: one game, "What happened?" first, NR and MFG in three words each, and Send.
+    /// What rtxForge detected sits folded underneath and can be corrected. The loew.fi report
+    /// service files it on GitHub; logs go privately. A copy is saved on this PC either way.
+    /// </summary>
     public async Task PrepareBetaReportsAsync(IReadOnlyList<Game> games, int? issue = null)
     {
         if (games.Count == 0) return;
         if (Service.IsPreview) { ShowToast("Bug reports are disabled in preview mode."); return; }
+        var game = games.Count == 1 ? games[0] : await PickReportGameAsync(games);
+        if (game is null) return;
         BetaReportDraft draft;
-        try { draft = await Service.DraftReportsAsync(games, InstallFormat(), ""); }
+        try { draft = await Service.DraftReportsAsync([game], InstallFormat(), ""); }
         catch (InvalidOperationException error) { await Message("Bug Report", error.Message); return; }
+        var report = draft.Reports[0];
+        var values = report.Fields.ToDictionary(p => p.Key, p => p.Value);
+        var edits = new Dictionary<string, string>();
+        void Set(string key, string value) { values[key] = value; edits[key] = value; }
+        if (issue is { } number && string.IsNullOrWhiteSpace(values.GetValueOrDefault("observations"))) Set("observations", $"Follow-up to #{number}: ");
 
-        var edits = draft.Reports.ToDictionary(r => r.Id, _ => new Dictionary<string, string>());
-        var values = draft.Reports.ToDictionary(r => r.Id, r => r.Fields.ToDictionary(f => f.Key, f => f.Value));
         var dialog = NewDialog();
-        dialog.Title = "Bug Report";
-        var body = new StackPanel { Spacing = 12, MinWidth = 600 };
-        body.Children.Add(Prefs.Label("rtxForge filled in what it could check on this PC. Correct anything that's wrong, then say what you saw in game. Installed files don't show whether NR or MFG worked."));
-        var statuses = new Dictionary<string, TextBlock>();
-        void Refresh()
+        dialog.Title = "Report a problem";
+        var body = new StackPanel { Spacing = 18, MinWidth = 560, MaxWidth = 640 };
+        var heading = new StackPanel { Spacing = 4 };
+        heading.Children.Add(new TextBlock { Text = report.Name, FontSize = 18, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+        heading.Children.Add(Prefs.Label("Goes to rtxForge's issues on GitHub. What you write and the details below are public; logs stay private.", "ForgeCaptionDimTextStyle"));
+        body.Children.Add(heading);
+
+        var observations = draft.Fields.First(f => f.Id == "observations");
+        var what = new TextBox { Header = observations.Label, Text = values.GetValueOrDefault("observations") ?? "", AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap, MinHeight = 140, MaxLength = observations.Max,
+            PlaceholderText = "What you did, what you expected, and what you saw. Include exact errors." };
+        what.TextChanged += (_, _) => { Set("observations", what.Text); Refresh(); };
+        body.Children.Add(what);
+
+        var results = new Grid { ColumnSpacing = 24 };
+        results.ColumnDefinitions.Add(new ColumnDefinition()); results.ColumnDefinitions.Add(new ColumnDefinition());
+        foreach (var (key, label, column) in new[] { ("nr-result", "NR", 0), ("mfg-result", "MFG", 1) })
         {
-            var ready = true;
-            foreach (var report in draft.Reports)
+            var original = values.GetValueOrDefault(key) ?? "";
+            var buttons = new RadioButtons { Header = label, MaxColumns = 3, ItemsSource = ResultChoices,
+                SelectedIndex = original switch { "Working in-game" => 0, "Not working in-game" => 1, _ => 2 } };
+            buttons.SelectionChanged += (_, _) => Set(key, buttons.SelectedIndex switch
             {
-                var missing = draft.Fields.Where(f => f.Required && string.IsNullOrWhiteSpace(values[report.Id].GetValueOrDefault(f.Id))).Select(f => f.Label).ToList();
-                ready &= missing.Count == 0;
-                statuses[report.Id].Text = missing.Count == 0 ? "Ready" : "Needs: " + string.Join(", ", missing);
-            }
-            dialog.IsPrimaryButtonEnabled = ready;
+                0 => "Working in-game",
+                1 => "Not working in-game",
+                _ => original is "Working in-game" or "Not working in-game" or "" ? "Installed, not tested" : original,
+            });
+            Grid.SetColumn(buttons, column); results.Children.Add(buttons);
         }
-        foreach (var report in draft.Reports)
+        body.Children.Add(results);
+
+        var logs = new CheckBox { Content = "Include logs (sent privately to the rtxForge maintainers)", IsChecked = true };
+        body.Children.Add(logs);
+
+        // Everything rtxForge detected, folded: correct it if something's wrong.
+        var details = new StackPanel { Spacing = 12 };
+        foreach (var field in draft.Fields.Where(f => f.Id is not ("observations" or "nr-result" or "mfg-result")))
         {
-            var fields = new StackPanel { Spacing = 10 };
-            foreach (var field in draft.Fields)
+            var value = values.GetValueOrDefault(field.Id) ?? "";
+            FrameworkElement control;
+            if (field.Choices.Count > 0)
             {
-                var source = report.Sources.GetValueOrDefault(field.Id) ?? "";
-                var value = report.Fields.GetValueOrDefault(field.Id) ?? "";
-                void Set(string text)
-                {
-                    values[report.Id][field.Id] = text; edits[report.Id][field.Id] = text; Refresh();
-                }
-                FrameworkElement control;
-                if (field.Choices.Count > 0)
-                {
-                    var box = new ComboBox { ItemsSource = field.Choices.ToList(), HorizontalAlignment = HorizontalAlignment.Stretch,
-                        SelectedItem = field.Choices.Contains(value) ? value : null, PlaceholderText = "Choose…" };
-                    box.SelectionChanged += (_, _) => Set(box.SelectedItem as string ?? "");
-                    control = box;
-                }
-                else
-                {
-                    var multi = field.Id == "observations";
-                    var box = new TextBox { Text = value, AcceptsReturn = multi, TextWrapping = multi ? TextWrapping.Wrap : TextWrapping.NoWrap,
-                        MinHeight = multi ? 96 : 0, MaxLength = field.Max > 0 ? field.Max : 0,
-                        PlaceholderText = multi ? "What you did, what you expected, and what you saw. Include exact errors." : "" };
-                    box.TextChanged += (_, _) => Set(box.Text);
-                    control = box;
-                }
-                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(control, field.Label);
-                var row = new StackPanel { Spacing = 4 };
-                row.Children.Add(new TextBlock { Text = field.Label + (field.Required ? " (required)" : ""), FontWeight = FontWeights.SemiBold });
-                row.Children.Add(control);
-                if (source.Length > 0) row.Children.Add(Prefs.Label(source, "ForgeCaptionDimTextStyle"));
-                fields.Children.Add(row);
+                var box = new ComboBox { Header = field.Label, ItemsSource = field.Choices.ToList(), HorizontalAlignment = HorizontalAlignment.Stretch,
+                    SelectedItem = field.Choices.Contains(value) ? value : null, PlaceholderText = "Choose…" };
+                box.SelectionChanged += (_, _) => { Set(field.Id, box.SelectedItem as string ?? ""); Refresh(); };
+                control = box;
             }
-            var status = new TextBlock { Opacity = 0.7 };
-            statuses[report.Id] = status;
-            var header = new StackPanel { Spacing = 2 };
-            header.Children.Add(new TextBlock { Text = report.Name, FontWeight = FontWeights.SemiBold });
-            header.Children.Add(status);
-            body.Children.Add(new Expander { Header = header, Content = fields, IsExpanded = draft.Reports.Count == 1,
-                HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch });
+            else
+            {
+                var box = new TextBox { Header = field.Label, Text = value, MaxLength = field.Max > 0 ? field.Max : 0 };
+                box.TextChanged += (_, _) => { Set(field.Id, box.Text); Refresh(); };
+                control = box;
+            }
+            details.Children.Add(control);
         }
-        var logs = new CheckBox { Content = "Include logs from each game's folder and rtxForge's own logs (redacted, shown to you before saving)" };
-        var notes = new CheckBox { Content = "Include my saved notes" };
-        var existing = new TextBox { Header = "Adding to a report on GitHub? Issue link or number (optional)", Text = issue is { } n ? "#" + n : "" };
-        body.Children.Add(logs); body.Children.Add(notes); body.Children.Add(existing);
-        body.Children.Add(Prefs.Label("Nothing is uploaded. You review everything on GitHub before posting.", "ForgeCaptionDimTextStyle"));
-        dialog.Content = new ScrollViewer { Content = body, MaxHeight = 560 };
-        dialog.PrimaryButtonText = "Preview";
+        var summary = Prefs.Label(string.Join(" · ", new[] { "platform", "gpu", "feature-package" }
+            .Select(k => values.GetValueOrDefault(k)).Where(v => !string.IsNullOrWhiteSpace(v))), "ForgeCaptionDimTextStyle");
+        var expanderHeader = new StackPanel { Spacing = 2 };
+        expanderHeader.Children.Add(new TextBlock { Text = "Details we'll include" });
+        expanderHeader.Children.Add(summary);
+        body.Children.Add(new Expander { Header = expanderHeader, Content = details, HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch });
+
+        void Refresh() => dialog.IsPrimaryButtonEnabled = !string.IsNullOrWhiteSpace(values.GetValueOrDefault("observations"))
+            && !string.IsNullOrWhiteSpace(values.GetValueOrDefault("platform"));
+        dialog.Content = new ScrollViewer { Content = body, MaxHeight = 620 };
+        dialog.PrimaryButtonText = "Send Report";
+        dialog.SecondaryButtonText = "See what's sent";
         dialog.CloseButtonText = "Cancel";
         dialog.DefaultButton = ContentDialogButton.Primary;
         Refresh();
-        var ids = draft.Reports.Select(r => r.Id).ToList();
-        string? issueText = null;
+        var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
         while (true)
         {
-            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
-            issueText = existing.Text.Trim().Length > 0 ? existing.Text.Trim() : null;
-            if (issueText is null) break;
-            try { await Service.ReportLinksAsync(ids, issueText, null); break; }
-            catch (InvalidOperationException error) { await Message("Issue link", error.Message); }
+            var choice = await dialog.ShowAsync();
+            if (choice == ContentDialogResult.Secondary) { await ShowReportOutlineAsync(report.Id, edits, logs.IsChecked == true); continue; }
+            if (choice != ContentDialogResult.Primary) return;
+            var sent = await SendReportAsync(report.Id, edits, logs.IsChecked == true, documents);
+            if (sent is null) continue;
+            if (sent.Sent) { await ShowReportSentAsync(sent); return; }
+            if (!await ShowReportNotSentAsync(sent)) return;
         }
-        var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-        bool withLogs = logs.IsChecked == true, withNotes = notes.IsChecked == true;
-        var result = await ReviewDialog.ShowAsync(this, "Review Bug Report",
-            () => Service.PreviewReportAsync(ids, edits, withLogs, withNotes, documents));
-        if (result?.Path is { } path && result.Errors.Count == 0) await ShowSavedReportAsync(ids, path, issueText);
     }
 
-    /// <summary>Where the ZIP is, and the browser steps that share it. Nothing is posted from rtxForge.</summary>
-    async Task ShowSavedReportAsync(IReadOnlyList<string> ids, string path, string? issue)
+    async Task<ReportSent?> SendReportAsync(string id, IReadOnlyDictionary<string, string> edits, bool logs, string documents)
     {
-        BetaReportLinks links;
-        try { links = await Service.ReportLinksAsync(ids, issue, path); }
-        catch (InvalidOperationException error) { await Message("Bug report saved", path + "\n\n" + error.Message); return; }
+        var progress = NewDialog();
+        progress.Title = "Sending your report…";
+        var ring = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
+        ring.Children.Add(new ProgressRing { IsActive = true, Width = 24, Height = 24 });
+        ring.Children.Add(Prefs.Label(logs ? "Reading and redacting logs, then sending." : "Sending."));
+        progress.Content = ring;
+        var showing = progress.ShowAsync();
+        try { return await Service.SendReportAsync(id, edits, logs, documents); }
+        catch (InvalidOperationException error) { progress.Hide(); await showing; await Message("Bug Report", error.Message); return null; }
+        finally { progress.Hide(); }
+    }
+
+    async Task ShowReportOutlineAsync(string id, IReadOnlyDictionary<string, string> edits, bool logs)
+    {
+        ReportOutline outline;
+        try { outline = await Service.OutlineReportAsync(id, edits, logs); }
+        catch (InvalidOperationException error) { await Message("What's sent", error.Message); return; }
         var dialog = NewDialog();
-        dialog.Title = "Bug report saved";
-        var body = new StackPanel { Spacing = 12, MinWidth = 560 };
-        var size = new FileInfo(path).Length / 1024.0 / 1024.0;
-        body.Children.Add(Prefs.Label($"{Path.GetFileName(path)} · {size:0.0} MB · in {Path.GetDirectoryName(path)}"));
-        var files = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        files.Children.Add(Prefs.ActionButton("Open folder", (_, _) => Process.Start("explorer.exe", $"/select,\"{path}\"")));
-        files.Children.Add(Prefs.ActionButton("Copy path", (_, _) => CopyText(path, "Path copied")));
-        files.Children.Add(Prefs.ActionButton("Save as…", async (_, _) => await SaveReportCopyAsync(path)));
-        body.Children.Add(files);
-        body.Children.Add(Prefs.Label("Share it on GitHub", "ForgeHeadingTextStyle"));
-        if (links.IssueUrl is { } issueUrl)
-        {
-            body.Children.Add(Prefs.Row($"Add to issue #{links.IssueNumber}",
-                "Opens the issue and copies a short note. Paste it in a new comment, then drag the ZIP into the comment box.",
-                Prefs.ActionButton("Open issue", (_, _) => { CopyText(links.Comment, "Note copied"); OpenUri(issueUrl); })));
-        }
-        else
-        {
-            foreach (var link in links.Links)
-            {
-                var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-                actions.Children.Add(Prefs.ActionButton("Copy text", (_, _) => CopyText(link.Text, "Report copied")));
-                actions.Children.Add(Prefs.ActionButton("Open form", (_, _) =>
-                {
-                    if (!link.Complete) CopyText(link.Text, "The report was too long for the link. The full text is copied: paste it into the form.");
-                    OpenUri(link.Url);
-                }));
-                body.Children.Add(Prefs.Row(link.Name, "Opens a prefilled bug report. Attach the ZIP there before you submit.", actions));
-            }
-        }
-        body.Children.Add(Prefs.Label("Attaching a file on GitHub uploads it right away, and files on this repository are public. The ZIP stays in your Reports folder either way.", "ForgeCaptionDimTextStyle"));
-        dialog.Content = new ScrollViewer { Content = body, MaxHeight = 560 };
-        dialog.CloseButtonText = "Done";
+        dialog.Title = "What's sent";
+        var body = new StackPanel { Spacing = 12, MinWidth = 600 };
+        body.Children.Add(Prefs.Label("Public on GitHub", "ForgeHeadingTextStyle"));
+        body.Children.Add(new TextBlock { Text = outline.Title, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+        body.Children.Add(new TextBox { Text = outline.Text, IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap,
+            FontFamily = new FontFamily("Cascadia Mono, Consolas"), MaxHeight = 280 });
+        body.Children.Add(Prefs.Label(logs ? "Private: only the rtxForge maintainers" : "Logs: not included", "ForgeHeadingTextStyle"));
+        foreach (var log in outline.Logs)
+            body.Children.Add(new Expander { Header = $"{log.Name} · {log.Detail}", HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                Content = new TextBox { Text = log.Text.Length > 40000 ? "…" + log.Text[^40000..] : log.Text, IsReadOnly = true, AcceptsReturn = true,
+                    TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Cascadia Mono, Consolas"), MaxHeight = 280 } });
+        foreach (var skipped in outline.Skipped) body.Children.Add(Prefs.Label("Not included: " + skipped, "ForgeCaptionDimTextStyle"));
+        body.Children.Add(Prefs.Label("Redaction is best effort: check for anything personal before you send.", "ForgeCaptionDimTextStyle"));
+        dialog.Content = new ScrollViewer { Content = body, MaxHeight = 620 };
+        dialog.CloseButtonText = "Back";
         await dialog.ShowAsync();
+    }
+
+    async Task ShowReportSentAsync(ReportSent sent)
+    {
+        var dialog = NewDialog();
+        dialog.Title = "Report sent";
+        var body = new StackPanel { Spacing = 8, MinWidth = 480 };
+        body.Children.Add(new TextBlock { Text = $"Thanks! It's issue #{sent.Number} on GitHub.", FontSize = 16, TextWrapping = TextWrapping.Wrap });
+        body.Children.Add(Prefs.Label("A copy is saved in " + Path.GetDirectoryName(sent.Path) + ".", "ForgeCaptionDimTextStyle"));
+        dialog.Content = body;
+        dialog.PrimaryButtonText = "View on GitHub";
+        dialog.CloseButtonText = "Done";
+        dialog.DefaultButton = ContentDialogButton.Close;
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary && sent.Url is { } url) OpenUri(url);
+    }
+
+    /// <summary>Why it couldn't go, where the copy is, and Try again.</summary>
+    async Task<bool> ShowReportNotSentAsync(ReportSent sent)
+    {
+        var dialog = NewDialog();
+        dialog.Title = "Couldn't send the report";
+        var body = new StackPanel { Spacing = 10, MinWidth = 480 };
+        body.Children.Add(new TextBlock { Text = sent.Error ?? "The report service didn't answer.", TextWrapping = TextWrapping.Wrap });
+        body.Children.Add(Prefs.Row("Saved on this PC", sent.Path,
+            Prefs.ActionButton("Open folder", (_, _) => Process.Start("explorer.exe", $"/select,\"{sent.Path}\""))));
+        dialog.Content = body;
+        dialog.PrimaryButtonText = "Try again";
+        dialog.CloseButtonText = "Close";
+        dialog.DefaultButton = ContentDialogButton.Primary;
+        return await dialog.ShowAsync() == ContentDialogResult.Primary;
     }
 
     public void CopyText(string text, string done)
@@ -538,18 +576,6 @@ public sealed partial class MainWindow
             ShowToast(done);
         }
         catch (Exception) { ShowToast("Couldn't copy. The same text is in report.md inside the saved ZIP."); }
-    }
-
-    async Task SaveReportCopyAsync(string path)
-    {
-        var picker = new global::Windows.Storage.Pickers.FileSavePicker { SuggestedFileName = Path.GetFileNameWithoutExtension(path) };
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, Handle);
-        picker.FileTypeChoices.Add("ZIP archive", new List<string> { ".zip" });
-        var target = await picker.PickSaveFileAsync();
-        if (target is null) return;
-        try { File.Copy(path, target.Path, overwrite: true); ShowToast("Saved a copy"); }
-        catch (IOException error) { ShowToast("Couldn't save a copy: " + error.Message); }
-        catch (UnauthorizedAccessException error) { ShowToast("Couldn't save a copy: " + error.Message); }
     }
 
     // ---------- rtxforge://support/logs ----------

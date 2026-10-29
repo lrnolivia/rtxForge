@@ -490,7 +490,8 @@ def expand_rows(e, rows, selected=False):
         if not candidates and original.get('exe'):
             exe = root / original['exe']
             # Some collections pick a launcher. Prefer its adjacent DX11 game.
-            if exe.name.lower() in ('ts4_launcher_x64.exe', 'ts4_dx9_x64.exe') and (exe.parent / 'TS4_x64.exe').is_file():
+            if (not original.get('executable_selected') and exe.name.lower() in ('ts4_launcher_x64.exe', 'ts4_dx9_x64.exe')
+                    and (exe.parent / 'TS4_x64.exe').is_file()):
                 exe = exe.parent / 'TS4_x64.exe'
             candidates = [(exe, original['name'])]
         for exe, name in candidates:

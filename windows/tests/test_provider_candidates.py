@@ -7,6 +7,7 @@ ROOT=Path(__file__).resolve().parents[2]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'windows/engine-host')]
 from tests import test_feeder_provider as fixtures
 import provider_candidates as candidates
+import feeder_provider as feeder
 
 
 class CandidateTest(unittest.TestCase):
@@ -51,6 +52,17 @@ class CandidateTest(unittest.TestCase):
         by_id={p['id']:p for p in candidates.assess(self.e,row)}
         self.assertFalse(by_id['skynizz']['compatible'])
         self.assertTrue(by_id['feeder']['ready'])
+
+    def test_explicit_sims_dx9_choice_is_not_silently_replaced_with_dx11(self):
+        row=self.fixture.game('SimsRenderers')
+        folder=Path(row['game'])
+        (folder/'game.exe').rename(folder/'TS4_DX9_x64.exe')
+        (folder/'TS4_x64.exe').write_bytes(fixtures.pe())
+        self.e.pe_imported_dlls=lambda exe:{'d3d9.dll'} if 'dx9' in exe.name.casefold() else {'d3d11.dll'}
+        row.update(exe='TS4_DX9_x64.exe',executable_selected=True)
+        self.assertEqual(feeder.expand_rows(self.e,[row])[0]['exe'],'TS4_DX9_x64.exe')
+        row['executable_selected']=False
+        self.assertEqual(feeder.expand_rows(self.e,[row])[0]['exe'],'TS4_x64.exe')
 
 
 if __name__=='__main__':unittest.main()

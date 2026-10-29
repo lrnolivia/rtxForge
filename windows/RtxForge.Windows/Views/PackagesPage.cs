@@ -21,6 +21,7 @@ public sealed partial class PackagesPage : Page
         var page = new StackPanel { Spacing = 8, Padding = new Thickness(36, 12, 36, 48) };
         page.Children.Add(new TextBlock { Text = "Packages", Style = Prefs.GetStyle("ForgePageTitleTextStyle") });
         page.Children.Add(Prefs.Label("rtxForge uses one package for games with DLSS and one for games without it. Every game change is reviewed before it is applied."));
+        page.Children.Add(Prefs.Label(GpuSupport, "ForgeCaptionDimTextStyle"));
         page.Children.Add(status);
         page.Children.Add(body);
         Content = new ScrollViewer { Content = page, HorizontalScrollMode = ScrollMode.Disabled };
@@ -31,6 +32,7 @@ public sealed partial class PackagesPage : Page
     /// <summary>Packages the engine uses automatically for the games they cover, whatever DLSS package is chosen:
     /// Feeder NR for games without DLSS, the Vulkan package for its confirmed Vulkan games.</summary>
     internal static readonly string[] Automatic = ["feeder", "vulkan-native"];
+    internal const string GpuSupport = "RTX 20–50 series can install supported packages. RTX 50 uses native MFG without an unlock package. Feature availability depends on the game, package and GPU.";
 
     /// <summary>The NR packages heading: the DLSS choice, then the automatic packages by catalog name.</summary>
     internal static string NrDescription(PackageCatalog catalog)

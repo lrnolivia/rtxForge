@@ -354,6 +354,53 @@ public sealed partial class GameModeView
 
     // ---------- Details › Tools ----------
 
+    void ChooseSupportReportGames(IReadOnlyList<Game>? games = null)
+    {
+        games ??= shell.Games;
+        var included = new HashSet<Game>(games);
+        var content = new StackPanel { Spacing = t.Px(12) };
+        content.Children.Add(ui.P("Choose one, a few or all games. Review the redacted contents before saving a ZIP. Nothing is uploaded."));
+        var rows = new StackPanel { Spacing = t.Px(8) };
+        var choices = new List<(Game Game, Button Button)>();
+        bool logs = false, notes = false;
+        var review = ui.Button("Preview report", async () =>
+        {
+            var selected = games.Where(included.Contains).ToList();
+            CloseModal();
+            var result = await RunReviewAsync("Review Support Report", () => shell.Service.PreviewReportAsync(selected, logs, notes));
+            if (result?.Path is { } path) ShowDone(true, "Support report saved", path + "\nAttach this ZIP to a new or existing GitHub issue. Nothing was uploaded.");
+        }, GmKind.Primary, .9, enabled: games.Count > 0);
+        foreach (var game in games)
+        {
+            Button? button = null;
+            button = ui.Button(game.Name + " · Included", () =>
+            {
+                if (!included.Add(game)) included.Remove(game);
+                button!.Content = game.Name + (included.Contains(game) ? " · Included" : " · Excluded");
+                review.IsEnabled = included.Count > 0;
+            });
+            choices.Add((game, button)); rows.Children.Add(button);
+        }
+        void Select(bool all)
+        {
+            included.Clear(); if (all) included.UnionWith(games);
+            foreach (var (game, button) in choices)
+                button.Content = game.Name + (all ? " · Included" : " · Excluded");
+            review.IsEnabled = included.Count > 0;
+        }
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12) };
+        actions.Children.Add(ui.Button("Select all", () => Select(true), GmKind.Card, .85));
+        actions.Children.Add(ui.Button("Clear selection", () => Select(false), GmKind.Card, .85));
+        content.Children.Add(actions);
+        content.Children.Add(new ScrollViewer { Content = rows, MaxHeight = t.Px(t.Compact ? 220 : 360) }.With(s => { s.IsTabStop = true; ui.Focusable(s); }));
+        Button? logsButton = null, notesButton = null;
+        logsButton = ui.Button("Scan current logs: Off", () => { logs = !logs; logsButton!.Content = "Scan current logs: " + (logs ? "On" : "Off"); }, GmKind.Card, .85);
+        notesButton = ui.Button("Include notes: Off", () => { notes = !notes; notesButton!.Content = "Include notes: " + (notes ? "On" : "Off"); }, GmKind.Card, .85);
+        content.Children.Add(logsButton); content.Children.Add(notesButton);
+        var close = ui.Button("Cancel", CloseModal, GmKind.Card, .9);
+        ShowModal("Prepare support report", content, [review, close], CloseModal, 1100, close);
+    }
+
     async Task DiagnoseAsync(Game g)
     {
         NrDiagnosis report;

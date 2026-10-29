@@ -630,7 +630,9 @@ def compat_share(params):
 
 
 def report_preview(params):
-    files = game_notes.preview(_config(), params.get("rows") or [], bool(params.get("logs")), bool(params.get("notes")))
+    import support_reports
+    files = support_reports.preview(_config(), params.get("rows") or [], bool(params.get("logs")),
+                                    bool(params.get("notes")), host=service.hardware(), root=ROOT, build=params.get('build'))
     items = [_item(name, "Review the exact report contents", "Report", details=text) for name, text in files.items()]
     return _review("report", "Review Support Report", items, action="Export this preview",
                    summary="Review the exact text below. Redaction is best effort. Export saves this preview locally; nothing is submitted.",
@@ -638,7 +640,8 @@ def report_preview(params):
 
 
 def _run_report(files):
-    path = game_notes.export_preview(_config(), files)
+    import support_reports
+    path = support_reports.export(files)
     return {"message": f"Saved {path}", "path": str(path)}
 
 

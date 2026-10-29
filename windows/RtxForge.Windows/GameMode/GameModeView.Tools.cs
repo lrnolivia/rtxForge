@@ -48,6 +48,7 @@ public sealed partial class GameModeView
         // The desktop layout: NR and MFG packages side by side, then unified packages,
         // then your own package beside the community projects.
         body.Children.Add(ui.P(catalog.Status + ".", .85));
+        body.Children.Add(ui.P(Views.PackagesPage.GpuSupport, .8));
         Border UseCard(PackageOption item)
         {
             var current = shell.Settings.RuntimeProvider == item.Id;

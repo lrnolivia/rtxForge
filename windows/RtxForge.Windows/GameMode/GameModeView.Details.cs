@@ -421,6 +421,7 @@ public sealed partial class GameModeView
                 foreach (var (title, description, caption, glyph, enabled, action) in new (string, string, string, string, bool, Action)[]
                 {
                     ("Diagnose NR", "Read the saved NR settings, runtime hashes and log evidence.", "Diagnose", "", true, () => _ = DiagnoseAsync(g)),
+                    ("Support report", "Scan this game's logs and preview a redacted ZIP.", "Prepare", "", true, () => ChooseSupportReportGames([g])),
                     ("Install ReShade", "Choose an extracted x64 ReShade DLL. DirectX 10–12 games load it as dxgi.dll.", "Choose", "", installs, () => _ = InstallExtraAsync(g, "reshade")),
                     ("Install Add-on", "Choose an .addon64 file (including RenoDX). Install ReShade first.", "Choose", "", installs, () => _ = InstallExtraAsync(g, "addon")),
                     ("ReShade Downloads", "Get ReShade from its official site.", "Open", "", true, () => MainWindow.OpenUri("https://reshade.me/")),

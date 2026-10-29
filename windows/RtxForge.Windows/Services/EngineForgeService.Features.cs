@@ -141,7 +141,8 @@ public sealed partial class EngineForgeService
     public async Task FinishTestAsync(Game game) => Apply(game, await CallAsync("test_finish", new JsonObject { ["row"] = Row(game) }));
 
     public async Task<EngineReview> PreviewReportAsync(IReadOnlyList<Game> games, bool logs, bool notes) =>
-        ToReview(await CallAsync("report_preview", new JsonObject { ["rows"] = Rows(games), ["logs"] = logs, ["notes"] = notes }));
+        ToReview(await CallAsync("report_preview", new JsonObject { ["rows"] = Rows(games), ["logs"] = logs, ["notes"] = notes,
+            ["build"] = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(App).Assembly)?.InformationalVersion }));
 
     public async Task SetTryAnywayAsync(Game game, bool on) =>
         Apply(game, await CallAsync("try_anyway", new { game = game.Id, on, reason = game.BlockedReason ?? "" }));

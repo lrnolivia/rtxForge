@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 
 APP_ID = 'io.github.lrnolivia.RTXForge'
@@ -132,13 +133,18 @@ def register(target=None):
             capture_output=True,
         )
 
-    # The in-game panel helper starts at login, in Desktop and Game Mode.
+    # The in-game panel helper starts now and at login, in Desktop and Game Mode.
+    # Without a working user session it can't start; the app itself is still installed.
     import linux_overlay_helper
-    linux_overlay_helper.install_service(
-        target,
-        data / 'systemd/user',
-        shutil.which('systemctl'),
-    )
+    try:
+        linux_overlay_helper.install_service(
+            target,
+            data / 'systemd/user',
+            shutil.which('systemctl'),
+        )
+    except (RuntimeError, OSError, subprocess.SubprocessError) as error:
+        print(f'rtxForge is installed, but {error} The panel works while the app is open.',
+              file=sys.stderr)
 
     return str(target)
 

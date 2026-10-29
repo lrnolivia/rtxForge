@@ -366,7 +366,7 @@ public sealed partial class GamePage : Page
                 break;
 
             case "Notes":
-                var notes = new PreferencesGroup("Your Notes", "Kept with this game in rtxForge. Included in support reports when you choose.");
+                var notes = new PreferencesGroup("Your Notes", "Kept with this game in rtxForge. Included in beta reports when you choose.");
                 var noteCards = new PresetColumns(420, 2) { ColumnSpacing = 12, RowSpacing = 12 };
                 var testCard = new StackPanel { Spacing = 12 };
                 string[] states = ["Untested", "Working", "Problem", "Bench"];
@@ -379,10 +379,10 @@ public sealed partial class GamePage : Page
                 var test = Prefs.ActionButton(g.TestActive ? "Finish Test" : "Start Test", async (_, _) => await shell.RecordTestAsync(g));
                 test.IsEnabled = !shell.Service.IsPreview;
                 noteActions.Children.Add(test);
-                // Shares the saved result: save a Working or Problem result first.
-                var shareResult = Prefs.ActionButton("Share result", async (_, _) => await shell.ShareResultAsync(g));
-                shareResult.IsEnabled = !shell.Service.IsPreview && g.TestStatus is "Working" or "Problem";
-                noteActions.Children.Add(shareResult);
+                // The shared beta report (as on Linux): untested games and failed installs can be reported too.
+                var report = Prefs.ActionButton("Prepare Beta Report", async (_, _) => await shell.PrepareBetaReportsAsync([g]));
+                report.IsEnabled = !shell.Service.IsPreview;
+                noteActions.Children.Add(report);
                 noteActions.Children.Add(Prefs.ActionButton("Save Notes", async (_, _) => await shell.SaveNotesAsync(g, states[Math.Max(0, status.SelectedIndex)], text.Text), accent: true));
                 testCard.Children.Add(noteActions);
                 noteCards.Children.Add(DetailSurface(testCard));

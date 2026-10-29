@@ -165,9 +165,10 @@ def setup_restore(e, target_dir):
 def record_runtime_evidence(e, row, report, observed, confirmed_by):
     """Store a human-confirmed real in-game session for this exact game/Proton build/GPU/component."""
     component = report.get('component') or {}
+    owner = component.get('id') or ('native-mfg' if report.get('mfg_native') else 'nr-only')
     return proton_stack.record_evidence(e.STATE_ROOT / 'proton-evidence', row.get('appid'), report['tool']['version'],
                                         (report.get('gpu') or {}).get('model'),
-                                        f"{component.get('id', 'nr-only')}-{component.get('version', '')}".rstrip('-'),
+                                        f"{owner}-{component.get('version', '')}".rstrip('-'),
                                         observed, confirmed_by)
 
 

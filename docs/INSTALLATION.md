@@ -70,6 +70,17 @@ backup and restore system.
 
 ## Check and recover
 
+### Background overlay helper
+
+The Linux helper runs separately from the manager window. Open the Flatpak
+once to install and start its host service. For an AppImage, choose
+**Settings → About → Desktop Installation → Reinstall App Menu**. Beta 1
+AppImages need one sign-out/sign-in afterward; newer source starts it during
+registration too. After setup, the manager can be closed in Desktop and Steam
+Game Mode. The helper needs the matching game-side bridge for Save and preset
+replay. See [the channel guide](linux/overlay-channel.md) for status checks and
+the remaining real-Proton verification.
+
 Read-only host check:
 
 ```sh

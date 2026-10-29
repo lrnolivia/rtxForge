@@ -359,16 +359,15 @@ public sealed partial class GameModeView
         games ??= shell.Games;
         var included = new HashSet<Game>(games);
         var content = new StackPanel { Spacing = t.Px(12) };
-        content.Children.Add(ui.P("Choose one, a few or all games. Review the redacted contents before saving a ZIP. Nothing is uploaded."));
+        content.Children.Add(ui.P("Choose one, a few or all games for a beta report. You review everything before it's saved. Nothing is uploaded."));
         var rows = new StackPanel { Spacing = t.Px(8) };
         var choices = new List<(Game Game, Button Button)>();
         bool logs = false, notes = false;
-        var review = ui.Button("Preview report", async () =>
+        var review = ui.Button("Prepare report", () =>
         {
             var selected = games.Where(included.Contains).ToList();
             CloseModal();
-            var result = await RunReviewAsync("Review Support Report", () => shell.Service.PreviewReportAsync(selected, logs, notes));
-            if (result?.Path is { } path) ShowDone(true, "Support report saved", path + "\nAttach this ZIP to a new or existing GitHub issue. Nothing was uploaded.");
+            _ = EditBetaReportsAsync(selected, logs, notes);
         }, GmKind.Primary, .9, enabled: games.Count > 0);
         foreach (var game in games)
         {
@@ -394,11 +393,92 @@ public sealed partial class GameModeView
         content.Children.Add(actions);
         content.Children.Add(new ScrollViewer { Content = rows, MaxHeight = t.Px(t.Compact ? 220 : 360) }.With(s => { s.IsTabStop = true; ui.Focusable(s); }));
         Button? logsButton = null, notesButton = null;
-        logsButton = ui.Button("Scan current logs: Off", () => { logs = !logs; logsButton!.Content = "Scan current logs: " + (logs ? "On" : "Off"); }, GmKind.Card, .85);
+        logsButton = ui.Button("Include logs: Off", () => { logs = !logs; logsButton!.Content = "Include logs: " + (logs ? "On" : "Off"); }, GmKind.Card, .85);
         notesButton = ui.Button("Include notes: Off", () => { notes = !notes; notesButton!.Content = "Include notes: " + (notes ? "On" : "Off"); }, GmKind.Card, .85);
         content.Children.Add(logsButton); content.Children.Add(notesButton);
         var close = ui.Button("Cancel", CloseModal, GmKind.Card, .9);
-        ShowModal("Prepare support report", content, [review, close], CloseModal, 1100, close);
+        ShowModal("Prepare beta report", content, [review, close], CloseModal, 1100, close);
+    }
+
+    /// <summary>The shared beta report (scripts/beta_report.py) with controller-sized fields: choices cycle, text uses the on-screen keyboard.</summary>
+    async Task EditBetaReportsAsync(IReadOnlyList<Game> selected, bool logs, bool notes)
+    {
+        if (shell.Service.IsPreview) { Toast("Beta reports are disabled in preview mode."); return; }
+        BetaReportDraft draft;
+        try { draft = await shell.Service.DraftReportsAsync(selected, MainWindow.InstallFormat(), ""); }
+        catch (InvalidOperationException error) { ShowDone(false, "Prepare beta report", error.Message); return; }
+        var ids = draft.Reports.Select(r => r.Id).ToList();
+        var edits = draft.Reports.ToDictionary(r => r.Id, _ => new Dictionary<string, string>());
+        var values = draft.Reports.ToDictionary(r => r.Id, r => r.Fields.ToDictionary(f => f.Key, f => f.Value));
+        Button? preview = null;
+        void Refresh()
+        {
+            if (preview is null) return;
+            preview.IsEnabled = draft.Reports.All(r => draft.Fields.All(f => !f.Required || !string.IsNullOrWhiteSpace(values[r.Id].GetValueOrDefault(f.Id))));
+        }
+        var content = new StackPanel { Spacing = t.Px(12) };
+        content.Children.Add(ui.P("rtxForge filled in what it could check. Change any answer, then say what you saw in game. Installed files don't show whether NR or MFG worked.", 0.9));
+        foreach (var report in draft.Reports)
+        {
+            content.Children.Add(ui.Text(report.Name, 1.0, weight: FontWeights.SemiBold, wrap: true));
+            foreach (var field in draft.Fields)
+            {
+                var source = report.Sources.GetValueOrDefault(field.Id) ?? "";
+                if (field.Choices.Count > 0)
+                {
+                    var options = field.Choices.ToList();
+                    string Caption() => field.Label + ": " + (values[report.Id].GetValueOrDefault(field.Id) is { Length: > 0 } v ? v : "Choose");
+                    Button? cycle = null;
+                    cycle = ui.Button(Caption(), () =>
+                    {
+                        var current = options.IndexOf(values[report.Id].GetValueOrDefault(field.Id) ?? "");
+                        var next = options[(current + 1) % options.Count];
+                        values[report.Id][field.Id] = next; edits[report.Id][field.Id] = next;
+                        cycle!.Content = Caption(); Refresh();
+                    }, GmKind.Card, .85);
+                    content.Children.Add(cycle);
+                }
+                else
+                {
+                    var multi = field.Id == "observations";
+                    var box = new TextBox { Header = field.Label + (field.Required ? " (required)" : ""), Text = values[report.Id].GetValueOrDefault(field.Id) ?? "",
+                        AcceptsReturn = multi, TextWrapping = multi ? TextWrapping.Wrap : TextWrapping.NoWrap, MinHeight = multi ? t.Px(120) : 0,
+                        MaxLength = field.Max > 0 ? field.Max : 0 };
+                    box.TextChanged += (_, _) => { values[report.Id][field.Id] = box.Text; edits[report.Id][field.Id] = box.Text; Refresh(); };
+                    content.Children.Add(box);
+                }
+                if (source.Length > 0) content.Children.Add(ui.P(source, 0.7));
+            }
+        }
+        var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        preview = ui.Button("Preview report", async () =>
+        {
+            CloseModal();
+            var result = await RunReviewAsync("Review Beta Report", () => shell.Service.PreviewReportAsync(ids, edits, logs, notes, documents));
+            if (result?.Path is { } path && result.Errors.Count == 0) await ShowSavedBetaReportAsync(ids, path);
+        }, GmKind.Primary, .9);
+        Refresh();
+        var cancel = ui.Button("Cancel", CloseModal, GmKind.Card, .9);
+        var scroll = new ScrollViewer { Content = content, MaxHeight = t.Px(t.Compact ? 420 : 640) }.With(s => { s.IsTabStop = true; ui.Focusable(s); });
+        ShowModal("Prepare beta report", scroll, [preview, cancel], CloseModal, 1200, preview);
+    }
+
+    async Task ShowSavedBetaReportAsync(IReadOnlyList<string> ids, string path)
+    {
+        BetaReportLinks links;
+        try { links = await shell.Service.ReportLinksAsync(ids, null, path); }
+        catch (InvalidOperationException error) { ShowDone(false, "Beta report saved", path + "\n" + error.Message); return; }
+        var content = new StackPanel { Spacing = t.Px(12) };
+        content.Children.Add(ui.P("Saved " + path + ". Open a prefilled form and attach the ZIP there before you submit. Attaching uploads it, and files on this repository are public.", 0.9));
+        foreach (var link in links.Links)
+            content.Children.Add(ui.Button("Open form · " + link.Name, () =>
+            {
+                if (!link.Complete) shell.CopyText(link.Text, "The report was too long for the link. The full text is copied: paste it into the form.");
+                MainWindow.OpenUri(link.Url);
+            }, GmKind.Card, .85));
+        var folder = ui.Button("Open folder", () => System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{path}\""), GmKind.Card, .9);
+        var done = ui.Button("Done", CloseModal, GmKind.Primary, .9);
+        ShowModal("Beta report saved", content, [folder, done], CloseModal, 1100, done);
     }
 
     async Task DiagnoseAsync(Game g)

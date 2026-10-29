@@ -57,7 +57,7 @@ def host_report(config):
     add('Linux host', sys.platform=='linux', release.get('PRETTY_NAME', 'Unknown Linux distribution'))
     add('64-bit Linux', sys.platform == 'linux' and platform.machine() == 'x86_64', platform.machine())
     gpu = hardware.detect()
-    add('NVIDIA RTX 40-series driver', gpu['ready'], f"{gpu['gpu']} · {gpu['driver']} · {gpu['reason']}")
+    add('NVIDIA RTX GPU and driver', gpu['ready'], f"{gpu['gpu']} · {gpu['driver']} · {gpu['reason']}")
     missing = desktop_frontend.gtk_missing()
     if not missing:
         from gi.repository import Adw, Gtk

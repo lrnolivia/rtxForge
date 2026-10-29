@@ -319,7 +319,10 @@ public sealed partial class MainWindow
         if (result is not null) await ScanAsync();
     }
 
-    public async Task ShowReportsAsync()
+    public async Task ShowReportsAsync() => await ShowReportsAsync(null);
+
+    /// <summary>Compatibility and beta reports. issue: from an rtxforge://support/logs?issue=N link.</summary>
+    public async Task ShowReportsAsync(int? issue)
     {
         var dialog = NewDialog();
         dialog.Title = "Compatibility & reports";
@@ -327,7 +330,9 @@ public sealed partial class MainWindow
         var totals = Games.GroupBy(g => g.TestStatus).ToDictionary(g => g.Key, g => g.Count());
         body.Children.Add(Prefs.Label(string.Join(" · ", new[] { "Untested", "Working", "Problem", "Bench" }
             .Select(s => $"{totals.GetValueOrDefault(s)} {s.ToLowerInvariant()}")), "ForgeHeadingTextStyle"));
-        body.Children.Add(Prefs.Label("Choose one, a few or all games. Logs are scanned only when selected below. Review the exact redacted report before exporting; nothing is uploaded."));
+        body.Children.Add(Prefs.Label(issue is { } number
+            ? $"Choose the games whose logs belong with issue #{number}. You review everything before it's saved; nothing is uploaded."
+            : "Choose one, a few or all games for a beta report. You review everything before it's saved; nothing is uploaded."));
         var included = new HashSet<Game>(Games);
         var selections = new List<CheckBox>();
         var selectionActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
@@ -340,7 +345,7 @@ public sealed partial class MainWindow
         {
             var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
             var include = new CheckBox { Content = "Include", IsChecked = true };
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(include, "Include " + game.Name + " in support report");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(include, "Include " + game.Name + " in the beta report");
             include.Checked += (_, _) => { included.Add(game); dialog.IsPrimaryButtonEnabled = !Service.IsPreview && included.Count > 0; };
             include.Unchecked += (_, _) => { included.Remove(game); dialog.IsPrimaryButtonEnabled = !Service.IsPreview && included.Count > 0; };
             selections.Add(include); actions.Children.Add(include);
@@ -357,35 +362,228 @@ public sealed partial class MainWindow
             list.Children.Add(Prefs.Row(game.Name, CompatDetail(game), actions));
         }
         body.Children.Add(new ScrollViewer { Content = list, MaxHeight = 320 });
-        var logs = new CheckBox { Content = "Scan current game and app logs (redacted; older sessions are identified)" };
-        var notes = new CheckBox { Content = "Include my notes" };
-        body.Children.Add(logs);
-        body.Children.Add(notes);
         dialog.Content = body;
-        dialog.PrimaryButtonText = "Preview Support Report";
+        dialog.PrimaryButtonText = "Prepare Beta Report";
         dialog.IsPrimaryButtonEnabled = !Service.IsPreview && Games.Count > 0;
         dialog.CloseButtonText = "Close";
         dialog.DefaultButton = ContentDialogButton.Primary;
         var choice = await dialog.ShowAsync();
         if (next is not null) { await next(); return; }
         if (choice != ContentDialogResult.Primary) return;
-        bool withLogs = logs.IsChecked == true, withNotes = notes.IsChecked == true;
-        var chosen = Games.Where(included.Contains).ToList();
-        var result = await ReviewDialog.ShowAsync(this, "Review Support Report", () => Service.PreviewReportAsync(chosen, withLogs, withNotes));
-        if (result?.Path is { } path)
+        await PrepareBetaReportsAsync(Games.Where(included.Contains).ToList(), issue);
+    }
+
+    // ---------- Beta reports (scripts/beta_report.py, the same flow as the Linux app) ----------
+
+    /// <summary>"Windows installer" only when Setup's own uninstall entry points at this folder; otherwise the report says Not sure.</summary>
+    public static string? InstallFormat()
+    {
+        var here = Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory);
+        foreach (var hive in new[] { Microsoft.Win32.Registry.CurrentUser, Microsoft.Win32.Registry.LocalMachine })
         {
-            var saved = NewDialog();
-            saved.Title = "Support report saved";
-            saved.Content = Prefs.Label(path + "\n\nTo add logs to an existing bug report, attach this ZIP to a comment on that GitHub issue.");
-            saved.PrimaryButtonText = "Open folder"; saved.SecondaryButtonText = "Copy path"; saved.CloseButtonText = "Done";
-            var action = await saved.ShowAsync();
-            if (action == ContentDialogResult.Primary) Process.Start(new ProcessStartInfo(Path.GetDirectoryName(path)!) { UseShellExecute = true });
-            if (action == ContentDialogResult.Secondary)
+            using var key = hive.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\{6E0C2B7A-3F4D-4E8B-9A51-7C2D8F1E4B90}_is1");
+            if (key?.GetValue("InstallLocation") is string location
+                && string.Equals(Path.TrimEndingDirectorySeparator(location), here, StringComparison.OrdinalIgnoreCase))
+                return "Windows installer";
+        }
+        return null;
+    }
+
+    /// <summary>Draft one report per game from what this PC verifies, let the user correct it, then review and save.</summary>
+    public async Task PrepareBetaReportsAsync(IReadOnlyList<Game> games, int? issue = null)
+    {
+        if (games.Count == 0) return;
+        if (Service.IsPreview) { ShowToast("Beta reports are disabled in preview mode."); return; }
+        BetaReportDraft draft;
+        try { draft = await Service.DraftReportsAsync(games, InstallFormat(), ""); }
+        catch (InvalidOperationException error) { await Message("Prepare Beta Report", error.Message); return; }
+
+        var edits = draft.Reports.ToDictionary(r => r.Id, _ => new Dictionary<string, string>());
+        var values = draft.Reports.ToDictionary(r => r.Id, r => r.Fields.ToDictionary(f => f.Key, f => f.Value));
+        var dialog = NewDialog();
+        dialog.Title = "Prepare Beta Report";
+        var body = new StackPanel { Spacing = 12, MinWidth = 600 };
+        body.Children.Add(Prefs.Label("rtxForge filled in what it could check on this PC. Correct anything that's wrong, then say what you saw in game. Installed files don't show whether NR or MFG worked."));
+        var statuses = new Dictionary<string, TextBlock>();
+        void Refresh()
+        {
+            var ready = true;
+            foreach (var report in draft.Reports)
             {
-                var data = new global::Windows.ApplicationModel.DataTransfer.DataPackage(); data.SetText(path);
-                global::Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
+                var missing = draft.Fields.Where(f => f.Required && string.IsNullOrWhiteSpace(values[report.Id].GetValueOrDefault(f.Id))).Select(f => f.Label).ToList();
+                ready &= missing.Count == 0;
+                statuses[report.Id].Text = missing.Count == 0 ? "Ready" : "Needs: " + string.Join(", ", missing);
+            }
+            dialog.IsPrimaryButtonEnabled = ready;
+        }
+        foreach (var report in draft.Reports)
+        {
+            var fields = new StackPanel { Spacing = 10 };
+            foreach (var field in draft.Fields)
+            {
+                var source = report.Sources.GetValueOrDefault(field.Id) ?? "";
+                var value = report.Fields.GetValueOrDefault(field.Id) ?? "";
+                void Set(string text)
+                {
+                    values[report.Id][field.Id] = text; edits[report.Id][field.Id] = text; Refresh();
+                }
+                FrameworkElement control;
+                if (field.Choices.Count > 0)
+                {
+                    var box = new ComboBox { ItemsSource = field.Choices.ToList(), HorizontalAlignment = HorizontalAlignment.Stretch,
+                        SelectedItem = field.Choices.Contains(value) ? value : null, PlaceholderText = "Choose…" };
+                    box.SelectionChanged += (_, _) => Set(box.SelectedItem as string ?? "");
+                    control = box;
+                }
+                else
+                {
+                    var multi = field.Id == "observations";
+                    var box = new TextBox { Text = value, AcceptsReturn = multi, TextWrapping = multi ? TextWrapping.Wrap : TextWrapping.NoWrap,
+                        MinHeight = multi ? 96 : 0, MaxLength = field.Max > 0 ? field.Max : 0,
+                        PlaceholderText = multi ? "What you did, what you expected, and what you saw. Include exact errors." : "" };
+                    box.TextChanged += (_, _) => Set(box.Text);
+                    control = box;
+                }
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(control, field.Label);
+                var row = new StackPanel { Spacing = 4 };
+                row.Children.Add(new TextBlock { Text = field.Label + (field.Required ? " (required)" : ""), FontWeight = FontWeights.SemiBold });
+                row.Children.Add(control);
+                if (source.Length > 0) row.Children.Add(Prefs.Label(source, "ForgeCaptionDimTextStyle"));
+                fields.Children.Add(row);
+            }
+            var status = new TextBlock { Opacity = 0.7 };
+            statuses[report.Id] = status;
+            var header = new StackPanel { Spacing = 2 };
+            header.Children.Add(new TextBlock { Text = report.Name, FontWeight = FontWeights.SemiBold });
+            header.Children.Add(status);
+            body.Children.Add(new Expander { Header = header, Content = fields, IsExpanded = draft.Reports.Count == 1,
+                HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch });
+        }
+        var logs = new CheckBox { Content = "Include logs from each game's folder and rtxForge's own logs (redacted, shown to you before saving)" };
+        var notes = new CheckBox { Content = "Include my saved notes" };
+        var existing = new TextBox { Header = "Adding to a report on GitHub? Issue link or number (optional)", Text = issue is { } n ? "#" + n : "" };
+        body.Children.Add(logs); body.Children.Add(notes); body.Children.Add(existing);
+        body.Children.Add(Prefs.Label("Nothing is uploaded. You review everything on GitHub before posting.", "ForgeCaptionDimTextStyle"));
+        dialog.Content = new ScrollViewer { Content = body, MaxHeight = 560 };
+        dialog.PrimaryButtonText = "Preview";
+        dialog.CloseButtonText = "Cancel";
+        dialog.DefaultButton = ContentDialogButton.Primary;
+        Refresh();
+        var ids = draft.Reports.Select(r => r.Id).ToList();
+        string? issueText = null;
+        while (true)
+        {
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+            issueText = existing.Text.Trim().Length > 0 ? existing.Text.Trim() : null;
+            if (issueText is null) break;
+            try { await Service.ReportLinksAsync(ids, issueText, null); break; }
+            catch (InvalidOperationException error) { await Message("Issue link", error.Message); }
+        }
+        var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        bool withLogs = logs.IsChecked == true, withNotes = notes.IsChecked == true;
+        var result = await ReviewDialog.ShowAsync(this, "Review Beta Report",
+            () => Service.PreviewReportAsync(ids, edits, withLogs, withNotes, documents));
+        if (result?.Path is { } path && result.Errors.Count == 0) await ShowSavedReportAsync(ids, path, issueText);
+    }
+
+    /// <summary>Where the ZIP is, and the browser steps that share it. Nothing is posted from rtxForge.</summary>
+    async Task ShowSavedReportAsync(IReadOnlyList<string> ids, string path, string? issue)
+    {
+        BetaReportLinks links;
+        try { links = await Service.ReportLinksAsync(ids, issue, path); }
+        catch (InvalidOperationException error) { await Message("Beta report saved", path + "\n\n" + error.Message); return; }
+        var dialog = NewDialog();
+        dialog.Title = "Beta report saved";
+        var body = new StackPanel { Spacing = 12, MinWidth = 560 };
+        var size = new FileInfo(path).Length / 1024.0 / 1024.0;
+        body.Children.Add(Prefs.Label($"{Path.GetFileName(path)} · {size:0.0} MB · in {Path.GetDirectoryName(path)}"));
+        var files = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        files.Children.Add(Prefs.ActionButton("Open folder", (_, _) => Process.Start("explorer.exe", $"/select,\"{path}\"")));
+        files.Children.Add(Prefs.ActionButton("Copy path", (_, _) => CopyText(path, "Path copied")));
+        files.Children.Add(Prefs.ActionButton("Save as…", async (_, _) => await SaveReportCopyAsync(path)));
+        body.Children.Add(files);
+        body.Children.Add(Prefs.Label("Share it on GitHub", "ForgeHeadingTextStyle"));
+        if (links.IssueUrl is { } issueUrl)
+        {
+            body.Children.Add(Prefs.Row($"Add to issue #{links.IssueNumber}",
+                "Opens the issue and copies a short note. Paste it in a new comment, then drag the ZIP into the comment box.",
+                Prefs.ActionButton("Open issue", (_, _) => { CopyText(links.Comment, "Note copied"); OpenUri(issueUrl); })));
+        }
+        else
+        {
+            foreach (var link in links.Links)
+            {
+                var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                actions.Children.Add(Prefs.ActionButton("Copy text", (_, _) => CopyText(link.Text, "Report copied")));
+                actions.Children.Add(Prefs.ActionButton("Open form", (_, _) =>
+                {
+                    if (!link.Complete) CopyText(link.Text, "The report was too long for the link. The full text is copied: paste it into the form.");
+                    OpenUri(link.Url);
+                }));
+                body.Children.Add(Prefs.Row(link.Name, "Opens a prefilled beta report. Attach the ZIP there before you submit.", actions));
             }
         }
+        body.Children.Add(Prefs.Label("Attaching a file on GitHub uploads it right away, and files on this repository are public. The ZIP stays in your Reports folder either way.", "ForgeCaptionDimTextStyle"));
+        dialog.Content = new ScrollViewer { Content = body, MaxHeight = 560 };
+        dialog.CloseButtonText = "Done";
+        await dialog.ShowAsync();
+    }
+
+    public void CopyText(string text, string done)
+    {
+        try
+        {
+            var data = new global::Windows.ApplicationModel.DataTransfer.DataPackage(); data.SetText(text);
+            global::Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
+            ShowToast(done);
+        }
+        catch (Exception) { ShowToast("Couldn't copy. The same text is in report.md inside the saved ZIP."); }
+    }
+
+    async Task SaveReportCopyAsync(string path)
+    {
+        var picker = new global::Windows.Storage.Pickers.FileSavePicker { SuggestedFileName = Path.GetFileNameWithoutExtension(path) };
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, Handle);
+        picker.FileTypeChoices.Add("ZIP archive", new List<string> { ".zip" });
+        var target = await picker.PickSaveFileAsync();
+        if (target is null) return;
+        try { File.Copy(path, target.Path, overwrite: true); ShowToast("Saved a copy"); }
+        catch (IOException error) { ShowToast("Couldn't save a copy: " + error.Message); }
+        catch (UnauthorizedAccessException error) { ShowToast("Couldn't save a copy: " + error.Message); }
+    }
+
+    // ---------- rtxforge://support/logs ----------
+
+    /// <summary>An issue number from a website link, set in App before this window opens; null when no link.</summary>
+    public static int? PendingSupportIssue { get; set; }
+    public static bool PendingSupportLink { get; set; }
+    public static bool IgnoredSupportLink { get; set; }
+
+    /// <summary>Links come from web pages: only rtxforge://support/logs, optionally ?issue=N, is accepted (scripts/beta_report.parse_link).</summary>
+    public static bool TryParseSupportLink(string value, out int? issue)
+    {
+        issue = null;
+        if (value.Length > 200 || !Uri.TryCreate(value, UriKind.Absolute, out var uri)) return false;
+        if (!string.Equals(uri.Scheme, "rtxforge", StringComparison.Ordinal) || !string.Equals(uri.Host, "support", StringComparison.Ordinal)
+            || uri.AbsolutePath.TrimEnd('/') != "/logs" || uri.Fragment.Length > 0 || uri.UserInfo.Length > 0 || !uri.IsDefaultPort) return false;
+        var query = uri.Query.TrimStart('?');
+        if (query.Length == 0) return true;
+        var parts = query.Split('&');
+        if (parts.Length != 1 || !parts[0].StartsWith("issue=", StringComparison.Ordinal)) return false;
+        var digits = parts[0]["issue=".Length..];
+        if (digits.Length is < 1 or > 7 || !digits.All(char.IsAsciiDigit) || int.Parse(digits) == 0) return false;
+        issue = int.Parse(digits);
+        return true;
+    }
+
+    /// <summary>After the first library scan: open beta reports for a website link, once.</summary>
+    void OpenSupportLink()
+    {
+        if (IgnoredSupportLink) { IgnoredSupportLink = false; ShowToast("Ignored a link rtxForge doesn't recognise."); }
+        if (!PendingSupportLink) return;
+        PendingSupportLink = false;
+        var issue = PendingSupportIssue;
+        DispatcherQueue.TryEnqueue(async () => await ShowReportsAsync(issue));
     }
 
     /// <summary>One line per game for the compatibility list: block, Try anyway, or the known result.</summary>

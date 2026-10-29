@@ -244,6 +244,21 @@ public sealed record CommunitySource(string Name, string Url, string Note);
 /// <summary>A game's result as a prefilled issue: the exact text, and the URL the browser opens.</summary>
 public sealed record CompatShare(string Title, string Body, string Url);
 
+/// <summary>One field of the shared beta-report form (scripts/beta_report.py FIELDS): website, GitHub form and both apps alike.</summary>
+public sealed record ReportField(string Id, string Label, IReadOnlyList<string> Choices, bool Required, int Max);
+
+/// <summary>A drafted report for one game. Sources say where each value came from; the host keeps the draft itself.</summary>
+public sealed record BetaReport(string Id, string Name, IReadOnlyDictionary<string, string> Fields,
+    IReadOnlyDictionary<string, string> Sources, IReadOnlyList<string> Problems);
+
+public sealed record BetaReportDraft(IReadOnlyList<BetaReport> Reports, IReadOnlyList<ReportField> Fields);
+
+/// <summary>After saving: one prefilled GitHub form per game (Complete is false when the link had to be cut short).</summary>
+public sealed record BetaReportLink(string Name, string Url, bool Complete, string Text);
+
+/// <summary>Links for new reports, or the existing issue and the note to paste beside the attached ZIP.</summary>
+public sealed record BetaReportLinks(IReadOnlyList<BetaReportLink> Links, string? IssueUrl, int IssueNumber, string Comment);
+
 public sealed record PackageCatalog(string Status, IReadOnlyList<PackageOption> Packages, IReadOnlyList<CommunitySource> Community, string? CustomName);
 
 /// <summary>Feeder NR files rtxForge keeps itself: the verified stack (null when none) and original backups.</summary>

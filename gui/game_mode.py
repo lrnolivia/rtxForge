@@ -2268,9 +2268,22 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         grid.append(lower)
         return grid
 
+    def featured_steam(self):
+        """First in Settings, in the accent color, until rtxForge is in Steam: that's how Gaming Mode opens it with a controller."""
+        owner = self.owner
+        if getattr(owner.options, 'demo', False) or not hasattr(owner, 'steam_shortcut_added') or owner.steam_shortcut_added():
+            return []
+        add = self.button('Add rtxForge to Steam', owner.toggle_rtxforge_in_steam, kind='primary', icon='rtx-steam-symbolic',
+                          key='steam-featured', halign=Gtk.Align.START)
+        holder = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        holder.append(add)
+        return [('Play from Steam', 'Add rtxForge to your Steam library to open it from Gaming Mode with a controller. '
+                 'You review the shortcut and artwork first.', [holder])]
+
     def settings_groups(self, section, rows):
         if section == 'Graphics':
-            return [('Install defaults', 'Applied to new installs; game changes are reviewed first.', rows[:3]),
+            return [*self.featured_steam(),
+                    ('Install defaults', 'Applied to new installs; game changes are reviewed first.', rows[:3]),
                     ('Existing features', 'Register compatible feature packages already installed.', rows[3:])]
         if section == 'Appearance':
             return [('Theme', None, rows[:3]), ('Card surfaces', 'Frosted Game Mode cards update immediately.', rows[3:])]

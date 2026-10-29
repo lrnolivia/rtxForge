@@ -629,20 +629,112 @@ def compat_share(params):
                              service.hardware(), compat_list.version(), bool(params.get("notes")))
 
 
+# Beta reports use the shared scripts/beta_report.py, as the Linux app does. Drafts stay here:
+# the app sends only field corrections, so where each value came from can't be rewritten.
+_report_drafts: dict[str, dict] = {}
+
+
+def _report_field_defs() -> list:
+    import beta_report
+    return [{"id": key, "label": label, "choices": list(beta_report.CHOICES.get(key, ())),
+             "required": key in beta_report.REQUIRED, "max": beta_report.LENGTHS.get(key, 0)}
+            for key, label in beta_report.FIELDS]
+
+
+def _report_view(report) -> dict:
+    import beta_report
+    return {"id": report["id"], "name": report["name"], "fields": dict(report["fields"]),
+            "sources": {key: beta_report.SOURCES.get(value, "") for key, value in report["sources"].items()},
+            "problems": beta_report.problems(report)}
+
+
+def report_draft(params):
+    """One draft per selected game from what this PC verifies; results stay the user's to choose."""
+    import beta_report
+    rows = params.get("rows") or []
+    t.need(isinstance(rows, list) and 0 < len(rows) <= 1000, "Choose one or more games for the report.")
+    seen = set()
+    for row in rows:
+        exe = t.safe(Path(row["game"]) / t.relative(str(row.get("exe") or "")))
+        t.need(exe.is_relative_to(t.safe(row["game"])), "Game executable leaves its folder")
+        identity = os.path.normcase(str(exe))
+        t.need(identity not in seen, "A game was selected twice"); seen.add(identity)
+    fmt = params.get("format") if params.get("format") in beta_report.CHOICES["app-format"] else None
+    version = compat_list.version()
+    channel = params.get("channel") or ("Beta" if "-beta." in version else "")
+    facts = beta_report.context(service.hardware(), version, channel,
+                                compat_list.package_label(_settings().get("runtime_provider", "")),
+                                windows_format=fmt, system="Windows")
+    _report_drafts.clear()
+    views = []
+    for index, row in enumerate(rows):
+        ui.progress("Checking install records", game=row.get("name", ""), current=index + 1, total=len(rows))
+        report = beta_report.draft(row, facts, game_notes.load(_config(), row["game"]))
+        _report_drafts[report["id"]] = {"report": report, "row": row}
+        views.append(_report_view(report))
+    return {"reports": views, "fields": _report_field_defs()}
+
+
 def report_preview(params):
-    import support_reports
-    files = support_reports.preview(_config(), params.get("rows") or [], bool(params.get("logs")),
-                                    bool(params.get("notes")), host=service.hardware(), root=ROOT, build=params.get('build'))
-    items = [_item(name, "Review the exact report contents", "Report", details=text) for name, text in files.items()]
-    return _review("report", "Review Support Report", items, action="Export this preview",
-                   summary="Review the exact text below. Redaction is best effort. Export saves this preview locally; nothing is submitted.",
-                   payload=files)
+    """Apply the user's corrections, then the exact redacted files a ZIP will hold."""
+    import beta_report
+    ids = params.get("ids") or []
+    t.need(ids and all(i in _report_drafts for i in ids), "This report has expired. Prepare it again.")
+    for report_id, edits in (params.get("edits") or {}).items():
+        t.need(report_id in _report_drafts, "This report has expired. Prepare it again.")
+        for key, value in (edits or {}).items():
+            beta_report.correct(_report_drafts[report_id]["report"], key, value)
+    reports = [_report_drafts[i]["report"] for i in ids]
+    missing = [f"{r['name']}: {p}" for r in reports for p in beta_report.problems(r)]
+    t.need(not missing, "Answer these first: " + " ".join(missing))
+    logs = notes = app_logs = None
+    if params.get("logs"):
+        logs = {}
+        for index, report in enumerate(reports):
+            row = _report_drafts[report["id"]]["row"]
+            ui.progress("Reading logs", game=report["name"], current=index + 1, total=len(reports))
+            logs[report["id"]] = beta_report.collect(row, game_notes.load(_config(), row["game"]))
+        app_logs = beta_report.collect_app([LOCAL / "engine.log", LOCAL / "crash.log"])
+    if params.get("notes"):
+        notes = {r["id"]: game_notes.load(_config(), _report_drafts[r["id"]]["row"]["game"]).get("notes", "") for r in reports}
+    preview = beta_report.bundle(reports, logs, notes, app_logs)
+    entries = {item["path"]: item for item in preview["manifest"]["files"]}
+    items = []
+    for name, text in preview["files"].items():
+        entry = entries.get(name)
+        detail = (f"{entry['session']} · {entry['modified'][:16].replace('T', ' ')} UTC" + (" · newest part only" if entry["truncated"] else "")) \
+            if entry else "Review the exact report contents"
+        items.append(_item(name, detail, "Log" if entry else "Report", details=text))
+    for skipped in preview["manifest"]["skipped"]:
+        items.append(_item(skipped["name"], skipped["reason"], "Skipped"))
+    count = len(preview["manifest"]["files"])
+    return _review("report", "Review Beta Report", items, action="Save Report",
+                   summary=f"{count} log{'s' if count != 1 else ''} included · {len(preview['manifest']['skipped'])} not included. "
+                           "Review the exact text below. Redaction is best effort: check for anything personal. "
+                           "Logs show what ran, not what NR or MFG looked like. Saving keeps it on this PC; nothing is uploaded.",
+                   payload={"preview": preview, "documents": params.get("documents"), "ids": ids})
 
 
-def _run_report(files):
-    import support_reports
-    path = support_reports.export(files)
-    return {"message": f"Saved {path}", "path": str(path)}
+def _run_report(payload):
+    import beta_report
+    result = beta_report.export(payload["preview"], beta_report.folder(_config(), payload.get("documents")))
+    return {"message": f"Saved {result['name']}", "path": result["path"]}
+
+
+def report_links(params):
+    """After saving: the prefilled GitHub form per game, or the note for an issue that already exists."""
+    import beta_report
+    ids = params.get("ids") or []
+    t.need(ids and all(i in _report_drafts for i in ids), "This report has expired. Prepare it again.")
+    reports = [_report_drafts[i]["report"] for i in ids]
+    issue = beta_report.existing_issue(params["issue"]) if str(params.get("issue") or "").strip() else None
+    links = []
+    for report in reports:
+        link = beta_report.issue_url(report)
+        links.append({"id": report["id"], "name": report["fields"].get("game") or report["name"], "url": link["url"],
+                      "complete": link["complete"], "text": beta_report.text(report)})
+    return {"links": links, "issue": issue,
+            "comment": beta_report.comment(reports, params.get("archive") or "", issue) if issue else ""}
 
 
 # ---------- Recovery: previous changes and old NR files ----------
@@ -846,7 +938,8 @@ METHODS = {
     "sgdb_status": sgdb_status, "sgdb_connect": sgdb_connect, "sgdb_disconnect": sgdb_disconnect,
     "sgdb_search": sgdb_search, "sgdb_artwork": sgdb_artwork, "sgdb_download": sgdb_download,
     "diagnose": diagnose, "dlss_inventory": dlss_inventory, "dlss_restore_review": dlss_restore_review,
-    "notes_save": notes_save, "test_start": test_start, "test_finish": test_finish, "report_preview": report_preview,
+    "notes_save": notes_save, "test_start": test_start, "test_finish": test_finish,
+    "report_draft": report_draft, "report_preview": report_preview, "report_links": report_links,
     "try_anyway": try_anyway, "compat_share": compat_share,
     "recoveries": recoveries, "recovery_review": recovery_review, "cleanup_review": cleanup_review,
     "extras_list": extras_list, "extra_review": extra_review, "extra_restore_review": extra_restore_review,

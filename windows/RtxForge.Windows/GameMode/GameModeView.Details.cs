@@ -421,7 +421,7 @@ public sealed partial class GameModeView
                 foreach (var (title, description, caption, glyph, enabled, action) in new (string, string, string, string, bool, Action)[]
                 {
                     ("Diagnose NR", "Read the saved NR settings, runtime hashes and log evidence.", "Diagnose", "", true, () => _ = DiagnoseAsync(g)),
-                    ("Support report", "Scan this game's logs and preview a redacted ZIP.", "Prepare", "", true, () => ChooseSupportReportGames([g])),
+                    ("Beta report", "Fill in what happened and review a redacted ZIP before saving.", "Prepare", "", true, () => ChooseSupportReportGames([g])),
                     ("Install ReShade", "Choose an extracted x64 ReShade DLL. DirectX 10–12 games load it as dxgi.dll.", "Choose", "", installs, () => _ = InstallExtraAsync(g, "reshade")),
                     ("Install Add-on", "Choose an .addon64 file (including RenoDX). Install ReShade first.", "Choose", "", installs, () => _ = InstallExtraAsync(g, "addon")),
                     ("ReShade Downloads", "Get ReShade from its official site.", "Open", "", true, () => MainWindow.OpenUri("https://reshade.me/")),
@@ -435,7 +435,7 @@ public sealed partial class GameModeView
                 break;
 
             case "Notes":
-                SectionTitle(content, "Your Notes", "Kept with this game in rtxForge. Included in support reports when you choose.");
+                SectionTitle(content, "Your Notes", "Kept with this game in rtxForge. Included in beta reports when you choose.");
                 var notes = new TextBox
                 {
                     Text = notesDraft ?? g.Notes, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = t.Px(160),
@@ -460,9 +460,9 @@ public sealed partial class GameModeView
                 var noteActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12), HorizontalAlignment = HorizontalAlignment.Right };
                 noteActions.Children.Add(ui.Button(g.TestActive ? "Finish Test" : "Start Test", () => _ = RecordTestAsync(g), GmKind.Card, 0.85,
                     enabled: !shell.Service.IsPreview).With(b => Key(b, "notes-test")));
-                // Shares the saved result: save a Working or Problem result first.
-                noteActions.Children.Add(ui.Button("Share result", () => _ = ShareResultAsync(g), GmKind.Card, 0.85,
-                    enabled: !shell.Service.IsPreview && g.TestStatus is "Working" or "Problem").With(b => Key(b, "notes-share")));
+                // The shared beta report (as on Linux): untested games and failed installs can be reported too.
+                noteActions.Children.Add(ui.Button("Prepare beta report", () => ChooseSupportReportGames([g]), GmKind.Card, 0.85,
+                    enabled: !shell.Service.IsPreview).With(b => Key(b, "notes-share")));
                 noteActions.Children.Add(ui.Button("Save Notes", () => _ = SaveNotesAsync(g, notesStatus ?? g.TestStatus, notes.Text), GmKind.Primary, 0.85).With(b => Key(b, "notes-save")));
                 testSettings.Children.Add(noteActions);
                 noteCards.Children.Add(DetailPlate(testSettings)); content.Children.Add(noteCards);

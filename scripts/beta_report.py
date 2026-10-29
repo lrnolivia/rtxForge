@@ -50,6 +50,11 @@ SERIES={'turing':'RTX 20','ampere':'RTX 30','ada':'RTX 40','blackwell':'RTX 50'}
 MODES={'nr-mfg':'NR + MFG','nr-only':'NR only','mfg-only':'MFG only','NR + MFG':'NR + MFG','NR Only':'NR only','MFG Only':'MFG only'}
 # Exact diagnostic names beside the executable; the MFG plugin's own run logs share a prefix.
 LOGS=('OptiScaler.log','sl.log','sl.dlss_g.log','sl.interposer.log')
+# Extra names for the routes that write them, in their known folders only (as the Windows host scans).
+PROVIDER_LOGS={
+    'feeder':('ReShade.log','dlss5-feed.log','dlss5-feed-host.log','host64/dlss5-feed-host.log','host64/ReShade.log'),
+    'vulkan-native':('fgvk.log','NativeMods/fgvk.log'),
+}
 RUN_LOG_PREFIX='rtxmfg-'
 RUN_LOGS=4
 LOG_LIMIT=4*1024**2      # newest bytes kept from each log
@@ -310,25 +315,34 @@ def collect(row,record=None,limit=LOG_LIMIT):
     """The newest bytes of each known log beside the executable, with where and when they came from.
 
     Read once, here: the preview and the ZIP hold these bytes, never a later copy."""
-    import runtime_diagnostics
     record=record if record is not None else row.get('test_record') or {}
-    out=[]
     try:directory=game_dir(row)
     except t.Refusal as error:return [{'name':name,'skipped':str(error)} for name in LOGS]
     names=list(LOGS)
+    # Route logs are listed only where present: a game on another route never writes them.
+    optional={name for name in PROVIDER_LOGS.get(row.get('runtime_provider'),()) if (directory/name).exists()}
+    names+=sorted(optional)
     try:
         runs=[p for p in directory.iterdir() if p.name.startswith(RUN_LOG_PREFIX) and p.name.endswith('.log') and p.is_file() and not p.is_symlink()]
         names+=[p.name for p in sorted(runs,key=lambda p:p.stat().st_mtime,reverse=True)[:RUN_LOGS]]
     except OSError:pass
-    for name in names:
-        item={'name':name}
-        try:data,info=runtime_diagnostics.read_regular(directory/name,limit,tail=True)
-        except FileNotFoundError:item['skipped']='Not found';out.append(item);continue
-        except (OSError,ValueError) as error:item['skipped']='Not read: '+(str(error) or type(error).__name__);out.append(item);continue
-        modified=datetime.datetime.fromtimestamp(info.st_mtime,datetime.timezone.utc).isoformat()
-        item.update(data=data,size=info.st_size,modified=modified,truncated=info.st_size>len(data),session=_session(modified,record))
-        out.append(item)
-    return out
+    return [_read(directory/name,name,limit,record) for name in names]
+
+
+def collect_app(paths,limit=LOG_LIMIT):
+    """rtxForge's own logs at fixed known paths (Windows: engine.log, crash.log), read the same way."""
+    return [_read(Path(path),Path(path).name,limit,{}) for path in paths]
+
+
+def _read(path,name,limit,record):
+    import runtime_diagnostics
+    item={'name':name}
+    try:data,info=runtime_diagnostics.read_regular(path,limit,tail=True)
+    except FileNotFoundError:item['skipped']='Not found';return item
+    except (OSError,ValueError) as error:item['skipped']='Not read: '+(str(error) or type(error).__name__);return item
+    modified=datetime.datetime.fromtimestamp(info.st_mtime,datetime.timezone.utc).isoformat()
+    item.update(data=data,size=info.st_size,modified=modified,truncated=info.st_size>len(data),session=_session(modified,record))
+    return item
 
 
 # ---------- preview and export ----------
@@ -341,10 +355,11 @@ def _digest(files):
     return hashlib.sha256(json.dumps(files,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
 
 
-def bundle(reports,logs=None,notes=None):
+def bundle(reports,logs=None,notes=None,app_logs=None):
     """The exact redacted files a ZIP will hold, with a manifest of what was left out and why.
 
-    logs and notes are keyed by report id and only present when the user opted in."""
+    logs and notes are keyed by report id and only present when the user opted in;
+    app_logs (collect_app) go in an app/ folder shared by every report."""
     t.need(reports,'Choose at least one game.')
     files={};manifest={'schema':1,'created':t.now(),'reports':[],'files':[],'skipped':[],
                        'note':'Redaction is best effort. Logs show runtime activity; they do not establish what NR or MFG looked like in game.'}
@@ -363,6 +378,13 @@ def bundle(reports,logs=None,notes=None):
             files[path]=game_notes.redact(item['data'].decode('utf-8',errors='replace'))
             manifest['files'].append({'path':path,'size':item['size'],'modified':item['modified'],
                                       'truncated':item['truncated'],'session':item['session']})
+    for item in app_logs or []:
+        if 'skipped' in item:
+            manifest['skipped'].append({'report':'app','name':item['name'],'reason':item['skipped']});continue
+        path=f"app/{item['name']}"
+        files[path]=game_notes.redact(item['data'].decode('utf-8',errors='replace'))
+        manifest['files'].append({'path':path,'size':item['size'],'modified':item['modified'],
+                                  'truncated':item['truncated'],'session':'rtxForge app log'})
     files['manifest.json']=json.dumps(manifest,indent=2,ensure_ascii=False)
     files['README.txt']=('rtxForge beta report. Each folder holds one game: report.md is the GitHub issue text, '
                          'report.json the same fields with where each came from, and logs/ the newest part of each log.\n'
@@ -374,9 +396,13 @@ def bundle(reports,logs=None,notes=None):
 
 
 def folder(config,documents=None):
-    """Reports go somewhere easy to find: Documents/rtxForge Reports, else rtxForge's own state."""
+    """Reports go somewhere easy to find: Documents/rtxForge Reports, else rtxForge's own state.
+
+    A Documents folder behind a link or path alias is refused like any other write target,
+    so the report still saves, in rtxForge's own folder, instead of failing."""
     if documents and Path(documents).is_dir() and os.access(documents,os.W_OK):
-        return t.safe(Path(documents)/'rtxForge Reports')
+        try:return t.safe(Path(documents)/'rtxForge Reports')
+        except t.Refusal:pass
     return game_notes.root(config)/'exports'
 
 

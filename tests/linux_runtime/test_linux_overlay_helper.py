@@ -1,4 +1,5 @@
 """The in-game panel helper without the app window: lock, entry point and login service."""
+import io
 import os
 from pathlib import Path
 import sys
@@ -43,7 +44,7 @@ class HostLock(unittest.TestCase):
     def test_second_host_waits_then_takes_over(self):
         polls=[]
         fake=types.SimpleNamespace(stop=threading.Event(),channels={},poll=lambda:polls.append(1),
-                                   controls=types.SimpleNamespace(stop=threading.Event(),watcher=None))
+                                   controls=types.SimpleNamespace(stop=threading.Event(),watcher=None,start=lambda:None))
         held=host.host_lock(self.path)
         thread=threading.Thread(target=host.Host.run,args=(fake,self.path));thread.start()
         try:
@@ -61,6 +62,30 @@ class HostLock(unittest.TestCase):
         released=host.host_lock(self.path)
         self.assertIsNotNone(released,'a stopped host releases the lock');os.close(released)
 
+    def test_saved_presets_wait_for_host_ownership_before_replay(self):
+        controls=host.LinuxControls(Path(self.directory.name))
+        controls.presets={'game':{'row':{}}}
+        replay=threading.Event()
+        def game(_):
+            replay.set()
+            raise OSError('Fixture game is not running')
+        controls._game=game
+        controls._start_watcher()
+        self.assertIsNone(controls.watcher,'reloading presets cannot start an unowned host')
+        fake=types.SimpleNamespace(stop=threading.Event(),channels={},poll=lambda:None,controls=controls)
+        held=host.host_lock(self.path)
+        thread=threading.Thread(target=host.Host.run,args=(fake,self.path));thread.start()
+        try:
+            self.assertFalse(replay.wait(.4),'the app still owns the channel')
+            self.assertIsNone(controls.watcher)
+            os.close(held);held=None
+            self.assertTrue(replay.wait(4),'the standalone helper replays after taking ownership')
+        finally:
+            if held is not None:os.close(held)
+            fake.stop.set();thread.join(timeout=5)
+        self.assertFalse(thread.is_alive())
+        self.assertFalse(controls.watcher.is_alive())
+
 
 class LoginService(unittest.TestCase):
     def setUp(self):
@@ -73,17 +98,53 @@ class LoginService(unittest.TestCase):
         self.assertIn('Restart=on-failure\n',text)
         self.assertIn('WantedBy=default.target\n',text)
 
-    def test_install_writes_and_enables_the_unit(self):
+    def test_install_starts_now_and_at_login_without_restarting_unchanged_unit(self):
         calls=[]
         app=self.root/'RTXForge.AppImage';app.write_text('')
-        unit=helper.install_service(app,self.root/'systemd/user','/usr/bin/systemctl',run=lambda argv,**_:calls.append(argv))
+        def run(argv,**kwargs):
+            calls.append(argv)
+            self.assertTrue(kwargs['text'])
+            return types.SimpleNamespace(returncode=0,stderr='')
+        unit=helper.install_service(app,self.root/'systemd/user','/usr/bin/systemctl',run=run)
         self.assertEqual(unit,self.root/'systemd/user'/helper.SERVICE)
         self.assertEqual(unit.read_text(),helper.unit_text(app.resolve()))
         self.assertEqual(calls,[['/usr/bin/systemctl','--user','daemon-reload'],
-                                ['/usr/bin/systemctl','--user','enable',helper.SERVICE]])
+                                ['/usr/bin/systemctl','--user','enable','--now',helper.SERVICE],
+                                ['/usr/bin/systemctl','--user','try-restart',helper.SERVICE]])
         stamp=unit.stat().st_mtime_ns
-        helper.install_service(app,self.root/'systemd/user','/usr/bin/systemctl',run=lambda argv,**_:None)
+        calls.clear()
+        helper.install_service(app,self.root/'systemd/user','/usr/bin/systemctl',run=run)
         self.assertEqual(unit.stat().st_mtime_ns,stamp,'an unchanged unit is not rewritten')
+        self.assertEqual(calls,[['/usr/bin/systemctl','--user','daemon-reload'],
+                                ['/usr/bin/systemctl','--user','enable','--now',helper.SERVICE]],
+                         'registration starts a stopped helper but leaves a running one alone')
+
+    def test_changed_launcher_refreshes_the_running_helper(self):
+        unit_dir=self.root/'systemd/user'
+        old=self.root/'old.AppImage';old.write_text('')
+        new=self.root/'new.AppImage';new.write_text('')
+        calls=[]
+        def run(argv,**_):
+            calls.append(argv)
+            return types.SimpleNamespace(returncode=0,stderr='')
+        helper.install_service(old,unit_dir,'systemctl',run=run)
+        calls.clear()
+        unit=helper.install_service(new,unit_dir,'systemctl',run=run)
+        self.assertIn(str(new.resolve()),unit.read_text())
+        self.assertEqual(calls[-1],['systemctl','--user','try-restart',helper.SERVICE])
+
+    def test_each_systemctl_failure_is_reported_and_stops_followup_commands(self):
+        app=self.root/'RTXForge.AppImage';app.write_text('')
+        for failed_step in range(3):
+            with self.subTest(step=failed_step):
+                calls=[]
+                def run(argv,**_):
+                    calls.append(argv)
+                    return types.SimpleNamespace(returncode=1 if len(calls)==failed_step+1 else 0,
+                                                 stderr='No user bus')
+                with self.assertRaisesRegex(RuntimeError,'No user bus'):
+                    helper.install_service(app,self.root/str(failed_step),'systemctl',run=run)
+                self.assertEqual(len(calls),failed_step+1)
 
     def test_without_systemctl_the_unit_is_still_written(self):
         app=self.root/'RTXForge.AppImage';app.write_text('')
@@ -97,6 +158,17 @@ class LoginService(unittest.TestCase):
             desktop_install.register(app)
         unit=self.root/'data/systemd/user'/helper.SERVICE
         self.assertIn('--overlay-helper',unit.read_text())
+
+    def test_a_helper_that_cannot_start_does_not_fail_the_install(self):
+        app=self.root/'RTXForge.AppImage';app.write_text('')
+        failed=RuntimeError('The in-game panel helper could not be started: No user bus.')
+        with patch.dict(os.environ,{'XDG_DATA_HOME':str(self.root/'data')}), \
+             patch.object(desktop_install.shutil,'which',return_value=None), \
+             patch.object(helper,'install_service',side_effect=failed), \
+             patch('sys.stderr',new_callable=io.StringIO) as stderr:
+            self.assertEqual(desktop_install.register(app),str(app.resolve()))
+        self.assertIn('No user bus',stderr.getvalue())
+        self.assertTrue((self.root/'data/applications'/f'{desktop_install.APP_ID}.desktop').is_file())
 
 
 class EntryPoint(unittest.TestCase):

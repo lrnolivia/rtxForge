@@ -11,6 +11,17 @@ public sealed partial class GameModeView
     /// <summary>Settings row label; refreshed after the status loads.</summary>
     string SteamRowTitle() => steamAdded == true ? "rtxForge is in Steam" : "Add rtxForge to Steam";
 
+    /// <summary>First in Settings, in the accent color, until rtxForge is in Steam: that's how Game Mode opens it with a controller.</summary>
+    IReadOnlyList<SettingsGroup> FeaturedSteamGroups()
+    {
+        if (shell.Service.IsPreview) return [];
+        if (steamAdded is null) { LoadSteamStatus(); return []; }
+        if (steamAdded == true) return [];
+        var add = ui.Button(ui.IconLabel("", "Add rtxForge to Steam"), () => _ = ToggleSteamAsync(), GmKind.Primary, 0.95)
+            .With(button => Key(button, "steam-featured"));
+        return [new("Play from Steam", "Add rtxForge to your Steam library to open it from Gaming Mode with a controller. You review the shortcut and artwork first.", [add])];
+    }
+
     async void LoadSteamStatus()
     {
         var added = await shell.SteamShortcutAddedAsync();

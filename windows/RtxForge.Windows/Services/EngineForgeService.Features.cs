@@ -140,9 +140,35 @@ public sealed partial class EngineForgeService
 
     public async Task FinishTestAsync(Game game) => Apply(game, await CallAsync("test_finish", new JsonObject { ["row"] = Row(game) }));
 
-    public async Task<EngineReview> PreviewReportAsync(IReadOnlyList<Game> games, bool logs, bool notes) =>
-        ToReview(await CallAsync("report_preview", new JsonObject { ["rows"] = Rows(games), ["logs"] = logs, ["notes"] = notes,
-            ["build"] = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(App).Assembly)?.InformationalVersion }));
+    public async Task<BetaReportDraft> DraftReportsAsync(IReadOnlyList<Game> games, string? format, string channel)
+    {
+        var r = await CallAsync("report_draft", new JsonObject { ["rows"] = Rows(games), ["format"] = format, ["channel"] = channel });
+        static IReadOnlyDictionary<string, string> Map(JsonNode? node) =>
+            (node as JsonObject)?.ToDictionary(p => p.Key, p => p.Value?.ToString() ?? "") ?? new Dictionary<string, string>();
+        var reports = Objects(r?["reports"]).Select(o => new BetaReport(S(o, "id") ?? "", S(o, "name") ?? "",
+            Map(o["fields"]), Map(o["sources"]), Strings(o["problems"]))).ToList();
+        var fields = Objects(r?["fields"]).Select(o => new ReportField(S(o, "id") ?? "", S(o, "label") ?? "",
+            Strings(o["choices"]), B(o, "required"), I(o, "max"))).ToList();
+        return new BetaReportDraft(reports, fields);
+    }
+
+    public async Task<EngineReview> PreviewReportAsync(IReadOnlyList<string> ids, IReadOnlyDictionary<string, Dictionary<string, string>> edits,
+        bool logs, bool notes, string documents)
+    {
+        var changes = new JsonObject();
+        foreach (var (id, fields) in edits)
+            changes[id] = new JsonObject(fields.Select(f => KeyValuePair.Create(f.Key, (JsonNode?)f.Value)));
+        return ToReview(await CallAsync("report_preview", new JsonObject { ["ids"] = new JsonArray(ids.Select(i => (JsonNode)i).ToArray()),
+            ["edits"] = changes, ["logs"] = logs, ["notes"] = notes, ["documents"] = documents }));
+    }
+
+    public async Task<BetaReportLinks> ReportLinksAsync(IReadOnlyList<string> ids, string? issue, string? archive)
+    {
+        var r = await CallAsync("report_links", new JsonObject { ["ids"] = new JsonArray(ids.Select(i => (JsonNode)i).ToArray()),
+            ["issue"] = issue, ["archive"] = archive });
+        var links = Objects(r?["links"]).Select(o => new BetaReportLink(S(o, "name") ?? "", S(o, "url") ?? "", B(o, "complete"), S(o, "text") ?? "")).ToList();
+        return new BetaReportLinks(links, S(r?["issue"], "url"), I(r?["issue"], "number"), S(r, "comment") ?? "");
+    }
 
     public async Task SetTryAnywayAsync(Game game, bool on) =>
         Apply(game, await CallAsync("try_anyway", new { game = game.Id, on, reason = game.BlockedReason ?? "" }));

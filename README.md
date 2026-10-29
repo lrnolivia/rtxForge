@@ -16,18 +16,24 @@ Deploy neural rendering across compatible games, bring multi-frame generation to
 | **Beta** | The regular public testing release. Start here. |
 | **Development** | A moving release with the latest changes and unfinished features. |
 
-[Choose Linux or Windows on the website](https://rtxforge.loew.fi/#downloads) to see the packages available for each channel. Linux uses AppImage, or Flatpak when a release provides it. Windows offers an installer and a portable ZIP when published.
+[**rtxForge Beta 1 is available for Linux and Windows.**](https://github.com/lrnolivia/rtxForge/releases/tag/beta) [Choose your OS on the website](https://loew.fi/rtxforge/#downloads) for downloads and installation instructions. Linux x86_64 offers a Flatpak bundle and AppImage; Windows offers x64 and ARM64 installers and an x64 portable ZIP.
 
-The new channels use the `beta` and `development` release tags. They are being set up; the site shows **coming soon** until a channel has a package for your OS. The older `continuous` prerelease remains for existing Linux updater compatibility. Release channels are separate from source-code branches.
+Beta 1 is the public release label. Its current package versions are `1.0.0-beta.3` on Linux and `1.0.0-beta.2` on Windows; those build numbers remain separate from the public label. The channels use the `beta` and `development` release tags. The site shows **coming soon** only when a channel has no published package for your OS. The older `continuous` prerelease remains for existing Linux updater compatibility. Release channels are separate from source-code branches.
 
 ### Download directly from GitHub
 
 1. Open **[Releases](https://github.com/lrnolivia/rtxForge/releases)** on this repository.
-2. Choose **rtxForge Beta** (`beta`) or **rtxForge Development** (`development`) when published.
-3. Expand **Assets** and download the package for your OS: Linux `.AppImage` or a provided Flatpak; Windows setup `.exe`, setup ZIP or portable Windows ZIP.
+2. Choose **rtxForge Beta 1** (`beta`), or **rtxForge Development** (`development`) when published.
+3. Expand **Assets** and download the package for your OS: Linux `.flatpak` or `.AppImage`; Windows setup `.exe` for your architecture or the x64 portable Windows ZIP. Files containing `.previous-` are retained recovery copies.
 4. Run the installer, or extract the entire portable ZIP and open `rtxForge.exe`. For Linux setup, follow the [installation guide](https://rtxforge.loew.fi/install?os=linux).
 
 The automatic **Source code (zip)** and **Source code (tar.gz)** links contain the source, not the ready-to-run app. Checksum files are for verifying a download.
+
+### Linux setup
+
+The Linux beta targets Bazzite, SteamOS and CachyOS. Use the **Flatpak bundle** on SteamOS; it also runs on Bazzite and CachyOS and supplies GTK4/libadwaita through the GNOME runtime. Open the downloaded `.flatpak` in Discover or GNOME Software, or install it with `flatpak install --user /path/to/download.flatpak`.
+
+The **AppImage** uses host Python 3, GTK4, libadwaita 1.7+ and PyGObject. On CachyOS, install `python-gobject` and `libadwaita` first. Allow the AppImage to run in its file properties, then open it. Both formats require host Python 3 for system checks. See the [Linux installation guide](https://loew.fi/rtxforge/install?os=linux) and [release notes](https://github.com/lrnolivia/rtxForge/releases/tag/beta) for requirements and testing limits.
 
 ## Your first game
 
@@ -44,7 +50,7 @@ The [full installation guide](https://rtxforge.loew.fi/install) covers app setup
 ## Compatibility
 
 - NR is experimental and requires a compatible RTX card, game and provider. MFG supports RTX 20, 30 and 40 series on compatible routes; a requested multiplier is not a guaranteed net FPS gain.
-- Package support differs between Linux and Windows. The Windows overlay and one-click dual-boot adaptation are in development.
+- Package support differs between Linux and Windows. Beta 1 includes Game Mode and in-game overlay/panel features, with testing limits listed in the release notes. **Adapt to Linux** sets up supported Windows-installed games on a shared drive without changing their Windows installation. Proton frame generation needs a build with NVIDIA CUDA support, such as Proton-GE; launch the game once with that build before adapting it.
 - Close games before changing their files. Avoid protected online games and anti-cheat; review conflicts rather than overwriting unknown files.
 
 ## Help

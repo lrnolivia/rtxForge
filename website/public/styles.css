@@ -194,3 +194,12 @@ body:not(.install-page) .platform-picker{margin:12px 0 40px}
  .install-stage{aspect-ratio:4/3}
  .features{margin-top:60px}
 }
+
+/* Keep setup help with the download, with a full keyboard and touch target. */
+.download-guide{display:flex;gap:10px;min-height:46px;padding:10px 15px;margin-top:10px;border:1px solid var(--hover);border-radius:12px;color:var(--text)}
+.download-guide:hover{background:var(--raised);color:var(--text)}
+.download-guide svg{flex:none}
+.download-guide .guide-arrow{margin-left:auto}
+.download-alternative{margin-top:10px;background:var(--raised);color:var(--text)}
+.download-alternative:hover{background:var(--hover);color:var(--text);filter:none}
+.download-alternative[hidden]{display:none}

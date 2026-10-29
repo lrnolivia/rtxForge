@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-os="windows">
+<html lang="en" data-os="linux">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -22,7 +22,7 @@
   <meta name="twitter:image" content="https://loew.fi/rtxforge/assets/rtxforge-banner.png">
   <meta name="twitter:image:alt" content="rtxForge — new tricks for old cards. The rtxForge icon and wordmark beside a graphics card fan.">
   <meta name="color-scheme" content="dark light">
-  <title>rtxForge 1.0 Beta — Linux and Windows</title>
+  <title>rtxForge Beta 1 — Linux and Windows</title>
   <link rel="icon" href="assets/rtxforge.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
   <script type="module" src="app.js"></script>
@@ -32,11 +32,11 @@
   <a class="skip-link" href="#main">Skip to content</a>
   <div class="page">
     <header class="header">
-      <a class="brand" href="./" aria-label="rtxForge Beta home">
+      <a class="brand" href="./" aria-label="rtxForge Beta 1 home">
         <picture>
           <img class="brand-mark" id="brand-mark" src="assets/rtxforge.svg" width="52" height="52" alt="">
         </picture>
-        <span class="brand-name">rtxForge</span><span class="beta">Beta</span>
+        <span class="brand-name">rtxForge</span><span class="beta">Beta 1</span>
       </a>
       <div class="header-links">
         <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light appearance"><img id="theme-icon" src="assets/sun.svg" width="20" height="20" alt=""></button>
@@ -45,25 +45,24 @@
 
     <main id="main">
       <div class="platform-picker" role="tablist" aria-label="Choose your operating system">
-        <button id="tab-linux" class="platform-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="platform-content" type="button" data-platform="linux">
+        <button id="tab-linux" class="platform-tab" role="tab" aria-selected="true" aria-controls="platform-content" type="button" data-platform="linux">
           <img class="os-icon" src="assets/linux.svg" width="21" height="21" alt=""> Linux
         </button>
-        <button id="tab-windows" class="platform-tab" role="tab" aria-selected="true" aria-controls="platform-content" type="button" data-platform="windows">
+        <button id="tab-windows" class="platform-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="platform-content" type="button" data-platform="windows">
           <img class="os-icon" src="assets/windows.svg" width="20" height="20" alt=""> Windows
         </button>
       </div>
 
-      <section id="platform-content" class="hero" role="tabpanel" aria-labelledby="tab-windows" tabindex="0">
+      <section id="platform-content" class="hero" role="tabpanel" aria-labelledby="tab-linux" tabindex="0">
         <div class="hero-copy">
           <h1>New tricks for<br> old cards.</h1>
           <p class="intro">Deploy neural rendering across your game library, bring multi-frame generation to RTX 20, 30, and 40 series, and keep DLSS up to date.</p>
-          <p class="platform-copy" id="platform-copy">A native app for your Windows desktop.</p>
-          <a class="text-link" id="guide-link" href="install.html?os=windows">Read the installation guide</a>
+          <p class="platform-copy" id="platform-copy">A native app for your Linux desktop.</p>
         </div>
 
         <figure class="hero-library" id="hero-library-media">
-          <a id="hero-library-original" href="assets/screenshots/windows-desktop-library-selected-dark.webp" target="_blank" rel="noopener" aria-label="View the Library screenshot full size">
-            <img id="hero-library-image" src="assets/screenshots/windows-desktop-library-selected-dark.webp" width="2985" height="1781" alt="Windows desktop Library with six games selected and the expanded sidebar." fetchpriority="high">
+          <a id="hero-library-original" href="assets/screenshots/linux-desktop-library-selected-dark.webp" target="_blank" rel="noopener" aria-label="View the Library screenshot full size">
+            <img id="hero-library-image" src="assets/screenshots/linux-desktop-library-selected-dark.webp" width="2985" height="1780" alt="Linux desktop Library with six games selected and the expanded sidebar." fetchpriority="high">
           </a>
           <figcaption class="sr-only" id="hero-library-provenance"></figcaption>
         </figure>
@@ -72,14 +71,14 @@
       <section class="download-panel" id="downloads" aria-label="Download rtxForge">
         <div class="download-summary">
           <div class="download-heading">
-            <h2>Get rtxForge for <span id="platform-name">Windows</span></h2>
+            <h2>Get rtxForge for <span id="platform-name">Linux</span></h2>
             <span class="download-os" id="download-os" aria-hidden="true"></span>
           </div>
           <p class="beta-launch" id="beta-launch">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M16 3v4M8 3v4M3 11h18m-11 5 2 2 4-4"/></svg>
-            <span>Public Beta <span aria-hidden="true">·</span> 1.0</span>
+            <span>Public Beta 1</span>
           </p>
-          <p class="package-meta" id="package-meta">Beta · Windows x64</p>
+          <p class="package-meta" id="package-meta">Beta 1 · Linux x86_64</p>
           <div class="download-compatibility">
             <p>NR for compatible RTX cards.<br>MFG for RTX 20, 30, and 40 series.</p>
             <a class="text-link" id="requirements-link" href="#requirements-details">Check game and GPU requirements</a>
@@ -90,7 +89,11 @@
             <span id="download-label">Beta coming soon</span><span class="download-arrow" aria-hidden="true">↓</span>
           </a>
           <a class="text-link portable-link" id="portable-link" hidden>Portable Beta <span aria-hidden="true">↗</span></a>
-          <p class="install-copy" id="install-copy" role="status">The Windows Beta download will appear here when it is published.</p>
+          <a class="text-link download-guide" id="guide-link" href="install.html?os=linux">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v15M12 5C9 3 5 3 2 4v15c3-1 7-1 10 1 3-2 7-2 10-1V4c-3-1-7-1-10 1Z"/></svg>
+            <span>Installation guide</span><span class="guide-arrow" aria-hidden="true">→</span>
+          </a>
+          <p class="install-copy" id="install-copy" role="status">The Linux Beta download will appear here when it is published.</p>
           <div class="release-actions" id="release-actions">
             <a class="text-link" id="release-github" href="https://github.com/lrnolivia/rtxForge/releases" target="_blank" rel="noopener">View releases on GitHub <span aria-hidden="true">↗</span></a>
             <button class="text-link retry-button" id="release-retry" type="button" hidden>Try again</button>
@@ -214,7 +217,7 @@
           <summary><span>How do I get started?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary>
           <div class="details-body">
             <p>Download the app package for your OS and channel. In rtxForge, find one compatible game, choose your packages, tune presets, then review and install the features with the game closed.</p>
-            <a id="faq-guide-link" class="text-link" href="install.html?os=windows">Follow the installation guide <span aria-hidden="true">→</span></a>
+            <a id="faq-guide-link" class="text-link" href="install.html?os=linux">Follow the installation guide <span aria-hidden="true">→</span></a>
           </div>
         </details>
         <details>
@@ -253,7 +256,7 @@
     <footer class="footer">
       <a class="loew" href="https://loew.fi" target="_blank" rel="noopener">loew.fi</a>
       <div class="footer-links">
-        <a id="footer-guide-link" href="install.html?os=windows">Install guide</a>
+        <a id="footer-guide-link" href="install.html?os=linux">Install guide</a>
         <a href="https://github.com/lrnolivia/rtxForge" target="_blank" rel="noopener">GitHub <span aria-hidden="true">↗</span></a>
         <a id="report-link" href="https://github.com/lrnolivia/rtxForge/issues/new" target="_blank" rel="noopener">Report a bug <span aria-hidden="true">↗</span></a>
         <a href="https://github.com/lrnolivia/rtxForge/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>

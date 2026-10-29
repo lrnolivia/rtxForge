@@ -8,19 +8,21 @@ Use `npm ci`, `npm run check`, and `npm run deploy` from this directory. Wrangle
 
 `public/install.html` serves the richer OS-aware guide at `/install` in production. The landing page and guide share platform requirements and appearance preferences through `platforms.mjs` and `theme.mjs`. Guide downloads return to the selected OS on the landing page, where availability is resolved from real releases. Package-specific and development-only capabilities remain qualified.
 
+The landing page places an outlined Installation guide link with a book glyph directly below the package downloads. Linux shows separate Download Flatpak and Download AppImage buttons when both packages are published. It follows the selected OS and remains available while release information loads or fails. The Linux guide covers both the Flatpak bundle and AppImage.
+
 ## Release channels
 
-`public/releases.mjs` defines the two planned GitHub tags: `beta` for the normal testing release and `development` for the moving development release. The page reads those releases through the public GitHub API and enables only published assets for the selected platform. Until a channel or platform package exists, its download says coming soon and has no destination. API failures are shown separately. Missing-release cache lasts one minute; published-release cache lasts three minutes.
+`public/releases.mjs` defines the GitHub channel tags: `beta` for the normal testing release and `development` for the moving development release. **rtxForge Beta 1 is published for both Linux and Windows** in the shared `beta` release. Its Linux packages use build version `1.0.0-beta.3`; Windows packages use `1.0.0-beta.2`. Public release labels and package build versions are separate. The page reads those releases through the public GitHub API and enables only published assets for the selected platform. Until a channel or platform package exists, its download says coming soon and has no destination. API failures are shown separately. Missing-release cache lasts one minute; published-release cache lasts three minutes.
 
-The download card identifies Public Beta 1.0. Its announcement badge disappears when a published Beta package is available for the selected OS; a platform without assets keeps its coming-soon state.
+The download card identifies Beta 1. Its announcement badge disappears when a published Beta package is available for the selected OS; a platform without assets keeps its coming-soon state.
 
-Linux supports Flatpak references, Flatpak bundles and AppImages. Windows selects the x64 installer, with a portable ZIP option when present. ARM64, checksum files, recovery copies and assets outside this repository/tag are excluded. Change tag names in `CHANNELS` when the publisher uses a different convention. Keep release titles plain; put versions and build metadata in the release body.
+Linux selects a Flatpak reference or bundle before an AppImage; the published Beta 1 includes both a Flatpak bundle and AppImage. Flatpak is the SteamOS option and also supports Bazzite and CachyOS. AppImages need host Python 3, GTK4, libadwaita 1.7+ and PyGObject; Flatpak supplies its GTK runtime but still needs host Python 3 for system checks. Windows selects the x64 installer, with a portable ZIP option when present. ARM64, checksum files, recovery copies and assets outside this repository/tag are excluded. The GitHub release additionally provides a Windows ARM64 installer. Change tag names in `CHANNELS` when the publisher uses a different convention. Keep the public title `rtxForge Beta 1`; retain per-OS package versions and source provenance in the release body.
 
 The legacy `continuous` tag remains for installed Linux updater compatibility and is not used as either new landing-page channel. This page does not create or promote application releases.
 
 ## App screenshots
 
-`public/screenshots.mjs` owns the captures per OS and their theme variants. Windows is the initial platform; explicit OS links and saved visitor choices take precedence. The appearance toggle swaps page and native captures together.
+`public/screenshots.mjs` owns the captures per OS and their theme variants. Linux is the initial landing-page platform; explicit OS links and saved visitor choices take precedence. The appearance toggle swaps page and native captures together.
 
 The hero presents the selected Desktop Library, with a bottom-only CSS fade, top corners scaled from native capture radii, and a soft drop shadow. Presets illustrates tuning. The Install card auto-loops tightly cropped Review, Installing, and Done images in one rounded frame, with pagination dots only. There are no visible step labels, arrows or playback controls. All three frames retain the same native app/game background; crops are presentation CSS and full-size links retain the complete originals.
 

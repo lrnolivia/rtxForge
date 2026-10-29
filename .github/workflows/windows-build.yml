@@ -495,12 +495,12 @@ jobs:
               "$VERSION" "$GITHUB_SHA" "$BUILD_URL" "$SIGNING" > "$RUNNER_TEMP/beta-notes.md"
             git tag -f beta "$GITHUB_SHA"
             git push -f origin refs/tags/beta
-            gh release edit beta --draft=false --prerelease --latest=false --title 'rtxForge 1.0 Beta' --notes-file "$RUNNER_TEMP/beta-notes.md"
+            gh release edit beta --draft=false --prerelease --latest=false --title 'rtxForge Beta 1' --notes-file "$RUNNER_TEMP/beta-notes.md"
           elif grep -q 'HTTP 404' "$RUNNER_TEMP/beta-lookup-error"; then
             LINUX_BEFORE=''
             python3 packaging/beta_release.py notes windows docs/releases/1.0-beta.md - \
               "$VERSION" "$GITHUB_SHA" "$BUILD_URL" "$SIGNING" > "$RUNNER_TEMP/beta-notes.md"
-            gh release create beta release/* --draft --prerelease --target "$GITHUB_SHA" --title 'rtxForge 1.0 Beta' --notes-file "$RUNNER_TEMP/beta-notes.md"
+            gh release create beta release/* --draft --prerelease --target "$GITHUB_SHA" --title 'rtxForge Beta 1' --notes-file "$RUNNER_TEMP/beta-notes.md"
             gh release edit beta --draft=false --prerelease --latest=false
           else
             cat "$RUNNER_TEMP/beta-lookup-error" >&2

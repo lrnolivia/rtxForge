@@ -2,6 +2,7 @@
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[2]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'windows/engine-host')]
@@ -63,6 +64,23 @@ class CandidateTest(unittest.TestCase):
         self.assertEqual(feeder.expand_rows(self.e,[row])[0]['exe'],'TS4_DX9_x64.exe')
         row['executable_selected']=False
         self.assertEqual(feeder.expand_rows(self.e,[row])[0]['exe'],'TS4_x64.exe')
+
+    def test_verified_stock_debug_helper_is_preserved_but_unknown_replacement_refuses(self):
+        row=self.fixture.game('StockDebugHelper')
+        directory=Path(row['game'])
+        stock=directory/'dbghelp.dll'
+        stock.write_bytes(fixtures.pe(b'known stock helper'))
+        digest=feeder.digest(stock)
+        with patch.dict(feeder.STOCK_LIBRARIES,{'dbghelp.dll':{digest}}):
+            review=feeder.prepare({},[row],'nr-only','install',self.fixture.settings,self.e)
+            self.assertFalse(review['blocked'],review['blocked'])
+            self.assertNotIn('dbghelp.dll',review['plans'][0]['writes'])
+            self.assertEqual(feeder.digest(stock),digest)
+            stock.write_bytes(fixtures.pe(b'unknown proxy'))
+            self.assertIn('dbghelp.dll',feeder.prepare({},[row],'nr-only','install',self.fixture.settings,self.e)['blocked'][0]['reason'])
+            before=self.fixture.files(row)
+            with self.assertRaises(Exception):feeder.execute(review)
+            self.assertEqual(self.fixture.files(row),before,'changed stock helper caused partial writes')
 
 
 if __name__=='__main__':unittest.main()

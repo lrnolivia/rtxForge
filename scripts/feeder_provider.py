@@ -38,6 +38,9 @@ PANELS = ('rtxforge-panel.addon64', 'rtxforge-quiet.addon64')
 # Added by hand before rtxforge-quiet existed.
 RETIRED = {'quiet-startup.addon64': 'a33e97b437a6410d01d4dafc1ae770afa9c1e37a84bdbbe87926e24b5735f0a4'}
 OWNED = (*PANELS, *RETIRED)
+# Verified Microsoft Windows Image Helper shipped with games. DbgHelp can
+# also be a proxy name, so only these exact stock bytes are exempted.
+STOCK_LIBRARIES = {'dbghelp.dll': {'abd6a38e9d73b0ed73372e80819eca9134534c17722ced453e5e1cbffef03ec2'}}
 # rtxForge preset controls and the RenoDX keys they set. RenoDX reads these
 # once, when the game starts; the in-game panel writes the same keys.
 TUNING = {'intensity': ('NRIntensity', 0.0, 2.0), 'passes': ('NRPasses', 1, 4),
@@ -306,6 +309,10 @@ def eligible(e, row, existing=False, check_running=True):
     t.need(not check_running or not running_under(e, root), 'Close this game before changing Feeder files')
     t.need(not e.load_baseline(directory, readonly=True) and not (directory / 'OptiScaler.ini').exists(),
            'Restore the existing OptiScaler package before installing Feeder NR')
+    if not existing:
+        conflicts = foreign_graphics_files(directory)
+        t.need(not conflicts, 'Other graphics hooks/settings are present: ' + ', '.join(conflicts)
+               + '. Restore them before installing Feeder NR')
     owned = state(e, directory)
     t.need(not any((directory / name).exists() for name in ('nvngx.dll_dlssnr.dll', 'dlss5-feed-helper.addon64',
                                                          'dlss5-bridge.addon64', 'renodx-mfgunlock.addon64')
@@ -322,6 +329,18 @@ def eligible(e, row, existing=False, check_running=True):
         t.need(apis != {'d3d12'} or not row.get('native_dlss'),
                'This DirectX 12 game ships DLSS; use its DLSS route instead of Feeder NR')
     return root, exe, directory
+
+
+def foreign_graphics_files(directory):
+    conflicts = []
+    for name in sorted({*t.PROXIES, 'ReShade.ini', 'renodx-dlss5.addon64'}):
+        path = directory / name
+        if not path.exists():
+            continue
+        if name in STOCK_LIBRARIES and digest(path) in STOCK_LIBRARIES[name]:
+            continue
+        conflicts.append(name)
+    return conflicts
 
 
 def graphics_apis(e, exe):
@@ -905,8 +924,6 @@ def _prepare(config, rows, mode, operation, settings, e):
                     '. They apply the next time the game starts.'
             else:
                 if not existing:
-                    t.need(not any((directory / name).exists() for name in (*t.PROXIES, 'ReShade.ini', 'renodx-dlss5.addon64')),
-                           'Other graphics mods are present. Restore them before installing Feeder NR')
                     files = stack_files(e, settings)
                     for name in [*spec['assets'], *CONFIGS]:
                         inputs[name] = writes[name] = files[name]

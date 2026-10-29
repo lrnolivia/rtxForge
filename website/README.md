@@ -8,6 +8,8 @@ Use `npm ci`, `npm run check`, and `npm run deploy` from this directory. Wrangle
 
 `public/install.html` serves the richer OS-aware guide at `/install` in production. The landing page and guide share platform requirements and appearance preferences through `platforms.mjs` and `theme.mjs`. Guide downloads return to the selected OS on the landing page, where availability is resolved from real releases. Package-specific and development-only capabilities remain qualified.
 
+The guide also covers overlay setup and shortcut recording, native OptiScaler/ReShade menus and welcome messages, per-game overrides, reviewed overlay updates and restarts, the Windows/Linux helper differences, Game Mode, one-time Global changes, and Adapt to Linux. These sections follow the selected OS and use the shortcut shown by the installed build rather than a universal hard-coded key.
+
 The landing page places an outlined Installation guide link with a book glyph directly below the package downloads. Linux shows separate Download Flatpak and Download AppImage buttons when both packages are published. It follows the selected OS and remains available while release information loads or fails. The Linux guide covers both the Flatpak bundle and AppImage.
 
 ## Beta reports

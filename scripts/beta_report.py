@@ -50,6 +50,11 @@ SERIES={'turing':'RTX 20','ampere':'RTX 30','ada':'RTX 40','blackwell':'RTX 50'}
 MODES={'nr-mfg':'NR + MFG','nr-only':'NR only','mfg-only':'MFG only','NR + MFG':'NR + MFG','NR Only':'NR only','MFG Only':'MFG only'}
 # Exact diagnostic names beside the executable; the MFG plugin's own run logs share a prefix.
 LOGS=('OptiScaler.log','sl.log','sl.dlss_g.log','sl.interposer.log')
+# Extra names for the routes that write them, in their known folders only (as the Windows host scans).
+PROVIDER_LOGS={
+    'feeder':('ReShade.log','dlss5-feed.log','dlss5-feed-host.log','host64/dlss5-feed-host.log','host64/ReShade.log'),
+    'vulkan-native':('fgvk.log','NativeMods/fgvk.log'),
+}
 RUN_LOG_PREFIX='rtxmfg-'
 RUN_LOGS=4
 LOG_LIMIT=4*1024**2      # newest bytes kept from each log
@@ -316,6 +321,9 @@ def collect(row,record=None,limit=LOG_LIMIT):
     try:directory=game_dir(row)
     except t.Refusal as error:return [{'name':name,'skipped':str(error)} for name in LOGS]
     names=list(LOGS)
+    # Route logs are listed only where present: a game on another route never writes them.
+    optional={name for name in PROVIDER_LOGS.get(row.get('runtime_provider'),()) if (directory/name).exists()}
+    names+=sorted(optional)
     try:
         runs=[p for p in directory.iterdir() if p.name.startswith(RUN_LOG_PREFIX) and p.name.endswith('.log') and p.is_file() and not p.is_symlink()]
         names+=[p.name for p in sorted(runs,key=lambda p:p.stat().st_mtime,reverse=True)[:RUN_LOGS]]

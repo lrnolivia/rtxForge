@@ -220,6 +220,19 @@ class BetaReportTest(unittest.TestCase):
         self.assertEqual(names, {'rtxmfg-1.log'})
         self.assertTrue(all('skipped' in item for item in beta_report.collect(dict(self.row, exe='../escape.exe'), {})))
 
+    def test_route_logs_are_read_only_for_their_route_and_only_when_present(self):
+        (self.game / 'bin/host64').mkdir()
+        self.log('ReShade.log', b'reshade');self.log('host64/dlss5-feed-host.log', b'host')
+        feeder = {item['name']: item for item in beta_report.collect(dict(self.row, runtime_provider='feeder'), {})}
+        self.assertEqual(feeder['ReShade.log']['data'], b'reshade')
+        self.assertEqual(feeder['host64/dlss5-feed-host.log']['data'], b'host')
+        self.assertNotIn('dlss5-feed.log', feeder, 'absent route logs are not listed as missing')
+        other = {item['name'] for item in beta_report.collect(self.row, {})}
+        self.assertNotIn('ReShade.log', other)
+        report = self.ready()
+        preview = beta_report.bundle([report], {report['id']: list(feeder.values())})
+        self.assertTrue(any(name.endswith('logs/host64/dlss5-feed-host.log') for name in preview['files']))
+
     @unittest.skipUnless(hasattr(os, 'symlink') and os.name != 'nt', 'POSIX links')
     def test_links_and_fifos_are_refused(self):
         outside = self.root / 'secret.txt';outside.write_text('secret')

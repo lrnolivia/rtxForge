@@ -93,6 +93,8 @@ inline const ImFontLoader* PanelFontLoader() { return ImFontAtlasGetFontLoaderFo
 inline float dpiScale = 1.f;
 inline bool showLiveStats = true;
 inline bool lightTheme = false;
+inline constexpr float lightInk = .26f, lightMuted = .34f;
+inline constexpr float lightSurfaceAlpha = .86f, lightWelcomeAlpha = .88f;
 inline ImVec4 Tone(float dark, float light, float alpha = 1)
 { const float value = lightTheme ? light : dark; return ImVec4(value,value,value,alpha); }
 inline bool showWelcome = true, welcomeDismissed = false;
@@ -270,11 +272,13 @@ inline float Luminance(ImVec4 color)
 inline ImVec4 OnColor(ImVec4 background)
 {
     const float lum=Luminance(background);
+    const ImVec4 charcoal(lightInk,lightInk,lightInk,1);
+    if(lightTheme && (lum+.05f)/(Luminance(charcoal)+.05f)>=4.5f) return charcoal;
     return (1.05f/(lum+.05f)) >= ((lum+.05f)/.05f) ? ImVec4(1,1,1,1) : ImVec4(0,0,0,1);
 }
 inline ImVec4 TitleColor()
 {
-    const auto neutral=Tone(.91f,.12f), surface=Tone(.045f,.96f);
+    const auto neutral=Tone(.91f,lightInk), surface=Tone(.045f,.96f*lightSurfaceAlpha);
     for(float amount=.85f;amount>=0;amount-=.05f)
     { const auto color=Mix(accent,neutral,amount); const auto a=Luminance(color), b=Luminance(surface);
         if((std::max(a,b)+.05f)/(std::min(a,b)+.05f)>=4.5f) return color; }
@@ -341,7 +345,7 @@ inline void SliderBegin(const char* text)
 {
     const auto label = ImGui::GetItemRectMin();
     const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
-    ImGui::GetWindowDrawList()->AddText(ImVec2(right - ImGui::CalcTextSize(text).x, label.y), Colour(Tone(.90f,.15f)), text);
+    ImGui::GetWindowDrawList()->AddText(ImVec2(right - ImGui::CalcTextSize(text).x, label.y), Colour(Tone(.90f,lightInk)), text);
     ImGui::SetNextItemWidth(-1);
     for(const auto slot : {ImGuiCol_FrameBg, ImGuiCol_FrameBgHovered, ImGuiCol_FrameBgActive, ImGuiCol_SliderGrab, ImGuiCol_SliderGrabActive})
         PushColor(slot, ImVec4(0,0,0,0));
@@ -428,7 +432,7 @@ inline void Hero(const char* text, float size, ImVec4 color)
 inline void Section(const char* text)
 {
     const float size = ImGui::GetFontSize()*18.f/14.f;
-    ImGui::Spacing(); Hero(text, size, Tone(.90f,.12f));
+    ImGui::Spacing(); Hero(text, size, Tone(.90f,lightInk));
 }
 // The sidebar's ToggleSwitch: a pill track filled with the accent when on.
 inline bool Switch(const char* id, bool* on)
@@ -463,7 +467,7 @@ inline bool HeaderToggle(const char* text, bool* on, bool enabled)
     const float scale = ImGui::GetFontSize()/14.f, size = 18.f*scale, width = 40.f*scale, height = 20.f*scale;
     ImGui::Spacing();
     const float left = ImGui::GetCursorPosX(), available = ImGui::GetContentRegionAvail().x, top = ImGui::GetCursorPosY();
-    Hero(text, size, Tone(.90f,.12f));
+    Hero(text, size, Tone(.90f,lightInk));
     ImGui::SameLine(left + available - width); ImGui::SetCursorPosY(top + (size - height)*.5f);
     ImGui::BeginDisabled(!enabled); ImGui::PushID(text);
     const bool changed = Switch("##header", on);
@@ -642,7 +646,7 @@ inline void Pipelines(float scale)
     // The label is drawn centred on the 22 px pill row without moving the line.
     ImGui::PushFont(ImGui::GetFont(), 11.f*scale);
     const auto start = ImGui::GetCursorScreenPos(); const auto label = ImGui::CalcTextSize("DLSS files");
-    ImGui::GetWindowDrawList()->AddText(ImVec2(start.x, start.y + (22.f*scale - label.y)*.5f), Colour(Tone(1,0,.75f)), "DLSS files");
+    ImGui::GetWindowDrawList()->AddText(ImVec2(start.x, start.y + (22.f*scale - label.y)*.5f), Colour(Tone(1,lightInk,lightTheme ? 1.f : .75f)), "DLSS files");
     ImGui::Dummy(ImVec2(label.x, 22.f*scale)); ImGui::SameLine();
     for(const auto* name : {"SR","RR","NR","FG"})
     {
@@ -780,7 +784,7 @@ inline void KeyGlyph(float scale)
     draw->AddRectFilled(origin,ImVec2(origin.x+width,origin.y+height),Colour(Tone(.19f,.88f)),4.f*scale);
     draw->AddRect(origin,ImVec2(origin.x+width,origin.y+height),Colour(Tone(.65f,.48f)),4.f*scale);
     draw->AddLine(ImVec2(origin.x+4.f*scale,origin.y+height-3.f*scale),ImVec2(origin.x+width-4.f*scale,origin.y+height-3.f*scale),Colour(Tone(.4f,.62f)),scale);
-    draw->AddText(ImVec2(origin.x+(width-text.x)*.5f,origin.y+(height-text.y)*.5f-scale),Colour(Tone(.94f,.12f)),face.c_str());
+    draw->AddText(ImVec2(origin.x+(width-text.x)*.5f,origin.y+(height-text.y)*.5f-scale),Colour(Tone(.94f,lightInk)),face.c_str());
     ImGui::PopFont(); ImGui::Dummy(ImVec2(width,height));
 }
 inline void Welcome(bool panelVisible)
@@ -810,14 +814,14 @@ inline void Welcome(bool panelVisible)
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding,12.f*scale);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize,scale);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,ImVec2(8.f*scale,6.f*scale));
-    PushColor(ImGuiCol_WindowBg,Tone(.045f,.96f,.94f));
+    PushColor(ImGuiCol_WindowBg,Tone(.045f,.96f,lightTheme ? lightWelcomeAlpha : .94f));
     PushColor(ImGuiCol_Border,Tone(1,0,.14f));
-    PushColor(ImGuiCol_Text,Tone(.9f,.12f));
+    PushColor(ImGuiCol_Text,Tone(.9f,lightInk));
     ImGui::Begin("rtxForge##welcome",nullptr,ImGuiWindowFlags_NoDecoration
         |ImGuiWindowFlags_NoInputs|ImGuiWindowFlags_NoNav|ImGuiWindowFlags_NoSavedSettings);
     const float rowTop=ImGui::GetCursorPosY();
     Brand(scale*4.f/3.f); ImGui::SameLine(0,10.f*scale);
-    ImGui::SetCursorPosY(rowTop+2.f*scale); Hero("rtxForge",20.f*scale,Tone(.94f,.12f));
+    ImGui::SetCursorPosY(rowTop+2.f*scale); Hero("rtxForge",20.f*scale,Tone(.94f,lightInk));
     ImGui::SameLine(0,16.f*scale); ImGui::SetCursorPosY(rowTop+5.f*scale);
     ImGui::PushFont(font,14.f*scale);
     ImGui::TextUnformatted("Press"); ImGui::SameLine(0,7.f*scale);
@@ -978,11 +982,11 @@ inline bool Draw(bool& visible, float scale)
     ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding,12.f*scale);
     ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarRounding,12.f*scale);
     ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize,8.f*scale);
-    const auto neutral=Tone(.91f,.12f), dark=Tone(.20f,.88f), well=Tone(.22f,.86f);
+    const auto neutral=Tone(.91f,lightInk), dark=Tone(.20f,.88f), well=Tone(.22f,.86f);
     const auto ink = TitleColor();
     const auto alpha = [](ImVec4 color, float a) { color.w = a; return color; };
-    PushColor(ImGuiCol_WindowBg,Tone(.06f,.96f,.92f));
-    PushColor(ImGuiCol_TextDisabled,Tone(.62f,.40f));
+    PushColor(ImGuiCol_WindowBg,Tone(.06f,.96f,lightTheme ? lightSurfaceAlpha : .92f));
+    PushColor(ImGuiCol_TextDisabled,Tone(.62f,lightMuted));
     PushColor(ImGuiCol_Border,Tone(1,0,.08f));
     PushColor(ImGuiCol_Text,neutral);
     PushColor(ImGuiCol_Button,Mix(accent,dark,.20f));

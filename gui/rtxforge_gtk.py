@@ -2853,7 +2853,7 @@ button.hero-restore image { color: #ff928c; }
 .overview-facts flowboxchild { padding: 0; }
 .overview-banner { border-radius: 8px; }
 .overview-fact-value { font-weight: 600; }
-.poster-os-badge { min-width: 22px; min-height: 22px; background: alpha(black,0.35); border: 1px solid alpha(white,0.22); border-radius: 6px; }
+.poster-os-badge { min-width: 12px; min-height: 22px; padding: 0 5px; background: alpha(black,0.35); border: 1px solid alpha(white,0.22); border-radius: 6px; }
 .poster-os-badge image { color: white; }
 .cover-badge { background: alpha(black,0.65); color: white; text-shadow: 0 1px 3px black; padding: 5px 8px; border-radius: 8px; font-size: 10px; font-weight: 700; }
 .cover-badge.unavailable { color: #ffb3ad; }
@@ -11702,9 +11702,9 @@ class Window(Adw.ApplicationWindow):
                 False,
             )
         # Installed-OS mark on the art, top-left: 22 px translucent square.
-        os_badge=Gtk.Box(halign=Gtk.Align.START,valign=Gtk.Align.START,can_target=True,visible=False,spacing=4)
+        os_badge=Gtk.Box(halign=Gtk.Align.START,valign=Gtk.Align.START,can_target=True,visible=False,spacing=7)
         os_badge.add_css_class('poster-os-badge');margins(os_badge,8)
-        os_badge._icons=[Gtk.Image(pixel_size=12,halign=Gtk.Align.CENTER,valign=Gtk.Align.CENTER,hexpand=True) for _ in range(2)]
+        os_badge._icons=[Gtk.Image(pixel_size=12,halign=Gtk.Align.CENTER,valign=Gtk.Align.CENTER) for _ in range(2)]
         os_badge._icon=os_badge._icons[0]
         for image in os_badge._icons:os_badge.append(image)
         if view!='list':

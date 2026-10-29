@@ -459,6 +459,10 @@ def discover_games(library: Path, nonsteam_roots: list[Path], include_unavailabl
     inspected: list[Game] = []
     for g in games:
         g = inspect_game(g)
+        # A Non-Steam folder with no game executable is a leftover, not a game; listing it
+        # would only shadow the real install (a Steam game without one still shows as broken).
+        if g.type == 'Non-Steam' and not g.exe:
+            continue
         if include_unavailable or (g.exe and g.upscalers):
             inspected.append(g)
     inspected.sort(key=lambda g: (g.type != 'Steam', g.name.lower()))

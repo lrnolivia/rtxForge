@@ -8,6 +8,8 @@ Use `npm ci`, `npm run check`, and `npm run deploy` from this directory. Wrangle
 
 `public/install.html` serves the richer OS-aware guide at `/install` in production. The landing page and guide share platform requirements and appearance preferences through `platforms.mjs` and `theme.mjs`. Guide downloads return to the selected OS on the landing page, where availability is resolved from real releases. Package-specific and development-only capabilities remain qualified.
 
+The landing page places an outlined Installation guide link with a book glyph directly below the package downloads. Linux shows separate Download Flatpak and Download AppImage buttons when both packages are published. It follows the selected OS and remains available while release information loads or fails. The Linux guide covers both the Flatpak bundle and AppImage.
+
 ## Release channels
 
 `public/releases.mjs` defines the GitHub channel tags: `beta` for the normal testing release and `development` for the moving development release. **rtxForge Beta 1 is published for both Linux and Windows** in the shared `beta` release. Its Linux packages use build version `1.0.0-beta.3`; Windows packages use `1.0.0-beta.2`. Public release labels and package build versions are separate. The page reads those releases through the public GitHub API and enables only published assets for the selected platform. Until a channel or platform package exists, its download says coming soon and has no destination. API failures are shown separately. Missing-release cache lasts one minute; published-release cache lasts three minutes.

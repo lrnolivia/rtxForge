@@ -39,8 +39,8 @@ function renderDownloads() {
   const betaFiles = selectDownloads(beta.release, os), devFiles = selectDownloads(dev.release, os);
   byId('beta-launch').hidden = Boolean(betaFiles);
   linkState(byId('download-link'), betaFiles?.primary.url);
-  byId('download-label').textContent = betaFiles ? 'Download Beta 1' : beta.status === 'loading' ? 'Checking Beta downloads…' : beta.status === 'error' ? 'Beta downloads unavailable' : 'Beta coming soon';
-  byId('package-meta').textContent = betaFiles ? `Beta 1 · ${betaFiles.primary.format} · ${platform.arch}` : `Beta · ${platform.name} ${platform.arch}`;
+  byId('download-label').textContent = betaFiles ? (os === 'linux' ? `Download ${betaFiles.primary.format.startsWith('Flatpak') ? 'Flatpak' : 'AppImage'}` : 'Download Beta 1') : beta.status === 'loading' ? 'Checking Beta downloads…' : beta.status === 'error' ? 'Beta downloads unavailable' : 'Beta coming soon';
+  byId('package-meta').textContent = betaFiles ? `Beta 1 · ${os === 'linux' && betaFiles.alternative ? 'Flatpak & AppImage' : betaFiles.primary.format} · ${platform.arch}` : `Beta · ${platform.name} ${platform.arch}`;
   byId('install-copy').textContent = betaFiles ? installInstructions(betaFiles.primary.format) : beta.status === 'loading' ? 'Checking the published Beta release.' : beta.status === 'error' ? 'Release information could not be loaded. Try again or check the releases on GitHub.' : `The ${platform.name} Beta download will appear here when it is published.`;
   linkState(byId('secondary-link'), devFiles?.primary.url);
   byId('secondary-label').textContent = devFiles ? 'Download Development' : dev.status === 'loading' ? 'Checking Development…' : dev.status === 'error' ? 'Development unavailable' : 'Development coming soon';
@@ -53,7 +53,9 @@ function renderDownloads() {
   const extra = betaFiles?.alternative || betaFiles?.portable;
   byId('portable-link').hidden = !extra;
   linkState(byId('portable-link'), extra?.url);
-  byId('portable-link').firstChild.nodeValue = extra && extra === betaFiles.alternative ? 'AppImage for Bazzite and CachyOS ' : 'Portable Beta ';
+  byId('portable-link').firstChild.nodeValue = extra && extra === betaFiles.alternative ? 'Download AppImage ' : 'Portable Beta ';
+  byId('portable-link').classList.toggle('download-button', os === 'linux');
+  byId('portable-link').classList.toggle('download-alternative', os === 'linux');
   byId('requirements-copy').textContent = platform.requirements;
 }
 async function loadRelease(channel) {
@@ -86,7 +88,6 @@ function setPlatform(os, { updateUrl = false, announce = false } = {}) {
   document.title = `rtxForge Beta 1 for ${data.name}`;
   byId('platform-name').textContent = data.name; byId('platform-copy').textContent = data.copy;
   byId('guide-link').href = data.guide;
-  byId('guide-link').textContent = data.guideLabel;
   byId('footer-guide-link').href = data.guide;
   byId('faq-guide-link').href = data.guide;
   byId('platform-content').setAttribute('aria-labelledby', `tab-${os}`);

@@ -2,6 +2,7 @@ from pathlib import Path
 import datetime
 import json
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -46,13 +47,20 @@ class BetaReportTest(unittest.TestCase):
     def test_fields_match_the_github_form_and_the_website(self):
         form = FORM.read_text(encoding='utf-8')
         page = PAGE.read_text(encoding='utf-8')
-        for key, _ in beta_report.FIELDS:
+        for key, name in beta_report.FIELDS:
             self.assertIn(f'id: {key}\n', form)
+            # Curation parses issues by these headings (compat_list.parse_issue).
+            self.assertRegex(form, rf'id: {key}\n    attributes:\n      label: {re.escape(name)}\n')
             self.assertIn(f'name="{key}"', page)
         for key, choices in beta_report.CHOICES.items():
+            if key == 'gpu-series':
+                # A hidden field the page fills from the graphics card name.
+                self.assertIn('id="gpu-series" name="gpu-series" value="Not sure"', page)
+                continue
             for choice in choices:
-                self.assertIn(f'>{choice}<', page.replace('<option value="Linux">', '<option>').replace('<option value="Windows">', '<option>')
-                              .replace('<option data-format-os="linux">', '<option>').replace('<option data-format-os="windows">', '<option>'))
+                self.assertTrue(f'>{choice}<' in page or f'value="{choice}"' in page, f'{key}: {choice}')
+        for key in beta_report.REQUIRED:
+            self.assertRegex(form, rf'id: {key}\n(?:.*\n)*?    validations:\n      required: true')
 
     # ---------- host facts ----------
 
@@ -68,16 +76,16 @@ class BetaReportTest(unittest.TestCase):
     def test_app_format_comes_from_the_running_build_only(self):
         self.assertEqual(beta_report.app_format('Linux', {}, sandboxed=True), ('Flatpak', 'detected'))
         self.assertEqual(beta_report.app_format('Linux', {'APPIMAGE': '/x/rtxForge.AppImage'}, sandboxed=False), ('AppImage', 'detected'))
-        self.assertEqual(beta_report.app_format('Linux', {}, sandboxed=False), ('Source / Other / Not sure', 'detected'))
+        self.assertEqual(beta_report.app_format('Linux', {}, sandboxed=False), ('Source / Other', 'detected'))
         # Windows never guesses installer or portable.
-        self.assertEqual(beta_report.app_format('Windows', {}), ('Source / Other / Not sure', 'unknown'))
+        self.assertEqual(beta_report.app_format('Windows', {}), ('Not sure', 'unknown'))
         self.assertEqual(beta_report.app_format('Windows', {}, windows_format='Windows installer'), ('Windows installer', 'detected'))
 
     def test_gpu_series_and_unknowns(self):
         series, model = beta_report.gpu(HOST)
         self.assertEqual(series, ('RTX 40', 'detected'))
         self.assertEqual(model, ('NVIDIA GeForce RTX 4070 · driver 580.95', 'detected'))
-        self.assertEqual(beta_report.gpu({'gpu': 'Not detected'}), (('Other / Not sure', 'unknown'), ('Not sure', 'unknown')))
+        self.assertEqual(beta_report.gpu({'gpu': 'Not detected'}), (('Not sure', 'unknown'), ('Not sure', 'unknown')))
         self.assertEqual(beta_report.app_build('Unknown'), ('Not sure', 'unknown'))
 
     # ---------- provenance ----------
@@ -87,7 +95,7 @@ class BetaReportTest(unittest.TestCase):
         self.assertEqual(report['fields']['feature-package'], 'Feeder NR 1.2 (selected, not installed)')
         self.assertEqual(report['sources']['feature-package'], 'selected')
         self.assertEqual(report['fields']['features'], 'Not reached / Not sure')
-        self.assertEqual((report['fields']['nr-result'], report['fields']['mfg-result']), ('', ''))
+        self.assertEqual((report['fields']['nr-result'], report['fields']['mfg-result']), ('Not sure', 'Not sure'))
 
     def test_installed_package_comes_from_the_install_record(self):
         self.install('nr-only')
@@ -103,12 +111,16 @@ class BetaReportTest(unittest.TestCase):
         self.install('nr-mfg', change=True)
         report = beta_report.draft(self.row, self.facts, {'status': 'Working'})
         self.assertIn('files changed since', report['fields']['feature-package'])
-        self.assertEqual((report['fields']['nr-result'], report['fields']['mfg-result']), ('', ''))
+        self.assertEqual((report['fields']['nr-result'], report['fields']['mfg-result']), ('Not sure', 'Not sure'))
+        self.assertEqual(report['sources']['nr-result'], 'unknown')
         self.assertIn('files changed since', '\n'.join(beta_report.details(report)))
 
     def test_corrections_win_and_problems_name_what_is_missing(self):
         report = beta_report.draft(self.row, self.facts, {'status': 'Untested'})
-        self.assertIn('NR result is empty.', beta_report.problems(report))
+        # Like the website, only the OS and what happened are required.
+        self.assertEqual(beta_report.problems(report), ['What happened? is empty.'])
+        beta_report.correct(report, 'game', '')
+        self.assertEqual(beta_report.problems(report), ['What happened? is empty.'])
         beta_report.correct(report, 'nr-result', 'Working in-game')
         beta_report.correct(report, 'mfg-result', 'Not installed')
         beta_report.correct(report, 'features', 'NR only')
@@ -289,7 +301,11 @@ class CompatibilityListTest(unittest.TestCase):
         self.assertEqual(data['games'][0]['verdict'], 'Problem')
         self.assertEqual(compat_list.summary(data['games'][0]), ['Linux: NR working in 1 of 1', 'Windows: NR working in 0 of 1'])
         with self.assertRaises(t.Refusal):compat_list.add_report(data, self.fields(), 7, 'Working', appid='123')
-        with self.assertRaises(t.Refusal):compat_list.add_report(data, self.fields(**{'nr-result': ''}), 9, 'Working', appid='123')
+        with self.assertRaises(t.Refusal):compat_list.add_report(data, self.fields(**{'nr-result': '', 'mfg-result': 'Not sure'}), 9, 'Working', appid='123')
+        with self.assertRaises(t.Refusal):compat_list.add_report(data, self.fields(platform=''), 9, 'Working', appid='123')
+        # Optional answers the reporter left blank are listed as Not sure.
+        sparse = compat_list.add_report(data, self.fields(distribution='', **{'gpu-series': ''}), 9, 'Working', appid='123')
+        self.assertEqual((sparse['reports'][-1]['distribution'], sparse['reports'][-1]['gpu_series']), ('Not sure', 'Not sure'))
         with self.assertRaises(t.Refusal):compat_list.add_report(data, self.fields(), 10, 'Maybe', appid='123')
 
     def test_listed_reports_are_found_by_game(self):

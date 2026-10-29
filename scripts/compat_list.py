@@ -125,8 +125,11 @@ def add_report(data,fields,issue,verdict,appid='',exe='',name='',note='',date=No
     t.need(verdict in VERDICTS,'Verdict must be Working or Problem.')
     t.need(isinstance(issue,int) and issue>0,'Name the GitHub issue the report came from.')
     t.need(str(appid).isdigit() or exe,'Name the game by Steam app id or executable.')
-    missing=[key for key in REPORT_FIELDS if not fields.get(key)]
-    t.need(not missing,'The issue is missing: '+', '.join(beta_report.LABELS[key] for key in missing))
+    # The form asks only for the OS and what happened; a listed report also needs a result.
+    t.need(fields.get('platform') in beta_report.CHOICES['platform'],'The issue does not name Linux or Windows.')
+    t.need(any(fields.get(key) not in ('',None,beta_report.UNKNOWN) for key in ('nr-result','mfg-result')),
+           'The issue has no NR or MFG result to list. Ask the reporter, or leave it off the list.')
+    answers={key:str(fields.get(key) or '').strip() or beta_report.UNKNOWN for key in REPORT_FIELDS}
     row={'appid':str(appid) if str(appid).isdigit() else '','exe':Path(str(exe)).name}
     data['schema']=2
     games=data.setdefault('games',[])
@@ -138,7 +141,7 @@ def add_report(data,fields,issue,verdict,appid='',exe='',name='',note='',date=No
     listed=entry.setdefault('reports',[])
     t.need(all(r.get('issue')!=issue for r in listed),f'Issue #{issue} is already listed.')
     report={'issue':issue,'date':date or t.now()[:10]}
-    report.update({out:str(fields[key])[:120] for key,out in REPORT_FIELDS.items()})
+    report.update({out:answers[key][:120] for key,out in REPORT_FIELDS.items()})
     listed.append(report)
     return entry
 

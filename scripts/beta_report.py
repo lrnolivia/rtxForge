@@ -25,17 +25,19 @@ FIELDS=(
     ('app-format','rtxForge app format'),
     ('app-build','rtxForge version / channel'),
     ('game','Game and version'),
-    ('feature-package','Feature package / provider and version'),
+    ('feature-package','Game package'),
     ('features','Features attempted'),
     ('nr-result','NR result'),
     ('mfg-result','MFG result'),
-    ('observations','Steps, expected result, and observed result'),
+    ('observations','What happened?'),
 )
 LABELS=dict(FIELDS)
+# As on the website: everything else is "fill in what you know".
+REQUIRED=('platform','observations')
 CHOICES={
     'platform':('Linux','Windows'),
-    'gpu-series':('RTX 20','RTX 30','RTX 40','RTX 50','Other / Not sure'),
-    'app-format':('Flatpak','AppImage','Windows installer','Windows portable ZIP','Source / Other / Not sure'),
+    'gpu-series':('RTX 20','RTX 30','RTX 40','RTX 50','Not sure'),
+    'app-format':('Flatpak','AppImage','Windows installer','Windows portable ZIP','Source / Other','Not sure'),
     'features':('NR only','MFG only','NR + MFG','Not reached / Not sure'),
     'nr-result':RESULTS,
     'mfg-result':RESULTS,
@@ -95,24 +97,24 @@ def gpu(info):
     """(series, model and driver) from the app's hardware check."""
     import hardware
     name=str((info or {}).get('gpu') or '').strip()
-    if not name or name=='Not detected':return (('Other / Not sure','unknown'),(UNKNOWN,'unknown'))
+    if not name or name=='Not detected':return ((UNKNOWN,'unknown'),(UNKNOWN,'unknown'))
     driver=str(info.get('driver') or '').strip()
     model=name+(f' · driver {driver}' if driver and driver!='Unknown' else '')
     series=SERIES.get(hardware.family(name))
-    return ((series,'detected') if series else ('Other / Not sure','detected')),(model[:LENGTHS['gpu']],'detected')
+    return ((series,'detected') if series else (UNKNOWN,'detected')),(model[:LENGTHS['gpu']],'detected')
 
 
 def app_format(system=None,environ=None,sandboxed=None,windows_format=None):
     """Flatpak or AppImage from the running build. Windows passes only verified package metadata."""
     system=system or platform.system();environ=os.environ if environ is None else environ
     if system=='Windows':
-        return (windows_format,'detected') if windows_format in CHOICES['app-format'] else ('Source / Other / Not sure','unknown')
+        return (windows_format,'detected') if windows_format in CHOICES['app-format'] else (UNKNOWN,'unknown')
     if sandboxed is None:
         import flatpak_host
         sandboxed=flatpak_host.sandboxed()
     if sandboxed:return 'Flatpak','detected'
     if environ.get('APPIMAGE'):return 'AppImage','detected'
-    return 'Source / Other / Not sure','detected'
+    return 'Source / Other','detected'
 
 
 def app_build(version,channel=''):
@@ -177,7 +179,7 @@ def draft(row,facts,record=None):
     for key,feature in (('nr-result','NR'),('mfg-result','MFG')):
         if mode and untested:put(key,('Installed, not tested' if feature in mode else 'Not installed','recorded'))
         elif mode and feature not in mode:put(key,('Not installed','recorded'))
-        else:put(key,('','unknown'))
+        else:put(key,(UNKNOWN,'unknown'))
     put('observations',('','unknown'))
     evidence={'test_status':record.get('status','Untested'),'install_record':install,
               'graphics_apis':list(row.get('graphics_apis') or []),
@@ -200,7 +202,8 @@ def problems(report):
     out=[]
     for key,name in FIELDS:
         value=str(report['fields'].get(key) or '').strip()
-        if not value:out.append(f'{name} is empty.')
+        if not value:
+            if key in REQUIRED:out.append(f'{name} is empty.')
         elif key in CHOICES and value not in CHOICES[key]:out.append(f'{name}: choose one of the listed answers.')
         elif len(value)>LENGTHS.get(key,10**6):out.append(f'{name} is longer than {LENGTHS[key]} characters.')
     return out

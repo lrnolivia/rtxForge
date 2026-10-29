@@ -396,9 +396,13 @@ def bundle(reports,logs=None,notes=None,app_logs=None):
 
 
 def folder(config,documents=None):
-    """Reports go somewhere easy to find: Documents/rtxForge Reports, else rtxForge's own state."""
+    """Reports go somewhere easy to find: Documents/rtxForge Reports, else rtxForge's own state.
+
+    A Documents folder behind a link or path alias is refused like any other write target,
+    so the report still saves, in rtxForge's own folder, instead of failing."""
     if documents and Path(documents).is_dir() and os.access(documents,os.W_OK):
-        return t.safe(Path(documents)/'rtxForge Reports')
+        try:return t.safe(Path(documents)/'rtxForge Reports')
+        except t.Refusal:pass
     return game_notes.root(config)/'exports'
 
 

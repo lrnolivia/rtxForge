@@ -6,6 +6,7 @@ import re
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 import urllib.parse
 import zipfile
 
@@ -24,7 +25,9 @@ PAGE = Path(__file__).resolve().parents[1] / 'website/public/report.html'
 class BetaReportTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
+        # Hosted Windows runners expose TEMP through an 8.3 alias, which the file-safety
+        # checks refuse by design; use the canonical folder, as the other host fixtures do.
+        self.root = Path(self.tmp.name).resolve()
         self.game = self.root / 'Example Game'
         (self.game / 'bin').mkdir(parents=True)
         self.row = {'name': 'Example Game', 'game': str(self.game), 'exe': 'bin/Example.exe', 'appid': '123'}
@@ -291,6 +294,10 @@ class BetaReportTest(unittest.TestCase):
     def test_reports_go_to_documents_when_it_exists(self):
         documents = self.root / 'Documents';documents.mkdir()
         self.assertEqual(beta_report.folder({}, documents), documents / 'rtxForge Reports')
+        # A Documents path the safety checks refuse falls back to rtxForge's own folder.
+        with patch.object(beta_report.t, 'safe', side_effect=t.Refusal('alias')), \
+             patch.object(beta_report.game_notes, 'root', return_value=self.root / 'state'):
+            self.assertEqual(beta_report.folder({}, documents), self.root / 'state' / 'exports')
 
 
 class CompatibilityListTest(unittest.TestCase):

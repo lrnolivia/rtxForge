@@ -2,6 +2,7 @@
 from pathlib import Path
 import json
 import math
+import os
 import sys
 import tempfile
 import unittest
@@ -142,6 +143,20 @@ class FunctionalEvidenceTests(unittest.TestCase):
         self.assertLessEqual(len(samples), ft.SAMPLE_LIMIT)
         self.assertEqual(samples[-1]['t'], ft.SAMPLE_LIMIT * 2 - 1)
 
+    def test_panel_attachment_during_play_survives_finishing_after_game_exit(self):
+        found=ft.compact(snapshot(helper={'running':True,'channel_valid':True,'pid':12}),1)
+        results={r['part']:r for r in ft.evaluate(ft.summarize([found]),helper={'start':True,'finish':True,'pid':0})}
+        self.assertEqual(results['panel']['state'],ft.WORKING)
+        found['helper']['pid']=99
+        results={r['part']:r for r in ft.evaluate(ft.summarize([found]),helper={'start':True,'finish':True,'pid':0})}
+        self.assertEqual(results['panel']['state'],ft.NOT_REPORTED)
+
+    def test_proton_prerequisite_failure_has_an_action_not_a_runtime_pass(self):
+        results={r['part']:r for r in ft.evaluate(ft.summarize([]),checks={'route':'skynizz','platform':'linux','proton_ok':False,'proton_detail':'CUDA unavailable'})}
+        self.assertEqual(results['proton']['state'],ft.PROBLEM)
+        self.assertIn('CUDA',results['proton']['fix'])
+        self.assertEqual(results['nr']['state'],ft.NOT_REPORTED)
+
 
 class FunctionalSessionTests(unittest.TestCase):
     def setUp(self):
@@ -203,6 +218,8 @@ class FunctionalSessionTests(unittest.TestCase):
         path.write_text(json.dumps({'session': 'old', 'samples': [ft.compact(snapshot(), 1)]}))
         self.assertEqual(ft.read_samples({}, self.row, {'id': 'new'}), [])
         self.assertEqual(len(ft.read_samples({}, self.row, {'id': 'old'})), 1)
+        path.write_text('[]')
+        self.assertEqual(ft.read_samples({},self.row,{'id':'old'}),[])
 
     def test_report_prefills_are_editable_and_keep_visual_judgment_explicit(self):
         results = FunctionalEvidenceTests().results()
@@ -215,6 +232,27 @@ class FunctionalSessionTests(unittest.TestCase):
         self.assertIn('Test ·', '\n'.join(beta_report.details(report)))
         beta_report.correct(report, 'nr-result', 'Not working in-game')
         self.assertEqual(report['sources']['nr-result'], 'yours')
+
+
+@unittest.skipUnless(os.name!='nt','POSIX helper lock and host service')
+class LinuxFunctionalHelperTests(unittest.TestCase):
+    def test_helper_lock_observation_does_not_create_or_claim_a_lock(self):
+        import fcntl
+        import linux_overlay_host
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'helper.lock'
+            with patch.object(linux_overlay_host,'lock_path',return_value=path),patch('flatpak_host.sandboxed',return_value=False):
+                self.assertFalse(ft.linux_helper({})['running']);self.assertFalse(path.exists())
+                with path.open('w') as stream:
+                    fcntl.flock(stream,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                    self.assertTrue(ft.linux_helper({})['running'])
+                self.assertFalse(ft.linux_helper({})['running'])
+
+    def test_flatpak_checks_host_service_instead_of_sandbox_processes(self):
+        from types import SimpleNamespace
+        with patch('flatpak_host.sandboxed',return_value=True),patch('flatpak_host.run_host',return_value=SimpleNamespace(returncode=0,stdout='active\n')) as run:
+            self.assertTrue(ft.linux_helper({})['running'])
+            self.assertEqual(run.call_args.args[0][:3],['systemctl','--user','is-active'])
 
 
 if __name__ == '__main__': unittest.main()

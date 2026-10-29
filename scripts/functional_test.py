@@ -272,7 +272,7 @@ def evaluate(summary, logs=None, helper=None, pipelines=None, checks=None):
     connected = summary['connected']
     add('hook', WORKING if connected or evidence['hook'] else NOT_REPORTED,
         'An injected runtime answered or logged execution during this session.' if connected or evidence['hook'] else 'No injected runtime execution was observed.',
-        [f"{connected} verified mailbox samples." if connected else ''],
+        [f"{connected} verified mailbox samples." if connected else '',*summary['failures']],
         None if connected or evidence['hook'] else 'Play for a minute after Start Test. If the game was running, repair its files and check for a DLL hook conflict.')
     nr_evaluated = summary['nr_active'] or evidence['nr_evaluated']
     if checks.get('feature_mode') in ('mfg-only','MFG Only'):
@@ -305,7 +305,7 @@ def evaluate(summary, logs=None, helper=None, pipelines=None, checks=None):
         low = shown < 2 or type(requested) in (int, float) and requested > 1 and shown < requested and not summary['dynamic']
         flags = [STREAMLINE[b] for b in STREAMLINE if summary['streamline'] & b]
         low = low or bool(summary['streamline'])
-        add('mfg', PROBLEM if low else WORKING, f'MFG presented {shown:g}x' + ('; below the requested multiplier.' if low else '.'),
+        add('mfg', PROBLEM if low else WORKING, f'MFG presented {shown:g}x' + ('; the runtime also reported errors.' if summary['streamline'] else '; below the requested multiplier.' if low else '.'),
             [f'Requested: {requested}x.' if requested is not None else 'Requested multiplier: not reported.',
              f"Successful FG calls increased by {summary['fg_calls']}.",
              f"Observed extra presentations per native report: {summary['generated']}." if summary['generated'] is not None else '',
@@ -337,7 +337,7 @@ def evaluate(summary, logs=None, helper=None, pipelines=None, checks=None):
         add('helper',NOT_TESTED,'The selected native OptiScaler menu does not require the rtxForge helper.')
         return results
     add('helper', WORKING if ok else PROBLEM if start is False or finish is False or problem else NOT_REPORTED,
-        'Helper answered at Start and Finish.' if ok else 'Helper unavailable or not observed at both checkpoints.',
+        'Helper activity was observed at Start and Finish.' if ok else 'Helper unavailable or not observed at both checkpoints.',
         [problem], None if ok else 'Enable the overlay helper in Settings › Overlay and repeat the test.')
     return results
 
@@ -377,7 +377,7 @@ def read_samples(config, row, session):
     try:
         data, _ = runtime_diagnostics.read_regular(_sample_path(config, row), 4 * 1024**2)
         record = json.loads(data)
-        if record.get('session') == session['id'] and isinstance(record.get('samples'), list):
+        if isinstance(record,dict) and record.get('session') == session['id'] and isinstance(record.get('samples'), list) and all(isinstance(s,dict) for s in record['samples']):
             return record['samples'][-SAMPLE_LIMIT:]
     except (OSError, ValueError, KeyError, TypeError): pass
     return []
@@ -444,8 +444,14 @@ def linux_helper(row, host=None):
     report = {'running': None}
     import flatpak_host
     if flatpak_host.sandboxed():
-        # The sandbox's private /tmp cannot answer whether the host helper is alive.
-        report['detail']='Host helper activity is not visible from the Flatpak. Check the host overlay service.'
+        # The sandbox's private /tmp cannot answer; inspect the real host service.
+        import linux_overlay_helper
+        import transactions as t
+        try:
+            service=flatpak_host.run_host(['systemctl','--user','is-active',linux_overlay_helper.SERVICE])
+            if service.returncode==0 and service.stdout.strip()=='active':report['running']=True
+            else:report['detail']='The host overlay service did not report active. Check Settings › Overlay.'
+        except (OSError,t.Refusal) as error:report['detail']=str(error)
         return report
     try:
         descriptor = os.open(lock_path(), os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)

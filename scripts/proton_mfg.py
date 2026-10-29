@@ -43,6 +43,7 @@ REASONS = {
 COMPETING_FILES = ('renodx-mfgunlock.addon64', 'dlss-enabler.dll', 'dlss-enabler-upscaler.dll',
                    'dlssg_to_fsr3_amd_is_better.dll', 'nvngx-wrapper.dll')
 LABEL = 'Experimental under Proton · Linux runtime not yet verified'
+NATIVE_LABEL = "Experimental under Proton · RTX 50's own MFG, not yet verified on Linux"
 
 
 def _refuse(code, detail=''):
@@ -79,15 +80,18 @@ def gate(settings, mode, mfg_provider, prefix, native_dlssg=None, launch_options
         _refuse('opt-in-required')
     if mode not in ('nr-mfg', 'mfg-only', 'nr-only'):
         _refuse('mode-unsupported')
-    if mode != 'nr-only' and mfg_provider != 'universal':
-        _refuse('component-unsupported-linux')
     report = proton_stack.detect(prefix, mode, launch_options, native_dlssg,
                                  driver_root=driver_root, driver_dirs=driver_dirs, cuda_planned=cuda_planned)
+    # RTX 50 keeps the game's own MFG (engine_bridge routes it 'native'): no component to choose.
+    native = mode != 'nr-only' and (report.get('gpu') or {}).get('architecture') == 'blackwell'
+    if mode != 'nr-only' and not native and mfg_provider != 'universal':
+        _refuse('component-unsupported-linux')
     if not report['prerequisites_met']:
         raise t.Refusal(' '.join(dict.fromkeys(proton_stack.REASONS[code] for code in report['reasons'])))
     report['opt_in'] = True
-    report['component'] = universal.pinned() if mode != 'nr-only' else None
-    report['label'] = LABEL
+    report['mfg_native'] = native
+    report['component'] = universal.pinned() if mode != 'nr-only' and not native else None
+    report['label'] = NATIVE_LABEL if native else LABEL
     return report
 
 
@@ -98,9 +102,11 @@ def review(target, prefix_route, proxy, mode, report, managed=()):
     if found and mode != 'nr-only':
         _refuse('competing-unlock', ', '.join(found))
     override = Path(proxy).stem.lower() if proxy else 'dxgi'
-    lines = [LABEL,
+    native = bool(report.get('mfg_native'))
+    lines = [report.get('label') or LABEL,
              ('NR + MFG' if mode == 'nr-mfg' else 'MFG Only' if mode == 'mfg-only' else 'NR Only')
-             + ' · Skynizz bridge' + (' + Universal MFG ' + component['version'] if component else ''),
+             + ' · Skynizz bridge' + (' + Universal MFG ' + component['version'] if component
+                                      else " + the GPU's own MFG" if native else ''),
              f"Loads through {override}.dll · " + ("Proton setting saved in this game's prefix" if prefix_route
                                                   else 'Proton setting saved in Steam launch options')]
     details = {

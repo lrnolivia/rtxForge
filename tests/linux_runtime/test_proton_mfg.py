@@ -95,6 +95,32 @@ class ProtonMfgTest(unittest.TestCase):
         self.assertEqual(details['files'][0], 'OptiScaler/plugins/MFGUnlocker.asi')
         self.assertEqual(details['ini']['Plugins'], {'LoadAsiPlugins': 'true'})
 
+    def test_rtx_50_keeps_its_own_mfg_with_no_plugin_and_says_unverified(self):
+        proc, wine = fx.driver(self.root / 'blackwell', model='NVIDIA GeForce RTX 5070 Ti')
+        with patch.multiple(proton_stack, DRIVER_ROOT=proc, DRIVER_WINE_DIRS=(str(wine),)):
+            # The engine routes RTX 50 to its own MFG whatever component is selected.
+            report = proton_mfg.gate({'skynizz_proton': True}, 'nr-mfg', 'integrated', self.prefix, True)
+        self.assertTrue(report['mfg_native'])
+        self.assertIsNone(report['component'])
+        self.assertEqual(report['label'], proton_mfg.NATIVE_LABEL)
+        self.assertIn('not yet verified', report['label'])
+        self.assertEqual(report['notes'], ['mfg-native-unverified-linux'])
+        review = proton_mfg.review(self.target, True, 'dxgi.dll', 'nr-mfg', report)
+        self.assertEqual(review['lines'][0], proton_mfg.NATIVE_LABEL)
+        self.assertIn("the GPU's own MFG", review['lines'][1])
+        self.assertNotIn('Universal', review['lines'][1])
+        self.assertEqual((review['details']['files'], review['details']['ini']), ([], {}))
+        # Another unlock in the folder still refuses: nothing else may own MFG.
+        (self.target / 'dlss-enabler.dll').write_bytes(b'x')
+        with self.assertRaisesRegex(t.Refusal, 'Another MFG unlock'):
+            proton_mfg.review(self.target, True, 'dxgi.dll', 'nr-mfg', report)
+
+    def test_rtx_30_mfg_stays_refused_on_linux(self):
+        proc, wine = fx.driver(self.root / 'ampere', model='NVIDIA GeForce RTX 3080')
+        with patch.multiple(proton_stack, DRIVER_ROOT=proc, DRIVER_WINE_DIRS=(str(wine),)):
+            with self.assertRaisesRegex(t.Refusal, 'RTX 20 and 30 are not offered'):
+                proton_mfg.gate({'skynizz_proton': True}, 'nr-mfg', 'universal', self.prefix, True)
+
     def installed(self, dll=b'plugin bytes', ini='[Plugins]\nLoadAsiPlugins=true\n[DLSSG]\nAdaMfgUnlock=false\n'):
         plugin = self.target / universal.PLUGIN
         plugin.parent.mkdir(parents=True, exist_ok=True)

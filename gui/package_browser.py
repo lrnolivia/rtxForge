@@ -59,7 +59,7 @@ def build_packages(owner, fixture=None, on_selected=None, alive=None, header=Fal
     choose = Adw.ActionRow(title='Add custom package', subtitle='Detect the layout and review suggested settings')
     pick = Gtk.Button(icon_name='document-open-symbolic', valign=Gtk.Align.CENTER)
     pick.set_tooltip_text('Choose package archive'); choose.add_suffix(pick); choose.set_activatable_widget(pick);custom.add(choose);box.append(custom)
-    community=Adw.PreferencesGroup(title='Other community projects',description='Source discovery only. RTX 20/30/50 and additional layouts remain unvalidated by this app; the current deployment route targets RTX 40.')
+    community=Adw.PreferencesGroup(title='Other community projects',description='Source discovery only. rtxForge installs on RTX 20, 30, 40 and 50 cards; RTX 50 uses its own MFG, with no unlock. Only RTX 40 has been checked in game.')
     for source in packages.community_sources():
         item=Adw.ActionRow(title=source['name'],subtitle=source['note'])
         link=Gtk.LinkButton(uri=source['url'],label='View source',valign=Gtk.Align.CENTER)

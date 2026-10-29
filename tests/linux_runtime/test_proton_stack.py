@@ -94,7 +94,23 @@ class ProtonStackTest(unittest.TestCase):
         # Assignments after %command% are game arguments, not environment.
         self.assertTrue(self.detect(pfx, launch_options='%command% PROTON_NO_D3D12=1')['prerequisites_met'])
 
-    def test_mfg_is_only_offered_on_ada_but_nr_only_runs_on_any_rtx(self):
+    def test_rtx_50_uses_its_own_mfg_marked_unverified_without_cuda(self):
+        root = self.root / 'blackwell'
+        root.mkdir()
+        proc, wine = fx.driver(root, model='NVIDIA GeForce RTX 5080')
+        # No working CUDA library: only the Universal unlocker needs it, and RTX 50 gets none.
+        pfx = fx.prefix(self.root / 'lib', 1091500, self.lib, cuda=False)
+        report = proton_stack.detect(pfx, 'nr-mfg', native_dlssg=True, driver_root=proc, driver_dirs=(str(wine),))
+        self.assertTrue(report['prerequisites_met'], report['reasons'])
+        self.assertEqual(report['notes'], ['mfg-native-unverified-linux'])
+        self.assertIn('not been verified', proton_stack.REASONS['mfg-native-unverified-linux'])
+        self.assertNotIn('nvcuda', {c['id'] for c in report['checks']})
+        # The game must still ship its own DLSS Frame Generation.
+        missing = proton_stack.detect(pfx, 'mfg-only', native_dlssg=False, driver_root=proc, driver_dirs=(str(wine),))
+        self.assertEqual(missing['reasons'], ['native-dlssg-missing'])
+        self.assertEqual(self.detect(pfx, native_dlssg=True)['notes'], [], 'RTX 40 carries no RTX 50 note')
+
+    def test_mfg_is_offered_on_rtx_40_and_50_but_nr_only_runs_on_any_rtx(self):
         for model, arch in [('NVIDIA GeForce RTX 3080', 'ampere'), ('NVIDIA GeForce RTX 2070 SUPER', 'turing'),
                             ('NVIDIA GeForce RTX 5090', 'blackwell'), ('NVIDIA GeForce RTX 4060 Laptop GPU', 'ada')]:
             with self.subTest(model=model):

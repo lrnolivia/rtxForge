@@ -26,7 +26,9 @@ REASONS = {
     'nvidia-driver-missing': 'The NVIDIA driver is not loaded. NR and MFG need an NVIDIA RTX GPU.',
     'nvidia-driver-old': 'Update the NVIDIA driver to the 570 series or newer for DLSS Frame Generation under Proton.',
     'gpu-not-rtx': 'No NVIDIA RTX GPU was found.',
-    'mfg-gpu-unverified-linux': 'MFG under Proton has only been prepared for RTX 40 (Ada) GPUs. Other GPUs are not offered on Linux yet.',
+    'mfg-gpu-unverified-linux': 'MFG under Proton is offered on RTX 40 and RTX 50 GPUs. RTX 20 and 30 are not offered on Linux yet.',
+    'mfg-native-unverified-linux': ("RTX 50 uses the game's own DLSS Multi-Frame Generation, with no unlock installed. "
+                                    'It has not been verified under Proton yet.'),
     'driver-ngx-missing': "The NVIDIA driver's Wine NGX files (nvngx.dll) were not found, so Proton cannot provide DLSS.",
     'prefix-missing': 'This game has not been started with Proton yet. Play it once, quit, then check again.',
     'tool-unknown': "The Proton version this game last used could not be read. Play it once with Proton, quit, then check again.",
@@ -258,8 +260,12 @@ def detect(prefix, mode='nr-mfg', launch_options='', native_dlssg=None, system='
     if card['driver_major'] is not None:
         check('driver-version', card['driver_major'] >= MIN_DRIVER, 'nvidia-driver-old', 'NVIDIA ' + str(card['driver']))
     check('gpu', card['architecture'] != 'unknown', 'gpu-not-rtx', card['model'])
+    # RTX 50 needs no unlock: MFG is the game's own, so the Universal plugin's CUDA needs don't apply.
+    native_mfg = card['architecture'] == 'blackwell'
     if mode in ('nr-mfg', 'mfg-only'):
-        check('mfg-gpu', card['architecture'] == 'ada', 'mfg-gpu-unverified-linux', card['model'])
+        check('mfg-gpu', card['architecture'] in ('ada', 'blackwell'), 'mfg-gpu-unverified-linux', card['model'])
+        if native_mfg:
+            check('mfg-native', False, 'mfg-native-unverified-linux', card['model'], required=False)
         if native_dlssg is not None:
             check('native-dlssg', bool(native_dlssg), 'native-dlssg-missing')
     wine_dir = driver_wine_dir(driver_dirs)
@@ -288,7 +294,7 @@ def detect(prefix, mode='nr-mfg', launch_options='', native_dlssg=None, system='
         # deletes it where it is disabled, so its presence reflects the last run.
         check('nvapi-prefix', files['nvapi64.dll'], 'nvapi-not-in-prefix')
         check('ngx-prefix', files['nvngx.dll'] and files['_nvngx.dll'], 'ngx-not-in-prefix')
-        if mode in ('nr-mfg', 'mfg-only') and tool['lib_dir'] is not None:
+        if mode in ('nr-mfg', 'mfg-only') and not native_mfg and tool['lib_dir'] is not None:
             has_cuda = (Path(tool['lib_dir']) / NVCUDA).is_file()
             if check('nvcuda', has_cuda, None if has_cuda else cuda_missing_reason(prefix.parent)):
                 check('cuda-enabled', cuda_planned or prefix_cuda(prefix) or cuda_requested(tool['lib_dir'], env),
@@ -324,6 +330,8 @@ def _finish(checks, tool, components, card):
         'schema': 1,
         'checks': checks,
         'reasons': reasons,
+        # Shown beside the result; they never block (for example RTX 50 MFG not yet verified).
+        'notes': [c['reason'] for c in checks if not c['required'] and c['state'] == 'note'],
         'prerequisites_met': not reasons,
         # Presence is not proof. Only a recorded real Proton session sets this.
         'runtime_verified': False,

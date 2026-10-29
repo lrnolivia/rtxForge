@@ -5,7 +5,7 @@
 
 # rtxForge
 
-Deploy neural rendering across compatible games, bring multi-frame generation to RTX 20, 30 and 40 series, and keep DLSS files up to date. Native apps for Linux and Windows, with reviewed changes and original-file backups.
+Deploy neural rendering across compatible games, bring multi-frame generation to RTX 20, 30 and 40 series (RTX 50 uses its own), and keep DLSS files up to date. Native apps for Linux and Windows, with reviewed changes and original-file backups.
 
 **[Website & downloads](https://rtxforge.loew.fi/) · [Installation guide](https://rtxforge.loew.fi/install) · [Report a bug](https://github.com/lrnolivia/rtxForge/issues)**
 
@@ -49,15 +49,15 @@ The [full installation guide](https://rtxforge.loew.fi/install) covers app setup
 
 ## Compatibility
 
-- NR is experimental and requires a compatible RTX card, game and provider. MFG supports RTX 20, 30 and 40 series on compatible routes; a requested multiplier is not a guaranteed net FPS gain.
+- NR is experimental and requires a compatible RTX card, game and provider. MFG supports RTX 20, 30 and 40 series on compatible routes; RTX 50 uses its own MFG and rtxForge installs no unlock for it. Under Proton, MFG is offered on RTX 40 and RTX 50 (not yet verified on RTX 50). A requested multiplier is not a guaranteed net FPS gain.
 - Package support differs between Linux and Windows. Beta 1 includes Game Mode and in-game overlay/panel features, with testing limits listed in the release notes. **Adapt to Linux** sets up supported Windows-installed games on a shared drive without changing their Windows installation. Proton frame generation needs a build with NVIDIA CUDA support, such as Proton-GE; launch the game once with that build before adapting it.
 - Close games before changing their files. Avoid protected online games and anti-cheat; review conflicts rather than overwriting unknown files.
 
 ## Help
 
-[Read troubleshooting](https://rtxforge.loew.fi/install#help) or [open an issue](https://github.com/lrnolivia/rtxForge/issues/new). Include your OS, app build, GPU/driver, game, provider and what happened.
+[Read troubleshooting](https://rtxforge.loew.fi/install#help) or [report a bug](https://loew.fi/rtxforge/report). Include your OS, app build, GPU/driver, game, provider and what happened.
 
-For a support report, open **Settings → Recovery → Library Reports → Preview Support Report** in the app. Review the export before sharing it; reports stay local until you attach them.
+In the Linux app, **Prepare Beta Report** (a game's Notes tab, or Library Reports for one, a few or all games) fills in those details for you. It can also save reviewed, redacted logs as a ZIP to attach on GitHub. Nothing is uploaded until you attach it yourself. Reviewed reports feed the [compatibility list](docs/COMPATIBILITY.md).
 
 ## Development
 

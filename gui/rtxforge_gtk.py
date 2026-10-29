@@ -13904,25 +13904,43 @@ class Window(Adw.ApplicationWindow):
 
     # ---------- beta reports (scripts/beta_report.py) ----------
 
+    # Desktop and Game Mode draw their own report screens; these three build the same report for both.
+    def beta_report_drafts(self,games):
+        """One draft per game from what this computer verifies. Reading install records hashes the managed files: run it off the main thread."""
+        import beta_report,compat_list
+        try:
+            import app_update
+            channel=app_update.channel()
+        except Exception:channel=''
+        selected=compat_list.package_label(self.settings.get('runtime_provider',''))
+        shared=beta_report.context(getattr(self,'hardware_info',None) or {},APP_VERSION,channel,selected)
+        return [beta_report.draft(game,shared,game.get('test_record')) for game in games]
+
+    def beta_report_files(self,reports,games,include_logs,include_notes):
+        """The redacted preview, frozen: export writes exactly these bytes."""
+        import beta_report
+        try:
+            collected={r['id']:beta_report.collect(g,g.get('test_record')) for r,g in zip(reports,games)} if include_logs else None
+            saved={r['id']:(g.get('test_record') or {}).get('notes','') for r,g in zip(reports,games)} if include_notes else None
+            return beta_report.bundle(reports,collected,saved)
+        except Exception as error:return {'error':str(error)}
+
+    def beta_report_export(self,preview,documents):
+        import beta_report
+        try:return beta_report.export(preview,beta_report.folder(self.service.config,documents))
+        except Exception as error:return {'error':str(error)}
+
     def prepare_beta_reports(self,games,issue=None):
         """Draft one report per game from what this computer verifies, then let the user correct it."""
-        import beta_report,compat_list
         games=list(games)
         if not games:return
         if self.busy and self.task_kind!='art':
             self.toast('Wait for the current task to finish, then prepare the report.');return
-        def facts():
-            try:
-                import app_update
-                channel=app_update.channel()
-            except Exception:channel=''
-            selected=compat_list.package_label(self.settings.get('runtime_provider',''))
-            shared=beta_report.context(getattr(self,'hardware_info',None) or {},APP_VERSION,channel,selected)
-            # Reading install records hashes the managed files: off the main thread.
-            return [beta_report.draft(game,shared,game.get('test_record')) for game in games]
+        if getattr(self,'input_stack',None) is not None and self.input_stack.get_visible_child_name()=='couch':
+            self.couch.bug_report(games);return
         flow=OperationFlow(self,'report',games,'Bug Report')
         flow.show_working('Checking this computer and each game’s install record…')
-        self.start('Preparing bug reports',facts,lambda reports:self.beta_report_editor(flow,games,reports,issue))
+        self.start('Preparing bug reports',lambda:self.beta_report_drafts(games),lambda reports:self.beta_report_editor(flow,games,reports,issue))
 
     def beta_report_editor(self,flow,games,reports,issue=None):
         import beta_report
@@ -13969,13 +13987,8 @@ class Window(Adw.ApplicationWindow):
                 problem.set_text('Wait for the current task to finish, then preview again.');problem.set_visible(True);return
             include_logs,include_notes=logs.get_active(),notes.get_active()
             flow.show_working('Reading logs and preparing a redacted preview…' if include_logs else 'Preparing a redacted preview…')
-            def work():
-                try:
-                    collected={r['id']:beta_report.collect(g,g.get('test_record')) for r,g in zip(reports,games)} if include_logs else None
-                    saved={r['id']:(g.get('test_record') or {}).get('notes','') for r,g in zip(reports,games)} if include_notes else None
-                    return beta_report.bundle(reports,collected,saved)
-                except Exception as error:return {'error':str(error)}
-            self.start('Preparing redacted preview',work,lambda result:self.beta_report_preview(flow,reports,result,target))
+            self.start('Preparing redacted preview',lambda:self.beta_report_files(reports,games,include_logs,include_notes),
+                       lambda result:self.beta_report_preview(flow,reports,result,target))
         flow.review={'operation':'report','rows':[{'name':r['name']} for r in reports],'blocked':[]}
         flow.on_confirm=preview
         flow.primary.set_visible(True);flow.primary.set_label('Preview')
@@ -14045,10 +14058,7 @@ class Window(Adw.ApplicationWindow):
                 self.toast('Wait for the current task to finish, then save again.');return
             flow.show_working('Saving…')
             documents=GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOCUMENTS)
-            def work():
-                try:return beta_report.export(preview,beta_report.folder(self.service.config,documents))
-                except Exception as error:return {'error':str(error)}
-            self.start('Saving bug report',work,lambda result:self.beta_report_saved(flow,reports,result,issue))
+            self.start('Saving bug report',lambda:self.beta_report_export(preview,documents),lambda result:self.beta_report_saved(flow,reports,result,issue))
         flow.on_confirm=save
         flow._title('Review Bug Report')
         flow.primary.set_visible(True);flow.primary.set_label('Save Report');flow.primary.set_sensitive(not self.options.demo)

@@ -322,6 +322,43 @@ def review_ready():
 def review_close():
  w=app.window;w.operation_flow.cancel_button.emit('clicked')
  assert not w.couch.modals and w.operation_flow is None
+def pump_until(test,seconds=20):
+ end=time.monotonic()+seconds
+ while not test() and time.monotonic()<end:
+  while GLib.MainContext.default().pending():GLib.MainContext.default().iteration(False)
+  time.sleep(.01)
+ return test()
+def modal_key(name):
+ c=app.window.couch;return c.find_key(c.modals[-1]['dialog'],name) if c.modals else None
+def report_entry_points():
+ # Bug Report sits in the header and in Overview's Testing group; Notes is notes only.
+ # The outgoing scene stays mapped while it slides away: look in the current one.
+ w=app.window;c=w.couch;details();here=lambda name:c.find_key(c.body.current,name)
+ assert here('hero-report') and here('overview-report') and here('choice-test') and here('overview-test')
+ assert 'Testing' in labels(c.body.current)
+ c.open_section('Notes');assert here('notes-save') and not here('choice-test') and not here('overview-test')
+ c.open_section('Overview')
+def report_flow():
+ # Pick → draft → answer → redacted preview; preview mode never saves.
+ w=app.window;c=w.couch
+ c.find_key(c.body.current,'hero-report').emit('clicked');assert modal_key('report-continue') and modal_key('report-game-0')
+ modal_key('report-continue').emit('clicked')
+ assert pump_until(lambda:modal_key('report-preview') is not None),labels(c.modals[-1]['dialog']) if c.modals else 'no modal'
+ view=modal_key('report-0-observations');assert isinstance(view,Gtk.TextView)
+ view.get_buffer().set_text('Crashed at the title screen')
+ platform=modal_key('report-0-platform')
+ if not modal_key('report-preview').get_sensitive():platform.emit('clicked')
+ assert modal_key('report-preview').get_sensitive(),'answers complete'
+ modal_key('report-preview').emit('clicked')
+ assert pump_until(lambda:modal_key('report-save') is not None),labels(c.modals[-1]['dialog']) if c.modals else 'no modal'
+ assert 'Review Bug Report' in labels(c.modals[-1]['dialog'])
+ assert not modal_key('report-save').get_sensitive(),'preview mode never saves a report'
+def report_close():
+ c=app.window.couch;c.close_all_modals();assert not c.modals
+def report_settings():
+ c=app.window.couch;settings('About');row=c.find_key(c.body.current,'settings-report');assert row
+ row.emit('clicked');assert modal_key('report-continue') and modal_key('report-logs')
+ app.window.couch.close_modal();assert not app.window.couch.modals
 def size(width,height):
  app.window.set_default_size(width,height);app.window.couch.resize(width,height)
 steps=[setup,keyboard,panel_shortcut,presets_page,menu,glyphs,
@@ -338,7 +375,9 @@ steps=[setup,keyboard,panel_shortcut,presets_page,menu,glyphs,
        lambda:app.window.couch.open('extras'),lambda:capture('gm-extras.png'),
        lambda:app.window.couch.open('library'),menu,lambda:app.window.couch.open_main_menu(),lambda:capture('gm-main-menu.png'),close_modal,
        lambda:review_op('uninstall'),review_ready,lambda:capture('gm-review-restore.png'),review_close,
-       lambda:review_op('update-dlss'),review_ready,lambda:capture('gm-review-update-dlss.png'),review_close]
+       lambda:review_op('update-dlss'),review_ready,lambda:capture('gm-review-update-dlss.png'),review_close,
+       report_entry_points,lambda:capture('gm-details-testing.png'),report_flow,lambda:capture('gm-report-review.png'),report_close,
+       report_settings,lambda:app.window.couch.open('library')]
 for width,height in ((1280,820),(1920,1080),(1000,700)):
  steps.append(lambda width=width,height=height:size(width,height))
  tag=f'{width}x{height}'

@@ -69,9 +69,10 @@ def functional_couch():
     from game_mode import descendants
     window=app.window;window.set_input_surface(True)
     window.couch.show_functional_test(window.games[0])
-    texts=[w.get_text() for w in descendants(window.couch.modal) if isinstance(w,Gtk.Label)]
+    modal=window.couch.modals[-1]['dialog']
+    texts=[w.get_text() for w in descendants(modal) if isinstance(w,Gtk.Label)]
     for _,title in functional_test.PARTS:assert any(title in text for text in texts),(title,texts)
-    assert any(w.get_focusable() and w.get_sensitive() for w in descendants(window.couch.modal)),'Functional results must support controller focus'
+    assert any(w.get_focusable() and w.get_sensitive() for w in descendants(modal)),'Functional results must support controller focus'
 
 steps=[lambda:theme('light'),lambda:capture('completion-light.png'),lambda:theme('night'),lambda:capture('completion-night.png'),lambda:theme('dark'),lambda:app.window.show_settings(),lambda:capture('completion-settings.png'),reduced_motion,lambda:app.window.dialog.close(),detached_details,lambda:app.window.detail_pages.set_visible_child_name('Tools'),lambda:capture('completion-tools.png'),lambda:app.window.show_diagnostics(app.window.games[0]),lambda:capture('completion-diagnostics.png'),lambda:app.window.show_reports(),lambda:capture('completion-reports.png'),lambda:app.window.preview_report({'library.json':'{"name":"Demo", "visual_result":"Not established"}'}),lambda:capture('completion-report-preview.png'),lambda:app.window.show_controller_menu(),lambda:capture('completion-controller-menu.png'),couch,lambda:capture('completion-couch-settings.png'),detached_details,lambda:app.window.detail_pages.set_visible_child_name('Tools'),lambda:capture('completion-couch-tools.png'),lambda:app.window.dialog.close(),lambda:app.window.toggle_compact_header(),lambda:capture('completion-couch-library.png')]
 

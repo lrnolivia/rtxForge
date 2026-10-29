@@ -537,6 +537,9 @@ public sealed partial class GameModeView
             ui.Button("Bug Report", () => ChooseSupportReportGames([g]), GmKind.Card, .8, enabled: !shell.Service.IsPreview)
                 .With(b => Key(b, "overview-report")), ""));
         content.Children.Add(testing);
+        if (g.FunctionalTestText is not null)
+            content.Children.Add(DetailFact("Latest functional test", g.TestSuggestion is { } suggested ? "Suggested: " + suggested + ". You choose the result." : "Some checks need more evidence. Review the suggested fixes.",
+                ui.Button("View results", () => ShowFunctionalTest(g), GmKind.Card, .8).With(b => Key(b, "overview-test-results"))));
     }
 
     /// <summary>Update hero metadata in place, preserving any unsaved preset edits below it.</summary>

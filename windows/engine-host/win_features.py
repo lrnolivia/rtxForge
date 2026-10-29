@@ -29,6 +29,7 @@ import re
 import stat
 import struct
 import threading
+import time
 import urllib.request
 import uuid
 from pathlib import Path
@@ -331,6 +332,9 @@ def decorate(rows: list[dict]) -> list[dict]:
     for row in rows:
         row["art"] = artwork_overrides.apply(settings, row, row.get("art") or {})
         row["test_record"] = game_notes.load(_config(), row["game"])
+        if row["test_record"].get("active") and live_status:
+            import functional_test
+            functional_test.resume(_config(), row, row["test_record"]["active"], _live)
     return rows
 
 
@@ -609,12 +613,38 @@ def notes_save(params):
     return record
 
 
+# ---------- shared functional tests ----------
+live_status = None
+_test_helpers = {}
+
+
+def _live(row):
+    found = dict(live_status({"row": row}) if live_status else {})
+    observed,helper = _test_helpers.get(str(row['game']), (0,{}))
+    if time.monotonic()-observed < 3:found['helper']=helper
+    return found
+
+
+def test_helper(params):
+    row=params['row']
+    session=game_notes.load(_config(),row['game']).get('active')
+    t.need(session and session.get('id')==params.get('session'),'The functional test is no longer active.')
+    _test_helpers[str(row['game'])]=(time.monotonic(),dict(params.get('helper') or {}))
+    return {}
+
+
 def test_start(params):
-    return game_notes.start(_config(), params["row"])
+    import functional_test
+    row = params["row"]
+    status = _live(row)
+    checks = functional_test.preflight(row, _settings(), status, params.get("shortcut_ok"))
+    checks["helper"] = (params.get("helper") or {}).get("running")
+    checks["shortcut_detail"] = params.get("shortcut") or checks["shortcut_detail"]
+    return game_notes.start(_config(), row, checks, _live)
 
 
 def test_finish(params):
-    return game_notes.finish(_config(), params["row"])
+    return game_notes.finish(_config(), params["row"], helper=params.get("helper"))
 
 
 def try_anyway(params):
@@ -972,7 +1002,7 @@ METHODS = {
     "sgdb_status": sgdb_status, "sgdb_connect": sgdb_connect, "sgdb_disconnect": sgdb_disconnect,
     "sgdb_search": sgdb_search, "sgdb_artwork": sgdb_artwork, "sgdb_download": sgdb_download,
     "diagnose": diagnose, "dlss_inventory": dlss_inventory, "dlss_restore_review": dlss_restore_review,
-    "notes_save": notes_save, "test_start": test_start, "test_finish": test_finish,
+    "notes_save": notes_save, "test_start": test_start, "test_finish": test_finish, "test_helper": test_helper,
     "report_draft": report_draft, "report_preview": report_preview, "report_links": report_links,
     "report_outline": report_outline, "report_send": report_send,
     "try_anyway": try_anyway, "compat_share": compat_share,

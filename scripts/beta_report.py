@@ -45,7 +45,8 @@ CHOICES={
 LENGTHS={'distribution':100,'gpu':150,'app-build':150,'game':150,'feature-package':200,'observations':1500}
 # Where each value came from, shown beside it so a correction is easy to spot.
 SOURCES={'detected':'Detected on this computer','recorded':'From rtxForge’s install record',
-         'selected':'Selected in Packages, not installed','yours':'Yours','unknown':'Please check'}
+         'selected':'Selected in Packages, not installed','yours':'Yours','unknown':'Please check',
+         'functional':'Suggested by the latest functional test; check the picture yourself'}
 SERIES={'turing':'RTX 20','ampere':'RTX 30','ada':'RTX 40','blackwell':'RTX 50'}
 MODES={'nr-mfg':'NR + MFG','nr-only':'NR only','mfg-only':'MFG only','NR + MFG':'NR + MFG','NR Only':'NR only','MFG Only':'MFG only'}
 # Exact diagnostic names beside the executable; the MFG plugin's own run logs share a prefix.
@@ -189,6 +190,12 @@ def draft(row,facts,record=None):
     evidence={'test_status':record.get('status','Untested'),'install_record':install,
               'graphics_apis':list(row.get('graphics_apis') or []),
               'tried_anyway':(record.get('try_anyway') or {}).get('reason','')}
+    test=game_notes.latest_test(record)
+    if test:
+        import functional_test
+        answers,lines=functional_test.report_answers(test.get('results') or [])
+        for key,value in answers.items():put(key,(value,'functional'))
+        evidence['functional_test']=lines
     appid=str(row.get('appid') or '')
     return {'schema':1,'id':new_id(),'created':t.now(),'name':str(row.get('name') or ''),
             'appid':appid if appid.isdigit() else '','exe':Path(str(row.get('exe') or '')).name,
@@ -219,6 +226,7 @@ def problems(report):
 def details(report):
     """Facts rtxForge read itself, kept apart from what the user observed."""
     evidence=report.get('evidence') or {};lines=[]
+    lines.extend(evidence.get('functional_test') or [])
     if evidence.get('graphics_apis'):lines.append('Graphics API: '+', '.join(evidence['graphics_apis']))
     if evidence.get('tried_anyway'):lines.append('Tried anyway: '+evidence['tried_anyway'])
     install=evidence.get('install_record')

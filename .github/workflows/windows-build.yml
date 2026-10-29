@@ -220,6 +220,8 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s tests -p test_beta_report.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest tests.test_functional_test windows.tests.test_functional_test_host
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s windows/tests -p test_beta_reports_host.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s windows/tests -p test_durable_restore.py

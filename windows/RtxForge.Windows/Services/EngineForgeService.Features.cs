@@ -124,6 +124,30 @@ public sealed partial class EngineForgeService
     public async Task<EngineReview> ReviewCleanupAsync() => ToReview(await CallAsync("cleanup_review"));
 
     // ---------- notes, tests, reports ----------
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, CancellationTokenSource> testHelperPolls = new();
+
+    void MonitorTestHelper(Game game)
+    {
+        if (game.EngineRow?["test_record"]?["active"]?["id"]?.ToString() is not { } session) return;
+        var cancellation = new CancellationTokenSource();
+        if (!testHelperPolls.TryAdd(game.Id, cancellation)) { cancellation.Dispose(); return; }
+        _ = PollTestHelperAsync(game, session, cancellation);
+    }
+
+    async Task PollTestHelperAsync(Game game, string session, CancellationTokenSource cancellation)
+    {
+        try
+        {
+            while (!cancellation.IsCancellationRequested)
+            {
+                var helper = await TestHelperAsync();
+                await CallAsync("test_helper", new JsonObject { ["row"] = Row(game), ["session"] = session, ["helper"] = helper }, cancel: cancellation.Token);
+                await Task.Delay(1000, cancellation.Token);
+            }
+        }
+        catch (Exception error) when (error is OperationCanceledException or InvalidOperationException or IOException or ObjectDisposedException) { }
+        finally { testHelperPolls.TryRemove(game.Id, out _); cancellation.Dispose(); }
+    }
 
     void Apply(Game game, JsonNode? record)
     {
@@ -136,9 +160,32 @@ public sealed partial class EngineForgeService
     public async Task SaveNotesAsync(Game game, string status, string notes) =>
         Apply(game, await CallAsync("notes_save", new { game = game.Id, status, notes }));
 
-    public async Task StartTestAsync(Game game) => Apply(game, await CallAsync("test_start", new JsonObject { ["row"] = Row(game) }));
+    async Task<JsonObject> TestHelperAsync()
+    {
+        try
+        {
+            var text = await OverlayHelper.CommandAsync("status", start: false);
+            var helper = text is null ? new JsonObject() : JsonNode.Parse(text) as JsonObject ?? new JsonObject();
+            helper["running"] = helper["helper_pid"]?.GetValue<int>() > 0;
+            return helper;
+        }
+        catch (Exception error) when (error is IOException or System.Text.Json.JsonException or InvalidOperationException)
+        { return new JsonObject { ["running"] = false, ["problem"] = error.Message }; }
+    }
 
-    public async Task FinishTestAsync(Game game) => Apply(game, await CallAsync("test_finish", new JsonObject { ["row"] = Row(game) }));
+    public async Task StartTestAsync(Game game)
+    {
+        var valid = OverlayShortcut.TryParse(Settings.PanelHotkey, out _, out var binding, out _) && binding.Key != 0;
+        Apply(game, await CallAsync("test_start", new JsonObject { ["row"] = Row(game), ["helper"] = await TestHelperAsync(),
+            ["shortcut_ok"] = valid, ["shortcut"] = Settings.PanelHotkey }));
+        MonitorTestHelper(game);
+    }
+
+    public async Task FinishTestAsync(Game game)
+    {
+        Apply(game, await CallAsync("test_finish", new JsonObject { ["row"] = Row(game), ["helper"] = await TestHelperAsync() }));
+        if (testHelperPolls.TryGetValue(game.Id, out var cancellation)) cancellation.Cancel();
+    }
 
     public async Task<BetaReportDraft> DraftReportsAsync(IReadOnlyList<Game> games, string? format, string channel)
     {

@@ -29,6 +29,10 @@ public sealed class Game
     public string TestStatus { get; set; } = "Untested";
     /// <summary>A test record is open (Start Test, then Finish Test after playing).</summary>
     public bool TestActive { get; set; }
+    public JsonObject? FunctionalTest => (EngineRow?["test_record"]?["sessions"] as JsonArray)?
+        .OfType<JsonObject>().LastOrDefault()?["functional"] as JsonObject;
+    public string? FunctionalTestText => FunctionalTest?["text"]?.ToString();
+    public string? TestSuggestion => FunctionalTest?["suggestion"]?.ToString();
     public string? DlssVersion { get; set; }
     public string Notes { get; set; } = "";
     /// <summary>Steam app id when known (artwork, store metadata).</summary>

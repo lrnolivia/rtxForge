@@ -646,6 +646,8 @@ METHODS['feeder_storage'] = feeder_storage
 
 import companion_controls  # noqa: E402
 METHODS.update(companion_controls.methods(STATE))
+# A functional test samples the same live snapshot the in-game panel shows.
+win_features.live_status = METHODS['companion_status']
 
 
 _download_gate = threading.RLock()

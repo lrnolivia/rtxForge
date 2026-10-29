@@ -632,8 +632,25 @@ public sealed partial class GameModeView
         }
         catch (InvalidOperationException error) { ShowDone(false, finish ? "Finish Test" : "Start Test", error.Message); return; }
         if (!finish && g.Library == "Steam" && g.AppId is { } appid && appid.All(char.IsDigit)) MainWindow.OpenUri("steam://rungameid/" + appid);
-        Toast(finish ? "Logs captured. Set the test result, or send a bug report if something went wrong." : "Test started. Launch your game normally, then return here to finish.");
+        Toast(finish ? "Functional test saved. Review the evidence and suggested fixes." : "Test started. Play for a minute, then return here to finish.");
         Render(keepFocus: true);
+        if (finish) ShowFunctionalTest(g);
+    }
+
+    void ShowFunctionalTest(Game g)
+    {
+        if (g.FunctionalTestText is not { Length: > 0 } text) return;
+        var content = new StackPanel { Spacing = t.Px(16) };
+        content.Children.Add(ui.P("These checks show what ran. Check the picture yourself; you choose the final result."));
+        if (g.TestSuggestion is { } suggestion) content.Children.Add(ui.P("Suggested result: " + suggestion));
+        content.Children.Add(new ScrollViewer { Content = ui.P(text, .82), MaxHeight = t.Px(t.Compact ? 260 : 440),
+            HorizontalScrollMode = ScrollMode.Disabled }.With(s => { s.IsTabStop = true; ui.Focusable(s); }));
+        var actions = new List<Button>();
+        actions.Add(ui.Button("Done", CloseModal, GmKind.Card, .9));
+        actions.Add(ui.Button("Bug Report", () => { CloseModal(); ChooseSupportReportGames([g]); }, GmKind.Card, .9));
+        if (g.TestSuggestion is { } chosen)
+            actions.Add(ui.Button("Use " + chosen, async () => { CloseModal(); await SaveNotesAsync(g, chosen, g.Notes, "Test result saved."); Render(keepFocus: true); }, GmKind.Primary, .9));
+        ShowModal("Functional test · " + g.Name, content, actions, CloseModal, 1100);
     }
 
     // ---------- Settings › Recovery / System ----------

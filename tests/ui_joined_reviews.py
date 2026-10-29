@@ -70,6 +70,22 @@ def review():
     rows[0].set_expanded(True)
 def capture_review():
     w=app.window;assert w.capture('joined-install-review.png')
+    w.dialog.close()
+    games=[dict(w.games[i%3],game='fixture-'+str(i),name='Game '+str(i)) for i in range(6)]
+    w.operation_games=games;ui.OperationFlow(w,'install',games)
+    w.action_ready({'operation':'install','kind':'engine','rows':[{'name':g['name'],'game':g['game'],'detail':'Adapt to Linux'} for g in games[:4]],
+                    'blocked':[{'name':g['name'],'reason':"This game's Proton build has no CUDA library. "*4} for g in games[4:]]})
+skipped_heights=[]
+def skipped_expand():
+    w=app.window;skipped_heights.append(w.operation_flow.content.get_height())
+    [x for x in children(w.dialog.get_child()) if isinstance(x,Adw.ExpanderRow)][-1].set_expanded(True)
+def skipped_check():
+    # Expanding a Needs attention row grows the review; it must never pin it smaller.
+    w=app.window;content=w.operation_flow.content
+    assert content.get_height()>=skipped_heights[0],(skipped_heights,content.get_height())
+    assert content.get_max_content_height()==-1
+    assert w.capture('joined-skipped-expanded-review.png')
+    w.dialog.close()
     w.update_dlss_games(w.games)
 def dlss():
     w=app.window
@@ -132,11 +148,11 @@ def couch():
     rows[0].grab_focus();c.navigate('down');assert w.get_focus() is rows[1]
 def couch_capture():
     assert app.window.capture('joined-couch-list.png')
-steps=[start,library,sorted_edges,check_sorted,review,capture_review,dlss,five,six,tool,report,diagnosis,couch,couch_capture]
+steps=[start,library,sorted_edges,check_sorted,review,capture_review,skipped_expand,skipped_check,dlss,five,six,tool,report,diagnosis,couch,couch_capture]
 def step():
     try:
         if steps:steps.pop(0)();GLib.timeout_add(1000,step)
-        else:print('PASS: joined list boundary corners/no row gaps, capsule/accent review reuse, three/five/six-game sizing, DLSS/tool/report reviews, Gaming Mode list and focus; game writes disabled',flush=True);app.quit()
+        else:print('PASS: joined list boundary corners/no row gaps, capsule/accent review reuse, three/five/six-game sizing, skipped rows expand without shrinking the review, DLSS/tool/report reviews, Gaming Mode list and focus; game writes disabled',flush=True);app.quit()
     except Exception:traceback.print_exc();app.exit_code=1;app.quit()
     return False
 GLib.timeout_add(2200,step)

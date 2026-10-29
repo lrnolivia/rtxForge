@@ -15,6 +15,8 @@ ERRORS=(
     (('duplicate or overlapping',), "Some selected games share the same folder. Select one entry for each game, then try again."),
     # Steam-open installs (Proton prefix route) explain their own next step.
     (('started with proton yet',), "This game hasn’t been started with Proton yet. Play it once and quit, then try again — or close Steam to save the setting in Steam instead."),
+    (('but the game last ran with one',), "Steam is set to run this game with a Proton build that has CUDA, but it last ran with one that doesn’t. Play it once and quit, then try again."),
+    (('has no cuda library',), "This game’s Proton build has no CUDA library, which frame generation needs. In Steam, set the game to Proton-GE (Properties › Compatibility), then try again."),
     (('this game is running',), "This game is running. Quit it, then try again."),
     (('non-steam games need steam closed',), "Non-Steam games need Steam closed for this change. Close Steam, then try again."),
     (('launch setting is saved in steam',), "This game’s launch setting is saved in Steam. Close Steam, then restore it."),

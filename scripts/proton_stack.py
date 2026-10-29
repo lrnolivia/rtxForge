@@ -38,6 +38,8 @@ REASONS = {
     'ngx-not-in-prefix': "Proton did not copy the NVIDIA NGX files into this game's prefix on its last run. Play it once, quit, then check again.",
     'cuda-missing': ("This game's Proton build has no CUDA library (nvidia-libs nvcuda), which frame generation needs to identify "
                      "the GPU. In Steam, set the game to Proton-GE (Properties › Compatibility), then try again."),
+    'cuda-stale-run': ("Steam is set to run this game with a Proton build that has CUDA, but the game last ran with one "
+                       "that doesn't (nvidia-libs nvcuda), which frame generation needs. Play it once, quit, then try again."),
     'cuda-off': ("Proton gave this game its placeholder CUDA library on the last run, so the MFG Unlocker cannot "
                  "identify the GPU and MFG stays off. Set PROTON_NVIDIA_NVCUDA=1 for this game (in its launch "
                  "options or the Proton build's user_settings.py), play it once, quit, then check again."),
@@ -60,6 +62,8 @@ NVCUDA = Path('wine') / 'nvidia-libs' / 'nvcuda' / 'x86_64-windows' / 'nvcuda.dl
 NVCUDA_SWITCHES = ('PROTON_NVIDIA_NVCUDA', 'PROTON_NVIDIA_LIBS', 'PROTON_NVIDIA_NVENC', 'PROTON_NVIDIA_NVOPTIX')
 DRIVER_WINE_DIRS = ('/usr/lib64/nvidia/wine', '/usr/lib/nvidia/wine', '/usr/lib/x86_64-linux-gnu/nvidia/wine')
 DRIVER_ROOT = Path('/proc/driver/nvidia')
+STEAM_ROOTS = tuple(Path.home() / p for p in ('.local/share/Steam', '.steam/steam',
+                                               '.var/app/com.valvesoftware.Steam/.local/share/Steam'))
 MIN_DRIVER = 570
 _ASSIGNMENT = re.compile(r'^([A-Za-z_][A-Za-z0-9_]*)=(.*)$')
 
@@ -120,6 +124,56 @@ def compat_tool(compatdata):
     lines = (_read(compatdata / 'config_info') or '').splitlines()
     lib = Path(lines[2].strip()) if len(lines) > 2 and lines[2].strip().startswith('/') else None
     return {'version': version, 'lib_dir': lib if lib and lib.is_dir() else None}
+
+
+def _block(text, key):
+    """The body of a VDF block "key" { ... }, braces balanced; '' when absent."""
+    match = re.search(r'"%s"\s*\{' % re.escape(key), text, re.I)
+    if not match:
+        return ''
+    depth, start = 1, match.end()
+    for i in range(start, len(text)):
+        depth += {'{': 1, '}': -1}.get(text[i], 0)
+        if not depth:
+            return text[start:i]
+    return ''
+
+
+def _custom_tool_lib(roots, name):
+    """files/lib of a compatibilitytools.d tool by its Steam name, or None (Valve's own builds)."""
+    for root in roots:
+        try:
+            tools = sorted((root / 'compatibilitytools.d').iterdir())
+        except OSError:
+            continue
+        for folder in tools:
+            vdf = _read(folder / 'compatibilitytool.vdf') or ''
+            if folder.name == name or _block(_block(vdf, 'compat_tools'), name):
+                lib = folder / 'files' / 'lib'
+                if lib.is_dir():
+                    return lib
+    return None
+
+
+def mapped_tool(appid):
+    """The compatibility tool Steam is set to run a game with (config.vdf CompatToolMapping).
+
+    This is what the next launch uses, which can differ from compat_tool(), the last run.
+    lib_dir is set only for tools in compatibilitytools.d (Proton-GE and other custom builds).
+    """
+    roots = [Path(root) for root in STEAM_ROOTS]
+    for root in roots:
+        entry = _block(_block(_read(root / 'config' / 'config.vdf') or '', 'CompatToolMapping'), str(appid))
+        match = re.search(r'"name"\s+"([^"]+)"', entry)
+        if match:
+            return {'name': match.group(1), 'lib_dir': _custom_tool_lib(roots, match.group(1))}
+    return {'name': None, 'lib_dir': None}
+
+
+def cuda_missing_reason(compatdata):
+    """Why the last-run Proton build has no CUDA: 'cuda-stale-run' when Steam is already set to one that has it."""
+    lib = mapped_tool(Path(compatdata).name)['lib_dir']
+    return 'cuda-stale-run' if lib and (lib / NVCUDA).is_file() else 'cuda-missing'
 
 
 def component_versions(lib_dir):
@@ -235,7 +289,8 @@ def detect(prefix, mode='nr-mfg', launch_options='', native_dlssg=None, system='
         check('nvapi-prefix', files['nvapi64.dll'], 'nvapi-not-in-prefix')
         check('ngx-prefix', files['nvngx.dll'] and files['_nvngx.dll'], 'ngx-not-in-prefix')
         if mode in ('nr-mfg', 'mfg-only') and tool['lib_dir'] is not None:
-            if check('nvcuda', (Path(tool['lib_dir']) / NVCUDA).is_file(), 'cuda-missing'):
+            has_cuda = (Path(tool['lib_dir']) / NVCUDA).is_file()
+            if check('nvcuda', has_cuda, None if has_cuda else cuda_missing_reason(prefix.parent)):
                 check('cuda-enabled', cuda_planned or prefix_cuda(prefix) or cuda_requested(tool['lib_dir'], env),
                       'cuda-off')
     return _finish(checks, tool, components, card)

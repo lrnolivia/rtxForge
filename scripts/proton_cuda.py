@@ -52,12 +52,15 @@ def _current(path):
     return path.read_text(encoding='utf-8', errors='surrogateescape') if path.is_file() else None
 
 
-def plan(lib_dir):
-    """What turning on CUDA for this Proton build would change; nothing is written."""
+def plan(lib_dir, compatdata=None):
+    """What turning on CUDA for this Proton build would change; nothing is written.
+
+    compatdata -- the game's compatdata/<appid>, so a refusal can tell a stale last run apart.
+    """
     if not lib_dir:
         raise CudaError(proton_stack.REASONS['tool-unknown'])
     if not (Path(lib_dir) / proton_stack.NVCUDA).is_file():
-        raise CudaError(proton_stack.REASONS['cuda-missing'])
+        raise CudaError(proton_stack.REASONS[proton_stack.cuda_missing_reason(compatdata) if compatdata else 'cuda-missing'])
     path = settings_path(lib_dir)
     tool = path.parent.name
     text = _current(path)

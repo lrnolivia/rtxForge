@@ -168,6 +168,7 @@ public sealed partial class MainWindow : Window
         }
         catch (InvalidOperationException error) { LibraryLoadError = error.Message; throw; }
         finally { LibraryRefreshing = false; GamesChanged?.Invoke(); }
+        OpenSupportLink();
         if (!Service.IsPreview)
         {
             _ = OverlayHelper.CacheGameIdentitiesAsync(Games.ToArray());

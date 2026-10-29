@@ -96,6 +96,12 @@ Type: filesandordirs; Name: "{app}\python"
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "rtxForge Overlay"; Flags: uninsdeletevalue
 
 Root: HKCU; Subkey: "Software\rtxForge\Overlay"; Flags: uninsdeletekey
+; The website's "open in rtxForge" link (rtxforge://support/logs). The app accepts only
+; that link and opens its beta reports; it never scans or uploads from a link.
+Root: HKA; Subkey: "Software\Classes\rtxforge"; ValueType: string; ValueName: ""; ValueData: "URL:rtxForge"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\rtxforge"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKA; Subkey: "Software\Classes\rtxforge\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\rtxForge.exe"",0"
+Root: HKA; Subkey: "Software\Classes\rtxforge\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\rtxForge.exe"" ""%1"""
 [Code]
 // [InstallDelete] removes the old engine and Python before files are copied. If a
 // running rtxForge (the app, its overlay helper or its engine) then locks a file,

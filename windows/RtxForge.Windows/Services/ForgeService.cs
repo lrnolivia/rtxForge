@@ -64,7 +64,11 @@ public interface IForgeService
     Task SaveNotesAsync(Game game, string status, string notes);
     Task StartTestAsync(Game game);
     Task FinishTestAsync(Game game);
-    Task<EngineReview> PreviewReportAsync(IReadOnlyList<Game> games, bool logs, bool notes);
+    // Beta reports (beta_report, shared with the Linux app): draft, correct and preview, then links.
+    Task<BetaReportDraft> DraftReportsAsync(IReadOnlyList<Game> games, string? format, string channel);
+    Task<EngineReview> PreviewReportAsync(IReadOnlyList<string> ids, IReadOnlyDictionary<string, Dictionary<string, string>> edits,
+        bool logs, bool notes, string documents);
+    Task<BetaReportLinks> ReportLinksAsync(IReadOnlyList<string> ids, string? issue, string? archive);
     // Compatibility (compat_list): skip a capability check, and share a result as a prefilled issue.
     Task SetTryAnywayAsync(Game game, bool on);
     Task<CompatShare> CompatShareAsync(Game game, string package, bool notes);
@@ -283,7 +287,10 @@ public sealed class PreviewForgeService : IForgeService
 
     public Task StartTestAsync(Game game) => Disabled("Test records");
     public Task FinishTestAsync(Game game) => Disabled("Test records");
-    public Task<EngineReview> PreviewReportAsync(IReadOnlyList<Game> games, bool logs, bool notes) => Disabled<EngineReview>("Support reports");
+    public Task<BetaReportDraft> DraftReportsAsync(IReadOnlyList<Game> games, string? format, string channel) => Disabled<BetaReportDraft>("Beta reports");
+    public Task<EngineReview> PreviewReportAsync(IReadOnlyList<string> ids, IReadOnlyDictionary<string, Dictionary<string, string>> edits,
+        bool logs, bool notes, string documents) => Disabled<EngineReview>("Beta reports");
+    public Task<BetaReportLinks> ReportLinksAsync(IReadOnlyList<string> ids, string? issue, string? archive) => Disabled<BetaReportLinks>("Beta reports");
     public Task SetTryAnywayAsync(Game game, bool on) => Disabled("Try anyway");
     public Task<CompatShare> CompatShareAsync(Game game, string package, bool notes) => Disabled<CompatShare>("Sharing results");
 

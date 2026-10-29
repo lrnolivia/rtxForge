@@ -48,6 +48,12 @@ public partial class App : Application
         { await OverlayHelper.CommandAsync("exit", false); Exit(); return; }
         if (arguments.Contains("--overlay-settings", StringComparer.OrdinalIgnoreCase))
             Views.SettingsPage.OpenOverlaySection = true;
+        // rtxforge://support/logs from the website (Setup registers the scheme): opens beta reports after the scan.
+        if (arguments.Skip(1).FirstOrDefault(a => a.StartsWith("rtxforge:", StringComparison.OrdinalIgnoreCase)) is { } link)
+        {
+            if (MainWindow.TryParseSupportLink(link, out var issue)) { MainWindow.PendingSupportLink = true; MainWindow.PendingSupportIssue = issue; }
+            else MainWindow.IgnoredSupportLink = true;
+        }
         // The real engine (bundled Python host) unless --preview is passed or
         // it cannot start; preview is `rtxforge_gtk.py --demo`: sample
         // library, no game writes.

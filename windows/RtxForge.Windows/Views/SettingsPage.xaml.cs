@@ -271,7 +271,7 @@ public sealed partial class SettingsPage : Page
         foreach (var (title, subtitle, caption, glyph, action) in new (string, string, string, string, Func<Task>)[]
         {
             ("Old NR files", "Review legacy files before removal.", "Review", "", shell.ReviewOldNrFilesAsync),
-            ("Compatibility & reports", "See each game's result, try unverified games, share a result, or export a support report.", "Open", "", shell.ShowReportsAsync),
+            ("Compatibility & reports", "See each game's result, try unverified games, share a result, or prepare a beta report.", "Open", "", shell.ShowReportsAsync),
         })
         {
             var actionRow = Prefs.Row(title, subtitle, Prefs.ActionButton(caption, async (_, _) => await action()), glyph);

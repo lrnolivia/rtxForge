@@ -164,13 +164,25 @@ class FileMailbox(controls.Mailbox):
 class LinuxControls(controls.Controls):
     def __init__(self,state):
         self.stop=threading.Event()
+        self.host_active=False
         super().__init__(state)
+
+    def _start_watcher(self):
+        # The shared constructor reloads presets and asks to start replay.
+        # A waiting host must not write to games before it owns the user lock.
+        if self.host_active:
+            super()._start_watcher()
+
+    def start(self):
+        self.host_active=True
+        self._start_watcher()
 
     def _watch(self):
         while not self.stop.wait(2):
             with self.lock:
                 records=list(self.presets.items())
             for key,record in records:
+                if self.stop.is_set():break
                 with self.lock:
                     try:
                         game=self._game({'row':record['row']})
@@ -309,16 +321,21 @@ class Host:
         # The second host waits instead of answering the same channels twice,
         # and takes over when the first one exits.
         held=None
+        started=False
         try:
             while not self.stop.is_set():
                 if held is None:held=host_lock(lock)
                 if held is None:
                     self.stop.wait(1);continue
+                if not started:
+                    self.controls.start();started=True
                 self.poll();self.stop.wait(.25)
         finally:
-            if held is not None:os.close(held)
             self.controls.stop.set()
-            if self.controls.watcher is not None:
-                self.controls.watcher.join(timeout=3)
-            for _,channel in self.channels.values():channel.close()
-            self.channels.clear()
+            try:
+                if self.controls.watcher is not None:
+                    self.controls.watcher.join(timeout=3)
+                for _,channel in self.channels.values():channel.close()
+                self.channels.clear()
+            finally:
+                if held is not None:os.close(held)

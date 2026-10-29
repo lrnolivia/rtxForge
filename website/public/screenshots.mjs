@@ -86,10 +86,10 @@ export const SCREENSHOTS = {
       'Game Mode presets', 'Presets'),
     'game-mode-install': install('windows', 'game-mode', 'Avatar: Frontiers of Pandora', 2560, 1438),
     overlay: {
-      src: 'assets/screenshots/windows-control-overlay.webp', width: 2560, height: 1440, radius: 16,
+      src: 'assets/screenshots/windows-control-overlay-sdr.webp', width: 1920, height: 1080, radius: 16,
       alt: 'rtxForge overlay open during actual CONTROL Resonant gameplay, beside a close-up of the character.',
       label: 'Windows gameplay overlay', caption: 'Overlay', carousel: false,
-      provenance: 'Native Windows overlay over actual CONTROL Resonant gameplay · October 21, 2026. Work in progress; captured appearance is unchanged.'
+      provenance: 'Native Windows overlay over actual CONTROL Resonant gameplay · SDR capture · October 28, 2026. Cursor and its glow removed; captured appearance otherwise preserved.'
     }
   }
 };

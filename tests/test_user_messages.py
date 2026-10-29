@@ -9,6 +9,11 @@ class Messages(unittest.TestCase):
     def test_next_steps(self):
         for raw,next_step in [('Executable selection changed; refresh the library','Refresh'),('Provider archive hash mismatch','Download'),('Permission denied','permissions'),('Close Steam before applying','Close Steam')]:
             self.assertIn(next_step,friendly_error(raw))
+    def test_proton_cuda_reasons(self):
+        import proton_stack
+        self.assertIn('Play it once',friendly_error(proton_stack.REASONS['cuda-stale-run']))
+        self.assertIn('Proton-GE',friendly_error(proton_stack.REASONS['cuda-missing']))
+        self.assertNotIn('Proton-GE',friendly_error(proton_stack.REASONS['cuda-stale-run']))
     def test_unknown_never_claims_rollback(self):
         raw='TransactionError: surprising failure /tmp/example'
         text=friendly_error(raw)

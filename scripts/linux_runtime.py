@@ -121,7 +121,7 @@ def setup_review(config, row, settings, prefix, exe, mode, universal_mfg=None, p
         universal_mfg = (exe.parent / universal.PLUGIN).is_file()
     if mode in ('nr-mfg', 'mfg-only') and universal_mfg:
         tool = proton_stack.compat_tool(Path(prefix).parent)
-        plans['cuda'] = proton_cuda.plan(tool['lib_dir'])
+        plans['cuda'] = proton_cuda.plan(tool['lib_dir'], Path(prefix).parent)
         notes.append(plans['cuda']['summary'])
     if not panel:
         return plans, notes

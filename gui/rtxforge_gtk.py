@@ -6181,7 +6181,12 @@ class Window(Adw.ApplicationWindow):
         if details is not None:
             def resized(*_):
                 listing=entry.get_parent()
-                if isinstance(listing,Gtk.ListBox):GLib.timeout_add(80,self.size_review_panel,listing)
+                flow=getattr(self,'operation_flow',None)
+                if flow is not None and not flow.closed and flow.dialog is self.dialog:
+                    # Operation reviews size themselves; the panel sizing below pins their
+                    # outer scroll to the first five rows and shrinks the dialog.
+                    GLib.timeout_add(80,lambda:flow._fit(flow.content,flow.dialog.get_content_width()))
+                elif isinstance(listing,Gtk.ListBox):GLib.timeout_add(80,self.size_review_panel,listing)
             entry.connect('notify::expanded',resized)
         if game:
             accent=self._ensure_game_accent(game)

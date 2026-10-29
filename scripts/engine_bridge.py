@@ -665,6 +665,15 @@ def share_install(e,g,review):
         target=g.target_dir
         baseline=e.load_baseline(target) or {}
         current=baseline.get('current') or {}
+        # Adapt/overlay operations can use an engine whose default provider is
+        # different from this game's installed recipe. Share the recipe identity.
+        installed_provider = current.get('provider_id')
+        shared_provider = dict(getattr(e,'Y4MY_PROVIDER',{}) or {})
+        if installed_provider == 'skynizz':
+            shared_provider = skynizz_provider.validate_release(current['archive']['release'])
+            shared_provider['version'] = shared_provider['tag']
+        elif installed_provider:
+            shared_provider = dict(shared_provider, id=installed_provider)
         launch=e._launch_record_for_game(g) or {}
         revision=cross_os.new_revision()
         portable=baseline.get('status')=='active' and not baseline.get('pending_install') and \
@@ -675,7 +684,7 @@ def share_install(e,g,review):
             cross_os.export_state(target,e.state_dir_for(target),baseline,revision,extras)
             baseline['cross_os_extras']=extras;baseline['cross_os_revision']=revision
             e.save_json_atomic(e.baseline_path(target),baseline)
-        marker=cross_os.write(target,cross_os.THIS_OS,baseline.get('managed_paths',[]),dict(getattr(e,'Y4MY_PROVIDER',{}) or {}),
+        marker=cross_os.write(target,cross_os.THIS_OS,baseline.get('managed_paths',[]),shared_provider,
             current.get('feature_mode') or review.get('mode',''),current.get('proxy',''),proton_prefix.override_names(launch.get('required','')),
             app_version=getattr(e,'APP_VERSION',''),revision=revision,shared_state=portable)
         if type(current.get('nr_on_launch')) is bool:

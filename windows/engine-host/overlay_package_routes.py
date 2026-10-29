@@ -71,7 +71,7 @@ def feeder_plan(e, path, params, running):
         destination = t.safe(target / t.relative(name))
         if name in feeder.CONFIGS:
             continue
-        t.need(t.digest(destination) == expected, 'Feeder files changed; repair this game first: ' + name)
+        t.need(feeder.digest(destination, cached=False) == expected, 'Feeder files changed; repair this game first: ' + name)
         checks[str(destination)] = expected
     for name, item in available.items():
         if name not in owned:

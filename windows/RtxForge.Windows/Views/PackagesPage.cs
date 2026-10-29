@@ -155,11 +155,11 @@ public sealed partial class PackagesPage : Page
 
     Expander FeederSetup()
     {
-        var feeder = Section("Feeder setup", "Choose your local stack once; rtxForge keeps a verified copy, and installation copies ReShade, Feeder, RenoDX and shaders for you.");
+        var feeder = Section("Feeder setup", "Import your local stack once. New installs use the verified copy kept by rtxForge. The paths below are saved import locations on this PC.");
         var paths = new PresetColumns(360, 2) { ColumnSpacing = 16, RowSpacing = 12 };
-        paths.Children.Add(PathField("Local stack folder", "Your ReShade, Feeder, RenoDX and shader files. Only needed until rtxForge keeps a copy.",
+        paths.Children.Add(PathField("Stack import folder", "Your ReShade, Feeder, RenoDX and shader files. A game folder here is an import source, not the installation destination.",
             shell.Settings.FeederSource, path => shell.Settings.FeederSource = path));
-        paths.Children.Add(PathField("Original backups folder", "Original manifests and backups used to recognize existing setups. rtxForge keeps verified copies.",
+        paths.Children.Add(PathField("Manual-install backups (optional)", "Needed to adopt an existing manual Feeder setup. Fresh installations create their own restore backups.",
             shell.Settings.FeederBackups, path => shell.Settings.FeederBackups = path));
         feeder.Children.Add(paths);
         var kept = Prefs.Label("Checking stored Feeder files…", "ForgeCaptionDimTextStyle");
@@ -176,7 +176,8 @@ public sealed partial class PackagesPage : Page
                 kept.Text = (storage.Recipe is null ? "No stack stored yet" : "Stored stack · " + storage.Recipe
                     + (storage.NrVersion is null ? "" : " · NR model " + storage.NrVersion))
                     + $" · {storage.Backups} original backup{(storage.Backups == 1 ? "" : "s")} kept"
-                    + (storage.LegacyReady ? " · DX9/DX10 support ready" : "");
+                    + (storage.LegacyReady ? " · DX9/DX10 support ready" : "")
+                    + (storage.Recipe is null ? "" : ". Ready for new installs; the old import location is not required.");
             }
             catch (InvalidOperationException error) { kept.Text = error.Message; }
             finally { keep.IsEnabled = true; legacy.IsEnabled = !shell.Service.IsPreview; }

@@ -32,7 +32,7 @@ release=fixtures.bridge_fixture(archive)|{'panel_renderer':'in-game','panel_cand
 overlays.provider.bundled_bridge=lambda:(release,archive)
 owned={p.name:t.digest(p) for p in root.iterdir() if p.name!='Game.exe'}
 record={'schema':e.ENGINE_SCHEMA,'status':'active','target_dir':str(root),'exe':str(root/'Game.exe'),'name':'Owned',
-        'originals':{'restore-boundary':'keep'},'cross_os_revision':'old',
+        'originals':{name:{'existed':False} for name in owned},'managed_paths':list(owned),'cross_os_revision':'old',
         'current':{'provider_id':'skynizz','feature_mode':'nr-mfg','proxy':'winhttp.dll','installed_hashes':owned,
                    'archive':{'release':release|{'sha256':'f'*64}}}}
 baseline=e.baseline_path(root);t.atomic_file(baseline,json.dumps(record).encode(),0o600)
@@ -40,6 +40,46 @@ marker=root/cross_os.MARKER
 marker.write_text(json.dumps({'provider':{'id':'skynizz'},'proxy':'winhttp.dll','files':owned,'revision':'old','feature_mode':'nr-mfg'}))
 def files():return {str(p):p.read_bytes() for base in [root,e.STATE_ROOT/'targets'] for p in base.rglob('*') if p.is_file()}
 before=files()
+# A prior cross-OS writer mislabeled a valid Skynizz recipe with the engine's
+# default package. Shared and local recovery boundaries still agree exactly.
+shared=cross_os.shared_state(root)/'baseline.json'
+shared.parent.mkdir(parents=True)
+portable=cross_os.portable(record,baseline.parent,root)
+portable.update(cross_os_revision='other-os',cross_os_extras={'linux':{'launch_options':'preserve'}})
+shared.write_text(json.dumps(portable))
+stale=t.read_json(marker);stale.update(provider={'id':'dlss-unlocked'},schema=2,os='linux',shared_state=True,
+                                     revision='other-os')
+marker.write_text(json.dumps(stale))
+drifted=files()
+review=overlays.prepare(e,h.LOCAL/'state')
+assert len(review['plans'])==1 and not review['blocked'],review['blocked']
+assert files()==drifted,'ownership reconciliation mutated during review'
+bulk.execute(review)
+updated=t.read_json(baseline);published=t.read_json(shared);identity=t.read_json(marker)
+assert identity['provider']['id']=='skynizz'
+assert identity['revision']==updated['cross_os_revision']==published['cross_os_revision']
+assert updated['cross_os_extras']==published['cross_os_extras']==portable['cross_os_extras']
+assert updated['originals']==record['originals']
+# Different restore ownership, recipe or shared inventory cannot be reconciled.
+for field,value in [('originals',{}),('current',dict(portable['current'],provider_id='y4my'))]:
+    for name,data in drifted.items():t.atomic_file(Path(name),data,0o600)
+    changed=copy.deepcopy(portable);changed[field]=value;shared.write_text(json.dumps(changed))
+    refused=overlays.prepare(e,h.LOCAL/'state')
+    assert not refused['plans'] and refused['blocked'],field
+# Do not classify stale locations as another installed MFG package, or include
+# unselected package records in a scoped review.
+absent=h.LOCAL/'old-game';absent_exe=absent/'Game.exe'
+old_record=copy.deepcopy(record);old_record.update(target_dir=str(absent),exe=str(absent_exe),name='Old location')
+old_record['current']['provider_id']='dlss-unlocked'
+t.atomic_file(e.baseline_path(absent),json.dumps(old_record).encode(),0o600)
+skipped=overlays.prepare(e,h.LOCAL/'state')['skipped']
+assert any(x['title']=='Old location' and 'no longer found' in x['detail'] for x in skipped)
+scoped=overlays.prepare(e,h.LOCAL/'state',{'target_games':[str(root)]})
+assert all(x['title']!='Old location' for x in scoped['skipped'])
+e.baseline_path(absent).unlink()
+# Return to the ordinary update scenario.
+shared.unlink()
+for name,data in before.items():t.atomic_file(Path(name),data,0o600)
 review=overlays.prepare(e,h.LOCAL/'state')
 assert len(review['plans'])==1 and not review['blocked'],review['blocked']
 assert files()==before,'review wrote game/state'
@@ -68,6 +108,13 @@ with patch.object(t,'atomic_file',broken):
     try:bulk.execute(review);raise AssertionError('write failure ignored')
     except t.Refusal:pass
 assert failed[0] and files()==before,'rollback did not restore exact pre-update files'
+from types import SimpleNamespace
+with patch.object(e,'Y4MY_PROVIDER',{'id':'dlss-unlocked','name':'DLSS-Unlocked'}), \
+     patch.object(e,'_launch_record_for_game',return_value=None):
+    engine_bridge.share_install(e,SimpleNamespace(target_dir=root),{'mode':'nr-mfg'})
+identity=t.read_json(marker);published=t.read_json(shared);updated=t.read_json(baseline)
+assert identity['provider']['id']=='skynizz' and identity['provider']['version']==release['tag']
+assert identity['revision']==published['cross_os_revision']==updated['cross_os_revision']
 import feeder_provider as feeder,overlay_settings
 spec=importlib.util.spec_from_file_location('feeder_fixtures',repo/'tests/test_feeder_provider.py')
 ff=importlib.util.module_from_spec(spec);spec.loader.exec_module(ff)
@@ -84,6 +131,10 @@ try:
     with patch.object(feeder,'panel',return_value=old):
         feeder.execute(feeder.prepare(h.service.config,[row],'nr-only','install',case.settings,e))
     game=Path(row['game']);original=feeder.state(e,game)['originals']
+    # The retired welcome addon was deliberately removed by the original install.
+    # A recorded absence is a valid ownership check, not a missing-file failure.
+    feeder_record=feeder.state(e,game);feeder_record['installed_hashes']['quiet-startup.addon64']=None
+    t.atomic_file(feeder.state_dir(e,game)/'baseline.json',json.dumps(feeder_record).encode(),0o600)
     model=(game/'nvngx_dlssnr.dll').read_bytes();ini=t.ini((game/'ReShade.ini').read_text())
     tuning=ini['RenoDX.DLSS5']['NRResolutionScale'];native_before=files()
     params=overlay_settings.options({})|{'reshade_ui':False,'target_games':[str(game)],
@@ -91,6 +142,10 @@ try:
     with patch.object(feeder,'panel',return_value=new):
         review=overlays.prepare(e,h.LOCAL/'state',params)
         assert len(review['plans'])==1 and not review['blocked'],review
+        intruder=game/'quiet-startup.addon64';intruder.write_bytes(b'foreign')
+        try:bulk.execute(review);raise AssertionError('foreign file filled reviewed absence')
+        except t.Refusal:pass
+        intruder.unlink()
         assert 'Welcome message: Off' in review['plans'][0]['note'] and 'shortcut: F8' in review['plans'][0]['note']
         assert (game/feeder.PANELS[0]).read_bytes()==Path(old[feeder.PANELS[0]]['path']).read_bytes(),'review wrote a panel'
         bulk.execute(review)

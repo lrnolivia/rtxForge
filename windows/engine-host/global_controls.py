@@ -209,7 +209,9 @@ def _check(e, plan):
     import offline_routes
     t.need(anti_cheat(e, Path(plan['root'])) is None or (plan.get('target') and offline_routes.allowed_target(e, Path(plan['target']), Path(plan['root']))), 'Anti-cheat appeared after review; nothing further was changed.')
     for filename, digest in plan['checks'].items():
-        t.need(t.digest(t.safe(filename)) == digest, 'Files changed since review. Review the bulk change again.')
+        path = t.safe(filename)
+        actual = t.digest(path) if path.exists() else None
+        t.need(actual == digest, 'Files changed since review. Review the bulk change again.')
 
 
 def execute(review):

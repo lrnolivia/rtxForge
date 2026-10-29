@@ -19,7 +19,6 @@ public sealed partial class GameModeView
     string detailsSection = "Overview";
     string? libraryFocusKey;
     /// <summary>Unsaved Test Result choice on the Notes section (Choice re-renders the page).</summary>
-    string? notesStatus;
     string? notesDraft;
     static readonly string[] Sections = ["Overview", "Features", "DLSS Files", "Tools", "Appearance", "Notes"];
 
@@ -29,7 +28,6 @@ public sealed partial class GameModeView
         libraryFocusKey = FocusKey(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject);
         detailsGame = game;
         detailsSection = "Overview";
-        notesStatus = null;
         notesDraft = null;
 
         page = "details";
@@ -140,6 +138,10 @@ public sealed partial class GameModeView
             GmKind.Card, 0.76, enabled: g.Installed && !g.AdoptionAvailable, radius: 10, minHeight: 46);
         Key(restore, "hero-restore");
         actions.Children.Add(restore);
+        var report = ui.Button(Glyph("", "Bug Report"), () => ChooseSupportReportGames([g]),
+            GmKind.Card, 0.76, enabled: !shell.Service.IsPreview, radius: 10, minHeight: 46);
+        Key(report, "hero-report");
+        actions.Children.Add(report);
         var more = ui.Button(ui.Icon("", .85), () => OpenDetailsActions(g), GmKind.Card,
             radius: 10, padding: new Thickness(t.Px(14)), minHeight: 46, name: "More game options");
         Key(more, "hero-more"); ToolTipService.SetToolTip(more, "More options"); actions.Children.Add(more);
@@ -421,7 +423,6 @@ public sealed partial class GameModeView
                 foreach (var (title, description, caption, glyph, enabled, action) in new (string, string, string, string, bool, Action)[]
                 {
                     ("Diagnose NR", "Read the saved NR settings, runtime hashes and log evidence.", "Diagnose", "", true, () => _ = DiagnoseAsync(g)),
-                    ("Beta report", "Fill in what happened and review a redacted ZIP before saving.", "Prepare", "", true, () => ChooseSupportReportGames([g])),
                     ("Install ReShade", "Choose an extracted x64 ReShade DLL. DirectX 10–12 games load it as dxgi.dll.", "Choose", "", installs, () => _ = InstallExtraAsync(g, "reshade")),
                     ("Install Add-on", "Choose an .addon64 file (including RenoDX). Install ReShade first.", "Choose", "", installs, () => _ = InstallExtraAsync(g, "addon")),
                     ("ReShade Downloads", "Get ReShade from its official site.", "Open", "", true, () => MainWindow.OpenUri("https://reshade.me/")),
@@ -435,7 +436,7 @@ public sealed partial class GameModeView
                 break;
 
             case "Notes":
-                SectionTitle(content, "Your Notes", "Kept with this game in rtxForge. Included in beta reports when you choose.");
+                SectionTitle(content, "Your Notes", "Kept with this game in rtxForge. Included in bug reports when you choose.");
                 var notes = new TextBox
                 {
                     Text = notesDraft ?? g.Notes, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = t.Px(160),
@@ -446,26 +447,12 @@ public sealed partial class GameModeView
                 notes.TextChanged += (_, _) => notesDraft = notes.Text;
                 ui.Focusable(notes);
                 Key(notes, "notes");
-                var noteCards = DetailColumns();
-                noteCards.Children.Add(notes);
-                var testSettings = new StackPanel { Spacing = t.Px(20) };
-                // game_notes: the test result and notes are saved with this game (shared with Desktop UI).
-                notesStatus ??= g.TestStatus;
-                testSettings.Children.Add(ui.Group(
-                [
-                    Choice("Test Result", "Bench excludes this game from bulk installation and repair.", ["Untested", "Working", "Problem", "Bench"],
-                        ["Untested", "Working", "Problem", "Bench"], () => notesStatus ?? g.TestStatus, v => notesStatus = v),
-                ]));
-                testSettings.Children.Add(ui.P("Controller text entry uses the Windows touch keyboard or Steam's keyboard.", 0.83));
+                content.Children.Add(notes);
+                // Only your notes: testing and bug reports live on Overview and in the header.
                 var noteActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12), HorizontalAlignment = HorizontalAlignment.Right };
-                noteActions.Children.Add(ui.Button(g.TestActive ? "Finish Test" : "Start Test", () => _ = RecordTestAsync(g), GmKind.Card, 0.85,
-                    enabled: !shell.Service.IsPreview).With(b => Key(b, "notes-test")));
-                // The shared beta report (as on Linux): untested games and failed installs can be reported too.
-                noteActions.Children.Add(ui.Button("Prepare beta report", () => ChooseSupportReportGames([g]), GmKind.Card, 0.85,
-                    enabled: !shell.Service.IsPreview).With(b => Key(b, "notes-share")));
-                noteActions.Children.Add(ui.Button("Save Notes", () => _ = SaveNotesAsync(g, notesStatus ?? g.TestStatus, notes.Text), GmKind.Primary, 0.85).With(b => Key(b, "notes-save")));
-                testSettings.Children.Add(noteActions);
-                noteCards.Children.Add(DetailPlate(testSettings)); content.Children.Add(noteCards);
+                noteActions.Children.Add(ui.P("Controller text entry uses the Windows touch keyboard or Steam's keyboard.", 0.83).With(p => p.VerticalAlignment = VerticalAlignment.Center));
+                noteActions.Children.Add(ui.Button("Save Notes", () => _ = SaveNotesAsync(g, g.TestStatus, notes.Text), GmKind.Primary, 0.85).With(b => Key(b, "notes-save")));
+                content.Children.Add(noteActions);
                 break;
 
             case "Appearance":
@@ -499,7 +486,8 @@ public sealed partial class GameModeView
                 break;
 
             default:
-                if (g.ProviderCandidatesText.Length > 0) content.Children.Add(DetailFact("Install routes", g.ProviderCandidatesText));
+                if (g.ProviderCandidatesText.Length > 0) content.Children.Add(DetailFact("Install route", g.ProviderCandidatesText));
+                TestingSection(g, content);
                 if (g.AdoptionAvailable) content.Children.Add(DetailFact("Adoption available", GameOverview.AdoptionNote,
                     ui.Button("Review Adoption", () => _ = shell.ReviewAdoptionAsync([g]), GmKind.Card, .8), "\uE930"));
                 if (g.OfflineOnly) content.Children.Add(DetailFact("Offline-only features", GameOverview.OfflineNote,
@@ -528,6 +516,27 @@ public sealed partial class GameModeView
                 content.Children.Add(exeActions);
                 break;
         }
+    }
+
+    /// <summary>Overview's testing cards: the result, a logged test session and a bug report (the shared beta_report flow, as on Linux).</summary>
+    void TestingSection(Game g, StackPanel content)
+    {
+        SectionTitle(content, "Testing", "How this game runs with rtxForge. Something wrong? Send a bug report.");
+        string[] states = ["Untested", "Working", "Problem", "Bench"];
+        var testing = DetailColumns();
+        testing.Children.Add(DetailPlate(ui.Group(
+        [
+            Choice("Test Result", "Bench keeps this game out of bulk installs and repairs.", states, states, () => g.TestStatus,
+                v => { if (v != g.TestStatus && !shell.Service.IsPreview) _ = SaveNotesAsync(g, v, g.Notes, "Test result saved."); }),
+        ])));
+        testing.Children.Add(DetailFact(g.TestActive ? "Test running" : "Test session",
+            g.TestActive ? "Play, then finish the test here to capture its logs." : "Start a test, play the game, then finish it to capture logs for a bug report.",
+            ui.Button(g.TestActive ? "Finish Test" : "Start Test", () => _ = RecordTestAsync(g), GmKind.Card, .8, enabled: !shell.Service.IsPreview)
+                .With(b => Key(b, "overview-test")), ""));
+        testing.Children.Add(DetailFact("Bug Report", "Say what happened and review a redacted ZIP before anything is saved.",
+            ui.Button("Bug Report", () => ChooseSupportReportGames([g]), GmKind.Card, .8, enabled: !shell.Service.IsPreview)
+                .With(b => Key(b, "overview-report")), ""));
+        content.Children.Add(testing);
     }
 
     /// <summary>Update hero metadata in place, preserving any unsaved preset edits below it.</summary>

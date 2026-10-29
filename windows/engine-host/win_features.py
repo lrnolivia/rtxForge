@@ -708,7 +708,7 @@ def report_preview(params):
     for skipped in preview["manifest"]["skipped"]:
         items.append(_item(skipped["name"], skipped["reason"], "Skipped"))
     count = len(preview["manifest"]["files"])
-    return _review("report", "Review Beta Report", items, action="Save Report",
+    return _review("report", "Review Bug Report", items, action="Save Report",
                    summary=f"{count} log{'s' if count != 1 else ''} included · {len(preview['manifest']['skipped'])} not included. "
                            "Review the exact text below. Redaction is best effort: check for anything personal. "
                            "Logs show what ran, not what NR or MFG looked like. Saving keeps it on this PC; nothing is uploaded.",

@@ -310,7 +310,6 @@ public sealed partial class GameModeView
         {
             "Graphics" =>
             [
-                .. FeaturedSteamGroups(),
                 new("Install defaults", "Applied to new installs; game changes are reviewed first.",
                 [
                     Choice("Default mode", "Features selected when rtxForge starts.", modes, modes.Select(mode => mode switch { "nr-only" => "NR Only", "nr-mfg" => "NR + MFG", _ => "MFG Only" }).ToArray(),
@@ -356,6 +355,7 @@ public sealed partial class GameModeView
             ],
             "Gaming Mode" =>
             [
+                .. FeaturedSteamGroups(),
                 new("Interface", "Mouse, keyboard, and controller input keep your chosen interface.",
                 [
                     Choice("Interface", null, ["game", "desktop"], ["Gaming Mode", "Desktop"], () => "game", value =>
@@ -391,7 +391,7 @@ public sealed partial class GameModeView
                 new("App and updates", null,
                 [
                     ui.RowButton("Check for updates", null, () => _ = CheckForUpdatesAsync(), description: $"rtxForge {MainWindow.AppVersion} · download, verify and install the newest build.", glyph: ""),
-                    ui.RowButton("Prepare beta report", null, () => ChooseSupportReportGames(), description: "Choose games, fill in what happened and review a redacted ZIP before saving.", glyph: ""),
+                    ui.RowButton("Report a bug", null, () => ChooseSupportReportGames(), description: "Choose games, say what happened and review a redacted ZIP before anything is saved.", glyph: ""),
                 ]),
             ],
         };

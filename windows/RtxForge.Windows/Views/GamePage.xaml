@@ -104,6 +104,9 @@
                             <Button x:Name="RestoreButton" Click="OnRestore">
                                 <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE7A7;" FontSize="14" Foreground="{ThemeResource ForgeRemoveBrush}" /><TextBlock x:Name="RestoreText" Text="Restore Original Files" /></StackPanel>
                             </Button>
+                            <Button x:Name="BugReportButton" Click="OnBugReport" AutomationProperties.Name="Bug Report" ToolTipService.ToolTip="Report a problem with this game">
+                                <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xEBE8;" FontSize="14" /><TextBlock x:Name="BugReportText" Text="Bug Report" /></StackPanel>
+                            </Button>
                             <Button x:Name="MoreButton" AutomationProperties.Name="More options" ToolTipService.ToolTip="More options">
                                 <!-- A hidden text line gives it the same height as the labelled buttons beside it. -->
                                 <Grid><TextBlock Text=" " Opacity="0" AutomationProperties.AccessibilityView="Raw" /><FontIcon Glyph="&#xE712;" FontSize="14" /></Grid>

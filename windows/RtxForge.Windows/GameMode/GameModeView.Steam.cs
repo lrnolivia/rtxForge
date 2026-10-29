@@ -11,7 +11,7 @@ public sealed partial class GameModeView
     /// <summary>Settings row label; refreshed after the status loads.</summary>
     string SteamRowTitle() => steamAdded == true ? "rtxForge is in Steam" : "Add rtxForge to Steam";
 
-    /// <summary>First in Settings, in the accent color, until rtxForge is in Steam: that's how Game Mode opens it with a controller.</summary>
+    /// <summary>First in Settings › Gaming Mode, in the accent color, until rtxForge is in Steam: that's how Game Mode opens it with a controller.</summary>
     IReadOnlyList<SettingsGroup> FeaturedSteamGroups()
     {
         if (shell.Service.IsPreview) return [];

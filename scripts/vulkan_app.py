@@ -16,6 +16,35 @@ ROOT = Path(__file__).resolve().parents[1]
 ID = 'vulkan-native'
 TITLE = 'Vulkan NR + Universal MFG'
 PROFILES = {'bg3': ('bg3.exe', "Baldur’s Gate 3"), 'rdr2': ('RDR2.exe', 'Red Dead Redemption 2')}
+# The shared install record (.rtxforge-install.json) for the other OS: the loader proxy,
+# everything under NativeMods, and the Proton override that makes the proxy load.
+RECORD_NAMES = ('bink2w64.dll', 'NativeMods')
+PROXY = 'bink2w64.dll'
+PROTON_OVERRIDES = ('bink2w64',)
+
+
+def write_record(target):
+    import cross_os
+    return cross_os.write(target, cross_os.THIS_OS, RECORD_NAMES, {'id': ID, 'name': TITLE, 'version': ''},
+                          'nr-mfg', PROXY, PROTON_OVERRIDES)
+
+
+def windows_record(target):
+    """On Linux, a Windows install of this package: its shared record, or for installs made
+    before Vulkan wrote one, the package's own layout (receipt plus the loader's backup)."""
+    import cross_os
+    target = Path(target)
+    record = cross_os.read(target)
+    if record:
+        return record if record['os'] == 'windows' and (record.get('provider') or {}).get('id') == ID else None
+    if cross_os.THIS_OS != 'linux':
+        return None
+    if ((target / 'NativeMods/rtxForge-vulkan/source-receipt.json').is_file()
+            and (target / 'bink2w64_rtxforge_original.dll').is_file() and (target / PROXY).is_file()):
+        return {'schema': 1, 'os': 'windows', 'provider': {'id': ID, 'name': TITLE, 'version': ''},
+                'feature_mode': 'nr-mfg', 'proxy': PROXY, 'proton_overrides': list(PROTON_OVERRIDES),
+                'files': {}, 'legacy': True}
+    return None
 
 
 def state_root(config=None):
@@ -89,6 +118,15 @@ def decorate(rows, config=None, selected=False):
                 continue
             row['vulkan_profile'] = key
             record = owned(row, config)
+            windows = None if record else windows_record(target)
+            if windows:
+                # Installed with rtxForge on Windows: Adapt to Linux sets it up for Proton.
+                row.update(installed=True, installed_on='windows', runtime_provider=ID, install_provider=ID,
+                           feature_mode='nr-mfg', profile='NR + MFG', graphics_apis=['Vulkan'], blocked='',
+                           mfg_route='Native Vulkan DLSS-G · Universal Experimental', dynamic_mfg_available=False)
+                row['exe'] = (target / PROFILES[key][0]).relative_to(Path(row['game'])).as_posix()
+                row['vulkan_windows'] = True
+                continue
             if (available or selected) and not record and not row.get('installed'):
                 row.update(install_provider=ID,vulkan_available=available,graphics_apis=['Vulkan'],
                            blocked='Anti-cheat detected; this game is excluded.' if row.get('anti_cheat') else '')
@@ -210,6 +248,10 @@ def execute(review):
             ui.progress('Updating Vulkan package', game=item['row']['name'], current=len(completed)+1, total=len(review['plans']))
             with provider.profile(item['profile'], item['manifest']), provider.process_guard(lambda: e._running_processes_under_root(Path(item['row']['game']))):
                 provider.execute(item['plan'])
+            # Shared record so the other OS recognises this install (removed with the originals).
+            import cross_os
+            if review['operation'] == 'uninstall':cross_os.remove(Path(item['plan']['target']), cross_os.THIS_OS)
+            else:write_record(Path(item['plan']['target']))
             if item['prefix']:
                 import proton_prefix
                 state = Path(item['plan']['state']) / 'proton-prefix'

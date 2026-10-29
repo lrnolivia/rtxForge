@@ -225,6 +225,7 @@ def stylesheet(t):
 .gm .gm-done-icon {{ color: {c['fg']}; }}
 .gm .gm-done-icon.failed {{ color: {c['danger']}; }}
  .gm button.gm-btn:focus-visible, .gm button.gm-btn.gm-active, .gm .gm-segments button.on {{ box-shadow: 0 {px(2)}px {px(24)}px alpha(white,.32), 0 {px(3)}px {px(42)}px alpha(white,.16); }}
+.gm .gm-slider button.gm-btn.gm-active, .gm .gm-slider button.on, .gm .gm-slider.gm-segments button.on {{ box-shadow: none; }}
 .gm button.gm-btn.gm-primary:focus-visible, .gm button.gm-btn.gm-primary:hover {{ box-shadow: 0 {px(2)}px {px(26)}px alpha({ACCENT},.55); }}
 .gm button.gm-btn.gm-danger:focus-visible, .gm button.gm-btn.gm-danger:hover {{ box-shadow: 0 {px(2)}px {px(26)}px alpha({c['danger']},.40); }}
 .gm .gm-tabs button.gm-btn {{ font-size: {em(.92)}px; }}
@@ -241,7 +242,9 @@ def stylesheet(t):
 # Windows GmTheme.Surface: frosted cards whose tint follows Card translucency;
 # navigation is 15 points clearer. Text and child controls stay opaque.
 FROSTED = {'gm-group': 16, 'gm-surface': 16, 'gm-tool-card': 16, 'gm-settings-row': 12, 'gm-standalone': 12,
-           'gm-tile': 14, 'gm-dialog': 20, 'gm-tabs': 999, 'gm-pill': 999, 'gm-listsurface': 0}
+           'gm-tile': 14, 'gm-tabs': 999, 'gm-pill': 999, 'gm-listsurface': 0}
+# Dialogs sit over live page content the backdrop blur cannot reach: nearly opaque.
+DIALOG_ALPHA = .95
 
 
 def card_alpha(percent, navigation=False):
@@ -261,8 +264,10 @@ def frost_css(t, percent):
     return f'''
 .gm .gm-tabs {{ background: {panel(nav)}; }}
 .gm button.gm-settings-row, .gm .gm-surface, .gm .gm-pill, .gm .gm-group, .gm .gm-listsurface, .gm .gm-tool-card,
-.gm button.gm-rowbtn.gm-settings-row, .gm button.gm-rowbtn.gm-standalone, .gm .gm-dialog {{ background: {panel()}; }}
-.gm .gm-group.gm-on-card, .gm button.gm-tile, .gm .gm-dialog .gm-group {{ background: {surface()}; }}
+.gm button.gm-rowbtn.gm-settings-row, .gm button.gm-rowbtn.gm-standalone {{ background: {panel()}; }}
+.gm .gm-group.gm-on-card, .gm button.gm-tile {{ background: {surface()}; }}
+.gm .gm-dialog {{ background: {panel(DIALOG_ALPHA)}; }}
+.gm .gm-dialog .gm-group {{ background: {surface(DIALOG_ALPHA)}; }}
 '''
 
 
@@ -430,6 +435,11 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         for provider in self.accent_providers.values():
             Gtk.StyleContext.remove_provider_for_display(Gdk.Display.get_default(), provider)
         self.accent_providers = {}
+
+    def selection_glow(self):
+        """The active-button glow (stylesheet), drawn by the selection pill itself."""
+        px = self.theme.px
+        return ((.32, px(2), px(24)), (.16, px(3), px(42)))
 
     def card_opacity(self):
         value = self.owner.settings.get('game_mode_card_opacity', 10)
@@ -645,7 +655,7 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
             box.append(control)
         return motion.selection(self.selection_states, 'segments:' + '/'.join(str(item[0]) for item in items),
                                 box, next(c for c in children(box) if getattr(c, '_gm_key', '') == 'seg-' + str(selected)),
-                                self.owner.settings, self.theme.c['segment'], self.theme.c['card'])
+                                self.owner.settings, self.theme.c['segment'], self.theme.c['card'], self.selection_glow())
 
     def group(self, rows, on_card=False):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -1090,7 +1100,7 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
             tabs.append(tab)
         tabs = motion.selection(self.selection_states, 'navigation', tabs,
                                 next(c for c in children(tabs) if getattr(c, '_gm_key', '') == 'tab-' + ('library' if self.page == 'details' else self.page)),
-                                self.owner.settings, t.c['active'], t.c['card'])
+                                self.owner.settings, t.c['active'], t.c['card'], self.selection_glow())
         bottom = self.owner.settings.get('navigation_position', 'top') == 'bottom'
         clear(self.bottom_nav)
         self.bottom_nav.set_visible(bottom)
@@ -1636,9 +1646,10 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
             dot.add_css_class('on')
         state.append(dot)
         state.append(self.label('Unsupported' if game.get('blocked') and not self.owner.adoptable(game) else 'Installed' if game.get('installed') else 'Available', 'gm-p'))
-        if game.get('installed') and game.get('installed_on') in ('linux', 'windows'):
-            mark = self.icon('rtx-os-' + game['installed_on'] + '-symbolic', t.px(14))
-            mark.set_tooltip_text('Installed with rtxForge on ' + game['installed_on'].title())
+        oses = overview_facts.installed_oses(game)
+        for name in oses:
+            mark = self.icon('rtx-os-' + name + '-symbolic', t.px(14))
+            mark.set_tooltip_text(overview_facts.os_tooltip(oses))
             state.append(mark)
         surface.append(state)
         details = self.label('Select' if self.selecting else 'Details', 'gm-chip', 'gm-plain', xalign=0.5)
@@ -1821,8 +1832,8 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets):
         badges.append(self.badge(source, 'gm-badge-source', 'rtx-steam-symbolic' if source == 'Steam' else None, big=True))
         tested = (g.get('test_record') or {}).get('status', 'Untested') not in ('Untested', '')
         badges.append(self.badge('Tested' if tested else 'Untested', 'gm-badge-tested', 'object-select-symbolic' if tested else 'applications-science-symbolic', big=True))
-        if g.get('installed') and g.get('installed_on') in ('linux', 'windows'):
-            badges.append(self.badge(g['installed_on'].title(), 'gm-badge-source', 'rtx-os-' + g['installed_on'] + '-symbolic', big=True))
+        for name in overview_facts.installed_oses(g):
+            badges.append(self.badge(name.title(), 'gm-badge-source', 'rtx-os-' + name + '-symbolic', big=True))
         text.append(badges)
         # Windows hero: title and badges own the full width; developer ·
         # release and summary sit beside the actions underneath.

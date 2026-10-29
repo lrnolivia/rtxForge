@@ -36,7 +36,8 @@ REASONS = {
     'nvapi-disabled': 'NVAPI is turned off for this game (PROTON_DISABLE_NVAPI, or Proton disables it for this title). DLSS cannot start.',
     'nvapi-not-in-prefix': "NVAPI was not set up in this game's prefix on its last run. Play it once with Proton, quit, then check again.",
     'ngx-not-in-prefix': "Proton did not copy the NVIDIA NGX files into this game's prefix on its last run. Play it once, quit, then check again.",
-    'cuda-missing': "This Proton build has no working CUDA library (nvidia-libs nvcuda), so the MFG Unlocker cannot identify the GPU.",
+    'cuda-missing': ("This game's Proton build has no CUDA library (nvidia-libs nvcuda), which frame generation needs to identify "
+                     "the GPU. In Steam, set the game to Proton-GE (Properties › Compatibility), then try again."),
     'cuda-off': ("Proton gave this game its placeholder CUDA library on the last run, so the MFG Unlocker cannot "
                  "identify the GPU and MFG stays off. Set PROTON_NVIDIA_NVCUDA=1 for this game (in its launch "
                  "options or the Proton build's user_settings.py), play it once, quit, then check again."),

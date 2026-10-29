@@ -214,7 +214,11 @@ def windows_install(e,g,baseline):
     if baseline:return None
     if cross_os.THIS_OS=='linux':
         record=cross_os.read(g.target_dir)
-        if not record or record['os']!='windows' or cross_os.adoptable(g.target_dir,cross_os.THIS_OS):return None
+        if not record:
+            # Vulkan installs made on Windows before that package wrote its record.
+            import vulkan_app
+            return vulkan_app.windows_record(g.target_dir)
+        if record['os']!='windows' or cross_os.adoptable(g.target_dir,cross_os.THIS_OS):return None
         return record
     record=cross_os.other_install(g.target_dir,cross_os.THIS_OS)
     return None if record and record.get('shared_state') else record
@@ -502,11 +506,13 @@ def prepare(config,rows,mode,operation,settings):
             # Installed (or last changed) with rtxForge on the other OS: adapt it for this one.
             shared=cross_os.adoptable(g.target_dir,cross_os.THIS_OS,(baseline or {}).get('cross_os_revision')) if operation in ('install','repair','uninstall','reset') else None
             stack=None
-            if selected=='skynizz' and operation in ('install','repair') and proton and not shared:
+            # Installed with rtxForge on Windows: adapting it needs none of a fresh install's checks.
+            foreign=operation in ('install','repair') and cross_os.THIS_OS=='linux' and windows_install(e,g,baseline) is not None
+            if selected=='skynizz' and operation in ('install','repair') and proton and not shared and not foreign:
                 # A fresh Linux install: every Proton prerequisite must be present for this game.
                 stack=proton_gate(e,g,settings,mode)
             e.PROTON_STACK=stack
-            if selected=='skynizz' and operation in ('install','repair') and not (proton and shared):
+            if selected=='skynizz' and operation in ('install','repair') and not (proton and shared) and not foreign:
                 current=installed_package(baseline)
                 check_switch(e,current,mode)
                 # Repair never silently advances a game's release or mutable latest tag.
@@ -576,7 +582,12 @@ def prepare(config,rows,mode,operation,settings):
                     ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g),'prefix':None,'steam_route':False,'linux_setup_remove':True})
                 else:
                     prefix,names=proton_setup(e,g,windows)
-                    extras,notes=linux_extras(config,g,row,settings,prefix,windows.get('feature_mode',''))
+                    import vulkan_app
+                    if (windows.get('provider') or {}).get('id')==vulkan_app.ID:
+                        # The Vulkan package has its own panel: only Universal MFG's CUDA setting applies.
+                        extras,notes=linux_runtime.setup_review(config,row,settings,prefix,g.exe,'nr-mfg',universal_mfg=True,panel=False)
+                    else:
+                        extras,notes=linux_extras(config,g,row,settings,prefix,windows.get('feature_mode',''))
                     preview={'files':[],'launch_options':'Adapt to Linux · adds the Proton setting ('+', '.join(names)+')'+''.join(' · '+n for n in notes)
                              +' · nothing in the game folder changes and the Windows install is not touched'}
                     ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g),'prefix':str(prefix),'steam_route':False,'linux_setup':names,'linux_extras':extras})

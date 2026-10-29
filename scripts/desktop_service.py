@@ -9,6 +9,17 @@ from storage import storage
 UNREADABLE_RECORD=('This game was set up with rtxForge on another system, but its files are not readable here '
                    '(owned by another user). Make them yours, then refresh: sudo chown -R "$USER" "{folder}"')
 
+def installed_oses_from_state(target):
+    """The OSes recorded in a game's shared state (cross_os_extras), or [] when unreadable."""
+    import json
+    try:
+        data=json.loads((cross_os.shared_state(target)/'baseline.json').read_text(encoding='utf-8'))
+    except (OSError,ValueError):
+        return []
+    extras=data.get('cross_os_extras') if isinstance(data,dict) else None
+    return [name for name in ('windows','linux') if isinstance(extras,dict) and name in extras]
+
+
 class DesktopService:
     def __init__(self,provider=None):
         self.config=app.load_provider(provider)
@@ -138,6 +149,9 @@ class DesktopService:
                 row['adaptable']=bool(cross_os.adoptable(target,cross_os.THIS_OS,(local or {}).get('cross_os_revision')))
             if record and record['os']=='windows' and cross_os.THIS_OS=='linux':
                 row['linux_ready']=bool(proton_prefix.load_record(engine_bridge.prefix_state(engine,SimpleNamespace(target_dir=target))))
+            if record and record.get('shared_state'):
+                # Every OS that has set this install up, kept in the shared state (adapting rewrites the record's owner).
+                row['installed_oses']=installed_oses_from_state(target)
             rows.append(row)
         settings=library_media.load_settings(self.config)
         # Feeder NR installs (and Mass Effect LE's three games) are recognised the same way as on Windows.
@@ -147,6 +161,18 @@ class DesktopService:
         package_adoption.decorate(engine,rows)
         import vulkan_app
         vulkan_app.decorate(rows,self.config,selected=settings.get('runtime_provider')=='vulkan-native')
+        for row in rows:
+            if row.get('vulkan_windows') and 'linux_ready' not in row:
+                # A Windows Vulkan install from before it wrote its record: ready once adapted here.
+                target=(Path(row['game'])/row['exe']).parent
+                row['linux_ready']=bool(proton_prefix.load_record(engine_bridge.prefix_state(engine,SimpleNamespace(target_dir=target))))
+        for row in rows:
+            # Windows and Linux marks: the installing OS, every OS in the shared state, and Linux
+            # for a Windows install set up here (Adapt to Linux).
+            oses=set(row.get('installed_oses') or [])
+            if row.get('installed') and row.get('installed_on') in ('linux','windows'):oses.add(row['installed_on'])
+            if row.get('installed') and row.get('installed_on')=='windows' and row.get('linux_ready'):oses.add('linux')
+            row['installed_oses']=[name for name in ('windows','linux') if name in oses]
         return sorted(rows,key=lambda r:r['name'].casefold())
 
     def scan_all(self,extra=()):

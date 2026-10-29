@@ -1091,6 +1091,10 @@ class LibraryPill(Gtk.Box):
         self._os=Gtk.Image(pixel_size=10,visible=False,valign=Gtk.Align.CENTER)
         self._os.add_css_class('library-pill-os')
         content.append(self._os)
+        # A Windows install adapted for Linux carries both marks.
+        self._os2=Gtk.Image(pixel_size=10,visible=False,valign=Gtk.Align.CENTER)
+        self._os2.add_css_class('library-pill-os')
+        content.append(self._os2)
 
         self._content=content
         self.append(
@@ -1127,12 +1131,14 @@ class LibraryPill(Gtk.Box):
         self.queue_resize()
 
 
-    def set_os(self,name):
-        """Show the tiny Linux or Windows mark (None hides it)."""
-        self._os.set_visible(name in ('linux','windows'))
-        if name in ('linux','windows'):
-            self._os.set_from_icon_name('rtx-os-'+name+'-symbolic')
-            self._os.set_tooltip_text('Installed with rtxForge on '+('Linux' if name=='linux' else 'Windows'))
+    def set_os(self,names):
+        """Show the tiny Windows and/or Linux marks (None or [] hides them)."""
+        names=[names] if isinstance(names,str) else [n for n in names or [] if n in ('linux','windows')]
+        for image,name in zip((self._os,self._os2),names+[None,None]):
+            image.set_visible(name is not None)
+            if name is not None:
+                image.set_from_icon_name('rtx-os-'+name+'-symbolic')
+                image.set_tooltip_text(overview_facts.os_tooltip(names))
 
     def _update_icon(self,text):
         value=str(
@@ -3975,8 +3981,13 @@ class OperationFlow:
             else:
                 width=max(320,listing.get_width() or 560)
                 height=sum(r.measure(Gtk.Orientation.VERTICAL,width)[1] for r in rows[:visible])+2
-            if scroll.get_max_content_height()==height:return False
-            scroll.set_max_content_height(height)
+            if scroll.get_max_content_height()==height==scroll.get_min_content_height():return False
+            # Minimum as well as maximum: a long Needs attention list below must not
+            # squeeze the ready rows down to one (GTK keeps min <= max at each step).
+            if height>=max(scroll.get_max_content_height(),0):
+                scroll.set_max_content_height(height);scroll.set_min_content_height(height)
+            else:
+                scroll.set_min_content_height(height);scroll.set_max_content_height(height)
             if self.content is not None:self._fit(self.content,self.dialog.get_content_width())
             return False
         cap()
@@ -11691,10 +11702,11 @@ class Window(Adw.ApplicationWindow):
                 False,
             )
         # Installed-OS mark on the art, top-left: 22 px translucent square.
-        os_badge=Gtk.Box(halign=Gtk.Align.START,valign=Gtk.Align.START,can_target=True,visible=False)
+        os_badge=Gtk.Box(halign=Gtk.Align.START,valign=Gtk.Align.START,can_target=True,visible=False,spacing=4)
         os_badge.add_css_class('poster-os-badge');margins(os_badge,8)
-        os_badge._icon=Gtk.Image(pixel_size=12,halign=Gtk.Align.CENTER,valign=Gtk.Align.CENTER,hexpand=True)
-        os_badge.append(os_badge._icon)
+        os_badge._icons=[Gtk.Image(pixel_size=12,halign=Gtk.Align.CENTER,valign=Gtk.Align.CENTER,hexpand=True) for _ in range(2)]
+        os_badge._icon=os_badge._icons[0]
+        for image in os_badge._icons:os_badge.append(image)
         if view!='list':
             overlay.add_overlay(os_badge);overlay.set_measure_overlay(os_badge,False)
         badge=label('Unsupported' if game.get('blocked') else game.get('profile','Ready') if game.get('installed') else 'Ready','cover-badge');badge.set_halign(Gtk.Align.START);badge.set_valign(Gtk.Align.END);margins(badge,7)
@@ -11922,16 +11934,18 @@ class Window(Adw.ApplicationWindow):
         self.decorate_support_artwork(entry['overlay'],entry['picture'],game,path)
         state='Unsupported' if game.get('blocked') else 'Detected' if self.adoptable(game) else 'Installed' if game.get('installed') else 'Available'
         entry['meta'].set_text(state.upper())
-        installed_on=game.get('installed_on') if game.get('installed') else None
-        on_art=installed_on in ('linux','windows') and self.settings.get('library_view','posters')!='list'
-        # Posters and capsules carry the mark on the art; List keeps it beside the status.
-        entry['meta'].set_os(None if on_art else installed_on)
+        oses=overview_facts.installed_oses(game)
+        on_art=bool(oses) and self.settings.get('library_view','posters')!='list'
+        # Posters and capsules carry the marks on the art; List keeps them beside the status.
+        entry['meta'].set_os(None if on_art else oses)
         badge=entry.get('os_badge')
         if badge is not None:
             badge.set_visible(on_art)
             if on_art:
-                badge._icon.set_from_icon_name('rtx-os-'+installed_on+'-symbolic')
-                badge.set_tooltip_text('Installed with rtxForge on '+installed_on.title())
+                for image,name in zip(badge._icons,oses+[None,None]):
+                    image.set_visible(name is not None)
+                    if name is not None:image.set_from_icon_name('rtx-os-'+name+'-symbolic')
+                badge.set_tooltip_text(overview_facts.os_tooltip(oses))
         for css in ('state-installed','state-available','state-unsupported','state-detected'):entry['meta'].remove_css_class(css)
         entry['meta'].add_css_class('state-'+state.lower())
 
@@ -12627,14 +12641,13 @@ class Window(Adw.ApplicationWindow):
         test_badge.set_text(test_status.upper())
         test_badge.add_css_class('test-untested' if test_status.casefold()=='untested' else 'test-tested')
         metadata_line.append(source_badge)
-        installed_on=game.get('installed_on') if game.get('installed') else None
-        if installed_on in ('linux','windows'):
-            # Windows GamePage OsBadge: between the source and tested pills.
+        for installed_on in overview_facts.installed_oses(game):
+            # Windows GamePage OsBadge: between the source and tested pills; one per OS it is set up for.
             os_badge=LibraryPill(kind='source')
             os_badge.add_css_class('library-source-pill')
             os_badge.set_fixed_width(108)
             os_badge.set_text(installed_on.upper())
-            os_badge.set_tooltip_text('Installed with rtxForge on '+installed_on.title())
+            os_badge.set_tooltip_text(overview_facts.os_tooltip(overview_facts.installed_oses(game)))
             metadata_line.append(os_badge)
         metadata_line.append(test_badge)
 

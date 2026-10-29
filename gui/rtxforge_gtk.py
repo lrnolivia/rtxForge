@@ -13145,6 +13145,12 @@ class Window(Adw.ApplicationWindow):
                        and save_record('Test result saved',status=list(game_notes.STATES)[widget.get_selected()]))
         item=row('Test result','Bench keeps this game out of bulk installs and repairs.');item.add_suffix(choice);testing.add(item)
         active=bool(record.get('active'))
+        if active and not self.options.demo:
+            def resume_test():
+                import functional_test
+                probe=functional_test.linux_probe(self.service.config,getattr(self,'overlay_host',None))
+                functional_test.resume(self.service.config,game,record['active'],probe)
+            threading.Thread(target=resume_test,daemon=True,name='resume-functional-test').start()
         test=button('Finish Test' if active else 'Start Test',lambda *_:self.record_test(game,active))
         test.set_sensitive(not self.options.demo);test.set_valign(Gtk.Align.CENTER)
         report=icon_button('Bug Report','dialog-warning-symbolic',lambda *_:self.prepare_beta_reports([game]),'overview-report')
@@ -13152,6 +13158,10 @@ class Window(Adw.ApplicationWindow):
         item=row('Test running' if active else 'Test session',
                  'Play, then finish the test here to capture its logs.' if active else 'Start a test, play the game, then finish it to capture logs for a bug report.')
         item.add_suffix(test);item.add_suffix(report);testing.add(item)
+        latest=game_notes.latest_test(record)
+        if latest:
+            item=row('Latest functional test','Suggested: '+latest['suggestion']+'. You choose the result.' if latest.get('suggestion') else 'Some checks need more evidence. Review the suggested fixes.')
+            item.add_suffix(button('View results',lambda *_:self.show_functional_test(game)));testing.add(item)
         notes_page=content['Notes']
         group=Adw.PreferencesGroup(title='Your Notes',description='Kept with this game in rtxForge. Included in bug reports when you choose.');notes_page.append(group)
         notes=Gtk.TextView(
@@ -13829,12 +13839,46 @@ class Window(Adw.ApplicationWindow):
                    lambda request:game_launch.dispatch_launch(self.service.config,request,lambda uri:Gio.AppInfo.launch_default_for_uri(uri,None)))
 
     def record_test(self,game,finish=False):
+        import functional_test
         def done(record):
             game['test_record']=record;self.details(game)
             if not finish and game.get('source')=='Steam' and str(game.get('appid','')).isdigit():
                 Gio.AppInfo.launch_default_for_uri('steam://rungameid/'+str(game['appid']),None)
-            self.toast('Logs captured. Set the test result, or send a bug report if something went wrong.' if finish else 'Test started. Launch your game normally, then return here to finish.')
-        self.start('Collecting test logs' if finish else 'Starting test record',lambda:(game_notes.finish if finish else game_notes.start)(self.service.config,game),done)
+            self.toast('Functional test saved. Review the evidence and suggested fixes.' if finish else 'Test started. Play for a minute, then return here to finish.')
+            if finish:self.show_functional_test(game)
+        def work():
+            host=getattr(self,'overlay_host',None)
+            helper=functional_test.linux_helper(game,host)
+            if finish:return game_notes.finish(self.service.config,game,helper=helper)
+            probe=functional_test.linux_probe(self.service.config,host)
+            try:
+                from proton_overlay import parse_shortcut
+                shortcut=parse_shortcut(self.settings.get('panel_hotkey','Delete'))[2]!=0
+            except ValueError:shortcut=False
+            checks=functional_test.preflight(game,self.settings,probe(game),shortcut)
+            checks['helper']=helper.get('running')
+            return game_notes.start(self.service.config,game,checks,probe)
+        self.start('Finishing functional test' if finish else 'Checking test prerequisites',work,done)
+    def show_functional_test(self,game):
+        import functional_test
+        test=game_notes.latest_test(game.get('test_record'))
+        if not test:return
+        if hasattr(self,'couch') and self.input_stack.get_visible_child_name()=='couch':
+            self.couch.show_functional_test(game);return
+        d,b,f=self.open_panel('Functional test · '+game['name'])
+        b.append(label('These checks show what ran. Check the picture yourself; you choose the final result.','dim-label'))
+        for result in test['results']:
+            group=Adw.PreferencesGroup(title=result['title'],description=result['state'].replace('-',' ').title())
+            item=row(result['summary'],'\n'.join(result.get('evidence') or []));group.add(item)
+            if result.get('fix'):group.add(row('Suggested fix',result['fix']))
+            b.append(group)
+        if test.get('suggestion'):
+            def use(*_):
+                record=game_notes.load(self.service.config,game['game']);record['status']=test['suggestion']
+                game_notes.save(self.service.config,game['game'],record);game['test_record']=record
+                d.close();self.details(game);self.toast('Test result saved')
+            f.append(button('Use '+test['suggestion'],use))
+        f.append(button('Bug Report',lambda *_:(d.close(),self.prepare_beta_reports([game]))))
     def show_reports(self,*_,issue=None):
         d,b,f=self.open_panel('Library status & reports')
         totals=Counter(g.get('test_record',{}).get('status','Untested') for g in self.games)

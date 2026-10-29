@@ -2152,6 +2152,27 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
         report = self.row_button('Bug Report', None, lambda: self.bug_report([g]), icon='dialog-warning-symbolic',
                                  description='Say what happened and review a redacted ZIP before anything is saved.', key='overview-report')
         content.append(self.group([row, session, report]))
+        if game_notes.latest_test(record):
+            content.append(self.row_button('Latest functional test',None,lambda:self.show_functional_test(g),
+                                           description='Review each component, its evidence and suggested fixes.',key='overview-test-results'))
+
+    def show_functional_test(self,g):
+        import functional_test
+        test=game_notes.latest_test(g.get('test_record'))
+        if not test:return
+        content=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=self.theme.px(16))
+        content.append(self.label('These checks show what ran. Check the picture yourself; you choose the final result.','gm-p',wrap=True))
+        for result in test['results']:
+            text=result['summary']+'\n'+'\n'.join(result.get('evidence') or [])
+            if result.get('fix'):text+='\nSuggested fix: '+result['fix']
+            content.append(self.row_button(result['title']+' · '+result['state'].replace('-',' ').title(),None,None,
+                                           description=text,key='functional-'+result['part']))
+        actions=[self.button('Done',self.close_modal),self.button('Bug Report',lambda:(self.close_modal(),self.bug_report([g])))]
+        if test.get('suggestion'):
+            def use():
+                self.save_test_record(g,'Test result saved',status=test['suggestion']);self.close_modal();self.render(keep_focus=True)
+            actions.append(self.button('Use '+test['suggestion'],use))
+        self.show_modal('Functional test · '+g['name'],content,actions,self.close_modal,1100)
 
     def save_test_record(self, g, toast, **changes):
         record = dict(g.get('test_record') or {})

@@ -407,8 +407,11 @@ public sealed partial class GamePage : Page
         report.IsEnabled = !shell.Service.IsPreview;
         actions.Children.Add(report);
         testing.Add(Prefs.Row(g.TestActive ? "Test running" : "Test session",
-            g.TestActive ? "Play, then finish the test here to capture its logs." : "Start a test, play the game, then finish it to capture logs for a bug report.",
+            g.TestActive ? "Play for a minute, then finish here to check each component." : "Check package files, NR, MFG, the panel and helper, with evidence and suggested fixes.",
             actions, ""));
+        if (g.FunctionalTestText is not null)
+            testing.Add(Prefs.Row("Latest functional test", g.TestSuggestion is { } suggested ? "Suggested: " + suggested + ". You choose the result." : "Some checks need more evidence. Review the suggested fixes.",
+                Prefs.ActionButton("View results", async (_, _) => await shell.ShowFunctionalTestAsync(g))));
         return testing;
     }
 

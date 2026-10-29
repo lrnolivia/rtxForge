@@ -132,6 +132,7 @@ jobs:
           /usr/bin/python3 -m unittest discover -s tests -p test_user_messages.py
           /usr/bin/python3 -m unittest tests.test_discovery_candidates tests.test_feeder_legacy tests.test_offline_routes
           /usr/bin/python3 -m unittest tests.test_beta_report tests.test_compat_list
+          /usr/bin/python3 -m unittest tests.test_functional_test
           /usr/bin/python3 -m unittest discover -s tests/linux_runtime -p 'test_*.py'
 
           /usr/bin/python3 tests/test_batches.py

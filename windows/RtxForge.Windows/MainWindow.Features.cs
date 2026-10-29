@@ -736,8 +736,28 @@ public sealed partial class MainWindow
         }
         catch (InvalidOperationException error) { await Message(finish ? "Finish Test" : "Start Test", error.Message); return; }
         if (!finish && game.Library == "Steam" && game.AppId is { } appid && appid.All(char.IsDigit)) OpenUri("steam://rungameid/" + appid);
-        ShowToast(finish ? "Logs captured. Set the test result, or send a bug report if something went wrong." : "Test started. Launch your game normally, then return here to finish.");
+        ShowToast(finish ? "Functional test saved. Review the evidence and suggested fixes." : "Test started. Play for a minute, then return here to finish.");
         NotifyGamesChanged();
+        if (finish) await ShowFunctionalTestAsync(game);
+    }
+
+    public async Task ShowFunctionalTestAsync(Game game)
+    {
+        if (game.FunctionalTestText is not { Length: > 0 } text) return;
+        var dialog = NewDialog();
+        dialog.Title = "Functional test · " + game.Name;
+        var content = new StackPanel { Spacing = 14, MinWidth = 420 };
+        content.Children.Add(Prefs.Label("These checks show what ran. Check the picture yourself; you choose the final result.", "ForgeCaptionDimTextStyle"));
+        if (game.TestSuggestion is { } suggestion) content.Children.Add(Prefs.Label("Suggested result: " + suggestion));
+        content.Children.Add(new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true });
+        dialog.Content = new ScrollViewer { Content = content, MaxHeight = 560, HorizontalScrollMode = ScrollMode.Disabled };
+        dialog.CloseButtonText = "Done";
+        dialog.SecondaryButtonText = "Bug Report";
+        if (game.TestSuggestion is { } chosen) dialog.PrimaryButtonText = "Use " + chosen;
+        var choice = await dialog.ShowAsync();
+        if (choice == ContentDialogResult.Primary && game.TestSuggestion is { } status)
+            await SaveNotesAsync(game, status, game.Notes, "Test result saved");
+        else if (choice == ContentDialogResult.Secondary) await PrepareBetaReportsAsync([game]);
     }
 
     // ---------- Packages (select_package) ----------

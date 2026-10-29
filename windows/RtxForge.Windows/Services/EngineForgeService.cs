@@ -194,7 +194,9 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         // The library serves every mode; the installation review checks native FG for NR + MFG.
         var rows = await CallAsync("scan", new { folders = Settings.GameFolders, library_folders = Settings.LibraryFolders, runtime_provider = Settings.RuntimeProvider, game_executables = Settings.GameExecutables }, cancel: cancel) as JsonArray ?? [];
         LibrarySnapshot.Write(SnapshotPath, key, rows);
-        return LibraryGames(rows);
+        var games = LibraryGames(rows);
+        foreach (var game in games.Where(g => g.TestActive)) MonitorTestHelper(game);
+        return games;
     }
 
     public async Task<string> ValidateExecutableAsync(Game game, string? path)
@@ -585,6 +587,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
 
     public void Dispose()
     {
+        foreach (var cancellation in testHelperPolls.Values) cancellation.Cancel();
         try { process.StandardInput.Close(); } catch (IOException) { }
         try { if (!process.WaitForExit(3000)) process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
         process.Dispose();

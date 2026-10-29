@@ -526,7 +526,7 @@ class Controls:
         return {'state': 'stalled' if stalled else 'running',
                 'detail': 'OptiScaler controls this session. Restart the game after switching overlays.' if native_menu else 'Waiting for the game to respond.' if stalled else 'Connected',
                 'pid': box.pid, 'can_edit': not stalled and not native_menu, 'can_save': not native_menu, 'can_mfg': game['can_mfg'], 'can_nr': game['can_nr'],
-                'native_fresh': bool(native_fresh) and not stalled, **found}
+                'native_fresh': bool(native_fresh) and not stalled, 'telemetry_source': 'skynizz-mailbox', **found}
 
     def status(self, params):
         with self.lock:

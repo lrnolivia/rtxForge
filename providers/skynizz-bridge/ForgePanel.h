@@ -424,7 +424,7 @@ inline void Hero(const char* text, float size, ImVec4 color)
 inline void Section(const char* text)
 {
     const float size = ImGui::GetFontSize()*18.f/14.f;
-    ImGui::Spacing(); Hero(text, size, ImVec4(.90f,.90f,.90f,1));
+    ImGui::Spacing(); Hero(text, size, Tone(.90f,.12f));
 }
 // The sidebar's ToggleSwitch: a pill track filled with the accent when on.
 inline bool Switch(const char* id, bool* on)
@@ -459,7 +459,7 @@ inline bool HeaderToggle(const char* text, bool* on, bool enabled)
     const float scale = ImGui::GetFontSize()/14.f, size = 18.f*scale, width = 40.f*scale, height = 20.f*scale;
     ImGui::Spacing();
     const float left = ImGui::GetCursorPosX(), available = ImGui::GetContentRegionAvail().x, top = ImGui::GetCursorPosY();
-    Hero(text, size, ImVec4(.90f,.90f,.90f,1));
+    Hero(text, size, Tone(.90f,.12f));
     ImGui::SameLine(left + available - width); ImGui::SetCursorPosY(top + (size - height)*.5f);
     ImGui::BeginDisabled(!enabled); ImGui::PushID(text);
     const bool changed = Switch("##header", on);

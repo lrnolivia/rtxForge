@@ -4,8 +4,8 @@
   "base_bridge_id": "skynizz-ada-mfg-12-placement-candidate",
   "patch": "panel-candidate.patch",
   "sources": {
-    "providers/skynizz-bridge/panel-candidate.patch": "dd04d876c56cc2f9fcdbae4440ae78027d0b78a98708a2611b1b603e87916b87",
-    "providers/skynizz-bridge/ForgePanel.h": "21a7b76bc3d50e26945206295820eeb16ab69b8e3bb58b1792f7dd2953f001fb",
+    "providers/skynizz-bridge/panel-candidate.patch": "c822a1102167605c7567352e6111de6a46abbe5aac8d3d29e16fb486c315b446",
+    "providers/skynizz-bridge/ForgePanel.h": "d52a49e0842a0f2f55ef42f4e43745fa1215427c299ec27d6d4c4d17b906ec38",
     "providers/skynizz-bridge/Generate-Panel.ps1": "c9f81ecb8181f4b7c3860ee6ccc2e108c2c6de44cc6243c6579b7c385386f672",
     "providers/skynizz-bridge/controls.json": "11dc5fa793b39c254b7209017fd5fcf5364b223746630c8389c80f7c3c280feb",
     "windows/RtxForge.Windows/Assets/Fonts/InterVariable.ttf": "4989b125924991b90d05b2d16e0e388c48f7d5bb8b30539bbf9c755278d0ccaf",

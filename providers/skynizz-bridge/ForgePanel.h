@@ -932,7 +932,7 @@ inline void FeatureStatistics(bool neural, float scale) {
         ImGui::SameLine(0,10.f*scale); ImGui::TextDisabled("/"); ImGui::SameLine(0,5.f*scale);
         ImGui::PushStyleColor(ImGuiCol_Text,ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled)); MetricNumber(stats.measuredRatio,2,2); ImGui::PopStyleColor();
         ImGui::SameLine(0,2.f*scale); ImGui::TextDisabled("x"); ImGui::EndGroup();
-        if(ImGui::IsItemHovered()) ImGui::SetTooltip("Measured rendered and displayed frames; independent of the requested multiplier");
+        if(ImGui::IsItemHovered()) ImGui::SetTooltip("Rendered FPS and calculated output from Streamline's actual presented-frame count; independent of the requested multiplier");
     } else if(stats.gameFps >= 0 && std::isfinite(stats.gameFps)) {
         ImGui::TextDisabled("%.0f FPS rendered / output unavailable",stats.gameFps);
     } else ImGui::TextDisabled("Waiting for displayed-frame data");

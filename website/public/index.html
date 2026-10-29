@@ -39,6 +39,7 @@
         <span class="brand-name">rtxForge</span><span class="beta">Beta 1</span>
       </a>
       <div class="header-links">
+        <a class="header-report" href="report.html" data-report-link>Report a bug <span aria-hidden="true">→</span></a>
         <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light appearance"><img id="theme-icon" src="assets/sun.svg" width="20" height="20" alt=""></button>
       </div>
     </header>
@@ -195,6 +196,11 @@
         <p class="feature-footnote">Game and GPU support depends on the installed provider. Neural rendering is experimental.</p>
       </section>
 
+      <section class="beta-report-callout" aria-labelledby="beta-report-heading">
+        <div><h2 id="beta-report-heading">Help map what works.</h2><p>Tested a game? Share your GPU, distro, app format, package, and NR / MFG results. Working setups and failed tests both help.</p></div>
+        <a class="guide-download" href="report.html?os=windows" data-report-link>Share a beta report <span aria-hidden="true">→</span></a>
+      </section>
+
       <section class="faq" aria-labelledby="faq-heading">
         <h2 id="faq-heading">Frequently asked<br> questions.</h2>
         <div class="faq-questions">
@@ -244,8 +250,8 @@
           <summary><span>Found a bug?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary>
           <div class="details-body">
             <p>Open <strong>Settings → Recovery → Library Reports → Preview Support Report</strong> in rtxForge. Review the report, export it, then attach it to your bug report.</p>
-            <p>Include your platform, GPU and driver, game, provider, and what happened. Logs and notes are optional. Check the export before sharing; redaction can miss personal information.</p>
-            <a id="support-issue-link" class="text-link" href="https://github.com/lrnolivia/rtxForge/issues/new" target="_blank" rel="noopener">Open a bug report on GitHub <span aria-hidden="true">↗</span></a>
+            <p>Use the beta report template for your GPU, distro / OS, app format, feature package, game, and separate NR / MFG results. Check the export before sharing; redaction can miss personal information.</p>
+            <a id="support-issue-link" class="text-link" href="report.html?os=windows" data-report-link>Prepare a beta report <span aria-hidden="true">→</span></a>
           </div>
         </details>
         </div>
@@ -258,7 +264,7 @@
       <div class="footer-links">
         <a id="footer-guide-link" href="install.html?os=linux">Install guide</a>
         <a href="https://github.com/lrnolivia/rtxForge" target="_blank" rel="noopener">GitHub <span aria-hidden="true">↗</span></a>
-        <a id="report-link" href="https://github.com/lrnolivia/rtxForge/issues/new" target="_blank" rel="noopener">Report a bug <span aria-hidden="true">↗</span></a>
+        <a id="report-link" href="report.html?os=windows" data-report-link>Beta reports</a>
         <a href="https://github.com/lrnolivia/rtxForge/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
       </div>
     </footer>

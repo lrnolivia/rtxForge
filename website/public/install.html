@@ -36,7 +36,7 @@
         <img class="brand-mark" src="assets/rtxforge.svg" width="52" height="52" alt="">
         <span class="brand-name">rtxForge</span><span class="beta">Beta</span>
       </a>
-      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light appearance"><img id="theme-icon" src="assets/sun.svg" width="20" height="20" alt=""></button>
+      <div class="header-links"><a class="header-report" href="report.html" data-report-link>Report a bug <span aria-hidden="true">→</span></a><button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light appearance"><img id="theme-icon" src="assets/sun.svg" width="20" height="20" alt=""></button></div>
     </header>
     <main id="main">
       <div class="guide-intro">
@@ -76,7 +76,7 @@
                 <li>Open rtxForge from your app menu.</li>
               </ol>
               <p>The Flatpak brings its own GTK4 and libadwaita, so it works on SteamOS and any system without them. It still checks running games, Steam and anti-cheat on your system through Flatpak’s host access and the system’s Python 3, and refuses changes if it cannot. It is attached to the release, not listed on Flathub.</p>
-              <h3>AppImage (Bazzite and CachyOS)</h3>
+              <h3 id="appimage">AppImage (Bazzite and CachyOS)</h3>
               <ol>
                 <li>Download the AppImage from the selected release.</li>
                 <li>In your file manager, open its properties and allow it to run as a program. Open the AppImage.</li>
@@ -148,7 +148,7 @@
             <details><summary>The app will not open</summary><p data-guide-platform="linux">Check executable permission, the AppImage’s host dependencies, and any FUSE message. For a Flatpak, check the error in your software installer and that the package came from the selected release.</p><p data-guide-platform="windows" hidden>Extract every file from a portable or setup ZIP. Keep companion files beside the executable. Check the release’s runtime and signing notes, then report the exact message if it still fails.</p></details>
             <details><summary>A game is missing or an operation is blocked</summary><p>Open Steam once, rescan the Library, and check library folders in Settings. Close the game. Read the exact conflict or missing requirement in the review; close Steam if that route asks for it. Do not replace files that the app cannot safely identify.</p></details>
             <details><summary>NR or MFG has no visible effect</summary><p>Check the installed provider, feature mode, game/API support, and in-game DLSS/FG settings. Use <strong>Game Details → Tools → Diagnose NR</strong> when available. Check current package notes; installing files and evaluating a feature in a running game are different things.</p></details>
-            <details><summary>Report a bug</summary><p>Open <strong>Settings → Recovery → Library Reports → Preview Support Report</strong>. Review and export the report, then attach it to a <a href="https://github.com/lrnolivia/rtxForge/issues/new" target="_blank" rel="noopener">GitHub bug report</a>. Include your OS, app build, GPU/driver, game, provider, and steps to reproduce. The report stays local until you share it. Check it for personal information before posting.</p></details>
+            <details><summary>Share a beta report</summary><p>Use the <a href="report.html?os=linux" data-report-link>beta report template</a> for your GPU, distro / OS, app format and version, feature package, game, and separate NR / MFG results. Working setups help too.</p><p>Open <strong>Settings → Recovery → Library Reports → Preview Support Report</strong>. Review and export it, then attach it on GitHub. Check for personal information before sharing.</p></details>
           </section>
         </div>
       </div>

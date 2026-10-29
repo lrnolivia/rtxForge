@@ -137,14 +137,14 @@ public sealed partial class GamePage : Page
         // Installed with rtxForge on Linux: Set Up for Windows adapts that install instead of reinstalling it.
         InstallText.Text = game.InstallLabel;
         // Metadata pill beside STEAM / TESTED: which rtxForge installed the features.
-        var os = game.Installed && game.InstalledOn is "linux" or "windows" ? game.InstalledOn : null;
-        OsBadge.Visibility = os is null ? Visibility.Collapsed : Visibility.Visible;
-        if (os is not null)
+        var oses = game.InstalledOses;
+        OsBadge.Visibility = oses.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        OsBadgeIcons.Oses = oses;
+        if (oses.Count > 0)
         {
-            OsBadgeIcon.Data = OsMark.Data(os);
-            OsBadgeText.Text = CrossOs.Name(os).ToUpperInvariant();
-            ToolTipService.SetToolTip(OsBadge, OsMark.Tooltip(os));
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(OsBadge, OsMark.Tooltip(os));
+            OsBadgeText.Text = CrossOs.Names(oses).ToUpperInvariant();
+            ToolTipService.SetToolTip(OsBadge, CrossOs.Tooltip(oses));
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(OsBadge, CrossOs.Tooltip(oses));
         }
         InstallButton.IsEnabled = (!game.Blocked || game.AdoptionAvailable) && !shell.Busy;
         RestoreButton.IsEnabled = game.Installed && !game.AdoptionAvailable && !shell.Busy;

@@ -13,6 +13,9 @@ namespace RtxForge.Windows.GameMode;
 public sealed partial class GameModeView
 {
     Game? detailsGame;
+#if DEBUG
+    internal void ShowCrossOsReview(Game game) { if (shell.Service.IsPreview) OpenDetails(game); }
+#endif
     string detailsSection = "Overview";
     string? libraryFocusKey;
     /// <summary>Unsaved Test Result choice on the Notes section (Choice re-renders the page).</summary>
@@ -110,10 +113,11 @@ public sealed partial class GameModeView
         var sourceBadge = ui.Badge(g.Library == "Steam" ? "STEAM" : "NON-STEAM", t.Card, t.Fg, .58, g.Library == "Steam" ? "" : null);
         badges.Children.Add(sourceBadge);
         // Which rtxForge installed it (Linux game_mode: "Installed on Linux" with the rtx-os mark).
-        if (g.Installed && g.InstalledOn is "linux" or "windows")
+        if (g.InstalledOses.Count > 0)
         {
-            var osBadge = ui.Badge(CrossOs.Name(g.InstalledOn).ToUpperInvariant(), t.Card, t.Fg, .58);
-            ((StackPanel)osBadge.Child).Children.Insert(0, OsMark.Create(g.InstalledOn, t.Em(.58), GmTheme.B(t.Fg)));
+            var osBadge = ui.Badge(CrossOs.Names(g.InstalledOses).ToUpperInvariant(), t.Card, t.Fg, .58);
+            ((StackPanel)osBadge.Child).Children.Insert(0, new OsMarks { Oses = g.InstalledOses, MarkSize = t.Em(.58), Foreground = GmTheme.B(t.Fg) });
+            ToolTipService.SetToolTip(osBadge, CrossOs.Tooltip(g.InstalledOses));
             badges.Children.Add(osBadge);
         }
         badges.Children.Add(ui.Badge(g.Tested ? "TESTED" : "UNTESTED", t.Card, t.Muted, .58, g.Tested ? "" : ""));

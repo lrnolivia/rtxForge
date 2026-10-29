@@ -196,11 +196,16 @@ public sealed class PreviewForgeService : IForgeService
             progress.Report(new OperationStep(index, eligible.Count, game, StepCaption(operation)));
             await Task.Delay(900, cancel);
             // Presets on a Linux install adapt it for Windows first (engine_bridge.adopt).
-            if (operation is "reset" or "apply" && game.InstalledOnLinux) game.InstalledOn = "windows";
+            if (operation is "reset" or "apply" && game.InstalledOnLinux)
+            {
+                game.InstalledOses = game.InstalledOses.Append("windows").ToArray();
+                game.InstalledOn = "windows";
+            }
             switch (operation)
             {
                 case "install":
                     game.Installed = true;
+                    game.InstalledOses = game.InstalledOses.Append("windows").ToArray();
                     game.InstalledOn = "windows";
                     game.NrStrength = tuning.NrStrength;
                     game.SharpeningStrength = tuning.SharpeningStrength;
@@ -208,8 +213,10 @@ public sealed class PreviewForgeService : IForgeService
                     break;
                 case "uninstall":
                     if (!game.Installed) continue;
-                    game.Installed = false;
-                    game.InstalledOn = null;
+                    var remaining = game.InstalledOses.Where(os => os != "windows").ToArray();
+                    game.InstalledOses = remaining;
+                    game.InstalledOn = remaining.FirstOrDefault();
+                    game.Installed = remaining.Length > 0;
                     break;
                 case "reset":
                     game.NrStrength = game.SharpeningStrength = null;

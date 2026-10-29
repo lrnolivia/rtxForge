@@ -69,7 +69,9 @@ public sealed partial class GameModeView
             var cardMaterial = t.Surface(t.Card);
             var navigationMaterial = t.Surface(t.Panel, navigation: true);
             var originalOpacity = t.CardOpacity;
+            var dialogMaterial = t.DialogSurface();
             t.SetCardOpacity(65);
+            Check("dialog_tint_is_independent_of_card_slider", dialogMaterial.TintOpacity == .95 && dialogMaterial.Opacity == 1);
             Check("card_material_updates_live_with_navbar_offset", cardMaterial.Opacity == 1 && navigationMaterial.Opacity == 1
                 && cardMaterial.TintOpacity == .65 && navigationMaterial.TintOpacity == .5);
             var sidebarHighlight = t.Highlight(GmTheme.Accent, fixedTint: true);

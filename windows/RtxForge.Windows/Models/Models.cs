@@ -45,6 +45,13 @@ public sealed class Game
         && EngineRow?["vulkan_available"] is JsonValue flag && flag.TryGetValue<bool>(out var available) && available;
     /// <summary>Which rtxForge installed the features: "windows", "linux" (shared .rtxforge-install.json), or null.</summary>
     public string? InstalledOn { get; set; }
+    IReadOnlyList<string> installedOses = [];
+    /// <summary>Every OS this install supports, including shared-drive adaptations; old scans fall back to InstalledOn.</summary>
+    public IReadOnlyList<string> InstalledOses
+    {
+        get => Installed ? CrossOs.Normalize(installedOses, InstalledOn) : [];
+        set => installedOses = CrossOs.Normalize(value);
+    }
     /// <summary>A Feeder setup is installed but needs attention (BlockedReason says why); not an unsupported game.</summary>
     public bool FeederNeedsAttention => Blocked && EngineRow?["feeder_detected"] is JsonValue detected
         && detected.TryGetValue<bool>(out var found) && found;
@@ -58,7 +65,7 @@ public sealed class Game
     /// <summary>"Unsupported", or the Feeder status for an installed setup that needs attention.</summary>
     public string BlockedStatus => FeederNeedsAttention ? "Needs Attention" : "Unsupported";
     /// <summary>Installed with rtxForge on Linux: Windows loads it natively; Set Up for Windows adapts it here.</summary>
-    public bool InstalledOnLinux => Installed && InstalledOn == "linux";
+    public bool InstalledOnLinux => InstalledOses.SequenceEqual(["linux"]);
     /// <summary>The library's install action: Set Up for Windows adapts a Linux install instead of reinstalling it.</summary>
     public bool AdoptionAvailable => EngineRow?["adoption_available"]?.GetValue<bool>() == true;
     public bool Managed => EngineRow?["managed"]?.GetValue<bool>() == true;
@@ -91,6 +98,15 @@ public sealed class Game
 public static class CrossOs
 {
     public static string Name(string? os) => os switch { "linux" => "Linux", "windows" => "Windows", _ => "" };
+    public static IReadOnlyList<string> Normalize(IEnumerable<string>? oses, string? fallback = null)
+    {
+        var known = (oses ?? []).Where(os => os is "windows" or "linux").Distinct().ToArray();
+        return known.Length > 0 ? known : fallback is "windows" or "linux" ? [fallback] : [];
+    }
+    public static IReadOnlyList<string> Read(JsonNode? value) => Normalize(
+        (value as JsonArray ?? []).OfType<JsonValue>().Select(v => v.TryGetValue<string>(out var os) ? os : ""));
+    public static string Names(IEnumerable<string> oses) => string.Join(" and ", oses.Select(Name));
+    public static string Tooltip(IEnumerable<string> oses) => "Installed with rtxForge on " + Names(oses);
 }
 
 /// <summary>NR Strength / Sharpening / MFG, as written to OptiScaler.ini.</summary>
@@ -514,8 +530,14 @@ public sealed class ForgeSettings
         return fresh!;
     }
 
+#if DEBUG
+    internal bool InMemoryReview { get; set; }
+#endif
     public void Save(bool preserveOverlay = false)
     {
+#if DEBUG
+        if (InMemoryReview) return;
+#endif
         WithSettingsLock(() =>
         {
             if (preserveOverlay) CopyOverlayFrom(Load());

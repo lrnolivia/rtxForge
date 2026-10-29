@@ -239,6 +239,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             Profile = S("profile"),
             RuntimeProvider = S("runtime_provider"),
             InstalledOn = S("installed_on") is "linux" or "windows" ? S("installed_on") : null,
+            InstalledOses = CrossOs.Read(row["installed_oses"]),
             NrStrength = D("nr_strength"),
             SharpeningStrength = D("sharpening_strength"),
             MfgMultiplier = multiplier,

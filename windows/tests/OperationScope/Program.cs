@@ -78,6 +78,17 @@ if (librarySettings.RemovedGames.Count != 1) throw new Exception("Duplicate remo
 tests++;
 Console.WriteLine($"PASS: {tests} scope and library visibility checks (no game writes).");
 
+var shared = new Game { Id = "shared", Name = "Shared", Installed = true, InstalledOn = "linux", InstalledOses = ["linux"] };
+review = await service.PrepareAsync("apply", [shared], tuning, "mfg-only");
+await service.ExecuteAsync(review, new InlineProgress<OperationStep>(_ => { }));
+if (shared.InstalledOnLinux || !shared.InstalledOses.SequenceEqual(["linux", "windows"]))
+    throw new Exception("Applying presets must add Windows support without erasing Linux.");
+review = await service.PrepareAsync("uninstall", [shared], tuning, "mfg-only");
+await service.ExecuteAsync(review, new InlineProgress<OperationStep>(_ => { }));
+if (!shared.Installed || !shared.InstalledOnLinux || !shared.InstalledOses.SequenceEqual(["linux"]))
+    throw new Exception("Preview restore must remove Windows support while retaining the Linux adaptation.");
+Console.WriteLine("PASS: preview apply/restore keeps cross-OS support in step without game writes.");
+
 var routeGames = Enumerable.Range(0, 48).Select(i => new Game { Id = i.ToString(), Name = $"Game {i:00}" }).ToArray();
 var sameRoute = OperationRoutes.Consecutive(routeGames, _ => "skynizz");
 if (sameRoute.Count != 1 || sameRoute[0].Games.Count != 48 || !sameRoute[0].Games.SequenceEqual(routeGames))

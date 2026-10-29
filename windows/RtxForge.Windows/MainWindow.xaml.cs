@@ -129,6 +129,9 @@ public sealed partial class MainWindow : Window
             ShowToast("Could not read your library: " + error.Message);
         }
         await hardware;
+#if DEBUG
+        StartCrossOsReview();
+#endif
     }
 
     /// <summary>Re-render pages after per-game changes (for example a custom accent).</summary>

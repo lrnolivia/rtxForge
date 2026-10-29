@@ -131,6 +131,9 @@ public sealed class GmTheme
         return brush;
     }
 
+    /// <summary>Dialogs keep a readable surface independently of the card translucency slider.</summary>
+    public AcrylicBrush DialogSurface() => new() { TintColor = Panel, TintOpacity = .95, Opacity = 1, FallbackColor = Panel };
+
     public void SetCardOpacity(int percent)
     {
         CardOpacity = Math.Clamp(percent, 0, 100);

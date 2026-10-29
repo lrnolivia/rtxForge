@@ -14,6 +14,7 @@ function setPlatform(os, { updateUrl = false, announce = false } = {}) {
   for (const section of document.querySelectorAll('[data-guide-platform]')) section.hidden = section.dataset.guidePlatform !== os;
   for (const link of document.querySelectorAll('[data-downloads-link]')) link.href = `./?os=${os}#downloads`;
   for (const link of document.querySelectorAll('[data-home-link]')) link.href = `./?os=${os}`;
+  for (const link of document.querySelectorAll('[data-report-link]')) link.href = `report.html?os=${os}`;
   for (const tab of tabs) {
     const selected = tab.dataset.platform === os;
     tab.setAttribute('aria-selected', String(selected)); tab.tabIndex = selected ? 0 : -1;

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en" data-os="linux">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Share an rtxForge beta test: your game, GPU, distro, app format, feature package, and separate NR and MFG results.">
+  <link rel="canonical" href="https://loew.fi/rtxforge/report">
+  <meta name="color-scheme" content="dark light">
+  <title>Share a beta report — rtxForge</title>
+  <link rel="icon" href="assets/rtxforge.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="report.js"></script>
+</head>
+<body class="install-page report-page">
+  <div class="hero-art" aria-hidden="true"><img src="assets/steam-hero.webp" width="3840" height="1240" alt=""></div>
+  <a class="skip-link" href="#main">Skip to report</a>
+  <div class="page">
+    <header class="header">
+      <a class="brand" href="./" data-report-home aria-label="rtxForge Beta home"><img class="brand-mark" src="assets/rtxforge.svg" width="52" height="52" alt=""><span class="brand-name">rtxForge</span><span class="beta">Beta</span></a>
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light appearance"><img id="theme-icon" src="assets/sun.svg" width="20" height="20" alt=""></button>
+    </header>
+    <main id="main" tabindex="-1">
+      <div class="guide-intro">
+        <a class="text-link guide-back" href="./" data-report-home>Back to rtxForge</a>
+        <h1>Share a beta report.</h1>
+        <p class="guide-lead">Working well, won’t install, or no visible effect? One game, one setup, the same useful details.</p>
+      </div>
+      <div class="report-layout">
+        <aside class="report-help" aria-label="Before you report">
+          <h2>Make your test count.</h2>
+          <p>Compatibility depends on the game, GPU, and package together. Success reports help too. Use a new report for each game or setup.</p>
+          <p><a href="https://github.com/lrnolivia/rtxForge/issues?q=is%3Aissue%20%22%5BBeta%20report%5D%22" target="_blank" rel="noopener">Browse existing reports <span aria-hidden="true">↗</span></a> before opening yours. Add matching details to an existing issue when they describe the same problem.</p>
+          <div class="report-note" id="appimage-help">
+            <h3>AppImage won’t open?</h3>
+            <p>It needs host Python 3, GTK4, libadwaita 1.7+, and PyGObject. Check executable permission and any FUSE error, then include the exact message in your report.</p>
+            <a href="install.html?os=linux#appimage">Check AppImage requirements</a>
+          </div>
+          <h3>Have a support report?</h3>
+          <p>Open <strong>Settings → Recovery → Library Reports → Preview Support Report</strong>. Review and export it, then attach it on GitHub. Check for personal information before sharing.</p>
+          <p><a id="report-guide" href="install.html?os=linux">Read the installation guide</a></p>
+        </aside>
+        <div class="report-content">
+          <form id="beta-report" action="https://github.com/lrnolivia/rtxForge/issues/new" method="get" aria-describedby="report-instructions">
+            <input type="hidden" name="template" value="beta-report.yml">
+            <input type="hidden" id="report-title" name="title" value="[Beta report] ">
+            <p id="report-instructions" class="report-instructions">All fields are required. If startup failed, enter “Not reached” for the game or package. Use “Not sure” for anything you cannot verify.</p>
+            <fieldset>
+              <legend>Your setup</legend>
+              <div class="report-fields">
+                <div class="report-field"><label for="platform">Operating system</label><select id="platform" name="platform" required><option value="Linux">Linux</option><option value="Windows">Windows</option></select></div>
+                <div class="report-field"><label for="distribution">Distro / OS version</label><input id="distribution" name="distribution" list="distros" placeholder="e.g. Bazzite 44" maxlength="100" required><datalist id="distros"><option value="SteamOS"><option value="Bazzite"><option value="CachyOS"><option value="Windows 11"></datalist></div>
+                <div class="report-field"><label for="gpu-series">RTX series</label><select id="gpu-series" name="gpu-series" required><option value="">Choose a series</option><option>RTX 20</option><option>RTX 30</option><option>RTX 40</option><option>RTX 50</option><option>Other / Not sure</option></select></div>
+                <div class="report-field"><label for="gpu">GPU model and driver</label><input id="gpu" name="gpu" placeholder="e.g. RTX 3080 · driver version" maxlength="150" required></div>
+                <div class="report-field"><label for="app-format">rtxForge app format</label><select id="app-format" name="app-format" required><option value="">Choose a format</option><option>Flatpak</option><option>AppImage</option><option>Windows installer</option><option>Windows portable ZIP</option><option>Source / Other / Not sure</option></select></div>
+                <div class="report-field"><label for="app-build">rtxForge version / channel</label><input id="app-build" name="app-build" placeholder="Version and Beta or Development" maxlength="150" required></div>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>Your game and package</legend>
+              <div class="report-fields">
+                <div class="report-field report-wide"><label for="game">Game and version</label><input id="game" name="game" placeholder="Game title · game version" maxlength="150" required></div>
+                <div class="report-field report-wide"><label for="feature-package">Feature package / provider and version</label><input id="feature-package" name="feature-package" aria-describedby="package-hint" placeholder="Package name and exact tag / version" maxlength="200" required><p id="package-hint">The package selected in rtxForge’s Packages view, separate from the app download format above. For a custom ZIP, include its source.</p></div>
+                <div class="report-field report-wide"><label for="features">Features you tried to install</label><select id="features" name="features" required><option value="">Choose a mode</option><option>NR only</option><option>MFG only</option><option>NR + MFG</option><option>Not reached / Not sure</option></select></div>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>What actually happened</legend>
+              <p class="report-instructions">Installing files does not confirm a feature works in-game. Report NR and MFG separately.</p>
+              <div class="report-fields">
+                <div class="report-field"><label for="nr-result">Neural rendering (NR)</label><select id="nr-result" name="nr-result" required><option value="">Choose a result</option><option>Working in-game</option><option>Not working in-game</option><option>Installed, not tested</option><option>Could not install</option><option>Not installed</option><option>Not sure</option></select></div>
+                <div class="report-field"><label for="mfg-result">Multi-frame generation (MFG)</label><select id="mfg-result" name="mfg-result" required><option value="">Choose a result</option><option>Working in-game</option><option>Not working in-game</option><option>Installed, not tested</option><option>Could not install</option><option>Not installed</option><option>Not sure</option></select></div>
+                <div class="report-field report-wide"><label for="observations">Steps, expected result, and observed result</label><textarea id="observations" name="observations" rows="6" maxlength="1500" required aria-describedby="observations-hint" placeholder="What did you do, and what did you see? Include exact errors or how you verified a working feature."></textarea><p id="observations-hint">Include Proton version and game API if known. Add longer logs or reviewed support-report attachments on GitHub.</p></div>
+              </div>
+            </fieldset>
+            <div class="report-actions"><button class="guide-download" type="submit">Review on GitHub <span aria-hidden="true">↗</span></button><button id="copy-report" class="report-copy" type="button" hidden>Copy report template</button></div>
+            <p class="report-instructions">GitHub sign-in required to post. Review your details there before submitting. This page sends them to GitHub only when you choose Review on GitHub.</p>
+            <p id="report-status" role="status" aria-live="polite"></p>
+          </form>
+          <details class="report-preview" id="report-preview" hidden><summary>Copyable report</summary><label class="sr-only" for="report-text">Report text</label><textarea id="report-text" rows="18" readonly spellcheck="false"></textarea><p>Copy this into a discussion or Reddit comment too. Keep the GitHub issue link with it so follow-ups stay together.</p></details>
+          <noscript><p class="noscript">You can fill in this form and review it on GitHub without JavaScript, or <a href="https://github.com/lrnolivia/rtxForge/issues/new?template=beta-report.yml">use the GitHub issue form directly</a>.</p></noscript>
+        </div>
+      </div>
+    </main>
+    <footer class="footer"><a class="loew" href="https://loew.fi" target="_blank" rel="noopener">loew.fi</a><div class="footer-links"><a href="./" data-report-home>rtxForge</a><a href="install.html?os=linux" id="report-footer-guide">Install guide</a><a href="https://github.com/lrnolivia/rtxForge/issues" target="_blank" rel="noopener">GitHub issues <span aria-hidden="true">↗</span></a></div></footer>
+  </div>
+</body>
+</html>

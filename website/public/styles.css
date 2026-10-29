@@ -203,3 +203,49 @@ body:not(.install-page) .platform-picker{margin:12px 0 40px}
 .download-alternative{margin-top:10px;background:var(--raised);color:var(--text)}
 .download-alternative:hover{background:var(--hover);color:var(--text);filter:none}
 .download-alternative[hidden]{display:none}
+
+/* Beta reports reuse the guide's typography and native form controls. */
+.beta-report-callout{display:flex;align-items:center;justify-content:space-between;gap:32px;margin-top:64px;padding:28px 0;border-top:1px solid var(--raised);border-bottom:1px solid var(--raised)}
+.beta-report-callout h2{font-size:30px;margin:0 0 8px}
+.beta-report-callout p{color:var(--secondary);margin:0;max-width:650px}
+.beta-report-callout>a{flex-shrink:0}
+.report-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:64px;align-items:start}
+.report-help{color:var(--secondary);font-size:14px;line-height:1.75}
+.report-help h2{font-size:28px;line-height:1.2;color:var(--text);margin:0 0 20px}
+.report-help h3{font-size:16px;line-height:1.5;color:var(--text);margin:24px 0 10px}
+.report-help p{margin:0 0 20px}
+.report-help a,.report-content a{color:var(--text);text-decoration:underline;text-underline-offset:4px}
+.report-help a:hover,.report-content a:hover{color:var(--accent)}
+.report-note{background:var(--surface);padding:20px;border-radius:16px;margin:28px 0}
+.report-note h3{margin:0 0 10px}
+.report-note p{margin-bottom:12px}
+.report-content{min-width:0}
+.report-content fieldset{min-width:0;margin:28px 0 0;padding:24px 0 28px;border:0;border-top:1px solid var(--raised)}
+.report-content legend{font-size:20px;font-weight:600;padding:0 16px 0 0}
+.report-fields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px}
+.report-field{min-width:0}
+.report-field label{display:block;font-size:14px;font-weight:550;margin-bottom:8px}
+.report-wide{grid-column:1/-1}
+.report-content input:not([type=hidden]),.report-content select,.report-content textarea{display:block;width:100%;min-width:0;min-height:48px;border:1px solid var(--hover);border-radius:10px;padding:12px;background:var(--surface);color:var(--text);font:inherit;font-size:16px;line-height:1.5}
+.report-content textarea{resize:vertical}
+.report-content input::placeholder,.report-content textarea::placeholder{color:var(--muted);opacity:1}
+.report-content input:focus-visible,.report-content select:focus-visible,.report-content textarea:focus-visible{outline:3px solid var(--focus);outline-offset:3px}
+.report-instructions,.report-field p,.report-preview p{font-size:13px;line-height:1.7;color:var(--secondary);margin:0 0 20px}
+.report-field p{margin:8px 0 0}
+.report-actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:0 0 20px}
+.report-actions .guide-download{margin:0;gap:12px}
+.report-copy{min-height:48px;padding:10px 20px;background:var(--surface);border-radius:12px;font-size:14px;font-weight:550}
+.report-copy:hover{background:var(--hover)}
+#report-status{font-size:14px;line-height:1.7;color:var(--text);overflow-wrap:anywhere}
+#report-status:empty{margin:0}
+.report-preview{margin-top:28px;border-top:1px solid var(--raised)}
+.report-preview summary{min-height:64px;padding:20px 0;cursor:pointer;font-weight:550}
+.report-preview textarea{font-size:14px}
+.report-preview p{margin-top:16px}
+.report-page [hidden]{display:none}
+@media(max-width:1000px){.report-layout{gap:36px;grid-template-columns:minmax(0,1fr) minmax(0,2fr)}}
+@media(max-width:760px){
+  .beta-report-callout{display:block;margin-top:40px;padding:24px 0}.beta-report-callout h2{font-size:26px}.beta-report-callout>a{margin-top:20px}
+  .report-layout{grid-template-columns:1fr;gap:28px}.report-help{font-size:14px}.report-help h2{font-size:26px}.report-help p{margin-bottom:16px}
+  .report-fields{grid-template-columns:1fr;gap:20px}.report-content fieldset{padding-top:20px}.report-note{margin:20px 0}
+}

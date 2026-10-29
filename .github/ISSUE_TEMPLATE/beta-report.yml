@@ -1,0 +1,101 @@
+name: Beta compatibility report
+description: Share a working setup, installation failure, or in-game NR / MFG result.
+title: "[Beta report] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Report one game and setup at a time. Successes help too. Search existing [beta reports](https://github.com/lrnolivia/rtxForge/issues?q=is%3Aissue%20%22%5BBeta%20report%5D%22) first.
+
+        Check the [installation guide](https://loew.fi/rtxforge/install) and [AppImage host requirements](https://loew.fi/rtxforge/install?os=linux#appimage). AppImages need host Python 3, GTK4, libadwaita 1.7+, and PyGObject; include any FUSE or missing-dependency error below.
+
+        If startup failed, enter **Not reached** for the game or package. Use **Not sure** for anything you cannot verify. Installing files does not establish working NR or MFG in-game.
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system
+      placeholder: Linux or Windows
+    validations:
+      required: true
+  - type: input
+    id: distribution
+    attributes:
+      label: Distro / OS version
+      placeholder: SteamOS, Bazzite, CachyOS, another distro, or Windows — include version
+    validations:
+      required: true
+  - type: input
+    id: gpu-series
+    attributes:
+      label: RTX series
+      placeholder: RTX 20, 30, 40, 50, Other, or Not sure
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU model and driver
+      placeholder: Exact GPU model and NVIDIA driver version
+    validations:
+      required: true
+  - type: input
+    id: app-format
+    attributes:
+      label: rtxForge app format
+      placeholder: Flatpak, AppImage, Windows installer, Windows portable ZIP, or source / other
+    validations:
+      required: true
+  - type: input
+    id: app-build
+    attributes:
+      label: rtxForge version / channel
+      placeholder: Version and Beta or Development; download filename if known
+    validations:
+      required: true
+  - type: input
+    id: game
+    attributes:
+      label: Game and version
+      placeholder: Game title and version, or Not reached
+    validations:
+      required: true
+  - type: input
+    id: feature-package
+    attributes:
+      label: Feature package / provider and version
+      description: The package selected in Packages, separate from the app format. Include its exact tag / version and the source for a custom ZIP.
+    validations:
+      required: true
+  - type: input
+    id: features
+    attributes:
+      label: Features attempted
+      placeholder: NR only, MFG only, NR + MFG, or Not reached / Not sure
+    validations:
+      required: true
+  - type: input
+    id: nr-result
+    attributes:
+      label: NR result
+      placeholder: Working in-game, Not working in-game, Installed but not tested, Could not install, Not installed, or Not sure
+    validations:
+      required: true
+  - type: input
+    id: mfg-result
+    attributes:
+      label: MFG result
+      placeholder: Working in-game, Not working in-game, Installed but not tested, Could not install, Not installed, or Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: observations
+    attributes:
+      label: Steps, expected result, and observed result
+      description: Include exact errors or how you verified a working feature. Add Proton version and game API if known. Attach only logs and support reports you have checked for personal information.
+      placeholder: What did you do, what did you expect, and what did you see?
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        Optional: export a support report from **Settings → Recovery → Library Reports → Preview Support Report**, review it, and attach it above. Keep the GitHub issue link with any Reddit or discussion follow-up so the results stay together.

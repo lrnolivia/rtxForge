@@ -1,4 +1,4 @@
-import { REPOSITORY as repo, CHANNELS, selectDownloads } from './releases.mjs';
+import { CHANNELS, selectDownloads } from './releases.mjs';
 import { setFeaturePlatform } from './features.js';
 import { platforms, storage } from './platforms.mjs';
 import { initTheme } from './theme.mjs';
@@ -95,10 +95,8 @@ function setPlatform(os, { updateUrl = false, announce = false } = {}) {
     const selected = tab.dataset.platform === os;
     tab.setAttribute('aria-selected', String(selected)); tab.tabIndex = selected ? 0 : -1;
   }
-  const issue = new URL(`${repo}/issues/new`);
-  issue.searchParams.set('title', `[${data.name}] `);
-  issue.searchParams.set('body', `Platform: ${data.name}\nrtxForge build:\nGPU and driver:\nGame:\nProvider / profile:\n\nSteps to reproduce:\n\nExpected result:\n\nWhat happened:\n\nAttach a reviewed support report if available.\n`);
-  byId('report-link').href = issue.href; byId('support-issue-link').href = issue.href; renderDownloads();
+  for (const link of document.querySelectorAll('[data-report-link]')) link.href = `report.html?os=${os}`;
+  renderDownloads();
   if (updateUrl) {
     const url = new URL(location.href); url.searchParams.set('os', os);
     history.replaceState({ os }, '', url); storage.set('rtxforge-platform', os);

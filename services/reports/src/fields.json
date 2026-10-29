@@ -1,0 +1,39 @@
+{
+  "fields": [
+    ["platform", "Operating system"],
+    ["distribution", "Distro / OS version"],
+    ["gpu-series", "RTX series"],
+    ["gpu", "GPU model and driver"],
+    ["app-format", "rtxForge app format"],
+    ["app-build", "rtxForge version / channel"],
+    ["game", "Game and version"],
+    ["feature-package", "Game package"],
+    ["features", "Features attempted"],
+    ["nr-result", "NR result"],
+    ["mfg-result", "MFG result"],
+    ["observations", "What happened?"]
+  ],
+  "required": ["platform", "observations"],
+  "choices": {
+    "platform": ["Linux", "Windows"],
+    "gpu-series": ["RTX 20", "RTX 30", "RTX 40", "RTX 50", "Not sure"],
+    "app-format": ["Flatpak", "AppImage", "Windows installer", "Windows portable ZIP", "Source / Other", "Not sure"],
+    "features": ["NR only", "MFG only", "NR + MFG", "Not reached / Not sure"],
+    "nr-result": ["Working in-game", "Not working in-game", "Installed, not tested", "Could not install", "Not installed", "Not sure"],
+    "mfg-result": ["Working in-game", "Not working in-game", "Installed, not tested", "Could not install", "Not installed", "Not sure"]
+  },
+  "lengths": {
+    "distribution": 100,
+    "gpu": 150,
+    "app-build": 150,
+    "game": 150,
+    "feature-package": 200,
+    "observations": 1500
+  },
+  "zip_limit": 20971520,
+  "labels": ["beta-report"],
+  "sources": {
+    "app": { "label": "from-app", "footer": "Sent from the rtxForge app." },
+    "web": { "label": "from-web", "footer": "Sent from the rtxForge website." }
+  }
+}

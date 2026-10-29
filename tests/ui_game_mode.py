@@ -339,25 +339,28 @@ def report_entry_points():
  c.open_section('Notes');assert here('notes-save') and not here('choice-test') and not here('overview-test')
  c.open_section('Overview')
 def report_flow():
- # Pick → draft → answer → redacted preview; preview mode never saves.
+ # One game → what happened → results → what's sent; preview mode never sends.
  w=app.window;c=w.couch
- c.find_key(c.body.current,'hero-report').emit('clicked');assert modal_key('report-continue') and modal_key('report-game-0')
- modal_key('report-continue').emit('clicked')
- assert pump_until(lambda:modal_key('report-preview') is not None),labels(c.modals[-1]['dialog']) if c.modals else 'no modal'
- view=modal_key('report-0-observations');assert isinstance(view,Gtk.TextView)
- view.get_buffer().set_text('Crashed at the title screen')
- platform=modal_key('report-0-platform')
- if not modal_key('report-preview').get_sensitive():platform.emit('clicked')
- assert modal_key('report-preview').get_sensitive(),'answers complete'
- modal_key('report-preview').emit('clicked')
- assert pump_until(lambda:modal_key('report-save') is not None),labels(c.modals[-1]['dialog']) if c.modals else 'no modal'
- assert 'Review Bug Report' in labels(c.modals[-1]['dialog'])
- assert not modal_key('report-save').get_sensitive(),'preview mode never saves a report'
+ c.find_key(c.body.current,'hero-report').emit('clicked')
+ assert pump_until(lambda:modal_key('report-send') is not None),labels(c.modals[-1]['dialog']) if c.modals else 'no modal'
+ text=labels(c.modals[-1]['dialog'])
+ assert 'What happened?' in text and 'Details we’ll include' in text and 'Include logs' in text,text
+ view=modal_key('report-observations');assert isinstance(view,Gtk.TextView)
+ view.get_buffer().set_text('MFG stays at 1x')
+ result=modal_key('report-mfg-result');before=labels(result);result.emit('clicked')
+ assert labels(result)!=before,'MFG result cycles'
+ assert not modal_key('report-send').get_sensitive(),'preview mode never sends a report'
+ modal_key('report-outline').emit('clicked')
+ assert pump_until(lambda:modal_key('report-back') is not None),labels(c.modals[-1]['dialog']) if c.modals else 'no modal'
+ text=labels(c.modals[-1]['dialog'])
+ assert 'Public on GitHub' in text and any(line.startswith('[Beta report]') for line in text),text
+ modal_key('report-back').emit('clicked')
+ assert modal_key('report-send') is not None,'Back returns to the form'
 def report_close():
  c=app.window.couch;c.close_all_modals();assert not c.modals
 def report_settings():
  c=app.window.couch;settings('About');row=c.find_key(c.body.current,'settings-report');assert row
- row.emit('clicked');assert modal_key('report-continue') and modal_key('report-logs')
+ row.emit('clicked');assert modal_key('report-game-0') and modal_key('report-cancel'),'Settings asks which game'
  app.window.couch.close_modal();assert not app.window.couch.modals
 def size(width,height):
  app.window.set_default_size(width,height);app.window.couch.resize(width,height)

@@ -1,0 +1,22 @@
+name: Report service
+on:
+  pull_request:
+    paths: ['services/reports/**', 'scripts/beta_report.py', '.github/workflows/report-service.yml']
+  push:
+    branches: [main]
+    paths: ['services/reports/**', 'scripts/beta_report.py', '.github/workflows/report-service.yml']
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # Field parity with scripts/beta_report.py is tested by tests/test_beta_report.py in Linux CI.
+      - name: Validation, redaction, signing and every response path
+        working-directory: services/reports
+        run: npm test

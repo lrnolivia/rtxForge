@@ -6,7 +6,7 @@
 
 Every report uses the same twelve fields, whichever way it's made:
 
-- **In the app:** **Bug Report** on any game, or Settings › About for several games. This opens a prefilled GitHub issue and can save a reviewed, redacted ZIP of logs.
+- **In the app:** **Bug Report** on any game, or Settings › About. Send Report files it as a GitHub issue for you; logs go privately to the maintainers.
 - **On the website:** [loew.fi/rtxforge/report](https://loew.fi/rtxforge/report).
 - **On GitHub:** the **Beta compatibility report** issue form (`.github/ISSUE_TEMPLATE/beta-report.yml`).
 

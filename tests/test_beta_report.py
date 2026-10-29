@@ -344,5 +344,98 @@ class CompatibilityListTest(unittest.TestCase):
                 self.assertEqual(set(report), {'issue', 'date', *compat_list.REPORT_FIELDS.values()})
 
 
+class ServiceFieldsTest(unittest.TestCase):
+    """The report service (services/reports) checks reports against the app's own fields."""
+
+    def test_service_fields_match_the_app(self):
+        shared = json.loads((Path(__file__).resolve().parents[1] / 'services/reports/src/fields.json').read_text(encoding='utf-8'))
+        self.assertEqual([tuple(pair) for pair in shared['fields']], list(beta_report.FIELDS))
+        self.assertEqual(tuple(shared['required']), beta_report.REQUIRED)
+        self.assertEqual({key: tuple(values) for key, values in shared['choices'].items()}, beta_report.CHOICES)
+        self.assertEqual(shared['lengths'], beta_report.LENGTHS)
+        self.assertEqual(shared['zip_limit'], beta_report.ZIP_LIMIT)
+
+
+class SubmitTest(unittest.TestCase):
+    """Sending: one request with the answers, details and the frozen ZIP; plain errors back."""
+
+    def report(self, **fields):
+        report = {'schema': 1, 'id': 'r20261029T120000-abc123', 'created': '2026-10-29T12:00:00+00:00',
+                  'name': 'Example', 'appid': '123', 'exe': 'Example.exe',
+                  'fields': {key: '' for key, _ in beta_report.FIELDS}, 'sources': {}, 'evidence': {'graphics_apis': ['d3d12']}}
+        report['fields'].update({'platform': 'Linux', 'game': 'Example', 'observations': 'Crashed with token=hunter2', **fields})
+        return report
+
+    def opener(self, status=201, answer=None):
+        sent = {}
+
+        class Response:
+            def __init__(self, body): self.body = body
+            def read(self, limit=-1): return self.body
+            def __enter__(self): return self
+            def __exit__(self, *_): return False
+
+        def open_(request, timeout):
+            sent['request'], sent['timeout'] = request, timeout
+            body = json.dumps(answer if answer is not None else {'number': 7, 'url': 'https://github.com/lrnolivia/rtxForge/issues/7', 'logs': True}).encode()
+            if status >= 400:
+                import io, urllib.error
+                raise urllib.error.HTTPError(request.full_url, status, 'error', {}, io.BytesIO(body))
+            return Response(body)
+        return open_, sent
+
+    def test_sends_redacted_answers_details_and_the_zip(self):
+        with tempfile.TemporaryDirectory() as folder:
+            archive = Path(folder) / 'report.zip'
+            archive.write_bytes(b'PK\x05\x06' + bytes(18))
+            open_, sent = self.opener()
+            result = beta_report.submit(self.report(), archive, opener=open_)
+        self.assertEqual(result, {'number': 7, 'url': 'https://github.com/lrnolivia/rtxForge/issues/7', 'logs': True})
+        request = sent['request']
+        self.assertEqual((request.full_url, request.get_method()), (beta_report.ENDPOINT, 'POST'))
+        body = json.loads(request.data)
+        self.assertEqual(body['report_id'], 'r20261029T120000-abc123')
+        self.assertNotIn('hunter2', body['fields']['observations'])
+        self.assertIn('Graphics API: d3d12', body['details'])
+        self.assertFalse(any(line.startswith('Report ID') for line in body['details']))
+        self.assertEqual(__import__('base64').b64decode(body['logs'])[:4], b'PK\x05\x06')
+
+    def test_incomplete_reports_are_never_sent(self):
+        open_, sent = self.opener()
+        with self.assertRaises(t.Refusal):
+            beta_report.submit(self.report(observations=''), opener=open_)
+        self.assertNotIn('request', sent)
+
+    def test_service_errors_come_back_as_its_sentence(self):
+        open_, _ = self.opener(503, {'error': 'Reports can’t be sent yet. Your report is saved on this computer.'})
+        with self.assertRaisesRegex(t.Refusal, 'can’t be sent yet'):
+            beta_report.submit(self.report(), opener=open_)
+
+    def test_deliver_keeps_a_copy_and_sends_the_zip_only_with_logs(self):
+        report = self.report()
+        with tempfile.TemporaryDirectory() as folder:
+            destination = Path(folder).resolve()
+            open_, sent = self.opener()
+            done = beta_report.deliver(report, beta_report.bundle([report]), destination, False, opener=open_)
+            self.assertTrue(done['sent'] and Path(done['path']).is_file() and done['number'] == 7)
+            self.assertNotIn('logs', json.loads(sent['request'].data))
+            report['id'] = 'r20261029T120001-abc124'
+            refused, _ = self.opener(502, {'error': 'GitHub didn’t accept the report.'})
+            failed = beta_report.deliver(report, beta_report.bundle([report]), destination, True, opener=refused)
+            self.assertEqual((failed['sent'], failed['error']), (False, 'GitHub didn’t accept the report.'))
+            self.assertTrue(Path(failed['path']).is_file(), 'the copy stays when sending fails')
+
+    def test_unexpected_answers_and_no_connection_are_refused(self):
+        open_, _ = self.opener(answer={'number': 7, 'url': 'https://example.com/7'})
+        with self.assertRaisesRegex(t.Refusal, 'unexpected'):
+            beta_report.submit(self.report(), opener=open_)
+
+        def offline(request, timeout):
+            import urllib.error
+            raise urllib.error.URLError('down')
+        with self.assertRaisesRegex(t.Refusal, 'Couldn’t reach'):
+            beta_report.submit(self.report(), opener=offline)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -1,5 +1,6 @@
 """Read-only host checks for this package's native NVIDIA NR/MFG route."""
 import platform,subprocess,shutil,re
+import flatpak_host
 from pathlib import Path
 
 def detect():
@@ -12,9 +13,11 @@ def detect():
         info['reason']='This package requires 64-bit x86 Linux.';return info
     try:
         try:
-            result=subprocess.run(['nvidia-smi','--query-gpu=name,driver_version,memory.total','--format=csv,noheader,nounits'],text=True,capture_output=True,timeout=10,check=True)
-            rows=[line.split(',') for line in result.stdout.strip().splitlines() if line.count(',')>=2]
-        except (OSError,subprocess.SubprocessError):
+            query=['--query-gpu=name,driver_version,memory.total','--format=csv,noheader,nounits']
+            # The Flatpak runtime has no nvidia-smi; ask the host's driver.
+            out=flatpak_host.nvidia_smi(query) if flatpak_host.sandboxed() else subprocess.run(['nvidia-smi',*query],text=True,capture_output=True,timeout=10,check=True).stdout
+            rows=[line.split(',') for line in out.strip().splitlines() if line.count(',')>=2]
+        except (OSError,subprocess.SubprocessError,flatpak_host.HostUnavailable):
             # Some distros and containers ship the NVIDIA kernel driver without nvidia-smi.
             rows=proc_gpus()
             if not rows:raise
@@ -22,7 +25,7 @@ def detect():
         chosen=(sorted(supported,key=lambda r:FAMILIES.index(family(r[0])))[-1:] or rows)[0]
         info.update({'gpu':chosen[0].strip(),'driver':chosen[1].strip(),'vram':chosen[2].strip()+' MiB' if chosen[2].strip().isdigit() else 'Unknown','family':family(chosen[0])})
         if not supported:info['reason']=f"{info['gpu']} isn't an RTX GPU these packages can run on.";return info
-    except (OSError,subprocess.SubprocessError,IndexError):
+    except (OSError,subprocess.SubprocessError,IndexError,flatpak_host.HostUnavailable):
         info['reason']='Cannot verify an NVIDIA GPU and working NVIDIA driver. Install/repair is unavailable; uninstall remains available.';return info
     # Extraction is provider-specific. DLSS-Unlocked uses Python's ZIP reader;
     # the y4my engine can use libarchive even without a 7-Zip executable.

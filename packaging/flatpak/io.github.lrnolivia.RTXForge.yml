@@ -1,0 +1,46 @@
+# rtxForge Flatpak for SteamOS, Bazzite and CachyOS. Build with
+# packaging/build_flatpak.py, which stages the same payload as the AppImage into
+# dist/flatpak-build/source and writes a single-file .flatpak bundle.
+app-id: io.github.lrnolivia.RTXForge
+# GNOME 51 provides Python 3, PyGObject, GTK 4 and libadwaita 1.8 (rtxForge
+# needs libadwaita 1.7+ for Adw.ToggleGroup), so nothing is bundled.
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: rtxforge
+finish-args:
+  # The window: Wayland, with X11 only where no Wayland session exists
+  # (SteamOS Desktop Mode on X11), plus the shared memory X11 needs.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  # GPU rendering for GTK, and controllers (hidraw and evdev) for Game Mode.
+  # --device=input is too new for some SteamOS Flatpak versions, so use all.
+  - --device=all
+  # Package downloads, release checks and SteamGridDB artwork.
+  - --share=network
+  # Game libraries, Steam (~/.local/share/Steam, ~/.steam, its Flatpak data),
+  # Proton prefixes, and libraries on other drives (/run/media, /mnt). rtxForge
+  # writes only reviewed changes into games and keeps recovery records in the
+  # host's ~/.local/state, shared with the AppImage.
+  - --filesystem=host
+  # Bazzite and Fedora Atomic mount extra drives under /var/mnt, which host
+  # does not include.
+  - --filesystem=/var/mnt
+  # Host spawning (flatpak-spawn --host). The sandbox's /proc cannot see games,
+  # Steam or anti-cheat, so every process check, nvidia-smi and the in-game panel
+  # helper's systemd user service run on the host. Without it rtxForge refuses
+  # changes instead of checking blind.
+  - --talk-name=org.freedesktop.Flatpak
+modules:
+  - name: rtxforge
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 rtxforge /app/bin/rtxforge
+      - mkdir -p /app/share && cp -a payload /app/share/rtxforge
+      - install -Dm644 io.github.lrnolivia.RTXForge.desktop /app/share/applications/io.github.lrnolivia.RTXForge.desktop
+      - install -Dm644 io.github.lrnolivia.RTXForge.metainfo.xml /app/share/metainfo/io.github.lrnolivia.RTXForge.metainfo.xml
+      - cp -a icons /app/share/icons
+    sources:
+      - type: dir
+        path: ../../dist/flatpak-build/source

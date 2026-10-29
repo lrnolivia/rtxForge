@@ -89,6 +89,16 @@ def refresh_brand_icons(*_):
         pass
 
 
+def start_host_helper(unit_dir,report=None):
+    """Flatpak: install and start the in-game panel helper on the host; never blocks the window."""
+    try:
+        import flatpak_host
+        flatpak_host.install_helper(unit_dir)
+    except Exception as error:
+        print('In-game panel helper unavailable:',error,file=sys.stderr)
+        if report:report(f'In-game panel unavailable. {error}')
+
+
 def make_brand_icon(size):
     """Use approved matching assets and follow the effective native appearance."""
     global BRAND_THEME_CONNECTED
@@ -4317,12 +4327,20 @@ class Window(Adw.ApplicationWindow):
             # The in-game panel helper is optional: a failure here must never
             # stop the window from opening.
             try:
-                from linux_overlay_host import Host
-                from storage import storage
-                engine=__import__('engine_bridge').module(self.service.config)
-                self.overlay_host=Host(storage(self.service.config),lambda:dict(self.settings),engine.STATE_ROOT,engine=engine)
-                application.connect('shutdown',lambda *_:self.overlay_host.stop.set())
-                threading.Thread(target=self.overlay_host.run,daemon=True,name='proton-panel').start()
+                import flatpak_host
+                if flatpak_host.sandboxed():
+                    # The sandbox cannot see game processes: the panel is hosted by the
+                    # helper service on the host, which this starts (and keeps current).
+                    import desktop_install
+                    report=lambda text:GLib.idle_add(lambda:(hasattr(self,'overlay') and self.toast(text),False)[1])
+                    threading.Thread(target=start_host_helper,args=(desktop_install.data_root()/'systemd/user',report),daemon=True,name='panel-helper').start()
+                else:
+                    from linux_overlay_host import Host
+                    from storage import storage
+                    engine=__import__('engine_bridge').module(self.service.config)
+                    self.overlay_host=Host(storage(self.service.config),lambda:dict(self.settings),engine.STATE_ROOT,engine=engine)
+                    application.connect('shutdown',lambda *_:self.overlay_host.stop.set())
+                    threading.Thread(target=self.overlay_host.run,daemon=True,name='proton-panel').start()
             except Exception:
                 print('In-game panel helper unavailable:',file=sys.stderr);traceback.print_exc()
         set_button_glyphs(self.settings.get('button_glyphs',True))

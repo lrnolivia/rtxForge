@@ -8,6 +8,9 @@ ROOT=Path(__file__).resolve().parents[1]
 
 
 def executable():
+    import flatpak_host
+    if flatpak_host.sandboxed():
+        raise ValueError('The Flatpak cannot add itself to Steam yet. In Steam, choose Add a Non-Steam Game and pick rtxForge.')
     installed=desktop_install.installed_path()
     path=installed if installed.is_file() else Path(os.environ['APPIMAGE']) if os.environ.get('APPIMAGE') else ROOT/'rtxforge'
     path=path.expanduser().resolve()

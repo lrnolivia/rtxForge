@@ -42,14 +42,18 @@ inline std::string title = "Game";
 inline LSTATUS ReadUser(const wchar_t* path, const wchar_t* name, DWORD type, void* data, DWORD bytes)
 {
     DWORD size = bytes;
+    // The welcome is drawn before opening the panel. Prefer the real caller's
+    // hive so a game module's cached HKCU view cannot supply an older theme.
+    HKEY user = nullptr; auto direct = RegOpenCurrentUser(KEY_READ, &user);
+    if(direct == ERROR_SUCCESS) { direct = RegGetValueW(user, path, name, type, nullptr, data, &size); RegCloseKey(user); }
+    if(direct == ERROR_SUCCESS) return direct;
+    size = bytes;
     const auto cached = RegGetValueW(HKEY_CURRENT_USER, path, name, type, nullptr, data, &size);
     if(cached == ERROR_SUCCESS) return cached;
     HKEY parent = nullptr; const auto root = RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\rtxForge", 0, KEY_READ, &parent);
     if(root == ERROR_SUCCESS) RegCloseKey(parent);
     HANDLE token = nullptr; const bool impersonating = OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, TRUE, &token) != FALSE;
     if(impersonating) CloseHandle(token);
-    HKEY user = nullptr; auto direct = RegOpenCurrentUser(KEY_READ, &user);
-    if(direct == ERROR_SUCCESS) { size = bytes; direct = RegGetValueW(user, path, name, type, nullptr, data, &size); RegCloseKey(user); }
     LOG_WARN("rtxForge preference {}: cached HKCU {}, Software\\rtxForge open {}, impersonating {}, current-user hive {}",
              wstring_to_string(name), cached, root, impersonating, direct);
     // Once per launch, record what this process can actually see.

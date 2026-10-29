@@ -20,9 +20,11 @@ _reviewed = contextvars.ContextVar('offline_reviewed', default=())
 
 @contextlib.contextmanager
 def reviewed(routes):
+    routes = tuple(routes)
     for route in routes:
         verify(route)
-    token = _reviewed.set(tuple(routes))
+    t.need(not routes or not protected_running(), 'Close protected games before reviewing or changing offline-only features.')
+    token = _reviewed.set(routes)
     try:
         yield
     finally:

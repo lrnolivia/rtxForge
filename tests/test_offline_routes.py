@@ -48,6 +48,8 @@ class OfflineRoutesTest(unittest.TestCase):
 
     def test_protected_process_and_other_roots_are_not_admitted(self):
         route = off.receipt(self.row, manual=True)
+        with patch.object(off, 'protected_running', return_value=True), self.assertRaises(t.Refusal):
+            with off.reviewed([route]): pass
         with off.reviewed([route]), patch.object(off, 'protected_running', return_value=True):
             self.assertFalse(off.allowed(self.e, self.game))
         with off.reviewed([route]):

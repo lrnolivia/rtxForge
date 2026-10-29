@@ -85,19 +85,19 @@ class CompatListTest(unittest.TestCase):
         self.listed = [{'exe': 'example.exe', 'verdict': 'Working'}]
         self.assertEqual(compat_list.verdict(dict(self.row, appid=''), {})['verdict'], 'Working')
 
-    def test_share_needs_a_result_and_builds_a_prefilled_issue(self):
-        record = {'status': 'Untested', 'notes': ''}
-        with self.assertRaises(t.Refusal):
-            compat_list.share(self.row, record, 'Example Package', HOST, '1.0')
+    def test_share_builds_a_prefilled_beta_report(self):
+        # Untested games and failed installs can be reported too (beta-report form).
+        untested = compat_list.share(self.row, {'status': 'Untested', 'notes': ''}, 'Example Package', HOST, '1.0')
+        self.assertEqual(untested['title'], '[Beta report] Example Game · Windows')
         record = {'status': 'Problem', 'notes': r'Crashed in C:\Users\me\game', 'try_anyway': {'reason': NO_DLSS}}
         share = compat_list.share(self.row, record, 'Example Package', HOST, '1.0')
-        self.assertEqual(share['title'], '[Compatibility] Example Game · Problem')
-        self.assertIn('**Tried anyway:** ' + NO_DLSS, share['body'])
-        self.assertIn('**Package:** Example Package', share['body'])
-        self.assertIn('**Executable:** Example.exe', share['body'])
+        self.assertIn('- Tried anyway: ' + NO_DLSS, share['body'])
+        self.assertIn('Example Package (selected, not installed)', share['body'])
+        self.assertIn('- Steam app ID: 123', share['body'])
         self.assertNotIn('Crashed', share['body'])
         query = urllib.parse.parse_qs(urllib.parse.urlparse(share['url']).query)
-        self.assertEqual(query['body'][0], share['body'])
+        self.assertEqual(query['template'], ['beta-report.yml'])
+        self.assertEqual(query['feature-package'], ['Example Package (selected, not installed)'])
         with_notes = compat_list.share(self.row, record, 'Example Package', HOST, '1.0', include_notes=True)
         self.assertIn('Crashed in [WINDOWS PATH]', with_notes['body'])
         self.assertNotIn('Users', with_notes['body'])
@@ -142,7 +142,7 @@ class CompatListTest(unittest.TestCase):
 
     def test_shipped_list_is_valid(self):
         data = json.loads((compat_list.ROOT / 'providers/compatibility.json').read_text(encoding='utf-8'))
-        self.assertEqual(data['schema'], 1)
+        self.assertIn(data['schema'], compat_list.SCHEMAS)
         for entry in data['games']:
             self.assertIn(entry['verdict'], compat_list.VERDICTS)
             self.assertTrue(entry.get('appid') or entry.get('exe'))

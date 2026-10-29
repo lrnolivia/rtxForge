@@ -27,17 +27,12 @@ def finish(config,game):
     destination=root(config)/'logs'/hashlib.sha256(game['game'].encode()).hexdigest()[:24]/datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S%f')
     directory=Path(game['game'])/Path(game['exe']).parent
     # Exact adjacent diagnostic names only; no recursive home/prefix/save collection.
+    import runtime_diagnostics
     for name in ('OptiScaler.log','sl.log','sl.dlss_g.log','sl.interposer.log'):
-        p=directory/name
-        try:
-            import os
-            fd=os.open(p,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
-            with os.fdopen(fd,'rb') as source:
-                st=os.fstat(source.fileno())
-                if not stat.S_ISREG(st.st_mode):continue
-                source.seek(max(0,st.st_size-4*1024**2));data=source.read(4*1024**2)
-            out=destination/name;t.atomic_file(out,data,0o600);session['logs'].append(str(out))
-        except OSError:continue
+        # Regular files only, never through a link or reparse point, on Linux and Windows alike.
+        try:data,_=runtime_diagnostics.read_regular(directory/name,4*1024**2,tail=True)
+        except (OSError,ValueError):continue
+        out=destination/name;t.atomic_file(out,data,0o600);session['logs'].append(str(out))
     session['observation']='User test record; captured logs may include earlier runs. No automatic runtime success inference.'
     record.setdefault('sessions',[]).append(session);record.pop('active',None);save(config,game['game'],record);return record
 
@@ -45,11 +40,13 @@ def redact(text):
     """Best-effort redaction; the exact export is still previewed before consent."""
     import re
     text=re.sub(r'(?i)(authorization\s*[:=]\s*)(?:bearer\s+)?[^\s,;]+',r'\1[REDACTED]',text)
-    text=re.sub(r'(?i)((?:access[_-]?token|api[_-]?key|password|secret)\s*[\"\']?\s*[:=]\s*[\"\']?)[^\s,;\"\']+',r'\1[REDACTED]',text)
+    text=re.sub(r'(?i)((?:(?:access|refresh|auth|session)[_-]?)?token|api[_-]?key|password|passwd|secret)(\s*[\"\']?\s*[:=]\s*[\"\']?)[^\s,;\"\'&]+',r'\1\2[REDACTED]',text)
     text=re.sub(r'(?i)https?://[^\s\"<>]+',lambda m:m[0].split('?')[0].split('#')[0],text)
     text=re.sub(r'(?<![\w:])/(?:home|var/home|run|mnt|var/mnt|media|tmp)/[^\n\r\"<>]*','[LOCAL PATH]',text)
     text=re.sub(r'(?i)\b[A-Z]:[\\/][^\n\r\"<>]*','[WINDOWS PATH]',text)
+    text=re.sub(r'\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,})\b','[REDACTED]',text)
     text=re.sub(r'\b7656119\d{10}\b','[STEAM ID]',text)
+    text=re.sub(r'\[U:1:\d+\]','[STEAM ID]',text)
     text=re.sub(r'\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b','[EMAIL]',text)
     return text
 

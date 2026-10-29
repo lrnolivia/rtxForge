@@ -260,3 +260,41 @@ body:not(.install-page) .platform-picker{margin:12px 0 40px}
   .header-report{grid-column:1/-1;grid-row:2;width:fit-content}
   .report-layout{display:flex;flex-direction:column}.report-content{width:100%;order:-1}
 }
+
+/* Short task paths, with the extra detail available when it is useful. */
+.features>h2{font-size:clamp(32px,4vw,48px);letter-spacing:-.025em;margin-bottom:36px}
+.feature-panel,.feature-panel-secondary{background:transparent;border-radius:0;padding:36px 0;border-top:1px solid var(--raised)}
+.feature-panel:first-child{border-top:0;padding-top:0}
+.feature-subcard,.feature-panel-secondary .feature-subcard{background:transparent;border-radius:0;padding:0}
+.feature-play-options{gap:48px}
+.feature-copy h3{font-size:34px}
+.feature-copy p{max-width:60ch}
+.download-more{margin-top:18px;border-top:1px solid var(--hover)}
+.download-more>summary{min-height:48px;padding:14px 0;color:var(--secondary);font-size:13px;cursor:pointer}
+.download-more .secondary-download{background:transparent;padding:0;min-height:44px}
+.download-more .channel-note{margin:0 0 8px}
+.guide-intro{margin-bottom:40px}
+.guide-article{max-width:68ch}
+.guide-article section{margin-bottom:56px}
+.guide-article h2{font-size:32px}
+.guide-article details{margin:0}
+.guide-article details>p{padding-right:12px}
+.guide-article details[open]>summary{margin-bottom:4px}
+.guide-article .guide-steps li{margin-bottom:18px;scroll-margin-top:28px}
+.simple-report .report-layout{display:block;max-width:680px}
+.simple-report .guide-intro{margin-bottom:32px}
+.simple-report .report-os{margin-top:0}
+.simple-report .report-copy{background:transparent;padding:10px 4px;color:var(--secondary);font-weight:500}
+.simple-report .report-copy:hover{color:var(--text);text-decoration:underline;text-underline-offset:4px}
+.report-extra{border-bottom:1px solid var(--raised);margin-top:20px}
+.report-extra>summary{min-height:52px;padding:16px 0;font-size:14px;font-weight:550;cursor:pointer}
+.report-extra[open]>.report-fields{margin:8px 0 20px}
+.report-extra p{font-size:14px;line-height:1.7;color:var(--secondary);margin:0 0 20px}
+.report-inline-help{margin:16px 0 0}
+.report-more-links{display:flex;flex-wrap:wrap;gap:12px 28px;font-size:14px;margin:20px 0}
+.report-more-links a{display:inline-flex;align-items:center;min-height:44px}
+@media(max-width:760px){
+  .features>h2{margin-bottom:28px}.feature-panel{padding:28px 0}.feature-copy h3{font-size:28px}
+  .guide-intro h1{font-size:40px}.guide-article h2{font-size:28px}.guide-layout{gap:28px}
+  .guide-article section{margin-bottom:40px}.feature-play-options{gap:36px}
+}

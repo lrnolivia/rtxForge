@@ -17,8 +17,10 @@ def start(config,game,checks=None,probe=None):
     """Open a test session. checks: what the host verified before launch (helper running, package files)."""
     import functional_test
     record=load(config,game['game']);t.need(not record.get('active'),'Finish the current test first')
-    checks=checks if checks is not None else functional_test.preflight(game,library_media.load_settings(config))
-    record['active']={'started':t.now(),'selected_package':engine_bridge.providers()[library_media.load_settings(config).get('runtime_provider','y4my')],'profile':game.get('profile'),'name':game['name'],
+    settings=library_media.load_settings(config)
+    checks=checks if checks is not None else functional_test.preflight(game,settings)
+    selected=settings.get('runtime_provider','y4my')
+    record['active']={'started':t.now(),'selected_package':engine_bridge.providers().get(selected,{'id':selected}),'profile':game.get('profile'),'name':game['name'],
                       'id':uuid.uuid4().hex,'row':{k:game.get(k) for k in ('game','exe','name','appid','profile','runtime_provider')},'checks':checks,
                       'log_baseline':functional_test.log_baseline(game)}
     # Config pin is package provenance, NOT proof this DLL is installed.

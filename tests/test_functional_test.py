@@ -213,6 +213,14 @@ class FunctionalSessionTests(unittest.TestCase):
         game_notes.start({}, self.row, {'route': 'skynizz'})
         with self.assertRaises(t.Refusal): game_notes.finish({}, dict(self.row, exe='Other.exe'))
 
+    def test_every_package_can_start_and_finish_including_custom_and_feeder(self):
+        for selected in (*json.loads((Path(__file__).resolve().parents[1]/'providers/lock.json').read_text()),'custom','feeder','vulkan-native'):
+            with self.subTest(package=selected),patch.object(game_notes.library_media,'load_settings',return_value={'runtime_provider':selected}):
+                record=game_notes.start({},self.row,{'route':selected,'platform':'windows'})
+                self.assertEqual(record['active']['selected_package']['id'],selected)
+                closed=game_notes.finish({},self.row,samples=[])
+                self.assertEqual(len(game_notes.latest_test(closed)['results']),len(ft.PARTS))
+
     def test_sampler_persistence_is_bound_to_session_identity(self):
         path = ft._sample_path({}, self.row); path.parent.mkdir(parents=True)
         path.write_text(json.dumps({'session': 'old', 'samples': [ft.compact(snapshot(), 1)]}))

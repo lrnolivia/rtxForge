@@ -10,6 +10,10 @@ Use `npm ci`, `npm run check`, and `npm run deploy` from this directory. Wrangle
 
 The guide starts with installing the app, trying one game, and opening the overlay. Optional topics use native disclosures: package details, native menus, per-game overrides, Game Mode, Global changes, dual boot, updates and recovery. Existing help anchors open their containing disclosure. Instructions follow the selected OS and use the shortcut shown by the installed build.
 
+Linux has a standalone host helper for Desktop and Steam Game Mode. The guide explains its one-time Flatpak/AppImage setup instead of requiring an open manager window, including the published Beta AppImage's next-login startup behavior. The service's immediate-start fix belongs to application source and does not publish an app release. The game-side bridge and real-Proton verification requirements still apply.
+
+Home, Setup guide and Report a bug share the same header structure, navigation order, OS switch and theme positions at each breakpoint. `site-controls.mjs` owns their OS keyboard handling and OS-aware navigation. The report page uses the header switch, asks for an OS on direct entry, and keeps its native select for no-JavaScript use. Branding says rtxForge; Beta stays in the download context. Theme controls use colored sun/moon assets and both controls follow the page's surface colors. Card guidance includes RTX 20–50; RTX 50 keeps native MFG without an unlock package.
+
 The landing page places an outlined Installation guide link with a book glyph directly below the package downloads. Linux shows separate Download Flatpak and Download AppImage buttons when both packages are published. It follows the selected OS and remains available while release information loads or fails. The Linux guide covers both the Flatpak bundle and AppImage.
 
 ## Beta reports

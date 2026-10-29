@@ -31,22 +31,23 @@
   <div class="hero-art" aria-hidden="true"><img src="assets/steam-hero.webp" width="3840" height="1240" alt=""></div>
   <a class="skip-link" href="#main">Skip to guide</a>
   <div class="page">
-    <header class="header">
-      <a class="brand" href="./?os=linux" data-home-link aria-label="rtxForge Beta home">
-        <img class="brand-mark" src="assets/rtxforge.svg" width="52" height="52" alt="">
-        <span class="brand-name">rtxForge</span><span class="beta">Beta</span>
-      </a>
-      <div class="header-links"><a class="header-report" href="report.html" data-report-link>Report a bug <span aria-hidden="true">→</span></a><button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light appearance"><img id="theme-icon" src="assets/sun.svg" width="20" height="20" alt=""></button></div>
+    <header class="header site-header">
+      <a class="brand" href="./" data-site-page="./" aria-label="rtxForge home"><img class="brand-mark" id="brand-mark" src="assets/rtxforge.svg" width="52" height="52" alt=""><span class="brand-name">rtxForge</span></a>
+      <nav class="site-nav" aria-label="Main navigation">
+        <a href="./" data-site-page="./">Home</a>
+        <a href="install.html" data-site-page="install.html" aria-current="page">Setup guide</a>
+        <a class="header-report" href="report.html" data-site-page="report.html">Report a bug</a>
+      </nav>
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light appearance"><img id="theme-icon" src="assets/sun.svg" width="24" height="24" alt=""></button>
+      <div class="platform-picker" role="tablist" aria-label="Choose your operating system">
+        <button id="tab-linux" class="platform-tab" role="tab" aria-selected="true" aria-controls="platform-content" type="button" data-platform="linux"><img class="os-icon" src="assets/linux.svg" width="21" height="21" alt=""> Linux</button>
+        <button id="tab-windows" class="platform-tab" role="tab" aria-selected="false" aria-controls="platform-content" tabindex="-1" type="button" data-platform="windows"><img class="os-icon" src="assets/windows.svg" width="20" height="20" alt=""> Windows</button>
+      </div>
     </header>
     <main id="main" tabindex="-1">
       <div class="guide-intro">
-        <a class="text-link guide-back" href="./?os=linux" data-home-link>Back to rtxForge</a>
         <h1>Let’s get you playing.</h1>
         <p class="guide-lead">Install the app. Try one game. Fine-tune from there.</p>
-        <div class="platform-picker" role="tablist" aria-label="Choose your operating system">
-          <button id="tab-linux" class="platform-tab" role="tab" aria-selected="true" aria-controls="platform-content" type="button" data-platform="linux"><img class="os-icon" src="assets/linux.svg" width="21" height="21" alt=""> Linux</button>
-          <button id="tab-windows" class="platform-tab" role="tab" aria-selected="false" aria-controls="platform-content" tabindex="-1" type="button" data-platform="windows"><img class="os-icon" src="assets/windows.svg" width="20" height="20" alt=""> Windows</button>
-        </div>
       </div>
       <div class="guide-layout">
         <nav class="guide-nav" aria-label="In this guide">
@@ -86,7 +87,7 @@
               <li id="play"><strong>Play.</strong> Turn on the game’s DLSS and frame-generation options as required by your package. Check how it looks and feels before adding more games.</li>
             </ol>
             <p data-guide-platform="linux">For frame generation, use a Proton build with NVIDIA CUDA support, such as Proton-GE. Run the game once with that build, then quit before setup. Follow the review if it asks you to close Steam.</p>
-            <details><summary>Packages, presets, and existing mods</summary><p>A package supplies the game files; a preset holds your tuning. Some NR packages also need a model file. The install review tells you what’s missing.</p><p>For an existing manual setup, use <strong>Adoption</strong> when offered and read what it recognizes. For a managed setup, use repair or restore before switching packages. Unknown files should not be overwritten.</p><p>NR is experimental. MFG supports RTX 20, 30, and 40 series on compatible game/package combinations. Selecting 4× does not guarantee four times the measured FPS.</p></details>
+            <details><summary>Packages, presets, and existing mods</summary><p>A package supplies the game files; a preset holds your tuning. Some NR packages also need a model file. The install review tells you what’s missing.</p><p>For an existing manual setup, use <strong>Adoption</strong> when offered and read what it recognizes. For a managed setup, use repair or restore before switching packages. Unknown files should not be overwritten.</p><p>Installs support RTX 20, 30, 40, and 50 series with compatible games and packages. NR is experimental. RTX 50 uses its own MFG; rtxForge skips the MFG unlock. Selecting 4× does not guarantee four times the measured FPS.</p></details>
           </section>
           <section id="overlays">
             <h2>Make changes while you play.</h2>
@@ -98,7 +99,7 @@
             </ol>
             <p>Start with <strong>Unified</strong> controls. Adjust what you need and choose <strong>Save preset</strong> to keep it.</p>
             <p data-guide-platform="windows" hidden>Enable <strong>Background overlay helper</strong> if you want the controls available after closing the manager. <strong>Start with Windows</strong> starts just that helper.</p>
-            <p data-guide-platform="linux">Keep rtxForge running for the helper. In Steam Game Mode, use this in-game panel; it doesn’t need a desktop-wide shortcut.</p>
+            <p data-guide-platform="linux">The background helper runs separately from the app in Desktop and Steam Game Mode. Open the Flatpak once to set it up. For AppImage, use <strong>Settings → About → Desktop Installation → Reinstall App Menu</strong>; on Beta 1, sign out and back in once. You can then close rtxForge.</p>
             <details><summary>Appearance, shortcuts, and per-game settings</summary><p>Overlay settings include Dark, Light, Follow app, welcome messages, and live statistics when the runtime provides them. Advanced controls use the package’s own labels and units.</p><p>To change one game, open its <strong>Overlay</strong> controls and turn off <strong>Use app overlay settings</strong>. Review <strong>Update Overlays</strong> for that game, then restart it. Older builds may use their install or repair review instead.</p><p>Keep the panel key separate from game controls and OptiScaler’s key. Reset restores your build’s default; Disable removes the binding. A saved setting or log entry alone doesn’t prove a visible NR effect.</p></details>
           </section>
           <section id="more">
@@ -112,14 +113,23 @@
           <section id="help">
             <h2>Something not working?</h2>
             <details><summary>The game or a feature won’t work</summary><p>Check the package, feature mode, and the game’s DLSS/FG settings. For NR, try <strong>Game Details → Tools → Diagnose NR</strong>. Include any error exactly as shown.</p><p>Game support varies by package. Linux Vulkan/Proton games and the Light overlay still have testing limits—check your <a href="https://github.com/lrnolivia/rtxForge/releases/tag/beta" target="_blank" rel="noopener">release notes</a>.</p></details>
-            <details><summary>The overlay won’t open or save</summary><p>Check the panel choice and shortcut in <strong>Settings → Overlay</strong>. Confirm a compatible package is installed. Close the game, review <strong>Update Overlays</strong>, and restart.</p><p data-guide-platform="windows" hidden>Check that the background helper is enabled if the manager is closed.</p><p data-guide-platform="linux">Keep rtxForge open. Saving and replaying presets needs the matching game-side bridge from this release’s Windows build. If it says it’s waiting for the helper, include that message in your report.</p></details>
+            <details><summary>The overlay won’t open or save</summary><p>Check the panel choice and shortcut in <strong>Settings → Overlay</strong>. Confirm a compatible package is installed. Close the game, review <strong>Update Overlays</strong>, and restart.</p><p data-guide-platform="windows" hidden>Check that the background helper is enabled if the manager is closed.</p><p data-guide-platform="linux">The helper and the game-side bridge must match. Open the Flatpak once, or register the AppImage in your app menu and sign out and back in. If the panel still says it’s waiting for the helper, include that message in your report.</p></details>
             <p>Still stuck? <a href="report.html?os=linux" data-report-link>Report a bug</a>. Tell us what happened and what you’re using. You can attach logs later.</p>
           </section>
         </div>
       </div>
       <noscript><p class="noscript">Showing Linux instructions. <a href="https://github.com/lrnolivia/rtxForge#your-first-game">The README</a> also covers Windows.</p></noscript>
     </main>
-    <footer class="footer"><a class="loew" href="https://loew.fi" target="_blank" rel="noopener">loew.fi</a><div class="footer-links"><a href="./?os=linux" data-home-link>rtxForge</a><a href="https://github.com/lrnolivia/rtxForge" target="_blank" rel="noopener">GitHub <span aria-hidden="true">↗</span></a><a href="https://github.com/lrnolivia/rtxForge/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a></div></footer>
+    <footer class="footer">
+      <a class="loew" href="https://loew.fi" target="_blank" rel="noopener">loew.fi</a>
+      <nav class="footer-links" aria-label="Footer navigation">
+        <a href="./" data-site-page="./">Home</a>
+        <a id="footer-guide-link" href="install.html" data-site-page="install.html">Setup guide</a>
+        <a href="report.html" data-site-page="report.html">Report a bug</a>
+        <a href="https://github.com/lrnolivia/rtxForge" target="_blank" rel="noopener">GitHub <span aria-hidden="true">↗</span></a>
+        <a href="https://github.com/lrnolivia/rtxForge/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+      </nav>
+    </footer>
   </div>
   <p class="sr-only" id="platform-status" role="status" aria-live="polite"></p>
 </body>

@@ -2,10 +2,10 @@ import { CHANNELS, selectDownloads } from './releases.mjs';
 import { setFeaturePlatform } from './features.js';
 import { platforms, storage } from './platforms.mjs';
 import { initTheme } from './theme.mjs';
+import { initSiteControls } from './site-controls.mjs';
 
 const root = document.documentElement;
 const byId = id => document.getElementById(id);
-const tabs = [...document.querySelectorAll('[data-platform]')];
 initTheme();
 new MutationObserver(() => {
   setFeaturePlatform(root.dataset.os);
@@ -82,7 +82,7 @@ async function loadRelease(channel) {
   } catch { return { status: 'error' }; }
   finally { clearTimeout(timeout); }
 }
-function setPlatform(os, { updateUrl = false, announce = false } = {}) {
+function setPlatform(os) {
   if (!Object.hasOwn(platforms, os)) os = 'linux';
   const data = platforms[os]; root.dataset.os = os; setFeaturePlatform(os);
   document.title = `rtxForge Beta 1 for ${data.name}`;
@@ -91,26 +91,8 @@ function setPlatform(os, { updateUrl = false, announce = false } = {}) {
   byId('footer-guide-link').href = data.guide;
   byId('faq-guide-link').href = data.guide;
   byId('platform-content').setAttribute('aria-labelledby', `tab-${os}`);
-  for (const tab of tabs) {
-    const selected = tab.dataset.platform === os;
-    tab.setAttribute('aria-selected', String(selected)); tab.tabIndex = selected ? 0 : -1;
-  }
   for (const link of document.querySelectorAll('[data-report-link]')) link.href = `report.html?os=${os}`;
   renderDownloads();
-  if (updateUrl) {
-    const url = new URL(location.href); url.searchParams.set('os', os);
-    history.replaceState({ os }, '', url); storage.set('rtxforge-platform', os);
-  }
-  if (announce) byId('platform-status').textContent = `Showing ${data.name} screenshots, downloads, installation instructions, and requirements.`;
-}
-for (const tab of tabs) {
-  tab.addEventListener('click', () => setPlatform(tab.dataset.platform, { updateUrl: true, announce: true }));
-  tab.addEventListener('keydown', event => {
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-    event.preventDefault(); const current = tabs.indexOf(tab);
-    const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
-    tabs[next].focus(); setPlatform(tabs[next].dataset.platform, { updateUrl: true, announce: true });
-  });
 }
 byId('requirements-link').addEventListener('click', event => {
   event.preventDefault();
@@ -123,8 +105,9 @@ byId('requirements-link').addEventListener('click', event => {
 byId('release-retry').addEventListener('click', () => {
   if (!retryingReleases) refreshReleases({ retry: true });
 });
-setPlatform(platformForPage());
-addEventListener('popstate', () => setPlatform(platformForPage()));
+const site = initSiteControls(setPlatform);
+site.select(platformForPage());
+addEventListener('popstate', () => site.select(platformForPage()));
 async function refreshReleases({ retry = false } = {}) {
   retryingReleases = retry;
   const channels = Object.keys(CHANNELS).filter(channel => releases[channel].status !== 'published');

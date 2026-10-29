@@ -31,28 +31,21 @@
   <div class="hero-art" aria-hidden="true"><img src="assets/steam-hero.webp" width="3840" height="1240" alt="" fetchpriority="high"></div>
   <a class="skip-link" href="#main">Skip to content</a>
   <div class="page">
-    <header class="header">
-      <a class="brand" href="./" aria-label="rtxForge Beta 1 home">
-        <picture>
-          <img class="brand-mark" id="brand-mark" src="assets/rtxforge.svg" width="52" height="52" alt="">
-        </picture>
-        <span class="brand-name">rtxForge</span><span class="beta">Beta 1</span>
-      </a>
-      <div class="header-links">
-        <a class="header-report" href="report.html" data-report-link>Report a bug <span aria-hidden="true">→</span></a>
-        <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light appearance"><img id="theme-icon" src="assets/sun.svg" width="20" height="20" alt=""></button>
+    <header class="header site-header">
+      <a class="brand" href="./" data-site-page="./" aria-label="rtxForge home"><img class="brand-mark" id="brand-mark" src="assets/rtxforge.svg" width="52" height="52" alt=""><span class="brand-name">rtxForge</span></a>
+      <nav class="site-nav" aria-label="Main navigation">
+        <a href="./" data-site-page="./" aria-current="page">Home</a>
+        <a href="install.html" data-site-page="install.html">Setup guide</a>
+        <a class="header-report" href="report.html" data-site-page="report.html">Report a bug</a>
+      </nav>
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light appearance"><img id="theme-icon" src="assets/sun.svg" width="24" height="24" alt=""></button>
+      <div class="platform-picker" role="tablist" aria-label="Choose your operating system">
+        <button id="tab-linux" class="platform-tab" role="tab" aria-selected="true" aria-controls="platform-content" type="button" data-platform="linux"><img class="os-icon" src="assets/linux.svg" width="21" height="21" alt=""> Linux</button>
+        <button id="tab-windows" class="platform-tab" role="tab" aria-selected="false" aria-controls="platform-content" tabindex="-1" type="button" data-platform="windows"><img class="os-icon" src="assets/windows.svg" width="20" height="20" alt=""> Windows</button>
       </div>
     </header>
 
     <main id="main">
-      <div class="platform-picker" role="tablist" aria-label="Choose your operating system">
-        <button id="tab-linux" class="platform-tab" role="tab" aria-selected="true" aria-controls="platform-content" type="button" data-platform="linux">
-          <img class="os-icon" src="assets/linux.svg" width="21" height="21" alt=""> Linux
-        </button>
-        <button id="tab-windows" class="platform-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="platform-content" type="button" data-platform="windows">
-          <img class="os-icon" src="assets/windows.svg" width="20" height="20" alt=""> Windows
-        </button>
-      </div>
 
       <section id="platform-content" class="hero" role="tabpanel" aria-labelledby="tab-linux" tabindex="0">
         <div class="hero-copy">
@@ -81,7 +74,7 @@
           </p>
           <p class="package-meta" id="package-meta">Beta 1 · Linux x86_64</p>
           <div class="download-compatibility">
-            <p>NR for compatible RTX cards.<br>MFG for RTX 20, 30, and 40 series.</p>
+            <p>For RTX 20, 30, 40, and 50 series.<br>RTX 50 keeps its native MFG.</p>
             <a class="text-link" id="requirements-link" href="#requirements-details">Check compatibility</a>
           </div>
         </div>
@@ -193,18 +186,19 @@
         <a class="guide-download" href="report.html?os=windows" data-report-link>Share a report <span aria-hidden="true">→</span></a>
       </section>
 
-      <section class="faq" aria-labelledby="faq-heading"><h2 id="faq-heading">Questions.</h2><div class="faq-questions"><details id="requirements-details"><summary><span>Will it work with my setup?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary><div class="details-body"><p id="requirements-copy">Linux x86_64 with a working NVIDIA driver.</p><p>NR needs a compatible RTX card and game package. MFG supports RTX 20, 30, and 40 series on supported games. Start with one game, and avoid protected online games and anti-cheat.</p></div></details><details><summary><span>How do I get started?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary><div class="details-body"><p>Install the app, choose a game and package, then review the install.</p><a id="faq-guide-link" class="text-link" href="install.html?os=linux">Follow the setup guide <span aria-hidden="true">→</span></a></div></details><details><summary><span>Can I undo it?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary><div class="details-body"><p>Yes. Use <strong>Restore Original Files</strong> to return to the files rtxForge backed up. Keep those backups. Updates made through <strong>DLSS Files</strong> have their own restore controls.</p></div></details><details><summary><span>Can I use my games on Windows and Linux?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary><div class="details-body"><p>For supported Windows installs on a shared drive, use <strong>Adapt to Linux</strong> in the Linux app. It sets up the Proton side and leaves your Windows setup alone.</p></div></details><details><summary><span>Where are the overlay controls?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary><div class="details-body"><p>Open <strong>Settings → Overlay</strong> in the app. Check the shortcut shown there, and use <strong>Update Overlays</strong> for installed games. The setup guide walks through it.</p></div></details><details id="support-details"><summary><span>Found a bug?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary><div class="details-body"><p>Tell us what happened. You can add logs later.</p><a id="support-issue-link" class="text-link" href="report.html?os=linux" data-report-link>Report a bug <span aria-hidden="true">→</span></a></div></details></div></section>
+      <section class="faq" aria-labelledby="faq-heading"><h2 id="faq-heading">Questions.</h2><div class="faq-questions"><details id="requirements-details"><summary><span>Will it work with my setup?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary><div class="details-body"><p id="requirements-copy">Linux x86_64 with a working NVIDIA driver.</p><p>Installs support RTX 20, 30, 40, and 50 series with compatible games and packages. RTX 50 uses its own MFG, so rtxForge skips the unlock. NR is experimental. Start with one game, and avoid protected online games and anti-cheat.</p></div></details><details><summary><span>How do I get started?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary><div class="details-body"><p>Install the app, choose a game and package, then review the install.</p><a id="faq-guide-link" class="text-link" href="install.html?os=linux">Follow the setup guide <span aria-hidden="true">→</span></a></div></details><details><summary><span>Can I undo it?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary><div class="details-body"><p>Yes. Use <strong>Restore Original Files</strong> to return to the files rtxForge backed up. Keep those backups. Updates made through <strong>DLSS Files</strong> have their own restore controls.</p></div></details><details><summary><span>Can I use my games on Windows and Linux?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary><div class="details-body"><p>For supported Windows installs on a shared drive, use <strong>Adapt to Linux</strong> in the Linux app. It sets up the Proton side and leaves your Windows setup alone.</p></div></details><details><summary><span>Where are the overlay controls?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary><div class="details-body"><p>Open <strong>Settings → Overlay</strong> in the app. Check the shortcut shown there, and use <strong>Update Overlays</strong> for installed games. The setup guide walks through it.</p></div></details><details id="support-details"><summary><span>Found a bug?</span><svg class="faq-disclosure" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/><path class="faq-disclosure-stem" d="M12 6v12"/></svg></summary><div class="details-body"><p>Tell us what happened. You can add logs later.</p><a id="support-issue-link" class="text-link" href="report.html?os=linux" data-report-link>Report a bug <span aria-hidden="true">→</span></a></div></details></div></section>
       <noscript><p class="noscript"><a href="https://github.com/lrnolivia/rtxForge/releases">Check Beta and Development releases on GitHub</a>.</p></noscript>
     </main>
 
     <footer class="footer">
       <a class="loew" href="https://loew.fi" target="_blank" rel="noopener">loew.fi</a>
-      <div class="footer-links">
-        <a id="footer-guide-link" href="install.html?os=linux">Setup guide</a>
+      <nav class="footer-links" aria-label="Footer navigation">
+        <a href="./" data-site-page="./">Home</a>
+        <a id="footer-guide-link" href="install.html" data-site-page="install.html">Setup guide</a>
+        <a href="report.html" data-site-page="report.html">Report a bug</a>
         <a href="https://github.com/lrnolivia/rtxForge" target="_blank" rel="noopener">GitHub <span aria-hidden="true">↗</span></a>
-        <a id="report-link" href="report.html?os=windows" data-report-link>Report a bug</a>
         <a href="https://github.com/lrnolivia/rtxForge/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
-      </div>
+      </nav>
     </footer>
   </div>
   <p class="sr-only" id="platform-status" role="status" aria-live="polite"></p>

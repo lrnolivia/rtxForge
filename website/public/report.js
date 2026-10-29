@@ -1,4 +1,5 @@
 import { initTheme } from './theme.mjs';
+import { initSiteControls } from './site-controls.mjs';
 
 initTheme();
 const form = document.getElementById('beta-report');
@@ -8,6 +9,12 @@ const preview = document.getElementById('report-preview');
 const report = document.getElementById('report-text');
 const status = document.getElementById('report-status');
 let previousOS = '';
+const site = initSiteControls(os => {
+  platform.value = os === 'linux' ? 'Linux' : os === 'windows' ? 'Windows' : '';
+  updateReport();
+});
+// The select remains a native, required form field for no-JavaScript visitors.
+platform.closest('.report-os').hidden = true;
 const fields = [
   ['platform', 'Operating system'], ['distribution', 'Distro / OS version'],
   ['gpu-series', 'RTX series'], ['gpu', 'GPU model and driver'],
@@ -30,10 +37,11 @@ function updateReport() {
   document.getElementById('gpu-series').value = os && family ? `RTX ${family[1]}` : 'Not sure';
   const data = new FormData(form);
   const value = id => String(data.get(id) || '').trim();
-  document.documentElement.dataset.os = os;
+  site.select(os, { notify: false });
+  document.getElementById('report-os-prompt').hidden = Boolean(os);
   const guide = os ? `install.html?os=${os}` : 'install.html';
   document.getElementById('report-guide').href = guide;
-  document.getElementById('report-footer-guide').href = guide;
+  document.getElementById('footer-guide-link').href = guide;
   for (const link of document.querySelectorAll('[data-report-home]')) link.href = os ? `./?os=${os}` : './';
   document.getElementById('distribution-label').textContent = os === 'windows' ? 'Windows version' : 'Linux distro and version';
   distribution.placeholder = os === 'windows' ? 'e.g. Windows 11 25H2' : 'e.g. Bazzite 44';
@@ -83,4 +91,6 @@ form.addEventListener('submit', event => {
     status.append(link, ' and paste your details there.');
   }
 });
-updateReport();
+const requestedOS = () => new URL(location.href).searchParams.get('os');
+site.select(requestedOS());
+addEventListener('popstate', () => site.select(requestedOS()));

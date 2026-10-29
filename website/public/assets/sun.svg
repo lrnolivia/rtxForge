@@ -10,11 +10,11 @@ unicode: "eb30"
   height="24"
   viewBox="0 0 24 24"
   fill="none"
-  stroke="currentColor"
+  stroke="#bd7b00"
   stroke-width="2"
   stroke-linecap="round"
   stroke-linejoin="round"
 >
-  <path d="M8 12a4 4 0 1 0 8 0a4 4 0 1 0 -8 0" />
+  <path fill="#ffd76a" d="M8 12a4 4 0 1 0 8 0a4 4 0 1 0 -8 0" />
   <path d="M3 12h1m8 -9v1m8 8h1m-9 8v1m-6.4 -15.4l.7 .7m12.1 -.7l-.7 .7m0 11.4l.7 .7m-12.1 -.7l-.7 .7" />
 </svg>

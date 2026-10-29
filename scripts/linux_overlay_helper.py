@@ -39,18 +39,26 @@ def unit_text(appimage):
 
 def install_service(appimage, unit_dir, systemctl, run=subprocess.run):
     """Write the user unit beside the launcher (<data>/systemd/user, on systemd's user search
-    path) and enable it for the next login. Returns the unit path, or None without systemctl."""
+    path) and start it now and at login. Returns the unit path, or None without systemctl."""
     unit = Path(unit_dir) / SERVICE
     text = unit_text(Path(appimage).resolve())
     unit.parent.mkdir(parents=True, exist_ok=True)
-    if not unit.is_file() or unit.read_text() != text:
+    changed = not unit.is_file() or unit.read_text() != text
+    if changed:
         stage = unit.with_name('.' + SERVICE + '.tmp')
         stage.write_text(text)
         os.replace(stage, unit)
     if not systemctl:
         return None
-    for argv in ([systemctl, '--user', 'daemon-reload'], [systemctl, '--user', 'enable', SERVICE]):
-        run(argv, check=False, capture_output=True, timeout=30)
+    steps = [[systemctl, '--user', 'daemon-reload'],
+             [systemctl, '--user', 'enable', '--now', SERVICE]]
+    if changed:
+        steps.append([systemctl, '--user', 'try-restart', SERVICE])
+    for argv in steps:
+        result = run(argv, check=False, capture_output=True, text=True, timeout=30)
+        if result.returncode != 0:
+            raise RuntimeError('The in-game panel helper could not be started: ' +
+                               ((result.stderr or '').strip() or ' '.join(argv)))
     return unit
 
 

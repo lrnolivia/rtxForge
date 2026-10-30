@@ -25,8 +25,9 @@ public sealed partial class MainWindow
         updateTimer.Tick += async (_, _) =>
         {
             updateTimer.Interval = TimeSpan.FromHours(6);
-            if (Settings.AutoUpdate && !Busy && !LibraryRefreshing && !updateReady)
-                await DownloadAppUpdateAsync(false);
+            if (!Settings.AutoUpdate || updateReady) return;
+            if (Busy || LibraryRefreshing) { updateTimer.Interval = TimeSpan.FromMinutes(1); return; }
+            await DownloadAppUpdateAsync(false);
         };
         updateTimer.Start();
     }

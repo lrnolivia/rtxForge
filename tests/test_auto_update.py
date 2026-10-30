@@ -167,5 +167,33 @@ class BackgroundPolicyTests(unittest.TestCase):
         self.assertFalse(host.app_update_applying)
 
 
+class WindowsApplyPolicyTests(unittest.TestCase):
+    def test_running_game_and_pending_file_review_defer_real_handoff(self):
+        tree = ast.parse((ROOT / 'windows/engine-host/win_features.py').read_text(encoding='utf-8'))
+        function = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'update_apply')
+        def need(value, message):
+            if not value:
+                raise RuntimeError(message)
+        namespace = dict(Path=Path, t=types.SimpleNamespace(need=need), _staged_update=({'version': 'next'}, 'cached.exe'),
+                         _storage_busy=lambda: False, _settings=lambda: {}, _config=lambda: {}, LOCAL=Path('fixture'),
+                         engine_bridge=types.SimpleNamespace(module=lambda config: types.SimpleNamespace(
+                             _running_processes_under_root=lambda root: ['game.exe'])))
+        exec(compile(ast.Module(body=[function], type_ignores=[]), 'windows-update-policy', 'exec'), namespace)
+        params = {'pid': 99, 'rows': [{'root': '/games/example'}], 'restart': True, 'game_mode': True}
+        with patch.object(app_updates, 'launch') as launch:
+            with self.assertRaisesRegex(RuntimeError, 'Close running games'):
+                namespace['update_apply'](params)
+            namespace['_storage_busy'] = lambda: True
+            with self.assertRaisesRegex(RuntimeError, 'file operation'):
+                namespace['update_apply'](params)
+            launch.assert_not_called()
+            namespace['_storage_busy'] = lambda: False
+            namespace['engine_bridge'].module = lambda config: types.SimpleNamespace(_running_processes_under_root=lambda root: [])
+            namespace['update_apply'](params)
+            self.assertEqual(launch.call_count, 1)
+            self.assertTrue(launch.call_args.kwargs['game_mode'])
+            self.assertTrue(launch.call_args.kwargs['restart'])
+
+
 if __name__ == '__main__':
     unittest.main()

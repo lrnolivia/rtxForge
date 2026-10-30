@@ -14,6 +14,15 @@ $ErrorActionPreference = 'Stop'
 $p = Get-Content -LiteralPath $Receipt -Raw | ConvertFrom-Json
 $updateMutex = New-Object System.Threading.Mutex($false, 'Local\rtxForge.ApplicationUpdate')
 $ownsUpdate = $false
+$recoveryReady = $false
+$setupStarted = $false
+$backup = Join-Path (Split-Path -Parent $Receipt) 'previous-installation'
+# Both mirror destinations are resolved and bounded before robocopy can remove
+# obsolete files. The app path comes from the installed executable, never a URL.
+$updateRoot = [IO.Path]::GetFullPath((Split-Path -Parent $Receipt)).TrimEnd('\') + '\'
+$backup = [IO.Path]::GetFullPath($backup)
+if (!$backup.StartsWith($updateRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Invalid recovery directory.' }
+if ([IO.Path]::GetFullPath($p.folder) -ne (Split-Path -Parent ([IO.Path]::GetFullPath($p.exe)))) { throw 'Invalid installation directory.' }
 try {
     try { $ownsUpdate = $updateMutex.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $ownsUpdate = $true }
     if (!$ownsUpdate) { throw 'Another update is already installing.' }
@@ -28,8 +37,12 @@ try {
     if ((Get-FileHash -LiteralPath $p.path -Algorithm SHA256).Hash.ToLowerInvariant() -ne $p.sha256) {
         throw 'The staged installer changed. Nothing was installed.'
     }
+    & robocopy $p.folder $backup /MIR /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS | Out-Null
+    if ($LASTEXITCODE -ge 8) { throw 'Could not preserve the previous app. Nothing was installed.' }
+    $recoveryReady = $true
     $arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/SP-', '/NORESTART',
         ('/DIR="' + $p.folder + '"'), ('/LOG="' + $p.log + '"'))
+    $setupStarted = $true
     $setup = Start-Process -FilePath $p.path -ArgumentList $arguments -PassThru -Wait -WindowStyle Hidden
     if ($setup.ExitCode -ne 0) { throw ('Setup failed with code ' + $setup.ExitCode + '. See ' + $p.log) }
     if ($p.restart) {
@@ -40,7 +53,13 @@ try {
     }
     @{ok=$true; version=$p.version} | ConvertTo-Json | Set-Content -LiteralPath $p.result -Encoding UTF8
 } catch {
-    @{ok=$false; error=$_.Exception.Message} | ConvertTo-Json | Set-Content -LiteralPath $p.result -Encoding UTF8
+    $failure = $_.Exception.Message
+    if ($setupStarted -and $recoveryReady) {
+        & robocopy $backup $p.folder /MIR /XJ /R:1 /W:1 /NFL /NDL /NJH /NJS | Out-Null
+        if ($LASTEXITCODE -ge 8) { $failure += ' Recovery failed; reinstall from the release page. Backups remain in your profile.' }
+        else { $failure += ' The previous application was restored.' }
+    }
+    @{ok=$false; error=$failure} | ConvertTo-Json | Set-Content -LiteralPath $p.result -Encoding UTF8
 } finally {
     if ($ownsUpdate) { $updateMutex.ReleaseMutex() }
     $updateMutex.Dispose()

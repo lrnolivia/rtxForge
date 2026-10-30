@@ -1,0 +1,38 @@
+[
+  {
+    "app": 870780,
+    "title": "CONTROL",
+    "file": "870780.jpg",
+    "accent": "#db6268",
+    "source": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/870780/ss_8376498631b089e52fb5c75ffe119e0de5e6aed1.1920x1080.jpg?t=1781607969",
+    "store": "https://store.steampowered.com/app/870780/",
+    "sha256": "9899704e91707ebe8219a87fa1de53885d21bd4032132117fc427ea53cfa37f5"
+  },
+  {
+    "app": 1091500,
+    "title": "Cyberpunk 2077",
+    "file": "1091500.jpg",
+    "accent": "#e5c849",
+    "source": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1091500/ss_2f649b68d579bf87011487d29bc4ccbfdd97d34f.1920x1080.jpg?t=1792682505",
+    "store": "https://store.steampowered.com/app/1091500/",
+    "sha256": "ec7f40415a114235c549a8ec94020e4fe29af61b128c3a1ae4ed8e85287f6f72"
+  },
+  {
+    "app": 292030,
+    "title": "The Witcher 3",
+    "file": "292030.jpg",
+    "accent": "#8fa982",
+    "source": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/292030/f7f564ecedd09b3e503b071a637aeefdedbeedd8/ss_f7f564ecedd09b3e503b071a637aeefdedbeedd8.1920x1080.jpg?t=1790845156",
+    "store": "https://store.steampowered.com/app/292030/",
+    "sha256": "05e2fed4f63c527cfbef1ff07b2fed1b010168e37388600333a27a681c00715d"
+  },
+  {
+    "app": 2456740,
+    "title": "inZOI",
+    "file": "2456740.jpg",
+    "accent": "#bf9574",
+    "source": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2456740/654a0eb86c9d38620c5a5992bc2a58a4b4b894f8/ss_654a0eb86c9d38620c5a5992bc2a58a4b4b894f8.1920x1080.jpg?t=1792372965",
+    "store": "https://store.steampowered.com/app/2456740/",
+    "sha256": "6b38c6ee9b50889cfe3adbf1f3ac48faf874983a32b20ff4afd8c82b7eadea70"
+  }
+]

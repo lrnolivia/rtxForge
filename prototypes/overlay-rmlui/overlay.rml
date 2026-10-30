@@ -1,0 +1,600 @@
+<rml>
+  <head>
+    <title>rtxForge overlay prototype</title>
+    <link type="text/rcss" href="overlay.rcss" />
+  </head>
+  <body>
+    <paint-root class="prototype-toolbar">
+      <span class="preview-label">Preview scene</span>
+      <select id="scene-select">
+        <option value="0">Current scene</option>
+      </select>
+    </paint-root>
+    <div class="workspace">
+      <paint-root class="glass main-panel" id="main-panel">
+        <div class="brand-row">
+          <div class="brand-lockup">
+            <img class="brand-logo" src="logo-mark.png" />
+            <span class="brand">rtxForge</span>
+          </div>
+          <div class="window-actions">
+            <button id="open-settings" class="close" title="Settings">
+              <img class="glyph" src="icons/sliders-light.png" />
+            </button>
+            <button id="close" class="close" aria-label="Close controls" title="Close controls">
+              <span class="stroke first" />
+              <span class="stroke second" />
+            </button>
+          </div>
+        </div>
+        <h1>OVERLAY PREVIEW</h1>
+        <div class="sidebar">
+          <button id="nav-overview">
+            <img class="glyph" src="icons/gauge-light.png" />Overview</button>
+          <button id="nav-frame">
+            <img class="glyph" src="icons/film-strip-light.png" />Frame generation</button>
+          <button id="nav-neural">
+            <img class="glyph" src="icons/cpu-light.png" />Neural rendering</button>
+          <button id="nav-look">
+            <img class="glyph" src="icons/sliders-horizontal-light.png" />Look &amp; detail</button>
+          <button id="nav-settings"><img class="glyph" src="icons/sliders-light.png" />Settings</button>
+          <button id="nav-passes">
+            <img class="glyph" src="icons/stack-light.png" />Pass tuning</button>
+        </div>
+        <div id="settings-screen" class="settings-screen" style="display: none">
+          <div class="settings-title"><h2><img class="glyph" src="icons/sliders-light.png" />SETTINGS</h2><button id="settings-back" class="quiet">Back</button></div>
+          <button id="open-appearance" class="settings-appearance"><img class="glyph" src="icons/palette-light.png" /><span>Appearance<span class="setting-description">Theme, text and scale</span></span><span class="chevron" /></button>
+          <div class="settings-group"><h3>LAYOUT</h3><div id="layout-switch" class="settings-layouts"><button id="layout-floating" class="selected">Sidebar</button><button id="layout-centered">Advanced</button><button id="layout-bar">Bottom Bar</button></div></div>
+          <div class="settings-group"><h3>SHORTCUT</h3><button id="shortcut-bind" class="shortcut-bind"><span>Open controls</span><span id="shortcut-key" class="keycap">Del</span></button><p id="shortcut-help" class="hint">Choose a key with optional Ctrl, Alt or Shift.</p></div>
+          <div class="settings-group"><h3>ON SCREEN</h3>
+            <div class="inherit-row"><label>Live statistics</label><button id="setting-stats" class="switch on"><span class="thumb" /></button></div>
+            <div class="inherit-row"><label>Welcome message</label><button id="setting-welcome" class="switch on"><span class="thumb" /></button></div>
+            <div class="inherit-row"><label>Hotkey notifications</label><button id="setting-notifications" class="switch on"><span class="thumb" /></button></div>
+            <label>Welcome position</label><select id="welcome-position"><option value="top-right">Top right</option><option value="top-center">Top center</option><option value="top-left">Top left</option><option value="bottom-right">Bottom right</option><option value="bottom-left">Bottom left</option></select>
+            <button id="welcome-test" class="quiet"><img class="glyph" src="icons/info-light.png" />Preview welcome</button>
+          </div>
+          <div class="settings-group"><h3>GAME MENUS</h3><p class="hint">Menu access is separate from rendering features. Changes apply after restarting the game.</p>
+            <label>Primary menu</label><select id="primary-menu"><option value="game">rtxForge</option><option value="optiscaler">OptiScaler</option></select>
+            <div class="inherit-row"><label>OptiScaler menu</label><button id="setting-opti-menu" class="switch on"><span class="thumb" /></button></div>
+            <div class="inherit-row"><label>OptiScaler intro</label><button id="setting-opti-intro" class="switch"><span class="thumb" /></button></div>
+            <label>OptiScaler shortcut</label><select id="opti-shortcut"><option value="Insert">Insert</option><option value="F8">F8</option><option value="Disabled">Disabled</option></select>
+            <div class="inherit-row"><label>ReShade menu</label><button id="setting-reshade-menu" class="switch on"><span class="thumb" /></button></div>
+            <div class="inherit-row"><label>ReShade welcome</label><button id="setting-reshade-intro" class="switch"><span class="thumb" /></button></div>
+            <button id="menus-review" class="quiet"><img class="glyph" src="icons/sliders-light.png" />Review installed game menus</button>
+            <p class="hint" id="menus-note">Review the installed games to apply menu changes.</p>
+          </div>
+          <div class="settings-group"><h3>BACKGROUND CONTROLS</h3>
+            <div class="inherit-row"><label>Background helper</label><button id="setting-helper" class="switch on"><span class="thumb" /></button></div>
+            <div id="startup-row" class="inherit-row"><label>Start with Windows</label><button id="setting-startup" class="switch"><span class="thumb" /></button></div>
+          </div>
+          <div class="settings-group"><h3>LIBRARY CONTROLS</h3><p class="hint">One-time changes to compatible installed games. Review before applying.</p>
+            <label>Neural rendering</label><select id="global-neural"><option value="leave">Leave as is</option><option value="0">Off</option><option value="1">On</option></select>
+            <label>Frame generation</label><select id="global-frame"><option value="leave">Leave as is</option><option value="0">Off</option><option value="-1">Follow game</option><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option><option value="5">5×</option><option value="6">6×</option></select>
+            <button id="global-review" class="quiet"><img class="glyph" src="icons/gauge-light.png" />Review games</button>
+          </div>
+          <div id="review-panel" class="settings-group" style="display: none"><h3>REVIEW</h3><div id="review-items" /><div class="save-actions"><button id="discard-review" class="quiet">Cancel</button><button id="apply-review" class="save">Apply to games</button></div></div>
+        </div>
+        <div id="overview" class="overview">
+          <button id="open-session" class="metadata-compact">
+            <div class="metadata-top">
+              <span class="session-name">
+                <img class="glyph" src="icons/gauge-light.png" />Preview session</span>
+              <span class="chevron" />
+            </div>
+            <div class="metadata-line">
+              <span id="compact-api">DirectX 11</span>
+              <span id="compact-size">2560 × 1440</span>
+              <span>SDR</span>
+            </div>
+            <div class="feature-status">
+              <span id="status-sr" class="status-chip installed">
+                <span class="led" />
+                <span>SR</span>
+              </span>
+              <span id="status-rr" class="status-chip unavailable">
+                <span class="led" />
+                <span>RR</span>
+              </span>
+              <span id="status-nr" class="status-chip active">
+                <span class="led" />
+                <span>NR</span>
+              </span>
+              <span id="status-fg" class="status-chip waiting">
+                <span class="led" />
+                <span>FG</span>
+              </span>
+              <span class="status-note">Preview states</span>
+            </div>
+            <div id="compact-live" class="compact-live">
+              <div class="mini-stat"><span class="mini-stat-label"><img class="glyph" src="icons/film-strip-light.png" /><span>Frame generation</span><span id="compact-ratio" class="metric-badge" /></span><span id="compact-frames" class="mini-stat-value">—</span></div>
+              <div class="mini-stat"><span class="mini-stat-label"><img class="glyph" src="icons/cpu-light.png" /><span>Neural rendering</span></span><span id="compact-neural" class="mini-stat-value">—</span></div>
+            </div>
+          </button>
+          <div class="metadata-expanded" id="overview-metadata">
+            <div class="session-heading">
+              <span class="session-dot" />
+              <span>Preview renderer ready</span>
+              <span class="preview-badge">No game connected</span>
+            </div>
+            <div class="session-facts">
+              <div>
+                <label>Renderer</label>
+                <span id="overview-api">DirectX 11</span>
+              </div>
+              <div>
+                <label>Resolution</label>
+                <span id="overview-size">2560 × 1440</span>
+              </div>
+              <div>
+                <label>Color</label>
+                <span>SDR</span>
+              </div>
+            </div>
+            <div class="runtime-metrics">
+              <div class="runtime-metric">
+                <label>NR time</label>
+                <strong id="overview-nr">—</strong>
+              </div>
+              <div class="runtime-metric">
+                <label>Frame time</label>
+                <strong id="overview-frame">—</strong>
+              </div>
+              <div class="runtime-metric">
+                <label>Rendered FPS</label>
+                <strong id="overview-rendered">—</strong>
+              </div>
+              <div class="runtime-metric">
+                <label>Displayed FPS</label>
+                <strong id="overview-displayed">—</strong>
+              </div>
+            </div>
+            <div class="history-heading">
+              <h3>FRAME HISTORY</h3>
+              <span>30 seconds</span>
+            </div>
+            <div class="history-empty">
+              <div class="history-rule rule-one" />
+              <div class="history-rule rule-two" />
+              <div class="history-rule rule-three" />
+              <p>Game timings will appear here when connected.</p>
+            </div>
+            <div class="history-axis">
+              <span>30 s ago</span>
+              <span>Now</span>
+            </div>
+          </div>
+          <div id="tuning-content">
+            <div class="preset-row">
+              <select id="presets">
+                <option value="natural">Natural</option>
+                <option value="cinematic">Cinematic</option>
+              </select>
+              <button id="save" class="save">
+                <img class="glyph" src="icons/floppy-disk-light.png" />Save preset</button>
+            </div>
+            <div id="save-sheet" class="save-sheet" style="display: none"><label>Preset name</label><input type="text" id="preset-name" maxlength="60" /><div class="save-actions"><button id="delete-preset" class="quiet">Delete selected</button><button id="save-cancel" class="quiet">Cancel</button><button id="save-confirm" class="save">Save for this game</button></div></div>
+            <div class="tuning-sections">
+              <section id="frame-section">
+                <div class="section-heading">
+                  <h2>
+                    <img class="glyph" src="icons/film-strip-light.png" />FRAME GENERATION</h2>
+                  <button id="open-frame-options" class="icon-button" title="More options">
+                    <img class="glyph" src="icons/sliders-light.png" />
+                  </button>
+                  <button id="mfg-toggle" class="switch on">
+                    <span />
+                  </button>
+                </div>
+                <div id="mfg-body">
+                  <div class="segments" id="mfg-mode">
+                    <button id="mode-auto" class="selected">Auto</button>
+                    <button id="mode-custom">Custom</button>
+                    <button id="mode-dynamic">Dynamic</button>
+                  </div>
+                  <div id="ratios" class="ratios">
+                    <button id="ratio-2" class="selected">2×</button>
+                    <button id="ratio-3">3×</button>
+                    <button id="ratio-4">4×</button>
+                    <button id="ratio-5">5×</button>
+                    <button id="ratio-6">6×</button>
+                  </div>
+                  <p class="hint" id="mfg-hint">Follows the game’s frame generation setting.</p>
+                </div>
+                <div id="extra-frame" class="advanced-section" />
+              </section>
+              <section class="neural" id="neural-section">
+                <div class="section-heading">
+                  <h2>
+                    <img class="glyph" src="icons/cpu-light.png" />NEURAL RENDERING</h2>
+                  <button id="open-processing" class="icon-button" title="More options">
+                    <img class="glyph" src="icons/sliders-light.png" />
+                  </button>
+                  <button id="nr-toggle" class="switch on">
+                    <span />
+                  </button>
+                </div>
+                <div id="nr-body">
+                  <div class="field-heading">
+                    <label>Style</label>
+                  </div>
+                  <div class="segments" id="nr-style">
+                    <button id="style-default">Default</button>
+                    <button id="style-natural" class="selected">Natural</button>
+                    <button id="style-cinematic">Cinematic</button>
+                  </div>
+                  <div class="slider-field">
+                    <div class="field-heading">
+                      <label>Strength</label>
+                      <span id="strength-value">1.00</span>
+                    </div>
+                    <input id="strength" class="range" type="range" min="0" max="2" step="0.01" value="1" />
+                  </div>
+                  <div class="model-row">
+                    <div class="model-field">
+                      <label>
+                        <img class="glyph" src="icons/cpu-light.png" />Model</label>
+                      <select id="model-preset">
+                        <option value="0">Automatic</option>
+                        <option value="1">Preset 1</option>
+                        <option value="2">Preset 2</option>
+                        <option value="3">Preset 3</option>
+                      </select>
+                    </div>
+                    <div class="model-field">
+                      <label>
+                        <img class="glyph" src="icons/stack-light.png" />Passes</label>
+                      <select id="pass-count">
+                        <option value="1">1 pass</option>
+                        <option value="2">2 passes</option>
+                        <option value="3" selected="selected">3 passes</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="inspector-links">
+                    <button id="open-look" class="text-link">
+                      <img class="glyph" src="icons/sliders-horizontal-light.png" />Look &amp; detail <span class="chevron" />
+                    </button>
+                    <button id="open-passes" class="text-link">
+                      <img class="glyph" src="icons/stack-light.png" />Pass tuning <span class="chevron" />
+                    </button>
+                  </div>
+                </div>
+                <div id="extra-neural" class="advanced-section" />
+              </section>
+            </div>
+            <div class="footer">
+              <div class="history-actions">
+                <button id="undo" class="quiet">
+                  <img class="glyph" src="icons/arrow-u-up-left-light.png" />Undo</button>
+                <button id="redo" class="quiet">
+                  <img class="glyph" src="icons/arrow-u-up-right-light.png" />Redo</button>
+              </div>
+              <button id="defaults" class="quiet">
+                <img class="glyph" src="icons/arrow-counter-clockwise-light.png" />Reset</button>
+            </div>
+            <div class="compare">
+              <select id="compare-mode">
+                <option value="toggle" selected="selected">On / Off</option>
+                <option value="presets">Presets</option>
+              </select>
+              <button id="compare-a">Off</button>
+              <button id="compare-b" class="selected">On</button>
+            </div>
+            <div id="compare-preset-pair" class="compare-preset-pair">
+              <select id="compare-left">
+                <option value="natural" selected="selected">Natural</option>
+                <option value="cinematic">Cinematic</option>
+              </select>
+              <select id="compare-right">
+                <option value="natural">Natural</option>
+                <option value="cinematic" selected="selected">Cinematic</option>
+              </select>
+            </div>
+            <p id="feedback" class="preview-note">Preview · no game connected.</p>
+          </div>
+        </div>
+      </paint-root>
+      <paint-root class="glass inspector" id="inspector">
+        <div class="inspector-heading">
+          <h2 id="inspector-title">PASS TUNING</h2>
+          <button id="inspector-close" class="close" aria-label="Close inspector" title="Close inspector">
+            <span class="stroke first" />
+            <span class="stroke second" />
+          </button>
+        </div>
+        <div id="pass-inspector">
+          <div class="segments pass-tabs">
+            <button id="pass-2" class="selected">Pass 2</button>
+            <button id="pass-3">Pass 3</button>
+          </div>
+          <div class="inherit-row">
+            <label>Use main settings</label>
+            <button id="inherit" class="switch">
+              <span />
+            </button>
+          </div>
+          <div id="pass-fields">
+            <div class="option-group">
+              <h3>MODEL</h3>
+              <div class="field-heading">
+                <label>Style</label>
+              </div>
+              <div class="segments" id="pass-style">
+                <button id="pass-style-default" class="selected">Default</button>
+                <button id="pass-style-natural">Natural</button>
+                <button id="pass-style-cinematic">Cinematic</button>
+              </div>
+              <div class="slider-field">
+                <div class="field-heading">
+                  <label>Strength</label>
+                  <span id="pass-strength-value">0.65</span>
+                </div>
+                <input id="pass-strength" class="range" type="range" min="0" max="2" step="0.01" value="0.65" />
+              </div>
+            </div>
+            <div class="option-group">
+              <h3>DETAIL</h3>
+              <div class="slider-field">
+                <div class="field-heading">
+                  <label>Local tone</label>
+                  <span id="pass-tone-value">0.80</span>
+                </div>
+                <input id="pass-tone" class="range" type="range" min="0" max="2" step="0.01" value="0.8" />
+              </div>
+              <div class="slider-field">
+                <div class="field-heading">
+                  <label>Structure</label>
+                  <span id="pass-structure-value">1.00</span>
+                </div>
+                <input id="pass-structure" class="range" type="range" min="0" max="2" step="0.01" value="1" />
+              </div>
+              <div class="slider-field">
+                <div class="field-heading">
+                  <label>Skin detail</label>
+                  <span id="pass-skin-value">0.50</span>
+                </div>
+                <input id="pass-skin" class="range" type="range" min="-1" max="2" step="0.01" value="0.5" />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="look-inspector">
+          <div class="slider-field">
+            <div class="field-heading">
+              <label>Detail</label>
+              <span id="detail-value">1.00</span>
+            </div>
+            <input id="detail" class="range" type="range" min="0" max="2" step="0.01" value="1" />
+          </div>
+          <div class="slider-field">
+            <div class="field-heading">
+              <label>Color</label>
+              <span id="colour-value">1.00</span>
+            </div>
+            <input id="colour" class="range" type="range" min="0" max="4" step="0.01" value="1" />
+          </div>
+          <div class="slider-field">
+            <div class="field-heading">
+              <label>Local tone</label>
+              <span id="tone-value">1.00</span>
+            </div>
+            <input id="tone" class="range" type="range" min="0" max="2" step="0.01" value="1" />
+          </div>
+          <div id="extra-look" />
+        </div>
+        <div id="extra-processing" style="display: none" />
+        <div id="extra-frame-popup" style="display: none" />
+        <div class="metadata-expanded" id="popup-metadata" style="display: none">
+          <div class="session-heading">
+            <span class="session-dot" />
+            <span>Preview renderer ready</span>
+            <span class="preview-badge">No game connected</span>
+          </div>
+          <div class="session-facts">
+            <div>
+              <label>Renderer</label>
+              <span id="popup-api">DirectX 11</span>
+            </div>
+            <div>
+              <label>Resolution</label>
+              <span id="popup-size">2560 × 1440</span>
+            </div>
+            <div>
+              <label>Color</label>
+              <span>SDR</span>
+            </div>
+          </div>
+          <div class="runtime-metrics">
+            <div class="runtime-metric">
+              <label>NR time</label>
+              <strong id="popup-nr">—</strong>
+            </div>
+            <div class="runtime-metric">
+              <label>Frame time</label>
+              <strong id="popup-frame">—</strong>
+            </div>
+            <div class="runtime-metric">
+              <label>Rendered FPS</label>
+              <strong id="popup-rendered">—</strong>
+            </div>
+            <div class="runtime-metric">
+              <label>Displayed FPS</label>
+              <strong id="popup-displayed">—</strong>
+            </div>
+          </div>
+          <div class="history-heading">
+            <h3>FRAME HISTORY</h3>
+            <span>30 seconds</span>
+          </div>
+          <div class="history-empty">
+            <div class="history-rule rule-one" />
+            <div class="history-rule rule-two" />
+            <div class="history-rule rule-three" />
+            <p>Game timings will appear here when connected.</p>
+          </div>
+          <div class="history-axis">
+            <span>30 s ago</span>
+            <span>Now</span>
+          </div>
+        </div>
+        <div class="inspector-footer">
+          <button id="reset-inspector" class="quiet">Reset this section</button>
+        </div>
+      </paint-root>
+    </div>
+    <paint-root id="welcome" class="glass welcome">
+      <img class="brand-logo" src="logo-mark.png" />
+      <span class="welcome-wordmark">rtxForge</span>
+      <span id="toast-message" class="welcome-message">Press <span class="keycap">Del</span> to open controls</span>
+      <button id="welcome-close" class="close" title="Dismiss notification">
+        <span class="stroke first" />
+        <span class="stroke second" />
+      </button>
+    </paint-root>
+    <paint-root id="type-panel" class="glass type-panel appearance-panel">
+      <div class="settings-heading">
+        <h2 id="settings-title">
+          <img class="glyph" src="icons/palette-light.png" />APPEARANCE</h2>
+        <button id="type-close" class="close" title="Close appearance">
+          <span class="stroke first" />
+          <span class="stroke second" />
+        </button>
+      </div>
+      <div class="appearance-body">
+        <div class="appearance-block">
+          <label>Font</label>
+          <select id="font-select">
+            <option value="roboto">Roboto</option>
+            <option value="inter">Inter</option>
+            <option value="aptos">Aptos</option>
+          </select>
+        </div>
+        <div class="appearance-block">
+          <label>Text size</label>
+          <div class="text-presets">
+            <button id="text-smaller">
+              <span class="type-sample sample-small">Aa</span>
+              <span class="type-caption">Smaller</span>
+            </button>
+            <button id="text-default">
+              <span class="type-sample">Aa</span>
+              <span class="type-caption">Default</span>
+            </button>
+            <button id="text-larger">
+              <span class="type-sample sample-large">Aa</span>
+              <span class="type-caption">Larger</span>
+            </button>
+          </div>
+        </div>
+        <div class="appearance-block scale-row">
+          <label>Scale</label>
+          <div class="scale-stepper">
+            <button id="scale-minus" title="Smaller overlay">−</button>
+            <span id="scale-value">100%</span>
+            <button id="scale-plus" title="Larger overlay">+</button>
+          </div>
+        </div>
+        <div class="appearance-block">
+          <div class="field-heading">
+            <label>Theme</label>
+            <span id="theme-label">Clear</span>
+          </div>
+          <div id="theme-menu" class="theme-swatches">
+            <button id="theme-light">
+              <span class="theme-sample light-sample" />
+              <span>Light</span>
+            </button>
+            <button id="theme-dark">
+              <span class="theme-sample dark-sample" />
+              <span>Dark</span>
+            </button>
+            <button id="theme-clear">
+              <span class="theme-sample clear-sample" />
+              <span>Clear</span>
+            </button>
+          </div>
+          <p id="theme-description" class="hint">Frosted glass, tuned to the scene.</p>
+        </div>
+        <button id="appearance-more" class="more-trigger">
+          <img class="glyph" src="icons/sliders-light.png" />
+          <span>More</span>
+          <span class="chevron" />
+        </button>
+        <div id="appearance-details" class="appearance-details" style="display: none">
+          <div class="slider-field">
+            <div class="field-heading">
+              <label>Tint opacity</label>
+              <span id="tint-opacity-value" />
+            </div>
+            <input id="tint-opacity" class="range" type="range" min="0" max="100" step="1" value="10" />
+          </div>
+          <div class="slider-field">
+            <div class="field-heading">
+              <label>Blur</label>
+              <span id="blur-radius-value" />
+            </div>
+            <input id="blur-radius" class="range" type="range" min="16" max="48" step="1" value="44" />
+          </div>
+          <div class="slider-field">
+            <div class="field-heading">
+              <label>Grain</label>
+              <span id="grain-amount-value" />
+            </div>
+            <input id="grain-amount" class="range" type="range" min="0" max="8" step=".1" value="4" />
+          </div>
+          <div class="slider-field">
+            <label>Surface blend</label>
+            <select id="surface-blend">
+              <option value="normal">Normal</option>
+              <option value="soft-light">Soft Light</option>
+              <option value="overlay">Overlay</option>
+              <option value="multiply">Multiply</option>
+              <option value="screen">Screen</option>
+              <option value="hard-light">Hard Light</option>
+              <option value="darken">Darken</option>
+              <option value="lighten">Lighten</option>
+              <option value="color">Color</option>
+              <option value="luminosity">Luminosity</option>
+              <option value="difference">Difference</option>
+            </select>
+          </div>
+          <div class="slider-field">
+            <div class="field-heading">
+              <label>Blend strength</label>
+              <span id="blend-strength-value" />
+            </div>
+            <input id="blend-strength" class="range" type="range" min="0" max="100" step="1" value="50" />
+          </div>
+          <div class="inherit-row">
+            <label>Adaptive text depth</label>
+            <button id="text-depth" class="switch">
+              <span />
+            </button>
+          </div>
+          <div id="dark-inversion-row" class="inherit-row">
+            <label>Darker inner cards</label>
+            <button id="dark-inverted" class="switch">
+              <span />
+            </button>
+          </div>
+          <div class="inherit-row">
+            <label>Motion effects</label>
+            <button id="motion-effects" class="switch on">
+              <span />
+            </button>
+          </div>
+          <div class="slider-field">
+            <label>Toast shape</label>
+            <div class="segments toast-shapes">
+              <button id="toast-rounded">Rounded</button>
+              <button id="toast-pill">Pill</button>
+            </div>
+          </div>
+          <button id="theme-reset" class="text-link">
+            <img class="glyph" src="icons/arrow-counter-clockwise-light.png" />Reset theme</button>
+        </div>
+      </div>
+    </paint-root>
+    <paint-root id="tooltip" />
+  </body>
+</rml>

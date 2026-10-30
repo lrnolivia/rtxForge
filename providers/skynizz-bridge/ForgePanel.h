@@ -15,6 +15,7 @@
 #include <cstdio>
 #include "ForgePanelChannel.h"
 #include "ForgePanelIcon.h"
+#include "ForgeWorkbench.h"
 
 // Runs inside the already-installed menu hook. No HWND, secondary swapchain,
 // screen copy, blur pass, process polling, network or per-frame disk access.
@@ -27,7 +28,7 @@ struct Control
     const char *key, *label, *advanced, *group;
     Kind kind; float low, high;
     float (*get)(Config&); void (*set)(Config&, float, bool);
-    const Choice* choices; size_t count;
+    const Choice* choices; size_t count; float defaultValue;
 };
 #include "ForgePanelBindings.h"
 #include "ForgePanelFont.h"
@@ -109,6 +110,14 @@ struct LiveStats {
 };
 inline LiveStats (*readLiveStats)() = nullptr;
 inline bool (*controlSupported)(const Control&) = nullptr;
+inline bool liveTuning = true;
+inline bool useGlass = false;
+inline ForgeWorkbench::Edits edits;
+inline ForgeWorkbench::History history;
+inline std::string presetName;
+inline char presetDraft[64] = "";
+inline bool saveAwaiting = false;
+inline ForgeWorkbench::Values savingValues;
 // Render at output pixel density. Never enlarge a low-resolution font atlas.
 // This follows MFG's DPI/output/client relationship without double scaling.
 inline float PanelScale() {
@@ -146,6 +155,11 @@ inline void PollHelper()
 {
     const auto previous=ForgePanelChannel::lastRevision;
     ForgePanelChannel::Poll();
+    if(saveAwaiting && ForgePanelChannel::lastRevision != previous
+        && ForgePanelChannel::lastOperation == "preset-save" && !ForgePanelChannel::pending) {
+        if(!ForgePanelChannel::responseError) { edits.saved = savingValues; presetName = ForgePanelChannel::savedPresetName; }
+        saveAwaiting = false;
+    }
     if(ForgePanelChannel::helperReady && ForgePanelChannel::lastRevision!=previous) LoadGameIdentity();
     const auto& prefs=ForgePanelChannel::settings;
     if(prefs.contains("overlay_controls")) advanced=prefs.value("overlay_controls",std::string())=="classic";
@@ -293,7 +307,7 @@ inline bool Available(const Control& field)
 inline bool IconButton(const char* id, int kind, float scale)
 {
     const auto position = ImGui::GetCursorScreenPos();
-    const bool pressed = ImGui::InvisibleButton(id,ImVec2(30.f*scale,30.f*scale));
+    const bool pressed = ImGui::InvisibleButton(id,ImVec2(30.f*scale,30.f*scale),ImGuiButtonFlags_EnableNav);
     auto* draw = ImGui::GetWindowDrawList();
     const auto center = ImVec2(position.x+15.f*scale,position.y+15.f*scale);
     const auto ink = Colour(Tone(.77f,.26f));
@@ -313,6 +327,12 @@ inline bool IconButton(const char* id, int kind, float scale)
         draw->AddBezierCubic(ImVec2(center.x,center.y-r),ImVec2(center.x-r*.7f,center.y-r),ImVec2(center.x-r*.7f,center.y+r),ImVec2(center.x,center.y+r),ink,1.5f*scale,16);
         draw->AddBezierCubic(ImVec2(center.x,center.y-r),ImVec2(center.x+r*.7f,center.y-r),ImVec2(center.x+r*.7f,center.y+r),ImVec2(center.x,center.y+r),ink,1.5f*scale,16);
     }
+    else if(kind == 3)
+    {
+        draw->PathArcTo(center,7*scale,.5f,5.3f,20); draw->PathStroke(ink,0,1.5f*scale);
+        draw->AddLine(ImVec2(center.x+4*scale,center.y-8*scale),ImVec2(center.x+4*scale,center.y-2*scale),ink,1.5f*scale);
+        draw->AddLine(ImVec2(center.x+4*scale,center.y-2*scale),ImVec2(center.x+9*scale,center.y-4*scale),ink,1.5f*scale);
+    }
     else
     {
         draw->AddLine(ImVec2(center.x-5*scale,center.y-5*scale),ImVec2(center.x+5*scale,center.y+5*scale),ink,1.5f*scale);
@@ -326,6 +346,23 @@ inline bool IconButton(const char* id, int kind, float scale)
 inline std::unordered_map<std::string, float> dragging;
 inline std::unordered_map<const Control*, float> queued;
 inline std::chrono::steady_clock::time_point lastCommit {};
+inline ForgeWorkbench::Values Values(Config& cfg)
+{
+    ForgeWorkbench::Values result;
+    for(const auto& field : controls) if(Available(field)) {
+        const auto found = queued.find(&field);
+        result[field.key] = found == queued.end() ? field.get(cfg) : found->second;
+    }
+    if(mfgAllowed) result["dynamic_mfg"] = cfg.FGDLSSGOverrideForceDMFG.value_or_default() ? 1.f : 0.f;
+    return result;
+}
+inline bool Valid(const Control& field, float value)
+{
+    if(!std::isfinite(value) || value < field.low || value > field.high) return false;
+    if(field.kind != Kind::slider && std::floor(value) != value) return false;
+    return field.kind != Kind::choice || std::any_of(field.choices,field.choices+field.count,
+        [value](const Choice& choice) { return choice.value == value; });
+}
 inline void Flush(Config& cfg, bool force = false)
 {
     const auto now = std::chrono::steady_clock::now();
@@ -335,16 +372,50 @@ inline void Flush(Config& cfg, bool force = false)
 }
 inline void Commit(const Control& field, Config& cfg, float value)
 {
-    if(!std::isfinite(value)) return;
-    queued[&field] = value; Flush(cfg);
+    if(!Available(field) || !Valid(field,value)) return;
+    const auto before = Values(cfg);
+    queued[&field] = value;
+    edits.Record(before,Values(cfg)); Flush(cfg);
+}
+inline bool ApplyValues(Config& cfg, const ForgeWorkbench::Values& values, bool record = true)
+{
+    // Validate the complete snapshot before changing anything. A preset from
+    // another route or an older package must never be partially applied.
+    for(const auto& [key,value] : values) {
+        if(key == "dynamic_mfg") {
+            if(!mfgAllowed || (value != 0 && value != 1)
+                || (value == 1 && !State::Instance().dlssgGameDMFGSupported)) return false;
+            continue;
+        }
+        const auto field = std::find_if(std::begin(controls),std::end(controls),
+            [&key](const Control& field) { return key == field.key; });
+        if(field == std::end(controls) || !Available(*field) || !Valid(*field,value)) return false;
+        if(key == "multiplier" && value > 0 && value - 1 > State::Instance().dlssgMfgMax.value_or(0)) return false;
+    }
+    const auto before = Values(cfg);
+    dragging.clear();
+    for(const auto& field : controls) if(const auto value = values.find(field.key); value != values.end()) queued[&field] = value->second;
+    if(const auto value = values.find("dynamic_mfg"); value != values.end())
+        cfg.FGDLSSGOverrideForceDMFG.set_volatile_value(value->second != 0);
+    if(record) edits.Record(before,Values(cfg));
+    Flush(cfg); return true;
+}
+inline void Defaults(Config& cfg, const char* group = nullptr, const char* key = nullptr)
+{
+    ForgeWorkbench::Values values;
+    for(const auto& field : controls) if(Available(field) && (!group || std::strcmp(group,field.group)==0)
+        && (!key || std::strcmp(key,field.key)==0)) values[field.key] = field.defaultValue;
+    if(!group && !key && mfgAllowed) values["dynamic_mfg"] = 0;
+    ApplyValues(cfg,values);
 }
 // The rtxForge sidebar's slider: a thin track with a subtle fill and a small
 // vertical thumb, its value right-aligned on the label line. Drawn over an
 // invisible ImGui slider, so mouse, keyboard and gamepad input are unchanged.
 inline void SliderBegin(const char* text)
 {
-    const auto label = ImGui::GetItemRectMin();
-    const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+    auto label = ImGui::GetCursorScreenPos();
+    label.y -= ImGui::GetTextLineHeight() + ImGui::GetStyle().ItemSpacing.y;
+    const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x - 30.f*ImGui::GetFontSize()/14.f;
     ImGui::GetWindowDrawList()->AddText(ImVec2(right - ImGui::CalcTextSize(text).x, label.y), Colour(Tone(.90f,lightInk)), text);
     ImGui::SetNextItemWidth(-1);
     for(const auto slot : {ImGuiCol_FrameBg, ImGuiCol_FrameBgHovered, ImGuiCol_FrameBgActive, ImGuiCol_SliderGrab, ImGuiCol_SliderGrabActive})
@@ -510,8 +581,8 @@ inline void FrameGeneration(Config& cfg)
     bool on = value != 0;
     if(HeaderToggle("Multi-Frame Generation", &on, mfgAllowed))
     {
-        if(on) Commit(*field, cfg, lastFrameGeneration != 0 ? lastFrameGeneration : -1.f);
-        else { lastFrameGeneration = value; cfg.FGDLSSGOverrideForceDMFG.set_volatile_value(false); Commit(*field, cfg, 0.f); }
+        if(on) ApplyValues(cfg,{{"multiplier",lastFrameGeneration != 0 ? lastFrameGeneration : -1.f}});
+        else { lastFrameGeneration = value; ApplyValues(cfg,{{"dynamic_mfg",0.f},{"multiplier",0.f}}); }
     }
     if(!on) { ImGui::TextDisabled("Multi-Frame Generation is off."); ImGui::Spacing(); return; }
     ImGui::BeginDisabled(!mfgAllowed);
@@ -524,8 +595,7 @@ inline void FrameGeneration(Config& cfg)
         if(i) ImGui::SameLine();
         if(!Segment(tabs[i], mode == i, third, i != 2 || dynamicReady || dynamic)) continue;
         const float ratio = value >= 2 ? value : float(i == 2 ? ceiling : 2);
-        cfg.FGDLSSGOverrideForceDMFG.set_volatile_value(i == 2);
-        Commit(*field, cfg, i == 0 ? -1.f : ratio);
+        ApplyValues(cfg,{{"dynamic_mfg",i == 2 ? 1.f : 0.f},{"multiplier",i == 0 ? -1.f : ratio}});
     }
     if(mode == 0) ImGui::TextDisabled("Follows the game's frame generation setting.");
     else
@@ -567,8 +637,20 @@ inline bool ChoiceList(const char* label, int* current, const char* const items[
     if(const auto pending = queued.find(&field); pending != queued.end()) value = pending->second;
     if(const auto held = dragging.find(field.key); held != dragging.end()) value = held->second;
     const auto label = advanced ? field.advanced : field.label;
+    const auto labelRow = [&] {
+        const float scale = ImGui::GetFontSize()/14.f;
+        const auto left = ImGui::GetCursorPosX(), top = ImGui::GetCursorPosY(), width = ImGui::GetContentRegionAvail().x;
+        ImGui::TextUnformatted(label);
+        const auto next = ImGui::GetCursorPosY();
+        ImGui::SameLine(); ImGui::SetCursorPosX(left+width-30.f*scale);
+        ImGui::SetCursorPosY(top-6.f*scale);
+        if(IconButton("Reset control",3,scale)) { value=field.defaultValue; changed=true; }
+        if(ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) ImGui::SetTooltip("Reset %s to its default",label);
+        ImGui::SetCursorPosY(next);
+    };
     if(std::strcmp(field.key,"multiplier") == 0 || std::strcmp(field.key,"style") == 0)
     {
+        labelRow();
         const auto count=std::strcmp(field.key,"style")==0 ? 3u : 5u;
         const auto width=(ImGui::GetContentRegionAvail().x-ImGui::GetStyle().ItemSpacing.x*(count-1))/count;
         for(unsigned i=0;i<count;++i)
@@ -584,12 +666,20 @@ inline bool ChoiceList(const char* label, int* current, const char* const items[
         }
     }
     else if (field.kind == Kind::toggle)
-    { bool on = value != 0; changed = SwitchRow(label, &on); value = on ? 1.f : 0.f; }
+    {
+        const auto start=ImGui::GetCursorPos(); const auto width=ImGui::GetContentRegionAvail().x;
+        bool on=value!=0; changed=SwitchRow(label,&on); value=on ? 1.f : 0.f;
+        const auto next=ImGui::GetCursorPos(); const float scale=ImGui::GetFontSize()/14.f;
+        ImGui::SetCursorPos(ImVec2(start.x+width-82.f*scale,start.y-5.f*scale));
+        if(IconButton("Reset control",3,scale)) { value=field.defaultValue; changed=true; }
+        if(ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) ImGui::SetTooltip("Reset %s to its default",label);
+        ImGui::SetCursorPos(next);
+    }
     else
     {
         // Labels sit close to their control, as in the rtxForge sidebar.
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,ImVec2(ImGui::GetStyle().ItemSpacing.x,3.f*ImGui::GetFontSize()/14.f));
-        ImGui::TextUnformatted(label); ImGui::PopStyleVar(); ImGui::SetNextItemWidth(-1);
+        labelRow(); ImGui::PopStyleVar(); ImGui::SetNextItemWidth(-1);
         if(field.kind == Kind::choice)
         {
             const char* preview = "Automatic";
@@ -789,6 +879,7 @@ inline void KeyGlyph(float scale)
 }
 inline void Welcome(bool panelVisible)
 {
+    if(useGlass)return;
     PollHelper();
     if(panelVisible) welcomeDismissed=true;
     if(WelcomeSyncing()) return;
@@ -946,9 +1037,169 @@ inline void FeatureStatistics(bool neural, float scale) {
     } else ImGui::TextDisabled("Waiting for displayed-frame data");
     ImGui::PopFont();
 }
+inline void PresetControls(Config& cfg, float scale)
+{
+    using namespace ForgePanelChannel;
+    const auto current = Values(cfg);
+    edits.Start(current);
+    const bool dirty = !ForgeWorkbench::Equal(current,edits.saved);
+    ImGui::PushID("named presets");
+    ImGui::BeginDisabled(!namedSupported || pending);
+    const auto saveWidth = 62.f*scale;
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x-saveWidth-ImGui::GetStyle().ItemSpacing.x);
+    const auto caption = (presetName.empty() ? std::string("Session settings") : presetName) + (dirty ? " *" : "");
+    if(Dropdown(caption.c_str())) {
+        for(const auto& entry : namedPresets) {
+            const auto name = entry.value("name",std::string());
+            ImGui::BeginDisabled(!entry.value("compatible",false));
+            if(DropdownItem(name.c_str(),presetName == name)) {
+                ForgeWorkbench::Values values;
+                for(const auto& [key,value] : entry["values"].items()) values[key] = value.get<float>();
+                if(ApplyValues(cfg,values)) { presetName=name; edits.saved=Values(cfg); }
+                else message="This preset needs controls unavailable in the current session. No changes applied.";
+            }
+            ImGui::EndDisabled();
+            if(ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) && !entry.value("compatible",false))
+                ImGui::SetTooltip("Saved for a different package. Save a new preset for this installation.");
+        }
+        if(namedPresets.empty()) ImGui::TextDisabled("No named presets for this game");
+        DropdownEnd();
+    }
+    ImGui::SameLine();
+    if(ImGui::Button("Save",ImVec2(saveWidth,0))) {
+        std::snprintf(presetDraft,sizeof(presetDraft),"%s",presetName.empty() ? "My preset" : presetName.c_str());
+        ImGui::OpenPopup("Save preset");
+    }
+    if(ImGui::BeginPopup("Save preset")) {
+        ImGui::TextUnformatted("Preset name");
+        ImGui::SetNextItemWidth(240.f*scale);
+        ImGui::InputText("##name",presetDraft,sizeof(presetDraft));
+        const bool empty = presetDraft[0] == 0;
+        ImGui::BeginDisabled(empty);
+        if(ImGui::Button("Save for this game",ImVec2(-1,0))) {
+            Flush(cfg,true);
+            nlohmann::json values=nlohmann::json::object();
+            savingValues=Values(cfg);
+            for(const auto& field : controls) if(Available(field)) {
+                const auto n=field.get(cfg); if(!Valid(field,n)) continue;
+                if(field.kind==Kind::slider) values[field.key]=n; else values[field.key]=int(n);
+            }
+            if(mfgAllowed) values["dynamic_mfg"]=int(cfg.FGDLSSGOverrideForceDMFG.value_or_default());
+            saveAwaiting=Send({{"op","preset-save"},{"changes",{{"name",presetDraft},{"values",values}}}});
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndDisabled();
+        if(!presetName.empty() && ImGui::Button("Delete selected preset",ImVec2(-1,0))) {
+            Send({{"op","preset-delete"},{"changes",{{"name",presetName}}}});
+            presetName.clear(); ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+    ImGui::EndDisabled();
+    if(!namedSupported) ImGui::TextDisabled("Start the updated helper to use named presets.");
+    else if(dirty) ImGui::TextDisabled("Unsaved changes");
+    ImGui::PopID();
+}
+inline void EditControls(Config& cfg, float scale)
+{
+    const float gap=ImGui::GetStyle().ItemSpacing.x, width=(ImGui::GetContentRegionAvail().x-gap*2)/3;
+    const auto current=Values(cfg);
+    ImGui::BeginDisabled(edits.past.empty());
+    if(ImGui::Button("Undo",ImVec2(width,0))) {
+        const auto previous=edits;
+        if(!ApplyValues(cfg,edits.Undo(current),false)) { edits=previous; ForgePanelChannel::message="That undo needs controls unavailable in this session."; }
+    }
+    ImGui::EndDisabled(); ImGui::SameLine();
+    ImGui::BeginDisabled(edits.future.empty());
+    if(ImGui::Button("Redo",ImVec2(width,0))) {
+        const auto previous=edits;
+        if(!ApplyValues(cfg,edits.Redo(current),false)) { edits=previous; ForgePanelChannel::message="That redo needs controls unavailable in this session."; }
+    }
+    ImGui::EndDisabled(); ImGui::SameLine();
+    if(ImGui::Button("Defaults",ImVec2(width,0))) Defaults(cfg);
+    if(!liveTuning) {
+        ImGui::TextWrapped("Tuning is saved for the next launch. Neural rendering switches now.");
+        return;
+    }
+    if(!edits.comparing) {
+        if(ImGui::Button("Compare A / B",ImVec2(-1,0))) edits.BeginComparison(Values(cfg));
+    } else {
+        const float third=(ImGui::GetContentRegionAvail().x-gap*2)/3;
+        for(int side=0;side<2;++side) {
+            if(side) ImGui::SameLine();
+            if(Segment(side==0 ? "A" : "B",edits.side==side,third)) {
+                const auto before=edits;
+                if(!ApplyValues(cfg,edits.Compare(side,Values(cfg)))) { edits=before; ForgePanelChannel::message="This comparison needs controls unavailable in the current session."; }
+            }
+        }
+        ImGui::SameLine();
+        if(ImGui::Button("Keep this",ImVec2(third,0))) edits.EndComparison(Values(cfg));
+        ImGui::TextWrapped("Each side keeps its edits. Neither is saved automatically.");
+    }
+}
+inline void RuntimeHistory(float scale)
+{
+    if(!readLiveStats || !ForgePanelChannel::settings.value("overlay_live_stats",showLiveStats)) return;
+    const auto stats=readLiveStats();
+    history.Add(ImGui::GetTime(),stats.nrKnown && stats.nrRunning ? stats.nrGpuMs : -1,
+        stats.gameFps,stats.framesKnown ? stats.displayedFps : -1);
+    if(!ImGui::CollapsingHeader("Performance history")) return;
+    const auto graph=[scale](const char* label, auto read) {
+        double maximum=0; size_t count=0;
+        for(const auto& sample : history.samples) if(read(sample)>0) { maximum=std::max(maximum,read(sample)); ++count; }
+        ImGui::TextUnformatted(label);
+        if(!count) { ImGui::TextDisabled("Not reported by this package"); return; }
+        const auto at=ImGui::GetCursorScreenPos(); const ImVec2 size(ImGui::GetContentRegionAvail().x,44.f*scale);
+        ImGui::Dummy(size); auto* draw=ImGui::GetWindowDrawList();
+        draw->AddRectFilled(at,ImVec2(at.x+size.x,at.y+size.y),Colour(Tone(1,0,.04f)),4.f*scale);
+        const double now=ImGui::GetTime(); const double range=std::max(maximum*1.1,1.);
+        bool previous=false; ImVec2 last; double lastTime=0;
+        for(const auto& sample : history.samples) {
+            const double value=read(sample);
+            if(value<=0 || now-sample.time>30) { previous=false; continue; }
+            const ImVec2 point(at.x+float(1-(now-sample.time)/30)*size.x,at.y+size.y-float(value/range)*(size.y-4*scale));
+            if(previous && sample.time-lastTime<=1.) draw->AddLine(last,point,Colour(TitleColor()),1.5f*scale);
+            previous=true; last=point; lastTime=sample.time;
+        }
+        ImGui::TextDisabled("Last 30 seconds / peak %.2f",maximum);
+    };
+    graph("NR GPU time (ms)",[](const ForgeWorkbench::Sample& sample){ return sample.nr; });
+    graph("Rendered FPS",[](const ForgeWorkbench::Sample& sample){ return sample.rendered; });
+    graph("Displayed FPS",[](const ForgeWorkbench::Sample& sample){ return sample.displayed; });
+    ImGui::TextWrapped("Measured while the panel is open. Gaps mean no measurement was available.");
+}
+inline void PassControls(Config& cfg)
+{
+    const auto values=Values(cfg);
+    if(!values.contains("pass2_inherit") || !values.contains("passes") || values.at("passes") < 2) return;
+    if(!ImGui::CollapsingHeader("Pass tuning")) return;
+    static int pass=2;
+    const int count=int(values.at("passes")); pass=std::min(pass,count);
+    const auto gap=ImGui::GetStyle().ItemSpacing.x, width=(ImGui::GetContentRegionAvail().x-gap)/2;
+    if(Segment("Pass 2",pass==2,width)) pass=2;
+    ImGui::SameLine(); if(Segment("Pass 3",pass==3,width,count>=3)) pass=3;
+    const auto prefix="pass"+std::to_string(pass)+"_";
+    if(ImGui::SmallButton("Reset this pass")) {
+        ForgeWorkbench::Values defaults;
+        for(const auto& field : controls) if(std::string(field.key).rfind(prefix,0)==0) defaults[field.key]=field.defaultValue;
+        ApplyValues(cfg,defaults);
+    }
+    for(const auto& field : controls) if(std::string(field.key)==prefix+"inherit") Field(field,cfg);
+    const bool inherit=Values(cfg).at(prefix+"inherit") != 0;
+    if(inherit) ImGui::TextWrapped("Uses shared tuning. Any pass-style choice made in the native menu is preserved.");
+    ImGui::BeginDisabled(inherit);
+    for(const auto& field : controls) if(std::string(field.key).rfind(prefix,0)==0 && std::string(field.key)!=prefix+"inherit") Field(field,cfg);
+    ImGui::EndDisabled();
+}
 inline bool Draw(bool& visible, float scale)
 {
     if (!selected) return false;
+    if(useGlass) {
+        PollHelper();Flush(*Config::Instance());
+        if(!ForgePanelChannel::pending&&ForgePanelChannel::needsHello&&ForgePanelChannel::Send({{"op","hello"}}))ForgePanelChannel::needsHello=false;
+        ImGui::GetIO().WantCaptureMouse=visible;ImGui::GetIO().WantCaptureKeyboard=visible;
+        return visible||WelcomePending();
+    }
     scale = std::max(scale, PanelScale());
     Flush(*Config::Instance());
     if (!OptiInput::IsFocused()) { visible = false; animation = 0; ForgePanelChannel::Visible(false); return false; }
@@ -963,7 +1214,7 @@ inline bool Draw(bool& visible, float scale)
     PollHelper();
     if(!pending && needsHello && Send({{"op","hello"}})) needsHello = false;
     const auto edge = 24.f*scale, width = std::min(420.f*scale, display.x-edge*2);
-    const auto height = display.y-edge*2;
+    const auto height = std::min(display.y-edge*2, (settings || global ? 860.f : 760.f)*scale);
     // Translucent surface with a hairline edge. No shadow quads, texture,
     // backdrop sampling, render target or shader pass.
     ImGui::SetNextWindowPos(ImVec2(edge,edge + height*(1-sizeScale)*.5f), ImGuiCond_Always);
@@ -971,10 +1222,10 @@ inline bool Draw(bool& visible, float scale)
     ImGui::PushFont(font, 14.f*scale);
     ImGui::PushStyleVar(ImGuiStyleVar_Alpha,eased);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding,20.f*scale);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,ImVec2(26.f*scale,22.f*scale));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,ImVec2(20.f*scale,18.f*scale));
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding,10.f*scale);
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,ImVec2(10.f*scale,8.f*scale));
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,ImVec2(10.f*scale,8.f*scale));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,ImVec2(9.f*scale,5.f*scale));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,ImVec2(9.f*scale,5.f*scale));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize,1.f*scale);
     ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize,16.f*scale);
     ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding,8.f*scale);
@@ -1014,13 +1265,13 @@ inline bool Draw(bool& visible, float scale)
     if(IconButton("Global controls",2,scale)) { global = !global; settings = false; ForgePanelChannel::DiscardReview(); }
     ImGui::SameLine(); if(IconButton("Overlay settings",1,scale)) { settings = !settings; global = false; ForgePanelChannel::DiscardReview(); }
     ImGui::SameLine(); if(IconButton("Close panel",0,scale)) visible = false;
-    Hero(global ? "All installed games" : title.c_str(),25.f*scale,global ? neutral : TitleColor());
+    Hero(global ? "All installed games" : title.c_str(),22.f*scale,global ? neutral : TitleColor());
     if(global) ImGui::TextDisabled("One-time changes - review before applying");
     else Pipelines(scale);
     ImGui::Spacing();
     const auto feedbackHeight=message.empty() ? 0.f : std::min(60.f*scale,ImGui::CalcTextSize(message.c_str(),nullptr,false,ImGui::GetContentRegionAvail().x).y);
     const float spacing = ImGui::GetStyle().ItemSpacing.y, hint = ImGui::GetTextLineHeight();
-    const auto footer = (settings || global ? hint : 42.f*scale + spacing + hint) + spacing + (message.empty() ? 0.f : feedbackHeight + spacing);
+    const auto footer = hint + spacing + (message.empty() ? 0.f : feedbackHeight + spacing);
     ImGui::BeginChild("controls",ImVec2(0,-footer),ImGuiChildFlags_None,ImGuiWindowFlags_NoBackground);
     // A narrower inner region keeps content clear of the scrollbar.
     ImGui::BeginChild("content",ImVec2(ImGui::GetContentRegionAvail().x-12.f*scale,0),ImGuiChildFlags_AutoResizeY|ImGuiChildFlags_NavFlattened,ImGuiWindowFlags_NoBackground|ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
@@ -1031,21 +1282,36 @@ inline bool Draw(bool& visible, float scale)
     else if(global) GlobalControls();
     else
     {
+        PresetControls(cfg,scale);
+        EditControls(cfg,scale);
         const char* group = "";
         bool open = true;
         for(const auto& field : controls)
         {
+            if(std::strncmp(field.key,"pass2_",6)==0 || std::strncmp(field.key,"pass3_",6)==0) continue;
             if(std::strcmp(group,field.group) != 0)
             {
                 group = field.group; ImGui::Spacing();
-                const bool primary = std::strcmp(group,"Frame generation") == 0 || std::strcmp(group,"Neural rendering") == 0 || std::strcmp(group,"Image tuning") == 0;
+                const auto headingTop=ImGui::GetCursorPosY(), headingLeft=ImGui::GetCursorPosX(), headingWidth=ImGui::GetContentRegionAvail().x;
+                const bool primary = std::strcmp(group,"Frame generation") == 0 || std::strcmp(group,"Neural rendering") == 0;
                 if(primary) {
                     if(std::strcmp(group,"Neural rendering") == 0) { HeaderSwitch(group,"enabled",cfg); FeatureStatistics(true,scale); }
                     else if(std::strcmp(group,"Frame generation") == 0) { FrameGeneration(cfg); FeatureStatistics(false,scale); }
                     else Section(group);
                     open = true;
                 }
-                else open = ImGui::CollapsingHeader(group);
+                else open = ImGui::CollapsingHeader(std::strcmp(group,"Image tuning")==0 ? "Look" : group);
+                if(open) {
+                    ImGui::PushID(group);
+                    if(primary) {
+                        const auto next=ImGui::GetCursorPos();
+                        ImGui::SetCursorPos(ImVec2(headingLeft+headingWidth-82.f*scale,headingTop-4.f*scale));
+                        if(IconButton("Reset section",3,scale)) Defaults(cfg,group);
+                        if(ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) ImGui::SetTooltip("Reset %s",group);
+                        ImGui::SetCursorPos(next);
+                    } else if(ImGui::SmallButton("Reset section")) Defaults(cfg,group);
+                    ImGui::PopID();
+                }
             }
             if(!open) continue;
             if(std::strcmp(field.key,"passes")==0 || std::strcmp(field.key,"enabled")==0 || std::strcmp(field.key,"multiplier")==0) continue;
@@ -1054,46 +1320,16 @@ inline bool Draw(bool& visible, float scale)
                 ImGui::TableNextColumn(); Field(field,cfg); ImGui::TableNextColumn();
                 for(const auto& other : controls) if(std::strcmp(other.key,"passes")==0) Field(other,cfg);
                 ImGui::EndTable();
+                PassControls(cfg);
             }
             else Field(field,cfg);
         }
+        RuntimeHistory(scale);
     }
     if(settings || global) ImGui::PopStyleVar();
     ImGui::EndChild(); ImGui::EndChild();
     if(!message.empty())
     { ImGui::BeginChild("feedback",ImVec2(0,feedbackHeight),ImGuiChildFlags_None,ImGuiWindowFlags_NoBackground); ImGui::TextWrapped("%s",message.c_str()); ImGui::EndChild(); }
-    const auto available = ImGui::GetContentRegionAvail().x, gap = 10.f*scale;
-    if(!settings && !global)
-    {
-    const auto saveColor=Mix(accent,dark,.45f);
-    PushColor(ImGuiCol_Button,saveColor); PushColor(ImGuiCol_Text,OnColor(saveColor));
-    ImGui::BeginDisabled(pending || !helperReady || !ForgePanelChannel::settings.value("overlay_helper",true)
-        || !ForgePanelChannel::status.value("can_save",true));
-    ImGui::PushFont(bold ? bold : font, ImGui::GetFontSize());
-    const bool saveClicked = ImGui::Button("Save preset",ImVec2((available-gap)*.66f,42.f*scale));
-    ImGui::PopFont();
-    if(saveClicked)
-    {
-        Flush(cfg, true);
-        nlohmann::json changes = nlohmann::json::object();
-        for(const auto& field : controls) if(Available(field))
-        {
-            auto n=field.get(cfg);
-            // A value chosen in OptiScaler's own menu that rtxForge does not list stays out of the preset.
-            if(field.kind == Kind::choice && std::none_of(field.choices,field.choices+field.count,[n](const Choice& c){ return c.value == n; })) continue;
-            if(field.kind == Kind::slider) changes[field.key]=n; else changes[field.key]=int(n);
-        }
-        // Protocol 7 replays Dynamic; it lives in OptiScaler's config, not the control list.
-        if(mfgAllowed) changes["dynamic_mfg"]=int(cfg.FGDLSSGOverrideForceDMFG.value_or_default());
-        Send({{"op","save"},{"changes",changes}});
-    }
-    ImGui::PopStyleColor(2); ImGui::SameLine();
-    PushColor(ImGuiCol_Button,Mix(Tone(1,0),dark,.10f));
-    PushColor(ImGuiCol_Text,neutral);
-    if(ImGui::Button("Reset",ImVec2(-1,42.f*scale)))
-    { Send({{"op","reset"}}); }
-    ImGui::PopStyleColor(2); ImGui::EndDisabled();
-    }
     ImGui::TextDisabled("%s",(ShortcutLabel()+" - show or hide").c_str());
     if(ImGui::IsKeyPressed(ImGuiKey_Escape,false)) visible = false;
     ImGui::End(); ImGui::PopStyleColor(24); ImGui::PopStyleVar(13); ImGui::PopFont();

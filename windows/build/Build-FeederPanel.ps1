@@ -19,7 +19,8 @@
 param(
     [string] $Output,
     # A checkout of Skynizz/optiscaler-dlss5 at providers/skynizz-bridge/source.json's commit.
-    [string] $SourceRoot
+    [string] $SourceRoot,
+    [string] $GlassOverlay
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -115,7 +116,7 @@ foreach ($control in $schema.controls) {
     $set = if ($control.key -eq 'enabled') { '[](Config& c, float n, bool) { c.SetNeuralRendering(n); }' }
            else { '[](Config& c, float n, bool) { c.Set("' + $map.ini + '", n, ' + ($(if ($control.kind -eq 'slider') { 'false' } else { 'true' })) + '); }' }
     $rows.Add('  { ' + (CppString $control.key) + ', ' + (CppString $control.label) + ', ' + (CppString $control.advanced) + ', ' + (CppString $control.group) +
-              ', Kind::' + $control.kind + ', ' + (CppFloat $control.min) + ', ' + (CppFloat $max) + ', ' + $get + ', ' + $set + ', ' + $choices + ' },')
+              ', Kind::' + $control.kind + ', ' + (CppFloat $control.min) + ', ' + (CppFloat $max) + ', ' + $get + ', ' + $set + ', ' + $choices + ', ' + (CppFloat $control.default) + ' },')
 }
 $lines.Add('inline const Control controls[] = {'); $lines.AddRange($rows); $lines.Add('};')
 [IO.File]::WriteAllLines((Join-Path $gen 'ForgePanelBindings.h'), $lines, [Text.UTF8Encoding]::new($false))
@@ -157,6 +158,19 @@ $receipt = [ordered]@{
 }
 foreach ($addon in $panel, $quiet) {
     $receipt.files[(Split-Path $addon -Leaf)] = [ordered]@{ sha256 = (Get-Sha256 $addon); size = (Get-Item $addon).Length }
+}
+if($GlassOverlay) {
+    $glass=Get-Content -LiteralPath (Join-Path $GlassOverlay 'package.json') -Raw | ConvertFrom-Json
+    if($glass.schema -ne 1 -or $glass.renderer -ne 'rmlui'){throw 'Invalid glass overlay receipt'}
+    $source=Join-Path $GlassOverlay 'rtxforge-glass.dll'
+    $expected=$glass.files.'rtxforge-glass.dll'
+    if((Get-Sha256 $source) -ne $expected.sha256 -or (Get-Item -LiteralPath $source).Length -ne $expected.size){throw 'Glass overlay changed after its build'}
+    Copy-Item -LiteralPath $source -Destination $Output -Force
+    $receipt.files['rtxforge-glass.dll']=@{sha256=$expected.sha256;size=$expected.size}
+    $receipt.glass_revision=$glass.revision
+    $notices=Join-Path $Output 'glass-notices'
+    New-Item -ItemType Directory -Force -Path $notices | Out-Null
+    Get-ChildItem -LiteralPath (Join-Path $GlassOverlay 'notices') -File | Copy-Item -Destination $notices -Force
 }
 foreach ($license in @('windows\RtxForge.Windows\Assets\Fonts\OFL-Inter.txt','gui\fonts\OFL-BakbakOne.txt')) {
     $target=Join-Path $Output (Split-Path $license -Leaf)

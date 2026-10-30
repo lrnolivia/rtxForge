@@ -40,7 +40,7 @@ foreach ($control in $schema.controls) {
         $set = '[](Config& c, float n, bool save) { if(save) c.' + $member + ' = ' + $cast + '; else c.' + $member + '.set_volatile_value(' + $cast + '); }'
     }
     $choices = if ($control.kind -eq 'choice') { 'choices_' + $control.key + ', ' + $control.values.Count } else { 'nullptr, 0' }
-    $lines.Add('  { ' + (CppString $control.key) + ', ' + (CppString $control.label) + ', ' + (CppString $control.advanced) + ', ' + (CppString $control.group) + ', Kind::' + $control.kind + ', ' + (CppFloat $control.min) + ', ' + (CppFloat $control.max) + ', ' + $get + ', ' + $set + ', ' + $choices + ' },')
+    $lines.Add('  { ' + (CppString $control.key) + ', ' + (CppString $control.label) + ', ' + (CppString $control.advanced) + ', ' + (CppString $control.group) + ', Kind::' + $control.kind + ', ' + (CppFloat $control.min) + ', ' + (CppFloat $control.max) + ', ' + $get + ', ' + $set + ', ' + $choices + ', ' + (CppFloat $control.default) + ' },')
 }
 $lines.Add('};')
 [IO.File]::WriteAllLines((Join-Path $menu 'ForgePanelBindings.h'), $lines, [Text.UTF8Encoding]::new($false))
@@ -54,3 +54,7 @@ $fontCode += "`n" + 'inline unsigned char forgeBakbak[] = {' + (($brandFont | Fo
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'ForgePanel.h') -Destination $menu
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'ForgePanelChannel.h') -Destination $menu
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'ForgePanelIcon.h') -Destination $menu
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'ForgeWorkbench.h') -Destination $menu
+foreach($name in 'GlassOverlay.h','GlassLoader.h','ForgeGlassPanel.h','ForgeGlassHooks.h') {
+    Copy-Item -LiteralPath (Join-Path $repo "providers/glass-overlay/$name") -Destination $menu
+}

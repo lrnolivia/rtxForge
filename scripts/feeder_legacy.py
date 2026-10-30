@@ -102,7 +102,7 @@ def names(recipe):
 def panel_names(recipe):
     import feeder_provider as f
     prefix = 'host64/' if helper(recipe) else ''
-    return {prefix + name: name for name in f.PANELS}
+    return {prefix + name: name for name in f.PANELS + f.OPTIONAL_PANELS}
 
 
 def spec_for(name):

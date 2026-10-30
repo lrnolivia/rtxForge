@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "id": "rtxforge-glass-1",
+  "base_bridge_id": "skynizz-ada-mfg-14-inzoi-overlay",
+  "patch": "glass-candidate.patch",
+  "sources": {
+    "providers/glass-overlay/glass-candidate.patch": "73128748e0817facc33b48afc32e7bff4dd751a78ef1c5b7996f739ed96565a9",
+    "providers/glass-overlay/GlassOverlay.h": "27137ca8986e17dd40a80511bd8c940a84169521a1853b0f5641ba2cb5df412e",
+    "providers/glass-overlay/GlassLoader.h": "4679b224da740f95be6670efaccce248193af34ebca62c6f89a94e81a0b04215",
+    "providers/glass-overlay/ForgeGlassPanel.h": "846a641e5d58abd87c3f5d886138e25cc56d689a4a7cc95af878334ee1d9c563",
+    "providers/glass-overlay/ForgeGlassHooks.h": "b28de8123ae2ee6a2fbd395f4231df8f3d0641e93f3aa37228ecc548b9ebb69c"
+  },
+  "runtime_verified": false,
+  "performance_verified": false
+}

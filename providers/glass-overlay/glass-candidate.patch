@@ -1,0 +1,92 @@
+--- a/OptiScaler/menu/menu_common.cpp
++++ b/OptiScaler/menu/menu_common.cpp
+@@ -9,6 +9,8 @@
+ 
+ #include "input/input_system.h"
+ #include "ForgePanel.h"
++#include "ForgeGlassPanel.h"
++#include "ForgeGlassHooks.h"
+ #include <framegen/IFGFeature_Dx12.h>
+ #include <proxies/Streamline_Proxy.h>
+ #include <framegen/dlssg/Companion.h>
+@@ -9168,6 +9170,7 @@
+     }
+ 
+     ForgePanel::Init(InHwnd);
++    if((State::Instance().api==DX11||State::Instance().api==DX12)&&ForgeGlassPanel::Prepare(InHwnd))Config::Instance()->OverlayMenu.set_volatile_value(true);
+     ForgePanel::controlSupported = [](const ForgePanel::Control& field) {
+         if(std::strncmp(field.key,"pass2_",6)==0 || std::strncmp(field.key,"pass3_",6)==0)
+             return State::Instance().api == DX12;
+@@ -9250,6 +9253,7 @@
+     else
+         ImGui_ImplUwp_Shutdown();
+ 
++    ForgeGlassHooks::Shutdown();
+     ForgePanelChannel::Shutdown();
+     ImGui::DestroyContext();
+ 
+@@ -9275,3 +9279,11 @@
+     io.WantCaptureKeyboard = _isVisible;
+     io.WantCaptureMouse = _isVisible;
+ }
++
++namespace ForgeGlassHooks {
++static bool failed=false;
++bool Prepare(HWND window) {ForgePanel::useGlass=!failed&&ForgePanel::selected&&!State::Instance().hdrOutputActive&&ForgeGlassPanel::Prepare(window);return ForgePanel::useGlass;}
++void Draw11(ID3D11Device* device,ID3D11RenderTargetView* target) {if(!ForgePanel::useGlass)return;bool visible=MenuCommon::IsVisible();if(!ForgeGlassPanel::Draw(device,target,visible)){failed=true;ForgePanel::useGlass=false;}else if(!visible)MenuCommon::HideMenu();}
++void Draw12(ID3D12Device* device,ID3D12CommandQueue* queue,ID3D12Resource* target) {if(!ForgePanel::useGlass)return;bool visible=MenuCommon::IsVisible();if(!ForgeGlassPanel::Draw12(device,queue,target,visible)){failed=true;ForgePanel::useGlass=false;}else if(!visible)MenuCommon::HideMenu();}
++void Shutdown(){ForgeGlassPanel::Shutdown();ForgePanel::useGlass=false;failed=false;}
++}
+--- a/OptiScaler/menu/menu_overlay_dx.cpp
++++ b/OptiScaler/menu/menu_overlay_dx.cpp
+@@ -1,6 +1,7 @@
+ #include "pch.h"
+ #include "menu_overlay_base.h"
+ #include "menu_overlay_dx.h"
++#include "ForgeGlassHooks.h"
+ 
+ #include <Util.h>
+ #include <Logger.h>
+@@ -118,6 +119,7 @@
+ 
+ static void CleanupRenderTargetDx12(bool clearQueue)
+ {
++    ForgeGlassHooks::Shutdown();
+     if (!_isInited || !_dx12Device || State::Instance().isShuttingDown)
+         return;
+ 
+@@ -181,6 +183,7 @@
+ 
+ static void CleanupRenderTargetDx11(bool shutDown)
+ {
++    ForgeGlassHooks::Shutdown();
+     if (!_isInited || !_dx11Device || State::Instance().isShuttingDown)
+         return;
+ 
+@@ -248,10 +251,12 @@
+             ImGui_ImplDX11_NewFrame();
+             ImGui_ImplWin32_NewFrame();
+ 
++            ForgeGlassHooks::Prepare(MenuOverlayBase::Handle());
+             if (MenuOverlayBase::RenderMenu())
+             {
+                 ImGui::Render();
+ 
++                ForgeGlassHooks::Draw11(g_pd3dDevice,g_pd3dRenderTarget);
+                 g_pd3dDeviceContext->OMSetRenderTargets(1, &g_pd3dRenderTarget, NULL);
+                 ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+             }
+@@ -453,11 +458,13 @@
+ 
+             ImGui_ImplDX12_NewFrame();
+ 
++            ForgeGlassHooks::Prepare(MenuOverlayBase::Handle());
+             if (MenuOverlayBase::RenderMenu())
+             {
+                 ImGui::Render();
+ 
+                 UINT backBufferIdx = pSwapChain->GetCurrentBackBufferIndex();
++                ForgeGlassHooks::Draw12(device,(ID3D12CommandQueue*)currentSCCommandQueue,g_mainRenderTargetResource[backBufferIdx]);
+                 ID3D12CommandAllocator* commandAllocator = g_commandAllocators[backBufferIdx];
+ 
+                 auto result = commandAllocator->Reset();

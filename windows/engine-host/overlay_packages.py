@@ -121,6 +121,17 @@ def prepare(e, state, params=None):
                 checks[str(destination)] = expected
                 if t.sha(data) != expected: writes[str(destination)] = data
                 baseline['current']['installed_hashes'][filename] = marker['files'][filename] = t.sha(data)
+            if 'rtxforge-glass.dll' in payload:
+                filename='rtxforge-glass.dll'; destination=t.safe(target / filename)
+                actual=t.digest(destination) if destination.exists() else None
+                expected=owned.get(filename)
+                t.need(actual == expected, 'An unowned or changed glass renderer is present. Repair this game first.')
+                checks[str(destination)]=actual
+                data=payload[filename]
+                if actual != t.sha(data): writes[str(destination)]=data
+                baseline.setdefault('originals', {}).setdefault(filename, {'kind':'file','existed':False})
+                if filename not in baseline.setdefault('managed_paths', []): baseline['managed_paths'].append(filename)
+                baseline['current']['installed_hashes'][filename]=marker['files'][filename]=t.sha(data)
             routes.menus(e, target, values, baseline['current']['installed_hashes'], checks, writes)
             marker['files'] = dict(baseline['current']['installed_hashes'])
             if not writes and old_release.get('sha256') == release['sha256'] and not reconciled:
@@ -141,8 +152,14 @@ def prepare(e, state, params=None):
             preset_path = Path(state) / 'runtime-presets' / (key + '.json')
             if preset_path.is_file():
                 raw = bulk._read(preset_path); saved = json.loads(raw)
-                if saved.get('recipe') == recipe(owned, mode):
-                    saved['recipe'] = recipe(marker['files'], mode)
+                before_recipe,after_recipe=recipe(owned, mode),recipe(marker['files'], mode)
+                changed=False
+                if saved.get('recipe') == before_recipe:
+                    saved['recipe'] = after_recipe;changed=True
+                for entry in saved.get('presets', []) if isinstance(saved.get('presets'), list) else []:
+                    if isinstance(entry, dict) and entry.get('recipe') == before_recipe:
+                        entry['recipe']=after_recipe;changed=True
+                if changed:
                     checks[str(preset_path)] = t.sha(raw); writes[str(preset_path)] = bulk._json(saved)
             revision = cross_os.new_revision()
             baseline['cross_os_revision'] = marker['revision'] = revision

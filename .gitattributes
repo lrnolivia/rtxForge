@@ -8,3 +8,12 @@ providers/skynizz-bridge/ForgePanelChannel.h text eol=lf
 providers/skynizz-bridge/Generate-Panel.ps1 text eol=lf
 providers/skynizz-bridge/controls.json text eol=lf
 providers/skynizz-bridge/panel-candidate.json text eol=lf
+providers/skynizz-bridge/ForgeWorkbench.h text eol=lf
+providers/glass-overlay/** text eol=lf
+prototypes/overlay-rmlui/*.cpp text eol=lf
+prototypes/overlay-rmlui/*.h text eol=lf
+prototypes/overlay-rmlui/*.rml text eol=lf
+prototypes/overlay-rmlui/*.rcss text eol=lf
+prototypes/overlay-rmlui/*.ps1 text eol=lf
+prototypes/overlay-rmlui/icons/*.png binary
+prototypes/overlay-rmlui/logo-mark.png binary

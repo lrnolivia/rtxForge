@@ -8,7 +8,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKER = r'''
-import copy,importlib.util,json,sys
+import copy,importlib.util,json,sys,os
 from pathlib import Path
 from unittest.mock import patch
 repo=Path(sys.argv[1]);sys.path[:0]=[str(repo/'scripts'),str(repo/'windows/engine-host')]
@@ -154,9 +154,58 @@ try:
     updated=t.ini((game/'ReShade.ini').read_text());assert updated['INPUT']['KeyOverlay']=='0,0,0,0'
     assert updated['RenoDX.DLSS5']['NRResolutionScale']==tuning
     assert files()==native_before,'scoped Feeder update changed another game'
+    glass=ff.pe(b'glass feeder');glass_cache=e.STATE_ROOT/'feeder-cache'/t.sha(glass);t.atomic_file(glass_cache,glass,0o600)
+    with_glass=new|{'rtxforge-glass.dll':{'path':str(glass_cache),'sha256':t.sha(glass)}}
+    foreign=game/'rtxforge-glass.dll';foreign.write_bytes(b'foreign')
+    with patch.object(feeder,'panel',return_value=with_glass):
+        refused=overlays.prepare(e,h.LOCAL/'state',params);assert not refused['plans'] and refused['blocked']
+        foreign.unlink();review=overlays.prepare(e,h.LOCAL/'state',params)
+        assert len(review['plans'])==1 and not review['blocked'],review
+        bulk.execute(review)
+    migrated=feeder.state(e,game)
+    assert migrated['originals']['rtxforge-glass.dll'] is None
+    assert {k:v for k,v in migrated['originals'].items() if k!='rtxforge-glass.dll'}==original
+    assert foreign.read_bytes()==glass and (game/'nvngx_dlssnr.dll').read_bytes()==model
+    assert t.ini((game/'ReShade.ini').read_text())['RenoDX.DLSS5']['NRResolutionScale']==tuning
     try:overlays.prepare(e,h.LOCAL/'state',params|{'target_games':[]});raise AssertionError('empty scope widened')
     except t.Refusal:pass
 finally:case.doCleanups()
+# Required glass addition preserves originals, named presets and tuning. A
+# foreign file cannot be adopted, and interruption restores its prior absence.
+for name,data in before.items():t.atomic_file(Path(name),data,0o600)
+shared.unlink(missing_ok=True)  # Start this addition case with the original local-only recipe.
+glass_archive=h.LOCAL/'glass-candidate.zip';glass_release=fixtures.glass_bridge_fixture(glass_archive)|{'panel_renderer':'in-game','panel_candidate':True}
+from hashlib import sha256
+preset_path=h.LOCAL/'state/runtime-presets'/(sha256(os.path.normcase(str(root/'Game.exe')).encode()).hexdigest()+'.json')
+preset_path.parent.mkdir(parents=True,exist_ok=True)
+preset_doc={'schema':2,'presets':[{'name':'My tuning','recipe':overlays.recipe(owned,'nr-mfg'),'values':{'intensity':.8}}]}
+preset_path.write_text(json.dumps(preset_doc));preset_before=preset_path.read_bytes()
+scoped=None  # Required refresh does not reapply app/menu defaults.
+with patch.object(overlays.provider,'bundled_bridge',return_value=(glass_release,glass_archive)):
+    destination=root/'rtxforge-glass.dll';destination.write_bytes(b'foreign')
+    rejected=overlays.prepare(e,h.LOCAL/'state',scoped)
+    assert not rejected['plans'] and rejected['blocked'],'foreign glass renderer was adopted'
+    destination.unlink()
+    review=overlays.prepare(e,h.LOCAL/'state',scoped)
+    assert len(review['plans'])==1 and not review['blocked'],review
+    assert not destination.exists() and preset_path.read_bytes()==preset_before,'review mutated glass or presets'
+    base_state=files();atomic=t.atomic_file;interrupted=[False]
+    def interrupt_glass(path,data,*args,**kwargs):
+        if Path(path)==destination and not interrupted[0]:interrupted[0]=True;raise OSError('fixture interruption')
+        return atomic(path,data,*args,**kwargs)
+    with patch.object(t,'atomic_file',side_effect=interrupt_glass):
+        try:bulk.execute(review);raise AssertionError('interruption not reported')
+        except t.Refusal:pass
+    assert files()==base_state and not destination.exists() and preset_path.read_bytes()==preset_before,'glass rollback changed original ownership'
+    bulk.execute(overlays.prepare(e,h.LOCAL/'state',scoped))
+updated=t.read_json(baseline)
+assert updated['originals']['rtxforge-glass.dll']=={'kind':'file','existed':False}
+assert {k:v for k,v in updated['originals'].items() if k!='rtxforge-glass.dll'}==record['originals']
+assert (root/'OptiScaler.ini').read_bytes()==before[str(root/'OptiScaler.ini')]
+assert t.digest(destination)==glass_release['glass_sha256']
+saved=t.read_json(preset_path)['presets'][0]
+assert saved['name']=='My tuning' and saved['values']==preset_doc['presets'][0]['values']
+assert saved['recipe']==overlays.recipe(updated['current']['installed_hashes'],'nr-mfg')
 print('PASS: native-overlay review is read-only; loader, state and marker update atomically; tuning/originals preserved; idempotence, drift/running guards and exact rollback.')
 '''
 

@@ -36,10 +36,10 @@ Anti-cheat remains a block unless a title has an explicit verified offline profi
 
 - Preserve explicit package choices and each installed game's recorded recipe during repair and restore.
 - Keep one MFG component responsible for capability patches, kernels and multiplier control.
-- Distinguish selected settings, applied runtime state and measured performance. A selected 4× multiplier does not promise a fourfold performance gain.
+- Distinguish selected settings, applied runtime state and measured performance. A selected 4Ã— multiplier does not promise a fourfold performance gain.
 - The companion's primary controls are MFG and NR. Other supported settings belong under Advanced.
 - Unified controls use simple labels; Advanced uses original OptiScaler labels and numeric units for the supported live controls. Model resolution remains a percentage. Original OptiScaler is a separate overlay choice; its full menu needs the updated game package and a restart.
-- A gear beside close exposes all Overlay settings without opening the manager. A globe opens a one-time Global NR/MFG bulk review, also available in the app’s Settings → Global. It preserves unrelated tuning and preset fields, retains backups, and excludes running or unsupported targets. It does not override future installs.
+- A gear beside close exposes all Overlay settings without opening the manager. A globe opens a one-time Global NR/MFG bulk review, also available in the appâ€™s Settings â†’ Global. It preserves unrelated tuning and preset fields, retains backups, and excludes running or unsupported targets. It does not override future installs.
 - Desktop, Game Mode and sidebar Overlay settings share independent OptiScaler/ReShade menu and intro choices. Intros default off. ReShade uses its guide and RenoDX welcome flags; loading notices are separate. Reviewed existing-game updates retain custom bindings, immutable runtimes, rendering choices and original restoration boundaries. Menu access can coexist with the sidebar; native-only remains an explicit primary-overlay choice.
 - Desktop library artwork sizes range from 75% to 150%. Poster titles reserve two readable lines with trimming after the second line and aligned status badges.
 - The Windows sidebar defaults to End. Both Overlay settings views record a custom single key or Ctrl/Alt/Shift combination, with Reset and Disable actions. Insert belongs to OptiScaler; earlier rtxForge Insert settings migrate to End while other chosen bindings remain intact. Recording pauses the helper shortcut temporarily, restores it on cancellation or timeout, and refuses reserved or occupied shortcuts before saving.
@@ -51,11 +51,17 @@ Anti-cheat remains a block unless a title has an explicit verified offline profi
 - Live edits require a compatible running installation. Show unavailable, waiting, stopped and failed states accurately; never substitute demonstration telemetry.
 - Placement requests and observed placement are separate. Report actual model dimensions and a concise fallback reason only from fresh runtime observations. Older protocols show unverified placement. RR must retain the finished-image route until its pre-denoising input contract is validated; isolated candidates need gameplay acceptance before replacing installed runtimes.
 - Preserve existing application layouts and functions outside the requested companion and its entry points.
-- Use supported per-game configuration for optional 3840×2160 borderless setup, with backups. Do not force unsupported display modes.
+- Use supported per-game configuration for optional 3840Ã—2160 borderless setup, with backups. Do not force unsupported display modes.
 
 ## Brand Commitments
 
-Keep the rtxForge name and existing icon. The Windows overlay is a minimal floating NR + MFG sidebar: nearly full screen height with generous edge and internal padding, rounded corners, a soft drop shadow and translucent black surfaces. It opens on the left. The game title carries the strongest artwork-derived or custom game accent. Branding, icons and section headings stay neutral white/grey; selected controls and the primary action use quieter shades of the game color with distinct hover/pressed states. NR and MFG share the same section treatment; advanced groups can use subtle disclosures. Inter remains the typeface; idle and Global surfaces use a neutral accent. It has no standard app title bar or game-selection menu. The separate helper can use Windows acrylic; the in-game renderer starts with translucency and no additional blur pass. Its performance must be measured on the exact runtime. The main application keeps its existing visual system. Desktop Presets, Game Details and Game Mode expose the overlay's ordered controls with their native input components and retain the same runtime units and supported ranges.
+The overlay uses airy, textured glass with real scene blur and adaptive shadows. Preserve the approved raw logo without a platter. The neutral rtxForge wordmark and accent-colored uppercase headings use Bakbak One; main controls use Roboto at the selected readable default, with simple text-size and overall-scale preferences. Keep the manager application's existing visual identity outside this overlay work.
+
+Offer Sidebar, Advanced and Bottom Bar layouts. Empty chrome is draggable; panels raise together with their content. Bottom Bar popovers attach to the invoking button and detach when dragged. Advanced uses a sidebar, expanded Overview metadata and dedicated frame-generation and neural-rendering pages. Settings is a complete screen with an Appearance popout.
+
+Clear is the default: light tint 20%, blur 48px, grain 4%, Soft Light at 50%. Dark uses tint 80%, blur 48px and Overlay at 15%; Light uses tint 100%, blur 44px and Overlay at 35%; both retain grain 4%. Clear foreground contrast adapts smoothly and prefers light text where readable. Fine material edits remain available while defaults are being finalized, label the appearance Custom, and reset when a built-in theme is selected. Preserve reduced-motion support and restrained single-line notifications with real shortcut keycaps.
+
+Runtime telemetry is separate from requested settings. Show actual frame-generation output and NR processing time in a compact two-column row under status indicators; unavailable values remain absent or explicitly unreported. The screenshot prototype is a styling tool and does not establish game or renderer acceptance.
 
 ## Product Principles
 
@@ -67,3 +73,5 @@ Keep the rtxForge name and existing icon. The Windows overlay is a minimal float
 ## Evidence on Hand
 
 Product architecture, supported routes and package constraints are described in README.md and implemented in the shared engine and Windows host. Runtime validation remains specific to an exact tested game and payload; it is not a universal compatibility claim.
+
+The overlay tuning workflow is documented in [In-game tuning](docs/overlay.md), including session undo, named presets, A/B comparison and supported independent pass controls.

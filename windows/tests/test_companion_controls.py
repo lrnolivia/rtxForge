@@ -20,11 +20,11 @@ import transactions as t
 
 
 def snapshot(pid=123, version=2, support=-1):
-    raw = bytearray(512 if version >= 3 else 256)
+    raw = bytearray(control.snapshot_size(version))
     struct.pack_into('<IIIi', raw, 0, control.MAGIC, version, pid, 10)
     for key, offset in control.OFFSETS.items():
         if key not in control.supported_keys(version): continue
-        struct.pack_into('<f' if key in control._FLOATS else '<i', raw, offset, control.DEFAULTS[key])
+        struct.pack_into('<f' if key in control._FLOATS or key in control.PROTOCOL8 else '<i', raw, offset, control.DEFAULTS[key])
     struct.pack_into('<iffiiii', raw, 100, 1, 0.0, 28.0, 5, 3, 100, 300)
     if version >= 2: struct.pack_into('<iiiiii', raw, 136, 0, 4, 100, 1000, 1, 3)
     if version >= 7: struct.pack_into('<i', raw, control.DYNAMIC_SUPPORT, support)

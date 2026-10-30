@@ -23,6 +23,7 @@ on:
       - engine/**
       - scripts/**
       - providers/**
+      - prototypes/overlay-rmlui/**
       - tests/**
       - provider.json
       - gui/fonts/**
@@ -36,6 +37,7 @@ on:
       - engine/**
       - scripts/**
       - providers/**
+      - prototypes/overlay-rmlui/**
       - tests/**
       - provider.json
       - gui/fonts/**
@@ -76,8 +78,25 @@ jobs:
           persist-credentials: false
           path: windows/out/skynizz-source
       - uses: microsoft/setup-msbuild@v2
+      - uses: actions/checkout@v4
+        with:
+          repository: mikke89/RmlUi
+          ref: ae4e0dcb52b324a0d0fc36ed51f633c8c3fe06b7
+          persist-credentials: false
+          path: windows/out/rmlui-source
+      - name: Build and validate the shared glass renderer
+        run: ./windows/build/Build-GlassOverlay.ps1 -RmlSource windows/out/rmlui-source -FreetypeRoot windows/out/skynizz-source/external/freetype
       - name: Build isolated renderer candidate
-        run: ./windows/build/Build-SkynizzBridge.ps1 -SourceRoot windows/out/skynizz-source -PanelCandidate
+        run: ./windows/build/Build-SkynizzBridge.ps1 -SourceRoot windows/out/skynizz-source -PanelCandidate -GlassOverlay windows/out/glass-overlay
+      - uses: actions/upload-artifact@v4
+        with:
+          name: glass-overlay-candidate
+          path: |
+            windows/out/glass-overlay/rtxforge-glass.dll
+            windows/out/glass-overlay/package.json
+            windows/out/glass-overlay/notices/**
+          if-no-files-found: error
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
           name: skynizz-in-game-panel-candidate
@@ -137,9 +156,15 @@ jobs:
           persist-credentials: false
           path: windows/out/skynizz-source
 
-      - name: Build the Feeder NR in-game panel
+      - name: Download the shared glass renderer
         if: matrix.platform == 'x64'
-        run: ./windows/build/Build-FeederPanel.ps1 -SourceRoot windows/out/skynizz-source
+        uses: actions/download-artifact@v4
+        with:
+          name: glass-overlay-candidate
+          path: windows/out/glass-overlay
+      - name: Build Feeder with the matching glass renderer
+        if: matrix.platform == 'x64'
+        run: ./windows/build/Build-FeederPanel.ps1 -SourceRoot windows/out/skynizz-source -GlassOverlay windows/out/glass-overlay
 
       - name: Bundle the reviewed native Vulkan package and NR model
         if: matrix.platform == 'x64'
@@ -169,6 +194,8 @@ jobs:
           python -X utf8 -m unittest discover -s tests -p test_skynizz_provider.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s tests -p test_skynizz_bridge.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest tests.test_overlay_workbench tests.test_overlay_refresh
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s windows/tests -p test_processes.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }

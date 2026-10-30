@@ -1,8 +1,75 @@
+diff --git a/OptiScaler/Config.cpp b/OptiScaler/Config.cpp
+index 3f460b21..b615dbe4 100644
+--- a/OptiScaler/Config.cpp
++++ b/OptiScaler/Config.cpp
+@@ -344,6 +344,18 @@ bool Config::Reload(std::filesystem::path iniPath)
+             DlssNrScanMeter.set_from_config(readBool("DlssNr", "ScanMeter"));
+             DlssNrScanTrim.set_from_config(readFloat("DlssNr", "ScanTrim"));
+             DlssNrPasses.set_from_config(readUInt("DlssNr", "Passes"));
++            DlssNrPass2Inherit.set_from_config(readBool("DlssNr", "Pass2Inherit"));
++            DlssNrPass2Style.set_from_config(readUInt("DlssNr", "Pass2Style"));
++            DlssNrPass2Strength.set_from_config(readFloat("DlssNr", "Pass2Strength"));
++            DlssNrPass2Structure.set_from_config(readFloat("DlssNr", "Pass2Structure"));
++            DlssNrPass2Tone.set_from_config(readFloat("DlssNr", "Pass2Tone"));
++            DlssNrPass2Skin.set_from_config(readFloat("DlssNr", "Pass2Skin"));
++            DlssNrPass3Inherit.set_from_config(readBool("DlssNr", "Pass3Inherit"));
++            DlssNrPass3Style.set_from_config(readUInt("DlssNr", "Pass3Style"));
++            DlssNrPass3Strength.set_from_config(readFloat("DlssNr", "Pass3Strength"));
++            DlssNrPass3Structure.set_from_config(readFloat("DlssNr", "Pass3Structure"));
++            DlssNrPass3Tone.set_from_config(readFloat("DlssNr", "Pass3Tone"));
++            DlssNrPass3Skin.set_from_config(readFloat("DlssNr", "Pass3Skin"));
+             DlssNrScanAnchorValue.set_from_config(readFloat("DlssNr", "ScanAnchorValue"));
+             DlssNrScanAnchorWhitePoint.set_from_config(readFloat("DlssNr", "ScanAnchorWhitePoint"));
+             DlssNrScanAnchors.set_from_config(readString("DlssNr", "ScanAnchors"));
+@@ -1323,6 +1335,18 @@ bool Config::SaveIni()
+     ini.SetValue("DlssNr", "ScanInverted", GetBoolValue(Instance()->DlssNrScanInverted.value_for_config()).c_str());
+     ini.SetValue("DlssNr", "ScanMeter", GetBoolValue(Instance()->DlssNrScanMeter.value_for_config()).c_str());
+     ini.SetValue("DlssNr", "Passes", GetIntValue(Instance()->DlssNrPasses.value_for_config()).c_str());
++    ini.SetValue("DlssNr", "Pass2Inherit", GetBoolValue(Instance()->DlssNrPass2Inherit.value_for_config()).c_str());
++    ini.SetValue("DlssNr", "Pass2Style", GetIntValue(Instance()->DlssNrPass2Style.value_for_config()).c_str());
++    ini.SetValue("DlssNr", "Pass2Strength", GetFloatValue(Instance()->DlssNrPass2Strength.value_for_config()).c_str());
++    ini.SetValue("DlssNr", "Pass2Structure", GetFloatValue(Instance()->DlssNrPass2Structure.value_for_config()).c_str());
++    ini.SetValue("DlssNr", "Pass2Tone", GetFloatValue(Instance()->DlssNrPass2Tone.value_for_config()).c_str());
++    ini.SetValue("DlssNr", "Pass2Skin", GetFloatValue(Instance()->DlssNrPass2Skin.value_for_config()).c_str());
++    ini.SetValue("DlssNr", "Pass3Inherit", GetBoolValue(Instance()->DlssNrPass3Inherit.value_for_config()).c_str());
++    ini.SetValue("DlssNr", "Pass3Style", GetIntValue(Instance()->DlssNrPass3Style.value_for_config()).c_str());
++    ini.SetValue("DlssNr", "Pass3Strength", GetFloatValue(Instance()->DlssNrPass3Strength.value_for_config()).c_str());
++    ini.SetValue("DlssNr", "Pass3Structure", GetFloatValue(Instance()->DlssNrPass3Structure.value_for_config()).c_str());
++    ini.SetValue("DlssNr", "Pass3Tone", GetFloatValue(Instance()->DlssNrPass3Tone.value_for_config()).c_str());
++    ini.SetValue("DlssNr", "Pass3Skin", GetFloatValue(Instance()->DlssNrPass3Skin.value_for_config()).c_str());
+     ini.SetValue("DlssNr", "UseProxy", GetBoolValue(Instance()->DlssNrUseProxy.value_for_config()).c_str());
+     ini.SetValue("DlssNr", "ProxyProbe", GetBoolValue(Instance()->DlssNrProxyProbe.value_for_config()).c_str());
+     // ScanExposure is a developer override with no menu control; persist it so a set ini keeps it.
+diff --git a/OptiScaler/Config.h b/OptiScaler/Config.h
+index 19effc64..c9cda25c 100644
+--- a/OptiScaler/Config.h
++++ b/OptiScaler/Config.h
+@@ -523,6 +523,20 @@ class Config
+     // Empty: every pass inherits, as before.
+     CustomOptional<std::string> DlssNrPassStyles { std::string() };
+ 
++    // Independent tuning for later passes; shared tuning stays the default.
++    CustomOptional<bool> DlssNrPass2Inherit { true };
++    CustomOptional<uint32_t> DlssNrPass2Style { 0 };
++    CustomOptional<float> DlssNrPass2Strength { 1.0f };
++    CustomOptional<float> DlssNrPass2Structure { 1.0f };
++    CustomOptional<float> DlssNrPass2Tone { 1.0f };
++    CustomOptional<float> DlssNrPass2Skin { -1.0f };
++    CustomOptional<bool> DlssNrPass3Inherit { true };
++    CustomOptional<uint32_t> DlssNrPass3Style { 0 };
++    CustomOptional<float> DlssNrPass3Strength { 1.0f };
++    CustomOptional<float> DlssNrPass3Structure { 1.0f };
++    CustomOptional<float> DlssNrPass3Tone { 1.0f };
++    CustomOptional<float> DlssNrPass3Skin { -1.0f };
++
+     // Which depth convention the model is told the guide uses.
+     //
+     //   0  what the game's own DLSS feature was created with, which is what it means for the upscaler
 diff --git a/OptiScaler/framegen/dlssg/Companion.h b/OptiScaler/framegen/dlssg/Companion.h
-index f57b05a8..efebac25 100644
+index 7ea1c4b3..7b4495cf 100644
 --- a/OptiScaler/framegen/dlssg/Companion.h
 +++ b/OptiScaler/framegen/dlssg/Companion.h
-@@ -51,13 +51,24 @@ struct Mailbox
+@@ -51,13 +51,28 @@ struct Mailbox
      LONG originalMenu, originalMenuKey;
      LONG nrPlacement, nrPlacementReason, nrModelWidth, nrModelHeight;
      LONG nrReduced, nrRequestedBefore, nrPlacementTick;
@@ -16,9 +83,14 @@ index f57b05a8..efebac25 100644
 +    LONG dynamicSupport; // -1 before the game reports DLSS-G state, then 0 or 1
 +    // DLSS and Ray Reconstruction render presets: 0 is the game's own choice, -1 unchanged.
 +    LONG dlssPreset, rrPreset, actualDlssPreset, actualRrPreset;
-+    char reserved[72];
++    float passRequest[12], passActual[12];
++    LONG passSupport;
++    char reserved[484];
  };
- static_assert(sizeof(Mailbox) == 512);
+-static_assert(sizeof(Mailbox) == 512);
++static_assert(sizeof(Mailbox) == 1024);
++static_assert(offsetof(Mailbox, passRequest) == 440);
++static_assert(offsetof(Mailbox, passActual) == 488);
  static_assert(offsetof(Mailbox, workScale) == 256);
  static_assert(offsetof(Mailbox, actualWorkScale) == 288);
  static_assert(offsetof(Mailbox, actualSharpen) == 344);
@@ -28,12 +100,12 @@ index f57b05a8..efebac25 100644
  
  inline std::recursive_mutex guard;
  inline Mailbox* mailbox = nullptr;
-@@ -116,8 +127,12 @@ inline void Tick()
+@@ -147,8 +162,12 @@ inline void Tick()
          }
          *mailbox = {};
          mailbox->magic = 0x46585452;
 -        mailbox->version = 6;
-+        mailbox->version = 7;
++        mailbox->version = 8;
          mailbox->pid = GetCurrentProcessId();
 +        mailbox->dynamic = -1;
 +        mailbox->dynamicTarget = -1.f;
@@ -42,7 +114,29 @@ index f57b05a8..efebac25 100644
      }
      if (!mailbox) return;
      auto& cfg = *Config::Instance();
-@@ -158,10 +173,15 @@ inline void Tick()
+@@ -179,7 +198,20 @@ inline void Tick()
+         {
+             const auto boolean = [](LONG n) { return n == 0 || n == 1; };
+             const auto bounded = [](float n, float lo, float hi) { return std::isfinite(n) && n >= lo && n <= hi; };
+-            const bool valid = boolean(request.sharpen) && boolean(request.sharpOverride) && boolean(request.motionSharpen) &&
++            bool passValid = true;
++            passValid = passValid && bounded(request.passRequest[0], 0.f, 1.f) && std::floor(request.passRequest[0]) == request.passRequest[0];
++            passValid = passValid && bounded(request.passRequest[1], 0.f, 2.f) && std::floor(request.passRequest[1]) == request.passRequest[1];
++            passValid = passValid && bounded(request.passRequest[2], 0.f, 2.f);
++            passValid = passValid && bounded(request.passRequest[3], 0.f, 2.f);
++            passValid = passValid && bounded(request.passRequest[4], 0.f, 2.f);
++            passValid = passValid && bounded(request.passRequest[5], -1.f, 2.f);
++            passValid = passValid && bounded(request.passRequest[6], 0.f, 1.f) && std::floor(request.passRequest[6]) == request.passRequest[6];
++            passValid = passValid && bounded(request.passRequest[7], 0.f, 2.f) && std::floor(request.passRequest[7]) == request.passRequest[7];
++            passValid = passValid && bounded(request.passRequest[8], 0.f, 2.f);
++            passValid = passValid && bounded(request.passRequest[9], 0.f, 2.f);
++            passValid = passValid && bounded(request.passRequest[10], 0.f, 2.f);
++            passValid = passValid && bounded(request.passRequest[11], -1.f, 2.f);
++            const bool valid = passValid && boolean(request.sharpen) && boolean(request.sharpOverride) && boolean(request.motionSharpen) &&
+                 request.sharpenShader >= 0 && request.sharpenShader <= 2 &&
+                 bounded(request.sharpness, 0.f, 1.f) && bounded(request.motionSharpness, 0.f, 1.f) &&
+                 bounded(request.workScale, .25f, 2.f) && request.passes >= 1 && request.passes <= 3 &&
+@@ -189,13 +221,33 @@ inline void Tick()
                  bounded(request.intensity, 0.f, 2.f) && bounded(request.structure, 0.f, 2.f) &&
                  bounded(request.tone, 0.f, 2.f) && request.interval >= 1 && request.interval <= 16 &&
                  request.style >= 0 && request.style <= 2 && request.preset >= 0 && request.preset <= 3 &&
@@ -56,11 +150,29 @@ index f57b05a8..efebac25 100644
 -            const bool supported = request.multiplier <= 0 || maximum >= request.multiplier - 1;
 +            // Dynamic is refused only once the game has said it cannot do it.
 +            const bool dynamicRefused = request.dynamic == 1 && stateSamples > 0 && !state.dlssgGameDMFGSupported;
-+            const bool supported = (request.multiplier <= 0 || maximum >= request.multiplier - 1) && !dynamicRefused;
++            bool passChanged = false;
++            for(size_t i=0;i<12;++i) passChanged |= request.passRequest[i] != mailbox->passActual[i];
++            const bool supported = (request.multiplier <= 0 || maximum >= request.multiplier - 1)
++                && !dynamicRefused && (!passChanged || state.api == DX12);
              mailbox->result = !valid ? 2 : !supported ? 3 : 1;
              if (valid && supported)
              {
-@@ -196,6 +216,19 @@ inline void Tick()
++                cfg.DlssNrPass2Inherit.set_volatile_value(static_cast<bool>(request.passRequest[0]));
++                cfg.DlssNrPass2Style.set_volatile_value(static_cast<uint32_t>(request.passRequest[1]));
++                cfg.DlssNrPass2Strength.set_volatile_value(static_cast<float>(request.passRequest[2]));
++                cfg.DlssNrPass2Structure.set_volatile_value(static_cast<float>(request.passRequest[3]));
++                cfg.DlssNrPass2Tone.set_volatile_value(static_cast<float>(request.passRequest[4]));
++                cfg.DlssNrPass2Skin.set_volatile_value(static_cast<float>(request.passRequest[5]));
++                cfg.DlssNrPass3Inherit.set_volatile_value(static_cast<bool>(request.passRequest[6]));
++                cfg.DlssNrPass3Style.set_volatile_value(static_cast<uint32_t>(request.passRequest[7]));
++                cfg.DlssNrPass3Strength.set_volatile_value(static_cast<float>(request.passRequest[8]));
++                cfg.DlssNrPass3Structure.set_volatile_value(static_cast<float>(request.passRequest[9]));
++                cfg.DlssNrPass3Tone.set_volatile_value(static_cast<float>(request.passRequest[10]));
++                cfg.DlssNrPass3Skin.set_volatile_value(static_cast<float>(request.passRequest[11]));
+                 cfg.RcasEnabled.set_volatile_value(request.sharpen != 0);
+                 cfg.OverrideSharpness.set_volatile_value(request.sharpOverride != 0);
+                 cfg.SharpnessShader.set_volatile_value(static_cast<SharpenShader>(request.sharpenShader));
+@@ -227,6 +279,19 @@ inline void Tick()
                      cfg.FGDLSSGOverrideInterpolationCount.set_volatile_value(generated);
                      if (generated > 0) cfg.FGDLSSGInterpolationCount.set_volatile_value(generated);
                  }
@@ -80,10 +192,23 @@ index f57b05a8..efebac25 100644
              }
              InterlockedExchange(&mailbox->acknowledged, sequence);
          }
-@@ -241,6 +274,11 @@ inline void Tick()
+@@ -272,6 +337,24 @@ inline void Tick()
      mailbox->nrMs = static_cast<float>(live.nrMs);
      mailbox->renderedFps = static_cast<float>(live.renderedFps);
      mailbox->backendMax = State::Instance().dlssgMfgMax.value_or(0);
++    mailbox->passActual[0] = float(cfg.DlssNrPass2Inherit.value_or_default());
++    mailbox->passActual[1] = float(cfg.DlssNrPass2Style.value_or_default());
++    mailbox->passActual[2] = float(cfg.DlssNrPass2Strength.value_or_default());
++    mailbox->passActual[3] = float(cfg.DlssNrPass2Structure.value_or_default());
++    mailbox->passActual[4] = float(cfg.DlssNrPass2Tone.value_or_default());
++    mailbox->passActual[5] = float(cfg.DlssNrPass2Skin.value_or_default());
++    mailbox->passActual[6] = float(cfg.DlssNrPass3Inherit.value_or_default());
++    mailbox->passActual[7] = float(cfg.DlssNrPass3Style.value_or_default());
++    mailbox->passActual[8] = float(cfg.DlssNrPass3Strength.value_or_default());
++    mailbox->passActual[9] = float(cfg.DlssNrPass3Structure.value_or_default());
++    mailbox->passActual[10] = float(cfg.DlssNrPass3Tone.value_or_default());
++    mailbox->passActual[11] = float(cfg.DlssNrPass3Skin.value_or_default());
++    mailbox->passSupport = State::Instance().api == DX12 ? 1 : 0;
 +    mailbox->actualDynamic = cfg.FGDLSSGOverrideForceDMFG.value_or_default();
 +    mailbox->actualDynamicTarget = cfg.FGDLSSGFramerateTargetDMFG.value_or_default();
 +    mailbox->dynamicSupport = stateSamples == 0 ? -1 : State::Instance().dlssgGameDMFGSupported ? 1 : 0;
@@ -92,6 +217,18 @@ index f57b05a8..efebac25 100644
      mailbox->lastGenerated = observedGenerated;
      mailbox->fgSuccesses = observedFgSuccesses;
      mailbox->nativeStatus = nativeStatus;
+diff --git a/OptiScaler/include/imgui/imconfig.h b/OptiScaler/include/imgui/imconfig.h
+index 34a0a97e..f5e13928 100644
+--- a/OptiScaler/include/imgui/imconfig.h
++++ b/OptiScaler/include/imgui/imconfig.h
+@@ -85,6 +85,7 @@
+ // Requires FreeType headers to be available in the include path. Requires program to be compiled with 'misc/freetype/imgui_freetype.cpp' (in this repository) + the FreeType library (not provided).
+ // On Windows you may use vcpkg with 'vcpkg install freetype --triplet=x64-windows' + 'vcpkg integrate install'.
+ #define IMGUI_ENABLE_FREETYPE
++#define IMGUI_ENABLE_STB_TRUETYPE
+ 
+ //---- Use FreeType + plutosvg or lunasvg to render OpenType SVG fonts (SVGinOT)
+ // Only works in combination with IMGUI_ENABLE_FREETYPE.
 diff --git a/OptiScaler/menu/input/input_system.cpp b/OptiScaler/menu/input/input_system.cpp
 index 891f9fa1..8b26c308 100644
 --- a/OptiScaler/menu/input/input_system.cpp
@@ -317,7 +454,7 @@ index 2a549c03..6e04e5e5 100644
      const int vk = NormalizeRawKeyboardVirtualKey(keyboard);
  
 diff --git a/OptiScaler/menu/menu_common.cpp b/OptiScaler/menu/menu_common.cpp
-index 669450ab..26523776 100644
+index 669450ab..7ed935bb 100644
 --- a/OptiScaler/menu/menu_common.cpp
 +++ b/OptiScaler/menu/menu_common.cpp
 @@ -8,6 +8,10 @@
@@ -397,11 +534,16 @@ index 669450ab..26523776 100644
  
      if (ctx.newFrame)
          ImGui::EndFrame();
-@@ -9139,6 +9167,42 @@ void MenuCommon::Init(HWND InHwnd, bool isUWP)
+@@ -9139,6 +9167,47 @@ void MenuCommon::Init(HWND InHwnd, bool isUWP)
          }
      }
  
 +    ForgePanel::Init(InHwnd);
++    ForgePanel::controlSupported = [](const ForgePanel::Control& field) {
++        if(std::strncmp(field.key,"pass2_",6)==0 || std::strncmp(field.key,"pass3_",6)==0)
++            return State::Instance().api == DX12;
++        return true;
++    };
 +    ForgePanel::readLiveStats = [] {
 +        ForgePanel::LiveStats result;
 +        const auto nr = DlssNr::GetLiveStats();
@@ -440,7 +582,7 @@ index 669450ab..26523776 100644
      if (!Config::Instance()->OverlayMenu.value_or_default())
      {
          _hdrTonemapApplied = false;
-@@ -9181,6 +9245,7 @@ void MenuCommon::Shutdown()
+@@ -9181,6 +9250,7 @@ void MenuCommon::Shutdown()
      else
          ImGui_ImplUwp_Shutdown();
  
@@ -448,14 +590,98 @@ index 669450ab..26523776 100644
      ImGui::DestroyContext();
  
      _handle = nullptr;
-diff --git a/OptiScaler/include/imgui/imconfig.h b/OptiScaler/include/imgui/imconfig.h
---- a/OptiScaler/include/imgui/imconfig.h
-+++ b/OptiScaler/include/imgui/imconfig.h
-@@ -85,6 +85,7 @@
- // Requires FreeType headers to be available in the include path. Requires program to be compiled with 'misc/freetype/imgui_freetype.cpp' (in this repository) + the FreeType library (not provided).
- // On Windows you may use vcpkg with 'vcpkg install freetype --triplet=x64-windows' + 'vcpkg integrate install'.
- #define IMGUI_ENABLE_FREETYPE
-+#define IMGUI_ENABLE_STB_TRUETYPE
+diff --git a/OptiScaler/shaders/dlssnr/DlssNr_Dx12.cpp b/OptiScaler/shaders/dlssnr/DlssNr_Dx12.cpp
+index f66bf145..2beff788 100644
+--- a/OptiScaler/shaders/dlssnr/DlssNr_Dx12.cpp
++++ b/OptiScaler/shaders/dlssnr/DlssNr_Dx12.cpp
+@@ -180,6 +180,12 @@ using PFN_NrProbeFloat = void(__cdecl*) (void*, const char*, float, int);
+ // The most passes the model may be run in on one frame (DlssNrPasses), each on a feature of its own.
+ constexpr unsigned int kMaxPasses = 30;
  
- //---- Use FreeType + plutosvg or lunasvg to render OpenType SVG fonts (SVGinOT)
- // Only works in combination with IMGUI_ENABLE_FREETYPE.
++struct ForgePassTuning
++{
++    uint32_t style;
++    float strength, structure, tone, skin;
++    bool operator==(const ForgePassTuning&) const = default;
++};
+ struct NrState
+ {
+     HMODULE forwarder = nullptr;
+@@ -225,6 +231,7 @@ struct NrState
+ 
+     // The style each extra pass was built with: a pass whose style is changed is rebuilt, alone.
+     uint32_t passStyle[kMaxPasses] = {};
++    ForgePassTuning passTuning[kMaxPasses] {};
+     ID3D12Resource* passIn = nullptr;
+     unsigned int passesRun = 1;
+ 
+@@ -572,6 +579,21 @@ uint32_t EffPassStyle(const Config& cfg, unsigned int pass)
+     return EffStyle(cfg);
+ }
+ 
++// Keep the existing native PassStyles choice when shared tuning is used.
++// New explicit overrides carry their own model parameters and temporal state.
++ForgePassTuning ForgeTuning(const Config& cfg, unsigned int pass)
++{
++    ForgePassTuning shared { EffPassStyle(cfg,pass), cfg.DlssNrIntensity.value_or_default(),
++        cfg.DlssNrLocalStructure.value_or_default(), cfg.DlssNrLocalTone.value_or_default(),
++        cfg.DlssNrSkinStructure.value_or_default() };
++    if(pass == 2 && !cfg.DlssNrPass2Inherit.value_or_default()) return {
++        cfg.DlssNrPass2Style.value_or_default(), cfg.DlssNrPass2Strength.value_or_default(), cfg.DlssNrPass2Structure.value_or_default(), cfg.DlssNrPass2Tone.value_or_default(), cfg.DlssNrPass2Skin.value_or_default() };
++    if(pass == 3 && !cfg.DlssNrPass3Inherit.value_or_default()) return {
++        cfg.DlssNrPass3Style.value_or_default(), cfg.DlssNrPass3Strength.value_or_default(), cfg.DlssNrPass3Structure.value_or_default(), cfg.DlssNrPass3Tone.value_or_default(), cfg.DlssNrPass3Skin.value_or_default() };
++    return shared;
++}
++
++
+ // The state the upscaler leaves its output in, and every pass here hands it back in.
+ D3D12_RESOURCE_STATES OutputRestState()
+ {
+@@ -4605,7 +4627,7 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
+     // A pass whose style was changed goes, and is built again below with the new one.
+     for (unsigned int p = 1; p < passesWanted; ++p)
+     {
+-        if (g_nr.passFeature[p] != nullptr && g_nr.passStyle[p] != EffPassStyle(cfg, p + 1))
++        if (g_nr.passFeature[p] != nullptr && !(g_nr.passTuning[p] == ForgeTuning(cfg, p + 1)))
+         {
+             LOG_INFO("DLSS-NR: pass {} style changed, rebuilt", p + 1);
+             ParkNrFeature(g_nr.passFeature[p]);
+@@ -4631,16 +4653,18 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
+         {
+             // The first pass's tuning, and the pass's own style: inherited by default, so a later pass refines
+             // the same look (RenoDX's default), or chosen per pass to stack looks (Natural + Default + Cinematic).
+-            const uint32_t style = EffPassStyle(cfg, p + 1);
++            const auto tuning = ForgeTuning(cfg, p + 1);
++            const uint32_t style = tuning.style;
+             g_nr.passFeature[p] =
+                 g_nr.create(snip->wstring().c_str(), State::Instance().NVNGX_ApplicationDataPath.c_str(), device,
+                             cmdList, g_nr.capabilityParams, workWidth, workHeight,
+-                            (int) cfg.DlssNrPreset.value_or_default(), cfg.DlssNrIntensity.value_or_default(),
+-                            (int) style, cfg.DlssNrLocalStructure.value_or_default(),
+-                            cfg.DlssNrLocalTone.value_or_default(), cfg.DlssNrSkinStructure.value_or_default(),
++                            (int) cfg.DlssNrPreset.value_or_default(), tuning.strength,
++                            (int) style, tuning.structure,
++                            tuning.tone, tuning.skin,
+                             cfg.DlssNrAutoMask.value_or_default() ? 1 : 0, 1);
+             g_nr.passReset[p] = true;
+             g_nr.passStyle[p] = style;
++            g_nr.passTuning[p] = tuning;
+ 
+             static const char* names[] = { "Default", "Natural", "Cinematic" };
+             LOG_INFO("DLSS-NR: pass {} {} at {}x{} ({}), first evaluated next frame", p + 1,
+@@ -4683,11 +4707,12 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
+                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+         Barrier(cmdList, g_nr.output, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+ 
++        const auto& tuning = g_nr.passTuning[p];
+         result = g_nr.evaluate(
+             cmdList, g_nr.passFeature[p], g_nr.capabilityParams, g_nr.passIn, depthIn, motionIn, g_nr.output,
+             workWidth, workHeight, guideWidth, guideHeight, g_nr.guideDepthInverted ? 1 : 0,
+-            (g_nr.reset || g_nr.passReset[p]) ? 1 : 0, cfg.DlssNrIntensity.value_or_default(),
+-            (int) g_nr.passStyle[p], cfg.DlssNrLocalStructure.value_or_default(),
+-            cfg.DlssNrLocalTone.value_or_default(), cfg.DlssNrSkinStructure.value_or_default(),
++            (g_nr.reset || g_nr.passReset[p]) ? 1 : 0, tuning.strength,
++            (int) g_nr.passStyle[p], tuning.structure,
++            tuning.tone, tuning.skin,
+             cfg.DlssNrAutoMask.value_or_default() ? 1 : 0, g_nr.guideMvScaleX * mvToWork,
+             g_nr.guideMvScaleY * mvToWork);

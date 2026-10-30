@@ -35,9 +35,10 @@ FEEDER_ONLY = ('dlss5-feed.addon64', 'dlss5-feed.addon32', 'dlss5-feed-helper.ad
 REVIEWED_DX11 = {'ts4_x64.exe'}
 # rtxForge's in-game panel and banner hider (windows/feeder-panel), bundled by Build-FeederPanel.ps1.
 PANELS = ('rtxforge-panel.addon64', 'rtxforge-quiet.addon64')
+OPTIONAL_PANELS = ('rtxforge-glass.dll',)
 # Added by hand before rtxforge-quiet existed.
 RETIRED = {'quiet-startup.addon64': 'a33e97b437a6410d01d4dafc1ae770afa9c1e37a84bdbbe87926e24b5735f0a4'}
-OWNED = (*PANELS, *RETIRED)
+OWNED = (*PANELS, *OPTIONAL_PANELS, *RETIRED)
 # Verified Microsoft Windows Image Helper shipped with games. DbgHelp can
 # also be a proxy name, so only these exact stock bytes are exempted.
 STOCK_LIBRARIES = {'dbghelp.dll': {'abd6a38e9d73b0ed73372e80819eca9134534c17722ced453e5e1cbffef03ec2'}}
@@ -248,10 +249,11 @@ def panel(e):
         return {}
     spec = t.read_json(t.safe(receipt))
     files = spec.get('files') if isinstance(spec, dict) else None
-    t.need(isinstance(files, dict) and set(files) == set(PANELS)
-           and all(digest(folder / name) == files[name].get('sha256') for name in PANELS),
+    t.need(isinstance(files, dict) and set(PANELS) <= set(files) <= set(PANELS + OPTIONAL_PANELS)
+           and all(isinstance(item, dict) and digest(folder / name) == item.get('sha256') for name, item in files.items()),
            'The bundled rtxForge panel changed. Reinstall rtxForge')
-    return {name: cache(e, folder / name) for name in PANELS}
+    t.need(('rtxforge-glass.dll' in files) == bool(spec.get('glass_revision')), 'Glass overlay receipt is incomplete')
+    return {name: cache(e, folder / name) for name in files}
 
 
 def _read_ini(path):

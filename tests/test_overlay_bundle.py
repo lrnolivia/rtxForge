@@ -61,8 +61,8 @@ class OverlayBundleTest(unittest.TestCase):
 
     def test_absent_artifacts_allowed_only_for_local_development(self):
         for folder in self.folders.values():(folder/'package.json').unlink()
-        with patch.dict(os.environ,{'GITHUB_ACTIONS':'false'}):self.assertFalse(self.stage())
-        with patch.dict(os.environ,{'GITHUB_ACTIONS':'true'}):
+        with patch.dict(os.environ,{'RTXFORGE_REQUIRE_GLASS':'0'}):self.assertFalse(self.stage())
+        with patch.dict(os.environ,{'RTXFORGE_REQUIRE_GLASS':'1'}):
             with self.assertRaisesRegex(RuntimeError,'missing'):self.stage()
 
 

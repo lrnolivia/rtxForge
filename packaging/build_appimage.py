@@ -9,7 +9,7 @@ def bundle_overlays(root,payload,expected_sha=None):
     folders={name:root/'windows/out'/name for name in ('glass-overlay','skynizz-bridge','feeder-panel')}
     present=[(folder/'package.json').is_file() for folder in folders.values()]
     if not any(present):
-        if os.environ.get('GITHUB_ACTIONS')=='true':raise RuntimeError('Native overlay artifacts are missing')
+        if os.environ.get('RTXFORGE_REQUIRE_GLASS')=='1':raise RuntimeError('Native overlay artifacts are missing')
         return False
     if not all(present):raise RuntimeError('Native overlay artifacts are incomplete')
     receipts={name:json.loads((folder/'package.json').read_text(encoding='utf-8-sig')) for name,folder in folders.items()}

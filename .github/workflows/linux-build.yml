@@ -27,6 +27,9 @@ on:
 permissions:
   contents: write
 
+env:
+  RTXFORGE_REQUIRE_GLASS: '1'
+
 # Pushes and pull requests cancel their own older runs; nothing cancels a manual publication.
 concurrency:
   group: rtxforge-linux-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.head_ref || 'main' }}

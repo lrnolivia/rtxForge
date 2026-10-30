@@ -59,7 +59,8 @@ struct StateScope {
     ComPtr<ID3D11DeviceContext1> context;ComPtr<ID3DDeviceContextState> previous,clean;
     explicit StateScope(ID3D11Device* device) {
         ComPtr<ID3D11Device1> d;Check(device->QueryInterface(IID_PPV_ARGS(&d)));ComPtr<ID3D11DeviceContext> base;device->GetImmediateContext(&base);Check(base.As(&context));
-        const auto level=device->GetFeatureLevel();D3D_FEATURE_LEVEL selected;Check(d->CreateDeviceContextState(0,&level,1,D3D11_SDK_VERSION,__uuidof(ID3D11Device),&selected,&clean));context->SwapDeviceContextState(clean.Get(),&previous);
+        const UINT flags=(device->GetCreationFlags()&D3D11_CREATE_DEVICE_SINGLETHREADED)?D3D11_1_CREATE_DEVICE_CONTEXT_STATE_SINGLETHREADED:0;
+        const auto level=device->GetFeatureLevel();D3D_FEATURE_LEVEL selected;Check(d->CreateDeviceContextState(flags,&level,1,D3D11_SDK_VERSION,__uuidof(ID3D11Device),&selected,&clean));context->SwapDeviceContextState(clean.Get(),&previous);
     }
     ~StateScope(){if(context&&previous)context->SwapDeviceContextState(previous.Get(),nullptr);}
 };

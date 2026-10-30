@@ -58,9 +58,10 @@ int wmain(int argc,wchar_t** argv){try{
     Need(argc==2,"Supply the exact glass DLL to test");
     HMODULE dll=LoadLibraryExW(argv[1],nullptr,LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_SYSTEM32);Need(dll,"Could not load glass DLL");
     const auto draw=reinterpret_cast<ForgeGlass::Draw>(GetProcAddress(dll,"ForgeGlassDraw"));const auto release=reinterpret_cast<ForgeGlass::Release>(GetProcAddress(dll,"ForgeGlassRelease"));Need(draw&&release,"Glass exports missing");
-    ComPtr<ID3D11Device> device;ComPtr<ID3D11DeviceContext> context;
-    const bool hardware=SUCCEEDED(D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_HARDWARE,nullptr,0,nullptr,0,D3D11_SDK_VERSION,&device,nullptr,&context));if(!hardware)Need(SUCCEEDED(D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_WARP,nullptr,0,nullptr,0,D3D11_SDK_VERSION,&device,nullptr,&context)),"DX11 fixture device failed");std::cout<<"fixture_device="<<(hardware?"hardware":"WARP")<<"\n";
     unsigned renders=0;
+    for(const UINT flags:{0u,UINT(D3D11_CREATE_DEVICE_SINGLETHREADED)}){
+    ComPtr<ID3D11Device> device;ComPtr<ID3D11DeviceContext> context;
+    const bool hardware=SUCCEEDED(D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_HARDWARE,nullptr,flags,nullptr,0,D3D11_SDK_VERSION,&device,nullptr,&context));if(!hardware)Need(SUCCEEDED(D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_WARP,nullptr,flags,nullptr,0,D3D11_SDK_VERSION,&device,nullptr,&context)),"DX11 fixture device failed");std::cout<<"fixture_device="<<(hardware?"hardware":"WARP")<<" single_threaded="<<(flags!=0)<<"\n";
     for(const auto format:{DXGI_FORMAT_R8G8B8A8_UNORM,DXGI_FORMAT_B8G8R8A8_UNORM}){
         D3D11_TEXTURE2D_DESC desc{};desc.Width=2560;desc.Height=1440;desc.MipLevels=desc.ArraySize=1;desc.Format=format;desc.SampleDesc.Count=1;desc.BindFlags=D3D11_BIND_RENDER_TARGET;
         ComPtr<ID3D11Texture2D> target;Need(SUCCEEDED(device->CreateTexture2D(&desc,nullptr,&target)),"Target failed");ComPtr<ID3D11RenderTargetView> view;Need(SUCCEEDED(device->CreateRenderTargetView(target.Get(),nullptr,&view)),"View failed");
@@ -76,5 +77,7 @@ int wmain(int argc,wchar_t** argv){try{
         const auto* top=static_cast<const unsigned char*>(pixels.pData);const auto* panel=top+300*pixels.RowPitch+200*4;Need(top[3]==255,"Scene outside overlay changed");Need(panel[0]!=top[0]||panel[1]!=top[1]||panel[2]!=top[2],"Glass UI did not composite over game target");context->Unmap(staging.Get(),0);
         frame.colorSpace=1;Need(!draw(&host,&frame),"Unvalidated HDR route must be rejected");release();
     }
-    TestHdr11(draw,release,device.Get(),context.Get());Test12(dll,release);Test12(dll,release,true);FreeLibrary(dll);std::cout<<"game_facing_dx11_checks=passed formats=RGBA,BGRA frames="<<renders<<" state_restore=passed hdr_rejection=passed\n";return 0;
+    TestHdr11(draw,release,device.Get(),context.Get());
+    }
+    Test12(dll,release);Test12(dll,release,true);FreeLibrary(dll);std::cout<<"game_facing_dx11_checks=passed formats=RGBA,BGRA frames="<<renders<<" state_restore=passed single_threaded=passed hdr_rejection=passed\n";return 0;
 }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}}

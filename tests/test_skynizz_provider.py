@@ -62,6 +62,18 @@ def bridge_fixture(path, sr_path=None):
     return provider.validate_release(record | {'release_size':path.stat().st_size,'sha256':hashlib.sha256(path.read_bytes()).hexdigest()})
 
 
+def glass_bridge_fixture(path):
+    record=bridge_fixture(path)
+    glass=pe()+b'glass renderer fixture'
+    record=record|{'glass_revision':1,'glass_source':'rtxforge-glass-1','glass_sha256':hashlib.sha256(glass).hexdigest()}
+    with zipfile.ZipFile(path) as source:entries={name:source.read(name) for name in source.namelist()}
+    entries['DLSS5-Optimised/rtxforge-bridge.json']=json.dumps(record).encode()
+    entries['DLSS5-Optimised/rtxforge-glass.dll']=glass
+    with zipfile.ZipFile(path,'w') as target:
+        for name,data in entries.items():target.writestr(name,data)
+    return provider.validate_release(record|{'release_size':path.stat().st_size,'sha256':hashlib.sha256(path.read_bytes()).hexdigest()})
+
+
 class SkynizzPolicyTest(unittest.TestCase):
     def test_full_controls_use_real_ini_keys_and_round_trip(self):
         from types import SimpleNamespace
@@ -153,6 +165,15 @@ class SkynizzPolicyTest(unittest.TestCase):
         provider.require_mode('windows','nr-mfg',bridge=True)
         with self.assertRaisesRegex(transactions.Refusal,'receipt mismatch'):
             provider.load_payload(self.archive,record | {'patch_sha256':'c'*64})
+
+    def test_glass_payload_is_advertised_and_binds_exact_binary(self):
+        record=glass_bridge_fixture(self.archive)
+        data,_=provider.load_payload(self.archive,record)
+        self.assertEqual(transactions.sha(data['rtxforge-glass.dll']),record['glass_sha256'])
+        with self.assertRaisesRegex(transactions.Refusal,'receipt mismatch'):
+            provider.load_payload(self.archive,record|{'glass_sha256':'0'*64})
+        with self.assertRaisesRegex(transactions.Refusal,'receipt mismatch'):
+            provider.load_payload(self.archive,record|{'glass_revision':2})
 
     def test_inzoi_capability_cannot_be_added_to_an_older_archive(self):
         record=bridge_fixture(self.archive)

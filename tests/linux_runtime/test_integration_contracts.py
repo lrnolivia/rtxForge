@@ -49,7 +49,10 @@ class IntegrationContracts(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/'controls.8.map';raw=bytearray(512)
             struct.pack_into('<4i',raw,0,host.controls.MAGIC,7,8,2)
-            for key,offset in host.controls.OFFSETS.items():
+            # This compatibility fixture is protocol seven; pass overrides belong
+            # to protocol eight's larger mapping and must not enter this record.
+            for key in host.controls.supported_keys(7):
+                offset=host.controls.OFFSETS[key]
                 struct.pack_into('<f' if key in host.controls._FLOATS else '<i',raw,offset,host.controls.DEFAULTS[key])
             struct.pack_into('<i',raw,112,5)
             struct.pack_into('<i',raw,420,1)

@@ -2,6 +2,7 @@
 #include <json.hpp>
 #include <atomic>
 #include <cstring>
+#include <cmath>
 
 namespace ForgePanelChannel
 {
@@ -21,6 +22,9 @@ inline HANDLE mapping = nullptr, file = nullptr;
 inline LONG lastRevision = 0;
 inline bool pending = false, helperReady = false, needsHello = true;
 inline nlohmann::json settings = nlohmann::json::object(), status = nlohmann::json::object(), review = nlohmann::json::object();
+inline nlohmann::json namedPresets = nlohmann::json::array();
+inline bool namedSupported = false, responseError = false;
+inline std::string lastOperation, savedPresetName;
 inline std::string message;
 inline ULONGLONG requestedAt = 0;
 
@@ -95,6 +99,18 @@ inline void Validate(const nlohmann::json& response)
     check(response.is_object());
     for(const auto* name : {"op","message"}) if(response.contains(name)) check(response[name].is_string());
     for(const auto* name : {"busy","ready","error"}) if(response.contains(name)) check(response[name].is_boolean());
+    if(response.contains("named_supported")) check(response["named_supported"].is_boolean());
+    if(response.contains("preset_name")) check(response["preset_name"].is_string());
+    if(response.contains("named_presets")) {
+        check(response["named_presets"].is_array() && response["named_presets"].size() <= 12);
+        for(const auto& entry : response["named_presets"]) {
+            check(entry.is_object() && entry.contains("name") && entry["name"].is_string()
+                && entry["name"].get<std::string>().size() <= 60 && entry.contains("compatible")
+                && entry["compatible"].is_boolean() && entry.contains("values")
+                && entry["values"].is_object() && entry["values"].size() <= 64);
+            for(const auto& value : entry["values"]) check(value.is_number() && std::isfinite(value.get<double>()));
+        }
+    }
     if(response.contains("review_id")) check(response["review_id"].is_number_integer() && response["review_id"].get<int>()>0);
     if(response.contains("settings"))
     {
@@ -140,6 +156,11 @@ inline void Poll()
         if(response.contains("settings")) settings = response["settings"];
         if(response.contains("status")) status = response["status"];
         const auto op = response.value("op",std::string());
+        lastOperation = op; responseError = response.value("error",false);
+        if(response.contains("named_supported")) namedSupported = response["named_supported"].get<bool>();
+        else if(op == "hello") namedSupported = false;
+        if(response.contains("named_presets")) namedPresets = response["named_presets"];
+        if(response.contains("preset_name")) savedPresetName = response["preset_name"].get<std::string>();
         if(response.contains("review_id")) review = response;
         if(op == "apply-review" || op == "discard-review") review = nlohmann::json::object();
         lastRevision = revision;

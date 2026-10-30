@@ -685,23 +685,48 @@ def handle(request: dict) -> None:
 
 def main() -> int:
     send({"event": "ready", **hello({})})
-    workers: list[threading.Thread] = []
-    for line in sys.stdin.buffer:
-        line = line.strip()
-        if not line:
-            continue
-        request = json.loads(line)
-        # A long-lived helper must not retain every completed request thread.
-        workers[:] = [worker for worker in workers if worker.is_alive()]
-        if request.get("method") == "cancel":
-            handle(request)  # answered immediately, even while an operation runs
-        else:
-            worker = threading.Thread(target=handle, args=(request,), daemon=True)
-            worker.start()
-            workers.append(worker)
-    # stdin closed (the app exited or a script piped its requests): finish what was asked.
-    for worker in workers:
-        worker.join()
+    refresh_stop=threading.Event()
+    def refresh_overlays():
+        import overlay_refresh
+        import overlay_packages
+        import global_controls
+        while not refresh_stop.is_set():
+            try:
+                result=overlay_refresh.run(ROOT,STATE,
+                    lambda:overlay_packages.prepare(engine_bridge.module(service.config),STATE),
+                    global_controls.execute)
+                if result.get('status') in ('complete','pending'):
+                    send({'event':'overlay-refresh','result':result})
+                if result.get('status') in ('not-required','current','complete','newer-revision-kept'):
+                    return
+            except Exception as error:
+                # Retain existing game files on validation failures. A later
+                # attempt replans from fresh ownership and process checks.
+                send({'event':'overlay-refresh','error':str(error)})
+            refresh_stop.wait(30)
+    refresh_worker=threading.Thread(target=refresh_overlays,name='overlay-refresh')
+    refresh_worker.start()
+    try:
+        workers: list[threading.Thread] = []
+        for line in sys.stdin.buffer:
+            line = line.strip()
+            if not line:
+                continue
+            request = json.loads(line)
+            # A long-lived helper must not retain every completed request thread.
+            workers[:] = [worker for worker in workers if worker.is_alive()]
+            if request.get("method") == "cancel":
+                handle(request)  # answered immediately, even while an operation runs
+            else:
+                worker = threading.Thread(target=handle, args=(request,), daemon=True)
+                worker.start()
+                workers.append(worker)
+        # stdin closed (the app exited or a script piped its requests): finish what was asked.
+        for worker in workers:
+            worker.join()
+    finally:
+        refresh_stop.set()
+        refresh_worker.join()
     return 0
 
 

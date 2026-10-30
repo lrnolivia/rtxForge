@@ -64,8 +64,8 @@ def feeder_plan(e, path, params, running):
     baseline = copy.deepcopy(record)
     owned = baseline['installed_hashes']
     checks = {str(path): t.sha(raw)}; writes = {}
-    # Never silently adopt or replace a foreign add-on. Older installs without
-    # a panel enter the ordinary repair flow, which captures their originals.
+    # New managed overlay files may be added only to empty destinations. A
+    # foreign add-on is never adopted or replaced by the required refresh.
     available = feeder.panel(e)
     missing = []
     for name, expected in record['installed_hashes'].items():
@@ -76,12 +76,14 @@ def feeder_plan(e, path, params, running):
         checks[str(destination)] = expected
     for name, item in available.items():
         if name not in owned:
-            missing.append(name)
-            continue
+            destination=t.safe(target / name)
+            t.need(not destination.exists(), 'An unowned overlay file is present: ' + name)
+            checks[str(destination)]=None
+            baseline.setdefault('originals', {}).setdefault(name, None)
         data = t.safe(item['path']).read_bytes()
         t.need(t.sha(data) == item['sha256'], 'Bundled Feeder panel changed.')
         checks[item['path']] = item['sha256']
-        if t.sha(data) != owned[name]:
+        if t.sha(data) != owned.get(name):
             writes[str(target / name)] = data
             owned[name] = t.sha(data)
     menus(e, target, values, owned, checks, writes)

@@ -23,6 +23,9 @@ def installed_oses_from_state(target):
 class DesktopService:
     def __init__(self,provider=None):
         self.config=app.load_provider(provider)
+        if cross_os.THIS_OS=='linux':
+            import linux_runtime
+            self.overlay_refresh=linux_runtime.refresh_installed_overlays(self.config)
 
     def hardware(self):return hardware.detect()
 

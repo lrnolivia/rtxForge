@@ -136,6 +136,27 @@ if ($RuntimeIdentifier -eq 'win-x64' -and (Test-Path -LiteralPath $panelReceipt)
         Copy-Item -LiteralPath $addon -Destination $target
     }
     Copy-Item -LiteralPath $panelReceipt -Destination $target
+    $panelNotices=Join-Path $panelRoot 'glass-notices'
+    if(Test-Path -LiteralPath $panelNotices){
+        $noticeTarget=Join-Path $target 'glass-notices'
+        New-Item -ItemType Directory -Force -Path $noticeTarget | Out-Null
+        Get-ChildItem -LiteralPath $panelNotices -File | Copy-Item -Destination $noticeTarget -Force
+    }
+}
+$glassRoot=Join-Path $repo 'windows/out/glass-overlay'
+$glassReceipt=Join-Path $glassRoot 'package.json'
+if($RuntimeIdentifier -eq 'win-x64' -and (Test-Path -LiteralPath $glassReceipt)){
+    $receipt=Get-Content -LiteralPath $glassReceipt -Raw | ConvertFrom-Json
+    if($receipt.schema -ne 1 -or $receipt.renderer -ne 'rmlui'){throw 'Invalid glass overlay receipt'}
+    $dll=Join-Path $glassRoot 'rtxforge-glass.dll'
+    if((Get-Sha256 $dll) -ne $receipt.files.'rtxforge-glass.dll'.sha256){throw 'Glass overlay changed after build'}
+    $target=Join-Path $engine 'providers/glass-overlay'
+    New-Item -ItemType Directory -Force -Path $target | Out-Null
+    Copy-Item -LiteralPath $dll,$glassReceipt -Destination $target -Force
+    Copy-Item -LiteralPath (Join-Path $repo 'providers/glass-overlay/rollout-policy.json') -Destination (Join-Path $target 'rollout.json') -Force
+    $notices=Join-Path $target 'notices'
+    New-Item -ItemType Directory -Force -Path $notices | Out-Null
+    Get-ChildItem -LiteralPath (Join-Path $glassRoot 'notices') -File | Copy-Item -Destination $notices -Force
 }
 $count = (Get-ChildItem $engine -Recurse -File).Count
 Write-Host "Engine ($count files) -> $engine"

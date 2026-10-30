@@ -3,6 +3,7 @@ param(
     [string]$Output = (Join-Path $PSScriptRoot '..\out\skynizz-bridge'),
     [switch]$PlacementCandidate,
     [switch]$PanelCandidate,
+    [string]$GlassOverlay,
     [switch]$InzoiOverlayCandidate
 )
 $ErrorActionPreference = 'Stop'
@@ -64,6 +65,20 @@ if ($PanelCandidate) {
     if ($LASTEXITCODE -ne 0) { throw 'inZOI candidate patch failed' }
     Copy-Item -LiteralPath (Join-Path $repo $inzoi.header) -Destination (Join-Path $source 'OptiScaler\ForgeInzoiOverlay.h')
 }
+$glass=$null
+if($GlassOverlay) {
+    if(-not $PanelCandidate){throw 'Glass requires the matching panel candidate'}
+    $glass=Get-Content -LiteralPath (Join-Path $repo 'providers/glass-overlay/candidate.json') -Raw | ConvertFrom-Json
+    foreach($entry in $glass.sources.PSObject.Properties){if((Get-FileHash -LiteralPath (Join-Path $repo $entry.Name) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $entry.Value){throw "Glass source changed: $($entry.Name)"}}
+    $glassPatch=Join-Path $repo "providers/glass-overlay/$($glass.patch)"
+    & git -C $source apply --check -- $glassPatch
+    if($LASTEXITCODE){throw 'Glass integration patch does not apply to the admitted renderer'}
+    & git -C $source apply -- $glassPatch
+    if($LASTEXITCODE){throw 'Glass integration patch failed'}
+    $glassPackage=Get-Content -LiteralPath (Join-Path $GlassOverlay 'package.json') -Raw | ConvertFrom-Json
+    $glassBinary=Join-Path $GlassOverlay 'rtxforge-glass.dll'
+    if($glassPackage.schema -ne 1 -or $glassPackage.renderer -ne 'rmlui' -or (Get-FileHash -LiteralPath $glassBinary -Algorithm SHA256).Hash.ToLowerInvariant() -ne $glassPackage.files.'rtxforge-glass.dll'.sha256){throw 'Glass binary differs from its build receipt'}
+}
 $msbuild = (Get-Command MSBuild.exe -ErrorAction SilentlyContinue).Source
 if (-not $msbuild) {
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
@@ -92,7 +107,7 @@ if ($candidate) {
     Copy-Item -LiteralPath (Join-Path $specRoot $candidate.header) -Destination $payload
 }
 if ($panel) {
-    foreach ($name in @($panel.patch, 'ForgePanel.h', 'ForgePanelChannel.h', 'ForgePanelIcon.h', 'Generate-Panel.ps1', 'controls.json', 'panel-candidate.json')) {
+    foreach ($name in @($panel.patch, 'ForgePanel.h', 'ForgePanelChannel.h', 'ForgePanelIcon.h', 'ForgeWorkbench.h', 'Generate-Panel.ps1', 'controls.json', 'panel-candidate.json')) {
         Copy-Item -LiteralPath (Join-Path $specRoot $name) -Destination $payload
     }
     Copy-Item -LiteralPath (Join-Path $repo 'windows\RtxForge.Windows\Assets\Fonts\OFL-Inter.txt') -Destination $payload
@@ -104,6 +119,14 @@ if ($inzoi) {
     Copy-Item -LiteralPath (Join-Path $specRoot 'inzoi-overlay-candidate.json') -Destination $payload
 }
 $productHead = (& git -C $repo rev-parse HEAD).Trim()
+if($glass) {
+    Copy-Item -LiteralPath $glassBinary -Destination $payload -Force
+    $glassNotices=Join-Path $payload 'glass-notices'
+    New-Item -ItemType Directory -Force -Path $glassNotices | Out-Null
+    Get-ChildItem -LiteralPath (Join-Path $GlassOverlay 'notices') -File | Copy-Item -Destination $glassNotices -Force
+    Copy-Item -LiteralPath (Join-Path $repo 'providers/glass-overlay/candidate.json') -Destination $payload -Force
+    Copy-Item -LiteralPath (Join-Path $repo 'providers/glass-overlay/glass-candidate.patch') -Destination $payload -Force
+}
 $receipt = [ordered]@{
     schema = 1; variant = 'nr-mfg-bridge'; id = 'skynizz'; family = 'skynizz'; name = 'Skynizz NR + Ada MFG bridge'
     repo = 'lrnolivia/rtxForge'; tag = $spec.upstream.tag; commit = $productHead
@@ -138,6 +161,7 @@ if ($inzoi) {
     $receipt.runtime_verified = $false
     $receipt.performance_verified = $false
 }
+if($glass){$receipt.glass_revision=$glassPackage.revision;$receipt.glass_sha256=$glassPackage.files.'rtxforge-glass.dll'.sha256;$receipt.glass_source=$glass.id}
 $receipt | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $payload 'rtxforge-bridge.json') -Encoding utf8
 $archiveName = 'rtxForge-Skynizz-' + $spec.upstream.tag + '-MFG.zip'
 $archive = Join-Path $Output $archiveName

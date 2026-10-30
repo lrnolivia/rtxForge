@@ -123,7 +123,7 @@ class LegacyFeederTest(unittest.TestCase):
                 t.atomic_file(path,json.dumps(record).encode(),0o600)
                 originals=copy.deepcopy(record['originals']);installed=self.case.files(row)
                 bundled={}
-                for name in feeder.PANELS:
+                for name in feeder.PANELS + feeder.OPTIONAL_PANELS:
                     contents=pe(0x8664,b'updated '+name.encode())
                     item=self.case.root/('panel-'+name);item.write_bytes(contents)
                     bundled[name]={'path':str(item),'sha256':t.sha(contents)}

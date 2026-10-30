@@ -204,6 +204,16 @@ def overlay_packages_review(e, params):
     return _shared('overlay_packages').prepare(e, e.STATE_ROOT, params)
 
 
+def refresh_installed_overlays(config):
+    """Install the app update's required overlays through the normal ownership checks."""
+    import overlay_refresh
+    import engine_bridge
+    from storage import storage
+    root=Path(__file__).resolve().parents[1]
+    return overlay_refresh.start(root,storage(config),
+        lambda:overlay_packages_review(engine_bridge.module(config),None),apply_review)
+
+
 def apply_review(review):
     """Apply a global_review or menus_review result; every file is re-checked first."""
     return _shared('global_controls').execute(review)

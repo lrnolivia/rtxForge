@@ -23,6 +23,7 @@ on:
       - engine/**
       - scripts/**
       - providers/**
+      - prototypes/overlay-rmlui/**
       - tests/**
       - provider.json
       - gui/fonts/**
@@ -30,12 +31,14 @@ on:
       - VERSION
       - packaging/beta_release.py
       - .github/workflows/windows-build.yml
+      - .github/workflows/overlay-native.yml
   pull_request:
     paths:
       - windows/**
       - engine/**
       - scripts/**
       - providers/**
+      - prototypes/overlay-rmlui/**
       - tests/**
       - provider.json
       - gui/fonts/**
@@ -43,6 +46,7 @@ on:
       - VERSION
       - packaging/beta_release.py
       - .github/workflows/windows-build.yml
+      - .github/workflows/overlay-native.yml
 
 permissions:
   contents: read
@@ -53,39 +57,7 @@ concurrency:
 
 jobs:
   panel-candidate:
-    name: In-game panel candidate
-    runs-on: windows-2025
-    timeout-minutes: 35
-    steps:
-      - name: Validate explicit Beta publication
-        if: github.event_name == 'workflow_dispatch' && inputs.publish_beta
-        shell: pwsh
-        env:
-          EXPECTED_SHA: ${{ inputs.expected_sha }}
-          DRAFT_RELEASE: ${{ inputs.draft_release }}
-        run: |
-          if ($env:GITHUB_REF -ne 'refs/heads/main') { throw 'Beta publication requires reviewed main' }
-          if ($env:EXPECTED_SHA -ne $env:GITHUB_SHA) { throw 'Main changed; review its exact commit before publishing' }
-          if ($env:DRAFT_RELEASE -eq 'true') { throw 'Choose either draft_release or publish_beta' }
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: Skynizz/optiscaler-dlss5
-          ref: fc702f8ca22f97b01bd6a02f3386bffb3484fc35
-          submodules: recursive
-          persist-credentials: false
-          path: windows/out/skynizz-source
-      - uses: microsoft/setup-msbuild@v2
-      - name: Build isolated renderer candidate
-        run: ./windows/build/Build-SkynizzBridge.ps1 -SourceRoot windows/out/skynizz-source -PanelCandidate
-      - uses: actions/upload-artifact@v4
-        with:
-          name: skynizz-in-game-panel-candidate
-          path: |
-            windows/out/skynizz-panel-candidate/*.zip
-            windows/out/skynizz-panel-candidate/package.json
-          if-no-files-found: error
-          retention-days: 14
+    uses: ./.github/workflows/overlay-native.yml
   build:
     name: WinUI 3 ${{ matrix.platform }}
     needs: panel-candidate
@@ -117,6 +89,16 @@ jobs:
       SIGN: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' && github.event_name == 'workflow_dispatch' && (inputs.draft_release || inputs.publish_beta) }}
 
     steps:
+      - name: Validate explicit Beta publication
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_beta
+        shell: pwsh
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          DRAFT_RELEASE: ${{ inputs.draft_release }}
+        run: |
+          if ($env:GITHUB_REF -ne 'refs/heads/main') { throw 'Beta publication requires reviewed main' }
+          if ($env:EXPECTED_SHA -ne $env:GITHUB_SHA) { throw 'Main changed; review its exact commit before publishing' }
+          if ($env:DRAFT_RELEASE -eq 'true') { throw 'Choose either draft_release or publish_beta' }
       - name: Checkout rtxForge
         uses: actions/checkout@v4
 
@@ -127,19 +109,18 @@ jobs:
           name: skynizz-in-game-panel-candidate
           path: windows/out/skynizz-bridge
 
-      # The Feeder panel hosts the same ForgePanel.h with OptiScaler's Dear ImGui and FreeType.
-      - name: Check out the admitted OptiScaler source for the Feeder panel
+      - name: Download the shared glass renderer
         if: matrix.platform == 'x64'
-        uses: actions/checkout@v4
+        uses: actions/download-artifact@v4
         with:
-          repository: Skynizz/optiscaler-dlss5
-          ref: fc702f8ca22f97b01bd6a02f3386bffb3484fc35
-          persist-credentials: false
-          path: windows/out/skynizz-source
-
-      - name: Build the Feeder NR in-game panel
+          name: glass-overlay-candidate
+          path: windows/out/glass-overlay
+      - name: Download the matching Feeder overlay
         if: matrix.platform == 'x64'
-        run: ./windows/build/Build-FeederPanel.ps1 -SourceRoot windows/out/skynizz-source
+        uses: actions/download-artifact@v4
+        with:
+          name: feeder-overlay-candidate
+          path: windows/out/feeder-panel
 
       - name: Bundle the reviewed native Vulkan package and NR model
         if: matrix.platform == 'x64'
@@ -169,6 +150,8 @@ jobs:
           python -X utf8 -m unittest discover -s tests -p test_skynizz_provider.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s tests -p test_skynizz_bridge.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 -m unittest tests.test_overlay_workbench tests.test_overlay_refresh
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s windows/tests -p test_processes.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }

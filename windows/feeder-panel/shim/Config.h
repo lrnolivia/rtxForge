@@ -55,6 +55,7 @@ inline int GetLastPressedKey() { return feeder_panel::host.last_pressed(); }
 enum class ColorTransfer : uint32_t { Unknown, SRGB, Linear, PQ, HLG };
 enum class ColorPrimaries : uint32_t { Unknown, Rec709, Rec2020 };
 enum class ColorModel : uint32_t { Unknown, RGB, YCbCr };
+enum class ColorRange : uint32_t { Unknown, Full, Studio };
 
 struct OutputColorSpace
 {
@@ -62,6 +63,7 @@ struct OutputColorSpace
     ColorPrimaries primaries = ColorPrimaries::Rec709;
     ColorModel model = ColorModel::RGB;
     bool valid = false;
+    ColorRange range = ColorRange::Full;
 };
 
 class State

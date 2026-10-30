@@ -91,10 +91,12 @@ class FileMailbox(controls.Mailbox):
         self.prefix,self.exe,self.path=Path(prefix),Path(exe),Path(path)
         self.linux_pid=mapped_process(prefix,exe,path)
         if self.linux_pid is None:raise OSError('No matching live game owns this channel.')
-        self.mem=open_mapping(path,512)
+        size=Path(path).stat().st_size
+        t.need(size in (512,1024),'Invalid Proton control channel size.')
+        self.mem=open_mapping(path,size)
         self.view=ctypes.addressof(ctypes.c_char.from_buffer(self.mem))
         self.pid=struct.unpack_from('<i',self.mem,8)[0]
-        self.size=512
+        self.size=size
         self.process=self.linux_pid
         self.k=self
         try:self.read()
@@ -150,6 +152,9 @@ class FileMailbox(controls.Mailbox):
         if before['version'] >= 7:
             for key, (_, request) in controls.PROTOCOL7.items():
                 ctypes.c_int32.from_address(self.view + request).value = values[key]
+        if before['version'] >= 8:
+            for key, (_, request) in controls.PROTOCOL8.items():
+                ctypes.c_float.from_address(self.view + request).value = values[key]
         ctypes.c_int32.from_address(self.view + 16).value = sequence
         deadline = time.monotonic() + 2
         while time.monotonic() < deadline:
@@ -246,7 +251,13 @@ class Host:
         response={'op':op,'settings':proton_overlay.settings_snapshot(overlay_settings.effective(settings,row['game']),settings.get('theme'))}
         try:
             params={'row':row,'pid':pid}
-            if op in ('hello','status'):response['status']=self.controls.status(params)
+            if op in ('hello','status'):
+                response['status']=self.controls.status(params)
+                if response['status'].get('can_save'):response.update(self.controls.preset_list(params))
+            elif op in ('preset-list','preset-save','preset-delete'):
+                method={'preset-list':self.controls.preset_list,'preset-save':self.controls.preset_save,
+                        'preset-delete':self.controls.preset_delete}[op]
+                response.update(method(params|{'changes':message.get('changes')}))
             elif op=='save':
                 self.controls.save(params|{'changes':message.get('changes')})
                 response['message']='Preset saved. It will replay for this installed package.'

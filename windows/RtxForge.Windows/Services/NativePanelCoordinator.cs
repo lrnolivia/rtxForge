@@ -141,7 +141,19 @@ internal sealed class NativePanelCoordinator : IDisposable
                 var color = palette.Color;
                 preferences["game_title"] = game!.Name;
                 preferences["game_accent"] = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
-                return new JsonObject { ["op"] = action, ["settings"] = preferences, ["status"] = state };
+                var hello = new JsonObject { ["op"] = action, ["settings"] = preferences, ["status"] = state };
+                if (state["can_save"]?.GetValue<bool>() == true)
+                {
+                    var library = await engine.CompanionAsync("preset_list", game!, pid: pid);
+                    foreach (var pair in library) hello[pair.Key] = pair.Value?.DeepClone();
+                }
+                return hello;
+            case "preset-save":
+            case "preset-delete":
+            case "preset-list":
+                var named = await engine.CompanionAsync(action.Replace('-', '_'), game!, message["changes"] as JsonObject, pid);
+                named["op"] = action; named["settings"] = SettingsSnapshot();
+                return named;
             case "save":
                 var changes = message["changes"] as JsonObject ?? throw new InvalidOperationException("Choose a preset to save.");
                 foreach (var pair in changes)

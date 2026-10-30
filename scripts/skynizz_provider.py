@@ -26,6 +26,7 @@ PRODUCTION_RUNTIMES = {
 }
 FILES = {'OptiScaler.dll': 'dxgi.dll', 'OptiScaler.ini': 'OptiScaler.ini',
          'nvngx.dll_dlssnr.dll': 'nvngx.dll_dlssnr.dll'}
+OPTIONAL_FILES = {'rtxforge-glass.dll': 'rtxforge-glass.dll'}
 DEFAULTS = {
     'Upscalers': {'Dx12Upscaler': 'dlss'},
     'Log': {'LogToFile': 'true', 'LogLevel': '2'},
@@ -231,7 +232,7 @@ def load_payload(archive, record):
             total += member.file_size
             t.need(total <= MAX_EXPANDED and member.file_size <= 64 * 1024**2, 'Expanded Skynizz archive exceeds the limit')
             parts = name.split('/')
-            if not member.is_dir() and len(parts) == 2 and parts[0] == 'DLSS5-Optimised' and parts[1] in FILES:
+            if not member.is_dir() and len(parts) == 2 and parts[0] == 'DLSS5-Optimised' and parts[1] in (FILES | OPTIONAL_FILES):
                 found[parts[1]] = source.read(member)
         if record.get('variant') == 'nr-mfg-bridge':
             t.need('DLSS5-Optimised/rtxforge-bridge.json' in source.namelist(),'Combined bridge source receipt is missing')
@@ -239,14 +240,21 @@ def load_payload(archive, record):
             t.need(len(marker) < 128 * 1024, 'Bridge receipt exceeds the limit')
             receipt = json.loads(marker.decode('utf-8-sig'))
             t.need(all(receipt.get(key) == record.get(key) for key in ('commit','patch_sha256','upstream','mfg_source','bridge_id',
-                       'inzoi_late_overlay','inzoi_overlay_scope','inzoi_patch_sha256','inzoi_runtime_fallback')),
+                       'inzoi_late_overlay','inzoi_overlay_scope','inzoi_patch_sha256','inzoi_runtime_fallback',
+                       'glass_revision','glass_sha256','glass_source')),
                    'Combined bridge payload/source receipt mismatch')
-    t.need(set(found) == set(FILES), 'Unrecognized Skynizz payload layout; required loader, INI and NR forwarder must be present')
+    t.need(set(FILES) <= set(found) <= (set(FILES) | set(OPTIONAL_FILES)), 'Unrecognized Skynizz payload layout; required loader, INI and NR forwarder must be present')
+    if record.get('glass_revision'):
+        t.need(type(record['glass_revision']) is int and record['glass_revision'] > 0
+               and 'rtxforge-glass.dll' in found and amd64(found['rtxforge-glass.dll'])
+               and t.sha(found['rtxforge-glass.dll']) == record.get('glass_sha256'), 'Glass renderer differs from its source receipt')
+    else:
+        t.need('rtxforge-glass.dll' not in found, 'Unadvertised glass renderer in package')
     t.need(amd64(found['OptiScaler.dll']) and amd64(found['nvngx.dll_dlssnr.dll']), 'Skynizz requires AMD64 PE payloads')
     ini = found['OptiScaler.ini'].decode('utf-8-sig')
     t.need('[DlssNr]' in ini and 'CacheEnabled=' in ini and 'PreSr=' in ini, 'Unsupported Skynizz configuration schema')
     t.need(t.digest(archive) == record['sha256'], 'Skynizz archive changed during extraction')
-    return {FILES[name]: data for name, data in found.items()}, {
+    return {(FILES | OPTIONAL_FILES)[name]: data for name, data in found.items()}, {
         **record, 'path': str(archive), 'provider': record['name'], 'release': record,
         'files': {name: hashlib.sha256(data).hexdigest() for name, data in found.items()},
     }

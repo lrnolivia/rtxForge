@@ -68,12 +68,25 @@ DEFAULTS.update(dynamic_mfg=0, dlss_preset=0, rr_preset=0)
 _BOOLS.add('dynamic_mfg')
 # OptiScaler numbers presets 1 (A) to 15 (O); one picked in its own menu still round-trips.
 _PRESETS = {'dlss_preset': ('DLSS', range(16)), 'rr_preset': ('DLSSD', range(16))}
-VERSIONS = (1, 2, 3, 4, 5, 6, 7)
+PASS_FIELDS = ('inherit', 'style', 'strength', 'structure', 'tone', 'skin')
+PROTOCOL8 = {f'pass{p}_{field}': (488 + i * 4, 440 + i * 4)
+             for i, (p, field) in enumerate((p, field) for p in (2, 3) for field in PASS_FIELDS)}
+OFFSETS.update({key: spec[0] for key, spec in PROTOCOL8.items()})
+DEFAULTS.update({key: 1 if key.endswith(('_inherit', '_strength', '_structure', '_tone')) else -1 if key.endswith('_skin') else 0
+                 for key in PROTOCOL8})
+_FLOATS.update(key for key in PROTOCOL8 if not key.endswith(('_inherit', '_style')))
+_BOOLS.update(key for key in PROTOCOL8 if key.endswith('_inherit'))
+INI_KEYS.update({f'pass{p}_{field}': f'Pass{p}{field.title()}' for p in (2, 3) for field in PASS_FIELDS})
+VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8)
+
+
+def snapshot_size(version):
+    return 1024 if version >= 8 else 512 if version >= 3 else SIZE
 
 
 def supported_keys(version):
     return (LEGACY_KEYS | (set(EXTRA) if version >= 3 else set()) | (set(SHARP) if version >= 4 else set())
-            | (set(PROTOCOL7) if version >= 7 else set()))
+            | (set(PROTOCOL7) if version >= 7 else set()) | (set(PROTOCOL8) if version >= 8 else set()))
 
 
 def startup_changes(game, changes):
@@ -88,7 +101,7 @@ def validate_changes(changes):
     result = {}
     for key, value in changes.items():
         if key in _FLOATS:
-            low = -1 if key == 'skin' else .25 if key == 'work_scale' else 0
+            low = -1 if key == 'skin' or key.endswith('_skin') else .25 if key == 'work_scale' else 0
             maximum = 1 if key in ('sharpness', 'motion_sharpness') else 4 if key == 'colour' else 2
             t.need(type(value) in (int, float) and math.isfinite(value) and low <= value <= maximum,
                    'An image control is outside its supported range.')
@@ -100,19 +113,23 @@ def validate_changes(changes):
                      value in _PRESETS[key][1] if key in _PRESETS else
                      1 <= value <= 16 if key == 'interval' else
                      1 <= value <= 3 if key == 'passes' else
-                     0 <= value <= 2 if key in ('style', 'sharpen_shader') else 0 <= value <= 3)
+                     0 <= value <= 2 if key in ('style', 'sharpen_shader') or key.endswith('_style') else 0 <= value <= 3)
             t.need(valid, 'A control value is outside the supported range.')
             result[key] = value
     return result
 
 
 def decode(raw, pid):
-    t.need(len(raw) in (SIZE, 512), 'The game returned an incomplete control snapshot.')
+    t.need(len(raw) in (SIZE, 512, 1024), 'The game returned an incomplete control snapshot.')
     magic, version, found = struct.unpack_from('<III', raw)
     t.need(magic == MAGIC and version in VERSIONS and found == pid
-           and len(raw) == (512 if version >= 3 else SIZE), 'This game uses an unsupported control protocol.')
-    values = {key: struct.unpack_from('<f' if key in _FLOATS else '<i', raw, offset)[0]
+           and len(raw) == snapshot_size(version), 'This game uses an unsupported control protocol.')
+    values = {key: struct.unpack_from('<f' if key in _FLOATS or key in PROTOCOL8 else '<i', raw, offset)[0]
               for key, offset in OFFSETS.items() if key in supported_keys(version)}
+    for key in PROTOCOL8:
+        if key in values and key not in _FLOATS:
+            t.need(math.isfinite(values[key]) and values[key] == int(values[key]), 'Invalid pass control.')
+            values[key] = int(values[key])
     validate_changes(values)
     failure = raw[160:256] if version >= 2 else raw[136:256]
     failure = failure.split(b'\0', 1)[0].decode('utf-8', errors='replace')
@@ -140,6 +157,10 @@ def decode(raw, pid):
         support = struct.unpack_from('<i', raw, DYNAMIC_SUPPORT)[0]
         t.need(support in (-1, 0, 1), 'Invalid Dynamic MFG report.')
         result['dynamic_supported'] = None if support < 0 else bool(support)
+    if version >= 8:
+        support = struct.unpack_from('<i', raw, 536)[0]
+        t.need(support in (0, 1), 'Invalid pass-tuning capability.')
+        result['pass_tuning_supported'] = bool(support)
     return result
 
 
@@ -179,7 +200,7 @@ class Mailbox:
             header = ctypes.string_at(self.view, 12)
             magic, version, found = struct.unpack('<III', header)
             t.need(magic == MAGIC and version in VERSIONS and found == pid, 'Unsupported game control protocol.')
-            self.size = 512 if version >= 3 else SIZE
+            self.size = snapshot_size(version)
             self.read()
         except BaseException:
             self.close()
@@ -213,6 +234,9 @@ class Mailbox:
                'Update this game package to use colour strength above 2.00.')
         t.need(not before.get('original_menu') or shared_native_menu(), 'OptiScaler controls this session. Restart the game after switching overlays.')
         values = before['values'] | changes
+        t.need(before.get('pass_tuning_supported') is not False
+               or all(changes[key] == before['values'][key] for key in changes if key in PROTOCOL8),
+               'Independent pass tuning requires the DirectX 12 NR route.')
         if 'multiplier' in changes and changes['multiplier'] > 0:
             t.need(before['backend_max'] >= changes['multiplier'] - 1, 'This game does not support that multiplier.')
         t.need(not changes.get('dynamic_mfg') or before['dynamic_supported'] is not False,
@@ -235,6 +259,9 @@ class Mailbox:
         if before['version'] >= 7:
             for key, (_, request) in PROTOCOL7.items():
                 ctypes.c_long.from_address(self.view + request).value = values[key]
+        if before['version'] >= 8:
+            for key, (_, request) in PROTOCOL8.items():
+                ctypes.c_float.from_address(self.view + request).value = values[key]
         ctypes.c_long.from_address(self.view + 16).value = sequence
         deadline = time.monotonic() + 2
         while time.monotonic() < deadline:
@@ -622,7 +649,14 @@ class Controls:
             t.need(not self._vulkan(params), 'Vulkan helper presets are not available yet. Current in-game changes remain active.')
             feeder = self._feeder(params)
             if feeder:
-                feeder_controls.write(feeder, validate_changes(params.get('changes')))
+                changes = params.get('changes')
+                bounds = {'enabled': ('', 0, 1), **feeder_controls.feeder.TUNING}
+                t.need(isinstance(changes, dict) and changes and set(changes) <= set(bounds), 'Choose supported Feeder controls.')
+                for key, value in changes.items():
+                    _, low, high = bounds[key]
+                    t.need(type(value) in (int, float) and math.isfinite(value) and low <= value <= high
+                           and (type(low) is not int or type(value) is int), 'A Feeder control is outside its supported range.')
+                feeder_controls.write(feeder, changes)
                 detail = 'Preset saved. Model changes apply the next time the game starts.'
                 return {'saved': True, 'detail': detail, 'panel_message': detail}
             game = self._game(params)
@@ -670,6 +704,93 @@ class Controls:
             self.last_pid.pop(game['key'], None)
             self.preset_errors.pop(game['key'], None)
             return {'saved': False, 'detail': 'Saved preset cleared. Current live settings are unchanged.'}
+
+    @staticmethod
+    def _preset_name(value):
+        t.need(isinstance(value, str) and value == value.strip() and 0 < len(value.encode('utf-8')) <= 60
+               and not any(ord(c) < 32 or ord(c) == 127 for c in value),
+               'Use a preset name of 1 to 60 bytes without control characters.')
+        return value
+
+    def _named_identity(self, params):
+        t.need(not self._vulkan(params), 'Named presets are unavailable for this Vulkan package.')
+        feeder = self._feeder(params)
+        if not feeder:
+            game = self._game(params)
+            return game['key'], game['recipe']
+        record = feeder_controls.record(self.feeder, feeder['target'])
+        recipe = hashlib.sha256(json.dumps(record, sort_keys=True).encode()).hexdigest()
+        key = hashlib.sha256(('feeder:' + str(feeder['exe'])).encode()).hexdigest()
+        return key, recipe
+
+    def _named_read(self, key):
+        directory = self.state / 'named'
+        t.need(not directory.is_symlink(), 'Unsafe preset directory.')
+        path = directory / (key + '.json')
+        if not path.exists():
+            old = self.presets.get(key)
+            return {'Saved preset': {'recipe': old['recipe'], 'values': old['changes']}} if old else {}
+        t.need(not path.is_symlink() and path.stat().st_size < 60000, 'Unsafe preset library.')
+        data = json.loads(path.read_text(encoding='utf-8'))
+        t.need(isinstance(data, dict) and data.get('schema') == 1
+               and isinstance(data.get('presets'), dict) and len(data['presets']) <= 12,
+               'The preset library is invalid.')
+        entries = data['presets']
+        for name, entry in entries.items():
+            self._preset_name(name)
+            t.need(isinstance(entry, dict) and isinstance(entry.get('recipe'), str)
+                   and len(entry['recipe']) == 64 and isinstance(entry.get('values'), dict)
+                   and 0 < len(entry['values']) <= 64, 'The preset library is invalid.')
+            t.need(all(isinstance(k, str) and type(v) in (int, float) and math.isfinite(v)
+                       for k, v in entry['values'].items()), 'The preset library contains invalid controls.')
+        return entries
+
+    def _named_write(self, key, entries):
+        directory = self.state / 'named'
+        t.need(not self.state.is_symlink() and not directory.is_symlink(), 'Unsafe preset directory.')
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / (key + '.json')
+        t.need(not path.is_symlink(), 'Unsafe preset library.')
+        t.atomic_file(path, json.dumps({'schema': 1, 'presets': entries}, ensure_ascii=False).encode('utf-8'), 0o600)
+
+    def preset_list(self, params):
+        with self.lock:
+            key, recipe = self._named_identity(params)
+            entries = self._named_read(key)
+            # Migrate the existing single saved preset into the selector without
+            # changing its startup/replay behavior or writing during a read.
+            return {'named_supported': True, 'named_presets': [
+                {'name': name, 'compatible': entry['recipe'] == recipe,
+                 'values': entry['values'] if entry['recipe'] == recipe else {}}
+                for name, entry in sorted(entries.items(), key=lambda item: item[0].casefold())]}
+
+    def preset_save(self, params):
+        with self.lock:
+            request = params.get('changes')
+            t.need(isinstance(request, dict) and set(request) == {'name', 'values'}, 'Choose a named preset to save.')
+            name = self._preset_name(request['name'])
+            key, recipe = self._named_identity(params)
+            entries = self._named_read(key)
+            existing = next((n for n in entries if n.casefold() == name.casefold()), None)
+            t.need(existing is not None or len(entries) < 12, 'Delete a preset before adding another (12 per game).')
+            # Existing save enforces ownership, session, capabilities and ranges.
+            saved = self.save(params | {'changes': request['values']})
+            if existing: del entries[existing]
+            entries[name] = {'recipe': recipe, 'values': request['values']}
+            self._named_write(key, entries)
+            return self.preset_list(params) | {'preset_name': name, 'message': saved.get('panel_message') or saved['detail']}
+
+    def preset_delete(self, params):
+        with self.lock:
+            request = params.get('changes')
+            t.need(isinstance(request, dict) and set(request) == {'name'}, 'Choose a preset to delete.')
+            name = self._preset_name(request['name'])
+            key, _ = self._named_identity(params)
+            entries = self._named_read(key)
+            t.need(name in entries, 'Refresh the preset list before deleting.')
+            del entries[name]
+            self._named_write(key, entries)
+            return self.preset_list(params) | {'message': 'Preset deleted. Current settings and startup preset are unchanged.'}
 
     def reset(self, params):
         with self.lock:
@@ -747,4 +868,6 @@ class Controls:
 def methods(state):
     controls = Controls(state)
     return {'companion_reload': controls.reload_presets, 'companion_targets': controls.targets, 'companion_active': controls.active, 'companion_status': controls.status, 'companion_apply': controls.apply,
-            'companion_save': controls.save, 'companion_forget': controls.forget, 'companion_reset': controls.reset}
+            'companion_save': controls.save, 'companion_forget': controls.forget, 'companion_reset': controls.reset,
+            'companion_preset_list': controls.preset_list, 'companion_preset_save': controls.preset_save,
+            'companion_preset_delete': controls.preset_delete}

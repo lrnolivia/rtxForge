@@ -27,13 +27,19 @@ on:
 permissions:
   contents: write
 
+env:
+  RTXFORGE_REQUIRE_GLASS: '1'
+
 # Pushes and pull requests cancel their own older runs; nothing cancels a manual publication.
 concurrency:
   group: rtxforge-linux-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.head_ref || 'main' }}
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
+  panel-candidate:
+    uses: ./.github/workflows/overlay-native.yml
   build-appimage:
+    needs: panel-candidate
     name: Bazzite x86_64 AppImage
     runs-on: ubuntu-24.04
     container:
@@ -81,6 +87,22 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Download glass-overlay-candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: glass-overlay-candidate
+          path: windows/out/glass-overlay
+      - name: Download skynizz-in-game-panel-candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: skynizz-in-game-panel-candidate
+          path: windows/out/skynizz-bridge
+      - name: Download feeder-overlay-candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: feeder-overlay-candidate
+          path: windows/out/feeder-panel
+
       - name: Trust checkout inside Fedora container
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -114,7 +136,7 @@ jobs:
           /usr/bin/python3 -m unittest \
             engine.tests.test_v13_core_hardening \
             tests.test_game_mode_motion
-          /usr/bin/python3 -m unittest tests.test_overlay_settings tests.test_vulkan_app_routes
+          /usr/bin/python3 -m unittest tests.test_overlay_settings tests.test_vulkan_app_routes tests.test_overlay_bundle tests.test_overlay_refresh
 
           /usr/bin/python3 -m unittest discover -s tests -p test_runtime_updates.py
           /usr/bin/python3 -m unittest discover -s tests -p test_ui_colors.py
@@ -370,6 +392,7 @@ jobs:
   # payload as the AppImage. Runs on the VM, not in a container: bubblewrap needs
   # user namespaces, and the checks below run the installed app like a user's system.
   build-flatpak:
+    needs: panel-candidate
     name: Flatpak x86_64 bundle
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -382,6 +405,22 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Download glass-overlay-candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: glass-overlay-candidate
+          path: windows/out/glass-overlay
+      - name: Download skynizz-in-game-panel-candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: skynizz-in-game-panel-candidate
+          path: windows/out/skynizz-bridge
+      - name: Download feeder-overlay-candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: feeder-overlay-candidate
+          path: windows/out/feeder-panel
 
       - name: Install Flatpak tooling and the GNOME 51 runtime
         run: |

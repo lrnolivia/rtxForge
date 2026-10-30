@@ -390,7 +390,10 @@ public sealed partial class GameModeView
             [
                 new("App and updates", null,
                 [
-                    ui.RowButton("Check for updates", null, () => _ = CheckForUpdatesAsync(), description: $"rtxForge {MainWindow.AppVersion} · download, verify and install the newest build.", glyph: ""),
+                    SettingToggle("Automatic updates", shell.AutomaticUpdateDescription,
+                        () => shell.Settings.AutoUpdate, value => shell.Settings.AutoUpdate = value)
+                        .With(button => button.IsEnabled = shell.InstalledApp && !shell.Service.IsPreview),
+                    ui.RowButton(shell.UpdateAction, null, () => _ = CheckForUpdatesAsync(), description: shell.UpdateStatus, glyph: ""),
                     ui.RowButton("Report a bug", null, () => ChooseSupportReportGames(), description: "Choose games, say what happened and review a redacted ZIP before anything is saved.", glyph: ""),
                 ]),
             ],

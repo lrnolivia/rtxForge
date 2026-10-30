@@ -3,6 +3,12 @@ using RtxForge.Windows.Models;
 using RtxForge.Windows.Services;
 
 var count = 0;
+if (!new ForgeSettings().AutoUpdate) throw new Exception("Automatic app updates must default on.");
+var manualUpdates = JsonSerializer.Deserialize<ForgeSettings>("{\"auto_update\":false}")!;
+if (manualUpdates.AutoUpdate || manualUpdates.Clone().AutoUpdate
+    || JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(manualUpdates))!.AutoUpdate)
+    throw new Exception("The automatic update opt-out did not persist.");
+Console.WriteLine("PASS: automatic application updates default on and the opt-out survives clone and persistence.");
 foreach (var raw in new[] { "0", "2", "3", "4", "5", "6", "\"0\"", "\"2\"", "\"3\"", "\"4\"", "\"5\"", "\"6\"", "\"auto\"", "null", "1", "7", "-1", "4.5", "\"invalid\"", "{}", "[]", "true" })
 {
     var input = "{\"runtime_provider\":\"skynizz\",\"default_profile\":\"nr-mfg\",\"nr_runtime\":\"model.dll\",\"game_folders\":[\"pinned\"],\"game_artwork\":{\"one\":{\"poster\":\"custom.png\"}},\"mfg_multiplier\":" + raw + "}";

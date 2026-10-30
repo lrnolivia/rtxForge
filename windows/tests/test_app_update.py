@@ -44,6 +44,7 @@ class WindowsBetaUpdateTests(unittest.TestCase):
         result = self.check([self.release()])
         self.assertIn('1.0.0-beta.2', str(result))
         self.assertEqual(updates._reviews[result['token']]['payload']['sha256'], 'a' * 64)
+        self.assertEqual(updates._reviews[result['token']]['payload']['from_version'], '1.0.0-beta.1')
         self.assertIn('rtxForge-Setup-1.0.0-beta.2-x64.exe', str(result))
 
     def test_current_beta_is_not_offered_again(self):

@@ -21,6 +21,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
     readonly ConcurrentDictionary<int, Request> pending = new();
     readonly SemaphoreSlim writeLock = new(1, 1);
     int nextId;
+    bool appUpdateHandedOff;
 
     sealed record Request(TaskCompletionSource<JsonNode?> Done, Action<JsonObject>? Progress);
 
@@ -589,7 +590,9 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
     {
         foreach (var cancellation in testHelperPolls.Values) cancellation.Cancel();
         try { process.StandardInput.Close(); } catch (IOException) { }
-        try { if (!process.WaitForExit(3000)) process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+        // A verified application updater must survive a slow engine shutdown.
+        // Ordinary shutdown still cleans up the whole engine process tree.
+        try { if (!process.WaitForExit(3000)) process.Kill(entireProcessTree: !appUpdateHandedOff); } catch (InvalidOperationException) { }
         process.Dispose();
     }
 }

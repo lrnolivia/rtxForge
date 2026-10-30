@@ -4369,6 +4369,12 @@ class Window(Adw.ApplicationWindow):
         if not self.settings.get('compact_header_chosen'):self.settings['compact_header']=True
         self.strength_names=tuple(self.strength_presets);self.multiplier_values=('auto',0,2,3,4,5,6)
         self.settings['enable_effects']=True;self.settings.setdefault('dark',True);self.hardware_info={'ready':True,'gpu':'Preview GPU','reason':'Preview mode'} if options.demo else None;self.games=[];self.cards={};self.selected_game_ids=set();self.mode='mfg-only';self.filter='available'
+        self.pending_app_update=None
+        self.app_update_running=False
+        self.app_update_applying=False
+        self.app_update_close_allowed=False
+        self.app_update_next_check=0
+        self.app_update_status='Checks automatically and installs when you close rtxForge.'
         self.busy=False;self.task_kind='';self.pending=None;self.cancel_art=threading.Event();self.log=[];self.dialog=None;self.review=None;self.action_buttons=[]
         self.connect('close-request',self.close_request)
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)
@@ -5438,6 +5444,7 @@ class Window(Adw.ApplicationWindow):
         )
 
         GLib.timeout_add(180,self.tick)
+        GLib.timeout_add_seconds(30,self.poll_app_update)
         if options.demo:
             games=demo_games()
 
@@ -5520,6 +5527,7 @@ class Window(Adw.ApplicationWindow):
         self._new_shell=None;self._new_stack=None
         initial=(getattr(options,'ui_mode',None) or 'classic') if options.demo else 'classic'
         self.set_ui_mode(initial,persist=False)
+        if getattr(options,'game_mode',False):self.enter_game_mode()
         GLib.idle_add(self._collapse_library_header,self._library_scroll_adjustment)
 
     # ---------------- NAVIGATION ----------------
@@ -10412,6 +10420,10 @@ class Window(Adw.ApplicationWindow):
     def filter_changed(self,toggle,key):
         if toggle.get_active():self.filter=key;self.filter_games()
     def close_request(self,*_):
+        if self.app_update_applying:return True
+        if (not self.app_update_close_allowed and self.pending_app_update
+                and self.settings.get('auto_update',True) and not self.busy):
+            self.apply_pending_app_update(False);return True
         if self.busy and self.task_kind!='art':self.toast('Please wait for the current file operation to finish.');return True
         if self.busy:self.cancel_art.set()
         if getattr(getattr(self,'couch',None),'hint_timer',0):
@@ -15246,19 +15258,25 @@ class Window(Adw.ApplicationWindow):
         item=row('Report a bug','Choose games, say what happened and review a redacted ZIP before anything is saved.')
         action=icon_button('Bug Report','dialog-warning-symbolic',self.show_reports);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);app.add(item)
 
-        if os.environ.get('APPIMAGE'):
+        import app_update
+        if app_update.supported():
+            automatic=Gtk.Switch(active=self.settings.get('auto_update',True),valign=Gtk.Align.CENTER)
+            automatic.connect('notify::active',lambda widget,*_:self.set_auto_update(widget.get_active()))
+            item=row('Automatic updates','Download in the background and install when you close. Close games before installation.')
+            item.add_suffix(automatic);app.add(item)
             item=row(
                 'Application Update',
-                'Download, verify, and install the newest rtxForge build.'
+                self.app_update_status
             )
             action=button(
-                'Check for Updates',
+                'Restart to Update' if self.pending_app_update else 'Check for Updates',
                 self.check_app_update
             )
             action.set_valign(Gtk.Align.CENTER)
             item.add_suffix(action)
             app.add(item)
 
+        if os.environ.get('APPIMAGE'):
             item=row(
                 'Desktop Installation',
                 'Re-register this AppImage in the application menu.'
@@ -15331,195 +15349,82 @@ class Window(Adw.ApplicationWindow):
             if self.dialog is d:self.dialog=None
         d.connect('closed',closed)
         d.present(self)
+    def set_auto_update(self,value):
+        self.settings['auto_update']=bool(value)
+        if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
+        if value:self.app_update_next_check=0
+
+    def poll_app_update(self,manual=False):
+        import app_update
+        if (self.options.demo or not app_update.supported() or self.app_update_running
+                or self.app_update_applying or self.busy or self.pending_app_update):return True
+        if not manual and (not self.settings.get('auto_update',True) or time.monotonic()<self.app_update_next_check):return True
+        self.app_update_running=True
+        self.app_update_next_check=time.monotonic()+6*3600
+        if manual:self.toast('Checking and downloading updates…')
+        def done(info,path,error):
+            self.app_update_running=False
+            if error:
+                self.app_update_next_check=time.monotonic()+1800
+                self.app_update_status='Update check failed. Try again when you’re online.'
+                self.log.append('App update: '+str(error))
+                if manual:self.toast(str(error))
+            elif path:
+                self.pending_app_update=(info,path)
+                self.app_update_status='Update ready. Installs when you close, or restart now.'
+                notice=Adw.Toast.new(self.app_update_status);notice.set_button_label('Restart')
+                notice.connect('button-clicked',lambda *_:self.apply_pending_app_update(True))
+                self.overlay.add_toast(notice)
+            elif manual:self.toast('rtxForge is up to date.')
+            return False
+        def work():
+            try:
+                info=app_update.check()
+                path=app_update.stage(info) if info['available'] else None
+                GLib.idle_add(done,info,path,None)
+            except Exception as error:GLib.idle_add(done,None,None,str(error))
+        threading.Thread(target=work,daemon=True,name='app-update').start()
+        return True
+
     def check_app_update(self,*_):
         import app_update
-        self.start(
-            'Checking for application updates',
-            app_update.check,
-            self.update_checked,
-        )
+        if self.pending_app_update:self.apply_pending_app_update(True)
+        elif not app_update.supported():self.toast('Use the packaged app to install application updates.')
+        else:self.poll_app_update(True)
 
-    def update_checked(self,info):
-        if not info['available']:
-            self.toast(
-                f"rtxForge {APP_VERSION} is up to date."
-            )
-            return
-
-        d,b,f=self.open_panel(
-            'rtxForge Update',
-            width=620,
-            height=390,
-        )
-
-        group=Adw.PreferencesGroup(
-            title=f"rtxForge {info['version']}",
-            description='A newer application build is ready.'
-        )
-        b.append(group)
-
-        group.add(
-            row(
-                'Installed',
-                f"{info['current_version']} · "
-                f"{info['current_commit'][:8]}"
-            )
-        )
-        group.add(
-            row(
-                'Available',
-                f"{info['version']} · "
-                f"{info['commit'][:8]}"
-            )
-        )
-
-        size=float(info['size'])
-        units=['B','KB','MB','GB']
-        index=0
-        while size>=1024 and index<len(units)-1:
-            size/=1024
-            index+=1
-
-        group.add(
-            row(
-                'Download',
-                f"{size:.1f} {units[index]} · SHA256 verified"
-            )
-        )
-
-        f.append(
-            button(
-                'Later',
-                lambda *_:d.close()
-            )
-        )
-        f.append(
-            button(
-                'Install Update',
-                lambda *_:self.install_app_update(
-                    info,d,b,f
-                ),
-                'suggested-action',
-            )
-        )
-
-    def install_app_update(self,info,d,b,f):
+    def apply_pending_app_update(self,restart=False):
         import app_update
-
-        clear(b)
-        clear(f)
-
-        d.set_can_close(False)
-
-        content=Gtk.Box(
-            orientation=Gtk.Orientation.VERTICAL,
-            spacing=14,
-            valign=Gtk.Align.CENTER,
-            vexpand=True,
-        )
-        content.add_css_class('panel-body')
-        b.append(content)
-
-        content.append(
-            label(
-                f"Updating to rtxForge {info['version']}",
-                'title-2',
-            )
-        )
-
-        caption=label(
-            'Downloading application…',
-            'dim-label',
-        )
-        content.append(caption)
-
-        bar=Gtk.ProgressBar(
-            width_request=360,
-        )
-        content.append(bar)
-
-        def progress(fraction,received,total):
-            GLib.idle_add(
-                bar.set_fraction,
-                fraction,
-            )
-
-            mb_received=received/(1024*1024)
-            mb_total=total/(1024*1024)
-
-            GLib.idle_add(
-                caption.set_text,
-                f"Downloading · "
-                f"{mb_received:.1f} / {mb_total:.1f} MB",
-            )
-
-        self.start(
-            'Downloading and verifying application update',
-            lambda:app_update.install(
-                info,
-                progress=progress,
-            ),
-            lambda target:self.app_update_installed(
-                info,target,d,b,f
-            ),
-        )
-
-    def app_update_installed(self,info,target,d,b,f):
-        import app_update
-
-        d.set_can_close(True)
-        clear(b)
-        clear(f)
-
-        box=Gtk.Box(
-            orientation=Gtk.Orientation.VERTICAL,
-            spacing=14,
-            valign=Gtk.Align.CENTER,
-            vexpand=True,
-        )
-        box.add_css_class('panel-body')
-        b.append(box)
-
-        icon=Gtk.Image.new_from_icon_name(
-            'object-select-symbolic'
-        )
-        icon.set_pixel_size(40)
-        icon.add_css_class('result-success')
-        box.append(icon)
-
-        box.append(
-            label(
-                f"rtxForge {info['version']} installed",
-                'title-2',
-            )
-        )
-
-        box.append(
-            label(
-                'The verified AppImage replaced the installed '
-                'copy. Your previous build was preserved.',
-                'dim-label',
-            )
-        )
-
-        f.append(
-            button(
-                'Later',
-                lambda *_:d.close()
-            )
-        )
-
-        def restart(*_):
-            app_update.restart()
-            self.get_application().quit()
-
-        f.append(
-            button(
-                'Restart Now',
-                restart,
-                'suggested-action',
-            )
-        )
+        if not self.pending_app_update or self.app_update_applying:return
+        if self.busy:self.toast('Finish the current operation before updating.');return
+        self.app_update_applying=True
+        self.busy=True;self.task_kind='app-update';self.started=time.monotonic()
+        self.show_operation_status('Installing application update');self.controls()
+        info,path=self.pending_app_update
+        game_mode=self.input_stack.get_visible_child_name()=='couch'
+        def done(error):
+            self.app_update_applying=False
+            self.busy=False;self.task_kind='';self.hide_operation_status();self.controls()
+            if error:
+                self.log.append('Update postponed: '+str(error))
+                self.toast('Update postponed: '+str(error))
+                if restart:return False
+            elif restart:
+                try:app_update.restart(game_mode=game_mode)
+                except Exception as failure:
+                    self.toast('Update installed. Reopen rtxForge: '+str(failure));return False
+            self.app_update_close_allowed=True
+            self.close()
+            return False
+        def work():
+            try:
+                engine=__import__('engine_bridge').module(self.service.config)
+                for game in self.games:
+                    if engine._running_processes_under_root(Path(game['game'])):
+                        raise RuntimeError('Close running games before updating rtxForge.')
+                app_update.apply(info,path)
+                GLib.idle_add(done,None)
+            except Exception as error:GLib.idle_add(done,str(error))
+        threading.Thread(target=work,daemon=True,name='apply-app-update').start()
 
     def install_desktop(self,*_):
         import desktop_install
@@ -16708,6 +16613,7 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--provider',type=Path)
     parser.add_argument('--ui-mode',choices=['classic','new'],default=None)
+    parser.add_argument('--game-mode',action='store_true',help='Open Game Mode.')
     parser.add_argument(
         '--demo',
         action='store_true',

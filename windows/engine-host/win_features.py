@@ -964,31 +964,49 @@ def update_check(params):
     return _review("update", f"rtxForge {version}", items, action="Download and install",
                    summary="A newer rtxForge for Windows build is ready. The installer opens after the download is verified; rtxForge closes so it can update.",
                    note="The installer is not code-signed. Windows SmartScreen may ask you to confirm (More info › Run anyway).",
-                   payload={"url": setup["browser_download_url"], "name": name, "size": size, "sha256": sha[0].lower(), "version": version})
+                   payload={"url": setup["browser_download_url"], "name": name, "size": size, "sha256": sha[0].lower(), "version": version, "from_version": current})
 
 
 def _run_update(info):
-    folder = LOCAL / "updates"
-    folder.mkdir(parents=True, exist_ok=True)
-    target = folder / info["name"]
-    stage = folder / (info["name"] + "." + uuid.uuid4().hex + ".part")
-    digest, received = hashlib.sha256(), 0
-    try:
-        request = urllib.request.Request(info["url"], headers={"User-Agent": "rtxForge-Windows-Updater/1"})
-        with urllib.request.urlopen(request, timeout=60) as response, stage.open("xb") as out:
-            while block := response.read(1024 * 1024):
-                received += len(block)
-                t.need(received <= info["size"], "The update download is larger than the release says.")
-                digest.update(block)
-                out.write(block)
-                ui.progress(f"Downloading · {received / 1024**2:.1f} / {info['size'] / 1024**2:.1f} MB",
-                            fraction=received / info["size"])
-        t.need(received == info["size"], "The update download size does not match the release.")
-        t.need(digest.hexdigest() == info["sha256"], "Update checksum verification failed. Nothing was installed.")
-        os.replace(stage, target)
-    finally:
-        stage.unlink(missing_ok=True)
-    return {"message": f"rtxForge {info['version']} downloaded and verified.", "path": str(target)}
+    import auto_update
+    target = auto_update.download(info, LOCAL / 'updates',
+                                  lambda fraction, received, total: ui.progress(
+                                      f'Downloading update · {received / 1024**2:.1f} / {total / 1024**2:.1f} MB', fraction=fraction))
+    return {'message': f"rtxForge {info['version']} downloaded and verified.", 'path': str(target)}
+
+
+_staged_update = None
+
+
+def update_stage(params):
+    global _staged_update
+    import app_updates
+    app_updates.installed_executable()  # development and portable builds never run Setup
+    failure = app_updates.previous_failure(LOCAL / 'updates')
+    if failure:
+        return {'message': 'Previous update failed: ' + failure + ' Check for updates to retry.'}
+    review = update_check(params)
+    payload = _reviews.pop(review['token'])['payload']
+    if not payload:
+        _staged_update = None
+        return {'message': 'rtxForge is up to date.'}
+    result = _run_update(payload)
+    _staged_update = (payload, result['path'])
+    return {**result, 'version': payload['version']}
+
+
+def update_apply(params):
+    import app_updates
+    t.need(_staged_update, 'Check for updates again before installing.')
+    t.need(not _storage_busy(), 'Finish the current file operation before updating.')
+    engine = engine_bridge.module(_config())
+    for row in params.get('rows', []):
+        root = row.get('root') or row.get('path') or row.get('location')
+        t.need(root, 'Game process check is unavailable. Update after closing the game.')
+        t.need(not engine._running_processes_under_root(Path(root)), 'Close running games before updating rtxForge.')
+    return app_updates.launch(*_staged_update, pid=params['pid'], restart=params.get('restart'),
+                              game_mode=params.get('game_mode'), helper=_settings().get('overlay_helper', True),
+                              folder=LOCAL / 'updates')
 
 
 RUNNERS = {"art-sync": _run_art_sync, "dlss-restore": _run_dlss_restore, "report": _run_report, "service": _run_service,
@@ -1009,6 +1027,6 @@ METHODS = {
     "recoveries": recoveries, "recovery_review": recovery_review, "cleanup_review": cleanup_review,
     "extras_list": extras_list, "extra_review": extra_review, "extra_restore_review": extra_restore_review,
     "packages": packages, "package_inspect": package_inspect, "package_use": package_use,
-    "update_check": update_check,
+    "update_check": update_check, "update_stage": update_stage, "update_apply": update_apply,
     "storage_inventory": storage_inventory, "storage_review": storage_review,
 }

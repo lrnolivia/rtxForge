@@ -665,11 +665,14 @@ public sealed partial class MainWindow
     public async Task CheckForUpdatesAsync()
     {
         if (Service.IsPreview) { ShowToast("Checking for updates is disabled in preview mode."); return; }
-        var result = await ReviewDialog.ShowAsync(this, "rtxForge Update", Service.CheckForUpdateAsync);
-        if (result?.Path is not { } installer || result.Errors.Count > 0) return;
-        // The verified installer replaces this build in place; rtxForge closes so its files can be updated.
-        Process.Start(new ProcessStartInfo(installer) { UseShellExecute = true });
-        Close();
+        if (!InstalledApp)
+        {
+            ShowToast("Portable app: extract the newest ZIP into your portable folder. Settings and backups stay in your profile.");
+            OpenUri("https://github.com/lrnolivia/rtxForge/releases/tag/beta");
+            return;
+        }
+        if (updateReady) { await ApplyAppUpdateAsync(true); return; }
+        await DownloadAppUpdateAsync(true);
     }
 
     // ---------- Tools: ReShade and add-ons (choose_extra / review_extra_restore) ----------

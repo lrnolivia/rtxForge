@@ -96,6 +96,8 @@ public interface IForgeService
 
     // Application updates: GitHub releases windows-v<VERSION>.
     Task<EngineReview> CheckForUpdateAsync();
+    Task<EngineResult> StageAppUpdateAsync();
+    Task ApplyAppUpdateAsync(IReadOnlyList<Game> games, bool restart, bool gameMode);
 }
 
 /// <summary>
@@ -327,6 +329,8 @@ public sealed class PreviewForgeService : IForgeService
     public Task<PackageChoice> UseCustomPackageAsync(PackageInspection inspection, IReadOnlyDictionary<string, string> values, bool trusted, string notes) =>
         Disabled<PackageChoice>("Custom packages");
     public Task<EngineReview> CheckForUpdateAsync() => Disabled<EngineReview>("Checking for updates");
+    public Task<EngineResult> StageAppUpdateAsync() => Disabled<EngineResult>("Downloading an update");
+    public Task ApplyAppUpdateAsync(IReadOnlyList<Game> games, bool restart, bool gameMode) => Task.CompletedTask;
 
     static string StepCaption(string operation) => operation switch
     {

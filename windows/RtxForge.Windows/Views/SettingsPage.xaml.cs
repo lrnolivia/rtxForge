@@ -285,8 +285,12 @@ public sealed partial class SettingsPage : Page
         // ----- About (Linux: Application group + About dialog) -----
         var about = new PreferencesGroup("App and updates");
         about.Add(Prefs.Row("rtxForge", $"Version {MainWindow.AppVersion} · Built for Windows with WinUI 3", glyph: ""));
-        about.Add(Prefs.Row("Updates", "Download, verify, and install the newest rtxForge build.",
-            Prefs.ActionButton("Check for updates", async (_, _) => await shell.CheckForUpdatesAsync()), ""));
+        (row, var automaticUpdates) = Prefs.SwitchRow("Automatic updates", shell.AutomaticUpdateDescription, Settings.AutoUpdate, "");
+        automaticUpdates.IsEnabled = shell.InstalledApp && !shell.Service.IsPreview;
+        automaticUpdates.Toggled += (_, _) => { Settings.AutoUpdate = automaticUpdates.IsOn; Save(); };
+        about.Add(row);
+        about.Add(Prefs.Row("Updates", shell.InstalledApp ? shell.UpdateStatus : "Portable app: download and extract the latest ZIP.",
+            Prefs.ActionButton(shell.UpdateAction, async (_, _) => await shell.CheckForUpdatesAsync()), ""));
 
         about.Add(Prefs.Row("Report a bug", "Pick the game, say what happened and send it. Logs go privately.",
             Prefs.ActionButton("Bug Report", async (_, _) => await shell.PrepareBetaReportsAsync(shell.Games)), ""));

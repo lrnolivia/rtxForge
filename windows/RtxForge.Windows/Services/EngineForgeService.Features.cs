@@ -318,4 +318,17 @@ public sealed partial class EngineForgeService
 
     public async Task<EngineReview> CheckForUpdateAsync() =>
         ToReview(await CallAsync("update_check", new { version = MainWindow.AppVersion }));
+
+    public async Task<EngineResult> StageAppUpdateAsync()
+    {
+        var r = await CallAsync("update_stage", new { version = MainWindow.AppVersion });
+        return new EngineResult(S(r, "message") ?? "", S(r, "path"), []);
+    }
+
+    public async Task ApplyAppUpdateAsync(IReadOnlyList<Game> games, bool restart, bool gameMode)
+    {
+        await CallAsync("update_apply", new { pid = Environment.ProcessId, restart, game_mode = gameMode,
+            rows = games.Select(g => new { root = g.Location }).ToArray() });
+        appUpdateHandedOff = true;
+    }
 }

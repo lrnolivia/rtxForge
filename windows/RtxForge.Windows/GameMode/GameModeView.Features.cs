@@ -709,14 +709,7 @@ public sealed partial class GameModeView
         ShowModal("Undo previous changes", content, [back], CloseModal, 1100);
     }
 
-    async Task CheckForUpdatesAsync()
-    {
-        if (shell.Service.IsPreview) { Toast("Checking for updates is disabled in preview mode."); return; }
-        var result = await RunReviewAsync("rtxForge Update", shell.Service.CheckForUpdateAsync);
-        if (result?.Path is not { } installer || result.Errors.Count > 0) return;
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(installer) { UseShellExecute = true });
-        shell.Close();
-    }
+    async Task CheckForUpdatesAsync() => await shell.CheckForUpdatesAsync();
 
     async Task InspectPackageAsync()
     {

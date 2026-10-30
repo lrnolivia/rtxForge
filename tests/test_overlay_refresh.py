@@ -4,8 +4,9 @@ import json
 from pathlib import Path
 import sys
 import tempfile
+import threading
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'scripts'))
@@ -73,6 +74,22 @@ class RequiredRefreshTest(unittest.TestCase):
         (self.folder/'rollout.json').unlink();prepare=Mock();execute=Mock()
         self.assertEqual(refresh.run(self.root,self.state,prepare,execute)['status'],'not-required')
         prepare.assert_not_called();execute.assert_not_called()
+
+    def test_start_shares_one_worker_and_stops_pending_retry(self):
+        entered=threading.Event();release=threading.Event();stop=threading.Event()
+        def pending(*args):
+            entered.set();release.wait(2);return {'status':'pending'}
+        with patch.object(refresh,'run',side_effect=pending) as run:
+            worker=refresh.start(self.root,self.state,Mock(),Mock(),stop)
+            self.assertTrue(entered.wait(2))
+            self.assertIs(refresh.start(self.root,self.state,Mock(),Mock(),stop),worker)
+            stop.set();release.set();worker.join(2)
+            self.assertFalse(worker.is_alive());run.assert_called_once()
+
+    def test_start_in_source_checkout_never_calls_planner(self):
+        (self.folder/'rollout.json').unlink();prepare=Mock()
+        self.assertIsNone(refresh.start(self.root,self.state,prepare,Mock()))
+        prepare.assert_not_called()
 
 
 if __name__=='__main__':unittest.main()

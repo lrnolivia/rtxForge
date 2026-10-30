@@ -84,7 +84,7 @@
             <div class="metadata-line">
               <span id="compact-api">DirectX 11</span>
               <span id="compact-size">2560 × 1440</span>
-              <span>SDR</span>
+              <span id="compact-output">SDR</span>
             </div>
             <div class="feature-status">
               <span id="status-sr" class="status-chip installed">
@@ -127,7 +127,7 @@
               </div>
               <div>
                 <label>Color</label>
-                <span>SDR</span>
+                <span id="overview-output">SDR</span>
               </div>
             </div>
             <div class="runtime-metrics">
@@ -401,7 +401,7 @@
             </div>
             <div>
               <label>Color</label>
-              <span>SDR</span>
+              <span id="popup-output">SDR</span>
             </div>
           </div>
           <div class="runtime-metrics">

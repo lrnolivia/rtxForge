@@ -11,6 +11,32 @@ import threading
 import transactions as t
 
 _lock=threading.Lock()
+_workers={}
+_workers_lock=threading.Lock()
+
+
+def start(root,state,prepare,execute,stop=None,report=None):
+    """One retry worker per installed bundle/state, independent of panel preferences."""
+    key=(str(Path(root).resolve()),str(Path(state).resolve()))
+    # Source checkouts and development bundles never mutate games at startup.
+    if not (Path(root)/'providers/glass-overlay/rollout.json').is_file():return None
+    with _workers_lock:
+        existing=_workers.get(key)
+        if existing and existing.is_alive():return existing
+        stop=stop or threading.Event()
+        def work():
+            while not stop.is_set():
+                try:
+                    result=run(root,state,prepare,execute)
+                    if report:report(result)
+                    if result.get('status') in ('not-required','current','complete','newer-revision-kept'):return
+                except Exception as error:
+                    if report:report({'status':'pending','error':str(error)})
+                stop.wait(30)
+        worker=threading.Thread(target=work,name='overlay-refresh',daemon=True)
+        _workers[key]=worker
+        worker.start()
+        return worker
 
 
 def bundle(root):

@@ -59,7 +59,11 @@ scRGB/HDR10 output; gameplay acceptance and other API routes remain separate.
 Unsupported output routes retain the
 established renderer. The local screenshot preview stays available for styling.
 
-Windows bundles that advertise a required glass revision automatically refresh
+Windows and Linux bundles that advertise a required glass revision automatically refresh
 managed overlay packages. The refresh preserves tuning, named presets and
 original-file recovery records, adds new DLLs only to verified empty locations,
 and retries running or conflicting games. It does not replace foreign files.
+
+Linux AppImage and Flatpak builds use native artifacts built from the same source
+revision as the app. Packaging verifies their hashes, revision and matching glass
+DLL before enabling the required refresh. Local source-only builds do not enable it.

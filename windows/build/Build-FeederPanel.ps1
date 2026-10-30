@@ -153,7 +153,7 @@ $quiet = Join-Path $Output 'rtxforge-quiet.addon64'
 Invoke-Cl ("/I`"$sdk\reshade-imgui`" /I`"$sdk\reshade`" /Fo`"$obj\quiet\\`" `"$here\rtxforge-quiet.cpp`" /Fe`"$quiet`" /link user32.lib advapi32.lib") $quiet
 
 $receipt = [ordered]@{
-    schema = 2; files = [ordered]@{}; reshade = $ReShade; reshade_imgui = $ReShadeImGui; optiscaler = $head
+    schema = 2; commit = (& git -C $repo rev-parse HEAD).Trim(); files = [ordered]@{}; reshade = $ReShade; reshade_imgui = $ReShadeImGui; optiscaler = $head
     panel_source = (Get-Sha256 (Join-Path $bridge 'ForgePanel.h'))
 }
 foreach ($addon in $panel, $quiet) {

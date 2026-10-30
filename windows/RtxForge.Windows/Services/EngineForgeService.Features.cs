@@ -325,7 +325,10 @@ public sealed partial class EngineForgeService
         return new EngineResult(S(r, "message") ?? "", S(r, "path"), []);
     }
 
-    public async Task ApplyAppUpdateAsync(IReadOnlyList<Game> games, bool restart, bool gameMode) =>
+    public async Task ApplyAppUpdateAsync(IReadOnlyList<Game> games, bool restart, bool gameMode)
+    {
         await CallAsync("update_apply", new { pid = Environment.ProcessId, restart, game_mode = gameMode,
             rows = games.Select(g => new { root = g.Location }).ToArray() });
+        appUpdateHandedOff = true;
+    }
 }

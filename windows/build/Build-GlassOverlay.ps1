@@ -9,7 +9,7 @@ $head=(& git -C $RmlSource rev-parse HEAD).Trim()
 if($LASTEXITCODE -or $head -ne $pin){throw "Glass overlay requires pinned RmlUi $pin"}
 $repo=Split-Path (Split-Path $PSScriptRoot)
 $build=Join-Path $Output 'build'
-cmake -S (Join-Path $repo 'windows/overlay-rmlui') -B $build -G 'Visual Studio 17 2022' -A x64 "-DRMLUI_SOURCE=$RmlSource" "-DFREETYPE_ROOT=$FreetypeRoot"
+cmake -S (Join-Path $repo 'windows/overlay-rmlui') -B $build -A x64 "-DRMLUI_SOURCE=$RmlSource" "-DFREETYPE_ROOT=$FreetypeRoot"
 if($LASTEXITCODE){throw 'Glass overlay configuration failed'}
 cmake --build $build --config Release --parallel 6
 if($LASTEXITCODE){throw 'Glass overlay build failed'}

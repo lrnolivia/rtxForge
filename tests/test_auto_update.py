@@ -143,7 +143,15 @@ class DownloadTests(unittest.TestCase):
         info = dict(size=setup.stat().st_size, sha256=hashlib.sha256(setup.read_bytes()).hexdigest(),
                     version='1.0.0-beta.9', from_version='1.0.0-beta.8')
         folder = self.root / 'handoff'
-        with patch.dict(os.environ, RTXFORGE_APP_EXE=str(exe)):
+        # The receipt is written before PowerShell closes its redirected log.
+        # Reap this fixture's real child before TemporaryDirectory teardown.
+        start_process = app_updates.subprocess.Popen
+        def start_handoff(*args, **kwargs):
+            child = start_process(*args, **kwargs)
+            self.addCleanup(child.wait, timeout=30)
+            return child
+        with patch.dict(os.environ, RTXFORGE_APP_EXE=str(exe)), \
+                patch.object(app_updates.subprocess, 'Popen', side_effect=start_handoff):
             app_updates.launch(info, setup, pid=2147483646, restart=False, game_mode=False, helper=False, folder=folder)
         result = folder / 'last-result.json'
         deadline = time.monotonic() + 30

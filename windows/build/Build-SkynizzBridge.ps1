@@ -70,10 +70,10 @@ if($GlassOverlay) {
     if(-not $PanelCandidate){throw 'Glass requires the matching panel candidate'}
     $glass=Get-Content -LiteralPath (Join-Path $repo 'providers/glass-overlay/candidate.json') -Raw | ConvertFrom-Json
     foreach($entry in $glass.sources.PSObject.Properties){if((Get-FileHash -LiteralPath (Join-Path $repo $entry.Name) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $entry.Value){throw "Glass source changed: $($entry.Name)"}}
-    $patch=Join-Path $repo "providers/glass-overlay/$($glass.patch)"
-    & git -C $source apply --check -- $patch
+    $glassPatch=Join-Path $repo "providers/glass-overlay/$($glass.patch)"
+    & git -C $source apply --check -- $glassPatch
     if($LASTEXITCODE){throw 'Glass integration patch does not apply to the admitted renderer'}
-    & git -C $source apply -- $patch
+    & git -C $source apply -- $glassPatch
     if($LASTEXITCODE){throw 'Glass integration patch failed'}
     $glassPackage=Get-Content -LiteralPath (Join-Path $GlassOverlay 'package.json') -Raw | ConvertFrom-Json
     $glassBinary=Join-Path $GlassOverlay 'rtxforge-glass.dll'

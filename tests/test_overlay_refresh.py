@@ -18,7 +18,7 @@ class RequiredRefreshTest(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root=Path(self.temp.name);self.state=self.root/'state'
+        self.root=Path(self.temp.name).resolve();self.state=self.root/'state'
         self.folder=self.root/'providers/glass-overlay';self.folder.mkdir(parents=True)
         self.write_bundle(b'first renderer')
 

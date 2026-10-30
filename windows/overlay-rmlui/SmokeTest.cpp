@@ -18,7 +18,15 @@ static void Test12(HMODULE dll,ForgeGlass::Release release){
     D3D12_RESOURCE_BARRIER barrier{};barrier.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;barrier.Transition={target.Get(),D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,D3D12_RESOURCE_STATE_RENDER_TARGET,D3D12_RESOURCE_STATE_PRESENT};list->ResourceBarrier(1,&barrier);Need(SUCCEEDED(list->Close()),"DX12 list close failed");ID3D12CommandList* lists[]={list.Get()};queue->ExecuteCommandLists(1,lists);
     ForgeGlass::Host host{sizeof(ForgeGlass::Host),ForgeGlass::Abi};host.log=[](void*,const char* text){std::cerr<<text<<'\n';};host.read=[](void*,ForgeGlass::Snapshot* s){static const ForgeGlass::Value values[]={{"enabled",1},{"intensity",.75f},{"style",1},{"passes",3},{"preset",0}};*s={"DX12 RENDERER TEST","#d58975",values,uint32_t(std::size(values)),true,true,false,false,false,false,2.34,60,-1,-1,true,false,true};return true;};
     ForgeGlass::Frame12 frame{};frame.size=sizeof(frame);frame.abi=ForgeGlass::Abi;frame.device=device.Get();frame.queue=queue.Get();frame.target=target.Get();frame.before=frame.after=D3D12_RESOURCE_STATE_PRESENT;frame.input.size=sizeof(frame.input);frame.input.abi=ForgeGlass::Abi;frame.input.visible=true;
-    for(int i=0;i<6;i++)Need(draw(&host,&frame),"DX12 game-facing draw failed");
+    // Present normally limits frames in flight. Fence each fixture frame as
+    // well, so six 1440p software frames cannot accumulate behind one wait.
+    ComPtr<ID3D12Fence> frameFence;Need(SUCCEEDED(device->CreateFence(0,D3D12_FENCE_FLAG_NONE,IID_PPV_ARGS(&frameFence))),"DX12 frame fence failed");
+    for(int i=0;i<6;i++){
+        Need(draw(&host,&frame),"DX12 game-facing draw failed");
+        HANDLE done=CreateEventW(nullptr,FALSE,FALSE,nullptr);Need(done,"DX12 frame event failed");
+        Need(SUCCEEDED(queue->Signal(frameFence.Get(),i+1))&&SUCCEEDED(frameFence->SetEventOnCompletion(i+1,done)),"DX12 frame submission failed");
+        const auto completed=WaitForSingleObject(done,5000);CloseHandle(done);Need(completed==WAIT_OBJECT_0,"DX12 frame did not complete");
+    }
     UINT64 bytes{};D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};device->GetCopyableFootprints(&desc,0,1,0,&footprint,nullptr,nullptr,&bytes);
     D3D12_HEAP_PROPERTIES readHeap{};readHeap.Type=D3D12_HEAP_TYPE_READBACK;D3D12_RESOURCE_DESC buffer{};buffer.Dimension=D3D12_RESOURCE_DIMENSION_BUFFER;buffer.Width=bytes;buffer.Height=buffer.DepthOrArraySize=buffer.MipLevels=1;buffer.SampleDesc.Count=1;buffer.Layout=D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
     ComPtr<ID3D12Resource> readback;Need(SUCCEEDED(device->CreateCommittedResource(&readHeap,D3D12_HEAP_FLAG_NONE,&buffer,D3D12_RESOURCE_STATE_COPY_DEST,nullptr,IID_PPV_ARGS(&readback))),"DX12 readback allocation failed");

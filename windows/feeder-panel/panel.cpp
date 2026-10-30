@@ -138,7 +138,7 @@ bool Draw(const Frame &frame)
     ImGui_ImplDX11_NewFrame();
     ImGui::NewFrame();
     next_launch_message();
-    if(frame.output==Output::sdr && ForgeGlassPanel::loader.Ready()) {
+    if(ForgeGlassPanel::loader.Ready()) {
         next_launch_message();
         if(ForgePanelChannel::needsHello&&!ForgePanelChannel::pending&&ForgePanelChannel::Send({{"op","hello"}}))ForgePanelChannel::needsHello=false;
         const bool drawn=ForgeGlassPanel::Draw(device,frame.target,visible);

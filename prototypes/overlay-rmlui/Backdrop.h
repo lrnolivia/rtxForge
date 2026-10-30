@@ -10,7 +10,8 @@
 
 // The game-facing boundary: copy the existing scene, blur it at quarter
 // resolution, and composite only the rounded panel regions. UI glyphs never
-// enter this pass. HDR transfer handling is deliberately outside this SDR prototype.
+// enter this pass. HDR scenes are decoded only for the glass working surface;
+// the final composition blends in linear light and preserves untouched pixels.
 class Backdrop
 {
     template<class T>using Ptr=Microsoft::WRL::ComPtr<T>;
@@ -34,7 +35,7 @@ class Backdrop
     Ptr<ID3D11RenderTargetView> gridTarget;
     bool gridPending=false;
     int width,height,qwidth,qheight;
-    struct alignas(16) Data { float axis[2],screen[2],bounds[4],radius,saturation,grain,luminosity,uv[4],shadowColor[4],shadowParams[4],surface[4],pointer[4]; };
+    struct alignas(16) Data { float axis[2],screen[2],bounds[4],radius,saturation,grain,luminosity,uv[4],shadowColor[4],shadowParams[4],surface[4],pointer[4],output[4]; };
     Data data{};
     double lastSample=-1;
     static void Check(HRESULT n) { if(FAILED(n))throw std::runtime_error("Backdrop GPU setup failed"); }
@@ -64,18 +65,33 @@ public:
     std::array<SceneColor,64*36> grid;
     SceneColor Background(float x,float y,float w,float h) const {SceneColor c{};int count=0;for(int j=0;j<2;j++)for(int i=0;i<3;i++){const int gx=std::clamp(int((x+w*(i+.5f)/3)/width*64),0,63),gy=std::clamp(int((y+h*(j+.5f)/2)/height*36),0,35);const auto p=grid[gy*64+gx];if(p.valid){c.r+=p.r;c.g+=p.g;c.b+=p.b;++count;}}if(count){c.r/=count;c.g/=count;c.b/=count;c.valid=true;}return c;}
     std::array<SceneColor,4> measured;
-    Backdrop(ID3D11Device* d,int w,int h,const unsigned char* image,int imageWidth,int imageHeight,const float uv[4],DXGI_FORMAT sceneFormat=DXGI_FORMAT_R8G8B8A8_UNORM):device(d),width(w),height(h),qwidth((w+3)/4),qheight((h+3)/4)
+    Backdrop(ID3D11Device* d,int w,int h,const unsigned char* image,int imageWidth,int imageHeight,const float uv[4],DXGI_FORMAT sceneFormat=DXGI_FORMAT_R8G8B8A8_UNORM,unsigned colorSpace=0):device(d),width(w),height(h),qwidth((w+3)/4),qheight((h+3)/4)
     {
-        d->GetImmediateContext(&context);std::copy(uv,uv+4,data.uv);data.screen[0]=float(w);data.screen[1]=float(h);
+        d->GetImmediateContext(&context);data.output[0]=float(colorSpace);data.output[1]=203.f;std::copy(uv,uv+4,data.uv);data.screen[0]=float(w);data.screen[1]=float(h);
         const char* shader=R"(
-cbuffer Data : register(b0) {float2 axis;float2 screen;float4 bounds;float radius;float saturation;float grain;float luminosity;float4 crop;float4 shadowColor;float4 shadowParams;float4 surface;float4 pointer;};
+cbuffer Data : register(b0) {float2 axis;float2 screen;float4 bounds;float radius;float saturation;float grain;float luminosity;float4 crop;float4 shadowColor;float4 shadowParams;float4 surface;float4 pointer;float4 output;};
 Texture2D image:register(t0);Texture2D blurredBackdrop:register(t1);SamplerState linearClamp:register(s0);
 struct Vertex {float4 position:SV_Position;float2 uv:TEXCOORD;};
 Vertex VS(uint id:SV_VertexID) {Vertex o;o.uv=float2((id<<1)&2,id&2);o.position=float4(o.uv.x*2-1,1-o.uv.y*2,0,1);return o;}
 float4 Copy(Vertex v):SV_Target {return image.Sample(linearClamp,crop.xy+v.uv*crop.zw);}
+// HDR10 is PQ/Rec.2020, while scRGB is linear Rec.709 with 80 nits per unit.
+float3 SrgbDecode(float3 c){return lerp(c/12.92,pow(max((c+.055)/1.055,0),2.4),step(.04045,c));}
+float3 SrgbEncode(float3 c){c=max(c,0);return lerp(c*12.92,1.055*pow(c,1/2.4)-.055,step(.0031308,c));}
+float3 PqDecode(float3 c){float3 p=pow(saturate(c),1/(2523.0/32));return 10000*pow(max(p-3424.0/4096,0)/max(2413.0/128-2392.0/128*p,.000001),1/(2610.0/16384));}
+float3 PqEncode(float3 n){float3 p=pow(saturate(n/10000),2610.0/16384);return pow((3424.0/4096+2413.0/128*p)/(1+2392.0/128*p),2523.0/32);}
+float3 To709(float3 c){return mul(float3x3(1.660491,-.587641,-.072850,-.124550,1.132900,-.008349,-.018151,-.100579,1.118730),c);}
+float3 To2020(float3 c){return mul(float3x3(.627404,.329283,.043313,.069097,.919540,.011362,.016391,.088013,.895595),c);}
+float3 SceneLinear(float3 c){return output.x>1.5?To709(PqDecode(c)):c*80;}
+float3 SceneWorking(float3 c){return output.x>.5?SrgbEncode(saturate(SceneLinear(c)/output.y)):c;}
 float4 Downsample(Vertex v):SV_Target {float4 c=0;[unroll]for(int y=0;y<4;y++)[unroll]for(int x=0;x<4;x++)c+=image.Sample(linearClamp,v.uv+(float2(x,y)-1.5)/screen);return c/16;}
-float4 Thumbnail(Vertex v):SV_Target {float4 c=0;[unroll]for(int y=0;y<4;y++)[unroll]for(int x=0;x<4;x++)c+=image.Sample(linearClamp,v.uv+(float2(x,y)/4-.375)*float2(1./64,1./36));return c/16;}
-float4 Layer(Vertex v):SV_Target {float4 c=0;[unroll]for(int i=0;i<8;i++)c+=image.Sample(linearClamp,v.uv+axis*(i/7.0))*(8-i);return c/36;}
+float4 Thumbnail(Vertex v):SV_Target {float4 c=0;[unroll]for(int y=0;y<4;y++)[unroll]for(int x=0;x<4;x++)c+=float4(SceneWorking(image.Sample(linearClamp,v.uv+(float2(x,y)/4-.375)*float2(1./64,1./36)).rgb),1);return c/16;}
+float4 Layer(Vertex v):SV_Target {float4 c=0;[unroll]for(int i=0;i<8;i++)c+=image.Sample(linearClamp,v.uv+axis*(i/7.0))*(8-i);c/=36;if(output.x<.5)return c;
+ // RGB in the UI layer is premultiplied sRGB. Decode after unpremultiplying,
+ // blend in absolute linear light, then encode back to the game's transfer.
+ if(c.a<=.00001)discard;
+ float4 scene=blurredBackdrop.Sample(linearClamp,v.uv);
+ float3 nits=lerp(SceneLinear(scene.rgb),SrgbDecode(saturate(c.rgb/c.a))*output.y,saturate(c.a));
+ return float4(output.x>1.5?PqEncode(To2020(nits)):nits/80,scene.a);}
 float4 Blur(Vertex v):SV_Target {float4 c=0;float total=0;[loop]for(int i=-18;i<=18;i++){float weight=exp(-float(i*i)/(2*radius*radius));c+=image.Sample(linearClamp,v.uv+axis*i)*weight;total+=weight;}return c/total;}
 float3 SoftLight(float3 dst,float3 src) {
  float3 D=lerp(((16*dst-12)*dst+4)*dst,sqrt(max(dst,0)),step(.25,dst));
@@ -104,7 +120,7 @@ float ShapeDistance(float2 position) {
  return d;
 }
 float4 Material(Vertex v):SV_Target {
- float3 destination=image.Sample(linearClamp,v.uv).rgb;float3 color=destination;
+ float3 destination=SceneWorking(image.Sample(linearClamp,v.uv).rgb);float3 color=destination;
  float luma=dot(color,float3(.2126,.7152,.0722));color=lerp(luma.xxx,color,saturation);
  color=lerp(color,((luma+.5)*.5).xxx,luminosity);color=lerp(color,surface.xxx,surface.y);
  return float4(lerp(color,SurfaceBlend(destination,color,surface.w),surface.z),1);
@@ -125,17 +141,17 @@ float4 Shadow(Vertex v):SV_Target {
  float distance=ShapeDistance(v.position.xy-float2(0,shadowParams.z));
  // Broad local scene average avoids flickering on small bright details. The
  // continuous curve keeps existing depth in shadow and reduces it over light.
- float3 local=0;[unroll]for(int y=-1;y<=1;y++)[unroll]for(int x=-1;x<=1;x++)local+=image.Sample(linearClamp,v.uv+float2(x,y)*12/screen).rgb;
+ float3 local=0;[unroll]for(int y=-1;y<=1;y++)[unroll]for(int x=-1;x<=1;x++)local+=SceneWorking(image.Sample(linearClamp,v.uv+float2(x,y)*12/screen).rgb);
  local/=9;float light=smoothstep(.22,.80,dot(local,float3(.2126,.7152,.0722)));
  float sigma=max(shadowParams.y,1)*lerp(1,1.25,light);float a=exp(-max(distance,0)*max(distance,0)/(2*sigma*sigma))*shadowParams.x*lerp(1,.30,light);
- float3 dst=image.Sample(linearClamp,v.uv).rgb;float3 src=shadowColor.rgb;float3 blended=src;
+ float3 dst=SceneWorking(image.Sample(linearClamp,v.uv).rgb);float3 src=shadowColor.rgb;float3 blended=src;
  if(shadowParams.w>1.5) {
    float3 D=lerp(((16*dst-12)*dst+4)*dst,sqrt(max(dst,0)),step(.25,dst));
    blended=lerp(dst-(1-2*src)*dst*(1-dst),dst+(2*src-1)*(D-dst),step(.5,src));
  } else if(shadowParams.w>.5) blended=lerp(2*src*dst,1-2*(1-src)*(1-dst),step(.5,dst));
  a*=pointer.z;return float4(saturate(blended)*a,a);
 }
-float4 Average(Vertex v):SV_Target {float3 color=0;[unroll]for(int y=0;y<4;y++)[unroll]for(int x=0;x<4;x++)color+=image.Sample(linearClamp,(bounds.xy+(float2(x,y)+.5)/4*(bounds.zw-bounds.xy))/screen).rgb;return float4(color/16,1);
+float4 Average(Vertex v):SV_Target {float3 color=0;[unroll]for(int y=0;y<4;y++)[unroll]for(int x=0;x<4;x++)color+=SceneWorking(image.Sample(linearClamp,(bounds.xy+(float2(x,y)+.5)/4*(bounds.zw-bounds.xy))/screen).rgb);return float4(color/16,1);
 })";
         auto vs=Compile(shader,"VS","vs_5_0");Check(d->CreateVertexShader(vs->GetBufferPointer(),vs->GetBufferSize(),nullptr,&vertex));
         auto make=[&](const char* entry,Ptr<ID3D11PixelShader>& result){auto code=Compile(shader,entry,"ps_5_0");Check(d->CreatePixelShader(code->GetBufferPointer(),code->GetBufferSize(),nullptr,&result));};
@@ -194,7 +210,7 @@ float4 Average(Vertex v):SV_Target {float3 color=0;[unroll]for(int y=0;y<4;y++)[
     }
     void ComposeLayer(ID3D11RenderTargetView* destination,ID3D11ShaderResourceView* source,float vx,float vy,bool reducedMotion) {
         context->IASetInputLayout(nullptr);context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);context->VSSetShader(vertex.Get(),nullptr,0);context->GSSetShader(nullptr,nullptr,0);context->RSSetState(raster.Get());context->OMSetDepthStencilState(depth.Get(),0);context->OMSetBlendState(alpha.Get(),nullptr,0xffffffff);
-        auto* cb=constants.Get();context->PSSetConstantBuffers(0,1,&cb);auto* sm=sampler.Get();context->PSSetSamplers(0,1,&sm);data.axis[0]=reducedMotion?0:std::clamp(vx/120.f,-12.f,12.f)/width;data.axis[1]=reducedMotion?0:std::clamp(vy/120.f,-12.f,12.f)/height;Bind(destination,source,layer.Get(),width,height);ID3D11ShaderResourceView* none=nullptr;context->PSSetShaderResources(0,1,&none);
+        auto* cb=constants.Get();context->PSSetConstantBuffers(0,1,&cb);auto* sm=sampler.Get();context->PSSetSamplers(0,1,&sm);data.axis[0]=reducedMotion?0:std::clamp(vx/120.f,-12.f,12.f)/width;data.axis[1]=reducedMotion?0:std::clamp(vy/120.f,-12.f,12.f)/height;if(data.output[0]>.5f)context->OMSetBlendState(opaque.Get(),nullptr,0xffffffff);auto* background=sceneView.Get();context->PSSetShaderResources(1,1,&background);Bind(destination,source,layer.Get(),width,height);ID3D11ShaderResourceView* none[2]={};context->PSSetShaderResources(0,2,none);
     }
     void Sample(const std::vector<Panel>& panels,double now)
     {

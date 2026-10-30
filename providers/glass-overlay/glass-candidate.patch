@@ -32,7 +32,7 @@
 +
 +namespace ForgeGlassHooks {
 +static bool failed=false;
-+bool Prepare(HWND window) {ForgePanel::useGlass=!failed&&ForgePanel::selected&&!State::Instance().hdrOutputActive&&ForgeGlassPanel::Prepare(window);return ForgePanel::useGlass;}
++bool Prepare(HWND window) {ForgePanel::useGlass=!failed&&ForgePanel::selected&&ForgeGlassPanel::Prepare(window);return ForgePanel::useGlass;}
 +void Draw11(ID3D11Device* device,ID3D11RenderTargetView* target) {if(!ForgePanel::useGlass)return;bool visible=MenuCommon::IsVisible();if(!ForgeGlassPanel::Draw(device,target,visible)){failed=true;ForgePanel::useGlass=false;}else if(!visible)MenuCommon::HideMenu();}
 +void Draw12(ID3D12Device* device,ID3D12CommandQueue* queue,ID3D12Resource* target) {if(!ForgePanel::useGlass)return;bool visible=MenuCommon::IsVisible();if(!ForgeGlassPanel::Draw12(device,queue,target,visible)){failed=true;ForgePanel::useGlass=false;}else if(!visible)MenuCommon::HideMenu();}
 +void Shutdown(){ForgeGlassPanel::Shutdown();ForgePanel::useGlass=false;failed=false;}

@@ -24,7 +24,7 @@ bool Init(ForgeGlass::Frame12& f) {
 }
 void ReleaseGlassBridge12(){std::lock_guard lock(bridgeMutex);if(bridge.context)bridge.context->Flush();bridge={};}
 extern "C" __declspec(dllexport) bool __cdecl ForgeGlassDraw12(const ForgeGlass::Host* host,ForgeGlass::Frame12* frame) {
-    if(!host||!frame||host->abi!=ForgeGlass::Abi||host->size!=sizeof(*host)||frame->abi!=ForgeGlass::Abi||frame->size!=sizeof(*frame)||!frame->device||!frame->queue||!frame->target||frame->input.colorSpace!=0)return false;
+    if(!host||!frame||host->abi!=ForgeGlass::Abi||host->size!=sizeof(*host)||frame->abi!=ForgeGlass::Abi||frame->size!=sizeof(*frame)||!frame->device||!frame->queue||!frame->target||frame->input.colorSpace>2)return false;
     std::unique_lock lock(bridgeMutex,std::try_to_lock);if(!lock.owns_lock())return true;if(!Init(*frame))return false;
     auto& image=bridge.images[frame->target];
     if(!image.texture){

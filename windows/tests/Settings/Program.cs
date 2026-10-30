@@ -38,9 +38,9 @@ var complete = FeatureControlSchema.Tuning(allControls);
 var presetSettings = JsonSerializer.Deserialize<ForgeSettings>(JsonSerializer.Serialize(new ForgeSettings { FeatureControls = complete.FeatureControls }))!;
 if (!System.Text.Json.Nodes.JsonNode.DeepEquals(allControls, FeatureControlSchema.Resolve(presetSettings.Presets)))
     throw new Exception("The full preset lost control values or units during persistence.");
-if (FeatureControlSchema.Shared.Controls.Length != 29 || FeatureControlSchema.Shared.Controls.Single(c => c.Key == "colour").Max != 4)
+if (FeatureControlSchema.Shared.Controls.Length != 41 || FeatureControlSchema.Shared.Controls.Single(c => c.Key == "colour").Max != 4)
     throw new Exception("The app lost the shared control vocabulary or colour range.");
-Console.WriteLine("PASS: all 29 ordered feature controls round trip with native units, including extended color and exact MFG choices.");
+Console.WriteLine("PASS: all 41 ordered feature controls round trip with native units, including extended color and exact MFG choices.");
 var defaults = new ForgeSettings();
 if (!defaults.OptiScalerUi || !defaults.ReShadeUi || defaults.OptiScalerIntro || defaults.ReShadeIntro)
     throw new Exception("Game menus must be independent of the default-hidden welcome messages");

@@ -24,13 +24,14 @@ inline bool Apply(void*,const ForgeGlass::Value* fields,uint32_t count) {
 inline bool Request(void*,const char* text) {if(!text)return false;const auto message=nlohmann::json::parse(text,nullptr,false);return message.is_object()&&ForgePanelChannel::Send(message);}
 inline void Log(void*,const char* text) {if(logSink)logSink(text);else {LOG_WARN("rtxForge glass: {}",text);}OutputDebugStringA((std::string("rtxForge glass: ")+text+"\n").c_str());}
 inline bool Prepare(HWND hwnd) {window=hwnd;const auto path=Util::DllPath().wstring();return ForgePanel::enabled&&loader.Load(path.c_str());}
+inline uint32_t OutputSpace(){const auto& state=State::Instance();if(!state.hdrOutputActive)return 0;const auto& color=state.outputColorSpace;if(!color.valid||color.model!=ColorModel::RGB||color.range!=ColorRange::Full)return 255;if(color.transfer==ColorTransfer::Linear&&color.primaries==ColorPrimaries::Rec709)return 1;if(color.transfer==ColorTransfer::PQ&&color.primaries==ColorPrimaries::Rec2020)return 2;return 255;}
 inline bool Draw(ID3D11Device* device,ID3D11RenderTargetView* target,bool& visible) {
     if(!loader.Ready()||!ForgePanel::selected)return false;
     ForgePanel::PollHelper();ForgePanel::Flush(*Config::Instance());
     const auto& io=ImGui::GetIO();
     ForgeGlass::Frame frame{};frame.size=sizeof(frame);frame.abi=ForgeGlass::Abi;frame.device=device;frame.target=target;frame.window=window;
     frame.mouseX=io.MousePos.x;frame.mouseY=io.MousePos.y;frame.wheel=io.MouseWheel;for(int i=0;i<3;i++)frame.mouse[i]=io.MouseDown[i];for(int vk=0;vk<256;vk++)frame.keys[vk]=OptiInput::IsKeyDown(vk);
-    frame.visible=visible;frame.welcome=ForgePanel::WelcomePending();frame.colorSpace=State::Instance().hdrOutputActive?1:0;
+    frame.visible=visible;frame.welcome=ForgePanel::WelcomePending();frame.colorSpace=OutputSpace();
     const ForgeGlass::Host host{sizeof(ForgeGlass::Host),ForgeGlass::Abi,nullptr,Read,Apply,Request,Log};
     const bool rendered=loader.Render(host,frame);if(rendered)visible=frame.visible;ForgePanelChannel::Visible(visible);return rendered;
 }
@@ -40,7 +41,7 @@ inline bool Draw12(ID3D12Device* device,ID3D12CommandQueue* queue,ID3D12Resource
     ForgeGlass::Frame12 frame{};frame.size=sizeof(frame);frame.abi=ForgeGlass::Abi;frame.device=device;frame.queue=queue;frame.target=target;frame.before=frame.after=D3D12_RESOURCE_STATE_PRESENT;
     frame.input.size=sizeof(frame.input);frame.input.abi=ForgeGlass::Abi;frame.input.window=window;frame.input.mouseX=io.MousePos.x;frame.input.mouseY=io.MousePos.y;frame.input.wheel=io.MouseWheel;
     for(int i=0;i<3;i++)frame.input.mouse[i]=io.MouseDown[i];for(int vk=0;vk<256;vk++)frame.input.keys[vk]=OptiInput::IsKeyDown(vk);
-    frame.input.visible=visible;frame.input.welcome=ForgePanel::WelcomePending();frame.input.colorSpace=State::Instance().hdrOutputActive?1:0;
+    frame.input.visible=visible;frame.input.welcome=ForgePanel::WelcomePending();frame.input.colorSpace=OutputSpace();
     const ForgeGlass::Host host{sizeof(ForgeGlass::Host),ForgeGlass::Abi,nullptr,Read,Apply,Request,Log};
     const bool rendered=loader.Render(host,frame);if(rendered)visible=frame.input.visible;ForgePanelChannel::Visible(visible);return rendered;
 }

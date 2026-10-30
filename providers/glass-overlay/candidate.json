@@ -4,10 +4,10 @@
   "base_bridge_id": "skynizz-ada-mfg-14-inzoi-overlay",
   "patch": "glass-candidate.patch",
   "sources": {
-    "providers/glass-overlay/glass-candidate.patch": "73128748e0817facc33b48afc32e7bff4dd751a78ef1c5b7996f739ed96565a9",
-    "providers/glass-overlay/GlassOverlay.h": "27137ca8986e17dd40a80511bd8c940a84169521a1853b0f5641ba2cb5df412e",
+    "providers/glass-overlay/glass-candidate.patch": "b4d297efe0907f1b91b62c25c10bf5eab7f81f5c2408485839bebc5163488a4a",
+    "providers/glass-overlay/GlassOverlay.h": "598f9c1b011b5aef89bddfbe945f1614488cca54ecade609951f421fced8e318",
     "providers/glass-overlay/GlassLoader.h": "4679b224da740f95be6670efaccce248193af34ebca62c6f89a94e81a0b04215",
-    "providers/glass-overlay/ForgeGlassPanel.h": "846a641e5d58abd87c3f5d886138e25cc56d689a4a7cc95af878334ee1d9c563",
+    "providers/glass-overlay/ForgeGlassPanel.h": "ddd6ad456ccc83eb4a894e6322d65c1b261f4625ddcb0d905f40cd662f57d9d3",
     "providers/glass-overlay/ForgeGlassHooks.h": "b28de8123ae2ee6a2fbd395f4231df8f3d0641e93f3aa37228ecc548b9ebb69c"
   },
   "runtime_verified": false,

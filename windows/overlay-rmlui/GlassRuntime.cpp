@@ -73,6 +73,7 @@ struct Runtime {
     ForgeWorkbench::Values lastValues;
     ForgeWorkbench::History history;double historyPaint=-1;
     double nextTelemetry=0,nextPreferences=0;std::string lastHelper;
+    unsigned outputSpace=0;
     bool receivedSnapshot=false,messageInitialized=false,dx12Interop=false,systemReducedMotion=false;
     int helperRevision=-1;bool helperReady=false;std::set<std::string> supportedKeys;
     std::map<std::string,nlohmann::json> pendingSettings;
@@ -106,7 +107,7 @@ struct Runtime {
 
     ~Runtime(){if(controls&&controls->prefsDirty)controls->SavePreferences();if(document&&controls)for(const auto* event:{"click","change","keydown","mouseover","mouseout","mousedown","mousemove","mouseup"})document->RemoveEventListener(event,controls.get());if(initialized)Rml::Shutdown();controls.reset();}
     void Init(const ForgeGlass::Frame& frame,const D3D11_TEXTURE2D_DESC& desc) {
-        device=frame.device;device->GetImmediateContext(&immediate);width=int(desc.Width);height=int(desc.Height);format=desc.Format;
+        device=frame.device;device->GetImmediateContext(&immediate);width=int(desc.Width);height=int(desc.Height);format=desc.Format;outputSpace=frame.colorSpace;
         ComPtr<ID3D11On12Device> interop;dx12Interop=SUCCEEDED(device.As(&interop));
         BOOL animate=TRUE;systemReducedMotion=SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&animate,0)&&!animate;
         renderer=std::make_unique<Renderer>(device.Get());renderer->SetViewport(width,height);Rml::SetSystemInterface(&system);Rml::SetFileInterface(&files);Rml::SetRenderInterface(renderer.get());ForgeGlass::Require(Rml::Initialise(),"RmlUi initialization failed");initialized=true;
@@ -118,7 +119,7 @@ struct Runtime {
         for(const auto* event:{"click","change","keydown","mouseover","mouseout","mousedown","mousemove","mouseup"})document->AddEventListener(event,&c);
         c.Element("font-select")->SetInnerRML("<option value=\"roboto\">Roboto</option><option value=\"inter\">Inter</option>");document->QuerySelector(".prototype-toolbar")->SetProperty("display","none");c.Visible("type-panel",false);c.Visible("inspector",false);c.Visible("welcome",false);c.Visible("main-panel",frame.visible);document->Show();hostVisible=frame.visible;c.Layout(c.layout);lastValues=c.values;
         const unsigned char pixel[4]={};const float uv[4]={0,0,1,1};DXGI_FORMAT compatible=format;if(format==DXGI_FORMAT_R8G8B8A8_TYPELESS)compatible=DXGI_FORMAT_R8G8B8A8_UNORM;if(format==DXGI_FORMAT_B8G8R8A8_TYPELESS)compatible=DXGI_FORMAT_B8G8R8A8_UNORM;
-        backdrop=std::make_unique<Backdrop>(device.Get(),width,height,pixel,1,1,uv,compatible);
+        backdrop=std::make_unique<Backdrop>(device.Get(),width,height,pixel,1,1,uv,compatible,frame.colorSpace);
         D3D11_TEXTURE2D_DESC layer{};layer.Width=width;layer.Height=height;layer.MipLevels=layer.ArraySize=1;layer.Format=DXGI_FORMAT_R8G8B8A8_UNORM;layer.SampleDesc.Count=1;layer.BindFlags=D3D11_BIND_RENDER_TARGET|D3D11_BIND_SHADER_RESOURCE;Check(device->CreateTexture2D(&layer,nullptr,&windowLayer));Check(device->CreateRenderTargetView(windowLayer.Get(),nullptr,&windowView));Check(device->CreateShaderResourceView(windowLayer.Get(),nullptr,&windowSource));
         if(frame.welcome){c.Welcome();c.toastUntil=system.GetElapsedTime()+7;}
     }
@@ -200,22 +201,27 @@ struct Runtime {
                 renderUi(c.Element(id.c_str()),windowView.Get());const auto velocity=c.windowVelocity[id];backdrop->ComposeLayer(frame.target,windowSource.Get(),velocity.x,velocity.y,c.reducedMotion);
             }
 
-            if(c.Element("tooltip")->IsVisible())renderUi(c.Element("tooltip"));
+            if(c.Element("tooltip")->IsVisible()){
+                if(outputSpace){backdrop->Draw(target,frame.target,{},false,false);const float clear[4]={};immediate->ClearRenderTargetView(windowView.Get(),clear);renderUi(c.Element("tooltip"),windowView.Get());backdrop->ComposeLayer(frame.target,windowSource.Get(),0,0,true);}
+                else renderUi(c.Element("tooltip"));
+            }
         return true;
     }
 };
 std::unique_ptr<Runtime> runtime;std::mutex mutex;bool logged=false;
 }
 extern "C" __declspec(dllexport) bool __cdecl ForgeGlassDraw(const ForgeGlass::Host* host,ForgeGlass::Frame* frame) {
-    if(!host||!frame||host->size!=sizeof(*host)||host->abi!=ForgeGlass::Abi||frame->size!=sizeof(*frame)||frame->abi!=ForgeGlass::Abi||!frame->device||!frame->target||frame->colorSpace!=0)return false;
+    if(!host||!frame||host->size!=sizeof(*host)||host->abi!=ForgeGlass::Abi||frame->size!=sizeof(*frame)||frame->abi!=ForgeGlass::Abi||!frame->device||!frame->target||frame->colorSpace>2)return false;
     std::unique_lock guard(mutex,std::try_to_lock);if(!guard.owns_lock())return true;
     const HRESULT apartment=CoInitializeEx(nullptr,COINIT_MULTITHREADED);const bool uninitialize=SUCCEEDED(apartment);
     bool drawn=false;
     try {
         StateScope isolated(frame->device);ComPtr<ID3D11Resource> resource;frame->target->GetResource(&resource);ComPtr<ID3D11Texture2D> target;Check(resource.As(&target));D3D11_TEXTURE2D_DESC desc{};target->GetDesc(&desc);
         if(desc.SampleDesc.Count!=1||desc.Width<640||desc.Height<480||desc.Width>7680||desc.Height>4320)throw std::runtime_error("Unsupported glass viewport");
-        if(desc.Format!=DXGI_FORMAT_R8G8B8A8_UNORM&&desc.Format!=DXGI_FORMAT_R8G8B8A8_UNORM_SRGB&&desc.Format!=DXGI_FORMAT_R8G8B8A8_TYPELESS&&desc.Format!=DXGI_FORMAT_B8G8R8A8_UNORM&&desc.Format!=DXGI_FORMAT_B8G8R8A8_UNORM_SRGB&&desc.Format!=DXGI_FORMAT_B8G8R8A8_TYPELESS)throw std::runtime_error("Glass currently requires an SDR 8-bit backbuffer");
-        if(runtime&&(runtime->device.Get()!=frame->device||runtime->width!=int(desc.Width)||runtime->height!=int(desc.Height)||runtime->format!=desc.Format))runtime.reset();
+        const bool sdr=desc.Format==DXGI_FORMAT_R8G8B8A8_UNORM||desc.Format==DXGI_FORMAT_R8G8B8A8_UNORM_SRGB||desc.Format==DXGI_FORMAT_R8G8B8A8_TYPELESS||desc.Format==DXGI_FORMAT_B8G8R8A8_UNORM||desc.Format==DXGI_FORMAT_B8G8R8A8_UNORM_SRGB||desc.Format==DXGI_FORMAT_B8G8R8A8_TYPELESS;
+        const bool supported=frame->colorSpace==0?sdr:frame->colorSpace==1?desc.Format==DXGI_FORMAT_R16G16B16A16_FLOAT:desc.Format==DXGI_FORMAT_R10G10B10A2_UNORM;
+        if(!supported)throw std::runtime_error("Unsupported glass format and transfer-function pair");
+        if(runtime&&(runtime->device.Get()!=frame->device||runtime->width!=int(desc.Width)||runtime->height!=int(desc.Height)||runtime->format!=desc.Format||runtime->outputSpace!=frame->colorSpace))runtime.reset();
         if(!runtime){runtime=std::make_unique<Runtime>();runtime->Init(*frame,desc);if(host->log)host->log(host->user,runtime->dx12Interop?"Glass overlay ready: DirectX 12":"Glass overlay ready: DirectX 11");}drawn=runtime->Draw(*host,*frame,target.Get());
     }catch(const std::exception& error){runtime.reset();if(!logged&&host->log){host->log(host->user,error.what());logged=true;}}
     if(uninitialize)CoUninitialize();return drawn;

@@ -29,7 +29,12 @@ dependency notices with distribution packages.
 
 The standalone native fixtures exercise DX11 RGBA/BGRA rendering, context-state
 restoration, teardown and DX12 queue interoperability. They do not establish
-gameplay compatibility or performance. HDR and other unvalidated transfer
-functions are rejected. Vulkan and legacy DirectX renderer acceptance remains
+gameplay compatibility or performance. HDR composition supports explicit full-range
+FP16/scRGB and RGB10/PQ Rec.2020 pairs. Glass works in an sRGB surface; the
+final pass decodes its premultiplied color and blends in absolute linear light
+at 203-nit UI white before encoding the game output. Untouched pixels remain
+bit-preserved. Unknown transfer functions and mismatched formats are rejected.
+See [Microsoft’s Advanced Color guidance](https://learn.microsoft.com/en-us/windows/win32/direct3darticles/high-dynamic-range)
+for the swapchain color conventions. Vulkan and legacy DirectX renderer acceptance remains
 separate. The established renderer remains the fallback on unsupported routes;
 do not promote a beta based solely on these fixtures.

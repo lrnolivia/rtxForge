@@ -36,7 +36,8 @@ struct Frame {
     float mouseX,mouseY,wheel;
     bool mouse[3],keys[256];
     bool visible,welcome;
-    // SDR is currently required. Reject other transfer functions explicitly.
+    // 0: SDR; 1: linear scRGB (80 nits/unit); 2: PQ/Rec.2020 HDR10.
+    // Unknown transfer functions are rejected.
     uint32_t colorSpace;
 };
 using Draw=bool(__cdecl*)(const Host*,Frame*);

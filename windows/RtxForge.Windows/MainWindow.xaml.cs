@@ -79,6 +79,7 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) => (Service as IDisposable)?.Dispose();
         InitializeGameMode();
         InitializeCompanion();
+        InitializeUpdates();
         RootGrid.KeyDown += (_, e) =>
         {
             if (e.Key == global::Windows.System.VirtualKey.F5) { e.Handled = true; _ = RescanLibraryAsync(); }
@@ -354,6 +355,7 @@ public sealed partial class MainWindow : Window
     /// <summary>Adw.Toast: a short opaque notice at the bottom of the window.</summary>
     public void ShowToast(string text)
     {
+        Toast.ActionButton = null;
         if (detailsDialogRoot is Frame { Content: GamePage gamePage }) { gamePage.ShowNotice(text); return; }
         Toast.Message = text;
         ToastHost.Visibility = Visibility.Visible;

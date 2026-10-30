@@ -2479,7 +2479,10 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
             ]
         if section == 'About':
             return 'rtxForge ' + self.h.app_version, [
-                self.row_button('Check for updates', None, owner.check_app_update, description='Download, verify and install the newest build.', icon='rtx-gm-refresh-symbolic'),
+                self.choice('Automatic updates','Download in the background and install when you close. Close games before installation.',[False,True],['Off','On'],
+                            lambda:bool(s.get('auto_update',True)),owner.set_auto_update),
+                self.row_button('Restart to update' if owner.pending_app_update else 'Check for updates', None, owner.check_app_update,
+                                description=owner.app_update_status, icon='rtx-gm-refresh-symbolic'),
                 self.row_button('Report a bug', None, self.bug_report, description='Choose games, say what happened and review a redacted ZIP before anything is saved.',
                                 icon='dialog-warning-symbolic', key='settings-report'),
             ]

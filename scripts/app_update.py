@@ -1,14 +1,14 @@
-"""Public GitHub AppImage updater for rtxForge."""
+"""Verified application updates for AppImage and Flatpak installations."""
 from pathlib import Path
-import hashlib
 import json
 import os
 import re
 import subprocess
-import tempfile
 import urllib.request
 
 import desktop_install
+import auto_update
+import flatpak_host
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -95,6 +95,8 @@ def channel():
         if override not in CHANNELS:
             raise RuntimeError(f'Unknown update channel: {override}')
         return override
+    if flatpak_host.sandboxed():
+        return 'beta'
     if desktop_install.BETA_APPIMAGE.fullmatch(Path(os.environ.get('APPIMAGE', '')).name):
         return 'beta'
     return desktop_install.installed_channel() or 'continuous'
@@ -135,6 +137,21 @@ def check():
             'The AppImage named by the update manifest is missing.'
         )
 
+    package_format = 'appimage'
+    if flatpak_host.sandboxed():
+        package_format = 'flatpak'
+        name = f"rtxForge-{manifest['version']}-x86_64.flatpak"
+        app_asset = assets.get(name)
+        checksum = assets.get(name + '.sha256')
+        if not app_asset or not checksum:
+            raise RuntimeError('This release has no verified Flatpak update yet.')
+        if not checksum['browser_download_url'].startswith(auto_update.PREFIX):
+            raise RuntimeError('Refusing unexpected update checksum address.')
+        sha = re.search(r'\b[0-9a-fA-F]{64}\b', _bytes(checksum['browser_download_url']).decode('ascii'))
+        if not sha:
+            raise RuntimeError('Invalid Flatpak checksum.')
+        manifest.update(appimage=name, sha256=sha[0].lower(), size=int(app_asset['size']))
+
     download_url = app_asset['browser_download_url']
 
     expected_prefix = (
@@ -166,95 +183,60 @@ def check():
         'download_url': download_url,
         'update_channel': selected,
         'published_at': release.get('published_at'),
+        'format': package_format,
     }
 
 
-def install(info, progress=None):
+def supported():
+    return bool(os.environ.get('APPIMAGE')) or flatpak_host.sandboxed()
+
+
+def stage(info, progress=None):
+    if not supported():
+        raise RuntimeError('Use the packaged app to install application updates.')
+    cache = Path(os.environ.get('XDG_CACHE_HOME', str(Path.home() / '.cache')))
+    return auto_update.download({**info, 'name': info['appimage'], 'url': info['download_url']},
+                                cache / 'rtxforge/updates', progress)
+
+
+def apply(info, path):
+    payload = {**info, 'name': info['appimage']}
+    if not auto_update.verified(path, payload):
+        raise RuntimeError('The staged update changed. Check for updates again.')
+    if info.get('format') == 'flatpak':
+        # Update the installation this sandbox actually came from. Never create
+        # a second user copy of a system app, or guess a custom installation.
+        files = flatpak_host.host_files()
+        if files.as_posix().startswith('/var/lib/flatpak/'):
+            scope = '--system'
+        elif files.as_posix().startswith((Path.home() / '.local/share/flatpak').as_posix() + '/'):
+            scope = '--user'
+        else:
+            raise RuntimeError('Update this custom Flatpak installation in your software manager.')
+        result = flatpak_host.run_host(['flatpak', 'install', scope, '--noninteractive', '--assumeyes',
+                                       '--no-deps', str(path)], timeout=300)
+        if result.returncode:
+            raise RuntimeError('Flatpak update failed. ' + (result.stderr or 'Try your software manager.').strip()[-500:])
+        return str(path)
     if not os.environ.get('APPIMAGE'):
-        raise RuntimeError(
-            'Application updates require the AppImage build.'
-        )
-
-    root = desktop_install.installed_path().parent
-    root.mkdir(parents=True, exist_ok=True)
-
-    fd, name = tempfile.mkstemp(
-        prefix='.rtxforge-download-',
-        suffix='.AppImage',
-        dir=root,
-    )
-    os.close(fd)
-
-    stage = Path(name)
-    digest = hashlib.sha256()
-    received = 0
-    expected_size = int(info['size'])
-
-    try:
-        request = urllib.request.Request(
-            info['download_url'],
-            headers={'User-Agent': USER_AGENT},
-        )
-
-        with urllib.request.urlopen(
-            request,
-            timeout=60,
-        ) as response, stage.open('wb') as output:
-
-            total = (
-                int(response.headers.get('Content-Length') or 0)
-                or expected_size
-            )
-
-            while True:
-                chunk = response.read(1024 * 1024)
-                if not chunk:
-                    break
-
-                output.write(chunk)
-                digest.update(chunk)
-                received += len(chunk)
-
-                if progress and total:
-                    progress(
-                        min(received / total, 1.0),
-                        received,
-                        total,
-                    )
-
-            output.flush()
-            os.fsync(output.fileno())
-
-        if received != expected_size:
-            raise RuntimeError(
-                'Update download size mismatch: '
-                f'expected {expected_size}, received {received}.'
-            )
-
-        actual = digest.hexdigest().lower()
-        expected = info['sha256'].lower()
-
-        if actual != expected:
-            raise RuntimeError(
-                'Update checksum verification failed: '
-                f'expected {expected}, got {actual}.'
-            )
-
-        stage.chmod(0o755)
-
-        if progress:
-            progress(1.0, received, expected_size)
-
-        installed = desktop_install.install_from(stage)
-        if info.get('update_channel') in CHANNELS:
-            desktop_install.record_channel(info['update_channel'])
-        return installed
-
-    finally:
-        stage.unlink(missing_ok=True)
+        raise RuntimeError('Application updates require the AppImage build.')
+    Path(path).chmod(0o755)
+    installed = desktop_install.install_from(path)
+    if info.get('update_channel') in CHANNELS:
+        desktop_install.record_channel(info['update_channel'])
+    return installed
 
 
-def restart():
+def install(info, progress=None):
+    return apply(info, stage(info, progress))
+
+
+def restart(game_mode=False):
+    if flatpak_host.sandboxed():
+        subprocess.Popen(['flatpak-spawn', '--host', '--directory=/', 'flatpak', 'run', flatpak_host.APP_ID,
+                          *(['--game-mode'] if game_mode else [])],
+                         start_new_session=True)
+        return flatpak_host.APP_ID
     target = desktop_install.installed_path().resolve(strict=True)
 
     env = os.environ.copy()
@@ -263,7 +245,7 @@ def restart():
         env.pop(key, None)
 
     subprocess.Popen(
-        [str(target)],
+        [str(target), *(['--game-mode'] if game_mode else [])],
         cwd=str(Path.home()),
         env=env,
         start_new_session=True,

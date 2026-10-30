@@ -310,6 +310,7 @@ public sealed record HardwareInfo(string Gpu, string Driver, string Vram, string
 /// </summary>
 public sealed class ForgeSettings
 {
+    [JsonPropertyName("auto_update")] public bool AutoUpdate { get; set; } = true;
     // Skynizz + Universal MFG is the Windows flagship.
     string runtimeProvider = "skynizz";
     /// <summary>

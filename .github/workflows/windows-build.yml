@@ -212,6 +212,8 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 tests/test_app_update.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -X utf8 tests/test_auto_update.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s windows/tests -p test_skynizz_provider.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s windows/tests -p test_overlay_packages.py
@@ -343,6 +345,19 @@ jobs:
           $env:RTXFORGE_ROOT = "$dir\engine"
           $reply = '{"id":1,"method":"hello"}' | & "$dir\python\python.exe" -I -B -u "$dir\engine\windows\engine-host\rtxforge_win_host.py"
           if (-not ($reply | Select-String '"id": 1, "result"')) { throw 'Installed engine host did not answer' }
+          # Exercise the real detached updater and quiet in-place setup, using only
+          # this build's installer in the disposable CI installation.
+          $handoff = Join-Path $env:RUNNER_TEMP 'rtxForge-update-handoff'
+          $waiting = Start-Process powershell -ArgumentList '-NoProfile', '-Command', 'Start-Sleep 2' -PassThru -WindowStyle Hidden
+          python -X utf8 windows/tests/stage_installed_update.py "$dir\rtxForge.exe" $setup.FullName $waiting.Id $handoff
+          if ($LASTEXITCODE) { throw 'Update handoff failed' }
+          $deadline = (Get-Date).AddMinutes(4)
+          while (!(Test-Path "$handoff\last-result.json") -and (Get-Date) -lt $deadline) { Start-Sleep 2 }
+          if (!(Test-Path "$handoff\last-result.json")) { throw 'Update handoff timed out' }
+          $updated = Get-Content "$handoff\last-result.json" -Raw | ConvertFrom-Json
+          if (!$updated.ok) { throw "Update failed: $($updated.error)" }
+          $reply = '{"id":2,"method":"hello"}' | & "$dir\python\python.exe" -I -B -u "$dir\engine\windows\engine-host\rtxforge_win_host.py"
+          if (-not ($reply | Select-String '"id": 2, "result"')) { throw 'Updated engine host did not answer' }
           $p = Start-Process "$dir\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
           if ($p.ExitCode) { throw "Uninstall exited $($p.ExitCode)" }
           Start-Sleep 3

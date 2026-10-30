@@ -18,7 +18,9 @@ Deploy neural rendering across compatible games, bring multi-frame generation to
 
 [**rtxForge Beta 1 is available for Linux and Windows.**](https://github.com/lrnolivia/rtxForge/releases/tag/beta) [Choose your OS on the website](https://loew.fi/rtxforge/#downloads) for downloads and installation instructions. Linux x86_64 offers a Flatpak bundle and AppImage; Windows offers x64 and ARM64 installers and an x64 portable ZIP.
 
-Beta 1 is the public release label. Its current package version is `1.0.0-beta.8` on both Linux and Windows; build numbers remain separate from the public label. The channels use the `beta` and `development` release tags. The site shows **coming soon** only when a channel has no published package for your OS. The older `continuous` prerelease remains for existing Linux updater compatibility. Release channels are separate from source-code branches.
+Beta 1 is the public release label. Its current package version is `1.0.0-beta.9` on both Linux and Windows; build numbers remain separate from the public label. The channels use the `beta` and `development` release tags. The site shows **coming soon** only when a channel has no published package for your OS. The older `continuous` prerelease remains for existing Linux updater compatibility. Release channels are separate from source-code branches.
+
+Updates download and verify in the background by default. The installed Windows app, Linux AppImage and standard user/system Flatpak install the ready update when you close rtxForge; **Restart to update** applies it sooner and reopens your interface. Close games before installation. Turn **Automatic updates** off in Settings to check manually. Portable Windows ZIPs are updated by extracting the new ZIP; custom Flatpak installations use their software manager. Settings and game backups stay in place. Existing builds need one update to Beta 9 to gain this behavior.
 
 ### Download directly from GitHub
 

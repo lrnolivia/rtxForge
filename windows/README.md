@@ -6,7 +6,7 @@ token map.
 
 ## Download Beta 1
 
-[rtxForge Beta 1](https://github.com/lrnolivia/rtxForge/releases/tag/beta) is published for Windows and Linux. Windows packages currently use build version `1.0.0-beta.2`: choose the x64 or ARM64 setup `.exe`, or extract the x64 portable ZIP and run `rtxForge.exe`. The installer and portable app include their runtimes. SHA-256 files accompany the downloads; `.previous-` files are recovery copies.
+[rtxForge Beta 1](https://github.com/lrnolivia/rtxForge/releases/tag/beta) is published for Windows and Linux. Windows packages currently use build version `1.0.0-beta.9`: choose the x64 or ARM64 setup `.exe`, or extract the x64 portable ZIP and run `rtxForge.exe`. The installer and portable app include their runtimes. SHA-256 files accompany the downloads; `.previous-` files are recovery copies.
 
 Use the [Windows installation guide](https://loew.fi/rtxforge/install?os=windows) for setup and the release notes for known testing limits. The instructions below are for building from source.
 
@@ -21,6 +21,12 @@ executed from that exact review, as on Linux.
 
 Pass `--preview` (or run without Python) for the sample library with no
 game writes.
+
+## Application updates
+
+Installed copies check after startup and every six hours, download verified updates in the background, and apply them quietly when you close rtxForge. Close games first, or choose **Restart to update** to apply immediately and return to the same interface. Settings → App and updates and Game Mode → About share the **Automatic updates** opt-out. A failed check retries in 30 minutes; manual checks remain available. Setup failures are shown on the next check; diagnostics are in `%LOCALAPPDATA%\rtxForge\updates\setup.log`.
+
+Portable and development copies never run Setup automatically. Portable users extract the newest ZIP; settings and original-file backups remain in the user profile. Builds predating Beta 9 require one manual update to gain this behavior.
 
 ## Requirements
 

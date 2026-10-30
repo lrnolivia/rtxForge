@@ -11,8 +11,11 @@ public sealed partial class MainWindow
     bool checkingUpdate, applyingUpdate, updateCloseAllowed, windowClosed;
     bool updateReady;
     string updateStatus = "Checks automatically and installs when you close rtxForge.";
-    public string UpdateStatus => updateStatus;
-    public string UpdateAction => updateReady ? "Restart to update" : "Check for updates";
+    public string UpdateStatus => InstalledApp ? updateStatus : "Portable app: download and extract the latest ZIP.";
+    public string UpdateAction => !InstalledApp ? "Get latest ZIP" : updateReady ? "Restart to update" : "Check for updates";
+    public string AutomaticUpdateDescription => InstalledApp
+        ? "Download in the background and install when you close. Close games before installation."
+        : "Available in installed copies. Portable copies use the latest ZIP.";
     public bool InstalledApp => File.Exists(Path.Combine(AppContext.BaseDirectory, "unins000.exe"));
 
     void InitializeUpdates()

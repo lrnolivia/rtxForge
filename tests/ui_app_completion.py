@@ -79,6 +79,33 @@ steps=[lambda:theme('light'),lambda:capture('completion-light.png'),lambda:theme
 capture_deadline=None
 steps.extend([functional_desktop,lambda:capture('completion-functional-desktop.png'),lambda:app.window.dialog.close(),
               functional_couch,lambda:capture('completion-functional-couch.png'),lambda:app.window.couch.close_modal()])
+
+def updates_desktop():
+    from unittest.mock import patch
+    from game_mode import descendants
+    window=app.window;ui.COUCH_MODE='desktop';window.set_input_surface(False)
+    # Show the real packaged-AppImage settings without enabling background work
+    # in this write-disabled demo. Toggle only the in-memory preference.
+    with patch.dict(os.environ,{'APPIMAGE':'/fixture/rtxForge-1.0.0-beta.9-x86_64.AppImage'}):
+        window.show_settings()
+    window.dialog.set_visible_page(window.settings_pages['About'])
+    texts=[w.get_text() for w in descendants(window.settings_pages['About']) if isinstance(w,Gtk.Label)]
+    assert 'Automatic updates' in texts,texts
+    window.set_auto_update(False);assert window.settings['auto_update'] is False
+    window.set_auto_update(True);assert window.settings['auto_update'] is True
+    assert not window.app_update_running
+
+def updates_couch():
+    from game_mode import descendants
+    window=app.window;ui.COUCH_MODE='couch';window.set_input_surface(True)
+    window.couch.page='settings';window.couch.open_settings_section('About')
+    texts=[w.get_text() for w in descendants(window.couch) if isinstance(w,Gtk.Label)]
+    assert 'Automatic updates' in texts,texts
+    assert 'Check for updates' in texts,texts
+    assert not window.app_update_running
+
+steps.extend([updates_desktop,lambda:capture('completion-updates-desktop.png'),lambda:app.window.dialog.close(),
+              updates_couch,lambda:capture('completion-updates-couch.png')])
 def step():
     global capture_deadline
     try:

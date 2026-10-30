@@ -390,8 +390,9 @@ public sealed partial class GameModeView
             [
                 new("App and updates", null,
                 [
-                    SettingToggle("Automatic updates", "Download in the background and install when you close. Close games before installation.",
-                        () => shell.Settings.AutoUpdate, value => shell.Settings.AutoUpdate = value),
+                    SettingToggle("Automatic updates", shell.AutomaticUpdateDescription,
+                        () => shell.Settings.AutoUpdate, value => shell.Settings.AutoUpdate = value)
+                        .With(button => button.IsEnabled = shell.InstalledApp && !shell.Service.IsPreview),
                     ui.RowButton(shell.UpdateAction, null, () => _ = CheckForUpdatesAsync(), description: shell.UpdateStatus, glyph: ""),
                     ui.RowButton("Report a bug", null, () => ChooseSupportReportGames(), description: "Choose games, say what happened and review a redacted ZIP before anything is saved.", glyph: ""),
                 ]),

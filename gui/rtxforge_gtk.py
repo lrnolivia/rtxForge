@@ -15397,12 +15397,13 @@ class Window(Adw.ApplicationWindow):
         if not self.pending_app_update or self.app_update_applying:return
         if self.busy:self.toast('Finish the current operation before updating.');return
         self.app_update_applying=True
-        self.busy=True;self.task_kind='app-update';self.controls()
+        self.busy=True;self.task_kind='app-update';self.started=time.monotonic()
+        self.show_operation_status('Installing application update');self.controls()
         info,path=self.pending_app_update
         game_mode=self.input_stack.get_visible_child_name()=='couch'
         def done(error):
             self.app_update_applying=False
-            self.busy=False;self.task_kind='';self.controls()
+            self.busy=False;self.task_kind='';self.hide_operation_status();self.controls()
             if error:
                 self.log.append('Update postponed: '+str(error))
                 self.toast('Update postponed: '+str(error))

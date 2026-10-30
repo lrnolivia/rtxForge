@@ -72,6 +72,7 @@ public sealed partial class MainWindow
     {
         if (updateCloseAllowed) return;
         if (Busy || applyingUpdate) { args.Cancel = true; ShowToast("Finish the current operation before closing."); return; }
+        if (LibraryRefreshing) return;
         if (!Settings.AutoUpdate || !updateReady) return;
         args.Cancel = true;
         await ApplyAppUpdateAsync(false);

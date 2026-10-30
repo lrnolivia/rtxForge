@@ -17,3 +17,4 @@ prototypes/overlay-rmlui/*.rcss text eol=lf
 prototypes/overlay-rmlui/*.ps1 text eol=lf
 prototypes/overlay-rmlui/icons/*.png binary
 prototypes/overlay-rmlui/logo-mark.png binary
+providers/glass-overlay/*.patch text eol=lf whitespace=-blank-at-eol

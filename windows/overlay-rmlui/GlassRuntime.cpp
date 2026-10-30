@@ -199,7 +199,7 @@ struct Runtime {
                 const float clearLayer[4]={};immediate->ClearRenderTargetView(windowView.Get(),clearLayer);backdrop->Draw(target,windowView.Get(),{byId.at(id)},true,false);
                 renderUi(c.Element(id.c_str()),windowView.Get());const auto velocity=c.windowVelocity[id];backdrop->ComposeLayer(frame.target,windowSource.Get(),velocity.x,velocity.y,c.reducedMotion);
             }
-            
+
             if(c.Element("tooltip")->IsVisible())renderUi(c.Element("tooltip"));
         return true;
     }

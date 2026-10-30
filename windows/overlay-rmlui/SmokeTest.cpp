@@ -23,7 +23,9 @@ static void Test12(HMODULE dll,ForgeGlass::Release release,bool hdr=false){
     // well, so six 1440p software frames cannot accumulate behind one wait.
     ComPtr<ID3D12Fence> frameFence;Need(SUCCEEDED(device->CreateFence(0,D3D12_FENCE_FLAG_NONE,IID_PPV_ARGS(&frameFence))),"DX12 frame fence failed");
     for(int i=0;i<6;i++){
+        const bool visible=i<2||i>=4;frame.input.visible=visible;
         Need(draw(&host,&frame),"DX12 game-facing draw failed");
+        Need(frame.input.visible==visible,"DX12 overlay visibility did not survive close/reopen");
         HANDLE done=CreateEventW(nullptr,FALSE,FALSE,nullptr);Need(done,"DX12 frame event failed");
         Need(SUCCEEDED(queue->Signal(frameFence.Get(),i+1))&&SUCCEEDED(frameFence->SetEventOnCompletion(i+1,done)),"DX12 frame submission failed");
         const auto completed=WaitForSingleObject(done,5000);CloseHandle(done);Need(completed==WAIT_OBJECT_0,"DX12 frame did not complete");
@@ -68,7 +70,7 @@ int wmain(int argc,wchar_t** argv){try{
         host.read=[](void*,ForgeGlass::Snapshot* s){static const ForgeGlass::Value values[]={{"enabled",1},{"intensity",.75f},{"style",1},{"passes",3},{"preset",0},{"multiplier",3},{"dynamic_mfg",0}};*s={"LIVE RENDERER TEST","#d58975",values,uint32_t(std::size(values)),true,true,false,true,true,true,2.34,60,180,3,true,true,true};s->helperJson=R"({"revision":1,"ready":true,"pending":false,"named_supported":true,"settings":{"panel_key":35,"panel_modifiers":0,"panel_hotkey":"End"},"review":{},"presets":[{"name":"Quiet","compatible":true,"values":{"intensity":0.75}},{"name":"Detailed","compatible":true,"values":{"intensity":1}}]})";return true;};
         host.apply=[](void*,const ForgeGlass::Value*,uint32_t){return true;};host.log=[](void*,const char* text){std::cerr<<text<<'\n';};
         ForgeGlass::Frame frame{};frame.size=sizeof(frame);frame.abi=ForgeGlass::Abi;frame.device=device.Get();frame.target=view.Get();frame.visible=true;frame.welcome=true;
-        for(unsigned i=0;i<6;i++){Need(draw(&host,&frame),"Game-facing renderer rejected SDR target");renders++;}
+        for(unsigned i=0;i<6;i++){const bool visible=i<2||i>=4;frame.visible=visible;Need(draw(&host,&frame),"Game-facing renderer rejected SDR target");Need(frame.visible==visible,"DX11 overlay visibility did not survive close/reopen");renders++;}
         ComPtr<ID3D11RenderTargetView> restored;context->OMGetRenderTargets(1,&restored,nullptr);Need(restored.Get()==original,"Game render target was not restored");D3D11_VIEWPORT after{};UINT count=1;context->RSGetViewports(&count,&after);Need(count==1&&after.TopLeftX==7&&after.TopLeftY==11&&after.Width==1222&&after.Height==777&&after.MinDepth==.2f&&after.MaxDepth==.8f,"Game viewport was not restored");
         desc.Usage=D3D11_USAGE_STAGING;desc.BindFlags=0;desc.CPUAccessFlags=D3D11_CPU_ACCESS_READ;ComPtr<ID3D11Texture2D> staging;Need(SUCCEEDED(device->CreateTexture2D(&desc,nullptr,&staging)),"Readback failed");context->CopyResource(staging.Get(),target.Get());D3D11_MAPPED_SUBRESOURCE pixels{};Need(SUCCEEDED(context->Map(staging.Get(),0,D3D11_MAP_READ,0,&pixels)),"Map failed");
         const auto* top=static_cast<const unsigned char*>(pixels.pData);const auto* panel=top+300*pixels.RowPitch+200*4;Need(top[3]==255,"Scene outside overlay changed");Need(panel[0]!=top[0]||panel[1]!=top[1]||panel[2]!=top[2],"Glass UI did not composite over game target");context->Unmap(staging.Get(),0);

@@ -170,8 +170,10 @@ struct Runtime {
         ForgeWorkbench::Values changed;for(const auto& [key,value]:c.values)if(lastValues.contains(key)&&lastValues.at(key)!=value&&key!="mfg_enabled")changed[key]=value;
         if(c.values["mfg_enabled"]!=lastValues["mfg_enabled"]){changed["multiplier"]=c.values["mfg_enabled"]?2:0;changed["dynamic_mfg"]=0;}
         if(!changed.empty()){std::vector<ForgeGlass::Value> updates;for(const auto& [key,value]:changed)updates.push_back({key.c_str(),value});if(!host.apply||!host.apply(host.user,updates.data(),uint32_t(updates.size()))){c.values=lastValues;c.Message("This change is unavailable in the current rendering route.");}c.Sync();}
-        frame.visible=c.Element("main-panel")->IsVisible();hostVisible=frame.visible;
         c.reducedMotion=systemReducedMotion||!c.motionEnabled;document->SetClass("reduce-motion",c.reducedMotion);c.Animate(now);c.Adapt(backdrop->measured,now);context->Update();c.AdaptiveForeground(*backdrop,now);context->Update();
+        // Display changes resolve during Update. Reading the previous computed
+        // visibility would immediately close a panel reopened by the host.
+        frame.visible=c.Element("main-panel")->IsVisible();hostVisible=frame.visible;
         if(c.toastUntil>0&&now>c.toastUntil){c.Visible("welcome",false);c.toastUntil=0;}
         if(c.prefsDirty&&now>=nextPreferences){c.SavePreferences();nextPreferences=now+.5;}c.savePreset={};c.deletePreset={};c.requestJson={};
             std::vector<Backdrop::Panel> panels;

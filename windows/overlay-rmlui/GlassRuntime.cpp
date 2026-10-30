@@ -222,7 +222,7 @@ extern "C" __declspec(dllexport) bool __cdecl ForgeGlassDraw(const ForgeGlass::H
         const bool supported=frame->colorSpace==0?sdr:frame->colorSpace==1?desc.Format==DXGI_FORMAT_R16G16B16A16_FLOAT:desc.Format==DXGI_FORMAT_R10G10B10A2_UNORM;
         if(!supported)throw std::runtime_error("Unsupported glass format and transfer-function pair");
         if(runtime&&(runtime->device.Get()!=frame->device||runtime->width!=int(desc.Width)||runtime->height!=int(desc.Height)||runtime->format!=desc.Format||runtime->outputSpace!=frame->colorSpace))runtime.reset();
-        if(!runtime){runtime=std::make_unique<Runtime>();runtime->Init(*frame,desc);if(host->log)host->log(host->user,runtime->dx12Interop?"Glass overlay ready: DirectX 12":"Glass overlay ready: DirectX 11");}drawn=runtime->Draw(*host,*frame,target.Get());
+        if(!runtime){if(host->log)host->log(host->user,"Initializing glass overlay");runtime=std::make_unique<Runtime>();runtime->Init(*frame,desc);if(host->log)host->log(host->user,runtime->dx12Interop?"Glass overlay ready: DirectX 12":"Glass overlay ready: DirectX 11");}drawn=runtime->Draw(*host,*frame,target.Get());
     }catch(const std::exception& error){runtime.reset();if(!logged&&host->log){host->log(host->user,error.what());logged=true;}}
     if(uninitialize)CoUninitialize();return drawn;
 }

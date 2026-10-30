@@ -54,8 +54,9 @@ measurements; Advanced shows that expanded view on Overview. Readouts use
 reported runtime data and omit unavailable measurements.
 
 The glass renderer uses the existing control bindings and helper protocol.
-DX11 and DX12 adapters have native render fixtures; gameplay acceptance and
-other API routes remain separate. Unsupported output routes retain the
+DX11 and DX12 adapters have native render fixtures for SDR and supported
+scRGB/HDR10 output; gameplay acceptance and other API routes remain separate.
+Unsupported output routes retain the
 established renderer. The local screenshot preview stays available for styling.
 
 Windows bundles that advertise a required glass revision automatically refresh

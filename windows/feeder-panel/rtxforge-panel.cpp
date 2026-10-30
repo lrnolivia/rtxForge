@@ -23,6 +23,8 @@ namespace
 {
 constexpr const char *Section = "RenoDX.DLSS5";
 reshade::api::effect_runtime *current = nullptr;
+HWND current_window = nullptr;
+reshade::api::swapchain *current_swapchain = nullptr;
 reshade::api::color_space space = reshade::api::color_space::srgb_nonlinear;
 ULONGLONG toggle_sent = 0;
 
@@ -75,7 +77,7 @@ void release_toggle()
 }
 
 const feeder_panel::Host host = {
-    [] { return current && GetForegroundWindow() == static_cast<HWND>(current->get_hwnd()); },
+    [] { return current_window && GetForegroundWindow() == current_window; },
     [](int vk) { return current && current->is_key_down(vk); },
     [](int vk) { return current && current->is_key_pressed(vk); },
     [](int vk) { return current && current->is_key_released(vk); },
@@ -88,7 +90,9 @@ void on_init(reshade::api::effect_runtime *runtime)
 {
     if (runtime->get_device()->get_api() != reshade::api::device_api::d3d11) return;
     current = runtime;
-    feeder_panel::Init(reinterpret_cast<ID3D11Device *>(runtime->get_device()->get_native()), static_cast<HWND>(runtime->get_hwnd()));
+    current_window = static_cast<HWND>(runtime->get_hwnd());
+    current_swapchain = nullptr;
+    feeder_panel::Init(reinterpret_cast<ID3D11Device *>(runtime->get_device()->get_native()), current_window);
 }
 
 void on_destroy(reshade::api::effect_runtime *runtime)
@@ -96,12 +100,15 @@ void on_destroy(reshade::api::effect_runtime *runtime)
     if (runtime != current) return;
     feeder_panel::Release();
     current = nullptr;
+    current_window = nullptr;current_swapchain = nullptr;
 }
 
 // HDR games present PQ or scRGB; the panel encodes its colours to match.
 void on_present(reshade::api::command_queue *, reshade::api::swapchain *swapchain, const reshade::api::rect *, const reshade::api::rect *, uint32_t, const reshade::api::rect *)
 {
-    if (current && swapchain->get_hwnd() == current->get_hwnd()) space = swapchain->get_color_space();
+    if(!current)return;
+    if(!current_swapchain && swapchain->get_hwnd()==current_window)current_swapchain=swapchain;
+    if(swapchain==current_swapchain)space=swapchain->get_color_space();
 }
 
 void on_finish_effects(reshade::api::effect_runtime *runtime, reshade::api::command_list *, reshade::api::resource_view target, reshade::api::resource_view)
@@ -113,7 +120,10 @@ void on_finish_effects(reshade::api::effect_runtime *runtime, reshade::api::comm
     runtime->get_screenshot_width_and_height(&width, &height);
     runtime->get_mouse_cursor_position(&x, &y, &wheel);
     RECT client {};
-    GetClientRect(static_cast<HWND>(runtime->get_hwnd()), &client);
+    // The runtime HWND query may enter DXGI and synchronously wait for the
+    // window thread during fullscreen transitions. Keep the HWND obtained at
+    // initialization instead of querying it from the render callback.
+    GetClientRect(current_window, &client);
     const float sx = client.right > 0 ? float(width) / float(client.right) : 1.0f;
     const float sy = client.bottom > 0 ? float(height) / float(client.bottom) : 1.0f;
     feeder_panel::Frame frame {

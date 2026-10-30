@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import threading
 import uuid
 
 import auto_update
@@ -100,7 +101,16 @@ def launch(info, path, *, pid, restart, game_mode, helper, folder):
                                   'helper': bool(helper), 'log': str(folder / 'setup.log'),
                                   'result': str(folder / 'last-result.json')}), encoding='utf-8')
     powershell = Path(os.environ['SystemRoot']) / 'System32/WindowsPowerShell/v1.0/powershell.exe'
-    subprocess.Popen([str(powershell), '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-                      '-File', str(runner), '-Receipt', str(receipt)], close_fds=True,
-                     creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS)
+    environment = os.environ.copy()
+    # A host launched from PowerShell 7 can inherit its incompatible module
+    # search path. This runner uses only the Windows PowerShell inbox modules.
+    environment['PSModulePath'] = str(powershell.parent / 'Modules')
+    # Windows PowerShell can exit before -File runs under DETACHED_PROCESS.
+    # A windowless child outlives its parent without sharing the engine pipe.
+    with (folder / ('apply-' + key + '.log')).open('wb') as output:
+        child = subprocess.Popen([str(powershell), '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+                                  '-File', str(runner), '-Receipt', str(receipt)], close_fds=True, env=environment,
+                                 stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
+                                 creationflags=subprocess.CREATE_NO_WINDOW)
+    threading.Thread(target=child.wait, daemon=True, name='app-update-handoff').start()
     return {'message': 'Update will install after rtxForge closes.'}

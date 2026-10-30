@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+import time
 import types
 import unittest
 from unittest.mock import patch
@@ -110,6 +111,8 @@ class DownloadTests(unittest.TestCase):
             receipt = json.loads(Path(args[-1]).read_text())
             self.assertEqual(receipt['folder'], str(exe.parent))
             self.assertEqual(receipt['pid'], 42)
+            self.assertEqual(launch.call_args.kwargs['creationflags'], flags['CREATE_NO_WINDOW'])
+            self.assertEqual(launch.call_args.kwargs['stdin'], app_updates.subprocess.DEVNULL)
             self.assertTrue(receipt['game_mode'])
             self.assertIn('WaitForExit', Path(args[-3]).read_text())
             self.assertIn('Get-FileHash', Path(args[-3]).read_text())
@@ -123,6 +126,35 @@ class DownloadTests(unittest.TestCase):
         with patch.dict(os.environ, RTXFORGE_APP_EXE=str(self.root / 'rtxForge.exe')):
             with self.assertRaisesRegex(RuntimeError, 'portable'):
                 app_updates.installed_executable()
+
+    @unittest.skipUnless(os.name == 'nt', 'Runs the Windows PowerShell application handoff')
+    def test_real_windows_handoff_runs_and_recovers_from_invalid_setup(self):
+        # A private, deliberately invalid executable cannot install anything.
+        # It must still produce a failure receipt after preserving/restoring the
+        # fixture, proving the real child process ran beyond checksum checking.
+        app = self.root / 'application'
+        (app / 'engine').mkdir(parents=True)
+        exe = app / 'rtxForge.exe'
+        exe.write_bytes(b'previous app')
+        (app / 'unins000.exe').write_bytes(b'fixture marker')
+        (app / 'engine/VERSION').write_text('1.0.0-beta.8')
+        setup = self.root / 'invalid-setup.exe'
+        setup.write_bytes(b'not a PE executable')
+        info = dict(size=setup.stat().st_size, sha256=hashlib.sha256(setup.read_bytes()).hexdigest(),
+                    version='1.0.0-beta.9', from_version='1.0.0-beta.8')
+        folder = self.root / 'handoff'
+        with patch.dict(os.environ, RTXFORGE_APP_EXE=str(exe)):
+            app_updates.launch(info, setup, pid=2147483646, restart=False, game_mode=False, helper=False, folder=folder)
+        result = folder / 'last-result.json'
+        deadline = time.monotonic() + 30
+        while not result.exists() and time.monotonic() < deadline:
+            time.sleep(.1)
+        logs = '\n'.join(p.read_text(errors='replace') for p in folder.glob('*.log'))
+        self.assertTrue(result.exists(), logs or 'The updater child produced no receipt.')
+        record = json.loads(result.read_text(encoding='utf-8-sig'))
+        self.assertFalse(record['ok'])
+        self.assertIn('previous application was restored', record['error'])
+        self.assertEqual(exe.read_bytes(), b'previous app')
 
 
 class BackgroundPolicyTests(unittest.TestCase):

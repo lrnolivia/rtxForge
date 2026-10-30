@@ -353,7 +353,10 @@ jobs:
           if ($LASTEXITCODE) { throw 'Update handoff failed' }
           $deadline = (Get-Date).AddMinutes(4)
           while (!(Test-Path "$handoff\last-result.json") -and (Get-Date) -lt $deadline) { Start-Sleep 2 }
-          if (!(Test-Path "$handoff\last-result.json")) { throw 'Update handoff timed out' }
+          if (!(Test-Path "$handoff\last-result.json")) {
+            Get-ChildItem $handoff -Filter '*.log' | ForEach-Object { Get-Content $_.FullName -Tail 50 }
+            throw 'Update handoff timed out'
+          }
           $updated = Get-Content "$handoff\last-result.json" -Raw | ConvertFrom-Json
           if (!$updated.ok) { throw "Update failed: $($updated.error)" }
           $reply = '{"id":2,"method":"hello"}' | & "$dir\python\python.exe" -I -B -u "$dir\engine\windows\engine-host\rtxforge_win_host.py"

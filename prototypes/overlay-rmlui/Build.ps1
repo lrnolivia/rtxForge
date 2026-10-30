@@ -1,5 +1,7 @@
 param([Parameter(Mandatory)][string]$RmlSource, [Parameter(Mandatory)][string]$FreetypeRoot, [Parameter(Mandatory)][string]$Output)
 $ErrorActionPreference='Stop'
+$RmlSource=(Resolve-Path -LiteralPath $RmlSource).Path
+$FreetypeRoot=(Resolve-Path -LiteralPath $FreetypeRoot).Path
 $pin='ae4e0dcb52b324a0d0fc36ed51f633c8c3fe06b7'
 $head=(& git -C $RmlSource rev-parse HEAD).Trim()
 if($LASTEXITCODE -or $head -ne $pin) { throw "Use the pinned RmlUi revision $pin." }

@@ -52,9 +52,16 @@ scene, with NR model activity, measured GPU time, three generated frames per
 rendered frame, camera input and the glass overlay's Look & detail controls.
 An initial test before ReShade settings initialization produced startup
 corruption; the final initialized configuration passed the fresh-launch check.
-ME2's automatic package preparation, install/removal and reuse of its Feeder
-host were verified, but its EA launcher did not start the game during this
-check. These results do not qualify other games or Proton HDR rendering.
+Mass Effect 2 Legendary Edition was checked in a fresh DirectX 11/scRGB
+Normandy scene with the HDR add-on, active Feeder NR model evaluations and
+working glass overlay controls. Its nested installation resolves through the
+containing Steam manifest even when an older saved subgame entry lacks an ID.
+The saved Backtick shortcut also opens ME2's console; use a per-game Delete
+binding. Feeder now reads delayed helper preferences while the panel is closed,
+so the per-game shortcut applies before the first opening. The launcher check
+required dismissing Steam Big Picture's keyboard tip. Test add-ons and settings
+were restored after both games. These results do not qualify other games or
+Proton HDR rendering.
 
 Upstream references: [RenoDX mods](https://github.com/clshortfuse/renodx/wiki/Mods),
 [OptiScaler's ReShade compatibility guide](https://github.com/optiscaler/OptiScaler/wiki/Compatibility-with-other-mods-%28Reshade%2C-SpecialK%29),

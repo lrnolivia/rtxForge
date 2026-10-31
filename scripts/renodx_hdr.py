@@ -60,10 +60,38 @@ def architecture(path):
     return 'x64' if signature[4:] == b'd\x86' else 'x86'
 
 
+def _steam_identity(row):
+    """Resolve nested subgames from their exact containing Steam installation."""
+    if not row.get('game'): return None
+    root = Path(row['game']).resolve()
+    for folder in (root, *root.parents):
+        common = folder.parent
+        if common.name.casefold() != 'common' or common.parent.name.casefold() != 'steamapps': continue
+        manifests = list(common.parent.glob('appmanifest_*.acf'))
+        t.need(len(manifests) <= 10000, 'Too many Steam installation records; rescan this library.')
+        matches = []
+        for path in manifests:
+            if path.stat().st_size > 1024**2: continue
+            raw = path.read_bytes(); text = raw.decode('utf-8-sig', errors='replace')
+            def value(key):
+                found = re.search(r'"' + key + r'"\s+"([^"]*)"', text, re.I)
+                return found.group(1) if found else ''
+            appid, install = value('appid'), value('installdir')
+            if (not appid.isdecimal() or path.name != 'appmanifest_' + appid + '.acf'
+                    or not install or install in ('.', '..') or '/' in install or '\\' in install): continue
+            if (common / install).resolve() == folder:
+                matches.append({'appid': appid, 'manifest': str(path.resolve()), 'sha256': t.sha(raw)})
+        t.need(len(matches) <= 1, 'Several Steam records own this installation; rescan before choosing HDR.')
+        return matches[0] if matches else None
+    return None
+
+
 def match(row, arch, data=None):
     """Store ID first; exact normalized aliases only when no store ID is known."""
     data = data or catalog()
     appid = str(row.get('appid') or '')
+    identity = _steam_identity(row) if not appid else None
+    if identity: appid = identity['appid']
     title = _title(row.get('name', ''))
     games = [g for g in data['games'] if (str(g.get('steam_appid') or '') == appid if appid
              else title and title in {_title(g['title']), *(_title(a) for a in g.get('aliases', []))})]
@@ -97,7 +125,8 @@ def match(row, arch, data=None):
                        and type(pin.get('size')) is int and 0 < pin['size'] <= 128*1024**2
                        and re.fullmatch('[a-f0-9]{64}', pin.get('sha256', '')), 'Invalid pinned RenoDX asset.')
                 candidates.append({'name': name, 'pin': pin, 'mod': mod, 'title': game['title'],
-                                   'source_commit': data['source_commit']})
+                                   'source_commit': data['source_commit'], 'steam_identity': identity,
+                                   'appid': appid})
     unique = {item['name']: item for item in candidates}
     t.need(unique, 'This game has no automatic HDR download for its architecture and supported configuration yet.')
     t.need(len(unique) == 1, 'Several RenoDX HDR variants match this game; automatic installation needs a specific profile.')
@@ -318,7 +347,7 @@ def prepare(config, row):
         # Keep the recorded host route when its own installed proxy was detected.
         if prior['route'] == 'reshade' and host == prior['host']: route = 'reshade'
         t.need(route == prior['route'] and host == prior['host'], 'The HDR loader route changed. Remove HDR before switching routes.')
-    prefix = _prefix_review(config, row, route, host)
+    prefix = _prefix_review(config, dict(row, appid=selected['appid'] or row.get('appid')), route, host)
     payload = _fetch(config, selected, arch)
     writes, checks = {}, {str(exe): t.digest(exe)}
     if prior: checks.update({str(root / name): digest for name, digest in prior['files'].items()})
@@ -362,7 +391,8 @@ def prepare(config, row):
                   title=selected['title'], source_commit=selected['source_commit'])
     writes[receipt] = (json.dumps(record, indent=2) + '\n').encode()
     plan = _plan(row, root, writes, action='install', checks=checks)
-    plan.update(route=route, prefix=prefix, notes=[*selected['mod'].get('notes', []), NOTICE])
+    plan.update(route=route, prefix=prefix, steam_identity=selected['steam_identity'],
+                notes=[*selected['mod'].get('notes', []), NOTICE])
     return _freeze(config, plan)
 
 
@@ -407,6 +437,8 @@ def apply(config, plan):
     with e.mutation_lock():
         _eligible(config, plan)
         t.check_plan(plan)
+        if plan.get('steam_identity'):
+            t.need(_steam_identity(plan) == plan['steam_identity'], 'Steam installation identity changed since review; review HDR again.')
         for path, digest in plan['checks'].items():
             t.need(t.safe(path).is_relative_to(root) and Path(path).is_file() and t.digest(path) == digest, 'HDR prerequisites changed since review; review again.')
         prefix = plan.get('prefix')

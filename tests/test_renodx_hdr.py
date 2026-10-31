@@ -86,6 +86,36 @@ class HdrTests(unittest.TestCase):
         self.catalog['games'][0]['mods'] = [dict(mod, artifacts=[])]
         self.assertFalse(hdr.status({}, self.row)['available'])
 
+    def steam_subgame(self):
+        steamapps = self.root / 'steamapps'; game = steamapps / 'common' / 'Trilogy' / 'Game' / 'Part2'
+        game.mkdir(parents=True); (game / 'Game.exe').write_bytes(pe())
+        manifest = steamapps / 'appmanifest_123.acf'
+        manifest.write_text('"AppState" { "appid" "123" "installdir" "Trilogy" }', encoding='utf-8')
+        return dict(self.row, game=str(game), name='Trilogy · Part 2', appid=None), manifest
+
+    def test_nested_subgame_uses_exact_steam_manifest_and_freezes_identity(self):
+        row, manifest = self.steam_subgame()
+        self.assertEqual(hdr.match(row, 'x64')['title'], 'A Game')
+        plan = hdr.prepare({}, row)
+        self.assertEqual(plan['steam_identity']['appid'], '123')
+        manifest.write_text('"AppState" { "appid" "123" "installdir" "Another game" }', encoding='utf-8')
+        with self.assertRaisesRegex(t.Refusal, 'identity changed'): hdr.apply({}, plan)
+        self.assertFalse((Path(row['game']) / 'dxgi.dll').exists())
+
+    def test_manifest_cannot_replace_explicit_id_or_guess_another_installation(self):
+        row, manifest = self.steam_subgame()
+        with self.assertRaises(t.Refusal): hdr.match(dict(row, appid='999'), 'x64')
+        manifest.write_text('"AppState" { "appid" "123" "installdir" "Other" }', encoding='utf-8')
+        with self.assertRaises(t.Refusal): hdr.match(row, 'x64')
+        manifest.write_text('"AppState" { "appid" "123" "installdir" "../Trilogy" }', encoding='utf-8')
+        with self.assertRaises(t.Refusal): hdr.match(row, 'x64')
+
+    def test_duplicate_steam_ownership_is_not_automatic(self):
+        row, manifest = self.steam_subgame()
+        manifest.with_name('appmanifest_999.acf').write_text(
+            '"AppState" { "appid" "999" "installdir" "Trilogy" }', encoding='utf-8')
+        with self.assertRaisesRegex(t.Refusal, 'Several Steam records'): hdr.match(row, 'x64')
+
     def test_known_prerequisites_and_bad_pins_are_not_automatic(self):
         mod = self.catalog['games'][0]['mods'][0]
         mod['notes'] = ['Requires REFramework nightly to function.']

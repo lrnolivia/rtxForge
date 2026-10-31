@@ -113,6 +113,9 @@ bool Draw(const Frame &frame)
 {
     if (!backend || !ForgePanel::selected) return false;
     ImGui::SetCurrentContext(context);
+    // Startup/per-game replies must reach the shortcut even with the UI closed.
+    // Otherwise a delayed hello remains unread until the old shortcut opens it.
+    ForgePanel::PollHelper();
     if (!ForgePanel::CapturingShortcut() && ForgePanel::ShortcutReleased()) visible = !visible;
     ForgePanelChannel::Visible(visible);
     LARGE_INTEGER now;

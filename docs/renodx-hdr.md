@@ -30,6 +30,11 @@ transaction backup; a failed operation rolls back its partial changes.
 The HDR receipt uses game-relative paths so a shared library can identify
 the HDR files from either operating system.
 
+Shared OptiScaler installations can supply a verified loader even when the
+current OS has no private installation record. Removal also checks the shared
+ownership record before removing a host, so another OS's NR/MFG package cannot
+lose a runtime it has since adopted.
+
 Enable HDR in the display session before playing. Turn off Auto HDR and RTX HDR
 for the game to avoid double tone mapping. Installing a package does not prove
 that the game is rendering HDR correctly; that requires an in-game check.
@@ -41,6 +46,15 @@ loader hosts the side-loaded runtime without a new override.
 
 The current implementation does not install a Vulkan layer. That route remains
 unavailable until its separate loading setup is implemented and verified.
+
+Windows Control Resonant was checked in a clean fresh HDR10 startup and a 3D
+scene, with NR model activity, measured GPU time, three generated frames per
+rendered frame, camera input and the glass overlay's Look & detail controls.
+An initial test before ReShade settings initialization produced startup
+corruption; the final initialized configuration passed the fresh-launch check.
+ME2's automatic package preparation, install/removal and reuse of its Feeder
+host were verified, but its EA launcher did not start the game during this
+check. These results do not qualify other games or Proton HDR rendering.
 
 Upstream references: [RenoDX mods](https://github.com/clshortfuse/renodx/wiki/Mods),
 [OptiScaler's ReShade compatibility guide](https://github.com/optiscaler/OptiScaler/wiki/Compatibility-with-other-mods-%28Reshade%2C-SpecialK%29),

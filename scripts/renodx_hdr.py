@@ -12,6 +12,7 @@ import uuid
 import zipfile
 
 import discovery
+import cross_os
 import engine_bridge
 import packages
 import library_media
@@ -120,6 +121,28 @@ def _eligible(config, row):
     return root, exe, receipt, e
 
 
+def _managed(e, directory):
+    baseline = e.load_baseline(directory, readonly=True)
+    if baseline and baseline.get('status') == 'active': return baseline
+    # Borrow a verified shared loader without taking ownership of its files or
+    # requiring the other OS's private state to exist on this OS.
+    shared = cross_os.read(directory)
+    if shared and cross_os.intact(directory, shared):
+        return {'status': 'active', 'current': {'provider_id': shared['provider']['id'],
+                'proxy': shared['proxy'], 'installed_hashes': shared['files']}}
+    return None
+
+
+def _owned(e, root, path):
+    if runtime_updates._owned(e, root, path): return True
+    for directory in (path.parent, *path.parent.parents):
+        if not directory.is_relative_to(root): break
+        shared = cross_os.read(directory)
+        if shared and path.relative_to(directory).as_posix().casefold() in {n.casefold() for n in shared['files']}:
+            return True
+    return False
+
+
 def _route(e, exe, arch, selected=None):
     directory = exe.parent
     imports = e.pe_imported_dlls(exe)
@@ -131,7 +154,7 @@ def _route(e, exe, arch, selected=None):
     for name in (*PROXIES, HOSTS[arch][0]):
         path = t.safe(directory / name)
         if path.is_file() and t.digest(path) == known_host: hosts.append(name)
-    baseline = e.load_baseline(directory, readonly=True)
+    baseline = _managed(e, directory)
     managed = baseline and baseline.get('status') == 'active'
     if managed:
         current = baseline.get('current') or {}
@@ -208,6 +231,10 @@ def _fetch(config, selected, arch):
         addon = packages.download(request, cache / pin['sha256'] / selected['name'], expected=pin['sha256'], size=pin['size'])
         request = urllib.request.Request(HOST_URL, headers={'User-Agent': 'rtxForge/1.0'})
         setup = packages.download(request, cache / HOST_ARCHIVE[0] / 'ReShade_Addon.exe', expected=HOST_ARCHIVE[0], size=HOST_ARCHIVE[1])
+    except urllib.error.HTTPError as error:
+        if error.code in (404, 410):
+            raise t.Refusal('This HDR build is no longer published. Update rtxForge, then retry.') from error
+        raise t.Refusal('Could not download the HDR package. Try again later. ' + str(error)) from error
     except (OSError, urllib.error.URLError) as error:
         raise t.Refusal('Could not download the HDR package. Check your connection and retry. ' + str(error)) from error
     t.need(architecture(addon) == arch, 'The RenoDX add-on architecture does not match this game.')
@@ -296,7 +323,7 @@ def prepare(config, row):
     writes, checks = {}, {str(exe): t.digest(exe)}
     if prior: checks.update({str(root / name): digest for name, digest in prior['files'].items()})
     if route == 'optiscaler':
-        baseline = e.load_baseline(exe.parent, readonly=True)
+        baseline = _managed(e, exe.parent)
         proxy = exe.parent / t.relative(baseline['current']['proxy'])
         checks[str(proxy)] = t.digest(proxy)
     for name, data in {selected['name']: payload[selected['name']], host: payload[HOSTS[arch][0]]}.items():
@@ -348,7 +375,7 @@ def prepare_remove(config, row):
     for name, digest in record['files'].items():
         path = t.safe(root / name)
         t.need(path.is_file() and t.digest(path) == digest, 'HDR file changed; it has been kept: ' + name)
-        t.need(not runtime_updates._owned(e, root, path), 'Another feature now uses this HDR runtime. Restore that feature before removing HDR.')
+        t.need(not _owned(e, root, path), 'Another feature now uses this HDR runtime. Restore that feature before removing HDR.')
         writes[path] = None
     if record.get('plugin'):
         plugin = record['plugin']; ini = t.safe(root / t.relative(plugin['path']))
@@ -365,7 +392,7 @@ def prepare_remove(config, row):
     if record.get('settings'):
         setting = record['settings']; path = t.safe(root / t.relative(setting['path']))
         # ReShade writes tuning to this file while playing. Keep those edits.
-        if path.is_file() and t.digest(path) == setting['created_sha256'] and not runtime_updates._owned(e, root, path):
+        if path.is_file() and t.digest(path) == setting['created_sha256'] and not _owned(e, root, path):
             writes[path] = None
     plan = _plan(row, root, writes, action='remove', checks=checks)
     plan['prefix'] = _prefix_review(config, row, record['route'], record['host'], remove=True)

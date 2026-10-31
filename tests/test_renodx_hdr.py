@@ -165,6 +165,22 @@ class HdrTests(unittest.TestCase):
         with self.assertRaises(t.Refusal): hdr.prepare_remove({}, self.row)
         self.assertTrue((self.game / 'dxgi.dll').exists())
 
+    def test_shared_optiscaler_is_reused_without_private_state_adoption(self):
+        self.optiscaler(); self.engine.baseline = None
+        shared = {'provider': {'id': 'skynizz'}, 'proxy': 'dxgi.dll',
+                  'files': {n: t.digest(self.game/n) for n in ('dxgi.dll', 'OptiScaler.ini')}}
+        with patch.object(hdr.cross_os, 'read', return_value=shared):
+            plan = hdr.prepare({}, self.row)
+        self.assertEqual(plan['route'], 'optiscaler')
+        self.assertNotIn('dxgi.dll', [c['path'] for c in plan['changes']])
+
+    def test_foreign_os_feature_cannot_lose_its_shared_host(self):
+        hdr.apply({}, hdr.prepare({}, self.row))
+        shared = {'files': {'dxgi.dll': t.digest(self.game/'dxgi.dll')}}
+        with patch.object(hdr.cross_os, 'read', return_value=shared):
+            with self.assertRaisesRegex(t.Refusal, 'Another feature'): hdr.prepare_remove({}, self.row)
+        self.assertTrue((self.game / 'dxgi.dll').exists())
+
     def test_anti_cheat_and_vulkan_are_reported_without_game_writes(self):
         with self.assertRaises(t.Refusal): hdr.prepare({}, dict(self.row, anti_cheat=True))
         self.engine.imports = {'vulkan-1.dll'}

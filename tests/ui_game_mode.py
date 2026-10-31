@@ -291,7 +291,23 @@ def overlay_section():
  c=app.window.couch;c.open('settings');c.open_settings_section('Overlay')
 def overlay_appearance():
  c=app.window.couch;text=labels(c.body)
- assert 'Appearance' in text and 'Dark' in text,'overlay Appearance choice'
+ assert 'Appearance' in text and 'Clear' in text,'Clear is the overlay default'
+ for title in ('Floating Sidebar','Centered Advanced','Bottom Bar'):assert title in text,title
+ for title in ('Main font','Toast shape','Adaptive text depth','Darker inner cards','More appearance options','Overlay scale'):
+  assert title not in text,title+' belongs outside Game Mode settings'
+ from overlay_layouts import LayoutPicker
+ from unittest.mock import patch
+ import glass_preferences as glass
+ picker=next(x for x in descendants(c.body) if isinstance(x,LayoutPicker))
+ choices=[x for x in descendants(picker) if isinstance(x,Gtk.ToggleButton)]
+ original=glass.current(app.window.settings)['Layout'];keys=('floating','centered','bar')
+ target=(keys.index(original)+1)%3
+ with patch.object(c,'save_settings') as save:
+  choices[target].set_active(True)
+  assert glass.current(app.window.settings)['Layout']==keys[target],'layout selection did not reach shared preferences'
+  save.assert_called_once()
+  choices[keys.index(original)].set_active(True)
+ assert 'Last overlay update' in text,'overlay update report remains available'
  # Panel rows sit under rtxForge Panel, not OptiScaler (Windows grouping).
  order=[x for x in text if x in ('rtxForge Panel','Live feature statistics','Panel shortcut','OptiScaler','OptiScaler menu')]
  assert order.index('Panel shortcut')<order.index('OptiScaler')<order.index('OptiScaler menu'),order

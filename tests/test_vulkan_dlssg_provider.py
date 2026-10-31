@@ -323,6 +323,22 @@ class SharedBg3Tests(ProviderTests):
         selection.__enter__()
         self.addCleanup(selection.__exit__, None, None, None)
 
+    def test_repair_retains_a_recorded_production_runtime_override(self):
+        self.install()
+        name='NativeMods/Streamline/nvngx_dlssg.dll'
+        replacement=pe(b'new production runtime')
+        (self.game/name).write_bytes(replacement)
+        state=v.state_path(self.game,self.state)
+        record=v._record(self.game,state);originals=copy.deepcopy(record['originals'])
+        record['installed'][name]=v._hash(replacement)
+        record['runtime_overrides']={name:{'sha256':v._hash(replacement)}}
+        (state/'baseline.json').write_text(json.dumps(record),encoding='utf-8')
+        plan=self.plan()
+        self.assertEqual(plan['preserved_runtimes'][name],v._hash(replacement))
+        v.execute(plan)
+        self.assertEqual((self.game/name).read_bytes(),replacement)
+        self.assertEqual(v._record(self.game,state)['originals'],originals)
+
     def test_profile_change_after_review_is_refused(self):
         plan = self.plan()
         other = 'bg3' if self.profile_name == 'rdr2' else 'rdr2'

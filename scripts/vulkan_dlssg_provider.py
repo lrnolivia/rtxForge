@@ -340,12 +340,20 @@ def plan_install(game, archive, loader, state_root, *, experimental=False, nr_on
         for name in _mutable() - {CONFIG}:
             if name in data and checks.get(name):
                 data[name] = t.safe(root / name).read_bytes()
+    preserved_runtimes = {}
+    if active:
+        for name, runtime in current.get('runtime_overrides', {}).items():
+            t.need(name in {'NativeMods/Streamline/nvngx_dlssg.dll', 'NativeMods/Streamline/nvngx_dlss.dll', 'NativeMods/Streamline/nvngx_dlssd.dll'}
+                   and runtime.get('sha256') == current['installed'].get(name) == checks.get(name), 'Selected Vulkan runtime ownership differs.')
+            data[name] = t.safe(root / name).read_bytes()
+            preserved_runtimes[name] = checks[name]
     return _seal({'schema': 1, 'recipe': _identity(), 'operation': 'repair' if active else 'install', 'target': str(root),
                   'state': str(state), 'state_root': str(t.safe(state_root)), 'checks': checks,
                   'record_before': _digest(state / 'baseline.json'),
                   'inputs': {str(t.safe(p)): _digest(p) for p in (archive, loader, _pin_path(),
                              _pin_path().parent / 'loader/LICENSE.exports.txt', root / _executables()[0], root / 'nvngx_dlss.dll')},
                   'archive': str(t.safe(archive)), 'loader': str(t.safe(loader)), 'nr_on_launch': nr_on_launch,
+                  'preserved_runtimes': preserved_runtimes,
                   'after': {name: _hash(value) for name, value in data.items()}})
 
 
@@ -431,6 +439,11 @@ def execute(plan, *, cancelled=lambda: False):
         record = _record(root, state)
         if plan['operation'] != 'restore':
             data = payload(plan['archive'], plan['loader'])
+            for name, digest in plan.get('preserved_runtimes', {}).items():
+                t.need(name in data and plan['checks'].get(name) == digest, 'Selected runtime differs from review.')
+                raw = t.safe(root/name).read_bytes()
+                t.need(_hash(raw) == digest, 'Selected runtime changed during repair.')
+                data[name] = raw
             if not record or record['status'] == 'restored':
                 # Retain old manifests, settings and runtime-evidence references
                 # when a restored candidate is replaced by another inventory.

@@ -8,6 +8,7 @@ from pathlib import Path
 import ctypes
 import fcntl
 import mmap
+import json
 import os
 import struct
 import threading
@@ -233,10 +234,12 @@ class LinuxControls(controls.Controls):
 
 
 class Host:
-    def __init__(self,state,settings,engine_state,engine=None):
+    def __init__(self,state,settings,engine_state,engine=None,save_settings=None):
         self.controls=LinuxControls(state)
         self.controls.installations=Path(engine_state)/'targets'
         self.settings=settings
+        self.state=Path(state)
+        self.save_settings=save_settings
         self.engine=engine
         self.reviews={}
         self.review_id=0
@@ -254,6 +257,22 @@ class Host:
             if op in ('hello','status'):
                 response['status']=self.controls.status(params)
                 if response['status'].get('can_save'):response.update(self.controls.preset_list(params))
+            elif op=='set-setting':
+                key, value = message.get('key'), message.get('value')
+                if key == 'overlay_controls' and type(value) is bool: value = 'classic' if value else 'unified'
+                t.need(key in overlay_settings.DEFAULTS or key=='overlay_helper', 'Choose an available overlay preference.')
+                if key=='overlay_helper': t.need(type(value) is bool, 'Choose on or off for the helper.')
+                updated = settings | {key:value}
+                overlay_settings.options(updated)
+                if self.save_settings is not None: self.save_settings({key:value})
+                else:
+                    import library_media
+                    path=self.state/'desktop/settings.json'
+                    fresh=library_media.DEFAULTS | (t.read_json(path) if path.is_file() else settings)
+                    fresh[key]=value
+                    t.atomic_file(path,(json.dumps(fresh,indent=2)+'\n').encode(),0o600)
+                response['settings']=proton_overlay.settings_snapshot(updated,updated.get('theme'))
+                response['message']='Saved'
             elif op in ('preset-list','preset-save','preset-delete'):
                 method={'preset-list':self.controls.preset_list,'preset-save':self.controls.preset_save,
                         'preset-delete':self.controls.preset_delete}[op]

@@ -695,7 +695,7 @@ def main() -> int:
                 result=overlay_refresh.run(ROOT,STATE,
                     lambda:overlay_packages.prepare(engine_bridge.module(service.config),STATE),
                     global_controls.execute)
-                if result.get('status') in ('complete','pending'):
+                if result.get('status') in ('complete','pending','current'):
                     send({'event':'overlay-refresh','result':result})
                 if result.get('status') in ('not-required','current','complete','newer-revision-kept'):
                     return

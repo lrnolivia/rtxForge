@@ -389,14 +389,16 @@ public sealed class ForgeSettings
     [JsonPropertyName("overlay_start_with_windows")] public bool OverlayStartWithWindows { get; set; } = true;
     [JsonPropertyName("overlay_material")] public string OverlayMaterial { get; set; } = "acrylic";
     [JsonPropertyName("overlay_controls")] public string OverlayControls { get; set; } = "unified";
-    public static readonly string[] OverlayThemes = ["dark", "light", "app"];
-    string overlayTheme = "dark";
+    public static readonly string[] OverlayThemes = ["clear", "light", "dark", "app"];
+    string overlayTheme = "clear";
     [JsonPropertyName("overlay_theme")] public string OverlayTheme
     {
         get => overlayTheme;
-        set => overlayTheme = OverlayThemes.Contains(value) ? value : "dark";
+        set => overlayTheme = OverlayThemes.Contains(value) ? value : "clear";
     }
     [JsonPropertyName("overlay_live_stats")] public bool OverlayLiveStats { get; set; } = true;
+    JsonObject overlayAppearance = new();
+    [JsonPropertyName("overlay_appearance")] public JsonObject OverlayAppearance { get => overlayAppearance; set => overlayAppearance = value ?? new(); }
     [JsonPropertyName("overlay_welcome")] public bool OverlayWelcome { get; set; } = true;
     public static readonly string[] WelcomePositions = ["top-center", "top-left", "top-right", "bottom-left", "bottom-right"];
     string overlayWelcomePosition = "top-center";
@@ -433,6 +435,7 @@ public sealed class ForgeSettings
         values["overlay_renderer"] = OverlayRenderer;
         values["overlay_controls"] = OverlayControls;
         values["overlay_theme"] = OverlayTheme;
+        values["overlay_appearance"] = OverlayAppearance.DeepClone();
         values["overlay_live_stats"] = OverlayLiveStats;
         values["overlay_welcome"] = OverlayWelcome;
         values["overlay_welcome_position"] = OverlayWelcomePosition;
@@ -440,7 +443,7 @@ public sealed class ForgeSettings
         values["vulkan_mfg_native_menu"] = VulkanMfgNativeMenu;
         if (game is not null && GameOverlaySettings.TryGetValue(game.Id, out var perGame))
             foreach (var (key, value) in perGame)
-                if (key != "overlay_renderer" && values.ContainsKey(key)) values[key] = value?.DeepClone();
+                if (key != "overlay_renderer" && key != "overlay_appearance" && values.ContainsKey(key)) values[key] = value?.DeepClone();
         return values;
     }
 
@@ -459,6 +462,7 @@ public sealed class ForgeSettings
         {
             values = settings.GameOverlayOptions(game);
             values.Remove("overlay_renderer");
+            values.Remove("overlay_appearance");
             settings.GameOverlaySettings[game.Id] = values;
         }
         edit(values);
@@ -470,6 +474,7 @@ public sealed class ForgeSettings
         OverlayStartWithWindows = source.OverlayStartWithWindows; OverlayMaterial = source.OverlayMaterial;
         OverlayControls = source.OverlayControls; OverlayRenderer = source.OverlayRenderer;
         OverlayTheme = source.OverlayTheme;
+        OverlayAppearance = (JsonObject)source.OverlayAppearance.DeepClone();
         OverlayLiveStats = source.OverlayLiveStats;
         OverlayWelcome = source.OverlayWelcome; VulkanMfgNativeMenu = source.VulkanMfgNativeMenu;
         OverlayWelcomePosition = source.OverlayWelcomePosition;

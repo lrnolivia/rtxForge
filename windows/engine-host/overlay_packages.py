@@ -56,11 +56,41 @@ def ownership(e, path, record):
     return marker_path, marker_raw, marker, shared, shared_raw, shared_record, reconciled
 
 
+def shared_overlay_revision(e, path, record):
+    """Read a compatible other-OS revision without mutating private restore state."""
+    target = t.safe(record['target_dir'])
+    marker = cross_os.adoptable(target, cross_os.THIS_OS, record.get('cross_os_revision'))
+    if not marker or marker.get('provider', {}).get('id') != 'skynizz': return record, False
+    shared = t.read_json(t.safe(cross_os.shared_state(target)/'baseline.json'))
+    candidate = cross_os.localize(shared, path.parent, target)
+    old, current = record.get('current') or {}, candidate.get('current') or {}
+    portable = cross_os.portable(record, path.parent, target)
+    t.need(candidate.get('status')=='active' and candidate.get('schema')==record.get('schema')
+           and candidate.get('target_dir')==str(target) and candidate.get('exe')==record.get('exe')
+           and candidate.get('cross_os_revision')==marker.get('revision')
+           and current.get('provider_id')=='skynizz' and current.get('installed_hashes')==marker.get('files')
+           and all(current.get(key)==old.get(key) for key in ('proxy','feature_mode')),
+           'The other OS changed the package route. Review Adapt or Repair before updating it.')
+    originals = shared.get('originals') or {}
+    t.need(all(originals.get(key)==value for key,value in portable.get('originals',{}).items())
+           and all(isinstance(value,dict) and value.get('existed') is False
+                   for key,value in originals.items() if key not in portable.get('originals',{})),
+           'The other OS changed restore ownership. Its verified backup adoption is required.')
+    e.verify_baseline_integrity(target, record, adopt_legacy=False)
+    e.verify_baseline_integrity(target, candidate, adopt_legacy=False)
+    # Steam settings belong to this OS even when the DLL revision is shared.
+    candidate.pop('steam_launch',None)
+    if record.get('steam_launch'): candidate['steam_launch']=copy.deepcopy(record['steam_launch'])
+    current['launch_options']=old.get('launch_options',current.get('launch_options'))
+    return candidate, True
+
+
 def prepare(e, state, params=None):
     if params is not None:
         overlay_settings.options(params)
         routes.selected(params)  # Validate an explicitly scoped, nonempty selection.
     bundled = None
+    recovered = {}
     plans, blocked, skipped, seen = [], [], [], set()
     candidates = sorted((e.STATE_ROOT / 'targets').glob('*/baseline.json'))
     candidates += sorted((e.STATE_ROOT / 'feeder-targets').glob('*/baseline.json'))
@@ -77,6 +107,7 @@ def prepare(e, state, params=None):
                 if plan: plans.append(plan)
                 if unchanged: skipped.append(unchanged)
                 continue
+            record, adopted = shared_overlay_revision(e, path, record)
             current = record.get('current') or {}
             target = t.safe(record['target_dir']); exe = t.safe(record['exe'])
             t.need(path.parent == e.state_dir_for(target) and exe.parent == target, 'Installation identity differs.')
@@ -116,10 +147,11 @@ def prepare(e, state, params=None):
             for filename, data in ((proxy, payload['dxgi.dll']), ('nvngx.dll_dlssnr.dll', payload['nvngx.dll_dlssnr.dll'])):
                 destination = t.safe(target / filename)
                 expected = owned.get(filename)
-                t.need(expected and destination.is_file() and t.digest(destination) == expected,
+                actual = t.digest(destination) if destination.is_file() else None
+                t.need(expected and actual in (None, expected),
                        'The installed bridge is missing or changed. Use Repair Features: ' + filename)
-                checks[str(destination)] = expected
-                if t.sha(data) != expected: writes[str(destination)] = data
+                checks[str(destination)] = actual
+                if t.sha(data) != actual: writes[str(destination)] = data
                 baseline['current']['installed_hashes'][filename] = marker['files'][filename] = t.sha(data)
             if 'rtxforge-glass.dll' in payload:
                 filename='rtxforge-glass.dll'; destination=t.safe(target / filename)
@@ -134,11 +166,21 @@ def prepare(e, state, params=None):
                 baseline['current']['installed_hashes'][filename]=marker['files'][filename]=t.sha(data)
             routes.menus(e, target, values, baseline['current']['installed_hashes'], checks, writes)
             marker['files'] = dict(baseline['current']['installed_hashes'])
-            if not writes and old_release.get('sha256') == release['sha256'] and not reconciled:
+            if not writes and old_release.get('sha256') == release['sha256'] and not reconciled and not adopted:
                 skipped.append({'title': name, 'detail': 'Overlay packages and menus are up to date.', 'details': details}); continue
             for filename, expected in owned.items():
                 if filename.casefold().endswith(('.ini', '.log')): continue
                 destination = t.safe(target / t.relative(filename))
+                if str(destination) in writes and str(destination) in checks:
+                    continue  # Already bound to its observed bytes (or absence) above.
+                if not destination.exists():
+                    source = t.safe(e.STATE_ROOT / 'feeder-cache' / expected)
+                    t.need(source.is_file() and source.stat().st_size <= 512 * 1024**2 and t.digest(source) == expected,
+                           'The missing managed file needs a verified recovery download: ' + filename)
+                    if expected not in recovered: recovered[expected] = source.read_bytes()
+                    checks[str(destination)] = None; checks[str(source)] = expected
+                    writes[str(destination)] = recovered[expected]
+                    continue
                 t.need(destination.is_file() and t.digest(destination) == expected, 'Package files changed; repair this game first: ' + filename)
                 checks[str(destination)] = expected
             updated_release = dict(release)

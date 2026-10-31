@@ -128,6 +128,15 @@ class CrossOsAdaptTest(unittest.TestCase):
         (self.target / 'dxgi.dll').write_bytes(b'changed by hand')
         self.assertIsNone(cross_os.adoptable(self.target, 'linux'))
 
+    def test_in_game_tuning_keeps_the_shared_install_recognizable(self):
+        self.install_on_windows()
+        (self.target / 'OptiScaler.ini').write_text('[DLSSG]\nOverrideInterpolationCount=3\n', encoding='utf-8')
+        self.assertIsNotNone(cross_os.adoptable(self.target, 'linux'))
+        # A modified loader still breaks identity, even when the mutable tuning
+        # file is accepted. Neither OS is allowed to claim arbitrary binaries.
+        (self.target / 'dxgi.dll').write_bytes(b'unknown replacement')
+        self.assertIsNone(cross_os.adoptable(self.target, 'linux'))
+
 
 if __name__ == '__main__':
     unittest.main()

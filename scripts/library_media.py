@@ -24,8 +24,8 @@ DEFAULTS['separate_game_details']=False
 def default_provider(os_name=None):
     return 'y4my' if (os_name or os.name)=='nt' else 'skynizz'
 DEFAULTS['runtime_provider']=default_provider()
-DEFAULTS.update(game_overlay_settings={}, overlay_theme='dark', overlay_live_stats=True, overlay_welcome=True,
-                overlay_welcome_position='top-center', vulkan_mfg_native_menu=False, vulkan_experimental=False)
+DEFAULTS.update(game_overlay_settings={}, overlay_theme='clear', overlay_live_stats=True, overlay_welcome=True,
+                overlay_welcome_position='top-center', vulkan_mfg_native_menu=False, vulkan_experimental=False, overlay_appearance={})
 
 LEGACY_NR_STRENGTH={
     'off':0.0,
@@ -75,7 +75,7 @@ def load_settings(config):
         if settings.get('mfg_multiplier') != 'auto' and (type(settings.get('mfg_multiplier')) is not int or settings['mfg_multiplier'] not in (0,2,3,4,5,6)):settings['mfg_multiplier']='auto'
         if settings.get('mfg_provider') not in ('universal','integrated','mfg-unlock'):settings['mfg_provider']='universal'
         if type(settings.get('nr_preset')) is not int or settings['nr_preset'] not in (0,1,2):settings['nr_preset']=None
-        for key,choices in {'input_mode':('auto','desktop','couch'),'controller_glyphs':('auto','xbox','playstation','nintendo','steam','generic'),'corner_style':('system','rounded','square'),'library_view':('posters','capsules','list'),'dashboard_view':('posters','capsules'),'navigation_position':('top','bottom'),'controller_hints':('always','auto'),'overlay_theme':('dark','light','app')}.items():
+        for key,choices in {'input_mode':('auto','desktop','couch'),'controller_glyphs':('auto','xbox','playstation','nintendo','steam','generic'),'corner_style':('system','rounded','square'),'library_view':('posters','capsules','list'),'dashboard_view':('posters','capsules'),'navigation_position':('top','bottom'),'controller_hints':('always','auto'),'overlay_theme':('clear','dark','light','app')}.items():
             if settings.get(key) not in choices:settings[key]=DEFAULTS[key]
         if settings.get('ui_scale') not in ('auto',100,125,130,150,175,200):settings['ui_scale']='auto'
         if settings.get('dynamic_mfg') not in (0,1):settings['dynamic_mfg']=0

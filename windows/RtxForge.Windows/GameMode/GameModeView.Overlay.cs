@@ -17,6 +17,19 @@ public sealed partial class GameModeView
     }
     Button OverlayToggle(string title, string description, Func<bool> get, Action<ForgeSettings, bool> set, string? glyph = null) =>
         Choice(title, description, ["on", "off"], ["On", "Off"], () => get() ? "on" : "off", value => SetOverlay(s => set(s, value == "on")), glyph);
+    void SetGlass(Action edit)
+    {
+        edit(); GlassAppearance.Set("ScaleBaseline",120); SetOverlay(s => s.OverlayAppearance = GlassAppearance.Load().ToJson());
+    }
+    Button GlassChoice(string title, string key, string[] keys, string[] captions, bool custom = false) =>
+        Choice(title, null, keys, captions, () => GlassAppearance.Load().ToJson()[key]!.ToString(),
+            value => SetGlass(() => GlassAppearance.Set(key, value, custom)), glyph: "\uE790");
+    OverlayLayoutPicker LayoutChoices()
+    {
+        var picker = new OverlayLayoutPicker(GlassAppearance.Load().Layout);
+        picker.SelectionChanged += (_, _) => SetGlass(() => GlassAppearance.Set("Layout", GlassAppearance.Layouts[picker.SelectedIndex]));
+        return picker;
+    }
 
     IReadOnlyList<SettingsGroup> OverlayGroups() =>
     [
@@ -24,10 +37,12 @@ public sealed partial class GameModeView
         [
             Choice("Primary overlay", "Use the rtxForge panel in compatible packages, or the original OptiScaler, Feeder or ReShade menus.",
                 ["game", "optiscaler"], ["rtxForge", "Native"], () => shell.Settings.OverlayRenderer == "optiscaler" ? "optiscaler" : "game", value => SetOverlay(s => s.OverlayRenderer = value), glyph: "\uE7F4"),
-            Choice("Controls", "Advanced uses the package’s labels and original units.", ["unified", "classic"], ["Unified", "Advanced"],
-                () => shell.Settings.OverlayControls, value => SetOverlay(s => s.OverlayControls = value), glyph: "\uE713"),
-            Choice("Appearance", null, ForgeSettings.OverlayThemes, ["Dark", "Light", "Follow app"],
-                () => shell.Settings.OverlayTheme, value => SetOverlay(s => s.OverlayTheme = value), glyph: "\uE790"),
+            LayoutChoices(),
+            Choice("Appearance", null, GlassAppearance.Themes, ["Clear", "Light", "Dark"],
+                () => GlassAppearance.Load().Theme, value => { GlassAppearance.UseTheme(value); SetOverlay(s => { s.OverlayTheme = value; s.OverlayAppearance=GlassAppearance.Load().ToJson(); }); }, glyph: "\uE790"),
+            GlassChoice("Text size","TextSize",["18","22","26"],["Aa  Smaller","Aa  Default","Aa  Larger"]),
+            GlassChoice("Motion effects","Motion",["1","0"],["On","Off"]),
+            GlassChoice("Hotkey notifications","ShowNotifications",["1","0"],["On","Off"]),
             OverlayToggle("Live feature statistics", "Measured activity beside NR and frame generation controls.", () => shell.Settings.OverlayLiveStats, (s, value) => s.OverlayLiveStats = value, glyph: "\uE9D9"),
             OverlayToggle("Welcome message", "Show the rtxForge logo and assigned shortcut at game startup.", () => shell.Settings.OverlayWelcome, (s, value) => s.OverlayWelcome = value, glyph: "\uE8F2"),
             Choice("Welcome position", "Applies when the game starts.", ForgeSettings.WelcomePositions,
@@ -58,6 +73,7 @@ public sealed partial class GameModeView
         new("Apply to games", "Menu and welcome changes take effect next launch.",
         [
             ui.RowButton("Update Overlays", null, () => _ = ReviewOverlayPackages(), description: "Review overlay packages, menus, welcome messages and shortcuts for every installed game.", glyph: "\uE9D9"),
+            ui.RowButton("Last overlay update",null,() => _ = shell.ShowOverlayUpdateDetailsAsync(),glyph:"\uE9D9"),
         ]),
     ];
 
@@ -107,15 +123,11 @@ public sealed partial class GameModeView
             () => Values()[key]!.GetValue<bool>() ? "on" : "off", value => Save(v => v[key] = value == "on"));
         var rows = new List<UIElement>
         {
-            Choice("Appearance", null, ForgeSettings.OverlayThemes, ["Dark", "Light", "Follow app"],
-                () => Values()["overlay_theme"]!.ToString(), value => Save(v => v["overlay_theme"] = value)),
             Toggle("Welcome message", "overlay_welcome"),
             Choice("Welcome position", null, ForgeSettings.WelcomePositions,
                 ["Top center", "Top left", "Top right", "Bottom left", "Bottom right"],
                 () => Values()["overlay_welcome_position"]!.ToString(), value => Save(v => v["overlay_welcome_position"] = value)),
             Toggle("Live feature statistics", "overlay_live_stats"),
-            Choice("Controls", null, ["unified", "classic"], ["Unified", "Advanced"],
-                () => Values()["overlay_controls"]!.ToString(), value => Save(v => v["overlay_controls"] = value)),
             Toggle("OptiScaler menu", "optiscaler_ui"), Toggle("OptiScaler intro", "optiscaler_intro"),
             Choice("OptiScaler shortcut", null, ["Insert", "F8", "Disabled"], ["Insert", "F8", "Disabled"],
                 () => Values()["optiscaler_hotkey"]!.ToString(), value => Save(v => v["optiscaler_hotkey"] = value)),

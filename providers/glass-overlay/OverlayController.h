@@ -108,6 +108,15 @@ struct Controller : Rml::EventListener
     Rml::Vector2f followerOrigin{};
     float followerAnchorOrigin=0;
     fs::path preferences;
+    fs::file_time_type preferencesStamp{};
+    double nextPreferencesRead=0;
+    void PollPreferences(double now) {
+        if(preferences.empty()||prefsDirty||now<nextPreferencesRead)return;nextPreferencesRead=now+.5;
+        std::error_code error;const auto stamp=fs::last_write_time(preferences,error);
+        if(error||stamp==preferencesStamp)return;
+        const auto before=layout;LoadPreferences(!preview);Typography();Materials();SyncSettings();
+        if(before!=layout)Layout(layout);
+    }
     bool typographySync=false;
     std::map<Rml::Element*,MaterialColor::Foreground> foreground;
     double lastForeground=-1;
@@ -152,7 +161,8 @@ struct Controller : Rml::EventListener
         dynamic_cast<Rml::ElementFormControl*>(Element("grain-amount"))->SetValue(std::to_string(grainAmount));char grain[24];std::snprintf(grain,sizeof(grain),"%.1f%%",grainAmount);Element("grain-amount-value")->SetInnerRML(grain);
         dynamic_cast<Rml::ElementFormControl*>(Element("blend-strength"))->SetValue(std::to_string(blendStrength));Element("blend-strength-value")->SetInnerRML(std::to_string(int(blendStrength))+"%");dynamic_cast<Rml::ElementFormControl*>(Element("blend-strength"))->SetDisabled(surfaceBlend=="normal");
         Element("text-depth")->SetClass("on",textDepth);Element("dark-inverted")->SetClass("on",invertDark);Element("motion-effects")->SetClass("on",motionEnabled);
-        Visible("dark-inversion-row",appearance==2);Visible("appearance-details",moreOpen);Element("appearance-more")->SetClass("expanded",moreOpen);
+        Visible("dark-inversion-row",preview&&appearance==2);Visible("appearance-more",preview);Visible("appearance-details",preview&&moreOpen);Element("appearance-more")->SetClass("expanded",moreOpen);
+        if(!preview)Element("font-select")->GetParentNode()->SetProperty("display","none");
         Element("toast-pill")->SetClass("selected",toastPill);Element("toast-rounded")->SetClass("selected",!toastPill);
         Element("theme-label")->SetInnerRML(customTheme?"Custom":appearance==1?"Light":appearance==2?"Dark":"Clear");Element("theme-description")->SetInnerRML(customTheme?(appearance==1?"Custom · based on Light":appearance==2?"Custom · based on Dark":"Custom · based on Clear"):"Select a theme to restore its defaults.");
         document->SetClass("dark-inverted",appearance==2 && invertDark);Element("welcome")->SetProperty("--corner-radius",toastPill?"28":"14");Element("welcome")->SetProperty("border-radius",toastPill?"28dp":"14dp");
@@ -181,6 +191,7 @@ struct Controller : Rml::EventListener
         GetPrivateProfileStringW(L"Appearance",L"PrimaryMenu",L"game",text,80,preferences.c_str());primaryMenu=Utf8(text)=="optiscaler"?"optiscaler":"game";
         GetPrivateProfileStringW(L"Appearance",L"OptiShortcut",L"Insert",text,80,preferences.c_str());optiShortcut=Utf8(text)=="F8"?"F8":Utf8(text)=="Disabled"?"Disabled":"Insert";
         GetPrivateProfileStringW(L"Appearance",L"Layout",L"floating",text,80,preferences.c_str());const auto savedLayout=Utf8(text);if(savedLayout=="floating"||savedLayout=="centered"||savedLayout=="bar")layout=savedLayout;
+        std::error_code error;preferencesStamp=fs::last_write_time(preferences,error);
     }
     void SavePreferences() {
         if(preferences.empty())return;fs::create_directories(preferences.parent_path());
@@ -192,6 +203,7 @@ struct Controller : Rml::EventListener
         put(L"ShowStats",showStats);put(L"ShowWelcome",showWelcome);put(L"ShowNotifications",showNotifications);put(L"Shortcut",shortcut);put(L"ShortcutModifiers",shortcutModifiers);
         for(const auto& [key,on]:menuSettings)put(fs::path("Menu-"+key).c_str(),on);
         for(const auto& [key,value]:std::map<std::wstring,std::string>{{L"ShortcutLabel",shortcutLabel},{L"WelcomePosition",welcomePosition},{L"PrimaryMenu",primaryMenu},{L"OptiShortcut",optiShortcut},{L"Layout",layout}})WritePrivateProfileStringW(L"Appearance",key.c_str(),fs::path(value).c_str(),preferences.c_str());
+        std::error_code error;preferencesStamp=fs::last_write_time(preferences,error);
     }
     void Typography() {
         if(typographySync)return;typographySync=true;

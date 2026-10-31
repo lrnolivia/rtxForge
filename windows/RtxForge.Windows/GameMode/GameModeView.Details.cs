@@ -735,7 +735,7 @@ public sealed partial class GameModeView
             {
                 body.Visibility = body.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
                 if (body.Visibility == Visibility.Visible) GmMotion.Feedback(body);
-                icon.Glyph = body.Visibility == Visibility.Visible ? "" : "";
+                icon.Glyph = Phosphor.Resolve(body.Visibility == Visibility.Visible ? "" : "");
                 Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button!, title + (body.Visibility == Visibility.Visible ? " expanded" : " collapsed"));
             }, GmKind.Transparent, radius: 8, padding: new Thickness(t.Px(8)), minHeight: 42, name: title + " collapsed");
             Key(button, "preset-disclosure-" + title);

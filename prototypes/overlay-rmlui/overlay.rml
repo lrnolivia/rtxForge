@@ -44,7 +44,13 @@
         <div id="settings-screen" class="settings-screen" style="display: none">
           <div class="settings-title"><h2><img class="glyph" src="icons/sliders-light.png" />SETTINGS</h2><button id="settings-back" class="quiet">Back</button></div>
           <button id="open-appearance" class="settings-appearance"><img class="glyph" src="icons/palette-light.png" /><span>Appearance<span class="setting-description">Theme, text and scale</span></span><span class="chevron" /></button>
-          <div class="settings-group"><h3>LAYOUT</h3><div id="layout-switch" class="settings-layouts"><button id="layout-floating" class="selected">Sidebar</button><button id="layout-centered">Advanced</button><button id="layout-bar">Bottom Bar</button></div></div>
+          <div class="settings-group"><h3>LAYOUT</h3>
+            <div id="layout-switch" class="settings-layouts">
+              <button id="layout-floating" class="selected"><span class="layout-screen layout-sidebar"><span class="mini-panel"><span class="mini-heading"/><span class="mini-card"/><span class="mini-card"/><span class="mini-card"/></span><span class="mini-popover"/></span><span class="layout-caption">Floating Sidebar</span></button>
+              <button id="layout-centered"><span class="layout-screen layout-advanced"><span class="mini-panel"><span class="mini-nav"><span class="mini-heading"/><span class="mini-line"/><span class="mini-line"/><span class="mini-line"/></span><span class="mini-content"><span class="mini-card"/><span class="mini-card"/></span></span></span><span class="layout-caption">Centered Advanced</span></button>
+              <button id="layout-bar"><span class="layout-screen layout-bottom"><span class="mini-popover"><span class="mini-heading"/><span class="mini-card"/></span><span class="mini-panel"><span class="mini-heading"/><span class="mini-line"/><span class="mini-line"/></span></span><span class="layout-caption">Bottom Bar</span></button>
+            </div>
+          </div>
           <div class="settings-group"><h3>SHORTCUT</h3><button id="shortcut-bind" class="shortcut-bind"><span>Open controls</span><span id="shortcut-key" class="keycap">Del</span></button><p id="shortcut-help" class="hint">Choose a key with optional Ctrl, Alt or Shift.</p></div>
           <div class="settings-group"><h3>ON SCREEN</h3>
             <div class="inherit-row"><label>Live statistics</label><button id="setting-stats" class="switch on"><span class="thumb" /></button></div>

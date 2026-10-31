@@ -11,24 +11,33 @@ public sealed class OverlayPreferencesView : StackPanel
     readonly TextBlock feedback = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
     readonly List<PreferencesGroup> groups = [];
     readonly bool groupCards;
+    readonly Action<ForgeSettings> applied;
     PreferencesGroup? group;
     public IReadOnlyList<PreferencesGroup> Groups => groups;
 
     public OverlayPreferencesView(Action<ForgeSettings> applied, EngineForgeService? engine = null, bool groupCards = false)
     {
         this.groupCards = groupCards;
+        this.applied = applied;
         Spacing = 20;
         var current = ForgeSettings.Load();
+        var glass = GlassAppearance.Load();
         Heading("rtxForge panel");
         var renderer = Choice("Overlay", ["rtxForge", "Native"], current.OverlayRenderer == "optiscaler" ? 1 : 0,
             "Use the rtxForge panel in compatible packages, or the original menus provided by OptiScaler, Feeder or ReShade.", glyph: "\uE7F4");
-        var layout = Choice("Controls", ["Unified", "Advanced"], current.OverlayControls == "classic" ? 1 : 0,
-            "Unified uses simple labels. Advanced uses the package’s labels and original units.", glyph: "\uE713");
-        var theme = Choice("Appearance", ["Dark", "Light", "Follow app"], Array.IndexOf(ForgeSettings.OverlayThemes, current.OverlayTheme), glyph: "\uE790");
+        var layout = new OverlayLayoutPicker(glass.Layout);
+        AddControl(layout);
+        Heading("Appearance");
+        var theme = Choice("Theme", ["Clear", "Light", "Dark"], Array.IndexOf(GlassAppearance.Themes, glass.Theme),
+            glass.Custom ? "Custom · based on " + glass.Theme + ". Select a theme to restore its defaults." : "Selecting a theme restores its material defaults.", glyph: "\uE790");
+        var type = Choice("Text size", ["Aa  Smaller", "Aa  Default", "Aa  Larger"], glass.Number("TextSize", 22, 16, 26) < 22 ? 0 : glass.Number("TextSize", 22, 16, 26) > 22 ? 2 : 1);
+        var motion = Switch("Motion effects", glass.On("Motion"));
+        Heading("Status and notifications");
         var liveStats = Switch("Live feature statistics", current.OverlayLiveStats,
             "Show measured activity and performance beside NR and frame generation controls, when the injector supplies them.", glyph: "\uE9D9");
         var welcome = Switch("Welcome message", current.OverlayWelcome,
             "Show the rtxForge logo and the assigned overlay shortcut briefly when the game starts.", glyph: "\uE8F2");
+        var notifications = Switch("Hotkey notifications", glass.On("ShowNotifications"), "Show preset changes and feature toggles in the same slim toast.");
         var welcomePosition = Choice("Welcome position", ["Top center", "Top left", "Top right", "Bottom left", "Bottom right"],
             Array.IndexOf(ForgeSettings.WelcomePositions, current.OverlayWelcomePosition), "Applies when the game starts.", glyph: "\uE8B9");
         Heading("Shortcuts and helper");
@@ -52,6 +61,9 @@ public sealed class OverlayPreferencesView : StackPanel
         var vulkanMenu = Switch("Native MFG menu and hint", current.VulkanMfgNativeMenu,
             "Optional advanced MFG Unlocker panel. Off by default; frame generation keeps running. The rtxForge welcome message has its own setting.", glyph: "\uE700");
         Heading("Apply to games");
+        var history = new Button { Content = "Last overlay update", HorizontalAlignment = HorizontalAlignment.Left };
+        history.Click += async (_, _) => { if (App.Main is { } main) await main.ShowOverlayUpdateDetailsAsync(); };
+        AddControl(history);
         OverlayUiReviewView? gameReview = null;
         if (engine is not null) { gameReview = new(engine); AddControl(gameReview); }
         AddControl(feedback);
@@ -81,8 +93,11 @@ public sealed class OverlayPreferencesView : StackPanel
             return true;
         }
         renderer.SelectionChanged += (_, _) => Save(s => s.OverlayRenderer = renderer.SelectedIndex == 1 ? "optiscaler" : "game");
-        layout.SelectionChanged += (_, _) => Save(s => s.OverlayControls = layout.SelectedIndex == 1 ? "classic" : "unified");
-        theme.SelectionChanged += (_, _) => { if (theme.SelectedIndex >= 0) Save(s => s.OverlayTheme = ForgeSettings.OverlayThemes[theme.SelectedIndex]); };
+        layout.SelectionChanged += (_, _) => { if (layout.SelectedIndex >= 0) EditGlass(() => GlassAppearance.Set("Layout", GlassAppearance.Layouts[layout.SelectedIndex])); };
+        theme.SelectionChanged += (_, _) => { if (theme.SelectedIndex >= 0) EditGlass(() => { var selected = GlassAppearance.Themes[theme.SelectedIndex]; GlassAppearance.UseTheme(selected); Save(s => s.OverlayTheme = selected); }); };
+        type.SelectionChanged += (_, _) => EditGlass(() => GlassAppearance.Set("TextSize", type.SelectedIndex == 0 ? 18 : type.SelectedIndex == 2 ? 26 : 22));
+        motion.Toggled += (_, _) => EditGlass(() => GlassAppearance.Set("Motion", motion.IsOn ? 1 : 0));
+        notifications.Toggled += (_, _) => EditGlass(() => GlassAppearance.Set("ShowNotifications", notifications.IsOn ? 1 : 0));
         liveStats.Toggled += (_, _) => Save(s => s.OverlayLiveStats = liveStats.IsOn);
         welcome.Toggled += (_, _) => Save(s => s.OverlayWelcome = welcome.IsOn);
         welcomePosition.SelectionChanged += (_, _) =>
@@ -97,6 +112,18 @@ public sealed class OverlayPreferencesView : StackPanel
         reshadeUi.Toggled += (_, _) => Save(s => s.ReShadeUi = reshadeUi.IsOn);
         reshadeIntro.Toggled += (_, _) => Save(s => s.ReShadeIntro = reshadeIntro.IsOn);
         Availability();
+    }
+
+    void EditGlass(Action edit)
+    {
+        try
+        {
+            edit(); var appearance = GlassAppearance.Load();
+            var fresh = ForgeSettings.EditOverlay(s => s.OverlayAppearance = appearance.ToJson());
+            OverlayHelper.ConfigureStartup(fresh); applied(fresh);
+            feedback.Text = appearance.Custom ? "Saved · Custom appearance" : "Saved";
+        }
+        catch (Exception error) { feedback.Text = error.Message; }
     }
 
     ComboBox Choice(string label, string[] choices, int index, string? description = null, string? glyph = null)

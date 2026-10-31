@@ -45,7 +45,7 @@ PAGES = (('library', 'Library'), ('presets', 'Presets'), ('packages', 'Packages'
 SECTIONS = ('Overview', 'Features', 'DLSS Files', 'Tools', 'Appearance', 'Notes')
 # Windows DetailHeading glyphs (Segoe Fluent code in comments) drawn with the Game Mode icon set.
 HEADING_GLYPHS = {
-    **dict.fromkeys(('Features', 'Feeder NR', 'Neural rendering', 'NR packages'), 'rtx-gm-presets-symbolic'),  # E9E9
+    **dict.fromkeys(('Features', 'Feeder NR', 'Neural rendering', 'NR packages'), 'rtx-gm-neural-symbolic'),  # E9E9
     **dict.fromkeys(('Installation', 'File Management'), 'folder-download-symbolic'),                         # E896
     **dict.fromkeys(('DLSS Files', 'Installed DLSS Files'), 'rtx-gm-file-symbolic'),                          # E8A5
     **dict.fromkeys(('Tools', 'Installed Tools'), 'rtx-gm-tools-symbolic'),                                   # E90F
@@ -579,11 +579,8 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
         return widget
 
     def icon(self, name, size=None):
-        name = {
-            'view-filter-symbolic': 'funnel-symbolic',
-            'emblem-synchronizing-symbolic': 'view-refresh-symbolic',
-            'emblem-system-symbolic': 'preferences-system-symbolic',
-        }.get(name, name)
+        import game_mode_icons
+        name = game_mode_icons.name(name,self.get_display())
         image = Gtk.Image.new_from_icon_name(name)
         image.set_pixel_size(size or self.theme.px(20))
         return image
@@ -2332,9 +2329,11 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
                     ('Interface', 'Mouse, keyboard, and controller input keep your chosen interface.', rows[:1]),
                     ('Layout and labels', None, rows[1:4]), ('Controller', None, rows[4:])]
         if section == 'Overlay':
-            # Panel through shortcut, then OptiScaler's three, then ReShade, Vulkan and updates.
-            return [('rtxForge Panel', 'In-game controls. Games pick these up on their next reviewed install or repair.', rows[:7]),
-                    ('OptiScaler', None, rows[7:10]), ('ReShade', None, rows[10:])]
+            return [('rtxForge Panel', 'Choose the controls shown inside the game.', rows[:1]),
+                    ('Appearance', None, rows[1:5]), ('Status and notifications', None, rows[5:9]),
+                    ('Shortcut', None, rows[9:10]), ('OptiScaler', None, rows[10:13]),
+                    ('ReShade', None, rows[13:15]), ('Vulkan MFG overlay', None, rows[15:16]),
+                    ('Apply to games', None, rows[16:])]
         return [({'System':'Hardware', 'Recovery':'Previous changes', 'About':'App and updates'}.get(section, section), None, rows)]
 
     def setting_toggle(self, title, description, get, setter):
@@ -2432,7 +2431,6 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
                           ('ReShade menu','reshade_ui'),('ReShade welcome','reshade_intro'),('Native Vulkan MFG menu and hint','vulkan_mfg_native_menu')]:
             options.append(self.choice(title,None,[False,True],['Off','On'],lambda k=key:s[k],lambda v,k=key:save(k,v)))
         for title,key,keys,captions in [('Welcome position','overlay_welcome_position',list(overlay_settings.POSITIONS),['Top center','Top left','Top right','Bottom left','Bottom right']),
-                                       ('Controls','overlay_controls',['unified','classic'],['Unified','Advanced']),
                                        ('OptiScaler shortcut','optiscaler_hotkey',['Insert','F8','Disabled'],['Insert','F8','Disabled'])]:
             options.append(self.choice(title,None,keys,captions,lambda k=key:s[k],lambda v,k=key:save(k,v)))
         options.append(self.row_button('Panel shortcut',overlay_shortcut.display(s.get('panel_hotkey')),
@@ -2497,14 +2495,21 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
                 self.card_opacity_row(),
             ]
         if section == 'Overlay':
+            import glass_preferences as glass
+            from overlay_layouts import LayoutPicker
+            if not owner.options.demo:s['overlay_appearance']=library_media.load_settings(owner.service.config).get('overlay_appearance',{})
             on_off = ([True, False], ['On', 'Off'])
-            return 'In-game controls. Games pick these up on their next reviewed install or repair.', [
+            def appearance_choice(title,key,keys,captions):
+                return self.choice(title,None,keys,captions,lambda:glass.current(s)[key],lambda v:glass.edit(s,key,v))
+            return 'Glass overlay settings update through the running helper. Native menu changes apply after restarting the game.', [
                 self.choice('Panel', None, ['game', 'optiscaler'], ['In the game', 'OptiScaler menu only'],
                             lambda: s.get('overlay_renderer', 'game'), lambda v: s.update(overlay_renderer=v)),
-                self.choice('Controls', 'Advanced shows OptiScaler\u2019s own variables and units.', ['unified', 'classic'], ['Unified', 'Advanced'],
-                            lambda: s.get('overlay_controls', 'unified'), lambda v: s.update(overlay_controls=v)),
-                self.choice('Appearance', None, ['dark', 'light', 'app'], ['Dark', 'Light', 'Follow app'],
-                            lambda: s.get('overlay_theme', 'dark'), lambda v: s.update(overlay_theme=v)),
+                LayoutPicker(glass.current(s)['Layout'],lambda value:(glass.edit(s,'Layout',value),self.save_settings())),
+                self.choice('Appearance',None,['clear','light','dark'],['Clear','Light','Dark'],
+                            lambda:{3:'clear',1:'light',2:'dark'}[glass.current(s)['Theme']],lambda v:glass.theme(s,v)),
+                appearance_choice('Text size','TextSize',[18,22,26],['Aa  Smaller','Aa  Default','Aa  Larger']),
+                appearance_choice('Motion effects','Motion',[1,0],['On','Off']),
+                appearance_choice('Hotkey notifications','ShowNotifications',[1,0],['On','Off']),
                 self.choice('Welcome message', None, *on_off, lambda: bool(s.get('overlay_welcome', True)), lambda v: s.update(overlay_welcome=v)),
                 self.choice('Welcome position', None, ['top-center','top-left','top-right','bottom-left','bottom-right'],
                             ['Top center','Top left','Top right','Bottom left','Bottom right'],
@@ -2525,6 +2530,8 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
                 self.choice('Native Vulkan MFG menu and hint', None, *on_off, lambda: bool(s.get('vulkan_mfg_native_menu', False)), lambda v: s.update(vulkan_mfg_native_menu=v)),
                 self.row_button('Update Overlays', 'Review', owner.overlay_packages_review,
                                 description='Review package updates and the effective choices for each installed game.'),
+                self.row_button('Last overlay update', None, owner.overlay_update_details,
+                                description='Updated games, current overlays and anything that needs repair.'),
             ]
         if section == 'Library':
             return 'Manage the library layout and artwork sources.', [

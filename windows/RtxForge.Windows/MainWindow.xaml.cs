@@ -80,6 +80,7 @@ public sealed partial class MainWindow : Window
         InitializeGameMode();
         InitializeCompanion();
         InitializeUpdates();
+        InitializeOverlayRefresh();
         RootGrid.KeyDown += (_, e) =>
         {
             if (e.Key == global::Windows.System.VirtualKey.F5) { e.Handled = true; _ = RescanLibraryAsync(); }

@@ -77,12 +77,17 @@ def run(root,state,prepare,execute):
         if previous.get('revision',0)>required['revision']:
             return {'status':'newer-revision-kept'}
         if previous.get('bundle')==required['bundle'] and previous.get('status')=='complete':
-            return {'status':'current'}
+            return dict(previous, status='current')
         review=prepare()
         result=execute(review) if review.get('plans') else {}
         blocked=review.get('blocked') or []
+        updated_games = {game['target']: game for game in previous.get('updated_games', [])
+                         if previous.get('bundle') == required['bundle']}
+        for plan in review.get('plans') or []:
+            key = str(plan.get('target') or plan.get('game') or plan['name'])
+            updated_games[key] = {'target': key, 'title': plan['name']}
         record={**required,'status':'pending' if blocked else 'complete',
-                'updated':len(review.get('plans') or []),'blocked':blocked,
+                'updated':len(updated_games), 'updated_games':list(updated_games.values()), 'blocked':blocked,
                 'skipped':review.get('skipped') or [],'result':result}
         ledger.parent.mkdir(parents=True,exist_ok=True)
         t.atomic_file(ledger,(json.dumps(record,sort_keys=True)+'\n').encode(),0o600)

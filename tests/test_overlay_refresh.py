@@ -43,6 +43,9 @@ class RequiredRefreshTest(unittest.TestCase):
         self.assertEqual(refresh.run(self.root,self.state,prepare,execute)['status'],'pending')
         self.assertEqual(refresh.run(self.root,self.state,prepare,execute)['status'],'complete')
         self.assertEqual(execute.call_count,2)
+        ledger = json.loads((self.state/'overlay-refresh.json').read_text())
+        self.assertEqual(ledger['updated'], 2)
+        self.assertEqual({game['title'] for game in ledger['updated_games']}, {'Ready', 'Now closed'})
 
     def test_tampered_bundle_never_reaches_game_planner(self):
         (self.folder/'rtxforge-glass.dll').write_bytes(b'foreign')

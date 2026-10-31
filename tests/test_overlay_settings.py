@@ -31,10 +31,10 @@ class OverlaySettingsTest(unittest.TestCase):
 
     def test_overlay_theme_is_reviewed_and_isolated_per_game(self):
         first, second = str(Path('one').resolve()), str(Path('two').resolve())
-        for theme in ('dark', 'light', 'app'):
+        for theme in ('clear', 'dark', 'light', 'app'):
             settings = {'game_overlay_settings': {first: {'overlay_theme': theme}}}
             self.assertEqual(overlay.effective(settings, first)['overlay_theme'], theme)
-            self.assertEqual(overlay.effective(settings, second)['overlay_theme'], 'dark')
+            self.assertEqual(overlay.effective(settings, second)['overlay_theme'], 'clear')
             self.assertIn('Appearance:', overlay.describe(overlay.effective(settings, first)))
 
 

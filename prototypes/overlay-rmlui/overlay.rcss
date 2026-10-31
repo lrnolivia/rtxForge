@@ -565,3 +565,58 @@ button:active { transform: scale(.98); }
 
 .clear, .clear * { color: #f5f1ea; }
 .clear .glyph { image-color: #f5f1ea; }
+
+/* Window bounds come from the shared controller, in the current viewport's
+   pixels. Content regions use those same bounds at every text/overlay scale. */
+.layout-centered .main-panel { margin: 0; }
+.layout-centered .sidebar { overflow-y: auto; padding-right: 8dp; }
+.layout-centered .sidebar button { min-height: 52dp; height: auto; padding: 14dp; }
+.layout-centered .sidebar .button-label { min-width: 0; flex-shrink: 1; white-space: normal; }
+.layout-centered .overview, .layout-centered .settings-screen { padding-right: 20dp; }
+.layout-centered .inspector { margin: 0; }
+.layout-centered .sidebar #nav-settings { margin-top: 24dp; }
+.compact-content .model-row { flex-direction: column; align-items: stretch; }
+.compact-content .model-field { flex: auto; width: 100%; }
+.compact-content .inspector-links { flex-direction: column; }
+.compact-content .text-link { flex: auto; width: 100%; }
+.compact-content .session-facts { flex-wrap: wrap; gap: 18dp; }
+.compact-content .session-facts div { min-width: 40%; }
+.compact-content .runtime-metric { width: 100%; }
+.layout-bar .main-panel { height: auto; margin: 0; }
+.layout-bar .tuning-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 18dp 28dp; margin-top: 18dp; padding-top: 16dp; border-top: 1dp #ffffff24; }
+.layout-bar .footer { flex: 1; margin: 0; padding: 0; border: 0; gap: 16dp; }
+.layout-bar #defaults { margin-left: 0; }
+.layout-bar .compare { position: relative; right: auto; bottom: auto; width: 380dp; margin: 0; flex-shrink: 0; }
+.layout-bar .compare select { min-width: 0; }
+.layout-bar .compare button { min-width: 74dp; }
+.layout-bar.compact-bar .tuning-sections { flex-direction: column; }
+.layout-bar.compact-bar .tuning-sections section { flex: auto; width: 100%; }
+.layout-bar.compact-bar .metadata-compact { display: none; }
+.layout-bar.compact-bar .compare { width: 100%; }
+.layout-bar.compact-bar .hdr-entry { right: 130dp; }
+.glyph { flex-shrink: 0; }
+.close, .icon-button { display: flex; align-items: center; justify-content: center; line-height: 1; flex-shrink: 0; }
+.close .glyph, .icon-button .glyph, .reset-value .glyph, .hdr-entry .glyph { margin: 0; }
+.close .stroke { left: 50%; top: 50%; margin-left: -7dp; margin-top: -.75dp; }
+h2, .model-field label.icon-label, .field-heading label.icon-label { display: flex; align-items: center; }
+h2 .glyph, .model-field label .glyph, .field-heading label .glyph { margin: 0 10dp 0 0; }
+.section-heading { gap: 10dp; }
+.section-heading h2 { flex: 1; min-width: 0; }
+.section-heading .icon-button { margin-left: 0; margin-right: 0; }
+.button-label { flex-shrink: 1; min-width: 0; }
+.hdr-entry .chevron, .text-link .chevron, .group-heading .chevron, .more-trigger .chevron, .settings-appearance .chevron { top: 50%; margin-top: -3dp; }
+/* RmlUi positions selectarrow in the select's content box itself. Match that
+   inset rather than applying CSS absolute positioning that it overrides. */
+select selectarrow { position: static; margin: 7dp 18dp 0 0; }
+.appearance-panel select selectarrow { margin-top: 6dp; }
+#scene-select selectarrow { margin-top: 9dp; }
+select selectvalue { min-width: 0; padding-right: 28dp; }
+.welcome { max-width: 96vw; }
+.group-heading { height: 50dp; padding: 0 44dp 0 18dp; }
+.group-heading .chevron { right: 18dp; }
+.layout-centered .sidebar #nav-look, .layout-centered .sidebar #nav-passes { padding-left: 26dp; font-size: 17dp; }
+.layout-centered .sidebar #nav-frame { margin-top: 18dp; }
+.compact-height .settings-heading { margin-bottom: 18dp; }
+.compact-height .appearance-block { margin-bottom: 18dp; }
+.layout-centered.settings-page .main-panel > h1 { display: block; }
+.layout-centered.settings-page.compact-height .main-panel > h1 { display: none; }

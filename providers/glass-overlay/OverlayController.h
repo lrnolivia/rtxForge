@@ -32,7 +32,14 @@ struct Controller : Rml::EventListener
     bool preview=true;std::function<bool(const std::string&)> savePreset,deletePreset,requestJson;int reviewId=0;bool helperEnabled=true,startWithWindows=false;
     std::string compareMode="toggle",compareLeft="natural",compareRight="cinematic";
     std::map<std::string,const ExtraControl*> extraFields;
-    void Navigation(const std::string& selected) {for(const auto* id:{"nav-overview","nav-frame","nav-neural","nav-look","nav-settings","nav-passes","nav-hdr"})Element(id)->SetClass("selected",selected==id);}
+    std::string activeNavigation="nav-overview",beforeSettingsNavigation="nav-overview";
+    void Navigation(const std::string& selected) {activeNavigation=selected;for(const auto* id:{"nav-overview","nav-frame","nav-neural","nav-look","nav-settings","nav-passes","nav-hdr"})Element(id)->SetClass("selected",selected==id);}
+    void Page(const std::string& id) {
+        Navigation(id);Visible("overview",true);Visible("inspector",false);
+        for(const auto* page:{"overview","frame","neural","hdr"})document->SetClass(std::string(page)+"-page",id=="nav-"+std::string(page));
+        Element("overview")->SetScrollTop(0);
+        if(id=="nav-look"||id=="nav-passes")Open(id=="nav-look"?"look":"passes");
+    }
     void InstallExtraControls() {
         hdr.document=document;
         hdr.Set({},false,false,"Install a supported RenoDX HDR package to configure it here.");
@@ -75,23 +82,33 @@ struct Controller : Rml::EventListener
     std::string shortcutLabel="Del",welcomePosition="top-right",primaryMenu="game",optiShortcut="Insert";
     std::map<std::string,bool> menuSettings{{"opti-menu",true},{"opti-intro",false},{"reshade-menu",true},{"reshade-intro",false}};
     ForgeSession::Snapshot session;
-    void Welcome() {if(!showWelcome)return;Element("toast-message")->SetInnerRML("Press <span class=\"keycap\">"+Rml::StringUtilities::EncodeRml(shortcutLabel)+"</span> for controls");Element("welcome")->SetProperty("width","500dp");Visible("welcome",true);Raise("welcome");Enter("welcome");toastUntil=0;}
+    void Welcome() {if(!showWelcome)return;Element("toast-message")->SetInnerRML("Press <span class=\"keycap\">"+Rml::StringUtilities::EncodeRml(shortcutLabel)+"</span> for controls");Element("welcome")->SetProperty("width","500dp");Visible("welcome",true);PositionWelcome();Raise("welcome");Enter("welcome");toastUntil=0;}
     void ToggleOverlay() {const bool show=!Element("main-panel")->IsVisible();Visible("main-panel",show);if(show){Raise("main-panel");Enter("main-panel");}else{Visible("inspector",false);Visible("type-panel",false);Welcome();}}
     void Settings(bool show) {
+        const bool leaving=settingsOpen&&!show;if(show&&!settingsOpen)beforeSettingsNavigation=activeNavigation;
         if(layout=="bar"){entrances.erase("main-panel");pendingEntrance.erase("main-panel");coasting.erase("main-panel");for(const auto* prop:{"left","top","margin-left","margin-top"})Element("main-panel")->RemoveProperty(prop);}
-        settingsOpen=show;document->SetClass("settings-page",show);Visible("settings-screen",show);Visible("overview",!show);Visible("inspector",false);Element("settings-screen")->SetScrollTop(0);SyncSettings();}
+        settingsOpen=show;document->SetClass("settings-page",show);Visible("settings-screen",show);Visible("overview",!show);Visible("inspector",false);Element("settings-screen")->SetScrollTop(0);if(show)Navigation("nav-settings");else if(leaving)Page(beforeSettingsNavigation);SyncSettings();Reflow();if(show&&layout=="centered")Element("nav-settings")->ScrollIntoView();}
     void SyncSettings() {const bool was=typographySync;typographySync=true;for(const auto& [id,on]:menuSettings)Element(("setting-"+id).c_str())->SetClass("on",on);Element("setting-helper")->SetClass("on",helperEnabled);Element("setting-startup")->SetClass("on",startWithWindows);Element("setting-stats")->SetClass("on",showStats);Element("setting-welcome")->SetClass("on",showWelcome);Element("setting-notifications")->SetClass("on",showNotifications);Element("shortcut-key")->SetInnerRML(bindingShortcut?"…":Rml::StringUtilities::EncodeRml(shortcutLabel));dynamic_cast<Rml::ElementFormControl*>(Element("welcome-position"))->SetValue(welcomePosition);dynamic_cast<Rml::ElementFormControl*>(Element("primary-menu"))->SetValue(primaryMenu);dynamic_cast<Rml::ElementFormControl*>(Element("opti-shortcut"))->SetValue(optiShortcut);PositionWelcome();typographySync=was;}
     void Session(const ForgeSession::Snapshot& snapshot) {session=snapshot;Element("compact-nr-size")->SetInnerRML(snapshot.nrRunning&&snapshot.nrWidth&&snapshot.nrHeight?std::to_string(snapshot.nrWidth)+" × "+std::to_string(snapshot.nrHeight):"Dimensions not reported");Element("compact-frames")->SetInnerRML(ForgeSession::Frames(snapshot));Element("compact-neural")->SetInnerRML(ForgeSession::Neural(snapshot));Element("compact-ratio")->SetInnerRML(snapshot.framesKnown&&snapshot.measuredRatio>=1&&snapshot.measuredRatio<=8?ForgeSession::Number(snapshot.measuredRatio,1)+"×":"");for(const auto* p:{"overview","popup"}){const std::string prefix=p;Element((prefix+"-nr").c_str())->SetInnerRML(ForgeSession::Neural(snapshot));Element((prefix+"-frame").c_str())->SetInnerRML(ForgeSession::Available(snapshot.gameFps)&&snapshot.gameFps>0?ForgeSession::Number(1000/snapshot.gameFps,2)+" ms":"—");Element((prefix+"-rendered").c_str())->SetInnerRML(ForgeSession::Number(snapshot.gameFps));Element((prefix+"-displayed").c_str())->SetInnerRML(snapshot.framesKnown?ForgeSession::Number(snapshot.displayedFps):"—");}if(showStats)Element("compact-live")->RemoveProperty("display");else Element("compact-live")->SetProperty("display","none");}
     void PositionWelcome() {
+        if(!document->IsVisible())return;
         if(welcomePosition!="top-right"&&welcomePosition!="top-left"&&welcomePosition!="top-center"&&welcomePosition!="bottom-right"&&welcomePosition!="bottom-left")welcomePosition="top-right";
         entrances.erase("welcome");pendingEntrance.erase("welcome");coasting.erase("welcome");
         for(const auto* prop:{"left","right","top","bottom","margin-left","margin-top"})Element("welcome")->RemoveProperty(prop);
-        const bool bottom=welcomePosition.rfind("bottom",0)==0;Element("welcome")->SetProperty(bottom?"bottom":"top","32dp");Element("welcome")->SetProperty(bottom?"top":"bottom","auto");
-        Element("welcome")->SetProperty("left",welcomePosition.find("left")!=std::string::npos?"32dp":welcomePosition=="top-center"?"50vw":"auto");Element("welcome")->SetProperty("right",welcomePosition.find("right")!=std::string::npos?"32dp":"auto");if(welcomePosition=="top-center")Element("welcome")->SetProperty("margin-left","-250dp");
+        const auto view=document->GetContext()->GetDimensions();const float dp=document->GetContext()->GetDensityIndependentPixelRatio();
+        document->GetContext()->Update();auto* welcome=Element("welcome");const auto size=welcome->GetBox().GetSize(Rml::BoxArea::Border);
+        const bool bottom=welcomePosition.rfind("bottom",0)==0;
+        float x=welcomePosition.find("left")!=std::string::npos?32*dp:welcomePosition=="top-center"?(view.x-size.x)*.5f:view.x-size.x-32*dp;
+        float y=bottom?view.y-size.y-32*dp:32*dp;
+        // Only the styling preview has a scene selector. Keep its chrome out of
+        // every selected toast anchor, including variable-width notifications.
+        if(preview&&!bottom)if(auto* toolbar=document->QuerySelector(".prototype-toolbar")){const auto at=toolbar->GetAbsoluteOffset(Rml::BoxArea::Border);const auto bounds=toolbar->GetBox().GetSize(Rml::BoxArea::Border);if(x<at.x+bounds.x&&x+size.x>at.x&&y<at.y+bounds.y)y=at.y+bounds.y+12*dp;}
+        welcome->SetProperty("right","auto");welcome->SetProperty("bottom","auto");
+        welcome->SetProperty("left",std::to_string(std::clamp(x,12*dp,std::max(12*dp,view.x-size.x-12*dp)))+"px");welcome->SetProperty("top",std::to_string(std::clamp(y,12*dp,std::max(12*dp,view.y-size.y-12*dp)))+"px");
     }
     void Metadata() {const auto view=document->GetContext()->GetDimensions();const auto size=std::to_string(view.x)+" × "+std::to_string(view.y);for(const auto* id:{"compact-size","overview-size","popup-size"})Element(id)->SetInnerRML(size);}
     double toastUntil=0;
-    void Notify(const std::string& text) {if(!showNotifications)return;Element("toast-message")->SetInnerRML(Rml::StringUtilities::EncodeRml(text));Element("welcome")->SetProperty("width",std::to_string(std::clamp(234+int(text.size())*8,420,760))+"dp");Visible("welcome",true);Raise("welcome");Enter("welcome");toastUntil=Rml::GetSystemInterface()->GetElapsedTime()+3.;}
+    void Notify(const std::string& text) {if(!showNotifications)return;Element("toast-message")->SetInnerRML(Rml::StringUtilities::EncodeRml(text));Element("welcome")->SetProperty("width",std::to_string(std::clamp(234+int(text.size())*8,420,760))+"dp");Visible("welcome",true);PositionWelcome();Raise("welcome");Enter("welcome");toastUntil=Rml::GetSystemInterface()->GetElapsedTime()+3.;}
     bool reducedMotion=false;
     float inspectorAnchorX=0;
     struct Entrance {double start;Rml::Vector2f target;float previous;};
@@ -102,8 +119,46 @@ struct Controller : Rml::EventListener
     std::unordered_set<std::string> pendingEntrance;
     double lastAnimation=-1,dragTime=0;
     Rml::Vector2f dragLast{},dragVelocity{};
+    Rml::Vector2i fittedView{-1,-1};Rml::Vector2f fittedMainSize{};float fittedDensity=0;std::string fittedLayout;bool fittedSettings=false,mainMoved=false;
+    float TopInset() {
+        const float dp=document->GetContext()->GetDensityIndependentPixelRatio();
+        if(preview)if(auto* toolbar=document->QuerySelector(".prototype-toolbar")){const auto size=toolbar->GetBox().GetSize(Rml::BoxArea::Border);if(toolbar->IsVisible())return size.y>0?toolbar->GetAbsoluteOffset(Rml::BoxArea::Border).y+size.y+12*dp:78*dp;}
+        return 24*dp;
+    }
+    void Reflow() {
+        if(!document->IsVisible())return;
+        auto* context=document->GetContext();const auto view=context->GetDimensions();const float dp=context->GetDensityIndependentPixelRatio(),inset=TopInset(),contentTop=settingsOpen&&view.y/dp<700?96.f:164.f;
+        const bool changed=view!=fittedView||dp!=fittedDensity||layout!=fittedLayout||settingsOpen!=fittedSettings;
+        auto* main=Element("main-panel");
+        if(changed){
+            fittedView=view;fittedDensity=dp;fittedLayout=layout;fittedSettings=settingsOpen;fittedMainSize={};
+            const bool centered=layout=="centered",bar=layout=="bar"&&!settingsOpen;
+            const float width=std::min((centered?1040.f:bar?10000.f:660.f)*dp,std::max(280*dp,view.x-48*dp));
+            const float top=std::max(inset,std::min(76*dp,view.y*.08f)),available=view.y-inset-24*dp;
+            main->SetProperty("width",std::to_string(width)+"px");main->SetProperty("height",centered?std::to_string(std::min(900*dp,available))+"px":"auto");
+            main->SetProperty("max-height",std::to_string(centered?available:bar?std::min(view.y*.68f,available):view.y-top-24*dp)+"px");
+            main->SetProperty("margin-left","0px");main->SetProperty("margin-top","0px");
+            document->SetClass("compact-bar",bar&&width/dp<1050);
+            document->SetClass("compact-height",view.y/dp<700);
+            const float nav=std::min(226*dp,width*.25f),left=nav+56*dp,contentWidth=width-left-40*dp;
+            document->SetClass("compact-content",(centered?contentWidth:width-132*dp)/dp<500);
+            if(centered){const float height=std::max(80*dp,std::min(900*dp,available)-(contentTop+32)*dp);
+                for(const auto* id:{"overview","settings-screen"}){auto* e=Element(id);e->SetProperty("left",std::to_string(left)+"px");e->SetProperty("top",std::to_string(contentTop)+"dp");e->SetProperty("width",std::to_string(contentWidth)+"px");e->SetProperty("height",std::to_string(height)+"px");}
+                auto* navElement=document->QuerySelector(".sidebar");navElement->SetProperty("width",std::to_string(nav)+"px");navElement->SetProperty("top",std::to_string(contentTop)+"dp");navElement->SetProperty("height",std::to_string(height)+"px");
+                auto* editor=Element("inspector");editor->SetProperty("width",std::to_string(contentWidth)+"px");editor->SetProperty("height",std::to_string(height)+"px");editor->SetProperty("max-height",std::to_string(height)+"px");
+            }else{for(const auto* id:{"overview","settings-screen"})for(const auto* property:{"left","top","width","height"})Element(id)->RemoveProperty(property);auto* editor=Element("inspector");editor->SetProperty("width",std::to_string(std::min(520*dp,view.x-48*dp))+"px");editor->SetProperty("height","auto");editor->SetProperty("max-height",std::to_string(view.y*.76f)+"px");}
+            auto* appearancePanel=Element("type-panel");appearancePanel->SetProperty("width",std::to_string(std::min(480*dp,view.x-48*dp))+"px");appearancePanel->SetProperty("max-height",std::to_string(available)+"px");
+            document->QuerySelector(".appearance-body")->SetProperty("max-height",std::to_string(std::max(80*dp,available-136*dp))+"px");
+            context->Update();PositionWelcome();
+        }
+        context->Update();const auto size=main->GetBox().GetSize(Rml::BoxArea::Border);
+        if(changed||size!=fittedMainSize){fittedMainSize=size;if(!mainMoved||changed){const bool centered=layout=="centered",bar=layout=="bar"&&!settingsOpen;const float x=centered?(view.x-size.x)*.5f:layout=="bar"?24*dp:std::min(36*dp,view.x*.04f);const float y=centered?inset+(view.y-inset-24*dp-size.y)*.5f:bar?view.y-size.y-24*dp:std::max(inset,std::min(76*dp,view.y*.08f));main->SetProperty("left",std::to_string(x)+"px");main->SetProperty("top",std::to_string(y)+"px");if(auto it=entrances.find("main-panel");it!=entrances.end())it->second.target={x,y};}}
+        if(layout=="centered"){const auto at=main->GetAbsoluteOffset(Rml::BoxArea::Border);const float left=std::min(226*dp,size.x*.25f)+56*dp;auto* editor=Element("inspector");const auto before=editor->GetAbsoluteOffset(Rml::BoxArea::Border);if(std::fabs(before.x-at.x-left)>.1f||std::fabs(before.y-at.y-contentTop*dp)>.1f){editor->SetProperty("margin-left","0px");editor->SetProperty("margin-top","0px");editor->SetProperty("left",std::to_string(at.x+left)+"px");editor->SetProperty("top",std::to_string(at.y+contentTop*dp)+"px");}}
+        for(const auto* id:{"inspector","type-panel"}){auto* e=Element(id);if(!e->IsVisible()||(layout=="centered"&&std::string(id)=="inspector")||dragged==e||entrances.contains(id)||pendingEntrance.contains(id)||coasting.contains(id))continue;const auto at=e->GetAbsoluteOffset(Rml::BoxArea::Border);const auto bounds=e->GetBox().GetSize(Rml::BoxArea::Border);const float x=std::clamp(at.x,12*dp,std::max(12*dp,view.x-bounds.x-12*dp)),y=std::clamp(at.y,inset,std::max(inset,view.y-bounds.y-12*dp));if(std::fabs(x-at.x)>.1f||std::fabs(y-at.y)>.1f){e->SetProperty("margin-left","0px");e->SetProperty("margin-top","0px");e->SetProperty("left",std::to_string(x)+"px");e->SetProperty("top",std::to_string(y)+"px");}}
+    }
     void Enter(const std::string& id) {pendingEntrance.insert(id);coasting.erase(id);}
     void Animate(double now) {
+        Reflow();
         const float dt=lastAnimation<0?1.f/60:std::clamp(float(now-lastAnimation),.001f,.05f);lastAnimation=now;
         if(!pendingEntrance.empty()){document->GetContext()->Update();for(const auto& id:pendingEntrance){auto* e=Element(id.c_str());const auto at=e->GetAbsoluteOffset(Rml::BoxArea::Border);e->SetProperty("margin-left","0px");e->SetProperty("margin-top","0px");e->SetProperty("left",std::to_string(at.x)+"px");e->SetProperty("top",std::to_string(at.y)+"px");entrances[id]={now,at,0};}pendingEntrance.clear();}
         for(auto it=entrances.begin();it!=entrances.end();) {const float t=reducedMotion?1.f:std::clamp(float((now-it->second.start)/.38),0.f,1.f);const float lift=(it->first=="welcome"?-14.f:24.f)*document->GetContext()->GetDensityIndependentPixelRatio()*(1-Motion::Spring(t));auto* e=Element(it->first.c_str());const float opacity=std::min(1.f,t*2.2f);e->SetProperty("opacity",std::to_string(opacity));e->SetProperty("--window-opacity",std::to_string(opacity));e->SetProperty("top",std::to_string(it->second.target.y+lift)+"px");windowVelocity[it->first]={0,(lift-it->second.previous)/dt};it->second.previous=lift;if(t>=1){windowVelocity[it->first]={};it=entrances.erase(it);}else ++it;}
@@ -152,7 +207,7 @@ struct Controller : Rml::EventListener
     void ShowAppearance() {
         Visible("type-panel",true);Raise("type-panel");document->GetContext()->Update();
         const auto at=Element("main-panel")->GetAbsoluteOffset(Rml::BoxArea::Border),main=Element("main-panel")->GetBox().GetSize(Rml::BoxArea::Border),size=Element("type-panel")->GetBox().GetSize(Rml::BoxArea::Border);const auto view=document->GetContext()->GetDimensions();
-        Element("type-panel")->SetProperty("left",std::to_string(std::clamp(at.x+main.x+24,12.f,std::max(12.f,view.x-size.x-12)))+"px");Element("type-panel")->SetProperty("top",std::to_string(std::clamp(layout=="bar"?at.y-size.y-20:at.y,12.f,std::max(12.f,view.y-size.y-12)))+"px");Enter("type-panel");
+        const float inset=TopInset();Element("type-panel")->SetProperty("left",std::to_string(std::clamp(at.x+main.x+24,12.f,std::max(12.f,view.x-size.x-12)))+"px");Element("type-panel")->SetProperty("top",std::to_string(std::clamp(layout=="bar"?at.y-size.y-20:at.y,inset,std::max(inset,view.y-size.y-12)))+"px");Enter("type-panel");
     }
     void Materials() {
         if(typographySync)return;typographySync=true;
@@ -169,7 +224,7 @@ struct Controller : Rml::EventListener
         Element("toast-pill")->SetClass("selected",toastPill);Element("toast-rounded")->SetClass("selected",!toastPill);
         Element("theme-label")->SetInnerRML(customTheme?"Custom":appearance==1?"Light":appearance==2?"Dark":"Clear");Element("theme-description")->SetInnerRML(customTheme?(appearance==1?"Custom · based on Light":appearance==2?"Custom · based on Dark":"Custom · based on Clear"):"Select a theme to restore its defaults.");
         document->SetClass("dark-inverted",appearance==2 && invertDark);Element("welcome")->SetProperty("--corner-radius",toastPill?"28":"14");Element("welcome")->SetProperty("border-radius",toastPill?"28dp":"14dp");
-        typographySync=false;prefsDirty=true;
+        typographySync=false;prefsDirty=true;Reflow();
     }
     void LoadPreferences(bool runtime=false) {
         wchar_t folder[32768]{};if(!GetEnvironmentVariableW(L"LOCALAPPDATA",folder,32768))return;
@@ -220,12 +275,15 @@ struct Controller : Rml::EventListener
         typographySync=false;prefsDirty=true;
     }
     void Layout(const std::string& mode) {
-        Settings(false);prefsDirty=true;
+        Settings(false);prefsDirty=true;mainMoved=false;
         layout=mode;document->SetClass("overview-page",mode=="centered");document->SetClass("layout-centered",mode=="centered");document->SetClass("layout-bar",mode=="bar");
         document->SetClass("frame-page",false);document->SetClass("neural-page",false);document->SetClass("hdr-page",false);Navigation("nav-overview");
         for(const auto* id:{"main-panel","inspector"})for(const auto* property:{"left","top","margin-left","margin-top"})Element(id)->RemoveProperty(property);
         inspectorAnchored=false;
         Visible("overview",true);Visible("inspector",false);Select("layout-switch","layout-"+mode);
+        Element("main-panel")->SetScrollTop(0);
+        fittedLayout.clear();
+        Reflow();
         Enter("main-panel");
         document->GetContext()->Update();
     }
@@ -306,14 +364,15 @@ struct Controller : Rml::EventListener
     }
     void Open(const std::string& panel) {
         inspectorPanel=panel;
+        Element("inspector")->SetScrollTop(0);
         Element("inspector")->SetClass("opening",true);
         Visible("inspector",true);Visible("pass-inspector",panel=="passes");Visible("look-inspector",panel=="look");Visible("extra-processing",panel=="processing");Visible("extra-frame-popup",panel=="frame");Visible("popup-metadata",panel=="overview");Visible("hdr-inspector",panel=="hdr");Element("inspector")->SetClass("session-inspector",panel=="overview");
         const auto icon=panel=="hdr"?"sun":panel=="overview"?"gauge":panel=="passes"?"stack":panel=="look"?"sliders-horizontal":panel=="frame"?"film-strip":"cpu";
         const auto title=panel=="hdr"?"HDR":panel=="overview"?"SESSION":panel=="processing"?"NEURAL RENDERING":panel=="passes"?"PASS TUNING":panel=="look"?"LOOK &amp; DETAIL":panel=="frame"?"FRAME GENERATION":"PROCESSING";
-        Element("inspector-title")->SetInnerRML(std::string("<img class=\"glyph\" src=\"icons/")+icon+"-light.png\"/>"+title);
+        Element("inspector-title")->SetInnerRML(std::string("<img class=\"glyph\" src=\"icons/")+icon+"-light.png\"/><span>"+title+"</span>");
         if(layout=="centered")Visible("overview",false);
-        Raise("inspector");Enter("inspector");inspectorAnchored=layout=="bar";
-        if(inspectorAnchored) {auto* source=Element(panel=="hdr"?"open-hdr":panel=="overview"?"open-session":panel=="passes"?"open-passes":panel=="frame"?"open-frame-options":panel=="processing"?"open-processing":"open-look");document->GetContext()->Update();const auto at=source->GetAbsoluteOffset(Rml::BoxArea::Border);const auto bounds=source->GetBox().GetSize(Rml::BoxArea::Border);const auto size=Element("inspector")->GetBox().GetSize(Rml::BoxArea::Border);const auto viewport=document->GetContext()->GetDimensions();inspectorAnchorX=at.x+bounds.x*.5f;Element("inspector")->SetProperty("left",std::to_string(std::clamp(inspectorAnchorX-size.x*.5f,12.f,std::max(12.f,viewport.x-size.x-12)))+"px");Element("inspector")->SetProperty("top",std::to_string(std::max(12.f,at.y-size.y-20))+"px");}
+        Reflow();Raise("inspector");Enter("inspector");inspectorAnchored=layout=="bar";
+        if(inspectorAnchored) {auto* source=Element(panel=="hdr"?"open-hdr":panel=="overview"?"open-session":panel=="passes"?"open-passes":panel=="frame"?"open-frame-options":panel=="processing"?"open-processing":"open-look");document->GetContext()->Update();const auto at=source->GetAbsoluteOffset(Rml::BoxArea::Border);const auto bounds=source->GetBox().GetSize(Rml::BoxArea::Border);Element("inspector")->SetProperty("max-height",std::to_string(std::max(120.f,at.y-36))+"px");document->GetContext()->Update();const auto size=Element("inspector")->GetBox().GetSize(Rml::BoxArea::Border);const auto viewport=document->GetContext()->GetDimensions();inspectorAnchorX=at.x+bounds.x*.5f;Element("inspector")->SetProperty("left",std::to_string(std::clamp(inspectorAnchorX-size.x*.5f,12.f,std::max(12.f,viewport.x-size.x-12)))+"px");Element("inspector")->SetProperty("top",std::to_string(std::max(12.f,at.y-size.y-20))+"px");}
     }
     void ProcessEvent(Rml::Event& event) override
     {
@@ -334,6 +393,7 @@ struct Controller : Rml::EventListener
         }
         if(event.GetType()=="mousemove" && dragged) {
             const Rml::Vector2f delta{event.GetParameter<float>("mouse_x",0)-dragStart.x,event.GetParameter<float>("mouse_y",0)-dragStart.y};
+            if(dragged==Element("main-panel")&&std::fabs(delta.x)+std::fabs(delta.y)>3)mainMoved=true;
             const auto viewport=document->GetContext()->GetDimensions();const auto size=dragged->GetBox().GetSize(Rml::BoxArea::Border);
             const Rml::Vector2f position{std::clamp(dragOrigin.x+delta.x,8.f,std::max(8.f,viewport.x-size.x-8)),std::clamp(dragOrigin.y+delta.y,8.f,std::max(8.f,viewport.y-size.y-8))};
             const double now=Rml::GetSystemInterface()->GetElapsedTime();const float elapsed=std::max(.004f,float(now-dragTime));const auto raw=(position-dragLast)/elapsed;dragVelocity={std::clamp(dragVelocity.x*.6f+raw.x*.4f,-2200.f,2200.f),std::clamp(dragVelocity.y*.6f+raw.y*.4f,-2200.f,2200.f)};dragLast=position;dragTime=now;windowVelocity[dragged->GetId()]=dragVelocity;
@@ -425,17 +485,15 @@ struct Controller : Rml::EventListener
             else if(id=="type-close")Visible("type-panel",false);
             else if(id=="type-reset") {copyFont="roboto";headingFont="bakbak";copySize=22;copyWeight=500;headingSize=36;headingWeight=400;Typography();}
             else if(id.rfind("layout-",0)==0)Layout(id.substr(7));
-            else if(id=="nav-overview"||id=="nav-frame"||id=="nav-neural") {Settings(false);Navigation(id);Visible("overview",true);Visible("inspector",false);document->SetClass("hdr-page",false);document->SetClass("overview-page",id=="nav-overview");document->SetClass("frame-page",id=="nav-frame");document->SetClass("neural-page",id=="nav-neural");}
-            else if(id=="nav-hdr"){Settings(false);Navigation(id);Visible("overview",true);Visible("inspector",false);for(const auto* page:{"overview-page","frame-page","neural-page"})document->SetClass(page,false);document->SetClass("hdr-page",true);}
+            else if(id=="nav-overview"||id=="nav-frame"||id=="nav-neural"||id=="nav-hdr"||id=="nav-look"||id=="nav-passes") {Settings(false);Page(id);}
             else if(id=="open-hdr")Open("hdr");
-            else if(id=="nav-look"){Navigation(id);Open("look");}else if(id=="nav-passes"){Navigation(id);Open("passes");}
             else if(id=="welcome-close")Visible("welcome",false);
             else if(id=="theme")Visible("theme-menu",!Element("theme-menu")->IsVisible());
             else if(id=="theme-light"||id=="theme-dark"||id=="theme-clear")UseTheme(id=="theme-light"?1:id=="theme-dark"?2:3);
             else if(id=="open-passes")Open("passes");else if(id=="open-look")Open("look");
             else if(id=="open-session")Open("overview");
             else if(id=="open-processing")Open("processing");else if(id=="open-frame-options")Open("frame");
-            else if(id=="inspector-close") {Visible("inspector",false);Visible("overview",true);Element("inspector")->SetClass("opening",false);}
+            else if(id=="inspector-close") {Visible("inspector",false);Visible("overview",true);if(layout=="centered")Page(inspectorPanel=="look"||inspectorPanel=="passes"?"nav-neural":"nav-overview");Element("inspector")->SetClass("opening",false);}
             else if(id=="pass-2" || id=="pass-3")pass=id=="pass-2" ? 2:3;
             else if(id=="inherit")Put("pass"+std::to_string(pass)+"_inherit",values["pass"+std::to_string(pass)+"_inherit"] ? 0.f:1.f);
             else if(id=="nr-toggle") {Put("enabled",values["enabled"] ? 0.f:1.f);Notify(values["enabled"]?(preview?"Neural rendering on · Preview":"Neural rendering on"):(preview?"Neural rendering off · Preview":"Neural rendering off"));}

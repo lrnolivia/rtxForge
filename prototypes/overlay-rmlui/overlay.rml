@@ -31,19 +31,19 @@
         <div class="sidebar">
           <button id="nav-overview">
             <img class="glyph" src="icons/gauge-light.png" /><span class="button-label">Overview</span></button>
-          <button id="nav-frame">
-            <img class="glyph" src="icons/film-strip-light.png" /><span class="button-label">Frame generation</span></button>
           <button id="nav-neural">
             <img class="glyph" src="icons/cpu-light.png" /><span class="button-label">Neural rendering</span></button>
-          <button id="nav-hdr"><img class="glyph" src="icons/sun-light.png" /><span class="button-label">HDR</span></button>
           <button id="nav-look">
             <img class="glyph" src="icons/sliders-horizontal-light.png" /><span class="button-label">Look &amp; detail</span></button>
-          <button id="nav-settings"><img class="glyph" src="icons/sliders-light.png" /><span class="button-label">Settings</span></button>
           <button id="nav-passes">
             <img class="glyph" src="icons/stack-light.png" /><span class="button-label">Pass tuning</span></button>
+          <button id="nav-frame">
+            <img class="glyph" src="icons/film-strip-light.png" /><span class="button-label">Frame generation</span></button>
+          <button id="nav-hdr"><img class="glyph" src="icons/sun-light.png" /><span class="button-label">HDR</span></button>
+          <button id="nav-settings"><img class="glyph" src="icons/sliders-light.png" /><span class="button-label">Settings</span></button>
         </div>
         <div id="settings-screen" class="settings-screen" style="display: none">
-          <div class="settings-title"><h2><img class="glyph" src="icons/sliders-light.png" />SETTINGS</h2><button id="settings-back" class="quiet"><span class="button-label">Back</span></button></div>
+          <div class="settings-title"><h2><img class="glyph" src="icons/sliders-light.png" /><span>SETTINGS</span></h2><button id="settings-back" class="quiet"><span class="button-label">Back</span></button></div>
           <button id="open-appearance" class="settings-appearance"><img class="glyph" src="icons/palette-light.png" /><span>Appearance<span class="setting-description">Theme, text and scale</span></span><span class="chevron" /></button>
           <div class="settings-group"><h3>LAYOUT</h3>
             <div id="layout-switch" class="settings-layouts">
@@ -171,7 +171,7 @@
               <span>Now</span>
             </div>
           </div>
-          <div id="hdr-page" class="hdr-page"><h2><img class="glyph" src="icons/sun-light.png" />HDR</h2><p id="hdr-main-note" class="hint"/><div id="hdr-main-fields"/></div>
+          <div id="hdr-page" class="hdr-page"><h2><img class="glyph" src="icons/sun-light.png" /><span>HDR</span></h2><p id="hdr-main-note" class="hint"/><div id="hdr-main-fields"/></div>
           <div id="tuning-content">
             <div class="preset-row">
               <select id="presets">
@@ -185,8 +185,7 @@
             <div class="tuning-sections">
               <section id="frame-section">
                 <div class="section-heading">
-                  <h2>
-                    <img class="glyph" src="icons/film-strip-light.png" />FRAME GENERATION</h2>
+                  <h2><img class="glyph" src="icons/film-strip-light.png" /><span>FRAME GENERATION</span></h2>
                   <button id="open-frame-options" class="icon-button" title="More options">
                     <img class="glyph" src="icons/sliders-light.png" />
                   </button>
@@ -213,8 +212,7 @@
               </section>
               <section class="neural" id="neural-section">
                 <div class="section-heading">
-                  <h2>
-                    <img class="glyph" src="icons/cpu-light.png" />NEURAL RENDERING</h2>
+                  <h2><img class="glyph" src="icons/cpu-light.png" /><span>NEURAL RENDERING</span></h2>
                   <button id="open-processing" class="icon-button" title="More options">
                     <img class="glyph" src="icons/sliders-light.png" />
                   </button>
@@ -239,12 +237,11 @@
                     <input id="strength" class="range" type="range" min="0" max="2" step="0.01" value="1" />
                   </div>
                   <div class="slider-field">
-                    <div class="field-heading"><label><img class="glyph" src="icons/cpu-light.png" />Render resolution</label><span id="render-resolution-value">100%</span></div>
+                    <div class="field-heading"><label class="icon-label"><img class="glyph" src="icons/cpu-light.png" /><span>Render resolution</span></label><span id="render-resolution-value">100%</span></div>
                     <input id="render-resolution" class="range" type="range" min="25" max="200" step="1" value="100" />
                   </div>
                   <div class="model-field model-single">
-                      <label>
-                        <img class="glyph" src="icons/cpu-light.png" />Model</label>
+                      <label class="icon-label"><img class="glyph" src="icons/cpu-light.png" /><span>Model</span></label>
                       <select id="model-preset">
                         <option value="0">Automatic</option>
                         <option value="1">Preset 1</option>
@@ -253,10 +250,9 @@
                       </select>
                   </div>
                   <div class="model-row">
-                    <div class="model-field"><label><img class="glyph" src="icons/cpu-light.png" />Processing stage</label><select id="processing-stage"><option value="1">Before upscaling</option><option value="0">After upscaling</option></select></div>
+                    <div class="model-field"><label class="icon-label"><img class="glyph" src="icons/cpu-light.png" /><span>Processing stage</span></label><select id="processing-stage"><option value="1">Before upscaling</option><option value="0">After upscaling</option></select></div>
                     <div class="model-field">
-                      <label>
-                        <img class="glyph" src="icons/stack-light.png" />Passes</label>
+                      <label class="icon-label"><img class="glyph" src="icons/stack-light.png" /><span>Passes</span></label>
                       <div class="count-stepper"><button id="pass-minus" aria-label="Fewer passes" title="Fewer passes"><span class="button-label">−</span></button><span id="pass-count">3 passes</span><button id="pass-plus" aria-label="More passes" title="More passes"><span class="button-label">+</span></button></div>
                     </div>
                   </div>
@@ -273,6 +269,7 @@
               </section>
             </div>
             <button id="open-hdr" class="text-link hdr-entry"><img class="glyph" src="icons/sun-light.png" /><span class="button-label">HDR</span><span class="chevron"/></button>
+            <div class="tuning-footer">
             <div class="footer">
               <div class="history-actions">
                 <button id="undo" class="quiet">
@@ -291,6 +288,7 @@
               <button id="compare-a"><span class="button-label">Off</span></button>
               <button id="compare-b" class="selected"><span class="button-label">On</span></button>
             </div>
+            </div>
             <div id="compare-preset-pair" class="compare-preset-pair">
               <select id="compare-left">
                 <option value="natural" selected="selected">Natural</option>
@@ -307,7 +305,7 @@
       </paint-root>
       <paint-root class="glass inspector" id="inspector">
         <div class="inspector-heading">
-          <h2 id="inspector-title">PASS TUNING</h2>
+          <h2 id="inspector-title"><span>PASS TUNING</span></h2>
           <button id="inspector-close" class="close" aria-label="Close inspector" title="Close inspector">
             <span class="stroke first" />
             <span class="stroke second" />
@@ -464,10 +462,9 @@
         <span class="stroke second" />
       </button>
     </paint-root>
-    <paint-root id="type-panel" class="glass type-panel appearance-panel">
+    <paint-root id="type-panel" class="glass type-panel appearance-panel" style="display: none">
       <div class="settings-heading">
-        <h2 id="settings-title">
-          <img class="glyph" src="icons/palette-light.png" />APPEARANCE</h2>
+        <h2 id="settings-title"><img class="glyph" src="icons/palette-light.png" /><span>APPEARANCE</span></h2>
         <button id="type-close" class="close" title="Close appearance">
           <span class="stroke first" />
           <span class="stroke second" />

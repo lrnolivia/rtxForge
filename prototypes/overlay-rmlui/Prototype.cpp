@@ -137,6 +137,33 @@ static void SaveImage(ID3D11Device* device,ID3D11DeviceContext* context,ID3D11Te
     context->Unmap(staging.Get(),0);
 }
 using ForgeGlass::Controller;
+static void TestLayout(Controller& c,Rml::Context* context)
+{
+    const auto originalView=context->GetDimensions();const auto originalScale=c.overlayScale,originalCopy=c.copySize;const auto originalValues=c.values;
+    auto settle=[&](){for(int i=0;i<3;++i){context->Update();c.Reflow();}context->Update();};
+    const auto rect=[](Rml::Element* e){const auto at=e->GetAbsoluteOffset(Rml::BoxArea::Border),size=e->GetBox().GetSize(Rml::BoxArea::Border);return std::array<float,4>{at.x,at.y,at.x+size.x,at.y+size.y};};
+    auto contains=[&](const char* id,const std::array<float,4>& outer){const auto b=rect(c.Element(id));if(b[0]<outer[0]-2||b[1]<outer[1]-2||b[2]>outer[2]+2||b[3]>outer[3]+2)throw std::runtime_error(std::string("Layout bounds: ")+id+" at "+std::to_string(b[0])+","+std::to_string(b[1])+","+std::to_string(b[2])+","+std::to_string(b[3]));};
+    for(const auto view:{Rml::Vector2i{1280,720},Rml::Vector2i{1920,1080},Rml::Vector2i{2560,1440}})for(int scale:{100,150})for(int copy:{20,22,24}){
+        context->SetDimensions(view);c.overlayScale=scale;c.copySize=copy;c.Typography();
+        const std::array<float,4> viewport{0,0,float(view.x),float(view.y)};
+        for(const auto* mode:{"floating","centered","bar"}){
+            c.Layout(mode);c.values["multiplier"]=3;c.Sync();settle();contains("main-panel",viewport);
+            if(c.layout=="bar"){
+                c.Element("compare-b")->ScrollIntoView();settle();contains("compare-mode",rect(c.Element("main-panel")));contains("compare-a",rect(c.Element("main-panel")));contains("compare-b",rect(c.Element("main-panel")));
+                const auto history=rect(c.Element("defaults")),compare=rect(c.Element("compare-mode"));Require(history[2]<=compare[0]+2||history[3]<=compare[1]+2||compare[3]<=history[1]+2,"Bar history and comparison overlap");
+            }
+            if(c.layout=="centered"){
+                auto* sidebar=c.document->QuerySelector(".sidebar");Require(sidebar->GetChild(sidebar->GetNumChildren()-1)->GetId()=="nav-settings","Settings must be the final sidebar destination");
+                for(const auto* panel:{"look","passes","hdr"}){c.Open(panel);settle();contains("inspector",rect(c.Element("main-panel")));auto* slot=c.Element("overview");const auto at=slot->GetAbsoluteOffset(Rml::BoxArea::Border),editor=c.Element("inspector")->GetAbsoluteOffset(Rml::BoxArea::Border);Require(std::fabs(at.x-editor.x)<2&&std::fabs(at.y-editor.y)<2,"Advanced pages use different content slots");}
+                c.Settings(true);settle();contains("settings-screen",rect(c.Element("main-panel")));Require(c.Element("nav-settings")->IsClassSet("selected"),"Settings did not select its sidebar destination");c.Settings(false);Require(c.Element("nav-overview")->IsClassSet("selected"),"Settings did not restore the previous destination");
+            }
+        }
+        c.welcomePosition="top-center";c.Welcome();settle();contains("welcome",viewport);const auto toast=rect(c.Element("welcome")),toolbar=rect(c.document->QuerySelector(".prototype-toolbar"));Require(toast[1]>=toolbar[3]+1,"Welcome overlaps the scene selector");
+        c.Notify("Neural rendering settings restored to the saved game preset");settle();contains("welcome",viewport);const auto toastWide=rect(c.Element("welcome"));Require(std::fabs((toastWide[0]+toastWide[2])*.5f-view.x*.5f)<2,"Variable-width toast is not centered");
+    }
+    c.overlayScale=originalScale;c.copySize=originalCopy;c.values=originalValues;context->SetDimensions(originalView);c.Typography();c.Layout("floating");c.Sync();c.Visible("welcome",false);settle();
+    std::cout<<"native_layout_matrix_checks=passed cases=54\n";
+}
 static void TestController(Controller& c,Rml::Context* context)
 {
     for(const auto& mode:MaterialColor::Modes)if(mode!="reserved"){const auto color=MaterialColor::Blend({.12f,.5f,.9f},{.8f,.25f,.3f},MaterialColor::Mode(mode));for(float v:color)Require(std::isfinite(v)&&v>=0&&v<=1,"Surface blend produced invalid color");}
@@ -189,13 +216,14 @@ static void TestController(Controller& c,Rml::Context* context)
     c.Layout("bar");c.Session(live);context->Update();Require(!c.Element("compact-live")->IsVisible(),"Live telemetry must not overflow Bottom Bar metadata");click("open-passes");Require(c.inspectorAnchored,"Bar inspectors should attach to their source");c.Settings(true);context->Update();Require(c.Element("main-panel")->GetAbsoluteOffset(Rml::BoxArea::Border).y>=0,"Bottom Bar settings moved above the viewport");c.Settings(false);c.Layout("floating");context->Update();Require(c.Element("compact-live")->IsVisible(),"Sidebar must retain its compact live cards");
     c.values=initial;c.edits={};c.edits.Start(initial);c.appearance=appearance;c.pass=2;c.Sync();c.Element("theme-label")->SetInnerRML(c.appearance==1?"Light":c.appearance==3?"Clear":"Dark");
     c.Open("passes");c.Element("main-panel")->SetScrollTop(0);c.Element("inspector")->SetScrollTop(0);c.document->Focus();context->ProcessMouseMove(1800,1000,0);
+    for(const auto* id:{"open-settings","open-frame-options","open-processing","inspector-close"}){auto* button=c.Element(id);if(!button->IsVisible())continue;auto* glyph=button->QuerySelector(".glyph");if(!glyph)continue;const auto at=button->GetAbsoluteOffset(Rml::BoxArea::Border),size=button->GetBox().GetSize(Rml::BoxArea::Border),iconAt=glyph->GetAbsoluteOffset(Rml::BoxArea::Border),iconSize=glyph->GetBox().GetSize(Rml::BoxArea::Border);Require(std::fabs(at.x+size.x*.5f-iconAt.x-iconSize.x*.5f)<1.5f&&std::fabs(at.y+size.y*.5f-iconAt.y-iconSize.y*.5f)<1.5f,"Icon-only glyph is not centered");}
     c.Message("Preview · no game connected.");
     std::cout<<"native_interaction_checks=passed\n";
 }
 int wmain(int argc,wchar_t** argv)
 {
     try {
-        fs::path assets,background,output,font;int width=2560,height=1440,appearance=3;bool inspector=false,blur=true,selfTest=false,reduceMotion=false,welcome=false,settings=false;float crop=0,requestedTint=-1;std::array<float,3> accent{.19f,.46f,.80f};std::string requestedLayout="floating",requestedBlend,requestedPage;
+        fs::path assets,background,output,font;int width=2560,height=1440,appearance=3,requestedCopy=22,requestedScale=100;bool inspector=false,blur=true,selfTest=false,layoutTest=false,customMfg=false,reduceMotion=false,welcome=false,settings=false;float crop=0,requestedTint=-1;std::array<float,3> accent{.19f,.46f,.80f};std::string requestedLayout="floating",requestedBlend,requestedPage;
         for(int i=1;i<argc;++i) {
             const std::wstring arg=argv[i];
             const auto next=[&] {Require(i+1<argc,"Missing argument value");return std::wstring(argv[++i]);};
@@ -204,6 +232,10 @@ int wmain(int argc,wchar_t** argv)
             else if(arg==L"--dark")appearance=2;else if(arg==L"--light")appearance=1;else if(arg==L"--clear")appearance=3;else if(arg==L"--inspector")inspector=true;else if(arg==L"--no-blur")blur=false;else if(arg==L"--crop-left")crop=std::stof(next());
             else if(arg==L"--self-test")selfTest=true;else if(arg==L"--reduce-motion")reduceMotion=true;else if(arg==L"--welcome")welcome=true;else if(arg==L"--settings")settings=true;
             else if(arg==L"--page")requestedPage=Utf8(next());
+            else if(arg==L"--layout-test")layoutTest=true;
+            else if(arg==L"--custom-mfg")customMfg=true;
+            else if(arg==L"--text-size")requestedCopy=std::stoi(next());
+            else if(arg==L"--scale")requestedScale=std::stoi(next());
             else if(arg==L"--layout") {requestedLayout=Utf8(next());Require(requestedLayout=="floating"||requestedLayout=="centered"||requestedLayout=="bar","Use --layout floating, centered, or bar");}
             else if(arg==L"--blend") {requestedBlend=Utf8(next());Require(MaterialColor::Valid(requestedBlend),"Unsupported blend mode");}
             else if(arg==L"--tint") {requestedTint=std::stof(next());Require(requestedTint>=0 && requestedTint<=100,"Use --tint 0..100");}
@@ -212,6 +244,7 @@ int wmain(int argc,wchar_t** argv)
         }
         Require(!assets.empty() && !background.empty() && !font.empty(),"Supply --assets, --background and --font. Optional --output renders a PNG without opening a window.");
         Require(width>=960 && width<=3840 && height>=640 && height<=2160 && crop>=0 && crop<.8,"Invalid viewport or crop");
+        Require(requestedCopy>=20&&requestedCopy<=24&&requestedScale>=70&&requestedScale<=150,"Invalid text or overlay scale");
         Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));
         HWND window=nullptr;
         if(output.empty()) {
@@ -246,6 +279,7 @@ int wmain(int argc,wchar_t** argv)
         auto* context=Rml::CreateContext("overlay",{width,height});Require(context!=nullptr,"RmlUi context could not be created");inputContext=context;
         auto* document=context->LoadDocument(Utf8(assets/L"overlay.rml"));Require(document!=nullptr,"Overlay document could not load");
         Controller controller;controller.document=document;controller.appearance=appearance;controller.accent=accent;controller.UseTheme(appearance);if(window)controller.LoadPreferences();
+        if(!window){controller.copySize=requestedCopy;controller.overlayScale=requestedScale;}if(customMfg)controller.values["multiplier"]=3;
         controller.InstallExtraControls();
         std::vector<ForgeGlass::HdrField> hdrPreview;for(const auto& f:PreviewHdrFields)hdrPreview.push_back({f.key,f.label,f.section,f.kind,f.options,f.unit,f.minimum,f.maximum,f.step,f.initial,f.initial,f.reset,!f.reset});
         controller.hdr.Set(std::move(hdrPreview),true,true,"Preview HDR preferences. These sample controls do not change a game; connected controls save startup preferences for verified add-on builds.");
@@ -264,7 +298,7 @@ int wmain(int argc,wchar_t** argv)
         document->GetElementById("inspector")->SetProperty("backdrop-filter","none");
         document->GetElementById("welcome")->SetProperty("backdrop-filter","none");
         document->Show();
-        controller.Layout(window?controller.layout:requestedLayout);if(!requestedPage.empty()){Require(requestedPage=="overview"||requestedPage=="frame"||requestedPage=="neural"||requestedPage=="hdr","Use --page overview, frame, neural, or hdr");document->SetClass("overview-page",requestedPage=="overview");document->SetClass("frame-page",requestedPage=="frame");document->SetClass("neural-page",requestedPage=="neural");document->SetClass("hdr-page",requestedPage=="hdr");controller.Navigation("nav-"+requestedPage);controller.Visible("type-panel",false);}if(inspector)controller.Open("passes");if(settings)controller.Settings(true);
+        controller.Layout(window?controller.layout:requestedLayout);if(!requestedPage.empty()){Require(requestedPage=="overview"||requestedPage=="frame"||requestedPage=="neural"||requestedPage=="hdr"||requestedPage=="look"||requestedPage=="passes","Use --page overview, frame, neural, hdr, look, or passes");document->SetClass("overview-page",requestedPage=="overview");document->SetClass("frame-page",requestedPage=="frame");document->SetClass("neural-page",requestedPage=="neural");document->SetClass("hdr-page",requestedPage=="hdr");controller.Navigation("nav-"+requestedPage);if(requestedPage=="look"||requestedPage=="passes")controller.Open(requestedPage);controller.Visible("type-panel",false);}if(inspector)controller.Open("passes");if(settings)controller.Settings(true);
         auto image=LoadImage(background);
         const auto cropUv=CropImage(image,width,height,crop);
         Backdrop backdrop(device.Get(),width,height,image.rgba.data(),image.width,image.height,cropUv.data());
@@ -280,6 +314,7 @@ int wmain(int argc,wchar_t** argv)
             if(closed)break;if(window && controller.prefsDirty && system.GetElapsedTime()-lastPreferences>.5){controller.SavePreferences();lastPreferences=system.GetElapsedTime();}
             if(window && system.GetElapsedTime()>nextStyleCheck) {nextStyleCheck=system.GetElapsedTime()+.5;const auto stamp=fs::last_write_time(assets/L"overlay.rcss");if(stamp!=lastStyle){document->ReloadStyleSheet();lastStyle=stamp;}}
             if(!output.empty())system.frameTime=frames/60.;
+            if((layoutTest||selfTest)&&frames==8)TestLayout(controller,context);
             if(selfTest && frames==8)TestController(controller,context);
             if(controller.sceneRequest>=0){const int chosen=controller.sceneRequest;controller.sceneRequest=-1;try{
                 fs::path path=background;float selectedCrop=crop;std::array<float,3> selectedAccent=accent;std::string title="OVERLAY PREVIEW";

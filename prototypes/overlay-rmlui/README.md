@@ -14,6 +14,15 @@ undo/redo, comparisons, pass controls, all three theme defaults and Settings.
 Offscreen captures use a 2560 × 1440 canvas. The live window fits the monitor's
 work area, including its title bar.
 
+The self-test also checks window containment, Advanced content slots, Bar
+footer separation, Settings navigation and toast placement across 54 layout,
+viewport, text-size and scale combinations. `--layout-test` runs these bounds
+checks alone. Capture specific states with `--layout floating|centered|bar`,
+`--page overview|neural|frame|look|passes|hdr`, `--settings`, `--custom-mfg`,
+`--text-size 20|22|24` and `--scale 70..150`. These native checks use the same
+document and controller as the game renderer; they do not establish gameplay
+acceptance.
+
 `Get-Scenes.ps1` optionally caches the publisher screenshots listed in
 `scenes.json`. Their source URLs, ownership and hashes remain recorded there;
 the images are not redistributed in the repository or runtime DLL.

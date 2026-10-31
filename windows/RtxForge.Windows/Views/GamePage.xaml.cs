@@ -343,6 +343,17 @@ public sealed partial class GamePage : Page
                 }), ""));
                 tools.Add(locationTools);
                 PageHost.Children.Add(tools);
+                var hdr = new PreferencesGroup("RenoDX HDR", "The matching HDR mod and its dependencies, managed together.");
+                var hdrInstall = Prefs.ActionButton("Install HDR", async (_, _) => { await shell.ChangeHdrAsync(g); Build("Tools"); });
+                var hdrRemove = Prefs.ActionButton("Remove HDR", async (_, _) => { await shell.ChangeHdrAsync(g, true); Build("Tools"); });
+                hdrInstall.IsEnabled = false;
+                hdrRemove.Visibility = Visibility.Collapsed;
+                var hdrActions = new WrapRow { Spacing = 8, LineSpacing = 8 };
+                hdrActions.Children.Add(hdrInstall); hdrActions.Children.Add(hdrRemove);
+                var hdrStatus = Prefs.Row("HDR enhancement", "Checking HDR support…", hdrActions, "");
+                hdr.Add(hdrStatus);
+                PageHost.Children.Add(hdr);
+                _ = FillHdrAsync(g, hdrStatus, hdrInstall, hdrRemove);
                 // populate_tools: NR diagnosis and ReShade / add-ons, each reviewed before it touches the game.
                 var extras = new PreferencesGroup("Graphics Tools", "Check NR or add ReShade to this game. Existing graphics files are kept safe.");
                 var graphicsTools = new PresetColumns(360, 2) { ColumnSpacing = 12, RowSpacing = 12 };
@@ -351,7 +362,7 @@ public sealed partial class GamePage : Page
                 foreach (var (kind, title, subtitle) in new[]
                 {
                     ("reshade", "Install ReShade", "Choose an extracted x64 ReShade DLL. DirectX 10–12 games load it as dxgi.dll."),
-                    ("addon", "Install Add-on", "Choose an .addon64 file (including RenoDX). Install ReShade first."),
+                    ("addon", "Install Add-on", "Choose another .addon64 file. RenoDX HDR is managed above."),
                 })
                 {
                     var install = Prefs.ActionButton("Choose", async (_, _) => await shell.InstallExtraAsync(g, kind));
@@ -435,6 +446,22 @@ public sealed partial class GamePage : Page
             files.Add(Prefs.Row(file.Title, $"{file.Path} · {file.Current} · {file.Provenance}", glyph: ""));
         SetSubtitle(backupRow, inventory.LatestBackup is { } date ? "Latest backup " + date : "No DLSS file backups for this game.");
         restore.IsEnabled = inventory.LatestBackup is not null && !shell.Busy;
+    }
+
+    async Task FillHdrAsync(Game g, Border row, Button install, Button remove)
+    {
+        try
+        {
+            var status = await shell.Service.HdrStatusAsync(g);
+            if (g != game || section != "Tools") return;
+            SetSubtitle(row, status.Message + (status.Notes.Length > 0 ? "\n" + status.Notes : ""));
+            install.Content = status.Installed ? "Update HDR" : "Install HDR";
+            install.IsEnabled = status.Available && (!status.Installed || status.Update) && !shell.Busy;
+            install.Visibility = status.Installed && !status.Update ? Visibility.Collapsed : Visibility.Visible;
+            remove.Visibility = status.Installed ? Visibility.Visible : Visibility.Collapsed;
+            remove.IsEnabled = !shell.Busy;
+        }
+        catch (InvalidOperationException error) { SetSubtitle(row, "Couldn’t check HDR support. " + error.Message); }
     }
 
     async Task FillExtraRecordsAsync(Game g)

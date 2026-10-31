@@ -62,6 +62,7 @@ import compat_list  # noqa: E402
 import desktop_service  # noqa: E402
 import engine_bridge  # noqa: E402
 import extra_tools  # noqa: E402
+import renodx_hdr  # noqa: E402
 import game_notes  # noqa: E402
 import library_media  # noqa: E402
 import package_catalog  # noqa: E402
@@ -829,6 +830,27 @@ def _run_service(review):
 # ---------- Extras: ReShade and add-ons ----------
 
 
+def hdr_status(params):
+    return renodx_hdr.status(_config(), params['row'])
+
+
+def hdr_review(params):
+    remove = params.get('remove', False)
+    t.need(type(remove) is bool, 'Choose an HDR action.')
+    plan = (renodx_hdr.prepare_remove if remove else renodx_hdr.prepare)(_config(), params['row'])
+    changes = '\n'.join(('Remove ' if c['after'] is None else 'Update ' if c['before'] else 'Add ') + c['path']
+                        + ('\nSHA-256: ' + c['after'] if c['after'] else '') for c in plan['changes'])
+    return _review('renodx-hdr', 'Remove RenoDX HDR' if remove else 'Install RenoDX HDR',
+                   [_item(plan['name'], 'Remove HDR; keep NR and MFG.' if remove else 'Matching HDR mod and ReShade runtime',
+                          'Remove' if remove else 'Install', plan['game'], changes)],
+                   action='Remove HDR' if remove else 'Install HDR', payload=plan,
+                   summary='Existing game files and unrelated tuning are preserved.', note=renodx_hdr.NOTICE)
+
+
+def _run_hdr(plan):
+    return renodx_hdr.apply(_config(), plan)
+
+
 def extras_list(params):
     return [{**r, "title": extra_tools.KINDS[r["kind"]]} for r in extra_tools.recoveries(_config(), params["row"])]
 
@@ -1010,6 +1032,7 @@ def update_apply(params):
 
 
 RUNNERS = {"art-sync": _run_art_sync, "dlss-restore": _run_dlss_restore, "report": _run_report, "service": _run_service,
+           'renodx-hdr': _run_hdr,
            "extra": _run_extra, "extra-restore": _run_extra_restore, "update": _run_update, 'global-controls': _run_global_controls, 'overlay-ui': _run_global_controls, 'overlay-packages': _run_global_controls,
            'storage-cleanup': _run_storage}
 
@@ -1026,6 +1049,7 @@ METHODS = {
     "try_anyway": try_anyway, "compat_share": compat_share,
     "recoveries": recoveries, "recovery_review": recovery_review, "cleanup_review": cleanup_review,
     "extras_list": extras_list, "extra_review": extra_review, "extra_restore_review": extra_restore_review,
+    'hdr_status': hdr_status, 'hdr_review': hdr_review,
     "packages": packages, "package_inspect": package_inspect, "package_use": package_use,
     "update_check": update_check, "update_stage": update_stage, "update_apply": update_apply,
     "storage_inventory": storage_inventory, "storage_review": storage_review,

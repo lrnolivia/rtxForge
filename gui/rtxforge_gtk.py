@@ -6128,6 +6128,25 @@ class Window(Adw.ApplicationWindow):
         self.add_tick_callback(lambda _widget,_clock:animate())
 
     def populate_tools(self,body,game):
+        import renodx_hdr
+        hdr=Adw.PreferencesGroup(title='RenoDX HDR',description='The matching HDR mod and its dependencies, managed together.')
+        hdr_row=row('HDR enhancement','Checking HDR support…')
+        install=button('Install HDR',lambda *_:self.review_hdr(game))
+        remove=button('Remove HDR',lambda *_:self.review_hdr(game,remove=True))
+        install.set_sensitive(False);remove.set_visible(False)
+        hdr_row.add_suffix(install);hdr_row.add_suffix(remove);hdr.add(hdr_row);body.append(hdr)
+        def show_hdr(result):
+            hdr_row.set_subtitle(result['message']+'\n'+result.get('notes',''))
+            installed=result.get('installed',False)
+            install.set_label('Update HDR' if installed else 'Install HDR')
+            install.set_sensitive(result.get('available',False) and (not installed or result.get('update',False)))
+            install.set_visible(not installed or result.get('update',False));remove.set_visible(installed)
+        if self.options.demo:hdr_row.set_subtitle('HDR support is checked in the installed app.')
+        else:
+            def load_hdr():
+                result=renodx_hdr.status(self.service.config,game)
+                GLib.idle_add(show_hdr,result)
+            threading.Thread(target=load_hdr,daemon=True).start()
         body.append(label('Tools','title-2'))
         body.append(label('Check NR or add ReShade to this game. Existing graphics files are kept safe.','dim-label'))
         actions=[button('Diagnose NR',lambda *_:self.show_diagnostics(game))]
@@ -6763,6 +6782,18 @@ class Window(Adw.ApplicationWindow):
             note='This native code will run inside the game. The hash identifies the selected file; it does not establish its publisher or safety.',
             trust='I trust the source of this exact file',
             done=lambda _:'Tool installed. Recovery is available in Tools.')
+
+    def review_hdr(self,game,remove=False):
+        import renodx_hdr
+        def ready(plan):
+            changes='\n'.join(('Remove ' if c['after'] is None else 'Update ' if c['before'] else 'Add ')+c['path'] for c in plan['changes'])
+            review={'operation':'tool-restore' if remove else 'tool','rows':[{'name':game['name'],'game':game['game'],'detail':changes}],'blocked':[]}
+            self.review_write(review['operation'],review,
+                run=lambda _:renodx_hdr.apply(self.service.config,plan),
+                details=['Remove HDR' if remove else 'Install HDR','Keep NR, MFG and unrelated tuning.'],
+                note=renodx_hdr.NOTICE,
+                done=lambda result:result['message'])
+        self.start('Preparing RenoDX HDR',lambda:(renodx_hdr.prepare_remove if remove else renodx_hdr.prepare)(self.service.config,game),ready)
 
     def review_extra_restore(self,record):
         import extra_tools

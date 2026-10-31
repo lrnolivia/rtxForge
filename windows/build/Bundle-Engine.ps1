@@ -67,6 +67,7 @@ $copy = @(
     @{ From = 'engine\SOURCE.json' }
     @{ From = 'scripts'; Filter = '*.py' }
     @{ From = 'providers'; Filter = '*.json' }
+    @{ From = 'providers\renodx-hdr'; Filter = '*.txt' }
     @{ From = 'providers\skynizz-bridge\controls.json' }
     @{ From = 'providers\skynizz-bridge\source.json' }
     @{ From = 'providers\skynizz-bridge\placement-candidate.json' }

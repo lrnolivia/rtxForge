@@ -245,6 +245,15 @@ public sealed partial class EngineForgeService
 
     // ---------- tools ----------
 
+    public async Task<HdrStatus> HdrStatusAsync(Game game)
+    {
+        var r = await CallAsync("hdr_status", new JsonObject { ["row"] = Row(game) });
+        return new HdrStatus(B(r, "available"), B(r, "installed"), B(r, "update"), S(r, "message") ?? "", S(r, "notes") ?? "");
+    }
+
+    public async Task<EngineReview> ReviewHdrAsync(Game game, bool remove = false) =>
+        ToReview(await CallAsync("hdr_review", new JsonObject { ["row"] = Row(game), ["remove"] = remove }));
+
     public async Task<NrDiagnosis> DiagnoseAsync(Game game)
     {
         var report = await CallAsync("diagnose", new JsonObject { ["row"] = Row(game) });

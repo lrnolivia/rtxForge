@@ -465,7 +465,7 @@ button:active { transform: scale(.98); }
 .settings-group { margin-top: 34dp; }
 .settings-group h3 { font-family: var(--heading-font); color: var(--accent-ink); font-size: 22dp; margin: 0 0 18dp; }
 .settings-layouts { display: flex; gap: 10dp; }
-.settings-layouts button { flex: 1; min-width: 0; padding: 14dp 10dp; font-size: 16dp; white-space: normal; background: #ffffff12; }
+.settings-layouts button { flex: 1; min-width: 0; height: 164dp; box-sizing: border-box; line-height: 1.25; padding: 14dp 10dp; font-size: 16dp; white-space: normal; background: #ffffff12; }
 .settings-layouts button.selected { background: var(--accent-soft); }
 .settings-group .inherit-row { display: flex; align-items: center; justify-content: space-between; gap: 24dp; margin: 22dp 0; }
 .settings-group .inherit-row label { flex: 1; }

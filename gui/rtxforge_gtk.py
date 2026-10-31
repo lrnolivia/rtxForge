@@ -10289,6 +10289,10 @@ class Window(Adw.ApplicationWindow):
         for item in report.get('updated_games',[]):text+='\n\nUpdated · '+item['title']
         for item in report.get('blocked',[]):text+='\n\nNeeds repair · '+item['title']+'\n'+item['detail']
         if report.get('error'):text+='\n\n'+report['error']
+        if self.input_stack.get_visible_child_name()=='couch':
+            c=self.couch
+            c.show_modal('Overlay update',c.label(text,'gm-p',wrap=True),[c.button('Done',c.close_modal)],c.close_modal,1000)
+            return
         dialog=Adw.AlertDialog(heading='Overlay update',body=text)
         dialog.add_response('close','Done');dialog.set_close_response('close');dialog.present(self)
 

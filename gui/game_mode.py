@@ -2504,7 +2504,7 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
             return 'Glass overlay settings update through the running helper. Native menu changes apply after restarting the game.', [
                 self.choice('Panel', None, ['game', 'optiscaler'], ['In the game', 'OptiScaler menu only'],
                             lambda: s.get('overlay_renderer', 'game'), lambda v: s.update(overlay_renderer=v)),
-                LayoutPicker(glass.current(s)['Layout'],lambda value:glass.edit(s,'Layout',value)),
+                LayoutPicker(glass.current(s)['Layout'],lambda value:(glass.edit(s,'Layout',value),self.save_settings())),
                 self.choice('Appearance',None,['clear','light','dark'],['Clear','Light','Dark'],
                             lambda:{3:'clear',1:'light',2:'dark'}[glass.current(s)['Theme']],lambda v:glass.theme(s,v)),
                 appearance_choice('Text size','TextSize',[18,22,26],['Aa  Smaller','Aa  Default','Aa  Larger']),
@@ -2530,6 +2530,8 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
                 self.choice('Native Vulkan MFG menu and hint', None, *on_off, lambda: bool(s.get('vulkan_mfg_native_menu', False)), lambda v: s.update(vulkan_mfg_native_menu=v)),
                 self.row_button('Update Overlays', 'Review', owner.overlay_packages_review,
                                 description='Review package updates and the effective choices for each installed game.'),
+                self.row_button('Last overlay update', None, owner.overlay_update_details,
+                                description='Updated games, current overlays and anything that needs repair.'),
             ]
         if section == 'Library':
             return 'Manage the library layout and artwork sources.', [

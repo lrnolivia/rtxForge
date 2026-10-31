@@ -22,10 +22,10 @@ class RequiredRefreshTest(unittest.TestCase):
         self.folder=self.root/'providers/glass-overlay';self.folder.mkdir(parents=True)
         self.write_bundle(b'first renderer')
 
-    def write_bundle(self,data):
-        (self.folder/'rollout.json').write_text(json.dumps({'schema':1,'revision':1,'required':True}))
+    def write_bundle(self,data,revision=1):
+        (self.folder/'rollout.json').write_text(json.dumps({'schema':1,'revision':revision,'required':True}))
         (self.folder/'rtxforge-glass.dll').write_bytes(data)
-        (self.folder/'package.json').write_text(json.dumps({'schema':1,'renderer':'rmlui','revision':1,
+        (self.folder/'package.json').write_text(json.dumps({'schema':1,'renderer':'rmlui','revision':revision,
             'files':{'rtxforge-glass.dll':{'size':len(data),'sha256':hashlib.sha256(data).hexdigest()}}}))
 
     def test_refresh_executes_exact_prepared_plan_once(self):
@@ -59,6 +59,18 @@ class RequiredRefreshTest(unittest.TestCase):
         refresh.run(self.root,self.state,prepare,execute)
         self.write_bundle(b'corrected renderer')
         self.assertEqual(refresh.run(self.root,self.state,prepare,execute)['status'],'complete')
+        self.assertEqual(prepare.call_count,2)
+
+    def test_required_revision_upgrade_runs_even_when_renderer_bytes_match(self):
+        prepare=Mock(return_value={'plans':[],'blocked':[]});execute=Mock()
+        refresh.run(self.root,self.state,prepare,execute)
+        self.write_bundle(b'first renderer',revision=2)
+        self.assertEqual(refresh.run(self.root,self.state,prepare,execute)['status'],'complete')
+        self.assertEqual(prepare.call_count,2)
+        self.assertEqual(json.loads((self.state/'overlay-refresh.json').read_text())['revision'],2)
+        self.assertEqual(refresh.run(self.root,self.state,prepare,execute)['status'],'current')
+        self.write_bundle(b'first renderer',revision=1)
+        self.assertEqual(refresh.run(self.root,self.state,prepare,execute)['status'],'newer-revision-kept')
         self.assertEqual(prepare.call_count,2)
 
     def test_execution_failure_does_not_mark_upgrade_complete(self):

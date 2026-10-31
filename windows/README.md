@@ -6,7 +6,7 @@ token map.
 
 ## Download Beta 1
 
-[rtxForge Beta 1](https://github.com/lrnolivia/rtxForge/releases/tag/beta) is published for Windows and Linux. Windows packages currently use build version `1.0.0-beta.12`: choose the x64 or ARM64 setup `.exe`, or extract the x64 portable ZIP and run `rtxForge.exe`. The installer and portable app include their runtimes. SHA-256 files accompany the downloads; `.previous-` files are recovery copies.
+[rtxForge Beta 1](https://github.com/lrnolivia/rtxForge/releases/tag/beta) is published for Windows and Linux. Windows packages currently use build version `1.0.0-beta.13`: choose the x64 or ARM64 setup `.exe`, or extract the x64 portable ZIP and run `rtxForge.exe`. The installer and portable app include their runtimes. SHA-256 files accompany the downloads; `.previous-` files are recovery copies.
 
 Use the [Windows installation guide](https://loew.fi/rtxforge/install?os=windows) for setup and the release notes for known testing limits. The instructions below are for building from source.
 

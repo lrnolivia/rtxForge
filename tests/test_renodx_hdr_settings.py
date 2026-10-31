@@ -3,13 +3,14 @@ import copy
 from pathlib import Path
 import unittest
 from unittest.mock import patch
-from tests.test_renodx_hdr import HdrTests, hdr, t
+from tests import test_renodx_hdr as fixtures
+hdr, t = fixtures.hdr, fixtures.t
 import renodx_hdr_settings as settings
 
 
 class HdrSettingsTests(unittest.TestCase):
     def setUp(self):
-        HdrTests.setUp(self)
+        fixtures.HdrTests.setUp(self)
         hdr.apply({}, hdr.prepare({}, self.row))
         read = t.read_json
         catalog_path = hdr.ROOT / 'providers/renodx-hdr-settings.json'

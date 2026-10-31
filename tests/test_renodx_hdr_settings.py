@@ -87,3 +87,9 @@ class HdrSettingsTests(unittest.TestCase):
             self.assertEqual(settings.flush({})['applied'], 1)
         self.assertEqual(self.value(), 250)
         self.assertEqual(float(t.ini(self.ini.read_text()).get(self.profile['section'], 'ToneMapUINits')), 275)
+
+    def test_unstored_display_calibration_is_not_presented_as_measured(self):
+        self.assertIn('ToneMapPeakNits', settings.snapshot({}, self.row)['unreported'])
+        result = settings.save({}, self.row, {'ToneMapPeakNits': 600})
+        self.assertNotIn('ToneMapPeakNits', result['unreported'])
+        self.assertEqual(result['values']['ToneMapPeakNits'], 600)

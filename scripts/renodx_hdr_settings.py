@@ -56,7 +56,10 @@ def snapshot(config, row):
             changes = pending.get('changes', {})
             t.need(isinstance(changes, dict) and set(changes) <= fields.keys(), 'Invalid pending HDR settings.')
             values.update({key: _number(value, fields[key]) for key, value in changes.items()})
-        return {'available': True, 'installed': True, 'title': 'RenoDX HDR', 'controls': profile['controls'], 'values': values,
+        parser = t.ini(ini.read_text(encoding='utf-8-sig'))
+        unreported = [f['key'] for f in profile['controls'] if not f.get('reset', True)
+                      and not parser.has_option(profile['section'], f['key']) and f['key'] not in pending.get('changes', {})]
+        return {'available': True, 'installed': True, 'title': 'RenoDX HDR', 'controls': profile['controls'], 'values': values, 'unreported': unreported,
                 'pending': bool(pending), 'message': pending.get('error') or
                 ('Saved changes are queued until this game closes. Restart to use them.' if pending else
                  'Startup HDR preferences. Changes apply after closing and restarting the game; live adjustments remain in the native RenoDX menu.')}

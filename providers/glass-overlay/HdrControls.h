@@ -12,7 +12,7 @@ namespace ForgeGlass {
 struct HdrField {
     std::string key,label,section,kind,options,unit;
     float minimum{},maximum{},step{1},initial{},value{};
-    bool reset{true};
+    bool reset{true},automatic{};
 };
 struct HdrControls {
     Rml::ElementDocument* document{};
@@ -44,7 +44,7 @@ struct HdrControls {
     void Set(std::vector<HdrField> next,bool supported,bool present,const std::string& message) {
         bool rebuild=fields.size()!=next.size();
         if(!rebuild)for(size_t i=0;i<fields.size();++i)if(fields[i].key!=next[i].key||fields[i].options!=next[i].options||fields[i].minimum!=next[i].minimum||fields[i].maximum!=next[i].maximum){rebuild=true;break;}
-        for(auto& f:next)if(pending.contains(f.key))f.value=pending.at(f.key);
+        for(auto& f:next)if(pending.contains(f.key)){f.value=pending.at(f.key);f.automatic=false;}
         fields=std::move(next);available=supported;installed=present;
         for(const auto* id:{"hdr-main-note","hdr-popup-note"})E(id)->SetInnerRML(Escape(message));
         for(const auto* id:{"open-hdr","nav-hdr"})E(id)->SetProperty("display",supported||present?"flex":"none");
@@ -54,7 +54,7 @@ struct HdrControls {
         syncing=true;
         for(const auto& f:fields)for(const auto* prefix:{"hdr-main-","hdr-popup-"})if(auto* e=E(std::string(prefix)+f.key)) {
             if(auto* input=dynamic_cast<Rml::ElementFormControl*>(e)){input->SetValue(Number(f.value,f.kind=="choice"));input->SetDisabled(!available);}
-            if(auto* label=E(std::string(prefix)+f.key+"-value"))label->SetInnerRML(Number(f.value,f.step>=1)+(f.unit.empty()?"":" "+Escape(f.unit)));
+            if(auto* label=E(std::string(prefix)+f.key+"-value"))label->SetInnerRML(f.automatic?"Display default":Number(f.value,f.step>=1)+(f.unit.empty()?"":" "+Escape(f.unit)));
         }
         syncing=false;
     }
@@ -63,7 +63,7 @@ struct HdrControls {
         if(event.GetType()=="click"&&id=="hdr-more"){auto* body=E("hdr-more-body");const bool show=!body->IsVisible();body->SetProperty("display",show?"block":"none");E("hdr-more")->SetClass("expanded",show);return true;}
         if(event.GetType()=="click"&&id=="hdr-reset"){if(available)Reset();return true;}
         if(event.GetType()!="change"||syncing||!available)return false;
-        for(auto& f:fields)if(id=="hdr-main-"+f.key||id=="hdr-popup-"+f.key){auto* input=dynamic_cast<Rml::ElementFormControl*>(E(id));if(!input)return true;try{const float value=std::stof(input->GetValue());if(std::isfinite(value)&&value>=f.minimum&&value<=f.maximum){f.value=value;pending[f.key]=value;Sync();}}catch(...){}return true;}
+        for(auto& f:fields)if(id=="hdr-main-"+f.key||id=="hdr-popup-"+f.key){auto* input=dynamic_cast<Rml::ElementFormControl*>(E(id));if(!input)return true;try{const float value=std::stof(input->GetValue());if(std::isfinite(value)&&value>=f.minimum&&value<=f.maximum){f.value=value;f.automatic=false;pending[f.key]=value;Sync();}}catch(...){}return true;}
         return false;
     }
     bool Flush(const std::function<bool(const std::string&)>& send) {

@@ -248,7 +248,7 @@ int wmain(int argc,wchar_t** argv)
         auto* document=context->LoadDocument(Utf8(assets/L"overlay.rml"));Require(document!=nullptr,"Overlay document could not load");
         Controller controller;controller.document=document;controller.appearance=appearance;controller.accent=accent;controller.UseTheme(appearance);if(window)controller.LoadPreferences();
         controller.InstallExtraControls();
-        std::vector<ForgeGlass::HdrField> hdrPreview;for(const auto& f:PreviewHdrFields)hdrPreview.push_back({f.key,f.label,f.section,f.kind,f.options,f.unit,f.minimum,f.maximum,f.step,f.initial,f.initial,f.reset});
+        std::vector<ForgeGlass::HdrField> hdrPreview;for(const auto& f:PreviewHdrFields)hdrPreview.push_back({f.key,f.label,f.section,f.kind,f.options,f.unit,f.minimum,f.maximum,f.step,f.initial,f.initial,f.reset,!f.reset});
         controller.hdr.Set(std::move(hdrPreview),true,true,"Preview HDR preferences. These sample controls do not change a game; connected controls save startup preferences for verified add-on builds.");
         if(!requestedBlend.empty())controller.surfaceBlend=requestedBlend;if(requestedTint>=0){if(controller.appearance==1)controller.lightOpacity=requestedTint;else if(controller.appearance==3)controller.clearOpacity=requestedTint;else controller.darkOpacity=requestedTint;}
         controller.presets["natural"]=controller.values;controller.presets["cinematic"]=controller.values;controller.presets["cinematic"]["style"]=2;controller.presets["cinematic"]["intensity"]=.8f;

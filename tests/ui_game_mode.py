@@ -292,7 +292,7 @@ def overlay_section():
 def overlay_appearance():
  c=app.window.couch;text=labels(c.body)
  assert 'Appearance' in text and 'Clear' in text,'Clear is the overlay default'
- for title in ('Floating Sidebar','Centered Advanced','Bottom Bar'):assert title in text,title
+ for title in ('Side Panel','Advanced','Bar'):assert title in text,title
  for title in ('Main font','Toast shape','Adaptive text depth','Darker inner cards','More appearance options','Overlay scale'):
   assert title not in text,title+' belongs outside Game Mode settings'
  from overlay_layouts import LayoutPicker

@@ -123,22 +123,20 @@ struct Controller : Rml::EventListener
         if(before!=layout)Layout(layout);
     }
     bool typographySync=false;
-    std::map<Rml::Element*,MaterialColor::Foreground> foreground;
+    std::unordered_set<Rml::Element*> clearForeground;
     double lastForeground=-1;
+    std::array<float,3> clearAccent{};
     void AdaptiveForeground(const Backdrop& backdrop,double now) {
-        const float dt=lastForeground<0?.1f:float(now-lastForeground);lastForeground=now;
-        if(appearance!=3){Rml::ElementList current;document->QuerySelectorAll(current,"h1,h2,label,.hint,.brand,.welcome-wordmark,.welcome-message,.preview-note,button,select,.field-heading span,.status-note,.glyph");for(auto* e:current){if(foreground.contains(e)){e->RemoveProperty("color");e->RemoveProperty("image-color");e->RemoveProperty("font-effect");}}foreground.clear();return;}
-        Rml::ElementList elements;document->QuerySelectorAll(elements,"h1,h2,label,.hint,.brand,.welcome-wordmark,.welcome-message,.preview-note,button,select,.field-heading span,.status-note,.glyph");
-        const std::unordered_set<Rml::Element*> alive(elements.begin(),elements.end());std::erase_if(foreground,[&](const auto& pair){return !alive.contains(pair.first);});
-        for(auto* e:elements){if(!e->IsVisible())continue;bool panel=false,menu=false;for(auto* p=e;p;p=p->GetParentNode()){if(p->IsClassSet("glass"))panel=true;if(p->GetId()=="settings-menu"||p->GetTagName()=="selectbox")menu=true;}if(!panel||menu)continue;
-            const auto at=e->GetAbsoluteOffset(Rml::BoxArea::Border),size=e->GetBox().GetSize(Rml::BoxArea::Border);const auto c=backdrop.Background(at.x,at.y,size.x,size.y);if(!c.valid)continue;
-            const auto surface=MaterialColor::ClearSurface({c.r,c.g,c.b},clearOpacity/100.f,MaterialColor::Mode(surfaceBlend),blendStrength/100.f);
-            const float mix=foreground[e].Update(MaterialColor::LinearLuma(surface),dt,reducedMotion,textDepth);std::string color;
-            if(e->GetTagName()=="h1"||e->GetTagName()=="h2")color=Hex(accent[0]*(.55f-.15f*mix)+.60f*mix,accent[1]*(.55f-.15f*mix)+.60f*mix,accent[2]*(.55f-.15f*mix)+.60f*mix);
-            else color=Hex(.12f+.84f*mix,.11f+.84f*mix,.10f+.84f*mix);
-            auto& state=foreground[e];if(state.lastColor!=color){e->SetProperty(e->IsClassSet("glyph")?"image-color":"color",color);state.lastColor=color;}
-            const int bucket=int(std::round(mix*4));const float shade=1-bucket*.25f;const std::string effect=textDepth && !e->IsClassSet("glyph")?"glow(0dp 2dp 0dp "+std::string(bucket>=2?"1dp ":"0dp ")+Hex(shade,shade,shade,.40f)+")":"none";
-            if(state.lastEffect!=effect){e->SetProperty("font-effect",effect);state.lastEffect=effect;}
+        const float dt=lastForeground<0?.1f:float(now-lastForeground);lastForeground=now;document->SetClass("clear-foreground",appearance==3);
+        if(clearAccent!=accent){clearForeground.clear();clearAccent=accent;}
+        Rml::ElementList elements;document->QuerySelectorAll(elements,"h1,h2,h3,label,.hint,.brand,.welcome-wordmark,.welcome-message,.preview-note,button,select,selectvalue,.button-label,.field-heading span,.status-note,.glyph,.metadata-line,.mini-stat strong,.mini-stat-detail,.compare button span");
+        const std::unordered_set<Rml::Element*> alive(elements.begin(),elements.end());
+        std::erase_if(clearForeground,[&](auto* e){return !alive.contains(e);});
+        if(appearance!=3){for(auto* e:clearForeground){e->RemoveProperty("color");e->RemoveProperty("image-color");e->RemoveProperty("font-effect");}clearForeground.clear();return;}
+        for(auto* e:elements){bool panel=false,menu=false;for(auto* p=e;p;p=p->GetParentNode()){if(p->IsClassSet("glass"))panel=true;if(p->GetId()=="settings-menu"||p->GetTagName()=="selectbox")menu=true;}if(!panel||menu)continue;
+            if(clearForeground.insert(e).second){const bool heading=e->GetTagName()=="h1"||e->GetTagName()=="h2"||e->GetTagName()=="h3";
+                e->SetProperty(e->IsClassSet("glyph")?"image-color":"color",heading?Hex(.84f+.14f*accent[0],.82f+.14f*accent[1],.79f+.14f*accent[2]):"#f5f1eaff");
+                e->SetProperty("font-effect","none");}
         }
     }
     void Raise(const std::string& id) {

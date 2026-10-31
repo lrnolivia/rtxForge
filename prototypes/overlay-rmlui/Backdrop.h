@@ -18,7 +18,7 @@ class Backdrop
     Ptr<ID3D11Device> device;
     Ptr<ID3D11DeviceContext> context;
     Ptr<ID3D11VertexShader> vertex;
-    Ptr<ID3D11PixelShader> copy,blur,glass,shadow,average,downsample,thumbnail,material,layer;
+    Ptr<ID3D11PixelShader> copy,blur,glass,shadow,average,downsample,thumbnail,material,layer,ink,inkShadow;
     Ptr<ID3D11Buffer> constants;
     Ptr<ID3D11SamplerState> sampler;
     Ptr<ID3D11BlendState> opaque,alpha;
@@ -35,7 +35,7 @@ class Backdrop
     Ptr<ID3D11RenderTargetView> gridTarget;
     bool gridPending=false;
     int width,height,qwidth,qheight;
-    struct alignas(16) Data { float axis[2],screen[2],bounds[4],radius,saturation,grain,luminosity,uv[4],shadowColor[4],shadowParams[4],surface[4],pointer[4],output[4]; };
+    struct alignas(16) Data { float axis[2],screen[2],bounds[4],radius,saturation,grain,luminosity,uv[4],shadowColor[4],shadowParams[4],surface[4],pointer[4],output[4],readability[4]; };
     Data data{};
     double lastSample=-1;
     static void Check(HRESULT n) { if(FAILED(n))throw std::runtime_error("Backdrop GPU setup failed"); }
@@ -60,7 +60,7 @@ class Backdrop
         Upload();context->Draw(3,0);
     }
 public:
-    struct Panel { float x,y,width,height,radius,saturation{.65f},grain{.018f},luminosity{.04f},shadowOpacity{.18f},shadowRadius{28.f},shadowOffset{12.f},shadowBlend{},tone{.96f},grounding{.52f},blendAmount{.3f},blendMode{2},arrow{},anchorX{},opacity{1},scale{1},blur{32};size_t sampleIndex{}; };
+    struct Panel { float x,y,width,height,radius,saturation{.65f},grain{.018f},luminosity{.04f},shadowOpacity{.18f},shadowRadius{28.f},shadowOffset{12.f},shadowBlend{},tone{.96f},grounding{.52f},blendAmount{.3f},blendMode{2},arrow{},anchorX{},opacity{1},scale{1},blur{32},readability{},inkShadow{};size_t sampleIndex{}; };
     struct SceneColor {float r{},g{},b{};bool valid{};};
     std::array<SceneColor,64*36> grid;
     SceneColor Background(float x,float y,float w,float h) const {SceneColor c{};int count=0;for(int j=0;j<2;j++)for(int i=0;i<3;i++){const int gx=std::clamp(int((x+w*(i+.5f)/3)/width*64),0,63),gy=std::clamp(int((y+h*(j+.5f)/2)/height*36),0,35);const auto p=grid[gy*64+gx];if(p.valid){c.r+=p.r;c.g+=p.g;c.b+=p.b;++count;}}if(count){c.r/=count;c.g/=count;c.b/=count;c.valid=true;}return c;}
@@ -69,7 +69,7 @@ public:
     {
         d->GetImmediateContext(&context);data.output[0]=float(colorSpace);data.output[1]=203.f;std::copy(uv,uv+4,data.uv);data.screen[0]=float(w);data.screen[1]=float(h);
         const char* shader=R"(
-cbuffer Data : register(b0) {float2 axis;float2 screen;float4 bounds;float radius;float saturation;float grain;float luminosity;float4 crop;float4 shadowColor;float4 shadowParams;float4 surface;float4 pointer;float4 output;};
+cbuffer Data : register(b0) {float2 axis;float2 screen;float4 bounds;float radius;float saturation;float grain;float luminosity;float4 crop;float4 shadowColor;float4 shadowParams;float4 surface;float4 pointer;float4 output;float4 readability;};
 Texture2D image:register(t0);Texture2D blurredBackdrop:register(t1);SamplerState linearClamp:register(s0);
 struct Vertex {float4 position:SV_Position;float2 uv:TEXCOORD;};
 Vertex VS(uint id:SV_VertexID) {Vertex o;o.uv=float2((id<<1)&2,id&2);o.position=float4(o.uv.x*2-1,1-o.uv.y*2,0,1);return o;}
@@ -123,7 +123,10 @@ float4 Material(Vertex v):SV_Target {
  float3 destination=SceneWorking(image.Sample(linearClamp,v.uv).rgb);float3 color=destination;
  float luma=dot(color,float3(.2126,.7152,.0722));color=lerp(luma.xxx,color,saturation);
  color=lerp(color,((luma+.5)*.5).xxx,luminosity);color=lerp(color,surface.xxx,surface.y);
- return float4(lerp(color,SurfaceBlend(destination,color,surface.w),surface.z),1);
+ color=lerp(color,SurfaceBlend(destination,color,surface.w),surface.z);
+ float bright=smoothstep(.50,1,dot(color,float3(.2126,.7152,.0722)));
+ color*=1-.14*bright*readability.x;
+ return float4(color,1);
 }
 float4 Glass(Vertex v):SV_Target {
  float2 halfSize=(bounds.zw-bounds.xy)*.5;float2 local=v.position.xy-(bounds.xy+bounds.zw)*.5;
@@ -151,11 +154,24 @@ float4 Shadow(Vertex v):SV_Target {
  } else if(shadowParams.w>.5) blended=lerp(2*src*dst,1-2*(1-src)*(1-dst),step(.5,dst));
  a*=pointer.z;return float4(saturate(blended)*a,a);
 }
+float4 Ink(Vertex v):SV_Target {return image.Sample(linearClamp,v.uv);}
+float4 InkShadow(Vertex v):SV_Target {
+ float3 backdrop=blurredBackdrop.Sample(linearClamp,v.uv).rgb;
+ float light=smoothstep(.45,.92,dot(backdrop,float3(.2126,.7152,.0722)));
+ if(light<=.001||readability.y<=.001)discard;
+ float mask=0;
+ [unroll]for(int y=-1;y<=1;y++)[unroll]for(int x=-1;x<=1;x++){
+  float a=image.Sample(linearClamp,v.uv+(float2(x,y)*1.4-float2(0,.75))*readability.z/screen).a;
+  mask+=smoothstep(.55,.95,a)*(x==0?2:1)*(y==0?2:1);
+ }
+ float alpha=mask/16*light*readability.y;
+ return float4(float3(.065,.055,.045)*alpha,alpha);
+}
 float4 Average(Vertex v):SV_Target {float3 color=0;[unroll]for(int y=0;y<4;y++)[unroll]for(int x=0;x<4;x++)color+=SceneWorking(image.Sample(linearClamp,(bounds.xy+(float2(x,y)+.5)/4*(bounds.zw-bounds.xy))/screen).rgb);return float4(color/16,1);
 })";
         auto vs=Compile(shader,"VS","vs_5_0");Check(d->CreateVertexShader(vs->GetBufferPointer(),vs->GetBufferSize(),nullptr,&vertex));
         auto make=[&](const char* entry,Ptr<ID3D11PixelShader>& result){auto code=Compile(shader,entry,"ps_5_0");Check(d->CreatePixelShader(code->GetBufferPointer(),code->GetBufferSize(),nullptr,&result));};
-        make("Copy",copy);make("Layer",layer);make("Material",material);make("Downsample",downsample);make("Thumbnail",thumbnail);make("Blur",blur);make("Glass",glass);make("Shadow",shadow);make("Average",average);
+        make("Ink",ink);make("InkShadow",inkShadow);make("Copy",copy);make("Layer",layer);make("Material",material);make("Downsample",downsample);make("Thumbnail",thumbnail);make("Blur",blur);make("Glass",glass);make("Shadow",shadow);make("Average",average);
         D3D11_BUFFER_DESC buffer{};buffer.ByteWidth=sizeof(Data);buffer.Usage=D3D11_USAGE_DYNAMIC;buffer.BindFlags=D3D11_BIND_CONSTANT_BUFFER;buffer.CPUAccessFlags=D3D11_CPU_ACCESS_WRITE;Check(d->CreateBuffer(&buffer,nullptr,&constants));
         D3D11_SAMPLER_DESC sample{};sample.Filter=D3D11_FILTER_MIN_MAG_MIP_LINEAR;sample.AddressU=sample.AddressV=sample.AddressW=D3D11_TEXTURE_ADDRESS_CLAMP;sample.MaxLOD=D3D11_FLOAT32_MAX;Check(d->CreateSamplerState(&sample,&sampler));
         D3D11_BLEND_DESC blend{};blend.RenderTarget[0].RenderTargetWriteMask=D3D11_COLOR_WRITE_ENABLE_ALL;Check(d->CreateBlendState(&blend,&opaque));
@@ -190,6 +206,7 @@ float4 Average(Vertex v):SV_Target {float3 color=0;[unroll]for(int y=0;y<4;y++)[
             data.bounds[0]=panel.x;data.bounds[1]=panel.y;data.bounds[2]=panel.x+panel.width;data.bounds[3]=panel.y+panel.height;data.radius=panel.radius;
             data.saturation=panel.saturation;data.grain=panel.grain;data.luminosity=panel.luminosity;
             data.shadowColor[0]=data.shadowColor[1]=data.shadowColor[2]=.025f;
+            data.readability[0]=panel.readability;
             data.surface[0]=panel.tone;data.surface[1]=panel.grounding;data.surface[2]=panel.blendAmount;data.surface[3]=panel.blendMode;
             data.pointer[0]=panel.arrow;data.pointer[1]=panel.anchorX;data.pointer[2]=panel.opacity;data.pointer[3]=panel.scale;
             data.shadowParams[0]=panel.shadowOpacity;data.shadowParams[1]=panel.shadowRadius;data.shadowParams[2]=panel.shadowOffset;data.shadowParams[3]=panel.shadowBlend;
@@ -203,6 +220,16 @@ float4 Average(Vertex v):SV_Target {float3 color=0;[unroll]for(int y=0;y<4;y++)[
             Bind(rtv,enabled?verticalView.Get():surfaceView.Get(),glass.Get(),width,height);
         }
         context->PSSetShaderResources(0,2,emptyResources);
+    }
+    void DrawInk(ID3D11RenderTargetView* target,ID3D11ShaderResourceView* source,const Panel& panel,bool blurred) {
+        context->IASetInputLayout(nullptr);context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);context->VSSetShader(vertex.Get(),nullptr,0);context->GSSetShader(nullptr,nullptr,0);
+        context->RSSetState(raster.Get());context->OMSetDepthStencilState(depth.Get(),0);context->OMSetBlendState(alpha.Get(),nullptr,0xffffffff);
+        auto* cb=constants.Get();context->PSSetConstantBuffers(0,1,&cb);auto* sm=sampler.Get();context->PSSetSamplers(0,1,&sm);
+        data.readability[0]=panel.readability;data.readability[1]=panel.inkShadow*panel.readability;data.readability[2]=panel.scale;
+        auto* background=blurred?verticalView.Get():surfaceView.Get();context->PSSetShaderResources(1,1,&background);
+        if(data.readability[1]>.001f)Bind(target,source,inkShadow.Get(),width,height);
+        Bind(target,source,ink.Get(),width,height);
+        ID3D11ShaderResourceView* empty[2]={};context->PSSetShaderResources(0,2,empty);
     }
     void SetPhoto(const unsigned char* pixels,int imageWidth,int imageHeight,const float uv[4]) {
         D3D11_TEXTURE2D_DESC desc{};desc.Width=imageWidth;desc.Height=imageHeight;desc.MipLevels=desc.ArraySize=1;desc.Format=DXGI_FORMAT_R8G8B8A8_UNORM;desc.SampleDesc.Count=1;desc.BindFlags=D3D11_BIND_SHADER_RESOURCE;

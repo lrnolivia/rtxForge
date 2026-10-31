@@ -102,3 +102,9 @@ Each game's Tools page also accepts an optional architecture-matched custom
 `.addon32` or `.addon64` HDR add-on. The review freezes the selected bytes and SHA-256;
 future repairs keep this game-specific choice rather than replace it with the
 automatic catalog. Automatic matching remains the default.
+
+Clear keeps warm-white text and glyphs, with light accent headings. A restrained
+shadow follows the actual foreground ink over bright surfaces, treating labels,
+glyphs and values consistently. Existing glass gently softens bright highlights;
+no extra row rectangles or shadow boxes are introduced. Dark surfaces receive no
+added ink shadow. Light and Dark retain their own foreground palettes.

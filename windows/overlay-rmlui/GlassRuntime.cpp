@@ -68,7 +68,7 @@ Rml::Input::KeyIdentifier Key(int vk){if(vk>='A'&&vk<='Z')return Rml::Input::Key
 struct Runtime {
     Files files;System system;Rml::ElementInstancerGeneric<Root> roots;
     ComPtr<ID3D11Device> device;ComPtr<ID3D11DeviceContext> immediate;
-    ComPtr<ID3D11Texture2D> windowLayer;ComPtr<ID3D11RenderTargetView> windowView;ComPtr<ID3D11ShaderResourceView> windowSource;
+    ComPtr<ID3D11Texture2D> windowLayer,inkLayer;ComPtr<ID3D11RenderTargetView> windowView,inkView;ComPtr<ID3D11ShaderResourceView> windowSource,inkSource;
     std::unique_ptr<Renderer> renderer;std::unique_ptr<Backdrop> backdrop;std::unique_ptr<ForgeGlass::Controller> controls;
     Rml::Context* context{};Rml::ElementDocument* document{};bool initialized=false,mouse[3]{},keys[256]{},hostVisible=false;int width{},height{};DXGI_FORMAT format{};
     ForgeWorkbench::Values lastValues;
@@ -176,7 +176,7 @@ struct Runtime {
         c.Element("font-select")->SetInnerRML("<option value=\"roboto\">Roboto</option><option value=\"inter\">Inter</option>");document->QuerySelector(".prototype-toolbar")->SetProperty("display","none");c.Visible("type-panel",false);c.Visible("inspector",false);c.Visible("welcome",false);c.Visible("main-panel",frame.visible);document->Show();hostVisible=frame.visible;c.Layout(c.layout);lastValues=c.values;
         const unsigned char pixel[4]={};const float uv[4]={0,0,1,1};DXGI_FORMAT compatible=format;if(format==DXGI_FORMAT_R8G8B8A8_TYPELESS)compatible=DXGI_FORMAT_R8G8B8A8_UNORM;if(format==DXGI_FORMAT_B8G8R8A8_TYPELESS)compatible=DXGI_FORMAT_B8G8R8A8_UNORM;
         backdrop=std::make_unique<Backdrop>(device.Get(),width,height,pixel,1,1,uv,compatible,frame.colorSpace);
-        D3D11_TEXTURE2D_DESC layer{};layer.Width=width;layer.Height=height;layer.MipLevels=layer.ArraySize=1;layer.Format=DXGI_FORMAT_R8G8B8A8_UNORM;layer.SampleDesc.Count=1;layer.BindFlags=D3D11_BIND_RENDER_TARGET|D3D11_BIND_SHADER_RESOURCE;Check(device->CreateTexture2D(&layer,nullptr,&windowLayer));Check(device->CreateRenderTargetView(windowLayer.Get(),nullptr,&windowView));Check(device->CreateShaderResourceView(windowLayer.Get(),nullptr,&windowSource));
+        D3D11_TEXTURE2D_DESC layer{};layer.Width=width;layer.Height=height;layer.MipLevels=layer.ArraySize=1;layer.Format=DXGI_FORMAT_R8G8B8A8_UNORM;layer.SampleDesc.Count=1;layer.BindFlags=D3D11_BIND_RENDER_TARGET|D3D11_BIND_SHADER_RESOURCE;Check(device->CreateTexture2D(&layer,nullptr,&windowLayer));Check(device->CreateRenderTargetView(windowLayer.Get(),nullptr,&windowView));Check(device->CreateShaderResourceView(windowLayer.Get(),nullptr,&windowSource));Check(device->CreateTexture2D(&layer,nullptr,&inkLayer));Check(device->CreateRenderTargetView(inkLayer.Get(),nullptr,&inkView));Check(device->CreateShaderResourceView(inkLayer.Get(),nullptr,&inkSource));
         if(frame.welcome){c.Welcome();c.toastUntil=system.GetElapsedTime()+7;}
     }
     bool Draw(const ForgeGlass::Host& host,ForgeGlass::Frame& frame,ID3D11Texture2D* target) {
@@ -245,7 +245,7 @@ struct Runtime {
                     const auto at=e->GetAbsoluteOffset(Rml::BoxArea::Border);const auto size=e->GetBox().GetSize(Rml::BoxArea::Border);
                     Backdrop::Panel panel{at.x,at.y,size.x,size.y,24*context->GetDensityIndependentPixelRatio()};panel.sampleIndex=std::string(id)=="main-panel"?0:std::string(id)=="inspector"?1:std::string(id)=="welcome"?2:3;panel.scale=context->GetDensityIndependentPixelRatio();if(std::string(id)=="inspector" && c.inspectorAnchored){panel.arrow=1;panel.anchorX=std::clamp(c.inspectorAnchorX,at.x+24,at.x+size.x-24);}
                     const auto variable=[e](const char* name,float fallback){const auto* p=e->GetProperty(name);if(!p)return fallback;try{return std::stof(p->Get<Rml::String>());}catch(...){return fallback;}};
-                    panel.blur=c.blurRadius;panel.radius=std::clamp(variable("--corner-radius",24.f),0.f,100.f)*panel.scale;panel.saturation=std::clamp(variable("--material-saturation",1.12f),0.f,2.f);panel.grain=std::clamp(variable("--material-texture",.028f),0.f,.08f);panel.luminosity=std::clamp(variable("--material-luminosity",.04f),0.f,.25f);
+                    panel.readability=c.appearance==3?1.f:0.f;panel.inkShadow=c.textDepth?.14f:0.f;panel.blur=c.blurRadius;panel.radius=std::clamp(variable("--corner-radius",24.f),0.f,100.f)*panel.scale;panel.saturation=std::clamp(variable("--material-saturation",1.12f),0.f,2.f);panel.grain=std::clamp(variable("--material-texture",.028f),0.f,.08f);panel.luminosity=std::clamp(variable("--material-luminosity",.04f),0.f,.25f);
                     panel.shadowOpacity=std::clamp(variable("--shadow-opacity",.30f),0.f,.5f);panel.shadowRadius=std::clamp(variable("--shadow-radius",28.f),8.f,60.f);panel.shadowOffset=std::clamp(variable("--shadow-offset",12.f),0.f,24.f);
                     panel.opacity=std::clamp(variable("--window-opacity",1.f),0.f,1.f);panel.tone=std::clamp(variable("--surface-tone",.96f),0.f,1.f);panel.grounding=std::clamp(variable("--surface-grounding",.52f),0.f,1.f);panel.blendAmount=std::clamp(variable("--material-blend-opacity",.3f),0.f,1.f);
                     if(const auto* blend=e->GetProperty("--material-blend")) {const auto name=blend->Get<Rml::String>();panel.blendMode=float(MaterialColor::Mode(name));}
@@ -262,7 +262,7 @@ struct Runtime {
             const auto renderUi=[&](Rml::Element* root,ID3D11RenderTargetView* destination=nullptr) {if(!destination)destination=frame.target;immediate->OMSetRenderTargets(1,&destination,nullptr);D3D11_VIEWPORT viewport{0,0,float(width),float(height),0,1};immediate->RSSetViewports(1,&viewport);renderer->BeginFrame();auto& manager=context->GetRenderManager();manager.PrepareRender({width,height});static_cast<Root*>(root)->Paint();manager.ResetState();renderer->EndFrame(destination);};
             for(const auto& id:c.stacking)if(byId.contains(id)) {
                 const float clearLayer[4]={};immediate->ClearRenderTargetView(windowView.Get(),clearLayer);backdrop->Draw(target,windowView.Get(),{byId.at(id)},true,false);
-                renderUi(c.Element(id.c_str()),windowView.Get());const auto velocity=c.windowVelocity[id];backdrop->ComposeLayer(frame.target,windowSource.Get(),velocity.x,velocity.y,c.reducedMotion);
+                const float clearInk[4]={};immediate->ClearRenderTargetView(inkView.Get(),clearInk);renderUi(c.Element(id.c_str()),inkView.Get());backdrop->DrawInk(windowView.Get(),inkSource.Get(),byId.at(id),true);const auto velocity=c.windowVelocity[id];backdrop->ComposeLayer(frame.target,windowSource.Get(),velocity.x,velocity.y,c.reducedMotion);
             }
 
             if(c.Element("tooltip")->IsVisible()){

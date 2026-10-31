@@ -2329,9 +2329,11 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
                     ('Interface', 'Mouse, keyboard, and controller input keep your chosen interface.', rows[:1]),
                     ('Layout and labels', None, rows[1:4]), ('Controller', None, rows[4:])]
         if section == 'Overlay':
-            # Panel through shortcut, then OptiScaler's three, then ReShade, Vulkan and updates.
-            return [('rtxForge Panel', 'In-game controls. Games pick these up on their next reviewed install or repair.', rows[:7]),
-                    ('OptiScaler', None, rows[7:10]), ('ReShade', None, rows[10:])]
+            return [('rtxForge Panel', 'Choose the controls shown inside the game.', rows[:1]),
+                    ('Appearance', None, rows[1:5]), ('Status and notifications', None, rows[5:9]),
+                    ('Shortcut', None, rows[9:10]), ('OptiScaler', None, rows[10:13]),
+                    ('ReShade', None, rows[13:15]), ('Vulkan MFG overlay', None, rows[15:16]),
+                    ('Apply to games', None, rows[16:])]
         return [({'System':'Hardware', 'Recovery':'Previous changes', 'About':'App and updates'}.get(section, section), None, rows)]
 
     def setting_toggle(self, title, description, get, setter):

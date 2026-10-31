@@ -14,6 +14,9 @@ import zipfile
 import discovery
 import engine_bridge
 import packages
+import library_media
+import overlay_policy
+import overlay_settings
 import proton_prefix
 import runtime_updates
 import storage as state_storage
@@ -237,6 +240,10 @@ def _record(root, receipt, directory):
         t.need(t.safe(root / t.relative(record['plugin']['path'])) == directory / 'OptiScaler.ini'
                and (value is None or isinstance(value, str) and len(value) <= 4096 and '\n' not in value and '\r' not in value),
                'Invalid HDR loader recovery setting.')
+    if record.get('settings'):
+        setting = record['settings']
+        t.need(t.safe(root / t.relative(setting['path'])) == directory / 'ReShade.ini'
+               and re.fullmatch('[a-f0-9]{64}', setting.get('created_sha256', '')), 'Invalid HDR settings recovery member.')
     return record
 
 
@@ -311,6 +318,12 @@ def prepare(config, row):
             record['plugin'] = {'path': ini.relative_to(root).as_posix(), 'value': plugin}
         text = t.setvalue(text, 'Plugins', 'LoadReShade', 'true')
         writes[ini] = text.encode('utf-8')
+    settings_path = t.safe(exe.parent / 'ReShade.ini')
+    if not settings_path.exists():
+        settings = overlay_settings.effective(library_media.load_settings(config), str(root))
+        data = overlay_policy.reshade('', settings).encode('utf-8')
+        writes[settings_path] = data
+        record['settings'] = {'path': settings_path.relative_to(root).as_posix(), 'created_sha256': t.sha(data)}
     for name in ('RenoDX-LICENSE.txt', 'ReShade-LICENSE.txt'):
         data = (ROOT / 'providers/renodx-hdr' / name).read_bytes()
         path = exe.parent / 'rtxForge-HDR-Licenses' / name
@@ -349,6 +362,11 @@ def prepare_remove(config, row):
                     text = text.replace(block, replacement, 1)
                 else: text = t.setvalue(text, 'Plugins', 'LoadReShade', plugin['value'])
                 writes[ini] = text.encode('utf-8')
+    if record.get('settings'):
+        setting = record['settings']; path = t.safe(root / t.relative(setting['path']))
+        # ReShade writes tuning to this file while playing. Keep those edits.
+        if path.is_file() and t.digest(path) == setting['created_sha256'] and not runtime_updates._owned(e, root, path):
+            writes[path] = None
     plan = _plan(row, root, writes, action='remove', checks=checks)
     plan['prefix'] = _prefix_review(config, row, record['route'], record['host'], remove=True)
     return _freeze(config, plan)

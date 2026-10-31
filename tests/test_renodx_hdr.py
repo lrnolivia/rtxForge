@@ -132,6 +132,14 @@ class HdrTests(unittest.TestCase):
         self.assertEqual((self.game / 'dxgi.dll').read_bytes(), self.host)
         self.assertEqual((self.game / 'renodx-dlss5.addon64').read_bytes(), b'NR')
 
+    def test_new_host_respects_menu_policy_and_preserves_user_settings(self):
+        hdr.apply({}, hdr.prepare({}, self.row))
+        ini = self.game / 'ReShade.ini'
+        self.assertEqual(t.ini(ini.read_text(encoding='utf-8')).get('OVERLAY', 'TutorialProgress'), '4')
+        ini.write_text(ini.read_text(encoding='utf-8') + '\n[RenoDX]\nToneMapGameNits=203\n', encoding='utf-8')
+        hdr.apply({}, hdr.prepare_remove({}, self.row))
+        self.assertIn('ToneMapGameNits=203', ini.read_text(encoding='utf-8'))
+
     def test_collisions_running_game_and_changed_review_refused(self):
         (self.game / 'dxgi.dll').write_bytes(b'other mod')
         with self.assertRaises(t.Refusal): hdr.prepare({}, self.row)

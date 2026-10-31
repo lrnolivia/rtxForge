@@ -41,14 +41,4 @@ inline Color ClearSurface(Color backdrop,float tint,int mode,float strength) {
     return source;
 }
 inline float LinearLuma(Color c) {for(auto& v:c)v=v<=.04045f?v/12.92f:std::pow((v+.055f)/1.055f,2.4f);return .2126f*c[0]+.7152f*c[1]+.0722f*c[2];}
-struct Foreground {
-    float mix=0;bool white=false,ready=false;
-    std::string lastColor,lastEffect;
-    float Update(float luminance,float dt,bool reducedMotion,bool preferWhite=false) {
-        white=ready?(white?luminance<(preferWhite?.30f:.20f):luminance<(preferWhite?.23f:.16f)):luminance<(preferWhite?.27f:.18f);
-        const float target=white?1.f:0.f;
-        const float amount=!ready||reducedMotion?1.f:1-std::exp(-std::clamp(dt,0.f,.1f)/.12f);
-        mix=ready?mix+(target-mix)*amount:target;ready=true;return mix;
-    }
-};
 }

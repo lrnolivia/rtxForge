@@ -579,7 +579,7 @@
             <input id="blend-strength" class="range" type="range" min="0" max="100" step="1" value="50" />
           </div>
           <div class="inherit-row">
-            <label>Adaptive text depth</label>
+            <label>Subtle foreground shadow</label>
             <button id="text-depth" class="switch">
               <span />
             </button>

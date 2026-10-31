@@ -139,7 +139,6 @@ static void SaveImage(ID3D11Device* device,ID3D11DeviceContext* context,ID3D11Te
 using ForgeGlass::Controller;
 static void TestController(Controller& c,Rml::Context* context)
 {
-    MaterialColor::Foreground fade;Require(fade.Update(.8f,.016f,false)==0,"Bright backgrounds need dark text");const auto middle=fade.Update(.01f,.016f,false);Require(middle>0 && middle<1,"Foreground tuning must fade through intermediate colors");Require(fade.Update(.8f,.016f,true)==0,"Reduced motion should settle immediately");
     for(const auto& mode:MaterialColor::Modes)if(mode!="reserved"){const auto color=MaterialColor::Blend({.12f,.5f,.9f},{.8f,.25f,.3f},MaterialColor::Mode(mode));for(float v:color)Require(std::isfinite(v)&&v>=0&&v<=1,"Surface blend produced invalid color");}
     const auto initial=c.values;const int appearance=c.appearance;
     auto click=[&](const char* id) {
@@ -232,8 +231,8 @@ int wmain(int argc,wchar_t** argv)
         if(window)Check(swapchain->GetBuffer(0,IID_PPV_ARGS(&target)));
         else {D3D11_TEXTURE2D_DESC desc{};desc.Width=width;desc.Height=height;desc.MipLevels=1;desc.ArraySize=1;desc.Format=DXGI_FORMAT_R8G8B8A8_UNORM;desc.SampleDesc.Count=1;desc.BindFlags=D3D11_BIND_RENDER_TARGET;Check(device->CreateTexture2D(&desc,nullptr,&target));}
         Check(device->CreateRenderTargetView(target.Get(),nullptr,&view));
-        ComPtr<ID3D11Texture2D> windowLayer;ComPtr<ID3D11RenderTargetView> windowView;ComPtr<ID3D11ShaderResourceView> windowSource;
-        D3D11_TEXTURE2D_DESC windowDesc{};target->GetDesc(&windowDesc);windowDesc.BindFlags=D3D11_BIND_RENDER_TARGET|D3D11_BIND_SHADER_RESOURCE;windowDesc.Usage=D3D11_USAGE_DEFAULT;windowDesc.CPUAccessFlags=0;windowDesc.MiscFlags=0;Check(device->CreateTexture2D(&windowDesc,nullptr,&windowLayer));Check(device->CreateRenderTargetView(windowLayer.Get(),nullptr,&windowView));Check(device->CreateShaderResourceView(windowLayer.Get(),nullptr,&windowSource));
+        ComPtr<ID3D11Texture2D> windowLayer,inkLayer;ComPtr<ID3D11RenderTargetView> windowView,inkView;ComPtr<ID3D11ShaderResourceView> windowSource,inkSource;
+        D3D11_TEXTURE2D_DESC windowDesc{};target->GetDesc(&windowDesc);windowDesc.BindFlags=D3D11_BIND_RENDER_TARGET|D3D11_BIND_SHADER_RESOURCE;windowDesc.Usage=D3D11_USAGE_DEFAULT;windowDesc.CPUAccessFlags=0;windowDesc.MiscFlags=0;Check(device->CreateTexture2D(&windowDesc,nullptr,&windowLayer));Check(device->CreateRenderTargetView(windowLayer.Get(),nullptr,&windowView));Check(device->CreateShaderResourceView(windowLayer.Get(),nullptr,&windowSource));Check(device->CreateTexture2D(&windowDesc,nullptr,&inkLayer));Check(device->CreateRenderTargetView(inkLayer.Get(),nullptr,&inkView));Check(device->CreateShaderResourceView(inkLayer.Get(),nullptr,&inkSource));
         System system;PrototypeRenderer renderer(device.Get());renderer.SetViewport(width,height);
         Rml::SetSystemInterface(&system);Rml::SetRenderInterface(&renderer);Require(Rml::Initialise(),"RmlUi could not initialize");
         Rml::ElementInstancerGeneric<PaintRoot> paintInstancer;Rml::Factory::RegisterElementInstancer("paint-root",&paintInstancer);
@@ -300,6 +299,8 @@ int wmain(int argc,wchar_t** argv)
                 if(frames==36) {controller.copySize=22;controller.overlayScale=100;controller.Typography();controller.Materials();controller.values=controller.defaults;controller.edits={};controller.edits.Start(controller.values);controller.Sync();controller.SyncSettings();controller.Session({});controller.Metadata();std::cout<<"native_frame_input_checks=passed\n";}
             }
             controller.AdaptiveForeground(backdrop,system.GetElapsedTime());context->Update();
+            if(selfTest&&frames==60&&controller.appearance==3){Rml::ElementList ink;document->QuerySelectorAll(ink,"label,.glyph");for(auto* e:ink)if(e->IsVisible()){bool glass=false;for(auto* parent=e;parent;parent=parent->GetParentNode())glass|=parent->IsClassSet("glass");if(glass){const auto color=e->GetProperty(e->IsClassSet("glyph")?"image-color":"color")->Get<Rml::Colourb>();Require(color.red>=230&&color.green>=225&&color.blue>=220,"Clear must never invert a label or glyph to dark ink");}}std::cout<<"clear_white_foreground_checks=passed\n";}
+
             std::vector<Backdrop::Panel> panels;
             for(const auto* id : {"main-panel","inspector","welcome","type-panel"}) {
                 auto* e=document->GetElementById(id);
@@ -307,7 +308,7 @@ int wmain(int argc,wchar_t** argv)
                     const auto at=e->GetAbsoluteOffset(Rml::BoxArea::Border);const auto size=e->GetBox().GetSize(Rml::BoxArea::Border);
                     Backdrop::Panel panel{at.x,at.y,size.x,size.y,24*context->GetDensityIndependentPixelRatio()};panel.sampleIndex=std::string(id)=="main-panel"?0:std::string(id)=="inspector"?1:std::string(id)=="welcome"?2:3;panel.scale=context->GetDensityIndependentPixelRatio();if(std::string(id)=="inspector" && controller.inspectorAnchored){panel.arrow=1;panel.anchorX=std::clamp(controller.inspectorAnchorX,at.x+24,at.x+size.x-24);}
                     const auto variable=[e](const char* name,float fallback){const auto* p=e->GetProperty(name);if(!p)return fallback;try{return std::stof(p->Get<Rml::String>());}catch(...){return fallback;}};
-                    panel.blur=controller.blurRadius;panel.radius=std::clamp(variable("--corner-radius",24.f),0.f,100.f)*panel.scale;panel.saturation=std::clamp(variable("--material-saturation",1.12f),0.f,2.f);panel.grain=std::clamp(variable("--material-texture",.028f),0.f,.08f);panel.luminosity=std::clamp(variable("--material-luminosity",.04f),0.f,.25f);
+                    panel.readability=controller.appearance==3?1.f:0.f;panel.inkShadow=controller.textDepth?.14f:0.f;panel.blur=controller.blurRadius;panel.radius=std::clamp(variable("--corner-radius",24.f),0.f,100.f)*panel.scale;panel.saturation=std::clamp(variable("--material-saturation",1.12f),0.f,2.f);panel.grain=std::clamp(variable("--material-texture",.028f),0.f,.08f);panel.luminosity=std::clamp(variable("--material-luminosity",.04f),0.f,.25f);
                     panel.shadowOpacity=std::clamp(variable("--shadow-opacity",.30f),0.f,.5f);panel.shadowRadius=std::clamp(variable("--shadow-radius",28.f),8.f,60.f);panel.shadowOffset=std::clamp(variable("--shadow-offset",12.f),0.f,24.f);
                     panel.opacity=std::clamp(variable("--window-opacity",1.f),0.f,1.f);panel.tone=std::clamp(variable("--surface-tone",.96f),0.f,1.f);panel.grounding=std::clamp(variable("--surface-grounding",.52f),0.f,1.f);panel.blendAmount=std::clamp(variable("--material-blend-opacity",.3f),0.f,1.f);
                     if(const auto* blend=e->GetProperty("--material-blend")) {const auto name=blend->Get<Rml::String>();panel.blendMode=float(MaterialColor::Mode(name));}
@@ -324,7 +325,7 @@ int wmain(int argc,wchar_t** argv)
             const auto renderUi=[&](Rml::Element* root,ID3D11RenderTargetView* destination=nullptr) {if(!destination)destination=view.Get();immediate->OMSetRenderTargets(1,&destination,nullptr);D3D11_VIEWPORT viewport{0,0,float(width),float(height),0,1};immediate->RSSetViewports(1,&viewport);renderer.BeginFrame();auto& manager=context->GetRenderManager();manager.PrepareRender({width,height});static_cast<PaintRoot*>(root)->Paint();manager.ResetState();renderer.EndFrame(destination);};
             for(const auto& id:controller.stacking)if(byId.contains(id)) {
                 const float clearLayer[4]={};immediate->ClearRenderTargetView(windowView.Get(),clearLayer);backdrop.Draw(target.Get(),windowView.Get(),{byId.at(id)},blur,false);
-                renderUi(controller.Element(id.c_str()),windowView.Get());const auto velocity=controller.windowVelocity[id];backdrop.ComposeLayer(view.Get(),windowSource.Get(),velocity.x,velocity.y,controller.reducedMotion);
+                const float clearInk[4]={};immediate->ClearRenderTargetView(inkView.Get(),clearInk);renderUi(controller.Element(id.c_str()),inkView.Get());backdrop.DrawInk(windowView.Get(),inkSource.Get(),byId.at(id),blur);const auto velocity=controller.windowVelocity[id];backdrop.ComposeLayer(view.Get(),windowSource.Get(),velocity.x,velocity.y,controller.reducedMotion);
             }
             renderUi(document->QuerySelector(".prototype-toolbar"));
             if(controller.Element("tooltip")->IsVisible())renderUi(controller.Element("tooltip"));

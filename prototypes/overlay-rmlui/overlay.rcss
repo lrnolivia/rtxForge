@@ -548,3 +548,20 @@ button:active { transform: scale(.98); }
 .layout-bar .hdr-entry { position: absolute; top: 14dp; right: 160dp; width: 110dp; height: 44dp; margin: 0; padding: 8dp 14dp; }
 #hdr-main-fields select, #hdr-popup-fields select { display: block; width: 100%; }
 #hdr-main-fields h3 { text-transform: uppercase; }
+
+/* Clear never inverts individual text or glyphs. Depth belongs to whole rows. */
+.clear .close .stroke { background: #f5f1ea; }
+.clear .chevron { border-right-color: #f5f1ea; border-bottom-color: #f5f1ea; }
+.clear select selectarrow { border-right-color: #f5f1ea; border-bottom-color: #f5f1ea; }
+.clear select selectbox, .clear .menu { background: #27231ff5; color: #f5f1ea; }
+.clear select option, .clear .menu button { color: #f5f1ea; }
+
+.clear-foreground .prototype-toolbar { background: #27231fe8; color: #f5f1ea; }
+.clear-foreground .prototype-toolbar .preview-label, .clear-foreground .prototype-toolbar select { color: #f5f1ea; }
+.clear-foreground .prototype-toolbar select { background: #ffffff18; }
+.clear-foreground .prototype-toolbar select selectarrow { border-right-color: #f5f1ea; border-bottom-color: #f5f1ea; }
+.clear-foreground .prototype-toolbar select selectbox { background: #27231ff5; color: #f5f1ea; }
+.clear-foreground .prototype-toolbar select option { color: #f5f1ea; }
+
+.clear, .clear * { color: #f5f1ea; }
+.clear .glyph { image-color: #f5f1ea; }

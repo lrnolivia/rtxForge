@@ -731,6 +731,9 @@ public sealed partial class MainWindow
 
     // ---------- Tools: ReShade and add-ons (choose_extra / review_extra_restore) ----------
 
+    public Task ChangeHdrAsync(Game game, bool remove = false) =>
+        ReviewDialog.ShowAsync(this, remove ? "Remove RenoDX HDR" : "Install RenoDX HDR", () => Service.ReviewHdrAsync(game, remove));
+
     public async Task InstallExtraAsync(Game game, string kind)
     {
         if (Service.IsPreview) { ShowToast("Installing tools is disabled in preview mode."); return; }

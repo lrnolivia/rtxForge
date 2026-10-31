@@ -243,6 +243,8 @@ public sealed record RecoveryRecord(string Kind, string Path, string Name, strin
 /// <summary>extra_tools.recoveries: an installed ReShade or add-on that can be restored.</summary>
 public sealed record ExtraRecord(string Path, string Name, string Kind, string Title, string Date);
 
+public sealed record HdrStatus(bool Available, bool Installed, bool Update, string Message, string Notes);
+
 /// <summary>runtime_diagnostics.inspect: warnings (NVIDIA App DLSS Override), observations, the visible-result statement and the full report.</summary>
 public sealed record NrDiagnosis(IReadOnlyList<string> Observations, string VisualResult, string Report, IReadOnlyList<string>? Warnings = null)
 {

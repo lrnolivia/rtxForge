@@ -2112,8 +2112,9 @@ def detect_reshade(target: Path) -> dict:
     Detect a real ReShade installation without mistaking OptiScaler's own proxy
     for ReShade merely because the DLL contains ReShade compatibility strings.
 
-    A root dxgi.dll + ReShade config/shader markers is authoritative for this
-    workflow. Binary strings are retained only as diagnostic evidence.
+    ReShade settings can also belong to a side-loaded HDR runtime. A verified
+    managed OptiScaler proxy keeps its identity when those settings appear.
+    Binary strings are retained only as diagnostic evidence.
     """
     dxgi = target / "dxgi.dll"
     markers = (
@@ -2123,6 +2124,15 @@ def detect_reshade(target: Path) -> dict:
     )
     binary = dxgi.is_file() and file_contains(dxgi, b"reshade")
     detected = bool(dxgi.is_file() and markers)
+    if detected and not dxgi.is_symlink():
+        baseline = load_baseline(target, readonly=True)
+        current = (baseline or {}).get("current") or {}
+        family = current.get("provider_id") or (current.get("archive") or {}).get("family")
+        known_proxy = (current.get("installed_hashes") or {}).get("dxgi.dll")
+        if ((baseline or {}).get("status") == "active" and current.get("proxy") == "dxgi.dll"
+                and family in {"skynizz", "y4my", "dlss-unlocked"}
+                and known_proxy and sha256_file(dxgi) == known_proxy):
+            detected = False
     return {
         "detected": detected,
         "binary": binary,

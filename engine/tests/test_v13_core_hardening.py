@@ -1851,6 +1851,21 @@ class CoreHardeningTests(unittest.TestCase):
         self.assertEqual(original_proxy.read_bytes(), b"original-game-proxy")
         self.assertTrue(self.m.baseline_path(self.target).is_file())
 
+    def test_side_loaded_hdr_settings_preserve_managed_optiscaler_proxy(self):
+        proxy = self.target / 'dxgi.dll'
+        proxy.write_bytes(b'OptiScaler loader with ReShade compatibility strings')
+        baseline = self._baseline(current={'provider_id': 'skynizz', 'proxy': 'dxgi.dll',
+            'installed_hashes': {'dxgi.dll': self.m.sha256_file(proxy)}})
+        (self.target / 'ReShade.ini').write_text('[GENERAL]\n', encoding='utf-8')
+        found = self.m.detect_reshade(self.target)
+        self.assertTrue(found['markers'])
+        self.assertFalse(found['detected'])
+        self.assertEqual(self.m.choose_optiscaler_proxy(self.target, found, baseline,
+            exe=self.exe, prefer_imported=True, preserve_prior=True), 'dxgi.dll')
+        # A changed loader cannot borrow the recorded OptiScaler identity.
+        proxy.write_bytes(b'ReShade replacement')
+        self.assertTrue(self.m.detect_reshade(self.target)['detected'])
+
     def test_reshade_coexistence_uses_version_proxy_and_preserves_reshade(self):
         self.game.dlss = True
         self.game.dlssg = True

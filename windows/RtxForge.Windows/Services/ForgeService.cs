@@ -82,6 +82,8 @@ public interface IForgeService
     /// <summary>kind: reshade or addon.</summary>
     Task<EngineReview> ReviewExtraAsync(Game game, string path, string kind);
     Task<EngineReview> ReviewExtraRestoreAsync(ExtraRecord record);
+    Task<HdrStatus> HdrStatusAsync(Game game);
+    Task<EngineReview> ReviewHdrAsync(Game game, bool remove = false);
 
     // DLSS files (runtime_updates): inventory and restoring the latest update's backups.
     Task<DlssInventory> DlssInventoryAsync(Game game);
@@ -307,6 +309,8 @@ public sealed class PreviewForgeService : IForgeService
     public Task<IReadOnlyList<ExtraRecord>> ExtraRecordsAsync(Game game) => Task.FromResult<IReadOnlyList<ExtraRecord>>([]);
     public Task<EngineReview> ReviewExtraAsync(Game game, string path, string kind) => Disabled<EngineReview>("Installing tools");
     public Task<EngineReview> ReviewExtraRestoreAsync(ExtraRecord record) => Disabled<EngineReview>("Restoring tools");
+    public Task<HdrStatus> HdrStatusAsync(Game game) => Task.FromResult(new HdrStatus(false, false, false, "HDR support is checked in the installed app.", ""));
+    public Task<EngineReview> ReviewHdrAsync(Game game, bool remove = false) => Disabled<EngineReview>("Changing HDR");
     public Task<DlssInventory> DlssInventoryAsync(Game game) =>
         Task.FromResult(new DlssInventory([], "Preview mode · file versions appear here for your installed games.", null));
     public Task<EngineReview> ReviewDlssRestoreAsync(Game game) => Disabled<EngineReview>("Restoring DLSS files");

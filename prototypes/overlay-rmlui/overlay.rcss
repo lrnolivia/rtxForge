@@ -562,3 +562,6 @@ button:active { transform: scale(.98); }
 .clear-foreground .prototype-toolbar select selectarrow { border-right-color: #f5f1ea; border-bottom-color: #f5f1ea; }
 .clear-foreground .prototype-toolbar select selectbox { background: #27231ff5; color: #f5f1ea; }
 .clear-foreground .prototype-toolbar select option { color: #f5f1ea; }
+
+.clear, .clear * { color: #f5f1ea; }
+.clear .glyph { image-color: #f5f1ea; }

@@ -35,7 +35,7 @@ class DisplayTests(unittest.TestCase):
         text = self.path.read_bytes().decode()
         self.assertIn('FullscreenMode=1\r\n', text)
         self.assertIn('DLSSG_Mode=4\r\n', text)
-        self.assertIn('ResolutionSizeX=3840\r\n', text)
+        self.assertIn('ResolutionSizeX=1920\r\n', text)
         display.apply(self.plan())
         self.path.write_bytes(self.path.read_bytes().replace(b'Quality=3', b'Quality=1'))
         display.apply(self.plan(True))
@@ -43,7 +43,7 @@ class DisplayTests(unittest.TestCase):
 
     def test_restore_preserves_user_resolution_change(self):
         display.apply(self.plan())
-        self.path.write_bytes(self.path.read_bytes().replace(b'ResolutionSizeX=3840', b'ResolutionSizeX=2560'))
+        self.path.write_bytes(self.path.read_bytes().replace(b'ResolutionSizeX=1920', b'ResolutionSizeX=2560'))
         display.apply(self.plan(True))
         self.assertIn(b'ResolutionSizeX=2560', self.path.read_bytes())
         self.assertIn(b'FullscreenMode=0', self.path.read_bytes())
@@ -54,6 +54,14 @@ class DisplayTests(unittest.TestCase):
         with self.assertRaises(t.Refusal):
             display.apply(plan)
         self.assertFalse(plan['record_path'].exists())
+
+    def test_legacy_4k_record_remains_restorable_after_borderless_reapply(self):
+        plan = self.plan()
+        plan['settings'] = {**plan['settings'], 'ResolutionSizeX': '3840', 'ResolutionSizeY': '2160'}
+        display.apply(plan)
+        display.apply(self.plan())
+        display.apply(self.plan(True))
+        self.assertEqual(self.path.read_bytes(), self.original)
 
     def test_missing_or_unknown_settings_are_skipped(self):
         self.path.unlink()
@@ -75,7 +83,8 @@ class DisplayTests(unittest.TestCase):
             original = ('[' + section + ']\n' + data).encode()
             path.write_bytes(original)
             display.apply(self.plan())
-            self.assertIn(b'3840', path.read_bytes())
+            self.assertIn(b'1920', path.read_bytes())
+            self.assertNotIn(b'3840', path.read_bytes())
             display.apply(self.plan(True))
             self.assertEqual(original, path.read_bytes())
 

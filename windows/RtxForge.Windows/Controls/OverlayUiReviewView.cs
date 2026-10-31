@@ -9,21 +9,27 @@ public sealed class OverlayUiReviewView : StackPanel
 {
     readonly EngineForgeService service;
     readonly Button action;
-    readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
+    readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Visibility = Visibility.Collapsed };
     bool busy;
 
-    public OverlayUiReviewView(EngineForgeService engine, bool packages = false)
+    public OverlayUiReviewView(EngineForgeService engine, bool packages = false, bool settingsRows = false)
     {
         service = engine;
         action = Prefs.ActionButton("Update Overlays", async (_, _) => await Run());
         Spacing = 12;
-        Children.Add(new TextBlock
+        const string description = "Review overlay packages, menus, welcome messages and shortcuts for each installed game. Your tuning and original backups are kept.";
+        if (settingsRows)
         {
-            Text = "Review overlay packages, menus, welcome messages and shortcuts for each installed game. Your tuning and original backups are kept.",
-            TextWrapping = TextWrapping.Wrap, FontSize = 12,
-        });
-        Children.Add(status);
-        Children.Add(action);
+            Children.Add(Prefs.Row("Update overlays", description, action, glyph: "\uE9D9", detail: status));
+        }
+        else
+        {
+            if (!packages) Children.Add(Prefs.Label(description, "ForgeCaptionDimTextStyle"));
+            Children.Add(status);
+            Children.Add(action);
+        }
+        status.RegisterPropertyChangedCallback(TextBlock.TextProperty, (_, _) =>
+            status.Visibility = string.IsNullOrEmpty(status.Text) ? Visibility.Collapsed : Visibility.Visible);
     }
 
     public void Invalidate() => status.Text = "";

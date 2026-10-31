@@ -7,7 +7,7 @@ $pages = @{
     dlss_preset='neural'; rr_preset='neural'
 }
 $names = @{
-    pre_sr='Stage'; reduced='Smaller model'; work_scale='Processing scale'; edge_aware='Keep edges clear'; cache='Reuse enhancements'; interval='Enhance every N frames'
+    pre_sr='Stage'; reduced='Smaller model'; work_scale='Render resolution'; edge_aware='Keep edges clear'; cache='Reuse enhancements'; interval='Enhance every N frames'
     structure='Texture detail'; skin='Skin detail'; auto_mask='Protect skin automatically'; sharpen='Sharpen image'; sharpen_shader='Sharpening filter'; sharp_override='Use custom sharpening'; sharpness='Sharpening strength'; motion_sharpen='Sharpen moving detail'; motion_sharpness='Motion sharpening'
     dlss_preset='Upscaling model'; rr_preset='Ray Reconstruction model'
 }
@@ -47,18 +47,28 @@ $rows.Add('    {"fg_game_version","Use game-bundled frame generation","frame","t
 for($i=0;$i -lt $rows.Count;$i++) {
     $key = [regex]::Match($rows[$i],'^\s*\{"([^"]+)"').Groups[1].Value
     $group = if($key -like 'area*' -or $key -eq 'show_area') { 'Area' } elseif($key -in @('dlss_preset','rr_preset')) { 'Upscaling' } elseif($key -like 'fg_cleanup*') { 'Clarity' } elseif($key -eq 'fg_game_version') { 'Compatibility' } elseif($key -like 'fg_*') { 'Frame delivery' } elseif($key -like '*sharpen*' -or $key -in @('sharp_override','sharpness')) { 'Sharpening' } elseif($pages[$key] -eq 'look') { 'Texture detail' } else { 'Processing' }
-    $rows[$i] = $rows[$i].Substring(0,$rows[$i].Length-2) + ',' + (Quote $group) + '},'
+    $advanced = ($schema.controls | Where-Object key -eq $key | Select-Object -First 1).advanced
+    if(-not $advanced) { $advanced = [regex]::Match($rows[$i],'^\s*\{"[^"]+","([^"]+)"').Groups[1].Value }
+    $rows[$i] = $rows[$i].Substring(0,$rows[$i].Length-2) + ',' + (Quote $group) + ',' + (Quote $advanced) + '},'
 }
 $header = @'
 #pragma once
 // Shared control bounds come from controls.json. Extra upstream controls are
 // explicitly identified, so a preview never implies a mailbox capability.
-struct ExtraControl { const char* key; const char* label; const char* page; const char* kind; float minimum,maximum,step,initial; const char* options; const char* binding; const char* section; };
+struct ExtraControl { const char* key; const char* label; const char* page; const char* kind; float minimum,maximum,step,initial; const char* options; const char* binding; const char* section; const char* advanced; };
 inline const ExtraControl ExtraControls[] = {
 '@ + "`n" + ($rows -join "`n") + "`n};`n"
 $header += "struct ScenePreset { int app; const char* title; const char* file; unsigned accent; };`ninline const ScenePreset ScenePresets[] = {`n"
 foreach($scene in (Get-Content (Join-Path $PSScriptRoot 'scenes.json') -Raw | ConvertFrom-Json)) {
     $header += '    {'+$scene.app+','+(Quote $scene.title)+','+(Quote $scene.file)+',0x'+$scene.accent.TrimStart('#')+'},'+"`n"
+}
+$header += "};`n"
+$hdrProfile = (Get-Content (Join-Path $PSScriptRoot '../../providers/renodx-hdr-settings.json') -Raw | ConvertFrom-Json).profiles[0]
+$header += "struct PreviewHdrField { const char* key; const char* label; const char* section; const char* kind; const char* options; const char* unit; float minimum,maximum,step,initial; bool reset; };`ninline const PreviewHdrField PreviewHdrFields[] = {`n"
+foreach($field in $hdrProfile.controls) {
+    $options='';for($i=0;$i -lt $field.choices.Count;$i++){$options += '<option value="'+$i+'">'+[Security.SecurityElement]::Escape($field.choices[$i])+'</option>'}
+    $numbers=@($field.min,$field.max,$field.step,$field.default)|ForEach-Object{([double]$_).ToString('0.0###',[Globalization.CultureInfo]::InvariantCulture)+'f'}
+    $header += '    {'+((@($field.key,$field.label,$field.section,$field.kind,$options,$field.unit)|ForEach-Object{Quote $_}) -join ',')+','+($numbers -join ',')+','+([string]([bool]$field.reset)).ToLowerInvariant()+'},'+"`n"
 }
 $header += "};`n"
 [IO.File]::WriteAllText($Output,$header,[Text.UTF8Encoding]::new($false))

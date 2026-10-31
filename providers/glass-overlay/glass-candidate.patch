@@ -9,15 +9,16 @@
  #include <framegen/IFGFeature_Dx12.h>
  #include <proxies/Streamline_Proxy.h>
  #include <framegen/dlssg/Companion.h>
-@@ -9168,6 +9170,7 @@
+@@ -9168,6 +9170,8 @@
      }
  
      ForgePanel::Init(InHwnd);
 +    if((State::Instance().api==DX11||State::Instance().api==DX12)&&ForgeGlassPanel::Prepare(InHwnd))Config::Instance()->OverlayMenu.set_volatile_value(true);
++    ForgeGlassPanel::runtimeKind=1;ForgeGlassPanel::readModelDimensions=[](unsigned& width,unsigned& height){const auto p=DlssNr::GetPlacementStats();if((p.actual!=2&&p.actual!=3)||GetTickCount()-p.tick>1500)return false;width=p.modelWidth;height=p.modelHeight;return width>0&&height>0;};
      ForgePanel::controlSupported = [](const ForgePanel::Control& field) {
          if(std::strncmp(field.key,"pass2_",6)==0 || std::strncmp(field.key,"pass3_",6)==0)
              return State::Instance().api == DX12;
-@@ -9250,6 +9253,7 @@
+@@ -9250,6 +9254,7 @@
      else
          ImGui_ImplUwp_Shutdown();
  
@@ -25,7 +26,7 @@
      ForgePanelChannel::Shutdown();
      ImGui::DestroyContext();
  
-@@ -9275,3 +9279,11 @@
+@@ -9275,3 +9280,11 @@
      io.WantCaptureKeyboard = _isVisible;
      io.WantCaptureMouse = _isVisible;
  }

@@ -30,14 +30,14 @@ public sealed class OverlayPreferencesView : StackPanel
         Heading("Appearance");
         var theme = Choice("Theme", ["Clear", "Light", "Dark"], Array.IndexOf(GlassAppearance.Themes, glass.Theme),
             glass.Custom ? "Custom · based on " + glass.Theme + ". Select a theme to restore its defaults." : "Selecting a theme restores its material defaults.", glyph: "\uE790");
-        var type = Choice("Text size", ["Aa  Smaller", "Aa  Default", "Aa  Larger"], glass.Number("TextSize", 22, 16, 26) < 22 ? 0 : glass.Number("TextSize", 22, 16, 26) > 22 ? 2 : 1);
-        var motion = Switch("Motion effects", glass.On("Motion"));
+        var type = Choice("Text size", ["Aa  Smaller", "Aa  Default", "Aa  Larger"], glass.Number("TextSize", 22, 16, 26) < 22 ? 0 : glass.Number("TextSize", 22, 16, 26) > 22 ? 2 : 1, glyph: "\uE8D2");
+        var motion = Switch("Motion effects", glass.On("Motion"), glyph: "\uE768");
         Heading("Status and notifications");
         var liveStats = Switch("Live feature statistics", current.OverlayLiveStats,
             "Show measured activity and performance beside NR and frame generation controls, when the injector supplies them.", glyph: "\uE9D9");
         var welcome = Switch("Welcome message", current.OverlayWelcome,
             "Show the rtxForge logo and the assigned overlay shortcut briefly when the game starts.", glyph: "\uE8F2");
-        var notifications = Switch("Hotkey notifications", glass.On("ShowNotifications"), "Show preset changes and feature toggles in the same slim toast.");
+        var notifications = Switch("Hotkey notifications", glass.On("ShowNotifications"), "Show preset changes and feature toggles in the same slim toast.", glyph: "\uE7E7");
         var welcomePosition = Choice("Welcome position", ["Top center", "Top left", "Top right", "Bottom left", "Bottom right"],
             Array.IndexOf(ForgeSettings.WelcomePositions, current.OverlayWelcomePosition), "Applies when the game starts.", glyph: "\uE8B9");
         Heading("Shortcuts and helper");
@@ -61,12 +61,15 @@ public sealed class OverlayPreferencesView : StackPanel
         var vulkanMenu = Switch("Native MFG menu and hint", current.VulkanMfgNativeMenu,
             "Optional advanced MFG Unlocker panel. Off by default; frame generation keeps running. The rtxForge welcome message has its own setting.", glyph: "\uE700");
         Heading("Apply to games");
-        var history = new Button { Content = "Last overlay update", HorizontalAlignment = HorizontalAlignment.Left };
-        history.Click += async (_, _) => { if (App.Main is { } main) await main.ShowOverlayUpdateDetailsAsync(); };
-        AddControl(history);
         OverlayUiReviewView? gameReview = null;
-        if (engine is not null) { gameReview = new(engine); AddControl(gameReview); }
-        AddControl(feedback);
+        if (engine is not null) { gameReview = new(engine, settingsRows: true); AddControl(gameReview); }
+        var history = Prefs.ActionButton("View details", async (_, _) =>
+        { if (App.Main is { } main) await main.ShowOverlayUpdateDetailsAsync(); });
+        AddControl(Prefs.Row("Last overlay update", "See which games were updated and whether any still need attention.", history, glyph: "\uE81C"));
+        var feedbackCard = new Border { Style = Prefs.GetStyle("ForgeSettingsCardStyle"), Child = feedback, Visibility = Visibility.Collapsed };
+        feedback.RegisterPropertyChangedCallback(TextBlock.TextProperty, (_, _) =>
+            feedbackCard.Visibility = string.IsNullOrEmpty(feedback.Text) ? Visibility.Collapsed : Visibility.Visible);
+        AddControl(feedbackCard);
         void Availability()
         {
             var native = renderer.SelectedIndex == 1;

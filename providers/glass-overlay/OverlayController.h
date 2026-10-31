@@ -9,6 +9,7 @@
 #include "../../prototypes/overlay-rmlui/ThemeDefaults.h"
 #include "../../prototypes/overlay-rmlui/SessionData.h"
 #include <PrototypeControls.generated.h>
+#include "HdrControls.h"
 #include <filesystem>
 #include <map>
 #include <functional>
@@ -21,6 +22,7 @@ inline std::string Utf8(const std::wstring& value) {return fs::path(value).gener
 struct Controller : Rml::EventListener
 {
     Rml::ElementDocument* document{};
+    HdrControls hdr;
     ForgeWorkbench::Values values{{"intensity",1},{"style",1},{"multiplier",-1},{"dynamic_mfg",0},{"passes",3},{"preset",0},
         {"detail",1},{"colour",1},{"tone",1},{"pass2_strength",.65f},{"pass2_tone",.8f},{"pass2_structure",1},{"pass2_skin",.5f},{"pass2_inherit",0},{"pass2_style",0},
         {"pass3_strength",1},{"pass3_tone",1},{"pass3_structure",1},{"pass3_skin",-1},{"pass3_inherit",1},{"pass3_style",0},{"enabled",1},{"mfg_enabled",1}};
@@ -30,18 +32,21 @@ struct Controller : Rml::EventListener
     bool preview=true;std::function<bool(const std::string&)> savePreset,deletePreset,requestJson;int reviewId=0;bool helperEnabled=true,startWithWindows=false;
     std::string compareMode="toggle",compareLeft="natural",compareRight="cinematic";
     std::map<std::string,const ExtraControl*> extraFields;
+    void Navigation(const std::string& selected) {for(const auto* id:{"nav-overview","nav-frame","nav-neural","nav-look","nav-settings","nav-passes","nav-hdr"})Element(id)->SetClass("selected",selected==id);}
     void InstallExtraControls() {
+        hdr.document=document;
+        hdr.Set({},false,false,"Install a supported RenoDX HDR package to configure it here.");
         for(const auto& control:ExtraControls)if(!values.contains(control.key))values[control.key]=control.initial;defaults=values;
         const auto install=[&](const char* container,const char* page,const std::string& prefix) {
             std::vector<std::string> groups;for(const auto& c:ExtraControls)if(std::string(c.page)==page && std::find(groups.begin(),groups.end(),c.section)==groups.end())groups.push_back(c.section);
             std::string markup;int index=0;
             for(const auto& group:groups){const auto body=prefix+"body-"+std::to_string(index);std::string title=group;for(auto& ch:title)ch=char(std::toupper(static_cast<unsigned char>(ch)));
-                markup+="<div class=\"option-group\"><button id=\"group-toggle-"+body+"\" class=\"group-heading\"><img class=\"glyph\" src=\"icons/sliders-horizontal-light.png\"/>"+title+"<span class=\"chevron\"/></button><div id=\""+body+"\" class=\"group-body\""+(index==0 && std::string(page)!="look"?"":" style=\"display: none\"")+">";
-                for(const auto& c:ExtraControls)if(std::string(c.page)==page && c.section==group){const auto id=prefix+c.key;extraFields[id]=&c;const auto label=Rml::StringUtilities::EncodeRml(c.label);const auto reset="<button id=\"reset-"+id+"\" class=\"reset-value\" title=\"Reset value\"><img class=\"glyph\" src=\"icons/arrow-counter-clockwise-light.png\"/></button>";
+                markup+="<div class=\"option-group\"><button id=\"group-toggle-"+body+"\" class=\"group-heading"+(index==0 && std::string(page)!="look"?" expanded":"")+"\"><img class=\"glyph\" src=\"icons/sliders-horizontal-light.png\"/><span class=\"button-label\">"+title+"</span><span class=\"chevron\"/></button><div id=\""+body+"\" class=\"group-body\""+(index==0 && std::string(page)!="look"?"":" style=\"display: none\"")+">";
+                for(const auto& c:ExtraControls)if(std::string(c.page)==page && c.section==group){if(prefix=="extra-main-"&&(std::string(c.key)=="work_scale"||std::string(c.key)=="pre_sr"))continue;const auto id=prefix+c.key;extraFields[id]=&c;const auto label=Rml::StringUtilities::EncodeRml(prefix=="extra-main-"?c.advanced:c.label);const auto reset="<button id=\"reset-"+id+"\" class=\"reset-value\" title=\"Reset value\"><img class=\"glyph\" src=\"icons/arrow-counter-clockwise-light.png\"/></button>";
                     if(std::string(c.kind)=="toggle")markup+="<div class=\"inherit-row option-toggle\"><label>"+label+"</label><button id=\""+id+"\" class=\"switch\"><span/></button>"+reset+"</div>";
                     else if(std::string(c.kind)=="choice")markup+="<div class=\"slider-field\"><div class=\"field-heading\"><label>"+label+"</label>"+reset+"</div><select id=\""+id+"\">"+c.options+"</select></div>";
                     else markup+="<div class=\"slider-field\"><div class=\"field-heading\"><label>"+label+"</label><span id=\""+id+"-value\"/>"+reset+"</div><input id=\""+id+"\" class=\"range\" type=\"range\" min=\""+std::to_string(c.minimum)+"\" max=\""+std::to_string(c.maximum)+"\" step=\""+std::to_string(c.step)+"\" value=\""+std::to_string(values.at(c.key))+"\"/></div>";
-                }if(group=="Area")markup+="<p class=\"hint\">Uses distance, not character recognition.</p>";markup+="</div></div>";++index;
+                }markup+="<p id=\""+body+"-availability\" class=\"hint group-availability\" style=\"display: none\"/>";if(group=="Area")markup+="<p class=\"hint\">Uses distance, not character recognition.</p>";markup+="</div></div>";++index;
             }Element(container)->SetInnerRML(markup);
         };
         install("extra-neural","neural","extra-main-");install("extra-frame","frame","extra-frame-");install("extra-look","look","extra-look-");install("extra-processing","neural","extra-popup-");install("extra-frame-popup","frame","extra-fgpopup-");
@@ -76,7 +81,7 @@ struct Controller : Rml::EventListener
         if(layout=="bar"){entrances.erase("main-panel");pendingEntrance.erase("main-panel");coasting.erase("main-panel");for(const auto* prop:{"left","top","margin-left","margin-top"})Element("main-panel")->RemoveProperty(prop);}
         settingsOpen=show;document->SetClass("settings-page",show);Visible("settings-screen",show);Visible("overview",!show);Visible("inspector",false);Element("settings-screen")->SetScrollTop(0);SyncSettings();}
     void SyncSettings() {const bool was=typographySync;typographySync=true;for(const auto& [id,on]:menuSettings)Element(("setting-"+id).c_str())->SetClass("on",on);Element("setting-helper")->SetClass("on",helperEnabled);Element("setting-startup")->SetClass("on",startWithWindows);Element("setting-stats")->SetClass("on",showStats);Element("setting-welcome")->SetClass("on",showWelcome);Element("setting-notifications")->SetClass("on",showNotifications);Element("shortcut-key")->SetInnerRML(bindingShortcut?"…":Rml::StringUtilities::EncodeRml(shortcutLabel));dynamic_cast<Rml::ElementFormControl*>(Element("welcome-position"))->SetValue(welcomePosition);dynamic_cast<Rml::ElementFormControl*>(Element("primary-menu"))->SetValue(primaryMenu);dynamic_cast<Rml::ElementFormControl*>(Element("opti-shortcut"))->SetValue(optiShortcut);PositionWelcome();typographySync=was;}
-    void Session(const ForgeSession::Snapshot& snapshot) {session=snapshot;Element("compact-frames")->SetInnerRML(ForgeSession::Frames(snapshot));Element("compact-neural")->SetInnerRML(ForgeSession::Neural(snapshot));Element("compact-ratio")->SetInnerRML(snapshot.framesKnown&&snapshot.measuredRatio>=1&&snapshot.measuredRatio<=8?ForgeSession::Number(snapshot.measuredRatio,1)+"×":"");for(const auto* p:{"overview","popup"}){const std::string prefix=p;Element((prefix+"-nr").c_str())->SetInnerRML(ForgeSession::Neural(snapshot));Element((prefix+"-frame").c_str())->SetInnerRML(ForgeSession::Available(snapshot.gameFps)&&snapshot.gameFps>0?ForgeSession::Number(1000/snapshot.gameFps,2)+" ms":"—");Element((prefix+"-rendered").c_str())->SetInnerRML(ForgeSession::Number(snapshot.gameFps));Element((prefix+"-displayed").c_str())->SetInnerRML(snapshot.framesKnown?ForgeSession::Number(snapshot.displayedFps):"—");}if(showStats)Element("compact-live")->RemoveProperty("display");else Element("compact-live")->SetProperty("display","none");}
+    void Session(const ForgeSession::Snapshot& snapshot) {session=snapshot;Element("compact-nr-size")->SetInnerRML(snapshot.nrRunning&&snapshot.nrWidth&&snapshot.nrHeight?std::to_string(snapshot.nrWidth)+" × "+std::to_string(snapshot.nrHeight):"Dimensions not reported");Element("compact-frames")->SetInnerRML(ForgeSession::Frames(snapshot));Element("compact-neural")->SetInnerRML(ForgeSession::Neural(snapshot));Element("compact-ratio")->SetInnerRML(snapshot.framesKnown&&snapshot.measuredRatio>=1&&snapshot.measuredRatio<=8?ForgeSession::Number(snapshot.measuredRatio,1)+"×":"");for(const auto* p:{"overview","popup"}){const std::string prefix=p;Element((prefix+"-nr").c_str())->SetInnerRML(ForgeSession::Neural(snapshot));Element((prefix+"-frame").c_str())->SetInnerRML(ForgeSession::Available(snapshot.gameFps)&&snapshot.gameFps>0?ForgeSession::Number(1000/snapshot.gameFps,2)+" ms":"—");Element((prefix+"-rendered").c_str())->SetInnerRML(ForgeSession::Number(snapshot.gameFps));Element((prefix+"-displayed").c_str())->SetInnerRML(snapshot.framesKnown?ForgeSession::Number(snapshot.displayedFps):"—");}if(showStats)Element("compact-live")->RemoveProperty("display");else Element("compact-live")->SetProperty("display","none");}
     void PositionWelcome() {
         if(welcomePosition!="top-right"&&welcomePosition!="top-left"&&welcomePosition!="top-center"&&welcomePosition!="bottom-right"&&welcomePosition!="bottom-left")welcomePosition="top-right";
         entrances.erase("welcome");pendingEntrance.erase("welcome");coasting.erase("welcome");
@@ -219,7 +224,7 @@ struct Controller : Rml::EventListener
     void Layout(const std::string& mode) {
         Settings(false);prefsDirty=true;
         layout=mode;document->SetClass("overview-page",mode=="centered");document->SetClass("layout-centered",mode=="centered");document->SetClass("layout-bar",mode=="bar");
-        document->SetClass("frame-page",false);document->SetClass("neural-page",false);
+        document->SetClass("frame-page",false);document->SetClass("neural-page",false);document->SetClass("hdr-page",false);Navigation("nav-overview");
         for(const auto* id:{"main-panel","inspector"})for(const auto* property:{"left","top","margin-left","margin-top"})Element(id)->RemoveProperty(property);
         inspectorAnchored=false;
         Visible("overview",true);Visible("inspector",false);Select("layout-switch","layout-"+mode);
@@ -270,6 +275,11 @@ struct Controller : Rml::EventListener
             Element((std::string(id)+"-value").c_str())->SetInnerRML(text);
         };
         range("strength","intensity");range("detail","detail");range("colour","colour");range("tone","tone");
+        dynamic_cast<Rml::ElementFormControl*>(Element("render-resolution"))->SetValue(std::to_string(int(std::round(values.at("work_scale")*100))));
+        Element("render-resolution-value")->SetInnerRML(std::to_string(int(std::round(values.at("work_scale")*100)))+"%");
+        const int passCount=int(values.at("passes"));
+        Element("pass-count")->SetInnerRML(std::to_string(passCount)+(passCount==1?" pass":" passes"));
+        Disabled("pass-minus",passCount<=1);Disabled("pass-plus",passCount>=3);if(passCount<3&&pass==3)pass=2;
         const auto prefix="pass"+std::to_string(pass)+"_";
         for(const auto* key : {"strength","tone","structure","skin"})range((std::string("pass-")+key).c_str(),prefix+key);
         Element("inherit")->SetClass("on",values[prefix+"inherit"]!=0);Element("pass-fields")->SetProperty("opacity",values[prefix+"inherit"] ? ".35":"1");
@@ -280,30 +290,32 @@ struct Controller : Rml::EventListener
         Disabled("pass-3",values["passes"]<3);Disabled("open-passes",values["passes"]<2);
         Element("nr-toggle")->SetClass("on",values["enabled"]!=0);Visible("nr-body",values["enabled"]!=0);
         Element("mfg-toggle")->SetClass("on",values["mfg_enabled"]!=0);Visible("mfg-body",values["mfg_enabled"]!=0);
+        for(const auto& [id,on]:std::map<std::string,bool>{{"extra-neural",values["enabled"]!=0},{"extra-frame",values["mfg_enabled"]!=0}}){if(on)Element(id.c_str())->RemoveProperty("display");else Element(id.c_str())->SetProperty("display","none");}
+        Disabled("open-processing",values["enabled"]==0);Disabled("open-frame-options",values["mfg_enabled"]==0);
         Element("ratios")->SetProperty("display",values["multiplier"]>=2 ? "flex":"none");
         Select("nr-style",values["style"]==0 ? "style-default":values["style"]==1 ? "style-natural":"style-cinematic");
         Select("mfg-mode",values["dynamic_mfg"]!=0 ? "mode-dynamic":values["multiplier"]<0 ? "mode-auto":"mode-custom");
         Element("mfg-hint")->SetInnerRML(values["dynamic_mfg"]!=0 ? "Adjusts frame generation up to the selected limit.":values["multiplier"]<0 ? "Follows the game’s frame generation setting.":"Uses the selected frame generation multiplier.");
         Select("ratios","ratio-"+std::to_string(int(values["multiplier"])));
         Element("compare-a")->SetClass("selected",edits.comparing && edits.side==0);Element("compare-b")->SetClass("selected",!edits.comparing || edits.side==1);
-        Element("compare-a")->SetInnerRML(compareMode=="presets"?compareLeft:"Off");Element("compare-b")->SetInnerRML(compareMode=="presets"?compareRight:"On");
+        Element("compare-a")->SetInnerRML("<span>"+Rml::StringUtilities::EncodeRml(compareMode=="presets"?compareLeft:"Off")+"</span>");Element("compare-b")->SetInnerRML("<span>"+Rml::StringUtilities::EncodeRml(compareMode=="presets"?compareRight:"On")+"</span>");
         Element("compare-preset-pair")->SetProperty("display",compareMode=="presets"?"flex":"none");
         Disabled("undo",edits.past.empty());Disabled("redo",edits.future.empty());
-        for(const auto& [id,key] : std::map<std::string,std::string>{{"pass-count","passes"},{"model-preset","preset"}})
+        for(const auto& [id,key] : std::map<std::string,std::string>{{"model-preset","preset"},{"processing-stage","pre_sr"}})
             if(values.contains(key))dynamic_cast<Rml::ElementFormControl*>(Element(id.c_str()))->SetValue(std::to_string(int(values[key])));
-        for(const auto& [id,control]:extraFields) {const float value=values.at(control->key);auto* e=Element(id.c_str());if(std::string(control->kind)=="toggle")e->SetClass("on",value!=0);else {dynamic_cast<Rml::ElementFormControl*>(e)->SetValue(std::string(control->kind)=="choice"?std::to_string(int(value)):std::to_string(value));if(std::string(control->kind)!="choice"){char text[48];std::snprintf(text,sizeof(text),control->step>=1?"%.0f":"%.2f",value);Element((id+"-value").c_str())->SetInnerRML(text);}}}
+        for(const auto& [id,control]:extraFields) {const float value=values.at(control->key);auto* e=Element(id.c_str());if(std::string(control->kind)=="toggle")e->SetClass("on",value!=0);else {dynamic_cast<Rml::ElementFormControl*>(e)->SetValue(std::string(control->kind)=="choice"?std::to_string(int(value)):std::to_string(value));if(std::string(control->kind)!="choice"){char text[48];std::snprintf(text,sizeof(text),std::string(control->key)=="work_scale"?"%.0f%%":control->step>=1?"%.0f":"%.2f",std::string(control->key)=="work_scale"?value*100:value);Element((id+"-value").c_str())->SetInnerRML(text);}}}
         syncing=false;
     }
     void Open(const std::string& panel) {
         inspectorPanel=panel;
         Element("inspector")->SetClass("opening",true);
-        Visible("inspector",true);Visible("pass-inspector",panel=="passes");Visible("look-inspector",panel=="look");Visible("extra-processing",panel=="processing");Visible("extra-frame-popup",panel=="frame");Visible("popup-metadata",panel=="overview");Element("inspector")->SetClass("session-inspector",panel=="overview");
-        const auto icon=panel=="overview"?"gauge":panel=="passes"?"stack":panel=="look"?"sliders-horizontal":panel=="frame"?"film-strip":"cpu";
-        const auto title=panel=="overview"?"SESSION":panel=="processing"?"NEURAL RENDERING":panel=="passes"?"PASS TUNING":panel=="look"?"LOOK &amp; DETAIL":panel=="frame"?"FRAME GENERATION":"PROCESSING";
+        Visible("inspector",true);Visible("pass-inspector",panel=="passes");Visible("look-inspector",panel=="look");Visible("extra-processing",panel=="processing");Visible("extra-frame-popup",panel=="frame");Visible("popup-metadata",panel=="overview");Visible("hdr-inspector",panel=="hdr");Element("inspector")->SetClass("session-inspector",panel=="overview");
+        const auto icon=panel=="hdr"?"sun":panel=="overview"?"gauge":panel=="passes"?"stack":panel=="look"?"sliders-horizontal":panel=="frame"?"film-strip":"cpu";
+        const auto title=panel=="hdr"?"HDR":panel=="overview"?"SESSION":panel=="processing"?"NEURAL RENDERING":panel=="passes"?"PASS TUNING":panel=="look"?"LOOK &amp; DETAIL":panel=="frame"?"FRAME GENERATION":"PROCESSING";
         Element("inspector-title")->SetInnerRML(std::string("<img class=\"glyph\" src=\"icons/")+icon+"-light.png\"/>"+title);
         if(layout=="centered")Visible("overview",false);
         Raise("inspector");Enter("inspector");inspectorAnchored=layout=="bar";
-        if(inspectorAnchored) {auto* source=Element(panel=="overview"?"open-session":panel=="passes"?"open-passes":panel=="frame"?"open-frame-options":panel=="processing"?"open-processing":"open-look");document->GetContext()->Update();const auto at=source->GetAbsoluteOffset(Rml::BoxArea::Border);const auto bounds=source->GetBox().GetSize(Rml::BoxArea::Border);const auto size=Element("inspector")->GetBox().GetSize(Rml::BoxArea::Border);const auto viewport=document->GetContext()->GetDimensions();inspectorAnchorX=at.x+bounds.x*.5f;Element("inspector")->SetProperty("left",std::to_string(std::clamp(inspectorAnchorX-size.x*.5f,12.f,std::max(12.f,viewport.x-size.x-12)))+"px");Element("inspector")->SetProperty("top",std::to_string(std::max(12.f,at.y-size.y-20))+"px");}
+        if(inspectorAnchored) {auto* source=Element(panel=="hdr"?"open-hdr":panel=="overview"?"open-session":panel=="passes"?"open-passes":panel=="frame"?"open-frame-options":panel=="processing"?"open-processing":"open-look");document->GetContext()->Update();const auto at=source->GetAbsoluteOffset(Rml::BoxArea::Border);const auto bounds=source->GetBox().GetSize(Rml::BoxArea::Border);const auto size=Element("inspector")->GetBox().GetSize(Rml::BoxArea::Border);const auto viewport=document->GetContext()->GetDimensions();inspectorAnchorX=at.x+bounds.x*.5f;Element("inspector")->SetProperty("left",std::to_string(std::clamp(inspectorAnchorX-size.x*.5f,12.f,std::max(12.f,viewport.x-size.x-12)))+"px");Element("inspector")->SetProperty("top",std::to_string(std::max(12.f,at.y-size.y-20))+"px");}
     }
     void ProcessEvent(Rml::Event& event) override
     {
@@ -345,6 +357,7 @@ struct Controller : Rml::EventListener
         if(button)target=button;
         while(target && target->GetId().empty())target=target->GetParentNode();
         if(!target)return;const auto id=target->GetId();
+        if(hdr.Event(id,event))return;
         if(event.GetType()=="mouseover") {
             const auto title=target->GetAttribute<Rml::String>("title","");if(!title.empty()) {const auto at=target->GetAbsoluteOffset(Rml::BoxArea::Border);Element("tooltip")->SetInnerRML(Rml::StringUtilities::EncodeRml(title));Element("tooltip")->SetProperty("left",std::to_string(at.x-60)+"px");Element("tooltip")->SetProperty("top",std::to_string(at.y+38)+"px");Visible("tooltip",true);}
             return;
@@ -370,7 +383,8 @@ struct Controller : Rml::EventListener
             if(id=="compare-mode"||id=="compare-left"||id=="compare-right") {if(id=="compare-mode")compareMode=field->GetValue();else if(id=="compare-left")compareLeft=field->GetValue();else compareRight=field->GetValue();PrepareComparison();Sync();return;}
             if(id=="font-select") {copyFont=field->GetValue();Typography();return;}
             if(id=="copy-size"||id=="copy-weight"||id=="heading-size"||id=="heading-weight") {const int value=std::stoi(field->GetValue());if(id=="copy-size")copySize=value;else if(id=="copy-weight")copyWeight=value;else if(id=="heading-size")headingSize=value;else headingWeight=value;Typography();return;}
-            const auto mapping=std::map<std::string,std::string>{{"strength","intensity"},{"detail","detail"},{"colour","colour"},{"tone","tone"},{"pass-count","passes"},{"model-preset","preset"}};
+            if(id=="render-resolution"){Put("work_scale",std::stof(field->GetValue())/100.f);Sync();return;}
+            const auto mapping=std::map<std::string,std::string>{{"strength","intensity"},{"detail","detail"},{"colour","colour"},{"tone","tone"},{"model-preset","preset"},{"processing-stage","pre_sr"}};
             if(const auto found=mapping.find(id);found!=mapping.end())Put(found->second,std::stof(field->GetValue()));
             else if(id.rfind("pass-",0)==0)Put("pass"+std::to_string(pass)+"_"+id.substr(5),std::stof(field->GetValue()));
             else if(id=="presets") {
@@ -381,6 +395,7 @@ struct Controller : Rml::EventListener
             }
         } else if(event.GetType()=="click") {
             if(id=="close")ToggleOverlay();
+            else if(id=="pass-minus"||id=="pass-plus")Put("passes",std::clamp(values.at("passes")+(id=="pass-minus"?-1.f:1.f),1.f,3.f));
             else if(id.rfind("group-toggle-",0)==0){auto* group=Element(id.substr(13).c_str());group->SetProperty("display",group->IsVisible()?"none":"block");target->SetClass("expanded",group->IsVisible());}
             else if(id.rfind("reset-extra-",0)==0 && extraFields.contains(id.substr(6)))Put(extraFields.at(id.substr(6))->key,defaults.at(extraFields.at(id.substr(6))->key));
             else if(extraFields.contains(id)) {const auto* control=extraFields.at(id);if(std::string(control->kind)=="toggle")Put(control->key,values.at(control->key)==0?1.f:0.f);}
@@ -412,8 +427,10 @@ struct Controller : Rml::EventListener
             else if(id=="type-close")Visible("type-panel",false);
             else if(id=="type-reset") {copyFont="roboto";headingFont="bakbak";copySize=22;copyWeight=500;headingSize=36;headingWeight=400;Typography();}
             else if(id.rfind("layout-",0)==0)Layout(id.substr(7));
-            else if(id=="nav-overview"||id=="nav-frame"||id=="nav-neural") {Settings(false);Visible("overview",true);Visible("inspector",false);document->SetClass("overview-page",id=="nav-overview");document->SetClass("frame-page",id=="nav-frame");document->SetClass("neural-page",id=="nav-neural");}
-            else if(id=="nav-look")Open("look");else if(id=="nav-passes")Open("passes");
+            else if(id=="nav-overview"||id=="nav-frame"||id=="nav-neural") {Settings(false);Navigation(id);Visible("overview",true);Visible("inspector",false);document->SetClass("hdr-page",false);document->SetClass("overview-page",id=="nav-overview");document->SetClass("frame-page",id=="nav-frame");document->SetClass("neural-page",id=="nav-neural");}
+            else if(id=="nav-hdr"){Settings(false);Navigation(id);Visible("overview",true);Visible("inspector",false);for(const auto* page:{"overview-page","frame-page","neural-page"})document->SetClass(page,false);document->SetClass("hdr-page",true);}
+            else if(id=="open-hdr")Open("hdr");
+            else if(id=="nav-look"){Navigation(id);Open("look");}else if(id=="nav-passes"){Navigation(id);Open("passes");}
             else if(id=="welcome-close")Visible("welcome",false);
             else if(id=="theme")Visible("theme-menu",!Element("theme-menu")->IsVisible());
             else if(id=="theme-light"||id=="theme-dark"||id=="theme-clear")UseTheme(id=="theme-light"?1:id=="theme-dark"?2:3);
@@ -433,6 +450,7 @@ struct Controller : Rml::EventListener
             else if(id=="save-cancel")Visible("save-sheet",false);
             else if(id=="save-confirm"&&savePreset){const auto name=dynamic_cast<Rml::ElementFormControl*>(Element("preset-name"))->GetValue();if(name.empty()||name.size()>60)Message(name.empty()?"Name your preset.":"Use a shorter preset name.");else if(savePreset(name)){Visible("save-sheet",false);Message("Saving preset…");}else Message("The helper is busy. Try saving again.");}
             else if(id=="save") {const auto name=dynamic_cast<Rml::ElementFormControl*>(Element("presets"))->GetValue();presets[name]=values;edits.saved=values;Message("Session preset saved in memory · game settings unchanged");Notify("Preset saved · Preview");}
+            else if(id=="reset-inspector" && inspectorPanel=="hdr"){if(hdr.available)hdr.Reset();}
             else if(id=="reset-inspector") {auto before=values;for(auto& [key,value]:values){bool reset=inspectorPanel=="look"?(key=="detail"||key=="colour"||key=="tone"):inspectorPanel=="passes" && key.rfind("pass"+std::to_string(pass)+"_",0)==0;for(const auto& control:ExtraControls)if(key==control.key && std::string(control.page)==(inspectorPanel=="processing"?"neural":inspectorPanel=="frame"?"frame":inspectorPanel=="look"?"look":""))reset=true;if(reset)value=defaults.at(key);}edits.Record(before,values);}
             else if(id.rfind("style-",0)==0)Put("style",id=="style-default" ? 0.f:id=="style-natural" ? 1.f:2.f);
             else if(id.rfind("pass-style-",0)==0)Put("pass"+std::to_string(pass)+"_style",id=="pass-style-default" ? 0.f:id=="pass-style-natural" ? 1.f:2.f);

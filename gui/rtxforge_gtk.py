@@ -5856,6 +5856,11 @@ class Window(Adw.ApplicationWindow):
         title=label('Extras','forge-page-title');title.set_xalign(0);heading.append(title)
         intro=label('Manage standalone tools and NR diagnostics for each game.','dim-label');intro.set_xalign(0);heading.append(intro)
         column.append(heading)
+        hdr=Adw.PreferencesGroup(title='RenoDX HDR')
+        hdr_row=row('Game HDR','Install matching HDR mods automatically, or use a custom RenoDX package for a game.')
+        hdr_row.add_prefix(Gtk.Image.new_from_icon_name('display-brightness-symbolic'))
+        choose=button('Choose game',lambda *_:self.choose_hdr_game());choose.set_valign(Gtk.Align.CENTER)
+        choose.set_sensitive(bool(self.games));hdr_row.add_suffix(choose);hdr.add(hdr_row);column.append(hdr)
         # Windows Prefs.Row cards: one card per game, 4px apart (libadwaita boxed-list-separate).
         group=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
         group.add_css_class('boxed-list-separate');group.add_css_class('extras-list')
@@ -6135,6 +6140,10 @@ class Window(Adw.ApplicationWindow):
         remove=button('Remove HDR',lambda *_:self.review_hdr(game,remove=True))
         install.set_sensitive(False);remove.set_visible(False)
         hdr_row.add_suffix(install);hdr_row.add_suffix(remove);hdr.add(hdr_row);body.append(hdr)
+        custom=row('Custom HDR package','Choose a RenoDX .addon64 or .addon32 file for this game. Updates retain your custom choice.')
+        custom.add_prefix(Gtk.Image.new_from_icon_name('document-open-symbolic'))
+        choose=button('Use custom package…',lambda *_:self.choose_custom_hdr(game));choose.set_valign(Gtk.Align.CENTER)
+        choose.set_sensitive(not self.options.demo);custom.add_suffix(choose);hdr.add(custom)
         def show_hdr(result):
             hdr_row.set_subtitle(result['message']+'\n'+result.get('notes',''))
             installed=result.get('installed',False)
@@ -6745,6 +6754,26 @@ class Window(Adw.ApplicationWindow):
     def show_extras(self,*_):
         self.show_page('extras')
 
+    def choose_hdr_game(self):
+        games=sorted(self.games,key=lambda game:game['name'].casefold())
+        if not games:return
+        dialog,body,footer=self.open_panel('RenoDX HDR',width=520,height=260)
+        group=Adw.PreferencesGroup()
+        choice=safe_combo_row(title='Game',subtitle='Open its automatic and custom HDR package controls.',model=Gtk.StringList.new([g['name'] for g in games]),selected=0)
+        group.add(choice);body.append(group)
+        def open_game(*_):
+            game=games[choice.get_selected()];dialog.close();self.details(game);self.detail_pages.set_visible_child_name('Tools')
+        footer.append(button('Open HDR controls',open_game));footer.append(button('Cancel',lambda *_:dialog.close()))
+
+    def choose_custom_hdr(self,game):
+        if self.options.demo:self.toast('Changing HDR is disabled in preview mode.');return
+        chooser=Gtk.FileDialog(title='Choose RenoDX HDR .addon64 or .addon32 file')
+        def chosen(dialog,result):
+            try:path=dialog.open_finish(result).get_path()
+            except GLib.Error:return
+            if path:self.review_hdr(game,custom_path=path)
+        chooser.open(self,None,chosen)
+
     def show_diagnostics(self,game):
         import runtime_diagnostics,json
         def ready(report):
@@ -6783,17 +6812,19 @@ class Window(Adw.ApplicationWindow):
             trust='I trust the source of this exact file',
             done=lambda _:'Tool installed. Recovery is available in Tools.')
 
-    def review_hdr(self,game,remove=False):
+    def review_hdr(self,game,remove=False,custom_path=None):
         import renodx_hdr
         def ready(plan):
-            changes='\n'.join(('Remove ' if c['after'] is None else 'Update ' if c['before'] else 'Add ')+c['path'] for c in plan['changes'])
+            changes='\n'.join(('Remove ' if c['after'] is None else 'Update ' if c['before'] else 'Add ')+c['path']+('\nSHA-256: '+c['after'] if c['after'] else '') for c in plan['changes'])
+            if plan.get('custom'):changes='Custom HDR: '+plan['custom']['name']+'\n'+changes
             review={'operation':'tool-restore' if remove else 'tool','rows':[{'name':game['name'],'game':game['game'],'detail':changes}],'blocked':[]}
             self.review_write(review['operation'],review,
                 run=lambda _:renodx_hdr.apply(self.service.config,plan),
                 details=['Remove HDR' if remove else 'Install HDR','Keep NR, MFG and unrelated tuning.'],
-                note=renodx_hdr.NOTICE,
+                note=' '.join(plan.get('notes',[renodx_hdr.NOTICE])),
+                trust='I trust the source of this exact file' if plan.get('custom') else None,
                 done=lambda result:result['message'])
-        self.start('Preparing RenoDX HDR',lambda:(renodx_hdr.prepare_remove if remove else renodx_hdr.prepare)(self.service.config,game),ready)
+        self.start('Preparing RenoDX HDR',lambda:renodx_hdr.prepare_remove(self.service.config,game) if remove else renodx_hdr.prepare(self.service.config,game,custom_path),ready)
 
     def review_extra_restore(self,record):
         import extra_tools
@@ -10474,7 +10505,7 @@ class Window(Adw.ApplicationWindow):
 
     def global_settings_groups(self):
         """One-time NR/MFG change for every installed game, reviewed first (Windows Global)."""
-        group=Adw.PreferencesGroup(title='Change Installed Games',description='A one-time change, reviewed before anything is written. New installs keep using your presets. Running games, anti-cheat titles and changed files are skipped.')
+        group=Adw.PreferencesGroup(title='Global Settings',description='Apply changes to installed games after review. New installs keep using your presets. Running games, anti-cheat titles and changed files are skipped.')
         nr_keys=[None,True,False];nr=safe_combo_row(title='Neural Rendering',model=Gtk.StringList.new(['Leave as is','On','Off']),selected=0)
         mfg_keys=[None,-1,0,2,3,4,5,6];mfg=safe_combo_row(title='Multi-Frame Generation',subtitle='Feeder games take NR only.',
                                                         model=Gtk.StringList.new(['Leave as is','Follow the game','Off','2×','3×','4×','5×','6×']),selected=0)

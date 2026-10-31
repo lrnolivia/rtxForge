@@ -14,7 +14,7 @@ class ReviewCopyTests(unittest.TestCase):
                     plans=[{'preview': {'feature_mode': mode}, 'payload': b'exact bytes'}],
                     rows=[dict(name='PRAGMATA', detail='Full path and SHA-256 digest',
                                native_summary='Update 3 DLSS files. Originals will be backed up.',
-                               display_summary='Set 4K borderless in the game for the overlay.')],
+                               display_summary='Set Borderless in the game for the overlay.')],
                     blocked=[])
 
     def test_summary_preserves_payload_and_diagnostics(self):
@@ -24,7 +24,7 @@ class ReviewCopyTests(unittest.TestCase):
         row = review['rows'][0]
         self.assertIn('Install NR + MFG. Request 4× frame generation.', row['summary'])
         self.assertIn('Update 3 DLSS files.', row['summary'])
-        self.assertIn('Set 4K borderless in the game', row['summary'])
+        self.assertIn('Set Borderless in the game', row['summary'])
         self.assertNotIn('SHA-256', row['summary'])
         self.assertEqual(row['detail'], 'Full path and SHA-256 digest')
         self.assertEqual(review['plans'], plans)

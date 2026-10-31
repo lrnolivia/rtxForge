@@ -99,6 +99,7 @@ bool Init(ID3D11Device *game, HWND window)
     for (size_t i = 0; i < std::size(Keys); ++i) launch[i] = host.get(Keys[i], 0);
     seed_shortcut_name();
     ForgeGlassPanel::logSink=host.log;
+    ForgeGlassPanel::runtimeKind=2;
     ForgeGlassPanel::Prepare(window);
     device = game;
     device->AddRef();

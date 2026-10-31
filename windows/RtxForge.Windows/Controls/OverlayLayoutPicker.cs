@@ -16,9 +16,10 @@ public sealed class OverlayLayoutPicker : UserControl
     {
         var root = new StackPanel { Spacing = 12 };
         root.Children.Add(new TextBlock { Text = "Layout" });
+        root.Children.Add(Prefs.Label("Choose how controls are arranged in your game.", "ForgeCaptionDimTextStyle"));
         var choices = new Grid { ColumnSpacing = 12 };
         var group = "overlay-layout-" + Guid.NewGuid();
-        string[] captions = ["Floating Sidebar", "Centered Advanced", "Bottom Bar"];
+        string[] captions = ["Side Panel", "Advanced", "Bar"];
         SelectedIndex = Math.Max(0, Array.IndexOf(GlassAppearance.Layouts, selected));
         for (var i = 0; i < captions.Length; i++)
         {
@@ -34,7 +35,7 @@ public sealed class OverlayLayoutPicker : UserControl
             Grid.SetColumn(button, i); choices.Children.Add(button);
         }
         root.Children.Add(choices);
-        Content = root;
+        Content = new Border { Style = Prefs.GetStyle("ForgeSettingsCardStyle"), Child = root };
     }
 
     static Canvas Diagram(int layout)

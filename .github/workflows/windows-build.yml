@@ -183,7 +183,7 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest tests.test_feeder_legacy
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          python -X utf8 -m unittest tests.test_renodx_hdr
+          python -X utf8 -m unittest tests.test_renodx_hdr tests.test_renodx_hdr_settings
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -X utf8 -m unittest discover -s windows/tests -p test_feeder_provider.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }

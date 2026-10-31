@@ -102,6 +102,35 @@ struct Runtime {
         const auto layout=a.value("Layout",previous);c.Typography();c.Materials();c.SyncSettings();
         if(layout!=previous&&(layout=="floating"||layout=="centered"||layout=="bar"))c.Layout(layout);
     }
+    float rememberedMfgMultiplier{-1},rememberedMfgDynamic{0};
+    void Hdr(const nlohmann::json& data) {
+        if(!data.is_object())return;
+        auto& ui=controls->hdr;
+        try {
+            std::vector<ForgeGlass::HdrField> fields;
+            const bool supported=data.value("available",false),installed=data.value("installed",false);
+            const auto message=data.value("message",std::string());if(message.size()>1000)return;
+            if(supported){
+                if(!data.contains("controls")||!data["controls"].is_array()||data["controls"].size()>64||!data.contains("values")||!data["values"].is_object())return;
+                std::set<std::string> seen;
+                for(const auto& f:data["controls"]){
+                    ForgeGlass::HdrField field;field.key=f.at("key").get<std::string>();
+                    if(field.key.empty()||field.key.size()>64||field.key.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")!=std::string::npos||!seen.insert(field.key).second)return;
+                    field.label=f.at("label").get<std::string>();field.section=f.at("section").get<std::string>();field.kind=f.at("kind").get<std::string>();field.unit=f.value("unit",std::string());
+                    if(field.label.size()>120||field.section.size()>120||field.unit.size()>16||(field.kind!="slider"&&field.kind!="choice"))return;
+                    field.minimum=f.at("min").get<float>();field.maximum=f.at("max").get<float>();field.step=f.at("step").get<float>();field.initial=f.at("default").get<float>();field.value=data["values"].at(field.key).get<float>();field.reset=f.value("reset",true);if(data.contains("unreported")&&data["unreported"].is_array()){for(const auto& key:data["unreported"])if(key.is_string()&&key.get<std::string>()==field.key)field.automatic=true;}
+                    if(!std::isfinite(field.minimum)||!std::isfinite(field.maximum)||!std::isfinite(field.step)||!std::isfinite(field.initial)||!std::isfinite(field.value)||field.minimum>field.maximum||field.step<=0||field.value<field.minimum||field.value>field.maximum)return;
+                    if(field.kind=="choice") {const auto& choices=f.at("choices");if(!choices.is_array()||choices.empty()||choices.size()>32||field.minimum!=0||field.maximum!=choices.size()-1||field.value!=std::floor(field.value))return;size_t index=0;for(const auto& choice:choices){const auto label=choice.get<std::string>();if(label.size()>120)return;field.options+="<option value=\""+std::to_string(index++)+"\">"+Rml::StringUtilities::EncodeRml(label)+"</option>";}}
+                    fields.push_back(std::move(field));
+                }
+            }
+            ui.Set(std::move(fields),supported,installed,message);
+        }catch(const nlohmann::json::exception&){}
+    }
+    static bool ReShadeLoaded() {
+        for(const auto* name:{L"dxgi.dll",L"d3d9.dll",L"d3d10.dll",L"d3d11.dll",L"ReShade64.dll",L"ReShade32.dll"}){HMODULE module{};if(GetModuleHandleExW(0,name,&module)){const bool found=GetProcAddress(module,"ReShadeRegisterAddon")!=nullptr;FreeLibrary(module);if(found)return true;}}
+        return false;
+    }
     void Helper(const char* text) {
         if(!text||std::strlen(text)>65536||lastHelper==text)return;lastHelper=text;const auto data=nlohmann::json::parse(text,nullptr,false);if(!data.is_object())return;
         auto& c=*controls;helperReady=data.value("ready",false);c.Disabled("save",!helperReady||!data.value("named_supported",false)||data.value("pending",false));
@@ -113,6 +142,7 @@ struct Runtime {
             c.showStats=prefs.value("overlay_live_stats",c.showStats);c.showWelcome=prefs.value("overlay_welcome",c.showWelcome);c.welcomePosition=prefs.value("overlay_welcome_position",c.welcomePosition);c.primaryMenu=prefs.value("overlay_renderer",c.primaryMenu);c.optiShortcut=prefs.value("optiscaler_hotkey",c.optiShortcut);if(!c.showWelcome)c.Visible("welcome",false);
             for(const auto& [key,name]:std::map<std::string,std::string>{{"opti-menu","optiscaler_ui"},{"opti-intro","optiscaler_intro"},{"reshade-menu","reshade_ui"},{"reshade-intro","reshade_intro"}})c.menuSettings[key]=prefs.value(name,c.menuSettings[key]);c.SyncSettings();
         }
+        if(data.contains("hdr"))Hdr(data["hdr"]);
         if(revision==helperRevision)return;helperRevision=revision;
         if(data.contains("presets")&&data["presets"].is_array()&&data["presets"].size()<=12){
             std::map<std::string,std::string> selected;for(const auto* id:{"presets","compare-left","compare-right"})selected[id]=dynamic_cast<Rml::ElementFormControl*>(c.Element(id))->GetValue();
@@ -156,8 +186,10 @@ struct Runtime {
         c.savePreset=[&](const std::string& name){nlohmann::json values=nlohmann::json::object();for(const auto& key:supportedKeys)if(c.values.contains(key))values[key]=std::floor(c.values.at(key))==c.values.at(key)?nlohmann::json(int(c.values.at(key))):nlohmann::json(c.values.at(key));const auto request=nlohmann::json{{"op","preset-save"},{"changes",{{"name",name},{"values",values}}}}.dump();return host.request&&host.request(host.user,request.c_str());};
         ForgeGlass::Snapshot snapshot{};snapshot.nrGpuMs=snapshot.gameFps=snapshot.displayedFps=snapshot.measuredRatio=-1;
         if(host.read&&host.read(host.user,&snapshot)){
-            ForgeSession::Snapshot live;live.nrKnown=snapshot.nrKnown;live.nrRunning=snapshot.nrRunning;live.nrWarming=snapshot.nrWarming;live.fgKnown=snapshot.fgKnown;live.fgRunning=snapshot.fgRunning;live.framesKnown=snapshot.framesKnown;live.nrGpuMs=snapshot.nrGpuMs;live.gameFps=snapshot.gameFps;live.displayedFps=snapshot.displayedFps;live.measuredRatio=snapshot.measuredRatio;if(now>=nextTelemetry){c.Session(live);nextTelemetry=now+.2;}
+            ForgeSession::Snapshot live;live.nrKnown=snapshot.nrKnown;live.nrRunning=snapshot.nrRunning;live.nrWarming=snapshot.nrWarming;live.fgKnown=snapshot.fgKnown;live.fgRunning=snapshot.fgRunning;live.framesKnown=snapshot.framesKnown;live.nrGpuMs=snapshot.nrGpuMs;live.gameFps=snapshot.gameFps;live.displayedFps=snapshot.displayedFps;live.measuredRatio=snapshot.measuredRatio;
             ForgeWorkbench::Values current;for(uint32_t i=0;i<std::min(snapshot.count,128u);i++)if(snapshot.values&&snapshot.values[i].key&&std::isfinite(snapshot.values[i].value))current[snapshot.values[i].key]=snapshot.values[i].value;
+            if(current.contains("__nr_width")&&current.contains("__nr_height")&&current.at("__nr_width")>0&&current.at("__nr_height")>0&&current.at("__nr_width")<=32768&&current.at("__nr_height")<=32768){live.nrWidth=unsigned(current.at("__nr_width"));live.nrHeight=unsigned(current.at("__nr_height"));}if(now>=nextTelemetry){c.Session(live);nextTelemetry=now+.2;}
+            if(current.contains("multiplier")&&current.at("multiplier")!=0){rememberedMfgMultiplier=current.at("multiplier");rememberedMfgDynamic=current.contains("dynamic_mfg")?current.at("dynamic_mfg"):0;}
             const auto beforeValues=c.values;for(const auto& [key,value]:current)if(c.values.contains(key))c.values[key]=value;
             for(const auto& [key,value]:c.values)if(!current.contains(key))c.defaults[key]=value;
             for(uint32_t i=0;i<std::min(snapshot.defaultCount,128u);i++)if(snapshot.defaults&&snapshot.defaults[i].key&&current.contains(snapshot.defaults[i].key)&&std::isfinite(snapshot.defaults[i].value))c.defaults[snapshot.defaults[i].key]=snapshot.defaults[i].value;
@@ -167,12 +199,15 @@ struct Runtime {
             if(c.values!=beforeValues)c.Sync();c.Visible("frame-section",snapshot.fgAvailable);c.Visible("neural-section",snapshot.nrAvailable);
             if(snapshot.title)document->QuerySelector("h1")->SetInnerRML(Rml::StringUtilities::EncodeRml(snapshot.title));
             if(snapshot.accent){const std::string color=snapshot.accent;if(color.size()==7&&color[0]=='#'&&color.find_first_not_of("0123456789abcdefABCDEF",1)==std::string::npos){const auto rgb=std::stoul(color.substr(1),nullptr,16);c.accent={float((rgb>>16)&255)/255,float((rgb>>8)&255)/255,float(rgb&255)/255};}}
+            const int runtimeKind=current.contains("__runtime_kind")?int(current.at("__runtime_kind")):0;const std::string stack=runtimeKind==1?(ReShadeLoaded()?"OptiScaler + ReShade":"OptiScaler"):runtimeKind==2?"ReShade · Feeder NR":"Not reported";for(const auto* id:{"overview-stack","popup-stack"})c.Element(id)->SetInnerRML(stack);
             for(const auto* id:{"compact-api","overview-api","popup-api"})c.Element(id)->SetInnerRML(dx12Interop?"DirectX 12":"DirectX 11");for(const auto* id:{"compact-output","overview-output","popup-output"})c.Element(id)->SetInnerRML(outputSpace==1?"HDR · scRGB":outputSpace==2?"HDR10":"SDR");c.Element("open-session")->QuerySelector(".session-name")->SetInnerRML("Live session");c.Element("open-session")->QuerySelector(".status-note")->SetInnerRML("Live");
             for(int ratio=2;ratio<=6;ratio++)c.Disabled(("ratio-"+std::to_string(ratio)).c_str(),current.contains("__multiplier_max")&&ratio>current.at("__multiplier_max"));c.Disabled("mode-dynamic",current.contains("__dynamic_supported")&&current.at("__dynamic_supported")==0);
-            for(const auto& [id,control]:c.extraFields)c.Disabled(id.c_str(),!current.contains(control->key));
-            for(const auto& [id,key]:std::map<std::string,std::string>{{"strength","intensity"},{"pass-count","passes"},{"model-preset","preset"},{"detail","detail"},{"colour","colour"},{"tone","tone"}})c.Disabled(id.c_str(),!current.contains(key));
+            for(const auto& [id,control]:c.extraFields){const bool missing=!current.contains(control->key);c.Disabled(id.c_str(),missing);c.Disabled(("reset-"+id).c_str(),missing);c.Element(id.c_str())->SetAttribute("title",missing?"Not available in this runtime":control->advanced);}
+            Rml::ElementList optionGroups;document->QuerySelectorAll(optionGroups,".group-body");for(auto* group:optionGroups){if(auto* note=group->QuerySelector(".group-availability")){bool available=false,missing=false;for(const auto& [id,control]:c.extraFields)if(group->QuerySelector("#"+id)){available|=current.contains(control->key);missing|=!current.contains(control->key);}note->SetInnerRML(missing?(available?"Some options are not available in this runtime.":"These options are not available in this runtime."):"");note->SetProperty("display",missing?"block":"none");}}
+            for(const auto& [id,key]:std::map<std::string,std::string>{{"strength","intensity"},{"render-resolution","work_scale"},{"processing-stage","pre_sr"},{"model-preset","preset"},{"detail","detail"},{"colour","colour"},{"tone","tone"}})c.Disabled(id.c_str(),!current.contains(key));
+            c.Disabled("pass-minus",!current.contains("passes")||c.values["passes"]<=1);c.Disabled("pass-plus",!current.contains("passes")||c.values["passes"]>=3);
             for(const auto* key:{"strength","tone","structure","skin"})c.Disabled((std::string("pass-")+key).c_str(),!current.contains("pass"+std::to_string(c.pass)+"_"+key)||c.values["pass"+std::to_string(c.pass)+"_inherit"]!=0);
-            c.Disabled("open-passes",!current.contains("pass2_strength"));if(!messageInitialized){c.Message(snapshot.liveTuning?"Live tuning":"Model changes apply after restarting the game.");messageInitialized=true;}
+            const bool passesSupported=current.contains("pass2_strength")&&c.values["passes"]>=2;c.Disabled("open-passes",!passesSupported);c.Disabled("nav-passes",!passesSupported);c.Disabled("pass-2",!passesSupported);c.Disabled("pass-3",!current.contains("pass3_strength")||c.values["passes"]<3);const auto passPrefix="pass"+std::to_string(c.pass)+"_";c.Disabled("inherit",!current.contains(passPrefix+"inherit"));for(const auto* id:{"pass-style-default","pass-style-natural","pass-style-cinematic"})c.Disabled(id,!current.contains(passPrefix+"style")||c.values[passPrefix+"inherit"]!=0);if(!messageInitialized){c.Message(snapshot.liveTuning?"Live tuning":"Model changes apply after restarting the game.");messageInitialized=true;}
             Helper(snapshot.helperJson);
             for(const auto* id:{"overview-metadata","popup-metadata"}){auto* metadata=c.Element(id);metadata->QuerySelector(".preview-badge")->SetProperty("display","none");metadata->QuerySelector(".session-heading")->GetChild(1)->SetInnerRML("Live session");}
             c.Element("status-sr")->SetProperty("display","none");c.Element("status-rr")->SetProperty("display","none");
@@ -192,9 +227,10 @@ struct Runtime {
         for(int vk=0;vk<256;vk++){const bool down=focused&&frame.keys[vk];if(down!=keys[vk]){const auto key=Key(vk);if(key!=Rml::Input::KI_UNKNOWN){if(down){const auto shortcut=c.shortcut;if(!c.bindingShortcut)c.shortcut=Rml::Input::KI_UNKNOWN;context->ProcessKeyDown(key,modifiers);if(!c.bindingShortcut&&c.shortcut==Rml::Input::KI_UNKNOWN)c.shortcut=shortcut;}else context->ProcessKeyUp(key,modifiers);}if(down&&vk>=VK_SPACE&&!(modifiers&(Rml::Input::KM_CTRL|Rml::Input::KM_ALT))){BYTE state[256]{};GetKeyboardState(state);WCHAR text[8]{};const auto layout=GetKeyboardLayout(0);const int count=ToUnicodeEx(vk,MapVirtualKeyExW(vk,MAPVK_VK_TO_VSC,layout),state,text,8,4,layout);for(int i=0;i<count;i++)if(text[i]>=32)context->ProcessTextInput(Rml::Character(text[i]));}keys[vk]=down;}}
         const auto afterSettings=SettingsValues();for(const auto& [key,value]:afterSettings.items())if(beforeSettings.at(key)!=value)pendingSettings[key]=value;
         if(oldShortcut!=c.shortcut||oldModifiers!=c.shortcutModifiers){const auto key=c.shortcut;const int vk=key==Rml::Input::KI_DELETE?VK_DELETE:key>=Rml::Input::KI_A&&key<=Rml::Input::KI_Z?'A'+key-Rml::Input::KI_A:key>=Rml::Input::KI_F1&&key<=Rml::Input::KI_F12?VK_F1+key-Rml::Input::KI_F1:0;if(vk)pendingSettings["panel_binding"]={{"key",vk},{"modifiers",(c.shortcutModifiers&Rml::Input::KM_ALT?1:0)|(c.shortcutModifiers&Rml::Input::KM_CTRL?2:0)|(c.shortcutModifiers&Rml::Input::KM_SHIFT?4:0)}};}
+        if(helperReady)c.hdr.Flush(c.requestJson);
         if(helperReady&&host.request&&!pendingSettings.empty()){auto it=pendingSettings.begin();const auto request=nlohmann::json{{"op","set-setting"},{"key",it->first},{"value",it->second}}.dump();if(host.request(host.user,request.c_str()))pendingSettings.erase(it);}
         ForgeWorkbench::Values changed;for(const auto& [key,value]:c.values)if(lastValues.contains(key)&&lastValues.at(key)!=value&&key!="mfg_enabled")changed[key]=value;
-        if(c.values["mfg_enabled"]!=lastValues["mfg_enabled"]){changed["multiplier"]=c.values["mfg_enabled"]?2:0;changed["dynamic_mfg"]=0;}
+        if(c.values["mfg_enabled"]!=lastValues["mfg_enabled"]){changed["multiplier"]=c.values["mfg_enabled"]?rememberedMfgMultiplier:0;changed["dynamic_mfg"]=c.values["mfg_enabled"]?rememberedMfgDynamic:0;}
         if(!changed.empty()){std::vector<ForgeGlass::Value> updates;for(const auto& [key,value]:changed)updates.push_back({key.c_str(),value});if(!host.apply||!host.apply(host.user,updates.data(),uint32_t(updates.size()))){c.values=lastValues;c.Message("This change is unavailable in the current rendering route.");}c.Sync();}
         c.reducedMotion=systemReducedMotion||!c.motionEnabled;document->SetClass("reduce-motion",c.reducedMotion);c.Animate(now);c.Adapt(backdrop->measured,now);context->Update();c.AdaptiveForeground(*backdrop,now);context->Update();
         // Display changes resolve during Update. Reading the previous computed

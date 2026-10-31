@@ -21,7 +21,7 @@ add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/GlassAssets.rc" "${CMAKE_
   DEPENDS Embed-Assets.ps1 "${REPO}/prototypes/overlay-rmlui/overlay.rml" "${REPO}/prototypes/overlay-rmlui/overlay.rcss" "${REPO}/prototypes/overlay-rmlui/logo-mark.png" ${GLASS_ICONS})
 add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/PrototypeControls.generated.h"
   COMMAND "${GLASS_POWERSHELL}" -NoProfile -File "${REPO}/prototypes/overlay-rmlui/Generate-Controls.ps1" -Output "${CMAKE_CURRENT_BINARY_DIR}/PrototypeControls.generated.h"
-  DEPENDS "${REPO}/prototypes/overlay-rmlui/Generate-Controls.ps1" "${REPO}/prototypes/overlay-rmlui/scenes.json" "${REPO}/providers/skynizz-bridge/controls.json")
+  DEPENDS "${REPO}/prototypes/overlay-rmlui/Generate-Controls.ps1" "${REPO}/prototypes/overlay-rmlui/scenes.json" "${REPO}/providers/skynizz-bridge/controls.json" "${REPO}/providers/renodx-hdr-settings.json")
 add_library(rtxforge-glass SHARED GlassRuntime.cpp GlassDx12.cpp "${RMLUI_SOURCE}/Backends/RmlUi_Renderer_DX11.cpp" "${CMAKE_CURRENT_BINARY_DIR}/GlassAssets.rc" "${CMAKE_CURRENT_BINARY_DIR}/GlassAssets.generated.h" "${CMAKE_CURRENT_BINARY_DIR}/PrototypeControls.generated.h")
 target_compile_features(rtxforge-glass PRIVATE cxx_std_20)
 target_compile_options(rtxforge-glass PRIVATE /utf-8)

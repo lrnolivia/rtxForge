@@ -64,7 +64,8 @@ public static class Prefs
         new() { Text = text, Style = GetStyle(style), TextWrapping = TextWrapping.Wrap };
 
     /// <summary>Settings card: optional icon, title, description, control on the right.</summary>
-    public static Border Row(string title, string? subtitle = null, FrameworkElement? suffix = null, string? glyph = null)
+    public static Border Row(string title, string? subtitle = null, FrameworkElement? suffix = null, string? glyph = null,
+        FrameworkElement? detail = null)
     {
         var grid = new Grid { ColumnSpacing = 16 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -83,6 +84,7 @@ public static class Prefs
         text.Children.Add(new TextBlock { Text = title, TextWrapping = TextWrapping.Wrap });
         if (!string.IsNullOrEmpty(subtitle))
             text.Children.Add(Label(subtitle, "ForgeCaptionDimTextStyle"));
+        if (detail is not null) text.Children.Add(detail);
         Grid.SetColumn(text, 1);
         grid.Children.Add(text);
 

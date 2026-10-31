@@ -152,6 +152,11 @@ static void TestController(Controller& c,Rml::Context* context)
     Require(c.Element("mfg-hint")->GetInnerRML().find("selected")!=std::string::npos,"MFG explanation is stale");
     click("undo");Require(c.values["multiplier"]==2,"Undo did not restore the full edit");
     click("redo");Require(c.values["multiplier"]==4,"Redo did not reapply the edit");
+    click("pass-minus");Require(c.values["passes"]==2,"Pass stepper did not decrement");
+    click("pass-plus");Require(c.values["passes"]==3,"Pass stepper did not increment");
+    click("pass-plus");Require(c.values["passes"]==3,"Pass stepper exceeded the supported limit");
+    c.Element("render-resolution")->ScrollIntoView();context->Update();c.Element("render-resolution")->Focus();const auto scale=c.values["work_scale"];
+    context->ProcessKeyDown(Rml::Input::KI_RIGHT,0);context->ProcessKeyUp(Rml::Input::KI_RIGHT,0);context->Update();Require(c.values["work_scale"]>scale,"Resolution slider did not update the runtime scale");
     click("compare-b");click("style-cinematic");click("compare-a");Require(c.values["style"]==initial.at("style"),"A did not retain its tuning");
     click("compare-b");Require(c.values["style"]==2,"B did not retain its tuning");
     click("open-passes");click("pass-3");Require(c.pass==3,"Pass 3 is inaccessible");
@@ -167,14 +172,21 @@ static void TestController(Controller& c,Rml::Context* context)
     Require(c.clearOpacity==20&&c.blurRadius==48&&c.surfaceBlend=="soft-light"&&c.blendStrength==50,"Clear defaults differ from approved settings");
     c.UseTheme(2);Require(c.darkOpacity==80&&c.blurRadius==48&&c.surfaceBlend=="overlay"&&c.blendStrength==15,"Dark defaults differ from approved settings");
     c.UseTheme(1);Require(c.lightOpacity==100&&c.blurRadius==44&&c.surfaceBlend=="overlay"&&c.blendStrength==35,"Light defaults differ from approved settings");c.UseTheme(3);
-    ForgeSession::Snapshot live;live.nrKnown=live.nrRunning=live.fgKnown=live.fgRunning=live.framesKnown=true;live.gameFps=60;live.displayedFps=180;live.measuredRatio=3;live.nrGpuMs=2.34;
+    ForgeSession::Snapshot live;live.nrKnown=live.nrRunning=live.fgKnown=live.fgRunning=live.framesKnown=true;live.gameFps=60;live.displayedFps=180;live.measuredRatio=3;live.nrGpuMs=2.34;live.nrWidth=1920;live.nrHeight=1080;
     c.Session(live);Require(c.Element("compact-frames")->GetInnerRML().find("180")!=std::string::npos,"Compact card lost actual displayed FPS");
+    Require(c.Element("compact-nr-size")->GetInnerRML().find("1920")!=std::string::npos,"NR card lost reported dimensions");
+    c.Session({});Require(c.Element("compact-nr-size")->GetInnerRML().find("not reported")!=std::string::npos,"Missing dimensions were guessed");
     live.framesKnown=false;c.Session(live);Require(c.Element("compact-ratio")->GetInnerRML().empty(),"Unmeasured multiplier must stay hidden");c.Session({});
     c.Visible("type-panel",false);click("open-settings");Require(c.settingsOpen&&c.Element("settings-screen")->IsVisible(),"Settings must be a full screen");
     click("setting-notifications");Require(!c.showNotifications,"Notification preference did not change");click("setting-notifications");
     click("setting-stats");Require(!c.showStats&&!c.Element("compact-live")->IsVisible(),"Stats preference should hide compact data");click("setting-stats");click("settings-back");
     c.ShowAppearance();context->Update();
     c.Layout("centered");click("nav-neural");Require(c.document->IsClassSet("neural-page"),"Neural rendering needs its own sidebar page");click("nav-passes");Require(c.stacking.back()=="inspector","Centered inspectors must paint above the main window");
+    click("nav-hdr");Require(c.document->IsClassSet("hdr-page"),"HDR needs its own Advanced page");
+    auto* hdrGame=dynamic_cast<Rml::ElementFormControl*>(c.Element("hdr-main-ToneMapGameNits"));hdrGame->SetValue("250");hdrGame->DispatchEvent("change",{});Require(c.hdr.pending.at("ToneMapGameNits")==250,"HDR changes were not captured");
+    c.hdr.Reset();Require(c.hdr.pending.at("ToneMapGameNits")==203,"HDR reset lost the source default");Require(!c.hdr.pending.contains("ToneMapPeakNits"),"HDR reset must preserve calibrated peak brightness");
+    Require(c.hdr.Flush([](const std::string& request){return request.find("hdr-save")!=std::string::npos;}),"HDR save request was not sent");
+    c.Layout("bar");click("open-hdr");Require(c.inspectorPanel=="hdr"&&c.inspectorAnchored,"Bar HDR needs an attached popout");
     c.Layout("bar");c.Session(live);context->Update();Require(!c.Element("compact-live")->IsVisible(),"Live telemetry must not overflow Bottom Bar metadata");click("open-passes");Require(c.inspectorAnchored,"Bar inspectors should attach to their source");c.Settings(true);context->Update();Require(c.Element("main-panel")->GetAbsoluteOffset(Rml::BoxArea::Border).y>=0,"Bottom Bar settings moved above the viewport");c.Settings(false);c.Layout("floating");context->Update();Require(c.Element("compact-live")->IsVisible(),"Sidebar must retain its compact live cards");
     c.values=initial;c.edits={};c.edits.Start(initial);c.appearance=appearance;c.pass=2;c.Sync();c.Element("theme-label")->SetInnerRML(c.appearance==1?"Light":c.appearance==3?"Clear":"Dark");
     c.Open("passes");c.Element("main-panel")->SetScrollTop(0);c.Element("inspector")->SetScrollTop(0);c.document->Focus();context->ProcessMouseMove(1800,1000,0);
@@ -184,7 +196,7 @@ static void TestController(Controller& c,Rml::Context* context)
 int wmain(int argc,wchar_t** argv)
 {
     try {
-        fs::path assets,background,output,font;int width=2560,height=1440,appearance=3;bool inspector=false,blur=true,selfTest=false,reduceMotion=false,welcome=false,settings=false;float crop=0,requestedTint=-1;std::array<float,3> accent{.19f,.46f,.80f};std::string requestedLayout="floating",requestedBlend;
+        fs::path assets,background,output,font;int width=2560,height=1440,appearance=3;bool inspector=false,blur=true,selfTest=false,reduceMotion=false,welcome=false,settings=false;float crop=0,requestedTint=-1;std::array<float,3> accent{.19f,.46f,.80f};std::string requestedLayout="floating",requestedBlend,requestedPage;
         for(int i=1;i<argc;++i) {
             const std::wstring arg=argv[i];
             const auto next=[&] {Require(i+1<argc,"Missing argument value");return std::wstring(argv[++i]);};
@@ -192,6 +204,7 @@ int wmain(int argc,wchar_t** argv)
             else if(arg==L"--font")font=next();else if(arg==L"--width")width=std::stoi(next());else if(arg==L"--height")height=std::stoi(next());
             else if(arg==L"--dark")appearance=2;else if(arg==L"--light")appearance=1;else if(arg==L"--clear")appearance=3;else if(arg==L"--inspector")inspector=true;else if(arg==L"--no-blur")blur=false;else if(arg==L"--crop-left")crop=std::stof(next());
             else if(arg==L"--self-test")selfTest=true;else if(arg==L"--reduce-motion")reduceMotion=true;else if(arg==L"--welcome")welcome=true;else if(arg==L"--settings")settings=true;
+            else if(arg==L"--page")requestedPage=Utf8(next());
             else if(arg==L"--layout") {requestedLayout=Utf8(next());Require(requestedLayout=="floating"||requestedLayout=="centered"||requestedLayout=="bar","Use --layout floating, centered, or bar");}
             else if(arg==L"--blend") {requestedBlend=Utf8(next());Require(MaterialColor::Valid(requestedBlend),"Unsupported blend mode");}
             else if(arg==L"--tint") {requestedTint=std::stof(next());Require(requestedTint>=0 && requestedTint<=100,"Use --tint 0..100");}
@@ -235,6 +248,8 @@ int wmain(int argc,wchar_t** argv)
         auto* document=context->LoadDocument(Utf8(assets/L"overlay.rml"));Require(document!=nullptr,"Overlay document could not load");
         Controller controller;controller.document=document;controller.appearance=appearance;controller.accent=accent;controller.UseTheme(appearance);if(window)controller.LoadPreferences();
         controller.InstallExtraControls();
+        std::vector<ForgeGlass::HdrField> hdrPreview;for(const auto& f:PreviewHdrFields)hdrPreview.push_back({f.key,f.label,f.section,f.kind,f.options,f.unit,f.minimum,f.maximum,f.step,f.initial,f.initial,f.reset,!f.reset});
+        controller.hdr.Set(std::move(hdrPreview),true,true,"Preview HDR preferences. These sample controls do not change a game; connected controls save startup preferences for verified add-on builds.");
         if(!requestedBlend.empty())controller.surfaceBlend=requestedBlend;if(requestedTint>=0){if(controller.appearance==1)controller.lightOpacity=requestedTint;else if(controller.appearance==3)controller.clearOpacity=requestedTint;else controller.darkOpacity=requestedTint;}
         controller.presets["natural"]=controller.values;controller.presets["cinematic"]=controller.values;controller.presets["cinematic"]["style"]=2;controller.presets["cinematic"]["intensity"]=.8f;
         for(const auto* event:{"click","change","keydown","mouseover","mouseout","mousedown","mousemove","mouseup"})document->AddEventListener(event,&controller);
@@ -250,7 +265,7 @@ int wmain(int argc,wchar_t** argv)
         document->GetElementById("inspector")->SetProperty("backdrop-filter","none");
         document->GetElementById("welcome")->SetProperty("backdrop-filter","none");
         document->Show();
-        controller.Layout(window?controller.layout:requestedLayout);if(inspector)controller.Open("passes");if(settings)controller.Settings(true);
+        controller.Layout(window?controller.layout:requestedLayout);if(!requestedPage.empty()){Require(requestedPage=="overview"||requestedPage=="frame"||requestedPage=="neural"||requestedPage=="hdr","Use --page overview, frame, neural, or hdr");document->SetClass("overview-page",requestedPage=="overview");document->SetClass("frame-page",requestedPage=="frame");document->SetClass("neural-page",requestedPage=="neural");document->SetClass("hdr-page",requestedPage=="hdr");controller.Navigation("nav-"+requestedPage);controller.Visible("type-panel",false);}if(inspector)controller.Open("passes");if(settings)controller.Settings(true);
         auto image=LoadImage(background);
         const auto cropUv=CropImage(image,width,height,crop);
         Backdrop backdrop(device.Get(),width,height,image.rgba.data(),image.width,image.height,cropUv.data());

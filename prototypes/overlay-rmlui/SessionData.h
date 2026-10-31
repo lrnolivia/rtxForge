@@ -8,6 +8,7 @@ namespace ForgeSession {
 struct Snapshot {
     bool nrKnown{},nrRunning{},nrWarming{},fgKnown{},fgRunning{},framesKnown{};
     double nrGpuMs{-1},gameFps{-1},displayedFps{-1},measuredRatio{-1};
+    unsigned nrWidth{},nrHeight{};
 };
 inline bool Available(double value) {return std::isfinite(value)&&value>=0;}
 inline std::string Number(double value,int decimals=0) {

@@ -229,8 +229,6 @@ public sealed partial class GamePage : Page
                         Message = GameOverview.LinuxNote,
                     });
                 var overviewFacts = GameOverview.Facts(g);
-                if (g.ProviderCandidatesText.Length > 0)
-                    PageHost.Children.Add(Prefs.Row("Install route", g.ProviderCandidatesText));
                 PageHost.Children.Add(TestingGroup(g));
                 var facts = new PresetColumns(280, overviewFacts.Count > 3 ? 4 : 3) { ColumnSpacing = 12, RowSpacing = 12, Margin = new Thickness(0, 20, 0, 0) };
                 foreach (var fact in overviewFacts)
@@ -260,8 +258,27 @@ public sealed partial class GamePage : Page
                 break;
 
             case "Features":
-                PageHost.Children.Add(new Expander { Header = "Overlay", Content = new GameOverlayPreferencesView(shell, g),
+                var package = new PreferencesGroup("Package");
+                if (!g.UsesFeeder && g.RuntimeProvider != "vulkan-native")
+                {
+                    var (packageKeys, packageCaptions) = shell.Settings.GamePackageOptions();
+                    var chosen = shell.Settings.GamePackage(g);
+                    var (packageRow, packageCombo) = Prefs.ComboRow("Feature package", shell.Settings.GamePackageNote(g), packageCaptions,
+                        Math.Max(0, Array.IndexOf(packageKeys, chosen)), "\uE7B8");
+                    packageCombo.IsEnabled = !shell.Busy && !shell.Service.IsPreview;
+                    packageCombo.SelectionChanged += (_, _) =>
+                    {
+                        if (packageCombo.SelectedIndex >= 0 && packageKeys[packageCombo.SelectedIndex] != chosen)
+                            _ = shell.SelectGamePackageAsync(g, packageKeys[packageCombo.SelectedIndex]);
+                    };
+                    package.Add(packageRow);
+                }
+                if (g.ProviderCandidatesText.Length > 0)
+                    package.Add(new Expander { Header = "Package details", Content = Prefs.Label(g.ProviderCandidatesText),
+                        HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch });
+                package.Add(new Expander { Header = "Overlay", Content = new GameOverlayPreferencesView(shell, g),
                     HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch });
+                PageHost.Children.Add(package);
                 if (g.RuntimeProvider == "vulkan-native")
                 {
                     var vulkanControls = new PreferencesGroup("Vulkan controls");
@@ -275,22 +292,6 @@ public sealed partial class GamePage : Page
                     feederTuning.Add(Prefs.Row("Feeder NR settings", "Your existing tuning is preserved. Use ReShade's NR panel in the running game to adjust passes, resolution, tone and structure.", glyph: ""));
                     PageHost.Children.Add(feederTuning);
                     break;
-                }
-                if (!g.UsesFeeder)
-                {
-                    var (packageKeys, packageCaptions) = shell.Settings.GamePackageOptions();
-                    var chosen = shell.Settings.GamePackage(g);
-                    var (packageRow, packageCombo) = Prefs.ComboRow("Feature package", shell.Settings.GamePackageNote(g), packageCaptions,
-                        Math.Max(0, Array.IndexOf(packageKeys, chosen)), "");
-                    packageCombo.IsEnabled = !shell.Busy && !shell.Service.IsPreview;
-                    packageCombo.SelectionChanged += (_, _) =>
-                    {
-                        if (packageCombo.SelectedIndex >= 0 && packageKeys[packageCombo.SelectedIndex] != chosen)
-                            _ = shell.SelectGamePackageAsync(g, packageKeys[packageCombo.SelectedIndex]);
-                    };
-                    var package = new PreferencesGroup("Package");
-                    package.Add(packageRow);
-                    PageHost.Children.Add(package);
                 }
                 var features = new PreferencesGroup("Tuning",
                     "Tuning values for this game. Reset restores your library presets. Apply saves them for this game.");
@@ -352,6 +353,9 @@ public sealed partial class GamePage : Page
                 hdrActions.Children.Add(hdrInstall); hdrActions.Children.Add(hdrRemove);
                 var hdrStatus = Prefs.Row("HDR enhancement", "Checking HDR support…", hdrActions, "");
                 hdr.Add(hdrStatus);
+                var customHdr = Prefs.ActionButton("Use custom package…", async (_, _) => { await shell.ChooseCustomHdrAsync(g); Build("Tools"); });
+                customHdr.IsEnabled = !shell.Service.IsPreview && !shell.Busy;
+                hdr.Add(Prefs.Row("Custom HDR package", "Choose a RenoDX .addon64 or .addon32 file for this game. Its architecture and exact files are checked before installation; automatic updates keep your custom choice.", customHdr, "\uE8B7"));
                 PageHost.Children.Add(hdr);
                 _ = FillHdrAsync(g, hdrStatus, hdrInstall, hdrRemove);
                 // populate_tools: NR diagnosis and ReShade / add-ons, each reviewed before it touches the game.

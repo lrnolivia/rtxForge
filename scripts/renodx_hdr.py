@@ -34,6 +34,7 @@ HOSTS = {
 }
 PROXIES = ('dxgi.dll', 'd3d9.dll', 'd3d10.dll', 'd3d11.dll', 'd3d12.dll', 'opengl32.dll')
 NOTICE = 'Requires an HDR display and Windows HDR or a compatible HDR-enabled Proton session. Disable Auto HDR and RTX HDR to avoid double tone mapping.'
+CUSTOM_NOTICE = 'Custom add-on selected by you. Game compatibility and publisher are not verified by the automatic catalog.'
 
 
 def catalog():
@@ -237,10 +238,10 @@ def status(config, row):
         if receipt.exists():
             record = _record(root, receipt, exe.parent)
             intact = all((root / n).is_file() and t.digest(t.safe(root / n)) == h for n, h in record['files'].items())
-            try: selected = match(row, architecture(exe))
+            try: selected = None if record.get('custom') else match(row, architecture(exe))
             except t.Refusal: selected = None
             return {'available': True, 'installed': True, 'title': record['title'],
-                    'message': 'RenoDX HDR installed.' if intact else 'HDR files changed; review HDR before repairing.',
+                    'message': ('Custom HDR installed · ' + record['custom']['name'] if record.get('custom') else 'RenoDX HDR installed.') if intact else 'HDR files changed; review HDR before repairing.',
                     'update': bool(selected and record.get('addon_sha256') != selected['pin']['sha256']), 'notes': NOTICE}
         selected = match(row, architecture(exe))
         _, _, _, e = _eligible(config, row)
@@ -255,9 +256,14 @@ def status(config, row):
 def _fetch(config, selected, arch):
     pin = selected['pin']
     cache = state_storage.storage(config, 32*1024**2) / 'hdr-cache'
-    request = urllib.request.Request(API + str(pin['id']), headers={'Accept': 'application/octet-stream', 'User-Agent': 'rtxForge/1.0'})
     try:
-        addon = packages.download(request, cache / pin['sha256'] / selected['name'], expected=pin['sha256'], size=pin['size'])
+        if selected.get('local_path'):
+            addon = t.safe(selected['local_path'])
+            t.need(addon.is_file() and addon.stat().st_size == pin['size'] and t.digest(addon) == pin['sha256'],
+                   'The custom HDR file changed; choose it again.')
+        else:
+            request = urllib.request.Request(API + str(pin['id']), headers={'Accept': 'application/octet-stream', 'User-Agent': 'rtxForge/1.0'})
+            addon = packages.download(request, cache / pin['sha256'] / selected['name'], expected=pin['sha256'], size=pin['size'])
         request = urllib.request.Request(HOST_URL, headers={'User-Agent': 'rtxForge/1.0'})
         setup = packages.download(request, cache / HOST_ARCHIVE[0] / 'ReShade_Addon.exe', expected=HOST_ARCHIVE[0], size=HOST_ARCHIVE[1])
     except urllib.error.HTTPError as error:
@@ -273,7 +279,26 @@ def _fetch(config, selected, arch):
         t.need(len(entries) == 1 and entries[0].file_size == size, 'Unexpected ReShade runtime in the verified archive.')
         data = archive.read(entries[0])
     t.need(t.sha(data) == digest, 'ReShade runtime failed verification.')
-    return {selected['name']: addon.read_bytes(), name: data}
+    addon_data = addon.read_bytes()
+    t.need(t.sha(addon_data) == pin['sha256'], 'The HDR file changed while preparing review; choose it again.')
+    return {selected['name']: addon_data, name: data}
+
+
+def _custom(row, arch, source, prior=None):
+    source = t.safe(source)
+    t.need(source.is_file() and 0 < source.stat().st_size <= 128*1024**2, 'Choose a RenoDX HDR add-on of at most 128 MB.')
+    t.need(source.suffix.lower() == ('.addon64' if arch == 'x64' else '.addon32'), 'Choose an HDR add-on matching the game architecture.')
+    t.need(source.name.casefold() != 'renodx-dlss5.addon64', 'That file is the neural-rendering add-on. Choose a RenoDX HDR add-on instead.')
+    t.need(architecture(source) == arch, 'The custom HDR add-on architecture does not match this game.')
+    pin = {'sha256': t.digest(source), 'size': source.stat().st_size}
+    metadata = {'name': source.name, **pin}
+    if prior and prior.get('custom'):
+        metadata = copy.deepcopy(prior['custom'])
+        t.need(metadata['sha256'] == pin['sha256'], 'The installed custom HDR add-on changed. Choose its replacement explicitly.')
+    name = 'renodx-custom-' + t.sha(row['exe'].encode())[:12] + ('.addon64' if arch == 'x64' else '.addon32')
+    return {'name': name, 'pin': pin, 'title': row['name'], 'mod': {'notes': [CUSTOM_NOTICE]},
+            'appid': row.get('appid'), 'source_commit': None, 'steam_identity': _steam_identity(row) if not row.get('appid') else None,
+            'local_path': str(source), 'custom': metadata}
 
 
 def _record(root, receipt, directory):
@@ -291,6 +316,12 @@ def _record(root, receipt, directory):
         allowed = (path.parent == directory and path.name in (record['addon'], record['host'])
                    or path.parent == directory / 'rtxForge-HDR-Licenses' and path.name in ('RenoDX-LICENSE.txt', 'ReShade-LICENSE.txt'))
         t.need(isinstance(digest, str) and re.fullmatch('[a-f0-9]{64}', digest) and allowed, 'Invalid HDR recovery member.')
+    if record.get('custom'):
+        custom = record['custom']
+        t.need(isinstance(custom, dict) and isinstance(custom.get('name'), str) and 0 < len(custom['name']) <= 255
+               and re.fullmatch('[a-f0-9]{64}', custom.get('sha256', ''))
+               and type(custom.get('size')) is int and 0 < custom['size'] <= 128*1024**2,
+               'Invalid custom HDR recovery record.')
     if record.get('plugin'):
         value = record['plugin']['value']
         t.need(t.safe(root / t.relative(record['plugin']['path'])) == directory / 'OptiScaler.ini'
@@ -332,15 +363,15 @@ def _freeze(config, plan):
     return plan
 
 
-def prepare(config, row):
+def prepare(config, row, custom_path=None):
     root, exe, receipt, e = _eligible(config, row)
     arch = architecture(exe)
-    selected = match(row, arch)
-    route, host, ini = _route(e, exe, arch, selected)
     prior = _record(root, receipt, exe.parent) if receipt.exists() else None
+    selected = (_custom(row, arch, custom_path) if custom_path else
+                _custom(row, arch, exe.parent / prior['addon'], prior) if prior and prior.get('custom') else match(row, arch))
+    route, host, ini = _route(e, exe, arch, selected)
     record = copy.deepcopy(prior) if prior else {'schema': 1, 'files': {}, 'plugin': None}
     if prior:
-        t.need(prior['addon'] == selected['name'], 'A different HDR package owns this game. Remove it before switching.')
         for name, digest in prior['files'].items():
             path = t.safe(root / name)
             t.need(path.is_file() and t.digest(path) == digest, 'HDR files changed: ' + name + '. Your files have been kept.')
@@ -351,6 +382,11 @@ def prepare(config, row):
     payload = _fetch(config, selected, arch)
     writes, checks = {}, {str(exe): t.digest(exe)}
     if prior: checks.update({str(root / name): digest for name, digest in prior['files'].items()})
+    if prior and prior['addon'] != selected['name']:
+        old = exe.parent / prior['addon']
+        t.need(not _owned(e, root, old), 'Another feature uses this add-on. Its file has been kept.')
+        writes[old] = None
+        record['files'].pop(old.relative_to(root).as_posix(), None)
     if route == 'optiscaler':
         baseline = _managed(e, exe.parent)
         proxy = exe.parent / t.relative(baseline['current']['proxy'])
@@ -389,10 +425,13 @@ def prepare(config, row):
         else: t.need(t.digest(t.safe(path)) == t.sha(data), 'HDR license file changed.')
     record.update(addon=selected['name'], addon_sha256=selected['pin']['sha256'], route=route, host=host,
                   title=selected['title'], source_commit=selected['source_commit'])
+    if selected.get('custom'): record['custom'] = selected['custom']
+    else: record.pop('custom', None)
     writes[receipt] = (json.dumps(record, indent=2) + '\n').encode()
     plan = _plan(row, root, writes, action='install', checks=checks)
     plan.update(route=route, prefix=prefix, steam_identity=selected['steam_identity'],
                 notes=[*selected['mod'].get('notes', []), NOTICE])
+    if selected.get('custom'): plan['custom'] = selected['custom']
     return _freeze(config, plan)
 
 

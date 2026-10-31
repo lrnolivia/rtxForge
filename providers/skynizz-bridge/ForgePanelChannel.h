@@ -21,7 +21,7 @@ inline Header* channel = nullptr;
 inline HANDLE mapping = nullptr, file = nullptr;
 inline LONG lastRevision = 0;
 inline bool pending = false, helperReady = false, needsHello = true;
-inline nlohmann::json settings = nlohmann::json::object(), status = nlohmann::json::object(), review = nlohmann::json::object();
+    inline nlohmann::json settings = nlohmann::json::object(), status = nlohmann::json::object(), review = nlohmann::json::object(), hdr = nlohmann::json::object();
 inline nlohmann::json namedPresets = nlohmann::json::array();
 inline bool namedSupported = false, responseError = false;
 inline std::string lastOperation, savedPresetName;
@@ -111,6 +111,13 @@ inline void Validate(const nlohmann::json& response)
             for(const auto& value : entry["values"]) check(value.is_number() && std::isfinite(value.get<double>()));
         }
     }
+    if(response.contains("hdr")) {
+        const auto& data=response["hdr"];check(data.is_object());
+        for(const auto* name:{"available","installed","pending"})if(data.contains(name))check(data[name].is_boolean());
+        if(data.contains("message"))check(data["message"].is_string()&&data["message"].get<std::string>().size()<=1000);
+        if(data.contains("controls"))check(data["controls"].is_array()&&data["controls"].size()<=64);
+        if(data.contains("values"))check(data["values"].is_object()&&data["values"].size()<=64);
+    }
     if(response.contains("review_id")) check(response["review_id"].is_number_integer() && response["review_id"].get<int>()>0);
     if(response.contains("settings"))
     {
@@ -155,6 +162,7 @@ inline void Poll()
         else if(message.rfind("Waiting for the background helper",0) == 0) message.clear();
         if(response.contains("settings")) settings = response["settings"];
         if(response.contains("status")) status = response["status"];
+        if(response.contains("hdr") && response["hdr"].is_object()) hdr = response["hdr"];
         const auto op = response.value("op",std::string());
         lastOperation = op; responseError = response.value("error",false);
         if(response.contains("named_supported")) namedSupported = response["named_supported"].get<bool>();

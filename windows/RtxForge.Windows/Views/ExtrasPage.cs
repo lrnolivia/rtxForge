@@ -32,8 +32,14 @@ public sealed partial class ExtrasPage : Page
             Action("Show changes", "", shell.ShowPreviousChangesAsync)));
         page.Children.Add(actions);
 
+        var hdr = new PreferencesGroup("RenoDX HDR");
+        var chooseHdrGame = Prefs.ActionButton("Choose game", async (_, _) => await ChooseHdrGameAsync());
+        chooseHdrGame.IsEnabled = shell.Games.Count > 0;
+        hdr.Add(Prefs.Row("Game HDR", "Install matching HDR mods automatically, or use a custom RenoDX package for a game. Required ReShade files are managed with it.", chooseHdrGame, "\uE793"));
+        page.Children.Add(hdr);
+
         var tools = new PresetColumns(420, 2) { ColumnSpacing = 16, RowSpacing = 16, Margin = new Thickness(0, 8, 0, 0) };
-        tools.Children.Add(Card("One-time changes", "Turn neural rendering or frame generation on or off, or set the multiplier, in every game with a package installed.",
+        tools.Children.Add(Card("Global Settings", "Turn neural rendering or frame generation on or off, or set the multiplier, in every game with a package installed. Defaults for future installs stay the same.",
             engine is null ? null : new GlobalControlsView(engine, settingsRows: true), pinToBottom: false));
         tools.Children.Add(Card("App storage", "Downloads, backups and caches rtxForge keeps. Clean up what no game needs.",
             engine is null ? null : new AppStorageView(shell, engine), pinToBottom: false));
@@ -41,6 +47,22 @@ public sealed partial class ExtrasPage : Page
 
         Content = new ScrollViewer { Content = page, HorizontalScrollMode = ScrollMode.Disabled };
         SizeChanged += (_, e) => page.Padding = PageMargins.For(e.NewSize.Width);
+    }
+
+    async Task ChooseHdrGameAsync()
+    {
+        var games = shell.Games.OrderBy(g => g.Name).ToList();
+        if (games.Count == 0) return;
+        var picker = new ComboBox { ItemsSource = games.Select(g => g.Name).ToList(), SelectedIndex = 0,
+            HorizontalAlignment = HorizontalAlignment.Stretch, MinWidth = 280 };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(picker, "Game for RenoDX HDR");
+        var dialog = shell.NewDialog();
+        dialog.Title = "RenoDX HDR";
+        dialog.Content = Prefs.Row("Game", "Open its automatic and custom HDR package controls.", picker, "\uE7FC");
+        dialog.PrimaryButtonText = "Open HDR controls";
+        dialog.CloseButtonText = "Cancel";
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary && picker.SelectedIndex >= 0)
+            shell.OpenGame(games[picker.SelectedIndex], "Tools");
     }
 
     UIElement Action(string text, string glyph, Func<Task> run)

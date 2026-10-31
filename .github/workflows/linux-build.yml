@@ -137,7 +137,7 @@ jobs:
             engine.tests.test_v13_core_hardening \
             tests.test_game_mode_motion
           /usr/bin/python3 -m unittest tests.test_overlay_settings tests.test_vulkan_app_routes tests.test_overlay_bundle tests.test_overlay_refresh tests.test_glass_preferences tests.test_package_downloads tests.test_game_mode_icons
-          /usr/bin/python3 -m unittest tests.test_renodx_hdr
+          /usr/bin/python3 -m unittest tests.test_renodx_hdr tests.test_renodx_hdr_settings
 
           /usr/bin/python3 -m unittest discover -s tests -p test_runtime_updates.py
           /usr/bin/python3 -m unittest discover -s tests -p test_ui_colors.py

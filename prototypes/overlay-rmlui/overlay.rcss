@@ -51,7 +51,10 @@ button:hover { background: #ffffff55; }
 button:active { background: #ffffff88; }
 button:focus-visible, select:focus-visible, input:focus-visible { box-shadow: 0dp 0dp 0dp 2dp var(--accent); }
 button:disabled { opacity: 0.32; cursor: default; }
-.quiet { color: #514c46; }
+.quiet { color: #514c46; background: #ffffff20; }
+.quiet:hover { background: #ffffff32; }
+.quiet:active { background: #ffffff48; }
+.quiet:disabled { background: #ffffff10; opacity: .42; }
 .close { position: relative; width: 32dp; height: 32dp; padding: 0; }
 .close .stroke { position: absolute; display: block; width: 14dp; height: 1.5dp; left: 9dp; top: 15dp; background: #615d58; }
 .close .first { transform: rotate(45deg); }
@@ -62,7 +65,8 @@ select value { display: block; }
 select selectbox { background: #f1eee8; padding: 6dp; border-radius: 10dp; box-shadow: 0dp 6dp 20dp #101b2e30; }
 select option { padding: 8dp; border-radius: 6dp; }
 select option:hover, select option:checked { background-color: var(--accent-soft); }
-select selectarrow { width: 6dp; height: 6dp; border-right: 1dp #6b6660; border-bottom: 1dp #6b6660; transform: rotate(45deg); margin: 4dp 3dp; }
+select selectarrow { display: block; width: 9dp; height: 9dp; border-right: 2dp #514b44; border-bottom: 2dp #514b44; transform: rotate(45deg); margin: 16dp 18dp 0 0; pointer-events: none; }
+select selectvalue { padding-right: 28dp; }
 .preset-row select { flex: 1; }
 .save { color: var(--accent-ink); background: #ffffff80; height: 38dp; font-weight: 600; }
 section { margin-top: 29dp; }
@@ -89,14 +93,18 @@ input.range sliderbar { width: 16dp; height: 16dp; margin-top: 3dp; background: 
 input.range sliderbar:hover { background: var(--accent-soft); }
 input.range sliderarrowdec, input.range sliderarrowinc { display: none; }
 .model-row { display: flex; gap: 18dp; margin-top: 18dp; }
+.model-single { margin-top: 20dp; }
 .model-field { flex: 1; }
 .model-field label { display: block; margin-bottom: 10dp; }
 .model-field select { display: block; width: 100%; }
+.count-stepper { display: flex; align-items: center; justify-content: space-between; gap: 8dp; height: 50dp; box-sizing: border-box; padding: 2dp; border-radius: 10dp; background: #ffffff18; }
+.count-stepper button { flex-shrink: 0; width: 42dp; height: 42dp; line-height: 42dp; padding: 0; font-size: 24dp; background: #ffffff14; }
+.count-stepper span { flex: 1; text-align: center; font-size: 18dp; white-space: nowrap; }
 .inspector-links { display: flex; gap: 22dp; margin-top: 23dp; }
 .text-link { position: relative; text-align: left; flex: 1; color: var(--accent-ink); padding: 0; }
 .chevron { position: absolute; width: 6dp; height: 6dp; right: 4dp; top: 15dp; border-right: 1.5dp #6b6660; border-bottom: 1.5dp #6b6660; transform: rotate(-45deg); }
 .footer { border-top: 1dp #ffffff70; margin-top: 21dp; padding-top: 15dp; }
-.history-actions { display: flex; gap: 0; margin-left: -10dp; }
+.history-actions { display: flex; gap: 10dp; }
 .compare { display: flex; align-items: center; gap: 3dp; }
 .compare span { color: #514b44; font-size: 12dp; margin-right: 7dp; }
 .compare button { width: 31dp; padding: 0; height: 30dp; line-height: 30dp; }
@@ -110,7 +118,7 @@ input.range sliderarrowdec, input.range sliderarrowinc { display: none; }
 .inherit-row { margin-top: 23dp; margin-bottom: 22dp; }
 .pass-tabs { margin-bottom: 8dp; }
 .inspector-footer { margin-top: 20dp; border-top: 1dp #ffffff60; padding-top: 12dp; }
-.inspector-footer button { padding-left: 0; }
+.inspector-footer button { padding: 0 18dp; }
 #look-inspector { display: none; }
 .dark { color: #f3f2f0; }
 .glass.dark { background: transparent; --surface-tone: .07; --surface-grounding: .55; }
@@ -126,6 +134,7 @@ input.range sliderarrowdec, input.range sliderarrowinc { display: none; }
 .dark .text-link { color: var(--accent-ink); }
 .dark .neural, .dark .footer, .dark .inspector-footer { border-color: #ffffff20; }
 .dark select selectbox { background: #2c2b2a; }
+.dark select selectarrow { border-right-color: #eee9e1; border-bottom-color: #eee9e1; }
 .dark .menu { background: #292827f5; }
 .feature-status { display: flex; align-items: center; gap: 14dp; margin: -9dp 0 22dp; }
 .status-chip { display: flex; align-items: center; gap: 7dp; height: 26dp; line-height: 26dp; padding: 0 2dp; font-size: 11dp; font-weight: 600; color: #49443e; }
@@ -145,7 +154,8 @@ scrollbarvertical slidertrack { width: 6dp; }
 scrollbarvertical sliderbar { width: 5dp; min-height: 28dp; border-radius: 3dp; background: #56504955; }
 scrollbarvertical sliderbar:hover { background: #56504988; }
 scrollbarvertical sliderarrowdec, scrollbarvertical sliderarrowinc { display: none; }
-.dark scrollbarvertical sliderbar { background: #d4deeb55; }
+.dark scrollbarvertical sliderbar { background: #e6e2dc66; }
+.main-panel > scrollbarvertical, .inspector > scrollbarvertical, .type-panel > scrollbarvertical { margin: 24dp 18dp 24dp 0; scrollbar-margin: 48dp; }
 #tooltip { display: none; position: absolute; padding: 7dp 10dp; border-radius: 7dp; background: #24211ef5; color: #ffffff; font-size: 12dp; pointer-events: none; }
 @media (max-width: 1050dp) {
     .workspace { left: 24dp; top: 24dp; gap: 18dp; }
@@ -201,7 +211,7 @@ select { padding: 10dp 16dp; }
 .glyph { width: 20dp; height: 20dp; vertical-align: middle; margin-right: 9dp; }
 .dark .glyph { image-color: #ece8e2; }
 .text-link .glyph { width: 19dp; height: 19dp; margin-right: 8dp; }
-.history-actions { margin-left: 0; gap: 2dp; }
+.history-actions { margin-left: 0; gap: 10dp; }
 .history-actions button { padding: 0 12dp; }
 .compare span { font-size: 14dp; }
 .compare button { width: 34dp; height: 34dp; line-height: 34dp; }
@@ -289,7 +299,8 @@ h2 .glyph { width: 24dp; height: 24dp; }
 .close { height: 32dp; width: 32dp; line-height: 32dp; padding: 0; }
 .switch { height: 28dp; width: 48dp; padding: 0; }
 h1, h2, .dark h1, .dark h2 { color: var(--accent-ink); }
-.brand, .welcome-wordmark { font-family: "Bakbak One"; font-size: 24dp; font-weight: 400; color: #514b44; }
+.brand, .welcome-wordmark { font-family: "Bakbak One"; font-size: 27dp; font-weight: 400; color: #514b44; }
+.brand-lockup .brand-logo { width: 36dp; height: 36dp; }
 .dark .brand, .dark .welcome-wordmark { color: #e6e2dc; }
 .welcome { height: 54dp; width: 420dp; padding: 10dp 16dp; gap: 10dp; --shadow-radius: 12; --shadow-offset: 4; }
 .welcome .brand-logo { height: 30dp; width: 30dp; }
@@ -391,6 +402,9 @@ button:active { transform: scale(.98); }
 .option-group .slider-field:first-child { margin-top: 0; }
 .group-heading { display: block; position: relative; width: 100%; height: 42dp; line-height: 42dp; padding: 0 24dp 0 0; font-size: 18dp; text-align: left; color: var(--accent-ink); }
 .group-heading .chevron { right: 6dp; top: 16dp; }
+.group-heading.expanded .chevron { transform: rotate(45deg); }
+.sidebar button.selected { background: var(--accent-soft); color: var(--accent-ink); }
+.group-availability { margin: 0 0 14dp; font-size: 15dp; line-height: 1.4; }
 .group-body { padding-top: 20dp; }
 .option-group .inherit-row { gap: 14dp; margin: 20dp 0; }
 .option-group .inherit-row label { flex: 1; line-height: 1.4; }
@@ -463,9 +477,9 @@ button:active { transform: scale(.98); }
 .settings-appearance .chevron { right: 24dp; top: 30dp; }
 .setting-description { display: block; font-size: 16dp; margin-top: 4dp; opacity: .75; }
 .settings-group { margin-top: 34dp; }
-.settings-group h3 { font-family: var(--heading-font); color: var(--accent-ink); font-size: 22dp; margin: 0 0 18dp; }
+.settings-group h3 { display: block; font-family: var(--heading-font); color: var(--accent-ink); font-size: 22dp; line-height: 1.25; margin: 0; padding-bottom: 18dp; }
 .settings-layouts { display: flex; gap: 10dp; }
-.settings-layouts button { flex: 1; min-width: 0; height: 164dp; box-sizing: border-box; line-height: 1.25; padding: 14dp 10dp; font-size: 16dp; white-space: normal; background: #ffffff12; }
+.settings-layouts button { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; min-width: 0; height: 136dp; box-sizing: border-box; line-height: 1.25; padding: 14dp 10dp; font-size: 16dp; white-space: normal; background: #ffffff12; }
 .settings-layouts button.selected { background: var(--accent-soft); }
 .settings-group .inherit-row { display: flex; align-items: center; justify-content: space-between; gap: 24dp; margin: 22dp 0; }
 .settings-group .inherit-row label { flex: 1; }
@@ -484,6 +498,8 @@ button:active { transform: scale(.98); }
 .mini-stat-label { display: flex; align-items: center; font-size: 12dp; white-space: nowrap; }
 .mini-stat-label .glyph { width: 14dp; height: 14dp; margin-right: 7dp; }
 .mini-stat-value { display: block; margin-top: 8dp; font-size: 20dp; line-height: 1.3; }
+.mini-stat-reading { display: flex; align-items: baseline; justify-content: space-between; gap: 8dp; }
+.mini-stat-detail { font-size: 11dp; line-height: 1.25; text-align: right; }
 .metric-badge { margin-left: auto; font-size: 12dp; color: var(--accent-ink); }
 .layout-bar .compact-live { display: none; }
 .layout-centered .sidebar #nav-settings { margin-top: 20dp; }
@@ -493,10 +509,14 @@ button:active { transform: scale(.98); }
 .save-sheet input { display: block; width: 100%; height: 48dp; margin-top: 12dp; padding: 0 14dp; border-radius: 10dp; background: #ffffff18; }
 .save-actions { display: flex; justify-content: flex-end; gap: 12dp; margin-top: 16dp; }
 .save-actions button { height: 44dp; padding: 0 16dp; font-size: 17dp; }
+.quiet, .save, .segments button, .count-stepper button { display: flex; align-items: center; justify-content: center; line-height: 1.25; }
+.quiet .glyph, .save .glyph { margin-right: 9dp; }
+.text-link, .group-heading, .layout-centered .sidebar button { display: flex; align-items: center; justify-content: flex-start; line-height: 1.25; }
+.reset-value { display: flex; align-items: center; justify-content: center; }
 
 /* Layout diagrams share the real three window arrangements. */
-.layout-screen { display: block; position: relative; width: 100%; height: 80dp; margin-bottom: 12dp; border-radius: 6dp; background: #ffffff0c; }
-.layout-caption { display: block; height: 40dp; text-align: center; }
+.layout-screen { display: block; flex-shrink: 0; position: relative; width: 100%; height: 72dp; margin-bottom: 12dp; border-radius: 6dp; background: #ffffff0c; }
+.layout-caption { display: block; height: auto; line-height: 1.25; text-align: center; }
 .mini-panel, .mini-popover { position: absolute; display: block; border-radius: 4dp; background: #ffffff28; padding: 6dp; box-sizing: border-box; }
 .mini-heading { display: block; width: 58%; height: 3dp; margin-bottom: 6dp; border-radius: 2dp; background: var(--accent); }
 .mini-card { display: block; height: 11dp; margin-bottom: 5dp; border-radius: 2dp; background: #ffffff30; }
@@ -511,3 +531,20 @@ button:active { transform: scale(.98); }
 .layout-bottom .mini-panel .mini-heading { width: 25%; }
 .layout-bottom .mini-panel .mini-line { width: 22%; }
 .layout-bottom .mini-popover { left: 52%; top: 20%; width: 35%; height: 44%; }
+
+/* HDR shares the same card rhythm and fields as neural rendering. */
+#hdr-page { display: none; }
+.layout-centered.hdr-page #hdr-page { display: block; }
+.layout-centered.hdr-page .metadata-compact, .layout-centered.hdr-page #overview-metadata, .layout-centered.hdr-page #tuning-content { display: none; }
+.hdr-entry { display: flex; align-items: center; justify-content: center; gap: 12dp; width: 100%; margin-top: 22dp; padding: 14dp 20dp; background: #ffffff16; border-radius: 12dp; }
+.layout-centered .hdr-entry { display: none; }
+.hdr-field { margin-bottom: 24dp; }
+#hdr-main-note, #hdr-popup-note { margin: 10dp 0 26dp; line-height: 1.5; }
+#hdr-main-fields .option-group h3 { padding-bottom: 18dp; }
+
+.button-label { display: block; flex-shrink: 0; }
+.count-stepper button .button-label { font-size: 24dp; }
+.layout-bar .model-single { display: none; }
+.layout-bar .hdr-entry { position: absolute; top: 14dp; right: 160dp; width: 110dp; height: 44dp; margin: 0; padding: 8dp 14dp; }
+#hdr-main-fields select, #hdr-popup-fields select { display: block; width: 100%; }
+#hdr-main-fields h3 { text-transform: uppercase; }

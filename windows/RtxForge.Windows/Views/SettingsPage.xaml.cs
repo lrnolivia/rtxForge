@@ -94,7 +94,7 @@ public sealed partial class SettingsPage : Page
         profile.SelectionChanged += (_, _) => ValidateMode();
 
         // ----- Appearance -----
-        (row, var borderless) = Prefs.SwitchRow("4K borderless on install", "Use 3840 × 2160 borderless in supported games. Review shows each change; Restore preserves later preferences.", Settings.Borderless4K, "");
+        (row, var borderless) = Prefs.SwitchRow("Borderless on install", "Use borderless in supported games, keeping their current resolution. Review shows each change; Restore preserves later preferences.", Settings.Borderless4K, "\uE7F4");
         borderless.Toggled += (_, _) => { Settings.Borderless4K = borderless.IsOn; Save(); };
         installDefaults.Add(row);
 

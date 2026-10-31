@@ -45,7 +45,7 @@ public sealed class GameOverlayPreferencesView : StackPanel
         var settings = ForgeSettings.Load();
         var values = settings.GameOverlayOptions(game);
         var inherited = !settings.GameOverlaySettings.ContainsKey(game.Id);
-        var (defaultsRow, defaults) = Prefs.SwitchRow("Use app overlay settings", "Turn off to choose settings for this game.", inherited);
+        var (defaultsRow, defaults) = Prefs.SwitchRow("Use app overlay settings", "Turn off to choose settings for this game.", inherited, "\uE713");
         fields.Children.Add(defaultsRow);
         defaults.Toggled += (_, _) =>
         {
@@ -59,13 +59,14 @@ public sealed class GameOverlayPreferencesView : StackPanel
             HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch });
         void Toggle(string title, string key)
         {
-            var (row, control) = Prefs.SwitchRow(title, null, values[key]!.GetValue<bool>());
+            var glyph = key == "overlay_live_stats" ? "\uE9D9" : key.EndsWith("intro") || key == "overlay_welcome" ? "\uE8F2" : "\uE700";
+            var (row, control) = Prefs.SwitchRow(title, null, values[key]!.GetValue<bool>(), glyph);
             control.Toggled += (_, _) => Save(v => v[key] = control.IsOn);
             options.Children.Add(row);
         }
         void Choice(string title, string key, string[] keys, string[] captions)
         {
-            var (row, control) = Prefs.ComboRow(title, null, captions, Math.Max(0, Array.IndexOf(keys, values[key]!.ToString())));
+            var (row, control) = Prefs.ComboRow(title, null, captions, Math.Max(0, Array.IndexOf(keys, values[key]!.ToString())), key == "overlay_welcome_position" ? "\uE8B9" : "\uE765");
             control.SelectionChanged += (_, _) => { if (control.SelectedIndex >= 0) Save(v => v[key] = keys[control.SelectedIndex]); };
             options.Children.Add(row);
         }
@@ -91,7 +92,7 @@ public sealed class GameOverlayPreferencesView : StackPanel
             try { await OperationDialog.ShowPreparedAsync(shell, "update-overlays", progress => engine.ReviewOverlayPackagesAsync(progress, [game.Id])); }
             finally { update.IsEnabled = true; }
         };
-        fields.Children.Add(update);
+        fields.Children.Add(Prefs.Row("Update overlays", "Review and apply this game's overlay menu and welcome choices.", update, "\uE9D9"));
         loading = false;
     }
 }

@@ -245,6 +245,7 @@ class Host:
         self.review_id=0
         controls.shared_native_menu=lambda:self.settings().get('overlay_renderer','game') in ('game','rtxforge')
         self.channels={}
+        self.next_hdr_flush=0
         self.stop=threading.Event()
 
     def handle(self,message,row,pid,session=None):
@@ -256,7 +257,13 @@ class Host:
             params={'row':row,'pid':pid}
             if op in ('hello','status'):
                 response['status']=self.controls.status(params)
+                import renodx_hdr_settings
+                response['hdr']=renodx_hdr_settings.snapshot({'storage':{'root':str(self.state)}},row)
                 if response['status'].get('can_save'):response.update(self.controls.preset_list(params))
+            elif op=='hdr-save':
+                import renodx_hdr_settings
+                response['hdr']=renodx_hdr_settings.save({'storage':{'root':str(self.state)}},row,message.get('changes'))
+                response['message']='HDR preferences saved. Close and restart the game to apply.'
             elif op=='set-setting':
                 key, value = message.get('key'), message.get('value')
                 if key == 'overlay_controls' and type(value) is bool: value = 'classic' if value else 'unified'
@@ -321,6 +328,11 @@ class Host:
         return response
 
     def poll(self):
+        if time.monotonic()>=self.next_hdr_flush:
+            self.next_hdr_flush=time.monotonic()+3
+            import renodx_hdr_settings
+            try:renodx_hdr_settings.flush({'storage':{'root':str(self.state)}})
+            except (OSError,ValueError,t.Refusal):pass
         active=set()
         for row in self.controls.targets():
             try:

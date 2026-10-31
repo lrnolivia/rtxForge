@@ -57,7 +57,7 @@ Anti-cheat remains a block unless a title has an explicit verified offline profi
 
 The overlay uses airy, textured glass with real scene blur and adaptive shadows. Preserve the approved raw logo without a platter. The neutral rtxForge wordmark and accent-colored uppercase headings use Bakbak One; main controls use Roboto at the selected readable default, with simple text-size and overall-scale preferences. Keep the manager application's existing visual identity outside this overlay work.
 
-Offer Sidebar, Advanced and Bottom Bar layouts. Empty chrome is draggable; panels raise together with their content. Bottom Bar popovers attach to the invoking button and detach when dragged. Advanced uses a sidebar, expanded Overview metadata and dedicated frame-generation and neural-rendering pages. Settings is a complete screen with an Appearance popout.
+Offer Side Panel, Advanced and Bar layouts. Empty chrome is draggable; panels raise together with their content. Bar popovers attach to the invoking button and detach when dragged. Advanced uses a sidebar, expanded Overview metadata and dedicated frame-generation and neural-rendering pages. Settings is a complete screen with an Appearance popout.
 
 Clear is the default: light tint 20%, blur 48px, grain 4%, Soft Light at 50%. Dark uses tint 80%, blur 48px and Overlay at 15%; Light uses tint 100%, blur 44px and Overlay at 35%; both retain grain 4%. Clear foreground contrast adapts smoothly and prefers light text where readable. Fine material edits remain available while defaults are being finalized, label the appearance Custom, and reset when a built-in theme is selected. Preserve reduced-motion support and restrained single-line notifications with real shortcut keycaps.
 

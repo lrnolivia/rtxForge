@@ -32,16 +32,13 @@ def target(game, *, local=None, docs=None):
     if appid == '2456740' or exe == 'inzoi-win64-shipping.exe':
         return local / 'BlueClient/Saved/Config/Windows/GameUserSettings.ini', '/Script/BlueClient.B1GameUserSettings', {
             'FullscreenMode': '1', 'LastConfirmedFullscreenMode': '1',
-            'PreferredFullscreenMode': '1', 'LastUserConfirmedFullscreenMode': '1',
-            'ResolutionSizeX': '3840', 'ResolutionSizeY': '2160',
-            'LastUserConfirmedResolutionSizeX': '3840', 'LastUserConfirmedResolutionSizeY': '2160',
-            'SelectedResolutionSizeX': '3840', 'SelectedResolutionSizeY': '2160'}
+            'PreferredFullscreenMode': '1', 'LastUserConfirmedFullscreenMode': '1'}
     if appid == '292030' or exe == 'witcher3.exe':
         return Path(docs or documents()) / 'The Witcher 3/dx12user.settings', 'Viewport', {
-            'Resolution': '"3840x2160"', 'FullScreenMode': '2'}
+            'FullScreenMode': '2'}
     if appid == '1716740' or exe == 'starfield.exe':
         return Path(docs or documents()) / 'My Games/Starfield/StarfieldPrefs.ini', 'Display', {
-            'iSize W': '3840', 'iSize H': '2160', 'bBorderless': '1', 'bFull Screen': '0'}
+            'bBorderless': '1', 'bFull Screen': '0'}
     return None
 
 
@@ -94,7 +91,7 @@ def state_path(engine, game):
 def prepare(engine, game, restore=False, **locations):
     found = target(game, **locations)
     if not found:
-        return None, '4K borderless: configure in game (no verified settings adapter yet)'
+        return None, 'Borderless: configure in game (no verified settings adapter yet)'
     path, section, settings = found
     record_path = state_path(engine, game)
     if restore and not record_path.exists():
@@ -106,9 +103,9 @@ def prepare(engine, game, restore=False, **locations):
             t.need(record['path'] == str(path) and record['section'] == section, 'Display backup identity differs')
         plan = dict(path=path, section=section, settings=settings, before=t.sha(raw), text=text,
                     encoding=encoding, raw=raw, record_path=record_path, record=record, restore=restore)
-        return plan, ('Restore recorded display preferences' if restore else '3840 × 2160 · Borderless · display settings backed up')
+        return plan, ('Restore recorded display preferences' if restore else 'Borderless · current resolution preserved · display settings backed up')
     except (OSError, ValueError, configparser.Error, t.Refusal) as error:
-        return None, '4K borderless skipped: ' + str(error)
+        return None, 'Borderless skipped: ' + str(error)
 
 
 def apply(plan):
@@ -131,7 +128,7 @@ def apply(plan):
                           original={key: value(text, plan['section'], key) for key in plan['settings']})
         for key, new in plan['settings'].items():
             text = replace(text, plan['section'], key, new)
-        record = dict(record, status='active', written=plan['settings'])
+        record = dict(record, status='active', written={**record.get('written', {}), **plan['settings']})
     output = text.encode(encoding)
     plan['record_path'].parent.mkdir(parents=True, exist_ok=True)
     # Durable originals precede the first target write. The outer operation
@@ -156,8 +153,8 @@ def attach(review, enabled=False):
             row['detail'] += ' · ' + description
             row['display_summary'] = (
                 'Restore the display settings backed up by rtxForge.' if plan and restore else
-                'Set 4K borderless. Your display settings will be backed up.' if plan else
-                'Display settings will stay as they are. Set 4K borderless in the game for the overlay.'
+                'Set Borderless. Your display settings will be backed up.' if plan else
+                'Display settings will stay as they are. Set Borderless in the game for the overlay.'
             )
         if plan:
             item.setdefault('extra_checkpoint_paths', []).extend([plan['path'], plan['record_path'].parent])

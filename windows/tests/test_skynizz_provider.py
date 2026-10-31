@@ -182,9 +182,10 @@ def display_review(operation='install',enabled=True):
     return host.reviews.pop(checked['token'])
 review=display_review()
 assert display_path.read_bytes()==display_original,'display review wrote settings'
-assert '3840' in review['rows'][0]['detail']
+assert 'current resolution preserved' in review['rows'][0]['detail']
 run(review)
-assert b'ResolutionSizeX=3840' in display_path.read_bytes()
+assert b'ResolutionSizeX=1920' in display_path.read_bytes()
+assert b'FullscreenMode=1' in display_path.read_bytes()
 assert b'DLSSG_Mode=4' in display_path.read_bytes()
 run(display_review('uninstall',False))
 assert display_path.read_bytes()==display_original and files(display_game)==display_before

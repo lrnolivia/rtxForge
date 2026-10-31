@@ -2,7 +2,7 @@
 
 The overlay opens for the compatible game you are playing. It keeps frame
 generation and neural rendering visible, with Look, fine tuning, sharpening
-and performance controls in expandable sections. The glass presentation offers Sidebar, Advanced and Bottom Bar layouts,
+and performance controls in expandable sections. The glass presentation offers Side Panel, Advanced and Bar layouts,
 with a complete Settings screen and separate Appearance editor. Clear is the
 default; Light and Dark have their own fixed material presets. Theme, text size
 are available in Settings; overlay scale is adjusted in-game. The styling prototype retains
@@ -82,3 +82,23 @@ successful updates. A verified shared installation record and portable original
 backups let Windows and Linux recognize managed package updates made by the
 other OS. Local Proton setup and original-file recovery are preserved. Changed
 or unknown loaders and damaged backups still require attention.
+
+The main NR controls include render resolution and a side-by-side processing-stage
+and pass-count row. Counts use bounded steppers; continuous values use sliders.
+Live NR dimensions appear only when the host reports a fresh completed model
+evaluation. The expanded session card reports the observed runtime stack separately
+from the graphics API; absent data stays unreported.
+
+RenoDX HDR appears as a popout in Side Panel and Bar and as a dedicated Advanced
+page when installed. Verified Mass Effect Legendary Edition and Control Resonant
+add-on hashes have source-matched startup settings adapters. They expose all numeric
+and choice shader preferences from those profiles. Peak-brightness calibration is
+preserved by Reset. Changes queue while a game runs and apply after it closes;
+restart the game to use them. These controls do not imply a live RenoDX settings
+API. Other add-ons retain their native settings menu. Native-menu conflicts and
+changed package files retain pending edits for review instead of overwriting them.
+
+Each game's Tools page also accepts an optional architecture-matched custom
+`.addon32` or `.addon64` HDR add-on. The review freezes the selected bytes and SHA-256;
+future repairs keep this game-specific choice rather than replace it with the
+automatic catalog. Automatic matching remains the default.

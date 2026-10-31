@@ -390,7 +390,7 @@ public sealed partial class GmUi(GmTheme t)
     static string SettingsGlyph(string title) => title switch
     {
         "Provider" => "\uE7F4", "Default mode" or "Enable NR on launch" => "\uE9E9",
-        "Update DLSS files" => "\uE8A5", "4K borderless on install" => "\uE7F4",
+        "Update DLSS files" => "\uE8A5", "Borderless on install" => "\uE7F4",
         "Recognize existing features" => "\uE73E", "Theme" or "Accent color" => "\uE790",
         "UI scale" or "Game Mode scale" => "\uE740", "Controller labels" or "Controller hints" => "\uE7FC",
         "Navigation" or "Navigation position" => "\uE8A0", "Library layout" => "\uE8A9",

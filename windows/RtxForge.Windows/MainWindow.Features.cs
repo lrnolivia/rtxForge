@@ -734,6 +734,14 @@ public sealed partial class MainWindow
     public Task ChangeHdrAsync(Game game, bool remove = false) =>
         ReviewDialog.ShowAsync(this, remove ? "Remove RenoDX HDR" : "Install RenoDX HDR", () => Service.ReviewHdrAsync(game, remove));
 
+    public async Task ChooseCustomHdrAsync(Game game)
+    {
+        if (Service.IsPreview) { ShowToast("Changing HDR is disabled in preview mode."); return; }
+        var path = await PickFileAsync(".addon64", ".addon32");
+        if (path is null) return;
+        await ReviewDialog.ShowAsync(this, "Custom RenoDX HDR", () => Service.ReviewHdrAsync(game, customPath: path));
+    }
+
     public async Task InstallExtraAsync(Game game, string kind)
     {
         if (Service.IsPreview) { ShowToast("Installing tools is disabled in preview mode."); return; }

@@ -76,6 +76,67 @@ class HdrTests(unittest.TestCase):
         self.assertEqual(hdr.match(dict(self.row, appid='', name='A GAME™'), 'x64')['title'], 'A Game')
         with self.assertRaises(t.Refusal): hdr.match(dict(self.row, appid='', name='A Game sequel'), 'x64')
 
+    def custom_fetch(self, config, selected, arch):
+        return {selected['name']: Path(selected['local_path']).read_bytes() if selected.get('local_path') else self.addon,
+                'ReShade64.dll': self.host}
+
+    def test_custom_hdr_without_catalog_match_is_frozen_and_kept_for_this_game(self):
+        self.catalog['games'] = []
+        source = self.root / 'my-hdr.addon64'; source.write_bytes(pe() + b'custom HDR')
+        with patch.object(hdr, '_fetch', side_effect=self.custom_fetch):
+            plan = hdr.prepare({}, self.row, source)
+            source.unlink()  # The reviewed copy, not the external file, is installed.
+            hdr.apply({}, plan)
+            status = hdr.status({}, self.row)
+            self.assertTrue(status['installed']); self.assertFalse(status['update'])
+            self.assertIn('my-hdr.addon64', status['message'])
+            self.assertEqual(hdr.prepare({}, self.row)['custom'], plan['custom'])
+            other = self.root / 'other'; other.mkdir(); (other / 'Game.exe').write_bytes(pe())
+            self.assertFalse(hdr.status({}, dict(self.row, game=str(other)))['available'])
+            hdr.apply({}, hdr.prepare_remove({}, self.row))
+        self.assertEqual((self.game / 'save.dat').read_bytes(), b'save')
+        self.assertFalse(list(self.game.glob('*.addon64')))
+
+    def test_switching_catalog_hdr_to_custom_replaces_only_owned_addon(self):
+        hdr.apply({}, hdr.prepare({}, self.row))
+        source = self.root / 'my-hdr.addon64'; source.write_bytes(pe() + b'custom one')
+        with patch.object(hdr, '_fetch', side_effect=self.custom_fetch):
+            hdr.apply({}, hdr.prepare({}, self.row, source))
+            self.assertFalse((self.game / 'renodx-game.addon64').exists())
+            self.assertEqual((self.game / 'dxgi.dll').read_bytes(), self.host)
+            source.write_bytes(pe() + b'custom two')
+            hdr.apply({}, hdr.prepare({}, self.row, source))
+            record = hdr._record(self.game, hdr._location(self.row)[2], self.game)
+            self.assertEqual((self.game / record['addon']).read_bytes(), source.read_bytes())
+            self.addon += b'catalog update'; self.pin['sha256'] = t.sha(self.addon)
+            self.assertFalse(hdr.status({}, self.row)['update'])
+
+    def test_custom_hdr_rejects_wrong_architecture_nr_and_changed_cache(self):
+        source = self.root / 'my-hdr.addon64'; source.write_bytes(pe(b'L\x01'))
+        with self.assertRaisesRegex(t.Refusal, 'architecture'): hdr.prepare({}, self.row, source)
+        nr = self.root / 'renodx-dlss5.addon64'; nr.write_bytes(pe())
+        with self.assertRaisesRegex(t.Refusal, 'neural-rendering'): hdr.prepare({}, self.row, nr)
+        source.write_bytes(pe() + b'HDR')
+        with patch.object(hdr, '_fetch', side_effect=self.custom_fetch):
+            plan = hdr.prepare({}, self.row, source)
+        payload = next(c for c in plan['changes'] if c['path'].endswith('.addon64'))
+        Path(payload['source']).write_bytes(b'changed after review')
+        with self.assertRaises(t.Refusal): hdr.apply({}, plan)
+        self.assertFalse((self.game / 'dxgi.dll').exists())
+
+    def test_custom_fetch_downloads_only_verified_host_and_checks_local_drift(self):
+        source = self.root / 'my-hdr.addon64'; source.write_bytes(pe() + b'custom')
+        selected = hdr._custom(self.row, 'x64', source)
+        setup = self.root / 'setup.exe'
+        with zipfile.ZipFile(setup, 'w') as archive: archive.writestr('ReShade64.dll', self.host)
+        with self._patches_fetch_restore(), patch.object(hdr.packages, 'download', return_value=setup) as download:
+            payload = hdr._fetch({}, selected, 'x64')
+            self.assertEqual(payload[selected['name']], source.read_bytes())
+            self.assertEqual(download.call_count, 1)
+            self.assertEqual(download.call_args.args[0].full_url, hdr.HOST_URL)
+            source.write_bytes(pe() + b'changed')
+            with self.assertRaisesRegex(t.Refusal, 'changed'): hdr._fetch({}, selected, 'x64')
+
     def test_ambiguity_external_only_and_wrong_arch_do_not_guess(self):
         with self.assertRaises(t.Refusal): hdr.match(self.row, 'x86')
         mod = self.catalog['games'][0]['mods'][0]

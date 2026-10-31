@@ -251,8 +251,13 @@ public sealed partial class EngineForgeService
         return new HdrStatus(B(r, "available"), B(r, "installed"), B(r, "update"), S(r, "message") ?? "", S(r, "notes") ?? "");
     }
 
-    public async Task<EngineReview> ReviewHdrAsync(Game game, bool remove = false) =>
-        ToReview(await CallAsync("hdr_review", new JsonObject { ["row"] = Row(game), ["remove"] = remove }));
+    public async Task<JsonObject> HdrSettingsAsync(Game game, JsonObject? changes = null) =>
+        await CallAsync("hdr_settings", new JsonObject { ["row"] = Row(game), ["changes"] = changes?.DeepClone() }) as JsonObject
+            ?? throw new InvalidOperationException("HDR settings are unavailable.");
+    public async Task FlushHdrSettingsAsync() => _ = await CallAsync("hdr_settings_flush");
+
+    public async Task<EngineReview> ReviewHdrAsync(Game game, bool remove = false, string? customPath = null) =>
+        ToReview(await CallAsync("hdr_review", new JsonObject { ["row"] = Row(game), ["remove"] = remove, ["custom_path"] = customPath }));
 
     public async Task<NrDiagnosis> DiagnoseAsync(Game game)
     {

@@ -316,7 +316,7 @@ public sealed partial class GameModeView
                         () => shell.Settings.DefaultProfile, value => { shell.Settings.DefaultProfile = value; shell.Mode = value; }),
                     SettingToggle("Enable NR on launch", "Leave off to enable NR later from the overlay.", () => shell.Settings.NrOnLaunch, value => shell.Settings.NrOnLaunch = value),
                     SettingToggle("Update DLSS files", "Keep backups when updating older DLSS files.", () => shell.Settings.ManageDlssFiles, value => shell.Settings.ManageDlssFiles = value),
-                    SettingToggle("4K borderless on install", "Use 3840 × 2160 borderless in supported games.", () => shell.Settings.Borderless4K, value => shell.Settings.Borderless4K = value),
+                    SettingToggle("Borderless on install", "Use borderless in supported games, keeping their current resolution.", () => shell.Settings.Borderless4K, value => shell.Settings.Borderless4K = value),
                 ]),
                 new("Existing features", "Register compatible feature packages already installed.",
                 [SettingToggle("Recognize existing features", "Allow updates to compatible installations from other tools.", () => shell.Settings.RecognizePrevious, value => shell.Settings.RecognizePrevious = value)]),

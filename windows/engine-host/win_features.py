@@ -63,6 +63,7 @@ import desktop_service  # noqa: E402
 import engine_bridge  # noqa: E402
 import extra_tools  # noqa: E402
 import renodx_hdr  # noqa: E402
+import renodx_hdr_settings  # noqa: E402
 import game_notes  # noqa: E402
 import library_media  # noqa: E402
 import package_catalog  # noqa: E402
@@ -834,17 +835,30 @@ def hdr_status(params):
     return renodx_hdr.status(_config(), params['row'])
 
 
+def hdr_settings(params):
+    if params.get('changes') is not None:
+        return renodx_hdr_settings.save(_config(), params['row'], params['changes'])
+    return renodx_hdr_settings.snapshot(_config(), params['row'])
+
+
+def hdr_settings_flush(params):
+    return renodx_hdr_settings.flush(_config())
+
+
 def hdr_review(params):
     remove = params.get('remove', False)
     t.need(type(remove) is bool, 'Choose an HDR action.')
-    plan = (renodx_hdr.prepare_remove if remove else renodx_hdr.prepare)(_config(), params['row'])
+    t.need(not (remove and params.get('custom_path')), 'Choose install or remove, not both.')
+    plan = renodx_hdr.prepare_remove(_config(), params['row']) if remove else renodx_hdr.prepare(_config(), params['row'], params.get('custom_path'))
     changes = '\n'.join(('Remove ' if c['after'] is None else 'Update ' if c['before'] else 'Add ') + c['path']
                         + ('\nSHA-256: ' + c['after'] if c['after'] else '') for c in plan['changes'])
     return _review('renodx-hdr', 'Remove RenoDX HDR' if remove else 'Install RenoDX HDR',
-                   [_item(plan['name'], 'Remove HDR; keep NR and MFG.' if remove else 'Matching HDR mod and ReShade runtime',
+                   [_item(plan['name'], 'Remove HDR; keep NR and MFG.' if remove else ('Custom HDR: ' + plan['custom']['name'] if plan.get('custom') else 'Matching HDR mod and ReShade runtime'),
                           'Remove' if remove else 'Install', plan['game'], changes)],
                    action='Remove HDR' if remove else 'Install HDR', payload=plan,
-                   summary='Existing game files and unrelated tuning are preserved.', note=renodx_hdr.NOTICE)
+                   summary='Existing game files and unrelated tuning are preserved.',
+                   trust='I trust the source of this exact file' if plan.get('custom') else None,
+                   note=' '.join(plan.get('notes', [renodx_hdr.NOTICE])))
 
 
 def _run_hdr(plan):
@@ -1049,7 +1063,7 @@ METHODS = {
     "try_anyway": try_anyway, "compat_share": compat_share,
     "recoveries": recoveries, "recovery_review": recovery_review, "cleanup_review": cleanup_review,
     "extras_list": extras_list, "extra_review": extra_review, "extra_restore_review": extra_restore_review,
-    'hdr_status': hdr_status, 'hdr_review': hdr_review,
+    'hdr_status': hdr_status, 'hdr_review': hdr_review, 'hdr_settings': hdr_settings, 'hdr_settings_flush': hdr_settings_flush,
     "packages": packages, "package_inspect": package_inspect, "package_use": package_use,
     "update_check": update_check, "update_stage": update_stage, "update_apply": update_apply,
     "storage_inventory": storage_inventory, "storage_review": storage_review,

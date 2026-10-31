@@ -21,8 +21,8 @@ public sealed partial class PackagesPage : Page
         var page = new StackPanel { Spacing = 8, Padding = new Thickness(36, 12, 36, 48) };
         page.Children.Add(new TextBlock { Text = "Packages", Style = Prefs.GetStyle("ForgePageTitleTextStyle") });
         page.Children.Add(Prefs.Label("rtxForge uses one package for games with DLSS and one for games without it. Every game change is reviewed before it is applied."));
-        page.Children.Add(Prefs.Label(GpuSupport, "ForgeCaptionDimTextStyle"));
-        page.Children.Add(status);
+        page.Children.Add(Prefs.Row("Hardware support", GpuSupport, glyph: "\uE7F4"));
+        page.Children.Add(Prefs.Row("System readiness", glyph: "\uE73E", detail: status));
         page.Children.Add(body);
         Content = new ScrollViewer { Content = page, HorizontalScrollMode = ScrollMode.Disabled };
         SizeChanged += (_, e) => page.Padding = PageMargins.For(e.NewSize.Width);

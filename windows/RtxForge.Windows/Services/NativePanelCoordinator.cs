@@ -13,6 +13,7 @@ internal sealed class NativePanelCoordinator : IDisposable
     readonly Action stopHelper;
     readonly DispatcherQueue dispatcher;
     readonly DispatcherQueueTimer timer;
+    DateTime nextHdrFlush = DateTime.MinValue;
     IReadOnlyList<Game> targets = [];
     NativePanelChannel? channel;
     Game? game;
@@ -60,6 +61,8 @@ internal sealed class NativePanelCoordinator : IDisposable
         busy = true; int request = 0;
         try
         {
+            if (DateTime.UtcNow >= nextHdrFlush)
+            { nextHdrFlush = DateTime.UtcNow.AddSeconds(3); await engine.FlushHdrSettingsAsync(); }
             var active = await engine.ActiveCompanionAsync(targets, MainWindow.ForegroundProcessId(), pid);
             pollProblem = null;
             var foundPid = active["pid"]?.GetValue<int>() ?? 0;
@@ -142,12 +145,16 @@ internal sealed class NativePanelCoordinator : IDisposable
                 preferences["game_title"] = game!.Name;
                 preferences["game_accent"] = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
                 var hello = new JsonObject { ["op"] = action, ["settings"] = preferences, ["status"] = state };
+                hello["hdr"] = await engine.HdrSettingsAsync(game!);
                 if (state["can_save"]?.GetValue<bool>() == true)
                 {
                     var library = await engine.CompanionAsync("preset_list", game!, pid: pid);
                     foreach (var pair in library) hello[pair.Key] = pair.Value?.DeepClone();
                 }
                 return hello;
+            case "hdr-save":
+                return new JsonObject { ["op"] = action, ["hdr"] = await engine.HdrSettingsAsync(game!, message["changes"] as JsonObject
+                    ?? throw new InvalidOperationException("Choose an HDR setting.")), ["settings"] = SettingsSnapshot(), ["message"] = "HDR preferences saved. Close and restart the game to apply." };
             case "preset-save":
             case "preset-delete":
             case "preset-list":

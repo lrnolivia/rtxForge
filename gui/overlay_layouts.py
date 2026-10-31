@@ -2,7 +2,7 @@
 from gi.repository import Gtk
 
 LAYOUTS = ('floating', 'centered', 'bar')
-CAPTIONS = ('Floating Sidebar', 'Centered Advanced', 'Bottom Bar')
+CAPTIONS = ('Side Panel', 'Advanced', 'Bar')
 
 
 class LayoutPicker(Gtk.Box):

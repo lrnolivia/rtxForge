@@ -21,7 +21,7 @@ add_executable(OverlayPrototype Prototype.cpp "${RMLUI_SOURCE}/Backends/RmlUi_Re
 find_program(PROTOTYPE_POWERSHELL NAMES pwsh powershell REQUIRED)
 add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/PrototypeControls.generated.h"
   COMMAND "${PROTOTYPE_POWERSHELL}" -NoProfile -File "${CMAKE_CURRENT_SOURCE_DIR}/Generate-Controls.ps1" -Output "${CMAKE_CURRENT_BINARY_DIR}/PrototypeControls.generated.h"
-  DEPENDS Generate-Controls.ps1 scenes.json "${CMAKE_CURRENT_SOURCE_DIR}/../../providers/skynizz-bridge/controls.json")
+  DEPENDS Generate-Controls.ps1 scenes.json "${CMAKE_CURRENT_SOURCE_DIR}/../../providers/skynizz-bridge/controls.json" "${CMAKE_CURRENT_SOURCE_DIR}/../../providers/renodx-hdr-settings.json")
 target_sources(OverlayPrototype PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/PrototypeControls.generated.h")
 target_compile_features(OverlayPrototype PRIVATE cxx_std_20)
 target_compile_options(OverlayPrototype PRIVATE /utf-8)

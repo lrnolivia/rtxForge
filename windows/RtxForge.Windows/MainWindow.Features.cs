@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using RtxForge.Windows.Controls;
 using RtxForge.Windows.Models;
+using RtxForge.Windows.Services;
 using Windows.Graphics.Imaging;
 
 namespace RtxForge.Windows;
@@ -16,6 +17,59 @@ namespace RtxForge.Windows;
 /// </summary>
 public sealed partial class MainWindow
 {
+    string? overlayRefreshNotice;
+    void InitializeOverlayRefresh()
+    {
+        if (Service is not EngineForgeService engine) return;
+        void Changed(System.Text.Json.Nodes.JsonObject result) => DispatcherQueue.TryEnqueue(() => ShowOverlayRefresh(result));
+        engine.OverlayRefreshChanged += Changed;
+        Closed += (_, _) => engine.OverlayRefreshChanged -= Changed;
+        if (engine.OverlayRefreshResult is { } result) Changed(result);
+    }
+
+    void ShowOverlayRefresh(System.Text.Json.Nodes.JsonObject result)
+    {
+        var updated = result["updated"]?.GetValue<int>() ?? 0;
+        var blocked = (result["blocked"] as System.Text.Json.Nodes.JsonArray)?.Count ?? 0;
+        var current = (result["skipped"] as System.Text.Json.Nodes.JsonArray)?.Count ?? 0;
+        var error = result["error"]?.ToString();
+        var identity = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(
+            result["bundle"] + "|" + result["status"] + "|" + updated + "|" + current + "|" + result["blocked"]?.ToJsonString() + "|" + error)));
+        if (overlayRefreshNotice == identity) return;
+        overlayRefreshNotice = identity;
+        var receipt = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rtxForge", "state", "overlay-refresh-notified.txt");
+        try { if (File.Exists(receipt) && File.ReadAllText(receipt) == identity) return; }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        var message = error is not null ? "Overlay update needs attention: " + error
+            : $"Overlays: {updated} updated · {current} already current" + (blocked > 0 ? $" · {blocked} need repair" : ". Ready to play.");
+        AddLog(message); ShowToast(message);
+        var details = new Button { Content = "Details" };
+        details.Click += async (_, _) => await ShowOverlayUpdateDetailsAsync(result);
+        Toast.ActionButton = details;
+        if (blocked > 0 || error is not null) toastTimer?.Stop();
+        try { Directory.CreateDirectory(Path.GetDirectoryName(receipt)!); File.WriteAllText(receipt, identity); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+    }
+
+    public async Task ShowOverlayUpdateDetailsAsync(System.Text.Json.Nodes.JsonObject? result = null)
+    {
+        result ??= (Service as EngineForgeService)?.OverlayRefreshResult;
+        if (result is null)
+        {
+            var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rtxForge", "state", "overlay-refresh.json");
+            try { if (File.Exists(path)) result = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))?.AsObject(); }
+            catch (Exception e) when (e is IOException or System.Text.Json.JsonException or UnauthorizedAccessException) { }
+        }
+        var text = result is null ? "Checking installed overlays…" : $"{result["updated"] ?? 0} updated · {(result["skipped"] as System.Text.Json.Nodes.JsonArray)?.Count ?? 0} already current";
+        if (result?["error"] is { } error) text += "\n\n" + error;
+        if (result?["updated_games"] is System.Text.Json.Nodes.JsonArray updated)
+            foreach (var game in updated) text += "\n\nUpdated · " + game?["title"];
+        if (result?["blocked"] is System.Text.Json.Nodes.JsonArray blocked)
+            foreach (var game in blocked) text += "\n\nNeeds repair · " + game?["title"] + "\n" + game?["detail"];
+        var dialog = NewDialog(); dialog.Title = "Overlay update"; dialog.CloseButtonText = "Done";
+        dialog.Content = new ScrollViewer { MaxHeight = 480, Content = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, MaxWidth = 640 } };
+        await dialog.ShowAsync();
+    }
     int mediaGeneration;
 
     public static readonly Dictionary<string, string> ArtworkRoles = new()

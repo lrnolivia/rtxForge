@@ -4,8 +4,9 @@ The overlay opens for the compatible game you are playing. It keeps frame
 generation and neural rendering visible, with Look, fine tuning, sharpening
 and performance controls in expandable sections. The glass presentation offers Sidebar, Advanced and Bottom Bar layouts,
 with a complete Settings screen and separate Appearance editor. Clear is the
-default; Light and Dark have their own fixed material presets. Fine edits
-become Custom and built-in theme selection restores that theme’s defaults.
+default; Light and Dark have their own fixed material presets. Theme, text size
+are available in Settings; overlay scale is adjusted in-game. The styling prototype retains
+experimental font and material controls.
 
 Reset icons restore individual values or sections to their documented
 defaults. The main Reset action restores supported controls together. Undo and Redo keep
@@ -67,3 +68,17 @@ and retries running or conflicting games. It does not replace foreign files.
 Linux AppImage and Flatpak builds use native artifacts built from the same source
 revision as the app. Packaging verifies their hashes, revision and matching glass
 DLL before enabling the required refresh. Local source-only builds do not enable it.
+
+Desktop and Game Mode expose illustrated layout choices, theme and text size.
+Overlay scale is adjusted in-game, where its effect is visible. These choices are app-wide;
+game-specific menu and shortcut choices remain separate. Windows shares these
+preferences with the native appearance file, including edits made while the
+overlay is open. Theme selection restores its material defaults while preserving
+text size, scale and layout.
+
+Refresh completion and unfinished games appear in an app notification. The last
+update report remains available in Overlay settings; retries preserve earlier
+successful updates. A verified shared installation record and portable original
+backups let Windows and Linux recognize managed package updates made by the
+other OS. Local Proton setup and original-file recovery are preserved. Changed
+or unknown loaders and damaged backups still require attention.

@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "recipe": "Feeder 1.19.0 / RenoDX 8.5.0-rc10",
+  "sources": [
+    {
+      "name": "DLSS5-Feeder",
+      "archive": "feeder.zip",
+      "url": "https://github.com/jlrouzies-fr/DLSS5-Feeder/releases/download/v1.19.0/DLSS5-Feeder-1.19.0.zip",
+      "size": 503554,
+      "sha256": "9cc19e28f8fb4e216ea61621fdf6443e207e338ec639979ab335503c75f48f36",
+      "members": {
+        "dlss5-feed.addon64": "dlss5-feed.addon64",
+        "reshade-shaders/Shaders/DLSS5_Feed.fx": "reshade-shaders/Shaders/DLSS5_Feed.fx"
+      }
+    },
+    {
+      "name": "RenoDX DLSS5",
+      "archive": "renodx.zip",
+      "url": "https://github.com/RankFTW/rhi-repo/releases/download/renodx-dlss5-8.5.0-rc10/renodx-dlss5_8.5.0-rc10.zip",
+      "size": 1129182,
+      "sha256": "a745040cb2e93e3a1500a6c5a322972acc4c5c667108fcea31c748285d6364a9",
+      "members": {
+        "renodx-dlss5.addon64": "renodx-dlss5.addon64"
+      }
+    },
+    {
+      "name": "ReShade with add-on support",
+      "archive": "ReShade_Setup_6.8.0_Addon.exe",
+      "url": "https://reshade.me/downloads/ReShade_Setup_6.8.0_Addon.exe",
+      "size": 4318424,
+      "sha256": "afe4c8f13048306307983b8b3d41d5bf00a86820440b0e57dea10950e1176445",
+      "members": {
+        "ReShade64.dll": "dxgi.dll"
+      }
+    },
+    {
+      "name": "LumeniteFX",
+      "archive": "lumenite.zip",
+      "url": "https://codeload.github.com/umar-afzaal/LumeniteFX/zip/f80e98d716ad72e12af6f7baa727bcfeb4be5094",
+      "size": 326266,
+      "sha256": "982a18507df0249118950ba68af52bb43d8cbd85458a4704f96e49de0b4d0e74",
+      "members": {
+        "LumeniteFX-f80e98d716ad72e12af6f7baa727bcfeb4be5094/Shaders/include/lumenite_ColorManagement.fxh": "reshade-shaders/Shaders/include/lumenite_ColorManagement.fxh",
+        "LumeniteFX-f80e98d716ad72e12af6f7baa727bcfeb4be5094/Shaders/include/lumenite_Compute.fxh": "reshade-shaders/Shaders/include/lumenite_Compute.fxh",
+        "LumeniteFX-f80e98d716ad72e12af6f7baa727bcfeb4be5094/Shaders/include/lumenite_Helpers.fxh": "reshade-shaders/Shaders/include/lumenite_Helpers.fxh",
+        "LumeniteFX-f80e98d716ad72e12af6f7baa727bcfeb4be5094/Shaders/include/lumenite_Projections.fxh": "reshade-shaders/Shaders/include/lumenite_Projections.fxh",
+        "LumeniteFX-f80e98d716ad72e12af6f7baa727bcfeb4be5094/Shaders/lumenite_Kernel.fx": "reshade-shaders/Shaders/lumenite_Kernel.fx"
+      }
+    },
+    {
+      "name": "ReShade shader headers",
+      "archive": "ReShade.fxh",
+      "url": "https://raw.githubusercontent.com/crosire/reshade-shaders/fd0022170615ce0d8162d219bff07232fa6dd84f/Shaders/ReShade.fxh",
+      "size": 4250,
+      "sha256": "6dabfbbaf968c3871905d2ea17f96572ff7b1cec01310b5d0e5252b66b30174f",
+      "members": {
+        "ReShade.fxh": "reshade-shaders/Shaders/ReShade.fxh"
+      },
+      "raw": true
+    },
+    {
+      "name": "NVIDIA DLSS Super Resolution production",
+      "archive": "nvngx_dlss.dll",
+      "url": "https://raw.githubusercontent.com/NVIDIA/DLSS/9981c6350dc58c0ce21f024fd65e31e851c31689/lib/Windows_x86_64/rel/nvngx_dlss.dll",
+      "size": 58956912,
+      "sha256": "d00b5b0ab29c3ca101b70c3a5ecb3a01b7ef33766a3383a28a18623083e6123e",
+      "members": {
+        "nvngx_dlss.dll": "nvngx_dlss.dll"
+      },
+      "raw": true
+    }
+  ]
+}

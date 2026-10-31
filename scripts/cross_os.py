@@ -88,6 +88,7 @@ def write(target, os_name, names, provider, feature_mode, proxy, proton_override
             handle.write('\n')
             handle.flush()
             os.fsync(handle.fileno())
+        os.chmod(temporary, 0o644)
         os.replace(temporary, path)
     finally:
         if os.path.exists(temporary):
@@ -118,6 +119,14 @@ def intact(target, record):
         path = target / name
         if '..' in Path(name).parts or path.is_symlink() or not path.is_file():
             return False
+        # Tuning is deliberately edited in-game. It is not the identity of a
+        # loader, and must not make the other OS forget a managed installation.
+        provider = (record.get('provider') or {}).get('id')
+        mutable = {'OptiScaler.ini'} if provider in ('skynizz', 'dlss-unlocked', 'y4my') else (
+            {'ReShade.ini', 'ReShadePreset.ini', 'dlss5-feed.cfg', 'host64/ReShade.ini', 'host64/ReShadePreset.ini'}
+            if provider == 'feeder' else set())
+        if name in mutable:
+            continue
         if _sha256(path) != digest:
             return False
     return True
@@ -157,6 +166,15 @@ def other_install(target, this_os):
 
 def shared_state(target):
     return Path(target) / SHARED / 'state'
+
+
+def readable_parents(path, target):
+    """Allow the other OS to traverse only directories for a published game file."""
+    target=Path(target).resolve()
+    for parent in Path(path).parents:
+        if parent==target or not parent.is_relative_to(target): break
+        if parent.is_symlink(): raise ValueError('Linked shared directory refused: '+str(parent))
+        os.chmod(parent,(parent.stat().st_mode & 0o777)|0o055)
 
 
 def adoptable(target, this_os, revision=None):
@@ -219,6 +237,7 @@ def export_state(target, state_dir, baseline, revision, extras):
     if shared.is_symlink():
         raise ValueError('Linked shared state refused: ' + str(shared))
     shared.mkdir(exist_ok=True)
+    os.chmod(shared,(shared.stat().st_mode & 0o777)|0o055)
     state = shared_state(target)
     staging = shared / 'state.new'
     if staging.exists():
@@ -233,6 +252,11 @@ def export_state(target, state_dir, baseline, revision, extras):
     data['cross_os_extras'] = extras
     data['cross_os_revision'] = revision
     (staging / 'baseline.json').write_text(json.dumps(data, indent=1, sort_keys=True) + '\n', encoding='utf-8')
+    # Copies in the shared game folder must be readable after switching OSes;
+    # the private originals keep their existing permissions and restore modes.
+    for item in (staging, *staging.rglob('*')):
+        if item.is_symlink(): continue
+        os.chmod(item, (item.stat().st_mode & 0o777) | (0o055 if item.is_dir() else 0o044))
     if state.exists():
         shutil.rmtree(state)
     os.replace(staging, state)

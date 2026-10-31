@@ -134,12 +134,16 @@ class LegacyFeederTest(unittest.TestCase):
                     self.assertIsNotNone(plan)
                     bulk.execute({'engine':self.e,'plans':[plan]})
                 changed=self.case.files(row)
-                allowed=set(legacy.panel_names(recipe))|{'ReShade.ini','host64/ReShade.ini'}
+                import cross_os
+                allowed=set(legacy.panel_names(recipe))|{'ReShade.ini','host64/ReShade.ini',cross_os.MARKER}
                 for name,data in installed.items():
                     if name not in allowed:self.assertEqual(changed[name],data,name)
                 for name in legacy.panel_names(recipe):
                     self.assertEqual(legacy.machine(directory/name),0x8664)
                 updated=feeder.state(self.e,directory)
+                shared=cross_os.read(directory)
+                self.assertEqual(shared['legacy_recipe'],recipe)
+                self.assertEqual(shared['files'],updated['installed_hashes'])
                 self.assertEqual({k:v for k,v in updated['originals'].items() if k in originals},originals)
                 # A replaced panel is refused; it never becomes an original.
                 panel=directory/next(iter(legacy.panel_names(recipe)));saved=panel.read_bytes()

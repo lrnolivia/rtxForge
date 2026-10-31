@@ -7,10 +7,10 @@ import transactions as t
 
 POSITIONS = ('top-center', 'top-left', 'top-right', 'bottom-left', 'bottom-right')
 DEFAULTS = dict(overlay_policy.DEFAULTS, optiscaler_hotkey='Insert', overlay_renderer='game',
-                overlay_controls='unified', overlay_theme='dark', overlay_live_stats=True, overlay_welcome=True,
-                overlay_welcome_position='top-center', panel_hotkey='Delete', vulkan_mfg_native_menu=False)
+                overlay_controls='unified', overlay_theme='clear', overlay_live_stats=True, overlay_welcome=True,
+                overlay_welcome_position='top-center', panel_hotkey='Delete', vulkan_mfg_native_menu=False, overlay_appearance={})
 ENUMS = {'optiscaler_hotkey': ('Insert', 'F8', 'Disabled'), 'overlay_renderer': ('game', 'optiscaler'),
-         'overlay_controls': ('unified', 'classic'), 'overlay_theme': ('dark', 'light', 'app'), 'overlay_welcome_position': POSITIONS}
+         'overlay_controls': ('unified', 'classic'), 'overlay_theme': ('clear', 'dark', 'light', 'app'), 'overlay_welcome_position': POSITIONS}
 
 
 def options(values):
@@ -23,6 +23,8 @@ def options(values):
         t.need(result[key] in choices, 'Choose a supported ' + key.replace('_', ' ') + '.')
     t.need(isinstance(result['panel_hotkey'], str), 'Choose an overlay shortcut.')
     proton_overlay.parse_shortcut(result['panel_hotkey'])
+    import glass_preferences
+    result['overlay_appearance'] = glass_preferences.validate(result['overlay_appearance'])
     return result
 
 
@@ -36,7 +38,7 @@ def effective(settings, game=None):
             t.need(isinstance(path, str) and isinstance(override, dict), 'Invalid per-game overlay settings.')
             if os.path.normcase(str(Path(path).resolve())) == identity:
                 t.need(set(override) <= set(DEFAULTS) - {'overlay_renderer'}, 'Unknown per-game overlay option. The primary overlay is an app-wide choice.')
-                values = options(values | override)
+                values = options(values | {key:value for key,value in override.items() if key!='overlay_appearance'})
                 break
     return values
 

@@ -170,7 +170,7 @@ internal sealed class NativePanelCoordinator : IDisposable
                 return Done(reset["panel_message"]?.GetValue<string>() ?? "Reset to this game's installed settings");
             case "set-setting":
                 SetPreference(message);
-                return Done(message["key"]?.ToString() == "overlay_theme" ? "Saved" : "Saved · game-menu changes take effect after restarting the game");
+                return Done(message["key"]?.ToString() is "overlay_theme" or "overlay_appearance" ? "Saved" : "Saved · game-menu changes take effect after restarting the game");
             case "discard-review":
                 ClearReview(); return Done("");
             case "global-review":
@@ -202,6 +202,10 @@ internal sealed class NativePanelCoordinator : IDisposable
         {
             switch (setting)
             {
+                case "overlay_appearance":
+                    s.OverlayAppearance = GlassAppearance.Validate(value.AsObject());
+                    GlassAppearance.Import(s.OverlayAppearance);
+                    break;
                 case "overlay_controls": s.OverlayControls = value.GetValue<bool>() ? "classic" : "unified"; break;
                 case "overlay_theme":
                     var theme = value.GetValue<string>();

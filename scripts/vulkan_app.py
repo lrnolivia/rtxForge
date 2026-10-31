@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 import os
+import tempfile
 from pathlib import Path
 import zipfile
 
@@ -21,6 +22,99 @@ PROFILES = {'bg3': ('bg3.exe', "Baldur’s Gate 3"), 'rdr2': ('RDR2.exe', 'Red D
 RECORD_NAMES = ('bink2w64.dll', 'NativeMods')
 PROXY = 'bink2w64.dll'
 PROTON_OVERRIDES = ('bink2w64',)
+SHARED_RECOVERY = '.rtxforge/vulkan/baseline.json'
+
+
+def recovery_export(target, state, baseline, marker):
+    """Plan a portable copy of the verified Vulkan restore record and its objects."""
+    import cross_os
+    checks, writes = {}, {}
+    data = copy.deepcopy(baseline)
+    data['cross_os_revision'] = marker['revision']
+    objects = {(item or {}).get('sha256') for item in data['originals'].values()}
+    objects.add(data.get('prior_record_sha256'))
+    for digest in objects - {None}:
+        source = t.safe(state/'objects'/digest)
+        t.need(source.is_file() and source.stat().st_size <= 512*1024**2 and t.digest(source)==digest,
+               'A Vulkan original backup is missing or changed.')
+        destination = t.safe(target/'.rtxforge/vulkan/objects'/digest)
+        actual = t.digest(destination) if destination.exists() else None
+        t.need(actual in (None, digest), 'A shared Vulkan original backup changed.')
+        checks[str(source)] = digest; checks[str(destination)] = actual
+        if actual is None: writes[str(destination)] = source.read_bytes()
+    portable = cross_os.portable(data, state, target)
+    raw = (json.dumps(portable, sort_keys=True, indent=1)+'\n').encode()
+    destination = t.safe(target/SHARED_RECOVERY)
+    checks[str(destination)] = t.digest(destination) if destination.exists() else None
+    writes[str(destination)] = raw
+    marker['shared_recovery'] = {'schema':1, 'sha256':t.sha(raw), 'readable':True}
+    return data, checks, writes
+
+
+def import_shared_recovery(target, key, config=None):
+    """Adopt another OS's exact restore record into private storage, without game writes."""
+    import cross_os
+    marker = cross_os.read(target)
+    if not marker or marker.get('provider', {}).get('id') != ID or not marker.get('shared_recovery'): return
+    state = provider.state_path(target, state_root(config))
+    with provider._lock(state.parent/'adoption-locks'/state.name):
+        return _import_shared_recovery(target, key, config)
+
+
+def _import_shared_recovery(target, key, config=None):
+    import cross_os
+    marker = cross_os.read(target)
+    if not marker or marker.get('provider', {}).get('id') != ID or not marker.get('shared_recovery'):
+        return
+    state = provider.state_path(target, state_root(config))
+    local = t.read_json(state/'baseline.json') if (state/'baseline.json').is_file() else None
+    if local and local.get('cross_os_revision') == marker.get('revision'): return
+    source = t.safe(target/SHARED_RECOVERY)
+    t.need(source.is_file() and source.stat().st_size < 1024**2 and t.digest(source)==marker['shared_recovery'].get('sha256'),
+           'The shared Vulkan recovery record changed. Nothing was replaced.')
+    raw = source.read_bytes(); shared = json.loads(raw)
+    t.need(shared.get('cross_os_revision') == marker.get('revision') and shared.get('status')=='active',
+           'Shared Vulkan revision differs from its installation record.')
+    folder, manifest, archive, spec = bundled()
+    state.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='cross-os-import-', dir=state.parent) as temporary:
+        staging = Path(temporary).resolve()
+        local_prefix_checks={}
+        local_prefix=t.safe(state/'proton-prefix')
+        if local_prefix.is_dir():
+            files=list(local_prefix.rglob('*'))
+            t.need(len(files)<=256,'Too many local Proton recovery files.')
+            for item in files:
+                item=t.safe(item)
+                if not item.is_file():continue
+                t.need(item.stat().st_size<=128*1024**2,'Local Proton recovery file exceeds its size limit.')
+                payload=item.read_bytes();local_prefix_checks[str(item)]=t.sha(payload)
+                t.atomic_file(staging/'proton-prefix'/item.relative_to(local_prefix),payload,0o600)
+        data = cross_os.localize(shared, staging, target)
+        refs = {(item or {}).get('sha256') for item in data.get('originals', {}).values()}
+        refs.add(data.get('prior_record_sha256'))
+        for digest in refs - {None}:
+            t.need(isinstance(digest,str) and len(digest)==64 and all(c in '0123456789abcdef' for c in digest), 'Invalid shared backup identity.')
+            original = t.safe(target/'.rtxforge/vulkan/objects'/digest)
+            t.need(original.is_file() and original.stat().st_size <= 512*1024**2 and t.digest(original)==digest, 'Shared Vulkan backup is missing or changed.')
+            t.atomic_file(staging/'objects'/digest, original.read_bytes(), 0o600)
+        t.atomic_file(staging/'baseline.json', (json.dumps(data)+'\n').encode(), 0o600)
+        with provider.profile(key, manifest):
+            provider._record(target, staging)
+            for name, expected in data['installed'].items():
+                if name not in provider._mutable():
+                    t.need(t.digest(t.safe(target/t.relative(name))) == expected, 'Shared Vulkan package files changed: '+name)
+        t.need(source.read_bytes()==raw and cross_os.read(target)==marker, 'Shared Vulkan state changed during adoption.')
+        t.need(all(t.digest(Path(path))==digest for path,digest in local_prefix_checks.items()),'Local Proton recovery changed during adoption.')
+        # Keep the former OS-local record for rollback; never overwrite it.
+        retired = None
+        if state.exists():
+            retired = t.safe(state.parent/('retired-'+state.name+'-'+cross_os.new_revision()))
+            os.replace(state, retired)
+        try: os.replace(staging, state)
+        except BaseException:
+            if retired is not None: os.replace(retired, state)
+            raise
 
 
 def write_record(target):
@@ -33,6 +127,13 @@ def write_record(target):
         oses.add(previous['os'])
         oses.update(name for name in previous.get('installed_oses', []) if name in cross_os.OPERATING_SYSTEMS)
     record['installed_oses'] = [name for name in ('windows','linux') if name in oses]
+    state = provider.state_path(target, state_root())
+    if (state/'baseline.json').is_file():
+        baseline, checks, writes = recovery_export(target, state, t.read_json(state/'baseline.json'), record)
+        for path, data in writes.items():
+            t.atomic_file(Path(path), data, 0o644)
+            cross_os.readable_parents(Path(path),target)
+        t.atomic_file(state/'baseline.json', (json.dumps(baseline)+'\n').encode(), 0o600)
     t.atomic_file(Path(target) / cross_os.MARKER, (json.dumps(record, indent=1) + '\n').encode(), 0o600)
     return record
 
@@ -96,6 +197,7 @@ def owned(row, config=None):
     key, target = profile_for(row)
     if key is None:
         return None
+    import_shared_recovery(target, key, config)
     path = provider.state_path(target, state_root(config)) / 'baseline.json'
     if not path.is_file():
         return None
@@ -134,19 +236,24 @@ def decorate(rows, config=None, selected=False):
                 oses.add(shared['os'])
                 oses.update(name for name in shared.get('installed_oses', []) if name in cross_os.OPERATING_SYSTEMS)
             if record:
-                oses.add(cross_os.THIS_OS)
+                if cross_os.THIS_OS=='windows':oses.add('windows')
+                else:
+                    import proton_prefix
+                    ready=proton_prefix.load_record(provider.state_path(target,state_root(config))/'proton-prefix') is not None
+                    if ready:oses.add('linux')
+                    elif shared and 'windows' in oses:row['vulkan_windows']=True
             if record or shared:
                 row['installed_on'] = shared['os'] if shared else cross_os.THIS_OS
                 row['installed_oses'] = [name for name in ('windows','linux') if name in oses]
-            windows = None if record else windows_record(target)
+            windows = None if record else (shared or windows_record(target))
             if windows:
                 # Installed with rtxForge on Windows: Adapt to Linux sets it up for Proton.
-                row.update(installed=True, installed_on='windows', runtime_provider=ID, install_provider=ID,
+                row.update(installed=True, installed_on=windows['os'], runtime_provider=ID, install_provider=ID,
                            feature_mode='nr-mfg', profile='NR + MFG', graphics_apis=['Vulkan'], blocked='',
                            mfg_route='Native Vulkan DLSS-G · Universal Experimental', dynamic_mfg_available=False)
-                row['installed_oses'] = [name for name in ('windows','linux') if name in oses | {'windows'}]
+                row['installed_oses'] = [name for name in ('windows','linux') if name in oses | {windows['os']}]
                 row['exe'] = (target / PROFILES[key][0]).relative_to(Path(row['game'])).as_posix()
-                row['vulkan_windows'] = True
+                row['vulkan_windows'] = windows['os'] == 'windows' and cross_os.THIS_OS == 'linux'
                 continue
             if (available or selected) and not record and not row.get('installed'):
                 row.update(install_provider=ID,vulkan_available=available,graphics_apis=['Vulkan'],
@@ -230,6 +337,7 @@ def prepare(config, rows, mode, operation, settings, e):
             t.need(not row.get('anti_cheat'), 'Anti-cheat detected; this game is excluded.')
             t.need(not e._running_processes_under_root(Path(row['game'])), 'Close this game, then review again.')
             prefix = prefix_for(row)
+            import_shared_recovery(target, key, config)
             with provider.profile(key, manifest):
                 plan = (provider.plan_restore(target, state_root(config)) if operation == 'uninstall'
                         else provider.plan_install(target, archive, folder / ('loader-'+key) / 'bink2w64.dll', state_root(config), experimental=True,
@@ -271,7 +379,10 @@ def execute(review):
                 provider.execute(item['plan'])
             # Shared record so the other OS recognises this install (removed with the originals).
             import cross_os
-            if review['operation'] == 'uninstall':cross_os.remove(Path(item['plan']['target']), cross_os.THIS_OS)
+            if review['operation'] == 'uninstall':
+                target = Path(item['plan']['target']); marker = cross_os.read(target)
+                if marker and marker.get('provider', {}).get('id') == ID:
+                    cross_os.remove(target, marker['os'])
             else:write_record(Path(item['plan']['target']))
             if item['prefix']:
                 import proton_prefix

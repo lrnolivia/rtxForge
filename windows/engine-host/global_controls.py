@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 
 import transactions as t
 from operation_session import Session
@@ -229,7 +230,16 @@ def execute(review):
                 _check(e, plan)
                 checkpoint = session.capture([Path(p) for p in plan['writes']], label=plan['name'])
                 try:
-                    for filename, data in plan['writes'].items(): t.atomic_file(Path(filename), data, 0o600)
+                    for filename, data in plan['writes'].items():
+                        path=Path(filename)
+                        # Game payloads and shared restore records must remain
+                        # readable from the other OS. Private app state stays private.
+                        mode=((stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o600)|0o044
+                              if path.is_relative_to(Path(plan['root'])) else 0o600)
+                        t.atomic_file(path, data, mode)
+                        if path.is_relative_to(Path(plan['root'])):
+                            import cross_os
+                            cross_os.readable_parents(path,Path(plan['root']))
                     for filename, data in plan['writes'].items():
                         t.need(t.digest(Path(filename)) == t.sha(data), 'A bulk change could not be verified.')
                     session.seal(checkpoint)

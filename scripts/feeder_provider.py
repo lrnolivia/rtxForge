@@ -1,7 +1,7 @@
 """Windows Feeder NR: reviewed local recipes, adoption, model updates and restore.
 
-Third-party runtime binaries and the NR model are supplied locally. This adapter
-does not run their installer scripts or manufacture native OptiScaler ownership.
+Pinned runtime inputs are downloaded into app-owned storage automatically. This
+adapter never runs upstream installers or manufactures OptiScaler ownership.
 """
 from __future__ import annotations
 
@@ -523,6 +523,14 @@ def expand_rows(e, rows, selected=False):
                 child['exe'] = exe.relative_to(root).as_posix()
             if any((exe.parent / name).is_file() for name in ('dlss5-feed.addon64', 'dlss5-feed.addon32', 'dlss5-feed-helper.addon64')):
                 try:
+                    import cross_os
+                    shared = cross_os.read(exe.parent)
+                    if not _windows(e) and shared and shared.get('provider',{}).get('id')=='feeder' and shared.get('legacy_recipe'):
+                        child.update(installed=True, runtime_provider='feeder', feature_mode='nr-only', profile='NR Only',
+                                     installed_on='windows', installed_oses=['windows'], linux_ready=False,
+                                     feeder_available=False, mfg_enabled=False, mfg_multiplier=0,
+                                     blocked='This experimental Feeder route is available on Windows. Its shared installation is preserved.')
+                        result.append(child);continue
                     found = inspect(e, child)
                     child.update(installed=True, runtime_provider='feeder', feature_mode='nr-only', profile='NR Only',
                                  feeder_managed=found['managed'], nr_enabled=found['nr_enabled'], nr_runtime=found['nr_runtime'],
@@ -582,6 +590,22 @@ def cache(e, source):
     return {'path': str(dest), 'sha256': value}
 
 
+def publish_installation(row, baseline):
+    """Share verified ownership with the other OS without rehashing large models."""
+    import cross_os
+    directory = Path(baseline['target']); previous = cross_os.read(directory) or {}
+    t.need(not previous or previous.get('provider',{}).get('id')=='feeder', 'Another package owns the shared install record.')
+    oses = {cross_os.THIS_OS, *previous.get('installed_oses',[])}
+    if previous.get('os') in cross_os.OPERATING_SYSTEMS: oses.add(previous['os'])
+    recipe = baseline.get('legacy_recipe'); proxy = 'd3d9.dll' if recipe and recipe.endswith('d3d9') else 'dxgi.dll'
+    marker = dict(schema=cross_os.SCHEMA, os=cross_os.THIS_OS, revision=cross_os.new_revision(), shared_state=False,
+                  provider={'id':'feeder','name':'Feeder NR','version':lock()['version']}, feature_mode='nr-only',
+                  proxy=proxy, proton_overrides=[Path(proxy).stem], files=dict(baseline['installed_hashes']),
+                  installed_oses=[name for name in ('windows','linux') if name in oses])
+    if recipe: marker['legacy_recipe']=recipe
+    t.atomic_file(directory/cross_os.MARKER,(json.dumps(marker,indent=1)+'\n').encode(),0o644)
+
+
 def stack_record_path(e):
     return t.safe(e.STATE_ROOT / 'feeder-stack' / 'stack.json')
 
@@ -638,15 +662,46 @@ def import_stack(e, source):
 def stack_files(e, settings):
     """Files for a fresh install: the chosen folder (imported again when it verifies), else the owned copy."""
     source = settings.get('feeder_source')
+    owned = None
     if source and Path(source).is_dir():
         try:
-            return import_stack(e, source)['files']
+            owned = import_stack(e, source)
         except (t.Refusal, OSError, ValueError, configparser.Error):
             if owned_stack(e) is None:
                 raise
-    owned = owned_stack(e)
-    t.need(owned is not None, 'Import a verified Feeder stack in Packages first')
+    owned = owned or owned_stack(e)
+    if owned is None:
+        owned = download_stack(e)
+    if MODEL not in owned['files'] and not settings.get('nr_runtime'):
+        import vulkan_app
+        nr = model(vulkan_app.bundled_model(e.STATE_ROOT))
+        owned = copy.deepcopy(owned); owned['files'][MODEL] = cache(e, Path(nr['path'])); owned['nr_version'] = nr['version']
+        t.atomic_file(stack_record_path(e), (json.dumps(owned,indent=2)+'\n').encode(), 0o600)
     return owned['files']
+
+
+def download_stack(e):
+    """Resolve a complete fresh-install recipe, independently of any game folder."""
+    import package_downloads
+    import vulkan_app
+    spec = lock()
+    sources = t.read_json(ROOT / 'providers/feeder-runtime.json')['sources']
+    files = package_downloads.inputs(e, sources, spec['assets'])
+    t.need(set(files) == set(spec['assets']), 'The downloaded Feeder package is incomplete. Retry the download.')
+    defaults = {
+        'ReShade.ini': '[GENERAL]\nEffectSearchPaths=.\\reshade-shaders\\Shaders\\**\nTextureSearchPaths=.\\reshade-shaders\\Textures\\**\nPresetPath=.\\ReShadePreset.ini\n[RenoDX.DLSS5]\nNeuralUplift=0\n',
+        'ReShadePreset.ini': 'Techniques=Lumenite_Kernel@lumenite_Kernel.fx,DLSS5_Feed@DLSS5_Feed.fx\nTechniqueSorting=Lumenite_Kernel@lumenite_Kernel.fx,DLSS5_Feed@DLSS5_Feed.fx\n[DLSS5_Feed.fx]\nPreprocessorDefinitions=DLSS5_MV_PROVIDER=3\n',
+    }
+    for name, text in defaults.items():
+        raw = text.encode('utf-8'); path = t.safe(e.STATE_ROOT / 'feeder-cache' / t.sha(raw))
+        if not path.exists(): t.atomic_file(path, raw, 0o600)
+        files[name] = cache(e, path)
+    nr = model(vulkan_app.bundled_model(e.STATE_ROOT))
+    files[MODEL] = cache(e, Path(nr['path']))
+    record = dict(schema=1, provider_id='feeder', recipe=spec['version'],
+                  imported_from='verified-download', imported_utc=t.now(), files=files, nr_version=nr['version'])
+    t.atomic_file(stack_record_path(e), (json.dumps(record, indent=2) + '\n').encode(), 0o600)
+    return owned_stack(e)
 
 
 def originals_root(e):
@@ -1135,6 +1190,7 @@ def execute(review):
                     if plan['operation'] == 'uninstall':
                         shared = cross_os.read(directory)
                         if shared and shared.get('provider', {}).get('id') == 'feeder': shared_marker.unlink()
+                    else: publish_installation(plan['row'], baseline)
                     if plan.get('legacy_recipe') and plan['operation'] == 'uninstall':
                         import feeder_legacy
                         feeder_legacy.cleanup_directories(directory, baseline)

@@ -52,9 +52,9 @@ WELCOME_POSITIONS = ('top-center', 'top-left', 'top-right', 'bottom-left', 'bott
 
 def light_theme(settings, app_theme=None):
     """OverlayHelper.LightTheme: Dark, Light, or Follow app (rtxForge's own theme on Linux)."""
-    theme = settings.get('overlay_theme', 'dark')
-    if theme not in ('dark', 'light', 'app'):
-        raise OverlayError('Choose Dark, Light or Follow app for the overlay.')
+    theme = settings.get('overlay_theme', 'clear')
+    if theme not in ('clear', 'dark', 'light', 'app'):
+        raise OverlayError('Choose Clear, Dark, Light or Follow app for the overlay.')
     if theme != 'app':
         return theme == 'light'
     return (app_theme if app_theme is not None else settings.get('theme')) == 'light'
@@ -477,11 +477,13 @@ def handle(message, settings):
 
 
 def settings_snapshot(settings, app_theme=None):
+    import glass_preferences
     _, modifiers, key = parse_shortcut(settings.get('panel_hotkey', DEFAULT_SHORTCUT))
     return {
         'overlay_controls': settings.get('overlay_controls', 'unified'),
         # NativePanelCoordinator.SettingsSnapshot: the choice plus its resolved light/dark.
-        'overlay_theme': settings.get('overlay_theme', 'dark'),
+        'overlay_theme': settings.get('overlay_theme', 'clear'),
+        'overlay_appearance': glass_preferences.validate(settings.get('overlay_appearance', {})),
         'overlay_light': light_theme(settings, app_theme),
         'overlay_renderer': settings.get('overlay_renderer', 'game'),
         'overlay_live_stats': bool(settings.get('overlay_live_stats', True)),

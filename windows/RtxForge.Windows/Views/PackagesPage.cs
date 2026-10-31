@@ -157,15 +157,15 @@ public sealed partial class PackagesPage : Page
 
     Expander FeederSetup()
     {
-        var feeder = Section("Feeder setup", "Import your local stack once. New installs use the verified copy kept by rtxForge. The paths below are saved import locations on this PC.");
+        var feeder = Section("Feeder package", "rtxForge downloads and verifies Feeder, ReShade, RenoDX, shaders and the NR model automatically. You do not need to provide any files.");
         var paths = new PresetColumns(360, 2) { ColumnSpacing = 16, RowSpacing = 12 };
-        paths.Children.Add(PathField("Stack import folder", "Your ReShade, Feeder, RenoDX and shader files. A game folder here is an import source, not the installation destination.",
+        paths.Children.Add(PathField("Local files (optional)", "Override the automatic download with an existing verified package.",
             shell.Settings.FeederSource, path => shell.Settings.FeederSource = path));
         paths.Children.Add(PathField("Manual-install backups (optional)", "Needed to adopt an existing manual Feeder setup. Fresh installations create their own restore backups.",
             shell.Settings.FeederBackups, path => shell.Settings.FeederBackups = path));
-        feeder.Children.Add(paths);
+        feeder.Children.Add(new Expander { Header = "Advanced · local overrides", Content = paths, HorizontalAlignment = HorizontalAlignment.Stretch });
         var kept = Prefs.Label("Checking stored Feeder files…", "ForgeCaptionDimTextStyle");
-        var keep = new Button { Content = "Keep a copy in rtxForge", HorizontalAlignment = HorizontalAlignment.Left };
+        var keep = new Button { Content = "Import optional local files", HorizontalAlignment = HorizontalAlignment.Left };
         var legacy = new Button { Content = "Get DX9/DX10 support", HorizontalAlignment = HorizontalAlignment.Left, IsEnabled = !shell.Service.IsPreview };
         ToolTipService.SetToolTip(keep, "Verify both folders and store their files with rtxForge. Game files are not changed.");
         async Task ShowKeptAsync(bool import, bool downloadLegacy = false)
@@ -175,7 +175,7 @@ public sealed partial class PackagesPage : Page
             {
                 var storage = await shell.Service.FeederStorageAsync(import ? NonEmpty(shell.Settings.FeederSource) : null,
                     import ? NonEmpty(shell.Settings.FeederBackups) : null, legacy: downloadLegacy);
-                kept.Text = (storage.Recipe is null ? "No stack stored yet" : "Stored stack · " + storage.Recipe
+                kept.Text = (storage.Recipe is null ? "Downloads automatically on first installation" : "Ready · " + storage.Recipe
                     + (storage.NrVersion is null ? "" : " · NR model " + storage.NrVersion))
                     + $" · {storage.Backups} original backup{(storage.Backups == 1 ? "" : "s")} kept"
                     + (storage.LegacyReady ? " · DX9/DX10 support ready" : "")
@@ -194,7 +194,7 @@ public sealed partial class PackagesPage : Page
         _ = ShowKeptAsync(false);
         return new Expander
         {
-            Header = "Feeder setup", Content = feeder, HorizontalAlignment = HorizontalAlignment.Stretch,
+            Header = "Feeder package", Content = feeder, HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
         };
     }

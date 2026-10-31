@@ -258,11 +258,14 @@ class FeederTest(unittest.TestCase):
         self.apply(self.prepare(other, feeder_source='', nr_runtime=None))
         self.assertEqual((Path(other['game']) / feeder.MODEL).read_bytes(), self.new)
 
-    def test_without_source_or_owned_stack_fresh_install_refuses(self):
+    def test_without_source_or_owned_stack_fresh_install_downloads(self):
         row = self.game('nothing-stored')
-        review = self.prepare(row, feeder_source='')
-        self.assertFalse(review['rows'])
-        self.assertIn('Import a verified Feeder stack', review['blocked'][0]['reason'])
+        with patch.object(feeder, 'download_stack', side_effect=lambda e: feeder.import_stack(e, self.source)) as download:
+            review = self.prepare(row, feeder_source='')
+        self.assertTrue(review['rows'], review['blocked'])
+        download.assert_called_once_with(self.e)
+        self.apply(review)
+        self.assertTrue((Path(row['game']) / feeder.MODEL).is_file())
 
     def test_changed_owned_stack_is_refused(self):
         record = feeder.import_stack(self.e, self.source)

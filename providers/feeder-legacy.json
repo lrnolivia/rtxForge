@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "id": "feeder-legacy-1",
-  "distribution": "Verified local imports only; no third-party binary or NR model is redistributed.",
+  "distribution": "Pinned support packages are downloaded and verified automatically. Local imports remain available as an optional advanced override.",
   "runtime_verified": false,
   "sources": [
     {

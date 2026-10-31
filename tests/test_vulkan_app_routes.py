@@ -46,6 +46,39 @@ class AppRoutes(unittest.TestCase):
         restore=self.prepare('uninstall');self.assertFalse(restore['blocked']);app.execute(restore)
         self.assertEqual(before,self.fixture.files())
 
+    def test_another_os_adopts_real_backups_repairs_and_restores(self):
+        import cross_os
+        original = self.fixture.files()
+        with patch.object(cross_os, 'THIS_OS', 'windows'):
+            app.execute(self.prepare())
+        prefix=self.fixture.state/'targets'/t.sha(str(self.fixture.game).casefold().encode())/'proton-prefix'
+        prefix.mkdir();(prefix/'local-original.reg').write_bytes(b'local Proton recovery')
+        marker = cross_os.read(self.fixture.game)
+        self.assertIn('shared_recovery', marker)
+        installed = self.fixture.files()
+        other = self.fixture.base/'other-os-state'
+        with patch.dict(os.environ, RTXFORGE_VULKAN_STATE=str(other)), patch.object(cross_os, 'THIS_OS', 'linux'):
+            adopted = app.owned(self.row)
+            self.assertEqual(adopted['target'], str(self.fixture.game))
+            self.assertEqual(installed, self.fixture.files(), 'recognition changed shared game files')
+            self.assertTrue(app.prepare({},[self.row],'nr-mfg','repair',self.settings,self.e)['plans'])
+            app.execute(self.prepare('repair'))
+        with patch.object(cross_os, 'THIS_OS', 'windows'):
+            self.assertIsNotNone(app.owned(self.row))
+            self.assertEqual((prefix/'local-original.reg').read_bytes(),b'local Proton recovery')
+            app.execute(self.prepare('uninstall'))
+        self.assertEqual(original, self.fixture.files())
+
+    def test_missing_shared_backup_never_creates_false_local_ownership(self):
+        app.execute(self.prepare())
+        original = next((self.fixture.game/'.rtxforge/vulkan/objects').iterdir())
+        original.write_bytes(b'changed backup')
+        other = self.fixture.base/'other-os-state'
+        with patch.dict(os.environ, RTXFORGE_VULKAN_STATE=str(other)):
+            with self.assertRaisesRegex(t.Refusal, 'backup is missing or changed'):
+                app.owned(self.row)
+            self.assertFalse(list(other.glob('targets/*/baseline.json')))
+
     def test_vulkan_badges_preserve_both_operating_systems(self):
         import cross_os
         app.execute(self.prepare())

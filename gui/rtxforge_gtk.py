@@ -4338,7 +4338,10 @@ class Window(Adw.ApplicationWindow):
                     from linux_overlay_host import Host
                     from storage import storage
                     engine=__import__('engine_bridge').module(self.service.config)
-                    self.overlay_host=Host(storage(self.service.config),lambda:dict(self.settings),engine.STATE_ROOT,engine=engine)
+                    def save_panel_preferences(changes):
+                        fresh=library_media.load_settings(self.service.config);fresh.update(changes)
+                        library_media.save_settings(self.service.config,fresh);self.settings.update(fresh)
+                    self.overlay_host=Host(storage(self.service.config),lambda:dict(self.settings),engine.STATE_ROOT,engine=engine,save_settings=save_panel_preferences)
                     application.connect('shutdown',lambda *_:self.overlay_host.stop.set())
                     threading.Thread(target=self.overlay_host.run,daemon=True,name='proton-panel').start()
             except Exception:
@@ -4385,6 +4388,7 @@ class Window(Adw.ApplicationWindow):
         apply_neutral_palette()
         apply_corner_style(self.settings.get('corner_style','system'))
         self.overlay=Adw.ToastOverlay();self.overlay.add_css_class('forge-toasts');self.set_content(self.overlay)
+        if not options.demo:GLib.timeout_add_seconds(3,self.check_overlay_refresh)
         stage=Gtk.Overlay();self.overlay.set_child(stage)
         outer=Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         outer.add_css_class('forge-window-surface')
@@ -10270,17 +10274,55 @@ class Window(Adw.ApplicationWindow):
 
     def save_overlay_preference(self,key,value):
         self.settings[key]=value
-        if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
+        if not self.options.demo:
+            fresh=library_media.load_settings(self.service.config);fresh[key]=value
+            library_media.save_settings(self.service.config,fresh);self.settings.update(fresh)
+
+    def overlay_update_details(self,report=None):
+        import json
+        from storage import storage
+        if report is None:
+            path=storage(self.service.config)/'overlay-refresh.json'
+            try:report=json.loads(path.read_text(encoding='utf-8'))
+            except (OSError,ValueError):report={}
+        text=f"{report.get('updated',0)} updated · {len(report.get('skipped') or [])} already current"
+        for item in report.get('updated_games',[]):text+='\n\nUpdated · '+item['title']
+        for item in report.get('blocked',[]):text+='\n\nNeeds repair · '+item['title']+'\n'+item['detail']
+        if report.get('error'):text+='\n\n'+report['error']
+        dialog=Adw.AlertDialog(heading='Overlay update',body=text)
+        dialog.add_response('close','Done');dialog.set_close_response('close');dialog.present(self)
+
+    def check_overlay_refresh(self):
+        import json,hashlib
+        import transactions as t
+        from storage import storage
+        root=storage(self.service.config);path=root/'overlay-refresh.json'
+        try:
+            if not path.is_file():return True
+            report=json.loads(path.read_text(encoding='utf-8'))
+            identity=hashlib.sha256(json.dumps({key:report.get(key) for key in ('bundle','status','updated','blocked','skipped','error')},sort_keys=True).encode()).hexdigest()
+            receipt=root/'overlay-refresh-notified.txt'
+            if receipt.is_file() and receipt.read_text(encoding='utf-8')==identity:return True
+            blocked=len(report.get('blocked') or [])
+            text=f"Overlays: {report.get('updated',0)} updated · {len(report.get('skipped') or [])} already current"
+            text+=f' · {blocked} need repair' if blocked else '. Ready to play.'
+            notice=Adw.Toast.new(text);notice.set_button_label('Details');notice.set_timeout(0 if blocked else 7)
+            notice.connect('button-clicked',lambda *_:self.overlay_update_details(report));self.overlay.add_toast(notice)
+            t.atomic_file(receipt,identity.encode(),0o600)
+        except (OSError,ValueError,t.Refusal):pass
+        return True
 
     def overlay_settings_groups(self,game=None):
         """Overlay preferences shared with Windows; games pick them up on their next reviewed install or repair."""
         import overlay_settings
+        if not self.options.demo:
+            self.settings['overlay_appearance']=library_media.load_settings(self.service.config).get('overlay_appearance',{})
         s=overlay_settings.effective(self.settings,game['game'] if game else None)
         def save(key,value):
             s[key]=value
             if game:
                 overrides=self.settings.setdefault('game_overlay_settings',{})
-                overrides.setdefault(game['game'],{k:v for k,v in s.items() if k!='overlay_renderer'})[key]=value
+                overrides.setdefault(game['game'],{k:v for k,v in s.items() if k not in ('overlay_renderer','overlay_appearance')})[key]=value
                 if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
             else:self.save_overlay_preference(key,value)
         def choice(title,subtitle,keys,captions,key,group):
@@ -10294,8 +10336,38 @@ class Window(Adw.ApplicationWindow):
             group.add(widget);return widget
         panel=Adw.PreferencesGroup(title='rtxForge Panel',description='NR and MFG controls drawn inside the game. Saved here, then written to each game on its next reviewed install or repair.')
         if not game:choice('Panel','Where rtxForge\u2019s controls appear while you play.',['game','optiscaler'],['In the game','OptiScaler menu only'],'overlay_renderer',panel)
-        choice('Controls','Unified uses simple values; Advanced shows OptiScaler\u2019s own variables and units.',['unified','classic'],['Unified','Advanced'],'overlay_controls',panel)
-        choice('Appearance','Follow app uses rtxForge’s light or dark theme.',['dark','light','app'],['Dark','Light','Follow app'],'overlay_theme',panel)
+        import glass_preferences as glass
+        appearance=Adw.PreferencesGroup(title='Appearance',description='The same layouts and materials as the glass overlay.')
+        refreshing=[False];refreshers=[]
+        def changed(key,value):
+            if refreshing[0]:return
+            if not game and not self.options.demo:
+                s['overlay_appearance']=library_media.load_settings(self.service.config).get('overlay_appearance',{})
+            glass.edit(s,key,value);save('overlay_appearance',s['overlay_appearance'])
+            appearance.set_description('Custom appearance' if glass.current(s)['Custom'] else 'The same layouts and materials as the glass overlay.')
+        def material_choice(title,key,keys,captions,parent=appearance):
+            values=glass.current(s);value=values[key]
+            widget=safe_combo_row(title=title,model=Gtk.StringList.new(captions),selected=keys.index(value) if value in keys else 0)
+            widget.connect('notify::selected',lambda w,*_:changed(key,keys[w.get_selected()]))
+            (parent.add_row if isinstance(parent,Adw.ExpanderRow) else parent.add)(widget)
+            refreshers.append(lambda:widget.set_selected(keys.index(glass.current(s)[key]) if glass.current(s)[key] in keys else 0))
+            return widget
+        from overlay_layouts import LayoutPicker
+        appearance.add(LayoutPicker(glass.current(s)['Layout'],lambda value:changed('Layout',value)))
+        theme=safe_combo_row(title='Theme',subtitle='Selecting a theme restores its material defaults.',model=Gtk.StringList.new(['Clear','Light','Dark']),selected={3:0,1:1,2:2}[glass.current(s)['Theme']])
+        def select_theme(widget,*_):
+            if refreshing[0]:return
+            mode=['clear','light','dark'][widget.get_selected()]
+            glass.theme(s,mode);save('overlay_theme',mode);save('overlay_appearance',s['overlay_appearance'])
+            refreshing[0]=True
+            try:
+                for refresh in refreshers:refresh()
+            finally:refreshing[0]=False
+            appearance.set_description('The same layouts and materials as the glass overlay.')
+        theme.connect('notify::selected',select_theme);appearance.add(theme)
+        material_choice('Text size','TextSize',[18,22,26],['Aa  Smaller','Aa  Default','Aa  Larger'])
+        material_choice('Motion effects','Motion',[1,0],['On','Off'])
+        material_choice('Hotkey notifications','ShowNotifications',[1,0],['On','Off'])
         switch('Welcome message','Show the rtxForge message at startup.','overlay_welcome',panel)
         choice('Welcome position',None,list(overlay_settings.POSITIONS),['Top center','Top left','Top right','Bottom left','Bottom right'],'overlay_welcome_position',panel)
         switch('Live feature statistics',None,'overlay_live_stats',panel)
@@ -10341,7 +10413,9 @@ class Window(Adw.ApplicationWindow):
         item=row('Update Overlays','Review overlay package updates and the effective menu, welcome and shortcut choices for each installed game.')
         action=button('Update Overlays',lambda *_:self.overlay_packages_review(game));action.set_valign(Gtk.Align.CENTER);action.set_sensitive(self.runtime_api() is not None and not self.options.demo and (not game or game.get('installed',False)))
         item.add_suffix(action);installed.add(item)
-        return [panel,shortcut,optiscaler,reshade,vulkan,installed]
+        history=row('Last overlay update','Updated games, current overlays and anything that needs repair.')
+        details=button('Details',lambda *_:self.overlay_update_details());history.add_suffix(details);installed.add(history)
+        return [panel,*([] if game else [appearance]),shortcut,optiscaler,reshade,vulkan,installed]
 
     def game_overlay_card(self,game):
         card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True)

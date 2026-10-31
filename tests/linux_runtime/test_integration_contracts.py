@@ -13,6 +13,28 @@ import linux_overlay_host as host
 import transactions as t
 
 class IntegrationContracts(unittest.TestCase):
+    def test_overlay_setting_saves_preserve_fresh_app_preferences(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);path=root/'desktop/settings.json';path.parent.mkdir()
+            path.write_text(json.dumps({'theme':'light','panel_hotkey':'F8','overlay_appearance':{}}))
+            h=host.Host.__new__(host.Host);h.state=root;h.save_settings=None
+            h.settings=lambda:dict(library_media.DEFAULTS,theme='dark')
+            row={'game':'/fixture/game','exe':'Game.exe'}
+            appearance={'Theme':3,'Layout':'bar','TextSize':26,'Scale':115}
+            result=h.handle({'op':'set-setting','key':'overlay_appearance','value':appearance},row,8)
+            self.assertNotIn('error',result)
+            saved=json.loads(path.read_text())
+            self.assertEqual(saved['theme'],'light');self.assertEqual(saved['panel_hotkey'],'F8')
+            self.assertEqual(saved['overlay_appearance'],appearance)
+            self.assertEqual(result['settings']['overlay_appearance'],appearance)
+            for key,value in [('overlay_appearance',{'Scale':999}),('unknown',True),('overlay_helper','true')]:
+                before=path.read_bytes()
+                self.assertTrue(h.handle({'op':'set-setting','key':key,'value':value},row,8)['error'])
+                self.assertEqual(path.read_bytes(),before)
+            changes=[];h.save_settings=changes.append
+            result=h.handle({'op':'set-setting','key':'overlay_welcome','value':False},row,8)
+            self.assertNotIn('error',result);self.assertEqual(changes,[{'overlay_welcome':False}])
+
     def test_fresh_overlay_defaults_and_windows_alias(self):
         self.assertEqual(proton_overlay.preferences(library_media.DEFAULTS)['InGamePanel'],1)
         self.assertEqual(proton_overlay.preferences({'overlay_renderer':'rtxforge'})['InGamePanel'],1)

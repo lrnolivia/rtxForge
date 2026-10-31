@@ -244,9 +244,9 @@ foreach (var theme in ForgeSettings.OverlayThemes)
         || copy.GameOverlayOptions()["overlay_theme"]!.ToString() != theme)
         throw new Exception("Overlay theme did not survive copy, persistence and helper settings");
 }
-if (JsonSerializer.Deserialize<ForgeSettings>("{\"overlay_theme\":\"unknown\"}")!.OverlayTheme != "dark")
-    throw new Exception("Unknown overlay theme must preserve the existing dark default");
-Console.WriteLine("PASS: Dark, Light and Follow app overlay themes persist and reach the helper; unknown themes retain Dark.");
+if (JsonSerializer.Deserialize<ForgeSettings>("{\"overlay_theme\":\"unknown\"}")!.OverlayTheme != "clear")
+    throw new Exception("Unknown overlay theme must use the approved Clear default");
+Console.WriteLine("PASS: Clear, Dark, Light and legacy Follow app persist; unknown themes use Clear.");
 
 var executableSettings = new ForgeSettings { GameExecutables = new() { ["G:/Games/One"] = "bin/game.exe" } };
 var executableCopy = executableSettings.Clone();
@@ -265,3 +265,21 @@ if (!acceptedOffline.Steps[0].OfflineAcknowledged || mixedReview.Steps[0].Offlin
     || acceptedOffline.AcknowledgeOffline(false).Steps[0].OfflineAcknowledged)
     throw new Exception("Offline acknowledgement did not follow the exact operation steps independently.");
 Console.WriteLine("PASS: offline acknowledgement starts unchecked and follows mixed-package review steps.");
+
+var appearancePath = Path.Combine(Path.GetTempPath(), "rtxforge-glass-" + Guid.NewGuid().ToString("N"), "appearance.ini");
+Directory.CreateDirectory(Path.GetDirectoryName(appearancePath)!);
+try
+{
+    File.WriteAllText(appearancePath, "[Appearance]\nThemeVersion=4\nTheme=3\nLayout=bar\nTextFont=inter\nTextSize=26\nScale=115\nCustom=1\nClearTint=33\n[Unrelated]\nKeep=this\n");
+    var native = GlassAppearance.Load(appearancePath);
+    if (native.Theme != "clear" || native.Layout != "bar" || !native.Custom || native.Tint != 33 || native.Get("TextFont", "roboto") != "inter") throw new Exception("Desktop settings do not read the actual glass preferences");
+    GlassAppearance.UseTheme("dark", appearancePath);
+    var reset = GlassAppearance.Load(appearancePath);
+    if (reset.Theme != "dark" || reset.Custom || reset.Tint != 80 || reset.Number("Blur", 0, 0, 48) != 48 || reset.Get("TextFont", "") != "inter" || !File.ReadAllText(appearancePath).Contains("Keep=this")) throw new Exception("Theme reset lost native preferences or unrelated INI sections");
+    GlassAppearance.Set("Blur", 40, true, appearancePath);
+    if (!GlassAppearance.Load(appearancePath).Custom) throw new Exception("Fine editing must mark Custom");
+    GlassAppearance.UseTheme("clear", appearancePath);
+    if (GlassAppearance.Load(appearancePath).Tint != 20 || GlassAppearance.Load(appearancePath).Get("SurfaceBlend", "") != "soft-light") throw new Exception("Clear defaults differ from native renderer");
+}
+finally { File.Delete(appearancePath); Directory.Delete(Path.GetDirectoryName(appearancePath)!); }
+Console.WriteLine("PASS: desktop/native glass preference roundtrip, independent fields, custom edits and exact theme resets.");

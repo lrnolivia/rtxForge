@@ -78,17 +78,42 @@ struct Runtime {
     bool receivedSnapshot=false,messageInitialized=false,dx12Interop=false,systemReducedMotion=false;
     int helperRevision=-1;bool helperReady=false;std::set<std::string> supportedKeys;
     std::map<std::string,nlohmann::json> pendingSettings;
-    nlohmann::json SettingsValues()const {const auto& c=*controls;return {{"overlay_helper",c.helperEnabled},{"overlay_start_with_windows",c.startWithWindows},{"overlay_live_stats",c.showStats},{"overlay_welcome",c.showWelcome},{"overlay_welcome_position",c.welcomePosition},{"overlay_renderer",c.primaryMenu},{"optiscaler_hotkey",c.optiShortcut},{"optiscaler_ui",c.menuSettings.at("opti-menu")},{"optiscaler_intro",c.menuSettings.at("opti-intro")},{"reshade_ui",c.menuSettings.at("reshade-menu")},{"reshade_intro",c.menuSettings.at("reshade-intro")}};}
+    nlohmann::json lastAppearance;
+    nlohmann::json lastPreferences;
+    nlohmann::json AppearanceValues()const {
+        const auto& c=*controls;
+        return {{"ThemeVersion",4},{"Theme",c.appearance},{"Custom",int(c.customTheme)},{"Layout",c.layout},
+            {"TextFont",c.copyFont},{"TextSize",c.copySize},{"Scale",c.overlayScale},{"ScaleBaseline",120},
+            {"LightTint",int(c.lightOpacity)},{"DarkTint",int(c.darkOpacity)},{"ClearTint",int(c.clearOpacity)},
+            {"Blur",int(c.blurRadius)},{"Grain",int(std::lround(c.grainAmount*10))},{"BlendStrength",int(c.blendStrength)},
+            {"SurfaceBlend",c.surfaceBlend},{"TextDepth",int(c.textDepth)},{"InvertDark",int(c.invertDark)},
+            {"ToastPill",int(c.toastPill)},{"Motion",int(c.motionEnabled)},{"ShowNotifications",int(c.showNotifications)}};
+    }
+    nlohmann::json SettingsValues()const {const auto& c=*controls;return {{"overlay_appearance",AppearanceValues()},{"overlay_helper",c.helperEnabled},{"overlay_start_with_windows",c.startWithWindows},{"overlay_live_stats",c.showStats},{"overlay_welcome",c.showWelcome},{"overlay_welcome_position",c.welcomePosition},{"overlay_renderer",c.primaryMenu},{"optiscaler_hotkey",c.optiShortcut},{"optiscaler_ui",c.menuSettings.at("opti-menu")},{"optiscaler_intro",c.menuSettings.at("opti-intro")},{"reshade_ui",c.menuSettings.at("reshade-menu")},{"reshade_intro",c.menuSettings.at("reshade-intro")}};}
+    void Appearance(const nlohmann::json& a) {
+        if(!a.is_object()||a.empty()||a==lastAppearance)return;lastAppearance=a;auto& c=*controls;
+        const auto previous=c.layout;c.UseTheme(std::clamp(a.value("Theme",3),1,3));
+        c.copyFont=a.value("TextFont",std::string("roboto"));if(c.copyFont!="roboto"&&c.copyFont!="inter")c.copyFont="roboto";
+        c.copySize=std::clamp(a.value("TextSize",22),16,26);c.overlayScale=std::clamp(a.value("Scale",100),70,150);
+        c.lightOpacity=float(std::clamp(a.value("LightTint",100),0,100));c.darkOpacity=float(std::clamp(a.value("DarkTint",80),0,100));c.clearOpacity=float(std::clamp(a.value("ClearTint",20),0,100));
+        c.blurRadius=float(std::clamp(a.value("Blur",int(c.blurRadius)),16,48));c.grainAmount=std::clamp(a.value("Grain",40),0,80)/10.f;c.blendStrength=float(std::clamp(a.value("BlendStrength",int(c.blendStrength)),0,100));
+        const auto blend=a.value("SurfaceBlend",c.surfaceBlend);if(MaterialColor::Valid(blend))c.surfaceBlend=blend;
+        c.customTheme=a.value("Custom",0)!=0;c.textDepth=a.value("TextDepth",1)!=0;c.invertDark=a.value("InvertDark",0)!=0;c.toastPill=a.value("ToastPill",0)!=0;c.motionEnabled=a.value("Motion",1)!=0;c.showNotifications=a.value("ShowNotifications",1)!=0;
+        const auto layout=a.value("Layout",previous);c.Typography();c.Materials();c.SyncSettings();
+        if(layout!=previous&&(layout=="floating"||layout=="centered"||layout=="bar"))c.Layout(layout);
+    }
     void Helper(const char* text) {
         if(!text||std::strlen(text)>65536||lastHelper==text)return;lastHelper=text;const auto data=nlohmann::json::parse(text,nullptr,false);if(!data.is_object())return;
         auto& c=*controls;helperReady=data.value("ready",false);c.Disabled("save",!helperReady||!data.value("named_supported",false)||data.value("pending",false));
-        const int revision=data.value("revision",0);if(revision==helperRevision)return;helperRevision=revision;
-        if(data.contains("settings")&&data["settings"].is_object()){const auto& prefs=data["settings"];
+        const int revision=data.value("revision",0);
+        if(data.contains("settings")&&data["settings"].is_object()&&data["settings"]!=lastPreferences){const auto& prefs=data["settings"];lastPreferences=prefs;
+            if(prefs.contains("overlay_appearance"))Appearance(prefs["overlay_appearance"]);
             c.helperEnabled=prefs.value("overlay_helper",c.helperEnabled);c.startWithWindows=prefs.value("overlay_start_with_windows",c.startWithWindows);
             if(prefs.contains("panel_key")){c.shortcut=Key(prefs.value("panel_key",VK_DELETE));const int mods=prefs.value("panel_modifiers",0);c.shortcutModifiers=(mods&1?Rml::Input::KM_ALT:0)|(mods&2?Rml::Input::KM_CTRL:0)|(mods&4?Rml::Input::KM_SHIFT:0);c.shortcutLabel=prefs.value("panel_hotkey",std::string("Del"));if(auto* keycap=c.Element("toast-message")->QuerySelector(".keycap"))keycap->SetInnerRML(Rml::StringUtilities::EncodeRml(c.shortcutLabel));}
             c.showStats=prefs.value("overlay_live_stats",c.showStats);c.showWelcome=prefs.value("overlay_welcome",c.showWelcome);c.welcomePosition=prefs.value("overlay_welcome_position",c.welcomePosition);c.primaryMenu=prefs.value("overlay_renderer",c.primaryMenu);c.optiShortcut=prefs.value("optiscaler_hotkey",c.optiShortcut);if(!c.showWelcome)c.Visible("welcome",false);
             for(const auto& [key,name]:std::map<std::string,std::string>{{"opti-menu","optiscaler_ui"},{"opti-intro","optiscaler_intro"},{"reshade-menu","reshade_ui"},{"reshade-intro","reshade_intro"}})c.menuSettings[key]=prefs.value(name,c.menuSettings[key]);c.SyncSettings();
         }
+        if(revision==helperRevision)return;helperRevision=revision;
         if(data.contains("presets")&&data["presets"].is_array()&&data["presets"].size()<=12){
             std::map<std::string,std::string> selected;for(const auto* id:{"presets","compare-left","compare-right"})selected[id]=dynamic_cast<Rml::ElementFormControl*>(c.Element(id))->GetValue();
             if(data.value("op",std::string())=="preset-save"&&!data.value("error",false))selected["presets"]=data.value("preset_name",selected["presets"]);
@@ -125,7 +150,7 @@ struct Runtime {
         if(frame.welcome){c.Welcome();c.toastUntil=system.GetElapsedTime()+7;}
     }
     bool Draw(const ForgeGlass::Host& host,ForgeGlass::Frame& frame,ID3D11Texture2D* target) {
-        auto& c=*controls;const double now=system.GetElapsedTime();
+        auto& c=*controls;const double now=system.GetElapsedTime();c.PollPreferences(now);
         c.requestJson=[&](const std::string& text){return host.request&&host.request(host.user,text.c_str());};
         c.deletePreset=[&](const std::string& name){const auto request=nlohmann::json{{"op","preset-delete"},{"changes",{{"name",name}}}}.dump();return host.request&&host.request(host.user,request.c_str());};
         c.savePreset=[&](const std::string& name){nlohmann::json values=nlohmann::json::object();for(const auto& key:supportedKeys)if(c.values.contains(key))values[key]=std::floor(c.values.at(key))==c.values.at(key)?nlohmann::json(int(c.values.at(key))):nlohmann::json(c.values.at(key));const auto request=nlohmann::json{{"op","preset-save"},{"changes",{{"name",name},{"values",values}}}}.dump();return host.request&&host.request(host.user,request.c_str());};

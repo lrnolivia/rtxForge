@@ -59,7 +59,7 @@ public sealed partial class GmUi(GmTheme t)
     public FontIcon Icon(string glyph, double em = 1, Color? color = null)
     {
         // No color: inherit the parent's foreground (setting null would make the glyph invisible).
-        var icon = new FontIcon { Glyph = glyph, FontSize = t.Em(em) };
+        var icon = new FontIcon { Glyph = Phosphor.Resolve(glyph), FontFamily = Phosphor.Font, FontSize = t.Em(em) };
         if (color is { } c) icon.Foreground = GmTheme.B(c);
         return icon;
     }
@@ -138,7 +138,7 @@ public sealed partial class GmUi(GmTheme t)
     public StackPanel IconLabel(string glyph, string text, double gap = 18)
     {
         var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(gap) };
-        line.Children.Add(new FontIcon { Glyph = glyph, FontSize = t.Em(0.9), Width = t.Px(24), VerticalAlignment = VerticalAlignment.Center });
+        line.Children.Add(new FontIcon { Glyph = Phosphor.Resolve(glyph), FontFamily = Phosphor.Font, FontSize = t.Em(0.9), Width = t.Px(24), VerticalAlignment = VerticalAlignment.Center });
         line.Children.Add(PillText(text));
         return line;
     }
@@ -230,7 +230,7 @@ public sealed partial class GmUi(GmTheme t)
         var badgeColors = BadgeTheme.Light(foreground);
         if (t.IsLight) { background = badgeColors.Surface; foreground = badgeColors.Ink; }
         var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(6) };
-        if (glyph is not null) line.Children.Add(new FontIcon { Glyph = glyph, FontSize = t.Em(em), Foreground = GmTheme.B(foreground), VerticalAlignment = VerticalAlignment.Center });
+        if (glyph is not null) line.Children.Add(new FontIcon { Glyph = Phosphor.Resolve(glyph), FontFamily = Phosphor.Font, FontSize = t.Em(em), Foreground = GmTheme.B(foreground), VerticalAlignment = VerticalAlignment.Center });
         line.Children.Add(PillText(text).With(x => { x.FontSize = t.Em(em); x.FontWeight = new FontWeight(650); x.Foreground = GmTheme.B(foreground); }));
         return Capsule(new Border
         {

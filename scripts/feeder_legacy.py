@@ -196,11 +196,16 @@ def inputs(e, settings, recipe):
     if source and Path(source).is_dir():
         import_assets(e, source)
     path = store_path(e)
+    if not path.is_file():
+        download_assets(e)
     t.need(path.is_file() and path.stat().st_size <= 1024**2,
-           'Import the DX9/DX10 Feeder files in the local stack\'s legacy folder in Packages first')
+           'The DX9/DX10 support download is incomplete. Retry the installation.')
     record = t.read_json(path)
     t.need(record.get('schema') == 1 and record.get('recipe') == lock()['id'] and isinstance(record.get('files'), dict),
            'The stored legacy Feeder recipe is invalid')
+    required = {name for name in layout(recipe).values() if not name.startswith('base:')}
+    if recipe.endswith('d3d9'): required.add('dgVoodoo.conf')
+    if not required <= set(record['files']): record = download_assets(e)
     result = {}
     for dest, name in layout(recipe).items():
         item = base.get(name[5:]) if name.startswith('base:') else record['files'].get(name)

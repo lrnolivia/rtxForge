@@ -40,6 +40,15 @@ marker=root/cross_os.MARKER
 marker.write_text(json.dumps({'provider':{'id':'skynizz'},'proxy':'winhttp.dll','files':owned,'revision':'old','feature_mode':'nr-mfg'}))
 def files():return {str(p):p.read_bytes() for base in [root,e.STATE_ROOT/'targets'] for p in base.rglob('*') if p.is_file()}
 before=files()
+# An absent owned bridge is a recoverable package update, never a reason to
+# require a user-supplied stack. The reviewed absence is rechecked at apply.
+(root/'nvngx.dll_dlssnr.dll').unlink()
+repair=overlays.prepare(e,h.LOCAL/'state')
+assert len(repair['plans'])==1 and not repair['blocked'],repair['blocked']
+assert not (root/'nvngx.dll_dlssnr.dll').exists(),'review repaired a live file'
+bulk.execute(repair)
+assert (root/'nvngx.dll_dlssnr.dll').is_file()
+for name,data in before.items():t.atomic_file(Path(name),data,0o600)
 # A prior cross-OS writer mislabeled a valid Skynizz recipe with the engine's
 # default package. Shared and local recovery boundaries still agree exactly.
 shared=cross_os.shared_state(root)/'baseline.json'
@@ -60,6 +69,27 @@ assert identity['provider']['id']=='skynizz'
 assert identity['revision']==updated['cross_os_revision']==published['cross_os_revision']
 assert updated['cross_os_extras']==published['cross_os_extras']==portable['cross_os_extras']
 assert updated['originals']==record['originals']
+# A real overlay revision from Linux may have new DLL hashes while Windows'
+# local record still names the previous revision. Matching restore ownership
+# allows one read-only review and an atomic state synchronization.
+saved_windows=files()
+for name,data in before.items():t.atomic_file(Path(name),data,0o600)
+other=copy.deepcopy(portable);other['cross_os_revision']='linux-new-dll'
+other_bytes=fixtures.pe()+b'newer Linux overlay'
+(root/'winhttp.dll').write_bytes(other_bytes)
+other['current']['installed_hashes']['winhttp.dll']=t.sha(other_bytes)
+shared.write_text(json.dumps(other))
+other_marker={'provider':{'id':'skynizz'},'schema':2,'os':'linux','shared_state':True,
+              'proxy':'winhttp.dll','feature_mode':'nr-mfg','revision':'linux-new-dll',
+              'files':other['current']['installed_hashes']}
+marker.write_text(json.dumps(other_marker))
+incoming=files();review=overlays.prepare(e,h.LOCAL/'state')
+assert len(review['plans'])==1 and not review['blocked'],review['blocked']
+assert files()==incoming,'cross-OS revision adoption changed files during review'
+bulk.execute(review)
+assert t.read_json(baseline)['originals']==record['originals']
+assert t.read_json(marker)['revision']==t.read_json(baseline)['cross_os_revision']
+for name,data in saved_windows.items():t.atomic_file(Path(name),data,0o600)
 # Different restore ownership, recipe or shared inventory cannot be reconciled.
 for field,value in [('originals',{}),('current',dict(portable['current'],provider_id='y4my'))]:
     for name,data in drifted.items():t.atomic_file(Path(name),data,0o600)
@@ -159,6 +189,12 @@ try:
     foreign=game/'rtxforge-glass.dll';foreign.write_bytes(b'foreign')
     with patch.object(feeder,'panel',return_value=with_glass):
         refused=overlays.prepare(e,h.LOCAL/'state',params);assert not refused['plans'] and refused['blocked']
+        adoption=overlays.prepare(e,h.LOCAL/'state',params|{'adopt_overlay_files':{str(foreign):t.digest(foreign)}})
+        assert len(adoption['plans'])==1 and not adoption['blocked'],adoption
+        saved=__import__('json').loads(adoption['plans'][0]['writes'][str(feeder.state_dir(e,game)/'baseline.json')])
+        kept=saved['originals']['rtxforge-glass.dll']
+        assert Path(kept['path']).read_bytes()==b'foreign','explicit repair lost the unrecorded original'
+        assert foreign.read_bytes()==b'foreign','adoption review overwrote the original'
         foreign.unlink();review=overlays.prepare(e,h.LOCAL/'state',params)
         assert len(review['plans'])==1 and not review['blocked'],review
         bulk.execute(review)

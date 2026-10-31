@@ -6,8 +6,37 @@
 #include <vector>
 #include <stdexcept>
 #include <cstring>
+#include <filesystem>
 using Microsoft::WRL::ComPtr;
 static void Need(bool ok,const char* message){if(!ok)throw std::runtime_error(message);}
+struct TestProfile {
+    std::wstring previous;std::filesystem::path path;
+    TestProfile(){
+        wchar_t value[32768]{},temporary[MAX_PATH]{},unique[MAX_PATH]{};
+        const auto length=GetEnvironmentVariableW(L"LOCALAPPDATA",value,DWORD(std::size(value)));Need(length<std::size(value),"Profile path is too long");previous=value;
+        Need(GetTempPathW(MAX_PATH,temporary)&&GetTempFileNameW(temporary,L"rfg",0,unique),"Test profile allocation failed");
+        Need(DeleteFileW(unique)&&CreateDirectoryW(unique,nullptr),"Test profile creation failed");path=unique;
+        Need(SetEnvironmentVariableW(L"LOCALAPPDATA",path.c_str()),"Test profile isolation failed");
+    }
+    ~TestProfile(){SetEnvironmentVariableW(L"LOCALAPPDATA",previous.empty()?nullptr:previous.c_str());}
+};
+static void TestAppearance(ForgeGlass::Draw draw,ForgeGlass::Release release,const std::filesystem::path& profile){
+    ComPtr<ID3D11Device> device;ComPtr<ID3D11DeviceContext> context;
+    Need(SUCCEEDED(D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_WARP,nullptr,0,nullptr,0,D3D11_SDK_VERSION,&device,nullptr,&context)),"Settings fixture device failed");
+    D3D11_TEXTURE2D_DESC desc{};desc.Width=2560;desc.Height=1440;desc.MipLevels=desc.ArraySize=1;desc.Format=DXGI_FORMAT_R8G8B8A8_UNORM;desc.SampleDesc.Count=1;desc.BindFlags=D3D11_BIND_RENDER_TARGET;
+    ComPtr<ID3D11Texture2D> target;ComPtr<ID3D11RenderTargetView> view;Need(SUCCEEDED(device->CreateTexture2D(&desc,nullptr,&target))&&SUCCEEDED(device->CreateRenderTargetView(target.Get(),nullptr,&view)),"Settings target failed");
+    const char* settings=R"({"revision":17,"ready":true,"settings":{"overlay_appearance":{"Theme":3,"Layout":"floating","TextFont":"roboto","TextSize":22,"Scale":100}}})";
+    ForgeGlass::Host host{sizeof(host),ForgeGlass::Abi};host.user=&settings;host.read=[](void* user,ForgeGlass::Snapshot* snapshot){*snapshot={};snapshot->title="APPEARANCE TEST";snapshot->helperJson=*static_cast<const char**>(user);return true;};
+    ForgeGlass::Frame frame{};frame.size=sizeof(frame);frame.abi=ForgeGlass::Abi;frame.device=device.Get();frame.target=view.Get();frame.visible=true;
+    Need(draw(&host,&frame),"Initial appearance rejected");
+    settings=R"({"revision":17,"ready":true,"settings":{"overlay_appearance":{"Theme":2,"Layout":"bar","TextFont":"inter","TextSize":26,"Scale":115}}})";
+    Need(draw(&host,&frame),"Updated appearance rejected");release();
+    const auto ini=profile/L"rtxForge"/L"overlay-appearance.ini";wchar_t value[64]{};
+    Need(GetPrivateProfileIntW(L"Appearance",L"Theme",0,ini.c_str())==2&&GetPrivateProfileIntW(L"Appearance",L"TextSize",0,ini.c_str())==26&&GetPrivateProfileIntW(L"Appearance",L"Scale",0,ini.c_str())==115,"Appearance update with unchanged preset revision was lost");
+    GetPrivateProfileStringW(L"Appearance",L"Layout",L"",value,64,ini.c_str());Need(std::wstring(value)==L"bar","Layout update was lost");
+    GetPrivateProfileStringW(L"Appearance",L"TextFont",L"",value,64,ini.c_str());Need(std::wstring(value)==L"inter","Font update was lost");
+    std::cout<<"helper_appearance_checks=passed unchanged_preset_revision=passed isolated_profile=passed\n";
+}
 static void Test12(HMODULE dll,ForgeGlass::Release release,bool hdr=false){
     const auto draw=reinterpret_cast<ForgeGlass::Draw12>(GetProcAddress(dll,"ForgeGlassDraw12"));Need(draw,"DX12 export missing");
     ComPtr<ID3D12Device> device;if(FAILED(D3D12CreateDevice(nullptr,D3D_FEATURE_LEVEL_11_0,IID_PPV_ARGS(&device)))){ComPtr<IDXGIFactory4> factory;Need(SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))),"DXGI factory failed");ComPtr<IDXGIAdapter> warp;Need(SUCCEEDED(factory->EnumWarpAdapter(IID_PPV_ARGS(&warp)))&&SUCCEEDED(D3D12CreateDevice(warp.Get(),D3D_FEATURE_LEVEL_11_0,IID_PPV_ARGS(&device))),"DX12 fixture device failed");}
@@ -56,6 +85,7 @@ static void TestHdr11(ForgeGlass::Draw draw,ForgeGlass::Release release,ID3D11De
 }
 int wmain(int argc,wchar_t** argv){try{
     Need(argc==2,"Supply the exact glass DLL to test");
+    TestProfile profile;
     HMODULE dll=LoadLibraryExW(argv[1],nullptr,LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_SYSTEM32);Need(dll,"Could not load glass DLL");
     const auto draw=reinterpret_cast<ForgeGlass::Draw>(GetProcAddress(dll,"ForgeGlassDraw"));const auto release=reinterpret_cast<ForgeGlass::Release>(GetProcAddress(dll,"ForgeGlassRelease"));Need(draw&&release,"Glass exports missing");
     unsigned renders=0;
@@ -79,5 +109,5 @@ int wmain(int argc,wchar_t** argv){try{
     }
     TestHdr11(draw,release,device.Get(),context.Get());if(flags)TestHdr11(draw,release,device.Get(),context.Get(),3840,2160);
     }
-    Test12(dll,release);Test12(dll,release,true);FreeLibrary(dll);std::cout<<"game_facing_dx11_checks=passed formats=RGBA,BGRA frames="<<renders<<" state_restore=passed single_threaded=passed hdr_rejection=passed\n";return 0;
+    Test12(dll,release);Test12(dll,release,true);TestAppearance(draw,release,profile.path);FreeLibrary(dll);std::cout<<"game_facing_dx11_checks=passed formats=RGBA,BGRA frames="<<renders<<" state_restore=passed single_threaded=passed hdr_rejection=passed\n";return 0;
 }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}}

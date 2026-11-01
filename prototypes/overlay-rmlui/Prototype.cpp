@@ -8,6 +8,7 @@
 #include <RmlUi/Core/ElementScroll.h>
 #include <RmlUi/Core/ElementInstancer.h>
 #include <RmlUi/Core/Elements/ElementFormControl.h>
+#include <RmlUi/Core/Elements/ElementFormControlSelect.h>
 #include <RmlUi_Renderer_DX11.h>
 #include <ForgeWorkbench.h>
 #include "Backdrop.h"
@@ -444,10 +445,16 @@ int wmain(int argc,wchar_t** argv)
             renderer.SetViewport(width,height);context->SetDimensions({width,height});const auto uv=CropImage(image,width,height,activeCrop);backdrop=std::make_unique<Backdrop>(device.Get(),width,height,image.rgba.data(),image.width,image.height,uv.data());controller.filtered={};controller.lastAdapt=-1;controller.mainMoved=false;controller.fittedLayout.clear();controller.coasting.clear();controller.entrances.clear();controller.pendingEntrance.clear();controller.QuickLayouts(false);controller.Metadata();controller.Reflow();
         };
         wchar_t localFolder[32768]{};GetEnvironmentVariableW(L"LOCALAPPDATA",localFolder,32768);const auto sceneCache=fs::path(localFolder)/L"rtxForge/prototypes/scenes";
-        std::string sceneOptions="<option value=\"0\">Current scene</option>";
-        for(const auto& scene:ScenePresets)if(fs::exists(sceneCache/scene.file))sceneOptions+="<option value=\""+std::to_string(scene.app)+"\">"+Rml::StringUtilities::EncodeRml(scene.title)+"</option>";
-        if(!library.names.empty()){sceneOptions.clear();for(size_t i=0;i<library.names.size();++i)sceneOptions+="<option value=\""+std::to_string(i)+"\">"+Rml::StringUtilities::EncodeRml(library.names[i])+"</option>";}
-        controller.Element("scene-select")->SetInnerRML(sceneOptions);
+        auto* sceneSelect=dynamic_cast<Rml::ElementFormControlSelect*>(controller.Element("scene-select"));
+        Require(sceneSelect!=nullptr,"Preview game selector is missing");sceneSelect->RemoveAll();
+        if(library.names.empty()){
+            sceneSelect->Add("Current scene","0");
+            for(const auto& scene:ScenePresets)if(fs::exists(sceneCache/scene.file))sceneSelect->Add(Rml::StringUtilities::EncodeRml(scene.title),std::to_string(scene.app));
+        }else{
+            for(size_t i=0;i<library.names.size();++i)sceneSelect->Add(Rml::StringUtilities::EncodeRml(library.names[i]),std::to_string(i));
+            sceneSelect->SetSelection(0);controller.sceneRequest=-1;
+            Require(sceneSelect->GetNumOptions()==int(library.names.size())&&sceneSelect->GetValue()=="0","Preview game choices did not initialize");
+        }
         std::vector<double> costs;int frames=0;double lastPreferences=0,nextSample=0;int selectedScene=0;auto stableAccent=accent;
         if(!desktopPreview)for(const auto& scene:ScenePresets)if(background.stem()==fs::path(scene.file).stem()){selectedScene=scene.app;controller.sceneRequest=scene.app;break;}
         auto lastStyle=fs::last_write_time(assets/L"overlay.rcss");double nextStyleCheck=0;

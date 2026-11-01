@@ -97,7 +97,7 @@ struct Runtime {
     nlohmann::json lastPreferences;
     nlohmann::json AppearanceValues()const {
         const auto& c=*controls;
-        return {{"ThemeVersion",4},{"Theme",c.appearance},{"Custom",int(c.customTheme)},{"Layout",c.layout},
+        return {{"ThemeVersion",4},{"Theme",c.appearance},{"Custom",int(c.customTheme)},{"Layout",c.layout},{"SidePanelSide",c.sidePanelSide},
             {"TextFont",c.copyFont},{"TextSize",c.copySize},{"Scale",c.overlayScale},{"ScaleBaseline",120},
             {"LightTint",int(c.lightOpacity)},{"DarkTint",int(c.darkOpacity)},{"ClearTint",int(c.clearOpacity)},{"AccentCharacter",int(c.accentCharacter)},{"AccentTint",int(c.accentOpacity)},{"AccentSaturation",int(c.accentSaturation)},
             {"Blur",int(c.blurRadius)},{"Grain",int(std::lround(c.grainAmount*10))},{"BlendStrength",int(c.blendStrength)},
@@ -118,6 +118,7 @@ struct Runtime {
         c.originalLabels=a.value("OriginalLabels",0)!=0;c.Labels();c.customTheme=a.value("Custom",0)!=0;c.textDepth=a.value("TextDepth",1)!=0;c.invertDark=a.value("InvertDark",0)!=0;c.toastPill=a.value("ToastPill",0)!=0;c.motionEnabled=a.value("Motion",1)!=0;c.showNotifications=a.value("ShowNotifications",1)!=0;
         const auto layout=a.value("Layout",previous);c.Typography();c.Materials();c.SyncSettings();
         if(layout!=previous&&(layout=="floating"||layout=="centered"||layout=="bar"))c.Layout(layout);
+        const auto side=a.value("SidePanelSide",c.sidePanelSide);if((side=="left"||side=="right")&&side!=c.sidePanelSide)c.PanelSide(side);
     }
     float rememberedMfgMultiplier{-1},rememberedMfgDynamic{0};
     void Hdr(const nlohmann::json& data) {

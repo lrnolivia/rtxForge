@@ -149,6 +149,7 @@ struct Controller : Rml::EventListener
     bool dark=false, syncing=false;
     std::string inspectorPanel="passes";
     std::string layout="floating";
+    std::string sidePanelSide="left";
     bool resizing=false;std::string resizeEdge;Rml::Vector2f resizeStart{},resizeOrigin{},resizeSize{};
     std::map<std::string,Rml::Vector2f> layoutSizes;
     Rml::Element* dragged=nullptr;
@@ -193,7 +194,7 @@ struct Controller : Rml::EventListener
         screen->SetScrollTop(0);Element("inspector")->SetScrollTop(0);if(show)Navigation("nav-settings");else if(leaving){if(!navigationHistory.empty()&&navigationHistory.back()==beforeSettingsNavigation)navigationHistory.pop_back();navigatingBack=true;Page(beforeSettingsNavigation);navigatingBack=false;}UpdateBack();
         fittedLayout.clear();SyncSettings();Reflow();if(modal){Raise("inspector");Enter("inspector");}if(show&&layout=="centered")Element("nav-settings")->ScrollIntoView();
     }
-    void SyncSettings() {const bool was=typographySync;typographySync=true;for(const auto& [id,on]:menuSettings)Element(("setting-"+id).c_str())->SetClass("on",on);Element("setting-helper")->SetClass("on",helperEnabled);Element("setting-startup")->SetClass("on",startWithWindows);Element("setting-stats")->SetClass("on",showStats);Element("setting-welcome")->SetClass("on",showWelcome);Element("setting-notifications")->SetClass("on",showNotifications);Element("shortcut-key")->SetInnerRML(bindingShortcut?"…":Rml::StringUtilities::EncodeRml(shortcutLabel));dynamic_cast<Rml::ElementFormControl*>(Element("welcome-position"))->SetValue(welcomePosition);dynamic_cast<Rml::ElementFormControl*>(Element("primary-menu"))->SetValue(primaryMenu);dynamic_cast<Rml::ElementFormControl*>(Element("opti-shortcut"))->SetValue(optiShortcut);PositionWelcome();typographySync=was;}
+    void SyncSettings() {Select("side-panel-side","side-"+sidePanelSide);const bool was=typographySync;typographySync=true;for(const auto& [id,on]:menuSettings)Element(("setting-"+id).c_str())->SetClass("on",on);Element("setting-helper")->SetClass("on",helperEnabled);Element("setting-startup")->SetClass("on",startWithWindows);Element("setting-stats")->SetClass("on",showStats);Element("setting-welcome")->SetClass("on",showWelcome);Element("setting-notifications")->SetClass("on",showNotifications);Element("shortcut-key")->SetInnerRML(bindingShortcut?"…":Rml::StringUtilities::EncodeRml(shortcutLabel));dynamic_cast<Rml::ElementFormControl*>(Element("welcome-position"))->SetValue(welcomePosition);dynamic_cast<Rml::ElementFormControl*>(Element("primary-menu"))->SetValue(primaryMenu);dynamic_cast<Rml::ElementFormControl*>(Element("opti-shortcut"))->SetValue(optiShortcut);PositionWelcome();typographySync=was;}
     void Session(const ForgeSession::Snapshot& snapshot) {session=snapshot;RenderResolutionLabel();Element("compact-frame-time")->SetInnerRML("Frame "+(ForgeSession::Available(snapshot.gameFps)&&snapshot.gameFps>0?ForgeSession::Number(1000/snapshot.gameFps,2)+" ms":"—"));Element("compact-nr-size")->SetInnerRML(snapshot.nrRunning&&snapshot.nrWidth&&snapshot.nrHeight?std::to_string(snapshot.nrWidth)+" × "+std::to_string(snapshot.nrHeight):"Dimensions not reported");Element("compact-frames")->SetInnerRML(ForgeSession::Frames(snapshot));Element("compact-neural")->SetInnerRML(ForgeSession::Neural(snapshot));Element("compact-ratio")->SetInnerRML(snapshot.framesKnown&&snapshot.measuredRatio>=1&&snapshot.measuredRatio<=8?ForgeSession::Number(snapshot.measuredRatio,1)+"×":"");for(const auto* p:{"overview","popup"}){const std::string prefix=p;Element((prefix+"-nr").c_str())->SetInnerRML(ForgeSession::Neural(snapshot));Element((prefix+"-frame").c_str())->SetInnerRML(ForgeSession::Available(snapshot.gameFps)&&snapshot.gameFps>0?ForgeSession::Number(1000/snapshot.gameFps,2)+" ms":"—");Element((prefix+"-rendered").c_str())->SetInnerRML(ForgeSession::Number(snapshot.gameFps));Element((prefix+"-displayed").c_str())->SetInnerRML(snapshot.framesKnown?ForgeSession::Number(snapshot.displayedFps):"—");}if(showStats&&(nrAvailable||fgAvailable))Element("compact-live")->RemoveProperty("display");else Element("compact-live")->SetProperty("display","none");if(showStats)Element("bar-live")->RemoveProperty("display");else Element("bar-live")->SetProperty("display","none");}
     void PositionWelcome() {
         if(!document->IsVisible())return;
@@ -205,9 +206,9 @@ struct Controller : Rml::EventListener
         const bool bottom=welcomePosition.rfind("bottom",0)==0;
         float x=welcomePosition.find("left")!=std::string::npos?32*dp:welcomePosition=="top-center"?(view.x-size.x)*.5f:view.x-size.x-32*dp;
         float y=bottom?view.y-size.y-32*dp:32*dp;
-        // Only the styling preview has a scene selector. Keep its chrome out of
+        // Preview windows can have a game selector. Keep its chrome out of
         // every selected toast anchor, including variable-width notifications.
-        if(preview&&!bottom)if(auto* toolbar=document->QuerySelector(".prototype-toolbar")){const auto at=toolbar->GetAbsoluteOffset(Rml::BoxArea::Border);const auto bounds=toolbar->GetBox().GetSize(Rml::BoxArea::Border);if(x<at.x+bounds.x&&x+size.x>at.x&&y<at.y+bounds.y)y=at.y+bounds.y+12*dp;}
+        if(!bottom)if(auto* toolbar=document->QuerySelector(".prototype-toolbar");toolbar&&toolbar->IsVisible()){const auto at=toolbar->GetAbsoluteOffset(Rml::BoxArea::Border);const auto bounds=toolbar->GetBox().GetSize(Rml::BoxArea::Border);if(x<at.x+bounds.x&&x+size.x>at.x&&y<at.y+bounds.y)y=at.y+bounds.y+12*dp;}
         welcome->SetProperty("right","auto");welcome->SetProperty("bottom","auto");
         welcome->SetProperty("left",std::to_string(std::clamp(x,12*dp,std::max(12*dp,view.x-size.x-12*dp)))+"px");welcome->SetProperty("top",std::to_string(std::clamp(y,12*dp,std::max(12*dp,view.y-size.y-12*dp)))+"px");
     }
@@ -227,7 +228,7 @@ struct Controller : Rml::EventListener
     Rml::Vector2i fittedView{-1,-1};Rml::Vector2f fittedMainSize{};float fittedDensity=0;std::string fittedLayout;bool fittedSettings=false,mainMoved=false;int fittedCopy=0;
     float TopInset() {
         const float dp=document->GetContext()->GetDensityIndependentPixelRatio();
-        if(preview)if(auto* toolbar=document->QuerySelector(".prototype-toolbar")){const auto size=toolbar->GetBox().GetSize(Rml::BoxArea::Border);if(toolbar->IsVisible())return size.y>0?toolbar->GetAbsoluteOffset(Rml::BoxArea::Border).y+size.y+12*dp:78*dp;}
+        if(auto* toolbar=document->QuerySelector(".prototype-toolbar")){const auto size=toolbar->GetBox().GetSize(Rml::BoxArea::Border);if(toolbar->IsVisible())return size.y>0?toolbar->GetAbsoluteOffset(Rml::BoxArea::Border).y+size.y+12*dp:78*dp;}
         return 24*dp;
     }
     void Reflow() {
@@ -262,7 +263,8 @@ struct Controller : Rml::EventListener
         }
         context->Update();const auto size=main->GetBox().GetSize(Rml::BoxArea::Border);
         if(changed||size!=fittedMainSize){fittedMainSize=size;const bool centered=layout=="centered",bar=layout=="bar";const auto at=main->GetAbsoluteOffset(Rml::BoxArea::Border);
-            const float x=mainMoved?std::clamp(at.x,12*dp,std::max(12*dp,view.x-size.x-12*dp)):centered?(view.x-size.x)*.5f:bar?24*dp:std::min(36*dp,view.x*.04f);
+            const float edge=std::min(36*dp,view.x*.04f);
+            const float x=mainMoved?std::clamp(at.x,12*dp,std::max(12*dp,view.x-size.x-12*dp)):centered?(view.x-size.x)*.5f:bar?24*dp:sidePanelSide=="right"?view.x-size.x-edge:edge;
             const float y=mainMoved?std::clamp(at.y,inset,std::max(inset,view.y-size.y-12*dp)):centered?inset+(view.y-inset-24*dp-size.y)*.5f:bar?view.y-size.y-24*dp:std::max(inset,std::min(76*dp,view.y*.08f));
             main->SetProperty("left",std::to_string(x)+"px");main->SetProperty("top",std::to_string(y)+"px");if(auto it=entrances.find("main-panel");it!=entrances.end())it->second.target={x,y};}
         if(layout=="centered"){const auto footerHeight=Element("tuning-footer")->IsVisible()?Element("tuning-footer")->GetBox().GetSize(Rml::BoxArea::Border).y+44*dp:32*dp;const float height=std::max(48*dp,size.y-contentTop*dp-footerHeight);for(const auto* id:{"overview","settings-screen","inspector"}){auto* e=Element(id);if(std::fabs(e->GetBox().GetSize(Rml::BoxArea::Border).y-height)>.1f)e->SetProperty("height",std::to_string(height)+"px");if(std::string(id)=="inspector")e->SetProperty("max-height",std::to_string(height)+"px");}document->QuerySelector(".sidebar")->SetProperty("height",std::to_string(height)+"px");}
@@ -291,8 +293,9 @@ struct Controller : Rml::EventListener
         if(preferences.empty()||prefsDirty||now<nextPreferencesRead)return;nextPreferencesRead=now+.5;
         std::error_code error;const auto stamp=fs::last_write_time(preferences,error);
         if(error||stamp==preferencesStamp)return;
-        const auto before=layout;LoadPreferences(!preview);Typography();Materials();SyncSettings();
+        const auto before=layout,beforeSide=sidePanelSide;LoadPreferences(!preview);Typography();Materials();SyncSettings();
         if(before!=layout)Layout(layout);
+        if(beforeSide!=sidePanelSide)PanelSide(sidePanelSide);
     }
     bool typographySync=false;
     std::unordered_set<Rml::Element*> clearForeground;
@@ -349,7 +352,7 @@ struct Controller : Rml::EventListener
     void ShowAppearance() {
         Visible("type-panel",true);Raise("type-panel");document->GetContext()->Update();
         const auto at=Element("main-panel")->GetAbsoluteOffset(Rml::BoxArea::Border),main=Element("main-panel")->GetBox().GetSize(Rml::BoxArea::Border),size=Element("type-panel")->GetBox().GetSize(Rml::BoxArea::Border);const auto view=document->GetContext()->GetDimensions();
-        const float inset=TopInset();Element("type-panel")->SetProperty("left",std::to_string(std::clamp(at.x+main.x+24,12.f,std::max(12.f,view.x-size.x-12)))+"px");Element("type-panel")->SetProperty("top",std::to_string(std::clamp(layout=="bar"?at.y-size.y-20:at.y,inset,std::max(inset,view.y-size.y-12)))+"px");Enter("type-panel");
+        const float inset=TopInset();Element("type-panel")->SetProperty("left",std::to_string(std::clamp(layout=="floating"&&sidePanelSide=="right"?at.x-size.x-24:at.x+main.x+24,12.f,std::max(12.f,view.x-size.x-12)))+"px");Element("type-panel")->SetProperty("top",std::to_string(std::clamp(layout=="bar"?at.y-size.y-20:at.y,inset,std::max(inset,view.y-size.y-12)))+"px");Enter("type-panel");
     }
     void Materials() {
         if(typographySync)return;typographySync=true;
@@ -403,6 +406,7 @@ struct Controller : Rml::EventListener
         GetPrivateProfileStringW(L"Appearance",L"PrimaryMenu",L"game",text,80,preferences.c_str());primaryMenu=Utf8(text)=="optiscaler"?"optiscaler":"game";
         GetPrivateProfileStringW(L"Appearance",L"OptiShortcut",L"Insert",text,80,preferences.c_str());optiShortcut=Utf8(text)=="F8"?"F8":Utf8(text)=="Disabled"?"Disabled":"Insert";
         GetPrivateProfileStringW(L"Appearance",L"Layout",L"floating",text,80,preferences.c_str());const auto savedLayout=Utf8(text);if(savedLayout=="floating"||savedLayout=="centered"||savedLayout=="bar")layout=savedLayout;
+        GetPrivateProfileStringW(L"Appearance",L"SidePanelSide",L"left",text,80,preferences.c_str());sidePanelSide=Utf8(text)=="right"?"right":"left";
         std::error_code error;preferencesStamp=fs::last_write_time(preferences,error);
     }
     void SavePreferences() {
@@ -415,7 +419,7 @@ struct Controller : Rml::EventListener
         WritePrivateProfileStringW(L"Appearance",L"TextFont",fs::path(copyFont).c_str(),preferences.c_str());
         put(L"OriginalLabels",originalLabels);put(L"ShowStats",showStats);put(L"ShowWelcome",showWelcome);put(L"ShowNotifications",showNotifications);put(L"Shortcut",shortcut);put(L"ShortcutModifiers",shortcutModifiers);
         for(const auto& [key,on]:menuSettings)put(fs::path("Menu-"+key).c_str(),on);
-        for(const auto& [key,value]:std::map<std::wstring,std::string>{{L"ShortcutLabel",shortcutLabel},{L"WelcomePosition",welcomePosition},{L"PrimaryMenu",primaryMenu},{L"OptiShortcut",optiShortcut},{L"Layout",layout}})WritePrivateProfileStringW(L"Appearance",key.c_str(),fs::path(value).c_str(),preferences.c_str());
+        for(const auto& [key,value]:std::map<std::wstring,std::string>{{L"ShortcutLabel",shortcutLabel},{L"WelcomePosition",welcomePosition},{L"PrimaryMenu",primaryMenu},{L"OptiShortcut",optiShortcut},{L"Layout",layout},{L"SidePanelSide",sidePanelSide}})WritePrivateProfileStringW(L"Appearance",key.c_str(),fs::path(value).c_str(),preferences.c_str());
         std::error_code error;preferencesStamp=fs::last_write_time(preferences,error);
     }
     void Typography() {
@@ -440,12 +444,20 @@ struct Controller : Rml::EventListener
         document->SetClass("frame-page",false);document->SetClass("neural-page",false);document->SetClass("hdr-page",false);Navigation("nav-overview");navigationHistory.clear();UpdateBack();
         for(const auto* id:{"main-panel","inspector"})for(const auto* property:{"left","top","margin-left","margin-top"})Element(id)->RemoveProperty(property);
         inspectorAnchored=false;
-        Visible("overview",true);Visible("inspector",false);Select("layout-switch","layout-"+mode);
+        Visible("overview",true);Visible("inspector",false);Select("layout-switch","layout-"+mode);Select("side-panel-side","side-"+sidePanelSide);
         Element("main-panel")->SetScrollTop(0);
         fittedLayout.clear();
         Reflow();
         Enter("main-panel");
         document->GetContext()->Update();
+    }
+    void PanelSide(const std::string& side) {
+        sidePanelSide=side=="right"?"right":"left";prefsDirty=true;
+        Select("side-panel-side","side-"+sidePanelSide);
+        if(layout=="floating"){
+            mainMoved=false;fittedLayout.clear();coasting.clear();entrances.clear();pendingEntrance.clear();
+            Visible("inspector",false);Visible("type-panel",false);Reflow();Enter("main-panel");
+        }
     }
     static std::string Hex(float r,float g,float b,float a=1) {char text[16];std::snprintf(text,sizeof(text),"#%02x%02x%02x%02x",int(std::clamp(r,0.f,1.f)*255),int(std::clamp(g,0.f,1.f)*255),int(std::clamp(b,0.f,1.f)*255),int(std::clamp(a,0.f,1.f)*255));return text;}
     static float Luma(Backdrop::SceneColor c) {const auto linear=[](float x){return x<=.04045f?x/12.92f:std::pow((x+.055f)/1.055f,2.4f);};return .2126f*linear(c.r)+.7152f*linear(c.g)+.0722f*linear(c.b);}
@@ -535,6 +547,11 @@ struct Controller : Rml::EventListener
         Element("inspector-title")->SetInnerRML(std::string("<img class=\"glyph\" src=\"icons/")+icon+"-light.png\"/><span>"+title+"</span>");
         if(layout=="centered")Visible("overview",false);
         Reflow();Raise("inspector");Enter("inspector");inspectorAnchored=layout=="bar";Element("inspector")->SetClass("anchored",inspectorAnchored);
+        if(layout=="floating"){
+            auto* main=Element("main-panel");auto* popup=Element("inspector");const auto at=main->GetAbsoluteOffset(Rml::BoxArea::Border),mainSize=main->GetBox().GetSize(Rml::BoxArea::Border),size=popup->GetBox().GetSize(Rml::BoxArea::Border);const auto view=document->GetContext()->GetDimensions();
+            const float dp=document->GetContext()->GetDensityIndependentPixelRatio();
+            popup->SetProperty("left",std::to_string(std::clamp(sidePanelSide=="right"?at.x-size.x-20*dp:at.x+mainSize.x+20*dp,12*dp,std::max(12*dp,view.x-size.x-12*dp)))+"px");popup->SetProperty("top",std::to_string(std::max(TopInset(),at.y))+"px");
+        }
         if(inspectorAnchored) {inspectorSource=panel=="effects"?"open-effects":panel=="hdr"?"open-hdr":panel=="overview"?"open-session":panel=="passes"?"open-passes":panel=="frame"?"open-frame-options":panel=="processing"?"open-processing":"open-look";auto* source=Element(panel=="effects"?"open-effects":panel=="hdr"?"open-hdr":panel=="overview"?"open-session":panel=="passes"?"open-passes":panel=="frame"?"open-frame-options":panel=="processing"?"open-processing":"open-look");document->GetContext()->Update();const auto at=source->GetAbsoluteOffset(Rml::BoxArea::Border);const auto bounds=source->GetBox().GetSize(Rml::BoxArea::Border);Element("inspector")->SetProperty("max-height",std::to_string(std::max(120.f,at.y-TopInset()-20))+"px");document->GetContext()->Update();const auto size=Element("inspector")->GetBox().GetSize(Rml::BoxArea::Border);const auto viewport=document->GetContext()->GetDimensions();inspectorAnchorX=at.x+bounds.x*.5f;Element("inspector")->SetProperty("left",std::to_string(std::clamp(inspectorAnchorX-size.x*.5f,12.f,std::max(12.f,viewport.x-size.x-12)))+"px");Element("inspector")->SetProperty("top",std::to_string(std::max(TopInset(),at.y-size.y-20))+"px");}
     }
     void ProcessEvent(Rml::Event& event) override
@@ -617,7 +634,7 @@ struct Controller : Rml::EventListener
         }
         if(event.GetType()=="change") {
             auto* field=dynamic_cast<Rml::ElementFormControl*>(target);if(!field)return;
-            if(id=="scene-select") {sceneRequest=std::stoi(field->GetValue());return;}
+            if(id=="scene-select") {const auto value=field->GetValue();if(!value.empty())sceneRequest=std::stoi(value);return;}
             if(id=="welcome-position"){welcomePosition=field->GetValue();prefsDirty=true;PositionWelcome();return;}
             if(id=="primary-menu"){primaryMenu=field->GetValue();prefsDirty=true;return;}
             if(id=="opti-shortcut"){optiShortcut=field->GetValue();prefsDirty=true;return;}
@@ -681,6 +698,7 @@ struct Controller : Rml::EventListener
             else if(id=="motion-effects") {motionEnabled=!motionEnabled;Materials();}
             else if(id=="type-close")Visible("type-panel",false);
             else if(id=="type-reset") {copyFont="roboto";headingFont="bakbak";copySize=22;copyWeight=500;headingSize=36;headingWeight=400;Typography();}
+            else if(id=="side-left"||id=="side-right")PanelSide(id.substr(5));
             else if(id.rfind("layout-",0)==0)Layout(id.substr(7));
             else if(id=="nav-overview"||id=="nav-frame"||id=="nav-neural"||id=="nav-hdr"||id=="nav-effects"||id=="nav-look"||id=="nav-passes") {Settings(false);Page(id);}
             else if(id=="open-effects"){if(layout=="centered"){Settings(false);Page("nav-effects");}else Open("effects");}

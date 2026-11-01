@@ -10395,7 +10395,7 @@ class Window(Adw.ApplicationWindow):
         s=overlay_settings.effective(self.settings,game['game'] if game else None)
         def save(key,value):
             s[key]=value
-            if game:
+            if game and key not in ('overlay_appearance','overlay_theme'):
                 overrides=self.settings.setdefault('game_overlay_settings',{})
                 overrides.setdefault(game['game'],{k:v for k,v in s.items() if k not in ('overlay_renderer','overlay_appearance')})[key]=value
                 if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
@@ -10412,11 +10412,11 @@ class Window(Adw.ApplicationWindow):
         panel=Adw.PreferencesGroup(title='rtxForge Panel',description='NR and MFG controls drawn inside the game. Saved here, then written to each game on its next reviewed install or repair.')
         if not game:choice('Panel','Where rtxForge\u2019s controls appear while you play.',['game','optiscaler'],['In the game','OptiScaler menu only'],'overlay_renderer',panel)
         import glass_preferences as glass
-        appearance=Adw.PreferencesGroup(title='Appearance',description='The same layouts and materials as the glass overlay.')
+        appearance=Adw.PreferencesGroup(title='Appearance',description='Appearance and layout are shared across games. Menu and welcome choices below can differ for this game.' if game else 'The same layouts and materials as the glass overlay.')
         refreshing=[False];refreshers=[]
         def changed(key,value):
             if refreshing[0]:return
-            if not game and not self.options.demo:
+            if not self.options.demo:
                 s['overlay_appearance']=library_media.load_settings(self.service.config).get('overlay_appearance',{})
             glass.edit(s,key,value);save('overlay_appearance',s['overlay_appearance'])
             appearance.set_description('Custom appearance' if glass.current(s)['Custom'] else 'The same layouts and materials as the glass overlay.')
@@ -10433,6 +10433,8 @@ class Window(Adw.ApplicationWindow):
             body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=10,margin_top=12,margin_bottom=12,margin_start=16,margin_end=16)
             body.append(Gtk.Label(label=title,xalign=0));body.append(content);item.set_child(body);appearance.add(item)
         visual_row('Layout',LayoutPicker(glass.current(s)['Layout'],lambda value:changed('Layout',value)))
+        side=material_choice('Side Panel position','SidePanelSide',['left','right'],['Left','Right'])
+        side.set_subtitle('Choose which edge the Side Panel opens on.')
         def select_theme(mode):
             if refreshing[0]:return
             glass.appearance(s,base=mode);save('overlay_theme',mode);save('overlay_appearance',s['overlay_appearance'])
@@ -10499,7 +10501,7 @@ class Window(Adw.ApplicationWindow):
         item.add_suffix(action);installed.add(item)
         history=row('Last overlay update','Updated games, current overlays and anything that needs repair.')
         details=button('Details',lambda *_:self.overlay_update_details());history.add_suffix(details);installed.add(history)
-        return [panel,*([] if game else [appearance]),notifications,shortcut,optiscaler,reshade,vulkan,installed]
+        return [panel,appearance,notifications,shortcut,optiscaler,reshade,vulkan,installed]
 
     def game_overlay_card(self,game):
         card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True)
@@ -10508,7 +10510,8 @@ class Window(Adw.ApplicationWindow):
         group=Adw.PreferencesGroup();group.add(defaults);card.append(group)
         options=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16,sensitive=not inherited)
         sections=self.overlay_settings_groups(game)
-        for section in sections[:-1]:options.append(section)
+        card.append(sections[1])
+        for section in (sections[0],*sections[2:-1]):options.append(section)
         card.append(options)
         card.append(sections[-1])
         def inherit(widget,*_):

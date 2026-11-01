@@ -281,6 +281,10 @@ try
 {
     File.WriteAllText(appearancePath, "[Appearance]\nThemeVersion=4\nTheme=3\nLayout=bar\nTextFont=inter\nTextSize=26\nScale=115\nCustom=1\nClearTint=33\n[Unrelated]\nKeep=this\n");
     var native = GlassAppearance.Load(appearancePath);
+    if(native.SidePanelSide!="left")throw new Exception("Side Panel must default to the left edge");
+    GlassAppearance.Validate(new System.Text.Json.Nodes.JsonObject { ["SidePanelSide"]="right" });
+    GlassAppearance.Set("SidePanelSide","right",path:appearancePath);
+    if(GlassAppearance.Load(appearancePath).SidePanelSide!="right"||GlassAppearance.Load(appearancePath).ToJson()["SidePanelSide"]!.GetValue<string>()!="right")throw new Exception("Side Panel edge was not persisted");
     if (native.Theme != "clear" || native.Layout != "bar" || !native.Custom || native.Tint != 33 || native.Get("TextFont", "roboto") != "inter") throw new Exception("Desktop settings do not read the actual glass preferences");
     GlassAppearance.UseTheme("dark", appearancePath);
     var reset = GlassAppearance.Load(appearancePath);

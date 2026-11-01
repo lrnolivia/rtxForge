@@ -910,3 +910,6 @@ body { --utility-size: 19dp; --segment-size: 20dp; }
 .preview-thumbnail .neural .segments { margin-top: 8dp; }
 .preview-chrome { position: absolute; right: 24dp; top: 20dp; z-index: 100; }
 .preview-chrome .close { width: 38dp; height: 38dp; border-radius: 19dp; background: #27262466; }
+.side-panel-position { margin-top: 20dp; }
+.side-panel-position .segments { margin-top: 12dp; }
+.desktop-preview .prototype-toolbar select { width: 250dp; }

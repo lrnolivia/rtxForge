@@ -13,11 +13,12 @@ namespace RtxForge.Windows.Controls;
 sealed class OverlayPreviewView : StackPanel
 {
     readonly EngineForgeService engine;
-    readonly AutoSuggestBox search = new() { PlaceholderText = "Find a game…", DisplayMemberPath = "Name", Width = 220, QueryIcon = new SymbolIcon(Symbol.Find) };
+    readonly AutoSuggestBox search = new() { PlaceholderText = "Find a game…", DisplayMemberPath = "Name", HorizontalAlignment=HorizontalAlignment.Stretch, QueryIcon = new SymbolIcon(Symbol.Find) };
     readonly Canvas scene = new() { Width = 960, Height = 540, IsHitTestVisible = false };
     readonly Canvas diagram = new() { Width = 960, Height = 540, IsHitTestVisible = false };
     readonly Image image = new() { Stretch = Stretch.UniformToFill };
-    readonly TextBlock status = new() { Text = "Click to open the full preview", FontSize = 12, Opacity = .75, TextWrapping = TextWrapping.Wrap };
+    readonly Button frame;
+    readonly TextBlock status = new() { Text = "Explore every control in the full preview.", FontSize = 12, Opacity = .75, TextWrapping = TextWrapping.Wrap };
     readonly Microsoft.UI.Dispatching.DispatcherQueueTimer timer;
     IReadOnlyList<Game> games;
     Game selected = new() { Id = "overlay-preview-control", Name = "Control Resonant" };
@@ -25,51 +26,68 @@ sealed class OverlayPreviewView : StackPanel
     CancellationTokenSource? loading;
     Process? fullPreview;
     Color accent = Color.FromArgb(255,213,137,117);
+    Color sceneAccent = Color.FromArgb(255,213,137,117);
     string stamp = "";
     bool active;
 
-    public OverlayPreviewView(EngineForgeService engine, IReadOnlyList<Game> library)
+    public OverlayPreviewView(EngineForgeService engine, IReadOnlyList<Game> library, Game? initialGame = null)
     {
-        this.engine=engine; games=library; Spacing=10;
-        var header=new Grid { ColumnSpacing=12 };
-        header.ColumnDefinitions.Add(new() { Width=new GridLength(1,GridUnitType.Star) });
-        header.ColumnDefinitions.Add(new() { Width=GridLength.Auto });
-        header.Children.Add(new TextBlock { Text="Preview", VerticalAlignment=VerticalAlignment.Center, FontWeight=Microsoft.UI.Text.FontWeights.SemiBold });
-        Grid.SetColumn(search,1);header.Children.Add(search);Children.Add(header);
+        this.engine=engine; games=library; Spacing=12; MaxWidth=440; HorizontalAlignment=HorizontalAlignment.Stretch;VerticalAlignment=VerticalAlignment.Center;
         // Frame the unobstructed right side of the existing gameplay photograph.
         // This small illustration has no telemetry, live controls or GPU renderer.
         scene.Clip=new RectangleGeometry { Rect=new global::Windows.Foundation.Rect(0,0,960,540) };
         scene.Children.Add(image);scene.Children.Add(diagram);
-        var frame=new Button { Content=new Viewbox { Child=scene,Stretch=Stretch.Uniform }, Padding=new Thickness(0),
+        frame=new Button { Content=new Viewbox { Child=scene,Stretch=Stretch.Uniform }, Padding=new Thickness(0),
             HorizontalAlignment=HorizontalAlignment.Stretch,HorizontalContentAlignment=HorizontalAlignment.Stretch,CornerRadius=new CornerRadius(12) };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(frame,"Open full overlay preview");
-        ToolTipService.SetToolTip(frame,"Open full preview");Children.Add(frame);Children.Add(status);
+        ToolTipService.SetToolTip(frame,"Open full preview");Children.Add(frame);Children.Add(search);
+        var openContent=new StackPanel { Orientation=Orientation.Horizontal,Spacing=8,HorizontalAlignment=HorizontalAlignment.Center };
+        openContent.Children.Add(new SymbolIcon(Symbol.FullScreen));openContent.Children.Add(new TextBlock {Text="Open full preview"});
+        var open=new Button {Content=openContent,HorizontalAlignment=HorizontalAlignment.Stretch,HorizontalContentAlignment=HorizontalAlignment.Center};
+        Children.Add(open);Children.Add(status);
         search.Text=selected.Name;SetPhoto(shot);Draw();
         search.TextChanged+=(_,e)=>{if(e.Reason==AutoSuggestionBoxTextChangeReason.UserInput)search.ItemsSource=Matches().Take(30).ToArray();};
         search.GotFocus+=(_,_)=>search.ItemsSource=Matches().Take(30).ToArray();
         search.SuggestionChosen+=async(_,e)=>{if(e.SelectedItem is Game game)await ChooseAsync(game);};
         search.QuerySubmitted+=async(_,e)=>{if(e.ChosenSuggestion is not Game && Matches().FirstOrDefault() is { } game)await ChooseAsync(game);};
-        frame.Click+=async(_,_)=>{try{OverlayPreview.Close(fullPreview);fullPreview=await OverlayPreview.StartAsync(engine.EngineRoot,selected,shot);}catch(Exception error)when(error is IOException or InvalidOperationException or System.ComponentModel.Win32Exception){status.Text=error.Message;}};
+        async Task OpenAsync(){try{OverlayPreview.Close(fullPreview);fullPreview=await OverlayPreview.StartAsync(engine.EngineRoot,selected,shot,games,sceneAccent);}catch(Exception error)when(error is IOException or InvalidOperationException or System.ComponentModel.Win32Exception){status.Text=error.Message;}}
+        frame.Click+=async(_,_)=>await OpenAsync();open.Click+=async(_,_)=>await OpenAsync();
+        frame.RegisterPropertyChangedCallback(Control.IsEnabledProperty,(_,_)=>open.IsEnabled=frame.IsEnabled);
         timer=DispatcherQueue.CreateTimer();timer.Interval=TimeSpan.FromMilliseconds(400);
         timer.Tick+=(_,_)=>{var next=PreferenceStamp();if(next!=stamp){stamp=next;Draw();}};
-        Loaded+=(_,_)=>{active=true;timer.Start();if(App.Main is { } shell){games=shell.Games;shell.GamesChanged+=LibraryChanged;}Draw();};
+        Loaded+=async(_,_)=>{active=true;timer.Start();if(App.Main is { } shell){games=shell.Games;shell.GamesChanged+=LibraryChanged;}Draw();if(initialGame is not null){var game=initialGame;initialGame=null;await ChooseAsync(game);}};
         Unloaded+=(_,_)=>{active=false;timer.Stop();loading?.Cancel();if(App.Main is { } shell)shell.GamesChanged-=LibraryChanged;OverlayPreview.Close(fullPreview);fullPreview=null;};
     }
     IEnumerable<Game> Matches()=>games.OrderBy(g=>g.Name).Where(g=>g.Name.Contains(search.Text,StringComparison.CurrentCultureIgnoreCase));
     void LibraryChanged(){if(App.Main is { } shell)games=shell.Games;}
     static string PreferenceStamp()=>File.Exists(GlassAppearance.FilePath)?File.GetLastWriteTimeUtc(GlassAppearance.FilePath).Ticks.ToString():"default";
+    public void RefreshAppearance(){stamp=PreferenceStamp();Draw();}
     async Task ChooseAsync(Game game)
     {
         loading?.Cancel();loading?.Dispose();loading=new();var request=loading;search.Text=game.Name;status.Text="Loading "+game.Name+"…";
+        bool Current()=>ReferenceEquals(loading,request)&&!request.IsCancellationRequested&&active;
+        frame.IsEnabled=false;
+        // The local palette must not wait behind a store screenshot download.
+        // Keep the previous scene until the matching photo is ready.
+        async Task<OverlayPreview.Screenshot?> PhotoAsync(CancellationToken cancel)
+        {
+            try{return (await OverlayPreview.ScreenshotsAsync(game,ForgeSettings.Load().OnlineArt,cancel)).FirstOrDefault();}
+            catch(OperationCanceledException){return null;}
+            catch(Exception error)when(error is IOException or HttpRequestException or System.Text.Json.JsonException or UnauthorizedAccessException){return null;}
+        }
+        var photo=PhotoAsync(request.Token);
         try {
-            var shots=await OverlayPreview.ScreenshotsAsync(game,ForgeSettings.Load().OnlineArt,request.Token);
             var palette=await OverlayAccent.ForGameAsync(game);
-            if(request.IsCancellationRequested||!active)return;
-            if(shots.FirstOrDefault() is not { } found){status.Text="No screenshot available · showing "+selected.Name;return;}
-            selected=game;shot=found;accent=palette.Color;SetPhoto(shot);Draw();status.Text="Click to open the full preview";
+            if(!Current())return;
+            accent=palette.Color;Draw();
+            var found=await photo;
+            if(!Current())return;
+            if(found is null){accent=sceneAccent;Draw();status.Text="No screenshot available · showing "+selected.Name;return;}
+            selected=game;shot=found;sceneAccent=accent;SetPhoto(shot);Draw();status.Text="Explore every control in the full preview.";
         }
         catch(OperationCanceledException){}
-        catch(Exception error)when(error is IOException or HttpRequestException or System.Text.Json.JsonException or UnauthorizedAccessException){if(active)status.Text="Screenshot unavailable · showing the previous scene";}
+        catch(Exception error)when(error is IOException or HttpRequestException or System.Text.Json.JsonException or UnauthorizedAccessException){if(Current()){accent=sceneAccent;Draw();status.Text="Screenshot unavailable · showing the previous scene";}}
+        finally{if(Current())frame.IsEnabled=true;}
     }
     void SetPhoto(OverlayPreview.Screenshot photo)
     {
@@ -90,8 +108,9 @@ sealed class OverlayPreviewView : StackPanel
         var card=Color.FromArgb(light?(byte)110:(byte)40,255,255,255);
         var line=Color.FromArgb(light?(byte)100:(byte)180,ink.R,ink.G,ink.B);
         if(appearance.Layout=="floating") {
-            Panel(40,40,245,460);Shape(60,62,88,6,accent,3);
-            for(var row=0;row<3;row++){Shape(58,94+row*120,209,100,card);Shape(72,109+row*120,65,5,line,3);Shape(72,134+row*120,180,15,card,5);Shape(72,163+row*120,110,3,accent,2);}
+            var x=appearance.SidePanelSide=="right"?675:40;
+            Panel(x,40,245,460);Shape(x+20,62,88,6,accent,3);
+            for(var row=0;row<3;row++){Shape(x+18,94+row*120,209,100,card);Shape(x+32,109+row*120,65,5,line,3);Shape(x+32,134+row*120,180,15,card,5);Shape(x+32,163+row*120,110,3,accent,2);}
         } else if(appearance.Layout=="centered") {
             Panel(190,85,580,370);Shape(214,110,90,6,accent,3);
             for(var row=0;row<5;row++)Shape(214,160+row*43,105,7,row==0?accent:line,3);

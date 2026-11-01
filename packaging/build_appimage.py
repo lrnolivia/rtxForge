@@ -40,6 +40,7 @@ def bundle_overlays(root,payload,expected_sha=None):
             copy_checked(folder,receipt['archive'],{'size':receipt['release_size'],'sha256':receipt['sha256']},destination)
         else:
             allowed={'rtxforge-glass.dll'} if name=='glass-overlay' else {'rtxforge-panel.addon64','rtxforge-quiet.addon64','rtxforge-glass.dll'}
+            if name=='feeder-panel' and policy.get('revision',0)>=3:allowed.add('rtxforge-effects.addon64')
             if set(receipt.get('files',{}))!=allowed:raise RuntimeError('Incomplete native overlay receipt')
             for filename,info in receipt['files'].items():copy_checked(folder,filename,info,destination)
         shutil.copyfile(folder/'package.json',destination/'package.json')

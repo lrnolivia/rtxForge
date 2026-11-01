@@ -159,5 +159,12 @@ if($RuntimeIdentifier -eq 'win-x64' -and (Test-Path -LiteralPath $glassReceipt))
     New-Item -ItemType Directory -Force -Path $notices | Out-Null
     Get-ChildItem -LiteralPath (Join-Path $glassRoot 'notices') -File | Copy-Item -Destination $notices -Force
 }
+if(Test-Path -LiteralPath (Join-Path $glassRoot 'OverlayPreview.exe')) {
+    # The native preview is x64, including on Windows ARM's x64 application layer.
+    $preview=Join-Path $Output 'OverlayPreview'
+    New-Item -ItemType Directory -Force -Path $preview | Out-Null
+    Copy-Item -LiteralPath (Join-Path $glassRoot 'OverlayPreview.exe') -Destination $preview -Force
+    Copy-Item -LiteralPath (Join-Path $glassRoot 'assets') -Destination $preview -Recurse -Force
+}
 $count = (Get-ChildItem $engine -Recurse -File).Count
 Write-Host "Engine ($count files) -> $engine"

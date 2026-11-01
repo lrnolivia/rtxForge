@@ -13,7 +13,7 @@ namespace
 ImGuiContext *context = nullptr;
 ID3D11Device *device = nullptr;
 ID3D11DeviceContext *immediate = nullptr;
-bool visible = false, backend = false;
+bool visible = false, backend = false, neuralRendering = true;
 LARGE_INTEGER frequency {}, last {};
 ForgePanel::LiveStats statistics;
 double measuredSeconds{}; unsigned measuredPresents{};
@@ -72,6 +72,7 @@ void seed_shortcut_name()
 
 void next_launch_message()
 {
+    if (!neuralRendering) return;
     bool pending = false;
     for (size_t i = 0; i < std::size(Keys); ++i) pending |= std::fabs(host.get(Keys[i], launch[i]) - launch[i]) > 0.001f;
     auto &message = ForgePanelChannel::message;
@@ -80,9 +81,10 @@ void next_launch_message()
 }
 }
 
-bool Init(ID3D11Device *game, HWND window)
+bool Init(ID3D11Device *game, HWND window, bool nr)
 {
     if (context) return backend;
+    neuralRendering = nr;
     context = ImGui::CreateContext();
     ImGui::SetCurrentContext(context);
     auto &io = ImGui::GetIO();
@@ -93,13 +95,13 @@ bool Init(ID3D11Device *game, HWND window)
     ForgePanel::readLiveStats = [] { return statistics; };
     // Feeder installs are NR only, so the panel never offers frame generation.
     ForgePanel::selected = ForgePanel::enabled;
-    ForgePanel::nrAllowed = true;
+    ForgePanel::nrAllowed = neuralRendering;
     ForgePanel::liveTuning = false;
     ForgePanel::mfgAllowed = false;
     for (size_t i = 0; i < std::size(Keys); ++i) launch[i] = host.get(Keys[i], 0);
     seed_shortcut_name();
     ForgeGlassPanel::logSink=host.log;
-    ForgeGlassPanel::runtimeKind=2;
+    ForgeGlassPanel::runtimeKind=neuralRendering?2:3;
     ForgeGlassPanel::Prepare(window);
     device = game;
     device->AddRef();

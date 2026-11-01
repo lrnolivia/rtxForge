@@ -313,7 +313,7 @@ def _record(root, receipt, directory):
     for name, digest in record['files'].items():
         t.relative(name)
         path = t.safe(root / name)
-        allowed = (path.parent == directory and path.name in (record['addon'], record['host'])
+        allowed = (path.parent == directory and path.name in (record['addon'], record['host'], 'rtxforge-effects.addon64', 'rtxforge-glass.dll')
                    or path.parent == directory / 'rtxForge-HDR-Licenses' and path.name in ('RenoDX-LICENSE.txt', 'ReShade-LICENSE.txt'))
         t.need(isinstance(digest, str) and re.fullmatch('[a-f0-9]{64}', digest) and allowed, 'Invalid HDR recovery member.')
     if record.get('custom'):
@@ -410,6 +410,14 @@ def prepare(config, row, custom_path=None):
             record['plugin'] = {'path': ini.relative_to(root).as_posix(), 'value': plugin}
         text = t.setvalue(text, 'Plugins', 'LoadReShade', 'true')
         writes[ini] = text.encode('utf-8')
+    from reshade_import import bridge_files
+    for name, data in bridge_files(arch).items():
+        path = t.safe(exe.parent / name); rel = path.relative_to(root).as_posix()
+        if path.exists() and rel not in record['files']:
+            t.need(t.digest(path) == t.sha(data), 'Another feature owns ' + name + '; its file was kept.')
+            checks[str(path)] = t.digest(path)
+        else:
+            writes[path] = data; record['files'][rel] = t.sha(data)
     settings_path = t.safe(exe.parent / 'ReShade.ini')
     if not settings_path.exists():
         settings = overlay_settings.effective(library_media.load_settings(config), str(root))
@@ -435,18 +443,40 @@ def prepare(config, row, custom_path=None):
     return _freeze(config, plan)
 
 
+def _other_reshade_consumers(config, row, own_addon):
+    root, exe, _ = _location(row)
+    consumers = set()
+    for entry in (state_storage.storage(config) / 'extras-transactions').glob('*/transaction.json'):
+        entry = t.safe(entry)
+        t.need(entry.stat().st_size <= 4*1024**2, 'A graphics-tool recovery record needs repair.')
+        doc = t.read_json(entry); plan = doc.get('plan', {})
+        if doc.get('status') not in ('complete', 'applying', 'interrupted'): continue
+        if plan.get('game') != str(root) or plan.get('exe') != row['exe']: continue
+        if plan.get('kind') in ('reshade', 'reshade-import', 'addon'):
+            consumers.add(plan.get('source_name') or plan.get('kind'))
+    # Manually installed add-ons also need the shared ReShade host. Do not
+    # mistake our reflection/quiet helpers for an independent consumer.
+    for path in exe.parent.glob('*.addon*'):
+        if path.suffix.lower() in ('.addon32', '.addon64') and path.name.casefold() not in {
+            own_addon.casefold(), 'rtxforge-effects.addon64', 'rtxforge-quiet.addon64'}:
+            consumers.add(path.name)
+    return sorted(consumers)
+
+
 def prepare_remove(config, row):
     root, exe, receipt, e = _eligible(config, row)
     t.need(receipt.is_file(), 'No managed RenoDX HDR installation was found.')
     record = _record(root, receipt, exe.parent)
+    consumers = _other_reshade_consumers(config, row, record['addon'])
     writes = {receipt: None}
     checks = {str(receipt): t.digest(receipt), str(exe): t.digest(exe)}
     for name, digest in record['files'].items():
         path = t.safe(root / name)
         t.need(path.is_file() and t.digest(path) == digest, 'HDR file changed; it has been kept: ' + name)
+        if consumers and path.name in (record['host'], 'rtxforge-effects.addon64', 'rtxforge-glass.dll'): continue
         t.need(not _owned(e, root, path), 'Another feature now uses this HDR runtime. Restore that feature before removing HDR.')
         writes[path] = None
-    if record.get('plugin'):
+    if record.get('plugin') and not consumers:
         plugin = record['plugin']; ini = t.safe(root / t.relative(plugin['path']))
         if ini.exists():
             text = ini.read_text(encoding='utf-8-sig')
@@ -458,13 +488,15 @@ def prepare_remove(config, row):
                     text = text.replace(block, replacement, 1)
                 else: text = t.setvalue(text, 'Plugins', 'LoadReShade', plugin['value'])
                 writes[ini] = text.encode('utf-8')
-    if record.get('settings'):
+    if record.get('settings') and not consumers:
         setting = record['settings']; path = t.safe(root / t.relative(setting['path']))
         # ReShade writes tuning to this file while playing. Keep those edits.
         if path.is_file() and t.digest(path) == setting['created_sha256'] and not _owned(e, root, path):
             writes[path] = None
     plan = _plan(row, root, writes, action='remove', checks=checks)
-    plan['prefix'] = _prefix_review(config, row, record['route'], record['host'], remove=True)
+    plan['prefix'] = None if consumers else _prefix_review(config, row, record['route'], record['host'], remove=True)
+    plan['consumers'] = consumers
+    plan['notes'] = ['ReShade and its overlay stay installed for: ' + ', '.join(consumers)] if consumers else []
     return _freeze(config, plan)
 
 
@@ -476,6 +508,9 @@ def apply(config, plan):
     with e.mutation_lock():
         _eligible(config, plan)
         t.check_plan(plan)
+        if plan['action'] == 'remove':
+            prior = _record(root, receipt, exe.parent)
+            t.need(_other_reshade_consumers(config, plan, prior['addon']) == plan.get('consumers', []), 'ReShade dependencies changed after review. Review HDR removal again.')
         if plan.get('steam_identity'):
             t.need(_steam_identity(plan) == plan['steam_identity'], 'Steam installation identity changed since review; review HDR again.')
         for path, digest in plan['checks'].items():

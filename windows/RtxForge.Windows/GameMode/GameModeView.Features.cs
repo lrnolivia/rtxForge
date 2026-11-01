@@ -528,9 +528,9 @@ public sealed partial class GameModeView
     async Task InstallExtraAsync(Game g, string kind)
     {
         if (shell.Service.IsPreview) { Toast("Installing tools is disabled in preview mode."); return; }
-        var path = kind == "reshade" ? await shell.PickFileAsync(".dll") : await shell.PickFileAsync(".addon64");
+        var path = kind == "reshade" ? "" : kind == "reshade-import" ? await shell.PickFileAsync(".zip", ".dll", ".addon64", ".addon32", ".ini", ".fx", ".fxh") : await shell.PickFileAsync(".addon64");
         if (path is null) return;
-        await RunReviewAsync(kind == "reshade" ? "Install ReShade" : "Install Add-on", () => shell.Service.ReviewExtraAsync(g, path, kind));
+        await RunReviewAsync(kind == "reshade" ? "Install ReShade" : kind == "reshade-import" ? "Import ReShade package" : "Install Add-on", () => shell.Service.ReviewExtraAsync(g, path, kind));
         if (page == "details") Render(keepFocus: true);
     }
 

@@ -177,7 +177,7 @@ public sealed partial class GameModeView
         // ----- Section navigation -----
         var nav = new StackPanel { Spacing = t.Px(8), Padding = new Thickness(t.Px(20), t.Px(20), t.Px(20), t.Px(20)) };
         nav.Children.Add(back);
-        nav.Children.Add(ui.Heading("Game Details", 1.06).With(h => h.Margin = new Thickness(t.Px(16), t.Px(8), 0, t.Px(t.Compact ? 12 : 20))));
+        nav.Children.Add(ui.Heading("GAME DETAILS", 1.06).With(h => h.Margin = new Thickness(t.Px(16), t.Px(8), 0, t.Px(t.Compact ? 12 : 20))));
         var navButtons = new List<(Button Button, string Section)>();
         foreach (var section in Sections)
         {
@@ -310,7 +310,7 @@ public sealed partial class GameModeView
         row.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
         row.Children.Add(ui.Icon(glyph, 1.05).With(icon => icon.VerticalAlignment = VerticalAlignment.Center));
-        var label = ui.Heading(title, .96, wrap: true);
+        var label = ui.Heading(title.ToUpperInvariant(), .96, wrap: true);
         Grid.SetColumn(label, 1); row.Children.Add(label); return row;
     }
 
@@ -358,6 +358,14 @@ public sealed partial class GameModeView
             // Each section mirrors the desktop's Game Details (Views/GamePage.xaml.cs):
             // the same groups, order, wording and glyphs, with controller-sized controls.
             case "Features":
+                SectionTitle(content, "Package", null);
+                if (g.ProviderCandidatesText.Length > 0) content.Children.Add(DetailFact("Package details", g.ProviderCandidatesText, glyph: "\uE946"));
+                if (!g.UsesFeeder && !shell.Service.IsPreview)
+                {
+                    var (packageKeys, packageCaptions) = shell.Settings.GamePackageOptions();
+                    content.Children.Add(ui.Group([Choice("Feature package", shell.Settings.GamePackageNote(g), packageKeys, packageCaptions,
+                        () => shell.Settings.GamePackage(g), v => _ = shell.SelectGamePackageAsync(g, v), "")]));
+                }
                 content.Children.Add(DetailFact("Overlay", "Use app settings, or choose menu, welcome and shortcut settings for this game.",
                     ui.Button("Settings", () => OpenGameOverlay(g), GmKind.Card, .85), "\uE7F4"));
                 if (g.RuntimeProvider == "vulkan-native")
@@ -371,12 +379,6 @@ public sealed partial class GameModeView
                 {
                     content.Children.Add(DetailFact("Feeder NR settings", "Your existing tuning is preserved. Use ReShade's NR panel in the running game to adjust passes, resolution, tone and structure.", glyph: ""));
                     break;
-                }
-                if (!g.UsesFeeder && !shell.Service.IsPreview)
-                {
-                    var (packageKeys, packageCaptions) = shell.Settings.GamePackageOptions();
-                    content.Children.Add(ui.Group([Choice("Package", shell.Settings.GamePackageNote(g), packageKeys, packageCaptions,
-                        () => shell.Settings.GamePackage(g), v => _ = shell.SelectGamePackageAsync(g, v), "")]));
                 }
                 var (presetRows, value) = PresetRows(shell.GameTuning(g), g.Installed && !g.Blocked, g.RuntimeProvider != "skynizz",
                     dynamicSupported: g.DynamicMfgAvailable, mode: g.Installed ? null : GameOverview.Mode(g, shell.Mode));
@@ -417,19 +419,24 @@ public sealed partial class GameModeView
                     Toast("Location copied.");
                 }, GmKind.Card, .8), ""));
                 content.Children.Add(locationTools);
+                SectionTitle(content, "RenoDX HDR", "Automatic HDR packages and your own RenoDX files, managed for this game.");
+                var hdrTools = new StackPanel { Spacing = t.Px(12) };
+                hdrTools.Children.Add(DetailFact("HDR enhancement", "Checking HDR support…", glyph: "\uE7F4"));
+                content.Children.Add(hdrTools); _ = FillGameHdrAsync(g, hdrTools);
                 SectionTitle(content, "Graphics Tools", "Check NR or add ReShade to this game. Existing graphics files are kept safe.");
                 var graphicsTools = DetailColumns();
                 var installs = !shell.Service.IsPreview && !g.Blocked;
                 foreach (var (title, description, caption, glyph, enabled, action) in new (string, string, string, string, bool, Action)[]
                 {
                     ("Diagnose NR", "Read the saved NR settings, runtime hashes and log evidence.", "Diagnose", "", true, () => _ = DiagnoseAsync(g)),
-                    ("Install ReShade", "Choose an extracted x64 ReShade DLL. DirectX 10–12 games load it as dxgi.dll.", "Choose", "", installs, () => _ = InstallExtraAsync(g, "reshade")),
+                    ("Install ReShade", "Download and install the official ReShade runtime for this game.", "Install", "", installs, () => _ = InstallExtraAsync(g, "reshade")),
+                    ("Import ReShade package", "Add a ZIP, custom runtime, add-on, shader or preset INI to this game. Review the exact files before importing.", "Choose…", "", installs, () => _ = InstallExtraAsync(g, "reshade-import")),
                     ("Install Add-on", "Choose an .addon64 file (including RenoDX). Install ReShade first.", "Choose", "", installs, () => _ = InstallExtraAsync(g, "addon")),
                     ("ReShade Downloads", "Get ReShade from its official site.", "Open", "", true, () => MainWindow.OpenUri("https://reshade.me/")),
                 })
                     graphicsTools.Children.Add(DetailFact(title, description, ui.Button(caption, action, GmKind.Card, .8, enabled), glyph));
                 content.Children.Add(graphicsTools);
-                content.Children.Add(ui.P("Use an extracted x64 ReShade DLL or .addon64 file from a source you trust. Shader packs and presets remain yours to manage.", 0.83));
+                content.Children.Add(ui.P("Custom packages and presets stay with this game. Importing shader packs preserves its installed ReShade build.", 0.83));
                 var installed = new StackPanel { Spacing = t.Px(16) };
                 content.Children.Add(installed);
                 _ = FillExtraRecordsAsync(g, installed);
@@ -486,7 +493,6 @@ public sealed partial class GameModeView
                 break;
 
             default:
-                if (g.ProviderCandidatesText.Length > 0) content.Children.Add(DetailFact("Install route", g.ProviderCandidatesText));
                 TestingSection(g, content);
                 if (g.AdoptionAvailable) content.Children.Add(DetailFact("Adoption available", GameOverview.AdoptionNote,
                     ui.Button("Review Adoption", () => _ = shell.ReviewAdoptionAsync([g]), GmKind.Card, .8), "\uE930"));
@@ -729,7 +735,7 @@ public sealed partial class GameModeView
             foreach (var child in children) body.Children.Add(child);
             var icon = ui.Icon("", .7);
             var heading = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12) };
-            heading.Children.Add(icon); heading.Children.Add(ui.Heading(title, .9));
+            heading.Children.Add(icon); heading.Children.Add(ui.Heading(title.ToUpperInvariant(), .9));
             Button? button = null;
             button = ui.Button(heading, () =>
             {
@@ -748,7 +754,7 @@ public sealed partial class GameModeView
             var header = new Grid { ColumnSpacing = t.Px(20) };
             header.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
             header.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
-            var title = ui.Heading("Multi-Frame Generation", .96, wrap: true);
+            var title = ui.Heading("MULTI-FRAME GENERATION", .96, wrap: true);
             title.VerticalAlignment = VerticalAlignment.Center; header.Children.Add(title);
             var toggle = new ToggleSwitch { OnContent = "On", OffContent = "Off", MinWidth = 0,
                 IsOn = state.Enabled, IsEnabled = allowed, Foreground = GmTheme.B(t.Fg), FontSize = t.Em(.8) };
@@ -849,4 +855,25 @@ public sealed partial class GameModeView
         primary.Children.Add(secondary); rows.Add(primary);
         return (rows, () => FeatureControlSchema.Tuning(values));
     }
+    async Task FillGameHdrAsync(Game g, StackPanel host)
+    {
+        try
+        {
+            var status = await shell.Service.HdrStatusAsync(g);
+            if (detailsGame != g || detailsSection != "Tools") return;
+            host.Children.Clear();
+            var install = !status.Installed || status.Update ? ui.Button(status.Installed ? "Update HDR" : "Install HDR", () => _ = ChangeGameHdrAsync(g), GmKind.Card, .8, enabled: status.Available && !shell.Busy) : null;
+            host.Children.Add(DetailFact("HDR enhancement", status.Message + (status.Notes.Length > 0 ? "\n" + status.Notes : ""), install, "\uE7F4"));
+            if (status.Installed) host.Children.Add(DetailFact("Installed HDR package", "Remove HDR while keeping NR, frame generation and unrelated tools.", ui.Button("Remove HDR", () => _ = ChangeGameHdrAsync(g, true), GmKind.Card, .8, enabled: !shell.Busy), "\uE74D"));
+            host.Children.Add(DetailFact("Custom HDR package", "Choose a RenoDX .addon64 or .addon32 for this game. Automatic updates retain your custom choice.",
+                ui.Button("Choose…", async () => { var path = await shell.PickFileAsync(".addon64", ".addon32"); if (path is not null) await ChangeGameHdrAsync(g, customPath: path); }, GmKind.Card, .8, enabled: !shell.Service.IsPreview && !shell.Busy), "\uE8B7"));
+        }
+        catch (InvalidOperationException error) { host.Children.Clear(); host.Children.Add(DetailFact("HDR enhancement", error.Message, glyph: "\uE7F4")); }
+    }
+    async Task ChangeGameHdrAsync(Game g, bool remove = false, string? customPath = null)
+    {
+        await RunReviewAsync(remove ? "Remove RenoDX HDR" : "RenoDX HDR", () => shell.Service.ReviewHdrAsync(g, remove, customPath));
+        if (page == "details") Render(keepFocus: true);
+    }
+
 }

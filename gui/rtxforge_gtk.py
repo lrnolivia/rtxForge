@@ -575,7 +575,7 @@ def artwork_accent(path,color=None,muted=False):
 
     palette=neutral_palette()
     nav_accent=ui_colors.readable(color,ui_colors.mix(color,palette['sidebar'],0.10))
-    accent_shadow=accent_dark
+    accent_shadow=ui_colors.readable(accent_dark,color)
     accent_fg=ui_colors.readable(accent_fg,color)
     accent_dark=ui_colors.readable(accent_dark,color)
     button_fg=ui_colors.readable(accent_dark,ui_colors.mix('#ffffff',color,0.44))
@@ -6159,12 +6159,12 @@ class Window(Adw.ApplicationWindow):
         body.append(label('Tools','title-2'))
         body.append(label('Check NR or add ReShade to this game. Existing graphics files are kept safe.','dim-label'))
         actions=[button('Diagnose NR',lambda *_:self.show_diagnostics(game))]
-        for kind,title in [('reshade','Install ReShade'),('addon','Install Add-on')]:
+        for kind,title in [('reshade','Install ReShade'),('reshade-import','Import ReShade package…'),('addon','Install Add-on')]:
             control=button(title,lambda _,kind=kind:self.choose_extra(game,kind))
             control.set_sensitive(not self.options.demo);actions.append(control)
         actions.append(button('ReShade Downloads',lambda *_:Gio.AppInfo.launch_default_for_uri('https://reshade.me/',None)))
         body.append(action_tiles(actions))
-        note=label('Use an extracted x64 ReShade DLL or .addon64 file from a source you trust. Shader packs and presets remain yours to manage. DirectX 10–12 installs use dxgi.dll; Proton may require dxgi=n,b in the existing DLL overrides.','dim-label')
+        note=label('Install the official runtime automatically, or import a ZIP, custom runtime, add-on, shader or preset INI. Each import is reviewed first. Custom packages and presets stay with this game.','dim-label')
         # A capped natural width makes the page reserve every wrapped line
         # (uncapped, it measured one long line and clipped the rest).
         note.set_max_width_chars(70);body.append(note)
@@ -6793,7 +6793,14 @@ class Window(Adw.ApplicationWindow):
 
     def choose_extra(self,game,kind):
         import extra_tools
-        chooser=Gtk.FileDialog(title='Choose x64 ReShade DLL' if kind=='reshade' else 'Choose .addon64 file')
+        if kind=='reshade':
+            self.start('Preparing ReShade review',lambda:extra_tools.prepare(self.service.config,game,None,kind),self.review_extra)
+            return
+        chooser=Gtk.FileDialog(title='Import ReShade package' if kind=='reshade-import' else 'Choose .addon64 file')
+        filter=Gtk.FileFilter(name='ReShade packages and settings' if kind=='reshade-import' else 'ReShade add-on')
+        for pattern in (('*.zip','*.dll','*.addon64','*.addon32','*.ini','*.fx','*.fxh') if kind=='reshade-import' else ('*.addon64',)):
+            filter.add_pattern(pattern)
+        filters=Gio.ListStore.new(Gtk.FileFilter);filters.append(filter);chooser.set_filters(filters)
         def chosen(dialog,result):
             try:path=dialog.open_finish(result).get_path()
             except GLib.Error:return
@@ -6803,7 +6810,9 @@ class Window(Adw.ApplicationWindow):
 
     def review_extra(self,plan):
         import extra_tools
-        changes='\n'.join('Add '+change['path']+'\nSHA-256: '+change['after'] for change in plan['changes'])
+        changes='\n'.join(('Update ' if change['before'] else 'Add ')+change['path']+'\nSHA-256: '+change['after'] for change in plan['changes'])
+        if plan.get('source_name'):changes='Package: '+plan['source_name']+'\n'+changes
+        if plan.get('skipped'):changes+='\nNot installed: '+', '.join(plan['skipped'])
         review={'operation':'tool','rows':[{'name':plan['name'],'game':plan.get('game'),'detail':changes}],'blocked':[]}
         self.review_write('tool',review,
             run=lambda _review:extra_tools.apply(self.service.config,plan),
@@ -10418,25 +10427,34 @@ class Window(Adw.ApplicationWindow):
             (parent.add_row if isinstance(parent,Adw.ExpanderRow) else parent.add)(widget)
             refreshers.append(lambda:widget.set_selected(keys.index(glass.current(s)[key]) if glass.current(s)[key] in keys else 0))
             return widget
-        from overlay_layouts import LayoutPicker
-        appearance.add(LayoutPicker(glass.current(s)['Layout'],lambda value:changed('Layout',value)))
-        theme=safe_combo_row(title='Theme',subtitle='Selecting a theme restores its material defaults.',model=Gtk.StringList.new(['Clear','Light','Dark']),selected={3:0,1:1,2:2}[glass.current(s)['Theme']])
-        def select_theme(widget,*_):
+        from overlay_layouts import LayoutPicker,ThemePicker
+        def visual_row(title,content):
+            item=Adw.PreferencesRow()
+            body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=10,margin_top=12,margin_bottom=12,margin_start=16,margin_end=16)
+            body.append(Gtk.Label(label=title,xalign=0));body.append(content);item.set_child(body);appearance.add(item)
+        visual_row('Layout',LayoutPicker(glass.current(s)['Layout'],lambda value:changed('Layout',value)))
+        def select_theme(mode):
             if refreshing[0]:return
-            mode=['clear','light','dark'][widget.get_selected()]
-            glass.theme(s,mode);save('overlay_theme',mode);save('overlay_appearance',s['overlay_appearance'])
+            glass.appearance(s,base=mode);save('overlay_theme',mode);save('overlay_appearance',s['overlay_appearance'])
             refreshing[0]=True
             try:
                 for refresh in refreshers:refresh()
             finally:refreshing[0]=False
             appearance.set_description('The same layouts and materials as the glass overlay.')
-        theme.connect('notify::selected',select_theme);appearance.add(theme)
-        material_choice('Text size','TextSize',[18,22,26],['Aa  Smaller','Aa  Default','Aa  Larger'])
+        visual_row('Theme',ThemePicker(glass.base_theme(s),select_theme))
+        accent_row=Adw.SwitchRow(title='Accent Tint',subtitle="Tint surfaces with this game's accent color.",active=glass.current(s)['Theme']==4)
+        def tint_changed(widget,*_):
+            if refreshing[0]:return
+            glass.appearance(s,tint=widget.get_active());save('overlay_appearance',s['overlay_appearance'])
+        accent_row.connect('notify::active',tint_changed);appearance.add(accent_row)
+        material_choice('Original labels','OriginalLabels',[0,1],['Off','On'])
+        material_choice('Text size','TextSize',[20,22,24],['Aa  Smaller','Aa  Default','Aa  Larger'])
         material_choice('Motion effects','Motion',[1,0],['On','Off'])
         material_choice('Hotkey notifications','ShowNotifications',[1,0],['On','Off'])
-        switch('Welcome message','Show the rtxForge message at startup.','overlay_welcome',panel)
-        choice('Welcome position',None,list(overlay_settings.POSITIONS),['Top center','Top left','Top right','Bottom left','Bottom right'],'overlay_welcome_position',panel)
-        switch('Live feature statistics',None,'overlay_live_stats',panel)
+        notifications=Adw.PreferencesGroup(title='Status and notifications')
+        switch('Welcome message','Show the rtxForge message at startup.','overlay_welcome',notifications)
+        choice('Welcome position',None,list(overlay_settings.POSITIONS),['Top center','Top left','Top right','Bottom left','Bottom right'],'overlay_welcome_position',notifications)
+        switch('Live feature statistics',None,'overlay_live_stats',notifications)
         shortcut=Adw.PreferencesGroup(title='Shortcut',description='Opens the rtxForge panel in game. Insert stays with OptiScaler\u2019s own menu.')
         shortcut_row=Adw.ActionRow(title='Panel shortcut',subtitle=overlay_shortcut.display(s.get('panel_hotkey')))
         record=Gtk.Button(label='Record',valign=Gtk.Align.CENTER)
@@ -10481,7 +10499,7 @@ class Window(Adw.ApplicationWindow):
         item.add_suffix(action);installed.add(item)
         history=row('Last overlay update','Updated games, current overlays and anything that needs repair.')
         details=button('Details',lambda *_:self.overlay_update_details());history.add_suffix(details);installed.add(history)
-        return [panel,*([] if game else [appearance]),shortcut,optiscaler,reshade,vulkan,installed]
+        return [panel,*([] if game else [appearance]),notifications,shortcut,optiscaler,reshade,vulkan,installed]
 
     def game_overlay_card(self,game):
         card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True)

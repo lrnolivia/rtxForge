@@ -165,25 +165,8 @@ WINDOWS_PICKS={
   ]
  },
  "transparent-edges": {
-  "signature": "#e2cd19",
-  "suggestions": [
-   [
-    "Signature",
-    "#e2cd19"
-   ],
-   [
-    "Background",
-    "#f2dc18"
-   ],
-   [
-    "Light",
-    "#e5da8c"
-   ],
-   [
-    "Deep",
-    "#766a06"
-   ]
-  ]
+  "signature": "#f2dc18",
+  "suggestions": [["Signature", "#f2dc18"], ["Light", "#e4da8c"]]
  },
  "noise": {
   "signature": "#4ce451",
@@ -227,7 +210,32 @@ class AccentTest(unittest.TestCase):
         from ui_colors import ui_accent,lch
         for lab in ((0.2,0.3,0.0),(0.99,0.01,0.01),(0.5,-0.2,0.2)):
             l,c,_h=lch(ui_accent(lab))
-            self.assertTrue(0.6<=l<=0.86,(lab,l))
+            self.assertTrue(0.6<=l<=0.95,(lab,l))
             self.assertLessEqual(c,0.245)
 
 if __name__=='__main__':unittest.main()
+
+
+class AutomaticShadeTest(unittest.TestCase):
+    def test_cyberpunk_yellow_stays_vivid_and_light_text_is_neutral(self):
+        from ui_colors import signature_color, muddy_shade
+        color=signature_color([(252,238,9,255)]*4096)
+        h,s,v=colorsys.rgb_to_hsv(*rgb(color))
+        self.assertAlmostEqual(h,colorsys.rgb_to_hsv(*rgb('#fcee09'))[0],delta=.02)
+        self.assertGreater(v,.94)
+        self.assertGreater(s,.85)
+        self.assertFalse(muddy_shade(color))
+        ink=readable(color,'#f5f3ef')
+        self.assertLess(colorsys.rgb_to_hsv(*rgb(ink))[1],.15)
+        self.assertGreaterEqual(contrast(ink,'#f5f3ef'),4.5)
+
+    def test_automatic_suggestions_never_offer_muddy_yellow_olive_or_gold(self):
+        from ui_colors import accent_suggestions,muddy_shade
+        for hue in (35,45,55,65,75,85,95):
+            for value in (.25,.5,.75,.98):
+                pixel=tuple(round(c*255) for c in colorsys.hsv_to_rgb(hue/360,.85,value))+(255,)
+                for name,color in accent_suggestions([pixel]*64):
+                    self.assertFalse(muddy_shade(color),(hue,value,name,color))
+
+    def test_explicit_color_operations_do_not_rewrite_the_users_pick(self):
+        self.assertEqual(mix('#917b16','#ffffff',1),'#917b16')

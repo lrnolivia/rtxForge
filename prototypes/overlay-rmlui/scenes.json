@@ -12,7 +12,7 @@
     "app": 1091500,
     "title": "Cyberpunk 2077",
     "file": "1091500.jpg",
-    "accent": "#e5c849",
+    "accent": "#fcee09",
     "source": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1091500/ss_2f649b68d579bf87011487d29bc4ccbfdd97d34f.1920x1080.jpg?t=1792682505",
     "store": "https://store.steampowered.com/app/1091500/",
     "sha256": "ec7f40415a114235c549a8ec94020e4fe29af61b128c3a1ae4ed8e85287f6f72"
@@ -34,5 +34,59 @@
     "source": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2456740/654a0eb86c9d38620c5a5992bc2a58a4b4b894f8/ss_654a0eb86c9d38620c5a5992bc2a58a4b4b894f8.1920x1080.jpg?t=1792372965",
     "store": "https://store.steampowered.com/app/2456740/",
     "sha256": "6b38c6ee9b50889cfe3adbf1f3ac48faf874983a32b20ff4afd8c82b7eadea70"
+  },
+  {
+    "app": 1086940,
+    "title": "Baldur's Gate 3",
+    "file": "1086940.jpg",
+    "accent": "#ba93ed",
+    "source": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1086940/ss_c73bc54415178c07fef85f54ee26621728c77504.1920x1080.jpg?t=1777363040",
+    "store": "https://store.steampowered.com/app/1086940/",
+    "sha256": "bf2e9f410770eb46a3028638e2db70430f121eb25dd83691a4afb1f466c2bfdd"
+  },
+  {
+    "app": 1245620,
+    "title": "ELDEN RING",
+    "file": "1245620.jpg",
+    "accent": "#eadba9",
+    "source": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1245620/ss_943bf6fe62352757d9070c1d33e50b92fe8539f1.1920x1080.jpg?t=1790290043",
+    "store": "https://store.steampowered.com/app/1245620/",
+    "sha256": "a36496ede706be315339f1ab0d4aacbb7269ec29870fbc9902af0d36ed06ee42"
+  },
+  {
+    "app": 275850,
+    "title": "No Man's Sky",
+    "file": "275850.jpg",
+    "accent": "#ed7f70",
+    "source": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/275850/7d45478fbac8b1a41172adf8e598784a7d04b41d/ss_7d45478fbac8b1a41172adf8e598784a7d04b41d.1920x1080.jpg?t=1793196605",
+    "store": "https://store.steampowered.com/app/275850/",
+    "sha256": "9fc8e6a53c01d1ec58e1725e2285a40bae60465101ae4575d697ed6d4b349554"
+  },
+  {
+    "app": 2050650,
+    "title": "Resident Evil 4",
+    "file": "2050650.jpg",
+    "accent": "#e66f74",
+    "source": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2050650/ss_59d1b19964cc532213df92c8287b75a0bffeb33c.1920x1080.jpg?t=1772502922",
+    "store": "https://store.steampowered.com/app/2050650/",
+    "sha256": "237c8adb3fb56753f81f5599378da275c7c21af56603435b78e70ccfe0c2e2ae"
+  },
+  {
+    "app": 2420110,
+    "title": "Horizon Forbidden West Complete Edition",
+    "file": "2420110.jpg",
+    "accent": "#65c9d6",
+    "source": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2420110/ss_7c1ead4b3d952fd0fb92735397945bd8732bba53.1920x1080.jpg?t=1789585745",
+    "store": "https://store.steampowered.com/app/2420110/",
+    "sha256": "d3c18c4ef614540fd296d4673bce1d35158e20ffd622f08701bfd8e3c46e7d4d"
+  },
+  {
+    "app": 1328670,
+    "title": "Mass Effect Legendary Edition",
+    "file": "1328670.jpg",
+    "accent": "#79bfff",
+    "source": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1328670/ss_3cfdbd8a5d94f9005d33ba17bb6b163dc458ddf7.1920x1080.jpg?t=1777395134",
+    "store": "https://store.steampowered.com/app/1328670/",
+    "sha256": "1819284614fedbc219421facae9ae60b747a714f0175ed1b77b640fc03a4d4f8"
   }
 ]

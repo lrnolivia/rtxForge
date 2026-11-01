@@ -13,6 +13,7 @@ speaks the same interface as the desktop operation dialog), so nothing is
 written before the review is confirmed.
 """
 from pathlib import Path
+import threading
 
 from gi.repository import Gdk, Gio, GLib, Gtk, Pango, PangoCairo
 
@@ -566,7 +567,10 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
         return False
 
     def label(self, text, *classes, wrap=False, xalign=0.0, lines=0):
-        widget = Gtk.Label(label=str(text), xalign=xalign, wrap=wrap)
+        text = str(text)
+        if any(css in ('gm-h1', 'gm-h2', 'gm-h3') for css in classes):
+            text = text.upper()
+        widget = Gtk.Label(label=text, xalign=xalign, wrap=wrap)
         if wrap:
             widget.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
         if lines:
@@ -750,6 +754,26 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
         if key:
             self.key(widget, key)
         return widget
+
+    def overlay_accent_character_row(self,settings,saturation=False):
+        import glass_preferences as glass
+        key='AccentSaturation' if saturation else 'AccentCharacter';maximum=200 if saturation else 100
+        title='Surface saturation' if saturation else 'Accent character'
+        description='Neutral → Original → Vivid' if saturation else 'Clear → Light → Dark'
+        scale=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,0,maximum,1)
+        scale.set_draw_value(False);scale.set_hexpand(True);scale.set_focusable(False)
+        scale.set_value(glass.current(settings)[key])
+        scale.update_property([Gtk.AccessibleProperty.LABEL],[title+': '+description])
+        def changed(widget):
+            glass.edit(settings,key,round(widget.get_value()));self.save_settings()
+        scale.connect('value-changed',changed)
+        content=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=self.theme.px(10),hexpand=True)
+        content.append(self.preference(title,description,None,inset=False));content.append(scale)
+        row=motion.MotionButton(preferences=self.owner.settings,child=content,hexpand=True)
+        row._flat=True;row.add_css_class('gm-rowbtn')
+        row._gm_adjust=lambda delta:scale.set_value(max(0,min(maximum,scale.get_value()+5*delta)))
+        row._gm_scale=scale;self.key(row,'overlay-accent-saturation' if saturation else 'overlay-accent-character');row.set_visible(glass.current(settings)['Theme']==4)
+        return row
 
     def card_opacity_row(self):
         """Windows CardOpacitySetting: a slider from Clearer to More solid; Left/Right step by 5."""
@@ -1971,6 +1995,7 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
         owner = self.owner
         section = self.section
         if section == 'Features':
+            self.section_title(content, 'Package', 'Installed rendering package and game overlay.')
             content.append(self.row_button('Overlay', 'Settings', lambda: self.open_game_overlay(g),
                                            description='Menu, welcome and shortcut choices for this game.', icon='view-dual-symbolic'))
             if g.get('runtime_provider')=='vulkan-native':
@@ -2030,11 +2055,38 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
             ]))
         elif section == 'Tools':
             self.section_title(content, 'Tools', 'Check NR or add ReShade to this game. Existing graphics files are kept safe.')
+            import renodx_hdr
+            self.section_title(content, 'RenoDX HDR', 'Automatic HDR packages and your own RenoDX files, managed for this game.')
+            hdr = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(12))
+            hdr.append(self.tool_card('HDR enhancement', 'Checking HDR support…', None, icon='rtx-gm-monitor-symbolic'))
+            content.append(hdr)
+            def hdr_ready(status):
+                child = hdr.get_first_child()
+                while child:
+                    following = child.get_next_sibling(); hdr.remove(child); child = following
+                actions = Gtk.Box(spacing=t.px(12))
+                if not status.get('installed') or status.get('update'):
+                    actions.append(self.button('Update HDR' if status.get('installed') else 'Install HDR', lambda: owner.review_hdr(g), enabled=bool(status.get('available')) and not owner.options.demo))
+                if status.get('installed'):
+                    actions.append(self.button('Remove HDR', lambda: owner.review_hdr(g, remove=True), enabled=not owner.options.demo))
+                hdr.append(self.tool_card('HDR enhancement', status.get('message', '')+'\n'+status.get('notes', ''), actions, icon='rtx-gm-monitor-symbolic'))
+                hdr.append(self.tool_card('Custom HDR package', 'Choose a RenoDX .addon64 or .addon32 for this game. Updates retain your custom choice.', self.button('Choose…', lambda: owner.choose_custom_hdr(g), enabled=not owner.options.demo), icon='drive-multidisk-symbolic'))
+                return GLib.SOURCE_REMOVE
+            if owner.options.demo:
+                hdr_ready({'message': 'HDR support is checked in the installed app.'})
+            else:
+                def load_hdr():
+                    try: status = renodx_hdr.status(owner.service.config, g)
+                    except Exception as error: status = {'message': user_messages.friendly_error(error)}
+                    GLib.idle_add(hdr_ready, status)
+                threading.Thread(target=load_hdr, daemon=True).start()
+
             tools = Gtk.Grid(column_spacing=t.px(20), row_spacing=t.px(20), column_homogeneous=True)
             demo = owner.options.demo
             for index, (icon, title, enabled, action) in enumerate((
                     ('system-search-symbolic', 'Diagnose NR', bool(g.get('installed')), lambda: owner.show_diagnostics(g)),
                     ('applications-graphics-symbolic', 'Install ReShade', not demo and not g.get('blocked'), lambda: owner.choose_extra(g, 'reshade')),
+                    ('drive-multidisk-symbolic', 'Import ReShade package…', not demo and not g.get('blocked'), lambda: owner.choose_extra(g, 'reshade-import')),
                     ('list-add-symbolic', 'Install Add-on', not demo and not g.get('blocked'), lambda: owner.choose_extra(g, 'addon')),
                     ('web-browser-symbolic', 'ReShade Downloads', True, lambda: Gtk.UriLauncher.new('https://reshade.me/').launch(owner, None, None)))):
                 tile = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(10), halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
@@ -2046,7 +2098,7 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
                 self.key(widget, 'tool-' + title)
                 tools.attach(widget, index % 2, index // 2, 1, 1)
             content.append(tools)
-            content.append(self.label('Use an extracted x64 ReShade DLL or .addon64 file from a source you trust. Each install is reviewed first and can be restored.', 'gm-p', wrap=True))
+            content.append(self.label('Install the official runtime or import a ZIP, custom runtime, add-on, shader or preset INI. Custom packages stay with this game; each import is reviewed first.', 'gm-p', wrap=True))
         elif section == 'Notes':
             # Only your notes: testing and bug reports live on Overview and in the header.
             self.section_title(content, 'Notes', 'Kept with this game in rtxForge. Included in bug reports when you choose.')
@@ -2330,10 +2382,10 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
                     ('Layout and labels', None, rows[1:4]), ('Controller', None, rows[4:])]
         if section == 'Overlay':
             return [('rtxForge Panel', 'Choose the controls shown inside the game.', rows[:1]),
-                    ('Appearance', None, rows[1:5]), ('Status and notifications', None, rows[5:9]),
-                    ('Shortcut', None, rows[9:10]), ('OptiScaler', None, rows[10:13]),
-                    ('ReShade', None, rows[13:15]), ('Vulkan MFG overlay', None, rows[15:16]),
-                    ('Apply to games', None, rows[16:])]
+                    ('Appearance', None, rows[1:7]), ('Status and notifications', None, rows[7:11]),
+                    ('Shortcut', None, rows[11:12]), ('OptiScaler', None, rows[12:15]),
+                    ('ReShade', None, rows[15:17]), ('Vulkan MFG overlay', None, rows[17:18]),
+                    ('Apply to games', None, rows[18:])]
         return [({'System':'Hardware', 'Recovery':'Previous changes', 'About':'App and updates'}.get(section, section), None, rows)]
 
     def setting_toggle(self, title, description, get, setter):
@@ -2506,8 +2558,10 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
                             lambda: s.get('overlay_renderer', 'game'), lambda v: s.update(overlay_renderer=v)),
                 LayoutPicker(glass.current(s)['Layout'],lambda value:(glass.edit(s,'Layout',value),self.save_settings())),
                 self.choice('Appearance',None,['clear','light','dark'],['Clear','Light','Dark'],
-                            lambda:{3:'clear',1:'light',2:'dark'}[glass.current(s)['Theme']],lambda v:glass.theme(s,v)),
-                appearance_choice('Text size','TextSize',[18,22,26],['Aa  Smaller','Aa  Default','Aa  Larger']),
+                            lambda:glass.base_theme(s),lambda v:glass.appearance(s,base=v)),
+                self.choice('Accent Tint',"Tint surfaces with this game's accent color.",[False,True],['Off','On'],lambda:glass.current(s)['Theme']==4,lambda v:glass.appearance(s,tint=v)),
+                appearance_choice('Original labels','OriginalLabels',[0,1],['Off','On']),
+                appearance_choice('Text size','TextSize',[20,22,24],['Aa  Smaller','Aa  Default','Aa  Larger']),
                 appearance_choice('Motion effects','Motion',[1,0],['On','Off']),
                 appearance_choice('Hotkey notifications','ShowNotifications',[1,0],['On','Off']),
                 self.choice('Welcome message', None, *on_off, lambda: bool(s.get('overlay_welcome', True)), lambda v: s.update(overlay_welcome=v)),

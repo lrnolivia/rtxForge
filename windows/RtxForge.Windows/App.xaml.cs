@@ -60,7 +60,8 @@ public partial class App : Application
         var preview = Environment.GetCommandLineArgs().Contains("--preview", StringComparer.OrdinalIgnoreCase);
         if (!preview)
         {
-            var (engine, problem) = await EngineForgeService.TryStartAsync();
+            var readOnly = arguments.Contains("--library-preview", StringComparer.OrdinalIgnoreCase);
+            var (engine, problem) = await EngineForgeService.TryStartAsync(readOnly ? "preview-engine.log" : "engine.log", readOnly);
             EngineProblem = problem;
             Service = engine is not null ? engine : new PreviewForgeService();
         }

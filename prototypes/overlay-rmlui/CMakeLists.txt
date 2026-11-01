@@ -26,5 +26,5 @@ target_sources(OverlayPrototype PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/PrototypeCo
 target_compile_features(OverlayPrototype PRIVATE cxx_std_20)
 target_compile_options(OverlayPrototype PRIVATE /utf-8)
 target_compile_definitions(OverlayPrototype PRIVATE NOMINMAX UNICODE _UNICODE NUM_MSAA_SAMPLES=4)
-target_include_directories(OverlayPrototype PRIVATE "${RMLUI_SOURCE}/Backends" "${CMAKE_CURRENT_SOURCE_DIR}/../../providers/skynizz-bridge" "${CMAKE_CURRENT_BINARY_DIR}")
+target_include_directories(OverlayPrototype PRIVATE "${RMLUI_SOURCE}/Backends" "${CMAKE_CURRENT_SOURCE_DIR}/../../providers/skynizz-bridge" "${CMAKE_CURRENT_BINARY_DIR}" "${FREETYPE_ROOT}/../nlohmann")
 target_link_libraries(OverlayPrototype PRIVATE RmlUi::Core d3d11 dxgi d3dcompiler windowscodecs ole32 user32)

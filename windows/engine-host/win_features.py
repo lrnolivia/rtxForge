@@ -872,7 +872,9 @@ def extras_list(params):
 def extra_review(params):
     plan = extra_tools.prepare(_config(), params["row"], params["path"], params["kind"])
     kind = extra_tools.KINDS[plan["kind"]]
-    changes = "\n".join("Add " + c["path"] + "\nSHA-256: " + c["after"] for c in plan["changes"])
+    changes = "\n".join(("Update " if c['before'] else "Add ") + c["path"] + "\nSHA-256: " + c["after"] for c in plan["changes"])
+    if plan.get('source_name'): changes = 'Package: ' + plan['source_name'] + '\n' + changes
+    if plan.get('skipped'): changes += '\nNot installed: ' + ', '.join(plan['skipped'])
     return _review("extra", "Review " + kind, [_item(plan["name"], "Add " + kind, "Install", plan["game"], changes)],
                    action="Install Tool", trust="I trust the source of this exact file", payload=plan,
                    note="This native code will run inside the game. The hash identifies the selected file; it does not establish its publisher or safety.")

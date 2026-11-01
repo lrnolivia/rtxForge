@@ -52,8 +52,8 @@ public sealed partial class GmUi(GmTheme t)
 
     public TextBlock Heading(string text, double em = 1, Color? color = null, bool wrap = false, int maxLines = 0) =>
         Text(text, em, color, FontWeights.Normal, wrap, maxLines).With(b => b.FontFamily = HeadingFont);
-    public TextBlock H1(string text, double em = 1.62) => Heading(text, em);
-    public TextBlock H2(string text, double em = 1.27) => Heading(text, em, wrap: true);
+    public TextBlock H1(string text, double em = 1.62) => Heading(text.ToUpperInvariant(), em);
+    public TextBlock H2(string text, double em = 1.27) => Heading(text.ToUpperInvariant(), em, wrap: true);
     public TextBlock P(string text, double em = 0.85) => Text(text, em, t.Muted, wrap: true);
 
     public FontIcon Icon(string glyph, double em = 1, Color? color = null)

@@ -2,6 +2,15 @@ using System.Text.Json;
 using RtxForge.Windows.Models;
 using RtxForge.Windows.Services;
 
+if (args is ["--overlay-artwork", var directory, var title, var media])
+{
+    var game = new Game { Id = directory, Location = directory, Name = title };
+    Console.WriteLine(JsonSerializer.Serialize(new { steam = OverlayArtwork.SteamIdentity(game)?.Id,
+        artwork = OverlayArtwork.Find(game, ForgeSettings.Load(), media) }));
+    return;
+}
+OverlayArtworkChecks.Run();
+
 var count = 0;
 if (!new ForgeSettings().AutoUpdate) throw new Exception("Automatic app updates must default on.");
 var manualUpdates = JsonSerializer.Deserialize<ForgeSettings>("{\"auto_update\":false}")!;
@@ -280,6 +289,16 @@ try
     if (!GlassAppearance.Load(appearancePath).Custom) throw new Exception("Fine editing must mark Custom");
     GlassAppearance.UseTheme("clear", appearancePath);
     if (GlassAppearance.Load(appearancePath).Tint != 20 || GlassAppearance.Load(appearancePath).Get("SurfaceBlend", "") != "soft-light") throw new Exception("Clear defaults differ from native renderer");
+    foreach(var baseTheme in new[]{"clear","light","dark"}) {
+        GlassAppearance.UseAppearance(baseTheme,true,appearancePath);var tinted=GlassAppearance.Load(appearancePath);
+        if(!tinted.AccentEnabled||tinted.BaseTheme!=baseTheme||tinted.Number("AccentCharacter",0,0,100)!=(baseTheme=="clear"?10:baseTheme=="light"?50:100)||tinted.Number("AccentSaturation",0,0,200)!=(baseTheme=="dark"?94:200))throw new Exception("Approved accent tint lost its base style");
+        GlassAppearance.UseAppearance(tint:false,path:appearancePath);if(GlassAppearance.Load(appearancePath).BaseTheme!=baseTheme||GlassAppearance.Load(appearancePath).AccentEnabled)throw new Exception("Removing accent tint lost the base style");
+    }
+    GlassAppearance.UseTheme("accent",appearancePath);GlassAppearance.Set("AccentSaturation",175,path:appearancePath);
+    var saturated=GlassAppearance.Load(appearancePath);
+    if(saturated.Number("AccentSaturation",100,0,200)!=175 || saturated.Custom || saturated.ToJson()["AccentSaturation"]!.GetValue<int>()!=175)throw new Exception("Accent saturation was not independently persisted");
+    GlassAppearance.UseTheme("accent",appearancePath);
+    if(GlassAppearance.Load(appearancePath).Number("AccentSaturation",0,0,200)!=100)throw new Exception("Accent theme reset lost its default saturation");
 }
 finally { File.Delete(appearancePath); Directory.Delete(Path.GetDirectoryName(appearancePath)!); }
 Console.WriteLine("PASS: desktop/native glass preference roundtrip, independent fields, custom edits and exact theme resets.");

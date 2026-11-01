@@ -155,7 +155,10 @@ def panel_shortcut():
 def presets_page():
  c=app.window.couch;c.open('presets');assert c.page=='presets'
  text=labels(c.body)
- for heading in ('Multi-Frame Generation','Neural rendering','DLSS presets','Image tuning'):assert heading in text,heading
+ for heading in ('MULTI-FRAME GENERATION','NEURAL RENDERING','DLSS PRESETS','IMAGE TUNING'):assert heading in text,heading
+ for label in descendants(c.body):
+  if isinstance(label,Gtk.Label) and any(label.has_css_class(css) for css in ('gm-h1','gm-h2','gm-h3')):
+   assert label.get_text()==label.get_text().upper(),label.get_text()
  for name in ('preset-mfg-enabled-1','preset-mfg-mode-1','preset-mfg-ratio-2'):
   button=key(name);assert button is not None,name
   if button.get_sensitive():button.emit('clicked')
@@ -225,7 +228,7 @@ def wait_done():
  c=w.couch;assert not c.modals and c.page_box.get_sensitive()
  c.stop_selecting()
 def filter_modal():
- c=app.window.couch;c.open_filter();assert c.modals and 'Filter library' in labels(c.modal_layer)
+ c=app.window.couch;c.open_filter();assert c.modals and 'FILTER LIBRARY' in labels(c.modal_layer)
 def close_modal():
  c=app.window.couch;c.navigate('back');assert not c.modals
 def view(name):
@@ -281,7 +284,7 @@ def preparing():
  flow.checking_event({'kind':'progress','label':'Verifying feature package'})
  assert flow.step['counter'].get_text()=='Preparing 2 of 3',flow.step['counter'].get_text()
  assert flow.step['phase'].get_text()=='Downloading packages/files…' and flow.step['title'].get_text()==w.games[1]['name']
- assert 'Preparing' in labels(c.modals[-1]['dialog']) and not any(isinstance(b,Gtk.Button) and 'Install' in labels(b) for b in descendants(c.modals[-1]['dialog']))
+ assert 'PREPARING' in labels(c.modals[-1]['dialog']) and not any(isinstance(b,Gtk.Button) and 'Install' in labels(b) for b in descendants(c.modals[-1]['dialog']))
  w._preparing=flow
 def preparing_close():
  w=app.window;w._preparing.show_review({'rows':[{'name':w.games[1]['name'],'detail':'Fixture changes'}]},lambda:None)
@@ -309,8 +312,8 @@ def overlay_appearance():
   choices[keys.index(original)].set_active(True)
  assert 'Last overlay update' in text,'overlay update report remains available'
  # Panel rows sit under rtxForge Panel, not OptiScaler (Windows grouping).
- order=[x for x in text if x in ('rtxForge Panel','Live feature statistics','Panel shortcut','OptiScaler','OptiScaler menu')]
- assert order.index('Panel shortcut')<order.index('OptiScaler')<order.index('OptiScaler menu'),order
+ order=[x for x in text if x in ('RTXFORGE PANEL','Live feature statistics','Panel shortcut','OPTISCALER','OptiScaler menu')]
+ assert order.index('Panel shortcut')<order.index('OPTISCALER')<order.index('OptiScaler menu'),order
 def slide_start():
  c=app.window.couch;c.open('library');app.window._slide_from=c.body.current;c.open('presets')
  assert c.body.current is not app.window._slide_from and getattr(c.body.current,'_gm_offset',0)>0,'presets enters from the right'
@@ -351,7 +354,7 @@ def report_entry_points():
  # The outgoing scene stays mapped while it slides away: look in the current one.
  w=app.window;c=w.couch;details();here=lambda name:c.find_key(c.body.current,name)
  assert here('hero-report') and here('overview-report') and here('choice-test') and here('overview-test')
- assert 'Testing' in labels(c.body.current)
+ assert 'TESTING' in labels(c.body.current)
  c.open_section('Notes');assert here('notes-save') and not here('choice-test') and not here('overview-test')
  c.open_section('Overview')
 def report_flow():

@@ -185,6 +185,57 @@ static void ShowPreviewSession(Controller& c,int app,int width,int height,double
     std::string bars;for(int i=0;i<64;++i){const double value=31+std::sin(time*.7-i*.16)*7+std::sin(time*1.9-i*.4)*3;bars+="<div class=\"sample-history-bar\" style=\"left: "+std::to_string(i*1.5625)+"%; height: "+std::to_string(value)+"%\"/>";}
     Rml::ElementList histories;c.document->QuerySelectorAll(histories,".history-empty");for(auto* e:histories){if(auto* p=e->QuerySelector("p"))p->SetProperty("display","none");auto* chart=e->QuerySelector(".sample-history");if(!chart){auto fresh=c.document->CreateElement("div");fresh->SetClass("sample-history",true);chart=e->AppendChild(std::move(fresh));}chart->SetInnerRML(bars);}
 }
+static void PlacePreviewPicker(Controller& c)
+{
+    const bool desktop=c.document->IsClassSet("desktop-preview"),sidePanel=desktop&&c.layout=="floating";
+    c.document->SetClass("preview-picker-left",sidePanel&&c.sidePanelSide=="right");
+    c.document->SetClass("preview-picker-right",sidePanel&&c.sidePanelSide!="right");
+    c.document->SetClass("preview-picker-bottom",desktop&&c.layout=="bar"&&c.barPosition=="top");
+    auto* picker=c.Element("game-picker");picker->SetClass("glass",desktop);
+    if(!desktop)return;
+    if(sidePanel)picker->SetProperty("top",std::to_string(c.Element("main-panel")->GetAbsoluteOffset(Rml::BoxArea::Border).y)+"px");else picker->RemoveProperty("top");
+    auto* main=c.Element("main-panel");for(const auto* state:{"dark","clear","accent-theme"})picker->SetClass(state,main->IsClassSet(state));
+    for(const auto* name:{"--accent","--accent-ink","--accent-soft"})if(const auto* value=main->GetProperty(name))picker->SetProperty(name,value->Get<Rml::String>());
+}
+static void TestPreviewPicker(Controller& c,Rml::Context* context)
+{
+    const auto view=context->GetDimensions();const auto layout=c.layout,side=c.sidePanelSide,bar=c.barPosition;
+    const bool desktop=c.document->IsClassSet("desktop-preview");
+    c.document->SetClass("desktop-preview",true);
+    for(const auto size:{Rml::Vector2i{1280,720},Rml::Vector2i{1920,1080},Rml::Vector2i{3840,2160}}){
+        context->SetDimensions(size);
+        for(const auto* mode:{"floating","centered","bar"})for(const auto* edge:{"left","right"}){
+            c.Layout(mode);c.PanelSide(edge);c.Reflow();context->Update();PlacePreviewPicker(c);context->Update();
+            auto* picker=c.document->QuerySelector(".prototype-toolbar");const auto at=picker->GetAbsoluteOffset(Rml::BoxArea::Border),bounds=picker->GetBox().GetSize(Rml::BoxArea::Border);
+            const float dp=context->GetDensityIndependentPixelRatio();
+            Require(at.x>=0&&at.x+bounds.x<=size.x,"Game chooser leaves the preview");
+            if(c.layout=="floating"){
+                Require(std::fabs(at.y-c.Element("main-panel")->GetAbsoluteOffset(Rml::BoxArea::Border).y)<1,"Game chooser must align with the Side Panel top");
+                if(c.sidePanelSide=="right")Require(std::fabs(at.x-24*dp)<1,"Right Side Panel must put game selection at the far left");
+                else Require(std::fabs(size.x-at.x-bounds.x-76*dp)<1,"Left Side Panel must put game selection at the far right, clear of Close");
+            }else{
+                Rml::Vector2f center{size.x*.5f,at.y+bounds.y*.5f};
+                Require(picker->Project(center)&&std::fabs(center.x-at.x-bounds.x*.5f)<1,"Advanced and Bar must restore centered game selection");
+            }
+        }
+        c.Layout("bar");
+        for(const auto* edge:{"top","bottom"}){
+            c.BarEdge(edge);c.Reflow();context->Update();PlacePreviewPicker(c);context->Update();
+            const float dp=context->GetDensityIndependentPixelRatio();auto* main=c.Element("main-panel");const auto at=main->GetAbsoluteOffset(Rml::BoxArea::Border),bounds=main->GetBox().GetSize(Rml::BoxArea::Border);
+            const bool top=c.barPosition=="top";Require(std::fabs(top?at.y-c.TopInset():size.y-at.y-bounds.y-24*dp)<1,"Bar did not dock to its selected edge");
+            auto* picker=c.Element("game-picker");const auto pickerAt=picker->GetAbsoluteOffset(Rml::BoxArea::Border),pickerSize=picker->GetBox().GetSize(Rml::BoxArea::Border);
+            Require(top?pickerAt.y>=at.y+bounds.y:pickerAt.y+pickerSize.y<=at.y,"Game chooser must stay opposite the Bar");
+            c.Element("open-passes")->ScrollIntoView();context->Update();c.Open("passes");for(int i=0;i<3;++i){context->Update();c.Reflow();}context->Update();
+            const auto popup=c.Element("inspector")->GetAbsoluteOffset(Rml::BoxArea::Border),popupSize=c.Element("inspector")->GetBox().GetSize(Rml::BoxArea::Border);
+            auto* source=c.Element("open-passes");const auto sourceAt=source->GetAbsoluteOffset(Rml::BoxArea::Border),sourceSize=source->GetBox().GetSize(Rml::BoxArea::Border);
+            if(!(top?popup.y>=sourceAt.y+sourceSize.y+12*dp:popup.y+popupSize.y<=sourceAt.y-12*dp))std::cerr<<"bar_popup_geometry viewport="<<size.x<<"x"<<size.y<<" edge="<<edge<<" source="<<sourceAt.y<<" height="<<sourceSize.y<<" popup="<<popup.y<<" height="<<popupSize.y<<"\n";
+            Require(top?popup.y>=sourceAt.y+sourceSize.y+12*dp:popup.y+popupSize.y<=sourceAt.y-12*dp,"Attached Bar panels must open inward");
+            Require(popup.y>=c.TopInset()-1&&popup.y+popupSize.y<=size.y-12*dp+1,"Attached Bar panel leaves the viewport");
+        }
+    }
+    context->SetDimensions(view);c.Layout(layout);c.PanelSide(side);c.BarEdge(bar);c.document->SetClass("desktop-preview",desktop);PlacePreviewPicker(c);context->Update();
+    std::cout<<"preview_game_picker_edge_checks=passed cases=18 bar_top_bottom_cases=6\n";
+}
 static void TestLayout(Controller& c,Rml::Context* context)
 {
     const auto originalView=context->GetDimensions();const auto originalScale=c.overlayScale,originalCopy=c.copySize;const auto originalValues=c.values;
@@ -470,7 +521,7 @@ int wmain(int argc,wchar_t** argv)
             if(window && system.GetElapsedTime()>nextStyleCheck) {nextStyleCheck=system.GetElapsedTime()+.5;const auto stamp=fs::last_write_time(assets/L"overlay.rcss");if(stamp!=lastStyle){document->ReloadStyleSheet();lastStyle=stamp;}}
             if(!output.empty())system.frameTime=frames/60.;
             if((layoutTest||selfTest)&&frames==8)TestLayout(controller,context);
-            if(selfTest && frames==8)TestController(controller,context);
+            if(selfTest && frames==8){TestPreviewPicker(controller,context);TestController(controller,context);}
             if(controller.sceneRequest>=0&&!library.names.empty()){library.Choose(controller.sceneRequest);controller.sceneRequest=-1;document->QuerySelector(".preview-label")->SetInnerRML("Loading…");}
             if(controller.sceneRequest>=0){const int chosen=controller.sceneRequest;controller.sceneRequest=-1;try{
                 fs::path path=background;float selectedCrop=crop;std::array<float,3> selectedAccent=accent;std::string title="Overlay preview";
@@ -500,7 +551,7 @@ int wmain(int argc,wchar_t** argv)
             }
             const auto start=std::chrono::steady_clock::now();
             if(!productionUI&&!selfTest&&!layoutTest&&system.GetElapsedTime()>=nextSample){ShowPreviewSession(controller,selectedScene,width,height,controller.reducedMotion?0:system.GetElapsedTime());nextSample=system.GetElapsedTime()+.25;}
-            controller.reducedMotion=reduceMotion||!controller.motionEnabled;document->SetClass("reduce-motion",controller.reducedMotion);controller.Animate(system.GetElapsedTime());controller.Adapt(backdrop->measured,system.GetElapsedTime());
+            controller.reducedMotion=reduceMotion||!controller.motionEnabled;document->SetClass("reduce-motion",controller.reducedMotion);controller.Animate(system.GetElapsedTime());controller.Adapt(backdrop->measured,system.GetElapsedTime());PlacePreviewPicker(controller);
             if(controller.toastUntil>0 && system.GetElapsedTime()>controller.toastUntil) {controller.Visible("welcome",false);controller.toastUntil=0;}
             context->Update();
             if(selfTest) {
@@ -534,7 +585,7 @@ int wmain(int argc,wchar_t** argv)
                 auto* e=document->GetElementById(id);
                 if(e->IsVisible()) {
                     const auto at=e->GetAbsoluteOffset(Rml::BoxArea::Border);const auto size=e->GetBox().GetSize(Rml::BoxArea::Border);
-                    Backdrop::Panel panel{at.x,at.y,size.x,size.y,24*context->GetDensityIndependentPixelRatio()};panel.sampleIndex=std::string(id)=="main-panel"?0:std::string(id)=="inspector"?1:std::string(id)=="welcome"?2:3;panel.scale=context->GetDensityIndependentPixelRatio();if(std::string(id)=="inspector" && controller.inspectorAnchored){panel.arrow=1;panel.anchorX=std::clamp(controller.inspectorAnchorX,at.x+24,at.x+size.x-24);}
+                    Backdrop::Panel panel{at.x,at.y,size.x,size.y,24*context->GetDensityIndependentPixelRatio()};panel.sampleIndex=std::string(id)=="main-panel"?0:std::string(id)=="inspector"?1:std::string(id)=="welcome"?2:3;panel.scale=context->GetDensityIndependentPixelRatio();if(std::string(id)=="inspector" && controller.inspectorAnchored){panel.arrow=controller.barPosition=="top"?-1.f:1.f;panel.anchorX=std::clamp(controller.inspectorAnchorX,at.x+24,at.x+size.x-24);}
                     const auto variable=[e](const char* name,float fallback){const auto* p=e->GetProperty(name);if(!p)return fallback;try{return std::stof(p->Get<Rml::String>());}catch(...){return fallback;}};
                     panel.colored=controller.appearance==4;panel.tint=controller.SurfaceTint();panel.readability=(controller.appearance==3||(controller.appearance==4&&!controller.AccentLight()))?1.f:0.f;panel.inkShadow=controller.textDepth?.14f:0.f;panel.blur=controller.blurRadius;panel.radius=std::clamp(variable("--corner-radius",24.f),0.f,100.f)*panel.scale;panel.saturation=std::clamp(variable("--material-saturation",1.12f),0.f,2.f);panel.grain=std::clamp(variable("--material-texture",.028f),0.f,.08f);panel.luminosity=std::clamp(variable("--material-luminosity",.04f),0.f,.25f);
                     panel.shadowOpacity=std::clamp(variable("--shadow-opacity",.30f),0.f,.5f);panel.shadowRadius=std::clamp(variable("--shadow-radius",28.f),8.f,60.f);panel.shadowOffset=std::clamp(variable("--shadow-offset",12.f),0.f,24.f);
@@ -555,7 +606,15 @@ int wmain(int argc,wchar_t** argv)
                 const float clearLayer[4]={};immediate->ClearRenderTargetView(windowView.Get(),clearLayer);if(!(id=="inspector"&&controller.layout=="centered"))backdrop->Draw(target.Get(),windowView.Get(),{byId.at(id)},blur,false);
                 const float clearInk[4]={};immediate->ClearRenderTargetView(inkView.Get(),clearInk);renderUi(controller.Element(id.c_str()),inkView.Get());if(selfTest&&frames==70&&id=="main-panel")CheckChromePaint(device.Get(),immediate.Get(),inkLayer.Get(),controller);backdrop->DrawInk(windowView.Get(),inkSource.Get(),byId.at(id),blur);const auto velocity=controller.windowVelocity[id];backdrop->ComposeLayer(view.Get(),windowSource.Get(),velocity.x,velocity.y,controller.reducedMotion);
             }
-            if((!desktopPreview||!library.names.empty())&&!gameCapture)renderUi(document->QuerySelector(".prototype-toolbar"));
+            if(!gameCapture){
+                if(desktopPreview&&!library.names.empty()&&byId.contains("main-panel")){
+                    auto* picker=controller.Element("game-picker");const auto at=picker->GetAbsoluteOffset(Rml::BoxArea::Border),size=picker->GetBox().GetSize(Rml::BoxArea::Border);auto panel=byId.at("main-panel");
+                    // The toolbar's centered CSS transform is applied to its ink;
+                    // its glass rectangle must use the same visual coordinates.
+                    panel.x=controller.layout=="floating"?at.x:at.x-size.x*.5f;panel.y=at.y;panel.width=size.x;panel.height=size.y;panel.radius=14*panel.scale;panel.opacity=1;panel.shadowOpacity*=.55f;
+                    const float clear[4]={};immediate->ClearRenderTargetView(windowView.Get(),clear);backdrop->Draw(target.Get(),windowView.Get(),{panel},blur,false);immediate->ClearRenderTargetView(inkView.Get(),clear);renderUi(picker,inkView.Get());backdrop->DrawInk(windowView.Get(),inkSource.Get(),panel,blur);backdrop->ComposeLayer(view.Get(),windowSource.Get(),0,0,true);
+                }else if(!desktopPreview)renderUi(controller.Element("game-picker"));
+            }
             if(desktopPreview&&window)renderUi(controller.Element("preview-chrome"));
             for(const auto* popup:{"layout-picker","tooltip"})if(controller.Element(popup)->IsVisible()){
                 if(std::string(popup)=="layout-picker"&&byId.contains("main-panel")){const auto panel=controller.QuickLayoutSurface(byId.at("main-panel"));const float clear[4]={};immediate->ClearRenderTargetView(windowView.Get(),clear);backdrop->Draw(target.Get(),windowView.Get(),{panel},blur,false);immediate->ClearRenderTargetView(inkView.Get(),clear);renderUi(controller.Element(popup),inkView.Get());backdrop->DrawInk(windowView.Get(),inkSource.Get(),panel,blur);backdrop->ComposeLayer(view.Get(),windowSource.Get(),0,0,true);}

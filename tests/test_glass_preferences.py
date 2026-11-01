@@ -12,6 +12,18 @@ import transactions as t
 
 
 class GlassPreferencesTest(unittest.TestCase):
+    def test_bar_position_survives_theme_layout_and_helper_snapshot(self):
+        settings={}
+        self.assertEqual(glass.current(settings)['BarPosition'],'bottom')
+        for position in ('top','bottom'):
+            glass.edit(settings,'BarPosition',position)
+            glass.edit(settings,'Layout','centered')
+            glass.theme(settings,'dark')
+            glass.edit(settings,'Layout','bar')
+            result=proton_overlay.settings_snapshot(overlay_settings.options(settings))['overlay_appearance']
+            self.assertEqual(result['BarPosition'],position)
+        with self.assertRaises(t.Refusal):glass.edit(settings,'BarPosition','left')
+
     def test_side_panel_edge_is_independent_of_theme_and_layout(self):
         settings={}
         self.assertEqual(glass.current(settings)['SidePanelSide'],'left')

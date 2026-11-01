@@ -282,6 +282,10 @@ try
     File.WriteAllText(appearancePath, "[Appearance]\nThemeVersion=4\nTheme=3\nLayout=bar\nTextFont=inter\nTextSize=26\nScale=115\nCustom=1\nClearTint=33\n[Unrelated]\nKeep=this\n");
     var native = GlassAppearance.Load(appearancePath);
     if(native.SidePanelSide!="left")throw new Exception("Side Panel must default to the left edge");
+    if(native.BarPosition!="bottom")throw new Exception("Bar must default to the bottom edge");
+    GlassAppearance.Validate(new System.Text.Json.Nodes.JsonObject { ["BarPosition"]="top" });
+    GlassAppearance.Set("BarPosition","top",path:appearancePath);
+    if(GlassAppearance.Load(appearancePath).BarPosition!="top"||GlassAppearance.Load(appearancePath).ToJson()["BarPosition"]!.GetValue<string>()!="top")throw new Exception("Bar edge was not persisted");
     GlassAppearance.Validate(new System.Text.Json.Nodes.JsonObject { ["SidePanelSide"]="right" });
     GlassAppearance.Set("SidePanelSide","right",path:appearancePath);
     if(GlassAppearance.Load(appearancePath).SidePanelSide!="right"||GlassAppearance.Load(appearancePath).ToJson()["SidePanelSide"]!.GetValue<string>()!="right")throw new Exception("Side Panel edge was not persisted");

@@ -913,3 +913,18 @@ body { --utility-size: 19dp; --segment-size: 20dp; }
 .side-panel-position { margin-top: 20dp; }
 .side-panel-position .segments { margin-top: 12dp; }
 .desktop-preview .prototype-toolbar select { width: 250dp; }
+.desktop-preview.preview-picker-left .prototype-toolbar { left: 24dp; right: auto; transform: none; }
+.desktop-preview.preview-picker-right .prototype-toolbar { left: auto; right: 76dp; transform: none; }
+.desktop-preview.preview-picker-bottom .prototype-toolbar { top: auto; bottom: 24dp; }
+.desktop-preview .prototype-toolbar, .desktop-preview.clear-foreground .prototype-toolbar { background: transparent; color: #282624; }
+.desktop-preview .prototype-toolbar.dark, .desktop-preview .prototype-toolbar.clear { color: #f5f1ea; }
+.desktop-preview .prototype-toolbar select { color: #282624; background: #ffffff50; }
+.desktop-preview .prototype-toolbar .preview-label { color: #282624; }
+.desktop-preview .prototype-toolbar.dark select, .desktop-preview .prototype-toolbar.clear select { color: #f5f1ea; background: #ffffff24; }
+.desktop-preview .prototype-toolbar.dark .preview-label, .desktop-preview .prototype-toolbar.clear .preview-label { color: #f5f1ea; }
+.bar-position { display: none; margin-top: 20dp; }
+.bar-position .segments { margin-top: 12dp; }
+.layout-bar .bar-position { display: block; }
+.layout-bar .side-panel-position, .layout-centered .side-panel-position { display: none; }
+.layout-bar.bar-top .resize-top { display: none; }
+.layout-bar.bar-top .resize-bottom { display: block; }

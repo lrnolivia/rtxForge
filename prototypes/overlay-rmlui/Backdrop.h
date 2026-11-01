@@ -116,7 +116,7 @@ float3 SurfaceBlend(float3 dst,float3 src,float mode){
 float ShapeDistance(float2 position) {
  float2 halfSize=(bounds.zw-bounds.xy)*.5;float2 local=position-(bounds.xy+bounds.zw)*.5;
  float2 q=abs(local)-halfSize+radius;float d=length(max(q,0))+min(max(q.x,q.y),0)-radius;
- if(pointer.x>.5) {float scale=pointer.w;float y=position.y-(bounds.w-2*scale);float pointerDistance=max(abs(position.x-pointer.y)-10*scale+y*10/14,max(-y,y-14*scale));d=min(d,pointerDistance);}
+ if(abs(pointer.x)>.5) {float scale=pointer.w;float y=pointer.x<0?bounds.y+2*scale-position.y:position.y-(bounds.w-2*scale);float pointerDistance=max(abs(position.x-pointer.y)-10*scale+y*10/14,max(-y,y-14*scale));d=min(d,pointerDistance);}
  return d;
 }
 float4 Material(Vertex v):SV_Target {

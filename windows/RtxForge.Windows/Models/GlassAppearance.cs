@@ -29,6 +29,7 @@ public sealed class GlassAppearance
     }
     public string Layout => Layouts.Contains(Get("Layout", "floating")) ? Get("Layout", "floating") : "floating";
     public string SidePanelSide => Get("SidePanelSide", "left") == "right" ? "right" : "left";
+    public string BarPosition => Get("BarPosition", "bottom") == "top" ? "top" : "bottom";
     public int Tint => Number(Theme == "light" ? "LightTint" : Theme == "dark" ? "DarkTint" : Theme == "accent" ? "AccentTint" : "ClearTint", Theme == "light" ? 100 : Theme == "dark" ? 80 : 20, 0, 100);
     public bool Custom => On("Custom", false);
     static readonly Dictionary<string, (int Low, int High, int Default)> Ranges = new()
@@ -40,7 +41,7 @@ public sealed class GlassAppearance
         ["Motion"]=(0,1,1), ["ShowNotifications"]=(0,1,1),
     };
     static readonly Dictionary<string, string[]> Options = new()
-    { ["Layout"]=Layouts, ["SidePanelSide"]=["left","right"], ["TextFont"]=["roboto","inter"], ["SurfaceBlend"]=Blends };
+    { ["Layout"]=Layouts, ["SidePanelSide"]=["left","right"], ["BarPosition"]=["bottom","top"], ["TextFont"]=["roboto","inter"], ["SurfaceBlend"]=Blends };
     public JsonObject ToJson()
     {
         var result = new JsonObject();
@@ -48,7 +49,7 @@ public sealed class GlassAppearance
         result["Theme"] = Theme == "light" ? 1 : Theme == "dark" ? 2 : Theme == "accent" ? 4 : 3;
         foreach (var (key, options) in Options)
         {
-            var fallback = key == "Layout" ? "floating" : key == "SidePanelSide" ? "left" : key == "TextFont" ? "roboto" : "soft-light";
+            var fallback = key == "Layout" ? "floating" : key == "SidePanelSide" ? "left" : key == "BarPosition" ? "bottom" : key == "TextFont" ? "roboto" : "soft-light";
             var value = Get(key, fallback); result[key] = options.Contains(value) ? value : fallback;
         }
         return result;

@@ -61,7 +61,7 @@ export async function artworkAccent(id:string,source:string):Promise<string|null
 export function selectionInk(color:string):string {
   if(!/^#[0-9a-f]{6}$/i.test(color))return '#242424';
   const rgb=[1,3,5].map(i=>parseInt(color.slice(i,i+2),16));
-  const [h,s,v]=hsv(rgb),sat=s<.08?0:clamp(s*1.12,.78,1),value=clamp(v*.42,.2,.34);
+  const [h,s,v]=hsv(rgb),yellow=h>=45/360&&h<=100/360,sat=yellow?.04:s<.08?0:clamp(s*1.12,.78,1),value=clamp(v*.42,.2,.34);
   const f=(n:number)=>{const k=(n+h*6)%6;return Math.round(value*(1-sat*Math.max(0,Math.min(k,4-k,1)))*255);};
   const dark=[f(5),f(3),f(1)];
   const lum=(c:number[])=>c.reduce((sum,x,i)=>{x/=255;return sum+[.2126,.7152,.0722][i]*(x<=.04045?x/12.92:((x+.055)/1.055)**2.4);},0);
@@ -76,30 +76,46 @@ export function selectionInk(color:string):string {
 const luminance=(rgb:number[])=>rgb.reduce((sum,value,index)=>{const x=value/255;return sum+[.2126,.7152,.0722][index]*(x<=.04045?x/12.92:((x+.055)/1.055)**2.4);},0);
 const parse=(color:string)=>[1,3,5].map(i=>parseInt(color.slice(i,i+2),16));
 const mix=(a:number[],b:number[],amount:number)=>a.map((v,i)=>Math.round(v*amount+b[i]*(1-amount)));
-export function heroColors(accent:string,light:boolean,background:number[]=[65,70,75]) {
+export function heroColors(accent:string,light:boolean,background:number[]=[65,70,75],cardBackground=background) {
   const rgb=parse(/^#[0-9a-f]{6}$/i.test(accent)?accent:'#d8d5ce');
-  const card=mix(rgb,light?[246,244,239]:[37,43,49],light?.12:.24);
-  const ink=mix(rgb,light?[22,28,34]:[255,253,247],light?.32:.14);
   const [l,a,b]=lab(...rgb as [number,number,number]),c=Math.hypot(a,b),h=Math.atan2(b,a);
+  const [hue]=hsv(rgb),yellow=hue>=45/360&&hue<=100/360;
+  // A dark yellow becomes olive. Use near-neutral charcoal for that ink family,
+  // while keeping the actual accent on fills, strokes and readable titles.
+  const shade=(level:number,chroma:number)=>rgbFromLch(level,yellow&&level<.85?Math.min(chroma,.006):chroma,h);
+  const against=(ink:number[],surface:number[])=>(Math.max(luminance(ink),luminance(surface))+.05)/(Math.min(luminance(ink),luminance(surface))+.05);
+  const ink=shade(light?.26:.97,Math.min(c*.18,.025));
+  // Preserve color rather than washing the glass with a neutral grey base.
+  // Clear/Dark always use pale ink; adjust the colored surface, never flip text.
+  const cardChroma=Math.min(c*.48,.065);
+  let card=light?shade(.955,Math.min(c*.18,.025)):shade(.49,cardChroma);
+  for(let step=0;step<40&&against(ink,mix(card,cardBackground,light?.74:.76))<4.5;step++){
+    card=light?shade(.955+(step+1)*.001,Math.min(c*.18,.025)):shade(.49-(step+1)*.005,cardChroma);
+  }
   const bg=luminance(background),ratio=(color:number[])=>(Math.max(luminance(color),bg)+.05)/(Math.min(luminance(color),bg)+.05);
   let title=rgb;
   if(ratio(title)<3){
-    // Find the nearest readable shade in either direction. A fixed brightness
-    // threshold can choose a muddy dark title on a mid-tone image.
-    const candidates=[.12,.98].map(target=>{
+    // Mid-tone artwork needs pale lettering; dark ink loses definition in its
+    // darker details. Reserve dark lettering for genuinely bright artwork.
+    const candidates=[.12,.999].map(target=>{
       for(let step=1;step<=60;step++){
-        const candidate=rgbFromLch(l+(target-l)*step/60,c,h);
-        if(ratio(candidate)>=3.1)return {color:candidate,distance:Math.abs(target-l)*step/60};
+        const level=l+(target-l)*step/60,candidate=shade(level,c);
+        if(ratio(candidate)>=3)return {color:candidate,distance:Math.abs(target-l)*step/60,pale:target>l};
       }
       return null;
-    }).filter((candidate):candidate is {color:number[];distance:number}=>candidate!==null);
+    }).filter((candidate):candidate is {color:number[];distance:number;pale:boolean}=>candidate!==null);
     candidates.sort((a,b)=>a.distance-b.distance);
-    title=candidates[0]?.color||rgb;
+    title=(bg<.35?candidates.find(candidate=>candidate.pale):undefined)?.color||candidates[0]?.color||rgb;
 
   }
   return {title:hex(title),card:hex(card),ink:hex(ink),light};
 }
-export function sampleHero(image:HTMLImageElement,area:DOMRect):number[]|null {
+export function heroBadge(background:number[]=[65,70,75]) {
+  return luminance(background)>.35
+    ? {surface:'rgb(246 245 241 / .78)',ink:'#292d32'}
+    : {surface:'rgb(28 32 38 / .68)',ink:'#f8f6f1'};
+}
+export function sampleHero(image:HTMLImageElement,area:DOMRect,includeVeil=false):number[]|null {
   try {
     if(!image.naturalWidth)return null;
     const bounds=image.getBoundingClientRect(),scale=Math.max(bounds.width/image.naturalWidth,bounds.height/image.naturalHeight);
@@ -109,7 +125,17 @@ export function sampleHero(image:HTMLImageElement,area:DOMRect):number[]|null {
     const context=canvas.getContext('2d',{willReadFrequently:true});if(!context)return null;
     context.drawImage(image,(area.x-bounds.x-left)/scale,(area.y-bounds.y-top)/scale,area.width/scale,area.height/scale,0,0,24,8);
     const pixels=context.getImageData(0,0,24,8).data,sums=[0,0,0];let count=0;
-    for(let i=0;i<pixels.length;i+=4){if(pixels[i+3]<128)continue;count++;for(let j=0;j<3;j++)sums[j]+=pixels[i+j];}
+    // Match the existing .hero-artwork:after veil, including its compact-state
+    // opacity. Sampling the uncomposited image can incorrectly choose dark ink.
+    const opacity=includeVeil&&image.parentElement?Number(getComputedStyle(image.parentElement,':after').opacity):0;
+    const angle=32*Math.PI/180,dx=Math.sin(angle),dy=-Math.cos(angle),length=Math.abs(bounds.width*dx)+Math.abs(bounds.height*dy);
+    for(let i=0;i<pixels.length;i+=4){
+      if(pixels[i+3]<128)continue;count++;
+      const pixel=i/4,x=area.x+(pixel%24+.5)*area.width/24,y=area.y+(Math.floor(pixel/24)+.5)*area.height/8;
+      const t=clamp(.5+((x-bounds.x-bounds.width/2)*dx+(y-bounds.y-bounds.height/2)*dy)/length,0,1);
+      const alpha=opacity*(t<.38?.52+(.17-.52)*t/.38:t<.66?.17*(.66-t)/.28:0);
+      for(let j=0;j<3;j++)sums[j]+=pixels[i+j]*(1-alpha)+[12,18,23][j]*alpha;
+    }
     return count?sums.map(v=>v/count):null;
   }catch{return null;}
 }

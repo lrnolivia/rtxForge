@@ -318,9 +318,9 @@ button:not(:disabled):focus-visible{transform:translateY(-2px) scale(1.015);box-
 
 /* Inset the scrollbar itself, keeping the card surface at its outer edge. */
 .content,.details-scroll,.detail-nav{scrollbar-width:auto;scrollbar-color:auto}
-.content::-webkit-scrollbar,.details-scroll::-webkit-scrollbar,.detail-nav::-webkit-scrollbar{width:18px}
-.content::-webkit-scrollbar-thumb,.details-scroll::-webkit-scrollbar-thumb,.detail-nav::-webkit-scrollbar-thumb{border:6px solid transparent;background-clip:padding-box;border-radius:12px}
-.content::-webkit-scrollbar-track,.details-scroll::-webkit-scrollbar-track,.detail-nav::-webkit-scrollbar-track{margin:14px 0}
+.content::-webkit-scrollbar,.details-scroll::-webkit-scrollbar,.detail-nav::-webkit-scrollbar{width:36px}
+.content::-webkit-scrollbar-thumb,.details-scroll::-webkit-scrollbar-thumb,.detail-nav::-webkit-scrollbar-thumb{border:14px solid transparent;background-clip:padding-box;border-radius:20px;min-height:56px}
+.content::-webkit-scrollbar-track,.details-scroll::-webkit-scrollbar-track,.detail-nav::-webkit-scrollbar-track{margin:24px 0}
 .content::-webkit-scrollbar-button,.details-scroll::-webkit-scrollbar-button,.detail-nav::-webkit-scrollbar-button{display:none;width:0;height:0}
 
 /* Screen applies only to the label layer. The button's fill and selection
@@ -478,8 +478,9 @@ button.ui-control:not(:disabled):not(.game-card):not(.primary):is(:hover,:focus-
 .details-page[data-hero-compact=true] .hero-artwork:after{opacity:0}
 :root[data-surface=details] .details-title-copy h1.game-title{mix-blend-mode:normal;color:var(--game-title-color,var(--accent));text-shadow:0 1px 3px color-mix(in srgb,var(--accent) 18%,rgb(9 13 18 / .48))}
 .hero-compact-metadata{display:none}
-.hero-info-card{padding:12px 16px;border-radius:12px;background:color-mix(in srgb,var(--hero-card-color,#30363d) 88%,transparent);box-shadow:inset 0 0 0 1px rgb(255 255 255 / .07);backdrop-filter:blur(28px) saturate(1.1);color:var(--hero-card-ink,#f5f2ec);max-width:95ch}
-.hero-info-card .hero-metadata{margin:0 0 9px;color:inherit;gap:7px}
+.hero-info-card{padding:12px 16px;border-radius:12px;background:color-mix(in srgb,var(--hero-card-color,#626872) 76%,transparent);box-shadow:inset 0 0 0 1px rgb(255 255 255 / .06);backdrop-filter:blur(28px) saturate(1.2);color:var(--hero-card-ink,#f5f2ec);max-width:95ch}
+.hero-info-card .hero-metadata{margin:0 0 9px;color:inherit;gap:7px;text-shadow:none}
+.hero-pill{text-shadow:none}
 .hero-info-card .hero-pill{background:color-mix(in srgb,var(--hero-card-ink) 12%,transparent);color:inherit}
 .hero-info-card .hero-cache-note,.hero-info-card .hero-credits{color:inherit;text-shadow:none}
 .hero-info-card .hero-description{display:-webkit-box;-webkit-line-clamp:3;max-width:85ch;margin:0;color:inherit;line-height:1.5;text-shadow:none}
@@ -502,12 +503,16 @@ button.ui-control:not(:disabled):not(.game-card):not(.primary):is(:hover,:focus-
 
 .details-page:not([data-hero-compact=true]){--poster-height:178px}
 .details-page:not([data-hero-compact=true]) .detail-artwork{height:178px;width:119px;align-self:flex-end}
+@media(min-width:761px){.details-page[data-hero-scrolled=true] .back{width:44px;height:44px;padding:10px}.details-page[data-hero-scrolled=true] .back>span:not(.icon){display:none}}
+@media(max-width:760px){.details-page .details-hero{height:var(--hero-expanded)}}
 :root[data-surface=details] .details-title-copy h1.game-title{font-size:calc(2.4rem + 2px);color:var(--game-title-color,var(--accent));text-shadow:0 1px 2px rgb(12 16 21 / .18)}
 :root[data-surface=details] .details-page[data-hero-compact=true] .details-title-copy h1.game-title{font-size:calc(1.7rem + 2px)}
 .hero-artwork[hidden]{display:none}.art-unavailable{background:var(--nested)}
 @media(max-width:760px){.details-page:not([data-hero-compact=true]) .detail-artwork{height:132px;width:88px}:root[data-surface=details] .details-title-copy h1.game-title{font-size:calc(1.6rem + 2px)}}
 
-:root[data-theme=light] .hero-info-card{background:color-mix(in srgb,var(--hero-card-color,#f4f2ec) 94%,transparent);box-shadow:inset 0 0 0 1px rgb(255 255 255 / .32)}
+:root[data-theme=light] .hero-info-card{background:color-mix(in srgb,var(--hero-card-color,#f4f2ec) 74%,transparent);box-shadow:inset 0 0 0 1px rgb(255 255 255 / .16)}
+.details-hero .hero-status{background:var(--hero-badge-surface,rgb(28 32 38 / .68));color:var(--hero-badge-ink,#f8f6f1);text-shadow:none;backdrop-filter:blur(16px)}
+@media(max-width:760px){.content::-webkit-scrollbar,.details-scroll::-webkit-scrollbar,.detail-nav::-webkit-scrollbar{width:28px}.content::-webkit-scrollbar-thumb,.details-scroll::-webkit-scrollbar-thumb,.detail-nav::-webkit-scrollbar-thumb{border-width:10px}.content::-webkit-scrollbar-track,.details-scroll::-webkit-scrollbar-track,.detail-nav::-webkit-scrollbar-track{margin:20px 0}}
 
 /* Gamepad navigation is independent of the browser's last mouse/keyboard modality. */
 :root[data-controller=true] .ui-control:not(:disabled):not(.game-card):focus{scale:1.025;outline:2px solid var(--accent);outline-offset:3px}

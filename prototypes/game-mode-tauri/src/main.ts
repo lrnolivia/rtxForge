@@ -5,7 +5,7 @@ import { bindArtworkFailures, hydrateArtwork, clearArtworkCache } from './artwor
 import { appearanceDefaults, escape as e, readAppearance, readSnapshot, type Appearance, type Game, type Snapshot, type View } from './model';
 import { operationFlow,operationStep,flowGame } from './operation-ui';
 import { installInput } from './input';
-import { artworkAccent, selectionInk, heroColors, sampleHero } from './art-accent';
+import { artworkAccent, selectionInk, heroColors, heroBadge, sampleHero } from './art-accent';
 import { enhanceSelects, closeSelectMenu, selectMenuOpen } from './select-menu';
 import { settingsSections, settingsContent } from './settings-content';
 import { engineRequest, engineStatus, type EngineRow, type EngineStatus, type Review } from './engine';
@@ -222,12 +222,14 @@ function gameCredits(game:Game) {
   const primary=/^Ubisoft(?: |$)/i.test(names[0]||'')?'Ubisoft':names[0];
   return {line:[primary,game.release].filter(Boolean).join(' · '),full:raw};
 }
-async function resolveLibraryAccents(data:Snapshot) {
-  await Promise.all(data.games.map(async game=>{
+async function resolveLibraryAccents(data:Snapshot,games:Game[]=data.games) {
+  await Promise.all(games.map(async game=>{
     if(game.accent)return;
     const source=game.art||game.capsule||game.hero;if(!source)return;
-    game.artworkAccent=await artworkAccent(game.id,source);
-    if(snapshot!==data)return;
+    const accent=await artworkAccent(game.id,source);
+    // A cached local poster can arrive while the remote fallback is still sampling.
+    if(snapshot!==data||(game.art||game.capsule||game.hero)!==source)return;
+    game.artworkAccent=accent;
     const item=app.querySelector<HTMLElement>(`[data-library-game="${CSS.escape(game.id)}"]`);if(item){item.style.setProperty('--game-accent',game.artworkAccent||'var(--ink)');item.style.setProperty('--game-selected-ink',selectionInk(game.artworkAccent||'#b4b4b4'));}
     if(view==='details'&&selectedId===game.id){applyDetailsAccent();if(detailsSection==='appearance')render();}
   }));
@@ -281,11 +283,16 @@ function applyDetailsAccent() {
   content.style.setProperty('--primary-ink',selectionInk(accent||'#d8d5ce'));
   const page=content.querySelector<HTMLElement>('.details-page'),image=content.querySelector<HTMLImageElement>('.details-hero-image'),title=content.querySelector<HTMLElement>('.game-title');
   const titleRange=document.createRange();if(title)titleRange.selectNodeContents(title);
-  const sampled=image&&title?sampleHero(image,titleRange.getBoundingClientRect()):null;
-  const colors=heroColors(accent||'#d8d5ce',appearance.theme==='light',sampled||undefined);
+  const sampled=image&&title?sampleHero(image,titleRange.getBoundingClientRect(),true):null;
+  const info=content.querySelector<HTMLElement>('.hero-info-card'),badge=content.querySelector<HTMLElement>('.hero-status');
+  const cardSample=image&&info?sampleHero(image,info.getBoundingClientRect()):null;
+  const colors=heroColors(accent||'#d8d5ce',appearance.theme==='light',sampled||undefined,cardSample||undefined);
+  const badgeColors=heroBadge(image&&badge?sampleHero(image,badge.getBoundingClientRect())||undefined:undefined);
   content.style.setProperty('--game-title-color',colors.title);
   content.style.setProperty('--hero-card-color',colors.card);
   content.style.setProperty('--hero-card-ink',colors.ink);
+  content.style.setProperty('--hero-badge-surface',badgeColors.surface);
+  content.style.setProperty('--hero-badge-ink',badgeColors.ink);
   if(page)page.dataset.heroCard=colors.light?'light':'dark';
   content.dataset.gameAccent = String(Boolean(accent));
 }
@@ -298,12 +305,30 @@ function setupHero() {
   const page = app.querySelector<HTMLElement>('.details-page'), scroller = app.querySelector<HTMLElement>('.details-scroll');
   const hero = app.querySelector<HTMLElement>('.details-hero'), nav = app.querySelector<HTMLElement>('.detail-nav');
   if (!page || !scroller || !hero || !nav) return;
-  let expanded=270, compact=128, frame=0;
+  let expanded=270, compact=128, frame=0, measuredWidth=-1;
+  const measure = () => {
+    const identity=hero.querySelector<HTMLElement>('.details-identity');
+    const back=hero.querySelector<HTMLElement>('.back');
+    if (!identity || !back) return;
+    // Measure the complete expanded header, even when resizing a collapsed one.
+    const previousCompact=page.dataset.heroCompact, previousSummary=page.dataset.heroSummary;
+    const previousLeft=page.style.getPropertyValue('--identity-left');
+    page.dataset.heroCompact='false';page.dataset.heroSummary='true';
+    page.style.setProperty('--identity-left','30px');
+    const mobile=page.clientWidth<=760;
+    expanded=Math.max(mobile?260:Math.max(240,Math.min(300,page.clientWidth*.2)),
+      (mobile?16:18)+back.offsetHeight+18+identity.offsetHeight+(mobile?20:18));
+    page.style.setProperty('--hero-expanded',expanded+'px');
+    if(previousCompact===undefined)delete page.dataset.heroCompact;else page.dataset.heroCompact=previousCompact;
+    if(previousSummary===undefined)delete page.dataset.heroSummary;else page.dataset.heroSummary=previousSummary;
+    if(previousLeft)page.style.setProperty('--identity-left',previousLeft);else page.style.removeProperty('--identity-left');
+    measuredWidth=page.clientWidth;
+  };
   const apply = () => {
     frame=0;
-    if (page.clientWidth < 760) { page.dataset.collapsing='false'; return; }
+    if(page.clientWidth!==measuredWidth)measure();
+    if (page.clientWidth <= 760) { page.dataset.collapsing='false';page.dataset.heroCompact='false';page.dataset.heroScrolled='false';page.dataset.heroSummary='true';applyDetailsAccent();return; }
     page.dataset.collapsing='true';
-    expanded=Math.max(240,Math.min(300,page.clientWidth*.2));
     const removed=Math.min(scroller.scrollTop,expanded-compact), progress=removed/(expanded-compact);
     page.style.setProperty('--hero-expanded',expanded+'px');
     page.style.setProperty('--hero-compact',compact+'px');
@@ -313,8 +338,9 @@ function setupHero() {
     page.style.setProperty('--poster-radius',10-4*progress+'px');
     page.style.setProperty('--title-size',(selectedGame()!.name.length>28 ? 31-7*progress : 38-12*progress)+'px');
     page.style.setProperty('--art-opacity',String(.92*(1-progress)**2));
-    page.style.setProperty('--identity-left',(30+64*progress)+'px');
+    page.style.setProperty('--identity-left',(removed>0?94:30)+'px');
     page.style.setProperty('--back-top',(18+24*progress)+'px');
+    page.dataset.heroScrolled=String(removed>0);
     page.dataset.heroCompact=String(progress>=.65);
     page.dataset.heroSummary=String(progress<.3);
     const image=hero.querySelector<HTMLImageElement>('.details-hero-image');
@@ -324,11 +350,13 @@ function setupHero() {
       const ratio=(view:number,extent:number,focus:number,target:number)=>extent-view<.5?.5:Math.min(1,Math.max(0,(target*view-focus*extent)/(view-extent)));
       image.style.objectPosition=`${ratio(hero.clientWidth,image.naturalWidth*shown,chosen[0],.5)*100}% ${ratio(hero.clientHeight,image.naturalHeight*shown,chosen[1],.4)*100}%`;
     }
+    applyDetailsAccent();
   };
   scroller.addEventListener('scroll',()=>{if(!frame)frame=requestAnimationFrame(apply);},{passive:true});
   hero.querySelector('img')?.addEventListener('load',apply,{once:true});
   heroResize=new ResizeObserver(apply);heroResize.observe(page);apply();
   const image=hero.querySelector<HTMLImageElement>('.details-hero-image');if(image){image.crossOrigin='anonymous';image.addEventListener('load',()=>applyDetailsAccent(),{once:true});}requestAnimationFrame(()=>applyDetailsAccent());
+  void document.fonts.ready.then(()=>{if(page.isConnected){measure();apply();}});
 }
 
 function schemaControls(game: Game, provider: string) {
@@ -933,6 +961,7 @@ async function refresh() {
     const captured=snapshot;
     void hydrateArtwork(captured,(game,role)=>{
       if(snapshot!==captured)return;
+      if(role==='poster')void resolveLibraryAccents(captured,[game]);
       if(view==='details'&&selectedId===game.id)render();
       else if(view==='library'){
         const item=app.querySelector<HTMLElement>(`[data-library-game="${CSS.escape(game.id)}"]`);

@@ -41,7 +41,7 @@ export async function hydrateArtwork(snapshot:Snapshot,changed:(game:Game,role:s
           canvas.getContext('2d')!.drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close();
           image=canvas.toDataURL('image/webp',.9);localCache.set(key,image);
         }
-        if(role==='poster'){game.art=image;game.artworkAccent=null;}else if(role==='hero')game.hero=image;else game.capsule=image;
+        if(role==='poster')game.art=image;else if(role==='hero')game.hero=image;else game.capsule=image;
         changed(game,role);
       }catch{/* Preserve the cached/Steam fallback if an individual file is unavailable. */}
     }

@@ -2,7 +2,7 @@ param(
   [Parameter(Mandatory)][string]$RmlSource,
   [Parameter(Mandatory)][string]$FreetypeRoot,
   [string]$Output=(Join-Path $PSScriptRoot '../out/glass-overlay'),
-  [string]$Generator='Visual Studio 17 2022'
+  [string]$Generator=''
 )
 $ErrorActionPreference='Stop'
 $RmlSource=(Resolve-Path -LiteralPath $RmlSource).Path
@@ -14,7 +14,9 @@ $repo=Split-Path (Split-Path $PSScriptRoot)
 $policy=Get-Content -LiteralPath (Join-Path $repo 'providers/glass-overlay/rollout-policy.json') -Raw | ConvertFrom-Json
 if($policy.schema -ne 1 -or $policy.revision -lt 1){throw 'Invalid glass overlay revision policy'}
 $build=Join-Path $Output 'build'
-cmake -S (Join-Path $repo 'windows/overlay-rmlui') -B $build -G $Generator -A x64 "-DRMLUI_SOURCE=$RmlSource" "-DFREETYPE_ROOT=$FreetypeRoot"
+$configure=@('-S',(Join-Path $repo 'windows/overlay-rmlui'),'-B',$build,'-A','x64',"-DRMLUI_SOURCE=$RmlSource","-DFREETYPE_ROOT=$FreetypeRoot")
+if($Generator){$configure+=@('-G',$Generator)}
+cmake @configure
 if($LASTEXITCODE){throw 'Glass overlay configuration failed'}
 cmake --build $build --config Release --parallel 6
 if($LASTEXITCODE){throw 'Glass overlay build failed'}

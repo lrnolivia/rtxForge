@@ -117,8 +117,9 @@ sealed class OverlayPreviewView : StackPanel
             Shape(342,144,402,112,card);Shape(359,161,82,5,line,3);Shape(359,186,182,35,card);
             for(var col=0;col<2;col++){Shape(342+col*210,274,192,150,card);Shape(359+col*210,293,74,5,line,3);Shape(359+col*210,330,155,4,accent,2);Shape(359+col*210,365,155,4,line,2);}
         } else {
-            Panel(20,366,920,154);Shape(42,385,88,6,accent,3);
-            for(var col=0;col<2;col++){Shape(40+col*453,410,433,90,card);Shape(56+col*453,427,80,5,line,3);Shape(56+col*453,452,398,22,card,5);Shape(56+col*453,452,128,22,Color.FromArgb(100,accent.R,accent.G,accent.B),5);}
+            var y=appearance.BarPosition=="top"?20:366;
+            Panel(20,y,920,154);Shape(42,y+19,88,6,accent,3);
+            for(var col=0;col<2;col++){Shape(40+col*453,y+44,433,90,card);Shape(56+col*453,y+61,80,5,line,3);Shape(56+col*453,y+86,398,22,card,5);Shape(56+col*453,y+86,128,22,Color.FromArgb(100,accent.R,accent.G,accent.B),5);}
         }
     }
     static Color Mix(Color a,Color b,double amount)=>Color.FromArgb(a.A,(byte)(a.R+(b.R-a.R)*amount),(byte)(a.G+(b.G-a.G)*amount),(byte)(a.B+(b.B-a.B)*amount));

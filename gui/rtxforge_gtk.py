@@ -10414,11 +10414,13 @@ class Window(Adw.ApplicationWindow):
         import glass_preferences as glass
         appearance=Adw.PreferencesGroup(title='Appearance',description='Appearance and layout are shared across games. Menu and welcome choices below can differ for this game.' if game else 'The same layouts and materials as the glass overlay.')
         refreshing=[False];refreshers=[]
+        position_rows=[]
         def changed(key,value):
             if refreshing[0]:return
             if not self.options.demo:
                 s['overlay_appearance']=library_media.load_settings(self.service.config).get('overlay_appearance',{})
             glass.edit(s,key,value);save('overlay_appearance',s['overlay_appearance'])
+            for row,mode in position_rows:row.set_visible(glass.current(s)['Layout']==mode)
             appearance.set_description('Custom appearance' if glass.current(s)['Custom'] else 'The same layouts and materials as the glass overlay.')
         def material_choice(title,key,keys,captions,parent=appearance):
             values=glass.current(s);value=values[key]
@@ -10435,6 +10437,12 @@ class Window(Adw.ApplicationWindow):
         visual_row('Layout',LayoutPicker(glass.current(s)['Layout'],lambda value:changed('Layout',value)))
         side=material_choice('Side Panel position','SidePanelSide',['left','right'],['Left','Right'])
         side.set_subtitle('Choose which edge the Side Panel opens on.')
+        bar=material_choice('Bar position','BarPosition',['bottom','top'],['Bottom','Top'])
+        bar.set_subtitle('Open the Bar at the top or bottom of the screen.')
+        position_rows.extend([(side,'floating'),(bar,'bar')])
+        def position_visibility():
+            for row,mode in position_rows:row.set_visible(glass.current(s)['Layout']==mode)
+        refreshers.append(position_visibility);position_visibility()
         def select_theme(mode):
             if refreshing[0]:return
             glass.appearance(s,base=mode);save('overlay_theme',mode);save('overlay_appearance',s['overlay_appearance'])

@@ -97,7 +97,7 @@ struct Runtime {
     nlohmann::json lastPreferences;
     nlohmann::json AppearanceValues()const {
         const auto& c=*controls;
-        return {{"ThemeVersion",4},{"Theme",c.appearance},{"Custom",int(c.customTheme)},{"Layout",c.layout},{"SidePanelSide",c.sidePanelSide},
+        return {{"ThemeVersion",4},{"Theme",c.appearance},{"Custom",int(c.customTheme)},{"Layout",c.layout},{"SidePanelSide",c.sidePanelSide},{"BarPosition",c.barPosition},
             {"TextFont",c.copyFont},{"TextSize",c.copySize},{"Scale",c.overlayScale},{"ScaleBaseline",120},
             {"LightTint",int(c.lightOpacity)},{"DarkTint",int(c.darkOpacity)},{"ClearTint",int(c.clearOpacity)},{"AccentCharacter",int(c.accentCharacter)},{"AccentTint",int(c.accentOpacity)},{"AccentSaturation",int(c.accentSaturation)},
             {"Blur",int(c.blurRadius)},{"Grain",int(std::lround(c.grainAmount*10))},{"BlendStrength",int(c.blendStrength)},
@@ -119,6 +119,7 @@ struct Runtime {
         const auto layout=a.value("Layout",previous);c.Typography();c.Materials();c.SyncSettings();
         if(layout!=previous&&(layout=="floating"||layout=="centered"||layout=="bar"))c.Layout(layout);
         const auto side=a.value("SidePanelSide",c.sidePanelSide);if((side=="left"||side=="right")&&side!=c.sidePanelSide)c.PanelSide(side);
+        const auto bar=a.value("BarPosition",c.barPosition);if((bar=="top"||bar=="bottom")&&bar!=c.barPosition)c.BarEdge(bar);
     }
     float rememberedMfgMultiplier{-1},rememberedMfgDynamic{0};
     void Hdr(const nlohmann::json& data) {
@@ -264,7 +265,7 @@ struct Runtime {
                 auto* e=document->GetElementById(id);
                 if(e->IsVisible()) {
                     const auto at=e->GetAbsoluteOffset(Rml::BoxArea::Border);const auto size=e->GetBox().GetSize(Rml::BoxArea::Border);
-                    Backdrop::Panel panel{at.x,at.y,size.x,size.y,24*context->GetDensityIndependentPixelRatio()};panel.sampleIndex=std::string(id)=="main-panel"?0:std::string(id)=="inspector"?1:std::string(id)=="welcome"?2:3;panel.scale=context->GetDensityIndependentPixelRatio();if(std::string(id)=="inspector" && c.inspectorAnchored){panel.arrow=1;panel.anchorX=std::clamp(c.inspectorAnchorX,at.x+24,at.x+size.x-24);}
+                    Backdrop::Panel panel{at.x,at.y,size.x,size.y,24*context->GetDensityIndependentPixelRatio()};panel.sampleIndex=std::string(id)=="main-panel"?0:std::string(id)=="inspector"?1:std::string(id)=="welcome"?2:3;panel.scale=context->GetDensityIndependentPixelRatio();if(std::string(id)=="inspector" && c.inspectorAnchored){panel.arrow=c.barPosition=="top"?-1.f:1.f;panel.anchorX=std::clamp(c.inspectorAnchorX,at.x+24,at.x+size.x-24);}
                     const auto variable=[e](const char* name,float fallback){const auto* p=e->GetProperty(name);if(!p)return fallback;try{return std::stof(p->Get<Rml::String>());}catch(...){return fallback;}};
                     panel.colored=c.appearance==4;panel.tint=c.SurfaceTint();panel.readability=(c.appearance==3||(c.appearance==4&&!c.AccentLight()))?1.f:0.f;panel.inkShadow=c.textDepth?.14f:0.f;panel.blur=c.blurRadius;panel.radius=std::clamp(variable("--corner-radius",24.f),0.f,100.f)*panel.scale;panel.saturation=std::clamp(variable("--material-saturation",1.12f),0.f,2.f);panel.grain=std::clamp(variable("--material-texture",.028f),0.f,.08f);panel.luminosity=std::clamp(variable("--material-luminosity",.04f),0.f,.25f);
                     panel.shadowOpacity=std::clamp(variable("--shadow-opacity",.30f),0.f,.5f);panel.shadowRadius=std::clamp(variable("--shadow-radius",28.f),8.f,60.f);panel.shadowOffset=std::clamp(variable("--shadow-offset",12.f),0.f,24.f);

@@ -14,7 +14,7 @@ interface Context {
 }
 
 // The same 180×104 screen diagrams as the desktop OverlayLayoutPicker.
-export function layoutDiagram(layout: string) {
+export function layoutDiagram(layout: string, side = 'left', barPosition = 'bottom') {
   const shape = (x:number,y:number,w:number,h:number,alpha=.16,accent=false,radius=3) =>
     `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${radius}" fill="${accent?'var(--accent)':'currentColor'}" opacity="${alpha}"/>`;
   let shapes = shape(0,0,180,104,.06,false,7);
@@ -31,7 +31,9 @@ export function layoutDiagram(layout: string) {
     for(let col=0;col<3;col++) shapes += shape(61+col*31,80,24,6,.28);
     shapes += shape(92,27,55,39,.14,false,5)+shape(102,35,26,4,.7,true)+shape(102,46,35,11,.22);
   }
-  return `<svg viewBox="0 0 180 104" aria-hidden="true" focusable="false">${shapes}</svg>`;
+  const transform = layout === 'floating' && side === 'right' ? 'translate(180 0) scale(-1 1)'
+    : layout === 'bar' && barPosition === 'top' ? 'translate(0 104) scale(1 -1)' : '';
+  return `<svg viewBox="0 0 180 104" aria-hidden="true" focusable="false"><g${transform?` transform="${transform}"`:''}>${shapes}</g></svg>`;
 }
 
 export function settingsContent(c: Context) {
@@ -65,8 +67,13 @@ export function settingsContent(c: Context) {
   if(c.category==='overlay') {
     const layouts=[['floating','Side Panel'],['centered','Advanced'],['bar','Bar']];
     const theme=({1:'light',2:'dark',3:'clear',4:'accent'} as Record<string,string>)[String(glass.Theme)] || values.overlay_theme;
-    const layoutPicker=`<div class="layout-picker"><strong>Layout</strong><p>Choose how controls are arranged in your game.</p><div class="overlay-layout-choices" role="group" aria-label="Overlay layout">${layouts.map(([key,label])=>`<button class="layout-choice" data-overlay-layout="${key}" aria-label="${label}" aria-pressed="${glass.Layout===key}" ${disabled}>${layoutDiagram(key)}<span>${label}</span>${glass.Layout===key?c.icon('check'):''}</button>`).join('')}</div></div>`;
-    body=group('rtxForge panel','',choice('overlay_renderer','Primary overlay',[['game','rtxForge'],['optiscaler','Native']],'Use the rtxForge panel in compatible packages, or the original OptiScaler, Feeder or ReShade menus.')+layoutPicker,true)+
+    const layoutPicker=`<div class="layout-picker"><strong>Layout</strong><p>Choose how controls are arranged in your game.</p><div class="overlay-layout-choices" role="group" aria-label="Overlay layout">${layouts.map(([key,label])=>`<button class="layout-choice" data-overlay-layout="${key}" aria-label="${label}" aria-pressed="${glass.Layout===key}" ${disabled}>${layoutDiagram(key,String(glass.SidePanelSide||'left'),String(glass.BarPosition||'bottom'))}<span>${label}</span>${glass.Layout===key?c.icon('check'):''}</button>`).join('')}</div></div>`;
+    // Older engine snapshots do not accept position keys in reviewed preferences.
+    const position = glass.Layout==='floating' && Object.hasOwn(c.glassDefaults,'SidePanelSide')
+      ? choice('SidePanelSide','Side Panel position',[['left','Left'],['right','Right']],'Choose which edge the Side Panel opens on.','data-glass',glass.SidePanelSide||'left')
+      : glass.Layout==='bar' && Object.hasOwn(c.glassDefaults,'BarPosition')
+        ? choice('BarPosition','Bar position',[['bottom','Bottom'],['top','Top']],'Open the Bar at the top or bottom of the screen.','data-glass',glass.BarPosition||'bottom') : '';
+    body=group('rtxForge panel','',choice('overlay_renderer','Primary overlay',[['game','rtxForge'],['optiscaler','Native']],'Use the rtxForge panel in compatible packages, or the original OptiScaler, Feeder or ReShade menus.')+layoutPicker+position,true)+
       group('Appearance','',`<div class="field"><span><strong>Theme</strong><small>Selecting a theme restores its material defaults.</small></span><div class="overlay-theme-segments" role="group" aria-label="Overlay theme">${['clear','light','dark','accent'].map(mode=>`<button data-overlay-theme="${mode}" aria-pressed="${theme===mode}" ${disabled}>${mode[0].toUpperCase()+mode.slice(1)}</button>`).join('')}</div></div>`+
         (theme==='accent'?`<label class="field"><span><strong>Accent character</strong><small>Clear → Light → Dark</small></span><input type="range" data-glass-range="AccentCharacter" min="0" max="100" step="1" value="${e(glass.AccentCharacter)}" aria-label="Accent character" ${disabled}/></label>`:'')+
         glassChoice('TextSize','Text size',[[18,'Aa Smaller'],[22,'Aa Default'],[26,'Aa Larger']])+glassChoice('Motion','Motion effects',onOff))+

@@ -3,10 +3,10 @@ import {chromium,expect} from '@playwright/test';
 const browser=await chromium.launch({channel:'msedge',headless:true});
 const page=await browser.newPage({viewport:{width:1440,height:990},reducedMotion:'reduce'});
 const calls=[],errors=[];page.on('pageerror',error=>errors.push(error.message));
-let source,reviewed;
+let source,reviewed,positionSupport=true;
 const nav=name=>page.getByRole('navigation',{name:'Main navigation'}).getByRole('button',{name,exact:true});
 const section=name=>page.getByRole('navigation',{name:'Settings sections'}).getByRole('button',{name,exact:true});
-await page.route('**/api/snapshot',async route=>{const response=await route.fetch();source=await response.json();await route.fulfill({json:source});});
+await page.route('**/api/snapshot',async route=>{const response=await route.fetch();source=await response.json();if(positionSupport)source.overlayDefaults={...source.overlayDefaults,SidePanelSide:'left',BarPosition:'bottom'};await route.fulfill({json:source});});
 await page.route('**/api/engine/status',route=>route.fulfill({json:{enabled:true,reason:'Contract fixture; no actual operations.'}}));
 await page.route('**/api/engine',async route=>{
   const request=route.request().postDataJSON();calls.push(request);
@@ -29,13 +29,24 @@ try{
  for(const caption of ['Side Panel','Advanced','Bar'])await expect(page.getByRole('button',{name:caption,exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Bar',exact:true})).toHaveAttribute('aria-pressed','true');
  expect(await page.locator('.layout-choice svg').count()).toBe(3);
+ await expect(page.getByRole('combobox',{name:'Side Panel position',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('combobox',{name:'Bar position',exact:true})).toHaveValue('"bottom"');
+ await page.getByRole('combobox',{name:'Bar position',exact:true}).selectOption('"top"');
+ await expect(page.locator('[data-overlay-layout="bar"] svg g')).toHaveAttribute('transform','translate(0 104) scale(1 -1)');
+ await page.getByRole('button',{name:'Advanced',exact:true}).click();
+ await expect(page.getByRole('combobox',{name:/^(Bar|Side Panel) position$/})).toHaveCount(0);
  await page.getByRole('button',{name:'Side Panel',exact:true}).click();
+ await expect(page.getByRole('combobox',{name:'Side Panel position',exact:true})).toHaveValue('"left"');
+ await expect(page.getByRole('combobox',{name:'Bar position',exact:true})).toHaveCount(0);
+ await page.getByRole('combobox',{name:'Side Panel position',exact:true}).selectOption('"right"');
+ await expect(page.locator('[data-overlay-layout="floating"] svg g')).toHaveAttribute('transform','translate(180 0) scale(-1 1)');
  await page.getByRole('button',{name:'Light',exact:true}).click();
  await expect(page.getByRole('combobox',{name:'Text size',exact:true})).toHaveValue('26');
  await page.getByRole('switch',{name:'Background overlay helper',exact:true}).click();
  await page.getByRole('button',{name:'Review preferences',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Exact settings fixture',exact:true})).toBeVisible();
  expect(reviewed.overlay_appearance.Layout).toBe('floating');expect(reviewed.overlay_appearance.TextSize).toBe(26);
+ expect(reviewed.overlay_appearance.SidePanelSide).toBe('right');expect(reviewed.overlay_appearance.BarPosition).toBe('top');
  expect(reviewed.overlay_appearance.Theme).toBe(1);expect(reviewed.overlay_appearance.Blur).toBe(44);
  expect(reviewed.overlay_theme).toBe('light');expect(reviewed.overlay_helper).toBe(false);
  expect(calls.filter(call=>call.method==='run')).toHaveLength(0);
@@ -60,6 +71,8 @@ try{
  await page.unroute('**/api/engine/status');await page.reload();await page.waitForSelector('.game-card');await nav('Settings').click();await section('Overlay').click();
  for(const caption of ['Side Panel','Advanced','Bar'])await expect(page.getByRole('button',{name:caption,exact:true})).toBeDisabled();
  await expect(page.getByRole('button',{name:'Review preferences',exact:true})).toBeDisabled();
+ positionSupport=false;await page.reload();await page.waitForSelector('.game-card');await nav('Settings').click();await section('Overlay').click();
+ await expect(page.getByRole('combobox',{name:/^(Bar|Side Panel) position$/})).toHaveCount(0);
  expect(errors).toEqual([]);
  console.log(JSON.stringify({passed:true,checks:['eight original settings sections','new Appearance preserved','desktop layout preview geometry and source values','overlay theme resets material while retaining layout/text','exact settings token and no execute before confirmation','read-only controls disabled','all sections at 1440/960/390 without overflow','no page errors']}));
 }finally{await browser.close();}

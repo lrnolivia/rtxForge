@@ -192,7 +192,7 @@ static void PlacePreviewPicker(Controller& c)
     c.document->SetClass("preview-picker-right",sidePanel&&c.sidePanelSide!="right");
     c.document->SetClass("preview-picker-bottom",desktop&&c.layout=="bar"&&c.barPosition=="top");
     auto* picker=c.Element("game-picker");picker->SetClass("glass",desktop);
-    if(!desktop)return;
+    if(!desktop){picker->RemoveProperty("top");return;}
     if(sidePanel)picker->SetProperty("top",std::to_string(c.Element("main-panel")->GetAbsoluteOffset(Rml::BoxArea::Border).y)+"px");else picker->RemoveProperty("top");
     auto* main=c.Element("main-panel");for(const auto* state:{"dark","clear","accent-theme"})picker->SetClass(state,main->IsClassSet(state));
     for(const auto* name:{"--accent","--accent-ink","--accent-soft"})if(const auto* value=main->GetProperty(name))picker->SetProperty(name,value->Get<Rml::String>());
@@ -233,6 +233,11 @@ static void TestPreviewPicker(Controller& c,Rml::Context* context)
             Require(popup.y>=c.TopInset()-1&&popup.y+popupSize.y<=size.y-12*dp+1,"Attached Bar panel leaves the viewport");
         }
     }
+    c.Layout("bar");c.BarEdge("top");context->Update();PlacePreviewPicker(c);context->Update();
+    c.Layout("centered");context->Update();PlacePreviewPicker(c);context->Update();c.Reflow();context->Update();
+    {const auto at=c.Element("main-panel")->GetAbsoluteOffset(Rml::BoxArea::Border),size=c.Element("main-panel")->GetBox().GetSize(Rml::BoxArea::Border);Require(at.y>=0&&at.y+size.y<=context->GetDimensions().y,"Top Bar to Advanced used the old chooser inset");}
+    c.Layout("floating");c.PanelSide("right");context->Update();PlacePreviewPicker(c);context->Update();
+    {auto* label=c.document->QuerySelector(".prototype-toolbar .preview-label");const auto at=label->GetAbsoluteOffset(Rml::BoxArea::Border),size=label->GetBox().GetSize(Rml::BoxArea::Border);context->ProcessMouseMove(int(at.x+size.x*.5f),int(at.y+size.y*.5f),0);context->ProcessMouseButtonDown(0,0);Require(c.dragged==nullptr,"Game chooser chrome must not begin window dragging");context->ProcessMouseMove(int(at.x+size.x*.5f+80),int(at.y+size.y*.5f+20),0);context->ProcessMouseButtonUp(0,0);}
     context->SetDimensions(view);c.Layout(layout);c.PanelSide(side);c.BarEdge(bar);c.document->SetClass("desktop-preview",desktop);PlacePreviewPicker(c);context->Update();
     std::cout<<"preview_game_picker_edge_checks=passed cases=18 bar_top_bottom_cases=6\n";
 }

@@ -228,7 +228,12 @@ struct Controller : Rml::EventListener
     Rml::Vector2i fittedView{-1,-1};Rml::Vector2f fittedMainSize{};float fittedDensity=0;std::string fittedLayout;bool fittedSettings=false,mainMoved=false;int fittedCopy=0;
     float TopInset() {
         const float dp=document->GetContext()->GetDensityIndependentPixelRatio();
-        if(document->IsClassSet("desktop-preview")&&(layout=="floating"||layout=="bar"))return 24*dp;
+        if(document->IsClassSet("desktop-preview")){
+            if(layout=="floating"||layout=="bar")return 24*dp;
+            // A previous layout may still place the picker at a side or bottom edge.
+            if(auto* toolbar=document->QuerySelector(".prototype-toolbar");toolbar&&toolbar->IsVisible()){const auto height=toolbar->GetBox().GetSize(Rml::BoxArea::Border).y;return height>0?30*dp+height:78*dp;}
+            return 24*dp;
+        }
         if(auto* toolbar=document->QuerySelector(".prototype-toolbar")){const auto size=toolbar->GetBox().GetSize(Rml::BoxArea::Border);if(toolbar->IsVisible())return size.y>0?toolbar->GetAbsoluteOffset(Rml::BoxArea::Border).y+size.y+12*dp:78*dp;}
         return 24*dp;
     }
@@ -625,7 +630,7 @@ struct Controller : Rml::EventListener
             }
             auto* glass=target;bool interactive=false;
             while(glass && !glass->IsClassSet("glass")) {const auto tag=glass->GetTagName();if(tag=="button"||tag=="input"||tag=="select"||tag=="option"||tag.find("slider")!=std::string::npos||tag.find("scrollbar")!=std::string::npos)interactive=true;glass=glass->GetParentNode();}
-            if(glass) {const auto id=glass->GetId();Raise(id);
+            if(glass) {const auto id=glass->GetId();if(id=="game-picker")return;Raise(id);
                 if(!interactive&&!(BarSettings()&&glass==Element("inspector"))) {dragStarted=false;dragThreshold=(glass==Element("inspector")&&inspectorAnchored?18.f:4.f)*document->GetContext()->GetDensityIndependentPixelRatio();dragged=layout=="centered" && (id=="main-panel"||id=="inspector")?Element("main-panel"):glass;coasting.erase(dragged->GetId());entrances.erase(dragged->GetId());dragStart={event.GetParameter<float>("mouse_x",0),event.GetParameter<float>("mouse_y",0)};dragOrigin=dragged->GetAbsoluteOffset(Rml::BoxArea::Border);dragLast=dragOrigin;dragVelocity={};dragTime=Rml::GetSystemInterface()->GetElapsedTime();dragged->SetProperty("margin-left","0px");dragged->SetProperty("margin-top","0px");dragged->SetProperty("left",std::to_string(dragOrigin.x)+"px");dragged->SetProperty("top",std::to_string(dragOrigin.y)+"px");
                     if((layout=="centered" || (layout=="bar" && inspectorAnchored)) && dragged==Element("main-panel") && Element("inspector")->IsVisible()){dragFollower=Element("inspector");followerOrigin=dragFollower->GetAbsoluteOffset(Rml::BoxArea::Border);followerAnchorOrigin=inspectorAnchorX;dragFollower->SetProperty("margin-left","0px");dragFollower->SetProperty("margin-top","0px");}}
             }

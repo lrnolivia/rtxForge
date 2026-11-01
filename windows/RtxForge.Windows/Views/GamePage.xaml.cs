@@ -365,11 +365,12 @@ public sealed partial class GamePage : Page
                     Prefs.ActionButton("Diagnose", async (_, _) => await shell.DiagnoseAsync(g)), ""));
                 foreach (var (kind, title, subtitle) in new[]
                 {
-                    ("reshade", "Install ReShade", "Choose an extracted x64 ReShade DLL. DirectX 10–12 games load it as dxgi.dll."),
+                    ("reshade", "Install ReShade", "Download and install the official ReShade runtime for this game."),
+                    ("reshade-import", "Import ReShade package", "Add a ZIP, custom runtime, add-on, shader or preset INI to this game. Review the exact files before importing."),
                     ("addon", "Install Add-on", "Choose another .addon64 file. RenoDX HDR is managed above."),
                 })
                 {
-                    var install = Prefs.ActionButton("Choose", async (_, _) => await shell.InstallExtraAsync(g, kind));
+                    var install = Prefs.ActionButton(kind == "reshade" ? "Install" : "Choose…", async (_, _) => await shell.InstallExtraAsync(g, kind));
                     install.IsEnabled = !shell.Service.IsPreview && !g.Blocked && !shell.Busy;
                     graphicsTools.Children.Add(DetailActionCard(title, subtitle, install, ""));
                 }

@@ -7,6 +7,23 @@
 
 namespace MaterialColor {
 using Color=std::array<float,3>;
+inline bool YellowFamily(Color color);
+inline float Smooth(float t){t=std::clamp(t,0.f,1.f);return t*t*(3-2*t);}
+inline Color AccentSurface(Color accent,float character) {
+    const float light=Smooth(character/50.f),dark=Smooth((character-50.f)/50.f);
+    Color result{};
+    const bool yellow=YellowFamily(accent);
+    for(size_t i=0;i<3;++i){const float clear=.10f+.80f*accent[i],pale=.72f+.25f*accent[i],deep=yellow?.07f+.03f*accent[i]:.035f+.14f*accent[i];result[i]=(clear+(pale-clear)*light)*(1-dark)+deep*dark;}
+    return result;
+}
+inline float AccentOpacity(float character){return .20f+.60f*Smooth(character/50.f);}
+inline bool YellowFamily(Color color) {
+    const float top=*std::max_element(color.begin(),color.end()),bottom=*std::min_element(color.begin(),color.end()),delta=top-bottom;
+    if(top<=0||delta/top<=.25f)return false;
+    float hue=top==color[0]?std::fmod((color[1]-color[2])/delta+6.f,6.f):top==color[1]?(color[2]-color[0])/delta+2.f:(color[0]-color[1])/delta+4.f;
+    hue*=60;return hue>=30&&hue<=100;
+}
+inline bool MuddyShade(Color color){const auto top=*std::max_element(color.begin(),color.end()),bottom=*std::min_element(color.begin(),color.end());return YellowFamily(color)&&top>0&&(top-bottom)/top>.40f&&top<.90f;}
 inline const std::vector<std::string> Modes={"normal","overlay","soft-light","reserved","multiply","screen","hard-light","darken","lighten","color","luminosity","difference"};
 inline int Mode(const std::string& name) {for(size_t i=0;i<Modes.size();++i)if(name==Modes[i] && i!=3)return int(i);return 0;}
 inline bool Valid(const std::string& name) {return name!="reserved" && std::find(Modes.begin(),Modes.end(),name)!=Modes.end();}

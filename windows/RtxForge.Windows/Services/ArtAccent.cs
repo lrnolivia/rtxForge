@@ -132,6 +132,7 @@ public static class ArtAccent
         var result = new List<AccentSuggestion>();
         foreach (var (label, (l, c, h)) in list)
         {
+            if (MuddyShade(FromOklch(l, c, h))) continue;
             if (result.Any(r => DeltaE(ToLch(r.Color), (l, c, h)) < 0.045)) continue;
             result.Add(new AccentSuggestion(label, FromOklch(l, c, h)));
         }
@@ -142,9 +143,32 @@ public static class ArtAccent
     static (double L, double C, double H) BackgroundTone((double L, double A, double B) lab) =>
         (Math.Clamp(lab.L, 0.6, 0.9), Math.Sqrt(lab.A * lab.A + lab.B * lab.B), Math.Atan2(lab.B, lab.A));
 
-    static Color UiAccent((double L, double A, double B) lab) =>
-        // UI accent range: readable on dark and light surfaces, still the artwork's color.
-        FromOklch(Math.Clamp(lab.L, 0.62, 0.84), Math.Clamp(Math.Sqrt(lab.A * lab.A + lab.B * lab.B), 0.09, 0.24), Math.Atan2(lab.B, lab.A));
+    static Color UiAccent((double L, double A, double B) lab)
+    {
+        var c = Math.Clamp(Math.Sqrt(lab.A * lab.A + lab.B * lab.B), 0.09, 0.24);
+        var h = Math.Atan2(lab.B, lab.A);
+        var (hue, saturation, _) = ToHsv(FromOklch(lab.L, c, h));
+        var upper = hue >= 30.0 / 360 && hue <= 100.0 / 360 && saturation > .25 ? .94 : .84;
+        var result = FromOklch(Math.Clamp(lab.L, .62, upper), c, h);
+        return MuddyShade(result) ? FromOklch(.90, c, h) : result;
+    }
+
+    public static bool MuddyShade(Color color)
+    {
+        var (h, s, v) = ToHsv(color);
+        return h >= 30.0 / 360 && h <= 100.0 / 360 && s > .40 && v < .90;
+    }
+
+    static Color NeutralInk(Color background, double minimum)
+    {
+        var dark = Color.FromArgb(255, 0x3e, 0x3b, 0x37);
+        var light = Color.FromArgb(255, 0xf5, 0xf3, 0xef);
+        if (Contrast(dark, background) >= minimum) return dark;
+        if (Contrast(light, background) >= minimum) return light;
+        var black = Color.FromArgb(255, 0, 0, 0);
+        var white = Color.FromArgb(255, 255, 255, 255);
+        return Contrast(black, background) >= Contrast(white, background) ? black : white;
+    }
 
     static (double L, double C, double H) ToLch(Color c)
     {
@@ -297,7 +321,7 @@ public static class ArtAccent
         }
 
         var navAccent = Readable(color, Mix(color, Sidebar, 0.10));
-        var accentShadow = accentDark;
+        var accentShadow = Readable(accentDark, color);
         accentFg = Readable(accentFg, color);
         accentDark = Readable(accentDark, color);
         var buttonFg = Readable(accentDark, Mix(White, color, 0.44));
@@ -348,6 +372,7 @@ public static class ArtAccent
     /// <summary>Nearest passing lightness, keeping hue and saturation.</summary>
     public static Color Readable(Color color, Color background, double minimum = 4.5)
     {
+        if (MuddyShade(color)) return NeutralInk(background, minimum);
         if (Contrast(color, background) >= minimum) return color;
         var (h, l, s) = ToHls(color);
         Color? best = null;
@@ -363,12 +388,11 @@ public static class ArtAccent
                 else low = amount;
             }
             var distance = Math.Abs(endpoint - l) * high;
-            if (distance < bestDistance) { bestDistance = distance; best = FromHls(h, l + (endpoint - l) * high, s); }
+            var candidate = FromHls(h, l + (endpoint - l) * high, s);
+            if (!MuddyShade(candidate) && distance < bestDistance) { bestDistance = distance; best = candidate; }
         }
         if (best is { } found) return found;
-        var black = Color.FromArgb(255, 0, 0, 0);
-        var white = Color.FromArgb(255, 255, 255, 255);
-        return Contrast(black, background) >= Contrast(white, background) ? black : white;
+        return NeutralInk(background, minimum);
     }
 
     /// <summary>Prefer lifting value over washing out saturation for large accent text.</summary>

@@ -28,7 +28,8 @@ struct HdrControls {
         std::string out="<div class=\"slider-field hdr-field\"><div class=\"field-heading\"><label>"+Escape(f.label)+"</label>";
         if(f.kind!="choice")out+="<span id=\""+id+"-value\"/>";
         out+="</div>";
-        if(f.kind=="choice")out+="<select id=\""+id+"\">"+f.options+"</select>";
+        std::string options=f.options;const std::string source=">RenoDRT</option>";if(const auto at=options.find(source);at!=std::string::npos)options.replace(at,source.size(),">RenoDX (RenoDRT)</option>");
+        if(f.kind=="choice")out+="<select id=\""+id+"\">"+options+"</select>";
         else out+="<input id=\""+id+"\" class=\"range\" type=\"range\" min=\""+Number(f.minimum)+"\" max=\""+Number(f.maximum)+"\" step=\""+Number(f.step)+"\"/>";
         return out+="</div>";
     }

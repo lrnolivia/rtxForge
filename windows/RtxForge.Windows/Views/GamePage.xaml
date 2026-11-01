@@ -33,7 +33,7 @@
     <StackPanel x:Name="HeroHost" Grid.Column="1" VerticalAlignment="Top">
 
             <!-- .game-banner: edge to edge -->
-            <Grid x:Name="HeroBanner" Height="360">
+            <Grid x:Name="HeroBanner" Height="360" Loaded="OnHeroPresentationLoaded">
                 <Grid x:Name="WindowDragRegion" Height="48" Margin="0,0,112,0" VerticalAlignment="Top" Background="Transparent" />
                 <!-- .banner-shade: the art itself fades out, so it blends into any theme's background -->
                 <controls:FadedImage x:Name="HeroImage" />
@@ -64,7 +64,7 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
-                        <StackPanel x:Name="HeroHead" Grid.ColumnSpan="2" Spacing="4" Margin="0,0,0,4">
+                        <StackPanel x:Name="HeroHead" Grid.ColumnSpan="2" Spacing="6" Margin="0,0,0,12">
                             <!-- .cover-badge -->
                             <Border Style="{StaticResource ForgePillStyle}" HorizontalAlignment="Left" Padding="8,3,8,3">
                                 <TextBlock x:Name="StatusBadge" FontSize="11" FontWeight="SemiBold" />
@@ -72,7 +72,8 @@
                             <TextBlock x:Name="TitleText" FontFamily="{StaticResource ForgeHeroFontFamily}" FontSize="{StaticResource ForgeBannerTitleFontSize}"
                                        TextWrapping="WrapWholeWords" MaxLines="2" LineHeight="46" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                         </StackPanel>
-                        <StackPanel x:Name="HeroText" Grid.Row="1" Spacing="4" VerticalAlignment="Bottom">
+                        <Border x:Name="HeroInfoCard" Grid.Row="1" Padding="14,12" CornerRadius="12" BorderThickness="1" Visibility="{Binding Visibility, ElementName=HeroText}" VerticalAlignment="Bottom">
+                        <StackPanel x:Name="HeroText" Spacing="10">
                             <!-- metadata line: developer · release, then source / OS / test badges inline, wrapping -->
                             <controls:WrapRow Spacing="8" LineSpacing="6">
                                 <TextBlock x:Name="MetaText" Style="{StaticResource ForgeDimTextStyle}" FontSize="13" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
@@ -94,9 +95,10 @@
                                 </Border>
                             </controls:WrapRow>
                             <!-- .game-detail-summary: two lines -->
-                            <TextBlock x:Name="SummaryText" Style="{StaticResource ForgeDimTextStyle}" FontSize="12" MaxLines="2"
-                                       TextTrimming="CharacterEllipsis" MaxWidth="520" HorizontalAlignment="Left" />
+                            <TextBlock x:Name="SummaryText" Style="{StaticResource ForgeDimTextStyle}" FontSize="12" MaxLines="3" TextWrapping="Wrap"
+                                       TextTrimming="CharacterEllipsis" MaxWidth="700" HorizontalAlignment="Left" />
                         </StackPanel>
+                        </Border>
                         <controls:WrapRow x:Name="HeroActions" Grid.Row="1" Grid.Column="1" Spacing="8" LineSpacing="8" VerticalAlignment="Bottom">
                             <Button x:Name="InstallButton" Style="{StaticResource AccentButtonStyle}" Click="OnInstall">
                                 <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE896;" FontSize="14" /><TextBlock x:Name="InstallText" Text="Install Features" /></StackPanel>

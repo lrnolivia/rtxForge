@@ -47,8 +47,8 @@ public sealed partial class GameModeView
         body.Children.Clear();
         // The desktop layout: NR and MFG packages side by side, then unified packages,
         // then your own package beside the community projects.
-        body.Children.Add(ui.P(catalog.Status + ".", .85));
-        body.Children.Add(ui.P(Views.PackagesPage.GpuSupport, .8));
+        body.Children.Add(DetailFact("Hardware support", Views.PackagesPage.GpuSupport, glyph: "\uE7F8"));
+        body.Children.Add(DetailFact("System readiness", catalog.Status, glyph: "\uE9D9"));
         Border UseCard(PackageOption item)
         {
             var current = shell.Settings.RuntimeProvider == item.Id;
@@ -157,10 +157,13 @@ public sealed partial class GameModeView
             ui.Button("Show changes", () => _ = PreviousChangesAsync(), GmKind.Card, .8), ""));
         body.Children.Add(actions);
 
+        body.Children.Add(DetailFact("RenoDX HDR", "Install matching HDR mods automatically, or import a custom RenoDX package for a game.",
+            ui.Button("Choose game", ChooseHdrGame, GmKind.Card, .8, enabled: shell.Games.Count > 0), "\uE7F4"));
+
         var tools = DetailColumns();
         var once = new StackPanel { Spacing = t.Px(20) };
-        once.Children.Add(DetailHeading("One-time changes", ""));
-        once.Children.Add(ui.P("Turn neural rendering or frame generation on or off, or set the multiplier, in every game with a package installed.", .8));
+        once.Children.Add(DetailHeading("Global Settings", ""));
+        once.Children.Add(ui.P("Turn neural rendering or frame generation on or off, or set the multiplier, in every game with a package installed. Defaults for future installs stay the same.", .8));
         once.Children.Add(ui.Group(
         [
             Choice("Neural rendering", "Choose only the setting to change across installed games.", ["leave", "off", "on"],
@@ -184,12 +187,23 @@ public sealed partial class GameModeView
         if (globalNr != "leave") changes["nr"] = globalNr == "on";
         if (globalMfg != "leave") changes["mfg"] = int.Parse(globalMfg, System.Globalization.CultureInfo.InvariantCulture);
         if (changes.Count == 0) { Toast("Choose a setting to change first."); return; }
-        if (await RunReviewAsync("One-time changes", () => engine.ReviewGlobalControlsAsync(changes)) is { Errors.Count: 0 })
+        if (await RunReviewAsync("Global Settings", () => engine.ReviewGlobalControlsAsync(changes)) is { Errors.Count: 0 })
         {
             await engine.ReloadCompanionPresetsAsync();
             await Services.OverlayHelper.CommandAsync("reload-presets", start: false);
             globalNr = globalMfg = "leave";
             Render(keepFocus: true);
         }
+    }
+
+    void ChooseHdrGame()
+    {
+        var choices = new StackPanel { Spacing = t.Px(12) };
+        foreach (var game in shell.Games.OrderBy(g => g.Name))
+            choices.Children.Add(ui.RowButton(game.Name, "HDR controls", () =>
+            {
+                CloseModal(); OpenDetails(game); detailsSection = "Tools"; Render();
+            }, glyph: "\uE7F4"));
+        ShowModal("RenoDX HDR", choices, [ui.Button("Back", CloseModal)], CloseModal);
     }
 }

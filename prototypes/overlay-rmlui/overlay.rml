@@ -18,6 +18,8 @@
             <span class="brand">rtxForge</span>
           </div>
           <div class="window-actions">
+            <button id="open-effects" class="quiet hdr-entry" style="display: none" title="ReShade effects"><img class="glyph" src="icons/stack-light.png"/><span class="button-label">ReShade</span></button>
+            <button id="open-hdr" class="quiet hdr-entry" title="HDR preferences"><img class="glyph" src="icons/sun-light.png"/><span class="button-label">HDR</span></button>
             <button id="open-settings" class="close" title="Settings">
               <img class="glyph" src="icons/sliders-light.png" />
             </button>
@@ -27,23 +29,24 @@
             </button>
           </div>
         </div>
-        <h1>OVERLAY PREVIEW</h1>
+        <h1>Overlay preview</h1>
         <div class="sidebar">
           <button id="nav-overview">
             <img class="glyph" src="icons/gauge-light.png" /><span class="button-label">Overview</span></button>
-          <button id="nav-frame">
-            <img class="glyph" src="icons/film-strip-light.png" /><span class="button-label">Frame generation</span></button>
           <button id="nav-neural">
             <img class="glyph" src="icons/cpu-light.png" /><span class="button-label">Neural rendering</span></button>
-          <button id="nav-hdr"><img class="glyph" src="icons/sun-light.png" /><span class="button-label">HDR</span></button>
           <button id="nav-look">
             <img class="glyph" src="icons/sliders-horizontal-light.png" /><span class="button-label">Look &amp; detail</span></button>
-          <button id="nav-settings"><img class="glyph" src="icons/sliders-light.png" /><span class="button-label">Settings</span></button>
           <button id="nav-passes">
             <img class="glyph" src="icons/stack-light.png" /><span class="button-label">Pass tuning</span></button>
+          <button id="nav-frame">
+            <img class="glyph" src="icons/film-strip-light.png" /><span class="button-label">Frame generation</span></button>
+          <button id="nav-effects" style="display: none"><img class="glyph" src="icons/stack-light.png"/><span class="button-label">ReShade</span></button>
+          <button id="nav-hdr"><img class="glyph" src="icons/sun-light.png" /><span class="button-label">HDR</span></button>
+          <button id="nav-settings"><img class="glyph" src="icons/sliders-light.png" /><span class="button-label">Settings</span></button>
         </div>
         <div id="settings-screen" class="settings-screen" style="display: none">
-          <div class="settings-title"><h2><img class="glyph" src="icons/sliders-light.png" />SETTINGS</h2><button id="settings-back" class="quiet"><span class="button-label">Back</span></button></div>
+          <div class="settings-title"><h2><img class="glyph" src="icons/sliders-light.png" /><span>SETTINGS</span></h2><button id="settings-back" class="quiet"><span class="button-label">Back</span></button><button id="settings-modal-close" class="close modal-close" title="Close settings"><span class="stroke first"/><span class="stroke second"/></button></div>
           <button id="open-appearance" class="settings-appearance"><img class="glyph" src="icons/palette-light.png" /><span>Appearance<span class="setting-description">Theme, text and scale</span></span><span class="chevron" /></button>
           <div class="settings-group"><h3>LAYOUT</h3>
             <div id="layout-switch" class="settings-layouts">
@@ -171,7 +174,7 @@
               <span>Now</span>
             </div>
           </div>
-          <div id="hdr-page" class="hdr-page"><h2><img class="glyph" src="icons/sun-light.png" />HDR</h2><p id="hdr-main-note" class="hint"/><div id="hdr-main-fields"/></div>
+          <div id="hdr-page" class="hdr-page"><h2><img class="glyph" src="icons/sun-light.png" /><span>HDR</span></h2><p id="hdr-main-note" class="hint"/><div id="hdr-main-fields"/></div>
           <div id="tuning-content">
             <div class="preset-row">
               <select id="presets">
@@ -185,8 +188,7 @@
             <div class="tuning-sections">
               <section id="frame-section">
                 <div class="section-heading">
-                  <h2>
-                    <img class="glyph" src="icons/film-strip-light.png" />FRAME GENERATION</h2>
+                  <h2><img class="glyph" src="icons/film-strip-light.png" /><span>FRAME GENERATION</span></h2>
                   <button id="open-frame-options" class="icon-button" title="More options">
                     <img class="glyph" src="icons/sliders-light.png" />
                   </button>
@@ -213,8 +215,7 @@
               </section>
               <section class="neural" id="neural-section">
                 <div class="section-heading">
-                  <h2>
-                    <img class="glyph" src="icons/cpu-light.png" />NEURAL RENDERING</h2>
+                  <h2><img class="glyph" src="icons/cpu-light.png" /><span>NEURAL RENDERING</span></h2>
                   <button id="open-processing" class="icon-button" title="More options">
                     <img class="glyph" src="icons/sliders-light.png" />
                   </button>
@@ -239,12 +240,11 @@
                     <input id="strength" class="range" type="range" min="0" max="2" step="0.01" value="1" />
                   </div>
                   <div class="slider-field">
-                    <div class="field-heading"><label><img class="glyph" src="icons/cpu-light.png" />Render resolution</label><span id="render-resolution-value">100%</span></div>
+                    <div class="field-heading"><label class="icon-label"><img class="glyph" src="icons/cpu-light.png" /><span>Render resolution</span></label><span id="render-resolution-value">100%</span></div>
                     <input id="render-resolution" class="range" type="range" min="25" max="200" step="1" value="100" />
                   </div>
                   <div class="model-field model-single">
-                      <label>
-                        <img class="glyph" src="icons/cpu-light.png" />Model</label>
+                      <label class="icon-label"><img class="glyph" src="icons/cpu-light.png" /><span>Model</span></label>
                       <select id="model-preset">
                         <option value="0">Automatic</option>
                         <option value="1">Preset 1</option>
@@ -253,10 +253,9 @@
                       </select>
                   </div>
                   <div class="model-row">
-                    <div class="model-field"><label><img class="glyph" src="icons/cpu-light.png" />Processing stage</label><select id="processing-stage"><option value="1">Before upscaling</option><option value="0">After upscaling</option></select></div>
+                    <div class="model-field"><label class="icon-label"><img class="glyph" src="icons/cpu-light.png" /><span>Processing stage</span></label><select id="processing-stage"><option value="1">Before upscaling</option><option value="0">After upscaling</option></select></div>
                     <div class="model-field">
-                      <label>
-                        <img class="glyph" src="icons/stack-light.png" />Passes</label>
+                      <label class="icon-label"><img class="glyph" src="icons/stack-light.png" /><span>Passes</span></label>
                       <div class="count-stepper"><button id="pass-minus" aria-label="Fewer passes" title="Fewer passes"><span class="button-label">−</span></button><span id="pass-count">3 passes</span><button id="pass-plus" aria-label="More passes" title="More passes"><span class="button-label">+</span></button></div>
                     </div>
                   </div>
@@ -272,47 +271,30 @@
                 <div id="extra-neural" class="advanced-section" />
               </section>
             </div>
-            <button id="open-hdr" class="text-link hdr-entry"><img class="glyph" src="icons/sun-light.png" /><span class="button-label">HDR</span><span class="chevron"/></button>
-            <div class="footer">
-              <div class="history-actions">
-                <button id="undo" class="quiet">
-                  <img class="glyph" src="icons/arrow-u-up-left-light.png" /><span class="button-label">Undo</span></button>
-                <button id="redo" class="quiet">
-                  <img class="glyph" src="icons/arrow-u-up-right-light.png" /><span class="button-label">Redo</span></button>
-              </div>
-              <button id="defaults" class="quiet">
-                <img class="glyph" src="icons/arrow-counter-clockwise-light.png" /><span class="button-label">Reset</span></button>
-            </div>
-            <div class="compare">
-              <select id="compare-mode">
-                <option value="toggle" selected="selected">On / Off</option>
-                <option value="presets">Presets</option>
-              </select>
-              <button id="compare-a"><span class="button-label">Off</span></button>
-              <button id="compare-b" class="selected"><span class="button-label">On</span></button>
-            </div>
-            <div id="compare-preset-pair" class="compare-preset-pair">
-              <select id="compare-left">
-                <option value="natural" selected="selected">Natural</option>
-                <option value="cinematic">Cinematic</option>
-              </select>
-              <select id="compare-right">
-                <option value="natural">Natural</option>
-                <option value="cinematic" selected="selected">Cinematic</option>
-              </select>
-            </div>
             <p id="feedback" class="preview-note">Preview · no game connected.</p>
           </div>
+        </div>
+        <div id="tuning-footer" class="tuning-footer">
+          <div class="footer">
+            <div class="history-actions">
+              <button id="undo" class="quiet"><img class="glyph" src="icons/arrow-u-up-left-light.png"/><span class="button-label">Undo</span></button>
+              <button id="redo" class="quiet"><img class="glyph" src="icons/arrow-u-up-right-light.png"/><span class="button-label">Redo</span></button>
+            </div>
+            <button id="defaults" class="quiet"><img class="glyph" src="icons/arrow-counter-clockwise-light.png"/><span class="button-label">Reset</span></button>
+          </div>
+          <button id="preview-original" class="quiet preview-original" title="Temporarily view the image without neural rendering. Release to return."><span id="preview-original-label" class="button-label">Hold to preview without NR</span></button>
         </div>
       </paint-root>
       <paint-root class="glass inspector" id="inspector">
         <div class="inspector-heading">
-          <h2 id="inspector-title">PASS TUNING</h2>
+          <h2 id="inspector-title"><span>PASS TUNING</span></h2>
           <button id="inspector-close" class="close" aria-label="Close inspector" title="Close inspector">
             <span class="stroke first" />
             <span class="stroke second" />
           </button>
         </div>
+        <div id="settings-modal-host" style="display: none"/>
+        <div id="effects-inspector" style="display: none"><p id="effects-note" class="hint"/><div id="effects-fields"/></div>
         <div id="hdr-inspector" style="display: none"><p id="hdr-popup-note" class="hint"/><div id="hdr-popup-fields"/></div>
         <div id="pass-inspector">
           <div class="segments pass-tabs">
@@ -464,10 +446,9 @@
         <span class="stroke second" />
       </button>
     </paint-root>
-    <paint-root id="type-panel" class="glass type-panel appearance-panel">
+    <paint-root id="type-panel" class="glass type-panel appearance-panel" style="display: none">
       <div class="settings-heading">
-        <h2 id="settings-title">
-          <img class="glyph" src="icons/palette-light.png" />APPEARANCE</h2>
+        <h2 id="settings-title"><img class="glyph" src="icons/palette-light.png" /><span>APPEARANCE</span></h2>
         <button id="type-close" class="close" title="Close appearance">
           <span class="stroke first" />
           <span class="stroke second" />
@@ -475,12 +456,31 @@
       </div>
       <div class="appearance-body">
         <div class="appearance-block">
-          <label>Font</label>
-          <select id="font-select">
-            <option value="roboto">Roboto</option>
-            <option value="inter">Inter</option>
-            <option value="aptos">Aptos</option>
-          </select>
+          <div class="field-heading">
+            <label>Theme</label>
+            <span id="theme-label">Clear</span>
+          </div>
+          <div id="theme-menu" class="theme-swatches">
+            <button id="theme-light">
+              <span class="theme-sample light-sample" />
+              <span>Light</span>
+            </button>
+            <button id="theme-dark">
+              <span class="theme-sample dark-sample" />
+              <span>Dark</span>
+            </button>
+            <button id="theme-clear">
+              <span class="theme-sample clear-sample" />
+              <span>Clear</span>
+            </button>
+            <button id="theme-accent"><span class="theme-sample accent-sample" /><span>Accent</span></button>
+          </div>
+          <p id="theme-description" class="hint">Frosted glass, tuned to the scene.</p>
+          <div id="accent-character-row" class="accent-character" style="display: none">
+            <div class="field-heading"><label>Surface character</label><span id="accent-character-value">Light</span></div>
+            <input id="accent-character" class="range" type="range" min="0" max="100" step="1" value="35" />
+            <div class="character-labels"><span>Clear</span><span>Light</span><span>Dark</span></div>
+          </div>
         </div>
         <div class="appearance-block">
           <label>Text size</label>
@@ -507,27 +507,6 @@
             <button id="scale-plus" title="Larger overlay"><span class="button-label">+</span></button>
           </div>
         </div>
-        <div class="appearance-block">
-          <div class="field-heading">
-            <label>Theme</label>
-            <span id="theme-label">Clear</span>
-          </div>
-          <div id="theme-menu" class="theme-swatches">
-            <button id="theme-light">
-              <span class="theme-sample light-sample" />
-              <span>Light</span>
-            </button>
-            <button id="theme-dark">
-              <span class="theme-sample dark-sample" />
-              <span>Dark</span>
-            </button>
-            <button id="theme-clear">
-              <span class="theme-sample clear-sample" />
-              <span>Clear</span>
-            </button>
-          </div>
-          <p id="theme-description" class="hint">Frosted glass, tuned to the scene.</p>
-        </div>
         <button id="appearance-more" class="more-trigger">
           <img class="glyph" src="icons/sliders-light.png" />
           <span>More</span>
@@ -536,26 +515,47 @@
         <div id="appearance-details" class="appearance-details" style="display: none">
           <div class="slider-field">
             <div class="field-heading">
-              <label>Tint opacity</label>
-              <span id="tint-opacity-value" />
-            </div>
-            <input id="tint-opacity" class="range" type="range" min="0" max="100" step="1" value="10" />
-          </div>
-          <div class="slider-field">
-            <div class="field-heading">
               <label>Blur</label>
               <span id="blur-radius-value" />
             </div>
             <input id="blur-radius" class="range" type="range" min="16" max="48" step="1" value="44" />
           </div>
-          <div class="slider-field">
+          <div class="inherit-row">
+            <label>Motion effects</label>
+            <button id="motion-effects" class="switch on">
+              <span />
+            </button>
+          </div>
+        </div>
+        <button id="appearance-god-mode" class="more-trigger god-mode-trigger preview-only"><img class="glyph" src="icons/sliders-light.png" /><span>God Mode</span><span class="chevron" /></button>
+        <div id="appearance-god-details" class="appearance-details preview-only" style="display: none">
+          <p class="hint">Prototype only. These experiments are hidden from users.</p>
+        <div class="appearance-block">
+          <label>Font</label>
+          <select id="font-select">
+            <option value="roboto">Roboto</option>
+            <option value="inter">Inter</option>
+            <option value="aptos">Aptos</option>
+          </select>
+        </div>
+<div class="option-group preview-only"><label>Heading accents</label><select id="heading-accent-mode"><option value="normal">Normal</option><option value="screen">Screen</option><option value="hard-light">Hard Light</option><option value="soft-light">Soft Light</option><option value="overlay">Overlay</option><option value="multiply">Multiply</option></select><div class="slider-field"><div class="field-heading"><label>Intensity</label><span id="heading-accent-strength-value"/></div><input id="heading-accent-strength" class="range" type="range" min="0" max="100" step="1" value="100"/></div></div>
+<div class="option-group preview-only"><label>Control accents</label><select id="control-accent-mode"><option value="normal">Normal</option><option value="screen">Screen</option><option value="hard-light">Hard Light</option><option value="soft-light">Soft Light</option><option value="overlay">Overlay</option><option value="multiply">Multiply</option></select><div class="slider-field"><div class="field-heading"><label>Intensity</label><span id="control-accent-strength-value"/></div><input id="control-accent-strength" class="range" type="range" min="0" max="100" step="1" value="100"/></div></div>
+
+          <div class="slider-field preview-only">
+            <div class="field-heading">
+              <label>Tint opacity</label>
+              <span id="tint-opacity-value" />
+            </div>
+            <input id="tint-opacity" class="range" type="range" min="0" max="100" step="1" value="10" />
+          </div>
+          <div class="slider-field preview-only">
             <div class="field-heading">
               <label>Grain</label>
               <span id="grain-amount-value" />
             </div>
             <input id="grain-amount" class="range" type="range" min="0" max="8" step=".1" value="4" />
           </div>
-          <div class="slider-field">
+          <div class="slider-field preview-only">
             <label>Surface blend</label>
             <select id="surface-blend">
               <option value="normal">Normal</option>
@@ -571,14 +571,14 @@
               <option value="difference">Difference</option>
             </select>
           </div>
-          <div class="slider-field">
+          <div class="slider-field preview-only">
             <div class="field-heading">
               <label>Blend strength</label>
               <span id="blend-strength-value" />
             </div>
             <input id="blend-strength" class="range" type="range" min="0" max="100" step="1" value="50" />
           </div>
-          <div class="inherit-row">
+          <div class="inherit-row preview-only">
             <label>Subtle foreground shadow</label>
             <button id="text-depth" class="switch">
               <span />
@@ -590,20 +590,14 @@
               <span />
             </button>
           </div>
-          <div class="inherit-row">
-            <label>Motion effects</label>
-            <button id="motion-effects" class="switch on">
-              <span />
-            </button>
-          </div>
-          <div class="slider-field">
+          <div class="slider-field preview-only">
             <label>Toast shape</label>
-            <div class="segments toast-shapes">
+            <div class="segments toast-shapes preview-only">
               <button id="toast-rounded"><span class="button-label">Rounded</span></button>
               <button id="toast-pill"><span class="button-label">Pill</span></button>
             </div>
           </div>
-          <button id="theme-reset" class="text-link">
+          <button id="theme-reset" class="text-link preview-only">
             <img class="glyph" src="icons/arrow-counter-clockwise-light.png" /><span class="button-label">Reset theme</span></button>
         </div>
       </div>

@@ -13,5 +13,6 @@
     <EmbeddedResource Include="../../../providers/skynizz-bridge/controls.json" LogicalName="RtxForge.FeatureControls.json" />
     <EmbeddedResource Include="../../../providers/mfg-unlocker/preset-controls.json" LogicalName="RtxForge.MfgControls.json" />
     <Compile Include="../../RtxForge.Windows/Services/OverlayShortcut.cs" Link="OverlayShortcut.cs" />
+    <Compile Include="../../RtxForge.Windows/Services/OverlayArtwork.cs" Link="OverlayArtwork.cs" />
   </ItemGroup>
 </Project>

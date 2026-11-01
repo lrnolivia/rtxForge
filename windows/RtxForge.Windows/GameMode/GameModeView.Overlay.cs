@@ -24,6 +24,20 @@ public sealed partial class GameModeView
     Button GlassChoice(string title, string key, string[] keys, string[] captions, bool custom = false) =>
         Choice(title, null, keys, captions, () => GlassAppearance.Load().ToJson()[key]!.ToString(),
             value => SetGlass(() => GlassAppearance.Set(key, value, custom)), glyph: "\uE790");
+    UIElement AccentCharacterSetting()
+    {
+        var slider = new Slider { Minimum=0, Maximum=100, StepFrequency=1, SmallChange=1, LargeChange=5,
+            Value=GlassAppearance.Load().Number("AccentCharacter",35,0,100), IsThumbToolTipEnabled=false,
+            HorizontalAlignment=HorizontalAlignment.Stretch };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(slider,"Accent character: Clear, Light, Dark");
+        ui.Focusable(slider);Key(slider,"overlay-accent-character");
+        slider.Tag=new Adjustable(delta=>slider.Value=Math.Clamp(slider.Value+delta,0,100));
+        slider.ValueChanged+=(_,e)=>SetGlass(()=>GlassAppearance.Set("AccentCharacter",(int)Math.Round(e.NewValue)));
+        var content=new StackPanel { Spacing=t.Px(10), Padding=new Thickness(t.Px(28),t.Px(22),t.Px(28),t.Px(22)),
+            Visibility=GlassAppearance.Load().Theme=="accent"?Visibility.Visible:Visibility.Collapsed };
+        content.Children.Add(ui.PreferenceRow("Accent character","Clear → Light → Dark",null,minHeight:0,padding:new Thickness(0)));
+        content.Children.Add(slider);return content;
+    }
     OverlayLayoutPicker LayoutChoices()
     {
         var picker = new OverlayLayoutPicker(GlassAppearance.Load().Layout);
@@ -38,10 +52,17 @@ public sealed partial class GameModeView
             Choice("Primary overlay", "Use the rtxForge panel in compatible packages, or the original OptiScaler, Feeder or ReShade menus.",
                 ["game", "optiscaler"], ["rtxForge", "Native"], () => shell.Settings.OverlayRenderer == "optiscaler" ? "optiscaler" : "game", value => SetOverlay(s => s.OverlayRenderer = value), glyph: "\uE7F4"),
             LayoutChoices(),
-            Choice("Appearance", null, GlassAppearance.Themes, ["Clear", "Light", "Dark"],
+        ]),
+        new("Appearance", null,
+        [
+            Choice("Theme", "Selecting a theme restores its material defaults.", GlassAppearance.Themes, ["Clear", "Light", "Dark", "Accent"],
                 () => GlassAppearance.Load().Theme, value => { GlassAppearance.UseTheme(value); SetOverlay(s => { s.OverlayTheme = value; s.OverlayAppearance=GlassAppearance.Load().ToJson(); }); }, glyph: "\uE790"),
+            AccentCharacterSetting(),
             GlassChoice("Text size","TextSize",["18","22","26"],["Aa  Smaller","Aa  Default","Aa  Larger"]),
             GlassChoice("Motion effects","Motion",["1","0"],["On","Off"]),
+        ]),
+        new("Status and notifications", null,
+        [
             GlassChoice("Hotkey notifications","ShowNotifications",["1","0"],["On","Off"]),
             OverlayToggle("Live feature statistics", "Measured activity beside NR and frame generation controls.", () => shell.Settings.OverlayLiveStats, (s, value) => s.OverlayLiveStats = value, glyph: "\uE9D9"),
             OverlayToggle("Welcome message", "Show the rtxForge logo and assigned shortcut at game startup.", () => shell.Settings.OverlayWelcome, (s, value) => s.OverlayWelcome = value, glyph: "\uE8F2"),

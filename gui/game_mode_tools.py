@@ -57,7 +57,8 @@ class GameModeTools:
     def build_packages(self):
         page, body = self.tool_page('Packages', 'Choose what rtxForge installs. Every game change is reviewed before it is applied.')
         status = self.label('Loading packages…', 'gm-p')
-        body.append(status)
+        body.append(self.tool_card('System readiness', None, status, icon='rtx-gm-monitor-symbolic'))
+        body.append(self.tool_card('Hardware support', 'RTX 20, 30, 40 and 50. Feature availability depends on the selected package and game.', None, icon='rtx-gm-monitor-symbolic'))
         revision = self.render_revision
 
         def ready(host):
@@ -179,13 +180,14 @@ class GameModeTools:
         for index, (title, description, action, icon) in enumerate(specs):
             actions.attach(self.tool_card(title, description, action, icon=icon), index % count, index // count, 1, 1)
         body.append(actions)
+        body.append(self.tool_card('RenoDX HDR', 'Install matching HDR mods automatically, or import a custom RenoDX package for a game.', self.button('Choose game', self.choose_hdr_game, enabled=bool(self.owner.games)), icon='rtx-gm-monitor-symbolic'))
         tools, count = columns(2)
         self.global_nr = getattr(self, 'global_nr', None)
         self.global_mfg = getattr(self, 'global_mfg', None)
         once = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(20), hexpand=True)
         once.add_css_class('gm-tool-card')
-        once.append(self.heading('One-time changes', 'rtx-gm-gamepad-symbolic'))
-        once.append(self.label('Turn neural rendering or frame generation on or off, or set the multiplier, in every game with a package installed.', 'gm-p', wrap=True))
+        once.append(self.heading('Global Settings', 'rtx-gm-gamepad-symbolic'))
+        once.append(self.label('Turn neural rendering or frame generation on or off, or set the multiplier, in every game with a package installed. Defaults for future installs stay the same.', 'gm-p', wrap=True))
         once.append(self.group([
             self.choice('Neural rendering', 'Choose only the setting to change across installed games.',
                         [None, False, True], ['Leave as is', 'Off', 'On'], lambda: self.global_nr, lambda v: setattr(self, 'global_nr', v)),
@@ -201,6 +203,15 @@ class GameModeTools:
                                    self.button('View usage', self.owner.review_storage, enabled=live), icon='drive-multidisk-symbolic'), 1 % count, 1 // count, 1, 1)
         body.append(tools)
         return page
+
+    def choose_hdr_game(self):
+        choices = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=self.theme.px(12))
+        def choose(game):
+            self.close_modal()
+            self.open_game_tools(game)
+        for game in sorted(self.owner.games, key=lambda game: game['name'].casefold()):
+            choices.append(self.row_button(game['name'], 'HDR controls', lambda game=game: choose(game), icon='rtx-gm-monitor-symbolic'))
+        self.show_modal('RenoDX HDR', choices, [self.button('Back', self.close_modal)], self.close_modal)
 
     def open_game_tools(self, game):
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=self.theme.px(24))

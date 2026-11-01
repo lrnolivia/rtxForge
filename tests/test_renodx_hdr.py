@@ -33,6 +33,46 @@ class Engine:
 
 
 class HdrTests(unittest.TestCase):
+    def reshade_install(self,source=None):
+        import reshade_import as reshade
+        with patch.object(reshade,'storage',return_value=self.state),patch.object(reshade,'host_bytes',return_value=self.host),patch.object(reshade,'WINDOWS',True):
+            plan=reshade.prepare({},self.row,source)
+            return reshade,reshade.apply({},plan)
+
+    def test_hdr_first_keeps_shared_reshade_for_later_shader_imports(self):
+        import reshade_import as reshade
+        bundle={'rtxforge-effects.addon64':b'effects','rtxforge-glass.dll':b'glass'}
+        with patch.object(reshade,'bridge_files',return_value=bundle):
+            hdr.apply({},hdr.prepare({},self.row))
+            shader=self.root/'Custom.fx';shader.write_bytes(b'float parameter;')
+            _,state=self.reshade_install(shader)
+        plan=hdr.prepare_remove({},self.row)
+        self.assertTrue(plan['consumers']);hdr.apply({},plan)
+        self.assertFalse((self.game/'renodx-game.addon64').exists())
+        for name in ('dxgi.dll',*bundle,'ReShade.ini'):self.assertTrue((self.game/name).is_file())
+        with patch.object(reshade,'storage',return_value=self.state),patch.object(reshade,'WINDOWS',True):reshade.restore({},state)
+        self.assertEqual((self.game/'dxgi.dll').read_bytes(),self.host)
+
+    def test_reshade_first_cannot_lose_its_host_while_hdr_uses_it(self):
+        import reshade_import as reshade
+        bundle={'rtxforge-effects.addon64':b'effects','rtxforge-glass.dll':b'glass'}
+        with patch.object(reshade,'bridge_files',return_value=bundle):
+            _,state=self.reshade_install()
+            hdr.apply({},hdr.prepare({},self.row))
+        with patch.object(reshade,'storage',return_value=self.state),patch.object(reshade,'WINDOWS',True):
+            with self.assertRaisesRegex(t.Refusal,'HDR still uses'):reshade.restore({},state)
+            hdr.apply({},hdr.prepare_remove({},self.row))
+            reshade.restore({},state)
+        self.assertFalse((self.game/'dxgi.dll').exists())
+        self.assertEqual((self.game/'save.dat').read_bytes(),b'save')
+
+    def test_new_reshade_dependency_after_removal_review_is_preserved(self):
+        hdr.apply({},hdr.prepare({},self.row));plan=hdr.prepare_remove({},self.row)
+        folder=self.state/'extras-transactions/new';folder.mkdir(parents=True)
+        (folder/'transaction.json').write_text(json.dumps({'status':'complete','plan':dict(self.row,kind='reshade-import',source_name='New pack')}))
+        with self.assertRaisesRegex(t.Refusal,'dependencies changed'):hdr.apply({},plan)
+        self.assertEqual((self.game/'dxgi.dll').read_bytes(),self.host)
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name).resolve(); self.game = self.root / 'game'; self.game.mkdir()

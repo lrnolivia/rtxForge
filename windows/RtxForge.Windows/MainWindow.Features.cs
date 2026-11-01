@@ -745,9 +745,9 @@ public sealed partial class MainWindow
     public async Task InstallExtraAsync(Game game, string kind)
     {
         if (Service.IsPreview) { ShowToast("Installing tools is disabled in preview mode."); return; }
-        var path = kind == "reshade" ? await PickFileAsync(".dll") : await PickFileAsync(".addon64");
+        var path = kind == "reshade" ? "" : kind == "reshade-import" ? await PickFileAsync(".zip", ".dll", ".addon64", ".addon32", ".ini", ".fx", ".fxh") : await PickFileAsync(".addon64");
         if (path is null) return;
-        await ReviewDialog.ShowAsync(this, kind == "reshade" ? "Install ReShade" : "Install Add-on", () => Service.ReviewExtraAsync(game, path, kind));
+        await ReviewDialog.ShowAsync(this, kind == "reshade" ? "Install ReShade" : kind == "reshade-import" ? "Import ReShade package" : "Install Add-on", () => Service.ReviewExtraAsync(game, path, kind));
     }
 
     public Task RestoreExtraAsync(ExtraRecord record) =>

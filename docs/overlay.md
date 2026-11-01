@@ -4,9 +4,20 @@ The overlay opens for the compatible game you are playing. It keeps frame
 generation and neural rendering visible, with Look, fine tuning, sharpening
 and performance controls in expandable sections. The glass presentation offers Side Panel, Advanced and Bar layouts,
 with a complete Settings screen and separate Appearance editor. Clear is the
-default; Light and Dark have their own fixed material presets. Theme, text size
+default; Light and Dark have their own fixed material presets. Accent uses the
+game's accent for its surfaces, with a Clear–Light–Dark character slider. Theme, text size
 are available in Settings; overlay scale is adjusted in-game. The styling prototype retains
-experimental font and material controls.
+experimental font and material controls. The end-user Appearance editor orders
+Theme before Text size, followed by Scale; More offers Blur and Motion effects.
+The preview keeps tint, grain, blend, foreground-depth, font and toast-shape tuning
+in a separate collapsed God Mode section. These experimental controls are hidden
+in the game renderer.
+
+The outer window keeps its frosted material. Translucent inner panels, nested
+cards and controls get progressively lighter, with restrained soft shadows on
+the cards. Light uses a brighter inner tint; Dark and Clear keep their material
+opacity. Game titles retain their original capitalization, while section
+headings use capitals.
 
 Reset icons restore individual values or sections to their documented
 defaults. The main Reset action restores supported controls together. Undo and Redo keep
@@ -22,12 +33,12 @@ the named entry; current settings and the separate startup preset remain.
 Presets from a different installed package remain listed but cannot be loaded.
 Existing single saved presets appear as Saved preset.
 
-Compare offers On / Off for neural rendering or two compatible saved presets.
-Choose a mode, then switch between its two buttons while looking at the game.
-Session edits remain separate from saved presets; comparison never saves a
-preset automatically. Some settings, including DLSS render presets, take
-effect when the game next creates the corresponding feature rather than on
-the next displayed frame.
+Hold to preview without NR temporarily pauses neural rendering while the button
+is held. Releasing it, closing the overlay or leaving the game restores the prior
+NR state. Frame generation and HDR stay as they were. This preview does not add
+an undo entry or save a preset. Use the preset selector at the top to load named
+tuning; use the NR switch to make a lasting on/off change. Some model and DLSS
+settings take effect when the game next creates the corresponding feature.
 
 The DirectX 12 NR route supports independent settings for passes 2 and 3 when
 multiple passes are selected. Inherit shared tuning preserves the previous
@@ -108,3 +119,46 @@ shadow follows the actual foreground ink over bright surfaces, treating labels,
 glyphs and values consistently. Existing glass gently softens bright highlights;
 no extra row rectangles or shadow boxes are introduced. Dark surfaces receive no
 added ink shadow. Light and Dark retain their own foreground palettes.
+
+Heading accents default to Screen in Clear and Dark, and Multiply in Light.
+Control accents use Screen in Clear and Dark, and Normal in Light. Bright yellow
+keeps its vivid control color; Light uses neutral heading ink when yellow would
+need an olive/brown shade to meet contrast. The app's automatic artwork palettes
+and suggestions apply the same shade policy on desktop and in Game Mode. A
+user's explicit primary color is preserved.
+
+Game Details → Tools offers automatic ReShade installation and importing a ZIP,
+runtime DLL, add-on, shader or preset INI. Import reviews show the exact files and
+hashes. Shader/preset imports reuse an installed custom ReShade runtime; they do
+not replace it with the official build. Preset globals, unknown shader keys and
+publisher notices are retained. Existing conflicting files require restoring
+their owner first. The installer uses the detected API and architecture and
+enables the verified OptiScaler plugin route where available.
+
+The x64 package includes the effects bridge and matching glass renderer. A
+standalone DirectX 11 ReShade installation can host the glass panel without NR
+or MFG; unsupported feature controls are omitted. Existing Feeder and OptiScaler
+installations retain their own host. Standalone glass hosting on other graphics
+APIs, standalone Vulkan installation and 32-bit glass hosting are not established.
+HDR and ReShade imports preserve shared runtime dependencies while another
+installation still uses them. Remove HDR before restoring an import that owns
+those dependencies; retained shared files are reported rather than deleted.
+
+The helper resolves a nested game's exact enclosing Steam installation when an
+older install record lacks its app ID. Its accent then comes from the same local
+artwork or custom color as the library. Per-game shortcut overrides take
+precedence over the global shortcut, allowing games with Backtick consoles to
+use a separate binding.
+
+An add-on-capable ReShade runtime can expose its loaded effects to the glass
+overlay through the bundled effects bridge. ReShade provides parameter names,
+labels, tooltips, choices, ranges and component counts. Effect switches, sliders
+and choices apply live and save to the current ReShade preset. Numeric fields
+without range metadata use an explicit Apply action. Custom scalar entries in
+the global ReShade.ini appear under Add-on settings, with an Apply action and a
+restart notice. Input drafts survive runtime refreshes; effect reloads invalidate
+old parameter handles. Discovery is bounded to 512 controls and 16 components per
+uniform. Opaque native add-on menus, multi-value config entries and settings in
+private add-on files still require a specific adapter or the add-on's own menu.
+The glass host remains a 64-bit renderer; importing an x86 ReShade package does
+not establish a 32-bit glass rendering route.

@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <psapi.h>
 #include <d3d11_1.h>
 #include <d3d11on12.h>
 #include <wincodec.h>
@@ -18,6 +19,19 @@
 #include <set>
 using Microsoft::WRL::ComPtr;
 namespace {
+using EffectRead=size_t(__cdecl*)(char*,size_t);
+using EffectWrite=bool(__cdecl*)(const char*);
+bool WithEffects(const std::function<bool(EffectRead,EffectWrite)>& use) {
+    HMODULE modules[1024]{};DWORD needed{};
+    if(!K32EnumProcessModules(GetCurrentProcess(),modules,sizeof(modules),&needed))return false;
+    for(size_t i=0;i<std::min<size_t>(needed/sizeof(HMODULE),std::size(modules));++i){
+        HMODULE held{};if(!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,reinterpret_cast<LPCWSTR>(modules[i]),&held))continue;
+        const auto read=reinterpret_cast<EffectRead>(GetProcAddress(held,"ForgeReShadeReadV1"));
+        const auto write=reinterpret_cast<EffectWrite>(GetProcAddress(held,"ForgeReShadeWriteV1"));
+        const bool result=read&&write&&use(read,write);FreeLibrary(held);if(result)return true;
+    }
+    return false;
+}
 void Check(HRESULT n){if(FAILED(n))throw std::runtime_error("Glass renderer operation failed: "+std::to_string(n));}
 struct Asset {const unsigned char* data{};size_t size{};};
 Asset Find(const std::string& name) {
@@ -73,7 +87,7 @@ struct Runtime {
     Rml::Context* context{};Rml::ElementDocument* document{};bool initialized=false,mouse[3]{},keys[256]{},hostVisible=false;int width{},height{};DXGI_FORMAT format{};
     ForgeWorkbench::Values lastValues;
     ForgeWorkbench::History history;double historyPaint=-1;
-    double nextTelemetry=0,nextPreferences=0;std::string lastHelper;
+    double nextTelemetry=0,nextPreferences=0;std::string lastHelper,lastEffects;ULONGLONG nextEffects{};
     unsigned outputSpace=0;
     bool receivedSnapshot=false,messageInitialized=false,dx12Interop=false,systemReducedMotion=false;
     int helperRevision=-1;bool helperReady=false;std::set<std::string> supportedKeys;
@@ -84,7 +98,7 @@ struct Runtime {
         const auto& c=*controls;
         return {{"ThemeVersion",4},{"Theme",c.appearance},{"Custom",int(c.customTheme)},{"Layout",c.layout},
             {"TextFont",c.copyFont},{"TextSize",c.copySize},{"Scale",c.overlayScale},{"ScaleBaseline",120},
-            {"LightTint",int(c.lightOpacity)},{"DarkTint",int(c.darkOpacity)},{"ClearTint",int(c.clearOpacity)},
+            {"LightTint",int(c.lightOpacity)},{"DarkTint",int(c.darkOpacity)},{"ClearTint",int(c.clearOpacity)},{"AccentCharacter",int(c.accentCharacter)},{"AccentTint",int(c.accentOpacity)},
             {"Blur",int(c.blurRadius)},{"Grain",int(std::lround(c.grainAmount*10))},{"BlendStrength",int(c.blendStrength)},
             {"SurfaceBlend",c.surfaceBlend},{"TextDepth",int(c.textDepth)},{"InvertDark",int(c.invertDark)},
             {"ToastPill",int(c.toastPill)},{"Motion",int(c.motionEnabled)},{"ShowNotifications",int(c.showNotifications)}};
@@ -92,10 +106,11 @@ struct Runtime {
     nlohmann::json SettingsValues()const {const auto& c=*controls;return {{"overlay_appearance",AppearanceValues()},{"overlay_helper",c.helperEnabled},{"overlay_start_with_windows",c.startWithWindows},{"overlay_live_stats",c.showStats},{"overlay_welcome",c.showWelcome},{"overlay_welcome_position",c.welcomePosition},{"overlay_renderer",c.primaryMenu},{"optiscaler_hotkey",c.optiShortcut},{"optiscaler_ui",c.menuSettings.at("opti-menu")},{"optiscaler_intro",c.menuSettings.at("opti-intro")},{"reshade_ui",c.menuSettings.at("reshade-menu")},{"reshade_intro",c.menuSettings.at("reshade-intro")}};}
     void Appearance(const nlohmann::json& a) {
         if(!a.is_object()||a.empty()||a==lastAppearance)return;lastAppearance=a;auto& c=*controls;
-        const auto previous=c.layout;c.UseTheme(std::clamp(a.value("Theme",3),1,3));
+        const auto previous=c.layout;c.UseTheme(std::clamp(a.value("Theme",3),1,4));
         c.copyFont=a.value("TextFont",std::string("roboto"));if(c.copyFont!="roboto"&&c.copyFont!="inter")c.copyFont="roboto";
         c.copySize=std::clamp(a.value("TextSize",22),16,26);c.overlayScale=std::clamp(a.value("Scale",100),70,150);
         c.lightOpacity=float(std::clamp(a.value("LightTint",100),0,100));c.darkOpacity=float(std::clamp(a.value("DarkTint",80),0,100));c.clearOpacity=float(std::clamp(a.value("ClearTint",20),0,100));
+        c.accentCharacter=float(std::clamp(a.value("AccentCharacter",35),0,100));c.accentOpacity=float(std::clamp(a.value("AccentTint",int(MaterialColor::AccentOpacity(c.accentCharacter)*100)),0,100));
         c.blurRadius=float(std::clamp(a.value("Blur",int(c.blurRadius)),16,48));c.grainAmount=std::clamp(a.value("Grain",40),0,80)/10.f;c.blendStrength=float(std::clamp(a.value("BlendStrength",int(c.blendStrength)),0,100));
         const auto blend=a.value("SurfaceBlend",c.surfaceBlend);if(MaterialColor::Valid(blend))c.surfaceBlend=blend;
         c.customTheme=a.value("Custom",0)!=0;c.textDepth=a.value("TextDepth",1)!=0;c.invertDark=a.value("InvertDark",0)!=0;c.toastPill=a.value("ToastPill",0)!=0;c.motionEnabled=a.value("Motion",1)!=0;c.showNotifications=a.value("ShowNotifications",1)!=0;
@@ -145,13 +160,13 @@ struct Runtime {
         if(data.contains("hdr"))Hdr(data["hdr"]);
         if(revision==helperRevision)return;helperRevision=revision;
         if(data.contains("presets")&&data["presets"].is_array()&&data["presets"].size()<=12){
-            std::map<std::string,std::string> selected;for(const auto* id:{"presets","compare-left","compare-right"})selected[id]=dynamic_cast<Rml::ElementFormControl*>(c.Element(id))->GetValue();
+            std::map<std::string,std::string> selected;for(const auto* id:{"presets"})selected[id]=dynamic_cast<Rml::ElementFormControl*>(c.Element(id))->GetValue();
             if(data.value("op",std::string())=="preset-save"&&!data.value("error",false))selected["presets"]=data.value("preset_name",selected["presets"]);
             c.presets.clear();std::string options;for(const auto& preset:data["presets"]){if(!preset.is_object()||!preset.value("compatible",false))continue;const auto name=preset.value("name",std::string());if(name.empty()||name.size()>60||!preset.contains("values")||!preset["values"].is_object())continue;
                 auto values=c.values;for(const auto& [key,value]:preset["values"].items())if(value.is_number()&&values.contains(key))values[key]=value.get<float>();c.presets[name]=values;const auto safe=Rml::StringUtilities::EncodeRml(name);options+="<option value=\""+safe+"\">"+safe+"</option>";
             }
-            if(options.empty())options="<option value=\"\">No saved presets</option>";c.typographySync=true;for(const auto* id:{"presets","compare-left","compare-right"}){c.Element(id)->SetInnerRML(options);if(c.presets.contains(selected[id]))dynamic_cast<Rml::ElementFormControl*>(c.Element(id))->SetValue(selected[id]);}c.typographySync=false;
-            if(!c.presets.empty()){c.compareLeft=dynamic_cast<Rml::ElementFormControl*>(c.Element("compare-left"))->GetValue();c.compareRight=dynamic_cast<Rml::ElementFormControl*>(c.Element("compare-right"))->GetValue();}c.Disabled("presets",c.presets.empty());c.Disabled("delete-preset",c.presets.empty()||data.value("pending",false));
+            if(options.empty())options="<option value=\"\">No saved presets</option>";c.typographySync=true;for(const auto* id:{"presets"}){c.Element(id)->SetInnerRML(options);if(c.presets.contains(selected[id]))dynamic_cast<Rml::ElementFormControl*>(c.Element(id))->SetValue(selected[id]);}c.typographySync=false;
+            c.Disabled("presets",c.presets.empty());c.Disabled("delete-preset",c.presets.empty()||data.value("pending",false));
         }
         if(data.contains("review")&&data["review"].is_object()){
             const auto& review=data["review"];c.reviewId=review.value("review_id",0);c.Visible("review-panel",c.reviewId>0);c.Disabled("apply-review",!review.value("ready",false)||data.value("pending",false));std::string markup;
@@ -161,8 +176,8 @@ struct Runtime {
         const auto message=data.value("message",std::string());if(!message.empty()){c.Message(message);if(data.value("op",std::string())=="preset-save"&&!data.value("error",false)){c.edits.saved=c.values;c.Notify("Preset saved");}}
     }
 
-    ~Runtime(){if(controls&&controls->prefsDirty)controls->SavePreferences();if(document&&controls)for(const auto* event:{"click","change","keydown","mouseover","mouseout","mousedown","mousemove","mouseup"})document->RemoveEventListener(event,controls.get());if(initialized)Rml::Shutdown();controls.reset();}
-    void Init(const ForgeGlass::Frame& frame,const D3D11_TEXTURE2D_DESC& desc) {
+    ~Runtime(){if(controls)controls->RestorePreviewForTeardown();if(controls&&controls->prefsDirty)controls->SavePreferences();if(document&&controls)for(const auto* event:{"click","change","keydown","keyup","blur","mouseover","mouseout","mousedown","mousemove","mouseup"})document->RemoveEventListener(event,controls.get());if(initialized)Rml::Shutdown();controls.reset();}
+    void Init(const ForgeGlass::Host& host,const ForgeGlass::Frame& frame,const D3D11_TEXTURE2D_DESC& desc) {
         device=frame.device;device->GetImmediateContext(&immediate);width=int(desc.Width);height=int(desc.Height);format=desc.Format;outputSpace=frame.colorSpace;
         ComPtr<ID3D11On12Device> interop;dx12Interop=SUCCEEDED(device.As(&interop));
         BOOL animate=TRUE;systemReducedMotion=SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&animate,0)&&!animate;
@@ -170,9 +185,9 @@ struct Runtime {
         Rml::Factory::RegisterElementInstancer("paint-root",&roots);
         ForgeGlass::Require(Rml::LoadFontFace("fonts/RobotoVariable.ttf"),"Roboto failed to load");ForgeGlass::Require(Rml::LoadFontFace("fonts/BakbakOne-Regular.ttf"),"Heading font failed to load");ForgeGlass::Require(Rml::LoadFontFace("fonts/InterVariable.ttf"),"Inter failed to load");
         context=Rml::CreateContext("game-overlay",{width,height});ForgeGlass::Require(context!=nullptr,"RmlUi context failed");document=context->LoadDocument("overlay.rml");ForgeGlass::Require(document!=nullptr,"Overlay document failed");
-        controls=std::make_unique<ForgeGlass::Controller>();auto& c=*controls;c.document=document;c.preview=false;c.UseTheme(3);c.LoadPreferences(true);if(c.copyFont=="aptos")c.copyFont="roboto";
+        controls=std::make_unique<ForgeGlass::Controller>();auto& c=*controls;c.document=document;c.preview=false;c.monitorPreviewFocus=true;c.restorePreview=[host](float enabled){const ForgeGlass::Value value{"enabled",enabled};const bool ok=host.apply&&host.apply(host.user,&value,1);if(!ok&&host.log)host.log(host.user,"NR preview could not restore its previous state during renderer teardown.");return ok;};c.UseTheme(3);c.LoadPreferences(true);if(c.copyFont=="aptos")c.copyFont="roboto";
         c.InstallExtraControls();c.Typography();c.Materials();c.Sync();c.SyncSettings();c.Metadata();c.Session({});c.edits.Start(c.values);
-        for(const auto* event:{"click","change","keydown","mouseover","mouseout","mousedown","mousemove","mouseup"})document->AddEventListener(event,&c);
+        for(const auto* event:{"click","change","keydown","keyup","blur","mouseover","mouseout","mousedown","mousemove","mouseup"})document->AddEventListener(event,&c);
         c.Element("font-select")->SetInnerRML("<option value=\"roboto\">Roboto</option><option value=\"inter\">Inter</option>");document->QuerySelector(".prototype-toolbar")->SetProperty("display","none");c.Visible("type-panel",false);c.Visible("inspector",false);c.Visible("welcome",false);c.Visible("main-panel",frame.visible);document->Show();hostVisible=frame.visible;c.Layout(c.layout);lastValues=c.values;
         const unsigned char pixel[4]={};const float uv[4]={0,0,1,1};DXGI_FORMAT compatible=format;if(format==DXGI_FORMAT_R8G8B8A8_TYPELESS)compatible=DXGI_FORMAT_R8G8B8A8_UNORM;if(format==DXGI_FORMAT_B8G8R8A8_TYPELESS)compatible=DXGI_FORMAT_B8G8R8A8_UNORM;
         backdrop=std::make_unique<Backdrop>(device.Get(),width,height,pixel,1,1,uv,compatible,frame.colorSpace);
@@ -196,10 +211,10 @@ struct Runtime {
             supportedKeys.clear();for(const auto& [key,value]:current)supportedKeys.insert(key);
             c.values["mfg_enabled"]=current.contains("multiplier")&&current["multiplier"]!=0;
             if(receivedSnapshot&&current.contains("enabled")&&beforeValues.at("enabled")!=current.at("enabled"))c.Notify(current.at("enabled")?"Neural rendering enabled":"Neural rendering disabled");receivedSnapshot=true;
-            if(c.values!=beforeValues)c.Sync();c.Visible("frame-section",snapshot.fgAvailable);c.Visible("neural-section",snapshot.nrAvailable);
+            if(c.values!=beforeValues)c.Sync();c.Capabilities(snapshot.nrAvailable,snapshot.fgAvailable);
             if(snapshot.title)document->QuerySelector("h1")->SetInnerRML(Rml::StringUtilities::EncodeRml(snapshot.title));
             if(snapshot.accent){const std::string color=snapshot.accent;if(color.size()==7&&color[0]=='#'&&color.find_first_not_of("0123456789abcdefABCDEF",1)==std::string::npos){const auto rgb=std::stoul(color.substr(1),nullptr,16);c.accent={float((rgb>>16)&255)/255,float((rgb>>8)&255)/255,float(rgb&255)/255};}}
-            const int runtimeKind=current.contains("__runtime_kind")?int(current.at("__runtime_kind")):0;const std::string stack=runtimeKind==1?(ReShadeLoaded()?"OptiScaler + ReShade":"OptiScaler"):runtimeKind==2?"ReShade · Feeder NR":"Not reported";for(const auto* id:{"overview-stack","popup-stack"})c.Element(id)->SetInnerRML(stack);
+            const int runtimeKind=current.contains("__runtime_kind")?int(current.at("__runtime_kind")):0;const std::string stack=runtimeKind==1?(ReShadeLoaded()?"OptiScaler + ReShade":"OptiScaler"):runtimeKind==2?"ReShade · Feeder NR":runtimeKind==3?"ReShade":"Not reported";for(const auto* id:{"overview-stack","popup-stack"})c.Element(id)->SetInnerRML(stack);
             for(const auto* id:{"compact-api","overview-api","popup-api"})c.Element(id)->SetInnerRML(dx12Interop?"DirectX 12":"DirectX 11");for(const auto* id:{"compact-output","overview-output","popup-output"})c.Element(id)->SetInnerRML(outputSpace==1?"HDR · scRGB":outputSpace==2?"HDR10":"SDR");c.Element("open-session")->QuerySelector(".session-name")->SetInnerRML("Live session");c.Element("open-session")->QuerySelector(".status-note")->SetInnerRML("Live");
             for(int ratio=2;ratio<=6;ratio++)c.Disabled(("ratio-"+std::to_string(ratio)).c_str(),current.contains("__multiplier_max")&&ratio>current.at("__multiplier_max"));c.Disabled("mode-dynamic",current.contains("__dynamic_supported")&&current.at("__dynamic_supported")==0);
             for(const auto& [id,control]:c.extraFields){const bool missing=!current.contains(control->key);c.Disabled(id.c_str(),missing);c.Disabled(("reset-"+id).c_str(),missing);c.Element(id.c_str())->SetAttribute("title",missing?"Not available in this runtime":control->advanced);}
@@ -218,14 +233,16 @@ struct Runtime {
             }
             lastValues=c.values;
         }
-        if(hostVisible!=frame.visible){hostVisible=frame.visible;c.Visible("main-panel",hostVisible);if(hostVisible)c.Enter("main-panel");else{c.Visible("inspector",false);c.Visible("type-panel",false);}}
+        if(hostVisible!=frame.visible){if(!frame.visible){c.EndNrPreview();if(c.BarSettings())c.Settings(false);}hostVisible=frame.visible;c.Visible("main-panel",hostVisible);if(hostVisible)c.Enter("main-panel");else{c.Visible("inspector",false);c.Visible("type-panel",false);}}
         const auto beforeSettings=SettingsValues();const int oldShortcut=c.shortcut,oldModifiers=c.shortcutModifiers;
         const bool focused=GetForegroundWindow()==frame.window;const int modifiers=focused?((frame.keys[VK_CONTROL]?Rml::Input::KM_CTRL:0)|(frame.keys[VK_SHIFT]?Rml::Input::KM_SHIFT:0)|(frame.keys[VK_MENU]?Rml::Input::KM_ALT:0)):0;
         context->ProcessMouseMove(focused?int(frame.mouseX):-1,focused?int(frame.mouseY):-1,modifiers);
         for(int i=0;i<3;i++){const bool down=focused&&frame.mouse[i];if(down!=mouse[i]){if(down)context->ProcessMouseButtonDown(i,modifiers);else context->ProcessMouseButtonUp(i,modifiers);mouse[i]=down;}}
         if(focused&&frame.wheel)context->ProcessMouseWheel(-frame.wheel,modifiers);
         for(int vk=0;vk<256;vk++){const bool down=focused&&frame.keys[vk];if(down!=keys[vk]){const auto key=Key(vk);if(key!=Rml::Input::KI_UNKNOWN){if(down){const auto shortcut=c.shortcut;if(!c.bindingShortcut)c.shortcut=Rml::Input::KI_UNKNOWN;context->ProcessKeyDown(key,modifiers);if(!c.bindingShortcut&&c.shortcut==Rml::Input::KI_UNKNOWN)c.shortcut=shortcut;}else context->ProcessKeyUp(key,modifiers);}if(down&&vk>=VK_SPACE&&!(modifiers&(Rml::Input::KM_CTRL|Rml::Input::KM_ALT))){BYTE state[256]{};GetKeyboardState(state);WCHAR text[8]{};const auto layout=GetKeyboardLayout(0);const int count=ToUnicodeEx(vk,MapVirtualKeyExW(vk,MAPVK_VK_TO_VSC,layout),state,text,8,4,layout);for(int i=0;i<count;i++)if(text[i]>=32)context->ProcessTextInput(Rml::Character(text[i]));}keys[vk]=down;}}
-        const auto afterSettings=SettingsValues();for(const auto& [key,value]:afterSettings.items())if(beforeSettings.at(key)!=value)pendingSettings[key]=value;
+        if(GetTickCount64()>=nextEffects){nextEffects=GetTickCount64()+250;std::string text="{}";WithEffects([&](EffectRead read,EffectWrite){const auto size=read(nullptr,0);if(size<2||size>1024*1024)return false;std::vector<char> buffer(size);if(read(buffer.data(),size)!=size||buffer.back()!=0)return false;text.assign(buffer.data(),size-1);return true;});if(text!=lastEffects){const auto data=nlohmann::json::parse(text,nullptr,false);if(data.is_object())c.effects.Set(data);lastEffects=text;}}
+        c.effects.send=[](const std::string& text){return WithEffects([&](EffectRead,EffectWrite write){return write(text.c_str());});};
+        c.CheckPreviewFocus();const auto afterSettings=SettingsValues();for(const auto& [key,value]:afterSettings.items())if(beforeSettings.at(key)!=value)pendingSettings[key]=value;
         if(oldShortcut!=c.shortcut||oldModifiers!=c.shortcutModifiers){const auto key=c.shortcut;const int vk=key==Rml::Input::KI_DELETE?VK_DELETE:key>=Rml::Input::KI_A&&key<=Rml::Input::KI_Z?'A'+key-Rml::Input::KI_A:key>=Rml::Input::KI_F1&&key<=Rml::Input::KI_F12?VK_F1+key-Rml::Input::KI_F1:0;if(vk)pendingSettings["panel_binding"]={{"key",vk},{"modifiers",(c.shortcutModifiers&Rml::Input::KM_ALT?1:0)|(c.shortcutModifiers&Rml::Input::KM_CTRL?2:0)|(c.shortcutModifiers&Rml::Input::KM_SHIFT?4:0)}};}
         if(helperReady)c.hdr.Flush(c.requestJson);
         if(helperReady&&host.request&&!pendingSettings.empty()){auto it=pendingSettings.begin();const auto request=nlohmann::json{{"op","set-setting"},{"key",it->first},{"value",it->second}}.dump();if(host.request(host.user,request.c_str()))pendingSettings.erase(it);}
@@ -245,7 +262,7 @@ struct Runtime {
                     const auto at=e->GetAbsoluteOffset(Rml::BoxArea::Border);const auto size=e->GetBox().GetSize(Rml::BoxArea::Border);
                     Backdrop::Panel panel{at.x,at.y,size.x,size.y,24*context->GetDensityIndependentPixelRatio()};panel.sampleIndex=std::string(id)=="main-panel"?0:std::string(id)=="inspector"?1:std::string(id)=="welcome"?2:3;panel.scale=context->GetDensityIndependentPixelRatio();if(std::string(id)=="inspector" && c.inspectorAnchored){panel.arrow=1;panel.anchorX=std::clamp(c.inspectorAnchorX,at.x+24,at.x+size.x-24);}
                     const auto variable=[e](const char* name,float fallback){const auto* p=e->GetProperty(name);if(!p)return fallback;try{return std::stof(p->Get<Rml::String>());}catch(...){return fallback;}};
-                    panel.readability=c.appearance==3?1.f:0.f;panel.inkShadow=c.textDepth?.14f:0.f;panel.blur=c.blurRadius;panel.radius=std::clamp(variable("--corner-radius",24.f),0.f,100.f)*panel.scale;panel.saturation=std::clamp(variable("--material-saturation",1.12f),0.f,2.f);panel.grain=std::clamp(variable("--material-texture",.028f),0.f,.08f);panel.luminosity=std::clamp(variable("--material-luminosity",.04f),0.f,.25f);
+                    panel.colored=c.appearance==4;panel.tint=c.SurfaceTint();panel.readability=(c.appearance==3||(c.appearance==4&&!c.AccentLight()))?1.f:0.f;panel.inkShadow=c.textDepth?.14f:0.f;panel.blur=c.blurRadius;panel.radius=std::clamp(variable("--corner-radius",24.f),0.f,100.f)*panel.scale;panel.saturation=std::clamp(variable("--material-saturation",1.12f),0.f,2.f);panel.grain=std::clamp(variable("--material-texture",.028f),0.f,.08f);panel.luminosity=std::clamp(variable("--material-luminosity",.04f),0.f,.25f);
                     panel.shadowOpacity=std::clamp(variable("--shadow-opacity",.30f),0.f,.5f);panel.shadowRadius=std::clamp(variable("--shadow-radius",28.f),8.f,60.f);panel.shadowOffset=std::clamp(variable("--shadow-offset",12.f),0.f,24.f);
                     panel.opacity=std::clamp(variable("--window-opacity",1.f),0.f,1.f);panel.tone=std::clamp(variable("--surface-tone",.96f),0.f,1.f);panel.grounding=std::clamp(variable("--surface-grounding",.52f),0.f,1.f);panel.blendAmount=std::clamp(variable("--material-blend-opacity",.3f),0.f,1.f);
                     if(const auto* blend=e->GetProperty("--material-blend")) {const auto name=blend->Get<Rml::String>();panel.blendMode=float(MaterialColor::Mode(name));}
@@ -261,7 +278,7 @@ struct Runtime {
             for(const auto* id:{"main-panel","inspector","welcome","type-panel"})if(c.Element(id)->IsVisible())byId[id]=panels.at(panelIndex++);
             const auto renderUi=[&](Rml::Element* root,ID3D11RenderTargetView* destination=nullptr) {if(!destination)destination=frame.target;immediate->OMSetRenderTargets(1,&destination,nullptr);D3D11_VIEWPORT viewport{0,0,float(width),float(height),0,1};immediate->RSSetViewports(1,&viewport);renderer->BeginFrame();auto& manager=context->GetRenderManager();manager.PrepareRender({width,height});static_cast<Root*>(root)->Paint();manager.ResetState();renderer->EndFrame(destination);};
             for(const auto& id:c.stacking)if(byId.contains(id)) {
-                const float clearLayer[4]={};immediate->ClearRenderTargetView(windowView.Get(),clearLayer);backdrop->Draw(target,windowView.Get(),{byId.at(id)},true,false);
+                const float clearLayer[4]={};immediate->ClearRenderTargetView(windowView.Get(),clearLayer);if(!(id=="inspector"&&c.layout=="centered"))backdrop->Draw(target,windowView.Get(),{byId.at(id)},true,false);
                 const float clearInk[4]={};immediate->ClearRenderTargetView(inkView.Get(),clearInk);renderUi(c.Element(id.c_str()),inkView.Get());backdrop->DrawInk(windowView.Get(),inkSource.Get(),byId.at(id),true);const auto velocity=c.windowVelocity[id];backdrop->ComposeLayer(frame.target,windowSource.Get(),velocity.x,velocity.y,c.reducedMotion);
             }
 
@@ -286,7 +303,7 @@ extern "C" __declspec(dllexport) bool __cdecl ForgeGlassDraw(const ForgeGlass::H
         const bool supported=frame->colorSpace==0?sdr:frame->colorSpace==1?desc.Format==DXGI_FORMAT_R16G16B16A16_FLOAT:desc.Format==DXGI_FORMAT_R10G10B10A2_UNORM;
         if(!supported)throw std::runtime_error("Unsupported glass format and transfer-function pair");
         if(runtime&&(runtime->device.Get()!=frame->device||runtime->width!=int(desc.Width)||runtime->height!=int(desc.Height)||runtime->format!=desc.Format||runtime->outputSpace!=frame->colorSpace))runtime.reset();
-        if(!runtime){if(host->log)host->log(host->user,"Initializing glass overlay");runtime=std::make_unique<Runtime>();runtime->Init(*frame,desc);if(host->log)host->log(host->user,runtime->dx12Interop?"Glass overlay ready: DirectX 12":"Glass overlay ready: DirectX 11");}drawn=runtime->Draw(*host,*frame,target.Get());
+        if(!runtime){if(host->log)host->log(host->user,"Initializing glass overlay");runtime=std::make_unique<Runtime>();runtime->Init(*host,*frame,desc);if(host->log)host->log(host->user,runtime->dx12Interop?"Glass overlay ready: DirectX 12":"Glass overlay ready: DirectX 11");}drawn=runtime->Draw(*host,*frame,target.Get());
     }catch(const std::exception& error){runtime.reset();if(!logged&&host->log){host->log(host->user,error.what());logged=true;}}
     if(uninitialize)CoUninitialize();return drawn;
 }

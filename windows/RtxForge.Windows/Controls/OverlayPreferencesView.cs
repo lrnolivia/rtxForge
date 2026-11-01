@@ -28,8 +28,14 @@ public sealed class OverlayPreferencesView : StackPanel
         var layout = new OverlayLayoutPicker(glass.Layout);
         AddControl(layout);
         Heading("Appearance");
-        var theme = Choice("Theme", ["Clear", "Light", "Dark"], Array.IndexOf(GlassAppearance.Themes, glass.Theme),
+        var theme = Choice("Theme", ["Clear", "Light", "Dark", "Accent"], Array.IndexOf(GlassAppearance.Themes, glass.Theme),
             glass.Custom ? "Custom · based on " + glass.Theme + ". Select a theme to restore its defaults." : "Selecting a theme restores its material defaults.", glyph: "\uE790");
+        var character = new Slider { Minimum = 0, Maximum = 100, StepFrequency = 1,
+            Value = glass.Number("AccentCharacter",35,0,100), Width = 240, IsThumbToolTipEnabled = false };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(character,"Accent character: Clear, Light, Dark");
+        var characterRow = Prefs.Row("Accent character", "Clear → Light → Dark", character, glyph: "\uE790");
+        characterRow.Visibility = glass.Theme == "accent" ? Visibility.Visible : Visibility.Collapsed;
+        AddControl(characterRow);
         var type = Choice("Text size", ["Aa  Smaller", "Aa  Default", "Aa  Larger"], glass.Number("TextSize", 22, 16, 26) < 22 ? 0 : glass.Number("TextSize", 22, 16, 26) > 22 ? 2 : 1, glyph: "\uE8D2");
         var motion = Switch("Motion effects", glass.On("Motion"), glyph: "\uE768");
         Heading("Status and notifications");
@@ -97,8 +103,9 @@ public sealed class OverlayPreferencesView : StackPanel
         }
         renderer.SelectionChanged += (_, _) => Save(s => s.OverlayRenderer = renderer.SelectedIndex == 1 ? "optiscaler" : "game");
         layout.SelectionChanged += (_, _) => { if (layout.SelectedIndex >= 0) EditGlass(() => GlassAppearance.Set("Layout", GlassAppearance.Layouts[layout.SelectedIndex])); };
-        theme.SelectionChanged += (_, _) => { if (theme.SelectedIndex >= 0) EditGlass(() => { var selected = GlassAppearance.Themes[theme.SelectedIndex]; GlassAppearance.UseTheme(selected); Save(s => s.OverlayTheme = selected); }); };
+        theme.SelectionChanged += (_, _) => { if (theme.SelectedIndex >= 0) EditGlass(() => { var selected = GlassAppearance.Themes[theme.SelectedIndex]; GlassAppearance.UseTheme(selected); characterRow.Visibility = selected == "accent" ? Visibility.Visible : Visibility.Collapsed; character.Value=35; Save(s => s.OverlayTheme = selected); }); };
         type.SelectionChanged += (_, _) => EditGlass(() => GlassAppearance.Set("TextSize", type.SelectedIndex == 0 ? 18 : type.SelectedIndex == 2 ? 26 : 22));
+        character.ValueChanged += (_, e) => EditGlass(() => GlassAppearance.Set("AccentCharacter", (int)Math.Round(e.NewValue)));
         motion.Toggled += (_, _) => EditGlass(() => GlassAppearance.Set("Motion", motion.IsOn ? 1 : 0));
         notifications.Toggled += (_, _) => EditGlass(() => GlassAppearance.Set("ShowNotifications", notifications.IsOn ? 1 : 0));
         liveStats.Toggled += (_, _) => Save(s => s.OverlayLiveStats = liveStats.IsOn);

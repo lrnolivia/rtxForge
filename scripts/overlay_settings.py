@@ -10,7 +10,7 @@ DEFAULTS = dict(overlay_policy.DEFAULTS, optiscaler_hotkey='Insert', overlay_ren
                 overlay_controls='unified', overlay_theme='clear', overlay_live_stats=True, overlay_welcome=True,
                 overlay_welcome_position='top-center', panel_hotkey='Delete', vulkan_mfg_native_menu=False, overlay_appearance={})
 ENUMS = {'optiscaler_hotkey': ('Insert', 'F8', 'Disabled'), 'overlay_renderer': ('game', 'optiscaler'),
-         'overlay_controls': ('unified', 'classic'), 'overlay_theme': ('clear', 'dark', 'light', 'app'), 'overlay_welcome_position': POSITIONS}
+         'overlay_controls': ('unified', 'classic'), 'overlay_theme': ('clear', 'dark', 'light', 'accent', 'app'), 'overlay_welcome_position': POSITIONS}
 
 
 def options(values):

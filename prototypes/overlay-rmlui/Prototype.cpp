@@ -86,6 +86,7 @@ static std::array<float,4> CropImage(const Image& image,int width,int height,flo
     return {(image.width*crop+(available-shownWidth)*.5f)/image.width,(image.height-shownHeight)*.5f/image.height,shownWidth/image.width,shownHeight/image.height};
 }
 static Image LoadImage(const fs::path& path);
+#include "PreviewLibrary.h"
 struct PrototypeRenderer : RenderInterface_DX11
 {
     using RenderInterface_DX11::RenderInterface_DX11;
@@ -218,6 +219,19 @@ static void TestLayout(Controller& c,Rml::Context* context)
         c.welcomePosition="top-center";c.Welcome();settle();contains("welcome",viewport);const auto toast=rect(c.Element("welcome")),toolbar=rect(c.document->QuerySelector(".prototype-toolbar"));Require(toast[1]>=toolbar[3]+1,"Welcome overlaps the scene selector");
         c.Notify("Neural rendering settings restored to the saved game preset");settle();contains("welcome",viewport);const auto toastWide=rect(c.Element("welcome"));Require(std::fabs((toastWide[0]+toastWide[2])*.5f-view.x*.5f)<2,"Variable-width toast is not centered");
     }
+    context->SetDimensions({2560,1440});c.overlayScale=100;c.copySize=22;c.Typography();c.Layout("floating");
+    const auto originalSide=c.sidePanelSide;
+    for(const auto* side:{"left","right"}){
+        c.PanelSide(side);settle();const auto main=rect(c.Element("main-panel"));
+        const float inset=36*context->GetDensityIndependentPixelRatio();
+        Require(std::fabs(std::string(side)=="right"?2560-main[2]-inset:main[0]-inset)<2,"Side Panel did not dock to its chosen edge");
+        c.Open("look");settle();const auto popup=rect(c.Element("inspector"));
+        Require(std::string(side)=="right"?popup[2]<main[0]:popup[0]>main[2],"Side Panel pop-out did not open inward");
+        c.ShowAppearance();settle();const auto appearance=rect(c.Element("type-panel"));
+        Require(std::string(side)=="right"?appearance[2]<main[0]:appearance[0]>main[2],"Side Panel Appearance did not open inward");
+    }
+    c.PanelSide(originalSide);c.Visible("type-panel",false);
+    std::cout<<"native_side_panel_edge_checks=passed left_right_inward_popouts\n";
     c.overlayScale=originalScale;c.copySize=originalCopy;c.values=originalValues;context->SetDimensions(originalView);c.Typography();c.Layout("floating");c.Sync();c.Visible("welcome",false);settle();
     std::cout<<"native_layout_matrix_checks=passed cases=54\n";
 }
@@ -325,7 +339,7 @@ static void TestController(Controller& c,Rml::Context* context)
 int wmain(int argc,wchar_t** argv)
 {
     try {
-        fs::path assets,background,output,font;DWORD parentProcess=0;int width=2560,height=1440,appearance=3,requestedCopy=22,requestedScale=100;bool gameCapture=false,thumbnail=false,desktopPreview=false,pickerPreview=false,onboarding=false,productionUI=false,appearanceOpen=false,detailsOpen=false,inspector=false,blur=true,selfTest=false,layoutTest=false,customMfg=false,reduceMotion=false,welcome=false,settings=false;float crop=0,requestedTint=-1,requestedCharacter=35,requestedSaturation=100;std::array<float,3> accent{.19f,.46f,.80f};std::string gameTitle,requestedLayout="floating",requestedBlend,requestedPage;
+        fs::path assets,background,output,font,gameCatalog;DWORD parentProcess=0;int width=2560,height=1440,appearance=3,requestedCopy=22,requestedScale=100;bool gameCapture=false,thumbnail=false,desktopPreview=false,pickerPreview=false,onboarding=false,productionUI=false,appearanceOpen=false,detailsOpen=false,inspector=false,blur=true,selfTest=false,layoutTest=false,customMfg=false,reduceMotion=false,welcome=false,settings=false;float crop=0,requestedTint=-1,requestedCharacter=35,requestedSaturation=100;std::array<float,3> accent{.19f,.46f,.80f};std::string gameTitle,requestedLayout="floating",requestedBlend,requestedPage;
         for(int i=1;i<argc;++i) {
             const std::wstring arg=argv[i];
             const auto next=[&] {Require(i+1<argc,"Missing argument value");return std::wstring(argv[++i]);};
@@ -337,6 +351,7 @@ int wmain(int argc,wchar_t** argv)
             else if(arg==L"--page")requestedPage=Utf8(next());
             else if(arg==L"--desktop-preview"){desktopPreview=productionUI=true;}
             else if(arg==L"--game-title")gameTitle=Utf8(next());
+            else if(arg==L"--game-catalog")gameCatalog=next();
             else if(arg==L"--parent-process")parentProcess=std::stoul(next());
             else if(arg==L"--thumbnail")thumbnail=true;else if(arg==L"--game-capture")gameCapture=true;
             else if(arg==L"--layout-test")layoutTest=true;else if(arg==L"--production-ui")productionUI=true;else if(arg==L"--appearance")appearanceOpen=true;else if(arg==L"--more")detailsOpen=appearanceOpen=true;
@@ -350,6 +365,7 @@ int wmain(int argc,wchar_t** argv)
             else throw std::runtime_error("Unknown prototype option");
         }
         Require(!assets.empty() && !background.empty() && !font.empty(),"Supply --assets, --background and --font. Optional --output renders a PNG without opening a window.");
+        PreviewLibrary library(gameCatalog);
         ParentWatch parent;if(parentProcess){parent.handle=OpenProcess(SYNCHRONIZE,FALSE,parentProcess);Require(parent.handle!=nullptr,"Preview parent is unavailable");}
         Require(width>=960 && width<=3840 && height>=640 && height<=2160 && crop>=0 && crop<.8,"Invalid viewport or crop");
         Require(requestedCopy>=20&&requestedCopy<=24&&requestedScale>=70&&requestedScale<=150,"Invalid text or overlay scale");
@@ -389,7 +405,7 @@ int wmain(int argc,wchar_t** argv)
         auto* context=Rml::CreateContext("overlay",{width,height});Require(context!=nullptr,"RmlUi context could not be created");inputContext=context;
         auto* document=context->LoadDocument(Utf8(assets/L"overlay.rml"));Require(document!=nullptr,"Overlay document could not load");
         Controller controller;controller.document=document;controller.preview=!productionUI;controller.appearance=appearance;controller.accent=accent;controller.UseTheme(appearance);if(appearance==4){controller.accentCharacter=requestedCharacter;controller.accentOpacity=100*MaterialColor::AccentOpacity(requestedCharacter);controller.accentSaturation=requestedSaturation;}if(window||desktopPreview)controller.LoadPreferences(desktopPreview);
-        if(desktopPreview){controller.preferences.clear();controller.setupComplete=true;controller.closePreview=[]{closed=true;};controller.Element("main-panel")->QuerySelector("h1")->SetInnerRML(Rml::StringUtilities::EncodeRml(gameTitle));document->QuerySelector(".prototype-toolbar")->SetProperty("display","none");if(window){SetWindowTextW(window,L"rtxForge · Overlay preview");controller.Element("preview-chrome")->SetProperty("display","block");}}
+        if(desktopPreview){controller.preferences.clear();controller.setupComplete=true;controller.closePreview=[]{closed=true;};controller.Element("main-panel")->QuerySelector("h1")->SetInnerRML(Rml::StringUtilities::EncodeRml(gameTitle));document->SetClass("desktop-preview",true);if(library.names.empty())document->QuerySelector(".prototype-toolbar")->SetProperty("display","none");else document->QuerySelector(".preview-label")->SetInnerRML("Game");if(window){SetWindowTextW(window,L"rtxForge · Overlay preview");controller.Element("preview-chrome")->SetProperty("display","block");}}
         if(!gameTitle.empty())controller.Element("main-panel")->QuerySelector("h1")->SetInnerRML(Rml::StringUtilities::EncodeRml(gameTitle));document->SetClass("preview-thumbnail",thumbnail);
         if(!window&&!desktopPreview){controller.copySize=requestedCopy;controller.overlayScale=requestedScale;}if(customMfg)controller.values["multiplier"]=3;
         controller.monitorPreviewFocus=window!=nullptr;controller.InstallExtraControls();
@@ -430,8 +446,9 @@ int wmain(int argc,wchar_t** argv)
         wchar_t localFolder[32768]{};GetEnvironmentVariableW(L"LOCALAPPDATA",localFolder,32768);const auto sceneCache=fs::path(localFolder)/L"rtxForge/prototypes/scenes";
         std::string sceneOptions="<option value=\"0\">Current scene</option>";
         for(const auto& scene:ScenePresets)if(fs::exists(sceneCache/scene.file))sceneOptions+="<option value=\""+std::to_string(scene.app)+"\">"+Rml::StringUtilities::EncodeRml(scene.title)+"</option>";
+        if(!library.names.empty()){sceneOptions.clear();for(size_t i=0;i<library.names.size();++i)sceneOptions+="<option value=\""+std::to_string(i)+"\">"+Rml::StringUtilities::EncodeRml(library.names[i])+"</option>";}
         controller.Element("scene-select")->SetInnerRML(sceneOptions);
-        std::vector<double> costs;int frames=0;double lastPreferences=0,nextSample=0;int selectedScene=0;
+        std::vector<double> costs;int frames=0;double lastPreferences=0,nextSample=0;int selectedScene=0;auto stableAccent=accent;
         if(!desktopPreview)for(const auto& scene:ScenePresets)if(background.stem()==fs::path(scene.file).stem()){selectedScene=scene.app;controller.sceneRequest=scene.app;break;}
         auto lastStyle=fs::last_write_time(assets/L"overlay.rcss");double nextStyleCheck=0;
         if(window)ShowWindow(window,SW_SHOW);
@@ -447,11 +464,33 @@ int wmain(int argc,wchar_t** argv)
             if(!output.empty())system.frameTime=frames/60.;
             if((layoutTest||selfTest)&&frames==8)TestLayout(controller,context);
             if(selfTest && frames==8)TestController(controller,context);
+            if(controller.sceneRequest>=0&&!library.names.empty()){library.Choose(controller.sceneRequest);controller.sceneRequest=-1;document->QuerySelector(".preview-label")->SetInnerRML("Loading…");}
             if(controller.sceneRequest>=0){const int chosen=controller.sceneRequest;controller.sceneRequest=-1;try{
                 fs::path path=background;float selectedCrop=crop;std::array<float,3> selectedAccent=accent;std::string title="Overlay preview";
                 for(const auto& scene:ScenePresets)if(scene.app==chosen){path=sceneCache/scene.file;selectedCrop=0;selectedAccent={float((scene.accent>>16)&255)/255,float((scene.accent>>8)&255)/255,float(scene.accent&255)/255};title=scene.title;}
                 if(!gameTitle.empty())title=gameTitle;auto next=LoadImage(path);const auto uv=CropImage(next,width,height,selectedCrop);backdrop->SetPhoto(next.rgba.data(),next.width,next.height,uv.data());image=std::move(next);activeCrop=selectedCrop;selectedScene=chosen;nextSample=0;controller.accent=selectedAccent;controller.Element("main-panel")->QuerySelector("h1")->SetInnerRML(Rml::StringUtilities::EncodeRml(title));dynamic_cast<Rml::ElementFormControl*>(controller.Element("scene-select"))->SetValue(std::to_string(chosen));document->SetProperty("--accent",Controller::Hex(selectedAccent[0],selectedAccent[1],selectedAccent[2]));controller.filtered={};controller.lastAdapt=-1;
             }catch(const std::exception&){controller.Notify("Could not load preview scene");}}
+            if(!library.names.empty())if(auto reply=library.Poll())try{
+                const auto& value=*reply;
+                if(value.contains("error"))throw std::runtime_error(value["error"].get<std::string>());
+                const auto color=value.at("accent").get<std::string>();
+                Require(color.size()==7&&color[0]=='#'&&color.find_first_not_of("0123456789abcdefABCDEF",1)==std::string::npos,"Invalid preview accent");
+                const auto packed=std::stoul(color.substr(1),nullptr,16);
+                const std::array<float,3> selectedAccent{float((packed>>16)&255)/255,float((packed>>8)&255)/255,float(packed&255)/255};
+                if(value.contains("path")){
+                    const auto selectedCrop=value.value("crop",0.f);Require(selectedCrop>=0&&selectedCrop<.8f,"Invalid preview crop");
+                    auto next=LoadImage(fs::u8path(value.at("path").get<std::string>()));const auto uv=CropImage(next,width,height,selectedCrop);
+                    backdrop->SetPhoto(next.rgba.data(),next.width,next.height,uv.data());image=std::move(next);activeCrop=selectedCrop;stableAccent=selectedAccent;
+                    library.selected=value.at("index").get<int>();
+                    controller.Element("main-panel")->QuerySelector("h1")->SetInnerRML(Rml::StringUtilities::EncodeRml(value.at("title").get<std::string>()));
+                    document->QuerySelector(".preview-label")->SetInnerRML("Game");controller.Metadata();
+                }
+                controller.accent=selectedAccent;document->SetProperty("--accent",Controller::Hex(selectedAccent[0],selectedAccent[1],selectedAccent[2]));controller.filtered={};controller.lastAdapt=-1;
+            }catch(const std::exception& error){
+                controller.accent=stableAccent;document->QuerySelector(".preview-label")->SetInnerRML("Game");
+                document->SetProperty("--accent",Controller::Hex(stableAccent[0],stableAccent[1],stableAccent[2]));
+                dynamic_cast<Rml::ElementFormControl*>(controller.Element("scene-select"))->SetValue(std::to_string(library.selected));controller.Notify(error.what());
+            }
             const auto start=std::chrono::steady_clock::now();
             if(!productionUI&&!selfTest&&!layoutTest&&system.GetElapsedTime()>=nextSample){ShowPreviewSession(controller,selectedScene,width,height,controller.reducedMotion?0:system.GetElapsedTime());nextSample=system.GetElapsedTime()+.25;}
             controller.reducedMotion=reduceMotion||!controller.motionEnabled;document->SetClass("reduce-motion",controller.reducedMotion);controller.Animate(system.GetElapsedTime());controller.Adapt(backdrop->measured,system.GetElapsedTime());
@@ -509,7 +548,7 @@ int wmain(int argc,wchar_t** argv)
                 const float clearLayer[4]={};immediate->ClearRenderTargetView(windowView.Get(),clearLayer);if(!(id=="inspector"&&controller.layout=="centered"))backdrop->Draw(target.Get(),windowView.Get(),{byId.at(id)},blur,false);
                 const float clearInk[4]={};immediate->ClearRenderTargetView(inkView.Get(),clearInk);renderUi(controller.Element(id.c_str()),inkView.Get());if(selfTest&&frames==70&&id=="main-panel")CheckChromePaint(device.Get(),immediate.Get(),inkLayer.Get(),controller);backdrop->DrawInk(windowView.Get(),inkSource.Get(),byId.at(id),blur);const auto velocity=controller.windowVelocity[id];backdrop->ComposeLayer(view.Get(),windowSource.Get(),velocity.x,velocity.y,controller.reducedMotion);
             }
-            if(!desktopPreview&&!gameCapture)renderUi(document->QuerySelector(".prototype-toolbar"));
+            if((!desktopPreview||!library.names.empty())&&!gameCapture)renderUi(document->QuerySelector(".prototype-toolbar"));
             if(desktopPreview&&window)renderUi(controller.Element("preview-chrome"));
             for(const auto* popup:{"layout-picker","tooltip"})if(controller.Element(popup)->IsVisible()){
                 if(std::string(popup)=="layout-picker"&&byId.contains("main-panel")){const auto panel=controller.QuickLayoutSurface(byId.at("main-panel"));const float clear[4]={};immediate->ClearRenderTargetView(windowView.Get(),clear);backdrop->Draw(target.Get(),windowView.Get(),{panel},blur,false);immediate->ClearRenderTargetView(inkView.Get(),clear);renderUi(controller.Element(popup),inkView.Get());backdrop->DrawInk(windowView.Get(),inkSource.Get(),panel,blur);backdrop->ComposeLayer(view.Get(),windowSource.Get(),0,0,true);}

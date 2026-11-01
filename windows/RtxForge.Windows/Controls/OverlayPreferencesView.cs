@@ -12,6 +12,7 @@ public sealed class OverlayPreferencesView : StackPanel
     readonly List<PreferencesGroup> groups = [];
     readonly bool groupCards;
     readonly Action<ForgeSettings> applied;
+    readonly OverlayPresentationView presentation;
     PreferencesGroup? group;
     public IReadOnlyList<PreferencesGroup> Groups => groups;
 
@@ -25,24 +26,8 @@ public sealed class OverlayPreferencesView : StackPanel
         Heading("rtxForge panel");
         var renderer = Choice("Overlay", ["rtxForge", "Native"], current.OverlayRenderer == "optiscaler" ? 1 : 0,
             "Use the rtxForge panel in compatible packages, or the original menus provided by OptiScaler, Feeder or ReShade.", glyph: "\uE7F4");
-        var layout = new OverlayLayoutPicker(glass.Layout, card:false);
-        var theme = new OverlayThemePicker(glass.BaseTheme);
-        var accentTint = new ToggleSwitch { IsOn=glass.AccentEnabled, VerticalAlignment=VerticalAlignment.Center };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(accentTint,"Accent Tint");
-        var options=new StackPanel { Spacing=16 };
-        options.Children.Add(layout);options.Children.Add(theme);
-        options.Children.Add(Prefs.Row("Accent Tint", "Use the game's accent on overlay surfaces.", accentTint, glyph:"\uE790"));
-        var presentation=new Grid { ColumnSpacing=24, RowSpacing=16 };
-        presentation.ColumnDefinitions.Add(new());presentation.ColumnDefinitions.Add(new() {Width=new GridLength(400)});
-        presentation.RowDefinitions.Add(new(){Height=GridLength.Auto});presentation.RowDefinitions.Add(new(){Height=GridLength.Auto});
-        if(engine is not null){presentation.Children.Add(new OverlayPreviewView(engine,App.Main?.Games??[]));Grid.SetColumn(options,1);}
-        presentation.Children.Add(options);
-        presentation.SizeChanged+=(_,e)=>{
-            var wide=e.NewSize.Width>=820&&engine is not null;
-            presentation.ColumnDefinitions[1].Width=wide?new GridLength(Math.Min(420,e.NewSize.Width*.42)):new GridLength(0);
-            Grid.SetColumn(options,wide?1:0);Grid.SetRow(options,wide||engine is null?0:1);
-        };
-        AddControl(new Border { Style=Prefs.GetStyle("ForgeSettingsCardStyle"),Child=presentation });
+        presentation = new OverlayPresentationView(EditGlass, engine);
+        AddControl(new Border { Style = Prefs.GetStyle("ForgeSettingsCardStyle"), Child = presentation });
         var type = Choice("Text size", ["Aa  Smaller", "Aa  Default", "Aa  Larger"], glass.Number("TextSize", 22, 16, 26) < 22 ? 0 : glass.Number("TextSize", 22, 16, 26) > 22 ? 2 : 1, glyph: "\uE8D2");
         var originalLabels = Switch("Original labels", glass.On("OriginalLabels",false), "Use upstream control names instead of friendly labels.", glyph: "\uE8D2");
         var motion = Switch("Motion effects", glass.On("Motion"), glyph: "\uE768");
@@ -87,8 +72,8 @@ public sealed class OverlayPreferencesView : StackPanel
         void Availability()
         {
             var native = renderer.SelectedIndex == 1;
-            layout.IsEnabled = key.IsEnabled = !native;
-            theme.IsEnabled = !native;
+            key.IsEnabled = !native;
+            presentation.SetRendererEnabled(!native);
             helper.IsEnabled = startup.IsEnabled = !native;
             nativeKey.IsEnabled = optiUi.IsOn;
         }
@@ -110,9 +95,6 @@ public sealed class OverlayPreferencesView : StackPanel
             return true;
         }
         renderer.SelectionChanged += (_, _) => Save(s => s.OverlayRenderer = renderer.SelectedIndex == 1 ? "optiscaler" : "game");
-        layout.SelectionChanged += (_, _) => { if (layout.SelectedIndex >= 0) EditGlass(() => GlassAppearance.Set("Layout", GlassAppearance.Layouts[layout.SelectedIndex])); };
-        theme.SelectionChanged += (_, _) => { if (theme.SelectedIndex >= 0) EditGlass(() => { GlassAppearance.UseAppearance(new[]{"clear","light","dark"}[theme.SelectedIndex]); Save(s => s.OverlayTheme = GlassAppearance.Load().Theme); }); };
-        accentTint.Toggled += (_, _) => EditGlass(() => { GlassAppearance.UseAppearance(tint:accentTint.IsOn); Save(s => s.OverlayTheme = GlassAppearance.Load().Theme); });
         type.SelectionChanged += (_, _) => EditGlass(() => GlassAppearance.Set("TextSize", type.SelectedIndex == 0 ? 20 : type.SelectedIndex == 2 ? 24 : 22));
         originalLabels.Toggled += (_, _) => EditGlass(() => GlassAppearance.Set("OriginalLabels", originalLabels.IsOn ? 1 : 0));
         motion.Toggled += (_, _) => EditGlass(() => GlassAppearance.Set("Motion", motion.IsOn ? 1 : 0));
@@ -137,8 +119,8 @@ public sealed class OverlayPreferencesView : StackPanel
     {
         try
         {
-            edit(); var appearance = GlassAppearance.Load();
-            var fresh = ForgeSettings.EditOverlay(s => s.OverlayAppearance = appearance.ToJson());
+            edit(); presentation.RefreshAppearance(); var appearance = GlassAppearance.Load();
+            var fresh = ForgeSettings.EditOverlay(s => { s.OverlayAppearance = appearance.ToJson(); s.OverlayTheme = appearance.Theme; });
             OverlayHelper.ConfigureStartup(fresh); applied(fresh);
             feedback.Text = appearance.Custom ? "Saved · Custom appearance" : "Saved";
         }

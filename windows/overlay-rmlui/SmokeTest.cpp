@@ -29,11 +29,12 @@ static void TestAppearance(ForgeGlass::Draw draw,ForgeGlass::Release release,con
     ForgeGlass::Host host{sizeof(host),ForgeGlass::Abi};host.user=&settings;host.read=[](void* user,ForgeGlass::Snapshot* snapshot){*snapshot={};snapshot->title="APPEARANCE TEST";snapshot->helperJson=*static_cast<const char**>(user);return true;};
     ForgeGlass::Frame frame{};frame.size=sizeof(frame);frame.abi=ForgeGlass::Abi;frame.device=device.Get();frame.target=view.Get();frame.visible=true;
     Need(draw(&host,&frame),"Initial appearance rejected");
-    settings=R"({"revision":17,"ready":true,"settings":{"overlay_appearance":{"Theme":2,"Layout":"bar","TextFont":"inter","TextSize":26,"Scale":115}}})";
+    settings=R"({"revision":17,"ready":true,"settings":{"overlay_appearance":{"Theme":2,"Layout":"bar","SidePanelSide":"right","TextFont":"inter","TextSize":26,"Scale":115}}})";
     Need(draw(&host,&frame),"Updated appearance rejected");release();
     const auto ini=profile/L"rtxForge"/L"overlay-appearance.ini";wchar_t value[64]{};
     Need(GetPrivateProfileIntW(L"Appearance",L"Theme",0,ini.c_str())==2&&GetPrivateProfileIntW(L"Appearance",L"TextSize",0,ini.c_str())==26&&GetPrivateProfileIntW(L"Appearance",L"Scale",0,ini.c_str())==115,"Appearance update with unchanged preset revision was lost");
     GetPrivateProfileStringW(L"Appearance",L"Layout",L"",value,64,ini.c_str());Need(std::wstring(value)==L"bar","Layout update was lost");
+    GetPrivateProfileStringW(L"Appearance",L"SidePanelSide",L"",value,64,ini.c_str());Need(std::wstring(value)==L"right","Side Panel edge update was lost");
     GetPrivateProfileStringW(L"Appearance",L"TextFont",L"",value,64,ini.c_str());Need(std::wstring(value)==L"inter","Font update was lost");
     std::cout<<"helper_appearance_checks=passed unchanged_preset_revision=passed isolated_profile=passed\n";
 }

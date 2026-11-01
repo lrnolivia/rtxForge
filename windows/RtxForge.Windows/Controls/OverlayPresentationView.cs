@@ -22,7 +22,7 @@ sealed class OverlayPresentationView : Grid
         theme = new(glass.BaseTheme);
         side = new() { ItemsSource = new[] { "Left", "Right" }, SelectedIndex = glass.SidePanelSide == "right" ? 1 : 0, MinWidth = 100 };
         bar = new() { ItemsSource = new[] { "Bottom", "Top" }, SelectedIndex = glass.BarPosition == "top" ? 1 : 0, MinWidth = 100 };
-        tint = new() { IsOn = glass.AccentEnabled, VerticalAlignment = VerticalAlignment.Center };
+        tint = new() { IsOn = glass.AccentEnabled, MinWidth = 0, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(side, "Side Panel position");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(bar, "Bar position");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(tint, "Accent Tint");

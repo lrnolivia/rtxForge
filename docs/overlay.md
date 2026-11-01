@@ -4,14 +4,25 @@ The overlay opens for the compatible game you are playing. It keeps frame
 generation and neural rendering visible, with Look, fine tuning, sharpening
 and performance controls in expandable sections. The glass presentation offers Side Panel, Advanced and Bar layouts,
 with a complete Settings screen and separate Appearance editor. Clear is the
-default; Light and Dark have their own fixed material presets. Accent uses the
-game's accent for its surfaces, with a Clear–Light–Dark character slider. Theme, text size
+default; Light and Dark have their own fixed material presets. Accent Tint adds
+the game's accent to any of these three surface styles while preserving its
+heading and control accents. Experimental surface-character and saturation
+sliders remain in the styling preview's God Mode. Theme and text size
 are available in Settings; overlay scale is adjusted in-game. The styling prototype retains
 experimental font and material controls. The end-user Appearance editor orders
 Theme before Text size, followed by Scale; More offers Blur and Motion effects.
 The preview keeps tint, grain, blend, foreground-depth, font and toast-shape tuning
 in a separate collapsed God Mode section. These experimental controls are hidden
-in the game renderer.
+in the game renderer. The first opening offers a short setup for appearance,
+Accent Tint and default layout; Skip keeps the current choices. These choices
+remain editable in Settings. Library-wide changes belong in the manager app.
+
+Desktop Overlay Settings group native layout illustrations, Theme swatches and
+Accent Tint beside a lightweight 16:9 preview. A bundled gameplay scene appears
+immediately; searching the local library can replace it with a small Steam
+screenshot. The illustration updates without starting the native renderer.
+Clicking it opens the full native preview with a close button and no title bar.
+That preview does not change game files or save its session edits.
 
 The outer window keeps its frosted material. Translucent inner panels, nested
 cards and controls get progressively lighter, with restrained soft shadows on

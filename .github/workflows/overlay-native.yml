@@ -38,6 +38,8 @@ jobs:
             windows/out/glass-overlay/rtxforge-glass.dll
             windows/out/glass-overlay/package.json
             windows/out/glass-overlay/notices/**
+            windows/out/glass-overlay/OverlayPreview.exe
+            windows/out/glass-overlay/assets/**
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4

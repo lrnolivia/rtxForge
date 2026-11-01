@@ -12,7 +12,7 @@ public sealed class GameOverlayPreferencesView : StackPanel
     readonly MainWindow shell;
     readonly Game game;
     readonly StackPanel fields = new() { Spacing = 8 };
-    readonly TextBlock status = Prefs.Label("The primary overlay follows the app setting. Menu and welcome choices can differ for this game.");
+    readonly TextBlock status = Prefs.Label("Appearance and layout are shared across games. Menu and welcome choices can differ for this game.");
     bool loading;
 
     public GameOverlayPreferencesView(MainWindow shell, Game game)
@@ -20,6 +20,20 @@ public sealed class GameOverlayPreferencesView : StackPanel
         this.shell = shell; this.game = game;
         Spacing = 10;
         Children.Add(status);
+        var appearance = new OverlayPresentationView(edit =>
+        {
+            try
+            {
+                edit();
+                var glass = GlassAppearance.Load();
+                var fresh = ForgeSettings.EditOverlay(s => { s.OverlayAppearance = glass.ToJson(); s.OverlayTheme = glass.Theme; });
+                shell.Settings.CopyOverlayFrom(fresh);
+                status.Text = "Appearance saved for all games. Menu and welcome choices below apply to this game.";
+            }
+            catch (Exception error) { status.Text = error.Message; }
+        }, shell.Service as EngineForgeService, game);
+        appearance.SetRendererEnabled(ForgeSettings.Load().OverlayRenderer != "optiscaler");
+        Children.Add(new Border { Style = Prefs.GetStyle("ForgeSettingsCardStyle"), Child = appearance });
         Children.Add(fields);
         Rebuild();
     }

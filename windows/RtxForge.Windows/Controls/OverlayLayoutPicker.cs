@@ -12,11 +12,10 @@ public sealed class OverlayLayoutPicker : UserControl
     public int SelectedIndex { get; private set; }
     public event EventHandler? SelectionChanged;
 
-    public OverlayLayoutPicker(string selected)
+    public OverlayLayoutPicker(string selected, bool card = true)
     {
         var root = new StackPanel { Spacing = 12 };
         root.Children.Add(new TextBlock { Text = "Layout" });
-        root.Children.Add(Prefs.Label("Choose how controls are arranged in your game.", "ForgeCaptionDimTextStyle"));
         var choices = new Grid { ColumnSpacing = 12 };
         var group = "overlay-layout-" + Guid.NewGuid();
         string[] captions = ["Side Panel", "Advanced", "Bar"];
@@ -25,17 +24,17 @@ public sealed class OverlayLayoutPicker : UserControl
         {
             choices.ColumnDefinitions.Add(new ColumnDefinition());
             var body = new StackPanel { Spacing = 8, HorizontalAlignment = HorizontalAlignment.Stretch };
-            body.Children.Add(new Viewbox { Child = Diagram(i), Height = 88, Stretch = Stretch.Uniform });
+            body.Children.Add(new Viewbox { Child = Diagram(i), Height = 52, Stretch = Stretch.Uniform });
             body.Children.Add(new TextBlock { Text = captions[i], TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, FontSize = 14 });
             var button = new RadioButton { Content = body, GroupName = group, IsChecked = i == SelectedIndex,
-                Style = Prefs.GetStyle("ForgeSegmentStyle"), Padding = new Thickness(12, 16, 12, 18), HorizontalAlignment = HorizontalAlignment.Stretch };
+                Style = Prefs.GetStyle("ForgeSegmentStyle"), Padding = new Thickness(10, 12, 10, 12), HorizontalAlignment = HorizontalAlignment.Stretch };
             button.SetValue(AutomationProperties.NameProperty, captions[i]);
             var index = i;
             button.Checked += (_, _) => { SelectedIndex = index; SelectionChanged?.Invoke(this, EventArgs.Empty); };
             Grid.SetColumn(button, i); choices.Children.Add(button);
         }
         root.Children.Add(choices);
-        Content = new Border { Style = Prefs.GetStyle("ForgeSettingsCardStyle"), Child = root };
+        Content = card ? new Border { Style = Prefs.GetStyle("ForgeSettingsCardStyle"), Child = root } : root;
     }
 
     static Canvas Diagram(int layout)

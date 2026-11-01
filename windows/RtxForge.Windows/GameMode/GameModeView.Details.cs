@@ -177,7 +177,7 @@ public sealed partial class GameModeView
         // ----- Section navigation -----
         var nav = new StackPanel { Spacing = t.Px(8), Padding = new Thickness(t.Px(20), t.Px(20), t.Px(20), t.Px(20)) };
         nav.Children.Add(back);
-        nav.Children.Add(ui.Heading("Game Details", 1.06).With(h => h.Margin = new Thickness(t.Px(16), t.Px(8), 0, t.Px(t.Compact ? 12 : 20))));
+        nav.Children.Add(ui.Heading("GAME DETAILS", 1.06).With(h => h.Margin = new Thickness(t.Px(16), t.Px(8), 0, t.Px(t.Compact ? 12 : 20))));
         var navButtons = new List<(Button Button, string Section)>();
         foreach (var section in Sections)
         {
@@ -310,7 +310,7 @@ public sealed partial class GameModeView
         row.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
         row.Children.Add(ui.Icon(glyph, 1.05).With(icon => icon.VerticalAlignment = VerticalAlignment.Center));
-        var label = ui.Heading(title, .96, wrap: true);
+        var label = ui.Heading(title.ToUpperInvariant(), .96, wrap: true);
         Grid.SetColumn(label, 1); row.Children.Add(label); return row;
     }
 
@@ -735,7 +735,7 @@ public sealed partial class GameModeView
             foreach (var child in children) body.Children.Add(child);
             var icon = ui.Icon("", .7);
             var heading = new StackPanel { Orientation = Orientation.Horizontal, Spacing = t.Px(12) };
-            heading.Children.Add(icon); heading.Children.Add(ui.Heading(title, .9));
+            heading.Children.Add(icon); heading.Children.Add(ui.Heading(title.ToUpperInvariant(), .9));
             Button? button = null;
             button = ui.Button(heading, () =>
             {
@@ -754,7 +754,7 @@ public sealed partial class GameModeView
             var header = new Grid { ColumnSpacing = t.Px(20) };
             header.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
             header.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
-            var title = ui.Heading("Multi-Frame Generation", .96, wrap: true);
+            var title = ui.Heading("MULTI-FRAME GENERATION", .96, wrap: true);
             title.VerticalAlignment = VerticalAlignment.Center; header.Children.Add(title);
             var toggle = new ToggleSwitch { OnContent = "On", OffContent = "Off", MinWidth = 0,
                 IsOn = state.Enabled, IsEnabled = allowed, Foreground = GmTheme.B(t.Fg), FontSize = t.Em(.8) };

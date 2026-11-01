@@ -244,6 +244,12 @@ def prepare(config, game, source=None):
 
 
 def apply(config, plan):
+    _, _, engine = location(config, plan)
+    with engine.mutation_lock():
+        return _apply_locked(config, plan)
+
+
+def _apply_locked(config, plan):
     t.check_plan(plan)
     root, exe, engine = location(config, plan)
     t.need(plan['kind'] == 'reshade-import', 'Invalid ReShade import.')
@@ -265,6 +271,15 @@ def apply(config, plan):
 
 
 def restore(config, state):
+    state = t.safe(state)
+    t.need(state.parent == storage(config) / 'extras-transactions', 'Invalid ReShade recovery.')
+    plan = t.read_json(state / 'transaction.json')['plan']
+    _, _, engine = location(config, plan)
+    with engine.mutation_lock():
+        return _restore_locked(config, state)
+
+
+def _restore_locked(config, state):
     state = t.safe(state)
     t.need(state.parent == storage(config) / 'extras-transactions', 'Invalid ReShade recovery.')
     doc = t.read_json(state / 'transaction.json'); plan = doc['plan']

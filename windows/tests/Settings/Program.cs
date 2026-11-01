@@ -281,6 +281,14 @@ try
 {
     File.WriteAllText(appearancePath, "[Appearance]\nThemeVersion=4\nTheme=3\nLayout=bar\nTextFont=inter\nTextSize=26\nScale=115\nCustom=1\nClearTint=33\n[Unrelated]\nKeep=this\n");
     var native = GlassAppearance.Load(appearancePath);
+    if(native.SidePanelSide!="left")throw new Exception("Side Panel must default to the left edge");
+    if(native.BarPosition!="bottom")throw new Exception("Bar must default to the bottom edge");
+    GlassAppearance.Validate(new System.Text.Json.Nodes.JsonObject { ["BarPosition"]="top" });
+    GlassAppearance.Set("BarPosition","top",path:appearancePath);
+    if(GlassAppearance.Load(appearancePath).BarPosition!="top"||GlassAppearance.Load(appearancePath).ToJson()["BarPosition"]!.GetValue<string>()!="top")throw new Exception("Bar edge was not persisted");
+    GlassAppearance.Validate(new System.Text.Json.Nodes.JsonObject { ["SidePanelSide"]="right" });
+    GlassAppearance.Set("SidePanelSide","right",path:appearancePath);
+    if(GlassAppearance.Load(appearancePath).SidePanelSide!="right"||GlassAppearance.Load(appearancePath).ToJson()["SidePanelSide"]!.GetValue<string>()!="right")throw new Exception("Side Panel edge was not persisted");
     if (native.Theme != "clear" || native.Layout != "bar" || !native.Custom || native.Tint != 33 || native.Get("TextFont", "roboto") != "inter") throw new Exception("Desktop settings do not read the actual glass preferences");
     GlassAppearance.UseTheme("dark", appearancePath);
     var reset = GlassAppearance.Load(appearancePath);
@@ -289,6 +297,16 @@ try
     if (!GlassAppearance.Load(appearancePath).Custom) throw new Exception("Fine editing must mark Custom");
     GlassAppearance.UseTheme("clear", appearancePath);
     if (GlassAppearance.Load(appearancePath).Tint != 20 || GlassAppearance.Load(appearancePath).Get("SurfaceBlend", "") != "soft-light") throw new Exception("Clear defaults differ from native renderer");
+    foreach(var baseTheme in new[]{"clear","light","dark"}) {
+        GlassAppearance.UseAppearance(baseTheme,true,appearancePath);var tinted=GlassAppearance.Load(appearancePath);
+        if(!tinted.AccentEnabled||tinted.BaseTheme!=baseTheme||tinted.Number("AccentCharacter",0,0,100)!=(baseTheme=="clear"?10:baseTheme=="light"?50:100)||tinted.Number("AccentSaturation",0,0,200)!=(baseTheme=="dark"?94:200))throw new Exception("Approved accent tint lost its base style");
+        GlassAppearance.UseAppearance(tint:false,path:appearancePath);if(GlassAppearance.Load(appearancePath).BaseTheme!=baseTheme||GlassAppearance.Load(appearancePath).AccentEnabled)throw new Exception("Removing accent tint lost the base style");
+    }
+    GlassAppearance.UseTheme("accent",appearancePath);GlassAppearance.Set("AccentSaturation",175,path:appearancePath);
+    var saturated=GlassAppearance.Load(appearancePath);
+    if(saturated.Number("AccentSaturation",100,0,200)!=175 || saturated.Custom || saturated.ToJson()["AccentSaturation"]!.GetValue<int>()!=175)throw new Exception("Accent saturation was not independently persisted");
+    GlassAppearance.UseTheme("accent",appearancePath);
+    if(GlassAppearance.Load(appearancePath).Number("AccentSaturation",0,0,200)!=100)throw new Exception("Accent theme reset lost its default saturation");
 }
 finally { File.Delete(appearancePath); Directory.Delete(Path.GetDirectoryName(appearancePath)!); }
 Console.WriteLine("PASS: desktop/native glass preference roundtrip, independent fields, custom edits and exact theme resets.");

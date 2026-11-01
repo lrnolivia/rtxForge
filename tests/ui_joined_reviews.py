@@ -120,7 +120,7 @@ def six():
     assert sixth.get_y()>=scroll.get_height()-1
     assert w.capture('joined-six-game-review.png')
     w.dialog.close()
-    w.review_extra({'kind':'reshade','name':w.games[0]['name'],'game':w.games[0]['game'],'changes':[{'path':'dxgi.dll','after':'fixture-hash'}]})
+    w.review_extra({'kind':'reshade','name':w.games[0]['name'],'game':w.games[0]['game'],'changes':[{'path':'dxgi.dll','before':None,'after':'fixture-hash'}]})
 def tool():
     w=app.window
     assert len([x for x in children(w.dialog.get_child()) if x.has_css_class('review-game')])==1

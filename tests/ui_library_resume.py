@@ -19,7 +19,7 @@ def start():
     key=lambda name:c.find_key(c.body,name)
     assert '3 games · 0 configured' in texts(c.body)
     assert not any(key(name).get_sensitive() for name in ('lib-install','lib-restore','lib-update'))
-    assert 'No games match this filter' in texts(c.body)
+    assert 'NO GAMES MATCH THIS FILTER' in texts(c.body)
     w.games[0]['blocked']='';w.games[0]['installed']=True
     # Available means not installed and not blocked (Windows LibraryScope),
     # so the installed game's library actions are reached from Installed.

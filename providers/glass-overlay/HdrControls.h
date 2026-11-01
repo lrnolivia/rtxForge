@@ -19,6 +19,10 @@ struct HdrControls {
     std::vector<HdrField> fields;
     std::map<std::string,float> pending;
     bool available{},installed{},syncing{};
+    void EntryVisibility() {
+        E("nav-hdr")->SetProperty("display",available||installed?"flex":"none");
+        E("open-hdr")->SetProperty("display",(available||installed)&&!document->IsClassSet("layout-centered")?"flex":"none");
+    }
     Rml::Element* E(const std::string& id) {return document->GetElementById(id);}
     static std::string Escape(const std::string& s) {return Rml::StringUtilities::EncodeRml(s);}
     static std::string Number(float n,bool whole=false) {char text[48];std::snprintf(text,sizeof(text),whole?"%.0f":"%.2f",n);return text;}
@@ -48,7 +52,7 @@ struct HdrControls {
         for(auto& f:next)if(pending.contains(f.key)){f.value=pending.at(f.key);f.automatic=false;}
         fields=std::move(next);available=supported;installed=present;
         for(const auto* id:{"hdr-main-note","hdr-popup-note"})E(id)->SetInnerRML(Escape(message));
-        for(const auto* id:{"open-hdr","nav-hdr"})E(id)->SetProperty("display",supported||present?"flex":"none");
+        EntryVisibility();
         if(rebuild)Build();Sync();
     }
     void Sync() {

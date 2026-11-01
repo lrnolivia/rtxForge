@@ -665,6 +665,8 @@ def handle(request: dict) -> None:
             send({"event": "progress", "id": rid, "label": str(event["text"]).strip()})
 
     try:
+        if os.environ.get('RTXFORGE_READ_ONLY') == '1' and request['method'] not in {'hello', 'hardware', 'scan', 'settings'}:
+            raise RuntimeError('This library preview cannot change games or packages.')
         method = METHODS[request["method"]]
         if request["method"] == "execute":
             running[request["params"]["token"]] = reviews.get(request["params"]["token"], {})
@@ -705,7 +707,8 @@ def main() -> int:
                 send({'event':'overlay-refresh','error':str(error)})
             refresh_stop.wait(30)
     refresh_worker=threading.Thread(target=refresh_overlays,name='overlay-refresh')
-    refresh_worker.start()
+    if os.environ.get('RTXFORGE_READ_ONLY') != '1':
+        refresh_worker.start()
     try:
         workers: list[threading.Thread] = []
         for line in sys.stdin.buffer:
@@ -726,7 +729,8 @@ def main() -> int:
             worker.join()
     finally:
         refresh_stop.set()
-        refresh_worker.join()
+        if refresh_worker.is_alive():
+            refresh_worker.join()
     return 0
 
 

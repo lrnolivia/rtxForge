@@ -1,5 +1,6 @@
 """Focused tests for diagnostics, opt-in reports, metadata and tool ownership."""
 import json
+import contextlib
 import os
 from pathlib import Path
 import struct
@@ -23,6 +24,8 @@ def pe():
 class Engine:
     def load_baseline(self,*_,**__):return None
     def _running_processes_under_root(self,*_):return []
+    def pe_imported_dlls(self,*_):return {'d3d11.dll'}
+    def mutation_lock(self):return contextlib.nullcontext()
 
 class CompletionTests(unittest.TestCase):
     def setUp(self):
@@ -33,6 +36,9 @@ class CompletionTests(unittest.TestCase):
         self.config={'storage':{'root':str(self.root/'state'),'reserve_bytes':0}}
         self.dll=self.root/'ReShade64.dll';self.dll.write_bytes(pe()+b'ReShade')
         p=patch.object(extra_tools.engine_bridge,'module',return_value=Engine());p.start();self.addCleanup(p.stop)
+        # These are Windows PE ownership fixtures; Proton prefix selection has its own suite.
+        import reshade_import
+        p=patch.object(reshade_import,'WINDOWS',True);p.start();self.addCleanup(p.stop)
 
     def test_ngx_callback_is_not_nr_success(self):
         self.assertFalse(diag.parse_log('NR diagnostic NGX [feature=11] initialized')['model_created'])

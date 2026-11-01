@@ -25,7 +25,8 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
 
     sealed record Request(TaskCompletionSource<JsonNode?> Done, Action<JsonObject>? Progress);
 
-    public bool IsPreview => false;
+    readonly bool readOnly;
+    public bool IsPreview => readOnly;
     public ForgeSettings Settings { get; } = ForgeSettings.Load();
     public JsonObject? OverlayRefreshResult { get; private set; }
     public event Action<JsonObject>? OverlayRefreshChanged;
@@ -40,16 +41,17 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         catch (Exception error) when (error is InvalidOperationException or FormatException or JsonException or ArgumentException) { return []; }
     }
 
-    EngineForgeService(Process process, string root)
+    EngineForgeService(Process process, string root, bool readOnly = false)
     {
         this.process = process;
         EngineRoot = root;
+        this.readOnly = readOnly;
     }
 
     // ---------- startup ----------
 
     /// <summary>Starts the host, or returns null (with the reason) when Python or the engine is unavailable.</summary>
-    public static async Task<(EngineForgeService? Service, string? Problem)> TryStartAsync(string logName = "engine.log")
+    public static async Task<(EngineForgeService? Service, string? Problem)> TryStartAsync(string logName = "engine.log", bool readOnly = false)
     {
         var root = FindEngineRoot();
         if (root is null) return (null, "The rtxForge engine files were not found next to the app.");
@@ -75,6 +77,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         info.Environment["RTXFORGE_APP_EXE"] = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "rtxForge.exe");
         info.Environment["PYTHONIOENCODING"] = "utf-8";
         info.Environment["RTXFORGE_OVERLAY_HOST"] = logName == "overlay-engine.log" ? "1" : "0";
+        info.Environment["RTXFORGE_READ_ONLY"] = readOnly ? "1" : "0";
 
         Process process;
         try { process = Process.Start(info)!; }
@@ -83,7 +86,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             return (null, "Python could not start: " + error.Message);
         }
 
-        var service = new EngineForgeService(process, root);
+        var service = new EngineForgeService(process, root, readOnly);
         var ready = new TaskCompletionSource<JsonObject>(TaskCreationOptions.RunContinuationsAsynchronously);
         _ = Task.Run(() => service.ReadLoop(ready));
         _ = Task.Run(() => service.DrainErrors(logName));
@@ -203,7 +206,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         var rows = await CallAsync("scan", new { folders = Settings.GameFolders, library_folders = Settings.LibraryFolders, runtime_provider = Settings.RuntimeProvider, game_executables = Settings.GameExecutables }, cancel: cancel) as JsonArray ?? [];
         LibrarySnapshot.Write(SnapshotPath, key, rows);
         var games = LibraryGames(rows);
-        foreach (var game in games.Where(g => g.TestActive)) MonitorTestHelper(game);
+        if (!readOnly) foreach (var game in games.Where(g => g.TestActive)) MonitorTestHelper(game);
         return games;
     }
 

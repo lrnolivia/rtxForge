@@ -268,7 +268,7 @@ def controller_guide(family):
  assert 'Right stick' in labels(c.modals[-1]['dialog'])
 def card_surfaces():
  w=app.window;c=w.couch
- row=c.find_key(c.body,'card-opacity');assert row is not None and 'Card surfaces' in labels(c.body)
+ row=c.find_key(c.body,'card-opacity');assert row is not None and 'CARD SURFACES' in labels(c.body)
  assert row._gm_scale.get_value()==10==w.settings['game_mode_card_opacity']
  row.grab_focus();c.navigate('right');assert w.settings['game_mode_card_opacity']==15
  c.navigate('left');assert w.settings['game_mode_card_opacity']==10

@@ -2382,10 +2382,10 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
                     ('Layout and labels', None, rows[1:4]), ('Controller', None, rows[4:])]
         if section == 'Overlay':
             return [('rtxForge Panel', 'Choose the controls shown inside the game.', rows[:1]),
-                    ('Appearance', None, rows[1:5]), ('Status and notifications', None, rows[5:9]),
-                    ('Shortcut', None, rows[9:10]), ('OptiScaler', None, rows[10:13]),
-                    ('ReShade', None, rows[13:15]), ('Vulkan MFG overlay', None, rows[15:16]),
-                    ('Apply to games', None, rows[16:])]
+                    ('Appearance', None, rows[1:7]), ('Status and notifications', None, rows[7:11]),
+                    ('Shortcut', None, rows[11:12]), ('OptiScaler', None, rows[12:15]),
+                    ('ReShade', None, rows[15:17]), ('Vulkan MFG overlay', None, rows[17:18]),
+                    ('Apply to games', None, rows[18:])]
         return [({'System':'Hardware', 'Recovery':'Previous changes', 'About':'App and updates'}.get(section, section), None, rows)]
 
     def setting_toggle(self, title, description, get, setter):

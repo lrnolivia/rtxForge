@@ -4,11 +4,14 @@ The overlay opens for the compatible game you are playing. It keeps frame
 generation and neural rendering visible, with Look, fine tuning, sharpening
 and performance controls in expandable sections. The glass presentation offers Side Panel, Advanced and Bar layouts,
 with a complete Settings screen and separate Appearance editor. Clear is the
-default; Light and Dark have their own fixed material presets. Theme, text size
+default; Light and Dark have their own fixed material presets. Accent uses the
+game's accent for its surfaces, with a Clear–Light–Dark character slider. Theme, text size
 are available in Settings; overlay scale is adjusted in-game. The styling prototype retains
 experimental font and material controls. The end-user Appearance editor orders
 Theme before Text size, followed by Scale; More offers Blur and Motion effects.
-The preview keeps tint, grain, blend, foreground-depth and toast-shape tuning.
+The preview keeps tint, grain, blend, foreground-depth, font and toast-shape tuning
+in a separate collapsed God Mode section. These experimental controls are hidden
+in the game renderer.
 
 The outer window keeps its frosted material. Translucent inner panels, nested
 cards and controls get progressively lighter, with restrained soft shadows on
@@ -131,6 +134,21 @@ not replace it with the official build. Preset globals, unknown shader keys and
 publisher notices are retained. Existing conflicting files require restoring
 their owner first. The installer uses the detected API and architecture and
 enables the verified OptiScaler plugin route where available.
+
+The x64 package includes the effects bridge and matching glass renderer. A
+standalone DirectX 11 ReShade installation can host the glass panel without NR
+or MFG; unsupported feature controls are omitted. Existing Feeder and OptiScaler
+installations retain their own host. Standalone glass hosting on other graphics
+APIs, standalone Vulkan installation and 32-bit glass hosting are not established.
+HDR and ReShade imports preserve shared runtime dependencies while another
+installation still uses them. Remove HDR before restoring an import that owns
+those dependencies; retained shared files are reported rather than deleted.
+
+The helper resolves a nested game's exact enclosing Steam installation when an
+older install record lacks its app ID. Its accent then comes from the same local
+artwork or custom color as the library. Per-game shortcut overrides take
+precedence over the global shortcut, allowing games with Backtick consoles to
+use a separate binding.
 
 An add-on-capable ReShade runtime can expose its loaded effects to the glass
 overlay through the bundled effects bridge. ReShade provides parameter names,

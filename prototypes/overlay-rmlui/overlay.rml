@@ -473,8 +473,14 @@
               <span class="theme-sample clear-sample" />
               <span>Clear</span>
             </button>
+            <button id="theme-accent"><span class="theme-sample accent-sample" /><span>Accent</span></button>
           </div>
           <p id="theme-description" class="hint">Frosted glass, tuned to the scene.</p>
+          <div id="accent-character-row" class="accent-character" style="display: none">
+            <div class="field-heading"><label>Surface character</label><span id="accent-character-value">Light</span></div>
+            <input id="accent-character" class="range" type="range" min="0" max="100" step="1" value="35" />
+            <div class="character-labels"><span>Clear</span><span>Light</span><span>Dark</span></div>
+          </div>
         </div>
         <div class="appearance-block">
           <label>Text size</label>
@@ -501,6 +507,29 @@
             <button id="scale-plus" title="Larger overlay"><span class="button-label">+</span></button>
           </div>
         </div>
+        <button id="appearance-more" class="more-trigger">
+          <img class="glyph" src="icons/sliders-light.png" />
+          <span>More</span>
+          <span class="chevron" />
+        </button>
+        <div id="appearance-details" class="appearance-details" style="display: none">
+          <div class="slider-field">
+            <div class="field-heading">
+              <label>Blur</label>
+              <span id="blur-radius-value" />
+            </div>
+            <input id="blur-radius" class="range" type="range" min="16" max="48" step="1" value="44" />
+          </div>
+          <div class="inherit-row">
+            <label>Motion effects</label>
+            <button id="motion-effects" class="switch on">
+              <span />
+            </button>
+          </div>
+        </div>
+        <button id="appearance-god-mode" class="more-trigger god-mode-trigger preview-only"><img class="glyph" src="icons/sliders-light.png" /><span>God Mode</span><span class="chevron" /></button>
+        <div id="appearance-god-details" class="appearance-details preview-only" style="display: none">
+          <p class="hint">Prototype only. These experiments are hidden from users.</p>
         <div class="appearance-block">
           <label>Font</label>
           <select id="font-select">
@@ -509,12 +538,6 @@
             <option value="aptos">Aptos</option>
           </select>
         </div>
-        <button id="appearance-more" class="more-trigger">
-          <img class="glyph" src="icons/sliders-light.png" />
-          <span>More</span>
-          <span class="chevron" />
-        </button>
-        <div id="appearance-details" class="appearance-details" style="display: none">
 <div class="option-group preview-only"><label>Heading accents</label><select id="heading-accent-mode"><option value="normal">Normal</option><option value="screen">Screen</option><option value="hard-light">Hard Light</option><option value="soft-light">Soft Light</option><option value="overlay">Overlay</option><option value="multiply">Multiply</option></select><div class="slider-field"><div class="field-heading"><label>Intensity</label><span id="heading-accent-strength-value"/></div><input id="heading-accent-strength" class="range" type="range" min="0" max="100" step="1" value="100"/></div></div>
 <div class="option-group preview-only"><label>Control accents</label><select id="control-accent-mode"><option value="normal">Normal</option><option value="screen">Screen</option><option value="hard-light">Hard Light</option><option value="soft-light">Soft Light</option><option value="overlay">Overlay</option><option value="multiply">Multiply</option></select><div class="slider-field"><div class="field-heading"><label>Intensity</label><span id="control-accent-strength-value"/></div><input id="control-accent-strength" class="range" type="range" min="0" max="100" step="1" value="100"/></div></div>
 
@@ -524,13 +547,6 @@
               <span id="tint-opacity-value" />
             </div>
             <input id="tint-opacity" class="range" type="range" min="0" max="100" step="1" value="10" />
-          </div>
-          <div class="slider-field">
-            <div class="field-heading">
-              <label>Blur</label>
-              <span id="blur-radius-value" />
-            </div>
-            <input id="blur-radius" class="range" type="range" min="16" max="48" step="1" value="44" />
           </div>
           <div class="slider-field preview-only">
             <div class="field-heading">
@@ -571,12 +587,6 @@
           <div id="dark-inversion-row" class="inherit-row">
             <label>Darker inner cards</label>
             <button id="dark-inverted" class="switch">
-              <span />
-            </button>
-          </div>
-          <div class="inherit-row">
-            <label>Motion effects</label>
-            <button id="motion-effects" class="switch on">
               <span />
             </button>
           </div>

@@ -9,7 +9,7 @@ public sealed class GlassAppearance
 {
     public static string FilePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rtxForge", "overlay-appearance.ini");
     public static readonly string[] Layouts = ["floating", "centered", "bar"];
-    public static readonly string[] Themes = ["clear", "light", "dark"];
+    public static readonly string[] Themes = ["clear", "light", "dark", "accent"];
     public static readonly string[] Blends = ["normal", "overlay", "soft-light", "multiply", "screen", "hard-light", "darken", "lighten", "color", "luminosity", "difference"];
     public static string BlendLabel(string value) => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(value.Replace('-', ' '));
     readonly Dictionary<string, string> values;
@@ -17,15 +17,15 @@ public sealed class GlassAppearance
     public int Number(string key, int fallback, int min, int max) => Math.Clamp(int.TryParse(Get(key, ""), out var n) ? n : fallback, min, max);
     public string Get(string key, string fallback) => values.GetValueOrDefault(key, fallback);
     public bool On(string key, bool fallback = true) => Number(key, fallback ? 1 : 0, 0, 1) != 0;
-    public string Theme => Number("ThemeVersion", 0, 0, 4) != 4 ? "clear" : Number("Theme", 3, 1, 3) switch { 1 => "light", 2 => "dark", _ => "clear" };
+    public string Theme => Number("ThemeVersion", 0, 0, 4) != 4 ? "clear" : Number("Theme", 3, 1, 4) switch { 1 => "light", 2 => "dark", 4 => "accent", _ => "clear" };
     public string Layout => Layouts.Contains(Get("Layout", "floating")) ? Get("Layout", "floating") : "floating";
-    public int Tint => Number(Theme == "light" ? "LightTint" : Theme == "dark" ? "DarkTint" : "ClearTint", Theme == "light" ? 100 : Theme == "dark" ? 80 : 20, 0, 100);
+    public int Tint => Number(Theme == "light" ? "LightTint" : Theme == "dark" ? "DarkTint" : Theme == "accent" ? "AccentTint" : "ClearTint", Theme == "light" ? 100 : Theme == "dark" ? 80 : 20, 0, 100);
     public bool Custom => On("Custom", false);
     static readonly Dictionary<string, (int Low, int High, int Default)> Ranges = new()
     {
-        ["ThemeVersion"]=(4,4,4), ["Theme"]=(1,3,3), ["Custom"]=(0,1,0), ["TextSize"]=(16,26,22),
+        ["ThemeVersion"]=(4,4,4), ["Theme"]=(1,4,3), ["Custom"]=(0,1,0), ["TextSize"]=(16,26,22),
         ["Scale"]=(70,150,100), ["ScaleBaseline"]=(120,120,120), ["LightTint"]=(0,100,100),
-        ["DarkTint"]=(0,100,80), ["ClearTint"]=(0,100,20), ["Blur"]=(16,48,48), ["Grain"]=(0,80,40),
+        ["DarkTint"]=(0,100,80), ["ClearTint"]=(0,100,20), ["AccentCharacter"]=(0,100,35), ["AccentTint"]=(0,100,67), ["Blur"]=(16,48,48), ["Grain"]=(0,80,40),
         ["BlendStrength"]=(0,100,50), ["TextDepth"]=(0,1,1), ["InvertDark"]=(0,1,0), ["ToastPill"]=(0,1,0),
         ["Motion"]=(0,1,1), ["ShowNotifications"]=(0,1,1),
     };
@@ -35,7 +35,7 @@ public sealed class GlassAppearance
     {
         var result = new JsonObject();
         foreach (var (key, range) in Ranges) result[key] = Number(key, range.Default, range.Low, range.High);
-        result["Theme"] = Theme == "light" ? 1 : Theme == "dark" ? 2 : 3;
+        result["Theme"] = Theme == "light" ? 1 : Theme == "dark" ? 2 : Theme == "accent" ? 4 : 3;
         foreach (var (key, options) in Options)
         {
             var fallback = key == "Layout" ? "floating" : key == "TextFont" ? "roboto" : "soft-light";
@@ -91,15 +91,20 @@ public sealed class GlassAppearance
         if (key != "ThemeVersion") Set("ThemeVersion", 4, path: path);
         if (!WritePrivateProfileString("Appearance", key, Convert.ToString(value, CultureInfo.InvariantCulture)!, path))
             throw new IOException("Could not save overlay appearance.");
+        if (key == "AccentCharacter")
+        {
+            var x = Math.Clamp(Convert.ToDouble(value, CultureInfo.InvariantCulture) / 50, 0, 1);
+            Set("AccentTint", (int)Math.Round(20 + 60 * x * x * (3 - 2 * x)), path: path);
+        }
         if (custom) Set("Custom", 1, path: path);
     }
     public static void UseTheme(string theme, string? path = null)
     {
-        if (!Themes.Contains(theme)) throw new ArgumentException("Choose Clear, Light or Dark.");
+        if (!Themes.Contains(theme)) throw new ArgumentException("Choose Clear, Light, Dark or Accent.");
         foreach (var (key, value) in new Dictionary<string, object> {
-            ["ThemeVersion"]=4, ["Theme"]=theme=="light"?1:theme=="dark"?2:3,
-            ["LightTint"]=100, ["DarkTint"]=80, ["ClearTint"]=20,
-            ["Blur"]=theme=="light"?44:48, ["Grain"]=40, ["BlendStrength"]=theme=="light"?35:theme=="dark"?15:50,
-            ["SurfaceBlend"]=theme=="clear"?"soft-light":"overlay", ["Custom"]=0, ["InvertDark"]=0, ["TextDepth"]=1 }) Set(key, value, path: path);
+            ["ThemeVersion"]=4, ["Theme"]=theme=="light"?1:theme=="dark"?2:theme=="accent"?4:3,
+            ["LightTint"]=100, ["DarkTint"]=80, ["ClearTint"]=20, ["AccentCharacter"]=35, ["AccentTint"]=67,
+            ["Blur"]=theme=="light"?44:48, ["Grain"]=40, ["BlendStrength"]=theme=="light"?35:theme=="dark"?15:theme=="accent"?0:50,
+            ["SurfaceBlend"]=theme=="accent"?"normal":theme=="clear"?"soft-light":"overlay", ["Custom"]=0, ["InvertDark"]=0, ["TextDepth"]=1 }) Set(key, value, path: path);
     }
 }

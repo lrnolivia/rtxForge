@@ -17,7 +17,7 @@ struct Frame
     Output output;
 };
 
-bool Init(ID3D11Device *device, HWND window);
+bool Init(ID3D11Device *device, HWND window, bool neuralRendering = true);
 // Returns true while the panel wants keyboard and mouse input.
 bool Draw(const Frame &frame);
 void Shutdown();

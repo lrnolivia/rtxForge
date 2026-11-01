@@ -12,6 +12,21 @@ import transactions as t
 
 
 class GlassPreferencesTest(unittest.TestCase):
+    def test_accent_character_round_trips_and_preserves_the_standard_theme(self):
+        settings={}
+        glass.theme(settings,'accent')
+        self.assertEqual((glass.current(settings)['Theme'],glass.current(settings)['SurfaceBlend']),(4,'normal'))
+        for character,tint in [(0,20),(50,80),(100,80)]:
+            glass.edit(settings,'AccentCharacter',character)
+            actual=proton_overlay.settings_snapshot(overlay_settings.options(settings))['overlay_appearance']
+            self.assertEqual((actual['Theme'],actual['AccentCharacter'],actual['AccentTint'],actual['Custom']),(4,character,tint,0))
+        glass.edit(settings,'AccentTint',35)
+        self.assertEqual(glass.current(settings)['Custom'],1)
+        glass.theme(settings,'accent')
+        self.assertEqual((glass.current(settings)['AccentCharacter'],glass.current(settings)['AccentTint'],glass.current(settings)['Custom']),(35,67,0))
+        for value in [-1,101,True]:
+            with self.subTest(value=value),self.assertRaises(t.Refusal):glass.edit(settings,'AccentCharacter',value)
+
     def test_defaults_and_theme_materials_reach_the_real_helper_snapshot(self):
         settings = {}
         for theme, expected in [('clear',(3,20,48,50,'soft-light')),('light',(1,100,44,35,'overlay')),('dark',(2,80,48,15,'overlay'))]:

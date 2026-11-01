@@ -391,7 +391,7 @@ public sealed class ForgeSettings
     [JsonPropertyName("overlay_start_with_windows")] public bool OverlayStartWithWindows { get; set; } = true;
     [JsonPropertyName("overlay_material")] public string OverlayMaterial { get; set; } = "acrylic";
     [JsonPropertyName("overlay_controls")] public string OverlayControls { get; set; } = "unified";
-    public static readonly string[] OverlayThemes = ["clear", "light", "dark", "app"];
+    public static readonly string[] OverlayThemes = ["clear", "light", "dark", "accent", "app"];
     string overlayTheme = "clear";
     [JsonPropertyName("overlay_theme")] public string OverlayTheme
     {

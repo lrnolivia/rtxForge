@@ -85,17 +85,31 @@ struct Controller : Rml::EventListener
     std::vector<std::string> stacking{"main-panel","inspector","welcome","type-panel"};
     std::string copyFont="roboto",headingFont="bakbak";
     int copySize=22,copyWeight=500,headingSize=36,headingWeight=400,overlayScale=100;
-    float lightOpacity=100,darkOpacity=80,clearOpacity=20,blurRadius=48,grainAmount=4.f,blendStrength=50;
+    float lightOpacity=100,darkOpacity=80,clearOpacity=20,accentCharacter=35,accentOpacity=80,blurRadius=48,grainAmount=4.f,blendStrength=50;
     std::string surfaceBlend="soft-light";
     std::string headingAccentBlend="screen",controlAccentBlend="screen";
     float headingAccentStrength=100,controlAccentStrength=65;
-    bool inspectorAnchored=false,prefsDirty=false,customTheme=false,moreOpen=false,textDepth=true,invertDark=false,toastPill=false,motionEnabled=true;
+    bool inspectorAnchored=false,prefsDirty=false,customTheme=false,moreOpen=false,godModeOpen=false,textDepth=true,invertDark=false,toastPill=false,motionEnabled=true;
     int sceneRequest=-1;
     bool showStats=true,showWelcome=true,showNotifications=true,bindingShortcut=false,settingsOpen=false;
     int shortcut=Rml::Input::KI_DELETE,shortcutModifiers=0;
     std::string shortcutLabel="Del",welcomePosition="top-right",primaryMenu="game",optiShortcut="Insert";
     std::map<std::string,bool> menuSettings{{"opti-menu",true},{"opti-intro",false},{"reshade-menu",true},{"reshade-intro",false}};
     ForgeSession::Snapshot session;
+    bool nrAvailable=true,fgAvailable=true;
+    void Capabilities(bool nr,bool fg) {
+        if(nr==nrAvailable&&fg==fgAvailable)return;nrAvailable=nr;fgAvailable=fg;
+        const auto show=[&](const char* id,bool enabled){if(enabled)Element(id)->RemoveProperty("display");else Element(id)->SetProperty("display","none");};
+        show("frame-section",fg);show("nav-frame",fg);
+        for(const auto* id:{"neural-section","nav-neural","nav-look","nav-passes","preview-original"})show(id,nr);
+        show("tuning-footer",nr||fg);
+        Element("presets")->GetParentNode()->SetProperty("display",nr||fg?"flex":"none");
+        for(const auto* id:{"overview-nr","popup-nr"})Element(id)->GetParentNode()->SetProperty("display",nr?"block":"none");
+        for(const auto* id:{"overview-displayed","popup-displayed"})Element(id)->GetParentNode()->SetProperty("display",fg?"block":"none");
+        document->SetClass("effects-only",!nr&&!fg);
+        if((!nr&&(activeNavigation=="nav-neural"||activeNavigation=="nav-look"||activeNavigation=="nav-passes"))||(!fg&&activeNavigation=="nav-frame"))Page("nav-overview");
+        Session(session);Reflow();
+    }
     void Welcome() {if(!showWelcome)return;Element("toast-message")->SetInnerRML("Press <span class=\"keycap\">"+Rml::StringUtilities::EncodeRml(shortcutLabel)+"</span> for controls");Element("welcome")->SetProperty("width","500dp");Visible("welcome",true);PositionWelcome();Raise("welcome");Enter("welcome");toastUntil=0;}
     void ToggleOverlay() {EndNrPreview();if(BarSettings())Settings(false);const bool show=!Element("main-panel")->IsVisible();Visible("main-panel",show);if(show){Raise("main-panel");Enter("main-panel");}else{Visible("inspector",false);Visible("type-panel",false);Welcome();}}
     void Settings(bool show) {
@@ -109,7 +123,7 @@ struct Controller : Rml::EventListener
         fittedLayout.clear();SyncSettings();Reflow();if(modal){Raise("inspector");Enter("inspector");}if(show&&layout=="centered")Element("nav-settings")->ScrollIntoView();
     }
     void SyncSettings() {const bool was=typographySync;typographySync=true;for(const auto& [id,on]:menuSettings)Element(("setting-"+id).c_str())->SetClass("on",on);Element("setting-helper")->SetClass("on",helperEnabled);Element("setting-startup")->SetClass("on",startWithWindows);Element("setting-stats")->SetClass("on",showStats);Element("setting-welcome")->SetClass("on",showWelcome);Element("setting-notifications")->SetClass("on",showNotifications);Element("shortcut-key")->SetInnerRML(bindingShortcut?"…":Rml::StringUtilities::EncodeRml(shortcutLabel));dynamic_cast<Rml::ElementFormControl*>(Element("welcome-position"))->SetValue(welcomePosition);dynamic_cast<Rml::ElementFormControl*>(Element("primary-menu"))->SetValue(primaryMenu);dynamic_cast<Rml::ElementFormControl*>(Element("opti-shortcut"))->SetValue(optiShortcut);PositionWelcome();typographySync=was;}
-    void Session(const ForgeSession::Snapshot& snapshot) {session=snapshot;RenderResolutionLabel();Element("compact-nr-size")->SetInnerRML(snapshot.nrRunning&&snapshot.nrWidth&&snapshot.nrHeight?std::to_string(snapshot.nrWidth)+" × "+std::to_string(snapshot.nrHeight):"Dimensions not reported");Element("compact-frames")->SetInnerRML(ForgeSession::Frames(snapshot));Element("compact-neural")->SetInnerRML(ForgeSession::Neural(snapshot));Element("compact-ratio")->SetInnerRML(snapshot.framesKnown&&snapshot.measuredRatio>=1&&snapshot.measuredRatio<=8?ForgeSession::Number(snapshot.measuredRatio,1)+"×":"");for(const auto* p:{"overview","popup"}){const std::string prefix=p;Element((prefix+"-nr").c_str())->SetInnerRML(ForgeSession::Neural(snapshot));Element((prefix+"-frame").c_str())->SetInnerRML(ForgeSession::Available(snapshot.gameFps)&&snapshot.gameFps>0?ForgeSession::Number(1000/snapshot.gameFps,2)+" ms":"—");Element((prefix+"-rendered").c_str())->SetInnerRML(ForgeSession::Number(snapshot.gameFps));Element((prefix+"-displayed").c_str())->SetInnerRML(snapshot.framesKnown?ForgeSession::Number(snapshot.displayedFps):"—");}if(showStats)Element("compact-live")->RemoveProperty("display");else Element("compact-live")->SetProperty("display","none");}
+    void Session(const ForgeSession::Snapshot& snapshot) {session=snapshot;RenderResolutionLabel();Element("compact-nr-size")->SetInnerRML(snapshot.nrRunning&&snapshot.nrWidth&&snapshot.nrHeight?std::to_string(snapshot.nrWidth)+" × "+std::to_string(snapshot.nrHeight):"Dimensions not reported");Element("compact-frames")->SetInnerRML(ForgeSession::Frames(snapshot));Element("compact-neural")->SetInnerRML(ForgeSession::Neural(snapshot));Element("compact-ratio")->SetInnerRML(snapshot.framesKnown&&snapshot.measuredRatio>=1&&snapshot.measuredRatio<=8?ForgeSession::Number(snapshot.measuredRatio,1)+"×":"");for(const auto* p:{"overview","popup"}){const std::string prefix=p;Element((prefix+"-nr").c_str())->SetInnerRML(ForgeSession::Neural(snapshot));Element((prefix+"-frame").c_str())->SetInnerRML(ForgeSession::Available(snapshot.gameFps)&&snapshot.gameFps>0?ForgeSession::Number(1000/snapshot.gameFps,2)+" ms":"—");Element((prefix+"-rendered").c_str())->SetInnerRML(ForgeSession::Number(snapshot.gameFps));Element((prefix+"-displayed").c_str())->SetInnerRML(snapshot.framesKnown?ForgeSession::Number(snapshot.displayedFps):"—");}if(showStats&&(nrAvailable||fgAvailable))Element("compact-live")->RemoveProperty("display");else Element("compact-live")->SetProperty("display","none");}
     void PositionWelcome() {
         if(!document->IsVisible())return;
         if(welcomePosition!="top-right"&&welcomePosition!="top-left"&&welcomePosition!="top-center"&&welcomePosition!="bottom-right"&&welcomePosition!="bottom-left")welcomePosition="top-right";
@@ -204,15 +218,18 @@ struct Controller : Rml::EventListener
     std::unordered_set<Rml::Element*> clearForeground;
     double lastForeground=-1;
     std::array<float,3> clearAccent{};
+    bool AccentLight()const {return appearance==4&&accentCharacter>=20&&accentCharacter<72;}
+    std::array<float,3> SurfaceTint()const {return MaterialColor::AccentSurface(accent,accentCharacter);}
     std::string AccentTone(size_t slot,bool heading) {
         auto source=accent;const auto scene=filtered[slot];MaterialColor::Color base=scene.valid?MaterialColor::Color{scene.r,scene.g,scene.b}:MaterialColor::Color{.35f,.35f,.35f};
         if(appearance==3)base=MaterialColor::ClearSurface(base,clearOpacity/100.f,MaterialColor::Mode(surfaceBlend),blendStrength/100.f);
+        else if(appearance==4){const auto tint=SurfaceTint();for(size_t i=0;i<3;++i)base[i]=base[i]*(1-accentOpacity/100.f)+tint[i]*accentOpacity/100.f;}
         else {const float tint=(appearance==1?lightOpacity:darkOpacity)/100.f,tone=appearance==1?.86f:.07f;for(auto& channel:base)channel=channel*(1-tint)+tone*tint;}
         const auto& mode=heading?headingAccentBlend:controlAccentBlend;const float strength=(heading?headingAccentStrength:controlAccentStrength)/100.f;
         auto mixed=MaterialColor::Blend(base,source,MaterialColor::Mode(mode));
         if(mode=="screen"&&MaterialColor::LinearLuma(source)>.55f)mixed=source;
         for(size_t i=0;i<3;++i)source[i]+=(mixed[i]-source[i])*strength;
-        if(appearance==1){
+        if(appearance==1||AccentLight()){
             const float contrast=(MaterialColor::LinearLuma(base)+.05f)/(MaterialColor::LinearLuma(source)+.05f);
             if(MaterialColor::YellowFamily(accent)){
                 if(heading&&(contrast<4.5f||MaterialColor::MuddyShade(source)))return "#3e3b37ff";
@@ -243,8 +260,8 @@ struct Controller : Rml::EventListener
         for(size_t i=0;i<stacking.size();++i)Element(stacking[i].c_str())->SetProperty("z-index",std::to_string(i+1));
     }
     void UseTheme(int mode) {
-        const auto theme=ForgeAppearance::Get(mode);appearance=mode;customTheme=false;headingAccentBlend=mode==1?"multiply":"screen";controlAccentBlend=mode==1?"normal":"screen";headingAccentStrength=100;controlAccentStrength=65;
-        lightOpacity=ForgeAppearance::Light.tint;darkOpacity=ForgeAppearance::Dark.tint;clearOpacity=ForgeAppearance::Clear.tint;
+        const auto theme=ForgeAppearance::Get(mode);appearance=mode;customTheme=false;headingAccentBlend=(mode==1||mode==4)?"multiply":"screen";controlAccentBlend=(mode==1||mode==4)?"normal":"screen";headingAccentStrength=100;controlAccentStrength=65;
+        lightOpacity=ForgeAppearance::Light.tint;darkOpacity=ForgeAppearance::Dark.tint;clearOpacity=ForgeAppearance::Clear.tint;accentCharacter=35;accentOpacity=MaterialColor::AccentOpacity(accentCharacter)*100;
         blurRadius=theme.blur;grainAmount=theme.grain;surfaceBlend=theme.blend;blendStrength=theme.strength;invertDark=false;textDepth=true;Materials();
     }
     void ShowAppearance() {
@@ -254,7 +271,8 @@ struct Controller : Rml::EventListener
     }
     void Materials() {
         if(typographySync)return;typographySync=true;
-        const float opacity=appearance==1?lightOpacity:appearance==3?clearOpacity:darkOpacity;
+        if(appearance==4&&!customTheme){headingAccentBlend=AccentLight()?"multiply":"screen";controlAccentBlend=AccentLight()?"normal":"screen";}
+        const float opacity=appearance==1?lightOpacity:appearance==3?clearOpacity:appearance==4?accentOpacity:darkOpacity;
         dynamic_cast<Rml::ElementFormControl*>(Element("tint-opacity"))->SetValue(std::to_string(opacity));
         Element("tint-opacity-value")->SetInnerRML(std::to_string(int(opacity))+"%");
         dynamic_cast<Rml::ElementFormControl*>(Element("surface-blend"))->SetValue(surfaceBlend);
@@ -264,9 +282,11 @@ struct Controller : Rml::EventListener
         for(const auto& entry:std::vector<std::pair<std::string,std::pair<std::string,float>>>{{"heading",{headingAccentBlend,headingAccentStrength}},{"control",{controlAccentBlend,controlAccentStrength}}}){dynamic_cast<Rml::ElementFormControl*>(Element((entry.first+"-accent-mode").c_str()))->SetValue(entry.second.first);dynamic_cast<Rml::ElementFormControl*>(Element((entry.first+"-accent-strength").c_str()))->SetValue(std::to_string(entry.second.second));Element((entry.first+"-accent-strength-value").c_str())->SetInnerRML(std::to_string(int(entry.second.second))+"%");}
         Element("text-depth")->SetClass("on",textDepth);Element("dark-inverted")->SetClass("on",invertDark);Element("motion-effects")->SetClass("on",motionEnabled);
         Visible("dark-inversion-row",preview&&appearance==2);document->SetClass("production-ui",!preview);Visible("appearance-more",true);Visible("appearance-details",moreOpen);Element("appearance-more")->SetClass("expanded",moreOpen);
+        Visible("appearance-god-mode",preview);Visible("appearance-god-details",preview&&godModeOpen);Element("appearance-god-mode")->SetClass("expanded",godModeOpen);
+        Visible("accent-character-row",appearance==4);dynamic_cast<Rml::ElementFormControl*>(Element("accent-character"))->SetValue(std::to_string(accentCharacter));Element("accent-character-value")->SetInnerRML(accentCharacter<25?"Clear":accentCharacter<72?"Light":"Dark");
         if(!preview)Element("font-select")->GetParentNode()->SetProperty("display","none");else Element("font-select")->GetParentNode()->RemoveProperty("display");
         Element("toast-pill")->SetClass("selected",toastPill);Element("toast-rounded")->SetClass("selected",!toastPill);
-        Element("theme-label")->SetInnerRML(customTheme?"Custom":appearance==1?"Light":appearance==2?"Dark":"Clear");Element("theme-description")->SetInnerRML(customTheme?(appearance==1?"Custom · based on Light":appearance==2?"Custom · based on Dark":"Custom · based on Clear"):"Select a theme to restore its defaults.");
+        Element("theme-label")->SetInnerRML(customTheme?"Custom":appearance==1?"Light":appearance==2?"Dark":appearance==4?"Accent":"Clear");Element("theme-description")->SetInnerRML(customTheme?(appearance==1?"Custom · based on Light":appearance==2?"Custom · based on Dark":appearance==4?"Custom · based on Accent":"Custom · based on Clear"):"Select a theme to restore its defaults.");
         document->SetClass("dark-inverted",appearance==2 && invertDark);Element("welcome")->SetProperty("--corner-radius",toastPill?"28":"14");Element("welcome")->SetProperty("border-radius",toastPill?"28dp":"14dp");
         typographySync=false;prefsDirty=true;Reflow();
     }
@@ -276,9 +296,10 @@ struct Controller : Rml::EventListener
         const auto number=[&](const wchar_t* key,int fallback,int low,int high){return std::clamp(int(GetPrivateProfileIntW(L"Appearance",key,fallback,preferences.c_str())),low,high);};
         copySize=number(L"TextSize",22,16,26);copyWeight=number(L"TextWeight",500,100,900);headingSize=36;headingWeight=400;overlayScale=number(L"ScaleBaseline",0,0,120)==120?number(L"Scale",100,70,150):100;
         const bool current=number(L"ThemeVersion",0,0,ForgeAppearance::Version)==ForgeAppearance::Version;
-        appearance=current?number(L"Theme",3,1,3):3;
+        appearance=current?number(L"Theme",3,1,4):3;
         const auto theme=ForgeAppearance::Get(appearance);
         lightOpacity=current?float(number(L"LightTint",100,0,100)):100;darkOpacity=current?float(number(L"DarkTint",80,0,100)):80;clearOpacity=current?float(number(L"ClearTint",20,0,100)):20;
+        accentCharacter=float(number(L"AccentCharacter",35,0,100));accentOpacity=float(number(L"AccentTint",int(MaterialColor::AccentOpacity(accentCharacter)*100),0,100));
         blurRadius=current?float(number(L"Blur",int(theme.blur),16,48)):theme.blur;grainAmount=current?number(L"Grain",40,0,80)/10.f:4;
         customTheme=current&&number(L"Custom",0,0,1)!=0;textDepth=number(L"TextDepth",1,0,1)!=0;invertDark=number(L"InvertDark",0,0,1)!=0;toastPill=number(L"ToastPill",0,0,1)!=0;motionEnabled=number(L"Motion",1,0,1)!=0;
         blendStrength=current?float(number(L"BlendStrength",int(theme.strength),0,100)):theme.strength;surfaceBlend=theme.blend;
@@ -288,7 +309,7 @@ struct Controller : Rml::EventListener
         wchar_t text[80]{};GetPrivateProfileStringW(L"Appearance",L"HeadingFont",L"bakbak",text,80,preferences.c_str());const auto heading=Utf8(text);if(heading=="bakbak"||heading=="roboto"||heading=="inter"||heading=="aptos")headingFont=heading;
         GetPrivateProfileStringW(L"Appearance",L"TextFont",L"roboto",text,80,preferences.c_str());const auto copy=Utf8(text);if(copy=="roboto"||copy=="inter"||copy=="aptos")copyFont=copy;
         if(current){GetPrivateProfileStringW(L"Appearance",L"SurfaceBlend",fs::path(theme.blend).c_str(),text,80,preferences.c_str());const auto blend=Utf8(text);if(MaterialColor::Valid(blend))surfaceBlend=blend;}
-        headingAccentBlend=appearance==1?"multiply":"screen";controlAccentBlend=appearance==1?"normal":"screen";
+        headingAccentBlend=(appearance==1||AccentLight())?"multiply":"screen";controlAccentBlend=(appearance==1||AccentLight())?"normal":"screen";
         headingAccentStrength=float(number(L"HeadingAccentStrength",int(headingAccentStrength),0,100));controlAccentStrength=float(number(L"ControlAccentStrength",int(controlAccentStrength),0,100));
         if(customTheme)for(const auto& [key,destination]:std::vector<std::pair<const wchar_t*,std::string*>>{{L"HeadingAccentBlend",&headingAccentBlend},{L"ControlAccentBlend",&controlAccentBlend}}){GetPrivateProfileStringW(L"Appearance",key,fs::path(*destination).c_str(),text,80,preferences.c_str());const auto mode=Utf8(text);if(MaterialColor::Valid(mode))*destination=mode;}
         GetPrivateProfileStringW(L"Appearance",L"ShortcutLabel",L"Del",text,80,preferences.c_str());shortcutLabel=Utf8(text);
@@ -302,7 +323,7 @@ struct Controller : Rml::EventListener
         if(preferences.empty())return;fs::create_directories(preferences.parent_path());
         const auto put=[&](const wchar_t* key,int value){const auto text=std::to_wstring(value);WritePrivateProfileStringW(L"Appearance",key,text.c_str(),preferences.c_str());};
         put(L"TextSize",copySize);put(L"TextWeight",copyWeight);put(L"HeadingSize",headingSize);put(L"HeadingWeight",headingWeight);put(L"Scale",overlayScale);put(L"Theme",appearance);put(L"LightTint",int(lightOpacity));put(L"DarkTint",int(darkOpacity));
-        put(L"ThemeVersion",ForgeAppearance::Version);put(L"ScaleBaseline",120);put(L"Custom",customTheme);put(L"TextDepth",textDepth);put(L"InvertDark",invertDark);put(L"ToastPill",toastPill);put(L"Motion",motionEnabled);put(L"Grain",int(grainAmount*10));put(L"BlendStrength",int(blendStrength));put(L"ClearTint",int(clearOpacity));put(L"Blur",int(blurRadius));
+        put(L"ThemeVersion",ForgeAppearance::Version);put(L"ScaleBaseline",120);put(L"Custom",customTheme);put(L"TextDepth",textDepth);put(L"InvertDark",invertDark);put(L"ToastPill",toastPill);put(L"Motion",motionEnabled);put(L"Grain",int(grainAmount*10));put(L"BlendStrength",int(blendStrength));put(L"ClearTint",int(clearOpacity));put(L"AccentCharacter",int(accentCharacter));put(L"AccentTint",int(accentOpacity));put(L"Blur",int(blurRadius));
         put(L"HeadingAccentStrength",int(headingAccentStrength));put(L"ControlAccentStrength",int(controlAccentStrength));WritePrivateProfileStringW(L"Appearance",L"HeadingAccentBlend",fs::path(headingAccentBlend).c_str(),preferences.c_str());WritePrivateProfileStringW(L"Appearance",L"ControlAccentBlend",fs::path(controlAccentBlend).c_str(),preferences.c_str());
         WritePrivateProfileStringW(L"Appearance",L"HeadingFont",fs::path(headingFont).c_str(),preferences.c_str());WritePrivateProfileStringW(L"Appearance",L"SurfaceBlend",fs::path(surfaceBlend).c_str(),preferences.c_str());prefsDirty=false;
         WritePrivateProfileStringW(L"Appearance",L"TextFont",fs::path(copyFont).c_str(),preferences.c_str());
@@ -345,19 +366,19 @@ struct Controller : Rml::EventListener
             auto& c=filtered[i];const bool first=!c.valid;
             if(colors[i].valid) {if(first)c=colors[i];else{c.r+=(colors[i].r-c.r)*amount;c.g+=(colors[i].g-c.g)*amount;c.b+=(colors[i].b-c.b)*amount;}}
             const float light=c.valid?Luma(c):.4f;
-            const bool isDark=appearance==2 || (appearance==3 && (first?light<.18f:panelDark[i]?light<.20f:light<.16f));
+            const bool isDark=appearance==2 || (appearance==4&&!AccentLight()) || (appearance==3 && (first?light<.18f:panelDark[i]?light<.20f:light<.16f));
             panelDark[i]=isDark;auto* e=Element(i==0?"main-panel":i==1?"inspector":i==2?"welcome":"type-panel");e->SetClass("dark",isDark);
             // Constrain the neutral base. Scene chroma comes through the blurred
             // layer; the material's tone does not add a blue cast of its own.
             e->SetProperty("--surface-tone",std::to_string(appearance==3?.96f:isDark?(invertDark?.13f:.07f):.86f));
-            e->SetProperty("--surface-grounding",std::to_string((appearance==3?clearOpacity:isDark?darkOpacity:lightOpacity)/100.f));
-            e->SetProperty("--material-blur",std::to_string(blurRadius));e->SetClass("clear",appearance==3);
+            e->SetProperty("--surface-grounding",std::to_string((appearance==4?accentOpacity:appearance==3?clearOpacity:isDark?darkOpacity:lightOpacity)/100.f));
+            e->SetProperty("--material-blur",std::to_string(blurRadius));e->SetClass("clear",appearance==3);e->SetClass("accent-theme",appearance==4);
             e->SetProperty("--material-blend",surfaceBlend);e->SetProperty("--material-blend-opacity",std::to_string(blendStrength/100.f));e->SetProperty("--material-texture",std::to_string(grainAmount/100.f));
             e->SetProperty("--accent",AccentTone(i,false));e->SetProperty("--accent-ink",AccentTone(i,true));
             e->SetProperty("--accent-soft",AccentTone(i,false).substr(0,7)+"55");
             e->SetProperty("--shadow-opacity",std::to_string(i==2?.10f:.26f));
         }
-        Select("theme-menu",customTheme?"":appearance==1?"theme-light":appearance==3?"theme-clear":"theme-dark");
+        Select("theme-menu",customTheme?"":appearance==1?"theme-light":appearance==3?"theme-clear":appearance==4?"theme-accent":"theme-dark");
     }
     Rml::Element* Element(const char* id) { auto* e=document->GetElementById(id);Require(e!=nullptr,id);return e; }
     void Disabled(const char* id,bool disabled) {auto* e=Element(id);if(disabled)e->SetAttribute("disabled","");else e->RemoveAttribute("disabled");e->SetPseudoClass("disabled",disabled);e->SetProperty("focus",disabled?"none":"auto");}
@@ -491,7 +512,8 @@ struct Controller : Rml::EventListener
             if(id=="primary-menu"){primaryMenu=field->GetValue();prefsDirty=true;return;}
             if(id=="opti-shortcut"){optiShortcut=field->GetValue();prefsDirty=true;return;}
             if(extraFields.contains(id)) {Put(extraFields.at(id)->key,std::stof(field->GetValue()));Sync();return;}
-            if(id=="tint-opacity") {customTheme=true;if(appearance==1)lightOpacity=std::stof(field->GetValue());else if(appearance==3)clearOpacity=std::stof(field->GetValue());else darkOpacity=std::stof(field->GetValue());Materials();return;}
+            if(id=="accent-character"){accentCharacter=std::clamp(std::stof(field->GetValue()),0.f,100.f);accentOpacity=100*MaterialColor::AccentOpacity(accentCharacter);headingAccentBlend=AccentLight()?"multiply":"screen";controlAccentBlend=AccentLight()?"normal":"screen";Materials();return;}
+            if(id=="tint-opacity") {customTheme=true;if(appearance==1)lightOpacity=std::stof(field->GetValue());else if(appearance==3)clearOpacity=std::stof(field->GetValue());else if(appearance==4)accentOpacity=std::stof(field->GetValue());else darkOpacity=std::stof(field->GetValue());Materials();return;}
             if(id=="blur-radius") {customTheme=true;blurRadius=std::stof(field->GetValue());Materials();return;} if(id=="grain-amount"){customTheme=true;grainAmount=std::stof(field->GetValue());Materials();return;} if(id=="blend-strength"){customTheme=true;blendStrength=std::stof(field->GetValue());Materials();return;}
             if(id=="surface-blend") {customTheme=true;surfaceBlend=field->GetValue();Materials();return;}
             if(id=="heading-accent-mode"||id=="control-accent-mode"||id=="heading-accent-strength"||id=="control-accent-strength"){const bool heading=id.rfind("heading",0)==0;if(id.find("-mode")!=std::string::npos){if(MaterialColor::Valid(field->GetValue()))(heading?headingAccentBlend:controlAccentBlend)=field->GetValue();}else (heading?headingAccentStrength:controlAccentStrength)=std::clamp(std::stof(field->GetValue()),0.f,100.f);customTheme=true;Materials();return;}
@@ -532,6 +554,7 @@ struct Controller : Rml::EventListener
             else if(id.rfind("setting-",0)==0&&menuSettings.contains(id.substr(8))) {menuSettings[id.substr(8)]=!menuSettings[id.substr(8)];prefsDirty=true;SyncSettings();}
             else if(id=="open-appearance")ShowAppearance();
             else if(id=="appearance-more") {moreOpen=!moreOpen;Materials();}
+            else if(id=="appearance-god-mode"&&preview) {godModeOpen=!godModeOpen;Materials();}
             else if(id=="theme-reset")UseTheme(appearance);
             else if(id=="text-smaller"||id=="text-default"||id=="text-larger") {copySize=id=="text-smaller"?20:id=="text-larger"?24:22;Typography();}
             else if(id=="scale-minus"||id=="scale-plus") {overlayScale=std::clamp(overlayScale+(id=="scale-plus"?10:-10),70,150);Typography();}
@@ -547,7 +570,7 @@ struct Controller : Rml::EventListener
             else if(id=="open-hdr"){if(layout=="centered"){Settings(false);Page("nav-hdr");}else Open("hdr");}
             else if(id=="welcome-close")Visible("welcome",false);
             else if(id=="theme")Visible("theme-menu",!Element("theme-menu")->IsVisible());
-            else if(id=="theme-light"||id=="theme-dark"||id=="theme-clear")UseTheme(id=="theme-light"?1:id=="theme-dark"?2:3);
+            else if(id=="theme-light"||id=="theme-dark"||id=="theme-clear"||id=="theme-accent")UseTheme(id=="theme-light"?1:id=="theme-dark"?2:id=="theme-accent"?4:3);
             else if(id=="open-passes")Open("passes");else if(id=="open-look")Open("look");
             else if(id=="open-session")Open("overview");
             else if(id=="open-processing")Open("processing");else if(id=="open-frame-options")Open("frame");

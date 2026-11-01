@@ -2,6 +2,15 @@ using System.Text.Json;
 using RtxForge.Windows.Models;
 using RtxForge.Windows.Services;
 
+if (args is ["--overlay-artwork", var directory, var title, var media])
+{
+    var game = new Game { Id = directory, Location = directory, Name = title };
+    Console.WriteLine(JsonSerializer.Serialize(new { steam = OverlayArtwork.SteamIdentity(game)?.Id,
+        artwork = OverlayArtwork.Find(game, ForgeSettings.Load(), media) }));
+    return;
+}
+OverlayArtworkChecks.Run();
+
 var count = 0;
 if (!new ForgeSettings().AutoUpdate) throw new Exception("Automatic app updates must default on.");
 var manualUpdates = JsonSerializer.Deserialize<ForgeSettings>("{\"auto_update\":false}")!;

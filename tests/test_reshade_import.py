@@ -23,6 +23,19 @@ def pe(arch='x64', name=b'ReShade'):
 
 
 class ReShadeImportTest(unittest.TestCase):
+    def test_overlay_bundle_requires_both_verified_controls_and_renderer(self):
+        import json
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);folder=root/'providers/feeder-panel';folder.mkdir(parents=True)
+            payload={'rtxforge-effects.addon64':b'effects','rtxforge-glass.dll':b'glass'}
+            for name,data in payload.items():(folder/name).write_bytes(data)
+            (folder/'package.json').write_text(json.dumps({'files':{name:{'size':len(data),'sha256':t.sha(data)} for name,data in payload.items()}}))
+            with patch.object(r.hdr,'ROOT',root):
+                self.assertEqual(r.bridge_files('x64'),payload)
+                self.assertEqual(r.bridge_files('x86'),{})
+                (folder/'rtxforge-glass.dll').write_bytes(b'changed')
+                with self.assertRaises(t.Refusal):r.bridge_files('x64')
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.base = Path(self.temp.name)
         self.root = self.base / 'game'; self.root.mkdir()
@@ -67,6 +80,14 @@ class ReShadeImportTest(unittest.TestCase):
         self.assertEqual(extra_tools.recoveries({}, self.game)[0]['kind'], 'reshade-import')
         extra_tools.restore({}, state)
         self.assertEqual({p.name for p in self.root.iterdir() if p.is_file()}, {'game.exe'})
+
+    def test_standalone_import_installs_and_restores_the_complete_overlay(self):
+        payload={'rtxforge-effects.addon64':b'effects','rtxforge-glass.dll':b'glass'}
+        with patch.object(r,'bridge_files',return_value=payload):
+            _,state=self.deploy()
+        for name,data in payload.items():self.assertEqual((self.root/name).read_bytes(),data)
+        extra_tools.restore({},state)
+        self.assertEqual({p.name for p in self.root.iterdir() if p.is_file()},{'game.exe'})
 
     def test_shader_import_preserves_paid_runtime_and_existing_settings(self):
         paid = pe(name=b'ReShade custom build')

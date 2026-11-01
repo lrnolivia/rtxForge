@@ -7,6 +7,16 @@
 
 namespace MaterialColor {
 using Color=std::array<float,3>;
+inline bool YellowFamily(Color color);
+inline float Smooth(float t){t=std::clamp(t,0.f,1.f);return t*t*(3-2*t);}
+inline Color AccentSurface(Color accent,float character) {
+    const float light=Smooth(character/50.f),dark=Smooth((character-50.f)/50.f);
+    Color result{};
+    const bool yellow=YellowFamily(accent);
+    for(size_t i=0;i<3;++i){const float clear=.10f+.80f*accent[i],pale=.72f+.25f*accent[i],deep=yellow?.07f+.03f*accent[i]:.035f+.14f*accent[i];result[i]=(clear+(pale-clear)*light)*(1-dark)+deep*dark;}
+    return result;
+}
+inline float AccentOpacity(float character){return .20f+.60f*Smooth(character/50.f);}
 inline bool YellowFamily(Color color) {
     const float top=*std::max_element(color.begin(),color.end()),bottom=*std::min_element(color.begin(),color.end()),delta=top-bottom;
     if(top<=0||delta/top<=.25f)return false;

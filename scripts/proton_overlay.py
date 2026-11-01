@@ -53,8 +53,8 @@ WELCOME_POSITIONS = ('top-center', 'top-left', 'top-right', 'bottom-left', 'bott
 def light_theme(settings, app_theme=None):
     """OverlayHelper.LightTheme: Dark, Light, or Follow app (rtxForge's own theme on Linux)."""
     theme = settings.get('overlay_theme', 'clear')
-    if theme not in ('clear', 'dark', 'light', 'app'):
-        raise OverlayError('Choose Clear, Dark, Light or Follow app for the overlay.')
+    if theme not in ('clear', 'dark', 'light', 'accent', 'app'):
+        raise OverlayError('Choose Clear, Dark, Light, Accent or Follow app for the overlay.')
     if theme != 'app':
         return theme == 'light'
     return (app_theme if app_theme is not None else settings.get('theme')) == 'light'

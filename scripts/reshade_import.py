@@ -107,16 +107,19 @@ def host_bytes(config, arch):
     return data
 
 
-def bridge_bytes(arch):
-    if arch != 'x64': return None
+def bridge_files(arch):
+    if arch != 'x64': return {}
     folder = hdr.ROOT / 'providers/feeder-panel'
     receipt = folder / 'package.json'
-    if not receipt.is_file(): return None
-    pin = t.read_json(t.safe(receipt)).get('files', {}).get('rtxforge-effects.addon64')
-    if not pin: return None
-    path = t.safe(folder / 'rtxforge-effects.addon64')
-    t.need(path.is_file() and path.stat().st_size == pin['size'] and t.digest(path) == pin['sha256'], 'The bundled ReShade controls changed. Repair rtxForge before importing.')
-    return path.read_bytes()
+    if not receipt.is_file(): return {}
+    pins = t.read_json(t.safe(receipt)).get('files', {})
+    if 'rtxforge-effects.addon64' not in pins: return {}
+    result = {}
+    for name in ('rtxforge-effects.addon64', 'rtxforge-glass.dll'):
+        pin = pins.get(name, {}); path = t.safe(folder / name)
+        t.need(path.is_file() and path.stat().st_size == pin.get('size') and t.digest(path) == pin.get('sha256'), 'The bundled ReShade controls changed. Repair rtxForge before importing.')
+        result[name] = path.read_bytes()
+    return result
 
 
 def _route(engine, exe, arch):
@@ -188,8 +191,7 @@ def prepare(config, game, source=None):
             t.need(t.digest(existing_host) == t.sha(runtime[0]), 'A different ReShade runtime is already installed. Restore its owning tool before replacing it.')
         else: writes[host] = runtime[0]
     elif not existing_host.exists(): writes[host] = host_bytes(config, arch)
-    bridge = bridge_bytes(arch)
-    if bridge: writes['rtxforge-effects.addon64'] = bridge
+    writes.update(bridge_files(arch))
     if not source or not runtime and not existing_host.exists():
         writes['rtxForge-ReShade-Notices/ReShade-LICENSE.txt'] = (hdr.ROOT / 'providers/renodx-hdr/ReShade-LICENSE.txt').read_bytes()
     # Preserve an installed host and its owner when only importing shaders/presets.
@@ -267,6 +269,12 @@ def restore(config, state):
     t.need(state.parent == storage(config) / 'extras-transactions', 'Invalid ReShade recovery.')
     doc = t.read_json(state / 'transaction.json'); plan = doc['plan']
     root, exe, engine = location(config, plan)
+    _, _, hdr_receipt = hdr._location(plan)
+    if hdr_receipt.exists():
+        record = hdr._record(root, hdr_receipt, exe.parent)
+        if (exe.parent / record['addon']).is_file():
+            shared = {record['host'], 'rtxforge-effects.addon64', 'rtxforge-glass.dll'}
+            t.need(not any(Path(change['path']).name in shared for change in plan['changes']), 'RenoDX HDR still uses this ReShade installation. Remove HDR first; its shared runtime will be kept until this import is restored.')
     for change in plan['changes']:
         target = t.safe(root / t.relative(change['path']))
         t.need(target.is_file() and t.digest(target) == change['after'], 'ReShade files changed since import: ' + change['path'] + '. Your edits have been kept.')

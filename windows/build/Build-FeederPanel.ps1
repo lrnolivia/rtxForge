@@ -137,7 +137,7 @@ $here = Join-Path $repo 'windows\feeder-panel'
 $imgui = Join-Path $SourceRoot 'OptiScaler\include\imgui'
 $freetype = Join-Path $SourceRoot 'external\freetype'
 $obj = Join-Path $Output 'obj'
-New-Item -ItemType Directory -Force (Join-Path $obj 'panel'), (Join-Path $obj 'quiet') | Out-Null
+New-Item -ItemType Directory -Force (Join-Path $obj 'panel'), (Join-Path $obj 'quiet'), (Join-Path $obj 'effects') | Out-Null
 $common = '/nologo /O2 /std:c++latest /utf-8 /EHsc /MT /LD /W3 /DNOMINMAX /DUNICODE /D_UNICODE /DIMGUI_ENABLE_STB_TRUETYPE'
 function Invoke-Cl([string] $arguments, [string] $addon) {
     if (Test-Path $addon) { Remove-Item $addon }
@@ -152,7 +152,9 @@ Invoke-Cl ((($includes | ForEach-Object { "/I`"$_`"" }) -join ' ') + ' /Fo"' + "
 $quiet = Join-Path $Output 'rtxforge-quiet.addon64'
 Invoke-Cl ("/I`"$sdk\reshade-imgui`" /I`"$sdk\reshade`" /Fo`"$obj\quiet\\`" `"$here\rtxforge-quiet.cpp`" /Fe`"$quiet`" /link user32.lib advapi32.lib") $quiet
 $effects = Join-Path $Output 'rtxforge-effects.addon64'
-Invoke-Cl ("/I`"$sdk\reshade`" /I`"$SourceRoot\external\nlohmann`" /Fo`"$obj\quiet\\`" `"$here\effects-addon.cpp`" /Fe`"$effects`" /link user32.lib") $effects
+$effectsSources = @("$here\effects-addon.cpp") + $panelSources[1..($panelSources.Count-1)]
+Invoke-Cl ((($includes | ForEach-Object { "/I`"$_`"" }) -join ' ') + ' /Fo"' + "$obj\effects\\" + '" ' + (($effectsSources | ForEach-Object { "`"$_`"" }) -join ' ') +
+           " /Fe`"$effects`" /link /LIBPATH:`"$freetype`" freetype.lib d3d11.lib d3dcompiler.lib user32.lib advapi32.lib") $effects
 
 $receipt = [ordered]@{
     schema = 2; commit = (& git -C $repo rev-parse HEAD).Trim(); files = [ordered]@{}; reshade = $ReShade; reshade_imgui = $ReShadeImGui; optiscaler = $head

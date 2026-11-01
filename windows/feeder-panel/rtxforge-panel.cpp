@@ -17,7 +17,11 @@
 #include <cstdio>
 #include <cstdlib>
 
+#ifdef RTXFORGE_STANDALONE_RESHADE
+extern "C" __declspec(dllexport) const char *NAME = "rtxForge ReShade controls";
+#else
 extern "C" __declspec(dllexport) const char *NAME = "rtxForge Overlay";
+#endif
 extern "C" __declspec(dllexport) const char *DESCRIPTION = "The rtxForge Overlay.";
 
 namespace
@@ -90,11 +94,25 @@ const feeder_panel::Host host = {
 void on_init(reshade::api::effect_runtime *runtime)
 {
     ForgeReShade::Attach(runtime);
+#ifdef RTXFORGE_STANDALONE_RESHADE
+    // Provider hosts already own presentation and input. Keep reflection active
+    // while letting their existing overlay render it exactly once.
+    if (GetModuleHandleW(L"rtxforge-panel.addon64")) return;
+    wchar_t executable[32768]{};
+    if (GetModuleFileNameW(nullptr,executable,std::size(executable)) &&
+        std::filesystem::exists(std::filesystem::path(executable).parent_path()/L"OptiScaler.ini")) return;
+#endif
     if (runtime->get_device()->get_api() != reshade::api::device_api::d3d11) return;
     current = runtime;
     current_window = static_cast<HWND>(runtime->get_hwnd());
     current_swapchain = nullptr;
-    feeder_panel::Init(reinterpret_cast<ID3D11Device *>(runtime->get_device()->get_native()), current_window);
+    feeder_panel::Init(reinterpret_cast<ID3D11Device *>(runtime->get_device()->get_native()), current_window,
+#ifdef RTXFORGE_STANDALONE_RESHADE
+        false
+#else
+        true
+#endif
+    );
 }
 
 void on_destroy(reshade::api::effect_runtime *runtime)

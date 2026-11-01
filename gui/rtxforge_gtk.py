@@ -10429,10 +10429,10 @@ class Window(Adw.ApplicationWindow):
             return widget
         from overlay_layouts import LayoutPicker
         appearance.add(LayoutPicker(glass.current(s)['Layout'],lambda value:changed('Layout',value)))
-        theme=safe_combo_row(title='Theme',subtitle='Selecting a theme restores its material defaults.',model=Gtk.StringList.new(['Clear','Light','Dark']),selected={3:0,1:1,2:2}[glass.current(s)['Theme']])
+        theme=safe_combo_row(title='Theme',subtitle='Selecting a theme restores its material defaults.',model=Gtk.StringList.new(['Clear','Light','Dark','Accent']),selected={3:0,1:1,2:2,4:3}[glass.current(s)['Theme']])
         def select_theme(widget,*_):
             if refreshing[0]:return
-            mode=['clear','light','dark'][widget.get_selected()]
+            mode=['clear','light','dark','accent'][widget.get_selected()]
             glass.theme(s,mode);save('overlay_theme',mode);save('overlay_appearance',s['overlay_appearance'])
             refreshing[0]=True
             try:
@@ -10440,6 +10440,16 @@ class Window(Adw.ApplicationWindow):
             finally:refreshing[0]=False
             appearance.set_description('The same layouts and materials as the glass overlay.')
         theme.connect('notify::selected',select_theme);appearance.add(theme)
+        character_row=Adw.ActionRow(title='Accent character',subtitle='Clear → Light → Dark')
+        character=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,0,100,1)
+        character.set_draw_value(False);character.set_size_request(220,-1);character.set_valign(Gtk.Align.CENTER)
+        character.update_property([Gtk.AccessibleProperty.LABEL],['Accent character: Clear, Light, Dark'])
+        character.set_value(glass.current(s)['AccentCharacter']);character_row.add_suffix(character)
+        character_row.set_visible(glass.current(s)['Theme']==4);appearance.add(character_row)
+        def refresh_character():
+            character.set_value(glass.current(s)['AccentCharacter']);character_row.set_visible(glass.current(s)['Theme']==4)
+        refreshers.append(refresh_character)
+        character.connect('value-changed',lambda w:changed('AccentCharacter',round(w.get_value())))
         material_choice('Text size','TextSize',[18,22,26],['Aa  Smaller','Aa  Default','Aa  Larger'])
         material_choice('Motion effects','Motion',[1,0],['On','Off'])
         material_choice('Hotkey notifications','ShowNotifications',[1,0],['On','Off'])

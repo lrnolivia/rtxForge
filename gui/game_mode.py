@@ -752,6 +752,23 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
             self.key(widget, key)
         return widget
 
+    def overlay_accent_character_row(self,settings):
+        import glass_preferences as glass
+        scale=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,0,100,1)
+        scale.set_draw_value(False);scale.set_hexpand(True);scale.set_focusable(False)
+        scale.set_value(glass.current(settings)['AccentCharacter'])
+        scale.update_property([Gtk.AccessibleProperty.LABEL],['Accent character: Clear, Light, Dark'])
+        def changed(widget):
+            glass.edit(settings,'AccentCharacter',round(widget.get_value()));self.save_settings()
+        scale.connect('value-changed',changed)
+        content=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=self.theme.px(10),hexpand=True)
+        content.append(self.preference('Accent character','Clear → Light → Dark',None,inset=False));content.append(scale)
+        row=motion.MotionButton(preferences=self.owner.settings,child=content,hexpand=True)
+        row._flat=True;row.add_css_class('gm-rowbtn')
+        row._gm_adjust=lambda delta:scale.set_value(max(0,min(100,scale.get_value()+5*delta)))
+        row._gm_scale=scale;self.key(row,'overlay-accent-character');row.set_visible(glass.current(settings)['Theme']==4)
+        return row
+
     def card_opacity_row(self):
         """Windows CardOpacitySetting: a slider from Clearer to More solid; Left/Right step by 5."""
         t = self.theme
@@ -2534,8 +2551,9 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
                 self.choice('Panel', None, ['game', 'optiscaler'], ['In the game', 'OptiScaler menu only'],
                             lambda: s.get('overlay_renderer', 'game'), lambda v: s.update(overlay_renderer=v)),
                 LayoutPicker(glass.current(s)['Layout'],lambda value:(glass.edit(s,'Layout',value),self.save_settings())),
-                self.choice('Appearance',None,['clear','light','dark'],['Clear','Light','Dark'],
-                            lambda:{3:'clear',1:'light',2:'dark'}[glass.current(s)['Theme']],lambda v:glass.theme(s,v)),
+                self.choice('Appearance',None,['clear','light','dark','accent'],['Clear','Light','Dark','Accent'],
+                            lambda:{3:'clear',1:'light',2:'dark',4:'accent'}[glass.current(s)['Theme']],lambda v:glass.theme(s,v)),
+                self.overlay_accent_character_row(s),
                 appearance_choice('Text size','TextSize',[18,22,26],['Aa  Smaller','Aa  Default','Aa  Larger']),
                 appearance_choice('Motion effects','Motion',[1,0],['On','Off']),
                 appearance_choice('Hotkey notifications','ShowNotifications',[1,0],['On','Off']),

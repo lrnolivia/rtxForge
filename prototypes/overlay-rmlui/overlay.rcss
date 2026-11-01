@@ -414,10 +414,11 @@ button:active { transform: scale(.98); }
 .session-heading { display: flex; align-items: center; gap: 12dp; font-size: 19dp; margin-bottom: 28dp; }
 .session-dot { width: 7dp; height: 7dp; border-radius: 4dp; background: var(--accent); }
 .preview-badge { margin-left: auto; font-size: 13dp; opacity: .7; }
-.session-facts { display: flex; gap: 28dp; padding-bottom: 28dp; border-bottom: 1dp #ffffff22; }
-.session-facts div { flex: 1; }
+.session-facts { display: flex; flex-wrap: wrap; gap: 20dp 28dp; padding-bottom: 28dp; border-bottom: 1dp #ffffff22; }
+.session-facts div { flex: 1 1 130dp; min-width: 0; }
+.session-facts div:last-child { flex-basis: 100%; }
 .session-facts label { display: block; font-size: 14dp; margin-bottom: 8dp; }
-.session-facts span { display: block; font-size: 18dp; white-space: nowrap; }
+.session-facts span { display: block; font-size: 18dp; white-space: normal; word-break: break-word; }
 .runtime-metrics { display: flex; flex-wrap: wrap; gap: 16dp; margin: 26dp 0 32dp; }
 .runtime-metric { width: 46%; padding: 18dp 20dp; background: #ffffff12; border-radius: 12dp; }
 .runtime-metric label { display: block; font-size: 15dp; }
@@ -662,9 +663,9 @@ select selectvalue { min-width: 0; padding-right: 28dp; }
 .effect-number { width: 100%; height: 46dp; padding: 10dp 16dp; box-sizing: border-box; background-color: #ffffff20; border-radius: 10dp; font-size: var(--copy-size); }
 
 /* Shared section surfaces: inner cards never reapply the window's tint. */
-.glass { --section-fill: #ffffff30; --section-rim: #3e3b3712; --nested-fill: #ffffff44; --control-fill: #ffffff70; --section-shadow: 0dp 6dp 18dp #201c1817; --nested-shadow: 0dp 3dp 10dp #201c1810; }
-.glass.dark { --section-fill: #ffffff12; --section-rim: #ffffff24; --nested-fill: #ffffff1c; --control-fill: #ffffff2c; --section-shadow: 0dp 7dp 20dp #0807062e; --nested-shadow: 0dp 3dp 10dp #08070620; }
-.glass.clear { --section-fill: #ffffff14; --section-rim: #ffffff24; --nested-fill: #ffffff20; --control-fill: #ffffff34; --section-shadow: 0dp 6dp 18dp #1815111c; --nested-shadow: 0dp 3dp 10dp #18151114; }
+.glass { --section-fill: #ffffff40; --section-rim: #3e3b3712; --nested-fill: #ffffff58; --control-fill: #ffffff80; --section-shadow: 0dp 6dp 18dp #201c181e; --nested-shadow: 0dp 3dp 10dp #201c1815; }
+.glass.dark { --section-fill: #ffffff12; --section-rim: #ffffff24; --nested-fill: #ffffff1c; --control-fill: #ffffff2c; --section-shadow: 0dp 7dp 20dp #08070638; --nested-shadow: 0dp 3dp 10dp #08070628; }
+.glass.clear { --section-fill: #ffffff14; --section-rim: #ffffff24; --nested-fill: #ffffff20; --control-fill: #ffffff34; --section-shadow: 0dp 6dp 18dp #18151124; --nested-shadow: 0dp 3dp 10dp #1815111a; }
 .dark-inverted .glass.dark { --section-fill: #02020240; --section-rim: #ffffff18; --nested-fill: #02020220; }
 .glass section, .glass .option-group, .glass .metadata-compact, .glass .settings-appearance { background: var(--section-fill); border: 1dp var(--section-rim); border-radius: 18dp; box-shadow: var(--section-shadow); }
 .glass.dark section, .glass.dark .option-group { background: var(--section-fill); }
@@ -677,3 +678,16 @@ select selectvalue { min-width: 0; padding-right: 28dp; }
 .layout-centered .overview, .layout-centered .settings-screen, .layout-centered .inspector { background: var(--section-fill); border-color: var(--section-rim); box-shadow: var(--section-shadow); }
 .layout-bar .metadata-compact { background: transparent; border: 0; box-shadow: none; }
 h2, h3 { text-transform: uppercase; }
+
+/* Advanced pages reserve their own scrollbar gutter inside the card. */
+.layout-centered .overview > scrollbarvertical, .layout-centered .settings-screen > scrollbarvertical, .layout-centered .inspector > scrollbarvertical { margin: 24dp 16dp 24dp 0; scrollbar-margin: 48dp; }
+.accent-sample { background: var(--accent); }
+.accent-character { margin-top: 22dp; }
+.character-labels { display: flex; justify-content: space-between; margin-top: 6dp; font-size: 13dp; }
+.god-mode-trigger { margin-top: 20dp; }
+.glass.accent-theme { --section-fill: #ffffff30; --nested-fill: #ffffff40; --control-fill: #ffffff60; }
+.glass.accent-theme.dark { --section-fill: #ffffff18; --nested-fill: #ffffff24; --control-fill: #ffffff38; }
+.theme-swatches button { min-width: 0; padding-left: 8dp; padding-right: 8dp; }
+.theme-sample { max-width: 100%; }
+.accent-theme, .accent-theme label, .accent-theme button, .accent-theme .glyph, .accent-theme .field-heading span { transition: color .25s cubic-out, image-color .25s cubic-out; }
+.effects-only.layout-bar .main-panel { min-height: 104dp; }

@@ -11,7 +11,6 @@ This package is an isolated Game Mode UI preview. It reads the real local librar
 - Synthetic standard-mapping controller navigation, select adjustment, stepper/checkbox operation and keyboard navigation. Filled button text checks reached at least 4.5:1 in the tested palettes.
 - Saved artwork-role precedence, large-image lazy loading, exact Steam app-ID fallbacks and refresh invalidation. The native Windows preview read 50 real local games, including saved custom artwork.
 - Windows Tauri release executable. Its portable package read the library using its private Python runtime from outside the checkout.
-- Windows Desktop hero presentation port: Debug build with zero warnings/errors and native fixture game opening with remote artwork. The native check caught and corrected an unsupported XAML float literal before packaging.
 
 ## Still requires qualification
 
@@ -20,4 +19,4 @@ This package is an isolated Game Mode UI preview. It reads the real local librar
 - Actual install, restore, repair, adoption, Steam integration and shared-settings mutations against disposable game installations.
 - Signing, production updater integration and replacement of the existing native shells.
 
-The Desktop hero port is included in the source change; the portable executable is the separate Game Mode preview. Build receipts identify the packaged source revision. Prior local preview versions and the existing Desktop installation are retained for rollback.
+The Desktop hero port is deferred at the user's request and has been withdrawn from this branch. Hero presentation refinements continue in Game Mode only. The portable executable is a separate Game Mode preview. Build receipts identify the packaged source revision. Prior local preview versions and the existing Desktop installation are retained for rollback.

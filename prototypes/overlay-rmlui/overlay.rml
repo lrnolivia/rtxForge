@@ -4,6 +4,7 @@
     <link type="text/rcss" href="overlay.rcss" />
   </head>
   <body>
+    <paint-root id="preview-chrome" class="preview-chrome" style="display: none"><button id="preview-close" class="close" title="Close preview" aria-label="Close preview"><span class="stroke first"/><span class="stroke second"/></button></paint-root>
     <paint-root class="prototype-toolbar">
       <span class="preview-label">Preview scene</span>
       <select id="scene-select">
@@ -14,12 +15,15 @@
       <paint-root class="glass main-panel" id="main-panel">
         <div class="brand-row">
           <div class="brand-lockup">
+            <button id="window-back" class="back-button" title="Back" aria-label="Back" style="display: none"><img class="glyph" src="icons/arrow-left-light.png" /></button>
             <img class="brand-logo" src="logo-mark.png" />
             <span class="brand">rtxForge</span>
           </div>
+          <div id="bar-live" class="bar-live"/>
           <div class="window-actions">
             <button id="open-effects" class="quiet hdr-entry" style="display: none" title="ReShade effects"><img class="glyph" src="icons/stack-light.png"/><span class="button-label">ReShade</span></button>
             <button id="open-hdr" class="quiet hdr-entry" title="HDR preferences"><img class="glyph" src="icons/sun-light.png"/><span class="button-label">HDR</span></button>
+            <button id="open-layout" class="close" title="Change layout" aria-label="Change layout"><img class="glyph" src="icons/layout-light.png" /></button>
             <button id="open-settings" class="close" title="Settings">
               <img class="glyph" src="icons/sliders-light.png" />
             </button>
@@ -30,6 +34,7 @@
           </div>
         </div>
         <h1>Overlay preview</h1>
+        <div id="header-status" class="header-status" />
         <div class="sidebar">
           <button id="nav-overview">
             <img class="glyph" src="icons/gauge-light.png" /><span class="button-label">Overview</span></button>
@@ -46,9 +51,9 @@
           <button id="nav-settings"><img class="glyph" src="icons/sliders-light.png" /><span class="button-label">Settings</span></button>
         </div>
         <div id="settings-screen" class="settings-screen" style="display: none">
-          <div class="settings-title"><h2><img class="glyph" src="icons/sliders-light.png" /><span>SETTINGS</span></h2><button id="settings-back" class="quiet"><span class="button-label">Back</span></button><button id="settings-modal-close" class="close modal-close" title="Close settings"><span class="stroke first"/><span class="stroke second"/></button></div>
+          <div class="settings-title"><button id="settings-back" class="back-button" title="Back" aria-label="Back"><img class="glyph" src="icons/arrow-left-light.png" /></button><h2><img class="glyph" src="icons/sliders-light.png" /><span>SETTINGS</span></h2><button id="settings-modal-close" class="close modal-close" title="Close settings"><span class="stroke first"/><span class="stroke second"/></button></div>
           <button id="open-appearance" class="settings-appearance"><img class="glyph" src="icons/palette-light.png" /><span>Appearance<span class="setting-description">Theme, text and scale</span></span><span class="chevron" /></button>
-          <div class="settings-group"><h3>LAYOUT</h3>
+          <div id="settings-cards"><div class="settings-group"><h3>LAYOUT</h3>
             <div id="layout-switch" class="settings-layouts">
               <button id="layout-floating" class="selected"><span class="layout-screen layout-sidebar"><span class="mini-panel"><span class="mini-heading"/><span class="mini-card"/><span class="mini-card"/><span class="mini-card"/></span><span class="mini-popover"/></span><span class="layout-caption">Side Panel</span></button>
               <button id="layout-centered"><span class="layout-screen layout-advanced"><span class="mini-panel"><span class="mini-nav"><span class="mini-heading"/><span class="mini-line"/><span class="mini-line"/><span class="mini-line"/></span><span class="mini-content"><span class="mini-card"/><span class="mini-card"/></span></span></span><span class="layout-caption">Advanced</span></button>
@@ -56,6 +61,7 @@
             </div>
           </div>
           <div class="settings-group"><h3>SHORTCUT</h3><button id="shortcut-bind" class="shortcut-bind"><span>Open controls</span><span id="shortcut-key" class="keycap">Del</span></button><p id="shortcut-help" class="hint">Choose a key with optional Ctrl, Alt or Shift.</p></div>
+          <div class="settings-group"><h3>CONTROL LABELS</h3><div class="inherit-row"><label>Original labels</label><button id="setting-original-labels" class="switch"><span class="thumb" /></button></div><p class="hint">Use upstream option names. With friendly labels, hover to see the original name.</p></div>
           <div class="settings-group"><h3>ON SCREEN</h3>
             <div class="inherit-row"><label>Live statistics</label><button id="setting-stats" class="switch on"><span class="thumb" /></button></div>
             <div class="inherit-row"><label>Welcome message</label><button id="setting-welcome" class="switch on"><span class="thumb" /></button></div>
@@ -77,12 +83,7 @@
             <div class="inherit-row"><label>Background helper</label><button id="setting-helper" class="switch on"><span class="thumb" /></button></div>
             <div id="startup-row" class="inherit-row"><label>Start with Windows</label><button id="setting-startup" class="switch"><span class="thumb" /></button></div>
           </div>
-          <div class="settings-group"><h3>LIBRARY CONTROLS</h3><p class="hint">One-time changes to compatible installed games. Review before applying.</p>
-            <label>Neural rendering</label><select id="global-neural"><option value="leave">Leave as is</option><option value="0">Off</option><option value="1">On</option></select>
-            <label>Frame generation</label><select id="global-frame"><option value="leave">Leave as is</option><option value="0">Off</option><option value="-1">Follow game</option><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option><option value="5">5×</option><option value="6">6×</option></select>
-            <button id="global-review" class="quiet"><img class="glyph" src="icons/gauge-light.png" /><span class="button-label">Review games</span></button>
-          </div>
-          <div id="review-panel" class="settings-group" style="display: none"><h3>REVIEW</h3><div id="review-items" /><div class="save-actions"><button id="discard-review" class="quiet"><span class="button-label">Cancel</span></button><button id="apply-review" class="save"><span class="button-label">Apply to games</span></button></div></div>
+          <div id="review-panel" class="settings-group" style="display: none"><h3>REVIEW</h3><div id="review-items" /><div class="save-actions"><button id="discard-review" class="quiet"><span class="button-label">Cancel</span></button><button id="apply-review" class="save"><span class="button-label">Apply to games</span></button></div></div></div>
         </div>
         <div id="overview" class="overview">
           <button id="open-session" class="metadata-compact">
@@ -96,7 +97,7 @@
               <span id="compact-size">2560 × 1440</span>
               <span id="compact-output">SDR</span>
             </div>
-            <div class="feature-status">
+            <div id="feature-status" class="feature-status">
               <span id="status-sr" class="status-chip installed">
                 <span class="led" />
                 <span>SR</span>
@@ -117,7 +118,7 @@
             </div>
             <div id="compact-live" class="compact-live">
               <div class="mini-stat"><span class="mini-stat-label"><img class="glyph" src="icons/film-strip-light.png" /><span>Frame generation</span><span id="compact-ratio" class="metric-badge" /></span><span id="compact-frames" class="mini-stat-value">—</span></div>
-              <div class="mini-stat"><span class="mini-stat-label"><img class="glyph" src="icons/cpu-light.png" /><span>Neural rendering</span></span><span class="mini-stat-reading"><span id="compact-neural" class="mini-stat-value">—</span><span id="compact-nr-size" class="mini-stat-detail">Dimensions not reported</span></span></div>
+              <div class="mini-stat"><span class="mini-stat-label"><img class="glyph" src="icons/cpu-light.png" /><span>Neural rendering</span></span><span class="mini-stat-reading"><span id="compact-neural" class="mini-stat-value">—</span><span id="compact-nr-size" class="mini-stat-detail">Dimensions not reported</span><span id="compact-frame-time" class="mini-stat-detail"/></span></div>
             </div>
           </button>
           <div class="metadata-expanded" id="overview-metadata">
@@ -225,7 +226,7 @@
                 </div>
                 <div id="nr-body">
                   <div class="field-heading">
-                    <label>Style</label>
+                    <label data-control="style">Style</label>
                   </div>
                   <div class="segments" id="nr-style">
                     <button id="style-default"><span class="button-label">Default</span></button>
@@ -234,17 +235,17 @@
                   </div>
                   <div class="slider-field">
                     <div class="field-heading">
-                      <label>Strength</label>
+                      <label data-control="intensity">Strength</label>
                       <span id="strength-value">1.00</span>
                     </div>
                     <input id="strength" class="range" type="range" min="0" max="2" step="0.01" value="1" />
                   </div>
                   <div class="slider-field">
-                    <div class="field-heading"><label class="icon-label"><img class="glyph" src="icons/cpu-light.png" /><span>Render resolution</span></label><span id="render-resolution-value">100%</span></div>
+                    <div class="field-heading"><label class="icon-label"><img class="glyph" src="icons/cpu-light.png" /><span data-control="work_scale">Render resolution</span></label><span id="render-resolution-value">100%</span></div>
                     <input id="render-resolution" class="range" type="range" min="25" max="200" step="1" value="100" />
                   </div>
                   <div class="model-field model-single">
-                      <label class="icon-label"><img class="glyph" src="icons/cpu-light.png" /><span>Model</span></label>
+                      <label class="icon-label"><img class="glyph" src="icons/cpu-light.png" /><span data-control="preset">Model</span></label>
                       <select id="model-preset">
                         <option value="0">Automatic</option>
                         <option value="1">Preset 1</option>
@@ -253,9 +254,9 @@
                       </select>
                   </div>
                   <div class="model-row">
-                    <div class="model-field"><label class="icon-label"><img class="glyph" src="icons/cpu-light.png" /><span>Processing stage</span></label><select id="processing-stage"><option value="1">Before upscaling</option><option value="0">After upscaling</option></select></div>
+                    <div class="model-field"><label class="icon-label"><img class="glyph" src="icons/cpu-light.png" /><span data-control="pre_sr">Processing stage</span></label><select id="processing-stage"><option value="1">Before upscaling</option><option value="0">After upscaling</option></select></div>
                     <div class="model-field">
-                      <label class="icon-label"><img class="glyph" src="icons/stack-light.png" /><span>Passes</span></label>
+                      <label class="icon-label"><img class="glyph" src="icons/stack-light.png" /><span data-control="passes">Passes</span></label>
                       <div class="count-stepper"><button id="pass-minus" aria-label="Fewer passes" title="Fewer passes"><span class="button-label">−</span></button><span id="pass-count">3 passes</span><button id="pass-plus" aria-label="More passes" title="More passes"><span class="button-label">+</span></button></div>
                     </div>
                   </div>
@@ -284,9 +285,14 @@
           </div>
           <button id="preview-original" class="quiet preview-original" title="Temporarily view the image without neural rendering. Release to return."><span id="preview-original-label" class="button-label">Hold to preview without NR</span></button>
         </div>
+        <div id="resize-top" class="resize-edge resize-top"/>
+        <div id="resize-right" class="resize-edge resize-right"/>
+        <div id="resize-bottom" class="resize-edge resize-bottom"/>
+        <div id="resize-left" class="resize-edge resize-left"/>
       </paint-root>
       <paint-root class="glass inspector" id="inspector">
         <div class="inspector-heading">
+          <button id="inspector-back" class="back-button" title="Back" aria-label="Back"><img class="glyph" src="icons/arrow-left-light.png" /></button>
           <h2 id="inspector-title"><span>PASS TUNING</span></h2>
           <button id="inspector-close" class="close" aria-label="Close inspector" title="Close inspector">
             <span class="stroke first" />
@@ -311,7 +317,7 @@
             <div class="option-group">
               <h3>MODEL</h3>
               <div class="field-heading">
-                <label>Style</label>
+                <label data-control="style">Style</label>
               </div>
               <div class="segments" id="pass-style">
                 <button id="pass-style-default" class="selected"><span class="button-label">Default</span></button>
@@ -320,7 +326,7 @@
               </div>
               <div class="slider-field">
                 <div class="field-heading">
-                  <label>Strength</label>
+                  <label data-control="pass2_strength">Strength</label>
                   <span id="pass-strength-value">0.65</span>
                 </div>
                 <input id="pass-strength" class="range" type="range" min="0" max="2" step="0.01" value="0.65" />
@@ -330,21 +336,21 @@
               <h3>DETAIL</h3>
               <div class="slider-field">
                 <div class="field-heading">
-                  <label>Local tone</label>
+                  <label data-control="tone">Local tone</label>
                   <span id="pass-tone-value">0.80</span>
                 </div>
                 <input id="pass-tone" class="range" type="range" min="0" max="2" step="0.01" value="0.8" />
               </div>
               <div class="slider-field">
                 <div class="field-heading">
-                  <label>Structure</label>
+                  <label data-control="structure">Texture detail</label>
                   <span id="pass-structure-value">1.00</span>
                 </div>
                 <input id="pass-structure" class="range" type="range" min="0" max="2" step="0.01" value="1" />
               </div>
               <div class="slider-field">
                 <div class="field-heading">
-                  <label>Skin detail</label>
+                  <label data-control="skin">Skin detail</label>
                   <span id="pass-skin-value">0.50</span>
                 </div>
                 <input id="pass-skin" class="range" type="range" min="-1" max="2" step="0.01" value="0.5" />
@@ -355,21 +361,21 @@
         <div id="look-inspector">
           <div class="slider-field">
             <div class="field-heading">
-              <label>Detail</label>
+              <label data-control="detail">Detail</label>
               <span id="detail-value">1.00</span>
             </div>
             <input id="detail" class="range" type="range" min="0" max="2" step="0.01" value="1" />
           </div>
           <div class="slider-field">
             <div class="field-heading">
-              <label>Color</label>
+              <label data-control="colour">Color</label>
               <span id="colour-value">1.00</span>
             </div>
             <input id="colour" class="range" type="range" min="0" max="4" step="0.01" value="1" />
           </div>
           <div class="slider-field">
             <div class="field-heading">
-              <label>Local tone</label>
+              <label data-control="tone">Local tone</label>
               <span id="tone-value">1.00</span>
             </div>
             <input id="tone" class="range" type="range" min="0" max="2" step="0.01" value="1" />
@@ -448,14 +454,16 @@
     </paint-root>
     <paint-root id="type-panel" class="glass type-panel appearance-panel" style="display: none">
       <div class="settings-heading">
+        <button id="appearance-back" class="back-button" title="Back" aria-label="Back"><img class="glyph" src="icons/arrow-left-light.png" /></button>
         <h2 id="settings-title"><img class="glyph" src="icons/palette-light.png" /><span>APPEARANCE</span></h2>
         <button id="type-close" class="close" title="Close appearance">
           <span class="stroke first" />
           <span class="stroke second" />
         </button>
       </div>
+      <p id="setup-intro" class="setup-intro"/>
       <div class="appearance-body">
-        <div class="appearance-block">
+        <div id="appearance-theme" class="appearance-block">
           <div class="field-heading">
             <label>Theme</label>
             <span id="theme-label">Clear</span>
@@ -473,14 +481,10 @@
               <span class="theme-sample clear-sample" />
               <span>Clear</span>
             </button>
-            <button id="theme-accent"><span class="theme-sample accent-sample" /><span>Accent</span></button>
           </div>
           <p id="theme-description" class="hint">Frosted glass, tuned to the scene.</p>
-          <div id="accent-character-row" class="accent-character" style="display: none">
-            <div class="field-heading"><label>Surface character</label><span id="accent-character-value">Light</span></div>
-            <input id="accent-character" class="range" type="range" min="0" max="100" step="1" value="35" />
-            <div class="character-labels"><span>Clear</span><span>Light</span><span>Dark</span></div>
-          </div>
+          <button id="accent-tint" class="accent-tint-row" aria-label="Accent tint"><span class="accent-tint-swatch"/><span>Accent Tint</span><span class="switch"><span class="thumb"/></span></button>
+
         </div>
         <div class="appearance-block">
           <label>Text size</label>
@@ -529,6 +533,16 @@
         </div>
         <button id="appearance-god-mode" class="more-trigger god-mode-trigger preview-only"><img class="glyph" src="icons/sliders-light.png" /><span>God Mode</span><span class="chevron" /></button>
         <div id="appearance-god-details" class="appearance-details preview-only" style="display: none">
+          <div id="accent-character-row" class="accent-character" style="display: none">
+            <div class="field-heading"><label>Surface character</label><span id="accent-character-value">Light</span></div>
+            <input id="accent-character" class="range" type="range" min="0" max="100" step="1" value="35" />
+            <div class="character-labels"><span>Clear</span><span>Light</span><span>Dark</span></div>
+          </div>
+          <div id="accent-saturation-row" class="accent-character" style="display: none">
+            <div class="field-heading"><label>Surface saturation</label><span id="accent-saturation-value">100%</span></div>
+            <input id="accent-saturation" class="range" type="range" min="0" max="200" step="1" value="100" />
+            <div class="character-labels"><span>Neutral</span><span>Original</span><span>Vivid</span></div>
+          </div>
           <p class="hint">Prototype only. These experiments are hidden from users.</p>
         <div class="appearance-block">
           <label>Font</label>
@@ -601,6 +615,13 @@
             <img class="glyph" src="icons/arrow-counter-clockwise-light.png" /><span class="button-label">Reset theme</span></button>
         </div>
       </div>
+      <div id="setup-layout-host" class="setup-layout-host"><div id="setup-layouts" class="settings-layouts"/></div>
+      <div class="setup-footer"><span id="setup-progress"/><button id="setup-skip" class="quiet"><span class="button-label">Skip</span></button><button id="setup-next" class="quiet setup-next"><span id="setup-next-label" class="button-label">Continue</span><img class="glyph" src="icons/arrow-left-light.png"/></button></div>
+    </paint-root>
+    <paint-root id="layout-picker" class="layout-picker" style="display: none" role="group" aria-label="Overlay layout">
+      <button id="quick-floating"><img class="glyph" src="icons/sidebar-light.png" /><span>Side Panel</span></button>
+      <button id="quick-centered"><img class="glyph" src="icons/app-window-light.png" /><span>Advanced</span></button>
+      <button id="quick-bar"><img class="glyph" src="icons/rows-light.png" /><span>Bar</span></button>
     </paint-root>
     <paint-root id="tooltip" />
   </body>

@@ -1,5 +1,6 @@
 """Per-game package routing, bounded extraction, ownership and restoration."""
 from pathlib import Path
+from contextlib import contextmanager, nullcontext
 from types import SimpleNamespace
 import struct
 import sys
@@ -41,7 +42,7 @@ class ReShadeImportTest(unittest.TestCase):
         self.root = self.base / 'game'; self.root.mkdir()
         self.exe = self.root / 'game.exe'; self.exe.write_bytes(pe(name=b'game'))
         self.game = {'game': str(self.root), 'exe': 'game.exe', 'name': 'Test Game'}
-        self.engine = SimpleNamespace(_running_processes_under_root=lambda _: [], load_baseline=lambda *a, **k: None,
+        self.engine = SimpleNamespace(mutation_lock=nullcontext, _running_processes_under_root=lambda _: [], load_baseline=lambda *a, **k: None,
                                       pe_imported_dlls=lambda _: {'d3d11.dll'})
         self.patches = [patch.object(r.engine_bridge, 'module', return_value=self.engine),
                         patch.object(r.discovery, 'inspect_game', return_value=SimpleNamespace(anti_cheat=False)),
@@ -196,6 +197,27 @@ class ReShadeImportTest(unittest.TestCase):
         target.write_bytes(b'original shader')
         with self.assertRaises(t.Refusal): r.prepare({}, self.game, self.package({'Shaders/Custom.fx': b'replacement'}))
         self.assertEqual(target.read_bytes(), b'original shader')
+
+    def test_game_start_while_waiting_for_mutation_lock_blocks_import(self):
+        plan = r.prepare({}, self.game)
+        @contextmanager
+        def game_started():
+            self.engine._running_processes_under_root = lambda _: [123]
+            yield
+        self.engine.mutation_lock = game_started
+        with self.assertRaises(t.Refusal): r.apply({}, plan)
+        self.assertFalse((self.root / 'dxgi.dll').exists())
+
+    def test_preset_edited_while_waiting_for_mutation_lock_is_kept(self):
+        _, state = self.deploy(self.package({'Custom.ini': b'[Custom.fx]\nNew=1\n'}))
+        @contextmanager
+        def edited():
+            (self.root / 'Custom.ini').write_text('[Custom.fx]\nNew=2\n')
+            yield
+        self.engine.mutation_lock = edited
+        with self.assertRaises(t.Refusal): r.restore({}, state)
+        self.assertIn('New=2', (self.root / 'Custom.ini').read_text())
+        self.assertTrue((self.root / 'dxgi.dll').exists())
 
 
 if __name__ == '__main__': unittest.main()

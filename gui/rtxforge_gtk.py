@@ -10427,35 +10427,34 @@ class Window(Adw.ApplicationWindow):
             (parent.add_row if isinstance(parent,Adw.ExpanderRow) else parent.add)(widget)
             refreshers.append(lambda:widget.set_selected(keys.index(glass.current(s)[key]) if glass.current(s)[key] in keys else 0))
             return widget
-        from overlay_layouts import LayoutPicker
-        appearance.add(LayoutPicker(glass.current(s)['Layout'],lambda value:changed('Layout',value)))
-        theme=safe_combo_row(title='Theme',subtitle='Selecting a theme restores its material defaults.',model=Gtk.StringList.new(['Clear','Light','Dark','Accent']),selected={3:0,1:1,2:2,4:3}[glass.current(s)['Theme']])
-        def select_theme(widget,*_):
+        from overlay_layouts import LayoutPicker,ThemePicker
+        def visual_row(title,content):
+            item=Adw.PreferencesRow()
+            body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=10,margin_top=12,margin_bottom=12,margin_start=16,margin_end=16)
+            body.append(Gtk.Label(label=title,xalign=0));body.append(content);item.set_child(body);appearance.add(item)
+        visual_row('Layout',LayoutPicker(glass.current(s)['Layout'],lambda value:changed('Layout',value)))
+        def select_theme(mode):
             if refreshing[0]:return
-            mode=['clear','light','dark','accent'][widget.get_selected()]
-            glass.theme(s,mode);save('overlay_theme',mode);save('overlay_appearance',s['overlay_appearance'])
+            glass.appearance(s,base=mode);save('overlay_theme',mode);save('overlay_appearance',s['overlay_appearance'])
             refreshing[0]=True
             try:
                 for refresh in refreshers:refresh()
             finally:refreshing[0]=False
             appearance.set_description('The same layouts and materials as the glass overlay.')
-        theme.connect('notify::selected',select_theme);appearance.add(theme)
-        character_row=Adw.ActionRow(title='Accent character',subtitle='Clear → Light → Dark')
-        character=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,0,100,1)
-        character.set_draw_value(False);character.set_size_request(220,-1);character.set_valign(Gtk.Align.CENTER)
-        character.update_property([Gtk.AccessibleProperty.LABEL],['Accent character: Clear, Light, Dark'])
-        character.set_value(glass.current(s)['AccentCharacter']);character_row.add_suffix(character)
-        character_row.set_visible(glass.current(s)['Theme']==4);appearance.add(character_row)
-        def refresh_character():
-            character.set_value(glass.current(s)['AccentCharacter']);character_row.set_visible(glass.current(s)['Theme']==4)
-        refreshers.append(refresh_character)
-        character.connect('value-changed',lambda w:changed('AccentCharacter',round(w.get_value())))
-        material_choice('Text size','TextSize',[18,22,26],['Aa  Smaller','Aa  Default','Aa  Larger'])
+        visual_row('Theme',ThemePicker(glass.base_theme(s),select_theme))
+        accent_row=Adw.SwitchRow(title='Accent Tint',subtitle="Tint surfaces with this game's accent color.",active=glass.current(s)['Theme']==4)
+        def tint_changed(widget,*_):
+            if refreshing[0]:return
+            glass.appearance(s,tint=widget.get_active());save('overlay_appearance',s['overlay_appearance'])
+        accent_row.connect('notify::active',tint_changed);appearance.add(accent_row)
+        material_choice('Original labels','OriginalLabels',[0,1],['Off','On'])
+        material_choice('Text size','TextSize',[20,22,24],['Aa  Smaller','Aa  Default','Aa  Larger'])
         material_choice('Motion effects','Motion',[1,0],['On','Off'])
         material_choice('Hotkey notifications','ShowNotifications',[1,0],['On','Off'])
-        switch('Welcome message','Show the rtxForge message at startup.','overlay_welcome',panel)
-        choice('Welcome position',None,list(overlay_settings.POSITIONS),['Top center','Top left','Top right','Bottom left','Bottom right'],'overlay_welcome_position',panel)
-        switch('Live feature statistics',None,'overlay_live_stats',panel)
+        notifications=Adw.PreferencesGroup(title='Status and notifications')
+        switch('Welcome message','Show the rtxForge message at startup.','overlay_welcome',notifications)
+        choice('Welcome position',None,list(overlay_settings.POSITIONS),['Top center','Top left','Top right','Bottom left','Bottom right'],'overlay_welcome_position',notifications)
+        switch('Live feature statistics',None,'overlay_live_stats',notifications)
         shortcut=Adw.PreferencesGroup(title='Shortcut',description='Opens the rtxForge panel in game. Insert stays with OptiScaler\u2019s own menu.')
         shortcut_row=Adw.ActionRow(title='Panel shortcut',subtitle=overlay_shortcut.display(s.get('panel_hotkey')))
         record=Gtk.Button(label='Record',valign=Gtk.Align.CENTER)
@@ -10500,7 +10499,7 @@ class Window(Adw.ApplicationWindow):
         item.add_suffix(action);installed.add(item)
         history=row('Last overlay update','Updated games, current overlays and anything that needs repair.')
         details=button('Details',lambda *_:self.overlay_update_details());history.add_suffix(details);installed.add(history)
-        return [panel,*([] if game else [appearance]),shortcut,optiscaler,reshade,vulkan,installed]
+        return [panel,*([] if game else [appearance]),notifications,shortcut,optiscaler,reshade,vulkan,installed]
 
     def game_overlay_card(self,game):
         card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True)

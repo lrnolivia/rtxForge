@@ -567,7 +567,10 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
         return False
 
     def label(self, text, *classes, wrap=False, xalign=0.0, lines=0):
-        widget = Gtk.Label(label=str(text), xalign=xalign, wrap=wrap)
+        text = str(text)
+        if any(css in ('gm-h1', 'gm-h2', 'gm-h3') for css in classes):
+            text = text.upper()
+        widget = Gtk.Label(label=text, xalign=xalign, wrap=wrap)
         if wrap:
             widget.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
         if lines:
@@ -752,21 +755,24 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
             self.key(widget, key)
         return widget
 
-    def overlay_accent_character_row(self,settings):
+    def overlay_accent_character_row(self,settings,saturation=False):
         import glass_preferences as glass
-        scale=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,0,100,1)
+        key='AccentSaturation' if saturation else 'AccentCharacter';maximum=200 if saturation else 100
+        title='Surface saturation' if saturation else 'Accent character'
+        description='Neutral → Original → Vivid' if saturation else 'Clear → Light → Dark'
+        scale=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,0,maximum,1)
         scale.set_draw_value(False);scale.set_hexpand(True);scale.set_focusable(False)
-        scale.set_value(glass.current(settings)['AccentCharacter'])
-        scale.update_property([Gtk.AccessibleProperty.LABEL],['Accent character: Clear, Light, Dark'])
+        scale.set_value(glass.current(settings)[key])
+        scale.update_property([Gtk.AccessibleProperty.LABEL],[title+': '+description])
         def changed(widget):
-            glass.edit(settings,'AccentCharacter',round(widget.get_value()));self.save_settings()
+            glass.edit(settings,key,round(widget.get_value()));self.save_settings()
         scale.connect('value-changed',changed)
         content=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=self.theme.px(10),hexpand=True)
-        content.append(self.preference('Accent character','Clear → Light → Dark',None,inset=False));content.append(scale)
+        content.append(self.preference(title,description,None,inset=False));content.append(scale)
         row=motion.MotionButton(preferences=self.owner.settings,child=content,hexpand=True)
         row._flat=True;row.add_css_class('gm-rowbtn')
-        row._gm_adjust=lambda delta:scale.set_value(max(0,min(100,scale.get_value()+5*delta)))
-        row._gm_scale=scale;self.key(row,'overlay-accent-character');row.set_visible(glass.current(settings)['Theme']==4)
+        row._gm_adjust=lambda delta:scale.set_value(max(0,min(maximum,scale.get_value()+5*delta)))
+        row._gm_scale=scale;self.key(row,'overlay-accent-saturation' if saturation else 'overlay-accent-character');row.set_visible(glass.current(settings)['Theme']==4)
         return row
 
     def card_opacity_row(self):
@@ -2551,10 +2557,11 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
                 self.choice('Panel', None, ['game', 'optiscaler'], ['In the game', 'OptiScaler menu only'],
                             lambda: s.get('overlay_renderer', 'game'), lambda v: s.update(overlay_renderer=v)),
                 LayoutPicker(glass.current(s)['Layout'],lambda value:(glass.edit(s,'Layout',value),self.save_settings())),
-                self.choice('Appearance',None,['clear','light','dark','accent'],['Clear','Light','Dark','Accent'],
-                            lambda:{3:'clear',1:'light',2:'dark',4:'accent'}[glass.current(s)['Theme']],lambda v:glass.theme(s,v)),
-                self.overlay_accent_character_row(s),
-                appearance_choice('Text size','TextSize',[18,22,26],['Aa  Smaller','Aa  Default','Aa  Larger']),
+                self.choice('Appearance',None,['clear','light','dark'],['Clear','Light','Dark'],
+                            lambda:glass.base_theme(s),lambda v:glass.appearance(s,base=v)),
+                self.choice('Accent Tint',"Tint surfaces with this game's accent color.",[False,True],['Off','On'],lambda:glass.current(s)['Theme']==4,lambda v:glass.appearance(s,tint=v)),
+                appearance_choice('Original labels','OriginalLabels',[0,1],['Off','On']),
+                appearance_choice('Text size','TextSize',[20,22,24],['Aa  Smaller','Aa  Default','Aa  Larger']),
                 appearance_choice('Motion effects','Motion',[1,0],['On','Off']),
                 appearance_choice('Hotkey notifications','ShowNotifications',[1,0],['On','Off']),
                 self.choice('Welcome message', None, *on_off, lambda: bool(s.get('overlay_welcome', True)), lambda v: s.update(overlay_welcome=v)),

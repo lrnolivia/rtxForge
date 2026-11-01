@@ -1,7 +1,8 @@
 param(
   [Parameter(Mandatory)][string]$RmlSource,
   [Parameter(Mandatory)][string]$FreetypeRoot,
-  [string]$Output=(Join-Path $PSScriptRoot '../out/glass-overlay')
+  [string]$Output=(Join-Path $PSScriptRoot '../out/glass-overlay'),
+  [string]$Generator='Visual Studio 17 2022'
 )
 $ErrorActionPreference='Stop'
 $RmlSource=(Resolve-Path -LiteralPath $RmlSource).Path
@@ -13,13 +14,19 @@ $repo=Split-Path (Split-Path $PSScriptRoot)
 $policy=Get-Content -LiteralPath (Join-Path $repo 'providers/glass-overlay/rollout-policy.json') -Raw | ConvertFrom-Json
 if($policy.schema -ne 1 -or $policy.revision -lt 1){throw 'Invalid glass overlay revision policy'}
 $build=Join-Path $Output 'build'
-cmake -S (Join-Path $repo 'windows/overlay-rmlui') -B $build -A x64 "-DRMLUI_SOURCE=$RmlSource" "-DFREETYPE_ROOT=$FreetypeRoot"
+cmake -S (Join-Path $repo 'windows/overlay-rmlui') -B $build -G $Generator -A x64 "-DRMLUI_SOURCE=$RmlSource" "-DFREETYPE_ROOT=$FreetypeRoot"
 if($LASTEXITCODE){throw 'Glass overlay configuration failed'}
 cmake --build $build --config Release --parallel 6
 if($LASTEXITCODE){throw 'Glass overlay build failed'}
 & (Join-Path $build 'Release/GlassSmokeTest.exe') (Join-Path $build 'Release/rtxforge-glass.dll')
 if($LASTEXITCODE){throw 'Glass overlay render/state checks failed'}
 Copy-Item -LiteralPath (Join-Path $build 'Release/rtxforge-glass.dll') -Destination $Output -Force
+Copy-Item -LiteralPath (Join-Path $build 'Release/OverlayPreview.exe') -Destination $Output -Force
+$previewAssets=Join-Path $Output 'assets'
+New-Item -ItemType Directory -Force -Path $previewAssets | Out-Null
+foreach($file in 'overlay.rml','overlay.rcss','logo-mark.png') { Copy-Item -LiteralPath (Join-Path $repo "prototypes/overlay-rmlui/$file") -Destination $previewAssets -Force }
+Copy-Item -LiteralPath (Join-Path $repo 'prototypes/overlay-rmlui/icons') -Destination $previewAssets -Recurse -Force
+foreach($file in 'gui/fonts/RobotoVariable.ttf','gui/fonts/BakbakOne-Regular.ttf','windows/RtxForge.Windows/Assets/Fonts/InterVariable.ttf') { Copy-Item -LiteralPath (Join-Path $repo $file) -Destination $previewAssets -Force }
 $notices=Join-Path $Output 'notices'
 New-Item -ItemType Directory -Force -Path $notices | Out-Null
 Copy-Item -LiteralPath (Join-Path $RmlSource 'LICENSE.txt') -Destination (Join-Path $notices 'RmlUi.txt') -Force
@@ -29,6 +36,7 @@ foreach($file in 'gui/fonts/OFL-Roboto.txt','gui/fonts/OFL-BakbakOne.txt','windo
   if(-not (Test-Path -LiteralPath $source)){throw "Missing dependency notice: $file"}
   Copy-Item -LiteralPath $source -Destination $notices -Force
 }
+Copy-Item -LiteralPath $notices -Destination $previewAssets -Recurse -Force
 $dll=Get-Item -LiteralPath (Join-Path $Output 'rtxforge-glass.dll')
 $receipt=[ordered]@{schema=1;renderer='rmlui';abi=2;revision=$policy.revision;commit=(& git -C $repo rev-parse HEAD).Trim();rmlui=$pin;api_acceptance=@('dx11-single-threaded-fixture','dx11-sdr-fixture','dx11-scrgb-fixture','dx11-hdr10-fixture','dx12-interop-fixture','dx12-hdr10-interop-fixture');gameplay_verified=$false;files=@{'rtxforge-glass.dll'=@{sha256=(Get-FileHash -LiteralPath $dll.FullName -Algorithm SHA256).Hash.ToLowerInvariant();size=$dll.Length}}}
 [IO.File]::WriteAllText((Join-Path $Output 'package.json'),($receipt|ConvertTo-Json -Depth 5)+"`n",[Text.UTF8Encoding]::new($false))

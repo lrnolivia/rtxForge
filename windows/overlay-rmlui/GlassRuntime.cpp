@@ -52,6 +52,7 @@ struct Files : Rml::FileInterface {
 struct System : Rml::SystemInterface {
     std::chrono::steady_clock::time_point start=std::chrono::steady_clock::now();
     double GetElapsedTime() override {return std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();}
+    void SetMouseCursor(const Rml::String& cursor) override {SetCursor(LoadCursorW(nullptr,cursor=="resize-ew"?IDC_SIZEWE:cursor=="resize-ns"?IDC_SIZENS:cursor=="move"?IDC_SIZEALL:cursor=="pointer"?IDC_HAND:IDC_ARROW));}
     bool LogMessage(Rml::Log::Type,const Rml::String& message) override {OutputDebugStringA(("rtxForge overlay: "+message+"\n").c_str());return true;}
 };
 struct Root : Rml::Element {explicit Root(const Rml::String& tag):Rml::Element(tag){ForceLocalStackingContext();}void Paint(){Render();}};
@@ -98,10 +99,10 @@ struct Runtime {
         const auto& c=*controls;
         return {{"ThemeVersion",4},{"Theme",c.appearance},{"Custom",int(c.customTheme)},{"Layout",c.layout},
             {"TextFont",c.copyFont},{"TextSize",c.copySize},{"Scale",c.overlayScale},{"ScaleBaseline",120},
-            {"LightTint",int(c.lightOpacity)},{"DarkTint",int(c.darkOpacity)},{"ClearTint",int(c.clearOpacity)},{"AccentCharacter",int(c.accentCharacter)},{"AccentTint",int(c.accentOpacity)},
+            {"LightTint",int(c.lightOpacity)},{"DarkTint",int(c.darkOpacity)},{"ClearTint",int(c.clearOpacity)},{"AccentCharacter",int(c.accentCharacter)},{"AccentTint",int(c.accentOpacity)},{"AccentSaturation",int(c.accentSaturation)},
             {"Blur",int(c.blurRadius)},{"Grain",int(std::lround(c.grainAmount*10))},{"BlendStrength",int(c.blendStrength)},
             {"SurfaceBlend",c.surfaceBlend},{"TextDepth",int(c.textDepth)},{"InvertDark",int(c.invertDark)},
-            {"ToastPill",int(c.toastPill)},{"Motion",int(c.motionEnabled)},{"ShowNotifications",int(c.showNotifications)}};
+            {"ToastPill",int(c.toastPill)},{"Motion",int(c.motionEnabled)},{"ShowNotifications",int(c.showNotifications)},{"OriginalLabels",int(c.originalLabels)}};
     }
     nlohmann::json SettingsValues()const {const auto& c=*controls;return {{"overlay_appearance",AppearanceValues()},{"overlay_helper",c.helperEnabled},{"overlay_start_with_windows",c.startWithWindows},{"overlay_live_stats",c.showStats},{"overlay_welcome",c.showWelcome},{"overlay_welcome_position",c.welcomePosition},{"overlay_renderer",c.primaryMenu},{"optiscaler_hotkey",c.optiShortcut},{"optiscaler_ui",c.menuSettings.at("opti-menu")},{"optiscaler_intro",c.menuSettings.at("opti-intro")},{"reshade_ui",c.menuSettings.at("reshade-menu")},{"reshade_intro",c.menuSettings.at("reshade-intro")}};}
     void Appearance(const nlohmann::json& a) {
@@ -111,9 +112,10 @@ struct Runtime {
         c.copySize=std::clamp(a.value("TextSize",22),16,26);c.overlayScale=std::clamp(a.value("Scale",100),70,150);
         c.lightOpacity=float(std::clamp(a.value("LightTint",100),0,100));c.darkOpacity=float(std::clamp(a.value("DarkTint",80),0,100));c.clearOpacity=float(std::clamp(a.value("ClearTint",20),0,100));
         c.accentCharacter=float(std::clamp(a.value("AccentCharacter",35),0,100));c.accentOpacity=float(std::clamp(a.value("AccentTint",int(MaterialColor::AccentOpacity(c.accentCharacter)*100)),0,100));
+        c.accentSaturation=float(std::clamp(a.value("AccentSaturation",100),0,200));
         c.blurRadius=float(std::clamp(a.value("Blur",int(c.blurRadius)),16,48));c.grainAmount=std::clamp(a.value("Grain",40),0,80)/10.f;c.blendStrength=float(std::clamp(a.value("BlendStrength",int(c.blendStrength)),0,100));
         const auto blend=a.value("SurfaceBlend",c.surfaceBlend);if(MaterialColor::Valid(blend))c.surfaceBlend=blend;
-        c.customTheme=a.value("Custom",0)!=0;c.textDepth=a.value("TextDepth",1)!=0;c.invertDark=a.value("InvertDark",0)!=0;c.toastPill=a.value("ToastPill",0)!=0;c.motionEnabled=a.value("Motion",1)!=0;c.showNotifications=a.value("ShowNotifications",1)!=0;
+        c.originalLabels=a.value("OriginalLabels",0)!=0;c.Labels();c.customTheme=a.value("Custom",0)!=0;c.textDepth=a.value("TextDepth",1)!=0;c.invertDark=a.value("InvertDark",0)!=0;c.toastPill=a.value("ToastPill",0)!=0;c.motionEnabled=a.value("Motion",1)!=0;c.showNotifications=a.value("ShowNotifications",1)!=0;
         const auto layout=a.value("Layout",previous);c.Typography();c.Materials();c.SyncSettings();
         if(layout!=previous&&(layout=="floating"||layout=="centered"||layout=="bar"))c.Layout(layout);
     }
@@ -172,7 +174,7 @@ struct Runtime {
             const auto& review=data["review"];c.reviewId=review.value("review_id",0);c.Visible("review-panel",c.reviewId>0);c.Disabled("apply-review",!review.value("ready",false)||data.value("pending",false));std::string markup;
             for(const auto& [key,label]:std::map<std::string,std::string>{{"items","READY"},{"blocked","NEEDS ATTENTION"},{"skipped","UNCHANGED"}})if(review.contains(key)&&review[key].is_array()&&!review[key].empty()){markup+="<h3>"+label+"</h3>";for(const auto& item:review[key])if(item.is_object())markup+="<p>"+Rml::StringUtilities::EncodeRml(item.value("title",std::string()))+"</p><p class=\"hint\">"+Rml::StringUtilities::EncodeRml(item.value("detail",std::string()))+"</p>";}c.Element("review-items")->SetInnerRML(markup);
         }
-        for(const auto* id:{"menus-review","global-review"})c.Disabled(id,!helperReady||data.value("pending",false));
+        c.Disabled("menus-review",!helperReady||data.value("pending",false));
         const auto message=data.value("message",std::string());if(!message.empty()){c.Message(message);if(data.value("op",std::string())=="preset-save"&&!data.value("error",false)){c.edits.saved=c.values;c.Notify("Preset saved");}}
     }
 
@@ -193,6 +195,7 @@ struct Runtime {
         backdrop=std::make_unique<Backdrop>(device.Get(),width,height,pixel,1,1,uv,compatible,frame.colorSpace);
         D3D11_TEXTURE2D_DESC layer{};layer.Width=width;layer.Height=height;layer.MipLevels=layer.ArraySize=1;layer.Format=DXGI_FORMAT_R8G8B8A8_UNORM;layer.SampleDesc.Count=1;layer.BindFlags=D3D11_BIND_RENDER_TARGET|D3D11_BIND_SHADER_RESOURCE;Check(device->CreateTexture2D(&layer,nullptr,&windowLayer));Check(device->CreateRenderTargetView(windowLayer.Get(),nullptr,&windowView));Check(device->CreateShaderResourceView(windowLayer.Get(),nullptr,&windowSource));Check(device->CreateTexture2D(&layer,nullptr,&inkLayer));Check(device->CreateRenderTargetView(inkLayer.Get(),nullptr,&inkView));Check(device->CreateShaderResourceView(inkLayer.Get(),nullptr,&inkSource));
         if(frame.welcome){c.Welcome();c.toastUntil=system.GetElapsedTime()+7;}
+        if(frame.visible)c.MaybeSetup();
     }
     bool Draw(const ForgeGlass::Host& host,ForgeGlass::Frame& frame,ID3D11Texture2D* target) {
         auto& c=*controls;const double now=system.GetElapsedTime();c.PollPreferences(now);
@@ -233,7 +236,7 @@ struct Runtime {
             }
             lastValues=c.values;
         }
-        if(hostVisible!=frame.visible){if(!frame.visible){c.EndNrPreview();if(c.BarSettings())c.Settings(false);}hostVisible=frame.visible;c.Visible("main-panel",hostVisible);if(hostVisible)c.Enter("main-panel");else{c.Visible("inspector",false);c.Visible("type-panel",false);}}
+        if(hostVisible!=frame.visible){if(!frame.visible){c.EndNrPreview();if(c.BarSettings())c.Settings(false);}hostVisible=frame.visible;c.Visible("main-panel",hostVisible);if(hostVisible){c.Enter("main-panel");c.MaybeSetup();}else{c.Visible("inspector",false);c.Visible("type-panel",false);}}
         const auto beforeSettings=SettingsValues();const int oldShortcut=c.shortcut,oldModifiers=c.shortcutModifiers;
         const bool focused=GetForegroundWindow()==frame.window;const int modifiers=focused?((frame.keys[VK_CONTROL]?Rml::Input::KM_CTRL:0)|(frame.keys[VK_SHIFT]?Rml::Input::KM_SHIFT:0)|(frame.keys[VK_MENU]?Rml::Input::KM_ALT:0)):0;
         context->ProcessMouseMove(focused?int(frame.mouseX):-1,focused?int(frame.mouseY):-1,modifiers);
@@ -252,7 +255,7 @@ struct Runtime {
         c.reducedMotion=systemReducedMotion||!c.motionEnabled;document->SetClass("reduce-motion",c.reducedMotion);c.Animate(now);c.Adapt(backdrop->measured,now);context->Update();c.AdaptiveForeground(*backdrop,now);context->Update();
         // Display changes resolve during Update. Reading the previous computed
         // visibility would immediately close a panel reopened by the host.
-        frame.visible=c.Element("main-panel")->IsVisible();hostVisible=frame.visible;
+        frame.visible=c.Element("main-panel")->IsVisible()||(c.setupStep>=0&&c.Element("type-panel")->IsVisible());hostVisible=frame.visible;
         if(c.toastUntil>0&&now>c.toastUntil){c.Visible("welcome",false);c.toastUntil=0;}
         if(c.prefsDirty&&now>=nextPreferences){c.SavePreferences();nextPreferences=now+.5;}c.savePreset={};c.deletePreset={};c.requestJson={};
             std::vector<Backdrop::Panel> panels;
@@ -282,9 +285,10 @@ struct Runtime {
                 const float clearInk[4]={};immediate->ClearRenderTargetView(inkView.Get(),clearInk);renderUi(c.Element(id.c_str()),inkView.Get());backdrop->DrawInk(windowView.Get(),inkSource.Get(),byId.at(id),true);const auto velocity=c.windowVelocity[id];backdrop->ComposeLayer(frame.target,windowSource.Get(),velocity.x,velocity.y,c.reducedMotion);
             }
 
-            if(c.Element("tooltip")->IsVisible()){
-                if(outputSpace){backdrop->Draw(target,frame.target,{},false,false);const float clear[4]={};immediate->ClearRenderTargetView(windowView.Get(),clear);renderUi(c.Element("tooltip"),windowView.Get());backdrop->ComposeLayer(frame.target,windowSource.Get(),0,0,true);}
-                else renderUi(c.Element("tooltip"));
+            for(const auto* popup:{"layout-picker","tooltip"})if(c.Element(popup)->IsVisible()){
+                if(std::string(popup)=="layout-picker"&&byId.contains("main-panel")){const auto panel=c.QuickLayoutSurface(byId.at("main-panel"));const float clear[4]={};immediate->ClearRenderTargetView(windowView.Get(),clear);backdrop->Draw(target,windowView.Get(),{panel},true,false);immediate->ClearRenderTargetView(inkView.Get(),clear);renderUi(c.Element(popup),inkView.Get());backdrop->DrawInk(windowView.Get(),inkSource.Get(),panel,true);backdrop->ComposeLayer(frame.target,windowSource.Get(),0,0,true);}
+                else if(outputSpace){backdrop->Draw(target,frame.target,{},false,false);const float clear[4]={};immediate->ClearRenderTargetView(windowView.Get(),clear);renderUi(c.Element(popup),windowView.Get());backdrop->ComposeLayer(frame.target,windowSource.Get(),0,0,true);}
+                else renderUi(c.Element(popup));
             }
         return true;
     }

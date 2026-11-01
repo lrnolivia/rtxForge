@@ -7,7 +7,7 @@ $pages = @{
     dlss_preset='neural'; rr_preset='neural'
 }
 $names = @{
-    pre_sr='Stage'; reduced='Smaller model'; work_scale='Render resolution'; edge_aware='Keep edges clear'; cache='Reuse enhancements'; interval='Enhance every N frames'
+    pre_sr='Processing stage'; reduced='Smaller model'; work_scale='Render resolution'; edge_aware='Preserve edges'; cache='Reuse enhancements'; interval='Refresh interval'
     structure='Texture detail'; skin='Skin detail'; auto_mask='Protect skin automatically'; sharpen='Sharpen image'; sharpen_shader='Sharpening filter'; sharp_override='Use custom sharpening'; sharpness='Sharpening strength'; motion_sharpen='Sharpen moving detail'; motion_sharpness='Motion sharpening'
     dlss_preset='Upscaling model'; rr_preset='Ray Reconstruction model'
 }
@@ -70,5 +70,30 @@ foreach($field in $hdrProfile.controls) {
     $numbers=@($field.min,$field.max,$field.step,$field.default)|ForEach-Object{([double]$_).ToString('0.0###',[Globalization.CultureInfo]::InvariantCulture)+'f'}
     $header += '    {'+((@($field.key,$field.label,$field.section,$field.kind,$options,$field.unit)|ForEach-Object{Quote $_}) -join ',')+','+($numbers -join ',')+','+([string]([bool]$field.reset)).ToLowerInvariant()+'},'+"`n"
 }
+$header += "};`n"
+$header += "struct ControlLabel { const char* key; const char* friendly; const char* original; };`ninline const ControlLabel ControlLabels[] = {`n"
+# Verbatim display names from the pinned OptiScaler NR menu. Other bridge
+# controls use the shared schema's upstream name; shader/add-on labels arrive
+# from ReShade itself and are preserved by the reflected controls.
+$originalNames = @{
+    enabled='Enable Neural Rendering'; style='Model style'; pre_sr='Run before the upscaler'
+    cache="Reuse the model's edit between runs (edit cache)"; interval='Max frames between runs'
+}
+$friendlyNames = @{
+    intensity='Strength'; preset='Model'; passes='Passes'; colour='Color'; detail='Detail'
+    structure='Texture detail'; skin='Skin detail'; pre_sr='Processing stage'
+}
+foreach($control in $schema.controls) {
+    $friendly = if($names.ContainsKey($control.key)) { $names[$control.key] } elseif($friendlyNames.ContainsKey($control.key)) { $friendlyNames[$control.key] } else { $control.label }
+    $original = if($originalNames.ContainsKey($control.key)) { $originalNames[$control.key] } else { $control.advanced }
+    $header += '    {'+(Quote $control.key)+','+(Quote $friendly)+','+(Quote $original)+'},'+"`n"
+}
+foreach($row in @(
+    @('area','Area','Region'), @('area_distance','Distance','Near distance'), @('area_softness','Edge softness','Edge softness'),
+    @('area_strength','Area strength','Mask strength'), @('show_area','Show affected area','Show mask'),
+    @('fg_auto','Adjust multiplier automatically','Auto multiplier'), @('fg_target','Target frame rate · 0 follows display','Target fps (0 = display)'),
+    @('fg_meter','Show frame-generation statistics','Frame generation meter'), @('fg_cleanup','Reduce dots during fast movement','Speckle cleanup (dots on fast turns)'),
+    @('fg_cleanup_strength','Cleanup strength','Cleanup strength'), @('fg_game_version','Use game-bundled frame generation',"Use the game's DLSS-G version")
+)) { $header += '    {'+(($row | ForEach-Object { Quote $_ }) -join ',')+'},'+"`n" }
 $header += "};`n"
 [IO.File]::WriteAllText($Output,$header,[Text.UTF8Encoding]::new($false))

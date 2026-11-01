@@ -634,7 +634,7 @@ struct Controller : Rml::EventListener
         }
         if(event.GetType()=="change") {
             auto* field=dynamic_cast<Rml::ElementFormControl*>(target);if(!field)return;
-            if(id=="scene-select") {sceneRequest=std::stoi(field->GetValue());return;}
+            if(id=="scene-select") {const auto value=field->GetValue();if(!value.empty())sceneRequest=std::stoi(value);return;}
             if(id=="welcome-position"){welcomePosition=field->GetValue();prefsDirty=true;PositionWelcome();return;}
             if(id=="primary-menu"){primaryMenu=field->GetValue();prefsDirty=true;return;}
             if(id=="opti-shortcut"){optiShortcut=field->GetValue();prefsDirty=true;return;}

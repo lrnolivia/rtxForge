@@ -35,7 +35,7 @@ FEEDER_ONLY = ('dlss5-feed.addon64', 'dlss5-feed.addon32', 'dlss5-feed-helper.ad
 REVIEWED_DX11 = {'ts4_x64.exe'}
 # rtxForge's in-game panel and banner hider (windows/feeder-panel), bundled by Build-FeederPanel.ps1.
 PANELS = ('rtxforge-panel.addon64', 'rtxforge-quiet.addon64')
-OPTIONAL_PANELS = ('rtxforge-glass.dll',)
+OPTIONAL_PANELS = ('rtxforge-glass.dll', 'rtxforge-effects.addon64')
 # Added by hand before rtxforge-quiet existed.
 RETIRED = {'quiet-startup.addon64': 'a33e97b437a6410d01d4dafc1ae770afa9c1e37a84bdbbe87926e24b5735f0a4'}
 OWNED = (*PANELS, *OPTIONAL_PANELS, *RETIRED)

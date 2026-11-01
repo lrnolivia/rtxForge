@@ -38,10 +38,16 @@ public sealed partial class GameModeView
             Choice("Primary overlay", "Use the rtxForge panel in compatible packages, or the original OptiScaler, Feeder or ReShade menus.",
                 ["game", "optiscaler"], ["rtxForge", "Native"], () => shell.Settings.OverlayRenderer == "optiscaler" ? "optiscaler" : "game", value => SetOverlay(s => s.OverlayRenderer = value), glyph: "\uE7F4"),
             LayoutChoices(),
-            Choice("Appearance", null, GlassAppearance.Themes, ["Clear", "Light", "Dark"],
+        ]),
+        new("Appearance", null,
+        [
+            Choice("Theme", "Selecting a theme restores its material defaults.", GlassAppearance.Themes, ["Clear", "Light", "Dark"],
                 () => GlassAppearance.Load().Theme, value => { GlassAppearance.UseTheme(value); SetOverlay(s => { s.OverlayTheme = value; s.OverlayAppearance=GlassAppearance.Load().ToJson(); }); }, glyph: "\uE790"),
             GlassChoice("Text size","TextSize",["18","22","26"],["Aa  Smaller","Aa  Default","Aa  Larger"]),
             GlassChoice("Motion effects","Motion",["1","0"],["On","Off"]),
+        ]),
+        new("Status and notifications", null,
+        [
             GlassChoice("Hotkey notifications","ShowNotifications",["1","0"],["On","Off"]),
             OverlayToggle("Live feature statistics", "Measured activity beside NR and frame generation controls.", () => shell.Settings.OverlayLiveStats, (s, value) => s.OverlayLiveStats = value, glyph: "\uE9D9"),
             OverlayToggle("Welcome message", "Show the rtxForge logo and assigned shortcut at game startup.", () => shell.Settings.OverlayWelcome, (s, value) => s.OverlayWelcome = value, glyph: "\uE8F2"),

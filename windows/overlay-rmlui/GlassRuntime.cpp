@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <psapi.h>
 #include <d3d11_1.h>
 #include <d3d11on12.h>
 #include <wincodec.h>
@@ -18,6 +19,19 @@
 #include <set>
 using Microsoft::WRL::ComPtr;
 namespace {
+using EffectRead=size_t(__cdecl*)(char*,size_t);
+using EffectWrite=bool(__cdecl*)(const char*);
+bool WithEffects(const std::function<bool(EffectRead,EffectWrite)>& use) {
+    HMODULE modules[1024]{};DWORD needed{};
+    if(!K32EnumProcessModules(GetCurrentProcess(),modules,sizeof(modules),&needed))return false;
+    for(size_t i=0;i<std::min<size_t>(needed/sizeof(HMODULE),std::size(modules));++i){
+        HMODULE held{};if(!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,reinterpret_cast<LPCWSTR>(modules[i]),&held))continue;
+        const auto read=reinterpret_cast<EffectRead>(GetProcAddress(held,"ForgeReShadeReadV1"));
+        const auto write=reinterpret_cast<EffectWrite>(GetProcAddress(held,"ForgeReShadeWriteV1"));
+        const bool result=read&&write&&use(read,write);FreeLibrary(held);if(result)return true;
+    }
+    return false;
+}
 void Check(HRESULT n){if(FAILED(n))throw std::runtime_error("Glass renderer operation failed: "+std::to_string(n));}
 struct Asset {const unsigned char* data{};size_t size{};};
 Asset Find(const std::string& name) {
@@ -73,7 +87,7 @@ struct Runtime {
     Rml::Context* context{};Rml::ElementDocument* document{};bool initialized=false,mouse[3]{},keys[256]{},hostVisible=false;int width{},height{};DXGI_FORMAT format{};
     ForgeWorkbench::Values lastValues;
     ForgeWorkbench::History history;double historyPaint=-1;
-    double nextTelemetry=0,nextPreferences=0;std::string lastHelper;
+    double nextTelemetry=0,nextPreferences=0;std::string lastHelper,lastEffects;ULONGLONG nextEffects{};
     unsigned outputSpace=0;
     bool receivedSnapshot=false,messageInitialized=false,dx12Interop=false,systemReducedMotion=false;
     int helperRevision=-1;bool helperReady=false;std::set<std::string> supportedKeys;
@@ -145,13 +159,13 @@ struct Runtime {
         if(data.contains("hdr"))Hdr(data["hdr"]);
         if(revision==helperRevision)return;helperRevision=revision;
         if(data.contains("presets")&&data["presets"].is_array()&&data["presets"].size()<=12){
-            std::map<std::string,std::string> selected;for(const auto* id:{"presets","compare-left","compare-right"})selected[id]=dynamic_cast<Rml::ElementFormControl*>(c.Element(id))->GetValue();
+            std::map<std::string,std::string> selected;for(const auto* id:{"presets"})selected[id]=dynamic_cast<Rml::ElementFormControl*>(c.Element(id))->GetValue();
             if(data.value("op",std::string())=="preset-save"&&!data.value("error",false))selected["presets"]=data.value("preset_name",selected["presets"]);
             c.presets.clear();std::string options;for(const auto& preset:data["presets"]){if(!preset.is_object()||!preset.value("compatible",false))continue;const auto name=preset.value("name",std::string());if(name.empty()||name.size()>60||!preset.contains("values")||!preset["values"].is_object())continue;
                 auto values=c.values;for(const auto& [key,value]:preset["values"].items())if(value.is_number()&&values.contains(key))values[key]=value.get<float>();c.presets[name]=values;const auto safe=Rml::StringUtilities::EncodeRml(name);options+="<option value=\""+safe+"\">"+safe+"</option>";
             }
-            if(options.empty())options="<option value=\"\">No saved presets</option>";c.typographySync=true;for(const auto* id:{"presets","compare-left","compare-right"}){c.Element(id)->SetInnerRML(options);if(c.presets.contains(selected[id]))dynamic_cast<Rml::ElementFormControl*>(c.Element(id))->SetValue(selected[id]);}c.typographySync=false;
-            if(!c.presets.empty()){c.compareLeft=dynamic_cast<Rml::ElementFormControl*>(c.Element("compare-left"))->GetValue();c.compareRight=dynamic_cast<Rml::ElementFormControl*>(c.Element("compare-right"))->GetValue();}c.Disabled("presets",c.presets.empty());c.Disabled("delete-preset",c.presets.empty()||data.value("pending",false));
+            if(options.empty())options="<option value=\"\">No saved presets</option>";c.typographySync=true;for(const auto* id:{"presets"}){c.Element(id)->SetInnerRML(options);if(c.presets.contains(selected[id]))dynamic_cast<Rml::ElementFormControl*>(c.Element(id))->SetValue(selected[id]);}c.typographySync=false;
+            c.Disabled("presets",c.presets.empty());c.Disabled("delete-preset",c.presets.empty()||data.value("pending",false));
         }
         if(data.contains("review")&&data["review"].is_object()){
             const auto& review=data["review"];c.reviewId=review.value("review_id",0);c.Visible("review-panel",c.reviewId>0);c.Disabled("apply-review",!review.value("ready",false)||data.value("pending",false));std::string markup;
@@ -161,8 +175,8 @@ struct Runtime {
         const auto message=data.value("message",std::string());if(!message.empty()){c.Message(message);if(data.value("op",std::string())=="preset-save"&&!data.value("error",false)){c.edits.saved=c.values;c.Notify("Preset saved");}}
     }
 
-    ~Runtime(){if(controls&&controls->prefsDirty)controls->SavePreferences();if(document&&controls)for(const auto* event:{"click","change","keydown","mouseover","mouseout","mousedown","mousemove","mouseup"})document->RemoveEventListener(event,controls.get());if(initialized)Rml::Shutdown();controls.reset();}
-    void Init(const ForgeGlass::Frame& frame,const D3D11_TEXTURE2D_DESC& desc) {
+    ~Runtime(){if(controls)controls->RestorePreviewForTeardown();if(controls&&controls->prefsDirty)controls->SavePreferences();if(document&&controls)for(const auto* event:{"click","change","keydown","keyup","blur","mouseover","mouseout","mousedown","mousemove","mouseup"})document->RemoveEventListener(event,controls.get());if(initialized)Rml::Shutdown();controls.reset();}
+    void Init(const ForgeGlass::Host& host,const ForgeGlass::Frame& frame,const D3D11_TEXTURE2D_DESC& desc) {
         device=frame.device;device->GetImmediateContext(&immediate);width=int(desc.Width);height=int(desc.Height);format=desc.Format;outputSpace=frame.colorSpace;
         ComPtr<ID3D11On12Device> interop;dx12Interop=SUCCEEDED(device.As(&interop));
         BOOL animate=TRUE;systemReducedMotion=SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&animate,0)&&!animate;
@@ -170,9 +184,9 @@ struct Runtime {
         Rml::Factory::RegisterElementInstancer("paint-root",&roots);
         ForgeGlass::Require(Rml::LoadFontFace("fonts/RobotoVariable.ttf"),"Roboto failed to load");ForgeGlass::Require(Rml::LoadFontFace("fonts/BakbakOne-Regular.ttf"),"Heading font failed to load");ForgeGlass::Require(Rml::LoadFontFace("fonts/InterVariable.ttf"),"Inter failed to load");
         context=Rml::CreateContext("game-overlay",{width,height});ForgeGlass::Require(context!=nullptr,"RmlUi context failed");document=context->LoadDocument("overlay.rml");ForgeGlass::Require(document!=nullptr,"Overlay document failed");
-        controls=std::make_unique<ForgeGlass::Controller>();auto& c=*controls;c.document=document;c.preview=false;c.UseTheme(3);c.LoadPreferences(true);if(c.copyFont=="aptos")c.copyFont="roboto";
+        controls=std::make_unique<ForgeGlass::Controller>();auto& c=*controls;c.document=document;c.preview=false;c.monitorPreviewFocus=true;c.restorePreview=[host](float enabled){const ForgeGlass::Value value{"enabled",enabled};const bool ok=host.apply&&host.apply(host.user,&value,1);if(!ok&&host.log)host.log(host.user,"NR preview could not restore its previous state during renderer teardown.");return ok;};c.UseTheme(3);c.LoadPreferences(true);if(c.copyFont=="aptos")c.copyFont="roboto";
         c.InstallExtraControls();c.Typography();c.Materials();c.Sync();c.SyncSettings();c.Metadata();c.Session({});c.edits.Start(c.values);
-        for(const auto* event:{"click","change","keydown","mouseover","mouseout","mousedown","mousemove","mouseup"})document->AddEventListener(event,&c);
+        for(const auto* event:{"click","change","keydown","keyup","blur","mouseover","mouseout","mousedown","mousemove","mouseup"})document->AddEventListener(event,&c);
         c.Element("font-select")->SetInnerRML("<option value=\"roboto\">Roboto</option><option value=\"inter\">Inter</option>");document->QuerySelector(".prototype-toolbar")->SetProperty("display","none");c.Visible("type-panel",false);c.Visible("inspector",false);c.Visible("welcome",false);c.Visible("main-panel",frame.visible);document->Show();hostVisible=frame.visible;c.Layout(c.layout);lastValues=c.values;
         const unsigned char pixel[4]={};const float uv[4]={0,0,1,1};DXGI_FORMAT compatible=format;if(format==DXGI_FORMAT_R8G8B8A8_TYPELESS)compatible=DXGI_FORMAT_R8G8B8A8_UNORM;if(format==DXGI_FORMAT_B8G8R8A8_TYPELESS)compatible=DXGI_FORMAT_B8G8R8A8_UNORM;
         backdrop=std::make_unique<Backdrop>(device.Get(),width,height,pixel,1,1,uv,compatible,frame.colorSpace);
@@ -218,14 +232,16 @@ struct Runtime {
             }
             lastValues=c.values;
         }
-        if(hostVisible!=frame.visible){hostVisible=frame.visible;c.Visible("main-panel",hostVisible);if(hostVisible)c.Enter("main-panel");else{c.Visible("inspector",false);c.Visible("type-panel",false);}}
+        if(hostVisible!=frame.visible){if(!frame.visible){c.EndNrPreview();if(c.BarSettings())c.Settings(false);}hostVisible=frame.visible;c.Visible("main-panel",hostVisible);if(hostVisible)c.Enter("main-panel");else{c.Visible("inspector",false);c.Visible("type-panel",false);}}
         const auto beforeSettings=SettingsValues();const int oldShortcut=c.shortcut,oldModifiers=c.shortcutModifiers;
         const bool focused=GetForegroundWindow()==frame.window;const int modifiers=focused?((frame.keys[VK_CONTROL]?Rml::Input::KM_CTRL:0)|(frame.keys[VK_SHIFT]?Rml::Input::KM_SHIFT:0)|(frame.keys[VK_MENU]?Rml::Input::KM_ALT:0)):0;
         context->ProcessMouseMove(focused?int(frame.mouseX):-1,focused?int(frame.mouseY):-1,modifiers);
         for(int i=0;i<3;i++){const bool down=focused&&frame.mouse[i];if(down!=mouse[i]){if(down)context->ProcessMouseButtonDown(i,modifiers);else context->ProcessMouseButtonUp(i,modifiers);mouse[i]=down;}}
         if(focused&&frame.wheel)context->ProcessMouseWheel(-frame.wheel,modifiers);
         for(int vk=0;vk<256;vk++){const bool down=focused&&frame.keys[vk];if(down!=keys[vk]){const auto key=Key(vk);if(key!=Rml::Input::KI_UNKNOWN){if(down){const auto shortcut=c.shortcut;if(!c.bindingShortcut)c.shortcut=Rml::Input::KI_UNKNOWN;context->ProcessKeyDown(key,modifiers);if(!c.bindingShortcut&&c.shortcut==Rml::Input::KI_UNKNOWN)c.shortcut=shortcut;}else context->ProcessKeyUp(key,modifiers);}if(down&&vk>=VK_SPACE&&!(modifiers&(Rml::Input::KM_CTRL|Rml::Input::KM_ALT))){BYTE state[256]{};GetKeyboardState(state);WCHAR text[8]{};const auto layout=GetKeyboardLayout(0);const int count=ToUnicodeEx(vk,MapVirtualKeyExW(vk,MAPVK_VK_TO_VSC,layout),state,text,8,4,layout);for(int i=0;i<count;i++)if(text[i]>=32)context->ProcessTextInput(Rml::Character(text[i]));}keys[vk]=down;}}
-        const auto afterSettings=SettingsValues();for(const auto& [key,value]:afterSettings.items())if(beforeSettings.at(key)!=value)pendingSettings[key]=value;
+        if(GetTickCount64()>=nextEffects){nextEffects=GetTickCount64()+250;std::string text="{}";WithEffects([&](EffectRead read,EffectWrite){const auto size=read(nullptr,0);if(size<2||size>1024*1024)return false;std::vector<char> buffer(size);if(read(buffer.data(),size)!=size||buffer.back()!=0)return false;text.assign(buffer.data(),size-1);return true;});if(text!=lastEffects){const auto data=nlohmann::json::parse(text,nullptr,false);if(data.is_object())c.effects.Set(data);lastEffects=text;}}
+        c.effects.send=[](const std::string& text){return WithEffects([&](EffectRead,EffectWrite write){return write(text.c_str());});};
+        c.CheckPreviewFocus();const auto afterSettings=SettingsValues();for(const auto& [key,value]:afterSettings.items())if(beforeSettings.at(key)!=value)pendingSettings[key]=value;
         if(oldShortcut!=c.shortcut||oldModifiers!=c.shortcutModifiers){const auto key=c.shortcut;const int vk=key==Rml::Input::KI_DELETE?VK_DELETE:key>=Rml::Input::KI_A&&key<=Rml::Input::KI_Z?'A'+key-Rml::Input::KI_A:key>=Rml::Input::KI_F1&&key<=Rml::Input::KI_F12?VK_F1+key-Rml::Input::KI_F1:0;if(vk)pendingSettings["panel_binding"]={{"key",vk},{"modifiers",(c.shortcutModifiers&Rml::Input::KM_ALT?1:0)|(c.shortcutModifiers&Rml::Input::KM_CTRL?2:0)|(c.shortcutModifiers&Rml::Input::KM_SHIFT?4:0)}};}
         if(helperReady)c.hdr.Flush(c.requestJson);
         if(helperReady&&host.request&&!pendingSettings.empty()){auto it=pendingSettings.begin();const auto request=nlohmann::json{{"op","set-setting"},{"key",it->first},{"value",it->second}}.dump();if(host.request(host.user,request.c_str()))pendingSettings.erase(it);}
@@ -261,7 +277,7 @@ struct Runtime {
             for(const auto* id:{"main-panel","inspector","welcome","type-panel"})if(c.Element(id)->IsVisible())byId[id]=panels.at(panelIndex++);
             const auto renderUi=[&](Rml::Element* root,ID3D11RenderTargetView* destination=nullptr) {if(!destination)destination=frame.target;immediate->OMSetRenderTargets(1,&destination,nullptr);D3D11_VIEWPORT viewport{0,0,float(width),float(height),0,1};immediate->RSSetViewports(1,&viewport);renderer->BeginFrame();auto& manager=context->GetRenderManager();manager.PrepareRender({width,height});static_cast<Root*>(root)->Paint();manager.ResetState();renderer->EndFrame(destination);};
             for(const auto& id:c.stacking)if(byId.contains(id)) {
-                const float clearLayer[4]={};immediate->ClearRenderTargetView(windowView.Get(),clearLayer);backdrop->Draw(target,windowView.Get(),{byId.at(id)},true,false);
+                const float clearLayer[4]={};immediate->ClearRenderTargetView(windowView.Get(),clearLayer);if(!(id=="inspector"&&c.layout=="centered"))backdrop->Draw(target,windowView.Get(),{byId.at(id)},true,false);
                 const float clearInk[4]={};immediate->ClearRenderTargetView(inkView.Get(),clearInk);renderUi(c.Element(id.c_str()),inkView.Get());backdrop->DrawInk(windowView.Get(),inkSource.Get(),byId.at(id),true);const auto velocity=c.windowVelocity[id];backdrop->ComposeLayer(frame.target,windowSource.Get(),velocity.x,velocity.y,c.reducedMotion);
             }
 
@@ -286,7 +302,7 @@ extern "C" __declspec(dllexport) bool __cdecl ForgeGlassDraw(const ForgeGlass::H
         const bool supported=frame->colorSpace==0?sdr:frame->colorSpace==1?desc.Format==DXGI_FORMAT_R16G16B16A16_FLOAT:desc.Format==DXGI_FORMAT_R10G10B10A2_UNORM;
         if(!supported)throw std::runtime_error("Unsupported glass format and transfer-function pair");
         if(runtime&&(runtime->device.Get()!=frame->device||runtime->width!=int(desc.Width)||runtime->height!=int(desc.Height)||runtime->format!=desc.Format||runtime->outputSpace!=frame->colorSpace))runtime.reset();
-        if(!runtime){if(host->log)host->log(host->user,"Initializing glass overlay");runtime=std::make_unique<Runtime>();runtime->Init(*frame,desc);if(host->log)host->log(host->user,runtime->dx12Interop?"Glass overlay ready: DirectX 12":"Glass overlay ready: DirectX 11");}drawn=runtime->Draw(*host,*frame,target.Get());
+        if(!runtime){if(host->log)host->log(host->user,"Initializing glass overlay");runtime=std::make_unique<Runtime>();runtime->Init(*host,*frame,desc);if(host->log)host->log(host->user,runtime->dx12Interop?"Glass overlay ready: DirectX 12":"Glass overlay ready: DirectX 11");}drawn=runtime->Draw(*host,*frame,target.Get());
     }catch(const std::exception& error){runtime.reset();if(!logged&&host->log){host->log(host->user,error.what());logged=true;}}
     if(uninitialize)CoUninitialize();return drawn;
 }

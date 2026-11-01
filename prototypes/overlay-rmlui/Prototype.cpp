@@ -148,9 +148,11 @@ static void TestLayout(Controller& c,Rml::Context* context)
         const std::array<float,4> viewport{0,0,float(view.x),float(view.y)};
         for(const auto* mode:{"floating","centered","bar"}){
             c.Layout(mode);c.values["multiplier"]=3;c.Sync();settle();contains("main-panel",viewport);
+            const auto header=rect(c.document->QuerySelector(".brand-row")),footer=rect(c.Element("tuning-footer"));auto* scroll=c.Element("overview");Require(scroll->GetClientHeight()>30,"Tuning scroll region collapsed");scroll->SetScrollTop(scroll->GetScrollHeight());settle();const auto headerAfter=rect(c.document->QuerySelector(".brand-row")),footerAfter=rect(c.Element("tuning-footer"));Require(std::fabs(header[1]-headerAfter[1])<2&&std::fabs(footer[1]-footerAfter[1])<2,"Header or footer scrolled with content");scroll->SetScrollTop(0);settle();
             if(c.layout=="bar"){
-                c.Element("compare-b")->ScrollIntoView();settle();contains("compare-mode",rect(c.Element("main-panel")));contains("compare-a",rect(c.Element("main-panel")));contains("compare-b",rect(c.Element("main-panel")));
-                const auto history=rect(c.Element("defaults")),compare=rect(c.Element("compare-mode"));Require(history[2]<=compare[0]+2||history[3]<=compare[1]+2||compare[3]<=history[1]+2,"Bar history and comparison overlap");
+                settle();contains("preview-original",rect(c.Element("main-panel")));contains("defaults",rect(c.Element("main-panel")));
+                const auto history=rect(c.Element("defaults")),compare=rect(c.Element("preview-original"));Require(history[2]<=compare[0]+2||history[3]<=compare[1]+2||compare[3]<=history[1]+2,"Bar history and comparison overlap");
+                c.Open("look");c.Settings(true);settle();contains("inspector",viewport);Require(c.Element("settings-screen")->GetParentNode()->GetId()=="settings-modal-host"&&c.Element("overview")->IsVisible()&&!c.Element("look-inspector")->IsVisible(),"Bar Settings is not an isolated modal over its bar");const auto modal=rect(c.Element("inspector"));Require(std::fabs((modal[0]+modal[2])*.5f-view.x*.5f)<2,"Bar Settings must be centered");c.ToggleOverlay();Require(!c.settingsOpen&&!c.document->IsClassSet("bar-settings"),"Closing Bar Settings trapped the overlay");c.ToggleOverlay();settle();Require(c.Element("main-panel")->IsVisible(),"Bar did not reopen after Settings");
             }
             if(c.layout=="centered"){
                 auto* sidebar=c.document->QuerySelector(".sidebar");Require(sidebar->GetChild(sidebar->GetNumChildren()-1)->GetId()=="nav-settings","Settings must be the final sidebar destination");
@@ -178,13 +180,16 @@ static void TestController(Controller& c,Rml::Context* context)
     Require(c.Element("mfg-hint")->GetInnerRML().find("selected")!=std::string::npos,"MFG explanation is stale");
     click("undo");Require(c.values["multiplier"]==2,"Undo did not restore the full edit");
     click("redo");Require(c.values["multiplier"]==4,"Redo did not reapply the edit");
+    {using Json=nlohmann::json;std::string command;c.effects.send=[&](const std::string& text){command=text;return true;};
+        const Json fields=Json::array({Json{{"id",0},{"label","Custom <effect>"},{"effect","Paid.fx"},{"kind","toggle"},{"value",0}},Json{{"id",1},{"label","Unknown parameter"},{"effect","Paid.fx"},{"kind","number"},{"value",7.25}},Json{{"id",2},{"label","Custom choice"},{"effect","Paid.fx"},{"kind","choice"},{"choices",Json::array({"One","Two"})},{"value",1}},Json{{"id",3},{"label","Custom INI setting"},{"effect","Add-on settings"},{"kind","text"},{"value","original"}}});
+        c.effects.Set(Json{{"generation",uint64_t(7)},{"fields",fields}});c.Open("effects");context->Update();Require(c.Element("effect-field-1")&&c.Element("effect-field-2"),"Reflected custom controls were not built");click("effect-field-0");const auto sent=Json::parse(command);Require(sent["generation"]==7&&sent["id"]==0&&sent["value"]==1,"Reflected toggle lost its runtime identity");Require(c.Element("effects-fields")->GetInnerRML().find("Custom &lt;effect&gt;")!=std::string::npos,"Reflected labels must be escaped");auto* numeric=dynamic_cast<Rml::ElementFormControl*>(c.Element("effect-field-1"));numeric->SetValue("12.5");numeric->DispatchEvent("change",{});c.effects.Set(Json{{"generation",uint64_t(7)},{"fields",fields}});Require(numeric->GetValue()=="12.5","A runtime refresh erased an uncommitted parameter");click("effect-apply-1");Require(Json::parse(command)["value"]==12.5,"Unknown numeric parameter did not apply");auto* text=dynamic_cast<Rml::ElementFormControl*>(c.Element("effect-field-3"));text->SetValue("custom & <value>");text->DispatchEvent("change",{});click("effect-apply-3");Require(Json::parse(command)["value"]=="custom & <value>","Custom INI text did not round-trip");c.effects.Set(Json{{"generation",uint64_t(8)},{"fields",Json::array()}});Require(!c.document->GetElementById("effect-field-0"),"Reload retained a stale parameter");c.effects.send={};c.Visible("inspector",false);std::cout<<"native_reflected_effect_controls_checks=passed\n";
+    }
     click("pass-minus");Require(c.values["passes"]==2,"Pass stepper did not decrement");
     click("pass-plus");Require(c.values["passes"]==3,"Pass stepper did not increment");
     click("pass-plus");Require(c.values["passes"]==3,"Pass stepper exceeded the supported limit");
     c.Element("render-resolution")->ScrollIntoView();context->Update();c.Element("render-resolution")->Focus();const auto scale=c.values["work_scale"];
     context->ProcessKeyDown(Rml::Input::KI_RIGHT,0);context->ProcessKeyUp(Rml::Input::KI_RIGHT,0);context->Update();Require(c.values["work_scale"]>scale,"Resolution slider did not update the runtime scale");
-    click("compare-b");click("style-cinematic");click("compare-a");Require(c.values["style"]==initial.at("style"),"A did not retain its tuning");
-    click("compare-b");Require(c.values["style"]==2,"B did not retain its tuning");
+    {const auto saved=c.values;const auto history=c.edits.past.size();auto* button=c.Element("preview-original");button->ScrollIntoView();context->Update();const auto at=button->GetAbsoluteOffset(Rml::BoxArea::Border),size=button->GetBox().GetSize(Rml::BoxArea::Border);context->ProcessMouseMove(int(at.x+size.x*.5f),int(at.y+size.y*.5f),0);context->ProcessMouseButtonDown(0,0);Require(c.nrPreviewActive&&c.values["enabled"]==0&&c.values["mfg_enabled"]==saved.at("mfg_enabled"),"Original preview must temporarily pause NR only");context->ProcessMouseButtonUp(0,0);Require(!c.nrPreviewActive&&c.values==saved&&c.edits.past.size()==history,"Original preview changed tuning or history");button->Focus();context->ProcessKeyDown(Rml::Input::KI_SPACE,0);Require(c.nrPreviewActive,"Keyboard original preview did not start");context->ProcessKeyUp(Rml::Input::KI_SPACE,0);Require(!c.nrPreviewActive&&c.values==saved,"Keyboard original preview did not restore NR");}
     click("open-passes");click("pass-3");Require(c.pass==3,"Pass 3 is inaccessible");
     click("inherit");Require(c.values["pass3_inherit"]==0,"Pass inheritance did not switch");
     click("pass-style-cinematic");Require(c.values["pass3_style"]==2 && c.Element("pass-style-cinematic")->IsClassSet("selected"),"Pass style selection is stale");
@@ -199,7 +204,7 @@ static void TestController(Controller& c,Rml::Context* context)
     c.UseTheme(2);Require(c.darkOpacity==80&&c.blurRadius==48&&c.surfaceBlend=="overlay"&&c.blendStrength==15,"Dark defaults differ from approved settings");
     c.UseTheme(1);Require(c.lightOpacity==100&&c.blurRadius==44&&c.surfaceBlend=="overlay"&&c.blendStrength==35,"Light defaults differ from approved settings");c.UseTheme(3);
     ForgeSession::Snapshot live;live.nrKnown=live.nrRunning=live.fgKnown=live.fgRunning=live.framesKnown=true;live.gameFps=60;live.displayedFps=180;live.measuredRatio=3;live.nrGpuMs=2.34;live.nrWidth=1920;live.nrHeight=1080;
-    c.Session(live);Require(c.Element("compact-frames")->GetInnerRML().find("180")!=std::string::npos,"Compact card lost actual displayed FPS");
+    c.Session(live);Require(c.Element("render-resolution-value")->GetInnerRML().find("(1920 × 1080)")!=std::string::npos,"Render resolution lost measured dimensions");Require(c.Element("compact-frames")->GetInnerRML().find("180")!=std::string::npos,"Compact card lost actual displayed FPS");
     Require(c.Element("compact-nr-size")->GetInnerRML().find("1920")!=std::string::npos,"NR card lost reported dimensions");
     c.Session({});Require(c.Element("compact-nr-size")->GetInnerRML().find("not reported")!=std::string::npos,"Missing dimensions were guessed");
     live.framesKnown=false;c.Session(live);Require(c.Element("compact-ratio")->GetInnerRML().empty(),"Unmeasured multiplier must stay hidden");c.Session({});
@@ -214,6 +219,8 @@ static void TestController(Controller& c,Rml::Context* context)
     Require(c.hdr.Flush([](const std::string& request){return request.find("hdr-save")!=std::string::npos;}),"HDR save request was not sent");
     c.Layout("bar");click("open-hdr");Require(c.inspectorPanel=="hdr"&&c.inspectorAnchored,"Bar HDR needs an attached popout");
     c.Layout("bar");c.Session(live);context->Update();Require(!c.Element("compact-live")->IsVisible(),"Live telemetry must not overflow Bottom Bar metadata");click("open-passes");Require(c.inspectorAnchored,"Bar inspectors should attach to their source");c.Settings(true);context->Update();Require(c.Element("main-panel")->GetAbsoluteOffset(Rml::BoxArea::Border).y>=0,"Bottom Bar settings moved above the viewport");c.Settings(false);c.Layout("floating");context->Update();Require(c.Element("compact-live")->IsVisible(),"Sidebar must retain its compact live cards");
+    c.preview=false;c.moreOpen=true;c.Materials();c.ShowAppearance();context->Update();Require(c.Element("blur-radius")->IsVisible(true)&&c.Element("motion-effects")->IsVisible(true)&&!c.Element("tint-opacity")->IsVisible(true)&&!c.Element("heading-accent-mode")->IsVisible(true)&&!c.Element("toast-rounded")->IsVisible(true),"Production Appearance must expose only Blur and Motion fine tuning");c.preview=true;c.Materials();c.moreOpen=false;c.Materials();c.Visible("type-panel",false);
+    {float restored=-1;{Controller held;held.nrPreviewActive=true;held.nrBeforePreview=1;held.restorePreview=[&](float value){restored=value;return true;};}Require(restored==1,"Renderer/controller teardown failed to restore the preview NR state");}
     c.values=initial;c.edits={};c.edits.Start(initial);c.appearance=appearance;c.pass=2;c.Sync();c.Element("theme-label")->SetInnerRML(c.appearance==1?"Light":c.appearance==3?"Clear":"Dark");
     c.Open("passes");c.Element("main-panel")->SetScrollTop(0);c.Element("inspector")->SetScrollTop(0);c.document->Focus();context->ProcessMouseMove(1800,1000,0);
     for(const auto* id:{"open-settings","open-frame-options","open-processing","inspector-close"}){auto* button=c.Element(id);if(!button->IsVisible())continue;auto* glyph=button->QuerySelector(".glyph");if(!glyph)continue;const auto at=button->GetAbsoluteOffset(Rml::BoxArea::Border),size=button->GetBox().GetSize(Rml::BoxArea::Border),iconAt=glyph->GetAbsoluteOffset(Rml::BoxArea::Border),iconSize=glyph->GetBox().GetSize(Rml::BoxArea::Border);Require(std::fabs(at.x+size.x*.5f-iconAt.x-iconSize.x*.5f)<1.5f&&std::fabs(at.y+size.y*.5f-iconAt.y-iconSize.y*.5f)<1.5f,"Icon-only glyph is not centered");}
@@ -223,7 +230,7 @@ static void TestController(Controller& c,Rml::Context* context)
 int wmain(int argc,wchar_t** argv)
 {
     try {
-        fs::path assets,background,output,font;int width=2560,height=1440,appearance=3,requestedCopy=22,requestedScale=100;bool inspector=false,blur=true,selfTest=false,layoutTest=false,customMfg=false,reduceMotion=false,welcome=false,settings=false;float crop=0,requestedTint=-1;std::array<float,3> accent{.19f,.46f,.80f};std::string requestedLayout="floating",requestedBlend,requestedPage;
+        fs::path assets,background,output,font;int width=2560,height=1440,appearance=3,requestedCopy=22,requestedScale=100;bool productionUI=false,appearanceOpen=false,detailsOpen=false,inspector=false,blur=true,selfTest=false,layoutTest=false,customMfg=false,reduceMotion=false,welcome=false,settings=false;float crop=0,requestedTint=-1;std::array<float,3> accent{.19f,.46f,.80f};std::string requestedLayout="floating",requestedBlend,requestedPage;
         for(int i=1;i<argc;++i) {
             const std::wstring arg=argv[i];
             const auto next=[&] {Require(i+1<argc,"Missing argument value");return std::wstring(argv[++i]);};
@@ -232,7 +239,7 @@ int wmain(int argc,wchar_t** argv)
             else if(arg==L"--dark")appearance=2;else if(arg==L"--light")appearance=1;else if(arg==L"--clear")appearance=3;else if(arg==L"--inspector")inspector=true;else if(arg==L"--no-blur")blur=false;else if(arg==L"--crop-left")crop=std::stof(next());
             else if(arg==L"--self-test")selfTest=true;else if(arg==L"--reduce-motion")reduceMotion=true;else if(arg==L"--welcome")welcome=true;else if(arg==L"--settings")settings=true;
             else if(arg==L"--page")requestedPage=Utf8(next());
-            else if(arg==L"--layout-test")layoutTest=true;
+            else if(arg==L"--layout-test")layoutTest=true;else if(arg==L"--production-ui")productionUI=true;else if(arg==L"--appearance")appearanceOpen=true;else if(arg==L"--more")detailsOpen=appearanceOpen=true;
             else if(arg==L"--custom-mfg")customMfg=true;
             else if(arg==L"--text-size")requestedCopy=std::stoi(next());
             else if(arg==L"--scale")requestedScale=std::stoi(next());
@@ -278,14 +285,14 @@ int wmain(int argc,wchar_t** argv)
         Require(Rml::LoadFontFace(Utf8(assets.parent_path().parent_path()/L"windows/RtxForge.Windows/Assets/Fonts/InterVariable.ttf")),"Inter could not load");
         auto* context=Rml::CreateContext("overlay",{width,height});Require(context!=nullptr,"RmlUi context could not be created");inputContext=context;
         auto* document=context->LoadDocument(Utf8(assets/L"overlay.rml"));Require(document!=nullptr,"Overlay document could not load");
-        Controller controller;controller.document=document;controller.appearance=appearance;controller.accent=accent;controller.UseTheme(appearance);if(window)controller.LoadPreferences();
+        Controller controller;controller.document=document;controller.preview=!productionUI;controller.appearance=appearance;controller.accent=accent;controller.UseTheme(appearance);if(window)controller.LoadPreferences();
         if(!window){controller.copySize=requestedCopy;controller.overlayScale=requestedScale;}if(customMfg)controller.values["multiplier"]=3;
-        controller.InstallExtraControls();
+        controller.monitorPreviewFocus=window!=nullptr;controller.InstallExtraControls();
         std::vector<ForgeGlass::HdrField> hdrPreview;for(const auto& f:PreviewHdrFields)hdrPreview.push_back({f.key,f.label,f.section,f.kind,f.options,f.unit,f.minimum,f.maximum,f.step,f.initial,f.initial,f.reset,!f.reset});
         controller.hdr.Set(std::move(hdrPreview),true,true,"Preview HDR preferences. These sample controls do not change a game; connected controls save startup preferences for verified add-on builds.");
         if(!requestedBlend.empty())controller.surfaceBlend=requestedBlend;if(requestedTint>=0){if(controller.appearance==1)controller.lightOpacity=requestedTint;else if(controller.appearance==3)controller.clearOpacity=requestedTint;else controller.darkOpacity=requestedTint;}
         controller.presets["natural"]=controller.values;controller.presets["cinematic"]=controller.values;controller.presets["cinematic"]["style"]=2;controller.presets["cinematic"]["intensity"]=.8f;
-        for(const auto* event:{"click","change","keydown","mouseover","mouseout","mousedown","mousemove","mouseup"})document->AddEventListener(event,&controller);
+        for(const auto* event:{"click","change","keydown","keyup","blur","mouseover","mouseout","mousedown","mousemove","mouseup"})document->AddEventListener(event,&controller);
         controller.Typography();controller.Materials();
         BOOL animate=TRUE;if(SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&animate,0) && !animate)reduceMotion=true;
         document->SetClass("reduce-motion",reduceMotion);controller.reducedMotion=reduceMotion||!controller.motionEnabled;
@@ -298,7 +305,7 @@ int wmain(int argc,wchar_t** argv)
         document->GetElementById("inspector")->SetProperty("backdrop-filter","none");
         document->GetElementById("welcome")->SetProperty("backdrop-filter","none");
         document->Show();
-        controller.Layout(window?controller.layout:requestedLayout);if(!requestedPage.empty()){Require(requestedPage=="overview"||requestedPage=="frame"||requestedPage=="neural"||requestedPage=="hdr"||requestedPage=="look"||requestedPage=="passes","Use --page overview, frame, neural, hdr, look, or passes");document->SetClass("overview-page",requestedPage=="overview");document->SetClass("frame-page",requestedPage=="frame");document->SetClass("neural-page",requestedPage=="neural");document->SetClass("hdr-page",requestedPage=="hdr");controller.Navigation("nav-"+requestedPage);if(requestedPage=="look"||requestedPage=="passes")controller.Open(requestedPage);controller.Visible("type-panel",false);}if(inspector)controller.Open("passes");if(settings)controller.Settings(true);
+        controller.Layout(window?controller.layout:requestedLayout);if(!requestedPage.empty()){Require(requestedPage=="overview"||requestedPage=="frame"||requestedPage=="neural"||requestedPage=="hdr"||requestedPage=="look"||requestedPage=="passes","Use --page overview, frame, neural, hdr, look, or passes");document->SetClass("overview-page",requestedPage=="overview");document->SetClass("frame-page",requestedPage=="frame");document->SetClass("neural-page",requestedPage=="neural");document->SetClass("hdr-page",requestedPage=="hdr");controller.Navigation("nav-"+requestedPage);if(requestedPage=="look"||requestedPage=="passes")controller.Open(requestedPage);controller.Visible("type-panel",false);}if(inspector)controller.Open("passes");if(settings)controller.Settings(true);if(appearanceOpen){controller.moreOpen=detailsOpen;controller.Materials();controller.ShowAppearance();}
         auto image=LoadImage(background);
         const auto cropUv=CropImage(image,width,height,crop);
         Backdrop backdrop(device.Get(),width,height,image.rgba.data(),image.width,image.height,cropUv.data());
@@ -317,8 +324,8 @@ int wmain(int argc,wchar_t** argv)
             if((layoutTest||selfTest)&&frames==8)TestLayout(controller,context);
             if(selfTest && frames==8)TestController(controller,context);
             if(controller.sceneRequest>=0){const int chosen=controller.sceneRequest;controller.sceneRequest=-1;try{
-                fs::path path=background;float selectedCrop=crop;std::array<float,3> selectedAccent=accent;std::string title="OVERLAY PREVIEW";
-                for(const auto& scene:ScenePresets)if(scene.app==chosen){path=sceneCache/scene.file;selectedCrop=0;selectedAccent={float((scene.accent>>16)&255)/255,float((scene.accent>>8)&255)/255,float(scene.accent&255)/255};title=scene.title;for(auto& ch:title)ch=char(std::toupper(static_cast<unsigned char>(ch)));}
+                fs::path path=background;float selectedCrop=crop;std::array<float,3> selectedAccent=accent;std::string title="Overlay preview";
+                for(const auto& scene:ScenePresets)if(scene.app==chosen){path=sceneCache/scene.file;selectedCrop=0;selectedAccent={float((scene.accent>>16)&255)/255,float((scene.accent>>8)&255)/255,float(scene.accent&255)/255};title=scene.title;}
                 auto next=LoadImage(path);const auto uv=CropImage(next,width,height,selectedCrop);backdrop.SetPhoto(next.rgba.data(),next.width,next.height,uv.data());controller.accent=selectedAccent;controller.Element("main-panel")->QuerySelector("h1")->SetInnerRML(Rml::StringUtilities::EncodeRml(title));document->SetProperty("--accent",Controller::Hex(selectedAccent[0],selectedAccent[1],selectedAccent[2]));controller.filtered={};controller.lastAdapt=-1;
             }catch(const std::exception&){controller.Notify("Could not load preview scene");}}
             const auto start=std::chrono::steady_clock::now();
@@ -334,7 +341,21 @@ int wmain(int argc,wchar_t** argv)
                 if(frames==36) {controller.copySize=22;controller.overlayScale=100;controller.Typography();controller.Materials();controller.values=controller.defaults;controller.edits={};controller.edits.Start(controller.values);controller.Sync();controller.SyncSettings();controller.Session({});controller.Metadata();std::cout<<"native_frame_input_checks=passed\n";}
             }
             controller.AdaptiveForeground(backdrop,system.GetElapsedTime());context->Update();
-            if(selfTest&&frames==60&&controller.appearance==3){Rml::ElementList ink;document->QuerySelectorAll(ink,"label,.glyph");for(auto* e:ink)if(e->IsVisible()){bool glass=false;for(auto* parent=e;parent;parent=parent->GetParentNode())glass|=parent->IsClassSet("glass");if(glass){const auto color=e->GetProperty(e->IsClassSet("glyph")?"image-color":"color")->Get<Rml::Colourb>();Require(color.red>=230&&color.green>=225&&color.blue>=220,"Clear must never invert a label or glyph to dark ink");}}std::cout<<"clear_white_foreground_checks=passed\n";}
+            if(selfTest&&frames==44){
+                const auto savedAccent=controller.accent;
+                auto paint=[&]{controller.Adapt(backdrop.measured,system.GetElapsedTime());controller.AdaptiveForeground(backdrop,system.GetElapsedTime());context->Update();};
+                auto* label=document->QuerySelector(".field-heading label");auto* glyph=controller.Element("open-settings")->QuerySelector(".glyph");
+                controller.UseTheme(3);paint();Require(label->GetProperty("color")->Get<Rml::Colourb>().red>=225,"Clear label is not light");
+                controller.accent={.9f,.7f,.4f};paint();controller.headingAccentBlend="hard-light";controller.controlAccentBlend="soft-light";controller.Materials();paint();
+                controller.UseTheme(1);paint();Require(label->GetProperty("color")->Get<Rml::Colourb>().red<160&&glyph->GetProperty("image-color")->Get<Rml::Colourb>().red<160,"Clear foreground leaked into Light after changing accents");
+                controller.accent={.2f,.5f,.9f};paint();const auto normal=controller.Element("main-panel")->QuerySelector("h1")->GetProperty("color")->Get<Rml::Colourb>();controller.headingAccentBlend="hard-light";paint();Require(normal!=controller.Element("main-panel")->QuerySelector("h1")->GetProperty("color")->Get<Rml::Colourb>(),"Light heading blend changes did not update its accent");
+                controller.UseTheme(2);paint();const auto screen=controller.Element("mode-auto")->GetProperty("background-color")->Get<Rml::Colourb>();controller.controlAccentBlend="multiply";paint();Require(screen!=controller.Element("mode-auto")->GetProperty("background-color")->Get<Rml::Colourb>(),"Dark control blend changes did not update its accent");
+                controller.UseTheme(3);paint();controller.UseTheme(1);paint();Require(label->GetProperty("color")->Get<Rml::Colourb>().red<160,"Repeated Clear to Light transition leaked ink");
+                controller.accent={252.f/255,238.f/255,9.f/255};controller.UseTheme(1);paint();
+                const auto yellowHeading=controller.Element("main-panel")->QuerySelector("h1")->GetProperty("color")->Get<Rml::Colourb>();Require(std::abs(int(yellowHeading.red)-int(yellowHeading.green))<12,"Light yellow headings must use neutral ink");Require(controller.AccentTone(0,false).starts_with("#fcee"),"Light controls turned vivid Cyberpunk yellow into a muddy shade");Require(controller.headingAccentBlend=="multiply"&&controller.controlAccentBlend=="normal","Light accent defaults differ from the requested modes");
+                controller.accent=savedAccent;controller.UseTheme(3);paint();std::cout<<"native_theme_transition_checks=passed clear_light_dark_accent_blends=passed\n";
+            }
+            if(selfTest&&frames==60&&controller.appearance==3){Rml::ElementList ink;document->QuerySelectorAll(ink,"label,.glyph");for(auto* e:ink)if(e->IsVisible()){bool glass=false;for(auto* parent=e;parent;parent=parent->GetParentNode())glass|=parent->IsClassSet("glass");if(glass){bool heading=false;for(auto* p=e;p;p=p->GetParentNode())heading|=p->GetTagName()=="h1"||p->GetTagName()=="h2"||p->GetTagName()=="h3";if(heading)continue;const auto color=e->GetProperty(e->IsClassSet("glyph")?"image-color":"color")->Get<Rml::Colourb>();Require(color.red>=230&&color.green>=225&&color.blue>=220,"Clear must never invert a label or glyph to dark ink");}}std::cout<<"clear_white_foreground_checks=passed\n";}
 
             std::vector<Backdrop::Panel> panels;
             for(const auto* id : {"main-panel","inspector","welcome","type-panel"}) {
@@ -359,7 +380,7 @@ int wmain(int argc,wchar_t** argv)
             for(const auto* id:{"main-panel","inspector","welcome","type-panel"})if(controller.Element(id)->IsVisible())byId[id]=panels.at(panelIndex++);
             const auto renderUi=[&](Rml::Element* root,ID3D11RenderTargetView* destination=nullptr) {if(!destination)destination=view.Get();immediate->OMSetRenderTargets(1,&destination,nullptr);D3D11_VIEWPORT viewport{0,0,float(width),float(height),0,1};immediate->RSSetViewports(1,&viewport);renderer.BeginFrame();auto& manager=context->GetRenderManager();manager.PrepareRender({width,height});static_cast<PaintRoot*>(root)->Paint();manager.ResetState();renderer.EndFrame(destination);};
             for(const auto& id:controller.stacking)if(byId.contains(id)) {
-                const float clearLayer[4]={};immediate->ClearRenderTargetView(windowView.Get(),clearLayer);backdrop.Draw(target.Get(),windowView.Get(),{byId.at(id)},blur,false);
+                const float clearLayer[4]={};immediate->ClearRenderTargetView(windowView.Get(),clearLayer);if(!(id=="inspector"&&controller.layout=="centered"))backdrop.Draw(target.Get(),windowView.Get(),{byId.at(id)},blur,false);
                 const float clearInk[4]={};immediate->ClearRenderTargetView(inkView.Get(),clearInk);renderUi(controller.Element(id.c_str()),inkView.Get());backdrop.DrawInk(windowView.Get(),inkSource.Get(),byId.at(id),blur);const auto velocity=controller.windowVelocity[id];backdrop.ComposeLayer(view.Get(),windowSource.Get(),velocity.x,velocity.y,controller.reducedMotion);
             }
             renderUi(document->QuerySelector(".prototype-toolbar"));
@@ -375,7 +396,7 @@ int wmain(int argc,wchar_t** argv)
         std::cout<<"backdrop_adapter=quarter-resolution-separable-gaussian panels="<<(inspector?2:1)<<'\n';
         std::cout<<"appearance="<<(controller.appearance==1?"light":controller.appearance==3?"clear":"dark")<<" scene_sample_main="<<backdrop.measured[0].valid<<" scene_sample_inspector="<<backdrop.measured[1].valid<<'\n';
         std::cout<<"surface_blend="<<controller.surfaceBlend<<" blur="<<controller.blurRadius<<"dp clear_text_contrast=adaptive\n";
-        if(window && controller.prefsDirty)controller.SavePreferences();inputContext=nullptr;for(const auto* event:{"click","change","keydown","mouseover","mouseout","mousedown","mousemove","mouseup"})document->RemoveEventListener(event,&controller);Rml::Shutdown();
+        if(window && controller.prefsDirty)controller.SavePreferences();inputContext=nullptr;for(const auto* event:{"click","change","keydown","keyup","blur","mouseover","mouseout","mousedown","mousemove","mouseup"})document->RemoveEventListener(event,&controller);Rml::Shutdown();
         if(window)DestroyWindow(window);
         return 0;
     } catch(const std::exception& error) {std::cerr<<error.what()<<'\n';return 1;}

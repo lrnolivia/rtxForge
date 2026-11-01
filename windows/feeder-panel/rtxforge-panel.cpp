@@ -11,6 +11,7 @@
 // its own ImGui context (panel.cpp), separate from ReShade's.
 #include "Config.h"
 #include "reshade.hpp"
+#include "EffectBridge.h"
 #include "panel.h"
 #include <cmath>
 #include <cstdio>
@@ -88,6 +89,7 @@ const feeder_panel::Host host = {
 
 void on_init(reshade::api::effect_runtime *runtime)
 {
+    ForgeReShade::Attach(runtime);
     if (runtime->get_device()->get_api() != reshade::api::device_api::d3d11) return;
     current = runtime;
     current_window = static_cast<HWND>(runtime->get_hwnd());
@@ -97,6 +99,7 @@ void on_init(reshade::api::effect_runtime *runtime)
 
 void on_destroy(reshade::api::effect_runtime *runtime)
 {
+    ForgeReShade::Detach(runtime);
     if (runtime != current) return;
     feeder_panel::Release();
     current = nullptr;
@@ -113,6 +116,7 @@ void on_present(reshade::api::command_queue *, reshade::api::swapchain *swapchai
 
 void on_finish_effects(reshade::api::effect_runtime *runtime, reshade::api::command_list *, reshade::api::resource_view target, reshade::api::resource_view)
 {
+    ForgeReShade::Update(runtime);
     if (runtime != current) return;
     release_toggle();
     uint32_t width = 0, height = 0, x = 0, y = 0;
@@ -149,9 +153,11 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
         reshade::register_event<reshade::addon_event::destroy_effect_runtime>(on_destroy);
         reshade::register_event<reshade::addon_event::reshade_finish_effects>(on_finish_effects);
         reshade::register_event<reshade::addon_event::present>(on_present);
+        reshade::register_event<reshade::addon_event::reshade_reloaded_effects>(ForgeReShade::Reload);
     }
     else if (reason == DLL_PROCESS_DETACH)
     {
+        reshade::unregister_event<reshade::addon_event::reshade_reloaded_effects>(ForgeReShade::Reload);
         reshade::unregister_event<reshade::addon_event::present>(on_present);
         reshade::unregister_event<reshade::addon_event::reshade_finish_effects>(on_finish_effects);
         reshade::unregister_event<reshade::addon_event::destroy_effect_runtime>(on_destroy);

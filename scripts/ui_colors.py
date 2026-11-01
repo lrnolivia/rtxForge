@@ -25,10 +25,24 @@ def contrast(a,b):
     return (y+0.05)/(x+0.05)
 
 
+def muddy_shade(color):
+    """Generated yellow/olive shades must not collapse into brown or dull gold."""
+    h,s,v=colorsys.rgb_to_hsv(*rgb(color))
+    return 30/360 <= h <= 100/360 and s > .40 and v < .90
+
+
+def neutral_ink(backgrounds, minimum=4.5):
+    backgrounds=[backgrounds] if isinstance(backgrounds,str) else backgrounds
+    for ink in ('#3e3b37','#f5f3ef'):
+        if all(contrast(ink,b)>=minimum for b in backgrounds):return ink
+    return max(('#000000','#ffffff'),key=lambda c:min(contrast(c,b) for b in backgrounds))
+
+
 def readable(color,backgrounds,minimum=4.5):
     """Find the nearest passing HSL lightness, preserving hue and saturation."""
     backgrounds=[backgrounds] if isinstance(backgrounds,str) else backgrounds
     passes=lambda candidate:all(contrast(candidate,b)>=minimum for b in backgrounds)
+    if muddy_shade(color):return neutral_ink(backgrounds,minimum)
     if passes(color):return color
     h,lightness,s=colorsys.rgb_to_hls(*rgb(color))
     choices=[]
@@ -42,9 +56,9 @@ def readable(color,backgrounds,minimum=4.5):
             if passes(candidate):high=amount
             else:low=amount
         candidate=hex_color(colorsys.hls_to_rgb(h,lightness+(endpoint-lightness)*high,s))
-        choices.append((abs(endpoint-lightness)*high,candidate))
+        if not muddy_shade(candidate):choices.append((abs(endpoint-lightness)*high,candidate))
     if choices:return min(choices)[1]
-    return max(('#000000','#ffffff'),key=lambda c:min(contrast(c,b) for b in backgrounds))
+    return neutral_ink(backgrounds,minimum)
 
 
 def vibrant_readable(color, background, minimum=3.0):
@@ -118,7 +132,12 @@ def _delta_e(x,y):
 def ui_accent(lab):
     """UI accent range: readable on dark and light surfaces, still the artwork's color."""
     l,a,b=lab
-    return from_oklch(max(0.62,min(0.84,l)),max(0.09,min(0.24,math.hypot(a,b))),math.atan2(b,a))
+    c,h=max(0.09,min(0.24,math.hypot(a,b))),math.atan2(b,a)
+    original=from_oklch(l,c,h)
+    hue,s,_=colorsys.rgb_to_hsv(*rgb(original))
+    upper=.94 if 30/360<=hue<=100/360 and s>.25 else .84
+    result=from_oklch(max(.62,min(upper,l)),c,h)
+    return from_oklch(.90,c,h) if muddy_shade(result) else result
 
 
 def analyze(pixels):
@@ -195,6 +214,7 @@ def accent_suggestions(pixels):
         options.append(('Background',_background_tone(background)))
     result=[]
     for name,value in options:
+        if muddy_shade(from_oklch(*value)):continue
         if any(_delta_e(lch(color),value)<0.045 for _name,color in result):continue
         result.append((name,from_oklch(*value)))
     return result

@@ -9,7 +9,7 @@ import runtime_updates
 import transactions as t
 from storage import storage
 
-KINDS={'reshade':'ReShade (DirectX 10–12)', 'addon':'ReShade add-on (including RenoDX)'}
+KINDS={'reshade':'ReShade', 'reshade-import':'ReShade package', 'addon':'ReShade add-on (including RenoDX)'}
 
 
 def eligibility(config,game):
@@ -25,6 +25,9 @@ def eligibility(config,game):
 
 def prepare(config,game,source,kind):
     t.need(kind in KINDS,'Unsupported tool type')
+    if kind in ('reshade','reshade-import'):
+        import reshade_import
+        return reshade_import.prepare(config,game,source or None)
     root,directory,engine=eligibility(config,game)
     source=t.safe(source);t.need(source.is_file(),'Choose a regular x64 DLL or add-on')
     t.need(source.stat().st_size<=128*1024**2,'Tool exceeds 128 MiB limit');t.executable_check(source)
@@ -54,6 +57,9 @@ def prepare(config,game,source,kind):
 
 
 def apply(config,plan):
+    if plan.get('kind')=='reshade-import':
+        import reshade_import
+        return reshade_import.apply(config,plan)
     t.check_plan(plan)
     root,directory,engine=eligibility(config,plan)
     t.need(plan['kind'] in KINDS and len(plan['changes'])==1,'Invalid tool plan')
@@ -85,7 +91,11 @@ def recoveries(config,game=None):
 
 def restore(config,state):
     state=t.safe(state);t.need(state.parent==storage(config)/'extras-transactions','Invalid tool recovery')
-    doc=t.read_json(state/'transaction.json');root,_,engine=eligibility(config,doc['plan'])
+    doc=t.read_json(state/'transaction.json')
+    if doc['plan'].get('kind')=='reshade-import':
+        import reshade_import
+        return reshade_import.restore(config,state)
+    root,_,engine=eligibility(config,doc['plan'])
     for change in doc['plan']['changes']:
         t.need(not runtime_updates._owned(engine,root,root/t.relative(change['path'])),'Tool now belongs to a provider; restore that provider first')
     return t.rollback_transaction(state,True)

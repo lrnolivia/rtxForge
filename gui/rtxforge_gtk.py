@@ -575,7 +575,7 @@ def artwork_accent(path,color=None,muted=False):
 
     palette=neutral_palette()
     nav_accent=ui_colors.readable(color,ui_colors.mix(color,palette['sidebar'],0.10))
-    accent_shadow=accent_dark
+    accent_shadow=ui_colors.readable(accent_dark,color)
     accent_fg=ui_colors.readable(accent_fg,color)
     accent_dark=ui_colors.readable(accent_dark,color)
     button_fg=ui_colors.readable(accent_dark,ui_colors.mix('#ffffff',color,0.44))
@@ -6159,12 +6159,12 @@ class Window(Adw.ApplicationWindow):
         body.append(label('Tools','title-2'))
         body.append(label('Check NR or add ReShade to this game. Existing graphics files are kept safe.','dim-label'))
         actions=[button('Diagnose NR',lambda *_:self.show_diagnostics(game))]
-        for kind,title in [('reshade','Install ReShade'),('addon','Install Add-on')]:
+        for kind,title in [('reshade','Install ReShade'),('reshade-import','Import ReShade package…'),('addon','Install Add-on')]:
             control=button(title,lambda _,kind=kind:self.choose_extra(game,kind))
             control.set_sensitive(not self.options.demo);actions.append(control)
         actions.append(button('ReShade Downloads',lambda *_:Gio.AppInfo.launch_default_for_uri('https://reshade.me/',None)))
         body.append(action_tiles(actions))
-        note=label('Use an extracted x64 ReShade DLL or .addon64 file from a source you trust. Shader packs and presets remain yours to manage. DirectX 10–12 installs use dxgi.dll; Proton may require dxgi=n,b in the existing DLL overrides.','dim-label')
+        note=label('Install the official runtime automatically, or import a ZIP, custom runtime, add-on, shader or preset INI. Each import is reviewed first. Custom packages and presets stay with this game.','dim-label')
         # A capped natural width makes the page reserve every wrapped line
         # (uncapped, it measured one long line and clipped the rest).
         note.set_max_width_chars(70);body.append(note)
@@ -6793,7 +6793,14 @@ class Window(Adw.ApplicationWindow):
 
     def choose_extra(self,game,kind):
         import extra_tools
-        chooser=Gtk.FileDialog(title='Choose x64 ReShade DLL' if kind=='reshade' else 'Choose .addon64 file')
+        if kind=='reshade':
+            self.start('Preparing ReShade review',lambda:extra_tools.prepare(self.service.config,game,None,kind),self.review_extra)
+            return
+        chooser=Gtk.FileDialog(title='Import ReShade package' if kind=='reshade-import' else 'Choose .addon64 file')
+        filter=Gtk.FileFilter(name='ReShade packages and settings' if kind=='reshade-import' else 'ReShade add-on')
+        for pattern in (('*.zip','*.dll','*.addon64','*.addon32','*.ini','*.fx','*.fxh') if kind=='reshade-import' else ('*.addon64',)):
+            filter.add_pattern(pattern)
+        filters=Gio.ListStore.new(Gtk.FileFilter);filters.append(filter);chooser.set_filters(filters)
         def chosen(dialog,result):
             try:path=dialog.open_finish(result).get_path()
             except GLib.Error:return
@@ -6803,7 +6810,9 @@ class Window(Adw.ApplicationWindow):
 
     def review_extra(self,plan):
         import extra_tools
-        changes='\n'.join('Add '+change['path']+'\nSHA-256: '+change['after'] for change in plan['changes'])
+        changes='\n'.join(('Update ' if change['before'] else 'Add ')+change['path']+'\nSHA-256: '+change['after'] for change in plan['changes'])
+        if plan.get('source_name'):changes='Package: '+plan['source_name']+'\n'+changes
+        if plan.get('skipped'):changes+='\nNot installed: '+', '.join(plan['skipped'])
         review={'operation':'tool','rows':[{'name':plan['name'],'game':plan.get('game'),'detail':changes}],'blocked':[]}
         self.review_write('tool',review,
             run=lambda _review:extra_tools.apply(self.service.config,plan),

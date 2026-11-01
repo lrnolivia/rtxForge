@@ -13,6 +13,7 @@ speaks the same interface as the desktop operation dialog), so nothing is
 written before the review is confirmed.
 """
 from pathlib import Path
+import threading
 
 from gi.repository import Gdk, Gio, GLib, Gtk, Pango, PangoCairo
 
@@ -1971,6 +1972,7 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
         owner = self.owner
         section = self.section
         if section == 'Features':
+            self.section_title(content, 'Package', 'Installed rendering package and game overlay.')
             content.append(self.row_button('Overlay', 'Settings', lambda: self.open_game_overlay(g),
                                            description='Menu, welcome and shortcut choices for this game.', icon='view-dual-symbolic'))
             if g.get('runtime_provider')=='vulkan-native':
@@ -2030,11 +2032,38 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
             ]))
         elif section == 'Tools':
             self.section_title(content, 'Tools', 'Check NR or add ReShade to this game. Existing graphics files are kept safe.')
+            import renodx_hdr
+            self.section_title(content, 'RenoDX HDR', 'Automatic HDR packages and your own RenoDX files, managed for this game.')
+            hdr = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(12))
+            hdr.append(self.tool_card('HDR enhancement', 'Checking HDR support…', None, icon='rtx-gm-monitor-symbolic'))
+            content.append(hdr)
+            def hdr_ready(status):
+                child = hdr.get_first_child()
+                while child:
+                    following = child.get_next_sibling(); hdr.remove(child); child = following
+                actions = Gtk.Box(spacing=t.px(12))
+                if not status.get('installed') or status.get('update'):
+                    actions.append(self.button('Update HDR' if status.get('installed') else 'Install HDR', lambda: owner.review_hdr(g), enabled=bool(status.get('available')) and not owner.options.demo))
+                if status.get('installed'):
+                    actions.append(self.button('Remove HDR', lambda: owner.review_hdr(g, remove=True), enabled=not owner.options.demo))
+                hdr.append(self.tool_card('HDR enhancement', status.get('message', '')+'\n'+status.get('notes', ''), actions, icon='rtx-gm-monitor-symbolic'))
+                hdr.append(self.tool_card('Custom HDR package', 'Choose a RenoDX .addon64 or .addon32 for this game. Updates retain your custom choice.', self.button('Choose…', lambda: owner.choose_custom_hdr(g), enabled=not owner.options.demo), icon='drive-multidisk-symbolic'))
+                return GLib.SOURCE_REMOVE
+            if owner.options.demo:
+                hdr_ready({'message': 'HDR support is checked in the installed app.'})
+            else:
+                def load_hdr():
+                    try: status = renodx_hdr.status(owner.service.config, g)
+                    except Exception as error: status = {'message': user_messages.friendly_error(error)}
+                    GLib.idle_add(hdr_ready, status)
+                threading.Thread(target=load_hdr, daemon=True).start()
+
             tools = Gtk.Grid(column_spacing=t.px(20), row_spacing=t.px(20), column_homogeneous=True)
             demo = owner.options.demo
             for index, (icon, title, enabled, action) in enumerate((
                     ('system-search-symbolic', 'Diagnose NR', bool(g.get('installed')), lambda: owner.show_diagnostics(g)),
                     ('applications-graphics-symbolic', 'Install ReShade', not demo and not g.get('blocked'), lambda: owner.choose_extra(g, 'reshade')),
+                    ('drive-multidisk-symbolic', 'Import ReShade package…', not demo and not g.get('blocked'), lambda: owner.choose_extra(g, 'reshade-import')),
                     ('list-add-symbolic', 'Install Add-on', not demo and not g.get('blocked'), lambda: owner.choose_extra(g, 'addon')),
                     ('web-browser-symbolic', 'ReShade Downloads', True, lambda: Gtk.UriLauncher.new('https://reshade.me/').launch(owner, None, None)))):
                 tile = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=t.px(10), halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
@@ -2046,7 +2075,7 @@ class GameMode(Gtk.Overlay, GameModeTools, GameModePresets, GameModeReports):
                 self.key(widget, 'tool-' + title)
                 tools.attach(widget, index % 2, index // 2, 1, 1)
             content.append(tools)
-            content.append(self.label('Use an extracted x64 ReShade DLL or .addon64 file from a source you trust. Each install is reviewed first and can be restored.', 'gm-p', wrap=True))
+            content.append(self.label('Install the official runtime or import a ZIP, custom runtime, add-on, shader or preset INI. Custom packages stay with this game; each import is reviewed first.', 'gm-p', wrap=True))
         elif section == 'Notes':
             # Only your notes: testing and bug reports live on Overview and in the header.
             self.section_title(content, 'Notes', 'Kept with this game in rtxForge. Included in bug reports when you choose.')

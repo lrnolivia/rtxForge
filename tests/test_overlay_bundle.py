@@ -18,18 +18,18 @@ class OverlayBundleTest(unittest.TestCase):
         temp=tempfile.TemporaryDirectory();self.addCleanup(temp.cleanup)
         self.root=Path(temp.name);self.payload=self.root/'payload';self.sha='a'*40
         policy=self.root/'providers/glass-overlay';policy.mkdir(parents=True)
-        (policy/'rollout-policy.json').write_text(json.dumps({'schema':1,'required':True,'revision':1}))
+        (policy/'rollout-policy.json').write_text(json.dumps({'schema':1,'required':True,'revision':3}))
         self.folders={name:self.root/'windows/out'/name for name in ('glass-overlay','skynizz-bridge','feeder-panel')}
         for folder in self.folders.values():folder.mkdir(parents=True)
         def file(folder,name,data):
             (folder/name).write_bytes(data)
             return {'size':len(data),'sha256':hashlib.sha256(data).hexdigest()}
         dll=file(self.folders['glass-overlay'],'rtxforge-glass.dll',b'glass')
-        glass={'schema':1,'renderer':'rmlui','revision':1,'commit':self.sha,'files':{'rtxforge-glass.dll':dll}}
+        glass={'schema':1,'renderer':'rmlui','revision':3,'commit':self.sha,'files':{'rtxforge-glass.dll':dll}}
         archive='rtxForge-Skynizz-v1-MFG.zip';info=file(self.folders['skynizz-bridge'],archive,b'archive')
         bridge={'variant':'nr-mfg-bridge','tag':'v1','commit':self.sha,'archive':archive,'release_size':info['size'],'sha256':info['sha256'],'glass_sha256':dll['sha256']}
         feeder={'schema':2,'commit':self.sha,'files':{'rtxforge-glass.dll':file(self.folders['feeder-panel'],'rtxforge-glass.dll',b'glass')}}
-        for name in ('rtxforge-panel.addon64','rtxforge-quiet.addon64'):feeder['files'][name]=file(self.folders['feeder-panel'],name,name.encode())
+        for name in ('rtxforge-panel.addon64','rtxforge-quiet.addon64','rtxforge-effects.addon64'):feeder['files'][name]=file(self.folders['feeder-panel'],name,name.encode())
         self.receipts=dict(zip(self.folders,(glass,bridge,feeder)));self.save()
 
     def save(self):
@@ -42,6 +42,10 @@ class OverlayBundleTest(unittest.TestCase):
         self.assertEqual((self.payload/'providers/glass-overlay/rtxforge-glass.dll').read_bytes(),b'glass')
         self.assertEqual(json.loads((self.payload/'providers/glass-overlay/rollout.json').read_text())['required'],True)
         self.assertTrue((self.payload/'providers/feeder-panel/rtxforge-panel.addon64').is_file())
+
+    def test_required_revision_refuses_missing_effect_controls_bridge(self):
+        self.receipts['feeder-panel']['files'].pop('rtxforge-effects.addon64');self.save()
+        with self.assertRaisesRegex(RuntimeError,'Incomplete native overlay receipt'):self.stage()
 
     def test_changed_bytes_refuse_packaging(self):
         (self.folders['feeder-panel']/'rtxforge-panel.addon64').write_bytes(b'changed')

@@ -10,7 +10,7 @@ controls; Settings contains layout, Appearance and shortcut preferences. The
 preview keeps its preferences separate from the game overlay.
 
 `--self-test --output <image.png>` exercises native mouse and keyboard input,
-undo/redo, comparisons, pass controls, all three theme defaults and Settings.
+undo/redo, hold-to-preview NR, pass controls, all three theme defaults and Settings.
 Offscreen captures use a 2560 × 1440 canvas. The live window fits the monitor's
 work area, including its title bar.
 

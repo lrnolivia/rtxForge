@@ -7,7 +7,7 @@
     "providers/glass-overlay/glass-candidate.patch": "b7368800ea882bb284d07372ea9f90db7da1d4741e5619e1305fbc4cb6b49fd7",
     "providers/glass-overlay/GlassOverlay.h": "598f9c1b011b5aef89bddfbe945f1614488cca54ecade609951f421fced8e318",
     "providers/glass-overlay/GlassLoader.h": "4679b224da740f95be6670efaccce248193af34ebca62c6f89a94e81a0b04215",
-    "providers/glass-overlay/ForgeGlassPanel.h": "5c578139d38c89e577f51e5f50d472420c0092a59fc97328464f779e94270569",
+    "providers/glass-overlay/ForgeGlassPanel.h": "e9b1bc1905e445232ccd121214dc827602db814084f78d3353f94255de983aa1",
     "providers/glass-overlay/ForgeGlassHooks.h": "b28de8123ae2ee6a2fbd395f4231df8f3d0641e93f3aa37228ecc548b9ebb69c"
   },
   "runtime_verified": false,

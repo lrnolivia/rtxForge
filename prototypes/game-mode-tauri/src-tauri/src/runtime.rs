@@ -6,9 +6,11 @@ fn installed_dir() -> Option<PathBuf> {
 }
 
 fn validate_root(root: PathBuf) -> Result<PathBuf, String> {
-    for file in ["scripts/discovery.py", "scripts/desktop_service.py", "engine/rtxengine.py", "provider.json", "windows/engine-host/rtxforge_win_host.py"] {
+    for file in ["scripts/discovery.py", "scripts/desktop_service.py", "engine/rtxengine.py", "provider.json"] {
         if !root.join(file).is_file() { return Err(format!("The installed engine is incomplete: {file}. Reinstall the complete application.")); }
     }
+    let host = if cfg!(windows) { "windows/engine-host/rtxforge_win_host.py" } else { "windows/engine-host/global_controls.py" };
+    if !root.join(host).is_file() { return Err(format!("The installed engine is incomplete: {host}. Reinstall the complete application.")); }
     Ok(root)
 }
 

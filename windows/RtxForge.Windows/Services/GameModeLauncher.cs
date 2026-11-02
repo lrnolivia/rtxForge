@@ -7,6 +7,14 @@ namespace RtxForge.Windows.Services;
 /// <summary>Launch the verified native UI; no alternate install engine or legacy UI fallback.</summary>
 internal static class GameModeLauncher
 {
+    internal static string? EngineRoot(string appDirectory)
+    {
+        var engine = Path.Combine(appDirectory, "engine");
+        return File.Exists(Path.Combine(engine, "scripts", "desktop_service.py"))
+            && File.Exists(Path.Combine(engine, "windows", "engine-host", "rtxforge_win_host.py"))
+            ? engine : null;
+    }
+
     public static string Resolve(string appDirectory, string localAppData)
     {
         var bundled = Path.Combine(appDirectory, "game-mode");
@@ -46,6 +54,9 @@ internal static class GameModeLauncher
         start.Environment["RTXFORGE_APP_EXE"] = Environment.ProcessPath!;
         start.Environment["RTXFORGE_DESKTOP_COMMAND"] = JsonSerializer.Serialize(new[] { Environment.ProcessPath!, "--desktop-mode" });
         foreach (var key in new[] { "RTXFORGE_ROOT", "RTXFORGE_PYTHON", "PYTHONPATH", "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "SteamAppId", "SteamGameId" }) start.Environment.Remove(key);
+        // Use the Desktop distribution's engine and native provider packages.
+        // The standalone UI payload remains a self-contained fallback.
+        if (EngineRoot(AppContext.BaseDirectory) is { } root) start.Environment["RTXFORGE_ROOT"] = root;
         if (readOnly) start.Environment["RTXFORGE_PREVIEW_READ_ONLY"] = "1";
         var child = Process.Start(start) ?? throw new InvalidOperationException("Game Mode could not be opened.");
         // A second activation is redirected by the native single-instance plugin.

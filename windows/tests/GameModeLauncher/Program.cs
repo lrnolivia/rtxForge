@@ -21,6 +21,10 @@ try
     var exe=Path.Combine(bundle,"rtxforge-game-mode.exe");
     void Receipt(int protocol=1)=>File.WriteAllText(Path.Combine(bundle,"build.json"),JsonSerializer.Serialize(new{schema=2,dirty=false,desktopIntegration=protocol,native=new{sha256=Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(exe)))}}));
     Receipt();Check(GameModeLauncher.Resolve(Path.Combine(root,"app"),root)==exe,"Bundled UI must take precedence");
+    var desktopEngine=Path.Combine(root,"app","engine");
+    foreach(var file in new[]{"scripts/desktop_service.py","windows/engine-host/rtxforge_win_host.py"})
+    {var path=Path.Combine(desktopEngine,file);Directory.CreateDirectory(Path.GetDirectoryName(path)!);File.WriteAllText(path,"fixture");}
+    Check(GameModeLauncher.EngineRoot(Path.Combine(root,"app"))==desktopEngine,"Native UI must use the Desktop engine and providers");
     Receipt(0);Reject(()=>GameModeLauncher.Validate(bundle));Receipt();
     File.AppendAllText(exe,"changed");Reject(()=>GameModeLauncher.Validate(bundle));Receipt();
     File.Delete(Path.Combine(bundle,"python/python.exe"));Reject(()=>GameModeLauncher.Validate(bundle));

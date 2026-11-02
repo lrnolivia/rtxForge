@@ -108,6 +108,8 @@ def start(root, read_only=False, appearance=False):
                 'SteamAppId', 'SteamGameId'):
         env.pop(key, None)
     env['RTXFORGE_DESKTOP_COMMAND'] = json.dumps(command)
+    if (Path(root) / 'scripts/desktop_service.py').is_file() and (Path(root) / 'engine/rtxengine.py').is_file():
+        env['RTXFORGE_ROOT'] = str(Path(root).resolve())
     if os.environ.get('APPIMAGE'):env['RTXFORGE_APP_EXE']=os.path.abspath(os.environ['APPIMAGE'])
     else:env['RTXFORGE_APP_EXE']=str(Path(root)/'rtxforge')
     if read_only:

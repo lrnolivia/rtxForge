@@ -43,6 +43,13 @@ class NativeHandoffTests(unittest.TestCase):
         (installed/'installed.json').write_text(json.dumps({'path':str(self.root/'outside')}))
         with self.assertRaises(ValueError):launcher.resolve(self.root,data)
 
+    def test_integrated_mode_uses_desktop_engine_with_native_providers(self):
+        for name in ('scripts/desktop_service.py','engine/rtxengine.py'):
+            path=self.root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text('fixture')
+        with patch.object(launcher.subprocess,'Popen') as start:
+            launcher.start(self.root)
+            self.assertEqual(start.call_args.kwargs['env']['RTXFORGE_ROOT'],str(self.root.resolve()))
+
     def test_existing_native_window_outlives_single_instance_launcher(self):
         child=Mock();child.wait.return_value=0
         with patch.object(launcher,'native_instances',side_effect=[{42:'original'}, {42:'original'}, {42:'reused'}]) as instances,patch.object(launcher.time,'sleep') as sleep:

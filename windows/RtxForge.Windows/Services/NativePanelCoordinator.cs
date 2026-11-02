@@ -196,7 +196,7 @@ internal sealed class NativePanelCoordinator : IDisposable
                     if(!s.GameOverlaySettings.TryGetValue(game.Id,out var local))s.GameOverlaySettings[game.Id]=local=new JsonObject();
                     local["overlay_renderer"]="optiscaler";local["optiscaler_ui"]=true;local["reshade_ui"]=true;
                     if(GlassAppearance.OverlayOptions(s,game)["optiscaler_hotkey"]?.ToString()=="Disabled")local["optiscaler_hotkey"]="Insert";
-                    if(globalDefault){s.OverlayRenderer="optiscaler";s.OptiScalerUi=true;s.ReShadeUi=true;}
+                    if(globalDefault){s.OverlayRenderer="optiscaler";s.OptiScalerUi=true;s.ReShadeUi=true;if(s.OptiScalerHotkey=="Disabled")s.OptiScalerHotkey="Insert";}
                 });
                 OverlayHelper.CacheRenderer(game,nativeSettings);engine.Settings.CopyOverlayFrom(nativeSettings);preferencesChanged();ClearReview();
                 return Done("Native overlays selected. Restart the game if its menus are not available yet.");

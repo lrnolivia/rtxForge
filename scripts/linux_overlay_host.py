@@ -294,7 +294,7 @@ class Host:
                 response['message']='HDR preferences saved. Close and restart the game to apply.'
             elif op=='use-native-overlays':
                 updated=overlay_settings.native_overlays(settings,row['game'],message.get('global_default',False))
-                changed={key:updated[key] for key in ('game_overlay_settings','overlay_renderer','optiscaler_ui','reshade_ui') if key in updated and updated.get(key)!=settings.get(key)}
+                changed={key:updated[key] for key in ('game_overlay_settings','overlay_renderer','optiscaler_ui','reshade_ui','optiscaler_hotkey') if key in updated and updated.get(key)!=settings.get(key)}
                 if self.save_settings is not None:self.save_settings(changed)
                 else:
                     import library_media

@@ -89,7 +89,9 @@ def native_overlays(settings, game, global_default=False):
         current['game_overlay_settings']=mapping
     if effective(current,game)['optiscaler_hotkey']=='Disabled':
         current['game_overlay_settings']=game_edit(current,game,'optiscaler_hotkey','Insert')
-    if global_default:current.update(changes)
+    if global_default:
+        current.update(changes)
+        if current.get('optiscaler_hotkey')=='Disabled':current['optiscaler_hotkey']='Insert'
     return current
 
 

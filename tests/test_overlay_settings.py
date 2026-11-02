@@ -42,6 +42,16 @@ class OverlaySettingsTest(unittest.TestCase):
         self.assertEqual(overlay.effective(local|{'game_overlay_settings':restored},game)['overlay_renderer'],'game')
         with self.assertRaises(t.Refusal):overlay.native_overlays(settings,game,'yes')
 
+    def test_native_default_restores_disabled_key_without_changing_explicit_games(self):
+        other=str(Path('other').resolve())
+        settings={'overlay_renderer':'game','optiscaler_hotkey':'Disabled','game_overlay_settings':{other:{'optiscaler_hotkey':'Disabled'}}}
+        local=overlay.native_overlays(settings,'one')
+        self.assertEqual(local['optiscaler_hotkey'],'Disabled')
+        self.assertEqual(overlay.effective(local,'one')['optiscaler_hotkey'],'Insert')
+        defaults=overlay.native_overlays(settings,'one',True)
+        self.assertEqual(overlay.effective(defaults,'new')['optiscaler_hotkey'],'Insert')
+        self.assertEqual(overlay.effective(defaults,other)['optiscaler_hotkey'],'Disabled')
+
     def test_per_game_choices_do_not_leak_to_another_game(self):
         game = str(Path('game-a').resolve())
         settings = {'overlay_welcome': True, 'game_overlay_settings': {game: {

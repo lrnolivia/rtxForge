@@ -233,6 +233,32 @@ class LinuxControls(controls.Controls):
         return super().save(params)
 
 
+def game_poster(settings,row,state):
+    """Read cached artwork only; overlay requests never trigger artwork downloads."""
+    import hashlib
+    candidates=[]
+    game=Path(row['game']).resolve()
+    for root,art in (settings.get('game_artwork') if isinstance(settings.get('game_artwork'),dict) else {}).items():
+        if isinstance(art,dict) and game.is_relative_to(Path(root).resolve()):
+            poster=art.get('poster',{})
+            if isinstance(poster,dict):candidates.insert(0,poster.get('path'))
+    candidates.append(row.get('poster'))
+    identity=hashlib.sha256((str(row.get('appid') or '')+str(row.get('name') or '')).encode()).hexdigest()[:24]
+    record=Path(state)/'desktop/media'/(identity+'.json')
+    try:
+        if record.is_file() and record.stat().st_size<1024*1024:
+            metadata=t.read_json(record)
+            data=metadata.get('data',{}) if isinstance(metadata,dict) else {}
+            if isinstance(data,dict):candidates.append(data.get('poster'))
+    except (OSError,ValueError,t.Refusal):pass
+    for candidate in candidates:
+        try:
+            if isinstance(candidate,str) and Path(candidate).is_file() and Path(candidate).stat().st_size<=20*1024*1024:
+                return 'Z:'+str(Path(candidate).resolve()).replace('/','\\')
+        except OSError:pass
+    return ''
+
+
 class Host:
     def __init__(self,state,settings,engine_state,engine=None,save_settings=None):
         self.controls=LinuxControls(state)
@@ -256,6 +282,8 @@ class Host:
         try:
             params={'row':row,'pid':pid}
             if op in ('hello','status'):
+                response['settings']['native_overlay_shortcuts']=overlay_settings.native_shortcuts(overlay_settings.effective(settings,row['game']),row['game'],row.get('exe',''))
+                response['settings']['game_poster']=game_poster(settings,row,self.state)
                 response['status']=self.controls.status(params)
                 import renodx_hdr_settings
                 response['hdr']=renodx_hdr_settings.snapshot({'storage':{'root':str(self.state)}},row)
@@ -264,21 +292,35 @@ class Host:
                 import renodx_hdr_settings
                 response['hdr']=renodx_hdr_settings.save({'storage':{'root':str(self.state)}},row,message.get('changes'))
                 response['message']='HDR preferences saved. Close and restart the game to apply.'
-            elif op=='set-setting':
-                key, value = message.get('key'), message.get('value')
-                if key == 'overlay_controls' and type(value) is bool: value = 'classic' if value else 'unified'
-                t.need(key in overlay_settings.DEFAULTS or key=='overlay_helper', 'Choose an available overlay preference.')
-                if key=='overlay_helper': t.need(type(value) is bool, 'Choose on or off for the helper.')
-                updated = settings | {key:value}
-                overlay_settings.options(updated)
-                if self.save_settings is not None: self.save_settings({key:value})
+            elif op=='use-native-overlays':
+                updated=overlay_settings.native_overlays(settings,row['game'],message.get('global_default',False))
+                changed={key:updated[key] for key in ('game_overlay_settings','overlay_renderer','optiscaler_ui','reshade_ui','optiscaler_hotkey') if key in updated and updated.get(key)!=settings.get(key)}
+                if self.save_settings is not None:self.save_settings(changed)
                 else:
                     import library_media
                     path=self.state/'desktop/settings.json'
                     fresh=library_media.DEFAULTS | (t.read_json(path) if path.is_file() else settings)
-                    fresh[key]=value
+                    fresh=overlay_settings.native_overlays(fresh,row['game'],message.get('global_default',False))
                     t.atomic_file(path,(json.dumps(fresh,indent=2)+'\n').encode(),0o600)
-                response['settings']=proton_overlay.settings_snapshot(updated,updated.get('theme'))
+                    updated=fresh
+                response['settings']=proton_overlay.settings_snapshot(overlay_settings.effective(updated,row['game']),updated.get('theme'))
+                response['message']='Native overlays selected. Restart the game if its menus are not available yet.'
+            elif op=='set-setting':
+                key, value = message.get('key'), message.get('value')
+                if key == 'panel_binding':
+                    key,value=overlay_settings.shortcut_binding(value)
+                if key == 'overlay_controls' and type(value) is bool: value = 'classic' if value else 'unified'
+                mapping=overlay_settings.game_edit(settings,row['game'],key,value)
+                if self.save_settings is not None:self.save_settings({'game_overlay_settings':mapping})
+                else:
+                    import library_media
+                    path=self.state/'desktop/settings.json'
+                    fresh=library_media.DEFAULTS | (t.read_json(path) if path.is_file() else settings)
+                    mapping=overlay_settings.game_edit(fresh,row['game'],key,value)
+                    fresh['game_overlay_settings']=mapping
+                    t.atomic_file(path,(json.dumps(fresh,indent=2)+'\n').encode(),0o600)
+                updated=settings | {'game_overlay_settings':mapping}
+                response['settings']=proton_overlay.settings_snapshot(overlay_settings.effective(updated,row['game']),updated.get('theme'))
                 response['message']='Saved'
             elif op in ('preset-list','preset-save','preset-delete'):
                 method={'preset-list':self.controls.preset_list,'preset-save':self.controls.preset_save,
@@ -290,35 +332,8 @@ class Host:
             elif op=='reset':
                 response['status']=self.controls.reset(params)
                 response['message']='Saved game configuration restored.'
-            elif op in ('global-review','menus-review'):
-                t.need(self.engine is not None,'Open the app before reviewing installed games.')
-                key=(row['game'],row['exe'],session or pid)
-                self.reviews.pop(key,None)
-                if op=='global-review':
-                    review=linux_runtime.global_review(self.engine,message.get('changes') or {})
-                else:
-                    settings=self.settings()
-                    review=linux_runtime.menus_review(self.engine,{k:settings[k] for k in
-                        ('optiscaler_ui','optiscaler_intro','reshade_ui','reshade_intro','optiscaler_hotkey') if k in settings})
-                self.reviews={k:v for k,v in self.reviews.items() if time.monotonic()-v[1]<300}
-                t.need(len(self.reviews)<100,'Close old reviews before opening another.')
-                self.review_id+=1
-                self.reviews[key]=(self.review_id,time.monotonic(),review)
-                plans=review.get('plans',[])
-                response.update(review_id=self.review_id,ready=bool(plans),
-                    message=f'{len(plans)} games ready. Review every change before applying.',
-                    items=[{'title':p['name'],'detail':p.get('summary','')} for p in plans],
-                    blocked=[{'title':p.get('title',''),'detail':p.get('detail','')} for p in review.get('blocked',[])],
-                    skipped=[{'title':p.get('title',''),'detail':p.get('detail','')} for p in review.get('skipped',[])])
-            elif op=='apply-review':
-                key=(row['game'],row['exe'],session or pid)
-                pending=self.reviews.pop(key,None)
-                t.need(pending is not None and type(message.get('review_id')) is int
-                       and message['review_id']==pending[0] and time.monotonic()-pending[1]<300,
-                       'Review the games again before applying.')
-                result=linux_runtime.apply_review(pending[2])
-                self.controls.reload_presets()
-                response['message']=result.get('message','Done.')
+            elif op in ('global-review','menus-review','apply-review'):
+                raise ValueError('Review library-wide changes in Desktop or Game Mode settings.')
             elif op=='discard-review':
                 self.reviews.pop((row['game'],row['exe'],session or pid),None)
                 response['message']=''

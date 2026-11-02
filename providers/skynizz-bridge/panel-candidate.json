@@ -4,8 +4,8 @@
   "base_bridge_id": "skynizz-ada-mfg-12-placement-candidate",
   "patch": "panel-candidate.patch",
   "sources": {
-    "providers/skynizz-bridge/panel-candidate.patch": "d43c215cdfe86ed81355c293ebe61684d111ed6a155827116cdc34498d3c1422",
-    "providers/skynizz-bridge/ForgePanel.h": "051cda45076b3184b46e94795a347043b6d74489a717875cde7244a7fc409345",
+    "providers/skynizz-bridge/panel-candidate.patch": "7415e2b57a6f70b9cc674b28eef4d6aaefa4f8e296841939315917e7ad1aec19",
+    "providers/skynizz-bridge/ForgePanel.h": "9b7b450e4fc039eba0e65b8a120177fbea930f5b733187e873e5d5f9a78fc25b",
     "providers/skynizz-bridge/Generate-Panel.ps1": "330b9524e6a8d6266cea4f896e1ec0b9e411f63321823a213a86f4aaaa6465d3",
     "providers/skynizz-bridge/controls.json": "f269771633e4134102944ee8cca7dd27913fcdf8856cfb1824572214b66e9f9b",
     "windows/RtxForge.Windows/Assets/Fonts/InterVariable.ttf": "4989b125924991b90d05b2d16e0e388c48f7d5bb8b30539bbf9c755278d0ccaf",
@@ -13,7 +13,7 @@
     "providers/skynizz-bridge/ForgePanelIcon.h": "a6037b066c03146b3cb766afd69ea694a247699b7e66cd7f346fd7e4aae799e7",
     "providers/skynizz-bridge/ForgePanelChannel.h": "b1eb5f78dd642e91c325c9cf0ffd0559b3662dc116f826b63ba19b0e58b6c6fe",
     "gui/fonts/BakbakOne-Regular.ttf": "238dd2cf76f0fa33e02ea67c2f9697731378ad567503ca6b1f778778093ff84f",
-    "gui/fonts/OFL-BakbakOne.txt": "9460ba7f17aef60cfba3d770a18c47ebda40ec5957daf81c6f4179528557ce83",
+    "gui/fonts/OFL-BakbakOne.txt": "34dbd21774c3cb3db205edd121df276442415cf73aa5ad94fb8c2ac9c73d9107",
     "providers/skynizz-bridge/ForgeInzoiOverlay.h": "16f4774f8df4ea337b74ce72b3a6cb57379f3f1fdd82684debead5fd62cfa45e",
     "providers/skynizz-bridge/ForgeWorkbench.h": "746f331635dee81c65ffe1a2d5a0a3afeb64a04e63c58b3e81893afefa7d6453"
   },

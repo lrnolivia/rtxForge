@@ -483,7 +483,7 @@ def settings_snapshot(settings, app_theme=None):
         'overlay_controls': settings.get('overlay_controls', 'unified'),
         # NativePanelCoordinator.SettingsSnapshot: the choice plus its resolved light/dark.
         'overlay_theme': settings.get('overlay_theme', 'clear'),
-        'overlay_appearance': glass_preferences.validate(settings.get('overlay_appearance', {})),
+        'overlay_appearance': glass_preferences.current(settings),
         'overlay_light': light_theme(settings, app_theme),
         'overlay_renderer': settings.get('overlay_renderer', 'game'),
         'overlay_live_stats': bool(settings.get('overlay_live_stats', True)),

@@ -54,8 +54,8 @@ class ThemePicker(Gtk.Box):
     def __init__(self, selected, changed):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, homogeneous=True)
         first = None
-        for key, caption, shade in [('clear', 'Clear', (.88, .88, .88, .25)),
-                                    ('light', 'Light', (.92, .92, .92, 1)),
+        for key, caption, shade in [('light', 'Light', (.92, .92, .92, 1)),
+                                    ('clear', 'Clear', (.88, .88, .88, .25)),
                                     ('dark', 'Dark', (.19, .19, .19, 1))]:
             item = Gtk.ToggleButton(hexpand=True, tooltip_text=caption)
             if first is None: first = item

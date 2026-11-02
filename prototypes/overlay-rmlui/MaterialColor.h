@@ -7,6 +7,22 @@
 
 namespace MaterialColor {
 using Color=std::array<float,3>;
+// Small reusable atlas, created only when the color spectrum is first shown.
+inline constexpr int SpectrumSize=32,SpectrumHues=180;
+inline Color Hsv(float hue,float saturation,float value) {
+    hue=(hue-std::floor(hue))*6;const int sector=int(hue);const float f=hue-sector,p=value*(1-saturation),q=value*(1-saturation*f),t=value*(1-saturation*(1-f));
+    switch(sector){case 0:return {value,t,p};case 1:return {q,value,p};case 2:return {p,value,t};case 3:return {p,q,value};case 4:return {t,p,value};default:return {value,p,q};}
+}
+inline Color ToHsv(Color color) {
+    const float high=*std::max_element(color.begin(),color.end()),low=*std::min_element(color.begin(),color.end()),chroma=high-low;float hue=0;
+    if(chroma>0){hue=high==color[0]?(color[1]-color[2])/chroma:high==color[1]?2+(color[2]-color[0])/chroma:4+(color[0]-color[1])/chroma;hue/=6;if(hue<0)hue+=1;}
+    return {hue,high>0?chroma/high:0,high};
+}
+inline std::vector<unsigned char> SpectrumTexture(bool hueStrip) {
+    const int width=hueStrip?360:SpectrumSize*SpectrumHues,height=hueStrip?1:SpectrumSize;std::vector<unsigned char> pixels(size_t(width)*height*4);
+    for(int y=0;y<height;++y)for(int x=0;x<width;++x){const auto color=hueStrip?Hsv(float(x)/(width-1),1,1):Hsv(float(x/SpectrumSize)/SpectrumHues,float(x%SpectrumSize)/(SpectrumSize-1),1-float(y)/(height-1));const size_t at=(size_t(y)*width+x)*4;for(int c=0;c<3;++c)pixels[at+c]=static_cast<unsigned char>(color[c]*255+.5f);pixels[at+3]=255;}
+    return pixels;
+}
 inline bool YellowFamily(Color color);
 inline float Smooth(float t){t=std::clamp(t,0.f,1.f);return t*t*(3-2*t);}
 inline Color Saturation(Color color,float percent) {
@@ -79,4 +95,14 @@ inline Color ClearSurface(Color backdrop,float tint,int mode,float strength) {
     return source;
 }
 inline float LinearLuma(Color c) {for(auto& v:c)v=v<=.04045f?v/12.92f:std::pow((v+.055f)/1.055f,2.4f);return .2126f*c[0]+.7152f*c[1]+.0722f*c[2];}
+inline float Contrast(Color a,Color b) {const float x=LinearLuma(a),y=LinearLuma(b);return (std::max(x,y)+.05f)/(std::min(x,y)+.05f);}
+inline Color LightenForContrast(Color ink,Color backdrop,float target=3.f) {const float needed=target*(LinearLuma(backdrop)+.05f)-.05f;if(LinearLuma(ink)>=needed)return ink;if(needed>=1)return {1,1,1};float low=0,high=1;for(int step=0;step<12;++step){const float amount=(low+high)*.5f;Color raised{};for(size_t i=0;i<3;++i)raised[i]=ink[i]+(1-ink[i])*amount;if(LinearLuma(raised)<needed)low=amount;else high=amount;}for(auto& channel:ink)channel+=(1-channel)*high;return ink;}
+inline Color ClearHeading(Color accent) {
+    // Soft, bright ink shared by every heading, never individually sampled.
+    return Blend({.58f,.58f,.58f},accent,Mode("screen"));
+}
+inline bool ValidAccent(const std::string& color) {return color.empty()||(color.size()==7&&color[0]=='#'&&color.find_first_not_of("0123456789abcdefABCDEF",1)==std::string::npos);}
+inline Color ParseAccent(const std::string& color,Color fallback) {if(color.empty()||!ValidAccent(color))return fallback;const auto rgb=std::stoul(color.substr(1),nullptr,16);return {float((rgb>>16)&255)/255,float((rgb>>8)&255)/255,float(rgb&255)/255};}
+inline Color SceneAccent(Color color) {for(auto& channel:color)channel=std::clamp(channel,0.f,1.f);return color;}
+inline Color AdaptiveClearSurface(Color color) {const auto hsv=ToHsv(color);return Hsv(hsv[0],hsv[1],.68f+.08f*(hsv[2]-.5f));}
 }

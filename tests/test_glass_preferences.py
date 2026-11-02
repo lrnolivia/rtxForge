@@ -12,6 +12,37 @@ import transactions as t
 
 
 class GlassPreferencesTest(unittest.TestCase):
+    def test_fresh_defaults_are_clear_adaptive_with_tint_on(self):
+        values=glass.current({})
+        self.assertEqual((glass.base_theme({}),values['AccentMode'],values['Theme'],values['AccentCharacter'],values['AccentTint']),('clear','adaptive',4,10,26))
+        self.assertEqual((values['SurfaceBlend'],values['BlendStrength']),('normal',0))
+        self.assertEqual(glass.current({'overlay_appearance':{'Theme':3}})['Theme'],3)
+
+    def test_reset_to_untouched_defaults_sends_resolved_appearance(self):
+        game=str(Path('one').resolve())
+        settings={'overlay_appearance':{},'game_overlay_settings':{game:{'overlay_appearance':{'Theme':2,'AccentColor':'#ff0000'}}}}
+        before=proton_overlay.settings_snapshot(overlay_settings.effective(settings,game))['overlay_appearance']
+        settings['game_overlay_settings']={}
+        after=proton_overlay.settings_snapshot(overlay_settings.effective(settings,game))['overlay_appearance']
+        self.assertEqual(before['Theme'],2)
+        self.assertEqual(after,glass.DEFAULTS)
+        self.assertTrue(after)
+
+    def test_accent_source_and_color_round_trip(self):
+        settings={}
+        self.assertEqual(glass.current(settings)['AccentMode'],'adaptive')
+        for mode in ('theme','custom','adaptive'):
+            glass.edit(settings,'AccentMode',mode)
+            for color in ('','#3B8CCF','#f6ea11'):
+                glass.edit(settings,'AccentColor',color)
+                for base in ('clear','light','dark'):
+                    glass.appearance(settings,base=base,tint=True)
+                    snapshot=proton_overlay.settings_snapshot(overlay_settings.options(settings))['overlay_appearance']
+                    self.assertEqual((snapshot['AccentMode'],snapshot['AccentColor']),(mode,color))
+        for color in ('red','#123','#12345678','#gggggg','<script>',None,123):
+            with self.assertRaises(t.Refusal):glass.edit({},'AccentColor',color)
+        with self.assertRaises(t.Refusal):glass.edit({},'AccentMode','game')
+
     def test_bar_position_survives_theme_layout_and_helper_snapshot(self):
         settings={}
         self.assertEqual(glass.current(settings)['BarPosition'],'bottom')
@@ -96,8 +127,8 @@ class GlassPreferencesTest(unittest.TestCase):
         for value in [{'TextWeight':700},{'Scale':1.2},{'Scale':True},{'Blur':49},{'Theme':0},{'Layout':'unified'},{'SurfaceBlend':'reserved'},{'TextFont':'aptos'}]:
             with self.subTest(value=value),self.assertRaises(t.Refusal):glass.validate(value)
 
-    def test_no_explicit_appearance_leaves_native_saved_preferences_intact(self):
-        self.assertEqual(proton_overlay.settings_snapshot({})['overlay_appearance'],{})
+    def test_empty_appearance_resolves_defaults_without_mutating_settings(self):
+        self.assertEqual(proton_overlay.settings_snapshot({})['overlay_appearance'],glass.DEFAULTS)
         source={'overlay_appearance':{'Layout':'centered'}}
         snapshot=overlay_settings.options(source)
         snapshot['overlay_appearance']['Layout']='bar'

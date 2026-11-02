@@ -1,5 +1,6 @@
 """Validated overlay preferences shared by reviews, helpers and per-game editors."""
 import os
+import configparser
 from pathlib import Path
 import overlay_policy
 import proton_overlay
@@ -37,8 +38,10 @@ def effective(settings, game=None):
         for path, override in overrides.items():
             t.need(isinstance(path, str) and isinstance(override, dict), 'Invalid per-game overlay settings.')
             if os.path.normcase(str(Path(path).resolve())) == identity:
-                t.need(set(override) <= set(DEFAULTS) - {'overlay_renderer'}, 'Unknown per-game overlay option. The primary overlay is an app-wide choice.')
-                values = options(values | {key:value for key,value in override.items() if key!='overlay_appearance'})
+                t.need(set(override) <= set(DEFAULTS), 'Unknown per-game overlay option.')
+                merged=values | override
+                merged['overlay_appearance']=values['overlay_appearance'] | override.get('overlay_appearance',{})
+                values = options(merged)
                 break
     return values
 
@@ -61,3 +64,73 @@ def describe(values):
         'ReShade welcome: ' + state('reshade_intro'),
         'Native Vulkan MFG menu: ' + state('vulkan_mfg_native_menu'),
     ))
+
+
+def game_edit(settings, game, key, value):
+    """Overlay-originated writes never replace app-wide defaults."""
+    t.need(key in DEFAULTS, 'Change app defaults in Desktop or Game Mode settings.')
+    identity=str(Path(game).resolve())
+    result=effective(settings,game) | {key:value}
+    options(result)
+    mapping={path:dict(values) for path,values in settings.get('game_overlay_settings',{}).items()}
+    matching=next((path for path in mapping if os.path.normcase(str(Path(path).resolve()))==os.path.normcase(identity)),identity)
+    mapping.setdefault(matching,{})[key]=value
+    return mapping
+
+
+def native_overlays(settings, game, global_default=False):
+    """An explicit onboarding opt-out; other games keep their overrides."""
+    t.need(type(global_default) is bool, 'Choose whether to change the default.')
+    changes={'overlay_renderer':'optiscaler','optiscaler_ui':True,'reshade_ui':True}
+    mapping=game_edit(settings,game,'overlay_renderer','optiscaler')
+    current=settings | {'game_overlay_settings':mapping}
+    for key,value in changes.items():
+        mapping=game_edit(current,game,key,value)
+        current['game_overlay_settings']=mapping
+    if effective(current,game)['optiscaler_hotkey']=='Disabled':
+        current['game_overlay_settings']=game_edit(current,game,'optiscaler_hotkey','Insert')
+    if global_default:
+        current.update(changes)
+        if current.get('optiscaler_hotkey')=='Disabled':current['optiscaler_hotkey']='Insert'
+    return current
+
+
+def native_shortcuts(settings, game, exe=''):
+    """Read the installed native menu keys, without changing a game file."""
+    root=Path(game).resolve();folder=(root/exe).resolve().parent if exe else root
+    if not folder.is_relative_to(root):folder=root
+    result=[]
+    names={code:name for name,code in proton_overlay._KEYS.items()}
+    names[45]='Insert'
+    def key_name(key,mods=()):return '+'.join([name for name,on in mods if on]+[names.get(key,hex(key))])
+    for name,filename,section,key in [('OptiScaler','OptiScaler.ini','Menu','ShortcutKey'),('ReShade','ReShade.ini','INPUT','KeyOverlay')]:
+        path=next((base/filename for base in (folder,folder/'OptiScaler',root) if (base/filename).is_file()),None)
+        if path is None:continue
+        try:
+            if path.stat().st_size>256*1024:continue
+            parser=t.ini(path.read_text(encoding='utf-8-sig',errors='replace'))
+            raw=parser.get(section,key,fallback='0x2D' if name=='OptiScaler' else '36,0,0,0')
+            if name=='OptiScaler' and 'overlay_renderer' in settings:raw={'Insert':'0x2D','F8':'0x77','Disabled':'0'}.get(settings.get('optiscaler_hotkey','Insert'),'0x2D')
+            parts=[part.strip() for part in raw.split(',')]
+            code=int(parts[0],16 if parts[0].lower().startswith('0x') else 10)
+            mods=list(zip(('Ctrl','Shift','Alt'),[part=='1' for part in parts[1:4]])) if name=='ReShade' else []
+            enabled=code!=0 and settings.get('optiscaler_ui' if name=='OptiScaler' else 'reshade_ui',True)
+            if name=='ReShade' and code==0:
+                saved=parser.get('rtxForge.UI','ReShadeShortcut',fallback='36,0,0,0').split(',')
+                code=int(saved[0]);mods=list(zip(('Ctrl','Shift','Alt'),[part.strip()=='1' for part in saved[1:4]]))
+            if not 0<=code<=255:continue
+            result.append({'name':name,'key':key_name(code if code else 45 if name=='OptiScaler' else 36,mods),'enabled':enabled})
+        except (OSError,ValueError,KeyError,configparser.Error,t.Refusal):continue
+    return result
+
+
+def shortcut_binding(value):
+    """Translate the renderer's validated virtual-key binding into shared preferences."""
+    t.need(isinstance(value,dict) and type(value.get('key')) is int and type(value.get('modifiers')) is int,'Choose an overlay shortcut.')
+    key,modifiers=value['key'],value['modifiers']
+    t.need(0<=modifiers<=7,'Choose supported shortcut modifiers.')
+    if key==0 and modifiers==0:return 'panel_hotkey','Disabled'
+    name=next((name for name,code in proton_overlay._KEYS.items() if code==key),None)
+    t.need(name is not None,'Choose a supported overlay shortcut.')
+    text=('Ctrl+' if modifiers&2 else '')+('Alt+' if modifiers&1 else '')+('Shift+' if modifiers&4 else '')+name
+    return 'panel_hotkey',proton_overlay.parse_shortcut(text)[0]

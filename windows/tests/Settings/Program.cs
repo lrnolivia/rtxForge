@@ -279,7 +279,23 @@ var appearancePath = Path.Combine(Path.GetTempPath(), "rtxforge-glass-" + Guid.N
 Directory.CreateDirectory(Path.GetDirectoryName(appearancePath)!);
 try
 {
+    var freshAppearance=GlassAppearance.Load(appearancePath);
+    if(freshAppearance.BaseTheme!="clear"||!freshAppearance.AccentEnabled||freshAppearance.AccentMode!="adaptive"||freshAppearance.Tint!=26)throw new Exception("Fresh overlay defaults must be Clear + Adaptive with Accent Tint on");
+    var rendererGame=new Game { Id="native-renderer-fixture",Name="Native fixture" };
+    var rendererSettings=new ForgeSettings();rendererSettings.GameOverlaySettings[rendererGame.Id]=new(){["overlay_renderer"]="optiscaler"};
+    if(GlassAppearance.OverlayOptions(rendererSettings,rendererGame)["overlay_renderer"]?.ToString()!="optiscaler"||GlassAppearance.OverlayOptions(rendererSettings)["overlay_renderer"]?.ToString()!="game")throw new Exception("Per-game native overlay must not replace the global default");
     File.WriteAllText(appearancePath, "[Appearance]\nThemeVersion=4\nTheme=3\nLayout=bar\nTextFont=inter\nTextSize=26\nScale=115\nCustom=1\nClearTint=33\n[Unrelated]\nKeep=this\n");
+    var gameAppearance=new Game { Id="fixture-game",Name="Fixture" };
+    var authoritative=new ForgeSettings { OverlayAppearance=new() { ["Theme"]=1 } };
+    authoritative.GameOverlaySettings[gameAppearance.Id]=new() { ["overlay_appearance"]=new System.Text.Json.Nodes.JsonObject { ["Theme"]=2,["AccentColor"]="#3B8CCF" } };
+    var firstAppearance=GlassAppearance.Resolve(authoritative,gameAppearance,appearancePath);
+    authoritative.GameOverlaySettings[gameAppearance.Id]["overlay_appearance"]!["Theme"]=3;
+    var refreshedAppearance=GlassAppearance.Resolve(authoritative,gameAppearance,appearancePath);
+    if(firstAppearance["Theme"]!.GetValue<int>()!=2||refreshedAppearance["Theme"]!.GetValue<int>()!=3||refreshedAppearance["AccentColor"]!.ToString()!="#3B8CCF")throw new Exception("New in-game appearance did not replace stale Desktop values");
+    authoritative.GameOverlaySettings.Clear();
+    var inheritedAppearance=GlassAppearance.Resolve(authoritative,gameAppearance,appearancePath);
+    if(inheritedAppearance["Theme"]!.GetValue<int>()!=1||inheritedAppearance["AccentColor"]!.ToString()!=""||!inheritedAppearance.ContainsKey("AccentMode"))throw new Exception("Reset did not fully resolve defaults or retained a stale custom color");
+    Console.WriteLine("PASS: per-game appearance refresh, default inheritance and resolved cache reset.");
     var native = GlassAppearance.Load(appearancePath);
     if(native.SidePanelSide!="left")throw new Exception("Side Panel must default to the left edge");
     if(native.BarPosition!="bottom")throw new Exception("Bar must default to the bottom edge");

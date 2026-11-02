@@ -12,7 +12,10 @@ public sealed class GameOverlayPreferencesView : StackPanel
     readonly MainWindow shell;
     readonly Game game;
     readonly StackPanel fields = new() { Spacing = 8 };
-    readonly TextBlock status = Prefs.Label("Appearance and layout are shared across games. Menu and welcome choices can differ for this game.");
+    readonly TextBlock status = Prefs.Label("Appearance, layout, menus and shortcuts below apply only to this game.");
+    readonly Border appearanceCard = new() { Style = Prefs.GetStyle("ForgeSettingsCardStyle") };
+    ToggleSwitch? inheritedToggle;
+    Expander? menuOptions;
     bool loading;
 
     public GameOverlayPreferencesView(MainWindow shell, Game game)
@@ -20,22 +23,28 @@ public sealed class GameOverlayPreferencesView : StackPanel
         this.shell = shell; this.game = game;
         Spacing = 10;
         Children.Add(status);
+        Children.Add(appearanceCard);Children.Add(fields);
+        RebuildAppearance();Rebuild();
+    }
+
+    void RebuildAppearance()
+    {
         var appearance = new OverlayPresentationView(edit =>
         {
             try
             {
                 edit();
-                var glass = GlassAppearance.Load();
-                var fresh = ForgeSettings.EditOverlay(s => { s.OverlayAppearance = glass.ToJson(); s.OverlayTheme = glass.Theme; });
+                var glass = GlassAppearance.Load(GlassAppearance.GameFilePath(game));
+                var fresh = ForgeSettings.EditGameOverlay(game, s => { s["overlay_appearance"] = glass.ToJson(); s["overlay_theme"] = glass.Theme; });
                 shell.Settings.CopyOverlayFrom(fresh);
-                status.Text = "Appearance saved for all games. Menu and welcome choices below apply to this game.";
+                loading=true;if(inheritedToggle is not null)inheritedToggle.IsOn=false;loading=false;
+                if(menuOptions is not null)menuOptions.IsEnabled=true;
+                status.Text = "Appearance saved for this game.";
             }
             catch (Exception error) { status.Text = error.Message; }
         }, shell.Service as EngineForgeService, game);
-        appearance.SetRendererEnabled(ForgeSettings.Load().OverlayRenderer != "optiscaler");
-        Children.Add(new Border { Style = Prefs.GetStyle("ForgeSettingsCardStyle"), Child = appearance });
-        Children.Add(fields);
-        Rebuild();
+        appearance.SetRendererEnabled(GlassAppearance.OverlayOptions(ForgeSettings.Load(),game)["overlay_renderer"]?.ToString() != "optiscaler");
+        appearanceCard.Child=appearance;
     }
 
     bool Save(Action<JsonObject>? edit)
@@ -44,6 +53,7 @@ public sealed class GameOverlayPreferencesView : StackPanel
         try
         {
             var fresh = ForgeSettings.EditGameOverlay(game, edit);
+            OverlayHelper.CacheRenderer(game,fresh);
             shell.Settings.CopyOverlayFrom(fresh);
             shell.ConfigureCompanionShortcut();
             status.Text = "Saved for this game. Review Update Overlays to apply its menu choices; startup changes take effect next launch.";
@@ -57,20 +67,23 @@ public sealed class GameOverlayPreferencesView : StackPanel
         loading = true;
         fields.Children.Clear();
         var settings = ForgeSettings.Load();
-        var values = settings.GameOverlayOptions(game);
+        var values = GlassAppearance.OverlayOptions(settings,game);
         var inherited = !settings.GameOverlaySettings.ContainsKey(game.Id);
         var (defaultsRow, defaults) = Prefs.SwitchRow("Use app overlay settings", "Turn off to choose settings for this game.", inherited, "\uE713");
-        fields.Children.Add(defaultsRow);
+        inheritedToggle=defaults;fields.Children.Add(defaultsRow);
         defaults.Toggled += (_, _) =>
         {
             if (loading) return;
-            Save(defaults.IsOn ? null : _ => { });
-            Rebuild();
+            if(Save(defaults.IsOn ? null : _ => { })){RebuildAppearance();Rebuild();}
         };
         var options = new StackPanel { Spacing = 8 };
-        fields.Children.Add(new Expander { Header = "Menu and welcome settings", Content = options,
+        menuOptions=new Expander { Header = "Menu and welcome settings", Content = options,
             IsEnabled = !inherited,
-            HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch });
+            HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+        fields.Children.Add(menuOptions);
+        var (rendererRow,renderer)=Prefs.ComboRow("Overlay","Choose rtxForge to re-enable this game's panel.",["rtxForge","Native"],values["overlay_renderer"]?.ToString()=="optiscaler"?1:0,"\uE7F4");
+        renderer.SelectionChanged+=(_,_)=>{if(loading||renderer.SelectedIndex<0)return;if(Save(v=>v["overlay_renderer"]=renderer.SelectedIndex==1?"optiscaler":"game"))RebuildAppearance();};
+        fields.Children.Insert(1,rendererRow);
         void Toggle(string title, string key)
         {
             var glyph = key == "overlay_live_stats" ? "\uE9D9" : key.EndsWith("intro") || key == "overlay_welcome" ? "\uE8F2" : "\uE700";

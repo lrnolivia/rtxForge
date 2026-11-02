@@ -9,7 +9,11 @@ import time
 
 
 def native_instances(proc=Path('/proc'), pids=None):
-    """Identify this user's native UI processes, including extracted AppImages."""
+    """Identify this user's native UI in Desktop's own PID namespace.
+
+    The Flatpak starts its native window inside that same sandbox. This local
+    UI-lifetime wait must not query host game processes or use their PID space.
+    """
     if not hasattr(os, 'getuid'):
         return {}
     found = {}

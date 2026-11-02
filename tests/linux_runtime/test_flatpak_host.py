@@ -298,7 +298,7 @@ class OverlayHelper(Sandbox):
 
 
 class NoBlindProcessReads(unittest.TestCase):
-    """New /proc readers must route through flatpak_host before they ship."""
+    """Account for host process checks and deliberate sandbox-local readers."""
 
     ROUTED = {
         # Read /proc only after asking flatpak_host (or through prefix_in_use).
@@ -312,6 +312,9 @@ class NoBlindProcessReads(unittest.TestCase):
         # Kernel-wide driver and CPU facts, the same inside the sandbox.
         ('scripts/hardware.py', 'detect'), ('scripts/hardware.py', 'proc_gpus'),
         ('scripts/proton_stack.py', '<module>'), ('scripts/desktop_frontend.py', 'run_container'),
+        # UI lifetime only: the native child shares Desktop's sandbox/PID space.
+        # Game/Steam/protection checks above must still use the host namespace.
+        ('scripts/game_mode_launcher.py', 'native_instances'),
     }
 
     def test_every_proc_reader_is_accounted_for(self):

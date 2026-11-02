@@ -10,6 +10,7 @@ import time
 import unittest
 from unittest.mock import Mock, patch
 
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 spec=importlib.util.spec_from_file_location('game_mode_launcher',Path(__file__).resolve().parents[1]/'scripts/game_mode_launcher.py')
 launcher=importlib.util.module_from_spec(spec);spec.loader.exec_module(launcher)
 
@@ -72,6 +73,23 @@ class NativeHandoffTests(unittest.TestCase):
         with patch.object(launcher,'native_instances') as instances:
             self.assertEqual(launcher.NativeSession(child).wait(),1)
             instances.assert_not_called()
+
+    @unittest.skipUnless(hasattr(os,'getuid'),'Requires Linux process ownership and symlinks')
+    def test_native_ui_wait_uses_local_pid_namespace_and_start_identity(self):
+        import flatpak_host
+        proc=self.root/'local-proc';proc.mkdir()
+        native=proc/'42';native.mkdir()
+        (native/'exe').symlink_to(self.root/'rtxforge-game-mode')
+        def identity(start):return '42 (rtxforge-game-mode) '+' '.join(['S']+['0']*18+[start])
+        (native/'stat').write_text(identity('1234'))
+        unrelated=proc/'43';unrelated.mkdir()
+        (unrelated/'exe').symlink_to(self.root/'game-executable')
+        (unrelated/'stat').write_text(identity('9999'))
+        with patch.dict(os.environ,{'FLATPAK_ID':'io.github.lrnolivia.RTXForge'}),patch.object(flatpak_host,'sandboxed',return_value=True),patch.object(flatpak_host,'probe',side_effect=AssertionError('UI lifetime must use the local namespace')):
+            self.assertEqual(launcher.native_instances(proc),{42:'1234'})
+            (native/'stat').write_text(identity('5678'))
+            self.assertEqual(launcher.native_instances(proc,pids=[42]),{42:'5678'})
+            self.assertEqual(launcher.native_instances(proc,pids=[99]),{})
 
     @unittest.skipUnless(os.environ.get('RTXFORGE_TEST_NATIVE_DESKTOP')=='1','Requires a Linux GTK display and isolated D-Bus session')
     def test_repeated_process_activations_keep_one_gtk_owner(self):

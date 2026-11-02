@@ -29,7 +29,7 @@ permissions:
 
 env:
   RTXFORGE_REQUIRE_GLASS: '1'
-  RTXFORGE_GAME_MODE_PACKAGE: '${{ github.workspace }}/game-mode-package'
+  RTXFORGE_GAME_MODE_PACKAGE: '${{ github.workspace }}/dist/game-mode-package'
 
 # Pushes and pull requests cancel their own older runs; nothing cancels a manual publication.
 concurrency:
@@ -96,7 +96,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: rtxForge-Game-Mode-linux-appimage-${{ github.sha }}
-          path: game-mode-package
+          path: dist/game-mode-package
 
       - name: Download glass-overlay-candidate
         uses: actions/download-artifact@v4
@@ -424,7 +424,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: rtxForge-Game-Mode-linux-appimage-${{ github.sha }}
-          path: game-mode-package
+          path: dist/game-mode-package
 
       - name: Download glass-overlay-candidate
         uses: actions/download-artifact@v4

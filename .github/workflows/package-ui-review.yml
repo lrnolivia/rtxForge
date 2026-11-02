@@ -16,7 +16,7 @@ jobs:
   native-review:
     needs: game-mode
     env:
-      RTXFORGE_GAME_MODE_PACKAGE: ${{ github.workspace }}/game-mode-package
+      RTXFORGE_GAME_MODE_PACKAGE: ${{ github.workspace }}/dist/game-mode-package
     runs-on: ubuntu-24.04
     container: fedora:44
     timeout-minutes: 20
@@ -26,7 +26,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: rtxForge-Game-Mode-linux-appimage-${{ github.sha }}
-          path: game-mode-package
+          path: dist/game-mode-package
       - name: Validate package engine and syntax
         run: |
           python3 -m compileall -q scripts gui engine

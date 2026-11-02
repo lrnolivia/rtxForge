@@ -572,7 +572,7 @@ int wmain(int argc,wchar_t** argv)
                 const auto savedAccent=controller.accent;
                 auto paint=[&]{controller.Adapt(backdrop->measured,system.GetElapsedTime());controller.AdaptiveForeground(*backdrop,system.GetElapsedTime());context->Update();};
                 auto* label=document->QuerySelector(".field-heading label");auto* glyph=controller.Element("open-settings")->QuerySelector(".glyph");
-                for(const auto gameAccent:{MaterialColor::Color{143.f/255,169.f/255,130.f/255},MaterialColor::Color{236.f/255,61.f/255,40.f/255}})
+                for(const auto gameAccent:{MaterialColor::Color{195.f/255,218.f/255,217.f/255},MaterialColor::Color{236.f/255,61.f/255,40.f/255},MaterialColor::Color{59.f/255,140.f/255,207.f/255},MaterialColor::Color{62.f/255,143.f/255,188.f/255}})
                     for(float level:{.15f,.35f,.55f,.75f,.95f}){
                         const MaterialColor::Color surface{level,level,level};const auto ink=MaterialColor::ClearHeading(gameAccent,surface);
                         Require(MaterialColor::Contrast(ink,surface)>=2.99f,"Clear game heading lost contrast over its surface");

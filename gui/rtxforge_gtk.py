@@ -16722,7 +16722,14 @@ class Application(Adw.Application):
         if not hasattr(self,'window'):
             self.pending_mode=gaming
             return
-        if gaming:self.window.enter_game_mode()
+        if gaming:
+            if getattr(self.window,'_native_game_mode',None):
+                import game_mode_launcher
+                try:
+                    activation=game_mode_launcher.activate(ROOT)
+                    threading.Thread(target=activation.wait,daemon=True,name='game-mode-activation').start()
+                except (OSError,ValueError,KeyError) as error:self.window.toast(str(error))
+            else:self.window.set_input_surface(True,wait_for_idle=True)
         else:
             self.window._native_game_mode_requested=False
             if getattr(self.window,'_native_game_mode',None):

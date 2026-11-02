@@ -1,4 +1,4 @@
-use std::{ffi::OsString, path::PathBuf};
+use std::{ffi::OsString, path::PathBuf, process::Command};
 use tauri::Manager;
 
 fn installed_dir() -> Option<PathBuf> {
@@ -45,6 +45,16 @@ pub fn python(app: &tauri::AppHandle) -> Result<OsString, String> {
     { return Ok(if cfg!(windows) { "python" } else { "python3" }.into()); }
     #[cfg(not(debug_assertions))]
     Err("The private Python runtime is missing. Reinstall the complete application.".into())
+}
+
+pub fn python_command(app: &tauri::AppHandle) -> Result<Command, String> {
+    let mut command = Command::new(python(app)?);
+    for key in ["PYTHONHOME", "PYTHONPATH"] { command.env_remove(key); }
+    // AppImage's GTK library search path belongs to the UI, not the private
+    // Python runtime (or the native tools launched by the shared engine).
+    #[cfg(not(windows))]
+    for key in ["LD_LIBRARY_PATH", "LD_PRELOAD"] { command.env_remove(key); }
+    Ok(command)
 }
 
 pub fn bridge(app: &tauri::AppHandle, name: &str) -> Result<PathBuf, String> {

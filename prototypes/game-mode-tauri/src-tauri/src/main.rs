@@ -100,8 +100,7 @@ fn read_snapshot(app: tauri::AppHandle, artwork: Option<(String,String)>, backgr
     // Fixed reader only. No caller-supplied executable, method or filesystem path.
     let checkout = runtime::root(&app)?;
     let reader = runtime::bridge(&app, "read_snapshot.py")?;
-    let python = runtime::python(&app)?;
-    let mut command = Command::new(python);
+    let mut command = runtime::python_command(&app)?;
     command.arg("-B").arg(reader).arg("--root").arg(checkout);
     if let Some((id,role)) = artwork { command.arg("--artwork").arg(id).arg("--role").arg(role); }
     if let Some(appid) = background { command.arg(if gallery {"--background-list"} else {"--background"}).arg(appid); }
@@ -111,7 +110,12 @@ fn read_snapshot(app: tauri::AppHandle, artwork: Option<(String,String)>, backgr
         command.creation_flags(0x08000000);
     }
     let output = command.output().map_err(|_| "Python is unavailable. Set RTXFORGE_PYTHON to Python 3.11+ and restart.")?;
-    if !output.status.success() { return Err("The local reader could not read the checkout or library. Check RTXFORGE_ROOT and refresh.".into()); }
+    if !output.status.success() {
+        if std::env::args().any(|arg|arg=="--verify-runtime") {
+            eprintln!("Private reader exited {}: {}", output.status, String::from_utf8_lossy(&output.stderr));
+        }
+        return Err("The local reader could not read the checkout or library. Check RTXFORGE_ROOT and refresh.".into());
+    }
     if output.stdout.len() > 16 * 1024 * 1024 { return Err("Library snapshot exceeded its display limit.".into()); }
     serde_json::from_slice(&output.stdout).map_err(|_| "The library reader returned an invalid snapshot.".into())
 }
@@ -153,6 +157,10 @@ fn main() {
         }))
         .manage(desktop_parent::DesktopParent(std::sync::Mutex::new(desktop_parent::from_args(&args))))
         .setup(move |app| {
+            if args.iter().any(|arg|arg=="--desktop-mode") {
+                close_safely(app.handle());
+                return Ok(());
+            }
             if args.iter().any(|arg| arg == "--verify-runtime") {
                 let app = app.handle().clone();
                 std::thread::spawn(move || {

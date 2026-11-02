@@ -1,4 +1,4 @@
-use std::{collections::HashMap, io::{BufRead, BufReader, Write}, process::{Child, ChildStdin, Command, Stdio}, sync::{Arc, Mutex, mpsc, atomic::{AtomicBool, Ordering}}, time::Duration};
+use std::{collections::HashMap, io::{BufRead, BufReader, Write}, process::{Child, ChildStdin, Stdio}, sync::{Arc, Mutex, mpsc, atomic::{AtomicBool, Ordering}}, time::Duration};
 use tauri::Emitter;
 
 type Reply = Result<serde_json::Value, String>;
@@ -19,8 +19,7 @@ fn session(app: &tauri::AppHandle, state: &EngineState) -> Result<Arc<Session>, 
     if let Some(found) = current.as_ref() { if found.alive.load(Ordering::Relaxed) { return Ok(found.clone()); } }
     if let Some(dead) = current.take() { let _ = dead.child.lock().map(|mut child| child.wait()); }
     let reader = crate::runtime::bridge(app, "engine_host.py")?;
-    let python = crate::runtime::python(app)?;
-    let mut command = Command::new(python);
+    let mut command = crate::runtime::python_command(app)?;
     command.env("RTXFORGE_ROOT", crate::runtime::root(app)?).env("RTXFORGE_ENGINE_BRIDGE", "1")
         .env("RTXFORGE_APP_EXE", std::env::var_os("RTXFORGE_APP_EXE").or_else(|| std::env::var_os("APPIMAGE")).map(std::path::PathBuf::from).or_else(|| std::env::current_exe().ok()).ok_or("Application executable is unavailable.")?)
         .arg("-u").arg("-B").arg(reader).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());

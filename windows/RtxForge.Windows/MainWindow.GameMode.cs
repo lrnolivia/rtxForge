@@ -18,6 +18,7 @@ public sealed partial class MainWindow
     GamepadInput? gamepad;
     Process? nativeGameMode;
     bool openingGameMode;
+    bool nativeModeRequested;
 
     public bool InGameMode => nativeGameMode is not null || openingGameMode;
 
@@ -30,7 +31,10 @@ public sealed partial class MainWindow
         if (!Environment.GetCommandLineArgs().Contains("--desktop-mode", StringComparer.OrdinalIgnoreCase) &&
             (Environment.GetCommandLineArgs().Contains("--game-mode", StringComparer.OrdinalIgnoreCase)
             || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SteamAppId"))))
-            DispatcherQueue.TryEnqueue(async () => { while (Busy) await Task.Delay(150); EnterGameMode(); });
+        {
+            nativeModeRequested = true;
+            DispatcherQueue.TryEnqueue(async () => { while (Busy) await Task.Delay(150); if (nativeModeRequested) EnterGameMode(); });
+        }
     }
 
     internal bool ControllerLegacyInputActive => gamepad?.LegacyInputActive == true;
@@ -50,6 +54,7 @@ public sealed partial class MainWindow
 
     async void OpenNativeGameMode(bool appearance)
     {
+        nativeModeRequested = true;
         if (InGameMode) return;
         if (Busy) { await Message("Finish the current change", "Wait for the reviewed operation to finish before switching interfaces."); return; }
         openingGameMode = true;
@@ -58,7 +63,8 @@ public sealed partial class MainWindow
             var executable = GameModeLauncher.Resolve(AppContext.BaseDirectory, Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
             var readOnly = Environment.GetCommandLineArgs().Any(value => value is "--preview" or "--library-preview");
             nativeGameMode = await Task.Run(() => GameModeLauncher.Start(executable, readOnly, appearance));
-            AppWindow.Hide();
+            if (nativeModeRequested) AppWindow.Hide();
+            else nativeGameMode.CloseMainWindow();
             await nativeGameMode.WaitForExitAsync();
             var code = nativeGameMode.ExitCode;
             nativeGameMode.Dispose(); nativeGameMode = null;
@@ -82,6 +88,7 @@ public sealed partial class MainWindow
 
     internal void ActivateDesktop(bool gaming)
     {
+        nativeModeRequested = gaming;
         if (gaming) { if (nativeGameMode is not null) { NativeFocusGameMode(); return; } EnterGameMode(); }
         else { if (nativeGameMode is not null) nativeGameMode.CloseMainWindow(); else { AppWindow.Show(); Activate(); } }
     }
@@ -98,6 +105,7 @@ public sealed partial class MainWindow
 
     public void ExitGameMode()
     {
+        nativeModeRequested = false;
         if (nativeGameMode is not null) nativeGameMode.CloseMainWindow();
     }
     void OnNavItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)

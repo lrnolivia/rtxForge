@@ -116,14 +116,17 @@ def launch_environment(root, read_only=False):
     return env
 
 
-def start(root, read_only=False, appearance=False):
+def activate(root, read_only=False, appearance=False):
     executable, image = resolve(root)
     env = launch_environment(root, read_only)
     args = [str(executable)] + (['--appimage-extract-and-run'] if image else [])
     if appearance:args.append('--appearance')
-    child = subprocess.Popen([*args, '--desktop-parent', str(os.getpid())], env=env,
-                             cwd=executable.parent, stdin=subprocess.DEVNULL)
-    return NativeSession(child)
+    return subprocess.Popen([*args, '--desktop-parent', str(os.getpid())], env=env,
+                            cwd=executable.parent, stdin=subprocess.DEVNULL)
+
+
+def start(root, read_only=False, appearance=False):
+    return NativeSession(activate(root, read_only, appearance))
 
 
 def return_to_desktop(root):

@@ -4,6 +4,9 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import subprocess
+import sys
+import time
 import unittest
 from unittest.mock import Mock, patch
 
@@ -50,6 +53,15 @@ class NativeHandoffTests(unittest.TestCase):
             launcher.start(self.root)
             self.assertEqual(start.call_args.kwargs['env']['RTXFORGE_ROOT'],str(self.root.resolve()))
 
+    def test_existing_activation_and_return_use_clean_environment(self):
+        with patch.dict(os.environ,{'APPIMAGE':'/parent/Desktop.AppImage','LD_LIBRARY_PATH':'parent-libs'}),patch.object(launcher.subprocess,'Popen') as child:
+            launcher.activate(self.root)
+            self.assertEqual(child.call_args.args[0], [str(self.image),'--appimage-extract-and-run','--desktop-parent',str(os.getpid())])
+            launcher.return_to_desktop(self.root)
+            self.assertEqual(child.call_args.args[0],[str(self.image),'--appimage-extract-and-run','--desktop-mode'])
+            self.assertNotIn('APPIMAGE',child.call_args.kwargs['env'])
+            self.assertNotIn('LD_LIBRARY_PATH',child.call_args.kwargs['env'])
+
     def test_existing_native_window_outlives_single_instance_launcher(self):
         child=Mock();child.wait.return_value=0
         with patch.object(launcher,'native_instances',side_effect=[{42:'original'}, {42:'original'}, {42:'reused'}]) as instances,patch.object(launcher.time,'sleep') as sleep:
@@ -60,3 +72,56 @@ class NativeHandoffTests(unittest.TestCase):
         with patch.object(launcher,'native_instances') as instances:
             self.assertEqual(launcher.NativeSession(child).wait(),1)
             instances.assert_not_called()
+
+    @unittest.skipUnless(os.environ.get('RTXFORGE_TEST_NATIVE_DESKTOP')=='1','Requires a Linux GTK display and isolated D-Bus session')
+    def test_repeated_process_activations_keep_one_gtk_owner(self):
+        repo=Path(__file__).resolve().parents[1]
+        events=self.root/'activation-events.jsonl'
+        probe=self.root/'activation-probe.py'
+        probe.write_text('''import json, os, sys
+from pathlib import Path
+sys.path[:0]=[str(Path(REPO)/'gui'),str(Path(REPO)/'scripts')]
+import rtxforge_gtk as app
+def record(event):
+    with open(os.environ['RTXFORGE_ACTIVATION_LOG'],'a') as stream:stream.write(json.dumps([os.getpid(),event])+'\\n')
+class Window(app.Adw.ApplicationWindow):
+    def __init__(self,application,options):
+        super().__init__(application=application)
+        self.busy=False
+        record('created')
+        quit_action=app.Gio.SimpleAction.new('fixture-quit',None)
+        quit_action.connect('activate',lambda *_:application.quit())
+        application.add_action(quit_action)
+    def present(self):record('desktop');super().present()
+    def set_input_surface(self,couch,wait_for_idle=False):record('game-queued' if couch and wait_for_idle else 'wrong-mode')
+app.Window=Window
+if '--fixture-quit' in sys.argv:
+    remote=app.Gio.Application(application_id='io.github.lrnolivia.RTXForge',flags=app.Gio.ApplicationFlags.DEFAULT_FLAGS)
+    remote.register(None)
+    assert remote.get_is_remote()
+    remote.activate_action('fixture-quit',None)
+    remote.get_dbus_connection().flush_sync(None)
+else:sys.exit(app.main())
+'''.replace('REPO',repr(str(repo))))
+        env=os.environ|{'RTXFORGE_ACTIVATION_LOG':str(events)}
+        def entries():return [json.loads(line) for line in events.read_text().splitlines()] if events.exists() else []
+        def await_event(event,count):
+            deadline=time.monotonic()+15
+            while time.monotonic()<deadline:
+                if sum(row[1]==event for row in entries())>=count:return
+                time.sleep(.05)
+            self.fail('Missing activation '+event+': '+repr(entries()))
+        owner=subprocess.Popen([sys.executable,str(probe),'--desktop-mode'],env=env)
+        try:
+            await_event('created',1)
+            for index in (1,2):
+                subprocess.run([sys.executable,str(probe),'--game-mode'],env=env,check=True,timeout=15)
+                await_event('game-queued',index)
+            subprocess.run([sys.executable,str(probe),'--desktop-mode'],env=env,check=True,timeout=15)
+            await_event('desktop',2)
+            self.assertEqual({row[0] for row in entries()},{owner.pid})
+            self.assertEqual(sum(row[1]=='created' for row in entries()),1)
+            subprocess.run([sys.executable,str(probe),'--fixture-quit'],env=env,check=True,timeout=15)
+            self.assertEqual(owner.wait(timeout=15),0)
+        finally:
+            if owner.poll() is None:owner.terminate();owner.wait(timeout=15)

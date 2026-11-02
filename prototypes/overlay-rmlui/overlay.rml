@@ -631,7 +631,7 @@
       <div class="setup-options">
         <button id="setup-appearance" class="more-trigger"><img class="glyph" src="icons/palette-light.png"/><span>Appearance</span><span class="chevron"/></button>
         <div class="setup-native-options">
-          <div id="setup-existing-menus" class="setup-shortcuts"/>
+          <div id="setup-existing-menus" class="setup-shortcuts" role="note" aria-label="Active overlay shortcuts"/>
           <button id="setup-native" class="native-link"><span class="button-label">Use native overlays instead</span></button>
         </div>
       </div>

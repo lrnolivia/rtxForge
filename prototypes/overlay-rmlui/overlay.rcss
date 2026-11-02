@@ -851,6 +851,7 @@ body { --utility-size: 19dp; --segment-size: 20dp; }
 /* First-open setup reuses the live Appearance and layout controls. */
 .setup-intro, .setup-layout-host, .setup-options, .setup-footer { display: none; }
 .setup-open .main-panel { pointer-events: none; }
+.appearance-panel.setup-flow { overflow-y: auto; }
 .setup-flow .setup-intro { display: block; margin: 0 0 26dp; font-size: var(--hint-size); line-height: 1.5; }
 .setup-flow .settings-heading { margin-bottom: 16dp; }
 .setup-flow #type-close, .setup-layout #appearance-back { display: none; }
@@ -864,8 +865,12 @@ body { --utility-size: 19dp; --segment-size: 20dp; }
 .setup-layout .settings-layouts button { min-height: 148dp; }
 .setup-layout .setup-options { display: block; margin-top: 18dp; }
 .setup-options .more-trigger { margin: 0; }
-.setup-native-options { margin-top: 22dp; }
+.setup-native-options { margin-top: 24dp; }
+.setup-menu-heading { display: flex; align-items: center; gap: 10dp; margin-bottom: 12dp; font-size: var(--hint-size); line-height: 1.4; }
+.setup-menu-heading .glyph { width: 20dp; height: 20dp; margin: 0; }
+.setup-shortcut-list, .setup-native-confirm-content .setup-shortcuts { display: flex; flex-direction: column; gap: 6dp; }
 #setup-native { display: flex; align-items: center; justify-content: center; gap: 10dp; width: 100%; }
+#setup-native.after-shortcuts { margin-top: 16dp; }
 #setup-native.native-link { justify-content: flex-start; padding: 0 14dp; background: var(--nested-fill); font-size: var(--hint-size); opacity: .72; }
 #setup-native.native-link:hover { opacity: .9; }
 .setup-native-confirm-content, .setup-native-confirm-button { display: none; }
@@ -873,7 +878,9 @@ body { --utility-size: 19dp; --segment-size: 20dp; }
 .setup-native-confirm .setup-native-confirm-content { display: block; }
 .setup-native-confirm .setup-native-confirm-button { display: flex; align-items: center; justify-content: center; }
 .setup-native-confirm-content { padding: 18dp; background: var(--section-fill); border-radius: 16dp; }
-.setup-shortcut { display: flex; align-items: center; justify-content: space-between; gap: 16dp; margin-top: 10dp; font-size: var(--hint-size); }
+.setup-shortcut { display: flex; align-items: center; justify-content: space-between; gap: 16dp; min-height: 36dp; font-size: var(--hint-size); }
+.setup-shortcut-name { flex: 1; min-width: 0; line-height: 1.4; }
+.setup-shortcut .keycap { flex-shrink: 0; height: 26dp; line-height: 25dp; margin: 0; padding: 0 10dp; white-space: nowrap; }
 .setup-shortcuts .hint { margin: 0 0 12dp; }
 .setup-native-confirm-button { background: var(--nested-fill); padding: 0 18dp; }
 .setup-global { position: relative; display: flex; align-items: center; gap: 10dp; min-height: 24dp; font-size: var(--hint-size); margin: 14dp 0 8dp; }
@@ -882,7 +889,6 @@ body { --utility-size: 19dp; --segment-size: 20dp; }
 .setup-global input:checked { background: var(--accent); }
 .setup-check-mark { display: none; position: absolute; left: 6dp; top: 6dp; width: 6dp; height: 10dp; border-right: 2dp #ffffff; border-bottom: 2dp #ffffff; transform: rotate(45deg); pointer-events: none; }
 .setup-global input:checked + .setup-check-mark { display: block; }
-.setup-native-options .hint { margin: 0; }
 .setup-flow .setup-footer { display: flex; align-items: center; gap: 12dp; margin-top: 26dp; }
 .setup-footer { justify-content: flex-end; }
 .setup-footer .setup-next { display: flex; align-items: center; justify-content: center; gap: 10dp; padding: 0 18dp; background: var(--accent-soft); }

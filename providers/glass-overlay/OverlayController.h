@@ -77,9 +77,12 @@ struct Controller : Rml::EventListener
     struct NativeShortcut{std::string name,key;bool enabled=false;};std::vector<NativeShortcut> nativeShortcuts;
     void SetupShortcuts() {
         std::string active,available;
-        for(const auto& item:nativeShortcuts){const auto row="<div class=\"setup-shortcut\"><span>"+Rml::StringUtilities::EncodeRml(item.name)+"</span><span class=\"keycap\">"+Rml::StringUtilities::EncodeRml(item.key)+"</span></div>";available+=row;if(item.enabled)active+=row;}
-        if(!active.empty())active="<p class=\"hint\">Native controls are also enabled.</p><div class=\"setup-shortcut\"><span>rtxForge</span><span class=\"keycap\">"+Rml::StringUtilities::EncodeRml(shortcutLabel)+"</span></div>"+active;
+        const auto row=[](const std::string& name,const std::string& key){return "<div class=\"setup-shortcut\"><span class=\"setup-shortcut-name\">"+Rml::StringUtilities::EncodeRml(name)+"</span><span class=\"keycap\">"+Rml::StringUtilities::EncodeRml(key)+"</span></div>";};
+        for(const auto& item:nativeShortcuts){available+=row(item.name,item.key);if(item.enabled)active+=row(item.name,item.key);}
+        const bool hasNative=!active.empty();
+        if(hasNative)active="<div class=\"setup-menu-heading\"><img class=\"glyph\" src=\"icons/info-light.png\"/><span>Other overlays are on</span></div><div class=\"setup-shortcut-list\">"+row("rtxForge",shortcutLabel)+active+"</div>";
         Element("setup-existing-menus")->SetInnerRML(active);Element("setup-native-shortcuts")->SetInnerRML(available.empty()?"<p class=\"hint\">Native shortcuts will appear when the game connects.</p>":available);
+        Visible("setup-existing-menus",hasNative);Element("setup-native")->SetClass("after-shortcuts",hasNative);
     }
     void BeginSetup() {
         EndNrPreview();QuickLayouts(false);Visible("inspector",false);Visible("welcome",false);moreOpen=godModeOpen=false;Materials();

@@ -141,7 +141,7 @@ public sealed partial class MainWindow : Window
 
     public async Task ScanAsync()
     {
-        string CurrentKey() => LibrarySnapshot.Key(Settings.RuntimeProvider + "|" + Settings.ExecutableSelectionKey, Settings.GameFolders, Settings.LibraryFolders);
+        string CurrentKey() => LibrarySnapshot.Key(Settings.RuntimeProvider + "|" + Settings.ExecutableSelectionKey + "|" + Settings.DisplayNamesKey, Settings.GameFolders, Settings.LibraryFolders);
         while (true)
         {
             if (libraryScan is not { IsCompleted: false })

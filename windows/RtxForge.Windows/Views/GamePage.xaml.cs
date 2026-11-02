@@ -130,6 +130,7 @@ public sealed partial class GamePage : Page
     void Refresh()
     {
         game = shell.Games.FirstOrDefault(item => item.Id == game.Id) ?? game;
+        TitleText.Text = game.Name;
         StatusBadge.Text = game.AdoptionAvailable ? "Installed · Adoption available" : game.OfflineOnly && !game.Blocked ? game.Installed ? "Installed · Offline only" : "Offline only" : game.Blocked ? game.BlockedStatus
             : game.UsesFeeder ? game.Installed ? "Feeder NR" : "Available · Feeder NR"
             : game.InstalledOnLinux ? "Installed on Linux"
@@ -183,6 +184,7 @@ public sealed partial class GamePage : Page
     void OnUpdateDlss(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("update-dlss", [game]);
     void OnAdoption(object sender, RoutedEventArgs e) => _ = shell.ReviewAdoptionAsync([game]);
     void OnLaunchOffline(object sender, RoutedEventArgs e) => _ = shell.LaunchOfflineAsync(game);
+    void OnRenameGame(object sender, RoutedEventArgs e) => _ = shell.RenameGameAsync(game);
     void OnRemoveFromLibrary(object sender, RoutedEventArgs e) => _ = shell.ConfirmRemoveLibraryEntriesAsync([game]);
     void OnOpenFolder(object sender, RoutedEventArgs e) => _ = shell.OpenGameFolderAsync(game);
 

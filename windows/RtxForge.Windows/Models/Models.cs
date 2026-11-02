@@ -523,6 +523,8 @@ public sealed class ForgeSettings
     public string MfgMultiplier { get; set; } = "auto";
     [JsonPropertyName("feature_controls")] public JsonObject? FeatureControls { get; set; }
     [JsonPropertyName("game_folders")] public List<string> GameFolders { get; set; } = [];
+    [JsonPropertyName("game_names")] public Dictionary<string, string> GameNames { get; set; } = [];
+    [JsonIgnore] public string DisplayNamesKey => JsonSerializer.Serialize(GameNames.OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase));
     [JsonPropertyName("game_executables")] public Dictionary<string, string> GameExecutables { get; set; } = [];
     [JsonIgnore] public string ExecutableSelectionKey => JsonSerializer.Serialize(GameExecutables.OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase));
     [JsonPropertyName("library_folders")] public List<string> LibraryFolders { get; set; } = [];

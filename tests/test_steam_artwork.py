@@ -21,6 +21,53 @@ class SteamArtworkTests(unittest.TestCase):
         self.account={'root':self.root/'Steam','userid':'42','config':self.folder,'shortcuts':self.folder/'shortcuts.vdf'}
         self.engine=SimpleNamespace(steam_roots_for_config=lambda:[self.root/'Steam'],choose_steam_user_config=lambda *a,**k:self.account)
         self.game={'game':str(self.root/'game'),'name':'Game','exe':'Game.exe','source':'Steam','appid':'123'}
+    def legendary_shortcuts(self):
+        (self.folder/'shortcuts.vdf').write_bytes(b'fixture')
+        objects = [{'exe': '"'+str(self.root/'Steam/steam.exe')+'"',
+                    'LaunchOptions': f'-applaunch 1328670 -game {number} -autoterminate',
+                    'AppName': f'Renamed game {number}', 'appid': 0x80000000 + number}
+                   for number in (1, 2, 3)]
+        self.engine.parse_shortcuts_spans = lambda raw: objects
+        self.engine._shortcut_string = lambda item, field: item.get(field, '')
+        self.engine._shortcut_int = lambda item, field: item.get(field)
+        return objects
+
+    def legendary_game(self, number):
+        root = self.root/f'Legendary/Game/ME{number}/Binaries/Win64'
+        return dict(self.game, game=str(root), exe=f'MassEffect{number}.exe',
+                    appid='1328670', collection_game=str(self.root/'Legendary'))
+
+    def test_legendary_art_targets_each_shortcut_instead_of_shared_collection(self):
+        self.legendary_shortcuts()
+        targets = [art.target(self.config, self.settings, self.legendary_game(n), engine=self.engine)[1]
+                   for n in (1, 2, 3)]
+        self.assertEqual(targets, [str(0x80000001), str(0x80000002), str(0x80000003)])
+        self.assertNotIn('1328670', targets)
+        single = self.legendary_game(2)
+        single.pop('collection_game')
+        self.assertEqual(art.target(self.config, self.settings, single, engine=self.engine)[1], str(0x80000002))
+
+    def test_legendary_art_missing_or_duplicate_shortcut_refuses_shared_art_overwrite(self):
+        objects = self.legendary_shortcuts()
+        game = self.legendary_game(2)
+        objects.pop(1)
+        with self.assertRaisesRegex(ValueError, 'No unique Steam shortcut'):
+            art.target(self.config, self.settings, game, engine=self.engine)
+        objects.extend([dict(objects[0]), dict(objects[0])])
+        with self.assertRaisesRegex(ValueError, 'No unique Steam shortcut'):
+            art.target(self.config, self.settings, self.legendary_game(1), engine=self.engine)
+
+    def test_legendary_art_accepts_direct_target_and_rejects_other_executable_with_same_args(self):
+        objects = self.legendary_shortcuts()
+        game = self.legendary_game(2)
+        objects[1]['exe'] = '"'+str(Path(game['game'])/game['exe'])+'"'
+        objects[1]['LaunchOptions'] = '-NoHomeDir'
+        self.assertEqual(art.target(self.config, self.settings, game, engine=self.engine)[1], str(0x80000002))
+        objects[1]['exe'] = str(self.root/'AnotherSteam/steam.exe')
+        objects[1]['LaunchOptions'] = '-applaunch 1328670 -game 2 -autoterminate'
+        with self.assertRaisesRegex(ValueError, 'No unique Steam shortcut'):
+            art.target(self.config, self.settings, game, engine=self.engine)
+
     def test_roles_backup_and_reset_are_reversible(self):
         (self.grid/'123p.jpg').write_bytes(JPG)
         (self.grid/'999p.png').write_bytes(b'unrelated')

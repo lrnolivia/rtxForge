@@ -8,6 +8,37 @@ namespace RtxForge.Windows;
 
 public sealed partial class MainWindow
 {
+    public async Task RenameGameAsync(Game game)
+    {
+        if (Busy || Service.IsPreview) return;
+        var input = new TextBox { Text = game.Name, MaxLength = 200, Header = "Library name" };
+        var dialog = NewDialog();
+        dialog.Title = "Rename game";
+        dialog.Content = input;
+        dialog.PrimaryButtonText = "Save";
+        dialog.SecondaryButtonText = "Use detected name";
+        dialog.CloseButtonText = "Cancel";
+        dialog.DefaultButton = ContentDialogButton.Primary;
+        bool Valid() => !string.IsNullOrWhiteSpace(input.Text) && !input.Text.Any(char.IsControl);
+        dialog.IsPrimaryButtonEnabled = Valid();
+        input.TextChanged += (_, _) => dialog.IsPrimaryButtonEnabled = Valid();
+        input.Loaded += (_, _) => { input.Focus(FocusState.Programmatic); input.SelectAll(); };
+        var result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.None || Busy) return;
+        try
+        {
+            if (LibraryRefreshing) await ScanAsync();
+            var names = Settings.GameNames;
+            foreach (var path in names.Keys.Where(path => LibraryLocations.Same(path, game.Id)).ToList()) names.Remove(path);
+            if (result == ContentDialogResult.Primary) names[game.Id] = input.Text.Trim();
+            SaveSettings();
+            await ScanAsync();
+            ShowToast(result == ContentDialogResult.Primary ? "Game renamed." : "Using the detected game name.");
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
+        { ShowToast("Could not rename this game: " + error.Message); }
+    }
+
     public async Task SelectGameExecutableAsync(Game game, bool detected = false)
     {
         if (Busy || Service.IsPreview) return;

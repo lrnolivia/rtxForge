@@ -388,6 +388,7 @@ public sealed partial class LibraryPage : Page
             item.Click += (_, _) => run();
             menu.Items.Add(item);
         }
+        Add("Rename game", "", () => _ = shell.RenameGameAsync(game), !shell.Busy && !shell.Service.IsPreview);
         Add("Game Details", "", () => shell.OpenGame(game));
         Add("DLSS Files", "", () => shell.OpenGame(game, "DLSS Files"));
         menu.Items.Add(new MenuFlyoutSeparator());

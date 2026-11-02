@@ -331,6 +331,8 @@ def overlay_package_review(params):
 def decorate(rows: list[dict]) -> list[dict]:
     """Scan rows as Linux shows them: your chosen artwork over Steam's, and the saved test record."""
     settings = _settings()
+    import library_identity
+    library_identity.decorate(rows, settings)
     for row in rows:
         row["art"] = artwork_overrides.apply(settings, row, row.get("art") or {})
         row["test_record"] = game_notes.load(_config(), row["game"])

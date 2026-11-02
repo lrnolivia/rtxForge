@@ -54,7 +54,10 @@ def target(config, settings, game, *, engine=None):
     if config_dir != expected or not config_dir.is_dir():
         raise ValueError('Steam profile path did not match its discovered account.')
     t.safe(config_dir)
-    if steam:
+    import library_identity
+    if steam and str(game.get('appid')) == '1328670' and library_identity.legendary_number(game):
+        appid = library_identity.legendary_shortcut_id(e, game, account)
+    elif steam:
         value = game.get('appid')
         if isinstance(value, bool) or not str(value).isdigit() or not 0 < int(value) < 2**32:
             raise ValueError('This Steam game has no valid app ID.')

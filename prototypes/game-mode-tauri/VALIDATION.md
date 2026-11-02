@@ -6,7 +6,7 @@ It is installed separately from Desktop, with previous versions retained.
 
 ## Verified
 
-- 42 Python adapter, screening, routing and lifecycle tests; 17 JavaScript unit
+- 42 Python adapter, screening, routing and lifecycle tests; 20 JavaScript unit
   tests; TypeScript checking and the production frontend/native builds.
 - Windows and Linux complete native packages, private Python/engine resolution,
   offline screenshot worker, full payload verification and installed-host
@@ -28,6 +28,10 @@ It is installed separately from Desktop, with previous versions retained.
 - Reviewed native 3840x2160 Library, Details and Presets captures were supplied
   to the website worker. Their manifest records the keyboard-prompt deviation;
   they do not claim connected-controller evidence.
+
+The shared overlay editor also verifies per-game Surface/Tint, placement, Native
+opt-out with unchecked default promotion, preserved other-game overrides, and
+explicit review of applying defaults to all overlays. These checks use fixtures.
 
 ## Native resource measurements
 

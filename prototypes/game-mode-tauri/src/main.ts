@@ -14,6 +14,9 @@ import { controllerGlyph, type ControllerFamily } from './controller-glyphs';
 import { artworkAccent, selectionInk, heroColors, heroBadge, sampleHero, sectionHeadingColor } from './art-accent';
 import { enhanceSelects, closeSelectMenu, selectMenuOpen } from './select-menu';
 import { settingsSections, settingsContent } from './settings-content';
+import {mergeOverlay, overlaySurface, surfaceChanges, overlayPreferenceChanges} from './overlay-settings';
+let overlayPreviewId = '';
+
 import { engineRequest, engineStatus, type EngineRow, type EngineStatus, type Review } from './engine';
 
 const symbols: Record<string, number> = { plus:58324, minus:58154, dots: 57854, books: 59224, package: 58256, wrench: 58836, gear: 57968, search: 58124,
@@ -118,7 +121,7 @@ function setView(next: View, focus = true) {
 async function loadPreferences() {
   if (preferencesLoading || !backend.enabled) return;
   preferencesLoading = true;
-  try { sharedPreferences = await engineRequest<Record<string,unknown>>('settings_get'); if(view==='settings') render(); }
+  try { sharedPreferences = await engineRequest<Record<string,unknown>>('settings_get'); if(view==='settings'||perGameOverlay()) render(); }
   catch(problem) { announce(problem instanceof Error?problem.message:'Shared preferences could not be read.'); }
   finally { preferencesLoading = false; }
 }
@@ -499,18 +502,8 @@ function artworkEditor(game: Game) {
 function gameOverlaySettings(game: Game) {
   const overrides = (sharedPreferences?.game_overlay_settings || {}) as Record<string, Record<string, unknown>>;
   const identity = Object.keys(overrides).find(key => pathKey(key) === pathKey(game.path)) || game.path;
-  const current = { ...sharedPreferences, ...overrides[identity], ...gameOverlayDrafts.get(game.id) };
-  const fields: [string, string, [unknown, string][]][] = [
-    ['overlay_controls', 'Controls', [['unified', 'Unified'], ['classic', 'Advanced']]],
-    ['overlay_welcome', 'Welcome message', [[false, 'Off'], [true, 'On']]],
-    ['overlay_live_stats', 'Live statistics', [[false, 'Off'], [true, 'On']]],
-    ['optiscaler_ui', 'OptiScaler menu', [[false, 'Off'], [true, 'On']]],
-    ['optiscaler_intro', 'OptiScaler intro', [[false, 'Off'], [true, 'On']]],
-    ['optiscaler_hotkey', 'OptiScaler shortcut', [['Insert', 'Insert'], ['F8', 'F8'], ['Disabled', 'Disabled']]],
-    ['reshade_ui', 'ReShade menu', [[false, 'Off'], [true, 'On']]],
-    ['reshade_intro', 'ReShade welcome', [[false, 'Off'], [true, 'On']]],
-  ];
-  return `<section class="glass-section"><h2>Overlay for this game</h2><p>${overrides[identity] ? 'This game has its own overlay choices.' : 'This game currently inherits app settings.'} Native menu changes take effect after restarting the game.</p>${!sharedPreferences ? '<button class="quiet" data-action="load-settings">Load current overlay settings</button>' : ''}<div class="inner-card">${fields.map(([key, title, options]) => `<label class="field"><span><strong>${title}</strong></span><select data-game-overlay="${key}" ${!sharedPreferences ? 'disabled' : ''}>${options.map(([value, label]) => `<option value="${e(JSON.stringify(value))}" ${JSON.stringify(value) === JSON.stringify(current[key]) ? 'selected' : ''}>${label}</option>`).join('')}</select></label>`).join('')}</div><div class="operation-actions extra-actions"><button class="primary" data-action="save-game-overlay" ${!backend.enabled || !sharedPreferences ? 'disabled' : ''}>Review this game’s preferences</button><button class="quiet" data-action="inherit-game-overlay" ${!backend.enabled || !sharedPreferences ? 'disabled' : ''}>Use app settings</button><button class="quiet" data-action="apply-game-overlay" ${!backend.enabled || !sharedPreferences ? 'disabled' : ''}>Review overlay update</button></div></section>`;
+  const current = mergeOverlay({...snapshot?.preferences,...sharedPreferences},overrides[identity],gameOverlayDrafts.get(game.id));
+  return `<section class="glass-section"><h2>Overlay for this game</h2><p>${overrides[identity] ? 'This game has its own overlay choices.' : 'This game currently inherits app settings.'} Changes are reviewed before saving. Restart the game after applying an overlay update.</p>${!sharedPreferences ? '<button class="quiet" data-action="load-settings">Load current overlay settings</button>' : ''}</section>${settingsContent({category:'overlay',preferences:current,changes:{},glassDefaults:snapshot?.overlayDefaults||{},enabled:backend.enabled&&Boolean(sharedPreferences),platform:snapshot?.platform,icon,gridConnected,games:snapshot?.games||[],game,reportSelection:supportSelection})}${current.overlay_renderer==='optiscaler'?`<section class="glass-section"><h3>Use native menus for this game</h3><p>The review will keep the original menus available. Other games keep their choices.</p><label><input id="overlay-make-default" type="checkbox"/> Make this my default</label></section>`:''}<div class="operation-actions extra-actions"><button class="primary" data-action="save-game-overlay" ${!backend.enabled || !sharedPreferences ? 'disabled' : ''}>Review this game's preferences</button><button class="quiet" data-action="inherit-game-overlay" ${!backend.enabled || !sharedPreferences ? 'disabled' : ''}>Use app settings</button><button class="quiet" data-action="apply-game-overlay" ${!backend.enabled || !sharedPreferences ? 'disabled' : ''}>Review overlay update</button></div>`;
 }
 function startupSettingsView() {
   if(!pendingInstall)return '';
@@ -686,13 +679,38 @@ function controlGuide() {
 }
 function currentPreferences() { return { ...snapshot?.preferences, ...sharedPreferences, ...preferenceChanges }; }
 function sharedSettings() {
-  return `${!backend.enabled ? notice('Read-only preview', 'Showing saved settings. Game, Steam and shared preference actions are disabled.') : !sharedPreferences ? '<button class="quiet" data-action="load-settings">Load shared preferences</button>' : ''}${settingsContent({category:settingsCategory,preferences:{...snapshot?.preferences,...sharedPreferences},changes:preferenceChanges,glassDefaults:snapshot?.overlayDefaults||{},enabled:backend.enabled&&Boolean(sharedPreferences),platform:snapshot?.platform,icon,gridConnected,games:snapshot?.games||[],reportSelection:supportSelection,overlayReport:snapshot?.overlayReport,hardware:snapshot?.hardware})}<div class="section-footer"><span>Shared preferences change after review.</span><button class="primary" data-action="save-settings" ${!backend.enabled||!sharedPreferences||!Object.keys(preferenceChanges).length?'disabled':''}>Review preferences</button></div>`;
+  return `${!backend.enabled ? notice('Read-only preview', 'Showing saved settings. Game, Steam and shared preference actions are disabled.') : !sharedPreferences ? '<button class="quiet" data-action="load-settings">Load shared preferences</button>' : ''}${settingsContent({category:settingsCategory,preferences:{...snapshot?.preferences,...sharedPreferences},changes:preferenceChanges,glassDefaults:snapshot?.overlayDefaults||{},enabled:backend.enabled&&Boolean(sharedPreferences),platform:snapshot?.platform,icon,gridConnected,games:snapshot?.games||[],reportSelection:supportSelection,overlayReport:snapshot?.overlayReport,hardware:snapshot?.hardware,previewGame:snapshot?.games.find(g=>g.id===overlayPreviewId)})}<div class="section-footer"><span>Shared preferences change after review.</span><button class="primary" data-action="save-settings" ${!backend.enabled||!sharedPreferences||!Object.keys(preferenceChanges).length?'disabled':''}>Review preferences</button></div>`;
+}
+function perGameOverlay() { return view==='details'&&detailsSection==='overlay' ? selectedGame() : undefined; }
+function overlayWorkingPreferences() {
+  const game=perGameOverlay();if(!game)return currentPreferences();
+  const overrides=(sharedPreferences?.game_overlay_settings||{}) as Record<string,Record<string,unknown>>;
+  const identity=Object.keys(overrides).find(key=>pathKey(key)===pathKey(game.path))||game.path;
+  return mergeOverlay({...snapshot?.preferences,...sharedPreferences},overrides[identity],gameOverlayDrafts.get(game.id));
+}
+function editOverlayPreference(key:string,value:unknown) {
+  const game=perGameOverlay();
+  const changes=game ? {...gameOverlayDrafts.get(game.id),[key]:value} : {...preferenceChanges,[key]:value};
+  if(key==='overlay_renderer'&&value==='optiscaler'){
+    Object.assign(changes,{optiscaler_ui:true,reshade_ui:true});
+    if(overlayWorkingPreferences().optiscaler_hotkey==='Disabled')changes.optiscaler_hotkey='Insert';
+  }
+  if(game)gameOverlayDrafts.set(game.id,changes);else Object.assign(preferenceChanges,changes);
 }
 function editGlass(key: string, value: unknown) {
-  const current={...snapshot?.overlayDefaults,...currentPreferences().overlay_appearance as Record<string,unknown>};
+  const current={...snapshot?.overlayDefaults,...overlayWorkingPreferences().overlay_appearance as Record<string,unknown>};
   current[key]=value;
+  if(key==='AccentMode'&&value==='custom'){
+    const game=perGameOverlay()||snapshot?.games.find(g=>g.id===overlayPreviewId)||snapshot?.games[0];
+    current.AccentColor=game?.accent||game?.artworkAccent||'#d8d5ce';
+  }
   if (key==='AccentCharacter') { const x=Math.min(Number(value)/50,1); current.AccentTint=Math.round(20+60*x*x*(3-2*x)); }
-  preferenceChanges.overlay_appearance=current;
+  editOverlayPreference('overlay_appearance',current);
+}
+function editOverlaySurface(base:string,tint:boolean) {
+  const glass={...snapshot?.overlayDefaults,...overlayWorkingPreferences().overlay_appearance as Record<string,unknown>};
+  editOverlayPreference('overlay_theme',tint?'accent':base);
+  editOverlayPreference('overlay_appearance',surfaceChanges(glass,base,tint,snapshot?.overlayThemes));
 }
 let settingsLayout: ResizeObserver | undefined;
 function setupSettingsLayout() {
@@ -845,17 +863,27 @@ function bind() {
   app.querySelector<HTMLInputElement>('#review-trust')?.addEventListener('change', syncReviewConfirm);
   app.querySelectorAll<HTMLInputElement>('[data-supported-token]').forEach(field => field.addEventListener('change', syncReviewConfirm));
   app.querySelectorAll<HTMLElement>('[data-settings-category]').forEach(node => node.addEventListener('click', () => { settingsCategory = node.dataset.settingsCategory!; render(); app.querySelector<HTMLElement>(`[data-settings-category="${settingsCategory}"]`)?.focus(); }));
-  app.querySelectorAll<HTMLSelectElement>('[data-preference]').forEach(node => node.addEventListener('change', () => { preferenceChanges[node.dataset.preference!] = JSON.parse(node.value); render(); app.querySelector<HTMLElement>(`[data-preference="${node.dataset.preference}"]`)?.focus(); announce('Preference changed in draft. Review to save it.'); }));
-  app.querySelectorAll<HTMLElement>('[data-preference-toggle]').forEach(node=>node.addEventListener('click',()=>{ const key=node.dataset.preferenceToggle!; preferenceChanges[key]=!currentPreferences()[key];render();app.querySelector<HTMLElement>(`[data-preference-toggle="${key}"]`)?.focus(); }));
+  app.querySelectorAll<HTMLSelectElement>('[data-preference]').forEach(node => node.addEventListener('change', () => { editOverlayPreference(node.dataset.preference!,JSON.parse(node.value)); render(); app.querySelector<HTMLElement>(`[data-preference="${node.dataset.preference}"]`)?.focus(); announce('Preference changed in draft. Review to save it.'); }));
+  app.querySelectorAll<HTMLElement>('[data-preference-toggle]').forEach(node=>node.addEventListener('click',()=>{ const key=node.dataset.preferenceToggle!; editOverlayPreference(key,!overlayWorkingPreferences()[key]);render();app.querySelector<HTMLElement>(`[data-preference-toggle="${key}"]`)?.focus(); }));
   app.querySelectorAll<HTMLSelectElement>('[data-glass]').forEach(node=>node.addEventListener('change',()=>{editGlass(node.dataset.glass!,JSON.parse(node.value));render();app.querySelector<HTMLElement>(`[data-glass="${node.dataset.glass}"]`)?.focus();}));
   app.querySelectorAll<HTMLInputElement>('[data-glass-range]').forEach(node=>node.addEventListener('input',()=>{editGlass(node.dataset.glassRange!,Number(node.value));const save=app.querySelector<HTMLButtonElement>('[data-action="save-settings"]');if(save)save.disabled=false;}));
   app.querySelectorAll<HTMLElement>('[data-overlay-layout]').forEach(node=>node.addEventListener('click',()=>{editGlass('Layout',node.dataset.overlayLayout);render();app.querySelector<HTMLElement>(`[data-overlay-layout="${node.dataset.overlayLayout}"]`)?.focus();}));
-  app.querySelectorAll<HTMLElement>('[data-overlay-theme]').forEach(node=>node.addEventListener('click',()=>{
-    const theme=node.dataset.overlayTheme!, defaults=snapshot?.overlayThemes?.[theme];if(!defaults)return;
-    const keys=['Theme','Custom','LightTint','DarkTint','ClearTint','AccentTint','Blur','Grain','BlendStrength','SurfaceBlend','InvertDark','TextDepth','AccentCharacter'];
-    preferenceChanges.overlay_theme=theme;for(const key of keys)editGlass(key,defaults[key]);
-    render();app.querySelector<HTMLElement>(`[data-overlay-theme="${theme}"]`)?.focus();
+  app.querySelectorAll<HTMLElement>('[data-overlay-surface]').forEach(node=>node.addEventListener('click',()=>{
+    const glass={...snapshot?.overlayDefaults,...overlayWorkingPreferences().overlay_appearance as Record<string,unknown>};
+    editOverlaySurface(node.dataset.overlaySurface!,glass.Theme===4);render();app.querySelector<HTMLElement>(`[data-overlay-surface="${node.dataset.overlaySurface}"]`)?.focus();
   }));
+  app.querySelector<HTMLElement>('[data-overlay-tint]')?.addEventListener('click',()=>{
+    const glass={...snapshot?.overlayDefaults,...overlayWorkingPreferences().overlay_appearance as Record<string,unknown>};
+    editOverlaySurface(overlaySurface(glass),glass.Theme!==4);render();app.querySelector<HTMLElement>('[data-overlay-tint]')?.focus();
+  });
+  app.querySelector<HTMLSelectElement>('#overlay-preview-game')?.addEventListener('change',event=>{
+    overlayPreviewId=(event.target as HTMLSelectElement).value;
+    render();app.querySelector<HTMLElement>('#overlay-preview-game')?.focus();
+  });
+  app.querySelector<HTMLInputElement>('#overlay-preview-search')?.addEventListener('input',event=>{
+    const text=(event.target as HTMLInputElement).value.toLowerCase();
+    app.querySelectorAll<HTMLOptionElement>('#overlay-preview-game option').forEach(option=>{option.hidden=!option.textContent?.toLowerCase().includes(text);});
+  });
   app.querySelectorAll<HTMLInputElement>('[data-support-game]').forEach(node=>node.addEventListener('change',()=>{if(node.checked)supportSelection.add(node.dataset.supportGame!);else supportSelection.delete(node.dataset.supportGame!);const button=app.querySelector<HTMLButtonElement>('[data-action="support-report"]');if(button)button.disabled=!supportSelection.size||!backend.enabled;}));
   app.querySelectorAll<HTMLElement>('[data-show-game]').forEach(node=>node.addEventListener('click',()=>{const removed=(currentPreferences().removed_games||[]) as string[];void withOperation('Show removed game','settings_review',{changes:{removed_games:removed.filter(path=>pathKey(path)!==pathKey(node.dataset.showGame!))}});}));
   app.querySelectorAll<HTMLElement>('[data-steam-profile]').forEach(node=>node.addEventListener('click',()=>{ const profile=(operation?.result as Record<string,unknown>[])[Number(node.dataset.steamProfile)];if(profile)void withOperation('Review Steam artwork profile','settings_review',{changes:{steam_artwork_profile:{root:profile.root,userid:profile.userid}}}); }));
@@ -880,7 +908,7 @@ function bind() {
     if (['Control', 'Alt', 'Shift', 'Meta'].includes(event.key)) return;
     const key = event.key.length === 1 ? event.key.toUpperCase() : event.key;
     const value = [event.ctrlKey ? 'Ctrl' : '', event.altKey ? 'Alt' : '', event.shiftKey ? 'Shift' : '', key].filter(Boolean).join('+');
-    (event.target as HTMLInputElement).value = value; preferenceChanges.panel_hotkey = value;
+    (event.target as HTMLInputElement).value = value; editOverlayPreference('panel_hotkey',value);
   });
   app.querySelectorAll<HTMLElement>('[data-provider-default]').forEach(node => node.addEventListener('click', () => void withOperation('Review default package', 'settings_review', { changes: { runtime_provider: node.dataset.providerDefault } })));
   app.querySelectorAll<HTMLElement>('[data-mfg-default]').forEach(node => node.addEventListener('click', () => void withOperation('Review MFG package', 'settings_review', { changes: { mfg_provider: node.dataset.mfgDefault } })));
@@ -955,7 +983,7 @@ function action(name: string) {
   if (name === 'library-art-refresh') void withOperation('Refresh artwork','media',{rows:(snapshot?.games||[]).map(game=>({game:game.path,name:game.name,appid:game.appid,source:game.source})),refresh:true},'inspect');
   if (name === 'library-art-sync') void withOperation('Review library artwork sync','art_sync_review',{rows:(snapshot?.games||[]).map(game=>({game:game.path,name:game.name,appid:game.appid,source:game.source}))});
   if (name === 'support-report') void (async()=>{try{const rows:EngineRow[]=[];for(const game of snapshot?.games||[])if(supportSelection.has(game.id))rows.push(...await getEngineRows(game));if(!rows.length)throw new Error('Choose at least one available game.');await withOperation('Prepare bug report','report_draft',{rows},'report-draft');}catch(problem){announce(problem instanceof Error?problem.message:'The report could not be prepared.');}})();
-  if (name === 'reset-panel-shortcut' || name === 'disable-panel-shortcut') { const value=name==='disable-panel-shortcut'?'Disabled':snapshot?.preferenceDefaults?.panel_hotkey;if(typeof value==='string'){preferenceChanges.panel_hotkey=value;render();} }
+  if (name === 'reset-panel-shortcut' || name === 'disable-panel-shortcut') { const value=name==='disable-panel-shortcut'?'Disabled':snapshot?.preferenceDefaults?.panel_hotkey;if(typeof value==='string'){editOverlayPreference('panel_hotkey',value);render();} }
   if (name === 'inspect-package') void withOperation('Inspect local package', 'package_inspect', { path: packageSource }, 'inspect-package');
   if (name === 'use-package') { const result = operation?.result as Record<string, unknown>; if (result?.token && app.querySelector<HTMLInputElement>('#package-trust')?.checked) void withOperation('Choose package', 'package_use', { token: result.token, trusted: true }, 'inspect'); }
   if (name === 'copy-game-path') { const game=selectedGame(); if(game&&backend.enabled)void navigator.clipboard.writeText(game.path).then(()=>announce('Location copied.')).catch(()=>announce('Clipboard unavailable.')); }
@@ -965,6 +993,7 @@ function action(name: string) {
   if (name === 'review-report') { const draft = operation?.result as ReportDraft; if (draft?.reports) void withOperation('Review bug report', 'report_preview', { ids: draft.reports.map(report => report.id), edits: reportEdits, logs: app.querySelector<HTMLInputElement>('#report-logs')?.checked, notes: app.querySelector<HTMLInputElement>('#report-notes')?.checked }); }
   if (name === 'global-review') { const nr = app.querySelector<HTMLSelectElement>('#global-nr')?.value, mfg = app.querySelector<HTMLSelectElement>('#global-mfg')?.value; void withOperation('Review bulk graphics changes', 'global_review', { ...(nr === 'keep' ? {} : { nr: nr === 'true' }), ...(mfg === 'keep' ? {} : { mfg: Number(mfg) }) }); }
   if (name === 'overlay-menu-review') { const values = { ...sharedPreferences, ...preferenceChanges }; void withOperation('Review game menus', 'overlay_ui_review', Object.fromEntries(['optiscaler_ui', 'optiscaler_intro', 'reshade_ui', 'reshade_intro', 'optiscaler_hotkey'].map(key => [key, values[key]]))); }
+  if (name === 'overlay-defaults-all') void withOperation('Review applying overlay defaults to every game','settings_review',{changes:{...preferenceChanges,game_overlay_settings:{}}});
   if (name === 'overlay-package-review') void withOperation('Review overlay packages', 'overlay_package_review', { ...sharedPreferences, ...preferenceChanges });
   if (name === 'storage-inventory') void withOperation('App storage', 'storage_inventory', {}, 'inspect');
   if (name === 'storage-review') void withOperation('Review download cleanup', 'storage_review', {});
@@ -977,10 +1006,10 @@ function action(name: string) {
     const game = selectedGame(); if (!game || !sharedPreferences) return;
     const overrides = { ...(sharedPreferences.game_overlay_settings || {}) as Record<string, Record<string, unknown>> };
     const identity = Object.keys(overrides).find(key => pathKey(key) === pathKey(game.path)) || game.path;
-    if (name === 'inherit-game-overlay') delete overrides[identity];
-    else overrides[identity] = { ...overrides[identity], ...gameOverlayDrafts.get(game.id) };
-    if (name === 'apply-game-overlay') void withOperation('Review this game’s overlay', 'overlay_package_review', { ...sharedPreferences, game_overlay_settings: overrides, target_games: [game.path] });
-    else void withOperation('Review per-game overlay preferences', 'settings_review', { changes: { game_overlay_settings: overrides } });
+    const changes=overlayPreferenceChanges(sharedPreferences,identity,overrides[identity]||{},gameOverlayDrafts.get(game.id)||{},name!=='inherit-game-overlay'&&app.querySelector<HTMLInputElement>('#overlay-make-default')?.checked===true);
+    if (name === 'inherit-game-overlay') { delete overrides[identity];changes.game_overlay_settings=overrides; }
+    if (name === 'apply-game-overlay') void withOperation('Review this game’s overlay', 'overlay_package_review', { ...sharedPreferences,...changes,target_games: [game.path] });
+    else void withOperation('Review per-game overlay preferences', 'settings_review', { changes });
   }
   if (['artwork-store', 'artwork-reset', 'artwork-sync', 'sgdb-status', 'sgdb-connect', 'sgdb-disconnect', 'sgdb-search'].includes(name)) void artworkAction(name);
 }
@@ -1010,6 +1039,7 @@ async function confirmOperation() {
     if (['settings_review', 'executable_review', 'package_use'].includes(state.method || '') || state.origin === 'presets') {
       try {
         sharedPreferences = await engineRequest<Record<string, unknown>>('settings_get');
+        if(state.changedKeys?.includes('game_overlay_settings'))gameOverlayDrafts.clear();
         for (const key of state.changedKeys || []) delete preferenceChanges[key];
         if (snapshot) for (const key of Object.keys(snapshot.defaults)) if (key in sharedPreferences) snapshot.defaults[key] = sharedPreferences[key];
         if(snapshot)snapshot.preferences={...snapshot.preferences,...sharedPreferences};

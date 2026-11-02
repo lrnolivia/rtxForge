@@ -709,3 +709,21 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
 :root[data-surface=details] .details-page[data-hero-compact=true] .details-title-copy h1.game-title{text-shadow:0 2px 6px rgb(12 18 23 / calc(.25 + var(--title-veil,0) * .45)),0 0 2px rgb(12 18 23 / var(--title-veil,0))}
 :root[data-surface=details][data-theme=light] .details-page .details-title-copy h1.game-title{color:color-mix(in srgb,var(--game-title-color,var(--accent)) var(--hero-title-bright,100%),var(--hero-card-ink,var(--accent)))}
 :root[data-surface=details][data-theme=light] .details-page[data-hero-compact=true] .details-title-copy h1.game-title{color:var(--hero-card-ink,var(--accent));text-shadow:none}
+
+/* Shared overlay presentation: controls and a stable, controller-readable preview. */
+.overlay-presentation{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(240px,1fr);gap:24px;align-items:start}
+.overlay-presentation>*{min-width:0}
+.overlay-preview-card{padding:20px;border:1px solid var(--rim);border-radius:20px;background:rgb(128 128 128 / .08)}
+.overlay-preview-card h3{margin:0 0 14px}
+.overlay-preview-card p{font-size:.85em;color:var(--muted)}
+.overlay-screen{position:relative;overflow:hidden;aspect-ratio:180/104;border-radius:14px;background:linear-gradient(140deg,#334b53,#19252d);isolation:isolate}
+.overlay-screen>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.55}
+.overlay-screen>svg{position:relative;width:100%;height:100%;--accent:var(--preview-accent);color:#f2eee7;filter:drop-shadow(0 3px 5px #0008)}
+.overlay-screen[data-preview-surface=light]>svg{color:#eef1ef}
+.overlay-screen[data-preview-surface=dark]>svg{color:#242931}
+.overlay-screen[data-preview-tint=true]>svg{color:var(--preview-accent)}
+.overlay-preview-card .field{gap:12px;flex-wrap:wrap}
+.overlay-preview-card select{min-width:0;max-width:100%;width:100%}
+.overlay-preview-search{display:grid;gap:8px;margin-top:16px}
+.overlay-preview-search input{min-width:0;width:100%;box-sizing:border-box}
+@media(max-width:760px){.overlay-presentation{grid-template-columns:minmax(0,1fr)}.overlay-preview-card{padding:16px}.overlay-screen{max-height:240px}}

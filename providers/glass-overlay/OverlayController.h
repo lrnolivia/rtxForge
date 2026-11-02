@@ -657,8 +657,9 @@ struct Controller : Rml::EventListener
         }
         const auto inside=[&](const char* id){for(auto* e=target;e;e=e->GetParentNode())if(e->GetId()==id)return true;return false;};
         if(event.GetType()=="keydown"&&spectrumOpen&&(inside("spectrum-plane")||inside("spectrum-hue"))){const int key=event.GetParameter<int>("key_identifier",0);bool changed=false;
+            if(key==Rml::Input::KI_RETURN||key==Rml::Input::KI_NUMPADENTER||key==Rml::Input::KI_SPACE){if(inside("spectrum-plane"))ChooseSpectrum();else Element("spectrum-plane")->Focus();event.StopPropagation();return;}
             if(inside("spectrum-hue")&&(key==Rml::Input::KI_LEFT||key==Rml::Input::KI_RIGHT)){spectrumHsv[0]=std::clamp(spectrumHsv[0]+(key==Rml::Input::KI_RIGHT?1.f:-1.f)/MaterialColor::SpectrumHues,0.f,.9999f);changed=true;}
-            else if(inside("spectrum-plane")){if(key==Rml::Input::KI_LEFT||key==Rml::Input::KI_RIGHT){spectrumHsv[1]=std::clamp(spectrumHsv[1]+(key==Rml::Input::KI_RIGHT?.02f:-.02f),0.f,1.f);changed=true;}if(key==Rml::Input::KI_UP||key==Rml::Input::KI_DOWN){spectrumHsv[2]=std::clamp(spectrumHsv[2]+(key==Rml::Input::KI_UP?.02f:-.02f),0.f,1.f);changed=true;}if(key==Rml::Input::KI_RETURN){ChooseSpectrum();event.StopPropagation();return;}}
+            else if(inside("spectrum-plane")){if(key==Rml::Input::KI_LEFT||key==Rml::Input::KI_RIGHT){spectrumHsv[1]=std::clamp(spectrumHsv[1]+(key==Rml::Input::KI_RIGHT?.02f:-.02f),0.f,1.f);changed=true;}if(key==Rml::Input::KI_UP||key==Rml::Input::KI_DOWN){spectrumHsv[2]=std::clamp(spectrumHsv[2]+(key==Rml::Input::KI_UP?.02f:-.02f),0.f,1.f);changed=true;}}
             if(changed){Spectrum();event.StopPropagation();return;}}
         const bool previewTarget=inside("preview-original");
         if(event.GetType()=="mouseup"||(event.GetType()=="blur"&&previewTarget)||(event.GetType()=="keyup"&&(event.GetParameter<int>("key_identifier",0)==Rml::Input::KI_SPACE||event.GetParameter<int>("key_identifier",0)==Rml::Input::KI_RETURN)))EndNrPreview();

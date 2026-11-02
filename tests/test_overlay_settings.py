@@ -19,6 +19,13 @@ class OverlaySettingsTest(unittest.TestCase):
             self.assertFalse(overlay.native_shortcuts({'reshade_ui':False},root,'bin/game.exe')[1]['enabled'])
             (folder/'OptiScaler.ini').write_text('[Menu]\nShortcutKey=0\n')
             self.assertEqual(overlay.native_shortcuts({},root,'bin/game.exe')[0],{'name':'OptiScaler','key':'Insert','enabled':False})
+            (folder/'ReShade.ini').write_text('[INPUT]\nKeyOverlay=0,0,0,0\n[rtxForge.UI]\nReShadeShortcut=119,1,0,0\n')
+            self.assertEqual(overlay.native_shortcuts({},root,'bin/game.exe')[1],{'name':'ReShade','key':'Ctrl+F8','enabled':False})
+            managed=overlay.native_shortcuts({'overlay_renderer':'game','optiscaler_hotkey':'F8'},root,'bin/game.exe')
+            self.assertEqual(managed[0],{'name':'OptiScaler','key':'F8','enabled':True})
+            (folder/'ReShade.ini').write_text('[INPUT]\nKeyOverlay=36,1,0,0\n')
+            (folder/'OptiScaler.ini').write_text('not an INI file\n')
+            self.assertEqual(overlay.native_shortcuts({},root,'bin/game.exe'),[{'name':'ReShade','key':'Ctrl+Home','enabled':True}])
 
     def test_native_onboarding_is_local_unless_default_explicitly_selected(self):
         game=str(Path('one').resolve())

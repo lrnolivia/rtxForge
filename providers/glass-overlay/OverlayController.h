@@ -92,7 +92,7 @@ struct Controller : Rml::EventListener
         Element("settings-title")->QuerySelector("span")->SetInnerRML(setupStep==0?"FIND YOUR FIT":setupStep==1?"APPEARANCE":"USE NATIVE OVERLAYS?");
         Element("setup-intro")->SetInnerRML(setupStep==0?"Choose how your controls fit into the game.":setupStep==1?"A different look, if you like.":"Turn off rtxForge for this game and use ReShade / OptiScaler instead.");
         Element("setup-next-label")->SetInnerRML(setupStep==0?"Let’s play":"Done");
-        Element("setup-skip-label")->SetInnerRML(setupStep==2?"Cancel":"Skip");SetupShortcuts();Select("setup-layouts","setup-layout-"+layout);PlaceSetup();Element(setupStep==2?"setup-native-confirm":"setup-next")->Focus();
+        Element("setup-skip-label")->SetInnerRML(setupStep==2?"Cancel":"Skip");SetupShortcuts();Select("setup-layouts","setup-layout-"+layout);PlaceSetup();Element(setupStep==2?"setup-skip":"setup-next")->Focus();
         Visible("appearance-more",false);Visible("appearance-god-mode",false);
     }
     void PlaceSetup() {
@@ -117,7 +117,7 @@ struct Controller : Rml::EventListener
     void NativeOverlaysResult(bool error) {
         nativeOverlayPending=false;Disabled("setup-native-confirm",false);
         if(error){Element("setup-native-message")->SetInnerRML("Couldn’t save. Try again.");return;}
-        primaryMenu="optiscaler";toastUntil=0;FinishSetup();for(const auto* id:{"main-panel","type-panel","inspector","welcome"})Visible(id,false);
+        primaryMenu="optiscaler";menuSettings["opti-menu"]=menuSettings["reshade-menu"]=true;if(optiShortcut=="Disabled")optiShortcut="Insert";toastUntil=0;FinishSetup();SavePreferences();for(const auto* id:{"main-panel","type-panel","inspector","welcome"})Visible(id,false);
     }
     double layoutPickerDismiss=0;
     Rml::Element* statusHome=nullptr;Rml::Element* compactLiveHome=nullptr;
@@ -162,6 +162,7 @@ struct Controller : Rml::EventListener
         for(const auto* name:{"font-family","font-size","font-weight","--accent-soft"})if(const auto* value=popup->GetProperty(name))mirror->SetProperty(name,value->ToString());
         mirror->SetProperty("color",BaseAppearance()==1?"#282624":"#faf9f7");std::string markup;
         for(int i=0;i<popup->GetNumChildren();++i){auto* option=popup->GetChild(i);if(!option->IsVisible())continue;const auto point=option->GetAbsoluteOffset(Rml::BoxArea::Border),bounds=option->GetBox().GetSize(Rml::BoxArea::Border);markup+="<div class=\"menu-option"+std::string(option->IsPseudoClassSet("checked")||option->IsPseudoClassSet("hover")?" active":"")+"\" style=\"left:"+std::to_string(point.x-at.x)+"px;top:"+std::to_string(point.y-at.y)+"px;width:"+std::to_string(bounds.x)+"px;height:"+std::to_string(bounds.y)+"px\">"+option->GetInnerRML()+"</div>";}
+        const float excess=popup->GetScrollHeight()-popup->GetClientHeight();if(excess>1){const float dp=document->GetContext()->GetDensityIndependentPixelRatio(),track=std::max(1.f,size.y-24*dp),thumb=std::min(track,std::max(28*dp,track*popup->GetClientHeight()/popup->GetScrollHeight()));markup+="<div class=\"menu-scroll\" style=\"top:"+std::to_string(12*dp+(track-thumb)*popup->GetScrollTop()/excess)+"px;height:"+std::to_string(thumb)+"px\"/>";}
         if(markup!=selectMenuMarkup){selectMenuMarkup=markup;mirror->SetInnerRML(markup);}return true;
     }
     void Labels() {

@@ -52,7 +52,7 @@
         </div>
         <div id="settings-screen" class="settings-screen" style="display: none">
           <div class="settings-title"><button id="settings-back" class="back-button" title="Back" aria-label="Back"><img class="glyph" src="icons/arrow-left-light.png" /></button><h2><img class="glyph" src="icons/sliders-light.png" /><span>SETTINGS</span></h2><button id="settings-modal-close" class="close modal-close" title="Close settings"><span class="stroke first"/><span class="stroke second"/></button></div>
-          <button id="open-appearance" class="settings-appearance"><img class="glyph" src="icons/palette-light.png" /><span>Appearance<span class="setting-description">Theme, text and scale</span></span><span class="chevron" /></button>
+          <button id="open-appearance" class="settings-appearance"><img class="glyph" src="icons/palette-light.png" /><span>Appearance<span class="setting-description">Surface, text and scale</span></span><span class="chevron" /></button>
           <div id="settings-cards"><div class="settings-group"><h3>LAYOUT</h3>
             <div id="layout-switch" class="settings-layouts">
               <button id="layout-floating" class="selected"><span class="layout-screen layout-sidebar"><span class="mini-panel"><span class="mini-heading"/><span class="mini-card"/><span class="mini-card"/><span class="mini-card"/></span><span class="mini-popover"/></span><span class="layout-caption">Side Panel</span></button>

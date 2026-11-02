@@ -326,10 +326,11 @@ struct Runtime {
         return true;
     }
 };
-std::unique_ptr<Runtime> runtime;std::mutex mutex;bool logged=false;std::atomic_bool notificationsActive{false};
+std::unique_ptr<Runtime> runtime;std::mutex mutex;bool logged=false;std::atomic_bool notificationsActive{false},nativeOverlaysSelected{false};
 }
 extern "C" bool __cdecl ForgeGlassSkipHiddenFrame(bool visible){std::unique_lock guard(mutex,std::try_to_lock);return guard.owns_lock()&&runtime&&runtime->SkipHidden(visible);}
 extern "C" __declspec(dllexport) bool __cdecl ForgeGlassNotificationsActive(){return notificationsActive.load(std::memory_order_relaxed);}
+extern "C" __declspec(dllexport) bool __cdecl ForgeGlassNativeOverlaysSelected(){return nativeOverlaysSelected.load(std::memory_order_relaxed);}
 extern "C" __declspec(dllexport) bool __cdecl ForgeGlassDraw(const ForgeGlass::Host* host,ForgeGlass::Frame* frame) {
     if(!host||!frame||host->size!=sizeof(*host)||host->abi!=ForgeGlass::Abi||frame->size!=sizeof(*frame)||frame->abi!=ForgeGlass::Abi||!frame->device||!frame->target||frame->colorSpace>2)return false;
     std::unique_lock guard(mutex,std::try_to_lock);if(!guard.owns_lock())return true;
@@ -342,10 +343,10 @@ extern "C" __declspec(dllexport) bool __cdecl ForgeGlassDraw(const ForgeGlass::H
         const bool sdr=desc.Format==DXGI_FORMAT_R8G8B8A8_UNORM||desc.Format==DXGI_FORMAT_R8G8B8A8_UNORM_SRGB||desc.Format==DXGI_FORMAT_R8G8B8A8_TYPELESS||desc.Format==DXGI_FORMAT_B8G8R8A8_UNORM||desc.Format==DXGI_FORMAT_B8G8R8A8_UNORM_SRGB||desc.Format==DXGI_FORMAT_B8G8R8A8_TYPELESS;
         const bool supported=frame->colorSpace==0?sdr:frame->colorSpace==1?desc.Format==DXGI_FORMAT_R16G16B16A16_FLOAT:desc.Format==DXGI_FORMAT_R10G10B10A2_UNORM;
         if(!supported)throw std::runtime_error("Unsupported glass format and transfer-function pair");
-        if(runtime&&(runtime->device.Get()!=frame->device||runtime->width!=int(desc.Width)||runtime->height!=int(desc.Height)||runtime->format!=desc.Format||runtime->outputSpace!=frame->colorSpace)){notificationsActive.store(false,std::memory_order_relaxed);runtime.reset();}
-        if(!runtime){if(host->log)host->log(host->user,"Initializing glass overlay");runtime=std::make_unique<Runtime>();runtime->Init(*host,*frame,desc);if(host->log)host->log(host->user,runtime->dx12Interop?"Glass overlay ready: DirectX 12":"Glass overlay ready: DirectX 11");}drawn=runtime->Draw(*host,*frame,target.Get());notificationsActive.store(drawn&&runtime->controls->primaryMenu!="optiscaler",std::memory_order_relaxed);
-    }catch(const std::exception& error){notificationsActive.store(false,std::memory_order_relaxed);runtime.reset();if(!logged&&host->log){host->log(host->user,error.what());logged=true;}}
+        if(runtime&&(runtime->device.Get()!=frame->device||runtime->width!=int(desc.Width)||runtime->height!=int(desc.Height)||runtime->format!=desc.Format||runtime->outputSpace!=frame->colorSpace)){notificationsActive.store(false,std::memory_order_relaxed);nativeOverlaysSelected.store(false,std::memory_order_relaxed);runtime.reset();}
+        if(!runtime){if(host->log)host->log(host->user,"Initializing glass overlay");runtime=std::make_unique<Runtime>();runtime->Init(*host,*frame,desc);if(host->log)host->log(host->user,runtime->dx12Interop?"Glass overlay ready: DirectX 12":"Glass overlay ready: DirectX 11");}drawn=runtime->Draw(*host,*frame,target.Get());notificationsActive.store(drawn&&runtime->controls->primaryMenu!="optiscaler",std::memory_order_relaxed);nativeOverlaysSelected.store(runtime->controls->primaryMenu=="optiscaler",std::memory_order_relaxed);
+    }catch(const std::exception& error){notificationsActive.store(false,std::memory_order_relaxed);nativeOverlaysSelected.store(false,std::memory_order_relaxed);runtime.reset();if(!logged&&host->log){host->log(host->user,error.what());logged=true;}}
     if(uninitialize)CoUninitialize();return drawn;
 }
 void ReleaseGlassBridge12();
-extern "C" __declspec(dllexport) void __cdecl ForgeGlassRelease(){std::lock_guard guard(mutex);notificationsActive.store(false,std::memory_order_relaxed);runtime.reset();ReleaseGlassBridge12();logged=false;}
+extern "C" __declspec(dllexport) void __cdecl ForgeGlassRelease(){std::lock_guard guard(mutex);notificationsActive.store(false,std::memory_order_relaxed);nativeOverlaysSelected.store(false,std::memory_order_relaxed);runtime.reset();ReleaseGlassBridge12();logged=false;}

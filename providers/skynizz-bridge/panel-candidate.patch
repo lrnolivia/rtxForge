@@ -685,3 +685,46 @@ index f66bf145..2beff788 100644
 +            tuning.tone, tuning.skin,
              cfg.DlssNrAutoMask.value_or_default() ? 1 : 0, g_nr.guideMvScaleX * mvToWork,
              g_nr.guideMvScaleY * mvToWork);
+diff --git a/OptiScaler/framegen/dlssg/Companion.h b/OptiScaler/framegen/dlssg/Companion.h
+--- a/OptiScaler/framegen/dlssg/Companion.h
++++ b/OptiScaler/framegen/dlssg/Companion.h
+@@ -6,6 +6,8 @@
+ #include <cstddef>
+ #include <atomic>
+ #include <mutex>
++#include <cwctype>
++#include <string>
+ #pragma comment(lib, "Advapi32.lib")
+ 
+ // A local-session mailbox, not an overlay or an injection interface. Commands
+@@ -174,13 +176,30 @@
+     // Read the per-user overlay choice once, before menu input is handled.
+     // Preserve the game's safe legacy/swapchain rendering choice. Switching
+     // menus is a next-launch preference, never a live hook reinitialization.
++    // An explicit per-game choice takes precedence over app defaults. Read
++    // once per launch, keeping registry and file work off the frame loop.
++    static const DWORD nativeChoice = [] {
++        wchar_t executable[32768]{};const auto count=GetModuleFileNameW(nullptr,executable,32768);
++        DWORD choice=0,bytes=sizeof(choice);
++        if(RegGetValueW(HKEY_CURRENT_USER,L"Software\\rtxForge\\Overlay\\NativeMenus",executable,RRF_RT_REG_DWORD,nullptr,&choice,&bytes)==ERROR_SUCCESS)return choice;
++        wchar_t folder[32768]{};if(!GetEnvironmentVariableW(L"LOCALAPPDATA",folder,32768))return DWORD(0xffffffff);
++        uint64_t identity=14695981039346656037ull;for(DWORD i=0;i<count;++i){identity^=uint64_t(towlower(executable[i]));identity*=1099511628211ull;}
++        const auto path=std::wstring(folder)+L"/rtxForge/overlay-games/"+std::to_wstring(identity)+L".ini";
++        wchar_t primary[32]{};GetPrivateProfileStringW(L"Appearance",L"PrimaryMenu",L"",primary,32,path.c_str());
++        if(std::wstring(primary)!=L"optiscaler")return DWORD(0xffffffff);
++        wchar_t shortcut[32]{};GetPrivateProfileStringW(L"Appearance",L"OptiShortcut",L"Insert",shortcut,32,path.c_str());
++        const DWORD key=std::wstring(shortcut)==L"Disabled"?0:std::wstring(shortcut)==L"F8"?VK_F8:VK_INSERT;
++        return (GetPrivateProfileIntW(L"Appearance",L"Menu-opti-menu",1,path.c_str())?0x10000u:0u)|key;
++    }();
+     static const bool originalMenu = [] {
++        if(nativeChoice!=0xffffffffu)return (nativeChoice&0x10000u)!=0;
+         DWORD enabled = 0, bytes = sizeof(DWORD);
+         return RegGetValueW(HKEY_CURRENT_USER, L"Software\\rtxForge\\Overlay", L"UseOptiScaler",
+                             RRF_RT_REG_DWORD, nullptr, &enabled, &bytes) == ERROR_SUCCESS && enabled == 1;
+     }();
+     static const int menuKey = [] {
+         if (!originalMenu) return 0;
++        if(nativeChoice!=0xffffffffu)return int(nativeChoice&0xffffu);
+         DWORD key = VK_INSERT, bytes = sizeof(DWORD);
+         RegGetValueW(HKEY_CURRENT_USER, L"Software\\rtxForge\\Overlay", L"ShortcutKey",
+                      RRF_RT_REG_DWORD, nullptr, &key, &bytes);

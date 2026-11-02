@@ -7,11 +7,11 @@
 #include "reshade.hpp"
 
 extern "C" __declspec(dllexport) const char *NAME = "rtxForge quiet startup";
-extern "C" __declspec(dllexport) const char *DESCRIPTION = "Hides ReShade's startup banner; the ReShade menu and its shortcut are unchanged.";
+extern "C" __declspec(dllexport) const char *DESCRIPTION = "Integrates overlay notifications and an explicit native-menu handoff.";
 
 namespace
 {
-bool quiet = true, read = false;
+bool quiet = true, read = false, nativeMenuRestored=false;
 
 void on_overlay(reshade::api::effect_runtime *)
 {
@@ -26,6 +26,17 @@ void on_overlay(reshade::api::effect_runtime *)
     // the glass renderer owns notifications, suppress that duplicate card.
     // Its separate ##issue_notice diagnostic window is deliberately untouched.
     const auto glass=GetModuleHandleW(L"rtxforge-glass.dll");
+    const auto useNative=glass?reinterpret_cast<bool (__cdecl*)()>(GetProcAddress(glass,"ForgeGlassNativeOverlaysSelected")):nullptr;
+    if(!nativeMenuRestored&&useNative&&useNative()){
+        // The confirmed handoff is per game. Restore ReShade's saved binding
+        // through its own configuration API, without replacing a custom key.
+        char key[80]="";size_t size=sizeof(key);
+        if(!reshade::get_config_value(nullptr,"rtxForge.UI","ReShadeShortcut",key,&size)||key[0]=='0'||key[0]==0)lstrcpyA(key,"36,0,0,0");
+        char current[80]="";size=sizeof(current);
+        if(reshade::get_config_value(nullptr,"INPUT","KeyOverlay",current,&size)&&current[0]!='0'&&current[0]!=0)lstrcpyA(key,current);
+        reshade::set_config_value(nullptr,"INPUT","KeyOverlay",static_cast<const char*>(key));
+        reshade::set_config_value(nullptr,"rtxForge.UI","ReShadeDisabled",static_cast<const char*>("0"));nativeMenuRestored=true;
+    }
     const auto ownsNotifications=glass?reinterpret_cast<bool (__cdecl*)()>(GetProcAddress(glass,"ForgeGlassNotificationsActive")):nullptr;
     if (ownsNotifications && ownsNotifications())
     {

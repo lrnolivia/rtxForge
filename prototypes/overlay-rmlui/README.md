@@ -76,7 +76,7 @@ All headings share the same theme treatment: soft bright Clear, medium Dark, ric
 
 ### Settings ownership and notifications
 
-Desktop and Game Mode define defaults. In-game edits are saved in the current game's override, including appearance and keyboard shortcuts; they never change app defaults. The app's Apply defaults to all overlays action clears overrides and cached game appearance profiles. Close games before applying it. Package/menu file updates still use the existing reviewed Update Overlays flow.
+Desktop and Game Mode define defaults. Routine in-game edits stay in the current game's override, including appearance and shortcuts. Only the explicit Make this my default checkbox in native-overlay confirmation also changes app defaults. The app's Apply defaults to all overlays action clears overrides and cached game appearance profiles. Close games before applying it. Package/menu file updates still use the existing reviewed Update Overlays flow.
 
 The glass renderer queues a single Neural rendering active notification only after telemetry confirms NR is running and the welcome or current toast has finished. Disabling notifications suppresses it. The Feeder quiet add-on suppresses RenoDX 8.5 rc10's duplicate status card only when the initialized glass renderer exports notification ownership. Separate upstream issue notices remain available. This is a window-level integration for the pinned upstream version, not a binary patch.
 

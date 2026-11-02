@@ -1,5 +1,6 @@
 """Validated overlay preferences shared by reviews, helpers and per-game editors."""
 import os
+import configparser
 from pathlib import Path
 import overlay_policy
 import proton_overlay
@@ -107,12 +108,17 @@ def native_shortcuts(settings, game, exe=''):
             if path.stat().st_size>256*1024:continue
             parser=t.ini(path.read_text(encoding='utf-8-sig',errors='replace'))
             raw=parser.get(section,key,fallback='0x2D' if name=='OptiScaler' else '36,0,0,0')
+            if name=='OptiScaler' and 'overlay_renderer' in settings:raw={'Insert':'0x2D','F8':'0x77','Disabled':'0'}.get(settings.get('optiscaler_hotkey','Insert'),'0x2D')
             parts=[part.strip() for part in raw.split(',')]
             code=int(parts[0],16 if parts[0].lower().startswith('0x') else 10)
             mods=list(zip(('Ctrl','Shift','Alt'),[part=='1' for part in parts[1:4]])) if name=='ReShade' else []
             enabled=code!=0 and settings.get('optiscaler_ui' if name=='OptiScaler' else 'reshade_ui',True)
+            if name=='ReShade' and code==0:
+                saved=parser.get('rtxForge.UI','ReShadeShortcut',fallback='36,0,0,0').split(',')
+                code=int(saved[0]);mods=list(zip(('Ctrl','Shift','Alt'),[part.strip()=='1' for part in saved[1:4]]))
+            if not 0<=code<=255:continue
             result.append({'name':name,'key':key_name(code if code else 45 if name=='OptiScaler' else 36,mods),'enabled':enabled})
-        except (OSError,ValueError,KeyError):continue
+        except (OSError,ValueError,KeyError,configparser.Error,t.Refusal):continue
     return result
 
 

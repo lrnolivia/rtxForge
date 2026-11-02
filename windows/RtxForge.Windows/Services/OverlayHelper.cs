@@ -28,6 +28,10 @@ public static class OverlayHelper
         if(settings.GameOverlaySettings.TryGetValue(gameId,out var local)&&local["overlay_renderer"]?.ToString() is "game" or "optiscaler")renderer=local["overlay_renderer"]!.ToString();
         using var renderers=Registry.CurrentUser.CreateSubKey(@"Software\rtxForge\Overlay\Renderers");
         renderers.SetValue(executable,renderer=="game"?1:0,RegistryValueKind.DWord);
+        var menu=settings.OptiScalerUi;var shortcut=settings.OptiScalerHotkey;
+        if(local is not null){if(local["optiscaler_ui"] is not null)menu=local["optiscaler_ui"]!.GetValue<bool>();if(local["optiscaler_hotkey"] is not null)shortcut=local["optiscaler_hotkey"]!.ToString();}
+        using var nativeMenus=Registry.CurrentUser.CreateSubKey(@"Software\rtxForge\Overlay\NativeMenus");
+        nativeMenus.SetValue(executable,(menu?0x10000:0)|(shortcut=="Disabled"?0:shortcut=="F8"?0x77:0x2d),RegistryValueKind.DWord);
     }
     internal static void CacheRenderer(Game game,ForgeSettings settings)
     {

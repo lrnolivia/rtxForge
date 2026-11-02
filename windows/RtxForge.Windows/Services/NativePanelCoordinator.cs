@@ -125,12 +125,15 @@ internal sealed class NativePanelCoordinator : IDisposable
         string Key(int code)=>code is >=0x70 and <=0x87?"F"+(code-0x6f):code is >=48 and <=90?((char)code).ToString():code switch{0x2d=>"Insert",0x24=>"Home",0x23=>"End",0x2e=>"Delete",0x20=>"Space",0x09=>"Tab",0x1b=>"Escape",_=>"0x"+code.ToString("X2")};
         foreach(var (name,file,section,key) in new[]{("OptiScaler","OptiScaler.ini","Menu","ShortcutKey"),("ReShade","ReShade.ini","INPUT","KeyOverlay")})try{
             var path=new[]{folder,Path.Combine(folder,"OptiScaler"),root}.Select(basePath=>Path.Combine(basePath,file)).FirstOrDefault(File.Exists);if(path is null||new FileInfo(path).Length>256*1024)continue;
-            var current="";var raw=name=="OptiScaler"?"0x2D":"36,0,0,0";
-            foreach(var line in File.ReadLines(path)){var text=line.Trim();if(text.StartsWith('[')){current=text.Trim('[',']');continue;}var at=text.IndexOf('=');if(current.Equals(section,StringComparison.OrdinalIgnoreCase)&&at>0&&text[..at].Trim().Equals(key,StringComparison.OrdinalIgnoreCase)){raw=text[(at+1)..].Split(';')[0].Trim();break;}}
+            var current="";var raw=name=="OptiScaler"?"0x2D":"36,0,0,0";var savedKey="36,0,0,0";
+            foreach(var line in File.ReadLines(path)){var text=line.Trim();if(text.StartsWith('[')){current=text.Trim('[',']');continue;}var at=text.IndexOf('=');if(at<=0)continue;var field=text[..at].Trim();var value=text[(at+1)..].Split(';')[0].Trim();if(current.Equals(section,StringComparison.OrdinalIgnoreCase)&&field.Equals(key,StringComparison.OrdinalIgnoreCase))raw=value;if(current.Equals("rtxForge.UI",StringComparison.OrdinalIgnoreCase)&&field.Equals("ReShadeShortcut",StringComparison.OrdinalIgnoreCase))savedKey=value;}
+            if(name=="OptiScaler")raw=settings["optiscaler_hotkey"]?.ToString() switch{"F8"=>"0x77","Disabled"=>"0",_=>"0x2D"};
             var parts=raw.Split(',');var number=parts[0].Trim();var code=Convert.ToInt32(number.StartsWith("0x",StringComparison.OrdinalIgnoreCase)?number[2..]:number,number.StartsWith("0x",StringComparison.OrdinalIgnoreCase)?16:10);if(code<0||code>255)continue;
+            var enabled=code!=0&&(settings[name=="OptiScaler"?"optiscaler_ui":"reshade_ui"]?.GetValue<bool>()??true);
+            if(name=="ReShade"&&code==0){parts=savedKey.Split(',');code=Convert.ToInt32(parts[0].Trim());if(code<0||code>255)continue;}
             var caption=name=="ReShade"?(parts.Length>1&&parts[1].Trim()=="1"?"Ctrl+":"")+(parts.Length>3&&parts[3].Trim()=="1"?"Alt+":"")+(parts.Length>2&&parts[2].Trim()=="1"?"Shift+":""):"";
             caption+=Key(code==0?name=="OptiScaler"?0x2d:0x24:code);
-            result.Add(new JsonObject{["name"]=name,["key"]=caption,["enabled"]=code!=0&&(settings[name=="OptiScaler"?"optiscaler_ui":"reshade_ui"]?.GetValue<bool>()??true)});
+            result.Add(new JsonObject{["name"]=name,["key"]=caption,["enabled"]=enabled});
         }catch(Exception error)when(error is IOException or UnauthorizedAccessException or FormatException or OverflowException){ }
         return result;
     }

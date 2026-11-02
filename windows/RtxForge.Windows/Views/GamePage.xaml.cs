@@ -229,7 +229,6 @@ public sealed partial class GamePage : Page
                         Message = GameOverview.LinuxNote,
                     });
                 var overviewFacts = GameOverview.Facts(g);
-                PageHost.Children.Add(TestingGroup(g));
                 var facts = new PresetColumns(280, overviewFacts.Count > 3 ? 4 : 3) { ColumnSpacing = 12, RowSpacing = 12, Margin = new Thickness(0, 20, 0, 0) };
                 foreach (var fact in overviewFacts)
                 {
@@ -255,6 +254,7 @@ public sealed partial class GamePage : Page
                 }
                 PageHost.Children.Add(Prefs.Row("Game executable", (g.EngineRow?["exe"]?.ToString() is { Length: > 0 } exe ? exe : "No EXE detected")
                     + " · " + (shell.Settings.GameExecutables.ContainsKey(g.Id) ? "Selected by you" : "Detected automatically"), exeActions, "\uE7C3"));
+                PageHost.Children.Add(TestingGroup(g));
                 break;
 
             case "Features":

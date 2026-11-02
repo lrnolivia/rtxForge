@@ -6,7 +6,9 @@ const nav=name=>page.getByRole('navigation',{name:'Main navigation'}).getByRole(
 try{
   await page.clock.install();let fullRequests=0;page.on('request',request=>{if(request.url().includes('/api/store-background?appid=1091500'))fullRequests++;});
   await page.goto('http://127.0.0.1:1420');await page.waitForSelector('.game-card');expect(fullRequests).toBe(0);
-  await page.getByRole('button',{name:'Open Cyberpunk 2077 details',exact:true}).hover();await page.clock.fastForward(300);await expect.poll(()=>fullRequests).toBe(1);
+  const cyberpunk=page.getByRole('button',{name:'Open Cyberpunk 2077 details',exact:true});
+  await expect.poll(()=>cyberpunk.evaluate(n=>n.closest('.game-item').style.getPropertyValue('--game-accent')),{timeout:20000}).not.toBe('#b4b4b4');
+  await cyberpunk.hover();await page.clock.fastForward(300);await expect.poll(()=>fullRequests,{timeout:15000}).toBe(1);
   await page.getByRole('button',{name:'Open Cyberpunk 2077 details',exact:true}).click();
   await expect(page.locator('#scene')).toHaveAttribute('data-background-state','ready',{timeout:20000});
   await expect(page.locator('.scene-next')).toHaveCount(1);
@@ -17,9 +19,9 @@ try{
   expect(await page.locator('.hero-info-card').evaluate(n=>getComputedStyle(n).backgroundColor)).toContain(' / ');
   await expect(page.locator('.hero-artwork')).toHaveAttribute('data-info-mask','true');
   await page.clock.fastForward(800);
-  await expect(page.locator('#scene')).toHaveAttribute('data-screenshot-id','0');expect(fullRequests).toBe(1);
+  const initialShot=await page.locator('#scene').getAttribute('data-screenshot-id');expect(initialShot).toMatch(/^\d+$/);expect(fullRequests).toBe(1);
   await page.clock.fastForward(60000);
-  await expect(page.locator('#scene')).toHaveAttribute('data-screenshot-id','0');expect(fullRequests).toBe(1);
+  await expect(page.locator('#scene')).toHaveAttribute('data-screenshot-id',initialShot);expect(fullRequests).toBe(1);
   await page.getByRole('button',{name:'Appearance',exact:true}).click();
   const tint=page.getByRole('switch',{name:'Accent tint',exact:true});
   if(await tint.getAttribute('aria-checked')==='false')await tint.click();
@@ -28,16 +30,16 @@ try{
   await tint.click();expect(await page.locator('#scene').evaluate(n=>getComputedStyle(n,'::after').mixBlendMode)).toBe('normal');await tint.click();
   const gallery=page.getByRole('group',{name:'Background screenshots'});
   await expect(gallery.locator('[aria-pressed=true]')).toHaveCount(1);
-  await gallery.getByRole('button',{name:'Screenshot 4',exact:true}).click();
+  const alternative=gallery.locator('button[aria-pressed=false]').first(),chosenShot=await alternative.getAttribute('data-background-shot');await alternative.click();
   await expect(gallery.locator('[aria-pressed=true]')).toHaveCount(1);
   await expect.poll(()=>fullRequests).toBe(2);await expect(page.locator('.scene-next')).toHaveCount(1);
-  await page.clock.fastForward(1900);await expect(page.locator('#scene')).toHaveAttribute('data-screenshot-id','3');
+  await page.clock.fastForward(1900);await expect(page.locator('#scene')).toHaveAttribute('data-screenshot-id',chosenShot);
   await page.clock.fastForward(60000);expect(fullRequests).toBe(2);
   await page.reload();await page.waitForSelector('.game-card');await page.getByRole('button',{name:'Open Cyberpunk 2077 details',exact:true}).click();await page.getByRole('button',{name:'Appearance',exact:true}).click();
   await expect(gallery.locator('[aria-pressed=true]')).toHaveCount(1);
-  await expect(gallery.getByRole('button',{name:'Screenshot 4',exact:true})).toHaveAttribute('aria-pressed','true');
+  await expect(gallery.locator(`[data-background-shot="${chosenShot}"]`)).toHaveAttribute('aria-pressed','true');
   await expect(page.locator('#scene')).toHaveAttribute('data-background-state','ready',{timeout:20000});await page.clock.fastForward(800);
-  await expect(page.locator('#scene')).toHaveAttribute('data-screenshot-id','3',{timeout:20000});
+  await expect(page.locator('#scene')).toHaveAttribute('data-screenshot-id',chosenShot,{timeout:20000});
   const action=page.getByRole('button',{name:'Use Desktop framing',exact:true});expect(await action.evaluate(n=>parseFloat(getComputedStyle(n).borderTopLeftRadius))).toBeGreaterThanOrEqual(1000);
   const sidebar=page.getByRole('navigation',{name:'Game details'}).getByRole('button',{name:'Overview',exact:true});expect(await sidebar.evaluate(n=>parseFloat(getComputedStyle(n).borderTopLeftRadius))).toBeLessThan(30);
   await nav('Library').click();await expect(page.locator('#scene')).toHaveAttribute('data-hero','false');

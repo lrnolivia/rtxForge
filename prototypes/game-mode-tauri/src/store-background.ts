@@ -1,14 +1,29 @@
+import {signatureColor,accentHarmony} from './art-accent';
 export interface StoreScreenshot {id:string;full:string;thumbnail:string}
 interface StoreBackground {image:string|null}
 interface CachedBackground {url:string;width:number;height:number}
-interface BackgroundSelection {appid:string;game:string;scene:HTMLElement;ids:string[];current?:string}
+interface BackgroundSelection {appid:string;game:string;accent?:string|null;scene:HTMLElement;ids:string[];current?:string}
 const cache=new Map<string,Promise<CachedBackground|null>>(),catalogs=new Map<string,Promise<StoreScreenshot[]>>();
 const urls=new Set<string>(),choices=new Map<string,string[]>();
+const palettes=new Map<string,Promise<string|null>>(),harmonious=new Map<string,Promise<StoreScreenshot[]>>();
 let active:BackgroundSelection|undefined,fade:ReturnType<typeof setTimeout>|undefined,disposed=false,preparing=false;
 const reduced=matchMedia('(prefers-reduced-motion:reduce)');
 try{for(const [game,ids] of Object.entries(JSON.parse(localStorage.getItem('rtxforge-game-mode-backgrounds')||'{}')))if(Array.isArray(ids))choices.set(game,ids.filter(id=>typeof id==='string'&&/^[0-9]{1,6}$/.test(id)).slice(0,1));}catch{/* Use the first Store screenshot. */}
 
-export function screenshotGallery(appid:string):Promise<StoreScreenshot[]>{
+function thumbnailColor(source:string):Promise<string|null>{
+  let pending=palettes.get(source);if(pending)return pending;
+  pending=(async()=>{
+    const image=new Image();image.crossOrigin='anonymous';image.src=source;
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    try{
+      await Promise.race([image.decode(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Thumbnail unavailable')),3500);})]);
+      const canvas=document.createElement('canvas');canvas.width=64;canvas.height=64;
+      const context=canvas.getContext('2d',{willReadFrequently:true});if(!context)return null;
+      context.drawImage(image,0,0,64,64);return signatureColor(context.getImageData(0,0,64,64).data);
+    }catch{return null;}finally{clearTimeout(timer);image.src='';}
+  })();palettes.set(source,pending);if(palettes.size>32)palettes.delete(palettes.keys().next().value!);return pending;
+}
+export async function screenshotGallery(appid:string,accent?:string|null,game?:string):Promise<StoreScreenshot[]>{
   let result=catalogs.get(appid);
   if(!result){result=(async()=>{
     try{
@@ -18,7 +33,16 @@ export function screenshotGallery(appid:string):Promise<StoreScreenshot[]>{
       return Array.isArray(data.screenshots)?data.screenshots.slice(0,100):[];
     }catch{return [];}
   })();catalogs.set(appid,result);}
-  return result;
+  const gallery=await result;
+  if(!accent||!/^#[0-9a-f]{6}$/i.test(accent)||game&&choices.get(game)?.some(id=>gallery.some(shot=>shot.id===id)))return gallery;
+  const key=appid+'|'+accent;let ranked=harmonious.get(key);
+  if(!ranked){ranked=(async()=>{
+    const candidates=gallery.slice(0,8),scores=new Map<string,number>();let index=0;
+    async function worker(){while(index<candidates.length){const shot=candidates[index++];scores.set(shot.id,accentHarmony(accent!,await thumbnailColor(shot.thumbnail)));}}
+    await Promise.all([worker(),worker()]);
+    return [...gallery].sort((a,b)=>(scores.get(a.id)??2)-(scores.get(b.id)??2));
+  })();harmonious.set(key,ranked);if(harmonious.size>32)harmonious.delete(harmonious.keys().next().value!);}
+  return ranked;
 }
 export function selectedScreenshots(game:string,gallery:StoreScreenshot[]):string[]{
   const valid=new Set(gallery.map(shot=>shot.id));
@@ -33,10 +57,10 @@ export function chooseScreenshots(game:string,ids:string[]){
   if(active?.game===game){const state=active;clearFade();state.ids=chosen;void display(state);}
 }
 /** Warm only the game the person has paused on, never the entire library. */
-export async function prepareStoreBackground(appid:string,game:string){
+export async function prepareStoreBackground(appid:string,game:string,accent?:string|null){
   if(preparing||disposed)return;
   preparing=true;
-  try{const gallery=await screenshotGallery(appid);if(gallery.length)await load(appid,selectedScreenshots(game,gallery)[0]);}
+  try{const gallery=await screenshotGallery(appid,accent,game);if(gallery.length)await load(appid,selectedScreenshots(game,gallery)[0]);}
   finally{preparing=false;}
 }
 async function load(appid:string,id?:string):Promise<CachedBackground|null>{
@@ -82,14 +106,14 @@ async function display(state:BackgroundSelection){
   }
 }
 /** One chosen screenshot per game; there is no rotation timer or background prefetch. */
-export function applyStoreBackground(appid:string|null|undefined,scene:HTMLElement,game=appid||''){
+export function applyStoreBackground(appid:string|null|undefined,scene:HTMLElement,game=appid||'',accent?:string|null){
   const key=appid&&/^[1-9][0-9]{0,9}$/.test(appid)?appid:'';
-  if(active?.appid===key&&active.game===game&&active.scene===scene)return;
+  if(active?.appid===key&&active.game===game&&active.scene===scene&&active.accent===accent)return;
   clearFade();active=undefined;
   scene.style.backgroundImage='';scene.dataset.hero='false';delete scene.dataset.storeQuality;
   scene.dataset.backgroundGame=key;scene.dataset.backgroundState=key?'loading':'none';
   if(!key)return;
-  const state:BackgroundSelection={appid:key,game,scene,ids:[]};active=state;
-  void screenshotGallery(key).then(gallery=>{if(active!==state)return;state.ids=selectedScreenshots(game,gallery);void display(state);});
+  const state:BackgroundSelection={appid:key,game,accent,scene,ids:[]};active=state;
+  void screenshotGallery(key,accent,game).then(gallery=>{if(active!==state)return;state.ids=selectedScreenshots(game,gallery);void display(state);});
 }
-window.addEventListener('pagehide',()=>{disposed=true;clearFade();for(const url of urls)URL.revokeObjectURL(url);urls.clear();cache.clear();catalogs.clear();},{once:true});
+window.addEventListener('pagehide',()=>{disposed=true;clearFade();for(const url of urls)URL.revokeObjectURL(url);urls.clear();cache.clear();catalogs.clear();palettes.clear();harmonious.clear();},{once:true});

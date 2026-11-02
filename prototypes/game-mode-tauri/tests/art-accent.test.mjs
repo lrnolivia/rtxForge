@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 import ts from 'typescript';
 const source=readFileSync(new URL('../src/art-accent.ts',import.meta.url),'utf8');
 const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
-const {signatureColor,selectionInk,heroColors,heroBadge}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
+const {signatureColor,selectionInk,heroColors,heroBadge,sectionHeadingColor,accentHarmony}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
 test('artwork signature matches the real shared library algorithm',()=>{
  const solid=color=>Array.from({length:100},()=>[...color,255]);
  const fixtures=[solid([225,40,30]),solid([32,106,235]),solid([230,199,60]),solid([165,63,186]),solid([128,128,128]),[...solid([70,170,70]),...solid([220,45,30]).slice(0,30)],[...solid([250,250,250]),...solid([10,10,10])],Array.from({length:250},(_,i)=>[(i*37)%256,(i*73)%256,(i*113)%256,i%3?255:0])];
@@ -22,6 +22,12 @@ test('solid selected-card fills retain readable ink for vivid and custom colors'
  for(const color of colors){const a=lum(color),b=lum(selectionInk(color));assert.ok((Math.max(a,b)+.05)/(Math.min(a,b)+.05)>=4.5,color);}
 });
 
+test('default screenshot harmony follows the configured hue, with neutral accents preferring neutral art',()=>{
+ assert.ok(accentHarmony('#25a4df','#267cbe')<accentHarmony('#25a4df','#d14a32'));
+ assert.ok(accentHarmony('#ed4035','#d14a32')<accentHarmony('#ed4035','#267cbe'));
+ assert.ok(accentHarmony('#b4b4b4',null)<accentHarmony('#b4b4b4','#ff0000'));
+});
+
 const luminance=rgb=>rgb.reduce((sum,v,i)=>{v/=255;return sum+[.2126,.7152,.0722][i]*(v<=.04045?v/12.92:((v+.055)/1.055)**2.4);},0);
 const rgb=hex=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));
 const contrast=(a,b)=>(Math.max(luminance(a),luminance(b))+.05)/(Math.min(luminance(a),luminance(b))+.05);
@@ -30,7 +36,8 @@ test('hero text adapts to artwork and info cards keep pale text across themes',(
   const result=heroColors(color,light,background);
   const protectedBackground=background.map((v,i)=>v*(1-result.titleVeil)+[12,18,23][i]*result.titleVeil);
   assert.ok(contrast(rgb(result.title),protectedBackground)>=3,color+' title '+JSON.stringify(background));
-  assert.ok(contrast(rgb(result.ink),[12,18,23])>=7,'Pale text contrasts with its tight dark shadow');
+  if(light)assert.ok(contrast(rgb(result.ink),[190,198,208])>=4.5,'Light surfaces use readable dark accent text');
+  else assert.ok(contrast(rgb(result.ink),[12,18,23])>=7,'Pale text contrasts with its tight dark shadow');
   if(!light&&color!=='#ffd950')assert.ok(luminance(rgb(result.ink))>.8,'Non-yellow Clear/Dark hero cards keep pale text');
  }
 });
@@ -47,7 +54,7 @@ test('yellow titles remain bright with a protected backdrop, and badges follow l
 
 test('section headings keep light accent ink with contrast against their narrow edge',()=>{
  for(const accent of ['#009b8e','#cc4ee8','#fffb00','#0d222c','#ff3020','#123ee8']){
-  const ink=rgb(heroColors(accent,false).title),edge=[12,18,23].map(value=>value*.85+255*.15);
+  const ink=rgb(sectionHeadingColor(accent)),edge=[12,18,23].map(value=>value*.7+255*.3);
   assert.ok(luminance(ink)>.4,'Keep section heading ink light');
   assert.ok(contrast(ink,edge)>=4.5,'The heading edge protects light ink even over white imagery');
  }
@@ -67,7 +74,13 @@ test('info cards retain a gentle accent and pale text independently of artwork b
  for(const color of ['#fffb00','#ffd950','#307de8','#ff473a'])for(const light of [false,true])for(const background of [[255,255,255],[28,32,36],[120,120,120]]){
   const result=heroColors(color,light,background),card=rgb(result.card),ink=rgb(result.ink);
   assert.deepEqual(card,rgb(color).map(value=>Math.round(value*.8+255*.2)),'The frost retains a soft game-accent tint');
-  assert.ok(luminance(ink)>.8,'Info text stays pale');
-  assert.ok(contrast(ink,[12,18,23])>=7,'A tight text shadow defines pale glyphs without darkening the whole card');
+  if(light){
+   assert.ok(luminance(ink)<.15,'Light info cards use dark accent ink');
+   const surface=rgb(color).map((value,index)=>value*.12+[247,248,250][index]*.72*.88+background[index]*(1-.12-.72*.88));
+   assert.ok(contrast(ink,surface)>=4.5,'Dark accent text remains readable on translucent Light glass');
+  }else{
+   assert.ok(luminance(ink)>.8,'Clear and Dark info text stays pale');
+   assert.ok(contrast(ink,[12,18,23])>=7,'A tight text shadow defines pale glyphs without darkening the whole card');
+  }
  }
 });

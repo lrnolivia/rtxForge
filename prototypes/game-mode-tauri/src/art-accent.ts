@@ -79,6 +79,25 @@ export function selectionInk(color:string):string {
 const luminance=(rgb:number[])=>rgb.reduce((sum,value,index)=>{const x=value/255;return sum+[.2126,.7152,.0722][index]*(x<=.04045?x/12.92:((x+.055)/1.055)**2.4);},0);
 const parse=(color:string)=>[1,3,5].map(i=>parseInt(color.slice(i,i+2),16));
 const mix=(a:number[],b:number[],amount:number)=>a.map((v,i)=>Math.round(v*amount+b[i]*(1-amount)));
+export function accentHarmony(accent:string,color:string|null):number {
+  const [light,a,b]=lab(...parse(accent) as [number,number,number]),chroma=Math.hypot(a,b);
+  if(!color)return chroma<.04?0:.8;
+  const [otherLight,x,y]=lab(...parse(color) as [number,number,number]),otherChroma=Math.hypot(x,y);
+  if(chroma<.04)return otherChroma+Math.abs(light-otherLight)*.1;
+  const hue=(1-Math.cos(Math.atan2(b,a)-Math.atan2(y,x)))/2;
+  return hue*.8+Math.abs(chroma-otherChroma)*.5+Math.abs(light-otherLight)*.1;
+}
+export function lightAccentInk(accent:string):string {
+  const rgb=parse(/^#[0-9a-f]{6}$/i.test(accent)?accent:'#d8d5ce');
+  const [,a,b]=lab(...rgb as [number,number,number]);
+  return hex(rgbFromLch(.3,Math.min(Math.hypot(a,b),.1),Math.atan2(b,a)));
+}
+export function sectionHeadingColor(accent:string,light=false):string {
+  if(light)return lightAccentInk(accent);
+  const rgb=parse(/^#[0-9a-f]{6}$/i.test(accent)?accent:'#d8d5ce');
+  const [l,a,b]=lab(...rgb as [number,number,number]);
+  return hex(rgbFromLch(Math.max(l,.9),Math.min(Math.hypot(a,b),.12),Math.atan2(b,a)));
+}
 export function heroColors(accent:string,light:boolean,background:number[]=[65,70,75],cardBackground=background,tinted=true) {
   const rgb=parse(/^#[0-9a-f]{6}$/i.test(accent)?accent:'#d8d5ce');
   const [l,a,b]=lab(...rgb as [number,number,number]),c=Math.hypot(a,b),h=Math.atan2(b,a);
@@ -88,7 +107,7 @@ export function heroColors(accent:string,light:boolean,background:number[]=[65,7
   const title=c<.025?rgbFromLch(.97,c,h):rgbFromLch(Math.max(l,.8),Math.min(c,.24),h);
   let titleVeil=0;
   while(titleVeil<.94&&against(title,mix([12,18,23],background,titleVeil))<4.5)titleVeil+=.02;
-  return {title:hex(title),titleVeil,card:tinted?hex(mix(rgb,[255,255,255],.8)):'#ffffff',ink:'#f8f6f1',light};
+  return {title:hex(title),titleVeil,card:tinted?hex(mix(rgb,[255,255,255],.8)):'#ffffff',ink:light?lightAccentInk(accent):'#f8f6f1',light};
 }
 export function heroBadge(background:number[]=[65,70,75]) {
   return luminance(background)>.35

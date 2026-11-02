@@ -662,7 +662,7 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
 .hero-artwork[data-info-mask=true]{mask-image:linear-gradient(to bottom,#000 0%,#000 45%,rgb(0 0 0 / .98) 56%,rgb(0 0 0 / .82) 68%,rgb(0 0 0 / .46) 81%,rgb(0 0 0 / .13) 92%,transparent 100%),var(--info-mask);mask-size:100% 100%,var(--info-mask-width) var(--info-mask-height);mask-position:0 0,var(--info-mask-x) var(--info-mask-y);mask-repeat:no-repeat;mask-composite:add}
 
 /* Keep section headings light; the narrow edge protects them on bright glass. */
-:root[data-surface=details] .details-page .detail-body :is(h2,h3){color:var(--section-heading-color,#f5f3ee);-webkit-text-stroke:1px rgb(12 18 23 / .85);paint-order:stroke fill;text-shadow:0 1px 2px rgb(12 18 23 / .5)}
+:root[data-surface=details] .details-page .detail-body :is(h2,h3){color:var(--section-heading-color,#f5f3ee);-webkit-text-stroke:.5px rgb(12 18 23 / .7);paint-order:stroke fill;text-shadow:0 2px 6px rgb(12 18 23 / .32)}
 
 .hero-framing-editor .section-heading{margin-bottom:8px;gap:20px}
 .hero-framing-editor .section-heading h2{margin:0}
@@ -685,11 +685,21 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
 @media(max-width:760px){.hero-framing-editor .section-heading{align-items:start;flex-direction:column;gap:6px}.hero-framing-editor .hero-focus-sliders{max-width:none;gap:14px}.hero-framing-controls{gap:18px}.hero-framing-editor .operation-actions{flex-wrap:wrap}.framing-preview-action{right:10px;bottom:10px}}
 
 /* Details keeps its perimeter above the edge-to-edge hero artwork. */
-:root[data-surface=details] .content{border:1px solid rgb(244 247 250 / .26);border-top-color:rgb(244 247 250 / .45);box-shadow:0 18px 48px rgb(8 13 20 / .34),0 4px 14px rgb(8 13 20 / .18)}
-:root[data-surface=details][data-tint=true] .content{border-color:color-mix(in srgb,var(--accent) 22%,rgb(244 247 250 / .28));border-top-color:color-mix(in srgb,var(--accent) 18%,rgb(244 247 250 / .5));box-shadow:0 18px 48px rgb(8 13 20 / .34),0 7px 30px color-mix(in srgb,var(--accent) 18%,transparent)}
+:root[data-surface=details] .content{border:1px solid rgb(244 247 250 / .13);border-top-color:rgb(244 247 250 / .225);box-shadow:0 18px 48px rgb(8 13 20 / .34),0 4px 14px rgb(8 13 20 / .18)}
+:root[data-surface=details][data-tint=true] .content{border-color:color-mix(in srgb,var(--accent) 11%,rgb(244 247 250 / .14));border-top-color:color-mix(in srgb,var(--accent) 9%,rgb(244 247 250 / .25));box-shadow:0 18px 48px rgb(8 13 20 / .34),0 7px 30px color-mix(in srgb,var(--accent) 18%,transparent)}
 
 @media(min-width:761px){.details-identity{right:58px}}
 @media(max-width:760px){.details-identity{right:48px}}
 /* Feather the glow at the scrollport rather than cutting it at a hard edge. */
 #game-results:has(.games:not(.game-list)){mask-image:linear-gradient(to bottom,transparent,#000 12px,#000 calc(100% - 12px),transparent)}
 .games:not(.game-list){padding-top:28px;padding-bottom:28px}
+
+:root[data-theme=light] .hero-info-card{background:rgb(247 248 250 / .72);color:var(--hero-card-ink,#26323d)}
+:root[data-theme=light][data-tint=true] .hero-info-card{background:color-mix(in srgb,var(--accent) 12%,rgb(247 248 250 / .72))}
+:root[data-theme=light] .hero-info-card :is(.hero-metadata,.hero-description,.hero-cache-note,.hero-credits){text-shadow:none}
+:root[data-theme=light][data-surface=details] .details-page .detail-body :is(h2,h3){-webkit-text-stroke:0;text-shadow:none}
+
+/* Hidden blur layers must not allocate a graphics surface for every game. */
+.artwork-glow{display:none;transition:opacity .17s var(--ease),display .17s allow-discrete}
+.game-item:is(:hover,:focus-within,[data-selected=true]) .artwork-glow{display:block}
+@starting-style{.game-item:is(:hover,:focus-within,[data-selected=true]) .artwork-glow{opacity:0}}

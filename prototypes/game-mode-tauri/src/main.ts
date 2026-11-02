@@ -11,7 +11,7 @@ import { heroCrop, analyzeHeroFocus } from './hero-focus';
 import { applyStoreBackground, prepareStoreBackground, screenshotGallery, selectedScreenshots, chooseScreenshots, type StoreScreenshot } from './store-background';
 import { webviewZoom } from './display-scale';
 import { controllerGlyph, type ControllerFamily } from './controller-glyphs';
-import { artworkAccent, selectionInk, heroColors, heroBadge, sampleHero } from './art-accent';
+import { artworkAccent, selectionInk, heroColors, heroBadge, sampleHero, sectionHeadingColor } from './art-accent';
 import { enhanceSelects, closeSelectMenu, selectMenuOpen } from './select-menu';
 import { settingsSections, settingsContent } from './settings-content';
 import { engineRequest, engineStatus, type EngineRow, type EngineStatus, type Review } from './engine';
@@ -255,9 +255,11 @@ async function resolveLibraryAccents(data:Snapshot,games:Game[]=data.games) {
     const accent=game.artworkAccentReady?game.artworkAccent:await artworkAccent(game.id,source);
     // A cached local poster can arrive while the remote fallback is still sampling.
     if(snapshot!==data||(game.art||game.capsule||game.hero)!==source)return;
-    if(!game.artworkAccentReady)game.artworkAccent=accent||'#b4b4b4';
+    if(!game.artworkAccentReady){game.artworkAccent=accent||'#b4b4b4';game.artworkAccentReady=true;}
     const item=app.querySelector<HTMLElement>(`[data-library-game="${CSS.escape(game.id)}"]`);if(item){const color=detailsAccent(game);item.style.setProperty('--game-accent',color||'var(--ink)');item.style.setProperty('--game-selected-ink',selectionInk(color||'#b4b4b4'));}
-    if(view==='details'&&selectedId===game.id){applyDetailsAccent();if(detailsSection==='appearance')render();}
+    const card=item?.querySelector<HTMLElement>('.game-card');
+    if(view==='library'&&game.appid&&currentPreferences().online_art!==false&&card&&(card.matches(':hover')||document.activeElement===card))void prepareStoreBackground(game.appid,game.id,detailsAccent(game));
+    if(view==='details'&&selectedId===game.id){applyDetailsAccent();if(detailsSection==='appearance')render();else if(currentPreferences().online_art!==false)applyStoreBackground(game.appid,document.querySelector<HTMLElement>('#scene')!,game.id,detailsAccent(game));}
   }));
 }
 function details() {
@@ -324,7 +326,7 @@ function applyDetailsAccent() {
   const colors=heroColors(accent||'#d8d5ce',appearance.theme==='light',sampled||undefined,cardSample||undefined,appearance.tint);
   const badgeColors=heroBadge(image&&badge?sampleHero(image,badge.getBoundingClientRect())||undefined:undefined);
   content.style.setProperty('--game-title-color',colors.title);
-  content.style.setProperty('--section-heading-color',colors.title);
+  content.style.setProperty('--section-heading-color',sectionHeadingColor(accent||'#d8d5ce',appearance.theme==='light'));
   content.style.setProperty('--title-veil',String(colors.titleVeil));
   content.style.setProperty('--hero-card-color',colors.card);
   content.style.setProperty('--hero-card-ink',colors.ink);
@@ -335,10 +337,11 @@ function applyDetailsAccent() {
 }
 function screenshotChoices(game:Game){
   if(!game.appid||currentPreferences().online_art===false)return '';
-  const shots=backgroundGalleries.get(game.appid);
-  if(!shots&&!loadingGalleries.has(game.appid)){
-    loadingGalleries.add(game.appid);
-    void screenshotGallery(game.appid).then(gallery=>{backgroundGalleries.set(game.appid!,gallery);loadingGalleries.delete(game.appid!);if(view==='details'&&selectedId===game.id&&detailsSection==='appearance')render();});
+  const accent=detailsAccent(game),key=game.id+'|'+(accent||'neutral');
+  const shots=backgroundGalleries.get(key);
+  if(!shots&&!loadingGalleries.has(key)&&(game.accent||game.artworkAccentReady)){
+    loadingGalleries.add(key);
+    void screenshotGallery(game.appid,accent,game.id).then(gallery=>{backgroundGalleries.set(key,gallery);loadingGalleries.delete(key);if(view==='details'&&selectedId===game.id&&detailsSection==='appearance')render();});
   }
   const chosen=selectedScreenshots(game.id,shots||[]);
   return `<section class="glass-section"><h2>Page Background</h2><p>Choose one screenshot for this game.</p><div class="screenshot-choices" role="group" aria-label="Background screenshots">${(shots||[]).map((shot,index)=>`<button class="screenshot-choice" data-background-shot="${e(shot.id)}" aria-label="Screenshot ${index+1}" aria-pressed="${chosen.includes(shot.id)}">${shot.thumbnail?`<img loading="lazy" src="${e(shot.thumbnail)}" alt=""/>`:''}<span>Screenshot ${index+1}</span>${chosen.includes(shot.id)?icon('check'):''}</button>`).join('')}</div>${!shots?'<p class="subtle">Loading Steam screenshots...</p>':!shots.length?'<p>No Steam screenshots are available for this game.</p>':''}</section>`;
@@ -742,7 +745,7 @@ function render() {
   app.innerHTML = `<div class="shell"><header class="app-header" data-tauri-drag-region><a href="#library" class="brand" data-route="library" aria-label="rtxForge library"><img src="/logo-mark.png" alt="" /><span>rtxForge</span></a><nav class="glass main-nav" aria-label="Main navigation">${tabs.map(tab => `<button data-route="${tab.id}" ${view === tab.id || view === 'details' && tab.id === 'library' ? 'aria-current="page"' : ''}>${icon(tab.icon)}<span>${tab.label}</span></button>`).join('')}</nav><div class="shell-more"><button class="menu-button" id="shell-menu-button" data-action="shell-menu" aria-label="More options" aria-haspopup="menu" aria-expanded="${shellMenuOpen}">${icon('dots')}</button><div class="shell-menu glass-section" id="shell-menu" role="menu" ${shellMenuOpen ? '' : 'hidden'}><button role="menuitem" data-route="library">${icon('books')}Library</button><button role="menuitem" data-action="menu-appearance">${icon('palette')}Appearance</button><button role="menuitem" data-action="refresh">${icon('refresh')}Refresh library</button><button role="menuitem" data-action="menu-library">${icon('folder')}Library options</button><button role="menuitem" data-action="menu-controls">${icon('controller')}Controls</button><div class="menu-divider"></div><button role="menuitem" data-action="toggle-window-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}${backend.fullscreen?'Switch to Windowed Mode':'Switch to Fullscreen'}</button><button role="menuitem" data-action="minimize-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('minus')}Minimize</button><button role="menuitem" data-action="desktop-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}Desktop mode</button><button role="menuitem" data-action="exit-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('arrow')}Exit rtxForge</button><span class="menu-preview">${backend.enabled?'Engine connected':'Read-only preview'}</span></div></div></header><main id="content" class="content glass" aria-label="${view === 'details' ? 'Game details' : tabs.find(tab => tab.id === view)?.label}">${content}</main><footer class="app-footer"><span>${icon('eye')}<span>${backend.enabled?'Game Mode':'Read-only demo'}</span></span><div id="input-hints">${hints()}</div><span class="reader-state"><i class="${snapshot ? 'connected' : ''}"></i>${loading ? 'Reading library' : snapshot ? 'Local library loaded' : 'Reader unavailable'}</span></footer></div>`;
   const game = selectedGame(), scene = document.querySelector<HTMLElement>('#scene')!;
   if(view==='details'&&snapshot&&game)prioritizeArtwork(snapshot,game.id);
-  applyStoreBackground(view==='details'&&currentPreferences().online_art!==false?game?.appid:null,scene,game?.id);
+  applyStoreBackground(view==='details'&&currentPreferences().online_art!==false&&game&&(game.accent||game.artworkAccentReady)?game.appid:null,scene,game?.id,detailsAccent(game));
   applyDetailsAccent();
   applyOperationAccent();
   bind();
@@ -1108,7 +1111,7 @@ function prepareFocusedBackground(event:Event){
   if(!card||view!=='library'||currentPreferences().online_art===false)return;
   if(event instanceof PointerEvent&&card.contains(event.relatedTarget as Node|null))return;
   clearTimeout(backgroundIntent);
-  backgroundIntent=setTimeout(()=>{const game=snapshot?.games.find(game=>game.id===card.dataset.game);if(view==='library'&&game?.appid)void prepareStoreBackground(game.appid,game.id);},250);
+  backgroundIntent=setTimeout(()=>{const game=snapshot?.games.find(game=>game.id===card.dataset.game);if(view==='library'&&game?.appid&&(game.accent||game.artworkAccentReady))void prepareStoreBackground(game.appid,game.id,detailsAccent(game));},250);
 }
 app.addEventListener('pointerover',prepareFocusedBackground);
 app.addEventListener('focusin',prepareFocusedBackground);

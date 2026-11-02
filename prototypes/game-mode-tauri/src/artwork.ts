@@ -72,7 +72,10 @@ export async function hydrateArtwork(snapshot:Snapshot,changed:(game:Game,role:s
           const result='__TAURI_INTERNALS__' in window
             ? await (await import('@tauri-apps/api/core')).invoke<{image:string|null}>('artwork',{id:game.id,role})
             : await (await fetch('/api/artwork?'+new URLSearchParams({id:game.id,role}))).json();
-          if(!result.image||!state.active)continue;
+          if(!result.image||!state.active){
+            if(state.active&&role==='poster'){game.artworkAccentReady=true;changed(game,role);}
+            continue;
+          }
           // Sample the original saved bytes, as Desktop does. A lossy display
           // thumbnail can pick a different winning color cluster.
           const original=imageBlob(result.image);raw=imageUrl(original,state);

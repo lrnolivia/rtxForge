@@ -79,7 +79,7 @@ export function selectionInk(color:string):string {
 const luminance=(rgb:number[])=>rgb.reduce((sum,value,index)=>{const x=value/255;return sum+[.2126,.7152,.0722][index]*(x<=.04045?x/12.92:((x+.055)/1.055)**2.4);},0);
 const parse=(color:string)=>[1,3,5].map(i=>parseInt(color.slice(i,i+2),16));
 const mix=(a:number[],b:number[],amount:number)=>a.map((v,i)=>Math.round(v*amount+b[i]*(1-amount)));
-export function heroColors(accent:string,light:boolean,background:number[]=[65,70,75],cardBackground=background) {
+export function heroColors(accent:string,light:boolean,background:number[]=[65,70,75],cardBackground=background,tinted=true) {
   const rgb=parse(/^#[0-9a-f]{6}$/i.test(accent)?accent:'#d8d5ce');
   const [l,a,b]=lab(...rgb as [number,number,number]),c=Math.hypot(a,b),h=Math.atan2(b,a);
   const against=(ink:number[],surface:number[])=>(Math.max(luminance(ink),luminance(surface))+.05)/(Math.min(luminance(ink),luminance(surface))+.05);
@@ -88,7 +88,7 @@ export function heroColors(accent:string,light:boolean,background:number[]=[65,7
   const title=c<.025?rgbFromLch(.97,c,h):rgbFromLch(Math.max(l,.8),Math.min(c,.24),h);
   let titleVeil=0;
   while(titleVeil<.94&&against(title,mix([12,18,23],background,titleVeil))<4.5)titleVeil+=.02;
-  return {title:hex(title),titleVeil,card:'#ffffff',ink:'#f8f6f1',cardOpacity:.12,cardBrightness:.36,light};
+  return {title:hex(title),titleVeil,card:tinted?hex(mix(rgb,[255,255,255],.8)):'#ffffff',ink:'#f8f6f1',cardOpacity:tinted?.18:.12,cardBrightness:tinted?.28:.36,light};
 }
 export function heroBadge(background:number[]=[65,70,75]) {
   return luminance(background)>.35
@@ -113,7 +113,7 @@ export function sampleHero(image:HTMLImageElement,area:DOMRect,includeVeil=false
       if(pixels[i+3]<128)continue;count++;
       const pixel=i/4,x=area.x+(pixel%24+.5)*area.width/24,y=area.y+(Math.floor(pixel/24)+.5)*area.height/8;
       const t=clamp(.5+((x-bounds.x-bounds.width/2)*dx+(y-bounds.y-bounds.height/2)*dy)/length,0,1);
-      const alpha=opacity*(t<.38?.94+(.65-.94)*t/.38:t<.9?.65*(.9-t)/.52:0);
+      const alpha=opacity*(t<.28?.94+(.6-.94)*t/.28:t<.55?.6*(.55-t)/.27:0);
       for(let j=0;j<3;j++)sums[j]+=pixels[i+j]*(1-alpha)+[12,18,23][j]*alpha;
     }
     return count?sums.map(v=>v/count):null;

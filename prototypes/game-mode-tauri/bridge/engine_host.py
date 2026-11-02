@@ -56,6 +56,7 @@ def main():
     selected_settings = native_settings if native_settings.is_file() else legacy_settings
     media.settings_path = lambda _config: selected_settings
     media.DEFAULTS.setdefault('borderless_4k', False)
+    media.DEFAULTS.setdefault('game_hero_focus', {})
     media.DEFAULTS.setdefault('game_folders', [])
     media.DEFAULTS.setdefault('library_folders', [])
     try:

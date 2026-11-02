@@ -19,6 +19,12 @@ export function moveFocus(direction: Direction): void {
 export function installInput(back: () => void, switchTab: (delta: number) => void, connected: (state: boolean, id?: string) => void, activity: () => void = () => {}) {
   document.addEventListener('keydown', event => {
     activity();
+    const focalField=event.target as HTMLInputElement;
+    if(focalField.matches('[data-hero-focus]')&&(event.key==='ArrowUp'||event.key==='ArrowDown')){
+      event.preventDefault();
+      document.querySelector<HTMLElement>(`[data-hero-focus="${event.key==='ArrowDown'?1:0}"]`)?.focus();
+      return;
+    }
     const editing = (event.target as HTMLElement).matches('input,select,textarea');
     if (event.key === 'Escape') { back(); return; }
     if (editing || event.altKey || event.ctrlKey || event.metaKey) return;
@@ -46,7 +52,9 @@ export function installInput(back: () => void, switchTab: (delta: number) => voi
         else if (index === 4 || index === 5) switchTab(index === 4 ? -1 : 1);
         else if (index >= 12 && index <= 15) {
           const field = document.activeElement;
-          if (field instanceof HTMLSelectElement && (index === 14 || index === 15)) {
+          if(field instanceof HTMLInputElement&&field.matches('[data-hero-focus]')&&(index===12||index===13)){
+            document.querySelector<HTMLElement>(`[data-hero-focus="${index===13?1:0}"]`)?.focus();
+          } else if (field instanceof HTMLSelectElement && (index === 14 || index === 15)) {
             field.selectedIndex = Math.max(0, Math.min(field.options.length - 1, field.selectedIndex + (index === 14 ? -1 : 1)));
             field.dispatchEvent(new Event('change', { bubbles: true }));
           } else if(field instanceof HTMLInputElement&&field.type==='range'&&(index===14||index===15)){

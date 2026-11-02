@@ -30,12 +30,14 @@ class NativeSettingsTests(unittest.TestCase):
                 ready = json.loads(process.stdout.readline())
                 self.assertFalse(ready['automaticRefresh'])
                 process.stdin.write(json.dumps({'id': 'review', 'method': 'settings_review', 'params': {'changes': {'online_art': False,
-                    'borderless_4k': True, 'overlay_appearance': {'Layout':'bar','TextSize':26}}}}) + '\n')
+                    'borderless_4k': True, 'overlay_appearance': {'Layout':'bar','TextSize':26},
+                    'game_hero_focus': {'C:/fixture/game': [.72, .48]}}}}) + '\n')
                 process.stdin.flush()
                 response = json.loads(process.stdout.readline())
                 self.assertNotIn('error', response)
                 token = response['result']['token']
                 self.assertTrue(json.loads(native.read_text())['online_art'], 'Review must not save preferences')
+                self.assertNotIn('game_hero_focus', json.loads(native.read_text()), 'Framing review must not save preferences')
                 process.stdin.write(json.dumps({'id': 'confirm', 'method': 'run', 'params': {'token': token}}) + '\n')
                 process.stdin.flush()
                 confirmed = json.loads(process.stdout.readline())
@@ -44,6 +46,7 @@ class NativeSettingsTests(unittest.TestCase):
                 self.assertFalse(result['online_art'])
                 self.assertTrue(result['borderless_4k'])
                 self.assertEqual({'Layout':'bar','TextSize':26}, result['overlay_appearance'])
+                self.assertEqual({'C:/fixture/game': [.72, .48]}, result['game_hero_focus'])
                 self.assertEqual({'keep': True}, result['native_only_fixture'])
                 self.assertEqual({'legacy_marker': True}, json.loads(legacy.read_text()))
                 process.stdin.close()

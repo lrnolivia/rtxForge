@@ -56,10 +56,11 @@ test('Avatar mid-tone hero keeps a pale readable title in both themes',()=>{
  }
 });
 
-test('info cards keep neutral light frost and pale readable text for every accent',()=>{
+test('info cards keep soft accent frost and pale readable text for every accent',()=>{
  for(const color of ['#fffb00','#ffd950','#307de8','#ff473a'])for(const light of [false,true])for(const background of [[255,255,255],[28,32,36],[120,120,120]]){
   const result=heroColors(color,light,background),card=rgb(result.card),ink=rgb(result.ink);
-  assert.deepEqual(card,[255,255,255],'The frosty surface is neutral');
+  assert.deepEqual(card,rgb(color).map(value=>Math.round(value*.8+255*.2)),'The frost retains a soft game-accent tint');
+  assert.ok(result.cardOpacity<=.2,'Keep the accent translucent');
   assert.ok(luminance(ink)>.8,'Info text stays pale');
   const opacity=result.cardOpacity,composite=card.map((v,i)=>v*opacity+background[i]*result.cardBrightness*(1-opacity));
   assert.ok(contrast(ink,composite)>=4.5,'Light frost retains text contrast over bright artwork');

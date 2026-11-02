@@ -43,6 +43,7 @@ def bind(root, send):
     service = desktop_service.DesktopService.__new__(desktop_service.DesktopService)
     service.config = rtxforge.load_provider()
     library_media.DEFAULTS.setdefault('library_folders', [])
+    library_media.DEFAULTS.setdefault('game_hero_focus', {})
     reviews = {}
     running = {}
 

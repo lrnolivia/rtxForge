@@ -4,7 +4,7 @@ interface CachedBackground {url:string;width:number;height:number}
 interface BackgroundSelection {appid:string;game:string;scene:HTMLElement;ids:string[];current?:string}
 const cache=new Map<string,Promise<CachedBackground|null>>(),catalogs=new Map<string,Promise<StoreScreenshot[]>>();
 const urls=new Set<string>(),choices=new Map<string,string[]>();
-let active:BackgroundSelection|undefined,fade:ReturnType<typeof setTimeout>|undefined,disposed=false;
+let active:BackgroundSelection|undefined,fade:ReturnType<typeof setTimeout>|undefined,disposed=false,preparing=false;
 const reduced=matchMedia('(prefers-reduced-motion:reduce)');
 try{for(const [game,ids] of Object.entries(JSON.parse(localStorage.getItem('rtxforge-game-mode-backgrounds')||'{}')))if(Array.isArray(ids))choices.set(game,ids.filter(id=>typeof id==='string'&&/^[0-9]{1,6}$/.test(id)).slice(0,1));}catch{/* Use the first Store screenshot. */}
 
@@ -32,6 +32,13 @@ export function chooseScreenshots(game:string,ids:string[]){
   try{localStorage.setItem('rtxforge-game-mode-backgrounds',JSON.stringify(Object.fromEntries(choices)));}catch{/* Session choices remain available. */}
   if(active?.game===game){const state=active;clearFade();state.ids=chosen;void display(state);}
 }
+/** Warm only the game the person has paused on, never the entire library. */
+export async function prepareStoreBackground(appid:string,game:string){
+  if(preparing||disposed)return;
+  preparing=true;
+  try{const gallery=await screenshotGallery(appid);if(gallery.length)await load(appid,selectedScreenshots(game,gallery)[0]);}
+  finally{preparing=false;}
+}
 async function load(appid:string,id?:string):Promise<CachedBackground|null>{
   const key=appid+':'+(id||'default');let pending=cache.get(key);
   if(pending){cache.delete(key);cache.set(key,pending);return pending;}
@@ -43,9 +50,11 @@ async function load(appid:string,id?:string):Promise<CachedBackground|null>{
       if(disposed||!result.image||!/^data:image\/(jpeg|png);base64,/.test(result.image))return null;
       const [header,encoded]=result.image.split(',',2);
       const blob=new Blob([Uint8Array.from(atob(encoded),c=>c.charCodeAt(0))],{type:header.slice(5).split(';')[0]});
-      const bitmap=await createImageBitmap(blob),width=bitmap.width,height=bitmap.height;bitmap.close();
-      if(disposed)return null;
-      const url=URL.createObjectURL(blob);urls.add(url);return {url,width,height};
+      const url=URL.createObjectURL(blob);urls.add(url);
+      const image=new Image();image.src=url;
+      try{await image.decode();}catch{URL.revokeObjectURL(url);urls.delete(url);return null;}
+      if(disposed){URL.revokeObjectURL(url);urls.delete(url);return null;}
+      return {url,width:image.naturalWidth,height:image.naturalHeight};
     }catch{return null;}
   })();cache.set(key,pending);
   if(cache.size>6){const oldest=[...cache.keys()].find(candidate=>candidate!==active?.current)!;const previous=cache.get(oldest);cache.delete(oldest);void previous?.then(image=>{if(image){URL.revokeObjectURL(image.url);urls.delete(image.url);}});}
@@ -66,9 +75,9 @@ async function display(state:BackgroundSelection){
       scene.dataset.screenshotId=id||'default';scene.querySelector('.scene-next')?.remove();state.current=state.appid+':'+(id||'default');
     };
     clearTimeout(fade);scene.querySelector('.scene-next')?.remove();
-    if(scene.dataset.hero==='true'&&scene.style.backgroundImage!==source&&canFade()){
+    if(scene.style.backgroundImage!==source&&canFade()){
       const next=document.createElement('div');next.className='scene-next';next.dataset.quality=quality;next.style.backgroundImage=source;scene.append(next);
-      requestAnimationFrame(()=>{if(next.isConnected)next.style.opacity='1';});fade=setTimeout(commit,1800);
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{if(next.isConnected)next.style.opacity='1';}));fade=setTimeout(commit,750);
     }else commit();
   }
 }

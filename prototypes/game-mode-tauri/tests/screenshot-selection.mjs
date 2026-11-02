@@ -6,12 +6,25 @@ const nav=name=>page.getByRole('navigation',{name:'Main navigation'}).getByRole(
 try{
   await page.clock.install();let fullRequests=0;page.on('request',request=>{if(request.url().includes('/api/store-background?appid=1091500'))fullRequests++;});
   await page.goto('http://127.0.0.1:1420');await page.waitForSelector('.game-card');expect(fullRequests).toBe(0);
+  await page.getByRole('button',{name:'Open Cyberpunk 2077 details',exact:true}).hover();await page.clock.fastForward(300);await expect.poll(()=>fullRequests).toBe(1);
   await page.getByRole('button',{name:'Open Cyberpunk 2077 details',exact:true}).click();
   await expect(page.locator('#scene')).toHaveAttribute('data-background-state','ready',{timeout:20000});
+  await expect(page.locator('.scene-next')).toHaveCount(1);
+  await expect(page.locator('.scene-next')).toHaveCSS('transition-duration','0.7s');
+  await expect(page.locator('.details-page')).toHaveCSS('animation-name','none');
+  await expect(page.locator('.hero-info-card')).toHaveCSS('backdrop-filter','none');
+  await expect(page.locator('.hero-info-card')).toHaveCSS('background-image','none');
+  expect(await page.locator('.hero-info-card').evaluate(n=>getComputedStyle(n).backgroundColor)).not.toContain(' / ');
+  await page.clock.fastForward(800);
   await expect(page.locator('#scene')).toHaveAttribute('data-screenshot-id','0');expect(fullRequests).toBe(1);
   await page.clock.fastForward(60000);
   await expect(page.locator('#scene')).toHaveAttribute('data-screenshot-id','0');expect(fullRequests).toBe(1);
   await page.getByRole('button',{name:'Appearance',exact:true}).click();
+  const tint=page.getByRole('switch',{name:'Accent tint',exact:true});
+  if(await tint.getAttribute('aria-checked')==='false')await tint.click();
+  expect(await page.locator('#scene').evaluate(n=>getComputedStyle(n,'::after').mixBlendMode)).toBe('soft-light');
+  expect(await page.locator('#scene').evaluate(n=>getComputedStyle(n,'::after').opacity)).toBe('1');
+  await tint.click();expect(await page.locator('#scene').evaluate(n=>getComputedStyle(n,'::after').mixBlendMode)).toBe('normal');await tint.click();
   const gallery=page.getByRole('group',{name:'Background screenshots'});
   await expect(gallery.locator('[aria-pressed=true]')).toHaveCount(1);
   await gallery.getByRole('button',{name:'Screenshot 4',exact:true}).click();
@@ -22,11 +35,12 @@ try{
   await page.reload();await page.waitForSelector('.game-card');await page.getByRole('button',{name:'Open Cyberpunk 2077 details',exact:true}).click();await page.getByRole('button',{name:'Appearance',exact:true}).click();
   await expect(gallery.locator('[aria-pressed=true]')).toHaveCount(1);
   await expect(gallery.getByRole('button',{name:'Screenshot 4',exact:true})).toHaveAttribute('aria-pressed','true');
+  await expect(page.locator('#scene')).toHaveAttribute('data-background-state','ready',{timeout:20000});await page.clock.fastForward(800);
   await expect(page.locator('#scene')).toHaveAttribute('data-screenshot-id','3',{timeout:20000});
   const action=page.getByRole('button',{name:'Use Desktop framing',exact:true});expect(await action.evaluate(n=>parseFloat(getComputedStyle(n).borderTopLeftRadius))).toBeGreaterThanOrEqual(1000);
   const sidebar=page.getByRole('navigation',{name:'Game details'}).getByRole('button',{name:'Overview',exact:true});expect(await sidebar.evaluate(n=>parseFloat(getComputedStyle(n).borderTopLeftRadius))).toBeLessThan(30);
   await nav('Library').click();await expect(page.locator('#scene')).toHaveAttribute('data-hero','false');
   const segment=page.getByRole('button',{name:'Poster grid',exact:true});expect(await segment.evaluate(n=>parseFloat(getComputedStyle(n).borderTopLeftRadius))).toBe(10);
   const before=fullRequests;await page.clock.fastForward(60000);expect(fullRequests).toBe(before);expect(errors).toEqual([]);
-  console.log(JSON.stringify({passed:true,checks:['no full screenshots on library startup','only one image loaded without prefetch or rotation','manual choice crossfades and persists','true action pills, rectangular sidebar and view segments','background released outside Details']}));
+  console.log(JSON.stringify({passed:true,checks:['no full screenshots on library startup','one paused tile warms its chosen image','initial and manual images fade after decoding','no automatic rotation or next-image prefetch','manual choice persists','flat light info card and Soft Light screenshot tint','true action pills, rectangular sidebar and view segments','background released outside Details']}));
 }finally{await browser.close();}

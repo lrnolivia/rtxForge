@@ -88,7 +88,7 @@ export function heroColors(accent:string,light:boolean,background:number[]=[65,7
   const title=c<.025?rgbFromLch(.97,c,h):rgbFromLch(Math.max(l,.8),Math.min(c,.24),h);
   let titleVeil=0;
   while(titleVeil<.94&&against(title,mix([12,18,23],background,titleVeil))<4.5)titleVeil+=.02;
-  return {title:hex(title),titleVeil,card:tinted?hex(mix(rgb,[255,255,255],.8)):'#ffffff',ink:'#f8f6f1',cardOpacity:tinted?.18:.12,cardBrightness:tinted?.28:.36,light};
+  return {title:hex(title),titleVeil,card:tinted?hex(mix(rgb,[255,255,255],.8)):'#ffffff',ink:'#f8f6f1',light};
 }
 export function heroBadge(background:number[]=[65,70,75]) {
   return luminance(background)>.35

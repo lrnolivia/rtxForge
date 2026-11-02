@@ -8,7 +8,7 @@ import { installInput } from './input';
 import { setupLibraryLayout } from './library-layout';
 import { setupShellLayout } from './shell-layout';
 import { heroCrop, analyzeHeroFocus } from './hero-focus';
-import { applyStoreBackground, screenshotGallery, selectedScreenshots, chooseScreenshots, type StoreScreenshot } from './store-background';
+import { applyStoreBackground, prepareStoreBackground, screenshotGallery, selectedScreenshots, chooseScreenshots, type StoreScreenshot } from './store-background';
 import { webviewZoom } from './display-scale';
 import { controllerGlyph, type ControllerFamily } from './controller-glyphs';
 import { artworkAccent, selectionInk, heroColors, heroBadge, sampleHero } from './art-accent';
@@ -48,6 +48,7 @@ const gameOverlayDrafts = new Map<string, Record<string, unknown>>();
 let artworkRole = 'poster', artworkPath = '', artworkQuery = '', artworkMatches: {id: number; name: string}[] = [];
 let artworkAssets: Record<string, unknown>[] = [], artworkMessage = '', gridConnected: boolean | null = null;
 let librarySizeOpen = false;
+let backgroundIntent:ReturnType<typeof setTimeout>|undefined;
 let shellMenuOpen = false, detailsMenuOpen=false, presetSelection = false;
 const presetId = '__library-presets__';
 const gameAccentDrafts = new Map<string,string>();
@@ -98,6 +99,7 @@ function applyAppearance() {
 }
 function selectedGame(): Game | undefined { return snapshot?.games.find(game => game.id === selectedId) || snapshot?.games[0]; }
 function setView(next: View, focus = true) {
+  clearTimeout(backgroundIntent);
   if (operation?.stage === 'running' && next !== 'operation') { announce('The operation is running. Request cancellation to stop safely.'); return; }
   if (view === 'operation' && next !== 'operation' && operation?.stage === 'checking') operation.dismissed = true;
   const previousView = view;
@@ -301,6 +303,7 @@ function applyDetailsAccent() {
   const content = document.querySelector<HTMLElement>('#content');
   if (!content) return;
   const game=selectedGame(),accent=detailsAccent(game);
+  document.querySelector<HTMLElement>('#scene')?.style.setProperty('--game-accent',accent||'#808080');
   content.style.setProperty('--accent', accent || (appearance.theme === 'light' ? '#686663' : '#d8d5ce'));
   content.style.setProperty('--accent-ink', appearance.theme === 'light' ? 'var(--ink)' : accent || 'var(--ink)');
   content.style.setProperty('--primary-ink',selectionInk(accent||'#d8d5ce'));
@@ -1052,6 +1055,20 @@ async function refresh() {
   finally { loading = false; render(); }
 }
 applyAppearance();
+
+function prepareFocusedBackground(event:Event){
+  const card=(event.target as HTMLElement).closest<HTMLElement>('.game-card');
+  if(!card||view!=='library'||currentPreferences().online_art===false)return;
+  if(event instanceof PointerEvent&&card.contains(event.relatedTarget as Node|null))return;
+  clearTimeout(backgroundIntent);
+  backgroundIntent=setTimeout(()=>{const game=snapshot?.games.find(game=>game.id===card.dataset.game);if(view==='library'&&game?.appid)void prepareStoreBackground(game.appid,game.id);},250);
+}
+app.addEventListener('pointerover',prepareFocusedBackground);
+app.addEventListener('focusin',prepareFocusedBackground);
+for(const name of ['pointerout','focusout'])app.addEventListener(name,event=>{
+  const card=(event.target as HTMLElement).closest('.game-card');
+  if(card&&!card.contains((event as FocusEvent).relatedTarget as Node|null))clearTimeout(backgroundIntent);
+});
 document.addEventListener('pointerdown',event=>{
   const target=event.target as HTMLElement;
   if(librarySizeOpen&&!target.closest('.library-size-control'))closeLibrarySize(false);

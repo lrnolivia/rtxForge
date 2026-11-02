@@ -24,7 +24,9 @@ export function arrive(app:HTMLElement,previous:Arrival,view:View) {
     const image=main.querySelector('.hero-artwork');
     if(image)play(image,[{opacity:.35,transform:'scale(1.035)',filter:'blur(3px)'},{opacity:1,transform:'scale(1)',filter:'blur(0px)'}],480);
     if(art&&previous.art){const r=art.getBoundingClientRect(),p=previous.art;if(r.width&&r.height)play(art,[{transformOrigin:'0 0',transform:`translate(${p.x-r.x}px,${p.y-r.y}px) scale(${p.width/r.width},${p.height/r.height})`},{transformOrigin:'0 0',transform:'translate(0,0) scale(1,1)'}],440);}
-    const copy=main.querySelector('.details-title-copy');if(copy)play(copy,[{opacity:.1,transform:'translateY(12px)',filter:'blur(2px)'},{opacity:1,transform:'translateY(0)',filter:'blur(0px)'}],360,45);
+    // Animate the heading alone: a filtered ancestor makes the frosted info
+    // card's backdrop appear only after the entrance finishes.
+    const title=main.querySelector('.details-title-copy h1');if(title)play(title,[{opacity:.65,transform:'translateY(8px)'},{opacity:1,transform:'translateY(0)'}],300);
   } else if(view==='library') {
     for(const [i,card] of [...main.querySelectorAll('.game-item')].slice(0,12).entries())play(card,[{opacity:.45,transform:'translateY(14px) scale(.97)'},{opacity:1,transform:'translateY(0) scale(1)'}],340,Math.min(i*18,108));
   }

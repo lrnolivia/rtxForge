@@ -25,13 +25,12 @@ test('solid selected-card fills retain readable ink for vivid and custom colors'
 const luminance=rgb=>rgb.reduce((sum,v,i)=>{v/=255;return sum+[.2126,.7152,.0722][i]*(v<=.04045?v/12.92:((v+.055)/1.055)**2.4);},0);
 const rgb=hex=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));
 const contrast=(a,b)=>(Math.max(luminance(a),luminance(b))+.05)/(Math.min(luminance(a),luminance(b))+.05);
-test('hero text adapts to artwork and cards retain contrast across themes',()=>{
+test('hero text adapts to artwork and info cards keep pale text across themes',()=>{
  for(const color of ['#ffffff','#000000','#ffd950','#ff473a','#307de8','#dc5ed1','#d8d5ce'])for(const light of [true,false])for(const background of [[240,238,230],[28,32,36],[120,120,120]]){
   const result=heroColors(color,light,background);
   const protectedBackground=background.map((v,i)=>v*(1-result.titleVeil)+[12,18,23][i]*result.titleVeil);
   assert.ok(contrast(rgb(result.title),protectedBackground)>=3,color+' title '+JSON.stringify(background));
-  const opacity=result.cardOpacity,composite=rgb(result.card).map((v,i)=>v*opacity+background[i]*result.cardBrightness*(1-opacity));
-  assert.ok(contrast(rgb(result.ink),composite)>=4.5,color+' translucent card');
+  assert.ok(contrast(rgb(result.ink),[12,18,23])>=7,'Pale text contrasts with its tight dark shadow');
   if(!light&&color!=='#ffd950')assert.ok(luminance(rgb(result.ink))>.8,'Non-yellow Clear/Dark hero cards keep pale text');
  }
 });
@@ -56,13 +55,11 @@ test('Avatar mid-tone hero keeps a pale readable title in both themes',()=>{
  }
 });
 
-test('info cards keep soft accent frost and pale readable text for every accent',()=>{
+test('info cards retain a gentle accent and pale text independently of artwork brightness',()=>{
  for(const color of ['#fffb00','#ffd950','#307de8','#ff473a'])for(const light of [false,true])for(const background of [[255,255,255],[28,32,36],[120,120,120]]){
   const result=heroColors(color,light,background),card=rgb(result.card),ink=rgb(result.ink);
   assert.deepEqual(card,rgb(color).map(value=>Math.round(value*.8+255*.2)),'The frost retains a soft game-accent tint');
-  assert.ok(result.cardOpacity<=.2,'Keep the accent translucent');
   assert.ok(luminance(ink)>.8,'Info text stays pale');
-  const opacity=result.cardOpacity,composite=card.map((v,i)=>v*opacity+background[i]*result.cardBrightness*(1-opacity));
-  assert.ok(contrast(ink,composite)>=4.5,'Light frost retains text contrast over bright artwork');
+  assert.ok(contrast(ink,[12,18,23])>=7,'A tight text shadow defines pale glyphs without darkening the whole card');
  }
 });

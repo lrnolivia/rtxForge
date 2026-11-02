@@ -84,13 +84,17 @@ export function heroColors(accent:string,light:boolean,background:number[]=[65,7
   // while keeping the actual accent on fills, strokes and readable titles.
   const shade=(level:number,chroma:number)=>rgbFromLch(level,yellow&&level<.85?Math.min(chroma,.006):chroma,h);
   const against=(ink:number[],surface:number[])=>(Math.max(luminance(ink),luminance(surface))+.05)/(Math.min(luminance(ink),luminance(surface))+.05);
-  const ink=shade(light?.26:.97,Math.min(c*.18,.025));
+  // Yellow glass stays luminous. Darkening yellow makes olive; desaturating
+  // that dark shade makes grey. Its bright surface needs dark neutral ink.
+  const brightCard=light||yellow;
+  const ink=shade(brightCard?.26:.97,Math.min(c*.18,.025));
   // Preserve color rather than washing the glass with a neutral grey base.
-  // Clear/Dark always use pale ink; adjust the colored surface, never flip text.
+  // Non-yellow Clear/Dark cards retain pale ink; yellow keeps a bright surface.
   const cardChroma=Math.min(c*.48,.065);
-  let card=light?shade(.955,Math.min(c*.18,.025)):shade(.49,cardChroma);
-  for(let step=0;step<40&&against(ink,mix(card,cardBackground,light?.74:.76))<4.5;step++){
-    card=light?shade(.955+(step+1)*.001,Math.min(c*.18,.025)):shade(.49-(step+1)*.005,cardChroma);
+  const surface=(level:number)=>rgbFromLch(level,yellow?Math.min(c*.9,.18):light?Math.min(c*.18,.025):cardChroma,h);
+  let card=surface(yellow?.94:light?.955:.49);
+  for(let step=0;step<40&&against(ink,mix(card,cardBackground,light?.62:.76))<4.5;step++){
+    card=surface(brightCard?(yellow?.94:.955)+(step+1)*.001:.49-(step+1)*.005);
   }
   const bg=luminance(background),ratio=(color:number[])=>(Math.max(luminance(color),bg)+.05)/(Math.min(luminance(color),bg)+.05);
   let title=rgb;

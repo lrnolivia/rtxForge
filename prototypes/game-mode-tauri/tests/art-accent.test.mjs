@@ -29,9 +29,9 @@ test('hero text adapts to artwork and cards retain contrast across themes',()=>{
  for(const color of ['#ffffff','#000000','#ffd950','#ff473a','#307de8','#dc5ed1','#d8d5ce'])for(const light of [true,false])for(const background of [[240,238,230],[28,32,36],[120,120,120]]){
   const result=heroColors(color,light,background);
   assert.ok(contrast(rgb(result.title),background)>=3,color+' title '+JSON.stringify(background));
-  const opacity=light?.74:.76,composite=rgb(result.card).map((v,i)=>v*opacity+background[i]*(1-opacity));
+  const opacity=light?.62:.76,composite=rgb(result.card).map((v,i)=>v*opacity+background[i]*(1-opacity));
   assert.ok(contrast(rgb(result.ink),composite)>=4.5,color+' translucent card');
-  if(!light)assert.ok(luminance(rgb(result.ink))>.8,'Clear/Dark hero cards keep pale text');
+  if(!light&&color!=='#ffd950')assert.ok(luminance(rgb(result.ink))>.8,'Non-yellow Clear/Dark hero cards keep pale text');
  }
 });
 
@@ -50,5 +50,16 @@ test('Avatar mid-tone hero keeps a pale readable title in both themes',()=>{
  assert.equal(clear.title,light.title,'Artwork contrast is independent of the surrounding UI theme');
  assert.ok(luminance(rgb(clear.title))>.45,'Avoid the dark teal title on the blue hero');
  assert.ok(contrast(rgb(clear.title),background)>=3);
+ }
+});
+
+test('yellow hero cards stay luminous yellow with readable dark ink',()=>{
+ for(const color of ['#fffb00','#ffd950'])for(const light of [false,true])for(const background of [[240,238,230],[28,32,36],[120,120,120]]){
+  const result=heroColors(color,light,background),card=rgb(result.card),ink=rgb(result.ink);
+  assert.ok(Math.max(...card)>220,'Keep the yellow surface bright');
+  assert.ok(card[0]>card[2]+55&&card[1]>card[2]+45,'Keep yellow chroma instead of grey');
+  assert.ok(luminance(ink)<.1,'Luminous yellow uses dark readable lettering');
+  const opacity=light?.62:.76,composite=card.map((v,i)=>v*opacity+background[i]*(1-opacity));
+  assert.ok(contrast(ink,composite)>=4.5,'Yellow glass retains text contrast');
  }
 });

@@ -57,9 +57,9 @@ try {
       expect(ratio).toBeCloseTo(layout==='Poster grid'?2/3:92/43,1);
     }
     await page.locator('.game-card').first().click();
-    await expect(page.locator('.hero-actions button')).toHaveCount(4);
-    for(const icon of await page.locator('.hero-actions button>.icon').all())await expect(icon).toBeVisible();
-    expect(await page.locator('.hero-actions button>.icon').count()).toBe(4);
+    const heroActions=page.locator('.hero-actions>button,.hero-actions>.hero-more>button');
+    await expect(heroActions).toHaveCount(4);
+    for(const button of await heroActions.all())await expect(button.locator(':scope>.icon')).toBeVisible();
     expect(await page.locator('.hero-actions').evaluate(n=>n.scrollWidth<=n.clientWidth+1)).toBe(true);
     await page.getByRole('button',{name:'Back to Library',exact:true}).click();
     await nav('Presets').click();await noOverflow();

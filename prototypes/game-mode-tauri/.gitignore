@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.tools/
+src-tauri/target/
+src-tauri/gen/
+test-results/
+.impeccable/review/
+
+out/
+**/__pycache__/

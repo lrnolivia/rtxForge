@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "mode": "operate",
+  "surface": "game-mode-tauri",
+  "authority": "Approved overlay materials and Game Mode prototype direction",
+  "fonts": {"body": "Roboto", "heading": "Bakbak One", "icons": "Phosphor"},
+  "colors": {"clearText": "#f7f3ec", "lightText": "#292827", "accent": "#d8d5ce"},
+  "material": {"blur": 48, "lightBlur": 44, "grain": 0.04, "sectionAlpha": 0.08, "nestedAlpha": 0.13, "controlAlpha": 0.19},
+  "radii": {"shell": 20, "section": 16, "nested": 12, "control": 10},
+  "tintScope": "details-window-only",
+  "composition": "Centered pill navigation island; full-width Details with adaptive hero title, balanced poster and accent-hued information card",
+  "reducedMotion": true
+}

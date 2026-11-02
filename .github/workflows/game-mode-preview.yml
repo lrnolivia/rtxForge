@@ -1,0 +1,74 @@
+name: Game Mode native builds
+on:
+  pull_request:
+    paths: ['prototypes/game-mode-tauri/**', '.github/workflows/game-mode-preview.yml', 'engine/**', 'scripts/**', 'providers/**', 'windows/engine-host/**']
+  push:
+    branches: [main, 'rtxforge/tauri-game-mode-*']
+    paths: ['prototypes/game-mode-tauri/**', '.github/workflows/game-mode-preview.yml', 'engine/**', 'scripts/**', 'providers/**', 'windows/engine-host/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: game-mode-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2025, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: prototypes/game-mode-tauri
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: prototypes/game-mode-tauri/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Linux webview dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev patchelf
+      - run: npm ci
+      - name: Unit and engine adapter tests
+        run: |
+          npm run check
+          python -m unittest discover -s tests -p 'test_*.py'
+      - name: Build offline screenshot worker
+        shell: bash
+        run: |
+          python -m pip install -r screening-requirements.txt
+          python build_screening.py --output "$RUNNER_TEMP/screening-build"
+      - name: Build native application
+        shell: bash
+        run: |
+          npm run tauri -- build --no-bundle
+          python package_bundle.py --record-native
+      - name: Windows complete payload and host smoke
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./Build-Portable.ps1 -SkipBuild -OutputPath "$env:RUNNER_TEMP/package" -ScreeningPath "$env:RUNNER_TEMP/screening-build/dist/rtxforge-screenshot-screen"
+      - name: Linux complete payload and host smoke
+        if: runner.os == 'Linux'
+        run: python package_bundle.py --output "$RUNNER_TEMP/package" --screening "$RUNNER_TEMP/screening-build/dist/rtxforge-screenshot-screen"
+      - name: Preserve Linux executable modes and runtime links
+        if: runner.os == 'Linux'
+        run: tar -czf "$RUNNER_TEMP/rtxForge-Game-Mode-linux-x64.tar.gz" -C "$RUNNER_TEMP/package" .
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Linux'
+        with:
+          name: rtxForge-Game-Mode-linux-x64-${{ github.sha }}
+          path: ${{ runner.temp }}/rtxForge-Game-Mode-linux-x64.tar.gz
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: rtxForge-Game-Mode-win-x64-${{ github.sha }}
+          path: ${{ runner.temp }}/package
+          retention-days: 14

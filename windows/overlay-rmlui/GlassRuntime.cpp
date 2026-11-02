@@ -64,6 +64,7 @@ struct Renderer : RenderInterface_DX11 {
 
     Rml::TextureHandle LoadTexture(Rml::Vector2i& dimensions,const Rml::String& name) override {
         try {
+        const auto generated=std::filesystem::path(name).filename().generic_string();if(generated=="forge-color-spectrum"||generated=="forge-color-hues"){const bool hue=generated=="forge-color-hues";dimensions={hue?360:MaterialColor::SpectrumSize*MaterialColor::SpectrumHues,hue?1:MaterialColor::SpectrumSize};const auto pixels=MaterialColor::SpectrumTexture(hue);return GenerateTexture(pixels,dimensions);}
         const bool poster=std::filesystem::path(name).filename().generic_string().rfind("game-poster-",0)==0;
         const auto asset=poster?Asset{}:Find(name);if(!poster&&(!asset.data||asset.size>10*1024*1024))return 0;
         if(poster){std::error_code error;if(posterPath.empty()||!std::filesystem::is_regular_file(posterPath,error)||std::filesystem::file_size(posterPath,error)>20*1024*1024||error)return 0;}

@@ -7,6 +7,22 @@
 
 namespace MaterialColor {
 using Color=std::array<float,3>;
+// Small reusable atlas, created only when the color spectrum is first shown.
+inline constexpr int SpectrumSize=32,SpectrumHues=180;
+inline Color Hsv(float hue,float saturation,float value) {
+    hue=(hue-std::floor(hue))*6;const int sector=int(hue);const float f=hue-sector,p=value*(1-saturation),q=value*(1-saturation*f),t=value*(1-saturation*(1-f));
+    switch(sector){case 0:return {value,t,p};case 1:return {q,value,p};case 2:return {p,value,t};case 3:return {p,q,value};case 4:return {t,p,value};default:return {value,p,q};}
+}
+inline Color ToHsv(Color color) {
+    const float high=*std::max_element(color.begin(),color.end()),low=*std::min_element(color.begin(),color.end()),chroma=high-low;float hue=0;
+    if(chroma>0){hue=high==color[0]?(color[1]-color[2])/chroma:high==color[1]?2+(color[2]-color[0])/chroma:4+(color[0]-color[1])/chroma;hue/=6;if(hue<0)hue+=1;}
+    return {hue,high>0?chroma/high:0,high};
+}
+inline std::vector<unsigned char> SpectrumTexture(bool hueStrip) {
+    const int width=hueStrip?360:SpectrumSize*SpectrumHues,height=hueStrip?1:SpectrumSize;std::vector<unsigned char> pixels(size_t(width)*height*4);
+    for(int y=0;y<height;++y)for(int x=0;x<width;++x){const auto color=hueStrip?Hsv(float(x)/(width-1),1,1):Hsv(float(x/SpectrumSize)/SpectrumHues,float(x%SpectrumSize)/(SpectrumSize-1),1-float(y)/(height-1));const size_t at=(size_t(y)*width+x)*4;for(int c=0;c<3;++c)pixels[at+c]=static_cast<unsigned char>(color[c]*255+.5f);pixels[at+3]=255;}
+    return pixels;
+}
 inline bool YellowFamily(Color color);
 inline float Smooth(float t){t=std::clamp(t,0.f,1.f);return t*t*(3-2*t);}
 inline Color Saturation(Color color,float percent) {

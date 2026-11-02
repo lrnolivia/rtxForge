@@ -36,7 +36,7 @@ sealed class OverlayPresentationView : Grid
         var colorDot=new Microsoft.UI.Xaml.Shapes.Ellipse {Width=28,Height=28};
         accentColor=new() {Content=colorDot,Width=40,Height=40,Padding=new Thickness(4),CornerRadius=new CornerRadius(20),HorizontalAlignment=HorizontalAlignment.Right};
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(accentColor,"Choose custom accent color");
-        var customRow = Prefs.Row("Custom color", "Choose a color or sample your game’s poster or screen.", accentColor, glyph: "\uE790");
+        var customRow = Prefs.Row("Custom color", "Choose a color or sample your game's poster or screen.", accentColor, glyph: "\uE790");
         customRow.Visibility = glass.AccentMode == "custom" ? Visibility.Visible : Visibility.Collapsed;
         var options = new StackPanel { Spacing = 16 };
         options.Children.Add(layout); options.Children.Add(sideRow); options.Children.Add(barRow); options.Children.Add(theme);
@@ -75,7 +75,7 @@ sealed class OverlayPresentationView : Grid
         accentSource.SelectionChanged += (_, _) => { if(accentSource.SelectedIndex < 0)return;var mode=new[] { "theme", "custom", "adaptive" }[accentSource.SelectedIndex];Change(() => Set("AccentMode",mode));customRow.Visibility=mode=="custom"?Visibility.Visible:Visibility.Collapsed; };
         async Task UpdateSwatch(){var current=GlassAppearance.Load(path);var target=game??preview?.SelectedGame;
             var color=current.AccentColor.Length==7&&ArtAccent.TryParse(current.AccentColor,out var parsed)?parsed:target is not null?(await OverlayAccent.ForGameAsync(target)).Color:global::Windows.UI.Color.FromArgb(255,160,160,160);
-            colorDot.Fill=new Microsoft.UI.Xaml.Media.SolidColorBrush(color);ToolTipService.SetToolTip(accentColor,"Choose custom color · "+ArtAccent.Hex(color));}
+            colorDot.Fill=new Microsoft.UI.Xaml.Media.SolidColorBrush(color);ToolTipService.SetToolTip(accentColor,"Choose custom color: "+ArtAccent.Hex(color));}
         accentColor.Click+=async(_,_)=>{accentColor.IsEnabled=false;try{await UpdateSwatch();var initial=((Microsoft.UI.Xaml.Media.SolidColorBrush)colorDot.Fill).Color;
             var selected=await OverlayAccentPicker.ShowAsync(this,game??preview?.SelectedGame,initial);if(selected is not null){Change(()=>Set("AccentColor",selected));await UpdateSwatch();}}
             catch(Exception error){App.Main?.ShowToast(error.Message);}finally{accentColor.IsEnabled=true;}};

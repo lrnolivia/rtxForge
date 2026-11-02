@@ -29,14 +29,22 @@ struct Controller : Rml::EventListener
     HdrControls hdr;
     EffectControls effects;
     BalancedCards balancedCards;
-    ScreenColorPicker screenColorPicker;bool colorEditorOpen=false,colorPicking=false;
+    ScreenColorPicker screenColorPicker;bool colorEditorOpen=false,colorPicking=false,spectrumOpen=false,posterAvailable=false;MaterialColor::Color spectrumHsv{};
     std::function<std::string(float,float)> samplePoster;
-    void Poster(const std::string& path){for(const auto* id:{"accent-poster","screen-pick-poster"}){auto* image=Element(id);if(path.empty())image->SetProperty("display","none");else{image->SetAttribute("src",path);image->SetProperty("display","block");}}}
+    void Poster(const std::string& path){posterAvailable=!path.empty();for(const auto* id:{"accent-poster","screen-pick-poster"}){auto* image=Element(id);if(path.empty())image->SetProperty("display","none");else{image->SetAttribute("src",path);image->SetProperty("display","block");}}}
     void ColorEditor(){const auto color=MaterialColor::ParseAccent(customAccent,accent);
-        Element("accent-swatch")->QuerySelector(".color-dot")->SetProperty("background-color",Hex(color[0],color[1],color[2]));
+        if(!colorEditorOpen)spectrumOpen=false;
+        for(const auto* id:{"accent-swatch","accent-spectrum-swatch"})Element(id)->QuerySelector(".color-dot")->SetProperty("background-color",Hex(color[0],color[1],color[2]));
+        Visible("accent-spectrum",spectrumOpen);Element("accent-poster")->SetProperty("display",posterAvailable&&!spectrumOpen?"block":"none");Spectrum();
         Element("accent-editor")->SetProperty("display",colorEditorOpen&&accentMode=="custom"&&Element("type-panel")->IsVisible()?"block":"none");
         dynamic_cast<Rml::ElementFormControl*>(Element("accent-color"))->SetValue(Hex(color[0],color[1],color[2]).substr(0,7));
     }
+    void Spectrum() {
+        const int tile=std::clamp(int(spectrumHsv[0]*MaterialColor::SpectrumHues),0,MaterialColor::SpectrumHues-1);
+        Element("spectrum-texture")->SetAttribute("rect",std::to_string(tile*MaterialColor::SpectrumSize)+" 0 32 32");
+        Element("spectrum-marker")->SetProperty("left",std::to_string(spectrumHsv[1]*100)+"%");Element("spectrum-marker")->SetProperty("top",std::to_string((1-spectrumHsv[2])*100)+"%");Element("hue-marker")->SetProperty("left",std::to_string(spectrumHsv[0]*100)+"%");
+    }
+    void ChooseSpectrum() {const auto color=MaterialColor::Hsv(spectrumHsv[0],spectrumHsv[1],spectrumHsv[2]);customAccent=Hex(color[0],color[1],color[2]).substr(0,7);colorEditorOpen=false;Materials();Element("accent-swatch")->Focus();}
     void PlaceColorEditor() {
         auto* popup=Element("accent-editor");if(!colorEditorOpen||!Element("type-panel")->IsVisible()||accentMode!="custom"){popup->SetProperty("display","none");return;}
         auto* context=document->GetContext();if(!popup->IsVisible()){popup->SetProperty("display","block");context->Update();}const auto view=context->GetDimensions();const float dp=context->GetDensityIndependentPixelRatio();
@@ -648,6 +656,10 @@ struct Controller : Rml::EventListener
             auto* focused=document->GetContext()->GetFocusElement();int index=-1;for(size_t i=0;i<choices.size();++i)if(Element(choices[i])==focused)index=int(i);const int direction=event.GetParameter<int>("shift_key",0)?-1:1;Element(choices[(index+direction+int(choices.size()))%int(choices.size())])->Focus();event.StopPropagation();return;
         }
         const auto inside=[&](const char* id){for(auto* e=target;e;e=e->GetParentNode())if(e->GetId()==id)return true;return false;};
+        if(event.GetType()=="keydown"&&spectrumOpen&&(inside("spectrum-plane")||inside("spectrum-hue"))){const int key=event.GetParameter<int>("key_identifier",0);bool changed=false;
+            if(inside("spectrum-hue")&&(key==Rml::Input::KI_LEFT||key==Rml::Input::KI_RIGHT)){spectrumHsv[0]=std::clamp(spectrumHsv[0]+(key==Rml::Input::KI_RIGHT?1.f:-1.f)/MaterialColor::SpectrumHues,0.f,.9999f);changed=true;}
+            else if(inside("spectrum-plane")){if(key==Rml::Input::KI_LEFT||key==Rml::Input::KI_RIGHT){spectrumHsv[1]=std::clamp(spectrumHsv[1]+(key==Rml::Input::KI_RIGHT?.02f:-.02f),0.f,1.f);changed=true;}if(key==Rml::Input::KI_UP||key==Rml::Input::KI_DOWN){spectrumHsv[2]=std::clamp(spectrumHsv[2]+(key==Rml::Input::KI_UP?.02f:-.02f),0.f,1.f);changed=true;}if(key==Rml::Input::KI_RETURN){ChooseSpectrum();event.StopPropagation();return;}}
+            if(changed){Spectrum();event.StopPropagation();return;}}
         const bool previewTarget=inside("preview-original");
         if(event.GetType()=="mouseup"||(event.GetType()=="blur"&&previewTarget)||(event.GetType()=="keyup"&&(event.GetParameter<int>("key_identifier",0)==Rml::Input::KI_SPACE||event.GetParameter<int>("key_identifier",0)==Rml::Input::KI_RETURN)))EndNrPreview();
         if(previewTarget&&(event.GetType()=="mousedown"||(event.GetType()=="keydown"&&(event.GetParameter<int>("key_identifier",0)==Rml::Input::KI_SPACE||event.GetParameter<int>("key_identifier",0)==Rml::Input::KI_RETURN)))){BeginNrPreview();event.StopPropagation();return;}
@@ -746,6 +758,9 @@ struct Controller : Rml::EventListener
                 edits.Record(before,values);edits.saved=values;Message(preview?"Preset loaded into this preview":"Preset selected");Notify(name+std::string(preview?" preset · Preview":" preset"));
             }
         } else if(event.GetType()=="click") {
+            if(id=="accent-spectrum-swatch"){spectrumOpen=!spectrumOpen;if(spectrumOpen)spectrumHsv=MaterialColor::ToHsv(ActiveAccent());Materials();if(spectrumOpen)Element("spectrum-plane")->Focus();return;}
+            if(id=="spectrum-plane"||id=="spectrum-hue"){const auto at=target->GetAbsoluteOffset(Rml::BoxArea::Border),size=target->GetBox().GetSize(Rml::BoxArea::Border);const float x=std::clamp((event.GetParameter<float>("mouse_x",0)-at.x)/size.x,0.f,1.f),y=std::clamp((event.GetParameter<float>("mouse_y",0)-at.y)/size.y,0.f,1.f);
+                if(id=="spectrum-hue"){spectrumHsv[0]=std::min(x,.9999f);Spectrum();}else{spectrumHsv[1]=x;spectrumHsv[2]=1-y;ChooseSpectrum();}return;}
             if(id=="accent-swatch"){colorEditorOpen=!colorEditorOpen;Materials();if(colorEditorOpen)Element("accent-color")->Focus();return;}
             if(id=="accent-use-game"){customAccent.clear();colorEditorOpen=false;Materials();return;}
             if(id=="accent-eyedropper"){screenColorPicker.Start();colorPicking=true;Visible("tooltip",false);document->SetClass("color-picking",true);return;}

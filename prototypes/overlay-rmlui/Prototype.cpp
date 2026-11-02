@@ -118,6 +118,7 @@ static Image LoadImage(const fs::path& path)
 Rml::TextureHandle PrototypeRenderer::LoadTexture(Rml::Vector2i& dimensions,const Rml::String& source)
 {
     try {
+        const auto generated=fs::path(source).filename().generic_string();if(generated=="forge-color-spectrum"||generated=="forge-color-hues"){const bool hue=generated=="forge-color-hues";dimensions={hue?360:MaterialColor::SpectrumSize*MaterialColor::SpectrumHues,hue?1:MaterialColor::SpectrumSize};const auto pixels=MaterialColor::SpectrumTexture(hue);return GenerateTexture(pixels,dimensions);}
         auto image=LoadImage(fs::path(source));dimensions={int(image.width),int(image.height)};
         for(size_t i=0;i<image.rgba.size();i+=4)for(size_t channel=0;channel<3;++channel)image.rgba[i+channel]=Rml::byte(unsigned(image.rgba[i+channel])*image.rgba[i+3]/255);
         return GenerateTexture(image.rgba,dimensions);
@@ -352,6 +353,8 @@ static void TestController(Controller& c,Rml::Context* context)
 
         color->SetValue("#3B8CCF");color->DispatchEvent("change",{});context->Update();Require(!c.colorEditorOpen&&!c.Element("accent-editor")->IsVisible(),"Choosing a hex color did not dismiss the picker");
         color->SetValue("invalid");color->DispatchEvent("change",{});Require(c.customAccent=="#3B8CCF","Invalid color replaced saved custom color");
+        click("accent-swatch");click("accent-spectrum-swatch");context->Update();Require(c.spectrumOpen&&c.Element("accent-spectrum")->IsVisible()&&!c.Element("accent-poster")->IsVisible(),"Hex-row swatch did not open the compact spectrum");
+        const auto beforeSpectrum=c.customAccent;c.Element("spectrum-plane")->Focus();context->ProcessKeyDown(Rml::Input::KI_RIGHT,0);context->ProcessKeyUp(Rml::Input::KI_RIGHT,0);context->ProcessKeyDown(Rml::Input::KI_RETURN,0);context->ProcessKeyUp(Rml::Input::KI_RETURN,0);context->Update();Require(c.customAccent!=beforeSpectrum&&!c.colorEditorOpen&&!c.Element("accent-editor")->IsVisible(),"Spectrum selection did not apply and dismiss");color->SetValue("#3B8CCF");color->DispatchEvent("change",{});
         click("accent-source-theme");const auto neutral=c.ActiveAccent();Require(neutral[0]==neutral[1]&&neutral[1]==neutral[2],"Theme accent is not neutral");
         click("accent-source-adaptive");Require(c.accentMode=="adaptive"&&c.customAccent=="#3B8CCF"&&c.accent==savedAccent,"Source switching erased the custom or Library color");
         c.colorEditorOpen=false;c.accentMode=savedMode;c.customAccent=savedColor;color->SetValue(savedColor);c.Materials();c.Visible("type-panel",false);
@@ -415,7 +418,7 @@ static void TestController(Controller& c,Rml::Context* context)
 int wmain(int argc,wchar_t** argv)
 {
     try {
-        fs::path assets,background,output,font,gameCatalog,preferencesPath,posterPath;DWORD parentProcess=0;int width=2560,height=1440,appearance=3,requestedCopy=22,requestedScale=100;bool colorPickerOpen=false,benchmark=false;bool gameCapture=false,thumbnail=false,desktopPreview=false,pickerPreview=false,onboarding=false,productionUI=false,appearanceOpen=false,detailsOpen=false,inspector=false,blur=true,selfTest=false,layoutTest=false,customMfg=false,reduceMotion=false,welcome=false,settings=false;float crop=0,requestedTint=-1,requestedCharacter=35,requestedSaturation=100;std::array<float,3> accent{.19f,.46f,.80f};std::string requestedAccentMode="adaptive";std::string gameTitle,requestedLayout="floating",requestedBlend,requestedPage;
+        fs::path assets,background,output,font,gameCatalog,preferencesPath,posterPath;DWORD parentProcess=0;int width=2560,height=1440,appearance=3,requestedCopy=22,requestedScale=100;bool colorSpectrumOpen=false,colorPickerOpen=false,benchmark=false;bool gameCapture=false,thumbnail=false,desktopPreview=false,pickerPreview=false,onboarding=false,productionUI=false,appearanceOpen=false,detailsOpen=false,inspector=false,blur=true,selfTest=false,layoutTest=false,customMfg=false,reduceMotion=false,welcome=false,settings=false;float crop=0,requestedTint=-1,requestedCharacter=35,requestedSaturation=100;std::array<float,3> accent{.19f,.46f,.80f};std::string requestedAccentMode="adaptive";std::string gameTitle,requestedLayout="floating",requestedBlend,requestedPage;
         for(int i=1;i<argc;++i) {
             const std::wstring arg=argv[i];
             const auto next=[&] {Require(i+1<argc,"Missing argument value");return std::wstring(argv[++i]);};
@@ -430,7 +433,7 @@ int wmain(int argc,wchar_t** argv)
             else if(arg==L"--game-title")gameTitle=Utf8(next());
             else if(arg==L"--game-catalog")gameCatalog=next();
             else if(arg==L"--parent-process")parentProcess=std::stoul(next());
-            else if(arg==L"--color-picker")colorPickerOpen=appearanceOpen=true;else if(arg==L"--benchmark")benchmark=true;
+            else if(arg==L"--color-spectrum")colorSpectrumOpen=colorPickerOpen=appearanceOpen=true;else if(arg==L"--color-picker")colorPickerOpen=appearanceOpen=true;else if(arg==L"--benchmark")benchmark=true;
             else if(arg==L"--thumbnail")thumbnail=true;else if(arg==L"--game-capture")gameCapture=true;
             else if(arg==L"--layout-test")layoutTest=true;else if(arg==L"--production-ui")productionUI=true;else if(arg==L"--appearance")appearanceOpen=true;else if(arg==L"--more")detailsOpen=appearanceOpen=true;
             else if(arg==L"--custom-mfg")customMfg=true;
@@ -508,7 +511,7 @@ int wmain(int argc,wchar_t** argv)
         document->GetElementById("inspector")->SetProperty("backdrop-filter","none");
         document->GetElementById("welcome")->SetProperty("backdrop-filter","none");
         document->Show();
-        controller.Layout((window||desktopPreview)?controller.layout:requestedLayout);if(!requestedPage.empty()){Require(requestedPage=="overview"||requestedPage=="frame"||requestedPage=="neural"||requestedPage=="hdr"||requestedPage=="look"||requestedPage=="passes","Use --page overview, frame, neural, hdr, look, or passes");document->SetClass("overview-page",requestedPage=="overview");document->SetClass("frame-page",requestedPage=="frame");document->SetClass("neural-page",requestedPage=="neural");document->SetClass("hdr-page",requestedPage=="hdr");controller.Navigation("nav-"+requestedPage);if(requestedPage=="look"||requestedPage=="passes")controller.Open(requestedPage);controller.Visible("type-panel",false);}if(inspector)controller.Open("passes");if(settings)controller.Settings(true);if(colorPickerOpen){controller.accentMode="custom";controller.colorEditorOpen=true;}if(appearanceOpen){controller.moreOpen=detailsOpen;controller.Materials();controller.ShowAppearance();}
+        controller.Layout((window||desktopPreview)?controller.layout:requestedLayout);if(!requestedPage.empty()){Require(requestedPage=="overview"||requestedPage=="frame"||requestedPage=="neural"||requestedPage=="hdr"||requestedPage=="look"||requestedPage=="passes","Use --page overview, frame, neural, hdr, look, or passes");document->SetClass("overview-page",requestedPage=="overview");document->SetClass("frame-page",requestedPage=="frame");document->SetClass("neural-page",requestedPage=="neural");document->SetClass("hdr-page",requestedPage=="hdr");controller.Navigation("nav-"+requestedPage);if(requestedPage=="look"||requestedPage=="passes")controller.Open(requestedPage);controller.Visible("type-panel",false);}if(inspector)controller.Open("passes");if(settings)controller.Settings(true);if(colorPickerOpen){controller.accentMode="custom";controller.colorEditorOpen=true;controller.spectrumOpen=colorSpectrumOpen;controller.spectrumHsv=MaterialColor::ToHsv(accent);}if(appearanceOpen){controller.moreOpen=detailsOpen;controller.Materials();controller.ShowAppearance();}
         if(onboarding)controller.BeginSetup();
         if(thumbnail&&controller.layout=="centered")controller.Page("nav-neural");
         auto image=LoadImage(background);

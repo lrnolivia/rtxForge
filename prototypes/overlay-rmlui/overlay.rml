@@ -632,7 +632,11 @@
     <paint-root id="accent-editor" class="glass color-editor" style="display: none" role="dialog" aria-label="Custom color">
       <div class="color-editor-heading"><span>Custom color</span></div>
       <img id="accent-poster" class="color-poster" style="display: none" title="Click the poster to sample a color"/>
-      <input id="accent-color" type="text" maxlength="7" placeholder="#RRGGBB" aria-label="Hex color"/>
+      <div id="accent-spectrum" style="display: none">
+        <button id="spectrum-plane" class="spectrum-plane" aria-label="Color spectrum: arrows adjust saturation and brightness, Enter chooses"><img id="spectrum-texture" src="forge-color-spectrum" rect="0 0 32 32"/><span id="spectrum-marker"/></button>
+        <button id="spectrum-hue" class="spectrum-hue" aria-label="Hue: left and right arrows adjust"><img src="forge-color-hues"/><span id="hue-marker"/></button>
+      </div>
+      <div class="color-hex"><input id="accent-color" type="text" maxlength="7" placeholder="#RRGGBB" aria-label="Hex color"/><button id="accent-spectrum-swatch" class="color-swatch hex-swatch" title="Open color spectrum" aria-label="Open color spectrum"><span class="color-dot"/></button></div>
       <button id="accent-eyedropper" class="color-screen"><span class="button-label">Pick from screen</span></button>
       <button id="accent-use-game" class="color-reset"><span class="button-label">Use game color</span></button>
     </paint-root>

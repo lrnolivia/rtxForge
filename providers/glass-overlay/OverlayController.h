@@ -310,11 +310,15 @@ struct Controller : Rml::EventListener
     std::array<float,3> clearAccent{};
     bool AccentLight()const {return appearance==4&&accentCharacter>=20&&accentCharacter<72;}
     std::array<float,3> SurfaceTint()const {return MaterialColor::AccentSurface(accent,accentCharacter,accentSaturation);}
-    std::string AccentTone(size_t slot,bool heading,Backdrop::SceneColor local={}) {
-        auto source=accent;const auto scene=local.valid?local:filtered[slot];MaterialColor::Color base=scene.valid?MaterialColor::Color{scene.r,scene.g,scene.b}:MaterialColor::Color{.35f,.35f,.35f};
+    MaterialColor::Color AccentBackdrop(size_t slot,Backdrop::SceneColor local={}) {
+        const auto scene=local.valid?local:filtered[slot];MaterialColor::Color base=scene.valid?MaterialColor::Color{scene.r,scene.g,scene.b}:MaterialColor::Color{.35f,.35f,.35f};
         if(appearance==3)base=MaterialColor::ClearSurface(base,clearOpacity/100.f,MaterialColor::Mode(surfaceBlend),blendStrength/100.f);
         else if(appearance==4){const auto tint=SurfaceTint();for(size_t i=0;i<3;++i)base[i]=base[i]*(1-accentOpacity/100.f)+tint[i]*accentOpacity/100.f;}
         else {const float tint=(appearance==1?lightOpacity:darkOpacity)/100.f,tone=appearance==1?.86f:.07f;for(auto& channel:base)channel=channel*(1-tint)+tone*tint;}
+        return base;
+    }
+    std::string AccentTone(size_t slot,bool heading,Backdrop::SceneColor local={}) {
+        auto source=accent;const auto base=AccentBackdrop(slot,local);
         const auto& mode=heading?headingAccentBlend:controlAccentBlend;const float strength=(heading?headingAccentStrength:controlAccentStrength)/100.f;
         auto mixed=MaterialColor::Blend(base,source,MaterialColor::Mode(mode));
         if(mode=="screen"&&MaterialColor::LinearLuma(source)>.55f)mixed=source;
@@ -343,7 +347,19 @@ struct Controller : Rml::EventListener
             const auto property=e->IsClassSet("glyph")?"image-color":"color";const auto desired=heading?AccentTone(slot,true,sampled):"#f5f1eaff";
             const auto packed=std::stoul(desired.substr(1),nullptr,16);const Rml::Colourb color{Rml::byte(packed>>24),Rml::byte(packed>>16),Rml::byte(packed>>8),Rml::byte(packed)};
             const auto* local=e->GetLocalProperty(property);if(!local||local->Get<Rml::Colourb>()!=color)e->SetProperty(property,desired);
-            if(!e->GetLocalProperty("font-effect"))e->SetProperty("font-effect","none");
+            std::string effect="none";
+            if(heading&&textDepth&&!customTheme){
+                auto surface=AccentBackdrop(slot,sampled);std::vector<Rml::Colourb> fills;
+                // Inner translucent cards brighten the ink's actual ground.
+                // Include them when choosing its contact shade, never a row box.
+                for(auto* p=heading;p&&!p->IsClassSet("glass");p=p->GetParentNode())
+                    if(const auto* fill=p->GetProperty("background-color"))fills.push_back(fill->Get<Rml::Colourb>());
+                for(auto fill=fills.rbegin();fill!=fills.rend();++fill){const float alpha=fill->alpha/255.f;const MaterialColor::Color rgb{fill->red/255.f,fill->green/255.f,fill->blue/255.f};for(size_t i=0;i<3;++i)surface[i]=surface[i]*(1-alpha)+rgb[i]*alpha;}
+                const float opacity=MaterialColor::HeadingShadowOpacity({color.red/255.f,color.green/255.f,color.blue/255.f},surface);
+                if(opacity>0)effect="glow(1dp 1dp 0dp 1dp "+Hex(.075f,.07f,.06f,opacity)+")";
+            }
+            const auto* currentEffect=e->GetLocalProperty("font-effect");
+            if(!currentEffect||currentEffect->ToString()!=effect)e->SetProperty("font-effect",effect);
         }
     }
     void Raise(const std::string& id) {

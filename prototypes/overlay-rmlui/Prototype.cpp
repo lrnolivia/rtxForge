@@ -584,6 +584,14 @@ int wmain(int argc,wchar_t** argv)
                     }
                 const auto clearYellow=MaterialColor::ClearHeading({252.f/255,238.f/255,9.f/255},{.75f,.75f,.75f});
                 Require(!MaterialColor::MuddyShade(clearYellow),"Clear generated a muddy yellow heading");
+                for(const auto surface:{MaterialColor::Color{.55f,.55f,.55f},MaterialColor::Color{.75f,.75f,.75f},MaterialColor::Color{.95f,.95f,.95f},MaterialColor::Color{194.f/255,175.f/255,130.f/255}}){
+                    const auto ink=MaterialColor::ClearHeading({246.f/255,234.f/255,17.f/255},surface);
+                    Require(!MaterialColor::MuddyShade(ink),"Actual Cyberpunk accent became muddy");
+                    const float opacity=MaterialColor::HeadingShadowOpacity(ink,surface);auto contact=surface;
+                    const MaterialColor::Color shade{.075f,.07f,.06f};
+                    for(size_t i=0;i<3;++i)contact[i]=surface[i]*(1-opacity)+shade[i]*opacity;
+                    Require(MaterialColor::Contrast(ink,contact)>=3.f,"Vivid yellow heading contact shade lost contrast");
+                }
                 controller.UseTheme(3);paint();Require(label->GetProperty("color")->Get<Rml::Colourb>().red>=225,"Clear label is not light");
                 controller.accent={.9f,.7f,.4f};paint();controller.headingAccentBlend="hard-light";controller.controlAccentBlend="soft-light";controller.Materials();paint();
                 controller.UseTheme(1);paint();Require(label->GetProperty("color")->Get<Rml::Colourb>().red<160&&glyph->GetProperty("image-color")->Get<Rml::Colourb>().red<160,"Clear foreground leaked into Light after changing accents");

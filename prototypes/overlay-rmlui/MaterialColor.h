@@ -97,4 +97,16 @@ inline Color ClearHeading(Color accent,Color backdrop) {
     }
     return vivid;
 }
+inline float HeadingShadowOpacity(Color ink,Color backdrop) {
+    // Some vivid yellows cannot darken far enough without becoming olive.
+    // Keep their hue and give only the letter silhouettes a soft contact shade.
+    if(!YellowFamily(ink)||MuddyShade(ink)||Contrast(ink,backdrop)>=3.f)return 0;
+    const Color shade{.075f,.07f,.06f};
+    for(int step=1;step<=16;++step){
+        const float opacity=step/16.f;Color contact{};
+        for(size_t i=0;i<3;++i)contact[i]=backdrop[i]*(1-opacity)+shade[i]*opacity;
+        if(Contrast(ink,contact)>=3.5f)return std::min(.875f,opacity+.25f);
+    }
+    return .875f;
+}
 }

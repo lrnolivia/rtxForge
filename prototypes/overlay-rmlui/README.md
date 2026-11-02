@@ -31,7 +31,10 @@ collapsed God Mode section, available only in this preview.
 
 Clear headings retain the game's hue with stronger chroma. Their perceptual
 lightness adapts to the sampled frosted surface for readable large text instead
-of Screen blending them into pale pastels. Bright yellow is kept out of olive
+of Screen blending them into pale pastels. A vivid yellow that cannot reach
+readable contrast without becoming muddy gets a local, soft letter shadow;
+the shade never becomes a rectangular row or changes the ordinary Clear ink.
+Bright yellow is kept out of olive
 or brown variants. Custom preview blend experiments remain available in God Mode.
 
 The self-test also checks window containment, Advanced content slots, Bar

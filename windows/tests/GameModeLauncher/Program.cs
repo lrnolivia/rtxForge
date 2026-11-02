@@ -15,6 +15,16 @@ void Check(bool value,string message){if(!value)throw new Exception(message);}
 void Reject(Action action){try{action();}catch(Exception error) when(error is InvalidOperationException or IOException){return;}throw new Exception("Invalid package accepted");}
 try
 {
+    var activations=new DesktopActivationQueue();
+    Check(!activations.Add(true),"Startup request must wait until ready");
+    Check(activations.Take() is null,"Partial window construction must not dispatch");
+    Check(!activations.Add(false),"Newer startup Desktop request must also wait");
+    activations.MarkReady();
+    Check(activations.Take()==false,"Newest startup request must win");
+    Check(activations.Take() is null,"Startup request must be consumed once");
+    Check(activations.Add(true),"Ready activations should schedule a dispatch");
+    activations.Add(false);
+    Check(activations.Take()==false,"Queued older mode must not override the newest activation");
     var bundle=Path.Combine(root,"app","game-mode");Directory.CreateDirectory(bundle);
     foreach(var file in new[]{"rtxforge-game-mode.exe","python/python.exe","bridge/engine_host.py","engine/scripts/desktop_service.py","screening/rtxforge-screenshot-screen.exe"})
     {var path=Path.Combine(bundle,file);Directory.CreateDirectory(Path.GetDirectoryName(path)!);File.WriteAllText(path,"fixture");}

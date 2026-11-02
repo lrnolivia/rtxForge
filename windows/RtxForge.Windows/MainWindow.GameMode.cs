@@ -19,6 +19,7 @@ public sealed partial class MainWindow
     Process? nativeGameMode;
     bool openingGameMode;
     bool nativeModeRequested;
+    bool waitingForGameMode;
 
     public bool InGameMode => nativeGameMode is not null || openingGameMode;
 
@@ -32,8 +33,7 @@ public sealed partial class MainWindow
             (Environment.GetCommandLineArgs().Contains("--game-mode", StringComparer.OrdinalIgnoreCase)
             || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SteamAppId"))))
         {
-            nativeModeRequested = true;
-            DispatcherQueue.TryEnqueue(async () => { while (Busy) await Task.Delay(150); if (nativeModeRequested) EnterGameMode(); });
+            QueueNativeGameMode();
         }
     }
 
@@ -51,6 +51,22 @@ public sealed partial class MainWindow
 
     public void EnterGameMode() => OpenNativeGameMode(false);
     public void OpenGameModeAppearance() => OpenNativeGameMode(true);
+
+    void QueueNativeGameMode()
+    {
+        nativeModeRequested = true;
+        if (waitingForGameMode || InGameMode) return;
+        waitingForGameMode = true;
+        DispatcherQueue.TryEnqueue(async () =>
+        {
+            try
+            {
+                while (Busy && nativeModeRequested) await Task.Delay(150);
+                if (nativeModeRequested) EnterGameMode();
+            }
+            finally { waitingForGameMode = false; }
+        });
+    }
 
     async void OpenNativeGameMode(bool appearance)
     {
@@ -89,7 +105,7 @@ public sealed partial class MainWindow
     internal void ActivateDesktop(bool gaming)
     {
         nativeModeRequested = gaming;
-        if (gaming) { if (nativeGameMode is not null) { NativeFocusGameMode(); return; } EnterGameMode(); }
+        if (gaming) { if (nativeGameMode is not null) { NativeFocusGameMode(); return; } QueueNativeGameMode(); }
         else { if (nativeGameMode is not null) nativeGameMode.CloseMainWindow(); else { AppWindow.Show(); Activate(); } }
     }
 

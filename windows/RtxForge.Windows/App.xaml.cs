@@ -6,7 +6,12 @@ namespace RtxForge.Windows;
 public partial class App : Application
 {
     OverlayHelperWindow? overlayHelper;
-    bool? pendingGameModeActivation;
+    readonly DesktopActivationQueue activations = new();
+
+    void DispatchPendingActivation()
+    {
+        if (activations.Take() is { } gaming) Main?.ActivateDesktop(gaming);
+    }
     public static IForgeService Service { get; private set; } = null!;
     /// <summary>Set by the MainWindow constructor before its first page loads.</summary>
     public static MainWindow? Main { get; internal set; }
@@ -68,8 +73,7 @@ public partial class App : Application
             {
                 var text = (activation.Data as global::Windows.ApplicationModel.Activation.ILaunchActivatedEventArgs)?.Arguments ?? "";
                 var gaming = text.Split(' ').Contains("--game-mode");
-                if (Main is { } window) window.DispatcherQueue.TryEnqueue(() => window.ActivateDesktop(gaming));
-                else pendingGameModeActivation = gaming;
+                if (activations.Add(gaming)) Main?.DispatcherQueue.TryEnqueue(DispatchPendingActivation);
             };
         }
         // The real engine (bundled Python host) unless --preview is passed or
@@ -88,11 +92,8 @@ public partial class App : Application
         {
             var window = new MainWindow(Service);
             window.Activate();
-            if (pendingGameModeActivation is { } gaming)
-            {
-                pendingGameModeActivation = null;
-                window.DispatcherQueue.TryEnqueue(() => window.ActivateDesktop(gaming));
-            }
+            activations.MarkReady();
+            DispatchPendingActivation();
         }
         catch (Exception error)
         {

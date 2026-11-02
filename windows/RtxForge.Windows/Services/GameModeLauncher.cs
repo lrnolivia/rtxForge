@@ -4,6 +4,17 @@ using System.Text.Json;
 
 namespace RtxForge.Windows.Services;
 
+/// <summary>Keep only the newest activation until Desktop startup is fully ready.</summary>
+internal sealed class DesktopActivationQueue
+{
+    readonly object gate = new();
+    bool ready;
+    bool? pending;
+    public bool Add(bool gaming) { lock (gate) { pending = gaming; return ready; } }
+    public void MarkReady() { lock (gate) ready = true; }
+    public bool? Take() { lock (gate) { if (!ready) return null; var next = pending; pending = null; return next; } }
+}
+
 /// <summary>Launch the verified native UI; no alternate install engine or legacy UI fallback.</summary>
 internal static class GameModeLauncher
 {

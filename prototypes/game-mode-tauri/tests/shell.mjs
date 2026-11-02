@@ -30,6 +30,7 @@ try {
   });
   expect(rows.width).toBeGreaterThan(2400);
   expect(rows.visible).toBe(2);expect(rows.complete).toBe(2);expect(rows.complete).toBeGreaterThanOrEqual(2);
+  expect(rows.partial,'Default 4K layout must not expose a clipped third row').toBe(false);
   await noOverflow();
   await stableShellOnScroll('#game-results');
   await page.setViewportSize({width:1920,height:1080});

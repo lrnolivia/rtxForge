@@ -98,8 +98,7 @@ def desktop_command(root):
     return [sys.executable, str(Path(root) / 'scripts/desktop_frontend.py'), '--desktop-mode']
 
 
-def start(root, read_only=False, appearance=False):
-    executable, image = resolve(root)
+def launch_environment(root, read_only=False):
     env = os.environ.copy()
     command = desktop_command(root)
     for key in ('RTXFORGE_ROOT', 'RTXFORGE_PYTHON', 'PYTHONPATH', 'APPDIR', 'APPIMAGE',
@@ -114,8 +113,22 @@ def start(root, read_only=False, appearance=False):
     else:env['RTXFORGE_APP_EXE']=str(Path(root)/'rtxforge')
     if read_only:
         env['RTXFORGE_PREVIEW_READ_ONLY'] = '1'
+    return env
+
+
+def start(root, read_only=False, appearance=False):
+    executable, image = resolve(root)
+    env = launch_environment(root, read_only)
     args = [str(executable)] + (['--appimage-extract-and-run'] if image else [])
     if appearance:args.append('--appearance')
     child = subprocess.Popen([*args, '--desktop-parent', str(os.getpid())], env=env,
                              cwd=executable.parent, stdin=subprocess.DEVNULL)
     return NativeSession(child)
+
+
+def return_to_desktop(root):
+    executable, image = resolve(root)
+    args = [str(executable)] + (['--appimage-extract-and-run'] if image else [])
+    # The running native instance drains its existing engine before closing.
+    return subprocess.Popen([*args, '--desktop-mode'], env=launch_environment(root), stdin=subprocess.DEVNULL,
+                            cwd=executable.parent)

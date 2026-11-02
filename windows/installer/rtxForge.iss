@@ -72,6 +72,7 @@ Name: "gamemodeicon"; Description: "Add an ""rtxForge Game Mode"" shortcut (full
 ; newer engine dropped can never be imported by mistake.
 Type: filesandordirs; Name: "{app}\engine"
 Type: filesandordirs; Name: "{app}\python"
+Type: filesandordirs; Name: "{app}\game-mode"
 ; The rtxForge Overlay lives in each game; the desktop overlay window is retired.
 Type: files; Name: "{autoprograms}\rtxForge Overlay.lnk"
 
@@ -90,6 +91,7 @@ Filename: "{app}\rtxForge.exe"; Description: "{cm:LaunchProgram,rtxForge}"; Flag
 ; Byte-code caches the engine may write next to itself (it normally runs with -B).
 Type: filesandordirs; Name: "{app}\engine"
 Type: filesandordirs; Name: "{app}\python"
+Type: filesandordirs; Name: "{app}\game-mode"
 
 [Registry]
 ; The helper is user-controlled in Settings. Remove its sign-in entry on uninstall.

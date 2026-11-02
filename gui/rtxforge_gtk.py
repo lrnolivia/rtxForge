@@ -5889,6 +5889,9 @@ class Window(Adw.ApplicationWindow):
             b.append(icon_button(title,icon,invoke))
 
     def _open_native_game_mode(self,wait_for_idle=False):
+        if not getattr(self,'_native_game_mode_requested',False):
+            self._native_game_mode_pending=False
+            return False
         def restore(code=None, error=None):
             self._native_game_mode_pending=False
             self._native_game_mode=None
@@ -5921,6 +5924,7 @@ class Window(Adw.ApplicationWindow):
 
     def set_input_surface(self,couch,wait_for_idle=False):
         if not hasattr(self,'input_stack'):return
+        self._native_game_mode_requested=bool(couch)
         if couch and self.settings.get('big_picture_ui',True):
             if self.options.demo:
                 self.toast('Open the native Game Mode preview to review its controller interface.')
@@ -16694,8 +16698,43 @@ class Window(Adw.ApplicationWindow):
 
 
 class Application(Adw.Application):
-    def __init__(self,options):super().__init__(application_id='io.github.lrnolivia.RTXForge',flags=Gio.ApplicationFlags.NON_UNIQUE);self.options=options;self.exit_code=0
+    def __init__(self,options):
+        super().__init__(application_id='io.github.lrnolivia.RTXForge',flags=Gio.ApplicationFlags.NON_UNIQUE if options.demo else Gio.ApplicationFlags.DEFAULT_FLAGS)
+        self.options=options;self.exit_code=0;self.pending_mode=None
+        for name,gaming in (('native-game-mode',True),('desktop-mode',False)):
+            action=Gio.SimpleAction.new(name,None)
+            action.connect('activate',lambda *_args,gaming=gaming:self.activate_mode(gaming))
+            self.add_action(action)
+        support=Gio.SimpleAction.new('support-link',GLib.VariantType.new('s'))
+        support.connect('activate',lambda _action,value:self.activate_support(value.get_string()))
+        self.add_action(support)
+
+    def activate_support(self,value):
+        import beta_report
+        link=beta_report.parse_link(value)
+        if not link:return
+        self.options.link=link
+        if hasattr(self,'window') and not self.window.busy:
+            self.activate_mode(False)
+            self.window.open_support_link()
+
+    def activate_mode(self,gaming):
+        if not hasattr(self,'window'):
+            self.pending_mode=gaming
+            return
+        if gaming:self.window.enter_game_mode()
+        else:
+            self.window._native_game_mode_requested=False
+            if getattr(self.window,'_native_game_mode',None):
+                import game_mode_launcher
+                try:game_mode_launcher.return_to_desktop(ROOT)
+                except (OSError,ValueError,KeyError) as error:self.window.toast(str(error))
+            else:self.window.present()
+
     def do_activate(self):
+        if hasattr(self,'window'):
+            self.window.present()
+            return
         try:
             Gtk.IconTheme.get_for_display(
                 Gdk.Display.get_default()
@@ -16726,6 +16765,9 @@ class Application(Adw.Application):
                 self.options,
             )
             self.window.present()
+            if self.pending_mode is not None:
+                gaming,self.pending_mode=self.pending_mode,None
+                self.activate_mode(gaming)
 
         except Exception:
             # In automated smoke mode a startup exception must terminate
@@ -16791,5 +16833,18 @@ def main():
         or options.library_state_smoke
     ):
         options.demo=True
-    app=Application(options);result=app.run([sys.argv[0]]);return app.exit_code or result
+    app=Application(options)
+    if not options.demo:
+        app.register(None)
+        if app.get_is_remote():
+            if options.link:
+                link='rtxforge://support/logs'+('?issue='+str(options.link['issue']) if options.link['issue'] else '')
+                app.activate_action('support-link',GLib.Variant('s',link))
+            else:
+                gaming=options.game_mode or (gamescope_session() and not options.desktop_mode)
+                app.activate_action('native-game-mode' if gaming and not options.desktop_mode else 'desktop-mode',None)
+            connection=app.get_dbus_connection()
+            if connection:connection.flush_sync(None)
+            return 0
+    result=app.run([sys.argv[0]]);return app.exit_code or result
 if __name__=='__main__':sys.exit(main())

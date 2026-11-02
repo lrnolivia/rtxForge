@@ -143,6 +143,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            if args.iter().any(|arg|arg=="--desktop-mode") { close_safely(app); return; }
             if args.iter().any(|arg|arg=="--appearance") { let _ = app.emit("navigate-appearance", ()); }
             let state = app.state::<desktop_parent::DesktopParent>();
             if let Ok(mut parent) = state.0.lock() {

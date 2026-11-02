@@ -31,11 +31,13 @@ def bundle(payload, output):
     target = output / 'rtxforge-game-mode.AppImage'
     shutil.copy2(candidates[0], target)
     with tempfile.TemporaryDirectory() as home:
-        env = os.environ | {'HOME': home, 'RTXFORGE_PREVIEW_READ_ONLY': '1', 'APPIMAGE_EXTRACT_AND_RUN': '1'}
-        result = subprocess.run(['xvfb-run', '-a', str(target), '--appimage-extract-and-run', '--verify-runtime'],
+        env = os.environ | {'HOME': home, 'RTXFORGE_PREVIEW_READ_ONLY': '1', 'APPIMAGE_EXTRACT_AND_RUN': '1',
+                            'WEBKIT_DISABLE_DMABUF_RENDERER': '1'}
+        result = subprocess.run(['dbus-run-session', '--', 'xvfb-run', '-a', str(target), '--appimage-extract-and-run', '--verify-runtime'],
                                 env=env, text=True, capture_output=True, timeout=90)
         if result.returncode or '"runtimeVerified":true' not in result.stdout:
-            raise RuntimeError('The bundled private runtime failed: ' + result.stderr[-2000:])
+            raise RuntimeError(f'The bundled private runtime failed (exit {result.returncode}): '
+                               + result.stdout[-1500:] + result.stderr[-2000:])
     with target.open('rb') as stream:
         sha = hashlib.file_digest(stream, 'sha256').hexdigest()
     (output / 'game-mode.json').write_text(json.dumps({'schema': 1, 'desktopIntegration': 1,

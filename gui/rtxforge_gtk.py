@@ -5507,7 +5507,7 @@ class Window(Adw.ApplicationWindow):
         self.overlay.set_child(self.input_stack)
         self.input_kind='keyboard'
         self.last_controller_input=0.0;self._pointer_origin=None
-        self.set_input_surface(gamescope_session() and not getattr(self.options,'desktop_mode',False))
+        self.set_input_surface(gamescope_session() and not getattr(self.options,'desktop_mode',False),wait_for_idle=True)
         if gamescope_session() and not options.demo:
             self.set_resizable(True)
             self.fullscreen()
@@ -5519,7 +5519,7 @@ class Window(Adw.ApplicationWindow):
         self._new_shell=None;self._new_stack=None
         initial=(getattr(options,'ui_mode',None) or 'classic') if options.demo else 'classic'
         self.set_ui_mode(initial,persist=False)
-        if getattr(options,'game_mode',False):self.enter_game_mode()
+        if getattr(options,'game_mode',False) and not getattr(options,'desktop_mode',False):self.set_input_surface(True,wait_for_idle=True)
         GLib.idle_add(self._collapse_library_header,self._library_scroll_adjustment)
 
     # ---------------- NAVIGATION ----------------
@@ -5888,7 +5888,7 @@ class Window(Adw.ApplicationWindow):
                 d.close();GLib.idle_add(lambda:(fn(),False)[1])
             b.append(icon_button(title,icon,invoke))
 
-    def _open_native_game_mode(self):
+    def _open_native_game_mode(self,wait_for_idle=False):
         def restore(code=None, error=None):
             self._native_game_mode_pending=False
             self._native_game_mode=None
@@ -5901,6 +5901,9 @@ class Window(Adw.ApplicationWindow):
             return False
         try:
             if self.busy:
+                if wait_for_idle:
+                    GLib.timeout_add(250,self._open_native_game_mode,True)
+                    return False
                 self._native_game_mode_pending=False
                 self.toast('Finish the current operation before switching interfaces.')
                 return False
@@ -5916,7 +5919,7 @@ class Window(Adw.ApplicationWindow):
         except (OSError,ValueError,KeyError) as error:restore(None,error)
         return False
 
-    def set_input_surface(self,couch):
+    def set_input_surface(self,couch,wait_for_idle=False):
         if not hasattr(self,'input_stack'):return
         if couch and self.settings.get('big_picture_ui',True):
             if self.options.demo:
@@ -5924,7 +5927,7 @@ class Window(Adw.ApplicationWindow):
                 return
             if not getattr(self,'_native_game_mode_pending',False):
                 self._native_game_mode_pending=True
-                GLib.idle_add(self._open_native_game_mode)
+                GLib.idle_add(self._open_native_game_mode,wait_for_idle)
             return
         self.input_stack.set_visible_child_name('desktop')
         self.apply_display_preferences()

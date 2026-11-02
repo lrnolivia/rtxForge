@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 spec=importlib.util.spec_from_file_location('game_mode_launcher',Path(__file__).resolve().parents[1]/'scripts/game_mode_launcher.py')
 launcher=importlib.util.module_from_spec(spec);spec.loader.exec_module(launcher)
@@ -42,3 +42,14 @@ class NativeHandoffTests(unittest.TestCase):
         data=self.root/'data';installed=data/'rtxforge-game-mode';installed.mkdir(parents=True)
         (installed/'installed.json').write_text(json.dumps({'path':str(self.root/'outside')}))
         with self.assertRaises(ValueError):launcher.resolve(self.root,data)
+
+    def test_existing_native_window_outlives_single_instance_launcher(self):
+        child=Mock();child.wait.return_value=0
+        with patch.object(launcher,'native_instances',side_effect=[{42:'original'}, {42:'original'}, {42:'reused'}]) as instances,patch.object(launcher.time,'sleep') as sleep:
+            self.assertEqual(launcher.NativeSession(child).wait(),0)
+            self.assertEqual(instances.call_count,3)
+            self.assertEqual(sleep.call_count,2)
+        child.wait.return_value=1
+        with patch.object(launcher,'native_instances') as instances:
+            self.assertEqual(launcher.NativeSession(child).wait(),1)
+            instances.assert_not_called()

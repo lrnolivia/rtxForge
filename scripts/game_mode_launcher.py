@@ -5,6 +5,49 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import time
+
+
+def native_instances(proc=Path('/proc'), pids=None):
+    """Identify this user's native UI processes, including extracted AppImages."""
+    if not hasattr(os, 'getuid'):
+        return {}
+    found = {}
+    entries = (proc / str(pid) for pid in pids) if pids is not None else proc.iterdir()
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            if entry.stat().st_uid != os.getuid():
+                continue
+            executable = (entry / 'exe').readlink()
+            if executable.name != 'rtxforge-game-mode':
+                continue
+            # Linux start ticks distinguish a living instance from a reused PID.
+            fields = (entry / 'stat').read_text().rsplit(')', 1)[1].split()
+            found[int(entry.name)] = fields[19]
+        except (OSError, IndexError):
+            continue
+    return found
+
+
+class NativeSession:
+    def __init__(self, child):
+        self.child = child
+
+    def wait(self):
+        code = self.child.wait()
+        if code:
+            return code
+        # The single-instance launcher exits immediately after focusing an
+        # existing window. Keep Desktop hidden until that actual UI exits.
+        instances = native_instances()
+        while instances:
+            time.sleep(.5)
+            current = native_instances(pids=instances)
+            instances = {pid: start for pid, start in instances.items()
+                         if current.get(pid) == start}
+        return code
 
 
 def digest(path):
@@ -71,5 +114,6 @@ def start(root, read_only=False, appearance=False):
         env['RTXFORGE_PREVIEW_READ_ONLY'] = '1'
     args = [str(executable)] + (['--appimage-extract-and-run'] if image else [])
     if appearance:args.append('--appearance')
-    return subprocess.Popen([*args, '--desktop-parent', str(os.getpid())], env=env,
-                            cwd=executable.parent, stdin=subprocess.DEVNULL)
+    child = subprocess.Popen([*args, '--desktop-parent', str(os.getpid())], env=env,
+                             cwd=executable.parent, stdin=subprocess.DEVNULL)
+    return NativeSession(child)

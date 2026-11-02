@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tomllib
 import urllib.request
 
 APP = Path(__file__).resolve().parent
@@ -125,12 +126,20 @@ def bundle(output, screening):
                     ignore=shutil.ignore_patterns('*.woff', '*.woff2', '*.ttf'))
     for path in (APP / 'node_modules/@tauri-apps/api').glob('LICENSE*'):
         shutil.copy2(path, notices / path.name)
+    cargo_home = Path(os.environ.get('CARGO_HOME') or Path.home() / '.cargo')
+    for package in tomllib.loads((APP / 'src-tauri/Cargo.lock').read_text())['package']:
+        crate = package['name'] + '-' + package['version']
+        for path in (cargo_home / 'registry/src').glob('*/' + crate + '/*'):
+            if path.is_file() and path.name.upper().startswith(('LICENSE','COPYING','NOTICE')):
+                destination = notices / 'rust' / crate
+                destination.mkdir(parents=True,exist_ok=True)
+                shutil.copy2(path,destination/path.name)
     dirty = bool(subprocess.check_output(['git', '-C', str(REPO), 'diff', '--name-only'], text=True).strip())
     files = {path.relative_to(output).as_posix(): digest(path) for path in sorted(output.rglob('*'))
              if path.is_file() and path.name != 'build.json' and not path.is_symlink()}
     receipt = {'schema': 2, 'version': '1.0.0', 'source': revision(), 'dirty': dirty,
                'native': native, 'platform': 'win-x64' if os.name == 'nt' else 'linux-x64',
-               'readOnlyDefault': False, 'files': files,
+               'readOnlyDefault': False, 'desktopIntegration': 1, 'files': files,
                'links': {p.relative_to(output).as_posix(): os.readlink(p) for p in output.rglob('*') if p.is_symlink()}}
     (output / 'build.json').write_text(json.dumps(receipt, indent=2), encoding='utf-8')
     verify(output)

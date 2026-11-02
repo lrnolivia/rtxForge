@@ -1,10 +1,11 @@
+import {libraryFixture} from './ui-fixture.mjs';
 import {chromium,expect} from '@playwright/test';
-const browser=await chromium.launch({channel:'msedge',headless:true});
+const browser=await chromium.launch({...(process.env.RTXFORGE_BROWSER?{channel:process.env.RTXFORGE_BROWSER}:{}),headless:true});
 const page=await browser.newPage({viewport:{width:1440,height:990},reducedMotion:'reduce'}),calls=[],errors=[];
 page.on('pageerror',error=>errors.push(error.message));
 let source,prepareRelease,executeRelease,progressId,mode='ready';
 await page.addInitScript(()=>{window.fixtureEvents=[];window.EventSource=class{constructor(){window.fixtureEvents.push(this);queueMicrotask(()=>this.onopen?.());}close(){this.onmessage=null;}};});
-await page.route('**/api/snapshot',async route=>{const response=await route.fetch();source=await response.json();source.defaults.runtime_provider='skynizz';source.defaults.default_profile='nr-mfg';await route.fulfill({json:source});});
+await page.route('**/api/snapshot',async route=>{const response=await route.fetch();source=process.env.RTXFORGE_UI_FIXTURE?libraryFixture():await response.json();source.defaults.runtime_provider='skynizz';source.defaults.default_profile='nr-mfg';await route.fulfill({json:source});});
 await page.route('**/api/engine/status',route=>route.fulfill({json:{enabled:true,reason:'Fixture only; no files changed.'}}));
 await page.route('**/api/engine',async route=>{
  const request=route.request().postDataJSON();calls.push(request);let result={};
@@ -21,11 +22,11 @@ await page.route('**/api/engine',async route=>{
  await route.fulfill({json:{result}});
 });
 const click=name=>page.getByRole('button',{name,exact:true}).click();
-const screenshot=name=>page.screenshot({path:'.impeccable/review/install-'+name+'.png'});
+const screenshot=name=>process.env.RTXFORGE_CAPTURE_REVIEW?page.screenshot({path:process.env.RTXFORGE_CAPTURE_REVIEW+'/install-'+name+'.png'}):Promise.resolve();
 const start=async()=>{await page.locator('.game-card').first().click();await click('Install Features');await expect(page.getByRole('button',{name:'Review games',exact:true})).toBeVisible();};
 const overflow=async()=>expect(await page.evaluate(()=>[...document.querySelectorAll('.flow-body,.flow-panel,.startup-group,.flow-review-row,.main-nav')].filter(n=>n.scrollWidth>n.clientWidth+2).map(n=>n.className))).toEqual([]);
 try{
- await page.goto('http://127.0.0.1:1420');await page.waitForSelector('.game-card');await start();
+ await page.goto((process.env.RTXFORGE_UI_URL||'http://127.0.0.1:1434'));await page.waitForSelector('.game-card');await start();
  expect(calls.filter(c=>c.method==='prepare_routes')).toHaveLength(0);await screenshot('startup');
  await click('Custom');await click('4×');await page.locator('[data-startup-control=intensity]').fill('1.75');await page.locator('[data-startup-control=intensity]').dispatchEvent('change');
  for(const width of [1440,960,390]){await page.setViewportSize({width,height:width===390?844:990});await overflow();if(width===390)await screenshot('startup-narrow');}

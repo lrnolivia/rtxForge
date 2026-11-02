@@ -4,7 +4,6 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using RtxForge.Windows.Controls;
-using RtxForge.Windows.GameMode;
 using RtxForge.Windows.Models;
 
 namespace RtxForge.Windows;
@@ -49,16 +48,11 @@ public sealed partial class MainWindow
                 Navigate("Game", new GameRequest(sample, "overview")); await Task.Delay(450);
                 Check(theme + "_details_both_marks_render", Tree(ContentFrame).OfType<OsMarks>().Any(m => m.Children.Count == 2 && m.ActualWidth > 20));
                 Check(theme + "_details_native_actions", !sample.InstalledOnLinux && !Tree(ContentFrame).OfType<TextBlock>().Any(t => t.Text == "Installed on Linux"));
-                var colors = GmTheme.For(theme);
-                var material = colors.DialogSurface(); colors.SetCardOpacity(0); colors.SetCardOpacity(100);
-                Check(theme + "_dialog_tint_fixed", material.TintOpacity == .95 && material.Opacity == 1);
+
             }
             Settings.LibraryView = "posters"; SettingsChanged?.Invoke(); Navigate("Library"); await Task.Delay(400);
-            EnterGameMode(); await Task.Delay(900);
-            Check("game_mode_cards_both_marks_render", Tree(gameMode!).OfType<OsMarks>().Any(m => m.Children.Count == 2 && m.ActualWidth > 24));
-            gameMode!.ShowCrossOsReview(sample); await Task.Delay(450);
-            Check("game_mode_details_both_marks_render", Tree(gameMode).OfType<OsMarks>().Any(m => m.Children.Count == 2 && m.ActualWidth > 20));
-            ExitGameMode();
+            // Native Game Mode has its own cross-platform UI and adapter checks.
+
         }
         catch (Exception error) { checks.Add(new { criterion = "native_review_error", pass = false, detail = error.ToString() }); }
         File.WriteAllText(destination, JsonSerializer.Serialize(new { process_id = Environment.ProcessId, checks }, new JsonSerializerOptions { WriteIndented = true }));

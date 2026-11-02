@@ -4292,13 +4292,8 @@ class LibraryGameItem(GObject.Object):
 class Window(Adw.ApplicationWindow):
     def apply_display_preferences(self):
         self.presentation_scale=1.0
-        if getattr(self,'couch_content',None):self.couch_content.set_factor(1.0)
         dialog=getattr(self,'dialog',None)
         if getattr(dialog,'_scaled_child',None):dialog._scaled_child.set_factor(1.0)
-        if hasattr(self,'couch'):
-            self.couch.theme.scale=str(self.settings.get('ui_scale','auto'))
-            self.couch.resize(self.get_width(),self.get_height())
-            self.couch.apply_navigation_preferences()
 
     def set_big_picture_ui(self,enabled):
         global COUCH_MODE
@@ -4312,8 +4307,6 @@ class Window(Adw.ApplicationWindow):
         self.settings[key]=value
         if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
         self.apply_display_preferences()
-        if hasattr(self,'couch') and self.input_stack.get_visible_child_name()=='couch':
-            GLib.idle_add(lambda:(self.couch.render(self.couch.current),False)[1])
 
 
     def game_status_label(self,game):
@@ -5507,19 +5500,14 @@ class Window(Adw.ApplicationWindow):
         import controller_input
         self.controller=controller_input.Controller()
         self.controller_source=GLib.timeout_add(40,self.poll_controller)
-        from game_mode import GameMode
         classic_child=self.overlay.get_child();self.overlay.set_child(None)
         classic_child.add_css_class('forge-desktop')
         self.input_stack=Gtk.Stack(hhomogeneous=False,vhomogeneous=False)
         self.input_stack.add_named(classic_child,'desktop')
-        self.couch=GameMode(self,SimpleNamespace(make_brand_icon=make_brand_icon,poster_art_path=poster_art_path,capsule_art_path=capsule_art_path,
-                                                 accent_source=accent_source,artwork_pixels=artwork_pixels,app_version=APP_VERSION))
-        self.couch_content=ScaledContent(self.couch)
-        self.input_stack.add_named(self.couch_content,'couch')
         self.overlay.set_child(self.input_stack)
         self.input_kind='keyboard'
         self.last_controller_input=0.0;self._pointer_origin=None
-        self.set_input_surface(gamescope_session())
+        self.set_input_surface(gamescope_session() and not getattr(self.options,'desktop_mode',False),wait_for_idle=True)
         if gamescope_session() and not options.demo:
             self.set_resizable(True)
             self.fullscreen()
@@ -5531,7 +5519,7 @@ class Window(Adw.ApplicationWindow):
         self._new_shell=None;self._new_stack=None
         initial=(getattr(options,'ui_mode',None) or 'classic') if options.demo else 'classic'
         self.set_ui_mode(initial,persist=False)
-        if getattr(options,'game_mode',False):self.enter_game_mode()
+        if getattr(options,'game_mode',False) and not getattr(options,'desktop_mode',False):self.set_input_surface(True,wait_for_idle=True)
         GLib.idle_add(self._collapse_library_header,self._library_scroll_adjustment)
 
     # ---------------- NAVIGATION ----------------
@@ -5900,70 +5888,68 @@ class Window(Adw.ApplicationWindow):
                 d.close();GLib.idle_add(lambda:(fn(),False)[1])
             b.append(icon_button(title,icon,invoke))
 
-    def set_input_surface(self,couch):
+    def _open_native_game_mode(self,wait_for_idle=False):
+        if not getattr(self,'_native_game_mode_requested',False):
+            self._native_game_mode_pending=False
+            return False
+        def restore(code=None, error=None):
+            self._native_game_mode_pending=False
+            self._native_game_mode=None
+            self.settings.update(library_media.load_settings(self.service.config))
+            self.present()
+            self.apply_display_preferences()
+            self.scan()
+            if error:self.toast('Game Mode could not open: '+str(error))
+            elif code:self.toast('Game Mode closed unexpectedly. Your Desktop session is still available.')
+            return False
+        try:
+            if self.busy:
+                if wait_for_idle:
+                    GLib.timeout_add(250,self._open_native_game_mode,True)
+                    return False
+                self._native_game_mode_pending=False
+                self.toast('Finish the current operation before switching interfaces.')
+                return False
+            import game_mode_launcher
+            child=game_mode_launcher.start(ROOT,appearance=getattr(self,'_native_game_mode_appearance',False))
+            self._native_game_mode_appearance=False
+            self._native_game_mode=child
+            self.set_visible(False)
+            def wait():
+                code=child.wait()
+                GLib.idle_add(restore,code,None)
+            threading.Thread(target=wait,daemon=True,name='game-mode-handoff').start()
+        except (OSError,ValueError,KeyError) as error:restore(None,error)
+        return False
+
+    def set_input_surface(self,couch,wait_for_idle=False):
         if not hasattr(self,'input_stack'):return
-        couch=couch and self.settings.get('big_picture_ui',True)
-        self._pointer_origin=None
-        self.input_stack.set_visible_child_name('couch' if couch else 'desktop')
-        if not couch and getattr(self,'_deferred_desktop_library_view',None):
-            key=self._deferred_desktop_library_view
-            self._deferred_desktop_library_view=None
-            control=getattr(self,'view_buttons',{}).get(key)
-            if control is not None:
-                control.set_active(True)
-                self.view_changed(control,key,force=True)
+        self._native_game_mode_requested=bool(couch)
+        if couch and self.settings.get('big_picture_ui',True):
+            if self.options.demo:
+                self.toast('Open the native Game Mode preview to review its controller interface.')
+                return
+            if not getattr(self,'_native_game_mode_pending',False):
+                self._native_game_mode_pending=True
+                GLib.idle_add(self._open_native_game_mode,wait_for_idle)
+            return
+        self.input_stack.set_visible_child_name('desktop')
         self.apply_display_preferences()
         self.controller_hud.set_visible(False)
-        if couch:self.couch.refresh()
-        self.add_css_class('controller-active') if couch else self.remove_css_class('controller-active')
-        # Game Mode fills the screen, as on Windows; leaving it restores only what it changed.
-        if couch and not self.is_fullscreen():
-            self._game_mode_fullscreen=True;self.fullscreen()
-        elif not couch and getattr(self,'_game_mode_fullscreen',False) and not gamescope_session():
-            self._game_mode_fullscreen=False;self.unfullscreen()
 
     def set_input_kind(self,kind):
         if getattr(self,'input_kind',None)==kind:return
         self.input_kind=kind
-        if hasattr(self,'couch'):self.couch.update_prompts()
 
     def keyboard_input(self,_controller=None,keyval=None,_keycode=None,state=0):
-        # Device changes affect prompts, never the selected interface.
         self.set_input_kind('keyboard')
-        if self.input_stack.get_visible_child_name()!='couch' and keyval==Gdk.KEY_Left and state&Gdk.ModifierType.ALT_MASK:
-            return self.navigate_back()
-        if keyval is None or self.input_stack.get_visible_child_name()!='couch':return False
-        recorder=getattr(self.couch,'shortcut_recorder',None)
-        if recorder:return recorder(keyval,state)
-        dialog=self.get_visible_dialog()
-        if dialog:
-            if keyval==Gdk.KEY_Escape:
-                if dialog.get_can_close():dialog.close()
-                return True
-            return False
-        focus=self.get_focus()
-        editing=isinstance(focus,(Gtk.Entry,Gtk.Text,Gtk.TextView,Gtk.SpinButton))
-        if keyval==Gdk.KEY_Escape:self.couch.navigate('back');return True
-        if editing:return False
-        control=bool(state&Gdk.ModifierType.CONTROL_MASK)
-        if control and keyval in (Gdk.KEY_comma,Gdk.KEY_l,Gdk.KEY_L,Gdk.KEY_1,Gdk.KEY_2,Gdk.KEY_3,Gdk.KEY_4,Gdk.KEY_5):
-            target={Gdk.KEY_comma:'settings',Gdk.KEY_l:'library',Gdk.KEY_L:'library',Gdk.KEY_1:'library',Gdk.KEY_2:'presets',Gdk.KEY_3:'packages',Gdk.KEY_4:'extras',Gdk.KEY_5:'settings'}[keyval]
-            self.couch.open(target);return True
-        if keyval==Gdk.KEY_F10:self.couch.open('menu');return True
-        if keyval==Gdk.KEY_F5:self.couch.refresh_library();return True
-        if isinstance(focus,(Gtk.Scale,Gtk.DropDown)):return False
-        if keyval in (Gdk.KEY_Return,Gdk.KEY_KP_Enter) and isinstance(focus,Gtk.Button):
-            # Tab and mouse focus must activate that native control, including Settings.
-            focus.emit('clicked');return True
-        actions={Gdk.KEY_Up:'up',Gdk.KEY_Down:'down',Gdk.KEY_Left:'left',Gdk.KEY_Right:'right',Gdk.KEY_Return:'accept',Gdk.KEY_KP_Enter:'accept',Gdk.KEY_BackSpace:'back',
-                 Gdk.KEY_x:'select',Gdk.KEY_X:'select',Gdk.KEY_Page_Up:'previous',Gdk.KEY_Page_Down:'next'}
-        if keyval in actions:self.couch.navigate(actions[keyval]);return True
+        if keyval==Gdk.KEY_Left and state&Gdk.ModifierType.ALT_MASK:return self.navigate_back()
         return False
 
     def poll_controller(self):
         actions=self.controller.poll()
-        if not hasattr(self,'couch'):return True
-        self.apply_display_preferences();self.couch.update_prompts()
+        if getattr(self,'_native_game_mode_pending',False):return True
+        self.apply_display_preferences()
         panel=self.dialog if isinstance(self.dialog,ResizablePanelWindow) and self.dialog.get_mapped() else None
         active_panel=panel if panel and panel.is_active() else None
         if not self.is_active() and not active_panel:return True
@@ -5971,8 +5957,6 @@ class Window(Adw.ApplicationWindow):
         if actions or scroll:
             self.last_controller_input=time.monotonic();self._pointer_origin=None
             self.set_input_kind('controller')
-        if scroll and self.settings.get('big_picture_ui',True) and self.input_stack.get_visible_child_name()=='couch':
-            self.couch.scroll_main_view(scroll)
         for action in actions:
             dialog=active_panel or self.get_visible_dialog()
             if not dialog:
@@ -5981,8 +5965,7 @@ class Window(Adw.ApplicationWindow):
                     if direction is not None:self.child_focus(direction)
                     elif action=='accept' and self.get_focus():self.get_focus().activate()
                     continue
-                if self.input_stack.get_visible_child_name()!='couch':self.set_input_surface(True)
-                self.couch.navigate(action)
+                self.set_input_surface(True)
                 continue
             if action in ('up','down','left','right','previous','next'):
                 direction={'up':Gtk.DirectionType.UP,'down':Gtk.DirectionType.DOWN,'left':Gtk.DirectionType.LEFT,'right':Gtk.DirectionType.RIGHT,'previous':Gtk.DirectionType.TAB_BACKWARD,'next':Gtk.DirectionType.TAB_FORWARD}[action]
@@ -6355,31 +6338,14 @@ class Window(Adw.ApplicationWindow):
         except Exception:return False
 
     def toggle_rtxforge_in_steam(self,*_):
-        if self.options.demo:self.toast('Steam integration is disabled in preview mode.');return
-        import steam_self_install,copy
-        settings=copy.deepcopy(self.settings)
-        try:status=steam_self_install.shortcut_status(self.service.config,settings)
-        except Exception as error:self.error(str(error));return
-        if not status['added']:self.add_rtxforge_to_steam();return
-        d,b,f=self.open_panel('Remove rtxForge from Steam',width=560,height=240)
-        b.append(label('Remove this app’s shortcut from Steam?','title-2'))
-        b.append(label('Close Steam first. Your games, saved artwork and installed rtxForge app will be kept.','dim-label'))
-        def remove(*_):
-            d.close()
-            def ready(result):
-                self.toast('rtxForge was removed from Steam. Your saved artwork was kept.')
-                self.refresh_steam_shortcut_action()
-            self.start('Removing rtxForge from Steam',lambda:steam_self_install.remove(self.service.config,settings,reviewed=status),ready)
-        f.append(button('Cancel',lambda *_:d.close()))
-        f.append(button('Remove from Steam',remove,'destructive-action'))
+        self.add_rtxforge_to_steam()
 
     def refresh_steam_shortcut_action(self):
         added=self.steam_shortcut_added()
         if getattr(self,'steam_shortcut_row',None):
             self.steam_shortcut_row.set_title('rtxForge is in Steam' if added else 'Add rtxForge to Steam')
-            self.steam_shortcut_button.set_label('Remove from Steam' if added else 'Add to Steam')
+            self.steam_shortcut_button.set_label('Update Steam Shortcut' if added else 'Add to Steam')
             (self.steam_shortcut_button.remove_css_class if added else self.steam_shortcut_button.add_css_class)('suggested-action')
-        if self.couch.page=='settings':self.couch.render()
 
     def add_rtxforge_to_steam(self,*_):
         if self.options.demo:self.toast('Steam integration is disabled in preview mode.');return
@@ -6405,8 +6371,8 @@ class Window(Adw.ApplicationWindow):
         profile=Gtk.Button(label='Choose Steam Profile',halign=Gtk.Align.START)
         profile.connect('clicked',lambda *_:(self.dialog.force_close() if self.dialog else None,self.choose_steam_artwork_profile()))
         flow=self.review_write('steam-shortcut',{'operation':'steam-shortcut','rows':rows,'blocked':[]},run=run,
-            details=['Add rtxForge to Steam' if review['created'] else 'Refresh rtxForge artwork','Steam account '+review['profile']],
-            note='Only this app’s shortcut artwork will change. Replaced images are backed up. Restart Steam afterward to refresh its library.',
+            details=['Add rtxForge to Steam' if review['created'] else 'Update Steam Shortcut','Steam account '+review['profile']],
+            note='This app’s shortcut will open the current Game Mode. Its bundled artwork will also be updated. Replaced images are backed up. Restart Steam afterward to refresh its library.',
             done=done,extra=profile)
         if flow is not None:flow.primary.set_label('Add & Apply Artwork' if review['created'] else 'Apply Artwork')
 
@@ -6459,7 +6425,6 @@ class Window(Adw.ApplicationWindow):
             else:self.toast('Artwork synced to Steam. Restart Steam if its cached images have not refreshed.')
             if refresh and not result['errors']:self.refresh_game_artwork(game)
             elif refresh:
-                if getattr(self,'couch',None):self.couch.artwork_updated(game)
                 self.show_games(self.games,art=False)
         if game is None:
             # Library-wide sync is reviewed first, like every other write.
@@ -6477,7 +6442,6 @@ class Window(Adw.ApplicationWindow):
         def ready(result):
             game.update(result)
             self._ensure_game_accent(game)
-            if getattr(self,'couch',None):self.couch.artwork_updated(game)
             self.show_games(self.games,art=False)
             self.details(game)
         self.start('Updating artwork',lambda:library_media.LibraryMedia(self.service.config,self.settings).enrich(game),ready)
@@ -9672,7 +9636,6 @@ class Window(Adw.ApplicationWindow):
         self.settings['dark']=dark
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if dark else Adw.ColorScheme.FORCE_LIGHT)
         apply_neutral_palette()
-        if hasattr(self,'couch'):self.couch.apply_theme()
 
     def global_review(self,nr,mfg):
         """One-time reviewed NR/MFG change for installed games; never a lasting override."""
@@ -9993,14 +9956,6 @@ class Window(Adw.ApplicationWindow):
         ):
             return
 
-        if self.input_stack.get_visible_child_name()=='couch':
-            # Keep the preference shared, without repainting a hidden gallery.
-            # Returning to Desktop applies this choice through the normal path.
-            self.settings['library_view']=key
-            self._deferred_desktop_library_view=key
-            if not self.options.demo:
-                library_media.save_settings(self.service.config,self.settings)
-            return
         self._switching_library_view=True
         self.library_scroll.get_vadjustment().set_value(0)
         self.column_scroll.get_vadjustment().set_value(0)
@@ -10360,10 +10315,6 @@ class Window(Adw.ApplicationWindow):
         for item in report.get('updated_games',[]):text+='\n\nUpdated · '+item['title']
         for item in report.get('blocked',[]):text+='\n\nNeeds repair · '+item['title']+'\n'+item['detail']
         if report.get('error'):text+='\n\n'+report['error']
-        if self.input_stack.get_visible_child_name()=='couch':
-            c=self.couch
-            c.show_modal('Overlay update',c.label(text,'gm-p',wrap=True),[c.button('Done',c.close_modal)],c.close_modal,1000)
-            return
         dialog=Adw.AlertDialog(heading='Overlay update',body=text)
         dialog.add_response('close','Done');dialog.set_close_response('close');dialog.present(self)
 
@@ -10661,8 +10612,6 @@ class Window(Adw.ApplicationWindow):
             self.apply_pending_app_update(False);return True
         if self.busy and self.task_kind!='art':self.toast('Please wait for the current file operation to finish.');return True
         if self.busy:self.cancel_art.set()
-        if getattr(getattr(self,'couch',None),'hint_timer',0):
-            GLib.source_remove(self.couch.hint_timer);self.couch.hint_timer=0
         if getattr(self,'controller_source',0):
             GLib.source_remove(self.controller_source);self.controller_source=0
             self.controller.close()
@@ -10813,8 +10762,6 @@ class Window(Adw.ApplicationWindow):
                 self._column_refresh_game(
                     game
                 )
-            if game is not None and hasattr(self,'couch'):
-                self.couch.artwork_updated(game)
             if getattr(self,'detail_game',None)==event['game'] and self.dialog==getattr(self,'detail_dialog',None) and event['data'].get('hero'):
                 try:self.detail_banner.set_paintable(Gdk.Texture.new_from_filename(event['data']['hero']))
                 except Exception:pass
@@ -11499,7 +11446,6 @@ class Window(Adw.ApplicationWindow):
         removed=set(self.settings.get('removed_games') or [])
         games=[g for g in games if g.get('game') not in removed]
         self.games=games
-        if hasattr(self,'couch'):GLib.idle_add(lambda:(self.couch.refresh(),False)[1])
         self.cards={}
 
         valid_ids={
@@ -14110,8 +14056,6 @@ class Window(Adw.ApplicationWindow):
         import functional_test
         test=game_notes.latest_test(game.get('test_record'))
         if not test:return
-        if hasattr(self,'couch') and self.input_stack.get_visible_child_name()=='couch':
-            self.couch.show_functional_test(game);return
         d,b,f=self.open_panel('Functional test · '+game['name'])
         b.append(label('These checks show what ran. Check the picture yourself; you choose the final result.','dim-label'))
         for result in test['results']:
@@ -14207,8 +14151,6 @@ class Window(Adw.ApplicationWindow):
         if not games:return
         if self.busy and self.task_kind!='art':
             self.toast('Wait for the current task to finish, then prepare the report.');return
-        if getattr(self,'input_stack',None) is not None and self.input_stack.get_visible_child_name()=='couch':
-            self.couch.bug_report(games);return
         if len(games)>1:self.choose_report_game(games,issue);return
         game=games[0]
         flow=OperationFlow(self,'report',[game],'Bug Report')
@@ -14411,10 +14353,6 @@ class Window(Adw.ApplicationWindow):
 
     def new_operation_flow(self,operation,games,title=None):
         """The operation dialog for the visible interface: Game Mode draws its own."""
-        if getattr(self,'input_stack',None) is not None and self.input_stack.get_visible_child_name()=='couch':
-            from game_mode import GameModeFlow
-            words=OPERATION_WORDS.get(operation,OPERATION_WORDS['reset'])
-            return GameModeFlow(self.couch,self,operation,games,(title or words[0],words[1],words[2]))
         return OperationFlow(self,operation,games,title)
 
     def launch_action(self,operation,entire=False,targets=None,visual_settings=None,_presets_confirmed=False,_flow=None):
@@ -15201,8 +15139,6 @@ class Window(Adw.ApplicationWindow):
     def show_settings(self,*_):
         # Game Mode has its own Settings page; the desktop dialog keeps native
         # DPI and would open tiny over a scaled couch layout.
-        if hasattr(self,'couch') and self.input_stack.get_visible_child_name()=='couch':
-            self.couch.open('settings');return
         # libadwaita's native preferences dialog: section tabs on top, search,
         # adaptive on narrow windows. Changes apply immediately, as on Windows.
         if self.dialog:self.dialog.force_close() if hasattr(self.dialog,'force_close') else self.dialog.close()
@@ -15328,7 +15264,7 @@ class Window(Adw.ApplicationWindow):
         steam_launcher=Adw.PreferencesGroup(title='Play from Steam',description='Add rtxForge to your Steam library to open it from Gaming Mode with a controller.')
         added=self.steam_shortcut_added()
         steam_shortcut=row('rtxForge is in Steam' if added else 'Add rtxForge to Steam','You review the shortcut and artwork first.')
-        steam_action=button('Remove from Steam' if added else 'Add to Steam',self.toggle_rtxforge_in_steam,None if added else 'suggested-action')
+        steam_action=button('Update Steam Shortcut' if added else 'Add to Steam',self.toggle_rtxforge_in_steam,None if added else 'suggested-action')
         steam_action.set_sensitive(not self.options.demo);steam_action.set_valign(Gtk.Align.CENTER)
         steam_shortcut.add_suffix(steam_action);steam_launcher.add(steam_shortcut)
         self.steam_shortcut_row=steam_shortcut;self.steam_shortcut_button=steam_action
@@ -15415,56 +15351,15 @@ class Window(Adw.ApplicationWindow):
                 saved['theme']=THEME_MODE
                 library_media.save_settings(self.service.config,saved)
         theme_selector.connect('notify::active-name',change_theme)
-        theme_selector.connect('notify::active-name',lambda *_: self.couch.apply_theme() if hasattr(self,'couch') else None)
         theme_row.add_suffix(theme_selector)
         appearance.add(theme_row)
-        import game_mode_contract
-        # Windows SettingsPage: Gaming Mode > Theme holds Game Mode's own color theme,
-        # the shared-theme switch and card translucency; linked pickers follow each other.
-        gaming_theme=Adw.PreferencesGroup(title='Theme',description='How Game Mode looks.')
-        game_mode_theme=Adw.ToggleGroup(valign=Gtk.Align.CENTER)
-        for key,caption in [('light','Light'),('dark','Dark'),('night','Night')]:
-            game_mode_theme.add(Adw.Toggle(name=key,label=caption))
-        game_mode_theme.set_active_name(game_mode_contract.theme_name(self.settings))
-        game_mode_theme_row=row('Color Theme','Choose the theme for Game Mode.')
-        game_mode_theme_row.add_suffix(game_mode_theme);gaming_theme.add(game_mode_theme_row)
-        def change_game_mode_theme(group,*_):
-            value=group.get_active_name()
-            if value is None or value==game_mode_contract.theme_name(self.settings):return
-            game_mode_contract.set_theme(self.settings,value)
-            if self.settings.get('game_mode_theme_linked',True):theme_selector.set_active_name(value)
-            else:
-                if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
-                if hasattr(self,'couch'):self.couch.apply_theme()
-        game_mode_theme.connect('notify::active-name',change_game_mode_theme)
-        def follow_desktop_theme(group,*_):
-            if self.settings.get('game_mode_theme_linked',True) and group.get_active_name():
-                game_mode_theme.set_active_name(group.get_active_name())
-        theme_selector.connect('notify::active-name',follow_desktop_theme)
-        linked_theme=Adw.SwitchRow(title=game_mode_contract.THEME_LINK_LABEL,
-            subtitle='Turn off to choose each interface’s theme separately.',active=self.settings.get('game_mode_theme_linked',True))
-        def change_theme_link(widget,*_):
-            game_mode_contract.link_themes(self.settings,widget.get_active())
-            game_mode_theme.set_active_name(game_mode_contract.theme_name(self.settings))
-            if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
-            if hasattr(self,'couch'):
-                self.couch.apply_theme()
-                if self.couch.get_mapped():self.couch.render(keep_focus=True)
-        linked_theme.connect('notify::active',change_theme_link);gaming_theme.add(linked_theme)
-        # Windows SettingsPage: "Game Mode card translucency", frosted cards with blur.
-        card_opacity=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,0,100,1)
-        card_opacity.set_value(self.settings.get('game_mode_card_opacity',10));card_opacity.set_draw_value(False)
-        card_opacity.set_size_request(200,-1);card_opacity.set_valign(Gtk.Align.CENTER)
-        card_opacity.update_property([Gtk.AccessibleProperty.LABEL],['Game Mode card translucency'])
-        card_opacity_row=row('Card Translucency','Frosted cards with blur. Left is clearer, right is more solid.')
-        card_opacity_row.add_suffix(card_opacity)
-        def change_card_opacity(widget,*_):
-            value=int(round(widget.get_value()))
-            if hasattr(self,'couch'):self.couch.set_card_opacity(value)
-            else:self.settings['game_mode_card_opacity']=value
-            if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
-        card_opacity.connect('value-changed',change_card_opacity);gaming_theme.add(card_opacity_row)
-        self.gaming_theme_controls={'theme':game_mode_theme,'linked':linked_theme,'opacity':card_opacity}
+        gaming_theme=Adw.PreferencesGroup(title='Game Mode appearance',description='Light, Clear or Dark, Adaptive color, Surface Tint and display scaling.')
+        def open_native_appearance(*_):
+            if self.dialog:self.dialog.close()
+            self._native_game_mode_appearance=True
+            self.enter_game_mode()
+        appearance_action=button('Open Appearance',open_native_appearance)
+        appearance_item=row('Appearance','Configure the native Game Mode interface.');appearance_item.add_suffix(appearance_action);gaming_theme.add(appearance_item)
 
         glyphs=Adw.SwitchRow(title='Button Icons',subtitle='Show action icons beside button labels.',active=self.settings.get('button_glyphs',True))
         def change_glyphs(widget,*_):
@@ -15472,7 +15367,6 @@ class Window(Adw.ApplicationWindow):
             if not self.options.demo:
                 saved=library_media.load_settings(self.service.config);saved['button_glyphs']=value
                 library_media.save_settings(self.service.config,saved)
-            if hasattr(self,'couch'):self.couch.apply_navigation_preferences()
         glyphs.connect('notify::active',change_glyphs);appearance.add(glyphs)
         artwork=Adw.PreferencesGroup(title='Artwork and game information',description='Your Steam poster, capsule, and hero images take priority.')
         art=Adw.SwitchRow(title='Download Missing Artwork',subtitle='Use SteamGridDB and Steam when local images are unavailable.',active=self.settings['online_art']);artwork.add(art)
@@ -16804,8 +16698,50 @@ class Window(Adw.ApplicationWindow):
 
 
 class Application(Adw.Application):
-    def __init__(self,options):super().__init__(application_id='io.github.lrnolivia.RTXForge',flags=Gio.ApplicationFlags.NON_UNIQUE);self.options=options;self.exit_code=0
+    def __init__(self,options):
+        super().__init__(application_id='io.github.lrnolivia.RTXForge',flags=Gio.ApplicationFlags.NON_UNIQUE if options.demo else Gio.ApplicationFlags.DEFAULT_FLAGS)
+        self.options=options;self.exit_code=0;self.pending_mode=None
+        for name,gaming in (('native-game-mode',True),('desktop-mode',False)):
+            action=Gio.SimpleAction.new(name,None)
+            action.connect('activate',lambda *_args,gaming=gaming:self.activate_mode(gaming))
+            self.add_action(action)
+        support=Gio.SimpleAction.new('support-link',GLib.VariantType.new('s'))
+        support.connect('activate',lambda _action,value:self.activate_support(value.get_string()))
+        self.add_action(support)
+
+    def activate_support(self,value):
+        import beta_report
+        link=beta_report.parse_link(value)
+        if not link:return
+        self.options.link=link
+        if hasattr(self,'window') and not self.window.busy:
+            self.activate_mode(False)
+            self.window.open_support_link()
+
+    def activate_mode(self,gaming):
+        if not hasattr(self,'window'):
+            self.pending_mode=gaming
+            return
+        if gaming:
+            if getattr(self.window,'_native_game_mode',None):
+                import game_mode_launcher
+                try:
+                    activation=game_mode_launcher.activate(ROOT)
+                    threading.Thread(target=activation.wait,daemon=True,name='game-mode-activation').start()
+                except (OSError,ValueError,KeyError) as error:self.window.toast(str(error))
+            else:self.window.set_input_surface(True,wait_for_idle=True)
+        else:
+            self.window._native_game_mode_requested=False
+            if getattr(self.window,'_native_game_mode',None):
+                import game_mode_launcher
+                try:game_mode_launcher.return_to_desktop(ROOT)
+                except (OSError,ValueError,KeyError) as error:self.window.toast(str(error))
+            else:self.window.present()
+
     def do_activate(self):
+        if hasattr(self,'window'):
+            self.window.present()
+            return
         try:
             Gtk.IconTheme.get_for_display(
                 Gdk.Display.get_default()
@@ -16836,6 +16772,9 @@ class Application(Adw.Application):
                 self.options,
             )
             self.window.present()
+            if self.pending_mode is not None:
+                gaming,self.pending_mode=self.pending_mode,None
+                self.activate_mode(gaming)
 
         except Exception:
             # In automated smoke mode a startup exception must terminate
@@ -16848,6 +16787,7 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--provider',type=Path)
     parser.add_argument('--ui-mode',choices=['classic','new'],default=None)
+    parser.add_argument('--desktop-mode',action='store_true',help='Open Desktop even in a gaming session.')
     parser.add_argument('--game-mode',action='store_true',help='Open Game Mode.')
     parser.add_argument(
         '--demo',
@@ -16900,5 +16840,18 @@ def main():
         or options.library_state_smoke
     ):
         options.demo=True
-    app=Application(options);result=app.run([sys.argv[0]]);return app.exit_code or result
+    app=Application(options)
+    if not options.demo:
+        app.register(None)
+        if app.get_is_remote():
+            if options.link:
+                link='rtxforge://support/logs'+('?issue='+str(options.link['issue']) if options.link['issue'] else '')
+                app.activate_action('support-link',GLib.Variant('s',link))
+            else:
+                gaming=options.game_mode or (gamescope_session() and not options.desktop_mode)
+                app.activate_action('native-game-mode' if gaming and not options.desktop_mode else 'desktop-mode',None)
+            connection=app.get_dbus_connection()
+            if connection:connection.flush_sync(None)
+            return 0
+    result=app.run([sys.argv[0]]);return app.exit_code or result
 if __name__=='__main__':sys.exit(main())

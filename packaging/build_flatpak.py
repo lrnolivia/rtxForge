@@ -10,6 +10,7 @@ import argparse
 import datetime
 import hashlib
 import importlib.util
+import os
 import re
 import shutil
 import subprocess
@@ -43,7 +44,7 @@ def stage(build):
     if source.exists():
         shutil.rmtree(source)
     source.mkdir(parents=True)
-    version = _appimage_builder().stage_payload(ROOT, source / 'payload')
+    version = _appimage_builder().stage_payload(ROOT, source / 'payload', Path(os.environ['RTXFORGE_GAME_MODE_PACKAGE']))
     shutil.copyfile(FLATPAK / 'rtxforge', source / 'rtxforge')
     shutil.copyfile(FLATPAK / f'{APP_ID}.desktop', source / f'{APP_ID}.desktop')
     today = datetime.date.today().isoformat()

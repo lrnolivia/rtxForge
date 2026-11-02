@@ -76,7 +76,7 @@ def bundle_steam_artwork(source_root, payload_root):
             raise RuntimeError('Steam artwork copy verification failed: ' + source.name)
     return destination
 
-def stage_payload(root, payload):
+def stage_payload(root, payload, game_mode_package=None):
     """The application payload shared by the AppImage and the Flatpak (usr/share/rtxforge, /app/share/rtxforge)."""
     import ast,sys
     version=(root/'VERSION').read_text(encoding='utf-8').strip()
@@ -92,7 +92,7 @@ def stage_payload(root, payload):
             build_sha='unknown'
     (payload/'BUILD_INFO.json').write_text(json.dumps({'version':version,'commit':build_sha},sort_keys=True)+'\n')
     for name in ['gui','scripts','providers']:
-        shutil.copytree(root/name,payload/name,ignore=shutil.ignore_patterns('__pycache__'))
+        shutil.copytree(root/name,payload/name,ignore=shutil.ignore_patterns('__pycache__',*(['game_mode*.py'] if name=='gui' else [])))
     bundle_overlays(root,payload)
     vulkan = root/'windows/out/vulkan-provider'
     if (vulkan/'candidate.json').is_file():
@@ -115,6 +115,13 @@ def stage_payload(root, payload):
                     raise RuntimeError(f'{module.name} imports {top}, which the bundle does not include')
     shutil.copyfile(root/'engine/rtxengine.py',payload/'engine/rtxengine.py')
     bundle_steam_artwork(root, payload)
+    if game_mode_package:
+        import sys
+        sys.path.insert(0,str(root/'scripts'))
+        from game_mode_launcher import validate_image
+        validate_image(game_mode_package, build_sha)
+        shutil.copytree(game_mode_package,payload/'game-mode')
+        (payload/'game-mode/rtxforge-game-mode.AppImage').chmod(0o755)
     return version
 
 
@@ -125,7 +132,8 @@ def main():
     app=stage/'RTXForge.AppDir'
     if app.exists():shutil.rmtree(app)
     app.mkdir()
-    version=stage_payload(root,app/'usr/share/rtxforge')
+    game_mode=Path(os.environ['RTXFORGE_GAME_MODE_PACKAGE'])
+    version=stage_payload(root,app/'usr/share/rtxforge',game_mode)
     # Provider archives are verified at preparation; no stale custom loader is bundled.
     (app/'AppRun').write_bytes((root/'packaging/AppRun').read_bytes().replace(b'\r\n',b'\n'));(app/'AppRun').chmod(0o755)
     icon='io.github.lrnolivia.RTXForge'

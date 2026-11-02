@@ -11,7 +11,7 @@ let active:BackgroundSelection|undefined,fade:ReturnType<typeof setTimeout>|unde
 const reduced=matchMedia('(prefers-reduced-motion:reduce)');
 try{for(const [game,ids] of Object.entries(JSON.parse(localStorage.getItem('rtxforge-game-mode-backgrounds')||'{}')))if(Array.isArray(ids))choices.set(game,ids.filter(id=>typeof id==='string'&&/^[0-9]{1,6}$/.test(id)).slice(0,1));}catch{/* Use the first Store screenshot. */}
 
-function thumbnailColor(source:string):Promise<string|null>{
+export function thumbnailColor(source:string):Promise<string|null>{
   let pending=palettes.get(source);if(pending)return pending;
   pending=(async()=>{
     const image=new Image();image.crossOrigin='anonymous';image.src=source;
@@ -119,6 +119,8 @@ async function display(state:BackgroundSelection){
       fitScreenshot(scene,image);
       scene.dataset.backgroundWidth=String(image.width);scene.dataset.backgroundHeight=String(image.height);
       scene.dataset.screenshotId=id||'default';scene.querySelector('.scene-next')?.remove();state.current=state.appid+':'+(id||'default');
+      scene.dataset.adaptiveAccent=image.sample?signatureColor(image.sample.data)||'':'';
+      window.dispatchEvent(new CustomEvent('rtxforge-background-ready'));
       void updateBackgroundContrast();
     };
     clearTimeout(fade);scene.querySelector('.scene-next')?.remove();

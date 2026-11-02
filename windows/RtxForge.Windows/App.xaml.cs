@@ -6,6 +6,12 @@ namespace RtxForge.Windows;
 public partial class App : Application
 {
     OverlayHelperWindow? overlayHelper;
+    readonly DesktopActivationQueue activations = new();
+
+    void DispatchPendingActivation()
+    {
+        if (activations.Take() is { } gaming) Main?.ActivateDesktop(gaming);
+    }
     public static IForgeService Service { get; private set; } = null!;
     /// <summary>Set by the MainWindow constructor before its first page loads.</summary>
     public static MainWindow? Main { get; internal set; }
@@ -54,6 +60,22 @@ public partial class App : Application
             if (MainWindow.TryParseSupportLink(link, out var issue)) { MainWindow.PendingSupportLink = true; MainWindow.PendingSupportIssue = issue; }
             else MainWindow.IgnoredSupportLink = true;
         }
+        // Normal activations reuse the existing Desktop owner. Review fixtures remain isolated.
+        if (!arguments.Any(value => value.Contains("review", StringComparison.OrdinalIgnoreCase) || value is "--preview" or "--library-preview" or "--overlay-settings" || value.StartsWith("rtxforge:", StringComparison.OrdinalIgnoreCase)))
+        {
+            var instance = Microsoft.Windows.AppLifecycle.AppInstance.FindOrRegisterForKey("rtxforge-desktop");
+            if (!instance.IsCurrent)
+            {
+                await instance.RedirectActivationToAsync(Microsoft.Windows.AppLifecycle.AppInstance.GetCurrent().GetActivatedEventArgs());
+                Exit(); return;
+            }
+            instance.Activated += (_, activation) =>
+            {
+                var text = (activation.Data as global::Windows.ApplicationModel.Activation.ILaunchActivatedEventArgs)?.Arguments ?? "";
+                var gaming = text.Split(' ').Contains("--game-mode");
+                if (activations.Add(gaming)) Main?.DispatcherQueue.TryEnqueue(DispatchPendingActivation);
+            };
+        }
         // The real engine (bundled Python host) unless --preview is passed or
         // it cannot start; preview is `rtxforge_gtk.py --demo`: sample
         // library, no game writes.
@@ -68,7 +90,10 @@ public partial class App : Application
         else Service = new PreviewForgeService();
         try
         {
-            new MainWindow(Service).Activate();
+            var window = new MainWindow(Service);
+            window.Activate();
+            activations.MarkReady();
+            DispatchPendingActivation();
         }
         catch (Exception error)
         {

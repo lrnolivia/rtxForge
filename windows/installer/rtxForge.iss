@@ -72,15 +72,17 @@ Name: "gamemodeicon"; Description: "Add an ""rtxForge Game Mode"" shortcut (full
 ; newer engine dropped can never be imported by mistake.
 Type: filesandordirs; Name: "{app}\engine"
 Type: filesandordirs; Name: "{app}\python"
+Type: filesandordirs; Name: "{app}\game-mode"
 ; The rtxForge Overlay lives in each game; the desktop overlay window is retired.
 Type: files; Name: "{autoprograms}\rtxForge Overlay.lnk"
+Type: files; Name: "{autoprograms}\rtxForge Game Mode Preview.lnk"
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\rtxForge"; Filename: "{app}\rtxForge.exe"
-Name: "{autoprograms}\rtxForge Game Mode"; Filename: "{app}\rtxForge.exe"; Parameters: "--game-mode"; Tasks: gamemodeicon
+Name: "{autoprograms}\rtxForge Game Mode"; Filename: "{app}\rtxForge.exe"; Parameters: "--game-mode"; Check: WantGameModeShortcut
 Name: "{autodesktop}\rtxForge"; Filename: "{app}\rtxForge.exe"; Tasks: desktopicon
 
 [Run]
@@ -90,6 +92,7 @@ Filename: "{app}\rtxForge.exe"; Description: "{cm:LaunchProgram,rtxForge}"; Flag
 ; Byte-code caches the engine may write next to itself (it normally runs with -B).
 Type: filesandordirs; Name: "{app}\engine"
 Type: filesandordirs; Name: "{app}\python"
+Type: filesandordirs; Name: "{app}\game-mode"
 
 [Registry]
 ; The helper is user-controlled in Settings. Remove its sign-in entry on uninstall.
@@ -103,6 +106,13 @@ Root: HKA; Subkey: "Software\Classes\rtxforge"; ValueType: string; ValueName: "U
 Root: HKA; Subkey: "Software\Classes\rtxforge\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\rtxForge.exe"",0"
 Root: HKA; Subkey: "Software\Classes\rtxforge\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\rtxForge.exe"" ""%1"""
 [Code]
+function WantGameModeShortcut: Boolean;
+begin
+  // Upgrade an existing standalone shortcut as well as honoring a new opt-in.
+  Result := WizardIsTaskSelected('gamemodeicon') or
+    FileExists(ExpandConstant('{autoprograms}\rtxForge Game Mode.lnk'));
+end;
+
 // [InstallDelete] removes the old engine and Python before files are copied. If a
 // running rtxForge (the app, its overlay helper or its engine) then locks a file,
 // Setup aborts and its rollback cannot bring those folders back. End every process

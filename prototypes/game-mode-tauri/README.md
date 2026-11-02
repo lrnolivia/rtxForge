@@ -16,6 +16,8 @@ Hero framing honors Desktop Mode's saved focal point, then uses its visual-salie
 
 Unknown Store screenshots are screened locally by a bundled CPU detector on Windows and Linux. Text-heavy panels and edge HUD labels are excluded from both defaults and the picker. Decisions are cached by image hash; curated corrections supplement the detector. Failed screening does not admit unknown images. Icon-only HUDs can still escape detection, and environmental signs can be false positives. See [SCREENSHOT_SCREENING.md](SCREENSHOT_SCREENING.md) for limits and dependency provenance.
 
+Overlay Settings and the per-game editor share Surface (Light, Clear, Dark), independent Surface Tint, None/Adaptive/Game accent choices, Side Panel left/right and Bar top/bottom placement. A layout preview and game selector show the draft. Per-game edits preserve app defaults and other games; promoting a Native choice to a default requires the unchecked-by-default option. Applying defaults to all overlays has its own review. The preview illustrates placement and material; it is not a running game's renderer.
+
 ## Run
 
 Use Node 22.12+ and Python 3.11+. Install JavaScript dependencies once:

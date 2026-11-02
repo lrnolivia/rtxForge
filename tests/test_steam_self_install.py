@@ -27,7 +27,9 @@ class SelfInstallTests(unittest.TestCase):
  def test_legacy_shortcut_updates_mode_without_changing_appid_or_other_entries(self):
   other,_,_=s.append_shortcut(None,self.root/'other',engine=self.engine,name='Other')
   raw,appid,_=s.append_shortcut(other,self.entry,engine=self.engine)
-  legacy=raw.replace(b'LaunchOptions\0--game-mode\0',b'LaunchOptions\0\0')
+  prefix,field,suffix=raw.rpartition(b'LaunchOptions\0--game-mode\0')
+  self.assertTrue(field)
+  legacy=prefix+b'LaunchOptions\0\0'+suffix
   after,sameid,created=s.append_shortcut(legacy,self.entry,engine=self.engine)
   self.assertFalse(created);self.assertEqual(sameid,appid)
   self.assertEqual(after[:len(other)-2],other[:-2])
